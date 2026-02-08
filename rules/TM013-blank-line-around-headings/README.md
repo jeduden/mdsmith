@@ -1,0 +1,36 @@
+# TM013: blank-line-around-headings
+
+Headings must have a blank line before and after.
+
+- **ID**: TM013
+- **Name**: `blank-line-around-headings`
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**: [`internal/rules/blanklinearoundheadings/`](../../internal/rules/blanklinearoundheadings/)
+
+## Config
+
+```yaml
+rules:
+  blank-line-around-headings: true
+```
+
+## Examples
+
+### Bad
+
+```markdown
+Some text.
+## Heading
+More text.
+```
+
+### Good
+
+```markdown
+Some text.
+
+## Heading
+
+More text.
+```

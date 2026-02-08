@@ -18,6 +18,7 @@ Follow the [standard Go project layout](https://go.dev/doc/modules/layout):
 
 - `cmd/tidymark/` — main application entry point
 - `internal/` — private packages not importable by other modules
+- `rules/` — rule documentation (`rules/<id>-<name>/README.md`)
 - `testdata/` — test fixtures (markdown files for testing rules)
 
 ## Development Workflow
@@ -106,58 +107,7 @@ pre-commit:
       # stage_fixed: true
 ```
 
-## Config File
+## Config & Rules
 
-### Discovery
-
-1. If `--config` is given, use that file
-2. Otherwise, look for `.tidymark.yml` in the current directory
-3. Walk up parent directories to the filesystem or git repo root
-4. No config file found = use defaults (all rules enabled, default settings)
-
-### Format
-
-YAML (`.tidymark.yml`):
-
-```yaml
-# Global severity: "error" or "warning" (default: "error")
-severity: error
-
-# Line length limit (0 = disabled)
-line-length: 80
-
-# Rules configuration
-# Each rule can be: true (enable), false (disable), or an object with settings
-rules:
-  heading-style:
-    style: atx          # "atx" (#) or "setext" (underline)
-  line-length:
-    max: 80
-    # Skip lines that contain only a URL or code block
-    strict: false
-  no-trailing-spaces: true
-  no-multiple-blanks: true
-  first-line-heading:
-    level: 1             # Required heading level for first line
-  no-hard-tabs: true
-  list-indent:
-    spaces: 2
-  fenced-code-style:
-    style: backtick      # "backtick" or "tilde"
-
-# Files to ignore (glob patterns)
-ignore:
-  - "vendor/**"
-  - "node_modules/**"
-  - "CHANGELOG.md"
-```
-
-### Rule naming
-
-Rules use kebab-case names (e.g. `line-length`, `no-trailing-spaces`).
-Each rule also has a short ID (e.g. `TM001`) used in output.
-
-### Config merging
-
-No directory-level config merging. One config file applies to the entire run.
-Use `--config` to explicitly select a different config for different contexts.
+See [README.md](README.md#configuration) for config file format and examples.
+Each rule is documented in [`rules/<id>-<name>/README.md`](rules/).
