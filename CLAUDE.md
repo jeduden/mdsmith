@@ -12,6 +12,15 @@ tidymark — a Markdown linter written in Go.
 - `golangci-lint run` — run linter
 - `go vet ./...` — run go vet
 
+## Project Layout
+
+Follow the [standard Go project layout](https://go.dev/doc/modules/layout):
+
+- `cmd/tidymark/` — main application entry point
+- `internal/` — private packages not importable by other modules
+- `pkg/` — public library packages (if any)
+- `testdata/` — test fixtures
+
 ## Code Style
 
 - Follow standard Go conventions (gofmt, goimports)
