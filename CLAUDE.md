@@ -107,6 +107,25 @@ pre-commit:
       # stage_fixed: true
 ```
 
+## Implementation Plan
+
+The implementation is split into 11 phases, each in its own file under [`plan/`](plan/):
+
+1. [`01_skeleton-and-core-types.md`](plan/01_skeleton-and-core-types.md) — compilable binary, `File`/`Diagnostic`/`Rule` types, goldmark AST
+2. [`02_config-loading.md`](plan/02_config-loading.md) — `.tidymark.yml` parsing, discovery, merge, overrides
+3. [`03_lint-engine.md`](plan/03_lint-engine.md) — file resolution, rule dispatch, exit codes
+4. [`04_output-formatters.md`](plan/04_output-formatters.md) — text + JSON formatters, `--no-color`, `--quiet`
+5. [`05_raw-text-rules.md`](plan/05_raw-text-rules.md) — TM006-TM009 (line-level, no AST)
+6. [`06_heading-rules.md`](plan/06_heading-rules.md) — TM002-TM005, TM013, TM017-TM018 (AST-based)
+7. [`07_code-block-rules.md`](plan/07_code-block-rules.md) — TM010-TM011, TM015 (AST-based)
+8. [`08_list-and-url-rules.md`](plan/08_list-and-url-rules.md) — TM012, TM014, TM016 (AST-based)
+9. [`09_line-length-rule.md`](plan/09_line-length-rule.md) — TM001 (AST-aware for `strict: false`)
+10. [`10_fix-mode.md`](plan/10_fix-mode.md) — `--fix` with re-parse between passes
+11. [`11_polish-and-integration.md`](plan/11_polish-and-integration.md) — stdin, version, e2e tests, CI
+
+Each task has acceptance criteria with behavioral tests. Work test-driven: write
+a failing test (red), make it pass (green), commit.
+
 ## Config & Rules
 
 See [README.md](README.md#configuration) for config file format and examples.
