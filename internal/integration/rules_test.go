@@ -10,7 +10,10 @@ import (
 
 	"github.com/jeduden/tidymark/internal/lint"
 	"github.com/jeduden/tidymark/internal/rule"
-	"gopkg.in/yaml.v3"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
+	"go.abhg.dev/goldmark/frontmatter"
 
 	_ "github.com/jeduden/tidymark/internal/rules/blanklinearoundfencedcode"
 	_ "github.com/jeduden/tidymark/internal/rules/blanklinearoundheadings"
@@ -44,27 +47,34 @@ type frontMatter struct {
 	Diagnostics []expectedDiag `yaml:"diagnostics"`
 }
 
-// parseFrontMatter splits YAML front matter from markdown content.
-// It returns the expected diagnostics and the content after the front matter.
-// If no front matter is present, diagnostics will be nil and content is returned unchanged.
+// parseFrontMatter extracts YAML front matter from markdown using
+// goldmark-frontmatter, then strips it from the raw bytes so lint.NewFile
+// receives plain markdown content.
 func parseFrontMatter(t *testing.T, data []byte) ([]expectedDiag, []byte) {
 	t.Helper()
-	const delim = "---\n"
-	if !bytes.HasPrefix(data, []byte(delim)) {
+
+	// Use goldmark with frontmatter extension to parse metadata.
+	md := goldmark.New(goldmark.WithExtensions(&frontmatter.Extender{}))
+	ctx := parser.NewContext()
+	md.Parser().Parse(text.NewReader(data), parser.WithContext(ctx))
+
+	d := frontmatter.Get(ctx)
+	if d == nil {
 		return nil, data
 	}
-	rest := data[len(delim):]
-	idx := bytes.Index(rest, []byte(delim))
-	if idx == -1 {
-		return nil, data
-	}
-	yamlBytes := rest[:idx]
-	content := rest[idx+len(delim):]
 
 	var fm frontMatter
-	if err := yaml.Unmarshal(yamlBytes, &fm); err != nil {
-		t.Fatalf("parsing front matter YAML: %v", err)
+	if err := d.Decode(&fm); err != nil {
+		t.Fatalf("decoding front matter: %v", err)
 	}
+
+	// Strip the front matter delimiters and YAML from the raw bytes
+	// so lint.NewFile sees only markdown content.
+	const delim = "---\n"
+	rest := data[len(delim):]
+	idx := bytes.Index(rest, []byte(delim))
+	content := rest[idx+len(delim):]
+
 	return fm.Diagnostics, content
 }
 
