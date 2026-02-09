@@ -207,85 +207,85 @@ interpolate the underlying Go error string as-is.
 
 ## Acceptance Criteria
 
-- [ ] `lint.File` has `FS fs.FS` field, set by engine/fixer, nil for stdin
-- [ ] Minimal mode (glob only) produces plain link list with basenames
-- [ ] List template renders per-file with front matter fields
-- [ ] Table template renders static header + per-file rows
-- [ ] Multi-line `row` value with YAML `|` produces multi-line output per file
-- [ ] Multi-line `row` value with YAML `|+` preserves trailing blank lines
-- [ ] YAML `|-` strips trailing newlines; implicit `\n` rule adds one back
-- [ ] Each row is followed by implicit trailing `\n`
-- [ ] `footer` renders static content after rows
-- [ ] `empty` renders fallback text when glob matches zero files
-- [ ] `empty` alone without `row` is valid (no diagnostic)
-- [ ] `empty` + `header` without `row` produces missing-row diagnostic
-- [ ] `empty` value gets trailing `\n`
-- [ ] No `empty` + no matches produces empty content between markers
-- [ ] Up-to-date section produces zero TM019 diagnostics
-- [ ] Stale section produces one diagnostic per section
-- [ ] Unclosed start marker produces diagnostic
-- [ ] Orphaned end marker produces diagnostic
-- [ ] Nested start markers produce diagnostic
-- [ ] Missing directive name produces diagnostic
-- [ ] Unknown directive name produces diagnostic
-- [ ] Missing `glob` parameter produces diagnostic
-- [ ] Empty `glob: ""` produces diagnostic
-- [ ] Absolute glob path produces diagnostic
-- [ ] Glob with `..` produces diagnostic
-- [ ] Brace expansion in glob not supported
-- [ ] Invalid glob pattern produces diagnostic
-- [ ] Invalid YAML body produces diagnostic
-- [ ] Non-string YAML values produce diagnostic per key
-- [ ] Empty `row: ""` produces diagnostic
-- [ ] Empty `sort: ""` produces diagnostic
-- [ ] `header`/`footer` without `row` produce diagnostic
-- [ ] Invalid template syntax produces diagnostic
-- [ ] Template execution error produces diagnostic
-- [ ] Invalid `sort` value (e.g., `"-"`) produces diagnostic
-- [ ] Unknown YAML keys are silently ignored
-- [ ] Duplicate YAML keys use last value
-- [ ] YAML anchors, aliases, and merge keys are supported
-- [ ] Files without front matter resolve fields to empty string
-- [ ] `{{.filename}}` resolves to path relative to linted file's directory
-- [ ] `{{.filename}}` never has leading `./` prefix
-- [ ] `header`/`footer` containing `{{...}}` render literally
-- [ ] `empty` containing `{{...}}` renders literally
-- [ ] `header` and `footer` get implicit trailing `\n` (same rule as rows)
-- [ ] When `empty` renders, `header`/`footer` are not included in output
-- [ ] When glob matches files and `empty` is defined, `empty` is ignored
-- [ ] Matched file with invalid front matter treated as no front matter
-- [ ] Matched binary/non-Markdown file included (no front matter extracted)
-- [ ] Multiple marker pairs in one file processed independently
-- [ ] Symlinks in glob results are followed
-- [ ] Glob matching the linted file includes it
-- [ ] Windows `\r\n` files flagged as stale (generated content uses `\n`)
-- [ ] Directive name is case-sensitive (`Catalog` -> unknown directive)
-- [ ] Directive name whitespace is trimmed; extra words after name ignored
-- [ ] End marker matched after trimming whitespace (`<!-- tidymark:gen:end -->`)
-- [ ] Sort value with whitespace (e.g., `"foo bar"`) produces diagnostic
-- [ ] All diagnostics report column 1
-- [ ] Validation short-circuits on structural errors
-- [ ] Fix regenerates stale sections correctly
-- [ ] Fix is idempotent on fresh content
-- [ ] Fix with multiple marker pairs uses on-disk state, not in-memory
-- [ ] Fix leaves malformed markers unchanged
-- [ ] Fix leaves template-execution-error sections unchanged
-- [ ] `sort: path` orders case-insensitively by relative file path
-- [ ] `sort: filename` orders by basename
-- [ ] `sort: title` orders by front matter `title` field
-- [ ] `sort: -title` orders descending
-- [ ] Sort uses path as tiebreaker when values are equal
-- [ ] Sort comparison is case-insensitive
-- [ ] Sort with front matter key in minimal mode reads front matter
-- [ ] Recursive `**` glob patterns are supported
-- [ ] Dotfiles not matched by `*`/`**` unless pattern has leading dot
-- [ ] Markers inside fenced code blocks are ignored
-- [ ] Markers inside HTML blocks are ignored
-- [ ] `-->` terminator allows leading/trailing whitespace
-- [ ] Single-line start marker has empty YAML body
-- [ ] Unreadable matched files are silently skipped
-- [ ] Glob matching a directory silently skips it
-- [ ] Stdin input skips the rule (`f.FS == nil`)
-- [ ] Tests use `fstest.MapFS` (no `t.TempDir()` for unit tests)
-- [ ] All tests pass: `go test ./...`
+- [x] `lint.File` has `FS fs.FS` field, set by engine/fixer, nil for stdin
+- [x] Minimal mode (glob only) produces plain link list with basenames
+- [x] List template renders per-file with front matter fields
+- [x] Table template renders static header + per-file rows
+- [x] Multi-line `row` value with YAML `|` produces multi-line output per file
+- [x] Multi-line `row` value with YAML `|+` preserves trailing blank lines
+- [x] YAML `|-` strips trailing newlines; implicit `\n` rule adds one back
+- [x] Each row is followed by implicit trailing `\n`
+- [x] `footer` renders static content after rows
+- [x] `empty` renders fallback text when glob matches zero files
+- [x] `empty` alone without `row` is valid (no diagnostic)
+- [x] `empty` + `header` without `row` produces missing-row diagnostic
+- [x] `empty` value gets trailing `\n`
+- [x] No `empty` + no matches produces empty content between markers
+- [x] Up-to-date section produces zero TM019 diagnostics
+- [x] Stale section produces one diagnostic per section
+- [x] Unclosed start marker produces diagnostic
+- [x] Orphaned end marker produces diagnostic
+- [x] Nested start markers produce diagnostic
+- [x] Missing directive name produces diagnostic
+- [x] Unknown directive name produces diagnostic
+- [x] Missing `glob` parameter produces diagnostic
+- [x] Empty `glob: ""` produces diagnostic
+- [x] Absolute glob path produces diagnostic
+- [x] Glob with `..` produces diagnostic
+- [x] Brace expansion in glob not supported
+- [x] Invalid glob pattern produces diagnostic
+- [x] Invalid YAML body produces diagnostic
+- [x] Non-string YAML values produce diagnostic per key
+- [x] Empty `row: ""` produces diagnostic
+- [x] Empty `sort: ""` produces diagnostic
+- [x] `header`/`footer` without `row` produce diagnostic
+- [x] Invalid template syntax produces diagnostic
+- [x] Template execution error produces diagnostic
+- [x] Invalid `sort` value (e.g., `"-"`) produces diagnostic
+- [x] Unknown YAML keys are silently ignored
+- [x] Duplicate YAML keys use last value
+- [x] YAML anchors, aliases, and merge keys are supported
+- [x] Files without front matter resolve fields to empty string
+- [x] `{{.filename}}` resolves to path relative to linted file's directory
+- [x] `{{.filename}}` never has leading `./` prefix
+- [x] `header`/`footer` containing `{{...}}` render literally
+- [x] `empty` containing `{{...}}` renders literally
+- [x] `header` and `footer` get implicit trailing `\n` (same rule as rows)
+- [x] When `empty` renders, `header`/`footer` are not included in output
+- [x] When glob matches files and `empty` is defined, `empty` is ignored
+- [x] Matched file with invalid front matter treated as no front matter
+- [x] Matched binary/non-Markdown file included (no front matter extracted)
+- [x] Multiple marker pairs in one file processed independently
+- [x] Symlinks in glob results are followed
+- [x] Glob matching the linted file includes it
+- [x] Windows `\r\n` files flagged as stale (generated content uses `\n`)
+- [x] Directive name is case-sensitive (`Catalog` -> unknown directive)
+- [x] Directive name whitespace is trimmed; extra words after name ignored
+- [x] End marker matched after trimming whitespace (`<!-- tidymark:gen:end -->`)
+- [x] Sort value with whitespace (e.g., `"foo bar"`) produces diagnostic
+- [x] All diagnostics report column 1
+- [x] Validation short-circuits on structural errors
+- [x] Fix regenerates stale sections correctly
+- [x] Fix is idempotent on fresh content
+- [x] Fix with multiple marker pairs uses on-disk state, not in-memory
+- [x] Fix leaves malformed markers unchanged
+- [x] Fix leaves template-execution-error sections unchanged
+- [x] `sort: path` orders case-insensitively by relative file path
+- [x] `sort: filename` orders by basename
+- [x] `sort: title` orders by front matter `title` field
+- [x] `sort: -title` orders descending
+- [x] Sort uses path as tiebreaker when values are equal
+- [x] Sort comparison is case-insensitive
+- [x] Sort with front matter key in minimal mode reads front matter
+- [x] Recursive `**` glob patterns are supported
+- [x] Dotfiles not matched by `*`/`**` unless pattern has leading dot
+- [x] Markers inside fenced code blocks are ignored
+- [x] Markers inside HTML blocks are ignored
+- [x] `-->` terminator allows leading/trailing whitespace
+- [x] Single-line start marker has empty YAML body
+- [x] Unreadable matched files are silently skipped
+- [x] Glob matching a directory silently skips it
+- [x] Stdin input skips the rule (`f.FS == nil`)
+- [x] Tests use `fstest.MapFS` (no `t.TempDir()` for unit tests)
+- [x] All tests pass: `go test ./...`
 - [ ] `golangci-lint run` reports no issues

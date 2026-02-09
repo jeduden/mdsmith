@@ -52,6 +52,7 @@ func (r *Runner) Run(paths []string) *Result {
 			res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 			continue
 		}
+		f.FS = os.DirFS(filepath.Dir(path))
 
 		effective := config.Effective(r.Config, path)
 

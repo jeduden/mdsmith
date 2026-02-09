@@ -23,6 +23,7 @@ import (
 	_ "github.com/jeduden/tidymark/internal/rules/fencedcodelanguage"
 	_ "github.com/jeduden/tidymark/internal/rules/fencedcodestyle"
 	_ "github.com/jeduden/tidymark/internal/rules/firstlineheading"
+	_ "github.com/jeduden/tidymark/internal/rules/generatedsection"
 	_ "github.com/jeduden/tidymark/internal/rules/headingincrement"
 	_ "github.com/jeduden/tidymark/internal/rules/headingstyle"
 	_ "github.com/jeduden/tidymark/internal/rules/linelength"

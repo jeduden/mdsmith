@@ -21,6 +21,7 @@ import (
 	_ "github.com/jeduden/tidymark/internal/rules/fencedcodelanguage"
 	_ "github.com/jeduden/tidymark/internal/rules/fencedcodestyle"
 	_ "github.com/jeduden/tidymark/internal/rules/firstlineheading"
+	_ "github.com/jeduden/tidymark/internal/rules/generatedsection"
 	_ "github.com/jeduden/tidymark/internal/rules/headingincrement"
 	_ "github.com/jeduden/tidymark/internal/rules/headingstyle"
 	_ "github.com/jeduden/tidymark/internal/rules/linelength"
@@ -108,6 +109,7 @@ func TestRuleFixtures(t *testing.T) {
 				if err != nil {
 					t.Fatalf("parsing good.md: %v", err)
 				}
+				f.FS = os.DirFS(dir)
 				diags := filterByRule(r.Check(f), ruleID)
 				if len(diags) != 0 {
 					t.Errorf("good.md: expected 0 diagnostics, got %d", len(diags))
@@ -124,6 +126,7 @@ func TestRuleFixtures(t *testing.T) {
 				if err != nil {
 					t.Fatalf("parsing bad.md: %v", err)
 				}
+				f.FS = os.DirFS(dir)
 				diags := filterByRule(r.Check(f), ruleID)
 				if len(expected) == 0 {
 					if len(diags) == 0 {
@@ -164,6 +167,7 @@ func TestRuleFixtures(t *testing.T) {
 					if err != nil {
 						t.Fatalf("parsing bad.md: %v", err)
 					}
+					f.FS = os.DirFS(dir)
 
 					got := fr.Fix(f)
 					want := readFixture(t, fixedPath)

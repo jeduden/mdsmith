@@ -2,6 +2,7 @@ package lint
 
 import (
 	"bytes"
+	"io/fs"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -14,6 +15,7 @@ type File struct {
 	Source []byte
 	Lines  [][]byte
 	AST    ast.Node
+	FS     fs.FS
 }
 
 // NewFile parses source as Markdown and returns a File.

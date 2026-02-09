@@ -60,6 +60,8 @@ func (f *Fixer) Fix(paths []string) *Result {
 			fmPrefix, content = lint.StripFrontMatter(source)
 		}
 
+		dirFS := os.DirFS(filepath.Dir(path))
+
 		effective := config.Effective(f.Config, path)
 
 		// Collect enabled fixable rules, sorted by ID.
@@ -78,6 +80,7 @@ func (f *Fixer) Fix(paths []string) *Result {
 					res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 					break
 				}
+				lf.FS = dirFS
 
 				diags := fr.Check(lf)
 				if len(diags) == 0 {
@@ -107,6 +110,7 @@ func (f *Fixer) Fix(paths []string) *Result {
 			res.Errors = append(res.Errors, fmt.Errorf("parsing %q after fix: %w", path, err))
 			continue
 		}
+		lf.FS = dirFS
 
 		for _, rl := range f.Rules {
 			cfg, ok := effective[rl.Name()]
