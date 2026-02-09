@@ -244,6 +244,7 @@ interpolate the underlying Go error string as-is.
 - [ ] Invalid `sort` value (e.g., `"-"`) produces diagnostic
 - [ ] Unknown YAML keys are silently ignored
 - [ ] Duplicate YAML keys use last value
+- [ ] YAML anchors, aliases, and merge keys are supported
 - [ ] Files without front matter resolve fields to empty string
 - [ ] `{{.filename}}` resolves to path relative to linted file's directory
 - [ ] `{{.filename}}` never has leading `./` prefix
@@ -251,6 +252,7 @@ interpolate the underlying Go error string as-is.
 - [ ] `empty` containing `{{...}}` renders literally
 - [ ] `header` and `footer` get implicit trailing `\n` (same rule as rows)
 - [ ] When `empty` renders, `header`/`footer` are not included in output
+- [ ] When glob matches files and `empty` is defined, `empty` is ignored
 - [ ] Matched file with invalid front matter treated as no front matter
 - [ ] Matched binary/non-Markdown file included (no front matter extracted)
 - [ ] Multiple marker pairs in one file processed independently
@@ -265,6 +267,7 @@ interpolate the underlying Go error string as-is.
 - [ ] Validation short-circuits on structural errors
 - [ ] Fix regenerates stale sections correctly
 - [ ] Fix is idempotent on fresh content
+- [ ] Fix with multiple marker pairs uses on-disk state, not in-memory
 - [ ] Fix leaves malformed markers unchanged
 - [ ] Fix leaves template-execution-error sections unchanged
 - [ ] `sort: path` orders case-insensitively by relative file path

@@ -49,7 +49,7 @@ key, and in *minimal mode* otherwise. See Minimal mode below.
 ### YAML keys
 
 Parameters and template sections share the same YAML namespace. All values
-must be strings. Non-string values (numbers, booleans, arrays, maps) produce
+must be strings. Non-string values (null, numbers, booleans, arrays, maps) produce
 a diagnostic per key.
 
 Duplicate YAML keys use the last value (standard YAML behavior). YAML anchors,
