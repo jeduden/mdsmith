@@ -467,6 +467,32 @@ func TestRunner_StripFrontMatter_ContentStillLinted(t *testing.T) {
 	}
 }
 
+func TestRunner_InvalidIgnorePatternSkipped(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	if err := os.WriteFile(mdFile, []byte("# Hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-rule": {Enabled: true},
+		},
+		Ignore: []string{"[invalid"},
+	}
+
+	runner := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockRule{id: "TM999", name: "mock-rule"}},
+	}
+
+	result := runner.Run([]string{mdFile})
+	// Invalid glob is silently skipped; file is still linted.
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(result.Diagnostics))
+	}
+}
+
 func TestRunner_IgnoredFileByBasename(t *testing.T) {
 	dir := t.TempDir()
 	mdFile := filepath.Join(dir, "CHANGELOG.md")
