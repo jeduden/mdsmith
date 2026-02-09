@@ -11,11 +11,12 @@ TM002, TM006, TM007, TM008, TM009, TM010, TM012, TM013, TM014, TM015, TM016
 
 ## Tasks
 
-1. Fix coordinator (`internal/fix/fix.go`)
-   - For each file: run fixable rules in deterministic order (by rule ID)
-   - Each fixable rule returns corrected `[]byte` content
-   - Re-parse AST between rule passes (source positions change after edits)
-   - Write final result back to disk
+1. Fix coordinator (`internal/fix/fix.go`):
+   for each file, run fixable rules in deterministic order
+   (by rule ID). Each fixable rule returns corrected
+   `[]byte` content. Re-parse AST between rule passes
+   (source positions change after edits). Write final
+   result back to disk.
 2. Wire `--fix` flag in `main.go`
 
 ## Acceptance Criteria

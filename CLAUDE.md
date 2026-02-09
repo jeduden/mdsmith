@@ -23,7 +23,8 @@ Follow the [standard Go project layout](https://go.dev/doc/modules/layout):
 
 ## Development Workflow
 
-- New features are test-driven: write a failing test (red), make it pass (green), commit
+- New features are test-driven: write a failing test (red),
+  make it pass (green), commit
 - Keep commits small and focused on one change
 
 ## Code Style
@@ -38,12 +39,14 @@ Follow the [standard Go project layout](https://go.dev/doc/modules/layout):
 
 ### Usage
 
-```
+```text
 tidymark [flags] [files...]
 ```
 
-Files are positional arguments. Accepts multiple file paths, directories, and glob patterns.
-No file args and no stdin exits 0 (graceful empty invocation for pre-commit hooks).
+Files are positional arguments. Accepts multiple file paths,
+directories, and glob patterns.
+No file args and no stdin exits 0
+(graceful empty invocation for pre-commit hooks).
 
 ### Flags
 
@@ -72,13 +75,16 @@ Use `--` to separate flags from filenames starting with `-`.
 Lint output goes to **stderr**. Format:
 
 **text** (default):
-```
+
+```text
 README.md:10:5 TM001 line too long (120 > 80)
 docs/guide.md:3:1 TM002 first line should be a heading
 ```
+
 Pattern: `file:line:col rule message`
 
 **json**:
+
 ```json
 [
   {
@@ -109,19 +115,23 @@ pre-commit:
 
 ## Implementation Plan
 
-The implementation is split into 11 phases, each in its own file under [`plan/`](plan/):
+The implementation is split into 11 phases,
+each in its own file under [`plan/`](plan/):
 
-1. [`01_skeleton-and-core-types.md`](plan/01_skeleton-and-core-types.md) — compilable binary, `File`/`Diagnostic`/`Rule` types, goldmark AST
-2. [`02_config-loading.md`](plan/02_config-loading.md) — `.tidymark.yml` parsing, discovery, merge, overrides
-3. [`03_lint-engine.md`](plan/03_lint-engine.md) — file resolution, rule dispatch, exit codes
-4. [`04_output-formatters.md`](plan/04_output-formatters.md) — text + JSON formatters, `--no-color`, `--quiet`
-5. [`05_raw-text-rules.md`](plan/05_raw-text-rules.md) — TM006-TM009 (line-level, no AST)
-6. [`06_heading-rules.md`](plan/06_heading-rules.md) — TM002-TM005, TM013, TM017-TM018 (AST-based)
-7. [`07_code-block-rules.md`](plan/07_code-block-rules.md) — TM010-TM011, TM015 (AST-based)
-8. [`08_list-and-url-rules.md`](plan/08_list-and-url-rules.md) — TM012, TM014, TM016 (AST-based)
-9. [`09_line-length-rule.md`](plan/09_line-length-rule.md) — TM001 (AST-aware for `strict: false`)
-10. [`10_fix-mode.md`](plan/10_fix-mode.md) — `--fix` with re-parse between passes
-11. [`11_polish-and-integration.md`](plan/11_polish-and-integration.md) — stdin, version, e2e tests, CI
+1. [01: Skeleton & core types](plan/01_skeleton-and-core-types.md)
+2. [02: Config loading](plan/02_config-loading.md)
+3. [03: Lint engine](plan/03_lint-engine.md)
+4. [04: Output formatters](plan/04_output-formatters.md)
+5. [05: Raw-text rules](plan/05_raw-text-rules.md) — TM006-TM009
+6. [06: Heading rules](plan/06_heading-rules.md) — TM002-TM005,
+   TM013, TM017-TM018
+7. [07: Code-block rules](plan/07_code-block-rules.md) — TM010-TM011,
+   TM015
+8. [08: List & URL rules](plan/08_list-and-url-rules.md) — TM012,
+   TM014, TM016
+9. [09: Line-length rule](plan/09_line-length-rule.md) — TM001
+10. [10: Fix mode](plan/10_fix-mode.md)
+11. [11: Polish & integration](plan/11_polish-and-integration.md)
 
 Each task has acceptance criteria with behavioral tests. Work test-driven: write
 a failing test (red), make it pass (green), commit.

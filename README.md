@@ -16,7 +16,8 @@ tidymark <file.md>
 
 ## Configuration
 
-Create a `.tidymark.yml` in your project root. Without one, all rules are enabled with defaults.
+Create a `.tidymark.yml` in your project root.
+Without one, all rules are enabled with defaults.
 
 ```yaml
 rules:
@@ -33,8 +34,10 @@ overrides:
       no-duplicate-headings: false
 ```
 
-Rules can be `true` (enable with defaults), `false` (disable), or an object with settings.
-The `overrides` list applies different rules per file pattern. Later overrides take precedence.
+Rules can be `true` (enable with defaults), `false` (disable),
+or an object with settings.
+The `overrides` list applies different rules per file pattern.
+Later overrides take precedence.
 
 Config is discovered by walking up from the current directory to the repo root.
 Use `--config` to override.

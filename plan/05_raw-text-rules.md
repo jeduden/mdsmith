@@ -35,7 +35,8 @@ needing the Markdown AST.
 ### TM007: no-hard-tabs
 
 - [ ] A line containing a tab character reports a diagnostic at the tab's column
-- [ ] Multiple tabs on one line report one diagnostic per tab (or one per line — match spec)
+- [ ] Multiple tabs on one line report one diagnostic per
+      tab (or one per line — match spec)
 - [ ] A file with no tabs reports nothing
 - [ ] Fix replaces each tab with spaces
 
@@ -50,7 +51,8 @@ needing the Markdown AST.
 ### TM009: single-trailing-newline
 
 - [ ] A file ending without `\n` reports a diagnostic
-- [ ] A file ending with `\n\n` (multiple trailing newlines) reports a diagnostic
+- [ ] A file ending with `\n\n` (multiple trailing newlines)
+      reports a diagnostic
 - [ ] A file ending with exactly one `\n` reports nothing
 - [ ] An empty file (0 bytes) reports a diagnostic
 - [ ] Fix adds `\n` to a file that lacks it

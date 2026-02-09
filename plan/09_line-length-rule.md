@@ -15,7 +15,8 @@ knowledge of code block boundaries.
 ## Tasks
 
 1. Implement in `internal/rules/linelength/`
-2. Use AST to determine which source lines are inside fenced/indented code blocks
+2. Use AST to determine which source lines are inside
+   fenced/indented code blocks
 3. Create testdata fixtures
 4. Write behavioral tests
 
@@ -32,8 +33,9 @@ knowledge of code block boundaries.
       the limit does NOT report a diagnostic
 - [ ] `strict: false`: a line inside an indented code block (4-space) that
       exceeds the limit does NOT report a diagnostic
-- [ ] `strict: false`: a line whose only non-whitespace content is a URL
-      (e.g., `https://very-long-url.example.com/...`) does NOT report a diagnostic
+- [ ] `strict: false`: a line whose only non-whitespace
+      content is a URL (e.g., `https://very-long-url...`)
+      does NOT report a diagnostic
 - [ ] `strict: true`: long lines inside code blocks ARE flagged
 - [ ] `strict: true`: long URL-only lines ARE flagged
 - [ ] The diagnostic column points to the character position where the limit

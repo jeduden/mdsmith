@@ -25,14 +25,17 @@ Implement three rules covering lists and bare URLs using the goldmark AST
 ### TM012: no-bare-urls
 
 - [ ] `Visit https://example.com for info` reports a diagnostic on the URL
-- [ ] `Visit <https://example.com> for info` reports nothing (angle-bracket link)
+- [ ] `Visit <https://example.com> for info` reports nothing
+      (angle-bracket link)
 - [ ] `Visit [example](https://example.com)` reports nothing (inline link)
 - [ ] A URL inside a fenced code block is NOT flagged
-- [ ] A URL inside an inline code span (`` `https://example.com` ``) is NOT flagged
+- [ ] A URL inside an inline code span
+      (`` `https://example.com` ``) is NOT flagged
 - [ ] A URL inside a link destination `[text](url)` is NOT flagged
 - [ ] A URL in a reference definition `[label]: url` is NOT flagged
 - [ ] Multiple bare URLs on different lines are each reported
-- [ ] Fix wraps bare URLs in angle brackets: `https://x.com` → `<https://x.com>`
+- [ ] Fix wraps bare URLs in angle brackets:
+      `https://x.com` → `<https://x.com>`
 - [ ] The diagnostic column points to the start of the URL
 
 ### TM014: blank-line-around-lists

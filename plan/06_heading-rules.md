@@ -29,10 +29,12 @@ and related nodes).
 ### TM002: heading-style
 
 - [ ] An ATX heading (`# Heading`) reports nothing when `style: atx` (default)
-- [ ] A setext heading (`Heading\n=======`) reports a diagnostic when `style: atx`
+- [ ] A setext heading (`Heading\n=======`) reports a
+      diagnostic when `style: atx`
 - [ ] A setext heading reports nothing when `style: setext`
 - [ ] An ATX heading reports a diagnostic when `style: setext`
-- [ ] Fix converts setext headings to ATX (and vice versa) preserving heading text
+- [ ] Fix converts setext headings to ATX (and vice versa)
+      preserving heading text
 - [ ] Headings inside code blocks are not flagged
 
 ### TM003: heading-increment
@@ -65,8 +67,10 @@ and related nodes).
 - [ ] A heading preceded by non-blank text reports a diagnostic
 - [ ] A heading followed by non-blank text reports a diagnostic
 - [ ] A heading with blank lines before and after reports nothing
-- [ ] A heading on line 1 (no line before) does not require a blank line before
-- [ ] A heading on the last line (no line after) does not require a blank line after
+- [ ] A heading on line 1 (no line before) does not require
+      a blank line before
+- [ ] A heading on the last line (no line after) does not
+      require a blank line after
 - [ ] Fix inserts blank lines before/after headings as needed
 
 ### TM017: no-trailing-punctuation-in-heading

@@ -6,11 +6,12 @@
 
 ## Tasks
 
-1. Text formatter (`internal/output/text.go`)
-   - Pattern: `file:line:col rule message`
-   - ANSI color support (detect tty, respect `--no-color`)
-2. JSON formatter (`internal/output/json.go`)
-   - Array of diagnostic objects matching the spec in CLAUDE.md
+1. Text formatter (`internal/output/text.go`):
+   pattern `file:line:col rule message`,
+   ANSI color support (detect tty, respect `--no-color`).
+2. JSON formatter (`internal/output/json.go`):
+   array of diagnostic objects matching the spec
+   in CLAUDE.md.
 3. `--quiet` flag — suppress non-error output
 4. All lint output goes to stderr
 
