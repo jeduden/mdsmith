@@ -113,27 +113,12 @@ pre-commit:
       # stage_fixed: true
 ```
 
-## Implementation Plan
+## Plans
 
-The implementation is split into 11 phases,
-each in its own file under [`plan/`](plan/):
+Task plans live in [`plan/`](plan/). Use [`plan/proto.md`](plan/proto.md)
+as a template when creating new plans.
 
-1. [01: Skeleton & core types](plan/01_skeleton-and-core-types.md)
-2. [02: Config loading](plan/02_config-loading.md)
-3. [03: Lint engine](plan/03_lint-engine.md)
-4. [04: Output formatters](plan/04_output-formatters.md)
-5. [05: Raw-text rules](plan/05_raw-text-rules.md) — TM006-TM009
-6. [06: Heading rules](plan/06_heading-rules.md) — TM002-TM005,
-   TM013, TM017-TM018
-7. [07: Code-block rules](plan/07_code-block-rules.md) — TM010-TM011,
-   TM015
-8. [08: List & URL rules](plan/08_list-and-url-rules.md) — TM012,
-   TM014, TM016
-9. [09: Line-length rule](plan/09_line-length-rule.md) — TM001
-10. [10: Fix mode](plan/10_fix-mode.md)
-11. [11: Polish & integration](plan/11_polish-and-integration.md)
-
-Each task has acceptance criteria with behavioral tests. Work test-driven: write
+Each plan has acceptance criteria with behavioral tests. Work test-driven: write
 a failing test (red), make it pass (green), commit.
 
 ## Config & Rules
