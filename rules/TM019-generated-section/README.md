@@ -25,7 +25,10 @@ The opening comment has two parts:
 
 1. **First line** -- `<!-- tidymark:gen:start DIRECTIVE` where DIRECTIVE is the
    directive name in lowercase (e.g., `catalog`). The directive name is
-   required; omitting it produces a diagnostic.
+   case-sensitive; `Catalog` or `CATALOG` trigger the "unknown directive"
+   diagnostic. The directive name is required; omitting it produces a
+   diagnostic. Leading and trailing whitespace around the directive name is
+   trimmed. Only the first word after `start` is used as the directive name.
 2. **YAML body** -- all subsequent lines until `-->` are parsed as YAML. This
    body contains both parameters (e.g., `glob`, `sort`) and template sections
    (e.g., `header`, `row`, `footer`, `empty`).
@@ -40,7 +43,8 @@ If `-->` appears on the same line as the directive name (e.g.,
 `<!-- tidymark:gen:start catalog -->`), the YAML body is empty. This is valid
 syntax but will typically trigger a missing-parameter diagnostic.
 
-A template is present when the YAML contains a `row` key.
+The directive operates in *template mode* when the YAML body contains a `row`
+key, and in *minimal mode* otherwise. See Minimal mode below.
 
 ### YAML keys
 
@@ -63,12 +67,12 @@ aliases, and merge keys are supported (standard YAML features).
 | Key | Required | Description |
 |-----|----------|-------------|
 | `header` | no | Static text rendered once at the top. No template expansion; `{{...}}` appears literally. |
-| `row` | conditional | Per-file block, rendered once per matched file. Can be multi-line. Uses Go `text/template` syntax. Required when `header` or `footer` is present. Must be non-empty. |
+| `row` | conditional | Per-file block, rendered once per matched file. Uses Go `text/template` syntax. Required when `header` or `footer` is present. Must be non-empty (empty string or whitespace-only produces diagnostic). |
 | `footer` | no | Static text rendered once at the bottom. No template expansion; `{{...}}` appears literally. |
-| `empty` | no | Fallback text rendered instead of header+rows+footer when glob matches zero files. No template expansion. Can appear alone without `row`. |
+| `empty` | no | Fallback text rendered instead of header+rows+footer when glob matches zero files. No template expansion; `{{...}}` appears literally. Can appear alone without `row`. However, if `header` or `footer` is also present, `row` is required regardless of whether `empty` is defined. |
 
 Single-line values use YAML string syntax. Multi-line values use YAML literal
-block scalars (`|` or `|+`):
+block scalars (`|`, `|+`, or `|-`):
 
 ```yaml
 row: "- [{{.title}}]({{.filename}}) — {{.description}}"
@@ -90,18 +94,26 @@ a 2-space-indented `|` block comes out with the correct 4 spaces).
 
 Use `|+` (keep chomp) to preserve trailing blank lines in multi-line values.
 Use `|` (clip chomp, default) when no trailing blank line is needed.
+Use `|-` (strip chomp) to remove all trailing newlines; the implicit trailing
+newline rule (see Rendering logic) will add one back.
 
 ### Template fields
 
 The `row` section uses Go `text/template` syntax: `{{.fieldname}}`.
 
 - `{{.filename}}` -- the matched file's path, relative to the directory of
-  the file containing the marker. Never includes a leading `./` prefix.
+  the file containing the marker. Never includes a leading `./` prefix. Note:
+  despite the name, this is a relative path (e.g., `docs/api-reference.md`),
+  not a basename.
 - All other names (e.g., `{{.title}}`, `{{.description}}`, `{{.author}}`) --
-  looked up in the matched file's YAML front matter
+  looked up in the matched file's YAML front matter (delimited by `---` lines
+  at the start of the file)
 - Missing front matter field -> empty string
-- Non-string front matter value -> converted to string
-- No custom template functions are available
+- Non-string front matter value -> converted to string via Go's default
+  formatting. Complex types (arrays, maps) produce unhelpful strings; prefer
+  flat string fields in front matter for template use.
+- No custom template functions are registered. Go's built-in template
+  functions (e.g., `print`, `len`, `index`) are available.
 - Template output is not HTML-escaped. Values containing `<`, `>`, `&`, or
   other markdown-significant characters appear literally in the output.
 
@@ -113,14 +125,17 @@ The `row` section uses Go `text/template` syntax: `{{.fieldname}}`.
 3. If glob matches no files and no `empty` key: output is empty (zero
    lines between markers)
 
-Each rendered row is followed by a trailing newline. If the row value already
-ends with a newline (e.g., from a YAML block scalar `|`), no additional
-newline is added. The `empty` value is also followed by a trailing newline
-unless it already ends with one.
+Each rendered value (`header`, `row`, `footer`, `empty`) is terminated by a
+`\n` character. If the value (as parsed from YAML) already ends with `\n`, no
+additional `\n` is appended. This applies uniformly to all sections.
 
-In minimal mode, each entry is followed by a trailing newline.
+In minimal mode, each entry is terminated by a `\n`.
 
 Use `|+` in the row template to include a trailing blank line between entries.
+
+Validation is sequential. Structural errors (missing directive name, invalid
+YAML, non-string values) short-circuit further validation. Parameter validation
+(missing glob, invalid sort) is performed only after YAML parsing succeeds.
 
 ### General rules
 
@@ -128,7 +143,10 @@ Use `|+` in the row template to include a trailing blank line between entries.
 - Multiple independent marker pairs per file are supported.
 - Content between markers starts on the line immediately after the start
   marker's closing `-->` line and ends on the line immediately before the
-  `<!-- tidymark:gen:end -->` line. Comparison is byte-exact over this range.
+  `<!-- tidymark:gen:end -->` line. Comparison is performed on the exact text
+  between the markers (preserving original line endings) versus the freshly
+  generated text (which uses `\n` line endings). Any difference, including
+  line-ending mismatches, constitutes a mismatch.
 - Diagnostics are reported on the start marker line, except for orphaned
   end markers which are reported on the end marker line.
 
@@ -138,7 +156,7 @@ Lists files matching a glob pattern with configurable output.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `glob` | yes | -- | File glob pattern, resolved relative to the directory of the file containing the marker. Supports `*`, `?`, `[...]`, and `**` (recursive). Absolute paths are rejected. Dotfiles are not matched by `*` or `**` unless the pattern explicitly includes a leading dot. |
+| `glob` | yes | -- | File glob pattern, resolved relative to the directory of the file containing the marker. Supports `*`, `?`, `[...]`, and `**` (recursive). Absolute paths are rejected. Parent traversal (`..`) is not supported. Brace expansion (`{a,b}`) is not supported. Dotfiles are not matched by `*` or `**` unless the pattern explicitly includes a leading dot. |
 | `sort` | no | `path` | Sort key with optional `-` prefix for descending order. See Sort behavior. |
 
 ### Sort behavior
@@ -146,7 +164,14 @@ Lists files matching a glob pattern with configurable output.
 The `sort` value has the format `[-]KEY` where:
 
 - `-` prefix (optional): descending order. Without prefix, ascending order.
-- `KEY`: one of the built-in keys or any front matter field name.
+  Only the first `-` is consumed as the direction prefix; `sort: --priority`
+  means descending by key `-priority`.
+- `KEY`: a non-empty string without whitespace. One of the built-in keys or
+  any front matter field name.
+
+If the key name is empty after stripping the optional `-` prefix (i.e.,
+`sort: ""` or `sort: "-"`), the sort value is invalid and a diagnostic is
+emitted.
 
 **Built-in keys:**
 
@@ -180,8 +205,9 @@ directive produces a plain bullet list with one entry per matched file:
 ```
 
 Link text is the file's basename (e.g., `api-reference.md`). Link target is
-the file's path relative to the directory of the file containing the marker.
-The link target never includes a leading `./` prefix.
+the file's path relative to the directory of the file containing the marker
+(the same value as `{{.filename}}` in template mode). The link target never
+includes a leading `./` prefix.
 
 Front matter is read only when the sort key references a front matter field.
 Otherwise, no front matter extraction is performed.
@@ -311,6 +337,9 @@ No documents found.
 
 ### Good -- empty fallback with template
 
+When the glob matches zero files, the `empty` text is rendered regardless of
+whether `header`, `row`, and `footer` are also defined:
+
 ```markdown
 <!-- tidymark:gen:start catalog
 glob: docs/*.md
@@ -385,6 +414,20 @@ glob: docs/*.md
 
 Diagnostic: `unknown generated section directive "foobar"`
 
+### Bad -- nested markers
+
+```markdown
+<!-- tidymark:gen:start catalog
+glob: docs/*.md
+-->
+<!-- tidymark:gen:start catalog
+glob: other/*.md
+-->
+<!-- tidymark:gen:end -->
+```
+
+Diagnostic: `nested generated section markers are not allowed`
+
 ### Bad -- template sections without `row`
 
 ```markdown
@@ -457,11 +500,12 @@ Diagnostic: `generated section directive has absolute glob path`
 | Missing `glob` | `generated section directive missing required "glob" parameter` | start marker line |
 | Empty `glob` value | `generated section directive has empty "glob" parameter` | start marker line |
 | Absolute glob path | `generated section directive has absolute glob path` | start marker line |
+| Glob with `..` | `generated section directive has glob pattern with ".." path traversal` | start marker line |
 | Invalid glob | `generated section directive has invalid glob pattern: ...` | start marker line |
+| Empty sort value | `generated section directive has empty "sort" value` | start marker line |
 | Invalid sort value | `generated section directive has invalid sort value "VALUE"` | start marker line |
 | Empty `row` value | `generated section directive has empty "row" value` | start marker line |
 | `header`/`footer` without `row` | `generated section template missing required "row" key` | start marker line |
-| `empty` + `header`/`footer` without `row` | `generated section template missing required "row" key` | start marker line |
 | Invalid template syntax | `generated section has invalid template: ...` | start marker line |
 | Template execution error | `generated section template execution failed: ...` | start marker line |
 
@@ -471,28 +515,35 @@ Diagnostic: `generated section directive has absolute glob path`
 - Leave malformed marker regions unchanged
 - Leave sections unchanged when template execution fails
 - Idempotent: fixing an up-to-date file produces no changes
+- When fixing multiple marker pairs in one file, each pair's generation uses
+  the on-disk filesystem state, not the partially-fixed in-memory content
 
 ## Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
 | Glob matches no files | Empty text or `empty` fallback text |
-| Glob matches files + `empty` defined | `empty` is ignored |
+| Glob matches files + `empty` defined | `empty` is ignored; header+rows+footer rendered |
 | File has no front matter | `{{.filename}}` works; other fields -> empty string |
+| Matched file has invalid front matter | Treated as no front matter (all fields -> empty string) |
 | Front matter field missing | Empty string in template output |
-| Input from stdin | Rule skipped entirely (cannot resolve relative globs) |
+| No filesystem context (stdin or in-memory) | Rule skipped entirely (cannot resolve relative globs) |
 | Unreadable matched file | Silently skipped (not included in output) |
 | Glob matches a directory | Silently skipped |
 | Glob matches the linted file | Included (uses current on-disk content for front matter) |
+| Matched file is binary or non-Markdown | Included; no front matter extracted; `{{.filename}}` resolves |
 | Markers inside fenced code blocks | Ignored |
 | Markers inside HTML blocks | Ignored |
 | Multiple marker pairs in one file | Each processed independently |
 | Symlinks in glob results | Followed (doublestar handles cycles) |
 | Dotfiles | Not matched by `*` or `**` unless pattern has leading dot |
 | Absolute glob path | Diagnostic |
+| Glob with `..` | Diagnostic (parent traversal not supported by `io/fs.FS`) |
+| Brace expansion in glob | Not supported; treated as literal characters |
 | Empty glob value | Diagnostic |
-| Empty `row` value | Diagnostic |
+| Empty `row` value | Diagnostic (empty string or whitespace-only) |
 | Empty `sort` value | Diagnostic |
+| `sort: "-"` (dash only) | Diagnostic (invalid sort value) |
 | Unknown YAML keys | Ignored (forward-compatible with future parameters) |
 | Non-string YAML values | Diagnostic per key |
 | `empty` without `row` | Valid; only `header`/`footer` require `row` |

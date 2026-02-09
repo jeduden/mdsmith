@@ -37,10 +37,9 @@ stay in sync with their directive output, and can regenerate them with
    - `type fileEntry struct { Fields map[string]string }` (includes
      `filename` key)
    - `renderTemplate()` -- render header + row-per-file + footer.
-     Each row is followed by a trailing `\n`; if the row value already
-     ends with `\n`, no additional newline is added. The `empty` value
-     is also followed by a trailing `\n` unless it already ends with
-     one.
+     Each rendered value (`header`, `row`, `footer`, `empty`) is
+     terminated by `\n`; if the value already ends with `\n`, no
+     additional newline is added. This applies uniformly.
    - `renderDefault()` -- render minimal bullet list (no template
      case). Link text is basename, link target is relative path.
      Each entry is followed by a trailing `\n`.
@@ -57,9 +56,10 @@ stay in sync with their directive output, and can regenerate them with
      sections unchanged.
    - `resolveCatalog()` -- glob expansion via
      `doublestar.Glob(f.FS, pattern)` (supports `**` recursive
-     patterns, operates on `fs.FS`). Reject absolute glob paths.
-     Read front matter from matched files via `fs.ReadFile(f.FS, path)`.
-     Skip unreadable files and directories silently.
+     patterns, operates on `fs.FS`). Reject absolute glob paths
+     and patterns containing `..`. Read front matter from matched
+     files via `fs.ReadFile(f.FS, path)`. Skip unreadable files
+     and directories silently.
    - `parseSort()` -- parse sort value: optional `-` prefix for
      descending, then key name. Built-in keys: `path`, `filename`.
      All other keys look up front matter. Case-insensitive comparison
@@ -81,21 +81,27 @@ stay in sync with their directive output, and can regenerate them with
    - Use `fstest.MapFS` for in-memory test filesystems (no
      `t.TempDir()` needed for unit tests)
    - Unit tests for: marker parsing (including `-->` whitespace
-     trimming, single-line start marker), YAML body parsing,
-     template rendering (minimal/list/table/multi-line row with
-     `|` and `|+`), implicit trailing newline on rows, empty
-     fallback (with and without `row`), `empty` + `header` without
-     `row`, non-string YAML value diagnostic, empty `row` value
-     diagnostic, empty `sort` value diagnostic, missing directive
-     name, Check (fresh/stale/malformed markers/invalid YAML), Fix
-     (idempotent), sort behavior (`path`, `filename`, front matter
-     key, descending with `-` prefix, case-insensitive, path
-     tiebreaker), sort in minimal mode with front matter key,
-     recursive `**` glob, absolute glob path rejected, dotfiles
-     not matched, code-block-ignored markers, HTML-block-ignored
-     markers, stdin skip (`f.FS == nil`), unreadable files,
+     trimming, single-line start marker, directive name whitespace
+     trimming, case-sensitive directive matching), YAML body
+     parsing, template rendering (minimal/list/table/multi-line
+     row with `|`, `|+`, `|-`), implicit trailing `\n` on all
+     sections (header/row/footer/empty), empty fallback (with and
+     without `row`), `empty` + `header` without `row`, `empty`
+     with `{{...}}` renders literally, non-string YAML value
+     diagnostic, empty `row`/`sort` value diagnostics, missing
+     directive name, nested start markers, Check (fresh/stale/
+     malformed markers/invalid YAML), Fix (idempotent, multiple
+     pairs per file), sort behavior (`path`, `filename`, front
+     matter key, descending with `-` prefix, `sort: "-"` invalid,
+     case-insensitive, path tiebreaker), sort in minimal mode
+     with front matter key, recursive `**` glob, absolute glob
+     path rejected, glob with `..` rejected, brace expansion not
+     supported, dotfiles not matched, code-block-ignored markers,
+     HTML-block-ignored markers, stdin skip (`f.FS == nil`),
+     unreadable files, invalid front matter in matched files,
+     binary/non-Markdown matched files, glob matching linted file,
      template execution errors, unknown YAML keys ignored,
-     duplicate YAML keys (last wins)
+     duplicate YAML keys (last wins), validation short-circuits
 
 7. Create `rules/TM019-generated-section/README.md`
    - Full rule specification (already drafted in the rules directory)
@@ -165,7 +171,7 @@ Parse the sort value: strip optional leading `-` for descending order,
 then use the remaining string as the key name. Built-in keys `path`
 and `filename` are resolved from the file entry; all other keys are
 looked up in front matter (missing -> empty string). Comparison is
-case-insensitive (`strings.EqualFold`). When values are equal, use
+case-insensitive (via `strings.ToLower` before comparing). When values are equal, use
 relative file path (ascending, case-insensitive) as tiebreaker.
 
 In minimal mode, front matter is read only when the sort key is a
@@ -182,10 +188,10 @@ own those files.)
 
 ### Trailing newline handling
 
-Each rendered row is followed by a trailing `\n`. If the row value
-already ends with `\n` (from a YAML block scalar), no additional
-newline is added. The `empty` value follows the same rule. Minimal
-mode entries each end with `\n`.
+Each rendered value (`header`, `row`, `footer`, `empty`) is terminated
+by `\n`. If the value already ends with `\n` (from a YAML block
+scalar), no additional newline is added. This applies uniformly to all
+sections. Minimal mode entries each end with `\n`.
 
 ### Content boundary
 
@@ -216,12 +222,16 @@ interpolate the underlying Go error string as-is.
 - [ ] No `empty` + no matches produces empty content between markers
 - [ ] Up-to-date section produces zero TM019 diagnostics
 - [ ] Stale section produces one diagnostic per section
-- [ ] Unclosed/orphaned/nested markers produce appropriate diagnostics
+- [ ] Unclosed start marker produces diagnostic
+- [ ] Orphaned end marker produces diagnostic
+- [ ] Nested start markers produce diagnostic
 - [ ] Missing directive name produces diagnostic
 - [ ] Unknown directive name produces diagnostic
 - [ ] Missing `glob` parameter produces diagnostic
 - [ ] Empty `glob: ""` produces diagnostic
 - [ ] Absolute glob path produces diagnostic
+- [ ] Glob with `..` produces diagnostic
+- [ ] Brace expansion in glob not supported
 - [ ] Invalid glob pattern produces diagnostic
 - [ ] Invalid YAML body produces diagnostic
 - [ ] Non-string YAML values produce diagnostic per key
@@ -237,6 +247,18 @@ interpolate the underlying Go error string as-is.
 - [ ] `{{.filename}}` resolves to path relative to linted file's directory
 - [ ] `{{.filename}}` never has leading `./` prefix
 - [ ] `header`/`footer` containing `{{...}}` render literally
+- [ ] `empty` containing `{{...}}` renders literally
+- [ ] `header` and `footer` get implicit trailing `\n` (same rule as rows)
+- [ ] When `empty` renders, `header`/`footer` are not included in output
+- [ ] Matched file with invalid front matter treated as no front matter
+- [ ] Matched binary/non-Markdown file included (no front matter extracted)
+- [ ] Multiple marker pairs in one file processed independently
+- [ ] Symlinks in glob results are followed
+- [ ] Glob matching the linted file includes it
+- [ ] Windows `\r\n` files flagged as stale (generated content uses `\n`)
+- [ ] Directive name is case-sensitive (`Catalog` -> unknown directive)
+- [ ] Directive name whitespace is trimmed
+- [ ] Validation short-circuits on structural errors
 - [ ] Fix regenerates stale sections correctly
 - [ ] Fix is idempotent on fresh content
 - [ ] Fix leaves malformed markers unchanged
