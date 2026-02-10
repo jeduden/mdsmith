@@ -405,6 +405,40 @@ func TestE2E_Fix_FixableFile(t *testing.T) {
 	}
 }
 
+func TestE2E_Fix_PreservesFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	content := "---\ntitle: hello\n---\n# Title\n\nHello   \n"
+	path := writeFixture(t, dir, "fm.md", content)
+
+	// Run fix subcommand.
+	_, _, exitCode := runBinary(t, "", "fix", "--no-color", path)
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 after fix, got %d", exitCode)
+	}
+
+	// Read the file back.
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading fixed file: %v", err)
+	}
+
+	// Frontmatter should be preserved intact.
+	expectedFM := "---\ntitle: hello\n---\n"
+	if !strings.HasPrefix(string(got), expectedFM) {
+		t.Errorf("frontmatter not preserved; got prefix %q, want %q",
+			string(got[:len(expectedFM)]), expectedFM)
+	}
+
+	// Content should be fixed (trailing spaces removed).
+	body := string(got[len(expectedFM):])
+	if strings.Contains(body, "Hello   ") {
+		t.Error("file still contains trailing spaces after fix")
+	}
+	if !strings.Contains(body, "Hello") {
+		t.Error("file does not contain expected content after fix")
+	}
+}
+
 func TestE2E_Fix_Stdin_Rejected(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "fix")
 	if exitCode != 2 {
@@ -460,5 +494,65 @@ func TestE2E_Init_RefusesIfExists(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "already exists") {
 		t.Errorf("expected 'already exists' error, got: %s", stderr)
+	}
+}
+
+// --- Stdin frontmatter and Configurable settings tests ---
+
+func TestE2E_Check_Stdin_FrontMatterLineOffset(t *testing.T) {
+	// Pipe content with YAML front matter followed by a line with trailing
+	// spaces. The reported line number should reflect the original file
+	// (including front matter lines), not the stripped content.
+	input := "---\ntitle: hello\n---\n# Title\n\nHello   \n"
+	// "Hello   " is on line 6 of the original.
+	_, stderr, exitCode := runBinary(t, input, "check", "--no-color")
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d; stderr: %s", exitCode, stderr)
+	}
+	if !strings.Contains(stderr, "TM006") {
+		t.Errorf("expected TM006 in stderr, got: %s", stderr)
+	}
+	// Verify the line number is 6 (original file), not 3 (stripped content).
+	if !strings.Contains(stderr, "<stdin>:6:") {
+		t.Errorf("expected line 6 in diagnostic, got: %s", stderr)
+	}
+}
+
+func TestE2E_Check_Stdin_ConfigurableSettingsApplied(t *testing.T) {
+	// Pipe a file with 101-char lines through stdin. With a config that
+	// sets line-length max to 120, no TM001 diagnostic should fire.
+	dir := t.TempDir()
+	line101 := strings.Repeat("a", 101)
+	input := "# Title\n\n" + line101 + "\n"
+
+	// Create a config file that increases max line length.
+	configContent := "rules:\n  line-length:\n    max: 120\n"
+	configPath := writeFixture(t, dir, ".tidymark.yml", configContent)
+
+	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath)
+	if strings.Contains(stderr, "TM001") {
+		t.Errorf("expected TM001 to be suppressed by max=120 setting, but found in stderr: %s", stderr)
+	}
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 with max=120 for 101-char line, got %d; stderr: %s", exitCode, stderr)
+	}
+}
+
+func TestE2E_Check_Stdin_ConfigurableSettingsViolation(t *testing.T) {
+	// Pipe a file with 130-char lines through stdin. Even with max=120,
+	// the 130-char line should still fire TM001.
+	dir := t.TempDir()
+	line130 := strings.Repeat("a", 130)
+	input := "# Title\n\n" + line130 + "\n"
+
+	configContent := "rules:\n  line-length:\n    max: 120\n"
+	configPath := writeFixture(t, dir, ".tidymark.yml", configContent)
+
+	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath)
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1 for 130-char line with max=120, got %d; stderr: %s", exitCode, stderr)
+	}
+	if !strings.Contains(stderr, "TM001") {
+		t.Errorf("expected TM001 in stderr, got: %s", stderr)
 	}
 }

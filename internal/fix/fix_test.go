@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -701,6 +702,64 @@ func TestFix_LaterRuleFixCaughtByEarlierRule(t *testing.T) {
 	for _, d := range result.Diagnostics {
 		if d.RuleID == "TM100" || d.RuleID == "TM200" {
 			t.Errorf("unexpected remaining diagnostic: %s: %s", d.RuleID, d.Message)
+		}
+	}
+}
+
+func TestFixer_StripFrontMatter_PreservesFrontMatter(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	// File with frontmatter followed by content with trailing spaces.
+	content := "---\ntitle: hello\n---\n# Heading  \n\nSome text  \n"
+	if err := os.WriteFile(mdFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+
+	fixer := &Fixer{
+		Config:           cfg,
+		Rules:            []rule.Rule{&mockFixableRule{id: "TM100", name: "mock-trailing"}},
+		StripFrontMatter: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	if len(result.Errors) != 0 {
+		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+
+	// Read the file back.
+	got, err := os.ReadFile(mdFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Frontmatter should be preserved intact.
+	expectedFM := "---\ntitle: hello\n---\n"
+	if !strings.HasPrefix(string(got), expectedFM) {
+		t.Errorf("frontmatter not preserved; got prefix %q, want %q",
+			string(got[:len(expectedFM)]), expectedFM)
+	}
+
+	// Content portion should be fixed (no trailing spaces).
+	body := string(got[len(expectedFM):])
+	if strings.Contains(body, "  ") {
+		t.Errorf("content still has trailing spaces: %q", body)
+	}
+	expectedBody := "# Heading\n\nSome text\n"
+	if body != expectedBody {
+		t.Errorf("expected body %q, got %q", expectedBody, body)
+	}
+
+	// Remaining diagnostics should have line numbers adjusted for the offset.
+	for _, d := range result.Diagnostics {
+		// Front matter has 3 lines, so all diagnostic lines should be > 3.
+		if d.Line <= 3 {
+			t.Errorf("diagnostic line %d should be offset past frontmatter (> 3)", d.Line)
 		}
 	}
 }

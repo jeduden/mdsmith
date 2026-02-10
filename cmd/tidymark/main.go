@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
-	"sort"
 
 	flag "github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -351,7 +350,7 @@ func fixFiles(fileArgs []string, configPath, format string, noColor, quiet, noGi
 }
 
 // checkStdin reads from stdin, lints the content, and returns the appropriate
-// exit code.
+// exit code. Uses runner.RunSource to ensure Configurable settings are applied.
 func checkStdin(format string, noColor, quiet bool, configPath string) int {
 	source, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -365,45 +364,25 @@ func checkStdin(format string, noColor, quiet bool, configPath string) int {
 		return 2
 	}
 
-	var fmLineOffset int
-	if frontMatterEnabled(cfg) {
-		prefix, stripped := lint.StripFrontMatter(source)
-		fmLineOffset = lint.CountLines(prefix)
-		source = stripped
+	stripFM := frontMatterEnabled(cfg)
+
+	runner := &engine.Runner{
+		Config:           cfg,
+		Rules:            rule.All(),
+		StripFrontMatter: stripFM,
 	}
 
-	f, err := lint.NewFile("<stdin>", source)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "tidymark: parsing stdin: %v\n", err)
+	result := runner.RunSource("<stdin>", source)
+
+	for _, e := range result.Errors {
+		fmt.Fprintf(os.Stderr, "tidymark: %v\n", e)
+	}
+
+	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
 		return 2
 	}
 
-	effective := config.Effective(cfg, "<stdin>")
-
-	var diags []lint.Diagnostic
-	for _, rl := range rule.All() {
-		rcfg, ok := effective[rl.Name()]
-		if !ok || !rcfg.Enabled {
-			continue
-		}
-		d := rl.Check(f)
-		if fmLineOffset > 0 {
-			for i := range d {
-				d[i].Line += fmLineOffset
-			}
-		}
-		diags = append(diags, d...)
-	}
-
-	sort.Slice(diags, func(i, j int) bool {
-		di, dj := diags[i], diags[j]
-		if di.Line != dj.Line {
-			return di.Line < dj.Line
-		}
-		return di.Column < dj.Column
-	})
-
-	if !quiet && len(diags) > 0 {
+	if !quiet && len(result.Diagnostics) > 0 {
 		var formatter output.Formatter
 		switch format {
 		case "json":
@@ -412,13 +391,13 @@ func checkStdin(format string, noColor, quiet bool, configPath string) int {
 			formatter = &output.TextFormatter{Color: !noColor}
 		}
 
-		if err := formatter.Format(os.Stderr, diags); err != nil {
+		if err := formatter.Format(os.Stderr, result.Diagnostics); err != nil {
 			fmt.Fprintf(os.Stderr, "tidymark: error writing output: %v\n", err)
 			return 2
 		}
 	}
 
-	if len(diags) > 0 {
+	if len(result.Diagnostics) > 0 {
 		return 1
 	}
 

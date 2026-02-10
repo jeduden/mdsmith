@@ -661,3 +661,105 @@ func TestRunner_SettingsDoNotLeakBetweenFiles(t *testing.T) {
 		t.Fatalf("expected 0 diagnostics, got %d", len(result.Diagnostics))
 	}
 }
+
+// --- RunSource tests ---
+
+func TestRunSource_BasicDiagnostics(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-rule": {Enabled: true},
+		},
+	}
+
+	runner := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockRule{id: "TM999", name: "mock-rule"}},
+	}
+
+	result := runner.RunSource("<stdin>", []byte("# Hello\n"))
+	if len(result.Errors) != 0 {
+		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(result.Diagnostics))
+	}
+	if result.Diagnostics[0].File != "<stdin>" {
+		t.Errorf("expected file <stdin>, got %s", result.Diagnostics[0].File)
+	}
+}
+
+func TestRunSource_FrontMatterLineOffset(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-rule": {Enabled: true},
+		},
+	}
+
+	runner := &Runner{
+		Config:           cfg,
+		Rules:            []rule.Rule{&mockRule{id: "TM999", name: "mock-rule"}},
+		StripFrontMatter: true,
+	}
+
+	source := []byte("---\ntitle: x\n---\n# Heading\n")
+	result := runner.RunSource("<stdin>", source)
+	if len(result.Errors) != 0 {
+		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(result.Diagnostics))
+	}
+	// mockRule reports line 1; front matter has 3 lines, so adjusted = 4.
+	if result.Diagnostics[0].Line != 4 {
+		t.Errorf("expected adjusted line 4, got %d", result.Diagnostics[0].Line)
+	}
+}
+
+func TestRunSource_AppliesConfigurableSettings(t *testing.T) {
+	// 100-char line with max=120 should not trigger.
+	line := strings.Repeat("a", 100) + "\n"
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {
+				Enabled:  true,
+				Settings: map[string]any{"max": 120},
+			},
+		},
+	}
+
+	runner := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&configurableLengthRule{Max: 80}},
+	}
+
+	result := runner.RunSource("<stdin>", []byte(line))
+	if len(result.Errors) != 0 {
+		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("expected 0 diagnostics with max=120, got %d: %v",
+			len(result.Diagnostics), result.Diagnostics)
+	}
+}
+
+func TestRunSource_EmptyInput(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-rule": {Enabled: true},
+		},
+	}
+
+	runner := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&silentRule{id: "TM998", name: "mock-rule"}},
+	}
+
+	result := runner.RunSource("<stdin>", []byte(""))
+	if len(result.Errors) != 0 {
+		t.Fatalf("expected 0 errors, got %d: %v", len(result.Errors), result.Errors)
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("expected 0 diagnostics, got %d: %v", len(result.Diagnostics), result.Diagnostics)
+	}
+}

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/gobwas/glob"
 	"github.com/jeduden/tidymark/internal/config"
 	"github.com/jeduden/tidymark/internal/lint"
 	"github.com/jeduden/tidymark/internal/rule"
@@ -33,7 +32,7 @@ func (r *Runner) Run(paths []string) *Result {
 	res := &Result{}
 
 	for _, path := range paths {
-		if r.isIgnored(path) {
+		if config.IsIgnored(r.Config.Ignore, path) {
 			continue
 		}
 
@@ -43,14 +42,7 @@ func (r *Runner) Run(paths []string) *Result {
 			continue
 		}
 
-		var fmLineOffset int
-		if r.StripFrontMatter {
-			prefix, stripped := lint.StripFrontMatter(source)
-			fmLineOffset = lint.CountLines(prefix)
-			source = stripped
-		}
-
-		f, err := lint.NewFile(path, source)
+		f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
 		if err != nil {
 			res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 			continue
@@ -59,38 +51,45 @@ func (r *Runner) Run(paths []string) *Result {
 
 		effective := config.Effective(r.Config, path)
 
-		for _, rl := range r.Rules {
-			cfg, ok := effective[rl.Name()]
-			if !ok || !cfg.Enabled {
-				continue
-			}
-
-			checkRule := rl
-			if cfg.Settings != nil {
-				if _, ok := rl.(rule.Configurable); ok {
-					clone := rule.CloneRule(rl)
-					if c, ok := clone.(rule.Configurable); ok {
-						if err := c.ApplySettings(cfg.Settings); err != nil {
-							res.Errors = append(res.Errors, fmt.Errorf("applying settings for %s: %w", rl.Name(), err))
-							continue
-						}
-					}
-					checkRule = clone
-				}
-			}
-
-			diags := checkRule.Check(f)
-			if fmLineOffset > 0 {
-				for i := range diags {
-					diags[i].Line += fmLineOffset
-				}
-			}
-			res.Diagnostics = append(res.Diagnostics, diags...)
-		}
+		diags, errs := CheckRules(f, r.Rules, effective)
+		res.Diagnostics = append(res.Diagnostics, diags...)
+		res.Errors = append(res.Errors, errs...)
 	}
 
-	sort.Slice(res.Diagnostics, func(i, j int) bool {
-		di, dj := res.Diagnostics[i], res.Diagnostics[j]
+	sortDiagnostics(res.Diagnostics)
+	return res
+}
+
+// RunSource lints in-memory source bytes (e.g. from stdin) and returns a
+// Result. It creates a File via NewFileFromSource, determines the
+// effective config, and uses CheckRules (which includes clone+settings
+// logic and line-offset adjustment).
+//
+// The File's FS field is left nil because in-memory source has no
+// meaningful filesystem context. Rules that access f.FS must handle nil.
+func (r *Runner) RunSource(path string, source []byte) *Result {
+	res := &Result{}
+
+	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
+	if err != nil {
+		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
+		return res
+	}
+
+	effective := config.Effective(r.Config, path)
+
+	diags, errs := CheckRules(f, r.Rules, effective)
+	res.Diagnostics = append(res.Diagnostics, diags...)
+	res.Errors = append(res.Errors, errs...)
+
+	sortDiagnostics(res.Diagnostics)
+	return res
+}
+
+// sortDiagnostics sorts diagnostics by file, line, column.
+func sortDiagnostics(diags []lint.Diagnostic) {
+	sort.Slice(diags, func(i, j int) bool {
+		di, dj := diags[i], diags[j]
 		if di.File != dj.File {
 			return di.File < dj.File
 		}
@@ -99,23 +98,4 @@ func (r *Runner) Run(paths []string) *Result {
 		}
 		return di.Column < dj.Column
 	})
-
-	return res
-}
-
-// isIgnored returns true if the file path matches any of the configured
-// ignore patterns.
-func (r *Runner) isIgnored(path string) bool {
-	cleanPath := filepath.Clean(path)
-
-	for _, pattern := range r.Config.Ignore {
-		g, err := glob.Compile(pattern)
-		if err != nil {
-			continue
-		}
-		if g.Match(path) || g.Match(cleanPath) || g.Match(filepath.Base(path)) {
-			return true
-		}
-	}
-	return false
 }
