@@ -11,7 +11,8 @@ Line exceeds maximum length.
 - **Name**: `line-length`
 - **Default**: enabled, max: 80
 - **Fixable**: no
-- **Implementation**: [`internal/rules/linelength/`](../../internal/rules/linelength/)
+- **Implementation**:
+  [source](../../internal/rules/linelength/)
 
 ## Settings
 

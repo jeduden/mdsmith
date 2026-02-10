@@ -11,7 +11,8 @@ No trailing whitespace at the end of lines.
 - **Name**: `no-trailing-spaces`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/notrailingspaces/`](../../internal/rules/notrailingspaces/)
+- **Implementation**:
+  [source](../../internal/rules/notrailingspaces/)
 
 ## Config
 

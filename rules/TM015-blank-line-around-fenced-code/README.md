@@ -11,7 +11,8 @@ Fenced code blocks must have a blank line before and after.
 - **Name**: `blank-line-around-fenced-code`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/blanklinearoundfencedcode/`](../../internal/rules/blanklinearoundfencedcode/)
+- **Implementation**:
+  [source](../../internal/rules/blanklinearoundfencedcode/)
 
 ## Config
 

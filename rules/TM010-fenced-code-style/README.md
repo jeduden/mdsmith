@@ -11,7 +11,8 @@ Fenced code blocks must use a consistent delimiter.
 - **Name**: `fenced-code-style`
 - **Default**: enabled, style: backtick
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/fencedcodestyle/`](../../internal/rules/fencedcodestyle/)
+- **Implementation**:
+  [source](../../internal/rules/fencedcodestyle/)
 
 ## Settings
 

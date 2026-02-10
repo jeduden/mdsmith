@@ -11,7 +11,8 @@ No two headings should have the same text.
 - **Name**: `no-duplicate-headings`
 - **Default**: enabled
 - **Fixable**: no
-- **Implementation**: [`internal/rules/noduplicateheadings/`](../../internal/rules/noduplicateheadings/)
+- **Implementation**:
+  [source](../../internal/rules/noduplicateheadings/)
 
 ## Config
 

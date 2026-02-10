@@ -11,7 +11,8 @@ Don't use bold or emphasis on a standalone line as a heading substitute.
 - **Name**: `no-emphasis-as-heading`
 - **Default**: enabled
 - **Fixable**: no
-- **Implementation**: [`internal/rules/noemphasisasheading/`](../../internal/rules/noemphasisasheading/)
+- **Implementation**:
+  [source](../../internal/rules/noemphasisasheading/)
 
 ## Config
 

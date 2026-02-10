@@ -11,7 +11,8 @@ URLs must be wrapped in angle brackets or as a link, not left bare.
 - **Name**: `no-bare-urls`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/nobareurls/`](../../internal/rules/nobareurls/)
+- **Implementation**:
+  [source](../../internal/rules/nobareurls/)
 
 ## Config
 

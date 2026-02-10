@@ -11,7 +11,8 @@ Headings must have a blank line before and after.
 - **Name**: `blank-line-around-headings`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/blanklinearoundheadings/`](../../internal/rules/blanklinearoundheadings/)
+- **Implementation**:
+  [source](../../internal/rules/blanklinearoundheadings/)
 
 ## Config
 

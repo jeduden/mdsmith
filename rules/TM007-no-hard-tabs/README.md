@@ -11,7 +11,8 @@ No tab characters. Use spaces instead.
 - **Name**: `no-hard-tabs`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/nohardtabs/`](../../internal/rules/nohardtabs/)
+- **Implementation**:
+  [source](../../internal/rules/nohardtabs/)
 
 ## Config
 

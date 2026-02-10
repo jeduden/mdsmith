@@ -11,7 +11,8 @@ Heading levels should increment by one. No jumping from `#` to `###`.
 - **Name**: `heading-increment`
 - **Default**: enabled
 - **Fixable**: no
-- **Implementation**: [`internal/rules/headingincrement/`](../../internal/rules/headingincrement/)
+- **Implementation**:
+  [source](../../internal/rules/headingincrement/)
 
 ## Config
 

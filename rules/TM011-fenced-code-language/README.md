@@ -11,7 +11,8 @@ Fenced code blocks must specify a language.
 - **Name**: `fenced-code-language`
 - **Default**: enabled
 - **Fixable**: no
-- **Implementation**: [`internal/rules/fencedcodelanguage/`](../../internal/rules/fencedcodelanguage/)
+- **Implementation**:
+  [source](../../internal/rules/fencedcodelanguage/)
 
 ## Config
 

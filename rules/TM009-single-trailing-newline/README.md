@@ -11,7 +11,8 @@ File must end with exactly one newline character.
 - **Name**: `single-trailing-newline`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/singletrailingnewline/`](../../internal/rules/singletrailingnewline/)
+- **Implementation**:
+  [source](../../internal/rules/singletrailingnewline/)
 
 ## Config
 

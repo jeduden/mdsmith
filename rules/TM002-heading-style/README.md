@@ -11,7 +11,8 @@ Heading style must be consistent.
 - **Name**: `heading-style`
 - **Default**: enabled, style: atx
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/headingstyle/`](../../internal/rules/headingstyle/)
+- **Implementation**:
+  [source](../../internal/rules/headingstyle/)
 
 ## Settings
 

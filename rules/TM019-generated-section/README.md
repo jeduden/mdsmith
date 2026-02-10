@@ -11,7 +11,8 @@ Generated sections must match the content their directive would produce.
 - **Name**: `generated-section`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/generatedsection/`](../../internal/rules/generatedsection/)
+- **Implementation**:
+  [source](../../internal/rules/generatedsection/)
 
 ## Marker Syntax
 
@@ -54,8 +55,8 @@ key, and in *minimal mode* otherwise. See Minimal mode below.
 ### YAML keys
 
 Parameters and template sections share the same YAML namespace. All values
-must be strings. Non-string values (null, numbers, booleans, arrays, maps) produce
-a diagnostic per key.
+must be strings. Non-string values (null, numbers, booleans, arrays, maps)
+produce a diagnostic per key.
 
 Duplicate YAML keys produce an invalid YAML diagnostic (the Go `yaml.v3`
 parser rejects them). YAML anchors, aliases, and merge keys are supported

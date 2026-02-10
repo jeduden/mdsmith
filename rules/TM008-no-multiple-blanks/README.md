@@ -11,7 +11,8 @@ No more than one consecutive blank line.
 - **Name**: `no-multiple-blanks`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/nomultipleblanks/`](../../internal/rules/nomultipleblanks/)
+- **Implementation**:
+  [source](../../internal/rules/nomultipleblanks/)
 
 ## Config
 

@@ -11,7 +11,8 @@ First line of the file should be a heading.
 - **Name**: `first-line-heading`
 - **Default**: enabled, level: 1
 - **Fixable**: no
-- **Implementation**: [`internal/rules/firstlineheading/`](../../internal/rules/firstlineheading/)
+- **Implementation**:
+  [source](../../internal/rules/firstlineheading/)
 
 ## Settings
 

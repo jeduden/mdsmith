@@ -11,7 +11,8 @@ Headings should not end with punctuation.
 - **Name**: `no-trailing-punctuation-in-heading`
 - **Default**: enabled
 - **Fixable**: no
-- **Implementation**: [`internal/rules/notrailingpunctuationinheading/`](../../internal/rules/notrailingpunctuationinheading/)
+- **Implementation**:
+  [source](../../internal/rules/notrailingpunctuationinheading/)
 
 ## Details
 

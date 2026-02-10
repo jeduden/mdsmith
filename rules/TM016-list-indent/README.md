@@ -11,7 +11,8 @@ List items must use consistent indentation.
 - **Name**: `list-indent`
 - **Default**: enabled, spaces: 2
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/listindent/`](../../internal/rules/listindent/)
+- **Implementation**:
+  [source](../../internal/rules/listindent/)
 
 ## Settings
 

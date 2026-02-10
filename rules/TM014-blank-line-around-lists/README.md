@@ -11,7 +11,8 @@ Lists must have a blank line before and after.
 - **Name**: `blank-line-around-lists`
 - **Default**: enabled
 - **Fixable**: yes
-- **Implementation**: [`internal/rules/blanklinearoundlists/`](../../internal/rules/blanklinearoundlists/)
+- **Implementation**:
+  [source](../../internal/rules/blanklinearoundlists/)
 
 ## Config
 
