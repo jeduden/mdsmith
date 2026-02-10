@@ -2,9 +2,10 @@
 
 ## Goal
 
-Remove the deprecated flat-flag CLI invocation style (`tidymark [flags] [files...]`)
-so that subcommands (`check`, `fix`, `init`) are the only interface, simplifying
-the CLI code and eliminating the deprecation warning path.
+Remove the deprecated flat-flag CLI invocation style
+(`tidymark [flags] [files...]`) so that subcommands (`check`, `fix`,
+`init`) are the only interface, simplifying the CLI code and
+eliminating the deprecation warning path.
 
 ## Prerequisites
 

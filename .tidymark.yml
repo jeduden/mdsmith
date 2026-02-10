@@ -2,7 +2,6 @@ front-matter: true
 
 ignore:
   - "internal/**"
-  - "plan/**"
   - "rules/*/bad.md"
 
 overrides:

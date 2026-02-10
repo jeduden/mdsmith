@@ -122,6 +122,8 @@ as a template when creating new plans.
 Each plan has acceptance criteria with behavioral tests. Work test-driven: write
 a failing test (red), make it pass (green), commit.
 
+Plan files must pass `tidymark check plan/` with zero diagnostics.
+
 ## Config & Rules
 
 See [README.md](README.md#configuration) for config file format and examples.

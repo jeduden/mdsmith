@@ -68,7 +68,7 @@ parser rejects them). YAML anchors, aliases, and merge keys are supported
 | `glob` | string | File glob pattern |
 | `sort` | string | Sort key with optional direction prefix |
 
-**Template sections:**
+##### Template sections
 
 | Key | Required | Description |
 |-----|----------|-------------|
