@@ -126,6 +126,7 @@ for `` ``` `` / `~~~` patterns independently of the AST.
 ### D. Edge case tests
 
 9. Add edge case tests for TM014:
+
   - List immediately before a fenced code block (valid
     diagnostic, should still fire)
   - List immediately after a fenced code block (valid

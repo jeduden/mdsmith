@@ -102,6 +102,7 @@ proceed independently.
 6. Structure checking: verify the target document contains
    all required headings in the correct order and at the
    correct level. Diagnostics:
+
   - `missing required section "## Settings"`
   - `section "## Examples" is out of order`
   - `heading level mismatch: expected h2, got h3`
@@ -110,6 +111,7 @@ proceed independently.
    `{{.field}}` references, substitute the target
    document's frontmatter values and compare against
    the actual body text. Diagnostics:
+
   - `heading does not match frontmatter: expected`
      `"TM001" (from id), got "TM002"`
   - `body does not match frontmatter field`
@@ -132,6 +134,7 @@ proceed independently.
    | `wrap` | no | -- | Wrap in code fence (value = language) |
 
 10. Include rendering logic:
+
   - Read the file relative to the linted file's
       directory (same resolution as catalog's glob)
   - If `strip-frontmatter: true` (default), remove the

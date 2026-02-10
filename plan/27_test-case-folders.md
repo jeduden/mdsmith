@@ -81,6 +81,7 @@ settings under which it should be checked.
 ### C. Migrate fixtures
 
 7. Migrate TM001 (line-length) as the first rule. Create:
+
   - `bad/default.md` -- current bad.md
   - `bad/no-exclusions.md` -- `settings: {exclude: []}`
   - `bad/max-120.md` -- `settings: {max: 120}`
@@ -88,6 +89,7 @@ settings under which it should be checked.
   - `good/long-url.md` -- line with URL excluded
 
 8. Migrate all remaining rules. At minimum move:
+
   - `bad.md` to `bad/default.md`
   - `good.md` to `good/default.md`
   - `fixed.md` to `fixed/default.md`

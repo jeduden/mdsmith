@@ -41,6 +41,7 @@ while keeping tidymark's own configuration syntax.
 ### B. Stern mode
 
 6. Add a `stern` setting (bool, default `false`):
+
   - Normal mode (current, `stern: false`): the `exclude`
      list determines which line categories to skip
   - Stern mode (`stern: true`): lines exceeding the
@@ -66,6 +67,7 @@ while keeping tidymark's own configuration syntax.
 ### C. Documentation
 
 9. Update `rules/TM001-line-length/README.md`:
+
   - Add `heading-max`, `code-block-max`, and `stern`
      to the Settings table
   - Add config examples showing per-category limits
@@ -74,6 +76,7 @@ while keeping tidymark's own configuration syntax.
 
 10. Add test fixtures for new settings (following Plan 27
     format if available, otherwise single files):
+
   - `bad/heading-over-limit.md` with
       `settings: {heading-max: 60}`
   - `good/heading-within-limit.md`
@@ -86,12 +89,14 @@ while keeping tidymark's own configuration syntax.
 ### D. Tests
 
 11. Unit tests for `heading-max`:
+
   - Heading within `heading-max` but over `max`: pass
   - Heading over `heading-max`: fail
   - `heading-max` unset: inherits from `max`
   - `heading-max` with `exclude` interaction
 
 12. Unit tests for `code-block-max`:
+
   - Code line within `code-block-max` but over `max`:
       pass
   - Code line over `code-block-max`: fail
@@ -100,6 +105,7 @@ while keeping tidymark's own configuration syntax.
       `exclude: [code-blocks]`
 
 13. Unit tests for `stern` mode:
+
   - Long line with spaces past limit: flagged
   - Long line with no spaces past limit: allowed
   - Stern + exclude interaction: excluded lines stay

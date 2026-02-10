@@ -24,6 +24,7 @@ func (r *Rule) Name() string { return "blank-line-around-headings" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
+	codeLines := lint.CollectCodeBlockLines(f)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -35,6 +36,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		line := headingLine(heading, f)
+
+		// Skip headings whose lines overlap with code block regions.
+		if codeLines[line] {
+			return ast.WalkContinue, nil
+		}
 		lastLine := headingLastLine(heading, f)
 
 		// Check blank line before (not needed for line 1)
@@ -86,6 +92,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		lastLine int // 1-based
 	}
 	var headings []headingInfo
+	codeLines := lint.CollectCodeBlockLines(f)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -96,6 +103,12 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			return ast.WalkContinue, nil
 		}
 		line := headingLine(heading, f)
+
+		// Skip headings whose lines overlap with code block regions.
+		if codeLines[line] {
+			return ast.WalkContinue, nil
+		}
+
 		lastLine := headingLastLine(heading, f)
 		headings = append(headings, headingInfo{line: line, lastLine: lastLine})
 		return ast.WalkContinue, nil

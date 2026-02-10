@@ -124,3 +124,34 @@ func TestName(t *testing.T) {
 		t.Errorf("expected blank-line-around-headings, got %s", r.Name())
 	}
 }
+
+// --- Code block awareness tests ---
+
+func TestCheck_HeadingInsideCodeBlock_NoDiagnostics(t *testing.T) {
+	// A fenced code block containing heading-like text should not
+	// produce TM013 diagnostics.
+	src := []byte("# Real Heading\n\nSome text\n\n```markdown\n# Not a heading\nSome content\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Errorf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
+	}
+}
+
+func TestFix_HeadingInsideCodeBlock_NoCorruption(t *testing.T) {
+	// Fix must not modify content inside fenced code blocks.
+	src := []byte("# Real Heading\n\nSome text\n\n```markdown\n# Not a heading\nSome content\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{}
+	result := r.Fix(f)
+	if string(result) != string(src) {
+		t.Errorf("fix corrupted code block content:\nexpected: %q\ngot:      %q", string(src), string(result))
+	}
+}

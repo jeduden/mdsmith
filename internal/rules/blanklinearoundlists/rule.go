@@ -24,6 +24,7 @@ func (r *Rule) Name() string { return "blank-line-around-lists" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
+	codeLines := lint.CollectCodeBlockLines(f)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -43,6 +44,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		// Get the line of the first line of the list.
 		listStartLine := lineOfNode(f, list)
 		listEndLine := lastLineOfNode(f, list)
+
+		// Skip lists whose lines overlap with code block regions.
+		if codeLines[listStartLine] || codeLines[listEndLine] {
+			return ast.WalkContinue, nil
+		}
 		totalLines := len(f.Lines)
 
 		// Check blank line before (unless list starts at line 1).
@@ -170,6 +176,7 @@ func isBlank(line []byte) bool {
 func (r *Rule) Fix(f *lint.File) []byte {
 	var insertBefore []int
 	var insertAfter []int
+	codeLines := lint.CollectCodeBlockLines(f)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -187,6 +194,11 @@ func (r *Rule) Fix(f *lint.File) []byte {
 
 		listStartLine := lineOfNode(f, list)
 		listEndLine := lastLineOfNode(f, list)
+
+		// Skip lists whose lines overlap with code block regions.
+		if codeLines[listStartLine] || codeLines[listEndLine] {
+			return ast.WalkContinue, nil
+		}
 		totalLines := len(f.Lines)
 
 		if listStartLine > 1 {

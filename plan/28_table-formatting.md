@@ -12,6 +12,7 @@ view, targeting prettier-style output as the baseline.
 
 1. Define TM021 `table-format` behaviour. A well-formatted
    table follows these rules (matching prettier output):
+
   - Leading and trailing pipes required on every row
   - Single space padding inside each cell
   - Each column padded to the width of its widest cell
@@ -41,6 +42,7 @@ view, targeting prettier-style output as the baseline.
 
 5. Compute the display width of each cell accounting
    for multi-byte characters and markdown syntax:
+
   - Inline code (`` ` ``) -- count only the visible text
   - Links (`[text](url)`) -- count only the link text
   - Emphasis (`*text*`, `**text**`) -- count only the
@@ -57,9 +59,11 @@ view, targeting prettier-style output as the baseline.
    and padding against the expected formatted output.
    Report one diagnostic per misformatted table on the
    table's first line:
+
   - `table is not formatted`
 
 8. Fix logic: reformat each table:
+
   - Compute max display width per column
   - Rebuild each data row with padded cells
   - Rebuild separator row with correct dash count and
@@ -67,6 +71,7 @@ view, targeting prettier-style output as the baseline.
   - Preserve content outside tables unchanged
 
 9. Handle contextual tables:
+
   - Tables inside blockquotes: preserve `> ` prefix
   - Tables inside list items: preserve indentation
   - Single-column tables
