@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 	"sort"
-	"strings"
 
 	flag "github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -48,12 +46,12 @@ func main() {
 const usageText = `Usage: tidymark <command> [flags] [files...]
 
 Commands:
-  check   Lint Markdown files (default when given file arguments)
-  fix     Auto-fix lint issues in place
-  init    Generate a default .tidymark.yml config file
+  check     Lint Markdown files (default when given file arguments)
+  fix       Auto-fix lint issues in place
+  init      Generate a default .tidymark.yml config file
+  version   Print version and exit
 
 Global flags:
-  -v, --version   Print version and exit
   -h, --help      Show this help
 
 Run 'tidymark <command> --help' for more information on a command.
@@ -70,9 +68,6 @@ func run() int {
 	first := os.Args[1]
 
 	switch first {
-	case "--version", "-v":
-		printVersion()
-		return 0
 	case "--help", "-h":
 		fmt.Fprint(os.Stderr, usageText)
 		return 0
@@ -86,115 +81,13 @@ func run() int {
 		return runFix(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
+	case "version":
+		printVersion()
+		return 0
 	default:
-		// Backwards compatibility: if the first arg looks like a file path
-		// or a legacy flag (not a known subcommand), treat it as
-		// "tidymark check <args>" with a deprecation warning.
-		if looksLikeLegacyInvocation(os.Args[1:]) {
-			fmt.Fprintf(os.Stderr, "tidymark: implicit 'check' subcommand is deprecated; use 'tidymark check %s' instead\n",
-				strings.Join(os.Args[1:], " "))
-			return runLegacy(os.Args[1:])
-		}
 		fmt.Fprintf(os.Stderr, "tidymark: unknown command %q\n\n%s", first, usageText)
 		return 2
 	}
-}
-
-// legacyFlags are the flags supported by the old flat CLI that indicate
-// a legacy (pre-subcommand) invocation.
-var legacyFlags = map[string]bool{
-	"--config":       true,
-	"-c":             true,
-	"--fix":          true,
-	"--format":       true,
-	"-f":             true,
-	"--no-color":     true,
-	"--quiet":        true,
-	"-q":             true,
-	"--no-gitignore": true,
-}
-
-// looksLikeLegacyInvocation returns true if the arguments look like a
-// legacy (pre-subcommand) invocation. This is the case when any argument
-// is a legacy flag or looks like a file path.
-func looksLikeLegacyInvocation(args []string) bool {
-	for _, arg := range args {
-		if legacyFlags[arg] {
-			return true
-		}
-		if looksLikeFilePath(arg) {
-			return true
-		}
-	}
-	return false
-}
-
-// looksLikeFilePath returns true if the argument looks like a file path
-// rather than a subcommand. It checks for path separators, file extensions,
-// and whether it starts with a flag prefix.
-func looksLikeFilePath(arg string) bool {
-	if strings.HasPrefix(arg, "-") {
-		return false
-	}
-	// Contains path separator or has a markdown extension.
-	if strings.Contains(arg, string(filepath.Separator)) {
-		return true
-	}
-	if strings.HasSuffix(arg, ".md") || strings.HasSuffix(arg, ".markdown") {
-		return true
-	}
-	// Check if it exists on disk (could be a directory).
-	if _, err := os.Stat(arg); err == nil {
-		return true
-	}
-	return false
-}
-
-// runLegacy handles the old flat CLI format by parsing the legacy flags
-// and dispatching to check or fix accordingly.
-func runLegacy(args []string) int {
-	fs := flag.NewFlagSet("legacy", flag.ContinueOnError)
-	var (
-		configPath  string
-		fix         bool
-		format      string
-		noColor     bool
-		quiet       bool
-		noGitignore bool
-	)
-
-	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
-	fs.BoolVar(&fix, "fix", false, "Auto-fix issues in place")
-	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json")
-	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
-	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
-	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
-
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
-	files := fs.Args()
-
-	if fix {
-		if len(files) == 0 {
-			if isStdinPipe() {
-				fmt.Fprintf(os.Stderr, "tidymark: cannot fix stdin in place\n")
-				return 2
-			}
-			return 0
-		}
-		return fixFiles(files, configPath, format, noColor, quiet, noGitignore)
-	}
-
-	if len(files) == 0 {
-		if !isStdinPipe() {
-			return 0
-		}
-		return checkStdin(format, noColor, quiet, configPath)
-	}
-
-	return checkFiles(files, configPath, format, noColor, quiet, noGitignore)
 }
 
 func printVersion() {

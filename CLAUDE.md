@@ -40,26 +40,38 @@ Follow the [standard Go project layout](https://go.dev/doc/modules/layout):
 ### Usage
 
 ```text
-tidymark [flags] [files...]
+tidymark <command> [flags] [files...]
 ```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `check` | Lint Markdown files (default when given file arguments) |
+| `fix` | Auto-fix lint issues in place |
+| `init` | Generate a default `.tidymark.yml` config file |
+| `version` | Print version and exit |
 
 Files are positional arguments. Accepts multiple file paths,
 directories, and glob patterns.
 No file args and no stdin exits 0
 (graceful empty invocation for pre-commit hooks).
 
-### Flags
+### Subcommand Flags (check, fix)
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--config <file>` | `-c` | auto-discover | Override config file path |
-| `--fix` | | false | Auto-fix issues in place |
 | `--format <fmt>` | `-f` | `text` | Output format: `text`, `json` |
 | `--no-color` | | false | Disable ANSI colors |
 | `--no-gitignore` | | false | Disable `.gitignore` filtering when walking directories |
 | `--quiet` | `-q` | false | Suppress non-error output |
-| `--version` | `-v` | | Print version and exit |
-| `--help` | `-h` | | Show help |
+
+### Global Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--help` | `-h` | Show help |
 
 Use `--` to separate flags from filenames starting with `-`.
 
@@ -108,9 +120,9 @@ pre-commit:
   commands:
     tidymark:
       glob: "*.{md,markdown}"
-      run: tidymark {staged_files}
+      run: tidymark check {staged_files}
       # To auto-fix and re-stage:
-      # run: tidymark --fix {staged_files}
+      # run: tidymark fix {staged_files}
       # stage_fixed: true
 ```
 

@@ -24,7 +24,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build -o tidymark ./cmd/tidymark
-      - run: ./tidymark .
+      - run: ./tidymark check .
 
   test:
     runs-on: ubuntu-latest

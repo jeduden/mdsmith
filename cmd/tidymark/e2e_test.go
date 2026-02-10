@@ -136,8 +136,8 @@ func TestE2E_HelpShorthand_PrintsUsage_ExitsZero(t *testing.T) {
 	}
 }
 
-func TestE2E_Version(t *testing.T) {
-	stdout, _, exitCode := runBinary(t, "", "--version")
+func TestE2E_VersionSubcommand(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "version")
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0, got %d", exitCode)
 	}
@@ -146,18 +146,56 @@ func TestE2E_Version(t *testing.T) {
 	}
 }
 
-func TestE2E_VersionShorthand(t *testing.T) {
-	stdout, _, exitCode := runBinary(t, "", "-v")
-	if exitCode != 0 {
-		t.Errorf("expected exit code 0, got %d", exitCode)
+func TestE2E_VersionFlag_NotRecognized(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "--version")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", exitCode)
 	}
-	if !strings.HasPrefix(stdout, "tidymark ") {
-		t.Errorf("expected version output to start with 'tidymark ', got: %s", stdout)
+	if !strings.Contains(stderr, "unknown command") {
+		t.Errorf("expected 'unknown command' in stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_VersionShortFlag_NotRecognized(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "-v")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown command") {
+		t.Errorf("expected 'unknown command' in stderr, got: %s", stderr)
 	}
 }
 
 func TestE2E_UnknownCommand_ExitsTwo(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "bogus")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown command") {
+		t.Errorf("expected 'unknown command' in stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_FilePathWithoutSubcommand_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFixture(t, dir, "test.md", "# Title\n\nHello   \n")
+
+	// Passing a file path without a subcommand should exit 2.
+	_, stderr, exitCode := runBinary(t, "", path)
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown command") {
+		t.Errorf("expected 'unknown command' in stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_LegacyFixFlag_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFixture(t, dir, "test.md", "# Title\n\nHello   \n")
+
+	// Passing --fix without a subcommand should exit 2.
+	_, stderr, exitCode := runBinary(t, "", "--fix", path)
 	if exitCode != 2 {
 		t.Errorf("expected exit code 2, got %d", exitCode)
 	}
@@ -422,25 +460,5 @@ func TestE2E_Init_RefusesIfExists(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "already exists") {
 		t.Errorf("expected 'already exists' error, got: %s", stderr)
-	}
-}
-
-// --- Backwards compatibility tests ---
-
-func TestE2E_BackwardsCompat_FilePath_ImplicitCheck(t *testing.T) {
-	dir := t.TempDir()
-	path := writeFixture(t, dir, "test.md", "# Title\n\nHello   \n")
-
-	// Passing a file path without "check" subcommand should still work
-	// with a deprecation warning.
-	_, stderr, exitCode := runBinary(t, "", "--no-color", path)
-	if exitCode != 1 {
-		t.Errorf("expected exit code 1 (violations found), got %d", exitCode)
-	}
-	if !strings.Contains(stderr, "deprecated") {
-		t.Errorf("expected deprecation warning in stderr, got: %s", stderr)
-	}
-	if !strings.Contains(stderr, "TM006") {
-		t.Errorf("expected TM006 in stderr, got: %s", stderr)
 	}
 }

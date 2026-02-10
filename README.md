@@ -21,6 +21,7 @@ tidymark <command> [flags] [files...]
 | `check` | Lint Markdown files (default when given file arguments) |
 | `fix` | Auto-fix lint issues in place |
 | `init` | Generate a default `.tidymark.yml` config file |
+| `version` | Print version and exit |
 
 Files can be paths, directories (walked recursively for `*.md`), or glob patterns.
 With no arguments and no piped input, tidymark exits 0.
@@ -40,7 +41,6 @@ Use `--no-gitignore` to disable this behavior and lint all files.
 | `--no-color` | | `false` | Disable ANSI colors |
 | `--no-gitignore` | | `false` | Disable `.gitignore` filtering when walking directories |
 | `--quiet` | `-q` | `false` | Suppress non-error output |
-| `--version` | `-v` | | Print version and exit |
 
 ### Examples
 
@@ -122,6 +122,9 @@ project's conventions.
 tidymark init
 # creates .tidymark.yml with all rule defaults
 ```
+
+Commit the generated file to version control so that every contributor uses
+the same pinned rule settings and upgrades are an explicit, reviewable change.
 
 ## Rules
 

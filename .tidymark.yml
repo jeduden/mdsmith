@@ -1,5 +1,36 @@
 front-matter: true
 
+rules:
+  line-length:
+    max: 80
+    exclude:
+      - code-blocks
+      - tables
+      - urls
+  heading-style:
+    style: atx
+  heading-increment: true
+  first-line-heading:
+    level: 1
+  no-duplicate-headings: true
+  no-trailing-spaces: true
+  no-hard-tabs: true
+  no-multiple-blanks:
+    max: 1
+  single-trailing-newline: true
+  fenced-code-style:
+    style: backtick
+  fenced-code-language: true
+  no-bare-urls: true
+  blank-line-around-headings: true
+  blank-line-around-lists: true
+  blank-line-around-fenced-code: true
+  list-indent:
+    spaces: 2
+  no-trailing-punctuation-in-heading: true
+  no-emphasis-as-heading: true
+  generated-section: true
+
 ignore:
   - "internal/**"
   - "rules/*/bad.md"
