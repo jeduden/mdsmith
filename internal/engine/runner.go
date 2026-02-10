@@ -43,8 +43,11 @@ func (r *Runner) Run(paths []string) *Result {
 			continue
 		}
 
+		var fmLineOffset int
 		if r.StripFrontMatter {
-			_, source = lint.StripFrontMatter(source)
+			prefix, stripped := lint.StripFrontMatter(source)
+			fmLineOffset = lint.CountLines(prefix)
+			source = stripped
 		}
 
 		f, err := lint.NewFile(path, source)
@@ -77,6 +80,11 @@ func (r *Runner) Run(paths []string) *Result {
 			}
 
 			diags := checkRule.Check(f)
+			if fmLineOffset > 0 {
+				for i := range diags {
+					diags[i].Line += fmLineOffset
+				}
+			}
 			res.Diagnostics = append(res.Diagnostics, diags...)
 		}
 	}

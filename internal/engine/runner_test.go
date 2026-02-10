@@ -462,9 +462,10 @@ func TestRunner_StripFrontMatter_ContentStillLinted(t *testing.T) {
 		t.Fatalf("expected 1 diagnostic for BAD in content, got %d",
 			len(result.Diagnostics))
 	}
-	// After stripping, "# BAD heading" is line 1 of the content.
-	if result.Diagnostics[0].Line != 1 {
-		t.Errorf("expected line 1 (after stripping), got %d",
+	// Line numbers must reflect the original file, not the stripped content.
+	// "# BAD heading" is line 4 in the original file (after 3 front-matter lines).
+	if result.Diagnostics[0].Line != 4 {
+		t.Errorf("expected line 4 (original file), got %d",
 			result.Diagnostics[0].Line)
 	}
 }

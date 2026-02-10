@@ -55,9 +55,11 @@ func (f *Fixer) Fix(paths []string) *Result {
 
 		// Strip front matter before fixing; re-prepend when writing.
 		var fmPrefix []byte
+		var fmLineOffset int
 		content := source
 		if f.StripFrontMatter {
 			fmPrefix, content = lint.StripFrontMatter(source)
+			fmLineOffset = lint.CountLines(fmPrefix)
 		}
 
 		dirFS := os.DirFS(filepath.Dir(path))
@@ -134,6 +136,11 @@ func (f *Fixer) Fix(paths []string) *Result {
 			}
 
 			diags := checkRule.Check(lf)
+			if fmLineOffset > 0 {
+				for i := range diags {
+					diags[i].Line += fmLineOffset
+				}
+			}
 			res.Diagnostics = append(res.Diagnostics, diags...)
 		}
 	}

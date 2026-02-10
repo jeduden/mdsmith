@@ -365,8 +365,11 @@ func checkStdin(format string, noColor, quiet bool, configPath string) int {
 		return 2
 	}
 
+	var fmLineOffset int
 	if frontMatterEnabled(cfg) {
-		_, source = lint.StripFrontMatter(source)
+		prefix, stripped := lint.StripFrontMatter(source)
+		fmLineOffset = lint.CountLines(prefix)
+		source = stripped
 	}
 
 	f, err := lint.NewFile("<stdin>", source)
@@ -383,7 +386,13 @@ func checkStdin(format string, noColor, quiet bool, configPath string) int {
 		if !ok || !rcfg.Enabled {
 			continue
 		}
-		diags = append(diags, rl.Check(f)...)
+		d := rl.Check(f)
+		if fmLineOffset > 0 {
+			for i := range d {
+				d[i].Line += fmLineOffset
+			}
+		}
+		diags = append(diags, d...)
 	}
 
 	sort.Slice(diags, func(i, j int) bool {

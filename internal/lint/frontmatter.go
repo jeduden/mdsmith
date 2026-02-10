@@ -19,3 +19,8 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 	end := len(delim) + idx + len(delim)
 	return source[:end], source[end:]
 }
+
+// CountLines returns the number of newline-terminated lines in b.
+func CountLines(b []byte) int {
+	return bytes.Count(b, []byte("\n"))
+}
