@@ -1,0 +1,19 @@
+{
+"permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(go vet:*)",
+      "Bash(go tool:*)",
+      "Read",
+      "Search"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ]
+  }
+}
