@@ -96,6 +96,7 @@ func Defaults() *Config {
 // DumpDefaults returns a Config with all registered rules enabled and
 // their default settings populated. Rules that implement Configurable
 // have their DefaultSettings() included in RuleCfg.Settings.
+// Categories are included with all set to true (enabled).
 // This is consumed by `tidymark init` to generate a default config file.
 func DumpDefaults() *Config {
 	all := rule.All()
@@ -107,7 +108,14 @@ func DumpDefaults() *Config {
 		}
 		rules[r.Name()] = rc
 	}
+
+	categories := make(map[string]bool, len(ValidCategories))
+	for _, cat := range ValidCategories {
+		categories[cat] = true
+	}
+
 	return &Config{
-		Rules: rules,
+		Rules:      rules,
+		Categories: categories,
 	}
 }

@@ -13,6 +13,7 @@ Fenced code blocks must specify a language.
 - **Fixable**: no
 - **Implementation**:
   [source](../../internal/rules/fencedcodelanguage/)
+- **Category**: code
 
 ## Config
 

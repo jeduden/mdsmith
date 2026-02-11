@@ -13,6 +13,7 @@ Fenced code blocks must have a blank line before and after.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/blanklinearoundfencedcode/)
+- **Category**: code
 
 ## Config
 

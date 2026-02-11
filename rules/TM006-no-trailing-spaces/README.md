@@ -13,6 +13,7 @@ No trailing whitespace at the end of lines.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/notrailingspaces/)
+- **Category**: whitespace
 
 ## Config
 

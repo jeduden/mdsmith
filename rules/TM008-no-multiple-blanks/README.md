@@ -13,6 +13,7 @@ No more than one consecutive blank line.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/nomultipleblanks/)
+- **Category**: whitespace
 
 ## Config
 

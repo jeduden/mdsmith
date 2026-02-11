@@ -13,6 +13,7 @@ Lists must have a blank line before and after.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/blanklinearoundlists/)
+- **Category**: list
 
 ## Config
 

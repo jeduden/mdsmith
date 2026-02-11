@@ -21,8 +21,9 @@ type mockFixableRule struct {
 	name string
 }
 
-func (r *mockFixableRule) ID() string   { return r.id }
-func (r *mockFixableRule) Name() string { return r.name }
+func (r *mockFixableRule) ID() string       { return r.id }
+func (r *mockFixableRule) Name() string     { return r.name }
+func (r *mockFixableRule) Category() string { return "test" }
 
 func (r *mockFixableRule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -69,8 +70,9 @@ type mockNonFixableRule struct {
 	name string
 }
 
-func (r *mockNonFixableRule) ID() string   { return r.id }
-func (r *mockNonFixableRule) Name() string { return r.name }
+func (r *mockNonFixableRule) ID() string       { return r.id }
+func (r *mockNonFixableRule) Name() string     { return r.name }
+func (r *mockNonFixableRule) Category() string { return "test" }
 
 func (r *mockNonFixableRule) Check(f *lint.File) []lint.Diagnostic {
 	return []lint.Diagnostic{
@@ -92,8 +94,9 @@ type mockFixableRuleB struct {
 	name string
 }
 
-func (r *mockFixableRuleB) ID() string   { return r.id }
-func (r *mockFixableRuleB) Name() string { return r.name }
+func (r *mockFixableRuleB) ID() string       { return r.id }
+func (r *mockFixableRuleB) Name() string     { return r.name }
+func (r *mockFixableRuleB) Category() string { return "test" }
 
 func (r *mockFixableRuleB) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -142,8 +145,9 @@ type mockSloppyTabFixer struct {
 	name string
 }
 
-func (r *mockSloppyTabFixer) ID() string   { return r.id }
-func (r *mockSloppyTabFixer) Name() string { return r.name }
+func (r *mockSloppyTabFixer) ID() string       { return r.id }
+func (r *mockSloppyTabFixer) Name() string     { return r.name }
+func (r *mockSloppyTabFixer) Category() string { return "test" }
 
 func (r *mockSloppyTabFixer) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -194,6 +198,7 @@ type silentRule struct {
 
 func (r *silentRule) ID() string                           { return r.id }
 func (r *silentRule) Name() string                         { return r.name }
+func (r *silentRule) Category() string                     { return "test" }
 func (r *silentRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
 
 // --- tests ---
@@ -513,8 +518,9 @@ type mockRuleA struct {
 	name string
 }
 
-func (r *mockRuleA) ID() string   { return r.id }
-func (r *mockRuleA) Name() string { return r.name }
+func (r *mockRuleA) ID() string       { return r.id }
+func (r *mockRuleA) Name() string     { return r.name }
+func (r *mockRuleA) Category() string { return "test" }
 
 func (r *mockRuleA) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -557,8 +563,9 @@ type mockCrossRule struct {
 	name string
 }
 
-func (r *mockCrossRule) ID() string   { return r.id }
-func (r *mockCrossRule) Name() string { return r.name }
+func (r *mockCrossRule) ID() string       { return r.id }
+func (r *mockCrossRule) Name() string     { return r.name }
+func (r *mockCrossRule) Category() string { return "test" }
 
 func (r *mockCrossRule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic

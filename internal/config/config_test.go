@@ -844,3 +844,405 @@ func TestDumpDefaults_MarshalRoundTrip(t *testing.T) {
 		t.Errorf("expected max=80 after round-trip, got %v", rc.Settings["max"])
 	}
 }
+
+// --- Categories tests ---
+
+func TestLoadCategoriesFromYAML(t *testing.T) {
+	yml := `
+categories:
+  heading: false
+  whitespace: true
+  code: false
+rules:
+  line-length: true
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(cfg.Categories) != 3 {
+		t.Fatalf("expected 3 categories, got %d", len(cfg.Categories))
+	}
+	if cfg.Categories["heading"] != false {
+		t.Error("heading should be false")
+	}
+	if cfg.Categories["whitespace"] != true {
+		t.Error("whitespace should be true")
+	}
+	if cfg.Categories["code"] != false {
+		t.Error("code should be false")
+	}
+}
+
+func TestCategoriesOmittedDefaultToTrue(t *testing.T) {
+	yml := `
+rules:
+  line-length: true
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Categories != nil {
+		t.Errorf("expected nil categories when omitted, got %v", cfg.Categories)
+	}
+
+	// EffectiveCategories should default all to true.
+	cats := EffectiveCategories(cfg, "README.md")
+	for _, name := range ValidCategories {
+		if !cats[name] {
+			t.Errorf("category %q should default to true", name)
+		}
+	}
+}
+
+func TestMergeCategories(t *testing.T) {
+	defaults := Defaults()
+	loaded := &Config{
+		Categories: map[string]bool{
+			"heading": false,
+		},
+	}
+
+	merged := Merge(defaults, loaded)
+	if merged.Categories == nil {
+		t.Fatal("expected categories to be non-nil after merge")
+	}
+	if merged.Categories["heading"] != false {
+		t.Error("heading should be false after merge")
+	}
+}
+
+func TestMergeCategoriesNilLoaded(t *testing.T) {
+	defaults := Defaults()
+	merged := Merge(defaults, nil)
+
+	// Defaults have nil categories.
+	if merged.Categories != nil {
+		t.Errorf("expected nil categories when merging with nil loaded, got %v", merged.Categories)
+	}
+}
+
+func TestMergeCategoriesBothSet(t *testing.T) {
+	defaults := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		Categories: map[string]bool{
+			"heading": true,
+			"code":    true,
+		},
+	}
+	loaded := &Config{
+		Categories: map[string]bool{
+			"heading": false,
+			"list":    false,
+		},
+	}
+
+	merged := Merge(defaults, loaded)
+	if merged.Categories["heading"] != false {
+		t.Error("heading should be false (overridden by loaded)")
+	}
+	if merged.Categories["code"] != true {
+		t.Error("code should remain true from defaults")
+	}
+	if merged.Categories["list"] != false {
+		t.Error("list should be false from loaded")
+	}
+}
+
+func TestMergeTracksExplicitRules(t *testing.T) {
+	defaults := Defaults()
+	loaded := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length":   {Enabled: true},
+			"heading-style": {Enabled: false},
+		},
+	}
+
+	merged := Merge(defaults, loaded)
+	if !merged.ExplicitRules["line-length"] {
+		t.Error("line-length should be explicit")
+	}
+	if !merged.ExplicitRules["heading-style"] {
+		t.Error("heading-style should be explicit")
+	}
+	if merged.ExplicitRules["no-hard-tabs"] {
+		t.Error("no-hard-tabs should not be explicit (not in loaded config)")
+	}
+}
+
+func TestEffectiveCategoriesTopLevel(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		Categories: map[string]bool{
+			"heading": false,
+		},
+	}
+
+	cats := EffectiveCategories(cfg, "README.md")
+	if cats["heading"] != false {
+		t.Error("heading should be false")
+	}
+	// Other categories should default to true.
+	if cats["whitespace"] != true {
+		t.Error("whitespace should default to true")
+	}
+	if cats["code"] != true {
+		t.Error("code should default to true")
+	}
+}
+
+func TestEffectiveCategoriesOverride(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		Categories: map[string]bool{
+			"heading": true,
+		},
+		Overrides: []Override{
+			{
+				Files: []string{"CHANGELOG.md"},
+				Categories: map[string]bool{
+					"heading": false,
+				},
+			},
+		},
+	}
+
+	// CHANGELOG.md should have heading disabled via override.
+	cats := EffectiveCategories(cfg, "CHANGELOG.md")
+	if cats["heading"] != false {
+		t.Error("heading should be false for CHANGELOG.md")
+	}
+
+	// README.md should keep heading enabled.
+	cats2 := EffectiveCategories(cfg, "README.md")
+	if cats2["heading"] != true {
+		t.Error("heading should be true for README.md")
+	}
+}
+
+func TestEffectiveExplicitRulesFromOverrides(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		ExplicitRules: map[string]bool{
+			"line-length": true,
+		},
+		Overrides: []Override{
+			{
+				Files: []string{"docs/**"},
+				Rules: map[string]RuleCfg{
+					"heading-style": {Enabled: true},
+				},
+			},
+		},
+	}
+
+	explicit := EffectiveExplicitRules(cfg, "docs/guide.md")
+	if !explicit["line-length"] {
+		t.Error("line-length should be explicit (from top-level)")
+	}
+	if !explicit["heading-style"] {
+		t.Error("heading-style should be explicit (from matching override)")
+	}
+
+	// Non-matching file should not get override rules.
+	explicit2 := EffectiveExplicitRules(cfg, "README.md")
+	if explicit2["heading-style"] {
+		t.Error("heading-style should not be explicit for README.md")
+	}
+}
+
+func TestApplyCategoriesDisablesRulesInCategory(t *testing.T) {
+	rules := map[string]RuleCfg{
+		"heading-style":     {Enabled: true},
+		"heading-increment": {Enabled: true},
+		"line-length":       {Enabled: true},
+	}
+	categories := map[string]bool{
+		"heading": false,
+		"line":    true,
+	}
+	ruleCategory := func(name string) string {
+		switch name {
+		case "heading-style", "heading-increment":
+			return "heading"
+		case "line-length":
+			return "line"
+		}
+		return ""
+	}
+	explicit := map[string]bool{}
+
+	result := ApplyCategories(rules, categories, ruleCategory, explicit)
+
+	if result["heading-style"].Enabled {
+		t.Error("heading-style should be disabled (heading category disabled)")
+	}
+	if result["heading-increment"].Enabled {
+		t.Error("heading-increment should be disabled (heading category disabled)")
+	}
+	if !result["line-length"].Enabled {
+		t.Error("line-length should remain enabled (line category enabled)")
+	}
+}
+
+func TestApplyCategoriesExplicitRuleOverridesCategory(t *testing.T) {
+	rules := map[string]RuleCfg{
+		"heading-style":     {Enabled: true},
+		"heading-increment": {Enabled: true},
+		"line-length":       {Enabled: true},
+	}
+	categories := map[string]bool{
+		"heading": false,
+	}
+	ruleCategory := func(name string) string {
+		switch name {
+		case "heading-style", "heading-increment":
+			return "heading"
+		case "line-length":
+			return "line"
+		}
+		return ""
+	}
+	// heading-style is explicitly set by user.
+	explicit := map[string]bool{
+		"heading-style": true,
+	}
+
+	result := ApplyCategories(rules, categories, ruleCategory, explicit)
+
+	if !result["heading-style"].Enabled {
+		t.Error("heading-style should remain enabled (explicit rule overrides category)")
+	}
+	if result["heading-increment"].Enabled {
+		t.Error("heading-increment should be disabled (heading category disabled, not explicit)")
+	}
+	if !result["line-length"].Enabled {
+		t.Error("line-length should remain enabled")
+	}
+}
+
+func TestApplyCategoriesUnknownCategoryIsNotDisabled(t *testing.T) {
+	rules := map[string]RuleCfg{
+		"custom-rule": {Enabled: true},
+	}
+	categories := map[string]bool{
+		"heading": false,
+	}
+	ruleCategory := func(name string) string {
+		return "custom"
+	}
+	explicit := map[string]bool{}
+
+	result := ApplyCategories(rules, categories, ruleCategory, explicit)
+
+	// "custom" category is not in the categories map, so no disable.
+	if !result["custom-rule"].Enabled {
+		t.Error("custom-rule should remain enabled (its category is not in the map)")
+	}
+}
+
+func TestLoadCategoriesInOverrides(t *testing.T) {
+	yml := `
+rules:
+  line-length: true
+overrides:
+  - files:
+      - "docs/**"
+    categories:
+      heading: false
+    rules:
+      line-length:
+        max: 120
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(cfg.Overrides) != 1 {
+		t.Fatalf("expected 1 override, got %d", len(cfg.Overrides))
+	}
+	ov := cfg.Overrides[0]
+	if ov.Categories == nil {
+		t.Fatal("expected override categories to be non-nil")
+	}
+	if ov.Categories["heading"] != false {
+		t.Error("heading should be false in override")
+	}
+}
+
+func TestDumpDefaults_IncludesCategories(t *testing.T) {
+	cfg := DumpDefaults()
+
+	if cfg.Categories == nil {
+		t.Fatal("expected Categories to be non-nil in DumpDefaults")
+	}
+	for _, name := range ValidCategories {
+		enabled, ok := cfg.Categories[name]
+		if !ok {
+			t.Errorf("category %q not found in DumpDefaults", name)
+			continue
+		}
+		if !enabled {
+			t.Errorf("category %q should be enabled by default", name)
+		}
+	}
+}
+
+func TestCategoriesMarshalRoundTrip(t *testing.T) {
+	original := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		Categories: map[string]bool{
+			"heading":    false,
+			"whitespace": true,
+		},
+	}
+
+	data, err := yaml.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal error: %v", err)
+	}
+
+	var parsed Config
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	if parsed.Categories["heading"] != false {
+		t.Error("heading should be false after round-trip")
+	}
+	if parsed.Categories["whitespace"] != true {
+		t.Error("whitespace should be true after round-trip")
+	}
+}

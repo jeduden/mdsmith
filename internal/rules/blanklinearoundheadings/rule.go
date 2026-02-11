@@ -21,6 +21,9 @@ func (r *Rule) ID() string { return "TM013" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "blank-line-around-headings" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "heading" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic

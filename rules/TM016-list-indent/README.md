@@ -13,6 +13,7 @@ List items must use consistent indentation.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/listindent/)
+- **Category**: list
 
 ## Settings
 

@@ -16,6 +16,7 @@ type configurableStub struct {
 
 func (r *configurableStub) ID() string                           { return r.id }
 func (r *configurableStub) Name() string                         { return r.name }
+func (r *configurableStub) Category() string                     { return "test" }
 func (r *configurableStub) Check(_ *lint.File) []lint.Diagnostic { return nil }
 
 func (r *configurableStub) ApplySettings(settings map[string]any) error {

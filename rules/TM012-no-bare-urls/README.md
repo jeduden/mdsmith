@@ -13,6 +13,7 @@ URLs must be wrapped in angle brackets or as a link, not left bare.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/nobareurls/)
+- **Category**: link
 
 ## Config
 

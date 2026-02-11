@@ -13,6 +13,7 @@ Generated sections must match the content their directive would produce.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/generatedsection/)
+- **Category**: meta
 
 ## Marker Syntax
 

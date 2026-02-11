@@ -13,6 +13,7 @@ Headings should not end with punctuation.
 - **Fixable**: no
 - **Implementation**:
   [source](../../internal/rules/notrailingpunctuationinheading/)
+- **Category**: heading
 
 ## Details
 

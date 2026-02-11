@@ -13,6 +13,7 @@ No tab characters. Use spaces instead.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/nohardtabs/)
+- **Category**: whitespace
 
 ## Config
 

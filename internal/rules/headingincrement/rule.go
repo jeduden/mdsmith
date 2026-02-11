@@ -21,6 +21,9 @@ func (r *Rule) ID() string { return "TM003" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "heading-increment" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "heading" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic

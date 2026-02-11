@@ -13,6 +13,7 @@ Don't use bold or emphasis on a standalone line as a heading substitute.
 - **Fixable**: no
 - **Implementation**:
   [source](../../internal/rules/noemphasisasheading/)
+- **Category**: heading
 
 ## Config
 

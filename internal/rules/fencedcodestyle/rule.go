@@ -26,6 +26,9 @@ func (r *Rule) ID() string { return "TM010" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "fenced-code-style" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "code" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic

@@ -13,6 +13,7 @@ Headings must have a blank line before and after.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/blanklinearoundheadings/)
+- **Category**: heading
 
 ## Config
 

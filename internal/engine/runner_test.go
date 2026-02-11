@@ -18,8 +18,9 @@ type mockRule struct {
 	name string
 }
 
-func (r *mockRule) ID() string   { return r.id }
-func (r *mockRule) Name() string { return r.name }
+func (r *mockRule) ID() string       { return r.id }
+func (r *mockRule) Name() string     { return r.name }
+func (r *mockRule) Category() string { return "test" }
 func (r *mockRule) Check(f *lint.File) []lint.Diagnostic {
 	return []lint.Diagnostic{
 		{
@@ -42,6 +43,7 @@ type silentRule struct {
 
 func (r *silentRule) ID() string                           { return r.id }
 func (r *silentRule) Name() string                         { return r.name }
+func (r *silentRule) Category() string                     { return "test" }
 func (r *silentRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
 
 func TestRunner_MockRuleReportsDiagnostics(t *testing.T) {
@@ -314,8 +316,9 @@ type multiDiagRuleImpl struct {
 	diags map[string][]lint.Diagnostic
 }
 
-func (r *multiDiagRuleImpl) ID() string   { return r.id }
-func (r *multiDiagRuleImpl) Name() string { return r.name }
+func (r *multiDiagRuleImpl) ID() string       { return r.id }
+func (r *multiDiagRuleImpl) Name() string     { return r.name }
+func (r *multiDiagRuleImpl) Category() string { return "test" }
 func (r *multiDiagRuleImpl) Check(f *lint.File) []lint.Diagnostic {
 	return r.diags[f.Path]
 }
@@ -380,8 +383,9 @@ type contentMockRule struct {
 	name string
 }
 
-func (r *contentMockRule) ID() string   { return r.id }
-func (r *contentMockRule) Name() string { return r.name }
+func (r *contentMockRule) ID() string       { return r.id }
+func (r *contentMockRule) Name() string     { return r.name }
+func (r *contentMockRule) Category() string { return "test" }
 
 func (r *contentMockRule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -526,8 +530,9 @@ type configurableLengthRule struct {
 	Max int
 }
 
-func (r *configurableLengthRule) ID() string   { return "TM001" }
-func (r *configurableLengthRule) Name() string { return "line-length" }
+func (r *configurableLengthRule) ID() string       { return "TM001" }
+func (r *configurableLengthRule) Name() string     { return "line-length" }
+func (r *configurableLengthRule) Category() string { return "test" }
 func (r *configurableLengthRule) Check(f *lint.File) []lint.Diagnostic {
 	max := r.Max
 	if max <= 0 {

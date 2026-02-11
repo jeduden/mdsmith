@@ -25,6 +25,9 @@ func (r *Rule) ID() string { return "TM012" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "no-bare-urls" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "link" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic

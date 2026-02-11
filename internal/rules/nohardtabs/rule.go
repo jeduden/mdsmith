@@ -21,6 +21,9 @@ func (r *Rule) ID() string { return "TM007" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "no-hard-tabs" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "whitespace" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	codeLines := lint.CollectCodeBlockLines(f)

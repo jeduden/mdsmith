@@ -14,6 +14,7 @@ type stubRule struct {
 
 func (r *stubRule) ID() string                           { return r.id }
 func (r *stubRule) Name() string                         { return r.name }
+func (r *stubRule) Category() string                     { return "test" }
 func (r *stubRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
 
 func resetRegistry() {

@@ -13,6 +13,7 @@ Line exceeds maximum length.
 - **Fixable**: no
 - **Implementation**:
   [source](../../internal/rules/linelength/)
+- **Category**: line
 
 ## Settings
 

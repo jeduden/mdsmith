@@ -7,6 +7,8 @@ import (
 // Merge merges a loaded config on top of defaults. The loaded config's rules
 // override the defaults; any rule not mentioned in loaded keeps its default
 // value. Ignore and Overrides come from the loaded config only.
+// Categories from the loaded config are merged on top of defaults; any
+// category not mentioned in loaded keeps its default value (true).
 func Merge(defaults, loaded *Config) *Config {
 	if loaded == nil {
 		// No user config: return a copy of defaults.
@@ -14,7 +16,8 @@ func Merge(defaults, loaded *Config) *Config {
 		for k, v := range defaults.Rules {
 			rules[k] = v
 		}
-		return &Config{Rules: rules, FrontMatter: defaults.FrontMatter}
+		cats := copyCategories(defaults.Categories)
+		return &Config{Rules: rules, FrontMatter: defaults.FrontMatter, Categories: cats}
 	}
 
 	rules := make(map[string]RuleCfg, len(defaults.Rules))
@@ -32,12 +35,53 @@ func Merge(defaults, loaded *Config) *Config {
 		fm = loaded.FrontMatter
 	}
 
-	return &Config{
-		Rules:       rules,
-		Ignore:      loaded.Ignore,
-		Overrides:   loaded.Overrides,
-		FrontMatter: fm,
+	// Merge categories: start with defaults, apply loaded on top.
+	cats := mergeCategories(defaults.Categories, loaded.Categories)
+
+	// Track which rules were explicitly set in the loaded config.
+	explicit := make(map[string]bool, len(loaded.Rules))
+	for k := range loaded.Rules {
+		explicit[k] = true
 	}
+
+	return &Config{
+		Rules:         rules,
+		Ignore:        loaded.Ignore,
+		Overrides:     loaded.Overrides,
+		FrontMatter:   fm,
+		Categories:    cats,
+		ExplicitRules: explicit,
+	}
+}
+
+// copyCategories returns a shallow copy of a categories map.
+// Returns nil if the input is nil.
+func copyCategories(cats map[string]bool) map[string]bool {
+	if cats == nil {
+		return nil
+	}
+	result := make(map[string]bool, len(cats))
+	for k, v := range cats {
+		result[k] = v
+	}
+	return result
+}
+
+// mergeCategories merges override categories on top of base categories.
+// If base is nil, a copy of override is returned. If override is nil,
+// a copy of base is returned. If both are nil, nil is returned.
+func mergeCategories(base, override map[string]bool) map[string]bool {
+	if base == nil && override == nil {
+		return nil
+	}
+	result := make(map[string]bool, len(ValidCategories))
+	for k, v := range base {
+		result[k] = v
+	}
+	for k, v := range override {
+		result[k] = v
+	}
+	return result
 }
 
 // Effective returns the effective rule configuration for a given file path.
@@ -57,6 +101,79 @@ func Effective(cfg *Config, filePath string) map[string]RuleCfg {
 		}
 	}
 
+	return result
+}
+
+// EffectiveExplicitRules returns the set of rule names that were explicitly
+// configured for a given file path. It includes rules from the top-level
+// ExplicitRules and any rules set by matching overrides.
+func EffectiveExplicitRules(cfg *Config, filePath string) map[string]bool {
+	result := make(map[string]bool, len(cfg.ExplicitRules))
+	for k := range cfg.ExplicitRules {
+		result[k] = true
+	}
+
+	for _, o := range cfg.Overrides {
+		if matchesAny(o.Files, filePath) {
+			for k := range o.Rules {
+				result[k] = true
+			}
+		}
+	}
+
+	return result
+}
+
+// EffectiveCategories returns the effective category settings for a given
+// file path. It starts with the top-level categories and then applies each
+// override whose file patterns match filePath, in order. Categories not
+// explicitly set default to true (enabled).
+func EffectiveCategories(cfg *Config, filePath string) map[string]bool {
+	// Start with all categories enabled.
+	result := make(map[string]bool, len(ValidCategories))
+	for _, cat := range ValidCategories {
+		result[cat] = true
+	}
+
+	// Apply top-level category settings.
+	for k, v := range cfg.Categories {
+		result[k] = v
+	}
+
+	// Apply matching overrides in order.
+	for _, o := range cfg.Overrides {
+		if matchesAny(o.Files, filePath) {
+			for k, v := range o.Categories {
+				result[k] = v
+			}
+		}
+	}
+
+	return result
+}
+
+// ApplyCategories disables rules whose category is disabled, unless
+// the rule has been explicitly configured (present in the explicit rules
+// map). ruleCategory maps a rule name to its category string.
+// The explicit map contains rule names that were explicitly set in config
+// (not just inherited from defaults).
+func ApplyCategories(
+	rules map[string]RuleCfg,
+	categories map[string]bool,
+	ruleCategory func(ruleName string) string,
+	explicit map[string]bool,
+) map[string]RuleCfg {
+	result := make(map[string]RuleCfg, len(rules))
+	for name, cfg := range rules {
+		cat := ruleCategory(name)
+		enabled, catSet := categories[cat]
+		if catSet && !enabled && !explicit[name] {
+			// Category is disabled and rule is not explicitly configured.
+			result[name] = RuleCfg{Enabled: false, Settings: cfg.Settings}
+		} else {
+			result[name] = cfg
+		}
+	}
 	return result
 }
 

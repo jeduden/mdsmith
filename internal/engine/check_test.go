@@ -103,8 +103,9 @@ type mockConfigurableErrorRule struct {
 	name string
 }
 
-func (r *mockConfigurableErrorRule) ID() string   { return r.id }
-func (r *mockConfigurableErrorRule) Name() string { return r.name }
+func (r *mockConfigurableErrorRule) ID() string       { return r.id }
+func (r *mockConfigurableErrorRule) Name() string     { return r.name }
+func (r *mockConfigurableErrorRule) Category() string { return "test" }
 func (r *mockConfigurableErrorRule) Check(_ *lint.File) []lint.Diagnostic {
 	return []lint.Diagnostic{
 		{

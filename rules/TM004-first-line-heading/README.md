@@ -13,6 +13,7 @@ First line of the file should be a heading.
 - **Fixable**: no
 - **Implementation**:
   [source](../../internal/rules/firstlineheading/)
+- **Category**: heading
 
 ## Settings
 

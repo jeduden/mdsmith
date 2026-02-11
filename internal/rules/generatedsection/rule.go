@@ -27,6 +27,9 @@ func (r *Rule) ID() string { return "TM019" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "generated-section" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "meta" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f.FS == nil {

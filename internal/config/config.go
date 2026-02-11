@@ -6,18 +6,39 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ValidCategories lists the recognized rule category names.
+var ValidCategories = []string{
+	"heading",
+	"whitespace",
+	"code",
+	"list",
+	"line",
+	"link",
+	"meta",
+	"table",
+}
+
 // Config is the top-level configuration.
 type Config struct {
 	Rules       map[string]RuleCfg `yaml:"rules"`
 	Ignore      []string           `yaml:"ignore"`
 	Overrides   []Override         `yaml:"overrides"`
 	FrontMatter *bool              `yaml:"front-matter"`
+	Categories  map[string]bool    `yaml:"categories"`
+
+	// ExplicitRules tracks rule names that were explicitly set in
+	// the user config (not just inherited from defaults). This is
+	// used for category override resolution: an explicitly enabled
+	// rule takes precedence over a disabled category.
+	// Not serialized to YAML.
+	ExplicitRules map[string]bool `yaml:"-"`
 }
 
 // Override applies rule settings to files matching glob patterns.
 type Override struct {
-	Files []string           `yaml:"files"`
-	Rules map[string]RuleCfg `yaml:"rules"`
+	Files      []string           `yaml:"files"`
+	Rules      map[string]RuleCfg `yaml:"rules"`
+	Categories map[string]bool    `yaml:"categories"`
 }
 
 // RuleCfg is a YAML union: can be bool (enable/disable) or map[string]any (settings).

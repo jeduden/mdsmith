@@ -13,6 +13,7 @@ No two headings should have the same text.
 - **Fixable**: no
 - **Implementation**:
   [source](../../internal/rules/noduplicateheadings/)
+- **Category**: heading
 
 ## Config
 

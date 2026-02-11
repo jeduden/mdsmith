@@ -23,6 +23,9 @@ func (r *Rule) ID() string { return "TM004" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "first-line-heading" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "heading" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	level := r.Level

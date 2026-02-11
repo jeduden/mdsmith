@@ -13,6 +13,7 @@ File must end with exactly one newline character.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/singletrailingnewline/)
+- **Category**: whitespace
 
 ## Config
 

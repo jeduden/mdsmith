@@ -25,6 +25,9 @@ func (r *Rule) ID() string { return "TM008" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "no-multiple-blanks" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "whitespace" }
+
 // isBlank returns true if the line contains only whitespace.
 func isBlank(line []byte) bool {
 	return len(bytes.TrimSpace(line)) == 0

@@ -49,7 +49,7 @@ func (r *Runner) Run(paths []string) *Result {
 		}
 		f.FS = os.DirFS(filepath.Dir(path))
 
-		effective := config.Effective(r.Config, path)
+		effective := r.effectiveWithCategories(path)
 
 		diags, errs := CheckRules(f, r.Rules, effective)
 		res.Diagnostics = append(res.Diagnostics, diags...)
@@ -76,7 +76,7 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		return res
 	}
 
-	effective := config.Effective(r.Config, path)
+	effective := r.effectiveWithCategories(path)
 
 	diags, errs := CheckRules(f, r.Rules, effective)
 	res.Diagnostics = append(res.Diagnostics, diags...)
@@ -84,6 +84,30 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 	sortDiagnostics(res.Diagnostics)
 	return res
+}
+
+// effectiveWithCategories computes the effective rule config for a file
+// path, applying category-based enable/disable on top of per-rule settings.
+func (r *Runner) effectiveWithCategories(path string) map[string]config.RuleCfg {
+	effective := config.Effective(r.Config, path)
+	categories := config.EffectiveCategories(r.Config, path)
+	explicit := config.EffectiveExplicitRules(r.Config, path)
+
+	// Build rule-name-to-category lookup from the runner's rule list.
+	catLookup := ruleCategoryLookup(r.Rules)
+
+	return config.ApplyCategories(effective, categories, catLookup, explicit)
+}
+
+// ruleCategoryLookup returns a function that maps a rule name to its category.
+func ruleCategoryLookup(rules []rule.Rule) func(string) string {
+	m := make(map[string]string, len(rules))
+	for _, rl := range rules {
+		m[rl.Name()] = rl.Category()
+	}
+	return func(name string) string {
+		return m[name]
+	}
 }
 
 // sortDiagnostics sorts diagnostics by file, line, column.

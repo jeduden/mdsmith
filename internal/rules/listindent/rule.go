@@ -26,6 +26,9 @@ func (r *Rule) ID() string { return "TM016" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "list-indent" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "list" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic

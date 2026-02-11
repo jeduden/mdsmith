@@ -6,6 +6,7 @@ import "github.com/jeduden/tidymark/internal/lint"
 type Rule interface {
 	ID() string
 	Name() string
+	Category() string
 	Check(f *lint.File) []lint.Diagnostic
 }
 

@@ -13,6 +13,7 @@ Heading levels should increment by one. No jumping from `#` to `###`.
 - **Fixable**: no
 - **Implementation**:
   [source](../../internal/rules/headingincrement/)
+- **Category**: heading
 
 ## Config
 

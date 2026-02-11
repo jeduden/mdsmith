@@ -23,6 +23,9 @@ func (r *Rule) ID() string { return "TM015" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "blank-line-around-fenced-code" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "code" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic

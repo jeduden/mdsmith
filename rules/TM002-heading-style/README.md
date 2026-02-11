@@ -13,6 +13,7 @@ Heading style must be consistent.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/headingstyle/)
+- **Category**: heading
 
 ## Settings
 

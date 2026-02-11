@@ -62,7 +62,7 @@ func (f *Fixer) Fix(paths []string) *Result {
 
 		dirFS := os.DirFS(filepath.Dir(path))
 
-		effective := config.Effective(f.Config, path)
+		effective := f.effectiveWithCategories(path)
 
 		// Collect enabled fixable rules, sorted by ID.
 		fixable, settingsErrs := f.fixableRules(effective)
@@ -132,6 +132,23 @@ func (f *Fixer) Fix(paths []string) *Result {
 	})
 
 	return res
+}
+
+// effectiveWithCategories computes the effective rule config for a file
+// path, applying category-based enable/disable on top of per-rule settings.
+func (f *Fixer) effectiveWithCategories(path string) map[string]config.RuleCfg {
+	effective := config.Effective(f.Config, path)
+	categories := config.EffectiveCategories(f.Config, path)
+	explicit := config.EffectiveExplicitRules(f.Config, path)
+
+	// Build rule-name-to-category lookup from the fixer's rule list.
+	m := make(map[string]string, len(f.Rules))
+	for _, rl := range f.Rules {
+		m[rl.Name()] = rl.Category()
+	}
+	catLookup := func(name string) string { return m[name] }
+
+	return config.ApplyCategories(effective, categories, catLookup, explicit)
 }
 
 // fixableRules returns enabled rules that implement FixableRule, sorted by ID.

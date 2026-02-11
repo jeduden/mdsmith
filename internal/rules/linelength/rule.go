@@ -30,6 +30,9 @@ func (r *Rule) ID() string { return "TM001" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "line-length" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "line" }
+
 // urlOnlyRe matches a line whose trimmed content is a single URL.
 var urlOnlyRe = regexp.MustCompile(`^https?://\S+$`)
 

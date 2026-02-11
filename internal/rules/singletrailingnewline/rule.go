@@ -20,6 +20,9 @@ func (r *Rule) ID() string { return "TM009" }
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "single-trailing-newline" }
 
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "whitespace" }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	src := f.Source

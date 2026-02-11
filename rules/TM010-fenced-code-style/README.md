@@ -13,6 +13,7 @@ Fenced code blocks must use a consistent delimiter.
 - **Fixable**: yes
 - **Implementation**:
   [source](../../internal/rules/fencedcodestyle/)
+- **Category**: code
 
 ## Settings
 
