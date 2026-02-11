@@ -3,6 +3,7 @@ package fix
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -40,83 +41,11 @@ func (f *Fixer) Fix(paths []string) *Result {
 		if config.IsIgnored(f.Config.Ignore, path) {
 			continue
 		}
-
-		source, err := os.ReadFile(path)
-		if err != nil {
-			res.Errors = append(res.Errors, fmt.Errorf("reading %q: %w", path, err))
-			continue
-		}
-
-		info, err := os.Stat(path)
-		if err != nil {
-			res.Errors = append(res.Errors, fmt.Errorf("stat %q: %w", path, err))
-			continue
-		}
-
-		// Parse the file, stripping front matter if configured.
-		lf, err := lint.NewFileFromSource(path, source, f.StripFrontMatter)
-		if err != nil {
-			res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
-			continue
-		}
-
-		dirFS := os.DirFS(filepath.Dir(path))
-
-		effective := f.effectiveWithCategories(path)
-
-		// Collect enabled fixable rules, sorted by ID.
-		fixable, settingsErrs := f.fixableRules(effective)
-		res.Errors = append(res.Errors, settingsErrs...)
-
-		// Apply fixable rules in repeated passes until stable.
-		// A later rule's fix may introduce violations caught by an
-		// earlier rule, so we loop until no pass produces changes.
-		const maxPasses = 10
-		current := lf.Source
-		for pass := 0; pass < maxPasses; pass++ {
-			before := current
-			for _, fr := range fixable {
-				parsedFile, err := lint.NewFile(path, current)
-				if err != nil {
-					res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
-					break
-				}
-				parsedFile.FS = dirFS
-
-				diags := fr.Check(parsedFile)
-				if len(diags) == 0 {
-					continue
-				}
-
-				current = fr.Fix(parsedFile)
-			}
-			if bytes.Equal(before, current) {
-				break
-			}
-		}
-
-		// Write back only if content changed.
-		if !bytes.Equal(lf.Source, current) {
-			out := lf.FullSource(current)
-			if err := os.WriteFile(path, out, info.Mode()); err != nil {
-				res.Errors = append(res.Errors, fmt.Errorf("writing %q: %w", path, err))
-				continue
-			}
-			res.Modified = append(res.Modified, path)
-		}
-
-		// Final lint pass with ALL enabled rules to collect remaining diagnostics.
-		finalFile, err := lint.NewFile(path, current)
-		if err != nil {
-			res.Errors = append(res.Errors, fmt.Errorf("parsing %q after fix: %w", path, err))
-			continue
-		}
-		finalFile.FS = dirFS
-		finalFile.FrontMatter = lf.FrontMatter
-		finalFile.LineOffset = lf.LineOffset
-
-		diags, errs := engine.CheckRules(finalFile, f.Rules, effective)
+		diags, modified, errs := f.fixFile(path)
 		res.Diagnostics = append(res.Diagnostics, diags...)
+		if modified != "" {
+			res.Modified = append(res.Modified, modified)
+		}
 		res.Errors = append(res.Errors, errs...)
 	}
 
@@ -132,6 +61,86 @@ func (f *Fixer) Fix(paths []string) *Result {
 	})
 
 	return res
+}
+
+// fixFile applies auto-fixes to a single file and returns remaining
+// diagnostics, the path if modified, and any errors encountered.
+func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, string, []error) {
+	var errs []error
+
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", []error{fmt.Errorf("reading %q: %w", path, err)}
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, "", []error{fmt.Errorf("stat %q: %w", path, err)}
+	}
+
+	lf, err := lint.NewFileFromSource(path, source, f.StripFrontMatter)
+	if err != nil {
+		return nil, "", []error{fmt.Errorf("parsing %q: %w", path, err)}
+	}
+
+	dirFS := os.DirFS(filepath.Dir(path))
+	effective := f.effectiveWithCategories(path)
+
+	fixable, settingsErrs := f.fixableRules(effective)
+	errs = append(errs, settingsErrs...)
+
+	current := f.applyFixPasses(path, lf.Source, fixable, dirFS, &errs)
+
+	var modified string
+	if !bytes.Equal(lf.Source, current) {
+		out := lf.FullSource(current)
+		if err := os.WriteFile(path, out, info.Mode()); err != nil {
+			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
+			return nil, "", errs
+		}
+		modified = path
+	}
+
+	finalFile, err := lint.NewFile(path, current)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("parsing %q after fix: %w", path, err))
+		return nil, modified, errs
+	}
+	finalFile.FS = dirFS
+	finalFile.FrontMatter = lf.FrontMatter
+	finalFile.LineOffset = lf.LineOffset
+
+	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
+	errs = append(errs, checkErrs...)
+	return diags, modified, errs
+}
+
+// applyFixPasses repeatedly applies fixable rules until the content stabilizes.
+func (f *Fixer) applyFixPasses(path string, source []byte, fixable []rule.FixableRule, dirFS fs.FS, errs *[]error) []byte {
+	const maxPasses = 10
+	current := source
+	for pass := 0; pass < maxPasses; pass++ {
+		before := current
+		for _, fr := range fixable {
+			parsedFile, err := lint.NewFile(path, current)
+			if err != nil {
+				*errs = append(*errs, fmt.Errorf("parsing %q: %w", path, err))
+				break
+			}
+			parsedFile.FS = dirFS
+
+			diags := fr.Check(parsedFile)
+			if len(diags) == 0 {
+				continue
+			}
+
+			current = fr.Fix(parsedFile)
+		}
+		if bytes.Equal(before, current) {
+			break
+		}
+	}
+	return current
 }
 
 // effectiveWithCategories computes the effective rule config for a file

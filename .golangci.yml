@@ -3,6 +3,8 @@ version: "2"
 linters:
   enable:
     - errcheck
+    - funlen
+    - gocognit
     - govet
     - staticcheck
     - unused
@@ -10,6 +12,11 @@ linters:
     - misspell
     - revive
   settings:
+    funlen:
+      lines: 60
+      statements: 40
+    gocognit:
+      min-complexity: 30
     revive:
       rules:
         - name: exported

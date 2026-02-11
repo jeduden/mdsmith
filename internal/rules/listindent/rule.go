@@ -185,11 +185,33 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		spaces = 2
 	}
 
-	type lineAdjust struct {
-		line           int // 1-based
-		expectedIndent int
+	adjMap := collectIndentAdjustments(f, spaces)
+
+	if len(adjMap) == 0 {
+		result := make([]byte, len(f.Source))
+		copy(result, f.Source)
+		return result
 	}
-	var adjustments []lineAdjust
+
+	var resultLines []string
+	for i, line := range f.Lines {
+		lineNum := i + 1
+		if expected, ok := adjMap[lineNum]; ok {
+			trimmed := bytes.TrimLeft(line, " ")
+			newLine := strings.Repeat(" ", expected) + string(trimmed)
+			resultLines = append(resultLines, newLine)
+		} else {
+			resultLines = append(resultLines, string(line))
+		}
+	}
+
+	return []byte(strings.Join(resultLines, "\n"))
+}
+
+// collectIndentAdjustments walks the AST and returns a map from 1-based line
+// number to the expected indent for lines that need adjustment.
+func collectIndentAdjustments(f *lint.File, spaces int) map[int]int {
+	adjMap := make(map[int]int)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -212,42 +234,14 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			return ast.WalkContinue, nil
 		}
 
-		actualIndent := countLeadingSpaces(f.Lines[line-1])
-		if actualIndent != expectedIndent {
-			adjustments = append(adjustments, lineAdjust{
-				line:           line,
-				expectedIndent: expectedIndent,
-			})
+		if countLeadingSpaces(f.Lines[line-1]) != expectedIndent {
+			adjMap[line] = expectedIndent
 		}
 
 		return ast.WalkContinue, nil
 	})
 
-	if len(adjustments) == 0 {
-		result := make([]byte, len(f.Source))
-		copy(result, f.Source)
-		return result
-	}
-
-	// Build a map for quick lookup.
-	adjMap := make(map[int]int) // line -> expected indent
-	for _, a := range adjustments {
-		adjMap[a.line] = a.expectedIndent
-	}
-
-	var resultLines []string
-	for i, line := range f.Lines {
-		lineNum := i + 1
-		if expected, ok := adjMap[lineNum]; ok {
-			trimmed := bytes.TrimLeft(line, " ")
-			newLine := strings.Repeat(" ", expected) + string(trimmed)
-			resultLines = append(resultLines, newLine)
-		} else {
-			resultLines = append(resultLines, string(line))
-		}
-	}
-
-	return []byte(strings.Join(resultLines, "\n"))
+	return adjMap
 }
 
 // ApplySettings implements rule.Configurable.

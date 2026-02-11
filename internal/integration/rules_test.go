@@ -80,13 +80,7 @@ func parseFrontMatter(t *testing.T, data []byte) ([]expectedDiag, []byte) {
 }
 
 func TestRuleFixtures(t *testing.T) {
-	dirs, err := filepath.Glob("../../rules/TM*-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(dirs) == 0 {
-		t.Fatal("no rule fixture directories found")
-	}
+	dirs := discoverFixtureDirs(t)
 
 	for _, dir := range dirs {
 		base := filepath.Base(dir)
@@ -103,96 +97,121 @@ func TestRuleFixtures(t *testing.T) {
 				t.Fatalf("rule %s not found in registry", ruleID)
 			}
 
-			t.Run("good", func(t *testing.T) {
-				src := readFixture(t, filepath.Join(dir, "good.md"))
-				f, err := lint.NewFile("good.md", src)
-				if err != nil {
-					t.Fatalf("parsing good.md: %v", err)
-				}
-				f.FS = os.DirFS(dir)
-				diags := checkAllRules(f)
-				if len(diags) != 0 {
-					t.Errorf("good.md: expected 0 diagnostics from all rules, got %d", len(diags))
-					for _, d := range diags {
-						t.Logf("  %s line %d col %d: %s", d.RuleID, d.Line, d.Column, d.Message)
-					}
-				}
-			})
-
-			t.Run("bad", func(t *testing.T) {
-				raw := readFixture(t, filepath.Join(dir, "bad.md"))
-				expected, src := parseFrontMatter(t, raw)
-				f, err := lint.NewFile("bad.md", src)
-				if err != nil {
-					t.Fatalf("parsing bad.md: %v", err)
-				}
-				f.FS = os.DirFS(dir)
-				diags := filterByRule(r.Check(f), ruleID)
-				if len(expected) == 0 {
-					if len(diags) == 0 {
-						t.Error("bad.md: expected at least 1 diagnostic, got 0")
-					}
-				} else {
-					if len(diags) != len(expected) {
-						t.Errorf("bad.md: expected %d diagnostics, got %d", len(expected), len(diags))
-						for _, d := range diags {
-							t.Logf("  actual: line %d col %d: %s", d.Line, d.Column, d.Message)
-						}
-					}
-					for i, exp := range expected {
-						if i >= len(diags) {
-							t.Errorf("missing diagnostic %d: line %d col %d: %s", i, exp.Line, exp.Column, exp.Message)
-							continue
-						}
-						d := diags[i]
-						if d.Line != exp.Line || d.Column != exp.Column || d.Message != exp.Message {
-							t.Errorf("diagnostic %d:\n  want: line %d col %d: %s\n  got:  line %d col %d: %s",
-								i, exp.Line, exp.Column, exp.Message, d.Line, d.Column, d.Message)
-						}
-					}
-				}
-			})
+			t.Run("good", func(t *testing.T) { runGoodFixture(t, dir) })
+			t.Run("bad", func(t *testing.T) { runBadFixture(t, dir, r, ruleID) })
 
 			fixedPath := filepath.Join(dir, "fixed.md")
 			if _, err := os.Stat(fixedPath); err == nil {
-				t.Run("fix", func(t *testing.T) {
-					fr, ok := r.(rule.FixableRule)
-					if !ok {
-						t.Fatalf("fixed.md exists but rule %s does not implement FixableRule", ruleID)
-					}
-
-					badSrc := readFixture(t, filepath.Join(dir, "bad.md"))
-					_, content := parseFrontMatter(t, badSrc)
-					f, err := lint.NewFile("bad.md", content)
-					if err != nil {
-						t.Fatalf("parsing bad.md: %v", err)
-					}
-					f.FS = os.DirFS(dir)
-
-					got := fr.Fix(f)
-					want := readFixture(t, fixedPath)
-
-					if !bytes.Equal(got, want) {
-						t.Errorf("Fix output does not match fixed.md\ngot:\n%s\nwant:\n%s",
-							formatBytes(got), formatBytes(want))
-					}
-
-					// Verify fixed.md passes ALL rules.
-					fixedFile, err := lint.NewFile("fixed.md", want)
-					if err != nil {
-						t.Fatalf("parsing fixed.md: %v", err)
-					}
-					fixedFile.FS = os.DirFS(dir)
-					diags := checkAllRules(fixedFile)
-					if len(diags) != 0 {
-						t.Errorf("fixed.md: expected 0 diagnostics from all rules, got %d", len(diags))
-						for _, d := range diags {
-							t.Logf("  %s line %d col %d: %s", d.RuleID, d.Line, d.Column, d.Message)
-						}
-					}
-				})
+				t.Run("fix", func(t *testing.T) { runFixFixture(t, dir, r, ruleID) })
 			}
 		})
+	}
+}
+
+func discoverFixtureDirs(t *testing.T) []string {
+	t.Helper()
+	dirs, err := filepath.Glob("../../rules/TM*-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirs) == 0 {
+		t.Fatal("no rule fixture directories found")
+	}
+	return dirs
+}
+
+func runGoodFixture(t *testing.T, dir string) {
+	t.Helper()
+	src := readFixture(t, filepath.Join(dir, "good.md"))
+	f, err := lint.NewFile("good.md", src)
+	if err != nil {
+		t.Fatalf("parsing good.md: %v", err)
+	}
+	f.FS = os.DirFS(dir)
+	diags := checkAllRules(f)
+	reportUnexpectedDiags(t, "good.md", diags)
+}
+
+func runBadFixture(t *testing.T, dir string, r rule.Rule, ruleID string) {
+	t.Helper()
+	raw := readFixture(t, filepath.Join(dir, "bad.md"))
+	expected, src := parseFrontMatter(t, raw)
+	f, err := lint.NewFile("bad.md", src)
+	if err != nil {
+		t.Fatalf("parsing bad.md: %v", err)
+	}
+	f.FS = os.DirFS(dir)
+	diags := filterByRule(r.Check(f), ruleID)
+	assertExpectedDiags(t, expected, diags)
+}
+
+func runFixFixture(t *testing.T, dir string, r rule.Rule, ruleID string) {
+	t.Helper()
+	fr, ok := r.(rule.FixableRule)
+	if !ok {
+		t.Fatalf("fixed.md exists but rule %s does not implement FixableRule", ruleID)
+	}
+
+	badSrc := readFixture(t, filepath.Join(dir, "bad.md"))
+	_, content := parseFrontMatter(t, badSrc)
+	f, err := lint.NewFile("bad.md", content)
+	if err != nil {
+		t.Fatalf("parsing bad.md: %v", err)
+	}
+	f.FS = os.DirFS(dir)
+
+	got := fr.Fix(f)
+	fixedPath := filepath.Join(dir, "fixed.md")
+	want := readFixture(t, fixedPath)
+
+	if !bytes.Equal(got, want) {
+		t.Errorf("Fix output does not match fixed.md\ngot:\n%s\nwant:\n%s",
+			formatBytes(got), formatBytes(want))
+	}
+
+	fixedFile, err := lint.NewFile("fixed.md", want)
+	if err != nil {
+		t.Fatalf("parsing fixed.md: %v", err)
+	}
+	fixedFile.FS = os.DirFS(dir)
+	diags := checkAllRules(fixedFile)
+	reportUnexpectedDiags(t, "fixed.md", diags)
+}
+
+func reportUnexpectedDiags(t *testing.T, filename string, diags []lint.Diagnostic) {
+	t.Helper()
+	if len(diags) != 0 {
+		t.Errorf("%s: expected 0 diagnostics from all rules, got %d", filename, len(diags))
+		for _, d := range diags {
+			t.Logf("  %s line %d col %d: %s", d.RuleID, d.Line, d.Column, d.Message)
+		}
+	}
+}
+
+func assertExpectedDiags(t *testing.T, expected []expectedDiag, diags []lint.Diagnostic) {
+	t.Helper()
+	if len(expected) == 0 {
+		if len(diags) == 0 {
+			t.Error("bad.md: expected at least 1 diagnostic, got 0")
+		}
+		return
+	}
+	if len(diags) != len(expected) {
+		t.Errorf("bad.md: expected %d diagnostics, got %d", len(expected), len(diags))
+		for _, d := range diags {
+			t.Logf("  actual: line %d col %d: %s", d.Line, d.Column, d.Message)
+		}
+	}
+	for i, exp := range expected {
+		if i >= len(diags) {
+			t.Errorf("missing diagnostic %d: line %d col %d: %s", i, exp.Line, exp.Column, exp.Message)
+			continue
+		}
+		d := diags[i]
+		if d.Line != exp.Line || d.Column != exp.Column || d.Message != exp.Message {
+			t.Errorf("diagnostic %d:\n  want: line %d col %d: %s\n  got:  line %d col %d: %s",
+				i, exp.Line, exp.Column, exp.Message, d.Line, d.Column, d.Message)
+		}
 	}
 }
 

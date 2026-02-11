@@ -39,61 +39,50 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		// Skip nested lists: if parent is a ListItem, this is an inner list.
 		if _, isListItem := list.Parent().(*ast.ListItem); isListItem {
 			return ast.WalkContinue, nil
 		}
 
-		// Get the line of the first line of the list.
 		listStartLine := lineOfNode(f, list)
 		listEndLine := lastLineOfNode(f, list)
 
-		// Skip lists whose lines overlap with code block regions.
 		if codeLines[listStartLine] || codeLines[listEndLine] {
 			return ast.WalkContinue, nil
 		}
-		totalLines := len(f.Lines)
 
-		// Check blank line before (unless list starts at line 1).
-		if listStartLine > 1 {
-			prevLine := listStartLine - 1 // 1-based
-			if prevLine >= 1 && prevLine <= totalLines {
-				if !isBlank(f.Lines[prevLine-1]) {
-					diags = append(diags, lint.Diagnostic{
-						File:     f.Path,
-						Line:     listStartLine,
-						Column:   1,
-						RuleID:   r.ID(),
-						RuleName: r.Name(),
-						Severity: lint.Warning,
-						Message:  "list should be preceded by a blank line",
-					})
-				}
-			}
+		if d, ok := r.checkAdjacentBlank(f, listStartLine, -1, "list should be preceded by a blank line"); ok {
+			diags = append(diags, d)
 		}
-
-		// Check blank line after (unless list ends at last line).
-		if listEndLine < totalLines {
-			nextLine := listEndLine + 1 // 1-based
-			if nextLine >= 1 && nextLine <= totalLines {
-				if !isBlank(f.Lines[nextLine-1]) {
-					diags = append(diags, lint.Diagnostic{
-						File:     f.Path,
-						Line:     listEndLine,
-						Column:   1,
-						RuleID:   r.ID(),
-						RuleName: r.Name(),
-						Severity: lint.Warning,
-						Message:  "list should be followed by a blank line",
-					})
-				}
-			}
+		if d, ok := r.checkAdjacentBlank(f, listEndLine, +1, "list should be followed by a blank line"); ok {
+			diags = append(diags, d)
 		}
 
 		return ast.WalkContinue, nil
 	})
 
 	return diags
+}
+
+// checkAdjacentBlank checks whether the line adjacent to targetLine (offset -1 for before,
+// +1 for after) is non-blank and returns a diagnostic if so.
+func (r *Rule) checkAdjacentBlank(f *lint.File, targetLine, direction int, msg string) (lint.Diagnostic, bool) {
+	totalLines := len(f.Lines)
+	adjLine := targetLine + direction
+	if adjLine < 1 || adjLine > totalLines {
+		return lint.Diagnostic{}, false
+	}
+	if isBlank(f.Lines[adjLine-1]) {
+		return lint.Diagnostic{}, false
+	}
+	return lint.Diagnostic{
+		File:     f.Path,
+		Line:     targetLine,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  msg,
+	}, true
 }
 
 // isInlineNode returns true for inline AST nodes whose Lines() method panics.
@@ -177,8 +166,34 @@ func isBlank(line []byte) bool {
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
-	var insertBefore []int
-	var insertAfter []int
+	beforeSet, afterSet := r.collectBlankLineInsertions(f)
+
+	if len(beforeSet) == 0 && len(afterSet) == 0 {
+		result := make([]byte, len(f.Source))
+		copy(result, f.Source)
+		return result
+	}
+
+	var resultLines [][]byte
+	for i, line := range f.Lines {
+		lineNum := i + 1
+		if beforeSet[lineNum] {
+			resultLines = append(resultLines, []byte{})
+		}
+		resultLines = append(resultLines, line)
+		if afterSet[lineNum] {
+			resultLines = append(resultLines, []byte{})
+		}
+	}
+
+	return bytes.Join(resultLines, []byte("\n"))
+}
+
+// collectBlankLineInsertions walks the AST and returns sets of 1-based line numbers
+// that need a blank line inserted before or after them.
+func (r *Rule) collectBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]bool) {
+	beforeSet = make(map[int]bool)
+	afterSet = make(map[int]bool)
 	codeLines := lint.CollectCodeBlockLines(f)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -198,60 +213,29 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		listStartLine := lineOfNode(f, list)
 		listEndLine := lastLineOfNode(f, list)
 
-		// Skip lists whose lines overlap with code block regions.
 		if codeLines[listStartLine] || codeLines[listEndLine] {
 			return ast.WalkContinue, nil
 		}
-		totalLines := len(f.Lines)
 
-		if listStartLine > 1 {
-			prevLine := listStartLine - 1
-			if prevLine >= 1 && prevLine <= totalLines {
-				if !isBlank(f.Lines[prevLine-1]) {
-					insertBefore = append(insertBefore, listStartLine)
-				}
-			}
+		if needsBlankAdjacent(f, listStartLine, -1) {
+			beforeSet[listStartLine] = true
 		}
-
-		if listEndLine < totalLines {
-			nextLine := listEndLine + 1
-			if nextLine >= 1 && nextLine <= totalLines {
-				if !isBlank(f.Lines[nextLine-1]) {
-					insertAfter = append(insertAfter, listEndLine)
-				}
-			}
+		if needsBlankAdjacent(f, listEndLine, +1) {
+			afterSet[listEndLine] = true
 		}
 
 		return ast.WalkContinue, nil
 	})
 
-	if len(insertBefore) == 0 && len(insertAfter) == 0 {
-		result := make([]byte, len(f.Source))
-		copy(result, f.Source)
-		return result
-	}
+	return beforeSet, afterSet
+}
 
-	// Build a set of lines before/after which we need to insert blanks.
-	beforeSet := make(map[int]bool)
-	afterSet := make(map[int]bool)
-	for _, l := range insertBefore {
-		beforeSet[l] = true
+// needsBlankAdjacent returns true if the line adjacent to targetLine
+// (direction -1 for before, +1 for after) exists and is non-blank.
+func needsBlankAdjacent(f *lint.File, targetLine, direction int) bool {
+	adjLine := targetLine + direction
+	if adjLine < 1 || adjLine > len(f.Lines) {
+		return false
 	}
-	for _, l := range insertAfter {
-		afterSet[l] = true
-	}
-
-	var resultLines [][]byte
-	for i, line := range f.Lines {
-		lineNum := i + 1
-		if beforeSet[lineNum] {
-			resultLines = append(resultLines, []byte{})
-		}
-		resultLines = append(resultLines, line)
-		if afterSet[lineNum] {
-			resultLines = append(resultLines, []byte{})
-		}
-	}
-
-	return bytes.Join(resultLines, []byte("\n"))
+	return !isBlank(f.Lines[adjLine-1])
 }

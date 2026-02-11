@@ -33,6 +33,57 @@ import (
 // --- YAML parsing tests ---
 
 func TestParseValidYAML(t *testing.T) {
+	cfg := loadValidYAMLFixture(t)
+
+	t.Run("rules", func(t *testing.T) {
+		if len(cfg.Rules) != 3 {
+			t.Fatalf("expected 3 rules, got %d", len(cfg.Rules))
+		}
+		if !cfg.Rules["line-length"].Enabled {
+			t.Error("line-length should be enabled")
+		}
+		if cfg.Rules["heading-style"].Enabled {
+			t.Error("heading-style should be disabled")
+		}
+		if !cfg.Rules["no-multiple-blanks"].Enabled {
+			t.Error("no-multiple-blanks should be enabled")
+		}
+		if cfg.Rules["no-multiple-blanks"].Settings["max"] != 2 {
+			t.Errorf("no-multiple-blanks max: expected 2, got %v", cfg.Rules["no-multiple-blanks"].Settings["max"])
+		}
+	})
+
+	t.Run("ignore", func(t *testing.T) {
+		if len(cfg.Ignore) != 2 {
+			t.Fatalf("expected 2 ignore patterns, got %d", len(cfg.Ignore))
+		}
+		if cfg.Ignore[0] != "vendor/**" {
+			t.Errorf("expected vendor/**, got %s", cfg.Ignore[0])
+		}
+	})
+
+	t.Run("overrides", func(t *testing.T) {
+		if len(cfg.Overrides) != 2 {
+			t.Fatalf("expected 2 overrides, got %d", len(cfg.Overrides))
+		}
+		if cfg.Overrides[0].Files[0] != "CHANGELOG.md" {
+			t.Errorf("expected CHANGELOG.md, got %s", cfg.Overrides[0].Files[0])
+		}
+		if cfg.Overrides[0].Rules["no-duplicate-headings"].Enabled {
+			t.Error("no-duplicate-headings should be disabled in override")
+		}
+		if !cfg.Overrides[1].Rules["line-length"].Enabled {
+			t.Error("line-length should be enabled in override")
+		}
+		if cfg.Overrides[1].Rules["line-length"].Settings["max"] != 120 {
+			t.Errorf("line-length max in override: expected 120, got %v",
+				cfg.Overrides[1].Rules["line-length"].Settings["max"])
+		}
+	})
+}
+
+func loadValidYAMLFixture(t *testing.T) *Config {
+	t.Helper()
 	yml := `
 rules:
   line-length: true
@@ -63,49 +114,7 @@ overrides:
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-
-	// Check rules
-	if len(cfg.Rules) != 3 {
-		t.Fatalf("expected 3 rules, got %d", len(cfg.Rules))
-	}
-	if !cfg.Rules["line-length"].Enabled {
-		t.Error("line-length should be enabled")
-	}
-	if cfg.Rules["heading-style"].Enabled {
-		t.Error("heading-style should be disabled")
-	}
-	if !cfg.Rules["no-multiple-blanks"].Enabled {
-		t.Error("no-multiple-blanks should be enabled")
-	}
-	if cfg.Rules["no-multiple-blanks"].Settings["max"] != 2 {
-		t.Errorf("no-multiple-blanks max: expected 2, got %v", cfg.Rules["no-multiple-blanks"].Settings["max"])
-	}
-
-	// Check ignore
-	if len(cfg.Ignore) != 2 {
-		t.Fatalf("expected 2 ignore patterns, got %d", len(cfg.Ignore))
-	}
-	if cfg.Ignore[0] != "vendor/**" {
-		t.Errorf("expected vendor/**, got %s", cfg.Ignore[0])
-	}
-
-	// Check overrides
-	if len(cfg.Overrides) != 2 {
-		t.Fatalf("expected 2 overrides, got %d", len(cfg.Overrides))
-	}
-	if cfg.Overrides[0].Files[0] != "CHANGELOG.md" {
-		t.Errorf("expected CHANGELOG.md, got %s", cfg.Overrides[0].Files[0])
-	}
-	if cfg.Overrides[0].Rules["no-duplicate-headings"].Enabled {
-		t.Error("no-duplicate-headings should be disabled in override")
-	}
-	if !cfg.Overrides[1].Rules["line-length"].Enabled {
-		t.Error("line-length should be enabled in override")
-	}
-	if cfg.Overrides[1].Rules["line-length"].Settings["max"] != 120 {
-		t.Errorf("line-length max in override: expected 120, got %v",
-			cfg.Overrides[1].Rules["line-length"].Settings["max"])
-	}
+	return cfg
 }
 
 func TestRuleCfgBoolFalse(t *testing.T) {

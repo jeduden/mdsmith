@@ -33,74 +33,44 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		level = 1
 	}
 
-	// Empty file
+	missingMsg := fmt.Sprintf("first line should be a level %d heading", level)
+
 	if len(f.Source) == 0 {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     1,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  fmt.Sprintf("first line should be a level %d heading", level),
-		}}
+		return r.diag(f, missingMsg)
 	}
 
-	// Find the first child node of the document
 	firstChild := f.AST.FirstChild()
 	if firstChild == nil {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     1,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  fmt.Sprintf("first line should be a level %d heading", level),
-		}}
+		return r.diag(f, missingMsg)
 	}
 
 	heading, ok := firstChild.(*ast.Heading)
 	if !ok {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     1,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  fmt.Sprintf("first line should be a level %d heading", level),
-		}}
+		return r.diag(f, missingMsg)
 	}
 
-	// Check that the heading is on line 1
-	line := headingLine(heading, f)
-	if line != 1 {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     1,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  fmt.Sprintf("first line should be a level %d heading", level),
-		}}
+	if headingLine(heading, f) != 1 {
+		return r.diag(f, missingMsg)
 	}
 
-	// Check heading level
 	if heading.Level != level {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     1,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  fmt.Sprintf("first heading should be level %d, got %d", level, heading.Level),
-		}}
+		return r.diag(f, fmt.Sprintf("first heading should be level %d, got %d", level, heading.Level))
 	}
 
 	return nil
+}
+
+// diag returns a single-element diagnostic slice for a line-1 issue.
+func (r *Rule) diag(f *lint.File, msg string) []lint.Diagnostic {
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     1,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  msg,
+	}}
 }
 
 // ApplySettings implements rule.Configurable.

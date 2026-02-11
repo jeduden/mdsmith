@@ -90,64 +90,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
-	type headingInfo struct {
-		line     int // 1-based
-		lastLine int // 1-based
-	}
-	var headings []headingInfo
-	codeLines := lint.CollectCodeBlockLines(f)
+	insertBefore, insertAfter := collectHeadingBlankLineInsertions(f)
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		heading, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		line := headingLine(heading, f)
-
-		// Skip headings whose lines overlap with code block regions.
-		if codeLines[line] {
-			return ast.WalkContinue, nil
-		}
-
-		lastLine := headingLastLine(heading, f)
-		headings = append(headings, headingInfo{line: line, lastLine: lastLine})
-		return ast.WalkContinue, nil
-	})
-
-	if len(headings) == 0 {
+	if len(insertBefore) == 0 && len(insertAfter) == 0 {
 		return f.Source
 	}
 
 	lines := make([]string, len(f.Lines))
 	for i, l := range f.Lines {
 		lines[i] = string(l)
-	}
-
-	// Track which lines need blank lines inserted before/after
-	// We'll work with a set of "insert blank before line N" instructions
-	insertBefore := make(map[int]bool) // 1-based line numbers
-	insertAfter := make(map[int]bool)  // 1-based line numbers
-
-	for _, h := range headings {
-		// Check blank line before
-		if h.line > 1 {
-			prevLineIdx := h.line - 2
-			if prevLineIdx >= 0 && prevLineIdx < len(lines) {
-				if strings.TrimSpace(lines[prevLineIdx]) != "" {
-					insertBefore[h.line] = true
-				}
-			}
-		}
-		// Check blank line after
-		nextLineIdx := h.lastLine
-		if nextLineIdx < len(lines) {
-			if strings.TrimSpace(lines[nextLineIdx]) != "" {
-				insertAfter[h.lastLine] = true
-			}
-		}
 	}
 
 	var result []string
@@ -167,6 +118,57 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 
 	return []byte(strings.Join(result, "\n"))
+}
+
+// collectHeadingBlankLineInsertions walks the AST and returns sets of 1-based
+// line numbers that need a blank line inserted before or after them.
+func collectHeadingBlankLineInsertions(f *lint.File) (insertBefore, insertAfter map[int]bool) {
+	insertBefore = make(map[int]bool)
+	insertAfter = make(map[int]bool)
+	codeLines := lint.CollectCodeBlockLines(f)
+
+	type headingInfo struct {
+		line     int
+		lastLine int
+	}
+	var headings []headingInfo
+
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		heading, ok := n.(*ast.Heading)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		line := headingLine(heading, f)
+		if codeLines[line] {
+			return ast.WalkContinue, nil
+		}
+		headings = append(headings, headingInfo{line: line, lastLine: headingLastLine(heading, f)})
+		return ast.WalkContinue, nil
+	})
+
+	lines := f.Lines
+	for _, h := range headings {
+		if h.line > 1 && isNonBlankLine(lines, h.line-2) {
+			insertBefore[h.line] = true
+		}
+		if isNonBlankLine(lines, h.lastLine) {
+			insertAfter[h.lastLine] = true
+		}
+	}
+
+	return insertBefore, insertAfter
+}
+
+// isNonBlankLine returns true if the 0-based index is within bounds and the
+// line is non-blank.
+func isNonBlankLine(lines [][]byte, idx int) bool {
+	if idx < 0 || idx >= len(lines) {
+		return false
+	}
+	return strings.TrimSpace(string(lines[idx])) != ""
 }
 
 func headingLine(heading *ast.Heading, f *lint.File) int {

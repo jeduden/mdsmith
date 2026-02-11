@@ -70,53 +70,68 @@ func ResolveFilesWithOpts(args []string, opts ResolveOpts) ([]string, error) {
 	}
 
 	for _, arg := range args {
-		if hasGlobChars(arg) {
-			// Expand glob pattern.
-			matches, err := filepath.Glob(arg)
-			if err != nil {
-				return nil, fmt.Errorf("invalid glob pattern %q: %w", arg, err)
-			}
-			for _, m := range matches {
-				info, err := os.Stat(m)
-				if err != nil {
-					continue
-				}
-				if info.IsDir() {
-					dirFiles, err := walkDir(m, opts.useGitignore())
-					if err != nil {
-						return nil, err
-					}
-					for _, f := range dirFiles {
-						addFile(f)
-					}
-				} else if isMarkdown(m) {
-					addFile(m)
-				}
-			}
-			continue
-		}
-
-		info, err := os.Stat(arg)
-		if err != nil {
-			return nil, fmt.Errorf("cannot access %q: %w", arg, err)
-		}
-
-		if info.IsDir() {
-			dirFiles, err := walkDir(arg, opts.useGitignore())
-			if err != nil {
-				return nil, err
-			}
-			for _, f := range dirFiles {
-				addFile(f)
-			}
-		} else {
-			// Explicitly named files are never filtered by gitignore.
-			addFile(arg)
+		if err := resolveArg(arg, opts, addFile); err != nil {
+			return nil, err
 		}
 	}
 
 	sort.Strings(result)
 	return result, nil
+}
+
+// resolveArg resolves a single argument (glob, directory, or file) and calls
+// addFile for each markdown file found.
+func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
+	if hasGlobChars(arg) {
+		return resolveGlob(arg, opts, addFile)
+	}
+
+	info, err := os.Stat(arg)
+	if err != nil {
+		return fmt.Errorf("cannot access %q: %w", arg, err)
+	}
+
+	if info.IsDir() {
+		return addDirFiles(arg, opts, addFile)
+	}
+
+	// Explicitly named files are never filtered by gitignore.
+	addFile(arg)
+	return nil
+}
+
+// resolveGlob expands a glob pattern and adds matching markdown files.
+func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
+	}
+	for _, m := range matches {
+		info, err := os.Stat(m)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			if err := addDirFiles(m, opts, addFile); err != nil {
+				return err
+			}
+		} else if isMarkdown(m) {
+			addFile(m)
+		}
+	}
+	return nil
+}
+
+// addDirFiles walks a directory and adds all markdown files found.
+func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
+	dirFiles, err := walkDir(dir, opts.useGitignore())
+	if err != nil {
+		return err
+	}
+	for _, f := range dirFiles {
+		addFile(f)
+	}
+	return nil
 }
 
 // walkDir recursively walks a directory and returns all markdown files.

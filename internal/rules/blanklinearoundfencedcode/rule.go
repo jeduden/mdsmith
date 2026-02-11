@@ -88,12 +88,32 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
-	// Collect fence line numbers (1-based) that need blank lines
-	type blankNeeded struct {
-		beforeLine int // 1-based line that needs a blank line before it
-		afterLine  int // 1-based line that needs a blank line after it
+	insertBeforeLine, insertAfterLine := collectFenceBlankLineInsertions(f)
+
+	if len(insertBeforeLine) == 0 && len(insertAfterLine) == 0 {
+		return f.Source
 	}
-	var needs []blankNeeded
+
+	var result []string
+	for i, line := range f.Lines {
+		lineNum := i + 1
+		if insertBeforeLine[lineNum] {
+			result = append(result, "")
+		}
+		result = append(result, string(line))
+		if insertAfterLine[lineNum] {
+			result = append(result, "")
+		}
+	}
+
+	return []byte(strings.Join(result, "\n"))
+}
+
+// collectFenceBlankLineInsertions walks the AST and returns sets of 1-based line
+// numbers that need a blank line inserted before or after them.
+func collectFenceBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]bool) {
+	beforeSet = make(map[int]bool)
+	afterSet = make(map[int]bool)
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -110,63 +130,34 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		openLine := f.LineOfOffset(openStart)
 		closeLine := f.LineOfOffset(closeStart)
 
-		need := blankNeeded{}
-
-		// Check blank line before opening fence
-		if openLine > 1 {
-			prevLineIdx := openLine - 2
-			if prevLineIdx >= 0 && prevLineIdx < len(f.Lines) {
-				if !isBlank(f.Lines[prevLineIdx]) {
-					need.beforeLine = openLine
-				}
-			}
+		if needsBlankBefore(f, openLine) {
+			beforeSet[openLine] = true
 		}
-
-		// Check blank line after closing fence
-		closeLineIdx := closeLine - 1
-		nextLineIdx := closeLineIdx + 1
-		if nextLineIdx < len(f.Lines) {
-			if !isBlank(f.Lines[nextLineIdx]) {
-				need.afterLine = closeLine
-			}
-		}
-
-		if need.beforeLine > 0 || need.afterLine > 0 {
-			needs = append(needs, need)
+		if needsBlankAfter(f, closeLine) {
+			afterSet[closeLine] = true
 		}
 
 		return ast.WalkContinue, nil
 	})
 
-	if len(needs) == 0 {
-		return f.Source
-	}
+	return beforeSet, afterSet
+}
 
-	// Build sets of lines that need blank lines before/after them
-	insertBeforeLine := make(map[int]bool) // 1-based line numbers
-	insertAfterLine := make(map[int]bool)
-	for _, n := range needs {
-		if n.beforeLine > 0 {
-			insertBeforeLine[n.beforeLine] = true
-		}
-		if n.afterLine > 0 {
-			insertAfterLine[n.afterLine] = true
-		}
+// needsBlankBefore returns true if the line before the given 1-based line
+// exists and is non-blank.
+func needsBlankBefore(f *lint.File, line int) bool {
+	if line <= 1 {
+		return false
 	}
+	prevIdx := line - 2
+	return prevIdx >= 0 && prevIdx < len(f.Lines) && !isBlank(f.Lines[prevIdx])
+}
 
-	var result []string
-	for i, line := range f.Lines {
-		lineNum := i + 1 // 1-based
-		if insertBeforeLine[lineNum] {
-			result = append(result, "")
-		}
-		result = append(result, string(line))
-		if insertAfterLine[lineNum] {
-			result = append(result, "")
-		}
-	}
-
-	return []byte(strings.Join(result, "\n"))
+// needsBlankAfter returns true if the line after the given 1-based line
+// exists and is non-blank.
+func needsBlankAfter(f *lint.File, line int) bool {
+	nextIdx := line // 0-based index of the next line
+	return nextIdx < len(f.Lines) && !isBlank(f.Lines[nextIdx])
 }
 
 func isBlank(line []byte) bool {

@@ -159,49 +159,44 @@ func TestJSONFormatter_MultipleDiagnostics(t *testing.T) {
 		},
 	}
 
-	err := f.Format(&buf, diagnostics)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var result []jsonDiagnostic
-	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
-		t.Fatalf("output is not valid JSON: %v", err)
-	}
+	result := formatAndUnmarshal(t, f, &buf, diagnostics)
 
 	if len(result) != 2 {
 		t.Fatalf("expected 2 elements, got %d", len(result))
 	}
 
-	// Verify first diagnostic
-	if result[0].File != "README.md" {
-		t.Errorf("first file: got %q, want %q", result[0].File, "README.md")
-	}
-	if result[0].Line != 10 {
-		t.Errorf("first line: got %d, want %d", result[0].Line, 10)
-	}
-	if result[0].Rule != "TM001" {
-		t.Errorf("first rule: got %q, want %q", result[0].Rule, "TM001")
-	}
-	if result[0].Severity != "error" {
-		t.Errorf("first severity: got %q, want %q", result[0].Severity, "error")
-	}
+	assertJSONDiag(t, result[0], "README.md", "TM001", "error", "", 10)
+	assertJSONDiag(t, result[1], "docs/guide.md", "TM002", "warning", "first-heading", 3)
+}
 
-	// Verify second diagnostic
-	if result[1].File != "docs/guide.md" {
-		t.Errorf("second file: got %q, want %q", result[1].File, "docs/guide.md")
+func formatAndUnmarshal(t *testing.T, f *JSONFormatter, buf *bytes.Buffer, diags []lint.Diagnostic) []jsonDiagnostic {
+	t.Helper()
+	if err := f.Format(buf, diags); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if result[1].Line != 3 {
-		t.Errorf("second line: got %d, want %d", result[1].Line, 3)
+	var result []jsonDiagnostic
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v", err)
 	}
-	if result[1].Rule != "TM002" {
-		t.Errorf("second rule: got %q, want %q", result[1].Rule, "TM002")
+	return result
+}
+
+func assertJSONDiag(t *testing.T, got jsonDiagnostic, file, ruleID, severity, name string, line int) {
+	t.Helper()
+	if got.File != file {
+		t.Errorf("file: got %q, want %q", got.File, file)
 	}
-	if result[1].Severity != "warning" {
-		t.Errorf("second severity: got %q, want %q", result[1].Severity, "warning")
+	if got.Line != line {
+		t.Errorf("line: got %d, want %d", got.Line, line)
 	}
-	if result[1].Name != "first-heading" {
-		t.Errorf("second name: got %q, want %q", result[1].Name, "first-heading")
+	if got.Rule != ruleID {
+		t.Errorf("rule: got %q, want %q", got.Rule, ruleID)
+	}
+	if got.Severity != severity {
+		t.Errorf("severity: got %q, want %q", got.Severity, severity)
+	}
+	if name != "" && got.Name != name {
+		t.Errorf("name: got %q, want %q", got.Name, name)
 	}
 }
 

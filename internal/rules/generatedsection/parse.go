@@ -29,183 +29,129 @@ type directive struct {
 const startPrefix = "<!-- tidymark:gen:start"
 const endMarker = "<!-- tidymark:gen:end -->"
 
+// makeDiag creates a TM019 error diagnostic at the given line.
+func makeDiag(filePath string, line int, message string) lint.Diagnostic {
+	return lint.Diagnostic{
+		File:     filePath,
+		Line:     line,
+		Column:   1,
+		RuleID:   "TM019",
+		RuleName: "generated-section",
+		Severity: lint.Error,
+		Message:  message,
+	}
+}
+
+// markerScanState tracks state while scanning for marker pairs.
+type markerScanState struct {
+	pairs      []markerPair
+	diags      []lint.Diagnostic
+	current    *markerPair
+	inYAMLBody bool
+}
+
 // findMarkerPairs scans the file for start/end marker pairs, skipping
 // markers inside code blocks or HTML blocks.
 func findMarkerPairs(f *lint.File) ([]markerPair, []lint.Diagnostic) {
 	ignored := collectIgnoredLines(f)
-
-	var pairs []markerPair
-	var diags []lint.Diagnostic
-	var current *markerPair
-	inYAMLBody := false
+	state := &markerScanState{}
 
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if ignored[lineNum] {
 			continue
 		}
-
 		trimmed := strings.TrimSpace(string(line))
-
-		if current != nil && inYAMLBody {
-			// Looking for --> terminator
-			if trimmed == "-->" {
-				current.contentFrom = lineNum + 1
-				inYAMLBody = false
-				continue
-			}
-			current.yamlBody += string(line) + "\n"
-			continue
-		}
-
-		if current != nil && !inYAMLBody {
-			// Looking for end marker
-			if strings.HasPrefix(trimmed, "<!-- tidymark:gen:start") {
-				// Nested start marker
-				diags = append(diags, lint.Diagnostic{
-					File:     f.Path,
-					Line:     lineNum,
-					Column:   1,
-					RuleID:   "TM019",
-					RuleName: "generated-section",
-					Severity: lint.Error,
-					Message:  "nested generated section markers are not allowed",
-				})
-				continue
-			}
-			if trimmed == endMarker {
-				current.endLine = lineNum
-				current.contentTo = lineNum - 1
-				pairs = append(pairs, *current)
-				current = nil
-				continue
-			}
-			continue
-		}
-
-		// Not inside a marker pair
-		if trimmed == endMarker {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     lineNum,
-				Column:   1,
-				RuleID:   "TM019",
-				RuleName: "generated-section",
-				Severity: lint.Error,
-				Message:  "unexpected generated section end marker",
-			})
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, startPrefix) {
-			mp := markerPair{
-				startLine: lineNum,
-				firstLine: trimmed,
-			}
-
-			// Check if --> is on the same line (single-line marker)
-			rest := trimmed[len(startPrefix):]
-			if strings.HasSuffix(rest, "-->") {
-				rest = strings.TrimSuffix(rest, "-->")
-				mp.firstLine = startPrefix + rest
-				mp.contentFrom = lineNum + 1
-				inYAMLBody = false
-			} else {
-				inYAMLBody = true
-			}
-
-			current = &mp
-		}
+		processMarkerLine(f, state, lineNum, string(line), trimmed)
 	}
 
-	if current != nil {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     current.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  "generated section has no closing marker",
-		})
+	if state.current != nil {
+		state.diags = append(state.diags, makeDiag(f.Path, state.current.startLine,
+			"generated section has no closing marker"))
 	}
 
-	return pairs, diags
+	return state.pairs, state.diags
+}
+
+// processMarkerLine processes a single line during marker pair scanning.
+func processMarkerLine(f *lint.File, s *markerScanState, lineNum int, line, trimmed string) {
+	if s.current != nil && s.inYAMLBody {
+		if trimmed == "-->" {
+			s.current.contentFrom = lineNum + 1
+			s.inYAMLBody = false
+			return
+		}
+		s.current.yamlBody += line + "\n"
+		return
+	}
+
+	if s.current != nil {
+		processLineInsidePair(f, s, lineNum, trimmed)
+		return
+	}
+
+	processLineOutsidePair(f, s, lineNum, trimmed)
+}
+
+// processLineInsidePair handles a line that is inside an open marker pair
+// (after the YAML body has been closed).
+func processLineInsidePair(f *lint.File, s *markerScanState, lineNum int, trimmed string) {
+	if strings.HasPrefix(trimmed, startPrefix) {
+		s.diags = append(s.diags, makeDiag(f.Path, lineNum,
+			"nested generated section markers are not allowed"))
+		return
+	}
+	if trimmed == endMarker {
+		s.current.endLine = lineNum
+		s.current.contentTo = lineNum - 1
+		s.pairs = append(s.pairs, *s.current)
+		s.current = nil
+	}
+}
+
+// processLineOutsidePair handles a line that is not inside any marker pair.
+func processLineOutsidePair(f *lint.File, s *markerScanState, lineNum int, trimmed string) {
+	if trimmed == endMarker {
+		s.diags = append(s.diags, makeDiag(f.Path, lineNum,
+			"unexpected generated section end marker"))
+		return
+	}
+
+	if strings.HasPrefix(trimmed, startPrefix) {
+		mp := markerPair{startLine: lineNum, firstLine: trimmed}
+		rest := trimmed[len(startPrefix):]
+		if strings.HasSuffix(rest, "-->") {
+			rest = strings.TrimSuffix(rest, "-->")
+			mp.firstLine = startPrefix + rest
+			mp.contentFrom = lineNum + 1
+		} else {
+			s.inYAMLBody = true
+		}
+		s.current = &mp
+	}
 }
 
 // parseDirective extracts the directive name and YAML parameters from a marker pair.
 func parseDirective(f *lint.File, mp markerPair) (*directive, []lint.Diagnostic) {
-	var diags []lint.Diagnostic
-
 	// Extract directive name from first line.
-	rest := mp.firstLine[len(startPrefix):]
-	rest = strings.TrimSpace(rest)
-
+	rest := strings.TrimSpace(mp.firstLine[len(startPrefix):])
 	if rest == "" {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  "generated section marker missing directive name",
-		})
-		return nil, diags
+		return nil, []lint.Diagnostic{makeDiag(f.Path, mp.startLine,
+			"generated section marker missing directive name")}
 	}
-
-	// Only the first word is the directive name.
 	name := strings.Fields(rest)[0]
 
 	// Parse YAML body.
-	var rawMap map[string]any
-	if mp.yamlBody != "" {
-		if err := yaml.Unmarshal([]byte(mp.yamlBody), &rawMap); err != nil {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     mp.startLine,
-				Column:   1,
-				RuleID:   "TM019",
-				RuleName: "generated-section",
-				Severity: lint.Error,
-				Message:  fmt.Sprintf("generated section has invalid YAML: %v", err),
-			})
-			return nil, diags
-		}
-	}
-
-	if rawMap == nil {
-		rawMap = map[string]any{}
+	rawMap, diags := parseYAMLBody(f.Path, mp)
+	if len(diags) > 0 {
+		return nil, diags
 	}
 
 	// Extract columns config before string validation.
-	var columnsRaw map[string]any
-	if v, ok := rawMap["columns"]; ok {
-		if m, ok := v.(map[string]any); ok {
-			columnsRaw = m
-		}
-		delete(rawMap, "columns")
-	}
+	columnsRaw := extractColumnsRaw(rawMap)
 
 	// Validate all remaining values are strings.
-	params := make(map[string]string)
-	for k, v := range rawMap {
-		s, ok := v.(string)
-		if !ok {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     mp.startLine,
-				Column:   1,
-				RuleID:   "TM019",
-				RuleName: "generated-section",
-				Severity: lint.Error,
-				Message:  fmt.Sprintf("generated section has non-string value for key %q", k),
-			})
-		} else {
-			params[k] = s
-		}
-	}
-
+	params, diags := validateStringParams(f.Path, mp.startLine, rawMap)
 	if len(diags) > 0 {
 		return nil, diags
 	}
@@ -215,6 +161,53 @@ func parseDirective(f *lint.File, mp markerPair) (*directive, []lint.Diagnostic)
 		params:  params,
 		columns: parseColumnConfig(columnsRaw),
 	}, nil
+}
+
+// parseYAMLBody unmarshals the YAML body of a marker pair.
+func parseYAMLBody(filePath string, mp markerPair) (map[string]any, []lint.Diagnostic) {
+	var rawMap map[string]any
+	if mp.yamlBody != "" {
+		if err := yaml.Unmarshal([]byte(mp.yamlBody), &rawMap); err != nil {
+			return nil, []lint.Diagnostic{makeDiag(filePath, mp.startLine,
+				fmt.Sprintf("generated section has invalid YAML: %v", err))}
+		}
+	}
+	if rawMap == nil {
+		rawMap = map[string]any{}
+	}
+	return rawMap, nil
+}
+
+// extractColumnsRaw removes and returns the "columns" key from rawMap.
+func extractColumnsRaw(rawMap map[string]any) map[string]any {
+	v, ok := rawMap["columns"]
+	if !ok {
+		return nil
+	}
+	delete(rawMap, "columns")
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	return nil
+}
+
+// validateStringParams checks that all values in rawMap are strings.
+func validateStringParams(filePath string, line int, rawMap map[string]any) (map[string]string, []lint.Diagnostic) {
+	var diags []lint.Diagnostic
+	params := make(map[string]string)
+	for k, v := range rawMap {
+		s, ok := v.(string)
+		if !ok {
+			diags = append(diags, makeDiag(filePath, line,
+				fmt.Sprintf("generated section has non-string value for key %q", k)))
+		} else {
+			params[k] = s
+		}
+	}
+	if len(diags) > 0 {
+		return nil, diags
+	}
+	return params, nil
 }
 
 // collectIgnoredLines returns a set of 1-based line numbers inside fenced

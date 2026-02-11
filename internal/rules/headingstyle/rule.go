@@ -81,6 +81,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
+type replacement struct {
+	start, end int
+	newText    string
+}
+
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
 	style := r.Style
@@ -91,10 +96,6 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	result := make([]byte, len(f.Source))
 	copy(result, f.Source)
 
-	type replacement struct {
-		start, end int
-		newText    string
-	}
 	var replacements []replacement
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -106,40 +107,13 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			return ast.WalkContinue, nil
 		}
 
-		isATX := isATXHeading(heading, f.Source)
-		hText := headingText(heading, f.Source)
-
-		if style == "atx" && !isATX {
-			// Convert setext to atx
-			start, end := headingByteRange(heading, f.Source)
-			prefix := strings.Repeat("#", heading.Level)
-			replacements = append(replacements, replacement{
-				start:   start,
-				end:     end,
-				newText: prefix + " " + hText,
-			})
-		} else if style == "setext" && isATX && heading.Level <= 2 {
-			// Convert atx to setext
-			start, end := headingByteRange(heading, f.Source)
-			underChar := "="
-			if heading.Level == 2 {
-				underChar = "-"
-			}
-			underline := strings.Repeat(underChar, len(hText))
-			if len(hText) == 0 {
-				underline = strings.Repeat(underChar, 3)
-			}
-			replacements = append(replacements, replacement{
-				start:   start,
-				end:     end,
-				newText: hText + "\n" + underline,
-			})
+		if rep, ok := buildStyleReplacement(heading, f.Source, style); ok {
+			replacements = append(replacements, rep)
 		}
 
 		return ast.WalkContinue, nil
 	})
 
-	// Apply replacements in reverse order to preserve offsets
 	for i := len(replacements) - 1; i >= 0; i-- {
 		rep := replacements[i]
 		before := result[:rep.start]
@@ -150,54 +124,83 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	return result
 }
 
+// buildStyleReplacement returns a replacement to convert a heading to the target
+// style, or false if no conversion is needed.
+func buildStyleReplacement(heading *ast.Heading, source []byte, style string) (replacement, bool) {
+	isATX := isATXHeading(heading, source)
+	hText := headingText(heading, source)
+	start, end := headingByteRange(heading, source)
+
+	if style == "atx" && !isATX {
+		prefix := strings.Repeat("#", heading.Level)
+		return replacement{start: start, end: end, newText: prefix + " " + hText}, true
+	}
+
+	if style == "setext" && isATX && heading.Level <= 2 {
+		underChar := "="
+		if heading.Level == 2 {
+			underChar = "-"
+		}
+		underline := strings.Repeat(underChar, len(hText))
+		if len(hText) == 0 {
+			underline = strings.Repeat(underChar, 3)
+		}
+		return replacement{start: start, end: end, newText: hText + "\n" + underline}, true
+	}
+
+	return replacement{}, false
+}
+
 // isATXHeading checks whether a heading uses ATX style (starts with #).
 func isATXHeading(heading *ast.Heading, source []byte) bool {
 	lines := heading.Lines()
 	if lines.Len() == 0 {
-		// For ATX headings in goldmark, the heading node has no Lines().
-		// We need to find the actual source line via child text nodes.
-		if heading.FirstChild() != nil {
-			var seg text.Segment
-			switch c := heading.FirstChild().(type) {
-			case *ast.Text:
-				seg = c.Segment
-			default:
-				// Walk to find a text node
-				_ = ast.Walk(heading, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-					if entering {
-						if t, ok := n.(*ast.Text); ok {
-							seg = t.Segment
-							return ast.WalkStop, nil
-						}
-					}
-					return ast.WalkContinue, nil
-				})
-			}
-			if seg.Start > 0 || seg.Stop > 0 {
-				// Find the beginning of this line
-				lineStart := seg.Start
-				for lineStart > 0 && source[lineStart-1] != '\n' {
-					lineStart--
-				}
-				if lineStart < len(source) && source[lineStart] == '#' {
-					return true
-				}
-			}
-			return true // default to atx if we can't determine
-		}
-		return true // no lines, no children - assume atx
+		return isATXHeadingNoLines(heading, source)
 	}
 
 	// If Lines() > 0, it could be setext. Check if the source line starts with #.
 	seg := lines.At(0)
-	lineStart := seg.Start
+	return lineStartsWithHash(source, seg.Start)
+}
+
+// isATXHeadingNoLines determines ATX style for headings with no Lines() entries,
+// using child text nodes to locate the source line.
+func isATXHeadingNoLines(heading *ast.Heading, source []byte) bool {
+	if heading.FirstChild() == nil {
+		return true // no lines, no children - assume atx
+	}
+
+	seg := firstTextSegment(heading)
+	if seg.Start == 0 && seg.Stop == 0 {
+		return true // default to atx if we can't determine
+	}
+
+	return lineStartsWithHash(source, seg.Start)
+}
+
+// firstTextSegment finds the text.Segment of the first ast.Text node under n.
+func firstTextSegment(n ast.Node) text.Segment {
+	var seg text.Segment
+	_ = ast.Walk(n, func(child ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			if t, ok := child.(*ast.Text); ok {
+				seg = t.Segment
+				return ast.WalkStop, nil
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return seg
+}
+
+// lineStartsWithHash returns true if the line containing the byte at offset
+// starts with '#'.
+func lineStartsWithHash(source []byte, offset int) bool {
+	lineStart := offset
 	for lineStart > 0 && source[lineStart-1] != '\n' {
 		lineStart--
 	}
-	if lineStart < len(source) && source[lineStart] == '#' {
-		return true
-	}
-	return false
+	return lineStart < len(source) && source[lineStart] == '#'
 }
 
 func headingLine(heading *ast.Heading, f *lint.File) int {

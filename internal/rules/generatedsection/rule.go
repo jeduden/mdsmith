@@ -120,267 +120,118 @@ func (r *Rule) generateContent(f *lint.File, mp markerPair) (string, bool) {
 // validateDirective validates a parsed directive's parameters.
 func (r *Rule) validateDirective(f *lint.File, mp markerPair, dir *directive) []lint.Diagnostic {
 	if dir.name != "catalog" {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  fmt.Sprintf("unknown generated section directive %q", dir.name),
-		}}
+		return []lint.Diagnostic{makeDiag(f.Path, mp.startLine,
+			fmt.Sprintf("unknown generated section directive %q", dir.name))}
 	}
+	return validateCatalogDirective(f.Path, mp.startLine, dir)
+}
 
-	var diags []lint.Diagnostic
-
-	// Check header/footer require row.
+// validateCatalogDirective validates parameters specific to the catalog directive.
+func validateCatalogDirective(filePath string, line int, dir *directive) []lint.Diagnostic {
 	_, hasRow := dir.params["row"]
 	_, hasHeader := dir.params["header"]
 	_, hasFooter := dir.params["footer"]
 
 	if (hasHeader || hasFooter) && !hasRow {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  `generated section template missing required "row" key`,
-		})
-		return diags
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section template missing required "row" key`)}
 	}
-
-	// Check row is not empty.
 	if hasRow && strings.TrimSpace(dir.params["row"]) == "" {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  `generated section directive has empty "row" value`,
-		})
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive has empty "row" value`)}
+	}
+
+	if diags := validateGlob(filePath, line, dir.params); len(diags) > 0 {
 		return diags
 	}
 
-	// Validate glob.
-	glob, hasGlob := dir.params["glob"]
-	if !hasGlob {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  `generated section directive missing required "glob" parameter`,
-		})
-		return diags
-	}
-
-	if glob == "" {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  `generated section directive has empty "glob" parameter`,
-		})
-		return diags
-	}
-
-	if filepath.IsAbs(glob) {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  "generated section directive has absolute glob path",
-		})
-		return diags
-	}
-
-	if containsDotDot(glob) {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  `generated section directive has glob pattern with ".." path traversal`,
-		})
-		return diags
-	}
-
-	if !doublestar.ValidatePattern(glob) {
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  fmt.Sprintf("generated section directive has invalid glob pattern: %s", glob),
-		})
-		return diags
-	}
-
-	// Validate sort.
+	var diags []lint.Diagnostic
 	if sortVal, hasSort := dir.params["sort"]; hasSort {
-		diags = append(diags, validateSort(f, mp, sortVal)...)
+		diags = append(diags, validateSort(filePath, line, sortVal)...)
 	}
-
-	// Validate template syntax.
 	if hasRow {
 		if _, err := parseRowTemplate(dir.params["row"]); err != nil {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     mp.startLine,
-				Column:   1,
-				RuleID:   "TM019",
-				RuleName: "generated-section",
-				Severity: lint.Error,
-				Message:  fmt.Sprintf("generated section has invalid template: %v", err),
-			})
+			diags = append(diags, makeDiag(filePath, line,
+				fmt.Sprintf("generated section has invalid template: %v", err)))
 		}
 	}
-
 	return diags
 }
 
+// validateGlob validates the glob parameter and returns diagnostics on failure.
+func validateGlob(filePath string, line int, params map[string]string) []lint.Diagnostic {
+	glob, hasGlob := params["glob"]
+	if !hasGlob {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive missing required "glob" parameter`)}
+	}
+	if glob == "" {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive has empty "glob" parameter`)}
+	}
+	if filepath.IsAbs(glob) {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			"generated section directive has absolute glob path")}
+	}
+	if containsDotDot(glob) {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive has glob pattern with ".." path traversal`)}
+	}
+	if !doublestar.ValidatePattern(glob) {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("generated section directive has invalid glob pattern: %s", glob))}
+	}
+	return nil
+}
+
 // validateSort validates the sort value and returns diagnostics.
-func validateSort(f *lint.File, mp markerPair, sortVal string) []lint.Diagnostic {
+func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 	if sortVal == "" {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  `generated section directive has empty "sort" value`,
-		}}
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive has empty "sort" value`)}
 	}
-
 	key := strings.TrimPrefix(sortVal, "-")
-
-	if key == "" {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  fmt.Sprintf("generated section directive has invalid sort value %q", sortVal),
-		}}
+	if key == "" || strings.ContainsAny(key, " \t") {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("generated section directive has invalid sort value %q", sortVal))}
 	}
-
-	if strings.ContainsAny(key, " \t") {
-		return []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  fmt.Sprintf("generated section directive has invalid sort value %q", sortVal),
-		}}
-	}
-
 	return nil
 }
 
 // resolveCatalogWithDiags generates content and returns diagnostics on failure.
 func (r *Rule) resolveCatalogWithDiags(f *lint.File, mp markerPair, dir *directive) (string, []lint.Diagnostic) {
-	glob := dir.params["glob"]
+	entries := buildCatalogEntries(f, dir)
 
-	matches, err := doublestar.Glob(f.FS, glob)
-	if err != nil {
-		return "", nil
-	}
-
-	// Filter out directories and unreadable files.
-	var files []string
-	for _, m := range matches {
-		info, err := fs.Stat(f.FS, m)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		files = append(files, m)
-	}
-
-	// Determine sort key.
-	sortKey, descending := parseSort(dir.params)
-
-	// Determine if we need front matter.
 	_, hasRow := dir.params["row"]
-	needFM := hasRow || (sortKey != "path" && sortKey != "filename")
-
-	// Build file entries.
-	entries := make([]fileEntry, 0, len(files))
-	for _, path := range files {
-		fields := map[string]string{
-			"filename": path,
-		}
-
-		if needFM {
-			fm := readFrontMatter(f.FS, path)
-			for k, v := range fm {
-				fields[k] = v
-			}
-		}
-
-		entries = append(entries, fileEntry{fields: fields})
-	}
-
-	// Sort entries.
-	sortEntries(entries, sortKey, descending)
-
-	// Render.
-	if len(entries) == 0 {
-		empty := renderEmpty(dir.params)
-		return empty, nil
-	}
-
-	if !hasRow {
-		return renderMinimal(entries), nil
-	}
-
-	content, err := renderTemplate(dir.params, entries, dir.columns)
+	content, err := renderCatalogContent(dir, entries, hasRow)
 	if err != nil {
-		return "", []lint.Diagnostic{{
-			File:     f.Path,
-			Line:     mp.startLine,
-			Column:   1,
-			RuleID:   "TM019",
-			RuleName: "generated-section",
-			Severity: lint.Error,
-			Message:  fmt.Sprintf("generated section template execution failed: %v", err),
-		}}
+		return "", []lint.Diagnostic{makeDiag(f.Path, mp.startLine,
+			fmt.Sprintf("generated section template execution failed: %v", err))}
 	}
-
 	return content, nil
 }
 
 // resolveCatalog generates content for the catalog directive.
 // Returns the content and true, or empty and false on error.
 func (r *Rule) resolveCatalog(f *lint.File, dir *directive) (string, bool) {
-	glob := dir.params["glob"]
+	entries := buildCatalogEntries(f, dir)
 
-	matches, err := doublestar.Glob(f.FS, glob)
+	_, hasRow := dir.params["row"]
+	content, err := renderCatalogContent(dir, entries, hasRow)
 	if err != nil {
 		return "", false
 	}
+	return content, true
+}
 
-	// Filter out directories and unreadable files.
+// buildCatalogEntries resolves glob matches, reads front matter, and
+// returns sorted file entries for the catalog directive.
+func buildCatalogEntries(f *lint.File, dir *directive) []fileEntry {
+	matches, err := doublestar.Glob(f.FS, dir.params["glob"])
+	if err != nil {
+		return nil
+	}
+
 	var files []string
 	for _, m := range matches {
 		info, err := fs.Stat(f.FS, m)
@@ -390,49 +241,34 @@ func (r *Rule) resolveCatalog(f *lint.File, dir *directive) (string, bool) {
 		files = append(files, m)
 	}
 
-	// Determine sort key.
 	sortKey, descending := parseSort(dir.params)
-
-	// Determine if we need front matter.
 	_, hasRow := dir.params["row"]
 	needFM := hasRow || (sortKey != "path" && sortKey != "filename")
 
-	// Build file entries.
 	entries := make([]fileEntry, 0, len(files))
 	for _, path := range files {
-		fields := map[string]string{
-			"filename": path,
-		}
-
+		fields := map[string]string{"filename": path}
 		if needFM {
-			fm := readFrontMatter(f.FS, path)
-			for k, v := range fm {
+			for k, v := range readFrontMatter(f.FS, path) {
 				fields[k] = v
 			}
 		}
-
 		entries = append(entries, fileEntry{fields: fields})
 	}
 
-	// Sort entries.
 	sortEntries(entries, sortKey, descending)
+	return entries
+}
 
-	// Render.
+// renderCatalogContent renders catalog entries into the final content string.
+func renderCatalogContent(dir *directive, entries []fileEntry, hasRow bool) (string, error) {
 	if len(entries) == 0 {
-		empty := renderEmpty(dir.params)
-		return empty, true
+		return renderEmpty(dir.params), nil
 	}
-
 	if !hasRow {
-		return renderMinimal(entries), true
+		return renderMinimal(entries), nil
 	}
-
-	content, err := renderTemplate(dir.params, entries, dir.columns)
-	if err != nil {
-		return "", false
-	}
-
-	return content, true
+	return renderTemplate(dir.params, entries, dir.columns)
 }
 
 // parseSort parses the sort value from params, returning the key and direction.

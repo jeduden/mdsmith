@@ -242,6 +242,38 @@ func TestRunner_OverrideDisablesRuleForFile(t *testing.T) {
 }
 
 func TestRunner_DiagnosticsSortedByFileLineColumn(t *testing.T) {
+	fileA, fileB, runner := setupSortingTest(t)
+
+	// Pass files in reverse order to ensure sorting works.
+	result := runner.Run([]string{fileB, fileA})
+
+	if len(result.Diagnostics) != 5 {
+		t.Fatalf("expected 5 diagnostics, got %d", len(result.Diagnostics))
+	}
+
+	// Expected order: a.md:1:1, a.md:2:1, b.md:1:1, b.md:1:5, b.md:3:1
+	expected := []struct {
+		file, message string
+		line, column  int
+	}{
+		{fileA, "a1", 1, 1},
+		{fileA, "a2", 2, 1},
+		{fileB, "b1c1", 1, 1},
+		{fileB, "b1c5", 1, 5},
+		{fileB, "b3", 3, 1},
+	}
+
+	for i, exp := range expected {
+		d := result.Diagnostics[i]
+		if d.File != exp.file || d.Line != exp.line || d.Column != exp.column {
+			t.Errorf("diagnostic[%d]: expected %s:%d:%d, got %s:%d:%d",
+				i, exp.file, exp.line, exp.column, d.File, d.Line, d.Column)
+		}
+	}
+}
+
+func setupSortingTest(t *testing.T) (string, string, *Runner) {
+	t.Helper()
 	dir := t.TempDir()
 	fileA := filepath.Join(dir, "a.md")
 	fileB := filepath.Join(dir, "b.md")
@@ -268,45 +300,15 @@ func TestRunner_DiagnosticsSortedByFileLineColumn(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{
-		Rules: map[string]config.RuleCfg{
-			"multi-diag": {Enabled: true},
-		},
-	}
-
 	runner := &Runner{
-		Config: cfg,
-		Rules:  []rule.Rule{mr},
+		Config: &config.Config{
+			Rules: map[string]config.RuleCfg{
+				"multi-diag": {Enabled: true},
+			},
+		},
+		Rules: []rule.Rule{mr},
 	}
-
-	// Pass files in reverse order to ensure sorting works.
-	result := runner.Run([]string{fileB, fileA})
-
-	if len(result.Diagnostics) != 5 {
-		t.Fatalf("expected 5 diagnostics, got %d", len(result.Diagnostics))
-	}
-
-	// Expected order: a.md:1:1, a.md:2:1, b.md:1:1, b.md:1:5, b.md:3:1
-	expected := []struct {
-		file    string
-		line    int
-		column  int
-		message string
-	}{
-		{fileA, 1, 1, "a1"},
-		{fileA, 2, 1, "a2"},
-		{fileB, 1, 1, "b1c1"},
-		{fileB, 1, 5, "b1c5"},
-		{fileB, 3, 1, "b3"},
-	}
-
-	for i, exp := range expected {
-		d := result.Diagnostics[i]
-		if d.File != exp.file || d.Line != exp.line || d.Column != exp.column {
-			t.Errorf("diagnostic[%d]: expected %s:%d:%d, got %s:%d:%d",
-				i, exp.file, exp.line, exp.column, d.File, d.Line, d.Column)
-		}
-	}
+	return fileA, fileB, runner
 }
 
 // multiDiagRuleImpl returns pre-configured diagnostics based on the file path.
