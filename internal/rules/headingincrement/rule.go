@@ -62,7 +62,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
-				Message:  fmt.Sprintf("heading level incremented from %d to %d (expected %d)", prevLevel, level, prevLevel+1),
+				Message: fmt.Sprintf("heading level incremented from %d to %d (expected %d)",
+					prevLevel, level, prevLevel+1),
 			})
 		}
 

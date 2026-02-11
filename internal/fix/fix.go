@@ -116,7 +116,9 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, string, []error) {
 }
 
 // applyFixPasses repeatedly applies fixable rules until the content stabilizes.
-func (f *Fixer) applyFixPasses(path string, source []byte, fixable []rule.FixableRule, dirFS fs.FS, errs *[]error) []byte {
+func (f *Fixer) applyFixPasses(
+	path string, source []byte, fixable []rule.FixableRule, dirFS fs.FS, errs *[]error,
+) []byte {
 	const maxPasses = 10
 	current := source
 	for pass := 0; pass < maxPasses; pass++ {

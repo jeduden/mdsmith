@@ -724,7 +724,9 @@ func TestEdge_MarkersInsideFencedCodeBlock(t *testing.T) {
 
 func TestEdge_MarkersInsideIndentedCodeBlock(t *testing.T) {
 	// Indented code blocks (4-space indent) should also ignore markers.
-	src := "Paragraph before.\n\n    <!-- tidymark:gen:start catalog\n    glob: \"*.md\"\n    -->\n    <!-- tidymark:gen:end -->\n\nParagraph after.\n"
+	src := "Paragraph before.\n\n" +
+		"    <!-- tidymark:gen:start catalog\n    glob: \"*.md\"\n    -->\n" +
+		"    <!-- tidymark:gen:end -->\n\nParagraph after.\n"
 	mapFS := fstest.MapFS{}
 	f := newTestFile(t, "index.md", src, mapFS)
 	r := &Rule{}
@@ -1166,8 +1168,9 @@ func runDiagScenarios(t *testing.T, tests []diagScenario) {
 func TestCheck_StructuralErrors(t *testing.T) {
 	runDiagScenarios(t, []diagScenario{
 		{
-			name:      "valid pair no errors",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
+			name: "valid pair no errors",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{"a.md": {Data: []byte("# A\n")}},
 			wantCount: 0,
 		},
@@ -1186,8 +1189,9 @@ func TestCheck_StructuralErrors(t *testing.T) {
 			wantMsg:   "unexpected generated section end marker",
 		},
 		{
-			name:      "stale section",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
+			name: "stale section",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{"a.md": {Data: []byte("# A\n")}, "b.md": {Data: []byte("# B\n")}},
 			wantCount: 1,
 			wantMsg:   "generated section is out of date",
@@ -1285,29 +1289,33 @@ func TestCheck_TemplateErrors(t *testing.T) {
 			wantMsg:   `empty "row" value`,
 		},
 		{
-			name:      "header without row",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nheader: \"| T |\"\n-->\n<!-- tidymark:gen:end -->\n",
+			name: "header without row",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"header: \"| T |\"\n-->\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
 			wantMsg:   `missing required "row" key`,
 		},
 		{
-			name:      "footer without row",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nfooter: \"---\"\n-->\n<!-- tidymark:gen:end -->\n",
+			name: "footer without row",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"footer: \"---\"\n-->\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
 			wantMsg:   `missing required "row" key`,
 		},
 		{
-			name:      "header and footer without row",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nheader: \"| Title |\"\nfooter: \"---\"\n-->\n<!-- tidymark:gen:end -->\n",
+			name: "header and footer without row",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"header: \"| Title |\"\nfooter: \"---\"\n-->\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
 			wantMsg:   `missing required "row" key`,
 		},
 		{
-			name:      "invalid template syntax",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nrow: \"{{.title\"\n-->\n<!-- tidymark:gen:end -->\n",
+			name: "invalid template syntax",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"row: \"{{.title\"\n-->\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
 			wantMsg:   "invalid template",
@@ -1332,15 +1340,17 @@ func TestCheck_SortErrors(t *testing.T) {
 			wantMsg:   "invalid sort value",
 		},
 		{
-			name:      "sort with whitespace",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: \"foo bar\"\n-->\n<!-- tidymark:gen:end -->\n",
+			name: "sort with whitespace",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"sort: \"foo bar\"\n-->\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
 			wantMsg:   "invalid sort value",
 		},
 		{
-			name:      "sort with tab",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: \"foo\tbar\"\n-->\n<!-- tidymark:gen:end -->\n",
+			name: "sort with tab",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"sort: \"foo\tbar\"\n-->\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
 			wantMsg:   "invalid sort value",
@@ -1355,14 +1365,16 @@ func TestCheck_SortErrors(t *testing.T) {
 func TestCheck_ContentGeneration_MinimalMode(t *testing.T) {
 	runDiagScenarios(t, []diagScenario{
 		{
-			name:      "up to date",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n- [hello.md](hello.md)\n<!-- tidymark:gen:end -->\n",
+			name: "up to date",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"- [hello.md](hello.md)\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{"hello.md": {Data: []byte("# Hello\n")}},
 			wantCount: 0,
 		},
 		{
-			name:      "stale",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n- [old.md](old.md)\n<!-- tidymark:gen:end -->\n",
+			name: "stale",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"- [old.md](old.md)\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{"new.md": {Data: []byte("# New\n")}},
 			wantCount: 1,
 		},
@@ -1372,14 +1384,18 @@ func TestCheck_ContentGeneration_MinimalMode(t *testing.T) {
 func TestCheck_ContentGeneration_TemplateAndEmpty(t *testing.T) {
 	runDiagScenarios(t, []diagScenario{
 		{
-			name:      "template mode with front matter up to date",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n- [My Title](a.md)\n<!-- tidymark:gen:end -->\n",
+			name: "template mode with front matter up to date",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"row: \"- [{{.title}}]({{.filename}})\"\n-->\n" +
+				"- [My Title](a.md)\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{"a.md": {Data: []byte("---\ntitle: My Title\n---\n# A\n")}},
 			wantCount: 0,
 		},
 		{
-			name:      "empty fallback up to date",
-			src:       "<!-- tidymark:gen:start catalog\nglob: \"nonexistent/*.md\"\nempty: No files found.\n-->\nNo files found.\n<!-- tidymark:gen:end -->\n",
+			name: "empty fallback up to date",
+			src: "<!-- tidymark:gen:start catalog\n" +
+				"glob: \"nonexistent/*.md\"\nempty: No files found.\n-->\n" +
+				"No files found.\n<!-- tidymark:gen:end -->\n",
 			fs:        fstest.MapFS{},
 			wantCount: 0,
 		},
@@ -1485,17 +1501,20 @@ func TestSort_PathAndFilename(t *testing.T) {
 	runSortScenarios(t, []sortScenario{
 		{
 			name: "path ascending (default)",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n- [a.md](a.md)\n- [b.md](b.md)\n- [c.md](c.md)\n<!-- tidymark:gen:end -->\n",
-			fs:   threeFiles,
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"- [a.md](a.md)\n- [b.md](b.md)\n- [c.md](c.md)\n<!-- tidymark:gen:end -->\n",
+			fs: threeFiles,
 		},
 		{
 			name: "path descending",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: -path\n-->\n- [c.md](c.md)\n- [b.md](b.md)\n- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
-			fs:   threeFiles,
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: -path\n-->\n" +
+				"- [c.md](c.md)\n- [b.md](b.md)\n- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
+			fs: threeFiles,
 		},
 		{
 			name: "by filename (basename)",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"**/*.md\"\nsort: filename\n-->\n- [apple.md](z/apple.md)\n- [banana.md](a/banana.md)\n<!-- tidymark:gen:end -->\n",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"**/*.md\"\nsort: filename\n-->\n" +
+				"- [apple.md](z/apple.md)\n- [banana.md](a/banana.md)\n<!-- tidymark:gen:end -->\n",
 			fs: fstest.MapFS{
 				"a/banana.md": {Data: []byte("# Banana\n")},
 				"z/apple.md":  {Data: []byte("# Apple\n")},
@@ -1503,7 +1522,8 @@ func TestSort_PathAndFilename(t *testing.T) {
 		},
 		{
 			name: "filename descending",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"**/*.md\"\nsort: -filename\n-->\n- [beta.md](a/beta.md)\n- [alpha.md](z/alpha.md)\n<!-- tidymark:gen:end -->\n",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"**/*.md\"\nsort: -filename\n-->\n" +
+				"- [beta.md](a/beta.md)\n- [alpha.md](z/alpha.md)\n<!-- tidymark:gen:end -->\n",
 			fs: fstest.MapFS{
 				"z/alpha.md": {Data: []byte("# Alpha\n")},
 				"a/beta.md":  {Data: []byte("# Beta\n")},
@@ -1511,7 +1531,8 @@ func TestSort_PathAndFilename(t *testing.T) {
 		},
 		{
 			name: "case-insensitive path sort",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n- [AAA.md](AAA.md)\n- [bbb.md](bbb.md)\n<!-- tidymark:gen:end -->\n",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"- [AAA.md](AAA.md)\n- [bbb.md](bbb.md)\n<!-- tidymark:gen:end -->\n",
 			fs: fstest.MapFS{
 				"bbb.md": {Data: []byte("# B\n")},
 				"AAA.md": {Data: []byte("# A\n")},
@@ -1528,18 +1549,23 @@ func TestSort_FrontMatterKey(t *testing.T) {
 	runSortScenarios(t, []sortScenario{
 		{
 			name: "title ascending",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n- [Alpha](b.md)\n- [Zulu](a.md)\n<!-- tidymark:gen:end -->\n",
-			fs:   twoFiles,
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"sort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n" +
+				"- [Alpha](b.md)\n- [Zulu](a.md)\n<!-- tidymark:gen:end -->\n",
+			fs: twoFiles,
 		},
 		{
 			name: "title descending",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: -title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n- [Zulu](a.md)\n- [Alpha](b.md)\n<!-- tidymark:gen:end -->\n",
-			fs:   twoFiles,
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"sort: -title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n" +
+				"- [Zulu](a.md)\n- [Alpha](b.md)\n<!-- tidymark:gen:end -->\n",
+			fs: twoFiles,
 		},
 		{
 			name: "front matter key in minimal mode",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: title\n-->\n- [b.md](b.md)\n- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
-			fs:   twoFiles,
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: title\n-->\n" +
+				"- [b.md](b.md)\n- [a.md](a.md)\n<!-- tidymark:gen:end -->\n",
+			fs: twoFiles,
 		},
 	})
 }
@@ -1548,7 +1574,9 @@ func TestSort_TiebreakerAndCaseInsensitive(t *testing.T) {
 	runSortScenarios(t, []sortScenario{
 		{
 			name: "tiebreaker when values equal",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n- [Same](a.md)\n- [Same](b.md)\n<!-- tidymark:gen:end -->\n",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"sort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n" +
+				"- [Same](a.md)\n- [Same](b.md)\n<!-- tidymark:gen:end -->\n",
 			fs: fstest.MapFS{
 				"a.md": {Data: []byte("---\ntitle: Same\n---\n")},
 				"b.md": {Data: []byte("---\ntitle: Same\n---\n")},
@@ -1556,7 +1584,9 @@ func TestSort_TiebreakerAndCaseInsensitive(t *testing.T) {
 		},
 		{
 			name: "case-insensitive title",
-			src:  "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\nsort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n- [alpha](a.md)\n- [Beta](b.md)\n<!-- tidymark:gen:end -->\n",
+			src: "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n" +
+				"sort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n-->\n" +
+				"- [alpha](a.md)\n- [Beta](b.md)\n<!-- tidymark:gen:end -->\n",
 			fs: fstest.MapFS{
 				"a.md": {Data: []byte("---\ntitle: alpha\n---\n")},
 				"b.md": {Data: []byte("---\ntitle: Beta\n---\n")},
@@ -2152,8 +2182,10 @@ empty: No rules defined yet.
 Some trailing text.
 `
 	mapFS := fstest.MapFS{
-		"rules/tm002/README.md": {Data: []byte("---\ntitle: Line Length\ndescription: Checks line length\n---\n# Rule\n")},
-		"rules/tm001/README.md": {Data: []byte("---\ntitle: First Heading\ndescription: Checks headings\n---\n# Rule\n")},
+		"rules/tm002/README.md": {Data: []byte(
+			"---\ntitle: Line Length\ndescription: Checks line length\n---\n# Rule\n")},
+		"rules/tm001/README.md": {Data: []byte(
+			"---\ntitle: First Heading\ndescription: Checks headings\n---\n# Rule\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
 	r := &Rule{}
@@ -2201,7 +2233,8 @@ old content
 	r := &Rule{}
 	result := r.Fix(f)
 	if string(result) != src {
-		t.Errorf("Fix should leave template-execution-error section unchanged.\nExpected:\n%s\nGot:\n%s", src, string(result))
+		t.Errorf("Fix should leave template-execution-error section unchanged.\n"+
+			"Expected:\n%s\nGot:\n%s", src, string(result))
 	}
 }
 
@@ -2399,27 +2432,75 @@ func assertDiagOnLine(t *testing.T, diags []lint.Diagnostic, wantMsg string, wan
 	t.Errorf("expected diagnostic with message containing %q", wantMsg)
 }
 
-func TestSpec_DiagnosticLineNumbers(t *testing.T) {
-	twoFiles := fstest.MapFS{
-		"a.md": {Data: []byte("# A\n")},
-		"b.md": {Data: []byte("# B\n")},
-	}
-	tests := []struct {
+func diagLineNumberCases() []struct {
+	name     string
+	src      string
+	wantLine int
+	wantMsg  string
+} {
+	return []struct {
 		name     string
 		src      string
 		wantLine int
 		wantMsg  string
 	}{
-		{"stale section on start marker line", "prefix\n<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\nold\n<!-- tidymark:gen:end -->\n", 2, "out of date"},
-		{"unclosed on start marker line", "prefix\n<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\ncontent\n", 2, "no closing marker"},
-		{"orphaned on end marker line", "prefix\ntext\n<!-- tidymark:gen:end -->\n", 3, "unexpected generated section end marker"},
-		{"missing directive on start marker line", "prefix\n<!-- tidymark:gen:start\n-->\n<!-- tidymark:gen:end -->\n", 2, "missing directive name"},
-		{"unknown directive on start marker line", "prefix\n<!-- tidymark:gen:start foobar\nglob: \"*.md\"\n-->\n<!-- tidymark:gen:end -->\n", 2, "unknown generated section directive"},
-		{"missing glob on start marker line", "prefix\n<!-- tidymark:gen:start catalog\nsort: path\n-->\n<!-- tidymark:gen:end -->\n", 2, `missing required "glob" parameter`},
-		{"invalid YAML on start marker line", "prefix\n<!-- tidymark:gen:start catalog\n: [invalid\n-->\n<!-- tidymark:gen:end -->\n", 2, "invalid YAML"},
-		{"nested on nested start line", "<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\nprefix\n<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n<!-- tidymark:gen:end -->\n", 5, "nested generated section markers"},
+		{
+			"stale section on start marker line",
+			"prefix\n<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"old\n<!-- tidymark:gen:end -->\n",
+			2, "out of date",
+		},
+		{
+			"unclosed on start marker line",
+			"prefix\n<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"content\n",
+			2, "no closing marker",
+		},
+		{
+			"orphaned on end marker line",
+			"prefix\ntext\n<!-- tidymark:gen:end -->\n",
+			3, "unexpected generated section end marker",
+		},
+		{
+			"missing directive on start marker line",
+			"prefix\n<!-- tidymark:gen:start\n-->\n" +
+				"<!-- tidymark:gen:end -->\n",
+			2, "missing directive name",
+		},
+		{
+			"unknown directive on start marker line",
+			"prefix\n<!-- tidymark:gen:start foobar\nglob: \"*.md\"\n-->\n" +
+				"<!-- tidymark:gen:end -->\n",
+			2, "unknown generated section directive",
+		},
+		{
+			"missing glob on start marker line",
+			"prefix\n<!-- tidymark:gen:start catalog\nsort: path\n-->\n" +
+				"<!-- tidymark:gen:end -->\n",
+			2, `missing required "glob" parameter`,
+		},
+		{
+			"invalid YAML on start marker line",
+			"prefix\n<!-- tidymark:gen:start catalog\n: [invalid\n-->\n" +
+				"<!-- tidymark:gen:end -->\n",
+			2, "invalid YAML",
+		},
+		{
+			"nested on nested start line",
+			"<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"prefix\n<!-- tidymark:gen:start catalog\nglob: \"*.md\"\n-->\n" +
+				"<!-- tidymark:gen:end -->\n",
+			5, "nested generated section markers",
+		},
 	}
-	for _, tc := range tests {
+}
+
+func TestSpec_DiagnosticLineNumbers(t *testing.T) {
+	twoFiles := fstest.MapFS{
+		"a.md": {Data: []byte("# A\n")},
+		"b.md": {Data: []byte("# B\n")},
+	}
+	for _, tc := range diagLineNumberCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newTestFile(t, "index.md", tc.src, twoFiles)
 			r := &Rule{}

@@ -289,13 +289,18 @@ func setupSortingTest(t *testing.T) (string, string, *Runner) {
 		name: "multi-diag",
 		diags: map[string][]lint.Diagnostic{
 			fileB: {
-				{File: fileB, Line: 3, Column: 1, RuleID: "TM997", RuleName: "multi-diag", Severity: lint.Warning, Message: "b3"},
-				{File: fileB, Line: 1, Column: 5, RuleID: "TM997", RuleName: "multi-diag", Severity: lint.Warning, Message: "b1c5"},
-				{File: fileB, Line: 1, Column: 1, RuleID: "TM997", RuleName: "multi-diag", Severity: lint.Warning, Message: "b1c1"},
+				{File: fileB, Line: 3, Column: 1, RuleID: "TM997",
+					RuleName: "multi-diag", Severity: lint.Warning, Message: "b3"},
+				{File: fileB, Line: 1, Column: 5, RuleID: "TM997",
+					RuleName: "multi-diag", Severity: lint.Warning, Message: "b1c5"},
+				{File: fileB, Line: 1, Column: 1, RuleID: "TM997",
+					RuleName: "multi-diag", Severity: lint.Warning, Message: "b1c1"},
 			},
 			fileA: {
-				{File: fileA, Line: 2, Column: 1, RuleID: "TM997", RuleName: "multi-diag", Severity: lint.Warning, Message: "a2"},
-				{File: fileA, Line: 1, Column: 1, RuleID: "TM997", RuleName: "multi-diag", Severity: lint.Warning, Message: "a1"},
+				{File: fileA, Line: 2, Column: 1, RuleID: "TM997",
+					RuleName: "multi-diag", Severity: lint.Warning, Message: "a2"},
+				{File: fileA, Line: 1, Column: 1, RuleID: "TM997",
+					RuleName: "multi-diag", Severity: lint.Warning, Message: "a1"},
 			},
 		},
 	}

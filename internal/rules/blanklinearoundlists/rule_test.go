@@ -117,7 +117,8 @@ func TestCheck_ListAfterHeading(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected diagnostic about missing blank before list after heading, got %d diags: %+v", len(diags), diags)
+		t.Errorf("expected diagnostic about missing blank before list after heading, got %d diags: %+v",
+			len(diags), diags)
 	}
 }
 

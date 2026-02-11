@@ -10,8 +10,12 @@ linters:
     - unused
     - ineffassign
     - misspell
+    - lll
     - revive
   settings:
+    lll:
+      line-length: 120
+      tab-width: 4
     funlen:
       lines: 60
       statements: 40
