@@ -33,5 +33,6 @@ rules:
 
 ignore:
   - "internal/**"
+  - "rules/*/bad/**"
   - "rules/*/bad.md"
 
