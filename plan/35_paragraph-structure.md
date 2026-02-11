@@ -2,27 +2,29 @@
 
 ## Goal
 
-Implement TM024 `paragraph-structure` that enforces structural
-limits on markdown paragraphs: maximum sentences per paragraph
-and maximum words per sentence, encouraging concise writing.
+Implement TM024 `paragraph-structure` that enforces
+structural limits on markdown paragraphs: maximum sentences
+per paragraph and maximum words per sentence, encouraging
+concise writing. Reuses `internal/mdtext/` from Plan 34.
 
 ## Tasks
 
-### A. Sentence detection
+### A. Sentence splitting dependency
 
-1. Create `internal/rules/paragraphstructure/sentences.go`
-   with a sentence splitter:
+1. Run `go get github.com/neurosnap/sentences` to add the
+   Punkt sentence tokenizer. It has zero transitive
+   dependencies and handles abbreviations, decimals, and
+   ellipses via a trained language model.
 
-  - Split on `.`, `!`, `?` followed by whitespace or
-     end of text
-  - Handle abbreviations (e.g., `e.g.`, `i.e.`, `Dr.`,
-     `Mr.`, `vs.`) -- do not split on these
-  - Handle ellipsis (`...`) -- single sentence boundary
-  - Handle decimal numbers (`3.14`) -- not a boundary
+2. Add `SplitSentences(text string) []string` to
+   `internal/mdtext/` as a thin wrapper around
+   `neurosnap/sentences`:
 
-2. Create `countWords(sentence string) int` that counts
-   whitespace-separated tokens after stripping markdown
-   inline syntax.
+  - Load the English training data once (package-level
+     `sync.Once`)
+  - Tokenize the input text
+  - Return the text of each sentence, filtering empty
+     entries
 
 ### B. Rule implementation
 
@@ -38,12 +40,12 @@ and maximum words per sentence, encouraging concise writing.
 4. Check logic: walk AST for `*ast.Paragraph` nodes.
    For each paragraph:
 
-  - Extract plain text (reuse or share the helper from
-     TM023 if available)
-  - Split into sentences
+  - Extract plain text via `mdtext.ExtractPlainText`
+  - Split into sentences via `mdtext.SplitSentences`
   - If sentence count exceeds `max-sentences`:
      `paragraph has too many sentences (8 > 6)`
-  - For each sentence exceeding `max-words`:
+  - For each sentence exceeding `max-words` (using
+     `mdtext.CountWords`):
      `sentence too long (45 > 40 words)`
   - Diagnostics on the paragraph's first line
 
@@ -62,10 +64,10 @@ and maximum words per sentence, encouraging concise writing.
 
 ### D. Tests
 
-8. Unit tests for sentence splitter:
+8. Unit tests for `mdtext.SplitSentences`:
 
   - Simple sentences with `.`, `!`, `?`
-  - Abbreviations not split
+  - Abbreviations not split (`e.g.`, `Dr.`)
   - Ellipsis handled
   - Decimal numbers not split
   - Empty input
@@ -83,9 +85,12 @@ and maximum words per sentence, encouraging concise writing.
 
 ## Acceptance Criteria
 
-- [ ] Sentence splitter handles abbreviations and decimals
+- [ ] `neurosnap/sentences` added as dependency
+- [ ] `mdtext.SplitSentences` wraps Punkt tokenizer
 - [ ] `max-sentences` enforced per paragraph, default 6
 - [ ] `max-words` enforced per sentence, default 40
+- [ ] Uses `mdtext.ExtractPlainText` and `mdtext.CountWords`
+      from Plan 34
 - [ ] Diagnostics include counts
 - [ ] Rule README with examples
 - [ ] All tests pass: `go test ./...`
