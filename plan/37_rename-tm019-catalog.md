@@ -1,3 +1,8 @@
+---
+id: 37
+title: Rename TM019 generated-section to catalog
+status: ✅
+---
 # Rename TM019 generated-section to catalog
 
 ## Goal

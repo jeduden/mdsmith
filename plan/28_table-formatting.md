@@ -1,3 +1,8 @@
+---
+id: 28
+title: Table Formatting Rule
+status: 🔲
+---
 # Table Formatting Rule
 
 ## Goal

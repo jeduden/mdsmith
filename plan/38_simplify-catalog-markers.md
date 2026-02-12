@@ -1,3 +1,8 @@
+---
+id: 38
+title: Simplify catalog marker syntax
+status: ✅
+---
 # Simplify catalog marker syntax
 
 ## Goal

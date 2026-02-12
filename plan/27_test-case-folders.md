@@ -1,3 +1,8 @@
+---
+id: 27
+title: Test Case Folders with Settings Metadata
+status: ✅
+---
 # Test Case Folders with Settings Metadata
 
 ## Goal

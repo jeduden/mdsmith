@@ -128,7 +128,8 @@ pre-commit:
 
 ## Plans
 
-Task plans live in [`plan/`](plan/). Use [`plan/proto.md`](plan/proto.md)
+Task plans live in [`plan/`](plan/). See [`plan/PLAN.md`](plan/PLAN.md)
+for the current status of all plans. Use [`plan/proto.md`](plan/proto.md)
 as a template when creating new plans.
 
 Each plan has acceptance criteria with behavioral tests. Work test-driven: write

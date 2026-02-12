@@ -1,14 +1,20 @@
+---
+id: NN
+title: Task Title
+status: 🔲
+---
 # Task Title
 
 ## Goal
 
-One-sentence summary of what this task achieves and why it matters.
+One-sentence summary of what this task achieves and why
+it matters.
 
 ## Tasks
 
 1. First concrete step
 2. Second concrete step
-3. …
+3. ...
 
 ## Acceptance Criteria
 

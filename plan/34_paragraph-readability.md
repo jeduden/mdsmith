@@ -1,3 +1,8 @@
+---
+id: 34
+title: Paragraph Readability Score
+status: 🔲
+---
 # Paragraph Readability Score
 
 ## Goal

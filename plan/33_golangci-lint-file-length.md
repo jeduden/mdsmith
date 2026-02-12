@@ -1,3 +1,8 @@
+---
+id: 33
+title: golangci-lint File Length Limits
+status: ✅
+---
 # golangci-lint File Length Limits
 
 ## Goal

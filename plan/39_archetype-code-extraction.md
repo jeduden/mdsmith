@@ -1,3 +1,8 @@
+---
+id: 39
+title: Extract generated-section archetype code
+status: ✅
+---
 # Extract generated-section archetype code
 
 ## Goal

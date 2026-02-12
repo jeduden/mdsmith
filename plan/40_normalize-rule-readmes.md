@@ -1,3 +1,8 @@
+---
+id: 40
+title: Normalize rule READMEs to proto template
+status: 🔲
+---
 # Normalize rule READMEs to proto template
 
 ## Goal
