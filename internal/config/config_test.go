@@ -28,6 +28,7 @@ import (
 	_ "github.com/jeduden/tidymark/internal/rules/notrailingpunctuation"
 	_ "github.com/jeduden/tidymark/internal/rules/notrailingspaces"
 	_ "github.com/jeduden/tidymark/internal/rules/singletrailingnewline"
+	_ "github.com/jeduden/tidymark/internal/rules/tableformat"
 )
 
 // --- YAML parsing tests ---
@@ -360,10 +361,11 @@ func TestDefaultsAllRulesEnabled(t *testing.T) {
 		"catalog",
 		"required-structure",
 		"include",
+		"table-format",
 	}
 
-	if len(cfg.Rules) != 21 {
-		t.Fatalf("expected 21 rules, got %d", len(cfg.Rules))
+	if len(cfg.Rules) != 22 {
+		t.Fatalf("expected 22 rules, got %d", len(cfg.Rules))
 	}
 
 	for _, name := range expectedRules {
@@ -387,8 +389,8 @@ func TestMergeNilLoaded(t *testing.T) {
 	defaults := Defaults()
 	merged := Merge(defaults, nil)
 
-	if len(merged.Rules) != 21 {
-		t.Fatalf("expected 21 rules, got %d", len(merged.Rules))
+	if len(merged.Rules) != 22 {
+		t.Fatalf("expected 22 rules, got %d", len(merged.Rules))
 	}
 	for name, rc := range merged.Rules {
 		if !rc.Enabled {
@@ -472,8 +474,8 @@ func TestEffectiveWithoutOverrides(t *testing.T) {
 	cfg := Defaults()
 	eff := Effective(cfg, "README.md")
 
-	if len(eff) != 21 {
-		t.Fatalf("expected 21 rules, got %d", len(eff))
+	if len(eff) != 22 {
+		t.Fatalf("expected 22 rules, got %d", len(eff))
 	}
 	for name, rc := range eff {
 		if !rc.Enabled {

@@ -39,6 +39,7 @@ import (
 	_ "github.com/jeduden/tidymark/internal/rules/paragraphstructure"
 	_ "github.com/jeduden/tidymark/internal/rules/requiredstructure"
 	_ "github.com/jeduden/tidymark/internal/rules/singletrailingnewline"
+	_ "github.com/jeduden/tidymark/internal/rules/tableformat"
 )
 
 var ruleIDPattern = regexp.MustCompile(`^(TM\d+)-`)
