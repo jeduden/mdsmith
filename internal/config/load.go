@@ -23,7 +23,31 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
+	// Detect whether the "files" key was explicitly present in the YAML.
+	cfg.FilesExplicit = yamlHasKey(data, "files")
+
 	return &cfg, nil
+}
+
+// yamlHasKey returns true if the top-level YAML mapping contains the given key.
+func yamlHasKey(data []byte, key string) bool {
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		return false
+	}
+	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
+		return false
+	}
+	mapping := node.Content[0]
+	if mapping.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i < len(mapping.Content)-1; i += 2 {
+		if mapping.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
 }
 
 // Discover walks up the directory tree from startDir looking for a
@@ -68,6 +92,7 @@ func Defaults() *Config {
 	}
 	return &Config{
 		Rules: rules,
+		Files: DefaultFiles,
 	}
 }
 
@@ -95,5 +120,6 @@ func DumpDefaults() *Config {
 	return &Config{
 		Rules:      rules,
 		Categories: categories,
+		Files:      DefaultFiles,
 	}
 }

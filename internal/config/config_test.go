@@ -1242,3 +1242,183 @@ func TestCategoriesMarshalRoundTrip(t *testing.T) {
 		t.Error("whitespace should be true after round-trip")
 	}
 }
+
+// --- Files config key tests ---
+
+func TestFilesParsingFromYAML(t *testing.T) {
+	yml := `
+files:
+  - "docs/**/*.md"
+  - "README.md"
+rules:
+  line-length: true
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if len(cfg.Files) != 2 {
+		t.Fatalf("expected 2 file patterns, got %d", len(cfg.Files))
+	}
+	if cfg.Files[0] != "docs/**/*.md" {
+		t.Errorf("expected docs/**/*.md, got %s", cfg.Files[0])
+	}
+	if cfg.Files[1] != "README.md" {
+		t.Errorf("expected README.md, got %s", cfg.Files[1])
+	}
+	if !cfg.FilesExplicit {
+		t.Error("expected FilesExplicit=true when files key is present")
+	}
+}
+
+func TestFilesOmittedIsNil(t *testing.T) {
+	yml := `
+rules:
+  line-length: true
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Files != nil {
+		t.Errorf("expected Files=nil when omitted, got %v", cfg.Files)
+	}
+	if cfg.FilesExplicit {
+		t.Error("expected FilesExplicit=false when files key is omitted")
+	}
+}
+
+func TestFilesEmptyList(t *testing.T) {
+	yml := `
+files: []
+rules:
+  line-length: true
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Files == nil {
+		t.Fatal("expected Files to be non-nil (empty slice) for files: []")
+	}
+	if len(cfg.Files) != 0 {
+		t.Errorf("expected 0 file patterns, got %d", len(cfg.Files))
+	}
+	if !cfg.FilesExplicit {
+		t.Error("expected FilesExplicit=true when files key is present (even empty)")
+	}
+}
+
+func TestDefaultsHaveDefaultFiles(t *testing.T) {
+	cfg := Defaults()
+	if len(cfg.Files) != 2 {
+		t.Fatalf("expected 2 default file patterns, got %d", len(cfg.Files))
+	}
+	if cfg.Files[0] != "**/*.md" {
+		t.Errorf("expected **/*.md, got %s", cfg.Files[0])
+	}
+	if cfg.Files[1] != "**/*.markdown" {
+		t.Errorf("expected **/*.markdown, got %s", cfg.Files[1])
+	}
+}
+
+func TestMergeFilesFromLoaded(t *testing.T) {
+	defaults := Defaults()
+	loaded := &Config{
+		Files:         []string{"docs/**/*.md"},
+		FilesExplicit: true,
+	}
+
+	merged := Merge(defaults, loaded)
+
+	if len(merged.Files) != 1 {
+		t.Fatalf("expected 1 file pattern from loaded, got %d", len(merged.Files))
+	}
+	if merged.Files[0] != "docs/**/*.md" {
+		t.Errorf("expected docs/**/*.md, got %s", merged.Files[0])
+	}
+}
+
+func TestMergeFilesNilLoaded(t *testing.T) {
+	defaults := Defaults()
+	merged := Merge(defaults, nil)
+
+	if len(merged.Files) != 2 {
+		t.Fatalf("expected 2 default file patterns, got %d", len(merged.Files))
+	}
+	if merged.Files[0] != "**/*.md" {
+		t.Errorf("expected **/*.md, got %s", merged.Files[0])
+	}
+}
+
+func TestMergeFilesOmittedInLoaded(t *testing.T) {
+	defaults := Defaults()
+	loaded := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		// Files not set, FilesExplicit=false
+	}
+
+	merged := Merge(defaults, loaded)
+
+	// Should use defaults when files not explicitly set in loaded.
+	if len(merged.Files) != 2 {
+		t.Fatalf("expected 2 default file patterns, got %d", len(merged.Files))
+	}
+	if merged.Files[0] != "**/*.md" {
+		t.Errorf("expected **/*.md, got %s", merged.Files[0])
+	}
+}
+
+func TestMergeFilesEmptyInLoaded(t *testing.T) {
+	defaults := Defaults()
+	loaded := &Config{
+		Files:         []string{},
+		FilesExplicit: true,
+	}
+
+	merged := Merge(defaults, loaded)
+
+	// Explicitly empty files should override defaults.
+	if merged.Files == nil {
+		t.Fatal("expected Files to be non-nil (empty slice)")
+	}
+	if len(merged.Files) != 0 {
+		t.Errorf("expected 0 file patterns, got %d", len(merged.Files))
+	}
+}
+
+func TestDumpDefaultsHasFiles(t *testing.T) {
+	cfg := DumpDefaults()
+	if len(cfg.Files) != 2 {
+		t.Fatalf("expected 2 default file patterns, got %d", len(cfg.Files))
+	}
+	if cfg.Files[0] != "**/*.md" {
+		t.Errorf("expected **/*.md, got %s", cfg.Files[0])
+	}
+	if cfg.Files[1] != "**/*.markdown" {
+		t.Errorf("expected **/*.markdown, got %s", cfg.Files[1])
+	}
+}
