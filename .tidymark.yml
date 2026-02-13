@@ -27,9 +27,39 @@ rules:
   blank-line-around-fenced-code: true
   list-indent:
     spaces: 2
+  max-file-length:
+    max: 300
   no-trailing-punctuation-in-heading: true
   no-emphasis-as-heading: true
+  paragraph-readability:
+    max-grade: 14.0
+    min-words: 20
+  paragraph-structure:
+    max-sentences: 6
+    max-words: 40
   catalog: true
+
+overrides:
+  - files: ["plan/PLAN.md"]
+    rules:
+      paragraph-readability: false
+      paragraph-structure: false
+  - files: ["README.md"]
+    rules:
+      paragraph-structure:
+        max-sentences: 30
+  - files: ["rules/TM002-heading-style/good/setext.md"]
+    rules:
+      heading-style:
+        style: setext
+  - files: ["rules/TM010-fenced-code-style/good/tilde.md"]
+    rules:
+      fenced-code-style:
+        style: tilde
+  - files: ["rules/TM016-list-indent/good/spaces-4.md"]
+    rules:
+      list-indent:
+        spaces: 4
 
 ignore:
   - "internal/**"

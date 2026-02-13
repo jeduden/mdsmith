@@ -7,10 +7,10 @@ status: 🔲
 
 ## Goal
 
-Design and implement three related features -- template-based
-structure checking, frontmatter-body synchronization, and file
-content inclusion -- to enforce document consistency and
-eliminate content duplication across rule and plan docs.
+Add three features that work together: template-based
+structure checks, front matter sync with body text, and
+file includes. These help keep rule and plan docs
+consistent and avoid content being copied by hand.
 
 ## Prerequisites
 
@@ -22,9 +22,9 @@ proceed independently.
 
 ### A. Template file format
 
-1. Define the template file format: a regular markdown file
-   whose headings declare required document sections.
-   Template-specific behaviour is configured in frontmatter:
+1. Define the template file format: a plain markdown file
+   where headings list the needed sections. Settings for
+   the template go in its front matter:
 
    ```yaml
    ---
@@ -104,9 +104,9 @@ proceed independently.
    collect `{{.field}}` sync points with their expected
    positions (heading text or body line).
 
-6. Structure checking: verify the target document contains
-   all required headings in the correct order and at the
-   correct level. Diagnostics:
+6. Structure checking: make sure the file has all needed
+   headings in the right order and at the right level.
+   Diagnostics:
 
   - `missing required section "## Settings"`
   - `section "## Examples" is out of order`
@@ -132,11 +132,11 @@ proceed independently.
    `generated-section` rule alongside `catalog`.
    Parameters:
 
-   | Parameter | Required | Default | Description |
-   |-----------|----------|---------|-------------|
-   | `file` | yes | -- | Relative path to include |
-   | `strip-frontmatter` | no | `true` | Remove YAML frontmatter |
-   | `wrap` | no | -- | Wrap in code fence (value = language) |
+   | Parameter | Required | Default | Meaning |
+   |-----------|----------|---------|---------|
+   | `file` | yes | -- | File path |
+   | `strip-frontmatter` | no | `true` | Drop YAML |
+   | `wrap` | no | -- | Code fence |
 
 10. Include rendering logic:
 

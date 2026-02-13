@@ -7,9 +7,9 @@ status: 🔲
 
 ## Goal
 
-Extend TM001 (line-length) with per-category maximum lengths
-and stern mode, matching the feature set of markdownlint MD013
-while keeping tidymark's own configuration syntax.
+Add per-type line length limits and stern mode to TM001
+(line-length). This brings it in line with what markdownlint
+MD013 offers, while keeping our own config syntax.
 
 ## Tasks
 

@@ -47,10 +47,10 @@ tidymark <command> [flags] [files...]
 
 | Command | Description |
 |---------|-------------|
-| `check` | Lint Markdown files (default when given file arguments) |
-| `fix` | Auto-fix lint issues in place |
-| `init` | Generate a default `.tidymark.yml` config file |
-| `version` | Print version and exit |
+| `check` | Lint files (default command) |
+| `fix` | Auto-fix issues in place |
+| `init` | Generate `.tidymark.yml` |
+| `version` | Print version, exit |
 
 Files are positional arguments. Accepts multiple file paths,
 directories, and glob patterns.
@@ -59,13 +59,13 @@ No file args and no stdin exits 0
 
 ### Subcommand Flags (check, fix)
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--config <file>` | `-c` | auto-discover | Override config file path |
-| `--format <fmt>` | `-f` | `text` | Output format: `text`, `json` |
-| `--no-color` | | false | Disable ANSI colors |
-| `--no-gitignore` | | false | Disable `.gitignore` filtering when walking directories |
-| `--quiet` | `-q` | false | Suppress non-error output |
+| Flag | Description |
+|------|-------------|
+| `-c`, `--config` | Config path |
+| `-f`, `--format` | `text` or `json` |
+| `--no-color` | Plain output |
+| `--no-gitignore` | Skip gitignore |
+| `-q`, `--quiet` | Quiet mode |
 
 ### Global Flags
 
@@ -136,6 +136,19 @@ Each plan has acceptance criteria with behavioral tests. Work test-driven: write
 a failing test (red), make it pass (green), commit.
 
 Plan files must pass `tidymark check plan/` with zero diagnostics.
+
+## Test Fixtures
+
+Rule test fixtures live in `rules/<id>-<name>/`. Each rule
+has `good/` and `bad/` examples (or `good.md` / `bad.md`).
+
+Good fixtures must pass **all** rules, not just their own.
+When a good fixture uses non-default settings (e.g. setext
+headings, tilde fences), add a matching override in
+`.tidymark.yml` so that `tidymark check .` also passes.
+
+Bad fixtures are excluded via the `ignore:` section in
+`.tidymark.yml`.
 
 ## Config & Rules
 

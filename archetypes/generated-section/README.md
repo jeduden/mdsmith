@@ -66,10 +66,17 @@ and merge keys are supported (standard YAML features).
 
 | Key | Required | Description |
 |-----|----------|-------------|
-| `header` | no | Static text rendered once at the top. No template expansion; `{{...}}` appears literally. |
-| `row` | conditional | Per-file block, rendered once per matched entry. Uses Go `text/template` syntax. Required when `header` or `footer` is present. Must be non-empty (empty string or whitespace-only produces diagnostic). |
-| `footer` | no | Static text rendered once at the bottom. No template expansion; `{{...}}` appears literally. |
-| `empty` | no | Fallback text rendered instead of header+rows+footer when no entries match. No template expansion; `{{...}}` appears literally. Can appear alone without `row`. However, if `header` or `footer` is also present, `row` is required regardless of whether `empty` is defined. |
+| `header` | no | Static top text |
+| `row` | conditional | Per-entry template block |
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `footer` | no | Static bottom text |
+| `empty` | no | Fallback for no entries |
+
+The `row` key is required when `header` or `footer` is
+present. None of these keys use template expansion except
+`row`.
 
 Single-line values use YAML string syntax. Multi-line values
 use YAML literal block scalars (`|`, `|+`, or `|-`):
@@ -88,10 +95,9 @@ Note: YAML requires quoting values that contain special
 characters like `{`, `}`, `|`, `:`, or `#`. Use double quotes
 for single-line templates containing `{{...}}`.
 
-The YAML parser strips the leading indentation from literal
-block content, so markdown indentation is preserved correctly
-(e.g., a 4-space code block inside a 2-space-indented `|`
-block comes out with the correct 4 spaces).
+The YAML parser strips leading indent from literal blocks.
+This keeps markdown indent correct. A 4-space code block
+inside a 2-space `|` block keeps its 4 spaces.
 
 Use `|+` (keep chomp) to preserve trailing blank lines in
 multi-line values. Use `|` (clip chomp, default) when no
@@ -122,9 +128,9 @@ This applies uniformly to all sections.
 Use `|+` in the row template to include a trailing blank line
 between entries.
 
-Validation is sequential. Structural errors (invalid YAML,
-non-string values) short-circuit further validation. Parameter
-validation is performed only after YAML parsing succeeds.
+Checks run in order. Structural errors (bad YAML, non-string
+values) stop further checks. Parameter checks only run after
+YAML parsing succeeds.
 
 No custom template functions are registered. Go's built-in
 template functions (e.g., `print`, `len`, `index`) are
@@ -168,34 +174,56 @@ literally in the output.
 These diagnostics are shared across all generated-section
 rules:
 
-| Condition | Message | Reported on |
-|-----------|---------|-------------|
-| Content mismatch | `generated section is out of date` | start marker line |
-| No closing marker | `generated section has no closing marker` | start marker line |
-| Orphaned end marker | `unexpected generated section end marker` | end marker line |
-| Nested start markers | `nested generated section markers are not allowed` | nested start line |
-| Invalid YAML body | `generated section has invalid YAML: ...` | start marker line |
-| Non-string YAML value | `generated section has non-string value for key "KEY"` | start marker line |
-| Empty `row` value | `generated section directive has empty "row" value` | start marker line |
-| `header`/`footer` without `row` | `generated section template missing required "row" key` | start marker line |
-| Invalid template syntax | `generated section has invalid template: ...` | start marker line |
-| Template execution error | `generated section template execution failed: ...` | start marker line |
+| Condition | Message |
+|-----------|---------|
+| Content mismatch | `...is out of date` |
+| No closing marker | `...has no closing marker` |
+| Orphaned end | `unexpected...end marker` |
+
+| Condition | Message |
+|-----------|---------|
+| Nested start | `nested...not allowed` |
+| Invalid YAML | `...has invalid YAML: ...` |
+| Non-string value | `...non-string value for key "KEY"` |
+
+| Condition | Message |
+|-----------|---------|
+| Empty `row` | `...empty "row" value` |
+| Missing `row` | `...missing required "row"` |
+| Bad template | `...invalid template: ...` |
+| Template error | `...execution failed: ...` |
+
+Messages start with `generated section` (or
+`generated section directive`).
+
+All diagnostics report at column 1. Most report on the start
+marker line. Orphaned end markers report on the end marker
+line.
 
 ## Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
-| No entries exist | Empty text or `empty` fallback text |
-| Entries exist + `empty` defined | `empty` is ignored; header+rows+footer rendered |
-| No filesystem context (stdin or in-memory) | Rule skipped entirely (cannot resolve relative paths) |
-| Markers inside fenced code blocks | Ignored |
-| Markers inside HTML blocks | Ignored |
-| Multiple marker pairs in one file | Each processed independently |
-| Non-string YAML values | Diagnostic per key |
-| `empty` without `row` | Valid; only `header`/`footer` require `row` |
-| `empty` + `header` without `row` | Diagnostic (missing `row` still fires) |
-| Duplicate YAML keys | Invalid YAML diagnostic (`yaml.v3` rejects duplicates) |
-| Single-line start marker | Valid; empty YAML body triggers missing-parameter diagnostic |
-| Windows-style line endings (`\r\n`) | Generated content uses `\n`; will flag `\r\n` files as stale |
-| Template execution error | Diagnostic emitted; fix leaves section unchanged |
-| Unknown YAML keys | Ignored (forward-compatible with future parameters) |
+| No entries | Empty or `empty` fallback |
+| Entries + `empty` | `empty` ignored |
+| No filesystem context | Rule skipped |
+| Markers in code blocks | Ignored |
+
+| Scenario | Behavior |
+|----------|----------|
+| Markers in HTML blocks | Ignored |
+| Multiple marker pairs | Independent |
+| Non-string YAML | Diagnostic per key |
+| `empty` without `row` | Valid |
+
+| Scenario | Behavior |
+|----------|----------|
+| `empty` + `header`, no `row` | Missing `row` diagnostic |
+| Duplicate YAML keys | YAML diagnostic |
+| Single-line start marker | Empty body diagnostic |
+
+| Scenario | Behavior |
+|----------|----------|
+| `\r\n` line endings | Flagged as stale |
+| Template error | Fix skips section |
+| Unknown YAML keys | Ignored |

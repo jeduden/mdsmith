@@ -7,9 +7,9 @@ status: 🔲
 
 ## Goal
 
-Implement TM022 `max-file-length` that warns when a markdown
-file exceeds a configurable number of lines, encouraging authors
-to split long documents.
+Add TM022 `max-file-length` that warns when a markdown
+file has too many lines. The limit is set in the config.
+This nudges authors to split long files.
 
 ## Tasks
 

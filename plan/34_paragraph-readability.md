@@ -7,12 +7,11 @@ status: 🔲
 
 ## Goal
 
-Implement TM023 `paragraph-readability` that computes a
-readability score for each paragraph and warns when it
-exceeds a configurable threshold, encouraging clearer
-writing. Uses the Automated Readability Index (ARI) by
-default; the internal design supports adding alternative
-formulas (Flesch-Kincaid, Coleman-Liau) later.
+Add TM023 `paragraph-readability` that scores each
+paragraph and warns when the grade is too high. This
+pushes authors toward clearer prose. It uses the ARI
+formula by default. The design lets us add other
+formulas (such as Flesch-Kincaid) later.
 
 ## Tasks
 

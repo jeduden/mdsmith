@@ -7,19 +7,19 @@ status: 🔲
 
 ## Goal
 
-Implement TM024 `paragraph-structure` that enforces
-structural limits on markdown paragraphs: maximum sentences
-per paragraph and maximum words per sentence, encouraging
-concise writing. Reuses `internal/mdtext/` from Plan 34.
+Add TM024 `paragraph-structure` that limits how many
+sentences a paragraph may have and how many words a
+sentence may use. This keeps writing short and clear.
+It reuses `internal/mdtext/` from Plan 34.
 
 ## Tasks
 
 ### A. Sentence splitting dependency
 
 1. Run `go get github.com/neurosnap/sentences` to add the
-   Punkt sentence tokenizer. It has zero transitive
-   dependencies and handles abbreviations, decimals, and
-   ellipses via a trained language model.
+   Punkt sentence splitter. It has no extra deps and
+   handles short forms, decimals, and dots in names
+   using a trained model.
 
 2. Add `SplitSentences(text string) []string` to
    `internal/mdtext/` as a thin wrapper around

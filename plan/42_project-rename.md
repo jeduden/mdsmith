@@ -7,9 +7,9 @@ status: 🔲
 
 ## Goal
 
-Evaluate alternative names for the project and execute a
-rename if a better candidate is found, so the tool has a
-memorable and distinctive identity before a public release.
+Look at other name options for the project and rename it
+if a better one is found. The tool should have a catchy,
+unique name before it ships to the public.
 
 ## Constraints
 

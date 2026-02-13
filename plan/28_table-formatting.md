@@ -7,9 +7,9 @@ status: 🔲
 
 ## Goal
 
-Implement a new rule that checks and auto-fixes markdown table
-formatting to produce aligned, readable tables in plain text
-view, targeting prettier-style output as the baseline.
+Add a new rule that checks and fixes markdown table layout.
+Tables should be aligned and easy to read in plain text,
+using prettier-style output as the target format.
 
 ## Tasks
 
@@ -60,10 +60,9 @@ view, targeting prettier-style output as the baseline.
    implementing `rule.Rule`, `rule.FixableRule`, and
    `rule.Configurable`.
 
-7. Check logic: for each table compare actual cell widths
-   and padding against the expected formatted output.
-   Report one diagnostic per misformatted table on the
-   table's first line:
+7. Check logic: for each table, compare cell widths and
+   padding to the expected output. Report one finding per
+   bad table, on the first line of that table:
 
   - `table is not formatted`
 

@@ -18,10 +18,10 @@ tidymark <command> [flags] [files...]
 
 | Command | Description |
 |---------|-------------|
-| `check` | Lint Markdown files (default when given file arguments) |
-| `fix` | Auto-fix lint issues in place |
-| `init` | Generate a default `.tidymark.yml` config file |
-| `version` | Print version and exit |
+| `check` | Lint files (default command) |
+| `fix` | Auto-fix issues in place |
+| `init` | Generate `.tidymark.yml` |
+| `version` | Print version, exit |
 
 Files can be paths, directories (walked recursively for `*.md`),
 or glob patterns.
@@ -35,13 +35,13 @@ Use `--no-gitignore` to disable this behavior and lint all files.
 
 ### Flags
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--config <file>` | `-c` | auto-discover | Override config file path |
-| `--format <fmt>` | `-f` | `text` | Output format: `text`, `json` |
-| `--no-color` | | `false` | Disable ANSI colors |
-| `--no-gitignore` | | `false` | Disable `.gitignore` filtering when walking directories |
-| `--quiet` | `-q` | `false` | Suppress non-error output |
+| Flag | Description |
+|------|-------------|
+| `-c`, `--config` | Config path |
+| `-f`, `--format` | `text` or `json` |
+| `--no-color` | Plain output |
+| `--no-gitignore` | Skip gitignore |
+| `-q`, `--quiet` | Quiet mode |
 
 ### Examples
 
@@ -124,8 +124,9 @@ tidymark init
 # creates .tidymark.yml with all rule defaults
 ```
 
-Commit the generated file to version control so that every contributor uses
-the same pinned rule settings and upgrades are an explicit, reviewable change.
+Commit the generated file to version control.
+This ensures every contributor uses the same rule settings.
+Upgrades become an explicit, reviewable change.
 
 ## Rules
 
@@ -158,6 +159,9 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 | [TM017](rules/TM017-no-trailing-punctuation-in-heading/README.md) | `no-trailing-punctuation-in-heading` | Headings should not end with punctuation. |
 | [TM018](rules/TM018-no-emphasis-as-heading/README.md) | `no-emphasis-as-heading` | Don't use bold or emphasis on a standalone line as a heading substitute. |
 | [TM019](rules/TM019-catalog/README.md) | `catalog` | Catalog content must reflect selected front matter fields from files matching its glob. |
+| [TM022](rules/TM022-max-file-length/README.md) | `max-file-length` | File must not exceed maximum number of lines. |
+| [TM023](rules/TM023-paragraph-readability/README.md) | `paragraph-readability` | Paragraph readability grade must not exceed a threshold. |
+| [TM024](rules/TM024-paragraph-structure/README.md) | `paragraph-structure` | Paragraphs must not exceed sentence and word limits. |
 <!-- /catalog -->
 
 ## Development

@@ -1,10 +1,9 @@
 # Archetypes
 
-An **archetype** is a shared behavioral pattern implemented by
-one or more rules. Archetype documentation describes the common
-mechanics; individual rule READMEs document rule-specific
-parameters and behavior.
+An **archetype** is a shared pattern used by one or more
+rules. Each archetype page covers the common mechanics.
+Each rule README covers its own settings and behavior.
 
 | Archetype | Description |
 |-----------|-------------|
-| [generated-section](generated-section/) | Marker-delimited sections with YAML-configured content generation, template rendering, and auto-fix. |
+| [generated-section](generated-section/) | Marker-based sections with YAML config, template output, and auto-fix. |
