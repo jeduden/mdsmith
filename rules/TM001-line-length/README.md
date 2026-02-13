@@ -38,14 +38,14 @@ to `exclude: []` and `strict: false` to the default exclude list.
 
 ### Per-category limits
 
-When `heading-max` is set, heading lines (lines starting with `#`) use that
+When `heading-max` is set, heading lines (ATX and Setext) use that
 limit instead of `max`. When `code-block-max` is set, lines inside fenced or
 indented code blocks use that limit instead of `max`. When either setting is
 unset (absent), lines of that type inherit `max`.
 
-Per-category limits and `exclude` compose: a code block line that is excluded
-via `exclude: [code-blocks]` is still skipped even when `code-block-max` is
-set.
+Per-category limits and `exclude` compose.
+A code block line excluded via `exclude: [code-blocks]` is still skipped,
+even when `code-block-max` is set.
 
 ### Stern mode
 
@@ -150,7 +150,7 @@ This line is within the limit.
 Heading within `heading-max: 100` (even though it exceeds `max: 80`):
 
 ```markdown
-# This heading is ninety characters long and is allowed because heading-max is set to one hundred
+# This heading is about ninety characters and fits within the heading-max of one hundred
 ```
 
 Long URL without spaces past the limit (`stern: true` allows it):

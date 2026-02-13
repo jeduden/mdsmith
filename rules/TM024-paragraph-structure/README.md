@@ -22,6 +22,8 @@ Paragraphs must not exceed sentence and word limits.
 | `max-sentences` | int | 6 | Maximum sentences per paragraph |
 | `max-words` | int | 40 | Maximum words per sentence |
 
+Markdown tables and code blocks are skipped.
+
 ## Config
 
 ```yaml

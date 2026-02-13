@@ -259,8 +259,11 @@ func collectTableLines(f *lint.File) map[int]bool {
 	return lines
 }
 
+// setextUnderlineRe matches a Setext heading underline (one or more = or -).
+var setextUnderlineRe = regexp.MustCompile(`^[=-]+$`)
+
 // collectHeadingLines walks the AST and returns a set of 1-based line numbers
-// that are heading lines.
+// that are heading lines, including Setext underlines.
 func collectHeadingLines(f *lint.File) map[int]bool {
 	lines := map[int]bool{}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -274,6 +277,13 @@ func collectHeadingLines(f *lint.File) map[int]bool {
 		ln := headingLineNum(h, f)
 		if ln > 0 {
 			lines[ln] = true
+			// For Setext headings, also include the underline line.
+			if ln < len(f.Lines) {
+				next := strings.TrimSpace(string(f.Lines[ln])) // 0-indexed: ln is the next line
+				if setextUnderlineRe.MatchString(next) {
+					lines[ln+1] = true
+				}
+			}
 		}
 		return ast.WalkContinue, nil
 	})

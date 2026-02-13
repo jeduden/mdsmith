@@ -158,6 +158,22 @@ func TestCheck_DiagnosticFields(t *testing.T) {
 	}
 }
 
+func TestCheck_TableSkipped(t *testing.T) {
+	// A markdown table parsed as a paragraph should be skipped.
+	src := []byte("| A | B | C | D | E | F | G | H |\n" +
+		"|---|---|---|---|---|---|---|---|\n" +
+		"| one | two | three | four | five | six | seven | eight |\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{MaxSentences: 1, MaxWords: 1}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for table, got %d", len(diags))
+	}
+}
+
 func TestApplySettings_Valid(t *testing.T) {
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	err := r.ApplySettings(map[string]any{

@@ -1,6 +1,7 @@
 package paragraphstructure
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/jeduden/tidymark/internal/lint"
@@ -38,6 +39,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 		para, ok := n.(*ast.Paragraph)
 		if !ok {
+			return ast.WalkContinue, nil
+		}
+		if isTable(para, f) {
 			return ast.WalkContinue, nil
 		}
 
@@ -137,6 +141,18 @@ func toInt(v any) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
+}
+
+// isTable returns true if the paragraph's first line starts with a pipe,
+// indicating it is a markdown table (goldmark without the table extension
+// parses tables as paragraphs).
+func isTable(para *ast.Paragraph, f *lint.File) bool {
+	lines := para.Lines()
+	if lines.Len() == 0 {
+		return false
+	}
+	seg := lines.At(0)
+	return bytes.HasPrefix(bytes.TrimSpace(f.Source[seg.Start:seg.Stop]), []byte("|"))
 }
 
 var _ rule.Configurable = (*Rule)(nil)

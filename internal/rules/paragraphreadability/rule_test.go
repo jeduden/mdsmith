@@ -148,6 +148,25 @@ func TestCheck_NilGradeUsesARI(t *testing.T) {
 	}
 }
 
+func TestCheck_TableSkipped(t *testing.T) {
+	// A markdown table parsed as a paragraph should be skipped.
+	src := []byte("| Setting | Type | Default | Description |\n" +
+		"|---------|------|---------|-------------|\n" +
+		"| `max` | int | 80 | Maximum allowed line length |\n" +
+		"| `heading-max` | int | -- | Max length for heading lines |\n" +
+		"| `code-block-max` | int | -- | Max length for code block lines |\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alwaysHigh := func(_ string) float64 { return 99.0 }
+	r := &Rule{MaxGrade: 14.0, MinWords: 1, Grade: alwaysHigh}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for table, got %d", len(diags))
+	}
+}
+
 // --- Configurable tests ---
 
 func TestApplySettings_ValidMaxGrade(t *testing.T) {

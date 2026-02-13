@@ -678,6 +678,23 @@ func TestCheck_HeadingMax_Level2Heading(t *testing.T) {
 	}
 }
 
+func TestCheck_HeadingMax_SetextHeading(t *testing.T) {
+	// heading-max should also apply to Setext-style headings (underlined with '=').
+	// The heading line is 90 chars, over max=80 but within heading-max=120: should pass.
+	heading := nChars(90, 'h')
+	underline := nChars(90, '=')
+	src := []byte(heading + "\n" + underline + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, HeadingMax: intPtr(120), Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for Setext heading within heading-max, got %d", len(diags))
+	}
+}
+
 // --- code-block-max tests ---
 
 func TestCheck_CodeBlockMax_CodeLineWithinCodeBlockMaxButOverMax(t *testing.T) {
@@ -833,8 +850,8 @@ func TestCheck_Stern_ExcludeInteraction(t *testing.T) {
 
 func TestCheck_Stern_WithHeadingMax(t *testing.T) {
 	// Stern applies to the active max for heading lines.
-	// "# " (2) + 58 'h' chars + space at position 60 + 5 'x' chars = 66 total.
-	// heading-max=60, so the space at position 60 is past the limit.
+	// "# " (2 chars) + 58 'h' chars = 60 chars total, then a space at 0-indexed position 60
+	// (the 61st character, i.e., past heading-max=60), then 5 'x' chars, for 66 chars total.
 	heading := "# " + nChars(58, 'h') + " " + nChars(5, 'x')
 	src := []byte(heading + "\n")
 	f, err := lint.NewFile("test.md", src)
