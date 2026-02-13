@@ -192,7 +192,6 @@ func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string
 			return err
 		}
 
-<<<<<<< HEAD
 		if isSkippedSymlink(info, path, noFollowSymlinks) {
 			if info.IsDir() {
 				return filepath.SkipDir

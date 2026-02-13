@@ -7,7 +7,8 @@ import (
 	"sort"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/jeduden/tidymark/internal/lint"
+	"github.com/gobwas/glob"
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // Options controls how file discovery behaves.
@@ -21,6 +22,9 @@ type Options struct {
 
 	// UseGitignore enables filtering by .gitignore rules.
 	UseGitignore bool
+
+	// NoFollowSymlinks lists glob patterns for symlinks that should be skipped.
+	NoFollowSymlinks []string
 }
 
 // Discover walks BaseDir and returns files matching any of the configured
@@ -78,6 +82,16 @@ func Discover(opts Options) ([]string, error) {
 			return nil
 		}
 
+		// Optionally skip symlinks that match no-follow patterns.
+		if len(opts.NoFollowSymlinks) > 0 && info.Mode()&os.ModeSymlink != 0 {
+			if matchesAny(opts.NoFollowSymlinks, path) {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+
 		// Apply gitignore filtering.
 		if gitMatcher != nil {
 			absPath, absErr := filepath.Abs(path)
@@ -121,4 +135,18 @@ func Discover(opts Options) ([]string, error) {
 
 	sort.Strings(result)
 	return result, nil
+}
+
+func matchesAny(patterns []string, path string) bool {
+	cleanPath := filepath.Clean(path)
+	for _, pattern := range patterns {
+		g, err := glob.Compile(pattern)
+		if err != nil {
+			continue
+		}
+		if g.Match(path) || g.Match(cleanPath) || g.Match(filepath.Base(path)) {
+			return true
+		}
+	}
+	return false
 }
