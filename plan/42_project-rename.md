@@ -1,7 +1,7 @@
 ---
 id: 42
 title: Find a Better Project Name
-status: 🔲
+status: ✅
 ---
 # Find a Better Project Name
 
