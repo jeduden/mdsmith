@@ -13,15 +13,16 @@ Warn when Markdown files exceed a configurable token budget, providing a more us
 
 ## Tasks
 
-1. Define a token estimation strategy (e.g., word count * ratio) with configurable ratio and budget.
-2. Add rule configuration and CLI surface to enable token budget checks per file or glob.
-3. Implement rule to report when estimated tokens exceed the budget, including estimated count in output.
-4. Update rule docs and examples with configuration guidance.
+1. Define token counting modes: heuristic ratio vs tokenizer-based (model-specific), and choose a default.
+2. Evaluate tokenizer integration options and asset handling (no network fetch at runtime).
+3. Add rule configuration to select mode, ratio, tokenizer/encoding, and per-glob budgets.
+4. Implement rule to report when tokens exceed the budget, including count and mode in output.
+5. Update rule docs with performance/accuracy trade-offs and examples for both modes.
 
 ## Acceptance Criteria
 
-- [ ] Rule estimates token count using a configurable ratio and word count.
-- [ ] Rule warns when estimated tokens exceed a configurable budget.
-- [ ] Output includes estimated tokens and the configured budget.
+- [ ] Rule supports both heuristic estimation and tokenizer-based counting.
+- [ ] Rule warns when tokens exceed a configurable budget, per file or glob.
+- [ ] Output includes token count, budget, and counting mode.
 - [ ] All tests pass: `go test ./...`
 - [ ] `golangci-lint run` reports no issues
