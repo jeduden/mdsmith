@@ -1,6 +1,34 @@
 # mdsmith
 
-A Markdown linter written in Go.
+A fast, auto-fixing Markdown linter and formatter for docs, READMEs,
+and AI-generated content. Checks style, readability, and structure.
+Written in Go.
+
+## Why mdsmith
+
+**Progressive disclosure with catalogs.**
+The `catalog` rule generates summary tables from file front matter
+and keeps them in sync. Link each row to the full document —
+readers see the overview first and drill down on demand.
+Run `mdsmith fix` and the table updates itself.
+
+**Keep AI verbosity in check.**
+AI tools produce walls of text. `max-file-length` caps document size,
+`paragraph-readability` enforces a reading-grade ceiling,
+and `paragraph-structure` limits sentence count and length.
+Set the thresholds in `.mdsmith.yml` and let CI enforce them.
+
+**AI-ready rule specs — no remote calls.**
+`mdsmith help rule` lists every rule with its ID and description.
+`mdsmith help rule <name>` prints the full spec: settings, examples,
+diagnostics. All docs are compiled into the binary — works offline,
+works in CI, works as a source for `.cursor/rules` or `AGENTS.md`.
+
+**Auto-fix.**
+`mdsmith fix` corrects most rules in place.
+Whitespace, heading style, code fences, bare URLs, list indentation,
+table alignment, and generated sections — all handled.
+Multi-pass fixing resolves cascading changes automatically.
 
 ## Installation
 
