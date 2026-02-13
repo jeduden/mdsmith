@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/tidymark/internal/lint"
 	"github.com/jeduden/tidymark/internal/rule"
+	"github.com/yuin/goldmark/ast"
 )
 
 func init() {
@@ -20,8 +21,11 @@ func init() {
 // Lines matching categories in Exclude are skipped. Valid exclude
 // values: "code-blocks", "tables", "urls".
 type Rule struct {
-	Max     int
-	Exclude []string
+	Max          int
+	HeadingMax   *int
+	CodeBlockMax *int
+	Stern        bool
+	Exclude      []string
 }
 
 // ID implements rule.Rule.
@@ -52,38 +56,86 @@ func (r *Rule) isExcluded(category string) bool {
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
-		switch k {
-		case "max":
-			n, ok := toInt(v)
-			if !ok {
-				return fmt.Errorf("line-length: max must be an integer, got %T", v)
-			}
-			r.Max = n
-		case "exclude":
-			list, ok := toStringSlice(v)
-			if !ok {
-				return fmt.Errorf("line-length: exclude must be a list of strings, got %T", v)
-			}
-			for _, item := range list {
-				if !isValidExclude(item) {
-					return fmt.Errorf("line-length: invalid exclude value %q (valid: code-blocks, tables, urls)", item)
-				}
-			}
-			r.Exclude = list
-		case "strict":
-			b, ok := v.(bool)
-			if !ok {
-				return fmt.Errorf("line-length: strict must be a bool, got %T", v)
-			}
-			// Deprecation shim: translate strict to exclude.
-			if b {
-				r.Exclude = []string{}
-			} else {
-				r.Exclude = []string{"code-blocks", "tables", "urls"}
-			}
-		default:
-			return fmt.Errorf("line-length: unknown setting %q", k)
+		if err := r.applySetting(k, v); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func (r *Rule) applySetting(k string, v any) error {
+	switch k {
+	case "max":
+		return r.applyMax(v)
+	case "heading-max":
+		return r.applyPositiveIntPtr(v, "heading-max", &r.HeadingMax)
+	case "code-block-max":
+		return r.applyPositiveIntPtr(v, "code-block-max", &r.CodeBlockMax)
+	case "stern":
+		return r.applyStern(v)
+	case "exclude":
+		return r.applyExclude(v)
+	case "strict":
+		return r.applyStrict(v)
+	default:
+		return fmt.Errorf("line-length: unknown setting %q", k)
+	}
+}
+
+func (r *Rule) applyMax(v any) error {
+	n, ok := toInt(v)
+	if !ok {
+		return fmt.Errorf("line-length: max must be an integer, got %T", v)
+	}
+	r.Max = n
+	return nil
+}
+
+func (r *Rule) applyPositiveIntPtr(v any, name string, target **int) error {
+	n, ok := toInt(v)
+	if !ok {
+		return fmt.Errorf("line-length: %s must be an integer, got %T", name, v)
+	}
+	if n <= 0 {
+		return fmt.Errorf("line-length: %s must be positive, got %d", name, n)
+	}
+	*target = &n
+	return nil
+}
+
+func (r *Rule) applyStern(v any) error {
+	b, ok := v.(bool)
+	if !ok {
+		return fmt.Errorf("line-length: stern must be a bool, got %T", v)
+	}
+	r.Stern = b
+	return nil
+}
+
+func (r *Rule) applyExclude(v any) error {
+	list, ok := toStringSlice(v)
+	if !ok {
+		return fmt.Errorf("line-length: exclude must be a list of strings, got %T", v)
+	}
+	for _, item := range list {
+		if !isValidExclude(item) {
+			return fmt.Errorf("line-length: invalid exclude value %q (valid: code-blocks, tables, urls)", item)
+		}
+	}
+	r.Exclude = list
+	return nil
+}
+
+func (r *Rule) applyStrict(v any) error {
+	b, ok := v.(bool)
+	if !ok {
+		return fmt.Errorf("line-length: strict must be a bool, got %T", v)
+	}
+	// Deprecation shim: translate strict to exclude.
+	if b {
+		r.Exclude = []string{}
+	} else {
+		r.Exclude = []string{"code-blocks", "tables", "urls"}
 	}
 	return nil
 }
@@ -93,63 +145,107 @@ func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
 		"max":     80,
 		"exclude": []string{"code-blocks", "tables", "urls"},
+		"stern":   false,
 	}
+}
+
+// lineCategories holds pre-computed line classification maps.
+type lineCategories struct {
+	code    map[int]bool
+	table   map[int]bool
+	heading map[int]bool
+}
+
+func (r *Rule) buildCategories(f *lint.File) lineCategories {
+	lc := lineCategories{
+		code:    map[int]bool{},
+		table:   map[int]bool{},
+		heading: map[int]bool{},
+	}
+	if r.isExcluded("code-blocks") || r.CodeBlockMax != nil {
+		lc.code = lint.CollectCodeBlockLines(f)
+	}
+	if r.isExcluded("tables") {
+		lc.table = collectTableLines(f)
+	}
+	if r.HeadingMax != nil {
+		lc.heading = collectHeadingLines(f)
+	}
+	return lc
+}
+
+// activeMax returns the effective maximum for a line given its categories.
+func (r *Rule) activeMax(baseMax int, lc lineCategories, lineNum int) int {
+	if lc.heading[lineNum] && r.HeadingMax != nil {
+		return *r.HeadingMax
+	}
+	if lc.code[lineNum] && r.CodeBlockMax != nil {
+		return *r.CodeBlockMax
+	}
+	return baseMax
+}
+
+// isSkipped returns true if the line should be excluded from checking.
+func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) bool {
+	if r.isExcluded("code-blocks") && lc.code[lineNum] {
+		return true
+	}
+	if r.isExcluded("tables") && lc.table[lineNum] {
+		return true
+	}
+	if r.isExcluded("urls") && urlOnlyRe.MatchString(strings.TrimSpace(string(line))) {
+		return true
+	}
+	if r.Stern && !hasSpacePastLimit(line, limit) {
+		return true
+	}
+	return false
 }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	max := r.Max
-	if max <= 0 {
-		max = 80
+	baseMax := r.Max
+	if baseMax <= 0 {
+		baseMax = 80
 	}
 
-	// Build the set of 1-based line numbers inside code blocks.
-	codeLines := map[int]bool{}
-	if r.isExcluded("code-blocks") {
-		codeLines = lint.CollectCodeBlockLines(f)
-	}
-
-	// Build the set of 1-based line numbers that are table rows.
-	tableLines := map[int]bool{}
-	if r.isExcluded("tables") {
-		tableLines = collectTableLines(f)
-	}
+	lc := r.buildCategories(f)
 
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
-		lineNum := i + 1 // 1-based
+		lineNum := i + 1
+		limit := r.activeMax(baseMax, lc, lineNum)
 
-		if len(line) <= max {
+		if len(line) <= limit {
 			continue
 		}
-
-		// Skip code-block lines when excluded.
-		if r.isExcluded("code-blocks") && codeLines[lineNum] {
-			continue
-		}
-
-		// Skip table lines when excluded.
-		if r.isExcluded("tables") && tableLines[lineNum] {
-			continue
-		}
-
-		// Skip URL-only lines when excluded.
-		if r.isExcluded("urls") && urlOnlyRe.MatchString(strings.TrimSpace(string(line))) {
+		if r.isSkipped(line, lineNum, limit, lc) {
 			continue
 		}
 
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     lineNum,
-			Column:   max + 1,
+			Column:   limit + 1,
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  fmt.Sprintf("line too long (%d > %d)", len(line), max),
+			Message:  fmt.Sprintf("line too long (%d > %d)", len(line), limit),
 		})
 	}
 
 	return diags
+}
+
+// hasSpacePastLimit returns true if line contains a space byte at or beyond
+// the given limit column (0-indexed byte position).
+func hasSpacePastLimit(line []byte, limit int) bool {
+	for i := limit; i < len(line); i++ {
+		if line[i] == ' ' {
+			return true
+		}
+	}
+	return false
 }
 
 // collectTableLines returns a set of 1-based line numbers that are table rows.
@@ -161,6 +257,41 @@ func collectTableLines(f *lint.File) map[int]bool {
 		}
 	}
 	return lines
+}
+
+// collectHeadingLines walks the AST and returns a set of 1-based line numbers
+// that are heading lines.
+func collectHeadingLines(f *lint.File) map[int]bool {
+	lines := map[int]bool{}
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		h, ok := n.(*ast.Heading)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		ln := headingLineNum(h, f)
+		if ln > 0 {
+			lines[ln] = true
+		}
+		return ast.WalkContinue, nil
+	})
+	return lines
+}
+
+// headingLineNum returns the 1-based line number of a heading node.
+func headingLineNum(h *ast.Heading, f *lint.File) int {
+	if h.Lines().Len() > 0 {
+		return f.LineOfOffset(h.Lines().At(0).Start)
+	}
+	// ATX headings may have no Lines(); find line via child text nodes.
+	for c := h.FirstChild(); c != nil; c = c.NextSibling() {
+		if t, ok := c.(*ast.Text); ok {
+			return f.LineOfOffset(t.Segment.Start)
+		}
+	}
+	return 0
 }
 
 // toInt converts a value to int. Supports int and float64 (YAML decodes

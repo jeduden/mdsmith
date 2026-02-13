@@ -587,3 +587,380 @@ func TestCheck_ExcludeOnlyCodeBlocks(t *testing.T) {
 		t.Fatalf("expected 2 diagnostics (URL + table), got %d", len(diags))
 	}
 }
+
+// --- heading-max tests ---
+
+func intPtr(n int) *int { return &n }
+
+func TestCheck_HeadingMax_HeadingWithinHeadingMaxButOverMax(t *testing.T) {
+	// Heading is 70 chars, over max=60 but within heading-max=80: pass.
+	heading := "# " + nChars(68, 'h')
+	src := []byte(heading + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 60, HeadingMax: intPtr(80), Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for heading within heading-max, got %d", len(diags))
+	}
+}
+
+func TestCheck_HeadingMax_HeadingOverHeadingMax(t *testing.T) {
+	// Heading is 65 chars, over heading-max=60: fail.
+	heading := "# " + nChars(63, 'h')
+	src := []byte(heading + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, HeadingMax: intPtr(60), Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for heading over heading-max, got %d", len(diags))
+	}
+	expected := "line too long (65 > 60)"
+	if diags[0].Message != expected {
+		t.Errorf("expected message %q, got %q", expected, diags[0].Message)
+	}
+	if diags[0].Column != 61 {
+		t.Errorf("expected column 61, got %d", diags[0].Column)
+	}
+}
+
+func TestCheck_HeadingMax_UnsetInheritsFromMax(t *testing.T) {
+	// heading-max unset: heading uses max=80. 81-char heading: fail.
+	heading := "# " + nChars(79, 'h')
+	src := []byte(heading + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for heading over max (heading-max unset), got %d", len(diags))
+	}
+}
+
+func TestCheck_HeadingMax_NonHeadingUsesBaseMax(t *testing.T) {
+	// heading-max is 120, but a regular line should still use max=80.
+	line := nChars(90, 'x')
+	src := []byte("# Short heading\n\n" + line + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, HeadingMax: intPtr(120), Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for non-heading line over max, got %d", len(diags))
+	}
+	expected := "line too long (90 > 80)"
+	if diags[0].Message != expected {
+		t.Errorf("expected message %q, got %q", expected, diags[0].Message)
+	}
+}
+
+func TestCheck_HeadingMax_Level2Heading(t *testing.T) {
+	// heading-max applies to all heading levels.
+	heading := "## " + nChars(68, 'h') // 71 chars total
+	src := []byte(heading + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 60, HeadingMax: intPtr(80), Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for level-2 heading within heading-max, got %d", len(diags))
+	}
+}
+
+// --- code-block-max tests ---
+
+func TestCheck_CodeBlockMax_CodeLineWithinCodeBlockMaxButOverMax(t *testing.T) {
+	// Code line is 100 chars, over max=80 but within code-block-max=120: pass.
+	long := nChars(100, 'c')
+	src := []byte("# Title\n\n```\n" + long + "\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, CodeBlockMax: intPtr(120), Exclude: []string{"tables", "urls"}}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for code line within code-block-max, got %d", len(diags))
+	}
+}
+
+func TestCheck_CodeBlockMax_CodeLineOverCodeBlockMax(t *testing.T) {
+	// Code line is 130 chars, over code-block-max=120: fail.
+	long := nChars(130, 'c')
+	src := []byte("# Title\n\n```\n" + long + "\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, CodeBlockMax: intPtr(120), Exclude: []string{"tables", "urls"}}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for code line over code-block-max, got %d", len(diags))
+	}
+	expected := "line too long (130 > 120)"
+	if diags[0].Message != expected {
+		t.Errorf("expected message %q, got %q", expected, diags[0].Message)
+	}
+	if diags[0].Column != 121 {
+		t.Errorf("expected column 121, got %d", diags[0].Column)
+	}
+}
+
+func TestCheck_CodeBlockMax_UnsetInheritsFromMax(t *testing.T) {
+	// code-block-max unset, code-blocks not excluded: uses max=80.
+	long := nChars(90, 'c')
+	src := []byte("```\n" + long + "\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, Exclude: []string{"tables", "urls"}}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for code line over max (code-block-max unset), got %d", len(diags))
+	}
+}
+
+func TestCheck_CodeBlockMax_ExcludeStillSkips(t *testing.T) {
+	// code-block-max is set, but exclude includes code-blocks: skip.
+	long := nChars(200, 'c')
+	src := []byte("```\n" + long + "\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, CodeBlockMax: intPtr(120), Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for code line when code-blocks excluded, got %d", len(diags))
+	}
+}
+
+func TestCheck_CodeBlockMax_NonCodeLineUsesBaseMax(t *testing.T) {
+	// code-block-max=120, but a regular line should still use max=80.
+	line := nChars(90, 'x')
+	src := []byte(line + "\n\n```\nshort code\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, CodeBlockMax: intPtr(120), Exclude: []string{"tables", "urls"}}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for non-code line over max, got %d", len(diags))
+	}
+	expected := "line too long (90 > 80)"
+	if diags[0].Message != expected {
+		t.Errorf("expected message %q, got %q", expected, diags[0].Message)
+	}
+}
+
+// --- stern mode tests ---
+
+func TestCheck_Stern_LongLineWithSpacesPastLimit(t *testing.T) {
+	// Long line with spaces past limit: flagged in stern mode.
+	// 85 'a' chars + space at position 85 + 5 'b' chars = 91 total.
+	line := nChars(85, 'a') + " " + nChars(5, 'b')
+	src := []byte(line + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, Stern: true, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for line with spaces past limit in stern mode, got %d", len(diags))
+	}
+}
+
+func TestCheck_Stern_LongLineNoSpacesPastLimit(t *testing.T) {
+	// Long line with no spaces past limit: allowed in stern mode.
+	// 75 'a' chars + space at position 75 + 10 'b' chars = 86 total.
+	// Space at 75 is before the limit of 80. Chars past 80 are all 'b'.
+	line := nChars(75, 'a') + " " + nChars(10, 'b')
+	src := []byte(line + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, Stern: true, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for line without spaces past limit in stern mode, got %d", len(diags))
+	}
+}
+
+func TestCheck_Stern_DisabledStillFlags(t *testing.T) {
+	// Same line, stern=false: should be flagged.
+	line := nChars(75, 'a') + " " + nChars(10, 'b')
+	src := []byte(line + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, Stern: false, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic with stern disabled, got %d", len(diags))
+	}
+}
+
+func TestCheck_Stern_ExcludeInteraction(t *testing.T) {
+	// Stern mode + exclude: excluded lines stay excluded.
+	long := nChars(100, 'x')
+	src := []byte("```\n" + long + "\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, Stern: true, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for excluded code line in stern mode, got %d", len(diags))
+	}
+}
+
+func TestCheck_Stern_WithHeadingMax(t *testing.T) {
+	// Stern applies to the active max for heading lines.
+	// "# " (2) + 58 'h' chars + space at position 60 + 5 'x' chars = 66 total.
+	// heading-max=60, so the space at position 60 is past the limit.
+	heading := "# " + nChars(58, 'h') + " " + nChars(5, 'x')
+	src := []byte(heading + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, HeadingMax: intPtr(60), Stern: true, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for heading with space past heading-max in stern mode, got %d", len(diags))
+	}
+}
+
+func TestCheck_Stern_WithHeadingMaxNoSpacePast(t *testing.T) {
+	// Heading exceeds heading-max=60 but has no space past limit: allowed.
+	heading := "# " + nChars(63, 'h') // 65 chars, no spaces past position 60
+	src := []byte(heading + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, HeadingMax: intPtr(60), Stern: true, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics for heading without spaces past heading-max, got %d", len(diags))
+	}
+}
+
+func TestCheck_Stern_WithCodeBlockMax(t *testing.T) {
+	// Code line exceeds code-block-max but has space past limit: flagged.
+	long := nChars(110, 'c') + " " + nChars(10, 'd')
+	src := []byte("```\n" + long + "\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{Max: 80, CodeBlockMax: intPtr(100), Stern: true, Exclude: []string{"tables", "urls"}}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic for code line with space past code-block-max, got %d", len(diags))
+	}
+}
+
+// --- ApplySettings tests for new settings ---
+
+func TestApplySettings_ValidHeadingMax(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"heading-max": 100})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.HeadingMax == nil || *r.HeadingMax != 100 {
+		t.Errorf("expected HeadingMax=100, got %v", r.HeadingMax)
+	}
+}
+
+func TestApplySettings_InvalidHeadingMaxType(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"heading-max": "not-a-number"})
+	if err == nil {
+		t.Fatal("expected error for non-int heading-max")
+	}
+}
+
+func TestApplySettings_HeadingMaxMustBePositive(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"heading-max": 0})
+	if err == nil {
+		t.Fatal("expected error for zero heading-max")
+	}
+}
+
+func TestApplySettings_ValidCodeBlockMax(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"code-block-max": 120})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.CodeBlockMax == nil || *r.CodeBlockMax != 120 {
+		t.Errorf("expected CodeBlockMax=120, got %v", r.CodeBlockMax)
+	}
+}
+
+func TestApplySettings_InvalidCodeBlockMaxType(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"code-block-max": "not-a-number"})
+	if err == nil {
+		t.Fatal("expected error for non-int code-block-max")
+	}
+}
+
+func TestApplySettings_CodeBlockMaxMustBePositive(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"code-block-max": -5})
+	if err == nil {
+		t.Fatal("expected error for negative code-block-max")
+	}
+}
+
+func TestApplySettings_ValidStern(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"stern": true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !r.Stern {
+		t.Errorf("expected Stern=true")
+	}
+}
+
+func TestApplySettings_InvalidSternType(t *testing.T) {
+	r := &Rule{Max: 80, Exclude: defaultExclude()}
+	err := r.ApplySettings(map[string]any{"stern": "not-a-bool"})
+	if err == nil {
+		t.Fatal("expected error for non-bool stern")
+	}
+}
+
+func TestDefaultSettings_IncludesStern(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	stern, ok := ds["stern"].(bool)
+	if !ok {
+		t.Fatalf("expected stern to be bool, got %T", ds["stern"])
+	}
+	if stern {
+		t.Errorf("expected stern=false by default")
+	}
+}
