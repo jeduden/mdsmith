@@ -58,9 +58,11 @@ mdsmith <command> [flags] [files...]
 | `version` | Print version, exit          |
 
 Files are positional arguments. Accepts multiple file paths,
-directories, and glob patterns.
-No file args and no stdin exits 0
-(graceful empty invocation for pre-commit hooks).
+directories, and glob patterns. Pass `-` to read from stdin.
+
+When no file arguments are given, `check` and `fix` discover
+files using the `files` glob patterns from config (default:
+`["**/*.md", "**/*.markdown"]`). If no files match, exits 0.
 
 ### Subcommand Flags (check, fix)
 
@@ -162,6 +164,21 @@ See [README.md](README.md#configuration) for config file format and examples.
 Each rule is documented in [`rules/<id>-<name>/README.md`](rules/).
 Use [`rules/proto.md`](rules/proto.md) as template and content
 guide when writing rule READMEs (instructions are in HTML comments).
+
+### `files` Config Key
+
+The `files` key holds a list of glob patterns for default file
+discovery. When `check` or `fix` is run without file arguments,
+these patterns are expanded from the working directory.
+
+```yaml
+files:
+  - "**/*.md"
+  - "**/*.markdown"
+```
+
+Default: `["**/*.md", "**/*.markdown"]`. Set `files: []` to
+disable default file discovery.
 
 When writing descriptions, state the concrete constraint: what
 specific data must satisfy what condition. Name the inputs
