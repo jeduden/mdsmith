@@ -7,15 +7,19 @@ Written in Go.
 ## ✨ Why mdsmith
 
 **📋 Progressive disclosure with catalogs.**
-The `catalog` rule generates summary tables from file front matter
-and keeps them in sync. Link each row to the full document —
+The [`catalog`](rules/MDS019-catalog/README.md) rule generates summary
+tables from file front matter and keeps them in sync.
+Link each row to the full document —
 readers see the overview first and drill down on demand.
 Run `mdsmith fix` and the table updates itself.
 
 **🤖 Keep AI verbosity in check.**
-AI tools produce walls of text. `max-file-length` caps document size,
-`paragraph-readability` enforces a reading-grade ceiling,
-and `paragraph-structure` limits sentence count and length.
+AI tools produce walls of text.
+[`max-file-length`](rules/MDS022-max-file-length/README.md) caps document size,
+[`paragraph-readability`](rules/MDS023-paragraph-readability/README.md)
+enforces a reading-grade ceiling,
+and [`paragraph-structure`](rules/MDS024-paragraph-structure/README.md)
+limits sentence count and length.
 Set the thresholds in `.mdsmith.yml` and let CI enforce them.
 
 **📖 AI-ready rule specs — no remote calls.**
