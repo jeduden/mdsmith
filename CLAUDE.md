@@ -49,6 +49,7 @@ tidymark <command> [flags] [files...]
 |---------|------------------------------|
 | `check`   | Lint files (default command) |
 | `fix`     | Auto-fix issues in place     |
+| `help`    | Show help for rules/topics   |
 | `init`    | Generate `.tidymark.yml`       |
 | `version` | Print version, exit          |
 

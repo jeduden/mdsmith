@@ -538,6 +538,78 @@ func TestE2E_Check_Stdin_ConfigurableSettingsApplied(t *testing.T) {
 	}
 }
 
+// --- Help rule subcommand tests ---
+
+func TestE2E_HelpRule_ByID(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "help", "rule", "TM001")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "TM001") {
+		t.Errorf("expected stdout to contain TM001, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "line-length") {
+		t.Errorf("expected stdout to contain 'line-length', got: %s", stdout)
+	}
+}
+
+func TestE2E_HelpRule_ByName(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "help", "rule", "line-length")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "TM001") {
+		t.Errorf("expected stdout to contain TM001, got: %s", stdout)
+	}
+}
+
+func TestE2E_HelpRule_UnknownRule_ExitsTwo(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "help", "rule", "TMXXX")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown rule") {
+		t.Errorf("expected 'unknown rule' in stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_HelpRule_ListAll(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "help", "rule")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "TM001") {
+		t.Errorf("expected stdout to contain TM001, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "line-length") {
+		t.Errorf("expected stdout to contain 'line-length', got: %s", stdout)
+	}
+	// Should also include other rules
+	if !strings.Contains(stdout, "TM002") {
+		t.Errorf("expected stdout to contain TM002, got: %s", stdout)
+	}
+}
+
+func TestE2E_Help_NoArgs_PrintsHelpUsage(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "help")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "rule") {
+		t.Errorf("expected help usage to mention 'rule', got: %s", stderr)
+	}
+}
+
+func TestE2E_Help_UnknownTopic_ExitsTwo(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "help", "bogus")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown topic") {
+		t.Errorf("expected 'unknown topic' in stderr, got: %s", stderr)
+	}
+}
+
 func TestE2E_Check_Stdin_ConfigurableSettingsViolation(t *testing.T) {
 	// Pipe a file with 130-char lines through stdin. Even with max=120,
 	// the 130-char line should still fire TM001.

@@ -9,6 +9,7 @@ import (
 	flag "github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 
+	tidymark "github.com/jeduden/tidymark"
 	"github.com/jeduden/tidymark/internal/config"
 	"github.com/jeduden/tidymark/internal/engine"
 	fixpkg "github.com/jeduden/tidymark/internal/fix"
@@ -53,6 +54,7 @@ const usageText = `Usage: tidymark <command> [flags] [files...]
 Commands:
   check     Lint Markdown files (default when given file arguments)
   fix       Auto-fix lint issues in place
+  help      Show help for rules and topics
   init      Generate a default .tidymark.yml config file
   version   Print version and exit
 
@@ -84,6 +86,8 @@ func run() int {
 		return runCheck(os.Args[2:])
 	case "fix":
 		return runFix(os.Args[2:])
+	case "help":
+		return runHelp(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
 	case "version":
@@ -462,4 +466,57 @@ func loadConfig(configPath string) (*config.Config, error) {
 	}
 
 	return config.Merge(defaults, loaded), nil
+}
+
+const helpUsageText = `Usage: tidymark help <topic>
+
+Topics:
+  rule [id|name]   Show rule documentation
+`
+
+// runHelp implements the "help" subcommand.
+func runHelp(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, helpUsageText)
+		return 0
+	}
+
+	switch args[0] {
+	case "rule":
+		return runHelpRule(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "tidymark: help: unknown topic %q\n", args[0])
+		return 2
+	}
+}
+
+// runHelpRule implements "help rule [id|name]".
+func runHelpRule(args []string) int {
+	if len(args) == 0 {
+		return listAllRules()
+	}
+	return showRule(args[0])
+}
+
+func listAllRules() int {
+	rules, err := tidymark.ListRules()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tidymark: %v\n", err)
+		return 2
+	}
+
+	for _, r := range rules {
+		fmt.Printf("%-6s %-40s %s\n", r.ID, r.Name, r.Description)
+	}
+	return 0
+}
+
+func showRule(query string) int {
+	content, err := tidymark.LookupRule(query)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tidymark: %v\n", err)
+		return 2
+	}
+	fmt.Print(content)
+	return 0
 }
