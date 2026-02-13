@@ -1,6 +1,6 @@
 module github.com/jeduden/tidymark
 
-go 1.25.1
+go 1.25.5
 
 tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 

@@ -455,6 +455,8 @@ func checkSync(
 }
 
 // checkBodySync checks that expected body text appears under the heading.
+// It joins consecutive non-blank lines into paragraphs so that soft-wrapped
+// descriptions still match their single-line frontmatter value.
 func checkBodySync(
 	f *lint.File,
 	dh docHeading,
@@ -470,11 +472,32 @@ func checkBodySync(
 		endLine = allHeadings[headingIdx+1].Line - 1
 	}
 
+	// Check each individual line first (fast path).
 	for i := startLine - 1; i < endLine && i < len(f.Lines); i++ {
 		line := strings.TrimSpace(string(f.Lines[i]))
 		if line == expected {
-			return nil // Found matching line.
+			return nil
 		}
+	}
+
+	// Join consecutive non-blank lines into paragraphs and check each.
+	var para []string
+	for i := startLine - 1; i <= endLine && i <= len(f.Lines); i++ {
+		var line string
+		if i < endLine && i < len(f.Lines) {
+			line = strings.TrimSpace(string(f.Lines[i]))
+		}
+		if line == "" || i == endLine || i == len(f.Lines) {
+			if len(para) > 0 {
+				joined := strings.Join(para, " ")
+				if joined == expected {
+					return nil
+				}
+				para = para[:0]
+			}
+			continue
+		}
+		para = append(para, line)
 	}
 
 	return []lint.Diagnostic{makeDiag(f.Path, dh.Line,

@@ -3,7 +3,7 @@ id: NN
 title: Task Title
 status: 🔲
 template:
-  allow-extra-sections: false
+  allow-extra-sections: true
 ---
 # ?
 

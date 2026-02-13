@@ -62,14 +62,6 @@ overrides:
     rules:
       list-indent:
         spaces: 4
-
-ignore:
-  - "internal/**"
-  - "rules/*/bad/**"
-  - "rules/*/bad.md"
-  - "rules/*/good/**"
-
-overrides:
   - files: ["rules/*/README.md"]
     rules:
       required-structure:
@@ -78,3 +70,10 @@ overrides:
     rules:
       required-structure:
         template: plan/proto.md
+
+ignore:
+  - "internal/**"
+  - "rules/*/bad/**"
+  - "rules/*/bad.md"
+  - "rules/*/good/**"
+  - "rules/*/fixed/**"

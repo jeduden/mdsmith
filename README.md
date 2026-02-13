@@ -159,6 +159,8 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 | [TM017](rules/TM017-no-trailing-punctuation-in-heading/README.md) | `no-trailing-punctuation-in-heading` | Headings should not end with punctuation. |
 | [TM018](rules/TM018-no-emphasis-as-heading/README.md) | `no-emphasis-as-heading` | Don't use bold or emphasis on a standalone line as a heading substitute. |
 | [TM019](rules/TM019-catalog/README.md) | `catalog` | Catalog content must reflect selected front matter fields from files matching its glob. |
+| [TM020](rules/TM020-required-structure/README.md) | `required-structure` | Document must match the heading structure defined by its template. |
+| [TM021](rules/TM021-include/README.md) | `include` | Include section content must match the referenced file. |
 | [TM022](rules/TM022-max-file-length/README.md) | `max-file-length` | File must not exceed maximum number of lines. |
 | [TM023](rules/TM023-paragraph-readability/README.md) | `paragraph-readability` | Paragraph readability grade must not exceed a threshold. |
 | [TM024](rules/TM024-paragraph-structure/README.md) | `paragraph-structure` | Paragraphs must not exceed sentence and word limits. |
