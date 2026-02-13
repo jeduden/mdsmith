@@ -160,6 +160,25 @@ Commit the generated file to version control.
 This ensures every contributor uses the same rule settings.
 Upgrades become an explicit, reviewable change.
 
+## 📚 Guides
+
+<!-- catalog
+glob: "guides/*.md"
+sort: title
+header: |
+  | Guide | Description |
+  |-------|-------------|
+row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
+empty: |
+  | Guide         | Description                                           |
+  |---------------|-------------------------------------------------------|
+  | No guides yet | Add guide files under `guides/` to populate this index. |
+-->
+| Guide                                                       | Description                                                                                                      |
+|-------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| [Choosing Readability, Conciseness, and Token Budget Metrics](guides/metrics-tradeoffs.md) | Trade-offs, examples, and threshold guidance for readability, structure, length, conciseness, and token budgets. |
+<!-- /catalog -->
+
 ## 📏 Rules
 
 <!-- catalog

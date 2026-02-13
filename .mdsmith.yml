@@ -69,6 +69,22 @@ overrides:
     rules:
       required-structure:
         template: plan/proto.md
+  - files: ["guides/*.md"]
+    rules:
+      line-length:
+        max: 600
+        exclude:
+          - code-blocks
+          - tables
+          - urls
+      max-file-length:
+        max: 600
+      paragraph-readability:
+        max-grade: 24.0
+        min-words: 20
+      paragraph-structure:
+        max-sentences: 12
+        max-words: 120
 
 ignore:
   - "rules/*/bad/**"
