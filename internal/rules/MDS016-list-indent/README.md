@@ -29,6 +29,13 @@ rules:
     spaces: 2
 ```
 
+Disable:
+
+```yaml
+rules:
+  list-indent: false
+```
+
 ## Examples
 
 ### Bad (when spaces is 2)

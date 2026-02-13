@@ -22,6 +22,13 @@ rules:
   blank-line-around-fenced-code: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  blank-line-around-fenced-code: false
+```
+
 ## Examples
 
 ### Bad

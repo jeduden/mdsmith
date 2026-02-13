@@ -22,6 +22,13 @@ rules:
   no-trailing-spaces: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  no-trailing-spaces: false
+```
+
 ## Examples
 
 ### Bad

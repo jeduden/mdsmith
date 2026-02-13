@@ -22,6 +22,13 @@ rules:
   blank-line-around-lists: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  blank-line-around-lists: false
+```
+
 ## Examples
 
 ### Bad

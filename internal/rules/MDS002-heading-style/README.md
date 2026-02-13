@@ -29,6 +29,13 @@ rules:
     style: atx
 ```
 
+Disable:
+
+```yaml
+rules:
+  heading-style: false
+```
+
 ## Examples
 
 ### Bad (when style is `atx`)

@@ -20,7 +20,7 @@ footer: |
 | 32  | ✅      | [Max File Length Rule](plan/32_max-file-length.md)                              |
 | 34  | ✅      | [Paragraph Readability Score](plan/34_paragraph-readability.md)                       |
 | 35  | ✅      | [Paragraph Structure Limits](plan/35_paragraph-structure.md)                        |
-| 40  | 🔲      | [Normalize rule READMEs to proto template](plan/40_normalize-rule-readmes.md)          |
+| 40  | ✅      | [Normalize rule READMEs to proto template](plan/40_normalize-rule-readmes.md)          |
 | 41  | ✅      | [Verbose Mode](plan/41_verbose-mode.md)                                      |
 | 42  | ✅      | [Find a Better Project Name](plan/42_project-rename.md)                        |
 | 43  | 🔲      | [Default File Discovery](plan/43_default-file-discovery.md)                            |

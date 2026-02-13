@@ -22,6 +22,13 @@ rules:
   single-trailing-newline: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  single-trailing-newline: false
+```
+
 ## Examples
 
 ### Bad

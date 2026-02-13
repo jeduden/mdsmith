@@ -22,6 +22,13 @@ rules:
   no-emphasis-as-heading: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  no-emphasis-as-heading: false
+```
+
 ## Examples
 
 ### Bad

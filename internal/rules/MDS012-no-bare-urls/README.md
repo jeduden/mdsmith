@@ -22,6 +22,13 @@ rules:
   no-bare-urls: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  no-bare-urls: false
+```
+
 ## Examples
 
 ### Bad
