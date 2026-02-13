@@ -28,6 +28,8 @@ Follow the [standard Go project layout](https://go.dev/doc/modules/layout):
 - New features are test-driven: write a failing test (red),
   make it pass (green), commit
 - Keep commits small and focused on one change
+- Run `mdsmith check .` before committing to ensure all
+  markdown files pass linting
 
 ## Code Style
 

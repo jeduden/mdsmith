@@ -218,6 +218,14 @@ golangci-lint run
 go test ./...
 ```
 
+### Pre-commit check
+
+```bash
+mdsmith check .
+```
+
+Run before committing to ensure all markdown files pass linting.
+
 ## 📄 License
 
 [MIT](LICENSE)
