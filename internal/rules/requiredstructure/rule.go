@@ -142,8 +142,7 @@ func parseTemplateConfig(prefix []byte) (templateConfig, error) {
 	}
 	var fm struct {
 		Template struct {
-			AllowExtraSections bool   `yaml:"allow-extra-sections"`
-			HeadingOrder       string `yaml:"heading-order"`
+			AllowExtraSections bool `yaml:"allow-extra-sections"`
 		} `yaml:"template"`
 	}
 	yamlBytes := extractYAML(prefix)
