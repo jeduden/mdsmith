@@ -1,42 +1,42 @@
-# mdsmith
+# 🔨 mdsmith
 
 A fast, auto-fixing Markdown linter and formatter for docs, READMEs,
 and AI-generated content. Checks style, readability, and structure.
 Written in Go.
 
-## Why mdsmith
+## ✨ Why mdsmith
 
-**Progressive disclosure with catalogs.**
+**📋 Progressive disclosure with catalogs.**
 The `catalog` rule generates summary tables from file front matter
 and keeps them in sync. Link each row to the full document —
 readers see the overview first and drill down on demand.
 Run `mdsmith fix` and the table updates itself.
 
-**Keep AI verbosity in check.**
+**🤖 Keep AI verbosity in check.**
 AI tools produce walls of text. `max-file-length` caps document size,
 `paragraph-readability` enforces a reading-grade ceiling,
 and `paragraph-structure` limits sentence count and length.
 Set the thresholds in `.mdsmith.yml` and let CI enforce them.
 
-**AI-ready rule specs — no remote calls.**
+**📖 AI-ready rule specs — no remote calls.**
 `mdsmith help rule` lists every rule with its ID and description.
 `mdsmith help rule <name>` prints the full spec: settings, examples,
 diagnostics. All docs are compiled into the binary — works offline,
 works in CI, works as a source for `.cursor/rules` or `AGENTS.md`.
 
-**Auto-fix.**
+**🔧 Auto-fix.**
 `mdsmith fix` corrects most rules in place.
 Whitespace, heading style, code fences, bare URLs, list indentation,
 table alignment, and generated sections — all handled.
 Multi-pass fixing resolves cascading changes automatically.
 
-## Installation
+## 📦 Installation
 
 ```bash
 go install github.com/jeduden/mdsmith@latest
 ```
 
-## Usage
+## 🚀 Usage
 
 ```text
 mdsmith <command> [flags] [files...]
@@ -111,7 +111,7 @@ Pattern: `file:line:col rule message`
 | 1    | Lint issues found              |
 | 2    | Runtime or configuration error |
 
-## Configuration
+## ⚙️ Configuration
 
 Create a `.mdsmith.yml` in your project root.
 Without one, all rules are enabled with defaults.
@@ -156,7 +156,7 @@ Commit the generated file to version control.
 This ensures every contributor uses the same rule settings.
 Upgrades become an explicit, reviewable change.
 
-## Rules
+## 📏 Rules
 
 <!-- catalog
 glob: "rules/MDS*/README.md"
@@ -195,7 +195,7 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 | [MDS025](rules/MDS025-table-format/README.md) | `table-format`                       | Tables must have consistent column widths and padding.                                  |
 <!-- /catalog -->
 
-## Development
+## 🛠️ Development
 
 ### Prerequisites
 
@@ -214,6 +214,6 @@ golangci-lint run
 go test ./...
 ```
 
-## License
+## 📄 License
 
 [MIT](LICENSE)
