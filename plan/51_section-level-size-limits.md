@@ -9,7 +9,8 @@ template:
 
 ## Goal
 
-Enforce size limits on individual Markdown sections to prevent oversized headings from hiding in otherwise compliant files.
+Enforce size limits on individual Markdown sections
+to prevent oversized headings from hiding in otherwise compliant files.
 
 ## Tasks
 

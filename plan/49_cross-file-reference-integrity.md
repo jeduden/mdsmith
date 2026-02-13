@@ -9,11 +9,13 @@ template:
 
 ## Goal
 
-Detect broken Markdown links to other files and headings to prevent context loss across agent docs.
+Detect broken Markdown links to other files and headings
+to prevent context loss across agent docs.
 
 ## Tasks
 
-1. Identify supported link formats (relative paths, anchors) and parsing approach.
+1. Identify supported link formats (relative paths, anchors)
+   and parsing approach.
 2. Implement resolver for file existence and heading anchors.
 3. Add rule configuration for include/exclude patterns and optional strictness.
 4. Document usage and limitations.
