@@ -533,7 +533,6 @@ func TestE2E_Check_Stdin_ConfigurableSettingsApplied(t *testing.T) {
 	if strings.Contains(stderr, "MDS001") {
 		t.Errorf("expected MDS001 to be suppressed by max=120 setting, but found in stderr: %s", stderr)
 	}
-	}
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0 with max=120 for 101-char line, got %d; stderr: %s", exitCode, stderr)
 	}
@@ -760,15 +759,15 @@ func TestE2E_Check_NoArgs_DiscoversFiles(t *testing.T) {
 	writeFixture(t, dir, "dirty.md", "# Title\n\nHello   \n")
 
 	// Create a config with default file patterns.
-	writeFixture(t, dir, ".tidymark.yml", "rules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
 
 	// Run check with no file args - should discover and lint dirty.md.
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
 	if exitCode != 1 {
 		t.Errorf("expected exit code 1 (violations found via discovery), got %d; stderr: %s", exitCode, stderr)
 	}
-	if !strings.Contains(stderr, "TM006") {
-		t.Errorf("expected TM006 in stderr, got: %s", stderr)
+	if !strings.Contains(stderr, "MDS006") {
+		t.Errorf("expected MDS006 in stderr, got: %s", stderr)
 	}
 }
 
@@ -779,7 +778,7 @@ func TestE2E_Check_NoArgs_CleanDirectory(t *testing.T) {
 	writeFixture(t, dir, "clean.md", "# Title\n\nSome content here.\n")
 
 	// Create config.
-	writeFixture(t, dir, ".tidymark.yml", "rules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
 
 	_, _, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
 	if exitCode != 0 {
@@ -794,7 +793,7 @@ func TestE2E_Check_NoArgs_EmptyFilesConfig(t *testing.T) {
 	writeFixture(t, dir, "dirty.md", "# Title\n\nHello   \n")
 
 	// Create config with empty files list.
-	writeFixture(t, dir, ".tidymark.yml", "files: []\nrules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml", "files: []\nrules:\n  no-trailing-spaces: true\n")
 
 	_, _, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
 	if exitCode != 0 {
@@ -813,7 +812,7 @@ func TestE2E_Check_NoArgs_CustomFilesPattern(t *testing.T) {
 	writeFixture(t, dir, "README.md", "# Title\n\nHello   \n")
 
 	// Config that only discovers files in docs/.
-	writeFixture(t, dir, ".tidymark.yml", "files:\n  - \"docs/**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml", "files:\n  - \"docs/**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
 	if exitCode != 1 {
@@ -846,7 +845,7 @@ func TestE2E_Fix_NoArgs_DiscoversAndFixes(t *testing.T) {
 	writeFixture(t, dir, "fixme.md", "# Title\n\nHello   \n")
 
 	// Create config.
-	writeFixture(t, dir, ".tidymark.yml", "rules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
 
 	// Run fix with no file args.
 	_, _, exitCode := runBinaryInDir(t, dir, "", "fix", "--no-color")
@@ -890,7 +889,7 @@ func TestE2E_Check_NoArgs_GitignoreRespected(t *testing.T) {
 	writeFixture(t, dir, ".gitignore", "vendor/\n")
 
 	// Create config.
-	writeFixture(t, dir, ".tidymark.yml", "rules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
 	if exitCode != 0 {
@@ -914,14 +913,14 @@ func TestE2E_Check_NoArgs_NoGitignoreIncludesAll(t *testing.T) {
 	writeFixture(t, dir, ".gitignore", "vendor/\n")
 
 	// Create config.
-	writeFixture(t, dir, ".tidymark.yml", "rules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color", "--no-gitignore")
 	if exitCode != 1 {
 		t.Errorf("expected exit code 1 (vendor included with --no-gitignore), got %d; stderr: %s", exitCode, stderr)
 	}
-	if !strings.Contains(stderr, "TM006") {
-		t.Errorf("expected TM006 in stderr, got: %s", stderr)
+	if !strings.Contains(stderr, "MDS006") {
+		t.Errorf("expected MDS006 in stderr, got: %s", stderr)
 	}
 }
 

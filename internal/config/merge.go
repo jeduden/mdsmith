@@ -11,21 +11,21 @@ import (
 // category not mentioned in loaded keeps its default value (true).
 func Merge(defaults, loaded *Config) *Config {
 	if loaded == nil {
-	// No user config: return a copy of defaults.
-	rules := make(map[string]RuleCfg, len(defaults.Rules))
-	for k, v := range defaults.Rules {
-		rules[k] = v
-	}
-	cats := copyCategories(defaults.Categories)
-	files := copyStrings(defaults.Files)
-	noFollow := copyStrings(defaults.NoFollowSymlinks)
-	return &Config{
-		Rules:            rules,
-		FrontMatter:      defaults.FrontMatter,
-		Categories:       cats,
-		Files:            files,
-		NoFollowSymlinks: noFollow,
-	}
+		// No user config: return a copy of defaults.
+		rules := make(map[string]RuleCfg, len(defaults.Rules))
+		for k, v := range defaults.Rules {
+			rules[k] = v
+		}
+		cats := copyCategories(defaults.Categories)
+		files := copyStrings(defaults.Files)
+		noFollow := copyStrings(defaults.NoFollowSymlinks)
+		return &Config{
+			Rules:            rules,
+			FrontMatter:      defaults.FrontMatter,
+			Categories:       cats,
+			Files:            files,
+			NoFollowSymlinks: noFollow,
+		}
 	}
 
 	rules := make(map[string]RuleCfg, len(defaults.Rules))

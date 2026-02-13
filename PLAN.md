@@ -23,7 +23,7 @@ footer: |
 | 40  | 🔲      | [Normalize rule READMEs to proto template](plan/40_normalize-rule-readmes.md)          |
 | 41  | ✅      | [Verbose Mode](plan/41_verbose-mode.md)                                      |
 | 42  | ✅      | [Find a Better Project Name](plan/42_project-rename.md)                        |
-| 43  | 🔲      | [Default File Discovery](plan/43_default-file-discovery.md)                            |
+| 43  | ✅      | [Default File Discovery](plan/43_default-file-discovery.md)                            |
 | 44  | ✅      | [Rule Docs Command](plan/44_rule-docs-command.md)                                 |
 | 45  | ✅      | [Derive allRuleNames from Rule Registry](plan/45_derive-allrulenames.md)            |
 | 46  | 🔲      | [Design table readability measure](plan/46_table-readability.md)                  |

@@ -1,7 +1,7 @@
 ---
 id: 43
 title: Default File Discovery
-status: 🔲
+status: ✅
 ---
 # Default File Discovery
 

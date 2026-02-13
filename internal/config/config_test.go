@@ -1254,7 +1254,7 @@ rules:
   line-length: true
 `
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
 	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1284,7 +1284,7 @@ rules:
   line-length: true
 `
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
 	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1309,7 +1309,7 @@ rules:
   line-length: true
 `
 	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, ".tidymark.yml")
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
 	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
 		t.Fatal(err)
 	}
