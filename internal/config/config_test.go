@@ -34,6 +34,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredstructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"
+	_ "github.com/jeduden/mdsmith/internal/rules/tablereadability"
 )
 
 // --- YAML parsing tests ---
