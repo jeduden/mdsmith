@@ -50,7 +50,7 @@ mdsmith <command> [flags] [files...]
 | `check`   | Lint files (default command) |
 | `fix`     | Auto-fix issues in place     |
 | `help`    | Show help for rules/topics   |
-| `init`    | Generate `.mdsmith.yml`       |
+| `init`    | Generate `.mdsmith.yml`        |
 | `version` | Print version, exit          |
 
 Files are positional arguments. Accepts multiple file paths,

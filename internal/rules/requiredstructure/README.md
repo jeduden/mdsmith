@@ -74,10 +74,10 @@ Line exceeds maximum length.
 
 ## Diagnostics
 
-| Condition       | Message                                                                     |
-|-----------------|-----------------------------------------------------------------------------|
-| section missing | missing required section "## Settings"                                      |
-| wrong level     | heading level mismatch: expected h2, got h3                                 |
-| extra section   | unexpected section "## Extra"                                               |
+| Condition       | Message                                                                       |
+|-----------------|-------------------------------------------------------------------------------|
+| section missing | missing required section "## Settings"                                        |
+| wrong level     | heading level mismatch: expected h2, got h3                                   |
+| extra section   | unexpected section "## Extra"                                                 |
 | heading sync    | heading does not match frontmatter: expected "MDS001" (from id), got "MDS002" |
-| body sync       | body does not match frontmatter field "description"                         |
+| body sync       | body does not match frontmatter field "description"                           |

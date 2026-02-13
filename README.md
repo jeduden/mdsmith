@@ -20,7 +20,7 @@ mdsmith <command> [flags] [files...]
 |---------|------------------------------|
 | `check`   | Lint files (default command) |
 | `fix`     | Auto-fix issues in place     |
-| `init`    | Generate `.mdsmith.yml`       |
+| `init`    | Generate `.mdsmith.yml`        |
 | `version` | Print version, exit          |
 
 Files can be paths, directories (walked recursively for `*.md`),
@@ -138,8 +138,8 @@ header: |
   |------|------|-------------|
 row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 -->
-| Rule  | Name                               | Description                                                                             |
-|-------|------------------------------------|-----------------------------------------------------------------------------------------|
+| Rule   | Name                               | Description                                                                             |
+|--------|------------------------------------|-----------------------------------------------------------------------------------------|
 | [MDS001](rules/MDS001-line-length/README.md) | `line-length`                        | Line exceeds maximum length.                                                            |
 | [MDS002](rules/MDS002-heading-style/README.md) | `heading-style`                      | Heading style must be consistent.                                                       |
 | [MDS003](rules/MDS003-heading-increment/README.md) | `heading-increment`                  | Heading levels should increment by one. No jumping from `#` to `###`.                       |
