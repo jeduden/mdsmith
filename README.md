@@ -138,33 +138,33 @@ header: |
   |------|------|-------------|
 row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 -->
-| Rule | Name | Description |
-|------|------|-------------|
-| [TM001](rules/TM001-line-length/README.md) | `line-length` | Line exceeds maximum length. |
-| [TM002](rules/TM002-heading-style/README.md) | `heading-style` | Heading style must be consistent. |
-| [TM003](rules/TM003-heading-increment/README.md) | `heading-increment` | Heading levels should increment by one. No jumping from `#` to `###`. |
-| [TM004](rules/TM004-first-line-heading/README.md) | `first-line-heading` | First line of the file should be a heading. |
-| [TM005](rules/TM005-no-duplicate-headings/README.md) | `no-duplicate-headings` | No two headings should have the same text. |
-| [TM006](rules/TM006-no-trailing-spaces/README.md) | `no-trailing-spaces` | No trailing whitespace at the end of lines. |
-| [TM007](rules/TM007-no-hard-tabs/README.md) | `no-hard-tabs` | No tab characters. Use spaces instead. |
-| [TM008](rules/TM008-no-multiple-blanks/README.md) | `no-multiple-blanks` | No more than one consecutive blank line. |
-| [TM009](rules/TM009-single-trailing-newline/README.md) | `single-trailing-newline` | File must end with exactly one newline character. |
-| [TM010](rules/TM010-fenced-code-style/README.md) | `fenced-code-style` | Fenced code blocks must use a consistent delimiter. |
-| [TM011](rules/TM011-fenced-code-language/README.md) | `fenced-code-language` | Fenced code blocks must specify a language. |
-| [TM012](rules/TM012-no-bare-urls/README.md) | `no-bare-urls` | URLs must be wrapped in angle brackets or as a link, not left bare. |
-| [TM013](rules/TM013-blank-line-around-headings/README.md) | `blank-line-around-headings` | Headings must have a blank line before and after. |
-| [TM014](rules/TM014-blank-line-around-lists/README.md) | `blank-line-around-lists` | Lists must have a blank line before and after. |
-| [TM015](rules/TM015-blank-line-around-fenced-code/README.md) | `blank-line-around-fenced-code` | Fenced code blocks must have a blank line before and after. |
-| [TM016](rules/TM016-list-indent/README.md) | `list-indent` | List items must use consistent indentation. |
-| [TM017](rules/TM017-no-trailing-punctuation-in-heading/README.md) | `no-trailing-punctuation-in-heading` | Headings should not end with punctuation. |
-| [TM018](rules/TM018-no-emphasis-as-heading/README.md) | `no-emphasis-as-heading` | Don't use bold or emphasis on a standalone line as a heading substitute. |
-| [TM019](rules/TM019-catalog/README.md) | `catalog` | Catalog content must reflect selected front matter fields from files matching its glob. |
-| [TM020](rules/TM020-required-structure/README.md) | `required-structure` | Document must match the heading structure defined by its template. |
-| [TM021](rules/TM021-include/README.md) | `include` | Include section content must match the referenced file. |
-| [TM022](rules/TM022-max-file-length/README.md) | `max-file-length` | File must not exceed maximum number of lines. |
-| [TM023](rules/TM023-paragraph-readability/README.md) | `paragraph-readability` | Paragraph readability grade must not exceed a threshold. |
-| [TM024](rules/TM024-paragraph-structure/README.md) | `paragraph-structure` | Paragraphs must not exceed sentence and word limits. |
-| [TM025](rules/TM025-table-format/README.md) | `table-format` | Tables must have consistent column widths and padding. |
+| Rule  | Name                               | Description                                                                             |
+|-------|------------------------------------|-----------------------------------------------------------------------------------------|
+| [TM001](rules/TM001-line-length/README.md) | `line-length`                        | Line exceeds maximum length.                                                            |
+| [TM002](rules/TM002-heading-style/README.md) | `heading-style`                      | Heading style must be consistent.                                                       |
+| [TM003](rules/TM003-heading-increment/README.md) | `heading-increment`                  | Heading levels should increment by one. No jumping from `#` to `###`.                       |
+| [TM004](rules/TM004-first-line-heading/README.md) | `first-line-heading`                 | First line of the file should be a heading.                                             |
+| [TM005](rules/TM005-no-duplicate-headings/README.md) | `no-duplicate-headings`              | No two headings should have the same text.                                              |
+| [TM006](rules/TM006-no-trailing-spaces/README.md) | `no-trailing-spaces`                 | No trailing whitespace at the end of lines.                                             |
+| [TM007](rules/TM007-no-hard-tabs/README.md) | `no-hard-tabs`                       | No tab characters. Use spaces instead.                                                  |
+| [TM008](rules/TM008-no-multiple-blanks/README.md) | `no-multiple-blanks`                 | No more than one consecutive blank line.                                                |
+| [TM009](rules/TM009-single-trailing-newline/README.md) | `single-trailing-newline`            | File must end with exactly one newline character.                                       |
+| [TM010](rules/TM010-fenced-code-style/README.md) | `fenced-code-style`                  | Fenced code blocks must use a consistent delimiter.                                     |
+| [TM011](rules/TM011-fenced-code-language/README.md) | `fenced-code-language`               | Fenced code blocks must specify a language.                                             |
+| [TM012](rules/TM012-no-bare-urls/README.md) | `no-bare-urls`                       | URLs must be wrapped in angle brackets or as a link, not left bare.                     |
+| [TM013](rules/TM013-blank-line-around-headings/README.md) | `blank-line-around-headings`         | Headings must have a blank line before and after.                                       |
+| [TM014](rules/TM014-blank-line-around-lists/README.md) | `blank-line-around-lists`            | Lists must have a blank line before and after.                                          |
+| [TM015](rules/TM015-blank-line-around-fenced-code/README.md) | `blank-line-around-fenced-code`      | Fenced code blocks must have a blank line before and after.                             |
+| [TM016](rules/TM016-list-indent/README.md) | `list-indent`                        | List items must use consistent indentation.                                             |
+| [TM017](rules/TM017-no-trailing-punctuation-in-heading/README.md) | `no-trailing-punctuation-in-heading` | Headings should not end with punctuation.                                               |
+| [TM018](rules/TM018-no-emphasis-as-heading/README.md) | `no-emphasis-as-heading`             | Don't use bold or emphasis on a standalone line as a heading substitute.                |
+| [TM019](rules/TM019-catalog/README.md) | `catalog`                            | Catalog content must reflect selected front matter fields from files matching its glob. |
+| [TM020](rules/TM020-required-structure/README.md) | `required-structure`                 | Document must match the heading structure defined by its template.                      |
+| [TM021](rules/TM021-include/README.md) | `include`                            | Include section content must match the referenced file.                                 |
+| [TM022](rules/TM022-max-file-length/README.md) | `max-file-length`                    | File must not exceed maximum number of lines.                                           |
+| [TM023](rules/TM023-paragraph-readability/README.md) | `paragraph-readability`              | Paragraph readability grade must not exceed a threshold.                                |
+| [TM024](rules/TM024-paragraph-structure/README.md) | `paragraph-structure`                | Paragraphs must not exceed sentence and word limits.                                    |
+| [TM025](rules/TM025-table-format/README.md) | `table-format`                       | Tables must have consistent column widths and padding.                                  |
 <!-- /catalog -->
 
 ## Development
