@@ -17,7 +17,15 @@ func Merge(defaults, loaded *Config) *Config {
 			rules[k] = v
 		}
 		cats := copyCategories(defaults.Categories)
-		return &Config{Rules: rules, FrontMatter: defaults.FrontMatter, Categories: cats}
+		files := copyStrings(defaults.Files)
+		noFollow := copyStrings(defaults.NoFollowSymlinks)
+		return &Config{
+			Rules:            rules,
+			FrontMatter:      defaults.FrontMatter,
+			Categories:       cats,
+			Files:            files,
+			NoFollowSymlinks: noFollow,
+		}
 	}
 
 	rules := make(map[string]RuleCfg, len(defaults.Rules))
@@ -38,6 +46,14 @@ func Merge(defaults, loaded *Config) *Config {
 	// Merge categories: start with defaults, apply loaded on top.
 	cats := mergeCategories(defaults.Categories, loaded.Categories)
 
+	// Merge files: loaded overrides defaults if explicitly set.
+	files := copyStrings(defaults.Files)
+	filesExplicit := false
+	if loaded.FilesExplicit {
+		files = copyStrings(loaded.Files)
+		filesExplicit = true
+	}
+
 	// Track which rules were explicitly set in the loaded config.
 	explicit := make(map[string]bool, len(loaded.Rules))
 	for k := range loaded.Rules {
@@ -50,9 +66,21 @@ func Merge(defaults, loaded *Config) *Config {
 		Overrides:        loaded.Overrides,
 		FrontMatter:      fm,
 		Categories:       cats,
+		Files:            files,
+		FilesExplicit:    filesExplicit,
 		ExplicitRules:    explicit,
 		NoFollowSymlinks: loaded.NoFollowSymlinks,
 	}
+}
+
+// copyStrings returns a copy of a string slice. Returns nil if the input is nil.
+func copyStrings(s []string) []string {
+	if s == nil {
+		return nil
+	}
+	result := make([]string, len(s))
+	copy(result, s)
+	return result
 }
 
 // copyCategories returns a shallow copy of a categories map.

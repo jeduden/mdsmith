@@ -22,6 +22,13 @@ rules:
   blank-line-around-headings: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  blank-line-around-headings: false
+```
+
 ## Examples
 
 ### Bad

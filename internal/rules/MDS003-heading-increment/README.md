@@ -22,6 +22,13 @@ rules:
   heading-increment: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  heading-increment: false
+```
+
 ## Examples
 
 ### Bad

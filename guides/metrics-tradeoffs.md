@@ -15,7 +15,7 @@ This guide compares existing mdsmith rules that touch readability and length wit
 | [MDS023](../rules/MDS023-paragraph-readability/README.md) `paragraph-readability` | Complexity using ARI (characters per word, words per sentence)               | `max-grade: 14.0`, `min-words: 20`  | Wordiness and filler; short but dense paragraphs can be skipped |
 | [MDS024](../rules/MDS024-paragraph-structure/README.md) `paragraph-structure`   | Shape and length of paragraphs (sentences per paragraph, words per sentence) | `max-sentences: 6`, `max-words: 40` | Verbosity that fits within limits; dense but short prose        |
 | [MDS022](../rules/MDS022-max-file-length/README.md) `max-file-length`       | Lines per file                                                               | `max: 300`                        | Token load and dense paragraphs                                 |
-| [MDS026](../rules/MDS026-token-budget/README.md) `token-budget`          | Estimated token count per file (`heuristic` or `tokenizer` mode)                 | `max: 8000`, `mode: heuristic`      | Exact model token parity; tokenizer mode is still approximate   |
+| [MDS027](../rules/MDS027-token-budget/README.md) `token-budget`          | Estimated token count per file (`heuristic` or `tokenizer` mode)                 | `max: 8000`, `mode: heuristic`      | Exact model token parity; tokenizer mode is still approximate   |
 | [MDS001](../rules/MDS001-line-length/README.md) `line-length`           | Characters per line                                                          | `max: 80`                         | Verbosity and paragraph complexity                              |
 
 ## Planned metrics (not implemented)
@@ -30,7 +30,7 @@ Conciseness scoring (plan 53) focuses on information density rather than complex
 
 ## What token budget awareness is trying to measure
 
-Token budget awareness ([MDS026](../rules/MDS026-token-budget/README.md)) focuses on file-level size in terms of tokens rather than lines or characters. It protects LLM context windows by warning when a file exceeds a configurable budget. `heuristic` mode uses word count multiplied by a ratio, which is fast but approximate. `tokenizer` mode uses tokenizer-aware splitting with a selected encoding for a closer estimate.
+Token budget awareness ([MDS027](../rules/MDS027-token-budget/README.md)) focuses on file-level size in terms of tokens rather than lines or characters. It protects LLM context windows by warning when a file exceeds a configurable budget. `heuristic` mode uses word count multiplied by a ratio, which is fast but approximate. `tokenizer` mode uses tokenizer-aware splitting with a selected encoding for a closer estimate.
 
 Tokenization happens before inference, so any LLM will read inputs as tokens. That means token budgets are only accurate when they use the same tokenizer as the target model. The trade-off is performance: exact tokenization is slower and needs vocab assets, while ratio-based estimates are fast and model-agnostic.
 
@@ -82,7 +82,7 @@ These examples assume an illustrative ratio of `0.75 tokens per word` and a budg
 | Readability ([MDS023](../rules/MDS023-paragraph-readability/README.md))    | Encourages simple, broadly accessible prose                  | Penalizes technical terms; misses wordiness; can skip short dense paragraphs |
 | Structure ([MDS024](../rules/MDS024-paragraph-structure/README.md))      | Enforces consistent paragraph shape with low false positives | Does not address filler or redundancy                                        |
 | Length ([MDS022](../rules/MDS022-max-file-length/README.md), [MDS001](../rules/MDS001-line-length/README.md)) | Prevents runaway size and formatting drift                   | Poor proxy for token load or verbosity                                       |
-| Token budget ([MDS026](../rules/MDS026-token-budget/README.md))   | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
+| Token budget ([MDS027](../rules/MDS027-token-budget/README.md))   | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
 | Conciseness (proposed)  | Targets verbosity and token waste                            | Heuristic; can penalize necessary qualifiers or legal language               |
 
 ## How to choose limits
@@ -100,9 +100,9 @@ If you need a single metric to minimize complexity, choose the one that best mat
 
 - Choose [MDS024](../rules/MDS024-paragraph-structure/README.md) `paragraph-structure` when you want predictable, low-noise enforcement.
 - Choose [MDS023](../rules/MDS023-paragraph-readability/README.md) `paragraph-readability` when broad comprehension is the highest priority.
-- Choose [MDS026](../rules/MDS026-token-budget/README.md) `token-budget` when context window limits are the dominant constraint and you want a file-level guardrail.
+- Choose [MDS027](../rules/MDS027-token-budget/README.md) `token-budget` when context window limits are the dominant constraint and you want a file-level guardrail.
 - Choose conciseness scoring when token budget and drift are the main risks and you accept heuristic trade-offs.
 
 ## Recommendation for mdsmith users
 
-Start with [MDS023](../rules/MDS023-paragraph-readability/README.md) and [MDS024](../rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../rules/MDS022-max-file-length/README.md) and [MDS001](../rules/MDS001-line-length/README.md) as baseline file and line controls. Add [MDS026](../rules/MDS026-token-budget/README.md) when context limits matter, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.
+Start with [MDS023](../rules/MDS023-paragraph-readability/README.md) and [MDS024](../rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../rules/MDS022-max-file-length/README.md) and [MDS001](../rules/MDS001-line-length/README.md) as baseline file and line controls. Add [MDS027](../rules/MDS027-token-budget/README.md) when context limits matter, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.

@@ -22,6 +22,13 @@ rules:
   no-multiple-blanks: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  no-multiple-blanks: false
+```
+
 ## Examples
 
 ### Bad

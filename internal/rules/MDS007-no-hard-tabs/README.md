@@ -22,6 +22,13 @@ rules:
   no-hard-tabs: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  no-hard-tabs: false
+```
+
 ## Examples
 
 ### Bad

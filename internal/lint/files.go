@@ -181,9 +181,9 @@ func isSkippedSymlink(info os.FileInfo, path string, patterns []string) bool {
 // When useGitignore is true, files matched by .gitignore patterns are skipped.
 // Symlinks whose path matches a noFollowSymlinks pattern are skipped.
 func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string, error) {
-	var matcher *gitignoreMatcher
+	var matcher *GitignoreMatcher
 	if useGitignore {
-		matcher = newGitignoreMatcher(dir)
+		matcher = NewGitignoreMatcher(dir)
 	}
 
 	var files []string
@@ -218,10 +218,10 @@ func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string
 }
 
 // isGitignored checks if a path is ignored by gitignore rules.
-func isGitignored(matcher *gitignoreMatcher, path string, isDir bool) bool {
+func isGitignored(matcher *GitignoreMatcher, path string, isDir bool) bool {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
-	return matcher.isIgnored(absPath, isDir)
+	return matcher.IsIgnored(absPath, isDir)
 }

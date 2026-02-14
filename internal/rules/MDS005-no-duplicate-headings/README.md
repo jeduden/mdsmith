@@ -22,6 +22,13 @@ rules:
   no-duplicate-headings: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  no-duplicate-headings: false
+```
+
 ## Examples
 
 ### Bad

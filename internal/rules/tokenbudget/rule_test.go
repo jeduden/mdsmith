@@ -25,8 +25,8 @@ func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
 	}
 	d := diags[0]
-	if d.RuleID != "MDS026" {
-		t.Errorf("expected rule ID MDS026, got %s", d.RuleID)
+	if d.RuleID != "MDS027" {
+		t.Errorf("expected rule ID MDS027, got %s", d.RuleID)
 	}
 	if d.RuleName != "token-budget" {
 		t.Errorf("expected rule name token-budget, got %s", d.RuleName)
@@ -213,8 +213,8 @@ func TestDefaultSettings(t *testing.T) {
 
 func TestID(t *testing.T) {
 	r := &Rule{}
-	if r.ID() != "MDS026" {
-		t.Errorf("expected MDS026, got %s", r.ID())
+	if r.ID() != "MDS027" {
+		t.Errorf("expected MDS027, got %s", r.ID())
 	}
 }
 

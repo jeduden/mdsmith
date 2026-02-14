@@ -15,8 +15,6 @@ Headings should not end with punctuation.
   [source](./)
 - **Category**: heading
 
-## Details
-
 Flags headings that end with `.`, `,`, `:`, `;`, or `!`.
 
 ## Config
@@ -24,6 +22,13 @@ Flags headings that end with `.`, `,`, `:`, `;`, or `!`.
 ```yaml
 rules:
   no-trailing-punctuation-in-heading: true
+```
+
+Disable:
+
+```yaml
+rules:
+  no-trailing-punctuation-in-heading: false
 ```
 
 ## Examples

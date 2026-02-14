@@ -29,6 +29,13 @@ rules:
     style: backtick
 ```
 
+Disable:
+
+```yaml
+rules:
+  fenced-code-style: false
+```
+
 ## Examples
 
 ### Bad (when style is `backtick`)

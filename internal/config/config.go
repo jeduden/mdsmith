@@ -18,6 +18,10 @@ var ValidCategories = []string{
 	"table",
 }
 
+// DefaultFiles is the built-in list of glob patterns used for file
+// discovery when no file arguments are given on the command line.
+var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
+
 // Config is the top-level configuration.
 type Config struct {
 	Rules            map[string]RuleCfg `yaml:"rules"`
@@ -25,6 +29,7 @@ type Config struct {
 	Overrides        []Override         `yaml:"overrides"`
 	FrontMatter      *bool              `yaml:"front-matter"`
 	Categories       map[string]bool    `yaml:"categories"`
+	Files            []string           `yaml:"files"`
 	NoFollowSymlinks []string           `yaml:"no-follow-symlinks"`
 
 	// ExplicitRules tracks rule names that were explicitly set in
@@ -33,6 +38,12 @@ type Config struct {
 	// rule takes precedence over a disabled category.
 	// Not serialized to YAML.
 	ExplicitRules map[string]bool `yaml:"-"`
+
+	// FilesExplicit tracks whether the files key was explicitly set
+	// in the user config. This distinguishes between an omitted key
+	// (use defaults) and an explicitly empty list (no files).
+	// Not serialized to YAML.
+	FilesExplicit bool `yaml:"-"`
 }
 
 // Override applies rule settings to files matching glob patterns.

@@ -29,6 +29,13 @@ rules:
     level: 1
 ```
 
+Disable:
+
+```yaml
+rules:
+  first-line-heading: false
+```
+
 ## Examples
 
 ### Bad

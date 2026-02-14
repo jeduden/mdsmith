@@ -22,6 +22,13 @@ rules:
   fenced-code-language: true
 ```
 
+Disable:
+
+```yaml
+rules:
+  fenced-code-language: false
+```
+
 ## Examples
 
 ### Bad
