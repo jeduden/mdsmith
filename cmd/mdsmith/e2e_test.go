@@ -269,14 +269,14 @@ func TestE2E_Check_JSONFormat(t *testing.T) {
 }
 
 func TestE2E_Check_Stdin_Clean(t *testing.T) {
-	_, _, exitCode := runBinary(t, "# Hello\n\nWorld.\n", "check")
+	_, _, exitCode := runBinary(t, "# Hello\n\nWorld.\n", "check", "-")
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0 for clean stdin, got %d", exitCode)
 	}
 }
 
 func TestE2E_Check_Stdin_Violations(t *testing.T) {
-	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "check", "--no-color")
+	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "check", "--no-color", "-")
 	if exitCode != 1 {
 		t.Errorf("expected exit code 1 for stdin with violations, got %d", exitCode)
 	}
@@ -289,7 +289,7 @@ func TestE2E_Check_Stdin_Violations(t *testing.T) {
 }
 
 func TestE2E_Check_Stdin_JSONFormat(t *testing.T) {
-	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "check", "--no-color", "--format", "json")
+	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "check", "--no-color", "--format", "json", "-")
 	if exitCode != 1 {
 		t.Errorf("expected exit code 1, got %d", exitCode)
 	}
@@ -440,7 +440,7 @@ func TestE2E_Fix_PreservesFrontMatter(t *testing.T) {
 }
 
 func TestE2E_Fix_Stdin_Rejected(t *testing.T) {
-	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "fix")
+	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "fix", "-")
 	if exitCode != 2 {
 		t.Errorf("expected exit code 2 for fix with stdin, got %d", exitCode)
 	}
@@ -505,7 +505,7 @@ func TestE2E_Check_Stdin_FrontMatterLineOffset(t *testing.T) {
 	// (including front matter lines), not the stripped content.
 	input := "---\ntitle: hello\n---\n# Title\n\nHello   \n"
 	// "Hello   " is on line 6 of the original.
-	_, stderr, exitCode := runBinary(t, input, "check", "--no-color")
+	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "-")
 	if exitCode != 1 {
 		t.Errorf("expected exit code 1, got %d; stderr: %s", exitCode, stderr)
 	}
@@ -529,7 +529,7 @@ func TestE2E_Check_Stdin_ConfigurableSettingsApplied(t *testing.T) {
 	configContent := "rules:\n  line-length:\n    max: 120\n"
 	configPath := writeFixture(t, dir, ".mdsmith.yml", configContent)
 
-	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath)
+	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath, "-")
 	if strings.Contains(stderr, "MDS001") {
 		t.Errorf("expected MDS001 to be suppressed by max=120 setting, but found in stderr: %s", stderr)
 	}
@@ -620,7 +620,7 @@ func TestE2E_Check_Stdin_ConfigurableSettingsViolation(t *testing.T) {
 	configContent := "rules:\n  line-length:\n    max: 120\n"
 	configPath := writeFixture(t, dir, ".mdsmith.yml", configContent)
 
-	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath)
+	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath, "-")
 	if exitCode != 1 {
 		t.Errorf("expected exit code 1 for 130-char line with max=120, got %d; stderr: %s", exitCode, stderr)
 	}
@@ -747,5 +747,194 @@ func TestE2E_Fix_Verbose_ShowsFixPasses(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "stable after") {
 		t.Errorf("expected 'stable after' in verbose stderr, got: %s", stderr)
+	}
+}
+
+// --- File discovery tests ---
+
+func TestE2E_Check_NoArgs_DiscoversFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a dirty file in the directory.
+	writeFixture(t, dir, "dirty.md", "# Title\n\nHello   \n")
+
+	// Create a config with default file patterns.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
+
+	// Run check with no file args - should discover and lint dirty.md.
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1 (violations found via discovery), got %d; stderr: %s", exitCode, stderr)
+	}
+	if !strings.Contains(stderr, "MDS006") {
+		t.Errorf("expected MDS006 in stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_Check_NoArgs_CleanDirectory(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a clean file.
+	writeFixture(t, dir, "clean.md", "# Title\n\nSome content here.\n")
+
+	// Create config.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
+
+	_, _, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 for clean discovered files, got %d", exitCode)
+	}
+}
+
+func TestE2E_Check_NoArgs_EmptyFilesConfig(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a dirty file that should not be discovered.
+	writeFixture(t, dir, "dirty.md", "# Title\n\nHello   \n")
+
+	// Create config with empty files list.
+	writeFixture(t, dir, ".mdsmith.yml", "files: []\nrules:\n  no-trailing-spaces: true\n")
+
+	_, _, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 (empty files list means no discovery), got %d", exitCode)
+	}
+}
+
+func TestE2E_Check_NoArgs_CustomFilesPattern(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create files in different directories.
+	writeFixture(t, dir, "docs/guide.md", "# Title\n\nHello   \n")
+	writeFixture(t, dir, "README.md", "# Title\n\nHello   \n")
+
+	// Config that only discovers files in docs/.
+	writeFixture(t, dir, ".mdsmith.yml", "files:\n  - \"docs/**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d; stderr: %s", exitCode, stderr)
+	}
+	// Only docs/guide.md should be discovered.
+	if !strings.Contains(stderr, "guide.md") {
+		t.Errorf("expected guide.md in stderr, got: %s", stderr)
+	}
+	if strings.Contains(stderr, "README.md") {
+		t.Errorf("README.md should not be in results (not in docs/), stderr: %s", stderr)
+	}
+}
+
+func TestE2E_Check_StdinExplicitDash(t *testing.T) {
+	// Passing - reads from stdin.
+	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "check", "--no-color", "-")
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1 for stdin with -, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "<stdin>") {
+		t.Errorf("expected <stdin> in diagnostics, got: %s", stderr)
+	}
+}
+
+func TestE2E_Fix_NoArgs_DiscoversAndFixes(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a fixable file.
+	writeFixture(t, dir, "fixme.md", "# Title\n\nHello   \n")
+
+	// Create config.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
+
+	// Run fix with no file args.
+	_, _, exitCode := runBinaryInDir(t, dir, "", "fix", "--no-color")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 after fix, got %d", exitCode)
+	}
+
+	// Verify file was fixed.
+	content, err := os.ReadFile(filepath.Join(dir, "fixme.md"))
+	if err != nil {
+		t.Fatalf("reading fixed file: %v", err)
+	}
+	if strings.Contains(string(content), "Hello   ") {
+		t.Error("file still contains trailing spaces after fix")
+	}
+}
+
+func TestE2E_Fix_StdinDash_Rejected(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "# Hello\n\nWorld   \n", "fix", "-")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2 for fix with -, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "cannot fix stdin in place") {
+		t.Errorf("expected error message about stdin fix, got: %s", stderr)
+	}
+}
+
+func TestE2E_Check_NoArgs_GitignoreRespected(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "vendor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a dirty file in an ignored directory.
+	writeFixture(t, dir, "vendor/lib.md", "# Title\n\nHello   \n")
+
+	// Create a clean file.
+	writeFixture(t, dir, "clean.md", "# Title\n\nSome content here.\n")
+
+	// Create .gitignore.
+	writeFixture(t, dir, ".gitignore", "vendor/\n")
+
+	// Create config.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 (vendor ignored via gitignore), got %d; stderr: %s", exitCode, stderr)
+	}
+}
+
+func TestE2E_Check_NoArgs_NoGitignoreIncludesAll(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "vendor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a dirty file in an ignored directory.
+	writeFixture(t, dir, "vendor/lib.md", "# Title\n\nHello   \n")
+
+	// Create a clean file.
+	writeFixture(t, dir, "clean.md", "# Title\n\nSome content here.\n")
+
+	// Create .gitignore.
+	writeFixture(t, dir, ".gitignore", "vendor/\n")
+
+	// Create config.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color", "--no-gitignore")
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1 (vendor included with --no-gitignore), got %d; stderr: %s", exitCode, stderr)
+	}
+	if !strings.Contains(stderr, "MDS006") {
+		t.Errorf("expected MDS006 in stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_Check_NoArgs_NoConfig_ExitsZero(t *testing.T) {
+	dir := t.TempDir()
+
+	// Empty directory with no config - uses defaults, finds no md files.
+	// Create .git boundary so config discovery stops.
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0 for empty dir with no files, got %d", exitCode)
 	}
 }
