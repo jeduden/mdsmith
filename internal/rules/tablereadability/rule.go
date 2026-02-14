@@ -414,7 +414,7 @@ func splitRow(row string) []string {
 	var current strings.Builder
 	for i := 0; i < len(row); i++ {
 		if row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
-			current.WriteString(`\\|`)
+			current.WriteString(`\|`)
 			i++
 			continue
 		}

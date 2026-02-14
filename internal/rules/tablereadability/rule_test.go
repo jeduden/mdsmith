@@ -186,3 +186,16 @@ func TestCheck_SkipsTablesInCodeBlock(t *testing.T) {
 		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
 	}
 }
+
+func TestSplitRow_PreservesEscapedPipes(t *testing.T) {
+	cells := splitRow(`| a \| b | c |`)
+	if len(cells) != 2 {
+		t.Fatalf("expected 2 cells, got %d", len(cells))
+	}
+	if cells[0] != `a \| b` {
+		t.Fatalf("first cell = %q, want %q", cells[0], `a \| b`)
+	}
+	if cells[1] != "c" {
+		t.Fatalf("second cell = %q, want %q", cells[1], "c")
+	}
+}
