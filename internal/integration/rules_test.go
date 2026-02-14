@@ -42,6 +42,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"
 	_ "github.com/jeduden/mdsmith/internal/rules/tablereadability"
+	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
 )
 
 var ruleIDPattern = regexp.MustCompile(`^(MDS\d+)-`)
