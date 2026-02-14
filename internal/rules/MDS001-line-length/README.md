@@ -60,6 +60,8 @@ Stern uses the active max for each line type, so it respects `heading-max` and
 
 ## Config
 
+Enable (default):
+
 ```yaml
 rules:
   line-length:
@@ -70,7 +72,14 @@ rules:
       - urls
 ```
 
-Per-category limits:
+Disable:
+
+```yaml
+rules:
+  line-length: false
+```
+
+Custom (per-category limits):
 
 ```yaml
 rules:
@@ -83,7 +92,7 @@ rules:
       - urls
 ```
 
-Stern mode (allow long lines without spaces past the limit):
+Custom (stern mode; allow long lines without spaces past the limit):
 
 ```yaml
 rules:
@@ -92,7 +101,7 @@ rules:
     stern: true
 ```
 
-Check everything (no exclusions):
+Custom (check everything; no exclusions):
 
 ```yaml
 rules:
@@ -101,7 +110,7 @@ rules:
     exclude: []
 ```
 
-Skip only code blocks and URLs (check tables):
+Custom (skip only code blocks and URLs; check tables):
 
 ```yaml
 rules:
@@ -110,13 +119,6 @@ rules:
     exclude:
       - code-blocks
       - urls
-```
-
-Disable:
-
-```yaml
-rules:
-  line-length: false
 ```
 
 ## Examples

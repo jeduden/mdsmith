@@ -19,6 +19,8 @@ Flags headings that end with `.`, `,`, `:`, `;`, or `!`.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-trailing-punctuation-in-heading: true

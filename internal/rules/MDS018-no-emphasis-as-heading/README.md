@@ -17,6 +17,8 @@ Don't use bold or emphasis on a standalone line as a heading substitute.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-emphasis-as-heading: true

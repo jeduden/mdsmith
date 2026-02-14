@@ -23,6 +23,8 @@ First line of the file should be a heading.
 
 ## Config
 
+Enable (default):
+
 ```yaml
 rules:
   first-line-heading:
@@ -34,6 +36,14 @@ Disable:
 ```yaml
 rules:
   first-line-heading: false
+```
+
+Custom (require level 2):
+
+```yaml
+rules:
+  first-line-heading:
+    level: 2
 ```
 
 ## Examples
@@ -53,3 +63,10 @@ Some introductory text.
 
 Some introductory text.
 ```
+
+## Diagnostics
+
+| Message                                        | Condition                                   |
+|------------------------------------------------|---------------------------------------------|
+| `first line should be a level {level} heading`   | Line 1 is missing or not a heading          |
+| `first heading should be level {level}, got {n}` | First heading on line 1 has the wrong level |

@@ -17,6 +17,8 @@ Lists must have a blank line before and after.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   blank-line-around-lists: true
@@ -50,3 +52,10 @@ Some text.
 
 More text.
 ```
+
+## Diagnostics
+
+| Message                                 | Condition                  |
+|-----------------------------------------|----------------------------|
+| `list should be preceded by a blank line` | Previous line is not blank |
+| `list should be followed by a blank line` | Next line is not blank     |

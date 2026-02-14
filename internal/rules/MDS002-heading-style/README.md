@@ -23,6 +23,8 @@ Heading style must be consistent.
 
 ## Config
 
+Enable (default):
+
 ```yaml
 rules:
   heading-style:
@@ -34,6 +36,14 @@ Disable:
 ```yaml
 rules:
   heading-style: false
+```
+
+Custom (setext style):
+
+```yaml
+rules:
+  heading-style:
+    style: setext
 ```
 
 ## Examples
@@ -50,3 +60,10 @@ Heading
 ```markdown
 # Heading
 ```
+
+## Diagnostics
+
+| Message                        | Condition                                 |
+|--------------------------------|-------------------------------------------|
+| `heading style should be atx`    | `style: atx` and a Setext heading is found  |
+| `heading style should be setext` | `style: setext` and an ATX heading is found |

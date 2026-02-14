@@ -17,6 +17,8 @@ No more than one consecutive blank line.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-multiple-blanks: true

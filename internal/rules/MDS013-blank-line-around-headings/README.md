@@ -17,6 +17,8 @@ Headings must have a blank line before and after.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   blank-line-around-headings: true
@@ -48,3 +50,10 @@ Some text.
 
 More text.
 ```
+
+## Diagnostics
+
+| Message                                 | Condition                            |
+|-----------------------------------------|--------------------------------------|
+| `heading should have a blank line before` | Previous line is not blank           |
+| `heading should have a blank line after`  | Next line after heading is not blank |
