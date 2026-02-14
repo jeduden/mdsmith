@@ -17,9 +17,18 @@ File must end with exactly one newline character.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   single-trailing-newline: true
+```
+
+Disable:
+
+```yaml
+rules:
+  single-trailing-newline: false
 ```
 
 ## Examples

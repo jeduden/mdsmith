@@ -17,9 +17,18 @@ No two headings should have the same text.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-duplicate-headings: true
+```
+
+Disable:
+
+```yaml
+rules:
+  no-duplicate-headings: false
 ```
 
 ## Examples

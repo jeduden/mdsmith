@@ -17,9 +17,18 @@ Heading levels should increment by one. No jumping from `#` to `###`.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   heading-increment: true
+```
+
+Disable:
+
+```yaml
+rules:
+  heading-increment: false
 ```
 
 ## Examples

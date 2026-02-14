@@ -23,10 +23,27 @@ Fenced code blocks must use a consistent delimiter.
 
 ## Config
 
+Enable (default):
+
 ```yaml
 rules:
   fenced-code-style:
     style: backtick
+```
+
+Disable:
+
+```yaml
+rules:
+  fenced-code-style: false
+```
+
+Custom (tilde style):
+
+```yaml
+rules:
+  fenced-code-style:
+    style: tilde
 ```
 
 ## Examples

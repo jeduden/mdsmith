@@ -17,9 +17,18 @@ URLs must be wrapped in angle brackets or as a link, not left bare.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-bare-urls: true
+```
+
+Disable:
+
+```yaml
+rules:
+  no-bare-urls: false
 ```
 
 ## Examples

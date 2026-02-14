@@ -17,9 +17,18 @@ No tab characters. Use spaces instead.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-hard-tabs: true
+```
+
+Disable:
+
+```yaml
+rules:
+  no-hard-tabs: false
 ```
 
 ## Examples

@@ -23,10 +23,27 @@ List items must use consistent indentation.
 
 ## Config
 
+Enable (default):
+
 ```yaml
 rules:
   list-indent:
     spaces: 2
+```
+
+Disable:
+
+```yaml
+rules:
+  list-indent: false
+```
+
+Custom (4-space list indent):
+
+```yaml
+rules:
+  list-indent:
+    spaces: 4
 ```
 
 ## Examples

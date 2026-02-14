@@ -17,9 +17,18 @@ No trailing whitespace at the end of lines.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-trailing-spaces: true
+```
+
+Disable:
+
+```yaml
+rules:
+  no-trailing-spaces: false
 ```
 
 ## Examples

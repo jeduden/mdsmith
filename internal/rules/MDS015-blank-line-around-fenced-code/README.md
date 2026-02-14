@@ -17,9 +17,18 @@ Fenced code blocks must have a blank line before and after.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   blank-line-around-fenced-code: true
+```
+
+Disable:
+
+```yaml
+rules:
+  blank-line-around-fenced-code: false
 ```
 
 ## Examples
@@ -45,3 +54,10 @@ code()
 
 More text.
 ````
+
+## Diagnostics
+
+| Message                                              | Condition                                  |
+|------------------------------------------------------|--------------------------------------------|
+| `fenced code block should be preceded by a blank line` | Previous line is not blank                 |
+| `fenced code block should be followed by a blank line` | Next line after closing fence is not blank |

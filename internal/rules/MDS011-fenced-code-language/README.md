@@ -17,9 +17,18 @@ Fenced code blocks must specify a language.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   fenced-code-language: true
+```
+
+Disable:
+
+```yaml
+rules:
+  fenced-code-language: false
 ```
 
 ## Examples

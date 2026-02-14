@@ -17,9 +17,18 @@ No more than one consecutive blank line.
 
 ## Config
 
+Enable:
+
 ```yaml
 rules:
   no-multiple-blanks: true
+```
+
+Disable:
+
+```yaml
+rules:
+  no-multiple-blanks: false
 ```
 
 ## Examples
