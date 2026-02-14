@@ -29,7 +29,7 @@ footer: |
 | 46  | ✅      | [Design table readability measure](plan/46_table-readability.md)                  |
 | 47  | 🔲      | [Token Budget Awareness](plan/47_token-budget-awareness.md)                            |
 | 48  | 🔲      | [Front Matter Validation](plan/48_front-matter-validation.md)                           |
-| 49  | 🔲      | [Cross-File Reference Integrity](plan/49_cross-file-reference-integrity.md)                    |
+| 49  | ✅      | [Cross-File Reference Integrity](plan/49_cross-file-reference-integrity.md)                    |
 | 50  | 🔲      | [Redundancy / Duplication Detection](plan/50_redundancy-duplication-detection.md)                |
 | 51  | 🔲      | [Section-Level Size Limits](plan/51_section-level-size-limits.md)                         |
 | 52  | 🔲      | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md) |

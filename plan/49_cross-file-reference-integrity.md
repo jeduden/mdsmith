@@ -1,7 +1,7 @@
 ---
 id: 49
 title: Cross-File Reference Integrity
-status: 🔲
+status: ✅
 template:
   allow-extra-sections: true
 ---
@@ -22,8 +22,8 @@ to prevent context loss across agent docs.
 
 ## Acceptance Criteria
 
-- [ ] Rule reports missing target files for Markdown links.
-- [ ] Rule reports missing headings for anchor links.
-- [ ] Output includes the source file and the broken link target.
-- [ ] All tests pass: `go test ./...`
-- [ ] `golangci-lint run` reports no issues
+- [x] Rule reports missing target files for Markdown links.
+- [x] Rule reports missing headings for anchor links.
+- [x] Output includes the source file and the broken link target.
+- [x] All tests pass: `go test ./...`
+- [x] `golangci-lint run` reports no issues

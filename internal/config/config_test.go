@@ -13,6 +13,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"
 	_ "github.com/jeduden/mdsmith/internal/rules/catalog"
+	_ "github.com/jeduden/mdsmith/internal/rules/crossfilereferenceintegrity"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodelanguage"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/firstlineheading"
@@ -758,6 +759,7 @@ func TestDumpDefaults_ConfigurableRulesHaveSettings(t *testing.T) {
 		"no-multiple-blanks",
 		"fenced-code-style",
 		"list-indent",
+		"cross-file-reference-integrity",
 	}
 
 	for _, name := range configurableRules {
