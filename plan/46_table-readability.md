@@ -1,7 +1,7 @@
 ---
 id: 46
 title: Design table readability measure
-status: "\U0001F532"
+status: "✅"
 ---
 # Design table readability measure
 
@@ -27,11 +27,17 @@ tables that are hard to read.
 7. Add good/bad fixtures under the rule directory
 8. Verify `mdsmith check .` passes
 
+## Decision
+
+Create a dedicated table rule (`MDS026 table-readability`).
+Do not extend paragraph rules (`MDS023` and `MDS024`).
+Table complexity checks are different from paragraph checks.
+
 ## Acceptance Criteria
 
-- [ ] Decision documented: new rule vs. extension
-- [ ] Rule spec README exists with settings and examples
-- [ ] Implementation with unit tests
-- [ ] Good and bad fixtures pass `mdsmith check .`
-- [ ] All tests pass: `go test ./...`
-- [ ] `golangci-lint run` reports no issues
+- [x] Decision documented: new rule vs. extension
+- [x] Rule spec README exists with settings and examples
+- [x] Implementation with unit tests
+- [x] Good and bad fixtures pass `mdsmith check .`
+- [x] All tests pass: `go test ./...`
+- [x] `golangci-lint run` reports no issues

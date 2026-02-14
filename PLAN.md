@@ -26,7 +26,7 @@ footer: |
 | 43  | ✅      | [Default File Discovery](plan/43_default-file-discovery.md)                            |
 | 44  | ✅      | [Rule Docs Command](plan/44_rule-docs-command.md)                                 |
 | 45  | ✅      | [Derive allRuleNames from Rule Registry](plan/45_derive-allrulenames.md)            |
-| 46  | 🔲      | [Design table readability measure](plan/46_table-readability.md)                  |
+| 46  | ✅      | [Design table readability measure](plan/46_table-readability.md)                  |
 | 47  | 🔲      | [Token Budget Awareness](plan/47_token-budget-awareness.md)                            |
 | 48  | 🔲      | [Front Matter Validation](plan/48_front-matter-validation.md)                           |
 | 49  | 🔲      | [Cross-File Reference Integrity](plan/49_cross-file-reference-integrity.md)                    |
