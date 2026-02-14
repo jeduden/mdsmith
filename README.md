@@ -20,6 +20,8 @@ AI tools produce walls of text.
 enforces a reading-grade ceiling,
 and [`paragraph-structure`](rules/MDS024-paragraph-structure/README.md)
 limits sentence count and length.
+[`token-budget`](rules/MDS026-token-budget/README.md) adds a token-aware
+budget with heuristic and tokenizer modes.
 Set the thresholds in `.mdsmith.yml` and let CI enforce them.
 
 **📖 AI-ready rule specs — no remote calls.**
@@ -216,6 +218,7 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 | [MDS023](rules/MDS023-paragraph-readability/README.md) | `paragraph-readability`              | Paragraph readability grade must not exceed a threshold.                                |
 | [MDS024](rules/MDS024-paragraph-structure/README.md) | `paragraph-structure`                | Paragraphs must not exceed sentence and word limits.                                    |
 | [MDS025](rules/MDS025-table-format/README.md) | `table-format`                       | Tables must have consistent column widths and padding.                                  |
+| [MDS026](rules/MDS026-token-budget/README.md) | `token-budget`                       | File must not exceed a token budget.                                                    |
 <!-- /catalog -->
 
 ## 🛠️ Development

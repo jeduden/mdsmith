@@ -6,7 +6,7 @@ description: Trade-offs, examples, and threshold guidance for readability, struc
 
 ## Scope and disclaimer
 
-This guide compares existing mdsmith rules that touch readability and length with the proposed conciseness scoring (plan 53) and token budget awareness (plan 47). Both are not implemented yet and still need design; any conciseness scores and token estimates below are illustrative, not normative.
+This guide compares existing mdsmith rules that touch readability and length with token budget awareness and the proposed conciseness scoring (plan 53). Conciseness scoring is not implemented yet; any conciseness scores below are illustrative, not normative.
 
 ## What the current rules measure
 
@@ -15,16 +15,14 @@ This guide compares existing mdsmith rules that touch readability and length wit
 | [MDS023](../rules/MDS023-paragraph-readability/README.md) `paragraph-readability` | Complexity using ARI (characters per word, words per sentence)               | `max-grade: 14.0`, `min-words: 20`  | Wordiness and filler; short but dense paragraphs can be skipped |
 | [MDS024](../rules/MDS024-paragraph-structure/README.md) `paragraph-structure`   | Shape and length of paragraphs (sentences per paragraph, words per sentence) | `max-sentences: 6`, `max-words: 40` | Verbosity that fits within limits; dense but short prose        |
 | [MDS022](../rules/MDS022-max-file-length/README.md) `max-file-length`       | Lines per file                                                               | `max: 300`                        | Token load and dense paragraphs                                 |
+| [MDS026](../rules/MDS026-token-budget/README.md) `token-budget`          | Estimated token count per file (`heuristic` or `tokenizer` mode)                 | `max: 8000`, `mode: heuristic`      | Exact model token parity; tokenizer mode is still approximate   |
 | [MDS001](../rules/MDS001-line-length/README.md) `line-length`           | Characters per line                                                          | `max: 80`                         | Verbosity and paragraph complexity                              |
-
-Token budget awareness is not a current rule; see [Token Budget Awareness](../plan/47_token-budget-awareness.md) in the planned metrics section below.
 
 ## Planned metrics (not implemented)
 
-| Metric                 | Goal                                                                  | Status  |
-|------------------------|-----------------------------------------------------------------------|---------|
-| [Token Budget Awareness](../plan/47_token-budget-awareness.md) | Estimate token usage and warn when files exceed a configurable budget | Planned |
-| [Conciseness Scoring](../plan/53_conciseness-scoring.md)    | Flag low information density in paragraphs                            | Planned |
+| Metric              | Goal                                       | Status  |
+|---------------------|--------------------------------------------|---------|
+| [Conciseness Scoring](../plan/53_conciseness-scoring.md) | Flag low information density in paragraphs | Planned |
 
 ## What conciseness scoring is trying to measure
 
@@ -32,7 +30,7 @@ Conciseness scoring (plan 53) focuses on information density rather than complex
 
 ## What token budget awareness is trying to measure
 
-Token budget awareness (plan 47) focuses on file-level size in terms of tokens rather than lines or characters. It is intended to protect LLM context windows by warning when a file exceeds a configurable budget. A simple approach uses word count multiplied by a ratio, which is fast but approximate. If mdsmith uses a tokenizer, the count should be computed with that tokenizer instead of a linear approximation, and the config should make the tokenizer/encoding explicit.
+Token budget awareness ([MDS026](../rules/MDS026-token-budget/README.md)) focuses on file-level size in terms of tokens rather than lines or characters. It protects LLM context windows by warning when a file exceeds a configurable budget. `heuristic` mode uses word count multiplied by a ratio, which is fast but approximate. `tokenizer` mode uses tokenizer-aware splitting with a selected encoding for a closer estimate.
 
 Tokenization happens before inference, so any LLM will read inputs as tokens. That means token budgets are only accurate when they use the same tokenizer as the target model. The trade-off is performance: exact tokenization is slower and needs vocab assets, while ratio-based estimates are fast and model-agnostic.
 
@@ -84,7 +82,7 @@ These examples assume an illustrative ratio of `0.75 tokens per word` and a budg
 | Readability ([MDS023](../rules/MDS023-paragraph-readability/README.md))    | Encourages simple, broadly accessible prose                  | Penalizes technical terms; misses wordiness; can skip short dense paragraphs |
 | Structure ([MDS024](../rules/MDS024-paragraph-structure/README.md))      | Enforces consistent paragraph shape with low false positives | Does not address filler or redundancy                                        |
 | Length ([MDS022](../rules/MDS022-max-file-length/README.md), [MDS001](../rules/MDS001-line-length/README.md)) | Prevents runaway size and formatting drift                   | Poor proxy for token load or verbosity                                       |
-| Token budget (planned)  | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
+| Token budget ([MDS026](../rules/MDS026-token-budget/README.md))   | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
 | Conciseness (proposed)  | Targets verbosity and token waste                            | Heuristic; can penalize necessary qualifiers or legal language               |
 
 ## How to choose limits
@@ -102,9 +100,9 @@ If you need a single metric to minimize complexity, choose the one that best mat
 
 - Choose [MDS024](../rules/MDS024-paragraph-structure/README.md) `paragraph-structure` when you want predictable, low-noise enforcement.
 - Choose [MDS023](../rules/MDS023-paragraph-readability/README.md) `paragraph-readability` when broad comprehension is the highest priority.
-- Choose token budget awareness when context window limits are the dominant constraint and you want a file-level guardrail.
+- Choose [MDS026](../rules/MDS026-token-budget/README.md) `token-budget` when context window limits are the dominant constraint and you want a file-level guardrail.
 - Choose conciseness scoring when token budget and drift are the main risks and you accept heuristic trade-offs.
 
 ## Recommendation for mdsmith users
 
-Start with [MDS023](../rules/MDS023-paragraph-readability/README.md) and [MDS024](../rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../rules/MDS022-max-file-length/README.md) and [MDS001](../rules/MDS001-line-length/README.md) as baseline file and line controls. Add token budget awareness when it is implemented to align docs with LLM context limits, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.
+Start with [MDS023](../rules/MDS023-paragraph-readability/README.md) and [MDS024](../rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../rules/MDS022-max-file-length/README.md) and [MDS001](../rules/MDS001-line-length/README.md) as baseline file and line controls. Add [MDS026](../rules/MDS026-token-budget/README.md) when context limits matter, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.

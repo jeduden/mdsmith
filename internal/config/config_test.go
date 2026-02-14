@@ -34,6 +34,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredstructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"
+	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
 )
 
 // --- YAML parsing tests ---
@@ -757,6 +758,7 @@ func TestDumpDefaults_ConfigurableRulesHaveSettings(t *testing.T) {
 		"no-multiple-blanks",
 		"fenced-code-style",
 		"list-indent",
+		"token-budget",
 	}
 
 	for _, name := range configurableRules {

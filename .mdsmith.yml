@@ -29,6 +29,12 @@ rules:
     spaces: 2
   max-file-length:
     max: 300
+  token-budget:
+    max: 8000
+    mode: heuristic
+    ratio: 0.75
+    tokenizer: builtin
+    encoding: cl100k_base
   no-trailing-punctuation-in-heading: true
   no-emphasis-as-heading: true
   paragraph-readability:
@@ -79,6 +85,12 @@ overrides:
           - urls
       max-file-length:
         max: 600
+      token-budget:
+        max: 12000
+        mode: heuristic
+        ratio: 0.75
+        tokenizer: builtin
+        encoding: cl100k_base
       paragraph-readability:
         max-grade: 24.0
         min-words: 20
