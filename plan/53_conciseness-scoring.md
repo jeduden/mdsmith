@@ -2,8 +2,6 @@
 id: 53
 title: Conciseness Scoring
 status: 🔲
-template:
-  allow-extra-sections: true
 ---
 # Conciseness Scoring
 

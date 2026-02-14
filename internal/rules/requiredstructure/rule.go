@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -75,8 +78,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			fmt.Sprintf("invalid template %q: %v", r.Template, err))}
 	}
 
-	// Skip files that are themselves templates.
-	if isTemplateFile(f) {
+	// Skip the template file itself.
+	if isTemplateTargetFile(f.Path, r.Template) {
 		return nil
 	}
 
@@ -117,8 +120,7 @@ var _ rule.Configurable = (*Rule)(nil)
 
 // templateConfig holds the parsed template frontmatter.
 type templateConfig struct {
-	AllowExtraSections bool
-	FrontMatterCUE     string
+	FrontMatterCUE string
 }
 
 // templateHeading represents a required heading from the template.
@@ -144,29 +146,123 @@ type syncPoint struct {
 }
 
 var fieldPattern = regexp.MustCompile(`\{\{\.(\w+)\}\}`)
+var cueIdentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+const sectionWildcard = "..."
 
 // parseTemplateConfig extracts the template configuration from frontmatter.
 func parseTemplateConfig(prefix []byte) (templateConfig, error) {
-	cfg := templateConfig{AllowExtraSections: true}
+	cfg := templateConfig{}
 	if prefix == nil {
 		return cfg, nil
 	}
-	var fm struct {
-		Template struct {
-			AllowExtraSections bool   `yaml:"allow-extra-sections"`
-			FrontMatterCUE     string `yaml:"front-matter-cue"`
-		} `yaml:"template"`
-	}
 	yamlBytes := extractYAML(prefix)
-	if err := yaml.Unmarshal(yamlBytes, &fm); err != nil {
-		return cfg, fmt.Errorf("parsing template frontmatter: %w", err)
+	if hasLegacyFrontMatterCUE(yamlBytes) {
+		return cfg, fmt.Errorf(
+			"template.front-matter-cue is no longer supported; define frontmatter schema with top-level fields",
+		)
 	}
-	cfg.AllowExtraSections = fm.Template.AllowExtraSections
-	cfg.FrontMatterCUE = fm.Template.FrontMatterCUE
+	derivedSchema, err := deriveFrontMatterSchemaFromTemplate(yamlBytes)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.FrontMatterCUE = derivedSchema
 	if err := validateCUESchemaSyntax(cfg.FrontMatterCUE); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+func hasLegacyFrontMatterCUE(yamlBytes []byte) bool {
+	var raw map[string]any
+	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+		return false
+	}
+	tmplAny, ok := raw["template"]
+	if !ok {
+		return false
+	}
+	tmplMap, ok := tmplAny.(map[string]any)
+	if !ok {
+		return false
+	}
+	_, found := tmplMap["front-matter-cue"]
+	return found
+}
+
+func deriveFrontMatterSchemaFromTemplate(yamlBytes []byte) (string, error) {
+	var raw map[string]any
+	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+		return "", fmt.Errorf("parsing template frontmatter: %w", err)
+	}
+	delete(raw, "template")
+	if len(raw) == 0 {
+		return "", nil
+	}
+
+	expr, err := cueExprForMap(raw)
+	if err != nil {
+		return "", fmt.Errorf("parsing template frontmatter schema: %w", err)
+	}
+	return "close(" + expr + ")", nil
+}
+
+func cueExprForMap(m map[string]any) (string, error) {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	b.WriteString("{\n")
+	for _, k := range keys {
+		expr, err := cueExprForValue(m[k])
+		if err != nil {
+			return "", fmt.Errorf("field %q: %w", k, err)
+		}
+		b.WriteString("  ")
+		b.WriteString(cueFieldLabel(k))
+		b.WriteString(": ")
+		b.WriteString(expr)
+		b.WriteString("\n")
+	}
+	b.WriteString("}")
+	return b.String(), nil
+}
+
+func cueExprForValue(v any) (string, error) {
+	switch x := v.(type) {
+	case map[string]any:
+		return cueExprForMap(x)
+	case []any:
+		b, err := json.Marshal(x)
+		if err != nil {
+			return "", fmt.Errorf("marshal array value: %w", err)
+		}
+		return string(b), nil
+	case string:
+		expr := strings.TrimSpace(x)
+		if expr == "" {
+			return "", fmt.Errorf("schema expression must be non-empty")
+		}
+		return expr, nil
+	case int, int64, float64, bool:
+		b, err := json.Marshal(x)
+		if err != nil {
+			return "", fmt.Errorf("marshal scalar value: %w", err)
+		}
+		return string(b), nil
+	default:
+		return "", fmt.Errorf("unsupported schema value type %T", v)
+	}
+}
+
+func cueFieldLabel(key string) string {
+	if cueIdentPattern.MatchString(key) {
+		return key
+	}
+	return strconv.Quote(key)
 }
 
 // collectBodySyncPoints scans body content for {{.field}} references and
@@ -311,7 +407,13 @@ func checkStructure(
 	var diags []lint.Diagnostic
 
 	docIdx := 0
+	allowExtra := false
 	for _, req := range tmpl.Headings {
+		if isSectionWildcard(req) {
+			allowExtra = true
+			continue
+		}
+
 		found := false
 		for docIdx < len(docHeadings) {
 			dh := docHeadings[docIdx]
@@ -324,9 +426,10 @@ func checkStructure(
 				}
 				docIdx++
 				found = true
+				allowExtra = false
 				break
 			}
-			if !tmpl.Config.AllowExtraSections {
+			if !allowExtra {
 				diags = append(diags, makeDiag(f.Path, dh.Line,
 					fmt.Sprintf("unexpected section %q",
 						formatHeading(dh.Level, dh.Text))))
@@ -340,8 +443,9 @@ func checkStructure(
 		}
 	}
 
-	// Check remaining doc headings for extra sections when not allowed.
-	if !tmpl.Config.AllowExtraSections {
+	// Check remaining doc headings for extra sections when no wildcard
+	// allows trailing extras.
+	if !allowExtra {
 		for docIdx < len(docHeadings) {
 			dh := docHeadings[docIdx]
 			diags = append(diags, makeDiag(f.Path, dh.Line,
@@ -383,6 +487,10 @@ func matchesTemplate(req templateHeading, doc docHeading) bool {
 	}
 
 	return doc.Text == req.Text
+}
+
+func isSectionWildcard(req templateHeading) bool {
+	return strings.TrimSpace(req.Text) == sectionWildcard
 }
 
 // resolveFields replaces {{.field}} placeholders with frontmatter values.
@@ -447,6 +555,10 @@ func checkSync(
 	docIdx := 0
 
 	for tmplIdx, req := range tmpl.Headings {
+		if isSectionWildcard(req) {
+			continue
+		}
+
 		syncs := tmpl.SyncPoints[tmplIdx]
 		if len(syncs) == 0 {
 			_, docIdx = advanceToMatch(req, docHeadings, docIdx)
@@ -527,7 +639,7 @@ func validateCUESchemaSyntax(schema string) error {
 	ctx := cuecontext.New()
 	v := ctx.CompileString(schema)
 	if err := v.Err(); err != nil {
-		return fmt.Errorf("invalid template front-matter-cue schema: %w", err)
+		return fmt.Errorf("invalid template frontmatter schema: %w", err)
 	}
 	return nil
 }
@@ -619,24 +731,20 @@ func extractYAML(fmBlock []byte) []byte {
 	return []byte(s[:idx])
 }
 
-// isTemplateFile checks if a file contains template frontmatter.
-func isTemplateFile(f *lint.File) bool {
-	if len(f.FrontMatter) == 0 {
-		return false
+// isTemplateTargetFile checks if the document path is the configured template.
+func isTemplateTargetFile(docPath, templatePath string) bool {
+	docInfo, errDoc := os.Stat(docPath)
+	tmplInfo, errTmpl := os.Stat(templatePath)
+	if errDoc == nil && errTmpl == nil {
+		return os.SameFile(docInfo, tmplInfo)
 	}
 
-	yamlBytes := extractYAML(f.FrontMatter)
-	if yamlBytes == nil {
+	docAbs, errDocAbs := filepath.Abs(docPath)
+	tmplAbs, errTmplAbs := filepath.Abs(templatePath)
+	if errDocAbs != nil || errTmplAbs != nil {
 		return false
 	}
-
-	var raw map[string]any
-	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
-		return false
-	}
-
-	_, ok := raw["template"]
-	return ok
+	return filepath.Clean(docAbs) == filepath.Clean(tmplAbs)
 }
 
 // formatHeading returns a markdown-style heading string.

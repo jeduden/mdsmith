@@ -48,6 +48,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if len(text) == 0 {
 			return ast.WalkContinue, nil
 		}
+		if text == "..." {
+			// Reserved wildcard marker for required-structure prototypes.
+			return ast.WalkContinue, nil
+		}
 
 		lastChar := text[len(text)-1]
 		if strings.ContainsRune(flaggedPunctuation, rune(lastChar)) {

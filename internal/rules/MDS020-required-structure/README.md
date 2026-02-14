@@ -29,15 +29,17 @@ Template front matter may embed a CUE schema that validates
 document front matter:
 
 ```yaml
-template:
-  allow-extra-sections: true
-  front-matter-cue: |
-    close({
-      id: =~"^MDS[0-9]{3}$"
-      name: string & != ""
-      description: string & != ""
-    })
+id: '=~"^MDS[0-9]{3}$"'
+name: 'string & != ""'
+description: 'string & != ""'
 ```
+
+Template body controls section strictness:
+
+- By default, extra sections are rejected.
+- Add a heading with text `...` (for example `## ...`) to
+  allow extra headings in that position until the next
+  required heading anchor.
 
 ## Config
 

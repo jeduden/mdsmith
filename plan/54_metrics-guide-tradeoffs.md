@@ -2,8 +2,6 @@
 id: 54
 title: Conciseness Metrics Design and Implementation
 status: 🔲
-template:
-  allow-extra-sections: true
 ---
 # Conciseness Metrics Design and Implementation
 

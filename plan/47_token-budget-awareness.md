@@ -2,8 +2,6 @@
 id: 47
 title: Token Budget Awareness
 status: ✅
-template:
-  allow-extra-sections: true
 ---
 # Token Budget Awareness
 

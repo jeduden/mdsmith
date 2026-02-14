@@ -2,8 +2,6 @@
 id: 48
 title: Front Matter Validation
 status: 🔲
-template:
-  allow-extra-sections: true
 ---
 # Front Matter Validation
 

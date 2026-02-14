@@ -2,8 +2,6 @@
 id: 52
 title: Archetype / Template Library for Agentic Patterns
 status: 🔲
-template:
-  allow-extra-sections: true
 ---
 # Archetype / Template Library for Agentic Patterns
 

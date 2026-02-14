@@ -3,6 +3,7 @@ package noduplicateheadings
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -40,6 +41,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		text := headingText(heading, f.Source)
+		if strings.TrimSpace(text) == "..." {
+			// Reserved wildcard marker for required-structure prototypes.
+			return ast.WalkContinue, nil
+		}
 		line := headingLine(heading, f)
 
 		if firstLine, exists := seen[text]; exists {

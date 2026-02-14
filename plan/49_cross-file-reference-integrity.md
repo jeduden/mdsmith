@@ -2,8 +2,6 @@
 id: 49
 title: Cross-File Reference Integrity
 status: ✅
-template:
-  allow-extra-sections: true
 ---
 # Cross-File Reference Integrity
 

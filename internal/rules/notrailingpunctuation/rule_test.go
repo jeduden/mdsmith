@@ -113,6 +113,19 @@ func TestCheck_NoHeadings(t *testing.T) {
 	}
 }
 
+func TestCheck_EllipsisHeading_NoViolation(t *testing.T) {
+	src := []byte("## ...\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
+	}
+}
+
 func TestID(t *testing.T) {
 	r := &Rule{}
 	if r.ID() != "MDS017" {

@@ -2,8 +2,6 @@
 id: 50
 title: Redundancy / Duplication Detection
 status: 🔲
-template:
-  allow-extra-sections: true
 ---
 # Redundancy / Duplication Detection
 

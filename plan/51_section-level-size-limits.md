@@ -2,8 +2,6 @@
 id: 51
 title: Section-Level Size Limits
 status: 🔲
-template:
-  allow-extra-sections: true
 ---
 # Section-Level Size Limits
 
