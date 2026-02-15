@@ -39,6 +39,7 @@ rules:
   cross-file-reference-integrity:
     include: []
     exclude:
+      # Placeholder link in internal/rules/proto.md; not a real repo path.
       - "../../../archetypes/NAME"
     strict: true
   token-budget:
