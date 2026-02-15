@@ -282,7 +282,8 @@ for _ in {1..60}; do
   sleep 0.5
 done
 if [ "$server_ready" -ne 1 ]; then
-  echo "Error: llama-server on port $PORT did not become healthy." >&2
+  echo "Error: llama-server on port $PORT did not become healthy" \
+    "within the expected time." >&2
   exit 1
 fi
 ready_ts=$(python3 - <<'PY'

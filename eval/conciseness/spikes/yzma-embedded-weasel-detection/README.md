@@ -55,16 +55,16 @@ Result: deterministic behavior was confirmed for this setup.
 
 Representative warm-run metrics from the spike harness:
 
-| Metric               | Value           |
-|----------------------|-----------------|
-| Startup model load   | 199.61 ms       |
-| Requests             | 18              |
-| Avg latency          | 51.67 ms        |
-| P95 latency          | 53.00 ms        |
-| Tokens generated     | 288             |
-| Throughput           | 309.65 tokens/s |
-| RSS after model load | 87,344 KB       |
-| RSS after benchmark  | 84,480 KB       |
+| Metric             | Value           |
+|--------------------|-----------------|
+| Model load startup | 199.61 ms       |
+| Requests           | 18              |
+| Avg latency        | 51.67 ms        |
+| P95 latency        | 53.00 ms        |
+| Tokens generated   | 288             |
+| Throughput         | 309.65 tokens/s |
+| RSS post-load      | 87,344 KB       |
+| RSS post-bench     | 84,480 KB       |
 
 Notes:
 
@@ -75,15 +75,15 @@ Notes:
 
 Two runs were captured to reduce outlier risk.
 
-| Metric               | Run A           | Run B           |
-|----------------------|-----------------|-----------------|
-| Startup to healthy   | 981.92 ms       | 703.89 ms       |
-| Requests             | 18              | 18              |
-| Avg latency          | 58.63 ms        | 70.38 ms        |
-| P95 latency          | 73.12 ms        | 73.13 ms        |
-| Throughput           | 272.91 tokens/s | 227.33 tokens/s |
-| RSS after model load | 134,304 KB      | 239,216 KB      |
-| RSS after benchmark  | 147,504 KB      | 173,504 KB      |
+| Metric          | Run A           | Run B           |
+|-----------------|-----------------|-----------------|
+| Startup healthy | 981.92 ms       | 703.89 ms       |
+| Requests        | 18              | 18              |
+| Avg latency     | 58.63 ms        | 70.38 ms        |
+| P95 latency     | 73.12 ms        | 73.13 ms        |
+| Throughput      | 272.91 tokens/s | 227.33 tokens/s |
+| RSS post-load   | 134,304 KB      | 239,216 KB      |
+| RSS post-bench  | 147,504 KB      | 173,504 KB      |
 
 ### Comparison summary
 
