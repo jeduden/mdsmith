@@ -32,7 +32,8 @@ The prototype used:
 - Fixed decoding controls: greedy sampling and `temperature: 0`.
 - Corpus: 6 markdown-style prompts, 3 repetitions, `n_predict: 16`.
 
-Reproduction script: `eval/conciseness/spikes/yzma/run.sh`.
+Reproduction script:
+`eval/conciseness/spikes/yzma-embedded-weasel-detection/run.sh`.
 
 ## Determinism
 

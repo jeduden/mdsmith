@@ -12,7 +12,8 @@ default until classifier-based evaluation is complete.
 - `dataset.schema.cue`: record schema for labeled examples.
 - `approach-matrix.md`: approach definitions and threshold policy.
 - `scorecard-template.md`: report template for experiment results.
-- `spikes/yzma/README.md`: embedded yzma spike findings and recommendation.
+- `spikes/yzma-embedded-weasel-detection/README.md`:
+  embedded yzma spike findings and recommendation.
 
 ## Dataset Format
 

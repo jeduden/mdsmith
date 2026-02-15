@@ -27,7 +27,7 @@ low-overhead weasel-language detection.
 
 ## Results
 
-See `eval/conciseness/spikes/yzma/README.md`.
+See `eval/conciseness/spikes/yzma-embedded-weasel-detection/README.md`.
 
 Highlights from the spike:
 
