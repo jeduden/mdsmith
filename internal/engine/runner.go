@@ -24,8 +24,10 @@ type Runner struct {
 
 // Result holds the output of a lint run.
 type Result struct {
-	Diagnostics []lint.Diagnostic
-	Errors      []error
+	// FilesChecked is the number of files processed (after ignore filtering).
+	FilesChecked int
+	Diagnostics  []lint.Diagnostic
+	Errors       []error
 }
 
 // Run lints the files at the given paths and returns a Result containing
@@ -37,6 +39,7 @@ func (r *Runner) Run(paths []string) *Result {
 		if config.IsIgnored(r.Config.Ignore, path) {
 			continue
 		}
+		res.FilesChecked++
 
 		r.log().Printf("file: %s", path)
 
@@ -74,7 +77,7 @@ func (r *Runner) Run(paths []string) *Result {
 // The File's FS field is left nil because in-memory source has no
 // meaningful filesystem context. Rules that access f.FS must handle nil.
 func (r *Runner) RunSource(path string, source []byte) *Result {
-	res := &Result{}
+	res := &Result{FilesChecked: 1}
 
 	r.log().Printf("file: %s", path)
 

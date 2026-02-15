@@ -225,6 +225,12 @@ func TestFix_BasicTrailingSpaces(t *testing.T) {
 	if len(result.Errors) != 0 {
 		t.Fatalf("unexpected errors: %v", result.Errors)
 	}
+	if result.FilesChecked != 1 {
+		t.Fatalf("expected 1 checked file, got %d", result.FilesChecked)
+	}
+	if result.Failures != 2 {
+		t.Fatalf("expected 2 pre-fix failures, got %d", result.Failures)
+	}
 	if len(result.Modified) != 1 {
 		t.Fatalf("expected 1 modified file, got %d", len(result.Modified))
 	}
@@ -316,6 +322,12 @@ func TestFix_NonFixableViolationsReportedAfterFix(t *testing.T) {
 	result := fixer.Fix([]string{mdFile})
 	if len(result.Errors) != 0 {
 		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+	if result.FilesChecked != 1 {
+		t.Fatalf("expected 1 checked file, got %d", result.FilesChecked)
+	}
+	if result.Failures != 2 {
+		t.Fatalf("expected 2 pre-fix failures, got %d", result.Failures)
 	}
 
 	// The fixable rule should have fixed trailing spaces, but the non-fixable
@@ -467,6 +479,12 @@ func TestFix_EmptyPathsReturnsEmptyResult(t *testing.T) {
 	}
 	if len(result.Errors) != 0 {
 		t.Errorf("expected 0 errors, got %d", len(result.Errors))
+	}
+	if result.FilesChecked != 0 {
+		t.Errorf("expected 0 checked files, got %d", result.FilesChecked)
+	}
+	if result.Failures != 0 {
+		t.Errorf("expected 0 failures, got %d", result.Failures)
 	}
 }
 
