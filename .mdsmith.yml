@@ -29,6 +29,19 @@ rules:
     spaces: 2
   max-file-length:
     max: 300
+  table-format:
+    pad: 1
+  table-readability:
+    max-column-width-variance: 60
+    max-columns: 8
+    max-rows: 30
+    max-words-per-cell: 30
+  cross-file-reference-integrity:
+    include: []
+    exclude:
+      # Placeholder link in internal/rules/proto.md; not a real repo path.
+      - "../../../archetypes/NAME"
+    strict: true
   token-budget:
     max: 8000
     mode: heuristic

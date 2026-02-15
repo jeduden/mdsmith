@@ -146,6 +146,10 @@ a failing test (red), make it pass (green), commit.
 
 Plan files must pass `mdsmith check plan/` with zero diagnostics.
 
+Use Markdown links when referring to real repo paths in docs and plans.
+Bare backticked paths are allowed in commands, code blocks, and placeholders.
+This lets link-integrity checks validate real targets.
+
 ## Test Fixtures
 
 Rule test fixtures live in `internal/rules/<id>-<name>/`. Each rule
