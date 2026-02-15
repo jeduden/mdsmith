@@ -2,8 +2,6 @@
 id: 60
 title: Corpus Acquisition and Taxonomy
 status: 🔲
-template:
-  allow-extra-sections: true
 ---
 # Corpus Acquisition and Taxonomy
 
