@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jeduden/mdsmith/eval/conciseness/dataset.schema.json",
+  "title": "ConcisenessEvalRecord",
+  "type": "object",
+  "required": [
+    "id",
+    "file",
+    "doc_type",
+    "paragraph",
+    "label",
+    "annotator_a",
+    "annotator_b"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable record ID (for example file:line hash)."
+    },
+    "file": {
+      "type": "string",
+      "description": "Repo-relative source path."
+    },
+    "doc_type": {
+      "type": "string",
+      "description": "Document class such as readme, guide, plan, or spec."
+    },
+    "line": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "1-based paragraph start line."
+    },
+    "paragraph": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cues": {
+      "type": "array",
+      "description": "Optional cue annotations for cue-based models.",
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "kind"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Matched cue text (token or phrase)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "filler",
+              "hedge",
+              "verbose-phrase",
+              "redundancy",
+              "other"
+            ],
+            "description": "Cue category."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "annotator",
+              "heuristic",
+              "classifier",
+              "adjudicated"
+            ],
+            "description": "Where this cue came from."
+          },
+          "start_token": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional token index start."
+          },
+          "end_token": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional token index end (inclusive)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cue_summary": {
+      "type": "string",
+      "description": "Optional short note summarizing why cues matter."
+    },
+    "label": {
+      "type": "string",
+      "enum": [
+        "verbose-actionable",
+        "acceptable"
+      ],
+      "description": "Adjudicated gold label."
+    },
+    "annotator_a": {
+      "type": "string",
+      "enum": [
+        "verbose-actionable",
+        "acceptable"
+      ]
+    },
+    "annotator_b": {
+      "type": "string",
+      "enum": [
+        "verbose-actionable",
+        "acceptable"
+      ]
+    },
+    "adjudication_note": {
+      "type": "string",
+      "description": "Reason when annotators disagree."
+    },
+    "split": {
+      "type": "string",
+      "enum": [
+        "train",
+        "dev",
+        "test",
+        "holdout-outofdomain"
+      ]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

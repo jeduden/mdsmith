@@ -223,6 +223,7 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 | [MDS026](internal/rules/MDS026-table-readability/README.md) | `table-readability`                  | Tables must stay within readability complexity limits.                                  |
 | [MDS027](internal/rules/MDS027-cross-file-reference-integrity/README.md) | `cross-file-reference-integrity`     | Links to local files and heading anchors must resolve.                                  |
 | [MDS028](internal/rules/MDS028-token-budget/README.md) | `token-budget`                       | File must not exceed a token budget.                                                    |
+| [MDS029](internal/rules/MDS029-conciseness-scoring/README.md) | `conciseness-scoring`                | Paragraph conciseness score must not fall below a threshold.                            |
 <!-- /catalog -->
 
 ## 🛠️ Development

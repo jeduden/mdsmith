@@ -43,6 +43,9 @@ rules:
   paragraph-structure:
     max-sentences: 6
     max-words: 40
+  conciseness-scoring:
+    min-score: 0.20
+    min-words: 20
   catalog: true
   required-structure: true
   include: true
@@ -97,6 +100,9 @@ overrides:
       paragraph-structure:
         max-sentences: 12
         max-words: 120
+      conciseness-scoring:
+        min-score: 0.15
+        min-words: 30
 
 ignore:
   - "rules/*/bad/**"
