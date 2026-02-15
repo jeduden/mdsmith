@@ -299,6 +299,27 @@ func printErrors(errs []error) {
 	}
 }
 
+type runStats struct {
+	Checked  int
+	Fixed    int
+	Failures int
+	Unfixed  int
+}
+
+func printRunStats(format string, quiet bool, stats runStats) {
+	if quiet || format == "json" {
+		return
+	}
+	fmt.Fprintf(
+		os.Stderr,
+		"stats: checked=%d fixed=%d failures=%d unfixed=%d\n",
+		stats.Checked,
+		stats.Fixed,
+		stats.Failures,
+		stats.Unfixed,
+	)
+}
+
 // checkFiles lints the given file paths and returns the appropriate exit code.
 func checkFiles(
 	fileArgs []string, configPath, format string,
@@ -334,16 +355,22 @@ func checkFiles(
 	result := runner.Run(files)
 	printErrors(result.Errors)
 
-	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
-		return 2
-	}
 	if !quiet && len(result.Diagnostics) > 0 {
 		if code := formatDiagnostics(result.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
-	logger.Printf("checked %d files, %d issues found", len(files), len(result.Diagnostics))
+	printRunStats(format, quiet, runStats{
+		Checked:  result.FilesChecked,
+		Fixed:    0,
+		Failures: len(result.Diagnostics),
+		Unfixed:  len(result.Diagnostics),
+	})
+	logger.Printf("checked %d files, %d issues found", result.FilesChecked, len(result.Diagnostics))
 
+	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
+		return 2
+	}
 	if len(result.Diagnostics) > 0 {
 		return 1
 	}
@@ -390,7 +417,13 @@ func fixFiles(
 			return code
 		}
 	}
-	logger.Printf("checked %d files, %d issues found", len(files), len(fixResult.Diagnostics))
+	printRunStats(format, quiet, runStats{
+		Checked:  fixResult.FilesChecked,
+		Fixed:    len(fixResult.Modified),
+		Failures: fixResult.Failures,
+		Unfixed:  len(fixResult.Diagnostics),
+	})
+	logger.Printf("checked %d files, %d issues found", fixResult.FilesChecked, len(fixResult.Diagnostics))
 
 	if len(fixResult.Errors) > 0 && len(fixResult.Diagnostics) == 0 {
 		return 2
@@ -430,16 +463,22 @@ func checkStdin(format string, noColor, quiet, verbose bool, configPath string) 
 	result := runner.RunSource("<stdin>", source)
 	printErrors(result.Errors)
 
-	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
-		return 2
-	}
 	if !quiet && len(result.Diagnostics) > 0 {
 		if code := formatDiagnostics(result.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
-	logger.Printf("checked 1 files, %d issues found", len(result.Diagnostics))
+	printRunStats(format, quiet, runStats{
+		Checked:  result.FilesChecked,
+		Fixed:    0,
+		Failures: len(result.Diagnostics),
+		Unfixed:  len(result.Diagnostics),
+	})
+	logger.Printf("checked %d files, %d issues found", result.FilesChecked, len(result.Diagnostics))
 
+	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
+		return 2
+	}
 	if len(result.Diagnostics) > 0 {
 		return 1
 	}

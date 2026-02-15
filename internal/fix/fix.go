@@ -25,6 +25,10 @@ type Fixer struct {
 
 // Result holds the outcome of a fix run.
 type Result struct {
+	// FilesChecked is the number of files processed (after ignore filtering).
+	FilesChecked int
+	// Failures is the number of diagnostics found before attempting fixes.
+	Failures int
 	// Diagnostics contains remaining diagnostics after fixing (from non-fixable
 	// rules and any violations that could not be auto-fixed).
 	Diagnostics []lint.Diagnostic
@@ -43,9 +47,11 @@ func (f *Fixer) Fix(paths []string) *Result {
 		if config.IsIgnored(f.Config.Ignore, path) {
 			continue
 		}
+		res.FilesChecked++
 		f.log().Printf("file: %s", path)
-		diags, modified, errs := f.fixFile(path)
-		res.Diagnostics = append(res.Diagnostics, diags...)
+		beforeDiags, remainingDiags, modified, errs := f.fixFile(path)
+		res.Failures += len(beforeDiags)
+		res.Diagnostics = append(res.Diagnostics, remainingDiags...)
 		if modified != "" {
 			res.Modified = append(res.Modified, modified)
 		}
@@ -66,33 +72,37 @@ func (f *Fixer) Fix(paths []string) *Result {
 	return res
 }
 
-// fixFile applies auto-fixes to a single file and returns remaining
-// diagnostics, the path if modified, and any errors encountered.
-func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, string, []error) {
+// fixFile applies auto-fixes to a single file and returns diagnostics before
+// fixing, remaining diagnostics after fixing, the path if modified, and any
+// errors encountered.
+func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, string, []error) {
 	var errs []error
 
 	source, err := os.ReadFile(path)
 	if err != nil {
-		return nil, "", []error{fmt.Errorf("reading %q: %w", path, err)}
+		return nil, nil, "", []error{fmt.Errorf("reading %q: %w", path, err)}
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, "", []error{fmt.Errorf("stat %q: %w", path, err)}
+		return nil, nil, "", []error{fmt.Errorf("stat %q: %w", path, err)}
 	}
 
 	lf, err := lint.NewFileFromSource(path, source, f.StripFrontMatter)
 	if err != nil {
-		return nil, "", []error{fmt.Errorf("parsing %q: %w", path, err)}
+		return nil, nil, "", []error{fmt.Errorf("parsing %q: %w", path, err)}
 	}
 
 	dirFS := os.DirFS(filepath.Dir(path))
+	lf.FS = dirFS
 	effective := f.effectiveWithCategories(path)
 
 	f.logRules(effective)
 
 	fixable, settingsErrs := f.fixableRules(effective)
 	errs = append(errs, settingsErrs...)
+	beforeDiags, checkErrs := engine.CheckRules(lf, f.Rules, effective)
+	errs = append(errs, checkErrs...)
 
 	current := f.applyFixPasses(path, lf.Source, fixable, dirFS, &errs)
 
@@ -101,7 +111,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, string, []error) {
 		out := lf.FullSource(current)
 		if err := os.WriteFile(path, out, info.Mode()); err != nil {
 			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
-			return nil, "", errs
+			return beforeDiags, beforeDiags, "", errs
 		}
 		modified = path
 	}
@@ -109,7 +119,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, string, []error) {
 	finalFile, err := lint.NewFile(path, current)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("parsing %q after fix: %w", path, err))
-		return nil, modified, errs
+		return beforeDiags, beforeDiags, modified, errs
 	}
 	finalFile.FS = dirFS
 	finalFile.FrontMatter = lf.FrontMatter
@@ -117,7 +127,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, string, []error) {
 
 	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
-	return diags, modified, errs
+	return beforeDiags, diags, modified, errs
 }
 
 // applyFixPasses repeatedly applies fixable rules until the content stabilizes.

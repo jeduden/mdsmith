@@ -1,6 +1,7 @@
 package fix
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -201,6 +202,41 @@ func (r *silentRule) Name() string                         { return r.name }
 func (r *silentRule) Category() string                     { return "test" }
 func (r *silentRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
 
+// mockFlakyConfigurableRule succeeds on the first non-default ApplySettings
+// call, fails on the second, then succeeds again.
+//
+// This exercises the fix path that runs CheckRules before and after fixing:
+// the error on the pre-fix check must be collected.
+type mockFlakyConfigurableRule struct {
+	id   string
+	name string
+}
+
+var flakyConfigurableApplyCalls int
+
+func (r *mockFlakyConfigurableRule) ID() string       { return r.id }
+func (r *mockFlakyConfigurableRule) Name() string     { return r.name }
+func (r *mockFlakyConfigurableRule) Category() string { return "test" }
+func (r *mockFlakyConfigurableRule) Check(_ *lint.File) []lint.Diagnostic {
+	return nil
+}
+func (r *mockFlakyConfigurableRule) DefaultSettings() map[string]any {
+	return map[string]any{"mode": "default"}
+}
+func (r *mockFlakyConfigurableRule) ApplySettings(settings map[string]any) error {
+	if settings["mode"] == "default" {
+		return nil
+	}
+
+	flakyConfigurableApplyCalls++
+	if flakyConfigurableApplyCalls == 2 {
+		return errors.New("flaky settings failure")
+	}
+	return nil
+}
+
+var _ rule.Configurable = (*mockFlakyConfigurableRule)(nil)
+
 // --- tests ---
 
 func TestFix_BasicTrailingSpaces(t *testing.T) {
@@ -224,6 +260,12 @@ func TestFix_BasicTrailingSpaces(t *testing.T) {
 	result := fixer.Fix([]string{mdFile})
 	if len(result.Errors) != 0 {
 		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+	if result.FilesChecked != 1 {
+		t.Fatalf("expected 1 checked file, got %d", result.FilesChecked)
+	}
+	if result.Failures != 2 {
+		t.Fatalf("expected 2 pre-fix failures, got %d", result.Failures)
 	}
 	if len(result.Modified) != 1 {
 		t.Fatalf("expected 1 modified file, got %d", len(result.Modified))
@@ -316,6 +358,12 @@ func TestFix_NonFixableViolationsReportedAfterFix(t *testing.T) {
 	result := fixer.Fix([]string{mdFile})
 	if len(result.Errors) != 0 {
 		t.Fatalf("unexpected errors: %v", result.Errors)
+	}
+	if result.FilesChecked != 1 {
+		t.Fatalf("expected 1 checked file, got %d", result.FilesChecked)
+	}
+	if result.Failures != 2 {
+		t.Fatalf("expected 2 pre-fix failures, got %d", result.Failures)
 	}
 
 	// The fixable rule should have fixed trailing spaces, but the non-fixable
@@ -467,6 +515,51 @@ func TestFix_EmptyPathsReturnsEmptyResult(t *testing.T) {
 	}
 	if len(result.Errors) != 0 {
 		t.Errorf("expected 0 errors, got %d", len(result.Errors))
+	}
+	if result.FilesChecked != 0 {
+		t.Errorf("expected 0 checked files, got %d", result.FilesChecked)
+	}
+	if result.Failures != 0 {
+		t.Errorf("expected 0 failures, got %d", result.Failures)
+	}
+}
+
+func TestFix_PreFixCheckRulesErrorsCollected(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	if err := os.WriteFile(mdFile, []byte("# Hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	flakyConfigurableApplyCalls = 0
+	t.Cleanup(func() { flakyConfigurableApplyCalls = 0 })
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-flaky-config": {
+				Enabled:  true,
+				Settings: map[string]any{"mode": "custom"},
+			},
+		},
+	}
+
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFlakyConfigurableRule{id: "MDS997", name: "mock-flaky-config"}},
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected 1 pre-fix CheckRules error, got %d: %v", len(result.Errors), result.Errors)
+	}
+	if !strings.Contains(result.Errors[0].Error(), "flaky settings failure") {
+		t.Fatalf("expected flaky settings error, got: %v", result.Errors[0])
+	}
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("expected 0 diagnostics, got %d", len(result.Diagnostics))
+	}
+	if len(result.Modified) != 0 {
+		t.Fatalf("expected 0 modified files, got %d", len(result.Modified))
 	}
 }
 

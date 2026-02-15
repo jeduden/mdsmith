@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -99,6 +101,26 @@ func writeFixture(t *testing.T, dir, name, content string) string {
 		t.Fatalf("writing fixture %s: %v", path, err)
 	}
 	return path
+}
+
+func parseStats(t *testing.T, stderr string) (checked, fixed, failures, unfixed int) {
+	t.Helper()
+	re := regexp.MustCompile(`stats: checked=(\d+) fixed=(\d+) failures=(\d+) unfixed=(\d+)`)
+	m := re.FindStringSubmatch(stderr)
+	if len(m) != 5 {
+		t.Fatalf("expected stats line in stderr, got: %s", stderr)
+	}
+
+	values := make([]int, 4)
+	for i := 0; i < 4; i++ {
+		v, err := strconv.Atoi(m[i+1])
+		if err != nil {
+			t.Fatalf("parsing stats value %q: %v", m[i+1], err)
+		}
+		values[i] = v
+	}
+
+	return values[0], values[1], values[2], values[3]
 }
 
 // --- Top-level behavior tests ---
@@ -213,6 +235,30 @@ func TestE2E_Check_CleanFile_ExitsZero(t *testing.T) {
 	_, _, exitCode := runBinary(t, "", "check", "--no-color", path)
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0 for clean file, got %d", exitCode)
+	}
+}
+
+func TestE2E_Check_PrintsStats(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFixture(t, dir, "clean.md", "# Title\n\nSome content here.\n")
+
+	_, stderr, exitCode := runBinary(t, "", "check", "--no-color", path)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	checked, fixed, failures, unfixed := parseStats(t, stderr)
+	if checked != 1 {
+		t.Errorf("expected checked=1, got %d", checked)
+	}
+	if fixed != 0 {
+		t.Errorf("expected fixed=0 for check, got %d", fixed)
+	}
+	if failures != 0 {
+		t.Errorf("expected failures=0, got %d", failures)
+	}
+	if unfixed != 0 {
+		t.Errorf("expected unfixed=0, got %d", unfixed)
 	}
 }
 
@@ -446,6 +492,33 @@ func TestE2E_Fix_Stdin_Rejected(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "cannot fix stdin in place") {
 		t.Errorf("expected error message about stdin fix, got: %s", stderr)
+	}
+}
+
+func TestE2E_Fix_PrintsStatsWithUnfixedFailures(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFixture(t, dir, "partially-fixable.md", "# Title!\n\nHello   \n")
+
+	_, stderr, exitCode := runBinary(t, "", "fix", "--no-color", path)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1 with remaining non-fixable issue, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	checked, fixed, failures, unfixed := parseStats(t, stderr)
+	if checked != 1 {
+		t.Errorf("expected checked=1, got %d", checked)
+	}
+	if fixed != 1 {
+		t.Errorf("expected fixed=1, got %d", fixed)
+	}
+	if failures < 1 {
+		t.Errorf("expected failures >= 1, got %d", failures)
+	}
+	if unfixed < 1 {
+		t.Errorf("expected unfixed >= 1, got %d", unfixed)
+	}
+	if failures < unfixed {
+		t.Errorf("expected failures >= unfixed, got failures=%d unfixed=%d", failures, unfixed)
 	}
 }
 
