@@ -1,7 +1,7 @@
 ---
 id: 54
 title: Conciseness Metrics Design and Implementation
-status: 🔲
+status: ✅
 template:
   allow-extra-sections: true
 ---
@@ -29,9 +29,37 @@ backed by tests and documentation.
 
 ## Acceptance Criteria
 
-- [ ] Conciseness metric is specified
+- [x] Conciseness metric is specified
       with documented heuristics and default thresholds.
-- [ ] Rule is implemented with configurable settings and per-path overrides.
-- [ ] Tests cover representative readable, technical, and verbose cases.
-- [ ] Documentation explains how to tune conciseness thresholds
+- [x] Rule is implemented with configurable settings and per-path overrides.
+- [x] Tests cover representative readable, technical, and verbose cases.
+- [x] Documentation explains how to tune conciseness thresholds
       and when to prefer other rules.
+
+## Implementation Notes
+
+- Added rule: `MDS026` (`conciseness`) in `internal/rules/conciseness/`.
+- Heuristic combines:
+  - filler ratio penalty,
+  - hedge ratio penalty,
+  - verbose phrase density penalty,
+  - low content-ratio penalty.
+- Paragraph boundaries and text extraction follow existing mdtext utilities:
+  `mdtext.ExtractPlainText` + paragraph AST traversal.
+- Default settings:
+  - `min-score: 55.0`
+  - `min-words: 20`
+  - `min-content-ratio: 0.45`
+  - `filler-weight: 1.0`
+  - `hedge-weight: 0.8`
+  - `verbose-phrase-weight: 4.0`
+  - `content-weight: 1.2`
+- Configurable lexical lists:
+  - `filler-words`
+  - `hedge-words`
+  - `verbose-phrases`
+- Added unit tests and rule fixtures for:
+  - technical prose that should pass,
+  - verbose prose that should fail,
+  - verbose-but-readable/tuning behavior,
+  - settings validation and table skipping.
