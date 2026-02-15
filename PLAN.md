@@ -40,4 +40,5 @@ footer: |
 | 57  | 🔲      | [Spike yzma for Embedded Weasel Detection](plan/57_spike-yzma-weasel-detection.md)                 |
 | 58  | 🔲      | [Select and Package Fast Weasel Classifier (CPU Fallback)](plan/58_classifier-model-selection-and-embedding.md) |
 | 59  | 🔲      | [Classifier Evaluation Baseline](plan/59_classifier-evaluation-baseline.md)                           |
+| 60  | 🔲      | [DU-Style Metrics Ranking](plan/60_du-style-metrics-ranking.md)                                 |
 <!-- /catalog -->
