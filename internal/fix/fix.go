@@ -101,7 +101,8 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 
 	fixable, settingsErrs := f.fixableRules(effective)
 	errs = append(errs, settingsErrs...)
-	beforeDiags, _ := engine.CheckRules(lf, f.Rules, effective)
+	beforeDiags, checkErrs := engine.CheckRules(lf, f.Rules, effective)
+	errs = append(errs, checkErrs...)
 
 	current := f.applyFixPasses(path, lf.Source, fixable, dirFS, &errs)
 
