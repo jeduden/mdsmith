@@ -39,7 +39,7 @@ rules:
   cross-file-reference-integrity:
     include: []
     exclude:
-      - "**/NAME"
+      - "../../../archetypes/NAME"
     strict: true
   token-budget:
     max: 8000

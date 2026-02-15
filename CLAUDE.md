@@ -146,9 +146,9 @@ a failing test (red), make it pass (green), commit.
 
 Plan files must pass `mdsmith check plan/` with zero diagnostics.
 
-Use Markdown links for repo paths in docs and plans.
-Do not use bare backticked repo paths.
-This lets link-integrity checks validate targets.
+Use Markdown links when referring to real repo paths in docs and plans.
+Bare backticked paths are allowed in commands, code blocks, and placeholders.
+This lets link-integrity checks validate real targets.
 
 ## Test Fixtures
 
