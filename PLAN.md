@@ -45,4 +45,5 @@ footer: |
 | 62  | 🔲      | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                          |
 | 63  | 🔲      | [Empty Section Body Rule](plan/63_empty-section-body-rule.md)                                  |
 | 64  | 🔲      | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                 |
+| 65  | 🔲      | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                     |
 <!-- /catalog -->
