@@ -42,4 +42,5 @@ footer: |
 | 59  | 🔲      | [Classifier Evaluation Baseline](plan/59_classifier-evaluation-baseline.md)                           |
 | 60  | 🔲      | [DU-Style Metrics Ranking](plan/60_du-style-metrics-ranking.md)                                 |
 | 61  | 🔲      | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                        |
+| 62  | 🔲      | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                          |
 <!-- /catalog -->
