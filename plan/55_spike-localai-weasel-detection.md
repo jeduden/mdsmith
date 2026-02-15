@@ -1,7 +1,7 @@
 ---
 id: 55
 title: Spike LocalAI for Weasel Detection
-status: 🔲
+status: ✅
 ---
 # Spike LocalAI for Weasel Detection
 
@@ -32,3 +32,9 @@ for weasel-language detection in mdsmith.
 - [ ] CPU latency and memory metrics are documented for the spike corpus.
 - [ ] Integration approach and failure handling are documented.
 - [ ] Recommendation is made: proceed, defer, or reject for mdsmith.
+
+## Notes
+
+- Spike report:
+  [`spikes/localai-weasel-detection/README.md`](
+    ../spikes/localai-weasel-detection/README.md)

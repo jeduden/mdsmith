@@ -35,7 +35,7 @@ footer: |
 | 52  | 🔲      | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)        |
 | 53  | 🔲      | [Conciseness Scoring](plan/53_conciseness-scoring.md)                                      |
 | 54  | 🔲      | [Conciseness Metrics Design and Implementation](plan/54_metrics-guide-tradeoffs.md)            |
-| 55  | 🔲      | [Spike LocalAI for Weasel Detection](plan/55_spike-localai-weasel-detection.md)                       |
+| 55  | ✅      | [Spike LocalAI for Weasel Detection](plan/55_spike-localai-weasel-detection.md)                       |
 | 56  | 🔲      | [Spike Ollama for Weasel Detection](plan/56_spike-ollama-weasel-detection.md)                        |
 | 57  | 🔲      | [Spike yzma for Embedded Weasel Detection](plan/57_spike-yzma-weasel-detection.md)                 |
 | 58  | 🔳      | [Select and Package Fast Weasel Classifier (CPU Fallback)](plan/58_classifier-model-selection-and-embedding.md) |
