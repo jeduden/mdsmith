@@ -34,6 +34,10 @@ rules:
   paragraph-readability:
     max-grade: 14.0
     min-words: 20
+  paragraph-conciseness:
+    max-verbosity: 30.0
+    min-words: 20
+    min-content-ratio: 0.45
   paragraph-structure:
     max-sentences: 6
     max-words: 40
@@ -82,6 +86,10 @@ overrides:
       paragraph-readability:
         max-grade: 24.0
         min-words: 20
+      paragraph-conciseness:
+        max-verbosity: 55.0
+        min-words: 20
+        min-content-ratio: 0.35
       paragraph-structure:
         max-sentences: 12
         max-words: 120

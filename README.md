@@ -15,10 +15,13 @@ Run `mdsmith fix` and the table updates itself.
 
 **🤖 Keep AI verbosity in check.**
 AI tools produce walls of text.
-[`max-file-length`](rules/MDS022-max-file-length/README.md) caps document size,
+[`max-file-length`](rules/MDS022-max-file-length/README.md)
+limits document size.
 [`paragraph-readability`](rules/MDS023-paragraph-readability/README.md)
-enforces a reading-grade ceiling,
-and [`paragraph-structure`](rules/MDS024-paragraph-structure/README.md)
+keeps reading level under a threshold.
+[`paragraph-conciseness`](rules/MDS026-paragraph-conciseness/README.md)
+finds filler-heavy paragraphs with low information density.
+[`paragraph-structure`](rules/MDS024-paragraph-structure/README.md)
 limits sentence count and length.
 Set the thresholds in `.mdsmith.yml` and let CI enforce them.
 
@@ -216,6 +219,7 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.description}} |"
 | [MDS023](rules/MDS023-paragraph-readability/README.md) | `paragraph-readability`              | Paragraph readability grade must not exceed a threshold.                                |
 | [MDS024](rules/MDS024-paragraph-structure/README.md) | `paragraph-structure`                | Paragraphs must not exceed sentence and word limits.                                    |
 | [MDS025](rules/MDS025-table-format/README.md) | `table-format`                       | Tables must have consistent column widths and padding.                                  |
+| [MDS026](rules/MDS026-paragraph-conciseness/README.md) | `paragraph-conciseness`              | Paragraph verbosity score must not exceed a threshold.                                  |
 <!-- /catalog -->
 
 ## 🛠️ Development
