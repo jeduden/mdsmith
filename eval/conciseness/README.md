@@ -12,6 +12,12 @@ default until classifier-based evaluation is complete.
 - `dataset.schema.cue`: record schema for labeled examples.
 - `approach-matrix.md`: approach definitions and threshold policy.
 - `scorecard-template.md`: report template for experiment results.
+- `spikes/yzma-embedded-weasel-detection/README.md`:
+  embedded yzma spike findings and recommendation.
+- `spikes/go-native-linear-classifier/README.md`:
+  fully embedded pure-Go classifier spike design.
+- `spikes/wasm-embedded-inference/README.md`:
+  embedded wasm inference spike design.
 
 ## Dataset Format
 
