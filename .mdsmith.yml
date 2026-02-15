@@ -67,6 +67,10 @@ overrides:
     rules:
       paragraph-structure:
         max-sentences: 30
+  - files: ["PLAN.md"]
+    rules:
+      table-readability:
+        max-rows: 80
   - files: ["internal/rules/MDS002-heading-style/good/setext.md"]
     rules:
       heading-style:

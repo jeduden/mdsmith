@@ -44,4 +44,5 @@ footer: |
 | 61  | 🔲      | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                        |
 | 62  | 🔲      | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                          |
 | 63  | 🔲      | [Empty Section Body Rule](plan/63_empty-section-body-rule.md)                                  |
+| 64  | 🔲      | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                 |
 <!-- /catalog -->
