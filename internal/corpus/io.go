@@ -130,20 +130,40 @@ func ReadQAAnnotationsCSV(path string) ([]QAAnnotation, error) {
 	}
 
 	start := 0
-	if len(records[0]) >= 2 && strings.EqualFold(strings.TrimSpace(records[0][0]), "record_id") {
-		start = 1
+	if len(records[0]) >= 2 {
+		recordIDHeader := strings.EqualFold(strings.TrimSpace(records[0][0]), "record_id")
+		categoryHeader := strings.EqualFold(strings.TrimSpace(records[0][1]), "actual_category")
+		if recordIDHeader || categoryHeader {
+			if !recordIDHeader || !categoryHeader {
+				return nil, fmt.Errorf("annotations csv header must be record_id,actual_category")
+			}
+			start = 1
+		}
 	}
 	annotations := make([]QAAnnotation, 0, len(records)-start)
-	for _, row := range records[start:] {
+	for idx, row := range records[start:] {
+		rowNum := start + idx + 1
 		if len(row) < 2 {
-			return nil, fmt.Errorf("annotation rows must have record_id,actual_category")
+			return nil, fmt.Errorf("annotation row %d must have record_id,actual_category", rowNum)
+		}
+		recordID := strings.TrimSpace(row[0])
+		actualCategory := Category(strings.TrimSpace(row[1]))
+		if recordID == "" {
+			return nil, fmt.Errorf("annotation row %d has empty record_id", rowNum)
+		}
+		if actualCategory == "" {
+			return nil, fmt.Errorf("annotation row %d has empty actual_category", rowNum)
+		}
+		if !isKnownCategory(actualCategory) {
+			return nil, fmt.Errorf(
+				"annotation row %d has unknown actual_category %q",
+				rowNum,
+				actualCategory,
+			)
 		}
 		annotation := QAAnnotation{
-			RecordID:       strings.TrimSpace(row[0]),
-			ActualCategory: Category(strings.TrimSpace(row[1])),
-		}
-		if annotation.RecordID == "" || annotation.ActualCategory == "" {
-			return nil, fmt.Errorf("annotation rows cannot contain empty values")
+			RecordID:       recordID,
+			ActualCategory: actualCategory,
 		}
 		annotations = append(annotations, annotation)
 	}

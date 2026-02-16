@@ -33,6 +33,9 @@ func TestIsGenerated(t *testing.T) {
 	if !isGenerated("docs/generated/file.md", "# x") {
 		t.Fatal("expected generated path to be filtered")
 	}
+	if !isGenerated("generated/file.md", "# x") {
+		t.Fatal("expected root generated path to be filtered")
+	}
 	if !isGenerated("docs/file.md", "Code generated. Do not edit.") {
 		t.Fatal("expected generated marker to be filtered")
 	}
