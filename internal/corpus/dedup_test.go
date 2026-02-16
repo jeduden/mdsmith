@@ -113,6 +113,32 @@ func TestCheckBalanceViolations(t *testing.T) {
 	}
 }
 
+func TestCheckBalanceViolations_EmptyRanges(t *testing.T) {
+	t.Parallel()
+
+	violations := checkBalanceViolations(
+		[]collectedRecord{makeCollected("r1", CategoryReference, false, nil)},
+		map[Category]BalanceRange{},
+	)
+	if len(violations) != 0 {
+		t.Fatalf("violations = %v, want none for empty ranges", violations)
+	}
+}
+
+func TestCheckBalanceViolations_EmptyRecords(t *testing.T) {
+	t.Parallel()
+
+	violations := checkBalanceViolations(nil, map[Category]BalanceRange{
+		CategoryReference: {Min: 0, Max: 1},
+	})
+	if len(violations) != 1 {
+		t.Fatalf("violations len = %d, want 1", len(violations))
+	}
+	if violations[0] != "no records remain after balancing for configured balance ranges" {
+		t.Fatalf("violation = %q, want empty-record message", violations[0])
+	}
+}
+
 func makeCollected(id string, category Category, isReadme bool, tokens map[string]struct{}) collectedRecord {
 	if tokens == nil {
 		tokens = map[string]struct{}{}

@@ -178,8 +178,11 @@ func checkBalanceViolations(
 	records []collectedRecord,
 	ranges map[Category]BalanceRange,
 ) []string {
+	if len(ranges) == 0 {
+		return nil
+	}
 	if len(records) == 0 {
-		return []string{"no records remain after balancing"}
+		return []string{"no records remain after balancing for configured balance ranges"}
 	}
 
 	counts := make(map[Category]int)

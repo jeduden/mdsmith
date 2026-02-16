@@ -3,6 +3,7 @@ package corpus
 import (
 	"encoding/binary"
 	"hash/fnv"
+	"io"
 	"math"
 	"sort"
 )
@@ -15,9 +16,13 @@ func assignSplits(records []collectedRecord, seed int64) {
 	}
 
 	for _, group := range groups {
+		hashes := make(map[string]uint64, len(group))
+		for _, record := range group {
+			hashes[record.RecordID] = splitHash(record.RecordID, seed)
+		}
 		sort.Slice(group, func(i int, j int) bool {
-			left := splitHash(group[i].RecordID, seed)
-			right := splitHash(group[j].RecordID, seed)
+			left := hashes[group[i].RecordID]
+			right := hashes[group[j].RecordID]
 			if left == right {
 				return group[i].RecordID < group[j].RecordID
 			}
@@ -29,10 +34,10 @@ func assignSplits(records []collectedRecord, seed int64) {
 
 func splitHash(recordID string, seed int64) uint64 {
 	h := fnv.New64a()
-	seedBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(seedBytes, uint64(seed))
-	_, _ = h.Write(seedBytes)
-	_, _ = h.Write([]byte(recordID))
+	var seedBytes [8]byte
+	binary.LittleEndian.PutUint64(seedBytes[:], uint64(seed))
+	_, _ = h.Write(seedBytes[:])
+	_, _ = io.WriteString(h, recordID)
 	return h.Sum64()
 }
 
@@ -86,9 +91,13 @@ func makeQASample(records []ManifestRecord, perCategory int, seed int64) []QASam
 		if len(group) == 0 {
 			continue
 		}
+		hashes := make(map[string]uint64, len(group))
+		for _, record := range group {
+			hashes[record.RecordID] = splitHash(record.RecordID, seed)
+		}
 		sort.Slice(group, func(i int, j int) bool {
-			left := splitHash(group[i].RecordID, seed)
-			right := splitHash(group[j].RecordID, seed)
+			left := hashes[group[i].RecordID]
+			right := hashes[group[j].RecordID]
 			if left == right {
 				return group[i].RecordID < group[j].RecordID
 			}

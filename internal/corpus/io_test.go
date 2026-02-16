@@ -93,8 +93,38 @@ func TestReadQAAnnotationsCSV_InvalidRow(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 	_, err := ReadQAAnnotationsCSV(path)
-	if err == nil || !strings.Contains(err.Error(), "record_id,actual_category") {
+	if err == nil || !strings.Contains(err.Error(), "annotation row 1 must have record_id,actual_category") {
 		t.Fatalf("expected row-shape error, got %v", err)
+	}
+}
+
+func TestReadQAAnnotationsCSV_InvalidHeader(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "annotations.csv")
+	content := "record_id,predicted_category\na,reference\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	_, err := ReadQAAnnotationsCSV(path)
+	if err == nil || !strings.Contains(err.Error(), "header must be record_id,actual_category") {
+		t.Fatalf("expected header error, got %v", err)
+	}
+}
+
+func TestReadQAAnnotationsCSV_UnknownCategory(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "annotations.csv")
+	content := "record_id,actual_category\na,not-a-category\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	_, err := ReadQAAnnotationsCSV(path)
+	if err == nil || !strings.Contains(err.Error(), "annotation row 2 has unknown actual_category") {
+		t.Fatalf("expected unknown-category error, got %v", err)
 	}
 }
 
