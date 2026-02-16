@@ -33,11 +33,27 @@ trim_and_collapse() {
 prepare_prompt() {
   local text="$1"
   cat <<EOF
-Classify whether the text is weasel language.
-Return strict JSON with keys: label, confidence, rationale.
-label must be either "weasel" or "direct".
-confidence must be between 0 and 1.
-rationale must be short (max 12 words).
+Classify whether the text uses weasel language.
+
+Definitions:
+- weasel: hedged or vague wording (for example may, might, potentially,
+  often, usually, kind of, somewhat).
+- direct: concrete and testable instruction or fact without hedging.
+
+Rules:
+- if there is no hedge/vague cue, set is_weasel=false
+- imperative text with specific values/conditions is direct
+- output must be minified JSON with keys: is_weasel, confidence, rationale
+- is_weasel must be boolean true or false
+- confidence must be a number between 0 and 1
+- rationale must be at most 10 words
+
+Calibration examples:
+Input: This approach may potentially improve outcomes in many situations.
+Output: {"is_weasel":true,"confidence":0.9,"rationale":"contains hedging and vague certainty"}
+Input: Set timeout to 2 seconds and retry once on HTTP 503.
+Output: {"is_weasel":false,"confidence":0.9,"rationale":"concrete instruction with exact values"}
+
 Text: $text
 EOF
 }
@@ -60,7 +76,7 @@ run_single() {
   local phase="$4"
 
   local base expected text prompt payload response_file
-  local latency_s response_text response_hash raw_label norm_label confidence
+  local latency_s response_text response_hash is_weasel norm_label confidence
   local eval_count eval_duration_s tokens_per_s mem_usage correct
 
   base="$(basename "$file" .md)"
@@ -78,7 +94,16 @@ run_single() {
         model: $model,
         prompt: $prompt,
         stream: false,
-        format: "json",
+        format: {
+          type: "object",
+          properties: {
+            is_weasel: {type: "boolean"},
+            confidence: {type: "number"},
+            rationale: {type: "string"}
+          },
+          required: ["is_weasel", "confidence", "rationale"],
+          additionalProperties: false
+        },
         options: {
           temperature: 0,
           top_p: 1,
@@ -97,14 +122,24 @@ run_single() {
   response_hash="$(
     printf '%s' "$response_text" | LC_ALL=C shasum -a 256 | awk '{print $1}'
   )"
-  raw_label="$(
+  is_weasel="$(
     jq -r '
       .response
       | if type == "string" then (fromjson? // {}) else . end
-      | .label // "parse_error"
+      | if has("is_weasel") then .is_weasel else "parse_error" end
     ' "$response_file"
   )"
-  norm_label="$(printf '%s' "$raw_label" | tr '[:upper:]' '[:lower:]')"
+  case "$is_weasel" in
+    true|TRUE|True|1)
+      norm_label="weasel"
+      ;;
+    false|FALSE|False|0)
+      norm_label="direct"
+      ;;
+    *)
+      norm_label="parse_error"
+      ;;
+  esac
   confidence="$(
     jq -r '
       .response
@@ -272,6 +307,44 @@ done
       }
     }
   ' "$RESTART_CSV" | sort
+
+  printf '\nlabel_distribution\n'
+  awk -F, '
+    NR > 1 && $4 == "steady" {
+      key = $1 SUBSEP $12
+      counts[key]++
+    }
+    END {
+      for (k in counts) {
+        split(k, parts, SUBSEP)
+        printf "%s label=%s count=%d\n", parts[1], parts[2], counts[k]
+      }
+    }
+  ' "$RESULTS_CSV" | sort
+
+  printf '\nlabel_collapse\n'
+  awk -F, '
+    NR > 1 && $4 == "steady" {
+      model[$1] = 1
+      seen[$1 SUBSEP $12] = 1
+    }
+    END {
+      for (m in model) {
+        unique = 0
+        for (k in seen) {
+          split(k, parts, SUBSEP)
+          if (parts[1] == m) {
+            unique++
+          }
+        }
+        if (unique == 1) {
+          printf "%s collapse=1\n", m
+        } else {
+          printf "%s collapse=0\n", m
+        }
+      }
+    }
+  ' "$RESULTS_CSV" | sort
 } >"$SUMMARY_TXT"
 
 printf 'Wrote %s\n' "$RESULTS_CSV"
