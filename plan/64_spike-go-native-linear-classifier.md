@@ -1,7 +1,7 @@
 ---
 id: 64
 title: Spike Pure-Go Embedded Weasel Classifier
-status: 🔲
+status: ✅
 ---
 # Spike Pure-Go Embedded Weasel Classifier
 
@@ -27,11 +27,28 @@ Evaluate a fully embedded, pure-Go classifier path for weasel-language
 7. Document maintenance workflow: training export format, versioning,
    and safe model update procedure.
 
+## Results
+
+See `eval/conciseness/spikes/go-native-linear-classifier/README.md`.
+
+Highlights from the spike:
+
+- Prototype is fully pure-Go with stdlib-only runtime dependencies.
+- Weights are embedded with `go:embed` and verified by pinned SHA256.
+- Determinism was confirmed across in-process and process-restart runs
+  (`unique_hashes=1`).
+- Latency and memory metrics were captured on the same six-sample corpus
+  used in the yzma spike.
+- mdsmith binary delta for embedded artifact was measured at +1,136 bytes,
+  versus yzma's +0.5 MB binary delta plus external model/library artifacts.
+- Recommendation: adopt this path as the CPU fallback candidate for plan 58,
+  pending full dataset quality validation.
+
 ## Acceptance Criteria
 
-- [ ] Prototype runs with no `YZMA_LIB` or external dynamic libraries.
-- [ ] Embedded weights load from binary-only assets.
-- [ ] Deterministic outputs are confirmed across repeat runs.
-- [ ] CPU latency and memory metrics are captured.
-- [ ] Binary-size delta is measured and documented.
-- [ ] Recommendation is made: adopt, defer, or reject this path.
+- [x] Prototype runs with no `YZMA_LIB` or external dynamic libraries.
+- [x] Embedded weights load from binary-only assets.
+- [x] Deterministic outputs are confirmed across repeat runs.
+- [x] CPU latency and memory metrics are captured.
+- [x] Binary-size delta is measured and documented.
+- [x] Recommendation is made: adopt, defer, or reject this path.

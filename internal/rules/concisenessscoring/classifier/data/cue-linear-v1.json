@@ -1,0 +1,16 @@
+{
+  "model_id": "cue-linear-v1",
+  "version": "2026-02-16",
+  "threshold": 0.20,
+  "intercept": -0.85,
+  "weights": {
+    "action_rate": -2.40,
+    "content_ratio": -2.60,
+    "filler_rate": 6.10,
+    "hedge_rate": 7.40,
+    "log_word_count": 0.18,
+    "modal_rate": 5.20,
+    "vague_rate": 4.60,
+    "verbose_phrase_rate": 8.80
+  }
+}
