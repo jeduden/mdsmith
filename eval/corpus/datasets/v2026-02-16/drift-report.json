@@ -1,0 +1,50 @@
+{
+  "baseline_version": "v2025-12-15",
+  "candidate_version": "v2026-02-16",
+  "baseline_total": 24,
+  "candidate_total": 30,
+  "delta_total": 6,
+  "readme_share_delta": -0.08999999999999997,
+  "by_category": {
+    "agent-control": {
+      "baseline_count": 1,
+      "candidate_count": 1,
+      "delta_count": 0,
+      "baseline_share": 0.041666666666666664,
+      "candidate_share": 0.03333333333333333,
+      "delta_share": -0.008333333333333331
+    },
+    "design-proposal": {
+      "baseline_count": 15,
+      "candidate_count": 22,
+      "delta_count": 7,
+      "baseline_share": 0.625,
+      "candidate_share": 0.7333333333333333,
+      "delta_share": 0.10833333333333328
+    },
+    "explanation": {
+      "baseline_count": 1,
+      "candidate_count": 1,
+      "delta_count": 0,
+      "baseline_share": 0.041666666666666664,
+      "candidate_share": 0.03333333333333333,
+      "delta_share": -0.008333333333333331
+    },
+    "project-docs": {
+      "baseline_count": 2,
+      "candidate_count": 1,
+      "delta_count": -1,
+      "baseline_share": 0.08333333333333333,
+      "candidate_share": 0.03333333333333333,
+      "delta_share": -0.049999999999999996
+    },
+    "reference": {
+      "baseline_count": 5,
+      "candidate_count": 5,
+      "delta_count": 0,
+      "baseline_share": 0.20833333333333334,
+      "candidate_share": 0.16666666666666666,
+      "delta_share": -0.041666666666666685
+    }
+  }
+}

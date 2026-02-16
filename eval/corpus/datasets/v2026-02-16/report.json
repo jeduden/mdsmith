@@ -1,0 +1,50 @@
+{
+  "dataset_version": "v2026-02-16",
+  "collected_at": "2026-02-16",
+  "sources_considered": 1,
+  "sources_included": 1,
+  "files_scanned": 51,
+  "files_kept": 30,
+  "filtered_by_policy": 0,
+  "filtered_generated": 0,
+  "filtered_low_signal": 1,
+  "dropped_exact_duplicates": 0,
+  "dropped_near_duplicates": 0,
+  "dropped_readmes": 18,
+  "dropped_by_balancing": 2,
+  "category_counts": {
+    "agent-control": 1,
+    "design-proposal": 22,
+    "explanation": 1,
+    "project-docs": 1,
+    "reference": 5
+  },
+  "split_counts": {
+    "dev": 3,
+    "test": 7,
+    "train": 20
+  },
+  "balance_ranges": {
+    "agent-control": {
+      "min": 0.02,
+      "max": 0.12
+    },
+    "design-proposal": {
+      "min": 0.2,
+      "max": 0.75
+    },
+    "explanation": {
+      "min": 0.02,
+      "max": 0.2
+    },
+    "project-docs": {
+      "min": 0.03,
+      "max": 0.22
+    },
+    "reference": {
+      "min": 0.15,
+      "max": 0.45
+    }
+  },
+  "readme_share": 0.2
+}

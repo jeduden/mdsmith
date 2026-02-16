@@ -1,0 +1,12 @@
+{
+  "dataset_version": "v2025-12-15",
+  "files_kept": 24,
+  "readme_share": 0.29,
+  "category_counts": {
+    "agent-control": 1,
+    "design-proposal": 15,
+    "explanation": 1,
+    "project-docs": 2,
+    "reference": 5
+  }
+}
