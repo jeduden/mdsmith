@@ -44,15 +44,20 @@ func assignGroupSplits(group []*collectedRecord) {
 
 	trainCount := int(math.Floor(float64(total) * 0.8))
 	devCount := int(math.Floor(float64(total) * 0.1))
-	testCount := total - trainCount - devCount
 
 	if total >= 3 {
 		if devCount == 0 {
 			devCount = 1
 			trainCount--
 		}
-		if testCount == 0 {
+		if total-trainCount-devCount == 0 {
 			trainCount--
+		}
+	}
+	if total > 1 && trainCount == 0 {
+		trainCount = 1
+		if devCount > 0 {
+			devCount--
 		}
 	}
 

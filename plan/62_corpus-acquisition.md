@@ -50,18 +50,18 @@ decision artifacts while tracking license and source metadata.
 
 ## Acceptance Criteria
 
-- [ ] Taxonomy includes category definitions, boundary rules, and at
+- [x] Taxonomy includes category definitions, boundary rules, and at
       least one positive/negative example per category.
-- [ ] Collection pipeline produces a manifest with source provenance and
+- [x] Collection pipeline produces a manifest with source provenance and
       license metadata for every file.
-- [ ] Dataset build excludes generated/low-signal content and reports
+- [x] Dataset build excludes generated/low-signal content and reports
       deduplication statistics.
-- [ ] Final corpus is category-balanced within defined target ranges and
+- [x] Final corpus is category-balanced within defined target ranges and
       reports per-category counts.
-- [ ] Manual QA on stratified samples reports precision/recall or
+- [x] Manual QA on stratified samples reports precision/recall or
       agreement metrics and drives at least one documented taxonomy
       refinement.
-- [ ] Refresh process is documented and can publish a versioned corpus
+- [x] Refresh process is documented and can publish a versioned corpus
       update with drift summary.
-- [ ] All tests pass: `go test ./...`
-- [ ] `golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `golangci-lint run` reports no issues

@@ -22,6 +22,9 @@ func dropExactDuplicates(records []collectedRecord) ([]collectedRecord, int) {
 }
 
 func dropNearDuplicates(records []collectedRecord, threshold float64) ([]collectedRecord, int) {
+	// This is O(n²) over kept records. It is acceptable for the current
+	// corpus sizes, but larger datasets should switch to an indexed
+	// approach (for example MinHash/LSH) to reduce pairwise comparisons.
 	out := make([]collectedRecord, 0, len(records))
 	dropped := 0
 
