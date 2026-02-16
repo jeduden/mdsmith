@@ -46,9 +46,8 @@ func collect(cfg BuildConfig) ([]collectedRecord, collectionStats, error) {
 	stats := collectionStats{}
 
 	for _, source := range cfg.Sources {
-		allowed, reason := sourceAllowed(cfg.Policy, allow, source)
+		allowed, _ := sourceAllowed(cfg.Policy, allow, source)
 		if !allowed {
-			_ = reason
 			stats.filteredByPolicy++
 			continue
 		}
@@ -249,7 +248,7 @@ func normalizeMarkdown(content string) string {
 }
 
 func isGenerated(relPath string, content string) bool {
-	p := strings.ToLower(relPath)
+	p := "/" + strings.Trim(strings.ToLower(relPath), "/") + "/"
 	for _, token := range []string{"/vendor/", "/node_modules/", "/dist/", "/build/", "/generated/", "/gen/"} {
 		if strings.Contains(p, token) {
 			return true
