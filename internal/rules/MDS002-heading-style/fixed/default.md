@@ -2,4 +2,4 @@
 
 ## Section
 
-Body text.
+<!-- allow-empty-section -->

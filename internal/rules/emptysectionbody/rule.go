@@ -14,7 +14,7 @@ import (
 const (
 	defaultMinLevel    = 2
 	defaultMaxLevel    = 6
-	defaultAllowMarker = "mdsmith: allow-empty-section"
+	defaultAllowMarker = "allow-empty-section"
 )
 
 var htmlCommentPattern = regexp.MustCompile(`(?s)<!--.*?-->`)
@@ -111,39 +111,76 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	minLevel, maxLevel, allowMarker := r.effectiveSettings()
 
 	for key, value := range settings {
-		switch key {
-		case "min-level":
-			n, ok := toInt(value)
-			if !ok {
-				return fmt.Errorf(
-					"empty-section-body: min-level must be an integer, got %T",
-					value,
-				)
-			}
-			minLevel = n
-		case "max-level":
-			n, ok := toInt(value)
-			if !ok {
-				return fmt.Errorf(
-					"empty-section-body: max-level must be an integer, got %T",
-					value,
-				)
-			}
-			maxLevel = n
-		case "allow-marker":
-			s, ok := value.(string)
-			if !ok {
-				return fmt.Errorf(
-					"empty-section-body: allow-marker must be a string, got %T",
-					value,
-				)
-			}
-			allowMarker = s
-		default:
-			return fmt.Errorf("empty-section-body: unknown setting %q", key)
+		if err := applySetting(
+			&minLevel,
+			&maxLevel,
+			&allowMarker,
+			key,
+			value,
+		); err != nil {
+			return err
 		}
 	}
 
+	if err := validateLevels(minLevel, maxLevel); err != nil {
+		return err
+	}
+
+	r.MinLevel = minLevel
+	r.MaxLevel = maxLevel
+	r.AllowMarker = allowMarker
+	return nil
+}
+
+func applySetting(
+	minLevel *int,
+	maxLevel *int,
+	allowMarker *string,
+	key string,
+	value any,
+) error {
+	switch key {
+	case "min-level":
+		n, ok := toInt(value)
+		if !ok {
+			return fmt.Errorf(
+				"empty-section-body: min-level must be an integer, got %T",
+				value,
+			)
+		}
+		*minLevel = n
+	case "max-level":
+		n, ok := toInt(value)
+		if !ok {
+			return fmt.Errorf(
+				"empty-section-body: max-level must be an integer, got %T",
+				value,
+			)
+		}
+		*maxLevel = n
+	case "allow-marker":
+		s, ok := value.(string)
+		if !ok {
+			return fmt.Errorf(
+				"empty-section-body: allow-marker must be a string, got %T",
+				value,
+			)
+		}
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return fmt.Errorf(
+				"empty-section-body: allow-marker cannot be empty or whitespace-only",
+			)
+		}
+		*allowMarker = s
+	default:
+		return fmt.Errorf("empty-section-body: unknown setting %q", key)
+	}
+
+	return nil
+}
+
+func validateLevels(minLevel, maxLevel int) error {
 	if minLevel < 1 || minLevel > 6 {
 		return fmt.Errorf(
 			"empty-section-body: min-level must be between 1 and 6, got %d",
@@ -162,10 +199,6 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			minLevel, maxLevel,
 		)
 	}
-
-	r.MinLevel = minLevel
-	r.MaxLevel = maxLevel
-	r.AllowMarker = allowMarker
 	return nil
 }
 
@@ -213,13 +246,20 @@ func hasAllowMarker(nodes []ast.Node, source []byte, marker string) bool {
 	if marker == "" {
 		return false
 	}
-	needle := strings.ToLower(marker)
+	trimmed := strings.TrimSpace(marker)
+	if trimmed == "" {
+		return false
+	}
+	pattern := regexp.MustCompile(
+		`(?is)<!--\s*` + regexp.QuoteMeta(trimmed) + `\s*-->`,
+	)
+
 	for _, node := range nodes {
 		block, ok := node.(*ast.HTMLBlock)
 		if !ok {
 			continue
 		}
-		if strings.Contains(strings.ToLower(nodeLinesText(block, source)), needle) {
+		if pattern.MatchString(nodeLinesText(block, source)) {
 			return true
 		}
 	}

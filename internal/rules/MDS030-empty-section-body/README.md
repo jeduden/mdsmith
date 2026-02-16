@@ -42,7 +42,7 @@ Ignored content includes:
 Use an explicit allow marker comment for intentional empty sections:
 
 ```markdown
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->
 ```
 
 ## Prior Art
@@ -54,11 +54,11 @@ Use an explicit allow marker comment for intentional empty sections:
 
 ## Settings
 
-| Setting      | Type   | Default                      | Description                           |
-|--------------|--------|------------------------------|---------------------------------------|
-| `min-level`    | int    | `2`                            | minimum heading level to check        |
-| `max-level`    | int    | `6`                            | maximum heading level to check        |
-| `allow-marker` | string | `mdsmith: allow-empty-section` | comment marker that exempts a section |
+| Setting      | Type   | Default             | Description                           |
+|--------------|--------|---------------------|---------------------------------------|
+| `min-level`    | int    | `2`                   | minimum heading level to check        |
+| `max-level`    | int    | `6`                   | maximum heading level to check        |
+| `allow-marker` | string | `allow-empty-section` | comment marker that exempts a section |
 
 ## Config
 
@@ -67,7 +67,7 @@ rules:
   empty-section-body:
     min-level: 2
     max-level: 6
-    allow-marker: mdsmith: allow-empty-section
+    allow-marker: allow-empty-section
 ```
 
 Disable:
@@ -92,7 +92,7 @@ This section explains what the command does.
 ```markdown
 ## Compatibility
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->
 ```
 
 ### Bad

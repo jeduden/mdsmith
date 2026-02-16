@@ -7,7 +7,7 @@ status: '"🔲" | "🔳" | "✅"'
 
 ## ...
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->
 
 ## Goal
 
@@ -16,7 +16,7 @@ it matters.
 
 ## ...
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->
 
 ## Tasks
 
@@ -26,7 +26,7 @@ it matters.
 
 ## ...
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->
 
 ## Acceptance Criteria
 
@@ -37,4 +37,4 @@ it matters.
 
 ## ...
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->

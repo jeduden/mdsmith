@@ -39,7 +39,7 @@ description: 'string & != ""'
 
 ## ...
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->
 
 ## Config
 
@@ -60,7 +60,7 @@ rules:
 
 ## ...
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->
 
 ## Examples
 
@@ -79,4 +79,4 @@ rules:
 
 ## ...
 
-<!-- mdsmith: allow-empty-section -->
+<!-- allow-empty-section -->

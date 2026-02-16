@@ -30,7 +30,7 @@ so docs do not ship with placeholder or structure-only sections.
 - Meaningful content: paragraph, list, table, code block, or non-comment HTML
 - Ignorable content: blank lines, HTML comments, or nested headings alone
 - Exemption: explicit marker comment
-  `<!-- mdsmith: allow-empty-section -->`
+  `<!-- allow-empty-section -->`
 
 ## Tasks
 

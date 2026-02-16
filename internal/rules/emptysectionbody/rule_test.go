@@ -53,7 +53,7 @@ func TestCheck_CommentOnlySection(t *testing.T) {
 
 func TestCheck_AllowMarkerSkipsDiagnostic(t *testing.T) {
 	src := []byte(
-		"# Doc\n\n## Template Slot\n\n<!-- mdsmith: allow-empty-section -->\n",
+		"# Doc\n\n## Template Slot\n\n<!-- allow-empty-section -->\n",
 	)
 	f, err := lint.NewFile("test.md", src)
 	if err != nil {
@@ -64,6 +64,42 @@ func TestCheck_AllowMarkerSkipsDiagnostic(t *testing.T) {
 	diags := r.Check(f)
 	if len(diags) != 0 {
 		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
+	}
+}
+
+func TestCheck_PrefixedMarkerDoesNotSkipByDefault(t *testing.T) {
+	src := []byte(
+		"# Doc\n\n## Template Slot\n\n<!-- mdsmith: allow-empty-section -->\n",
+	)
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Rule{}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
+	}
+}
+
+func TestCheck_CustomAllowMarkerUsesExactString(t *testing.T) {
+	src := []byte(
+		"# Doc\n\n## Template Slot\n\n<!-- allow-empty-section -->\n",
+	)
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Rule{
+		MinLevel:    defaultMinLevel,
+		MaxLevel:    defaultMaxLevel,
+		AllowMarker: "docs: intentionally-empty",
+	}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
 	}
 }
 
@@ -188,6 +224,14 @@ func TestApplySettings_InvalidType(t *testing.T) {
 	err := r.ApplySettings(map[string]any{"min-level": "two"})
 	if err == nil {
 		t.Fatal("expected error for invalid type")
+	}
+}
+
+func TestApplySettings_AllowMarkerWhitespaceOnly(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"allow-marker": "   "})
+	if err == nil {
+		t.Fatal("expected error for whitespace-only allow-marker")
 	}
 }
 
