@@ -1,7 +1,7 @@
 ---
 id: 60
 title: DU-Style Metrics Ranking
-status: 🔲
+status: ✅
 ---
 # DU-Style Metrics Ranking
 
@@ -41,14 +41,14 @@ or "top 10 biggest files."
 10. Implement `metrics rank` with flags:
     `--metrics`, `--by`, `--order`, `--top`, and `--format`.
 11. Reuse existing file discovery behavior from `check`
-   (paths, dirs, globs, `.gitignore`, and override handling).
+    (paths, dirs, globs, `.gitignore`, and override handling).
 12. Implement initial file metrics in the shared registry:
-   `bytes`, `lines`, `words`, `headings`, `token-estimate`,
-   and `conciseness` (when available from conciseness work).
+    `bytes`, `lines`, `words`, `headings`, `token-estimate`,
+    and `conciseness` (when available from conciseness work).
 13. Implement output rendering for both `text` and `json` formats.
-   Text output should be table-oriented and easy to scan, similar to `du`.
+    Text output should be table-oriented and easy to scan, similar to `du`.
 14. Implement deterministic sorting and `--top N` limiting.
-   Tie-break by path to keep output stable across runs.
+    Tie-break by path to keep output stable across runs.
 15. Add docs and examples for common workflows:
     top 10 least concise files, top 10 largest files,
     and selected-column reports.
@@ -58,25 +58,25 @@ or "top 10 biggest files."
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith metrics rank --by conciseness --top 10 .`
+- [x] `mdsmith metrics rank --by conciseness --top 10 .`
       returns the 10 least concise Markdown files.
-- [ ] `mdsmith metrics rank --by bytes --top 10 .`
+- [x] `mdsmith metrics rank --by bytes --top 10 .`
       returns the 10 largest Markdown files.
-- [ ] `mdsmith metrics rank --metrics bytes,lines,words --by bytes .`
+- [x] `mdsmith metrics rank --metrics bytes,lines,words --by bytes .`
       shows only selected metric columns and file path.
-- [ ] `mdsmith metrics list` shows available metrics
+- [x] `mdsmith metrics list` shows available metrics
       from the shared registry.
-- [ ] `mdsmith help metrics` lists metrics with short descriptions.
-- [ ] `mdsmith help metrics <id|name>` prints that metric README.
-- [ ] `mdsmith metrics rank --format json` returns deterministic output
+- [x] `mdsmith help metrics` lists metrics with short descriptions.
+- [x] `mdsmith help metrics <id|name>` prints that metric README.
+- [x] `mdsmith metrics rank --format json` returns deterministic output
       sorted by the selected metric.
-- [ ] Metric definitions live in one shared abstraction
+- [x] Metric definitions live in one shared abstraction
       and are not duplicated across command or rule code.
-- [ ] Existing metric consumers use the shared abstraction
+- [x] Existing metric consumers use the shared abstraction
       when computing metrics.
-- [ ] Metrics docs follow the folder + README structure
+- [x] Metrics docs follow the folder + README structure
       and are embedded for offline help.
-- [ ] File discovery semantics match `mdsmith check`.
-- [ ] Unknown metrics return a clear actionable error.
-- [ ] All tests pass: `go test ./...`
-- [ ] `golangci-lint run` reports no issues
+- [x] File discovery semantics match `mdsmith check`.
+- [x] Unknown metrics return a clear actionable error.
+- [x] All tests pass: `go test ./...`
+- [x] `golangci-lint run` reports no issues

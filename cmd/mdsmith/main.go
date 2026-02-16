@@ -61,6 +61,7 @@ Commands:
   check     Lint Markdown files (default when given file arguments)
   fix       Auto-fix lint issues in place
   help      Show help for rules and topics
+  metrics   Show and rank shared Markdown metrics
   init      Generate a default .mdsmith.yml config file
   version   Print version and exit
 
@@ -94,6 +95,8 @@ func run() int {
 		return runFix(os.Args[2:])
 	case "help":
 		return runHelp(os.Args[2:])
+	case "metrics":
+		return runMetrics(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
 	case "version":
@@ -683,7 +686,8 @@ func loadConfig(configPath string) (*config.Config, string, error) {
 const helpUsageText = `Usage: mdsmith help <topic>
 
 Topics:
-  rule [id|name]   Show rule documentation
+  rule [id|name]      Show rule documentation
+  metrics [id|name]   Show metric documentation
 `
 
 // runHelp implements the "help" subcommand.
@@ -696,6 +700,8 @@ func runHelp(args []string) int {
 	switch args[0] {
 	case "rule":
 		return runHelpRule(args[1:])
+	case "metrics":
+		return runHelpMetrics(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith: help: unknown topic %q\n", args[0])
 		return 2

@@ -55,6 +55,7 @@ mdsmith <command> [flags] [files...]
 | `check`   | Lint files (default command) |
 | `fix`     | Auto-fix issues in place     |
 | `help`    | Show help for rules/topics   |
+| `metrics` | List and rank shared metrics |
 | `init`    | Generate `.mdsmith.yml`        |
 | `version` | Print version, exit          |
 

@@ -31,6 +31,8 @@ Set the thresholds in `.mdsmith.yml` and let CI enforce them.
 `mdsmith help rule <name>` prints the full spec: settings, examples,
 diagnostics. All docs are compiled into the binary — works offline,
 works in CI, works as a source for `.cursor/rules` or `AGENTS.md`.
+`mdsmith help metrics` and `mdsmith help metrics <name>` do the same
+for shared file metrics.
 
 **🔧 Auto-fix.**
 `mdsmith fix` corrects most rules in place.
@@ -52,12 +54,14 @@ mdsmith <command> [flags] [files...]
 
 ### Commands
 
-| Command | Description                  |
-|---------|------------------------------|
-| `check`   | Lint files (default command) |
-| `fix`     | Auto-fix issues in place     |
-| `init`    | Generate `.mdsmith.yml`        |
-| `version` | Print version, exit          |
+| Command | Description                    |
+|---------|--------------------------------|
+| `check`   | Lint files (default command)   |
+| `fix`     | Auto-fix issues in place       |
+| `help`    | Show help for docs and topics  |
+| `metrics` | List and rank Markdown metrics |
+| `init`    | Generate `.mdsmith.yml`          |
+| `version` | Print version, exit            |
 
 Files can be paths, directories (walked recursively for `*.md`),
 or glob patterns.
@@ -99,6 +103,18 @@ mdsmith check -f json docs/
 
 # Generate default config
 mdsmith init
+
+# List available metrics
+mdsmith metrics list
+
+# Top 10 largest Markdown files
+mdsmith metrics rank --by bytes --top 10 .
+
+# Top 10 least concise Markdown files
+mdsmith metrics rank --by conciseness --top 10 .
+
+# Selected-column report
+mdsmith metrics rank --metrics bytes,lines,words --by bytes .
 ```
 
 ### Output

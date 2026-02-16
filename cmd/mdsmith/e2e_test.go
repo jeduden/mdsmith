@@ -683,6 +683,223 @@ func TestE2E_Help_UnknownTopic_ExitsTwo(t *testing.T) {
 	}
 }
 
+// --- Metrics command tests ---
+
+func TestE2E_MetricsList_Text(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "metrics", "list")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "MET001") {
+		t.Errorf("expected MET001 in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "bytes") {
+		t.Errorf("expected bytes metric in output, got: %s", stdout)
+	}
+}
+
+func TestE2E_MetricsList_JSON(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "metrics", "list", "--format", "json")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+
+	var items []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &items); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\nstdout: %s", err, stdout)
+	}
+	if len(items) == 0 {
+		t.Fatal("expected non-empty metric list")
+	}
+}
+
+func TestE2E_HelpMetrics_ListAndLookup(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "help", "metrics")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "MET001") {
+		t.Errorf("expected MET001 in output, got: %s", stdout)
+	}
+
+	stdout, _, exitCode = runBinary(t, "", "help", "metrics", "conciseness")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "MET006") {
+		t.Errorf("expected MET006 content, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "conciseness") {
+		t.Errorf("expected conciseness content, got: %s", stdout)
+	}
+}
+
+func TestE2E_MetricsRank_ByBytesTop(t *testing.T) {
+	dir := t.TempDir()
+	_ = writeFixture(t, dir, "small.md", "# S\n\nsmall\n")
+	_ = writeFixture(
+		t,
+		dir,
+		"large.md",
+		"# Large\n\nThis file has more words and bytes than small.md.\n",
+	)
+
+	stdout, stderr, exitCode := runBinaryInDir(
+		t,
+		dir,
+		"",
+		"metrics",
+		"rank",
+		"--by",
+		"bytes",
+		"--top",
+		"1",
+		".",
+	)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected header and one data row, got: %s", stdout)
+	}
+	if !strings.Contains(lines[1], "large.md") {
+		t.Fatalf("expected top row to include large.md, got row: %s", lines[1])
+	}
+}
+
+func TestE2E_MetricsRank_ConcisenessDefaultOrder(t *testing.T) {
+	dir := t.TempDir()
+	_ = writeFixture(
+		t,
+		dir,
+		"verbose.md",
+		"In order to make sure we are on the same page, it is important to note that we might adjust this later.\n",
+	)
+	_ = writeFixture(
+		t,
+		dir,
+		"dense.md",
+		"The synchronization algorithm enforces linearizability via monotonic commit indices.\n",
+	)
+
+	stdout, stderr, exitCode := runBinaryInDir(
+		t,
+		dir,
+		"",
+		"metrics",
+		"rank",
+		"--by",
+		"conciseness",
+		"--top",
+		"1",
+		".",
+	)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected header and one data row, got: %s", stdout)
+	}
+	if !strings.Contains(lines[1], "verbose.md") {
+		t.Fatalf("expected least concise file first, got row: %s", lines[1])
+	}
+}
+
+func TestE2E_MetricsRank_SelectedColumns(t *testing.T) {
+	dir := t.TempDir()
+	_ = writeFixture(t, dir, "a.md", "# Title\n\nsome text\n")
+
+	stdout, stderr, exitCode := runBinaryInDir(
+		t,
+		dir,
+		"",
+		"metrics",
+		"rank",
+		"--metrics",
+		"bytes,lines,words",
+		"--by",
+		"bytes",
+		".",
+	)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	header := strings.Split(strings.TrimSpace(stdout), "\n")[0]
+	if !strings.Contains(header, "BYTES") ||
+		!strings.Contains(header, "LINES") ||
+		!strings.Contains(header, "WORDS") {
+		t.Fatalf("unexpected header: %s", header)
+	}
+	if strings.Contains(header, "HEADINGS") {
+		t.Fatalf("unexpected HEADINGS column in header: %s", header)
+	}
+}
+
+func TestE2E_MetricsRank_JSONDeterministicTieBreak(t *testing.T) {
+	dir := t.TempDir()
+	_ = writeFixture(t, dir, "a.md", "same bytes\n")
+	_ = writeFixture(t, dir, "b.md", "same bytes\n")
+
+	stdout, stderr, exitCode := runBinaryInDir(
+		t,
+		dir,
+		"",
+		"metrics",
+		"rank",
+		"--metrics",
+		"bytes",
+		"--by",
+		"bytes",
+		"--format",
+		"json",
+		".",
+	)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\nstdout: %s", err, stdout)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+
+	firstPath, _ := rows[0]["path"].(string)
+	secondPath, _ := rows[1]["path"].(string)
+	if !strings.Contains(firstPath, "a.md") || !strings.Contains(secondPath, "b.md") {
+		t.Fatalf("expected path tie-break order a.md, b.md; got %q then %q", firstPath, secondPath)
+	}
+}
+
+func TestE2E_MetricsRank_UnknownMetric_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	_ = writeFixture(t, dir, "a.md", "# Title\n")
+
+	_, stderr, exitCode := runBinaryInDir(
+		t,
+		dir,
+		"",
+		"metrics",
+		"rank",
+		"--by",
+		"not-a-metric",
+		".",
+	)
+	if exitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown metric") {
+		t.Fatalf("expected unknown metric error, got: %s", stderr)
+	}
+}
+
 func TestE2E_Check_Stdin_ConfigurableSettingsViolation(t *testing.T) {
 	// Pipe a file with 130-char lines through stdin. Even with max=120,
 	// the 130-char line should still fire MDS001.
