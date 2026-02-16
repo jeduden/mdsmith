@@ -37,11 +37,13 @@ Highlights from the spike:
 - Weights are embedded with `go:embed` and verified by pinned SHA256.
 - Spike report includes classifier implementation details and raw captured
   benchmark output in markdown.
+- Cue lexicons were moved into the embedded artifact with validation gates
+  to keep list expansion maintainable and correctness-checked.
 - Determinism was confirmed across in-process and process-restart runs
   (`unique_hashes=1`).
 - Latency and memory metrics were captured on the same six-sample corpus
   used in the yzma spike.
-- mdsmith binary delta for embedded artifact was measured at +1,136 bytes,
+- mdsmith binary delta for embedded artifact was measured at +480 bytes,
   versus yzma's +0.5 MB binary delta plus external model/library artifacts.
 - Recommendation: adopt this path as the CPU fallback candidate for plan 58,
   pending full dataset quality validation.

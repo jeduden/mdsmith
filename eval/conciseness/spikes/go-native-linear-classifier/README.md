@@ -10,7 +10,7 @@ Evaluate a fully embedded pure-Go classifier path for
 - Date: 2026-02-16
 - OS: macOS 15.3.2 (arm64)
 - Go: 1.24.7
-- mdsmith commit: `7440e61`
+- mdsmith commit: `7e65325`
 - Harness: `eval/conciseness/spikes/go-native-linear-classifier/run.sh`
 
 ## Prototype
@@ -50,6 +50,15 @@ Artifact schema (current spike):
   "version": "2026-02-16",
   "threshold": 0.20,
   "intercept": -0.85,
+  "lexicon": {
+    "filler_words": ["..."],
+    "modal_words": ["..."],
+    "vague_words": ["..."],
+    "action_words": ["..."],
+    "stop_words": ["..."],
+    "hedge_phrases": ["..."],
+    "verbose_phrases": ["..."]
+  },
   "weights": {
     "action_rate": -2.40,
     "content_ratio": -2.60,
@@ -86,14 +95,34 @@ Determinism and safety properties:
 - `go:embed` + pinned SHA256 verification on load
 - same input string always yields the same `risk_score` and `label`
 
+Lexicon quality gates in `model.go`:
+
+- coverage minimums enforced at load:
+  filler `>=12`, modal `>=10`, vague `>=16`, action `>=20`,
+  stop `>=25`, hedge phrases `>=8`, verbose phrases `>=8`
+- normalization and correctness checks:
+  lowercasing, whitespace normalization, duplicate rejection,
+  token shape validation for word lists
+- weight-schema checks:
+  all required feature keys must exist and unknown keys are rejected
+
+Lexicon expansion workflow:
+
+1. update `lexicon` arrays in
+   `internal/rules/concisenessscoring/classifier/data/cue-linear-v1.json`
+2. recompute and pin SHA256 in `model.go`
+3. run classifier unit tests (including coverage/validation gates)
+4. run spike harness and review precision/recall drift on benchmark corpus
+5. ship only if diagnostics remain stable and false positives do not regress
+
 ## Embedded Weight Packaging
 
 Artifact details:
 
 - path: `data/cue-linear-v1.json`
-- embedded bytes: 335
+- embedded bytes: 2,837
 - SHA256:
-  `a17544b94507ad05e5d9db33078ca7a63d3fccd94b1d091ee1c85a88bbc81e44`
+  `98c9d8c6c43ad03b8ac4ff63ebcdcec4cdb4a17634dac9bd4f622a302f37d146`
 
 Load path:
 
@@ -112,7 +141,7 @@ Determinism checks:
 - in-process repeats (`determinism-runs=5`): `unique_hashes=1`
 - process-restart repeats (`run.sh`): `unique_hashes=1`
 - digest:
-  `41f7fe0f2d6d755b647f4f923f79c5d682cfcda75add60a7e2df3fcba29fce08`
+  `163575ba7f3808cd39b03a4487806a8554e87d0c28b9d6641d95aaaf5b6df70f`
 
 Result: deterministic outputs were confirmed.
 
@@ -122,24 +151,24 @@ Measured with `ROUNDS=4000` (`24,000` requests total):
 
 | Metric                 | Value       |
 |------------------------|-------------|
-| Model load             | 0.0310 ms   |
-| Avg latency            | 2.9299 us   |
-| P50 latency            | 2.8750 us   |
-| P95 latency            | 3.6670 us   |
-| Max latency            | 230.7910 us |
+| Model load             | 0.2790 ms   |
+| Avg latency            | 3.3750 us   |
+| P50 latency            | 3.1670 us   |
+| P95 latency            | 5.4160 us   |
+| Max latency            | 175.2920 us |
 | RSS after load         | 3,872 KB    |
-| RSS after benchmark    | 7,744 KB    |
-| Heap alloc after bench | 421 KB      |
-| Heap sys after bench   | 7,744 KB    |
+| RSS after benchmark    | 7,776 KB    |
+| Heap alloc after bench | 454 KB      |
+| Heap sys after bench   | 7,776 KB    |
 
 Per-sample risk scores:
 
-- `weasel-01`: 0.6323
-- `weasel-02`: 0.3833
-- `weasel-03`: 0.2101
+- `weasel-01`: 0.7414
+- `weasel-02`: 0.3332
+- `weasel-03`: 0.3770
 - `direct-01`: 0.0472
 - `direct-02`: 0.0619
-- `direct-03`: 0.0627
+- `direct-03`: 0.0828
 
 The embedded threshold for this spike artifact is `0.20`.
 
@@ -152,37 +181,44 @@ model_id=cue-linear-v1
 model_version=2026-02-16
 threshold=0.2000
 artifact_path=data/cue-linear-v1.json
-artifact_sha256=a17544b94507ad05e5d9db33078ca7a63d3fccd94b1d091ee1c85a88bbc81e44
-artifact_bytes=335
-model_load_ms=0.0310
+artifact_sha256=98c9d8c6c43ad03b8ac4ff63ebcdcec4cdb4a17634dac9bd4f622a302f37d146
+artifact_bytes=2837
+lexicon_filler_words=15
+lexicon_modal_words=12
+lexicon_vague_words=21
+lexicon_action_words=30
+lexicon_stop_words=34
+lexicon_hedge_phrases=13
+lexicon_verbose_phrases=11
+model_load_ms=0.2790
 rss_after_load_kb=3872
-determinism_digest=41f7fe0f2d6d755b647f4f923f79c5d682cfcda75add60a7e2df3fcba29fce08
+determinism_digest=163575ba7f3808cd39b03a4487806a8554e87d0c28b9d6641d95aaaf5b6df70f
 determinism_unique_hashes=1
 requests=24000
-avg_latency_us=2.9299
-p50_latency_us=2.8750
-p95_latency_us=3.6670
-max_latency_us=230.7910
-rss_after_bench_kb=7744
-heap_alloc_after_bench_kb=421
-heap_sys_after_bench_kb=7744
-total_alloc_delta_kb=31005
+avg_latency_us=3.3750
+p50_latency_us=3.1670
+p95_latency_us=5.4160
+max_latency_us=175.2920
+rss_after_bench_kb=7776
+heap_alloc_after_bench_kb=454
+heap_sys_after_bench_kb=7776
+total_alloc_delta_kb=31125
 labels_verbose_actionable=12000
 labels_acceptable=12000
 risk_direct-01=0.0472
 risk_direct-02=0.0619
-risk_direct-03=0.0627
-risk_weasel-01=0.6323
-risk_weasel-02=0.3833
-risk_weasel-03=0.2101
+risk_direct-03=0.0828
+risk_weasel-01=0.7414
+risk_weasel-02=0.3332
+risk_weasel-03=0.3770
 ```
 
 Raw binary-size output from the same run:
 
 ```text
-mdsmith_base_bytes=24511378
-mdsmith_go_native_bytes=24512514
-mdsmith_delta_bytes=1136
+mdsmith_base_bytes=24600194
+mdsmith_go_native_bytes=24600674
+mdsmith_delta_bytes=480
 ```
 
 ## Binary-Size Impact
@@ -190,13 +226,13 @@ mdsmith_delta_bytes=1136
 Measured by building `cmd/mdsmith` with and without the
 `spike_gonative_classifier` tag:
 
-- base mdsmith: 24,511,378 bytes
-- mdsmith with embedded classifier artifact: 24,512,514 bytes
-- delta: 1,136 bytes
+- base mdsmith: 24,600,194 bytes
+- mdsmith with embedded classifier artifact: 24,600,674 bytes
+- delta: 480 bytes
 
 Comparison with yzma spike footprint:
 
-- go-native spike: +1.1 KB binary delta, no external model/libs
+- go-native spike: +480 B binary delta, no external model/libs
 - yzma spike: +0.5 MB binary delta plus 84 MB model and 86 MB libs
 
 ## MDS029 Integration Boundaries

@@ -123,12 +123,20 @@ func runBench(model *classifier.Model, loadMS float64, cfg runConfig) {
 }
 
 func printModelMetadata(model *classifier.Model, loadMS float64) {
+	counts := model.LexiconCounts()
 	fmt.Printf("model_id=%s\n", model.ModelID())
 	fmt.Printf("model_version=%s\n", model.Version())
 	fmt.Printf("threshold=%.4f\n", model.Threshold())
 	fmt.Printf("artifact_path=%s\n", classifier.EmbeddedArtifactPath)
 	fmt.Printf("artifact_sha256=%s\n", classifier.EmbeddedArtifactSHA256)
 	fmt.Printf("artifact_bytes=%d\n", classifier.EmbeddedArtifactBytes())
+	fmt.Printf("lexicon_filler_words=%d\n", counts.FillerWords)
+	fmt.Printf("lexicon_modal_words=%d\n", counts.ModalWords)
+	fmt.Printf("lexicon_vague_words=%d\n", counts.VagueWords)
+	fmt.Printf("lexicon_action_words=%d\n", counts.ActionWords)
+	fmt.Printf("lexicon_stop_words=%d\n", counts.StopWords)
+	fmt.Printf("lexicon_hedge_phrases=%d\n", counts.HedgePhrases)
+	fmt.Printf("lexicon_verbose_phrases=%d\n", counts.VerbosePhrases)
 	fmt.Printf("model_load_ms=%.4f\n", loadMS)
 	fmt.Printf("rss_after_load_kb=%d\n", rssKB())
 }
