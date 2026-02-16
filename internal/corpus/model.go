@@ -71,15 +71,16 @@ type SourceQuality struct {
 
 // SourceConfig defines one repository source to collect from.
 type SourceConfig struct {
-	Name          string        `yaml:"name" json:"name"`
-	Repository    string        `yaml:"repository" json:"repository"`
-	RepositoryURL string        `yaml:"repository_url" json:"repository_url"`
-	Root          string        `yaml:"root" json:"root"`
-	CommitSHA     string        `yaml:"commit_sha" json:"commit_sha"`
-	License       string        `yaml:"license" json:"license"`
-	Include       []string      `yaml:"include" json:"include"`
-	Exclude       []string      `yaml:"exclude" json:"exclude"`
-	Quality       SourceQuality `yaml:"quality" json:"quality"`
+	Name          string            `yaml:"name" json:"name"`
+	Repository    string            `yaml:"repository" json:"repository"`
+	RepositoryURL string            `yaml:"repository_url" json:"repository_url"`
+	Root          string            `yaml:"root" json:"root"`
+	CommitSHA     string            `yaml:"commit_sha" json:"commit_sha"`
+	License       string            `yaml:"license" json:"license"`
+	Include       []string          `yaml:"include" json:"include"`
+	Exclude       []string          `yaml:"exclude" json:"exclude"`
+	Annotations   map[string]string `yaml:"annotations,omitempty" json:"annotations,omitempty"`
+	Quality       SourceQuality     `yaml:"quality" json:"quality"`
 }
 
 // BuildConfig controls the corpus build pipeline.

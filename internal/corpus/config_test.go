@@ -49,6 +49,35 @@ sources:
 	}
 }
 
+func TestLoadConfig_ExpandsEnvInRoot(t *testing.T) {
+	dir := t.TempDir()
+	repoDir := filepath.Join(dir, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	t.Setenv("FETCH_ROOT", dir)
+
+	path := writeConfigFile(t, dir, `
+collected_at: 2026-02-16
+license_allowlist:
+  - MIT
+sources:
+  - name: seed
+    repository: github.com/acme/seed
+    root: ${FETCH_ROOT}/repo
+    commit_sha: abc123
+    license: MIT
+`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Sources[0].Root != repoDir {
+		t.Fatalf("source root = %q, want %q", cfg.Sources[0].Root, repoDir)
+	}
+}
+
 func TestLoadConfig_InvalidDate(t *testing.T) {
 	t.Parallel()
 
@@ -113,6 +142,40 @@ sources:
 	_, err := LoadConfig(path)
 	if err == nil || !strings.Contains(err.Error(), "unknown balance category") {
 		t.Fatalf("expected unknown category error, got %v", err)
+	}
+}
+
+func TestWriteConfig(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	cfg := BuildConfig{
+		CollectedAt:      "2026-02-16",
+		LicenseAllowlist: []string{"MIT"},
+		Sources: []SourceConfig{
+			{
+				Name:       "seed",
+				Repository: "github.com/acme/seed",
+				Root:       ".",
+				CommitSHA:  "abc123",
+				License:    "MIT",
+				Annotations: map[string]string{
+					"purpose": "test fixture",
+				},
+			},
+		},
+	}
+
+	if err := WriteConfig(path, cfg); err != nil {
+		t.Fatalf("WriteConfig: %v", err)
+	}
+	roundTrip, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig after WriteConfig: %v", err)
+	}
+	if roundTrip.Sources[0].Annotations["purpose"] != "test fixture" {
+		t.Fatalf("annotation round-trip failed: %+v", roundTrip.Sources[0].Annotations)
 	}
 }
 
