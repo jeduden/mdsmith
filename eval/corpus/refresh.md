@@ -11,6 +11,9 @@ Run corpus refresh monthly or before major model evaluation runs.
   - per-source `commit_sha` and quality metadata.
 
 2. Build the dataset with `corpusctl build`.
+   For remote-source refreshes, run `./eval/corpus/measure.sh`
+   to fetch pinned repositories and build from downloaded
+   checkouts.
 3. Label QA sample and run `corpusctl qa`.
 4. Compare drift against prior release with `corpusctl drift`.
 5. Publish all artifacts under `datasets/<version>/`.
