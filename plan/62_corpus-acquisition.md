@@ -1,7 +1,7 @@
 ---
 id: 62
 title: Corpus Acquisition and Taxonomy
-status: 🔲
+status: ✅
 ---
 # Corpus Acquisition and Taxonomy
 

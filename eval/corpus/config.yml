@@ -1,0 +1,58 @@
+dataset_version: v2026-02-16
+collected_at: 2026-02-16
+seed: 62
+min_words: 20
+min_chars: 120
+near_duplicate_threshold: 0.92
+max_readme_share: 0.2
+qa_sample_per_category: 3
+
+license_allowlist:
+  - MIT
+  - Apache-2.0
+  - BSD-3-Clause
+
+policy:
+  min_stars: 50
+  min_recent_commits_90d: 1
+  require_ci: true
+
+balance:
+  agent-control:
+    min: 0.02
+    max: 0.12
+  project-docs:
+    min: 0.03
+    max: 0.22
+  explanation:
+    min: 0.02
+    max: 0.20
+  design-proposal:
+    min: 0.20
+    max: 0.75
+  reference:
+    min: 0.15
+    max: 0.45
+
+sources:
+  - name: mdsmith-main
+    repository: github.com/jeduden/mdsmith
+    repository_url: https://github.com/jeduden/mdsmith
+    root: ../..
+    commit_sha: 6fc0-snapshot
+    license: MIT
+    include:
+      - AGENTS.md
+      - CLAUDE.md
+      - README.md
+      - guides/*.md
+      - plan/*.md
+      - internal/rules/*/README.md
+    exclude:
+      - plan/proto.md
+      - internal/rules/proto.md
+    quality:
+      stars: 250
+      recent_commits_90d: 30
+      archived: false
+      has_ci: true
