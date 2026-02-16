@@ -71,7 +71,10 @@ var corpus = []sample{
 }
 
 func main() {
-	cfg := parseFlags()
+	cfg, err := parseFlags()
+	if err != nil {
+		exitErr(err)
+	}
 	model, loadMS, err := loadModel()
 	if err != nil {
 		exitErr(err)
@@ -89,16 +92,27 @@ func main() {
 	}
 }
 
-func parseFlags() runConfig {
+func parseFlags() (runConfig, error) {
 	mode := flag.String("mode", "bench", "bench or digest")
 	rounds := flag.Int("rounds", 4000, "benchmark rounds over the corpus")
 	determinismRuns := flag.Int("determinism-runs", 5, "in-process digest runs")
 	flag.Parse()
+
+	if *rounds < 1 {
+		return runConfig{}, fmt.Errorf("rounds must be >= 1, got %d", *rounds)
+	}
+	if *determinismRuns < 1 {
+		return runConfig{}, fmt.Errorf(
+			"determinism-runs must be >= 1, got %d",
+			*determinismRuns,
+		)
+	}
+
 	return runConfig{
 		mode:            *mode,
 		rounds:          *rounds,
 		determinismRuns: *determinismRuns,
-	}
+	}, nil
 }
 
 func loadModel() (*classifier.Model, float64, error) {
@@ -142,6 +156,9 @@ func printModelMetadata(model *classifier.Model, loadMS float64) {
 }
 
 func determinismStats(model *classifier.Model, runs int) (string, int) {
+	if runs < 1 {
+		return "", 0
+	}
 	digests := make([]string, 0, runs)
 	for i := 0; i < runs; i++ {
 		digests = append(digests, corpusDigest(model))
@@ -176,6 +193,9 @@ func collectBenchMetrics(model *classifier.Model, rounds int) benchMetrics {
 
 	totalUS := sum(latencies)
 	requests := len(latencies)
+	if requests == 0 {
+		return benchMetrics{riskByID: riskByID}
+	}
 	return benchMetrics{
 		requests:                requests,
 		avgLatencyUS:            totalUS / float64(requests),

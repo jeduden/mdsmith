@@ -176,3 +176,35 @@ func TestValidateWeights_RejectsUnknownKey(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestCountPhraseMatches_UsesBoundaries(t *testing.T) {
+	text := "This statement is in order too noisy to match the cue."
+	count, cues := countPhraseMatches(text, []string{"in order to"})
+	if count != 0 {
+		t.Fatalf("expected 0 phrase matches, got %d (cues=%v)", count, cues)
+	}
+
+	text = "This statement is in order to reduce noise."
+	count, cues = countPhraseMatches(text, []string{"in order to"})
+	if count != 1 {
+		t.Fatalf("expected 1 phrase match, got %d (cues=%v)", count, cues)
+	}
+}
+
+func TestClassify_EmptyInputKeepsCueSliceNonNil(t *testing.T) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+
+	result := model.Classify("")
+	if result.TriggeredCues == nil {
+		t.Fatal("expected non-nil TriggeredCues slice for empty input")
+	}
+	if len(result.TriggeredCues) != 0 {
+		t.Fatalf(
+			"expected zero triggered cues for empty input, got %d",
+			len(result.TriggeredCues),
+		)
+	}
+}

@@ -337,8 +337,7 @@ func normalizeCueList(
 func extractFeatures(
 	text string, lexicon compiledLexicon,
 ) (map[string]float64, []string) {
-	lower := strings.ToLower(text)
-	tokens := wordPattern.FindAllString(lower, -1)
+	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
 	wordCount := float64(len(tokens))
 
 	features := map[string]float64{
@@ -352,7 +351,7 @@ func extractFeatures(
 		"log_word_count":      0,
 	}
 	if wordCount == 0 {
-		return features, nil
+		return features, []string{}
 	}
 
 	fillerCount, fillerCues := countTokenMatches(tokens, lexicon.fillerWords)
@@ -361,9 +360,9 @@ func extractFeatures(
 	actionCount, actionCues := countTokenMatches(tokens, lexicon.actionWords)
 	contentCount := countContentTokens(tokens, lexicon.stopWords)
 
-	hedgeCount, hedgeCues := countPhraseMatches(lower, lexicon.hedgePhrases)
+	hedgeCount, hedgeCues := countPhraseMatches(text, lexicon.hedgePhrases)
 	verboseCount, verboseCues := countPhraseMatches(
-		lower,
+		text,
 		lexicon.verbosePhrases,
 	)
 
@@ -418,17 +417,38 @@ func countContentTokens(tokens []string, stopWords map[string]struct{}) int {
 }
 
 func countPhraseMatches(text string, phrases []string) (int, []string) {
+	normText := normalizeForPhraseMatches(text)
 	count := 0
 	cues := make([]string, 0, 4)
 	for _, phrase := range phrases {
-		n := strings.Count(text, phrase)
+		marker := phraseMarker(phrase)
+		if marker == "" {
+			continue
+		}
+		n := strings.Count(normText, marker)
 		if n == 0 {
 			continue
 		}
 		count += n
-		cues = append(cues, phrase)
+		cues = append(cues, strings.TrimSpace(marker))
 	}
 	return count, cues
+}
+
+func normalizeForPhraseMatches(text string) string {
+	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
+	if len(tokens) == 0 {
+		return " "
+	}
+	return " " + strings.Join(tokens, " ") + " "
+}
+
+func phraseMarker(phrase string) string {
+	tokens := wordPattern.FindAllString(strings.ToLower(phrase), -1)
+	if len(tokens) == 0 {
+		return ""
+	}
+	return " " + strings.Join(tokens, " ") + " "
 }
 
 func dedupeSorted(values []string) []string {
