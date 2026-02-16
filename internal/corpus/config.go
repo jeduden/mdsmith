@@ -62,16 +62,33 @@ func (cfg *BuildConfig) applyDefaults(configDir string) {
 	}
 
 	for i := range cfg.Sources {
-		if cfg.Sources[i].Root == "" {
-			cfg.Sources[i].Root = "."
+		root := os.ExpandEnv(cfg.Sources[i].Root)
+		if root == "" {
+			root = "."
 		}
-		if !filepath.IsAbs(cfg.Sources[i].Root) {
-			cfg.Sources[i].Root = filepath.Join(configDir, cfg.Sources[i].Root)
+		if !filepath.IsAbs(root) {
+			root = filepath.Join(configDir, root)
 		}
+		cfg.Sources[i].Root = filepath.Clean(root)
 		if len(cfg.Sources[i].Include) == 0 {
 			cfg.Sources[i].Include = []string{"**/*.md", "**/*.markdown"}
 		}
 	}
+}
+
+// WriteConfig writes a build config to YAML.
+func WriteConfig(path string, cfg BuildConfig) error {
+	if err := ensureParentDir(path); err != nil {
+		return err
+	}
+	content, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config yaml: %w", err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		return fmt.Errorf("write config yaml: %w", err)
+	}
+	return nil
 }
 
 func (cfg BuildConfig) validate() error {

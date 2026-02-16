@@ -4,16 +4,21 @@ Run corpus refresh monthly or before major model evaluation runs.
 
 ## Steps
 
-1. Copy `config.yml` to a new version folder and update:
+1. Update `eval/corpus/config.yml`:
 
   - `dataset_version`,
   - `collected_at`,
-  - per-source `commit_sha` and quality metadata.
+  - each source `commit_sha`,
+  - any changed `quality` and `annotations` metadata.
 
-2. Build the dataset with `corpusctl build`.
-   For remote-source refreshes, run `./eval/corpus/measure.sh`
-   to fetch pinned repositories and build from downloaded
-   checkouts.
+2. Run measure:
+
+```bash
+go run ./cmd/corpusctl measure \
+  -config eval/corpus/config.yml \
+  -out eval/corpus/datasets/<version>
+```
+
 3. Label QA sample and run `corpusctl qa`.
 4. Compare drift against prior release with `corpusctl drift`.
 5. Publish all artifacts under `datasets/<version>/`.
@@ -25,6 +30,7 @@ Run corpus refresh monthly or before major model evaluation runs.
 - `qa-sample.jsonl`
 - `qa-report.json`
 - `drift-report.json`
+- `config.generated.yml`
 
 ## Drift Checks
 
