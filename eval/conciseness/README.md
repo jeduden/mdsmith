@@ -15,7 +15,7 @@ default until classifier-based evaluation is complete.
 - `spikes/yzma-embedded-weasel-detection/README.md`:
   embedded yzma spike findings and recommendation.
 - `spikes/go-native-linear-classifier/README.md`:
-  fully embedded pure-Go classifier spike design.
+  fully embedded pure-Go classifier spike findings.
 - `spikes/wasm-embedded-inference/README.md`:
   embedded wasm inference spike design.
 
