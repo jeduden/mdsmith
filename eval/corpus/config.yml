@@ -5,54 +5,224 @@ min_words: 20
 min_chars: 120
 near_duplicate_threshold: 0.92
 max_readme_share: 0.2
-qa_sample_per_category: 3
+qa_sample_per_category: 5
 
 license_allowlist:
   - MIT
-  - Apache-2.0
-  - BSD-3-Clause
+  - CC-BY-4.0
 
 policy:
-  min_stars: 50
+  min_stars: 5000
   min_recent_commits_90d: 1
   require_ci: true
 
 balance:
   agent-control:
-    min: 0.02
-    max: 0.12
+    min: 0.03
+    max: 0.35
+  tutorial:
+    min: 0.03
+    max: 0.40
+  how-to:
+    min: 0.03
+    max: 0.40
+  reference:
+    min: 0.10
+    max: 0.55
+  explanation:
+    min: 0.03
+    max: 0.35
+  design-proposal:
+    min: 0.03
+    max: 0.35
   project-docs:
     min: 0.03
-    max: 0.22
-  explanation:
-    min: 0.02
-    max: 0.20
-  design-proposal:
-    min: 0.20
-    max: 0.75
-  reference:
-    min: 0.15
+    max: 0.30
+  api-cli-config:
+    min: 0.03
     max: 0.45
+  troubleshooting:
+    min: 0.02
+    max: 0.30
 
 sources:
-  - name: mdsmith-main
-    repository: github.com/jeduden/mdsmith
-    repository_url: https://github.com/jeduden/mdsmith
-    root: ../..
-    commit_sha: 6fc0-snapshot
+  - name: openai-cookbook
+    repository: github.com/openai/openai-cookbook
+    repository_url: https://github.com/openai/openai-cookbook
+    root: ${FETCH_ROOT}/openai-cookbook
+    commit_sha: 365dfaa2ef36e0a6b7639ba8d211a451e0e90455
+    license: MIT
+    include:
+      - AGENTS.md
+      - README.md
+      - examples/**/*.md
+    exclude:
+      - examples/data/**
+      - "**/*.ipynb"
+    annotations:
+      selection_reason: "Large MIT cookbook corpus for practical LLM usage patterns."
+      content_focus: "Recipes, examples, and operational guidance."
+      license_reference: "https://github.com/openai/openai-cookbook/blob/main/LICENSE"
+    quality:
+      stars: 71454
+      recent_commits_90d: 30
+      archived: false
+      has_ci: true
+
+  - name: openai-agents-python
+    repository: github.com/openai/openai-agents-python
+    repository_url: https://github.com/openai/openai-agents-python
+    root: ${FETCH_ROOT}/openai-agents-python
+    commit_sha: 84fa471e5fc538d744a3ae294749fedb3855131b
     license: MIT
     include:
       - AGENTS.md
       - CLAUDE.md
       - README.md
-      - guides/*.md
-      - plan/*.md
-      - internal/rules/*/README.md
+      - docs/**/*.md
     exclude:
-      - plan/proto.md
-      - internal/rules/proto.md
+      - "**/*.ipynb"
+    annotations:
+      selection_reason: "Direct agent framework docs and implementation guidance."
+      content_focus: "Agent control, SDK reference, and execution patterns."
+      license_reference: "https://github.com/openai/openai-agents-python/blob/main/LICENSE"
     quality:
-      stars: 250
+      stars: 18961
       recent_commits_90d: 30
+      archived: false
+      has_ci: true
+
+  - name: langchain
+    repository: github.com/langchain-ai/langchain
+    repository_url: https://github.com/langchain-ai/langchain
+    root: ${FETCH_ROOT}/langchain
+    commit_sha: fb0233c9b9cdb95386e8fbb96c5421245fc192d3
+    license: MIT
+    include:
+      - AGENTS.md
+      - CLAUDE.md
+      - README.md
+      - docs/**/*.md
+    exclude:
+      - "**/*.ipynb"
+    annotations:
+      selection_reason: "High-volume, high-usage LLM app framework documentation."
+      content_focus: "Tutorials, references, and how-to integration docs."
+      license_reference: "https://github.com/langchain-ai/langchain/blob/master/LICENSE"
+    quality:
+      stars: 126724
+      recent_commits_90d: 80
+      archived: false
+      has_ci: true
+
+  - name: langgraph
+    repository: github.com/langchain-ai/langgraph
+    repository_url: https://github.com/langchain-ai/langgraph
+    root: ${FETCH_ROOT}/langgraph
+    commit_sha: 7216504ce2ecb56f62ebb08ac787d11b7491de5b
+    license: MIT
+    include:
+      - AGENTS.md
+      - CLAUDE.md
+      - README.md
+      - docs/**/*.md
+    exclude:
+      - "**/*.ipynb"
+    annotations:
+      selection_reason: "Agent orchestration and graph runtime specific corpus."
+      content_focus: "Planning, state graphs, and tool orchestration docs."
+      license_reference: "https://github.com/langchain-ai/langgraph/blob/main/LICENSE"
+    quality:
+      stars: 24747
+      recent_commits_90d: 40
+      archived: false
+      has_ci: true
+
+  - name: semantic-kernel
+    repository: github.com/microsoft/semantic-kernel
+    repository_url: https://github.com/microsoft/semantic-kernel
+    root: ${FETCH_ROOT}/semantic-kernel
+    commit_sha: 91f795605e42f0dd03ed9cdfaf4ffd8bdb1ae553
+    license: MIT
+    include:
+      - README.md
+      - docs/**/*.md
+    exclude:
+      - "**/*.ipynb"
+    annotations:
+      selection_reason: "Cross-language enterprise-oriented LLM engineering docs."
+      content_focus: "Architecture explanations, SDK docs, and integration guides."
+      license_reference: "https://github.com/microsoft/semantic-kernel/blob/main/LICENSE"
+    quality:
+      stars: 27225
+      recent_commits_90d: 35
+      archived: false
+      has_ci: true
+
+  - name: claude-cookbooks
+    repository: github.com/anthropics/claude-cookbooks
+    repository_url: https://github.com/anthropics/claude-cookbooks
+    root: ${FETCH_ROOT}/claude-cookbooks
+    commit_sha: 7cb72a9c879e3b95f58d30a3d7483906e9ad548e
+    license: MIT
+    include:
+      - CLAUDE.md
+      - README.md
+      - "**/*.md"
+    exclude:
+      - "**/*.ipynb"
+      - .github/**
+    annotations:
+      selection_reason: "Practical prompt/programming cookbook set for Claude usage."
+      content_focus: "Task recipes, examples, and implementation notes."
+      license_reference: "https://github.com/anthropics/claude-cookbooks/blob/main/LICENSE"
+    quality:
+      stars: 32921
+      recent_commits_90d: 12
+      archived: false
+      has_ci: true
+
+  - name: kubernetes-website
+    repository: github.com/kubernetes/website
+    repository_url: https://github.com/kubernetes/website
+    root: ${FETCH_ROOT}/kubernetes-website
+    commit_sha: 695611df58280618252e50edf3962a8bd324731a
+    license: CC-BY-4.0
+    include:
+      - README.md
+      - content/en/docs/tutorials/**/*.md
+      - content/en/docs/tasks/**/*.md
+      - content/en/docs/concepts/**/*.md
+      - content/en/docs/reference/**/*.md
+    exclude:
+      - "**/*.html"
+    annotations:
+      selection_reason: "High-quality CC-BY-4.0 technical docs for taxonomy breadth."
+      content_focus: "Reference, tutorials, and troubleshooting at scale."
+      license_reference: "https://github.com/kubernetes/website/blob/main/LICENSE"
+    quality:
+      stars: 5168
+      recent_commits_90d: 60
+      archived: false
+      has_ci: true
+
+  - name: microsoft-autogen
+    repository: github.com/microsoft/autogen
+    repository_url: https://github.com/microsoft/autogen
+    root: ${FETCH_ROOT}/microsoft-autogen
+    commit_sha: 13e144e5476a76ca0d76bf4f07a6401d133a03ed
+    license: CC-BY-4.0
+    include:
+      - README.md
+      - docs/**/*.md
+    exclude:
+      - "**/*.ipynb"
+    annotations:
+      selection_reason: "Popular multi-agent framework docs with strong how-to content."
+      content_focus: "Design notes, references, and operational guides."
+      license_reference: "https://github.com/microsoft/autogen/blob/main/LICENSE-CODE"
+    quality:
+      stars: 54571
+      recent_commits_90d: 20
       archived: false
       has_ci: true

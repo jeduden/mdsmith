@@ -25,6 +25,8 @@ func run(args []string) error {
 	switch args[0] {
 	case "build":
 		return runBuild(args[1:])
+	case "measure":
+		return runMeasure(args[1:])
 	case "qa":
 		return runQA(args[1:])
 	case "drift":
@@ -134,5 +136,5 @@ func runDrift(args []string) error {
 }
 
 func usageError() error {
-	return errors.New("usage: corpusctl <build|qa|drift> [flags]")
+	return errors.New("usage: corpusctl <build|measure|qa|drift> [flags]")
 }

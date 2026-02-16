@@ -7,54 +7,54 @@ workflow for Markdown evaluation datasets.
 
 - `taxonomy.md`: category definitions, boundary rules, and examples.
 - `policy.md`: source inclusion and exclusion policy.
-- `config.yml`: deterministic build config.
-- `measure.sh`: pinned external-source download + build workflow.
+- `config.yml`: pinned remote source set (hashes + annotations).
+- `config.local.yml`: local-only source set for fast iteration.
+- `measure.sh`: thin wrapper around `corpusctl measure`.
 - `datasets/v2026-02-16/`: frozen manifest, QA sample, and reports.
 - `refresh.md`: periodic refresh and drift process.
 
+## Source of Truth
+
+Pinned source selection now lives in `config.yml`, not in shell code.
+Each source entry includes:
+
+- `commit_sha`: immutable pin,
+- `license`: allowlist gate,
+- `annotations`: rationale and content-scope metadata,
+- `quality`: policy metadata snapshot.
+
 ## Measure Process (Pinned Remote Sources)
 
-Run:
+Canonical command:
+
+```bash
+go run ./cmd/corpusctl measure \
+  -config eval/corpus/config.yml \
+  -out eval/corpus/datasets/v2026-02-16
+```
+
+Wrapper command (equivalent defaults):
 
 ```bash
 ./eval/corpus/measure.sh
 ```
 
-This process:
+The measure flow:
 
-- downloads selected MIT and CC-BY-4.0 repositories to `/tmp`
-  at pinned commit hashes,
-- verifies each checkout hash,
-- generates `config.generated.yml` for traceability,
-- runs `corpusctl build` against downloaded sources,
-- writes outputs under `eval/corpus/datasets/<dataset_version>/`.
+- fetches each source at pinned `commit_sha`,
+- verifies fetched hash matches pin,
+- builds corpus artifacts,
+- writes `config.generated.yml` into dataset output for provenance.
 
-Pinned source set in `measure.sh`:
+## Build Corpus (No Fetch)
 
-| Source                      | License   | Commit hash                              |
-|-----------------------------|-----------|------------------------------------------|
-| `openai/openai-cookbook`      | MIT       | `365dfaa2ef36e0a6b7639ba8d211a451e0e90455` |
-| `openai/openai-agents-python` | MIT       | `84fa471e5fc538d744a3ae294749fedb3855131b` |
-| `langchain-ai/langchain`      | MIT       | `fb0233c9b9cdb95386e8fbb96c5421245fc192d3` |
-| `langchain-ai/langgraph`      | MIT       | `7216504ce2ecb56f62ebb08ac787d11b7491de5b` |
-| `microsoft/semantic-kernel`   | MIT       | `91f795605e42f0dd03ed9cdfaf4ffd8bdb1ae553` |
-| `anthropics/claude-cookbooks` | MIT       | `7cb72a9c879e3b95f58d30a3d7483906e9ad548e` |
-| `kubernetes/website`          | CC-BY-4.0 | `695611df58280618252e50edf3962a8bd324731a` |
-| `microsoft/autogen`           | CC-BY-4.0 | `13e144e5476a76ca0d76bf4f07a6401d133a03ed` |
-
-## Build Corpus
+If sources are already present on disk, use:
 
 ```bash
 go run ./cmd/corpusctl build \
   -config eval/corpus/config.yml \
   -out eval/corpus/datasets/v2026-02-16
 ```
-
-The build writes:
-
-- `manifest.jsonl`: one record per file with provenance metadata.
-- `report.json`: filter, dedup, split, and balance statistics.
-- `qa-sample.jsonl`: stratified sample for manual label QA.
 
 ## Run Manual QA Metrics
 

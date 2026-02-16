@@ -26,6 +26,9 @@ func TestRun_FlagValidation(t *testing.T) {
 	if err := run([]string{"build"}); err == nil {
 		t.Fatal("expected build flag error")
 	}
+	if err := run([]string{"measure"}); err == nil {
+		t.Fatal("expected measure flag error")
+	}
 	if err := run([]string{"qa"}); err == nil {
 		t.Fatal("expected qa flag error")
 	}
