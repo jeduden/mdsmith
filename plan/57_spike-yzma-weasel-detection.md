@@ -1,7 +1,7 @@
 ---
 id: 57
 title: Spike yzma for Embedded Weasel Detection
-status: 🔲
+status: ✅
 ---
 # Spike yzma for Embedded Weasel Detection
 
@@ -25,9 +25,26 @@ low-overhead weasel-language detection.
 6. Document maintenance risk:
    dependency churn, model compatibility, and upgrade strategy.
 
+## Results
+
+See `eval/conciseness/spikes/yzma-embedded-weasel-detection/README.md`.
+
+Highlights from the spike:
+
+- Deterministic outputs were identical across repeated runs and process
+  restarts under greedy decoding (`temperature: 0`).
+- Embedded mode outperformed local service mode in observed warm runs
+  on this machine, with lower average and P95 latency.
+- Embedded mode used lower RSS than service mode in observed runs.
+- Packaging impact is manageable for optional use:
+  +0.5 MB binary delta, plus model and runtime library artifacts.
+- Recommendation: proceed with optional embedded integration, keep
+  heuristic/default path as fallback until classifier selection and
+  implementation are complete (plan 58).
+
 ## Acceptance Criteria
 
-- [ ] Deterministic behavior is verified for repeated runs.
-- [ ] CPU performance and memory metrics are captured.
-- [ ] Build and packaging constraints are documented.
-- [ ] Recommendation is made on embedded inference feasibility.
+- [x] Deterministic behavior is verified for repeated runs.
+- [x] CPU performance and memory metrics are captured.
+- [x] Build and packaging constraints are documented.
+- [x] Recommendation is made on embedded inference feasibility.
