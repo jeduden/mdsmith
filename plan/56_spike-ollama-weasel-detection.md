@@ -1,7 +1,7 @@
 ---
 id: 56
 title: Spike Ollama for Weasel Detection
-status: 🔲
+status: ✅
 ---
 # Spike Ollama for Weasel Detection
 
@@ -25,9 +25,25 @@ for weasel-language detection in mdsmith.
 6. Document operational constraints: model pull strategy,
    artifact caching, and offline execution behavior.
 
+## Results
+
+See `eval/conciseness/spikes/ollama-weasel-detection/README.md`.
+
+Highlights from the spike:
+
+- Deterministic output was stable under fixed controls
+  (`temperature: 0`, fixed `seed`), including post-restart checks.
+- CPU latency and memory were measured across 3 lightweight candidates:
+  `qwen2.5:0.5b`, `llama3.2:1b`, and `smollm2:360m`.
+- Candidate quality was weak on the spike corpus:
+  all models over-predicted `weasel` and scored `0.500` accuracy.
+- Integration contract is defined as optional external provider with
+  strict timeout/no-retry behavior and mandatory fallback path.
+- Recommendation: defer default adoption; keep Ollama experimental only.
+
 ## Acceptance Criteria
 
-- [ ] Deterministic output is confirmed under fixed controls.
-- [ ] CPU performance metrics are documented for benchmark files.
-- [ ] Candidate model quality trade-offs are documented.
-- [ ] Clear recommendation is produced for mdsmith adoption.
+- [x] Deterministic output is confirmed under fixed controls.
+- [x] CPU performance metrics are documented for benchmark files.
+- [x] Candidate model quality trade-offs are documented.
+- [x] Clear recommendation is produced for mdsmith adoption.

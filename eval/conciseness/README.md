@@ -13,6 +13,11 @@ default until classifier-based evaluation is complete.
 - `approach-matrix.md`: approach definitions and threshold policy.
 - `scorecard-template.md`: report template for experiment results.
 
+## Spike Reports
+
+- `spikes/ollama-weasel-detection/README.md`:
+  plan 56 deterministic/latency/quality benchmark.
+
 ## Dataset Format
 
 Store datasets as JSONL files where each line matches
