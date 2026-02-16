@@ -201,12 +201,17 @@ func resolveRankSelection(
 			return nil, metricspkg.Definition{}, "", err
 		}
 		byDef = byDefs[0]
-		if len(selectedNames) > 0 && !containsMetric(defs, byDef.ID) {
+	}
+
+	// Ensure the sort metric is always computed.
+	if !containsMetric(defs, byDef.ID) {
+		if len(selectedNames) > 0 {
 			return nil, metricspkg.Definition{}, "", fmt.Errorf(
 				"--by metric %q must be included in --metrics",
 				byDef.Name,
 			)
 		}
+		defs = append(defs, byDef)
 	}
 
 	order := byDef.DefaultOrder

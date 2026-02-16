@@ -38,7 +38,7 @@ var stopWords = map[string]struct{}{
 	"we": {}, "were": {}, "will": {}, "with": {}, "you": {}, "your": {},
 }
 
-// Verbose phrases are penalized when they appear repeatedly.
+// Verbose phrases are penalized by distinct phrase presence.
 var verbosePhrases = []string{
 	"in order to",
 	"make sure",

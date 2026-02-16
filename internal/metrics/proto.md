@@ -16,3 +16,6 @@ template:
 ## Notes
 
 Describe how the metric is computed and any caveats.
+
+For front matter schemas in template-driven docs,
+use CUE constraints and examples.
