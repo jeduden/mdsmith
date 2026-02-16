@@ -9,7 +9,6 @@ workflow for Markdown evaluation datasets.
 - `policy.md`: source inclusion and exclusion policy.
 - `config.yml`: pinned remote source set (hashes + annotations).
 - `config.local.yml`: local-only source set for fast iteration.
-- `measure.sh`: thin wrapper around `corpusctl measure`.
 - `datasets/v2026-02-16/`: frozen manifest, QA sample, and reports.
 - `refresh.md`: periodic refresh and drift process.
 
@@ -31,12 +30,6 @@ Canonical command:
 go run ./cmd/corpusctl measure \
   -config eval/corpus/config.yml \
   -out eval/corpus/datasets/v2026-02-16
-```
-
-Wrapper command (equivalent defaults):
-
-```bash
-./eval/corpus/measure.sh
 ```
 
 The measure flow:
