@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -67,7 +68,10 @@ type Rule struct {
 	HedgePhrases        []string
 	VerbosePhrases      []string
 
-	classifier classifier
+	classifier       classifier
+	classifierErr    error
+	classifierLoaded bool
+	classifierMu     sync.Mutex
 }
 
 // ID implements rule.Rule.
@@ -137,6 +141,9 @@ func (r *Rule) runtimeState() runtimeState {
 	mode := normalizeMode(r.Mode)
 	if mode == "" {
 		mode = defaultMode
+	}
+	if !isValidMode(mode) {
+		mode = "heuristic"
 	}
 	if mode == "heuristic" {
 		return state
@@ -248,7 +255,11 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			return err
 		}
 	}
-	return r.validateClassifierSettings()
+	if err := r.validateClassifierSettings(); err != nil {
+		return err
+	}
+	r.resetClassifierCache()
+	return nil
 }
 
 func (r *Rule) applySetting(k string, v any) error {
@@ -525,13 +536,29 @@ func (r *Rule) validateClassifierSettings() error {
 }
 
 func (r *Rule) resolveClassifier() (classifier, error) {
-	if r.classifier != nil {
-		return r.classifier, nil
+	r.classifierMu.Lock()
+	defer r.classifierMu.Unlock()
+
+	if r.classifierLoaded {
+		return r.classifier, r.classifierErr
 	}
-	return loadClassifier(
+
+	clf, err := loadClassifier(
 		strings.TrimSpace(r.ClassifierModelPath),
 		strings.TrimSpace(r.ClassifierChecksum),
 	)
+	r.classifier = clf
+	r.classifierErr = err
+	r.classifierLoaded = true
+	return r.classifier, r.classifierErr
+}
+
+func (r *Rule) resetClassifierCache() {
+	r.classifierMu.Lock()
+	defer r.classifierMu.Unlock()
+	r.classifier = nil
+	r.classifierErr = nil
+	r.classifierLoaded = false
 }
 
 func (r *Rule) classifierThreshold(clf classifier) float64 {

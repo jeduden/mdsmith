@@ -139,6 +139,28 @@ func TestCheck_ClassifierTimeoutFallsBack(t *testing.T) {
 	}
 }
 
+func TestCheck_InvalidProgrammaticModeFallsBackToHeuristic(t *testing.T) {
+	src := []byte(verboseParagraph() + "\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Rule{
+		MinScore: 0.95,
+		MinWords: 20,
+		Mode:     "gpu",
+		classifier: &stubClassifier{
+			risk: 0.05,
+		},
+	}
+
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected invalid mode to fallback to heuristic, got %d", len(diags))
+	}
+}
+
 func TestApplySettings_InvalidMode(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"mode": "gpu"})
@@ -174,6 +196,81 @@ func TestApplySettings_InvalidClassifierChecksum(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for invalid checksum")
+	}
+}
+
+func TestResolveClassifier_CachesLoadedModel(t *testing.T) {
+	model := []byte(`{
+  "model_id": "test-linear-v1",
+  "version": "2026-02-16",
+  "threshold": 0.60,
+  "features": ["bias"],
+  "weights": {"bias": -9.0}
+}`)
+	path, checksum := writeModelFile(t, model)
+
+	r := &Rule{
+		ClassifierModelPath: path,
+		ClassifierChecksum:  checksum,
+	}
+
+	first, err := r.resolveClassifier()
+	if err != nil {
+		t.Fatalf("unexpected error loading classifier: %v", err)
+	}
+
+	if err := os.WriteFile(path, []byte("not-json"), 0o644); err != nil {
+		t.Fatalf("overwriting model: %v", err)
+	}
+
+	second, err := r.resolveClassifier()
+	if err != nil {
+		t.Fatalf("expected cached classifier on second load, got error: %v", err)
+	}
+	if first != second {
+		t.Fatal("expected resolveClassifier to reuse cached classifier instance")
+	}
+}
+
+func TestParseClassifierArtifact_RejectsUnknownFeature(t *testing.T) {
+	data := []byte(`{
+  "model_id": "test-linear-v1",
+  "version": "2026-02-16",
+  "threshold": 0.60,
+  "features": ["bias", "typo_feature"],
+  "weights": {"bias": -1.0, "typo_feature": 0.5}
+}`)
+
+	if _, err := parseClassifierArtifact(data); err == nil {
+		t.Fatal("expected error for unknown feature")
+	}
+}
+
+func TestParseClassifierArtifact_RejectsMissingFeatureWeight(t *testing.T) {
+	data := []byte(`{
+  "model_id": "test-linear-v1",
+  "version": "2026-02-16",
+  "threshold": 0.60,
+  "features": ["bias", "filler_ratio"],
+  "weights": {"bias": -1.0}
+}`)
+
+	if _, err := parseClassifierArtifact(data); err == nil {
+		t.Fatal("expected error for missing feature weight")
+	}
+}
+
+func TestParseClassifierArtifact_RejectsUndeclaredWeight(t *testing.T) {
+	data := []byte(`{
+  "model_id": "test-linear-v1",
+  "version": "2026-02-16",
+  "threshold": 0.60,
+  "features": ["bias"],
+  "weights": {"bias": -1.0, "filler_ratio": 0.5}
+}`)
+
+	if _, err := parseClassifierArtifact(data); err == nil {
+		t.Fatal("expected error for undeclared weight")
 	}
 }
 

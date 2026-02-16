@@ -21,6 +21,15 @@ const (
 
 var errInferenceTimeout = errors.New("classifier inference timed out")
 
+var supportedFeatures = map[string]struct{}{
+	"bias":              {},
+	"filler_ratio":      {},
+	"hedge_ratio":       {},
+	"verbose_ratio":     {},
+	"low_content_ratio": {},
+	"cue_density":       {},
+}
+
 type artifactManifest struct {
 	ModelID      string `json:"model_id"`
 	Version      string `json:"version"`
@@ -175,6 +184,9 @@ func parseClassifierArtifact(data []byte) (classifier, error) {
 	if len(art.Weights) == 0 {
 		return nil, errors.New("classifier weights must be non-empty")
 	}
+	if err := validateFeatureWeights(art.Features, art.Weights); err != nil {
+		return nil, err
+	}
 	if art.Threshold <= 0 || art.Threshold > 1 {
 		return nil, fmt.Errorf(
 			"classifier threshold must be > 0 and <= 1, got %.2f",
@@ -189,6 +201,46 @@ func parseClassifierArtifact(data []byte) (classifier, error) {
 		features:  append([]string(nil), art.Features...),
 		weights:   cloneWeights(art.Weights),
 	}, nil
+}
+
+func validateFeatureWeights(
+	features []string, weights map[string]float64,
+) error {
+	declared := make(map[string]struct{}, len(features))
+
+	for _, feature := range features {
+		name := strings.TrimSpace(feature)
+		if name == "" {
+			return errors.New("classifier feature names must be non-empty")
+		}
+		if _, ok := supportedFeatures[name]; !ok {
+			return fmt.Errorf("classifier feature %q is not supported", name)
+		}
+		if _, exists := declared[name]; exists {
+			return fmt.Errorf("classifier feature %q is duplicated", name)
+		}
+		if _, ok := weights[name]; !ok {
+			return fmt.Errorf(
+				"classifier feature %q is missing a weight",
+				name,
+			)
+		}
+		declared[name] = struct{}{}
+	}
+
+	for name := range weights {
+		if _, ok := supportedFeatures[name]; !ok {
+			return fmt.Errorf("classifier weight %q is not supported", name)
+		}
+		if _, ok := declared[name]; !ok {
+			return fmt.Errorf(
+				"classifier weight %q is not declared in features",
+				name,
+			)
+		}
+	}
+
+	return nil
 }
 
 func cloneWeights(in map[string]float64) map[string]float64 {

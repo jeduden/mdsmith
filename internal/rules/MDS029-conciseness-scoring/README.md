@@ -46,8 +46,10 @@ Runtime selection order:
 4. If classifier inference exceeds `classifier-timeout-ms`, fallback to
    heuristic for remaining paragraphs in the file.
 
-The rule remains deterministic for a fixed file and config because
-classifier artifacts are local and checksum-verified.
+For a fixed file and config, output is deterministic when classifier
+inference finishes within `classifier-timeout-ms`. Artifacts are local and
+checksum-verified. If inference times out and the rule falls back to
+heuristic mode, results may differ between runs.
 
 ## Config
 
