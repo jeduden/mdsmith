@@ -36,7 +36,8 @@ Highlights from the spike:
 - CPU latency and memory were measured across 3 lightweight candidates:
   `qwen2.5:0.5b`, `llama3.2:1b`, and `smollm2:360m`.
 - Candidate quality was weak on the spike corpus:
-  all models over-predicted `weasel` and scored `0.500` accuracy.
+  per-model accuracy was mixed (`0.600`, `0.400`, `0.400`)
+  and one candidate collapsed to a single class.
 - Integration contract is defined as optional external provider with
   strict timeout/no-retry behavior and mandatory fallback path.
 - Recommendation: defer default adoption; keep Ollama experimental only.

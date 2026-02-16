@@ -17,6 +17,12 @@ RESULTS_CSV="$OUT_DIR/results.csv"
 RESTART_CSV="$OUT_DIR/restart.csv"
 SUMMARY_TXT="$OUT_DIR/summary.txt"
 RAW_DIR="$OUT_DIR/raw"
+TAGS_URL="${TAGS_URL:-$(printf '%s' "$API_URL" | sed -E 's#(https?://[^/]+).*#\1/api/tags#')}"
+
+USE_DOCKER=0
+if [[ -n "$CONTAINER" ]]; then
+  USE_DOCKER=1
+fi
 
 require_cmd() {
   local cmd="$1"
@@ -28,6 +34,23 @@ require_cmd() {
 
 trim_and_collapse() {
   tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//'
+}
+
+hash_stdin() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+    return
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+    return
+  fi
+  if command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 -r | awk '{print $1}'
+    return
+  fi
+  echo "missing required command: sha256sum or shasum or openssl" >&2
+  exit 1
 }
 
 prepare_prompt() {
@@ -120,7 +143,7 @@ run_single() {
     jq -r '.response | if type == "string" then . else tojson end' "$response_file"
   )"
   response_hash="$(
-    printf '%s' "$response_text" | LC_ALL=C shasum -a 256 | awk '{print $1}'
+    printf '%s' "$response_text" | hash_stdin
   )"
   is_weasel="$(
     jq -r '
@@ -160,12 +183,15 @@ run_single() {
     ' "$response_file"
   )"
 
-  mem_usage="$(
-    docker stats --no-stream --format '{{.MemUsage}}' "$CONTAINER" 2>/dev/null \
-      | awk -F/ '{gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}'
-  )"
-  if [[ -z "$mem_usage" ]]; then
-    mem_usage="n/a"
+  mem_usage="n/a"
+  if (( USE_DOCKER )); then
+    mem_usage="$(
+      docker stats --no-stream --format '{{.MemUsage}}' "$CONTAINER" 2>/dev/null \
+        | awk -F/ '{gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}'
+    )"
+    if [[ -z "$mem_usage" ]]; then
+      mem_usage="n/a"
+    fi
   fi
 
   if [[ "$norm_label" == "$expected" ]]; then
@@ -188,7 +214,7 @@ run_single() {
 wait_for_ollama() {
   local i
   for i in $(seq 1 30); do
-    if curl -sS --max-time 2 "http://127.0.0.1:11434/api/tags" \
+    if curl -sS --max-time 2 "$TAGS_URL" \
       >/dev/null 2>&1; then
       return 0
     fi
@@ -200,8 +226,9 @@ wait_for_ollama() {
 
 require_cmd jq
 require_cmd curl
-require_cmd docker
-require_cmd shasum
+if (( USE_DOCKER )); then
+  require_cmd docker
+fi
 
 rm -rf "$RAW_DIR"
 mkdir -p "$RAW_DIR"
@@ -219,20 +246,22 @@ for model in "${model_list[@]}"; do
   done
 done
 
-for model in "${model_list[@]}"; do
-  for file in "$CORPUS_DIR"/*.md; do
-    run_single "$model" "$file" "1" "restart-a"
+if (( USE_DOCKER )); then
+  for model in "${model_list[@]}"; do
+    for file in "$CORPUS_DIR"/*.md; do
+      run_single "$model" "$file" "1" "restart-a"
+    done
   done
-done
 
-docker restart "$CONTAINER" >/dev/null
-wait_for_ollama
+  docker restart "$CONTAINER" >/dev/null
+  wait_for_ollama
 
-for model in "${model_list[@]}"; do
-  for file in "$CORPUS_DIR"/*.md; do
-    run_single "$model" "$file" "1" "restart-b"
+  for model in "${model_list[@]}"; do
+    for file in "$CORPUS_DIR"/*.md; do
+      run_single "$model" "$file" "1" "restart-b"
+    done
   done
-done
+fi
 
 {
   printf 'models=%s\n' "$MODELS"
@@ -287,26 +316,30 @@ done
   ' "$RESULTS_CSV" | sort
 
   printf '\nrestart_determinism\n'
-  awk -F, '
-    NR > 1 {
-      key = $1 SUBSEP $2
-      if ($3 == "restart-a") {
-        a[key] = $4
-      } else if ($3 == "restart-b") {
-        b[key] = $4
-      }
-    }
-    END {
-      for (k in a) {
-        split(k, p, SUBSEP)
-        status = "mismatch"
-        if (a[k] == b[k]) {
-          status = "match"
+  if (( USE_DOCKER )); then
+    awk -F, '
+      NR > 1 {
+        key = $1 SUBSEP $2
+        if ($3 == "restart-a") {
+          a[key] = $4
+        } else if ($3 == "restart-b") {
+          b[key] = $4
         }
-        printf "%s,%s %s\n", p[1], p[2], status
       }
-    }
-  ' "$RESTART_CSV" | sort
+      END {
+        for (k in a) {
+          split(k, p, SUBSEP)
+          status = "mismatch"
+          if (a[k] == b[k]) {
+            status = "match"
+          }
+          printf "%s,%s %s\n", p[1], p[2], status
+        }
+      }
+    ' "$RESTART_CSV" | sort
+  else
+    printf 'skipped (CONTAINER not set)\n'
+  fi
 
   printf '\nlabel_distribution\n'
   awk -F, '

@@ -12,6 +12,9 @@ Plan: `plan/56_spike-ollama-weasel-detection.md`.
 - Date: 2026-02-16
 - Host: macOS (`darwin/arm64`)
 - Runtime: Docker
+- Image repo: `ollama/ollama`
+- Image digest:
+  `sha256:dca1224ecd799f764b21b8d74a17afdc00505ecce93e7b55530d124115b42260`
 - Ollama version: `0.16.1`
 - Endpoint: `http://127.0.0.1:11434/api/generate`
 - Models:
@@ -24,8 +27,10 @@ Plan: `plan/56_spike-ollama-weasel-detection.md`.
 ## Reproducible Setup
 
 ```bash
-docker pull ollama/ollama:latest
-docker run -d --rm --name ollama-plan56 -p 11434:11434 ollama/ollama:latest
+docker pull \
+  ollama/ollama@sha256:dca1224ecd799f764b21b8d74a17afdc00505ecce93e7b55530d124115b42260
+docker run -d --rm --name ollama-plan56 -p 11434:11434 \
+  ollama/ollama@sha256:dca1224ecd799f764b21b8d74a17afdc00505ecce93e7b55530d124115b42260
 
 docker exec ollama-plan56 ollama pull qwen2.5:0.5b
 docker exec ollama-plan56 ollama pull llama3.2:1b
@@ -36,6 +41,9 @@ RUNS=3 eval/conciseness/spikes/ollama-weasel-detection/run.sh
 
 The benchmark script writes artifacts to:
 `.tmp/eval/conciseness/spikes/ollama-weasel-detection/`.
+
+To run against a non-Docker Ollama endpoint, set `CONTAINER=""`
+and optionally override `API_URL` / `TAGS_URL`.
 
 ## Eval Fixes Applied
 
@@ -131,7 +139,7 @@ conciseness-scoring:
   retries: 0
   deterministic:
     temperature: 0
-    top-p: 1
+    top_p: 1
     seed: 42
 ```
 
