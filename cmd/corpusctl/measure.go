@@ -14,7 +14,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/corpus"
 )
 
-const defaultFetchRoot = "/tmp/mdsmith-corpus-sources"
+var defaultFetchRoot = filepath.Join(os.TempDir(), "mdsmith-corpus-sources")
 
 var runGit = execGit
 
@@ -31,10 +31,11 @@ func runMeasure(args []string) error {
 	if err := applyMeasureOverrides(&cfg, opts.datasetVersion, opts.collectedAt); err != nil {
 		return err
 	}
-	if err := fetchPinnedSources(opts.fetchRoot, cfg.Sources); err != nil {
+	fetchRoot := resolveFetchRoot(opts.fetchRoot, cfg.DatasetVersion)
+	if err := fetchPinnedSources(fetchRoot, cfg.Sources); err != nil {
 		return err
 	}
-	setSourceRootsToFetchRoot(&cfg, opts.fetchRoot)
+	setSourceRootsToFetchRoot(&cfg, fetchRoot)
 
 	result, err := corpus.Build(cfg)
 	if err != nil {
@@ -91,6 +92,13 @@ func setSourceRootsToFetchRoot(cfg *corpus.BuildConfig, fetchRoot string) {
 	for i := range cfg.Sources {
 		cfg.Sources[i].Root = filepath.Join(fetchRoot, cfg.Sources[i].Name)
 	}
+}
+
+func resolveFetchRoot(fetchRoot string, datasetVersion string) string {
+	if fetchRoot == defaultFetchRoot && datasetVersion != "" {
+		return filepath.Join(fetchRoot, datasetVersion)
+	}
+	return fetchRoot
 }
 
 func writeMeasureOutputs(outDir string, cfg corpus.BuildConfig, result corpus.BuildOutput) error {

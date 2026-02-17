@@ -45,7 +45,7 @@ var taxonomyEntries = []TaxonomyEntry{
 		Name:            "Reference",
 		Definition:      "Lookup material such as rule catalogs, definitions, and schemas.",
 		BoundaryRule:    "Answerable by scanning for facts, not narrative flow.",
-		PositiveExample: "rules/MDS001-line-length/README.md.",
+		PositiveExample: "internal/rules/linelength/README.md.",
 		NegativeExample: "Design memo comparing alternatives.",
 	},
 	{

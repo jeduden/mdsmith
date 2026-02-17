@@ -114,6 +114,36 @@ func TestSourceMarkdownFiles(t *testing.T) {
 	}
 }
 
+func TestCollectFile_SkipsReadForGeneratedPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cfg := BuildConfig{
+		CollectedAt: "2026-02-17",
+		MinWords:    1,
+		MinChars:    1,
+	}
+	source := SourceConfig{
+		Name:       "seed",
+		Root:       root,
+		Repository: "github.com/acme/seed",
+		CommitSHA:  "abc123",
+		License:    "MIT",
+	}
+
+	missingGeneratedPath := filepath.Join(root, "generated", "missing.md")
+	_, kept, reason, err := collectFile(cfg, source, missingGeneratedPath)
+	if err != nil {
+		t.Fatalf("collectFile: %v", err)
+	}
+	if kept {
+		t.Fatal("expected generated path to be filtered")
+	}
+	if reason != "generated" {
+		t.Fatalf("reason = %q, want generated", reason)
+	}
+}
+
 func mustWrite(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
