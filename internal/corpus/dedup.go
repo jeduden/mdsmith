@@ -86,6 +86,9 @@ func capReadmes(records []collectedRecord, maxShare float64) ([]collectedRecord,
 		}
 		nonReadmes = append(nonReadmes, record)
 	}
+	if len(nonReadmes) == 0 {
+		return []collectedRecord{}, len(readmes)
+	}
 
 	maxReadmes := int(math.Floor((maxShare * float64(len(nonReadmes))) / (1 - maxShare)))
 	if maxReadmes < 1 {
@@ -119,8 +122,6 @@ func applyBalance(
 		return records, 0, nil
 	}
 
-	total := len(records)
-	groups := groupRecordsByCategory(records)
 	keptByID := make(map[string]bool, len(records))
 	dropped := 0
 
@@ -128,14 +129,42 @@ func applyBalance(
 		keptByID[record.RecordID] = true
 	}
 
-	for category, rng := range ranges {
+	for {
+		filtered := filterKeptRecords(records, keptByID)
+		total := len(filtered)
+		if total == 0 {
+			break
+		}
+		groups := groupRecordsByCategory(filtered)
+		droppedThisPass := applyBalancePass(ranges, keptByID, groups, total)
+		dropped += droppedThisPass
+		if droppedThisPass == 0 {
+			break
+		}
+	}
+
+	filtered := filterKeptRecords(records, keptByID)
+	violations := checkBalanceViolations(filtered, ranges)
+	return filtered, dropped, violations
+}
+
+func applyBalancePass(
+	ranges map[Category]BalanceRange,
+	keptByID map[string]bool,
+	groups map[Category][]collectedRecord,
+	total int,
+) int {
+	droppedThisPass := 0
+	for _, category := range AllCategories() {
+		rng, ok := ranges[category]
+		if !ok || rng.Max <= 0 {
+			continue
+		}
 		group := groups[category]
 		if len(group) == 0 {
 			continue
 		}
-		if rng.Max <= 0 {
-			continue
-		}
+
 		maxCount := int(math.Ceil(rng.Max * float64(total)))
 		if maxCount < 1 {
 			maxCount = 1
@@ -150,20 +179,21 @@ func applyBalance(
 		for _, overflow := range group[maxCount:] {
 			if keptByID[overflow.RecordID] {
 				keptByID[overflow.RecordID] = false
-				dropped++
+				droppedThisPass++
 			}
 		}
 	}
+	return droppedThisPass
+}
 
-	filtered := make([]collectedRecord, 0, len(records)-dropped)
+func filterKeptRecords(records []collectedRecord, keptByID map[string]bool) []collectedRecord {
+	filtered := make([]collectedRecord, 0, len(records))
 	for _, record := range records {
 		if keptByID[record.RecordID] {
 			filtered = append(filtered, record)
 		}
 	}
-
-	violations := checkBalanceViolations(filtered, ranges)
-	return filtered, dropped, violations
+	return filtered
 }
 
 func groupRecordsByCategory(records []collectedRecord) map[Category][]collectedRecord {

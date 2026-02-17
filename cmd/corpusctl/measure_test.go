@@ -81,3 +81,18 @@ func TestFetchPinnedSource_ValidatesInput(t *testing.T) {
 		t.Fatalf("expected commit validation error, got %v", err)
 	}
 }
+
+func TestResolveFetchRoot(t *testing.T) {
+	t.Parallel()
+
+	resolved := resolveFetchRoot(defaultFetchRoot, "v2026-02-17")
+	want := defaultFetchRoot + "/v2026-02-17"
+	if resolved != want {
+		t.Fatalf("resolveFetchRoot(default, version) = %q, want %q", resolved, want)
+	}
+
+	custom := resolveFetchRoot("/custom/fetch", "v2026-02-17")
+	if custom != "/custom/fetch" {
+		t.Fatalf("resolveFetchRoot(custom, version) = %q, want /custom/fetch", custom)
+	}
+}

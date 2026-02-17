@@ -66,6 +66,24 @@ func TestCapReadmes(t *testing.T) {
 	}
 }
 
+func TestCapReadmes_AllReadmes(t *testing.T) {
+	t.Parallel()
+
+	records := []collectedRecord{
+		makeCollected("r1", CategoryProjectDocs, true, nil),
+		makeCollected("r2", CategoryProjectDocs, true, nil),
+		makeCollected("r3", CategoryProjectDocs, true, nil),
+	}
+
+	capped, dropped := capReadmes(records, 0.2)
+	if dropped != 3 {
+		t.Fatalf("dropped = %d, want 3", dropped)
+	}
+	if len(capped) != 0 {
+		t.Fatalf("len(capped) = %d, want 0", len(capped))
+	}
+}
+
 func TestApplyBalance(t *testing.T) {
 	t.Parallel()
 
@@ -93,6 +111,38 @@ func TestApplyBalance(t *testing.T) {
 	}
 	if len(violations) != 1 {
 		t.Fatalf("violations = %v, want one violation", violations)
+	}
+}
+
+func TestApplyBalance_RecomputesAfterDrops(t *testing.T) {
+	t.Parallel()
+
+	records := []collectedRecord{
+		makeCollected("a1", CategoryDesignProposal, false, nil),
+		makeCollected("a2", CategoryDesignProposal, false, nil),
+		makeCollected("a3", CategoryDesignProposal, false, nil),
+		makeCollected("a4", CategoryDesignProposal, false, nil),
+		makeCollected("a5", CategoryDesignProposal, false, nil),
+		makeCollected("a6", CategoryDesignProposal, false, nil),
+		makeCollected("a7", CategoryDesignProposal, false, nil),
+		makeCollected("a8", CategoryDesignProposal, false, nil),
+		makeCollected("b1", CategoryReference, false, nil),
+		makeCollected("b2", CategoryReference, false, nil),
+	}
+	ranges := map[Category]BalanceRange{
+		CategoryDesignProposal: {Min: 0, Max: 0.2},
+		CategoryReference:      {Min: 0, Max: 0.2},
+	}
+
+	balanced, dropped, violations := applyBalance(records, ranges)
+	if dropped != 8 {
+		t.Fatalf("dropped = %d, want 8", dropped)
+	}
+	if len(balanced) != 2 {
+		t.Fatalf("len(balanced) = %d, want 2", len(balanced))
+	}
+	if len(violations) != 2 {
+		t.Fatalf("violations = %v, want two violations", violations)
 	}
 }
 

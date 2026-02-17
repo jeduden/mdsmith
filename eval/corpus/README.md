@@ -22,6 +22,13 @@ Each source entry includes:
 - `annotations`: rationale and content-scope metadata,
 - `quality`: policy metadata snapshot.
 
+## `corpusctl` Commands
+
+- `measure`: fetch pinned sources and build corpus artifacts.
+- `build`: build artifacts from already-present local sources.
+- `qa`: score manual annotations against predicted categories.
+- `drift`: compare two corpus reports for category/share drift.
+
 ## Measure Process (Pinned Remote Sources)
 
 Canonical command:

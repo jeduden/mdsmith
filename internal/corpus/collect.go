@@ -192,19 +192,22 @@ func collectFile(
 	source SourceConfig,
 	fullPath string,
 ) (collectedRecord, bool, string, error) {
-	content, err := os.ReadFile(fullPath)
-	if err != nil {
-		return collectedRecord{}, false, "", fmt.Errorf("read file %s: %w", fullPath, err)
-	}
-
 	relPath, err := filepath.Rel(source.Root, fullPath)
 	if err != nil {
 		return collectedRecord{}, false, "", fmt.Errorf("relative path for %s: %w", fullPath, err)
 	}
 	relPath = filepath.ToSlash(relPath)
+	if isGeneratedPath(relPath) {
+		return collectedRecord{}, false, "generated", nil
+	}
+
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		return collectedRecord{}, false, "", fmt.Errorf("read file %s: %w", fullPath, err)
+	}
 
 	normalized := normalizeMarkdown(string(content))
-	if isGenerated(relPath, normalized) {
+	if isGeneratedContent(normalized) {
 		return collectedRecord{}, false, "generated", nil
 	}
 	if isLowSignal(normalized, cfg.MinWords, cfg.MinChars) {
@@ -248,12 +251,20 @@ func normalizeMarkdown(content string) string {
 }
 
 func isGenerated(relPath string, content string) bool {
+	return isGeneratedPath(relPath) || isGeneratedContent(content)
+}
+
+func isGeneratedPath(relPath string) bool {
 	p := "/" + strings.Trim(strings.ToLower(relPath), "/") + "/"
 	for _, token := range []string{"/vendor/", "/node_modules/", "/dist/", "/build/", "/generated/", "/gen/"} {
 		if strings.Contains(p, token) {
 			return true
 		}
 	}
+	return false
+}
+
+func isGeneratedContent(content string) bool {
 	lower := strings.ToLower(content)
 	if strings.Contains(lower, "code generated") && strings.Contains(lower, "do not edit") {
 		return true
