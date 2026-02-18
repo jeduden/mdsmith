@@ -38,8 +38,8 @@ When two branches add items, catalogs conflict.
 
 Resolution: run `mdsmith fix <file>` after merging.
 The catalog rule regenerates the table from front matter
-in the glob-matched files. Manual conflict markers inside
-catalog sections can be deleted before running fix.
+in the glob-matched files. Do not manually resolve catalog
+conflicts — `mdsmith fix` overwrites the entire section.
 
 A custom merge driver automates this. Register it:
 

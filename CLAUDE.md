@@ -191,8 +191,9 @@ items (plans, rules, guides), catalogs conflict on merge.
 
 **Resolution:** run `mdsmith fix <file>` after merging.
 The catalog rule regenerates the table from front matter
-in the glob-matched source files. Conflict markers inside
-catalog blocks can be deleted before running fix.
+in the glob-matched source files. Do not manually resolve
+catalog conflicts — `mdsmith fix` overwrites the entire
+section between the markers.
 
 A custom merge driver in
 [`scripts/merge-driver-catalog.sh`](scripts/merge-driver-catalog.sh)

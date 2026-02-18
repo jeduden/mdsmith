@@ -28,8 +28,8 @@ Use `gh` for GitHub operations without prompting:
 
 PLAN.md and README.md have auto-generated catalog sections.
 After merging, run `mdsmith fix <file>` to regenerate them.
-Delete conflict markers inside `<!-- catalog -->` blocks
-before running fix.
+Do not manually resolve catalog conflicts — `mdsmith fix`
+overwrites the entire section between the markers.
 
 ## Style
 
