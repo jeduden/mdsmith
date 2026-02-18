@@ -1251,13 +1251,43 @@ func TestE2E_MergeDriver_NoArgs(t *testing.T) {
 	}
 }
 
-func TestE2E_MergeDriver_TooFewArgs(t *testing.T) {
-	_, stderr, exitCode := runBinary(t, "", "merge-driver", "a", "b")
+func TestE2E_MergeDriver_UnknownSubcommand(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "bogus")
+	if exitCode != 2 {
+		t.Errorf("expected exit 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown subcommand") {
+		t.Errorf("expected unknown subcommand error, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_Run_TooFewArgs(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "run", "a", "b")
 	if exitCode != 2 {
 		t.Errorf("expected exit 2, got %d", exitCode)
 	}
 	if !strings.Contains(stderr, "requires 4 arguments") {
 		t.Errorf("expected usage error, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_Run_Help(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "run", "--help")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "merge-driver") {
+		t.Errorf("expected help text, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_Install_Help(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "install", "--help")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "merge-driver") {
+		t.Errorf("expected help text, got: %s", stderr)
 	}
 }
 
@@ -1273,7 +1303,7 @@ func TestE2E_MergeDriver_CleanMerge(t *testing.T) {
 	theirs := writeFixture(t, dir, "theirs.md", "# Plans\n\nline a\n\nline b changed\n")
 	pathname := writeFixture(t, dir, "PLAN.md", "# Plans\n\nline a changed\n\nline b\n")
 
-	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", base, ours, theirs, pathname)
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
 	if exitCode != 0 {
 		t.Errorf("expected exit 0 (clean merge), got %d; stderr: %s", exitCode, stderr)
 	}
@@ -1322,7 +1352,7 @@ func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
 	writeFixture(t, dir, "plans/beta.md", "---\ntitle: Beta\n---\n\n# Beta\n\nContent.\n")
 	writeFixture(t, dir, "plans/gamma.md", "---\ntitle: Gamma\n---\n\n# Gamma\n\nContent.\n")
 
-	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", base, ours, theirs, pathname)
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
 	if exitCode != 0 {
 		t.Errorf("expected exit 0 (catalog conflict resolved), got %d; stderr: %s", exitCode, stderr)
 	}
@@ -1347,7 +1377,7 @@ func TestE2E_MergeDriver_NonCatalogConflict_ExitsOne(t *testing.T) {
 	theirs := writeFixture(t, dir, "theirs.md", "# Doc\n\ntheirs change\n")
 	pathname := writeFixture(t, dir, "README.md", "# Doc\n\nours change\n")
 
-	_, _, exitCode := runBinaryInDir(t, dir, "", "merge-driver", base, ours, theirs, pathname)
+	_, _, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
 	if exitCode != 1 {
 		t.Errorf("expected exit 1 (unresolved conflict), got %d", exitCode)
 	}
@@ -1378,8 +1408,8 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 		t.Fatalf("reading git config: %v", err)
 	}
 	driver := strings.TrimSpace(string(out))
-	if !strings.Contains(driver, "mdsmith merge-driver") {
-		t.Errorf("expected merge driver config, got: %s", driver)
+	if !strings.Contains(driver, "mdsmith merge-driver run") {
+		t.Errorf("expected merge driver config with 'run', got: %s", driver)
 	}
 
 	// Verify .gitattributes.

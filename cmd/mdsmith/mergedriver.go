@@ -12,17 +12,21 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-const mergeDriverUsage = `Usage: mdsmith merge-driver <base> <ours> <theirs> <pathname>
-       mdsmith merge-driver install
-
-Run as a git custom merge driver for files with auto-generated
-catalog sections (PLAN.md, README.md). Strips conflict markers
-inside catalog blocks and runs mdsmith fix to regenerate them.
-Exits non-zero if unresolved conflict markers remain.
+const mergeDriverUsage = `Usage: mdsmith merge-driver <subcommand> [args]
 
 Subcommands:
-  install   Register the merge driver in git config and
-            ensure .gitattributes assigns it to catalog files
+  run <base> <ours> <theirs> <pathname>
+        Run as a git custom merge driver. Strips conflict
+        markers inside catalog blocks, runs mdsmith fix to
+        regenerate them, and exits non-zero if unresolved
+        conflict markers remain.
+
+  install
+        Register the merge driver in git config and ensure
+        .gitattributes assigns it to catalog files.
+
+Git config (set by install):
+  merge.catalog.driver = mdsmith merge-driver run %O %A %B %P
 `
 
 // runMergeDriver dispatches the merge-driver subcommand.
@@ -32,19 +36,23 @@ func runMergeDriver(args []string) int {
 		return 0
 	}
 
-	if args[0] == "install" {
-		return runMergeDriverInstall()
-	}
-
-	if args[0] == "--help" || args[0] == "-h" {
+	switch args[0] {
+	case "--help", "-h":
 		fmt.Fprint(os.Stderr, mergeDriverUsage)
 		return 0
+	case "run":
+		return runMergeDriverRun(args[1:])
+	case "install":
+		return runMergeDriverInstall(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: merge-driver: unknown subcommand %q\n\n%s",
+			args[0], mergeDriverUsage)
+		return 2
 	}
-
-	return runMergeDriverMerge(args)
 }
 
-// runMergeDriverMerge implements the git merge driver protocol.
+// runMergeDriverRun implements the git merge driver protocol.
 // Arguments: <base> <ours> <theirs> <pathname>
 //
 // git calls this with %O %A %B %P where:
@@ -52,9 +60,16 @@ func runMergeDriver(args []string) int {
 //   - %A = ours (temp file, write result here)
 //   - %B = theirs (temp file)
 //   - %P = pathname in the working tree
-func runMergeDriverMerge(args []string) int {
+func runMergeDriverRun(args []string) int {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprint(os.Stderr, mergeDriverUsage)
+		return 0
+	}
+
 	if len(args) < 4 {
-		fmt.Fprintf(os.Stderr, "mdsmith: merge-driver requires 4 arguments: base ours theirs pathname\n")
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: merge-driver run requires 4 arguments: "+
+				"base ours theirs pathname\n")
 		return 2
 	}
 
@@ -77,13 +92,33 @@ func runMergeDriverMerge(args []string) int {
 		return 2
 	}
 
-	// Step 3: run mdsmith fix to regenerate catalog content.
-	// The fix pipeline needs the file at its real path for config
-	// overrides and glob-based catalog regeneration.
+	// Step 3: run mdsmith fix at the real path and write result
+	// back to ours.
+	fixed, rc := fixAtRealPath(cleaned, ours, pathname)
+	if rc != 0 {
+		return rc
+	}
+
+	// Step 4: check for remaining conflict markers.
+	if hasConflictMarkers(fixed) {
+		if mergeErr != nil {
+			fmt.Fprintf(os.Stderr,
+				"mdsmith: unresolved conflict markers remain in %s\n",
+				pathname)
+		}
+		return 1
+	}
+
+	return 0
+}
+
+// fixAtRealPath writes cleaned content to pathname, runs mdsmith
+// fix, copies the result to ours, and restores pathname.
+func fixAtRealPath(cleaned []byte, ours, pathname string) ([]byte, int) {
 	backup, backupErr := os.ReadFile(pathname)
 	if err := os.WriteFile(pathname, cleaned, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing to %s: %v\n", pathname, err)
-		return 2
+		return nil, 2
 	}
 
 	fixErr := fixFileInPlace(pathname)
@@ -91,13 +126,12 @@ func runMergeDriverMerge(args []string) int {
 	fixed, err := os.ReadFile(pathname)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading fixed file: %v\n", err)
-		return 2
+		return nil, 2
 	}
 
-	// Write the fixed result to ours (the merge output file).
 	if err := os.WriteFile(ours, fixed, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing merge output: %v\n", err)
-		return 2
+		return nil, 2
 	}
 
 	// Restore the original working tree file. Git will overwrite
@@ -110,15 +144,7 @@ func runMergeDriverMerge(args []string) int {
 		fmt.Fprintf(os.Stderr, "mdsmith: fix failed: %v\n", fixErr)
 	}
 
-	// Step 4: check for remaining conflict markers.
-	if hasConflictMarkers(fixed) {
-		if mergeErr != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: unresolved conflict markers remain in %s\n", pathname)
-		}
-		return 1
-	}
-
-	return 0
+	return fixed, 0
 }
 
 // fixFileInPlace runs the mdsmith fix pipeline on a single file.
@@ -193,7 +219,12 @@ func hasConflictMarkers(content []byte) bool {
 
 // runMergeDriverInstall registers the catalog merge driver in
 // the local git config and ensures .gitattributes assigns it.
-func runMergeDriverInstall() int {
+func runMergeDriverInstall(args []string) int {
+	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprint(os.Stderr, mergeDriverUsage)
+		return 0
+	}
+
 	// Verify we're in a git repo.
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
 	out, err := cmd.Output()
@@ -204,9 +235,11 @@ func runMergeDriverInstall() int {
 	repoRoot := strings.TrimSpace(string(out))
 
 	// Register merge driver in git config.
+	driver := "mdsmith merge-driver run %O %A %B %P"
 	cmds := [][]string{
-		{"git", "config", "merge.catalog.name", "Catalog-aware Markdown merge"},
-		{"git", "config", "merge.catalog.driver", "mdsmith merge-driver %O %A %B %P"},
+		{"git", "config", "merge.catalog.name",
+			"Catalog-aware Markdown merge"},
+		{"git", "config", "merge.catalog.driver", driver},
 	}
 	for _, c := range cmds {
 		if err := exec.Command(c[0], c[1:]...).Run(); err != nil {
@@ -218,7 +251,8 @@ func runMergeDriverInstall() int {
 	// Ensure .gitattributes has the merge driver entries.
 	attrPath := repoRoot + "/.gitattributes"
 	if err := ensureGitattributes(attrPath); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: updating .gitattributes: %v\n", err)
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: updating .gitattributes: %v\n", err)
 		return 2
 	}
 
