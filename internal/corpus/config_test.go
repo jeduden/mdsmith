@@ -145,14 +145,57 @@ sources:
 	}
 }
 
+func TestLoadConfig_PreservesExplicitZeroValues(t *testing.T) {
+	t.Parallel()
+
+	path := writeConfigFile(t, t.TempDir(), `
+collected_at: 2026-02-16
+seed: 0
+min_words: 0
+min_chars: 0
+near_duplicate_threshold: 0
+max_readme_share: 0
+qa_sample_per_category: 1
+license_allowlist:
+  - MIT
+sources:
+  - name: seed
+    repository: github.com/acme/seed
+    root: .
+    commit_sha: abc123
+    license: MIT
+`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Seed != 0 {
+		t.Fatalf("Seed = %d, want 0", cfg.Seed)
+	}
+	if cfg.MinWords != 0 {
+		t.Fatalf("MinWords = %d, want 0", cfg.MinWords)
+	}
+	if cfg.MinChars != 0 {
+		t.Fatalf("MinChars = %d, want 0", cfg.MinChars)
+	}
+	if cfg.NearDuplicateThreshold != 0 {
+		t.Fatalf("NearDuplicateThreshold = %f, want 0", cfg.NearDuplicateThreshold)
+	}
+	if cfg.MaxReadmeShare != 0 {
+		t.Fatalf("MaxReadmeShare = %f, want 0", cfg.MaxReadmeShare)
+	}
+}
+
 func TestWriteConfig(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
 	cfg := BuildConfig{
-		CollectedAt:      "2026-02-16",
-		LicenseAllowlist: []string{"MIT"},
+		CollectedAt:         "2026-02-16",
+		LicenseAllowlist:    []string{"MIT"},
+		QASamplePerCategory: 1,
 		Sources: []SourceConfig{
 			{
 				Name:       "seed",

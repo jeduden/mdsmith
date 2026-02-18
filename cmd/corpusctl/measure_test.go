@@ -24,6 +24,13 @@ func TestSourceRemoteURL(t *testing.T) {
 			want: "https://github.com/acme/preferred.git",
 		},
 		{
+			name: "repository url trailing slash",
+			source: corpus.SourceConfig{
+				RepositoryURL: "https://github.com/acme/preferred/",
+			},
+			want: "https://github.com/acme/preferred.git",
+		},
+		{
 			name: "github repository path",
 			source: corpus.SourceConfig{
 				Repository: "github.com/acme/repo",
