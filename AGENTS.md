@@ -1,3 +1,57 @@
 # Agent Notes
 
-See `CLAUDE.md` for project-specific guidance, conventions, and workflows.
+Instructions for AI coding agents (Codex, Copilot, Claude).
+See [CLAUDE.md](CLAUDE.md) for full project conventions.
+
+## Quick Reference
+
+- **Build:** `go build ./...`
+- **Test:** `go test ./...`
+- **Lint (Go):** `go tool golangci-lint run`
+- **Lint (Markdown):** `mdsmith check .`
+- **Fix Markdown:** `mdsmith fix .`
+
+## PR Workflow
+
+Use `gh` for all GitHub operations. Agents should run
+these commands without prompting for confirmation:
+
+```bash
+# Pull PR comments
+gh pr view <number> --comments
+
+# List review comments
+gh api repos/{owner}/{repo}/pulls/<number>/comments
+
+# Resolve a review thread
+gh api graphql -f query='...'
+
+# Push updates
+git push origin <branch>
+```
+
+## Merge Conflicts in PLAN.md and README.md
+
+These files contain auto-generated catalog sections
+(delimited by `<!-- catalog -->` and `<!-- /catalog -->`).
+When two branches add items, catalogs conflict.
+
+Resolution: run `mdsmith fix <file>` after merging.
+The catalog rule regenerates the table from front matter
+in the glob-matched files. Manual conflict markers inside
+catalog sections can be deleted before running fix.
+
+A custom merge driver automates this. Register it:
+
+```bash
+scripts/setup-merge-drivers.sh
+```
+
+## Development Conventions
+
+- Test-driven: write a failing test, make it pass, commit.
+- Keep commits small and focused.
+- Run `mdsmith check .` before every commit.
+- Error messages: lowercase, no trailing punctuation.
+- Plans live in [`plan/`](plan/) with status in
+  [PLAN.md](PLAN.md).

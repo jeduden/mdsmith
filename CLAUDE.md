@@ -164,6 +164,61 @@ headings, tilde fences), add a matching override in
 Bad fixtures are excluded via the `ignore:` section in
 `.mdsmith.yml`.
 
+## PR Workflow
+
+Use `gh` for all GitHub PR operations:
+
+```bash
+# View PR comments
+gh pr view <number> --comments
+
+# List review comments on a PR
+gh api repos/{owner}/{repo}/pulls/<number>/comments
+
+# Push updates after addressing comments
+git push origin <branch>
+```
+
+These commands are auto-approved in
+[`.claude/settings.json`](.claude/settings.json).
+
+## Merge Conflicts in PLAN.md and README.md
+
+[`PLAN.md`](PLAN.md) and [`README.md`](README.md) contain
+auto-generated catalog sections between `<!-- catalog -->`
+and `<!-- /catalog -->` markers. When two branches add
+items (plans, rules, guides), catalogs conflict on merge.
+
+**Resolution:** run `mdsmith fix <file>` after merging.
+The catalog rule regenerates the table from front matter
+in the glob-matched source files. Conflict markers inside
+catalog blocks can be deleted before running fix.
+
+A custom merge driver in
+[`scripts/merge-driver-catalog.sh`](scripts/merge-driver-catalog.sh)
+automates this. Register it once per clone:
+
+```bash
+scripts/setup-merge-drivers.sh
+```
+
+This writes a `[merge "catalog"]` entry to `.git/config`.
+The [`.gitattributes`](.gitattributes) file assigns the
+driver to PLAN.md and README.md.
+
+## Cross-Platform Agent Config
+
+This repo supports three AI coding agents:
+
+- **Claude:** [`CLAUDE.md`](CLAUDE.md) +
+  [`.claude/settings.json`](.claude/settings.json)
+- **Codex / Copilot Workspace:**
+  [`AGENTS.md`](AGENTS.md)
+- **GitHub Copilot:**
+  [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+
+Keep all three in sync when changing conventions.
+
 ## Config & Rules
 
 See [README.md](README.md#configuration) for config file format and examples.
