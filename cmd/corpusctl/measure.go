@@ -224,6 +224,7 @@ func sourceRemoteURL(source corpus.SourceConfig) (string, error) {
 
 func normalizeRemoteURL(remote string) string {
 	trimmed := strings.TrimSpace(remote)
+	trimmed = strings.TrimRight(trimmed, "/")
 	if strings.HasSuffix(trimmed, ".git") {
 		return trimmed
 	}

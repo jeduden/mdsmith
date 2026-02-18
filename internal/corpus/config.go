@@ -30,34 +30,38 @@ func LoadConfig(path string) (BuildConfig, error) {
 	if err := yaml.Unmarshal(content, &cfg); err != nil {
 		return BuildConfig{}, fmt.Errorf("parse config yaml: %w", err)
 	}
+	var topLevel map[string]any
+	if err := yaml.Unmarshal(content, &topLevel); err != nil {
+		return BuildConfig{}, fmt.Errorf("parse config yaml keys: %w", err)
+	}
 
-	cfg.applyDefaults(filepath.Dir(path))
+	cfg.applyDefaults(filepath.Dir(path), topLevel)
 	if err := cfg.validate(); err != nil {
 		return BuildConfig{}, err
 	}
 	return cfg, nil
 }
 
-func (cfg *BuildConfig) applyDefaults(configDir string) {
-	if cfg.DatasetVersion == "" {
+func (cfg *BuildConfig) applyDefaults(configDir string, topLevel map[string]any) {
+	if cfg.DatasetVersion == "" || !hasTopLevelKey(topLevel, "dataset_version") {
 		cfg.DatasetVersion = "v0"
 	}
-	if cfg.Seed == 0 {
+	if !hasTopLevelKey(topLevel, "seed") {
 		cfg.Seed = defaultSeed
 	}
-	if cfg.MinWords == 0 {
+	if !hasTopLevelKey(topLevel, "min_words") {
 		cfg.MinWords = defaultMinWords
 	}
-	if cfg.MinChars == 0 {
+	if !hasTopLevelKey(topLevel, "min_chars") {
 		cfg.MinChars = defaultMinChars
 	}
-	if cfg.NearDuplicateThreshold == 0 {
+	if !hasTopLevelKey(topLevel, "near_duplicate_threshold") {
 		cfg.NearDuplicateThreshold = defaultNearDuplicateThreshold
 	}
-	if cfg.MaxReadmeShare == 0 {
+	if !hasTopLevelKey(topLevel, "max_readme_share") {
 		cfg.MaxReadmeShare = defaultMaxReadmeShare
 	}
-	if cfg.QASamplePerCategory == 0 {
+	if !hasTopLevelKey(topLevel, "qa_sample_per_category") {
 		cfg.QASamplePerCategory = defaultQASamplePerCategory
 	}
 
@@ -74,6 +78,14 @@ func (cfg *BuildConfig) applyDefaults(configDir string) {
 			cfg.Sources[i].Include = []string{"**/*.md", "**/*.markdown"}
 		}
 	}
+}
+
+func hasTopLevelKey(topLevel map[string]any, key string) bool {
+	if topLevel == nil {
+		return false
+	}
+	_, ok := topLevel[key]
+	return ok
 }
 
 // WriteConfig writes a build config to YAML.
