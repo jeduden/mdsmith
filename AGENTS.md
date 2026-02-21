@@ -32,19 +32,19 @@ git push origin <branch>
 
 ## Merge Conflicts in PLAN.md and README.md
 
-These files contain auto-generated catalog sections
-(delimited by `<!-- catalog -->` and `<!-- /catalog -->`).
-When two branches add items, catalogs conflict.
+These files contain auto-generated sections (catalog,
+include) delimited by `<!-- name -->` / `<!-- /name -->`
+markers. When two branches add items, sections conflict.
 
 Resolution: run `mdsmith fix <file>` after merging.
-The catalog rule regenerates the table from front matter
-in the glob-matched files. Do not manually resolve catalog
+The fix command regenerates sections from front matter
+or source files. Do not manually resolve section
 conflicts — `mdsmith fix` overwrites the entire section.
 
 A built-in merge driver automates this. Register it:
 
 ```bash
-mdsmith merge-driver install
+mdsmith merge-driver install [files...]
 ```
 
 ## Development Conventions

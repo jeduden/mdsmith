@@ -1403,7 +1403,7 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	}
 
 	// Verify git config.
-	out, err := exec.Command("git", "-C", dir, "config", "merge.catalog.driver").Output()
+	out, err := exec.Command("git", "-C", dir, "config", "merge.mdsmith.driver").Output()
 	if err != nil {
 		t.Fatalf("reading git config: %v", err)
 	}
@@ -1418,10 +1418,10 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 		t.Fatalf("reading .gitattributes: %v", err)
 	}
 	content := string(attrs)
-	if !strings.Contains(content, "PLAN.md merge=catalog") {
+	if !strings.Contains(content, "PLAN.md merge=mdsmith") {
 		t.Error("expected PLAN.md entry in .gitattributes")
 	}
-	if !strings.Contains(content, "README.md merge=catalog") {
+	if !strings.Contains(content, "README.md merge=mdsmith") {
 		t.Error("expected README.md entry in .gitattributes")
 	}
 }
@@ -1443,8 +1443,90 @@ func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {
 
 	// .gitattributes should not have duplicates.
 	attrs, _ := os.ReadFile(filepath.Join(dir, ".gitattributes"))
-	count := strings.Count(string(attrs), "PLAN.md merge=catalog")
+	count := strings.Count(string(attrs), "PLAN.md merge=mdsmith")
 	if count != 1 {
 		t.Errorf("expected 1 PLAN.md entry, got %d; content:\n%s", count, attrs)
+	}
+}
+
+func TestE2E_MergeDriver_Install_CustomFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	cmd := exec.Command("git", "init", dir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "install", "CHANGELOG.md", "docs/INDEX.md")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	// Verify git config.
+	out, err := exec.Command("git", "-C", dir, "config", "merge.mdsmith.driver").Output()
+	if err != nil {
+		t.Fatalf("reading git config: %v", err)
+	}
+	driver := strings.TrimSpace(string(out))
+	if !strings.Contains(driver, "mdsmith merge-driver run") {
+		t.Errorf("expected merge driver config, got: %s", driver)
+	}
+
+	// Verify .gitattributes has custom files, not defaults.
+	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
+	if err != nil {
+		t.Fatalf("reading .gitattributes: %v", err)
+	}
+	content := string(attrs)
+	if !strings.Contains(content, "CHANGELOG.md merge=mdsmith") {
+		t.Error("expected CHANGELOG.md entry in .gitattributes")
+	}
+	if !strings.Contains(content, "docs/INDEX.md merge=mdsmith") {
+		t.Error("expected docs/INDEX.md entry in .gitattributes")
+	}
+	if strings.Contains(content, "PLAN.md") {
+		t.Error("default PLAN.md should not appear when custom files given")
+	}
+	if strings.Contains(content, "README.md") {
+		t.Error("default README.md should not appear when custom files given")
+	}
+}
+
+func TestE2E_MergeDriver_IncludeConflict_Resolved(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Minimal config so fix runs.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  include: true\n")
+
+	// Create the included source file.
+	writeFixture(t, dir, "snippet.md", "included content\n")
+
+	includeBase := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nold content\n<!-- /include -->\n"
+	includeOurs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nours content\n<!-- /include -->\n"
+	includeTheirs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\ntheirs content\n<!-- /include -->\n"
+
+	base := writeFixture(t, dir, "base.md", includeBase)
+	ours := writeFixture(t, dir, "ours.md", includeOurs)
+	theirs := writeFixture(t, dir, "theirs.md", includeTheirs)
+	pathname := writeFixture(t, dir, "DOC.md", includeOurs)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0 (include conflict resolved), got %d; stderr: %s",
+			exitCode, stderr)
+	}
+
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	if strings.Contains(content, "<<<<<<<") {
+		t.Error("expected no conflict markers after merge-driver")
+	}
+	if !strings.Contains(content, "included content") {
+		t.Error("expected include section to contain regenerated content")
 	}
 }

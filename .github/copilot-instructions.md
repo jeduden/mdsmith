@@ -26,11 +26,11 @@ Use `gh` for GitHub operations without prompting:
 
 ## Merge Conflicts
 
-PLAN.md and README.md have auto-generated catalog sections.
-Run `mdsmith merge-driver install` to register the git
-merge driver. It strips catalog conflict markers and runs
-`mdsmith fix` to regenerate. Do not manually resolve
-catalog conflicts.
+PLAN.md and README.md have auto-generated sections (catalog,
+include). Run `mdsmith merge-driver install [files...]` to
+register the git merge driver. It strips conflict markers
+inside regenerable sections and runs `mdsmith fix` to
+regenerate. Do not manually resolve section conflicts.
 
 ## Style
 

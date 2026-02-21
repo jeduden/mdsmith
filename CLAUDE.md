@@ -50,15 +50,15 @@ mdsmith <command> [flags] [files...]
 
 ### Commands
 
-| Command      | Description                   |
-|--------------|-------------------------------|
-| `check`        | Lint files (default command)  |
-| `fix`          | Auto-fix issues in place      |
-| `help`         | Show help for rules/topics    |
-| `metrics`      | List and rank shared metrics  |
-| `merge-driver` | Git merge driver for catalogs |
-| `init`         | Generate `.mdsmith.yml`         |
-| `version`      | Print version, exit           |
+| Command      | Description                               |
+|--------------|-------------------------------------------|
+| `check`        | Lint files (default command)              |
+| `fix`          | Auto-fix issues in place                  |
+| `help`         | Show help for rules/topics                |
+| `metrics`      | List and rank shared metrics              |
+| `merge-driver` | Git merge driver for regenerable sections |
+| `init`         | Generate `.mdsmith.yml`                     |
+| `version`      | Print version, exit                       |
 
 Files are positional arguments. Accepts multiple file paths,
 directories, and glob patterns. Pass `-` to read from stdin.
@@ -186,29 +186,28 @@ These commands are auto-approved in
 ## Merge Conflicts in PLAN.md and README.md
 
 [`PLAN.md`](PLAN.md) and [`README.md`](README.md) contain
-auto-generated catalog sections between `<!-- catalog -->`
-and `<!-- /catalog -->` markers. When two branches add
-items (plans, rules, guides), catalogs conflict on merge.
+auto-generated sections (catalog, include) between
+`<!-- name -->` and `<!-- /name -->` markers. When two
+branches add items, these sections conflict on merge.
 
 **Resolution:** run `mdsmith fix <file>` after merging.
-The catalog rule regenerates the table from front matter
-in the glob-matched source files. Do not manually resolve
-catalog conflicts — `mdsmith fix` overwrites the entire
-section between the markers.
+The fix command regenerates the content from front matter
+or source files. Do not manually resolve section
+conflicts — `mdsmith fix` overwrites the entire section
+between the markers.
 
-The built-in `merge-driver` command automates this as a
-git custom merge driver. It strips conflict markers inside
-catalog blocks, runs `mdsmith fix` to regenerate, and
-exits non-zero if unresolved markers remain outside
-catalogs. Register it once per clone:
+The built-in `merge-driver` command automates this. It
+strips conflict markers inside regenerable sections, runs
+`mdsmith fix`, and fails if unresolved markers remain.
+Register it once per clone:
 
 ```bash
-mdsmith merge-driver install
+mdsmith merge-driver install [files...]
 ```
 
-This writes a `[merge "catalog"]` entry to `.git/config`
-and ensures [`.gitattributes`](.gitattributes) assigns the
-driver to PLAN.md and README.md.
+This adds `[merge "mdsmith"]` to `.git/config` and
+updates [`.gitattributes`](.gitattributes) for the listed
+files (default: PLAN.md, README.md).
 
 ## Cross-Platform Agent Config
 
