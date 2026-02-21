@@ -1,3 +1,4 @@
 # Agent Notes
 
-See `CLAUDE.md` for project-specific guidance, conventions, and workflows.
+Instructions for AI coding agents (Codex, Copilot, Claude).
+See [CLAUDE.md](CLAUDE.md) for full project conventions.

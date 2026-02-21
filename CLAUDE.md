@@ -50,14 +50,15 @@ mdsmith <command> [flags] [files...]
 
 ### Commands
 
-| Command | Description                  |
-|---------|------------------------------|
-| `check`   | Lint files (default command) |
-| `fix`     | Auto-fix issues in place     |
-| `help`    | Show help for rules/topics   |
-| `metrics` | List and rank shared metrics |
-| `init`    | Generate `.mdsmith.yml`        |
-| `version` | Print version, exit          |
+| Command      | Description                               |
+|--------------|-------------------------------------------|
+| `check`        | Lint files (default command)              |
+| `fix`          | Auto-fix issues in place                  |
+| `help`         | Show help for rules/topics                |
+| `metrics`      | List and rank shared metrics              |
+| `merge-driver` | Git merge driver for regenerable sections |
+| `init`         | Generate `.mdsmith.yml`                     |
+| `version`      | Print version, exit                       |
 
 Files are positional arguments. Accepts multiple file paths,
 directories, and glob patterns. Pass `-` to read from stdin.
@@ -163,6 +164,63 @@ headings, tilde fences), add a matching override in
 
 Bad fixtures are excluded via the `ignore:` section in
 `.mdsmith.yml`.
+
+## PR Workflow
+
+Use `gh` for all GitHub PR operations:
+
+```bash
+# View PR comments
+gh pr view <number> --comments
+
+# List review comments on a PR
+gh api repos/{owner}/{repo}/pulls/<number>/comments
+
+# Push updates after addressing comments
+git push origin <branch>
+```
+
+These commands are auto-approved in
+[`.claude/settings.json`](.claude/settings.json).
+
+## Merge Conflicts in PLAN.md and README.md
+
+[`PLAN.md`](PLAN.md) and [`README.md`](README.md) contain
+auto-generated sections (catalog, include) between
+`<!-- name -->` and `<!-- /name -->` markers. When two
+branches add items, these sections conflict on merge.
+
+**Resolution:** run `mdsmith fix <file>` after merging.
+The fix command regenerates the content from front matter
+or source files. Do not manually resolve section
+conflicts — `mdsmith fix` overwrites the entire section
+between the markers.
+
+The built-in `merge-driver` command automates this. It
+strips conflict markers inside regenerable sections, runs
+`mdsmith fix`, and fails if unresolved markers remain.
+Register it once per clone:
+
+```bash
+mdsmith merge-driver install [files...]
+```
+
+This adds `[merge "mdsmith"]` to `.git/config` and
+updates [`.gitattributes`](.gitattributes) for the listed
+files (default: PLAN.md, README.md).
+
+## Cross-Platform Agent Config
+
+This repo supports three AI coding agents:
+
+- **Claude:** [`CLAUDE.md`](CLAUDE.md) +
+  [`.claude/settings.json`](.claude/settings.json)
+- **Codex / Copilot Workspace:**
+  [`AGENTS.md`](AGENTS.md)
+- **GitHub Copilot:**
+  [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+
+Keep all three in sync when changing conventions.
 
 ## Config & Rules
 

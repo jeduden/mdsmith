@@ -59,12 +59,13 @@ func main() {
 const usageText = `Usage: mdsmith <command> [flags] [files...]
 
 Commands:
-  check     Lint Markdown files (default when given file arguments)
-  fix       Auto-fix lint issues in place
-  help      Show help for rules and topics
-  metrics   Show and rank shared Markdown metrics
-  init      Generate a default .mdsmith.yml config file
-  version   Print version and exit
+  check          Lint Markdown files (default when given file arguments)
+  fix            Auto-fix lint issues in place
+  help           Show help for rules and topics
+  metrics        Show and rank shared Markdown metrics
+  merge-driver   Git merge driver for regenerable sections
+  init           Generate a default .mdsmith.yml config file
+  version        Print version and exit
 
 Global flags:
   -h, --help      Show this help
@@ -98,6 +99,8 @@ func run() int {
 		return runHelp(os.Args[2:])
 	case "metrics":
 		return runMetrics(os.Args[2:])
+	case "merge-driver":
+		return runMergeDriver(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
 	case "version":

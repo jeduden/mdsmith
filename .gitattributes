@@ -1,0 +1,5 @@
+# Custom merge driver for files with auto-generated sections
+# (catalog, include). Resolves section conflicts via mdsmith fix.
+# Run: mdsmith merge-driver install
+PLAN.md merge=mdsmith
+README.md merge=mdsmith

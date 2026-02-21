@@ -1228,3 +1228,420 @@ func TestE2E_Check_NoArgs_NoConfig_ExitsZero(t *testing.T) {
 		t.Errorf("expected exit code 0 for empty dir with no files, got %d", exitCode)
 	}
 }
+
+// --- merge-driver tests ---
+
+func TestE2E_MergeDriver_Help(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "--help")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "merge-driver") {
+		t.Errorf("expected help text, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_NoArgs(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "Usage:") {
+		t.Errorf("expected usage in stderr, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_UnknownSubcommand(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "bogus")
+	if exitCode != 2 {
+		t.Errorf("expected exit 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "unknown subcommand") {
+		t.Errorf("expected unknown subcommand error, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_Run_TooFewArgs(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "run", "a", "b")
+	if exitCode != 2 {
+		t.Errorf("expected exit 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "requires 4 arguments") {
+		t.Errorf("expected usage error, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_Run_Help(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "run", "--help")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "merge-driver") {
+		t.Errorf("expected help text, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_Install_Help(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "", "merge-driver", "install", "--help")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "merge-driver") {
+		t.Errorf("expected help text, got: %s", stderr)
+	}
+}
+
+func TestE2E_MergeDriver_CleanMerge(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Non-overlapping changes: ours edits line 3, theirs edits line 5.
+	base := writeFixture(t, dir, "base.md", "# Plans\n\nline a\n\nline b\n")
+	ours := writeFixture(t, dir, "ours.md", "# Plans\n\nline a changed\n\nline b\n")
+	theirs := writeFixture(t, dir, "theirs.md", "# Plans\n\nline a\n\nline b changed\n")
+	pathname := writeFixture(t, dir, "PLAN.md", "# Plans\n\nline a changed\n\nline b\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0 (clean merge), got %d; stderr: %s", exitCode, stderr)
+	}
+
+	result, _ := os.ReadFile(ours)
+	if strings.Contains(string(result), "<<<<<<<") {
+		t.Error("expected no conflict markers in result")
+	}
+}
+
+func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Minimal config so fix runs.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
+
+	catalogBase := "# Doc\n\n<!-- catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{{.title}}]({{.filename}}) |\"\n-->\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n<!-- /catalog -->\n"
+
+	// Ours adds beta.
+	catalogOurs := "# Doc\n\n<!-- catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{{.title}}]({{.filename}}) |\"\n-->\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n| [Beta](plans/beta.md) |\n<!-- /catalog -->\n"
+
+	// Theirs adds gamma.
+	catalogTheirs := "# Doc\n\n<!-- catalog\nglob: \"plans/*.md\"\nsort: title\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{{.title}}]({{.filename}}) |\"\n-->\n" +
+		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n" +
+		"| [Gamma](plans/gamma.md) |\n<!-- /catalog -->\n"
+
+	base := writeFixture(t, dir, "base.md", catalogBase)
+	ours := writeFixture(t, dir, "ours.md", catalogOurs)
+	theirs := writeFixture(t, dir, "theirs.md", catalogTheirs)
+	pathname := writeFixture(t, dir, "CATALOG.md", catalogOurs)
+
+	// Create plan files so catalog regeneration has source data.
+	plansDir := filepath.Join(dir, "plans")
+	if err := os.MkdirAll(plansDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, dir, "plans/alpha.md", "---\ntitle: Alpha\n---\n\n# Alpha\n\nContent.\n")
+	writeFixture(t, dir, "plans/beta.md", "---\ntitle: Beta\n---\n\n# Beta\n\nContent.\n")
+	writeFixture(t, dir, "plans/gamma.md", "---\ntitle: Gamma\n---\n\n# Gamma\n\nContent.\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0 (catalog conflict resolved), got %d; stderr: %s", exitCode, stderr)
+	}
+
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	if strings.Contains(content, "<<<<<<<") {
+		t.Error("expected no conflict markers after merge-driver")
+	}
+}
+
+func TestE2E_MergeDriver_NonCatalogConflict_ExitsOne(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+
+	// A conflict outside any catalog section cannot be resolved.
+	base := writeFixture(t, dir, "base.md", "# Doc\n\noriginal line\n")
+	ours := writeFixture(t, dir, "ours.md", "# Doc\n\nours change\n")
+	theirs := writeFixture(t, dir, "theirs.md", "# Doc\n\ntheirs change\n")
+	pathname := writeFixture(t, dir, "README.md", "# Doc\n\nours change\n")
+
+	_, _, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 1 {
+		t.Errorf("expected exit 1 (unresolved conflict), got %d", exitCode)
+	}
+
+	result, _ := os.ReadFile(ours)
+	if !strings.Contains(string(result), "<<<<<<<") {
+		t.Error("expected conflict markers preserved for non-catalog conflict")
+	}
+}
+
+func TestE2E_MergeDriver_Install(t *testing.T) {
+	dir := t.TempDir()
+
+	// Initialize a git repo.
+	cmd := exec.Command("git", "init", dir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	// Verify git config.
+	out, err := exec.Command("git", "-C", dir, "config", "merge.mdsmith.driver").Output()
+	if err != nil {
+		t.Fatalf("reading git config: %v", err)
+	}
+	driver := strings.TrimSpace(string(out))
+	if !strings.Contains(driver, "mdsmith merge-driver run") {
+		t.Errorf("expected merge driver config with 'run', got: %s", driver)
+	}
+
+	// Verify .gitattributes.
+	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
+	if err != nil {
+		t.Fatalf("reading .gitattributes: %v", err)
+	}
+	content := string(attrs)
+	if !strings.Contains(content, "PLAN.md merge=mdsmith") {
+		t.Error("expected PLAN.md entry in .gitattributes")
+	}
+	if !strings.Contains(content, "README.md merge=mdsmith") {
+		t.Error("expected README.md entry in .gitattributes")
+	}
+}
+
+func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+
+	cmd := exec.Command("git", "init", dir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	// Run install twice.
+	runBinaryInDir(t, dir, "", "merge-driver", "install")
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "install")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0 on second install, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	// .gitattributes should not have duplicates.
+	attrs, _ := os.ReadFile(filepath.Join(dir, ".gitattributes"))
+	count := strings.Count(string(attrs), "PLAN.md merge=mdsmith")
+	if count != 1 {
+		t.Errorf("expected 1 PLAN.md entry, got %d; content:\n%s", count, attrs)
+	}
+}
+
+func TestE2E_MergeDriver_Install_CustomFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	cmd := exec.Command("git", "init", dir)
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "install", "CHANGELOG.md", "docs/INDEX.md")
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	// Verify git config.
+	out, err := exec.Command("git", "-C", dir, "config", "merge.mdsmith.driver").Output()
+	if err != nil {
+		t.Fatalf("reading git config: %v", err)
+	}
+	driver := strings.TrimSpace(string(out))
+	if !strings.Contains(driver, "mdsmith merge-driver run") {
+		t.Errorf("expected merge driver config, got: %s", driver)
+	}
+
+	// Verify .gitattributes has custom files, not defaults.
+	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
+	if err != nil {
+		t.Fatalf("reading .gitattributes: %v", err)
+	}
+	content := string(attrs)
+	if !strings.Contains(content, "CHANGELOG.md merge=mdsmith") {
+		t.Error("expected CHANGELOG.md entry in .gitattributes")
+	}
+	if !strings.Contains(content, "docs/INDEX.md merge=mdsmith") {
+		t.Error("expected docs/INDEX.md entry in .gitattributes")
+	}
+	if strings.Contains(content, "PLAN.md") {
+		t.Error("default PLAN.md should not appear when custom files given")
+	}
+	if strings.Contains(content, "README.md") {
+		t.Error("default README.md should not appear when custom files given")
+	}
+}
+
+func TestE2E_MergeDriver_IncludeConflict_Resolved(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Minimal config so fix runs.
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  include: true\n")
+
+	// Create the included source file.
+	writeFixture(t, dir, "snippet.md", "included content\n")
+
+	includeBase := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nold content\n<!-- /include -->\n"
+	includeOurs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nours content\n<!-- /include -->\n"
+	includeTheirs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\ntheirs content\n<!-- /include -->\n"
+
+	base := writeFixture(t, dir, "base.md", includeBase)
+	ours := writeFixture(t, dir, "ours.md", includeOurs)
+	theirs := writeFixture(t, dir, "theirs.md", includeTheirs)
+	pathname := writeFixture(t, dir, "DOC.md", includeOurs)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0 (include conflict resolved), got %d; stderr: %s",
+			exitCode, stderr)
+	}
+
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	if strings.Contains(content, "<<<<<<<") {
+		t.Error("expected no conflict markers after merge-driver")
+	}
+	if !strings.Contains(content, "included content") {
+		t.Error("expected include section to contain regenerated content")
+	}
+}
+
+func TestE2E_MergeDriver_SetextInSection_Preserved(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  include: true\n  heading-style: false\n")
+
+	// The included file uses a setext heading (=======) that must
+	// not be stripped as a conflict separator.
+	writeFixture(t, dir, "snippet.md", "Title\n=======\n\nBody text.\n")
+
+	includeBase := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nold\n<!-- /include -->\n"
+	includeOurs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nours\n<!-- /include -->\n"
+	includeTheirs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\ntheirs\n<!-- /include -->\n"
+
+	base := writeFixture(t, dir, "base.md", includeBase)
+	ours := writeFixture(t, dir, "ours.md", includeOurs)
+	theirs := writeFixture(t, dir, "theirs.md", includeTheirs)
+	pathname := writeFixture(t, dir, "DOC.md", includeOurs)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	if !strings.Contains(content, "=======") {
+		t.Error("setext heading underline (=======) was incorrectly stripped")
+	}
+	if !strings.Contains(content, "Title") {
+		t.Error("expected regenerated include content with Title")
+	}
+}
+
+func TestE2E_MergeDriver_ConflictStraddlesSection_Preserved(t *testing.T) {
+	// A conflict that opens before a section and closes inside it
+	// must not have its close marker stripped.
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+
+	// Simulate: ours has a conflict that starts outside and ends
+	// inside an include section. We pre-build the conflicted file
+	// instead of relying on git merge-file to produce this layout.
+	conflicted := "# Doc\n\n<<<<<<< ours\nours text\n=======\n" +
+		"<!-- include\nfile: snippet.md\n-->\ntheirs content\n>>>>>>> theirs\n" +
+		"<!-- /include -->\n"
+
+	base := writeFixture(t, dir, "base.md", "# Doc\n\noriginal\n")
+	ours := writeFixture(t, dir, "ours.md", conflicted)
+	theirs := writeFixture(t, dir, "theirs.md", "# Doc\n\ntheirs\n")
+	pathname := writeFixture(t, dir, "DOC.md", conflicted)
+
+	_, _, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "run", base, ours, theirs, pathname)
+
+	// The driver should exit 1 because unresolved conflict markers
+	// remain (the conflict straddles a section boundary and can't
+	// be auto-resolved).
+	if exitCode != 1 {
+		t.Errorf("expected exit 1 (unresolved conflict), got %d", exitCode)
+	}
+
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	if !strings.Contains(content, "<<<<<<<") {
+		t.Error("expected <<<<<<< marker preserved")
+	}
+	if !strings.Contains(content, ">>>>>>>") {
+		t.Error("expected >>>>>>> marker preserved (conflict close inside section)")
+	}
+}
+
+func TestE2E_MergeDriver_SectionMarkersInsideConflict_Preserved(t *testing.T) {
+	// When one branch adds a section and another doesn't, the
+	// section markers themselves are inside the conflict. All
+	// conflict markers must be preserved.
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+
+	conflicted := "# Doc\n\n<<<<<<< ours\n<!-- include\nfile: snippet.md\n-->\n" +
+		"content\n<!-- /include -->\n=======\nno section\n>>>>>>> theirs\n"
+
+	base := writeFixture(t, dir, "base.md", "# Doc\n\noriginal\n")
+	ours := writeFixture(t, dir, "ours.md", conflicted)
+	theirs := writeFixture(t, dir, "theirs.md", "# Doc\n\nno section\n")
+	pathname := writeFixture(t, dir, "DOC.md", conflicted)
+
+	_, _, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 1 {
+		t.Errorf("expected exit 1 (unresolved conflict), got %d", exitCode)
+	}
+
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	if !strings.Contains(content, "<<<<<<<") {
+		t.Error("expected <<<<<<< marker preserved")
+	}
+	if !strings.Contains(content, "=======") {
+		t.Error("expected ======= separator preserved")
+	}
+	if !strings.Contains(content, ">>>>>>>") {
+		t.Error("expected >>>>>>> marker preserved")
+	}
+}
