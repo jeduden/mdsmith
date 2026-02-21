@@ -1,95 +1,125 @@
 package corpus
 
-import (
-	"sort"
-)
+import "sort"
 
-// Build runs collection, filtering, balancing, and split assignment.
-func Build(cfg BuildConfig) (BuildOutput, error) {
-	collected, stats, err := collect(cfg)
+// Build runs collect -> dedup -> classify -> split and produces reports.
+func Build(cfg *Config, cacheDir string) (*BuildResult, error) {
+	records, err := Collect(cfg, cacheDir)
 	if err != nil {
-		return BuildOutput{}, err
+		return nil, err
 	}
+	filesCollected := len(records)
 
-	exactDeduped, exactDropped := dropExactDuplicates(collected)
-	nearDeduped, nearDropped := dropNearDuplicates(exactDeduped, cfg.NearDuplicateThreshold)
-	balanced, balanceDropped, _ := applyBalance(nearDeduped, cfg.Balance)
-	readmeCapped, readmeDropped := capReadmes(balanced, cfg.MaxReadmeShare)
-	violations := checkBalanceViolations(readmeCapped, cfg.Balance)
-	assignSplits(readmeCapped, cfg.Seed)
+	deduped := Dedup(records)
+	filesDeduped := filesCollected - len(deduped)
 
-	sort.Slice(readmeCapped, func(i int, j int) bool {
-		return readmeCapped[i].RecordID < readmeCapped[j].RecordID
+	classified := Classify(deduped)
+	train, test := Split(classified, cfg.TestFraction)
+
+	manifest := make([]Record, 0, len(classified))
+	manifest = append(manifest, train...)
+	manifest = append(manifest, test...)
+	sort.Slice(manifest, func(i int, j int) bool {
+		return manifest[i].RecordID < manifest[j].RecordID
 	})
 
-	manifest := make([]ManifestRecord, 0, len(readmeCapped))
-	for _, record := range readmeCapped {
-		manifest = append(manifest, record.ManifestRecord)
+	report := BuildReport{
+		DatasetVersion: cfg.DatasetVersion,
+		CollectedAt:    cfg.CollectedAt,
+		FilesCollected: filesCollected,
+		FilesKept:      len(manifest),
+		FilesDeduped:   filesDeduped,
+		Taxonomy:       map[Category]int{},
+		Split: SplitSummary{
+			Train: len(train),
+			Test:  len(test),
+		},
+	}
+	for _, record := range manifest {
+		report.Taxonomy[record.Category]++
+		report.Metrics.AvgWords += float64(record.Words)
+		report.Metrics.AvgChars += float64(record.Chars)
+	}
+	if len(manifest) > 0 {
+		report.Metrics.AvgWords /= float64(len(manifest))
+		report.Metrics.AvgChars /= float64(len(manifest))
 	}
 
-	report := makeBuildReport(
-		cfg,
-		stats,
-		manifest,
-		exactDropped,
-		nearDropped,
-		readmeDropped,
-		balanceDropped,
-		violations,
-	)
-	sample := makeQASample(manifest, cfg.QASamplePerCategory, cfg.Seed)
+	sample := makeQASample(manifest, cfg.QASampleLimit)
 
-	return BuildOutput{
+	return &BuildResult{
 		Manifest: manifest,
-		QASample: sample,
 		Report:   report,
+		QASample: sample,
 	}, nil
 }
 
-func makeBuildReport(
-	cfg BuildConfig,
-	stats collectionStats,
-	manifest []ManifestRecord,
-	exactDropped int,
-	nearDropped int,
-	readmeDropped int,
-	balanceDropped int,
-	violations []string,
-) BuildReport {
-	categoryCounts := make(map[Category]int)
-	splitCounts := make(map[string]int)
-	readmes := 0
-	for _, record := range manifest {
-		categoryCounts[record.Category]++
-		splitCounts[record.Split]++
-		if record.IsReadme {
-			readmes++
+func makeQASample(records []Record, limit int) []QASampleRecord {
+	if limit <= 0 {
+		limit = defaultQASampleLimit
+	}
+	if len(records) == 0 {
+		return nil
+	}
+
+	groups := map[Category][]Record{
+		CategoryReference: {},
+		CategoryOther:     {},
+	}
+	for _, record := range records {
+		groups[record.Category] = append(groups[record.Category], record)
+	}
+	for category := range groups {
+		group := groups[category]
+		sort.Slice(group, func(i int, j int) bool {
+			left := group[i].RecordID
+			right := group[j].RecordID
+			if left == right {
+				return group[i].Path < group[j].Path
+			}
+			return left < right
+		})
+		groups[category] = group
+	}
+
+	picked := make([]QASampleRecord, 0, min(limit, len(records)))
+	for len(picked) < limit {
+		added := false
+		for _, category := range []Category{CategoryReference, CategoryOther} {
+			group := groups[category]
+			if len(group) == 0 {
+				continue
+			}
+			record := group[0]
+			groups[category] = group[1:]
+			picked = append(picked, QASampleRecord{
+				RecordID:          record.RecordID,
+				PredictedCategory: record.Category,
+				Source:            record.Source,
+				Path:              record.Path,
+			})
+			added = true
+			if len(picked) >= limit {
+				break
+			}
+		}
+		if !added {
+			break
 		}
 	}
 
-	readmeShare := 0.0
-	if len(manifest) > 0 {
-		readmeShare = float64(readmes) / float64(len(manifest))
-	}
+	sort.Slice(picked, func(i int, j int) bool {
+		if picked[i].PredictedCategory == picked[j].PredictedCategory {
+			return picked[i].RecordID < picked[j].RecordID
+		}
+		return picked[i].PredictedCategory < picked[j].PredictedCategory
+	})
+	return picked
+}
 
-	return BuildReport{
-		DatasetVersion:     cfg.DatasetVersion,
-		CollectedAt:        cfg.CollectedAt,
-		SourcesConsidered:  len(cfg.Sources),
-		SourcesIncluded:    stats.sourcesIncluded,
-		FilesScanned:       stats.filesScanned,
-		FilesKept:          len(manifest),
-		FilteredByPolicy:   stats.filteredByPolicy,
-		FilteredGenerated:  stats.filteredGenerated,
-		FilteredLowSignal:  stats.filteredLowSignal,
-		DroppedExactDupes:  exactDropped,
-		DroppedNearDupes:   nearDropped,
-		DroppedReadmes:     readmeDropped,
-		DroppedByBalancing: balanceDropped,
-		CategoryCounts:     categoryCounts,
-		SplitCounts:        splitCounts,
-		BalanceRanges:      cfg.Balance,
-		BalanceViolations:  violations,
-		ReadmeShare:        readmeShare,
+func min(a int, b int) int {
+	if a < b {
+		return a
 	}
+	return b
 }

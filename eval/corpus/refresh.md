@@ -1,46 +1,40 @@
 # Refresh Workflow
 
-Run corpus refresh monthly or before major model evaluation runs.
+Use this workflow to refresh the corpus dataset.
 
-## Steps
+1. Update source pins in `eval/corpus/config.yml`.
 
-1. Update `eval/corpus/config.yml`:
+- bump each source `commit_sha`
+- update source `annotations` when selection rationale changes
+- update `dataset_version` and `collected_at`
 
-  - `dataset_version`,
-  - `collected_at`,
-  - each source `commit_sha`,
-  - any changed `quality` and `annotations` metadata.
-
-2. Run measure:
+2. Build dataset.
 
 ```bash
-go run ./cmd/corpusctl measure \
+go run ./cmd/corpusctl build \
   -config eval/corpus/config.yml \
-  -out eval/corpus/datasets/<version>
+  -cache /tmp/corpusctl-cache \
+  -out eval/corpus/datasets/<dataset-version>
 ```
 
-3. Label QA sample and run `corpusctl qa`.
-4. Compare drift against prior release with `corpusctl drift`.
-5. Publish all artifacts under `datasets/<version>/`.
+3. Annotate QA sample (`eval/corpus/qa/annotations.csv`).
 
-## Required Outputs Per Refresh
+4. Run QA report.
 
-- `manifest.jsonl`
-- `report.json`
-- `qa-sample.jsonl`
-- `qa-report.json`
-- `drift-report.json`
-- `config.generated.yml`
+```bash
+go run ./cmd/corpusctl qa \
+  -sample eval/corpus/datasets/<dataset-version>/qa-sample.jsonl \
+  -annotations eval/corpus/qa/annotations.csv \
+  -out eval/corpus/datasets/<dataset-version>/qa-report.json
+```
 
-## Drift Checks
+5. Run drift report against baseline.
 
-Review these metrics before publishing:
+```bash
+go run ./cmd/corpusctl drift \
+  -baseline eval/corpus/datasets/v2025-12-15/report.json \
+  -candidate eval/corpus/datasets/<dataset-version>/report.json \
+  -out eval/corpus/datasets/<dataset-version>/drift-report.json
+```
 
-- total record delta,
-- category count and share deltas,
-- README share delta,
-- balance range violations,
-- QA agreement and confusion deltas.
-
-If drift is outside policy, adjust source selection or
-balance thresholds and rerun.
+6. Review outputs and commit the new dataset artifacts.

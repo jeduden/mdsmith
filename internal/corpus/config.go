@@ -11,163 +11,178 @@ import (
 )
 
 const (
-	defaultNearDuplicateThreshold = 0.92
-	defaultMaxReadmeShare         = 0.25
-	defaultQASamplePerCategory    = 5
-	defaultMinWords               = 30
-	defaultMinChars               = 180
-	defaultSeed                   = 62
+	defaultMinWords      = 30
+	defaultMinChars      = 100
+	defaultTestFraction  = 0.2
+	defaultQASampleLimit = 50
 )
 
-// LoadConfig loads a build config from YAML and validates it.
-func LoadConfig(path string) (BuildConfig, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return BuildConfig{}, fmt.Errorf("read config: %w", err)
-	}
-
-	var cfg BuildConfig
-	if err := yaml.Unmarshal(content, &cfg); err != nil {
-		return BuildConfig{}, fmt.Errorf("parse config yaml: %w", err)
-	}
-	var topLevel map[string]any
-	if err := yaml.Unmarshal(content, &topLevel); err != nil {
-		return BuildConfig{}, fmt.Errorf("parse config yaml keys: %w", err)
-	}
-
-	cfg.applyDefaults(filepath.Dir(path), topLevel)
-	if err := cfg.validate(); err != nil {
-		return BuildConfig{}, err
-	}
-	return cfg, nil
+type localOverrideConfig struct {
+	Sources []struct {
+		Name string `yaml:"name"`
+		Root string `yaml:"root"`
+	} `yaml:"sources"`
 }
 
-func (cfg *BuildConfig) applyDefaults(configDir string, topLevel map[string]any) {
-	if cfg.DatasetVersion == "" || !hasTopLevelKey(topLevel, "dataset_version") {
-		cfg.DatasetVersion = "v0"
+// LoadConfig loads config from YAML, applies defaults, and merges config.local.yml overrides.
+func LoadConfig(path string) (*Config, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
 	}
-	if !hasTopLevelKey(topLevel, "seed") {
-		cfg.Seed = defaultSeed
+
+	var cfg Config
+	if err := yaml.Unmarshal(content, &cfg); err != nil {
+		return nil, fmt.Errorf("parse config yaml: %w", err)
 	}
-	if !hasTopLevelKey(topLevel, "min_words") {
+	applyConfigDefaults(&cfg)
+
+	if err := mergeLocalOverrides(path, &cfg); err != nil {
+		return nil, err
+	}
+	if err := validateConfig(cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func applyConfigDefaults(cfg *Config) {
+	if cfg.MinWords == 0 {
 		cfg.MinWords = defaultMinWords
 	}
-	if !hasTopLevelKey(topLevel, "min_chars") {
+	if cfg.MinChars == 0 {
 		cfg.MinChars = defaultMinChars
 	}
-	if !hasTopLevelKey(topLevel, "near_duplicate_threshold") {
-		cfg.NearDuplicateThreshold = defaultNearDuplicateThreshold
+	if cfg.TestFraction == 0 {
+		cfg.TestFraction = defaultTestFraction
 	}
-	if !hasTopLevelKey(topLevel, "max_readme_share") {
-		cfg.MaxReadmeShare = defaultMaxReadmeShare
+	if cfg.QASampleLimit == 0 {
+		cfg.QASampleLimit = defaultQASampleLimit
 	}
-	if !hasTopLevelKey(topLevel, "qa_sample_per_category") {
-		cfg.QASamplePerCategory = defaultQASamplePerCategory
+	if cfg.DatasetVersion == "" && cfg.CollectedAt != "" {
+		cfg.DatasetVersion = "v" + cfg.CollectedAt
+	}
+}
+
+func mergeLocalOverrides(configPath string, cfg *Config) error {
+	localPath := filepath.Join(filepath.Dir(configPath), "config.local.yml")
+	content, err := os.ReadFile(localPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read local override config: %w", err)
+	}
+
+	var local localOverrideConfig
+	if err := yaml.Unmarshal(content, &local); err != nil {
+		return fmt.Errorf("parse local override config: %w", err)
+	}
+
+	byName := make(map[string]string, len(local.Sources))
+	for _, source := range local.Sources {
+		name := strings.TrimSpace(source.Name)
+		root := strings.TrimSpace(source.Root)
+		if name == "" || root == "" {
+			continue
+		}
+		byName[name] = root
+	}
+
+	if len(byName) == 0 {
+		return nil
 	}
 
 	for i := range cfg.Sources {
-		root := os.ExpandEnv(cfg.Sources[i].Root)
-		if root == "" {
-			root = "."
+		if root, ok := byName[cfg.Sources[i].Name]; ok {
+			cfg.Sources[i].Root = root
+			cfg.ResolvedFromLocal = true
 		}
-		if !filepath.IsAbs(root) {
-			root = filepath.Join(configDir, root)
-		}
-		cfg.Sources[i].Root = filepath.Clean(root)
-		if len(cfg.Sources[i].Include) == 0 {
-			cfg.Sources[i].Include = []string{"**/*.md", "**/*.markdown"}
-		}
-	}
-}
-
-func hasTopLevelKey(topLevel map[string]any, key string) bool {
-	if topLevel == nil {
-		return false
-	}
-	_, ok := topLevel[key]
-	return ok
-}
-
-// WriteConfig writes a build config to YAML.
-func WriteConfig(path string, cfg BuildConfig) error {
-	if err := ensureParentDir(path); err != nil {
-		return err
-	}
-	content, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("marshal config yaml: %w", err)
-	}
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		return fmt.Errorf("write config yaml: %w", err)
 	}
 	return nil
 }
 
-func (cfg BuildConfig) validate() error {
+func validateConfig(cfg Config) error {
+	if err := validateConfigHeader(cfg); err != nil {
+		return err
+	}
+
+	allow := normalizeAllowlist(cfg.LicenseAllowlist)
+	seen := make(map[string]struct{}, len(cfg.Sources))
+	for _, source := range cfg.Sources {
+		if err := validateSource(source, allow, seen); err != nil {
+			return err
+		}
+		seen[source.Name] = struct{}{}
+	}
+
+	return nil
+}
+
+func validateConfigHeader(cfg Config) error {
 	if cfg.CollectedAt == "" {
 		return fmt.Errorf("collected_at is required")
 	}
 	if _, err := time.Parse(time.DateOnly, cfg.CollectedAt); err != nil {
 		return fmt.Errorf("collected_at must use YYYY-MM-DD: %w", err)
 	}
+	if cfg.MinWords < 1 {
+		return fmt.Errorf("min_words must be >= 1")
+	}
+	if cfg.MinChars < 1 {
+		return fmt.Errorf("min_chars must be >= 1")
+	}
+	if cfg.TestFraction <= 0 || cfg.TestFraction >= 1 {
+		return fmt.Errorf("test_fraction must be between 0 and 1")
+	}
+	if cfg.QASampleLimit < 1 {
+		return fmt.Errorf("qa_sample_limit must be >= 1")
+	}
+	if len(cfg.LicenseAllowlist) == 0 {
+		return fmt.Errorf("license_allowlist cannot be empty")
+	}
 	if len(cfg.Sources) == 0 {
 		return fmt.Errorf("at least one source is required")
 	}
-	if cfg.NearDuplicateThreshold < 0 || cfg.NearDuplicateThreshold > 1 {
-		return fmt.Errorf("near_duplicate_threshold must be between 0 and 1")
-	}
-	if cfg.MaxReadmeShare < 0 || cfg.MaxReadmeShare > 1 {
-		return fmt.Errorf("max_readme_share must be between 0 and 1")
-	}
-	if cfg.QASamplePerCategory < 1 {
-		return fmt.Errorf("qa_sample_per_category must be >= 1")
-	}
-
-	allow := make(map[string]bool, len(cfg.LicenseAllowlist))
-	for _, license := range cfg.LicenseAllowlist {
-		allow[strings.ToUpper(strings.TrimSpace(license))] = true
-	}
-	if len(allow) == 0 {
-		return fmt.Errorf("license_allowlist cannot be empty")
-	}
-
-	seen := make(map[string]bool, len(cfg.Sources))
-	for _, source := range cfg.Sources {
-		if source.Name == "" {
-			return fmt.Errorf("source name is required")
-		}
-		if seen[source.Name] {
-			return fmt.Errorf("duplicate source name: %s", source.Name)
-		}
-		seen[source.Name] = true
-		if source.Repository == "" {
-			return fmt.Errorf("source %s repository is required", source.Name)
-		}
-		if source.CommitSHA == "" {
-			return fmt.Errorf("source %s commit_sha is required", source.Name)
-		}
-		if !allow[strings.ToUpper(strings.TrimSpace(source.License))] {
-			return fmt.Errorf("source %s license %q is not allowlisted", source.Name, source.License)
-		}
-	}
-
-	for category, rng := range cfg.Balance {
-		if !isKnownCategory(category) {
-			return fmt.Errorf("unknown balance category: %s", category)
-		}
-		if rng.Min < 0 || rng.Min > 1 || rng.Max < 0 || rng.Max > 1 || rng.Min > rng.Max {
-			return fmt.Errorf("invalid balance range for %s", category)
-		}
-	}
-
 	return nil
 }
 
-func isKnownCategory(category Category) bool {
-	for _, known := range AllCategories() {
-		if known == category {
-			return true
+func normalizeAllowlist(items []string) map[string]struct{} {
+	allow := make(map[string]struct{}, len(items))
+	for _, license := range items {
+		norm := strings.ToUpper(strings.TrimSpace(license))
+		if norm != "" {
+			allow[norm] = struct{}{}
 		}
 	}
-	return false
+	return allow
+}
+
+func validateSource(
+	source SourceConfig,
+	allow map[string]struct{},
+	seen map[string]struct{},
+) error {
+	if strings.TrimSpace(source.Name) == "" {
+		return fmt.Errorf("source name is required")
+	}
+	if _, ok := seen[source.Name]; ok {
+		return fmt.Errorf("duplicate source name: %s", source.Name)
+	}
+	if strings.TrimSpace(source.Repository) == "" {
+		return fmt.Errorf("source %s repository is required", source.Name)
+	}
+	if strings.TrimSpace(source.Root) == "" {
+		return fmt.Errorf("source %s root is required", source.Name)
+	}
+	if strings.TrimSpace(source.CommitSHA) == "" {
+		return fmt.Errorf("source %s commit_sha is required", source.Name)
+	}
+	if strings.TrimSpace(source.License) == "" {
+		return fmt.Errorf("source %s license is required", source.Name)
+	}
+	if _, ok := allow[strings.ToUpper(strings.TrimSpace(source.License))]; !ok {
+		return fmt.Errorf("source %s license %q is not allowlisted", source.Name, source.License)
+	}
+	return nil
 }

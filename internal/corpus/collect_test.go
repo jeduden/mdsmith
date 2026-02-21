@@ -6,150 +6,111 @@ import (
 	"testing"
 )
 
-func TestSourceAllowed(t *testing.T) {
+func TestCollect_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	allow := map[string]bool{"MIT": true}
-	policy := QualityPolicy{MinStars: 10, MinRecentCommits90D: 2, RequireCI: true}
-	base := SourceConfig{
-		License: "MIT",
-		Quality: SourceQuality{Stars: 10, RecentCommits90D: 2, HasCI: true},
+	root := filepath.Join(t.TempDir(), "docs")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	apiPath := filepath.Join(root, "api.md")
+	apiContent := []byte("# API Reference\n\nword word word word word word\n")
+	if err := os.WriteFile(apiPath, apiContent, 0o644); err != nil {
+		t.Fatalf("write markdown: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "tiny.md"), []byte("small\n"), 0o644); err != nil {
+		t.Fatalf("write tiny markdown: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "notes.txt"), []byte("not markdown"), 0o644); err != nil {
+		t.Fatalf("write text file: %v", err)
 	}
 
-	ok, reason := sourceAllowed(policy, allow, base)
-	if !ok || reason != "" {
-		t.Fatalf("expected allowed source, got ok=%v reason=%q", ok, reason)
+	cfg := &Config{
+		CollectedAt:      "2026-02-16",
+		MinWords:         5,
+		MinChars:         10,
+		LicenseAllowlist: []string{"MIT"},
+		Sources: []SourceConfig{{
+			Name:       "seed",
+			Repository: "github.com/acme/seed",
+			Root:       root,
+			CommitSHA:  "abc123",
+			License:    "MIT",
+		}},
 	}
 
-	blocked, got := sourceAllowed(policy, allow, SourceConfig{License: "Apache-2.0", Quality: base.Quality})
-	if blocked || got != "license" {
-		t.Fatalf("expected license block, got ok=%v reason=%q", blocked, got)
-	}
-}
-
-func TestIsGenerated(t *testing.T) {
-	t.Parallel()
-
-	if !isGenerated("docs/generated/file.md", "# x") {
-		t.Fatal("expected generated path to be filtered")
-	}
-	if !isGenerated("generated/file.md", "# x") {
-		t.Fatal("expected root generated path to be filtered")
-	}
-	if !isGenerated("docs/file.md", "Code generated. Do not edit.") {
-		t.Fatal("expected generated marker to be filtered")
-	}
-	if isGenerated("docs/file.md", "# Human content") {
-		t.Fatal("did not expect ordinary content to be generated")
-	}
-}
-
-func TestIsLowSignal(t *testing.T) {
-	t.Parallel()
-
-	if !isLowSignal("tiny", 5, 10) {
-		t.Fatal("expected short content to be low signal")
-	}
-	if isLowSignal("word word word word word", 3, 5) {
-		t.Fatal("did not expect content to be low signal")
-	}
-}
-
-func TestTokenSet(t *testing.T) {
-	t.Parallel()
-
-	set := tokenSet("Hello, world! hello\n`and` world")
-	if _, ok := set["hello"]; !ok {
-		t.Fatal("expected hello token")
-	}
-	if _, ok := set["world"]; !ok {
-		t.Fatal("expected world token")
-	}
-	if _, ok := set["and"]; !ok {
-		t.Fatal("expected and token")
-	}
-}
-
-func TestCompileGlobPatterns(t *testing.T) {
-	t.Parallel()
-
-	patterns, err := compileGlobPatterns([]string{"docs/**/*.md"})
+	records, err := Collect(cfg, t.TempDir())
 	if err != nil {
-		t.Fatalf("compileGlobPatterns: %v", err)
+		t.Fatalf("Collect: %v", err)
 	}
-	if !matchesAny(patterns, "docs/a/b.md") {
-		t.Fatal("expected glob to match")
+	if len(records) != 1 {
+		t.Fatalf("record count = %d, want 1", len(records))
+	}
+	record := records[0]
+	if record.Source != "seed" {
+		t.Fatalf("Source = %q, want seed", record.Source)
+	}
+	if record.Path != "api.md" {
+		t.Fatalf("Path = %q, want api.md", record.Path)
+	}
+	if record.Words < 5 || record.Chars < 10 {
+		t.Fatalf("unexpected counts: words=%d chars=%d", record.Words, record.Chars)
+	}
+	if record.RawContent == "" {
+		t.Fatal("RawContent should be populated")
+	}
+}
+
+func TestCollect_SkipsDisallowedLicense(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte("# Doc\n\nword word word word\n"), 0o644); err != nil {
+		t.Fatalf("write markdown: %v", err)
 	}
 
-	_, err = compileGlobPatterns([]string{"["})
+	cfg := &Config{
+		CollectedAt:      "2026-02-16",
+		MinWords:         1,
+		MinChars:         1,
+		LicenseAllowlist: []string{"MIT"},
+		Sources: []SourceConfig{{
+			Name:       "seed",
+			Repository: "github.com/acme/seed",
+			Root:       root,
+			CommitSHA:  "abc123",
+			License:    "Apache-2.0",
+		}},
+	}
+
+	records, err := Collect(cfg, t.TempDir())
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("record count = %d, want 0", len(records))
+	}
+}
+
+func TestCollect_ErrorPath(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{
+		CollectedAt:      "2026-02-16",
+		MinWords:         1,
+		MinChars:         1,
+		LicenseAllowlist: []string{"MIT"},
+		Sources: []SourceConfig{{
+			Name:       "seed",
+			Repository: "github.com/acme/seed",
+			Root:       filepath.Join(t.TempDir(), "missing"),
+			CommitSHA:  "abc123",
+			License:    "MIT",
+		}},
+	}
+
+	_, err := Collect(cfg, t.TempDir())
 	if err == nil {
-		t.Fatal("expected invalid glob error")
-	}
-}
-
-func TestSourceMarkdownFiles(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	mustWrite(t, filepath.Join(root, "docs/keep.md"), "# keep")
-	mustWrite(t, filepath.Join(root, "docs/skip.md"), "# skip")
-	mustWrite(t, filepath.Join(root, "notes.txt"), "x")
-
-	source := SourceConfig{
-		Name:    "seed",
-		Root:    root,
-		Include: []string{"docs/*.md"},
-		Exclude: []string{"docs/skip.md"},
-	}
-
-	files, err := sourceMarkdownFiles(source)
-	if err != nil {
-		t.Fatalf("sourceMarkdownFiles: %v", err)
-	}
-	if len(files) != 1 {
-		t.Fatalf("len(files) = %d, want 1", len(files))
-	}
-	if filepath.Base(files[0]) != "keep.md" {
-		t.Fatalf("kept file = %s, want keep.md", filepath.Base(files[0]))
-	}
-}
-
-func TestCollectFile_SkipsReadForGeneratedPath(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	cfg := BuildConfig{
-		CollectedAt: "2026-02-17",
-		MinWords:    1,
-		MinChars:    1,
-	}
-	source := SourceConfig{
-		Name:       "seed",
-		Root:       root,
-		Repository: "github.com/acme/seed",
-		CommitSHA:  "abc123",
-		License:    "MIT",
-	}
-
-	missingGeneratedPath := filepath.Join(root, "generated", "missing.md")
-	_, kept, reason, err := collectFile(cfg, source, missingGeneratedPath)
-	if err != nil {
-		t.Fatalf("collectFile: %v", err)
-	}
-	if kept {
-		t.Fatal("expected generated path to be filtered")
-	}
-	if reason != "generated" {
-		t.Fatalf("reason = %q, want generated", reason)
-	}
-}
-
-func mustWrite(t *testing.T, path string, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", path, err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatalf("write %s: %v", path, err)
+		t.Fatal("expected resolve error")
 	}
 }

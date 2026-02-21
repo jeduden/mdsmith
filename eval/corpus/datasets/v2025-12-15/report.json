@@ -1,12 +1,19 @@
 {
   "dataset_version": "v2025-12-15",
+  "collected_at": "2025-12-15",
+  "files_collected": 24,
   "files_kept": 24,
-  "readme_share": 0.29,
-  "category_counts": {
-    "agent-control": 1,
-    "design-proposal": 15,
-    "explanation": 1,
-    "project-docs": 2,
-    "reference": 5
+  "files_deduped": 0,
+  "taxonomy": {
+    "reference": 12,
+    "other": 12
+  },
+  "split": {
+    "train": 19,
+    "test": 5
+  },
+  "metrics": {
+    "avg_words": 404.5,
+    "avg_chars": 2537.75
   }
 }
