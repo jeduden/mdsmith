@@ -32,9 +32,9 @@ Examples:
 The current classifier labels a record as `reference` when at
 least one signal matches:
 
-- path contains `reference`, `api`, `spec`, or `man`
+- path contains `reference`, `api`, `/spec/`, `/specification/`, or `man`
 - filename contains `reference`, `api`, `spec`, `schema`,
-  `config`, or `changelog`
+  `config`, `changelog`, or `release-notes`
 - first markdown heading contains `reference`, `api`,
   `specification`, `changelog`, `command`, or `options`
 
