@@ -169,7 +169,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string) ([]byte, int) {
 		return fixed, 2
 	}
 
-	if err := os.WriteFile(ours, fixed, fileMode); err != nil {
+	if err := os.WriteFile(ours, fixed, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing merge output: %v\n", err)
 		return nil, 2
 	}
