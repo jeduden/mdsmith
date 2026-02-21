@@ -1,45 +1,31 @@
-# Source Policy
+# Collection Policy
 
-This policy defines what is eligible for corpus collection.
+## Licensing
 
-## Inclusion Rules
+Only sources with licenses in `license_allowlist` are eligible
+for collection. Source-level `license` values must match the
+allowlist in `config.yml`.
 
-- Repository license must be in the allowlist.
-- Repository must pass quality gates:
-  - minimum stars,
-  - minimum recent commits,
-  - not archived,
-  - CI enabled when required.
-- File extension must be `.md` or `.markdown`.
-- File must match source include globs and not match source
-  exclude globs.
+## Minimum Content Thresholds
 
-## Exclusion Rules
+A markdown file is kept only when it passes both thresholds:
 
-- Generated paths are excluded:
-  `vendor`, `node_modules`, `dist`, `build`, `generated`, `gen`.
-- Generated text markers are excluded:
-  `code generated` and `do not edit`.
-- Low-signal files are excluded when below
-  `min_words` or `min_chars` thresholds.
-- Exact duplicates are dropped by normalized content hash.
-- Near duplicates are dropped by token-set Jaccard threshold.
+- `min_words`
+- `min_chars`
 
-## Provenance Requirements
+Files below either threshold are skipped.
 
-Every kept file must record:
+## Provenance and Redistribution
 
-- source name,
-- repository,
-- repository URL,
-- relative file path,
-- commit SHA,
-- source license,
-- collection date,
-- normalized content hash.
+Corpus outputs in `datasets/` store metadata, taxonomy labels,
+and computed measurements. Raw source markdown content is not
+committed to version control.
 
-## Balancing Rules
+## Source Annotation
 
-- Cap README share with `max_readme_share`.
-- Apply per-category min and max target ranges.
-- Record violations in `report.json`.
+Each source entry in `config.yml` should include an
+`annotations` map to document:
+
+- why the source was selected
+- what content it contributes
+- the license reference URL

@@ -1,9 +1,2 @@
-{"record_id":"833e6e03d15adae937cb85c0ed59ce95","predicted_category":"agent-control","source_name":"mdsmith-main","path":"CLAUDE.md"}
-{"record_id":"f3f59f7400b929d98b60f6cddc0a1ff0","predicted_category":"design-proposal","source_name":"mdsmith-main","path":"plan/44_rule-docs-command.md"}
-{"record_id":"fc969ce91b9fcd119574aca51e871220","predicted_category":"design-proposal","source_name":"mdsmith-main","path":"plan/25_structure-validation.md"}
-{"record_id":"ff413b7f5b199a3842648dbcae7803d3","predicted_category":"design-proposal","source_name":"mdsmith-main","path":"plan/48_front-matter-validation.md"}
-{"record_id":"d79fd20836c8708105c2b3be7014f4a6","predicted_category":"explanation","source_name":"mdsmith-main","path":"guides/metrics-tradeoffs.md"}
-{"record_id":"2a8bcb32840c72f75efdcd060de48c29","predicted_category":"project-docs","source_name":"mdsmith-main","path":"README.md"}
-{"record_id":"0d087333f5b944d41d7e4d142a201b2f","predicted_category":"reference","source_name":"mdsmith-main","path":"internal/rules/MDS001-line-length/README.md"}
-{"record_id":"10a602229824cc6240c912fb0fd03f19","predicted_category":"reference","source_name":"mdsmith-main","path":"internal/rules/MDS009-single-trailing-newline/README.md"}
-{"record_id":"194b03ed3b607e09b8894788b3639ce9","predicted_category":"reference","source_name":"mdsmith-main","path":"internal/rules/MDS015-blank-line-around-fenced-code/README.md"}
+{"record_id":"b2c3d4e5f6070819","predicted_category":"reference","source":"openai-agents-python","path":"docs/reference/models.md"}
+{"record_id":"a1b2c3d4e5f60708","predicted_category":"other","source":"openai-cookbook","path":"examples/agents/overview.md"}

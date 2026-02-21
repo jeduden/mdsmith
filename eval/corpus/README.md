@@ -1,66 +1,51 @@
-# Corpus Workflow
+# Corpus Pipeline
 
-This folder implements Plan 62 corpus acquisition and taxonomy
-workflow for Markdown evaluation datasets.
+This directory stores the Plan 62 corpus pipeline files.
+It includes inputs, policy docs, and dataset outputs.
 
-## Deliverables
+## Inputs
 
-- `taxonomy.md`: category definitions, boundary rules, and examples.
-- `policy.md`: source inclusion and exclusion policy.
-- `config.yml`: pinned remote source set (hashes + annotations).
-- `config.local.yml`: local-only source set for fast iteration.
-- `datasets/v2026-02-16/`: frozen manifest, QA sample, and reports.
-- `refresh.md`: periodic refresh and drift process.
+- `config.yml`: canonical source list with pinned commits,
+  licenses, and per-source annotations.
+- `config.local.yml`: optional local root overrides; ignored by Git.
+  Start from `config.local.example.yml`.
+- `taxonomy.md`: category definitions and classifier heuristic.
+- `policy.md`: license and threshold policy.
 
-## Source of Truth
+## Build Dataset
 
-Pinned source selection now lives in `config.yml`, not in shell code.
-Each source entry includes:
-
-- `commit_sha`: immutable pin,
-- `license`: allowlist gate,
-- `annotations`: rationale and content-scope metadata,
-- `quality`: policy metadata snapshot.
-
-## `corpusctl` Commands
-
-- `measure`: fetch pinned sources and build corpus artifacts.
-- `build`: build artifacts from already-present local sources.
-- `qa`: score manual annotations against predicted categories.
-- `drift`: compare two corpus reports for category/share drift.
-
-## Measure Process (Pinned Remote Sources)
-
-Canonical command:
+Build from pinned remote repositories:
 
 ```bash
-go run ./cmd/corpusctl measure \
+go run ./cmd/corpusctl build \
   -config eval/corpus/config.yml \
+  -cache /tmp/corpusctl-cache \
   -out eval/corpus/datasets/v2026-02-16
 ```
 
-The measure flow:
-
-- fetches each source at pinned `commit_sha`,
-- verifies fetched hash matches pin,
-- builds corpus artifacts,
-- writes `config.generated.yml` into dataset output for provenance.
-
-## Build Corpus (No Fetch)
-
-If sources are already present on disk, use:
+Build with local overrides (no remote fetch if local roots exist):
 
 ```bash
+cp eval/corpus/config.local.example.yml eval/corpus/config.local.yml
+# edit local paths
+
 go run ./cmd/corpusctl build \
   -config eval/corpus/config.yml \
   -out eval/corpus/datasets/v2026-02-16
 ```
 
-## Run Manual QA Metrics
+## Measure Existing Corpus
 
-1. Label `qa-sample.jsonl` into a CSV with columns:
-   `record_id,actual_category`.
-2. Run:
+`measure` reads an existing `manifest.jsonl` and writes aggregate
+metrics by category.
+
+```bash
+go run ./cmd/corpusctl measure \
+  -corpus eval/corpus/datasets/v2026-02-16 \
+  -out eval/corpus/datasets/v2026-02-16/measure-report.json
+```
+
+## QA Evaluation
 
 ```bash
 go run ./cmd/corpusctl qa \
@@ -69,13 +54,14 @@ go run ./cmd/corpusctl qa \
   -out eval/corpus/datasets/v2026-02-16/qa-report.json
 ```
 
-## Run Drift Report
+## Drift Detection
 
 ```bash
 go run ./cmd/corpusctl drift \
-  -baseline eval/corpus/datasets/v2026-02-16/report.json \
-  -candidate eval/corpus/datasets/vNEXT/report.json \
-  -out eval/corpus/datasets/vNEXT/drift-report.json
+  -baseline eval/corpus/datasets/v2025-12-15/report.json \
+  -candidate eval/corpus/datasets/v2026-02-16/report.json \
+  -out eval/corpus/datasets/v2026-02-16/drift-report.json
 ```
 
-Use `refresh.md` for cadence and release checklist.
+Only metadata and computed measurements are versioned under
+`datasets/`. Source markdown content is not vendored.

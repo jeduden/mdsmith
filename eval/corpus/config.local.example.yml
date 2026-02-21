@@ -1,0 +1,15 @@
+# Copy this file to config.local.yml for local development overrides.
+# Each entry overrides the matching source root in config.yml.
+
+sources:
+  - name: openai-cookbook
+    root: /absolute/path/to/openai-cookbook/examples
+
+  - name: openai-agents-python
+    root: /absolute/path/to/openai-agents-python/docs
+
+  - name: langgraph
+    root: /absolute/path/to/langgraph/docs
+
+  - name: kubernetes-website
+    root: /absolute/path/to/kubernetes-website/content/en/docs

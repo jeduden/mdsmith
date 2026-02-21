@@ -1,56 +1,42 @@
-# Corpus Taxonomy
+# Taxonomy
 
-This taxonomy defines category labels for the corpus pipeline.
-Each category has a definition, boundary rule, and one
-positive and negative example.
+The initial taxonomy has two categories:
 
-## Agent-Control Docs
+- `reference`
+- `other`
 
-- Definition: instructions that directly constrain agent behavior.
-- Boundary rule: classify only when the document issues direct
-  operating rules for agents.
-- Positive example: `AGENTS.md`.
-- Negative example: `README.md`.
+## `reference`
 
-## Tutorial
+Definition: lookup-oriented technical material such as API docs,
+CLI flags, specs, man-style references, and changelogs.
 
-- Definition: guided learning sequence for new users.
-- Boundary rule: classify when the doc teaches step-by-step with
-  learning intent.
-- Positive example: `docs/tutorial/getting-started.md`.
-- Negative example: `docs/cli/flags.md`.
+Examples:
 
-## How-To Guide
+- `docs/reference/cli.md`
+- `api/schema.md`
+- `CHANGELOG.md`
 
-- Definition: task-focused instructions for a specific goal.
-- Boundary rule: classify when the outcome is operational
-  completion, not conceptual learning.
-- Positive example: `docs/how-to/rotate-keys.md`.
-- Negative example: `guides/why-token-budget-matters.md`.
+## `other`
 
-## Reference
+Definition: markdown that is not primarily lookup/reference.
+This includes tutorials, conceptual guides, overviews, and
+process docs.
 
-- Definition: lookup material with factual mappings.
-- Boundary rule: classify when users scan for values, fields,
-  or definitions.
-- Positive example: `internal/rules/MDS001-line-length/README.md`.
-- Negative example: `plan/62_corpus-acquisition.md`.
+Examples:
 
-## Explanation / Background
+- `guides/getting-started.md`
+- `docs/concepts/architecture.md`
 
-- Definition: rationale and conceptual context.
-- Boundary rule: classify when the primary purpose is why and
-  tradeoff context.
-- Positive example: `guides/metrics-tradeoffs.md`.
-- Negative example: `ops/runbook/deploy.md`.
+## Classification Heuristic
 
-## Architecture Decision Record (ADR)
+The current classifier labels a record as `reference` when at
+least one signal matches:
 
-- Definition: decision log with context and consequences.
-- Boundary rule: classify when one concrete architecture
-  decision is recorded.
-- Positive example: `docs/adr/0001-config-format.md`.
-- Negative example: `RFC-012-token-budget.md`.
+- path contains `reference`, `api`, `spec`, or `man`
+- filename contains `reference`, `api`, `spec`, `schema`,
+  `config`, or `changelog`
+- first markdown heading contains `reference`, `api`,
+  `specification`, `changelog`, `command`, or `options`
 
 ## Request for Comments (RFC)
 

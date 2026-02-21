@@ -7,23 +7,19 @@ import (
 	"testing"
 )
 
-func TestLoadConfig_DefaultsAndRootNormalization(t *testing.T) {
+func TestLoadConfig_AppliesDefaults(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	repoDir := filepath.Join(dir, "repo")
-	if err := os.MkdirAll(repoDir, 0o755); err != nil {
-		t.Fatalf("mkdir repo: %v", err)
-	}
-
-	path := writeConfigFile(t, dir, `
+	path := filepath.Join(dir, "config.yml")
+	writeFile(t, path, `
 collected_at: 2026-02-16
 license_allowlist:
   - MIT
 sources:
   - name: seed
     repository: github.com/acme/seed
-    root: repo
+    root: docs
     commit_sha: abc123
     license: MIT
 `)
@@ -32,201 +28,122 @@ sources:
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.DatasetVersion != "v0" {
-		t.Fatalf("DatasetVersion = %q, want v0", cfg.DatasetVersion)
-	}
-	if cfg.Seed != defaultSeed {
-		t.Fatalf("Seed = %d, want %d", cfg.Seed, defaultSeed)
+	if cfg.DatasetVersion != "v2026-02-16" {
+		t.Fatalf("DatasetVersion = %q, want v2026-02-16", cfg.DatasetVersion)
 	}
 	if cfg.MinWords != defaultMinWords {
 		t.Fatalf("MinWords = %d, want %d", cfg.MinWords, defaultMinWords)
 	}
-	if cfg.Sources[0].Root != repoDir {
-		t.Fatalf("source root = %q, want %q", cfg.Sources[0].Root, repoDir)
+	if cfg.MinChars != defaultMinChars {
+		t.Fatalf("MinChars = %d, want %d", cfg.MinChars, defaultMinChars)
 	}
-	if len(cfg.Sources[0].Include) != 2 {
-		t.Fatalf("include count = %d, want 2", len(cfg.Sources[0].Include))
+	if cfg.TestFraction != defaultTestFraction {
+		t.Fatalf("TestFraction = %f, want %f", cfg.TestFraction, defaultTestFraction)
+	}
+	if cfg.QASampleLimit != defaultQASampleLimit {
+		t.Fatalf("QASampleLimit = %d, want %d", cfg.QASampleLimit, defaultQASampleLimit)
 	}
 }
 
-func TestLoadConfig_ExpandsEnvInRoot(t *testing.T) {
-	dir := t.TempDir()
-	repoDir := filepath.Join(dir, "repo")
-	if err := os.MkdirAll(repoDir, 0o755); err != nil {
-		t.Fatalf("mkdir repo: %v", err)
-	}
-	t.Setenv("FETCH_ROOT", dir)
+func TestLoadConfig_MergesLocalOverrides(t *testing.T) {
+	t.Parallel()
 
-	path := writeConfigFile(t, dir, `
+	dir := t.TempDir()
+	localRoot := filepath.Join(dir, "local-docs")
+	if err := os.MkdirAll(localRoot, 0o755); err != nil {
+		t.Fatalf("mkdir local root: %v", err)
+	}
+
+	configPath := filepath.Join(dir, "config.yml")
+	writeFile(t, configPath, `
 collected_at: 2026-02-16
 license_allowlist:
   - MIT
 sources:
   - name: seed
     repository: github.com/acme/seed
-    root: ${FETCH_ROOT}/repo
+    root: docs
     commit_sha: abc123
     license: MIT
 `)
+	writeFile(t, filepath.Join(dir, "config.local.yml"), "sources:\n  - name: seed\n    root: "+localRoot+"\n")
 
-	cfg, err := LoadConfig(path)
+	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.Sources[0].Root != repoDir {
-		t.Fatalf("source root = %q, want %q", cfg.Sources[0].Root, repoDir)
+	if cfg.Sources[0].Root != localRoot {
+		t.Fatalf("merged root = %q, want %q", cfg.Sources[0].Root, localRoot)
+	}
+	if !cfg.ResolvedFromLocal {
+		t.Fatal("ResolvedFromLocal = false, want true")
 	}
 }
 
-func TestLoadConfig_InvalidDate(t *testing.T) {
+func TestLoadConfig_ValidationErrors(t *testing.T) {
 	t.Parallel()
 
-	path := writeConfigFile(t, t.TempDir(), `
-collected_at: 02-16-2026
+	t.Run("missing date", func(t *testing.T) {
+		t.Parallel()
+		assertLoadConfigError(t, `
 license_allowlist:
   - MIT
 sources:
   - name: seed
     repository: github.com/acme/seed
-    root: .
+    root: docs
     commit_sha: abc123
     license: MIT
-`)
+`, "collected_at is required")
+	})
 
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "collected_at must use YYYY-MM-DD") {
-		t.Fatalf("expected collected_at error, got %v", err)
-	}
-}
+	t.Run("bad date format", func(t *testing.T) {
+		t.Parallel()
+		assertLoadConfigError(t, `
+collected_at: 16-02-2026
+license_allowlist:
+  - MIT
+sources:
+  - name: seed
+    repository: github.com/acme/seed
+    root: docs
+    commit_sha: abc123
+    license: MIT
+`, "collected_at must use YYYY-MM-DD")
+	})
 
-func TestLoadConfig_DisallowedLicense(t *testing.T) {
-	t.Parallel()
-
-	path := writeConfigFile(t, t.TempDir(), `
+	t.Run("license not allowlisted", func(t *testing.T) {
+		t.Parallel()
+		assertLoadConfigError(t, `
 collected_at: 2026-02-16
 license_allowlist:
   - MIT
 sources:
   - name: seed
     repository: github.com/acme/seed
-    root: .
+    root: docs
     commit_sha: abc123
     license: Apache-2.0
-`)
-
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "not allowlisted") {
-		t.Fatalf("expected allowlist error, got %v", err)
-	}
+`, "not allowlisted")
+	})
 }
 
-func TestLoadConfig_UnknownBalanceCategory(t *testing.T) {
-	t.Parallel()
-
-	path := writeConfigFile(t, t.TempDir(), `
-collected_at: 2026-02-16
-license_allowlist:
-  - MIT
-balance:
-  made-up:
-    min: 0.1
-    max: 0.2
-sources:
-  - name: seed
-    repository: github.com/acme/seed
-    root: .
-    commit_sha: abc123
-    license: MIT
-`)
-
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "unknown balance category") {
-		t.Fatalf("expected unknown category error, got %v", err)
-	}
-}
-
-func TestLoadConfig_PreservesExplicitZeroValues(t *testing.T) {
-	t.Parallel()
-
-	path := writeConfigFile(t, t.TempDir(), `
-collected_at: 2026-02-16
-seed: 0
-min_words: 0
-min_chars: 0
-near_duplicate_threshold: 0
-max_readme_share: 0
-qa_sample_per_category: 1
-license_allowlist:
-  - MIT
-sources:
-  - name: seed
-    repository: github.com/acme/seed
-    root: .
-    commit_sha: abc123
-    license: MIT
-`)
-
-	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
-	if cfg.Seed != 0 {
-		t.Fatalf("Seed = %d, want 0", cfg.Seed)
-	}
-	if cfg.MinWords != 0 {
-		t.Fatalf("MinWords = %d, want 0", cfg.MinWords)
-	}
-	if cfg.MinChars != 0 {
-		t.Fatalf("MinChars = %d, want 0", cfg.MinChars)
-	}
-	if cfg.NearDuplicateThreshold != 0 {
-		t.Fatalf("NearDuplicateThreshold = %f, want 0", cfg.NearDuplicateThreshold)
-	}
-	if cfg.MaxReadmeShare != 0 {
-		t.Fatalf("MaxReadmeShare = %f, want 0", cfg.MaxReadmeShare)
-	}
-}
-
-func TestWriteConfig(t *testing.T) {
-	t.Parallel()
+func assertLoadConfigError(t *testing.T, config string, wantErr string) {
+	t.Helper()
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
-	cfg := BuildConfig{
-		CollectedAt:         "2026-02-16",
-		LicenseAllowlist:    []string{"MIT"},
-		QASamplePerCategory: 1,
-		Sources: []SourceConfig{
-			{
-				Name:       "seed",
-				Repository: "github.com/acme/seed",
-				Root:       ".",
-				CommitSHA:  "abc123",
-				License:    "MIT",
-				Annotations: map[string]string{
-					"purpose": "test fixture",
-				},
-			},
-		},
-	}
+	writeFile(t, path, config)
 
-	if err := WriteConfig(path, cfg); err != nil {
-		t.Fatalf("WriteConfig: %v", err)
-	}
-	roundTrip, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig after WriteConfig: %v", err)
-	}
-	if roundTrip.Sources[0].Annotations["purpose"] != "test fixture" {
-		t.Fatalf("annotation round-trip failed: %+v", roundTrip.Sources[0].Annotations)
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("expected error containing %q, got %v", wantErr, err)
 	}
 }
 
-func writeConfigFile(t *testing.T, dir string, content string) string {
+func writeFile(t *testing.T, path string, content string) {
 	t.Helper()
-	path := filepath.Join(dir, "config.yml")
 	if err := os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
+		t.Fatalf("write file %s: %v", path, err)
 	}
-	return path
 }

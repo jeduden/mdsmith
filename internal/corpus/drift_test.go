@@ -6,33 +6,35 @@ func TestCompareReports(t *testing.T) {
 	t.Parallel()
 
 	baseline := BuildReport{
-		DatasetVersion: "v1",
-		FilesKept:      10,
-		ReadmeShare:    0.3,
-		CategoryCounts: map[Category]int{
-			CategoryReference:   6,
-			CategoryProjectDocs: 4,
+		DatasetVersion: "v2025-12-15",
+		FilesKept:      100,
+		Taxonomy: map[Category]int{
+			CategoryReference: 70,
+			CategoryOther:     30,
 		},
+		Metrics: MetricSummary{AvgWords: 120, AvgChars: 800},
 	}
 	candidate := BuildReport{
-		DatasetVersion: "v2",
-		FilesKept:      12,
-		ReadmeShare:    0.2,
-		CategoryCounts: map[Category]int{
-			CategoryReference:   5,
-			CategoryProjectDocs: 4,
-			CategoryHowTo:       3,
+		DatasetVersion: "v2026-02-16",
+		FilesKept:      112,
+		Taxonomy: map[Category]int{
+			CategoryReference: 75,
+			CategoryOther:     37,
 		},
+		Metrics: MetricSummary{AvgWords: 130, AvgChars: 820},
 	}
 
 	drift := CompareReports(baseline, candidate)
-	if got, want := drift.DeltaTotal, 2; got != want {
-		t.Fatalf("DeltaTotal = %d, want %d", got, want)
+	if drift.FilesKeptDelta != 12 {
+		t.Fatalf("FilesKeptDelta = %d, want 12", drift.FilesKeptDelta)
 	}
-	if got, want := drift.ReadmeShareDelta, -0.1; got-want > 0.000001 || want-got > 0.000001 {
-		t.Fatalf("ReadmeShareDelta = %f, want %f", got, want)
+	if drift.TaxonomyDeltas[CategoryReference] != 5 {
+		t.Fatalf("reference taxonomy delta = %d, want 5", drift.TaxonomyDeltas[CategoryReference])
 	}
-	if drift.ByCategory[CategoryHowTo].CandidateCount != 3 {
-		t.Fatalf("CategoryHowTo candidate count = %d, want 3", drift.ByCategory[CategoryHowTo].CandidateCount)
+	if drift.TaxonomyDeltas[CategoryOther] != 7 {
+		t.Fatalf("other taxonomy delta = %d, want 7", drift.TaxonomyDeltas[CategoryOther])
+	}
+	if drift.MetricDeltas.AvgWords != 10 || drift.MetricDeltas.AvgChars != 20 {
+		t.Fatalf("unexpected metric deltas: %+v", drift.MetricDeltas)
 	}
 }

@@ -1,28 +1,14 @@
-# Manual QA
+# QA Annotation Guide
 
-Manual QA uses a stratified sample from
-`datasets/<version>/qa-sample.jsonl`.
+1. Open `qa-sample.jsonl` from the dataset version you are
+   reviewing.
+2. For each row, decide the `actual_category` (`reference` or
+   `other`).
+3. Write annotations to `annotations.csv` with this header:
 
-## Procedure
+```csv
+record_id,actual_category
+```
 
-1. Label each sampled record with `actual_category`.
-2. Save annotations to `annotations.csv` using columns:
-   `record_id,actual_category`.
-3. Run `corpusctl qa` to compute agreement and
-   precision/recall by category.
-4. Review confusion cases and update taxonomy rules.
-
-## Refinement Logged In This Version
-
-Observed confusion in early samples:
-
-- Some `plan/*.md` docs were labeled `reference` instead of
-  `design-proposal`.
-
-Refinement applied:
-
-- Classification now maps `plan/` paths to
-  `design-proposal` by default.
-
-This change is intended to reduce ambiguity between
-implementation plans and static lookup references.
+4. Run `corpusctl qa` to compute agreement, category precision,
+   recall, and Cohen's kappa.

@@ -1,128 +1,41 @@
 package corpus
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
-	"hash/fnv"
-	"io"
-	"math"
-	"sort"
 )
 
-func assignSplits(records []collectedRecord, seed int64) {
-	groups := make(map[Category][]*collectedRecord)
-	for idx := range records {
-		record := &records[idx]
-		groups[record.Category] = append(groups[record.Category], record)
+const defaultTestSplitFraction = 0.2
+
+// Split deterministically partitions records into train and test sets.
+func Split(records []Record, testFraction float64) (train []Record, test []Record) {
+	fraction := testFraction
+	if fraction <= 0 || fraction >= 1 {
+		fraction = defaultTestSplitFraction
 	}
 
-	for _, group := range groups {
-		hashes := make(map[string]uint64, len(group))
-		for _, record := range group {
-			hashes[record.RecordID] = splitHash(record.RecordID, seed)
-		}
-		sort.Slice(group, func(i int, j int) bool {
-			left := hashes[group[i].RecordID]
-			right := hashes[group[j].RecordID]
-			if left == right {
-				return group[i].RecordID < group[j].RecordID
-			}
-			return left < right
-		})
-		assignGroupSplits(group)
-	}
-}
+	threshold := uint64(float64(^uint64(0)) * fraction)
+	train = make([]Record, 0, len(records))
+	test = make([]Record, 0, len(records))
 
-func splitHash(recordID string, seed int64) uint64 {
-	h := fnv.New64a()
-	var seedBytes [8]byte
-	binary.LittleEndian.PutUint64(seedBytes[:], uint64(seed))
-	_, _ = h.Write(seedBytes[:])
-	_, _ = io.WriteString(h, recordID)
-	return h.Sum64()
-}
-
-func assignGroupSplits(group []*collectedRecord) {
-	total := len(group)
-	if total == 0 {
-		return
-	}
-
-	trainCount := int(math.Floor(float64(total) * 0.8))
-	devCount := int(math.Floor(float64(total) * 0.1))
-
-	if total >= 3 {
-		if devCount == 0 {
-			devCount = 1
-			trainCount--
-		}
-		if total-trainCount-devCount == 0 {
-			trainCount--
-		}
-	}
-	if total > 1 && trainCount == 0 {
-		trainCount = 1
-		if devCount > 0 {
-			devCount--
-		}
-	}
-
-	for idx, record := range group {
-		switch {
-		case idx < trainCount:
-			record.Split = SplitTrain
-		case idx < trainCount+devCount:
-			record.Split = SplitDev
-		default:
-			record.Split = SplitTest
-		}
-	}
-}
-
-func makeQASample(records []ManifestRecord, perCategory int, seed int64) []QASampleRecord {
-	grouped := make(map[Category][]ManifestRecord)
 	for _, record := range records {
-		grouped[record.Category] = append(grouped[record.Category], record)
-	}
-
-	sample := make([]QASampleRecord, 0)
-	categories := AllCategories()
-	for _, category := range categories {
-		group := grouped[category]
-		if len(group) == 0 {
+		key := record.RecordID
+		if key == "" {
+			key = record.Source + "|" + record.Path + "|" + record.ContentSHA256
+		}
+		hash := stableUint64(key)
+		if hash <= threshold {
+			record.Split = SplitTest
+			test = append(test, record)
 			continue
 		}
-		hashes := make(map[string]uint64, len(group))
-		for _, record := range group {
-			hashes[record.RecordID] = splitHash(record.RecordID, seed)
-		}
-		sort.Slice(group, func(i int, j int) bool {
-			left := hashes[group[i].RecordID]
-			right := hashes[group[j].RecordID]
-			if left == right {
-				return group[i].RecordID < group[j].RecordID
-			}
-			return left < right
-		})
-		limit := perCategory
-		if len(group) < limit {
-			limit = len(group)
-		}
-		for _, record := range group[:limit] {
-			sample = append(sample, QASampleRecord{
-				RecordID:          record.RecordID,
-				PredictedCategory: record.Category,
-				SourceName:        record.SourceName,
-				Path:              record.Path,
-			})
-		}
+		record.Split = SplitTrain
+		train = append(train, record)
 	}
+	return train, test
+}
 
-	sort.Slice(sample, func(i int, j int) bool {
-		if sample[i].PredictedCategory == sample[j].PredictedCategory {
-			return sample[i].RecordID < sample[j].RecordID
-		}
-		return sample[i].PredictedCategory < sample[j].PredictedCategory
-	})
-
-	return sample
+func stableUint64(input string) uint64 {
+	sum := sha256.Sum256([]byte(input))
+	return binary.BigEndian.Uint64(sum[:8])
 }

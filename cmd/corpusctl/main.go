@@ -13,13 +13,16 @@ import (
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "corpusctl: %v\n", err)
-		os.Exit(2)
+		if isUsageError(err) {
+			os.Exit(2)
+		}
+		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return usageError()
+		return usageError("usage: corpusctl <build|measure|qa|drift> [flags]")
 	}
 
 	switch args[0] {
@@ -32,26 +35,27 @@ func run(args []string) error {
 	case "drift":
 		return runDrift(args[1:])
 	default:
-		return usageError()
+		return usageError("usage: corpusctl <build|measure|qa|drift> [flags]")
 	}
 }
 
 func runBuild(args []string) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
-	configPath := fs.String("config", "", "path to corpus build config yaml")
+	configPath := fs.String("config", "", "path to corpus config yaml")
 	outDir := fs.String("out", "", "output directory")
+	cacheDir := fs.String("cache", defaultCacheDir(), "cache directory for source clones")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return usageError(err.Error())
 	}
 	if *configPath == "" || *outDir == "" {
-		return errors.New("build requires -config and -out")
+		return usageError("build requires -config and -out")
 	}
 
 	cfg, err := corpus.LoadConfig(*configPath)
 	if err != nil {
 		return err
 	}
-	result, err := corpus.Build(cfg)
+	result, err := corpus.Build(cfg, *cacheDir)
 	if err != nil {
 		return err
 	}
@@ -70,22 +74,22 @@ func runBuild(args []string) error {
 		return err
 	}
 
-	fmt.Printf("manifest: %s\n", manifestPath)
-	fmt.Printf("report:   %s\n", reportPath)
-	fmt.Printf("qa:       %s\n", samplePath)
+	fmt.Println(manifestPath)
+	fmt.Println(reportPath)
+	fmt.Println(samplePath)
 	return nil
 }
 
 func runQA(args []string) error {
 	fs := flag.NewFlagSet("qa", flag.ContinueOnError)
 	samplePath := fs.String("sample", "", "path to qa-sample.jsonl")
-	annotationsPath := fs.String("annotations", "", "path to manual annotations csv")
-	outPath := fs.String("out", "", "path to write qa report json")
+	annotationsPath := fs.String("annotations", "", "path to annotations csv")
+	outPath := fs.String("out", "", "path to write qa report")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return usageError(err.Error())
 	}
 	if *samplePath == "" || *annotationsPath == "" || *outPath == "" {
-		return errors.New("qa requires -sample, -annotations, and -out")
+		return usageError("qa requires -sample, -annotations, and -out")
 	}
 
 	sample, err := corpus.ReadQASample(*samplePath)
@@ -103,7 +107,8 @@ func runQA(args []string) error {
 	if err := corpus.WriteJSON(*outPath, report); err != nil {
 		return err
 	}
-	fmt.Printf("qa report: %s\n", *outPath)
+
+	fmt.Println(*outPath)
 	return nil
 }
 
@@ -111,12 +116,12 @@ func runDrift(args []string) error {
 	fs := flag.NewFlagSet("drift", flag.ContinueOnError)
 	baselinePath := fs.String("baseline", "", "path to baseline report.json")
 	candidatePath := fs.String("candidate", "", "path to candidate report.json")
-	outPath := fs.String("out", "", "path to write drift report json")
+	outPath := fs.String("out", "", "path to write drift report")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return usageError(err.Error())
 	}
 	if *baselinePath == "" || *candidatePath == "" || *outPath == "" {
-		return errors.New("drift requires -baseline, -candidate, and -out")
+		return usageError("drift requires -baseline, -candidate, and -out")
 	}
 
 	baseline, err := corpus.ReadBuildReport(*baselinePath)
@@ -131,10 +136,32 @@ func runDrift(args []string) error {
 	if err := corpus.WriteJSON(*outPath, drift); err != nil {
 		return err
 	}
-	fmt.Printf("drift report: %s\n", *outPath)
+
+	fmt.Println(*outPath)
 	return nil
 }
 
-func usageError() error {
-	return errors.New("usage: corpusctl <build|measure|qa|drift> [flags]")
+type usageErr struct {
+	msg string
+}
+
+func (e usageErr) Error() string {
+	return e.msg
+}
+
+func usageError(msg string) error {
+	return usageErr{msg: msg}
+}
+
+func isUsageError(err error) bool {
+	var target usageErr
+	return errors.As(err, &target)
+}
+
+func defaultCacheDir() string {
+	userCacheDir, err := os.UserCacheDir()
+	if err != nil || userCacheDir == "" {
+		return filepath.Join(os.TempDir(), "corpusctl")
+	}
+	return filepath.Join(userCacheDir, "corpusctl")
 }

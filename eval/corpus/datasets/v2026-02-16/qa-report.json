@@ -1,34 +1,20 @@
 {
-  "total": 9,
-  "agreement": 0.8888888888888888,
-  "per_category": {
-    "agent-control": {
-      "precision": 1,
-      "recall": 1,
-      "support": 1
-    },
-    "design-proposal": {
-      "precision": 0.6666666666666666,
-      "recall": 1,
-      "support": 2
-    },
-    "explanation": {
-      "precision": 1,
-      "recall": 1,
-      "support": 1
-    },
-    "project-docs": {
-      "precision": 1,
-      "recall": 1,
-      "support": 1
-    },
+  "total": 2,
+  "annotated": 2,
+  "accuracy": 1,
+  "kappa": 1,
+  "categories": {
     "reference": {
       "precision": 1,
-      "recall": 0.75,
-      "support": 4
+      "recall": 1,
+      "f1": 1,
+      "support": 1
+    },
+    "other": {
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "support": 1
     }
-  },
-  "confusion_cases": [
-    "f3f59f7400b929d98b60f6cddc0a1ff0 predicted=design-proposal actual=reference"
-  ]
+  }
 }

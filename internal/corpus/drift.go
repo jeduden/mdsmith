@@ -1,48 +1,23 @@
 package corpus
 
-// CompareReports computes category and size drift between two build reports.
-func CompareReports(baseline BuildReport, candidate BuildReport) DriftReport {
-	baseTotal := baseline.FilesKept
-	candTotal := candidate.FilesKept
-
-	allCategories := make(map[Category]bool)
-	for category := range baseline.CategoryCounts {
-		allCategories[category] = true
+// CompareReports compares two build reports and returns a drift report.
+func CompareReports(baseline BuildReport, candidate BuildReport) *DriftReport {
+	taxonomy := make(map[Category]int)
+	for category, count := range baseline.Taxonomy {
+		taxonomy[category] = -count
 	}
-	for category := range candidate.CategoryCounts {
-		allCategories[category] = true
+	for category, count := range candidate.Taxonomy {
+		taxonomy[category] += count
 	}
 
-	byCategory := make(map[Category]DriftCategoryDelta, len(allCategories))
-	for category := range allCategories {
-		baseCount := baseline.CategoryCounts[category]
-		candCount := candidate.CategoryCounts[category]
-		baseShare := share(baseCount, baseTotal)
-		candShare := share(candCount, candTotal)
-		byCategory[category] = DriftCategoryDelta{
-			BaselineCount:  baseCount,
-			CandidateCount: candCount,
-			DeltaCount:     candCount - baseCount,
-			BaselineShare:  baseShare,
-			CandidateShare: candShare,
-			DeltaShare:     candShare - baseShare,
-		}
-	}
-
-	return DriftReport{
+	return &DriftReport{
 		BaselineVersion:  baseline.DatasetVersion,
 		CandidateVersion: candidate.DatasetVersion,
-		BaselineTotal:    baseTotal,
-		CandidateTotal:   candTotal,
-		DeltaTotal:       candTotal - baseTotal,
-		ReadmeShareDelta: candidate.ReadmeShare - baseline.ReadmeShare,
-		ByCategory:       byCategory,
+		FilesKeptDelta:   candidate.FilesKept - baseline.FilesKept,
+		TaxonomyDeltas:   taxonomy,
+		MetricDeltas: MetricSummary{
+			AvgWords: candidate.Metrics.AvgWords - baseline.Metrics.AvgWords,
+			AvgChars: candidate.Metrics.AvgChars - baseline.Metrics.AvgChars,
+		},
 	}
-}
-
-func share(count int, total int) float64 {
-	if total == 0 {
-		return 0
-	}
-	return float64(count) / float64(total)
 }
