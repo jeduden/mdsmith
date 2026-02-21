@@ -1530,3 +1530,40 @@ func TestE2E_MergeDriver_IncludeConflict_Resolved(t *testing.T) {
 		t.Error("expected include section to contain regenerated content")
 	}
 }
+
+func TestE2E_MergeDriver_SetextInSection_Preserved(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  include: true\n  heading-style: false\n")
+
+	// The included file uses a setext heading (=======) that must
+	// not be stripped as a conflict separator.
+	writeFixture(t, dir, "snippet.md", "Title\n=======\n\nBody text.\n")
+
+	includeBase := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nold\n<!-- /include -->\n"
+	includeOurs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\nours\n<!-- /include -->\n"
+	includeTheirs := "# Doc\n\n<!-- include\nfile: snippet.md\n-->\ntheirs\n<!-- /include -->\n"
+
+	base := writeFixture(t, dir, "base.md", includeBase)
+	ours := writeFixture(t, dir, "ours.md", includeOurs)
+	theirs := writeFixture(t, dir, "theirs.md", includeTheirs)
+	pathname := writeFixture(t, dir, "DOC.md", includeOurs)
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"merge-driver", "run", base, ours, theirs, pathname)
+	if exitCode != 0 {
+		t.Errorf("expected exit 0, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	result, _ := os.ReadFile(ours)
+	content := string(result)
+	if !strings.Contains(content, "=======") {
+		t.Error("setext heading underline (=======) was incorrectly stripped")
+	}
+	if !strings.Contains(content, "Title") {
+		t.Error("expected regenerated include content with Title")
+	}
+}

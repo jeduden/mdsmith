@@ -227,14 +227,18 @@ func isRegenSectionEnd(line []byte) bool {
 	return false
 }
 
-// stripSectionConflicts removes git conflict markers (<<<<<<,
-// ======, >>>>>>) from lines that fall inside regenerable
-// sections (catalog, include). Conflict markers outside these
-// sections are left unchanged.
+// stripSectionConflicts removes git conflict markers from lines
+// that fall inside regenerable sections (catalog, include).
+// Conflict markers outside these sections are left unchanged.
+//
+// The ======= separator is only stripped when it appears between
+// <<<<<<< and >>>>>>> to avoid false positives with Markdown
+// setext heading underlines.
 func stripSectionConflicts(content []byte) []byte {
 	lines := bytes.Split(content, []byte("\n"))
 	var out [][]byte
 	inSection := false
+	inConflict := false
 
 	for _, line := range lines {
 		trimmed := bytes.TrimSpace(line)
@@ -243,34 +247,58 @@ func stripSectionConflicts(content []byte) []byte {
 			inSection = true
 		}
 
-		if inSection && isConflictMarker(trimmed) {
-			continue
+		if inSection {
+			if isConflictOpen(trimmed) {
+				inConflict = true
+				continue
+			}
+			if isConflictClose(trimmed) {
+				inConflict = false
+				continue
+			}
+			if inConflict && isConflictSeparator(trimmed) {
+				continue
+			}
 		}
 
 		out = append(out, line)
 
 		if isRegenSectionEnd(trimmed) {
 			inSection = false
+			inConflict = false
 		}
 	}
 
 	return bytes.Join(out, []byte("\n"))
 }
 
-// isConflictMarker returns true if the line is a git conflict
-// marker (starts with <<<<<<<, =======, or >>>>>>>).
-func isConflictMarker(line []byte) bool {
-	return bytes.HasPrefix(line, []byte("<<<<<<<")) ||
-		bytes.HasPrefix(line, []byte("=======")) ||
-		bytes.HasPrefix(line, []byte(">>>>>>>"))
+// isConflictOpen returns true if the line opens a git conflict
+// block (starts with <<<<<<<).
+func isConflictOpen(line []byte) bool {
+	return bytes.HasPrefix(line, []byte("<<<<<<<"))
+}
+
+// isConflictSeparator returns true if the line is a git conflict
+// separator (starts with =======). This is context-dependent:
+// the same pattern is valid as a Markdown setext heading
+// underline, so callers must check conflict state.
+func isConflictSeparator(line []byte) bool {
+	return bytes.HasPrefix(line, []byte("======="))
+}
+
+// isConflictClose returns true if the line closes a git conflict
+// block (starts with >>>>>>>).
+func isConflictClose(line []byte) bool {
+	return bytes.HasPrefix(line, []byte(">>>>>>>"))
 }
 
 // hasConflictMarkers returns true if the content contains any
-// git conflict markers.
+// git conflict markers. Only checks for unambiguous markers
+// (<<<<<<< and >>>>>>>) to avoid setext heading false positives.
 func hasConflictMarkers(content []byte) bool {
 	for _, line := range bytes.Split(content, []byte("\n")) {
 		trimmed := bytes.TrimSpace(line)
-		if isConflictMarker(trimmed) {
+		if isConflictOpen(trimmed) || isConflictClose(trimmed) {
 			return true
 		}
 	}
