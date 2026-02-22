@@ -1,0 +1,19 @@
+{
+  "dataset_version": "v2026-02-16",
+  "collected_at": "2026-02-16",
+  "files_collected": 4,
+  "files_kept": 4,
+  "files_deduped": 0,
+  "taxonomy": {
+    "reference": 2,
+    "other": 2
+  },
+  "split": {
+    "train": 3,
+    "test": 1
+  },
+  "metrics": {
+    "avg_words": 404.5,
+    "avg_chars": 2537.75
+  }
+}

@@ -42,7 +42,7 @@ footer: |
 | 59  | ✅      | [Classifier Evaluation Baseline](plan/59_classifier-evaluation-baseline.md)                           |
 | 60  | ✅      | [DU-Style Metrics Ranking](plan/60_du-style-metrics-ranking.md)                                 |
 | 61  | 🔲      | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                        |
-| 62  | 🔲      | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                          |
+| 62  | ✅      | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                          |
 | 63  | ✅      | [Empty Section Body Rule](plan/63_empty-section-body-rule.md)                                  |
 | 64  | 🔲      | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                 |
 | 65  | 🔲      | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                     |

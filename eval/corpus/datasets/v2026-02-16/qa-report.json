@@ -1,0 +1,20 @@
+{
+  "total": 2,
+  "annotated": 2,
+  "accuracy": 1,
+  "kappa": 1,
+  "categories": {
+    "reference": {
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "support": 1
+    },
+    "other": {
+      "precision": 1,
+      "recall": 1,
+      "f1": 1,
+      "support": 1
+    }
+  }
+}

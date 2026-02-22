@@ -1,0 +1,53 @@
+dataset_version: v2026-02-16
+collected_at: 2026-02-16
+min_words: 30
+min_chars: 100
+test_fraction: 0.2
+qa_sample_limit: 50
+license_allowlist:
+  - MIT
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - CC0-1.0
+  - CC-BY-4.0
+sources:
+  - name: openai-cookbook
+    repository: github.com/openai/openai-cookbook
+    root: examples/
+    commit_sha: 365dfaa2ef36e0a6b7639ba8d211a451e0e90455
+    license: MIT
+    annotations:
+      selection_reason: High-volume practical LLM documentation with MIT licensing.
+      content_focus: Recipes and operational reference docs.
+      license_reference: https://github.com/openai/openai-cookbook/blob/main/LICENSE
+
+  - name: openai-agents-python
+    repository: github.com/openai/openai-agents-python
+    root: docs/
+    commit_sha: 84fa471e5fc538d744a3ae294749fedb3855131b
+    license: MIT
+    annotations:
+      selection_reason: Agent framework documentation with strong API and guide coverage.
+      content_focus: Agent orchestration docs and SDK reference.
+      license_reference: https://github.com/openai/openai-agents-python/blob/main/LICENSE
+
+  - name: semantic-kernel
+    repository: github.com/microsoft/semantic-kernel
+    root: docs/
+    commit_sha: 91f795605e42f0dd03ed9cdfaf4ffd8bdb1ae553
+    license: MIT
+    annotations:
+      selection_reason: Enterprise-oriented LLM framework with a stable docs tree.
+      content_focus: Architecture notes, SDK guidance, and reference docs.
+      license_reference: https://github.com/microsoft/semantic-kernel/blob/main/LICENSE
+
+  - name: kubernetes-website
+    repository: github.com/kubernetes/website
+    root: content/en/docs/
+    commit_sha: 695611df58280618252e50edf3962a8bd324731a
+    license: CC-BY-4.0
+    annotations:
+      selection_reason: Large CC-BY-4.0 corpus for non-LLM-specific technical writing breadth.
+      content_focus: Concepts, tasks, tutorials, and reference docs.
+      license_reference: https://github.com/kubernetes/website/blob/main/LICENSE
