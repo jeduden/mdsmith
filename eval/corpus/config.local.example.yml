@@ -8,8 +8,8 @@ sources:
   - name: openai-agents-python
     root: /absolute/path/to/openai-agents-python/docs
 
-  - name: langgraph
-    root: /absolute/path/to/langgraph/docs
+  - name: semantic-kernel
+    root: /absolute/path/to/semantic-kernel/docs
 
   - name: kubernetes-website
     root: /absolute/path/to/kubernetes-website/content/en/docs
