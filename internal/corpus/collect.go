@@ -17,60 +17,81 @@ func Collect(cfg *Config, cacheDir string) ([]Record, error) {
 		return nil, fmt.Errorf("config is required")
 	}
 
-	allow := make(map[string]struct{}, len(cfg.LicenseAllowlist))
-	for _, license := range cfg.LicenseAllowlist {
+	allow := makeAllowset(cfg.LicenseAllowlist)
+
+	records := make([]Record, 0)
+	for idx, source := range cfg.Sources {
+		sourceRecords, err := collectSource(
+			cfg,
+			source,
+			idx,
+			len(cfg.Sources),
+			allow,
+			cacheDir,
+		)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, sourceRecords...)
+	}
+	return records, nil
+}
+
+func makeAllowset(licenses []string) map[string]struct{} {
+	allow := make(map[string]struct{}, len(licenses))
+	for _, license := range licenses {
 		normalized := strings.ToUpper(strings.TrimSpace(license))
 		if normalized != "" {
 			allow[normalized] = struct{}{}
 		}
 	}
+	return allow
+}
 
-	records := make([]Record, 0)
-	for idx, source := range cfg.Sources {
+func collectSource(
+	cfg *Config,
+	source SourceConfig,
+	index int,
+	total int,
+	allow map[string]struct{},
+	cacheDir string,
+) ([]Record, error) {
+	reportProgress(
+		cfg,
+		fmt.Sprintf("source %d/%d: %s", index+1, total, source.Name),
+	)
+
+	if _, ok := allow[strings.ToUpper(strings.TrimSpace(source.License))]; !ok {
 		reportProgress(
 			cfg,
 			fmt.Sprintf(
-				"source %d/%d: %s",
-				idx+1,
-				len(cfg.Sources),
+				"source %s skipped: license %s not allowlisted",
 				source.Name,
+				source.License,
 			),
 		)
-		if _, ok := allow[strings.ToUpper(strings.TrimSpace(source.License))]; !ok {
-			reportProgress(
-				cfg,
-				fmt.Sprintf(
-					"source %s skipped: license %s not allowlisted",
-					source.Name,
-					source.License,
-				),
-			)
-			continue
-		}
-
-		resolvedRoot, err := ResolveSource(source, cacheDir)
-		if err != nil {
-			return nil, err
-		}
-		reportProgress(
-			cfg,
-			fmt.Sprintf("source %s resolved to %s", source.Name, resolvedRoot),
-		)
-
-		sourceRecords, err := collectFromRoot(cfg, source, resolvedRoot)
-		if err != nil {
-			return nil, err
-		}
-		reportProgress(
-			cfg,
-			fmt.Sprintf(
-				"source %s collected %d records",
-				source.Name,
-				len(sourceRecords),
-			),
-		)
-		records = append(records, sourceRecords...)
+		return nil, nil
 	}
+
+	resolvedRoot, err := resolveSourceWithRunnerAndProgress(
+		source,
+		cacheDir,
+		defaultGitRunner,
+		cfg.Progress,
+	)
+	if err != nil {
+		return nil, err
+	}
+	reportProgress(cfg, fmt.Sprintf("source %s resolved to %s", source.Name, resolvedRoot))
+
+	records, err := collectFromRoot(cfg, source, resolvedRoot)
+	if err != nil {
+		return nil, err
+	}
+	reportProgress(
+		cfg,
+		fmt.Sprintf("source %s collected %d records", source.Name, len(records)),
+	)
 	return records, nil
 }
 
