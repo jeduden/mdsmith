@@ -32,15 +32,15 @@ sources:
       content_focus: Agent orchestration docs and SDK reference.
       license_reference: https://github.com/openai/openai-agents-python/blob/main/LICENSE
 
-  - name: langgraph
-    repository: github.com/langchain-ai/langgraph
-    root: .
-    commit_sha: 7216504ce2ecb56f62ebb08ac787d11b7491de5b
+  - name: semantic-kernel
+    repository: github.com/microsoft/semantic-kernel
+    root: docs/
+    commit_sha: 91f795605e42f0dd03ed9cdfaf4ffd8bdb1ae553
     license: MIT
     annotations:
-      selection_reason: Popular graph-based agent framework with deep technical docs.
-      content_focus: Runtime patterns, concepts, and reference material.
-      license_reference: https://github.com/langchain-ai/langgraph/blob/main/LICENSE
+      selection_reason: Enterprise-oriented LLM framework with a stable docs tree.
+      content_focus: Architecture notes, SDK guidance, and reference docs.
+      license_reference: https://github.com/microsoft/semantic-kernel/blob/main/LICENSE
 
   - name: kubernetes-website
     repository: github.com/kubernetes/website
