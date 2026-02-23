@@ -100,6 +100,36 @@ func TestEvaluateQA_DuplicateAnnotationIDs(t *testing.T) {
 	}
 }
 
+func TestEvaluateQA_EmptyAnnotationsProducesCoverageOnlyReport(t *testing.T) {
+	t.Parallel()
+
+	report, err := EvaluateQA(
+		[]QASampleRecord{
+			{RecordID: "a", PredictedCategory: CategoryReference},
+			{RecordID: "b", PredictedCategory: CategoryOther},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("EvaluateQA: %v", err)
+	}
+	if report.Total != 2 || report.Annotated != 0 {
+		t.Fatalf("unexpected totals: total=%d annotated=%d", report.Total, report.Annotated)
+	}
+	if report.Coverage != 0 {
+		t.Fatalf("coverage = %f, want 0", report.Coverage)
+	}
+	if report.Accuracy != 0 {
+		t.Fatalf("accuracy = %f, want 0", report.Accuracy)
+	}
+	if report.Kappa != nil {
+		t.Fatalf("kappa = %v, want nil", *report.Kappa)
+	}
+	if len(report.Categories) != 0 {
+		t.Fatalf("categories = %+v, want empty map", report.Categories)
+	}
+}
+
 func TestQASampleReadWriteRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -151,6 +181,44 @@ func TestReadQAAnnotationsCSV_IgnoresBlankActualCategory(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "annotations.csv")
 	content := "record_id,actual_category\na,reference\nb,\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+
+	rows, err := ReadQAAnnotationsCSV(path)
+	if err != nil {
+		t.Fatalf("ReadQAAnnotationsCSV: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("len(rows) = %d, want 1", len(rows))
+	}
+	if rows[0].RecordID != "a" {
+		t.Fatalf("kept record id = %q, want a", rows[0].RecordID)
+	}
+}
+
+func TestReadQAAnnotationsCSV_EmptyFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "annotations.csv")
+	if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+
+	rows, err := ReadQAAnnotationsCSV(path)
+	if err != nil {
+		t.Fatalf("ReadQAAnnotationsCSV: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("len(rows) = %d, want 0", len(rows))
+	}
+}
+
+func TestReadQAAnnotationsCSV_IgnoresBlankRows(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "annotations.csv")
+	content := "record_id,actual_category\n,\n\na,reference\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write csv: %v", err)
 	}

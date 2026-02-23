@@ -123,6 +123,9 @@ func runQA(args []string) error {
 		report.Annotated,
 		report.Total,
 	)
+	if report.Annotated == 0 {
+		statusf("qa: no labeled rows yet; writing coverage-only report")
+	}
 	statusf("qa: writing %s", *outPath)
 	if err := corpus.WriteJSON(*outPath, report); err != nil {
 		return err

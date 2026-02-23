@@ -29,9 +29,6 @@ func EvaluateQA(sample []QASampleRecord, annotations []QAAnnotation) (*QAReport,
 	if len(sample) == 0 {
 		return nil, fmt.Errorf("qa sample is empty")
 	}
-	if len(annotations) == 0 {
-		return nil, fmt.Errorf("qa annotations are empty")
-	}
 
 	predictedByID := indexPredictions(sample)
 	if err := validateAnnotationsAgainstSample(predictedByID, annotations); err != nil {
@@ -41,17 +38,18 @@ func EvaluateQA(sample []QASampleRecord, annotations []QAAnnotation) (*QAReport,
 	if err != nil {
 		return nil, err
 	}
-	if eval.annotated == 0 {
-		return nil, fmt.Errorf("no matching record ids found between sample and annotations")
-	}
-
 	report := &QAReport{
 		Total:      len(sample),
 		Annotated:  eval.annotated,
 		Coverage:   ratio(eval.annotated, len(sample)),
-		Accuracy:   float64(eval.matches) / float64(eval.annotated),
+		Accuracy:   0,
 		Categories: make(map[Category]QACategoryMetrics, len(eval.categoryCounts)),
 	}
+	if eval.annotated == 0 {
+		return report, nil
+	}
+
+	report.Accuracy = float64(eval.matches) / float64(eval.annotated)
 
 	categories := make([]Category, 0, len(eval.categoryCounts))
 	for category := range eval.categoryCounts {
@@ -244,7 +242,7 @@ func ReadQAAnnotationsCSV(path string) ([]QAAnnotation, error) {
 		return nil, fmt.Errorf("read qa annotations: %w", err)
 	}
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("qa annotations csv is empty")
+		return []QAAnnotation{}, nil
 	}
 
 	start := 0
@@ -257,6 +255,9 @@ func ReadQAAnnotationsCSV(path string) ([]QAAnnotation, error) {
 	annotations := make([]QAAnnotation, 0, len(rows)-start)
 	for i, row := range rows[start:] {
 		line := i + start + 1
+		if isBlankCSVRow(row) {
+			continue
+		}
 		if len(row) < 2 {
 			return nil, fmt.Errorf(
 				"annotation row %d must contain record_id,actual_category",
@@ -280,6 +281,15 @@ func ReadQAAnnotationsCSV(path string) ([]QAAnnotation, error) {
 		})
 	}
 	return annotations, nil
+}
+
+func isBlankCSVRow(row []string) bool {
+	for _, cell := range row {
+		if strings.TrimSpace(cell) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // WriteQAAnnotationTemplateCSV writes an annotation CSV aligned to a QA sample.
