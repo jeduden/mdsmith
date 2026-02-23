@@ -123,6 +123,12 @@ type QAReport struct {
 	Categories map[Category]QACategoryMetrics `json:"categories"`
 }
 
+// QAAnnotationTemplateStats reports template generation outcomes.
+type QAAnnotationTemplateStats struct {
+	Total     int `json:"total"`
+	Preserved int `json:"preserved"`
+}
+
 // DriftReport summarizes changes between two build reports.
 type DriftReport struct {
 	BaselineVersion  string           `json:"baseline_version"`

@@ -22,7 +22,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return usageError("usage: corpusctl <build|measure|qa|drift> [flags]")
+		return usageError("usage: corpusctl <build|measure|qa|qa-init|drift> [flags]")
 	}
 
 	switch args[0] {
@@ -32,10 +32,12 @@ func run(args []string) error {
 		return runMeasure(args[1:])
 	case "qa":
 		return runQA(args[1:])
+	case "qa-init":
+		return runQAInit(args[1:])
 	case "drift":
 		return runDrift(args[1:])
 	default:
-		return usageError("usage: corpusctl <build|measure|qa|drift> [flags]")
+		return usageError("usage: corpusctl <build|measure|qa|qa-init|drift> [flags]")
 	}
 }
 
@@ -125,6 +127,48 @@ func runQA(args []string) error {
 	if err := corpus.WriteJSON(*outPath, report); err != nil {
 		return err
 	}
+
+	fmt.Println(*outPath)
+	return nil
+}
+
+func runQAInit(args []string) error {
+	fs := flag.NewFlagSet("qa-init", flag.ContinueOnError)
+	samplePath := fs.String("sample", "", "path to qa-sample.jsonl")
+	existingPath := fs.String("existing", "", "optional existing annotations csv")
+	outPath := fs.String("out", "", "path to write annotation template csv")
+	if err := fs.Parse(args); err != nil {
+		return usageError(err.Error())
+	}
+	if *samplePath == "" || *outPath == "" {
+		return usageError("qa-init requires -sample and -out")
+	}
+
+	statusf("qa-init: reading sample %s", *samplePath)
+	sample, err := corpus.ReadQASample(*samplePath)
+	if err != nil {
+		return err
+	}
+
+	existing := make([]corpus.QAAnnotation, 0)
+	if *existingPath != "" {
+		statusf("qa-init: reading existing annotations %s", *existingPath)
+		existing, err = corpus.ReadQAAnnotationsCSV(*existingPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	statusf("qa-init: writing %s", *outPath)
+	stats, err := corpus.WriteQAAnnotationTemplateCSV(*outPath, sample, existing)
+	if err != nil {
+		return err
+	}
+	statusf(
+		"qa-init: wrote %d rows (%d preserved existing annotations)",
+		stats.Total,
+		stats.Preserved,
+	)
 
 	fmt.Println(*outPath)
 	return nil

@@ -28,6 +28,7 @@ func TestRun_FlagValidation(t *testing.T) {
 		{"build"},
 		{"measure"},
 		{"qa"},
+		{"qa-init"},
 		{"drift"},
 	}
 	for _, args := range cases {
@@ -100,6 +101,53 @@ func TestRun_RoundTripBuildQAAndDrift(t *testing.T) {
 		t.Fatalf("run drift: %v", err)
 	}
 	assertExists(t, driftPath)
+}
+
+func TestRunQAInit_WritesTemplate(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	samplePath := filepath.Join(root, "qa-sample.jsonl")
+	if err := corpus.WriteQASample(samplePath, []corpus.QASampleRecord{
+		{RecordID: "a", PredictedCategory: corpus.CategoryReference},
+		{RecordID: "b", PredictedCategory: corpus.CategoryOther},
+	}); err != nil {
+		t.Fatalf("WriteQASample: %v", err)
+	}
+
+	existingPath := filepath.Join(root, "existing.csv")
+	if err := os.WriteFile(
+		existingPath,
+		[]byte("record_id,actual_category\na,reference\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write existing annotations: %v", err)
+	}
+
+	outPath := filepath.Join(root, "annotations.csv")
+	if err := run([]string{
+		"qa-init",
+		"-sample", samplePath,
+		"-existing", existingPath,
+		"-out", outPath,
+	}); err != nil {
+		t.Fatalf("run qa-init: %v", err)
+	}
+
+	content, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read template: %v", err)
+	}
+	got := string(content)
+	if !strings.Contains(got, "record_id,actual_category\n") {
+		t.Fatalf("missing header in template: %q", got)
+	}
+	if !strings.Contains(got, "a,reference\n") {
+		t.Fatalf("missing preserved annotation row: %q", got)
+	}
+	if !strings.Contains(got, "b,\n") {
+		t.Fatalf("missing blank annotation row: %q", got)
+	}
 }
 
 func writeBuildConfig(t *testing.T, root string) string {
