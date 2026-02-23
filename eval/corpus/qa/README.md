@@ -2,6 +2,14 @@
 
 1. Open `qa-sample.jsonl` from the dataset version you are
    reviewing.
+Use `qa-init` to generate a matching template:
+
+```bash
+go run ./cmd/corpusctl qa-init \
+  -sample eval/corpus/datasets/<version>/qa-sample.jsonl \
+  -out eval/corpus/qa/annotations.csv
+```
+
 2. For each row, decide the `actual_category` (`reference` or
    `other`).
 3. Write annotations to `annotations.csv` with this header:

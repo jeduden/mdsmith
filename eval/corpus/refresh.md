@@ -19,6 +19,13 @@ go run ./cmd/corpusctl build \
 
 3. Annotate QA sample (`eval/corpus/qa/annotations.csv`).
 
+```bash
+go run ./cmd/corpusctl qa-init \
+  -sample eval/corpus/datasets/<dataset-version>/qa-sample.jsonl \
+  -existing eval/corpus/qa/annotations.csv \
+  -out eval/corpus/qa/annotations.csv
+```
+
 4. Run QA report.
 
 ```bash
