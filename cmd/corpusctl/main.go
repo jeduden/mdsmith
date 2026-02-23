@@ -115,6 +115,12 @@ func runQA(args []string) error {
 	if err != nil {
 		return err
 	}
+	statusf(
+		"qa: coverage %.1f%% (%d/%d)",
+		report.Coverage*100,
+		report.Annotated,
+		report.Total,
+	)
 	statusf("qa: writing %s", *outPath)
 	if err := corpus.WriteJSON(*outPath, report); err != nil {
 		return err

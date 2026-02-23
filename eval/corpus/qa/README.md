@@ -10,5 +10,9 @@
 record_id,actual_category
 ```
 
-4. Run `corpusctl qa` to compute agreement, category precision,
-   recall, and Cohen's kappa.
+4. Keep annotations scoped to the current sample.
+`annotations.csv` may include fewer IDs than `qa-sample.jsonl`,
+but it must not include IDs that are not in the sample.
+
+5. Run `corpusctl qa` to compute coverage, agreement, category
+precision/recall, and Cohen's kappa.
