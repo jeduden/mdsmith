@@ -117,6 +117,7 @@ type QACategoryMetrics struct {
 type QAReport struct {
 	Total      int                            `json:"total"`
 	Annotated  int                            `json:"annotated"`
+	Coverage   float64                        `json:"coverage"`
 	Accuracy   float64                        `json:"accuracy"`
 	Kappa      *float64                       `json:"kappa,omitempty"`
 	Categories map[Category]QACategoryMetrics `json:"categories"`

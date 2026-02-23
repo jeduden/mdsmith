@@ -31,6 +31,9 @@ func TestEvaluateQA_ComputesMetricsAndKappa(t *testing.T) {
 	if report.Annotated != 3 {
 		t.Fatalf("Annotated = %d, want 3", report.Annotated)
 	}
+	if report.Coverage != 1 {
+		t.Fatalf("Coverage = %f, want 1", report.Coverage)
+	}
 	if report.Accuracy <= 0 || report.Accuracy >= 1 {
 		t.Fatalf("Accuracy = %f, want value in (0,1)", report.Accuracy)
 	}
@@ -45,15 +48,55 @@ func TestEvaluateQA_ComputesMetricsAndKappa(t *testing.T) {
 	}
 }
 
-func TestEvaluateQA_ErrorWhenNoOverlap(t *testing.T) {
+func TestEvaluateQA_ErrorWhenAnnotationsOutsideSample(t *testing.T) {
 	t.Parallel()
 
 	_, err := EvaluateQA(
 		[]QASampleRecord{{RecordID: "a", PredictedCategory: CategoryReference}},
 		[]QAAnnotation{{RecordID: "b", ActualCategory: CategoryReference}},
 	)
-	if err == nil || !strings.Contains(err.Error(), "no overlapping record ids") {
-		t.Fatalf("expected overlap error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "not present in sample") {
+		t.Fatalf("expected out-of-sample error, got %v", err)
+	}
+}
+
+func TestEvaluateQA_PartialCoverage(t *testing.T) {
+	t.Parallel()
+
+	report, err := EvaluateQA(
+		[]QASampleRecord{
+			{RecordID: "a", PredictedCategory: CategoryReference},
+			{RecordID: "b", PredictedCategory: CategoryOther},
+			{RecordID: "c", PredictedCategory: CategoryOther},
+		},
+		[]QAAnnotation{
+			{RecordID: "a", ActualCategory: CategoryReference},
+			{RecordID: "b", ActualCategory: CategoryOther},
+		},
+	)
+	if err != nil {
+		t.Fatalf("EvaluateQA: %v", err)
+	}
+	if report.Total != 3 || report.Annotated != 2 {
+		t.Fatalf("unexpected totals: total=%d annotated=%d", report.Total, report.Annotated)
+	}
+	if report.Coverage != (2.0 / 3.0) {
+		t.Fatalf("coverage = %f, want %f", report.Coverage, 2.0/3.0)
+	}
+}
+
+func TestEvaluateQA_DuplicateAnnotationIDs(t *testing.T) {
+	t.Parallel()
+
+	_, err := EvaluateQA(
+		[]QASampleRecord{{RecordID: "a", PredictedCategory: CategoryReference}},
+		[]QAAnnotation{
+			{RecordID: "a", ActualCategory: CategoryReference},
+			{RecordID: "a", ActualCategory: CategoryOther},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "duplicate annotation") {
+		t.Fatalf("expected duplicate annotation error, got %v", err)
 	}
 }
 
