@@ -34,17 +34,21 @@ func EvaluateQA(sample []QASampleRecord, annotations []QAAnnotation) (*QAReport,
 	}
 
 	predictedByID := indexPredictions(sample)
+	if err := validateAnnotationsAgainstSample(predictedByID, annotations); err != nil {
+		return nil, err
+	}
 	eval, err := scoreAnnotations(predictedByID, annotations)
 	if err != nil {
 		return nil, err
 	}
 	if eval.annotated == 0 {
-		return nil, fmt.Errorf("no overlapping record ids between sample and annotations")
+		return nil, fmt.Errorf("no matching record ids found between sample and annotations")
 	}
 
 	report := &QAReport{
 		Total:      len(sample),
 		Annotated:  eval.annotated,
+		Coverage:   ratio(eval.annotated, len(sample)),
 		Accuracy:   float64(eval.matches) / float64(eval.annotated),
 		Categories: make(map[Category]QACategoryMetrics, len(eval.categoryCounts)),
 	}
@@ -81,6 +85,40 @@ func EvaluateQA(sample []QASampleRecord, annotations []QAAnnotation) (*QAReport,
 	}
 
 	return report, nil
+}
+
+func validateAnnotationsAgainstSample(
+	predictedByID map[string]Category,
+	annotations []QAAnnotation,
+) error {
+	seenIDs := make(map[string]struct{}, len(annotations))
+	extraIDs := make([]string, 0)
+
+	for _, annotation := range annotations {
+		recordID := annotation.RecordID
+		if _, seen := seenIDs[recordID]; seen {
+			return fmt.Errorf("duplicate annotation for record_id %q", recordID)
+		}
+		seenIDs[recordID] = struct{}{}
+
+		if _, ok := predictedByID[recordID]; !ok {
+			extraIDs = append(extraIDs, recordID)
+		}
+	}
+	if len(extraIDs) == 0 {
+		return nil
+	}
+
+	sort.Strings(extraIDs)
+	preview := extraIDs
+	if len(preview) > 5 {
+		preview = preview[:5]
+	}
+	return fmt.Errorf(
+		"annotations contain %d record ids not present in sample (first ids: %s)",
+		len(extraIDs),
+		strings.Join(preview, ", "),
+	)
 }
 
 func indexPredictions(sample []QASampleRecord) map[string]Category {
