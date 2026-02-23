@@ -268,6 +268,9 @@ func ReadQAAnnotationsCSV(path string) ([]QAAnnotation, error) {
 		if recordID == "" {
 			return nil, fmt.Errorf("annotation row %d has empty record_id", line)
 		}
+		if actual == "" {
+			continue
+		}
 		if !isAllowedCategory(actual) {
 			return nil, fmt.Errorf("annotation row %d has unknown category %q", line, actual)
 		}
@@ -277,6 +280,101 @@ func ReadQAAnnotationsCSV(path string) ([]QAAnnotation, error) {
 		})
 	}
 	return annotations, nil
+}
+
+// WriteQAAnnotationTemplateCSV writes an annotation CSV aligned to a QA sample.
+func WriteQAAnnotationTemplateCSV(
+	path string,
+	sample []QASampleRecord,
+	existing []QAAnnotation,
+) (QAAnnotationTemplateStats, error) {
+	if len(sample) == 0 {
+		return QAAnnotationTemplateStats{}, fmt.Errorf("qa sample is empty")
+	}
+	if err := ensureParentDir(path); err != nil {
+		return QAAnnotationTemplateStats{}, err
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		return QAAnnotationTemplateStats{}, fmt.Errorf("create qa annotation template: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	existingByID, err := indexExistingAnnotations(existing)
+	if err != nil {
+		return QAAnnotationTemplateStats{}, err
+	}
+
+	writer := csv.NewWriter(file)
+	if err := writer.Write([]string{"record_id", "actual_category"}); err != nil {
+		return QAAnnotationTemplateStats{}, fmt.Errorf("write qa annotation template header: %w", err)
+	}
+
+	stats, err := writeAnnotationTemplateRows(writer, sample, existingByID)
+	if err != nil {
+		return QAAnnotationTemplateStats{}, err
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return QAAnnotationTemplateStats{}, fmt.Errorf("flush qa annotation template: %w", err)
+	}
+	return stats, nil
+}
+
+func indexExistingAnnotations(existing []QAAnnotation) (map[string]Category, error) {
+	existingByID := make(map[string]Category, len(existing))
+	for _, row := range existing {
+		if row.RecordID == "" {
+			continue
+		}
+		if _, exists := existingByID[row.RecordID]; exists {
+			return nil, fmt.Errorf(
+				"duplicate existing annotation for record_id %q",
+				row.RecordID,
+			)
+		}
+		existingByID[row.RecordID] = row.ActualCategory
+	}
+	return existingByID, nil
+}
+
+func writeAnnotationTemplateRows(
+	writer *csv.Writer,
+	sample []QASampleRecord,
+	existingByID map[string]Category,
+) (QAAnnotationTemplateStats, error) {
+	seenSampleIDs := make(map[string]struct{}, len(sample))
+	preserved := 0
+	for _, row := range sample {
+		if row.RecordID == "" {
+			return QAAnnotationTemplateStats{}, fmt.Errorf("qa sample contains empty record_id")
+		}
+		if _, exists := seenSampleIDs[row.RecordID]; exists {
+			return QAAnnotationTemplateStats{}, fmt.Errorf(
+				"qa sample contains duplicate record_id %q",
+				row.RecordID,
+			)
+		}
+		seenSampleIDs[row.RecordID] = struct{}{}
+
+		actual := ""
+		if value, ok := existingByID[row.RecordID]; ok {
+			actual = string(value)
+			preserved++
+		}
+		if err := writer.Write([]string{row.RecordID, actual}); err != nil {
+			return QAAnnotationTemplateStats{}, fmt.Errorf(
+				"write qa annotation template row: %w",
+				err,
+			)
+		}
+	}
+
+	return QAAnnotationTemplateStats{
+		Total:     len(sample),
+		Preserved: preserved,
+	}, nil
 }
 
 func ratio(numerator int, denominator int) float64 {

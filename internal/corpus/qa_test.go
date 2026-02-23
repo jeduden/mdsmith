@@ -145,3 +145,58 @@ func TestReadQAAnnotationsCSV_ErrorPath(t *testing.T) {
 		t.Fatalf("expected category error, got %v", err)
 	}
 }
+
+func TestReadQAAnnotationsCSV_IgnoresBlankActualCategory(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "annotations.csv")
+	content := "record_id,actual_category\na,reference\nb,\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+
+	rows, err := ReadQAAnnotationsCSV(path)
+	if err != nil {
+		t.Fatalf("ReadQAAnnotationsCSV: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("len(rows) = %d, want 1", len(rows))
+	}
+	if rows[0].RecordID != "a" {
+		t.Fatalf("kept record id = %q, want a", rows[0].RecordID)
+	}
+}
+
+func TestWriteQAAnnotationTemplateCSV(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "template.csv")
+	sample := []QASampleRecord{
+		{RecordID: "a", PredictedCategory: CategoryReference},
+		{RecordID: "b", PredictedCategory: CategoryOther},
+	}
+	existing := []QAAnnotation{{RecordID: "a", ActualCategory: CategoryReference}}
+
+	stats, err := WriteQAAnnotationTemplateCSV(path, sample, existing)
+	if err != nil {
+		t.Fatalf("WriteQAAnnotationTemplateCSV: %v", err)
+	}
+	if stats.Total != 2 || stats.Preserved != 1 {
+		t.Fatalf("unexpected stats: %+v", stats)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read template file: %v", err)
+	}
+	got := string(content)
+	if !strings.Contains(got, "record_id,actual_category\n") {
+		t.Fatalf("missing header: %q", got)
+	}
+	if !strings.Contains(got, "a,reference\n") {
+		t.Fatalf("missing preserved row: %q", got)
+	}
+	if !strings.Contains(got, "b,\n") {
+		t.Fatalf("missing blank row: %q", got)
+	}
+}

@@ -47,6 +47,18 @@ go run ./cmd/corpusctl measure \
 
 ## QA Evaluation
 
+Create or refresh an annotation template for the current sample:
+
+```bash
+go run ./cmd/corpusctl qa-init \
+  -sample eval/corpus/datasets/v2026-02-16/qa-sample.jsonl \
+  -existing eval/corpus/qa/annotations.csv \
+  -out eval/corpus/qa/annotations.csv
+```
+
+`qa-init` keeps only IDs from the current sample and preserves any
+existing annotations for matching IDs.
+
 ```bash
 go run ./cmd/corpusctl qa \
   -sample eval/corpus/datasets/v2026-02-16/qa-sample.jsonl \
