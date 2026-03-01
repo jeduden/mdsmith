@@ -8,9 +8,12 @@ use of LLMs as linters.
 
 ### mdsmith
 
-Go binary. 30 rules (MDS001-MDS030) covering structural
-linting, readability metrics, and generated-content
-management. Single binary with zero runtime dependencies.
+Go binary with zero runtime deps. 30 rule IDs
+(MDS001-MDS030) covering structural linting, readability
+metrics, and generated-content management.
+
+MDS029 (conciseness-scoring) is experimental and disabled
+by default. The other 29 rules are stable.
 
 Key differentiators:
 
@@ -138,18 +141,18 @@ Weaknesses:
 
 ### Structural Linting
 
-| Capability          | mdsmith   | markdownlint | remark-lint           |
-|---------------------|-----------|--------------|-----------------------|
-| Heading hierarchy   | MDS003    | MD001        | heading-increment     |
-| First-line heading  | MDS004    | MD041        | first-heading-level   |
-| Duplicate headings  | MDS005    | MD024        | no-duplicate-headings |
-| Blank line spacing  | MDS013-15 | MD022,25,31  | plugins               |
-| List indentation    | MDS016    | MD007        | list-item-indent      |
-| Code fence style    | MDS010    | MD048        | fenced-code-flag      |
-| Code block language | MDS011    | MD040        | fenced-code-flag      |
-| Bare URLs           | MDS012    | MD034        | no-literal-urls       |
-| Line length         | MDS001    | MD013        | max-line-length       |
-| Trailing spaces     | MDS006    | MD009        | no-trailing-spaces    |
+| Capability          | mdsmith    | markdownlint | remark-lint           |
+|---------------------|------------|--------------|-----------------------|
+| Heading hierarchy   | MDS003     | MD001        | heading-increment     |
+| First-line heading  | MDS004     | MD041        | first-heading-level   |
+| Duplicate headings  | MDS005     | MD024        | no-duplicate-headings |
+| Blank line spacing  | MDS013-015 | MD022,25,31  | plugins               |
+| List indentation    | MDS016     | MD007        | list-item-indent      |
+| Code fence style    | MDS010     | MD048        | fenced-code-flag      |
+| Code block language | MDS011     | MD040        | fenced-code-flag      |
+| Bare URLs           | MDS012     | MD034        | no-literal-urls       |
+| Line length         | MDS001     | MD013        | max-line-length       |
+| Trailing spaces     | MDS006     | MD009        | no-trailing-spaces    |
 
 All three cover core structural rules. markdownlint has
 the broadest rule set (~60 rules). mdsmith and remark-lint
@@ -183,17 +186,17 @@ coverage can pair mdsmith with markdownlint.
 
 ### Prose and Readability
 
-| Capability        | mdsmith          | Vale             | LLM |
-|-------------------|------------------|------------------|-----|
-| Readability grade | MDS023 (ARI)     | metric ext       | yes |
-| Sentence limits   | MDS024           | occurrence ext   | yes |
-| Word choice       | no               | substitution ext | yes |
-| Passive voice     | no               | existence ext    | yes |
-| Jargon detection  | no               | existence ext    | yes |
-| Conciseness       | MDS029 (planned) | no               | yes |
-| Tone enforcement  | no               | custom styles    | yes |
-| Token budget      | MDS028           | no               | no  |
-| Deterministic     | yes              | yes              | no  |
+| Capability        | mdsmith               | Vale             | LLM |
+|-------------------|-----------------------|------------------|-----|
+| Readability grade | MDS023 (ARI)          | metric ext       | yes |
+| Sentence limits   | MDS024                | occurrence ext   | yes |
+| Word choice       | no                    | substitution ext | yes |
+| Passive voice     | no                    | existence ext    | yes |
+| Jargon detection  | no                    | existence ext    | yes |
+| Conciseness       | MDS029 (experimental) | no               | yes |
+| Tone enforcement  | no                    | custom styles    | yes |
+| Token budget      | MDS028                | no               | no  |
+| Deterministic     | yes                   | yes              | no  |
 
 mdsmith focuses on measurable readability metrics (ARI
 grade, sentence count, token budget). Vale excels at style
@@ -292,10 +295,10 @@ Most teams benefit from layering tools. Common pairings:
 - **Full stack**: mdsmith (structure + readability) + Vale
   (style) + Prettier (formatting)
 
-mdsmith's conciseness-scoring rule (MDS029, planned) brings
-LLM-grade quality checks into an offline, rule-based tool.
-It uses classifier-backed scoring to bridge the gap between
-static rules and LLM review.
+mdsmith's conciseness-scoring rule (MDS029) is a heuristic
+prototype aiming to bring LLM-grade quality checks into an
+offline tool. Classifier-backed scoring is a future step
+to bridge the gap between static rules and LLM review.
 
 ## Front Matter and Document Templates
 
