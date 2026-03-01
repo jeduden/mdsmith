@@ -95,6 +95,18 @@ overrides:
     rules:
       required-structure:
         template: plan/proto.md
+  - files: ["background/*.md"]
+    rules:
+      line-length:
+        stern: true
+      max-file-length:
+        max: 500
+      token-budget:
+        max: 12000
+        mode: heuristic
+        ratio: 0.75
+        tokenizer: builtin
+        encoding: cl100k_base
   - files: ["guides/*.md"]
     rules:
       line-length:
