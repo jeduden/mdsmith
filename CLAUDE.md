@@ -18,6 +18,7 @@ Requires Go 1.24+.
 
 Follow the [standard Go project layout](https://go.dev/doc/modules/layout):
 
+- `cmd/mdsmith/` — main application entry point
 - `internal/` — private packages not importable by other modules
 - `internal/rules/` — rule documentation
   (`internal/rules/<id>-<name>/README.md`)

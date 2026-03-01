@@ -14,7 +14,7 @@ which config is loaded, and which rules run on each file.
 ## Tasks
 
 1. Add `--verbose` / `-v` boolean flag (default `false`) to
-   the shared subcommand flags in `main.go`.
+   the shared subcommand flags in `cmd/mdsmith/main.go`.
 
 2. Create `internal/log/logger.go` with a minimal verbose
    logger:

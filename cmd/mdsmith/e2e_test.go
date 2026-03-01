@@ -17,7 +17,7 @@ var binaryPath string
 
 func TestMain(m *testing.M) {
 	// Build the binary once for all e2e tests.
-	// go test runs from the package directory (module root),
+	// go test runs from the package directory (cmd/mdsmith/),
 	// so "go build ." builds the main package in this directory.
 	tmp, err := os.MkdirTemp("", "mdsmith-e2e-*")
 	if err != nil {

@@ -29,7 +29,7 @@ offline without visiting the repository.
    string. Return an error if the rule is not found.
 
 4. Add the `docs` subcommand to the CLI in
-   `main.go`. Register it alongside the
+   `cmd/mdsmith/main.go`. Register it alongside the
    existing commands.
 
 5. When called with an argument (`mdsmith docs MDS001` or
