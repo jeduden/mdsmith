@@ -43,7 +43,7 @@ Multi-pass fixing resolves cascading changes automatically.
 ## 📦 Installation
 
 ```bash
-go install github.com/jeduden/mdsmith@latest
+go install github.com/jeduden/mdsmith/cmd/mdsmith@latest
 ```
 
 ## 🚀 Usage
