@@ -103,6 +103,10 @@ overrides:
         max: 500
       token-budget:
         max: 12000
+        mode: heuristic
+        ratio: 0.75
+        tokenizer: builtin
+        encoding: cl100k_base
   - files: ["guides/*.md"]
     rules:
       line-length:
@@ -115,6 +119,10 @@ overrides:
         max: 600
       token-budget:
         max: 12000
+        mode: heuristic
+        ratio: 0.75
+        tokenizer: builtin
+        encoding: cl100k_base
       paragraph-readability:
         max-grade: 24.0
         min-words: 20
