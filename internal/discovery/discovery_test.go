@@ -217,6 +217,39 @@ func TestDiscover_ExactFilePattern(t *testing.T) {
 	}
 }
 
+func TestDiscover_ReturnsRelativePaths(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "slides.md", "# Slides\n")
+	writeFile(t, dir, "docs/guide.md", "# Guide\n")
+
+	files, err := Discover(Options{
+		Patterns: []string{"**/*.md"},
+		BaseDir:  dir,
+	})
+	if err != nil {
+		t.Fatalf("Discover error: %v", err)
+	}
+
+	if len(files) != 2 {
+		t.Fatalf("expected 2 files, got %d: %v", len(files), files)
+	}
+
+	// Discovered paths must be relative to BaseDir so that override
+	// patterns like "slides.md" match consistently (issue #40).
+	for _, f := range files {
+		if filepath.IsAbs(f) {
+			t.Errorf("discovered path should be relative, got absolute: %s", f)
+		}
+	}
+
+	want := map[string]bool{"docs/guide.md": true, "slides.md": true}
+	for _, f := range files {
+		if !want[f] {
+			t.Errorf("unexpected path %q; want relative paths like slides.md or docs/guide.md", f)
+		}
+	}
+}
+
 func TestDiscover_NoDuplicates(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "README.md", "# Hello\n")

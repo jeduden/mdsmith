@@ -122,7 +122,7 @@ func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
 	}
 
 	if w.matchesAny(rel) {
-		w.addFile(path)
+		w.addFile(rel, path)
 	}
 	return nil
 }
@@ -161,15 +161,14 @@ func (w *walker) matchesAny(rel string) bool {
 	return false
 }
 
-// addFile adds a file to the result set if not already seen.
-func (w *walker) addFile(path string) {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		absPath = path
-	}
+// addFile adds a file to the result set if not already seen. The rel path
+// (relative to BaseDir, using forward slashes) is stored in the result so
+// that config override patterns match consistently regardless of discovery
+// method. The absPath is used only for deduplication.
+func (w *walker) addFile(rel, absPath string) {
 	if !w.seen[absPath] {
 		w.seen[absPath] = true
-		w.result = append(w.result, path)
+		w.result = append(w.result, rel)
 	}
 }
 
