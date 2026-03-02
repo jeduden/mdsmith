@@ -1229,6 +1229,78 @@ func TestE2E_Check_NoArgs_NoConfig_ExitsZero(t *testing.T) {
 	}
 }
 
+// --- no-duplicate-output tests (issue #39) ---
+
+func TestE2E_Check_NoDuplicateOutput(t *testing.T) {
+	dir := t.TempDir()
+	// Trailing spaces on a line should trigger MDS006.
+	path := writeFixture(t, dir, "dirty.md", "# Title\n\nHello   \n")
+
+	_, stderr, exitCode := runBinary(t, "", "check", "--no-color", path)
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	if count := strings.Count(stderr, "MDS006"); count != 1 {
+		t.Errorf("expected MDS006 exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+	if count := strings.Count(stderr, "stats:"); count != 1 {
+		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+}
+
+func TestE2E_Check_NoDuplicateOutput_Discovered(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "dirty.md", "# Title\n\nHello   \n")
+	writeFixture(t, dir, ".mdsmith.yml", "files:\n  - \"**/*.md\"\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	if count := strings.Count(stderr, "MDS006"); count != 1 {
+		t.Errorf("expected MDS006 exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+	if count := strings.Count(stderr, "stats:"); count != 1 {
+		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+}
+
+func TestE2E_Check_NoDuplicateOutput_Stdin(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "# Title\n\nHello   \n", "check", "--no-color", "-")
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	if count := strings.Count(stderr, "MDS006"); count != 1 {
+		t.Errorf("expected MDS006 exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+	if count := strings.Count(stderr, "stats:"); count != 1 {
+		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+}
+
+func TestE2E_Fix_NoDuplicateOutput_Discovered(t *testing.T) {
+	dir := t.TempDir()
+	// Trailing punctuation in heading (MDS017) is not auto-fixable,
+	// so fix will report it as an unfixed diagnostic.
+	writeFixture(t, dir, "dirty.md", "# Title!\n\nHello   \n")
+	writeFixture(t, dir, ".mdsmith.yml", "files:\n  - \"**/*.md\"\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "fix", "--no-color")
+	if exitCode != 1 {
+		t.Fatalf("expected exit code 1, got %d; stderr: %s", exitCode, stderr)
+	}
+
+	if count := strings.Count(stderr, "MDS017"); count != 1 {
+		t.Errorf("expected MDS017 exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+	if count := strings.Count(stderr, "stats:"); count != 1 {
+		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
+	}
+}
+
 // --- merge-driver tests ---
 
 func TestE2E_MergeDriver_Help(t *testing.T) {

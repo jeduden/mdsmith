@@ -549,16 +549,22 @@ func checkDiscovered(
 	result := runner.Run(files)
 	printErrors(result.Errors)
 
-	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
-		return 2
-	}
 	if !quiet && len(result.Diagnostics) > 0 {
 		if code := formatDiagnostics(result.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
-	logger.Printf("checked %d files, %d issues found", len(files), len(result.Diagnostics))
+	printRunStats(format, quiet, runStats{
+		Checked:  result.FilesChecked,
+		Fixed:    0,
+		Failures: len(result.Diagnostics),
+		Unfixed:  len(result.Diagnostics),
+	})
+	logger.Printf("checked %d files, %d issues found", result.FilesChecked, len(result.Diagnostics))
 
+	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
+		return 2
+	}
 	if len(result.Diagnostics) > 0 {
 		return 1
 	}
@@ -614,7 +620,13 @@ func fixDiscovered(
 			return code
 		}
 	}
-	logger.Printf("checked %d files, %d issues found", len(files), len(fixResult.Diagnostics))
+	printRunStats(format, quiet, runStats{
+		Checked:  fixResult.FilesChecked,
+		Fixed:    len(fixResult.Modified),
+		Failures: fixResult.Failures,
+		Unfixed:  len(fixResult.Diagnostics),
+	})
+	logger.Printf("checked %d files, %d issues found", fixResult.FilesChecked, len(fixResult.Diagnostics))
 
 	if len(fixResult.Errors) > 0 && len(fixResult.Diagnostics) == 0 {
 		return 2
