@@ -27,21 +27,33 @@ AST instead of scanning raw lines.
 ```go
 type ProcessingInstruction struct {
     ast.BaseBlock
-    ClosureLine textm.Segment
+    ClosureLine text.Segment
     Name        string // directive name from <?name
 }
 ```
 
 - `KindProcessingInstruction = ast.NewNodeKind("ProcessingInstruction")`
 - `IsRaw()` returns true, `HasClosure()` mirrors `ast.HTMLBlock`
-- `Name` extracted during parsing (e.g. `"catalog"`, `"/include"`,
+- Import `"github.com/yuin/goldmark/text"` (no alias — matches
+  existing usage in `file.go`)
+- `Name` is the substring between `<?` and the first whitespace
+  or `?>`, whichever comes first (e.g. `"catalog"`, `"/include"`,
   `"allow-empty-section"`)
 
 ### 2. New block parser: `internal/lint/pi_parser.go`
 
 - Trigger: `[]byte{'<'}`
-- Open: match `^[ ]{0,3}<?`, extract `Name`, create node
-- Continue: close when line contains `?>` (set `ClosureLine`)
+- `Open`: match `^[ ]{0,3}<?`, extract `Name`, create node.
+  Return `nil` immediately for lines starting with `<` but not
+  `<?` so HTMLBlockParser handles them (both parsers share the
+  `<` trigger byte)
+- `Continue`: close when the trimmed line equals `?>` (set
+  `ClosureLine`). Use exact match after `strings.TrimSpace`,
+  consistent with current `trimmed == terminator` behavior in
+  `processMarkerLine`
+- `Close`: no-op
+- `CanInterruptParagraph`: true (matches HTML block behavior)
+- `CanAcceptIndentedLine`: false
 - Priority **850** (before `HTMLBlockParser` at 900)
 - Code block parsers at 500-700 claim their lines first, so PI
   markers inside code blocks are naturally excluded
@@ -71,6 +83,15 @@ Walk `f.AST` for `*lint.ProcessingInstruction` nodes:
 - `pi.Name == "/"+directiveName` -> end marker; close pair
 - Nested/orphaned/unclosed markers -> diagnostics
 
+Derive `MarkerPair` line numbers from AST nodes:
+
+- `StartLine`: `f.LineOfOffset(startPI.Lines().At(0).Start)`
+- `ContentFrom`: line after the start PI node's last line
+  (after `ClosureLine` for multi-line PIs, after the single
+  line for single-line PIs)
+- `EndLine`: `f.LineOfOffset(endPI.Lines().At(0).Start)`
+- `ContentTo`: `EndLine - 1`
+
 Delete (no longer needed):
 
 - `CollectIgnoredLines`, `addHTMLBlockLines`, `addBlockLineRange`
@@ -83,8 +104,21 @@ Delete (no longer needed):
 File: [`gensection/engine.go`](../internal/archetype/gensection/engine.go)
 
 Remove `startPrefix`, `endMarker`, `terminator` fields from
-`Engine`. `NewEngine` just stores the directive. `Check`/`Fix`
-call `FindMarkerPairs(f, e.directive.Name(), ...)`.
+`Engine`. `NewEngine` just stores the directive.
+
+Updated call sites:
+
+```go
+func (e *Engine) Check(f *lint.File) []lint.Diagnostic {
+    pairs, diags := FindMarkerPairs(
+        f, e.directive.Name(),
+        e.directive.RuleID(), e.directive.RuleName(),
+    )
+    // ...
+}
+```
+
+`Fix` follows the same pattern.
 
 ### 6. Update rule
 
@@ -99,12 +133,29 @@ File: [`emptysectionbody/rule.go`](../internal/rules/emptysectionbody/rule.go)
 
 ### 7. Tests
 
-New `internal/lint/pi_test.go`:
+New `internal/lint/pi_test.go` — parser unit tests:
+
+Basic parsing:
 
 - `<?foo?>` -> `*ProcessingInstruction`, `Name == "foo"`
 - `<?foo\nbar\n?>` -> `Name == "foo"`, `HasClosure() == true`
+- `<?foo\n?>` -> multi-line with empty YAML body
 - `<?/include?>` -> `Name == "/include"`
 - `<!-- comment -->`, `<div>` -> still `*ast.HTMLBlock`
+
+Edge cases:
+
+- `<?foo?>` inside a fenced code block -> no PI node produced
+- `    <?foo?>` (4-space indent) -> not a PI (indented code
+  block takes precedence)
+- ` <?foo?>`, `  <?foo?>`, `   <?foo?>` (1-3 spaces) -> PI
+  node produced
+- `<?foo\nbar` (unterminated, no `?>` before EOF) -> parser
+  must handle gracefully (no panic; node may be unclosed)
+- Multiple PIs in one document -> each produces its own node
+- PI after a paragraph line -> interrupts paragraph
+  (`CanInterruptParagraph` is true)
+- `<?foo\n   \n?>` -> whitespace-only YAML body
 
 Update [`engine_test.go`](../internal/archetype/gensection/engine_test.go):
 
