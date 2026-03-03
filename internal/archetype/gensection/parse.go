@@ -311,6 +311,15 @@ func addBlockLineRange(f *lint.File, n ast.Node, set map[int]bool) {
 	}
 }
 
+// IsDirectiveBlock reports whether text is entirely a processing
+// instruction used as an mdsmith directive marker (e.g.
+// <?catalog ...?> or <?/include?>). Only matches when the
+// trimmed text starts with "<?" and ends with "?>".
+func IsDirectiveBlock(text string) bool {
+	t := strings.TrimSpace(text)
+	return len(t) >= 4 && strings.HasPrefix(t, "<?") && strings.HasSuffix(t, "?>")
+}
+
 // IsSingleLineDirective reports whether line is a single-line
 // processing instruction with the given name, allowing optional
 // whitespace before the closing "?>", e.g. "<?name?>" or "<?name ?>".
