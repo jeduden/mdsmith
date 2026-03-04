@@ -38,7 +38,13 @@ type ProcessingInstruction struct {
   existing usage in `file.go`)
 - `Name` is the substring between `<?` and the first whitespace
   or `?>`, whichever comes first (e.g. `"catalog"`, `"/include"`,
-  `"allow-empty-section"`)
+  `"allow-empty-section"`). Must be non-empty; empty names are
+  rejected by the parser (`Open` returns `nil`)
+- `Lines()` contains the opening line (`<?name...`) and any
+  YAML body lines. `ClosureLine` contains only the `?>`
+  terminator and is NOT included in `Lines()`. For single-line
+  PIs (e.g. `<?foo?>`), `Lines()` has one entry and
+  `ClosureLine` points to the same segment
 
 ### 2. New block parser: `internal/lint/pi_parser.go`
 
@@ -46,11 +52,23 @@ type ProcessingInstruction struct {
 - `Open`: match `^[ ]{0,3}<?`, extract `Name`, create node.
   Return `nil` immediately for lines starting with `<` but not
   `<?` so HTMLBlockParser handles them (both parsers share the
-  `<` trigger byte)
+  `<` trigger byte).
+  Also return `nil` when `parent` is not the document root
+  (`parent.Kind() != ast.KindDocument`), so PIs inside
+  blockquotes, lists, and other container blocks are rejected.
+  Return `nil` when the extracted name is empty (e.g. `<??>`,
+  `<? ?>`).
+  For single-line PIs where the line ends with `?>` (e.g.
+  `<?foo?>`): set `ClosureLine` to the same segment, return
+  `(node, parser.Close | parser.NoChildren)` — `Continue` is
+  never called
 - `Continue`: close when the trimmed line equals `?>` (set
   `ClosureLine`). Use exact match after `strings.TrimSpace`,
   consistent with current `trimmed == terminator` behavior in
-  `processMarkerLine`
+  `processMarkerLine`.
+  If EOF is reached without `?>`, goldmark calls `Close`
+  automatically; the node is created with
+  `HasClosure() == false`
 - `Close`: no-op
 - `CanInterruptParagraph`: true (matches HTML block behavior)
 - `CanAcceptIndentedLine`: false
@@ -60,9 +78,25 @@ type ProcessingInstruction struct {
 
 ### 3. Register parser: `internal/lint/file.go`
 
-Replace `goldmark.DefaultParser()` with custom parser that appends
-`NewPIBlockParser()` at priority 850 to
-`parser.DefaultBlockParsers()`.
+Replace `goldmark.DefaultParser()` with a custom parser that adds
+`NewPIBlockParser()` at priority 850. Preserve all default
+parsers and transformers:
+
+```go
+p := parser.NewParser(
+    parser.WithBlockParsers(
+        append(parser.DefaultBlockParsers(),
+            util.Prioritized(NewPIBlockParser(), 850),
+        )...,
+    ),
+    parser.WithInlineParsers(
+        parser.DefaultInlineParsers()...,
+    ),
+    parser.WithParagraphTransformers(
+        parser.DefaultParagraphTransformers()...,
+    ),
+)
+```
 
 ### 4. Rewrite marker search
 
@@ -76,12 +110,16 @@ func FindMarkerPairs(
 ) ([]MarkerPair, []lint.Diagnostic)
 ```
 
-Walk `f.AST` for `*lint.ProcessingInstruction` nodes:
+Walk only top-level children of `f.AST` (skip nodes nested
+inside blockquotes or lists). Match
+`*lint.ProcessingInstruction` nodes:
 
 - `pi.Name == directiveName` -> start marker; extract YAML body
   from `pi.Lines()` (lines 2..N, skipping `<?name` first line)
 - `pi.Name == "/"+directiveName` -> end marker; close pair
 - Nested/orphaned/unclosed markers -> diagnostics
+- Unterminated PI (`HasClosure() == false`) used as start marker
+  -> emit "unclosed marker" diagnostic
 
 Derive `MarkerPair` line numbers from AST nodes:
 
@@ -98,6 +136,8 @@ Delete (no longer needed):
 - `processMarkerLine`, `processLineInsidePair`,
   `processLineOutsidePair`
 - `IsDirectiveBlock`, `IsSingleLineDirective`
+- `MarkerPair.FirstLine` (set but never read by any consumer;
+  `ParseDirective` uses `YAMLBody`, not `FirstLine`)
 
 ### 5. Simplify engine
 
@@ -150,12 +190,32 @@ Edge cases:
   block takes precedence)
 - ` <?foo?>`, `  <?foo?>`, `   <?foo?>` (1-3 spaces) -> PI
   node produced
-- `<?foo\nbar` (unterminated, no `?>` before EOF) -> parser
-  must handle gracefully (no panic; node may be unclosed)
+- `<?foo\nbar` (unterminated, no `?>` before EOF) -> node
+  created with `HasClosure() == false`, no panic
 - Multiple PIs in one document -> each produces its own node
 - PI after a paragraph line -> interrupts paragraph
   (`CanInterruptParagraph` is true)
 - `<?foo\n   \n?>` -> whitespace-only YAML body
+- `> <?foo?>` inside a blockquote -> no PI node (container
+  blocks strip the prefix before the block parser sees the
+  line; the `Open` method must only accept lines whose parent
+  is the document root so that directives nested inside
+  blockquotes or lists are not treated as PIs)
+- `<??>`, `<? ?>` (empty name) -> no PI node, falls through
+  to HTMLBlockParser
+- `<?foo?>\n<?bar?>` (consecutive PIs without blank line) ->
+  two separate PI nodes
+- `<?foo?>` single-line closes in `Open` (never calls
+  `Continue`); verify `HasClosure() == true`
+
+`FindMarkerPairs` integration tests
+(`gensection/parse_test.go`):
+
+- Full start/end pair -> correct `StartLine`, `ContentFrom`,
+  `ContentTo`, `EndLine`, `YAMLBody` values
+- YAML body extracted from `Lines()[1:]`, excluding opening
+  line and `ClosureLine`
+- Unterminated start PI -> "unclosed marker" diagnostic
 
 Update [`engine_test.go`](../internal/archetype/gensection/engine_test.go):
 
