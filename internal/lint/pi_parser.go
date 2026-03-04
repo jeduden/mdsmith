@@ -57,8 +57,8 @@ func (p *piBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 	node.Lines().Append(seg)
 
 	// Mark single-line PIs (e.g. <?foo?> or <?foo?> trailing) as
-	// closed. The actual block close happens in Continue; this just
-	// records the closure.
+	// closed. Continue will see HasClosure and return parser.Close
+	// on the next call.
 	trimmedRight := bytes.TrimRight(trimmed, " \t\r\n")
 	if bytes.Contains(trimmedRight, piClose) {
 		node.ClosureLine = seg

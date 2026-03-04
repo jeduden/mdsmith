@@ -34,12 +34,18 @@ The opening processing instruction has two parts:
    `header`, `row`, `footer`, `empty`).
 
 The closing `?>` is recognized when a line, after trimming
-leading and trailing whitespace, equals `?>`. The YAML body
-may contain any valid YAML except that such a `?>` line
-terminates the processing instruction. If `?>` appears on
-its own line within a YAML value, the processing instruction
-terminates prematurely, likely causing an invalid YAML
-diagnostic. Avoid `?>` inside YAML values.
+leading and trailing whitespace, equals `?>`. Lines indented
+4 or more spaces are not recognized as the closing `?>` —
+the parser does not accept indented lines, so goldmark
+closes the PI block and parses the indented line as a code
+block instead. Similarly, processing instructions inside
+fenced code blocks are not parsed as directives.
+
+The YAML body may contain any valid YAML except that a bare
+`?>` line terminates the processing instruction. If `?>`
+appears on its own line within a YAML value, the processing
+instruction terminates prematurely, likely causing an
+invalid YAML diagnostic. Avoid `?>` inside YAML values.
 
 If `?>` appears on the same line as the marker name (e.g.,
 `<?catalog?>`), the YAML body is empty. This is valid

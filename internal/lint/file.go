@@ -7,7 +7,6 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
 )
 
 // File holds a parsed Markdown document and its source.
@@ -27,7 +26,7 @@ func NewFile(path string, source []byte) (*File, error) {
 	p := parser.NewParser(
 		parser.WithBlockParsers(
 			append(parser.DefaultBlockParsers(),
-				util.Prioritized(NewPIBlockParser(), 850),
+				PIBlockParserPrioritized(),
 			)...,
 		),
 		parser.WithInlineParsers(
