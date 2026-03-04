@@ -213,7 +213,8 @@ func regenDirectiveNames() []string {
 }
 
 // stripSectionConflicts removes git conflict markers from lines
-// that fall inside regenerable sections (catalog, include).
+// that fall inside regenerable sections. Section names are
+// discovered dynamically from registered gensection.Directive rules.
 // Conflict markers outside these sections are left unchanged.
 //
 // The ======= separator is only stripped when it appears between
