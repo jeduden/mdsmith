@@ -37,6 +37,8 @@ Ignored content includes:
 
 - blank lines
 - HTML comments
+- mdsmith directive processing instructions (e.g. `<?catalog?>`,
+  `<?allow-empty-section?>`)
 - nested headings by themselves
 
 Use an explicit allow marker for intentional empty sections:

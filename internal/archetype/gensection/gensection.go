@@ -18,8 +18,8 @@ type ColumnConfig struct {
 type Directive interface {
 	// Name returns the directive/rule name used in markers
 	// (e.g., "catalog"). Markers are derived as:
-	//   start: "<!-- " + Name()
-	//   end:   "<!-- /" + Name() + " -->"
+	//   start: "<?" + Name()
+	//   end:   "<?/" + Name() + "?>"
 	Name() string
 
 	// RuleID returns the lint rule ID (e.g., "MDS019").
