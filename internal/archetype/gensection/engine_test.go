@@ -416,27 +416,3 @@ func TestParseColumnConfig_DefaultWrap(t *testing.T) {
 		t.Errorf("expected default wrap 'truncate', got %q", cols["desc"].Wrap)
 	}
 }
-
-func TestIsSingleLineDirective(t *testing.T) {
-	tests := []struct {
-		line string
-		name string
-		want bool
-	}{
-		{"<?allow-empty-section?>", "allow-empty-section", true},
-		{"  <?allow-empty-section?>  ", "allow-empty-section", true},
-		{"<?allow-empty-section ?>", "allow-empty-section", true},
-		{"<?allow-empty-section  ?>", "allow-empty-section", true},
-		{"<?other?>", "allow-empty-section", false},
-		{"<?allow-empty-section", "allow-empty-section", false},
-		{"<!-- allow-empty-section -->", "allow-empty-section", false},
-		{"", "allow-empty-section", false},
-	}
-	for _, tt := range tests {
-		got := IsSingleLineDirective(tt.line, tt.name)
-		if got != tt.want {
-			t.Errorf("IsSingleLineDirective(%q, %q) = %v, want %v",
-				tt.line, tt.name, got, tt.want)
-		}
-	}
-}

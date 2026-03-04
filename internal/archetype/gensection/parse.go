@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/yuin/goldmark/ast"
 	"gopkg.in/yaml.v3"
 )
 
@@ -15,7 +14,6 @@ type MarkerPair struct {
 	EndLine     int // 1-based line of end marker
 	ContentFrom int // 1-based line of the first content line
 	ContentTo   int // 1-based line of the last content line
-	FirstLine   string
 	YAMLBody    string
 }
 
@@ -24,14 +22,6 @@ type ParsedDirective struct {
 	Name    string
 	Params  map[string]string
 	Columns map[string]ColumnConfig
-}
-
-// markerScanState tracks state while scanning for marker pairs.
-type markerScanState struct {
-	pairs      []MarkerPair
-	diags      []lint.Diagnostic
-	current    *MarkerPair
-	inYAMLBody bool
 }
 
 // MakeDiag creates an error diagnostic at the given line using the
@@ -48,104 +38,106 @@ func MakeDiag(ruleID, ruleName, filePath string, line int, message string) lint.
 	}
 }
 
-// FindMarkerPairs scans the file for start/end marker pairs, skipping
-// markers inside code blocks or HTML blocks. The startPrefix and
-// endMarker are derived from the directive name.
+// FindMarkerPairs walks top-level AST children for ProcessingInstruction
+// nodes matching the given directive name, pairing start/end markers.
 func FindMarkerPairs(
-	f *lint.File,
-	startPrefix, endMarker, terminator, ruleID, ruleName string,
+	f *lint.File, directiveName, ruleID, ruleName string,
 ) ([]MarkerPair, []lint.Diagnostic) {
-	ignored := CollectIgnoredLines(f, startPrefix, endMarker)
-	state := &markerScanState{}
+	var pairs []MarkerPair
+	var diags []lint.Diagnostic
+	var current *MarkerPair
 
-	for i, line := range f.Lines {
-		lineNum := i + 1
-		if ignored[lineNum] {
+	endName := "/" + directiveName
+
+	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
+		pi, ok := n.(*lint.ProcessingInstruction)
+		if !ok {
 			continue
 		}
-		trimmed := strings.TrimSpace(string(line))
-		processMarkerLine(
-			f, state, lineNum, string(line), trimmed,
-			startPrefix, endMarker, terminator, ruleID, ruleName,
-		)
+
+		switch pi.Name {
+		case directiveName:
+			current, diags = handleStartMarker(f, pi, current, diags, ruleID, ruleName)
+		case endName:
+			current, pairs, diags = handleEndMarker(f, pi, current, pairs, diags, ruleID, ruleName)
+		}
 	}
 
-	if state.current != nil {
-		state.diags = append(state.diags,
-			MakeDiag(ruleID, ruleName, f.Path, state.current.StartLine,
+	if current != nil {
+		diags = append(diags,
+			MakeDiag(ruleID, ruleName, f.Path, current.StartLine,
 				"generated section has no closing marker"))
 	}
 
-	return state.pairs, state.diags
+	return pairs, diags
 }
 
-// processMarkerLine processes a single line during marker pair scanning.
-func processMarkerLine(
-	f *lint.File, s *markerScanState, lineNum int, line, trimmed string,
-	startPrefix, endMarker, terminator, ruleID, ruleName string,
-) {
-	if s.current != nil && s.inYAMLBody {
-		if trimmed == terminator {
-			s.current.ContentFrom = lineNum + 1
-			s.inYAMLBody = false
-			return
-		}
-		s.current.YAMLBody += line + "\n"
-		return
-	}
-
-	if s.current != nil {
-		processLineInsidePair(f, s, lineNum, trimmed, startPrefix, endMarker, terminator, ruleID, ruleName)
-		return
-	}
-
-	processLineOutsidePair(f, s, lineNum, trimmed, startPrefix, endMarker, terminator, ruleID, ruleName)
-}
-
-// processLineInsidePair handles a line that is inside an open marker pair
-// (after the YAML body has been closed).
-func processLineInsidePair(
-	f *lint.File, s *markerScanState, lineNum int, trimmed string,
-	startPrefix, endMarker, terminator, ruleID, ruleName string,
-) {
-	if strings.HasPrefix(trimmed, startPrefix) {
-		s.diags = append(s.diags,
-			MakeDiag(ruleID, ruleName, f.Path, lineNum,
+func handleStartMarker(
+	f *lint.File, pi *lint.ProcessingInstruction,
+	current *MarkerPair, diags []lint.Diagnostic,
+	ruleID, ruleName string,
+) (*MarkerPair, []lint.Diagnostic) {
+	piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+	if current != nil {
+		return current, append(diags,
+			MakeDiag(ruleID, ruleName, f.Path, piLine,
 				"nested generated section markers are not allowed"))
-		return
 	}
-	if trimmed == endMarker {
-		s.current.EndLine = lineNum
-		s.current.ContentTo = lineNum - 1
-		s.pairs = append(s.pairs, *s.current)
-		s.current = nil
+	if !pi.HasClosure() {
+		return nil, append(diags,
+			MakeDiag(ruleID, ruleName, f.Path, piLine,
+				"generated section has no closing marker"))
 	}
+
+	mp := MarkerPair{
+		StartLine:   piLine,
+		YAMLBody:    extractYAMLBody(pi, f.Source),
+		ContentFrom: piClosureEndLine(pi, f) + 1,
+	}
+	return &mp, diags
 }
 
-// processLineOutsidePair handles a line that is not inside any marker pair.
-func processLineOutsidePair(
-	f *lint.File, s *markerScanState, lineNum int, trimmed string,
-	startPrefix, endMarker, terminator, ruleID, ruleName string,
-) {
-	if trimmed == endMarker {
-		s.diags = append(s.diags,
-			MakeDiag(ruleID, ruleName, f.Path, lineNum,
+func handleEndMarker(
+	f *lint.File, pi *lint.ProcessingInstruction,
+	current *MarkerPair, pairs []MarkerPair, diags []lint.Diagnostic,
+	ruleID, ruleName string,
+) (*MarkerPair, []MarkerPair, []lint.Diagnostic) {
+	piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+	if current == nil {
+		return nil, pairs, append(diags,
+			MakeDiag(ruleID, ruleName, f.Path, piLine,
 				"unexpected generated section end marker"))
-		return
 	}
+	current.EndLine = piLine
+	current.ContentTo = piLine - 1
+	return nil, append(pairs, *current), diags
+}
 
-	if strings.HasPrefix(trimmed, startPrefix) {
-		mp := MarkerPair{StartLine: lineNum, FirstLine: trimmed}
-		rest := trimmed[len(startPrefix):]
-		if strings.HasSuffix(rest, terminator) {
-			rest = strings.TrimSuffix(rest, terminator)
-			mp.FirstLine = startPrefix + rest
-			mp.ContentFrom = lineNum + 1
-		} else {
-			s.inYAMLBody = true
-		}
-		s.current = &mp
+// extractYAMLBody returns the YAML content from a PI's Lines(),
+// skipping the first line (the <?name line).
+func extractYAMLBody(pi *lint.ProcessingInstruction, source []byte) string {
+	lines := pi.Lines()
+	if lines.Len() <= 1 {
+		return ""
 	}
+	var b strings.Builder
+	for i := 1; i < lines.Len(); i++ {
+		seg := lines.At(i)
+		b.Write(seg.Value(source))
+	}
+	return b.String()
+}
+
+// piClosureEndLine returns the 1-based line number of the PI's closure
+// (or last body line for single-line PIs).
+func piClosureEndLine(pi *lint.ProcessingInstruction, f *lint.File) int {
+	if pi.HasClosure() && pi.ClosureLine.Start != pi.Lines().At(0).Start {
+		// Multi-line PI: closure is on a separate line.
+		return f.LineOfOffset(pi.ClosureLine.Start)
+	}
+	// Single-line PI: closure is the same line as opening.
+	lastSeg := pi.Lines().At(pi.Lines().Len() - 1)
+	return f.LineOfOffset(lastSeg.Start)
 }
 
 // ParseDirective extracts the YAML parameters from a marker pair.
@@ -260,109 +252,4 @@ func ParseColumnConfig(raw map[string]any) map[string]ColumnConfig {
 	}
 
 	return result
-}
-
-// CollectIgnoredLines returns a set of 1-based line numbers inside fenced
-// code blocks or HTML blocks, where markers should be ignored.
-func CollectIgnoredLines(f *lint.File, startPrefix, endMarker string) map[int]bool {
-	lines := map[int]bool{}
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		switch cb := n.(type) {
-		case *ast.FencedCodeBlock:
-			addBlockLineRange(f, cb, lines)
-		case *ast.CodeBlock:
-			addBlockLineRange(f, cb, lines)
-		case *ast.HTMLBlock:
-			addHTMLBlockLines(f, cb, lines, startPrefix, endMarker)
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	return lines
-}
-
-// addBlockLineRange marks all lines spanned by a code block node.
-func addBlockLineRange(f *lint.File, n ast.Node, set map[int]bool) {
-	if n.Lines().Len() == 0 {
-		return
-	}
-
-	firstSeg := n.Lines().At(0)
-	lastSeg := n.Lines().At(n.Lines().Len() - 1)
-
-	startLine := f.LineOfOffset(firstSeg.Start)
-	endLine := f.LineOfOffset(lastSeg.Start)
-
-	if _, ok := n.(*ast.FencedCodeBlock); ok {
-		if startLine > 1 {
-			startLine--
-		}
-		endLine++
-	}
-
-	for ln := startLine; ln <= endLine && ln <= len(f.Lines); ln++ {
-		set[ln] = true
-	}
-}
-
-// IsDirectiveBlock reports whether text is entirely a processing
-// instruction used as an mdsmith directive marker (e.g.
-// <?catalog ...?> or <?/include?>). Only matches when the
-// trimmed text starts with "<?" and ends with "?>".
-func IsDirectiveBlock(text string) bool {
-	t := strings.TrimSpace(text)
-	return len(t) >= 4 && strings.HasPrefix(t, "<?") && strings.HasSuffix(t, "?>")
-}
-
-// IsSingleLineDirective reports whether line is a single-line
-// processing instruction with the given name, allowing optional
-// whitespace before the closing "?>", e.g. "<?name?>" or "<?name ?>".
-func IsSingleLineDirective(line, name string) bool {
-	s := strings.TrimSpace(line)
-
-	prefix := "<?" + name
-	if !strings.HasPrefix(s, prefix) || !strings.HasSuffix(s, "?>") {
-		return false
-	}
-
-	// Allow only whitespace between the name and the closing "?>".
-	middle := s[len(prefix) : len(s)-2]
-	return strings.TrimSpace(middle) == ""
-}
-
-// addHTMLBlockLines marks all lines spanned by an HTML block.
-// HTML blocks that are mdsmith markers are not ignored, since
-// the markers are HTML processing instructions that goldmark parses as HTML blocks.
-func addHTMLBlockLines(f *lint.File, n *ast.HTMLBlock, set map[int]bool, startPrefix, endMarker string) {
-	if n.Lines().Len() == 0 {
-		return
-	}
-	firstSeg := n.Lines().At(0)
-
-	firstLineText := strings.TrimSpace(string(firstSeg.Value(f.Source)))
-	if strings.HasPrefix(firstLineText, startPrefix) || firstLineText == endMarker {
-		return
-	}
-
-	lastSeg := n.Lines().At(n.Lines().Len() - 1)
-
-	startLine := f.LineOfOffset(firstSeg.Start)
-	endLine := f.LineOfOffset(lastSeg.Start)
-
-	if n.HasClosure() {
-		closureLine := f.LineOfOffset(n.ClosureLine.Start)
-		if closureLine > endLine {
-			endLine = closureLine
-		}
-	}
-
-	for ln := startLine; ln <= endLine && ln <= len(f.Lines); ln++ {
-		set[ln] = true
-	}
 }

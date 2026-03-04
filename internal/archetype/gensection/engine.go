@@ -8,26 +8,18 @@ import (
 
 // Engine orchestrates Check/Fix using a registered Directive.
 type Engine struct {
-	directive   Directive
-	startPrefix string
-	endMarker   string
-	terminator  string
+	directive Directive
 }
 
 // NewEngine creates a new Engine for the given Directive.
 func NewEngine(d Directive) *Engine {
-	return &Engine{
-		directive:   d,
-		startPrefix: "<?" + d.Name(),
-		endMarker:   "<?" + "/" + d.Name() + "?>",
-		terminator:  "?>",
-	}
+	return &Engine{directive: d}
 }
 
 // Check scans the file for marker pairs and returns diagnostics.
 func (e *Engine) Check(f *lint.File) []lint.Diagnostic {
 	pairs, diags := FindMarkerPairs(
-		f, e.startPrefix, e.endMarker, e.terminator,
+		f, e.directive.Name(),
 		e.directive.RuleID(), e.directive.RuleName(),
 	)
 	for _, mp := range pairs {
@@ -40,7 +32,7 @@ func (e *Engine) Check(f *lint.File) []lint.Diagnostic {
 // Fix regenerates content for all marker pairs.
 func (e *Engine) Fix(f *lint.File) []byte {
 	pairs, _ := FindMarkerPairs(
-		f, e.startPrefix, e.endMarker, e.terminator,
+		f, e.directive.Name(),
 		e.directive.RuleID(), e.directive.RuleName(),
 	)
 

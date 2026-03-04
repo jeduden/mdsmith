@@ -47,5 +47,5 @@ footer: |
 | 64  | 🔲      | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                 |
 | 65  | 🔲      | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                     |
 | 66  | ✅      | [Switch Directives to HTML Processing Instructions](plan/66_processing-instructions.md)        |
-| 67  | 🔲      | [Custom ProcessingInstruction AST Node](plan/67_processing-instruction-ast-node.md)                    |
+| 67  | ✅      | [Custom ProcessingInstruction AST Node](plan/67_processing-instruction-ast-node.md)                    |
 <?/catalog?>

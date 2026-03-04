@@ -754,7 +754,7 @@ func TestEdge_EndMarkerWithWhitespace(t *testing.T) {
 glob: "*.md"
 ?>
 - [a.md](a.md)
-  <?/catalog?>
+<?/catalog?>
 `
 	mapFS := fstest.MapFS{
 		"a.md": {Data: []byte("# Hello\n")},

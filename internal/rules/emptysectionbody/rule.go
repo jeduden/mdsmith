@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -242,13 +241,13 @@ func topLevelNodes(root ast.Node) []ast.Node {
 	return nodes
 }
 
-func hasAllowMarker(nodes []ast.Node, source []byte, markerName string) bool {
+func hasAllowMarker(nodes []ast.Node, _ []byte, markerName string) bool {
 	for _, node := range nodes {
-		block, ok := node.(*ast.HTMLBlock)
+		pi, ok := node.(*lint.ProcessingInstruction)
 		if !ok {
 			continue
 		}
-		if gensection.IsSingleLineDirective(nodeLinesText(block, source), markerName) {
+		if pi.Name == markerName {
 			return true
 		}
 	}
@@ -260,14 +259,13 @@ func hasMeaningfulContent(nodes []ast.Node, source []byte) bool {
 		switch n := node.(type) {
 		case *ast.Heading:
 			continue
+		case *lint.ProcessingInstruction:
+			continue
 		case *ast.HTMLBlock:
 			raw := nodeLinesText(n, source)
 			raw = stripHTMLComments(raw)
 			trimmed := strings.TrimSpace(raw)
 			if trimmed == "" {
-				continue
-			}
-			if gensection.IsDirectiveBlock(raw) {
 				continue
 			}
 			return true
