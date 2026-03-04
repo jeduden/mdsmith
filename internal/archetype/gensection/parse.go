@@ -108,6 +108,23 @@ func handleEndMarker(
 			MakeDiag(ruleID, ruleName, f.Path, piLine,
 				"unexpected generated section end marker"))
 	}
+	if !pi.HasClosure() {
+		return current, pairs, append(diags,
+			MakeDiag(ruleID, ruleName, f.Path, piLine,
+				"generated section end marker is unterminated"))
+	}
+
+	// End marker must be the only content on its line.
+	seg := pi.Lines().At(0)
+	raw := string(seg.Value(f.Source))
+	trimmed := strings.TrimSpace(raw)
+	expected := fmt.Sprintf("<?%s?>", pi.Name)
+	if trimmed != expected {
+		return current, pairs, append(diags,
+			MakeDiag(ruleID, ruleName, f.Path, piLine,
+				"generated section end marker must be the only content on its line"))
+	}
+
 	current.EndLine = piLine
 	current.ContentTo = piLine - 1
 	return nil, append(pairs, *current), diags

@@ -6,14 +6,19 @@ import (
 	"github.com/yuin/goldmark/ast"
 )
 
-// findPINodes returns all ProcessingInstruction nodes in the AST.
+// findPINodes returns all ProcessingInstruction nodes in the AST,
+// searching the full tree recursively.
 func findPINodes(root ast.Node) []*ProcessingInstruction {
 	var nodes []*ProcessingInstruction
-	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
 		if pi, ok := n.(*ProcessingInstruction); ok {
 			nodes = append(nodes, pi)
 		}
-	}
+		return ast.WalkContinue, nil
+	})
 	return nodes
 }
 

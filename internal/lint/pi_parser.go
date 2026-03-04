@@ -1,7 +1,7 @@
 package lint
 
 import (
-	"strings"
+	"bytes"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -34,33 +34,33 @@ func (p *piBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 	}
 
 	// Allow up to 3 spaces of indentation.
-	trimmed := strings.TrimLeft(string(line), " ")
+	trimmed := bytes.TrimLeft(line, " ")
 	indent := len(line) - len(trimmed)
 	if indent > 3 {
 		return nil, parser.NoChildren
 	}
 
-	if !strings.HasPrefix(trimmed, "<?") {
+	if !bytes.HasPrefix(trimmed, piOpen) {
 		return nil, parser.NoChildren
 	}
 
 	// Extract the name.
 	rest := trimmed[2:]
-	name := extractPIName(rest)
-	if name == "" {
+	name := extractPINameBytes(rest)
+	if len(name) == 0 {
 		return nil, parser.NoChildren
 	}
 
 	node := &ProcessingInstruction{
-		Name: name,
+		Name: string(name),
 	}
 	node.Lines().Append(seg)
 
 	// Mark single-line PIs (e.g. <?foo?> or <?foo?> trailing) as
 	// closed. The actual block close happens in Continue; this just
 	// records the closure.
-	trimmedRight := strings.TrimRight(trimmed, " \t\r\n")
-	if strings.Contains(trimmedRight, "?>") {
+	trimmedRight := bytes.TrimRight(trimmed, " \t\r\n")
+	if bytes.Contains(trimmedRight, piClose) {
 		node.ClosureLine = seg
 	}
 
@@ -83,8 +83,7 @@ func (p *piBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.Co
 		return parser.Close
 	}
 
-	trimmed := strings.TrimSpace(string(line))
-	if trimmed == "?>" {
+	if bytes.Equal(bytes.TrimSpace(line), piClose) {
 		pi.ClosureLine = seg
 		reader.AdvanceToEOL()
 		return parser.Close
@@ -108,22 +107,24 @@ func (p *piBlockParser) CanAcceptIndentedLine() bool {
 	return false
 }
 
-// extractPIName returns the PI name from the text after "<?".
-// The name is the substring up to the first whitespace or "?>".
-func extractPIName(s string) string {
-	s = strings.TrimRight(s, "\r\n")
+var (
+	piOpen  = []byte("<?")
+	piClose = []byte("?>")
+)
 
-	var name strings.Builder
-	for i, ch := range s {
-		if ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' {
-			break
+// extractPINameBytes returns the PI name from the bytes after "<?".
+// The name is the substring up to the first whitespace or "?>".
+func extractPINameBytes(b []byte) []byte {
+	b = bytes.TrimRight(b, "\r\n")
+	for i, c := range b {
+		if c == ' ' || c == '\t' || c == '\r' || c == '\n' {
+			return b[:i]
 		}
-		if ch == '?' && i+1 < len(s) && s[i+1] == '>' {
-			break
+		if c == '?' && i+1 < len(b) && b[i+1] == '>' {
+			return b[:i]
 		}
-		name.WriteRune(ch)
 	}
-	return name.String()
+	return b
 }
 
 // PIBlockParserPrioritized returns the PI parser with its priority for registration.
