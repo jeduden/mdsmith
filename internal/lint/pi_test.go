@@ -270,3 +270,21 @@ func TestPI_SingleLineClosesInOpen(t *testing.T) {
 		t.Error("expected HasClosure() == true for single-line PI")
 	}
 }
+
+func TestPI_SingleLineWithTrailingContent(t *testing.T) {
+	src := "<?foo?> trailing\n"
+	f, err := NewFile("test.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pis := findPINodes(f.AST)
+	if len(pis) != 1 {
+		t.Fatalf("expected 1 PI, got %d", len(pis))
+	}
+	if !pis[0].HasClosure() {
+		t.Error("expected HasClosure() == true for PI with trailing content")
+	}
+	if pis[0].Name != "foo" {
+		t.Errorf("expected name %q, got %q", "foo", pis[0].Name)
+	}
+}
