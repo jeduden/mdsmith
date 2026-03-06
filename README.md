@@ -262,7 +262,7 @@ Requires Go 1.24+.
 
 - `go build ./...` — build all packages
 - `go test ./...` — run all tests
-- `go test -run TestName ./pkg/...` — run a specific test
+- `go test -run TestName ./...` — run a specific test
 - `go tool golangci-lint run` — run linter
 - `go vet ./...` — run go vet
 
