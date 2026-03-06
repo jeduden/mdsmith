@@ -11,6 +11,8 @@ Requires Go 1.24+.
 - `go build ./...` — build all packages
 - `go test ./...` — run all tests
 - `go test -run TestName ./...` — run a specific test
+- `go run ./cmd/mdsmith check .` — lint markdown
+- `go run ./cmd/mdsmith fix .` — auto-fix markdown
 - `go tool golangci-lint run` — run linter
 - `go vet ./...` — run go vet
 
