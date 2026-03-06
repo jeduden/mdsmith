@@ -85,8 +85,9 @@ to every file.
 
 ### Fixups
 
-18. Update internal links in moved files so they
-    resolve from their new locations.
+18. Update internal links in moved files and inbound
+    references from non-moved files so they resolve
+    from the new locations.
 19. Update `.mdsmith.yml` overrides and ignore entries
     that reference old paths (`background/`, `guides/`,
     `archetypes/`).
