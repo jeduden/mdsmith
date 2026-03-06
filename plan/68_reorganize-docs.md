@@ -16,10 +16,11 @@ agent configs in sync.
 CLAUDE.md mixes development workflow, CLI design spec,
 background material, and agent-config housekeeping.
 Moving each concern to its natural home makes CLAUDE.md
-shorter. The include directive (`<?include ... ?>`) lets
-AGENTS.md and `.github/copilot-instructions.md` pull
-content from shared files at fix-time, so a single edit
-propagates everywhere.
+shorter. The include directive (`<?include` ...
+`<?/include?>`) lets AGENTS.md and
+`.github/copilot-instructions.md` pull content from
+shared files at fix-time. A single edit then spreads
+to every file.
 
 ## Tasks
 
@@ -49,9 +50,10 @@ propagates everywhere.
 
 ### Update CLAUDE.md
 
-11. Add an `<?include ?>` directive in CLAUDE.md that
-    pulls DEVELOPMENT.md so agents still see the
-    development info inline.
+11. Add an include directive in CLAUDE.md that pulls
+    DEVELOPMENT.md so agents still see the development
+    info inline (`<?include` / `file: DEVELOPMENT.md` /
+    `?>` ... `<?/include?>`).
 12. Update "Merge Conflicts in PLAN.md and README.md"
     to reference processing-instruction markers
     (`<?name?>` / `<?/name?>`) instead of old
@@ -63,15 +65,17 @@ propagates everywhere.
 
 ### Update AGENTS.md
 
-15. Replace the body of AGENTS.md with an
-    `<?include ?>` directive that pulls relevant
-    sections so it stays in sync automatically.
+15. Replace the body of AGENTS.md with an include
+    directive (`<?include` / `file: ...` / `?>` ...
+    `<?/include?>`) that pulls relevant sections so
+    it stays in sync automatically.
 
 ### Update copilot-instructions.md
 
 16. Replace the body of
-    `.github/copilot-instructions.md` with an
-    `<?include ?>` directive (same approach).
+    `.github/copilot-instructions.md` with an include
+    directive (same `<?include` / `<?/include?>`
+    approach).
 
 ### Update README.md
 
@@ -93,7 +97,7 @@ propagates everywhere.
 ## Acceptance Criteria
 
 - [ ] CLAUDE.md includes DEVELOPMENT.md via an
-      `<?include ?>` directive
+      `<?include` / `<?/include?>` directive
 - [ ] CLAUDE.md no longer contains Build & Test,
       Project Layout, Development Workflow, Code Style,
       CLI Design, PR Workflow, or Config & Rules
@@ -103,16 +107,17 @@ propagates everywhere.
 - [ ] CLAUDE.md "Cross-Platform Agent Config" says
       CLAUDE.md is the primary source and mdsmith
       keeps others in sync
-- [ ] AGENTS.md uses an `<?include ?>` directive
+- [ ] AGENTS.md uses an `<?include` / `<?/include?>`
+      directive with a `file:` parameter
 - [ ] `.github/copilot-instructions.md` uses an
-      `<?include ?>` directive
+      `<?include` / `<?/include?>` directive
 - [ ] `background/` moved to `docs/background/`
 - [ ] `guides/` moved to `docs/guides/`
 - [ ] `archetypes/` moved to `docs/design/archetypes/`
 - [ ] CLI Design lives in `docs/design/cli.md`
 - [ ] DEVELOPMENT.md exists with the moved sections
 - [ ] README.md includes DEVELOPMENT.md via an
-      `<?include ?>` directive
+      `<?include` / `<?/include?>` directive
 - [ ] README.md links to `docs/design/`,
       `docs/guides/`, `docs/background/`, and `plan/`
 - [ ] All tests pass: `go test ./...`
