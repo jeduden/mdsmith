@@ -87,35 +87,10 @@ Use `--no-gitignore` to disable this behavior and lint all files.
 ### Examples
 
 ```bash
-# Lint a single file
-mdsmith check README.md
-
-# Lint all Markdown in a directory
-mdsmith check docs/
-
-# Auto-fix issues
-mdsmith fix README.md
-
-# Pipe from stdin
-cat README.md | mdsmith check
-
-# JSON output
-mdsmith check -f json docs/
-
-# Generate default config
-mdsmith init
-
-# List available metrics
-mdsmith metrics list
-
-# Top 10 largest Markdown files
+mdsmith check docs/            # lint a directory
+mdsmith fix README.md          # auto-fix in place
+mdsmith check -f json docs/    # JSON output
 mdsmith metrics rank --by bytes --top 10 .
-
-# Top 10 least concise Markdown files
-mdsmith metrics rank --by conciseness --top 10 .
-
-# Selected-column report
-mdsmith metrics rank --metrics bytes,lines,words --by bytes .
 ```
 
 ### Output
@@ -138,9 +113,11 @@ Pattern: `file:line:col rule message`
 
 ## ⚙️ Configuration
 
-Create a `.mdsmith.yml` in your project root.
-Without one, rules run with their built-in defaults. Experimental rules may be
-disabled by default.
+Create a `.mdsmith.yml` in your project root, or run
+`mdsmith init` to generate one with every rule and its
+default settings.
+Without a config file, rules run with their built-in
+defaults.
 
 ```yaml
 rules:
@@ -208,44 +185,42 @@ empty: |
 glob: "internal/rules/MDS*/README.md"
 sort: id
 header: |
-  | Rule | Name | Status | Description |
-  |------|------|--------|-------------|
-row: >-
-  | [{{.id}}]({{.filename}}) | `{{.name}}` | {{.status}} |
-  {{.description}} |
+  | Rule | Status | Description |
+  |------|--------|-------------|
+row: "| [{{.id}} {{.name}}]({{.filename}}) | {{.status}} | {{.description}} |"
 ?>
-| Rule   | Name                               | Status    | Description                                                                             |
-|--------|------------------------------------|-----------|-----------------------------------------------------------------------------------------|
-| [MDS001](internal/rules/MDS001-line-length/README.md) | `line-length`                        | ready     | Line exceeds maximum length.                                                            |
-| [MDS002](internal/rules/MDS002-heading-style/README.md) | `heading-style`                      | ready     | Heading style must be consistent.                                                       |
-| [MDS003](internal/rules/MDS003-heading-increment/README.md) | `heading-increment`                  | ready     | Heading levels should increment by one. No jumping from `#` to `###`.                       |
-| [MDS004](internal/rules/MDS004-first-line-heading/README.md) | `first-line-heading`                 | ready     | First line of the file should be a heading.                                             |
-| [MDS005](internal/rules/MDS005-no-duplicate-headings/README.md) | `no-duplicate-headings`              | ready     | No two headings should have the same text.                                              |
-| [MDS006](internal/rules/MDS006-no-trailing-spaces/README.md) | `no-trailing-spaces`                 | ready     | No trailing whitespace at the end of lines.                                             |
-| [MDS007](internal/rules/MDS007-no-hard-tabs/README.md) | `no-hard-tabs`                       | ready     | No tab characters. Use spaces instead.                                                  |
-| [MDS008](internal/rules/MDS008-no-multiple-blanks/README.md) | `no-multiple-blanks`                 | ready     | No more than one consecutive blank line.                                                |
-| [MDS009](internal/rules/MDS009-single-trailing-newline/README.md) | `single-trailing-newline`            | ready     | File must end with exactly one newline character.                                       |
-| [MDS010](internal/rules/MDS010-fenced-code-style/README.md) | `fenced-code-style`                  | ready     | Fenced code blocks must use a consistent delimiter.                                     |
-| [MDS011](internal/rules/MDS011-fenced-code-language/README.md) | `fenced-code-language`               | ready     | Fenced code blocks must specify a language.                                             |
-| [MDS012](internal/rules/MDS012-no-bare-urls/README.md) | `no-bare-urls`                       | ready     | URLs must be wrapped in angle brackets or as a link, not left bare.                     |
-| [MDS013](internal/rules/MDS013-blank-line-around-headings/README.md) | `blank-line-around-headings`         | ready     | Headings must have a blank line before and after.                                       |
-| [MDS014](internal/rules/MDS014-blank-line-around-lists/README.md) | `blank-line-around-lists`            | ready     | Lists must have a blank line before and after.                                          |
-| [MDS015](internal/rules/MDS015-blank-line-around-fenced-code/README.md) | `blank-line-around-fenced-code`      | ready     | Fenced code blocks must have a blank line before and after.                             |
-| [MDS016](internal/rules/MDS016-list-indent/README.md) | `list-indent`                        | ready     | List items must use consistent indentation.                                             |
-| [MDS017](internal/rules/MDS017-no-trailing-punctuation-in-heading/README.md) | `no-trailing-punctuation-in-heading` | ready     | Headings should not end with punctuation.                                               |
-| [MDS018](internal/rules/MDS018-no-emphasis-as-heading/README.md) | `no-emphasis-as-heading`             | ready     | Don't use bold or emphasis on a standalone line as a heading substitute.                |
-| [MDS019](internal/rules/MDS019-catalog/README.md) | `catalog`                            | ready     | Catalog content must reflect selected front matter fields from files matching its glob. |
-| [MDS020](internal/rules/MDS020-required-structure/README.md) | `required-structure`                 | ready     | Document must match the heading structure defined by its template.                      |
-| [MDS021](internal/rules/MDS021-include/README.md) | `include`                            | ready     | Include section content must match the referenced file.                                 |
-| [MDS022](internal/rules/MDS022-max-file-length/README.md) | `max-file-length`                    | ready     | File must not exceed maximum number of lines.                                           |
-| [MDS023](internal/rules/MDS023-paragraph-readability/README.md) | `paragraph-readability`              | ready     | Paragraph readability grade must not exceed a threshold.                                |
-| [MDS024](internal/rules/MDS024-paragraph-structure/README.md) | `paragraph-structure`                | ready     | Paragraphs must not exceed sentence and word limits.                                    |
-| [MDS025](internal/rules/MDS025-table-format/README.md) | `table-format`                       | ready     | Tables must have consistent column widths and padding.                                  |
-| [MDS026](internal/rules/MDS026-table-readability/README.md) | `table-readability`                  | ready     | Tables must stay within readability complexity limits.                                  |
-| [MDS027](internal/rules/MDS027-cross-file-reference-integrity/README.md) | `cross-file-reference-integrity`     | ready     | Links to local files and heading anchors must resolve.                                  |
-| [MDS028](internal/rules/MDS028-token-budget/README.md) | `token-budget`                       | ready     | File must not exceed a token budget.                                                    |
-| [MDS029](internal/rules/MDS029-conciseness-scoring/README.md) | `conciseness-scoring`                | not-ready | Paragraph conciseness score must not fall below a threshold.                            |
-| [MDS030](internal/rules/MDS030-empty-section-body/README.md) | `empty-section-body`                 | ready     | Section headings must include meaningful body content.                                  |
+| Rule                                      | Status    | Description                                                                             |
+|-------------------------------------------|-----------|-----------------------------------------------------------------------------------------|
+| [MDS001 line-length](internal/rules/MDS001-line-length/README.md)                        | ready     | Line exceeds maximum length.                                                            |
+| [MDS002 heading-style](internal/rules/MDS002-heading-style/README.md)                      | ready     | Heading style must be consistent.                                                       |
+| [MDS003 heading-increment](internal/rules/MDS003-heading-increment/README.md)                  | ready     | Heading levels should increment by one. No jumping from `#` to `###`.                       |
+| [MDS004 first-line-heading](internal/rules/MDS004-first-line-heading/README.md)                 | ready     | First line of the file should be a heading.                                             |
+| [MDS005 no-duplicate-headings](internal/rules/MDS005-no-duplicate-headings/README.md)              | ready     | No two headings should have the same text.                                              |
+| [MDS006 no-trailing-spaces](internal/rules/MDS006-no-trailing-spaces/README.md)                 | ready     | No trailing whitespace at the end of lines.                                             |
+| [MDS007 no-hard-tabs](internal/rules/MDS007-no-hard-tabs/README.md)                       | ready     | No tab characters. Use spaces instead.                                                  |
+| [MDS008 no-multiple-blanks](internal/rules/MDS008-no-multiple-blanks/README.md)                 | ready     | No more than one consecutive blank line.                                                |
+| [MDS009 single-trailing-newline](internal/rules/MDS009-single-trailing-newline/README.md)            | ready     | File must end with exactly one newline character.                                       |
+| [MDS010 fenced-code-style](internal/rules/MDS010-fenced-code-style/README.md)                  | ready     | Fenced code blocks must use a consistent delimiter.                                     |
+| [MDS011 fenced-code-language](internal/rules/MDS011-fenced-code-language/README.md)               | ready     | Fenced code blocks must specify a language.                                             |
+| [MDS012 no-bare-urls](internal/rules/MDS012-no-bare-urls/README.md)                       | ready     | URLs must be wrapped in angle brackets or as a link, not left bare.                     |
+| [MDS013 blank-line-around-headings](internal/rules/MDS013-blank-line-around-headings/README.md)         | ready     | Headings must have a blank line before and after.                                       |
+| [MDS014 blank-line-around-lists](internal/rules/MDS014-blank-line-around-lists/README.md)            | ready     | Lists must have a blank line before and after.                                          |
+| [MDS015 blank-line-around-fenced-code](internal/rules/MDS015-blank-line-around-fenced-code/README.md)      | ready     | Fenced code blocks must have a blank line before and after.                             |
+| [MDS016 list-indent](internal/rules/MDS016-list-indent/README.md)                        | ready     | List items must use consistent indentation.                                             |
+| [MDS017 no-trailing-punctuation-in-heading](internal/rules/MDS017-no-trailing-punctuation-in-heading/README.md) | ready     | Headings should not end with punctuation.                                               |
+| [MDS018 no-emphasis-as-heading](internal/rules/MDS018-no-emphasis-as-heading/README.md)             | ready     | Don't use bold or emphasis on a standalone line as a heading substitute.                |
+| [MDS019 catalog](internal/rules/MDS019-catalog/README.md)                            | ready     | Catalog content must reflect selected front matter fields from files matching its glob. |
+| [MDS020 required-structure](internal/rules/MDS020-required-structure/README.md)                 | ready     | Document must match the heading structure defined by its template.                      |
+| [MDS021 include](internal/rules/MDS021-include/README.md)                            | ready     | Include section content must match the referenced file.                                 |
+| [MDS022 max-file-length](internal/rules/MDS022-max-file-length/README.md)                    | ready     | File must not exceed maximum number of lines.                                           |
+| [MDS023 paragraph-readability](internal/rules/MDS023-paragraph-readability/README.md)              | ready     | Paragraph readability grade must not exceed a threshold.                                |
+| [MDS024 paragraph-structure](internal/rules/MDS024-paragraph-structure/README.md)                | ready     | Paragraphs must not exceed sentence and word limits.                                    |
+| [MDS025 table-format](internal/rules/MDS025-table-format/README.md)                       | ready     | Tables must have consistent column widths and padding.                                  |
+| [MDS026 table-readability](internal/rules/MDS026-table-readability/README.md)                  | ready     | Tables must stay within readability complexity limits.                                  |
+| [MDS027 cross-file-reference-integrity](internal/rules/MDS027-cross-file-reference-integrity/README.md)     | ready     | Links to local files and heading anchors must resolve.                                  |
+| [MDS028 token-budget](internal/rules/MDS028-token-budget/README.md)                       | ready     | File must not exceed a token budget.                                                    |
+| [MDS029 conciseness-scoring](internal/rules/MDS029-conciseness-scoring/README.md)                | not-ready | Paragraph conciseness score must not fall below a threshold.                            |
+| [MDS030 empty-section-body](internal/rules/MDS030-empty-section-body/README.md)                 | ready     | Section headings must include meaningful body content.                                  |
 <?/catalog?>
 
 ## 🛠️ Development
