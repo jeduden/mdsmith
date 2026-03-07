@@ -96,6 +96,7 @@ overrides:
     rules:
       table-readability:
         max-rows: 80
+        max-column-width-variance: 65
   - files: ["internal/rules/MDS002-heading-style/good/setext.md"]
     rules:
       heading-style:
