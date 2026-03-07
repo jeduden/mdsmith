@@ -15,24 +15,16 @@ mdsmith — a Markdown linter written in Go.
 <?catalog
 glob: "docs/**/*.md"
 sort: path
-header: |
-  | Doc | Summary |
-  |-----|---------|
+header: ""
 row: >-
-  | [`{{.filename}}`]({{.filename}})
-  | {{.summary}} |
-columns:
-  summary:
-    max-width: 50
-    wrap: br
+  - [`{{.filename}}`]({{.filename}})
+  — {{.summary}}
 ?>
-| Doc                                                | Summary                                                                                     |
-|----------------------------------------------------|---------------------------------------------------------------------------------------------|
-| [`docs/background/markdown-linters.md`](docs/background/markdown-linters.md)                | Comparison of mdsmith with other Markdown linters<br>and formatters.                        |
-| [`docs/design/archetypes/generated-section/README.md`](docs/design/archetypes/generated-section/README.md) | How generated sections work — markers,<br>directives, and fix behavior.                     |
-| [`docs/design/archetypes/README.md`](docs/design/archetypes/README.md)                   | Shared patterns (archetypes) reused across<br>multiple linting rules.                       |
-| [`docs/design/cli.md`](docs/design/cli.md)                                 | CLI commands, flags, exit codes, and output<br>format.                                      |
-| [`docs/guides/metrics-tradeoffs.md`](docs/guides/metrics-tradeoffs.md)                   | Trade-offs and threshold guidance for readability,<br>structure, length, and token budgets. |
+- [`docs/background/markdown-linters.md`](docs/background/markdown-linters.md) — Comparison of mdsmith with other Markdown linters and formatters.
+- [`docs/design/archetypes/generated-section/README.md`](docs/design/archetypes/generated-section/README.md) — How generated sections work — markers, directives, and fix behavior.
+- [`docs/design/archetypes/README.md`](docs/design/archetypes/README.md) — Shared patterns (archetypes) reused across multiple linting rules.
+- [`docs/design/cli.md`](docs/design/cli.md) — CLI commands, flags, exit codes, and output format.
+- [`docs/guides/metrics-tradeoffs.md`](docs/guides/metrics-tradeoffs.md) — Trade-offs and threshold guidance for readability, structure, length, and token budgets.
 <?/catalog?>
 
 ## Development Workflow
