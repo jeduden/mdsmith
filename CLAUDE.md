@@ -7,7 +7,7 @@ mdsmith — a Markdown linter written in Go.
 ## Docs
 
 - [Build commands, project layout, code style, test fixtures, and merge conflicts](DEVELOPMENT.md)
-- [Plan template with required structure and conventions](plan/proto.md)
+- [Plan template; see PLAN.md for status, plans live in plan/](plan/proto.md)
 
 <?catalog
 glob: "docs/**/*.md"
@@ -49,13 +49,6 @@ git push origin <branch>
 
 These commands are auto-approved in
 `.claude/settings.json`.
-
-## Plans
-
-Task plans live in [`plan/`](plan/). See
-[`PLAN.md`](PLAN.md) for the current status of all
-plans. Use [`plan/proto.md`](plan/proto.md) as a
-template when creating new plans.
 
 ## Writing Guidelines
 
