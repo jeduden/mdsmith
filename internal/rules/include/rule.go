@@ -93,11 +93,6 @@ func validateIncludeDirective(
 			"include directive has absolute file path")}
 	}
 
-	if containsDotDot(file) {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			`include directive has file path with ".." traversal`)}
-	}
-
 	// Validate wrap parameter if present.
 	if wrap, ok := params["wrap"]; ok && strings.TrimSpace(wrap) == "" {
 		return []lint.Diagnostic{makeDiag(filePath, line,
@@ -129,7 +124,17 @@ func generateIncludeContent(
 ) (string, []lint.Diagnostic) {
 	file := params["file"]
 
-	data, err := fs.ReadFile(f.FS, file)
+	// Resolve file relative to the including file's directory.
+	// Use RootFS (project root) when available so that paths
+	// with ".." segments work across directories.
+	resolvedFile := path.Join(path.Dir(filePath), file)
+	readFS := f.FS
+	readPath := file
+	if f.RootFS != nil {
+		readFS = f.RootFS
+		readPath = resolvedFile
+	}
+	data, err := fs.ReadFile(readFS, readPath)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("include file %q not found: %v", file, err))}
@@ -195,16 +200,6 @@ func findParentHeadingLevel(f *lint.File, markerLine int) int {
 		parentLevel = heading.Level
 	}
 	return parentLevel
-}
-
-func containsDotDot(path string) bool {
-	parts := strings.Split(path, "/")
-	for _, p := range parts {
-		if p == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {

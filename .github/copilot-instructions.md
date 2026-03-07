@@ -6,7 +6,7 @@
      to propagate. -->
 
 <?include
-file: CLAUDE.md
+file: ../CLAUDE.md
 strip-frontmatter: "true"
 heading-level: "absolute"
 ?>
@@ -20,11 +20,19 @@ mdsmith — a Markdown linter written in Go.
 
 - [Build commands, project layout, code style, test fixtures, and merge conflicts](../DEVELOPMENT.md)
 - [Plan template; see PLAN.md for status, plans live in plan/](../plan/proto.md)
+
+<?catalog
+glob: "docs/**/*.md"
+sort: path
+header: ""
+row: "- [{{.summary}}](../{{.filename}})"
+?>
 - [Comparison of mdsmith with other Markdown linters and formatters.](../docs/background/markdown-linters.md)
 - [How generated sections work — markers, directives, and fix behavior.](../docs/design/archetypes/generated-section/README.md)
 - [Shared patterns (archetypes) reused across multiple linting rules.](../docs/design/archetypes/README.md)
 - [CLI commands, flags, exit codes, and output format.](../docs/design/cli.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](../docs/guides/metrics-tradeoffs.md)
+<?/catalog?>
 
 ### Development Workflow
 
@@ -64,7 +72,7 @@ reflect) without saying what is checked against what.
 <?/include?>
 
 <?include
-file: DEVELOPMENT.md
+file: ../DEVELOPMENT.md
 strip-frontmatter: "true"
 heading-level: "absolute"
 ?>

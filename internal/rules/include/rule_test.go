@@ -18,6 +18,7 @@ func newTestFile(
 	}
 	if len(fs) > 0 {
 		f.FS = fs[0]
+		f.RootFS = fs[0]
 	}
 	return f
 }
@@ -194,12 +195,17 @@ func TestCheck_AbsoluteFilePath(t *testing.T) {
 }
 
 func TestCheck_DotDotTraversal(t *testing.T) {
-	fsys := fstest.MapFS{}
-	src := "# Doc\n\n<?include\nfile: ../secret.md\n?>\nold\n<?/include?>\n"
-	f := newTestFile(t, "doc.md", src, fsys)
+	// file: ../CLAUDE.md from .github/copilot.md resolves
+	// to CLAUDE.md at the project root via RootFS.
+	fsys := fstest.MapFS{
+		"CLAUDE.md": {Data: []byte("Project info.\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: ../CLAUDE.md\n?>\n" +
+		"Project info.\n<?/include?>\n"
+	f := newTestFile(t, ".github/copilot.md", src, fsys)
 	r := &Rule{}
 	diags := r.Check(f)
-	expectDiagMsg(t, diags, `".." traversal`)
+	expectDiags(t, diags, 0)
 }
 
 // =====================================================================
@@ -227,11 +233,11 @@ func TestFix_UpdatesContent(t *testing.T) {
 // =====================================================================
 
 func TestCheck_LinkAdjustmentSubdir(t *testing.T) {
-	// file: sub/content.md → repo path docs/sub/content.md.
-	// Link images/pic.png rewrites to sub/images/pic.png
-	// from docs/guide.md.
+	// file: sub/content.md from docs/guide.md → resolved to
+	// docs/sub/content.md via RootFS. Link images/pic.png
+	// rewrites to sub/images/pic.png from docs/guide.md.
 	fsys := fstest.MapFS{
-		"sub/content.md": {
+		"docs/sub/content.md": {
 			Data: []byte("See [pic](images/pic.png) here.\n"),
 		},
 	}
@@ -259,10 +265,10 @@ func TestCheck_LinkAdjustmentSameDir(t *testing.T) {
 }
 
 func TestFix_LinkAdjustment(t *testing.T) {
-	// file: sub/content.md from docs/guide.md → included path
-	// is docs/sub/content.md; links rewrite from sub/ to guide's dir.
+	// file: sub/content.md from docs/guide.md → resolved to
+	// docs/sub/content.md via RootFS; links rewrite from sub/.
 	fsys := fstest.MapFS{
-		"sub/content.md": {
+		"docs/sub/content.md": {
 			Data: []byte("See [layout](internal/rules/) for details.\n"),
 		},
 	}
@@ -382,10 +388,10 @@ func TestFix_HeadingLevelAbsolute(t *testing.T) {
 // =====================================================================
 
 func TestCheck_LinkAndHeadingCombined(t *testing.T) {
-	// file: sub/dev.md from docs/guide.md → included path is
+	// file: sub/dev.md from docs/guide.md → resolved to
 	// docs/sub/dev.md. Heading shift + link rewrite both apply.
 	fsys := fstest.MapFS{
-		"sub/dev.md": {
+		"docs/sub/dev.md": {
 			Data: []byte("## Build\n\nSee [rules](internal/rules/).\n"),
 		},
 	}

@@ -91,6 +91,7 @@ overrides:
       first-line-heading:
         level: 1
       cross-file-reference-integrity: false
+      catalog: false
   - files: ["DEVELOPMENT.md"]
     rules:
       first-line-heading: false
@@ -172,5 +173,3 @@ ignore:
   - "internal/rules/*/bad.md"
   - "internal/rules/*/good/**"
   - "internal/rules/*/fixed/**"
-  - ".github/DEVELOPMENT.md"
-  - ".github/CLAUDE.md"
