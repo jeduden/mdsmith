@@ -6,25 +6,20 @@ mdsmith — a Markdown linter written in Go.
 
 ## Docs
 
-- [`DEVELOPMENT.md`](DEVELOPMENT.md) — Build commands,
-  project layout, code style, test fixtures, and merge
-  conflicts.
-- [`plan/proto.md`](plan/proto.md) — Plan template
-  with required structure and conventions.
+- [Build commands, project layout, code style, test fixtures, and merge conflicts](DEVELOPMENT.md)
+- [Plan template with required structure and conventions](plan/proto.md)
 
 <?catalog
 glob: "docs/**/*.md"
 sort: path
 header: ""
-row: >-
-  - [`{{.filename}}`]({{.filename}})
-  — {{.summary}}
+row: "- [{{.summary}}]({{.filename}})"
 ?>
-- [`docs/background/markdown-linters.md`](docs/background/markdown-linters.md) — Comparison of mdsmith with other Markdown linters and formatters.
-- [`docs/design/archetypes/generated-section/README.md`](docs/design/archetypes/generated-section/README.md) — How generated sections work — markers, directives, and fix behavior.
-- [`docs/design/archetypes/README.md`](docs/design/archetypes/README.md) — Shared patterns (archetypes) reused across multiple linting rules.
-- [`docs/design/cli.md`](docs/design/cli.md) — CLI commands, flags, exit codes, and output format.
-- [`docs/guides/metrics-tradeoffs.md`](docs/guides/metrics-tradeoffs.md) — Trade-offs and threshold guidance for readability, structure, length, and token budgets.
+- [Comparison of mdsmith with other Markdown linters and formatters.](docs/background/markdown-linters.md)
+- [How generated sections work — markers, directives, and fix behavior.](docs/design/archetypes/generated-section/README.md)
+- [Shared patterns (archetypes) reused across multiple linting rules.](docs/design/archetypes/README.md)
+- [CLI commands, flags, exit codes, and output format.](docs/design/cli.md)
+- [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
 <?/catalog?>
 
 ## Development Workflow
@@ -44,8 +39,8 @@ Use `gh` for all GitHub PR operations:
 gh pr view <number> --comments
 
 # List review comments on a PR
-gh api "$(gh repo view --json nameWithOwner \
-  -q '.nameWithOwner')/pulls/<number>/comments" \
+gh api repos/"$(gh repo view --json nameWithOwner \
+  -q '.nameWithOwner')"/pulls/<number>/comments \
   --paginate
 
 # Push updates after addressing comments

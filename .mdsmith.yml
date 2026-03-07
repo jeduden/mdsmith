@@ -76,7 +76,7 @@ overrides:
           - tables
           - urls
       blank-line-around-lists: false
-  - files: ["DEVELOPMENT.md", ".github/DEVELOPMENT.md"]
+  - files: ["DEVELOPMENT.md"]
     rules:
       first-line-heading: false
       heading-increment: false

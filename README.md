@@ -191,15 +191,15 @@ sort: title
 header: |
   | Guide | Description |
   |-------|-------------|
-row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
+row: "| [{{.title}}]({{.filename}}) | {{.summary}} |"
 empty: |
   | Guide         | Description                                                |
   |---------------|------------------------------------------------------------|
   | No guides yet | Add guide files under `docs/guides/` to populate this index. |
 ?>
-| Guide                                                       | Description |
-|-------------------------------------------------------------|-------------|
-| [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) |             |
+| Guide                                                       | Description                                                                              |
+|-------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets. |
 <?/catalog?>
 
 ## 📏 Rules
