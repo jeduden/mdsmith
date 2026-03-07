@@ -8,7 +8,7 @@ status: "🔲"
 ## Goal
 
 Add two features to the include directive (MDS021):
-automatic link-path rewriting and an `heading-level`
+automatic link-path rewriting and a `heading-level`
 parameter for heading-level adjustment.
 
 ## Background

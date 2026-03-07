@@ -111,8 +111,9 @@ Bad fixtures are excluded via the `ignore:` section in
 
 [`PLAN.md`](PLAN.md) and [`README.md`](README.md)
 contain auto-generated sections (catalog, include)
-between `<?name?>` and `<?/name?>` markers. When two
-branches add items, these sections conflict on merge.
+between an opening `<?name` ... `?>` (optionally with YAML)
+and a closing `<?/name?>` marker. When two branches add items,
+these sections conflict on merge.
 
 **Resolution:** run `mdsmith fix <file>` after merging.
 The fix command regenerates the content from front matter
