@@ -63,7 +63,7 @@ Lint output goes to **stderr**. Format:
 
 ```text
 README.md:10:5 MDS001 line too long (120 > 80)
-docs/guide.md:3:1 MDS002 first line should be a heading
+docs/guide.md:3:1 MDS004 first line should be a level 1 heading
 ```
 
 Pattern: `file:line:col rule message`

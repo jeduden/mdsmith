@@ -15,11 +15,15 @@ parameter for heading-level adjustment.
 
 Relative links break when a file is included into a
 document in a different directory. For example,
-`docs/guide.md` includes `../DEVELOPMENT.md`. A link
-like `[layout](internal/rules/)` in DEVELOPMENT.md
-points to `docs/internal/rules/` instead of the repo
-root. The include directive must rewrite each relative
-link target so it resolves from the including file.
+`docs/guide.md` includes `DEVELOPMENT.md` (a copy or
+symlink placed alongside the including file, since
+include `file:` paths may not contain `..` traversal
+segments). A link like `[layout](internal/rules/)` in
+DEVELOPMENT.md resolves from the repo root, but when
+included from `docs/guide.md` it points to
+`docs/internal/rules/` instead. The include directive
+must rewrite each relative link target so it resolves
+from the including file.
 
 Heading levels also need adjustment. DEVELOPMENT.md
 uses `##` headings. When included under `## Project`
