@@ -76,6 +76,21 @@ overrides:
           - tables
           - urls
       blank-line-around-lists: false
+  - files: [".github/copilot-instructions.md"]
+    rules:
+      line-length:
+        max: 200
+        exclude:
+          - code-blocks
+          - tables
+          - urls
+      blank-line-around-lists: false
+      blank-line-around-headings: false
+      max-file-length:
+        max: 600
+      first-line-heading:
+        level: 1
+      cross-file-reference-integrity: false
   - files: ["DEVELOPMENT.md"]
     rules:
       first-line-heading: false
@@ -158,3 +173,4 @@ ignore:
   - "internal/rules/*/good/**"
   - "internal/rules/*/fixed/**"
   - ".github/DEVELOPMENT.md"
+  - ".github/CLAUDE.md"
