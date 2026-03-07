@@ -1,3 +1,6 @@
+---
+summary: Shared patterns (archetypes) reused across multiple linting rules.
+---
 # Archetypes
 
 An **archetype** is a shared pattern used by one or more

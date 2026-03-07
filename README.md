@@ -87,35 +87,10 @@ Use `--no-gitignore` to disable this behavior and lint all files.
 ### Examples
 
 ```bash
-# Lint a single file
-mdsmith check README.md
-
-# Lint all Markdown in a directory
-mdsmith check docs/
-
-# Auto-fix issues
-mdsmith fix README.md
-
-# Pipe from stdin
-cat README.md | mdsmith check
-
-# JSON output
-mdsmith check -f json docs/
-
-# Generate default config
-mdsmith init
-
-# List available metrics
-mdsmith metrics list
-
-# Top 10 largest Markdown files
+mdsmith check docs/            # lint a directory
+mdsmith fix README.md          # auto-fix in place
+mdsmith check -f json docs/    # JSON output
 mdsmith metrics rank --by bytes --top 10 .
-
-# Top 10 least concise Markdown files
-mdsmith metrics rank --by conciseness --top 10 .
-
-# Selected-column report
-mdsmith metrics rank --metrics bytes,lines,words --by bytes .
 ```
 
 ### Output
@@ -138,9 +113,11 @@ Pattern: `file:line:col rule message`
 
 ## ⚙️ Configuration
 
-Create a `.mdsmith.yml` in your project root.
-Without one, rules run with their built-in defaults. Experimental rules may be
-disabled by default.
+Create a `.mdsmith.yml` in your project root, or run
+`mdsmith init` to generate one with every rule and its
+default settings.
+Without a config file, rules run with their built-in
+defaults.
 
 ```yaml
 rules:
@@ -186,20 +163,20 @@ Upgrades become an explicit, reviewable change.
 ## 📚 Guides
 
 <?catalog
-glob: "guides/*.md"
+glob: "docs/guides/*.md"
 sort: title
 header: |
   | Guide | Description |
   |-------|-------------|
-row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
+row: "| [{{.title}}]({{.filename}}) | {{.summary}} |"
 empty: |
-  | Guide         | Description                                           |
-  |---------------|-------------------------------------------------------|
-  | No guides yet | Add guide files under `guides/` to populate this index. |
+  | Guide         | Description                                                |
+  |---------------|------------------------------------------------------------|
+  | No guides yet | Add guide files under `docs/guides/` to populate this index. |
 ?>
-| Guide                                                       | Description                                                                                                      |
-|-------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| [Choosing Readability, Conciseness, and Token Budget Metrics](guides/metrics-tradeoffs.md) | Trade-offs, examples, and threshold guidance for readability, structure, length, conciseness, and token budgets. |
+| Guide                                                       | Description                                                                              |
+|-------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets. |
 <?/catalog?>
 
 ## 📏 Rules
@@ -210,9 +187,7 @@ sort: id
 header: |
   | Rule | Name | Status | Description |
   |------|------|--------|-------------|
-row: >-
-  | [{{.id}}]({{.filename}}) | `{{.name}}` | {{.status}} |
-  {{.description}} |
+row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.status}} | {{.description}} |"
 ?>
 | Rule   | Name                               | Status    | Description                                                                             |
 |--------|------------------------------------|-----------|-----------------------------------------------------------------------------------------|
@@ -250,30 +225,18 @@ row: >-
 
 ## 🛠️ Development
 
-### Prerequisites
+Requires Go 1.24+. See
+[`DEVELOPMENT.md`](DEVELOPMENT.md) for the full
+contributor guide (build commands, project layout,
+workflow, code style, and PR conventions).
 
-- Go 1.24+
-- [golangci-lint](https://golangci-lint.run/)
+## 📂 Documentation
 
-### Lint
-
-```bash
-golangci-lint run
-```
-
-### Test
-
-```bash
-go test ./...
-```
-
-### Pre-commit check
-
-```bash
-mdsmith check .
-```
-
-Run before committing to ensure all markdown files pass linting.
+- [CLI design](docs/design/cli.md)
+- [Design archetypes](docs/design/archetypes/)
+- [Guides](docs/guides/)
+- [Background](docs/background/)
+- [Plans](plan/)
 
 ## 📄 License
 

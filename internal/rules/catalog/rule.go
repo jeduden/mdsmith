@@ -141,28 +141,38 @@ func validateCatalogDirective(
 	return diags
 }
 
+// splitGlobs splits a possibly newline-joined glob parameter into individual
+// patterns. A single-string glob returns a one-element slice.
+func splitGlobs(glob string) []string {
+	return strings.Split(glob, "\n")
+}
+
 // validateGlob validates the glob parameter and returns diagnostics on failure.
+// The glob value may be a single pattern or multiple newline-joined patterns
+// (from a YAML list).
 func validateGlob(filePath string, line int, params map[string]string) []lint.Diagnostic {
 	glob, hasGlob := params["glob"]
 	if !hasGlob {
 		return []lint.Diagnostic{makeDiag(filePath, line,
 			`generated section directive missing required "glob" parameter`)}
 	}
-	if glob == "" {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			`generated section directive has empty "glob" parameter`)}
-	}
-	if filepath.IsAbs(glob) {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			"generated section directive has absolute glob path")}
-	}
-	if containsDotDot(glob) {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			`generated section directive has glob pattern with ".." path traversal`)}
-	}
-	if !doublestar.ValidatePattern(glob) {
-		return []lint.Diagnostic{makeDiag(filePath, line,
-			fmt.Sprintf("generated section directive has invalid glob pattern: %s", glob))}
+	for _, pattern := range splitGlobs(glob) {
+		if pattern == "" {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`generated section directive has empty "glob" parameter`)}
+		}
+		if filepath.IsAbs(pattern) {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				"generated section directive has absolute glob path")}
+		}
+		if containsDotDot(pattern) {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`generated section directive has glob pattern with ".." path traversal`)}
+		}
+		if !doublestar.ValidatePattern(pattern) {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				fmt.Sprintf("generated section directive has invalid glob pattern: %s", pattern))}
+		}
 	}
 	return nil
 }
@@ -184,18 +194,24 @@ func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 // buildCatalogEntries resolves glob matches, reads front matter, and
 // returns sorted file entries for the catalog directive.
 func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
-	matches, err := doublestar.Glob(f.FS, params["glob"])
-	if err != nil {
-		return nil
-	}
-
+	seen := make(map[string]bool)
 	var files []string
-	for _, m := range matches {
-		info, err := fs.Stat(f.FS, m)
-		if err != nil || info.IsDir() {
+	for _, pattern := range splitGlobs(params["glob"]) {
+		matches, err := doublestar.Glob(f.FS, pattern)
+		if err != nil {
 			continue
 		}
-		files = append(files, m)
+		for _, m := range matches {
+			if seen[m] {
+				continue
+			}
+			info, err := fs.Stat(f.FS, m)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			seen[m] = true
+			files = append(files, m)
+		}
 	}
 
 	sortKey, descending := parseSort(params)

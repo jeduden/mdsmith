@@ -44,7 +44,7 @@ rules:
     include: []
     exclude:
       # Placeholder link in internal/rules/proto.md; not a real repo path.
-      - "../../../archetypes/NAME"
+      - "../../../docs/design/archetypes/NAME"
     strict: true
   token-budget:
     max: 8000
@@ -67,14 +67,36 @@ rules:
   include: true
 
 overrides:
+  - files: ["CLAUDE.md"]
+    rules:
+      line-length:
+        max: 200
+        exclude:
+          - code-blocks
+          - tables
+          - urls
+      blank-line-around-lists: false
+  - files: ["DEVELOPMENT.md"]
+    rules:
+      first-line-heading: false
+      heading-increment: false
   - files: ["README.md"]
     rules:
+      line-length:
+        max: 100
+        exclude:
+          - code-blocks
+          - tables
+          - urls
+      max-file-length:
+        max: 350
       paragraph-structure:
         max-sentences: 30
   - files: ["PLAN.md"]
     rules:
       table-readability:
         max-rows: 80
+        max-column-width-variance: 65
   - files: ["internal/rules/MDS002-heading-style/good/setext.md"]
     rules:
       heading-style:
@@ -95,7 +117,7 @@ overrides:
     rules:
       required-structure:
         template: plan/proto.md
-  - files: ["background/*.md"]
+  - files: ["docs/background/*.md"]
     rules:
       line-length:
         stern: true
@@ -107,7 +129,7 @@ overrides:
         ratio: 0.75
         tokenizer: builtin
         encoding: cl100k_base
-  - files: ["guides/*.md"]
+  - files: ["docs/guides/*.md"]
     rules:
       line-length:
         max: 600
@@ -135,3 +157,4 @@ ignore:
   - "internal/rules/*/bad.md"
   - "internal/rules/*/good/**"
   - "internal/rules/*/fixed/**"
+  - ".github/DEVELOPMENT.md"

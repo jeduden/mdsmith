@@ -2458,3 +2458,192 @@ No documents.
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
+
+// --- Multi-glob list tests ---
+
+func TestSpec_MultiGlobYAMLBlockList(t *testing.T) {
+	// A YAML block-style list of glob patterns matches files from all patterns.
+	src := `<?catalog
+glob:
+  - "docs/*.md"
+  - "plan/*.md"
+?>
+- [a.md](docs/a.md)
+- [b.md](plan/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("# A\n")},
+		"plan/b.md": {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_MultiGlobInlineList(t *testing.T) {
+	// An inline YAML list of glob patterns matches files from all patterns.
+	src := `<?catalog
+glob: ["docs/*.md", "plan/*.md"]
+?>
+- [a.md](docs/a.md)
+- [b.md](plan/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("# A\n")},
+		"plan/b.md": {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_MultiGlobDeduplication(t *testing.T) {
+	// When multiple patterns match the same file, it appears only once.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "a.md"
+?>
+- [a.md](a.md)
+- [b.md](b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"a.md": {Data: []byte("# A\n")},
+		"b.md": {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_MultiGlobSortAcrossPatterns(t *testing.T) {
+	// Files from multiple patterns are sorted together by the sort key.
+	src := `<?catalog
+glob:
+  - "plan/*.md"
+  - "docs/*.md"
+sort: path
+?>
+- [a.md](docs/a.md)
+- [b.md](plan/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("# A\n")},
+		"plan/b.md": {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_MultiGlobEmptyElement(t *testing.T) {
+	// A list containing an empty string element produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - ""
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"a.md": {Data: []byte("# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `empty "glob" parameter`)
+}
+
+func TestSpec_MultiGlobAbsolutePath(t *testing.T) {
+	// A list containing an absolute path produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "/etc/passwd"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "absolute glob path")
+}
+
+func TestSpec_MultiGlobDotDot(t *testing.T) {
+	// A list containing ".." path traversal produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "../secret/*.md"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `".." path traversal`)
+}
+
+func TestSpec_MultiGlobInvalidPattern(t *testing.T) {
+	// A list containing an invalid glob pattern produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "[invalid"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "invalid glob pattern")
+}
+
+func TestSpec_MultiGlobNonStringElement(t *testing.T) {
+	// A list containing a non-string element (a number) produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - 42
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "non-string")
+}
+
+func TestSpec_SingleGlobStringStillWorks(t *testing.T) {
+	// Existing single-string glob continues to work (backward compatibility).
+	src := `<?catalog
+glob: "docs/*.md"
+?>
+- [a.md](docs/a.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}

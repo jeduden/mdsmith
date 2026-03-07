@@ -1,3 +1,6 @@
+---
+summary: How generated sections work — markers, directives, and fix behavior.
+---
 # Generated Section (Archetype)
 
 A **generated section** is a region of Markdown delimited by
@@ -6,7 +9,7 @@ the content between the markers matches what the directive would
 produce, and a fix command regenerates it in place.
 
 This archetype documents the shared mechanics. Individual rules
-(e.g., [MDS019 catalog](../../internal/rules/MDS019-catalog/)) define
+(e.g., [MDS019 catalog](../../../../internal/rules/MDS019-catalog/)) define
 their own parameters, template fields, and behaviors.
 
 ## Marker Syntax
@@ -83,6 +86,33 @@ and merge keys are supported (standard YAML features).
 The `row` key is required when `header` or `footer` is
 present. None of these keys use template expansion except
 `row`.
+
+**Folded scalar restriction**: Do not use YAML folded
+scalars (`>`, `>-`, `>+`) in directive YAML bodies.
+Markdown parsers interpret `>` at the start of a line as
+a blockquote marker. When a YAML value uses a folded
+scalar, the `>` character appears at the start of a line
+inside the processing instruction, causing some Markdown
+parsers to split the PI content into a blockquote and a
+separate text node. Use literal block scalars (`|`, `|-`,
+`|+`) or quoted strings instead.
+
+**List-valued parameters**: Some parameters accept a YAML
+list of strings instead of a single string. The directive
+parser normalizes a YAML sequence of strings into a single
+newline-joined string. Individual rules split and interpret
+the joined value. For example, the catalog directive's
+`glob` key accepts a list of patterns:
+
+```yaml
+glob:
+  - "docs/**/*.md"
+  - "plan/*.md"
+```
+
+**Brace expansion**: Glob patterns support `{a,b}` brace
+expansion via the doublestar library. For example,
+`"*.{md,txt}"` matches both `.md` and `.txt` files.
 
 Single-line values use YAML string syntax. Multi-line values
 use YAML literal block scalars (`|`, `|+`, or `|-`):

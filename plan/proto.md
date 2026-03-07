@@ -2,8 +2,18 @@
 id: 'int & >=1'
 title: 'string & != ""'
 status: '"🔲" | "🔳" | "✅"'
+summary: 'string | *""'
 ---
 # ?
+
+<!-- Plan conventions:
+  - Work test-driven: write a failing test, make it
+    pass, commit.
+  - Plan files must pass `mdsmith check plan/`.
+  - Use Markdown links for real repo paths in prose.
+    Bare backticked paths are allowed in commands,
+    code blocks, and placeholders.
+-->
 
 ## ...
 

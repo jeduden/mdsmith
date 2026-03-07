@@ -212,25 +212,50 @@ func ExtractColumnsRaw(rawMap map[string]any) map[string]any {
 }
 
 // ValidateStringParams checks that all values in rawMap are strings.
+// YAML sequences of strings are joined with "\n" into a single string,
+// allowing rules to accept list-valued parameters (e.g., multi-glob).
 func ValidateStringParams(
 	filePath string, line int, rawMap map[string]any, ruleID, ruleName string,
 ) (map[string]string, []lint.Diagnostic) {
 	var diags []lint.Diagnostic
 	params := make(map[string]string)
 	for k, v := range rawMap {
-		s, ok := v.(string)
-		if !ok {
+		switch val := v.(type) {
+		case string:
+			params[k] = val
+		case []any:
+			strs, err := toStringSlice(val)
+			if err != nil {
+				diags = append(diags,
+					MakeDiag(ruleID, ruleName, filePath, line,
+						fmt.Sprintf("generated section has non-string element in list value for key %q: %v", k, err)))
+			} else {
+				params[k] = strings.Join(strs, "\n")
+			}
+		default:
 			diags = append(diags,
 				MakeDiag(ruleID, ruleName, filePath, line,
 					fmt.Sprintf("generated section has non-string value for key %q", k)))
-		} else {
-			params[k] = s
 		}
 	}
 	if len(diags) > 0 {
 		return nil, diags
 	}
 	return params, nil
+}
+
+// toStringSlice converts a []any to []string, returning an error if any element
+// is not a string.
+func toStringSlice(items []any) ([]string, error) {
+	result := make([]string, len(items))
+	for i, item := range items {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("element %d is not a string", i)
+		}
+		result[i] = s
+	}
+	return result, nil
 }
 
 // ParseColumnConfig parses the raw YAML columns map into ColumnConfig entries.

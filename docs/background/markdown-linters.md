@@ -1,3 +1,6 @@
+---
+summary: Comparison of mdsmith with other Markdown linters and formatters.
+---
 # Markdown Linters Comparison
 
 This document compares mdsmith with popular Markdown
@@ -432,27 +435,27 @@ should use separate config overrides (e.g. ignore or
 relaxed rules) for presentation files.
 
 <!-- mdsmith rule links -->
-[mds001]: ../internal/rules/MDS001-line-length/README.md
-[mds003]: ../internal/rules/MDS003-heading-increment/README.md
-[mds004]: ../internal/rules/MDS004-first-line-heading/README.md
-[mds005]: ../internal/rules/MDS005-no-duplicate-headings/README.md
-[mds006]: ../internal/rules/MDS006-no-trailing-spaces/README.md
-[mds010]: ../internal/rules/MDS010-fenced-code-style/README.md
-[mds011]: ../internal/rules/MDS011-fenced-code-language/README.md
-[mds012]: ../internal/rules/MDS012-no-bare-urls/README.md
-[mds013]: ../internal/rules/MDS013-blank-line-around-headings/README.md
-[mds015]: ../internal/rules/MDS015-blank-line-around-fenced-code/README.md
-[mds016]: ../internal/rules/MDS016-list-indent/README.md
-[mds019]: ../internal/rules/MDS019-catalog/README.md
-[mds020]: ../internal/rules/MDS020-required-structure/README.md
-[mds021]: ../internal/rules/MDS021-include/README.md
-[mds023]: ../internal/rules/MDS023-paragraph-readability/README.md
-[mds024]: ../internal/rules/MDS024-paragraph-structure/README.md
-[mds025]: ../internal/rules/MDS025-table-format/README.md
-[mds027]: ../internal/rules/MDS027-cross-file-reference-integrity/README.md
-[mds028]: ../internal/rules/MDS028-token-budget/README.md
-[mds029]: ../internal/rules/MDS029-conciseness-scoring/README.md
-[mds030]: ../internal/rules/MDS030-empty-section-body/README.md
+[mds001]: ../../internal/rules/MDS001-line-length/README.md
+[mds003]: ../../internal/rules/MDS003-heading-increment/README.md
+[mds004]: ../../internal/rules/MDS004-first-line-heading/README.md
+[mds005]: ../../internal/rules/MDS005-no-duplicate-headings/README.md
+[mds006]: ../../internal/rules/MDS006-no-trailing-spaces/README.md
+[mds010]: ../../internal/rules/MDS010-fenced-code-style/README.md
+[mds011]: ../../internal/rules/MDS011-fenced-code-language/README.md
+[mds012]: ../../internal/rules/MDS012-no-bare-urls/README.md
+[mds013]: ../../internal/rules/MDS013-blank-line-around-headings/README.md
+[mds015]: ../../internal/rules/MDS015-blank-line-around-fenced-code/README.md
+[mds016]: ../../internal/rules/MDS016-list-indent/README.md
+[mds019]: ../../internal/rules/MDS019-catalog/README.md
+[mds020]: ../../internal/rules/MDS020-required-structure/README.md
+[mds021]: ../../internal/rules/MDS021-include/README.md
+[mds023]: ../../internal/rules/MDS023-paragraph-readability/README.md
+[mds024]: ../../internal/rules/MDS024-paragraph-structure/README.md
+[mds025]: ../../internal/rules/MDS025-table-format/README.md
+[mds027]: ../../internal/rules/MDS027-cross-file-reference-integrity/README.md
+[mds028]: ../../internal/rules/MDS028-token-budget/README.md
+[mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
+[mds030]: ../../internal/rules/MDS030-empty-section-body/README.md
 <!-- markdownlint links -->
 [markdownlint]: https://github.com/DavidAnson/markdownlint
 [markdownlint-cli2]: https://github.com/DavidAnson/markdownlint-cli2

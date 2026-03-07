@@ -1,40 +1,79 @@
 # Copilot Instructions
 
+<!-- Included content comes from DEVELOPMENT.md.
+     Edit DEVELOPMENT.md first, then run
+     `mdsmith fix .` to propagate. -->
+
 Instructions for GitHub Copilot. See
 [CLAUDE.md](../CLAUDE.md) and [AGENTS.md](../AGENTS.md)
 for full project conventions.
 
-## Project
+<?include
+file: DEVELOPMENT.md
+strip-frontmatter: "true"
+?>
+Build and test reference for mdsmith contributors.
 
-mdsmith is a Markdown linter written in Go (1.24+).
+## Build & Test Commands
 
-## Commands
+Requires Go 1.24+.
 
-- `go build ./...` — build
-- `go test ./...` — test
-- `go tool golangci-lint run` — Go lint
-- `mdsmith check .` — Markdown lint
-- `mdsmith fix .` — auto-fix Markdown
+- `go build ./...` — build all packages
+- `go test ./...` — run all tests
+- `go test -run TestName ./...` — run a specific test
+- `go run ./cmd/mdsmith check .` — lint markdown
+- `go run ./cmd/mdsmith fix .` — auto-fix markdown
+- `go tool golangci-lint run` — run linter
+- `go vet ./...` — run go vet
 
-## PR Workflow
+## Project Layout
 
-Use `gh` for GitHub operations without prompting:
+Follow the [standard Go project
+layout](https://go.dev/doc/modules/layout):
 
-- `gh pr view <number> --comments` — read comments
-- `gh api repos/{owner}/{repo}/pulls/<n>/comments`
-- `git push origin <branch>` — push changes
+- `cmd/mdsmith/` — main application entry point
+- `internal/` — private packages not importable by
+  other modules
+- `internal/rules/` — rule documentation
+  (`internal/rules/<id>-<name>/README.md`)
+- `testdata/` — test fixtures (markdown files for
+  testing rules)
 
-## Merge Conflicts
+## Code Style
 
-PLAN.md and README.md have auto-generated sections (catalog,
-include). Run `mdsmith merge-driver install [files...]` to
-register the git merge driver. It strips conflict markers
-inside regenerable sections and runs `mdsmith fix` to
-regenerate. Do not manually resolve section conflicts.
+- Follow standard Go conventions (gofmt, goimports)
+- Use golangci-lint for linting
+- Keep functions small and focused
+- Error messages should be lowercase, no trailing
+  punctuation
+- Prefer returning errors over panicking
 
-## Style
+## Test Fixtures
 
-- Follow Go conventions (gofmt, goimports).
-- Test-driven development.
-- Run `mdsmith check .` before committing.
-- Error messages: lowercase, no trailing punctuation.
+Rule test fixtures live in
+`internal/rules/<id>-<name>/`. Each rule has `good/` and
+`bad/` examples (or `good.md` / `bad.md`).
+
+Good fixtures must pass **all** rules, not just their
+own. When a good fixture uses non-default settings
+(e.g. setext headings, tilde fences), add a matching
+override in `.mdsmith.yml` so that `mdsmith check .`
+also passes.
+
+Bad fixtures are excluded via the `ignore:` section in
+`.mdsmith.yml`.
+
+## Merge Conflicts in Generated Sections
+
+`PLAN.md` and `README.md` have auto-generated
+sections between `<?name` ...
+`?>` and `<?/name?>` markers. Run `mdsmith fix <file>`
+after merging — it regenerates these sections. The
+`merge-driver` command automates this:
+
+```bash
+mdsmith merge-driver install [files...]
+```
+
+Run `mdsmith merge-driver install` once per clone.
+<?/include?>

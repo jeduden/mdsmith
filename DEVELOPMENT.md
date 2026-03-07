@@ -1,17 +1,8 @@
-# Agent Notes
+---
+title: Development
+summary: Build commands, project layout, code style, test fixtures, and merge conflicts.
+---
 
-<!-- Included content comes from DEVELOPMENT.md.
-     Edit DEVELOPMENT.md first, then run
-     `mdsmith fix .` to propagate. -->
-
-Instructions for AI coding agents (Codex, Copilot,
-Claude). See [CLAUDE.md](CLAUDE.md) for full project
-conventions.
-
-<?include
-file: DEVELOPMENT.md
-strip-frontmatter: "true"
-?>
 Build and test reference for mdsmith contributors.
 
 ## Build & Test Commands
@@ -76,4 +67,3 @@ mdsmith merge-driver install [files...]
 ```
 
 Run `mdsmith merge-driver install` once per clone.
-<?/include?>

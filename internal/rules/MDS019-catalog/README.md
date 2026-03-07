@@ -18,7 +18,7 @@ from files matching its glob.
   [source](./)
 - **Category**: meta
 - **Archetype**:
-  [generated-section](../../../archetypes/generated-section/)
+  [generated-section](../../../docs/design/archetypes/generated-section/)
 
 ## Directive: `catalog`
 
@@ -37,8 +37,38 @@ otherwise.
 |-----------|----------|---------|-----------------------|
 | `columns`   | no       | --      | Column width/wrapping |
 
-The `glob` supports `*`, `?`, `[...]`, and `**`. It does
-not allow absolute paths or `..` traversal.
+The `glob` accepts a single string or a YAML list of
+strings. It supports `*`, `?`, `[...]`, `**`, and `{a,b}`
+brace expansion. It does not allow absolute paths or `..`
+traversal.
+
+Single pattern:
+
+```yaml
+glob: "docs/**/*.md"
+```
+
+Multiple patterns (YAML list):
+
+```yaml
+glob:
+  - "docs/**/*.md"
+  - "plan/*.md"
+```
+
+Brace expansion:
+
+```yaml
+glob: "internal/rules/{MDS001,MDS002}*/README.md"
+```
+
+When multiple patterns are provided, files are collected
+from all patterns (deduplicated), then sorted together.
+
+Do not use YAML folded scalars (`>`, `>-`) in the YAML
+body. See the
+[archetype docs](../../../docs/design/archetypes/generated-section/)
+for details.
 
 ### Template fields
 
@@ -91,7 +121,7 @@ matter is only read when the sort key needs it.
 3. No files, no `empty`: zero lines between markers
 
 See the
-[archetype docs](../../../archetypes/generated-section/)
+[archetype docs](../../../docs/design/archetypes/generated-section/)
 for newline handling and chomp details.
 
 ## Config
@@ -161,6 +191,19 @@ row: "- [{{.title}}]({{.filename}})"
 <?/catalog?>
 ```
 
+### Good -- multi-glob list
+
+```markdown
+<?catalog
+glob:
+  - "docs/*.md"
+  - "plan/*.md"
+?>
+- [api-reference.md](docs/api-reference.md)
+- [roadmap.md](plan/roadmap.md)
+<?/catalog?>
+```
+
 ### Bad -- stale content
 
 ```markdown
@@ -218,7 +261,7 @@ All messages above are prefixed with
 `generated section directive`. Column is always 1.
 
 See the
-[archetype documentation](../../../archetypes/generated-section/)
+[archetype documentation](../../../docs/design/archetypes/generated-section/)
 for shared diagnostics (content mismatch, unclosed markers,
 nested markers, YAML errors, template errors).
 
@@ -238,12 +281,13 @@ nested markers, YAML errors, template errors).
 | Binary file              | Included; no front matter |
 | Symlinks                 | Followed                  |
 
-| Scenario         | Behavior      |
-|------------------|---------------|
-| Dotfiles         | Matched by `*`/`**` |
-| Absolute/`..` glob | Diagnostic    |
-| Brace expansion  | Supported     |
-| Empty glob/sort  | Diagnostic    |
+| Scenario         | Behavior                       |
+|------------------|--------------------------------|
+| Dotfiles         | Matched by `*`/`**`                  |
+| Absolute/`..` glob | Diagnostic                     |
+| Brace expansion  | Supported                      |
+| Multi-glob list  | Union of matches, deduplicated |
+| Empty glob/sort  | Diagnostic                     |
 
 | Scenario             | Behavior       |
 |----------------------|----------------|
@@ -253,6 +297,6 @@ nested markers, YAML errors, template errors).
 | Files + `empty`        | `empty` ignored  |
 
 See the
-[archetype documentation](../../../archetypes/generated-section/)
+[archetype documentation](../../../docs/design/archetypes/generated-section/)
 for shared edge cases (markers in code blocks, multiple marker
 pairs, line endings, template errors).

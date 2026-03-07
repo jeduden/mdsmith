@@ -1,6 +1,6 @@
 ---
 title: Choosing Readability, Conciseness, and Token Budget Metrics
-description: Trade-offs, examples, and threshold guidance for readability, structure, length, conciseness, and token budgets.
+summary: Trade-offs and threshold guidance for readability, structure, length, and token budgets.
 ---
 # Choosing Readability, Conciseness, and Token Budget Metrics
 
@@ -12,17 +12,17 @@ This guide compares existing mdsmith rules that touch readability and length wit
 
 | Rule                         | Measures                                                                     | Default                         | What it misses                                                  |
 |------------------------------|------------------------------------------------------------------------------|---------------------------------|-----------------------------------------------------------------|
-| [MDS023](../internal/rules/MDS023-paragraph-readability/README.md) `paragraph-readability` | Complexity using ARI (characters per word, words per sentence)               | `max-grade: 14.0`, `min-words: 20`  | Wordiness and filler; short but dense paragraphs can be skipped |
-| [MDS024](../internal/rules/MDS024-paragraph-structure/README.md) `paragraph-structure`   | Shape and length of paragraphs (sentences per paragraph, words per sentence) | `max-sentences: 6`, `max-words: 40` | Verbosity that fits within limits; dense but short prose        |
-| [MDS022](../internal/rules/MDS022-max-file-length/README.md) `max-file-length`       | Lines per file                                                               | `max: 300`                        | Token load and dense paragraphs                                 |
-| [MDS028](../internal/rules/MDS028-token-budget/README.md) `token-budget`          | Estimated token count per file (`heuristic` or `tokenizer` mode)                 | `max: 8000`, `mode: heuristic`      | Exact model token parity; tokenizer mode is still approximate   |
-| [MDS001](../internal/rules/MDS001-line-length/README.md) `line-length`           | Characters per line                                                          | `max: 80`                         | Verbosity and paragraph complexity                              |
+| [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) `paragraph-readability` | Complexity using ARI (characters per word, words per sentence)               | `max-grade: 14.0`, `min-words: 20`  | Wordiness and filler; short but dense paragraphs can be skipped |
+| [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) `paragraph-structure`   | Shape and length of paragraphs (sentences per paragraph, words per sentence) | `max-sentences: 6`, `max-words: 40` | Verbosity that fits within limits; dense but short prose        |
+| [MDS022](../../internal/rules/MDS022-max-file-length/README.md) `max-file-length`       | Lines per file                                                               | `max: 300`                        | Token load and dense paragraphs                                 |
+| [MDS028](../../internal/rules/MDS028-token-budget/README.md) `token-budget`          | Estimated token count per file (`heuristic` or `tokenizer` mode)                 | `max: 8000`, `mode: heuristic`      | Exact model token parity; tokenizer mode is still approximate   |
+| [MDS001](../../internal/rules/MDS001-line-length/README.md) `line-length`           | Characters per line                                                          | `max: 80`                         | Verbosity and paragraph complexity                              |
 
 ## Planned metrics (not implemented)
 
 | Metric              | Goal                                       | Status  |
 |---------------------|--------------------------------------------|---------|
-| [Conciseness Scoring](../plan/53_conciseness-scoring.md) | Flag low information density in paragraphs | Planned |
+| [Conciseness Scoring](../../plan/53_conciseness-scoring.md) | Flag low information density in paragraphs | Planned |
 
 ## What conciseness scoring is trying to measure
 
@@ -30,7 +30,7 @@ Conciseness scoring (plan 53) focuses on information density rather than complex
 
 ## What token budget awareness is trying to measure
 
-Token budget awareness ([MDS028](../internal/rules/MDS028-token-budget/README.md)) focuses on file-level size in terms of tokens rather than lines or characters. It protects LLM context windows by warning when a file exceeds a configurable budget. `heuristic` mode uses word count multiplied by a ratio, which is fast but approximate. `tokenizer` mode uses tokenizer-aware splitting with a selected encoding for a closer estimate.
+Token budget awareness ([MDS028](../../internal/rules/MDS028-token-budget/README.md)) focuses on file-level size in terms of tokens rather than lines or characters. It protects LLM context windows by warning when a file exceeds a configurable budget. `heuristic` mode uses word count multiplied by a ratio, which is fast but approximate. `tokenizer` mode uses tokenizer-aware splitting with a selected encoding for a closer estimate.
 
 Tokenization happens before inference, so any LLM will read inputs as tokens. That means token budgets are only accurate when they use the same tokenizer as the target model. The trade-off is performance: exact tokenization is slower and needs vocab assets, while ratio-based estimates are fast and model-agnostic.
 
@@ -58,7 +58,7 @@ Basically, we just want to make sure the plan is pretty clear to everyone. It is
 
 ## How the rules score these examples
 
-Notes: ARI values use mdsmith's current formula. [MDS023](../internal/rules/MDS023-paragraph-readability/README.md) skips paragraphs under `min-words`. [MDS024](../internal/rules/MDS024-paragraph-structure/README.md) flags when sentences or words exceed limits. Conciseness scores below are illustrative heuristics, not an implemented rule. Token budget awareness is file-level; see the token budget examples right after this table.
+Notes: ARI values use mdsmith's current formula. [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) skips paragraphs under `min-words`. [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) flags when sentences or words exceed limits. Conciseness scores below are illustrative heuristics, not an implemented rule. Token budget awareness is file-level; see the token budget examples right after this table.
 
 | Example | Words | Sentences | ARI  | MDS023 result        | MDS024 result          | Conciseness score (illustrative) |
 |---------|------:|----------:|-----:|----------------------|------------------------|----------------------------------|
@@ -79,15 +79,15 @@ These examples assume an illustrative ratio of `0.75 tokens per word` and a budg
 
 | Metric                  | Strengths                                                    | Risks                                                                        |
 |-------------------------|--------------------------------------------------------------|------------------------------------------------------------------------------|
-| Readability ([MDS023](../internal/rules/MDS023-paragraph-readability/README.md))    | Encourages simple, broadly accessible prose                  | Penalizes technical terms; misses wordiness; can skip short dense paragraphs |
-| Structure ([MDS024](../internal/rules/MDS024-paragraph-structure/README.md))      | Enforces consistent paragraph shape with low false positives | Does not address filler or redundancy                                        |
-| Length ([MDS022](../internal/rules/MDS022-max-file-length/README.md), [MDS001](../internal/rules/MDS001-line-length/README.md)) | Prevents runaway size and formatting drift                   | Poor proxy for token load or verbosity                                       |
-| Token budget ([MDS028](../internal/rules/MDS028-token-budget/README.md))   | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
+| Readability ([MDS023](../../internal/rules/MDS023-paragraph-readability/README.md))    | Encourages simple, broadly accessible prose                  | Penalizes technical terms; misses wordiness; can skip short dense paragraphs |
+| Structure ([MDS024](../../internal/rules/MDS024-paragraph-structure/README.md))      | Enforces consistent paragraph shape with low false positives | Does not address filler or redundancy                                        |
+| Length ([MDS022](../../internal/rules/MDS022-max-file-length/README.md), [MDS001](../../internal/rules/MDS001-line-length/README.md)) | Prevents runaway size and formatting drift                   | Poor proxy for token load or verbosity                                       |
+| Token budget ([MDS028](../../internal/rules/MDS028-token-budget/README.md))   | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
 | Conciseness (proposed)  | Targets verbosity and token waste                            | Heuristic; can penalize necessary qualifiers or legal language               |
 
 ## How to choose limits
 
-1. Start with defaults for [MDS023](../internal/rules/MDS023-paragraph-readability/README.md) and [MDS024](../internal/rules/MDS024-paragraph-structure/README.md) to establish baseline structure and readability.
+1. Start with defaults for [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) and [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) to establish baseline structure and readability.
 2. Sample a representative set of documents and collect results before tightening thresholds.
 3. For token budgets, pick a target based on your context window and allocate a safe share per document (for example, reserve 20 to 30 percent of a prompt budget for a single doc). Choose an initial word-to-token ratio and adjust for code-heavy files.
 4. For conciseness scoring, set an initial threshold that flags only the worst 10 to 20 percent of paragraphs, then adjust.
@@ -98,11 +98,11 @@ These examples assume an illustrative ratio of `0.75 tokens per word` and a budg
 
 If you need a single metric to minimize complexity, choose the one that best matches your risk:
 
-- Choose [MDS024](../internal/rules/MDS024-paragraph-structure/README.md) `paragraph-structure` when you want predictable, low-noise enforcement.
-- Choose [MDS023](../internal/rules/MDS023-paragraph-readability/README.md) `paragraph-readability` when broad comprehension is the highest priority.
-- Choose [MDS028](../internal/rules/MDS028-token-budget/README.md) `token-budget` when context window limits are the dominant constraint and you want a file-level guardrail.
+- Choose [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) `paragraph-structure` when you want predictable, low-noise enforcement.
+- Choose [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) `paragraph-readability` when broad comprehension is the highest priority.
+- Choose [MDS028](../../internal/rules/MDS028-token-budget/README.md) `token-budget` when context window limits are the dominant constraint and you want a file-level guardrail.
 - Choose conciseness scoring when token budget and drift are the main risks and you accept heuristic trade-offs.
 
 ## Recommendation for mdsmith users
 
-Start with [MDS023](../internal/rules/MDS023-paragraph-readability/README.md) and [MDS024](../internal/rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../internal/rules/MDS022-max-file-length/README.md) and [MDS001](../internal/rules/MDS001-line-length/README.md) as baseline file and line controls. Add [MDS028](../internal/rules/MDS028-token-budget/README.md) when context limits matter, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.
+Start with [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) and [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../../internal/rules/MDS022-max-file-length/README.md) and [MDS001](../../internal/rules/MDS001-line-length/README.md) as baseline file and line controls. Add [MDS028](../../internal/rules/MDS028-token-budget/README.md) when context limits matter, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.
