@@ -2,11 +2,11 @@
 id: MDS020
 name: required-structure
 status: ready
-description: Document must match the heading structure defined by its template.
+description: Document structure and front matter must match its template.
 ---
 # MDS020: required-structure
 
-Document must match the heading structure defined by its
+Document structure and front matter must match its
 template.
 
 - **ID**: MDS020
