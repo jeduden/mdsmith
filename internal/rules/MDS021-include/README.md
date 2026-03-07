@@ -93,7 +93,7 @@ rules:
 
 ## Examples
 
-### Good
+### Basic Include
 
 ```markdown
 <?include
@@ -103,7 +103,71 @@ Hello world
 <?/include?>
 ```
 
-### Bad
+### With Code Fence Wrapping
+
+````markdown
+<?include
+file: config.yml
+wrap: yaml
+?>
+```yaml
+key: value
+```
+<?/include?>
+````
+
+### With Frontmatter Kept
+
+```markdown
+<?include
+file: data.md
+strip-frontmatter: "false"
+?>
+---
+title: My Doc
+---
+Content here.
+<?/include?>
+```
+
+### With Heading-Level Shift
+
+Given `DEVELOPMENT.md` contains `## Build` and
+`### Sub`, including under `## Project` shifts
+headings one level down:
+
+```markdown
+## Project
+
+<?include
+file: DEVELOPMENT.md
+heading-level: "absolute"
+?>
+### Build
+
+Steps here.
+
+#### Sub
+
+Details.
+<?/include?>
+```
+
+### With Link Rewriting
+
+Given `DEVELOPMENT.md` in the repo root contains
+`[rules](internal/rules/)`, including it from
+`docs/guide.md` rewrites the link:
+
+```markdown
+<?include
+file: DEVELOPMENT.md
+?>
+See [rules](../internal/rules/) for details.
+<?/include?>
+```
+
+### Bad — Outdated Content
 
 ```markdown
 <?include
