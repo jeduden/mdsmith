@@ -56,7 +56,9 @@ func adjustLinks(content string, includedFilePath string, includingFilePath stri
 }
 
 // rewriteSkippingCode applies rewriteFn to non-code portions of content,
-// leaving fenced code blocks and inline code spans unchanged.
+// leaving fenced code block lines unchanged. Link rewriting is applied on
+// full lines so that backticks inside link text (e.g. [`name`](target))
+// do not prevent matching.
 func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 	var b strings.Builder
 	inFence := false
@@ -85,62 +87,9 @@ func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 			continue
 		}
 
-		// Process line respecting inline code spans.
-		b.WriteString(rewriteLineSkippingInlineCode(line, rewriteFn))
+		b.WriteString(rewriteFn(line))
 	}
 
-	return b.String()
-}
-
-// rewriteLineSkippingInlineCode applies rewriteFn to parts of a line
-// outside backtick-delimited inline code spans. Handles multi-backtick
-// delimiters where the opening and closing run lengths must match.
-func rewriteLineSkippingInlineCode(line string, rewriteFn func(string) string) string {
-	var b strings.Builder
-	inCode := false
-	codeRunLen := 0
-	start := 0
-
-	for i := 0; i < len(line); {
-		if line[i] != '`' {
-			i++
-			continue
-		}
-
-		// Count consecutive backticks.
-		j := i
-		for j < len(line) && line[j] == '`' {
-			j++
-		}
-		runLen := j - i
-
-		if inCode {
-			if runLen == codeRunLen {
-				b.WriteString(line[start:j])
-				start = j
-				inCode = false
-				codeRunLen = 0
-			}
-		} else {
-			if start < i {
-				b.WriteString(rewriteFn(line[start:i]))
-			}
-			b.WriteString(line[i:j])
-			start = j
-			inCode = true
-			codeRunLen = runLen
-		}
-
-		i = j
-	}
-
-	if start < len(line) {
-		if inCode {
-			b.WriteString(line[start:])
-		} else {
-			b.WriteString(rewriteFn(line[start:]))
-		}
-	}
 	return b.String()
 }
 
@@ -187,6 +136,11 @@ func shouldSkip(target string) bool {
 		return true
 	}
 	if strings.HasPrefix(target, "mailto:") {
+		return true
+	}
+	// Skip targets with unescaped whitespace — likely link titles
+	// (e.g. [x](url "title")) which we cannot safely rewrite.
+	if strings.ContainsAny(target, " \t") {
 		return true
 	}
 	return false

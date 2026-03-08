@@ -148,25 +148,18 @@ func TestAdjustLinks_CodeSkip(t *testing.T) {
 			want:          "## Heading\n\n```md\n[link](foo.md)\n```\n",
 		},
 		{
-			name:          "link inside inline code not rewritten",
-			content:       "Use `[link](foo.md)` syntax.\n",
+			name:          "backticks in link text still rewritten",
+			content:       "[`name`](settings.json) ref.\n",
 			includedFile:  "DEVELOPMENT.md",
 			includingFile: "docs/guide.md",
-			want:          "Use `[link](foo.md)` syntax.\n",
+			want:          "[`name`](../settings.json) ref.\n",
 		},
 		{
-			name:          "link outside code rewritten, inside code preserved",
-			content:       "[real](foo.md) and `[fake](bar.md)`\n",
+			name:          "link title with whitespace skipped",
+			content:       "[link](foo.md \"A title\")\n",
 			includedFile:  "DEVELOPMENT.md",
 			includingFile: "docs/guide.md",
-			want:          "[real](../foo.md) and `[fake](bar.md)`\n",
-		},
-		{
-			name:          "multi-backtick inline code preserved",
-			content:       "Use ``[link](foo.md)`` syntax.\n",
-			includedFile:  "DEVELOPMENT.md",
-			includingFile: "docs/guide.md",
-			want:          "Use ``[link](foo.md)`` syntax.\n",
+			want:          "[link](foo.md \"A title\")\n",
 		},
 	}
 

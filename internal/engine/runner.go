@@ -81,9 +81,10 @@ func (r *Runner) Run(paths []string) *Result {
 // logic and line-offset adjustment).
 //
 // The File's FS field is left nil because in-memory source has no
-// meaningful filesystem context. Rules that access f.FS must handle nil.
-// RootFS is set when RootDir is configured so include directives with
-// ".." paths can still resolve against the project root.
+// meaningful filesystem context. Rules that access f.FS must handle nil
+// (include short-circuits when FS is nil). RootFS is set when RootDir
+// is configured for potential future use, but currently has no effect
+// on stdin since the include rule requires FS to be non-nil.
 func (r *Runner) RunSource(path string, source []byte) *Result {
 	res := &Result{FilesChecked: 1}
 

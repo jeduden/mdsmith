@@ -62,7 +62,7 @@ git push origin <branch>
 ```
 
 These commands are auto-approved in
-[`.claude/settings.json`](.claude/settings.json).
+[`.claude/settings.json`](../.claude/settings.json).
 
 ### Writing Guidelines
 
