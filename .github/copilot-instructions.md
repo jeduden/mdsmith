@@ -1,10 +1,5 @@
 # Copilot Instructions
 
-<!-- Included content comes from CLAUDE.md and
-     DEVELOPMENT.md. Edit those files first, then run
-     `mdsmith fix .github/copilot-instructions.md`
-     to propagate. -->
-
 <?include
 file: ../CLAUDE.md
 strip-frontmatter: "true"
