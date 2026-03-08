@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 
 	flag "github.com/spf13/pflag"
@@ -358,6 +359,7 @@ func checkFiles(
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
+		RootDir:          rootDirFromConfig(cfgPath),
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -415,6 +417,7 @@ func fixFiles(
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
+		RootDir:          rootDirFromConfig(cfgPath),
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
@@ -466,6 +469,7 @@ func checkStdin(format string, noColor, quiet, verbose bool, configPath string) 
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
+		RootDir:          rootDirFromConfig(cfgPath),
 	}
 	result := runner.RunSource("<stdin>", source)
 	printErrors(result.Errors)
@@ -505,26 +509,26 @@ func splitStdinArg(args []string) (hasStdin bool, fileArgs []string) {
 	return hasStdin, fileArgs
 }
 
-// checkDiscovered loads config, discovers files from config patterns,
-// and lints them. Returns the appropriate exit code.
-func checkDiscovered(
-	configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
-) int {
+// discoverFiles loads config, discovers files from config patterns, and
+// returns the config, config path, logger, and discovered file list. On
+// error or empty results it prints a message and returns a non-negative
+// exit code; the caller should return it directly. A negative code means
+// "continue with the returned values".
+func discoverFiles(
+	configPath string, verbose, noGitignore, noFollowSymlinks bool,
+) (*config.Config, string, *vlog.Logger, []string, int) {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
 	cfg, cfgPath, err := loadConfig(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return 2
+		return nil, "", nil, nil, 2
 	}
 	if cfgPath != "" {
 		logger.Printf("config: %s", cfgPath)
 	}
-
-	// Discover files using config patterns.
 	if len(cfg.Files) == 0 {
-		return 0
+		return nil, "", nil, nil, 0
 	}
 
 	files, err := discovery.Discover(discovery.Options{
@@ -534,10 +538,23 @@ func checkDiscovered(
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: discovering files: %v\n", err)
-		return 2
+		return nil, "", nil, nil, 2
 	}
 	if len(files) == 0 {
-		return 0
+		return nil, "", nil, nil, 0
+	}
+	return cfg, cfgPath, logger, files, -1
+}
+
+// checkDiscovered loads config, discovers files from config patterns,
+// and lints them. Returns the appropriate exit code.
+func checkDiscovered(
+	configPath, format string,
+	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+) int {
+	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
+	if code >= 0 {
+		return code
 	}
 
 	runner := &engine.Runner{
@@ -545,6 +562,7 @@ func checkDiscovered(
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
+		RootDir:          rootDirFromConfig(cfgPath),
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -577,33 +595,9 @@ func fixDiscovered(
 	configPath, format string,
 	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
 ) int {
-	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
-
-	cfg, cfgPath, err := loadConfig(configPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return 2
-	}
-	if cfgPath != "" {
-		logger.Printf("config: %s", cfgPath)
-	}
-
-	// Discover files using config patterns.
-	if len(cfg.Files) == 0 {
-		return 0
-	}
-
-	files, err := discovery.Discover(discovery.Options{
-		Patterns:         cfg.Files,
-		UseGitignore:     !noGitignore,
-		NoFollowSymlinks: resolveOpts(cfg, noGitignore, noFollowSymlinks).NoFollowSymlinks,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: discovering files: %v\n", err)
-		return 2
-	}
-	if len(files) == 0 {
-		return 0
+	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
+	if code >= 0 {
+		return code
 	}
 
 	fixer := &fixpkg.Fixer{
@@ -611,6 +605,7 @@ func fixDiscovered(
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
+		RootDir:          rootDirFromConfig(cfgPath),
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
@@ -659,6 +654,20 @@ func frontMatterEnabled(cfg *config.Config) bool {
 		return *cfg.FrontMatter
 	}
 	return true
+}
+
+// rootDirFromConfig returns the project root directory derived from the
+// config file path. If cfgPath is empty, it falls back to the current
+// working directory so that includes with ".." paths still resolve.
+func rootDirFromConfig(cfgPath string) string {
+	if cfgPath != "" {
+		return filepath.Dir(cfgPath)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return cwd
 }
 
 // loadConfig loads configuration by either using the specified path or

@@ -16,6 +16,7 @@ type File struct {
 	Lines       [][]byte
 	AST         ast.Node
 	FS          fs.FS
+	RootFS      fs.FS
 	FrontMatter []byte
 	LineOffset  int
 }

@@ -20,6 +20,9 @@ type Runner struct {
 	Rules            []rule.Rule
 	StripFrontMatter bool
 	Logger           *vlog.Logger
+	// RootDir is the project root directory (parent of .mdsmith.yml).
+	// Used by rules that need to read files relative to the project root.
+	RootDir string
 }
 
 // Result holds the output of a lint run.
@@ -55,6 +58,9 @@ func (r *Runner) Run(paths []string) *Result {
 			continue
 		}
 		f.FS = os.DirFS(filepath.Dir(path))
+		if r.RootDir != "" {
+			f.RootFS = os.DirFS(r.RootDir)
+		}
 
 		effective := r.effectiveWithCategories(path)
 
@@ -75,7 +81,10 @@ func (r *Runner) Run(paths []string) *Result {
 // logic and line-offset adjustment).
 //
 // The File's FS field is left nil because in-memory source has no
-// meaningful filesystem context. Rules that access f.FS must handle nil.
+// meaningful filesystem context. Rules that access f.FS must handle nil
+// (include short-circuits when FS is nil). RootFS is set when RootDir
+// is configured for potential future use, but currently has no effect
+// on stdin since the include rule requires FS to be non-nil.
 func (r *Runner) RunSource(path string, source []byte) *Result {
 	res := &Result{FilesChecked: 1}
 
@@ -85,6 +94,9 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 	if err != nil {
 		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 		return res
+	}
+	if r.RootDir != "" {
+		f.RootFS = os.DirFS(r.RootDir)
 	}
 
 	effective := r.effectiveWithCategories(path)
