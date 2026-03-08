@@ -54,6 +54,17 @@ also passes.
 Bad fixtures are excluded via the `ignore:` section in
 `.mdsmith.yml`.
 
+## Test Coverage
+
+- `go test -coverprofile=cover.out ./...` — generate
+  coverage profile
+- `go tool cover -html=cover.out` — view in browser
+- `go tool cover -func=cover.out` — print per-function
+  summary
+
+Use coverage to confirm Red/Green TDD cycles exercise
+all code paths.
+
 ## Generated Sections
 
 Content between `<?directive ... ?>` and
