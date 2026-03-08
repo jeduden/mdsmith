@@ -76,7 +76,7 @@ overrides:
           - tables
           - urls
       blank-line-around-lists: false
-  - files: [".github/copilot-instructions.md"]
+  - files: ["AGENTS.md", ".github/copilot-instructions.md"]
     rules:
       line-length:
         max: 200
