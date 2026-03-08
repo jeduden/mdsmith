@@ -82,6 +82,8 @@ func (r *Runner) Run(paths []string) *Result {
 //
 // The File's FS field is left nil because in-memory source has no
 // meaningful filesystem context. Rules that access f.FS must handle nil.
+// RootFS is set when RootDir is configured so include directives with
+// ".." paths can still resolve against the project root.
 func (r *Runner) RunSource(path string, source []byte) *Result {
 	res := &Result{FilesChecked: 1}
 
@@ -91,6 +93,9 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 	if err != nil {
 		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 		return res
+	}
+	if r.RootDir != "" {
+		f.RootFS = os.DirFS(r.RootDir)
 	}
 
 	effective := r.effectiveWithCategories(path)

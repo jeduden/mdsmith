@@ -196,6 +196,9 @@ func findParentHeadingLevel(f *lint.File, markerLine int) int {
 		if !ok {
 			continue
 		}
+		if heading.Lines().Len() == 0 {
+			continue
+		}
 		headingLine := f.LineOfOffset(heading.Lines().At(0).Start)
 		if headingLine >= markerLine {
 			break

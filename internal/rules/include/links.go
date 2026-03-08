@@ -60,7 +60,8 @@ func adjustLinks(content string, includedFilePath string, includingFilePath stri
 func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 	var b strings.Builder
 	inFence := false
-	fenceMarker := ""
+	var fenceChar byte
+	var fenceLen int
 
 	lines := strings.SplitAfter(content, "\n")
 	for _, line := range lines {
@@ -69,19 +70,17 @@ func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 		if inFence {
 			b.WriteString(line)
 			stripped := strings.TrimRight(trimmed, " \t\n")
-			if len(stripped) >= len(fenceMarker) && allSameChar(stripped, fenceMarker[0]) {
+			if len(stripped) >= fenceLen && allSameChar(stripped, fenceChar) {
 				inFence = false
 			}
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+		// Detect opening fence: capture exact run length.
+		if run := countFenceRun(trimmed); run > 0 {
 			inFence = true
-			if strings.HasPrefix(trimmed, "```") {
-				fenceMarker = "```"
-			} else {
-				fenceMarker = "~~~"
-			}
+			fenceChar = trimmed[0]
+			fenceLen = run
 			b.WriteString(line)
 			continue
 		}
@@ -143,6 +142,27 @@ func rewriteLineSkippingInlineCode(line string, rewriteFn func(string) string) s
 		}
 	}
 	return b.String()
+}
+
+// countFenceRun returns the length of a backtick or tilde run at the
+// start of trimmed (after whitespace was already stripped). Returns 0
+// if no fence is detected (run < 3).
+func countFenceRun(trimmed string) int {
+	if len(trimmed) < 3 {
+		return 0
+	}
+	ch := trimmed[0]
+	if ch != '`' && ch != '~' {
+		return 0
+	}
+	n := 0
+	for n < len(trimmed) && trimmed[n] == ch {
+		n++
+	}
+	if n < 3 {
+		return 0
+	}
+	return n
 }
 
 // allSameChar checks if s consists entirely of character ch.
