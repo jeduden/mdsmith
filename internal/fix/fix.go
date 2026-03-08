@@ -21,6 +21,9 @@ type Fixer struct {
 	Rules            []rule.Rule
 	StripFrontMatter bool
 	Logger           *vlog.Logger
+	// RootDir is the project root directory (parent of .mdsmith.yml).
+	// Used by rules that need to read files relative to the project root.
+	RootDir string
 }
 
 // Result holds the outcome of a fix run.
@@ -95,6 +98,9 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 
 	dirFS := os.DirFS(filepath.Dir(path))
 	lf.FS = dirFS
+	if f.RootDir != "" {
+		lf.RootFS = os.DirFS(f.RootDir)
+	}
 	effective := f.effectiveWithCategories(path)
 
 	f.logRules(effective)
@@ -122,6 +128,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 		return beforeDiags, beforeDiags, modified, errs
 	}
 	finalFile.FS = dirFS
+	finalFile.RootFS = lf.RootFS
 	finalFile.FrontMatter = lf.FrontMatter
 	finalFile.LineOffset = lf.LineOffset
 
@@ -146,6 +153,9 @@ func (f *Fixer) applyFixPasses(
 				break
 			}
 			parsedFile.FS = dirFS
+			if f.RootDir != "" {
+				parsedFile.RootFS = os.DirFS(f.RootDir)
+			}
 
 			diags := fr.Check(parsedFile)
 			if len(diags) == 0 {

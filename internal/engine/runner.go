@@ -20,6 +20,9 @@ type Runner struct {
 	Rules            []rule.Rule
 	StripFrontMatter bool
 	Logger           *vlog.Logger
+	// RootDir is the project root directory (parent of .mdsmith.yml).
+	// Used by rules that need to read files relative to the project root.
+	RootDir string
 }
 
 // Result holds the output of a lint run.
@@ -55,6 +58,9 @@ func (r *Runner) Run(paths []string) *Result {
 			continue
 		}
 		f.FS = os.DirFS(filepath.Dir(path))
+		if r.RootDir != "" {
+			f.RootFS = os.DirFS(r.RootDir)
+		}
 
 		effective := r.effectiveWithCategories(path)
 

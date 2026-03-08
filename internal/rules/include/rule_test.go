@@ -18,6 +18,7 @@ func newTestFile(
 	}
 	if len(fs) > 0 {
 		f.FS = fs[0]
+		f.RootFS = fs[0]
 	}
 	return f
 }
@@ -193,13 +194,18 @@ func TestCheck_AbsoluteFilePath(t *testing.T) {
 	expectDiagMsg(t, diags, "absolute file path")
 }
 
-func TestCheck_DotDotTraversal(t *testing.T) {
-	fsys := fstest.MapFS{}
-	src := "# Doc\n\n<?include\nfile: ../secret.md\n?>\nold\n<?/include?>\n"
-	f := newTestFile(t, "doc.md", src, fsys)
+func TestCheck_DotDotPathResolvesWithRootFS(t *testing.T) {
+	// file: ../CLAUDE.md from .github/copilot.md resolves
+	// to CLAUDE.md at the project root via RootFS.
+	fsys := fstest.MapFS{
+		"CLAUDE.md": {Data: []byte("Project info.\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: ../CLAUDE.md\n?>\n" +
+		"Project info.\n<?/include?>\n"
+	f := newTestFile(t, ".github/copilot.md", src, fsys)
 	r := &Rule{}
 	diags := r.Check(f)
-	expectDiagMsg(t, diags, `".." traversal`)
+	expectDiags(t, diags, 0)
 }
 
 // =====================================================================
@@ -220,6 +226,184 @@ func TestFix_UpdatesContent(t *testing.T) {
 			"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want,
 		)
 	}
+}
+
+// =====================================================================
+// Link adjustment
+// =====================================================================
+
+func TestCheck_LinkAdjustmentSubdir(t *testing.T) {
+	// file: sub/content.md from docs/guide.md → resolved to
+	// docs/sub/content.md via RootFS. Link images/pic.png
+	// rewrites to sub/images/pic.png from docs/guide.md.
+	fsys := fstest.MapFS{
+		"docs/sub/content.md": {
+			Data: []byte("See [pic](images/pic.png) here.\n"),
+		},
+	}
+	src := "# Guide\n\n<?include\nfile: sub/content.md\n?>\n" +
+		"See [pic](sub/images/pic.png) here.\n<?/include?>\n"
+	f := newTestFile(t, "docs/guide.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_LinkAdjustmentSameDir(t *testing.T) {
+	// file: other.md in same dir as including file → no rewriting.
+	fsys := fstest.MapFS{
+		"other.md": {
+			Data: []byte("See [link](foo.md) here.\n"),
+		},
+	}
+	src := "# Doc\n\n<?include\nfile: other.md\n?>\n" +
+		"See [link](foo.md) here.\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestFix_LinkAdjustment(t *testing.T) {
+	// file: sub/content.md from docs/guide.md → resolved to
+	// docs/sub/content.md via RootFS; links rewrite from sub/.
+	fsys := fstest.MapFS{
+		"docs/sub/content.md": {
+			Data: []byte("See [layout](internal/rules/) for details.\n"),
+		},
+	}
+	src := "# Guide\n\n<?include\nfile: sub/content.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "docs/guide.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "# Guide\n\n<?include\nfile: sub/content.md\n?>\n" +
+		"See [layout](sub/internal/rules/) for details.\n<?/include?>\n"
+	if got != want {
+		t.Errorf("Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// =====================================================================
+// Heading level adjustment
+// =====================================================================
+
+func TestCheck_HeadingLevelAbsolute(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {
+			Data: []byte("## Build\n\nBuild steps.\n\n### Sub\n\nDetails.\n"),
+		},
+	}
+	// Parent is ## Project (level 2), source has ## (level 2) and ###
+	// shift = 2 - 2 + 1 = 1 → ### Build, #### Sub
+	src := "# Doc\n\n## Project\n\n<?include\nfile: data.md\n" +
+		"heading-level: \"absolute\"\n?>\n" +
+		"### Build\n\nBuild steps.\n\n#### Sub\n\nDetails.\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_HeadingLevelOmitted(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {
+			Data: []byte("## Build\n\nSteps.\n"),
+		},
+	}
+	// Without heading-level, headings stay unchanged.
+	src := "# Doc\n\n## Project\n\n<?include\nfile: data.md\n?>\n" +
+		"## Build\n\nSteps.\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_HeadingLevelAtDocRoot(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {
+			Data: []byte("## Build\n\nSteps.\n"),
+		},
+	}
+	// No heading before marker → parent level 0 → no shift.
+	src := "<?include\nfile: data.md\n" +
+		"heading-level: \"absolute\"\n?>\n" +
+		"## Build\n\nSteps.\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_HeadingLevelUnderH3(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {
+			Data: []byte("## Topic\n\nText.\n"),
+		},
+	}
+	// Parent is ### Details (level 3), source h2
+	// shift = 3 - 2 + 1 = 2 → #### Topic
+	src := "# Doc\n\n## Section\n\n### Details\n\n<?include\nfile: data.md\n" +
+		"heading-level: \"absolute\"\n?>\n" +
+		"#### Topic\n\nText.\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_InvalidHeadingLevel(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("content\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: data.md\n" +
+		"heading-level: \"relative\"\n?>\ncontent\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `"heading-level" must be "absolute"`)
+}
+
+func TestFix_HeadingLevelAbsolute(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {
+			Data: []byte("## Build\n\nSteps.\n\n### Sub\n\nMore.\n"),
+		},
+	}
+	src := "# Doc\n\n## Project\n\n<?include\nfile: data.md\n" +
+		"heading-level: \"absolute\"\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "# Doc\n\n## Project\n\n<?include\nfile: data.md\n" +
+		"heading-level: \"absolute\"\n?>\n" +
+		"### Build\n\nSteps.\n\n#### Sub\n\nMore.\n<?/include?>\n"
+	if got != want {
+		t.Errorf("Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// =====================================================================
+// Combined link adjustment and heading level
+// =====================================================================
+
+func TestCheck_LinkAndHeadingCombined(t *testing.T) {
+	// file: sub/dev.md from docs/guide.md → resolved to
+	// docs/sub/dev.md. Heading shift + link rewrite both apply.
+	fsys := fstest.MapFS{
+		"docs/sub/dev.md": {
+			Data: []byte("## Build\n\nSee [rules](internal/rules/).\n"),
+		},
+	}
+	// Parent ## Project (level 2), shift=1 → ### Build
+	// Link rewritten: internal/rules/ → sub/internal/rules/
+	src := "# Doc\n\n## Project\n\n<?include\nfile: sub/dev.md\n" +
+		"heading-level: \"absolute\"\n?>\n" +
+		"### Build\n\nSee [rules](sub/internal/rules/).\n<?/include?>\n"
+	f := newTestFile(t, "docs/guide.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
 }
 
 // =====================================================================

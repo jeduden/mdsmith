@@ -43,6 +43,13 @@ gh api repos/"$(gh repo view --json nameWithOwner \
   -q '.nameWithOwner')"/pulls/<number>/comments \
   --paginate
 
+# Resolve a review thread after addressing it
+gh api graphql -f query='mutation {
+  resolveReviewThread(input: {threadId: "ID"}) {
+    thread { id isResolved }
+  }
+}'
+
 # Push updates after addressing comments
 git push origin <branch>
 ```
