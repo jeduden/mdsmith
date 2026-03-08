@@ -90,7 +90,7 @@ overrides:
         max: 600
       first-line-heading:
         level: 1
-      cross-file-reference-integrity: false
+      cross-file-reference-integrity: true
       catalog: false
   - files: ["DEVELOPMENT.md"]
     rules:

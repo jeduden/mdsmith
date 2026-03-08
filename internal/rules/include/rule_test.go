@@ -208,6 +208,21 @@ func TestCheck_DotDotPathResolvesWithRootFS(t *testing.T) {
 	expectDiags(t, diags, 0)
 }
 
+func TestCheck_DotDotPathWithoutRootFS(t *testing.T) {
+	// When RootFS is nil and file contains "..", a clear diagnostic
+	// should be emitted instead of a confusing "not found" error.
+	src := "# Doc\n\n<?include\nfile: ../CLAUDE.md\n?>\nold\n<?/include?>\n"
+	f, err := lint.NewFile("sub/doc.md", []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.FS = fstest.MapFS{}
+	// RootFS intentionally left nil.
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "project root is not configured")
+}
+
 // =====================================================================
 // Fix
 // =====================================================================

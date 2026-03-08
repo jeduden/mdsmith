@@ -14,7 +14,7 @@ var linkRe = regexp.MustCompile(`(!?\[(?:[^\[\]]|\[[^\]]*\])*\])\(([^)]*)\)`)
 // adjustLinks rewrites relative link targets in content so they remain valid
 // when the included file (includedFilePath) is rendered inside the including
 // file (includingFilePath). Both paths are FS-root-relative, slash-separated.
-// Links inside fenced code blocks and inline code spans are left unchanged.
+// Links inside fenced code blocks are left unchanged.
 func adjustLinks(content string, includedFilePath string, includingFilePath string) string {
 	includedDir := path.Dir(includedFilePath)
 	includingDir := path.Dir(includingFilePath)

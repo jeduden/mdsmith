@@ -657,12 +657,17 @@ func frontMatterEnabled(cfg *config.Config) bool {
 }
 
 // rootDirFromConfig returns the project root directory derived from the
-// config file path. If cfgPath is empty, returns empty string.
+// config file path. If cfgPath is empty, it falls back to the current
+// working directory so that includes with ".." paths still resolve.
 func rootDirFromConfig(cfgPath string) string {
-	if cfgPath == "" {
+	if cfgPath != "" {
+		return filepath.Dir(cfgPath)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
 		return ""
 	}
-	return filepath.Dir(cfgPath)
+	return cwd
 }
 
 // loadConfig loads configuration by either using the specified path or

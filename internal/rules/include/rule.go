@@ -130,12 +130,15 @@ func generateIncludeContent(
 	// Resolve file relative to the including file's directory.
 	// Use RootFS (project root) when available so that paths
 	// with ".." segments work across directories.
-	resolvedFile := path.Join(path.Dir(filePath), file)
+	resolvedFile := path.Clean(path.Join(path.Dir(filePath), file))
 	readFS := f.FS
-	readPath := file
+	readPath := path.Clean(file)
 	if f.RootFS != nil {
 		readFS = f.RootFS
 		readPath = resolvedFile
+	} else if strings.Contains(file, "..") {
+		return "", []lint.Diagnostic{makeDiag(filePath, line,
+			`include file path contains ".." but project root is not configured`)}
 	}
 	data, err := fs.ReadFile(readFS, readPath)
 	if err != nil {
