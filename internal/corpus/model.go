@@ -1,6 +1,5 @@
 package corpus
 
-
 // Category is the taxonomy label for a corpus record.
 type Category string
 
@@ -42,20 +41,20 @@ type SourceConfig struct {
 
 // Record contains one collected markdown record.
 type Record struct {
-	RecordID       string    `json:"record_id"`
-	Source         string    `json:"source"`
-	Repository     string    `json:"repository,omitempty"`
-	CommitSHA      string    `json:"commit_sha,omitempty"`
-	License        string    `json:"license,omitempty"`
-	Path           string    `json:"path"`
-	Category       Category  `json:"category"`
-	Split          string    `json:"split,omitempty"`
-	Words          int       `json:"words"`
-	Chars          int       `json:"chars"`
-	ContentSHA256  string    `json:"content_sha256,omitempty"`
-	CollectedAt    string    `json:"collected_at,omitempty"`
-	SourceResolved string `json:"-"`
-	RawContent     string `json:"-"`
+	RecordID       string   `json:"record_id"`
+	Source         string   `json:"source"`
+	Repository     string   `json:"repository,omitempty"`
+	CommitSHA      string   `json:"commit_sha,omitempty"`
+	License        string   `json:"license,omitempty"`
+	Path           string   `json:"path"`
+	Category       Category `json:"category"`
+	Split          string   `json:"split,omitempty"`
+	Words          int      `json:"words"`
+	Chars          int      `json:"chars"`
+	ContentSHA256  string   `json:"content_sha256,omitempty"`
+	CollectedAt    string   `json:"collected_at,omitempty"`
+	SourceResolved string   `json:"-"`
+	RawContent     string   `json:"-"`
 }
 
 // BuildResult contains build artifacts.
