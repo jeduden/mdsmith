@@ -37,18 +37,19 @@ rules:
 
 ### Bad
 
-````markdown
+`````markdown
 ```go
 fmt.Println("hello")
-````
+// ← no closing ``` fence
+`````
 
 The opening fence has no matching closing fence, so all
 following content is consumed as code.
 
 ### Good
 
-````markdown
+`````markdown
 ```go
 fmt.Println("hello")
 ```
-````
+`````
