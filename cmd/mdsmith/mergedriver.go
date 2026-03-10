@@ -217,6 +217,9 @@ func regenDirectiveNames() []string {
 // discovered dynamically from registered gensection.Directive rules.
 // Conflict markers outside these sections are left unchanged.
 //
+// Both standard (<<<<<<<, =======, >>>>>>>) and diff3
+// (<<<<<<<, |||||||, =======, >>>>>>>) conflict styles are supported.
+//
 // The ======= separator is only stripped when it appears between
 // <<<<<<< and >>>>>>> to avoid false positives with Markdown
 // setext heading underlines.
@@ -241,6 +244,9 @@ func stripSectionConflicts(content []byte) []byte {
 			}
 			if inConflict && isConflictClose(trimmed) {
 				inConflict = false
+				continue
+			}
+			if inConflict && isConflictBase(trimmed) {
 				continue
 			}
 			if inConflict && isConflictSeparator(trimmed) {
@@ -281,6 +287,14 @@ func matchesAnyEnd(line []byte, names []string) bool {
 // block (starts with <<<<<<<).
 func isConflictOpen(line []byte) bool {
 	return bytes.HasPrefix(line, []byte("<<<<<<<"))
+}
+
+// isConflictBase returns true if the line opens the base
+// (ancestor) section in a diff3-style conflict block (starts
+// with |||||||). This marker only appears when git is
+// configured with merge.conflictstyle = diff3 or zdiff3.
+func isConflictBase(line []byte) bool {
+	return bytes.HasPrefix(line, []byte("|||||||"))
 }
 
 // isConflictSeparator returns true if the line is a git conflict
