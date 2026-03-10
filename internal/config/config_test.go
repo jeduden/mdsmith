@@ -647,6 +647,39 @@ func TestMergeFrontMatter(t *testing.T) {
 	}
 }
 
+// TestEffectiveOverrideMatchesBasename verifies that an override pattern
+// without path separators (e.g. "slides.md") matches files in subdirectories
+// via basename matching, consistent with how ignore patterns work (issue #40).
+func TestEffectiveOverrideMatchesBasename(t *testing.T) {
+	cfg := Defaults()
+	cfg.Overrides = []Override{
+		{
+			Files: []string{"slides.md"},
+			Rules: map[string]RuleCfg{
+				"first-line-heading": {Enabled: false},
+			},
+		},
+	}
+
+	// slides.md at root should match.
+	eff := Effective(cfg, "slides.md")
+	if eff["first-line-heading"].Enabled {
+		t.Error("first-line-heading should be disabled for slides.md")
+	}
+
+	// docs/slides.md should also match via basename (issue #40).
+	eff2 := Effective(cfg, "docs/slides.md")
+	if eff2["first-line-heading"].Enabled {
+		t.Error("first-line-heading should be disabled for docs/slides.md via basename match")
+	}
+
+	// other.md should NOT match.
+	eff3 := Effective(cfg, "other.md")
+	if !eff3["first-line-heading"].Enabled {
+		t.Error("first-line-heading should remain enabled for other.md")
+	}
+}
+
 func TestEffectiveGlobPatternMatch(t *testing.T) {
 	cfg := Defaults()
 	cfg.Overrides = []Override{
