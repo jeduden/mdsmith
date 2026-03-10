@@ -17,8 +17,8 @@ func TestCheck_EmptyAlt_Violation(t *testing.T) {
 	if len(diags) != 1 {
 		t.Fatalf("expected 1 diagnostic, got %d: %+v", len(diags), diags)
 	}
-	if diags[0].RuleID != "MDS031" {
-		t.Errorf("expected rule ID MDS031, got %s", diags[0].RuleID)
+	if diags[0].RuleID != "MDS032" {
+		t.Errorf("expected rule ID MDS032, got %s", diags[0].RuleID)
 	}
 	if diags[0].Severity != lint.Warning {
 		t.Errorf("expected warning severity, got %s", diags[0].Severity)
@@ -95,8 +95,8 @@ func TestCheck_EmptyFile(t *testing.T) {
 
 func TestID(t *testing.T) {
 	r := &Rule{}
-	if r.ID() != "MDS031" {
-		t.Errorf("expected MDS031, got %s", r.ID())
+	if r.ID() != "MDS032" {
+		t.Errorf("expected MDS032, got %s", r.ID())
 	}
 }
 

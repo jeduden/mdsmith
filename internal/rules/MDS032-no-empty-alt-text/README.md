@@ -1,14 +1,14 @@
 ---
-id: MDS031
+id: MDS032
 name: no-empty-alt-text
 status: ready
 description: Images must have non-empty alt text for accessibility.
 ---
-# MDS031: no-empty-alt-text
+# MDS032: no-empty-alt-text
 
 Images must have non-empty alt text for accessibility.
 
-- **ID**: MDS031
+- **ID**: MDS032
 - **Name**: `no-empty-alt-text`
 - **Status**: ready
 - **Default**: enabled

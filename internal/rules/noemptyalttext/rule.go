@@ -16,7 +16,7 @@ func init() {
 type Rule struct{}
 
 // ID implements rule.Rule.
-func (r *Rule) ID() string { return "MDS031" }
+func (r *Rule) ID() string { return "MDS032" }
 
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "no-empty-alt-text" }
