@@ -19,7 +19,7 @@ Images must have non-empty alt text for accessibility.
 
 ## Config
 
-Enable:
+Enable (default):
 
 ```yaml
 rules:
