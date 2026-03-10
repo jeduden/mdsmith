@@ -67,6 +67,35 @@ func TestCheck_MultipleImages_MixedViolations(t *testing.T) {
 	}
 }
 
+func TestCheck_ImageInListItem_Violation(t *testing.T) {
+	src := []byte("# Title\n\n- ![](image.png)\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d: %+v", len(diags), diags)
+	}
+	if diags[0].Line != 3 {
+		t.Errorf("expected line 3, got %d", diags[0].Line)
+	}
+}
+
+func TestCheck_ImageInListItem_WithAlt_NoViolation(t *testing.T) {
+	src := []byte("# Title\n\n- ![Screenshot](image.png)\n")
+	f, err := lint.NewFile("test.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Rule{}
+	diags := r.Check(f)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
+	}
+}
+
 func TestCheck_NoImages_NoViolation(t *testing.T) {
 	src := []byte("# Title\n\nJust text.\n")
 	f, err := lint.NewFile("test.md", src)

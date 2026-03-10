@@ -58,14 +58,17 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 func imageLine(img *ast.Image, f *lint.File) int {
-	// Image is an inline node; get line from parent paragraph.
-	parent := img.Parent()
-	if parent != nil {
-		if p, ok := parent.(*ast.Paragraph); ok {
-			lines := p.Lines()
-			if lines.Len() > 0 {
-				return f.LineOfOffset(lines.At(0).Start)
-			}
+	// Try child text nodes first for precise position.
+	for c := img.FirstChild(); c != nil; c = c.NextSibling() {
+		if t, ok := c.(*ast.Text); ok {
+			return f.LineOfOffset(t.Segment.Start)
+		}
+	}
+	// Walk up ancestors to find a block node with line info.
+	for p := img.Parent(); p != nil; p = p.Parent() {
+		lines := p.Lines()
+		if lines != nil && lines.Len() > 0 {
+			return f.LineOfOffset(lines.At(0).Start)
 		}
 	}
 	return 1
