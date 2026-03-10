@@ -37,7 +37,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		alt := string(img.Text(f.Source))
+		alt := imageAltText(img, f)
 		if strings.TrimSpace(alt) == "" {
 			line := imageLine(img, f)
 			diags = append(diags, lint.Diagnostic{
@@ -55,6 +55,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	})
 
 	return diags
+}
+
+func imageAltText(img *ast.Image, f *lint.File) string {
+	var b strings.Builder
+	for c := img.FirstChild(); c != nil; c = c.NextSibling() {
+		if t, ok := c.(*ast.Text); ok {
+			b.Write(t.Segment.Value(f.Source))
+		}
+	}
+	return b.String()
 }
 
 func imageLine(img *ast.Image, f *lint.File) int {
