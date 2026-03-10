@@ -40,6 +40,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/nobareurls"
 	_ "github.com/jeduden/mdsmith/internal/rules/noduplicateheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
+	_ "github.com/jeduden/mdsmith/internal/rules/noemptyalttext"
 	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
 	_ "github.com/jeduden/mdsmith/internal/rules/nomultipleblanks"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"
