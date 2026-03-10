@@ -12,7 +12,6 @@ license_allowlist:
   - CC0-1.0
   - CC-BY-4.0
 
-
 policy:
   min_stars: 5000
   min_recent_commits_90d: 1
@@ -46,6 +45,21 @@ balance:
   troubleshooting:
     min: 0.02
     max: 0.30
+  adr:
+    min: 0.00
+    max: 0.15
+  rfc:
+    min: 0.00
+    max: 0.15
+  runbook:
+    min: 0.00
+    max: 0.20
+  postmortem:
+    min: 0.00
+    max: 0.10
+  changelog:
+    min: 0.00
+    max: 0.10
 
 sources:
   - name: openai-cookbook

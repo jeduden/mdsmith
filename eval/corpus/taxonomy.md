@@ -60,14 +60,14 @@ least one signal matches:
 - Boundary rule: classify when a responder can execute it in
   sequence during operations.
 - Positive example: `ops/runbook/release.md`.
-- Negative example: `postmortems/2026-02-outage.md`.
+- Negative example: `postmortems/2025-12-outage.md`.
 
 ## Incident Postmortem
 
 - Definition: retrospective on incident cause and actions.
 - Boundary rule: classify when the document centers one
   incident timeline.
-- Positive example: `postmortems/2026-02-outage.md`.
+- Positive example: `postmortems/2025-12-outage.md`.
 - Negative example: `ops/runbook/release.md`.
 
 ## Changelog / Release Notes / Migration Guide

@@ -247,8 +247,14 @@ func ReadQAAnnotationsCSV(path string) ([]QAAnnotation, error) {
 
 	start := 0
 	if len(rows[0]) >= 2 &&
-		strings.EqualFold(strings.TrimSpace(rows[0][0]), "record_id") &&
-		strings.EqualFold(strings.TrimSpace(rows[0][1]), "actual_category") {
+		strings.EqualFold(strings.TrimSpace(rows[0][0]), "record_id") {
+		// First column looks like a header; validate all column names.
+		if !strings.EqualFold(strings.TrimSpace(rows[0][1]), "actual_category") {
+			return nil, fmt.Errorf(
+				"annotation csv header has unexpected second column %q, expected \"actual_category\"",
+				strings.TrimSpace(rows[0][1]),
+			)
+		}
 		start = 1
 	}
 

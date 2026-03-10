@@ -46,6 +46,10 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// applyConfigDefaults fills unset fields with default values. Zero values are
+// treated as "unset", so explicitly setting a numeric field to 0 in the config
+// file will be overridden by the default. This is acceptable because all
+// defaulted fields have validation rules that reject zero (e.g. min_words >= 1).
 func applyConfigDefaults(cfg *Config) {
 	if cfg.MinWords == 0 {
 		cfg.MinWords = defaultMinWords
@@ -93,6 +97,10 @@ func mergeLocalOverrides(configPath string, cfg *Config) error {
 		return nil
 	}
 
+	// Overwriting source.Root with an absolute local path changes record IDs
+	// because the record ID includes the source root. This is intentional for
+	// local development: it lets developers point sources at local checkouts
+	// without committing path changes to the shared config.
 	for i := range cfg.Sources {
 		if root, ok := byName[cfg.Sources[i].Name]; ok {
 			cfg.Sources[i].Root = root
@@ -113,7 +121,7 @@ func validateConfig(cfg Config) error {
 		if err := validateSource(source, allow, seen); err != nil {
 			return err
 		}
-		seen[source.Name] = struct{}{}
+		seen[strings.TrimSpace(source.Name)] = struct{}{}
 	}
 
 	return nil
@@ -163,26 +171,27 @@ func validateSource(
 	allow map[string]struct{},
 	seen map[string]struct{},
 ) error {
-	if strings.TrimSpace(source.Name) == "" {
+	name := strings.TrimSpace(source.Name)
+	if name == "" {
 		return fmt.Errorf("source name is required")
 	}
-	if _, ok := seen[source.Name]; ok {
-		return fmt.Errorf("duplicate source name: %s", source.Name)
+	if _, ok := seen[name]; ok {
+		return fmt.Errorf("duplicate source name: %s", name)
 	}
 	if strings.TrimSpace(source.Repository) == "" {
-		return fmt.Errorf("source %s repository is required", source.Name)
+		return fmt.Errorf("source %s repository is required", name)
 	}
 	if strings.TrimSpace(source.Root) == "" {
-		return fmt.Errorf("source %s root is required", source.Name)
+		return fmt.Errorf("source %s root is required", name)
 	}
 	if strings.TrimSpace(source.CommitSHA) == "" {
-		return fmt.Errorf("source %s commit_sha is required", source.Name)
+		return fmt.Errorf("source %s commit_sha is required", name)
 	}
 	if strings.TrimSpace(source.License) == "" {
-		return fmt.Errorf("source %s license is required", source.Name)
+		return fmt.Errorf("source %s license is required", name)
 	}
 	if _, ok := allow[strings.ToUpper(strings.TrimSpace(source.License))]; !ok {
-		return fmt.Errorf("source %s license %q is not allowlisted", source.Name, source.License)
+		return fmt.Errorf("source %s license %q is not allowlisted", name, source.License)
 	}
 	return nil
 }

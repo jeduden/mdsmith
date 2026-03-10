@@ -118,6 +118,10 @@ func collectFromRoot(cfg *Config, source SourceConfig, resolvedRoot string) ([]R
 			return walkErr
 		}
 		if d.IsDir() {
+			rel, relErr := filepath.Rel(resolvedRoot, path)
+			if relErr == nil && isGenerated(rel) {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !isMarkdown(path) {
@@ -144,6 +148,19 @@ func collectFromRoot(cfg *Config, source SourceConfig, resolvedRoot string) ([]R
 	return records, nil
 }
 
+// isGenerated returns true when the relative path indicates the file lives
+// inside a generated or vendored directory tree.  Skipping these paths avoids
+// ingesting machine-written markdown that adds noise to the corpus.
+func isGenerated(p string) bool {
+	normalizedPath := "/" + strings.Trim(filepath.ToSlash(p), "/") + "/"
+	for _, token := range []string{"/vendor/", "/node_modules/", "/dist/", "/build/", "/generated/", "/gen/"} {
+		if strings.Contains(normalizedPath, token) {
+			return true
+		}
+	}
+	return false
+}
+
 func collectFile(
 	cfg *Config,
 	source SourceConfig,
@@ -151,6 +168,12 @@ func collectFile(
 	relPath string,
 	resolvedRoot string,
 ) (Record, bool, error) {
+	// Check for generated/vendor paths before reading the file to skip
+	// unnecessary I/O.
+	if isGenerated(relPath) {
+		return Record{}, false, nil
+	}
+
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		return Record{}, false, fmt.Errorf("read file %s: %w", fullPath, err)
