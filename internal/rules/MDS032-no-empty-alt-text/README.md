@@ -35,14 +35,32 @@ rules:
 
 ## Examples
 
-### Bad
-
-```markdown
-![](image.png)
-```
-
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-![A sunset over the ocean](image.png)
+# Title
+
+![A sunset over the ocean](good/image.png)
 ```
+
+<?/include?>
+
+### Bad
+
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+![](bad/image.png)
+```
+
+<?/include?>

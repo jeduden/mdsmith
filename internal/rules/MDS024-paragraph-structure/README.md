@@ -46,17 +46,34 @@ rules:
 
 ### Good
 
+<?include
+file: good.md
+wrap: markdown
+?>
+
 ```markdown
+# Well Structured Document
+
 The sun rose over the hills. Birds began to sing.
 A gentle breeze swept through the valley.
 ```
 
+<?/include?>
+
 ### Bad
 
+<?include
+file: bad.md
+wrap: markdown
+?>
+
 ```markdown
-The sun rose. Birds sang. Wind blew. Rain fell.
-Snow came. Ice formed. Fog rolled in. Stars appeared.
+# Overly Long Paragraph
+
+Dogs bark. Cats meow. Birds sing. Fish swim. Frogs croak. Snakes hiss. Bees buzz. Ants march.
 ```
+
+<?/include?>
 
 ## Diagnostics
 

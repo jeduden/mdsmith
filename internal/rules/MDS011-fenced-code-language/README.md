@@ -37,16 +37,34 @@ rules:
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ````markdown
+# Title
+
 ```
-some code without a language
+some code
 ```
 ````
 
+<?/include?>
+
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ````markdown
+# Title
+
 ```go
 fmt.Println("hello")
 ```
 ````
+
+<?/include?>

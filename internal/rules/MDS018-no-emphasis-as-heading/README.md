@@ -37,16 +37,30 @@ rules:
 
 ### Bad
 
-```markdown
-**This looks like a heading**
+<?include
+file: bad/default.md
+wrap: markdown
+?>
 
-Some text below it.
+```markdown
+# Title
+
+**Bold line as heading**
 ```
+
+<?/include?>
 
 ### Good
 
-```markdown
-## This is a proper heading
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
-Some text below it.
+```markdown
+# Title
+
+This is a normal paragraph.
 ```
+
+<?/include?>

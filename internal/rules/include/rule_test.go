@@ -151,7 +151,7 @@ func TestCheck_WrapInCodeFence(t *testing.T) {
 		"example.md": {Data: []byte("# Hello\n")},
 	}
 	src := "# Doc\n\n<?include\nfile: example.md\n" +
-		"wrap: markdown\n?>\n```markdown\n# Hello\n```\n" +
+		"wrap: markdown\n?>\n\n```markdown\n# Hello\n```\n\n" +
 		"<?/include?>\n"
 	f := newTestFile(t, "doc.md", src, fsys)
 	r := &Rule{}

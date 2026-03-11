@@ -37,18 +37,32 @@ rules:
 
 ### Bad
 
-```markdown
-# Heading 1
+<?include
+file: bad/default.md
+wrap: markdown
+?>
 
-### Heading 3
+```markdown
+# Title
+
+### Subsection
 ```
+
+<?/include?>
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-# Heading 1
+# Title
 
-## Heading 2
+## Section
 
-### Heading 3
+Body text.
 ```
+
+<?/include?>

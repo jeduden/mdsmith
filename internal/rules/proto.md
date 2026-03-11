@@ -64,11 +64,15 @@ rules:
 
 ## Examples
 
-<!-- Use ```markdown fenced blocks. Minimal context.
-     Invisible chars: trailing spaces as ···, tabs as →.
+<!-- Use <?include?> directives referencing fixture files
+     in the rule's good/ and bad/ directories (or good.md
+     and bad.md files). Use wrap: markdown so the fixture
+     renders inside a fenced code block.
      Add ### Good and ### Bad subsections.
      Complex rules: multiple subsections labeled
-     "### Good -- description" or "### Bad -- description". -->
+     "### Good -- description" or "### Bad -- description".
+     Never use inline code-block examples; every example
+     must be backed by a real, tested fixture file. -->
 
 <!-- Optional: ## Diagnostics
      Include when the rule emits more than one distinct

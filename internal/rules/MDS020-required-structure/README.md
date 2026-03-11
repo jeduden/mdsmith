@@ -67,29 +67,41 @@ rules:
 
 ### Good
 
-```markdown
-# MDS001: line-length
-
-Line exceeds maximum length.
-
-## Settings
-
-## Examples
-
-### Good
-
-### Bad
-```
-
-### Bad
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
 ```markdown
-# MDS001: line-length
+# My Plan
 
-Line exceeds maximum length.
+## Goal
 
-## Examples
+Describe the goal here.
+
+## Tasks
+
+List tasks here.
 ```
+
+<?/include?>
+
+### Bad
+
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
+```markdown
+# My Plan
+
+## Goal
+
+Describe the goal here.
+```
+
+<?/include?>
 
 ## Diagnostics
 

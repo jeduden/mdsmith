@@ -56,17 +56,32 @@ rules:
 
 ### Good
 
+<?include
+file: good.md
+wrap: markdown
+?>
+
 ```markdown
-The cat sat on the mat and the dog lay on the rug.
-They were both very happy to be at home on a warm day.
+# Simple Document
+
+The cat sat on the mat and the dog lay on the rug and they
+were both very happy to be at home on a warm and sunny day
+in the middle of the summer.
 ```
+
+<?/include?>
 
 ### Bad
 
+<?include
+file: bad.md
+wrap: markdown
+?>
+
 ```markdown
-The implementation of concurrent distributed systems
-requires sophisticated understanding of fundamental
-computational paradigms and synchronization mechanisms
-that must guarantee linearizability across heterogeneous
-processing environments and architectural configurations.
+# Complex Document
+
+The implementation of concurrent distributed systems requires sophisticated understanding of fundamental computational paradigms and synchronization mechanisms that must guarantee linearizability across heterogeneous processing environments and architectural configurations.
 ```
+
+<?/include?>

@@ -37,18 +37,38 @@ rules:
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-First paragraph.
+# Title
 
 
-
-Second paragraph.
+Two blank lines above.
 ```
+
+<?/include?>
 
 ### Good
 
-```markdown
-First paragraph.
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
-Second paragraph.
+````markdown
+# Title
+
+One blank line above.
+
+```text
+code
+
+
+more code with blank lines above
 ```
+````
+
+<?/include?>

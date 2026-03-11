@@ -35,21 +35,37 @@ rules:
 
 ## Examples
 
-### Bad
+### Good
 
-`````markdown
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
+````markdown
+# Properly Closed
+
 ```go
 fmt.Println("hello")
-// ← no closing ``` fence
-`````
+```
+````
+
+<?/include?>
 
 The opening fence has no matching closing fence, so all
 following content is consumed as code.
 
-### Good
+### Bad -- empty fence
 
-`````markdown
-```go
-fmt.Println("hello")
+<?include
+file: bad/empty.md
+wrap: markdown
+?>
+
+````markdown
+# Empty Unclosed Fence
+
 ```
-`````
+````
+
+<?/include?>

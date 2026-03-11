@@ -37,25 +37,40 @@ rules:
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ````markdown
-Some text.
+# Title
+
+Content here.
 ```go
-code()
+fmt.Println("hello")
 ```
-More text.
 ````
+
+<?/include?>
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ````markdown
-Some text.
+# Title
 
 ```go
-code()
+fmt.Println("hello")
 ```
 
-More text.
+Content here.
 ````
+
+<?/include?>
 
 ## Diagnostics
 

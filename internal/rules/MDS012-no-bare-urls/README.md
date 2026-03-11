@@ -37,14 +37,30 @@ rules:
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-Visit https://example.com for more info.
+# Title
+
+Visit https://example.com for more.
 ```
+
+<?/include?>
 
 ### Good
 
-```markdown
-Visit <https://example.com> for more info.
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
-Visit [example](https://example.com) for more info.
+```markdown
+# Title
+
+Visit [example](https://example.com) for more.
 ```
+
+<?/include?>

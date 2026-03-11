@@ -42,12 +42,33 @@ rules:
 
 ### Good
 
-A file with 300 or fewer lines produces no diagnostic.
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+Short file within the limit.
+
+One more line.
+```
+
+<?/include?>
 
 ### Bad
 
-A file with more than 300 lines triggers:
+<?include
+file: bad/default.md
+wrap: markdown
+?>
 
-```text
-file.md:1:1 MDS022 file too long (350 > 300)
+```markdown
+# Title
+
+Short text.
+Extra line.
 ```
+
+<?/include?>

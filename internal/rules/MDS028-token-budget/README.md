@@ -75,14 +75,30 @@ rules:
 
 ### Good
 
-```markdown
-# Short Doc
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
-This file is well under the configured token budget.
+```markdown
+# Token Budget
+
+This file stays within budget.
 ```
+
+<?/include?>
 
 ### Bad
 
-```text
-file.md:1:1 MDS028 token budget exceeded (4150 > 4000, mode=tokenizer:builtin/cl100k_base)
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
+```markdown
+# Token Budget
+
+one two three four five six
 ```
+
+<?/include?>

@@ -52,16 +52,34 @@ rules:
 
 ### Bad (when style is `backtick`)
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
+# Title
+
 ~~~go
 fmt.Println("hello")
 ~~~
 ```
 
-### Good (when style is `backtick`)
+<?/include?>
+
+Backtick style when configured for tilde:
+
+<?include
+file: bad/tilde.md
+wrap: markdown
+?>
 
 ````markdown
+# Title
+
 ```go
 fmt.Println("hello")
 ```
 ````
+
+<?/include?>

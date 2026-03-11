@@ -37,20 +37,30 @@ rules:
 
 ### Bad
 
-```markdown
-Some text without a final newline.
-```
+<?include
+file: bad/default.md
+wrap: markdown
+?>
 
 ```markdown
-Some text with too many trailing newlines.
+# Title
 
-⏎
-⏎
+Content here.
 ```
+
+<?/include?>
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-Some text with exactly one trailing newline.
-⏎
+# Title
+
+Content here.
 ```
+
+<?/include?>
