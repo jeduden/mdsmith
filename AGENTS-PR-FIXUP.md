@@ -44,15 +44,19 @@ if ! command -v gh &>/dev/null; then
   URL="$URL/download/v${GH_VER}"
   URL="$URL/gh_${GH_VER}_${OS}_${ARCH}.tar.gz"
   TMP=$(mktemp -d)
+  trap 'rm -rf "$TMP"' EXIT
+  SUDO=""
+  if command -v sudo &>/dev/null && [ "$(id -u)" -ne 0 ]; then
+    SUDO="sudo "
+  fi
   if curl -fsSL "$URL" | tar -xz -C "$TMP"; then
-    sudo cp "$TMP"/gh_*/bin/gh /usr/local/bin/gh
-    rm -rf "$TMP"
+    ${SUDO}cp "$TMP"/gh_*/bin/gh /usr/local/bin/gh
   elif command -v brew &>/dev/null; then
     brew install gh
   elif command -v dnf &>/dev/null; then
-    sudo dnf install -y gh
+    ${SUDO}dnf install -y gh
   elif command -v pacman &>/dev/null; then
-    sudo pacman -S --noconfirm github-cli
+    ${SUDO}pacman -S --noconfirm github-cli
   else
     echo "ERROR: could not install gh" >&2
     echo "Install manually: https://cli.github.com" >&2
@@ -98,7 +102,7 @@ mdsmith check .
 
 ### 4. Push changes
 
-After rebase a force push is required (subsequent
+After a rebase, a force push is required (subsequent
 pushes after CI/review fixes can use a regular push):
 
 ```bash
