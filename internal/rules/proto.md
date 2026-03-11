@@ -71,10 +71,10 @@ rules:
      Add ### Good and ### Bad subsections.
      Complex rules: multiple subsections labeled
      "### Good -- description" or "### Bad -- description".
-     Prefer include directives over inline code blocks.
-     Inline examples are acceptable only when the behavior
-     cannot be represented via includes (e.g., EOF newline
-     differences in MDS009). -->
+     Always use include directives for examples. When the
+     included output cannot show the difference (e.g., EOF
+     newline in MDS009), add explanatory prose after the
+     include. -->
 
 <!-- Optional: ## Diagnostics
      Include when the rule emits more than one distinct

@@ -1,7 +1,7 @@
 ---
 id: 71
 title: Rule README examples must include from fixture files
-status: "🔲"
+status: "✅"
 summary: >-
   Replace inline code-block examples in every rule README
   with include directives that reference actual good/ and
