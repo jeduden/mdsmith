@@ -31,6 +31,9 @@ if ! command -v gh &>/dev/null; then
   case "$ARCH" in
     x86_64)  ARCH="amd64" ;;
     aarch64) ARCH="arm64" ;;
+    *)
+      echo "ERROR: unsupported arch $ARCH" >&2
+      exit 1 ;;
   esac
   OS=$(uname -s | tr '[:upper:]' '[:lower:]')
   URL="https://github.com/cli/cli/releases"
@@ -127,7 +130,8 @@ gh pr checks "$PR" --json name,state,conclusion \
   -q '.[] | select(.conclusion == "FAILURE")'
 
 # get the run ID and download logs
-RUN_ID=$(gh run list --branch "$BRANCH" --limit 1 \
+RUN_ID=$(gh run list --branch "$BRANCH" \
+  --status failure --limit 1 \
   --json databaseId -q '.[0].databaseId')
 gh run view "$RUN_ID" --log-failed
 ```
