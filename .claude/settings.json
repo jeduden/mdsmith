@@ -16,6 +16,7 @@
       "Bash(gh pr:*)",
       "Bash(gh api:*)",
       "Bash(gh issue:*)",
+      "Bash(gh run:*)",
       "Bash(./mdsmith:*)",
       "Bash(mdsmith:*)",
       "Read",
