@@ -1,16 +1,8 @@
-# PR Fixup — Agent Instructions
+---
+title: PR Fixup Workflow
+summary: PR fixup workflow for CI monitoring, review comment resolution, and gh CLI setup.
+---
 
-Instructions for AI coding agents (Codex, Copilot,
-Claude) to push changes, monitor CI, and address review
-comments until the PR is clean.
-
-See also: [AGENTS.md](AGENTS.md) for general development
-instructions.
-
-<?include
-file: docs/guides/pr-fixup-workflow.md
-strip-frontmatter: "true"
-?>
 Push changes, monitor CI, and address review comments
 until the PR is clean. Run this workflow after creating
 or updating a PR, or when CI fails or reviewers leave
@@ -292,4 +284,3 @@ to the notes below.
 
 Once the unresolved count is 0 and CI is green, the PR
 is ready for merge.
-<?/include?>

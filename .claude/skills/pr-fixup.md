@@ -1,16 +1,76 @@
 # PR Fixup Skill
 
-Push changes, monitor CI, and address review comments
-until the PR is clean.
-
-## When to use
-
 Invoke with `/pr-fixup` after creating or updating a PR,
 or when CI fails or reviewers leave comments.
 
-## Workflow
+<?include
+file: ../../docs/guides/pr-fixup-workflow.md
+strip-frontmatter: "true"
+?>
+Push changes, monitor CI, and address review comments
+until the PR is clean. Run this workflow after creating
+or updating a PR, or when CI fails or reviewers leave
+comments.
 
-### 1. Identify the PR
+## Prerequisites
+
+- Git configured with push access to the remote
+- `gh` CLI authenticated with repo access (step 1
+  installs it if missing)
+
+## Steps
+
+### 1. Ensure `gh` CLI is installed
+
+Before running any `gh` commands, verify it is available.
+If not, install it using the system package manager:
+
+```bash
+if ! command -v gh &>/dev/null; then
+  if command -v apt-get &>/dev/null; then
+    # Debian / Ubuntu (includes Claude Code web sandbox)
+    (type -p wget >/dev/null || \
+      sudo apt-get update && \
+      sudo apt-get install -y wget) && \
+    sudo mkdir -p -m 755 \
+      /etc/apt/keyrings && \
+    out=$(mktemp) && \
+    wget -nv -O"$out" \
+      https://cli.github.com/packages/githubcli-archive-keyring.gpg && \
+    cat "$out" \
+      | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+      >/dev/null && \
+    sudo chmod go+r \
+      /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) \
+      signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] \
+      https://cli.github.com/packages stable main" \
+      | sudo tee /etc/apt/sources.list.d/github-cli.list \
+      >/dev/null && \
+    sudo apt-get update && \
+    sudo apt-get install -y gh
+  elif command -v dnf &>/dev/null; then
+    # Fedora / RHEL
+    sudo dnf install -y gh
+  elif command -v pacman &>/dev/null; then
+    # Arch Linux
+    sudo pacman -S --noconfirm github-cli
+  elif command -v brew &>/dev/null; then
+    # macOS / Homebrew on Linux
+    brew install gh
+  else
+    echo "ERROR: no supported package manager found" >&2
+    echo "Install gh manually: https://cli.github.com" >&2
+    exit 1
+  fi
+fi
+gh --version
+```
+
+If `gh` is installed but not authenticated, run
+`gh auth login` or set `GITHUB_TOKEN` in the environment.
+
+### 2. Identify the PR
 
 ```bash
 PR=$(gh pr view --json number -q '.number')
@@ -19,20 +79,19 @@ REPO=$(gh repo view --json nameWithOwner \
   -q '.nameWithOwner')
 ```
 
-### 2. Push pending changes
+### 3. Push pending changes
 
 ```bash
 git push origin "$BRANCH"
 ```
 
-### 3. Poll CI checks until they finish
+### 4. Poll CI checks until they finish
 
 ```bash
 gh pr checks "$PR" --watch --fail-fast
 ```
 
-If `--watch` is unavailable (Claude Code web sandbox),
-poll manually:
+If `--watch` is unavailable (web sandbox), poll manually:
 
 ```bash
 while true; do
@@ -44,7 +103,7 @@ while true; do
 done
 ```
 
-### 4. On CI failure — diagnose and fix
+### 5. On CI failure — diagnose and fix
 
 Fetch the failed job log:
 
@@ -67,9 +126,9 @@ git add -A && git commit -m "fix: address CI failure"
 git push origin "$BRANCH"
 ```
 
-Return to step 3.
+Return to step 4.
 
-### 5. Fetch review comments
+### 6. Fetch review comments
 
 Retrieve all review comments on the PR:
 
@@ -103,8 +162,8 @@ gh api "repos/$REPO/issues/$PR/comments" \
 ```
 
 ```bash
-# Full reviews with state (APPROVED, CHANGES_REQUESTED,
-# COMMENTED)
+# Full reviews with state (APPROVED,
+# CHANGES_REQUESTED, COMMENTED)
 gh api "repos/$REPO/pulls/$PR/reviews" \
   --paginate \
   --jq '.[] | {
@@ -116,7 +175,7 @@ gh api "repos/$REPO/pulls/$PR/reviews" \
   }'
 ```
 
-### 6. Retrieve review thread IDs for resolving
+### 7. Retrieve review thread IDs for resolving
 
 GitHub review comments map to threads via GraphQL.
 Query the thread node IDs:
@@ -146,7 +205,7 @@ query($owner: String!, $repo: String!, $pr: Int!) {
    -F pr="$PR"
 ```
 
-### 7. Address each comment
+### 8. Address each comment
 
 For every unresolved review thread:
 
@@ -172,21 +231,21 @@ mutation($threadId: ID!) {
 }' -f threadId="THREAD_NODE_ID"
 ```
 
-### 8. Push fixes and repeat
+### 9. Push fixes and repeat
 
 ```bash
 git add -A && git commit -m "fix: address review comments"
 git push origin "$BRANCH"
 ```
 
-Return to step 3 and repeat the full cycle until:
+Return to step 4 and repeat the full cycle until:
 
 - All CI checks pass, AND
 - The latest review has no unresolved comments
   (a review with state APPROVED or COMMENTED
   with zero new actionable items).
 
-### 9. Final verification
+### 10. Final verification
 
 ```bash
 # Confirm all checks pass
@@ -211,13 +270,14 @@ query($owner: String!, $repo: String!, $pr: Int!) {
      | map(select(.isResolved == false)) | length'
 ```
 
-If the unresolved count is 0 and CI is green, the PR is
-ready for merge.
+If the unresolved count is 0 and CI is green, proceed
+to the notes below.
 
 ## Notes
 
-- This skill works in both local environments and
-  Claude Code web sandbox (assumes `gh` is available).
+- This workflow works in both local environments and
+  Claude Code web sandbox. Step 1 installs `gh` if
+  missing.
 - Always run `mdsmith check .` before committing to
   catch linting issues early.
 - Keep fix commits small and focused — one commit per
@@ -225,3 +285,7 @@ ready for merge.
   comments.
 - Do not force-push; append fix commits so reviewers
   can see incremental progress.
+
+Once the unresolved count is 0 and CI is green, the PR
+is ready for merge.
+<?/include?>

@@ -77,6 +77,21 @@ overrides:
           - tables
           - urls
       blank-line-around-lists: false
+  - files: [".claude/skills/pr-fixup.md"]
+    rules:
+      max-file-length:
+        max: 600
+      heading-increment: false
+  - files: [".github/copilot-pr-fixup.md"]
+    rules:
+      max-file-length:
+        max: 600
+      heading-increment: false
+  - files: ["AGENTS-PR-FIXUP.md"]
+    rules:
+      max-file-length:
+        max: 600
+      heading-increment: false
   - files: ["AGENTS.md", ".github/copilot-instructions.md"]
     rules:
       line-length:
@@ -148,6 +163,10 @@ overrides:
         ratio: 0.75
         tokenizer: builtin
         encoding: cl100k_base
+  - files: ["docs/guides/pr-fixup-workflow.md"]
+    rules:
+      first-line-heading: false
+      heading-increment: false
   - files: ["docs/guides/*.md"]
     rules:
       line-length:

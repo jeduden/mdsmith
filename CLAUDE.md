@@ -20,6 +20,7 @@ row: "- [{{.summary}}]({{.filename}})"
 - [Shared patterns (archetypes) reused across multiple linting rules.](docs/design/archetypes/README.md)
 - [CLI commands, flags, exit codes, and output format.](docs/design/cli.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
+- [PR fixup workflow for CI monitoring, review comment resolution, and gh CLI setup.](docs/guides/pr-fixup-workflow.md)
 <?/catalog?>
 
 ## Development Workflow

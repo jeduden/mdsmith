@@ -177,6 +177,7 @@ empty: |
 | Guide                                                       | Description                                                                              |
 |-------------------------------------------------------------|------------------------------------------------------------------------------------------|
 | [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets. |
+| [PR Fixup Workflow](docs/guides/pr-fixup-workflow.md)                                           | PR fixup workflow for CI monitoring, review comment resolution, and gh CLI setup.        |
 <?/catalog?>
 
 ## 📏 Rules
