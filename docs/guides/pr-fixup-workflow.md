@@ -18,45 +18,36 @@ comments.
 
 ### 1. Ensure `gh` CLI is installed
 
-Before running any `gh` commands, verify it is available.
-If not, install it using the system package manager:
+Check whether `gh` is on the PATH. If missing, download
+the release tarball from GitHub and copy the binary into
+`/usr/local/bin`. This approach works in sandboxes where
+package-manager repos are blocked:
 
 ```bash
 if ! command -v gh &>/dev/null; then
-  if command -v apt-get &>/dev/null; then
-    # Debian / Ubuntu (includes Claude Code web sandbox)
-    (type -p wget >/dev/null || \
-      sudo apt-get update && \
-      sudo apt-get install -y wget) && \
-    sudo mkdir -p -m 755 \
-      /etc/apt/keyrings && \
-    out=$(mktemp) && \
-    wget -nv -O"$out" \
-      https://cli.github.com/packages/githubcli-archive-keyring.gpg && \
-    cat "$out" \
-      | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-      >/dev/null && \
-    sudo chmod go+r \
-      /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) \
-      signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] \
-      https://cli.github.com/packages stable main" \
-      | sudo tee /etc/apt/sources.list.d/github-cli.list \
-      >/dev/null && \
-    sudo apt-get update && \
-    sudo apt-get install -y gh
+  GH_VER="2.67.0"
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64)  ARCH="amd64" ;;
+    aarch64) ARCH="arm64" ;;
+  esac
+  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  URL="https://github.com/cli/cli/releases"
+  URL="$URL/download/v${GH_VER}"
+  URL="$URL/gh_${GH_VER}_${OS}_${ARCH}.tar.gz"
+  TMP=$(mktemp -d)
+  if curl -fsSL "$URL" | tar -xz -C "$TMP"; then
+    sudo cp "$TMP"/gh_*/bin/gh /usr/local/bin/gh
+    rm -rf "$TMP"
+  elif command -v brew &>/dev/null; then
+    brew install gh
   elif command -v dnf &>/dev/null; then
-    # Fedora / RHEL
     sudo dnf install -y gh
   elif command -v pacman &>/dev/null; then
-    # Arch Linux
     sudo pacman -S --noconfirm github-cli
-  elif command -v brew &>/dev/null; then
-    # macOS / Homebrew on Linux
-    brew install gh
   else
-    echo "ERROR: no supported package manager found" >&2
-    echo "Install gh manually: https://cli.github.com" >&2
+    echo "ERROR: could not install gh" >&2
+    echo "Install manually: https://cli.github.com" >&2
     exit 1
   fi
 fi
