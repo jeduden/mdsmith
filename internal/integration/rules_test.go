@@ -65,8 +65,10 @@ type fixtureFrontMatter struct {
 // parseFixtureFrontMatter extracts YAML front matter from markdown using
 // goldmark-frontmatter, then strips it from the raw bytes so lint.NewFile
 // receives plain markdown content. Returns settings, diagnostics, and content.
+// requireDiagnostics makes the function fail the test when no front matter
+// is found; use this for bad fixtures that must declare expected diagnostics.
 func parseFixtureFrontMatter(
-	t *testing.T, data []byte,
+	t *testing.T, data []byte, requireDiagnostics bool,
 ) (map[string]any, []expectedDiag, []byte) {
 	t.Helper()
 
@@ -76,6 +78,9 @@ func parseFixtureFrontMatter(
 
 	d := frontmatter.Get(ctx)
 	if d == nil {
+		if requireDiagnostics {
+			t.Fatal("bad fixture is missing front matter with expected diagnostics")
+		}
 		return nil, nil, data
 	}
 
@@ -119,6 +124,55 @@ func applySettingsToRule(
 
 	if err := cr.ApplySettings(settings); err != nil {
 		t.Fatalf("applying settings: %v", err)
+	}
+}
+
+// TestBadFixturesFrontMatter verifies every bad fixture file has YAML front
+// matter containing a diagnostics key. Without front matter the rule fixture
+// tests silently skip diagnostic verification, hiding real failures.
+func TestBadFixturesFrontMatter(t *testing.T) {
+	dirs := discoverFixtureDirs(t)
+
+	for _, dir := range dirs {
+		base := filepath.Base(dir)
+
+		// Folder-based: bad/*.md
+		badDir := filepath.Join(dir, "bad")
+		if isDir(badDir) {
+			files := discoverMDFiles(t, badDir)
+			for _, f := range files {
+				name := base + "/bad/" + filepath.Base(f)
+				t.Run(name, func(t *testing.T) {
+					data := readFixture(t, f)
+					requireFrontMatterDiagnostics(t, data)
+				})
+			}
+			continue
+		}
+
+		// Single-file: bad.md
+		badPath := filepath.Join(dir, "bad.md")
+		if _, err := os.Stat(badPath); err == nil {
+			name := base + "/bad.md"
+			t.Run(name, func(t *testing.T) {
+				data := readFixture(t, badPath)
+				requireFrontMatterDiagnostics(t, data)
+			})
+		}
+	}
+}
+
+// requireFrontMatterDiagnostics checks that data starts with YAML front
+// matter containing a "diagnostics:" key.
+func requireFrontMatterDiagnostics(t *testing.T, data []byte) {
+	t.Helper()
+
+	prefix, _ := lint.StripFrontMatter(data)
+	if prefix == nil {
+		t.Fatal("bad fixture must have YAML front matter with diagnostics")
+	}
+	if !bytes.Contains(prefix, []byte("diagnostics:")) {
+		t.Fatal("bad fixture front matter must contain a diagnostics key")
 	}
 }
 
@@ -231,7 +285,7 @@ func runGoodFolderFile(
 ) {
 	t.Helper()
 	raw := readFixture(t, filePath)
-	settings, _, content := parseFixtureFrontMatter(t, raw)
+	settings, _, content := parseFixtureFrontMatter(t, raw, false)
 	applySettingsToRule(t, r, settings)
 
 	f, err := lint.NewFile(filepath.Base(filePath), content)
@@ -250,7 +304,7 @@ func runBadFolderFile(
 ) {
 	t.Helper()
 	raw := readFixture(t, filePath)
-	settings, expected, content := parseFixtureFrontMatter(t, raw)
+	settings, expected, content := parseFixtureFrontMatter(t, raw, true)
 	applySettingsToRule(t, r, settings)
 
 	f, err := lint.NewFile(filepath.Base(filePath), content)
@@ -282,7 +336,7 @@ func runFixFolderFile(
 		ruleDir, "bad", filepath.Base(fixedPath),
 	)
 	badRaw := readFixture(t, badPath)
-	settings, _, badContent := parseFixtureFrontMatter(t, badRaw)
+	settings, _, badContent := parseFixtureFrontMatter(t, badRaw, false)
 	applySettingsToRule(t, r, settings)
 
 	f, err := lint.NewFile(filepath.Base(fixedPath), badContent)
@@ -295,7 +349,7 @@ func runFixFolderFile(
 
 	// Load fixed/ file and strip its frontmatter.
 	fixedRaw := readFixture(t, fixedPath)
-	_, _, want := parseFixtureFrontMatter(t, fixedRaw)
+	_, _, want := parseFixtureFrontMatter(t, fixedRaw, false)
 
 	if !bytes.Equal(got, want) {
 		t.Errorf(
@@ -336,7 +390,7 @@ func runBadSingleFile(
 ) {
 	t.Helper()
 	raw := readFixture(t, filepath.Join(dir, "bad.md"))
-	_, expected, src := parseFixtureFrontMatter(t, raw)
+	_, expected, src := parseFixtureFrontMatter(t, raw, true)
 	f, err := lint.NewFile("bad.md", src)
 	if err != nil {
 		t.Fatalf("parsing bad.md: %v", err)
@@ -359,7 +413,7 @@ func runFixSingleFile(
 	}
 
 	badSrc := readFixture(t, filepath.Join(dir, "bad.md"))
-	_, _, content := parseFixtureFrontMatter(t, badSrc)
+	_, _, content := parseFixtureFrontMatter(t, badSrc, false)
 	f, err := lint.NewFile("bad.md", content)
 	if err != nil {
 		t.Fatalf("parsing bad.md: %v", err)
