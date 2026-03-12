@@ -228,7 +228,7 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.status}} | {{.description}} 
 ## 🛠️ Development
 
 Requires Go 1.24+. See
-[`DEVELOPMENT.md`](DEVELOPMENT.md) for the full
+[`docs/development/index.md`](docs/development/index.md) for the full
 contributor guide (build commands, project layout,
 workflow, code style, and PR conventions).
 

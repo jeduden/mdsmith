@@ -1,7 +1,7 @@
 # Agent Notes
 
-<!-- Included content comes from DEVELOPMENT.md.
-     Edit DEVELOPMENT.md first, then run
+<!-- Included content comes from docs/development/index.md.
+     Edit that file first, then run
      `mdsmith fix .` to propagate. -->
 
 Instructions for AI coding agents (Codex, Copilot,
@@ -9,7 +9,7 @@ Claude). See [CLAUDE.md](CLAUDE.md) for full project
 conventions.
 
 <?include
-file: DEVELOPMENT.md
+file: docs/development/index.md
 strip-frontmatter: "true"
 ?>
 Build and test reference for mdsmith contributors.
