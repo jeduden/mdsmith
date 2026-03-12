@@ -55,20 +55,38 @@ rules:
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-| Metric | Target |
-|--------|--------|
-| Latency | <200ms |
-| Error rate | <1% |
+# Readable Table
+
+| Metric     | Value  |
+|------------|--------|
+| Latency    | <200ms |
+| Error rate | <1%    |
 ```
+
+<?/include?>
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-| A | B | C | D | E | F | G |
-|---|---|---|---|---|---|---|
-| 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+# Hard to Scan
+
+| A | B | C | D |
+|---|---|---|---|
+| 1 | 2 | 3 | 4 |
 ```
+
+<?/include?>
 
 ## Diagnostics
 

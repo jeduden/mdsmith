@@ -184,11 +184,11 @@ func generateIncludeContent(
 
 	// Wrap in code fence if requested.
 	if wrap, ok := params["wrap"]; ok {
-		text = "```" + wrap + "\n" + text
+		fence := strings.Repeat("`", minFenceLen(text))
 		if !strings.HasSuffix(text, "\n") {
 			text += "\n"
 		}
-		text += "```\n"
+		text = "\n" + fence + wrap + "\n" + text + fence + "\n\n"
 	}
 
 	return gensection.EnsureTrailingNewline(text), nil
@@ -226,6 +226,26 @@ func makeDiag(file string, line int, msg string) lint.Diagnostic {
 		Severity: lint.Error,
 		Message:  msg,
 	}
+}
+
+// minFenceLen returns the minimum backtick fence length needed to safely
+// wrap text without conflicting with backtick runs inside the content.
+func minFenceLen(text string) int {
+	n := 3
+	for _, line := range strings.Split(text, "\n") {
+		run := 0
+		for _, c := range line {
+			if c == '`' {
+				run++
+				if run >= n {
+					n = run + 1
+				}
+			} else {
+				run = 0
+			}
+		}
+	}
+	return n
 }
 
 // containsDotDotElement reports whether the slash-separated path contains

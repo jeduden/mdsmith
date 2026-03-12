@@ -52,19 +52,33 @@ rules:
 
 ### Bad
 
-```markdown
-Some introductory text.
+<?include
+file: bad/default.md
+wrap: markdown
+?>
 
-# Heading
+```markdown
+Some content here.
+
+# Title
 ```
+
+<?/include?>
 
 ### Good
 
-```markdown
-# Heading
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
-Some introductory text.
+```markdown
+# Title
+
+Some content here.
 ```
+
+<?/include?>
 
 ## Diagnostics
 

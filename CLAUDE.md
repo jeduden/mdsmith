@@ -6,7 +6,7 @@ mdsmith — a Markdown linter written in Go.
 
 ## Docs
 
-- [Build commands, project layout, code style, test fixtures, and merge conflicts](DEVELOPMENT.md)
+- [Build commands, project layout, code style, test fixtures, and merge conflicts](docs/development/index.md)
 - [Plan template; see PLAN.md for status, plans live in plan/](plan/proto.md)
 
 <?catalog
@@ -19,6 +19,8 @@ row: "- [{{.summary}}]({{.filename}})"
 - [How generated sections work — markers, directives, and fix behavior.](docs/design/archetypes/generated-section/README.md)
 - [Shared patterns (archetypes) reused across multiple linting rules.](docs/design/archetypes/README.md)
 - [CLI commands, flags, exit codes, and output format.](docs/design/cli.md)
+- [Build commands, project layout, code style, test fixtures, and merge conflicts.](docs/development/index.md)
+- [PR fixup workflow for rebase, CI monitoring, review comment resolution, and gh CLI setup.](docs/development/pr-fixup-workflow.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
 <?/catalog?>
 

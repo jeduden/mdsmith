@@ -42,41 +42,91 @@ rules:
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
+# Formatted Table
+
 | Name   | Description               |
 |--------|---------------------------|
 | foo    | A short one               |
 | barbaz | A longer description here |
 ```
 
-### Bad
+<?/include?>
+
+### Good -- alignment indicators
+
+<?include
+file: good/alignment.md
+wrap: markdown
+?>
 
 ```markdown
+# Aligned Table
+
+| Left | Center | Right |
+|:-----|:------:|------:|
+| aaa  | bbb    | ccc   |
+```
+
+<?/include?>
+
+### Good -- single column
+
+<?include
+file: good/single-column.md
+wrap: markdown
+?>
+
+```markdown
+# Single Column
+
+| Item   |
+|--------|
+| first  |
+| second |
+```
+
+<?/include?>
+
+### Bad
+
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
+```markdown
+# Misaligned Table
+
 | Name | Description |
 |---|---|
 | foo | A short one |
 | barbaz | A longer description here |
 ```
 
-### Good -- alignment indicators
+<?/include?>
+
+### Bad -- alignment
+
+<?include
+file: bad/alignment.md
+wrap: markdown
+?>
 
 ```markdown
+# Misaligned Alignment
+
 | Left | Center | Right |
-|:-----|:------:|------:|
-| aaa  | bbb    | ccc   |
+|:---|:---:|---:|
+| aaa | bbb | ccc |
 ```
 
-### Good -- visible text width
-
-Cell width is computed from visible text, not raw source characters.
-For example, backticks in inline code are ignored when aligning columns.
-
-```markdown
-| Setting       | Notes               |
-|---------------|---------------------|
-| `max-columns` | Inline code example |
-| max-rows      | Plain text example  |
-```
+<?/include?>
 
 ## Edge Cases
 

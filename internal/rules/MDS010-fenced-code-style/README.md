@@ -50,18 +50,70 @@ rules:
 
 ## Examples
 
-### Bad (when style is `backtick`)
+### Good (when style is `backtick`)
+
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
+````markdown
+# Title
+
+```go
+fmt.Println("hello")
+```
+````
+
+<?/include?>
+
+### Good (when style is `tilde`)
+
+<?include
+file: good/tilde.md
+wrap: markdown
+?>
 
 ```markdown
+# Title
+
 ~~~go
 fmt.Println("hello")
 ~~~
 ```
 
-### Good (when style is `backtick`)
+<?/include?>
+
+### Bad (when style is `backtick`)
+
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+~~~go
+fmt.Println("hello")
+~~~
+```
+
+<?/include?>
+
+### Bad (when style is `tilde`)
+
+<?include
+file: bad/tilde.md
+wrap: markdown
+?>
 
 ````markdown
+# Title
+
 ```go
 fmt.Println("hello")
 ```
 ````
+
+<?/include?>

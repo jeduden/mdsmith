@@ -221,12 +221,14 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.status}} | {{.description}} 
 | [MDS028](internal/rules/MDS028-token-budget/README.md) | `token-budget`                       | ready     | File must not exceed a token budget.                                                    |
 | [MDS029](internal/rules/MDS029-conciseness-scoring/README.md) | `conciseness-scoring`                | not-ready | Paragraph conciseness score must not fall below a threshold.                            |
 | [MDS030](internal/rules/MDS030-empty-section-body/README.md) | `empty-section-body`                 | ready     | Section headings must include meaningful body content.                                  |
+| [MDS031](internal/rules/MDS031-unclosed-code-block/README.md) | `unclosed-code-block`                | ready     | Fenced code blocks must have a closing fence delimiter.                                 |
+| [MDS032](internal/rules/MDS032-no-empty-alt-text/README.md) | `no-empty-alt-text`                  | ready     | Images must have non-empty alt text for accessibility.                                  |
 <?/catalog?>
 
 ## 🛠️ Development
 
 Requires Go 1.24+. See
-[`DEVELOPMENT.md`](DEVELOPMENT.md) for the full
+[`docs/development/index.md`](docs/development/index.md) for the full
 contributor guide (build commands, project layout,
 workflow, code style, and PR conventions).
 

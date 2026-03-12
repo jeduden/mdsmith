@@ -140,107 +140,45 @@ rules:
 
 ## Examples
 
-### Good -- minimal
+### Good
+
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
 ```markdown
+# Document Index
+
 <?catalog
-glob: docs/*.md
+glob: "data/*.md"
+row: "[{{.filename}}](good/{{.filename}})"
 ?>
-- [api-reference.md](docs/api-reference.md)
-- [getting-started.md](docs/getting-started.md)
+[data/alpha.md](good/data/alpha.md)
+[data/beta.md](good/data/beta.md)
 <?/catalog?>
 ```
 
-### Good -- template with header
+<?/include?>
+
+### Bad
+
+<?include
+file: bad/default.md
+wrap: markdown
+?>
 
 ```markdown
+# Document Index
+
 <?catalog
-glob: docs/*.md
-header: |
-  | Title | Description |
-  |-------|-------------|
-row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
+glob: "data/*.md"
 ?>
-| Title | Description |
-|-------|-------------|
-| [API Reference](docs/api-reference.md) | Complete API documentation |
+- [alpha.md](bad/data/alpha.md)
 <?/catalog?>
 ```
 
-### Good -- empty fallback
-
-```markdown
-<?catalog
-glob: docs/*.md
-empty: No documents found.
-?>
-No documents found.
-<?/catalog?>
-```
-
-### Good -- descending sort
-
-```markdown
-<?catalog
-glob: docs/*.md
-sort: -title
-row: "- [{{.title}}]({{.filename}})"
-?>
-- [Getting Started](docs/getting-started.md)
-- [API Reference](docs/api-reference.md)
-<?/catalog?>
-```
-
-### Good -- multi-glob list
-
-```markdown
-<?catalog
-glob:
-  - "docs/*.md"
-  - "plan/*.md"
-?>
-- [api-reference.md](docs/api-reference.md)
-- [roadmap.md](plan/roadmap.md)
-<?/catalog?>
-```
-
-### Bad -- stale content
-
-```markdown
-<?catalog
-glob: docs/*.md
-?>
-- [api-reference.md](docs/api-reference.md)
-<?/catalog?>
-```
-
-Diagnostic: `generated section is out of date`
-
-### Bad -- unclosed marker
-
-```markdown
-<?catalog
-glob: docs/*.md
-?>
-- [api-reference.md](docs/api-reference.md)
-```
-
-Diagnostic: `generated section has no closing marker`
-
-### Bad -- missing `row` with `header`
-
-```markdown
-<?catalog
-glob: docs/*.md
-header: |
-  | Title | Description |
-  |-------|-------------|
-?>
-<?/catalog?>
-```
-
-Diagnostic:
-`generated section template missing required "row" key`
+<?/include?>
 
 ## Diagnostics
 

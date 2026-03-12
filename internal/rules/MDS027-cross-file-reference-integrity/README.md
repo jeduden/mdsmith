@@ -52,29 +52,71 @@ rules:
 
 ### Good
 
-```markdown
-# Docs
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
-See [guide](guide.md#overview).
+```markdown
+# Cross File Links
+
+See [guide](good/guide.md#overview).
+
+Jump to the [local section](#local-anchor).
+
+## Local Anchor
+
+Anchor target.
+```
+
+<?/include?>
+
+### Good -- guide target
+
+<?include
+file: good/guide.md
+wrap: markdown
+?>
+
+```markdown
+# Guide
 
 ## Overview
+
+This file is a valid link target.
 ```
+
+<?/include?>
 
 ### Bad -- missing file
 
-```markdown
-# Docs
-
-See [guide](missing.md).
-```
-
-### Bad -- missing heading
+<?include
+file: bad/missing-file.md
+wrap: markdown
+?>
 
 ```markdown
-# Docs
+# Broken File Link
 
-See [guide](guide.md#does-not-exist).
+See [guide](bad/missing.md).
 ```
+
+<?/include?>
+
+### Bad -- missing anchor
+
+<?include
+file: bad/missing-anchor.md
+wrap: markdown
+?>
+
+```markdown
+# Broken Heading Link
+
+See [guide](good/guide.md#missing-section).
+```
+
+<?/include?>
 
 ## Diagnostics
 

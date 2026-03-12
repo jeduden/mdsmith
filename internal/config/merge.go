@@ -1,9 +1,5 @@
 package config
 
-import (
-	"github.com/gobwas/glob"
-)
-
 // Merge merges a loaded config on top of defaults. The loaded config's rules
 // override the defaults; any rule not mentioned in loaded keeps its default
 // value. Ignore and Overrides come from the loaded config only.
@@ -207,16 +203,8 @@ func ApplyCategories(
 }
 
 // matchesAny returns true if filePath matches any of the given glob patterns.
+// It delegates to globMatchAny which checks the raw path, the cleaned path,
+// and the base name, consistent with how ignore patterns are matched.
 func matchesAny(patterns []string, filePath string) bool {
-	for _, pattern := range patterns {
-		g, err := glob.Compile(pattern)
-		if err != nil {
-			// Skip invalid patterns silently.
-			continue
-		}
-		if g.Match(filePath) {
-			return true
-		}
-	}
-	return false
+	return globMatchAny(patterns, filePath)
 }

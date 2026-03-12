@@ -52,14 +52,64 @@ rules:
 
 ### Bad (when spaces is 2)
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-- Item 1
-    - Nested (4 spaces)
+# Title
+
+- item one
+    - nested item
 ```
+
+<?/include?>
+
+4-space indent when configured for 4 spaces:
+
+<?include
+file: bad/spaces-4.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+- item one
+  - nested item
+```
+
+<?/include?>
 
 ### Good (when spaces is 2)
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-- Item 1
-  - Nested (2 spaces)
+# Title
+
+- item one
+  - nested item
 ```
+
+<?/include?>
+
+4-space indent when configured for 4 spaces:
+
+<?include
+file: good/spaces-4.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+- item one
+    - nested item
+```
+
+<?/include?>

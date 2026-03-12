@@ -35,22 +35,40 @@ rules:
 
 ## Examples
 
-### Bad
-
-```markdown
-Some text without a final newline.
-```
-
-```markdown
-Some text with too many trailing newlines.
-
-⏎
-⏎
-```
-
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-Some text with exactly one trailing newline.
-⏎
+# Title
+
+Content here.
 ```
+
+<?/include?>
+
+The file ends with exactly one `\n` after the last line.
+
+### Bad
+
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+Content here.
+```
+
+<?/include?>
+
+The file has no trailing newline after the last line.
+The `<?include?>` output looks identical because the
+wrap always adds a newline, but the actual fixture file
+(`bad/default.md`) ends without one — that missing byte
+is what the rule detects.

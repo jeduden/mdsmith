@@ -39,16 +39,32 @@ rules:
 
 ### Bad
 
-```markdown
-# Introduction.
+<?include
+file: bad/default.md
+wrap: markdown
+?>
 
-## Overview:
+```markdown
+# Title.
+
+## Section
 ```
+
+<?/include?>
 
 ### Good
 
-```markdown
-# Introduction
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
-## Overview
+```markdown
+# Title
+
+## Section
+
+Body text.
 ```
+
+<?/include?>

@@ -37,12 +37,35 @@ rules:
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-→Indented with a tab.
+# Title
+
+hel	lo
 ```
+
+<?/include?>
 
 ### Good
 
-```markdown
-  Indented with spaces.
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
+````markdown
+# Title
+
+No tabs here.
+
+```text
+	indented with tab
+	more tabbed code
 ```
+````
+
+<?/include?>

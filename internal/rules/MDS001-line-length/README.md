@@ -129,36 +129,120 @@ rules:
 
 Line exceeds the default 80-character limit:
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-This is a very long line that exceeds the maximum allowed length of eighty characters and should trigger a lint warning.
+# Title
+
+This line is deliberately made to exceed the eighty character limit by adding extra words here now.
 ```
 
+<?/include?>
+
+Line exceeds a custom `max: 120` limit:
+
+<?include
+file: bad/max-120.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+This line is deliberately made very long so that it exceeds the one hundred and twenty character limit set right here!!!!
+```
+
+<?/include?>
+
 Heading exceeds `heading-max: 60`:
+
+<?include
+file: bad/heading-over-limit.md
+wrap: markdown
+?>
 
 ```markdown
 # This heading is deliberately made long enough to exceed sixty chars
 ```
 
+<?/include?>
+
 Long line with spaces past the limit (`stern: true` still flags it):
 
+<?include
+file: bad/stern-spaces-past-limit.md
+wrap: markdown
+?>
+
 ```markdown
-This line has words that continue well past the eighty character column and keep going on.
+# Title
+
+This line is deliberately made to exceed the eighty character limit by adding extra words here now.
 ```
+
+<?/include?>
+
+No exclusions — URLs and code blocks are also checked:
+
+<?include
+file: bad/no-exclusions.md
+wrap: markdown
+?>
+
+```markdown
+# Title
+
+This line is deliberately made to exceed the eighty character limit by adding extra words here now.
+
+https://example.com/this-is-a-very-long-url-that-exceeds-eighty-characters-and-should-be-flagged
+```
+
+<?/include?>
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-This line is within the limit.
+# Title
+
+This line is well within the eighty character limit.
 ```
+
+<?/include?>
 
 Heading within `heading-max: 100` (even though it exceeds `max: 80`):
 
+<?include
+file: good/heading-within-limit.md
+wrap: markdown
+?>
+
 ```markdown
-# This heading is about ninety characters and fits within the heading-max of one hundred
+# This heading is within the heading-max limit of one hundred characters
 ```
 
-Long URL without spaces past the limit (`stern: true` allows it):
+<?/include?>
 
-```markdown
-https://example.com/this-is-a-very-long-url-that-exceeds-eighty-characters-but-has-no-spaces
+Code block within `code-block-max: 120`:
+
+<?include
+file: good/code-block-within-limit.md
+wrap: markdown
+?>
+
+````markdown
+# Title
+
+```text
+This line inside a code block is over 80 characters but within the code-block-max limit of one hundred and twenty.
 ```
+````
+
+<?/include?>

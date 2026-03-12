@@ -151,12 +151,46 @@ func TestCheck_WrapInCodeFence(t *testing.T) {
 		"example.md": {Data: []byte("# Hello\n")},
 	}
 	src := "# Doc\n\n<?include\nfile: example.md\n" +
-		"wrap: markdown\n?>\n```markdown\n# Hello\n```\n" +
+		"wrap: markdown\n?>\n\n```markdown\n# Hello\n```\n\n" +
 		"<?/include?>\n"
 	f := newTestFile(t, "doc.md", src, fsys)
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
+}
+
+func TestCheck_WrapWithBacktickContent(t *testing.T) {
+	// Fixture contains triple-backtick fences; wrap must use a longer
+	// fence (e.g., ````) so the code block is not prematurely closed.
+	fsys := fstest.MapFS{
+		"example.md": {Data: []byte("# Title\n\n```go\nfmt.Println(\"hi\")\n```\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: example.md\n" +
+		"wrap: markdown\n?>\n\n````markdown\n# Title\n\n```go\n" +
+		"fmt.Println(\"hi\")\n```\n````\n\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestFix_WrapWithBacktickContent(t *testing.T) {
+	// Fix should produce a fence longer than any backtick run in the content.
+	fsys := fstest.MapFS{
+		"example.md": {Data: []byte("# Title\n\n```go\nfmt.Println(\"hi\")\n```\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: example.md\n" +
+		"wrap: markdown\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	// Must use ```` (4 backticks) since content has ``` (3 backticks).
+	want := "# Doc\n\n<?include\nfile: example.md\n" +
+		"wrap: markdown\n?>\n\n````markdown\n# Title\n\n```go\n" +
+		"fmt.Println(\"hi\")\n```\n````\n\n<?/include?>\n"
+	if got != want {
+		t.Errorf("Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
 }
 
 // =====================================================================

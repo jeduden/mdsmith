@@ -37,23 +37,38 @@ rules:
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-Some text.
-- Item 1
-- Item 2
-More text.
+# Title
+
+Content here.
+- item one
+- item two
 ```
+
+<?/include?>
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-Some text.
+# Title
 
-- Item 1
-- Item 2
+- item one
+- item two
 
-More text.
+Content here.
 ```
+
+<?/include?>
 
 ## Diagnostics
 

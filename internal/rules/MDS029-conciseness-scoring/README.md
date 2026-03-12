@@ -69,18 +69,36 @@ rules:
 
 ### Good
 
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
 ```markdown
-The deployment pipeline validates release notes, signs artifacts,
-and uploads checksums so reviewers can verify each package quickly.
+# Concise Paragraph
+
+The release process validates links, updates version tags, and publishes
+checksums so reviewers can verify artifacts before approving deployment.
 ```
+
+<?/include?>
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-Basically, it seems that we are just trying to explain things
-in order to make them very clear, and it appears that we are
-really not adding many concrete details.
+# Verbose Paragraph
+
+Basically, it seems that we are just trying to explain the same idea in
+order to make it very clear, and it appears that we are really adding very
+little concrete information to the paragraph.
 ```
+
+<?/include?>
 
 ## Diagnostics
 

@@ -37,12 +37,34 @@ rules:
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-Some text with trailing spaces.···
+# Title
+
+Trailing spaces here.   
 ```
+
+<?/include?>
 
 ### Good
 
-```markdown
-Some text without trailing spaces.
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
+````markdown
+# Title
+
+No trailing spaces here.
+
+```text
+code block with language tag
 ```
+````
+
+<?/include?>

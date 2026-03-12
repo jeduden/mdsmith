@@ -13,6 +13,7 @@ summary: 'string | *""'
   - Use Markdown links for real repo paths in prose.
     Bare backticked paths are allowed in commands,
     code blocks, and placeholders.
+
 -->
 
 ## ...
@@ -43,7 +44,7 @@ it matters.
 - [ ] Criterion described as observable behavior
 - [ ] Another criterion
 - [ ] All tests pass: `go test ./...`
-- [ ] `golangci-lint run` reports no issues
+- [ ] `go tool golangci-lint run` reports no issues
 
 ## ...
 

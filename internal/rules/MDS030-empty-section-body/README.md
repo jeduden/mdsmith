@@ -83,27 +83,73 @@ rules:
 
 ### Good
 
-```markdown
+<?include
+file: good/default.md
+wrap: markdown
+?>
+
+````markdown
+# Empty Section Body Good
+
 ## Overview
 
-This section explains what the command does.
+This section has enough text to avoid an empty body diagnostic.
+
+## Steps
+
+- Gather inputs.
+- Run checks.
+
+## Example
+
+```text
+mdsmith check docs/
 ```
+````
+
+<?/include?>
 
 ### Good -- intentional empty section
 
+<?include
+file: good/allow-marker.md
+wrap: markdown
+?>
+
 ```markdown
+# Allow Marker
+
 ## Compatibility
 
 <?allow-empty-section?>
+
+## Notes
+
+This section has real content.
 ```
+
+<?/include?>
 
 ### Bad
 
+<?include
+file: bad/default.md
+wrap: markdown
+?>
+
 ```markdown
-## Overview
+# Empty Section Body Bad
+
+## Placeholder
 
 <!-- TODO -->
+
+## Next
+
+This section has real content.
 ```
+
+<?/include?>
 
 ## Diagnostics
 

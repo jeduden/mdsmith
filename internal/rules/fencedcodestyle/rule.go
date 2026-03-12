@@ -47,7 +47,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		fenceChar := fenceCharAt(f.Source, openStart)
+		fenceChar := FenceCharAt(f.Source, openStart)
 		if fenceChar == 0 {
 			return ast.WalkContinue, nil
 		}
@@ -94,7 +94,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			return ast.WalkContinue, nil
 		}
 
-		fenceChar := fenceCharAt(f.Source, openStart)
+		fenceChar := FenceCharAt(f.Source, openStart)
 		if fenceChar == 0 {
 			return ast.WalkContinue, nil
 		}
@@ -136,8 +136,8 @@ func (r *Rule) wantChar() byte {
 	return '`'
 }
 
-// fenceCharAt returns the fence character at the given position, skipping leading spaces.
-func fenceCharAt(src []byte, pos int) byte {
+// FenceCharAt returns the fence character at the given position, skipping leading spaces.
+func FenceCharAt(src []byte, pos int) byte {
 	for pos < len(src) && src[pos] == ' ' {
 		pos++
 	}
