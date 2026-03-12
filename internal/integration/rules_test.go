@@ -89,12 +89,7 @@ func parseFixtureFrontMatter(
 		t.Fatalf("decoding front matter: %v", err)
 	}
 
-	// Strip the front matter delimiters and YAML from the raw bytes
-	// so lint.NewFile sees only markdown content.
-	const delim = "---\n"
-	rest := data[len(delim):]
-	idx := bytes.Index(rest, []byte(delim))
-	content := rest[idx+len(delim):]
+	_, content := lint.StripFrontMatter(data)
 
 	return fm.Settings, fm.Diagnostics, content
 }

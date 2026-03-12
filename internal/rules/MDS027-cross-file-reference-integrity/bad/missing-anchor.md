@@ -2,8 +2,8 @@
 diagnostics:
   - line: 3
     column: 6
-    message: 'broken link target "../good/guide.md#missing-section" not found'
+    message: 'broken link target "ref/guide.md#missing-section" has no matching heading anchor'
 ---
 # Broken Heading Link
 
-See [guide](../good/guide.md#missing-section).
+See [guide](ref/guide.md#missing-section).

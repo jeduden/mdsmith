@@ -113,7 +113,7 @@ wrap: markdown
 ```markdown
 # Broken Heading Link
 
-See [guide](good/guide.md#missing-section).
+See [guide](bad/ref/guide.md#missing-section).
 ```
 
 <?/include?>
