@@ -42,7 +42,14 @@ if ! command -v gh &>/dev/null; then
       echo "ERROR: unsupported arch $ARCH" >&2
       exit 1 ;;
   esac
-  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  OS=$(uname -s)
+  case "$OS" in
+    Linux)  OS="linux" ;;
+    Darwin) OS="macOS" ;;
+    *)
+      echo "ERROR: unsupported OS $OS" >&2
+      exit 1 ;;
+  esac
   URL="https://github.com/cli/cli/releases"
   URL="$URL/download/v${GH_VER}"
   URL="$URL/gh_${GH_VER}_${OS}_${ARCH}.tar.gz"
@@ -97,7 +104,7 @@ git rebase --continue
 After a successful rebase, verify linting still passes:
 
 ```bash
-mdsmith check .
+go run ./cmd/mdsmith check .
 ```
 
 ### 4. Push changes
@@ -122,7 +129,15 @@ while true; do
   STATUS=$(gh pr checks "$PR" \
     --json name,state,conclusion \
     -q '[.[] | select(.state != "COMPLETED")] | length')
-  if [ "$STATUS" = "0" ]; then break; fi
+  if [ "$STATUS" = "0" ]; then
+    FAILS=$(gh pr checks "$PR" \
+      --json state -q '[.[] | select(.state == "FAILURE")] | length')
+    if [ "$FAILS" != "0" ]; then
+      echo "Some checks failed"
+      exit 1
+    fi
+    break
+  fi
   sleep 30
 done
 ```
