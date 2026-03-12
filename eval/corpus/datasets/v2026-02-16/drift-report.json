@@ -1,0 +1,13 @@
+{
+  "baseline_version": "v2025-12-15",
+  "candidate_version": "v2026-02-16",
+  "files_kept_delta": -20,
+  "taxonomy_deltas": {
+    "reference": -10,
+    "other": -10
+  },
+  "metric_deltas": {
+    "avg_words": 0,
+    "avg_chars": 0
+  }
+}
