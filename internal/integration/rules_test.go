@@ -89,6 +89,10 @@ func parseFixtureFrontMatter(
 		t.Fatalf("decoding front matter: %v", err)
 	}
 
+	if requireDiagnostics && len(fm.Diagnostics) == 0 {
+		t.Fatal("bad fixture front matter must contain a non-empty diagnostics key")
+	}
+
 	_, content := lint.StripFrontMatter(data)
 
 	return fm.Settings, fm.Diagnostics, content
@@ -119,55 +123,6 @@ func applySettingsToRule(
 
 	if err := cr.ApplySettings(settings); err != nil {
 		t.Fatalf("applying settings: %v", err)
-	}
-}
-
-// TestBadFixturesFrontMatter verifies every bad fixture file has YAML front
-// matter containing a diagnostics key. Without front matter the rule fixture
-// tests silently skip diagnostic verification, hiding real failures.
-func TestBadFixturesFrontMatter(t *testing.T) {
-	dirs := discoverFixtureDirs(t)
-
-	for _, dir := range dirs {
-		base := filepath.Base(dir)
-
-		// Folder-based: bad/*.md
-		badDir := filepath.Join(dir, "bad")
-		if isDir(badDir) {
-			files := discoverMDFiles(t, badDir)
-			for _, f := range files {
-				name := base + "/bad/" + filepath.Base(f)
-				t.Run(name, func(t *testing.T) {
-					data := readFixture(t, f)
-					requireFrontMatterDiagnostics(t, data)
-				})
-			}
-			continue
-		}
-
-		// Single-file: bad.md
-		badPath := filepath.Join(dir, "bad.md")
-		if _, err := os.Stat(badPath); err == nil {
-			name := base + "/bad.md"
-			t.Run(name, func(t *testing.T) {
-				data := readFixture(t, badPath)
-				requireFrontMatterDiagnostics(t, data)
-			})
-		}
-	}
-}
-
-// requireFrontMatterDiagnostics checks that data starts with YAML front
-// matter containing a "diagnostics:" key.
-func requireFrontMatterDiagnostics(t *testing.T, data []byte) {
-	t.Helper()
-
-	prefix, _ := lint.StripFrontMatter(data)
-	if prefix == nil {
-		t.Fatal("bad fixture must have YAML front matter with diagnostics")
-	}
-	if !bytes.Contains(prefix, []byte("diagnostics:")) {
-		t.Fatal("bad fixture front matter must contain a diagnostics key")
 	}
 }
 
