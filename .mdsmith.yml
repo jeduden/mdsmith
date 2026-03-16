@@ -165,7 +165,7 @@ overrides:
       first-line-heading: false
       heading-increment: false
       max-file-length:
-        max: 330
+        max: 350
   - files: ["docs/guides/*.md"]
     rules:
       line-length:

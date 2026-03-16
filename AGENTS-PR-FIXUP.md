@@ -21,6 +21,11 @@ comments.
 - Git configured with push access to the remote
 - `gh` CLI authenticated with repo access (step 1
   installs it if missing)
+- Run each code block as its own Bash call — do not
+  chain with `&&` or prefix with inline variable
+  assignments (`VAR=x cmd`). Permission patterns match
+  on the command prefix, so `gh api ...` must be the
+  first token in the command
 
 ## Steps
 
@@ -162,7 +167,14 @@ Read the log, identify the root cause, fix the code,
 then:
 
 ```bash
-git add -A && git commit -m "fix: address CI failure"
+git add -A
+```
+
+```bash
+git commit -m "fix: address CI failure"
+```
+
+```bash
 git push origin "$BRANCH"
 ```
 
@@ -277,7 +289,14 @@ mutation($threadId: ID!) {
 ### 10. Push fixes and repeat
 
 ```bash
-git add -A && git commit -m "fix: address review comments"
+git add -A
+```
+
+```bash
+git commit -m "fix: address review comments"
+```
+
+```bash
 git push origin "$BRANCH"
 ```
 
