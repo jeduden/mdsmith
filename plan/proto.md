@@ -1,4 +1,6 @@
 ---
+template:
+  filename: "[0-9]*_*.md"
 id: 'int & >=1'
 title: 'string & != ""'
 status: '"🔲" | "🔳" | "✅"'

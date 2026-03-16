@@ -89,6 +89,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	var diags []lint.Diagnostic
 
+	// Check filename pattern.
+	diags = append(diags, checkFilenamePattern(f, tmpl)...)
+
 	// Check structure: required headings present and in order.
 	diags = append(diags, checkStructure(f, tmpl, docHeadings)...)
 
@@ -120,7 +123,8 @@ var _ rule.Configurable = (*Rule)(nil)
 
 // templateConfig holds the parsed template frontmatter.
 type templateConfig struct {
-	FrontMatterCUE string
+	FrontMatterCUE  string
+	FilenamePattern string // glob pattern the document basename must match
 }
 
 // templateHeading represents a required heading from the template.
@@ -162,6 +166,7 @@ func parseTemplateConfig(prefix []byte) (templateConfig, error) {
 			"template.front-matter-cue is no longer supported; define frontmatter schema with top-level fields",
 		)
 	}
+	cfg.FilenamePattern = extractFilenamePattern(yamlBytes)
 	derivedSchema, err := deriveFrontMatterSchemaFromTemplate(yamlBytes)
 	if err != nil {
 		return cfg, err
@@ -171,6 +176,32 @@ func parseTemplateConfig(prefix []byte) (templateConfig, error) {
 		return cfg, err
 	}
 	return cfg, nil
+}
+
+// extractFilenamePattern reads the template.filename field from
+// template frontmatter YAML. Returns "" if not set.
+func extractFilenamePattern(yamlBytes []byte) string {
+	var raw map[string]any
+	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+		return ""
+	}
+	tmplAny, ok := raw["template"]
+	if !ok {
+		return ""
+	}
+	tmplMap, ok := tmplAny.(map[string]any)
+	if !ok {
+		return ""
+	}
+	fn, ok := tmplMap["filename"]
+	if !ok {
+		return ""
+	}
+	s, ok := fn.(string)
+	if !ok {
+		return ""
+	}
+	return s
 }
 
 func hasLegacyFrontMatterCUE(yamlBytes []byte) bool {
@@ -754,6 +785,31 @@ func isTemplateTargetFile(docPath, templatePath string) bool {
 // formatHeading returns a markdown-style heading string.
 func formatHeading(level int, text string) string {
 	return strings.Repeat("#", level) + " " + text
+}
+
+// checkFilenamePattern checks that the document basename matches the
+// template's filename glob pattern (if configured).
+func checkFilenamePattern(
+	f *lint.File, tmpl *parsedTemplate,
+) []lint.Diagnostic {
+	pattern := tmpl.Config.FilenamePattern
+	if pattern == "" {
+		return nil
+	}
+	base := filepath.Base(f.Path)
+	matched, err := filepath.Match(pattern, base)
+	if err != nil {
+		return []lint.Diagnostic{makeDiag(f.Path, 1,
+			fmt.Sprintf("invalid filename pattern %q: %v",
+				pattern, err))}
+	}
+	if !matched {
+		return []lint.Diagnostic{makeDiag(f.Path, 1,
+			fmt.Sprintf(
+				"filename %q does not match required pattern %q",
+				base, pattern))}
+	}
+	return nil
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {
