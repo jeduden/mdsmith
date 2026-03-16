@@ -187,7 +187,7 @@ func extractRequireDirective(f *lint.File) (string, error) {
 		if lines.Len() == 1 {
 			// Single-line: <?require key: value ?>
 			seg := lines.At(0)
-			line := string(seg.Value(f.Source))
+			line := strings.TrimSpace(string(seg.Value(f.Source)))
 			line = strings.TrimPrefix(line, "<?require")
 			line = strings.TrimSuffix(line, "\n")
 			line = strings.TrimSuffix(line, "?>")
