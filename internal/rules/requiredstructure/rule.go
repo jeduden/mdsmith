@@ -166,7 +166,11 @@ func parseTemplateConfig(prefix []byte) (templateConfig, error) {
 			"template.front-matter-cue is no longer supported; define frontmatter schema with top-level fields",
 		)
 	}
-	cfg.FilenamePattern = extractFilenamePattern(yamlBytes)
+	pattern, err := extractFilenamePattern(yamlBytes)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.FilenamePattern = pattern
 	derivedSchema, err := deriveFrontMatterSchemaFromTemplate(yamlBytes)
 	if err != nil {
 		return cfg, err
@@ -179,29 +183,30 @@ func parseTemplateConfig(prefix []byte) (templateConfig, error) {
 }
 
 // extractFilenamePattern reads the template.filename field from
-// template frontmatter YAML. Returns "" if not set.
-func extractFilenamePattern(yamlBytes []byte) string {
+// template frontmatter YAML. Returns "" if not set. Returns an error
+// if the field is present but has the wrong type.
+func extractFilenamePattern(yamlBytes []byte) (string, error) {
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
-		return ""
+		return "", nil
 	}
 	tmplAny, ok := raw["template"]
 	if !ok {
-		return ""
+		return "", nil
 	}
 	tmplMap, ok := tmplAny.(map[string]any)
 	if !ok {
-		return ""
+		return "", nil
 	}
 	fn, ok := tmplMap["filename"]
 	if !ok {
-		return ""
+		return "", nil
 	}
 	s, ok := fn.(string)
 	if !ok {
-		return ""
+		return "", fmt.Errorf("template.filename must be a string, got %T", fn)
 	}
-	return s
+	return s, nil
 }
 
 func hasLegacyFrontMatterCUE(yamlBytes []byte) bool {

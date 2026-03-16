@@ -1,0 +1,5 @@
+---
+template:
+  filename: "filename-*.md"
+---
+# ?

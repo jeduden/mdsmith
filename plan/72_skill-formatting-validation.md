@@ -1,7 +1,7 @@
 ---
 id: 72
 title: Fix skill formatting and add validation
-status: "🔲"
+status: "✅"
 summary: Fix pr-fixup skill directory layout for Claude Code and add mdsmith validation for skill files.
 ---
 # Fix skill formatting and add validation

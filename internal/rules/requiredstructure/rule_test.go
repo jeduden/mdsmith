@@ -550,6 +550,19 @@ template:
 		`filename "my-plan.md" does not match required pattern`)
 }
 
+func TestCheck_FilenamePatternInvalidType(t *testing.T) {
+	tmplPath := writeTmpl(t, `---
+template:
+  filename: 42
+---
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "anything.md", "# Title\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "template.filename must be a string")
+}
+
 func TestCheck_FilenamePatternNotSet(t *testing.T) {
 	tmplPath := writeTmpl(t, "# ?\n")
 	r := &Rule{Template: tmplPath}
