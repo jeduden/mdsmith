@@ -196,7 +196,7 @@ func extractFilenamePattern(yamlBytes []byte) (string, error) {
 	}
 	tmplMap, ok := tmplAny.(map[string]any)
 	if !ok {
-		return "", nil
+		return "", fmt.Errorf("template must be a mapping, got %T", tmplAny)
 	}
 	fn, ok := tmplMap["filename"]
 	if !ok {

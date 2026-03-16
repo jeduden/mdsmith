@@ -563,6 +563,18 @@ template:
 	expectDiagMsg(t, diags, "template.filename must be a string")
 }
 
+func TestCheck_TemplateNotAMap(t *testing.T) {
+	tmplPath := writeTmpl(t, `---
+template: "not-a-map"
+---
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "anything.md", "# Title\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "template must be a mapping")
+}
+
 func TestCheck_FilenamePatternNotSet(t *testing.T) {
 	tmplPath := writeTmpl(t, "# ?\n")
 	r := &Rule{Template: tmplPath}
