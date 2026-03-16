@@ -115,29 +115,23 @@ git push --force-with-lease origin "$BRANCH"
 
 ### 5. Poll CI checks until they finish
 
+Always use the `--watch` flag — it is a single command
+that matches permission patterns and blocks until all
+checks complete:
+
 ```bash
 gh pr checks "$PR" --watch --fail-fast
 ```
 
-If `--watch` is unavailable (web sandbox), poll manually:
+If `--watch` is unavailable (older `gh` versions or web
+sandbox), poll manually with repeated single calls:
 
 ```bash
-while true; do
-  STATUS=$(gh pr checks "$PR" \
-    --json name,state,conclusion \
-    -q '[.[] | select(.state != "COMPLETED")] | length')
-  if [ "$STATUS" = "0" ]; then
-    FAILS=$(gh pr checks "$PR" \
-      --json state -q '[.[] | select(.state == "FAILURE")] | length')
-    if [ "$FAILS" != "0" ]; then
-      echo "Some checks failed"
-      exit 1
-    fi
-    break
-  fi
-  sleep 30
-done
+gh pr checks "$PR" --json name,state
 ```
+
+Re-run the command every 30 seconds until all checks
+reach `SUCCESS`, `FAILURE`, or `ERROR`.
 
 ### 6. On CI failure — diagnose and fix
 
