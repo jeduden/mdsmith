@@ -22,6 +22,7 @@
       "Bash(gh issue:*)",
       "Bash(gh run view:*)",
       "Bash(gh run list:*)",
+      "Bash(gh repo view:*)",
       "Bash(./mdsmith:*)",
       "Bash(mdsmith:*)",
       "Read",
