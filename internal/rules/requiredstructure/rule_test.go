@@ -545,6 +545,17 @@ filename: "[0-9]*_*.md"
 		`filename "my-plan.md" does not match required pattern`)
 }
 
+func TestCheck_FilenamePatternSingleLinePI(t *testing.T) {
+	tmplPath := writeTmpl(t, `<?require filename: "[0-9]*_*.md" ?>
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "my-plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`filename "my-plan.md" does not match required pattern`)
+}
+
 func TestCheck_FilenamePatternNotSet(t *testing.T) {
 	tmplPath := writeTmpl(t, "# ?\n")
 	r := &Rule{Template: tmplPath}

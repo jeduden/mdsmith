@@ -181,16 +181,28 @@ func extractRequireDirective(f *lint.File) (string, error) {
 		if !ok || pi.Name != "require" {
 			continue
 		}
-		// Extract YAML body from PI lines (skip first line with <?require
-		// and exclude the ?> closure line).
+		// Extract YAML body from PI content.
 		lines := pi.Lines()
-		if lines.Len() < 2 {
-			continue
-		}
 		var body []byte
-		for i := 1; i < lines.Len(); i++ {
-			seg := lines.At(i)
-			body = append(body, seg.Value(f.Source)...)
+		if lines.Len() == 1 {
+			// Single-line: <?require key: value ?>
+			seg := lines.At(0)
+			line := string(seg.Value(f.Source))
+			line = strings.TrimPrefix(line, "<?require")
+			line = strings.TrimSuffix(line, "\n")
+			line = strings.TrimSuffix(line, "?>")
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			body = []byte(line)
+		} else {
+			// Multi-line: skip first line (<?require),
+			// remaining lines are YAML body before ?>
+			for i := 1; i < lines.Len(); i++ {
+				seg := lines.At(i)
+				body = append(body, seg.Value(f.Source)...)
+			}
 		}
 		var params map[string]string
 		if err := yaml.Unmarshal(body, &params); err != nil {
