@@ -517,7 +517,7 @@ name: 'string & != ""'
 }
 
 // =====================================================================
-// Filename validation (template.filename glob)
+// Filename validation (<?require filename?> directive)
 // =====================================================================
 
 func TestCheck_FilenamePatternMatch(t *testing.T) {
@@ -560,19 +560,6 @@ func TestCheck_FilenamePatternNotSet(t *testing.T) {
 	tmplPath := writeTmpl(t, "# ?\n")
 	r := &Rule{Template: tmplPath}
 	f := newTestFile(t, "anything.md", "# Title\n")
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
-
-func TestCheck_TemplateKeyInFrontmatterIsSchema(t *testing.T) {
-	tmplPath := writeTmpl(t, `---
-template: 'string & != ""'
----
-# ?
-`)
-	r := &Rule{Template: tmplPath}
-	f := newTestFile(t, "doc.md",
-		"---\ntemplate: my-template\n---\n# Title\n")
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
