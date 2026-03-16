@@ -1,7 +1,21 @@
-# PR Fixup — GitHub Copilot
+---
+name: pr-fixup
+description: >-
+  Push changes, monitor CI, and address review comments
+  until the PR is clean. Run after creating or updating
+  a PR, or when CI fails or reviewers leave comments.
+user-invocable: true
+allowed-tools: >-
+  Bash(gh pr:*), Bash(gh api:*), Bash(gh run:*),
+  Bash(git push:*), Bash(git fetch:*),
+  Bash(git rebase:*), Bash(git branch:*),
+  Bash(git add:*), Bash(git commit:*),
+  Bash(go run ./cmd/mdsmith:*)
+argument-hint: "[PR number]"
+---
 
 <?include
-file: ../docs/development/pr-fixup-workflow.md
+file: ../../../docs/development/pr-fixup-workflow.md
 strip-frontmatter: "true"
 ?>
 Push changes, monitor CI, and address review comments

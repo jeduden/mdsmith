@@ -63,6 +63,16 @@ also passes.
 Bad fixtures are excluded via the `ignore:` section in
 `.mdsmith.yml`.
 
+When adding or changing a rule feature, add both:
+
+1. **Unit tests** in `rule_test.go` (inline markdown,
+   fast red/green cycle).
+2. **Fixture tests** under `internal/rules/<id>-<name>/`
+   (`good/` and `bad/` markdown files with YAML
+   frontmatter specifying expected diagnostics). These
+   are discovered automatically by the integration test
+   runner in `internal/integration/rules_test.go`.
+
 ## Test Coverage
 
 - `go test -coverprofile=cover.out ./...` — generate

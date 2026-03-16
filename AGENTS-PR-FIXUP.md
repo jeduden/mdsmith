@@ -21,76 +21,69 @@ comments.
 - Git configured with push access to the remote
 - `gh` CLI authenticated with repo access (step 1
   installs it if missing)
+- Run each code block as its own Bash call — do not
+  chain with `&&` or prefix with inline variable
+  assignments (`VAR=x cmd`). Permission patterns match
+  on the command prefix, so `gh api ...` must be the
+  first token in the command
 
 ## Steps
 
 ### 1. Ensure `gh` CLI is installed
 
-Check whether `gh` is on the PATH. If missing, download
-the release tarball from GitHub and copy the binary into
-`/usr/local/bin`. This approach works in sandboxes where
-package-manager repos are blocked:
-
 ```bash
-if ! command -v gh &>/dev/null; then
-  GH_VER="2.67.0"
-  ARCH=$(uname -m)
-  case "$ARCH" in
-    x86_64)  ARCH="amd64" ;;
-    aarch64) ARCH="arm64" ;;
-    *)
-      echo "ERROR: unsupported arch $ARCH" >&2
-      exit 1 ;;
-  esac
-  OS=$(uname -s)
-  case "$OS" in
-    Linux)  OS="linux" ;;
-    Darwin) OS="macOS" ;;
-    *)
-      echo "ERROR: unsupported OS $OS" >&2
-      exit 1 ;;
-  esac
-  URL="https://github.com/cli/cli/releases"
-  URL="$URL/download/v${GH_VER}"
-  URL="$URL/gh_${GH_VER}_${OS}_${ARCH}.tar.gz"
-  TMP=$(mktemp -d)
-  trap 'rm -rf "$TMP"' EXIT
-  SUDO=""
-  if command -v sudo &>/dev/null && [ "$(id -u)" -ne 0 ]; then
-    SUDO="sudo "
-  fi
-  if curl -fsSL "$URL" -o "$TMP/gh.tar.gz" && \
-     tar -xzf "$TMP/gh.tar.gz" -C "$TMP"; then
-    ${SUDO}cp "$TMP"/gh_*/bin/gh /usr/local/bin/gh
-  elif command -v brew &>/dev/null; then
-    brew install gh
-  else
-    echo "ERROR: could not install gh" >&2
-    echo "Install manually: https://cli.github.com" >&2
-    exit 1
-  fi
-fi
-gh --version
+gh pr --help
 ```
 
-If `gh` is installed but not authenticated, run
-`gh auth login` or set `GITHUB_TOKEN` in the environment.
+If missing, install from
+[cli.github.com](https://cli.github.com):
+
+```bash
+brew install gh
+```
+
+If `brew` is unavailable, download the release tarball
+from the [GitHub releases page](https://github.com/cli/cli/releases).
+If not authenticated, run `gh auth login` or set
+`GITHUB_TOKEN`.
 
 ### 2. Identify the PR
 
+Store the PR number, branch, and repo name for later
+steps. Run each command separately:
+
 ```bash
-PR=$(gh pr view --json number -q '.number')
-BRANCH=$(git branch --show-current)
-REPO=$(gh repo view --json nameWithOwner \
-  -q '.nameWithOwner')
+gh pr view --json number -q '.number'
 ```
+
+Note the number as `$PR`. Then:
+
+```bash
+git branch --show-current
+```
+
+Note the branch as `$BRANCH`. Then:
+
+```bash
+gh pr view --json headRepository \
+  -q '.headRepository.owner.login + "/" + .headRepository.name'
+```
+
+Note the repo as `$REPO`.
 
 ### 3. Rebase onto the base branch
 
 ```bash
-BASE=$(gh pr view --json baseRefName \
-  -q '.baseRefName')
+gh pr view --json baseRefName -q '.baseRefName'
+```
+
+Note the base branch as `$BASE`. Then:
+
+```bash
 git fetch origin "$BASE"
+```
+
+```bash
 git rebase "origin/$BASE"
 ```
 
@@ -116,45 +109,52 @@ pushes after CI/review fixes can use a regular push):
 git push --force-with-lease origin "$BRANCH"
 ```
 
-### 5. Poll CI checks until they finish
+### 5. Schedule recurring polling
 
-```bash
-gh pr checks "$PR" --watch --fail-fast
+Use the `/loop` skill to re-invoke `/pr-fixup` every
+minute. This avoids blocking bash loops and long-running
+`--watch` commands:
+
+```text
+/loop 1m /pr-fixup
 ```
 
-If `--watch` is unavailable (web sandbox), poll manually:
+On each invocation, check CI and review threads. If
+everything is green and resolved, cancel the loop
+(step 10). If action is needed, handle it inline and
+let the next loop iteration verify the result.
+
+Check CI status:
 
 ```bash
-while true; do
-  STATUS=$(gh pr checks "$PR" \
-    --json name,state,conclusion \
-    -q '[.[] | select(.state != "COMPLETED")] | length')
-  if [ "$STATUS" = "0" ]; then
-    FAILS=$(gh pr checks "$PR" \
-      --json state -q '[.[] | select(.state == "FAILURE")] | length')
-    if [ "$FAILS" != "0" ]; then
-      echo "Some checks failed"
-      exit 1
-    fi
-    break
-  fi
-  sleep 30
-done
+gh pr checks "$PR" --json name,state
 ```
+
+If all checks show `SUCCESS`, proceed to step 7. If
+any show `FAILURE`, proceed to step 6. If checks are
+still `IN_PROGRESS` or `PENDING`, wait for the next
+loop iteration.
 
 ### 6. On CI failure — diagnose and fix
 
 Fetch the failed job log:
 
 ```bash
-# list failed checks
 gh pr checks "$PR" --json name,state,conclusion \
   -q '.[] | select(.conclusion == "FAILURE")'
+```
 
-# get the run ID and download logs
-RUN_ID=$(gh run list --branch "$BRANCH" \
+Get the run ID of the most recent failure:
+
+```bash
+gh run list --branch "$BRANCH" \
   --status failure --limit 1 \
-  --json databaseId -q '.[0].databaseId')
+  --json databaseId -q '.[0].databaseId'
+```
+
+Note the run ID as `$RUN_ID`. Then download the log:
+
+```bash
 gh run view "$RUN_ID" --log-failed
 ```
 
@@ -162,63 +162,23 @@ Read the log, identify the root cause, fix the code,
 then:
 
 ```bash
-git add -A && git commit -m "fix: address CI failure"
+git add -A
+```
+
+```bash
+git commit -m "fix: address CI failure"
+```
+
+```bash
 git push origin "$BRANCH"
 ```
 
-Return to step 5.
+The next `/loop` iteration will re-check CI.
 
-### 7. Fetch review comments
+### 7. Fetch review threads
 
-Retrieve all review comments on the PR:
-
-```bash
-# PR-level review comments (inline code comments)
-gh api "repos/$REPO/pulls/$PR/comments" \
-  --paginate \
-  --jq '.[] | {
-    id: .id,
-    node_id: .node_id,
-    path: .path,
-    line: .line,
-    body: .body,
-    user: .user.login,
-    in_reply_to_id: .in_reply_to_id,
-    created_at: .created_at
-  }'
-```
-
-```bash
-# PR issue-level comments (general discussion)
-gh api "repos/$REPO/issues/$PR/comments" \
-  --paginate \
-  --jq '.[] | {
-    id: .id,
-    node_id: .node_id,
-    body: .body,
-    user: .user.login,
-    created_at: .created_at
-  }'
-```
-
-```bash
-# Full reviews with state (APPROVED,
-# CHANGES_REQUESTED, COMMENTED)
-gh api "repos/$REPO/pulls/$PR/reviews" \
-  --paginate \
-  --jq '.[] | {
-    id: .id,
-    node_id: .node_id,
-    state: .state,
-    body: .body,
-    user: .user.login
-  }'
-```
-
-### 8. Retrieve review thread IDs for resolving
-
-GitHub review comments map to threads via GraphQL.
-Query the thread node IDs:
+Fetch all review threads with their comments, paths,
+and resolution status in a single GraphQL call:
 
 ```bash
 gh api graphql -f query='
@@ -245,10 +205,10 @@ query($owner: String!, $repo: String!, $pr: Int!) {
    -F pr="$PR"
 ```
 
-This query returns the first 100 threads (10 comments
-each). Paginate with `pageInfo` if the PR exceeds this.
+Returns the first 100 threads (10 comments each).
+Paginate with `pageInfo` if the PR exceeds this.
 
-### 9. Address each comment
+### 8. Address each comment
 
 For every unresolved review thread:
 
@@ -257,7 +217,6 @@ For every unresolved review thread:
 3. Reply to the thread:
 
 ```bash
-# Reply to an inline review comment
 gh api "repos/$REPO/pulls/$PR/comments" \
   -f body="Fixed — see latest push." \
   -F in_reply_to=COMMENT_ID
@@ -274,47 +233,33 @@ mutation($threadId: ID!) {
 }' -f threadId="THREAD_NODE_ID"
 ```
 
-### 10. Push fixes and repeat
+### 9. Push fixes and repeat
 
 ```bash
-git add -A && git commit -m "fix: address review comments"
+git add -A
+```
+
+```bash
+git commit -m "fix: address review comments"
+```
+
+```bash
 git push origin "$BRANCH"
 ```
 
-Return to step 5 (checks) and repeat the cycle until:
+The next `/loop` iteration will re-check CI and
+threads automatically.
 
-- All CI checks pass, AND
-- The latest review has no unresolved comments
-  (a review with state APPROVED or COMMENTED
-  with zero new actionable items).
-
-### 11. Final verification
+### 10. Final verification and loop cancellation
 
 ```bash
-# Confirm all checks pass
 gh pr checks "$PR"
-
-# Confirm no unresolved threads remain
-gh api graphql -f query='
-query($owner: String!, $repo: String!, $pr: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $pr) {
-      reviewThreads(first: 100) {
-        nodes {
-          id
-          isResolved
-        }
-      }
-    }
-  }
-}' -f owner="${REPO%%/*}" -f repo="${REPO##*/}" \
-   -F pr="$PR" \
-   --jq '.data.repository.pullRequest.reviewThreads.nodes
-     | map(select(.isResolved == false)) | length'
 ```
 
-If the unresolved count is 0 and CI is green, proceed
-to the notes below.
+Re-run the step 7 query and filter for unresolved
+threads. If the count is 0 and CI is green, cancel
+the recurring loop and report that the PR is ready
+for merge.
 
 ## Notes
 

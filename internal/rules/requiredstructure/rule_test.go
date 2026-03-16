@@ -440,21 +440,148 @@ id: 'int &'
 	expectDiagMsg(t, diags, "invalid template")
 }
 
-func TestCheck_LegacyTemplateFrontMatterCUEIsRejected(t *testing.T) {
+func TestCheck_TemplateKeyInFrontmatterAsCUESchema(t *testing.T) {
+	// template is no longer a reserved key — it's a regular CUE schema field.
 	tmplPath := writeTmpl(t, `---
-template:
-  allow-extra-sections: true
-  front-matter-cue: |
-    {
-      id: int & >=1
-    }
+template: 'string'
 ---
 # ?
 `)
 	r := &Rule{Template: tmplPath}
-	f := newTestFile(t, "doc.md", "# Any title\n")
+	f := newTestFile(t, "doc.md",
+		"---\ntemplate: my-value\n---\n# Any title\n")
 	diags := r.Check(f)
-	expectDiagMsg(t, diags, "template.front-matter-cue is no longer supported")
+	expectDiags(t, diags, 0)
+}
+
+// =====================================================================
+// Optional frontmatter fields (key? suffix)
+// =====================================================================
+
+func TestCheck_OptionalFieldPresent(t *testing.T) {
+	tmplPath := writeTmpl(t, `---
+name: 'string & != ""'
+"description?": 'string'
+---
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nname: my-skill\ndescription: A helpful skill.\n---\n# My Skill\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_OptionalFieldAbsent(t *testing.T) {
+	tmplPath := writeTmpl(t, `---
+name: 'string & != ""'
+"description?": 'string'
+---
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nname: my-skill\n---\n# My Skill\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_OptionalFieldRejectsExtraFields(t *testing.T) {
+	tmplPath := writeTmpl(t, `---
+name: 'string & != ""'
+"description?": 'string'
+---
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nname: my-skill\nunknown: true\n---\n# My Skill\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		"front matter does not satisfy template CUE schema")
+}
+
+func TestCheck_OptionalFieldInvalidType(t *testing.T) {
+	tmplPath := writeTmpl(t, `---
+name: 'string & != ""'
+"user-invocable?": bool
+---
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nname: my-skill\nuser-invocable: not-a-bool\n---\n# My Skill\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		"front matter does not satisfy template CUE schema")
+}
+
+// =====================================================================
+// Filename validation (<?require filename?> directive)
+// =====================================================================
+
+func TestCheck_FilenamePatternMatch(t *testing.T) {
+	tmplPath := writeTmpl(t, `<?require
+filename: "[0-9]*_*.md"
+?>
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "50_my-plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_FilenamePatternMismatch(t *testing.T) {
+	tmplPath := writeTmpl(t, `<?require
+filename: "[0-9]*_*.md"
+?>
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "my-plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`filename "my-plan.md" does not match required pattern`)
+}
+
+func TestCheck_FilenamePatternSingleLinePI(t *testing.T) {
+	tmplPath := writeTmpl(t, `<?require filename: "[0-9]*_*.md" ?>
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "my-plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`filename "my-plan.md" does not match required pattern`)
+}
+
+func TestCheck_FilenamePatternPIWithTrailingContent(t *testing.T) {
+	tmplPath := writeTmpl(t, "<?require filename: \"[0-9]*_*.md\" ?>trailing\n# ?\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "my-plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`filename "my-plan.md" does not match required pattern`)
+}
+
+func TestCheck_FilenamePatternIndentedPI(t *testing.T) {
+	tmplPath := writeTmpl(t, `  <?require filename: "[0-9]*_*.md" ?>
+# ?
+`)
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "my-plan.md", "# My Plan\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`filename "my-plan.md" does not match required pattern`)
+}
+
+func TestCheck_FilenamePatternNotSet(t *testing.T) {
+	tmplPath := writeTmpl(t, "# ?\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "anything.md", "# Title\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
 }
 
 // =====================================================================

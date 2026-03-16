@@ -31,6 +31,10 @@ row: "- [{{.summary}}]({{.filename}})"
 - Keep commits small and focused on one change
 - Run `mdsmith check .` before committing to ensure all
   markdown files pass linting
+- Never modify `.mdsmith.yml` (linter configuration)
+  without explicit user consent — this includes rule
+  settings, overrides, ignore patterns, and file-length
+  limits
 
 ## PR Workflow
 

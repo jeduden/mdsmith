@@ -89,6 +89,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	var diags []lint.Diagnostic
 
+	// Check filename pattern.
+	diags = append(diags, checkFilenamePattern(f, tmpl)...)
+
 	// Check structure: required headings present and in order.
 	diags = append(diags, checkStructure(f, tmpl, docHeadings)...)
 
@@ -120,7 +123,8 @@ var _ rule.Configurable = (*Rule)(nil)
 
 // templateConfig holds the parsed template frontmatter.
 type templateConfig struct {
-	FrontMatterCUE string
+	FrontMatterCUE  string
+	FilenamePattern string // glob pattern the document basename must match
 }
 
 // templateHeading represents a required heading from the template.
@@ -157,11 +161,6 @@ func parseTemplateConfig(prefix []byte) (templateConfig, error) {
 		return cfg, nil
 	}
 	yamlBytes := extractYAML(prefix)
-	if hasLegacyFrontMatterCUE(yamlBytes) {
-		return cfg, fmt.Errorf(
-			"template.front-matter-cue is no longer supported; define frontmatter schema with top-level fields",
-		)
-	}
 	derivedSchema, err := deriveFrontMatterSchemaFromTemplate(yamlBytes)
 	if err != nil {
 		return cfg, err
@@ -173,21 +172,51 @@ func parseTemplateConfig(prefix []byte) (templateConfig, error) {
 	return cfg, nil
 }
 
-func hasLegacyFrontMatterCUE(yamlBytes []byte) bool {
-	var raw map[string]any
-	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
-		return false
+// extractRequireDirective walks the template AST for a <?require?> PI
+// and parses its YAML body to extract constraints like filename.
+func extractRequireDirective(f *lint.File) (string, error) {
+	var filenamePattern string
+	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
+		pi, ok := c.(*lint.ProcessingInstruction)
+		if !ok || pi.Name != "require" {
+			continue
+		}
+		// Extract YAML body from PI content.
+		lines := pi.Lines()
+		var body []byte
+		if lines.Len() == 1 {
+			// Single-line: <?require key: value ?>
+			// Extract content between <?require and ?>
+			// (ignoring any trailing text after ?>).
+			seg := lines.At(0)
+			line := strings.TrimSpace(string(seg.Value(f.Source)))
+			line = strings.TrimPrefix(line, "<?require")
+			if idx := strings.Index(line, "?>"); idx >= 0 {
+				line = line[:idx]
+			}
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			body = []byte(line)
+		} else {
+			// Multi-line: skip first line (<?require),
+			// remaining lines are YAML body before ?>
+			for i := 1; i < lines.Len(); i++ {
+				seg := lines.At(i)
+				body = append(body, seg.Value(f.Source)...)
+			}
+		}
+		var params map[string]string
+		if err := yaml.Unmarshal(body, &params); err != nil {
+			return "", fmt.Errorf("invalid <?require?> directive: %w", err)
+		}
+		if fn, ok := params["filename"]; ok {
+			filenamePattern = fn
+		}
+		break
 	}
-	tmplAny, ok := raw["template"]
-	if !ok {
-		return false
-	}
-	tmplMap, ok := tmplAny.(map[string]any)
-	if !ok {
-		return false
-	}
-	_, found := tmplMap["front-matter-cue"]
-	return found
+	return filenamePattern, nil
 }
 
 func deriveFrontMatterSchemaFromTemplate(yamlBytes []byte) (string, error) {
@@ -195,7 +224,6 @@ func deriveFrontMatterSchemaFromTemplate(yamlBytes []byte) (string, error) {
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
 		return "", fmt.Errorf("parsing template frontmatter: %w", err)
 	}
-	delete(raw, "template")
 	if len(raw) == 0 {
 		return "", nil
 	}
@@ -222,7 +250,11 @@ func cueExprForMap(m map[string]any) (string, error) {
 			return "", fmt.Errorf("field %q: %w", k, err)
 		}
 		b.WriteString("  ")
-		b.WriteString(cueFieldLabel(k))
+		fieldName, optional := strings.CutSuffix(k, "?")
+		b.WriteString(cueFieldLabel(fieldName))
+		if optional {
+			b.WriteString("?")
+		}
 		b.WriteString(": ")
 		b.WriteString(expr)
 		b.WriteString("\n")
@@ -310,6 +342,13 @@ func parseTemplate(data []byte) (*parsedTemplate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parsing template markdown: %w", err)
 	}
+
+	// Extract <?require?> directive from template body.
+	filenamePattern, err := extractRequireDirective(f)
+	if err != nil {
+		return nil, err
+	}
+	cfg.FilenamePattern = filenamePattern
 
 	headings := extractHeadings(f)
 	tmplHeadings := make([]templateHeading, len(headings))
@@ -750,6 +789,31 @@ func isTemplateTargetFile(docPath, templatePath string) bool {
 // formatHeading returns a markdown-style heading string.
 func formatHeading(level int, text string) string {
 	return strings.Repeat("#", level) + " " + text
+}
+
+// checkFilenamePattern checks that the document basename matches the
+// template's filename glob pattern (if configured).
+func checkFilenamePattern(
+	f *lint.File, tmpl *parsedTemplate,
+) []lint.Diagnostic {
+	pattern := tmpl.Config.FilenamePattern
+	if pattern == "" {
+		return nil
+	}
+	base := filepath.Base(f.Path)
+	matched, err := filepath.Match(pattern, base)
+	if err != nil {
+		return []lint.Diagnostic{makeDiag(f.Path, 1,
+			fmt.Sprintf("invalid filename pattern %q: %v",
+				pattern, err))}
+	}
+	if !matched {
+		return []lint.Diagnostic{makeDiag(f.Path, 1,
+			fmt.Sprintf(
+				"filename %q does not match required pattern %q",
+				base, pattern))}
+	}
+	return nil
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {

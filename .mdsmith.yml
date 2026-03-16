@@ -77,12 +77,18 @@ overrides:
           - tables
           - urls
       blank-line-around-lists: false
-  - files: [".claude/skills/pr-fixup.md",
+  - files: [".claude/skills/*/SKILL.md",
             ".github/copilot-pr-fixup.md",
             "AGENTS-PR-FIXUP.md"]
     rules:
       max-file-length:
         max: 600
+  - files: [".claude/skills/*/SKILL.md"]
+    rules:
+      required-structure:
+        template: .claude/skills/proto.md
+      first-line-heading: false
+      heading-increment: false
   - files: ["AGENTS.md", ".github/copilot-instructions.md"]
     rules:
       line-length:
@@ -188,3 +194,7 @@ ignore:
   - "internal/rules/*/bad.md"
   - "internal/rules/*/good/**"
   - "internal/rules/*/fixed/**"
+  - ".claude/worktrees/**"
+  - ".claude/skills/proto.md"
+  - "plan/proto.md"
+  - "internal/rules/proto.md"
