@@ -164,7 +164,7 @@ func TestConfigureRule_NonConfigurable(t *testing.T) {
 	got, err := ConfigureRule(rl, cfg)
 	require.NoError(t, err, "unexpected error: %v", err)
 	// mockRule does not implement Configurable, so the same instance is returned.
-	assert.Equal(t, rl, got, "expected same rule instance for non-configurable rule")
+	assert.Same(t, rl, got, "expected same rule instance for non-configurable rule")
 }
 
 func TestConfigureRule_AppliesSettings(t *testing.T) {
@@ -177,21 +177,15 @@ func TestConfigureRule_AppliesSettings(t *testing.T) {
 	got, err := ConfigureRule(rl, cfg)
 	require.NoError(t, err, "unexpected error: %v", err)
 	// Should be a different instance (cloned).
-	if got == rl {
-		t.Error("expected a cloned rule, got same instance")
-	}
+	assert.NotSame(t, rl, got, "expected a cloned rule, got same instance")
 
 	// The cloned rule should have max=120 applied.
 	cloned, ok := got.(*configurableLengthRule)
 	require.True(t, ok, "expected *configurableLengthRule, got %T", got)
-	if cloned.Max != 120 {
-		t.Errorf("expected Max=120, got %d", cloned.Max)
-	}
+	assert.Equal(t, 120, cloned.Max, "expected Max=120, got %d", cloned.Max)
 
 	// Original should be unchanged.
-	if rl.Max != 80 {
-		t.Errorf("original Max changed to %d, want 80", rl.Max)
-	}
+	assert.Equal(t, 80, rl.Max, "original Max changed to %d, want 80", rl.Max)
 }
 
 func TestConfigureRule_ApplySettingsError(t *testing.T) {
