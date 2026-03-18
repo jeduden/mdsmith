@@ -33,7 +33,8 @@ func TestCheck_NoBlankAfter(t *testing.T) {
 			hasAfterDiag = true
 		}
 	}
-	require.True(t, hasAfterDiag, "expected diagnostic about blank line after, got %d diagnostics: %v", len(diags), diags)
+	require.True(t, hasAfterDiag,
+		"expected diagnostic about blank line after, got %d diagnostics: %v", len(diags), diags)
 }
 
 func TestCheck_BlankLinesPresent(t *testing.T) {

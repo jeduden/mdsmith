@@ -140,7 +140,8 @@ func TestRunner_RuleNotInConfigSkipped(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics for unconfigured rule, got %d", len(result.Diagnostics))
+	require.Len(t, result.Diagnostics, 0,
+		"expected 0 diagnostics for unconfigured rule, got %d", len(result.Diagnostics))
 }
 
 func TestRunner_NonexistentFileError(t *testing.T) {
@@ -219,7 +220,8 @@ func TestRunner_OverrideDisablesRuleForFile(t *testing.T) {
 	result := runner.Run([]string{changelog, readme})
 
 	// README.md should have a diagnostic, CHANGELOG.md should not.
-	require.Len(t, result.Diagnostics, 1, "expected 1 diagnostic, got %d: %v", len(result.Diagnostics), result.Diagnostics)
+	require.Len(t, result.Diagnostics, 1,
+		"expected 1 diagnostic, got %d: %v", len(result.Diagnostics), result.Diagnostics)
 	if result.Diagnostics[0].File != readme {
 		t.Errorf("expected diagnostic for %s, got %s", readme, result.Diagnostics[0].File)
 	}
@@ -723,5 +725,6 @@ func TestRunSource_EmptyInput(t *testing.T) {
 
 	result := runner.RunSource("<stdin>", []byte(""))
 	require.Len(t, result.Errors, 0, "expected 0 errors, got %d: %v", len(result.Errors), result.Errors)
-	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d: %v", len(result.Diagnostics), result.Diagnostics)
+	require.Len(t, result.Diagnostics, 0,
+		"expected 0 diagnostics, got %d: %v", len(result.Diagnostics), result.Diagnostics)
 }

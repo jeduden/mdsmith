@@ -146,7 +146,8 @@ func TestCheck_EmptyExclude_FencedCodeBlockFlagged(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Max: 80, Exclude: []string{}}
 	diags := r.Check(f)
-	require.Len(t, diags, 1, "expected 1 diagnostic for long line inside fenced code block (exclude=[]), got %d", len(diags))
+	require.Len(t, diags, 1,
+		"expected 1 diagnostic for long line inside fenced code block (exclude=[]), got %d", len(diags))
 }
 
 func TestCheck_EmptyExclude_IndentedCodeBlockFlagged(t *testing.T) {
@@ -156,7 +157,8 @@ func TestCheck_EmptyExclude_IndentedCodeBlockFlagged(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Max: 80, Exclude: []string{}}
 	diags := r.Check(f)
-	require.Len(t, diags, 1, "expected 1 diagnostic for long line inside indented code block (exclude=[]), got %d", len(diags))
+	require.Len(t, diags, 1,
+		"expected 1 diagnostic for long line inside indented code block (exclude=[]), got %d", len(diags))
 }
 
 func TestCheck_EmptyExclude_URLOnlyLineFlagged(t *testing.T) {
@@ -242,7 +244,8 @@ func TestCheck_FencedCodeBlockWithInfoString(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Max: 80, Exclude: defaultExclude()}
 	diags := r.Check(f)
-	require.Len(t, diags, 0, "expected 0 diagnostics for long line inside fenced code block with info string, got %d", len(diags))
+	require.Len(t, diags, 0,
+		"expected 0 diagnostics for long line inside fenced code block with info string, got %d", len(diags))
 }
 
 func TestCheck_FencedCodeBlockFenceLinesAlsoSkipped(t *testing.T) {
@@ -299,7 +302,8 @@ func TestCheck_MultipleFencedCodeBlocks(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Max: 80, Exclude: defaultExclude()}
 	diags := r.Check(f)
-	require.Len(t, diags, 0, "expected 0 diagnostics for long lines inside multiple fenced code blocks, got %d", len(diags))
+	require.Len(t, diags, 0,
+		"expected 0 diagnostics for long lines inside multiple fenced code blocks, got %d", len(diags))
 }
 
 func TestCheck_DiagnosticFile(t *testing.T) {
@@ -622,7 +626,8 @@ func TestCheck_Stern_LongLineNoSpacesPastLimit(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Max: 80, Stern: true, Exclude: defaultExclude()}
 	diags := r.Check(f)
-	require.Len(t, diags, 0, "expected 0 diagnostics for line without spaces past limit in stern mode, got %d", len(diags))
+	require.Len(t, diags, 0,
+		"expected 0 diagnostics for line without spaces past limit in stern mode, got %d", len(diags))
 }
 
 func TestCheck_Stern_DisabledStillFlags(t *testing.T) {
@@ -657,7 +662,8 @@ func TestCheck_Stern_WithHeadingMax(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Max: 80, HeadingMax: intPtr(60), Stern: true, Exclude: defaultExclude()}
 	diags := r.Check(f)
-	require.Len(t, diags, 1, "expected 1 diagnostic for heading with space past heading-max in stern mode, got %d", len(diags))
+	require.Len(t, diags, 1,
+		"expected 1 diagnostic for heading with space past heading-max in stern mode, got %d", len(diags))
 }
 
 func TestCheck_Stern_WithHeadingMaxNoSpacePast(t *testing.T) {

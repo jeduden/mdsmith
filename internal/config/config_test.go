@@ -79,7 +79,8 @@ func TestParseValidYAML(t *testing.T) {
 		if cfg.Overrides[0].Files[0] != "CHANGELOG.md" {
 			t.Errorf("expected CHANGELOG.md, got %s", cfg.Overrides[0].Files[0])
 		}
-		assert.False(t, cfg.Overrides[0].Rules["no-duplicate-headings"].Enabled, "no-duplicate-headings should be disabled in override")
+		assert.False(t, cfg.Overrides[0].Rules["no-duplicate-headings"].Enabled,
+			"no-duplicate-headings should be disabled in override")
 		assert.True(t, cfg.Overrides[1].Rules["line-length"].Enabled, "line-length should be enabled in override")
 		if cfg.Overrides[1].Rules["line-length"].Settings["max"] != 120 {
 			t.Errorf("line-length max in override: expected 120, got %v",
@@ -566,7 +567,8 @@ func TestEffectiveOverrideMatchesBasename(t *testing.T) {
 
 	// docs/slides.md should also match via basename (issue #40).
 	eff2 := Effective(cfg, "docs/slides.md")
-	assert.False(t, eff2["first-line-heading"].Enabled, "first-line-heading should be disabled for docs/slides.md via basename match")
+	assert.False(t, eff2["first-line-heading"].Enabled,
+		"first-line-heading should be disabled for docs/slides.md via basename match")
 
 	// other.md should NOT match.
 	eff3 := Effective(cfg, "other.md")
@@ -1008,7 +1010,8 @@ func TestApplyCategoriesDisablesRulesInCategory(t *testing.T) {
 	result := ApplyCategories(rules, categories, ruleCategory, explicit)
 
 	assert.False(t, result["heading-style"].Enabled, "heading-style should be disabled (heading category disabled)")
-	assert.False(t, result["heading-increment"].Enabled, "heading-increment should be disabled (heading category disabled)")
+	assert.False(t, result["heading-increment"].Enabled,
+		"heading-increment should be disabled (heading category disabled)")
 	assert.True(t, result["line-length"].Enabled, "line-length should remain enabled (line category enabled)")
 }
 
@@ -1037,8 +1040,10 @@ func TestApplyCategoriesExplicitRuleOverridesCategory(t *testing.T) {
 
 	result := ApplyCategories(rules, categories, ruleCategory, explicit)
 
-	assert.True(t, result["heading-style"].Enabled, "heading-style should remain enabled (explicit rule overrides category)")
-	assert.False(t, result["heading-increment"].Enabled, "heading-increment should be disabled (heading category disabled, not explicit)")
+	assert.True(t, result["heading-style"].Enabled,
+		"heading-style should remain enabled (explicit rule overrides category)")
+	assert.False(t, result["heading-increment"].Enabled,
+		"heading-increment should be disabled (heading category disabled, not explicit)")
 	assert.True(t, result["line-length"].Enabled, "line-length should remain enabled")
 }
 

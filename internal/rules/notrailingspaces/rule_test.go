@@ -129,7 +129,8 @@ func TestCheck_SkipsIndentedCodeBlockLines(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	require.Len(t, diags, 0, "expected 0 diagnostics for trailing spaces inside indented code block, got %d", len(diags))
+	require.Len(t, diags, 0,
+		"expected 0 diagnostics for trailing spaces inside indented code block, got %d", len(diags))
 }
 
 func TestFix_PreservesCodeBlockLines(t *testing.T) {

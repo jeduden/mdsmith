@@ -86,7 +86,8 @@ func TestEngine_Check_UnclosedMarker(t *testing.T) {
 	e := NewEngine(d)
 	diags := e.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
-	assert.Contains(t, diags[0].Message, "no closing marker", "expected 'no closing marker' message, got %q", diags[0].Message)
+	assert.Contains(t, diags[0].Message, "no closing marker",
+		"expected 'no closing marker' message, got %q", diags[0].Message)
 }
 
 func TestEngine_Check_UnterminatedStartMarker(t *testing.T) {
@@ -97,7 +98,8 @@ func TestEngine_Check_UnterminatedStartMarker(t *testing.T) {
 	e := NewEngine(d)
 	diags := e.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diags)
-	assert.Contains(t, diags[0].Message, "<?mock", "expected message to contain marker name '<?mock', got %q", diags[0].Message)
+	assert.Contains(t, diags[0].Message, "<?mock",
+		"expected message to contain marker name '<?mock', got %q", diags[0].Message)
 	assert.Contains(t, diags[0].Message, "?>", "expected message to mention missing '?>', got %q", diags[0].Message)
 }
 
@@ -125,7 +127,8 @@ func TestEngine_Check_OrphanedEndMarker(t *testing.T) {
 	e := NewEngine(d)
 	diags := e.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
-	assert.Contains(t, diags[0].Message, "unexpected generated section end marker", "expected 'unexpected' message, got %q", diags[0].Message)
+	assert.Contains(t, diags[0].Message, "unexpected generated section end marker",
+		"expected 'unexpected' message, got %q", diags[0].Message)
 }
 
 func TestEngine_Check_NestedMarkers(t *testing.T) {
@@ -160,7 +163,8 @@ func TestEngine_Check_NonStringValues(t *testing.T) {
 	e := NewEngine(d)
 	diags := e.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
-	assert.Contains(t, diags[0].Message, "non-string value", "expected 'non-string value' message, got %q", diags[0].Message)
+	assert.Contains(t, diags[0].Message, "non-string value",
+		"expected 'non-string value' message, got %q", diags[0].Message)
 }
 
 func TestEngine_Check_ValidationDiags(t *testing.T) {
@@ -221,7 +225,8 @@ func TestEngine_Fix_Idempotent(t *testing.T) {
 	d := &mockDirective{content: "hello world\n"}
 	e := NewEngine(d)
 	result := string(e.Fix(f))
-	assert.Equal(t, src, result, "Fix on up-to-date content should be idempotent.\nExpected:\n%s\nGot:\n%s", src, result)
+	assert.Equal(t, src, result,
+		"Fix on up-to-date content should be idempotent.\nExpected:\n%s\nGot:\n%s", src, result)
 }
 
 func TestEngine_Fix_MultiplePairs(t *testing.T) {

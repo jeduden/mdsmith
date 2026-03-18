@@ -394,7 +394,8 @@ func TestFix_FileWithNoViolationsNotModified(t *testing.T) {
 
 	infoAfter, err := os.Stat(mdFile)
 	require.NoError(t, err)
-	assert.True(t, infoAfter.ModTime().Equal(mtimeBefore), "mtime changed: before=%v after=%v", mtimeBefore, infoAfter.ModTime())
+	assert.True(t, infoAfter.ModTime().Equal(mtimeBefore),
+		"mtime changed: before=%v after=%v", mtimeBefore, infoAfter.ModTime())
 }
 
 func TestFix_ReadOnlyFileError(t *testing.T) {
@@ -423,7 +424,8 @@ func TestFix_ReadOnlyFileError(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	require.Len(t, result.Errors, 1, "expected 1 error for read-only file, got %d: %v", len(result.Errors), result.Errors)
+	require.Len(t, result.Errors, 1,
+		"expected 1 error for read-only file, got %d: %v", len(result.Errors), result.Errors)
 }
 
 func TestFix_MultipleFilesFixedIndependently(t *testing.T) {
@@ -510,8 +512,10 @@ func TestFix_PreFixCheckRulesErrorsCollected(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	require.Len(t, result.Errors, 1, "expected 1 pre-fix CheckRules error, got %d: %v", len(result.Errors), result.Errors)
-	require.Contains(t, result.Errors[0].Error(), "flaky settings failure", "expected flaky settings error, got: %v", result.Errors[0])
+	require.Len(t, result.Errors, 1,
+		"expected 1 pre-fix CheckRules error, got %d: %v", len(result.Errors), result.Errors)
+	require.Contains(t, result.Errors[0].Error(), "flaky settings failure",
+		"expected flaky settings error, got: %v", result.Errors[0])
 	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d", len(result.Diagnostics))
 	require.Len(t, result.Modified, 0, "expected 0 modified files, got %d", len(result.Modified))
 }

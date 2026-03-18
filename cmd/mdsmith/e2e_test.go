@@ -282,7 +282,8 @@ func TestE2E_Check_Violations_ExitsOne(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "check", "--no-color", path)
 	assert.Equal(t, 1, exitCode, "expected exit code 1, got %d", exitCode)
 	assert.Contains(t, stderr, "MDS006", "expected stderr to contain MDS006, got: %s", stderr)
-	assert.Contains(t, stderr, "trailing whitespace", "expected stderr to contain 'trailing whitespace', got: %s", stderr)
+	assert.Contains(t, stderr, "trailing whitespace",
+		"expected stderr to contain 'trailing whitespace', got: %s", stderr)
 }
 
 func TestE2E_Check_JSONFormat(t *testing.T) {
@@ -359,7 +360,8 @@ func TestE2E_Check_CustomConfig(t *testing.T) {
 
 	// Run with the custom config; the violation should be suppressed.
 	_, stderr, exitCode := runBinary(t, "", "check", "--no-color", "--config", configPath, path)
-	assert.NotContains(t, stderr, "MDS006", "expected MDS006 to be suppressed by config, but found in stderr: %s", stderr)
+	assert.NotContains(t, stderr, "MDS006",
+		"expected MDS006 to be suppressed by config, but found in stderr: %s", stderr)
 	assert.Equal(t, 0, exitCode, "expected exit code 0 with rule disabled, got %d", exitCode)
 }
 
@@ -398,7 +400,9 @@ func TestE2E_Check_NoGitignore_IncludesIgnoredDirectory(t *testing.T) {
 
 	// Run with --no-gitignore -- the violated file should be found.
 	_, stderr, exitCode := runBinary(t, "", "check", "--no-color", "--no-gitignore", dir)
-	assert.Equal(t, 1, exitCode, "expected exit code 1 (violations found with --no-gitignore), got %d; stderr: %s", exitCode, stderr)
+	assert.Equal(t, 1, exitCode,
+		"expected exit code 1 (violations found with --no-gitignore), got %d; stderr: %s",
+		exitCode, stderr)
 	assert.Contains(t, stderr, "MDS006", "expected MDS006 in stderr, got: %s", stderr)
 }
 
@@ -460,7 +464,9 @@ func TestE2E_Fix_PrintsStatsWithUnfixedFailures(t *testing.T) {
 	path := writeFixture(t, dir, "partially-fixable.md", "# Title!\n\nHello   \n")
 
 	_, stderr, exitCode := runBinary(t, "", "fix", "--no-color", path)
-	require.Equal(t, 1, exitCode, "expected exit code 1 with remaining non-fixable issue, got %d; stderr: %s", exitCode, stderr)
+	require.Equal(t, 1, exitCode,
+		"expected exit code 1 with remaining non-fixable issue, got %d; stderr: %s",
+		exitCode, stderr)
 
 	checked, fixed, failures, unfixed := parseStats(t, stderr)
 	assert.Equal(t, 1, checked, "expected checked=1, got %d", checked)
@@ -535,8 +541,11 @@ func TestE2E_Check_Stdin_ConfigurableSettingsApplied(t *testing.T) {
 	configPath := writeFixture(t, dir, ".mdsmith.yml", configContent)
 
 	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath, "-")
-	assert.NotContains(t, stderr, "MDS001", "expected MDS001 to be suppressed by max=120 setting, but found in stderr: %s", stderr)
-	assert.Equal(t, 0, exitCode, "expected exit code 0 with max=120 for 101-char line, got %d; stderr: %s", exitCode, stderr)
+	assert.NotContains(t, stderr, "MDS001",
+		"expected MDS001 to be suppressed by max=120 setting, but found in stderr: %s", stderr)
+	assert.Equal(t, 0, exitCode,
+		"expected exit code 0 with max=120 for 101-char line, got %d; stderr: %s",
+		exitCode, stderr)
 }
 
 // --- Help rule subcommand tests ---
@@ -737,8 +746,10 @@ func TestE2E_MetricsRank_JSONDeterministicTieBreak(t *testing.T) {
 
 	firstPath, _ := rows[0]["path"].(string)
 	secondPath, _ := rows[1]["path"].(string)
-	assert.Contains(t, firstPath, "a.md", "expected path tie-break order a.md, b.md; got %q then %q", firstPath, secondPath)
-	assert.Contains(t, secondPath, "b.md", "expected path tie-break order a.md, b.md; got %q then %q", firstPath, secondPath)
+	assert.Contains(t, firstPath, "a.md",
+		"expected path tie-break order a.md, b.md; got %q then %q", firstPath, secondPath)
+	assert.Contains(t, secondPath, "b.md",
+		"expected path tie-break order a.md, b.md; got %q then %q", firstPath, secondPath)
 }
 
 func TestE2E_MetricsRank_UnknownMetric_ExitsTwo(t *testing.T) {
@@ -770,7 +781,9 @@ func TestE2E_Check_Stdin_ConfigurableSettingsViolation(t *testing.T) {
 	configPath := writeFixture(t, dir, ".mdsmith.yml", configContent)
 
 	_, stderr, exitCode := runBinary(t, input, "check", "--no-color", "--config", configPath, "-")
-	assert.Equal(t, 1, exitCode, "expected exit code 1 for 130-char line with max=120, got %d; stderr: %s", exitCode, stderr)
+	assert.Equal(t, 1, exitCode,
+		"expected exit code 1 for 130-char line with max=120, got %d; stderr: %s",
+		exitCode, stderr)
 	assert.Contains(t, stderr, "MDS001", "expected MDS001 in stderr, got: %s", stderr)
 }
 
@@ -868,7 +881,9 @@ func TestE2E_Check_NoArgs_DiscoversFiles(t *testing.T) {
 
 	// Run check with no file args - should discover and lint dirty.md.
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
-	assert.Equal(t, 1, exitCode, "expected exit code 1 (violations found via discovery), got %d; stderr: %s", exitCode, stderr)
+	assert.Equal(t, 1, exitCode,
+		"expected exit code 1 (violations found via discovery), got %d; stderr: %s",
+		exitCode, stderr)
 	assert.Contains(t, stderr, "MDS006", "expected MDS006 in stderr, got: %s", stderr)
 }
 
@@ -969,7 +984,8 @@ func TestE2E_Check_NoArgs_GitignoreRespected(t *testing.T) {
 	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
-	assert.Equal(t, 0, exitCode, "expected exit code 0 (vendor ignored via gitignore), got %d; stderr: %s", exitCode, stderr)
+	assert.Equal(t, 0, exitCode,
+		"expected exit code 0 (vendor ignored via gitignore), got %d; stderr: %s", exitCode, stderr)
 }
 
 func TestE2E_Check_NoArgs_NoGitignoreIncludesAll(t *testing.T) {
@@ -991,7 +1007,9 @@ func TestE2E_Check_NoArgs_NoGitignoreIncludesAll(t *testing.T) {
 	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  no-trailing-spaces: true\n")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color", "--no-gitignore")
-	assert.Equal(t, 1, exitCode, "expected exit code 1 (vendor included with --no-gitignore), got %d; stderr: %s", exitCode, stderr)
+	assert.Equal(t, 1, exitCode,
+		"expected exit code 1 (vendor included with --no-gitignore), got %d; stderr: %s",
+		exitCode, stderr)
 	assert.Contains(t, stderr, "MDS006", "expected MDS006 in stderr, got: %s", stderr)
 }
 

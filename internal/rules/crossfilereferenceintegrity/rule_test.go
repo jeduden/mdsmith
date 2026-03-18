@@ -46,7 +46,8 @@ func TestCheck_MissingHeadingAnchor(t *testing.T) {
 	f := newLintFile(t, sourcePath)
 	diags := (&Rule{}).Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
-	require.Contains(t, diags[0].Message, "guide.md#missing", "message = %q, want to include guide.md#missing", diags[0].Message)
+	require.Contains(t, diags[0].Message, "guide.md#missing",
+		"message = %q, want to include guide.md#missing", diags[0].Message)
 }
 
 func TestCheck_ValidRelativeAndLocalAnchors(t *testing.T) {
@@ -131,7 +132,8 @@ func TestCheck_IncludeExcludePatterns(t *testing.T) {
 	}
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diagMessages(diags))
-	require.Contains(t, diags[0].Message, "docs/missing.md", "message = %q, want to include docs/missing.md", diags[0].Message)
+	require.Contains(t, diags[0].Message, "docs/missing.md",
+		"message = %q, want to include docs/missing.md", diags[0].Message)
 }
 
 func TestApplySettings_InvalidValues(t *testing.T) {

@@ -44,7 +44,8 @@ func TestCheck_DeeplyNested(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Spaces: 2}
 	diags := r.Check(f)
-	require.Len(t, diags, 0, "expected 0 diagnostics for correctly indented deep nesting, got %d: %+v", len(diags), diags)
+	require.Len(t, diags, 0,
+		"expected 0 diagnostics for correctly indented deep nesting, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_OrderedList(t *testing.T) {
@@ -53,7 +54,8 @@ func TestCheck_OrderedList(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Spaces: 3}
 	diags := r.Check(f)
-	require.Len(t, diags, 0, "expected 0 diagnostics for correctly indented ordered list, got %d: %+v", len(diags), diags)
+	require.Len(t, diags, 0,
+		"expected 0 diagnostics for correctly indented ordered list, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_EmptyFile(t *testing.T) {

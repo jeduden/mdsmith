@@ -338,7 +338,8 @@ func TestCategories_ExplicitRuleOverrideWithMockRules(t *testing.T) {
 	// mock-heading-a should fire (explicit override).
 	assert.True(t, ruleIDs["MDS900"], "expected diagnostic from mock-heading-a (MDS900) due to explicit override")
 	// mock-heading-b should NOT fire (category disabled, not explicit).
-	assert.False(t, ruleIDs["MDS901"], "did not expect diagnostic from mock-heading-b (MDS901), heading category is disabled")
+	assert.False(t, ruleIDs["MDS901"],
+		"did not expect diagnostic from mock-heading-b (MDS901), heading category is disabled")
 }
 
 func TestCategories_RunSourceRespectsCategories(t *testing.T) {
@@ -402,7 +403,8 @@ func TestCategories_OverrideCategoryWithMockRules(t *testing.T) {
 
 	// .md file: code category disabled via override.
 	resultMD := runner.Run([]string{mdFile})
-	assert.Len(t, resultMD.Diagnostics, 0, "code category disabled for *.md but got %d diagnostics", len(resultMD.Diagnostics))
+	assert.Len(t, resultMD.Diagnostics, 0,
+		"code category disabled for *.md but got %d diagnostics", len(resultMD.Diagnostics))
 
 	// .txt file: code category still active (override does not match).
 	resultTXT := runner.Run([]string{txtFile})

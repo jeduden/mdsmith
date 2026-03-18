@@ -40,7 +40,8 @@ func expectDiagMsg(t *testing.T, diags []lint.Diagnostic, msg string) {
 	if len(diags) == 0 {
 		t.Fatalf("expected diagnostic with message %q, got none", msg)
 	}
-	assert.Contains(t, diags[0].Message, msg, "expected diagnostic message containing %q, got %q", msg, diags[0].Message)
+	assert.Contains(t, diags[0].Message, msg,
+		"expected diagnostic message containing %q, got %q", msg, diags[0].Message)
 }
 
 // expectDiagLine asserts the first diagnostic is on the given line.
@@ -925,7 +926,8 @@ another: value
 	r := &Rule{}
 	diags := r.Check(f)
 	for _, d := range diags {
-		assert.NotContains(t, d.Message, "unknown_key", "unknown YAML keys should be silently ignored, got: %s", d.Message)
+		assert.NotContains(t, d.Message, "unknown_key",
+			"unknown YAML keys should be silently ignored, got: %s", d.Message)
 	}
 }
 
