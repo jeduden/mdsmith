@@ -50,13 +50,15 @@ func TestMain(m *testing.M) {
 	// set by the caller, so it can be combined with unit-test coverage.
 	if outDir := os.Getenv("E2E_COVERDIR"); outDir != "" {
 		if err := os.MkdirAll(outDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: cannot create E2E_COVERDIR %s: %v\n", outDir, err)
+			fmt.Fprintf(os.Stderr, "E2E_COVERDIR: cannot create %s: %v\n", outDir, err)
+			code = 1
 		} else {
 			mergeCmd := exec.Command("go", "tool", "covdata", "textfmt",
 				"-i="+coverDir, "-o="+filepath.Join(outDir, "e2e_coverage.txt"))
 			mergeCmd.Stderr = os.Stderr
 			if err := mergeCmd.Run(); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to merge coverage data: %v\n", err)
+				fmt.Fprintf(os.Stderr, "E2E_COVERDIR: failed to export coverage: %v\n", err)
+				code = 1
 			}
 		}
 	}

@@ -44,21 +44,23 @@ jobs:
           # are only exercised via the subprocess binary, so the
           # test-process counters are always zero.
           tail -n +2 unit.cov | grep -v 'cmd/mdsmith/' >> merged.cov || true
-          if [ ! -f "$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt" ]; then
-            echo "e2e_coverage.txt not found in E2E_COVERDIR — cmd/mdsmith coverage will be missing" >&2
+          e2e_profile="$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt"
+          if [ ! -f "$e2e_profile" ]; then
+            echo "e2e_coverage.txt not found — cmd/mdsmith coverage will be missing" >&2
             exit 1
           fi
-          if [ -f "$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt" ]; then
-            unit_mode_line=$(head -1 unit.cov)
-            e2e_mode_line=$(head -1 "$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt")
-            if [ "$unit_mode_line" != "$e2e_mode_line" ]; then
-              echo "Coverage mode mismatch between unit.cov ('$unit_mode_line') and e2e_coverage.txt ('$e2e_mode_line')" >&2
-              exit 1
-            fi
-            # Only include cmd/mdsmith coverage from the e2e profile to avoid
-            # duplicating blocks for packages already present in unit.cov.
-            tail -n +2 "$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt" | grep 'cmd/mdsmith/' >> merged.cov || true
+          unit_mode_line=$(head -1 unit.cov)
+          e2e_mode_line=$(head -1 "$e2e_profile")
+          if [ "$unit_mode_line" != "$e2e_mode_line" ]; then
+            echo "Coverage mode mismatch: unit='$unit_mode_line' e2e='$e2e_mode_line'" >&2
+            exit 1
           fi
+          e2e_lines=$(tail -n +2 "$e2e_profile" | grep -c 'cmd/mdsmith/' || true)
+          if [ "$e2e_lines" -eq 0 ]; then
+            echo "e2e profile contains no cmd/mdsmith/ coverage lines" >&2
+            exit 1
+          fi
+          tail -n +2 "$e2e_profile" | grep 'cmd/mdsmith/' >> merged.cov
       - name: Coverage summary
         run: |
           total=$(go tool cover -func=merged.cov | tail -1)
