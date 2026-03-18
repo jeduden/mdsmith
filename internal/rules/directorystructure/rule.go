@@ -49,7 +49,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
-		Message:  fmt.Sprintf("file %q is not in an allowed directory (allowed: %s)", f.Path, strings.Join(r.Allowed, ", ")),
+		Message: fmt.Sprintf("file %q is not in an allowed directory (allowed: %s)",
+			f.Path, strings.Join(r.Allowed, ", ")),
 	}}
 }
 

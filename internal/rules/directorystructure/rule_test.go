@@ -93,8 +93,8 @@ func TestCheck_EmptyAllowed_NoOp(t *testing.T) {
 func TestCheck_MultiplePatterns(t *testing.T) {
 	r := &Rule{Allowed: []string{"docs/**", "plan/**", "."}}
 	tests := []struct {
-		path    string
-		wantN   int
+		path  string
+		wantN int
 	}{
 		{"docs/guide.md", 0},
 		{"plan/roadmap.md", 0},
