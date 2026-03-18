@@ -33,6 +33,12 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	// When no allowed patterns are configured, skip checking.
+	// The rule is disabled by default; a user must explicitly configure
+	// the allowed list for it to take effect.
+	if len(r.Allowed) == 0 {
+		return nil
+	}
 	if r.isAllowed(f.Path) {
 		return nil
 	}

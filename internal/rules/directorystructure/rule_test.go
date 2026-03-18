@@ -77,7 +77,7 @@ func TestCheck_NestedGlob(t *testing.T) {
 	}
 }
 
-func TestCheck_EmptyAllowed_AllDisallowed(t *testing.T) {
+func TestCheck_EmptyAllowed_NoOp(t *testing.T) {
 	r := &Rule{Allowed: []string{}}
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("docs/guide.md", src)
@@ -85,8 +85,8 @@ func TestCheck_EmptyAllowed_AllDisallowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %+v", len(diags), diags)
+	if len(diags) != 0 {
+		t.Fatalf("expected 0 diagnostics (unconfigured rule is no-op), got %d: %+v", len(diags), diags)
 	}
 }
 

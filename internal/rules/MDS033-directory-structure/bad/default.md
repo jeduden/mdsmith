@@ -1,8 +1,11 @@
 ---
+settings:
+  allowed:
+    - "docs/**"
 diagnostics:
   - line: 1
     column: 1
-    message: "file \"bad/default.md\" is not in an allowed directory (allowed: )"
+    message: 'file "default.md" is not in an allowed directory (allowed: docs/**)'
 ---
 # Misplaced file
 
