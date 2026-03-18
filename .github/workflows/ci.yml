@@ -36,7 +36,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           mkdir -p "$GITHUB_WORKSPACE/e2e-cover"
-          E2E_COVERDIR="$GITHUB_WORKSPACE/e2e-cover" go test -coverprofile=unit.cov ./...
+          E2E_COVERDIR="$GITHUB_WORKSPACE/e2e-cover" go test -covermode=atomic -coverprofile=unit.cov ./...
       - name: Merge coverage profiles
         run: |
           head -1 unit.cov > merged.cov
@@ -45,6 +45,12 @@ jobs:
           # test-process counters are always zero.
           tail -n +2 unit.cov | grep -v 'cmd/mdsmith/' >> merged.cov || true
           if [ -f "$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt" ]; then
+            unit_mode_line=$(head -1 unit.cov)
+            e2e_mode_line=$(head -1 "$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt")
+            if [ "$unit_mode_line" != "$e2e_mode_line" ]; then
+              echo "Coverage mode mismatch between unit.cov ('$unit_mode_line') and e2e_coverage.txt ('$e2e_mode_line')" >&2
+              exit 1
+            fi
             # Only include cmd/mdsmith coverage from the e2e profile to avoid
             # duplicating blocks for packages already present in unit.cov.
             tail -n +2 "$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt" | grep 'cmd/mdsmith/' >> merged.cov || true
