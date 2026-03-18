@@ -30,6 +30,7 @@ func TestMain(m *testing.M) {
 	coverDir, err = os.MkdirTemp("", "mdsmith-e2e-cover-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create cover dir: %v\n", err)
+		_ = os.RemoveAll(tmp)
 		os.Exit(1)
 	}
 
@@ -38,6 +39,8 @@ func TestMain(m *testing.M) {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to build binary: %v\n", err)
+		_ = os.RemoveAll(tmp)
+		_ = os.RemoveAll(coverDir)
 		os.Exit(1)
 	}
 
