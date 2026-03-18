@@ -33,4 +33,32 @@ jobs:
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
-      - run: go test ./...
+      - name: Run tests with coverage
+        run: |
+          mkdir -p e2e-cover
+          E2E_COVERDIR=e2e-cover go test -coverprofile=unit.cov ./...
+      - name: Merge coverage profiles
+        run: |
+          if [ -f e2e-cover/e2e_coverage.txt ]; then
+            head -1 unit.cov > merged.cov
+            tail -n +2 unit.cov >> merged.cov
+            tail -n +2 e2e-cover/e2e_coverage.txt >> merged.cov
+          else
+            cp unit.cov merged.cov
+          fi
+      - name: Coverage summary
+        run: |
+          total=$(go tool cover -func=merged.cov | tail -1)
+          {
+            echo '## Test Coverage'
+            echo '```'
+            echo "$total"
+            echo '```'
+            echo ''
+            echo '<details><summary>Per-package breakdown</summary>'
+            echo ''
+            echo '```'
+            go tool cover -func=merged.cov
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
