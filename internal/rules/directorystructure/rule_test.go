@@ -6,8 +6,17 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
+func newRule(allowed []string) *Rule {
+	r := &Rule{}
+	settings := map[string]any{"allowed": allowed}
+	if err := r.ApplySettings(settings); err != nil {
+		panic(err)
+	}
+	return r
+}
+
 func TestCheck_AllowedDirectory_NoViolation(t *testing.T) {
-	r := &Rule{Allowed: []string{"docs/**"}}
+	r := newRule([]string{"docs/**"})
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("docs/guide.md", src)
 	if err != nil {
@@ -20,7 +29,7 @@ func TestCheck_AllowedDirectory_NoViolation(t *testing.T) {
 }
 
 func TestCheck_DisallowedDirectory_Violation(t *testing.T) {
-	r := &Rule{Allowed: []string{"docs/**"}}
+	r := newRule([]string{"docs/**"})
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("src/notes.md", src)
 	if err != nil {
@@ -39,7 +48,7 @@ func TestCheck_DisallowedDirectory_Violation(t *testing.T) {
 }
 
 func TestCheck_RootFile_WithDotPattern(t *testing.T) {
-	r := &Rule{Allowed: []string{"."}}
+	r := newRule([]string{"."})
 	src := []byte("# README\n")
 	f, err := lint.NewFile("README.md", src)
 	if err != nil {
@@ -52,7 +61,7 @@ func TestCheck_RootFile_WithDotPattern(t *testing.T) {
 }
 
 func TestCheck_RootFile_Disallowed(t *testing.T) {
-	r := &Rule{Allowed: []string{"docs/**"}}
+	r := newRule([]string{"docs/**"})
 	src := []byte("# README\n")
 	f, err := lint.NewFile("README.md", src)
 	if err != nil {
@@ -65,7 +74,7 @@ func TestCheck_RootFile_Disallowed(t *testing.T) {
 }
 
 func TestCheck_NestedGlob(t *testing.T) {
-	r := &Rule{Allowed: []string{"internal/**/testdata/**"}}
+	r := newRule([]string{"internal/**/testdata/**"})
 	src := []byte("# Test\n")
 	f, err := lint.NewFile("internal/rules/foo/testdata/good/test.md", src)
 	if err != nil {
@@ -77,8 +86,8 @@ func TestCheck_NestedGlob(t *testing.T) {
 	}
 }
 
-func TestCheck_EmptyAllowed_NoOp(t *testing.T) {
-	r := &Rule{Allowed: []string{}}
+func TestCheck_Unconfigured_NoOp(t *testing.T) {
+	r := &Rule{}
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("docs/guide.md", src)
 	if err != nil {
@@ -90,8 +99,21 @@ func TestCheck_EmptyAllowed_NoOp(t *testing.T) {
 	}
 }
 
+func TestCheck_EmptyAllowed_WarnsOnEveryFile(t *testing.T) {
+	r := newRule([]string{})
+	src := []byte("# Title\n")
+	f, err := lint.NewFile("docs/guide.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic (empty allowed = nothing allowed), got %d: %+v", len(diags), diags)
+	}
+}
+
 func TestCheck_MultiplePatterns(t *testing.T) {
-	r := &Rule{Allowed: []string{"docs/**", "plan/**", "."}}
+	r := newRule([]string{"docs/**", "plan/**", "."})
 	tests := []struct {
 		path  string
 		wantN int
@@ -151,6 +173,29 @@ func TestApplySettings(t *testing.T) {
 	}
 }
 
+func TestApplySettings_StringSlice(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"allowed": []string{"docs/**"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Allowed) != 1 {
+		t.Fatalf("expected 1 allowed pattern, got %d", len(r.Allowed))
+	}
+}
+
+func TestApplySettings_InvalidGlob(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"allowed": []any{"[invalid"},
+	})
+	if err == nil {
+		t.Error("expected error for invalid glob pattern")
+	}
+}
+
 func TestApplySettings_UnknownKey(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"bogus": true})
@@ -172,5 +217,24 @@ func TestDefaultSettings(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Errorf("expected empty default allowed list, got %v", list)
+	}
+}
+
+func TestApplyDefaultSettings_Unconfigured(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(r.DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After applying default settings (empty allowed), the rule is configured
+	// and should warn on every file since nothing is allowed.
+	src := []byte("# Title\n")
+	f, err := lint.NewFile("docs/guide.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diags := r.Check(f)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 diagnostic (configured with empty allowed), got %d: %+v", len(diags), diags)
 	}
 }

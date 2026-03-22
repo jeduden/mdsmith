@@ -16,7 +16,9 @@ func init() {
 
 // Rule checks that markdown files exist only in explicitly allowed directories.
 type Rule struct {
-	Allowed []string
+	Allowed    []string
+	configured bool
+	matchers   []glob.Glob
 }
 
 // ID implements rule.Rule.
@@ -33,10 +35,10 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	// When no allowed patterns are configured, skip checking.
+	// When the allowed key was never provided, skip checking.
 	// The rule is disabled by default; a user must explicitly configure
 	// the allowed list for it to take effect.
-	if len(r.Allowed) == 0 {
+	if !r.configured {
 		return nil
 	}
 	if r.isAllowed(f.Path) {
@@ -57,7 +59,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // isAllowed returns true if the file path matches any allowed pattern.
 func (r *Rule) isAllowed(filePath string) bool {
 	dir := filepath.Dir(filePath)
-	for _, pattern := range r.Allowed {
+	for i, pattern := range r.Allowed {
 		// "." means root-level files only.
 		if pattern == "." {
 			if dir == "." {
@@ -65,12 +67,7 @@ func (r *Rule) isAllowed(filePath string) bool {
 			}
 			continue
 		}
-		g, err := glob.Compile(pattern)
-		if err != nil {
-			continue
-		}
-		// Match the full path (minus filename) or the full path including filename.
-		if g.Match(filePath) || g.Match(dir) {
+		if r.matchers[i].Match(filePath) || r.matchers[i].Match(dir) {
 			return true
 		}
 	}
@@ -82,17 +79,23 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
 		switch k {
 		case "allowed":
-			list, ok := v.([]any)
+			patterns, ok := toStringSlice(v)
 			if !ok {
-				return fmt.Errorf("directory-structure: allowed must be a list, got %T", v)
+				return fmt.Errorf("directory-structure: allowed must be a list of strings, got %T", v)
 			}
-			r.Allowed = make([]string, 0, len(list))
-			for _, item := range list {
-				s, ok := item.(string)
-				if !ok {
-					return fmt.Errorf("directory-structure: allowed item must be a string, got %T", item)
+			r.Allowed = patterns
+			r.configured = true
+			r.matchers = make([]glob.Glob, len(patterns))
+			for i, p := range patterns {
+				if p == "." {
+					// "." is handled specially in isAllowed; store a nil matcher.
+					continue
 				}
-				r.Allowed = append(r.Allowed, s)
+				g, err := glob.Compile(p)
+				if err != nil {
+					return fmt.Errorf("directory-structure: invalid glob pattern %q: %v", p, err)
+				}
+				r.matchers[i] = g
 			}
 		default:
 			return fmt.Errorf("directory-structure: unknown setting %q", k)
@@ -104,6 +107,25 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{"allowed": []string{}}
+}
+
+func toStringSlice(v any) ([]string, bool) {
+	switch values := v.(type) {
+	case []string:
+		return values, true
+	case []any:
+		out := make([]string, 0, len(values))
+		for _, item := range values {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, s)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 var (
