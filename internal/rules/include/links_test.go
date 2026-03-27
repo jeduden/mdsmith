@@ -1,6 +1,10 @@
 package include
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestAdjustLinks_SameDir(t *testing.T) {
 	tests := []struct {
@@ -29,9 +33,7 @@ func TestAdjustLinks_SameDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustLinks(tt.content, tt.includedFile, tt.includingFile)
-			if got != tt.want {
-				t.Errorf("adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
 		})
 	}
 }
@@ -77,9 +79,7 @@ func TestAdjustLinks_Rewrite(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustLinks(tt.content, tt.includedFile, tt.includingFile)
-			if got != tt.want {
-				t.Errorf("adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
 		})
 	}
 }
@@ -125,9 +125,7 @@ func TestAdjustLinks_Complex(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustLinks(tt.content, tt.includedFile, tt.includingFile)
-			if got != tt.want {
-				t.Errorf("adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
 		})
 	}
 }
@@ -166,9 +164,7 @@ func TestAdjustLinks_CodeSkip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustLinks(tt.content, tt.includedFile, tt.includingFile)
-			if got != tt.want {
-				t.Errorf("adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
 		})
 	}
 }
@@ -228,9 +224,7 @@ func TestAdjustLinks_Skip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustLinks(tt.content, tt.includedFile, tt.includingFile)
-			if got != tt.want {
-				t.Errorf("adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
 		})
 	}
 }

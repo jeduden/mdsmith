@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/require"
 )
 
 // hardText returns a paragraph with long, complex words that yields
@@ -26,14 +28,10 @@ func easyText() string {
 func TestCheck_OverThreshold(t *testing.T) {
 	src := []byte(hardText() + "\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
 	if d.RuleID != "MDS023" {
 		t.Errorf("expected rule ID MDS023, got %s", d.RuleID)
@@ -61,23 +59,17 @@ func TestCheck_OverThreshold(t *testing.T) {
 func TestCheck_UnderThreshold(t *testing.T) {
 	src := []byte(easyText() + "\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestCheck_ShortParagraphSkipped(t *testing.T) {
 	// Fewer than 20 words: should be skipped regardless of ARI.
 	src := []byte("One two three four five six seven eight.\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// Use a grade function that always returns a high score.
 	alwaysHigh := func(_ string) float64 { return 99.0 }
 	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: alwaysHigh}
@@ -101,9 +93,7 @@ func TestCheck_InlineMarkupStripped(t *testing.T) {
 			"environments and architectural configurations.\n",
 	)
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
 	diags := r.Check(f)
 	if len(diags) != 1 {
@@ -118,14 +108,10 @@ func TestCheck_DiagnosticLine(t *testing.T) {
 	// The diagnostic should point to the correct line.
 	src := []byte("# Heading\n\n" + hardText() + "\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 3 {
 		t.Errorf("expected line 3, got %d", diags[0].Line)
 	}
@@ -134,9 +120,7 @@ func TestCheck_DiagnosticLine(t *testing.T) {
 func TestCheck_NilGradeUsesARI(t *testing.T) {
 	src := []byte(hardText() + "\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: nil}
 	diags := r.Check(f)
 	// Hard text with ARI should trigger.
@@ -156,15 +140,11 @@ func TestCheck_TableSkipped(t *testing.T) {
 		"| `heading-max` | int | -- | Max length for heading lines |\n" +
 		"| `code-block-max` | int | -- | Max length for code block lines |\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	alwaysHigh := func(_ string) float64 { return 99.0 }
 	r := &Rule{MaxGrade: 14.0, MinWords: 1, Grade: alwaysHigh}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics for table, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics for table, got %d", len(diags))
 }
 
 // --- Configurable tests ---
@@ -172,9 +152,7 @@ func TestCheck_TableSkipped(t *testing.T) {
 func TestApplySettings_ValidMaxGrade(t *testing.T) {
 	r := &Rule{MaxGrade: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"max-grade": 10.0})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if r.MaxGrade != 10.0 {
 		t.Errorf("expected MaxGrade=10.0, got %f", r.MaxGrade)
 	}
@@ -183,9 +161,7 @@ func TestApplySettings_ValidMaxGrade(t *testing.T) {
 func TestApplySettings_ValidMinWords(t *testing.T) {
 	r := &Rule{MaxGrade: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"min-words": 30})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if r.MinWords != 30 {
 		t.Errorf("expected MinWords=30, got %d", r.MinWords)
 	}
@@ -194,25 +170,19 @@ func TestApplySettings_ValidMinWords(t *testing.T) {
 func TestApplySettings_InvalidMaxGradeType(t *testing.T) {
 	r := &Rule{MaxGrade: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"max-grade": "high"})
-	if err == nil {
-		t.Fatal("expected error for non-number max-grade")
-	}
+	require.Error(t, err, "expected error for non-number max-grade")
 }
 
 func TestApplySettings_InvalidMinWordsType(t *testing.T) {
 	r := &Rule{MaxGrade: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"min-words": "many"})
-	if err == nil {
-		t.Fatal("expected error for non-int min-words")
-	}
+	require.Error(t, err, "expected error for non-int min-words")
 }
 
 func TestApplySettings_UnknownKey(t *testing.T) {
 	r := &Rule{MaxGrade: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"unknown": true})
-	if err == nil {
-		t.Fatal("expected error for unknown key")
-	}
+	require.Error(t, err, "expected error for unknown key")
 }
 
 func TestDefaultSettings(t *testing.T) {

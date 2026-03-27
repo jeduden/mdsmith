@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func writeFile(t *testing.T, dir, name, content string) {
@@ -28,25 +31,17 @@ func TestDiscover_FindsMDFiles(t *testing.T) {
 		Patterns: []string{"**/*.md"},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files, got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 2, "expected 2 files, got %d: %v", len(files), files)
 
 	// Should include both .md files.
 	found := make(map[string]bool)
 	for _, f := range files {
 		found[filepath.Base(f)] = true
 	}
-	if !found["README.md"] {
-		t.Error("expected README.md in results")
-	}
-	if !found["guide.md"] {
-		t.Error("expected guide.md in results")
-	}
+	assert.True(t, found["README.md"], "expected README.md in results")
+	assert.True(t, found["guide.md"], "expected guide.md in results")
 }
 
 func TestDiscover_FindsMarkdownExtension(t *testing.T) {
@@ -58,13 +53,9 @@ func TestDiscover_FindsMarkdownExtension(t *testing.T) {
 		Patterns: []string{"**/*.md", "**/*.markdown"},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files, got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 2, "expected 2 files, got %d: %v", len(files), files)
 }
 
 func TestDiscover_EmptyPatterns(t *testing.T) {
@@ -75,13 +66,9 @@ func TestDiscover_EmptyPatterns(t *testing.T) {
 		Patterns: []string{},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 0 {
-		t.Errorf("expected 0 files with empty patterns, got %d: %v", len(files), files)
-	}
+	assert.Len(t, files, 0, "expected 0 files with empty patterns, got %d: %v", len(files), files)
 }
 
 func TestDiscover_NilPatterns(t *testing.T) {
@@ -92,13 +79,9 @@ func TestDiscover_NilPatterns(t *testing.T) {
 		Patterns: nil,
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 0 {
-		t.Errorf("expected 0 files with nil patterns, got %d: %v", len(files), files)
-	}
+	assert.Len(t, files, 0, "expected 0 files with nil patterns, got %d: %v", len(files), files)
 }
 
 func TestDiscover_GitignoreRespected(t *testing.T) {
@@ -112,13 +95,9 @@ func TestDiscover_GitignoreRespected(t *testing.T) {
 		BaseDir:      dir,
 		UseGitignore: true,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 1 {
-		t.Fatalf("expected 1 file (vendor ignored), got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 1, "expected 1 file (vendor ignored), got %d: %v", len(files), files)
 	if filepath.Base(files[0]) != "README.md" {
 		t.Errorf("expected README.md, got %s", files[0])
 	}
@@ -135,13 +114,9 @@ func TestDiscover_NoGitignoreIncludesAll(t *testing.T) {
 		BaseDir:      dir,
 		UseGitignore: false,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files (gitignore disabled), got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 2, "expected 2 files (gitignore disabled), got %d: %v", len(files), files)
 }
 
 func TestDiscover_ResultsSorted(t *testing.T) {
@@ -154,13 +129,9 @@ func TestDiscover_ResultsSorted(t *testing.T) {
 		Patterns: []string{"**/*.md"},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 3 {
-		t.Fatalf("expected 3 files, got %d", len(files))
-	}
+	require.Len(t, files, 3, "expected 3 files, got %d", len(files))
 
 	for i := 1; i < len(files); i++ {
 		if files[i] < files[i-1] {
@@ -180,13 +151,9 @@ func TestDiscover_SubdirectoryPattern(t *testing.T) {
 		Patterns: []string{"docs/**/*.md"},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files from docs/, got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 2, "expected 2 files from docs/, got %d: %v", len(files), files)
 
 	// README.md should not be included.
 	for _, f := range files {
@@ -205,13 +172,9 @@ func TestDiscover_ExactFilePattern(t *testing.T) {
 		Patterns: []string{"README.md"},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 1 {
-		t.Fatalf("expected 1 file, got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 1, "expected 1 file, got %d: %v", len(files), files)
 	if filepath.Base(files[0]) != "README.md" {
 		t.Errorf("expected README.md, got %s", files[0])
 	}
@@ -226,27 +189,19 @@ func TestDiscover_ReturnsRelativePaths(t *testing.T) {
 		Patterns: []string{"**/*.md"},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 2 {
-		t.Fatalf("expected 2 files, got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 2, "expected 2 files, got %d: %v", len(files), files)
 
 	// Discovered paths must be relative to BaseDir so that override
 	// patterns like "slides.md" match consistently (issue #40).
 	for _, f := range files {
-		if filepath.IsAbs(f) {
-			t.Errorf("discovered path should be relative, got absolute: %s", f)
-		}
+		assert.False(t, filepath.IsAbs(f), "discovered path should be relative, got absolute: %s", f)
 	}
 
 	want := map[string]bool{"docs/guide.md": true, "slides.md": true}
 	for _, f := range files {
-		if !want[f] {
-			t.Errorf("unexpected path %q; want relative paths like slides.md or docs/guide.md", f)
-		}
+		assert.True(t, want[f], "unexpected path %q; want relative paths like slides.md or docs/guide.md", f)
 	}
 }
 
@@ -259,11 +214,7 @@ func TestDiscover_NoDuplicates(t *testing.T) {
 		Patterns: []string{"**/*.md", "README.md"},
 		BaseDir:  dir,
 	})
-	if err != nil {
-		t.Fatalf("Discover error: %v", err)
-	}
+	require.NoError(t, err, "Discover error: %v", err)
 
-	if len(files) != 1 {
-		t.Fatalf("expected 1 file (no duplicates), got %d: %v", len(files), files)
-	}
+	require.Len(t, files, 1, "expected 1 file (no duplicates), got %d: %v", len(files), files)
 }

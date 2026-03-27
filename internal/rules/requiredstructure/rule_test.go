@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/require"
 )
 
 func newTestFile(
@@ -14,9 +16,7 @@ func newTestFile(
 ) *lint.File {
 	t.Helper()
 	f, err := lint.NewFileFromSource(path, []byte(source), true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return f
 }
 
@@ -109,9 +109,7 @@ func TestRule_Category(t *testing.T) {
 func TestApplySettings_ValidTemplate(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"template": "foo.md"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if r.Template != "foo.md" {
 		t.Errorf(
 			"expected Template foo.md, got %s", r.Template,
@@ -122,17 +120,13 @@ func TestApplySettings_ValidTemplate(t *testing.T) {
 func TestApplySettings_InvalidTemplate(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"template": 42})
-	if err == nil {
-		t.Fatal("expected error for non-string template")
-	}
+	require.Error(t, err, "expected error for non-string template")
 }
 
 func TestApplySettings_UnknownSetting(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"unknown": true})
-	if err == nil {
-		t.Fatal("expected error for unknown setting")
-	}
+	require.Error(t, err, "expected error for unknown setting")
 }
 
 func TestDefaultSettings(t *testing.T) {
@@ -172,9 +166,7 @@ func TestParseTemplate_Headings(t *testing.T) {
 ### Bad
 `
 	tmpl, err := parseTemplate([]byte(tmplSrc))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if len(tmpl.Headings) != 5 {
 		t.Fatalf(
 			"expected 5 headings, got %d",
@@ -201,9 +193,7 @@ func TestParseTemplate_SyncPoints(t *testing.T) {
 {{.description}}
 `
 	tmpl, err := parseTemplate([]byte(tmplSrc))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	headingSyncs := tmpl.SyncPoints[0]
 	if len(headingSyncs) < 2 {
 		t.Fatalf(
@@ -245,9 +235,7 @@ func TestParseTemplate_StrictOrder(t *testing.T) {
 ## Acceptance Criteria
 `
 	tmpl, err := parseTemplate([]byte(tmplSrc))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if len(tmpl.Headings) != 4 {
 		t.Fatalf(
 			"expected 4 headings, got %d",

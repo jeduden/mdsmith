@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/stretchr/testify/require"
 )
 
 // mockRule is a test rule that always reports a diagnostic on line 1.
@@ -65,12 +66,8 @@ func TestRunner_MockRuleReportsDiagnostics(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Diagnostics, 1, "expected 1 diagnostic, got %d", len(result.Diagnostics))
 	d := result.Diagnostics[0]
 	if d.RuleID != "MDS999" {
 		t.Errorf("expected RuleID MDS999, got %s", d.RuleID)
@@ -99,12 +96,8 @@ func TestRunner_SilentRuleNoDiagnostics(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d", len(result.Diagnostics))
 }
 
 func TestRunner_DisabledRuleSkipped(t *testing.T) {
@@ -126,9 +119,7 @@ func TestRunner_DisabledRuleSkipped(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics for disabled rule, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics for disabled rule, got %d", len(result.Diagnostics))
 }
 
 func TestRunner_RuleNotInConfigSkipped(t *testing.T) {
@@ -148,9 +139,8 @@ func TestRunner_RuleNotInConfigSkipped(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics for unconfigured rule, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 0,
+		"expected 0 diagnostics for unconfigured rule, got %d", len(result.Diagnostics))
 }
 
 func TestRunner_NonexistentFileError(t *testing.T) {
@@ -166,9 +156,7 @@ func TestRunner_NonexistentFileError(t *testing.T) {
 	}
 
 	result := runner.Run([]string{"/nonexistent/file.md"})
-	if len(result.Errors) != 1 {
-		t.Fatalf("expected 1 error, got %d", len(result.Errors))
-	}
+	require.Len(t, result.Errors, 1, "expected 1 error, got %d", len(result.Errors))
 }
 
 func TestRunner_IgnoredFileSkipped(t *testing.T) {
@@ -195,9 +183,7 @@ func TestRunner_IgnoredFileSkipped(t *testing.T) {
 	}
 
 	result := runner.Run([]string{filepath.Join("vendor", "lib.md")})
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics for ignored file, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics for ignored file, got %d", len(result.Diagnostics))
 }
 
 func TestRunner_OverrideDisablesRuleForFile(t *testing.T) {
@@ -233,9 +219,8 @@ func TestRunner_OverrideDisablesRuleForFile(t *testing.T) {
 	result := runner.Run([]string{changelog, readme})
 
 	// README.md should have a diagnostic, CHANGELOG.md should not.
-	if len(result.Diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %v", len(result.Diagnostics), result.Diagnostics)
-	}
+	require.Len(t, result.Diagnostics, 1,
+		"expected 1 diagnostic, got %d: %v", len(result.Diagnostics), result.Diagnostics)
 	if result.Diagnostics[0].File != readme {
 		t.Errorf("expected diagnostic for %s, got %s", readme, result.Diagnostics[0].File)
 	}
@@ -247,9 +232,7 @@ func TestRunner_DiagnosticsSortedByFileLineColumn(t *testing.T) {
 	// Pass files in reverse order to ensure sorting works.
 	result := runner.Run([]string{fileB, fileA})
 
-	if len(result.Diagnostics) != 5 {
-		t.Fatalf("expected 5 diagnostics, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 5, "expected 5 diagnostics, got %d", len(result.Diagnostics))
 
 	// Expected order: a.md:1:1, a.md:2:1, b.md:1:1, b.md:1:5, b.md:3:1
 	expected := []struct {
@@ -355,12 +338,8 @@ func TestRunner_MultipleFilesLinted(t *testing.T) {
 	}
 
 	result := runner.Run(files)
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Diagnostics) != 3 {
-		t.Fatalf("expected 3 diagnostics (one per file), got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Diagnostics, 3, "expected 3 diagnostics (one per file), got %d", len(result.Diagnostics))
 }
 
 func TestRunner_EmptyPaths(t *testing.T) {
@@ -376,12 +355,8 @@ func TestRunner_EmptyPaths(t *testing.T) {
 	}
 
 	result := runner.Run([]string{})
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(result.Diagnostics))
-	}
-	if len(result.Errors) != 0 {
-		t.Fatalf("expected 0 errors, got %d", len(result.Errors))
-	}
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d", len(result.Diagnostics))
+	require.Len(t, result.Errors, 0, "expected 0 errors, got %d", len(result.Errors))
 }
 
 // contentMockRule flags lines containing the string "BAD".
@@ -502,9 +477,7 @@ func TestRunner_InvalidIgnorePatternSkipped(t *testing.T) {
 
 	result := runner.Run([]string{mdFile})
 	// Invalid glob is silently skipped; file is still linted.
-	if len(result.Diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 1, "expected 1 diagnostic, got %d", len(result.Diagnostics))
 }
 
 func TestRunner_IgnoredFileByBasename(t *testing.T) {
@@ -527,9 +500,7 @@ func TestRunner_IgnoredFileByBasename(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics for ignored file, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics for ignored file, got %d", len(result.Diagnostics))
 }
 
 // configurableLengthRule checks lines > Max chars. It implements Configurable.
@@ -605,9 +576,7 @@ func TestRunner_AppliesSettingsFromConfig(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 	if len(result.Diagnostics) != 0 {
 		t.Fatalf("expected 0 diagnostics with max=120 for 100-char line, got %d: %v",
 			len(result.Diagnostics), result.Diagnostics)
@@ -636,9 +605,7 @@ func TestRunner_DefaultMaxWithoutSettings(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic with default max=80, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 1, "expected 1 diagnostic with default max=80, got %d", len(result.Diagnostics))
 }
 
 func TestRunner_SettingsDoNotLeakBetweenFiles(t *testing.T) {
@@ -669,9 +636,7 @@ func TestRunner_SettingsDoNotLeakBetweenFiles(t *testing.T) {
 	}
 
 	result := runner.Run([]string{fileA, fileB})
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d", len(result.Diagnostics))
 }
 
 // --- RunSource tests ---
@@ -689,12 +654,8 @@ func TestRunSource_BasicDiagnostics(t *testing.T) {
 	}
 
 	result := runner.RunSource("<stdin>", []byte("# Hello\n"))
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Diagnostics, 1, "expected 1 diagnostic, got %d", len(result.Diagnostics))
 	if result.Diagnostics[0].File != "<stdin>" {
 		t.Errorf("expected file <stdin>, got %s", result.Diagnostics[0].File)
 	}
@@ -715,12 +676,8 @@ func TestRunSource_FrontMatterLineOffset(t *testing.T) {
 
 	source := []byte("---\ntitle: x\n---\n# Heading\n")
 	result := runner.RunSource("<stdin>", source)
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Diagnostics, 1, "expected 1 diagnostic, got %d", len(result.Diagnostics))
 	// mockRule reports line 1; front matter has 3 lines, so adjusted = 4.
 	if result.Diagnostics[0].Line != 4 {
 		t.Errorf("expected adjusted line 4, got %d", result.Diagnostics[0].Line)
@@ -746,9 +703,7 @@ func TestRunSource_AppliesConfigurableSettings(t *testing.T) {
 	}
 
 	result := runner.RunSource("<stdin>", []byte(line))
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 	if len(result.Diagnostics) != 0 {
 		t.Fatalf("expected 0 diagnostics with max=120, got %d: %v",
 			len(result.Diagnostics), result.Diagnostics)
@@ -768,10 +723,7 @@ func TestRunSource_EmptyInput(t *testing.T) {
 	}
 
 	result := runner.RunSource("<stdin>", []byte(""))
-	if len(result.Errors) != 0 {
-		t.Fatalf("expected 0 errors, got %d: %v", len(result.Errors), result.Errors)
-	}
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %v", len(result.Diagnostics), result.Diagnostics)
-	}
+	require.Len(t, result.Errors, 0, "expected 0 errors, got %d: %v", len(result.Errors), result.Errors)
+	require.Len(t, result.Diagnostics, 0,
+		"expected 0 diagnostics, got %d: %v", len(result.Diagnostics), result.Diagnostics)
 }

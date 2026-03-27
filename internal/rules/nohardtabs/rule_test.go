@@ -4,20 +4,18 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheck_TabPresent(t *testing.T) {
 	// Tab in a normal paragraph line (not code block).
 	src := []byte("hel\tlo\nworld\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
 	if d.Line != 1 {
 		t.Errorf("expected line 1, got %d", d.Line)
@@ -33,14 +31,10 @@ func TestCheck_TabPresent(t *testing.T) {
 func TestCheck_TabMiddleOfLine(t *testing.T) {
 	src := []byte("hel\tlo\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Column != 4 {
 		t.Errorf("expected column 4, got %d", diags[0].Column)
 	}
@@ -50,14 +44,10 @@ func TestCheck_MultipleLinesWithTabs(t *testing.T) {
 	// Tabs in normal paragraph lines (not code blocks).
 	src := []byte("fir\tst\nsec\tond\nthird\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 2 {
-		t.Fatalf("expected 2 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 2, "expected 2 diagnostics, got %d", len(diags))
 	if diags[0].Line != 1 {
 		t.Errorf("expected first diagnostic on line 1, got %d", diags[0].Line)
 	}
@@ -69,36 +59,26 @@ func TestCheck_MultipleLinesWithTabs(t *testing.T) {
 func TestCheck_NoTabs(t *testing.T) {
 	src := []byte("hello\nworld\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestCheck_EmptyFile(t *testing.T) {
 	src := []byte("")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestFix_ReplacesTabsWithSpaces(t *testing.T) {
 	// Tabs in normal paragraph lines should be replaced.
 	src := []byte("hel\tlo\nworld\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "hel    lo\nworld\n"
@@ -111,9 +91,7 @@ func TestFix_MultipleTabsOnOneLine(t *testing.T) {
 	// Multiple tabs in a normal paragraph line should be replaced.
 	src := []byte("a\t\thello\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "a        hello\n"
@@ -125,9 +103,7 @@ func TestFix_MultipleTabsOnOneLine(t *testing.T) {
 func TestFix_PreservesNoTabLines(t *testing.T) {
 	src := []byte("hello\nworld\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	if string(result) != string(src) {
@@ -139,28 +115,20 @@ func TestCheck_SkipsFencedCodeBlockLines(t *testing.T) {
 	// Tabs inside a fenced code block should NOT fire MDS007.
 	src := []byte("# Title\n\n```\n\tcode\n\tmore\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics for tabs inside code block, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics for tabs inside code block, got %d", len(diags))
 }
 
 func TestCheck_TabsOutsideCodeBlockStillFlagged(t *testing.T) {
 	// Tabs outside code block should still fire.
 	src := []byte("hel\tlo\n\n```\n\tcode\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 1 {
 		t.Errorf("expected diagnostic on line 1, got %d", diags[0].Line)
 	}
@@ -171,23 +139,17 @@ func TestCheck_SkipsIndentedCodeBlockLines(t *testing.T) {
 	// Note: indented code block lines start with 4 spaces; the tab is after that.
 	src := []byte("Some paragraph.\n\n    \tcode\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics for tabs inside indented code block, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics for tabs inside indented code block, got %d", len(diags))
 }
 
 func TestFix_PreservesCodeBlockLines(t *testing.T) {
 	// Fix should not replace tabs inside code blocks.
 	src := []byte("hel\tlo\n\n```\n\tcode\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "hel    lo\n\n```\n\tcode\n```\n"

@@ -1,69 +1,62 @@
 package gensection
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestIsRawStartMarker_Exact(t *testing.T) {
-	if !IsRawStartMarker([]byte("<?catalog?>"), "catalog") {
-		t.Error("expected match for <?catalog?>")
-	}
+	assert.True(t, IsRawStartMarker([]byte("<?catalog?>"), "catalog"),
+		"expected match for <?catalog?>")
 }
 
 func TestIsRawStartMarker_WithBody(t *testing.T) {
-	if !IsRawStartMarker([]byte("<?catalog glob: plan/*.md"), "catalog") {
-		t.Error("expected match for <?catalog with body")
-	}
+	assert.True(t, IsRawStartMarker([]byte("<?catalog glob: plan/*.md"), "catalog"),
+		"expected match for <?catalog with body")
 }
 
 func TestIsRawStartMarker_WhitespacePrefix(t *testing.T) {
-	if !IsRawStartMarker([]byte("  <?catalog?>"), "catalog") {
-		t.Error("expected match with leading whitespace")
-	}
+	assert.True(t, IsRawStartMarker([]byte("  <?catalog?>"), "catalog"),
+		"expected match with leading whitespace")
 }
 
 func TestIsRawStartMarker_NameBoundary(t *testing.T) {
-	if IsRawStartMarker([]byte("<?catalogue?>"), "catalog") {
-		t.Error("should not match <?catalogue?> for name 'catalog'")
-	}
+	assert.False(t, IsRawStartMarker([]byte("<?catalogue?>"), "catalog"),
+		"should not match <?catalogue?> for name 'catalog'")
 }
 
 func TestIsRawStartMarker_NoMatch(t *testing.T) {
-	if IsRawStartMarker([]byte("some text"), "catalog") {
-		t.Error("should not match plain text")
-	}
+	assert.False(t, IsRawStartMarker([]byte("some text"), "catalog"),
+		"should not match plain text")
 }
 
 func TestIsRawStartMarker_NameOnly(t *testing.T) {
-	if !IsRawStartMarker([]byte("<?catalog"), "catalog") {
-		t.Error("expected match for bare <?catalog")
-	}
+	assert.True(t, IsRawStartMarker([]byte("<?catalog"), "catalog"),
+		"expected match for bare <?catalog")
 }
 
 func TestIsRawStartMarker_TabAfterName(t *testing.T) {
-	if !IsRawStartMarker([]byte("<?catalog\tglob: x"), "catalog") {
-		t.Error("expected match with tab after name")
-	}
+	assert.True(t, IsRawStartMarker([]byte("<?catalog\tglob: x"), "catalog"),
+		"expected match with tab after name")
 }
 
 func TestIsRawEndMarker_Exact(t *testing.T) {
-	if !IsRawEndMarker([]byte("<?/catalog?>"), "catalog") {
-		t.Error("expected match for <?/catalog?>")
-	}
+	assert.True(t, IsRawEndMarker([]byte("<?/catalog?>"), "catalog"),
+		"expected match for <?/catalog?>")
 }
 
 func TestIsRawEndMarker_WhitespacePrefix(t *testing.T) {
-	if !IsRawEndMarker([]byte("  <?/catalog?>"), "catalog") {
-		t.Error("expected match with leading whitespace")
-	}
+	assert.True(t, IsRawEndMarker([]byte("  <?/catalog?>"), "catalog"),
+		"expected match with leading whitespace")
 }
 
 func TestIsRawEndMarker_TrailingContent(t *testing.T) {
-	if IsRawEndMarker([]byte("<?/catalog?> extra"), "catalog") {
-		t.Error("should not match end marker with trailing content")
-	}
+	assert.False(t, IsRawEndMarker([]byte("<?/catalog?> extra"), "catalog"),
+		"should not match end marker with trailing content")
 }
 
 func TestIsRawEndMarker_NoMatch(t *testing.T) {
-	if IsRawEndMarker([]byte("<?/include?>"), "catalog") {
-		t.Error("should not match wrong name")
-	}
+	assert.False(t, IsRawEndMarker([]byte("<?/include?>"), "catalog"),
+		"should not match wrong name")
 }

@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- Cell parsing tests ---
@@ -58,18 +61,14 @@ func TestDisplayWidth_ASCII(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := displayWidth(tt.input)
-		if got != tt.want {
-			t.Errorf("displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
 	}
 }
 
 func TestDisplayWidth_Multibyte(t *testing.T) {
 	// Each rune counts as 1 for basic multibyte.
 	got := displayWidth("café")
-	if got != 4 {
-		t.Errorf("displayWidth(café) = %d, want 4", got)
-	}
+	assert.Equal(t, 4, got, "displayWidth(café) = %d, want 4", got)
 }
 
 func TestDisplayWidth_Link(t *testing.T) {
@@ -117,9 +116,7 @@ func TestDisplayWidth_Strikethrough(t *testing.T) {
 func TestDisplayWidth_Mixed(t *testing.T) {
 	// "see text for details" -> "see " + "text" + " for details" = 20
 	got := displayWidth("see [text](url) for details")
-	if got != 20 {
-		t.Errorf("displayWidth(mixed) = %d, want 20", got)
-	}
+	assert.Equal(t, 20, got, "displayWidth(mixed) = %d, want 20", got)
 }
 
 // --- Table detection tests ---
@@ -128,45 +125,33 @@ func TestFindTables_Basic(t *testing.T) {
 	src := "| a | b |\n|---|---|\n| 1 | 2 |\n"
 	lines := splitLines(src)
 	tables := findTables(lines, nil)
-	if len(tables) != 1 {
-		t.Fatalf("expected 1 table, got %d", len(tables))
-	}
+	require.Len(t, tables, 1, "expected 1 table, got %d", len(tables))
 	if tables[0].startLine != 1 {
 		t.Errorf("start line = %d, want 1", tables[0].startLine)
 	}
-	if len(tables[0].rows) != 3 {
-		t.Errorf("rows = %d, want 3", len(tables[0].rows))
-	}
+	assert.Len(t, tables[0].rows, 3, "rows = %d, want 3", len(tables[0].rows))
 }
 
 func TestFindTables_NoTable(t *testing.T) {
 	src := "# Heading\n\nSome text.\n"
 	lines := splitLines(src)
 	tables := findTables(lines, nil)
-	if len(tables) != 0 {
-		t.Errorf("expected 0 tables, got %d", len(tables))
-	}
+	assert.Len(t, tables, 0, "expected 0 tables, got %d", len(tables))
 }
 
 func TestFindTables_TwoTables(t *testing.T) {
 	src := "| a | b |\n|---|---|\n| 1 | 2 |\n\n| x | y |\n|---|---|\n| 3 | 4 |\n"
 	lines := splitLines(src)
 	tables := findTables(lines, nil)
-	if len(tables) != 2 {
-		t.Fatalf("expected 2 tables, got %d", len(tables))
-	}
+	require.Len(t, tables, 2, "expected 2 tables, got %d", len(tables))
 }
 
 func TestFindTables_SingleColumn(t *testing.T) {
 	src := "| a |\n|---|\n| 1 |\n"
 	lines := splitLines(src)
 	tables := findTables(lines, nil)
-	if len(tables) != 1 {
-		t.Fatalf("expected 1 table, got %d", len(tables))
-	}
-	if len(tables[0].rows[0].cells) != 1 {
-		t.Errorf("columns = %d, want 1", len(tables[0].rows[0].cells))
-	}
+	require.Len(t, tables, 1, "expected 1 table, got %d", len(tables))
+	assert.Len(t, tables[0].rows[0].cells, 1, "columns = %d, want 1", len(tables[0].rows[0].cells))
 }
 
 func TestCheck_TableInsideCodeBlock_NoDiagnostic(t *testing.T) {
@@ -213,9 +198,7 @@ func TestCheck_MisalignedTable_OneDiagnostic(t *testing.T) {
 	r := &Rule{Pad: 1}
 	f := newTestFile(t, src)
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 1 {
 		t.Errorf("diagnostic line = %d, want 1", diags[0].Line)
 	}
@@ -231,9 +214,7 @@ func TestCheck_ShortSeparator_Flagged(t *testing.T) {
 	r := &Rule{Pad: 1}
 	f := newTestFile(t, src)
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 }
 
 // --- Fix tests ---
@@ -250,9 +231,7 @@ func TestFix_BasicAlignment(t *testing.T) {
 	r := &Rule{Pad: 1}
 	f := newTestFile(t, src)
 	got := string(r.Fix(f))
-	if got != want {
-		t.Errorf("Fix:\ngot:\n%s\nwant:\n%s", got, want)
-	}
+	assert.Equal(t, want, got, "Fix:\ngot:\n%s\nwant:\n%s", got, want)
 }
 
 func TestFix_AlignmentIndicators(t *testing.T) {
@@ -266,17 +245,11 @@ func TestFix_AlignmentIndicators(t *testing.T) {
 	// Verify alignment indicators are preserved.
 	lines := strings.Split(got, "\n")
 	sep := lines[1]
-	if !strings.Contains(sep, ":") {
-		t.Errorf("alignment indicators not preserved in separator: %q", sep)
-	}
+	assert.Contains(t, sep, ":", "alignment indicators not preserved in separator: %q", sep)
 	// Left alignment: |:---
-	if !strings.Contains(sep, "|:") {
-		t.Errorf("left alignment not preserved: %q", sep)
-	}
+	assert.Contains(t, sep, "|:", "left alignment not preserved: %q", sep)
 	// Right alignment: ---:|
-	if !strings.Contains(sep, ":|") {
-		t.Errorf("right alignment not preserved: %q", sep)
-	}
+	assert.Contains(t, sep, ":|", "right alignment not preserved: %q", sep)
 }
 
 func TestFix_PreservesContentOutsideTable(t *testing.T) {
@@ -318,9 +291,7 @@ func TestFix_EscapedPipes(t *testing.T) {
 	r := &Rule{Pad: 1}
 	f := newTestFile(t, src)
 	got := string(r.Fix(f))
-	if !strings.Contains(got, `a \| b`) {
-		t.Errorf("escaped pipe not preserved:\n%s", got)
-	}
+	assert.Contains(t, got, `a \| b`, "escaped pipe not preserved:\n%s", got)
 }
 
 func TestFix_SingleColumn(t *testing.T) {
@@ -330,9 +301,7 @@ func TestFix_SingleColumn(t *testing.T) {
 	got := string(r.Fix(f))
 	// Single column should be properly formatted.
 	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(lines))
-	}
+	require.Len(t, lines, 3, "expected 3 lines, got %d", len(lines))
 }
 
 // --- Contextual table tests ---
@@ -387,9 +356,7 @@ func TestFix_NestedBlockquote(t *testing.T) {
 func TestApplySettings_ValidPad(t *testing.T) {
 	r := &Rule{Pad: 1}
 	err := r.ApplySettings(map[string]any{"pad": 2})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if r.Pad != 2 {
 		t.Errorf("pad = %d, want 2", r.Pad)
 	}
@@ -398,37 +365,27 @@ func TestApplySettings_ValidPad(t *testing.T) {
 func TestApplySettings_InvalidPad(t *testing.T) {
 	r := &Rule{Pad: 1}
 	err := r.ApplySettings(map[string]any{"pad": "two"})
-	if err == nil {
-		t.Fatal("expected error for non-integer pad")
-	}
+	require.Error(t, err, "expected error for non-integer pad")
 }
 
 func TestApplySettings_NegativePad(t *testing.T) {
 	r := &Rule{Pad: 1}
 	err := r.ApplySettings(map[string]any{"pad": -1})
-	if err == nil {
-		t.Fatal("expected error for negative pad")
-	}
+	require.Error(t, err, "expected error for negative pad")
 }
 
 func TestApplySettings_UnknownSetting(t *testing.T) {
 	r := &Rule{Pad: 1}
 	err := r.ApplySettings(map[string]any{"unknown": true})
-	if err == nil {
-		t.Fatal("expected error for unknown setting")
-	}
+	require.Error(t, err, "expected error for unknown setting")
 }
 
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{Pad: 1}
 	defaults := r.DefaultSettings()
 	pad, ok := defaults["pad"]
-	if !ok {
-		t.Fatal("missing pad in defaults")
-	}
-	if pad != 1 {
-		t.Errorf("default pad = %v, want 1", pad)
-	}
+	require.True(t, ok, "missing pad in defaults")
+	assert.Equal(t, 1, pad, "default pad = %v, want 1", pad)
 }
 
 // --- Separator parsing tests ---
@@ -446,9 +403,7 @@ func TestIsSeparatorRow(t *testing.T) {
 	}
 	for _, tt := range tests {
 		got := isSeparatorRow(tt.cells)
-		if got != tt.want {
-			t.Errorf("isSeparatorRow(%v) = %v, want %v", tt.cells, got, tt.want)
-		}
+		assert.Equal(t, tt.want, got, "isSeparatorRow(%v) = %v, want %v", tt.cells, got, tt.want)
 	}
 }
 
@@ -456,9 +411,7 @@ func TestParseAlignments(t *testing.T) {
 	cells := []string{"---", ":---", "---:", ":---:"}
 	aligns := parseAlignments(cells)
 	want := []align{alignNone, alignLeft, alignRight, alignCenter}
-	if len(aligns) != len(want) {
-		t.Fatalf("len = %d, want %d", len(aligns), len(want))
-	}
+	require.Len(t, aligns, len(want), "len = %d, want %d", len(aligns), len(want))
 	for i := range want {
 		if aligns[i] != want[i] {
 			t.Errorf("align[%d] = %d, want %d", i, aligns[i], want[i])
@@ -484,17 +437,13 @@ func splitLines(s string) [][]byte {
 func newTestFile(t *testing.T, src string) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile("test.md", []byte(src))
-	if err != nil {
-		t.Fatalf("NewFile: %v", err)
-	}
+	require.NoError(t, err, "NewFile: %v", err)
 	return f
 }
 
 func assertCells(t *testing.T, want, got []string) {
 	t.Helper()
-	if len(got) != len(want) {
-		t.Fatalf("cells: got %d, want %d\n  got:  %v\n  want: %v", len(got), len(want), got, want)
-	}
+	require.Len(t, got, len(want), "cells: got %d, want %d\n  got:  %v\n  want: %v", len(got), len(want), got, want)
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("cell[%d] = %q, want %q", i, got[i], want[i])

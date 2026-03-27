@@ -12,6 +12,9 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- mock rules for testing ---
@@ -258,32 +261,24 @@ func TestFix_BasicTrailingSpaces(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 	if result.FilesChecked != 1 {
 		t.Fatalf("expected 1 checked file, got %d", result.FilesChecked)
 	}
 	if result.Failures != 2 {
 		t.Fatalf("expected 2 pre-fix failures, got %d", result.Failures)
 	}
-	if len(result.Modified) != 1 {
-		t.Fatalf("expected 1 modified file, got %d", len(result.Modified))
-	}
+	require.Len(t, result.Modified, 1, "expected 1 modified file, got %d", len(result.Modified))
 
 	content, err := os.ReadFile(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := "# Hello\nworld\n"
 	if string(content) != expected {
 		t.Errorf("expected %q, got %q", expected, string(content))
 	}
 
 	// No remaining diagnostics for this fixable rule.
-	if len(result.Diagnostics) != 0 {
-		t.Errorf("expected 0 remaining diagnostics, got %d", len(result.Diagnostics))
-	}
+	assert.Len(t, result.Diagnostics, 0, "expected 0 remaining diagnostics, got %d", len(result.Diagnostics))
 }
 
 func TestFix_MultipleFixableRulesAppliedInOrder(t *testing.T) {
@@ -314,17 +309,11 @@ func TestFix_MultipleFixableRulesAppliedInOrder(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Modified) != 1 {
-		t.Fatalf("expected 1 modified file, got %d", len(result.Modified))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Modified, 1, "expected 1 modified file, got %d", len(result.Modified))
 
 	content, err := os.ReadFile(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// MDS100 (trailing spaces) runs first: "# He\tllo  " -> "# He\tllo"
 	// MDS200 (tabs) runs second: "# He\tllo" -> "# He    llo"
 	expected := "# He    llo\nwor    ld\n"
@@ -356,9 +345,7 @@ func TestFix_NonFixableViolationsReportedAfterFix(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 	if result.FilesChecked != 1 {
 		t.Fatalf("expected 1 checked file, got %d", result.FilesChecked)
 	}
@@ -368,9 +355,7 @@ func TestFix_NonFixableViolationsReportedAfterFix(t *testing.T) {
 
 	// The fixable rule should have fixed trailing spaces, but the non-fixable
 	// rule still reports a diagnostic.
-	if len(result.Diagnostics) != 1 {
-		t.Fatalf("expected 1 remaining diagnostic, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Diagnostics, 1, "expected 1 remaining diagnostic, got %d", len(result.Diagnostics))
 	if result.Diagnostics[0].RuleID != "MDS999" {
 		t.Errorf("expected remaining diagnostic from MDS999, got %s", result.Diagnostics[0].RuleID)
 	}
@@ -386,9 +371,7 @@ func TestFix_FileWithNoViolationsNotModified(t *testing.T) {
 
 	// Record mtime before fix.
 	infoBefore, err := os.Stat(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	mtimeBefore := infoBefore.ModTime()
 
 	// Small delay so mtime would change if file were rewritten.
@@ -406,20 +389,13 @@ func TestFix_FileWithNoViolationsNotModified(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Modified) != 0 {
-		t.Fatalf("expected 0 modified files, got %d", len(result.Modified))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Modified, 0, "expected 0 modified files, got %d", len(result.Modified))
 
 	infoAfter, err := os.Stat(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !infoAfter.ModTime().Equal(mtimeBefore) {
-		t.Errorf("mtime changed: before=%v after=%v", mtimeBefore, infoAfter.ModTime())
-	}
+	require.NoError(t, err)
+	assert.True(t, infoAfter.ModTime().Equal(mtimeBefore),
+		"mtime changed: before=%v after=%v", mtimeBefore, infoAfter.ModTime())
 }
 
 func TestFix_ReadOnlyFileError(t *testing.T) {
@@ -448,9 +424,8 @@ func TestFix_ReadOnlyFileError(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 1 {
-		t.Fatalf("expected 1 error for read-only file, got %d: %v", len(result.Errors), result.Errors)
-	}
+	require.Len(t, result.Errors, 1,
+		"expected 1 error for read-only file, got %d: %v", len(result.Errors), result.Errors)
 }
 
 func TestFix_MultipleFilesFixedIndependently(t *testing.T) {
@@ -476,18 +451,12 @@ func TestFix_MultipleFilesFixedIndependently(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{file1, file2})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
-	if len(result.Modified) != 2 {
-		t.Fatalf("expected 2 modified files, got %d", len(result.Modified))
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Modified, 2, "expected 2 modified files, got %d", len(result.Modified))
 
 	for _, f := range []string{file1, file2} {
 		content, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		if content[len(content)-2] == ' ' {
 			t.Errorf("file %s still has trailing spaces", f)
 		}
@@ -507,15 +476,9 @@ func TestFix_EmptyPathsReturnsEmptyResult(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{})
-	if len(result.Diagnostics) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d", len(result.Diagnostics))
-	}
-	if len(result.Modified) != 0 {
-		t.Errorf("expected 0 modified files, got %d", len(result.Modified))
-	}
-	if len(result.Errors) != 0 {
-		t.Errorf("expected 0 errors, got %d", len(result.Errors))
-	}
+	assert.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d", len(result.Diagnostics))
+	assert.Len(t, result.Modified, 0, "expected 0 modified files, got %d", len(result.Modified))
+	assert.Len(t, result.Errors, 0, "expected 0 errors, got %d", len(result.Errors))
 	if result.FilesChecked != 0 {
 		t.Errorf("expected 0 checked files, got %d", result.FilesChecked)
 	}
@@ -549,18 +512,12 @@ func TestFix_PreFixCheckRulesErrorsCollected(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 1 {
-		t.Fatalf("expected 1 pre-fix CheckRules error, got %d: %v", len(result.Errors), result.Errors)
-	}
-	if !strings.Contains(result.Errors[0].Error(), "flaky settings failure") {
-		t.Fatalf("expected flaky settings error, got: %v", result.Errors[0])
-	}
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(result.Diagnostics))
-	}
-	if len(result.Modified) != 0 {
-		t.Fatalf("expected 0 modified files, got %d", len(result.Modified))
-	}
+	require.Len(t, result.Errors, 1,
+		"expected 1 pre-fix CheckRules error, got %d: %v", len(result.Errors), result.Errors)
+	require.Contains(t, result.Errors[0].Error(), "flaky settings failure",
+		"expected flaky settings error, got: %v", result.Errors[0])
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics, got %d", len(result.Diagnostics))
+	require.Len(t, result.Modified, 0, "expected 0 modified files, got %d", len(result.Modified))
 }
 
 func TestFix_ReParseBetweenPasses(t *testing.T) {
@@ -591,14 +548,10 @@ func TestFix_ReParseBetweenPasses(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	content, err := os.ReadFile(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// MDS100 strips trailing "\t " -> "# Hello\n"
 	// MDS200 sees "# Hello\n" which has no tabs -> no change.
 	expected := "# Hello\n"
@@ -723,14 +676,10 @@ func TestFix_MultiPassConvergence(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	content, err := os.ReadFile(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// The fixes oscillate within each pass: MDS100 removes REMOVE_ME,
 	// MDS200 re-inserts it. The pass output equals the previous pass
@@ -748,9 +697,7 @@ func TestFix_MultiPassConvergence(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Error("expected remaining MDS100 diagnostic")
-	}
+	assert.True(t, found, "expected remaining MDS100 diagnostic")
 }
 
 func TestFix_LaterRuleFixCaughtByEarlierRule(t *testing.T) {
@@ -782,14 +729,10 @@ func TestFix_LaterRuleFixCaughtByEarlierRule(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	content, err := os.ReadFile(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// MDS100 first pass: no trailing spaces, no-op.
 	// MDS200 first pass: replaces tab with "    " but adds trailing space
@@ -831,15 +774,11 @@ func TestFixer_StripFrontMatter_PreservesFrontMatter(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	// Read the file back.
 	got, err := os.ReadFile(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Frontmatter should be preserved intact.
 	expectedFM := "---\ntitle: hello\n---\n"
@@ -850,13 +789,9 @@ func TestFixer_StripFrontMatter_PreservesFrontMatter(t *testing.T) {
 
 	// Content portion should be fixed (no trailing spaces).
 	body := string(got[len(expectedFM):])
-	if strings.Contains(body, "  ") {
-		t.Errorf("content still has trailing spaces: %q", body)
-	}
+	assert.NotContains(t, body, "  ", "content still has trailing spaces: %q", body)
 	expectedBody := "# Heading\n\nSome text\n"
-	if body != expectedBody {
-		t.Errorf("expected body %q, got %q", expectedBody, body)
-	}
+	assert.Equal(t, expectedBody, body, "expected body %q, got %q", expectedBody, body)
 
 	// Remaining diagnostics should have line numbers adjusted for the offset.
 	for _, d := range result.Diagnostics {
@@ -887,12 +822,8 @@ func TestFix_IgnoredFileSkipped(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Modified) != 0 {
-		t.Fatalf("expected 0 modified files for ignored file, got %d", len(result.Modified))
-	}
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("expected 0 diagnostics for ignored file, got %d", len(result.Diagnostics))
-	}
+	require.Len(t, result.Modified, 0, "expected 0 modified files for ignored file, got %d", len(result.Modified))
+	require.Len(t, result.Diagnostics, 0, "expected 0 diagnostics for ignored file, got %d", len(result.Diagnostics))
 }
 
 func TestFix_NonexistentFileError(t *testing.T) {
@@ -908,9 +839,7 @@ func TestFix_NonexistentFileError(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{"/nonexistent/file.md"})
-	if len(result.Errors) != 1 {
-		t.Fatalf("expected 1 error, got %d", len(result.Errors))
-	}
+	require.Len(t, result.Errors, 1, "expected 1 error, got %d", len(result.Errors))
 }
 
 func TestFix_PreservesFilePermissions(t *testing.T) {
@@ -936,14 +865,10 @@ func TestFix_PreservesFilePermissions(t *testing.T) {
 	}
 
 	result := fixer.Fix([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	info, err := os.Stat(mdFile)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if info.Mode().Perm() != 0o755 {
 		t.Errorf("expected permissions 0755, got %04o", info.Mode().Perm())
 	}

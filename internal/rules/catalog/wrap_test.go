@@ -1,9 +1,11 @@
 package catalog
 
 import (
-	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // =====================================================================
@@ -12,16 +14,12 @@ import (
 
 func TestTruncateCell_ShortStringUnchanged(t *testing.T) {
 	got := truncateCell("hello", 10)
-	if got != "hello" {
-		t.Errorf("expected %q, got %q", "hello", got)
-	}
+	assert.Equal(t, "hello", got, "expected %q, got %q", "hello", got)
 }
 
 func TestTruncateCell_ExactWidthUnchanged(t *testing.T) {
 	got := truncateCell("12345", 5)
-	if got != "12345" {
-		t.Errorf("expected %q, got %q", "12345", got)
-	}
+	assert.Equal(t, "12345", got, "expected %q, got %q", "12345", got)
 }
 
 func TestTruncateCell_TruncatesAtWordBoundary(t *testing.T) {
@@ -35,16 +33,12 @@ func TestTruncateCell_TruncatesAtWordBoundary(t *testing.T) {
 func TestTruncateCell_TruncatesLongSingleWord(t *testing.T) {
 	got := truncateCell("superlongword", 8)
 	// "super..." is 8 chars
-	if got != "super..." {
-		t.Errorf("expected %q, got %q", "super...", got)
-	}
+	assert.Equal(t, "super...", got, "expected %q, got %q", "super...", got)
 }
 
 func TestTruncateCell_EmptyString(t *testing.T) {
 	got := truncateCell("", 10)
-	if got != "" {
-		t.Errorf("expected empty string, got %q", got)
-	}
+	assert.Equal(t, "", got, "expected empty string, got %q", got)
 }
 
 func TestTruncateCell_PreservesMarkdownLink(t *testing.T) {
@@ -70,31 +64,23 @@ func TestTruncateCell_PreservesInlineCode(t *testing.T) {
 func TestTruncateCell_LinkFitsExactly(t *testing.T) {
 	text := "[link](url)"
 	got := truncateCell(text, 11)
-	if got != "[link](url)" {
-		t.Errorf("expected %q, got %q", "[link](url)", got)
-	}
+	assert.Equal(t, "[link](url)", got, "expected %q, got %q", "[link](url)", got)
 }
 
 func TestTruncateCell_VerySmallWidth(t *testing.T) {
 	// Width too small even for "..."
 	got := truncateCell("hello world", 3)
-	if got != "..." {
-		t.Errorf("expected %q, got %q", "...", got)
-	}
+	assert.Equal(t, "...", got, "expected %q, got %q", "...", got)
 }
 
 func TestTruncateCell_WidthSmallerThanEllipsis(t *testing.T) {
 	got := truncateCell("hello", 2)
-	if got != ".." {
-		t.Errorf("expected %q, got %q", "..", got)
-	}
+	assert.Equal(t, "..", got, "expected %q, got %q", "..", got)
 }
 
 func TestTruncateCell_ZeroWidth(t *testing.T) {
 	got := truncateCell("hello", 0)
-	if got != "" {
-		t.Errorf("expected empty string, got %q", got)
-	}
+	assert.Equal(t, "", got, "expected empty string, got %q", got)
 }
 
 func TestTruncateCell_LinkTooLongForWidth(t *testing.T) {
@@ -113,9 +99,7 @@ func TestTruncateCell_LinkTooLongForWidth(t *testing.T) {
 
 func TestWrapCellBr_ShortStringUnchanged(t *testing.T) {
 	got := wrapCellBr("hello", 10)
-	if got != "hello" {
-		t.Errorf("expected %q, got %q", "hello", got)
-	}
+	assert.Equal(t, "hello", got, "expected %q, got %q", "hello", got)
 }
 
 func TestWrapCellBr_WrapsAtWordBoundary(t *testing.T) {
@@ -129,16 +113,12 @@ func TestWrapCellBr_WrapsAtWordBoundary(t *testing.T) {
 func TestWrapCellBr_HardBreakFallback(t *testing.T) {
 	got := wrapCellBr("superlongword", 5)
 	// Hard break at 5 chars: "super<br>longw<br>ord"
-	if got != "super<br>longw<br>ord" {
-		t.Errorf("expected %q, got %q", "super<br>longw<br>ord", got)
-	}
+	assert.Equal(t, "super<br>longw<br>ord", got, "expected %q, got %q", "super<br>longw<br>ord", got)
 }
 
 func TestWrapCellBr_EmptyString(t *testing.T) {
 	got := wrapCellBr("", 10)
-	if got != "" {
-		t.Errorf("expected empty string, got %q", got)
-	}
+	assert.Equal(t, "", got, "expected empty string, got %q", got)
 }
 
 func TestWrapCellBr_PreservesMarkdownLink(t *testing.T) {
@@ -168,9 +148,7 @@ func TestWrapCellBr_MultipleWraps(t *testing.T) {
 
 func TestWrapCellBr_ExactWidthNoWrap(t *testing.T) {
 	got := wrapCellBr("12345", 5)
-	if got != "12345" {
-		t.Errorf("expected %q, got %q", "12345", got)
-	}
+	assert.Equal(t, "12345", got, "expected %q, got %q", "12345", got)
 }
 
 // =====================================================================
@@ -179,9 +157,7 @@ func TestWrapCellBr_ExactWidthNoWrap(t *testing.T) {
 
 func TestParseColumnConfig_Empty(t *testing.T) {
 	cols := parseColumnConfig(nil)
-	if len(cols) != 0 {
-		t.Errorf("expected empty map, got %v", cols)
-	}
+	assert.Len(t, cols, 0, "expected empty map, got %v", cols)
 }
 
 func TestParseColumnConfig_MaxWidthOnly(t *testing.T) {
@@ -226,9 +202,7 @@ func TestParseColumnConfig_MultipleColumns(t *testing.T) {
 		},
 	}
 	cols := parseColumnConfig(raw)
-	if len(cols) != 2 {
-		t.Fatalf("expected 2 columns, got %d", len(cols))
-	}
+	require.Len(t, cols, 2, "expected 2 columns, got %d", len(cols))
 	if cols["description"].maxWidth != 50 {
 		t.Errorf("expected description max-width 50, got %d", cols["description"].maxWidth)
 	}
@@ -283,9 +257,7 @@ func TestApplyColumnConstraints_NoConstraintsPassThrough(t *testing.T) {
 	cols := map[string]columnConfig{}
 	colMap := map[int]string{}
 	got := applyColumnConstraints(row, cols, colMap)
-	if got != row {
-		t.Errorf("expected %q, got %q", row, got)
-	}
+	assert.Equal(t, row, got, "expected %q, got %q", row, got)
 }
 
 func TestApplyColumnConstraints_NonTableRowPassThrough(t *testing.T) {
@@ -295,9 +267,7 @@ func TestApplyColumnConstraints_NonTableRowPassThrough(t *testing.T) {
 	}
 	colMap := map[int]string{0: "description"}
 	got := applyColumnConstraints(row, cols, colMap)
-	if got != row {
-		t.Errorf("expected %q, got %q", row, got)
-	}
+	assert.Equal(t, row, got, "expected %q, got %q", row, got)
 }
 
 // =====================================================================
@@ -353,9 +323,7 @@ row: "| {{.title}} | {{.description}} |"
 	fixed := r.Fix(f)
 	result := string(fixed)
 	// The description should be truncated to max-width 20
-	if !strings.Contains(result, "...") {
-		t.Errorf("expected truncated description with '...' in output:\n%s", result)
-	}
+	assert.Contains(t, result, "...", "expected truncated description with '...' in output:\n%s", result)
 }
 
 func TestFix_ColumnsWrapBr(t *testing.T) {
@@ -381,7 +349,5 @@ row: "| {{.title}} | {{.description}} |"
 	fixed := r.Fix(f)
 	result := string(fixed)
 	// The description should be wrapped with <br>
-	if !strings.Contains(result, "<br>") {
-		t.Errorf("expected wrapped description with '<br>' in output:\n%s", result)
-	}
+	assert.Contains(t, result, "<br>", "expected wrapped description with '<br>' in output:\n%s", result)
 }

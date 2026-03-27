@@ -2,6 +2,8 @@ package lint
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStripFrontMatter(t *testing.T) {
@@ -52,12 +54,8 @@ func TestStripFrontMatter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			prefix, content := StripFrontMatter([]byte(tt.input))
-			if string(prefix) != tt.wantPrefix {
-				t.Errorf("prefix = %q, want %q", prefix, tt.wantPrefix)
-			}
-			if string(content) != tt.wantContent {
-				t.Errorf("content = %q, want %q", content, tt.wantContent)
-			}
+			assert.Equal(t, tt.wantPrefix, string(prefix))
+			assert.Equal(t, tt.wantContent, string(content))
 		})
 	}
 }

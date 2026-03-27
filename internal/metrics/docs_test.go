@@ -1,16 +1,15 @@
 package metrics
 
 import (
-	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestListDocs_SortedByID(t *testing.T) {
 	docs, err := ListDocs()
-	if err != nil {
-		t.Fatalf("ListDocs: %v", err)
-	}
+	require.NoError(t, err, "ListDocs: %v", err)
 	if len(docs) == 0 {
 		t.Fatal("expected docs")
 	}
@@ -23,30 +22,18 @@ func TestListDocs_SortedByID(t *testing.T) {
 
 func TestLookupDoc_ByIDAndName(t *testing.T) {
 	content, err := LookupDoc("MET001")
-	if err != nil {
-		t.Fatalf("LookupDoc(MET001): %v", err)
-	}
-	if !strings.Contains(content, "bytes") {
-		t.Fatalf("expected bytes content, got: %s", content)
-	}
+	require.NoError(t, err, "LookupDoc(MET001): %v", err)
+	require.Contains(t, content, "bytes", "expected bytes content, got: %s", content)
 
 	content, err = LookupDoc("bytes")
-	if err != nil {
-		t.Fatalf("LookupDoc(bytes): %v", err)
-	}
-	if !strings.Contains(content, "MET001") {
-		t.Fatalf("expected MET001 content, got: %s", content)
-	}
+	require.NoError(t, err, "LookupDoc(bytes): %v", err)
+	require.Contains(t, content, "MET001", "expected MET001 content, got: %s", content)
 }
 
 func TestLookupDoc_Unknown(t *testing.T) {
 	_, err := LookupDoc("MET999")
-	if err == nil {
-		t.Fatal("expected unknown metric error")
-	}
-	if !strings.Contains(err.Error(), "unknown metric") {
-		t.Fatalf("error = %q, want unknown metric", err.Error())
-	}
+	require.Error(t, err, "expected unknown metric error")
+	require.Contains(t, err.Error(), "unknown metric", "error = %q, want unknown metric", err.Error())
 }
 
 func TestListDocsFromFS_SkipsBadFrontMatter(t *testing.T) {
@@ -60,12 +47,8 @@ func TestListDocsFromFS_SkipsBadFrontMatter(t *testing.T) {
 	}
 
 	docs, err := listDocsFromFS(fsys)
-	if err != nil {
-		t.Fatalf("listDocsFromFS: %v", err)
-	}
-	if len(docs) != 1 {
-		t.Fatalf("len = %d, want 1", len(docs))
-	}
+	require.NoError(t, err, "listDocsFromFS: %v", err)
+	require.Len(t, docs, 1, "len = %d, want 1", len(docs))
 	if docs[0].ID != "MET999" {
 		t.Fatalf("id = %q, want MET999", docs[0].ID)
 	}

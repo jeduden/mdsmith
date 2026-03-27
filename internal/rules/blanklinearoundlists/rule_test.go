@@ -4,14 +4,15 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheck_NoBlanksBeforeList(t *testing.T) {
 	src := []byte("Some text\n- item 1\n- item 2\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	// Should report "list should be preceded by a blank line"
@@ -24,9 +25,7 @@ func TestCheck_NoBlanksBeforeList(t *testing.T) {
 			}
 		}
 	}
-	if !found {
-		t.Errorf("expected diagnostic about missing blank before list, got %d diags: %+v", len(diags), diags)
-	}
+	assert.True(t, found, "expected diagnostic about missing blank before list, got %d diags: %+v", len(diags), diags)
 }
 
 func TestCheck_NoBlanksAfterList(t *testing.T) {
@@ -34,9 +33,7 @@ func TestCheck_NoBlanksAfterList(t *testing.T) {
 	// (Plain text after a list without blank line gets absorbed into the list item by goldmark.)
 	src := []byte("- item 1\n- item 2\n# After\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	found := false
@@ -45,69 +42,49 @@ func TestCheck_NoBlanksAfterList(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Errorf("expected diagnostic about missing blank after list, got %d diags: %+v", len(diags), diags)
-	}
+	assert.True(t, found, "expected diagnostic about missing blank after list, got %d diags: %+v", len(diags), diags)
 }
 
 func TestCheck_BlanksAroundList(t *testing.T) {
 	src := []byte("Some text\n\n- item 1\n- item 2\n\nMore text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_ListAtStartOfFile(t *testing.T) {
 	src := []byte("- item 1\n- item 2\n\nSome text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics for list at start of file, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics for list at start of file, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_ListAtEndOfFile(t *testing.T) {
 	src := []byte("Some text\n\n- item 1\n- item 2\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics for list at end of file, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics for list at end of file, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_NestedListsNoFlag(t *testing.T) {
 	src := []byte("Some text\n\n- item 1\n  - nested 1\n  - nested 2\n- item 2\n\nMore text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics for nested lists, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics for nested lists, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_ListAfterHeading(t *testing.T) {
 	src := []byte("# Heading\n- item 1\n- item 2\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	found := false
@@ -125,22 +102,16 @@ func TestCheck_ListAfterHeading(t *testing.T) {
 func TestCheck_EmptyFile(t *testing.T) {
 	src := []byte("")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestFix_InsertsBlankBefore(t *testing.T) {
 	src := []byte("Some text\n- item 1\n- item 2\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "Some text\n\n- item 1\n- item 2\n"
@@ -152,9 +123,7 @@ func TestFix_InsertsBlankBefore(t *testing.T) {
 func TestFix_InsertsBlankAfter(t *testing.T) {
 	src := []byte("- item 1\n- item 2\n# After\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "- item 1\n- item 2\n\n# After\n"
@@ -166,9 +135,7 @@ func TestFix_InsertsBlankAfter(t *testing.T) {
 func TestFix_NoChange(t *testing.T) {
 	src := []byte("Some text\n\n- item 1\n- item 2\n\nMore text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	if string(result) != string(src) {
@@ -183,9 +150,7 @@ func TestCheck_FencedCodeBlockWithYAMLList_NoDiagnostics(t *testing.T) {
 	// MDS014 must not report diagnostics for list-like content inside code blocks.
 	src := []byte("1. Configure the template:\n\n   ```yaml\n   template:\n     - item-one\n     - item-two\n   ```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	for _, d := range diags {
@@ -199,9 +164,7 @@ func TestFix_FencedCodeBlockWithYAMLList_NoCorruption(t *testing.T) {
 	// Fix must not modify content inside fenced code blocks.
 	src := []byte("1. Configure the template:\n\n   ```yaml\n   template:\n     - item-one\n     - item-two\n   ```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	if string(result) != string(src) {
@@ -213,9 +176,7 @@ func TestCheck_ListBeforeCodeBlock_StillFires(t *testing.T) {
 	// A real list immediately before a fenced code block should still get diagnostics.
 	src := []byte("Some text\n- item 1\n- item 2\n\n```\ncode\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	found := false
@@ -224,18 +185,14 @@ func TestCheck_ListBeforeCodeBlock_StillFires(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Errorf("expected diagnostic for list before code block, got %d diags: %+v", len(diags), diags)
-	}
+	assert.True(t, found, "expected diagnostic for list before code block, got %d diags: %+v", len(diags), diags)
 }
 
 func TestCheck_ListAfterCodeBlock_StillFires(t *testing.T) {
 	// A real list immediately after a fenced code block should still get diagnostics.
 	src := []byte("```\ncode\n```\n- item 1\n- item 2\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	found := false
@@ -244,18 +201,14 @@ func TestCheck_ListAfterCodeBlock_StillFires(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Errorf("expected diagnostic for list after code block, got %d diags: %+v", len(diags), diags)
-	}
+	assert.True(t, found, "expected diagnostic for list after code block, got %d diags: %+v", len(diags), diags)
 }
 
 func TestCheck_ListInsideIndentedCodeBlock_NoDiagnostics(t *testing.T) {
 	// Indented code block (4+ spaces) containing list-like content.
 	src := []byte("Paragraph\n\n    - not a real list\n    - also not a list\n\nMore text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	for _, d := range diags {
@@ -270,12 +223,8 @@ func TestCheck_EmptyFencedCodeBlockAdjacentToList_NoDiagnostics(t *testing.T) {
 	// diagnostics but the code block lines must not be treated as list content.
 	src := []byte("Some text\n\n- item 1\n\n```\n```\n\nMore text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
-	}
+	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %+v", len(diags), diags)
 }

@@ -4,19 +4,16 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheck_MissingNewline(t *testing.T) {
 	src := []byte("hello")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
 	if d.RuleID != "MDS009" {
 		t.Errorf("expected rule ID MDS009, got %s", d.RuleID)
@@ -32,40 +29,28 @@ func TestCheck_MissingNewline(t *testing.T) {
 func TestCheck_ExtraNewlines(t *testing.T) {
 	src := []byte("hello\n\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 }
 
 func TestCheck_ExactlyOneNewline(t *testing.T) {
 	src := []byte("hello\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestCheck_EmptyFile(t *testing.T) {
 	src := []byte("")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
 	if d.Line != 1 {
 		t.Errorf("expected line 1, got %d", d.Line)
@@ -78,35 +63,25 @@ func TestCheck_EmptyFile(t *testing.T) {
 func TestCheck_MultipleTrailingNewlines(t *testing.T) {
 	src := []byte("hello\nworld\n\n\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 }
 
 func TestCheck_MultiLineCorrect(t *testing.T) {
 	src := []byte("hello\nworld\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestFix_AddsMissingNewline(t *testing.T) {
 	src := []byte("hello")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "hello\n"
@@ -118,9 +93,7 @@ func TestFix_AddsMissingNewline(t *testing.T) {
 func TestFix_RemovesExtraNewlines(t *testing.T) {
 	src := []byte("hello\n\n\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "hello\n"
@@ -132,9 +105,7 @@ func TestFix_RemovesExtraNewlines(t *testing.T) {
 func TestFix_EmptyFile(t *testing.T) {
 	src := []byte("")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "\n"
@@ -146,9 +117,7 @@ func TestFix_EmptyFile(t *testing.T) {
 func TestFix_PreservesCorrectFile(t *testing.T) {
 	src := []byte("hello\nworld\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	if string(result) != string(src) {
@@ -159,9 +128,7 @@ func TestFix_PreservesCorrectFile(t *testing.T) {
 func TestFix_OnlyNewlines(t *testing.T) {
 	src := []byte("\n\n\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	result := r.Fix(f)
 	expected := "\n"

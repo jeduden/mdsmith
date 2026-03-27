@@ -93,6 +93,14 @@ After a successful rebase, verify linting still passes:
 go run ./cmd/mdsmith check .
 ```
 
+```bash
+go tool golangci-lint run --fix ./...
+```
+
+The `--fix` flag auto-corrects formatting issues
+(goimports, gofmt). If it produces changes, stage and
+include them in the next commit.
+
 ### 4. Push changes
 
 After a rebase, a force push is required (subsequent
@@ -152,7 +160,11 @@ gh run view "$RUN_ID" --log-failed
 ```
 
 Read the log, identify the root cause, fix the code,
-then:
+then run linters before committing:
+
+```bash
+go tool golangci-lint run --fix ./...
+```
 
 ```bash
 git add -A
@@ -229,6 +241,10 @@ mutation($threadId: ID!) {
 ### 9. Push fixes and repeat
 
 ```bash
+go tool golangci-lint run --fix ./...
+```
+
+```bash
 git add -A
 ```
 
@@ -259,8 +275,9 @@ for merge.
 - This workflow works in both local environments and
   Claude Code web sandbox. Step 1 installs `gh` if
   missing.
-- Always run `mdsmith check .` before committing to
-  catch linting issues early.
+- Always run `mdsmith check .` and
+  `golangci-lint run --fix ./...` before committing to
+  catch linting and formatting issues early.
 - Keep fix commits small and focused — one commit per
   CI fix, one commit per batch of related review
   comments.

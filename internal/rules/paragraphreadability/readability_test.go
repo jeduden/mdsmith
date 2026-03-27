@@ -3,13 +3,13 @@ package paragraphreadability
 import (
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestARI_Empty(t *testing.T) {
 	got := ARI("")
-	if got != 0 {
-		t.Errorf("ARI of empty text: got %.2f, want 0", got)
-	}
+	assert.Equal(t, 0.0, got, "ARI of empty text: got %.2f, want 0", got)
 }
 
 func TestARI_SingleWord(t *testing.T) {

@@ -6,6 +6,9 @@ import (
 	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestFile(
@@ -13,9 +16,7 @@ func newTestFile(
 ) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile(path, []byte(source))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if len(fs) > 0 {
 		f.FS = fs[0]
 		f.RootFS = fs[0]
@@ -188,9 +189,7 @@ func TestFix_WrapWithBacktickContent(t *testing.T) {
 	want := "# Doc\n\n<?include\nfile: example.md\n" +
 		"wrap: markdown\n?>\n\n````markdown\n# Title\n\n```go\n" +
 		"fmt.Println(\"hi\")\n```\n````\n\n<?/include?>\n"
-	if got != want {
-		t.Errorf("Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
-	}
+	assert.Equal(t, want, got, "Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
 }
 
 // =====================================================================
@@ -270,9 +269,7 @@ func TestCheck_DotDotPathWithoutRootFS(t *testing.T) {
 	// should be emitted instead of a confusing "not found" error.
 	src := "# Doc\n\n<?include\nfile: ../CLAUDE.md\n?>\nold\n<?/include?>\n"
 	f, err := lint.NewFile("sub/doc.md", []byte(src))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.FS = fstest.MapFS{}
 	// RootFS intentionally left nil.
 	r := &Rule{}
@@ -350,9 +347,7 @@ func TestFix_LinkAdjustment(t *testing.T) {
 	got := string(r.Fix(f))
 	want := "# Guide\n\n<?include\nfile: sub/content.md\n?>\n" +
 		"See [layout](sub/internal/rules/) for details.\n<?/include?>\n"
-	if got != want {
-		t.Errorf("Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
-	}
+	assert.Equal(t, want, got, "Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
 }
 
 // =====================================================================
@@ -450,9 +445,7 @@ func TestFix_HeadingLevelAbsolute(t *testing.T) {
 	want := "# Doc\n\n## Project\n\n<?include\nfile: data.md\n" +
 		"heading-level: \"absolute\"\n?>\n" +
 		"### Build\n\nSteps.\n\n#### Sub\n\nMore.\n<?/include?>\n"
-	if got != want {
-		t.Errorf("Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
-	}
+	assert.Equal(t, want, got, "Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
 }
 
 // =====================================================================
@@ -484,9 +477,7 @@ func TestCheck_LinkAndHeadingCombined(t *testing.T) {
 
 func TestCheck_NoFS(t *testing.T) {
 	f, err := lint.NewFile("test.md", []byte("# Hello\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)

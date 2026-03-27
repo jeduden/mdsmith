@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // configurableStub implements both Rule and Configurable.
@@ -44,27 +46,17 @@ func TestCloneRule_Configurable_IndependentCopy(t *testing.T) {
 	clone := CloneRule(original)
 
 	// Clone should be a different pointer.
-	if clone == original {
-		t.Error("CloneRule should return a new instance, not the same pointer")
-	}
+	assert.NotSame(t, original, clone, "CloneRule should return a new instance, not the same pointer")
 
 	// Clone should have default settings applied.
 	cs, ok := clone.(*configurableStub)
-	if !ok {
-		t.Fatalf("expected *configurableStub, got %T", clone)
-	}
-	if cs.Max != 80 {
-		t.Errorf("expected Max=80, got %d", cs.Max)
-	}
-	if cs.Style != "default" {
-		t.Errorf("expected Style=default, got %s", cs.Style)
-	}
+	require.True(t, ok, "expected *configurableStub, got %T", clone)
+	assert.Equal(t, 80, cs.Max)
+	assert.Equal(t, "default", cs.Style)
 
 	// Modify the clone; original should be unaffected.
 	cs.Max = 120
-	if original.Max != 80 {
-		t.Errorf("modifying clone affected original: Max=%d", original.Max)
-	}
+	assert.Equal(t, 80, original.Max, "modifying clone affected original")
 }
 
 func TestCloneRule_NonConfigurable_IndependentCopy(t *testing.T) {
@@ -73,17 +65,11 @@ func TestCloneRule_NonConfigurable_IndependentCopy(t *testing.T) {
 	clone := CloneRule(original)
 
 	// Clone should be a different pointer.
-	if clone == original {
-		t.Error("CloneRule should return a new instance")
-	}
+	assert.NotSame(t, original, clone, "CloneRule should return a new instance")
 
 	// Should have same ID and Name.
-	if clone.ID() != "MDS999" {
-		t.Errorf("expected ID MDS999, got %s", clone.ID())
-	}
-	if clone.Name() != "stub" {
-		t.Errorf("expected Name stub, got %s", clone.Name())
-	}
+	assert.Equal(t, "MDS999", clone.ID())
+	assert.Equal(t, "stub", clone.Name())
 }
 
 func TestCloneRule_ApplySettingsOnClone(t *testing.T) {
@@ -91,15 +77,10 @@ func TestCloneRule_ApplySettingsOnClone(t *testing.T) {
 
 	clone := CloneRule(original)
 	cc := clone.(Configurable)
-	if err := cc.ApplySettings(map[string]any{"max": 120}); err != nil {
-		t.Fatalf("ApplySettings on clone: %v", err)
-	}
+	err := cc.ApplySettings(map[string]any{"max": 120})
+	require.NoError(t, err)
 
 	cs := clone.(*configurableStub)
-	if cs.Max != 120 {
-		t.Errorf("expected clone Max=120, got %d", cs.Max)
-	}
-	if original.Max != 80 {
-		t.Errorf("original Max should still be 80, got %d", original.Max)
-	}
+	assert.Equal(t, 120, cs.Max)
+	assert.Equal(t, 80, original.Max, "original Max should still be 80")
 }

@@ -57,7 +57,10 @@ Bad fixtures are excluded via the `ignore:` section in
 When adding or changing a rule feature, add both:
 
 1. **Unit tests** in `rule_test.go` (inline markdown,
-   fast red/green cycle).
+   fast red/green cycle). Use `require` from testify
+   for preconditions that abort the test and `assert`
+   for checks that continue. Use `Same`/`NotSame` for
+   pointer identity.
 2. **Fixture tests** under `internal/rules/<id>-<name>/`
    (`good/` and `bad/` markdown files with YAML
    frontmatter specifying expected diagnostics). These

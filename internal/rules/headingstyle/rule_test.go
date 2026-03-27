@@ -4,32 +4,26 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheck_ATXStyle_NoViolation(t *testing.T) {
 	src := []byte("# Heading 1\n\n## Heading 2\n\n### Heading 3\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{Style: "atx"}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_ATXStyle_SetextViolation(t *testing.T) {
 	src := []byte("Heading 1\n=========\n\nSome text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{Style: "atx"}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %+v", len(diags), diags)
 	if diags[0].RuleID != "MDS002" {
 		t.Errorf("expected rule ID MDS002, got %s", diags[0].RuleID)
 	}
@@ -41,14 +35,10 @@ func TestCheck_ATXStyle_SetextViolation(t *testing.T) {
 func TestCheck_SetextStyle_ATXViolation(t *testing.T) {
 	src := []byte("# Heading 1\n\nSome text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{Style: "setext"}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %+v", len(diags), diags)
 	if diags[0].Message != "heading style should be setext" {
 		t.Errorf("unexpected message: %s", diags[0].Message)
 	}
@@ -58,35 +48,25 @@ func TestCheck_SetextStyle_Level3ATX_NoViolation(t *testing.T) {
 	// Setext only supports levels 1-2, so level 3+ ATX is fine
 	src := []byte("### Heading 3\n\nSome text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{Style: "setext"}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %+v", len(diags), diags)
 }
 
 func TestCheck_SetextStyle_NoViolation(t *testing.T) {
 	src := []byte("Heading 1\n=========\n\nHeading 2\n---------\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{Style: "setext"}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %+v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %+v", len(diags), diags)
 }
 
 func TestFix_SetextToATX(t *testing.T) {
 	src := []byte("Heading 1\n=========\n\nSome text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{Style: "atx"}
 	result := r.Fix(f)
 	expected := "# Heading 1\n\nSome text\n"
@@ -98,9 +78,7 @@ func TestFix_SetextToATX(t *testing.T) {
 func TestFix_ATXToSetext(t *testing.T) {
 	src := []byte("# Heading 1\n\nSome text\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{Style: "setext"}
 	result := r.Fix(f)
 	expected := "Heading 1\n=========\n\nSome text\n"
@@ -138,25 +116,19 @@ func TestApplySettings_ValidStyle(t *testing.T) {
 func TestApplySettings_InvalidStyle(t *testing.T) {
 	r := &Rule{Style: "atx"}
 	err := r.ApplySettings(map[string]any{"style": "invalid"})
-	if err == nil {
-		t.Fatal("expected error for invalid style")
-	}
+	require.Error(t, err, "expected error for invalid style")
 }
 
 func TestApplySettings_InvalidStyleType(t *testing.T) {
 	r := &Rule{Style: "atx"}
 	err := r.ApplySettings(map[string]any{"style": 42})
-	if err == nil {
-		t.Fatal("expected error for non-string style")
-	}
+	require.Error(t, err, "expected error for non-string style")
 }
 
 func TestApplySettings_UnknownKey(t *testing.T) {
 	r := &Rule{Style: "atx"}
 	err := r.ApplySettings(map[string]any{"unknown": true})
-	if err == nil {
-		t.Fatal("expected error for unknown key")
-	}
+	require.Error(t, err, "expected error for unknown key")
 }
 
 func TestDefaultSettings_HeadingStyle(t *testing.T) {

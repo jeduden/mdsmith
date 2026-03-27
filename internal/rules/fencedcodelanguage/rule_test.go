@@ -4,19 +4,17 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheck_MissingLanguage(t *testing.T) {
 	src := []byte("```\ncode\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
 	if d.RuleID != "MDS011" {
 		t.Errorf("expected rule ID MDS011, got %s", d.RuleID)
@@ -32,66 +30,46 @@ func TestCheck_MissingLanguage(t *testing.T) {
 func TestCheck_WithLanguage(t *testing.T) {
 	src := []byte("```go\nfmt.Println()\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestCheck_TildeWithLanguage(t *testing.T) {
 	src := []byte("~~~python\nprint()\n~~~\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestCheck_TildeWithoutLanguage(t *testing.T) {
 	src := []byte("~~~\ncode\n~~~\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 }
 
 func TestCheck_EmptyCodeBlock(t *testing.T) {
 	src := []byte("```\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 }
 
 func TestCheck_MultipleBlocks_OnlyMissingFlagged(t *testing.T) {
 	src := []byte("```go\ncode1\n```\n\n```\ncode2\n```\n\n```python\ncode3\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 5 {
 		t.Errorf("expected line 5, got %d", diags[0].Line)
 	}
@@ -100,14 +78,10 @@ func TestCheck_MultipleBlocks_OnlyMissingFlagged(t *testing.T) {
 func TestCheck_DiagnosticPointsToOpeningFence(t *testing.T) {
 	src := []byte("# Title\n\n```\ncode\n```\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 3 {
 		t.Errorf("expected line 3, got %d", diags[0].Line)
 	}

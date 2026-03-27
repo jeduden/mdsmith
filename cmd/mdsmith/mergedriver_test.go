@@ -1,8 +1,9 @@
 package main
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStripSectionConflicts_Diff3CatalogConflict(t *testing.T) {
@@ -25,18 +26,10 @@ func TestStripSectionConflicts_Diff3CatalogConflict(t *testing.T) {
 
 	result := string(stripSectionConflicts([]byte(input)))
 
-	if strings.Contains(result, "<<<<<<<") {
-		t.Error("expected <<<<<<< marker stripped")
-	}
-	if strings.Contains(result, "|||||||") {
-		t.Error("expected ||||||| base marker stripped")
-	}
-	if strings.Contains(result, "=======") {
-		t.Error("expected ======= separator stripped")
-	}
-	if strings.Contains(result, ">>>>>>>") {
-		t.Error("expected >>>>>>> marker stripped")
-	}
+	assert.NotContains(t, result, "<<<<<<<", "expected <<<<<<< marker stripped")
+	assert.NotContains(t, result, "|||||||", "expected ||||||| base marker stripped")
+	assert.NotContains(t, result, "=======", "expected ======= separator stripped")
+	assert.NotContains(t, result, ">>>>>>>", "expected >>>>>>> marker stripped")
 }
 
 func TestStripSectionConflicts_Diff3OutsideSection_Preserved(t *testing.T) {
@@ -53,16 +46,8 @@ func TestStripSectionConflicts_Diff3OutsideSection_Preserved(t *testing.T) {
 
 	result := string(stripSectionConflicts([]byte(input)))
 
-	if !strings.Contains(result, "<<<<<<<") {
-		t.Error("expected <<<<<<< marker preserved outside section")
-	}
-	if !strings.Contains(result, "|||||||") {
-		t.Error("expected ||||||| marker preserved outside section")
-	}
-	if !strings.Contains(result, "=======") {
-		t.Error("expected ======= separator preserved outside section")
-	}
-	if !strings.Contains(result, ">>>>>>>") {
-		t.Error("expected >>>>>>> marker preserved outside section")
-	}
+	assert.Contains(t, result, "<<<<<<<", "expected <<<<<<< marker preserved outside section")
+	assert.Contains(t, result, "|||||||", "expected ||||||| marker preserved outside section")
+	assert.Contains(t, result, "=======", "expected ======= separator preserved outside section")
+	assert.Contains(t, result, ">>>>>>>", "expected >>>>>>> marker preserved outside section")
 }

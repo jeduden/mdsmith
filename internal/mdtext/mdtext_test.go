@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
@@ -25,58 +27,38 @@ func parseParagraph(t *testing.T, src string) (ast.Node, []byte) {
 		}
 		return ast.WalkContinue, nil
 	})
-	if para == nil {
-		t.Fatal("no paragraph found")
-	}
+	require.NotNil(t, para, "no paragraph found")
 	return para, source
 }
 
 func TestExtractPlainText_PlainParagraph(t *testing.T) {
 	para, src := parseParagraph(t, "Hello world.\n")
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "Hello world." {
-		t.Errorf("got %q, want %q", got, "Hello world.")
-	}
+	assert.Equal(t, "Hello world.", mdtext.ExtractPlainText(para, src))
 }
 
 func TestExtractPlainText_Link(t *testing.T) {
 	para, src := parseParagraph(t, "Click [here](https://example.com) now.\n")
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "Click here now." {
-		t.Errorf("got %q, want %q", got, "Click here now.")
-	}
+	assert.Equal(t, "Click here now.", mdtext.ExtractPlainText(para, src))
 }
 
 func TestExtractPlainText_Emphasis(t *testing.T) {
 	para, src := parseParagraph(t, "This is *important* text.\n")
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "This is important text." {
-		t.Errorf("got %q, want %q", got, "This is important text.")
-	}
+	assert.Equal(t, "This is important text.", mdtext.ExtractPlainText(para, src))
 }
 
 func TestExtractPlainText_Strong(t *testing.T) {
 	para, src := parseParagraph(t, "This is **bold** text.\n")
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "This is bold text." {
-		t.Errorf("got %q, want %q", got, "This is bold text.")
-	}
+	assert.Equal(t, "This is bold text.", mdtext.ExtractPlainText(para, src))
 }
 
 func TestExtractPlainText_CodeSpan(t *testing.T) {
 	para, src := parseParagraph(t, "Use `fmt.Println` to print.\n")
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "Use fmt.Println to print." {
-		t.Errorf("got %q, want %q", got, "Use fmt.Println to print.")
-	}
+	assert.Equal(t, "Use fmt.Println to print.", mdtext.ExtractPlainText(para, src))
 }
 
 func TestExtractPlainText_Image(t *testing.T) {
 	para, src := parseParagraph(t, "See ![alt text](image.png) here.\n")
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "See alt text here." {
-		t.Errorf("got %q, want %q", got, "See alt text here.")
-	}
+	assert.Equal(t, "See alt text here.", mdtext.ExtractPlainText(para, src))
 }
 
 func TestExtractPlainText_NestedMarkup(t *testing.T) {
@@ -84,164 +66,102 @@ func TestExtractPlainText_NestedMarkup(t *testing.T) {
 		t,
 		"Click [**bold link**](https://example.com) now.\n",
 	)
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "Click bold link now." {
-		t.Errorf("got %q, want %q", got, "Click bold link now.")
-	}
+	assert.Equal(t, "Click bold link now.", mdtext.ExtractPlainText(para, src))
 }
 
 func TestExtractPlainText_SoftLineBreak(t *testing.T) {
 	para, src := parseParagraph(t, "Hello\nworld.\n")
-	got := mdtext.ExtractPlainText(para, src)
-	if got != "Hello world." {
-		t.Errorf("got %q, want %q", got, "Hello world.")
-	}
+	assert.Equal(t, "Hello world.", mdtext.ExtractPlainText(para, src))
 }
 
 // --- CountWords tests ---
 
 func TestCountWords_Simple(t *testing.T) {
-	if got := mdtext.CountWords("hello world"); got != 2 {
-		t.Errorf("got %d, want 2", got)
-	}
+	assert.Equal(t, 2, mdtext.CountWords("hello world"))
 }
 
 func TestCountWords_Empty(t *testing.T) {
-	if got := mdtext.CountWords(""); got != 0 {
-		t.Errorf("got %d, want 0", got)
-	}
+	assert.Equal(t, 0, mdtext.CountWords(""))
 }
 
 func TestCountWords_MultipleSpaces(t *testing.T) {
-	if got := mdtext.CountWords("  hello   world  "); got != 2 {
-		t.Errorf("got %d, want 2", got)
-	}
+	assert.Equal(t, 2, mdtext.CountWords("  hello   world  "))
 }
 
 // --- CountSentences tests ---
 
 func TestCountSentences_OneSentence(t *testing.T) {
-	if got := mdtext.CountSentences("Hello world."); got != 1 {
-		t.Errorf("got %d, want 1", got)
-	}
+	assert.Equal(t, 1, mdtext.CountSentences("Hello world."))
 }
 
 func TestCountSentences_TwoSentences(t *testing.T) {
-	got := mdtext.CountSentences("Hello world. How are you?")
-	if got != 2 {
-		t.Errorf("got %d, want 2", got)
-	}
+	assert.Equal(t, 2, mdtext.CountSentences("Hello world. How are you?"))
 }
 
 func TestCountSentences_NoTerminator(t *testing.T) {
-	// No sentence-ending punctuation returns 1 for non-empty text.
-	if got := mdtext.CountSentences("Hello world"); got != 1 {
-		t.Errorf("got %d, want 1", got)
-	}
+	assert.Equal(t, 1, mdtext.CountSentences("Hello world"))
 }
 
 func TestCountSentences_Empty(t *testing.T) {
-	if got := mdtext.CountSentences(""); got != 0 {
-		t.Errorf("got %d, want 0", got)
-	}
+	assert.Equal(t, 0, mdtext.CountSentences(""))
 }
 
 func TestCountSentences_Exclamation(t *testing.T) {
-	got := mdtext.CountSentences("Wow! Amazing!")
-	if got != 2 {
-		t.Errorf("got %d, want 2", got)
-	}
+	assert.Equal(t, 2, mdtext.CountSentences("Wow! Amazing!"))
 }
 
 func TestCountSentences_AbbreviationNotCounted(t *testing.T) {
-	// "e.g." has dots not followed by whitespace (except last),
-	// so interior dots are not counted.
-	got := mdtext.CountSentences("Use e.g. this one.")
-	// "e.g." -> dot after 'g' at position is followed by space -> counted
-	// then ". " after "this one" -> counted
-	// Actually "e.g. " the dot after g is followed by space so counted.
-	// And "one." at end is counted. So 2.
-	if got != 2 {
-		t.Errorf("got %d, want 2", got)
-	}
+	assert.Equal(t, 2, mdtext.CountSentences("Use e.g. this one."))
 }
 
 // --- SplitSentences tests ---
 
 func TestSplitSentences_Simple(t *testing.T) {
 	got := mdtext.SplitSentences("Hello world. How are you?")
-	if len(got) != 2 {
-		t.Fatalf("got %d sentences, want 2: %v", len(got), got)
-	}
-	if got[0] != "Hello world." {
-		t.Errorf("sentence 0: got %q, want %q", got[0], "Hello world.")
-	}
-	if got[1] != "How are you?" {
-		t.Errorf("sentence 1: got %q, want %q", got[1], "How are you?")
-	}
+	require.Len(t, got, 2)
+	assert.Equal(t, "Hello world.", got[0])
+	assert.Equal(t, "How are you?", got[1])
 }
 
 func TestSplitSentences_Exclamation(t *testing.T) {
 	got := mdtext.SplitSentences("Wow! Amazing!")
-	if len(got) != 2 {
-		t.Fatalf("got %d sentences, want 2: %v", len(got), got)
-	}
+	require.Len(t, got, 2)
 }
 
 func TestSplitSentences_Abbreviation(t *testing.T) {
 	got := mdtext.SplitSentences("Dr. Smith went home.")
-	if len(got) != 1 {
-		t.Fatalf("got %d sentences, want 1: %v", len(got), got)
-	}
+	require.Len(t, got, 1)
 }
 
 func TestSplitSentences_Decimal(t *testing.T) {
 	got := mdtext.SplitSentences("The value is 3.14 today.")
-	if len(got) != 1 {
-		t.Fatalf("got %d sentences, want 1: %v", len(got), got)
-	}
+	require.Len(t, got, 1)
 }
 
 func TestSplitSentences_Empty(t *testing.T) {
 	got := mdtext.SplitSentences("")
-	if len(got) != 0 {
-		t.Fatalf("got %d sentences, want 0: %v", len(got), got)
-	}
+	require.Empty(t, got)
 }
 
 func TestSplitSentences_WhitespaceOnly(t *testing.T) {
 	got := mdtext.SplitSentences("   ")
-	if len(got) != 0 {
-		t.Fatalf("got %d sentences, want 0: %v", len(got), got)
-	}
+	require.Empty(t, got)
 }
 
 // --- CountCharacters tests ---
 
 func TestCountCharacters_Simple(t *testing.T) {
-	got := mdtext.CountCharacters("Hello, world!")
-	// H e l l o w o r l d = 10 letters, no digits
-	if got != 10 {
-		t.Errorf("got %d, want 10", got)
-	}
+	assert.Equal(t, 10, mdtext.CountCharacters("Hello, world!"))
 }
 
 func TestCountCharacters_WithDigits(t *testing.T) {
-	got := mdtext.CountCharacters("abc 123")
-	// a b c 1 2 3 = 6
-	if got != 6 {
-		t.Errorf("got %d, want 6", got)
-	}
+	assert.Equal(t, 6, mdtext.CountCharacters("abc 123"))
 }
 
 func TestCountCharacters_Empty(t *testing.T) {
-	if got := mdtext.CountCharacters(""); got != 0 {
-		t.Errorf("got %d, want 0", got)
-	}
+	assert.Equal(t, 0, mdtext.CountCharacters(""))
 }
 
 func TestCountCharacters_OnlyPunctuation(t *testing.T) {
-	if got := mdtext.CountCharacters("...!!!"); got != 0 {
-		t.Errorf("got %d, want 0", got)
-	}
+	assert.Equal(t, 0, mdtext.CountCharacters("...!!!"))
 }

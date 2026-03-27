@@ -1,18 +1,16 @@
 package tablereadability
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/stretchr/testify/require"
 )
 
 func newFile(t *testing.T, src string) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile("test.md", []byte(src))
-	if err != nil {
-		t.Fatalf("NewFile: %v", err)
-	}
+	require.NoError(t, err, "NewFile: %v", err)
 	return f
 }
 
@@ -63,9 +61,7 @@ func TestApplySettings_Valid(t *testing.T) {
 		"max-words-per-cell":        10,
 		"max-column-width-variance": 2.25,
 	})
-	if err != nil {
-		t.Fatalf("ApplySettings: %v", err)
-	}
+	require.NoError(t, err, "ApplySettings: %v", err)
 
 	if r.MaxColumns != 4 {
 		t.Fatalf("MaxColumns = %d, want 4", r.MaxColumns)
@@ -84,17 +80,13 @@ func TestApplySettings_Valid(t *testing.T) {
 func TestApplySettings_InvalidType(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"max-columns": "a"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	require.Error(t, err, "expected error")
 }
 
 func TestApplySettings_UnknownSetting(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"unknown": 1})
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	require.Error(t, err, "expected error")
 }
 
 func TestCheck_NoDiagnosticForReadableTable(t *testing.T) {
@@ -102,9 +94,7 @@ func TestCheck_NoDiagnosticForReadableTable(t *testing.T) {
 	src := "# Title\n\n| Metric | Value |\n|--------|-------|\n| Speed  | Fast  |\n| Cost   | Low   |\n"
 
 	diags := r.Check(newFile(t, src))
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestCheck_TooManyColumns(t *testing.T) {
@@ -112,9 +102,7 @@ func TestCheck_TooManyColumns(t *testing.T) {
 	src := "# Title\n\n| A | B | C | D |\n|---|---|---|---|\n| 1 | 2 | 3 | 4 |\n"
 
 	diags := r.Check(newFile(t, src))
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 3 {
 		t.Fatalf("line = %d, want 3", diags[0].Line)
 	}
@@ -128,9 +116,7 @@ func TestCheck_TooManyRows(t *testing.T) {
 	src := "# Title\n\n| A | B |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |\n"
 
 	diags := r.Check(newFile(t, src))
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 3 {
 		t.Fatalf("line = %d, want 3", diags[0].Line)
 	}
@@ -144,9 +130,7 @@ func TestCheck_TooManyWordsPerCell(t *testing.T) {
 	src := "# Title\n\n| Name | Notes |\n|------|-------|\n| ok   | short |\n| bad  | This cell has six words total |\n"
 
 	diags := r.Check(newFile(t, src))
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 6 {
 		t.Fatalf("line = %d, want 6", diags[0].Line)
 	}
@@ -166,15 +150,11 @@ func TestCheck_HighWidthVariance(t *testing.T) {
 `
 
 	diags := r.Check(newFile(t, src))
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 3 {
 		t.Fatalf("line = %d, want 3", diags[0].Line)
 	}
-	if !strings.Contains(diags[0].Message, "table has high column width variance") {
-		t.Fatalf("message = %q", diags[0].Message)
-	}
+	require.Contains(t, diags[0].Message, "table has high column width variance", "message = %q", diags[0].Message)
 }
 
 func TestCheck_SkipsTablesInCodeBlock(t *testing.T) {
@@ -182,16 +162,12 @@ func TestCheck_SkipsTablesInCodeBlock(t *testing.T) {
 	src := "# Title\n\n```markdown\n| A | B | C |\n|---|---|---|\n| one two three four | x | y |\n```\n"
 
 	diags := r.Check(newFile(t, src))
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func TestSplitRow_PreservesEscapedPipes(t *testing.T) {
 	cells := splitRow(`| a \| b | c |`)
-	if len(cells) != 2 {
-		t.Fatalf("expected 2 cells, got %d", len(cells))
-	}
+	require.Len(t, cells, 2, "expected 2 cells, got %d", len(cells))
 	if cells[0] != `a \| b` {
 		t.Fatalf("first cell = %q, want %q", cells[0], `a \| b`)
 	}

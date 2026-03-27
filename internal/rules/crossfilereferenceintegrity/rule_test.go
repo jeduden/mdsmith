@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRuleMetadata(t *testing.T) {
@@ -29,12 +31,8 @@ func TestCheck_MissingTargetFile(t *testing.T) {
 
 	f := newLintFile(t, sourcePath)
 	diags := (&Rule{}).Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
-	if !strings.Contains(diags[0].Message, "missing.md") {
-		t.Fatalf("message = %q, want to include missing.md", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	require.Contains(t, diags[0].Message, "missing.md", "message = %q, want to include missing.md", diags[0].Message)
 }
 
 func TestCheck_MissingHeadingAnchor(t *testing.T) {
@@ -47,12 +45,9 @@ func TestCheck_MissingHeadingAnchor(t *testing.T) {
 
 	f := newLintFile(t, sourcePath)
 	diags := (&Rule{}).Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
-	if !strings.Contains(diags[0].Message, "guide.md#missing") {
-		t.Fatalf("message = %q, want to include guide.md#missing", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	require.Contains(t, diags[0].Message, "guide.md#missing",
+		"message = %q, want to include guide.md#missing", diags[0].Message)
 }
 
 func TestCheck_ValidRelativeAndLocalAnchors(t *testing.T) {
@@ -74,9 +69,7 @@ func TestCheck_ValidRelativeAndLocalAnchors(t *testing.T) {
 
 	f := newLintFile(t, sourcePath)
 	diags := (&Rule{}).Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %v", len(diags), diagMessages(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diagMessages(diags))
 }
 
 func TestCheck_RelativeDotDotPath(t *testing.T) {
@@ -93,9 +86,7 @@ func TestCheck_RelativeDotDotPath(t *testing.T) {
 
 	f := newLintFile(t, sourcePath)
 	diags := (&Rule{}).Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %v", len(diags), diagMessages(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diagMessages(diags))
 }
 
 func TestCheck_DefaultSkipsNonMarkdownTargets(t *testing.T) {
@@ -106,9 +97,7 @@ func TestCheck_DefaultSkipsNonMarkdownTargets(t *testing.T) {
 
 	f := newLintFile(t, sourcePath)
 	diags := (&Rule{}).Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %v", len(diags), diagMessages(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diagMessages(diags))
 }
 
 func TestCheck_StrictChecksNonMarkdownTargets(t *testing.T) {
@@ -120,9 +109,7 @@ func TestCheck_StrictChecksNonMarkdownTargets(t *testing.T) {
 	f := newLintFile(t, sourcePath)
 	r := &Rule{Strict: true}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 }
 
 func TestCheck_IncludeExcludePatterns(t *testing.T) {
@@ -144,12 +131,9 @@ func TestCheck_IncludeExcludePatterns(t *testing.T) {
 		Exclude: []string{"docs/private/**"},
 	}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %v", len(diags), diagMessages(diags))
-	}
-	if !strings.Contains(diags[0].Message, "docs/missing.md") {
-		t.Fatalf("message = %q, want to include docs/missing.md", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diagMessages(diags))
+	require.Contains(t, diags[0].Message, "docs/missing.md",
+		"message = %q, want to include docs/missing.md", diags[0].Message)
 }
 
 func TestApplySettings_InvalidValues(t *testing.T) {
@@ -196,13 +180,9 @@ func TestApplySettings_ValidValues(t *testing.T) {
 		"include": []any{"docs/**"},
 		"exclude": []any{"docs/private/**"},
 	})
-	if err != nil {
-		t.Fatalf("ApplySettings returned error: %v", err)
-	}
+	require.NoError(t, err, "ApplySettings returned error: %v", err)
 
-	if !r.Strict {
-		t.Fatal("expected strict=true")
-	}
+	require.True(t, r.Strict, "expected strict=true")
 	if len(r.Include) != 1 || r.Include[0] != "docs/**" {
 		t.Fatalf("unexpected include: %v", r.Include)
 	}
@@ -213,26 +193,18 @@ func TestApplySettings_ValidValues(t *testing.T) {
 
 func TestCheck_NoFS(t *testing.T) {
 	f, err := lint.NewFile("stdin.md", []byte("# Doc\n\nSee [x](missing.md)\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	diags := (&Rule{}).Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
 func newLintFile(t *testing.T, path string) *lint.File {
 	t.Helper()
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f, err := lint.NewFile(path, data)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	f.FS = os.DirFS(filepath.Dir(path))
 	return f
 }

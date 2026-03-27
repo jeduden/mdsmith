@@ -1,6 +1,10 @@
 package include
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestAdjustHeadings_ATX(t *testing.T) {
 	tests := []struct {
@@ -50,9 +54,7 @@ func TestAdjustHeadings_ATX(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustHeadings(tt.content, tt.parentLevel)
-			if got != tt.want {
-				t.Errorf("adjustHeadings() =\n%q\nwant:\n%q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustHeadings() =\n%q\nwant:\n%q", got, tt.want)
 		})
 	}
 }
@@ -99,9 +101,7 @@ func TestAdjustHeadings_Setext(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustHeadings(tt.content, tt.parentLevel)
-			if got != tt.want {
-				t.Errorf("adjustHeadings() =\n%q\nwant:\n%q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustHeadings() =\n%q\nwant:\n%q", got, tt.want)
 		})
 	}
 }
@@ -136,9 +136,7 @@ func TestAdjustHeadings_CodeBlocks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := adjustHeadings(tt.content, tt.parentLevel)
-			if got != tt.want {
-				t.Errorf("adjustHeadings() =\n%q\nwant:\n%q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "adjustHeadings() =\n%q\nwant:\n%q", got, tt.want)
 		})
 	}
 }

@@ -3,6 +3,8 @@ package log
 import (
 	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestPrintf_Enabled(t *testing.T) {
@@ -12,9 +14,7 @@ func TestPrintf_Enabled(t *testing.T) {
 	l.Printf("config: %s", ".mdsmith.yml")
 
 	want := "config: .mdsmith.yml\n"
-	if got := buf.String(); got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
+	assert.Equal(t, want, buf.String())
 }
 
 func TestPrintf_Disabled(t *testing.T) {
@@ -23,9 +23,7 @@ func TestPrintf_Disabled(t *testing.T) {
 
 	l.Printf("config: %s", ".mdsmith.yml")
 
-	if got := buf.String(); got != "" {
-		t.Errorf("expected no output, got %q", got)
-	}
+	assert.Equal(t, "", buf.String(), "expected no output")
 }
 
 func TestPrintf_MultipleMessages(t *testing.T) {
@@ -36,7 +34,5 @@ func TestPrintf_MultipleMessages(t *testing.T) {
 	l.Printf("rule: %s %s", "MDS001", "line-length")
 
 	want := "file: README.md\nrule: MDS001 line-length\n"
-	if got := buf.String(); got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
+	assert.Equal(t, want, buf.String())
 }

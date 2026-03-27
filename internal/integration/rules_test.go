@@ -48,6 +48,9 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/tablereadability"
 	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
 	_ "github.com/jeduden/mdsmith/internal/rules/unclosedcodeblock"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var ruleIDPattern = regexp.MustCompile(`^(MDS\d+)-`)
@@ -79,9 +82,7 @@ func parseFixtureFrontMatter(
 
 	d := frontmatter.Get(ctx)
 	if d == nil {
-		if requireDiagnostics {
-			t.Fatal("bad fixture is missing front matter with expected diagnostics")
-		}
+		require.False(t, requireDiagnostics, "bad fixture is missing front matter with expected diagnostics")
 		return nil, nil, data
 	}
 
@@ -141,9 +142,7 @@ func TestRuleFixtures(t *testing.T) {
 
 		t.Run(ruleID, func(t *testing.T) {
 			r := rule.ByID(ruleID)
-			if r == nil {
-				t.Fatalf("rule %s not found in registry", ruleID)
-			}
+			require.NotNil(t, r, "rule %s not found in registry", ruleID)
 
 			// Determine format: folder-based or single-file.
 			badDir := filepath.Join(dir, "bad")
@@ -240,9 +239,7 @@ func runGoodFolderFile(
 	applySettingsToRule(t, r, settings)
 
 	f, err := lint.NewFile(filepath.Base(filePath), content)
-	if err != nil {
-		t.Fatalf("parsing %s: %v", filepath.Base(filePath), err)
-	}
+	require.NoError(t, err, "parsing %s: %v", filepath.Base(filePath), err)
 	f.FS = os.DirFS(filepath.Dir(filePath))
 	diags := checkAllRules(f)
 	reportUnexpectedDiags(t, filepath.Base(filePath), diags)
@@ -259,9 +256,7 @@ func runBadFolderFile(
 	applySettingsToRule(t, r, settings)
 
 	f, err := lint.NewFile(filepath.Base(filePath), content)
-	if err != nil {
-		t.Fatalf("parsing %s: %v", filepath.Base(filePath), err)
-	}
+	require.NoError(t, err, "parsing %s: %v", filepath.Base(filePath), err)
 	f.FS = os.DirFS(filepath.Dir(filePath))
 	diags := filterByRule(r.Check(f), ruleID)
 	assertExpectedDiags(t, expected, diags, filepath.Base(filePath))
@@ -291,9 +286,7 @@ func runFixFolderFile(
 	applySettingsToRule(t, r, settings)
 
 	f, err := lint.NewFile(filepath.Base(fixedPath), badContent)
-	if err != nil {
-		t.Fatalf("parsing %s: %v", filepath.Base(fixedPath), err)
-	}
+	require.NoError(t, err, "parsing %s: %v", filepath.Base(fixedPath), err)
 	f.FS = os.DirFS(filepath.Dir(fixedPath))
 
 	got := fr.Fix(f)
@@ -314,9 +307,7 @@ func runFixFolderFile(
 	fixedFile, err := lint.NewFile(
 		filepath.Base(fixedPath), want,
 	)
-	if err != nil {
-		t.Fatalf("parsing fixed output: %v", err)
-	}
+	require.NoError(t, err, "parsing fixed output: %v", err)
 	fixedFile.FS = os.DirFS(filepath.Dir(fixedPath))
 	diags := checkAllRules(fixedFile)
 	reportUnexpectedDiags(t, filepath.Base(fixedPath), diags)
@@ -328,9 +319,7 @@ func runGoodSingleFile(t *testing.T, dir string) {
 	t.Helper()
 	src := readFixture(t, filepath.Join(dir, "good.md"))
 	f, err := lint.NewFile("good.md", src)
-	if err != nil {
-		t.Fatalf("parsing good.md: %v", err)
-	}
+	require.NoError(t, err, "parsing good.md: %v", err)
 	f.FS = os.DirFS(dir)
 	diags := checkAllRules(f)
 	reportUnexpectedDiags(t, "good.md", diags)
@@ -343,9 +332,7 @@ func runBadSingleFile(
 	raw := readFixture(t, filepath.Join(dir, "bad.md"))
 	_, expected, src := parseFixtureFrontMatter(t, raw, true)
 	f, err := lint.NewFile("bad.md", src)
-	if err != nil {
-		t.Fatalf("parsing bad.md: %v", err)
-	}
+	require.NoError(t, err, "parsing bad.md: %v", err)
 	f.FS = os.DirFS(dir)
 	diags := filterByRule(r.Check(f), ruleID)
 	assertExpectedDiags(t, expected, diags, "bad.md")
@@ -366,9 +353,7 @@ func runFixSingleFile(
 	badSrc := readFixture(t, filepath.Join(dir, "bad.md"))
 	_, _, content := parseFixtureFrontMatter(t, badSrc, false)
 	f, err := lint.NewFile("bad.md", content)
-	if err != nil {
-		t.Fatalf("parsing bad.md: %v", err)
-	}
+	require.NoError(t, err, "parsing bad.md: %v", err)
 	f.FS = os.DirFS(dir)
 
 	got := fr.Fix(f)
@@ -383,9 +368,7 @@ func runFixSingleFile(
 	}
 
 	fixedFile, err := lint.NewFile("fixed.md", want)
-	if err != nil {
-		t.Fatalf("parsing fixed.md: %v", err)
-	}
+	require.NoError(t, err, "parsing fixed.md: %v", err)
 	fixedFile.FS = os.DirFS(dir)
 	diags := checkAllRules(fixedFile)
 	reportUnexpectedDiags(t, "fixed.md", diags)
@@ -396,9 +379,7 @@ func runFixSingleFile(
 func discoverFixtureDirs(t *testing.T) []string {
 	t.Helper()
 	dirs, err := filepath.Glob("../../internal/rules/MDS*-*")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if len(dirs) == 0 {
 		t.Fatal("no rule fixture directories found")
 	}
@@ -408,9 +389,7 @@ func discoverFixtureDirs(t *testing.T) []string {
 func discoverMDFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	files, err := filepath.Glob(filepath.Join(dir, "*.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if len(files) == 0 {
 		t.Fatalf("no .md files found in %s", dir)
 	}
@@ -426,11 +405,7 @@ func reportUnexpectedDiags(
 	t *testing.T, filename string, diags []lint.Diagnostic,
 ) {
 	t.Helper()
-	if len(diags) != 0 {
-		t.Errorf(
-			"%s: expected 0 diagnostics from all rules, got %d",
-			filename, len(diags),
-		)
+	if !assert.Empty(t, diags, "%s: expected 0 diagnostics from all rules, got %d", filename, len(diags)) {
 		for _, d := range diags {
 			t.Logf(
 				"  %s line %d col %d: %s",
@@ -448,19 +423,11 @@ func assertExpectedDiags(
 ) {
 	t.Helper()
 	if len(expected) == 0 {
-		if len(diags) == 0 {
-			t.Errorf(
-				"%s: expected at least 1 diagnostic, got 0",
-				filename,
-			)
-		}
+		assert.NotEmpty(t, diags, "%s: expected at least 1 diagnostic, got 0", filename)
 		return
 	}
-	if len(diags) != len(expected) {
-		t.Errorf(
-			"%s: expected %d diagnostics, got %d",
-			filename, len(expected), len(diags),
-		)
+	if !assert.Len(t, diags, len(expected),
+		"%s: expected %d diagnostics, got %d", filename, len(expected), len(diags)) {
 		for _, d := range diags {
 			t.Logf(
 				"  actual: line %d col %d: %s",
@@ -470,29 +437,26 @@ func assertExpectedDiags(
 	}
 	for i, exp := range expected {
 		if i >= len(diags) {
-			t.Errorf(
+			assert.Fail(t, "missing diagnostic",
 				"missing diagnostic %d: line %d col %d: %s",
 				i, exp.Line, exp.Column, exp.Message,
 			)
 			continue
 		}
 		d := diags[i]
-		if d.Line != exp.Line || d.Column != exp.Column || d.Message != exp.Message {
-			t.Errorf(
-				"diagnostic %d:\n  want: line %d col %d: %s\n  got:  line %d col %d: %s",
-				i, exp.Line, exp.Column, exp.Message,
-				d.Line, d.Column, d.Message,
-			)
-		}
+		assert.Equal(t, exp.Line, d.Line,
+			"diagnostic %d line mismatch", i)
+		assert.Equal(t, exp.Column, d.Column,
+			"diagnostic %d column mismatch", i)
+		assert.Equal(t, exp.Message, d.Message,
+			"diagnostic %d message mismatch", i)
 	}
 }
 
 func readFixture(t *testing.T, path string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading %s: %v", path, err)
-	}
+	require.NoError(t, err, "reading %s: %v", path, err)
 	return data
 }
 

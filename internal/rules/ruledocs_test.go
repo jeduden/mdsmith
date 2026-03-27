@@ -1,16 +1,16 @@
 package rules
 
 import (
-	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestListRules_SortedByID(t *testing.T) {
 	rules, err := ListRules()
-	if err != nil {
-		t.Fatalf("ListRules: %v", err)
-	}
+	require.NoError(t, err, "ListRules: %v", err)
 
 	if len(rules) == 0 {
 		t.Fatal("expected at least one rule")
@@ -25,9 +25,7 @@ func TestListRules_SortedByID(t *testing.T) {
 
 func TestListRules_ContainsMDS001(t *testing.T) {
 	rules, err := ListRules()
-	if err != nil {
-		t.Fatalf("ListRules: %v", err)
-	}
+	require.NoError(t, err, "ListRules: %v", err)
 
 	found := false
 	for _, r := range rules {
@@ -42,52 +40,34 @@ func TestListRules_ContainsMDS001(t *testing.T) {
 			break
 		}
 	}
-	if !found {
-		t.Error("MDS001 not found in rule list")
-	}
+	assert.True(t, found, "MDS001 not found in rule list")
 }
 
 func TestLookupRule_ByID(t *testing.T) {
 	content, err := LookupRule("MDS001")
-	if err != nil {
-		t.Fatalf("LookupRule(MDS001): %v", err)
-	}
+	require.NoError(t, err, "LookupRule(MDS001): %v", err)
 
-	if !strings.Contains(content, "line-length") {
-		t.Error("expected MDS001 content to contain 'line-length'")
-	}
+	assert.Contains(t, content, "line-length", "expected MDS001 content to contain 'line-length'")
 }
 
 func TestLookupRule_ByName(t *testing.T) {
 	content, err := LookupRule("line-length")
-	if err != nil {
-		t.Fatalf("LookupRule(line-length): %v", err)
-	}
+	require.NoError(t, err, "LookupRule(line-length): %v", err)
 
-	if !strings.Contains(content, "MDS001") {
-		t.Error("expected line-length content to contain 'MDS001'")
-	}
+	assert.Contains(t, content, "MDS001", "expected line-length content to contain 'MDS001'")
 }
 
 func TestLookupRule_CaseInsensitiveID(t *testing.T) {
 	content, err := LookupRule("mds001")
-	if err != nil {
-		t.Fatalf("LookupRule(mds001): %v", err)
-	}
+	require.NoError(t, err, "LookupRule(mds001): %v", err)
 
-	if !strings.Contains(content, "MDS001") {
-		t.Error("expected lowercase lookup to find MDS001")
-	}
+	assert.Contains(t, content, "MDS001", "expected lowercase lookup to find MDS001")
 }
 
 func TestLookupRule_Unknown(t *testing.T) {
 	_, err := LookupRule("MDSXXX")
-	if err == nil {
-		t.Fatal("expected error for unknown rule")
-	}
-	if !strings.Contains(err.Error(), "unknown rule") {
-		t.Errorf("error = %q, want it to contain 'unknown rule'", err.Error())
-	}
+	require.Error(t, err, "expected error for unknown rule")
+	assert.Contains(t, err.Error(), "unknown rule", "error = %q, want it to contain 'unknown rule'", err.Error())
 }
 
 func TestListRulesFromFS_SkipsBadFrontMatter(t *testing.T) {
@@ -101,13 +81,9 @@ func TestListRulesFromFS_SkipsBadFrontMatter(t *testing.T) {
 	}
 
 	rules, err := listRulesFromFS(fsys)
-	if err != nil {
-		t.Fatalf("listRulesFromFS: %v", err)
-	}
+	require.NoError(t, err, "listRulesFromFS: %v", err)
 
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
-	}
+	require.Len(t, rules, 1, "expected 1 rule, got %d", len(rules))
 
 	if rules[0].ID != "MDS999" {
 		t.Errorf("rule ID = %q, want MDS999", rules[0].ID)
@@ -122,20 +98,12 @@ func TestLookupRuleFromFS_ByIDAndName(t *testing.T) {
 	}
 
 	content, err := lookupRuleFromFS(fsys, "MDS999")
-	if err != nil {
-		t.Fatalf("lookupRuleFromFS(MDS999): %v", err)
-	}
-	if !strings.Contains(content, "# Content") {
-		t.Error("expected content to contain '# Content'")
-	}
+	require.NoError(t, err, "lookupRuleFromFS(MDS999): %v", err)
+	assert.Contains(t, content, "# Content", "expected content to contain '# Content'")
 
 	content, err = lookupRuleFromFS(fsys, "test-rule")
-	if err != nil {
-		t.Fatalf("lookupRuleFromFS(test-rule): %v", err)
-	}
-	if !strings.Contains(content, "# Content") {
-		t.Error("expected content to contain '# Content'")
-	}
+	require.NoError(t, err, "lookupRuleFromFS(test-rule): %v", err)
+	assert.Contains(t, content, "# Content", "expected content to contain '# Content'")
 }
 
 func TestLookupRuleFromFS_NotFound(t *testing.T) {
@@ -146,9 +114,7 @@ func TestLookupRuleFromFS_NotFound(t *testing.T) {
 	}
 
 	_, err := lookupRuleFromFS(fsys, "MDSXXX")
-	if err == nil {
-		t.Fatal("expected error for unknown rule")
-	}
+	require.Error(t, err, "expected error for unknown rule")
 }
 
 func TestListRulesFromFS_SkipsMissingStatus(t *testing.T) {
@@ -159,10 +125,6 @@ func TestListRulesFromFS_SkipsMissingStatus(t *testing.T) {
 	}
 
 	rules, err := listRulesFromFS(fsys)
-	if err != nil {
-		t.Fatalf("listRulesFromFS: %v", err)
-	}
-	if len(rules) != 0 {
-		t.Fatalf("expected 0 rules, got %d", len(rules))
-	}
+	require.NoError(t, err, "listRulesFromFS: %v", err)
+	require.Len(t, rules, 0, "expected 0 rules, got %d", len(rules))
 }

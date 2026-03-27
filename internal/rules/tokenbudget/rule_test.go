@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/stretchr/testify/require"
 )
 
 func mustFile(t *testing.T, path, src string) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile(path, []byte(src))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return f
 }
 
@@ -21,9 +20,7 @@ func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 	r := &Rule{Max: 3, Mode: "heuristic", Ratio: 1.0}
 	diags := r.Check(f)
 
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
 	if d.RuleID != "MDS028" {
 		t.Errorf("expected rule ID MDS028, got %s", d.RuleID)
@@ -109,9 +106,7 @@ func TestApplySettings_Valid(t *testing.T) {
 			map[string]any{"glob": "README.md", "max": 1024},
 		},
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if r.Max != 2048 {
 		t.Errorf("expected Max=2048, got %d", r.Max)
 	}
@@ -127,9 +122,7 @@ func TestApplySettings_Valid(t *testing.T) {
 	if r.Encoding != "gpt2" {
 		t.Errorf("expected Encoding=gpt2, got %s", r.Encoding)
 	}
-	if len(r.Budgets) != 1 {
-		t.Fatalf("expected 1 budget override, got %d", len(r.Budgets))
-	}
+	require.Len(t, r.Budgets, 1, "expected 1 budget override, got %d", len(r.Budgets))
 }
 
 func TestApplySettings_InvalidType(t *testing.T) {

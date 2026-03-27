@@ -5,43 +5,33 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheck_TooManySentences(t *testing.T) {
 	// 8 sentences, default max is 6.
 	src := []byte("One. Two. Three. Four. Five. Six. Seven. Eight.\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %v", len(diags), diags)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diags)
 	d := diags[0]
 	if d.RuleID != "MDS024" {
 		t.Errorf("expected rule ID MDS024, got %s", d.RuleID)
 	}
-	if !strings.Contains(d.Message, "too many sentences") {
-		t.Errorf("unexpected message: %s", d.Message)
-	}
-	if !strings.Contains(d.Message, "8 > 6") {
-		t.Errorf("expected count in message, got: %s", d.Message)
-	}
+	assert.Contains(t, d.Message, "too many sentences", "unexpected message: %s", d.Message)
+	assert.Contains(t, d.Message, "8 > 6", "expected count in message, got: %s", d.Message)
 }
 
 func TestCheck_UnderSentenceLimit(t *testing.T) {
 	src := []byte("One. Two. Three.\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
 }
 
 func TestCheck_SentenceTooLong(t *testing.T) {
@@ -52,20 +42,12 @@ func TestCheck_SentenceTooLong(t *testing.T) {
 	}
 	src := []byte(strings.Join(words, " ") + ".\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %v", len(diags), diags)
-	}
-	if !strings.Contains(diags[0].Message, "sentence too long") {
-		t.Errorf("unexpected message: %s", diags[0].Message)
-	}
-	if !strings.Contains(diags[0].Message, "45 > 40") {
-		t.Errorf("expected count in message, got: %s", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diags)
+	assert.Contains(t, diags[0].Message, "sentence too long", "unexpected message: %s", diags[0].Message)
+	assert.Contains(t, diags[0].Message, "45 > 40", "expected count in message, got: %s", diags[0].Message)
 }
 
 func TestCheck_BothLimitsExceeded(t *testing.T) {
@@ -77,14 +59,10 @@ func TestCheck_BothLimitsExceeded(t *testing.T) {
 	longSent := strings.Join(words, " ") + "."
 	src := []byte(longSent + " Two. Three. Four. Five. Six. Seven. Eight.\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	diags := r.Check(f)
-	if len(diags) != 2 {
-		t.Fatalf("expected 2 diagnostics, got %d: %v", len(diags), diags)
-	}
+	require.Len(t, diags, 2, "expected 2 diagnostics, got %d: %v", len(diags), diags)
 	hasSentences := false
 	hasWords := false
 	for _, d := range diags {
@@ -95,54 +73,36 @@ func TestCheck_BothLimitsExceeded(t *testing.T) {
 			hasWords = true
 		}
 	}
-	if !hasSentences {
-		t.Error("missing 'too many sentences' diagnostic")
-	}
-	if !hasWords {
-		t.Error("missing 'sentence too long' diagnostic")
-	}
+	assert.True(t, hasSentences, "missing 'too many sentences' diagnostic")
+	assert.True(t, hasWords, "missing 'sentence too long' diagnostic")
 }
 
 func TestCheck_CustomSettings(t *testing.T) {
 	src := []byte("One. Two. Three. Four.\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 3, MaxWords: 40}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %v", len(diags), diags)
-	}
-	if !strings.Contains(diags[0].Message, "4 > 3") {
-		t.Errorf("expected custom limit in message, got: %s", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diags)
+	assert.Contains(t, diags[0].Message, "4 > 3", "expected custom limit in message, got: %s", diags[0].Message)
 }
 
 func TestCheck_ShortParagraph(t *testing.T) {
 	src := []byte("Short.\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
 }
 
 func TestCheck_DiagnosticFields(t *testing.T) {
 	src := []byte("One. Two. Three. Four. Five. Six. Seven. Eight.\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	diags := r.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
 	if d.Line != 1 {
 		t.Errorf("expected line 1, got %d", d.Line)
@@ -164,14 +124,10 @@ func TestCheck_TableSkipped(t *testing.T) {
 		"|---|---|---|---|---|---|---|---|\n" +
 		"| one | two | three | four | five | six | seven | eight |\n")
 	f, err := lint.NewFile("test.md", src)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r := &Rule{MaxSentences: 1, MaxWords: 1}
 	diags := r.Check(f)
-	if len(diags) != 0 {
-		t.Fatalf("expected 0 diagnostics for table, got %d", len(diags))
-	}
+	require.Len(t, diags, 0, "expected 0 diagnostics for table, got %d", len(diags))
 }
 
 func TestApplySettings_Valid(t *testing.T) {
@@ -180,9 +136,7 @@ func TestApplySettings_Valid(t *testing.T) {
 		"max-sentences": 10,
 		"max-words":     50,
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
 	if r.MaxSentences != 10 {
 		t.Errorf("expected MaxSentences=10, got %d", r.MaxSentences)
 	}
@@ -194,17 +148,13 @@ func TestApplySettings_Valid(t *testing.T) {
 func TestApplySettings_InvalidType(t *testing.T) {
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	err := r.ApplySettings(map[string]any{"max-sentences": "not-a-number"})
-	if err == nil {
-		t.Fatal("expected error for non-int max-sentences")
-	}
+	require.Error(t, err, "expected error for non-int max-sentences")
 }
 
 func TestApplySettings_UnknownKey(t *testing.T) {
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	err := r.ApplySettings(map[string]any{"unknown": 1})
-	if err == nil {
-		t.Fatal("expected error for unknown setting")
-	}
+	require.Error(t, err, "expected error for unknown setting")
 }
 
 func TestDefaultSettings(t *testing.T) {

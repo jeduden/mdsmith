@@ -2,18 +2,15 @@ package metrics
 
 import (
 	"math"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseScope(t *testing.T) {
 	scope, err := ParseScope("file")
-	if err != nil {
-		t.Fatalf("ParseScope(file): %v", err)
-	}
-	if scope != ScopeFile {
-		t.Fatalf("scope = %q, want %q", scope, ScopeFile)
-	}
+	require.NoError(t, err, "ParseScope(file): %v", err)
+	require.Equal(t, ScopeFile, scope, "scope = %q, want %q", scope, ScopeFile)
 
 	if _, err := ParseScope("paragraph"); err == nil {
 		t.Fatal("expected error for unsupported scope")
@@ -22,20 +19,12 @@ func TestParseScope(t *testing.T) {
 
 func TestParseOrder(t *testing.T) {
 	order, err := ParseOrder("asc")
-	if err != nil {
-		t.Fatalf("ParseOrder(asc): %v", err)
-	}
-	if order != OrderAsc {
-		t.Fatalf("order = %q, want %q", order, OrderAsc)
-	}
+	require.NoError(t, err, "ParseOrder(asc): %v", err)
+	require.Equal(t, OrderAsc, order, "order = %q, want %q", order, OrderAsc)
 
 	order, err = ParseOrder("")
-	if err != nil {
-		t.Fatalf("ParseOrder(empty): %v", err)
-	}
-	if order != OrderDesc {
-		t.Fatalf("default order = %q, want %q", order, OrderDesc)
-	}
+	require.NoError(t, err, "ParseOrder(empty): %v", err)
+	require.Equal(t, OrderDesc, order, "default order = %q, want %q", order, OrderDesc)
 
 	if _, err := ParseOrder("sideways"); err == nil {
 		t.Fatal("expected error for invalid order")
@@ -44,9 +33,7 @@ func TestParseOrder(t *testing.T) {
 
 func TestResolve_Defaults(t *testing.T) {
 	defs, err := Resolve(ScopeFile, nil)
-	if err != nil {
-		t.Fatalf("Resolve defaults: %v", err)
-	}
+	require.NoError(t, err, "Resolve defaults: %v", err)
 	if len(defs) == 0 {
 		t.Fatal("expected default metrics")
 	}
@@ -57,24 +44,16 @@ func TestResolve_Defaults(t *testing.T) {
 
 func TestResolve_UnknownMetricHasActionableError(t *testing.T) {
 	_, err := Resolve(ScopeFile, []string{"bogus"})
-	if err == nil {
-		t.Fatal("expected unknown metric error")
-	}
+	require.Error(t, err, "expected unknown metric error")
 	msg := err.Error()
-	if !strings.Contains(msg, "unknown metric") {
-		t.Fatalf("error = %q, expected unknown metric message", msg)
-	}
-	if !strings.Contains(msg, "available:") {
-		t.Fatalf("error = %q, expected available list", msg)
-	}
+	require.Contains(t, msg, "unknown metric", "error = %q, expected unknown metric message", msg)
+	require.Contains(t, msg, "available:", "error = %q, expected available list", msg)
 }
 
 func TestSplitList(t *testing.T) {
 	got := SplitList(" bytes, lines , ,words ")
 	want := []string{"bytes", "lines", "words"}
-	if len(got) != len(want) {
-		t.Fatalf("len = %d, want %d (%v)", len(got), len(want), got)
-	}
+	require.Len(t, got, len(want), "len = %d, want %d (%v)", len(got), len(want), got)
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("item %d = %q, want %q", i, got[i], want[i])
@@ -94,12 +73,8 @@ func TestBuiltins_Computable(t *testing.T) {
 	values := make(map[string]Value, len(defs))
 	for _, def := range defs {
 		v, err := def.Compute(doc)
-		if err != nil {
-			t.Fatalf("compute(%s): %v", def.Name, err)
-		}
-		if !v.Available {
-			t.Fatalf("metric %s unexpectedly unavailable", def.Name)
-		}
+		require.NoError(t, err, "compute(%s): %v", def.Name, err)
+		require.True(t, v.Available, "metric %s unexpectedly unavailable", def.Name)
 		values[def.Name] = v
 	}
 
@@ -122,9 +97,7 @@ func TestBuiltins_Computable(t *testing.T) {
 
 func TestConciseness_DenseBeatsVerbose(t *testing.T) {
 	def, ok := LookupScope(ScopeFile, "conciseness")
-	if !ok {
-		t.Fatal("conciseness metric not found")
-	}
+	require.True(t, ok, "conciseness metric not found")
 
 	verbose := []byte(
 		"In order to make sure we are on the same page, it is important to note " +
@@ -136,13 +109,9 @@ func TestConciseness_DenseBeatsVerbose(t *testing.T) {
 	)
 
 	verboseVal, err := def.Compute(NewDocument("verbose.md", verbose))
-	if err != nil {
-		t.Fatalf("verbose conciseness: %v", err)
-	}
+	require.NoError(t, err, "verbose conciseness: %v", err)
 	denseVal, err := def.Compute(NewDocument("dense.md", dense))
-	if err != nil {
-		t.Fatalf("dense conciseness: %v", err)
-	}
+	require.NoError(t, err, "dense conciseness: %v", err)
 
 	if denseVal.Number <= verboseVal.Number {
 		t.Fatalf(

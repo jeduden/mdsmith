@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubRule is a minimal Rule implementation for testing.
@@ -31,15 +33,9 @@ func TestRegisterAndAll(t *testing.T) {
 	Register(r2)
 
 	all := All()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 rules, got %d", len(all))
-	}
-	if all[0].ID() != "MDS001" {
-		t.Errorf("expected first rule ID %q, got %q", "MDS001", all[0].ID())
-	}
-	if all[1].ID() != "MDS002" {
-		t.Errorf("expected second rule ID %q, got %q", "MDS002", all[1].ID())
-	}
+	require.Len(t, all, 2)
+	assert.Equal(t, "MDS001", all[0].ID())
+	assert.Equal(t, "MDS002", all[1].ID())
 }
 
 func TestAllReturnsCopy(t *testing.T) {
@@ -52,9 +48,7 @@ func TestAllReturnsCopy(t *testing.T) {
 
 	// The registry should be unaffected.
 	original := All()
-	if original[0] == nil {
-		t.Error("All() should return a copy; mutating the result affected the registry")
-	}
+	assert.NotNil(t, original[0], "All() should return a copy; mutating the result affected the registry")
 }
 
 func TestByID_Found(t *testing.T) {
@@ -64,15 +58,9 @@ func TestByID_Found(t *testing.T) {
 	Register(r)
 
 	found := ByID("MDS003")
-	if found == nil {
-		t.Fatal("expected to find rule MDS003")
-	}
-	if found.ID() != "MDS003" {
-		t.Errorf("expected ID %q, got %q", "MDS003", found.ID())
-	}
-	if found.Name() != "heading-style" {
-		t.Errorf("expected Name %q, got %q", "heading-style", found.Name())
-	}
+	require.NotNil(t, found, "expected to find rule MDS003")
+	assert.Equal(t, "MDS003", found.ID())
+	assert.Equal(t, "heading-style", found.Name())
 }
 
 func TestByID_NotFound(t *testing.T) {
@@ -81,7 +69,5 @@ func TestByID_NotFound(t *testing.T) {
 	Register(&stubRule{id: "MDS001", name: "line-length"})
 
 	found := ByID("MDS999")
-	if found != nil {
-		t.Errorf("expected nil for unknown rule ID, got %v", found)
-	}
+	assert.Nil(t, found, "expected nil for unknown rule ID")
 }

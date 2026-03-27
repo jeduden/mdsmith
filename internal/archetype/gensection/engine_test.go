@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockDirective is a test directive that returns static content.
@@ -38,9 +41,7 @@ func (m *mockDirective) Generate(f *lint.File, filePath string,
 func newTestFile(t *testing.T, path, source string) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile(path, []byte(source))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return f
 }
 
@@ -50,9 +51,7 @@ func TestEngine_Check_UpToDate(t *testing.T) {
 	d := &mockDirective{content: "hello world\n"}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
+	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
 }
 
 func TestEngine_Check_OutOfDate(t *testing.T) {
@@ -61,12 +60,8 @@ func TestEngine_Check_OutOfDate(t *testing.T) {
 	d := &mockDirective{content: "new content\n"}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
-	if !strings.Contains(diags[0].Message, "out of date") {
-		t.Errorf("expected 'out of date' message, got %q", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	assert.Contains(t, diags[0].Message, "out of date", "expected 'out of date' message, got %q", diags[0].Message)
 	if diags[0].RuleID != "MDS999" {
 		t.Errorf("expected rule ID MDS999, got %s", diags[0].RuleID)
 	}
@@ -81,9 +76,7 @@ func TestEngine_Check_EmptyContent(t *testing.T) {
 	d := &mockDirective{content: ""}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
+	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
 }
 
 func TestEngine_Check_UnclosedMarker(t *testing.T) {
@@ -92,12 +85,9 @@ func TestEngine_Check_UnclosedMarker(t *testing.T) {
 	d := &mockDirective{content: "content\n"}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
-	if !strings.Contains(diags[0].Message, "no closing marker") {
-		t.Errorf("expected 'no closing marker' message, got %q", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	assert.Contains(t, diags[0].Message, "no closing marker",
+		"expected 'no closing marker' message, got %q", diags[0].Message)
 }
 
 func TestEngine_Check_UnterminatedStartMarker(t *testing.T) {
@@ -107,15 +97,10 @@ func TestEngine_Check_UnterminatedStartMarker(t *testing.T) {
 	d := &mockDirective{}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d: %v", len(diags), diags)
-	}
-	if !strings.Contains(diags[0].Message, "<?mock") {
-		t.Errorf("expected message to contain marker name '<?mock', got %q", diags[0].Message)
-	}
-	if !strings.Contains(diags[0].Message, "?>") {
-		t.Errorf("expected message to mention missing '?>', got %q", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diags)
+	assert.Contains(t, diags[0].Message, "<?mock",
+		"expected message to contain marker name '<?mock', got %q", diags[0].Message)
+	assert.Contains(t, diags[0].Message, "?>", "expected message to mention missing '?>', got %q", diags[0].Message)
 }
 
 func TestEngine_Check_UnterminatedEndMarker(t *testing.T) {
@@ -129,14 +114,10 @@ func TestEngine_Check_UnterminatedEndMarker(t *testing.T) {
 	for _, d := range diags {
 		if strings.Contains(d.Message, "<?\\/mock") || strings.Contains(d.Message, "<?/mock") {
 			found = true
-			if !strings.Contains(d.Message, "?>") {
-				t.Errorf("expected message to mention missing '?>', got %q", d.Message)
-			}
+			assert.Contains(t, d.Message, "?>", "expected message to mention missing '?>', got %q", d.Message)
 		}
 	}
-	if !found {
-		t.Errorf("expected diagnostic mentioning '<?/mock', got %v", diags)
-	}
+	assert.True(t, found, "expected diagnostic mentioning '<?/mock', got %v", diags)
 }
 
 func TestEngine_Check_OrphanedEndMarker(t *testing.T) {
@@ -145,12 +126,9 @@ func TestEngine_Check_OrphanedEndMarker(t *testing.T) {
 	d := &mockDirective{}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
-	if !strings.Contains(diags[0].Message, "unexpected generated section end marker") {
-		t.Errorf("expected 'unexpected' message, got %q", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	assert.Contains(t, diags[0].Message, "unexpected generated section end marker",
+		"expected 'unexpected' message, got %q", diags[0].Message)
 }
 
 func TestEngine_Check_NestedMarkers(t *testing.T) {
@@ -165,9 +143,7 @@ func TestEngine_Check_NestedMarkers(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Error("expected nested marker diagnostic")
-	}
+	assert.True(t, found, "expected nested marker diagnostic")
 }
 
 func TestEngine_Check_InvalidYAML(t *testing.T) {
@@ -176,12 +152,8 @@ func TestEngine_Check_InvalidYAML(t *testing.T) {
 	d := &mockDirective{}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
-	if !strings.Contains(diags[0].Message, "invalid YAML") {
-		t.Errorf("expected 'invalid YAML' message, got %q", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	assert.Contains(t, diags[0].Message, "invalid YAML", "expected 'invalid YAML' message, got %q", diags[0].Message)
 }
 
 func TestEngine_Check_NonStringValues(t *testing.T) {
@@ -190,12 +162,9 @@ func TestEngine_Check_NonStringValues(t *testing.T) {
 	d := &mockDirective{}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
-	if !strings.Contains(diags[0].Message, "non-string value") {
-		t.Errorf("expected 'non-string value' message, got %q", diags[0].Message)
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
+	assert.Contains(t, diags[0].Message, "non-string value",
+		"expected 'non-string value' message, got %q", diags[0].Message)
 }
 
 func TestEngine_Check_ValidationDiags(t *testing.T) {
@@ -208,9 +177,7 @@ func TestEngine_Check_ValidationDiags(t *testing.T) {
 	}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Message != "custom validation error" {
 		t.Errorf("expected custom validation error, got %q", diags[0].Message)
 	}
@@ -226,9 +193,7 @@ func TestEngine_Check_GenerationDiags(t *testing.T) {
 	}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(diags))
-	}
+	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Message != "generation failed" {
 		t.Errorf("expected 'generation failed', got %q", diags[0].Message)
 	}
@@ -240,12 +205,8 @@ func TestEngine_Fix_RegeneratesContent(t *testing.T) {
 	d := &mockDirective{content: "new content\n"}
 	e := NewEngine(d)
 	result := string(e.Fix(f))
-	if !strings.Contains(result, "new content") {
-		t.Errorf("expected 'new content' in result, got:\n%s", result)
-	}
-	if strings.Contains(result, "old content") {
-		t.Errorf("expected 'old content' to be replaced, got:\n%s", result)
-	}
+	assert.Contains(t, result, "new content", "expected 'new content' in result, got:\n%s", result)
+	assert.NotContains(t, result, "old content", "expected 'old content' to be replaced, got:\n%s", result)
 }
 
 func TestEngine_Fix_PreservesMarkers(t *testing.T) {
@@ -254,12 +215,8 @@ func TestEngine_Fix_PreservesMarkers(t *testing.T) {
 	d := &mockDirective{content: "new content\n"}
 	e := NewEngine(d)
 	result := string(e.Fix(f))
-	if !strings.Contains(result, "<?mock") {
-		t.Error("expected start marker in result")
-	}
-	if !strings.Contains(result, "<?/mock?>") {
-		t.Error("expected end marker in result")
-	}
+	assert.Contains(t, result, "<?mock", "expected start marker in result")
+	assert.Contains(t, result, "<?/mock?>", "expected end marker in result")
 }
 
 func TestEngine_Fix_Idempotent(t *testing.T) {
@@ -268,9 +225,8 @@ func TestEngine_Fix_Idempotent(t *testing.T) {
 	d := &mockDirective{content: "hello world\n"}
 	e := NewEngine(d)
 	result := string(e.Fix(f))
-	if result != src {
-		t.Errorf("Fix on up-to-date content should be idempotent.\nExpected:\n%s\nGot:\n%s", src, result)
-	}
+	assert.Equal(t, src, result,
+		"Fix on up-to-date content should be idempotent.\nExpected:\n%s\nGot:\n%s", src, result)
 }
 
 func TestEngine_Fix_MultiplePairs(t *testing.T) {
@@ -280,9 +236,7 @@ func TestEngine_Fix_MultiplePairs(t *testing.T) {
 	e := NewEngine(d)
 	result := string(e.Fix(f))
 	count := strings.Count(result, "replaced")
-	if count != 2 {
-		t.Errorf("expected 2 replacements, got %d in:\n%s", count, result)
-	}
+	assert.Equal(t, 2, count, "expected 2 replacements, got %d in:\n%s", count, result)
 }
 
 func TestEngine_Fix_SkipsOnValidationError(t *testing.T) {
@@ -295,9 +249,7 @@ func TestEngine_Fix_SkipsOnValidationError(t *testing.T) {
 	}
 	e := NewEngine(d)
 	result := string(e.Fix(f))
-	if !strings.Contains(result, "old content") {
-		t.Error("expected old content to be preserved when validation fails")
-	}
+	assert.Contains(t, result, "old content", "expected old content to be preserved when validation fails")
 }
 
 func TestEngine_Fix_SkipsOnGenerationError(t *testing.T) {
@@ -310,9 +262,7 @@ func TestEngine_Fix_SkipsOnGenerationError(t *testing.T) {
 	}
 	e := NewEngine(d)
 	result := string(e.Fix(f))
-	if !strings.Contains(result, "old content") {
-		t.Error("expected old content to be preserved when generation fails")
-	}
+	assert.Contains(t, result, "old content", "expected old content to be preserved when generation fails")
 }
 
 func TestEngine_Check_SingleLineMarker(t *testing.T) {
@@ -321,9 +271,7 @@ func TestEngine_Check_SingleLineMarker(t *testing.T) {
 	d := &mockDirective{content: ""}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
+	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
 }
 
 func TestEngine_Check_ColumnsPassedToDirective(t *testing.T) {
@@ -339,16 +287,10 @@ func TestEngine_Check_ColumnsPassedToDirective(t *testing.T) {
 	}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
-	if receivedCols == nil {
-		t.Fatal("expected columns to be passed to Validate")
-	}
+	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
+	require.NotNil(t, receivedCols, "expected columns to be passed to Validate")
 	cc, ok := receivedCols["desc"]
-	if !ok {
-		t.Fatal("expected 'desc' column config")
-	}
+	require.True(t, ok, "expected 'desc' column config")
 	if cc.MaxWidth != 30 {
 		t.Errorf("expected MaxWidth 30, got %d", cc.MaxWidth)
 	}
@@ -363,9 +305,7 @@ func TestEngine_Check_MarkerInCodeBlock(t *testing.T) {
 	d := &mockDirective{}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected markers in code block to be ignored, got %d diagnostics", len(diags))
-	}
+	assert.Len(t, diags, 0, "expected markers in code block to be ignored, got %d diagnostics", len(diags))
 }
 
 func TestEngine_Check_YAMLTerminatorWithWhitespace(t *testing.T) {
@@ -374,9 +314,7 @@ func TestEngine_Check_YAMLTerminatorWithWhitespace(t *testing.T) {
 	d := &mockDirective{content: "hello\n"}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
+	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
 }
 
 func TestEngine_Check_EndMarkerWithWhitespace(t *testing.T) {
@@ -385,9 +323,7 @@ func TestEngine_Check_EndMarkerWithWhitespace(t *testing.T) {
 	d := &mockDirective{content: "hello\n"}
 	e := NewEngine(d)
 	diags := e.Check(f)
-	if len(diags) != 0 {
-		t.Errorf("expected 0 diagnostics, got %d: %v", len(diags), diags)
-	}
+	assert.Len(t, diags, 0, "expected 0 diagnostics, got %d: %v", len(diags), diags)
 }
 
 func TestEngine_Check_EndMarkerWithTrailingContent(t *testing.T) {
@@ -402,30 +338,22 @@ func TestEngine_Check_EndMarkerWithTrailingContent(t *testing.T) {
 			found = true
 		}
 	}
-	if !found {
-		t.Errorf("expected 'only content on its line' diagnostic, got %v", diags)
-	}
+	assert.True(t, found, "expected 'only content on its line' diagnostic, got %v", diags)
 }
 
 func TestEnsureTrailingNewline_AddsNewline(t *testing.T) {
 	got := EnsureTrailingNewline("hello")
-	if got != "hello\n" {
-		t.Errorf("expected %q, got %q", "hello\n", got)
-	}
+	assert.Equal(t, "hello\n", got, "expected %q, got %q", "hello\n", got)
 }
 
 func TestEnsureTrailingNewline_PreservesExisting(t *testing.T) {
 	got := EnsureTrailingNewline("hello\n")
-	if got != "hello\n" {
-		t.Errorf("expected %q, got %q", "hello\n", got)
-	}
+	assert.Equal(t, "hello\n", got, "expected %q, got %q", "hello\n", got)
 }
 
 func TestSplitLines_Basic(t *testing.T) {
 	lines := SplitLines([]byte("a\nb\nc"))
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(lines))
-	}
+	require.Len(t, lines, 3, "expected 3 lines, got %d", len(lines))
 	if string(lines[0]) != "a" {
 		t.Errorf("line 0: got %q", string(lines[0]))
 	}
@@ -433,9 +361,7 @@ func TestSplitLines_Basic(t *testing.T) {
 
 func TestSplitLines_Empty(t *testing.T) {
 	lines := SplitLines([]byte(""))
-	if len(lines) != 1 {
-		t.Fatalf("expected 1 line, got %d", len(lines))
-	}
+	require.Len(t, lines, 1, "expected 1 line, got %d", len(lines))
 }
 
 func TestParseColumnConfig_Basic(t *testing.T) {
@@ -456,9 +382,7 @@ func TestParseColumnConfig_Basic(t *testing.T) {
 
 func TestParseColumnConfig_Nil(t *testing.T) {
 	cols := ParseColumnConfig(nil)
-	if len(cols) != 0 {
-		t.Errorf("expected empty map, got %v", cols)
-	}
+	assert.Len(t, cols, 0, "expected empty map, got %v", cols)
 }
 
 func TestParseColumnConfig_DefaultWrap(t *testing.T) {

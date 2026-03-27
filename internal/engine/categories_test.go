@@ -8,6 +8,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	// Import all rule packages so their init() functions register rules.
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"
@@ -140,9 +142,7 @@ func TestCategories_DisabledCategoryWithExplicitRuleOverride(t *testing.T) {
 			foundHeadingIncrement = true
 		}
 	}
-	if !foundHeadingIncrement {
-		t.Error("expected heading-increment diagnostics (explicit override) but found none")
-	}
+	assert.True(t, foundHeadingIncrement, "expected heading-increment diagnostics (explicit override) but found none")
 
 	// Other heading rules (e.g. first-line-heading) should be disabled.
 	headingRules := rulesByCategory(allRules, "heading")
@@ -259,9 +259,7 @@ func TestCategories_OverrideDisablesCategoryForMatchingFiles(t *testing.T) {
 			break
 		}
 	}
-	if !foundWhitespace {
-		t.Error("expected whitespace diagnostics for .txt file (no override), but found none")
-	}
+	assert.True(t, foundWhitespace, "expected whitespace diagnostics for .txt file (no override), but found none")
 }
 
 func TestCategories_DisablingCategoryWithMockRules(t *testing.T) {
@@ -291,9 +289,7 @@ func TestCategories_DisablingCategoryWithMockRules(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	// Should have diagnostics from whitespace and code, but NOT heading.
 	ruleIDs := make(map[string]bool)
@@ -301,15 +297,9 @@ func TestCategories_DisablingCategoryWithMockRules(t *testing.T) {
 		ruleIDs[d.RuleID] = true
 	}
 
-	if ruleIDs["MDS900"] {
-		t.Error("heading category disabled but got diagnostic from mock-heading (MDS900)")
-	}
-	if !ruleIDs["MDS901"] {
-		t.Error("expected diagnostic from mock-whitespace (MDS901)")
-	}
-	if !ruleIDs["MDS902"] {
-		t.Error("expected diagnostic from mock-code (MDS902)")
-	}
+	assert.False(t, ruleIDs["MDS900"], "heading category disabled but got diagnostic from mock-heading (MDS900)")
+	assert.True(t, ruleIDs["MDS901"], "expected diagnostic from mock-whitespace (MDS901)")
+	assert.True(t, ruleIDs["MDS902"], "expected diagnostic from mock-code (MDS902)")
 }
 
 func TestCategories_ExplicitRuleOverrideWithMockRules(t *testing.T) {
@@ -338,9 +328,7 @@ func TestCategories_ExplicitRuleOverrideWithMockRules(t *testing.T) {
 	}
 
 	result := runner.Run([]string{mdFile})
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	ruleIDs := make(map[string]bool)
 	for _, d := range result.Diagnostics {
@@ -348,13 +336,10 @@ func TestCategories_ExplicitRuleOverrideWithMockRules(t *testing.T) {
 	}
 
 	// mock-heading-a should fire (explicit override).
-	if !ruleIDs["MDS900"] {
-		t.Error("expected diagnostic from mock-heading-a (MDS900) due to explicit override")
-	}
+	assert.True(t, ruleIDs["MDS900"], "expected diagnostic from mock-heading-a (MDS900) due to explicit override")
 	// mock-heading-b should NOT fire (category disabled, not explicit).
-	if ruleIDs["MDS901"] {
-		t.Error("did not expect diagnostic from mock-heading-b (MDS901), heading category is disabled")
-	}
+	assert.False(t, ruleIDs["MDS901"],
+		"did not expect diagnostic from mock-heading-b (MDS901), heading category is disabled")
 }
 
 func TestCategories_RunSourceRespectsCategories(t *testing.T) {
@@ -375,21 +360,15 @@ func TestCategories_RunSourceRespectsCategories(t *testing.T) {
 	}
 
 	result := runner.RunSource("test.md", []byte("# Hello\n"))
-	if len(result.Errors) != 0 {
-		t.Fatalf("unexpected errors: %v", result.Errors)
-	}
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
 
 	ruleIDs := make(map[string]bool)
 	for _, d := range result.Diagnostics {
 		ruleIDs[d.RuleID] = true
 	}
 
-	if ruleIDs["MDS900"] {
-		t.Error("heading category disabled but got diagnostic from mock-heading via RunSource")
-	}
-	if !ruleIDs["MDS901"] {
-		t.Error("expected diagnostic from mock-whitespace via RunSource")
-	}
+	assert.False(t, ruleIDs["MDS900"], "heading category disabled but got diagnostic from mock-heading via RunSource")
+	assert.True(t, ruleIDs["MDS901"], "expected diagnostic from mock-whitespace via RunSource")
 }
 
 func TestCategories_OverrideCategoryWithMockRules(t *testing.T) {
@@ -424,15 +403,12 @@ func TestCategories_OverrideCategoryWithMockRules(t *testing.T) {
 
 	// .md file: code category disabled via override.
 	resultMD := runner.Run([]string{mdFile})
-	if len(resultMD.Diagnostics) != 0 {
-		t.Errorf("code category disabled for *.md but got %d diagnostics", len(resultMD.Diagnostics))
-	}
+	assert.Len(t, resultMD.Diagnostics, 0,
+		"code category disabled for *.md but got %d diagnostics", len(resultMD.Diagnostics))
 
 	// .txt file: code category still active (override does not match).
 	resultTXT := runner.Run([]string{txtFile})
-	if len(resultTXT.Diagnostics) != 1 {
-		t.Errorf("expected 1 diagnostic for .txt file, got %d", len(resultTXT.Diagnostics))
-	}
+	assert.Len(t, resultTXT.Diagnostics, 1, "expected 1 diagnostic for .txt file, got %d", len(resultTXT.Diagnostics))
 }
 
 // TestAllRuleCategoriesValid verifies that every registered rule returns

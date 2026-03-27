@@ -6,15 +6,16 @@ import (
 	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // helper creates a *lint.File with the given source and attaches the given FS.
 func newTestFile(t *testing.T, path, source string, fs ...fstest.MapFS) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile(path, []byte(source))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if len(fs) > 0 {
 		f.FS = fs[0]
 	}
@@ -39,9 +40,8 @@ func expectDiagMsg(t *testing.T, diags []lint.Diagnostic, msg string) {
 	if len(diags) == 0 {
 		t.Fatalf("expected diagnostic with message %q, got none", msg)
 	}
-	if !strings.Contains(diags[0].Message, msg) {
-		t.Errorf("expected diagnostic message containing %q, got %q", msg, diags[0].Message)
-	}
+	assert.Contains(t, diags[0].Message, msg,
+		"expected diagnostic message containing %q, got %q", msg, diags[0].Message)
 }
 
 // expectDiagLine asserts the first diagnostic is on the given line.
@@ -427,9 +427,7 @@ glob: "other/*.md"
 			break
 		}
 	}
-	if !found {
-		t.Error("expected nested marker diagnostic")
-	}
+	assert.True(t, found, "expected nested marker diagnostic")
 }
 
 func TestDiag_NonStringYAMLValues(t *testing.T) {
@@ -449,9 +447,7 @@ glob: 42
 			break
 		}
 	}
-	if !found {
-		t.Errorf("expected non-string value diagnostic for glob, got %v", diags)
-	}
+	assert.True(t, found, "expected non-string value diagnostic for glob, got %v", diags)
 }
 
 func TestDiag_NonStringMultipleKeys(t *testing.T) {
@@ -651,12 +647,8 @@ old
 	r := &Rule{}
 	result := r.Fix(f)
 
-	if !strings.Contains(string(result), "- [one.md](a/one.md)") {
-		t.Error("Fix should regenerate first section with a/one.md")
-	}
-	if !strings.Contains(string(result), "- [two.md](b/two.md)") {
-		t.Error("Fix should regenerate second section with b/two.md")
-	}
+	assert.Contains(t, string(result), "- [one.md](a/one.md)", "Fix should regenerate first section with a/one.md")
+	assert.Contains(t, string(result), "- [two.md](b/two.md)", "Fix should regenerate second section with b/two.md")
 }
 
 // =====================================================================
@@ -934,9 +926,10 @@ another: value
 	r := &Rule{}
 	diags := r.Check(f)
 	for _, d := range diags {
-		if strings.Contains(d.Message, "unknown_key") || strings.Contains(d.Message, "another") {
-			t.Errorf("unknown YAML keys should be silently ignored, got: %s", d.Message)
-		}
+		assert.NotContains(t, d.Message, "unknown_key",
+			"unknown YAML keys should be silently ignored, got: %s", d.Message)
+		assert.NotContains(t, d.Message, "another",
+			"unknown YAML keys should be silently ignored, got: %s", d.Message)
 	}
 }
 
@@ -1343,9 +1336,7 @@ old content
 			r := &Rule{}
 			result := string(r.Fix(f))
 			for _, sub := range tc.contains {
-				if !strings.Contains(result, sub) {
-					t.Errorf("Fix result missing %q.\nGot:\n%s", sub, result)
-				}
+				assert.Contains(t, result, sub, "Fix result missing %q.\nGot:\n%s", sub, result)
 			}
 		})
 	}
@@ -1512,19 +1503,13 @@ func TestParseSort_EmptyValue(t *testing.T) {
 
 func TestParseRowTemplate_Valid(t *testing.T) {
 	tmpl, err := parseRowTemplate("- [{{.title}}]({{.filename}})")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if tmpl == nil {
-		t.Fatal("expected non-nil template")
-	}
+	require.NoError(t, err, "unexpected error: %v", err)
+	require.NotNil(t, tmpl, "expected non-nil template")
 }
 
 func TestParseRowTemplate_Invalid(t *testing.T) {
 	_, err := parseRowTemplate("{{.title")
-	if err == nil {
-		t.Error("expected error for invalid template")
-	}
+	require.Error(t, err, "expected error for invalid template")
 }
 
 func TestContainsDotDot(t *testing.T) {
@@ -1543,9 +1528,7 @@ func TestContainsDotDot(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.pattern, func(t *testing.T) {
 			got := containsDotDot(tc.pattern)
-			if got != tc.want {
-				t.Errorf("containsDotDot(%q) = %v, want %v", tc.pattern, got, tc.want)
-			}
+			assert.Equal(t, tc.want, got, "containsDotDot(%q) = %v, want %v", tc.pattern, got, tc.want)
 		})
 	}
 }
@@ -1564,18 +1547,14 @@ func TestEnsureTrailingNewline(t *testing.T) {
 	}
 	for _, tc := range tests {
 		got := ensureTrailingNewline(tc.input)
-		if got != tc.want {
-			t.Errorf("ensureTrailingNewline(%q) = %q, want %q", tc.input, got, tc.want)
-		}
+		assert.Equal(t, tc.want, got, "ensureTrailingNewline(%q) = %q, want %q", tc.input, got, tc.want)
 	}
 }
 
 func TestSplitLines(t *testing.T) {
 	input := []byte("a\nb\nc")
 	lines := splitLines(input)
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(lines))
-	}
+	require.Len(t, lines, 3, "expected 3 lines, got %d", len(lines))
 	if string(lines[0]) != "a" {
 		t.Errorf("line 0: got %q", string(lines[0]))
 	}
@@ -1589,9 +1568,7 @@ func TestSplitLines(t *testing.T) {
 
 func TestSplitLines_Empty(t *testing.T) {
 	lines := splitLines([]byte(""))
-	if len(lines) != 1 {
-		t.Fatalf("expected 1 line for empty input, got %d", len(lines))
-	}
+	require.Len(t, lines, 1, "expected 1 line for empty input, got %d", len(lines))
 	if string(lines[0]) != "" {
 		t.Errorf("expected empty line, got %q", string(lines[0]))
 	}
@@ -1599,9 +1576,7 @@ func TestSplitLines_Empty(t *testing.T) {
 
 func TestSplitLines_SingleNewline(t *testing.T) {
 	lines := splitLines([]byte("\n"))
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines for single newline, got %d", len(lines))
-	}
+	require.Len(t, lines, 2, "expected 2 lines for single newline, got %d", len(lines))
 	if string(lines[0]) != "" {
 		t.Errorf("expected empty first line, got %q", string(lines[0]))
 	}
@@ -1612,9 +1587,7 @@ func TestSplitLines_SingleNewline(t *testing.T) {
 
 func TestSplitLines_TrailingNewline(t *testing.T) {
 	lines := splitLines([]byte("a\nb\n"))
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(lines))
-	}
+	require.Len(t, lines, 3, "expected 3 lines, got %d", len(lines))
 	if string(lines[0]) != "a" {
 		t.Errorf("line 0: got %q", string(lines[0]))
 	}
@@ -1633,9 +1606,7 @@ func TestRenderMinimal(t *testing.T) {
 	}
 	got := renderMinimal(entries)
 	expected := "- [api.md](docs/api.md)\n- [guide.md](docs/guide.md)\n"
-	if got != expected {
-		t.Errorf("renderMinimal mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
-	}
+	assert.Equal(t, expected, got, "renderMinimal mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
 }
 
 func TestRenderEmpty_WithValue(t *testing.T) {
@@ -1647,16 +1618,12 @@ func TestRenderEmpty_WithValue(t *testing.T) {
 
 func TestRenderEmpty_NoKey(t *testing.T) {
 	got := renderEmpty(map[string]string{})
-	if got != "" {
-		t.Errorf("expected empty string, got %q", got)
-	}
+	assert.Equal(t, "", got, "expected empty string, got %q", got)
 }
 
 func TestRenderEmpty_EmptyValue(t *testing.T) {
 	got := renderEmpty(map[string]string{"empty": ""})
-	if got != "" {
-		t.Errorf("expected empty string, got %q", got)
-	}
+	assert.Equal(t, "", got, "expected empty string, got %q", got)
 }
 
 func TestRenderTemplate_HeaderRowFooter(t *testing.T) {
@@ -1670,13 +1637,9 @@ func TestRenderTemplate_HeaderRowFooter(t *testing.T) {
 		{fields: map[string]string{"title": "B", "filename": "b.md"}},
 	}
 	got, err := renderTemplate(params, entries)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := "| Title |\n|-------|\n| A |\n| B |\n---\n"
-	if got != expected {
-		t.Errorf("renderTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
-	}
+	assert.Equal(t, expected, got, "renderTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
 }
 
 func TestRenderTemplate_RowOnly(t *testing.T) {
@@ -1687,13 +1650,9 @@ func TestRenderTemplate_RowOnly(t *testing.T) {
 		{fields: map[string]string{"filename": "a.md"}},
 	}
 	got, err := renderTemplate(params, entries)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := "- a.md\n"
-	if got != expected {
-		t.Errorf("renderTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
-	}
+	assert.Equal(t, expected, got, "renderTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
 }
 
 func TestRenderTemplate_FooterOnly(t *testing.T) {
@@ -1705,13 +1664,9 @@ func TestRenderTemplate_FooterOnly(t *testing.T) {
 		{fields: map[string]string{"filename": "a.md"}},
 	}
 	got, err := renderTemplate(params, entries)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := "- a.md\n---\n"
-	if got != expected {
-		t.Errorf("renderTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
-	}
+	assert.Equal(t, expected, got, "renderTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
 }
 
 func TestRenderTemplate_InvalidTemplateReturnsError(t *testing.T) {
@@ -1722,9 +1677,7 @@ func TestRenderTemplate_InvalidTemplateReturnsError(t *testing.T) {
 		{fields: map[string]string{"filename": "a.md"}},
 	}
 	_, err := renderTemplate(params, entries)
-	if err == nil {
-		t.Error("expected error for invalid template syntax")
-	}
+	require.Error(t, err, "expected error for invalid template syntax")
 }
 
 func TestRenderTemplate_ExecutionErrorReturnsError(t *testing.T) {
@@ -1736,9 +1689,7 @@ func TestRenderTemplate_ExecutionErrorReturnsError(t *testing.T) {
 		{fields: map[string]string{"filename": "a.md"}},
 	}
 	_, err := renderTemplate(params, entries)
-	if err == nil {
-		t.Error("expected error for template execution failure")
-	}
+	require.Error(t, err, "expected error for template execution failure")
 }
 
 func TestSortEntries_PathAscending(t *testing.T) {
@@ -1866,9 +1817,7 @@ func TestReadFrontMatter_NoFrontMatter(t *testing.T) {
 		"a.md": {Data: []byte("# No front matter\n")},
 	}
 	fm := readFrontMatter(fs, "a.md")
-	if fm != nil {
-		t.Errorf("expected nil for no front matter, got %v", fm)
-	}
+	assert.Nil(t, fm, "expected nil for no front matter, got %v", fm)
 }
 
 func TestReadFrontMatter_InvalidYAML(t *testing.T) {
@@ -1876,9 +1825,7 @@ func TestReadFrontMatter_InvalidYAML(t *testing.T) {
 		"a.md": {Data: []byte("---\ninvalid: [yaml\n---\n")},
 	}
 	fm := readFrontMatter(fs, "a.md")
-	if fm != nil {
-		t.Errorf("expected nil for invalid YAML, got %v", fm)
-	}
+	assert.Nil(t, fm, "expected nil for invalid YAML, got %v", fm)
 }
 
 func TestReadFrontMatter_NonStringValue(t *testing.T) {
@@ -1897,9 +1844,7 @@ func TestReadFrontMatter_NonStringValue(t *testing.T) {
 func TestReadFrontMatter_UnreadableFile(t *testing.T) {
 	fs := fstest.MapFS{}
 	fm := readFrontMatter(fs, "missing.md")
-	if fm != nil {
-		t.Errorf("expected nil for missing file, got %v", fm)
-	}
+	assert.Nil(t, fm, "expected nil for missing file, got %v", fm)
 }
 
 func TestReadFrontMatter_EmptyFile(t *testing.T) {
@@ -1907,9 +1852,7 @@ func TestReadFrontMatter_EmptyFile(t *testing.T) {
 		"empty.md": {Data: []byte("")},
 	}
 	fm := readFrontMatter(fs, "empty.md")
-	if fm != nil {
-		t.Errorf("expected nil for empty file, got %v", fm)
-	}
+	assert.Nil(t, fm, "expected nil for empty file, got %v", fm)
 }
 
 func TestReadFrontMatter_OnlyOpeningDelimiter(t *testing.T) {
@@ -1918,9 +1861,7 @@ func TestReadFrontMatter_OnlyOpeningDelimiter(t *testing.T) {
 		"a.md": {Data: []byte("---\ntitle: Hello\n")},
 	}
 	fm := readFrontMatter(fs, "a.md")
-	if fm != nil {
-		t.Errorf("expected nil for unclosed front matter, got %v", fm)
-	}
+	assert.Nil(t, fm, "expected nil for unclosed front matter, got %v", fm)
 }
 
 func TestReadFrontMatter_BooleanValue(t *testing.T) {
@@ -1968,9 +1909,7 @@ line5
 		ContentTo:   4,
 	}
 	content := extractContent(f, mp)
-	if content != "line2\nline3\nline4\n" {
-		t.Errorf("expected 'line2\\nline3\\nline4\\n', got %q", content)
-	}
+	assert.Equal(t, "line2\nline3\nline4\n", content, "expected 'line2\\nline3\\nline4\\n', got %q", content)
 }
 
 func TestExtractContent_Empty(t *testing.T) {
@@ -1985,9 +1924,7 @@ end
 		ContentTo:   1,
 	}
 	content := extractContent(f, mp)
-	if content != "" {
-		t.Errorf("expected empty content, got %q", content)
-	}
+	assert.Equal(t, "", content, "expected empty content, got %q", content)
 }
 
 func TestExtractContent_SingleLine(t *testing.T) {
@@ -2003,9 +1940,7 @@ end
 		ContentTo:   2,
 	}
 	content := extractContent(f, mp)
-	if content != "middle\n" {
-		t.Errorf("expected 'middle\\n', got %q", content)
-	}
+	assert.Equal(t, "middle\n", content, "expected 'middle\\n', got %q", content)
 }
 
 func TestReplaceContent_Normal(t *testing.T) {

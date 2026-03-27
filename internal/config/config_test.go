@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	// Import all rule packages so their init() functions register rules.
@@ -56,45 +58,30 @@ func TestParseValidYAML(t *testing.T) {
 	cfg := loadValidYAMLFixture(t)
 
 	t.Run("rules", func(t *testing.T) {
-		if len(cfg.Rules) != 3 {
-			t.Fatalf("expected 3 rules, got %d", len(cfg.Rules))
-		}
-		if !cfg.Rules["line-length"].Enabled {
-			t.Error("line-length should be enabled")
-		}
-		if cfg.Rules["heading-style"].Enabled {
-			t.Error("heading-style should be disabled")
-		}
-		if !cfg.Rules["no-multiple-blanks"].Enabled {
-			t.Error("no-multiple-blanks should be enabled")
-		}
+		require.Len(t, cfg.Rules, 3, "expected 3 rules, got %d", len(cfg.Rules))
+		assert.True(t, cfg.Rules["line-length"].Enabled, "line-length should be enabled")
+		assert.False(t, cfg.Rules["heading-style"].Enabled, "heading-style should be disabled")
+		assert.True(t, cfg.Rules["no-multiple-blanks"].Enabled, "no-multiple-blanks should be enabled")
 		if cfg.Rules["no-multiple-blanks"].Settings["max"] != 2 {
 			t.Errorf("no-multiple-blanks max: expected 2, got %v", cfg.Rules["no-multiple-blanks"].Settings["max"])
 		}
 	})
 
 	t.Run("ignore", func(t *testing.T) {
-		if len(cfg.Ignore) != 2 {
-			t.Fatalf("expected 2 ignore patterns, got %d", len(cfg.Ignore))
-		}
+		require.Len(t, cfg.Ignore, 2, "expected 2 ignore patterns, got %d", len(cfg.Ignore))
 		if cfg.Ignore[0] != "vendor/**" {
 			t.Errorf("expected vendor/**, got %s", cfg.Ignore[0])
 		}
 	})
 
 	t.Run("overrides", func(t *testing.T) {
-		if len(cfg.Overrides) != 2 {
-			t.Fatalf("expected 2 overrides, got %d", len(cfg.Overrides))
-		}
+		require.Len(t, cfg.Overrides, 2, "expected 2 overrides, got %d", len(cfg.Overrides))
 		if cfg.Overrides[0].Files[0] != "CHANGELOG.md" {
 			t.Errorf("expected CHANGELOG.md, got %s", cfg.Overrides[0].Files[0])
 		}
-		if cfg.Overrides[0].Rules["no-duplicate-headings"].Enabled {
-			t.Error("no-duplicate-headings should be disabled in override")
-		}
-		if !cfg.Overrides[1].Rules["line-length"].Enabled {
-			t.Error("line-length should be enabled in override")
-		}
+		assert.False(t, cfg.Overrides[0].Rules["no-duplicate-headings"].Enabled,
+			"no-duplicate-headings should be disabled in override")
+		assert.True(t, cfg.Overrides[1].Rules["line-length"].Enabled, "line-length should be enabled in override")
 		if cfg.Overrides[1].Rules["line-length"].Settings["max"] != 120 {
 			t.Errorf("line-length max in override: expected 120, got %v",
 				cfg.Overrides[1].Rules["line-length"].Settings["max"])
@@ -131,9 +118,7 @@ overrides:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 	return cfg
 }
 
@@ -149,16 +134,10 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 	rc := cfg.Rules["line-length"]
-	if rc.Enabled {
-		t.Error("expected Enabled=false")
-	}
-	if rc.Settings != nil {
-		t.Error("expected Settings=nil")
-	}
+	assert.False(t, rc.Enabled, "expected Enabled=false")
+	assert.Nil(t, rc.Settings, "expected Settings=nil")
 }
 
 func TestRuleCfgBoolTrue(t *testing.T) {
@@ -173,16 +152,10 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 	rc := cfg.Rules["line-length"]
-	if !rc.Enabled {
-		t.Error("expected Enabled=true")
-	}
-	if rc.Settings != nil {
-		t.Error("expected Settings=nil")
-	}
+	assert.True(t, rc.Enabled, "expected Enabled=true")
+	assert.Nil(t, rc.Settings, "expected Settings=nil")
 }
 
 func TestRuleCfgObject(t *testing.T) {
@@ -199,16 +172,10 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 	rc := cfg.Rules["line-length"]
-	if !rc.Enabled {
-		t.Error("expected Enabled=true")
-	}
-	if rc.Settings == nil {
-		t.Fatal("expected Settings to be non-nil")
-	}
+	assert.True(t, rc.Enabled, "expected Enabled=true")
+	require.NotNil(t, rc.Settings, "expected Settings to be non-nil")
 	if rc.Settings["max"] != 120 {
 		t.Errorf("expected max=120, got %v", rc.Settings["max"])
 	}
@@ -229,16 +196,12 @@ rules:
 	}
 
 	_, err := Load(cfgPath)
-	if err == nil {
-		t.Fatal("expected error for invalid YAML")
-	}
+	require.Error(t, err, "expected error for invalid YAML")
 }
 
 func TestLoadNonexistentFile(t *testing.T) {
 	_, err := Load("/nonexistent/path/.mdsmith.yml")
-	if err == nil {
-		t.Fatal("expected error for nonexistent file")
-	}
+	require.Error(t, err, "expected error for nonexistent file")
 }
 
 // --- Discovery tests ---
@@ -251,12 +214,8 @@ func TestDiscoverFindsInCurrentDir(t *testing.T) {
 	}
 
 	found, err := Discover(dir)
-	if err != nil {
-		t.Fatalf("Discover returned error: %v", err)
-	}
-	if found != cfgPath {
-		t.Errorf("expected %s, got %s", cfgPath, found)
-	}
+	require.NoError(t, err, "Discover returned error: %v", err)
+	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
 func TestDiscoverFindsInParentDir(t *testing.T) {
@@ -271,12 +230,8 @@ func TestDiscoverFindsInParentDir(t *testing.T) {
 	}
 
 	found, err := Discover(child)
-	if err != nil {
-		t.Fatalf("Discover returned error: %v", err)
-	}
-	if found != cfgPath {
-		t.Errorf("expected %s, got %s", cfgPath, found)
-	}
+	require.NoError(t, err, "Discover returned error: %v", err)
+	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
 func TestDiscoverStopsAtGitBoundary(t *testing.T) {
@@ -302,12 +257,8 @@ func TestDiscoverStopsAtGitBoundary(t *testing.T) {
 	}
 
 	found, err := Discover(child)
-	if err != nil {
-		t.Fatalf("Discover returned error: %v", err)
-	}
-	if found != "" {
-		t.Errorf("expected empty string (stopped at .git), got %s", found)
-	}
+	require.NoError(t, err, "Discover returned error: %v", err)
+	assert.Equal(t, "", found, "expected empty string (stopped at .git), got %s", found)
 }
 
 func TestDiscoverStopsAtGitBoundaryWithConfigInRepo(t *testing.T) {
@@ -329,12 +280,8 @@ func TestDiscoverStopsAtGitBoundaryWithConfigInRepo(t *testing.T) {
 	}
 
 	found, err := Discover(child)
-	if err != nil {
-		t.Fatalf("Discover returned error: %v", err)
-	}
-	if found != cfgPath {
-		t.Errorf("expected %s, got %s", cfgPath, found)
-	}
+	require.NoError(t, err, "Discover returned error: %v", err)
+	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
 func TestDiscoverReturnsEmptyWhenNotFound(t *testing.T) {
@@ -346,12 +293,8 @@ func TestDiscoverReturnsEmptyWhenNotFound(t *testing.T) {
 	}
 
 	found, err := Discover(dir)
-	if err != nil {
-		t.Fatalf("Discover returned error: %v", err)
-	}
-	if found != "" {
-		t.Errorf("expected empty string, got %s", found)
-	}
+	require.NoError(t, err, "Discover returned error: %v", err)
+	assert.Equal(t, "", found, "expected empty string, got %s", found)
 }
 
 // --- Defaults tests ---
@@ -360,9 +303,7 @@ func TestDefaultsRuleEnablement(t *testing.T) {
 	cfg := Defaults()
 	all := rule.All()
 
-	if len(cfg.Rules) != len(all) {
-		t.Fatalf("expected %d rules, got %d", len(all), len(cfg.Rules))
-	}
+	require.Len(t, cfg.Rules, len(all), "expected %d rules, got %d", len(all), len(cfg.Rules))
 
 	for _, r := range all {
 		name := r.Name()
@@ -378,9 +319,7 @@ func TestDefaultsRuleEnablement(t *testing.T) {
 				name, rc.Enabled, wantEnabled,
 			)
 		}
-		if rc.Settings != nil {
-			t.Errorf("rule %q should have nil settings by default", name)
-		}
+		assert.Nil(t, rc.Settings, "rule %q should have nil settings by default", name)
 	}
 }
 
@@ -390,9 +329,7 @@ func TestMergeNilLoaded(t *testing.T) {
 	defaults := Defaults()
 	merged := Merge(defaults, nil)
 
-	if len(merged.Rules) != len(rule.All()) {
-		t.Fatalf("expected %d rules, got %d", len(rule.All()), len(merged.Rules))
-	}
+	require.Len(t, merged.Rules, len(rule.All()), "expected %d rules, got %d", len(rule.All()), len(merged.Rules))
 	for _, r := range rule.All() {
 		name := r.Name()
 		rc := merged.Rules[name]
@@ -416,17 +353,11 @@ func TestMergeDisabledRule(t *testing.T) {
 
 	merged := Merge(defaults, loaded)
 
-	if merged.Rules["line-length"].Enabled {
-		t.Error("line-length should be disabled after merge")
-	}
+	assert.False(t, merged.Rules["line-length"].Enabled, "line-length should be disabled after merge")
 
 	// Other rules should still be enabled
-	if !merged.Rules["heading-style"].Enabled {
-		t.Error("heading-style should remain enabled")
-	}
-	if !merged.Rules["no-trailing-spaces"].Enabled {
-		t.Error("no-trailing-spaces should remain enabled")
-	}
+	assert.True(t, merged.Rules["heading-style"].Enabled, "heading-style should remain enabled")
+	assert.True(t, merged.Rules["no-trailing-spaces"].Enabled, "no-trailing-spaces should remain enabled")
 }
 
 func TestMergeCustomSettings(t *testing.T) {
@@ -443,9 +374,7 @@ func TestMergeCustomSettings(t *testing.T) {
 	merged := Merge(defaults, loaded)
 
 	rc := merged.Rules["line-length"]
-	if !rc.Enabled {
-		t.Error("line-length should be enabled")
-	}
+	assert.True(t, rc.Enabled, "line-length should be enabled")
 	if rc.Settings["max"] != 120 {
 		t.Errorf("expected max=120, got %v", rc.Settings["max"])
 	}
@@ -470,9 +399,7 @@ func TestMergePreservesIgnoreAndOverrides(t *testing.T) {
 	if len(merged.Ignore) != 1 || merged.Ignore[0] != "vendor/**" {
 		t.Errorf("ignore not preserved: %v", merged.Ignore)
 	}
-	if len(merged.Overrides) != 1 {
-		t.Fatalf("expected 1 override, got %d", len(merged.Overrides))
-	}
+	require.Len(t, merged.Overrides, 1, "expected 1 override, got %d", len(merged.Overrides))
 }
 
 // --- Effective tests ---
@@ -481,9 +408,7 @@ func TestEffectiveWithoutOverrides(t *testing.T) {
 	cfg := Defaults()
 	eff := Effective(cfg, "README.md")
 
-	if len(eff) != len(rule.All()) {
-		t.Fatalf("expected %d rules, got %d", len(rule.All()), len(eff))
-	}
+	require.Len(t, eff, len(rule.All()), "expected %d rules, got %d", len(rule.All()), len(eff))
 	for _, r := range rule.All() {
 		name := r.Name()
 		rc := eff[name]
@@ -510,18 +435,12 @@ func TestEffectiveOverrideAppliesPerFile(t *testing.T) {
 
 	// CHANGELOG.md should have no-duplicate-headings disabled
 	eff := Effective(cfg, "CHANGELOG.md")
-	if eff["no-duplicate-headings"].Enabled {
-		t.Error("no-duplicate-headings should be disabled for CHANGELOG.md")
-	}
-	if !eff["line-length"].Enabled {
-		t.Error("line-length should remain enabled for CHANGELOG.md")
-	}
+	assert.False(t, eff["no-duplicate-headings"].Enabled, "no-duplicate-headings should be disabled for CHANGELOG.md")
+	assert.True(t, eff["line-length"].Enabled, "line-length should remain enabled for CHANGELOG.md")
 
 	// README.md should NOT be affected
 	eff2 := Effective(cfg, "README.md")
-	if !eff2["no-duplicate-headings"].Enabled {
-		t.Error("no-duplicate-headings should remain enabled for README.md")
-	}
+	assert.True(t, eff2["no-duplicate-headings"].Enabled, "no-duplicate-headings should remain enabled for README.md")
 }
 
 func TestEffectiveLaterOverridesWin(t *testing.T) {
@@ -550,9 +469,7 @@ func TestEffectiveLaterOverridesWin(t *testing.T) {
 	// docs/api/foo.md matches both overrides; second should win
 	eff := Effective(cfg, "docs/api/foo.md")
 	rc := eff["line-length"]
-	if !rc.Enabled {
-		t.Error("line-length should be enabled")
-	}
+	assert.True(t, rc.Enabled, "line-length should be enabled")
 	if rc.Settings["max"] != 200 {
 		t.Errorf("expected max=200 (later override wins), got %v", rc.Settings["max"])
 	}
@@ -571,15 +488,9 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
-	if cfg.FrontMatter == nil {
-		t.Fatal("expected FrontMatter to be non-nil")
-	}
-	if !*cfg.FrontMatter {
-		t.Error("expected FrontMatter to be true")
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
+	require.NotNil(t, cfg.FrontMatter, "expected FrontMatter to be non-nil")
+	assert.True(t, *cfg.FrontMatter, "expected FrontMatter to be true")
 }
 
 func TestFrontMatterFalse(t *testing.T) {
@@ -595,15 +506,9 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
-	if cfg.FrontMatter == nil {
-		t.Fatal("expected FrontMatter to be non-nil")
-	}
-	if *cfg.FrontMatter {
-		t.Error("expected FrontMatter to be false")
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
+	require.NotNil(t, cfg.FrontMatter, "expected FrontMatter to be non-nil")
+	assert.False(t, *cfg.FrontMatter, "expected FrontMatter to be false")
 }
 
 func TestFrontMatterOmitted(t *testing.T) {
@@ -618,12 +523,8 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
-	if cfg.FrontMatter != nil {
-		t.Errorf("expected FrontMatter nil when omitted, got %v", *cfg.FrontMatter)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
+	assert.Nil(t, cfg.FrontMatter, "expected FrontMatter nil when omitted")
 }
 
 func TestMergeFrontMatter(t *testing.T) {
@@ -643,9 +544,7 @@ func TestMergeFrontMatter(t *testing.T) {
 	// Loaded config omits front-matter — defaults should apply
 	loaded2 := &Config{}
 	merged2 := Merge(defaults, loaded2)
-	if merged2.FrontMatter != nil {
-		t.Error("expected FrontMatter=nil when not set in loaded config")
-	}
+	assert.Nil(t, merged2.FrontMatter, "expected FrontMatter=nil when not set in loaded config")
 }
 
 // TestEffectiveOverrideMatchesBasename verifies that an override pattern
@@ -664,21 +563,16 @@ func TestEffectiveOverrideMatchesBasename(t *testing.T) {
 
 	// slides.md at root should match.
 	eff := Effective(cfg, "slides.md")
-	if eff["first-line-heading"].Enabled {
-		t.Error("first-line-heading should be disabled for slides.md")
-	}
+	assert.False(t, eff["first-line-heading"].Enabled, "first-line-heading should be disabled for slides.md")
 
 	// docs/slides.md should also match via basename (issue #40).
 	eff2 := Effective(cfg, "docs/slides.md")
-	if eff2["first-line-heading"].Enabled {
-		t.Error("first-line-heading should be disabled for docs/slides.md via basename match")
-	}
+	assert.False(t, eff2["first-line-heading"].Enabled,
+		"first-line-heading should be disabled for docs/slides.md via basename match")
 
 	// other.md should NOT match.
 	eff3 := Effective(cfg, "other.md")
-	if !eff3["first-line-heading"].Enabled {
-		t.Error("first-line-heading should remain enabled for other.md")
-	}
+	assert.True(t, eff3["first-line-heading"].Enabled, "first-line-heading should remain enabled for other.md")
 }
 
 func TestEffectiveGlobPatternMatch(t *testing.T) {
@@ -693,15 +587,11 @@ func TestEffectiveGlobPatternMatch(t *testing.T) {
 	}
 
 	eff := Effective(cfg, "vendor/foo/bar.md")
-	if eff["line-length"].Enabled {
-		t.Error("line-length should be disabled for vendor/foo/bar.md")
-	}
+	assert.False(t, eff["line-length"].Enabled, "line-length should be disabled for vendor/foo/bar.md")
 
 	// Non-matching file
 	eff2 := Effective(cfg, "src/main.md")
-	if !eff2["line-length"].Enabled {
-		t.Error("line-length should remain enabled for src/main.md")
-	}
+	assert.True(t, eff2["line-length"].Enabled, "line-length should remain enabled for src/main.md")
 }
 
 // --- MarshalYAML tests ---
@@ -709,9 +599,7 @@ func TestEffectiveGlobPatternMatch(t *testing.T) {
 func TestMarshalYAML_DisabledRule(t *testing.T) {
 	rc := RuleCfg{Enabled: false}
 	data, err := yaml.Marshal(rc)
-	if err != nil {
-		t.Fatalf("marshal error: %v", err)
-	}
+	require.NoError(t, err, "marshal error: %v", err)
 	if string(data) != "false\n" {
 		t.Errorf("expected 'false\\n', got %q", string(data))
 	}
@@ -720,9 +608,7 @@ func TestMarshalYAML_DisabledRule(t *testing.T) {
 func TestMarshalYAML_EnabledNoSettings(t *testing.T) {
 	rc := RuleCfg{Enabled: true}
 	data, err := yaml.Marshal(rc)
-	if err != nil {
-		t.Fatalf("marshal error: %v", err)
-	}
+	require.NoError(t, err, "marshal error: %v", err)
 	if string(data) != "true\n" {
 		t.Errorf("expected 'true\\n', got %q", string(data))
 	}
@@ -731,9 +617,7 @@ func TestMarshalYAML_EnabledNoSettings(t *testing.T) {
 func TestMarshalYAML_EnabledWithSettings(t *testing.T) {
 	rc := RuleCfg{Enabled: true, Settings: map[string]any{"max": 80}}
 	data, err := yaml.Marshal(rc)
-	if err != nil {
-		t.Fatalf("marshal error: %v", err)
-	}
+	require.NoError(t, err, "marshal error: %v", err)
 	// Should serialize as the map, not as "true".
 	var m map[string]any
 	if err := yaml.Unmarshal(data, &m); err != nil {
@@ -754,9 +638,7 @@ func TestMarshalYAML_RoundTrip(t *testing.T) {
 	}
 
 	data, err := yaml.Marshal(original)
-	if err != nil {
-		t.Fatalf("marshal error: %v", err)
-	}
+	require.NoError(t, err, "marshal error: %v", err)
 
 	var parsed Config
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
@@ -765,26 +647,18 @@ func TestMarshalYAML_RoundTrip(t *testing.T) {
 
 	// line-length should be enabled with max=120.
 	rc := parsed.Rules["line-length"]
-	if !rc.Enabled {
-		t.Error("line-length should be enabled after round-trip")
-	}
+	assert.True(t, rc.Enabled, "line-length should be enabled after round-trip")
 	if rc.Settings["max"] != 120 {
 		t.Errorf("expected max=120, got %v", rc.Settings["max"])
 	}
 
 	// heading-style should be disabled.
-	if parsed.Rules["heading-style"].Enabled {
-		t.Error("heading-style should be disabled after round-trip")
-	}
+	assert.False(t, parsed.Rules["heading-style"].Enabled, "heading-style should be disabled after round-trip")
 
 	// no-hard-tabs should be enabled with no settings.
 	rc2 := parsed.Rules["no-hard-tabs"]
-	if !rc2.Enabled {
-		t.Error("no-hard-tabs should be enabled after round-trip")
-	}
-	if rc2.Settings != nil {
-		t.Errorf("no-hard-tabs should have nil settings, got %v", rc2.Settings)
-	}
+	assert.True(t, rc2.Enabled, "no-hard-tabs should be enabled after round-trip")
+	assert.Nil(t, rc2.Settings, "no-hard-tabs should have nil settings, got %v", rc2.Settings)
 }
 
 // --- DumpDefaults tests ---
@@ -793,9 +667,7 @@ func TestDumpDefaults_AllRulesPresent(t *testing.T) {
 	cfg := DumpDefaults()
 
 	all := rule.All()
-	if len(cfg.Rules) != len(all) {
-		t.Fatalf("expected %d rules, got %d", len(all), len(cfg.Rules))
-	}
+	require.Len(t, cfg.Rules, len(all), "expected %d rules, got %d", len(all), len(cfg.Rules))
 
 	for _, r := range all {
 		rc, ok := cfg.Rules[r.Name()]
@@ -834,21 +706,15 @@ func TestDumpDefaults_ConfigurableRulesHaveSettings(t *testing.T) {
 			t.Errorf("rule %q not found", name)
 			continue
 		}
-		if rc.Settings == nil {
-			t.Errorf("rule %q should have non-nil settings", name)
-		}
+		assert.NotNil(t, rc.Settings, "rule %q should have non-nil settings", name)
 	}
 }
 
 func TestDumpDefaults_DisabledConfigurableRulesHaveNoSettings(t *testing.T) {
 	cfg := DumpDefaults()
 	rc, ok := cfg.Rules["conciseness-scoring"]
-	if !ok {
-		t.Fatal("rule conciseness-scoring not found")
-	}
-	if rc.Enabled {
-		t.Error("conciseness-scoring should be disabled by default")
-	}
+	require.True(t, ok, "rule conciseness-scoring not found")
+	assert.False(t, rc.Enabled, "conciseness-scoring should be disabled by default")
 	if rc.Settings != nil {
 		t.Errorf(
 			"conciseness-scoring should have nil settings when disabled, got %v",
@@ -883,9 +749,7 @@ func TestDumpDefaults_NonConfigurableRulesHaveNoSettings(t *testing.T) {
 			t.Errorf("rule %q not found", name)
 			continue
 		}
-		if rc.Settings != nil {
-			t.Errorf("rule %q should have nil settings, got %v", name, rc.Settings)
-		}
+		assert.Nil(t, rc.Settings, "rule %q should have nil settings, got %v", name, rc.Settings)
 	}
 }
 
@@ -896,21 +760,15 @@ func TestDumpDefaults_LineLengthSettings(t *testing.T) {
 		t.Errorf("expected line-length max=80, got %v", rc.Settings["max"])
 	}
 	exclude, ok := rc.Settings["exclude"].([]string)
-	if !ok {
-		t.Fatalf("expected exclude to be []string, got %T", rc.Settings["exclude"])
-	}
-	if len(exclude) != 3 {
-		t.Errorf("expected 3 exclude items, got %d", len(exclude))
-	}
+	require.True(t, ok, "expected exclude to be []string, got %T", rc.Settings["exclude"])
+	assert.Len(t, exclude, 3, "expected 3 exclude items, got %d", len(exclude))
 }
 
 func TestDumpDefaults_MarshalRoundTrip(t *testing.T) {
 	cfg := DumpDefaults()
 
 	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		t.Fatalf("marshal error: %v", err)
-	}
+	require.NoError(t, err, "marshal error: %v", err)
 
 	var parsed Config
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
@@ -919,9 +777,7 @@ func TestDumpDefaults_MarshalRoundTrip(t *testing.T) {
 
 	// Check that line-length round-trips with settings.
 	rc := parsed.Rules["line-length"]
-	if !rc.Enabled {
-		t.Error("line-length should be enabled after round-trip")
-	}
+	assert.True(t, rc.Enabled, "line-length should be enabled after round-trip")
 	if rc.Settings["max"] != 80 {
 		t.Errorf("expected max=80 after round-trip, got %v", rc.Settings["max"])
 	}
@@ -945,13 +801,9 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 
-	if len(cfg.Categories) != 3 {
-		t.Fatalf("expected 3 categories, got %d", len(cfg.Categories))
-	}
+	require.Len(t, cfg.Categories, 3, "expected 3 categories, got %d", len(cfg.Categories))
 	if cfg.Categories["heading"] != false {
 		t.Error("heading should be false")
 	}
@@ -975,20 +827,14 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 
-	if cfg.Categories != nil {
-		t.Errorf("expected nil categories when omitted, got %v", cfg.Categories)
-	}
+	assert.Nil(t, cfg.Categories, "expected nil categories when omitted, got %v", cfg.Categories)
 
 	// EffectiveCategories should default all to true.
 	cats := EffectiveCategories(cfg, "README.md")
 	for _, name := range ValidCategories {
-		if !cats[name] {
-			t.Errorf("category %q should default to true", name)
-		}
+		assert.True(t, cats[name], "category %q should default to true", name)
 	}
 }
 
@@ -1001,9 +847,7 @@ func TestMergeCategories(t *testing.T) {
 	}
 
 	merged := Merge(defaults, loaded)
-	if merged.Categories == nil {
-		t.Fatal("expected categories to be non-nil after merge")
-	}
+	require.NotNil(t, merged.Categories, "expected categories to be non-nil after merge")
 	if merged.Categories["heading"] != false {
 		t.Error("heading should be false after merge")
 	}
@@ -1014,9 +858,7 @@ func TestMergeCategoriesNilLoaded(t *testing.T) {
 	merged := Merge(defaults, nil)
 
 	// Defaults have nil categories.
-	if merged.Categories != nil {
-		t.Errorf("expected nil categories when merging with nil loaded, got %v", merged.Categories)
-	}
+	assert.Nil(t, merged.Categories, "expected nil categories when merging with nil loaded, got %v", merged.Categories)
 }
 
 func TestMergeCategoriesBothSet(t *testing.T) {
@@ -1058,15 +900,9 @@ func TestMergeTracksExplicitRules(t *testing.T) {
 	}
 
 	merged := Merge(defaults, loaded)
-	if !merged.ExplicitRules["line-length"] {
-		t.Error("line-length should be explicit")
-	}
-	if !merged.ExplicitRules["heading-style"] {
-		t.Error("heading-style should be explicit")
-	}
-	if merged.ExplicitRules["no-hard-tabs"] {
-		t.Error("no-hard-tabs should not be explicit (not in loaded config)")
-	}
+	assert.True(t, merged.ExplicitRules["line-length"], "line-length should be explicit")
+	assert.True(t, merged.ExplicitRules["heading-style"], "heading-style should be explicit")
+	assert.False(t, merged.ExplicitRules["no-hard-tabs"], "no-hard-tabs should not be explicit (not in loaded config)")
 }
 
 func TestEffectiveCategoriesTopLevel(t *testing.T) {
@@ -1142,18 +978,12 @@ func TestEffectiveExplicitRulesFromOverrides(t *testing.T) {
 	}
 
 	explicit := EffectiveExplicitRules(cfg, "docs/guide.md")
-	if !explicit["line-length"] {
-		t.Error("line-length should be explicit (from top-level)")
-	}
-	if !explicit["heading-style"] {
-		t.Error("heading-style should be explicit (from matching override)")
-	}
+	assert.True(t, explicit["line-length"], "line-length should be explicit (from top-level)")
+	assert.True(t, explicit["heading-style"], "heading-style should be explicit (from matching override)")
 
 	// Non-matching file should not get override rules.
 	explicit2 := EffectiveExplicitRules(cfg, "README.md")
-	if explicit2["heading-style"] {
-		t.Error("heading-style should not be explicit for README.md")
-	}
+	assert.False(t, explicit2["heading-style"], "heading-style should not be explicit for README.md")
 }
 
 func TestApplyCategoriesDisablesRulesInCategory(t *testing.T) {
@@ -1179,15 +1009,10 @@ func TestApplyCategoriesDisablesRulesInCategory(t *testing.T) {
 
 	result := ApplyCategories(rules, categories, ruleCategory, explicit)
 
-	if result["heading-style"].Enabled {
-		t.Error("heading-style should be disabled (heading category disabled)")
-	}
-	if result["heading-increment"].Enabled {
-		t.Error("heading-increment should be disabled (heading category disabled)")
-	}
-	if !result["line-length"].Enabled {
-		t.Error("line-length should remain enabled (line category enabled)")
-	}
+	assert.False(t, result["heading-style"].Enabled, "heading-style should be disabled (heading category disabled)")
+	assert.False(t, result["heading-increment"].Enabled,
+		"heading-increment should be disabled (heading category disabled)")
+	assert.True(t, result["line-length"].Enabled, "line-length should remain enabled (line category enabled)")
 }
 
 func TestApplyCategoriesExplicitRuleOverridesCategory(t *testing.T) {
@@ -1215,15 +1040,11 @@ func TestApplyCategoriesExplicitRuleOverridesCategory(t *testing.T) {
 
 	result := ApplyCategories(rules, categories, ruleCategory, explicit)
 
-	if !result["heading-style"].Enabled {
-		t.Error("heading-style should remain enabled (explicit rule overrides category)")
-	}
-	if result["heading-increment"].Enabled {
-		t.Error("heading-increment should be disabled (heading category disabled, not explicit)")
-	}
-	if !result["line-length"].Enabled {
-		t.Error("line-length should remain enabled")
-	}
+	assert.True(t, result["heading-style"].Enabled,
+		"heading-style should remain enabled (explicit rule overrides category)")
+	assert.False(t, result["heading-increment"].Enabled,
+		"heading-increment should be disabled (heading category disabled, not explicit)")
+	assert.True(t, result["line-length"].Enabled, "line-length should remain enabled")
 }
 
 func TestApplyCategoriesUnknownCategoryIsNotDisabled(t *testing.T) {
@@ -1241,9 +1062,7 @@ func TestApplyCategoriesUnknownCategoryIsNotDisabled(t *testing.T) {
 	result := ApplyCategories(rules, categories, ruleCategory, explicit)
 
 	// "custom" category is not in the categories map, so no disable.
-	if !result["custom-rule"].Enabled {
-		t.Error("custom-rule should remain enabled (its category is not in the map)")
-	}
+	assert.True(t, result["custom-rule"].Enabled, "custom-rule should remain enabled (its category is not in the map)")
 }
 
 func TestLoadCategoriesInOverrides(t *testing.T) {
@@ -1266,17 +1085,11 @@ overrides:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 
-	if len(cfg.Overrides) != 1 {
-		t.Fatalf("expected 1 override, got %d", len(cfg.Overrides))
-	}
+	require.Len(t, cfg.Overrides, 1, "expected 1 override, got %d", len(cfg.Overrides))
 	ov := cfg.Overrides[0]
-	if ov.Categories == nil {
-		t.Fatal("expected override categories to be non-nil")
-	}
+	require.NotNil(t, ov.Categories, "expected override categories to be non-nil")
 	if ov.Categories["heading"] != false {
 		t.Error("heading should be false in override")
 	}
@@ -1285,18 +1098,14 @@ overrides:
 func TestDumpDefaults_IncludesCategories(t *testing.T) {
 	cfg := DumpDefaults()
 
-	if cfg.Categories == nil {
-		t.Fatal("expected Categories to be non-nil in DumpDefaults")
-	}
+	require.NotNil(t, cfg.Categories, "expected Categories to be non-nil in DumpDefaults")
 	for _, name := range ValidCategories {
 		enabled, ok := cfg.Categories[name]
 		if !ok {
 			t.Errorf("category %q not found in DumpDefaults", name)
 			continue
 		}
-		if !enabled {
-			t.Errorf("category %q should be enabled by default", name)
-		}
+		assert.True(t, enabled, "category %q should be enabled by default", name)
 	}
 }
 
@@ -1312,9 +1121,7 @@ func TestCategoriesMarshalRoundTrip(t *testing.T) {
 	}
 
 	data, err := yaml.Marshal(original)
-	if err != nil {
-		t.Fatalf("marshal error: %v", err)
-	}
+	require.NoError(t, err, "marshal error: %v", err)
 
 	var parsed Config
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
@@ -1346,22 +1153,16 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 
-	if len(cfg.Files) != 2 {
-		t.Fatalf("expected 2 file patterns, got %d", len(cfg.Files))
-	}
+	require.Len(t, cfg.Files, 2, "expected 2 file patterns, got %d", len(cfg.Files))
 	if cfg.Files[0] != "docs/**/*.md" {
 		t.Errorf("expected docs/**/*.md, got %s", cfg.Files[0])
 	}
 	if cfg.Files[1] != "README.md" {
 		t.Errorf("expected README.md, got %s", cfg.Files[1])
 	}
-	if !cfg.FilesExplicit {
-		t.Error("expected FilesExplicit=true when files key is present")
-	}
+	assert.True(t, cfg.FilesExplicit, "expected FilesExplicit=true when files key is present")
 }
 
 func TestFilesOmittedIsNil(t *testing.T) {
@@ -1376,16 +1177,10 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 
-	if cfg.Files != nil {
-		t.Errorf("expected Files=nil when omitted, got %v", cfg.Files)
-	}
-	if cfg.FilesExplicit {
-		t.Error("expected FilesExplicit=false when files key is omitted")
-	}
+	assert.Nil(t, cfg.Files, "expected Files=nil when omitted, got %v", cfg.Files)
+	assert.False(t, cfg.FilesExplicit, "expected FilesExplicit=false when files key is omitted")
 }
 
 func TestFilesEmptyList(t *testing.T) {
@@ -1401,26 +1196,16 @@ rules:
 	}
 
 	cfg, err := Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
+	require.NoError(t, err, "Load returned error: %v", err)
 
-	if cfg.Files == nil {
-		t.Fatal("expected Files to be non-nil (empty slice) for files: []")
-	}
-	if len(cfg.Files) != 0 {
-		t.Errorf("expected 0 file patterns, got %d", len(cfg.Files))
-	}
-	if !cfg.FilesExplicit {
-		t.Error("expected FilesExplicit=true when files key is present (even empty)")
-	}
+	require.NotNil(t, cfg.Files, "expected Files to be non-nil (empty slice) for files: []")
+	assert.Len(t, cfg.Files, 0, "expected 0 file patterns, got %d", len(cfg.Files))
+	assert.True(t, cfg.FilesExplicit, "expected FilesExplicit=true when files key is present (even empty)")
 }
 
 func TestDefaultsHaveDefaultFiles(t *testing.T) {
 	cfg := Defaults()
-	if len(cfg.Files) != 2 {
-		t.Fatalf("expected 2 default file patterns, got %d", len(cfg.Files))
-	}
+	require.Len(t, cfg.Files, 2, "expected 2 default file patterns, got %d", len(cfg.Files))
 	if cfg.Files[0] != "**/*.md" {
 		t.Errorf("expected **/*.md, got %s", cfg.Files[0])
 	}
@@ -1438,9 +1223,7 @@ func TestMergeFilesFromLoaded(t *testing.T) {
 
 	merged := Merge(defaults, loaded)
 
-	if len(merged.Files) != 1 {
-		t.Fatalf("expected 1 file pattern from loaded, got %d", len(merged.Files))
-	}
+	require.Len(t, merged.Files, 1, "expected 1 file pattern from loaded, got %d", len(merged.Files))
 	if merged.Files[0] != "docs/**/*.md" {
 		t.Errorf("expected docs/**/*.md, got %s", merged.Files[0])
 	}
@@ -1450,9 +1233,7 @@ func TestMergeFilesNilLoaded(t *testing.T) {
 	defaults := Defaults()
 	merged := Merge(defaults, nil)
 
-	if len(merged.Files) != 2 {
-		t.Fatalf("expected 2 default file patterns, got %d", len(merged.Files))
-	}
+	require.Len(t, merged.Files, 2, "expected 2 default file patterns, got %d", len(merged.Files))
 	if merged.Files[0] != "**/*.md" {
 		t.Errorf("expected **/*.md, got %s", merged.Files[0])
 	}
@@ -1470,9 +1251,7 @@ func TestMergeFilesOmittedInLoaded(t *testing.T) {
 	merged := Merge(defaults, loaded)
 
 	// Should use defaults when files not explicitly set in loaded.
-	if len(merged.Files) != 2 {
-		t.Fatalf("expected 2 default file patterns, got %d", len(merged.Files))
-	}
+	require.Len(t, merged.Files, 2, "expected 2 default file patterns, got %d", len(merged.Files))
 	if merged.Files[0] != "**/*.md" {
 		t.Errorf("expected **/*.md, got %s", merged.Files[0])
 	}
@@ -1488,19 +1267,13 @@ func TestMergeFilesEmptyInLoaded(t *testing.T) {
 	merged := Merge(defaults, loaded)
 
 	// Explicitly empty files should override defaults.
-	if merged.Files == nil {
-		t.Fatal("expected Files to be non-nil (empty slice)")
-	}
-	if len(merged.Files) != 0 {
-		t.Errorf("expected 0 file patterns, got %d", len(merged.Files))
-	}
+	require.NotNil(t, merged.Files, "expected Files to be non-nil (empty slice)")
+	assert.Len(t, merged.Files, 0, "expected 0 file patterns, got %d", len(merged.Files))
 }
 
 func TestDumpDefaultsHasFiles(t *testing.T) {
 	cfg := DumpDefaults()
-	if len(cfg.Files) != 2 {
-		t.Fatalf("expected 2 default file patterns, got %d", len(cfg.Files))
-	}
+	require.Len(t, cfg.Files, 2, "expected 2 default file patterns, got %d", len(cfg.Files))
 	if cfg.Files[0] != "**/*.md" {
 		t.Errorf("expected **/*.md, got %s", cfg.Files[0])
 	}
