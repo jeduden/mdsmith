@@ -57,6 +57,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // isAllowed returns true if the file path matches any allowed pattern.
+// Patterns are matched against the full file path (e.g., "docs/**" allows
+// any file under the docs/ directory).
 func (r *Rule) isAllowed(filePath string) bool {
 	cleaned := filepath.ToSlash(filepath.Clean(filePath))
 	dir := filepath.ToSlash(filepath.Dir(cleaned))
@@ -68,7 +70,7 @@ func (r *Rule) isAllowed(filePath string) bool {
 			}
 			continue
 		}
-		if r.matchers[i].Match(cleaned) || r.matchers[i].Match(dir) {
+		if r.matchers[i].Match(cleaned) {
 			return true
 		}
 	}
@@ -77,36 +79,38 @@ func (r *Rule) isAllowed(filePath string) bool {
 
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {
-	// Reset to unconfigured so that restoring defaults (empty map)
-	// returns the rule to its no-op state.
-	r.configured = false
-	r.Allowed = nil
-	r.matchers = nil
+	// Validate all keys first so we never partially mutate state.
+	var patterns []string
+	var matchers []glob.Glob
+	hasAllowed := false
 	for k, v := range settings {
 		switch k {
 		case "allowed":
-			patterns, ok := toStringSlice(v)
+			var ok bool
+			patterns, ok = toStringSlice(v)
 			if !ok {
 				return fmt.Errorf("directory-structure: allowed must be a list of strings, got %T", v)
 			}
-			r.Allowed = patterns
-			r.configured = true
-			r.matchers = make([]glob.Glob, len(patterns))
+			hasAllowed = true
+			matchers = make([]glob.Glob, len(patterns))
 			for i, p := range patterns {
 				if p == "." {
-					// "." is handled specially in isAllowed; store a nil matcher.
 					continue
 				}
 				g, err := glob.Compile(p)
 				if err != nil {
 					return fmt.Errorf("directory-structure: invalid glob pattern %q: %w", p, err)
 				}
-				r.matchers[i] = g
+				matchers[i] = g
 			}
 		default:
 			return fmt.Errorf("directory-structure: unknown setting %q", k)
 		}
 	}
+	// All validation passed — commit state atomically.
+	r.Allowed = patterns
+	r.matchers = matchers
+	r.configured = hasAllowed
 	return nil
 }
 
