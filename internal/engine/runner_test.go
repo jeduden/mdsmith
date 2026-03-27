@@ -10,7 +10,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-
 	"github.com/stretchr/testify/require"
 )
 
