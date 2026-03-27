@@ -223,6 +223,7 @@ row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.status}} | {{.description}} 
 | [MDS030](internal/rules/MDS030-empty-section-body/README.md) | `empty-section-body`                 | ready     | Section headings must include meaningful body content.                                  |
 | [MDS031](internal/rules/MDS031-unclosed-code-block/README.md) | `unclosed-code-block`                | ready     | Fenced code blocks must have a closing fence delimiter.                                 |
 | [MDS032](internal/rules/MDS032-no-empty-alt-text/README.md) | `no-empty-alt-text`                  | ready     | Images must have non-empty alt text for accessibility.                                  |
+| [MDS033](internal/rules/MDS033-directory-structure/README.md) | `directory-structure`                | ready     | Markdown files must exist only in explicitly allowed directories.                       |
 <?/catalog?>
 
 ## 🛠️ Development
