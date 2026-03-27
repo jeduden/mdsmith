@@ -426,7 +426,8 @@ func assertExpectedDiags(
 		assert.NotEmpty(t, diags, "%s: expected at least 1 diagnostic, got 0", filename)
 		return
 	}
-	if !assert.Len(t, diags, len(expected), "%s: expected %d diagnostics, got %d", filename, len(expected), len(diags)) {
+	if !assert.Len(t, diags, len(expected),
+		"%s: expected %d diagnostics, got %d", filename, len(expected), len(diags)) {
 		for _, d := range diags {
 			t.Logf(
 				"  actual: line %d col %d: %s",

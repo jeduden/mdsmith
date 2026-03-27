@@ -448,7 +448,8 @@ func TestE2E_Fix_PrintsStatsWithUnfixedFailures(t *testing.T) {
 	assert.Equal(t, 1, fixed, "expected fixed=1, got %d", fixed)
 	assert.GreaterOrEqual(t, failures, 1, "expected failures >= 1, got %d", failures)
 	assert.GreaterOrEqual(t, unfixed, 1, "expected unfixed >= 1, got %d", unfixed)
-	assert.GreaterOrEqual(t, failures, unfixed, "expected failures >= unfixed, got failures=%d unfixed=%d", failures, unfixed)
+	assert.GreaterOrEqual(t, failures, unfixed,
+		"expected failures >= unfixed, got failures=%d unfixed=%d", failures, unfixed)
 }
 
 // --- Init subcommand tests ---
