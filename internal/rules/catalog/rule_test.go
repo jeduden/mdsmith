@@ -928,6 +928,8 @@ another: value
 	for _, d := range diags {
 		assert.NotContains(t, d.Message, "unknown_key",
 			"unknown YAML keys should be silently ignored, got: %s", d.Message)
+		assert.NotContains(t, d.Message, "another",
+			"unknown YAML keys should be silently ignored, got: %s", d.Message)
 	}
 }
 

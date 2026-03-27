@@ -1,7 +1,7 @@
 package lint
 
 import (
-	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -111,7 +111,7 @@ func TestFullSource_PrependsFrontMatter(t *testing.T) {
 
 	got := f.FullSource(body)
 	want := append(fm, body...)
-	assert.True(t, bytes.Equal(got, want))
+	assert.Equal(t, want, got)
 }
 
 func TestFullSource_NoFrontMatter(t *testing.T) {
@@ -119,7 +119,7 @@ func TestFullSource_NoFrontMatter(t *testing.T) {
 	body := []byte("# Heading\n")
 
 	got := f.FullSource(body)
-	assert.True(t, bytes.Equal(got, body))
+	assert.Equal(t, body, got)
 }
 
 func TestFullSource_DoesNotMutateFrontMatter(t *testing.T) {
@@ -134,15 +134,15 @@ func TestFullSource_DoesNotMutateFrontMatter(t *testing.T) {
 	// First call: check result is correct.
 	got := f.FullSource(body)
 	want := append(origContent, body...)
-	assert.True(t, bytes.Equal(got, want))
+	assert.Equal(t, want, got)
 
 	// Assert FrontMatter is unchanged.
 	assert.Equal(t, origLen, len(f.FrontMatter))
-	assert.True(t, bytes.Equal(f.FrontMatter, origContent))
+	assert.Equal(t, origContent, f.FrontMatter)
 
 	// Second call: idempotent result.
 	got2 := f.FullSource(body)
-	assert.True(t, bytes.Equal(got2, want))
+	assert.Equal(t, want, got2)
 }
 
 func TestNewFileFromSource_EmptyFrontMatter(t *testing.T) {
@@ -157,7 +157,7 @@ func TestNewFileFromSource_EmptyFrontMatter(t *testing.T) {
 	assert.Equal(t, "---\n---\n", string(f.FrontMatter))
 
 	// Source should be the content after front matter.
-	assert.True(t, bytes.HasPrefix(f.Source, []byte("# Heading")))
+	assert.True(t, strings.HasPrefix(string(f.Source), "# Heading"), "expected Source to start with '# Heading'")
 }
 
 func TestNewFileFromSource_EmptySource(t *testing.T) {

@@ -171,16 +171,10 @@ func TestE2E_CoverageInstrumentation(t *testing.T) {
 	tmpCoverDir := t.TempDir()
 	cmd := exec.Command(binaryPath, "version")
 	cmd.Env = envWithCoverDir(tmpCoverDir)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("unexpected error running binary: %v", err)
-	}
+	require.NoError(t, cmd.Run(), "unexpected error running binary")
 	entries, err := os.ReadDir(tmpCoverDir)
-	if err != nil {
-		t.Fatalf("reading cover dir: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Fatal("binary was not built with -cover: no coverage data written to GOCOVERDIR")
-	}
+	require.NoError(t, err, "reading cover dir")
+	require.NotEmpty(t, entries, "binary was not built with -cover: no coverage data written to GOCOVERDIR")
 }
 
 // --- Top-level behavior tests ---
@@ -207,9 +201,8 @@ func TestE2E_HelpShorthand_PrintsUsage_ExitsZero(t *testing.T) {
 func TestE2E_VersionSubcommand(t *testing.T) {
 	stdout, _, exitCode := runBinary(t, "", "version")
 	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d", exitCode)
-	if !strings.HasPrefix(stdout, "mdsmith ") {
-		t.Errorf("expected version output to start with 'mdsmith ', got: %s", stdout)
-	}
+	assert.True(t, strings.HasPrefix(stdout, "mdsmith "),
+		"expected version output to start with 'mdsmith ', got: %s", stdout)
 }
 
 func TestE2E_VersionFlag_NotRecognized(t *testing.T) {
@@ -295,28 +288,20 @@ func TestE2E_Check_JSONFormat(t *testing.T) {
 
 	// Validate JSON output.
 	var diagnostics []map[string]interface{}
-	if err := json.Unmarshal([]byte(stderr), &diagnostics); err != nil {
-		t.Fatalf("stderr is not valid JSON: %v\nstderr: %s", err, stderr)
-	}
-
-	if len(diagnostics) == 0 {
-		t.Fatal("expected at least one diagnostic in JSON output")
-	}
+	require.NoError(t, json.Unmarshal([]byte(stderr), &diagnostics), "stderr is not valid JSON: %s", stderr)
+	require.NotEmpty(t, diagnostics, "expected at least one diagnostic in JSON output")
 
 	// Check the JSON schema has required fields.
 	d := diagnostics[0]
 	requiredFields := []string{"file", "line", "column", "rule", "name", "severity", "message"}
 	for _, field := range requiredFields {
-		if _, ok := d[field]; !ok {
-			t.Errorf("JSON diagnostic missing required field %q", field)
-		}
+		assert.Contains(t, d, field, "JSON diagnostic missing required field %q", field)
 	}
 
 	// Check that the file field points to our fixture.
 	fileVal, _ := d["file"].(string)
-	if !strings.HasSuffix(fileVal, "dirty.md") {
-		t.Errorf("expected file field to end with dirty.md, got %q", fileVal)
-	}
+	assert.True(t, strings.HasSuffix(fileVal, "dirty.md"),
+		"expected file field to end with dirty.md, got %q", fileVal)
 }
 
 func TestE2E_Check_Stdin_Clean(t *testing.T) {
@@ -336,13 +321,8 @@ func TestE2E_Check_Stdin_JSONFormat(t *testing.T) {
 	assert.Equal(t, 1, exitCode, "expected exit code 1, got %d", exitCode)
 
 	var diagnostics []map[string]interface{}
-	if err := json.Unmarshal([]byte(stderr), &diagnostics); err != nil {
-		t.Fatalf("stderr is not valid JSON: %v\nstderr: %s", err, stderr)
-	}
-
-	if len(diagnostics) == 0 {
-		t.Fatal("expected at least one diagnostic")
-	}
+	require.NoError(t, json.Unmarshal([]byte(stderr), &diagnostics), "stderr is not valid JSON: %s", stderr)
+	require.NotEmpty(t, diagnostics, "expected at least one diagnostic")
 
 	fileVal, _ := diagnostics[0]["file"].(string)
 	assert.Equal(t, "<stdin>", fileVal, "expected file to be \"<stdin>\", got %q", fileVal)
@@ -368,9 +348,7 @@ func TestE2E_Check_CustomConfig(t *testing.T) {
 func TestE2E_Check_Gitignore_SkipsIgnoredDirectory(t *testing.T) {
 	dir := t.TempDir()
 	ignoredDir := filepath.Join(dir, "ignored")
-	if err := os.MkdirAll(ignoredDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(ignoredDir, 0o755))
 
 	// Place a clean file at root and a file with violations in ignored/.
 	writeFixture(t, dir, "clean.md", "# Title\n\nSome content here.\n")
@@ -387,9 +365,7 @@ func TestE2E_Check_Gitignore_SkipsIgnoredDirectory(t *testing.T) {
 func TestE2E_Check_NoGitignore_IncludesIgnoredDirectory(t *testing.T) {
 	dir := t.TempDir()
 	ignoredDir := filepath.Join(dir, "ignored")
-	if err := os.MkdirAll(ignoredDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(ignoredDir, 0o755))
 
 	// Place a clean file at root and a file with violations in ignored/.
 	writeFixture(t, dir, "clean.md", "# Title\n\nSome content here.\n")
@@ -442,10 +418,9 @@ func TestE2E_Fix_PreservesFrontMatter(t *testing.T) {
 
 	// Frontmatter should be preserved intact.
 	expectedFM := "---\ntitle: hello\n---\n"
-	if !strings.HasPrefix(string(got), expectedFM) {
-		t.Errorf("frontmatter not preserved; got prefix %q, want %q",
-			string(got[:len(expectedFM)]), expectedFM)
-	}
+	assert.True(t, strings.HasPrefix(string(got), expectedFM),
+		"frontmatter not preserved; got prefix %q, want %q",
+		string(got[:len(expectedFM)]), expectedFM)
 
 	// Content should be fixed (trailing spaces removed).
 	body := string(got[len(expectedFM):])
@@ -471,15 +446,9 @@ func TestE2E_Fix_PrintsStatsWithUnfixedFailures(t *testing.T) {
 	checked, fixed, failures, unfixed := parseStats(t, stderr)
 	assert.Equal(t, 1, checked, "expected checked=1, got %d", checked)
 	assert.Equal(t, 1, fixed, "expected fixed=1, got %d", fixed)
-	if failures < 1 {
-		t.Errorf("expected failures >= 1, got %d", failures)
-	}
-	if unfixed < 1 {
-		t.Errorf("expected unfixed >= 1, got %d", unfixed)
-	}
-	if failures < unfixed {
-		t.Errorf("expected failures >= unfixed, got failures=%d unfixed=%d", failures, unfixed)
-	}
+	assert.GreaterOrEqual(t, failures, 1, "expected failures >= 1, got %d", failures)
+	assert.GreaterOrEqual(t, unfixed, 1, "expected unfixed >= 1, got %d", unfixed)
+	assert.GreaterOrEqual(t, failures, unfixed, "expected failures >= unfixed, got failures=%d unfixed=%d", failures, unfixed)
 }
 
 // --- Init subcommand tests ---
@@ -604,12 +573,8 @@ func TestE2E_MetricsList_JSON(t *testing.T) {
 	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d", exitCode)
 
 	var items []map[string]any
-	if err := json.Unmarshal([]byte(stdout), &items); err != nil {
-		t.Fatalf("stdout is not valid JSON: %v\nstdout: %s", err, stdout)
-	}
-	if len(items) == 0 {
-		t.Fatal("expected non-empty metric list")
-	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &items), "stdout is not valid JSON: %s", stdout)
+	require.NotEmpty(t, items, "expected non-empty metric list")
 }
 
 func TestE2E_HelpMetrics_ListAndLookup(t *testing.T) {
@@ -648,9 +613,7 @@ func TestE2E_MetricsRank_ByBytesTop(t *testing.T) {
 	require.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
 
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("expected header and one data row, got: %s", stdout)
-	}
+	require.GreaterOrEqual(t, len(lines), 2, "expected header and one data row, got: %s", stdout)
 	require.Contains(t, lines[1], "large.md", "expected top row to include large.md, got row: %s", lines[1])
 }
 
@@ -684,9 +647,7 @@ func TestE2E_MetricsRank_ConcisenessDefaultOrder(t *testing.T) {
 	require.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
 
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("expected header and one data row, got: %s", stdout)
-	}
+	require.GreaterOrEqual(t, len(lines), 2, "expected header and one data row, got: %s", stdout)
 	require.Contains(t, lines[1], "verbose.md", "expected least concise file first, got row: %s", lines[1])
 }
 
@@ -709,11 +670,9 @@ func TestE2E_MetricsRank_SelectedColumns(t *testing.T) {
 	require.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
 
 	header := strings.Split(strings.TrimSpace(stdout), "\n")[0]
-	if !strings.Contains(header, "BYTES") ||
-		!strings.Contains(header, "LINES") ||
-		!strings.Contains(header, "WORDS") {
-		t.Fatalf("unexpected header: %s", header)
-	}
+	require.Contains(t, header, "BYTES", "unexpected header: %s", header)
+	require.Contains(t, header, "LINES", "unexpected header: %s", header)
+	require.Contains(t, header, "WORDS", "unexpected header: %s", header)
 	require.NotContains(t, header, "HEADINGS", "unexpected HEADINGS column in header: %s", header)
 }
 
@@ -739,9 +698,7 @@ func TestE2E_MetricsRank_JSONDeterministicTieBreak(t *testing.T) {
 	require.Equal(t, 0, exitCode, "expected exit code 0, got %d; stderr: %s", exitCode, stderr)
 
 	var rows []map[string]any
-	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
-		t.Fatalf("stdout is not valid JSON: %v\nstdout: %s", err, stdout)
-	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &rows), "stdout is not valid JSON: %s", stdout)
 	require.Len(t, rows, 2, "expected 2 rows, got %d", len(rows))
 
 	firstPath, _ := rows[0]["path"].(string)
@@ -843,15 +800,13 @@ func TestE2E_Check_Verbose_JSONStdoutClean(t *testing.T) {
 	// Find the JSON array in stderr (it starts with [ and ends with ]).
 	jsonStart := strings.Index(stderr, "[")
 	jsonEnd := strings.LastIndex(stderr, "]")
-	if jsonStart < 0 || jsonEnd < 0 {
-		t.Fatalf("expected JSON array in stderr, got: %s", stderr)
-	}
+	require.GreaterOrEqual(t, jsonStart, 0, "expected JSON array in stderr, got: %s", stderr)
+	require.GreaterOrEqual(t, jsonEnd, 0, "expected JSON array in stderr, got: %s", stderr)
 	jsonPart := stderr[jsonStart : jsonEnd+1]
 
 	var diagnostics []map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonPart), &diagnostics); err != nil {
-		t.Fatalf("JSON portion of stderr is not valid JSON: %v\njson: %s", err, jsonPart)
-	}
+	require.NoError(t, json.Unmarshal([]byte(jsonPart), &diagnostics),
+		"JSON portion of stderr is not valid JSON: %s", jsonPart)
 
 	// Verbose lines should appear somewhere in stderr.
 	assert.Contains(t, stderr, "file: ", "expected verbose 'file: ' in stderr, got: %s", stderr)
@@ -915,9 +870,7 @@ func TestE2E_Check_NoArgs_EmptyFilesConfig(t *testing.T) {
 
 func TestE2E_Check_NoArgs_CustomFilesPattern(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
 
 	// Create files in different directories.
 	writeFixture(t, dir, "docs/guide.md", "# Title\n\nHello   \n")
@@ -967,9 +920,7 @@ func TestE2E_Fix_StdinDash_Rejected(t *testing.T) {
 
 func TestE2E_Check_NoArgs_GitignoreRespected(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "vendor"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "vendor"), 0o755))
 
 	// Create a dirty file in an ignored directory.
 	writeFixture(t, dir, "vendor/lib.md", "# Title\n\nHello   \n")
@@ -990,9 +941,7 @@ func TestE2E_Check_NoArgs_GitignoreRespected(t *testing.T) {
 
 func TestE2E_Check_NoArgs_NoGitignoreIncludesAll(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "vendor"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "vendor"), 0o755))
 
 	// Create a dirty file in an ignored directory.
 	writeFixture(t, dir, "vendor/lib.md", "# Title\n\nHello   \n")
@@ -1018,9 +967,7 @@ func TestE2E_Check_NoArgs_NoConfig_ExitsZero(t *testing.T) {
 
 	// Empty directory with no config - uses defaults, finds no md files.
 	// Create .git boundary so config discovery stops.
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 
 	_, _, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
 	assert.Equal(t, 0, exitCode, "expected exit code 0 for empty dir with no files, got %d", exitCode)
@@ -1036,12 +983,10 @@ func TestE2E_Check_NoDuplicateOutput(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "check", "--no-color", path)
 	require.Equal(t, 1, exitCode, "expected exit code 1, got %d; stderr: %s", exitCode, stderr)
 
-	if count := strings.Count(stderr, "MDS006"); count != 1 {
-		t.Errorf("expected MDS006 exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
-	if count := strings.Count(stderr, "stats:"); count != 1 {
-		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
+	assert.Equal(t, 1, strings.Count(stderr, "MDS006"),
+		"expected MDS006 exactly once; stderr:\n%s", stderr)
+	assert.Equal(t, 1, strings.Count(stderr, "stats:"),
+		"expected stats line exactly once; stderr:\n%s", stderr)
 }
 
 func TestE2E_Check_NoDuplicateOutput_Discovered(t *testing.T) {
@@ -1052,24 +997,20 @@ func TestE2E_Check_NoDuplicateOutput_Discovered(t *testing.T) {
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
 	require.Equal(t, 1, exitCode, "expected exit code 1, got %d; stderr: %s", exitCode, stderr)
 
-	if count := strings.Count(stderr, "MDS006"); count != 1 {
-		t.Errorf("expected MDS006 exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
-	if count := strings.Count(stderr, "stats:"); count != 1 {
-		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
+	assert.Equal(t, 1, strings.Count(stderr, "MDS006"),
+		"expected MDS006 exactly once; stderr:\n%s", stderr)
+	assert.Equal(t, 1, strings.Count(stderr, "stats:"),
+		"expected stats line exactly once; stderr:\n%s", stderr)
 }
 
 func TestE2E_Check_NoDuplicateOutput_Stdin(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "# Title\n\nHello   \n", "check", "--no-color", "-")
 	require.Equal(t, 1, exitCode, "expected exit code 1, got %d; stderr: %s", exitCode, stderr)
 
-	if count := strings.Count(stderr, "MDS006"); count != 1 {
-		t.Errorf("expected MDS006 exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
-	if count := strings.Count(stderr, "stats:"); count != 1 {
-		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
+	assert.Equal(t, 1, strings.Count(stderr, "MDS006"),
+		"expected MDS006 exactly once; stderr:\n%s", stderr)
+	assert.Equal(t, 1, strings.Count(stderr, "stats:"),
+		"expected stats line exactly once; stderr:\n%s", stderr)
 }
 
 func TestE2E_Fix_NoDuplicateOutput_Discovered(t *testing.T) {
@@ -1082,12 +1023,10 @@ func TestE2E_Fix_NoDuplicateOutput_Discovered(t *testing.T) {
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "fix", "--no-color")
 	require.Equal(t, 1, exitCode, "expected exit code 1, got %d; stderr: %s", exitCode, stderr)
 
-	if count := strings.Count(stderr, "MDS017"); count != 1 {
-		t.Errorf("expected MDS017 exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
-	if count := strings.Count(stderr, "stats:"); count != 1 {
-		t.Errorf("expected stats line exactly once, appeared %d times; stderr:\n%s", count, stderr)
-	}
+	assert.Equal(t, 1, strings.Count(stderr, "MDS017"),
+		"expected MDS017 exactly once; stderr:\n%s", stderr)
+	assert.Equal(t, 1, strings.Count(stderr, "stats:"),
+		"expected stats line exactly once; stderr:\n%s", stderr)
 }
 
 // --- merge-driver tests ---
@@ -1130,9 +1069,7 @@ func TestE2E_MergeDriver_Install_Help(t *testing.T) {
 
 func TestE2E_MergeDriver_CleanMerge(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 
 	// Non-overlapping changes: ours edits line 3, theirs edits line 5.
 	base := writeFixture(t, dir, "base.md", "# Plans\n\nline a\n\nline b\n")
@@ -1149,9 +1086,7 @@ func TestE2E_MergeDriver_CleanMerge(t *testing.T) {
 
 func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 
 	// Minimal config so fix runs.
 	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
@@ -1178,9 +1113,7 @@ func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
 
 	// Create plan files so catalog regeneration has source data.
 	plansDir := filepath.Join(dir, "plans")
-	if err := os.MkdirAll(plansDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(plansDir, 0o755))
 	writeFixture(t, dir, "plans/alpha.md", "---\ntitle: Alpha\n---\n\n# Alpha\n\nContent.\n")
 	writeFixture(t, dir, "plans/beta.md", "---\ntitle: Beta\n---\n\n# Beta\n\nContent.\n")
 	writeFixture(t, dir, "plans/gamma.md", "---\ntitle: Gamma\n---\n\n# Gamma\n\nContent.\n")
@@ -1195,9 +1128,7 @@ func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
 
 func TestE2E_MergeDriver_NonCatalogConflict_ExitsOne(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
 
 	// A conflict outside any catalog section cannot be resolved.
@@ -1218,9 +1149,7 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 
 	// Initialize a git repo.
 	cmd := exec.Command("git", "init", dir)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("git init: %v", err)
-	}
+	require.NoError(t, cmd.Run(), "git init")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "install")
 	assert.Equal(t, 0, exitCode, "expected exit 0, got %d; stderr: %s", exitCode, stderr)
@@ -1243,9 +1172,7 @@ func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {
 	dir := t.TempDir()
 
 	cmd := exec.Command("git", "init", dir)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("git init: %v", err)
-	}
+	require.NoError(t, cmd.Run(), "git init")
 
 	// Run install twice.
 	runBinaryInDir(t, dir, "", "merge-driver", "install")
@@ -1262,9 +1189,7 @@ func TestE2E_MergeDriver_Install_CustomFiles(t *testing.T) {
 	dir := t.TempDir()
 
 	cmd := exec.Command("git", "init", dir)
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("git init: %v", err)
-	}
+	require.NoError(t, cmd.Run(), "git init")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "",
 		"merge-driver", "install", "CHANGELOG.md", "docs/INDEX.md")
@@ -1288,9 +1213,7 @@ func TestE2E_MergeDriver_Install_CustomFiles(t *testing.T) {
 
 func TestE2E_MergeDriver_IncludeConflict_Resolved(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 
 	// Minimal config so fix runs.
 	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  include: true\n")
@@ -1309,10 +1232,9 @@ func TestE2E_MergeDriver_IncludeConflict_Resolved(t *testing.T) {
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "",
 		"merge-driver", "run", base, ours, theirs, pathname)
-	if exitCode != 0 {
-		t.Errorf("expected exit 0 (include conflict resolved), got %d; stderr: %s",
-			exitCode, stderr)
-	}
+	assert.Equal(t, 0, exitCode,
+		"expected exit 0 (include conflict resolved), got %d; stderr: %s",
+		exitCode, stderr)
 
 	result, _ := os.ReadFile(ours)
 	content := string(result)
@@ -1322,9 +1244,7 @@ func TestE2E_MergeDriver_IncludeConflict_Resolved(t *testing.T) {
 
 func TestE2E_MergeDriver_SetextInSection_Preserved(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 
 	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  include: true\n  heading-style: false\n")
 
@@ -1355,9 +1275,7 @@ func TestE2E_MergeDriver_ConflictStraddlesSection_Preserved(t *testing.T) {
 	// A conflict that opens before a section and closes inside it
 	// must not have its close marker stripped.
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
 
 	// Simulate: ours has a conflict that starts outside and ends
@@ -1391,9 +1309,7 @@ func TestE2E_MergeDriver_SectionMarkersInsideConflict_Preserved(t *testing.T) {
 	// section markers themselves are inside the conflict. All
 	// conflict markers must be preserved.
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
 	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
 
 	conflicted := "# Doc\n\n<<<<<<< ours\n<?include\nfile: snippet.md\n?>\n" +
