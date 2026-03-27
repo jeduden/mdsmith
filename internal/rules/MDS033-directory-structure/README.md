@@ -23,6 +23,11 @@ Markdown files must exist only in explicitly allowed directories.
 |---------|------|---------------------------------------|
 | allowed | list | Glob patterns for allowed directories |
 
+Patterns are matched against the full file path using
+forward slashes. Use `**` to match nested directories
+(e.g., `docs/**` allows any file under `docs/`). The
+special pattern `"."` allows root-level files only.
+
 ## Config
 
 Enable with allowed directories:
