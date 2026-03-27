@@ -52,7 +52,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		RuleName: r.Name(),
 		Severity: lint.Warning,
 		Message: fmt.Sprintf("file %q is not in an allowed directory (allowed: %s)",
-			f.Path, strings.Join(r.Allowed, ", ")),
+			f.Path, formatAllowed(r.Allowed)),
 	}}
 }
 
@@ -99,7 +99,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				}
 				g, err := glob.Compile(p)
 				if err != nil {
-					return fmt.Errorf("directory-structure: invalid glob pattern %q: %v", p, err)
+					return fmt.Errorf("directory-structure: invalid glob pattern %q: %w", p, err)
 				}
 				r.matchers[i] = g
 			}
@@ -114,6 +114,13 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 func (r *Rule) DefaultSettings() map[string]any {
 	// No default "allowed" list: by default the rule remains unconfigured/no-op
 	return map[string]any{}
+}
+
+func formatAllowed(patterns []string) string {
+	if len(patterns) == 0 {
+		return "(none)"
+	}
+	return strings.Join(patterns, ", ")
 }
 
 func toStringSlice(v any) ([]string, bool) {

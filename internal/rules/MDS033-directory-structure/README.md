@@ -14,7 +14,7 @@ Markdown files must exist only in explicitly allowed directories.
 - **Default**: disabled
 - **Fixable**: no
 - **Implementation**:
-  [source](../directorystructure/)
+  [source](./)
 - **Category**: meta
 
 ## Settings

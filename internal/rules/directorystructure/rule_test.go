@@ -6,17 +6,18 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
-func newRule(allowed []string) *Rule {
+func newRule(t *testing.T, allowed []string) *Rule {
+	t.Helper()
 	r := &Rule{}
 	settings := map[string]any{"allowed": allowed}
 	if err := r.ApplySettings(settings); err != nil {
-		panic(err)
+		t.Fatalf("newRule: %v", err)
 	}
 	return r
 }
 
 func TestCheck_AllowedDirectory_NoViolation(t *testing.T) {
-	r := newRule([]string{"docs/**"})
+	r := newRule(t, []string{"docs/**"})
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("docs/guide.md", src)
 	if err != nil {
@@ -29,7 +30,7 @@ func TestCheck_AllowedDirectory_NoViolation(t *testing.T) {
 }
 
 func TestCheck_DisallowedDirectory_Violation(t *testing.T) {
-	r := newRule([]string{"docs/**"})
+	r := newRule(t, []string{"docs/**"})
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("src/notes.md", src)
 	if err != nil {
@@ -48,7 +49,7 @@ func TestCheck_DisallowedDirectory_Violation(t *testing.T) {
 }
 
 func TestCheck_RootFile_WithDotPattern(t *testing.T) {
-	r := newRule([]string{"."})
+	r := newRule(t, []string{"."})
 	src := []byte("# README\n")
 	f, err := lint.NewFile("README.md", src)
 	if err != nil {
@@ -61,7 +62,7 @@ func TestCheck_RootFile_WithDotPattern(t *testing.T) {
 }
 
 func TestCheck_RootFile_Disallowed(t *testing.T) {
-	r := newRule([]string{"docs/**"})
+	r := newRule(t, []string{"docs/**"})
 	src := []byte("# README\n")
 	f, err := lint.NewFile("README.md", src)
 	if err != nil {
@@ -74,7 +75,7 @@ func TestCheck_RootFile_Disallowed(t *testing.T) {
 }
 
 func TestCheck_NestedGlob(t *testing.T) {
-	r := newRule([]string{"internal/**/testdata/**"})
+	r := newRule(t, []string{"internal/**/testdata/**"})
 	src := []byte("# Test\n")
 	f, err := lint.NewFile("internal/rules/foo/testdata/good/test.md", src)
 	if err != nil {
@@ -100,7 +101,7 @@ func TestCheck_Unconfigured_NoOp(t *testing.T) {
 }
 
 func TestCheck_EmptyAllowed_WarnsOnEveryFile(t *testing.T) {
-	r := newRule([]string{})
+	r := newRule(t, []string{})
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("docs/guide.md", src)
 	if err != nil {
@@ -113,7 +114,7 @@ func TestCheck_EmptyAllowed_WarnsOnEveryFile(t *testing.T) {
 }
 
 func TestCheck_MultiplePatterns(t *testing.T) {
-	r := newRule([]string{"docs/**", "plan/**", "."})
+	r := newRule(t, []string{"docs/**", "plan/**", "."})
 	tests := []struct {
 		path  string
 		wantN int
@@ -215,7 +216,7 @@ func TestDefaultSettings(t *testing.T) {
 func TestApplyDefaultSettings_RemainsUnconfigured(t *testing.T) {
 	// Simulate the CloneRule/fixture-harness flow: configure the rule,
 	// then restore defaults. The rule should return to unconfigured/no-op.
-	r := newRule([]string{"docs/**"})
+	r := newRule(t, []string{"docs/**"})
 	err := r.ApplySettings(r.DefaultSettings())
 	if err != nil {
 		t.Fatal(err)
