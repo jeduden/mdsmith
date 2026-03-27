@@ -154,7 +154,7 @@ func TestConfigureRule_NoSettings(t *testing.T) {
 
 	got, err := ConfigureRule(rl, cfg)
 	require.NoError(t, err, "unexpected error: %v", err)
-	assert.Equal(t, rl, got, "expected same rule instance when no settings")
+	assert.Same(t, rl, got, "expected same rule instance when no settings")
 }
 
 func TestConfigureRule_NonConfigurable(t *testing.T) {

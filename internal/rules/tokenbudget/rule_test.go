@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-
 	"github.com/stretchr/testify/require"
 )
 
