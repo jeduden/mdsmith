@@ -153,7 +153,7 @@ func TestJSONFormatter_MultipleDiagnostics(t *testing.T) {
 
 	require.Len(t, result, 2, "expected 2 elements, got %d", len(result))
 
-	assertJSONDiag(t, result[0], "README.md", "MDS001", "error", "", 10)
+	assertJSONDiag(t, result[0], "README.md", "MDS001", "error", "line-length", 10)
 	assertJSONDiag(t, result[1], "docs/guide.md", "MDS002", "warning", "first-heading", 3)
 }
 

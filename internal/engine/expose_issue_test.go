@@ -41,3 +41,43 @@ func TestCheckRules_PopulatesSourceContextAtFileEnd(t *testing.T) {
 	assert.Equal(t, "line four", d.SourceLines[1])
 	assert.Equal(t, "line five", d.SourceLines[2])
 }
+
+func TestCheckRules_PopulatesSourceContextSingleLine(t *testing.T) {
+	source := "only line\n"
+	f, err := lint.NewFile("test.md", []byte(source))
+	require.NoError(t, err)
+
+	r := &mockRuleAtLine{id: "MDS998", name: "single-rule", line: 1, col: 1}
+	effective := map[string]config.RuleCfg{
+		"single-rule": {Enabled: true},
+	}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Len(t, errs, 0)
+	require.Len(t, diags, 1)
+
+	d := diags[0]
+	require.Len(t, d.SourceLines, 1, "single-line file should produce 1 context line")
+	assert.Equal(t, "only line", d.SourceLines[0])
+	assert.Equal(t, 1, d.SourceStartLine)
+}
+
+func TestCheckRules_DiagnosticBeyondFileEnd(t *testing.T) {
+	source := "line one\nline two\n"
+	f, err := lint.NewFile("test.md", []byte(source))
+	require.NoError(t, err)
+
+	// Diagnostic on line 10, but file only has 2 lines
+	r := &mockRuleAtLine{id: "MDS998", name: "beyond-rule", line: 10, col: 1}
+	effective := map[string]config.RuleCfg{
+		"beyond-rule": {Enabled: true},
+	}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Len(t, errs, 0)
+	require.Len(t, diags, 1)
+
+	d := diags[0]
+	assert.Empty(t, d.SourceLines, "diagnostic beyond file end should have no source context")
+	assert.Equal(t, 0, d.SourceStartLine)
+}
