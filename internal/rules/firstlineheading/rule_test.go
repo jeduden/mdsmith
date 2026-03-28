@@ -45,6 +45,7 @@ func TestCheck_BlankLineThenHeading(t *testing.T) {
 	r := &Rule{Level: 1}
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic for heading not on line 1, got %d: %+v", len(diags), diags)
+	require.Equal(t, "first line should be a level 1 heading, found blank line", diags[0].Message)
 }
 
 func TestCheck_WrongLevel(t *testing.T) {

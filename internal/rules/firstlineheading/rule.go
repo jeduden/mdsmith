@@ -50,7 +50,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	if headingLine(heading, f) != 1 {
-		return r.diag(f, missingMsg)
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading, found blank line", level))
 	}
 
 	if heading.Level != level {
