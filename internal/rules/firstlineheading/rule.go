@@ -125,9 +125,10 @@ func headingLine(heading *ast.Heading, f *lint.File) int {
 			return f.LineOfOffset(t.Segment.Start)
 		}
 	}
-	// Empty headings (e.g. "# \n") have no text segments. Use
-	// goldmark's blank-previous-lines flag to detect leading blanks.
-	if heading.HasBlankPreviousLines() {
+	// Empty headings (e.g. "# \n") have no text segments.
+	// Check whether the source starts with a newline to detect
+	// leading blank lines.
+	if len(f.Source) > 0 && f.Source[0] == '\n' {
 		return 2
 	}
 	return 1

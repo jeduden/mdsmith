@@ -69,6 +69,15 @@ func TestCheck_BlankLineThenEmptyHeading(t *testing.T) {
 	require.Equal(t, "first line should be a level 1 heading, found blank line", diags[0].Message)
 }
 
+func TestCheck_EmptyHeadingOnLine1(t *testing.T) {
+	src := []byte("# \n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Level: 1}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "empty heading on line 1 should not trigger diagnostic, got %d: %+v", len(diags), diags)
+}
+
 func TestCheck_LevelZeroDefault(t *testing.T) {
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("test.md", src)
