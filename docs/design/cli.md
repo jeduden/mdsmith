@@ -64,11 +64,18 @@ Lint output goes to **stderr**. Format:
 **text** (default):
 
 ```text
-README.md:10:5 MDS001 line too long (120 > 80)
-docs/guide.md:3:1 MDS004 first line should be a level 1 heading
+README.md:10:81 MDS001 line too long (120 > 80)
+ 8 | Previous line of context.
+ 9 | Another context line.
+10 | This very long line exceeds the configured 80 character limit and keeps going...
+   |                                                                                 ^
+11 | Next line of context.
+12 | Another context line.
 ```
 
-Pattern: `file:line:col rule message`
+Each diagnostic prints a header line (`file:line:col rule message`).
+Below it, up to 5 source lines appear with line numbers and a `^`
+caret at the column.
 
 **json**:
 
@@ -77,14 +84,19 @@ Pattern: `file:line:col rule message`
   {
     "file": "README.md",
     "line": 10,
-    "column": 5,
+    "column": 81,
     "rule": "MDS001",
     "name": "line-length",
     "severity": "error",
-    "message": "line too long (120 > 80)"
+    "message": "line too long (120 > 80)",
+    "source_lines": ["Previous line.", "Another context.", "The long line...", "Next.", "Another."],
+    "source_start_line": 8
   }
 ]
 ```
+
+The `source_lines` and `source_start_line` fields are omitted when
+source context is unavailable (e.g., empty diagnostics).
 
 ## Pre-commit (lefthook)
 

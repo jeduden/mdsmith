@@ -95,13 +95,20 @@ mdsmith metrics rank --by bytes --top 10 .
 
 ### Output
 
-Diagnostics are printed to stderr:
+Diagnostics are printed to stderr with source context:
 
 ```text
-README.md:10:1 MDS001 line too long (135 > 80)
+README.md:10:81 MDS001 line too long (135 > 80)
+ 8 | Previous line.
+ 9 | Another line.
+10 | This very long line exceeds the limit...
+   |                                                                                 ^
+11 | Next line.
+12 | Another line.
 ```
 
-Pattern: `file:line:col rule message`
+Each diagnostic starts with a header (`file:line:col rule message`)
+followed by surrounding source lines with a caret marker.
 
 ### Exit codes
 
