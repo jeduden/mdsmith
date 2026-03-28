@@ -53,5 +53,25 @@ func CheckRules(f *lint.File, rules []rule.Rule, effective map[string]config.Rul
 	}
 
 	f.AdjustDiagnostics(diags)
+	populateSourceContext(f, diags, 2)
 	return diags, errs
+}
+
+// populateSourceContext fills each diagnostic's SourceLines and
+// SourceStartLine with surrounding context from f.Lines.
+func populateSourceContext(f *lint.File, diags []lint.Diagnostic, context int) {
+	for i := range diags {
+		lineIdx := diags[i].Line - f.LineOffset - 1 // 0-based into f.Lines
+		if lineIdx < 0 || lineIdx >= len(f.Lines) {
+			continue
+		}
+		start := max(0, lineIdx-context)
+		end := min(len(f.Lines), lineIdx+context+1)
+		lines := make([]string, end-start)
+		for j := start; j < end; j++ {
+			lines[j-start] = string(f.Lines[j])
+		}
+		diags[i].SourceLines = lines
+		diags[i].SourceStartLine = start + f.LineOffset + 1
+	}
 }

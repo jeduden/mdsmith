@@ -11,13 +11,15 @@ import (
 type JSONFormatter struct{}
 
 type jsonDiagnostic struct {
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Column   int    `json:"column"`
-	Rule     string `json:"rule"`
-	Name     string `json:"name"`
-	Severity string `json:"severity"`
-	Message  string `json:"message"`
+	File            string   `json:"file"`
+	Line            int      `json:"line"`
+	Column          int      `json:"column"`
+	Rule            string   `json:"rule"`
+	Name            string   `json:"name"`
+	Severity        string   `json:"severity"`
+	Message         string   `json:"message"`
+	SourceLines     []string `json:"source_lines,omitempty"`
+	SourceStartLine int      `json:"source_start_line,omitempty"`
 }
 
 // Format writes diagnostics as a pretty-printed JSON array.
@@ -26,13 +28,15 @@ func (f *JSONFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 	items := make([]jsonDiagnostic, 0, len(diagnostics))
 	for _, d := range diagnostics {
 		items = append(items, jsonDiagnostic{
-			File:     d.File,
-			Line:     d.Line,
-			Column:   d.Column,
-			Rule:     d.RuleID,
-			Name:     d.RuleName,
-			Severity: string(d.Severity),
-			Message:  d.Message,
+			File:            d.File,
+			Line:            d.Line,
+			Column:          d.Column,
+			Rule:            d.RuleID,
+			Name:            d.RuleName,
+			Severity:        string(d.Severity),
+			Message:         d.Message,
+			SourceLines:     d.SourceLines,
+			SourceStartLine: d.SourceStartLine,
 		})
 	}
 	enc := json.NewEncoder(w)

@@ -145,6 +145,97 @@ func TestCheckRules_AdjustsLineOffset(t *testing.T) {
 	}
 }
 
+func TestCheckRules_PopulatesSourceContext(t *testing.T) {
+	source := "line one\nline two\nline three\nline four\nline five\n"
+	f, err := lint.NewFile("test.md", []byte(source))
+	require.NoError(t, err)
+
+	// mockRule reports at line 1; we want to test with a rule that hits line 3.
+	r := &mockRuleAtLine{id: "MDS998", name: "mid-rule", line: 3, col: 5}
+	effective := map[string]config.RuleCfg{
+		"mid-rule": {Enabled: true},
+	}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Len(t, errs, 0)
+	require.Len(t, diags, 1)
+
+	d := diags[0]
+	assert.Equal(t, 3, d.Line)
+	assert.Equal(t, 1, d.SourceStartLine, "context should start at line 1")
+	require.Len(t, d.SourceLines, 5, "expected 5 context lines (±2)")
+	assert.Equal(t, "line one", d.SourceLines[0])
+	assert.Equal(t, "line three", d.SourceLines[2])
+	assert.Equal(t, "line five", d.SourceLines[4])
+}
+
+func TestCheckRules_PopulatesSourceContextAtFileStart(t *testing.T) {
+	source := "first\nsecond\nthird\n"
+	f, err := lint.NewFile("test.md", []byte(source))
+	require.NoError(t, err)
+
+	r := &mockRuleAtLine{id: "MDS998", name: "mid-rule", line: 1, col: 1}
+	effective := map[string]config.RuleCfg{
+		"mid-rule": {Enabled: true},
+	}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Len(t, errs, 0)
+	require.Len(t, diags, 1)
+
+	d := diags[0]
+	assert.Equal(t, 1, d.SourceStartLine)
+	require.Len(t, d.SourceLines, 3, "expected 3 context lines (line 1 + 2 after)")
+	assert.Equal(t, "first", d.SourceLines[0])
+}
+
+func TestCheckRules_PopulatesSourceContextWithFrontMatter(t *testing.T) {
+	source := "---\ntitle: x\n---\nline one\nline two\nline three\n"
+	f, err := lint.NewFileFromSource("test.md", []byte(source), true)
+	require.NoError(t, err)
+
+	// mockRule reports at line 1 (relative to body), adjusted to line 4.
+	effective := map[string]config.RuleCfg{
+		"mock-rule": {Enabled: true},
+	}
+	rules := []rule.Rule{&mockRule{id: "MDS999", name: "mock-rule"}}
+
+	diags, errs := CheckRules(f, rules, effective)
+	require.Len(t, errs, 0)
+	require.Len(t, diags, 1)
+
+	d := diags[0]
+	assert.Equal(t, 4, d.Line, "line should be adjusted for front matter")
+	assert.Equal(t, 4, d.SourceStartLine)
+	require.NotEmpty(t, d.SourceLines)
+	assert.Equal(t, "line one", d.SourceLines[0])
+}
+
+// mockRuleAtLine reports a diagnostic at a specific line.
+type mockRuleAtLine struct {
+	id   string
+	name string
+	line int
+	col  int
+}
+
+func (r *mockRuleAtLine) ID() string       { return r.id }
+func (r *mockRuleAtLine) Name() string     { return r.name }
+func (r *mockRuleAtLine) Category() string { return "test" }
+func (r *mockRuleAtLine) Check(f *lint.File) []lint.Diagnostic {
+	return []lint.Diagnostic{
+		{
+			File:     f.Path,
+			Line:     r.line,
+			Column:   r.col,
+			RuleID:   r.id,
+			RuleName: r.name,
+			Severity: lint.Warning,
+			Message:  "mock violation",
+		},
+	}
+}
+
 // --- ConfigureRule tests ---
 
 func TestConfigureRule_NoSettings(t *testing.T) {

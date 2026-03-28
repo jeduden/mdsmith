@@ -11,11 +11,13 @@ const (
 
 // Diagnostic represents a single lint finding.
 type Diagnostic struct {
-	File     string
-	Line     int
-	Column   int
-	RuleID   string
-	RuleName string
-	Severity Severity
-	Message  string
+	File            string
+	Line            int
+	Column          int
+	RuleID          string
+	RuleName        string
+	Severity        Severity
+	Message         string
+	SourceLines     []string // context lines around the diagnostic; empty if unavailable
+	SourceStartLine int      // 1-based line number of first entry in SourceLines
 }
