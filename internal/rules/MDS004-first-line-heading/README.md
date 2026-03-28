@@ -50,7 +50,7 @@ rules:
 
 ## Examples
 
-### Bad
+### Bad — content before heading
 
 <?include
 file: bad/default.md
@@ -60,6 +60,23 @@ wrap: markdown
 ```markdown
 Some content here.
 
+# Title
+```
+
+<?/include?>
+
+### Bad — blank line before heading
+
+The file below has a blank line between the frontmatter closing
+`---` and `# Title`. The blank line is not visible in the code
+block but triggers the diagnostic.
+
+<?include
+file: bad/blank-line.md
+wrap: markdown
+?>
+
+```markdown
 # Title
 ```
 
@@ -82,7 +99,8 @@ Some content here.
 
 ## Diagnostics
 
-| Message                                        | Condition                                   |
-|------------------------------------------------|---------------------------------------------|
-| `first line should be a level {level} heading`   | Line 1 is missing or not a heading          |
-| `first heading should be level {level}, got {n}` | First heading on line 1 has the wrong level |
+| Message                                                        | Condition                                           |
+|----------------------------------------------------------------|-----------------------------------------------------|
+| `first line should be a level {level} heading`                   | Line 1 is missing or not a heading                  |
+| `first line should be a level {level} heading, found blank line` | First child is a heading but preceded by blank line |
+| `first heading should be level {level}, got {n}`                 | First heading on line 1 has the wrong level         |

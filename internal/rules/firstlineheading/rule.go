@@ -50,7 +50,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	if headingLine(heading, f) != 1 {
-		return r.diag(f, missingMsg)
+		return r.diag(f, fmt.Sprintf("first line should be a level %d heading, found blank line", level))
 	}
 
 	if heading.Level != level {
@@ -124,6 +124,20 @@ func headingLine(heading *ast.Heading, f *lint.File) int {
 		if t, ok := c.(*ast.Text); ok {
 			return f.LineOfOffset(t.Segment.Start)
 		}
+	}
+	// Empty headings (e.g. "# \n") have no text segments.
+	// Detect whether the first line is blank (only spaces/tabs
+	// before a newline). Markdown treats such lines as blank,
+	// so a heading on the following line starts on line 2.
+	for i := 0; i < len(f.Source); i++ {
+		b := f.Source[i]
+		if b == ' ' || b == '\t' {
+			continue
+		}
+		if b == '\n' || b == '\r' {
+			return 2
+		}
+		return 1
 	}
 	return 1
 }
