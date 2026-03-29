@@ -296,6 +296,10 @@ func TestParseCUEPath_TrailingDot(t *testing.T) {
 	assert.Nil(t, ParseCUEPath("a."))
 }
 
+func TestParseCUEPath_EmptyQuotedLabel(t *testing.T) {
+	assert.Nil(t, ParseCUEPath(`""`))
+}
+
 func TestParseCUEPath_MissingSeparatorAfterQuote(t *testing.T) {
 	// "a"b without dot separator is malformed
 	assert.Nil(t, ParseCUEPath(`"a"b`))

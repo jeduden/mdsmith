@@ -16,7 +16,7 @@ import (
 // fieldPattern matches a single-brace placeholder like {fieldname},
 // {a.b.c} nested paths, or {"quoted-key".sub} CUE paths. Each path
 // segment may be an identifier or a quoted label at any position.
-var fieldPattern = regexp.MustCompile(`\{((?:[\w-]+|"[^"]*")(?:\.(?:[\w-]+|"[^"]*"))*)\}`)
+var fieldPattern = regexp.MustCompile(`\{((?:[\w-]+|"[^"]+")(\.(?:[\w-]+|"[^"]+"))*)\}`)
 
 // Interpolate replaces {field} placeholders in text with values resolved
 // from data using CUE path semantics. Supports nested access ({a.b}) and
@@ -131,6 +131,9 @@ func ParseCUEPath(expr string) []string {
 			end := strings.IndexByte(expr[i+1:], '"')
 			if end < 0 {
 				return nil // unclosed quote
+			}
+			if end == 0 {
+				return nil // empty quoted label
 			}
 			segments = append(segments, expr[i+1:i+1+end])
 			i = i + 1 + end + 1
