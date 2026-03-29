@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
 
 // columnConfig holds per-column width and wrapping configuration.
@@ -289,11 +291,11 @@ func splitTableRow(row string) []string {
 }
 
 // buildColumnMap creates a mapping from column index to template field name
-// by analyzing the row template. It looks for {{.fieldname}} patterns in
+// by analyzing the row template. It looks for {fieldname} patterns in
 // each column of the row template.
 func buildColumnMap(rowTemplate string) map[int]string {
 	// The row template should be a table row like:
-	// "| {{.title}} | {{.description}} |"
+	// "| {title} | {description} |"
 	cells := splitTableRow(rowTemplate)
 	if len(cells) == 0 {
 		return nil
@@ -302,7 +304,7 @@ func buildColumnMap(rowTemplate string) map[int]string {
 	result := make(map[int]string)
 	for i, cell := range cells {
 		cell = strings.TrimSpace(cell)
-		// Extract field names from {{.fieldname}} patterns
+		// Extract field names from {fieldname} patterns
 		// We look for the primary field in the cell
 		field := extractPrimaryField(cell)
 		if field != "" {
@@ -314,20 +316,13 @@ func buildColumnMap(rowTemplate string) map[int]string {
 }
 
 // extractPrimaryField extracts the primary template field from a cell template.
-// For example, from "{{.description}}" it returns "description".
-// For "[{{.title}}]({{.filename}})" it returns "title" (first field).
+// For example, from "{description}" it returns "description".
+// For "[{title}]({filename})" it returns "title" (first field).
 // For cells with no template fields, returns "".
 func extractPrimaryField(cell string) string {
-	idx := strings.Index(cell, "{{.")
-	if idx < 0 {
+	fields := fieldinterp.Fields(cell)
+	if len(fields) == 0 {
 		return ""
 	}
-
-	rest := cell[idx+3:]
-	end := strings.Index(rest, "}}")
-	if end < 0 {
-		return ""
-	}
-
-	return rest[:end]
+	return fields[0]
 }

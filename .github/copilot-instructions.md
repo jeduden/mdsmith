@@ -20,7 +20,7 @@ mdsmith — a Markdown linter written in Go.
 glob: "docs/**/*.md"
 sort: path
 header: ""
-row: "- [{{.summary}}](../{{.filename}})"
+row: "- [{summary}](../{filename})"
 ?>
 - [Comparison of mdsmith with other Markdown linters and formatters.](../docs/background/markdown-linters.md)
 - [How generated sections work — markers, directives, and fix behavior.](../docs/design/archetypes/generated-section/README.md)

@@ -337,8 +337,8 @@ integration point. Tools handle it differently.
 
 - **catalog ([MDS019][mds019])**: reads front matter
   fields from matched files to build summary tables.
-  Fields become template variables (`{{.title}}`,
-  `{{.status}}`).
+  Fields become template variables (`{title}`,
+  `{status}`).
 - **required-structure ([MDS020][mds020])**: validates
   document headings and front matter against a template.
   Supports CUE schemas for field types and constraints.

@@ -118,7 +118,7 @@ Single-line values use YAML string syntax. Multi-line values
 use YAML literal block scalars (`|`, `|+`, or `|-`):
 
 ```yaml
-row: "- [{{.title}}]({{.filename}}) -- {{.description}}"
+row: "- [{title}]({filename}) -- {description}"
 ```
 
 ```yaml
@@ -129,7 +129,7 @@ header: |
 
 Note: YAML requires quoting values that contain special
 characters like `{`, `}`, `|`, `:`, or `#`. Use double quotes
-for single-line templates containing `{{...}}`.
+for single-line templates containing `{...}`.
 
 The YAML parser strips leading indent from literal blocks.
 This keeps markdown indent correct. A 4-space code block
@@ -143,9 +143,9 @@ rule (see Rendering logic) will add one back.
 
 ## Template Rendering Pipeline
 
-The `row` section uses Go `text/template` syntax:
-`{{.fieldname}}`. Available fields depend on the specific
-rule implementing this archetype.
+The `row` section uses `{fieldname}` placeholder syntax.
+Available fields depend on the specific rule implementing
+this archetype.
 
 ### Rendering logic
 

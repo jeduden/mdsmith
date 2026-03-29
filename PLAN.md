@@ -7,7 +7,7 @@ header: |
 
   | ID  | Status | Title |
   |-----|--------|-------|
-row: "| {{.id}} | {{.status}} | [{{.title}}]({{.filename}}) |"
+row: "| {id} | {status} | [{title}]({filename}) |"
 footer: |
 
 ?>

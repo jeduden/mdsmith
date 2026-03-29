@@ -177,7 +177,7 @@ sort: title
 header: |
   | Guide | Description |
   |-------|-------------|
-row: "| [{{.title}}]({{.filename}}) | {{.summary}} |"
+row: "| [{title}]({filename}) | {summary} |"
 empty: |
   | Guide         | Description                                                  |
   |---------------|--------------------------------------------------------------|
@@ -196,7 +196,7 @@ sort: id
 header: |
   | Rule | Name | Status | Description |
   |------|------|--------|-------------|
-row: "| [{{.id}}]({{.filename}}) | `{{.name}}` | {{.status}} | {{.description}} |"
+row: "| [{id}]({filename}) | `{name}` | {status} | {description} |"
 ?>
 | Rule                                                                         | Name                                 | Status    | Description                                                                             |
 |------------------------------------------------------------------------------|--------------------------------------|-----------|-----------------------------------------------------------------------------------------|

@@ -4,7 +4,7 @@ name: 'string & != ""'
 status: '"ready" | "not-ready"'
 description: 'string & != ""'
 ---
-# {{.id}}: {{.name}}
+# {id}: {name}
 
 <!-- Rule README template. Copy this file, replace placeholders,
      delete sections and comments that don't apply.
@@ -13,11 +13,11 @@ description: 'string & != ""'
      Repeat the description verbatim. Use prescriptive voice,
      present tense: "Headings must ..." not "Checks that ...". -->
 
-{{.description}}
+{description}
 
-- **ID**: {{.id}}
-- **Name**: `{{.name}}`
-- **Status**: {{.status}}
+- **ID**: {id}
+- **Name**: `{name}`
+- **Status**: {status}
 - **Default**: enabled
 - **Fixable**: no
 - **Implementation**:
