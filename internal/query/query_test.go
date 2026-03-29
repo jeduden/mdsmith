@@ -62,6 +62,24 @@ var matchTests = []struct {
 		fm:      map[string]any{"status": "✅"},
 		wantErr: true,
 	},
+	{
+		name: "nested field matches",
+		expr: `meta: status: "✅"`,
+		fm:   map[string]any{"meta": map[string]any{"status": "✅"}},
+		want: true,
+	},
+	{
+		name: "nested field missing inner",
+		expr: `meta: status: "✅"`,
+		fm:   map[string]any{"meta": map[string]any{"title": "foo"}},
+		want: false,
+	},
+	{
+		name: "nested field missing outer",
+		expr: `meta: status: "✅"`,
+		fm:   map[string]any{"status": "✅"},
+		want: false,
+	},
 }
 
 func TestMatch(t *testing.T) {
