@@ -27,5 +27,10 @@ footer: |
 | 65  | 🔲     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                |
 | 68  | 🔲     | [Reorganize Documentation](plan/68_reorganize-docs.md)                                                          |
 | 69  | 🔲     | [Include enhancements: link adjustment and heading-level](plan/69_include-enhancements.md)                      |
+| 73  | ✅     | [Unify template and processing directives](plan/73_unify-template-directives.md)                                |
+| 74  | 🔲     | [Directive guide](plan/74_directive-guide.md)                                                                   |
+| 75  | 🔲     | [Single-brace placeholders](plan/75_single-brace-placeholders.md)                                               |
+| 76  | 🔲     | [Rename misleading parameter names](plan/76_rename-misleading-params.md)                                        |
+| 77  | 🔲     | [Template composition and cycle detection](plan/77_template-composition-and-cycles.md)                          |
 | 78  | 🔲     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                         |
 <?/catalog?>
