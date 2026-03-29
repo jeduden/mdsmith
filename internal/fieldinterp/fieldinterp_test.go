@@ -227,6 +227,13 @@ func TestInterpolate_QuotedKeyWithDot(t *testing.T) {
 	assert.Equal(t, "dotted", Interpolate(`{"a.b"}`, data))
 }
 
+func TestInterpolate_MixedIdentAndQuoted(t *testing.T) {
+	data := map[string]any{
+		"params": map[string]any{"a.b": "mixed"},
+	}
+	assert.Equal(t, "mixed", Interpolate(`{params."a.b"}`, data))
+}
+
 func TestInterpolate_QuotedKeyDistinctFromNested(t *testing.T) {
 	data := map[string]any{
 		"a.b": "quoted-dot",
@@ -251,6 +258,16 @@ func TestInterpolate_NonStringValue(t *testing.T) {
 	assert.Equal(t, "42", Interpolate("{count}", data))
 }
 
+func TestInterpolate_CompositeValueEmpty(t *testing.T) {
+	// Maps and slices resolve to empty string to avoid nondeterministic output.
+	data := map[string]any{
+		"nested": map[string]any{"a": "b"},
+		"list":   []any{"x", "y"},
+	}
+	assert.Equal(t, "", Interpolate("{nested}", data))
+	assert.Equal(t, "", Interpolate("{list}", data))
+}
+
 func TestFields_NestedPath(t *testing.T) {
 	fields := Fields("{a.b.c}")
 	require.Len(t, fields, 1)
@@ -273,6 +290,30 @@ func TestValidate_QuotedKey(t *testing.T) {
 
 func TestValidate_QuotedKeyNested(t *testing.T) {
 	assert.NoError(t, Validate(`{"my-key".sub}`))
+}
+
+func TestParseCUEPath_TrailingDot(t *testing.T) {
+	assert.Nil(t, ParseCUEPath("a."))
+}
+
+func TestParseCUEPath_MissingSeparatorAfterQuote(t *testing.T) {
+	// "a"b without dot separator is malformed
+	assert.Nil(t, ParseCUEPath(`"a"b`))
+}
+
+func TestParseCUEPath_Empty(t *testing.T) {
+	assert.Nil(t, ParseCUEPath(""))
+}
+
+func TestParseCUEPath_QuotedTrailingDot(t *testing.T) {
+	assert.Nil(t, ParseCUEPath(`"a".`))
+}
+
+func TestResolvePath_EmptyPath(t *testing.T) {
+	data := map[string]any{"a": "val"}
+	_, err := ResolvePath(data, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty path")
 }
 
 func TestResolvePath_Success(t *testing.T) {

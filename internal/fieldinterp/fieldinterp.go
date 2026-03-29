@@ -14,8 +14,9 @@ import (
 )
 
 // fieldPattern matches a single-brace placeholder like {fieldname},
-// {a.b.c} nested paths, or {"quoted-key".sub} CUE paths.
-var fieldPattern = regexp.MustCompile(`\{([\w-]+(?:\.[\w-]+)*|"[^"]*"(?:\.[\w-]+|(?:\."[^"]*"))*)\}`)
+// {a.b.c} nested paths, or {"quoted-key".sub} CUE paths. Each path
+// segment may be an identifier or a quoted label at any position.
+var fieldPattern = regexp.MustCompile(`\{((?:[\w-]+|"[^"]*")(?:\.(?:[\w-]+|"[^"]*"))*)\}`)
 
 // Interpolate replaces {field} placeholders in text with values resolved
 // from data using CUE path semantics. Supports nested access ({a.b}) and
@@ -117,20 +118,30 @@ func Validate(text string) error {
 
 // ParseCUEPath parses a CUE path expression into segments.
 // Supports: identifiers (a.b.c), quoted labels ("my-key".sub),
-// and quoted keys with dots ("a.b").
+// and quoted keys with dots ("a.b"). Returns nil for malformed
+// expressions (unclosed quotes, empty segments, missing separators).
 func ParseCUEPath(expr string) []string {
+	if expr == "" {
+		return nil
+	}
 	var segments []string
 	i := 0
 	for i < len(expr) {
 		if expr[i] == '"' {
 			end := strings.IndexByte(expr[i+1:], '"')
 			if end < 0 {
-				return nil // malformed
+				return nil // unclosed quote
 			}
 			segments = append(segments, expr[i+1:i+1+end])
 			i = i + 1 + end + 1
-			if i < len(expr) && expr[i] == '.' {
+			if i < len(expr) {
+				if expr[i] != '.' {
+					return nil // missing dot separator after quoted label
+				}
 				i++
+				if i >= len(expr) {
+					return nil // trailing dot
+				}
 			}
 		} else {
 			dot := strings.IndexByte(expr[i:], '.')
@@ -140,10 +151,13 @@ func ParseCUEPath(expr string) []string {
 			}
 			seg := expr[i : i+dot]
 			if seg == "" {
-				return nil // malformed
+				return nil // empty segment (leading or double dot)
 			}
 			segments = append(segments, seg)
 			i = i + dot + 1
+			if i >= len(expr) {
+				return nil // trailing dot
+			}
 		}
 	}
 	return segments
@@ -152,6 +166,9 @@ func ParseCUEPath(expr string) []string {
 // ResolvePath walks data using the given path segments and returns
 // the string value at the resolved location.
 func ResolvePath(data map[string]any, path []string) (string, error) {
+	if len(path) == 0 {
+		return "", fmt.Errorf("empty path")
+	}
 	if data == nil {
 		return "", fmt.Errorf("front-matter key %q not found", strings.Join(path, "."))
 	}
@@ -172,13 +189,24 @@ func ResolvePath(data map[string]any, path []string) (string, error) {
 	return Stringify(current), nil
 }
 
-// Stringify converts any value to a string representation.
+// Stringify converts a scalar value to a string representation.
+// Maps and slices return empty string to avoid nondeterministic output.
 func Stringify(v any) string {
 	switch x := v.(type) {
 	case string:
 		return x
 	case nil:
 		return ""
+	case bool:
+		return fmt.Sprintf("%v", x)
+	case int:
+		return fmt.Sprintf("%d", x)
+	case int64:
+		return fmt.Sprintf("%d", x)
+	case float64:
+		return fmt.Sprintf("%g", x)
+	case map[string]any, []any:
+		return "" // composite types produce nondeterministic output
 	default:
 		return fmt.Sprintf("%v", x)
 	}
