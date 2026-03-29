@@ -143,9 +143,9 @@ rule (see Rendering logic) will add one back.
 
 ## Template Rendering Pipeline
 
-The `row` section uses `{fieldname}` placeholder syntax.
-Available fields depend on the specific rule implementing
-this archetype.
+The `row` section uses `{fieldname}` placeholder syntax
+with CUE path semantics. Available fields depend on the
+specific rule implementing this archetype.
 
 ### Rendering logic
 
