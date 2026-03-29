@@ -19,11 +19,11 @@ Links to local files and heading anchors must resolve.
 
 ## Settings
 
-| Setting | Type | Default | Description                   |
-|---------|------|---------|-------------------------------|
-| `include` | list | `[]`      | glob patterns to include      |
-| `exclude` | list | `[]`      | glob patterns to skip         |
-| `strict`  | bool | `false`   | check non-Markdown file links |
+| Setting   | Type | Default | Description                   |
+|-----------|------|---------|-------------------------------|
+| `include` | list | `[]`    | glob patterns to include      |
+| `exclude` | list | `[]`    | glob patterns to skip         |
+| `strict`  | bool | `false` | check non-Markdown file links |
 
 With `strict: false`, only Markdown targets (`.md`, `.markdown`)
 are checked. External links (`http:`, `https:`, `mailto:`) are

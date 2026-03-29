@@ -75,8 +75,8 @@ frozen `test` and holdout sections.
 
 ## Decision Gate
 
-| Gate                              | Target   | Result | Pass |
-|-----------------------------------|----------|--------|------|
+| Gate                              | Target     | Result | Pass |
+|-----------------------------------|------------|--------|------|
 | Precision delta vs A0             | `>= +0.05` |        |      |
 | Recall delta vs A0                | `>= -0.02` |        |      |
 | F0.5 delta vs A0                  | `>= +0.05` |        |      |

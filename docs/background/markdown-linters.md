@@ -226,14 +226,14 @@ lack determinism.
 
 ### Formatting and Fixing
 
-| Capability         | mdsmith          | Prettier               | markdownlint |
-|--------------------|------------------|------------------------|--------------|
-| Autofix CLI        | `fix`              | `--write`                | `--fix`        |
-| Table alignment    | [MDS025][mds025] | yes                    | no           |
+| Capability         | mdsmith          | Prettier                 | markdownlint |
+|--------------------|------------------|--------------------------|--------------|
+| Autofix CLI        | `fix`            | `--write`                | `--fix`      |
+| Table alignment    | [MDS025][mds025] | yes                      | no           |
 | Prose wrapping     | no               | [`proseWrap`][prosewrap] | no           |
-| Embedded code fmt  | no               | JS/TS/CSS/JSON         | no           |
-| Multi-pass fix     | yes              | single pass            | single pass  |
-| Generated sections | catalog, include | no                     | no           |
+| Embedded code fmt  | no               | JS/TS/CSS/JSON           | no           |
+| Multi-pass fix     | yes              | single pass              | single pass  |
+| Generated sections | catalog, include | no                       | no           |
 
 Prose wrapping controls whether a tool reflows paragraph
 line breaks. Prettier's [`proseWrap`][prosewrap] option
@@ -392,11 +392,11 @@ producing a separate output file.
 
 | Tool                  | Language | Include syntax          | Stars |
 |-----------------------|----------|-------------------------|-------|
-| [markdown-include][]  | Python   | `{!filename!}`            | ~100  |
-| [MarkdownPP][]        | Python   | `!INCLUDE "file.md"`      | ~350  |
-| [Markedpp][]          | Node.js  | `!include(file.md)`       | ~50   |
-| [MyST Markdown][myst] | Python   | `{include} directive`     | ~400  |
-| [Gitdown][]           | Node.js  | `<<< file.md`             | ~460  |
+| [markdown-include][]  | Python   | `{!filename!}`          | ~100  |
+| [MarkdownPP][]        | Python   | `!INCLUDE "file.md"`    | ~350  |
+| [Markedpp][]          | Node.js  | `!include(file.md)`     | ~50   |
+| [MyST Markdown][myst] | Python   | `{include} directive`   | ~400  |
+| [Gitdown][]           | Node.js  | `<<< file.md`           | ~460  |
 | [mdpre][]             | Python   | preprocessor directives | ~20   |
 
 Key differences from mdsmith's include rule

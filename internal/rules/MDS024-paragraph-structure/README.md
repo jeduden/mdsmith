@@ -19,8 +19,8 @@ Paragraphs must not exceed sentence and word limits.
 
 ## Settings
 
-| Setting       | Type | Default | Description                     |
-|---------------|------|---------|---------------------------------|
+| Setting         | Type | Default | Description                     |
+|-----------------|------|---------|---------------------------------|
 | `max-sentences` | int  | 6       | Maximum sentences per paragraph |
 | `max-words`     | int  | 40      | Maximum words per sentence      |
 
@@ -77,7 +77,7 @@ Dogs bark. Cats meow. Birds sing. Fish swim. Frogs croak. Snakes hiss. Bees buzz
 
 ## Diagnostics
 
-| Condition          | Message                                  |
-|--------------------|------------------------------------------|
+| Condition          | Message                                    |
+|--------------------|--------------------------------------------|
 | too many sentences | `paragraph has too many sentences (8 > 6)` |
 | sentence too long  | `sentence too long (45 > 40 words)`        |

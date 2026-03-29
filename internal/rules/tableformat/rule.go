@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/mattn/go-runewidth"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -390,174 +391,12 @@ func parseAlignments(cells []string) []align {
 	return aligns
 }
 
-// displayWidth returns the visible width of a cell's content,
-// accounting for markdown syntax that is not displayed.
+// displayWidth returns the raw display width of a cell's content
+// in a monospace terminal/editor, accounting for wide Unicode
+// characters (emoji, CJK) but preserving markdown syntax as-is
+// so that column delimiters align in source text.
 func displayWidth(s string) int {
-	visible := stripMarkdown(s)
-	return utf8.RuneCountInString(visible)
-}
-
-// stripMarkdown removes markdown formatting syntax to get the visible text.
-// Handles: images, links, bold, italic, inline code, strikethrough.
-func stripMarkdown(s string) string {
-	// Process inline code first (to avoid processing markdown inside code).
-	s = processInlineCode(s)
-
-	// Process images: ![alt](url) -> alt
-	s = stripImages(s)
-
-	// Process links: [text](url) -> text
-	s = stripLinks(s)
-
-	// Process bold+italic: ***text*** -> text, ___text___ -> text
-	s = stripEmphasis(s, "***", "***")
-	s = stripEmphasis(s, "___", "___")
-
-	// Process bold: **text** -> text, __text__ -> text
-	s = stripEmphasis(s, "**", "**")
-	s = stripEmphasis(s, "__", "__")
-
-	// Process italic: *text* -> text, _text_ -> text
-	s = stripEmphasis(s, "*", "*")
-	s = stripEmphasis(s, "_", "_")
-
-	// Process strikethrough: ~~text~~ -> text
-	s = stripEmphasis(s, "~~", "~~")
-
-	return s
-}
-
-// processInlineCode handles inline code spans, returning only
-// the visible text (the code content without backticks).
-func processInlineCode(s string) string {
-	var result strings.Builder
-	i := 0
-	for i < len(s) {
-		if s[i] == '`' {
-			// Count opening backticks.
-			start := i
-			for i < len(s) && s[i] == '`' {
-				i++
-			}
-			ticks := s[start:i]
-
-			// Find matching closing backticks.
-			closeIdx := strings.Index(s[i:], ticks)
-			if closeIdx < 0 {
-				// No closing — write the backticks literally.
-				result.WriteString(ticks)
-				continue
-			}
-			// Write the code content (visible text).
-			content := s[i : i+closeIdx]
-			result.WriteString(content)
-			i += closeIdx + len(ticks)
-		} else {
-			result.WriteByte(s[i])
-			i++
-		}
-	}
-	return result.String()
-}
-
-// stripImages replaces ![alt](url) with alt.
-func stripImages(s string) string {
-	var result strings.Builder
-	i := 0
-	for i < len(s) {
-		if i+1 < len(s) && s[i] == '!' && s[i+1] == '[' {
-			// Find closing ]
-			closeIdx := findUnescaped(s[i+2:], ']')
-			if closeIdx < 0 {
-				result.WriteByte(s[i])
-				i++
-				continue
-			}
-			alt := s[i+2 : i+2+closeIdx]
-			afterBracket := i + 2 + closeIdx + 1
-			// Expect (url) after ]
-			if afterBracket < len(s) && s[afterBracket] == '(' {
-				parenClose := findUnescaped(s[afterBracket+1:], ')')
-				if parenClose >= 0 {
-					result.WriteString(alt)
-					i = afterBracket + 1 + parenClose + 1
-					continue
-				}
-			}
-			result.WriteByte(s[i])
-			i++
-		} else {
-			result.WriteByte(s[i])
-			i++
-		}
-	}
-	return result.String()
-}
-
-// stripLinks replaces [text](url) with text.
-func stripLinks(s string) string {
-	var result strings.Builder
-	i := 0
-	for i < len(s) {
-		if s[i] == '[' {
-			closeIdx := findUnescaped(s[i+1:], ']')
-			if closeIdx < 0 {
-				result.WriteByte(s[i])
-				i++
-				continue
-			}
-			text := s[i+1 : i+1+closeIdx]
-			afterBracket := i + 1 + closeIdx + 1
-			if afterBracket < len(s) && s[afterBracket] == '(' {
-				parenClose := findUnescaped(s[afterBracket+1:], ')')
-				if parenClose >= 0 {
-					result.WriteString(text)
-					i = afterBracket + 1 + parenClose + 1
-					continue
-				}
-			}
-			result.WriteByte(s[i])
-			i++
-		} else {
-			result.WriteByte(s[i])
-			i++
-		}
-	}
-	return result.String()
-}
-
-// stripEmphasis removes matched open/close markers.
-func stripEmphasis(s, open, close string) string {
-	var result strings.Builder
-	for {
-		idx := strings.Index(s, open)
-		if idx < 0 {
-			result.WriteString(s)
-			break
-		}
-		result.WriteString(s[:idx])
-		rest := s[idx+len(open):]
-		closeIdx := strings.Index(rest, close)
-		if closeIdx < 0 {
-			result.WriteString(open)
-			s = rest
-			continue
-		}
-		result.WriteString(rest[:closeIdx])
-		s = rest[closeIdx+len(close):]
-	}
-	return result.String()
-}
-
-// findUnescaped finds the first occurrence of ch in s that is not preceded
-// by a backslash.
-func findUnescaped(s string, ch byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == ch && (i == 0 || s[i-1] != '\\') {
-			return i
-		}
-	}
-	return -1
+	return runewidth.StringWidth(s)
 }
 
 // formatTable produces a formatted version of a table with aligned columns.

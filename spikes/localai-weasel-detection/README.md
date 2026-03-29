@@ -68,8 +68,8 @@ for all four files.
 
 ### CPU Latency
 
-| File      | Avg latency (s) | Max latency (s) |
-|-----------|----------------:|----------------:|
+| File        | Avg latency (s) | Max latency (s) |
+|-------------|----------------:|----------------:|
 | `direct-01` | 5.8662          | 6.8727          |
 | `direct-02` | 5.6662          | 6.4932          |
 | `weasel-01` | 4.0441          | 4.2428          |

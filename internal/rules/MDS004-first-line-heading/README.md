@@ -21,7 +21,7 @@ First line of the file should be a heading.
 
 | Setting | Type | Default | Description                               |
 |---------|------|---------|-------------------------------------------|
-| `level`   | int  | 1       | Required heading level for the first line |
+| `level` | int  | 1       | Required heading level for the first line |
 
 ## Config
 
@@ -99,8 +99,8 @@ Some content here.
 
 ## Diagnostics
 
-| Message                                                        | Condition                                           |
-|----------------------------------------------------------------|-----------------------------------------------------|
+| Message                                                          | Condition                                           |
+|------------------------------------------------------------------|-----------------------------------------------------|
 | `first line should be a level {level} heading`                   | Line 1 is missing or not a heading                  |
 | `first line should be a level {level} heading, found blank line` | First child is a heading but preceded by blank line |
 | `first heading should be level {level}, got {n}`                 | First heading on line 1 has the wrong level         |

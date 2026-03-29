@@ -22,7 +22,7 @@ This policy optimizes decision quality, not headline score.
 
 | ID  | Family     | Core signal                            | Raw output  |
 |-----|------------|----------------------------------------|-------------|
-| A0  | heuristic  | current `MDS029` cues and score          | score       |
+| A0  | heuristic  | current `MDS029` cues and score        | score       |
 | A1  | heuristic  | tuned cue lists and weights            | score       |
 | B0  | classifier | simple linear baseline                 | probability |
 | B1  | classifier | selected candidate from plan 58        | probability |

@@ -11,14 +11,14 @@ mdsmith <command> [flags] [files...]
 
 ## Commands
 
-| Command      | Description                               |
-|--------------|-------------------------------------------|
+| Command        | Description                               |
+|----------------|-------------------------------------------|
 | `check`        | Lint files                                |
 | `fix`          | Auto-fix issues in place                  |
 | `help`         | Show help for rules/topics                |
 | `metrics`      | List and rank shared metrics              |
 | `merge-driver` | Git merge driver for regenerable sections |
-| `init`         | Generate `.mdsmith.yml`                     |
+| `init`         | Generate `.mdsmith.yml`                   |
 | `version`      | Print version, exit                       |
 
 The `check` and `fix` commands accept file paths,
@@ -32,20 +32,20 @@ match, exits 0.
 
 ## Subcommand Flags (check, fix)
 
-| Flag           | Description    |
-|----------------|----------------|
-| `-c`, `--config`   | Config path    |
-| `-f`, `--format`   | `text` or `json`   |
-| `--no-color`     | Plain output   |
-| `--no-gitignore` | Skip gitignore |
-| `-q`, `--quiet`    | Quiet mode     |
-| `-v`, `--verbose`  | Verbose output |
+| Flag              | Description      |
+|-------------------|------------------|
+| `-c`, `--config`  | Config path      |
+| `-f`, `--format`  | `text` or `json` |
+| `--no-color`      | Plain output     |
+| `--no-gitignore`  | Skip gitignore   |
+| `-q`, `--quiet`   | Quiet mode       |
+| `-v`, `--verbose` | Verbose output   |
 
 ## Global Flags
 
-| Flag   | Short | Description |
-|--------|-------|-------------|
-| `--help` | `-h`    | Show help   |
+| Flag     | Short | Description |
+|----------|-------|-------------|
+| `--help` | `-h`  | Show help   |
 
 Use `--` to separate flags from filenames starting with `-`.
 

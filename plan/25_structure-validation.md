@@ -90,9 +90,9 @@ proceed independently.
    implementing `rule.Rule` and `rule.Configurable`.
    Settings:
 
-   | Setting  | Type   | Default | Description           |
-   |----------|--------|---------|-----------------------|
-   | `template` | string | `""`      | Path to template file |
+   | Setting    | Type   | Default | Description           |
+   |------------|--------|---------|-----------------------|
+   | `template` | string | `""`    | Path to template file |
 
    When `template` is empty or unset the rule is a no-op
    (no diagnostics emitted). This lets users enable it
@@ -132,10 +132,10 @@ proceed independently.
    `generated-section` rule alongside `catalog`.
    Parameters:
 
-   | Parameter         | Required | Default | Meaning    |
-   |-------------------|----------|---------|------------|
+   | Parameter           | Required | Default | Meaning    |
+   |---------------------|----------|---------|------------|
    | `file`              | yes      | --      | File path  |
-   | `strip-frontmatter` | no       | `true`    | Drop YAML  |
+   | `strip-frontmatter` | no       | `true`  | Drop YAML  |
    | `wrap`              | no       | --      | Code fence |
 
 10. Include rendering logic:

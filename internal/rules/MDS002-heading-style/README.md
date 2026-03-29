@@ -19,9 +19,9 @@ Heading style must be consistent.
 
 ## Settings
 
-| Setting | Type   | Default | Description                                            |
-|---------|--------|---------|--------------------------------------------------------|
-| `style`   | string | `"atx"`   | `"atx"` (`# Heading`) or `"setext"` (underline with `===`/`---`) |
+| Setting | Type   | Default | Description                                                      |
+|---------|--------|---------|------------------------------------------------------------------|
+| `style` | string | `"atx"` | `"atx"` (`# Heading`) or `"setext"` (underline with `===`/`---`) |
 
 ## Config
 
@@ -141,7 +141,7 @@ Body text.
 
 ## Diagnostics
 
-| Message                        | Condition                                 |
-|--------------------------------|-------------------------------------------|
+| Message                          | Condition                                   |
+|----------------------------------|---------------------------------------------|
 | `heading style should be atx`    | `style: atx` and a Setext heading is found  |
 | `heading style should be setext` | `style: setext` and an ATX heading is found |

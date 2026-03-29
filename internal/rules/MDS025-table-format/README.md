@@ -21,7 +21,7 @@ Tables must have consistent column widths and padding.
 
 | Setting | Type | Default | Description                         |
 |---------|------|---------|-------------------------------------|
-| `pad`     | int  | `1`       | spaces on each side of cell content |
+| `pad`   | int  | `1`     | spaces on each side of cell content |
 
 ## Config
 
@@ -130,11 +130,11 @@ wrap: markdown
 
 ## Edge Cases
 
-| Scenario                       | Behavior                                   |
-|--------------------------------|--------------------------------------------|
-| table inside blockquote        | `> ` prefix preserved on each line           |
-| table inside list              | indentation prefix preserved               |
-| table inside fenced code block | skipped, not checked or modified           |
-| escaped pipe in cell           | `\|` treated as literal, not column boundary |
-| single-column table            | formatted normally with minimum width of 3 |
-| inline code, links, emphasis   | display width counts only visible text     |
+| Scenario                       | Behavior                                           |
+|--------------------------------|----------------------------------------------------|
+| table inside blockquote        | `> ` prefix preserved on each line                 |
+| table inside list              | indentation prefix preserved                       |
+| table inside fenced code block | skipped, not checked or modified                   |
+| escaped pipe in cell           | `\|` treated as literal, not column boundary       |
+| single-column table            | formatted normally with minimum width of 3         |
+| inline code, links, emphasis   | width measured in display columns, syntax included |

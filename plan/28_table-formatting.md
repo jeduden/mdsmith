@@ -30,7 +30,7 @@ using prettier-style output as the target format.
 
    | Setting | Type | Default | Description                         |
    |---------|------|---------|-------------------------------------|
-   | `pad`     | int  | 1       | Spaces on each side of cell content |
+   | `pad`   | int  | 1       | Spaces on each side of cell content |
 
    Initial implementation: single padding value applied
    uniformly.

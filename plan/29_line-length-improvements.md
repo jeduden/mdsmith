@@ -17,8 +17,8 @@ MD013 offers, while keeping our own config syntax.
 
 1. Add new settings to MDS001:
 
-   | Setting        | Type | Default | Description                  |
-   |----------------|------|---------|------------------------------|
+   | Setting          | Type | Default | Description                  |
+   |------------------|------|---------|------------------------------|
    | `heading-max`    | int  | --      | Max length for heading lines |
    | `code-block-max` | int  | --      | Max for code block lines     |
 

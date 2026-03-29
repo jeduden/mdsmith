@@ -10,18 +10,18 @@ This guide compares existing mdsmith rules that touch readability and length wit
 
 ## What the current rules measure
 
-| Rule                         | Measures                                                                     | Default                         | What it misses                                                  |
-|------------------------------|------------------------------------------------------------------------------|---------------------------------|-----------------------------------------------------------------|
+| Rule                                                                                          | Measures                                                                     | Default                             | What it misses                                                  |
+|-----------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|-------------------------------------|-----------------------------------------------------------------|
 | [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) `paragraph-readability` | Complexity using ARI (characters per word, words per sentence)               | `max-grade: 14.0`, `min-words: 20`  | Wordiness and filler; short but dense paragraphs can be skipped |
-| [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) `paragraph-structure`   | Shape and length of paragraphs (sentences per paragraph, words per sentence) | `max-sentences: 6`, `max-words: 40` | Verbosity that fits within limits; dense but short prose        |
-| [MDS022](../../internal/rules/MDS022-max-file-length/README.md) `max-file-length`       | Lines per file                                                               | `max: 300`                        | Token load and dense paragraphs                                 |
-| [MDS028](../../internal/rules/MDS028-token-budget/README.md) `token-budget`          | Estimated token count per file (`heuristic` or `tokenizer` mode)                 | `max: 8000`, `mode: heuristic`      | Exact model token parity; tokenizer mode is still approximate   |
-| [MDS001](../../internal/rules/MDS001-line-length/README.md) `line-length`           | Characters per line                                                          | `max: 80`                         | Verbosity and paragraph complexity                              |
+| [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) `paragraph-structure`     | Shape and length of paragraphs (sentences per paragraph, words per sentence) | `max-sentences: 6`, `max-words: 40` | Verbosity that fits within limits; dense but short prose        |
+| [MDS022](../../internal/rules/MDS022-max-file-length/README.md) `max-file-length`             | Lines per file                                                               | `max: 300`                          | Token load and dense paragraphs                                 |
+| [MDS028](../../internal/rules/MDS028-token-budget/README.md) `token-budget`                   | Estimated token count per file (`heuristic` or `tokenizer` mode)             | `max: 8000`, `mode: heuristic`      | Exact model token parity; tokenizer mode is still approximate   |
+| [MDS001](../../internal/rules/MDS001-line-length/README.md) `line-length`                     | Characters per line                                                          | `max: 80`                           | Verbosity and paragraph complexity                              |
 
 ## Planned metrics (not implemented)
 
-| Metric              | Goal                                       | Status  |
-|---------------------|--------------------------------------------|---------|
+| Metric                                                      | Goal                                       | Status  |
+|-------------------------------------------------------------|--------------------------------------------|---------|
 | [Conciseness Scoring](../../plan/53_conciseness-scoring.md) | Flag low information density in paragraphs | Planned |
 
 ## What conciseness scoring is trying to measure
@@ -77,13 +77,13 @@ These examples assume an illustrative ratio of `0.75 tokens per word` and a budg
 
 ## Trade-offs by metric
 
-| Metric                  | Strengths                                                    | Risks                                                                        |
-|-------------------------|--------------------------------------------------------------|------------------------------------------------------------------------------|
-| Readability ([MDS023](../../internal/rules/MDS023-paragraph-readability/README.md))    | Encourages simple, broadly accessible prose                  | Penalizes technical terms; misses wordiness; can skip short dense paragraphs |
-| Structure ([MDS024](../../internal/rules/MDS024-paragraph-structure/README.md))      | Enforces consistent paragraph shape with low false positives | Does not address filler or redundancy                                        |
+| Metric                                                                                                                                | Strengths                                                    | Risks                                                                        |
+|---------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------------------------|
+| Readability ([MDS023](../../internal/rules/MDS023-paragraph-readability/README.md))                                                   | Encourages simple, broadly accessible prose                  | Penalizes technical terms; misses wordiness; can skip short dense paragraphs |
+| Structure ([MDS024](../../internal/rules/MDS024-paragraph-structure/README.md))                                                       | Enforces consistent paragraph shape with low false positives | Does not address filler or redundancy                                        |
 | Length ([MDS022](../../internal/rules/MDS022-max-file-length/README.md), [MDS001](../../internal/rules/MDS001-line-length/README.md)) | Prevents runaway size and formatting drift                   | Poor proxy for token load or verbosity                                       |
-| Token budget ([MDS028](../../internal/rules/MDS028-token-budget/README.md))   | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
-| Conciseness (proposed)  | Targets verbosity and token waste                            | Heuristic; can penalize necessary qualifiers or legal language               |
+| Token budget ([MDS028](../../internal/rules/MDS028-token-budget/README.md))                                                           | Directly targets context window size                         | Estimation is noisy; code blocks and symbols can skew counts                 |
+| Conciseness (proposed)                                                                                                                | Targets verbosity and token waste                            | Heuristic; can penalize necessary qualifiers or legal language               |
 
 ## How to choose limits
 

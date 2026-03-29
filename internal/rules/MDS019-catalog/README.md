@@ -30,12 +30,12 @@ otherwise.
 
 | Parameter | Required | Default | Description        |
 |-----------|----------|---------|--------------------|
-| `glob`      | yes      | --      | Relative file glob |
-| `sort`      | no       | `path`    | Sort key           |
+| `glob`    | yes      | --      | Relative file glob |
+| `sort`    | no       | `path`  | Sort key           |
 
 | Parameter | Required | Default | Description           |
 |-----------|----------|---------|-----------------------|
-| `columns`   | no       | --      | Column width/wrapping |
+| `columns` | no       | --      | Column width/wrapping |
 
 The `glob` accepts a single string or a YAML list of
 strings. It supports `*`, `?`, `[...]`, `**`, and `{a,b}`
@@ -86,10 +86,10 @@ The `row` section uses Go `text/template` syntax.
 The `columns` parameter sets per-column width limits. Each
 key is a template field name. Options:
 
-| Option    | Type   | Default  | Description          |
-|-----------|--------|----------|----------------------|
-| `max-width` | int    | --       | Max character width. |
-| `wrap`      | string | `truncate` | `truncate` or `br`.      |
+| Option      | Type   | Default    | Description          |
+|-------------|--------|------------|----------------------|
+| `max-width` | int    | --         | Max character width. |
+| `wrap`      | string | `truncate` | `truncate` or `br`.  |
 
 Links and inline code are not split mid-span.
 
@@ -182,18 +182,18 @@ glob: "data/*.md"
 
 ## Diagnostics
 
-| Condition     | Message                    |
-|---------------|----------------------------|
-| Missing `glob`  | `...missing required "glob"` |
-| Empty `glob`    | `...has empty "glob"`        |
-| Absolute glob | `...has absolute glob path`  |
+| Condition      | Message                      |
+|----------------|------------------------------|
+| Missing `glob` | `...missing required "glob"` |
+| Empty `glob`   | `...has empty "glob"`        |
+| Absolute glob  | `...has absolute glob path`  |
 
-| Condition    | Message                 |
-|--------------|-------------------------|
+| Condition      | Message                   |
+|----------------|---------------------------|
 | Glob with `..` | `...".." path traversal`  |
-| Invalid glob | `...invalid glob pattern` |
-| Empty sort   | `...empty "sort" value`   |
-| Invalid sort | `...invalid sort value`   |
+| Invalid glob   | `...invalid glob pattern` |
+| Empty sort     | `...empty "sort" value`   |
+| Invalid sort   | `...invalid sort value`   |
 
 All messages above are prefixed with
 `generated section directive`. Column is always 1.
@@ -219,20 +219,20 @@ nested markers, YAML errors, template errors).
 | Binary file              | Included; no front matter |
 | Symlinks                 | Followed                  |
 
-| Scenario         | Behavior                       |
-|------------------|--------------------------------|
-| Dotfiles         | Matched by `*`/`**`                  |
+| Scenario           | Behavior                       |
+|--------------------|--------------------------------|
+| Dotfiles           | Matched by `*`/`**`            |
 | Absolute/`..` glob | Diagnostic                     |
-| Brace expansion  | Supported                      |
-| Multi-glob list  | Union of matches, deduplicated |
-| Empty glob/sort  | Diagnostic                     |
+| Brace expansion    | Supported                      |
+| Multi-glob list    | Union of matches, deduplicated |
+| Empty glob/sort    | Diagnostic                     |
 
-| Scenario             | Behavior       |
-|----------------------|----------------|
-| `sort: "-"`            | Diagnostic     |
-| Sort with whitespace | Diagnostic     |
+| Scenario             | Behavior         |
+|----------------------|------------------|
+| `sort: "-"`          | Diagnostic       |
+| Sort with whitespace | Diagnostic       |
 | No files matched     | `empty` fallback |
-| Files + `empty`        | `empty` ignored  |
+| Files + `empty`      | `empty` ignored  |
 
 See the
 [archetype documentation](../../../docs/design/archetypes/generated-section/)

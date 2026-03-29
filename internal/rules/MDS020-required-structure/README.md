@@ -20,9 +20,9 @@ template.
 
 ## Settings
 
-| Setting  | Type   | Default | Description           |
-|----------|--------|---------|-----------------------|
-| `template` | string | `""`      | Path to template file |
+| Setting    | Type   | Default | Description           |
+|------------|--------|---------|-----------------------|
+| `template` | string | `""`    | Path to template file |
 
 When `template` is empty the rule is a no-op. Use
 overrides to apply templates to specific file groups.
@@ -42,8 +42,8 @@ description: 'string & != ""'
 Use `<?require?>` in the template body to declare
 constraints on files validated against this template:
 
-| Field    | Type   | Description                           |
-|----------|--------|---------------------------------------|
+| Field      | Type   | Description                           |
+|------------|--------|---------------------------------------|
 | `filename` | string | Glob the document basename must match |
 
 ```markdown
@@ -139,4 +139,4 @@ Describe the goal here.
 | heading sync        | heading does not match frontmatter: expected "MDS001" (from id), got "MDS002" |
 | body sync           | body does not match frontmatter field "description"                           |
 | front matter schema | front matter does not satisfy template CUE schema: ...                        |
-| filename mismatch   | filename "foo.md" does not match required pattern "[0-9]*_*.md"                 |
+| filename mismatch   | filename "foo.md" does not match required pattern "[0-9]*_*.md"               |

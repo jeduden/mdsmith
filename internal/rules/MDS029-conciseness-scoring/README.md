@@ -19,10 +19,10 @@ Paragraph conciseness score must not fall below a threshold.
 
 ## Settings
 
-| Setting         | Type         | Default  | Description                            |
-|-----------------|--------------|----------|----------------------------------------|
-| `min-score`       | number       | `0.20`     | Minimum allowed conciseness score      |
-| `min-words`       | int          | `20`       | Skip paragraphs shorter than this      |
+| Setting           | Type         | Default  | Description                            |
+|-------------------|--------------|----------|----------------------------------------|
+| `min-score`       | number       | `0.20`   | Minimum allowed conciseness score      |
+| `min-words`       | int          | `20`     | Skip paragraphs shorter than this      |
 | `filler-words`    | list[string] | built-in | Words that reduce score when repeated  |
 | `hedge-phrases`   | list[string] | built-in | Phrases that indicate weak assertions  |
 | `verbose-phrases` | list[string] | built-in | Long phrases with shorter alternatives |
@@ -102,6 +102,6 @@ little concrete information to the paragraph.
 
 ## Diagnostics
 
-| Condition             | Message                                                                                                              |
-|-----------------------|----------------------------------------------------------------------------------------------------------------------|
+| Condition             | Message                                                                                                                |
+|-----------------------|------------------------------------------------------------------------------------------------------------------------|
 | score below threshold | `conciseness score too low (0.12 < 0.20); target >= 0.20; reduce filler or hedge cues (e.g., "basically", "it seems")` |

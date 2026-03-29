@@ -125,9 +125,9 @@ header: |
   |-------|-------------|
 row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
 ?>
-| Title           | Description        |
-|-----------------|--------------------|
-| [API Reference](docs/api.md)   | Complete API docs  |
+| Title                            | Description        |
+|----------------------------------|--------------------|
+| [API Reference](docs/api.md)     | Complete API docs  |
 | [Getting Started](docs/guide.md) | How to get started |
 <?/catalog?>
 `
@@ -251,9 +251,9 @@ footer: |
 
   ---
 ?>
-| Title | Description |
-|-------|-------------|
-| [API](a.md)   | docs        |
+| Title       | Description |
+|-------------|-------------|
+| [API](a.md) | docs        |
 
 ---
 <?/catalog?>
@@ -1991,8 +1991,8 @@ header: |
 row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
 empty: No rules defined yet.
 ?>
-| Rule          | Description        |
-|---------------|--------------------|
+| Rule                                   | Description        |
+|----------------------------------------|--------------------|
 | [First Heading](rules/tm001/README.md) | Checks headings    |
 | [Line Length](rules/tm002/README.md)   | Checks line length |
 <?/catalog?>

@@ -19,8 +19,8 @@ Paragraph readability grade must not exceed a threshold.
 
 ## Settings
 
-| Setting   | Type  | Default | Description                             |
-|-----------|-------|---------|-----------------------------------------|
+| Setting     | Type  | Default | Description                             |
+|-------------|-------|---------|-----------------------------------------|
 | `max-grade` | float | 14.0    | Maximum allowed ARI readability grade   |
 | `min-words` | int   | 20      | Minimum word count to check a paragraph |
 

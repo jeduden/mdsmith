@@ -74,7 +74,7 @@ Content here.
 
 ## Diagnostics
 
-| Message                                              | Condition                                  |
-|------------------------------------------------------|--------------------------------------------|
+| Message                                                | Condition                                  |
+|--------------------------------------------------------|--------------------------------------------|
 | `fenced code block should be preceded by a blank line` | Previous line is not blank                 |
 | `fenced code block should be followed by a blank line` | Next line after closing fence is not blank |

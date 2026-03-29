@@ -42,12 +42,12 @@ for details.
 
 ## Parameters
 
-| Parameter         | Required | Default | Description                                     |
-|-------------------|----------|---------|-------------------------------------------------|
-| `file`              | yes      | --      | Relative path to include                        |
-| `strip-frontmatter` | no       | `"true"`  | Remove YAML frontmatter                         |
-| `wrap`              | no       | --      | Wrap in code fence (value = language)           |
-| `heading-level`     | no       | --      | `"absolute"`: shift headings to nest under parent |
+| Parameter           | Required | Default  | Description                                       |
+|---------------------|----------|----------|---------------------------------------------------|
+| `file`              | yes      | --       | Relative path to include                          |
+| `strip-frontmatter` | no       | `"true"` | Remove YAML frontmatter                           |
+| `wrap`              | no       | --       | Wrap in code fence (value = language)             |
+| `heading-level`     | no       | --       | `"absolute"`: shift headings to nest under parent |
 
 ## Link Adjustment
 

@@ -18,7 +18,7 @@ This nudges authors to split long files.
 
    | Setting | Type | Default | Description           |
    |---------|------|---------|-----------------------|
-   | `max`     | int  | 300     | Maximum lines allowed |
+   | `max`   | int  | 300     | Maximum lines allowed |
 
 2. Check logic: count `len(f.Lines)`. If it exceeds `max`,
    emit a single diagnostic on line 1:

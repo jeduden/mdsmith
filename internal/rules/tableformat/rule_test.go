@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattn/go-runewidth"
+
 	"github.com/jeduden/mdsmith/internal/lint"
 
 	"github.com/stretchr/testify/assert"
@@ -66,57 +68,111 @@ func TestDisplayWidth_ASCII(t *testing.T) {
 }
 
 func TestDisplayWidth_Multibyte(t *testing.T) {
-	// Each rune counts as 1 for basic multibyte.
 	got := displayWidth("café")
 	assert.Equal(t, 4, got, "displayWidth(café) = %d, want 4", got)
 }
 
+func TestDisplayWidth_Emoji(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"✅", 2},
+		{"🔲", 2},
+		{"🔳", 2},
+		{"✅ done", 7},
+	}
+	for _, tt := range tests {
+		got := displayWidth(tt.input)
+		assert.Equal(t, tt.want, got, "displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
+	}
+}
+
 func TestDisplayWidth_Link(t *testing.T) {
 	got := displayWidth("[text](https://example.com)")
-	if got != 4 { // only "text" is visible
-		t.Errorf("displayWidth([text](url)) = %d, want 4", got)
-	}
+	assert.Equal(t, 27, got, "displayWidth counts raw characters including URL")
 }
 
 func TestDisplayWidth_InlineCode(t *testing.T) {
 	got := displayWidth("`code`")
-	if got != 4 { // only "code" is visible
-		t.Errorf("displayWidth(`code`) = %d, want 4", got)
-	}
+	assert.Equal(t, 6, got, "displayWidth counts backticks")
 }
 
 func TestDisplayWidth_Bold(t *testing.T) {
 	got := displayWidth("**bold**")
-	if got != 4 { // only "bold" is visible
-		t.Errorf("displayWidth(**bold**) = %d, want 4", got)
-	}
+	assert.Equal(t, 8, got, "displayWidth counts asterisks")
 }
 
 func TestDisplayWidth_Italic(t *testing.T) {
 	got := displayWidth("*italic*")
-	if got != 6 { // only "italic" is visible
-		t.Errorf("displayWidth(*italic*) = %d, want 6", got)
-	}
+	assert.Equal(t, 8, got, "displayWidth counts asterisks")
 }
 
 func TestDisplayWidth_Image(t *testing.T) {
 	got := displayWidth("![alt text](image.png)")
-	if got != 8 { // only "alt text" is visible
-		t.Errorf("displayWidth(![alt](url)) = %d, want 8", got)
-	}
+	assert.Equal(t, 22, got, "displayWidth counts raw characters including URL")
 }
 
 func TestDisplayWidth_Strikethrough(t *testing.T) {
 	got := displayWidth("~~deleted~~")
-	if got != 7 { // only "deleted" is visible
-		t.Errorf("displayWidth(~~deleted~~) = %d, want 7", got)
-	}
+	assert.Equal(t, 11, got, "displayWidth counts tildes")
 }
 
 func TestDisplayWidth_Mixed(t *testing.T) {
-	// "see text for details" -> "see " + "text" + " for details" = 20
 	got := displayWidth("see [text](url) for details")
-	assert.Equal(t, 20, got, "displayWidth(mixed) = %d, want 20", got)
+	assert.Equal(t, 27, got, "displayWidth counts raw characters")
+}
+
+func TestDisplayWidth_CJK(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"日本語", 6},  // 3 CJK chars × 2 columns each
+		{"a日b", 4},  // 1 + 2 + 1
+		{"中文测试", 8}, // 4 CJK chars × 2
+	}
+	for _, tt := range tests {
+		got := displayWidth(tt.input)
+		assert.Equal(t, tt.want, got, "displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
+	}
+}
+
+func TestFix_LinksWithVaryingURLLengths(t *testing.T) {
+	// Regression test for #65: links with different URL lengths must
+	// produce consistent column widths so trailing | aligns.
+	src := "| Name | Link |\n" +
+		"|---|---|\n" +
+		"| a | [short](x.md) |\n" +
+		"| b | [long link text](https://example.com/very/long/path.md) |\n"
+	r := &Rule{Pad: 1}
+	f := newTestFile(t, src)
+	fixed := r.Fix(f)
+	lines := strings.Split(string(fixed), "\n")
+	// All table rows must have the same display width (terminal columns).
+	widths := map[int]bool{}
+	for i := 0; i < 4; i++ {
+		widths[runewidth.StringWidth(lines[i])] = true
+	}
+	assert.Len(t, widths, 1, "all rows should have same display width, got lines:\n%s", strings.Join(lines[:4], "\n"))
+}
+
+func TestFix_MixedEmojiAndLinks(t *testing.T) {
+	src := "| Status | Task |\n" +
+		"|---|---|\n" +
+		"| ✅ | [Deploy](deploy.md) |\n" +
+		"| 🔲 | [Build pipeline](build-pipeline.md) |\n"
+	r := &Rule{Pad: 1}
+	f := newTestFile(t, src)
+	fixed := r.Fix(f)
+	// All table rows must have the same display width (terminal columns),
+	// even though byte lengths differ due to emoji encoding.
+	lines := strings.Split(string(fixed), "\n")
+	widths := map[int]bool{}
+	for i := 0; i < 4; i++ {
+		widths[runewidth.StringWidth(lines[i])] = true
+	}
+	assert.Len(t, widths, 1, "all rows should have same display width, got lines:\n%s", strings.Join(lines[:4], "\n"))
 }
 
 // --- Table detection tests ---

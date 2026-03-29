@@ -56,8 +56,8 @@ Use an explicit allow marker for intentional empty sections:
 
 ## Settings
 
-| Setting      | Type   | Default             | Description                           |
-|--------------|--------|---------------------|---------------------------------------|
+| Setting        | Type   | Default               | Description                           |
+|----------------|--------|-----------------------|---------------------------------------|
 | `min-level`    | int    | `2`                   | minimum heading level to check        |
 | `max-level`    | int    | `6`                   | maximum heading level to check        |
 | `allow-marker` | string | `allow-empty-section` | comment marker that exempts a section |

@@ -19,13 +19,13 @@ Line exceeds maximum length.
 
 ## Settings
 
-| Setting        | Type | Default                           | Description                                              |
-|----------------|------|-----------------------------------|----------------------------------------------------------|
-| `max`            | int  | 80                                | Maximum allowed line length                              |
-| `heading-max`    | int  | --                                | Max length for heading lines; inherits `max` when unset    |
-| `code-block-max` | int  | --                                | Max length for code block lines; inherits `max` when unset |
-| `stern`          | bool | false                             | Only flag long lines that contain a space past the limit |
-| `exclude`        | list | `["code-blocks", "tables", "urls"]` | Categories to exclude from checking                      |
+| Setting          | Type | Default                             | Description                                                |
+|------------------|------|-------------------------------------|------------------------------------------------------------|
+| `max`            | int  | 80                                  | Maximum allowed line length                                |
+| `heading-max`    | int  | --                                  | Max length for heading lines; inherits `max` when unset    |
+| `code-block-max` | int  | --                                  | Max length for code block lines; inherits `max` when unset |
+| `stern`          | bool | false                               | Only flag long lines that contain a space past the limit   |
+| `exclude`        | list | `["code-blocks", "tables", "urls"]` | Categories to exclude from checking                        |
 
 Valid `exclude` values:
 
