@@ -11,14 +11,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"cuelang.org/go/cue"
 )
 
 // fieldPattern matches a single-brace placeholder like {fieldname},
 // {a.b.c} nested paths, or {"quoted-key".sub} CUE paths. Each path
 // segment may be an identifier or a quoted label at any position.
-// Quoted labels may not contain } (which would terminate the placeholder)
-// or backslash escapes (not needed for YAML front-matter keys).
-var fieldPattern = regexp.MustCompile(`\{((?:[\w-]+|"[^"}]+")(\.(?:[\w-]+|"[^"}"]+"))*)\}`)
+// Quoted labels may not contain unescaped } (which would terminate
+// the placeholder). Backslash escapes inside quotes are allowed.
+var fieldPattern = regexp.MustCompile(`\{((?:[\w-]+|"(?:[^"\\}]|\\.)*")(\.(?:[\w-]+|"(?:[^"\\}]|\\.)*"))*)\}`)
 
 // Interpolate replaces {field} placeholders in text with values resolved
 // from data using CUE path semantics. Supports nested access ({a.b}) and
@@ -118,60 +120,39 @@ func Validate(text string) error {
 	return nil
 }
 
-// ParseCUEPath parses a CUE path expression into segments.
-// Supports: identifiers (a.b.c), quoted labels ("my-key".sub),
-// and quoted keys with dots ("a.b"). Returns nil for malformed
-// expressions (unclosed quotes, empty segments, missing separators).
-//
-// This is a lightweight subset of CUE path syntax sufficient for
-// YAML front-matter key navigation. Backslash escapes and unicode
-// escapes inside quoted labels are not supported — quoted labels
-// are treated as literal strings between the quote delimiters.
+// ParseCUEPath parses a CUE path expression into unquoted label
+// segments using cue.ParsePath. Hyphenated identifiers (e.g. "my-field")
+// that CUE treats as subtraction are accepted as literal keys when the
+// expression contains no quotes or dots. Returns nil for malformed
+// expressions.
 func ParseCUEPath(expr string) []string {
 	if expr == "" {
 		return nil
 	}
-	var segments []string
-	i := 0
-	for i < len(expr) {
-		if expr[i] == '"' {
-			end := strings.IndexByte(expr[i+1:], '"')
-			if end < 0 {
-				return nil // unclosed quote
-			}
-			if end == 0 {
-				return nil // empty quoted label
-			}
-			segments = append(segments, expr[i+1:i+1+end])
-			i = i + 1 + end + 1
-			if i < len(expr) {
-				if expr[i] != '.' {
-					return nil // missing dot separator after quoted label
-				}
-				i++
-				if i >= len(expr) {
-					return nil // trailing dot
-				}
-			}
-		} else {
-			dot := strings.IndexByte(expr[i:], '.')
-			if dot < 0 {
-				segments = append(segments, expr[i:])
-				break
-			}
-			seg := expr[i : i+dot]
-			if seg == "" {
-				return nil // empty segment (leading or double dot)
-			}
-			segments = append(segments, seg)
-			i = i + dot + 1
-			if i >= len(expr) {
-				return nil // trailing dot
-			}
+	p := cue.ParsePath(expr)
+	if p.Err() != nil {
+		// CUE rejects hyphenated identifiers like "my-field" (treats
+		// as subtraction). If the expression is a simple identifier
+		// with hyphens and no dots or quotes, accept it as a literal.
+		if !strings.ContainsAny(expr, ".\"") && identWithHyphen.MatchString(expr) {
+			return []string{expr}
 		}
+		return nil
+	}
+	sels := p.Selectors()
+	if len(sels) == 0 {
+		return nil
+	}
+	segments := make([]string, len(sels))
+	for i, s := range sels {
+		segments[i] = s.Unquoted()
 	}
 	return segments
 }
+
+// identWithHyphen matches identifiers containing hyphens that CUE
+// rejects but YAML front-matter keys commonly use.
+var identWithHyphen = regexp.MustCompile(`^[\w][\w-]*$`)
 
 // ResolvePath walks data using the given path segments and returns
 // the string value at the resolved location.

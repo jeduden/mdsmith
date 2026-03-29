@@ -290,6 +290,10 @@ func sortValue(entry fileEntry, key string) string {
 		return filepath.Base(fieldinterp.Stringify(entry.fields["filename"]))
 	default:
 		path := fieldinterp.ParseCUEPath(key)
+		if path == nil {
+			// Not a valid CUE path; try direct map lookup.
+			return fieldinterp.Stringify(entry.fields[key])
+		}
 		val, err := fieldinterp.ResolvePath(entry.fields, path)
 		if err != nil {
 			return ""
