@@ -99,12 +99,12 @@ Diagnostics are printed to stderr with source context:
 
 ```text
 README.md:10:81 MDS001 line too long (135 > 80)
- 8 | Previous line.
- 9 | Another line.
-10 | This very long line exceeds the limit...
+ 8 | Context lines appear above and below the diagnostic with line numbers.
+ 9 | They help you see the surrounding code at a glance.
+10 | This line is deliberately made long so it exceeds the eighty character limit  and keeps going and going.
    |                                                                                 ^
-11 | Next line.
-12 | Another line.
+11 | The caret above points to the exact column where the issue starts.
+12 | Up to two lines of context are shown on each side.
 ```
 
 Each diagnostic starts with a header (`file:line:col rule message`)
