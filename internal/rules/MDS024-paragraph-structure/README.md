@@ -11,7 +11,7 @@ Paragraphs must not exceed sentence and word limits.
 - **ID**: MDS024
 - **Name**: `paragraph-structure`
 - **Status**: ready
-- **Default**: enabled, max-sentences: 6, max-words: 40
+- **Default**: enabled, max-sentences: 6, max-words-per-sentence: 40
 - **Fixable**: no
 - **Implementation**:
   [source](./)
@@ -19,10 +19,10 @@ Paragraphs must not exceed sentence and word limits.
 
 ## Settings
 
-| Setting         | Type | Default | Description                     |
-|-----------------|------|---------|---------------------------------|
-| `max-sentences` | int  | 6       | Maximum sentences per paragraph |
-| `max-words`     | int  | 40      | Maximum words per sentence      |
+| Setting                  | Type | Default | Description                     |
+|--------------------------|------|---------|---------------------------------|
+| `max-sentences`          | int  | 6       | Maximum sentences per paragraph |
+| `max-words-per-sentence` | int  | 40      | Maximum words per sentence      |
 
 Markdown tables and code blocks are skipped.
 
@@ -32,7 +32,7 @@ Markdown tables and code blocks are skipped.
 rules:
   paragraph-structure:
     max-sentences: 6
-    max-words: 40
+    max-words-per-sentence: 40
 ```
 
 Disable:

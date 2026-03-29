@@ -79,6 +79,8 @@ The `row` section uses `{fieldname}` placeholder syntax.
 - Other names (e.g., `{title}`) -- looked up in the
   matched file's YAML front matter.
 - Missing field -> empty string.
+- Case-mismatched field (e.g., `{Title}` when
+  front matter has `title`) -> "did you mean?" hint.
 - Non-string value -> Go default string format.
 - Literal `{` is written as `{{`, literal `}` as `}}`.
 
@@ -206,12 +208,13 @@ nested markers, YAML errors, template errors).
 
 ## Edge Cases
 
-| Scenario             | Behavior          |
-|----------------------|-------------------|
-| No front matter      | Others -> empty   |
-| Invalid front matter | Treated as absent |
-| Missing field        | Empty string      |
-| Unreadable file      | Skipped           |
+| Scenario              | Behavior             |
+|-----------------------|----------------------|
+| No front matter       | Others -> empty      |
+| Invalid front matter  | Treated as absent    |
+| Missing field         | Empty string         |
+| Case-mismatched field | "did you mean?" hint |
+| Unreadable file       | Skipped              |
 
 | Scenario                 | Behavior                  |
 |--------------------------|---------------------------|

@@ -133,8 +133,8 @@ func TestCheck_TableSkipped(t *testing.T) {
 func TestApplySettings_Valid(t *testing.T) {
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	err := r.ApplySettings(map[string]any{
-		"max-sentences": 10,
-		"max-words":     50,
+		"max-sentences":          10,
+		"max-words-per-sentence": 50,
 	})
 	require.NoError(t, err, "unexpected error: %v", err)
 	if r.MaxSentences != 10 {
@@ -163,8 +163,8 @@ func TestDefaultSettings(t *testing.T) {
 	if ds["max-sentences"] != 6 {
 		t.Errorf("expected max-sentences=6, got %v", ds["max-sentences"])
 	}
-	if ds["max-words"] != 40 {
-		t.Errorf("expected max-words=40, got %v", ds["max-words"])
+	if ds["max-words-per-sentence"] != 40 {
+		t.Errorf("expected max-words-per-sentence=40, got %v", ds["max-words-per-sentence"])
 	}
 }
 

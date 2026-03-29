@@ -3,7 +3,7 @@ settings:
   max-columns: 3
   max-rows: 20
   max-words-per-cell: 50
-  max-column-width-variance: 10
+  max-column-width-ratio: 10
 diagnostics:
   - line: 3
     column: 1

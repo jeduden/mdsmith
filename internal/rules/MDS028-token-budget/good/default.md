@@ -1,7 +1,7 @@
 ---
 settings:
   mode: heuristic
-  ratio: 1.0
+  words-per-token: 1.0
   max: 20
 ---
 # Token Budget

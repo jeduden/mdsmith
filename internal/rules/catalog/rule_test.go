@@ -2630,3 +2630,76 @@ func TestCheck_CatalogNoCycleWhenNoInclude(t *testing.T) {
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
+
+// =====================================================================
+// Case-mismatch "did you mean?" hints
+// =====================================================================
+
+func TestExtractPlaceholderFields(t *testing.T) {
+	fields := extractPlaceholderFields("- [{Title}]({filename})")
+	assert.Equal(t, []string{"Title", "filename"}, fields)
+}
+
+func TestExtractPlaceholderFields_Duplicates(t *testing.T) {
+	fields := extractPlaceholderFields("{title} and {title}")
+	assert.Equal(t, []string{"title"}, fields)
+}
+
+func TestExtractPlaceholderFields_NoFields(t *testing.T) {
+	fields := extractPlaceholderFields("plain text")
+	assert.Empty(t, fields)
+}
+
+func TestCheckFieldCaseMismatches_Exact(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "a.md", "title": "A"}},
+	}
+	diags := checkFieldCaseMismatches("index.md", 5, "{title}", entries)
+	assert.Empty(t, diags, "exact match should produce no diagnostic")
+}
+
+func TestCheckFieldCaseMismatches_CaseMismatch(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "a.md", "title": "A"}},
+	}
+	diags := checkFieldCaseMismatches("index.md", 5, "{Title}", entries)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, `field "Title" not found`)
+	assert.Contains(t, diags[0].Message, `did you mean "title"`)
+}
+
+func TestCheckFieldCaseMismatches_Deduplication(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "a.md", "title": "A"}},
+		{fields: map[string]any{"filename": "b.md", "title": "B"}},
+	}
+	diags := checkFieldCaseMismatches("index.md", 5, "{Title}", entries)
+	require.Len(t, diags, 1, "should deduplicate across entries")
+}
+
+func TestCheckFieldCaseMismatches_BuiltinFilename(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "a.md"}},
+	}
+	diags := checkFieldCaseMismatches("index.md", 5, "{filename}", entries)
+	assert.Empty(t, diags, "filename is built-in and always present")
+}
+
+func TestSpec_DidYouMeanCaseMismatch(t *testing.T) {
+	mapFS := fstest.MapFS{
+		"docs/a.md": &fstest.MapFile{Data: []byte("---\ntitle: A\n---\n# A\n")},
+	}
+	src := "# Index\n\n<?catalog\nglob: \"docs/*.md\"\nrow: \"- [{Title}]({filename})\"\n?>\n<?/catalog?>\n"
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	// Should have at least 1 diagnostic for the case mismatch.
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "did you mean") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected 'did you mean' diagnostic, got: %v", diags)
+}

@@ -1,7 +1,7 @@
 ---
 settings:
   max-sentences: 6
-  max-words: 40
+  max-words-per-sentence: 40
 diagnostics:
   - line: 3
     column: 1

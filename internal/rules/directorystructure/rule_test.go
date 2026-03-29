@@ -69,7 +69,7 @@ func TestCheck_Unconfigured_NoOp(t *testing.T) {
 	f, err := lint.NewFile("docs/guide.md", src)
 	require.NoError(t, err)
 	diags := r.Check(f)
-	assert.Empty(t, diags, "expected 0 diagnostics (unconfigured rule is no-op)")
+	assert.Empty(t, diags, "expected 0 diagnostics (ApplySettings never called)")
 }
 
 func TestCheck_EmptyAllowed_WarnsOnEveryFile(t *testing.T) {
@@ -78,7 +78,8 @@ func TestCheck_EmptyAllowed_WarnsOnEveryFile(t *testing.T) {
 	f, err := lint.NewFile("docs/guide.md", src)
 	require.NoError(t, err)
 	diags := r.Check(f)
-	require.Len(t, diags, 1, "expected 1 diagnostic (empty allowed = nothing allowed)")
+	require.Len(t, diags, 1, "expected 1 diagnostic (config warning)")
+	assert.Contains(t, diags[0].Message, "no \"allowed\" patterns configured")
 }
 
 func TestCheck_MultiplePatterns(t *testing.T) {
@@ -142,10 +143,6 @@ func TestApplySettings_InvalidGlob(t *testing.T) {
 	assert.Error(t, err, "expected error for invalid glob pattern")
 	// Rule must remain unconfigured after error.
 	assert.False(t, r.configured, "rule should remain unconfigured after invalid glob error")
-	f, err2 := lint.NewFile("anywhere.md", []byte("# Title\n"))
-	require.NoError(t, err2)
-	diags := r.Check(f)
-	assert.Empty(t, diags, "expected no-op after error")
 }
 
 func TestApplySettings_UnknownKey(t *testing.T) {
@@ -154,10 +151,6 @@ func TestApplySettings_UnknownKey(t *testing.T) {
 	assert.Error(t, err, "expected error for unknown setting")
 	// Rule must remain unconfigured after error.
 	assert.False(t, r.configured, "rule should remain unconfigured after unknown key error")
-	f, err2 := lint.NewFile("anywhere.md", []byte("# Title\n"))
-	require.NoError(t, err2)
-	diags := r.Check(f)
-	assert.Empty(t, diags, "expected no-op after error")
 }
 
 func TestDefaultSettings(t *testing.T) {
@@ -169,7 +162,8 @@ func TestDefaultSettings(t *testing.T) {
 
 func TestApplyDefaultSettings_RemainsUnconfigured(t *testing.T) {
 	// Simulate the CloneRule/fixture-harness flow: configure the rule,
-	// then restore defaults. The rule should return to unconfigured/no-op.
+	// then restore defaults. The rule should return to unconfigured and
+	// emit a config warning when checked.
 	r := newRule(t, []string{"docs/**"})
 	err := r.ApplySettings(r.DefaultSettings())
 	require.NoError(t, err)
@@ -177,5 +171,6 @@ func TestApplyDefaultSettings_RemainsUnconfigured(t *testing.T) {
 	f, err := lint.NewFile("anywhere/guide.md", src)
 	require.NoError(t, err)
 	diags := r.Check(f)
-	assert.Empty(t, diags, "expected 0 diagnostics (restored to unconfigured no-op)")
+	require.Len(t, diags, 1, "expected 1 diagnostic (config warning)")
+	assert.Contains(t, diags[0].Message, "no \"allowed\" patterns configured")
 }

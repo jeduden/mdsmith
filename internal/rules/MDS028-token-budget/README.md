@@ -11,7 +11,7 @@ File must not exceed a token budget.
 - **ID**: MDS028
 - **Name**: `token-budget`
 - **Status**: ready
-- **Default**: enabled, max: 8000, mode: heuristic, ratio: 0.75,
+- **Default**: enabled, max: 8000, mode: heuristic, words-per-token: 0.75,
   tokenizer: builtin, encoding: cl100k_base
 - **Fixable**: no
 - **Implementation**:
@@ -20,14 +20,14 @@ File must not exceed a token budget.
 
 ## Settings
 
-| Setting     | Type   | Default       | Description                                                                          |
-|-------------|--------|---------------|--------------------------------------------------------------------------------------|
-| `max`       | int    | 8000          | Default token budget when no per-glob budget matches                                 |
-| `mode`      | string | `heuristic`   | Counting mode: `heuristic` or `tokenizer`                                            |
-| `ratio`     | number | 0.75          | Tokens per word multiplier used in `heuristic` mode                                  |
-| `tokenizer` | string | `builtin`     | Tokenizer family used in `tokenizer` mode                                            |
-| `encoding`  | string | `cl100k_base` | Encoding profile for tokenizer mode: `cl100k_base`, `p50k_base`, `r50k_base`, `gpt2` |
-| `budgets`   | list   | none          | Ordered per-glob budgets (`glob`, `max`); last matching entry wins                   |
+| Setting           | Type   | Default       | Description                                                                          |
+|-------------------|--------|---------------|--------------------------------------------------------------------------------------|
+| `max`             | int    | 8000          | Default token budget when no per-glob budget matches                                 |
+| `mode`            | string | `heuristic`   | Counting mode: `heuristic` or `tokenizer`                                            |
+| `words-per-token` | number | 0.75          | Tokens per word multiplier used in `heuristic` mode                                  |
+| `tokenizer`       | string | `builtin`     | Tokenizer family used in `tokenizer` mode                                            |
+| `encoding`        | string | `cl100k_base` | Encoding profile for tokenizer mode: `cl100k_base`, `p50k_base`, `r50k_base`, `gpt2` |
+| `budgets`         | list   | none          | Ordered per-glob budgets (`glob`, `max`); last matching entry wins                   |
 
 ## Config
 
@@ -44,7 +44,7 @@ Heuristic mode:
 rules:
   token-budget:
     mode: heuristic
-    ratio: 0.75
+    words-per-token: 0.75
     max: 2400
 ```
 

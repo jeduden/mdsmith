@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	defaultMax       = 8000
-	defaultMode      = "heuristic"
-	defaultRatio     = 0.75
-	defaultTokenizer = "builtin"
-	defaultEncoding  = "cl100k_base"
-	validEncodings   = "cl100k_base, p50k_base, r50k_base, gpt2"
+	defaultMax           = 8000
+	defaultMode          = "heuristic"
+	defaultWordsPerToken = 0.75
+	defaultTokenizer     = "builtin"
+	defaultEncoding      = "cl100k_base"
+	validEncodings       = "cl100k_base, p50k_base, r50k_base, gpt2"
 )
 
 var (
@@ -42,7 +42,7 @@ func init() {
 	rule.Register(&Rule{
 		Max:       defaultMax,
 		Mode:      defaultMode,
-		Ratio:     defaultRatio,
+		Ratio:     defaultWordsPerToken,
 		Tokenizer: defaultTokenizer,
 		Encoding:  defaultEncoding,
 	})
@@ -148,7 +148,7 @@ func (r *Rule) tokenCountAndMode(text string) (int, string) {
 	default:
 		ratio := r.Ratio
 		if ratio <= 0 {
-			ratio = defaultRatio
+			ratio = defaultWordsPerToken
 		}
 		words := mdtext.CountWords(text)
 		count := int(math.Round(float64(words) * ratio))
@@ -194,7 +194,7 @@ func (r *Rule) applySetting(k string, v any) error {
 		return r.applyMax(v)
 	case "mode":
 		return r.applyMode(v)
-	case "ratio":
+	case "words-per-token":
 		return r.applyRatio(v)
 	case "tokenizer":
 		return r.applyTokenizer(v)
@@ -238,10 +238,10 @@ func (r *Rule) applyMode(v any) error {
 func (r *Rule) applyRatio(v any) error {
 	n, ok := toFloat(v)
 	if !ok {
-		return fmt.Errorf("token-budget: ratio must be a number, got %T", v)
+		return fmt.Errorf("token-budget: words-per-token must be a number, got %T", v)
 	}
 	if n <= 0 {
-		return fmt.Errorf("token-budget: ratio must be positive, got %.4g", n)
+		return fmt.Errorf("token-budget: words-per-token must be positive, got %.4g", n)
 	}
 	r.Ratio = n
 	return nil
@@ -358,11 +358,11 @@ func parseBudgets(v any) ([]budgetOverride, error) {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"max":       defaultMax,
-		"mode":      defaultMode,
-		"ratio":     defaultRatio,
-		"tokenizer": defaultTokenizer,
-		"encoding":  defaultEncoding,
+		"max":             defaultMax,
+		"mode":            defaultMode,
+		"words-per-token": defaultWordsPerToken,
+		"tokenizer":       defaultTokenizer,
+		"encoding":        defaultEncoding,
 	}
 }
 

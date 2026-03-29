@@ -108,11 +108,11 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				)
 			}
 			r.MaxSentences = n
-		case "max-words":
+		case "max-words-per-sentence":
 			n, ok := toInt(v)
 			if !ok {
 				return fmt.Errorf(
-					"paragraph-structure: max-words must be an integer, got %T", v,
+					"paragraph-structure: max-words-per-sentence must be an integer, got %T", v,
 				)
 			}
 			r.MaxWords = n
@@ -126,8 +126,8 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"max-sentences": 6,
-		"max-words":     40,
+		"max-sentences":          6,
+		"max-words-per-sentence": 40,
 	}
 }
 

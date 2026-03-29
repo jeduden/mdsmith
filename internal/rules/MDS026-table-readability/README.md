@@ -15,7 +15,7 @@ Tables must stay within readability complexity limits.
   - `max-columns`: `8`
   - `max-rows`: `30`
   - `max-words-per-cell`: `30`
-  - `max-column-width-variance`: `60.0`
+  - `max-column-width-ratio`: `60.0`
 - **Fixable**: no
 - **Implementation**:
   [source](./)
@@ -26,12 +26,12 @@ Table complexity needs table-specific metrics.
 
 ## Settings
 
-| Setting                     | Type  | Default | Description                                                      |
-|-----------------------------|-------|---------|------------------------------------------------------------------|
-| `max-columns`               | int   | `8`     | Maximum columns per table                                        |
-| `max-rows`                  | int   | `30`    | Maximum data rows per table                                      |
-| `max-words-per-cell`        | int   | `30`    | Maximum words allowed in a single cell                           |
-| `max-column-width-variance` | float | `60.0`  | Maximum ratio between widest and narrowest average column widths |
+| Setting                  | Type  | Default | Description                                                      |
+|--------------------------|-------|---------|------------------------------------------------------------------|
+| `max-columns`            | int   | `8`     | Maximum columns per table                                        |
+| `max-rows`               | int   | `30`    | Maximum data rows per table                                      |
+| `max-words-per-cell`     | int   | `30`    | Maximum words allowed in a single cell                           |
+| `max-column-width-ratio` | float | `60.0`  | Maximum ratio between widest and narrowest average column widths |
 
 ## Config
 
@@ -41,7 +41,7 @@ rules:
     max-columns: 8
     max-rows: 30
     max-words-per-cell: 30
-    max-column-width-variance: 60.0
+    max-column-width-ratio: 60.0
 ```
 
 Disable:

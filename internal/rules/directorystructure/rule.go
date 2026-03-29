@@ -35,11 +35,21 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	// When the allowed key was never provided, skip checking.
-	// The rule is disabled by default; a user must explicitly configure
-	// the allowed list for it to take effect.
+	// When the rule was never configured via ApplySettings, skip checking.
 	if !r.configured {
 		return nil
+	}
+	// When configured but no allowed patterns provided, emit a config warning.
+	if len(r.Allowed) == 0 {
+		return []lint.Diagnostic{{
+			File:     f.Path,
+			Line:     1,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  "directory-structure: rule enabled but no \"allowed\" patterns configured",
+		}}
 	}
 	if r.isAllowed(f.Path) {
 		return nil
@@ -82,7 +92,6 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	// Validate all keys first so we never partially mutate state.
 	var patterns []string
 	var matchers []glob.Glob
-	hasAllowed := false
 	for k, v := range settings {
 		switch k {
 		case "allowed":
@@ -91,7 +100,6 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			if !ok {
 				return fmt.Errorf("directory-structure: allowed must be a list of strings, got %T", v)
 			}
-			hasAllowed = true
 			matchers = make([]glob.Glob, len(patterns))
 			for i, p := range patterns {
 				if p == "." {
@@ -110,7 +118,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	// All validation passed — commit state atomically.
 	r.Allowed = patterns
 	r.matchers = matchers
-	r.configured = hasAllowed
+	r.configured = true
 	return nil
 }
 

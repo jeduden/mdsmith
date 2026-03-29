@@ -48,18 +48,18 @@ func TestDefaultSettings(t *testing.T) {
 	if got := ds["max-words-per-cell"]; got != 30 {
 		t.Fatalf("max-words-per-cell = %v, want 30", got)
 	}
-	if got := ds["max-column-width-variance"]; got != 60.0 {
-		t.Fatalf("max-column-width-variance = %v, want 60.0", got)
+	if got := ds["max-column-width-ratio"]; got != 60.0 {
+		t.Fatalf("max-column-width-ratio = %v, want 60.0", got)
 	}
 }
 
 func TestApplySettings_Valid(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{
-		"max-columns":               4,
-		"max-rows":                  12,
-		"max-words-per-cell":        10,
-		"max-column-width-variance": 2.25,
+		"max-columns":            4,
+		"max-rows":               12,
+		"max-words-per-cell":     10,
+		"max-column-width-ratio": 2.25,
 	})
 	require.NoError(t, err, "ApplySettings: %v", err)
 

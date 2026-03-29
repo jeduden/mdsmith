@@ -36,7 +36,7 @@ rules:
   table-format:
     pad: 1
   table-readability:
-    max-column-width-variance: 60
+    max-column-width-ratio: 60
     max-columns: 8
     max-rows: 30
     max-words-per-cell: 30
@@ -49,7 +49,7 @@ rules:
   token-budget:
     max: 8000
     mode: heuristic
-    ratio: 0.75
+    words-per-token: 0.75
     tokenizer: builtin
     encoding: cl100k_base
   no-trailing-punctuation-in-heading: true
@@ -59,7 +59,7 @@ rules:
     min-words: 20
   paragraph-structure:
     max-sentences: 6
-    max-words: 40
+    max-words-per-sentence: 40
   # Experimental rule: keep disabled until classifier-backed scoring is ready.
   conciseness-scoring: false
   catalog: true
@@ -127,7 +127,7 @@ overrides:
     rules:
       table-readability:
         max-rows: 80
-        max-column-width-variance: 65
+        max-column-width-ratio: 65
   - files: ["internal/rules/MDS002-heading-style/good/setext.md"]
     rules:
       heading-style:
@@ -157,7 +157,7 @@ overrides:
       token-budget:
         max: 12000
         mode: heuristic
-        ratio: 0.75
+        words-per-token: 0.75
         tokenizer: builtin
         encoding: cl100k_base
   - files: ["docs/development/pr-fixup-workflow.md"]
@@ -179,7 +179,7 @@ overrides:
       token-budget:
         max: 12000
         mode: heuristic
-        ratio: 0.75
+        words-per-token: 0.75
         tokenizer: builtin
         encoding: cl100k_base
       paragraph-readability:
@@ -187,7 +187,7 @@ overrides:
         min-words: 20
       paragraph-structure:
         max-sentences: 12
-        max-words: 120
+        max-words-per-sentence: 120
 
 ignore:
   - "internal/rules/*/bad/**"

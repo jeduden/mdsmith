@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	defaultMaxColumns             = 8
-	defaultMaxRows                = 30
-	defaultMaxWordsPerCell        = 30
-	defaultMaxColumnWidthVariance = 60.0
+	defaultMaxColumns          = 8
+	defaultMaxRows             = 30
+	defaultMaxWordsPerCell     = 30
+	defaultMaxColumnWidthRatio = 60.0
 )
 
 func init() {
@@ -24,7 +24,7 @@ func init() {
 		MaxColumns:             defaultMaxColumns,
 		MaxRows:                defaultMaxRows,
 		MaxWordsPerCell:        defaultMaxWordsPerCell,
-		MaxColumnWidthVariance: defaultMaxColumnWidthVariance,
+		MaxColumnWidthVariance: defaultMaxColumnWidthRatio,
 	})
 }
 
@@ -50,7 +50,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	maxColumns := positiveIntOrDefault(r.MaxColumns, defaultMaxColumns)
 	maxRows := positiveIntOrDefault(r.MaxRows, defaultMaxRows)
 	maxWordsPerCell := positiveIntOrDefault(r.MaxWordsPerCell, defaultMaxWordsPerCell)
-	maxVariance := positiveFloatOrDefault(r.MaxColumnWidthVariance, defaultMaxColumnWidthVariance)
+	maxVariance := positiveFloatOrDefault(r.MaxColumnWidthVariance, defaultMaxColumnWidthRatio)
 
 	codeLines := lint.CollectCodeBlockLines(f)
 	tables := findTables(f.Lines, codeLines)
@@ -127,13 +127,13 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				return fmt.Errorf("table-readability: max-words-per-cell must be > 0, got %d", n)
 			}
 			r.MaxWordsPerCell = n
-		case "max-column-width-variance":
+		case "max-column-width-ratio":
 			n, ok := toFloat(v)
 			if !ok {
-				return fmt.Errorf("table-readability: max-column-width-variance must be a number, got %T", v)
+				return fmt.Errorf("table-readability: max-column-width-ratio must be a number, got %T", v)
 			}
 			if n <= 0 {
-				return fmt.Errorf("table-readability: max-column-width-variance must be > 0, got %.2f", n)
+				return fmt.Errorf("table-readability: max-column-width-ratio must be > 0, got %.2f", n)
 			}
 			r.MaxColumnWidthVariance = n
 		default:
@@ -146,10 +146,10 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"max-columns":               defaultMaxColumns,
-		"max-rows":                  defaultMaxRows,
-		"max-words-per-cell":        defaultMaxWordsPerCell,
-		"max-column-width-variance": defaultMaxColumnWidthVariance,
+		"max-columns":            defaultMaxColumns,
+		"max-rows":               defaultMaxRows,
+		"max-words-per-cell":     defaultMaxWordsPerCell,
+		"max-column-width-ratio": defaultMaxColumnWidthRatio,
 	}
 }
 

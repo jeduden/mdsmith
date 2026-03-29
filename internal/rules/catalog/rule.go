@@ -86,6 +86,13 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	}
 
 	_, hasRow := params["row"]
+
+	// Check for case-mismatched front-matter keys in the row template.
+	var diags []lint.Diagnostic
+	if hasRow {
+		diags = append(diags, checkFieldCaseMismatches(filePath, line, params["row"], entries)...)
+	}
+
 	content, err := renderCatalogContent(params, entries, cols, hasRow)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
@@ -95,7 +102,7 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	// Format tables to comply with MDS025 (table-format) settings.
 	content = tableformat.FormatString(content, tableFormatPad())
 
-	return content, nil
+	return content, diags
 }
 
 // tableFormatPad returns the pad setting from the MDS025 (table-format)
@@ -448,4 +455,60 @@ func containsDotDot(pattern string) bool {
 // placeholders.
 func parseRowTemplate(row string) error {
 	return fieldinterp.Validate(row)
+}
+
+// extractTemplateFields returns the deduplicated set of field names
+// referenced by {field} placeholders in a row template string.
+func extractTemplateFields(row string) []string {
+	all := fieldinterp.Fields(row)
+	seen := make(map[string]bool, len(all))
+	var fields []string
+	for _, name := range all {
+		if !seen[name] {
+			seen[name] = true
+			fields = append(fields, name)
+		}
+	}
+	return fields
+}
+
+// checkFieldCaseMismatches checks whether any template field referenced in
+// the row template is missing from a file's front-matter but has a
+// case-insensitive match. Returns "did you mean?" diagnostics.
+func checkFieldCaseMismatches(filePath string, line int, row string, entries []fileEntry) []lint.Diagnostic {
+	fields := extractTemplateFields(row)
+	if len(fields) == 0 {
+		return nil
+	}
+
+	// Deduplicate warnings: emit at most one per (field, suggestion) pair.
+	type hint struct{ field, suggestion string }
+	seen := make(map[hint]bool)
+	var diags []lint.Diagnostic
+
+	for _, entry := range entries {
+		for _, field := range fields {
+			// Skip built-in fields that are always present.
+			if field == "filename" {
+				continue
+			}
+			// Exact match present — no warning needed.
+			if _, ok := entry.fields[field]; ok {
+				continue
+			}
+			// Look for a case-insensitive match.
+			for key := range entry.fields {
+				if strings.EqualFold(key, field) {
+					h := hint{field, key}
+					if !seen[h] {
+						seen[h] = true
+						diags = append(diags, makeDiag(filePath, line,
+							fmt.Sprintf("catalog: field %q not found; did you mean %q?", field, key)))
+					}
+					break
+				}
+			}
+		}
+	}
+	return diags
 }
