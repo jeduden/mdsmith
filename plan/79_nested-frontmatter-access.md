@@ -8,7 +8,7 @@ summary: >-
 ---
 # Nested front-matter access
 
-Part of the user-model work from
+Follow-on to the user-model work in
 [plan 73](73_unify-template-directives.md).
 Related to
 [plan 75](75_single-brace-placeholders.md)
@@ -37,17 +37,20 @@ and renders `{{.params.subtitle}}` as
 
 ## Context
 
-Today both required-structure and catalog use
-a flat `map[string]string` for front matter.
-Nested YAML is silently flattened or ignored.
-Hugo users expect `.Params.subtitle` to work;
-mdsmith currently does not support this.
+Required-structure parses front matter into
+`map[string]any` but stringifies values for
+sync checks. Catalog reads front matter via
+`readFrontMatter` in `catalog/rule.go`, also
+flattening to strings. Neither path resolves
+dotted keys into nested maps. Hugo users
+expect `.Params.subtitle`; mdsmith does not
+support this yet.
 
 ## Design
 
-Replace the flat `map[string]string` with a
-nested `map[string]any` and resolve dot-
-separated keys by walking the map.
+Keep the existing `map[string]any` parse but
+add dot-path resolution that walks nested maps
+instead of flattening to strings.
 
 - `{a.b.c}` splits on `.` and walks:
   `fm["a"].(map)["b"].(map)["c"]`
@@ -62,10 +65,11 @@ separated keys by walking the map.
 
 ## Tasks
 
-1. Change front-matter parsing in
-   `internal/lint/frontmatter.go` to return
-   `map[string]any` instead of
-   `map[string]string`.
+1. Update front-matter handling in
+   `catalog/rule.go` (`readFrontMatter`) and
+   `requiredstructure/rule.go`
+   (`readDocFrontMatterRaw`/`stringifyFrontMatter`)
+   to preserve nested `map[string]any` values.
 2. Add a `resolvePath(fm map[string]any,
    path string) (string, error)` helper that
    splits on `.` and walks nested maps.
@@ -73,6 +77,9 @@ separated keys by walking the map.
 
   - `resolveFields` uses `resolvePath`
   - `docFM` type changes to `map[string]any`
+  - Update `fieldPattern` regex to allow dots
+    in placeholder names (`\{([\w.]+)\}`) so
+    `{a.b}` is captured as a dotted path
 
 4. Update `catalog/generate.go`:
 
@@ -80,9 +87,10 @@ separated keys by walking the map.
   - Go `text/template` handles nested access
     natively via `.a.b`
 
-5. Update CUE schema derivation in
-   `requiredstructure/rule.go` to handle
-   nested front matter (nested CUE structs).
+5. Verify CUE schema derivation in
+   `requiredstructure/rule.go` already handles
+   nested front matter; only adjust if gaps
+   remain for nested placeholder resolution.
 6. Add unit tests for nested access in both
    required-structure and catalog.
 7. Add fixtures with nested front matter.

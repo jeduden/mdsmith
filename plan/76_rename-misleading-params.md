@@ -81,23 +81,31 @@ config files and docs in a single PR.
    (directory-structure) when enabled without
    `allowed`:
 
-  - In `ApplySettings`, if `allowed` is empty
-    or absent, emit a diagnostic: "rule enabled
-    but no `allowed` patterns configured"
+  - In `ApplySettings`, when enabled but
+    `allowed` is empty or absent, mark the rule
+    as configured so `Check` runs
+  - In `Check`, when configured with an empty
+    `allowed`, emit a config warning:
+    `directory-structure: rule enabled but no
+    "allowed" patterns configured`
   - Update `internal/rules/MDS033-directory-structure/README.md`
 
 5. Add "did you mean?" diagnostic for
    case-mismatched front-matter keys in catalog
    (MDS019):
 
-  - In catalog `generate`, when a `{{.Field}}`
-    lookup returns empty, check for a
-    case-insensitive match in the file's front
-    matter
-  - If found, emit: `catalog: field "Title"
-    not found; did you mean "title"?`
+  - Extract referenced `{{.Field}}` names from
+    the row template before rendering
+  - For each name, check key presence in the
+    file's front-matter map (not empty-value)
+  - If exact key is missing but a case-
+    insensitive match exists, emit:
+    `catalog: field "Title" not found;
+    did you mean "title"?`
   - Hugo users write `{{ .Title }}`; this
-    catches the muscle-memory error
+    catches muscle-memory errors without
+    false-positiving on intentionally empty
+    values
 
 6. Update all overrides in `.mdsmith.yml` that
    reference renamed keys.

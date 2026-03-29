@@ -25,6 +25,11 @@ Implementation plans:
   template composition, cycle detection,
   `template` -> `schema` rename
 
+Follow-on:
+
+- [79](79_nested-frontmatter-access.md) --
+  nested front-matter access (depends on 75)
+
 ## Blind trial design
 
 Ten agents played "new developer." Each got a
