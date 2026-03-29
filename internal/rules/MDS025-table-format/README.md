@@ -137,4 +137,4 @@ wrap: markdown
 | table inside fenced code block | skipped, not checked or modified             |
 | escaped pipe in cell           | `\|` treated as literal, not column boundary |
 | single-column table            | formatted normally with minimum width of 3   |
-| inline code, links, emphasis   | display width counts only visible text       |
+| inline code, links, emphasis   | display width counts raw source characters   |

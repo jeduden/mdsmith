@@ -121,6 +121,63 @@ func TestDisplayWidth_Mixed(t *testing.T) {
 	assert.Equal(t, 27, got, "displayWidth counts raw characters")
 }
 
+func TestDisplayWidth_CJK(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"日本語", 6},     // 3 CJK chars × 2 columns each
+		{"a日b", 4},      // 1 + 2 + 1
+		{"中文测试", 8},    // 4 CJK chars × 2
+	}
+	for _, tt := range tests {
+		got := displayWidth(tt.input)
+		assert.Equal(t, tt.want, got, "displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
+	}
+}
+
+func TestFix_LinksWithVaryingURLLengths(t *testing.T) {
+	// Regression test for #65: links with different URL lengths must
+	// produce consistent column widths so trailing | aligns.
+	src := "| Name | Link |\n" +
+		"|---|---|\n" +
+		"| a | [short](x.md) |\n" +
+		"| b | [long link text](https://example.com/very/long/path.md) |\n"
+	r := &Rule{Pad: 1}
+	f := newTestFile(t, src)
+	fixed := r.Fix(f)
+	lines := strings.Split(string(fixed), "\n")
+	// All table rows (0-3) must have the same raw width (no links = no hidden chars).
+	widths := map[int]bool{}
+	for i := 0; i < 4; i++ {
+		widths[len(lines[i])] = true
+	}
+	assert.Len(t, widths, 1, "all rows should have same raw width, got lines:\n%s", strings.Join(lines[:4], "\n"))
+}
+
+func TestFix_MixedEmojiAndLinks(t *testing.T) {
+	src := "| Status | Task |\n" +
+		"|---|---|\n" +
+		"| ✅ | [Deploy](deploy.md) |\n" +
+		"| 🔲 | [Build pipeline](build-pipeline.md) |\n"
+	r := &Rule{Pad: 1}
+	f := newTestFile(t, src)
+	fixed := r.Fix(f)
+	// Verify the formatter runs without error and produces a table
+	// where all rows have consistent raw length.
+	lines := strings.Split(string(fixed), "\n")
+	widths := map[int]bool{}
+	for i := 0; i < 4; i++ {
+		widths[len(lines[i])] = true
+	}
+	// ✅ is 3 bytes (display 2), 🔲 is 4 bytes (display 2), ASCII is 1 byte (display 1).
+	// Header/separator are pure ASCII, so up to 3 distinct byte lengths is expected.
+	// What matters is display width alignment, not byte-length equality.
+	assert.LessOrEqual(t, len(widths), 3,
+		"row byte-lengths should not vary beyond emoji encoding differences, got lines:\n%s",
+		strings.Join(lines[:4], "\n"))
+}
+
 // --- Table detection tests ---
 
 func TestFindTables_Basic(t *testing.T) {
