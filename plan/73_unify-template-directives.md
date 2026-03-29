@@ -36,8 +36,8 @@ remaining 25 rules.
 
 ## Results: confidence scores
 
-| Snippet | Topic                       | Avg | Range |
-|---------|-----------------------------|-----|-------|
+| Snippet | Topic                         | Avg | Range |
+|---------|-------------------------------|-----|-------|
 | 1       | `<?catalog?>` pair            | 4.8 | 4-5   |
 | 2       | `<?include?>` pair            | 4.8 | 4-5   |
 | 3       | `<?require?>` single marker   | 4.0 | 2-5   |
@@ -45,12 +45,12 @@ remaining 25 rules.
 | 5       | `{{.id}}: {{.title}}` heading | 3.8 | 3-4   |
 | 6       | catalog `row` table template  | 4.4 | 4-5   |
 | 7       | `line-length` config          | 4.0 | 4-5   |
-| 8       | config overrides            | 4.8 | 4-5   |
-| 9       | CUE front-matter schema     | 4.4 | 4-5   |
+| 8       | config overrides              | 4.8 | 4-5   |
+| 9       | CUE front-matter schema       | 4.4 | 4-5   |
 | 10      | `{{.field}}` heading vs row   | 4.0 | 3-5   |
-| 11      | 4-space indented directive  | 2.6 | 1-4   |
-| 12      | nested directives in row    | 2.0 | 1-3   |
-| 13      | empty section at EOF        | 4.6 | 3-5   |
+| 11      | 4-space indented directive    | 2.6 | 1-4   |
+| 12      | nested directives in row      | 2.0 | 1-3   |
+| 13      | empty section at EOF          | 4.6 | 3-5   |
 | 14      | `paragraph-readability`       | 4.0 | 3-5   |
 | 15      | `token-budget` with ratio     | 3.8 | 2-5   |
 
@@ -106,8 +106,8 @@ syntax, renamed params, and fixability table.
 
 | Snippet | Topic                  | Before | After |
 |---------|------------------------|--------|-------|
-| 1       | `{field}` heading        | 3.8    | 4.6   |
-| 2       | `{{.f}}` vs `{f}`          | 4.0    | 4.8   |
+| 1       | `{field}` heading      | 3.8    | 4.6   |
+| 2       | `{{.f}}` vs `{f}`      | 4.0    | 4.8   |
 | 3       | 4-space indent         | 2.6    | 5.0   |
 | 4       | nesting                | 2.0    | 4.8   |
 | 5       | words-per-token        | 3.8    | 4.6   |
@@ -185,29 +185,29 @@ composition, and fixability table.
 
 | Snippet | Topic                  | Dev | Hugo | Writer | Avg |
 |---------|------------------------|-----|------|--------|-----|
-| S1      | catalog `{{.title}}`     | 5.0 | 5.0  | 5.0    | 5.0 |
-| S2      | schema `{id}: {name}`    | 4.0 | 4.0  | 5.0    | 4.3 |
-| S3      | `{{.f}}` vs `{f}`          | 5.0 | 5.0  | 5.0    | 5.0 |
+| S1      | catalog `{{.title}}`   | 5.0 | 5.0  | 5.0    | 5.0 |
+| S2      | schema `{id}: {name}`  | 4.0 | 4.0  | 5.0    | 4.3 |
+| S3      | `{{.f}}` vs `{f}`      | 5.0 | 5.0  | 5.0    | 5.0 |
 | S4      | 4-space indent         | 5.0 | 2.7  | 5.0    | 4.2 |
 | S5      | nesting                | 4.7 | 4.3  | 4.7    | 4.6 |
 | S6      | words-per-token        | 4.3 | 3.7  | 4.3    | 4.1 |
 | S7      | max-words-per-sentence | 5.0 | 5.0  | 5.0    | 5.0 |
 | S8      | column-width-ratio     | 3.0 | 4.0  | 4.7    | 3.9 |
-| S9      | `schema:` config         | 3.7 | 4.0  | 4.3    | 4.0 |
-| S10     | `<?require?>` warning    | 4.7 | 4.7  | 4.0    | 4.4 |
+| S9      | `schema:` config       | 3.7 | 4.0  | 4.3    | 4.0 |
+| S10     | `<?require?>` warning  | 4.7 | 4.7  | 4.0    | 4.4 |
 | S11     | fixability             | 4.3 | 5.0  | 5.0    | 4.8 |
-| S12     | schema `<?include?>`     | 4.0 | 4.0  | 3.7    | 3.9 |
+| S12     | schema `<?include?>`   | 4.0 | 4.0  | 3.7    | 3.9 |
 | S13     | dir-structure warn     | 4.0 | 4.3  | 4.0    | 4.1 |
-| S14     | `{{.Title}}` hint        | 5.0 | 2.7  | 5.0    | 4.2 |
+| S14     | `{{.Title}}` hint      | 5.0 | 2.7  | 5.0    | 4.2 |
 
 Before/after on originally-confused areas:
 
-| Area                 | Before | After    | Delta |
-|----------------------|--------|----------|-------|
+| Area                   | Before | After    | Delta |
+|------------------------|--------|----------|-------|
 | `{{.field}}` ambiguity | 4.0    | 5.0 (S3) | +1.0  |
-| 4-space footgun      | 2.6    | 4.2      | +1.6  |
-| Nesting              | 2.0    | 4.6      | +2.6  |
-| Fixability           | ~2.5   | 4.8      | +2.3  |
+| 4-space footgun        | 2.6    | 4.2      | +1.6  |
+| Nesting                | 2.0    | 4.6      | +2.6  |
+| Fixability             | ~2.5   | 4.8      | +2.3  |
 | `ratio` param          | 3.8    | 4.1 (S6) | +0.3  |
 | `max-words` param      | ~3.0   | 5.0 (S7) | +2.0  |
 
@@ -240,12 +240,12 @@ guide) depends on all three and must land last.
 
 ## Issue coverage
 
-| Issue | Plans          |
-|-------|----------------|
-| [#68](https://github.com/jeduden/mdsmith/issues/68)   | 73, 74, 75, 77 |
-| [#70](https://github.com/jeduden/mdsmith/issues/70)   | 73, 74         |
-| [#71](https://github.com/jeduden/mdsmith/issues/71)   | 77             |
-| [#73](https://github.com/jeduden/mdsmith/issues/73)   | 73, 74, 76, 77 |
+| Issue                                               | Plans          |
+|-----------------------------------------------------|----------------|
+| [#68](https://github.com/jeduden/mdsmith/issues/68) | 73, 74, 75, 77 |
+| [#70](https://github.com/jeduden/mdsmith/issues/70) | 73, 74         |
+| [#71](https://github.com/jeduden/mdsmith/issues/71) | 77             |
+| [#73](https://github.com/jeduden/mdsmith/issues/73) | 73, 74, 76, 77 |
 
 ## Tasks
 
