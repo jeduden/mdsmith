@@ -63,6 +63,28 @@ instead of flattening to strings.
   `text/template` if the data is a nested map;
   only the data structure needs to change
 
+### Grammar comparison: `{field}` vs CUE paths
+
+CUE paths and `{field}` paths both use `.` for
+nesting but differ in key quoting:
+
+| Feature     | CUE path          | `{field}` path         |
+|-------------|-------------------|------------------------|
+| Separator   | `.`               | `.`                    |
+| Simple key  | `a.b`             | `{a.b}`                |
+| Hyphenated  | `"my-key".sub`    | `{my-key.sub}`         |
+| Quoted dots | `"a.b"` (one key) | literal-dot precedence |
+| Optional    | `a?.b`            | not supported          |
+
+CUE requires quoting for non-identifier keys.
+The `{field}` syntax does not quote; instead,
+literal-dot keys take precedence. This keeps
+the placeholder syntax simple (no quotes inside
+braces) at the cost of not supporting keys
+that are both dotted and nested. This is an
+acceptable trade-off: YAML keys with literal
+dots are rare in practice.
+
 ## Tasks
 
 1. Update front-matter handling in
