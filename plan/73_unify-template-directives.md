@@ -17,60 +17,17 @@ Addresses [#68](https://github.com/jeduden/mdsmith/issues/68)
 
 ## Problem
 
-mdsmith exposes three separate mini-languages
-for in-document directives:
-
-1. **Go `text/template`** in catalog `row`/`header`
-   /`footer` parameters
-   (`{{.title}}`, `{{.filename}}`)
-2. **Pattern placeholders** in required-structure
-   heading templates (`{{.field}}` matched as
-   regex wildcards)
-3. **Processing-instruction markers** with YAML
-   bodies (`<?catalog ... ?>`, `<?include ... ?>`,
-   `<?require ... ?>`, `<?allow-empty-section?>`)
-
-A user must learn all three to use the tool
-confidently. The concepts overlap but the
-behaviors diverge:
-
-- `{{.title}}` in a catalog row *renders* a
-  value; `{{.title}}` in a required-structure
-  heading *matches* any text.
-- `<?require?>` is a single marker with no
-  closing tag; `<?catalog?>` is a marker pair
-  whose body is regenerated.
-- `<?allow-empty-section?>` takes no parameters;
-  `<?catalog?>` takes up to seven.
+Three mini-languages overlap: Go templates,
+pattern placeholders, and processing
+instructions. No single reference covers them.
+`{{.field}}` means "insert" in catalog but
+"match" in required-structure.
 
 ## Goal
 
-Give each directive a clear "if X then Y" rule
-so users can predict behavior on sight. Write
-one guide that covers all directives with
-examples.
-
-## Analysis of current user model
-
-### What a user sees today
-
-| Marker                         | X (trigger)          | Y (effect)                            |
-|--------------------------------|----------------------|---------------------------------------|
-| `<?catalog ...?>`                | Marker pair in file  | Body is regenerated from glob matches |
-| `<?include ...?>`                | Marker pair in file  | Body is replaced with included file   |
-| `<?require ...?>`                | Marker in template   | Filename must match glob              |
-| `<?allow-empty-section?>`        | Marker after heading | Empty section is allowed              |
-| `{{.field}}` in catalog row      | Inside `row:` param    | Replaced with front-matter value      |
-| `{{.field}}` in template heading | Inside template `.md`  | Heading must contain that value       |
-
-### Pain points
-
-1. `{{.field}}` means "insert value" in catalog
-   but "match any text" in required-structure.
-2. No visual cue tells you whether a marker
-   needs a closing tag.
-3. No single reference exists -- rules are
-   documented per-rule only.
+Give each directive a clear "if X then Y" rule.
+Write one guide covering all rules with examples.
+Fix misleading parameter names found by trials.
 
 ## Blind trial results (5 participants)
 
@@ -150,18 +107,40 @@ snippet does and rated their confidence.
 - CUE schema readable: `|` union and `?`
   optional read naturally (4.4).
 
+### Round 2: all remaining 25 rules
+
+Simple rules (MDS002-MDS016) scored confidence
+5 across the board. Names are self-describing.
+New misconceptions found only in meta/complex
+rules:
+
+1. `directory-structure: true` is a silent
+   no-op without an `allowed` list.
+2. `max-words` in paragraph-structure is
+   per-sentence, not per-paragraph. Name
+   misleads.
+3. `max-column-width-variance` is a ratio
+   (max/min), not statistical variance.
+4. `?` not flagged by no-trailing-punctuation
+   -- intentional but undiscoverable.
+5. Fixability asymmetry: `fenced-code-style`
+   is fixable but `fenced-code-language` is
+   not.
+
 ### Implications for the user model
 
-Users grasped marker pairs quickly. The real
-confusion is elsewhere:
+Simple style rules need no rethinking -- names
+do the work. Confusion concentrates in:
 
 - Same syntax, two meanings (`{{.field}}`).
 - Silent failures (indented directives).
 - Undefined composition (nesting).
-- Ambiguous parameter names (`ratio`).
+- Misleading parameter names (`ratio`,
+  `max-words`, `variance`).
 - Unpredictable fixability.
+- Silent no-ops (`directory-structure: true`).
 
-The guide must address all five.
+The guide must address all six.
 
 ## Proposed user model
 
@@ -254,16 +233,22 @@ the user model and docs, not the engine.
    `internal/rules/proto.md`,
    `.claude/skills/proto.md`) to the new syntax.
 
-### Phase 2b: fix ambiguous parameter names
+### Phase 2b: fix misleading names and no-ops
 
 9. Rename `token-budget` `ratio` to
-   `words-per-token` (blind trial showed 2 of 5
-   misread it as a warning threshold). Keep
-   `ratio` as a deprecated alias.
+   `words-per-token`. Keep `ratio` as alias.
+10. Rename `paragraph-structure` `max-words` to
+   `max-words-per-sentence`. Keep alias.
+11. Rename `table-readability`
+   `max-column-width-variance` to
+   `max-column-width-ratio`. Keep alias.
+12. Make `directory-structure: true` without
+   `allowed` emit a warning instead of silently
+   doing nothing.
 
 ### Phase 3: evaluate template engine (stretch)
 
-10. Prototype replacing Go `text/template` with
+13. Prototype replacing Go `text/template` with
    gonja or pongo2 in catalog rendering.
 
   - Measure: does Jinja syntax reduce user
@@ -271,7 +256,7 @@ the user model and docs, not the engine.
   - Measure: does it enable filters/conditionals
      that users actually need?
 
-11. If the prototype shows clear benefit, plan a
+14. If the prototype shows clear benefit, plan a
    migration. If not, keep Go `text/template` and
    document its quirks in the guide.
 
@@ -291,6 +276,12 @@ the user model and docs, not the engine.
       (Phase 2)
 - [ ] `ratio` renamed to `words-per-token` with
       backward-compatible alias (Phase 2b)
+- [ ] `max-words` renamed to
+      `max-words-per-sentence` (Phase 2b)
+- [ ] `max-column-width-variance` renamed to
+      `max-column-width-ratio` (Phase 2b)
+- [ ] `directory-structure: true` without
+      `allowed` emits a config warning
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no
       issues
