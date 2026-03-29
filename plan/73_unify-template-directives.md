@@ -176,6 +176,56 @@ All Hugo-specific gaps addressed by plan 74
 (guide must include a "coming from Hugo"
 section).
 
+## Final validation (9 personas, post-impl)
+
+3 normal devs, 3 Hugo users, 3 tech writers.
+All given the shipped guide with `{field}`
+syntax, renamed params, `schema:` key,
+composition, and fixability table.
+
+| Snippet | Topic                  | Dev | Hugo | Writer | Avg |
+|---------|------------------------|-----|------|--------|-----|
+| S1      | catalog `{{.title}}`     | 5.0 | 5.0  | 5.0    | 5.0 |
+| S2      | schema `{id}: {name}`    | 4.0 | 4.0  | 5.0    | 4.3 |
+| S3      | `{{.f}}` vs `{f}`          | 5.0 | 5.0  | 5.0    | 5.0 |
+| S4      | 4-space indent         | 5.0 | 2.7  | 5.0    | 4.2 |
+| S5      | nesting                | 4.7 | 4.3  | 4.7    | 4.6 |
+| S6      | words-per-token        | 4.3 | 3.7  | 4.3    | 4.1 |
+| S7      | max-words-per-sentence | 5.0 | 5.0  | 5.0    | 5.0 |
+| S8      | column-width-ratio     | 3.0 | 4.0  | 4.7    | 3.9 |
+| S9      | `schema:` config         | 3.7 | 4.0  | 4.3    | 4.0 |
+| S10     | `<?require?>` warning    | 4.7 | 4.7  | 4.0    | 4.4 |
+| S11     | fixability             | 4.3 | 5.0  | 5.0    | 4.8 |
+| S12     | schema `<?include?>`     | 4.0 | 4.0  | 3.7    | 3.9 |
+| S13     | dir-structure warn     | 4.0 | 4.3  | 4.0    | 4.1 |
+| S14     | `{{.Title}}` hint        | 5.0 | 2.7  | 5.0    | 4.2 |
+
+Before/after on originally-confused areas:
+
+| Area                 | Before | After    | Delta |
+|----------------------|--------|----------|-------|
+| `{{.field}}` ambiguity | 4.0    | 5.0 (S3) | +1.0  |
+| 4-space footgun      | 2.6    | 4.2      | +1.6  |
+| Nesting              | 2.0    | 4.6      | +2.6  |
+| Fixability           | ~2.5   | 4.8      | +2.3  |
+| `ratio` param          | 3.8    | 4.1 (S6) | +0.3  |
+| `max-words` param      | ~3.0   | 5.0 (S7) | +2.0  |
+
+Remaining below 4.0: `max-column-width-ratio`
+(3.9) and schema `<?include?>` composition
+(3.9). Both are new concepts with no prior
+mental model. The guide explains them but users
+need hands-on experience.
+
+Hugo users scored lower on S4 (indent, 2.7)
+and S14 (case hint, 2.7) despite the guide.
+S4: Hugo users unfamiliar with Markdown's
+4-space code block rule. S14: the "did you
+mean?" hint exists but Hugo muscle memory
+overrides reading the guide. Both are
+addressable by the "coming from Hugo" section
+calling these out prominently.
+
 ## Execution order
 
 Plans 75, 76, 77 are independent of each
