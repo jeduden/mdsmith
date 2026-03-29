@@ -106,9 +106,9 @@ func TestRule_Category(t *testing.T) {
 // ApplySettings / DefaultSettings
 // =====================================================================
 
-func TestApplySettings_ValidTemplate(t *testing.T) {
+func TestApplySettings_ValidSchema(t *testing.T) {
 	r := &Rule{}
-	err := r.ApplySettings(map[string]any{"template": "foo.md"})
+	err := r.ApplySettings(map[string]any{"schema": "foo.md"})
 	require.NoError(t, err, "unexpected error: %v", err)
 	if r.Template != "foo.md" {
 		t.Errorf(
@@ -117,10 +117,10 @@ func TestApplySettings_ValidTemplate(t *testing.T) {
 	}
 }
 
-func TestApplySettings_InvalidTemplate(t *testing.T) {
+func TestApplySettings_InvalidSchema(t *testing.T) {
 	r := &Rule{}
-	err := r.ApplySettings(map[string]any{"template": 42})
-	require.Error(t, err, "expected error for non-string template")
+	err := r.ApplySettings(map[string]any{"schema": 42})
+	require.Error(t, err, "expected error for non-string schema")
 }
 
 func TestApplySettings_UnknownSetting(t *testing.T) {
@@ -132,9 +132,9 @@ func TestApplySettings_UnknownSetting(t *testing.T) {
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
-	if ds["template"] != "" {
+	if ds["schema"] != "" {
 		t.Errorf(
-			"expected template=\"\", got %v", ds["template"],
+			"expected schema=\"\", got %v", ds["schema"],
 		)
 	}
 }

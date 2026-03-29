@@ -23,9 +23,9 @@ func init() {
 	rule.Register(&Rule{})
 }
 
-// Rule checks that a document's heading structure matches a template.
+// Rule checks that a document's heading structure matches a schema.
 type Rule struct {
-	Template string // path to template file
+	Template string // path to schema file
 }
 
 // ID implements rule.Rule.
@@ -41,10 +41,10 @@ func (r *Rule) Category() string { return "meta" }
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
 		switch k {
-		case "template":
+		case "schema":
 			s, ok := v.(string)
 			if !ok {
-				return fmt.Errorf("required-structure: template must be a string, got %T", v)
+				return fmt.Errorf("required-structure: schema must be a string, got %T", v)
 			}
 			r.Template = s
 		default:
@@ -57,7 +57,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"template": "",
+		"schema": "",
 	}
 }
 
