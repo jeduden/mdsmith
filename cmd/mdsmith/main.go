@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/output"
+	"github.com/jeduden/mdsmith/internal/query"
 	"github.com/jeduden/mdsmith/internal/rule"
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
 
@@ -65,6 +66,7 @@ const usageText = `Usage: mdsmith <command> [flags] [files...]
 Commands:
   check          Lint Markdown files (default when given file arguments)
   fix            Auto-fix lint issues in place
+  query          Select files by CUE expression on front matter
   help           Show help for rules and topics
   metrics        Show and rank shared Markdown metrics
   merge-driver   Git merge driver for regenerable sections
@@ -99,6 +101,8 @@ func run() int {
 		return runCheck(os.Args[2:])
 	case "fix":
 		return runFix(os.Args[2:])
+	case "query":
+		return runQuery(os.Args[2:])
 	case "help":
 		return runHelp(os.Args[2:])
 	case "metrics":
@@ -237,6 +241,113 @@ func runFix(args []string) int {
 
 	// No file args: discover files from config.
 	return fixDiscovered(configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+}
+
+// runQuery implements the "query" subcommand: select files by CUE
+// expression on front matter.
+func runQuery(args []string) int {
+	fs := flag.NewFlagSet("query", flag.ContinueOnError)
+	var (
+		nul     bool
+		verbose bool
+	)
+
+	fs.BoolVarP(&nul, "null", "0", false, "NUL-delimit output (for xargs -0)")
+	fs.BoolVarP(&verbose, "verbose", "v", false, "Print skipped files and reasons on stderr")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith query [flags] <cue-expr> [files...]\n\n"+
+			"Print paths of Markdown files whose front matter satisfies a CUE expression.\n\n"+
+			"The CUE expression is a struct literal body unified with each file's\n"+
+			"front matter. Files that satisfy the expression are printed to stdout.\n\n"+
+			"Exit codes:\n"+
+			"  0  At least one file matched\n"+
+			"  1  No files matched\n"+
+			"  2  Invalid CUE expression or runtime error\n\n"+
+			"Flags:\n")
+		fs.PrintDefaults()
+	}
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	posArgs := fs.Args()
+	if len(posArgs) == 0 {
+		fmt.Fprintf(os.Stderr, "mdsmith: query requires a CUE expression argument\n")
+		return 2
+	}
+
+	expr := posArgs[0]
+	fileArgs := posArgs[1:]
+
+	matcher, err := query.Compile(expr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	opts := lint.ResolveOpts{}
+	files, err := lint.ResolveFilesWithOpts(fileArgs, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	delim := "\n"
+	if nul {
+		delim = "\x00"
+	}
+
+	matched := 0
+	for _, f := range files {
+		fm, err := readFrontMatterRaw(f)
+		if err != nil {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "skip %s: %v\n", f, err)
+			}
+			continue
+		}
+		if fm == nil {
+			if verbose {
+				fmt.Fprintf(os.Stderr, "skip %s: no front matter\n", f)
+			}
+			continue
+		}
+		if matcher.Match(fm) {
+			fmt.Fprintf(os.Stdout, "%s%s", f, delim)
+			matched++
+		} else if verbose {
+			fmt.Fprintf(os.Stderr, "skip %s: expression not satisfied\n", f)
+		}
+	}
+
+	if matched > 0 {
+		return 0
+	}
+	return 1
+}
+
+// readFrontMatterRaw reads a file, strips front matter, and
+// unmarshals YAML into map[string]any (preserving numeric types).
+func readFrontMatterRaw(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	prefix, _ := lint.StripFrontMatter(data)
+	if prefix == nil {
+		return nil, nil
+	}
+	// Strip the --- delimiters to get the YAML body.
+	delim := []byte("---\n")
+	yamlBytes := prefix[len(delim) : len(prefix)-len(delim)]
+
+	var raw map[string]any
+	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+		return nil, fmt.Errorf("parsing front matter: %w", err)
+	}
+	return raw, nil
 }
 
 // runInit implements the "init" subcommand: generate .mdsmith.yml.
