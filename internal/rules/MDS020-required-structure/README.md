@@ -19,9 +19,9 @@ schema.
 
 ## Settings
 
-| Setting  | Type   | Default | Description          |
-|----------|--------|---------|----------------------|
-| `schema` | string | `""`    | Path to schema file  |
+| Setting  | Type   | Default | Description         |
+|----------|--------|---------|---------------------|
+| `schema` | string | `""`    | Path to schema file |
 
 When `schema` is empty the rule is a no-op. Use
 overrides to apply schemas to specific file groups.
@@ -161,4 +161,4 @@ Describe the goal here.
 | front matter schema | front matter does not satisfy template CUE schema: ...                        |
 | filename mismatch   | filename "foo.md" does not match required pattern "[0-9]*_*.md"               |
 | misplaced require   | <?require?> is only recognized in schema files; this directive has no effect  |
-| schema include loop | cyclic include: a.md -> b.md -> a.md                                         |
+| schema include loop | cyclic include: a.md -> b.md -> a.md                                          |

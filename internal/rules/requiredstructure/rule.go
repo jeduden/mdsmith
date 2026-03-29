@@ -409,7 +409,6 @@ func extractSchemaHeadings(
 	var filenamePattern string
 
 	for n := schemaFile.AST.FirstChild(); n != nil; n = n.NextSibling() {
-		// Collect regular headings.
 		if h, ok := n.(*ast.Heading); ok {
 			text := headingText(h, schemaFile.Source)
 			line := schemaFile.LineOfOffset(h.Lines().At(0).Start)
@@ -417,79 +416,82 @@ func extractSchemaHeadings(
 			continue
 		}
 
-		// Process <?include?> PIs.
 		pi, ok := n.(*lint.ProcessingInstruction)
 		if !ok || pi.Name != "include" {
 			continue
 		}
 
-		fileParam, err := extractPIFileParam(pi, schemaFile.Source)
-		if err != nil || fileParam == "" {
-			continue
-		}
-
-		// Resolve path relative to schema directory.
-		dir := filepath.Dir(schemaPath)
-		includedPath := filepath.Clean(filepath.Join(dir, fileParam))
-
-		// Check depth.
-		if len(chain) > maxSchemaIncludeDepth {
-			return nil, "", fmt.Errorf(
-				"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
-		}
-
-		// Check cycle.
-		if visited[includedPath] {
-			chainCopy := make([]string, len(chain))
-			copy(chainCopy, chain)
-			chainCopy = append(chainCopy, includedPath)
-			return nil, "", fmt.Errorf(
-				"cyclic include: %s", strings.Join(chainCopy, " -> "))
-		}
-
-		// Read included file.
-		fragData, err := os.ReadFile(includedPath)
-		if err != nil {
-			return nil, "", fmt.Errorf(
-				"schema include file %q not found: %w", fileParam, err)
-		}
-
-		// Strip frontmatter (ignored for fragments).
-		_, fragContent := lint.StripFrontMatter(fragData)
-
-		fragFile, err := lint.NewFile(includedPath, fragContent)
-		if err != nil {
-			return nil, "", fmt.Errorf(
-				"parsing schema include %q: %w", fileParam, err)
-		}
-
-		// Merge <?require?> from fragment.
-		fp, err := extractRequireDirective(fragFile)
+		fragHeadings, fp, err := expandSchemaInclude(
+			pi, schemaFile.Source, schemaPath, visited, chain)
 		if err != nil {
 			return nil, "", err
 		}
 		if fp != "" && filenamePattern == "" {
 			filenamePattern = fp
 		}
-
-		// Recursively extract headings.
-		visited[includedPath] = true
-		chain = append(chain, includedPath)
-		fragHeadings, fp2, err := extractSchemaHeadings(
-			fragFile, includedPath, visited, chain)
-		if err != nil {
-			return nil, "", err
-		}
-		if fp2 != "" && filenamePattern == "" {
-			filenamePattern = fp2
-		}
-		delete(visited, includedPath)
-		chain = chain[:len(chain)-1]
-
 		headings = append(headings, fragHeadings...)
 	}
 
 	return headings, filenamePattern, nil
+}
+
+// expandSchemaInclude resolves a single <?include?> PI in a schema file,
+// reads the fragment, and returns its headings and any filename pattern.
+func expandSchemaInclude(
+	pi *lint.ProcessingInstruction, source []byte,
+	schemaPath string, visited map[string]bool, chain []string,
+) ([]docHeading, string, error) {
+	fileParam, err := extractPIFileParam(pi, source)
+	if err != nil || fileParam == "" {
+		return nil, "", nil
+	}
+
+	dir := filepath.Dir(schemaPath)
+	includedPath := filepath.Clean(filepath.Join(dir, fileParam))
+
+	if len(chain) > maxSchemaIncludeDepth {
+		return nil, "", fmt.Errorf(
+			"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
+	}
+	if visited[includedPath] {
+		chainCopy := make([]string, len(chain))
+		copy(chainCopy, chain)
+		chainCopy = append(chainCopy, includedPath)
+		return nil, "", fmt.Errorf(
+			"cyclic include: %s", strings.Join(chainCopy, " -> "))
+	}
+
+	fragData, err := os.ReadFile(includedPath)
+	if err != nil {
+		return nil, "", fmt.Errorf(
+			"schema include file %q not found: %w", fileParam, err)
+	}
+
+	_, fragContent := lint.StripFrontMatter(fragData)
+	fragFile, err := lint.NewFile(includedPath, fragContent)
+	if err != nil {
+		return nil, "", fmt.Errorf(
+			"parsing schema include %q: %w", fileParam, err)
+	}
+
+	fp, err := extractRequireDirective(fragFile)
+	if err != nil {
+		return nil, "", err
+	}
+
+	visited[includedPath] = true
+	chain = append(chain, includedPath)
+	fragHeadings, fp2, err := extractSchemaHeadings(
+		fragFile, includedPath, visited, chain)
+	delete(visited, includedPath)
+	if err != nil {
+		return nil, "", err
+	}
+	if fp2 != "" && fp == "" {
+		fp = fp2
+	}
+
+	return fragHeadings, fp, nil
 }
 
 // extractPIFileParam parses the YAML body of an include PI to extract

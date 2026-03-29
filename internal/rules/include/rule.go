@@ -131,47 +131,68 @@ func validateIncludeDirective(
 	return nil
 }
 
-func (r *Rule) generateIncludeContent(
-	f *lint.File, filePath string, line int,
-	params map[string]string,
-) (string, []lint.Diagnostic) {
-	file := params["file"]
-
-	// Normalize to slash-separated paths for the path package and fs.FS.
-	filePath = filepath.ToSlash(filePath)
-
-	// Resolve file relative to the including file's directory.
-	// Use RootFS (project root) when available so that paths
-	// with ".." segments work across directories.
+// resolveIncludePath resolves the included file path and returns the
+// filesystem and path to read from, or a diagnostic on error.
+func resolveIncludePath(
+	f *lint.File, filePath, file string,
+) (fs.FS, string, string, []lint.Diagnostic) {
 	resolvedFile := path.Clean(path.Join(path.Dir(filePath), file))
 	readFS := f.FS
 	readPath := path.Clean(file)
 	if f.RootFS != nil {
-		// Reject resolved paths that escape the project root.
 		if strings.HasPrefix(resolvedFile, "..") {
-			return "", []lint.Diagnostic{makeDiag(filePath, line,
+			return nil, "", "", []lint.Diagnostic{makeDiag(filePath, 0,
 				`include file path escapes project root`)}
 		}
 		readFS = f.RootFS
 		readPath = resolvedFile
 	} else if containsDotDotElement(file) {
-		return "", []lint.Diagnostic{makeDiag(filePath, line,
+		return nil, "", "", []lint.Diagnostic{makeDiag(filePath, 0,
 			`include file path contains ".." but project root is not configured`)}
 	}
+	return readFS, readPath, resolvedFile, nil
+}
 
-	// Check max include depth.
-	if r.visited != nil && len(r.chain) > maxIncludeDepth {
-		return "", []lint.Diagnostic{makeDiag(filePath, line,
+// checkCycleOrDepth returns a diagnostic if the resolved file would
+// create a cycle or exceed the max include depth.
+func (r *Rule) checkCycleOrDepth(
+	resolvedFile, filePath string, line int,
+) []lint.Diagnostic {
+	if r.visited == nil {
+		return nil
+	}
+	if len(r.chain) > maxIncludeDepth {
+		return []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("include depth exceeds maximum (%d)", maxIncludeDepth))}
 	}
-
-	// Check for cyclic include.
-	if r.visited != nil && r.visited[resolvedFile] {
+	if r.visited[resolvedFile] {
 		chain := make([]string, len(r.chain))
 		copy(chain, r.chain)
 		chain = append(chain, resolvedFile)
-		return "", []lint.Diagnostic{makeDiag(filePath, line,
+		return []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("cyclic include: %s", strings.Join(chain, " -> ")))}
+	}
+	return nil
+}
+
+func (r *Rule) generateIncludeContent(
+	f *lint.File, filePath string, line int,
+	params map[string]string,
+) (string, []lint.Diagnostic) {
+	file := params["file"]
+	filePath = filepath.ToSlash(filePath)
+
+	readFS, readPath, resolvedFile, diags := resolveIncludePath(f, filePath, file)
+	if len(diags) > 0 {
+		// Fix up line numbers (resolveIncludePath uses 0).
+		for i := range diags {
+			diags[i].Line = line
+		}
+		return "", diags
+	}
+
+	if diags := r.checkCycleOrDepth(resolvedFile, filePath, line); len(diags) > 0 {
+		return "", diags
 	}
 
 	data, err := fs.ReadFile(readFS, readPath)
@@ -191,38 +212,33 @@ func (r *Rule) generateIncludeContent(
 		r.chain = r.chain[:len(r.chain)-1]
 	}
 
-	content := data
+	text := processIncludedContent(data, params, f, filePath, file, line)
+	return gensection.EnsureTrailingNewline(text), nil
+}
 
-	// strip-frontmatter defaults to true.
+// processIncludedContent strips frontmatter, adjusts links/headings,
+// and optionally wraps in a code fence.
+func processIncludedContent(
+	data []byte, params map[string]string,
+	f *lint.File, filePath, file string, line int,
+) string {
+	content := data
 	stripFM := true
 	if sfm, ok := params["strip-frontmatter"]; ok && sfm == "false" {
 		stripFM = false
 	}
-
 	if stripFM {
 		_, stripped := lint.StripFrontMatter(content)
 		content = stripped
 	}
 
-	text := string(content)
-
-	// Trim leading blank line (common after stripping frontmatter).
-	text = strings.TrimLeft(text, "\n")
-
-	// Rewrite relative links so they resolve from the including file's
-	// directory. The file param is relative to f.FS (the including file's
-	// directory), so join with filePath's directory to get a repo-root-
-	// relative path matching filePath's coordinate system.
+	text := strings.TrimLeft(string(content), "\n")
 	includedPath := path.Join(path.Dir(filePath), file)
 	text = adjustLinks(text, includedPath, filePath)
 
-	// Shift headings when heading-level: "absolute" is set.
 	if params["heading-level"] == "absolute" {
-		parentLevel := findParentHeadingLevel(f, line)
-		text = adjustHeadings(text, parentLevel)
+		text = adjustHeadings(text, findParentHeadingLevel(f, line))
 	}
-
-	// Wrap in code fence if requested.
 	if wrap, ok := params["wrap"]; ok {
 		fence := strings.Repeat("`", minFenceLen(text))
 		if !strings.HasSuffix(text, "\n") {
@@ -230,8 +246,7 @@ func (r *Rule) generateIncludeContent(
 		}
 		text = "\n" + fence + wrap + "\n" + text + fence + "\n\n"
 	}
-
-	return gensection.EnsureTrailingNewline(text), nil
+	return text
 }
 
 // findParentHeadingLevel returns the level of the most recent heading
