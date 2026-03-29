@@ -37,7 +37,9 @@ composition). Write the guide last so it
 reflects all changes:
 
 - Plan 75: `{field}` replaces `{{.field}}` in
-  required-structure headings.
+  both catalog rows and schema headings. One
+  syntax everywhere. Go templates removed from
+  user-facing surface.
 - Plan 76: `ratio` -> `words-per-token`,
   `max-words` -> `max-words-per-sentence`,
   `max-column-width-variance` -> `max-column-width-ratio`;
@@ -99,9 +101,10 @@ markers is visible.
     `check` reports, what `fix` does
   - Nesting: state that directives inside
     generated content are not re-processed
-  - Template syntax section: `{field}` in
-    schema headings (plan 75) vs `{{.field}}`
-    in catalog rows; explain the difference
+  - Placeholder syntax section: `{field}` is
+    the only syntax, works in both catalog rows
+    and schema headings (plan 75). CUE paths
+    for nested access (plan 79)
   - Schema vs normal file section: explain
     that `<?require?>` only works in schema
     files (plan 77 adds a warning for misuse),
@@ -117,16 +120,16 @@ markers is visible.
     `max-words-per-sentence`,
     `max-column-width-ratio` (plan 76)
   - "Coming from Hugo" section covering:
-    `{{.title}}` is case-sensitive (not
-    `.Title`) with "did you mean?" hint
-    (plan 76), `schema` is a validation
-    contract not a rendering template
-    (plan 77), generated content is committed
-    to git (not gitignored), schema files can
-    compose via `<?include?>` (plan 77), no
-    nesting in normal files, no template
-    functions, directive params are YAML
-    strings
+    `{title}` not `{{ .Title }}` (case-
+    sensitive, no Go templates) with "did you
+    mean?" hint (plan 76), `schema` is a
+    validation contract not a rendering
+    template (plan 77), generated content is
+    committed to git (not gitignored), schema
+    files compose via `<?include?>` (plan 77),
+    no nesting in normal files, `{field}` uses
+    CUE paths not Go template syntax, directive
+    params are YAML strings
     (per [#73](https://github.com/jeduden/mdsmith/issues/73))
 
 2. Add a "see the directive guide" link from
@@ -145,7 +148,7 @@ markers is visible.
       rules
 - [ ] Guide documents 4-space indent footgun
 - [ ] Guide states nesting is not supported
-- [ ] Guide documents `{field}` vs `{{.field}}`
+- [ ] Guide documents unified `{field}` syntax
 - [ ] Guide has schema-vs-normal-file section
 - [ ] Guide states `<?require?>` is
       schema-only

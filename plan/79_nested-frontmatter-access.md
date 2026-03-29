@@ -10,18 +10,22 @@ summary: >-
 
 Follow-on to the user-model work in
 [plan 73](73_unify-template-directives.md).
-Related to
+Extends
 [plan 75](75_single-brace-placeholders.md)
-(`{field}` syntax).
+(unified `{field}` syntax).
 
-Depends on: plan 75 (single-brace syntax must
-land first so both syntaxes are updated
-together).
+Depends on: plan 75 (unified `{field}` must
+land first so CUE paths extend the shared
+interpolation engine).
 
 ## Goal
 
-Use CUE path syntax for field access in schema
-headings. A document with:
+`{a.b}` resolves nested front matter. Works
+in both catalog rows and schema headings (plan
+75 unifies them). Quoted CUE labels handle
+non-identifier keys: `{"my-key".sub}`.
+
+A document with:
 
 ```yaml
 ---
@@ -31,27 +35,23 @@ my-key: value
 ---
 ```
 
-matches `# {params.subtitle}` and
-`{"my-key"}` resolves to `value`. Catalog
-rows use Go template dot access:
-`{{.params.subtitle}}`.
+matches `# {params.subtitle}` in a schema and
+renders `{params.subtitle}` as `Overview` in
+a catalog row. `{"my-key"}` resolves to
+`value` in both contexts.
 
 ## Context
 
-Required-structure parses front matter into
-`map[string]any` but stringifies values for
-sync checks. Catalog reads front matter via
-`readFrontMatter` in `catalog/rule.go`, also
-flattening to strings. Neither path resolves
-dotted keys into nested maps. Hugo users
-expect `.Params.subtitle`; mdsmith does not
-support this yet.
+Plan 75 replaces Go `text/template` with a
+shared `{field}` interpolation engine for both
+catalog and required-structure. This plan
+extends that engine with CUE path resolution
+for nested maps and quoted keys.
 
 ## Design
 
-Use CUE path syntax inside `{...}` placeholders
-and for catalog field resolution. One path
-grammar across the whole tool.
+Extend the `fieldinterp` engine (plan 75) to
+parse CUE paths inside `{...}` placeholders.
 
 - `{a.b.c}` resolves nested maps:
   `fm["a"].(map)["b"].(map)["c"]`
@@ -61,29 +61,22 @@ grammar across the whole tool.
   distinct from `{a.b}` (two nested keys)
 - If any step is not a map, emit a diagnostic:
   `front-matter key "a.b" is not a map`
-- Catalog `{{.a.b}}` uses Go `text/template`
-  native dot access for nested maps; quoted
-  CUE-style keys (`{{"my-key"}}`) are not
-  supported in catalog rows since Go templates
-  have their own quoting via `index`
 
 ### Why CUE paths
 
 The tool already uses CUE for front-matter
-schema validation. Reusing CUE path syntax
-for field access means one grammar to learn:
+schema validation. One path grammar everywhere:
 
-| Context             | Syntax              | Example             |
-|---------------------|---------------------|---------------------|
-| Schema front matter | CUE expr            | `'string & != ""'`  |
-| Schema heading      | CUE path in `{...}` | `{params.title}`    |
-| Quoted key          | CUE quoting         | `{"my-key".sub}`    |
-| Catalog row         | Go template         | `{{.params.title}}` |
+| Context             | Syntax       | Example            |
+|---------------------|--------------|--------------------|
+| Schema front matter | CUE expr     | `'string & != ""'` |
+| Schema heading      | `{CUE path}` | `{params.title}`   |
+| Catalog row         | `{CUE path}` | `{params.title}`   |
+| Quoted key          | `{"..."}`    | `{"my-key".sub}`   |
 
-Catalog rows keep Go template syntax (they
-already use it). Schema headings adopt CUE
-paths. The two contexts remain visually
-distinct (`{...}` vs `{{...}}`).
+Same `{...}` syntax, same CUE path resolution,
+in every context. No Go template syntax
+anywhere in the user-facing surface.
 
 ## Tasks
 
@@ -92,42 +85,31 @@ distinct (`{...}` vs `{{...}}`).
    `requiredstructure/rule.go`
    (`readDocFrontMatterRaw`/`stringifyFrontMatter`)
    to preserve nested `map[string]any` values.
-2. Add a `resolveCUEPath(fm map[string]any,
-   path string) (string, error)` helper that
-   parses a CUE path (dot-separated, with
-   quoted labels) and walks nested maps.
-3. Update `requiredstructure/rule.go`:
+2. Extend the `fieldinterp` engine (plan 75)
+   with a `resolveCUEPath` function:
 
-  - `resolveFields` uses `resolveCUEPath`
-  - `docFM` type changes to `map[string]any`
-  - Update `fieldPattern` regex to capture
-    CUE paths inside `{...}`: identifiers,
-    dots, and quoted strings
-    (e.g. `{a.b}`, `{"my-key".sub}`)
+  - Parse CUE path segments (identifiers and
+    quoted labels)
+  - Walk nested `map[string]any`
+  - Return resolved string value or error
 
-4. Update `catalog/generate.go`:
-
-  - Template data uses `map[string]any`
-  - Go `text/template` handles nested access
-    natively via `.a.b`
-
-5. Verify CUE schema derivation in
-   `requiredstructure/rule.go` already handles
-   nested front matter; only adjust if gaps
-   remain for nested placeholder resolution.
-6. Add unit tests for nested access in both
-   required-structure and catalog.
-7. Add fixtures with nested front matter.
-8. Run `mdsmith check .` to verify.
+3. Update the placeholder regex in `fieldinterp`
+   to capture CUE paths: identifiers, dots,
+   and quoted strings inside `{...}`.
+4. Verify CUE schema derivation in
+   `requiredstructure/rule.go` handles nested
+   front matter; only adjust if gaps remain.
+5. Add unit tests for nested and quoted access
+   in both catalog and required-structure.
+6. Add fixtures with nested front matter.
+7. Run `mdsmith check .` to verify.
 
 ## Acceptance Criteria
 
-- [ ] `{a.b}` in a schema heading resolves
-      nested front-matter key `a.b`
-- [ ] `{"my-key".sub}` in a schema heading
-      resolves quoted non-identifier key
-- [ ] `{{.a.b}}` in catalog row resolves
-      nested front-matter key `a.b`
+- [ ] `{a.b}` resolves nested front-matter
+      in both catalog and schema headings
+- [ ] `{"my-key".sub}` resolves quoted
+      non-identifier key in both contexts
 - [ ] `{"a.b"}` resolves a single key with
       a literal dot (CUE quoting)
 - [ ] Missing nested key emits a diagnostic

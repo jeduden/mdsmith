@@ -1,13 +1,13 @@
 ---
 id: 75
-title: Single-brace placeholders
+title: Single-brace placeholders everywhere
 status: "🔲"
 summary: >-
-  Switch required-structure heading patterns from
-  {{.field}} to {field} and migrate all template
-  files in a single PR.
+  Replace {{.field}} with {field} in both
+  required-structure and catalog. One placeholder
+  syntax across the whole tool.
 ---
-# Single-brace placeholders
+# Single-brace placeholders everywhere
 
 Part of the user-model work from
 [plan 73](73_unify-template-directives.md).
@@ -19,94 +19,140 @@ Update plan 74 guide after landing.
 
 ## Goal
 
-`{{.field}}` always means "insert value" (Go
-template in catalog). `{field}` always means
-"heading must contain front-matter value"
-(required-structure pattern). No overlap.
+One placeholder syntax: `{field}`. It works
+the same way everywhere -- resolves a
+front-matter key by name using CUE path syntax
+([plan 79](79_nested-frontmatter-access.md)
+adds nested access).
 
-Both syntaxes currently access top-level
-front-matter keys only. Nested YAML support
-(`{a.b}` for hierarchical access) is planned
-in [plan 79](79_nested-frontmatter-access.md).
+- In catalog `row`/`header`/`footer`: inserts
+  the value from matched files' front matter.
+- In schema headings: heading must contain the
+  value from the document's own front matter.
+
+`{{.field}}` (Go template syntax) is removed
+from the user-facing surface entirely.
 
 ## Context
 
-Blind trials (plan 73) showed all five
-participants flagged `{{.field}}` dual meaning
-as the top confusion source. Three called it
-"genuinely confusing" despite getting the
-right answer.
+Blind trials (plan 73) showed `{{.field}}` was
+the top confusion source. The original plan
+separated the two syntaxes (`{field}` for
+schemas, `{{.field}}` for catalog). But keeping
+Go templates in catalog means two grammars.
+Aligning to one syntax is simpler.
+
+Go `text/template` is overkill for catalog row
+rendering: no user uses conditionals, loops,
+or functions in row templates. Simple string
+interpolation with `{field}` suffices.
 
 ## Rendering note
 
 `{field}` renders as visible literal text on
-GitHub. This is good: when viewing a template
-file (`proto.md`) on GitHub, the placeholder
-`# {id}: {name}` reads as a clear pattern.
-Compare with `# {{.id}}: {{.name}}` which
-looks like a code artifact.
-
-PIs around the placeholder stay hidden on
-GitHub (CommonMark type-3 HTML blocks). Only
-the heading pattern is visible.
+GitHub. `# {id}: {name}` reads as a clear
+pattern. Catalog row params in YAML also read
+naturally: `row: "- [{title}]({filename})"`.
+No backslash escaping or dot-prefix needed.
 
 ## Design
 
-In a required-structure template heading,
-`{field}` means: "the document heading here
-must contain the value of front-matter key
-`field`."
+Replace Go `text/template` in catalog with
+simple `{field}` interpolation. Same regex,
+same resolver, same CUE path semantics as
+required-structure.
 
-- `# {id}: {name}` matches `# MDS001: line-length`
-  when `id: MDS001` and `name: line-length`.
-- `# ?` remains the wildcard for "any heading."
-- `# ...` remains the section wildcard.
+- `row: "- [{title}]({filename})"` -- catalog
+  row rendering.
+- `# {id}: {name}` -- schema heading match.
+- `{field}` resolves to empty string if the
+  key is missing (current behavior preserved).
+- `{filename}` remains a built-in field in
+  catalog context (relative path).
+- Other built-ins: `{title}`, `{summary}`,
+  etc. are front-matter lookups, not special.
 
-No deprecation cycle. All templates transition
-in a single PR. `{{.field}}` stops being
-recognized by required-structure.
+### What changes from Go templates
+
+| Feature       | Go template         | `{field}`              |
+|---------------|---------------------|------------------------|
+| Syntax        | `{{.field}}`        | `{field}`              |
+| Nested access | `{{.a.b}}`          | `{a.b}` (plan 79)      |
+| Quoted keys   | `{{ index . "k" }}` | `{"my-key"}` (plan 79) |
+| Conditionals  | `{{ if .x }}`       | Not supported          |
+| Loops         | `{{ range }}`       | Not supported          |
+| Functions     | `{{ .x \| fn }}`    | Not supported          |
+| Missing key   | empty string        | empty string           |
+
+No catalog in the repo uses conditionals,
+loops, or functions today.
+
+### Escaping literal braces
+
+If a row template needs a literal `{`, use
+`{{` (doubled). Same convention as Python's
+`str.format`. Example:
+`row: "{{literal}} {title}"` renders as
+`{literal} My Title`.
 
 ## Tasks
 
-1. Update `requiredstructure/rule.go` to parse
-   `{field}` instead of `{{.field}}`:
+1. Add a `{field}` interpolation engine in a
+   shared package (e.g. `internal/fieldinterp`):
 
-  - Change the regex that extracts placeholder
-    names from `\{\{\.(\w+)\}\}` to `\{(\w+)\}`
-  - Update the pattern-to-regex builder
-  - Update all error messages
+  - Parse `{...}` placeholders from a string
+  - Resolve each placeholder against a
+    `map[string]any` using CUE path rules
+  - Return the interpolated string
+  - Handle `{{` as escaped literal `{`
 
-2. Update unit tests in
-   `requiredstructure/rule_test.go`.
-3. Update fixtures:
+2. Update `catalog/generate.go`:
+
+  - Replace `text/template` rendering with
+    `fieldinterp.Interpolate`
+  - Keep `{filename}` as a built-in injected
+    into the data map before interpolation
+
+3. Update `requiredstructure/rule.go`:
+
+  - Replace `fieldPattern` regex with call to
+    the shared `fieldinterp` parser
+  - `resolveFields` uses the shared resolver
+  - Pattern matching builds regex from parsed
+    placeholders (same logic, shared parse)
+
+4. Update unit tests in both rules.
+5. Update fixtures:
 
   - `internal/rules/MDS020-required-structure/`
-    good and bad examples
-  - Any fixture templates using `{{.field}}`
+  - `internal/rules/MDS019-catalog/`
+  - Any fixture templates or catalog directives
+    using `{{.field}}`
 
-4. Migrate all schema files (called "template
-   files" until plan 77 renames the config key):
+6. Migrate all schema files:
 
   - `plan/proto.md`
   - `internal/rules/proto.md`
   - `.claude/skills/proto.md`
 
-5. Update
-   `internal/rules/MDS020-required-structure/README.md`
-   to document `{field}` syntax.
-6. Update `docs/guides/directives.md` (from
-   plan 74) if it already exists.
-7. Run `mdsmith check .` to verify all markdown
-   passes.
+7. Migrate all catalog directives in the repo
+   (CLAUDE.md, README.md, rule READMEs) from
+   `{{.field}}` to `{field}`.
+8. Update rule READMEs (MDS019, MDS020).
+9. Update `docs/guides/directives.md` (plan 74)
+   if it already exists.
+10. Run `mdsmith check .` to verify.
 
 ## Acceptance Criteria
 
 - [ ] `{field}` is the only placeholder syntax
-      in required-structure
-- [ ] `{{.field}}` is no longer recognized by
-      the required-structure rule
-- [ ] All template files use `{field}`
-- [ ] MDS020 README documents `{field}`
+      in both catalog and required-structure
+- [ ] `{{.field}}` is no longer recognized
+- [ ] All schema files use `{field}`
+- [ ] All catalog directives use `{field}`
+- [ ] Shared interpolation engine exists
+- [ ] Literal `{` is escaped as `{{`
+- [ ] MDS019 and MDS020 READMEs updated
 - [ ] All fixtures updated and passing
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no
