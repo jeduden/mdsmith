@@ -63,31 +63,39 @@ func (r *Rule) DefaultSettings() map[string]any {
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+
+	// Warn when <?require?> appears in a non-schema file.
+	if reqLine := findRequireDirectiveLine(f); reqLine > 0 {
+		if r.Template == "" || !isTemplateTargetFile(f.Path, r.Template) {
+			diags = append(diags, makeDiag(f.Path, reqLine,
+				"<?require?> is only recognized in schema files; this directive has no effect here"))
+		}
+	}
+
 	if r.Template == "" {
-		return nil
+		return diags
 	}
 
 	tmplData, err := os.ReadFile(r.Template)
 	if err != nil {
-		return []lint.Diagnostic{r.diag(f.Path, 1,
-			fmt.Sprintf("cannot read template %q: %v", r.Template, err))}
+		return append(diags, r.diag(f.Path, 1,
+			fmt.Sprintf("cannot read template %q: %v", r.Template, err)))
 	}
 
 	tmpl, err := parseTemplate(tmplData, r.Template)
 	if err != nil {
-		return []lint.Diagnostic{r.diag(f.Path, 1,
-			fmt.Sprintf("invalid template %q: %v", r.Template, err))}
+		return append(diags, r.diag(f.Path, 1,
+			fmt.Sprintf("invalid template %q: %v", r.Template, err)))
 	}
 
 	// Skip the template file itself.
 	if isTemplateTargetFile(f.Path, r.Template) {
-		return nil
+		return diags
 	}
 
 	docHeadings := extractHeadings(f)
 	docFMRaw := readDocFrontMatterRaw(f)
-
-	var diags []lint.Diagnostic
 
 	// Check filename pattern.
 	diags = append(diags, checkFilenamePattern(f, tmpl)...)
@@ -898,6 +906,18 @@ func extractYAML(fmBlock []byte) []byte {
 		}
 	}
 	return []byte(s[:idx])
+}
+
+// findRequireDirectiveLine returns the 1-based line number of the first
+// <?require?> PI in the file, or 0 if none is found.
+func findRequireDirectiveLine(f *lint.File) int {
+	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
+		pi, ok := c.(*lint.ProcessingInstruction)
+		if ok && pi.Name == "require" {
+			return f.LineOfOffset(pi.Lines().At(0).Start)
+		}
+	}
+	return 0
 }
 
 // isTemplateTargetFile checks if the document path is the configured template.

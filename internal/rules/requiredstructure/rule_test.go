@@ -746,6 +746,45 @@ func TestParseTemplate_SchemaIncludeIndirectCycle(t *testing.T) {
 }
 
 // =====================================================================
+// <?require?> in non-schema file warning
+// =====================================================================
+
+func TestCheck_RequireInNonSchemaFileWarns(t *testing.T) {
+	tmplPath := writeTmpl(t, "# ?\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"<?require\nfilename: \"*.md\"\n?>\n# My Doc\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		"<?require?> is only recognized in schema files; this directive has no effect here")
+}
+
+func TestCheck_RequireInNonSchemaFileNoTemplateSet(t *testing.T) {
+	r := &Rule{Template: ""}
+	f := newTestFile(t, "doc.md",
+		"<?require\nfilename: \"*.md\"\n?>\n# My Doc\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		"<?require?> is only recognized in schema files; this directive has no effect here")
+}
+
+func TestCheck_RequireInSchemaFileNoWarning(t *testing.T) {
+	tmplPath := writeTmpl(t,
+		"<?require\nfilename: \"*.md\"\n?>\n# ?\n")
+	r := &Rule{Template: tmplPath}
+	// Check the schema file itself — should not warn.
+	f := newTestFile(t, tmplPath,
+		"<?require\nfilename: \"*.md\"\n?>\n# ?\n")
+	diags := r.Check(f)
+	// Should have no require warning.
+	for _, d := range diags {
+		if strings.Contains(d.Message, "<?require?>") {
+			t.Errorf("unexpected require warning: %s", d.Message)
+		}
+	}
+}
+
+// =====================================================================
 // Template file skipping
 // =====================================================================
 
