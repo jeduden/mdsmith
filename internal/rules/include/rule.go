@@ -17,9 +17,14 @@ func init() {
 	rule.Register(&Rule{})
 }
 
+// maxIncludeDepth is the maximum nesting depth for include chains.
+const maxIncludeDepth = 10
+
 // Rule checks that include sections contain the correct file content.
 type Rule struct {
-	engine *gensection.Engine
+	engine  *gensection.Engine
+	visited map[string]bool // files in current include chain
+	chain   []string        // ordered chain for cycle diagnostics
 }
 
 // ID implements rule.Rule.
@@ -49,6 +54,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f.FS == nil {
 		return nil
 	}
+	p := filepath.ToSlash(f.Path)
+	r.visited = map[string]bool{p: true}
+	r.chain = []string{p}
+	defer func() { r.visited = nil; r.chain = nil }()
 	return r.getEngine().Check(f)
 }
 
@@ -57,6 +66,10 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	if f.FS == nil {
 		return f.Source
 	}
+	p := filepath.ToSlash(f.Path)
+	r.visited = map[string]bool{p: true}
+	r.chain = []string{p}
+	defer func() { r.visited = nil; r.chain = nil }()
 	return r.getEngine().Fix(f)
 }
 
@@ -75,7 +88,7 @@ func (r *Rule) Generate(
 	params map[string]string,
 	columns map[string]gensection.ColumnConfig,
 ) (string, []lint.Diagnostic) {
-	return generateIncludeContent(f, filePath, line, params)
+	return r.generateIncludeContent(f, filePath, line, params)
 }
 
 func validateIncludeDirective(
@@ -118,7 +131,7 @@ func validateIncludeDirective(
 	return nil
 }
 
-func generateIncludeContent(
+func (r *Rule) generateIncludeContent(
 	f *lint.File, filePath string, line int,
 	params map[string]string,
 ) (string, []lint.Diagnostic) {
@@ -145,10 +158,37 @@ func generateIncludeContent(
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
 			`include file path contains ".." but project root is not configured`)}
 	}
+
+	// Check max include depth.
+	if r.visited != nil && len(r.chain) > maxIncludeDepth {
+		return "", []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("include depth exceeds maximum (%d)", maxIncludeDepth))}
+	}
+
+	// Check for cyclic include.
+	if r.visited != nil && r.visited[resolvedFile] {
+		chain := make([]string, len(r.chain))
+		copy(chain, r.chain)
+		chain = append(chain, resolvedFile)
+		return "", []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("cyclic include: %s", strings.Join(chain, " -> ")))}
+	}
+
 	data, err := fs.ReadFile(readFS, readPath)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("include file %q not found: %v", file, err))}
+	}
+
+	// Track this file and scan for nested include cycles.
+	if r.visited != nil {
+		r.visited[resolvedFile] = true
+		r.chain = append(r.chain, resolvedFile)
+		if diags := r.scanForCycles(readFS, data, resolvedFile, filePath, line); len(diags) > 0 {
+			return "", diags
+		}
+		delete(r.visited, resolvedFile)
+		r.chain = r.chain[:len(r.chain)-1]
 	}
 
 	content := data
@@ -257,6 +297,62 @@ func containsDotDotElement(p string) bool {
 		}
 	}
 	return false
+}
+
+// scanForCycles parses the included file for nested include directives and
+// checks for cycles in the include chain. It uses already-read data to
+// avoid double reads for the first level.
+func (r *Rule) scanForCycles(
+	readFS fs.FS, data []byte, currentPath, originFile string, originLine int,
+) []lint.Diagnostic {
+	_, content := lint.StripFrontMatter(data)
+	f, err := lint.NewFile(currentPath, content)
+	if err != nil {
+		return nil
+	}
+
+	pairs, _ := gensection.FindMarkerPairs(f, "include", "MDS021", "include")
+	for _, mp := range pairs {
+		dir, diags := gensection.ParseDirective(currentPath, mp, "MDS021", "include")
+		if dir == nil || len(diags) > 0 {
+			continue
+		}
+		file := dir.Params["file"]
+		if file == "" {
+			continue
+		}
+
+		resolved := path.Clean(path.Join(path.Dir(currentPath), file))
+
+		// Check depth.
+		if len(r.chain) > maxIncludeDepth {
+			return []lint.Diagnostic{makeDiag(originFile, originLine,
+				fmt.Sprintf("include depth exceeds maximum (%d)", maxIncludeDepth))}
+		}
+
+		// Check cycle.
+		if r.visited[resolved] {
+			chain := make([]string, len(r.chain))
+			copy(chain, r.chain)
+			chain = append(chain, resolved)
+			return []lint.Diagnostic{makeDiag(originFile, originLine,
+				fmt.Sprintf("cyclic include: %s", strings.Join(chain, " -> ")))}
+		}
+
+		// Recurse into nested includes.
+		r.visited[resolved] = true
+		r.chain = append(r.chain, resolved)
+		nested, readErr := fs.ReadFile(readFS, resolved)
+		if readErr == nil {
+			if diags := r.scanForCycles(readFS, nested, resolved, originFile, originLine); len(diags) > 0 {
+				return diags
+			}
+		}
+		delete(r.visited, resolved)
+		r.chain = r.chain[:len(r.chain)-1]
+	}
+
+	return nil
 }
 
 var _ rule.FixableRule = (*Rule)(nil)
