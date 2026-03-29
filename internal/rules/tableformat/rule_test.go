@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mattn/go-runewidth"
+
 	"github.com/jeduden/mdsmith/internal/lint"
 
 	"github.com/stretchr/testify/assert"
@@ -147,12 +149,12 @@ func TestFix_LinksWithVaryingURLLengths(t *testing.T) {
 	f := newTestFile(t, src)
 	fixed := r.Fix(f)
 	lines := strings.Split(string(fixed), "\n")
-	// All table rows (0-3) must have the same raw width (no links = no hidden chars).
+	// All table rows must have the same display width (terminal columns).
 	widths := map[int]bool{}
 	for i := 0; i < 4; i++ {
-		widths[len(lines[i])] = true
+		widths[runewidth.StringWidth(lines[i])] = true
 	}
-	assert.Len(t, widths, 1, "all rows should have same raw width, got lines:\n%s", strings.Join(lines[:4], "\n"))
+	assert.Len(t, widths, 1, "all rows should have same display width, got lines:\n%s", strings.Join(lines[:4], "\n"))
 }
 
 func TestFix_MixedEmojiAndLinks(t *testing.T) {
@@ -163,19 +165,14 @@ func TestFix_MixedEmojiAndLinks(t *testing.T) {
 	r := &Rule{Pad: 1}
 	f := newTestFile(t, src)
 	fixed := r.Fix(f)
-	// Verify the formatter runs without error and produces a table
-	// where all rows have consistent raw length.
+	// All table rows must have the same display width (terminal columns),
+	// even though byte lengths differ due to emoji encoding.
 	lines := strings.Split(string(fixed), "\n")
 	widths := map[int]bool{}
 	for i := 0; i < 4; i++ {
-		widths[len(lines[i])] = true
+		widths[runewidth.StringWidth(lines[i])] = true
 	}
-	// ✅ is 3 bytes (display 2), 🔲 is 4 bytes (display 2), ASCII is 1 byte (display 1).
-	// Header/separator are pure ASCII, so up to 3 distinct byte lengths is expected.
-	// What matters is display width alignment, not byte-length equality.
-	assert.LessOrEqual(t, len(widths), 3,
-		"row byte-lengths should not vary beyond emoji encoding differences, got lines:\n%s",
-		strings.Join(lines[:4], "\n"))
+	assert.Len(t, widths, 1, "all rows should have same display width, got lines:\n%s", strings.Join(lines[:4], "\n"))
 }
 
 // --- Table detection tests ---

@@ -130,11 +130,11 @@ wrap: markdown
 
 ## Edge Cases
 
-| Scenario                       | Behavior                                     |
-|--------------------------------|----------------------------------------------|
-| table inside blockquote        | `> ` prefix preserved on each line           |
-| table inside list              | indentation prefix preserved                 |
-| table inside fenced code block | skipped, not checked or modified             |
-| escaped pipe in cell           | `\|` treated as literal, not column boundary |
-| single-column table            | formatted normally with minimum width of 3   |
-| inline code, links, emphasis   | display width counts raw source characters   |
+| Scenario                       | Behavior                                           |
+|--------------------------------|----------------------------------------------------|
+| table inside blockquote        | `> ` prefix preserved on each line                 |
+| table inside list              | indentation prefix preserved                       |
+| table inside fenced code block | skipped, not checked or modified                   |
+| escaped pipe in cell           | `\|` treated as literal, not column boundary       |
+| single-column table            | formatted normally with minimum width of 3         |
+| inline code, links, emphasis   | width measured in display columns, syntax included |
