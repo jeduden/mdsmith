@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"gopkg.in/yaml.v3"
 )
@@ -233,9 +234,12 @@ func ValidateStringParams(
 				params[k] = strings.Join(strs, "\n")
 			}
 		default:
+			msg := fieldinterp.DiagnoseYAMLQuoting(k, v)
+			if msg == "" {
+				msg = fmt.Sprintf("generated section has non-string value for key %q", k)
+			}
 			diags = append(diags,
-				MakeDiag(ruleID, ruleName, filePath, line,
-					fmt.Sprintf("generated section has non-string value for key %q", k)))
+				MakeDiag(ruleID, ruleName, filePath, line, msg))
 		}
 	}
 	if len(diags) > 0 {

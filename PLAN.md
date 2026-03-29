@@ -33,5 +33,5 @@ footer: |
 | 76  | 🔲     | [Rename misleading parameter names](plan/76_rename-misleading-params.md)                                        |
 | 77  | 🔲     | [Template composition and cycle detection](plan/77_template-composition-and-cycles.md)                          |
 | 78  | 🔲     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                         |
-| 79  | 🔲     | [Nested front-matter access](plan/79_nested-frontmatter-access.md)                                              |
+| 79  | ✅     | [Nested front-matter access](plan/79_nested-frontmatter-access.md)                                              |
 <?/catalog?>

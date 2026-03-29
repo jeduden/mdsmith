@@ -10,7 +10,7 @@ import (
 
 // fileEntry holds the template fields for a single matched file.
 type fileEntry struct {
-	fields map[string]string
+	fields map[string]any
 }
 
 // renderTemplate renders header + row-per-file + footer. Each section is
@@ -59,7 +59,7 @@ func renderTemplate(params map[string]string, entries []fileEntry, columns ...ma
 func renderMinimal(entries []fileEntry) string {
 	var buf strings.Builder
 	for _, entry := range entries {
-		path := entry.fields["filename"]
+		path := fieldinterp.Stringify(entry.fields["filename"])
 		basename := filepath.Base(path)
 		buf.WriteString("- [" + basename + "](" + path + ")\n")
 	}

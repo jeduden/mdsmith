@@ -1,7 +1,7 @@
 ---
 id: 79
 title: Nested front-matter access
-status: "🔲"
+status: "✅"
 summary: >-
   Use CUE path syntax in {field} placeholders
   for nested and quoted front-matter access.
