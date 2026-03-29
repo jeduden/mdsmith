@@ -283,7 +283,7 @@ columns:
 header: |
   | Title | Description |
   |-------|-------------|
-row: "| {{.title}} | {{.description}} |"
+row: "| {title} | {description} |"
 ?>
 | Title | Description          |
 |-------|----------------------|
@@ -310,7 +310,7 @@ columns:
 header: |
   | Title | Description |
   |-------|-------------|
-row: "| {{.title}} | {{.description}} |"
+row: "| {title} | {description} |"
 ?>
 | old content |
 <?/catalog?>
@@ -336,7 +336,7 @@ columns:
 header: |
   | Title | Description |
   |-------|-------------|
-row: "| {{.title}} | {{.description}} |"
+row: "| {title} | {description} |"
 ?>
 | old content |
 <?/catalog?>

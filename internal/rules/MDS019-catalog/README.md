@@ -72,14 +72,15 @@ for details.
 
 ### Template fields
 
-The `row` section uses Go `text/template` syntax.
+The `row` section uses `{fieldname}` placeholder syntax.
 
-- `{{.filename}}` -- relative path from the marker file's
+- `{filename}` -- relative path from the marker file's
   directory (no leading `./`).
-- Other names (e.g., `{{.title}}`) -- looked up in the
+- Other names (e.g., `{title}`) -- looked up in the
   matched file's YAML front matter.
 - Missing field -> empty string.
 - Non-string value -> Go default string format.
+- Literal `{` is written as `{{`, literal `}` as `}}`.
 
 ### Column constraints
 
@@ -152,7 +153,7 @@ wrap: markdown
 
 <?catalog
 glob: "data/*.md"
-row: "[{{.filename}}](good/{{.filename}})"
+row: "[{filename}](good/{filename})"
 ?>
 [data/alpha.md](good/data/alpha.md)
 [data/beta.md](good/data/beta.md)

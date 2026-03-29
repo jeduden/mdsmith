@@ -5,9 +5,9 @@ description: One-sentence description ending with period.
 template:
   allow-extra-sections: true
 ---
-# {{.id}}: {{.name}}
+# {id}: {name}
 
-{{.description}}
+{description}
 
 - **Scope**: file
 - **Sort default**: descending

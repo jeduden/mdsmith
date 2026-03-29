@@ -188,9 +188,9 @@ func TestParseTemplate_Headings(t *testing.T) {
 }
 
 func TestParseTemplate_SyncPoints(t *testing.T) {
-	tmplSrc := `# {{.id}}: {{.name}}
+	tmplSrc := `# {id}: {name}
 
-{{.description}}
+{description}
 `
 	tmpl, err := parseTemplate([]byte(tmplSrc))
 	require.NoError(t, err, "unexpected error: %v", err)
@@ -308,7 +308,7 @@ func TestCheck_AllPresent(t *testing.T) {
 // =====================================================================
 
 func TestCheck_HeadingSyncMismatch(t *testing.T) {
-	tmplPath := writeTmpl(t, "# {{.id}}: {{.name}}\n")
+	tmplPath := writeTmpl(t, "# {id}: {name}\n")
 	r := &Rule{Template: tmplPath}
 	f := newTestFile(t, "doc.md",
 		"---\nid: MDS001\nname: line-length\n---\n# MDS002: line-length\n")
@@ -317,7 +317,7 @@ func TestCheck_HeadingSyncMismatch(t *testing.T) {
 }
 
 func TestCheck_HeadingSyncMatch(t *testing.T) {
-	tmplPath := writeTmpl(t, "# {{.id}}: {{.name}}\n")
+	tmplPath := writeTmpl(t, "# {id}: {name}\n")
 	r := &Rule{Template: tmplPath}
 	f := newTestFile(t, "doc.md",
 		"---\nid: MDS001\nname: line-length\n---\n# MDS001: line-length\n")
@@ -326,7 +326,7 @@ func TestCheck_HeadingSyncMatch(t *testing.T) {
 }
 
 func TestCheck_BodySyncMismatch(t *testing.T) {
-	tmplPath := writeTmpl(t, "# ?\n\n{{.description}}\n")
+	tmplPath := writeTmpl(t, "# ?\n\n{description}\n")
 	r := &Rule{Template: tmplPath}
 	f := newTestFile(t, "doc.md",
 		"---\ndescription: Line exceeds maximum length.\n---\n# My Rule\n\nWrong description here.\n")
@@ -336,7 +336,7 @@ func TestCheck_BodySyncMismatch(t *testing.T) {
 }
 
 func TestCheck_BodySyncMatch(t *testing.T) {
-	tmplPath := writeTmpl(t, "# ?\n\n{{.description}}\n")
+	tmplPath := writeTmpl(t, "# ?\n\n{description}\n")
 	r := &Rule{Template: tmplPath}
 	f := newTestFile(t, "doc.md",
 		"---\ndescription: Line exceeds maximum length.\n---\n# My Rule\n\nLine exceeds maximum length.\n")

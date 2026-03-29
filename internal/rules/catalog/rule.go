@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"text/template"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/tableformat"
@@ -133,7 +133,7 @@ func validateCatalogDirective(
 		diags = append(diags, validateSort(filePath, line, sortVal)...)
 	}
 	if hasRow {
-		if _, err := parseRowTemplate(params["row"]); err != nil {
+		if err := parseRowTemplate(params["row"]); err != nil {
 			diags = append(diags, makeDiag(filePath, line,
 				fmt.Sprintf("generated section has invalid template: %v", err)))
 		}
@@ -343,9 +343,8 @@ func containsDotDot(pattern string) bool {
 	return false
 }
 
-// parseRowTemplate parses a row template string.
-// The missingkey=zero option ensures missing map keys produce empty strings
-// rather than "<no value>".
-func parseRowTemplate(row string) (*template.Template, error) {
-	return template.New("row").Option("missingkey=zero").Parse(row)
+// parseRowTemplate validates a row template string containing {field}
+// placeholders.
+func parseRowTemplate(row string) error {
+	return fieldinterp.Validate(row)
 }

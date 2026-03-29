@@ -100,7 +100,7 @@ func TestRendering_ListTemplateWithFrontMatter(t *testing.T) {
 	// List template renders per-file with front matter fields.
 	src := `<?catalog
 glob: "docs/*.md"
-row: "- [{{.title}}]({{.filename}}) -- {{.description}}"
+row: "- [{title}]({filename}) -- {description}"
 ?>
 - [API Reference](docs/api.md) -- Complete API docs
 - [Getting Started](docs/guide.md) -- How to get started
@@ -123,7 +123,7 @@ glob: "docs/*.md"
 header: |
   | Title | Description |
   |-------|-------------|
-row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
+row: "| [{title}]({filename}) | {description} |"
 ?>
 | Title                            | Description        |
 |----------------------------------|--------------------|
@@ -147,8 +147,8 @@ func TestRendering_MultilineRowPipe(t *testing.T) {
 	src := `<?catalog
 glob: "docs/*.md"
 row: |
-  ### {{.title}}
-  {{.description}}
+  ### {title}
+  {description}
 ?>
 ### API
 Complete API docs
@@ -171,9 +171,9 @@ func TestRendering_MultilineRowPipePlus(t *testing.T) {
 	src := `<?catalog
 glob: "docs/*.md"
 row: |+
-  ### [{{.title}}]({{.filename}})
+  ### [{title}]({filename})
 
-  {{.description}}
+  {description}
 
 ?>
 ### [API](docs/api.md)
@@ -201,7 +201,7 @@ func TestRendering_PipeStripImplicitNewline(t *testing.T) {
 	src := `<?catalog
 glob: "*.md"
 row: |-
-  - {{.filename}}
+  - {filename}
 ?>
 - a.md
 - b.md
@@ -222,7 +222,7 @@ func TestRendering_EachValueTerminatedByNewline(t *testing.T) {
 	src := `<?catalog
 glob: "*.md"
 header: "| Title |"
-row: "| {{.filename}} |"
+row: "| {filename} |"
 footer: "---"
 ?>
 | Title |
@@ -246,7 +246,7 @@ glob: "*.md"
 header: |
   | Title | Description |
   |-------|-------------|
-row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
+row: "| [{title}]({filename}) | {description} |"
 footer: |
 
   ---
@@ -353,7 +353,7 @@ func TestRendering_WhenEmptyRendersHeaderFooterNotIncluded(t *testing.T) {
 	src := `<?catalog
 glob: "nonexistent/*.md"
 header: "| Title |"
-row: "| {{.filename}} |"
+row: "| {filename} |"
 footer: "---"
 empty: No documents.
 ?>
@@ -371,7 +371,7 @@ func TestRendering_WhenGlobMatchesFilesEmptyIgnored(t *testing.T) {
 	// When glob matches files and `empty` is defined, `empty` is ignored.
 	src := `<?catalog
 glob: "*.md"
-row: "- {{.filename}}"
+row: "- {filename}"
 empty: No documents.
 ?>
 - a.md
@@ -482,10 +482,10 @@ sort: true
 // =====================================================================
 
 func TestFields_FilenameResolvesToRelativePath(t *testing.T) {
-	// `{{.filename}}` resolves to path relative to linted file's directory, never has leading `./`.
+	// `{filename}` resolves to path relative to linted file's directory, never has leading `./`.
 	src := `<?catalog
 glob: "docs/*.md"
-row: "- {{.filename}}"
+row: "- {filename}"
 ?>
 - docs/api.md
 <?/catalog?>
@@ -503,7 +503,7 @@ func TestFields_MissingFrontMatterFieldsEmpty(t *testing.T) {
 	// Files without front matter resolve fields to empty string.
 	src := `<?catalog
 glob: "*.md"
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 - [](a.md)
 <?/catalog?>
@@ -518,16 +518,16 @@ row: "- [{{.title}}]({{.filename}})"
 }
 
 func TestFields_HeaderFooterContainTemplateLiterals(t *testing.T) {
-	// `header`/`footer` containing `{{...}}` render literally (no template expansion).
+	// `header`/`footer` containing `{...}` render literally (no template expansion).
 	src := `<?catalog
 glob: "*.md"
-header: "{{.title}} header"
-row: "- {{.filename}}"
-footer: "{{.footer}} end"
+header: "{title} header"
+row: "- {filename}"
+footer: "{footer} end"
 ?>
-{{.title}} header
+{title} header
 - a.md
-{{.footer}} end
+{footer} end
 <?/catalog?>
 `
 	mapFS := fstest.MapFS{
@@ -540,12 +540,12 @@ footer: "{{.footer}} end"
 }
 
 func TestFields_EmptyContainsTemplateLiterals(t *testing.T) {
-	// `empty` containing `{{...}}` renders literally.
+	// `empty` containing `{...}` renders literally.
 	src := `<?catalog
 glob: "nonexistent/*.md"
-empty: "{{.something}} no data"
+empty: "{something} no data"
 ?>
-{{.something}} no data
+{something} no data
 <?/catalog?>
 `
 	mapFS := fstest.MapFS{}
@@ -583,7 +583,7 @@ func TestFix_LeavesTemplateErrorSectionsUnchanged(t *testing.T) {
 	// Invalid template syntax -> fix leaves section unchanged.
 	src := `<?catalog
 glob: "*.md"
-row: "{{.title"
+row: "{title"
 ?>
 old content
 <?/catalog?>
@@ -603,7 +603,7 @@ func TestFix_FullCycleIdempotent(t *testing.T) {
 	// First fix generates content, second fix should leave it unchanged.
 	src := `<?catalog
 glob: "*.md"
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 <?/catalog?>
 `
@@ -956,7 +956,7 @@ func TestEdge_InvalidFrontMatterTreatedAsNone(t *testing.T) {
 	// Matched file with invalid front matter treated as no front matter.
 	src := `<?catalog
 glob: "*.md"
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 - [](a.md)
 <?/catalog?>
@@ -993,7 +993,7 @@ glob: "*.md"
 func TestEdge_NoFrontMatterFilenameWorks(t *testing.T) {
 	src := `<?catalog
 glob: "*.md"
-row: "{{.filename}}"
+row: "{filename}"
 ?>
 a.md
 b.md
@@ -1191,7 +1191,7 @@ func TestCheck_TemplateErrors(t *testing.T) {
 		{
 			name: "invalid template syntax",
 			src: "<?catalog\nglob: \"*.md\"\n" +
-				"row: \"{{.title\"\n?>\n<?/catalog?>\n",
+				"row: \"{title\"\n?>\n<?/catalog?>\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
 			wantMsg:   "invalid template",
@@ -1262,7 +1262,7 @@ func TestCheck_ContentGeneration_TemplateAndEmpty(t *testing.T) {
 		{
 			name: "template mode with front matter up to date",
 			src: "<?catalog\nglob: \"*.md\"\n" +
-				"row: \"- [{{.title}}]({{.filename}})\"\n?>\n" +
+				"row: \"- [{title}]({filename})\"\n?>\n" +
 				"- [My Title](a.md)\n<?/catalog?>\n",
 			fs:        fstest.MapFS{"a.md": {Data: []byte("---\ntitle: My Title\n---\n# A\n")}},
 			wantCount: 0,
@@ -1309,7 +1309,7 @@ glob: "*.md"
 			name: "regenerate stale template",
 			src: `<?catalog
 glob: "*.md"
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 <?/catalog?>
 `,
@@ -1424,14 +1424,14 @@ func TestSort_FrontMatterKey(t *testing.T) {
 		{
 			name: "title ascending",
 			src: "<?catalog\nglob: \"*.md\"\n" +
-				"sort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n?>\n" +
+				"sort: title\nrow: \"- [{title}]({filename})\"\n?>\n" +
 				"- [Alpha](b.md)\n- [Zulu](a.md)\n<?/catalog?>\n",
 			fs: twoFiles,
 		},
 		{
 			name: "title descending",
 			src: "<?catalog\nglob: \"*.md\"\n" +
-				"sort: -title\nrow: \"- [{{.title}}]({{.filename}})\"\n?>\n" +
+				"sort: -title\nrow: \"- [{title}]({filename})\"\n?>\n" +
 				"- [Zulu](a.md)\n- [Alpha](b.md)\n<?/catalog?>\n",
 			fs: twoFiles,
 		},
@@ -1449,7 +1449,7 @@ func TestSort_TiebreakerAndCaseInsensitive(t *testing.T) {
 		{
 			name: "tiebreaker when values equal",
 			src: "<?catalog\nglob: \"*.md\"\n" +
-				"sort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n?>\n" +
+				"sort: title\nrow: \"- [{title}]({filename})\"\n?>\n" +
 				"- [Same](a.md)\n- [Same](b.md)\n<?/catalog?>\n",
 			fs: fstest.MapFS{
 				"a.md": {Data: []byte("---\ntitle: Same\n---\n")},
@@ -1459,7 +1459,7 @@ func TestSort_TiebreakerAndCaseInsensitive(t *testing.T) {
 		{
 			name: "case-insensitive title",
 			src: "<?catalog\nglob: \"*.md\"\n" +
-				"sort: title\nrow: \"- [{{.title}}]({{.filename}})\"\n?>\n" +
+				"sort: title\nrow: \"- [{title}]({filename})\"\n?>\n" +
 				"- [alpha](a.md)\n- [Beta](b.md)\n<?/catalog?>\n",
 			fs: fstest.MapFS{
 				"a.md": {Data: []byte("---\ntitle: alpha\n---\n")},
@@ -1502,13 +1502,12 @@ func TestParseSort_EmptyValue(t *testing.T) {
 }
 
 func TestParseRowTemplate_Valid(t *testing.T) {
-	tmpl, err := parseRowTemplate("- [{{.title}}]({{.filename}})")
+	err := parseRowTemplate("- [{title}]({filename})")
 	require.NoError(t, err, "unexpected error: %v", err)
-	require.NotNil(t, tmpl, "expected non-nil template")
 }
 
 func TestParseRowTemplate_Invalid(t *testing.T) {
-	_, err := parseRowTemplate("{{.title")
+	err := parseRowTemplate("{title")
 	require.Error(t, err, "expected error for invalid template")
 }
 
@@ -1629,7 +1628,7 @@ func TestRenderEmpty_EmptyValue(t *testing.T) {
 func TestRenderTemplate_HeaderRowFooter(t *testing.T) {
 	params := map[string]string{
 		"header": "| Title |\n|-------|",
-		"row":    "| {{.title}} |",
+		"row":    "| {title} |",
 		"footer": "---",
 	}
 	entries := []fileEntry{
@@ -1644,7 +1643,7 @@ func TestRenderTemplate_HeaderRowFooter(t *testing.T) {
 
 func TestRenderTemplate_RowOnly(t *testing.T) {
 	params := map[string]string{
-		"row": "- {{.filename}}",
+		"row": "- {filename}",
 	}
 	entries := []fileEntry{
 		{fields: map[string]string{"filename": "a.md"}},
@@ -1657,7 +1656,7 @@ func TestRenderTemplate_RowOnly(t *testing.T) {
 
 func TestRenderTemplate_FooterOnly(t *testing.T) {
 	params := map[string]string{
-		"row":    "- {{.filename}}",
+		"row":    "- {filename}",
 		"footer": "---",
 	}
 	entries := []fileEntry{
@@ -1669,27 +1668,14 @@ func TestRenderTemplate_FooterOnly(t *testing.T) {
 	assert.Equal(t, expected, got, "renderTemplate mismatch.\nExpected:\n%s\nGot:\n%s", expected, got)
 }
 
-func TestRenderTemplate_InvalidTemplateReturnsError(t *testing.T) {
-	params := map[string]string{
-		"row": "{{.title",
-	}
-	entries := []fileEntry{
-		{fields: map[string]string{"filename": "a.md"}},
-	}
-	_, err := renderTemplate(params, entries)
-	require.Error(t, err, "expected error for invalid template syntax")
+func TestParseRowTemplate_UnclosedBraceReturnsError(t *testing.T) {
+	err := parseRowTemplate("{title")
+	require.Error(t, err, "expected error for unclosed placeholder")
 }
 
-func TestRenderTemplate_ExecutionErrorReturnsError(t *testing.T) {
-	// Calling a non-existent function in the template triggers an execution error.
-	params := map[string]string{
-		"row": "{{call .missing}}",
-	}
-	entries := []fileEntry{
-		{fields: map[string]string{"filename": "a.md"}},
-	}
-	_, err := renderTemplate(params, entries)
-	require.Error(t, err, "expected error for template execution failure")
+func TestParseRowTemplate_EmptyPlaceholderReturnsError(t *testing.T) {
+	err := parseRowTemplate("{}")
+	require.Error(t, err, "expected error for empty placeholder")
 }
 
 func TestSortEntries_PathAscending(t *testing.T) {
@@ -1988,7 +1974,7 @@ sort: title
 header: |
   | Rule | Description |
   |------|-------------|
-row: "| [{{.title}}]({{.filename}}) | {{.description}} |"
+row: "| [{title}]({filename}) | {description} |"
 empty: No rules defined yet.
 ?>
 | Rule                                   | Description        |
@@ -2014,47 +2000,6 @@ Some trailing text.
 // =====================================================================
 // Task 8: High-priority missing spec tests
 // =====================================================================
-
-func TestSpec_TemplateExecutionError_CheckEmitsDiagnostic(t *testing.T) {
-	// Template execution error emits diagnostic.
-	// {{call .title}} tries to call a string as a function, which fails at execution time.
-	src := `<?catalog
-glob: "*.md"
-row: "{{call .title}}"
-?>
-old content
-<?/catalog?>
-`
-	mapFS := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: Hello\n---\n")},
-	}
-	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
-	diags := r.Check(f)
-	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, "template execution failed")
-}
-
-func TestSpec_TemplateExecutionError_FixLeavesSectionUnchanged(t *testing.T) {
-	// Fix leaves section unchanged when template execution fails.
-	src := `<?catalog
-glob: "*.md"
-row: "{{call .title}}"
-?>
-old content
-<?/catalog?>
-`
-	mapFS := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: Hello\n---\n")},
-	}
-	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
-	result := r.Fix(f)
-	if string(result) != src {
-		t.Errorf("Fix should leave template-execution-error section unchanged.\n"+
-			"Expected:\n%s\nGot:\n%s", src, string(result))
-	}
-}
 
 func TestSpec_BraceExpansionSupported(t *testing.T) {
 	// The doublestar library supports brace expansion `{a,b}`.
@@ -2111,10 +2056,10 @@ glob: "*.md"
 }
 
 func TestSpec_BinaryNonMarkdownMatchedFiles(t *testing.T) {
-	// Binary/non-Markdown matched files: {{.filename}} resolves, no front matter extracted.
+	// Binary/non-Markdown matched files: {filename} resolves, no front matter extracted.
 	src := `<?catalog
 glob: "*"
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 - [](data.bin)
 - [Hello](readme.md)
@@ -2134,7 +2079,7 @@ func TestSpec_YAMLAnchorsAliasesSupported(t *testing.T) {
 	// YAML anchors, aliases, and merge keys are supported.
 	src := `<?catalog
 glob: "docs/*.md"
-row: "- {{.filename}}"
+row: "- {filename}"
 ?>
 - docs/a.md
 <?/catalog?>
@@ -2153,7 +2098,7 @@ func TestSpec_DoubleDashSort(t *testing.T) {
 	src := `<?catalog
 glob: "*.md"
 sort: "--priority"
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 - [High](b.md)
 - [Low](a.md)
@@ -2178,7 +2123,7 @@ func TestSpec_UnreadableMatchedFilesSilentlySkipped(t *testing.T) {
 	// can't have front matter read (the readFrontMatter returns nil).
 	src := `<?catalog
 glob: "*.md"
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 - [Hello](good.md)
 <?/catalog?>
@@ -2200,31 +2145,13 @@ func TestSpec_TemplateOutputNotHTMLEscaped(t *testing.T) {
 	// Template output is not HTML-escaped: <, >, & appear literally.
 	src := `<?catalog
 glob: "*.md"
-row: "- {{.title}}"
+row: "- {title}"
 ?>
 - <b>Bold & "quoted"</b>
 <?/catalog?>
 `
 	mapFS := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: '<b>Bold & \"quoted\"</b>'\n---\n")},
-	}
-	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
-
-func TestSpec_GoBuiltinTemplateFunctions(t *testing.T) {
-	// Go built-in template functions (len, print, index) are available.
-	src := `<?catalog
-glob: "*.md"
-row: "- {{print .title}} ({{len .title}} chars)"
-?>
-- Hello (5 chars)
-<?/catalog?>
-`
-	mapFS := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: Hello\n---\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
 	r := &Rule{}
@@ -2323,7 +2250,7 @@ func TestSpec_MissingFrontMatterValuesSortAsEmptyString(t *testing.T) {
 	src := `<?catalog
 glob: "*.md"
 sort: priority
-row: "- [{{.title}}]({{.filename}})"
+row: "- [{title}]({filename})"
 ?>
 - [No Priority](a.md)
 - [High](b.md)
@@ -2343,7 +2270,7 @@ func TestSpec_NonStringFrontMatterRenderedThroughTemplate(t *testing.T) {
 	// Non-string front matter values are converted via fmt.Sprintf and rendered.
 	src := `<?catalog
 glob: "*.md"
-row: "- {{.title}} (count: {{.count}})"
+row: "- {title} (count: {count})"
 ?>
 - Hello (count: 42)
 <?/catalog?>
@@ -2380,7 +2307,7 @@ glob: "nonexistent/*.md"
 header: |
   | Title |
   |-------|
-row: "| {{.title}} |"
+row: "| {title} |"
 footer: "---"
 empty: No documents.
 ?>

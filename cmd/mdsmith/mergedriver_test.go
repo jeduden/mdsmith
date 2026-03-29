@@ -12,7 +12,7 @@ func TestStripSectionConflicts_Diff3CatalogConflict(t *testing.T) {
 	// four marker types inside regenerable sections.
 	input := "# Doc\n\n" +
 		"<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
-		"header: |\n  | Title |\n  |-------|\nrow: \"| [{{.title}}]({{.filename}}) |\"\n?>\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
 		"<<<<<<< ours\n" +
 		"| [Alpha](plans/alpha.md) |\n" +
 		"| [Beta](plans/beta.md) |\n" +

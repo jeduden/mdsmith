@@ -1,7 +1,7 @@
 ---
 id: 75
 title: Single-brace placeholders everywhere
-status: "🔲"
+status: "✅"
 summary: >-
   Replace {{.field}} with {field} in both
   required-structure and catalog. One placeholder
@@ -144,16 +144,16 @@ as `{literal} My Title`.
 
 ## Acceptance Criteria
 
-- [ ] `{field}` is the only placeholder syntax
+- [x] `{field}` is the only placeholder syntax
       in both catalog and required-structure
-- [ ] `{{.field}}` is no longer recognized
-- [ ] All schema files use `{field}`
-- [ ] All catalog directives use `{field}`
-- [ ] Shared interpolation engine exists
-- [ ] Literal `{` is escaped as `{{`
-- [ ] MDS019 and MDS020 READMEs updated
-- [ ] All fixtures updated and passing
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] `{{.field}}` is no longer recognized
+- [x] All schema files use `{field}`
+- [x] All catalog directives use `{field}`
+- [x] Shared interpolation engine exists
+- [x] Literal `{` is escaped as `{{`
+- [x] MDS019 and MDS020 READMEs updated
+- [x] All fixtures updated and passing
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues
-- [ ] `mdsmith check .` passes
+- [x] `mdsmith check .` passes

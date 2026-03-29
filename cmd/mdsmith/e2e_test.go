@@ -1093,17 +1093,17 @@ func TestE2E_MergeDriver_CatalogConflict_Resolved(t *testing.T) {
 	writeFixture(t, dir, ".mdsmith.yml", "rules:\n  catalog: true\n")
 
 	catalogBase := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
-		"header: |\n  | Title |\n  |-------|\nrow: \"| [{{.title}}]({{.filename}}) |\"\n?>\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
 		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n<?/catalog?>\n"
 
 	// Ours adds beta.
 	catalogOurs := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
-		"header: |\n  | Title |\n  |-------|\nrow: \"| [{{.title}}]({{.filename}}) |\"\n?>\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
 		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n| [Beta](plans/beta.md) |\n<?/catalog?>\n"
 
 	// Theirs adds gamma.
 	catalogTheirs := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
-		"header: |\n  | Title |\n  |-------|\nrow: \"| [{{.title}}]({{.filename}}) |\"\n?>\n" +
+		"header: |\n  | Title |\n  |-------|\nrow: \"| [{title}]({filename}) |\"\n?>\n" +
 		"| Title       |\n|-------------|\n| [Alpha](plans/alpha.md) |\n" +
 		"| [Gamma](plans/gamma.md) |\n<?/catalog?>\n"
 

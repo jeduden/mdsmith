@@ -1,12 +1,11 @@
 package catalog
 
 import (
-	"bytes"
 	"path/filepath"
 	"strings"
-	"text/template"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
 
 // fileEntry holds the template fields for a single matched file.
@@ -37,17 +36,8 @@ func renderTemplate(params map[string]string, entries []fileEntry, columns ...ma
 		buf.WriteString(ensureTrailingNewline(header))
 	}
 
-	tmpl, err := template.New("row").Option("missingkey=zero").Parse(row)
-	if err != nil {
-		return "", err
-	}
-
 	for _, entry := range entries {
-		var rowBuf bytes.Buffer
-		if err := tmpl.Execute(&rowBuf, entry.fields); err != nil {
-			return "", err
-		}
-		rendered := rowBuf.String()
+		rendered := fieldinterp.Interpolate(row, entry.fields)
 
 		// Apply column constraints to table rows.
 		if cols != nil && colMap != nil {

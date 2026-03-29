@@ -12,6 +12,7 @@ import (
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
+	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
@@ -130,7 +131,7 @@ type templateConfig struct {
 // templateHeading represents a required heading from the template.
 type templateHeading struct {
 	Level int
-	Text  string // raw text, may contain {{.field}} or ?
+	Text  string // raw text, may contain {field} or ?
 }
 
 // parsedTemplate holds the full parsed template.
@@ -142,14 +143,13 @@ type parsedTemplate struct {
 	SyncPoints map[int][]syncPoint
 }
 
-// syncPoint represents a {{.field}} reference in heading text.
+// syncPoint represents a {field} reference in heading text.
 type syncPoint struct {
 	Field    string
 	InBody   bool   // true if in body content, false if in heading
 	BodyText string // the full expected body line text with field substituted
 }
 
-var fieldPattern = regexp.MustCompile(`\{\{\.(\w+)\}\}`)
 var cueIdentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const sectionWildcard = "..."
@@ -297,7 +297,7 @@ func cueFieldLabel(key string) string {
 	return strconv.Quote(key)
 }
 
-// collectBodySyncPoints scans body content for {{.field}} references and
+// collectBodySyncPoints scans body content for {field} references and
 // adds them to the syncPoints map under their nearest preceding heading.
 func collectBodySyncPoints(
 	content []byte, headings []docHeading,
@@ -317,11 +317,11 @@ func collectBodySyncPoints(
 			continue
 		}
 		if currentHeading >= 0 && trimmed != "" {
-			matches := fieldPattern.FindAllStringSubmatch(trimmed, -1)
-			for _, m := range matches {
+			fields := fieldinterp.Fields(trimmed)
+			for _, f := range fields {
 				syncPoints[currentHeading] = append(
 					syncPoints[currentHeading],
-					syncPoint{Field: m[1], InBody: true, BodyText: trimmed},
+					syncPoint{Field: f, InBody: true, BodyText: trimmed},
 				)
 			}
 		}
@@ -356,8 +356,8 @@ func parseTemplate(data []byte) (*parsedTemplate, error) {
 
 	for i, h := range headings {
 		tmplHeadings[i] = templateHeading{Level: h.Level, Text: h.Text}
-		for _, m := range fieldPattern.FindAllStringSubmatch(h.Text, -1) {
-			syncPoints[i] = append(syncPoints[i], syncPoint{Field: m[1]})
+		for _, f := range fieldinterp.Fields(h.Text) {
+			syncPoints[i] = append(syncPoints[i], syncPoint{Field: f})
 		}
 	}
 
@@ -504,11 +504,11 @@ func matchesTemplate(req templateHeading, doc docHeading) bool {
 		return true
 	}
 
-	// Check if the template text contains {{.field}} references.
-	if fieldPattern.MatchString(req.Text) {
-		// Split the template text on {{.field}} patterns, quote-escape
+	// Check if the template text contains {field} references.
+	if fieldinterp.ContainsField(req.Text) {
+		// Split the template text on {field} patterns, quote-escape
 		// the literal parts, and join with .+ to match any value.
-		parts := fieldPattern.Split(req.Text, -1)
+		parts := fieldinterp.SplitOnFields(req.Text)
 		var pattern strings.Builder
 		pattern.WriteString("^")
 		for i, part := range parts {
@@ -532,15 +532,9 @@ func isSectionWildcard(req templateHeading) bool {
 	return strings.TrimSpace(req.Text) == sectionWildcard
 }
 
-// resolveFields replaces {{.field}} placeholders with frontmatter values.
+// resolveFields replaces {field} placeholders with frontmatter values.
 func resolveFields(text string, docFM map[string]string) string {
-	return fieldPattern.ReplaceAllStringFunc(text, func(match string) string {
-		field := fieldPattern.FindStringSubmatch(match)[1]
-		if v, ok := docFM[field]; ok {
-			return v
-		}
-		return match
-	})
+	return fieldinterp.Interpolate(text, docFM)
 }
 
 // advanceToMatch advances docIdx to the next heading matching req.
