@@ -4,8 +4,8 @@ title: Rename misleading parameter names
 status: "🔲"
 summary: >-
   Rename ratio to words-per-token, max-words
-  to max-words-per-sentence, variance to
-  max-column-width-ratio, and warn on
+  to max-words-per-sentence, max-column-width-variance
+  to max-column-width-ratio, and warn on
   directory-structure no-op.
 ---
 # Rename misleading parameter names

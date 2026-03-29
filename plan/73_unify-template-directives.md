@@ -71,7 +71,7 @@ scored confidence 5.
    -> [plan 74](74_directive-guide.md)
 4. Misleading parameter names: `ratio` (warning
    threshold?), `max-words` (per paragraph?),
-   `variance` (statistical?).
+   `max-column-width-variance` (statistical?).
    -> [plan 76](76_rename-misleading-params.md)
 5. Users cannot predict which rules auto-fix.
    -> [plan 74](74_directive-guide.md)
@@ -169,7 +169,7 @@ What worked: simple style rules (5.0), config
 overrides (5.0), self-describing names (5.0).
 
 Confirmed prior findings: `max-words` misread
-as per-paragraph (5/5), `variance` misread as
+as per-paragraph (5/5), `max-column-width-variance` misread as
 statistical (4/5).
 
 All Hugo-specific gaps addressed by plan 74

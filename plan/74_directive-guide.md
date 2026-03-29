@@ -31,7 +31,7 @@ reflects all changes:
   required-structure headings.
 - Plan 76: `ratio` -> `words-per-token`,
   `max-words` -> `max-words-per-sentence`,
-  `variance` -> `max-column-width-ratio`;
+  `max-column-width-variance` -> `max-column-width-ratio`;
   "did you mean?" hint for case-mismatched
   front-matter keys in catalog.
 - Plan 77: config key `template` -> `schema`;
