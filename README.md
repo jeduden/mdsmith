@@ -95,21 +95,21 @@ mdsmith metrics rank --by bytes --top 10 .
 
 ### Output
 
-Diagnostics are printed to stderr with source context:
+Diagnostics are printed to stderr with source context when available:
 
 ```text
 README.md:10:81 MDS001 line too long (135 > 80)
  8 | Context lines appear above and below the diagnostic with line numbers.
  9 | They help you see the surrounding code at a glance.
-10 | This line is deliberately made long so it exceeds the eighty character limit  and keeps going and going.
+10 | This line is deliberately made long so it exceeds the eighty character limit and keeps going and going.
 ·····················································································^
 11 | A dot path runs from column 1 to the caret, marking the line and column.
 12 | Up to two lines of context are shown on each side.
 ```
 
-Each diagnostic shows a header (`file:line:col rule message`) followed
-by source lines. A dot path (`····^`) marks the diagnostic line and
-points to the exact column.
+Each diagnostic shows a header (`file:line:col rule message`).
+When source context is available, up to 5 surrounding lines appear
+with a dot path (`····^`) pointing to the exact column.
 
 ### Exit codes
 

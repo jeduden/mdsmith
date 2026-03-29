@@ -74,8 +74,8 @@ README.md:10:81 MDS001 line too long (120 > 80)
 ```
 
 Each diagnostic prints a header line (`file:line:col rule message`).
-Below it, up to 5 source lines appear. A dot path (`····^`) marks
-which line has the issue and points to the exact column.
+When source context is available, up to 5 surrounding lines appear
+with a dot path (`····^`) pointing to the exact column.
 
 **json**:
 
