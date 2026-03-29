@@ -1,11 +1,11 @@
 ---
 id: 73
 title: Unify template and processing directives
-status: "🔳"
+status: "✅"
 summary: >-
   Research plan: blind trials on all 33 rules
   identified six areas of user confusion.
-  Implementation split into plans 74, 75, 76.
+  Implementation split into plans 74-77.
 ---
 # Unify template and processing directives
 

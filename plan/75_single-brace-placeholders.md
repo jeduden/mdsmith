@@ -79,7 +79,8 @@ recognized by required-structure.
     good and bad examples
   - Any fixture templates using `{{.field}}`
 
-4. Migrate all template files:
+4. Migrate all schema files (called "template
+   files" until plan 77 renames the config key):
 
   - `plan/proto.md`
   - `internal/rules/proto.md`
