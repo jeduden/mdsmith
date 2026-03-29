@@ -564,7 +564,9 @@ func checkSyncPoint(
 			fmt.Sprintf("invalid CUE path in sync placeholder: %q", sp.Field))}
 	}
 	if _, err := fieldinterp.ResolvePath(docFM, path); err != nil {
-		return nil
+		return []lint.Diagnostic{makeDiag(f.Path, dh.Line,
+			fmt.Sprintf("sync placeholder %q refers to missing or invalid frontmatter path: %v",
+				sp.Field, err))}
 	}
 	if !sp.InBody {
 		expected := resolveFields(req.Text, docFM)

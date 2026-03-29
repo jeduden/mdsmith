@@ -1310,7 +1310,7 @@ func TestCheck_SortErrors(t *testing.T) {
 				"sort: \"foo bar\"\n?>\n<?/catalog?>\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
-			wantMsg:   "invalid sort value",
+			wantMsg:   "invalid sort key",
 		},
 		{
 			name: "sort with tab",
@@ -1318,7 +1318,7 @@ func TestCheck_SortErrors(t *testing.T) {
 				"sort: \"foo\tbar\"\n?>\n<?/catalog?>\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
-			wantMsg:   "invalid sort value",
+			wantMsg:   "invalid sort key",
 		},
 	})
 }

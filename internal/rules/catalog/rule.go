@@ -184,7 +184,7 @@ func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 			`generated section directive has empty "sort" value`)}
 	}
 	key := strings.TrimPrefix(sortVal, "-")
-	if key == "" || strings.ContainsAny(key, " \t") {
+	if key == "" {
 		return []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("generated section directive has invalid sort value %q", sortVal))}
 	}
