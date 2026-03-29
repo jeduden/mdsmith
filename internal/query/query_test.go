@@ -2,65 +2,65 @@ package query
 
 import "testing"
 
-func TestMatch(t *testing.T) {
-	tests := []struct {
-		name    string
-		expr    string
-		fm      map[string]any
-		want    bool
-		wantErr bool
-	}{
-		{
-			name: "matching field",
-			expr: `status: "✅"`,
-			fm:   map[string]any{"status": "✅", "id": 42},
-			want: true,
-		},
-		{
-			name: "non-matching field",
-			expr: `status: "✅"`,
-			fm:   map[string]any{"status": "🔲", "id": 42},
-			want: false,
-		},
-		{
-			name: "missing field",
-			expr: `status: "✅"`,
-			fm:   map[string]any{"id": 42},
-			want: false,
-		},
-		{
-			name: "nil front matter",
-			expr: `status: "✅"`,
-			fm:   nil,
-			want: false,
-		},
-		{
-			name: "schema-string proto value",
-			expr: `status: "✅"`,
-			fm:   map[string]any{"status": `"🔲" | "🔳" | "✅"`},
-			want: false,
-		},
-		{
-			name: "compound expression matches",
-			expr: `status: "✅", id: >50`,
-			fm:   map[string]any{"status": "✅", "id": 60},
-			want: true,
-		},
-		{
-			name: "compound expression partial fail",
-			expr: `status: "✅", id: >50`,
-			fm:   map[string]any{"status": "✅", "id": 30},
-			want: false,
-		},
-		{
-			name:    "invalid CUE expression",
-			expr:    `status: [[[`,
-			fm:      map[string]any{"status": "✅"},
-			wantErr: true,
-		},
-	}
+var matchTests = []struct {
+	name    string
+	expr    string
+	fm      map[string]any
+	want    bool
+	wantErr bool
+}{
+	{
+		name: "matching field",
+		expr: `status: "✅"`,
+		fm:   map[string]any{"status": "✅", "id": 42},
+		want: true,
+	},
+	{
+		name: "non-matching field",
+		expr: `status: "✅"`,
+		fm:   map[string]any{"status": "🔲", "id": 42},
+		want: false,
+	},
+	{
+		name: "missing field",
+		expr: `status: "✅"`,
+		fm:   map[string]any{"id": 42},
+		want: false,
+	},
+	{
+		name: "nil front matter",
+		expr: `status: "✅"`,
+		fm:   nil,
+		want: false,
+	},
+	{
+		name: "schema-string proto value",
+		expr: `status: "✅"`,
+		fm:   map[string]any{"status": `"🔲" | "🔳" | "✅"`},
+		want: false,
+	},
+	{
+		name: "compound expression matches",
+		expr: `status: "✅", id: >50`,
+		fm:   map[string]any{"status": "✅", "id": 60},
+		want: true,
+	},
+	{
+		name: "compound expression partial fail",
+		expr: `status: "✅", id: >50`,
+		fm:   map[string]any{"status": "✅", "id": 30},
+		want: false,
+	},
+	{
+		name:    "invalid CUE expression",
+		expr:    `status: [[[`,
+		fm:      map[string]any{"status": "✅"},
+		wantErr: true,
+	},
+}
 
-	for _, tt := range tests {
+func TestMatch(t *testing.T) {
+	for _, tt := range matchTests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := Match(tt.expr, tt.fm)
 			if tt.wantErr {
