@@ -111,6 +111,23 @@ func TestE2E_Query_MultipleFiles_PrintsOnePath(t *testing.T) {
 	assert.Len(t, lines, 1, "expected exactly one matching path")
 }
 
+func TestE2E_Query_EmptyFrontMatter_Skipped(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "empty-fm.md", "---\n---\n# Empty front matter\n\nContent here.\n")
+
+	_, _, exitCode := runBinaryInDir(t, dir, "", "query", `status: "✅"`, dir)
+	assert.Equal(t, 1, exitCode, "empty front matter should not match")
+}
+
+func TestE2E_Query_NoFileArgs_DefaultsCwd(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "a.md", "---\nstatus: \"✅\"\n---\n# Done\n\nContent here.\n")
+
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "query", `status: "✅"`)
+	assert.Equal(t, 0, exitCode, "should discover files from cwd")
+	assert.Contains(t, stdout, "a.md")
+}
+
 func TestE2E_Query_HelpFlag(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "query", "--help")
 	assert.Equal(t, 2, exitCode)

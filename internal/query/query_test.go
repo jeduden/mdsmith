@@ -1,6 +1,11 @@
 package query
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 var matchTests = []struct {
 	name    string
@@ -64,35 +69,22 @@ func TestMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := Match(tt.expr, tt.fm)
 			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error")
-				}
+				assert.Error(t, err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tt.want {
-				t.Fatalf("Match() = %v, want %v", got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestCompile_Valid(t *testing.T) {
 	m, err := Compile(`status: "✅"`)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	got := m.Match(map[string]any{"status": "✅"})
-	if !got {
-		t.Fatal("expected match")
-	}
+	require.NoError(t, err)
+	assert.True(t, m.Match(map[string]any{"status": "✅"}))
 }
 
 func TestCompile_Invalid(t *testing.T) {
 	_, err := Compile(`status: [[[`)
-	if err == nil {
-		t.Fatal("expected error for invalid CUE expression")
-	}
+	assert.Error(t, err)
 }

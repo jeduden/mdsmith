@@ -256,15 +256,10 @@ func runQuery(args []string) int {
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Print skipped files and reasons on stderr")
 
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: mdsmith query [flags] <cue-expr> [files...]\n\n"+
-			"Print paths of Markdown files whose front matter satisfies a CUE expression.\n\n"+
-			"The CUE expression is a struct literal body unified with each file's\n"+
-			"front matter. Files that satisfy the expression are printed to stdout.\n\n"+
-			"Exit codes:\n"+
-			"  0  At least one file matched\n"+
-			"  1  No files matched\n"+
-			"  2  Invalid CUE expression or runtime error\n\n"+
-			"Flags:\n")
+		fmt.Fprint(os.Stderr, "Usage: mdsmith query [flags] <cue-expr> [files...]\n\n"+
+			"Print paths of Markdown files whose front matter satisfies a CUE expression.\n"+
+			"With no file arguments, searches the current directory recursively.\n\n"+
+			"Exit codes: 0 match, 1 no match, 2 error\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 
@@ -285,6 +280,10 @@ func runQuery(args []string) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
+	}
+
+	if len(fileArgs) == 0 {
+		fileArgs = []string{"."}
 	}
 
 	opts := lint.ResolveOpts{}
@@ -352,6 +351,12 @@ func readFrontMatterRaw(path string) (map[string]any, error) {
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
 		return nil, fmt.Errorf("parsing front matter: %w", err)
+	}
+	// Distinguish empty front matter (---\n---\n) from absent front matter.
+	// An empty YAML document unmarshals to nil; normalize to an empty map
+	// so the caller only sees nil when no front matter block exists.
+	if raw == nil {
+		raw = make(map[string]any)
 	}
 	return raw, nil
 }
