@@ -17,10 +17,10 @@ import (
 
 // fieldPattern matches a single-brace placeholder using CUE path
 // syntax. Each segment is either a CUE identifier (\w+) or a quoted
-// label ("..."). Quoted labels may contain backslash escapes but not
-// unescaped } (which would terminate the placeholder). Non-identifier
-// keys (hyphens, dots, spaces) must be quoted: {"my-key"}.
-var fieldPattern = regexp.MustCompile(`\{((?:\w+|"(?:[^"\\}]|\\.)*")(?:\.(?:\w+|"(?:[^"\\}]|\\.)*"))*)\}`)
+// label ("..."). Quoted labels may not contain } (even escaped) since
+// Validate uses a simple } scan to find the placeholder end.
+// Non-identifier keys (hyphens, dots, spaces) must be quoted: {"my-key"}.
+var fieldPattern = regexp.MustCompile(`\{((?:\w+|"(?:[^"\\}]|\\[^}])*")(?:\.(?:\w+|"(?:[^"\\}]|\\[^}])*"))*)\}`)
 
 // Interpolate replaces {field} placeholders in text with values resolved
 // from data using CUE path semantics. Supports nested access ({a.b}) and

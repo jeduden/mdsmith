@@ -403,6 +403,25 @@ func TestCheck_NestedFieldInBodyMismatch(t *testing.T) {
 		`body does not match frontmatter field "params.description"`)
 }
 
+func TestCheck_MissingNestedKeyEmitsDiagnostic(t *testing.T) {
+	// Template references {params.missing} but front matter has params.subtitle.
+	tmplPath := writeTmpl(t, "# {params.missing}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  subtitle: Overview\n---\n# Overview\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "missing or invalid frontmatter path")
+}
+
+func TestCheck_MissingNestedKeyInBodyEmitsDiagnostic(t *testing.T) {
+	tmplPath := writeTmpl(t, "# ?\n\n{params.missing}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  subtitle: Overview\n---\n# My Doc\n\nSome content.\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "missing or invalid frontmatter path")
+}
+
 // =====================================================================
 // Embedded front matter CUE schema
 // =====================================================================
