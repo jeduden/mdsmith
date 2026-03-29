@@ -68,14 +68,14 @@ README.md:10:81 MDS001 line too long (120 > 80)
  8 | Previous line of context.
  9 | Another context line.
 10 | This very long line exceeds the configured 80 character limit and keeps going...
-   |                                                                                 ^
+   | ·················································································^
 11 | Next line of context.
 12 | Another context line.
 ```
 
 Each diagnostic prints a header line (`file:line:col rule message`).
-Below it, up to 5 source lines appear with line numbers and a `^`
-caret at the column.
+Below it, up to 5 source lines appear with line numbers and a dot
+leader pointing to the `^` caret at the column.
 
 **json**:
 

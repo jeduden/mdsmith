@@ -66,7 +66,7 @@ func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
 		}
 
 		if isDiagLine && d.Column > 0 {
-			caretPad := strings.Repeat(" ", d.Column-1)
+			caretPad := strings.Repeat("·", d.Column-1)
 			gutterPad := strings.Repeat(" ", gutterWidth)
 			if f.Color {
 				if _, err := fmt.Fprintf(w, "%s | %s\033[31m^\033[0m\n", gutterPad, caretPad); err != nil {

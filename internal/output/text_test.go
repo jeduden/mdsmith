@@ -172,7 +172,7 @@ func TestTextFormatter_SnippetContext(t *testing.T) {
 		" 8 | Some normal line before.\n" +
 		" 9 | Another normal line.\n" +
 		"10 | This is a very long line that exceeds the 80 character limit and keeps going on and on\n" +
-		"   | " + strings.Repeat(" ", 80) + "^\n" +
+		"   | " + strings.Repeat("·", 80) + "^\n" +
 		"11 | The line after the issue.\n" +
 		"12 | Another line after.\n"
 
@@ -296,7 +296,7 @@ func TestTextFormatter_SnippetAtFileStart(t *testing.T) {
 	expected := "test.md:2:3 MDS010 some issue\n" +
 		"1 | # Title\n" +
 		"2 |   bad indent\n" +
-		"  |   ^\n" +
+		"  | ··^\n" +
 		"3 | normal line\n"
 
 	assert.Equal(t, expected, buf.String())
@@ -368,7 +368,7 @@ func TestTextFormatter_SnippetThreeDigitLineNumbers(t *testing.T) {
 		" 98 | line 98\n" +
 		" 99 | line 99\n" +
 		"100 | line 100\n" +
-		"    |   ^\n" +
+		"    | ··^\n" +
 		"101 | line 101\n" +
 		"102 | line 102\n"
 
