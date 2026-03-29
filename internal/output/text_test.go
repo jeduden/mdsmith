@@ -260,9 +260,9 @@ func TestTextFormatter_SnippetColumnOne(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
+	// Column=1: no caret line (whole-line issue, the line itself is the highlight)
 	expected := "test.md:1:1 MDS009 first line should be a heading\n" +
 		"1 | Some paragraph text.\n" +
-		"  | ^\n" +
 		"2 | Next line.\n"
 
 	assert.Equal(t, expected, buf.String())

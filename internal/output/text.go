@@ -65,7 +65,7 @@ func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
 			}
 		}
 
-		if isDiagLine && d.Column > 0 {
+		if isDiagLine && d.Column > 1 {
 			caretPad := strings.Repeat("·", d.Column-1)
 			gutterPad := strings.Repeat(" ", gutterWidth)
 			if f.Color {
