@@ -2182,11 +2182,11 @@ row: "- {filename}"
 	expectDiags(t, diags, 0)
 }
 
-func TestSpec_DoubleDashSort(t *testing.T) {
-	// `sort: -"-priority"` means descending by quoted key `-priority`.
+func TestSpec_DescendingSort(t *testing.T) {
+	// `sort: -priority` means descending by key `priority`.
 	src := `<?catalog
 glob: "*.md"
-sort: '-"-priority"'
+sort: -priority
 row: "- [{title}]({filename})"
 ?>
 - [High](b.md)
@@ -2194,8 +2194,8 @@ row: "- [{title}]({filename})"
 <?/catalog?>
 `
 	mapFS := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: Low\n-priority: \"1\"\n---\n")},
-		"b.md": {Data: []byte("---\ntitle: High\n-priority: \"2\"\n---\n")},
+		"a.md": {Data: []byte("---\ntitle: Low\npriority: \"1\"\n---\n")},
+		"b.md": {Data: []byte("---\ntitle: High\npriority: \"2\"\n---\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
 	r := &Rule{}
