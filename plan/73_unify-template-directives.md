@@ -21,6 +21,9 @@ Implementation plans:
   `{field}` syntax for required-structure
 - [76](76_rename-misleading-params.md) --
   rename misleading parameter names
+- [77](77_template-composition-and-cycles.md) --
+  template composition, cycle detection,
+  `template` -> `schema` rename
 
 ## Blind trial design
 

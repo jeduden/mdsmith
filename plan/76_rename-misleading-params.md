@@ -78,12 +78,25 @@ config files and docs in a single PR.
     but no `allowed` patterns configured"
   - Update `internal/rules/MDS033-directory-structure/README.md`
 
-5. Update all overrides in `.mdsmith.yml` that
+5. Add "did you mean?" diagnostic for
+   case-mismatched front-matter keys in catalog
+   (MDS019):
+
+  - In catalog `generate`, when a `{{.Field}}`
+    lookup returns empty, check for a
+    case-insensitive match in the file's front
+    matter
+  - If found, emit: `catalog: field "Title"
+    not found; did you mean "title"?`
+  - Hugo users write `{{ .Title }}`; this
+    catches the muscle-memory error
+
+6. Update all overrides in `.mdsmith.yml` that
    reference renamed keys.
-6. Update `docs/guides/directives.md` and
+7. Update `docs/guides/directives.md` and
    `docs/guides/metrics-tradeoffs.md` if they
    reference old names.
-7. Run `mdsmith check .` to verify.
+8. Run `mdsmith check .` to verify.
 
 ## Acceptance Criteria
 
@@ -94,6 +107,8 @@ config files and docs in a single PR.
       `max-column-width-ratio`
 - [ ] `directory-structure: true` without
       `allowed` emits a config warning
+- [ ] Case-mismatched front-matter key in
+      catalog emits "did you mean?" hint
 - [ ] `.mdsmith.yml` uses new names throughout
 - [ ] All rule READMEs use new names
 - [ ] All tests pass: `go test ./...`
