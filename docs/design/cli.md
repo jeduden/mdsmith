@@ -65,17 +65,17 @@ Lint output goes to **stderr**. Format:
 
 ```text
 README.md:10:81 MDS001 line too long (120 > 80)
-  8 | Previous line of context.
-  9 | Another context line.
->10 | This very long line exceeds the configured 80 character limit and keeps going...
-    | ·················································································^
- 11 | Next line of context.
- 12 | Another context line.
+ 8 | Previous line of context.
+ 9 | Another context line.
+10 | This very long line exceeds the configured 80 character limit and keeps going...
+·····································································································^
+11 | Next line of context.
+12 | Another context line.
 ```
 
 Each diagnostic prints a header line (`file:line:col rule message`).
-Below it, up to 5 source lines appear. A `>` marks the diagnostic
-line; for column-specific issues a dot leader points to `^`.
+Below it, up to 5 source lines appear. A dot path (`····^`) marks
+which line has the issue and points to the exact column.
 
 **json**:
 

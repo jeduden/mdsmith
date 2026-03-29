@@ -89,14 +89,12 @@ func TestTextFormatter_WithColor(t *testing.T) {
 
 	output := buf.String()
 
-	// Verify ANSI escape sequences are present
-	assert.Contains(t, output, "\033[36m", "expected cyan ANSI escape sequence (\\033[36m) in output")
-	assert.Contains(t, output, "\033[33m", "expected yellow ANSI escape sequence (\\033[33m) in output")
-	assert.Contains(t, output, "\033[0m", "expected reset ANSI escape sequence (\\033[0m) in output")
+	assert.Contains(t, output, "\033[36m", "expected cyan for file location")
+	assert.Contains(t, output, "\033[33m", "expected yellow for rule ID")
+	assert.Contains(t, output, "\033[0m", "expected ANSI reset")
 
-	// Verify exact colored output
 	expected := "\033[36mREADME.md:10:5\033[0m \033[33mMDS001\033[0m line too long (120 > 80)\n"
-	assert.Equal(t, expected, output, "got %q, want %q", output, expected)
+	assert.Equal(t, expected, output)
 }
 
 func TestTextFormatter_WithoutColor(t *testing.T) {
@@ -118,13 +116,10 @@ func TestTextFormatter_WithoutColor(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err, "unexpected error: %v", err)
 
-	output := buf.String()
-
-	// Verify no ANSI escape sequences
-	assert.NotContains(t, output, "\033[", "expected no ANSI escape sequences in output, but found some")
+	assert.NotContains(t, buf.String(), "\033[", "expected no ANSI escape sequences")
 
 	expected := "README.md:10:5 MDS001 line too long (120 > 80)\n"
-	assert.Equal(t, expected, output, "got %q, want %q", output, expected)
+	assert.Equal(t, expected, buf.String())
 }
 
 func TestTextFormatter_EmptyDiagnostics(t *testing.T) {
@@ -168,12 +163,13 @@ func TestTextFormatter_SnippetContext(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
-	// gutterWidth=2 (max line=12), > prefix on diagnostic line
+	// gutterWidth=2 (max line=12), column=81
+	// caret dots = gutterWidth(2) + column(81) + 2 = 85
 	expected := "README.md:10:81 MDS001 line too long (120 > 80)\n" +
 		" 8 | Some normal line before.\n" +
 		" 9 | Another normal line.\n" +
-		">10 | This is a very long line that exceeds the 80 character limit and keeps going on and on\n" +
-		"   | " + strings.Repeat("·", 80) + "^\n" +
+		"10 | This is a very long line that exceeds the 80 character limit and keeps going on and on\n" +
+		strings.Repeat("·", 85) + "^\n" +
 		"11 | The line after the issue.\n" +
 		"12 | Another line after.\n"
 
@@ -207,8 +203,6 @@ func TestTextFormatter_SnippetWithColor(t *testing.T) {
 
 	output := buf.String()
 
-	// > marker should be red
-	assert.Contains(t, output, "\033[31m>\033[0m", "expected red > marker")
 	// Caret should be red
 	assert.Contains(t, output, "\033[31m^\033[0m", "expected red caret")
 	// Context lines should be dim
@@ -234,7 +228,6 @@ func TestTextFormatter_SnippetEmptySourceLines(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
-	// No snippet lines — just the diagnostic header
 	expected := "README.md:10:5 MDS001 line too long (120 > 80)\n"
 	assert.Equal(t, expected, buf.String())
 }
@@ -263,10 +256,12 @@ func TestTextFormatter_SnippetColumnOne(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
-	// Column=1: > marker, no caret line
+	// Column=1: dot path from col 0 to col 1
+	// gutterWidth=1, dots = 1+1+2 = 4
 	expected := "test.md:1:1 MDS009 first line should be a heading\n" +
-		">1 | Some paragraph text.\n" +
-		" 2 | Next line.\n"
+		"1 | Some paragraph text.\n" +
+		"····^\n" +
+		"2 | Next line.\n"
 
 	assert.Equal(t, expected, buf.String())
 }
@@ -296,12 +291,12 @@ func TestTextFormatter_SnippetAtFileStart(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
-	// Column>1: > marker + dot-leader caret
+	// gutterWidth=1, column=3, dots = 1+3+2 = 6
 	expected := "test.md:2:3 MDS010 some issue\n" +
-		" 1 | # Title\n" +
-		">2 |   bad indent\n" +
-		"   | ··^\n" +
-		" 3 | normal line\n"
+		"1 | # Title\n" +
+		"2 |   bad indent\n" +
+		"······^\n" +
+		"3 | normal line\n"
 
 	assert.Equal(t, expected, buf.String())
 }
@@ -331,11 +326,11 @@ func TestTextFormatter_SnippetColumnZero(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
-	// Column 0: > marker, no caret line
+	// Column 0: no caret line
 	expected := "test.md:2:0 MDS010 some issue\n" +
-		" 1 | line one\n" +
-		">2 | line two\n" +
-		" 3 | line three\n"
+		"1 | line one\n" +
+		"2 | line two\n" +
+		"3 | line three\n"
 
 	assert.Equal(t, expected, buf.String())
 }
@@ -367,23 +362,22 @@ func TestTextFormatter_SnippetThreeDigitLineNumbers(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
-	// 3-digit gutter, > replaces first space
+	// gutterWidth=3, column=3, dots = 3+3+2 = 8
 	expected := "big.md:100:3 MDS010 some issue\n" +
 		" 98 | line 98\n" +
 		" 99 | line 99\n" +
-		">100 | line 100\n" +
-		"    | ··^\n" +
+		"100 | line 100\n" +
+		"········^\n" +
 		"101 | line 101\n" +
 		"102 | line 102\n"
 
 	assert.Equal(t, expected, buf.String())
 }
 
-func TestTextFormatter_SnippetPipeAlignment(t *testing.T) {
+func TestTextFormatter_SnippetDotPathAlignment(t *testing.T) {
 	f := &TextFormatter{Color: false}
 	var buf bytes.Buffer
 
-	// Verify that | is aligned across context, diagnostic, and caret lines
 	diagnostics := []lint.Diagnostic{
 		{
 			File:     "test.md",
@@ -407,27 +401,30 @@ func TestTextFormatter_SnippetPipeAlignment(t *testing.T) {
 	err := f.Format(&buf, diagnostics)
 	require.NoError(t, err)
 
+	// gutterWidth=1, column=10, dots = 1+10+2 = 13
 	expected := "test.md:5:10 MDS012 bare URL\n" +
-		" 3 | line three\n" +
-		" 4 | line four\n" +
-		">5 | visit at https://example.com today\n" +
-		"   | ·········^\n" +
-		" 6 | line six\n" +
-		" 7 | line seven\n"
+		"3 | line three\n" +
+		"4 | line four\n" +
+		"5 | visit at https://example.com today\n" +
+		"·············^\n" +
+		"6 | line six\n" +
+		"7 | line seven\n"
 
 	assert.Equal(t, expected, buf.String())
 
-	// Verify all | are at the same column
-	lines := strings.Split(strings.TrimSuffix(buf.String(), "\n"), "\n")
-	var pipePositions []int
-	for _, l := range lines[1:] { // skip header
-		idx := strings.Index(l, "|")
-		if idx >= 0 {
-			pipePositions = append(pipePositions, idx)
+	// Verify the ^ sits under the right character.
+	// "5 | visit at https://..." — content starts at rune position 4.
+	// Column 10 → 'h' in "https" → rune position 4+9 = 13.
+	lines := strings.Split(buf.String(), "\n")
+	diagRunes := []rune(lines[3])  // "5 | visit at https://..."
+	caretRunes := []rune(lines[4]) // "·············^"
+	caretPos := -1
+	for j, r := range caretRunes {
+		if r == '^' {
+			caretPos = j
+			break
 		}
 	}
-	for i := 1; i < len(pipePositions); i++ {
-		assert.Equal(t, pipePositions[0], pipePositions[i],
-			"pipe misaligned on line %d: got %d, want %d", i+1, pipePositions[i], pipePositions[0])
-	}
+	require.GreaterOrEqual(t, caretPos, 0, "no ^ found in caret line")
+	assert.Equal(t, 'h', diagRunes[caretPos], "caret should point at 'h' in https")
 }
