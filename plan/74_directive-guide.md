@@ -22,7 +22,7 @@ READMEs.
 
 ## Context
 
-Blind trials (plan 73) showed three gaps that
+Blind trials (plan 73) showed six gaps that
 docs alone can close:
 
 - 4-space indent silently breaks directives
@@ -31,6 +31,17 @@ docs alone can close:
   2.0, nobody could predict behavior).
 - Users cannot predict which rules auto-fix
   (fix confidence 2-3 points lower than check).
+- `<?require?>` in a normal file is silently
+  ignored (5/5 flagged as confusing -- looks
+  like it should work anywhere).
+- `<?allow-empty-section?>` in a template does
+  not propagate to documents using that
+  template (5/5 noted the misleading
+  co-occurrence with `## ...`).
+- Templates only enforce headings and front
+  matter, not directives (2/5 uncertain
+  whether `<?catalog?>` in a template requires
+  documents to also contain one).
 
 ## Rendering note
 
@@ -59,6 +70,12 @@ markers is visible.
     `check` reports, what `fix` does
   - Nesting: state that directives inside
     generated content are not re-processed
+  - Template vs normal file section: explain
+    that `<?require?>` only works in templates,
+    that `<?allow-empty-section?>` does not
+    propagate from template to document, and
+    that templates enforce headings and front
+    matter only (not directives)
   - Fixability summary table for all 33 rules
 
 2. Add a "see the directive guide" link from
@@ -77,6 +94,11 @@ markers is visible.
       rules
 - [ ] Guide documents 4-space indent footgun
 - [ ] Guide states nesting is not supported
+- [ ] Guide has template-vs-normal-file section
+- [ ] Guide states `<?require?>` is
+      template-only
+- [ ] Guide states template directives do not
+      propagate to documents
 - [ ] Guide passes `mdsmith check docs/guides/`
 - [ ] Rule READMEs link to the guide
 - [ ] All tests pass: `go test ./...`

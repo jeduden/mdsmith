@@ -122,9 +122,22 @@ Key wins:
 - No "threshold" misreadings of renamed params
 - `{field}` vs `{{.field}}` clearly distinct
 
-Remaining gap: `directory-structure: true`
-no-op still confused 2/5 who expected it to
-flag all files. Plan 76 config warning needed.
+Remaining gaps:
+
+- `directory-structure: true` no-op still
+  confused 2/5. Plan 76 config warning needed.
+- `<?require?>` in a normal file is silently
+  ignored (5/5 flagged as confusing in
+  template-vs-normal trial).
+- `<?allow-empty-section?>` in a template does
+  not propagate to documents (5/5 noted the
+  misleading co-occurrence with `## ...`).
+- Templates enforce headings and front matter
+  only, not directives (2/5 uncertain about
+  `<?catalog?>` in a template).
+
+All three template-vs-normal gaps addressed
+by plan 74 (guide section on templates).
 
 ## Tasks
 
