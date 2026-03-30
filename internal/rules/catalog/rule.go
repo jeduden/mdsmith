@@ -532,8 +532,10 @@ func checkFieldCaseMismatches(filePath string, line int, row string, entries []f
 			h := hint{field, suggestion}
 			if !seen[h] {
 				seen[h] = true
-				diags = append(diags, makeDiag(filePath, line,
-					fmt.Sprintf("field %q not found; did you mean %q?", field, suggestion)))
+				diag := makeDiag(filePath, line,
+					fmt.Sprintf("field %q not found; did you mean %q?", field, suggestion))
+				diag.Severity = lint.Warning
+				diags = append(diags, diag)
 			}
 		}
 	}

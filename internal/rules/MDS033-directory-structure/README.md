@@ -42,7 +42,8 @@ rules:
       - "internal/**/testdata/**"
 ```
 
-Enabling without `allowed` emits a config warning:
+Enabling with the mapping form but without `allowed`
+emits a config warning:
 
 ```text
 directory-structure: rule enabled but no "allowed" patterns configured
