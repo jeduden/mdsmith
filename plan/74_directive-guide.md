@@ -1,7 +1,7 @@
 ---
 id: 74
 title: Directive guide
-status: "🔲"
+status: "✅"
 summary: >-
   Central guide for all directives and rules
   with examples, fixability table, placement
@@ -151,27 +151,27 @@ markers is visible.
 
 ## Acceptance Criteria
 
-- [ ] `docs/guides/directives.md` exists
-- [ ] Guide covers all four directives with
+- [x] `docs/guides/directives.md` exists
+- [x] Guide covers all four directives with
       examples
-- [ ] Guide has fixability table for all 33
+- [x] Guide has fixability table for all 33
       rules
-- [ ] Guide documents 4-space indent footgun
-- [ ] Guide states nesting is not supported
-- [ ] Guide documents unified `{field}` syntax
-- [ ] Guide has schema-vs-normal-file section
-- [ ] Guide states `<?require?>` is
+- [x] Guide documents 4-space indent footgun
+- [x] Guide states nesting is not supported
+- [x] Guide documents unified `{field}` syntax
+- [x] Guide has schema-vs-normal-file section
+- [x] Guide states `<?require?>` is
       schema-only
-- [ ] Guide states schema directives do not
+- [x] Guide states schema directives do not
       propagate to documents
-- [ ] Guide documents schema composition via
+- [x] Guide documents schema composition via
       `<?include?>`
-- [ ] Guide documents renamed parameters
-- [ ] Guide has "coming from Hugo" section
-- [ ] Guide uses `schema` not `template`
+- [x] Guide documents renamed parameters
+- [x] Guide has "coming from Hugo" section
+- [x] Guide uses `schema` not `template`
       throughout
-- [ ] Guide passes `mdsmith check docs/guides/`
-- [ ] Rule READMEs link to the guide
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] Guide passes `mdsmith check docs/guides/`
+- [x] Rule READMEs link to the guide
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues

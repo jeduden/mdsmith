@@ -15,6 +15,8 @@ Section headings must include meaningful body content.
 - **Fixable**: no
 - **Implementation**:
   [source](./)
+- **Guide**:
+  [directive guide](../../../docs/guides/directives.md)
 - **Category**: heading
 
 This rule reports sections that only contain whitespace,

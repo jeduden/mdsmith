@@ -183,9 +183,10 @@ empty: |
   |---------------|--------------------------------------------------------------|
   | No guides yet | Add guide files under `docs/guides/` to populate this index. |
 ?>
-| Guide                                                                                           | Description                                                                              |
-|-------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
-| [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets. |
+| Guide                                                                                           | Description                                                                                                        |
+|-------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets.                           |
+| [Directive Guide](docs/guides/directives.md)                                                    | Central guide for all directives and rules with examples, fixability table, placement rules, and nesting behavior. |
 <?/catalog?>
 
 ## 📏 Rules

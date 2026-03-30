@@ -21,6 +21,7 @@ row: "- [{summary}]({filename})"
 - [CLI commands, flags, exit codes, and output format.](docs/design/cli.md)
 - [Build commands, project layout, code style, test fixtures, and merge conflicts.](docs/development/index.md)
 - [PR fixup workflow for rebase, CI monitoring, review comment resolution, and gh CLI setup.](docs/development/pr-fixup-workflow.md)
+- [Central guide for all directives and rules with examples, fixability table, placement rules, and nesting behavior.](docs/guides/directives.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
 <?/catalog?>
 

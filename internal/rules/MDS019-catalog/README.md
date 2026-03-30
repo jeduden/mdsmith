@@ -19,6 +19,8 @@ from files matching its glob.
 - **Category**: meta
 - **Archetype**:
   [generated-section](../../../docs/design/archetypes/generated-section/)
+- **Guide**:
+  [directive guide](../../../docs/guides/directives.md)
 
 ## Directive: `catalog`
 
