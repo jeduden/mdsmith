@@ -30,7 +30,7 @@ Conciseness scoring (plan 53) focuses on information density rather than complex
 
 ## What token budget awareness is trying to measure
 
-Token budget awareness ([MDS028](../../internal/rules/MDS028-token-budget/README.md)) focuses on file-level size in terms of tokens rather than lines or characters. It protects LLM context windows by warning when a file exceeds a configurable budget. `heuristic` mode divides word count by a words-per-token factor, which is fast but approximate. `tokenizer` mode uses tokenizer-aware splitting with a selected encoding for a closer estimate.
+Token budget awareness ([MDS028](../../internal/rules/MDS028-token-budget/README.md)) focuses on file-level size in terms of tokens rather than lines or characters. It protects LLM context windows by warning when a file exceeds a configurable budget. `heuristic` mode multiplies word count by a tokens-per-word factor, which is fast but approximate. `tokenizer` mode uses tokenizer-aware splitting with a selected encoding for a closer estimate.
 
 Tokenization happens before inference, so any LLM will read inputs as tokens. That means token budgets are only accurate when they use the same tokenizer as the target model. The trade-off is performance: exact tokenization is slower and needs vocab assets, while heuristic estimates are fast and model-agnostic.
 
@@ -70,10 +70,10 @@ Notes: ARI values use mdsmith's current formula. [MDS023](../../internal/rules/M
 
 ## Token budget examples (file-level)
 
-These examples assume an illustrative `words-per-token` of `1.33` (≈ 0.75 tokens per word) and a budget of `2,000 tokens`.
+These examples assume a `tokens-per-word` of `0.75` and a budget of `2,000 tokens`.
 
 - File F: 2,800 words -> ~2,100 tokens, flagged by token budget even if line count is below `max-file-length`.
-- File G: 1,200 words with heavy code blocks -> estimate ~900 tokens, but actual tokens could be higher; `words-per-token` tuning or code weighting may be needed.
+- File G: 1,200 words with heavy code blocks -> estimate ~900 tokens, but actual tokens could be higher; `tokens-per-word` tuning or code weighting may be needed.
 
 ## Trade-offs by metric
 
@@ -89,7 +89,7 @@ These examples assume an illustrative `words-per-token` of `1.33` (≈ 0.75 toke
 
 1. Start with defaults for [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) and [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) to establish baseline structure and readability.
 2. Sample a representative set of documents and collect results before tightening thresholds.
-3. For token budgets, pick a target based on your context window and allocate a safe share per document (for example, reserve 20 to 30 percent of a prompt budget for a single doc). Choose an initial `words-per-token` value and adjust for code-heavy files.
+3. For token budgets, pick a target based on your context window and allocate a safe share per document (for example, reserve 20 to 30 percent of a prompt budget for a single doc). Choose an initial `tokens-per-word` value and adjust for code-heavy files.
 4. For conciseness scoring, set an initial threshold that flags only the worst 10 to 20 percent of paragraphs, then adjust.
 5. Use path-based overrides to reflect different document types, such as onboarding guides vs architecture specs.
 6. Re-evaluate thresholds after major content changes or when onboarding new teams.

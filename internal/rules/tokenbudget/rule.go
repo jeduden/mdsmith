@@ -17,7 +17,7 @@ import (
 const (
 	defaultMax           = 8000
 	defaultMode          = "heuristic"
-	defaultWordsPerToken = 1.33
+	defaultTokensPerWord = 0.75
 	defaultTokenizer     = "builtin"
 	defaultEncoding      = "cl100k_base"
 	validEncodings       = "cl100k_base, p50k_base, r50k_base, gpt2"
@@ -42,7 +42,7 @@ func init() {
 	rule.Register(&Rule{
 		Max:       defaultMax,
 		Mode:      defaultMode,
-		Ratio:     defaultWordsPerToken,
+		Ratio:     defaultTokensPerWord,
 		Tokenizer: defaultTokenizer,
 		Encoding:  defaultEncoding,
 	})
@@ -146,16 +146,16 @@ func (r *Rule) tokenCountAndMode(text string) (int, string) {
 		count := tokenizerCount(text, tok, enc)
 		return count, fmt.Sprintf("tokenizer:%s/%s", tok, enc)
 	default:
-		wpt := r.Ratio
-		if wpt <= 0 {
-			wpt = defaultWordsPerToken
+		tpw := r.Ratio
+		if tpw <= 0 {
+			tpw = defaultTokensPerWord
 		}
 		words := mdtext.CountWords(text)
-		count := int(math.Round(float64(words) / wpt))
+		count := int(math.Round(float64(words) * tpw))
 		if count < 0 {
 			count = 0
 		}
-		return count, fmt.Sprintf("heuristic:words-per-token=%.2f", wpt)
+		return count, fmt.Sprintf("heuristic:tokens-per-word=%.2f", tpw)
 	}
 }
 
@@ -194,7 +194,7 @@ func (r *Rule) applySetting(k string, v any) error {
 		return r.applyMax(v)
 	case "mode":
 		return r.applyMode(v)
-	case "words-per-token":
+	case "tokens-per-word":
 		return r.applyRatio(v)
 	case "tokenizer":
 		return r.applyTokenizer(v)
@@ -238,10 +238,10 @@ func (r *Rule) applyMode(v any) error {
 func (r *Rule) applyRatio(v any) error {
 	n, ok := toFloat(v)
 	if !ok {
-		return fmt.Errorf("token-budget: words-per-token must be a number, got %T", v)
+		return fmt.Errorf("token-budget: tokens-per-word must be a number, got %T", v)
 	}
 	if n <= 0 {
-		return fmt.Errorf("token-budget: words-per-token must be positive, got %.4g", n)
+		return fmt.Errorf("token-budget: tokens-per-word must be positive, got %.4g", n)
 	}
 	r.Ratio = n
 	return nil
@@ -360,7 +360,7 @@ func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
 		"max":             defaultMax,
 		"mode":            defaultMode,
-		"words-per-token": defaultWordsPerToken,
+		"tokens-per-word": defaultTokensPerWord,
 		"tokenizer":       defaultTokenizer,
 		"encoding":        defaultEncoding,
 	}

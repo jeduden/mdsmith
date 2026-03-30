@@ -34,7 +34,7 @@ func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 	if d.Line != 1 || d.Column != 1 {
 		t.Errorf("expected location 1:1, got %d:%d", d.Line, d.Column)
 	}
-	if want := "token budget exceeded (6 > 3, mode=heuristic:words-per-token=1.00)"; d.Message != want {
+	if want := "token budget exceeded (6 > 3, mode=heuristic:tokens-per-word=1.00)"; d.Message != want {
 		t.Errorf("expected message %q, got %q", want, d.Message)
 	}
 }
@@ -99,7 +99,7 @@ func TestApplySettings_Valid(t *testing.T) {
 	err := r.ApplySettings(map[string]any{
 		"max":             2048,
 		"mode":            "tokenizer",
-		"words-per-token": 0.9,
+		"tokens-per-word": 0.9,
 		"tokenizer":       "builtin",
 		"encoding":        "gpt2",
 		"budgets": []any{
@@ -130,8 +130,8 @@ func TestApplySettings_InvalidType(t *testing.T) {
 	if err := r.ApplySettings(map[string]any{"max": "many"}); err == nil {
 		t.Fatal("expected error for non-int max")
 	}
-	if err := r.ApplySettings(map[string]any{"words-per-token": "high"}); err == nil {
-		t.Fatal("expected error for non-number words-per-token")
+	if err := r.ApplySettings(map[string]any{"tokens-per-word": "high"}); err == nil {
+		t.Fatal("expected error for non-number tokens-per-word")
 	}
 	if err := r.ApplySettings(map[string]any{"mode": 123}); err == nil {
 		t.Fatal("expected error for non-string mode")
@@ -143,8 +143,8 @@ func TestApplySettings_InvalidValues(t *testing.T) {
 	if err := r.ApplySettings(map[string]any{"max": 0}); err == nil {
 		t.Fatal("expected error for non-positive max")
 	}
-	if err := r.ApplySettings(map[string]any{"words-per-token": -1.0}); err == nil {
-		t.Fatal("expected error for non-positive words-per-token")
+	if err := r.ApplySettings(map[string]any{"tokens-per-word": -1.0}); err == nil {
+		t.Fatal("expected error for non-positive tokens-per-word")
 	}
 	if err := r.ApplySettings(map[string]any{"mode": "unknown"}); err == nil {
 		t.Fatal("expected error for invalid mode")
@@ -193,8 +193,8 @@ func TestDefaultSettings(t *testing.T) {
 	if ds["mode"] != defaultMode {
 		t.Errorf("expected mode=%q, got %v", defaultMode, ds["mode"])
 	}
-	if ds["words-per-token"] != defaultWordsPerToken {
-		t.Errorf("expected words-per-token=%v, got %v", defaultWordsPerToken, ds["words-per-token"])
+	if ds["tokens-per-word"] != defaultTokensPerWord {
+		t.Errorf("expected tokens-per-word=%v, got %v", defaultTokensPerWord, ds["tokens-per-word"])
 	}
 	if ds["tokenizer"] != defaultTokenizer {
 		t.Errorf("expected tokenizer=%q, got %v", defaultTokenizer, ds["tokenizer"])
