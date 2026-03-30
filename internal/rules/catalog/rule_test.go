@@ -556,6 +556,95 @@ empty: "{something} no data"
 }
 
 // =====================================================================
+// Nested front-matter access (CUE paths)
+// =====================================================================
+
+func TestRendering_NestedFrontMatter(t *testing.T) {
+	src := `<?catalog
+glob: "docs/*.md"
+row: "- [{params.subtitle}]({filename})"
+?>
+- [Overview](docs/api.md)
+- [Intro](docs/guide.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md":   {Data: []byte("---\nparams:\n  subtitle: Overview\n---\n# API\n")},
+		"docs/guide.md": {Data: []byte("---\nparams:\n  subtitle: Intro\n---\n# Guide\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestRendering_QuotedKeyFrontMatter(t *testing.T) {
+	src := `<?catalog
+glob: "docs/*.md"
+row: '- [{"my-key"}]({filename})'
+?>
+- [value](docs/a.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\nmy-key: value\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestRendering_DeepNestedFrontMatter(t *testing.T) {
+	src := `<?catalog
+glob: "docs/*.md"
+row: "- {a.b.c}"
+?>
+- deep
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\na:\n  b:\n    c: deep\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestRendering_MissingNestedFieldEmpty(t *testing.T) {
+	src := `<?catalog
+glob: "docs/*.md"
+row: "- [{params.missing}]({filename})"
+?>
+- [](docs/a.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\nparams:\n  subtitle: Overview\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestDiag_YAMLFlowMappingConflict(t *testing.T) {
+	src := `<?catalog
+glob: "*.md"
+row: {title}
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "quote")
+}
+
+// =====================================================================
 // Fix behavior
 // =====================================================================
 
@@ -1221,7 +1310,7 @@ func TestCheck_SortErrors(t *testing.T) {
 				"sort: \"foo bar\"\n?>\n<?/catalog?>\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
-			wantMsg:   "invalid sort value",
+			wantMsg:   "invalid sort key",
 		},
 		{
 			name: "sort with tab",
@@ -1229,7 +1318,7 @@ func TestCheck_SortErrors(t *testing.T) {
 				"sort: \"foo\tbar\"\n?>\n<?/catalog?>\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
-			wantMsg:   "invalid sort value",
+			wantMsg:   "invalid sort key",
 		},
 	})
 }
@@ -1600,8 +1689,8 @@ func TestSplitLines_TrailingNewline(t *testing.T) {
 
 func TestRenderMinimal(t *testing.T) {
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "docs/api.md"}},
-		{fields: map[string]string{"filename": "docs/guide.md"}},
+		{fields: map[string]any{"filename": "docs/api.md"}},
+		{fields: map[string]any{"filename": "docs/guide.md"}},
 	}
 	got := renderMinimal(entries)
 	expected := "- [api.md](docs/api.md)\n- [guide.md](docs/guide.md)\n"
@@ -1632,8 +1721,8 @@ func TestRenderTemplate_HeaderRowFooter(t *testing.T) {
 		"footer": "---",
 	}
 	entries := []fileEntry{
-		{fields: map[string]string{"title": "A", "filename": "a.md"}},
-		{fields: map[string]string{"title": "B", "filename": "b.md"}},
+		{fields: map[string]any{"title": "A", "filename": "a.md"}},
+		{fields: map[string]any{"title": "B", "filename": "b.md"}},
 	}
 	got, err := renderTemplate(params, entries)
 	require.NoError(t, err)
@@ -1646,7 +1735,7 @@ func TestRenderTemplate_RowOnly(t *testing.T) {
 		"row": "- {filename}",
 	}
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "a.md"}},
+		{fields: map[string]any{"filename": "a.md"}},
 	}
 	got, err := renderTemplate(params, entries)
 	require.NoError(t, err)
@@ -1660,7 +1749,7 @@ func TestRenderTemplate_FooterOnly(t *testing.T) {
 		"footer": "---",
 	}
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "a.md"}},
+		{fields: map[string]any{"filename": "a.md"}},
 	}
 	got, err := renderTemplate(params, entries)
 	require.NoError(t, err)
@@ -1680,9 +1769,9 @@ func TestParseRowTemplate_EmptyPlaceholderReturnsError(t *testing.T) {
 
 func TestSortEntries_PathAscending(t *testing.T) {
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "c.md"}},
-		{fields: map[string]string{"filename": "a.md"}},
-		{fields: map[string]string{"filename": "b.md"}},
+		{fields: map[string]any{"filename": "c.md"}},
+		{fields: map[string]any{"filename": "a.md"}},
+		{fields: map[string]any{"filename": "b.md"}},
 	}
 	sortEntries(entries, "path", false)
 	if entries[0].fields["filename"] != "a.md" {
@@ -1695,9 +1784,9 @@ func TestSortEntries_PathAscending(t *testing.T) {
 
 func TestSortEntries_PathDescending(t *testing.T) {
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "a.md"}},
-		{fields: map[string]string{"filename": "c.md"}},
-		{fields: map[string]string{"filename": "b.md"}},
+		{fields: map[string]any{"filename": "a.md"}},
+		{fields: map[string]any{"filename": "c.md"}},
+		{fields: map[string]any{"filename": "b.md"}},
 	}
 	sortEntries(entries, "path", true)
 	if entries[0].fields["filename"] != "c.md" {
@@ -1710,8 +1799,8 @@ func TestSortEntries_PathDescending(t *testing.T) {
 
 func TestSortEntries_FrontMatterKey(t *testing.T) {
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "a.md", "title": "Zulu"}},
-		{fields: map[string]string{"filename": "b.md", "title": "Alpha"}},
+		{fields: map[string]any{"filename": "a.md", "title": "Zulu"}},
+		{fields: map[string]any{"filename": "b.md", "title": "Alpha"}},
 	}
 	sortEntries(entries, "title", false)
 	if entries[0].fields["title"] != "Alpha" {
@@ -1721,8 +1810,8 @@ func TestSortEntries_FrontMatterKey(t *testing.T) {
 
 func TestSortEntries_Tiebreaker(t *testing.T) {
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "b.md", "title": "Same"}},
-		{fields: map[string]string{"filename": "a.md", "title": "Same"}},
+		{fields: map[string]any{"filename": "b.md", "title": "Same"}},
+		{fields: map[string]any{"filename": "a.md", "title": "Same"}},
 	}
 	sortEntries(entries, "title", false)
 	if entries[0].fields["filename"] != "a.md" {
@@ -1733,8 +1822,8 @@ func TestSortEntries_Tiebreaker(t *testing.T) {
 func TestSortEntries_TiebreakerDescending(t *testing.T) {
 	// Even when descending, the tiebreaker is path ascending.
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "b.md", "title": "Same"}},
-		{fields: map[string]string{"filename": "a.md", "title": "Same"}},
+		{fields: map[string]any{"filename": "b.md", "title": "Same"}},
+		{fields: map[string]any{"filename": "a.md", "title": "Same"}},
 	}
 	sortEntries(entries, "title", true)
 	if entries[0].fields["filename"] != "a.md" {
@@ -1744,8 +1833,8 @@ func TestSortEntries_TiebreakerDescending(t *testing.T) {
 
 func TestSortEntries_FilenameDescending(t *testing.T) {
 	entries := []fileEntry{
-		{fields: map[string]string{"filename": "a/alpha.md"}},
-		{fields: map[string]string{"filename": "z/zulu.md"}},
+		{fields: map[string]any{"filename": "a/alpha.md"}},
+		{fields: map[string]any{"filename": "z/zulu.md"}},
 	}
 	sortEntries(entries, "filename", true)
 	if entries[0].fields["filename"] != "z/zulu.md" {
@@ -1754,28 +1843,28 @@ func TestSortEntries_FilenameDescending(t *testing.T) {
 }
 
 func TestSortValue_Path(t *testing.T) {
-	e := fileEntry{fields: map[string]string{"filename": "docs/a.md"}}
+	e := fileEntry{fields: map[string]any{"filename": "docs/a.md"}}
 	if v := sortValue(e, "path"); v != "docs/a.md" {
 		t.Errorf("expected docs/a.md, got %s", v)
 	}
 }
 
 func TestSortValue_Filename(t *testing.T) {
-	e := fileEntry{fields: map[string]string{"filename": "docs/a.md"}}
+	e := fileEntry{fields: map[string]any{"filename": "docs/a.md"}}
 	if v := sortValue(e, "filename"); v != "a.md" {
 		t.Errorf("expected a.md, got %s", v)
 	}
 }
 
 func TestSortValue_FrontMatterField(t *testing.T) {
-	e := fileEntry{fields: map[string]string{"filename": "a.md", "title": "Hello"}}
+	e := fileEntry{fields: map[string]any{"filename": "a.md", "title": "Hello"}}
 	if v := sortValue(e, "title"); v != "Hello" {
 		t.Errorf("expected Hello, got %s", v)
 	}
 }
 
 func TestSortValue_MissingField(t *testing.T) {
-	e := fileEntry{fields: map[string]string{"filename": "a.md"}}
+	e := fileEntry{fields: map[string]any{"filename": "a.md"}}
 	if v := sortValue(e, "title"); v != "" {
 		t.Errorf("expected empty string for missing field, got %q", v)
 	}
@@ -1822,8 +1911,8 @@ func TestReadFrontMatter_NonStringValue(t *testing.T) {
 	if fm["title"] != "Hello" {
 		t.Errorf("expected title Hello, got %q", fm["title"])
 	}
-	if fm["count"] != "42" {
-		t.Errorf("expected count '42', got %q", fm["count"])
+	if fm["count"] != 42 {
+		t.Errorf("expected count 42, got %v", fm["count"])
 	}
 }
 
@@ -1856,8 +1945,8 @@ func TestReadFrontMatter_BooleanValue(t *testing.T) {
 		"a.md": {Data: []byte("---\ntitle: Hello\ndraft: true\n---\n")},
 	}
 	fm := readFrontMatter(fs, "a.md")
-	if fm["draft"] != "true" {
-		t.Errorf("expected draft 'true', got %q", fm["draft"])
+	if fm["draft"] != true {
+		t.Errorf("expected draft true, got %v", fm["draft"])
 	}
 }
 
@@ -2093,11 +2182,11 @@ row: "- {filename}"
 	expectDiags(t, diags, 0)
 }
 
-func TestSpec_DoubleDashSort(t *testing.T) {
-	// `sort: --priority` means descending by key `-priority`.
+func TestSpec_DescendingSort(t *testing.T) {
+	// `sort: -priority` means descending by key `priority`.
 	src := `<?catalog
 glob: "*.md"
-sort: "--priority"
+sort: -priority
 row: "- [{title}]({filename})"
 ?>
 - [High](b.md)
@@ -2105,8 +2194,8 @@ row: "- [{title}]({filename})"
 <?/catalog?>
 `
 	mapFS := fstest.MapFS{
-		"a.md": {Data: []byte("---\ntitle: Low\n-priority: \"1\"\n---\n")},
-		"b.md": {Data: []byte("---\ntitle: High\n-priority: \"2\"\n---\n")},
+		"a.md": {Data: []byte("---\ntitle: Low\npriority: \"1\"\n---\n")},
+		"b.md": {Data: []byte("---\ntitle: High\npriority: \"2\"\n---\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
 	r := &Rule{}

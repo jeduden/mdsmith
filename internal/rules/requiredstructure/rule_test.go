@@ -354,6 +354,75 @@ func TestCheck_WildcardHeading(t *testing.T) {
 }
 
 // =====================================================================
+// Nested front-matter access (CUE paths)
+// =====================================================================
+
+func TestCheck_NestedFieldInHeading(t *testing.T) {
+	tmplPath := writeTmpl(t, "# {params.subtitle}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  subtitle: Overview\n---\n# Overview\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_NestedFieldInHeadingMismatch(t *testing.T) {
+	tmplPath := writeTmpl(t, "# {params.subtitle}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  subtitle: Overview\n---\n# Wrong Title\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "heading does not match frontmatter")
+}
+
+func TestCheck_QuotedKeyInHeading(t *testing.T) {
+	tmplPath := writeTmpl(t, "# {\"my-key\"}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nmy-key: value\n---\n# value\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_NestedFieldInBody(t *testing.T) {
+	tmplPath := writeTmpl(t, "# ?\n\n{params.description}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  description: A detailed overview.\n---\n# My Doc\n\nA detailed overview.\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_NestedFieldInBodyMismatch(t *testing.T) {
+	tmplPath := writeTmpl(t, "# ?\n\n{params.description}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  description: A detailed overview.\n---\n# My Doc\n\nWrong content.\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`body does not match frontmatter field "params.description"`)
+}
+
+func TestCheck_MissingNestedKeyEmitsDiagnostic(t *testing.T) {
+	// Template references {params.missing} but front matter has params.subtitle.
+	tmplPath := writeTmpl(t, "# {params.missing}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  subtitle: Overview\n---\n# Overview\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "missing or invalid frontmatter path")
+}
+
+func TestCheck_MissingNestedKeyInBodyEmitsDiagnostic(t *testing.T) {
+	tmplPath := writeTmpl(t, "# ?\n\n{params.missing}\n")
+	r := &Rule{Template: tmplPath}
+	f := newTestFile(t, "doc.md",
+		"---\nparams:\n  subtitle: Overview\n---\n# My Doc\n\nSome content.\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "missing or invalid frontmatter path")
+}
+
+// =====================================================================
 // Embedded front matter CUE schema
 // =====================================================================
 

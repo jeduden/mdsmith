@@ -86,7 +86,6 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	docHeadings := extractHeadings(f)
 	docFMRaw := readDocFrontMatterRaw(f)
-	docFM := readDocFrontMatter(f)
 
 	var diags []lint.Diagnostic
 
@@ -102,8 +101,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			fmt.Sprintf("front matter does not satisfy template CUE schema: %v", err)))
 	}
 
-	// Check frontmatter-body sync.
-	diags = append(diags, checkSync(f, tmpl, docHeadings, docFM)...)
+	// Check frontmatter-body sync using raw map for nested access.
+	diags = append(diags, checkSync(f, tmpl, docHeadings, docFMRaw)...)
 
 	return diags
 }
@@ -532,8 +531,9 @@ func isSectionWildcard(req templateHeading) bool {
 	return strings.TrimSpace(req.Text) == sectionWildcard
 }
 
-// resolveFields replaces {field} placeholders with frontmatter values.
-func resolveFields(text string, docFM map[string]string) string {
+// resolveFields replaces {field} placeholders with frontmatter values
+// using CUE path resolution for nested access.
+func resolveFields(text string, docFM map[string]any) string {
 	return fieldinterp.Interpolate(text, docFM)
 }
 
@@ -555,10 +555,18 @@ func advanceToMatch(
 func checkSyncPoint(
 	f *lint.File, sp syncPoint, req templateHeading,
 	dh docHeading, matchedDoc int, docHeadings []docHeading,
-	docFM map[string]string,
+	docFM map[string]any,
 ) []lint.Diagnostic {
-	if _, ok := docFM[sp.Field]; !ok {
-		return nil
+	// Check if the field exists in front matter using CUE path resolution.
+	path := fieldinterp.ParseCUEPath(sp.Field)
+	if path == nil {
+		return []lint.Diagnostic{makeDiag(f.Path, dh.Line,
+			fmt.Sprintf("invalid CUE path in sync placeholder: %q", sp.Field))}
+	}
+	if _, err := fieldinterp.ResolvePath(docFM, path); err != nil {
+		return []lint.Diagnostic{makeDiag(f.Path, dh.Line,
+			fmt.Sprintf("sync placeholder %q refers to missing or invalid frontmatter path: %v",
+				sp.Field, err))}
 	}
 	if !sp.InBody {
 		expected := resolveFields(req.Text, docFM)
@@ -578,7 +586,7 @@ func checkSync(
 	f *lint.File,
 	tmpl *parsedTemplate,
 	docHeadings []docHeading,
-	docFM map[string]string,
+	docFM map[string]any,
 ) []lint.Diagnostic {
 	if len(docFM) == 0 {
 		return nil
@@ -708,27 +716,6 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 	}
 
 	return nil
-}
-
-func stringifyFrontMatter(raw map[string]any) map[string]string {
-	if len(raw) == 0 {
-		return nil
-	}
-	result := make(map[string]string, len(raw))
-	for k, v := range raw {
-		if s, ok := v.(string); ok {
-			result[k] = s
-		} else {
-			result[k] = fmt.Sprintf("%v", v)
-		}
-	}
-	return result
-}
-
-// readDocFrontMatter reads YAML frontmatter from the document and returns a
-// stringified view used by sync checks.
-func readDocFrontMatter(f *lint.File) map[string]string {
-	return stringifyFrontMatter(readDocFrontMatterRaw(f))
 }
 
 // readDocFrontMatterRaw reads YAML frontmatter from the document.

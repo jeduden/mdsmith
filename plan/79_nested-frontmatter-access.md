@@ -1,7 +1,7 @@
 ---
 id: 79
 title: Nested front-matter access
-status: "🔲"
+status: "✅"
 summary: >-
   Use CUE path syntax in {field} placeholders
   for nested and quoted front-matter access.
@@ -106,14 +106,14 @@ anywhere in the user-facing surface.
 
 ## Acceptance Criteria
 
-- [ ] `{a.b}` resolves nested front-matter
+- [x] `{a.b}` resolves nested front-matter
       in both catalog and schema headings
-- [ ] `{"my-key".sub}` resolves quoted
+- [x] `{"my-key".sub}` resolves quoted
       non-identifier key in both contexts
-- [ ] `{"a.b"}` resolves a single key with
+- [x] `{"a.b"}` resolves a single key with
       a literal dot (CUE quoting)
-- [ ] Missing nested key emits a diagnostic
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] Missing nested key emits a diagnostic
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues
-- [ ] `mdsmith check .` passes
+- [x] `mdsmith check .` passes

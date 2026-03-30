@@ -184,9 +184,19 @@ func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 			`generated section directive has empty "sort" value`)}
 	}
 	key := strings.TrimPrefix(sortVal, "-")
-	if key == "" || strings.ContainsAny(key, " \t") {
+	if key == "" {
 		return []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("generated section directive has invalid sort value %q", sortVal))}
+	}
+	// Built-in sort keys don't need CUE path validation.
+	if key == "path" || key == "filename" {
+		return nil
+	}
+	// Front-matter sort keys must be valid CUE paths.
+	if fieldinterp.ParseCUEPath(key) == nil {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("generated section directive has invalid sort key %q; "+
+				"non-identifier keys must be quoted, e.g. sort: '\"my-key\"'", key))}
 	}
 	return nil
 }
@@ -220,7 +230,7 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 
 	entries := make([]fileEntry, 0, len(files))
 	for _, path := range files {
-		fields := map[string]string{"filename": path}
+		fields := map[string]any{"filename": path}
 		if needFM {
 			for k, v := range readFrontMatter(f.FS, path) {
 				fields[k] = v
@@ -269,8 +279,8 @@ func sortEntries(entries []fileEntry, key string, descending bool) {
 		cmp := strings.Compare(strings.ToLower(vi), strings.ToLower(vj))
 		if cmp == 0 {
 			// Tiebreaker: path ascending, case-insensitive.
-			pi := strings.ToLower(entries[i].fields["filename"])
-			pj := strings.ToLower(entries[j].fields["filename"])
+			pi := strings.ToLower(fieldinterp.Stringify(entries[i].fields["filename"]))
+			pj := strings.ToLower(fieldinterp.Stringify(entries[j].fields["filename"]))
 			return pi < pj
 		}
 
@@ -285,18 +295,26 @@ func sortEntries(entries []fileEntry, key string, descending bool) {
 func sortValue(entry fileEntry, key string) string {
 	switch key {
 	case "path":
-		return entry.fields["filename"]
+		return fieldinterp.Stringify(entry.fields["filename"])
 	case "filename":
-		return filepath.Base(entry.fields["filename"])
+		return filepath.Base(fieldinterp.Stringify(entry.fields["filename"]))
 	default:
-		return entry.fields[key]
+		path := fieldinterp.ParseCUEPath(key)
+		if path == nil {
+			return "" // validated at directive parse time
+		}
+		val, err := fieldinterp.ResolvePath(entry.fields, path)
+		if err != nil {
+			return ""
+		}
+		return val
 	}
 }
 
 // readFrontMatter reads a file's YAML front matter and returns it as
-// a string map. Non-string values are converted via fmt.Sprintf.
+// a map preserving nested structure for CUE path resolution.
 // Returns nil if no front matter is found or on any error.
-func readFrontMatter(fsys fs.FS, path string) map[string]string {
+func readFrontMatter(fsys fs.FS, path string) map[string]any {
 	data, err := fs.ReadFile(fsys, path)
 	if err != nil {
 		return nil
@@ -321,15 +339,7 @@ func readFrontMatter(fsys fs.FS, path string) map[string]string {
 		return nil
 	}
 
-	result := make(map[string]string, len(raw))
-	for k, v := range raw {
-		if s, ok := v.(string); ok {
-			result[k] = s
-		} else {
-			result[k] = fmt.Sprintf("%v", v)
-		}
-	}
-	return result
+	return raw
 }
 
 // containsDotDot checks if a glob pattern contains ".." path traversal.
