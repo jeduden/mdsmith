@@ -312,6 +312,26 @@ func containsDotDotElement(p string) bool {
 	return false
 }
 
+// readFSFile reads a file from readFS, falling back to stripping the
+// origin directory prefix when readFS is directory-scoped.
+func readFSFile(readFS fs.FS, resolved, originFile string) ([]byte, bool) {
+	fsPath := resolved
+	if path.IsAbs(fsPath) {
+		fsPath = strings.TrimPrefix(fsPath, "/")
+	}
+	data, err := fs.ReadFile(readFS, fsPath)
+	if err != nil {
+		originDir := path.Dir(originFile)
+		if originDir != "" && originDir != "." {
+			rel := strings.TrimPrefix(resolved, originDir+"/")
+			if rel != resolved {
+				data, err = fs.ReadFile(readFS, rel)
+			}
+		}
+	}
+	return data, err == nil
+}
+
 // scanForCycles parses the included file for nested include directives and
 // checks for cycles in the include chain. It uses already-read data to
 // avoid double reads for the first level.
@@ -356,24 +376,7 @@ func (r *Rule) scanForCycles(
 		r.visited[resolved] = true
 		r.chain = append(r.chain, resolved)
 		var cycleDiags []lint.Diagnostic
-		// Translate the repo-relative resolved path into an FS-relative
-		// path. readFS may be RootFS (repo root) or f.FS (directory of the
-		// origin file). When FS-scoped, strip the origin directory prefix.
-		fsPath := resolved
-		if path.IsAbs(fsPath) {
-			fsPath = strings.TrimPrefix(fsPath, "/")
-		}
-		nested, readErr := fs.ReadFile(readFS, fsPath)
-		if readErr != nil {
-			originDir := path.Dir(originFile)
-			if originDir != "" && originDir != "." {
-				rel := strings.TrimPrefix(resolved, originDir+"/")
-				if rel != resolved {
-					nested, readErr = fs.ReadFile(readFS, rel)
-				}
-			}
-		}
-		if readErr == nil {
+		if nested, ok := readFSFile(readFS, resolved, originFile); ok {
 			cycleDiags = r.scanForCycles(readFS, nested, resolved, originFile, originLine)
 		}
 		delete(r.visited, resolved)
