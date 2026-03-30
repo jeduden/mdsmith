@@ -29,6 +29,9 @@ Markdown tables and code blocks are skipped.
 The Automated Readability Index (ARI) maps to US grade levels:
 a score of 14.0 roughly corresponds to college-level text.
 
+> `max-grade` is accepted as a deprecated alias for `max-index`.
+> Update configurations to use `max-index` instead.
+
 ## Config
 
 ```yaml

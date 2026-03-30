@@ -105,7 +105,7 @@ func paragraphLine(para *ast.Paragraph, f *lint.File) int {
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
 		switch k {
-		case "max-index":
+		case "max-index", "max-grade":
 			n, ok := toFloat(v)
 			if !ok {
 				return fmt.Errorf(

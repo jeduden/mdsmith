@@ -158,6 +158,15 @@ func TestApplySettings_ValidMaxIndex(t *testing.T) {
 	}
 }
 
+func TestApplySettings_DeprecatedMaxGrade(t *testing.T) {
+	r := &Rule{MaxIndex: 14.0, MinWords: 20}
+	err := r.ApplySettings(map[string]any{"max-grade": 10.0})
+	require.NoError(t, err, "unexpected error: %v", err)
+	if r.MaxIndex != 10.0 {
+		t.Errorf("expected MaxIndex=10.0 via deprecated max-grade, got %f", r.MaxIndex)
+	}
+}
+
 func TestApplySettings_ValidMinWords(t *testing.T) {
 	r := &Rule{MaxIndex: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"min-words": 30})
