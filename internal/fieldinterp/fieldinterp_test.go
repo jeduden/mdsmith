@@ -310,10 +310,9 @@ func TestParseCUEPath_TrailingDot(t *testing.T) {
 }
 
 func TestParseCUEPath_EmptyQuotedLabel(t *testing.T) {
-	// CUE accepts "" as a valid (empty) label.
-	result := ParseCUEPath(`""`)
-	require.Len(t, result, 1)
-	assert.Equal(t, "", result[0])
+	// Even though CUE accepts "" as a valid label, the template
+	// language rejects it to avoid surprising empty-key lookups.
+	assert.Nil(t, ParseCUEPath(`""`))
 }
 
 func TestParseCUEPath_MissingSeparatorAfterQuote(t *testing.T) {

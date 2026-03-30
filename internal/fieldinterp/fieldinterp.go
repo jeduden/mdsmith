@@ -20,7 +20,7 @@ import (
 // label ("..."). Quoted labels may not contain } (even escaped) since
 // Validate uses a simple } scan to find the placeholder end.
 // Non-identifier keys (hyphens, dots, spaces) must be quoted: {"my-key"}.
-var fieldPattern = regexp.MustCompile(`\{((?:\w+|"(?:[^"\\}]|\\[^}])*")(?:\.(?:\w+|"(?:[^"\\}]|\\[^}])*"))*)\}`)
+var fieldPattern = regexp.MustCompile(`\{((?:\w+|"(?:[^"\\}]|\\[^}])+")(?:\.(?:\w+|"(?:[^"\\}]|\\[^}])+"))*)\}`)
 
 // Interpolate replaces {field} placeholders in text with values resolved
 // from data using CUE path semantics. Supports nested access ({a.b}) and
@@ -146,7 +146,11 @@ func ParseCUEPath(expr string) []string {
 	}
 	segments := make([]string, len(sels))
 	for i, s := range sels {
-		segments[i] = s.Unquoted()
+		u := s.Unquoted()
+		if u == "" {
+			return nil // reject empty labels
+		}
+		segments[i] = u
 	}
 	return segments
 }
