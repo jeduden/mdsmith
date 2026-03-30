@@ -70,7 +70,7 @@ func TestCheck_ShortParagraphSkipped(t *testing.T) {
 	src := []byte("One two three four five six seven eight.\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
-	// Use a grade function that always returns a high score.
+	// Use an index function that always returns a high score.
 	alwaysHigh := func(_ string) float64 { return 99.0 }
 	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: alwaysHigh}
 	diags := r.Check(f)

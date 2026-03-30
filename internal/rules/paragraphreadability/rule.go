@@ -109,8 +109,8 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			n, ok := toFloat(v)
 			if !ok {
 				return fmt.Errorf(
-					"paragraph-readability: max-index must be a number, got %T",
-					v,
+					"paragraph-readability: %s must be a number, got %T",
+					k, v,
 				)
 			}
 			r.MaxIndex = n
