@@ -17,7 +17,7 @@ import (
 const (
 	defaultMax           = 8000
 	defaultMode          = "heuristic"
-	defaultWordsPerToken = 0.75
+	defaultWordsPerToken = 1.33
 	defaultTokenizer     = "builtin"
 	defaultEncoding      = "cl100k_base"
 	validEncodings       = "cl100k_base, p50k_base, r50k_base, gpt2"
@@ -146,16 +146,16 @@ func (r *Rule) tokenCountAndMode(text string) (int, string) {
 		count := tokenizerCount(text, tok, enc)
 		return count, fmt.Sprintf("tokenizer:%s/%s", tok, enc)
 	default:
-		ratio := r.Ratio
-		if ratio <= 0 {
-			ratio = defaultWordsPerToken
+		wpt := r.Ratio
+		if wpt <= 0 {
+			wpt = defaultWordsPerToken
 		}
 		words := mdtext.CountWords(text)
-		count := int(math.Round(float64(words) * ratio))
+		count := int(math.Round(float64(words) / wpt))
 		if count < 0 {
 			count = 0
 		}
-		return count, fmt.Sprintf("heuristic:ratio=%.2f", ratio)
+		return count, fmt.Sprintf("heuristic:words-per-token=%.2f", wpt)
 	}
 }
 

@@ -139,7 +139,7 @@ func TestCheck_TooManyWordsPerCell(t *testing.T) {
 	}
 }
 
-func TestCheck_HighWidthVariance(t *testing.T) {
+func TestCheck_HighWidthRatio(t *testing.T) {
 	r := &Rule{MaxColumns: 6, MaxRows: 20, MaxWordsPerCell: 100, MaxColumnWidthRatio: 1.50}
 	src := `# Title
 
@@ -154,7 +154,7 @@ func TestCheck_HighWidthVariance(t *testing.T) {
 	if diags[0].Line != 3 {
 		t.Fatalf("line = %d, want 3", diags[0].Line)
 	}
-	require.Contains(t, diags[0].Message, "table has high column width variance", "message = %q", diags[0].Message)
+	require.Contains(t, diags[0].Message, "table has high column width ratio", "message = %q", diags[0].Message)
 }
 
 func TestCheck_SkipsTablesInCodeBlock(t *testing.T) {

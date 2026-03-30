@@ -496,17 +496,23 @@ func checkFieldCaseMismatches(filePath string, line int, row string, entries []f
 			if _, ok := entry.fields[field]; ok {
 				continue
 			}
-			// Look for a case-insensitive match.
+			// Look for case-insensitive matches deterministically.
+			var matches []string
 			for key := range entry.fields {
 				if strings.EqualFold(key, field) {
-					h := hint{field, key}
-					if !seen[h] {
-						seen[h] = true
-						diags = append(diags, makeDiag(filePath, line,
-							fmt.Sprintf("catalog: field %q not found; did you mean %q?", field, key)))
-					}
-					break
+					matches = append(matches, key)
 				}
+			}
+			if len(matches) == 0 {
+				continue
+			}
+			sort.Strings(matches)
+			suggestion := matches[0]
+			h := hint{field, suggestion}
+			if !seen[h] {
+				seen[h] = true
+				diags = append(diags, makeDiag(filePath, line,
+					fmt.Sprintf("field %q not found; did you mean %q?", field, suggestion)))
 			}
 		}
 	}

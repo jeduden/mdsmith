@@ -49,7 +49,7 @@ rules:
   token-budget:
     max: 8000
     mode: heuristic
-    words-per-token: 0.75
+    words-per-token: 1.33
     tokenizer: builtin
     encoding: cl100k_base
   no-trailing-punctuation-in-heading: true
@@ -157,7 +157,7 @@ overrides:
       token-budget:
         max: 12000
         mode: heuristic
-        words-per-token: 0.75
+        words-per-token: 1.33
         tokenizer: builtin
         encoding: cl100k_base
   - files: ["docs/development/pr-fixup-workflow.md"]
@@ -179,7 +179,7 @@ overrides:
       token-budget:
         max: 12000
         mode: heuristic
-        words-per-token: 0.75
+        words-per-token: 1.33
         tokenizer: builtin
         encoding: cl100k_base
       paragraph-readability:

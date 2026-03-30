@@ -116,6 +116,9 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 		}
 	}
 	// All validation passed — commit state atomically.
+	// configured is set unconditionally: if ApplySettings runs (even with
+	// no "allowed" key), the rule was explicitly enabled in the config and
+	// Check should emit a config warning for the missing patterns.
 	r.Allowed = patterns
 	r.matchers = matchers
 	r.configured = true

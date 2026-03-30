@@ -93,7 +93,7 @@ wrap: markdown
 - `table has too many columns (N > limit)`
 - `table has too many rows (N > limit)`
 - `table cell has too many words (N > limit)`
-- `table has high column width variance (ratio > limit)`
+- `table has high column width ratio (ratio > limit)`
 
 ## Edge Cases
 

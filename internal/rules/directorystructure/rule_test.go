@@ -162,8 +162,9 @@ func TestDefaultSettings(t *testing.T) {
 
 func TestApplyDefaultSettings_EmitsConfigWarning(t *testing.T) {
 	// Simulate the CloneRule/fixture-harness flow: configure the rule,
-	// then restore defaults. The rule should return to unconfigured and
-	// emit a config warning when checked.
+	// then restore defaults. After applying defaults, the rule is still
+	// configured but has no "allowed" patterns and should emit a config
+	// warning when checked.
 	r := newRule(t, []string{"docs/**"})
 	err := r.ApplySettings(r.DefaultSettings())
 	require.NoError(t, err)

@@ -50,7 +50,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	maxColumns := positiveIntOrDefault(r.MaxColumns, defaultMaxColumns)
 	maxRows := positiveIntOrDefault(r.MaxRows, defaultMaxRows)
 	maxWordsPerCell := positiveIntOrDefault(r.MaxWordsPerCell, defaultMaxWordsPerCell)
-	maxVariance := positiveFloatOrDefault(r.MaxColumnWidthRatio, defaultMaxColumnWidthRatio)
+	maxRatio := positiveFloatOrDefault(r.MaxColumnWidthRatio, defaultMaxColumnWidthRatio)
 
 	codeLines := lint.CollectCodeBlockLines(f)
 	tables := findTables(f.Lines, codeLines)
@@ -84,11 +84,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			))
 		}
 
-		if variance := tbl.columnWidthVariance(); variance > maxVariance {
+		if ratio := tbl.columnWidthRatio(); ratio > maxRatio {
 			diags = append(diags, makeDiag(
 				f,
 				tbl.startLine,
-				fmt.Sprintf("table has high column width variance (%.2f > %.2f)", variance, maxVariance),
+				fmt.Sprintf("table has high column width ratio (%.2f > %.2f)", ratio, maxRatio),
 			))
 		}
 	}
@@ -298,7 +298,7 @@ func (t table) maxCellWords() (int, int) {
 	return maxWords, maxLine
 }
 
-func (t table) columnWidthVariance() float64 {
+func (t table) columnWidthRatio() float64 {
 	columns := t.columnCount()
 	if columns == 0 {
 		return 0

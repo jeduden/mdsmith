@@ -34,7 +34,7 @@ func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 	if d.Line != 1 || d.Column != 1 {
 		t.Errorf("expected location 1:1, got %d:%d", d.Line, d.Column)
 	}
-	if want := "token budget exceeded (6 > 3, mode=heuristic:ratio=1.00)"; d.Message != want {
+	if want := "token budget exceeded (6 > 3, mode=heuristic:words-per-token=1.00)"; d.Message != want {
 		t.Errorf("expected message %q, got %q", want, d.Message)
 	}
 }
