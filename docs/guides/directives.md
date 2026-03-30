@@ -261,12 +261,15 @@ in both catalog `row` templates and schema headings.
 - Missing field -- empty string.
 - Case-mismatched field (e.g. `{Title}` when front
   matter has `title`) -- "did you mean?" hint.
-- Non-string value -- Go default string format.
+- Non-string scalar value (e.g. number, bool) --
+  formatted to a string. Composite values (maps,
+  slices) resolve to an empty string.
 - Literal `{` -- write `{{`. Literal `}` -- write
   `}}`.
 
 CUE paths provide nested access for structured front
-matter values.
+matter values, subject to the same scalar/composite
+placeholder behavior.
 
 ## Schema vs Normal File
 
@@ -407,7 +410,10 @@ the key differences in mdsmith:
   uses CUE path semantics for nested front matter
   access, not Go template dot notation.
 
-- **Directive params are YAML strings**: All
-  parameter values in the YAML body of a directive
-  must be strings. Non-string values (numbers,
-  booleans, null) produce a diagnostic.
+- **Directive params are YAML strings**: Top-level
+  directive parameters are parsed as strings (lists
+  of strings are also allowed). Structured blocks
+  like `columns:` in `<?catalog?>` accept typed
+  values (for example numbers) as defined by that
+  directive; using non-string scalars where only
+  strings are expected produces a diagnostic.
