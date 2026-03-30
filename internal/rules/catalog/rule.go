@@ -457,9 +457,9 @@ func parseRowTemplate(row string) error {
 	return fieldinterp.Validate(row)
 }
 
-// extractTemplateFields returns the deduplicated set of field names
+// extractPlaceholderFields returns the deduplicated set of field names
 // referenced by {field} placeholders in a row template string.
-func extractTemplateFields(row string) []string {
+func extractPlaceholderFields(row string) []string {
 	all := fieldinterp.Fields(row)
 	seen := make(map[string]bool, len(all))
 	var fields []string
@@ -476,7 +476,7 @@ func extractTemplateFields(row string) []string {
 // the row template is missing from a file's front-matter but has a
 // case-insensitive match. Returns "did you mean?" diagnostics.
 func checkFieldCaseMismatches(filePath string, line int, row string, entries []fileEntry) []lint.Diagnostic {
-	fields := extractTemplateFields(row)
+	fields := extractPlaceholderFields(row)
 	if len(fields) == 0 {
 		return nil
 	}
