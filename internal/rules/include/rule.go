@@ -356,7 +356,12 @@ func (r *Rule) scanForCycles(
 		r.visited[resolved] = true
 		r.chain = append(r.chain, resolved)
 		var cycleDiags []lint.Diagnostic
-		nested, readErr := fs.ReadFile(readFS, resolved)
+		// fs.FS expects paths relative to the FS root (no leading "/").
+		fsPath := resolved
+		if path.IsAbs(fsPath) {
+			fsPath = strings.TrimPrefix(fsPath, "/")
+		}
+		nested, readErr := fs.ReadFile(readFS, fsPath)
 		if readErr == nil {
 			cycleDiags = r.scanForCycles(readFS, nested, resolved, originFile, originLine)
 		}

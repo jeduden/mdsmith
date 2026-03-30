@@ -23,8 +23,10 @@ schema.
 |----------|--------|---------|---------------------|
 | `schema` | string | `""`    | Path to schema file |
 
-When `schema` is empty the rule is a no-op. Use
-overrides to apply schemas to specific file groups.
+When `schema` is empty the rule skips structure and
+front matter validation, but still warns on misplaced
+`<?require?>` directives. Use overrides to apply
+schemas to specific file groups.
 
 Schema front matter may embed a CUE schema that
 validates document front matter:

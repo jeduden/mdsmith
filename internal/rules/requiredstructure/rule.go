@@ -68,8 +68,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Warn when <?require?> appears in a non-schema file.
 	if reqLine := findRequireDirectiveLine(f); reqLine > 0 {
 		if r.Schema == "" || !isSchemaFile(f.Path, r.Schema) {
-			diags = append(diags, makeDiag(f.Path, reqLine,
-				"<?require?> is only recognized in schema files; this directive has no effect here"))
+			d := makeDiag(f.Path, reqLine,
+				"<?require?> is only recognized in schema files; this directive has no effect here")
+			d.Severity = lint.Warning
+			diags = append(diags, d)
 		}
 	}
 
