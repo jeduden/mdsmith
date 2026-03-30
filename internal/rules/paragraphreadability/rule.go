@@ -79,8 +79,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 					RuleName: r.Name(),
 					Severity: lint.Warning,
 					Message: fmt.Sprintf(
-						"paragraph readability grade too high"+
-							" (%.1f > %.1f)",
+						"paragraph too hard to read"+
+							" (readability index: %.1f, max %.1f)",
 						rounded, maxGrade,
 					),
 				})

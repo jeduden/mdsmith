@@ -2,7 +2,7 @@
 diagnostics:
   - line: 3
     column: 1
-    message: "paragraph readability grade too high (35.2 > 14.0)"
+    message: "paragraph too hard to read (readability index: 35.2, max 14.0)"
 ---
 # Complex Document
 

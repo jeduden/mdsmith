@@ -48,9 +48,9 @@ func TestCheck_OverThreshold(t *testing.T) {
 	if d.Column != 1 {
 		t.Errorf("expected column 1, got %d", d.Column)
 	}
-	if !strings.Contains(d.Message, "> 14.0") {
+	if !strings.Contains(d.Message, "max 14.0") {
 		t.Errorf(
-			"expected message to contain '> 14.0', got %q",
+			"expected message to contain 'max 14.0', got %q",
 			d.Message,
 		)
 	}
