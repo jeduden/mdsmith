@@ -55,7 +55,7 @@ rules:
   no-trailing-punctuation-in-heading: true
   no-emphasis-as-heading: true
   paragraph-readability:
-    max-grade: 14.0
+    max-index: 14.0
     min-words: 20
   paragraph-structure:
     max-sentences: 6
@@ -183,7 +183,7 @@ overrides:
         tokenizer: builtin
         encoding: cl100k_base
       paragraph-readability:
-        max-grade: 24.0
+        max-index: 24.0
         min-words: 20
       paragraph-structure:
         max-sentences: 12

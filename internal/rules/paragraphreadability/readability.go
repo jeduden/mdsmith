@@ -2,9 +2,9 @@ package paragraphreadability
 
 import "github.com/jeduden/mdsmith/internal/mdtext"
 
-// GradeFunc computes a readability grade level from plain text.
+// IndexFunc computes a readability index from plain text.
 // Higher values mean harder to read.
-type GradeFunc func(text string) float64
+type IndexFunc func(text string) float64
 
 // ARI computes the Automated Readability Index.
 // Formula: 4.71*(characters/words) + 0.5*(words/sentences) - 21.43

@@ -2,16 +2,16 @@
 id: MDS023
 name: paragraph-readability
 status: ready
-description: Paragraph readability grade must not exceed a threshold.
+description: Paragraph readability index must not exceed a threshold.
 ---
 # MDS023: paragraph-readability
 
-Paragraph readability grade must not exceed a threshold.
+Paragraph readability index must not exceed a threshold.
 
 - **ID**: MDS023
 - **Name**: `paragraph-readability`
 - **Status**: ready
-- **Default**: enabled, max-grade: 14.0, min-words: 20
+- **Default**: enabled, max-index: 14.0, min-words: 20
 - **Fixable**: no
 - **Implementation**:
   [source](./)
@@ -21,7 +21,7 @@ Paragraph readability grade must not exceed a threshold.
 
 | Setting     | Type  | Default | Description                             |
 |-------------|-------|---------|-----------------------------------------|
-| `max-grade` | float | 14.0    | Maximum allowed ARI readability grade   |
+| `max-index` | float | 14.0    | Maximum allowed readability index (ARI) |
 | `min-words` | int   | 20      | Minimum word count to check a paragraph |
 
 Paragraphs with fewer words than `min-words` are skipped.
@@ -41,7 +41,7 @@ Custom thresholds:
 ```yaml
 rules:
   paragraph-readability:
-    max-grade: 12.0
+    max-index: 12.0
     min-words: 25
 ```
 

@@ -13,19 +13,19 @@ import (
 
 func init() {
 	rule.Register(&Rule{
-		MaxGrade: 14.0,
+		MaxIndex: 14.0,
 		MinWords: 20,
-		Grade:    ARI,
+		Index:    ARI,
 	})
 }
 
-// Rule checks that paragraph readability grade does not exceed
+// Rule checks that the paragraph readability index does not exceed
 // a configured maximum. Uses the Automated Readability Index by
 // default.
 type Rule struct {
-	MaxGrade float64
+	MaxIndex float64
 	MinWords int
-	Grade    GradeFunc
+	Index    IndexFunc
 }
 
 // ID implements rule.Rule.
@@ -40,11 +40,11 @@ func (r *Rule) Category() string { return "meta" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	maxGrade := r.MaxGrade
+	maxIndex := r.MaxIndex
 	minWords := r.MinWords
-	grade := r.Grade
-	if grade == nil {
-		grade = ARI
+	index := r.Index
+	if index == nil {
+		index = ARI
 	}
 
 	_ = ast.Walk(
@@ -67,8 +67,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				return ast.WalkContinue, nil
 			}
 
-			score := grade(text)
-			if score > maxGrade {
+			score := index(text)
+			if score > maxIndex {
 				line := paragraphLine(para, f)
 				rounded := math.Round(score*10) / 10
 				diags = append(diags, lint.Diagnostic{
@@ -79,9 +79,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 					RuleName: r.Name(),
 					Severity: lint.Warning,
 					Message: fmt.Sprintf(
-						"paragraph readability grade too high"+
-							" (%.1f > %.1f)",
-						rounded, maxGrade,
+						"paragraph too hard to read"+
+							" (readability index: %.1f, max %.1f)",
+						rounded, maxIndex,
 					),
 				})
 			}
@@ -105,15 +105,15 @@ func paragraphLine(para *ast.Paragraph, f *lint.File) int {
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
 		switch k {
-		case "max-grade":
+		case "max-index":
 			n, ok := toFloat(v)
 			if !ok {
 				return fmt.Errorf(
-					"paragraph-readability: max-grade must be a number, got %T",
+					"paragraph-readability: max-index must be a number, got %T",
 					v,
 				)
 			}
-			r.MaxGrade = n
+			r.MaxIndex = n
 		case "min-words":
 			n, ok := toInt(v)
 			if !ok {
@@ -135,7 +135,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"max-grade": 14.0,
+		"max-index": 14.0,
 		"min-words": 20,
 	}
 }

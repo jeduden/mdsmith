@@ -29,7 +29,7 @@ func TestCheck_OverThreshold(t *testing.T) {
 	src := []byte(hardText() + "\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
-	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	d := diags[0]
@@ -48,9 +48,9 @@ func TestCheck_OverThreshold(t *testing.T) {
 	if d.Column != 1 {
 		t.Errorf("expected column 1, got %d", d.Column)
 	}
-	if !strings.Contains(d.Message, "> 14.0") {
+	if !strings.Contains(d.Message, "max 14.0") {
 		t.Errorf(
-			"expected message to contain '> 14.0', got %q",
+			"expected message to contain 'max 14.0', got %q",
 			d.Message,
 		)
 	}
@@ -60,7 +60,7 @@ func TestCheck_UnderThreshold(t *testing.T) {
 	src := []byte(easyText() + "\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
-	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
 	diags := r.Check(f)
 	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
@@ -70,9 +70,9 @@ func TestCheck_ShortParagraphSkipped(t *testing.T) {
 	src := []byte("One two three four five six seven eight.\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
-	// Use a grade function that always returns a high score.
+	// Use an index function that always returns a high score.
 	alwaysHigh := func(_ string) float64 { return 99.0 }
-	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: alwaysHigh}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: alwaysHigh}
 	diags := r.Check(f)
 	if len(diags) != 0 {
 		t.Fatalf(
@@ -94,7 +94,7 @@ func TestCheck_InlineMarkupStripped(t *testing.T) {
 	)
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
-	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
 	diags := r.Check(f)
 	if len(diags) != 1 {
 		t.Fatalf(
@@ -109,7 +109,7 @@ func TestCheck_DiagnosticLine(t *testing.T) {
 	src := []byte("# Heading\n\n" + hardText() + "\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
-	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: ARI}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 	if diags[0].Line != 3 {
@@ -117,16 +117,16 @@ func TestCheck_DiagnosticLine(t *testing.T) {
 	}
 }
 
-func TestCheck_NilGradeUsesARI(t *testing.T) {
+func TestCheck_NilIndexUsesARI(t *testing.T) {
 	src := []byte(hardText() + "\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
-	r := &Rule{MaxGrade: 14.0, MinWords: 20, Grade: nil}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: nil}
 	diags := r.Check(f)
 	// Hard text with ARI should trigger.
 	if len(diags) != 1 {
 		t.Fatalf(
-			"expected 1 diagnostic with nil Grade, got %d",
+			"expected 1 diagnostic with nil Index, got %d",
 			len(diags),
 		)
 	}
@@ -142,24 +142,24 @@ func TestCheck_TableSkipped(t *testing.T) {
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 	alwaysHigh := func(_ string) float64 { return 99.0 }
-	r := &Rule{MaxGrade: 14.0, MinWords: 1, Grade: alwaysHigh}
+	r := &Rule{MaxIndex: 14.0, MinWords: 1, Index: alwaysHigh}
 	diags := r.Check(f)
 	require.Len(t, diags, 0, "expected 0 diagnostics for table, got %d", len(diags))
 }
 
 // --- Configurable tests ---
 
-func TestApplySettings_ValidMaxGrade(t *testing.T) {
-	r := &Rule{MaxGrade: 14.0, MinWords: 20}
-	err := r.ApplySettings(map[string]any{"max-grade": 10.0})
+func TestApplySettings_ValidMaxIndex(t *testing.T) {
+	r := &Rule{MaxIndex: 14.0, MinWords: 20}
+	err := r.ApplySettings(map[string]any{"max-index": 10.0})
 	require.NoError(t, err, "unexpected error: %v", err)
-	if r.MaxGrade != 10.0 {
-		t.Errorf("expected MaxGrade=10.0, got %f", r.MaxGrade)
+	if r.MaxIndex != 10.0 {
+		t.Errorf("expected MaxIndex=10.0, got %f", r.MaxIndex)
 	}
 }
 
 func TestApplySettings_ValidMinWords(t *testing.T) {
-	r := &Rule{MaxGrade: 14.0, MinWords: 20}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"min-words": 30})
 	require.NoError(t, err, "unexpected error: %v", err)
 	if r.MinWords != 30 {
@@ -167,20 +167,20 @@ func TestApplySettings_ValidMinWords(t *testing.T) {
 	}
 }
 
-func TestApplySettings_InvalidMaxGradeType(t *testing.T) {
-	r := &Rule{MaxGrade: 14.0, MinWords: 20}
-	err := r.ApplySettings(map[string]any{"max-grade": "high"})
-	require.Error(t, err, "expected error for non-number max-grade")
+func TestApplySettings_InvalidMaxIndexType(t *testing.T) {
+	r := &Rule{MaxIndex: 14.0, MinWords: 20}
+	err := r.ApplySettings(map[string]any{"max-index": "high"})
+	require.Error(t, err, "expected error for non-number max-index")
 }
 
 func TestApplySettings_InvalidMinWordsType(t *testing.T) {
-	r := &Rule{MaxGrade: 14.0, MinWords: 20}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"min-words": "many"})
 	require.Error(t, err, "expected error for non-int min-words")
 }
 
 func TestApplySettings_UnknownKey(t *testing.T) {
-	r := &Rule{MaxGrade: 14.0, MinWords: 20}
+	r := &Rule{MaxIndex: 14.0, MinWords: 20}
 	err := r.ApplySettings(map[string]any{"unknown": true})
 	require.Error(t, err, "expected error for unknown key")
 }
@@ -188,8 +188,8 @@ func TestApplySettings_UnknownKey(t *testing.T) {
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
-	if ds["max-grade"] != 14.0 {
-		t.Errorf("expected max-grade=14.0, got %v", ds["max-grade"])
+	if ds["max-index"] != 14.0 {
+		t.Errorf("expected max-index=14.0, got %v", ds["max-index"])
 	}
 	if ds["min-words"] != 20 {
 		t.Errorf("expected min-words=20, got %v", ds["min-words"])
