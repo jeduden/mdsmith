@@ -17,7 +17,7 @@ func mustFile(t *testing.T, path, src string) *lint.File {
 
 func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 	f := mustFile(t, "test.md", "one two three four five six")
-	r := &Rule{Max: 3, Mode: "heuristic", Ratio: 1.0}
+	r := &Rule{Max: 3, Mode: "heuristic", TokensPerWord: 1.0}
 	diags := r.Check(f)
 
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
@@ -41,7 +41,7 @@ func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 
 func TestCheck_HeuristicAtBudget_NoDiagnostic(t *testing.T) {
 	f := mustFile(t, "test.md", "one two three four")
-	r := &Rule{Max: 4, Mode: "heuristic", Ratio: 1.0}
+	r := &Rule{Max: 4, Mode: "heuristic", TokensPerWord: 1.0}
 	if diags := r.Check(f); len(diags) != 0 {
 		t.Fatalf("expected 0 diagnostics, got %d", len(diags))
 	}
@@ -64,7 +64,7 @@ func TestCheck_TokenizerBudgetExceeded(t *testing.T) {
 
 func TestCheck_PerGlobBudget_LastMatchWins(t *testing.T) {
 	f := mustFile(t, "docs/guide.md", "one two three four five six")
-	r := &Rule{Max: 100, Mode: "heuristic", Ratio: 1.0}
+	r := &Rule{Max: 100, Mode: "heuristic", TokensPerWord: 1.0}
 	if err := r.ApplySettings(map[string]any{
 		"budgets": []any{
 			map[string]any{"glob": "docs/*.md", "max": 10},
@@ -83,7 +83,7 @@ func TestCheck_PerGlobBudget_LastMatchWins(t *testing.T) {
 
 func TestCheck_PerGlobBudget_NoMatchUsesDefault(t *testing.T) {
 	f := mustFile(t, "README.md", "one two three")
-	r := &Rule{Max: 3, Mode: "heuristic", Ratio: 1.0}
+	r := &Rule{Max: 3, Mode: "heuristic", TokensPerWord: 1.0}
 	if err := r.ApplySettings(map[string]any{
 		"budgets": []any{map[string]any{"glob": "docs/*.md", "max": 1}},
 	}); err != nil {
@@ -113,8 +113,8 @@ func TestApplySettings_Valid(t *testing.T) {
 	if r.Mode != "tokenizer" {
 		t.Errorf("expected Mode=tokenizer, got %s", r.Mode)
 	}
-	if r.Ratio != 0.9 {
-		t.Errorf("expected Ratio=0.9, got %v", r.Ratio)
+	if r.TokensPerWord != 0.9 {
+		t.Errorf("expected TokensPerWord=0.9, got %v", r.TokensPerWord)
 	}
 	if r.Tokenizer != "builtin" {
 		t.Errorf("expected Tokenizer=builtin, got %s", r.Tokenizer)

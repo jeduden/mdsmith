@@ -475,6 +475,19 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 		if !hasRow {
 			continue
 		}
+		// Skip entry building when the row only references {filename},
+		// since that's a built-in field — no front-matter to mismatch.
+		fields := extractPlaceholderFields(row)
+		hasNonBuiltin := false
+		for _, name := range fields {
+			if name != "filename" {
+				hasNonBuiltin = true
+				break
+			}
+		}
+		if !hasNonBuiltin {
+			continue
+		}
 		entries := buildCatalogEntries(f, dir.Params)
 		diags = append(diags, checkFieldCaseMismatches(f.Path, mp.StartLine, row, entries)...)
 	}

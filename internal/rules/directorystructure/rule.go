@@ -18,6 +18,7 @@ func init() {
 type Rule struct {
 	Allowed    []string
 	configured bool
+	warned     bool
 	matchers   []glob.Glob
 }
 
@@ -44,8 +45,13 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if !r.configured {
 		return nil
 	}
-	// When configured but no allowed patterns provided, emit a config warning.
+	// When configured but no allowed patterns provided, emit a config
+	// warning once (not per file) to avoid flooding output.
 	if len(r.Allowed) == 0 {
+		if r.warned {
+			return nil
+		}
+		r.warned = true
 		return []lint.Diagnostic{{
 			File:     f.Path,
 			Line:     1,

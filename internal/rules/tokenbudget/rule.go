@@ -40,23 +40,23 @@ type budgetOverride struct {
 
 func init() {
 	rule.Register(&Rule{
-		Max:       defaultMax,
-		Mode:      defaultMode,
-		Ratio:     defaultTokensPerWord,
-		Tokenizer: defaultTokenizer,
-		Encoding:  defaultEncoding,
+		Max:           defaultMax,
+		Mode:          defaultMode,
+		TokensPerWord: defaultTokensPerWord,
+		Tokenizer:     defaultTokenizer,
+		Encoding:      defaultEncoding,
 	})
 }
 
 // Rule checks that a file does not exceed a configurable token budget.
 // It supports a simple heuristic mode and a tokenizer mode.
 type Rule struct {
-	Max       int
-	Mode      string
-	Ratio     float64
-	Tokenizer string
-	Encoding  string
-	Budgets   []budgetOverride
+	Max           int
+	Mode          string
+	TokensPerWord float64
+	Tokenizer     string
+	Encoding      string
+	Budgets       []budgetOverride
 }
 
 // ID implements rule.Rule.
@@ -146,7 +146,7 @@ func (r *Rule) tokenCountAndMode(text string) (int, string) {
 		count := tokenizerCount(text, tok, enc)
 		return count, fmt.Sprintf("tokenizer:%s/%s", tok, enc)
 	default:
-		tpw := r.Ratio
+		tpw := r.TokensPerWord
 		if tpw <= 0 {
 			tpw = defaultTokensPerWord
 		}
@@ -195,7 +195,7 @@ func (r *Rule) applySetting(k string, v any) error {
 	case "mode":
 		return r.applyMode(v)
 	case "tokens-per-word":
-		return r.applyRatio(v)
+		return r.applyTokensPerWord(v)
 	case "tokenizer":
 		return r.applyTokenizer(v)
 	case "encoding":
@@ -235,7 +235,7 @@ func (r *Rule) applyMode(v any) error {
 	return nil
 }
 
-func (r *Rule) applyRatio(v any) error {
+func (r *Rule) applyTokensPerWord(v any) error {
 	n, ok := toFloat(v)
 	if !ok {
 		return fmt.Errorf("token-budget: tokens-per-word must be a number, got %T", v)
@@ -243,7 +243,7 @@ func (r *Rule) applyRatio(v any) error {
 	if n <= 0 {
 		return fmt.Errorf("token-budget: tokens-per-word must be positive, got %.4g", n)
 	}
-	r.Ratio = n
+	r.TokensPerWord = n
 	return nil
 }
 
