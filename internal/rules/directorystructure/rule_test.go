@@ -72,7 +72,7 @@ func TestCheck_Unconfigured_NoOp(t *testing.T) {
 	assert.Empty(t, diags, "expected 0 diagnostics (ApplySettings never called)")
 }
 
-func TestCheck_EmptyAllowed_WarnsOnEveryFile(t *testing.T) {
+func TestCheck_EmptyAllowed_EmitsConfigWarningOnce(t *testing.T) {
 	r := newRule(t, []string{})
 	src := []byte("# Title\n")
 	f, err := lint.NewFile("docs/guide.md", src)
@@ -80,6 +80,12 @@ func TestCheck_EmptyAllowed_WarnsOnEveryFile(t *testing.T) {
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic (config warning)")
 	assert.Contains(t, diags[0].Message, "no \"allowed\" patterns configured")
+
+	// Second call should not repeat the warning.
+	f2, err := lint.NewFile("src/other.md", src)
+	require.NoError(t, err)
+	diags2 := r.Check(f2)
+	assert.Empty(t, diags2, "expected 0 diagnostics (warning already emitted)")
 }
 
 func TestCheck_MultiplePatterns(t *testing.T) {
@@ -157,7 +163,7 @@ func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	s := r.DefaultSettings()
 	_, ok := s["allowed"]
-	assert.False(t, ok, "default settings should not include 'allowed' key (rule stays unconfigured/no-op)")
+	assert.False(t, ok, "default settings should not include 'allowed' key by default")
 }
 
 func TestApplyDefaultSettings_EmitsConfigWarning(t *testing.T) {
