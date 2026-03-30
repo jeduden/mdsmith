@@ -70,10 +70,10 @@ Notes: ARI values use mdsmith's current formula. [MDS023](../../internal/rules/M
 
 ## Token budget examples (file-level)
 
-These examples assume a `tokens-per-word` of `0.75` and a budget of `2,000 tokens`.
+These examples assume a `tokens-per-word` of `1.33` and a budget of `2,000 tokens`.
 
-- File F: 2,800 words -> ~2,100 tokens, flagged by token budget even if line count is below `max-file-length`.
-- File G: 1,200 words with heavy code blocks -> estimate ~900 tokens, but actual tokens could be higher; `tokens-per-word` tuning or code weighting may be needed.
+- File F: 2,800 words -> ~3,724 tokens, flagged by token budget even if line count is below `max-file-length`.
+- File G: 1,200 words with heavy code blocks -> estimate ~1,596 tokens, but actual tokens could be higher; `tokens-per-word` tuning or code weighting may be needed.
 
 ## Trade-offs by metric
 

@@ -17,7 +17,7 @@ import (
 const (
 	defaultMax           = 8000
 	defaultMode          = "heuristic"
-	defaultTokensPerWord = 0.75
+	defaultTokensPerWord = 1.33
 	defaultTokenizer     = "builtin"
 	defaultEncoding      = "cl100k_base"
 	validEncodings       = "cl100k_base, p50k_base, r50k_base, gpt2"
