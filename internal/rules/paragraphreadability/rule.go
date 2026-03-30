@@ -105,12 +105,12 @@ func paragraphLine(para *ast.Paragraph, f *lint.File) int {
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
 		switch k {
-		case "max-index", "max-grade":
+		case "max-index":
 			n, ok := toFloat(v)
 			if !ok {
 				return fmt.Errorf(
-					"paragraph-readability: %s must be a number, got %T",
-					k, v,
+					"paragraph-readability: max-index must be a number, got %T",
+					v,
 				)
 			}
 			r.MaxIndex = n
