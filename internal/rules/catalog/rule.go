@@ -54,7 +54,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f.FS == nil {
 		return nil
 	}
-	return r.getEngine().Check(f)
+	diags := r.getEngine().Check(f)
+	diags = append(diags, r.checkCaseMismatches(f)...)
+	return diags
 }
 
 // Fix implements rule.FixableRule.
@@ -86,13 +88,6 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	}
 
 	_, hasRow := params["row"]
-
-	// Check for case-mismatched front-matter keys in the row template.
-	var diags []lint.Diagnostic
-	if hasRow {
-		diags = append(diags, checkFieldCaseMismatches(filePath, line, params["row"], entries)...)
-	}
-
 	content, err := renderCatalogContent(params, entries, cols, hasRow)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
@@ -102,7 +97,7 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	// Format tables to comply with MDS025 (table-format) settings.
 	content = tableformat.FormatString(content, tableFormatPad())
 
-	return content, diags
+	return content, nil
 }
 
 // tableFormatPad returns the pad setting from the MDS025 (table-format)
@@ -455,6 +450,32 @@ func containsDotDot(pattern string) bool {
 // placeholders.
 func parseRowTemplate(row string) error {
 	return fieldinterp.Validate(row)
+}
+
+// checkCaseMismatches scans catalog directives in the file for
+// case-mismatched front-matter field references and returns hint
+// diagnostics. Runs independently of the Generate/Fix path so
+// hints don't block content generation.
+func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
+	pairs, _ := gensection.FindMarkerPairs(
+		f, r.Name(), r.ID(), r.Name(),
+	)
+	var diags []lint.Diagnostic
+	for _, mp := range pairs {
+		dir, parseDiags := gensection.ParseDirective(
+			f.Path, mp, r.ID(), r.Name(),
+		)
+		if dir == nil || len(parseDiags) > 0 {
+			continue
+		}
+		row, hasRow := dir.Params["row"]
+		if !hasRow {
+			continue
+		}
+		entries := buildCatalogEntries(f, dir.Params)
+		diags = append(diags, checkFieldCaseMismatches(f.Path, mp.StartLine, row, entries)...)
+	}
+	return diags
 }
 
 // extractPlaceholderFields returns the deduplicated set of field names

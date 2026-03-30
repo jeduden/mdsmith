@@ -36,6 +36,11 @@ func (r *Rule) EnabledByDefault() bool { return false }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// When the rule was never configured via ApplySettings, skip checking.
+	// Note: "directory-structure: true" (bool form) does not call
+	// ApplySettings, so the warning only fires for the mapping form
+	// (e.g., "directory-structure: {}"). A future engine change could
+	// call ApplySettings(DefaultSettings()) for all enabled configurable
+	// rules to close this gap.
 	if !r.configured {
 		return nil
 	}
