@@ -117,8 +117,8 @@ markers is visible.
 - [x] `docs/guides/directives.md` exists
 - [x] Guide covers all four directives with
       examples
-- [x] Guide has fixability table for all 33
-      rules
+- [x] Rule directory generated from rule READMEs
+      (replaces manual fixability table per review)
 - [x] Guide documents 4-space indent footgun
 - [x] Guide states nesting is not supported
 - [x] Guide documents unified `{field}` syntax

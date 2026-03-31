@@ -85,7 +85,7 @@ If `empty` is defined, its text is used. Otherwise
 zero lines appear between the markers.
 
 For full parameter reference, see
-[MDS019 catalog](../../internal/rules/MDS019-catalog/README.md).
+[MDS019 catalog](../../../internal/rules/MDS019-catalog/README.md).
 
 ## Embedding file content
 
@@ -162,7 +162,7 @@ cyclic include: a.md -> b.md -> a.md
 ```
 
 For full parameter reference, see
-[MDS021 include](../../internal/rules/MDS021-include/README.md).
+[MDS021 include](../../../internal/rules/MDS021-include/README.md).
 
 ## Placement rules
 

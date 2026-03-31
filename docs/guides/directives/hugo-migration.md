@@ -60,6 +60,31 @@ prohibited.
 `{field}` uses CUE path semantics for nested front
 matter access, not Go template dot notation.
 
+### Where syntax is the same
+
+Top-level field access looks identical:
+
+| Hugo template   | mdsmith placeholder | Result      |
+|-----------------|---------------------|-------------|
+| `{{ .title }}`  | `{title}`           | field value |
+| `{{ .status }}` | `{status}`          | field value |
+
+### Where syntax differs
+
+Nested access uses CUE dot paths instead of Go
+template chaining:
+
+| Hugo template              | mdsmith placeholder | Front matter           |
+|----------------------------|---------------------|------------------------|
+| `{{ .author.name }}`       | `{author.name}`     | `author: {name: "Jo"}` |
+| `{{ index .tags 0 }}`      | `{tags.0}`          | `tags: ["go", "md"]`   |
+| `{{ .Params.custom_key }}` | `{custom_key}`      | `custom_key: "value"`  |
+
+Hugo uses `.Params` for custom front matter and
+capitalizes standard keys (`.Title`). mdsmith uses
+exact front matter key names — no `.Params` wrapper,
+no capitalization.
+
 ## Directive params are YAML strings
 
 Top-level directive parameters are parsed as strings
@@ -68,14 +93,3 @@ blocks like `columns:` in `<?catalog?>` accept typed
 values (for example numbers) as defined by that
 directive; using non-string scalars where only strings
 are expected produces a diagnostic.
-
-## Renamed parameters
-
-If you are migrating an existing setup, note these
-renames:
-
-| Old name                    | New name                 | Rule   |
-|-----------------------------|--------------------------|--------|
-| `ratio`                     | `tokens-per-word`        | MDS028 |
-| `max-words`                 | `max-words-per-sentence` | MDS024 |
-| `max-column-width-variance` | `max-column-width-ratio` | MDS026 |

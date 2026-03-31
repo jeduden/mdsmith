@@ -19,7 +19,7 @@ Include section content must match the referenced file.
 - **Archetype**:
   [generated-section](../../../docs/design/archetypes/generated-section/)
 - **Guide**:
-  [directive guide](../../../docs/guides/directives.md)
+  [directive guide](../../../docs/guides/directives/generating-content.md)
 
 ## Marker Syntax
 

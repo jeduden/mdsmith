@@ -104,4 +104,29 @@ mdsmith merge-driver install [files...]
 ```
 
 Run `mdsmith merge-driver install` once per clone.
+
+## Documentation Types
+
+mdsmith documentation follows four types. Place each
+file in the matching directory:
+
+| Type       | Directory          | Purpose                              | Example                             |
+|------------|--------------------|--------------------------------------|-------------------------------------|
+| Guide      | `docs/guides/`     | Task-oriented: how to achieve a goal | "How to enforce document structure" |
+| Reference  | `docs/reference/`  | Lookup-oriented: complete specs      | Rule directory, parameter lists     |
+| Tutorial   | `docs/tutorials/`  | Learning-oriented: step-by-step      | "Your first schema"                 |
+| Background | `docs/background/` | Understanding-oriented: context      | Comparison with other linters       |
+
+When writing documentation:
+
+- **Guides** answer "how do I...?" — start with a
+  use case, show examples, link to reference for
+  full details
+- **References** answer "what is...?" — complete,
+  accurate, generated where possible (use catalog
+  directives)
+- **Tutorials** answer "teach me..." — sequential
+  steps, minimal prerequisites, concrete outcome
+- **Background** answers "why...?" — context,
+  trade-offs, comparisons, design rationale
 <?/include?>

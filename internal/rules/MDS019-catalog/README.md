@@ -20,7 +20,7 @@ from files matching its glob.
 - **Archetype**:
   [generated-section](../../../docs/design/archetypes/generated-section/)
 - **Guide**:
-  [directive guide](../../../docs/guides/directives.md)
+  [directive guide](../../../docs/guides/directives/generating-content.md)
 
 ## Directive: `catalog`
 
@@ -83,7 +83,9 @@ The `row` section uses `{fieldname}` placeholder syntax.
 - Missing field -> empty string.
 - Case-mismatched field (e.g., `{Title}` when
   front matter has `title`) -> "did you mean?" hint.
-- Non-string value -> Go default string format.
+- Non-string scalar (number, bool) -> formatted to
+  string. Composite values (maps, slices) -> empty
+  string.
 - Literal `{` is written as `{{`, literal `}` as `}}`.
 
 ### Column constraints

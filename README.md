@@ -183,20 +183,15 @@ empty: |
   |---------------|--------------------------------------------------------------|
   | No guides yet | Add guide files under `docs/guides/` to populate this index. |
 ?>
-| Guide                                                                                           | Description                                                                                             |
-|-------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
-| [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets.                |
-| [Coming from Hugo](docs/guides/hugo-migration.md)                                               | Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.             |
-| [Directive Overview](docs/guides/directives.md)                                                 | Quick reference for all directives with placement rules and links to use-case guides.                   |
-| [Enforcing Document Structure with Schemas](docs/guides/enforcing-structure.md)                 | How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames. |
-| [Generating Content with Directives](docs/guides/generating-content.md)                         | How to use catalog and include directives to generate and embed content in Markdown files.              |
-| [Rule Directory](docs/guides/rule-directory.md)                                                 | Complete list of all mdsmith rules with status and description, generated from rule READMEs.            |
+| Guide                                                                                           | Description                                                                              |
+|-------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| [Choosing Readability, Conciseness, and Token Budget Metrics](docs/guides/metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets. |
+| [Guides](docs/guides/index.md)                                                                  | User guides for mdsmith directives, structure enforcement, and migration.                |
 <?/catalog?>
 
 ## 📏 Rules
 
-33 rules covering formatting, structure, and content.
-See the [Rule Directory](docs/guides/rule-directory.md)
+See the [Rule Directory](docs/reference/rule-directory.md)
 for the complete list with status and description.
 
 ## 🛠️ Development

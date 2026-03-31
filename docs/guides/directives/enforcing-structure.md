@@ -11,7 +11,7 @@ mdsmith can validate that documents follow a required
 structure — specific headings, front matter fields,
 and filename patterns. This is configured through
 schema files and the `required-structure` rule
-([MDS020](../../internal/rules/MDS020-required-structure/README.md)).
+([MDS020](../../../internal/rules/MDS020-required-structure/README.md)).
 
 ## When to use schemas
 
@@ -88,7 +88,7 @@ schema files. Using it in a normal file emits:
 directive has no effect`.
 
 For full reference, see
-[MDS020 required-structure](../../internal/rules/MDS020-required-structure/README.md).
+[MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md).
 
 ## Allowing intentional empty sections
 
@@ -108,7 +108,7 @@ This section has real content.
 ```
 
 Without this marker,
-[MDS030](../../internal/rules/MDS030-empty-section-body/README.md)
+[MDS030](../../../internal/rules/MDS030-empty-section-body/README.md)
 reports: `section "## Compatibility" has no meaningful
 body content`.
 
