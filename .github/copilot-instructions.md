@@ -33,7 +33,6 @@ row: "- [{summary}](../{filename})"
 - [Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.](../docs/guides/directives/hugo-migration.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](../docs/guides/index.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](../docs/guides/metrics-tradeoffs.md)
-- [Complete list of all mdsmith rules with status and description, generated from rule READMEs.](../docs/reference/rule-directory.md)
 <?/catalog?>
 
 ### Development Workflow

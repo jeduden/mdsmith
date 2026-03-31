@@ -86,23 +86,21 @@ markers is visible.
 
 1. Create use-case guides split by topic:
 
-  - `docs/guides/directives.md`: slim overview
-    with quick-reference table, placement rules,
-    4-space indent warning, and links to
-    use-case guides
-  - `docs/guides/generating-content.md`: catalog
-    and include use cases with examples,
+  - `docs/guides/index.md`: guides index with
+    generated catalog of all guide pages
+  - `docs/guides/directives/generating-content.md`:
+    catalog and include use cases with examples,
     placeholder syntax, nesting, and placement
     rules
-  - `docs/guides/enforcing-structure.md`: schema,
-    require, allow-empty-section use cases with
-    composition, schema-vs-normal-file, and
+  - `docs/guides/directives/enforcing-structure.md`:
+    schema, require, allow-empty-section use cases
+    with composition, schema-vs-normal-file, and
     optional fields
-  - `docs/guides/hugo-migration.md`: standalone
-    Hugo migration guide with placeholder syntax,
-    schema differences, and renamed parameters
-  - `docs/guides/rule-directory.md`: generated
-    catalog of all 33 rules from rule READMEs
+  - `docs/guides/directives/hugo-migration.md`:
+    standalone Hugo migration guide with
+    placeholder syntax and schema differences
+  - `rule-directory.md`: generated catalog of all
+    rules from rule READMEs (project root)
 
 2. Add a "see the directive guide" link from
    each rule README that uses a directive
@@ -114,7 +112,8 @@ markers is visible.
 
 ## Acceptance Criteria
 
-- [x] `docs/guides/directives.md` exists
+- [x] `docs/guides/index.md` exists with generated
+      catalog of guides
 - [x] Guide covers all four directives with
       examples
 - [x] Rule directory generated from rule READMEs

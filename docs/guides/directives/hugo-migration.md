@@ -64,10 +64,10 @@ matter access, not Go template dot notation.
 
 Top-level field access looks identical:
 
-| Hugo template   | mdsmith placeholder | Result      |
-|-----------------|---------------------|-------------|
-| `{{ .title }}`  | `{title}`           | field value |
-| `{{ .status }}` | `{status}`          | field value |
+| Hugo template          | mdsmith placeholder | Result      |
+|------------------------|---------------------|-------------|
+| `{{ .Title }}`         | `{title}`           | field value |
+| `{{ .Params.status }}` | `{status}`          | field value |
 
 ### Where syntax differs
 

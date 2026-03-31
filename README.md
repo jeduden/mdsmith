@@ -191,7 +191,7 @@ empty: |
 
 ## 📏 Rules
 
-See the [Rule Directory](docs/reference/rule-directory.md)
+See the [Rule Directory](rule-directory.md)
 for the complete list with status and description.
 
 ## 🛠️ Development
