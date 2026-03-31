@@ -36,7 +36,9 @@ without a display server.
 A VHS tape file at the repo root that cycles through
 key mdsmith features:
 
-1. `./mdsmith init` — generate a default config
+1. `./mdsmith init` in a temporary directory — shows
+   config generation without conflicting with the
+   repo's existing `.mdsmith.yml`
 2. `./mdsmith check` on a sample file with lint
    errors — shows diagnostic output with source context
 3. `./mdsmith fix` on the same file — shows auto-fix
