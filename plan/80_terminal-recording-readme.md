@@ -64,7 +64,7 @@ comfortable typing speed.
 A small Markdown file `demo/sample.md` with intentional
 lint issues (long line, trailing spaces, missing code
 fence language). Kept out of normal lint runs via an
-`ignore` entry in `.mdsmith.yml` so `mdsmith check .`
+`ignore` entry in `.mdsmith.yml` so `./mdsmith check .`
 in CI does not flag it.
 
 ### README placement
@@ -130,7 +130,8 @@ pipeline succeeds and the output is sane.
 1. Create `demo/sample.md` with intentional lint issues
    for the demo
 2. Write `demo.tape` VHS script that cycles through
-   check, fix, help, and metrics commands
+   init, check, fix, help-rule, query, and metrics
+   commands
 3. Create `assets/` directory with a `.gitkeep`
 4. Add the demo GIF embed to `README.md` after the
    intro paragraph
@@ -141,7 +142,7 @@ pipeline succeeds and the output is sane.
    runs VHS and validates the output GIF on PRs
 7. Add `demo/` to the ignore list in `.mdsmith.yml` so
    the intentionally broken sample file does not fail
-   `mdsmith check .`
+   `./mdsmith check .`
 8. Test the full pipeline locally: run `vhs demo.tape`,
    verify the GIF renders correctly
 
