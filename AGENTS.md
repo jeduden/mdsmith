@@ -113,7 +113,7 @@ file in the matching directory:
 | Type       | Directory          | Purpose                              | Example                             |
 |------------|--------------------|--------------------------------------|-------------------------------------|
 | Guide      | `docs/guides/`     | Task-oriented: how to achieve a goal | "How to enforce document structure" |
-| Reference  | `docs/reference/`  | Lookup-oriented: complete specs      | Rule directory, parameter lists     |
+| Reference  | project root       | Lookup-oriented: complete specs      | `rule-directory.md`                 |
 | Tutorial   | `docs/tutorials/`  | Learning-oriented: step-by-step      | "Your first schema"                 |
 | Background | `docs/background/` | Understanding-oriented: context      | Comparison with other linters       |
 
