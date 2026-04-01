@@ -8,8 +8,8 @@ summary: >-
 
 <?catalog
 glob:
-  - "directives/*.md"
-  - "metrics-tradeoffs.md"
+  - "**/*.md"
+  - "!index.md"
 sort: title
 header: |
   | Guide | Description |

@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -2698,6 +2700,406 @@ func TestCheckFieldCaseMismatches_BuiltinFilename(t *testing.T) {
 	}
 	diags := checkFieldCaseMismatches("index.md", 5, "{filename}", entries)
 	assert.Empty(t, diags, "filename is built-in and always present")
+}
+
+// =====================================================================
+// Negated glob patterns (!-prefix exclusion)
+// =====================================================================
+
+func TestSpec_ExcludeSinglePattern(t *testing.T) {
+	// A !-prefixed glob pattern excludes matching files.
+	src := `<?catalog
+glob:
+  - "docs/*.md"
+  - "!docs/internal.md"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md":      {Data: []byte("# API\n")},
+		"docs/internal.md": {Data: []byte("# Internal\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_ExcludeMultiplePatterns(t *testing.T) {
+	// Multiple !-prefixed patterns exclude files from several directories.
+	src := `<?catalog
+glob:
+  - "**/*.md"
+  - "!docs/internal.md"
+  - "!draft/*.md"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md":      {Data: []byte("# API\n")},
+		"docs/internal.md": {Data: []byte("# Internal\n")},
+		"draft/wip.md":     {Data: []byte("# WIP\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_ExcludeWithGlobWildcard(t *testing.T) {
+	// Exclusion patterns support glob wildcards.
+	src := `<?catalog
+glob:
+  - "**/*.md"
+  - "!draft/**"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md":  {Data: []byte("# API\n")},
+		"draft/wip.md": {Data: []byte("# WIP\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_ExcludeAbsolutePath(t *testing.T) {
+	// Absolute paths in !-prefixed patterns produce a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "!/etc/passwd"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "absolute glob path")
+}
+
+func TestSpec_ExcludeDotDot(t *testing.T) {
+	// ".." path traversal in !-prefixed patterns produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "!../secret/*.md"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `".." path traversal`)
+}
+
+func TestSpec_ExcludeInvalidPattern(t *testing.T) {
+	// Invalid glob pattern in !-prefixed patterns produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "![invalid"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "invalid glob pattern")
+}
+
+func TestSpec_ExcludeEmptyAfterBang(t *testing.T) {
+	// A "!" with nothing after it produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "!"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `empty "glob" parameter`)
+}
+
+func TestSpec_ExcludeOnlyNoBareGlob(t *testing.T) {
+	// A glob list with only !-prefixed patterns (no include) produces a diagnostic.
+	src := `<?catalog
+glob:
+  - "!draft/*.md"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `must include at least one non-negated pattern`)
+}
+
+func TestSpec_ExcludeNoMatchStillWorks(t *testing.T) {
+	// Exclusion pattern that matches nothing doesn't cause errors.
+	src := `<?catalog
+glob:
+  - "docs/*.md"
+  - "!nonexistent/*.md"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md": {Data: []byte("# API\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_ExcludeIncludeExcludeOrdering(t *testing.T) {
+	// Pattern: include, exclude, include — the second include does NOT
+	// re-add the file because includes and excludes are collected into
+	// separate lists; a file matching any exclude pattern is excluded
+	// regardless of ordering.
+	src := `<?catalog
+glob:
+  - "docs/*.md"
+  - "!docs/a.md"
+  - "docs/a.md"
+?>
+- [b.md](docs/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("# A\n")},
+		"docs/b.md": {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_ExcludeBeforeInclude(t *testing.T) {
+	// Pattern: exclude, include — the exclude still filters the include
+	// because pattern order does not affect semantics.
+	src := `<?catalog
+glob:
+  - "!docs/a.md"
+  - "docs/*.md"
+?>
+- [b.md](docs/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("# A\n")},
+		"docs/b.md": {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_IncludeThenExclude(t *testing.T) {
+	// Pattern: include, exclude — the standard case; file matching the
+	// exclude pattern is filtered out.
+	src := `<?catalog
+glob:
+  - "docs/*.md"
+  - "!docs/a.md"
+?>
+- [b.md](docs/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("# A\n")},
+		"docs/b.md": {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_ExcludeWithRowTemplate(t *testing.T) {
+	// Exclusion works with row templates and front matter.
+	src := `<?catalog
+glob:
+  - "docs/*.md"
+  - "!docs/draft.md"
+row: "- [{title}]({filename})"
+?>
+- [API Reference](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md":   {Data: []byte("---\ntitle: API Reference\n---\n# API\n")},
+		"docs/draft.md": {Data: []byte("---\ntitle: Draft\n---\n# Draft\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// =====================================================================
+// Gitignore parameter
+// =====================================================================
+
+func TestSpec_GitignoreInvalidValue(t *testing.T) {
+	// Non-boolean gitignore value produces a diagnostic.
+	src := `<?catalog
+glob: "*.md"
+gitignore: "maybe"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `invalid "gitignore" value`)
+}
+
+func TestSpec_GitignoreFalseExplicit(t *testing.T) {
+	// gitignore: "false" is accepted without diagnostic.
+	src := `<?catalog
+glob: "docs/*.md"
+gitignore: "false"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md": {Data: []byte("# API\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreTrueExplicit(t *testing.T) {
+	// gitignore: "true" is accepted without diagnostic.
+	src := `<?catalog
+glob: "docs/*.md"
+gitignore: "true"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md": {Data: []byte("# API\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreFiltersMatchedFiles(t *testing.T) {
+	// Behavioral test: files matched by .gitignore are excluded from catalog.
+	dir := t.TempDir()
+
+	// Create .gitignore that ignores "ignored/" directory and "*.tmp" files.
+	writeFile(t, dir, ".gitignore", "ignored/\n*.tmp\n")
+	writeFile(t, dir, "visible.md", "# Visible\n")
+	writeFile(t, dir, "notes.tmp", "# Tmp\n")
+	mkdirAll(t, dir, "ignored")
+	writeFile(t, dir, "ignored/secret.md", "# Secret\n")
+	mkdirAll(t, dir, "sub")
+	writeFile(t, dir, "sub/ok.md", "# OK\n")
+
+	indexPath := filepath.Join(dir, "index.md")
+	src := "<?catalog\nglob: \"**/*.md\"\n?>\n- [ok.md](sub/ok.md)\n- [visible.md](visible.md)\n<?/catalog?>\n"
+	f, err := lint.NewFile(indexPath, []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	d := dir // capture for closure
+	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreFalseIncludesIgnoredFiles(t *testing.T) {
+	// gitignore: "false" disables filtering; ignored files appear in catalog.
+	dir := t.TempDir()
+
+	writeFile(t, dir, ".gitignore", "ignored/\n")
+	writeFile(t, dir, "visible.md", "# Visible\n")
+	mkdirAll(t, dir, "ignored")
+	writeFile(t, dir, "ignored/secret.md", "# Secret\n")
+
+	indexPath := filepath.Join(dir, "index.md")
+	src := "<?catalog\nglob: \"**/*.md\"\ngitignore: \"false\"\n?>\n" +
+		"- [secret.md](ignored/secret.md)\n- [visible.md](visible.md)\n<?/catalog?>\n"
+	f, err := lint.NewFile(indexPath, []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	d := dir // capture for closure
+	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreNegationReIncludes(t *testing.T) {
+	// Gitignore negation patterns re-include previously ignored files.
+	dir := t.TempDir()
+
+	// Ignore files in drafts/ except important.md.
+	// Per gitignore rules, "drafts/*" ignores files inside the directory
+	// (not the directory itself), allowing negation to re-include a file.
+	writeFile(t, dir, ".gitignore", "drafts/*\n!drafts/important.md\n")
+	mkdirAll(t, dir, "drafts")
+	writeFile(t, dir, "drafts/wip.md", "# WIP\n")
+	writeFile(t, dir, "drafts/important.md", "# Important\n")
+	writeFile(t, dir, "visible.md", "# Visible\n")
+
+	indexPath := filepath.Join(dir, "index.md")
+	src := "<?catalog\nglob: \"**/*.md\"\n?>\n" +
+		"- [important.md](drafts/important.md)\n- [visible.md](visible.md)\n<?/catalog?>\n"
+	f, err := lint.NewFile(indexPath, []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	d := dir // capture for closure
+	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// writeFile creates a file with the given content inside dir.
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+}
+
+// mkdirAll creates a directory inside dir.
+func mkdirAll(t *testing.T, dir, sub string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, sub), 0o755))
 }
 
 func TestSpec_DidYouMeanCaseMismatch(t *testing.T) {

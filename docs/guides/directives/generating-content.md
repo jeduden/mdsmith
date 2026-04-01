@@ -72,6 +72,41 @@ row: "- [{title}]({filename})"
 ?>
 ```
 
+### Excluding files
+
+Prefix a glob pattern with `!` to exclude matching
+files. Exclusion patterns use the same glob syntax as
+include patterns:
+
+```markdown
+<?catalog
+glob:
+  - "**/*.md"
+  - "!drafts/**"
+  - "!internal/notes.md"
+row: "- [{title}]({filename})"
+?>
+```
+
+At least one non-negated (include) pattern is
+required. Excludes and includes are collected into
+separate lists — a file matching any exclude pattern
+is filtered out regardless of where the pattern
+appears in the list.
+
+### Gitignore filtering
+
+By default, files matched by `.gitignore` rules are
+excluded from catalog results. To include gitignored
+files, set `gitignore: "false"`:
+
+```markdown
+<?catalog
+glob: "**/*.md"
+gitignore: "false"
+?>
+```
+
 ### Sorting
 
 Format: `[-]KEY`. A `-` prefix means descending.

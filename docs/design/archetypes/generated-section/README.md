@@ -110,6 +110,23 @@ glob:
   - "plan/*.md"
 ```
 
+**Negated patterns**: A `!` prefix in a list-valued
+glob pattern marks it as an exclusion. Files matching
+any exclusion pattern are filtered out of the results.
+At least one non-negated pattern is required. Excludes
+and includes are order-independent — they are collected
+into separate lists during processing:
+
+```yaml
+glob:
+  - "**/*.md"
+  - "!drafts/**"
+```
+
+**Gitignore filtering**: By default, files matched by
+`.gitignore` rules are excluded from glob results. Set
+`gitignore: "false"` to include gitignored files.
+
 **Brace expansion**: Glob patterns support `{a,b}` brace
 expansion via the doublestar library. For example,
 `"*.{md,txt}"` matches both `.md` and `.txt` files.

@@ -19,6 +19,27 @@ type File struct {
 	RootFS      fs.FS
 	FrontMatter []byte
 	LineOffset  int
+
+	// GitignoreFunc is a lazy factory for the gitignore matcher.
+	// It is called at most once (on first access via GetGitignore)
+	// and the result is cached. Rules that do not call GetGitignore
+	// never trigger matcher construction.
+	GitignoreFunc func() *GitignoreMatcher
+	gitignoreOnce bool
+	gitignoreVal  *GitignoreMatcher
+}
+
+// GetGitignore returns the gitignore matcher for this file, creating it
+// lazily on first call. Returns nil if no GitignoreFunc was configured.
+func (f *File) GetGitignore() *GitignoreMatcher {
+	if f.gitignoreOnce {
+		return f.gitignoreVal
+	}
+	f.gitignoreOnce = true
+	if f.GitignoreFunc != nil {
+		f.gitignoreVal = f.GitignoreFunc()
+	}
+	return f.gitignoreVal
 }
 
 // NewFile parses source as Markdown and returns a File.

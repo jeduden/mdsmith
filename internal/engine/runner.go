@@ -23,6 +23,9 @@ type Runner struct {
 	// RootDir is the project root directory (parent of .mdsmith.yml).
 	// Used by rules that need to read files relative to the project root.
 	RootDir string
+	// gitignoreCache caches GitignoreMatchers by directory to avoid
+	// re-walking the filesystem for each file.
+	gitignoreCache map[string]*lint.GitignoreMatcher
 }
 
 // Result holds the output of a lint run.
@@ -57,9 +60,16 @@ func (r *Runner) Run(paths []string) *Result {
 			res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 			continue
 		}
-		f.FS = os.DirFS(filepath.Dir(path))
+		dir := filepath.Dir(path)
+		f.FS = os.DirFS(dir)
+		gitignoreDir := dir
 		if r.RootDir != "" {
 			f.RootFS = os.DirFS(r.RootDir)
+			gitignoreDir = r.RootDir
+		}
+		gd := gitignoreDir // capture for closure
+		f.GitignoreFunc = func() *lint.GitignoreMatcher {
+			return r.cachedGitignore(gd)
 		}
 
 		effective := r.effectiveWithCategories(path)
@@ -122,6 +132,26 @@ func (r *Runner) effectiveWithCategories(path string) map[string]config.RuleCfg 
 	catLookup := ruleCategoryLookup(r.Rules)
 
 	return config.ApplyCategories(effective, categories, catLookup, explicit)
+}
+
+// cachedGitignore returns a GitignoreMatcher for the given directory,
+// creating and caching it on first use to avoid re-walking the filesystem.
+// The cache key is normalized to an absolute path so equivalent paths
+// (e.g. "sub" vs "./sub") share the same entry.
+func (r *Runner) cachedGitignore(dir string) *lint.GitignoreMatcher {
+	if r.gitignoreCache == nil {
+		r.gitignoreCache = make(map[string]*lint.GitignoreMatcher)
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = filepath.Clean(dir)
+	}
+	if m, ok := r.gitignoreCache[absDir]; ok {
+		return m
+	}
+	m := lint.NewGitignoreMatcher(absDir)
+	r.gitignoreCache[absDir] = m
+	return m
 }
 
 // log returns the runner's logger. If no logger is set, it returns a
