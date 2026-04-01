@@ -2966,7 +2966,8 @@ func TestSpec_GitignoreFiltersMatchedFiles(t *testing.T) {
 	f, err := lint.NewFile(indexPath, []byte(src))
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
-	f.Gitignore = lint.NewGitignoreMatcher(dir)
+	d := dir // capture for closure
+	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
 
 	r := &Rule{}
 	diags := r.Check(f)
@@ -2988,7 +2989,8 @@ func TestSpec_GitignoreFalseIncludesIgnoredFiles(t *testing.T) {
 	f, err := lint.NewFile(indexPath, []byte(src))
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
-	f.Gitignore = lint.NewGitignoreMatcher(dir)
+	d := dir // capture for closure
+	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
 
 	r := &Rule{}
 	diags := r.Check(f)
@@ -3014,7 +3016,8 @@ func TestSpec_GitignoreNegationReIncludes(t *testing.T) {
 	f, err := lint.NewFile(indexPath, []byte(src))
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
-	f.Gitignore = lint.NewGitignoreMatcher(dir)
+	d := dir // capture for closure
+	f.GitignoreFunc = func() *lint.GitignoreMatcher { return lint.NewGitignoreMatcher(d) }
 
 	r := &Rule{}
 	diags := r.Check(f)

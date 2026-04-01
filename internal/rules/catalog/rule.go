@@ -306,14 +306,18 @@ func resolveGlobMatches(f *lint.File, params map[string]string) []string {
 // resolveGitignore returns the gitignore matcher and base directory to use
 // for filtering, or (nil, "") if gitignore filtering is disabled.
 func resolveGitignore(f *lint.File, params map[string]string) (*lint.GitignoreMatcher, string) {
-	if params["gitignore"] == "false" || f.Gitignore == nil {
+	if params["gitignore"] == "false" {
+		return nil, ""
+	}
+	matcher := f.GetGitignore()
+	if matcher == nil {
 		return nil, ""
 	}
 	base, err := filepath.Abs(filepath.Dir(f.Path))
 	if err != nil {
 		return nil, ""
 	}
-	return f.Gitignore, base
+	return matcher, base
 }
 
 // renderCatalogContent renders catalog entries into the final content string.

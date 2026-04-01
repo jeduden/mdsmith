@@ -67,7 +67,10 @@ func (r *Runner) Run(paths []string) *Result {
 			f.RootFS = os.DirFS(r.RootDir)
 			gitignoreDir = r.RootDir
 		}
-		f.Gitignore = r.cachedGitignore(gitignoreDir)
+		gd := gitignoreDir // capture for closure
+		f.GitignoreFunc = func() *lint.GitignoreMatcher {
+			return r.cachedGitignore(gd)
+		}
 
 		effective := r.effectiveWithCategories(path)
 
