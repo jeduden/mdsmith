@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -2847,7 +2849,7 @@ glob:
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, `missing required "glob" parameter`)
+	expectDiagMsg(t, diags, `must include at least one non-negated pattern`)
 }
 
 func TestSpec_ExcludeNoMatchStillWorks(t *testing.T) {
@@ -2944,6 +2946,91 @@ gitignore: "true"
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreFiltersMatchedFiles(t *testing.T) {
+	// Behavioral test: files matched by .gitignore are excluded from catalog.
+	dir := t.TempDir()
+
+	// Create .gitignore that ignores "ignored/" directory and "*.tmp" files.
+	writeFile(t, dir, ".gitignore", "ignored/\n*.tmp\n")
+	writeFile(t, dir, "visible.md", "# Visible\n")
+	writeFile(t, dir, "notes.tmp", "# Tmp\n")
+	mkdirAll(t, dir, "ignored")
+	writeFile(t, dir, "ignored/secret.md", "# Secret\n")
+	mkdirAll(t, dir, "sub")
+	writeFile(t, dir, "sub/ok.md", "# OK\n")
+
+	indexPath := filepath.Join(dir, "index.md")
+	src := "<?catalog\nglob: \"**/*.md\"\n?>\n- [ok.md](sub/ok.md)\n- [visible.md](visible.md)\n<?/catalog?>\n"
+	f, err := lint.NewFile(indexPath, []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	f.Gitignore = lint.NewGitignoreMatcher(dir)
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreFalseIncludesIgnoredFiles(t *testing.T) {
+	// gitignore: "false" disables filtering; ignored files appear in catalog.
+	dir := t.TempDir()
+
+	writeFile(t, dir, ".gitignore", "ignored/\n")
+	writeFile(t, dir, "visible.md", "# Visible\n")
+	mkdirAll(t, dir, "ignored")
+	writeFile(t, dir, "ignored/secret.md", "# Secret\n")
+
+	indexPath := filepath.Join(dir, "index.md")
+	src := "<?catalog\nglob: \"**/*.md\"\ngitignore: \"false\"\n?>\n" +
+		"- [secret.md](ignored/secret.md)\n- [visible.md](visible.md)\n<?/catalog?>\n"
+	f, err := lint.NewFile(indexPath, []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	f.Gitignore = lint.NewGitignoreMatcher(dir)
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreNegationReIncludes(t *testing.T) {
+	// Gitignore negation patterns re-include previously ignored files.
+	dir := t.TempDir()
+
+	// Ignore files in drafts/ except important.md.
+	// Per gitignore rules, "drafts/*" ignores files inside the directory
+	// (not the directory itself), allowing negation to re-include a file.
+	writeFile(t, dir, ".gitignore", "drafts/*\n!drafts/important.md\n")
+	mkdirAll(t, dir, "drafts")
+	writeFile(t, dir, "drafts/wip.md", "# WIP\n")
+	writeFile(t, dir, "drafts/important.md", "# Important\n")
+	writeFile(t, dir, "visible.md", "# Visible\n")
+
+	indexPath := filepath.Join(dir, "index.md")
+	src := "<?catalog\nglob: \"**/*.md\"\n?>\n" +
+		"- [important.md](drafts/important.md)\n- [visible.md](visible.md)\n<?/catalog?>\n"
+	f, err := lint.NewFile(indexPath, []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	f.Gitignore = lint.NewGitignoreMatcher(dir)
+
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// writeFile creates a file with the given content inside dir.
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+}
+
+// mkdirAll creates a directory inside dir.
+func mkdirAll(t *testing.T, dir, sub string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, sub), 0o755))
 }
 
 func TestSpec_DidYouMeanCaseMismatch(t *testing.T) {

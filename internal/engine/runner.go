@@ -23,6 +23,9 @@ type Runner struct {
 	// RootDir is the project root directory (parent of .mdsmith.yml).
 	// Used by rules that need to read files relative to the project root.
 	RootDir string
+	// gitignoreCache caches GitignoreMatchers by directory to avoid
+	// re-walking the filesystem for each file.
+	gitignoreCache map[string]*lint.GitignoreMatcher
 }
 
 // Result holds the output of a lint run.
@@ -57,8 +60,9 @@ func (r *Runner) Run(paths []string) *Result {
 			res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 			continue
 		}
-		f.FS = os.DirFS(filepath.Dir(path))
-		f.Gitignore = lint.NewGitignoreMatcher(filepath.Dir(path))
+		dir := filepath.Dir(path)
+		f.FS = os.DirFS(dir)
+		f.Gitignore = r.cachedGitignore(dir)
 		if r.RootDir != "" {
 			f.RootFS = os.DirFS(r.RootDir)
 		}
@@ -123,6 +127,20 @@ func (r *Runner) effectiveWithCategories(path string) map[string]config.RuleCfg 
 	catLookup := ruleCategoryLookup(r.Rules)
 
 	return config.ApplyCategories(effective, categories, catLookup, explicit)
+}
+
+// cachedGitignore returns a GitignoreMatcher for the given directory,
+// creating and caching it on first use to avoid re-walking the filesystem.
+func (r *Runner) cachedGitignore(dir string) *lint.GitignoreMatcher {
+	if r.gitignoreCache == nil {
+		r.gitignoreCache = make(map[string]*lint.GitignoreMatcher)
+	}
+	if m, ok := r.gitignoreCache[dir]; ok {
+		return m
+	}
+	m := lint.NewGitignoreMatcher(dir)
+	r.gitignoreCache[dir] = m
+	return m
 }
 
 // log returns the runner's logger. If no logger is set, it returns a

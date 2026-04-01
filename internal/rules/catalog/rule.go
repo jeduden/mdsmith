@@ -203,7 +203,7 @@ func validateGlob(filePath string, line int, params map[string]string) []lint.Di
 	}
 	if !hasInclude {
 		return []lint.Diagnostic{makeDiag(filePath, line,
-			`generated section directive missing required "glob" parameter`)}
+			`generated section directive "glob" parameter must include at least one non-negated pattern`)}
 	}
 	return nil
 }
@@ -248,33 +248,7 @@ func splitIncludeExclude(glob string) (include, exclude []string) {
 // buildCatalogEntries resolves glob matches, reads front matter, and
 // returns sorted file entries for the catalog directive.
 func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
-	includePatterns, excludePatterns := splitIncludeExclude(params["glob"])
-	useGitignore := params["gitignore"] != "false"
-	seen := make(map[string]bool)
-	var files []string
-	for _, pattern := range includePatterns {
-		matches, err := doublestar.Glob(f.FS, pattern)
-		if err != nil {
-			continue
-		}
-		for _, m := range matches {
-			if seen[m] {
-				continue
-			}
-			info, err := fs.Stat(f.FS, m)
-			if err != nil || info.IsDir() {
-				continue
-			}
-			if isExcluded(m, excludePatterns) {
-				continue
-			}
-			if useGitignore && f.Gitignore != nil && isGitignored(f, m) {
-				continue
-			}
-			seen[m] = true
-			files = append(files, m)
-		}
-	}
+	files := resolveGlobMatches(f, params)
 
 	sortKey, descending := parseSort(params)
 	_, hasRow := params["row"]
@@ -293,6 +267,53 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 
 	sortEntries(entries, sortKey, descending)
 	return entries
+}
+
+// resolveGlobMatches expands include patterns, filters out exclude and
+// gitignore matches, and returns deduplicated file paths.
+func resolveGlobMatches(f *lint.File, params map[string]string) []string {
+	includePatterns, excludePatterns := splitIncludeExclude(params["glob"])
+	matcher, base := resolveGitignore(f, params)
+
+	seen := make(map[string]bool)
+	var files []string
+	for _, pattern := range includePatterns {
+		matches, err := doublestar.Glob(f.FS, pattern)
+		if err != nil {
+			continue
+		}
+		for _, m := range matches {
+			if seen[m] {
+				continue
+			}
+			info, err := fs.Stat(f.FS, m)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			if isExcluded(m, excludePatterns) {
+				continue
+			}
+			if matcher != nil && isGitignored(matcher, base, m) {
+				continue
+			}
+			seen[m] = true
+			files = append(files, m)
+		}
+	}
+	return files
+}
+
+// resolveGitignore returns the gitignore matcher and base directory to use
+// for filtering, or (nil, "") if gitignore filtering is disabled.
+func resolveGitignore(f *lint.File, params map[string]string) (*lint.GitignoreMatcher, string) {
+	if params["gitignore"] == "false" || f.Gitignore == nil {
+		return nil, ""
+	}
+	base, err := filepath.Abs(filepath.Dir(f.Path))
+	if err != nil {
+		return nil, ""
+	}
+	return f.Gitignore, base
 }
 
 // renderCatalogContent renders catalog entries into the final content string.
@@ -493,16 +514,26 @@ func isExcluded(filePath string, patterns []string) bool {
 }
 
 // isGitignored checks whether a glob-matched path is ignored by gitignore
-// rules attached to the file. The matchedPath is relative to f.FS (the
-// directory containing the catalog file); it is converted to an absolute
-// path before checking against the gitignore matcher.
-func isGitignored(f *lint.File, matchedPath string) bool {
-	base, err := filepath.Abs(filepath.Dir(f.Path))
-	if err != nil {
-		return false
-	}
+// rules. The matchedPath is relative to the catalog file's directory;
+// base is the pre-computed absolute path of that directory. To match
+// gitignore semantics for directory-only patterns (e.g. "ignored/"),
+// ancestor directories are also checked with isDir=true.
+func isGitignored(matcher *lint.GitignoreMatcher, base, matchedPath string) bool {
 	abs := filepath.Join(base, matchedPath)
-	return f.Gitignore.IsIgnored(abs, false)
+
+	// Check whether any ancestor directory is ignored (handles dir-only
+	// gitignore patterns like "ignored/").
+	for dir := filepath.Dir(abs); ; dir = filepath.Dir(dir) {
+		if matcher.IsIgnored(dir, true) {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+	}
+
+	return matcher.IsIgnored(abs, false)
 }
 
 // containsDotDot checks if a glob pattern contains ".." path traversal.
