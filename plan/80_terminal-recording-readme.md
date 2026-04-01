@@ -29,7 +29,9 @@ pipeline works without pushing artifacts.
 Use [VHS](https://github.com/charmbracelet/vhs) from
 Charm. VHS reads a declarative `.tape` file, drives a
 headless terminal, and renders to GIF. It runs in CI
-without a display server.
+without a display server. Add VHS as a Go tool
+dependency in `go.mod` so it is invoked via
+`go tool vhs` — no separate install step needed.
 
 ### Demo script (`demo.tape`)
 
@@ -93,10 +95,9 @@ without external hosting.
 runs on push to `main`. Steps:
 
 1. Checkout repo
-2. Build mdsmith (`go build -cover -o mdsmith
-   ./cmd/mdsmith` or invoke via `go tool`)
-3. Install VHS
-4. Run `vhs demo.tape`
+2. Build mdsmith (`go build -o mdsmith ./cmd/mdsmith`)
+3. Run `go tool vhs demo.tape` (VHS added as a tool
+   dependency in `go.mod`)
 5. Configure git `user.name` / `user.email` for the
    CI bot, then if `assets/demo.gif` changed, commit
    and push it back to `main`
@@ -108,8 +109,7 @@ runs on pull requests. Steps:
 
 1. Checkout repo
 2. Build mdsmith
-3. Install VHS
-4. Run `vhs demo.tape`
+3. Run `go tool vhs demo.tape`
 5. Assert `assets/demo.gif` was produced and is a valid
    GIF (check file header bytes `GIF89a` or `GIF87a`)
 6. Assert file size is within a reasonable range
