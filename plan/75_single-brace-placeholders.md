@@ -138,7 +138,7 @@ as `{literal} My Title`.
    (CLAUDE.md, README.md, rule READMEs) from
    `{{.field}}` to `{field}`.
 8. Update rule READMEs (MDS019, MDS020).
-9. Update `docs/guides/directives.md` (plan 74)
+9. Update `docs/guides/directives/` guides (plan 74)
    if it already exists.
 10. Run `mdsmith check .` to verify.
 

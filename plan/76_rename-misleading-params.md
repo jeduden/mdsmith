@@ -109,7 +109,7 @@ config files and docs in a single PR.
 
 6. Update all overrides in `.mdsmith.yml` that
    reference renamed keys.
-7. Update `docs/guides/directives.md` and
+7. Update `docs/guides/directives/` guides and
    `docs/guides/metrics-tradeoffs.md` if they
    reference old names.
 8. Run `mdsmith check .` to verify.
