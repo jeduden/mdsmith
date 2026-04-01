@@ -58,6 +58,7 @@ func (r *Runner) Run(paths []string) *Result {
 			continue
 		}
 		f.FS = os.DirFS(filepath.Dir(path))
+		f.Gitignore = lint.NewGitignoreMatcher(filepath.Dir(path))
 		if r.RootDir != "" {
 			f.RootFS = os.DirFS(r.RootDir)
 		}

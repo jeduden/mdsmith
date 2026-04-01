@@ -2701,14 +2701,15 @@ func TestCheckFieldCaseMismatches_BuiltinFilename(t *testing.T) {
 }
 
 // =====================================================================
-// Exclude parameter
+// Negated glob patterns (!-prefix exclusion)
 // =====================================================================
 
 func TestSpec_ExcludeSinglePattern(t *testing.T) {
-	// Exclude filters out files matching the pattern.
+	// A !-prefixed glob pattern excludes matching files.
 	src := `<?catalog
-glob: "docs/*.md"
-exclude: "docs/internal.md"
+glob:
+  - "docs/*.md"
+  - "!docs/internal.md"
 ?>
 - [api.md](docs/api.md)
 <?/catalog?>
@@ -2724,12 +2725,12 @@ exclude: "docs/internal.md"
 }
 
 func TestSpec_ExcludeMultiplePatterns(t *testing.T) {
-	// Exclude accepts a YAML list of patterns.
+	// Multiple !-prefixed patterns exclude files from several directories.
 	src := `<?catalog
-glob: "**/*.md"
-exclude:
-  - "docs/internal.md"
-  - "draft/*.md"
+glob:
+  - "**/*.md"
+  - "!docs/internal.md"
+  - "!draft/*.md"
 ?>
 - [api.md](docs/api.md)
 <?/catalog?>
@@ -2746,10 +2747,11 @@ exclude:
 }
 
 func TestSpec_ExcludeWithGlobWildcard(t *testing.T) {
-	// Exclude patterns support glob wildcards.
+	// Exclusion patterns support glob wildcards.
 	src := `<?catalog
-glob: "**/*.md"
-exclude: "draft/**"
+glob:
+  - "**/*.md"
+  - "!draft/**"
 ?>
 - [api.md](docs/api.md)
 <?/catalog?>
@@ -2765,10 +2767,11 @@ exclude: "draft/**"
 }
 
 func TestSpec_ExcludeAbsolutePath(t *testing.T) {
-	// Absolute paths in exclude produce a diagnostic.
+	// Absolute paths in !-prefixed patterns produce a diagnostic.
 	src := `<?catalog
-glob: "*.md"
-exclude: "/etc/passwd"
+glob:
+  - "*.md"
+  - "!/etc/passwd"
 ?>
 <?/catalog?>
 `
@@ -2777,14 +2780,15 @@ exclude: "/etc/passwd"
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, "absolute exclude path")
+	expectDiagMsg(t, diags, "absolute glob path")
 }
 
 func TestSpec_ExcludeDotDot(t *testing.T) {
-	// ".." path traversal in exclude produces a diagnostic.
+	// ".." path traversal in !-prefixed patterns produces a diagnostic.
 	src := `<?catalog
-glob: "*.md"
-exclude: "../secret/*.md"
+glob:
+  - "*.md"
+  - "!../secret/*.md"
 ?>
 <?/catalog?>
 `
@@ -2797,10 +2801,11 @@ exclude: "../secret/*.md"
 }
 
 func TestSpec_ExcludeInvalidPattern(t *testing.T) {
-	// Invalid glob pattern in exclude produces a diagnostic.
+	// Invalid glob pattern in !-prefixed patterns produces a diagnostic.
 	src := `<?catalog
-glob: "*.md"
-exclude: "[invalid"
+glob:
+  - "*.md"
+  - "![invalid"
 ?>
 <?/catalog?>
 `
@@ -2809,14 +2814,15 @@ exclude: "[invalid"
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, "invalid exclude pattern")
+	expectDiagMsg(t, diags, "invalid glob pattern")
 }
 
-func TestSpec_ExcludeEmptyValue(t *testing.T) {
-	// Empty exclude string produces a diagnostic.
+func TestSpec_ExcludeEmptyAfterBang(t *testing.T) {
+	// A "!" with nothing after it produces a diagnostic.
 	src := `<?catalog
-glob: "*.md"
-exclude: ""
+glob:
+  - "*.md"
+  - "!"
 ?>
 <?/catalog?>
 `
@@ -2825,16 +2831,14 @@ exclude: ""
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, `empty "exclude" parameter`)
+	expectDiagMsg(t, diags, `empty "glob" parameter`)
 }
 
-func TestSpec_ExcludeEmptyListElement(t *testing.T) {
-	// A list containing an empty string element produces a diagnostic.
+func TestSpec_ExcludeOnlyNoBareGlob(t *testing.T) {
+	// A glob list with only !-prefixed patterns (no include) produces a diagnostic.
 	src := `<?catalog
-glob: "*.md"
-exclude:
-  - "draft/*.md"
-  - ""
+glob:
+  - "!draft/*.md"
 ?>
 <?/catalog?>
 `
@@ -2843,14 +2847,15 @@ exclude:
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, `empty "exclude" parameter`)
+	expectDiagMsg(t, diags, `missing required "glob" parameter`)
 }
 
 func TestSpec_ExcludeNoMatchStillWorks(t *testing.T) {
-	// Exclude pattern that matches nothing doesn't cause errors.
+	// Exclusion pattern that matches nothing doesn't cause errors.
 	src := `<?catalog
-glob: "docs/*.md"
-exclude: "nonexistent/*.md"
+glob:
+  - "docs/*.md"
+  - "!nonexistent/*.md"
 ?>
 - [api.md](docs/api.md)
 <?/catalog?>
@@ -2865,10 +2870,11 @@ exclude: "nonexistent/*.md"
 }
 
 func TestSpec_ExcludeWithRowTemplate(t *testing.T) {
-	// Exclude works with row templates and front matter.
+	// Exclusion works with row templates and front matter.
 	src := `<?catalog
-glob: "docs/*.md"
-exclude: "docs/draft.md"
+glob:
+  - "docs/*.md"
+  - "!docs/draft.md"
 row: "- [{title}]({filename})"
 ?>
 - [API Reference](docs/api.md)
@@ -2877,6 +2883,62 @@ row: "- [{title}]({filename})"
 	mapFS := fstest.MapFS{
 		"docs/api.md":   {Data: []byte("---\ntitle: API Reference\n---\n# API\n")},
 		"docs/draft.md": {Data: []byte("---\ntitle: Draft\n---\n# Draft\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// =====================================================================
+// Gitignore parameter
+// =====================================================================
+
+func TestSpec_GitignoreInvalidValue(t *testing.T) {
+	// Non-boolean gitignore value produces a diagnostic.
+	src := `<?catalog
+glob: "*.md"
+gitignore: "maybe"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, `invalid "gitignore" value`)
+}
+
+func TestSpec_GitignoreFalseExplicit(t *testing.T) {
+	// gitignore: "false" is accepted without diagnostic.
+	src := `<?catalog
+glob: "docs/*.md"
+gitignore: "false"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md": {Data: []byte("# API\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSpec_GitignoreTrueExplicit(t *testing.T) {
+	// gitignore: "true" is accepted without diagnostic.
+	src := `<?catalog
+glob: "docs/*.md"
+gitignore: "true"
+?>
+- [api.md](docs/api.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md": {Data: []byte("# API\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
 	r := &Rule{}

@@ -139,8 +139,11 @@ func validateCatalogDirective(
 	if diags := validateGlob(filePath, line, params); len(diags) > 0 {
 		return diags
 	}
-	if diags := validateExclude(filePath, line, params); len(diags) > 0 {
-		return diags
+	if gitignore, ok := params["gitignore"]; ok {
+		if gitignore != "true" && gitignore != "false" {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`generated section directive has invalid "gitignore" value; must be "true" or "false"`)}
+		}
 	}
 
 	var diags []lint.Diagnostic
@@ -164,14 +167,20 @@ func splitGlobs(glob string) []string {
 
 // validateGlob validates the glob parameter and returns diagnostics on failure.
 // The glob value may be a single pattern or multiple newline-joined patterns
-// (from a YAML list).
+// (from a YAML list). Patterns prefixed with "!" are exclusion patterns.
 func validateGlob(filePath string, line int, params map[string]string) []lint.Diagnostic {
 	glob, hasGlob := params["glob"]
 	if !hasGlob {
 		return []lint.Diagnostic{makeDiag(filePath, line,
 			`generated section directive missing required "glob" parameter`)}
 	}
-	for _, pattern := range splitGlobs(glob) {
+	hasInclude := false
+	for _, raw := range splitGlobs(glob) {
+		pattern := raw
+		isExclude := strings.HasPrefix(pattern, "!")
+		if isExclude {
+			pattern = pattern[1:]
+		}
 		if pattern == "" {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				`generated section directive has empty "glob" parameter`)}
@@ -188,35 +197,13 @@ func validateGlob(filePath string, line int, params map[string]string) []lint.Di
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				fmt.Sprintf("generated section directive has invalid glob pattern: %s", pattern))}
 		}
+		if !isExclude {
+			hasInclude = true
+		}
 	}
-	return nil
-}
-
-// validateExclude validates the exclude parameter and returns diagnostics on failure.
-// The exclude value may be a single pattern or multiple newline-joined patterns
-// (from a YAML list).
-func validateExclude(filePath string, line int, params map[string]string) []lint.Diagnostic {
-	exclude, hasExclude := params["exclude"]
-	if !hasExclude {
-		return nil
-	}
-	for _, pattern := range splitGlobs(exclude) {
-		if pattern == "" {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`generated section directive has empty "exclude" parameter`)}
-		}
-		if filepath.IsAbs(pattern) {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				"generated section directive has absolute exclude path")}
-		}
-		if containsDotDot(pattern) {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`generated section directive has exclude pattern with ".." path traversal`)}
-		}
-		if !doublestar.ValidatePattern(pattern) {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				fmt.Sprintf("generated section directive has invalid exclude pattern: %s", pattern))}
-		}
+	if !hasInclude {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			`generated section directive missing required "glob" parameter`)}
 	}
 	return nil
 }
@@ -245,13 +232,27 @@ func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 	return nil
 }
 
+// splitIncludeExclude separates glob patterns into include and exclude lists.
+// Patterns prefixed with "!" are exclusion patterns (prefix is stripped).
+func splitIncludeExclude(glob string) (include, exclude []string) {
+	for _, pattern := range splitGlobs(glob) {
+		if strings.HasPrefix(pattern, "!") {
+			exclude = append(exclude, pattern[1:])
+		} else {
+			include = append(include, pattern)
+		}
+	}
+	return include, exclude
+}
+
 // buildCatalogEntries resolves glob matches, reads front matter, and
 // returns sorted file entries for the catalog directive.
 func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
-	excludePatterns := splitGlobs(params["exclude"])
+	includePatterns, excludePatterns := splitIncludeExclude(params["glob"])
+	useGitignore := params["gitignore"] != "false"
 	seen := make(map[string]bool)
 	var files []string
-	for _, pattern := range splitGlobs(params["glob"]) {
+	for _, pattern := range includePatterns {
 		matches, err := doublestar.Glob(f.FS, pattern)
 		if err != nil {
 			continue
@@ -265,6 +266,9 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 				continue
 			}
 			if isExcluded(m, excludePatterns) {
+				continue
+			}
+			if useGitignore && f.Gitignore != nil && isGitignored(f, m) {
 				continue
 			}
 			seen[m] = true
@@ -486,6 +490,19 @@ func isExcluded(filePath string, patterns []string) bool {
 		}
 	}
 	return false
+}
+
+// isGitignored checks whether a glob-matched path is ignored by gitignore
+// rules attached to the file. The matchedPath is relative to f.FS (the
+// directory containing the catalog file); it is converted to an absolute
+// path before checking against the gitignore matcher.
+func isGitignored(f *lint.File, matchedPath string) bool {
+	base, err := filepath.Abs(filepath.Dir(f.Path))
+	if err != nil {
+		return false
+	}
+	abs := filepath.Join(base, matchedPath)
+	return f.Gitignore.IsIgnored(abs, false)
 }
 
 // containsDotDot checks if a glob pattern contains ".." path traversal.

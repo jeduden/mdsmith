@@ -17,6 +17,7 @@ type File struct {
 	AST         ast.Node
 	FS          fs.FS
 	RootFS      fs.FS
+	Gitignore   *GitignoreMatcher
 	FrontMatter []byte
 	LineOffset  int
 }
