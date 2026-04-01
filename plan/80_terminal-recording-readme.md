@@ -99,8 +99,12 @@ runs on push to `main`. Steps:
 3. Run `go tool vhs demo.tape` (VHS added as a tool
    dependency in `go.mod`)
 5. Configure git `user.name` / `user.email` for the
-   CI bot, then if `assets/demo.gif` changed, commit
-   and push it back to `main`
+   CI bot. If `assets/demo.gif` changed, commit with a
+   `[skip ci]` marker and push it back to `main`. Add
+   a loop guard (e.g. skip when `github.actor` is
+   `github-actions[bot]`) to avoid retriggering the
+   workflow. Request `permissions: contents: write` so
+   the `GITHUB_TOKEN` can push.
 
 This keeps the GIF in sync with the latest CLI output.
 
@@ -116,8 +120,8 @@ runs on pull requests. Steps:
    (> 10 KB, < 5 MB) to catch broken recordings
 7. Analyze the GIF content: extract frames, verify
    expected command output appears (e.g. grep rendered
-   text for key strings like `MDS001`, `mdsmith check`,
-   `0 issues`). Use a frame-to-text tool or compare
+   text for key strings like `MDS001`, `./mdsmith check`,
+   `0 issues found`). Use a frame-to-text tool or compare
    against a set of reference screenshots to catch
    regressions where the GIF renders but shows wrong
    or empty output
