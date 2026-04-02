@@ -35,17 +35,55 @@ jobs:
       - name: Resolve VHS tool dependency
         run: go get github.com/charmbracelet/vhs@v0.10.0
 
-      - name: Record demo
-        run: go tool vhs demo.tape
-
-      - name: Commit updated GIF
+      - name: Record demo in isolated directory
         run: |
-          if [ -n "$(git status --porcelain -- assets/demo.gif)" ]; then
-            git config user.name  "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add assets/demo.gif
-            git commit -m "chore: update demo GIF [skip ci]"
-            git push
-          else
-            echo "assets/demo.gif unchanged — nothing to commit"
+          # Run VHS in a temp directory so demo.tape commands
+          # cannot modify the repo working tree (git hooks,
+          # workflow files, source code).
+          iso="$(mktemp -d)"
+          cp mdsmith demo.tape "$iso/"
+          cp -r demo "$iso/demo"
+          mkdir -p "$iso/plan"
+          cp plan/*.md "$iso/plan/"
+          mkdir -p "$iso/assets"
+
+          # Rewrite Output path to the isolated assets dir
+          sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
+
+          (cd "$iso" && go tool vhs demo.tape)
+
+          # Copy only the GIF back
+          cp "$iso/assets/demo.gif" assets/demo.gif
+          rm -rf "$iso"
+
+      - name: Reset working tree except demo GIF
+        run: |
+          # Save the generated GIF, reset the tree to undo
+          # any changes from build/VHS/go-get (go.mod, etc.),
+          # then restore only the GIF.
+          cp assets/demo.gif /tmp/demo.gif
+          git checkout -- .
+          git clean -fd
+          cp /tmp/demo.gif assets/demo.gif
+
+      - name: Verify only demo.gif is staged
+        run: |
+          git add assets/demo.gif
+          staged=$(git diff --staged --name-only)
+          unexpected=$(echo "$staged" | grep -v '^assets/demo\.gif$' | grep -v '^$' || true)
+          if [ -n "$unexpected" ]; then
+            echo "ERROR: unexpected files staged:" >&2
+            echo "$unexpected" >&2
+            exit 1
           fi
+
+      - name: Commit and push updated GIF
+        run: |
+          if [ -z "$(git diff --staged --name-only)" ]; then
+            echo "assets/demo.gif unchanged — nothing to commit"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: update demo GIF"
+          git push

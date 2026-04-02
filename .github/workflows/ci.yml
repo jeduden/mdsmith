@@ -46,8 +46,18 @@ jobs:
           sudo install /tmp/ttyd /usr/local/bin/ttyd
       - name: Resolve VHS tool dependency
         run: go get github.com/charmbracelet/vhs@v0.10.0
-      - name: Record demo
-        run: go tool vhs demo.tape
+      - name: Record demo in isolated directory
+        run: |
+          iso="$(mktemp -d)"
+          cp mdsmith demo.tape "$iso/"
+          cp -r demo "$iso/demo"
+          mkdir -p "$iso/plan"
+          cp plan/*.md "$iso/plan/"
+          mkdir -p "$iso/assets"
+          sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
+          (cd "$iso" && go tool vhs demo.tape)
+          cp "$iso/assets/demo.gif" assets/demo.gif
+          rm -rf "$iso"
       - name: Validate GIF
         run: |
           file="assets/demo.gif"
