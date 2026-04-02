@@ -1,0 +1,51 @@
+name: Demo GIF
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    # Skip if the push was made by the CI bot to avoid loops.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build mdsmith
+        run: go build -o mdsmith ./cmd/mdsmith
+
+      - name: Install VHS runtime dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg chromium-browser || sudo apt-get install -y -qq ffmpeg chromium
+          curl -fsSL -o /tmp/ttyd \
+            "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
+          sudo install /tmp/ttyd /usr/local/bin/ttyd
+
+      - name: Resolve VHS tool dependency
+        run: go get github.com/charmbracelet/vhs@v0.10.0
+
+      - name: Record demo
+        run: go tool vhs demo.tape
+
+      - name: Commit updated GIF
+        run: |
+          if [ -n "$(git status --porcelain -- assets/demo.gif)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add assets/demo.gif
+            git commit -m "chore: update demo GIF [skip ci]"
+            git push
+          else
+            echo "assets/demo.gif unchanged — nothing to commit"
+          fi

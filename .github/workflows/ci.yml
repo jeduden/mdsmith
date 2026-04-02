@@ -28,6 +28,49 @@ jobs:
       - run: go build -o mdsmith ./cmd/mdsmith
       - run: ./mdsmith check .
 
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Build mdsmith
+        run: go build -o mdsmith ./cmd/mdsmith
+      - name: Install VHS runtime dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg chromium-browser || sudo apt-get install -y -qq ffmpeg chromium
+          curl -fsSL -o /tmp/ttyd \
+            "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
+          sudo install /tmp/ttyd /usr/local/bin/ttyd
+      - name: Resolve VHS tool dependency
+        run: go get github.com/charmbracelet/vhs@v0.10.0
+      - name: Record demo
+        run: go tool vhs demo.tape
+      - name: Validate GIF
+        run: |
+          file="assets/demo.gif"
+          if [ ! -f "$file" ]; then
+            echo "ERROR: $file not produced" >&2
+            exit 1
+          fi
+          header=$(head -c 6 "$file")
+          if [ "$header" != "GIF89a" ] && [ "$header" != "GIF87a" ]; then
+            echo "ERROR: $file is not a valid GIF (header: $header)" >&2
+            exit 1
+          fi
+          size=$(stat -c%s "$file")
+          if [ "$size" -lt 10240 ]; then
+            echo "ERROR: $file too small (${size} bytes < 10 KB)" >&2
+            exit 1
+          fi
+          if [ "$size" -gt 5242880 ]; then
+            echo "ERROR: $file too large (${size} bytes > 5 MB)" >&2
+            exit 1
+          fi
+          echo "assets/demo.gif OK — ${size} bytes, header: $header"
+
   test:
     runs-on: ubuntu-latest
     steps:

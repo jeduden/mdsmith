@@ -86,6 +86,24 @@ When implementing work tracked by a plan file in
 - Run `mdsmith fix PLAN.md` after changing a plan's
   front matter so the catalog table stays current
 
+## Terminal Demo (`demo.tape`)
+
+The repo includes a VHS tape file (`demo.tape`) that
+records a terminal demo GIF. When editing this file:
+
+- VHS uses backtick-delimited strings to embed quotes:
+  `` Type `cmd 'status: "✅"'` `` — do NOT use `\"`
+  inside double-quoted Type strings (VHS crashes)
+- End every shell command with `; true` so non-zero
+  exits don't abort the recording
+- `demo/sample.md` is in the `.mdsmith.yml` ignore
+  list; copy it to `/tmp` for check/fix steps
+- Keep Sleep durations short (1–2 s) so VHS renders
+  quickly in CI
+- Only use fixable lint rules in `demo/sample.md`
+  (e.g. trailing spaces, long lines, bare URLs) so
+  the "fix then clean check" flow works
+
 ## Writing Guidelines
 
 When writing descriptions, state the concrete constraint:

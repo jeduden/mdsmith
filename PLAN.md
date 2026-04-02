@@ -36,5 +36,5 @@ footer: |
 | 77  | ✅     | [Template composition and cycle detection](plan/77_template-composition-and-cycles.md)                          |
 | 78  | 🔲     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                         |
 | 79  | ✅     | [Nested front-matter access](plan/79_nested-frontmatter-access.md)                                              |
-| 80  | 🔲     | [Terminal recording in README](plan/80_terminal-recording-readme.md)                                            |
+| 80  | ✅     | [Terminal recording in README](plan/80_terminal-recording-readme.md)                                            |
 <?/catalog?>

@@ -194,6 +194,7 @@ overrides:
         max-words-per-sentence: 120
 
 ignore:
+  - "demo/**"
   - "internal/rules/*/bad/**"
   - "internal/rules/*/bad.md"
   - "internal/rules/*/good/**"

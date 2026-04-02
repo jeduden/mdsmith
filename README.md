@@ -4,6 +4,9 @@ A fast, auto-fixing Markdown linter and formatter for docs, READMEs,
 and AI-generated content. Checks style, readability, and structure.
 Written in Go.
 
+<!-- Rendered by .github/workflows/demo.yml on push to main -->
+![mdsmith demo](assets/demo.gif)
+
 ## ✨ Why mdsmith
 
 **📋 Progressive disclosure with catalogs.**

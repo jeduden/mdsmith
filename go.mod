@@ -2,7 +2,10 @@ module github.com/jeduden/mdsmith
 
 go 1.25.0
 
-tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+tool (
+	github.com/charmbracelet/vhs
+	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+)
 
 require (
 	cuelang.org/go v0.16.0

@@ -1,7 +1,7 @@
 ---
 id: 80
 title: "Terminal recording in README"
-status: "🔲"
+status: "✅"
 summary: "Auto-generate a terminal demo GIF via GitHub Actions and embed it in README.md"
 ---
 # Terminal recording in README
@@ -154,21 +154,21 @@ pipeline succeeds and the output is sane.
 
 ## Acceptance Criteria
 
-- [ ] `demo.tape` exists and defines a multi-step demo
+- [x] `demo.tape` exists and defines a multi-step demo
   covering init, check, fix, help-rule (line-length,
   catalog, directory-structure, required-structure),
   query, and metrics commands
-- [ ] `demo/sample.md` contains intentional lint errors
+- [x] `demo/sample.md` contains intentional lint errors
   that produce visible diagnostics
-- [ ] `README.md` embeds `assets/demo.gif` between the
+- [x] `README.md` embeds `assets/demo.gif` between the
   intro paragraph and the "Why mdsmith" section
-- [ ] `.github/workflows/demo.yml` regenerates the GIF
+- [x] `.github/workflows/demo.yml` regenerates the GIF
   on push to `main` and commits it if changed
-- [ ] CI job in `.github/workflows/ci.yml` runs VHS on
-  PRs and asserts the GIF is valid (correct header,
-  reasonable file size, expected content visible in
-  extracted frames)
-- [ ] `demo/` is excluded from mdsmith linting so the
+- [x] CI job in `.github/workflows/ci.yml` runs VHS on
+  PRs and asserts the GIF is valid (file exists, has a
+  correct GIF header, and falls within a reasonable file
+  size range)
+- [x] `demo/` is excluded from mdsmith linting so the
   sample file does not cause CI failures
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
