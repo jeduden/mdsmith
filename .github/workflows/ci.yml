@@ -3,12 +3,30 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore: [assets/demo.gif]
   pull_request:
     branches: [main]
   merge_group:
     branches: [main]
 
 jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install zizmor
+        run: cargo install zizmor
+      - name: Run zizmor
+        run: zizmor --format sarif . > results.sarif
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -44,8 +62,8 @@ jobs:
           curl -fsSL -o /tmp/ttyd \
             "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
           sudo install /tmp/ttyd /usr/local/bin/ttyd
-      - name: Resolve VHS tool dependency
-        run: go get github.com/charmbracelet/vhs@v0.10.0
+      - name: Install VHS
+        run: go install github.com/charmbracelet/vhs@v0.10.0
       - name: Record demo in isolated directory
         run: |
           iso="$(mktemp -d)"
@@ -55,7 +73,7 @@ jobs:
           cp plan/*.md "$iso/plan/"
           mkdir -p "$iso/assets"
           sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
-          (cd "$iso" && go tool vhs demo.tape)
+          (cd "$iso" && vhs demo.tape)
           cp "$iso/assets/demo.gif" assets/demo.gif
           rm -rf "$iso"
       - name: Validate GIF

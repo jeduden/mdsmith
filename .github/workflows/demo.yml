@@ -32,8 +32,8 @@ jobs:
             "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
           sudo install /tmp/ttyd /usr/local/bin/ttyd
 
-      - name: Resolve VHS tool dependency
-        run: go get github.com/charmbracelet/vhs@v0.10.0
+      - name: Install VHS
+        run: go install github.com/charmbracelet/vhs@v0.10.0
 
       - name: Record demo in isolated directory
         run: |
@@ -50,7 +50,7 @@ jobs:
           # Rewrite Output path to the isolated assets dir
           sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
 
-          (cd "$iso" && go tool vhs demo.tape)
+          (cd "$iso" && vhs demo.tape)
 
           # Copy only the GIF back
           cp "$iso/assets/demo.gif" assets/demo.gif
