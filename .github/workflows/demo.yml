@@ -43,11 +43,9 @@ jobs:
           # cannot modify the repo working tree (git hooks,
           # workflow files, source code).
           iso="$(mktemp -d)"
-          cp mdsmith demo.tape "$iso/"
-          cp -r demo "$iso/demo"
-          mkdir -p "$iso/plan"
-          cp plan/*.md "$iso/plan/"
-          mkdir -p "$iso/assets"
+          # Copy the full working tree (excluding .git) so mdsmith
+          # sees the same config and file layout as in the repo.
+          tar --exclude='.git' -cf - . | (cd "$iso" && tar -xf -)
 
           # Rewrite Output path to the isolated assets dir
           sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
