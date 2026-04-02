@@ -61,7 +61,7 @@ jobs:
       - name: Reset working tree except demo GIF
         run: |
           # Save the generated GIF, reset the tree to undo
-          # any changes from build/VHS/go-get (go.mod, etc.),
+          # any changes from build/VHS/go install (go.mod, etc.),
           # then restore only the GIF.
           cp assets/demo.gif /tmp/demo.gif
           git checkout -- .
