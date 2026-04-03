@@ -61,7 +61,7 @@ Sleep 1s
 Enter
 Sleep 1s
 
-Type "head -20 .mdsmith.yml"
+Type "cat .mdsmith.yml"
 Sleep 1s
 Enter
 Sleep 1s
@@ -117,7 +117,7 @@ Show
 Type "# Look up a specific lint rule"
 Enter
 Sleep 1s
-Type "mdsmith help rule line-length | head -20"
+Type "mdsmith help rule line-length"
 Sleep 1s
 Enter
 Sleep 2s
