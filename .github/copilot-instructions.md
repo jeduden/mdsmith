@@ -101,10 +101,12 @@ records a terminal demo GIF. When editing this file:
 - VHS uses backtick-delimited strings to embed quotes:
   `` Type `cmd 'status: "✅"'` `` — do NOT use `\"`
   inside double-quoted Type strings (VHS crashes)
-- End every shell command with `; true` so non-zero
-  exits don't abort the recording
+- The tape runs `set +e` (hidden) at the start so
+  non-zero exits don't abort the recording — no need
+  to append `; true` to commands
 - `demo/sample.md` is in the `.mdsmith.yml` ignore
-  list; copy it to `/tmp` for check/fix steps
+  list; the hidden setup copies it to a temp dir
+  for check/fix steps
 - Keep Sleep durations short (1–2 s) so VHS renders
   quickly in CI
 - Only use fixable lint rules in `demo/sample.md`

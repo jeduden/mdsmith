@@ -7,11 +7,13 @@
 #       Type `./cmd 'status: "✅"' args`
 #   - Do NOT use escaped quotes inside double-quoted
 #     Type strings — VHS crashes on parse.
-#   - Every shell command should end with ; true (or
-#     || true) so non-zero exits don't abort the tape.
-#   - demo/sample.md is ignored by .mdsmith.yml; copy
-#     it to /tmp for check/fix to bypass the ignore.
-#   - Keep total Sleep time low (1-2s per step) to
+#   - Hidden setup runs set +e, adds mdsmith to PATH,
+#     and prepares temp dirs so visible commands match
+#     what a developer would actually type.
+#   - demo/sample.md is ignored by .mdsmith.yml; the
+#     hidden setup copies it to a temp dir and runs
+#     check/fix there as sample.md.
+#   - Keep Sleep durations short (1-2s per step) to
 #     avoid long VHS render times in CI.
 
 Output assets/demo.gif
@@ -21,52 +23,146 @@ Set FontSize 14
 Set Width 960
 Set Height 540
 
-# --- Step 1: init in a temporary directory ---
-Type "d=$(mktemp -d) && cp ./mdsmith $d/ && (cd $d && ./mdsmith init && head -20 .mdsmith.yml); true"
+# --- Hidden setup ---
+# Add mdsmith to PATH, create temp dirs for init and
+# check/fix demos, copy sample file and config.
+Hide
+Type "set +e"
 Enter
-Sleep 2s
-
-# --- Step 2: check sample file with lint errors ---
-Type "cp demo/sample.md /tmp/s.md && ./mdsmith check /tmp/s.md 2>&1; true"
+Type "export PATH=$PWD:$PATH"
 Enter
-Sleep 2s
+Type "REPO=$PWD"
+Enter
+Type "INIT_DIR=$(mktemp -d)"
+Enter
+Type "DEMO_DIR=$(mktemp -d)"
+Enter
+Type "cp demo/sample.md $DEMO_DIR/sample.md"
+Enter
+Type "cp .mdsmith.yml $DEMO_DIR/"
+Enter
+Type "clear"
+Enter
+Sleep 1s
+Show
 
-# --- Step 3: fix the sample file ---
-Type "./mdsmith fix /tmp/s.md 2>&1; true"
+# --- Use case 1: Initialize a project ---
+
+Hide
+Type "cd $INIT_DIR && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Initialize mdsmith in a new project"
+Enter
+Sleep 1s
+Type "mdsmith init"
+Sleep 1s
 Enter
 Sleep 1s
 
-# --- Step 4: check again — clean pass ---
-Type "./mdsmith check /tmp/s.md 2>&1; true"
+Type "cat .mdsmith.yml"
+Sleep 1s
 Enter
 Sleep 1s
 
-# --- Step 5: help rule line-length ---
-Type "./mdsmith help rule line-length 2>&1 | head -20; true"
+Type "# Config created with default rules"
+Enter
+Sleep 1s
+
+# --- Use case 2: Lint and fix a file ---
+
+Hide
+Type "cd $DEMO_DIR && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Check a file for lint issues"
+Enter
+Sleep 1s
+Type "mdsmith check sample.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Lint issues found — auto-fix them"
+Enter
+Sleep 1s
+Type "mdsmith fix sample.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Verify the fix"
+Enter
+Sleep 1s
+Type "mdsmith check sample.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# All issues resolved"
+Enter
+Sleep 1s
+
+# --- Use case 3: Explore rules ---
+
+Hide
+Type "cd $REPO && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Look up a specific lint rule"
+Enter
+Sleep 1s
+Type "mdsmith help rule line-length"
+Sleep 1s
 Enter
 Sleep 2s
 
-# --- Step 6: help rule catalog ---
-Type "./mdsmith help rule catalog 2>&1 | head -20; true"
+Type "# Shows rule description, severity, and config"
 Enter
-Sleep 2s
+Sleep 1s
 
-# --- Step 7: help rule directory-structure ---
-Type "./mdsmith help rule directory-structure 2>&1 | head -20; true"
-Enter
-Sleep 2s
+# --- Use case 4: Query front matter ---
 
-# --- Step 8: help rule required-structure ---
-Type "./mdsmith help rule required-structure 2>&1 | head -20; true"
+Hide
+Type "clear"
 Enter
-Sleep 2s
+Sleep 1s
+Show
 
-# --- Step 9: query front-matter ---
-Type `./mdsmith query 'status: "✅"' plan/; true`
+Type "# Find plans with status ✅"
 Enter
-Sleep 2s
+Sleep 1s
+Type `mdsmith query 'status: "✅"' plan/`
+Sleep 1s
+Enter
+Sleep 1s
 
-# --- Step 10: metrics ---
-Type "./mdsmith metrics rank --by bytes --top 5 .; true"
+Type "# Matched files listed"
 Enter
-Sleep 2s
+Sleep 1s
+
+# --- Use case 5: Metrics ---
+
+Hide
+Type "clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Rank files by size"
+Enter
+Sleep 1s
+Type "mdsmith metrics rank --by bytes --top 5 ."
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Top 5 largest files shown"
+Enter
+Sleep 1s
