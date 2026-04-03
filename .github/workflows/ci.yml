@@ -8,11 +8,35 @@ on:
   merge_group:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install zizmor
+        run: pip install zizmor==1.6.0
+      - name: Run zizmor
+        run: zizmor --format sarif . > results.sarif
+      - name: Upload SARIF
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: github/codeql-action/upload-sarif@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3
+        with:
+          sarif_file: results.sarif
+
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
@@ -22,6 +46,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
@@ -32,6 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
@@ -44,10 +72,12 @@ jobs:
           curl -fsSL -o /tmp/ttyd \
             "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
           sudo install /tmp/ttyd /usr/local/bin/ttyd
-      - name: Resolve VHS tool dependency
-        run: go get github.com/charmbracelet/vhs@v0.10.0
+      - name: Install VHS
+        run: |
+          go install github.com/charmbracelet/vhs@v0.10.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Record demo
-        run: go tool vhs demo.tape
+        run: vhs demo.tape
       - name: Validate GIF
         run: |
           file="assets/demo.gif"
@@ -75,6 +105,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod

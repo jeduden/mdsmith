@@ -1,0 +1,5 @@
+# Require owner review for files that control CI
+# behavior or execute as privileged scripts.
+/.github/CODEOWNERS  @jeduden
+/.github/workflows/  @jeduden
+/demo.tape           @jeduden

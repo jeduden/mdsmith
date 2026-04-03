@@ -13,9 +13,11 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
+      # Credentials intentionally persisted — needed for git push.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
+          persist-credentials: true
 
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
@@ -32,20 +34,55 @@ jobs:
             "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
           sudo install /tmp/ttyd /usr/local/bin/ttyd
 
-      - name: Resolve VHS tool dependency
-        run: go get github.com/charmbracelet/vhs@v0.10.0
-
-      - name: Record demo
-        run: go tool vhs demo.tape
-
-      - name: Commit updated GIF
+      - name: Install VHS
         run: |
-          if [ -n "$(git status --porcelain -- assets/demo.gif)" ]; then
-            git config user.name  "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add assets/demo.gif
-            git commit -m "chore: update demo GIF [skip ci]"
-            git push
+          go install github.com/charmbracelet/vhs@v0.10.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Record demo in isolated directory
+        run: |
+          # Run VHS in a temp directory so demo.tape commands
+          # cannot modify the repo working tree (git hooks,
+          # workflow files, source code).
+          iso="$(mktemp -d)"
+          # Copy the full working tree (excluding .git) so mdsmith
+          # sees the same config and file layout as in the repo.
+          tar --exclude='.git' -cf - . | (cd "$iso" && tar -xf -)
+
+          sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
+          (cd "$iso" && vhs demo.tape)
+
+          cp "$iso/assets/demo.gif" /tmp/demo.gif
+          rm -rf "$iso"
+
+      - name: Push GIF to assets branch
+        run: |
+          # Create or update the orphan assets branch with only
+          # the demo GIF. This avoids pushing to main entirely —
+          # no branch protection bypass needed.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Check if assets branch exists on remote
+          if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
+            git fetch origin assets
+            git checkout assets
+            git rm -rf --ignore-unmatch .
+            git clean -fdx
           else
-            echo "assets/demo.gif unchanged — nothing to commit"
+            git checkout --orphan assets
+            git rm -rf --ignore-unmatch .
+            git clean -fdx
+          fi
+
+          mkdir -p assets
+          cp /tmp/demo.gif assets/demo.gif
+
+          # Only push if the GIF actually changed
+          git add assets/demo.gif
+          if git diff --staged --quiet; then
+            echo "assets/demo.gif unchanged — nothing to push"
+          else
+            git commit -m "chore: update demo GIF"
+            git push -u origin assets
           fi
