@@ -71,7 +71,7 @@ jobs:
         with:
           path: |
             ~/vhs-bin
-          key: vhs-0.10.0-ttyd-1.7.7-${{ runner.os }}
+          key: vhs-0.10.0-ttyd-1.7.7-${{ runner.os }}-${{ runner.arch }}
       - name: Install VHS runtime dependencies
         run: |
           sudo apt-get update -qq
