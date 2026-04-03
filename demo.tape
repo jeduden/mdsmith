@@ -322,6 +322,6 @@ Sleep 1s
 Enter
 Sleep 1s
 
-Type "# Auto-resolves conflicts in catalog/include sections"
+Type "# Auto-resolves conflicts for files listed in .gitattributes"
 Enter
 Sleep 1s
