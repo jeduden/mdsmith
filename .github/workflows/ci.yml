@@ -83,9 +83,7 @@ jobs:
           if [ -d ~/apt-cache ]; then
             sudo cp ~/apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
           fi
-          if [ "${{ steps.apt-cache.outputs.cache-hit }}" != "true" ]; then
-            sudo apt-get update -qq
-          fi
+          sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg chromium-browser || sudo apt-get install -y -qq ffmpeg chromium
           mkdir -p ~/apt-cache
           cp /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
