@@ -74,7 +74,9 @@ jobs:
             "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
           sudo install /tmp/ttyd /usr/local/bin/ttyd
       - name: Install VHS
-        run: go install github.com/charmbracelet/vhs@v0.10.0
+        run: |
+          go install github.com/charmbracelet/vhs@v0.10.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Record demo
         run: vhs demo.tape
       - name: Validate GIF

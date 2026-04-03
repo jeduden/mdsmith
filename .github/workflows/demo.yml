@@ -35,7 +35,9 @@ jobs:
           sudo install /tmp/ttyd /usr/local/bin/ttyd
 
       - name: Install VHS
-        run: go install github.com/charmbracelet/vhs@v0.10.0
+        run: |
+          go install github.com/charmbracelet/vhs@v0.10.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Record demo in isolated directory
         run: |
