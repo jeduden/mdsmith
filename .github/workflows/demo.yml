@@ -67,10 +67,12 @@ jobs:
           if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
             git fetch origin assets
             git checkout assets
-            git rm -rf .
+            git rm -rf --ignore-unmatch .
+            git clean -fdx
           else
             git checkout --orphan assets
-            git rm -rf .
+            git rm -rf --ignore-unmatch .
+            git clean -fdx
           fi
 
           mkdir -p assets
