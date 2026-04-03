@@ -298,3 +298,30 @@ Sleep 1s
 Type "# Top 5 largest files shown"
 Enter
 Sleep 1s
+
+# --- Use case 10: Merge driver for generated sections ---
+
+Hide
+Type "MERGE_DIR=$(mktemp -d)"
+Enter
+Type "cd $MERGE_DIR && git init -q && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Install merge driver for generated sections"
+Enter
+Sleep 1s
+Type "mdsmith merge-driver install"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "cat .gitattributes"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Auto-resolves conflicts for files listed in .gitattributes"
+Enter
+Sleep 1s
