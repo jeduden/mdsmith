@@ -42,16 +42,12 @@ jobs:
       - name: Record demo in isolated directory
         run: |
           # Run VHS in a temp directory so demo.tape commands
-          # cannot modify the repo working tree (git hooks,
-          # workflow files, source code).
+          # cannot modify the repo working tree.
           iso="$(mktemp -d)"
-          # Copy the full working tree (excluding .git) so mdsmith
-          # sees the same config and file layout as in the repo.
           tar --exclude='.git' -cf - . | (cd "$iso" && tar -xf -)
-
-          sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
+          # No Output-path rewrite needed — VHS runs inside $iso,
+          # so relative Output assets/demo.gif writes to $iso/assets/.
           (cd "$iso" && vhs demo.tape)
-
           cp "$iso/assets/demo.gif" /tmp/demo.gif
           rm -rf "$iso"
 
@@ -62,6 +58,9 @@ jobs:
           # no branch protection bypass needed.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Remove untracked build artifacts so branch switch succeeds.
+          rm -f mdsmith
 
           # Check if assets branch exists on remote
           if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
