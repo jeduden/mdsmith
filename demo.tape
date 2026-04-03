@@ -41,6 +41,18 @@ Type "cp demo/sample.md $DEMO_DIR/sample.md"
 Enter
 Type "cp .mdsmith.yml $DEMO_DIR/"
 Enter
+Type "CAT_DIR=$(mktemp -d)"
+Enter
+Type "cp -a demo/catalog/. $CAT_DIR/"
+Enter
+Type "STRUCT_DIR=$(mktemp -d)"
+Enter
+Type "cp -a demo/structure/. $STRUCT_DIR/"
+Enter
+Type "DIR_DIR=$(mktemp -d)"
+Enter
+Type "cp -a demo/dirstructure/. $DIR_DIR/"
+Enter
 Type "clear"
 Enter
 Sleep 1s
@@ -62,7 +74,7 @@ Sleep 1s
 Enter
 Sleep 1s
 
-Type "cat .mdsmith.yml"
+Type "head -18 .mdsmith.yml"
 Sleep 1s
 Enter
 Sleep 1s
@@ -107,7 +119,98 @@ Type "# All issues resolved"
 Enter
 Sleep 1s
 
-# --- Use case 3: Explore rules ---
+# --- Use case 3: Auto-generate a catalog ---
+
+Hide
+Type "cd $CAT_DIR && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Auto-generate a file catalog"
+Enter
+Sleep 1s
+Type "cat index.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "mdsmith check index.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "mdsmith fix index.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "cat index.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Catalog filled in from data/ files"
+Enter
+Sleep 1s
+
+# --- Use case 4: Enforce document structure ---
+
+Hide
+Type "cd $STRUCT_DIR && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Enforce required sections via a schema"
+Enter
+Sleep 1s
+Type "cat schema.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "cat plan.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "mdsmith check plan.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type `# Missing "Tasks" section caught`
+Sleep 1s
+Enter
+Sleep 1s
+
+# --- Use case 5: Restrict file locations ---
+
+Hide
+Type "cd $DIR_DIR && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Restrict Markdown to allowed directories"
+Enter
+Sleep 1s
+Type "cat .mdsmith.yml"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "mdsmith check ."
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# notes.md flagged — not under docs/"
+Enter
+Sleep 1s
+
+# --- Use case 6: Explore rules ---
 
 Hide
 Type "cd $REPO && clear"
@@ -127,7 +230,7 @@ Type "# Shows rule description, severity, and config"
 Enter
 Sleep 1s
 
-# --- Use case 4: Query front matter ---
+# --- Use case 7: Query front matter ---
 
 Hide
 Type "clear"
@@ -147,7 +250,7 @@ Type "# Matched files listed"
 Enter
 Sleep 1s
 
-# --- Use case 5: Metrics ---
+# --- Use case 8: Metrics ---
 
 Hide
 Type "clear"

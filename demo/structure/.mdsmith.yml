@@ -1,0 +1,8 @@
+rules:
+  required-structure: true
+
+overrides:
+  - files: ["plan.md"]
+    rules:
+      required-structure:
+        schema: schema.md

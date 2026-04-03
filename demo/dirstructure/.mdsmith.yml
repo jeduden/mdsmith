@@ -1,0 +1,4 @@
+rules:
+  directory-structure:
+    allowed:
+      - "docs/**"
