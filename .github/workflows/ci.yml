@@ -65,17 +65,38 @@ jobs:
           go-version-file: go.mod
       - name: Build mdsmith
         run: go build -o mdsmith ./cmd/mdsmith
+      - name: Cache VHS + ttyd binaries
+        id: vhs-cache
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/vhs-bin
+          key: vhs-0.10.0-ttyd-1.7.7-${{ runner.os }}-${{ runner.arch }}
       - name: Install VHS runtime dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg chromium-browser || sudo apt-get install -y -qq ffmpeg chromium
-          curl -fsSL -o /tmp/ttyd \
-            "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
-          sudo install /tmp/ttyd /usr/local/bin/ttyd
+          if [ -f ~/vhs-bin/ttyd ]; then
+            sudo install ~/vhs-bin/ttyd /usr/local/bin/ttyd
+          else
+            curl -fsSL -o /tmp/ttyd \
+              "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64"
+            sudo install /tmp/ttyd /usr/local/bin/ttyd
+          fi
       - name: Install VHS
         run: |
-          go install github.com/charmbracelet/vhs@v0.10.0
+          if [ -f ~/vhs-bin/vhs ]; then
+            sudo install ~/vhs-bin/vhs /usr/local/bin/vhs
+          else
+            go install github.com/charmbracelet/vhs@v0.10.0
+          fi
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Populate VHS cache
+        if: steps.vhs-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/vhs-bin
+          cp /usr/local/bin/ttyd ~/vhs-bin/
+          cp "$(go env GOPATH)/bin/vhs" ~/vhs-bin/ 2>/dev/null || cp /usr/local/bin/vhs ~/vhs-bin/ 2>/dev/null || true
       - name: Record demo
         run: vhs demo.tape
       - name: Validate GIF
