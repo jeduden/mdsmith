@@ -39,21 +39,10 @@ jobs:
           go install github.com/charmbracelet/vhs@v0.10.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: Record demo in isolated directory
+      - name: Record demo
         run: |
-          # Run VHS in a temp directory so demo.tape commands
-          # cannot modify the repo working tree (git hooks,
-          # workflow files, source code).
-          iso="$(mktemp -d)"
-          # Copy the full working tree (excluding .git) so mdsmith
-          # sees the same config and file layout as in the repo.
-          tar --exclude='.git' -cf - . | (cd "$iso" && tar -xf -)
-
-          sed -i "s|^Output assets/demo.gif|Output $iso/assets/demo.gif|" "$iso/demo.tape"
-          (cd "$iso" && vhs demo.tape)
-
-          cp "$iso/assets/demo.gif" /tmp/demo.gif
-          rm -rf "$iso"
+          vhs demo.tape
+          cp assets/demo.gif /tmp/demo.gif
 
       - name: Push GIF to assets branch
         run: |
@@ -62,6 +51,9 @@ jobs:
           # no branch protection bypass needed.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Remove untracked build artifacts so branch switch succeeds.
+          rm -f assets/demo.gif mdsmith
 
           # Check if assets branch exists on remote
           if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
