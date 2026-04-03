@@ -53,6 +53,10 @@ Type "DIR_DIR=$(mktemp -d)"
 Enter
 Type "cp -R demo/dirstructure/. $DIR_DIR/"
 Enter
+Type "ARI_DIR=$(mktemp -d)"
+Enter
+Type "cp -R demo/readability/. $ARI_DIR/"
+Enter
 Type "clear"
 Enter
 Sleep 1s
@@ -210,7 +214,32 @@ Type "# notes.md flagged — not under docs/"
 Enter
 Sleep 1s
 
-# --- Use case 6: Explore rules ---
+# --- Use case 6: Keep AI verbosity in check ---
+
+Hide
+Type "cd $ARI_DIR && clear"
+Enter
+Sleep 1s
+Show
+
+Type "# Keep AI verbosity in check"
+Enter
+Sleep 1s
+Type "cat notes.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "mdsmith check notes.md"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# ARI flags hard-to-read paragraphs"
+Enter
+Sleep 1s
+
+# --- Use case 7: Explore rules ---
 
 Hide
 Type "cd $REPO && clear"
@@ -230,7 +259,7 @@ Type "# Shows rule description, severity, and config"
 Enter
 Sleep 1s
 
-# --- Use case 7: Query front matter ---
+# --- Use case 8: Query front matter ---
 
 Hide
 Type "clear"
@@ -250,7 +279,7 @@ Type "# Matched files listed"
 Enter
 Sleep 1s
 
-# --- Use case 8: Metrics ---
+# --- Use case 9: Metrics ---
 
 Hide
 Type "clear"

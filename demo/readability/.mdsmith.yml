@@ -1,0 +1,4 @@
+rules:
+  paragraph-readability:
+    max-index: 14.0
+    min-words: 20
