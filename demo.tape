@@ -11,7 +11,7 @@
 #     || true) so non-zero exits don't abort the tape.
 #   - demo/sample.md is ignored by .mdsmith.yml; copy
 #     it to /tmp for check/fix to bypass the ignore.
-#   - Keep total Sleep time low (1-2s per step) to
+#   - Keep Sleep durations short (1-2s per step) to
 #     avoid long VHS render times in CI.
 
 Output assets/demo.gif
@@ -21,52 +21,126 @@ Set FontSize 14
 Set Width 960
 Set Height 540
 
-# --- Step 1: init in a temporary directory ---
-Type "d=$(mktemp -d) && cp ./mdsmith $d/ && (cd $d && ./mdsmith init && head -20 .mdsmith.yml); true"
-Enter
-Sleep 2s
+# --- Use case 1: Initialize a project ---
 
-# --- Step 2: check sample file with lint errors ---
-Type "cp demo/sample.md /tmp/s.md && ./mdsmith check /tmp/s.md 2>&1; true"
+Type "# Initialize mdsmith in a new directory"
 Enter
-Sleep 2s
-
-# --- Step 3: fix the sample file ---
-Type "./mdsmith fix /tmp/s.md 2>&1; true"
+Sleep 1s
+Type "dir=$(mktemp -d); cp ./mdsmith $dir/; cd $dir; true"
+Sleep 1s
 Enter
 Sleep 1s
 
-# --- Step 4: check again — clean pass ---
-Type "./mdsmith check /tmp/s.md 2>&1; true"
+Type "# Generate the default config"
+Enter
+Sleep 1s
+Type "./mdsmith init; true"
+Sleep 1s
 Enter
 Sleep 1s
 
-# --- Step 5: help rule line-length ---
-Type "./mdsmith help rule line-length 2>&1 | head -20; true"
+Type "head -20 .mdsmith.yml; true"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Config created — go back to the repo"
+Enter
+Sleep 1s
+Type "cd -; true"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "clear"
+Enter
+Sleep 1s
+
+# --- Use case 2: Lint and fix a file ---
+
+Type "# Copy a sample file and check it for lint issues"
+Enter
+Sleep 1s
+Type "cp demo/sample.md /tmp/s.md; true"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "./mdsmith check /tmp/s.md; true"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Lint issues found — auto-fix them"
+Enter
+Sleep 1s
+Type "./mdsmith fix /tmp/s.md; true"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Verify the file is now clean"
+Enter
+Sleep 1s
+Type "./mdsmith check /tmp/s.md; true"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# All issues resolved"
+Enter
+Sleep 1s
+
+Type "clear"
+Enter
+Sleep 1s
+
+# --- Use case 3: Explore rules ---
+
+Type "# Look up a specific lint rule"
+Enter
+Sleep 1s
+Type "./mdsmith help rule line-length | head -20; true"
+Sleep 1s
 Enter
 Sleep 2s
 
-# --- Step 6: help rule catalog ---
-Type "./mdsmith help rule catalog 2>&1 | head -20; true"
+Type "# Rules include severity, description, and examples"
 Enter
-Sleep 2s
+Sleep 1s
 
-# --- Step 7: help rule directory-structure ---
-Type "./mdsmith help rule directory-structure 2>&1 | head -20; true"
+Type "clear"
 Enter
-Sleep 2s
+Sleep 1s
 
-# --- Step 8: help rule required-structure ---
-Type "./mdsmith help rule required-structure 2>&1 | head -20; true"
+# --- Use case 4: Query front matter ---
+
+Type "# Find plans with status ✅"
 Enter
-Sleep 2s
-
-# --- Step 9: query front-matter ---
+Sleep 1s
 Type `./mdsmith query 'status: "✅"' plan/; true`
+Sleep 1s
 Enter
-Sleep 2s
+Sleep 1s
 
-# --- Step 10: metrics ---
-Type "./mdsmith metrics rank --by bytes --top 5 .; true"
+Type "# Matched files listed"
 Enter
-Sleep 2s
+Sleep 1s
+
+Type "clear"
+Enter
+Sleep 1s
+
+# --- Use case 5: Metrics ---
+
+Type "# Rank the largest files by size"
+Enter
+Sleep 1s
+Type "./mdsmith metrics rank --by bytes --top 5 .; true"
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "# Top 5 largest files shown"
+Enter
+Sleep 1s
