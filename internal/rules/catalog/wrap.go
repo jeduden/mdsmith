@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
@@ -12,6 +13,11 @@ type columnConfig struct {
 	wrap     string // "truncate" (default) or "br"
 }
 
+// runeLen returns the number of runes in s.
+func runeLen(s string) int {
+	return utf8.RuneCountInString(s)
+}
+
 // truncateCell truncates text to maxWidth characters, appending "..." if
 // the text is shortened. It preserves markdown links [text](url) and
 // inline code `code` by not breaking inside these spans.
@@ -19,30 +25,28 @@ func truncateCell(text string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	if len(text) <= maxWidth {
+	runes := []rune(text)
+	if len(runes) <= maxWidth {
 		return text
 	}
 
-	spans := parseMarkdownSpans(text)
+	spans := parseMarkdownSpansRunes(runes)
 
 	if maxWidth < 3 {
-		// Not enough room for full ellipsis, return dots up to maxWidth
-		return "..."[:maxWidth]
+		return string([]rune("...")[:maxWidth])
 	}
 
 	// Find a good truncation point that respects markdown spans.
 	// We need room for "..." (3 chars).
 	targetWidth := maxWidth - 3
 
-	// Find the best break point that doesn't split a markdown span.
-	breakPos := findBreakPoint(text, spans, targetWidth)
+	breakPos := findBreakPointRunes(runes, spans, targetWidth)
 
 	if breakPos <= 0 {
-		// Can't fit anything meaningful, hard truncate
-		return text[:targetWidth] + "..."
+		return string(runes[:targetWidth]) + "..."
 	}
 
-	return strings.TrimRight(text[:breakPos], " ") + "..."
+	return strings.TrimRight(string(runes[:breakPos]), " ") + "..."
 }
 
 // wrapCellBr wraps text at word boundaries using <br> to fit within
@@ -52,31 +56,36 @@ func wrapCellBr(text string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	if len(text) <= maxWidth {
+	runes := []rune(text)
+	if len(runes) <= maxWidth {
 		return text
 	}
 
-	spans := parseMarkdownSpans(text)
+	spans := parseMarkdownSpansRunes(runes)
 	var lines []string
-	remaining := text
+	offset := 0 // current rune offset into original text
 
-	for len(remaining) > maxWidth {
-		breakPos := findBreakPoint(remaining, spansInRange(spans, len(text)-len(remaining), len(remaining)), maxWidth)
+	for len(runes)-offset > maxWidth {
+		remLen := len(runes) - offset
+		adjustedSpans := spansInRange(spans, offset, offset+remLen)
+		breakPos := findBreakPointRunes(runes[offset:], adjustedSpans, maxWidth)
 
 		if breakPos <= 0 {
-			// Hard break at maxWidth
 			breakPos = maxWidth
 		}
 
-		line := strings.TrimRight(remaining[:breakPos], " ")
+		line := strings.TrimRight(string(runes[offset:offset+breakPos]), " ")
 		lines = append(lines, line)
-		remaining = strings.TrimLeft(remaining[breakPos:], " ")
 
-		// Recalculate spans relative to new remaining position
+		// Advance past the break and any leading spaces.
+		offset += breakPos
+		for offset < len(runes) && runes[offset] == ' ' {
+			offset++
+		}
 	}
 
-	if remaining != "" {
-		lines = append(lines, remaining)
+	if offset < len(runes) {
+		lines = append(lines, string(runes[offset:]))
 	}
 
 	return strings.Join(lines, "<br>")
@@ -88,31 +97,34 @@ type markdownSpan struct {
 	end   int // exclusive
 }
 
-// parseMarkdownSpans finds markdown links [text](url) and inline code `code`
-// spans in the text and returns their positions.
-func parseMarkdownSpans(text string) []markdownSpan {
+// parseMarkdownSpansRunes is like parseMarkdownSpans but operates on a
+// pre-converted rune slice to avoid redundant string→rune conversions.
+func parseMarkdownSpansRunes(runes []rune) []markdownSpan {
 	var spans []markdownSpan
 
 	i := 0
-	for i < len(text) {
+	for i < len(runes) {
 		// Check for inline code: `...`
-		if text[i] == '`' {
-			end := strings.IndexByte(text[i+1:], '`')
+		if runes[i] == '`' {
+			end := -1
+			for j := i + 1; j < len(runes); j++ {
+				if runes[j] == '`' {
+					end = j
+					break
+				}
+			}
 			if end >= 0 {
-				spanEnd := i + 1 + end + 1
-				spans = append(spans, markdownSpan{start: i, end: spanEnd})
-				i = spanEnd
+				spans = append(spans, markdownSpan{start: i, end: end + 1})
+				i = end + 1
 				continue
 			}
 		}
 
 		// Check for markdown link: [text](url)
-		if text[i] == '[' {
-			// Find closing ]
-			closeBracket := findClosingBracket(text, i)
-			if closeBracket > i && closeBracket+1 < len(text) && text[closeBracket+1] == '(' {
-				// Find closing )
-				closeParen := findClosingParen(text, closeBracket+1)
+		if runes[i] == '[' {
+			closeBracket := findClosingBracketRunes(runes, i)
+			if closeBracket > i && closeBracket+1 < len(runes) && runes[closeBracket+1] == '(' {
+				closeParen := findClosingParenRunes(runes, closeBracket+1)
 				if closeParen > closeBracket+1 {
 					spans = append(spans, markdownSpan{start: i, end: closeParen + 1})
 					i = closeParen + 1
@@ -127,11 +139,11 @@ func parseMarkdownSpans(text string) []markdownSpan {
 	return spans
 }
 
-// findClosingBracket finds the closing ] for an opening [ at pos.
-func findClosingBracket(text string, pos int) int {
+// findClosingBracketRunes finds the closing ] for an opening [ at pos in a rune slice.
+func findClosingBracketRunes(runes []rune, pos int) int {
 	depth := 0
-	for i := pos; i < len(text); i++ {
-		switch text[i] {
+	for i := pos; i < len(runes); i++ {
+		switch runes[i] {
 		case '[':
 			depth++
 		case ']':
@@ -144,11 +156,11 @@ func findClosingBracket(text string, pos int) int {
 	return -1
 }
 
-// findClosingParen finds the closing ) for an opening ( at pos.
-func findClosingParen(text string, pos int) int {
+// findClosingParenRunes finds the closing ) for an opening ( at pos in a rune slice.
+func findClosingParenRunes(runes []rune, pos int) int {
 	depth := 0
-	for i := pos; i < len(text); i++ {
-		switch text[i] {
+	for i := pos; i < len(runes); i++ {
+		switch runes[i] {
 		case '(':
 			depth++
 		case ')':
@@ -161,12 +173,12 @@ func findClosingParen(text string, pos int) int {
 	return -1
 }
 
-// findBreakPoint finds the best position to break text at or before targetWidth,
-// respecting markdown spans (not breaking inside them). It prefers word boundaries
-// (spaces) but will break before a markdown span if the span exceeds the width.
-func findBreakPoint(text string, spans []markdownSpan, targetWidth int) int {
-	if targetWidth >= len(text) {
-		return len(text)
+// findBreakPointRunes finds the best rune position to break text at or before
+// targetWidth, respecting markdown spans (not breaking inside them). It prefers
+// word boundaries (spaces) but will break before a span that exceeds the width.
+func findBreakPointRunes(runes []rune, spans []markdownSpan, targetWidth int) int {
+	if targetWidth >= len(runes) {
+		return len(runes)
 	}
 
 	// Check if targetWidth falls inside a markdown span
@@ -175,7 +187,7 @@ func findBreakPoint(text string, spans []markdownSpan, targetWidth int) int {
 			// We're inside a span. Try to break before the span.
 			if s.start > 0 {
 				// Find a word boundary before this span
-				breakBefore := lastSpaceBefore(text, s.start)
+				breakBefore := lastSpaceInRunes(runes, s.start)
 				if breakBefore > 0 {
 					return breakBefore
 				}
@@ -187,7 +199,7 @@ func findBreakPoint(text string, spans []markdownSpan, targetWidth int) int {
 	}
 
 	// Not inside a span. Find the last word boundary at or before targetWidth.
-	breakPos := lastSpaceBefore(text, targetWidth+1)
+	breakPos := lastSpaceInRunes(runes, targetWidth+1)
 	if breakPos > 0 {
 		return breakPos
 	}
@@ -196,14 +208,14 @@ func findBreakPoint(text string, spans []markdownSpan, targetWidth int) int {
 	return targetWidth
 }
 
-// lastSpaceBefore returns the position of the last space in text before position pos.
+// lastSpaceInRunes returns the index of the last space in runes before index pos.
 // Returns -1 if no space is found.
-func lastSpaceBefore(text string, pos int) int {
-	if pos > len(text) {
-		pos = len(text)
+func lastSpaceInRunes(runes []rune, pos int) int {
+	if pos > len(runes) {
+		pos = len(runes)
 	}
 	for i := pos - 1; i >= 0; i-- {
-		if text[i] == ' ' {
+		if runes[i] == ' ' {
 			return i
 		}
 	}
@@ -255,7 +267,7 @@ func applyColumnConstraints(row string, cols map[string]columnConfig, colMap map
 		}
 
 		cellContent := strings.TrimSpace(cells[idx])
-		if len(cellContent) <= cc.maxWidth {
+		if runeLen(cellContent) <= cc.maxWidth {
 			continue
 		}
 

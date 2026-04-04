@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -93,6 +94,21 @@ func TestTruncateCell_LinkTooLongForWidth(t *testing.T) {
 	}
 }
 
+func TestTruncateCell_MultiByte_CountsRunesNotBytes(t *testing.T) {
+	// "café résumé" is 11 runes but 14 bytes (é = 2 bytes each, 3 of them).
+	// With maxWidth=11, it should fit without truncation.
+	got := truncateCell("café résumé", 11)
+	assert.Equal(t, "café résumé", got)
+}
+
+func TestTruncateCell_MultiByte_TruncatesCorrectly(t *testing.T) {
+	// "ñoño mundo" is 10 runes, 12 bytes (ñ = 2 bytes each).
+	// With maxWidth=7, truncate to 4 runes + "..." = "ñoño...".
+	// Byte-based code would slice at byte 4, corrupting the second ñ.
+	got := truncateCell("ñoño mundo", 7)
+	assert.Equal(t, "ñoño...", got)
+}
+
 // =====================================================================
 // wrapCellBr
 // =====================================================================
@@ -149,6 +165,51 @@ func TestWrapCellBr_MultipleWraps(t *testing.T) {
 func TestWrapCellBr_ExactWidthNoWrap(t *testing.T) {
 	got := wrapCellBr("12345", 5)
 	assert.Equal(t, "12345", got, "expected %q, got %q", "12345", got)
+}
+
+func TestWrapCellBr_MultiByte_WrapsAtRuneBoundary(t *testing.T) {
+	// "café résumé world" is 17 runes. With maxWidth=11 the first line
+	// should be "café résumé" (11 runes) and second "world".
+	got := wrapCellBr("café résumé world", 11)
+	assert.Equal(t, "café résumé<br>world", got)
+}
+
+func TestWrapCellBr_MultiByte_WithMarkdownSpan(t *testing.T) {
+	// Markdown link containing multi-byte chars should not be split.
+	// "see [résumé](url) here" is 22 runes. With maxWidth=16, the break
+	// point falls inside the link span; wrapping should break before it.
+	got := wrapCellBr("see [résumé](url) here", 16)
+	// Break before the link, then link + "here" fits on second line.
+	assert.Equal(t, "see<br>[résumé](url)<br>here", got)
+}
+
+func BenchmarkWrapCellBr_LargeMultiByte(b *testing.B) {
+	// 100k-rune multi-byte string to detect O(n²) regressions.
+	word := strings.Repeat("café ", 20000)
+	b.ResetTimer()
+	for b.Loop() {
+		wrapCellBr(word, 20)
+	}
+}
+
+func BenchmarkWrapCellBr_Allocs(b *testing.B) {
+	// Keep allocation behavior visible without asserting a brittle
+	// absolute threshold that can vary across Go versions or platforms.
+	text := strings.Repeat("café ", 10) // 50 runes, 60 bytes
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		wrapCellBr(text, 20)
+	}
+}
+
+func BenchmarkTruncateCell_Allocs(b *testing.B) {
+	text := strings.Repeat("café ", 10) // 50 runes, 60 bytes
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		truncateCell(text, 20)
+	}
 }
 
 // =====================================================================

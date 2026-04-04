@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -216,7 +217,13 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		lineNum := i + 1
 		limit := r.activeMax(baseMax, lc, lineNum)
 
+		// Fast path: byte length is always >= rune count, so if the
+		// byte length fits, the rune count will too.
 		if len(line) <= limit {
+			continue
+		}
+		runeLen := utf8.RuneCount(line)
+		if runeLen <= limit {
 			continue
 		}
 		if r.isSkipped(line, lineNum, limit, lc) {
@@ -230,20 +237,24 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  fmt.Sprintf("line too long (%d > %d)", len(line), limit),
+			Message:  fmt.Sprintf("line too long (%d > %d)", runeLen, limit),
 		})
 	}
 
 	return diags
 }
 
-// hasSpacePastLimit returns true if line contains a space byte at or beyond
-// the given limit column (0-indexed byte position).
+// hasSpacePastLimit returns true if line contains a space at or beyond
+// the given limit column (0-indexed rune position).
 func hasSpacePastLimit(line []byte, limit int) bool {
-	for i := limit; i < len(line); i++ {
-		if line[i] == ' ' {
+	i := 0
+	for len(line) > 0 {
+		r, size := utf8.DecodeRune(line)
+		if i >= limit && r == ' ' {
 			return true
 		}
+		line = line[size:]
+		i++
 	}
 	return false
 }
