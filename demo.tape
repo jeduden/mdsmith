@@ -278,7 +278,7 @@ Sleep 100ms
 Type "mdsmith help rule line-length"
 Sleep 100ms
 Enter
-Sleep 200ms
+Sleep 100ms
 
 Type "# Shows rule description, severity, and config"
 Enter
