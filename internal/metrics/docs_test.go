@@ -36,6 +36,20 @@ func TestLookupDoc_Unknown(t *testing.T) {
 	require.Contains(t, err.Error(), "unknown metric", "error = %q, want unknown metric", err.Error())
 }
 
+func TestLookupDocFromFS_ExcludesFrontMatter(t *testing.T) {
+	fsys := fstest.MapFS{
+		"testmetric/README.md": &fstest.MapFile{
+			Data: []byte("---\nid: MET999\nname: test\ndescription: Test.\n---\n# MET999\n"),
+		},
+	}
+
+	content, err := lookupDocFromFS(fsys, "MET999")
+	require.NoError(t, err, "lookupDocFromFS(MET999): %v", err)
+	require.NotContains(t, content, "---", "expected content to not contain front matter delimiters")
+	require.NotContains(t, content, "description: Test", "expected content to not contain front matter fields")
+	require.Contains(t, content, "# MET999", "expected content body to be preserved")
+}
+
 func TestListDocsFromFS_SkipsBadFrontMatter(t *testing.T) {
 	fsys := fstest.MapFS{
 		"good/README.md": &fstest.MapFile{

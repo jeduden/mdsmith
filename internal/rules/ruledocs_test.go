@@ -106,6 +106,20 @@ func TestLookupRuleFromFS_ByIDAndName(t *testing.T) {
 	assert.Contains(t, content, "# Content", "expected content to contain '# Content'")
 }
 
+func TestLookupRuleFromFS_ExcludesFrontMatter(t *testing.T) {
+	fsys := fstest.MapFS{
+		"testrule/README.md": &fstest.MapFile{
+			Data: []byte("---\nid: MDS999\nname: test-rule\nstatus: ready\ndescription: Test.\n---\n# Content\n"),
+		},
+	}
+
+	content, err := lookupRuleFromFS(fsys, "MDS999")
+	require.NoError(t, err, "lookupRuleFromFS(MDS999): %v", err)
+	assert.NotContains(t, content, "---", "expected content to not contain front matter delimiters")
+	assert.NotContains(t, content, "status: ready", "expected content to not contain front matter fields")
+	assert.Contains(t, content, "# Content", "expected content body to be preserved")
+}
+
 func TestLookupRuleFromFS_NotFound(t *testing.T) {
 	fsys := fstest.MapFS{
 		"testrule/README.md": &fstest.MapFile{
