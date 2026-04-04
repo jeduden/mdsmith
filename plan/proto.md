@@ -17,6 +17,12 @@ filename: "[0-9]*_*.md"
     Bare backticked paths are allowed in commands,
     code blocks, and placeholders.
 
+  Status values:
+  - 🔲 not started
+  - 🔳 in progress
+  - ✅ completed
+  - ⛔ superseded (replaced by another plan)
+
 -->
 
 ## ...

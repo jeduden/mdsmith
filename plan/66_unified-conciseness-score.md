@@ -13,7 +13,7 @@ features. Require zero external dependencies.
 
 ## Motivation
 
-Six plans and seven open PRs address conciseness with
+Six plans and seven PRs addressed conciseness with
 diverging approaches. This plan consolidates them into
 one roadmap that produces a single number per paragraph:
 a `float64` in `[0, 1]` where `1.0` means maximally
@@ -177,7 +177,7 @@ and runs offline when features or corpus change.
    `internal/rules/MDS029-conciseness-scoring/`
 9. Add config support for `min-score` threshold
 10. Run determinism and benchmark validation
-11. Close superseded PRs #21, #24, #31, #34
+11. ~~Close superseded PRs #21, #24, #31, #34~~ (done)
 
 ## Acceptance Criteria
 
