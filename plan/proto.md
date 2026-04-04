@@ -1,7 +1,7 @@
 ---
 id: 'int & >=1'
 title: 'string & != ""'
-status: '"🔲" | "🔳" | "✅"'
+status: '"🔲" | "🔳" | "✅" | "⛔"'
 summary: 'string | *""'
 ---
 <?require
@@ -16,6 +16,12 @@ filename: "[0-9]*_*.md"
   - Use Markdown links for real repo paths in prose.
     Bare backticked paths are allowed in commands,
     code blocks, and placeholders.
+
+  Status values:
+  - 🔲 not started
+  - 🔳 in progress
+  - ✅ completed
+  - ⛔ superseded (replaced by another plan)
 
 -->
 

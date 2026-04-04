@@ -1,7 +1,7 @@
 ---
 id: 54
 title: Conciseness Metrics Design and Implementation
-status: 🔲
+status: ⛔
 ---
 # Conciseness Metrics Design and Implementation
 

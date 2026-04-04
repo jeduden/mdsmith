@@ -1,7 +1,7 @@
 ---
 id: 53
 title: Conciseness Scoring
-status: "🔳"
+status: "⛔"
 ---
 # Conciseness Scoring
 

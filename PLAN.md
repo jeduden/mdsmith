@@ -19,14 +19,15 @@ footer: |
 | 50  | 🔲     | [Redundancy / Duplication Detection](plan/50_redundancy-duplication-detection.md)                               |
 | 51  | 🔲     | [Section-Level Size Limits](plan/51_section-level-size-limits.md)                                               |
 | 52  | 🔲     | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                      |
-| 53  | 🔳     | [Conciseness Scoring](plan/53_conciseness-scoring.md)                                                           |
-| 54  | 🔲     | [Conciseness Metrics Design and Implementation](plan/54_metrics-guide-tradeoffs.md)                             |
-| 56  | 🔲     | [Spike Ollama for Weasel Detection](plan/56_spike-ollama-weasel-detection.md)                                   |
-| 58  | 🔳     | [Select and Package Fast Weasel Classifier (CPU Fallback)](plan/58_classifier-model-selection-and-embedding.md) |
+| 53  | ⛔     | [Conciseness Scoring](plan/53_conciseness-scoring.md)                                                           |
+| 54  | ⛔     | [Conciseness Metrics Design and Implementation](plan/54_metrics-guide-tradeoffs.md)                             |
+| 56  | ⛔     | [Spike Ollama for Weasel Detection](plan/56_spike-ollama-weasel-detection.md)                                   |
+| 58  | ⛔     | [Select and Package Fast Weasel Classifier (CPU Fallback)](plan/58_classifier-model-selection-and-embedding.md) |
 | 61  | 🔲     | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                    |
 | 62  | ✅     | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                                                |
 | 64  | ✅     | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                        |
 | 65  | 🔲     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                |
+| 66  | 🔲     | [Unified Conciseness Score](plan/66_unified-conciseness-score.md)                                               |
 | 68  | 🔲     | [Reorganize Documentation](plan/68_reorganize-docs.md)                                                          |
 | 69  | 🔲     | [Include enhancements: link adjustment and heading-level](plan/69_include-enhancements.md)                      |
 | 73  | ✅     | [Unify template and processing directives](plan/73_unify-template-directives.md)                                |

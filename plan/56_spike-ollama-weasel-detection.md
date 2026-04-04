@@ -1,7 +1,7 @@
 ---
 id: 56
 title: Spike Ollama for Weasel Detection
-status: 🔲
+status: ⛔
 ---
 # Spike Ollama for Weasel Detection
 
