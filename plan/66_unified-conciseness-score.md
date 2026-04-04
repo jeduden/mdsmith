@@ -44,8 +44,8 @@ We select the enhanced pure-Go linear classifier because:
 
 | Plan | Title                    | Disposition            |
 |------|--------------------------|------------------------|
-| 53   | MDS026 conciseness score | Absorbed; close PR #21 |
-| 54   | MDS026 conciseness rule  | Absorbed; close PR #24 |
+| 53   | MDS029 conciseness score | Absorbed; close PR #21 |
+| 54   | MDS029 conciseness rule  | Absorbed; close PR #24 |
 | 56   | Ollama spike             | Won't continue; #34    |
 | 58   | Classifier fallback      | Partial absorb; #31    |
 | 62   | Corpus acquisition       | Absorbed; merge #35    |
@@ -56,7 +56,7 @@ We select the enhanced pure-Go linear classifier because:
 1. PR #33 (plan 64) — base classifier
 2. PR #35 (plan 62) — corpus
 3. This plan's PR — extended features, retrained weights,
-   MDS026 rule
+   MDS029 rule
 
 PRs #21, #24, #31, #34 are closed with a comment linking
 to this plan.
@@ -75,7 +75,7 @@ over paragraph-level features. The sigmoid maps to
 `[0, 1]` and the model weights determine how each
 feature contributes.
 
-The MDS026 rule fires when `conciseness < threshold`
+The MDS029 rule fires when `conciseness < threshold`
 (default `0.5`, configurable in `.mdsmith.yml`).
 
 ```yaml
@@ -87,7 +87,7 @@ rules:
 Diagnostic format:
 
 ```text
-README.md:14:1 MDS026 paragraph conciseness 0.38 …
+README.md:14:1 MDS029 paragraph conciseness 0.38 …
 ```
 
 ## Features
@@ -135,11 +135,11 @@ internal/rules/concisenessscoring/
 │   └── data/
 │       └── cue-linear-v2.json  # NEW: weights
 ├── scorer.go              # NEW: interface
-└── scorer_test.go         # NEW
-internal/rules/mds026.go       # NEW: rule
-internal/rules/mds026_test.go  # NEW
-rules/MDS026-paragraph-conciseness/
-└── README.md              # NEW: rule spec
+├── scorer_test.go         # NEW
+├── rule.go                # NEW: MDS029 rule
+└── rule_test.go           # NEW
+internal/rules/MDS029-conciseness-scoring/
+└── README.md              # update rule spec
 ```
 
 ### Weight retraining
@@ -164,15 +164,15 @@ and runs offline when features or corpus change.
 4. Add feature tests in `features_test.go`
 5. Retrain weights with 14 features, export v2 JSON
 6. Implement `Scorer` interface in `scorer.go`
-7. Implement MDS026 rule in `mds026.go`
-8. Add MDS026 rule spec in `rules/` directory
+7. Implement MDS029 rule in `mds026.go`
+8. Add MDS029 rule spec in `rules/` directory
 9. Add config support for `min-score` threshold
 10. Run determinism and benchmark validation
 11. Close superseded PRs #21, #24, #31, #34
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith check` reports MDS026 diagnostics with
+- [ ] `mdsmith check` reports MDS029 diagnostics with
   a conciseness score
 - [ ] Score is a `float64` in `[0, 1]`, printed to
   2 decimal places
@@ -223,7 +223,7 @@ GOCACHE=/tmp/mdsmith-gocache go run ./cmd/mdsmith check \
 
 - PR #33: pure-Go classifier spike (plan 64)
 - PR #35: corpus acquisition (plan 62)
-- PR #24: MDS026 rule definition (plan 54)
+- PR #24: MDS029 rule definition (plan 54)
 - PR #31: classifier fallback interface (plan 58)
 - ConCISE (2025, arxiv:2511.16846): reference-free
   conciseness metric via compression ratios
