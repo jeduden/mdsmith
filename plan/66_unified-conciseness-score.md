@@ -38,9 +38,11 @@ We select the enhanced pure-Go linear classifier because:
    returns a `float64`. Retraining weights is a single
    Python script run offline.
 
-## Superseded Plans
+## Consolidated Plan Relationships
 
-<!-- supersedes: 53, 54, 56, 58, 62, 64 -->
+<!-- supersedes: 53, 54, 56, 58 -->
+
+### Superseded plans
 
 | Plan | Title                    | Disposition            |
 |------|--------------------------|------------------------|
@@ -48,8 +50,13 @@ We select the enhanced pure-Go linear classifier because:
 | 54   | MDS029 conciseness rule  | Absorbed; close PR #24 |
 | 56   | Ollama spike             | Won't continue; #34    |
 | 58   | Classifier fallback      | Partial absorb; #31    |
-| 62   | Corpus acquisition       | Absorbed; merge #35    |
-| 64   | Pure-Go classifier spike | Foundation; merge #33  |
+
+### Completed foundation plans
+
+| Plan | Title                    | Disposition           |
+|------|--------------------------|-----------------------|
+| 62   | Corpus acquisition       | Absorbed; merge #35   |
+| 64   | Pure-Go classifier spike | Foundation; merge #33 |
 
 ### Merge order
 
@@ -164,8 +171,10 @@ and runs offline when features or corpus change.
 4. Add feature tests in `features_test.go`
 5. Retrain weights with 14 features, export v2 JSON
 6. Implement `Scorer` interface in `scorer.go`
-7. Implement MDS029 rule in `mds026.go`
-8. Add MDS029 rule spec in `rules/` directory
+7. Implement MDS029 rule in
+   `internal/rules/concisenessscoring/rule.go`
+8. Update MDS029 rule spec in
+   `internal/rules/MDS029-conciseness-scoring/`
 9. Add config support for `min-score` threshold
 10. Run determinism and benchmark validation
 11. Close superseded PRs #21, #24, #31, #34
@@ -177,7 +186,7 @@ and runs offline when features or corpus change.
 - [ ] Score is a `float64` in `[0, 1]`, printed to
   2 decimal places
 - [ ] Threshold configurable via `.mdsmith.yml`
-  `paragraph-conciseness.min-score`
+  `rules.conciseness-scoring.min-score`
 - [ ] All 14 features extracted in pure Go,
   `CGO_ENABLED=0`
 - [ ] Deterministic: same paragraph produces same score
