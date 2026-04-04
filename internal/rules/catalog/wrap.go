@@ -241,21 +241,6 @@ func lastSpaceInRunes(runes []rune, pos int) int {
 	return -1
 }
 
-// lastSpaceBeforeRune returns the rune position of the last space in text
-// before rune position pos. Returns -1 if no space is found.
-func lastSpaceBeforeRune(text string, pos int) int {
-	runes := []rune(text)
-	if pos > len(runes) {
-		pos = len(runes)
-	}
-	for i := pos - 1; i >= 0; i-- {
-		if runes[i] == ' ' {
-			return i
-		}
-	}
-	return -1
-}
-
 // spansInRange returns spans adjusted to be relative to the start of a substring.
 func spansInRange(spans []markdownSpan, offset, end int) []markdownSpan {
 	var result []markdownSpan
