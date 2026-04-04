@@ -83,12 +83,12 @@ over paragraph-level features. The sigmoid maps to
 feature contributes.
 
 The MDS029 rule fires when `conciseness < threshold`
-(default `0.5`, configurable in `.mdsmith.yml`).
+(default `0.20`, configurable in `.mdsmith.yml`).
 
 ```yaml
 rules:
-  paragraph-conciseness:
-    min-score: 0.5     # paragraphs below this are flagged
+  conciseness-scoring:
+    min-score: 0.20    # paragraphs below this are flagged
 ```
 
 Diagnostic format:
