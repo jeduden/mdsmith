@@ -275,7 +275,7 @@ Show
 Type "# Look up a specific lint rule"
 Enter
 Sleep 100ms
-Type "mdsmith help rule line-length"
+Type "mdsmith help rule line-length | head -20"
 Sleep 100ms
 Enter
 Sleep 100ms
