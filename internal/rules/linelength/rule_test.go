@@ -383,6 +383,32 @@ func TestCheck_MultiByte_EnDashIssue107(t *testing.T) {
 		"expected 0 diagnostics for 49-rune line at max=50, got %d", len(diags))
 }
 
+func TestCheck_Stern_MultiByte_SpacePastLimitInRuneColumns(t *testing.T) {
+	// 80 ASCII chars + en dash (1 rune, 3 bytes) + space + "b" = 83 runes, 85 bytes.
+	// Space is at rune position 81 (0-indexed), past limit=80.
+	// Stern mode should flag this because there IS a space past the limit.
+	line := nChars(80, 'a') + "\u2013" + " b"
+	src := []byte(line + "\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Max: 80, Stern: true, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "expected 1 diagnostic for stern line with space past rune limit, got %d", len(diags))
+}
+
+func TestCheck_Stern_MultiByte_NoSpacePastLimitInRuneColumns(t *testing.T) {
+	// 78 ASCII chars + en dash (1 rune, 3 bytes) + "bbb" = 82 runes, 84 bytes.
+	// With max=80 and stern=true, there is no space past rune position 80,
+	// so this should be skipped even though it exceeds max.
+	line := nChars(78, 'a') + "\u2013" + "bbb"
+	src := []byte(line + "\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Max: 80, Stern: true, Exclude: defaultExclude()}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "expected 0 diagnostics for stern line without space past rune limit, got %d", len(diags))
+}
+
 // --- Configurable tests ---
 
 func TestApplySettings_ValidMax(t *testing.T) {

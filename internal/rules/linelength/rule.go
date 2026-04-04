@@ -217,6 +217,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		lineNum := i + 1
 		limit := r.activeMax(baseMax, lc, lineNum)
 
+		// Fast path: byte length is always >= rune count, so if the
+		// byte length fits, the rune count will too.
+		if len(line) <= limit {
+			continue
+		}
 		runeLen := utf8.RuneCount(line)
 		if runeLen <= limit {
 			continue

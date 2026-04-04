@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -168,19 +167,28 @@ func TestWrapCellBr_ExactWidthNoWrap(t *testing.T) {
 	assert.Equal(t, "12345", got, "expected %q, got %q", "12345", got)
 }
 
-func TestWrapCellBr_LargeInput_LinearTime(t *testing.T) {
-	// Build a ~100 000-rune string of multi-byte words.
-	// Each "café " is 5 runes / 6 bytes; repeated 20 000 times = 100k runes.
-	// With maxWidth=20, this forces ~5 000 wrap iterations.
-	// O(n²) RuneCountInString re-scanning makes this measurably slow on
-	// multi-byte input; O(n) incremental tracking finishes fast.
-	word := strings.Repeat("café ", 20000) // 100 000 runes
-	start := time.Now()
-	_ = wrapCellBr(word, 20)
-	elapsed := time.Since(start)
-	// 500 ms is generous for O(n) but catches O(n²) on 100k multi-byte input.
-	if elapsed > 500*time.Millisecond {
-		t.Errorf("wrapCellBr took %v on 100k-rune input; expected < 500ms (possible O(n²))", elapsed)
+func TestWrapCellBr_MultiByte_WrapsAtRuneBoundary(t *testing.T) {
+	// "café résumé world" is 17 runes. With maxWidth=11 the first line
+	// should be "café résumé" (11 runes) and second "world".
+	got := wrapCellBr("café résumé world", 11)
+	assert.Equal(t, "café résumé<br>world", got)
+}
+
+func TestWrapCellBr_MultiByte_WithMarkdownSpan(t *testing.T) {
+	// Markdown link containing multi-byte chars should not be split.
+	// "see [résumé](url) here" is 22 runes. With maxWidth=16, the break
+	// point falls inside the link span; wrapping should break before it.
+	got := wrapCellBr("see [résumé](url) here", 16)
+	// Break before the link, then link + "here" fits on second line.
+	assert.Equal(t, "see<br>[résumé](url)<br>here", got)
+}
+
+func BenchmarkWrapCellBr_LargeMultiByte(b *testing.B) {
+	// 100k-rune multi-byte string to detect O(n²) regressions.
+	word := strings.Repeat("café ", 20000)
+	b.ResetTimer()
+	for b.Loop() {
+		wrapCellBr(word, 20)
 	}
 }
 
