@@ -402,7 +402,7 @@ func extractLexiconFeatures(
 func extractDerivedFeatures(
 	text string, tokens []string, features map[string]float64,
 ) {
-	features["compression_ratio"] = CompressionRatio(text)
+	features["compression_ratio"] = CompressionRatio(tokens)
 	features["type_token_ratio"] = TypeTokenRatio(tokens)
 	features["nominal_density"] = NominalDensity(tokens)
 	features["sent_len_variance"] = SentLenVariance(text)

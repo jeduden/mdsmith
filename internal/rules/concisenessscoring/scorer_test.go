@@ -4,9 +4,17 @@ import (
 	"math"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/rules/concisenessscoring/classifier"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func concisenessThreshold(t *testing.T) float64 {
+	t.Helper()
+	m, err := classifier.LoadEmbedded()
+	require.NoError(t, err)
+	return 1.0 - m.Threshold()
+}
 
 func TestNewScorer(t *testing.T) {
 	s, err := NewScorer()
@@ -24,7 +32,8 @@ func TestScorer_VerboseText(t *testing.T) {
 	result := s.Score(text)
 	assert.GreaterOrEqual(t, result.Conciseness, 0.0)
 	assert.LessOrEqual(t, result.Conciseness, 1.0)
-	assert.Less(t, result.Conciseness, 0.8)
+	threshold := concisenessThreshold(t)
+	assert.Less(t, result.Conciseness, threshold)
 }
 
 func TestScorer_ConciseText(t *testing.T) {
@@ -34,7 +43,8 @@ func TestScorer_ConciseText(t *testing.T) {
 	result := s.Score(text)
 	assert.GreaterOrEqual(t, result.Conciseness, 0.0)
 	assert.LessOrEqual(t, result.Conciseness, 1.0)
-	assert.Greater(t, result.Conciseness, 0.8)
+	threshold := concisenessThreshold(t)
+	assert.Greater(t, result.Conciseness, threshold)
 }
 
 func TestScorer_VerboseLowerThanConcise(t *testing.T) {

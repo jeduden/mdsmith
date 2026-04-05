@@ -14,20 +14,20 @@ func floatEq(a, b float64) bool {
 // --- CompressionRatio (bigram repetition) ---
 
 func TestCompressionRatio_Empty(t *testing.T) {
-	if got := CompressionRatio(""); got != 0.0 {
-		t.Fatalf("expected 0.0 for empty string, got %v", got)
+	if got := CompressionRatio(nil); got != 0.0 {
+		t.Fatalf("expected 0.0 for nil tokens, got %v", got)
 	}
 }
 
 func TestCompressionRatio_SingleWord(t *testing.T) {
-	if got := CompressionRatio("hello"); got != 0.0 {
+	if got := CompressionRatio([]string{"hello"}); got != 0.0 {
 		t.Fatalf("expected 0.0 for single word, got %v", got)
 	}
 }
 
 func TestCompressionRatio_RedundantVsVaried(t *testing.T) {
-	redundant := "the the the the the the the the"
-	varied := "the quick brown fox jumps over lazy dogs"
+	redundant := []string{"the", "the", "the", "the", "the", "the", "the", "the"}
+	varied := []string{"the", "quick", "brown", "fox", "jumps", "over", "lazy", "dogs"}
 
 	ratioRedundant := CompressionRatio(redundant)
 	ratioVaried := CompressionRatio(varied)
@@ -47,7 +47,7 @@ func TestCompressionRatio_RedundantVsVaried(t *testing.T) {
 }
 
 func TestCompressionRatio_NoRepetition(t *testing.T) {
-	r := CompressionRatio("hello world this is a test")
+	r := CompressionRatio([]string{"hello", "world", "this", "is", "a", "test"})
 	if r != 0.0 {
 		t.Fatalf("expected 0.0 for no repeated bigrams, got %v", r)
 	}

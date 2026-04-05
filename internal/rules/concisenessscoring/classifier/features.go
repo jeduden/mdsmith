@@ -29,10 +29,9 @@ var nominalizationSuffixes = []string{
 
 // CompressionRatio estimates text redundancy using bigram repetition.
 // It returns the fraction of repeated token bigrams. Higher values
-// indicate more repetitive (redundant) text. Returns 0.0 if the
-// text has fewer than 2 tokens.
-func CompressionRatio(text string) float64 {
-	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
+// indicate more repetitive (redundant) text. Returns 0.0 if
+// tokens has fewer than 2 entries.
+func CompressionRatio(tokens []string) float64 {
 	if len(tokens) < 2 {
 		return 0.0
 	}

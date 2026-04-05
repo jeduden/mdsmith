@@ -97,7 +97,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		examples := formatExamples(result.Cues)
 		if examples != "" {
 			message += fmt.Sprintf(
-				"; reduce filler or hedge cues (e.g., %s)",
+				"; reduce verbose cues (e.g., %s)",
 				examples,
 			)
 		}
