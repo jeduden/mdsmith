@@ -13,42 +13,45 @@ func floatEq(a, b float64) bool {
 
 // --- CompressionRatio ---
 
-func TestCompressionRatio(t *testing.T) {
-	tests := []struct {
-		name   string
-		text   string
-		expect func(float64) bool
-		desc   string
-	}{
-		{"empty", "", func(v float64) bool { return v == 0 }, "empty returns 0"},
-		{"single_word", "hello", func(v float64) bool { return v == 0 }, "single word returns 0"},
-		{
-			"repetitive",
-			"the the the the the the the the",
-			func(v float64) bool { return v > 0.5 },
-			"highly repetitive text has ratio > 0.5",
-		},
-		{
-			"varied",
-			"the quick brown fox jumps over lazy dogs",
-			func(v float64) bool { return v == 0 },
-			"varied text has ratio 0",
-		},
+func TestCompressionRatio_Empty(t *testing.T) {
+	if got := CompressionRatio(""); got != 0.0 {
+		t.Fatalf("expected 0.0 for empty string, got %v", got)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := CompressionRatio(tt.text)
-			if !tt.expect(got) {
-				t.Errorf("%s: got %.6f", tt.desc, got)
-			}
-		})
-	}
+}
 
-	// Repetitive text should have higher ratio than varied text.
-	rep := CompressionRatio("the the the the the the the the")
-	varied := CompressionRatio("the quick brown fox jumps over lazy dogs")
-	if rep <= varied {
-		t.Errorf("expected repetitive > varied, got %.6f <= %.6f", rep, varied)
+func TestCompressionRatio_ShortText(t *testing.T) {
+	// single byte — less than 2 bytes
+	if got := CompressionRatio("a"); got != 0.0 {
+		t.Fatalf("expected 0.0 for single-byte string, got %v", got)
+	}
+}
+
+func TestCompressionRatio_RedundantVsVaried(t *testing.T) {
+	// Redundant text compresses more tightly → lower ratio.
+	redundant := "the the the the the the the the the the the the the the the the"
+	varied := "the quick brown fox jumps over a lazy dog near some tall old oak"
+
+	ratioRedundant := CompressionRatio(redundant)
+	ratioVaried := CompressionRatio(varied)
+
+	if ratioRedundant == 0.0 {
+		t.Fatal("CompressionRatio returned 0.0 for non-empty redundant text")
+	}
+	if ratioVaried == 0.0 {
+		t.Fatal("CompressionRatio returned 0.0 for non-empty varied text")
+	}
+	if ratioRedundant >= ratioVaried {
+		t.Fatalf(
+			"expected redundant ratio < varied ratio, got redundant=%.4f varied=%.4f",
+			ratioRedundant, ratioVaried,
+		)
+	}
+}
+
+func TestCompressionRatio_PositiveForNonEmpty(t *testing.T) {
+	r := CompressionRatio("hello world this is a test")
+	if r <= 0.0 {
+		t.Fatalf("expected positive ratio, got %v", r)
 	}
 }
 
