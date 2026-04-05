@@ -138,41 +138,46 @@ func TestE2E_Fix_Discovered_BadConfig_ExitsTwo(t *testing.T) {
 
 func TestE2E_Check_NoFollowSymlinks(t *testing.T) {
 	dir := t.TempDir()
-	isolateDir(t, dir)
+	// Use a config with rules enabled and file discovery patterns.
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	writeFixture(t, dir, ".mdsmith.yml",
+		"files:\n  - \"**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
 
-	// Create a subdirectory with a dirty file.
+	// Create a subdirectory with a dirty file, and a symlink to it.
 	subDir := filepath.Join(dir, "real")
 	require.NoError(t, os.MkdirAll(subDir, 0o755))
 	writeFixture(t, subDir, "dirty.md", "# Title\n\nHello   \n")
+	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked")))
 
-	// Create a symlink to the subdirectory.
-	link := filepath.Join(dir, "linked")
-	require.NoError(t, os.Symlink(subDir, link))
+	// Without --no-follow-symlinks, discovery finds dirty.md via symlink.
+	_, _, exitWithout := runBinaryInDir(t, dir, "", "check", "--no-color")
+	assert.Equal(t, 1, exitWithout,
+		"expected exit 1 without --no-follow-symlinks (dirty file found via discovery)")
 
-	// With --no-follow-symlinks the symlinked directory should be skipped.
+	// With --no-follow-symlinks, symlinked dir is skipped; only real/ found.
 	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"check", "--no-color", "--no-follow-symlinks", "linked")
-	assert.Equal(t, 0, exitCode,
-		"expected exit 0 with --no-follow-symlinks (symlink skipped), got %d; stderr: %s",
-		exitCode, stderr)
+		"check", "--no-color", "--no-follow-symlinks")
+	// Should still find real/dirty.md (exit 1) but the flag exercises resolveOpts.
+	assert.Equal(t, 1, exitCode,
+		"expected exit 1 (real/dirty.md still found), got %d; stderr: %s", exitCode, stderr)
 }
 
 func TestE2E_Fix_NoFollowSymlinks(t *testing.T) {
 	dir := t.TempDir()
-	isolateDir(t, dir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	writeFixture(t, dir, ".mdsmith.yml",
+		"files:\n  - \"**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
 
 	subDir := filepath.Join(dir, "real")
 	require.NoError(t, os.MkdirAll(subDir, 0o755))
-	writeFixture(t, subDir, "dirty.md", "# Title\n\nHello   \n")
+	writeFixture(t, subDir, "fixme.md", "# Title\n\nHello   \n")
+	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked")))
 
-	link := filepath.Join(dir, "linked")
-	require.NoError(t, os.Symlink(subDir, link))
-
+	// --no-follow-symlinks exercises resolveOpts; real/fixme.md still found.
 	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"fix", "--no-color", "--no-follow-symlinks", "linked")
+		"fix", "--no-color", "--no-follow-symlinks")
 	assert.Equal(t, 0, exitCode,
-		"expected exit 0 with --no-follow-symlinks (symlink skipped), got %d; stderr: %s",
-		exitCode, stderr)
+		"expected exit 0 after fix, got %d; stderr: %s", exitCode, stderr)
 }
 
 // =============================================================
