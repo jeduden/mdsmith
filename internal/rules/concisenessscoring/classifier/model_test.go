@@ -212,15 +212,23 @@ func TestExtractFeatures_NewFeatures(t *testing.T) {
 	}
 }
 
+func normalizeText(text string) string {
+	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
+	if len(tokens) == 0 {
+		return " "
+	}
+	return " " + strings.Join(tokens, " ") + " "
+}
+
 func TestCountPhraseMatches_UsesBoundaries(t *testing.T) {
-	text := "This statement is in order too noisy to match the cue."
-	count, cues := countPhraseMatches(text, []string{"in order to"})
+	norm := normalizeText("This statement is in order too noisy to match the cue.")
+	count, cues := countPhraseMatches(norm, []string{"in order to"})
 	if count != 0 {
 		t.Fatalf("expected 0 phrase matches, got %d (cues=%v)", count, cues)
 	}
 
-	text = "This statement is in order to reduce noise."
-	count, cues = countPhraseMatches(text, []string{"in order to"})
+	norm = normalizeText("This statement is in order to reduce noise.")
+	count, cues = countPhraseMatches(norm, []string{"in order to"})
 	if count != 1 {
 		t.Fatalf("expected 1 phrase match, got %d (cues=%v)", count, cues)
 	}

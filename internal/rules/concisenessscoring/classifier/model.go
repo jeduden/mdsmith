@@ -376,9 +376,10 @@ func extractLexiconFeatures(
 	actionCount, _ := countTokenMatches(tokens, lexicon.actionWords)
 	contentCount := countContentTokens(tokens, lexicon.stopWords)
 
-	hedgeCount, hedgeCues := countPhraseMatches(text, lexicon.hedgePhrases)
+	normText := " " + strings.Join(tokens, " ") + " "
+	hedgeCount, hedgeCues := countPhraseMatches(normText, lexicon.hedgePhrases)
 	verboseCount, verboseCues := countPhraseMatches(
-		text, lexicon.verbosePhrases,
+		normText, lexicon.verbosePhrases,
 	)
 
 	features["filler_rate"] = float64(fillerCount) / wordCount
@@ -441,8 +442,7 @@ func countContentTokens(tokens []string, stopWords map[string]struct{}) int {
 	return count
 }
 
-func countPhraseMatches(text string, phrases []string) (int, []string) {
-	normText := normalizeForPhraseMatches(text)
+func countPhraseMatches(normText string, phrases []string) (int, []string) {
 	count := 0
 	cues := make([]string, 0, 4)
 	for _, phrase := range phrases {
@@ -458,14 +458,6 @@ func countPhraseMatches(text string, phrases []string) (int, []string) {
 		cues = append(cues, strings.TrimSpace(marker))
 	}
 	return count, cues
-}
-
-func normalizeForPhraseMatches(text string) string {
-	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
-	if len(tokens) == 0 {
-		return " "
-	}
-	return " " + strings.Join(tokens, " ") + " "
 }
 
 func phraseMarker(phrase string) string {
