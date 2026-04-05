@@ -226,6 +226,32 @@ func TestCountPhraseMatches_UsesBoundaries(t *testing.T) {
 	}
 }
 
+func TestClassify_WordCount(t *testing.T) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+	result := model.Classify("hello world foo bar")
+	if result.WordCount != 4 {
+		t.Fatalf("expected WordCount=4, got %d", result.WordCount)
+	}
+}
+
+func TestClassify_ActionWordsNotInCues(t *testing.T) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+	result := model.Classify("Run and build the test then deploy the update.")
+	for _, cue := range result.TriggeredCues {
+		for _, action := range []string{"run", "build", "test", "deploy", "update"} {
+			if cue == action {
+				t.Errorf("action word %q should not appear in TriggeredCues", cue)
+			}
+		}
+	}
+}
+
 func TestClassify_EmptyInputKeepsCueSliceNonNil(t *testing.T) {
 	model, err := LoadEmbedded()
 	if err != nil {
