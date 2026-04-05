@@ -65,12 +65,12 @@ func TestCheck_TokenizerBudgetExceeded(t *testing.T) {
 
 func TestCheck_WordsOverBudget_NeverZero(t *testing.T) {
 	// 4 words × tpw 3.0 = 12 tokens. Budget 11 → overage 1 token.
-	// 1 / 3.0 = 0.33 → math.Round gives 0, but we want at least 1.
+	// 1 / 3.0 = 0.33 → math.Ceil rounds up, and the implementation enforces a minimum of 1.
 	f := mustFile(t, "test.md", "one two three four")
 	r := &Rule{Max: 11, Mode: "heuristic", TokensPerWord: 3.0}
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
-	require.Contains(t, diags[0].Message, "~1 words over budget",
+	require.Contains(t, diags[0].Message, "~1 word over budget",
 		"words-over-budget should be at least 1, got: %s", diags[0].Message)
 }
 

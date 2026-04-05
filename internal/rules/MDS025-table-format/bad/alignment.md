@@ -2,7 +2,7 @@
 diagnostics:
   - line: 3
     column: 1
-    message: "table is not formatted; row 2: expected \"|:-----|:------:|------:|\"" 
+    message: "table is not formatted; row 2: expected \"|:-----|:------:|------:|\""
 ---
 # Misaligned Alignment
 

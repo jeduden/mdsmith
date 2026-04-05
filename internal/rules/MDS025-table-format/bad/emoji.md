@@ -2,7 +2,7 @@
 diagnostics:
   - line: 3
     column: 1
-    message: "table is not formatted; row 1: expected \"| ID  | Status | Title       |\"" 
+    message: "table is not formatted; row 1: expected \"| ID  | Status | Title       |\""
 ---
 # Emoji Table
 

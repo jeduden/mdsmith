@@ -86,6 +86,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		wordsOver = 1
 	}
 
+	wordLabel := "words"
+	if wordsOver == 1 {
+		wordLabel = "word"
+	}
+
 	return []lint.Diagnostic{{
 		File:     f.Path,
 		Line:     1,
@@ -94,11 +99,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		RuleName: r.Name(),
 		Severity: lint.Warning,
 		Message: fmt.Sprintf(
-			"token budget exceeded (%d > %d, mode=%s); ~%d words over budget",
+			"token budget exceeded (%d > %d, mode=%s); ~%d %s over budget",
 			count,
 			budget,
 			modeLabel,
 			wordsOver,
+			wordLabel,
 		),
 	}}
 }
