@@ -10,15 +10,17 @@ mdsmith — a Markdown linter written in Go.
 - [Plan template; see PLAN.md for status, plans live in plan/](plan/proto.md)
 
 <?catalog
-glob: "docs/**/*.md"
+glob:
+  - "docs/**/*.md"
+  - "!docs/research/**"
+  - "!docs/security/**"
 sort: path
 header: ""
 row: "- [{summary}]({filename})"
 ?>
+- [How generated sections work — markers, directives, and fix behavior.](docs/background/archetypes/generated-section/README.md)
+- [Shared patterns (archetypes) reused across multiple linting rules.](docs/background/archetypes/README.md)
 - [Comparison of mdsmith with other Markdown linters and formatters.](docs/background/markdown-linters.md)
-- [How generated sections work — markers, directives, and fix behavior.](docs/design/archetypes/generated-section/README.md)
-- [Shared patterns (archetypes) reused across multiple linting rules.](docs/design/archetypes/README.md)
-- [CLI commands, flags, exit codes, and output format.](docs/design/cli.md)
 - [Build commands, project layout, code style, test fixtures, and merge conflicts.](docs/development/index.md)
 - [PR fixup workflow for rebase, CI monitoring, review comment resolution, and gh CLI setup.](docs/development/pr-fixup-workflow.md)
 - [How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.](docs/guides/directives/enforcing-structure.md)
@@ -26,6 +28,7 @@ row: "- [{summary}]({filename})"
 - [Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.](docs/guides/directives/hugo-migration.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](docs/guides/index.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
+- [CLI commands, flags, exit codes, and output format.](docs/reference/cli.md)
 <?/catalog?>
 
 ## Development Workflow

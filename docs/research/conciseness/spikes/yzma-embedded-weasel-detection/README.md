@@ -33,7 +33,7 @@ The prototype used:
 - Corpus: 6 markdown-style prompts, 3 repetitions, `n_predict: 16`.
 
 Reproduction script:
-`eval/conciseness/spikes/yzma-embedded-weasel-detection/run.sh`.
+`docs/research/conciseness/spikes/yzma-embedded-weasel-detection/run.sh`.
 
 ## Determinism
 

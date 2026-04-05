@@ -11,7 +11,7 @@ Evaluate a fully embedded pure-Go classifier path for
 - OS: macOS 15.3.2 (arm64)
 - Go: 1.24.7
 - mdsmith commit: `7e65325`
-- Harness: `eval/conciseness/spikes/go-native-linear-classifier/run.sh`
+- Harness: `docs/research/conciseness/spikes/go-native-linear-classifier/run.sh`
 
 ## Prototype
 
@@ -22,7 +22,7 @@ Implementation files:
 - embedded weights:
   `internal/rules/concisenessscoring/classifier/data/cue-linear-v1.json`
 - benchmark command:
-  `eval/conciseness/spikes/go-native-linear-classifier/main.go`
+  `docs/research/conciseness/spikes/go-native-linear-classifier/main.go`
 
 Model shape:
 
@@ -263,7 +263,7 @@ Safe model update path:
 2. replace `cue-linear-v1.json` with versioned artifact content
 3. recompute SHA256 and update pinned checksum constant
 4. run `go test ./internal/rules/concisenessscoring/classifier`
-5. run `eval/conciseness/spikes/go-native-linear-classifier/run.sh`
+5. run `docs/research/conciseness/spikes/go-native-linear-classifier/run.sh`
 6. record version, checksum, and size/latency deltas in release notes
 
 Versioning guidance:

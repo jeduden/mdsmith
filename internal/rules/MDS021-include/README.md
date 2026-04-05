@@ -17,7 +17,7 @@ Include section content must match the referenced file.
   [source](./)
 - **Category**: meta
 - **Archetype**:
-  [generated-section](../../../docs/design/archetypes/generated-section/)
+  [generated-section](../../../docs/background/archetypes/generated-section/)
 - **Guide**:
   [directive guide](../../../docs/guides/directives/generating-content.md)
 
@@ -39,7 +39,7 @@ body. Markdown parsers interpret `>` at the start of a
 line as a blockquote marker, which breaks the processing
 instruction content. Use literal block scalars (`|`,
 `|-`, `|+`) or quoted strings instead. See the
-[archetype docs](../../../docs/design/archetypes/generated-section/)
+[archetype docs](../../../docs/background/archetypes/generated-section/)
 for details.
 
 ## Parameters

@@ -13,7 +13,7 @@ license_allowlist:
   - CC-BY-4.0
 
 # policy and balance are informational metadata used by the refresh
-# workflow (eval/corpus/refresh.md) but are not parsed by the Go
+# workflow (docs/research/corpus/refresh.md) but are not parsed by the Go
 # Config struct.  They document source-selection criteria and target
 # category proportions for human reviewers.
 policy:

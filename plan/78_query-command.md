@@ -130,7 +130,7 @@ keep numeric types so `id: >50` works.
 4. Register `query` in the subcommand dispatcher and
    update `usageText`
 5. Add `query` to the Commands table in `README.md`
-   and `docs/design/cli.md`
+   and `docs/reference/cli.md`
 6. Write unit tests for `internal/query`: matching
    expression passes, non-matching fails, missing field
    fails, absent front matter fails, schema-string
@@ -151,7 +151,7 @@ keep numeric types so `id: >50` works.
   values fail validation)
 - [ ] All tests pass: `go test ./...`
 - [ ] `README.md` Commands table includes `query`
-- [ ] `docs/design/cli.md` Commands table includes
+- [ ] `docs/reference/cli.md` Commands table includes
   `query`
 - [ ] Invalid CUE expression prints error to stderr
   and exits 2

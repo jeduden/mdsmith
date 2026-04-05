@@ -24,7 +24,7 @@ description: 'string & != ""'
   [source](./)
 - **Category**: CATEGORY
 - **Archetype**:
-  [NAME](../../../docs/design/archetypes/NAME/)
+  [NAME](../../../docs/background/archetypes/NAME/)
 
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
      Implementation, Category, Archetype (if applicable).

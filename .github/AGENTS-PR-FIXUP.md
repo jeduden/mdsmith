@@ -4,11 +4,11 @@ Instructions for AI coding agents (Codex, Copilot,
 Claude) to push changes, monitor CI, and address review
 comments until the PR is clean.
 
-See also: [AGENTS.md](AGENTS.md) for general development
-instructions.
+See also: [AGENTS.md](../AGENTS.md) for general
+development instructions.
 
 <?include
-file: docs/development/pr-fixup-workflow.md
+file: ../docs/development/pr-fixup-workflow.md
 strip-frontmatter: "true"
 ?>
 Push changes, monitor CI, and address review comments

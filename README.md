@@ -196,8 +196,8 @@ workflow, code style, and PR conventions).
 
 ## 📂 Documentation
 
-- [CLI design](docs/design/cli.md)
-- [Design archetypes](docs/design/archetypes/)
+- [CLI reference](docs/reference/cli.md)
+- [Design archetypes](docs/background/archetypes/)
 - [Guides](docs/guides/)
 - [Background](docs/background/)
 - [Plans](plan/)

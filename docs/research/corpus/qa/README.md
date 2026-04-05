@@ -5,8 +5,8 @@
 
 ```bash
 go run ./cmd/corpusctl qa-init \
-  -sample eval/corpus/datasets/<version>/qa-sample.jsonl \
-  -out eval/corpus/qa/annotations.csv
+  -sample docs/research/corpus/datasets/<version>/qa-sample.jsonl \
+  -out docs/research/corpus/qa/annotations.csv
 ```
 
 2. For each row, decide the `actual_category` (`reference` or
