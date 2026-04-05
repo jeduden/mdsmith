@@ -107,9 +107,10 @@ Run `mdsmith merge-driver install` once per clone.
 
 ## Where to Place Markdown Files
 
-Every Markdown file must live in one of the allowed
-directories. The `directory-structure` rule (MDS033)
-enforces this. When creating a new `.md` file, use the
+Every Markdown file checked by mdsmith must live in
+one of the allowed directories. The
+`directory-structure` rule (MDS033) enforces this for
+linted files. When creating a new `.md` file, use the
 decision list below — take the **first match**.
 
 ### Decision list

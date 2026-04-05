@@ -223,6 +223,16 @@ overrides:
         tokens-per-word: 1.33
         tokenizer: builtin
         encoding: cl100k_base
+  - files: ["docs/research/**"]
+    rules:
+      first-line-heading: false
+      heading-increment: false
+      paragraph-readability: false
+      paragraph-structure: false
+      token-budget: false
+      max-file-length: false
+      cross-file-reference-integrity: false
+      required-structure: false
 
 ignore:
   - "demo/**"
@@ -235,4 +245,3 @@ ignore:
   - "plan/proto.md"
   - "internal/rules/proto.md"
   - "docs/security/proto.md"
-  - "docs/research/**"
