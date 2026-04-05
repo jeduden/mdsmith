@@ -1,7 +1,7 @@
 ---
 id: 82
 title: 'YAML billion-laughs mitigation'
-status: "🔲"
+status: "✅"
 summary: >-
   Reject YAML anchor/alias syntax in user-supplied
   content before unmarshalling to prevent exponential
@@ -97,24 +97,24 @@ positives.
 
 ## Tasks
 
-1. Add `internal/lint/yamlsafe.go` with
+1. [x] Add `internal/lint/yamlsafe.go` with
    `RejectYAMLAliases(data []byte) error`
-2. Add `internal/lint/yamlsafe_test.go` with tests
+2. [x] Add `internal/lint/yamlsafe_test.go` with tests
    for clean YAML, anchor YAML, alias YAML, `Q&A`
    in string values (false positive check)
-3. Guard all 13 `yaml.Unmarshal` call sites with a
+3. [x] Guard all 11 `yaml.Unmarshal` call sites with a
    `RejectYAMLAliases` check before unmarshalling
-4. Add integration test: `.md` file with YAML anchor
+4. [x] Add integration test: `.md` file with YAML anchor
    front matter produces a clear error diagnostic
 
 ## Acceptance Criteria
 
-- [ ] YAML with `&anchor` / `*alias` is rejected
+- [x] YAML with `&anchor` / `*alias` is rejected
       before unmarshalling
-- [ ] Legitimate front matter with `&` in string
+- [x] Legitimate front matter with `&` in string
       values (e.g., `"Q&A"`) is accepted
-- [ ] All 13 `yaml.Unmarshal` sites are guarded
-- [ ] Error message clearly states anchors/aliases
+- [x] All 11 `yaml.Unmarshal` sites are guarded
+- [x] Error message clearly states anchors/aliases
       are not permitted
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues

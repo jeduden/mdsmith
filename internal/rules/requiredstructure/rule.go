@@ -216,6 +216,9 @@ func extractRequireDirective(f *lint.File) (string, error) {
 				body = append(body, seg.Value(f.Source)...)
 			}
 		}
+		if err := lint.RejectYAMLAliases(body); err != nil {
+			return "", fmt.Errorf("invalid <?require?> directive: %w", err)
+		}
 		var params map[string]string
 		if err := yaml.Unmarshal(body, &params); err != nil {
 			return "", fmt.Errorf("invalid <?require?> directive: %w", err)
@@ -229,6 +232,9 @@ func extractRequireDirective(f *lint.File) (string, error) {
 }
 
 func deriveFrontMatterCUE(yamlBytes []byte) (string, error) {
+	if err := lint.RejectYAMLAliases(yamlBytes); err != nil {
+		return "", fmt.Errorf("parsing schema frontmatter: %w", err)
+	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
 		return "", fmt.Errorf("parsing schema frontmatter: %w", err)
@@ -552,6 +558,9 @@ func extractPIFileParam(pi *lint.ProcessingInstruction, source []byte) (string, 
 		return "", nil
 	}
 
+	if err := lint.RejectYAMLAliases([]byte(body)); err != nil {
+		return "", fmt.Errorf("invalid include directive YAML: %w", err)
+	}
 	var params map[string]string
 	if err := yaml.Unmarshal([]byte(body), &params); err != nil {
 		return "", fmt.Errorf("invalid include directive YAML: %w", err)
@@ -920,6 +929,9 @@ func readDocFrontMatterRaw(f *lint.File) map[string]any {
 		return nil
 	}
 
+	if err := lint.RejectYAMLAliases(yamlBytes); err != nil {
+		return nil
+	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
 		return nil

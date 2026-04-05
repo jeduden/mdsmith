@@ -186,6 +186,12 @@ func ParseYAMLBody(
 ) (map[string]any, []lint.Diagnostic) {
 	var rawMap map[string]any
 	if mp.YAMLBody != "" {
+		if err := lint.RejectYAMLAliases([]byte(mp.YAMLBody)); err != nil {
+			return nil, []lint.Diagnostic{
+				MakeDiag(ruleID, ruleName, filePath, mp.StartLine,
+					fmt.Sprintf("generated section YAML: %v", err)),
+			}
+		}
 		if err := yaml.Unmarshal([]byte(mp.YAMLBody), &rawMap); err != nil {
 			return nil, []lint.Diagnostic{
 				MakeDiag(ruleID, ruleName, filePath, mp.StartLine,

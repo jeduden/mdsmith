@@ -354,6 +354,9 @@ func readFrontMatterRaw(path string) (map[string]any, error) {
 	delim := []byte("---\n")
 	yamlBytes := prefix[len(delim) : len(prefix)-len(delim)]
 
+	if err := lint.RejectYAMLAliases(yamlBytes); err != nil {
+		return nil, fmt.Errorf("parsing front matter: %w", err)
+	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
 		return nil, fmt.Errorf("parsing front matter: %w", err)

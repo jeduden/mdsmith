@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"gopkg.in/yaml.v3"
 )
@@ -16,6 +17,10 @@ func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
+	}
+
+	if err := lint.RejectYAMLAliases(data); err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
 	var cfg Config
@@ -31,6 +36,9 @@ func Load(path string) (*Config, error) {
 
 // yamlHasKey returns true if the top-level YAML mapping contains the given key.
 func yamlHasKey(data []byte, key string) bool {
+	if err := lint.RejectYAMLAliases(data); err != nil {
+		return false
+	}
 	var node yaml.Node
 	if err := yaml.Unmarshal(data, &node); err != nil {
 		return false

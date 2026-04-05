@@ -412,6 +412,9 @@ func readFrontMatter(fsys fs.FS, path string) map[string]any {
 	yamlStr := s[:idx]
 
 	var raw map[string]any
+	if err := lint.RejectYAMLAliases([]byte(yamlStr)); err != nil {
+		return nil
+	}
 	if err := yaml.Unmarshal([]byte(yamlStr), &raw); err != nil {
 		return nil
 	}
