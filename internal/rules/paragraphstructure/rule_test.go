@@ -48,11 +48,15 @@ func TestCheck_SentenceTooLong(t *testing.T) {
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d: %v", len(diags), diags)
 	assert.Contains(t, diags[0].Message, "sentence too long", "unexpected message: %s", diags[0].Message)
 	assert.Contains(t, diags[0].Message, "45 > 40", "expected count in message, got: %s", diags[0].Message)
-	assert.Contains(t, diags[0].Message, "word word word word word", "expected sentence preview in message, got: %s", diags[0].Message)
+	assert.Contains(t, diags[0].Message, "word word word word word",
+		"expected sentence preview in message, got: %s", diags[0].Message)
 }
 
 func TestCheck_SentenceTooLong_ShowsPreview(t *testing.T) {
-	src := []byte("The quick brown fox jumped over the lazy dog and kept running through the meadow until it reached the very end of the long winding road that stretched far beyond the hills. Short.\n")
+	src := []byte("The quick brown fox jumped over the lazy dog " +
+		"and kept running through the meadow until it reached " +
+		"the very end of the long winding road that stretched " +
+		"far beyond the hills. Short.\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 	r := &Rule{MaxSentences: 10, MaxWords: 10}
