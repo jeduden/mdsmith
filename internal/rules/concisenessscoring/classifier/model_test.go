@@ -167,6 +167,13 @@ func TestValidateWeights_RejectsUnknownKey(t *testing.T) {
 		"action_rate":         1,
 		"content_ratio":       1,
 		"log_word_count":      1,
+		"compression_ratio":   1,
+		"type_token_ratio":    1,
+		"nominal_density":     1,
+		"sent_len_variance":   1,
+		"func_word_ratio":     1,
+		"avg_word_length":     1,
+		"ly_adverb_density":   1,
 		"unexpected":          1,
 	})
 	if err == nil {
@@ -177,17 +184,79 @@ func TestValidateWeights_RejectsUnknownKey(t *testing.T) {
 	}
 }
 
+func TestExtractFeatures_NewFeatures(t *testing.T) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+
+	text := "Basically, it seems that we are just trying to explain the same idea in order to make it very clear."
+	result := model.Classify(text)
+
+	// All 15 features should be present
+	expectedFeatures := []string{
+		"filler_rate", "hedge_rate", "verbose_phrase_rate",
+		"modal_rate", "vague_rate", "action_rate",
+		"content_ratio", "log_word_count",
+		"compression_ratio", "type_token_ratio", "nominal_density",
+		"sent_len_variance", "func_word_ratio", "avg_word_length",
+		"ly_adverb_density",
+	}
+	for _, name := range expectedFeatures {
+		if _, ok := result.FeatureSummary[name]; !ok {
+			t.Errorf("missing feature %q in FeatureSummary", name)
+		}
+	}
+	if len(result.FeatureSummary) != 15 {
+		t.Errorf("expected 15 features, got %d", len(result.FeatureSummary))
+	}
+}
+
+func normalizeText(text string) string {
+	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
+	if len(tokens) == 0 {
+		return " "
+	}
+	return " " + strings.Join(tokens, " ") + " "
+}
+
 func TestCountPhraseMatches_UsesBoundaries(t *testing.T) {
-	text := "This statement is in order too noisy to match the cue."
-	count, cues := countPhraseMatches(text, []string{"in order to"})
+	norm := normalizeText("This statement is in order too noisy to match the cue.")
+	count, cues := countPhraseMatches(norm, []string{"in order to"})
 	if count != 0 {
 		t.Fatalf("expected 0 phrase matches, got %d (cues=%v)", count, cues)
 	}
 
-	text = "This statement is in order to reduce noise."
-	count, cues = countPhraseMatches(text, []string{"in order to"})
+	norm = normalizeText("This statement is in order to reduce noise.")
+	count, cues = countPhraseMatches(norm, []string{"in order to"})
 	if count != 1 {
 		t.Fatalf("expected 1 phrase match, got %d (cues=%v)", count, cues)
+	}
+}
+
+func TestClassify_WordCount(t *testing.T) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+	result := model.Classify("hello world foo bar")
+	if result.WordCount != 4 {
+		t.Fatalf("expected WordCount=4, got %d", result.WordCount)
+	}
+}
+
+func TestClassify_ActionWordsNotInCues(t *testing.T) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+	result := model.Classify("Run and build the test then deploy the update.")
+	for _, cue := range result.TriggeredCues {
+		for _, action := range []string{"run", "build", "test", "deploy", "update"} {
+			if cue == action {
+				t.Errorf("action word %q should not appear in TriggeredCues", cue)
+			}
+		}
 	}
 }
 
@@ -206,5 +275,20 @@ func TestClassify_EmptyInputKeepsCueSliceNonNil(t *testing.T) {
 			"expected zero triggered cues for empty input, got %d",
 			len(result.TriggeredCues),
 		)
+	}
+}
+
+func BenchmarkClassify(b *testing.B) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		b.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+	text := "Basically, it seems that we are just trying to explain " +
+		"the same idea in order to make it very clear, and it " +
+		"appears that we are really saying very little new " +
+		"information overall."
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		model.Classify(text)
 	}
 }

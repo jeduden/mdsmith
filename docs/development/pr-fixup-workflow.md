@@ -109,6 +109,16 @@ pushes after CI/review fixes can use a regular push):
 git push --force-with-lease origin "$BRANCH"
 ```
 
+After pushing, request a Copilot code review. The
+bot's API username is
+`copilot-pull-request-reviewer[bot]`:
+
+```bash
+gh api --method POST \
+  "repos/$REPO/pulls/$PR/requested_reviewers" \
+  -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+```
+
 ### 5. Schedule recurring polling
 
 Use the `/loop` skill to re-invoke `/pr-fixup` every
@@ -175,6 +185,14 @@ git commit -m "fix: address CI failure"
 
 ```bash
 git push origin "$BRANCH"
+```
+
+Request Copilot re-review:
+
+```bash
+gh api --method POST \
+  "repos/$REPO/pulls/$PR/requested_reviewers" \
+  -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
 
 The next `/loop` iteration will re-check CI.
@@ -253,6 +271,14 @@ git commit -m "fix: address review comments"
 
 ```bash
 git push origin "$BRANCH"
+```
+
+Request Copilot re-review:
+
+```bash
+gh api --method POST \
+  "repos/$REPO/pulls/$PR/requested_reviewers" \
+  -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
 
 The next `/loop` iteration will re-check CI and

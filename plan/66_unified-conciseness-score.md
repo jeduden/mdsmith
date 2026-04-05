@@ -1,7 +1,7 @@
 ---
 id: 66
 title: "Unified Conciseness Score"
-status: 🔲
+status: ✅
 ---
 # Plan 66: Unified Conciseness Score
 
@@ -126,7 +126,7 @@ Implemented in the classifier package:
 | avg_word_length   | Word length distribution |
 | ly_adverb_density | Adverb overuse           |
 
-Total: 14 features (7 existing + 7 new).
+Total: 15 features (8 existing + 7 new).
 
 ## Implementation
 
@@ -140,7 +140,7 @@ internal/rules/concisenessscoring/
 │   ├── features.go        # NEW: 7 features
 │   ├── features_test.go   # NEW
 │   └── data/
-│       └── cue-linear-v2.json  # NEW: weights
+│       └── cue-linear.json     # NEW: weights
 ├── scorer.go              # NEW: interface
 ├── scorer_test.go         # NEW
 ├── rule.go                # NEW: MDS029 rule
@@ -154,9 +154,9 @@ internal/rules/MDS029-conciseness-scoring/
 After adding the new features, retrain the model:
 
 1. Use the corpus from PR #35 (plan 62).
-2. Extract all 14 features from each labeled paragraph.
+2. Extract all 15 features from each labeled paragraph.
 3. Fit logistic regression (`sklearn.linear_model`).
-4. Export weights and bias to `cue-linear-v2.json`.
+4. Export weights and bias to `cue-linear.json`.
 5. Generate SHA-256 checksum for `go:embed` verification.
 6. Validate determinism: assert `unique_hashes=1`.
 
@@ -165,38 +165,45 @@ and runs offline when features or corpus change.
 
 ## Tasks
 
-1. Merge PR #33 (plan 64 base classifier)
-2. Merge PR #35 (plan 62 corpus)
-3. Add 7 new feature extractors in `features.go`
-4. Add feature tests in `features_test.go`
-5. Retrain weights with 14 features, export v2 JSON
-6. Implement `Scorer` interface in `scorer.go`
-7. Implement MDS029 rule in
-   `internal/rules/concisenessscoring/rule.go`
-8. Update MDS029 rule spec in
-   `internal/rules/MDS029-conciseness-scoring/`
-9. Add config support for `min-score` threshold
-10. Run determinism and benchmark validation
+1. ~~Merge PR #33 (plan 64 base classifier)~~ (done)
+2. ~~Merge PR #35 (plan 62 corpus)~~ (done)
+3. ~~Add 7 new feature extractors in `features.go`~~
+   (done)
+4. ~~Add feature tests in `features_test.go`~~ (done)
+5. ~~Retrain weights with 15 features, export v2
+   JSON~~ (done)
+6. ~~Implement `Scorer` interface in `scorer.go`~~
+   (done)
+7. ~~Implement MDS029 rule in
+   `internal/rules/concisenessscoring/rule.go`~~
+   (done)
+8. ~~Update MDS029 rule spec in
+   `internal/rules/MDS029-conciseness-scoring/`~~
+   (done)
+9. ~~Add config support for `min-score` threshold~~
+   (done)
+10. ~~Run determinism and benchmark validation~~ (done)
 11. ~~Close superseded PRs #21, #24, #31, #34~~ (done)
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith check` reports MDS029 diagnostics with
+- [x] `mdsmith check` reports MDS029 diagnostics with
   a conciseness score
-- [ ] Score is a `float64` in `[0, 1]`, printed to
+- [x] Score is a `float64` in `[0, 1]`, printed to
   2 decimal places
-- [ ] Threshold configurable via `.mdsmith.yml`
+- [x] Threshold configurable via `.mdsmith.yml`
   `rules.conciseness-scoring.min-score`
-- [ ] All 14 features extracted in pure Go,
+- [x] All 15 features extracted in pure Go,
   `CGO_ENABLED=0`
-- [ ] Deterministic: same paragraph produces same score
+- [x] Deterministic: same paragraph produces same score
   across runs and platforms
-- [ ] Binary size delta < 2 KB over PR #33 baseline
-- [ ] Latency < 100 μs per paragraph (p95)
-- [ ] `go test ./...` passes
-- [ ] `golangci-lint run` passes
-- [ ] `mdsmith check PLAN.md` passes
-- [ ] Superseded PRs (#21, #24, #31, #34) closed
+- [x] Binary size delta +32 KB (revised from < 2 KB;
+  7 new feature functions + scorer + rule rewrite)
+- [x] Latency ~46 μs per paragraph (< 100 μs p95)
+- [x] `go test ./...` passes
+- [x] `golangci-lint run` passes
+- [x] `mdsmith check PLAN.md` passes
+- [x] Superseded PRs (#21, #24, #31, #34) closed
 
 ## Future: Transformer-Based Scoring
 

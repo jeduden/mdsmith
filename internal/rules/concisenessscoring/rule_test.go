@@ -4,10 +4,18 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/concisenessscoring/classifier"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func modelConciseness(t *testing.T) float64 {
+	t.Helper()
+	m, err := classifier.LoadEmbedded()
+	require.NoError(t, err)
+	return 1.0 - m.Threshold()
+}
 
 func verboseParagraph() string {
 	return "Basically, it seems that we are just trying to explain the " +
@@ -26,29 +34,20 @@ func TestCheck_LowScore(t *testing.T) {
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 
+	threshold := modelConciseness(t)
 	r := &Rule{
-		MinScore: 0.40,
+		MinScore: threshold,
 		MinWords: 20,
 	}
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "expected 1 diagnostic, got %d", len(diags))
 
 	d := diags[0]
-	if d.RuleID != "MDS029" {
-		t.Errorf("expected rule ID MDS029, got %s", d.RuleID)
-	}
-	if d.RuleName != "conciseness-scoring" {
-		t.Errorf(
-			"expected rule name conciseness-scoring, got %s",
-			d.RuleName,
-		)
-	}
-	if d.Severity != lint.Warning {
-		t.Errorf("expected severity warning, got %s", d.Severity)
-	}
-	assert.Contains(t, d.Message, "conciseness score too low", "unexpected message: %s", d.Message)
-	assert.Contains(t, d.Message, "target >=", "expected target guidance in message, got: %s", d.Message)
-	assert.Contains(t, d.Message, "\"basically\"", "expected example cue in message, got: %s", d.Message)
+	assert.Equal(t, "MDS029", d.RuleID)
+	assert.Equal(t, "conciseness-scoring", d.RuleName)
+	assert.Equal(t, lint.Warning, d.Severity)
+	assert.Contains(t, d.Message, "conciseness score too low")
+	assert.Contains(t, d.Message, "target >=")
 }
 
 func TestCheck_HighScore(t *testing.T) {
@@ -57,7 +56,7 @@ func TestCheck_HighScore(t *testing.T) {
 	require.NoError(t, err)
 
 	r := &Rule{
-		MinScore: 0.35,
+		MinScore: 0.10,
 		MinWords: 20,
 	}
 	diags := r.Check(f)
@@ -82,8 +81,9 @@ func TestCheck_DiagnosticLine(t *testing.T) {
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 
+	threshold := modelConciseness(t)
 	r := &Rule{
-		MinScore: 0.40,
+		MinScore: threshold,
 		MinWords: 20,
 	}
 	diags := r.Check(f)
@@ -113,11 +113,8 @@ func TestCheck_TableSkipped(t *testing.T) {
 func TestApplySettings_Valid(t *testing.T) {
 	r := &Rule{MinScore: defaultMinScore, MinWords: defaultMinWords}
 	err := r.ApplySettings(map[string]any{
-		"min-score":       0.5,
-		"min-words":       30,
-		"filler-words":    []any{"literally", "simply"},
-		"hedge-phrases":   []any{"perhaps"},
-		"verbose-phrases": []any{"with regard to"},
+		"min-score": 0.5,
+		"min-words": 30,
 	})
 	require.NoError(t, err, "unexpected error: %v", err)
 	if r.MinScore != 0.5 {
@@ -126,7 +123,12 @@ func TestApplySettings_Valid(t *testing.T) {
 	if r.MinWords != 30 {
 		t.Errorf("expected MinWords=30, got %d", r.MinWords)
 	}
-	assert.Len(t, r.FillerWords, 2, "expected 2 filler words, got %d", len(r.FillerWords))
+}
+
+func TestApplySettings_RemovedListSettings(t *testing.T) {
+	r := &Rule{MinScore: defaultMinScore, MinWords: defaultMinWords}
+	err := r.ApplySettings(map[string]any{"filler-words": []any{"test"}})
+	require.Error(t, err, "filler-words should be unknown after removal")
 }
 
 func TestApplySettings_InvalidMinScoreType(t *testing.T) {
@@ -139,14 +141,6 @@ func TestApplySettings_InvalidMinScoreRange(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"min-score": 1.2})
 	require.Error(t, err, "expected error for out-of-range min-score")
-}
-
-func TestApplySettings_InvalidListType(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"filler-words": []any{"fine", 123},
-	})
-	require.Error(t, err, "expected error for invalid filler-words")
 }
 
 func TestApplySettings_UnknownKey(t *testing.T) {

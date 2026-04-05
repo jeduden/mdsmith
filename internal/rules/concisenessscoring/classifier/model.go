@@ -14,8 +14,8 @@ import (
 
 // Embedded artifact metadata used for checksum and loading validation.
 const (
-	EmbeddedArtifactPath   = "data/cue-linear-v1.json"
-	EmbeddedArtifactSHA256 = "98c9d8c6c43ad03b8ac4ff63ebcdcec4cdb4a17634dac9bd4f622a302f37d146"
+	EmbeddedArtifactPath   = "data/cue-linear.json"
+	EmbeddedArtifactSHA256 = "0e54d9f4199aa3b7a46c7c7feed7e5e2d3ebe78b98421b9502e1ba670b78608c"
 
 	minFillerWords    = 12
 	minModalWords     = 10
@@ -26,7 +26,7 @@ const (
 	minVerbosePhrases = 8
 )
 
-//go:embed data/cue-linear-v1.json
+//go:embed data/cue-linear.json
 var embeddedArtifact []byte
 
 var (
@@ -43,6 +43,14 @@ var featureOrder = []string{
 	"action_rate",
 	"content_ratio",
 	"log_word_count",
+	// New features (plan 66)
+	"compression_ratio",
+	"type_token_ratio",
+	"nominal_density",
+	"sent_len_variance",
+	"func_word_ratio",
+	"avg_word_length",
+	"ly_adverb_density",
 }
 
 type artifact struct {
@@ -101,6 +109,7 @@ type Result struct {
 	Version        string
 	TriggeredCues  []string
 	FeatureSummary map[string]float64
+	WordCount      int
 }
 
 // EmbeddedArtifactBytes returns the embedded artifact size in bytes.
@@ -165,7 +174,7 @@ func (m *Model) LexiconCounts() LexiconCounts {
 
 // Classify computes a deterministic risk score and binary label.
 func (m *Model) Classify(text string) Result {
-	features, cues := extractFeatures(text, m.lexicon)
+	features, cues, wordCount := extractFeatures(text, m.lexicon)
 	score := m.artifact.Intercept
 	for _, name := range featureOrder {
 		value := features[name]
@@ -188,6 +197,7 @@ func (m *Model) Classify(text string) Result {
 		Version:        m.artifact.Version,
 		TriggeredCues:  cues,
 		FeatureSummary: features,
+		WordCount:      wordCount,
 	}
 }
 
@@ -336,34 +346,40 @@ func normalizeCueList(
 
 func extractFeatures(
 	text string, lexicon compiledLexicon,
-) (map[string]float64, []string) {
+) (map[string]float64, []string, int) {
 	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
 	wordCount := float64(len(tokens))
 
-	features := map[string]float64{
-		"filler_rate":         0,
-		"hedge_rate":          0,
-		"verbose_phrase_rate": 0,
-		"modal_rate":          0,
-		"vague_rate":          0,
-		"action_rate":         0,
-		"content_ratio":       0,
-		"log_word_count":      0,
+	features := make(map[string]float64, len(featureOrder))
+	for _, name := range featureOrder {
+		features[name] = 0
 	}
 	if wordCount == 0 {
-		return features, []string{}
+		return features, []string{}, 0
 	}
 
+	cues := extractLexiconFeatures(
+		tokens, wordCount, lexicon, features,
+	)
+	extractDerivedFeatures(text, tokens, features)
+
+	return features, dedupeSorted(cues), len(tokens)
+}
+
+func extractLexiconFeatures(
+	tokens []string, wordCount float64,
+	lexicon compiledLexicon, features map[string]float64,
+) []string {
 	fillerCount, fillerCues := countTokenMatches(tokens, lexicon.fillerWords)
 	modalCount, modalCues := countTokenMatches(tokens, lexicon.modalWords)
 	vagueCount, vagueCues := countTokenMatches(tokens, lexicon.vagueWords)
-	actionCount, actionCues := countTokenMatches(tokens, lexicon.actionWords)
+	actionCount, _ := countTokenMatches(tokens, lexicon.actionWords)
 	contentCount := countContentTokens(tokens, lexicon.stopWords)
 
-	hedgeCount, hedgeCues := countPhraseMatches(text, lexicon.hedgePhrases)
+	normText := " " + strings.Join(tokens, " ") + " "
+	hedgeCount, hedgeCues := countPhraseMatches(normText, lexicon.hedgePhrases)
 	verboseCount, verboseCues := countPhraseMatches(
-		text,
-		lexicon.verbosePhrases,
+		normText, lexicon.verbosePhrases,
 	)
 
 	features["filler_rate"] = float64(fillerCount) / wordCount
@@ -379,11 +395,21 @@ func extractFeatures(
 	cues = append(cues, fillerCues...)
 	cues = append(cues, modalCues...)
 	cues = append(cues, vagueCues...)
-	cues = append(cues, actionCues...)
 	cues = append(cues, hedgeCues...)
 	cues = append(cues, verboseCues...)
+	return cues
+}
 
-	return features, dedupeSorted(cues)
+func extractDerivedFeatures(
+	text string, tokens []string, features map[string]float64,
+) {
+	features["compression_ratio"] = CompressionRatio(tokens)
+	features["type_token_ratio"] = TypeTokenRatio(tokens)
+	features["nominal_density"] = NominalDensity(tokens)
+	features["sent_len_variance"] = SentLenVariance(text)
+	features["func_word_ratio"] = FuncWordRatio(tokens)
+	features["avg_word_length"] = AvgWordLength(tokens)
+	features["ly_adverb_density"] = LyAdverbDensity(tokens)
 }
 
 func countTokenMatches(
@@ -416,8 +442,7 @@ func countContentTokens(tokens []string, stopWords map[string]struct{}) int {
 	return count
 }
 
-func countPhraseMatches(text string, phrases []string) (int, []string) {
-	normText := normalizeForPhraseMatches(text)
+func countPhraseMatches(normText string, phrases []string) (int, []string) {
 	count := 0
 	cues := make([]string, 0, 4)
 	for _, phrase := range phrases {
@@ -435,14 +460,6 @@ func countPhraseMatches(text string, phrases []string) (int, []string) {
 	return count, cues
 }
 
-func normalizeForPhraseMatches(text string) string {
-	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
-	if len(tokens) == 0 {
-		return " "
-	}
-	return " " + strings.Join(tokens, " ") + " "
-}
-
 func phraseMarker(phrase string) string {
 	tokens := wordPattern.FindAllString(strings.ToLower(phrase), -1)
 	if len(tokens) == 0 {
@@ -453,7 +470,7 @@ func phraseMarker(phrase string) string {
 
 func dedupeSorted(values []string) []string {
 	if len(values) == 0 {
-		return nil
+		return []string{}
 	}
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))

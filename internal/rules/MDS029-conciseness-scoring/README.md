@@ -11,7 +11,7 @@ Paragraph conciseness score must not fall below a threshold.
 - **ID**: MDS029
 - **Name**: `conciseness-scoring`
 - **Status**: not-ready
-- **Default**: disabled (experimental, not ready yet)
+- **Default**: disabled
 - **Fixable**: no
 - **Implementation**:
   [source](./)
@@ -19,43 +19,35 @@ Paragraph conciseness score must not fall below a threshold.
 
 ## Settings
 
-| Setting           | Type         | Default  | Description                            |
-|-------------------|--------------|----------|----------------------------------------|
-| `min-score`       | number       | `0.20`   | Minimum allowed conciseness score      |
-| `min-words`       | int          | `20`     | Skip paragraphs shorter than this      |
-| `filler-words`    | list[string] | built-in | Words that reduce score when repeated  |
-| `hedge-phrases`   | list[string] | built-in | Phrases that indicate weak assertions  |
-| `verbose-phrases` | list[string] | built-in | Long phrases with shorter alternatives |
+| Setting     | Type   | Default | Description                       |
+|-------------|--------|---------|-----------------------------------|
+| `min-score` | number | `0.20`  | Minimum allowed conciseness score |
+| `min-words` | int    | `20`    | Skip paragraphs shorter than this |
 
-The score combines content-word ratio with penalties for filler words,
-hedge phrases, and verbose phrases. Markdown tables are skipped.
+The score is produced by a pure-Go linear classifier with 15
+features. The classifier outputs a risk score via sigmoid; the
+conciseness score is `1 - risk_score`, so 1.0 = maximally
+concise. The `min-score` threshold is in conciseness space:
+paragraphs scoring below this value are flagged. The default
+0.20 is intentionally conservative, catching only highly
+verbose paragraphs. Markdown tables are skipped.
 
 ## Config
 
-Enable (experimental):
+Enable:
 
 ```yaml
 rules:
   conciseness-scoring: true
 ```
 
-Enable with custom settings:
+Enable with custom threshold:
 
 ```yaml
 rules:
   conciseness-scoring:
     min-score: 0.20
     min-words: 20
-    filler-words:
-      - "actually"
-      - "basically"
-      - "just"
-    hedge-phrases:
-      - "it seems"
-      - "i think"
-    verbose-phrases:
-      - "in order to"
-      - "due to the fact that"
 ```
 
 Disable:
@@ -102,6 +94,6 @@ little concrete information to the paragraph.
 
 ## Diagnostics
 
-| Condition             | Message                                                                                                                |
-|-----------------------|------------------------------------------------------------------------------------------------------------------------|
-| score below threshold | `conciseness score too low (0.12 < 0.20); target >= 0.20; reduce filler or hedge cues (e.g., "basically", "it seems")` |
+| Condition             | Message                                                                                                           |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------|
+| score below threshold | `conciseness score too low (0.08 < 0.20); target >= 0.20; reduce verbose cues (e.g., "basically", "in order to")` |
