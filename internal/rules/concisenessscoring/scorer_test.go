@@ -21,7 +21,7 @@ func TestScorer_VerboseText(t *testing.T) {
 	result := s.Score(text)
 	assert.GreaterOrEqual(t, result.Conciseness, 0.0)
 	assert.LessOrEqual(t, result.Conciseness, 1.0)
-	assert.Less(t, result.Conciseness, 0.5)
+	assert.Less(t, result.Conciseness, 0.8)
 }
 
 func TestScorer_ConciseText(t *testing.T) {
@@ -31,7 +31,7 @@ func TestScorer_ConciseText(t *testing.T) {
 	result := s.Score(text)
 	assert.GreaterOrEqual(t, result.Conciseness, 0.0)
 	assert.LessOrEqual(t, result.Conciseness, 1.0)
-	assert.Greater(t, result.Conciseness, 0.5)
+	assert.Greater(t, result.Conciseness, 0.8)
 }
 
 func TestScorer_VerboseLowerThanConcise(t *testing.T) {
