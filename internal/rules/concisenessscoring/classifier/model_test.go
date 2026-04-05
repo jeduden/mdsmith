@@ -269,3 +269,18 @@ func TestClassify_EmptyInputKeepsCueSliceNonNil(t *testing.T) {
 		)
 	}
 }
+
+func BenchmarkClassify(b *testing.B) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		b.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+	text := "Basically, it seems that we are just trying to explain " +
+		"the same idea in order to make it very clear, and it " +
+		"appears that we are really saying very little new " +
+		"information overall."
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		model.Classify(text)
+	}
+}
