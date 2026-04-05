@@ -359,7 +359,7 @@ func extractFeatures(
 	}
 
 	cues := extractLexiconFeatures(
-		text, tokens, wordCount, lexicon, features,
+		tokens, wordCount, lexicon, features,
 	)
 	extractDerivedFeatures(text, tokens, features)
 
@@ -367,7 +367,7 @@ func extractFeatures(
 }
 
 func extractLexiconFeatures(
-	text string, tokens []string, wordCount float64,
+	tokens []string, wordCount float64,
 	lexicon compiledLexicon, features map[string]float64,
 ) []string {
 	fillerCount, fillerCues := countTokenMatches(tokens, lexicon.fillerWords)
