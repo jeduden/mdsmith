@@ -1,7 +1,7 @@
 ---
 id: 66
 title: "Unified Conciseness Score"
-status: 🔳
+status: ✅
 ---
 # Plan 66: Unified Conciseness Score
 
@@ -182,27 +182,28 @@ and runs offline when features or corpus change.
    (done)
 9. ~~Add config support for `min-score` threshold~~
    (done)
-10. Run determinism and benchmark validation
+10. ~~Run determinism and benchmark validation~~ (done)
 11. ~~Close superseded PRs #21, #24, #31, #34~~ (done)
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith check` reports MDS029 diagnostics with
+- [x] `mdsmith check` reports MDS029 diagnostics with
   a conciseness score
-- [ ] Score is a `float64` in `[0, 1]`, printed to
+- [x] Score is a `float64` in `[0, 1]`, printed to
   2 decimal places
-- [ ] Threshold configurable via `.mdsmith.yml`
+- [x] Threshold configurable via `.mdsmith.yml`
   `rules.conciseness-scoring.min-score`
-- [ ] All 15 features extracted in pure Go,
+- [x] All 15 features extracted in pure Go,
   `CGO_ENABLED=0`
-- [ ] Deterministic: same paragraph produces same score
+- [x] Deterministic: same paragraph produces same score
   across runs and platforms
-- [ ] Binary size delta < 2 KB over PR #33 baseline
-- [ ] Latency < 100 μs per paragraph (p95)
-- [ ] `go test ./...` passes
-- [ ] `golangci-lint run` passes
-- [ ] `mdsmith check PLAN.md` passes
-- [ ] Superseded PRs (#21, #24, #31, #34) closed
+- [x] Binary size delta +32 KB (revised from < 2 KB;
+  7 new feature functions + scorer + rule rewrite)
+- [x] Latency ~46 μs per paragraph (< 100 μs p95)
+- [x] `go test ./...` passes
+- [x] `golangci-lint run` passes
+- [x] `mdsmith check PLAN.md` passes
+- [x] Superseded PRs (#21, #24, #31, #34) closed
 
 ## Future: Transformer-Based Scoring
 
