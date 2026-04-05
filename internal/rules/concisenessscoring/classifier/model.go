@@ -348,27 +348,26 @@ func extractFeatures(
 	tokens := wordPattern.FindAllString(strings.ToLower(text), -1)
 	wordCount := float64(len(tokens))
 
-	features := map[string]float64{
-		"filler_rate":         0,
-		"hedge_rate":          0,
-		"verbose_phrase_rate": 0,
-		"modal_rate":          0,
-		"vague_rate":          0,
-		"action_rate":         0,
-		"content_ratio":       0,
-		"log_word_count":      0,
-		"compression_ratio":   0,
-		"type_token_ratio":    0,
-		"nominal_density":     0,
-		"sent_len_variance":   0,
-		"func_word_ratio":     0,
-		"avg_word_length":     0,
-		"ly_adverb_density":   0,
+	features := make(map[string]float64, len(featureOrder))
+	for _, name := range featureOrder {
+		features[name] = 0
 	}
 	if wordCount == 0 {
 		return features, []string{}
 	}
 
+	cues := extractLexiconFeatures(
+		text, tokens, wordCount, lexicon, features,
+	)
+	extractDerivedFeatures(text, tokens, features)
+
+	return features, dedupeSorted(cues)
+}
+
+func extractLexiconFeatures(
+	text string, tokens []string, wordCount float64,
+	lexicon compiledLexicon, features map[string]float64,
+) []string {
 	fillerCount, fillerCues := countTokenMatches(tokens, lexicon.fillerWords)
 	modalCount, modalCues := countTokenMatches(tokens, lexicon.modalWords)
 	vagueCount, vagueCues := countTokenMatches(tokens, lexicon.vagueWords)
@@ -377,8 +376,7 @@ func extractFeatures(
 
 	hedgeCount, hedgeCues := countPhraseMatches(text, lexicon.hedgePhrases)
 	verboseCount, verboseCues := countPhraseMatches(
-		text,
-		lexicon.verbosePhrases,
+		text, lexicon.verbosePhrases,
 	)
 
 	features["filler_rate"] = float64(fillerCount) / wordCount
@@ -389,13 +387,6 @@ func extractFeatures(
 	features["action_rate"] = float64(actionCount) / wordCount
 	features["content_ratio"] = float64(contentCount) / wordCount
 	features["log_word_count"] = math.Log1p(wordCount)
-	features["compression_ratio"] = CompressionRatio(text)
-	features["type_token_ratio"] = TypeTokenRatio(tokens)
-	features["nominal_density"] = NominalDensity(tokens)
-	features["sent_len_variance"] = SentLenVariance(text)
-	features["func_word_ratio"] = FuncWordRatio(tokens)
-	features["avg_word_length"] = AvgWordLength(tokens)
-	features["ly_adverb_density"] = LyAdverbDensity(tokens)
 
 	cues := make([]string, 0, 12)
 	cues = append(cues, fillerCues...)
@@ -404,8 +395,19 @@ func extractFeatures(
 	cues = append(cues, actionCues...)
 	cues = append(cues, hedgeCues...)
 	cues = append(cues, verboseCues...)
+	return cues
+}
 
-	return features, dedupeSorted(cues)
+func extractDerivedFeatures(
+	text string, tokens []string, features map[string]float64,
+) {
+	features["compression_ratio"] = CompressionRatio(text)
+	features["type_token_ratio"] = TypeTokenRatio(tokens)
+	features["nominal_density"] = NominalDensity(tokens)
+	features["sent_len_variance"] = SentLenVariance(text)
+	features["func_word_ratio"] = FuncWordRatio(tokens)
+	features["avg_word_length"] = AvgWordLength(tokens)
+	features["ly_adverb_density"] = LyAdverbDensity(tokens)
 }
 
 func countTokenMatches(

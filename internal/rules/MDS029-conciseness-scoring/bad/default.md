@@ -5,7 +5,7 @@ settings:
 diagnostics:
   - line: 3
     column: 1
-    message: 'conciseness score too low (0.29 < 0.99); target >= 0.99; reduce filler or hedge cues (e.g., "basically", "just")'
+    message: 'conciseness score too low (0.13 < 0.99); target >= 0.99; reduce filler or hedge cues (e.g., "basically", "in order to")'
 ---
 # Verbose Paragraph
 

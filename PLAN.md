@@ -27,7 +27,7 @@ footer: |
 | 62  | ✅     | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                                                |
 | 64  | ✅     | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                        |
 | 65  | 🔲     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                |
-| 66  | 🔲     | [Unified Conciseness Score](plan/66_unified-conciseness-score.md)                                               |
+| 66  | 🔳     | [Unified Conciseness Score](plan/66_unified-conciseness-score.md)                                               |
 | 68  | 🔲     | [Reorganize Documentation](plan/68_reorganize-docs.md)                                                          |
 | 69  | 🔲     | [Include enhancements: link adjustment and heading-level](plan/69_include-enhancements.md)                      |
 | 73  | ✅     | [Unify template and processing directives](plan/73_unify-template-directives.md)                                |

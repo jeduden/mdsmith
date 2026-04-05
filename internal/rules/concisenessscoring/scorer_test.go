@@ -17,7 +17,10 @@ func TestNewScorer(t *testing.T) {
 func TestScorer_VerboseText(t *testing.T) {
 	s, err := NewScorer()
 	require.NoError(t, err)
-	text := "Basically, it seems that we are just trying to explain the same idea in order to make it very clear, and it appears that we are really saying very little new information overall."
+	text := "Basically, it seems that we are just trying to " +
+		"explain the same idea in order to make it very clear, " +
+		"and it appears that we are really saying very little " +
+		"new information overall."
 	result := s.Score(text)
 	assert.GreaterOrEqual(t, result.Conciseness, 0.0)
 	assert.LessOrEqual(t, result.Conciseness, 1.0)
@@ -37,7 +40,10 @@ func TestScorer_ConciseText(t *testing.T) {
 func TestScorer_VerboseLowerThanConcise(t *testing.T) {
 	s, err := NewScorer()
 	require.NoError(t, err)
-	verbose := "Basically, it seems that we are just trying to explain the same idea in order to make it very clear, and it appears that we are really saying very little new information overall."
+	verbose := "Basically, it seems that we are just trying to " +
+		"explain the same idea in order to make it very clear, " +
+		"and it appears that we are really saying very little " +
+		"new information overall."
 	concise := "Run go test ./... and publish checksums for release artifacts."
 	verboseResult := s.Score(verbose)
 	conciseResult := s.Score(concise)

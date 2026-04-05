@@ -1,7 +1,7 @@
 ---
 id: 66
 title: "Unified Conciseness Score"
-status: 🔲
+status: 🔳
 ---
 # Plan 66: Unified Conciseness Score
 
@@ -126,7 +126,7 @@ Implemented in the classifier package:
 | avg_word_length   | Word length distribution |
 | ly_adverb_density | Adverb overuse           |
 
-Total: 14 features (7 existing + 7 new).
+Total: 15 features (8 existing + 7 new).
 
 ## Implementation
 
@@ -154,7 +154,7 @@ internal/rules/MDS029-conciseness-scoring/
 After adding the new features, retrain the model:
 
 1. Use the corpus from PR #35 (plan 62).
-2. Extract all 14 features from each labeled paragraph.
+2. Extract all 15 features from each labeled paragraph.
 3. Fit logistic regression (`sklearn.linear_model`).
 4. Export weights and bias to `cue-linear-v2.json`.
 5. Generate SHA-256 checksum for `go:embed` verification.
@@ -165,17 +165,23 @@ and runs offline when features or corpus change.
 
 ## Tasks
 
-1. Merge PR #33 (plan 64 base classifier)
-2. Merge PR #35 (plan 62 corpus)
-3. Add 7 new feature extractors in `features.go`
-4. Add feature tests in `features_test.go`
-5. Retrain weights with 14 features, export v2 JSON
-6. Implement `Scorer` interface in `scorer.go`
-7. Implement MDS029 rule in
-   `internal/rules/concisenessscoring/rule.go`
-8. Update MDS029 rule spec in
-   `internal/rules/MDS029-conciseness-scoring/`
-9. Add config support for `min-score` threshold
+1. ~~Merge PR #33 (plan 64 base classifier)~~ (done)
+2. ~~Merge PR #35 (plan 62 corpus)~~ (done)
+3. ~~Add 7 new feature extractors in `features.go`~~
+   (done)
+4. ~~Add feature tests in `features_test.go`~~ (done)
+5. ~~Retrain weights with 15 features, export v2
+   JSON~~ (done)
+6. ~~Implement `Scorer` interface in `scorer.go`~~
+   (done)
+7. ~~Implement MDS029 rule in
+   `internal/rules/concisenessscoring/rule.go`~~
+   (done)
+8. ~~Update MDS029 rule spec in
+   `internal/rules/MDS029-conciseness-scoring/`~~
+   (done)
+9. ~~Add config support for `min-score` threshold~~
+   (done)
 10. Run determinism and benchmark validation
 11. ~~Close superseded PRs #21, #24, #31, #34~~ (done)
 
@@ -187,7 +193,7 @@ and runs offline when features or corpus change.
   2 decimal places
 - [ ] Threshold configurable via `.mdsmith.yml`
   `rules.conciseness-scoring.min-score`
-- [ ] All 14 features extracted in pure Go,
+- [ ] All 15 features extracted in pure Go,
   `CGO_ENABLED=0`
 - [ ] Deterministic: same paragraph produces same score
   across runs and platforms
