@@ -120,12 +120,18 @@ func run() int {
 	}
 }
 
+// version is set via ldflags at build time (e.g. -X main.version=v1.0.0).
+var version string
+
 func printVersion() {
-	version := "(devel)"
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
-		version = info.Main.Version
+	v := version
+	if v == "" {
+		v = "(devel)"
+		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+			v = info.Main.Version
+		}
 	}
-	fmt.Printf("mdsmith %s\n", version)
+	fmt.Printf("mdsmith %s\n", v)
 }
 
 // runCheck implements the "check" subcommand: lint files.
