@@ -91,6 +91,6 @@ little concrete information to the paragraph.
 
 ## Diagnostics
 
-| Condition             | Message                                                                                                                   |
-|-----------------------|---------------------------------------------------------------------------------------------------------------------------|
+| Condition             | Message                                                                                                           |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------|
 | score below threshold | `conciseness score too low (0.08 < 0.20); target >= 0.20; reduce verbose cues (e.g., "basically", "in order to")` |
