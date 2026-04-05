@@ -81,8 +81,9 @@ func TestCheck_DiagnosticLine(t *testing.T) {
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 
+	threshold := modelConciseness(t)
 	r := &Rule{
-		MinScore: 0.80,
+		MinScore: threshold,
 		MinWords: 20,
 	}
 	diags := r.Check(f)
