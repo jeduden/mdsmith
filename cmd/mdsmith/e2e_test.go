@@ -50,27 +50,7 @@ func TestMain(m *testing.M) {
 
 	// Create an isolated working directory with a .git marker and minimal
 	// config to prevent runBinary from inheriting the repo root's config.
-	isolatedCWD, err = os.MkdirTemp("", "mdsmith-e2e-cwd-*")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create isolated CWD: %v\n", err)
-		_ = os.RemoveAll(tmp)
-		_ = os.RemoveAll(coverDir)
-		os.Exit(1)
-	}
-	if err := os.MkdirAll(filepath.Join(isolatedCWD, ".git"), 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create isolated .git marker: %v\n", err)
-		_ = os.RemoveAll(isolatedCWD)
-		_ = os.RemoveAll(tmp)
-		_ = os.RemoveAll(coverDir)
-		os.Exit(1)
-	}
-	if err := os.WriteFile(filepath.Join(isolatedCWD, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write isolated .mdsmith.yml: %v\n", err)
-		_ = os.RemoveAll(isolatedCWD)
-		_ = os.RemoveAll(tmp)
-		_ = os.RemoveAll(coverDir)
-		os.Exit(1)
-	}
+	isolatedCWD = createIsolatedCWD(tmp, coverDir)
 
 	code := m.Run()
 	_ = os.RemoveAll(isolatedCWD)
@@ -95,6 +75,36 @@ func TestMain(m *testing.M) {
 	_ = os.RemoveAll(tmp)
 	_ = os.RemoveAll(coverDir)
 	os.Exit(code)
+}
+
+// createIsolatedCWD creates a temp directory with .git and .mdsmith.yml
+// to prevent config discovery from walking up to the repo root.
+func createIsolatedCWD(cleanupDirs ...string) string {
+	dir, err := os.MkdirTemp("", "mdsmith-e2e-cwd-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create isolated CWD: %v\n", err)
+		for _, d := range cleanupDirs {
+			_ = os.RemoveAll(d)
+		}
+		os.Exit(1)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create .git marker: %v\n", err)
+		_ = os.RemoveAll(dir)
+		for _, d := range cleanupDirs {
+			_ = os.RemoveAll(d)
+		}
+		os.Exit(1)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to write .mdsmith.yml: %v\n", err)
+		_ = os.RemoveAll(dir)
+		for _, d := range cleanupDirs {
+			_ = os.RemoveAll(d)
+		}
+		os.Exit(1)
+	}
+	return dir
 }
 
 // runBinary runs the mdsmith binary with the given args and optional stdin.
