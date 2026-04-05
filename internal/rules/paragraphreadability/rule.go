@@ -71,6 +71,20 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			if score > maxIndex {
 				line := paragraphLine(para, f)
 				rounded := math.Round(score*10) / 10
+				sentences := mdtext.CountSentences(text)
+				avgSentLen := 0
+				if sentences > 0 {
+					avgSentLen = words / sentences
+				}
+				msg := fmt.Sprintf(
+					"paragraph too hard to read"+
+						" (readability index: %.1f, max %.1f)",
+					rounded, maxIndex,
+				)
+				msg += fmt.Sprintf(
+					"; avg sentence length %d words — try splitting long sentences",
+					avgSentLen,
+				)
 				diags = append(diags, lint.Diagnostic{
 					File:     f.Path,
 					Line:     line,
@@ -78,11 +92,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 					RuleID:   r.ID(),
 					RuleName: r.Name(),
 					Severity: lint.Warning,
-					Message: fmt.Sprintf(
-						"paragraph too hard to read"+
-							" (readability index: %.1f, max %.1f)",
-						rounded, maxIndex,
-					),
+					Message:  msg,
 				})
 			}
 

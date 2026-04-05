@@ -76,6 +76,13 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return nil
 	}
 
+	overage := count - budget
+	tpw := r.TokensPerWord
+	if tpw <= 0 {
+		tpw = defaultTokensPerWord
+	}
+	wordsOver := int(math.Round(float64(overage) / tpw))
+
 	return []lint.Diagnostic{{
 		File:     f.Path,
 		Line:     1,
@@ -84,10 +91,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		RuleName: r.Name(),
 		Severity: lint.Warning,
 		Message: fmt.Sprintf(
-			"token budget exceeded (%d > %d, mode=%s)",
+			"token budget exceeded (%d > %d, mode=%s); ~%d words over budget",
 			count,
 			budget,
 			modeLabel,
+			wordsOver,
 		),
 	}}
 }

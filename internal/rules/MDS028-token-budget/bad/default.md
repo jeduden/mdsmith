@@ -6,7 +6,7 @@ settings:
 diagnostics:
   - line: 1
     column: 1
-    message: "token budget exceeded (9 > 5, mode=heuristic:tokens-per-word=1.00)"
+    message: "token budget exceeded (9 > 5, mode=heuristic:tokens-per-word=1.00); ~4 words over budget"
 ---
 # Token Budget
 

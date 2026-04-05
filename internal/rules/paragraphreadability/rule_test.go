@@ -54,6 +54,12 @@ func TestCheck_OverThreshold(t *testing.T) {
 			d.Message,
 		)
 	}
+	if !strings.Contains(d.Message, "avg sentence length") {
+		t.Errorf(
+			"expected message to contain avg sentence length hint, got %q",
+			d.Message,
+		)
+	}
 }
 
 func TestCheck_UnderThreshold(t *testing.T) {

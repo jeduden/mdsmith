@@ -134,9 +134,10 @@ func TestCheck_TooManyWordsPerCell(t *testing.T) {
 	if diags[0].Line != 6 {
 		t.Fatalf("line = %d, want 6", diags[0].Line)
 	}
-	if diags[0].Message != "table cell has too many words (6 > 4)" {
-		t.Fatalf("message = %q", diags[0].Message)
-	}
+	require.Contains(t, diags[0].Message, "table cell has too many words (6 > 4)",
+		"message = %q", diags[0].Message)
+	require.Contains(t, diags[0].Message, "column \"Notes\"",
+		"message should include column header name, got: %q", diags[0].Message)
 }
 
 func TestCheck_HighWidthRatio(t *testing.T) {

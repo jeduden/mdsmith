@@ -76,11 +76,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			))
 		}
 
-		if words, line := tbl.maxCellWords(); words > maxWordsPerCell {
+		if words, line, col := tbl.maxCellWords(); words > maxWordsPerCell {
+			msg := fmt.Sprintf("table cell has too many words (%d > %d)", words, maxWordsPerCell)
+			if header := tbl.columnHeader(col); header != "" {
+				msg += fmt.Sprintf(" in column %q", header)
+			}
 			diags = append(diags, makeDiag(
 				f,
 				line,
-				fmt.Sprintf("table cell has too many words (%d > %d)", words, maxWordsPerCell),
+				msg,
 			))
 		}
 
@@ -280,22 +284,31 @@ func (t table) dataRowCount() int {
 	return count
 }
 
-func (t table) maxCellWords() (int, int) {
+func (t table) maxCellWords() (int, int, int) {
 	maxWords := 0
 	maxLine := t.startLine
+	maxCol := 0
 	for _, row := range t.rows {
 		if row.isSeparator {
 			continue
 		}
-		for _, cell := range row.cells {
+		for col, cell := range row.cells {
 			wc := len(strings.Fields(cell))
 			if wc > maxWords {
 				maxWords = wc
 				maxLine = row.line
+				maxCol = col
 			}
 		}
 	}
-	return maxWords, maxLine
+	return maxWords, maxLine, maxCol
+}
+
+func (t table) columnHeader(col int) string {
+	if len(t.rows) == 0 || col >= len(t.rows[0].cells) {
+		return ""
+	}
+	return strings.TrimSpace(t.rows[0].cells[col])
 }
 
 func (t table) columnWidthRatio() float64 {

@@ -34,9 +34,10 @@ func TestCheck_HeuristicBudgetExceeded(t *testing.T) {
 	if d.Line != 1 || d.Column != 1 {
 		t.Errorf("expected location 1:1, got %d:%d", d.Line, d.Column)
 	}
-	if want := "token budget exceeded (6 > 3, mode=heuristic:tokens-per-word=1.00)"; d.Message != want {
-		t.Errorf("expected message %q, got %q", want, d.Message)
-	}
+	require.Contains(t, d.Message, "token budget exceeded (6 > 3, mode=heuristic:tokens-per-word=1.00)",
+		"message missing base info, got: %s", d.Message)
+	require.Contains(t, d.Message, "~3 words over budget",
+		"message should include words-over-budget estimate, got: %s", d.Message)
 }
 
 func TestCheck_HeuristicAtBudget_NoDiagnostic(t *testing.T) {

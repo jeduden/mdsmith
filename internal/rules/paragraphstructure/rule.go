@@ -3,6 +3,7 @@ package paragraphstructure
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -75,8 +76,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 					RuleName: r.Name(),
 					Severity: lint.Warning,
 					Message: fmt.Sprintf(
-						"sentence too long (%d > %d words)",
-						wc, r.MaxWords,
+						"sentence too long (%d > %d words): %s",
+						wc, r.MaxWords, sentencePreview(sent, 10),
 					),
 				})
 			}
@@ -86,6 +87,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	})
 
 	return diags
+}
+
+// sentencePreview returns a quoted preview of the sentence, truncated
+// to approximately limit words with "..." appended if truncated.
+func sentencePreview(sent string, limit int) string {
+	words := strings.Fields(strings.TrimSpace(sent))
+	if len(words) <= limit {
+		return fmt.Sprintf("%q", strings.Join(words, " "))
+	}
+	return fmt.Sprintf("%q", strings.Join(words[:limit], " ")+" ...")
 }
 
 func paragraphLine(para *ast.Paragraph, f *lint.File) int {
