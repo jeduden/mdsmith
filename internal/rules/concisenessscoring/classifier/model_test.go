@@ -167,6 +167,13 @@ func TestValidateWeights_RejectsUnknownKey(t *testing.T) {
 		"action_rate":         1,
 		"content_ratio":       1,
 		"log_word_count":      1,
+		"compression_ratio":   1,
+		"type_token_ratio":    1,
+		"nominal_density":     1,
+		"sent_len_variance":   1,
+		"func_word_ratio":     1,
+		"avg_word_length":     1,
+		"ly_adverb_density":   1,
 		"unexpected":          1,
 	})
 	if err == nil {
@@ -174,6 +181,34 @@ func TestValidateWeights_RejectsUnknownKey(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown key") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExtractFeatures_NewFeatures(t *testing.T) {
+	model, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded returned error: %v", err)
+	}
+
+	text := "Basically, it seems that we are just trying to explain the same idea in order to make it very clear."
+	result := model.Classify(text)
+
+	// All 15 features should be present
+	expectedFeatures := []string{
+		"filler_rate", "hedge_rate", "verbose_phrase_rate",
+		"modal_rate", "vague_rate", "action_rate",
+		"content_ratio", "log_word_count",
+		"compression_ratio", "type_token_ratio", "nominal_density",
+		"sent_len_variance", "func_word_ratio", "avg_word_length",
+		"ly_adverb_density",
+	}
+	for _, name := range expectedFeatures {
+		if _, ok := result.FeatureSummary[name]; !ok {
+			t.Errorf("missing feature %q in FeatureSummary", name)
+		}
+	}
+	if len(result.FeatureSummary) != 15 {
+		t.Errorf("expected 15 features, got %d", len(result.FeatureSummary))
 	}
 }
 
