@@ -14,13 +14,12 @@ func Merge(defaults, loaded *Config) *Config {
 		}
 		cats := copyCategories(defaults.Categories)
 		files := copyStrings(defaults.Files)
-		noFollow := copyStrings(defaults.NoFollowSymlinks)
 		return &Config{
-			Rules:            rules,
-			FrontMatter:      defaults.FrontMatter,
-			Categories:       cats,
-			Files:            files,
-			NoFollowSymlinks: noFollow,
+			Rules:          rules,
+			FrontMatter:    defaults.FrontMatter,
+			Categories:     cats,
+			Files:          files,
+			FollowSymlinks: defaults.FollowSymlinks,
 		}
 	}
 
@@ -57,15 +56,15 @@ func Merge(defaults, loaded *Config) *Config {
 	}
 
 	return &Config{
-		Rules:            rules,
-		Ignore:           loaded.Ignore,
-		Overrides:        loaded.Overrides,
-		FrontMatter:      fm,
-		Categories:       cats,
-		Files:            files,
-		FilesExplicit:    filesExplicit,
-		ExplicitRules:    explicit,
-		NoFollowSymlinks: loaded.NoFollowSymlinks,
+		Rules:          rules,
+		Ignore:         loaded.Ignore,
+		Overrides:      loaded.Overrides,
+		FrontMatter:    fm,
+		Categories:     cats,
+		Files:          files,
+		FilesExplicit:  filesExplicit,
+		ExplicitRules:  explicit,
+		FollowSymlinks: loaded.FollowSymlinks,
 	}
 }
 

@@ -1,7 +1,7 @@
 ---
 id: 84
 title: 'Symlink default-deny for file discovery'
-status: "🔲"
+status: "✅"
 summary: >-
   Skip symlinks by default during directory walks;
   add --follow-symlinks opt-in flag.
@@ -83,29 +83,29 @@ Consider migrating from `filepath.Walk` to
 
 ## Tasks
 
-1. Replace `NoFollowSymlinks []string` with
+1. [x] Replace `NoFollowSymlinks []string` with
    `FollowSymlinks bool` in `config.Config`
-2. Replace `--no-follow-symlinks` with
+2. [x] Replace `--no-follow-symlinks` with
    `--follow-symlinks` in CLI flag sets
-3. Update `ResolveOpts` to use `FollowSymlinks bool`
-4. Update `walkDir` to skip symlinks by default
-5. Update `resolveGlob` to skip symlinks by default
-6. Add deprecation warning for old config key
-7. Update tests in `files_test.go`
-8. Add integration test: symlink to file outside
+3. [x] Update `ResolveOpts` to use `FollowSymlinks bool`
+4. [x] Update `walkDir` to skip symlinks by default
+5. [x] Update `resolveGlob` to skip symlinks by default
+6. [x] Add deprecation warning for old config key
+7. [x] Update tests in `files_test.go`
+8. [x] Add integration test: symlink to file outside
    project is skipped by default, followed with
    `--follow-symlinks`
 
 ## Acceptance Criteria
 
-- [ ] Symlinks are skipped by default in directory
+- [x] Symlinks are skipped by default in directory
       walks
-- [ ] `--follow-symlinks` flag enables symlink
+- [x] `--follow-symlinks` flag enables symlink
       following
-- [ ] `follow-symlinks: true` in config enables
+- [x] `follow-symlinks: true` in config enables
       symlink following
-- [ ] Old `no-follow-symlinks` config emits
+- [x] Old `no-follow-symlinks` config emits
       deprecation warning
-- [ ] Both `check` and `fix` respect the setting
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Both `check` and `fix` respect the setting
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

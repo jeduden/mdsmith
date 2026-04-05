@@ -275,9 +275,9 @@ func TestResolveFilesWithOpts_GitignoreNegation(t *testing.T) {
 	assert.Equal(t, "keep.md", filepath.Base(files[0]))
 }
 
-// --- NoFollowSymlinks tests ---
+// --- Symlink default-deny tests ---
 
-func TestResolveFilesWithOpts_NoFollowSymlinks(t *testing.T) {
+func TestResolveFilesWithOpts_SymlinksSkippedByDefault(t *testing.T) {
 	dir := t.TempDir()
 
 	realFile := filepath.Join(dir, "real.md")
@@ -291,26 +291,43 @@ func TestResolveFilesWithOpts_NoFollowSymlinks(t *testing.T) {
 	linkFile := filepath.Join(dir, "link.md")
 	require.NoError(t, os.Symlink(targetFile, linkFile))
 
-	// Without no-follow-symlinks: all files should be found.
-	files, err := ResolveFilesWithOpts([]string{dir}, DefaultResolveOpts())
-	require.NoError(t, err)
-	require.Len(t, files, 3) // real.md, link.md, target/doc.md
-
-	// With no-follow-symlinks matching all .md: symlink should be skipped.
+	// Default: symlinks are skipped.
 	noGitignore := false
-	opts := ResolveOpts{
-		UseGitignore:     &noGitignore,
-		NoFollowSymlinks: []string{"*.md"},
-	}
-	files, err = ResolveFilesWithOpts([]string{dir}, opts)
+	opts := ResolveOpts{UseGitignore: &noGitignore}
+	files, err := ResolveFilesWithOpts([]string{dir}, opts)
 	require.NoError(t, err)
-	require.Len(t, files, 2, "expected 2 files (symlink skipped)")
+	require.Len(t, files, 2, "expected 2 files (symlink skipped by default)")
 	for _, f := range files {
 		assert.NotEqual(t, "link.md", filepath.Base(f), "link.md should have been skipped (symlink)")
 	}
 }
 
-func TestResolveFilesWithOpts_NoFollowSymlinks_PatternSpecific(t *testing.T) {
+func TestResolveFilesWithOpts_FollowSymlinks(t *testing.T) {
+	dir := t.TempDir()
+
+	realFile := filepath.Join(dir, "real.md")
+	require.NoError(t, os.WriteFile(realFile, []byte("# Real"), 0o644))
+
+	subDir := filepath.Join(dir, "target")
+	require.NoError(t, os.MkdirAll(subDir, 0o755))
+	targetFile := filepath.Join(subDir, "doc.md")
+	require.NoError(t, os.WriteFile(targetFile, []byte("# Target"), 0o644))
+
+	linkFile := filepath.Join(dir, "link.md")
+	require.NoError(t, os.Symlink(targetFile, linkFile))
+
+	// With FollowSymlinks: all files including symlink should be found.
+	noGitignore := false
+	opts := ResolveOpts{
+		UseGitignore:   &noGitignore,
+		FollowSymlinks: true,
+	}
+	files, err := ResolveFilesWithOpts([]string{dir}, opts)
+	require.NoError(t, err)
+	require.Len(t, files, 3) // real.md, link.md, target/doc.md
+}
+
+func TestResolveFilesWithOpts_SymlinksSkippedByDefault_MultipleDirs(t *testing.T) {
 	dir := t.TempDir()
 
 	targetA := filepath.Join(dir, "a.md")
@@ -323,12 +340,40 @@ func TestResolveFilesWithOpts_NoFollowSymlinks_PatternSpecific(t *testing.T) {
 	require.NoError(t, os.Symlink(targetA, filepath.Join(linkDir, "link-a.md")))
 	require.NoError(t, os.Symlink(targetB, filepath.Join(linkDir, "link-b.md")))
 
+	// Default: symlinks skipped, only real files returned.
 	noGitignore := false
-	opts := ResolveOpts{
-		UseGitignore:     &noGitignore,
-		NoFollowSymlinks: []string{"**/links/*"},
-	}
+	opts := ResolveOpts{UseGitignore: &noGitignore}
 	files, err := ResolveFilesWithOpts([]string{dir}, opts)
 	require.NoError(t, err)
-	require.Len(t, files, 2)
+	require.Len(t, files, 2, "expected 2 real files (symlinks skipped)")
+}
+
+func TestResolveFilesWithOpts_SymlinkOutsideProject(t *testing.T) {
+	// Symlink pointing outside the project should be skipped by default
+	// and followed only with FollowSymlinks.
+	projectDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	outsideFile := filepath.Join(outsideDir, "secret.md")
+	require.NoError(t, os.WriteFile(outsideFile, []byte("# Secret"), 0o644))
+
+	realFile := filepath.Join(projectDir, "readme.md")
+	require.NoError(t, os.WriteFile(realFile, []byte("# Readme"), 0o644))
+
+	evilLink := filepath.Join(projectDir, "evil.md")
+	require.NoError(t, os.Symlink(outsideFile, evilLink))
+
+	// Default: symlink to outside file is skipped.
+	noGitignore := false
+	opts := ResolveOpts{UseGitignore: &noGitignore}
+	files, err := ResolveFilesWithOpts([]string{projectDir}, opts)
+	require.NoError(t, err)
+	require.Len(t, files, 1, "expected 1 file (symlink to outside skipped)")
+	assert.Equal(t, "readme.md", filepath.Base(files[0]))
+
+	// With FollowSymlinks: symlink is followed.
+	opts.FollowSymlinks = true
+	files, err = ResolveFilesWithOpts([]string{projectDir}, opts)
+	require.NoError(t, err)
+	require.Len(t, files, 2, "expected 2 files (symlink followed)")
 }

@@ -91,14 +91,14 @@ func runMetricsList(args []string) int {
 }
 
 type metricsRankOptions struct {
-	configPath       string
-	metricsRaw       string
-	byRaw            string
-	orderRaw         string
-	top              int
-	format           string
-	noGitignore      bool
-	noFollowSymlinks bool
+	configPath     string
+	metricsRaw     string
+	byRaw          string
+	orderRaw       string
+	top            int
+	format         string
+	noGitignore    bool
+	followSymlinks bool
 }
 
 func runMetricsRank(args []string) int {
@@ -121,7 +121,7 @@ func parseMetricsRankOptions(args []string) (metricsRankOptions, []string, error
 	fs.IntVar(&opts.top, "top", 0, "Limit results to top N files (0 = all)")
 	fs.StringVarP(&opts.format, "format", "f", "text", "Output format: text, json")
 	fs.BoolVar(&opts.noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
-	fs.BoolVar(&opts.noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.BoolVar(&opts.followSymlinks, "follow-symlinks", false, "Follow symbolic links when walking directories")
 
 	fs.Usage = func() {
 		fmt.Fprintf(
@@ -232,7 +232,7 @@ func resolveRankFiles(opts metricsRankOptions, fileArgs []string) ([]string, err
 		return nil, err
 	}
 
-	resolveOptions := resolveOpts(cfg, opts.noGitignore, opts.noFollowSymlinks)
+	resolveOptions := resolveOpts(cfg, opts.noGitignore, opts.followSymlinks)
 	return lint.ResolveFilesWithOpts(fileArgs, resolveOptions)
 }
 

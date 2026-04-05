@@ -138,13 +138,13 @@ func printVersion() {
 func runCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var (
-		configPath       string
-		format           string
-		noColor          bool
-		quiet            bool
-		verbose          bool
-		noGitignore      bool
-		noFollowSymlinks bool
+		configPath     string
+		format         string
+		noColor        bool
+		quiet          bool
+		verbose        bool
+		noGitignore    bool
+		followSymlinks bool
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -153,7 +153,7 @@ func runCheck(args []string) int {
 	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
-	fs.BoolVar(&noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.BoolVar(&followSymlinks, "follow-symlinks", false, "Follow symbolic links when walking directories")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
@@ -184,24 +184,24 @@ func runCheck(args []string) int {
 	}
 
 	if len(fileArgs) > 0 {
-		return checkFiles(fileArgs, configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+		return checkFiles(fileArgs, configPath, format, noColor, quiet, verbose, noGitignore, followSymlinks)
 	}
 
 	// No file args and no stdin: discover files from config.
-	return checkDiscovered(configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+	return checkDiscovered(configPath, format, noColor, quiet, verbose, noGitignore, followSymlinks)
 }
 
 // runFix implements the "fix" subcommand: auto-fix lint issues in place.
 func runFix(args []string) int {
 	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
 	var (
-		configPath       string
-		format           string
-		noColor          bool
-		quiet            bool
-		verbose          bool
-		noGitignore      bool
-		noFollowSymlinks bool
+		configPath     string
+		format         string
+		noColor        bool
+		quiet          bool
+		verbose        bool
+		noGitignore    bool
+		followSymlinks bool
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -210,7 +210,7 @@ func runFix(args []string) int {
 	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
-	fs.BoolVar(&noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.BoolVar(&followSymlinks, "follow-symlinks", false, "Follow symbolic links when walking directories")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith fix [flags] [files...]\n\n"+
@@ -242,11 +242,11 @@ func runFix(args []string) int {
 	}
 
 	if len(fileArgs) > 0 {
-		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, noGitignore, followSymlinks)
 	}
 
 	// No file args: discover files from config.
-	return fixDiscovered(configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+	return fixDiscovered(configPath, format, noColor, quiet, verbose, noGitignore, followSymlinks)
 }
 
 // runQuery implements the "query" subcommand: select files by CUE
@@ -462,7 +462,7 @@ func printRunStats(format string, quiet bool, stats runStats) {
 // checkFiles lints the given file paths and returns the appropriate exit code.
 func checkFiles(
 	fileArgs []string, configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose, noGitignore, followSymlinks bool,
 ) int {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
@@ -475,7 +475,7 @@ func checkFiles(
 		logger.Printf("config: %s", cfgPath)
 	}
 
-	opts := resolveOpts(cfg, noGitignore, noFollowSymlinks)
+	opts := resolveOpts(cfg, noGitignore, followSymlinks)
 	files, err := lint.ResolveFilesWithOpts(fileArgs, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
@@ -520,7 +520,7 @@ func checkFiles(
 // fixFiles fixes lint issues in the given file paths.
 func fixFiles(
 	fileArgs []string, configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose, noGitignore, followSymlinks bool,
 ) int {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
@@ -533,7 +533,7 @@ func fixFiles(
 		logger.Printf("config: %s", cfgPath)
 	}
 
-	opts := resolveOpts(cfg, noGitignore, noFollowSymlinks)
+	opts := resolveOpts(cfg, noGitignore, followSymlinks)
 	files, err := lint.ResolveFilesWithOpts(fileArgs, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
@@ -646,7 +646,7 @@ func splitStdinArg(args []string) (hasStdin bool, fileArgs []string) {
 // exit code; the caller should return it directly. A negative code means
 // "continue with the returned values".
 func discoverFiles(
-	configPath string, verbose, noGitignore, noFollowSymlinks bool,
+	configPath string, verbose, noGitignore, followSymlinks bool,
 ) (*config.Config, string, *vlog.Logger, []string, int) {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
@@ -663,9 +663,9 @@ func discoverFiles(
 	}
 
 	files, err := discovery.Discover(discovery.Options{
-		Patterns:         cfg.Files,
-		UseGitignore:     !noGitignore,
-		NoFollowSymlinks: resolveOpts(cfg, noGitignore, noFollowSymlinks).NoFollowSymlinks,
+		Patterns:       cfg.Files,
+		UseGitignore:   !noGitignore,
+		FollowSymlinks: followSymlinks || cfg.FollowSymlinks,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: discovering files: %v\n", err)
@@ -681,9 +681,9 @@ func discoverFiles(
 // and lints them. Returns the appropriate exit code.
 func checkDiscovered(
 	configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose, noGitignore, followSymlinks bool,
 ) int {
-	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
+	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, followSymlinks)
 	if code >= 0 {
 		return code
 	}
@@ -724,9 +724,9 @@ func checkDiscovered(
 // and fixes them. Returns the appropriate exit code.
 func fixDiscovered(
 	configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose, noGitignore, followSymlinks bool,
 ) int {
-	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
+	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, followSymlinks)
 	if code >= 0 {
 		return code
 	}
@@ -767,17 +767,13 @@ func fixDiscovered(
 // Defaults to true if not set in config.
 // resolveOpts builds ResolveOpts from config and CLI flags.
 // CLI flags override config: --no-gitignore disables gitignore filtering,
-// --no-follow-symlinks skips all symlinks (adds "**" to the pattern list).
-func resolveOpts(cfg *config.Config, noGitignore, noFollowSymlinks bool) lint.ResolveOpts {
+// --follow-symlinks opts in to following symlinks.
+func resolveOpts(cfg *config.Config, noGitignore, followSymlinks bool) lint.ResolveOpts {
 	useGitignore := !noGitignore
-	opts := lint.ResolveOpts{
-		UseGitignore:     &useGitignore,
-		NoFollowSymlinks: cfg.NoFollowSymlinks,
+	return lint.ResolveOpts{
+		UseGitignore:   &useGitignore,
+		FollowSymlinks: followSymlinks || cfg.FollowSymlinks,
 	}
-	if noFollowSymlinks {
-		opts.NoFollowSymlinks = []string{"**"}
-	}
-	return opts
 }
 
 func frontMatterEnabled(cfg *config.Config) bool {

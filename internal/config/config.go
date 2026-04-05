@@ -24,13 +24,13 @@ var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
 
 // Config is the top-level configuration.
 type Config struct {
-	Rules            map[string]RuleCfg `yaml:"rules"`
-	Ignore           []string           `yaml:"ignore"`
-	Overrides        []Override         `yaml:"overrides"`
-	FrontMatter      *bool              `yaml:"front-matter"`
-	Categories       map[string]bool    `yaml:"categories"`
-	Files            []string           `yaml:"files"`
-	NoFollowSymlinks []string           `yaml:"no-follow-symlinks"`
+	Rules          map[string]RuleCfg `yaml:"rules"`
+	Ignore         []string           `yaml:"ignore"`
+	Overrides      []Override         `yaml:"overrides"`
+	FrontMatter    *bool              `yaml:"front-matter"`
+	Categories     map[string]bool    `yaml:"categories"`
+	Files          []string           `yaml:"files"`
+	FollowSymlinks bool               `yaml:"follow-symlinks"`
 
 	// ExplicitRules tracks rule names that were explicitly set in
 	// the user config (not just inherited from defaults). This is

@@ -6,29 +6,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/gobwas/glob"
 )
 
 // isMarkdown returns true if the file extension is .md or .markdown.
 func isMarkdown(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return ext == ".md" || ext == ".markdown"
-}
-
-// matchesGlob returns true if path matches any of the given glob patterns.
-func matchesGlob(patterns []string, path string) bool {
-	cleanPath := filepath.Clean(path)
-	for _, pattern := range patterns {
-		g, err := glob.Compile(pattern)
-		if err != nil {
-			continue
-		}
-		if g.Match(path) || g.Match(cleanPath) || g.Match(filepath.Base(path)) {
-			return true
-		}
-	}
-	return false
 }
 
 // hasGlobChars returns true if the string contains glob meta-characters.
@@ -45,10 +28,10 @@ type ResolveOpts struct {
 	// used (see DefaultResolveOpts).
 	UseGitignore *bool
 
-	// NoFollowSymlinks is a list of glob patterns. Symbolic links
-	// whose path matches any pattern are skipped during directory
-	// walking and glob expansion.
-	NoFollowSymlinks []string
+	// FollowSymlinks opts in to following symbolic links during directory
+	// walking and glob expansion. When false (the default), all symlinks
+	// are skipped.
+	FollowSymlinks bool
 }
 
 // DefaultResolveOpts returns options with defaults applied.
@@ -129,13 +112,11 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 		return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
 	}
 	for _, m := range matches {
-		// Skip symlinks matching no-follow-symlinks patterns.
-		if len(opts.NoFollowSymlinks) > 0 {
+		// Skip symlinks unless FollowSymlinks is enabled.
+		if !opts.FollowSymlinks {
 			linfo, lerr := os.Lstat(m)
 			if lerr == nil && linfo.Mode()&os.ModeSymlink != 0 {
-				if matchesGlob(opts.NoFollowSymlinks, m) {
-					continue
-				}
+				continue
 			}
 		}
 		info, err := os.Stat(m)
@@ -155,7 +136,7 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 
 // addDirFiles walks a directory and adds all markdown files found.
 func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
-	dirFiles, err := walkDir(dir, opts.useGitignore(), opts.NoFollowSymlinks)
+	dirFiles, err := walkDir(dir, opts.useGitignore(), opts.FollowSymlinks)
 	if err != nil {
 		return err
 	}
@@ -166,21 +147,18 @@ func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
 }
 
 // isSkippedSymlink reports whether path should be skipped because it is
-// a symlink matching one of the no-follow-symlinks patterns.
-func isSkippedSymlink(info os.FileInfo, path string, patterns []string) bool {
-	if len(patterns) == 0 {
+// a symlink and followSymlinks is false.
+func isSkippedSymlink(info os.FileInfo, followSymlinks bool) bool {
+	if followSymlinks {
 		return false
 	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		return false
-	}
-	return matchesGlob(patterns, path)
+	return info.Mode()&os.ModeSymlink != 0
 }
 
 // walkDir recursively walks a directory and returns all markdown files.
 // When useGitignore is true, files matched by .gitignore patterns are skipped.
-// Symlinks whose path matches a noFollowSymlinks pattern are skipped.
-func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string, error) {
+// Symlinks are skipped unless followSymlinks is true.
+func walkDir(dir string, useGitignore bool, followSymlinks bool) ([]string, error) {
 	var matcher *GitignoreMatcher
 	if useGitignore {
 		matcher = NewGitignoreMatcher(dir)
@@ -192,7 +170,7 @@ func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string
 			return err
 		}
 
-		if isSkippedSymlink(info, path, noFollowSymlinks) {
+		if isSkippedSymlink(info, followSymlinks) {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}

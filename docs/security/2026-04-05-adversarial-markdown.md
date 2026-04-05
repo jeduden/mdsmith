@@ -113,7 +113,7 @@ Escape sequences pass through to the terminal: screen clearing (`\033[2J`), wind
 - `internal/lint/files.go:190` — `filepath.Walk` follows file symlinks
 - `internal/fix/fix.go:84-122` — `os.WriteFile` follows symlinks on write
 
-Symlink following is the default behavior. The `--no-follow-symlinks` flag and config exist but are opt-in.
+Symlinks are now skipped by default (plan 84). Use `--follow-symlinks` or `follow-symlinks: true` to opt in.
 
 **Adversarial file:**
 
