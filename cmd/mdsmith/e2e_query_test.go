@@ -142,7 +142,7 @@ func TestE2E_Query_AnchorFrontMatterSkipped(t *testing.T) {
 	stdout, stderr, exitCode := runBinaryInDir(
 		t, dir, "", "query", "--verbose", `status: "ok"`, dir)
 	// File with anchor front matter must not match.
-	assert.NotEqual(t, 0, exitCode, "anchor file should not match")
+	assert.Equal(t, 1, exitCode, "anchor file should not match")
 	assert.NotContains(t, stdout, "anchor.md")
 	assert.Contains(t, stderr, "anchors/aliases are not permitted")
 }

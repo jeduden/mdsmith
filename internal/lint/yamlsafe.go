@@ -9,9 +9,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// RejectYAMLAliases parses YAML into a node tree and returns an error if any
+// RejectYAMLAliases decodes YAML into a node tree and returns an error if any
 // anchor or alias is found. Decoding into yaml.Node does not expand aliases,
-// so this is safe even for billion-laughs payloads. This check should be
+// so this is safe even for billion-laughs payloads. Non-anchor syntax errors
+// return nil (handled by the caller's yaml.Unmarshal). This check should be
 // called before yaml.Unmarshal on user-supplied content.
 func RejectYAMLAliases(data []byte) error {
 	if len(data) == 0 {
