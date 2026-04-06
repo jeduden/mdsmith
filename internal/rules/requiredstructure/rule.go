@@ -936,7 +936,8 @@ func readDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {
 	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
-		return nil, nil
+		return nil, []lint.Diagnostic{makeDiag(f.Path, 1,
+			fmt.Sprintf("front matter: invalid YAML: %v", err))}
 	}
 	return raw, nil
 }
