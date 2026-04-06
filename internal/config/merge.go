@@ -7,21 +7,7 @@ package config
 // category not mentioned in loaded keeps its default value (true).
 func Merge(defaults, loaded *Config) *Config {
 	if loaded == nil {
-		// No user config: return a copy of defaults.
-		rules := make(map[string]RuleCfg, len(defaults.Rules))
-		for k, v := range defaults.Rules {
-			rules[k] = v
-		}
-		cats := copyCategories(defaults.Categories)
-		files := copyStrings(defaults.Files)
-		noFollow := copyStrings(defaults.NoFollowSymlinks)
-		return &Config{
-			Rules:            rules,
-			FrontMatter:      defaults.FrontMatter,
-			Categories:       cats,
-			Files:            files,
-			NoFollowSymlinks: noFollow,
-		}
+		return copyConfig(defaults)
 	}
 
 	rules := make(map[string]RuleCfg, len(defaults.Rules))
@@ -56,6 +42,11 @@ func Merge(defaults, loaded *Config) *Config {
 		explicit[k] = true
 	}
 
+	maxInputSize := defaults.MaxInputSize
+	if loaded.MaxInputSize != "" {
+		maxInputSize = loaded.MaxInputSize
+	}
+
 	return &Config{
 		Rules:            rules,
 		Ignore:           loaded.Ignore,
@@ -66,6 +57,23 @@ func Merge(defaults, loaded *Config) *Config {
 		FilesExplicit:    filesExplicit,
 		ExplicitRules:    explicit,
 		NoFollowSymlinks: loaded.NoFollowSymlinks,
+		MaxInputSize:     maxInputSize,
+	}
+}
+
+// copyConfig returns a shallow copy of a Config with copied slices and maps.
+func copyConfig(cfg *Config) *Config {
+	rules := make(map[string]RuleCfg, len(cfg.Rules))
+	for k, v := range cfg.Rules {
+		rules[k] = v
+	}
+	return &Config{
+		Rules:            rules,
+		FrontMatter:      cfg.FrontMatter,
+		Categories:       copyCategories(cfg.Categories),
+		Files:            copyStrings(cfg.Files),
+		NoFollowSymlinks: copyStrings(cfg.NoFollowSymlinks),
+		MaxInputSize:     cfg.MaxInputSize,
 	}
 }
 

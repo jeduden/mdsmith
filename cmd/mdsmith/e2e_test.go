@@ -1390,3 +1390,88 @@ func TestE2E_MergeDriver_SectionMarkersInsideConflict_Preserved(t *testing.T) {
 	assert.Contains(t, content, "=======", "expected ======= separator preserved")
 	assert.Contains(t, content, ">>>>>>>", "expected >>>>>>> marker preserved")
 }
+
+// ── max-input-size ──────────────────────────────────────────────
+
+func TestCheck_MaxInputSize_ExceedingLimit(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+
+	// Create a file larger than 100 bytes.
+	bigContent := make([]byte, 200)
+	for i := range bigContent {
+		bigContent[i] = 'x'
+	}
+	bigContent[0] = '#'
+	bigContent[1] = ' '
+	writeFixture(t, dir, "big.md", string(bigContent))
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"check", "--max-input-size", "100", "big.md")
+	assert.Equal(t, 2, exitCode, "expected exit code 2 for oversized file")
+	assert.Contains(t, stderr, "file too large")
+	assert.Contains(t, stderr, "max 100")
+}
+
+func TestCheck_MaxInputSize_UnderLimit(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+
+	writeFixture(t, dir, "small.md", "# Hello\n")
+
+	_, _, exitCode := runBinaryInDir(t, dir, "",
+		"check", "--max-input-size", "2MB", "small.md")
+	assert.Equal(t, 0, exitCode, "expected exit code 0 for small file")
+}
+
+func TestCheck_MaxInputSize_Unlimited(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+
+	writeFixture(t, dir, "any.md", "# Hello\n")
+
+	_, _, exitCode := runBinaryInDir(t, dir, "",
+		"check", "--max-input-size", "0", "any.md")
+	assert.Equal(t, 0, exitCode, "expected exit code 0 with unlimited size")
+}
+
+func TestFix_MaxInputSize_ExceedingLimit(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+
+	bigContent := make([]byte, 200)
+	for i := range bigContent {
+		bigContent[i] = 'x'
+	}
+	bigContent[0] = '#'
+	bigContent[1] = ' '
+	writeFixture(t, dir, "big.md", string(bigContent))
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"fix", "--max-input-size", "100", "big.md")
+	assert.Equal(t, 2, exitCode, "expected exit code 2 for oversized file")
+	assert.Contains(t, stderr, "file too large")
+}
+
+func TestCheck_MaxInputSize_ConfigOverride(t *testing.T) {
+	dir := t.TempDir()
+	// Write config with max-input-size: 5 (very small)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("rules: {}\nmax-input-size: \"5\"\n"), 0o644,
+	))
+
+	writeFixture(t, dir, "small.md", "# Hello\n")
+
+	// Config sets 5-byte limit → 8-byte file should fail.
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"check", "small.md")
+	assert.Equal(t, 2, exitCode, "expected exit code 2 from config limit")
+	assert.Contains(t, stderr, "file too large")
+
+	// CLI flag overrides config → unlimited.
+	_, _, exitCode2 := runBinaryInDir(t, dir, "",
+		"check", "--max-input-size", "0", "small.md")
+	assert.Equal(t, 0, exitCode2, "expected exit code 0 with CLI override to unlimited")
+}

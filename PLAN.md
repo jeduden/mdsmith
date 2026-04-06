@@ -38,7 +38,7 @@ footer: |
 | 78  | 🔲     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                         |
 | 79  | ✅     | [Nested front-matter access](plan/79_nested-frontmatter-access.md)                                              |
 | 80  | ✅     | [Terminal recording in README](plan/80_terminal-recording-readme.md)                                            |
-| 81  | 🔲     | [OOM mitigation: configurable file-size limit](plan/81_oom-file-size-limit.md)                                  |
+| 81  | ✅     | [OOM mitigation: configurable file-size limit](plan/81_oom-file-size-limit.md)                                  |
 | 82  | ✅     | [YAML billion-laughs mitigation](plan/82_yaml-billion-laughs.md)                                                |
 | 83  | 🔳     | [Security hardening batch](plan/83_security-hardening-batch.md)                                                 |
 | 84  | 🔲     | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                                      |

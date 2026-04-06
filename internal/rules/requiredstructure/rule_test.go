@@ -166,7 +166,7 @@ func TestParseSchema_Headings(t *testing.T) {
 
 ### Bad
 `
-	tmpl, err := parseSchema([]byte(schemaSrc), "")
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
 	require.NoError(t, err, "unexpected error: %v", err)
 	if len(tmpl.Headings) != 5 {
 		t.Fatalf(
@@ -193,7 +193,7 @@ func TestParseSchema_SyncPoints(t *testing.T) {
 
 {description}
 `
-	tmpl, err := parseSchema([]byte(schemaSrc), "")
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
 	require.NoError(t, err, "unexpected error: %v", err)
 	headingSyncs := tmpl.SyncPoints[0]
 	if len(headingSyncs) < 2 {
@@ -235,7 +235,7 @@ func TestParseSchema_StrictOrder(t *testing.T) {
 
 ## Acceptance Criteria
 `
-	tmpl, err := parseSchema([]byte(schemaSrc), "")
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
 	require.NoError(t, err, "unexpected error: %v", err)
 	if len(tmpl.Headings) != 4 {
 		t.Fatalf(
@@ -666,7 +666,7 @@ func TestParseSchema_SchemaInclude(t *testing.T) {
 	schemaPath := filepath.Join(dir, "schema.md")
 	require.NoError(t, os.WriteFile(schemaPath, []byte(schema), 0o644))
 
-	tmpl, err := parseSchema([]byte(schema), schemaPath)
+	tmpl, err := parseSchema([]byte(schema), schemaPath, 0)
 	require.NoError(t, err)
 	require.Len(t, tmpl.Headings, 3)
 	assert.Equal(t, "?", tmpl.Headings[0].Text)
@@ -687,7 +687,7 @@ func TestParseSchema_SchemaIncludeRequireMerge(t *testing.T) {
 	schemaPath := filepath.Join(dir, "schema.md")
 	require.NoError(t, os.WriteFile(schemaPath, []byte(schema), 0o644))
 
-	tmpl, err := parseSchema([]byte(schema), schemaPath)
+	tmpl, err := parseSchema([]byte(schema), schemaPath, 0)
 	require.NoError(t, err)
 	assert.Equal(t, `[0-9]*_*.md`, tmpl.Config.FilenamePattern)
 	require.Len(t, tmpl.Headings, 3)
@@ -707,7 +707,7 @@ func TestParseSchema_SchemaIncludeIgnoresFragmentFM(t *testing.T) {
 	schemaPath := filepath.Join(dir, "schema.md")
 	require.NoError(t, os.WriteFile(schemaPath, []byte(schema), 0o644))
 
-	tmpl, err := parseSchema([]byte(schema), schemaPath)
+	tmpl, err := parseSchema([]byte(schema), schemaPath, 0)
 	require.NoError(t, err)
 	// CUE schema should only come from root, not fragment.
 	assert.Contains(t, tmpl.Config.FrontMatterCUE, "id")
@@ -722,7 +722,7 @@ func TestParseSchema_SchemaIncludeCycleDetected(t *testing.T) {
 	schemaPath := filepath.Join(dir, "schema.md")
 	require.NoError(t, os.WriteFile(schemaPath, []byte(schema), 0o644))
 
-	_, err := parseSchema([]byte(schema), schemaPath)
+	_, err := parseSchema([]byte(schema), schemaPath, 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cyclic include")
 }
@@ -740,7 +740,7 @@ func TestParseSchema_SchemaIncludeIndirectCycle(t *testing.T) {
 	schemaPath := filepath.Join(dir, "a.md")
 	require.NoError(t, os.WriteFile(schemaPath, []byte(schema), 0o644))
 
-	_, err := parseSchema([]byte(schema), schemaPath)
+	_, err := parseSchema([]byte(schema), schemaPath, 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cyclic include")
 }

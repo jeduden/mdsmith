@@ -305,7 +305,7 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 		}
 		fields := map[string]any{"filename": displayPath}
 		if needFM {
-			for k, v := range readFrontMatter(globFS, p) {
+			for k, v := range readFrontMatter(globFS, p, f.MaxInputBytes) {
 				fields[k] = v
 			}
 		}
@@ -518,8 +518,8 @@ func sortValue(entry fileEntry, key string) string {
 // readFrontMatter reads a file's YAML front matter and returns it as
 // a map preserving nested structure for CUE path resolution.
 // Returns nil if no front matter is found or on any error.
-func readFrontMatter(fsys fs.FS, path string) map[string]any {
-	data, err := fs.ReadFile(fsys, path)
+func readFrontMatter(fsys fs.FS, path string, maxBytes int64) map[string]any {
+	data, err := lint.ReadFSFileLimited(fsys, path, maxBytes)
 	if err != nil {
 		return nil
 	}
@@ -565,7 +565,7 @@ func checkCatalogIncludeCycle(
 	catalogFile := filepath.Base(filePath)
 	for _, entry := range entries {
 		matchedPath := fieldinterp.Stringify(entry.fields["filename"])
-		if fileIncludesTarget(f.FS, matchedPath, catalogFile) {
+		if fileIncludesTarget(f.FS, matchedPath, catalogFile, f.MaxInputBytes) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				fmt.Sprintf(
 					"catalog includes %q which includes %q via <?include?>, creating a cycle",
@@ -579,10 +579,10 @@ func checkCatalogIncludeCycle(
 // include directives that (directly or indirectly) reference the
 // target file. Uses a visited set to avoid infinite recursion.
 func fileIncludesTarget(
-	fsys fs.FS, filePath, target string,
+	fsys fs.FS, filePath, target string, maxBytes int64,
 ) bool {
 	visited := map[string]bool{filePath: true}
-	return scanIncludesForTarget(fsys, filePath, target, visited, 0)
+	return scanIncludesForTarget(fsys, filePath, target, visited, 0, maxBytes)
 }
 
 // maxIncludeDepth mirrors the include rule's depth limit for consistency.
@@ -590,12 +590,12 @@ const maxIncludeDepth = 10
 
 func scanIncludesForTarget(
 	fsys fs.FS, filePath, target string,
-	visited map[string]bool, depth int,
+	visited map[string]bool, depth int, maxBytes int64,
 ) bool {
 	if depth > maxIncludeDepth {
 		return false
 	}
-	data, err := fs.ReadFile(fsys, filePath)
+	data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
 	if err != nil {
 		return false
 	}
@@ -624,7 +624,7 @@ func scanIncludesForTarget(
 			continue
 		}
 		visited[resolved] = true
-		found := scanIncludesForTarget(fsys, resolved, target, visited, depth+1)
+		found := scanIncludesForTarget(fsys, resolved, target, visited, depth+1, maxBytes)
 		delete(visited, resolved)
 		if found {
 			return true

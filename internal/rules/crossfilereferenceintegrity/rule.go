@@ -237,6 +237,7 @@ func anchorsForFile(target targetFile, cache map[string]map[string]bool) (map[st
 }
 
 func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile, bool) {
+	maxBytes := f.MaxInputBytes
 	if path, ok := resolveTargetOSPath(f.Path, linkPath); ok {
 		if _, err := os.Stat(path); err == nil {
 			// Reject links that resolve outside the project root,
@@ -247,7 +248,7 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 			return targetFile{
 				cacheKey: "os:" + path,
 				read: func() ([]byte, error) {
-					return os.ReadFile(path)
+					return lint.ReadFileLimited(path, maxBytes)
 				},
 			}, true
 		}
@@ -264,7 +265,7 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 	return targetFile{
 		cacheKey: "fs:" + fsPath,
 		read: func() ([]byte, error) {
-			return fs.ReadFile(f.FS, fsPath)
+			return lint.ReadFSFileLimited(f.FS, fsPath, maxBytes)
 		},
 	}, true
 }

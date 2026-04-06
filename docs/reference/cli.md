@@ -33,14 +33,23 @@ match, exits 0.
 
 ## Subcommand Flags (check, fix)
 
-| Flag              | Description      |
-|-------------------|------------------|
-| `-c`, `--config`  | Config path      |
-| `-f`, `--format`  | `text` or `json` |
-| `--no-color`      | Plain output     |
-| `--no-gitignore`  | Skip gitignore   |
-| `-q`, `--quiet`   | Quiet mode       |
-| `-v`, `--verbose` | Verbose output   |
+| Flag               | Description                          |
+|--------------------|--------------------------------------|
+| `-c`, `--config`   | Config path                          |
+| `-f`, `--format`   | `text` or `json`                     |
+| `--max-input-size` | Max file size (e.g. `2MB`, `0`=none) |
+| `--no-color`       | Plain output                         |
+| `--no-gitignore`   | Skip gitignore                       |
+| `-q`, `--quiet`    | Quiet mode                           |
+| `-v`, `--verbose`  | Verbose output                       |
+
+`--max-input-size` sets the byte-size cap for any file
+read during linting. Files exceeding the limit are skipped
+with an error (exit code 2). Accepts `KB`, `MB`, `GB`
+suffixes (binary: 1 MB = 1,048,576 bytes), bare integers
+(bytes), or `0` to disable the limit. Default: `2MB`.
+The CLI flag overrides the `max-input-size` key in
+`.mdsmith.yml`.
 
 ## Global Flags
 

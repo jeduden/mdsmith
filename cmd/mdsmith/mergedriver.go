@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
@@ -93,7 +94,7 @@ func runMergeDriverRun(args []string) int {
 	}
 
 	// Step 2: strip conflict markers inside regenerable sections.
-	content, err := os.ReadFile(ours)
+	content, err := lint.ReadFileLimited(ours, lint.DefaultMaxInputBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading merge result: %v\n", err)
 		return 2
@@ -132,7 +133,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string) ([]byte, int) {
 		fileMode = info.Mode()
 	}
 
-	backup, backupErr := os.ReadFile(pathname)
+	backup, backupErr := lint.ReadFileLimited(pathname, lint.DefaultMaxInputBytes)
 	if backupErr != nil && !os.IsNotExist(backupErr) {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading %s for backup: %v\n", pathname, backupErr)
 		return nil, 2
@@ -146,7 +147,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string) ([]byte, int) {
 
 	// Restore the original working tree file before checking
 	// fixErr, so the working tree is always left clean.
-	fixed, err := os.ReadFile(pathname)
+	fixed, err := lint.ReadFileLimited(pathname, lint.DefaultMaxInputBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading fixed file: %v\n", err)
 		return nil, 2

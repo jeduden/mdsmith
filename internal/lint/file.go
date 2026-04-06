@@ -22,6 +22,11 @@ type File struct {
 	FrontMatter []byte
 	LineOffset  int
 
+	// MaxInputBytes is the maximum file size in bytes that rules
+	// should enforce when reading secondary files (includes, schemas,
+	// cross-references). Zero or negative means unlimited.
+	MaxInputBytes int64
+
 	// GitignoreFunc is a lazy factory for the gitignore matcher.
 	// It is called at most once (on first access via GetGitignore)
 	// and the result is cached. Rules that do not call GetGitignore

@@ -162,7 +162,7 @@ func executeMetricsRank(opts metricsRankOptions, fileArgs []string) int {
 		return 2
 	}
 
-	rows, err := metricspkg.Collect(files, defs)
+	rows, err := metricspkg.Collect(files, defs, lint.DefaultMaxInputBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2

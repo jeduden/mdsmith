@@ -17,7 +17,7 @@ func TestCollect_BasicFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello\n\nworld\n"), 0o644))
 
 	defs := Defaults(ScopeFile)
-	rows, err := Collect([]string{mdFile}, defs)
+	rows, err := Collect([]string{mdFile}, defs, 0)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, mdFile, rows[0].Path)
@@ -38,7 +38,7 @@ func TestCollect_MultipleFiles(t *testing.T) {
 		}},
 	}
 
-	rows, err := Collect([]string{f1, f2}, defs)
+	rows, err := Collect([]string{f1, f2}, defs, 0)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 }
@@ -46,13 +46,13 @@ func TestCollect_MultipleFiles(t *testing.T) {
 func TestCollect_NonexistentFile(t *testing.T) {
 	defs := Defaults(ScopeFile)
 	missing := filepath.Join(t.TempDir(), "does-not-exist.md")
-	_, err := Collect([]string{missing}, defs)
+	_, err := Collect([]string{missing}, defs, 0)
 	assert.Error(t, err)
 }
 
 func TestCollect_EmptyPaths(t *testing.T) {
 	defs := Defaults(ScopeFile)
-	rows, err := Collect([]string{}, defs)
+	rows, err := Collect([]string{}, defs, 0)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 }

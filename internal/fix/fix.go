@@ -24,6 +24,9 @@ type Fixer struct {
 	// RootDir is the project root directory (parent of .mdsmith.yml).
 	// Used by rules that need to read files relative to the project root.
 	RootDir string
+	// MaxInputBytes is the maximum file size in bytes before a file is
+	// skipped with an error. Zero or negative means unlimited.
+	MaxInputBytes int64
 }
 
 // Result holds the outcome of a fix run.
@@ -81,7 +84,7 @@ func (f *Fixer) Fix(paths []string) *Result {
 func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, string, []error) {
 	var errs []error
 
-	source, err := os.ReadFile(path)
+	source, err := lint.ReadFileLimited(path, f.MaxInputBytes)
 	if err != nil {
 		return nil, nil, "", []error{fmt.Errorf("reading %q: %w", path, err)}
 	}
@@ -96,6 +99,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 		return nil, nil, "", []error{fmt.Errorf("parsing %q: %w", path, err)}
 	}
 
+	lf.MaxInputBytes = f.MaxInputBytes
 	dirFS := os.DirFS(filepath.Dir(path))
 	lf.FS = dirFS
 	if f.RootDir != "" {

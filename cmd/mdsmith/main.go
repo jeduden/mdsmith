@@ -153,6 +153,7 @@ func runCheck(args []string) int {
 		verbose          bool
 		noGitignore      bool
 		noFollowSymlinks bool
+		maxInputSize     string
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -162,6 +163,7 @@ func runCheck(args []string) int {
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
@@ -188,15 +190,21 @@ func runCheck(args []string) int {
 	hasStdin, fileArgs := splitStdinArg(allArgs)
 
 	if hasStdin {
-		return checkStdin(format, noColor, quiet, verbose, configPath)
+		return checkStdin(format, noColor, quiet, verbose, configPath, maxInputSize)
 	}
 
 	if len(fileArgs) > 0 {
-		return checkFiles(fileArgs, configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+		return checkFiles(
+			fileArgs, configPath, format, noColor, quiet, verbose,
+			noGitignore, noFollowSymlinks, maxInputSize,
+		)
 	}
 
 	// No file args and no stdin: discover files from config.
-	return checkDiscovered(configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+	return checkDiscovered(
+		configPath, format, noColor, quiet, verbose,
+		noGitignore, noFollowSymlinks, maxInputSize,
+	)
 }
 
 // runFix implements the "fix" subcommand: auto-fix lint issues in place.
@@ -210,6 +218,7 @@ func runFix(args []string) int {
 		verbose          bool
 		noGitignore      bool
 		noFollowSymlinks bool
+		maxInputSize     string
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -219,6 +228,7 @@ func runFix(args []string) int {
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith fix [flags] [files...]\n\n"+
@@ -250,11 +260,17 @@ func runFix(args []string) int {
 	}
 
 	if len(fileArgs) > 0 {
-		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+		return fixFiles(
+			fileArgs, configPath, format, noColor, quiet, verbose,
+			noGitignore, noFollowSymlinks, maxInputSize,
+		)
 	}
 
 	// No file args: discover files from config.
-	return fixDiscovered(configPath, format, noColor, quiet, verbose, noGitignore, noFollowSymlinks)
+	return fixDiscovered(
+		configPath, format, noColor, quiet, verbose,
+		noGitignore, noFollowSymlinks, maxInputSize,
+	)
 }
 
 // runQuery implements the "query" subcommand: select files by CUE
@@ -350,7 +366,7 @@ func queryFiles(matcher *query.Matcher, files []string, delim string, verbose bo
 // readFrontMatterRaw reads a file, strips front matter, and
 // unmarshals YAML into map[string]any (preserving numeric types).
 func readFrontMatterRaw(path string) (map[string]any, error) {
-	data, err := os.ReadFile(path)
+	data, err := lint.ReadFileLimited(path, lint.DefaultMaxInputBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -474,6 +490,7 @@ func printRunStats(format string, quiet bool, stats runStats) {
 func checkFiles(
 	fileArgs []string, configPath, format string,
 	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	maxInputSize string,
 ) int {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
@@ -502,6 +519,7 @@ func checkFiles(
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
+		MaxInputBytes:    resolveMaxInputBytes(cfg, maxInputSize),
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -532,6 +550,7 @@ func checkFiles(
 func fixFiles(
 	fileArgs []string, configPath, format string,
 	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	maxInputSize string,
 ) int {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
@@ -554,12 +573,14 @@ func fixFiles(
 		return 0
 	}
 
+	maxBytes := resolveMaxInputBytes(cfg, maxInputSize)
 	fixer := &fixpkg.Fixer{
 		Config:           cfg,
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
+		MaxInputBytes:    maxBytes,
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
@@ -586,16 +607,28 @@ func fixFiles(
 	return 0
 }
 
+// readStdinLimited reads stdin with an optional size limit.
+// When maxBytes <= 0 no limit is applied.
+func readStdinLimited(maxBytes int64) ([]byte, error) {
+	if maxBytes > 0 {
+		data, err := io.ReadAll(io.LimitReader(os.Stdin, maxBytes+1))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(data)) > maxBytes {
+			return nil, fmt.Errorf(
+				"reading \"<stdin>\": file too large "+
+					"(%d bytes, max %d)", int64(len(data)), maxBytes)
+		}
+		return data, nil
+	}
+	return io.ReadAll(os.Stdin)
+}
+
 // checkStdin reads from stdin, lints the content, and returns the appropriate
 // exit code. Uses runner.RunSource to ensure Configurable settings are applied.
-func checkStdin(format string, noColor, quiet, verbose bool, configPath string) int {
+func checkStdin(format string, noColor, quiet, verbose bool, configPath, maxInputSize string) int {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
-
-	source, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: reading stdin: %v\n", err)
-		return 2
-	}
 
 	cfg, cfgPath, err := loadConfig(configPath)
 	if err != nil {
@@ -606,12 +639,21 @@ func checkStdin(format string, noColor, quiet, verbose bool, configPath string) 
 		logger.Printf("config: %s", cfgPath)
 	}
 
+	maxBytes := resolveMaxInputBytes(cfg, maxInputSize)
+
+	source, err := readStdinLimited(maxBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
 	runner := &engine.Runner{
 		Config:           cfg,
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
+		MaxInputBytes:    maxBytes,
 	}
 	result := runner.RunSource("<stdin>", source)
 	printErrors(result.Errors)
@@ -693,6 +735,7 @@ func discoverFiles(
 func checkDiscovered(
 	configPath, format string,
 	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	maxInputSize string,
 ) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
 	if code >= 0 {
@@ -705,6 +748,7 @@ func checkDiscovered(
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
+		MaxInputBytes:    resolveMaxInputBytes(cfg, maxInputSize),
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -736,18 +780,21 @@ func checkDiscovered(
 func fixDiscovered(
 	configPath, format string,
 	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	maxInputSize string,
 ) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
 	if code >= 0 {
 		return code
 	}
 
+	maxBytes := resolveMaxInputBytes(cfg, maxInputSize)
 	fixer := &fixpkg.Fixer{
 		Config:           cfg,
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
+		MaxInputBytes:    maxBytes,
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
@@ -789,6 +836,24 @@ func resolveOpts(cfg *config.Config, noGitignore, noFollowSymlinks bool) lint.Re
 		opts.NoFollowSymlinks = []string{"**"}
 	}
 	return opts
+}
+
+// resolveMaxInputBytes returns the effective max-input-size in bytes.
+// CLI flag overrides config; if neither is set, the default (2 MB) is used.
+func resolveMaxInputBytes(cfg *config.Config, cliFlag string) int64 {
+	raw := cliFlag
+	if raw == "" {
+		raw = cfg.MaxInputSize
+	}
+	if raw == "" {
+		return lint.DefaultMaxInputBytes
+	}
+	n, err := config.ParseSize(raw)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: invalid max-input-size %q: %v\n", raw, err)
+		return lint.DefaultMaxInputBytes
+	}
+	return n
 }
 
 func frontMatterEnabled(cfg *config.Config) bool {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -10,11 +11,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// maxConfigBytes is a generous cap for the config file size (1 MB).
+// Config files should be small; this prevents accidental OOM from
+// pointing at a huge file.
+const maxConfigBytes int64 = 1024 * 1024
+
 const configFileName = ".mdsmith.yml"
 
 // Load reads and parses a config file at the given path.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := readLimitedConfig(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
@@ -133,6 +139,23 @@ func DumpDefaults() *Config {
 		Categories: categories,
 		Files:      DefaultFiles,
 	}
+}
+
+// readLimitedConfig reads a config file with a size cap to prevent OOM.
+func readLimitedConfig(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close() //nolint:errcheck // best-effort close on read-only file
+	data, err := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxConfigBytes {
+		return nil, fmt.Errorf("config file %q too large (%d bytes, max %d)", path, int64(len(data)), maxConfigBytes)
+	}
+	return data, nil
 }
 
 func enabledByDefault(r rule.Rule) bool {
