@@ -1,7 +1,6 @@
 package lint
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -549,7 +548,7 @@ func TestPI_Dump_EmptySource(t *testing.T) {
 
 // Verify formatSnippet called from AST walk with multiple levels
 func TestNewFile_MultiPIs(t *testing.T) {
-	src := fmt.Sprintf("<?foo?>\n\n<?bar\nbaz\n?>\n")
+	src := "<?foo?>\n\n<?bar\nbaz\n?>\n"
 	f, err := NewFile("test.md", []byte(src))
 	require.NoError(t, err)
 	pis := findPINodes(f.AST)
