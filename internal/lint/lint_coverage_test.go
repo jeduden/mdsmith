@@ -197,9 +197,8 @@ func TestNewGitignoreMatcher_NoGitignore(t *testing.T) {
 	dir := t.TempDir()
 	m := NewGitignoreMatcher(dir)
 	require.NotNil(t, m)
-	// A directory without its own .gitignore should not ignore an arbitrary
-	// file by default, even though the matcher may still load ancestor rules.
-	path := filepath.Join(dir, t.Name()+"-not-ignored.md")
+	// Use a unique extension unlikely to appear in any ancestor .gitignore.
+	path := filepath.Join(dir, t.Name()+"-not-ignored.mdsmith-test-unique")
 	assert.False(t, m.IsIgnored(path, false))
 }
 

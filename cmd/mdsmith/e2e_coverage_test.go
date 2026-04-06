@@ -20,7 +20,9 @@ func TestE2E_Query_Verbose_ExpressionNotSatisfied(t *testing.T) {
 	// File has front matter but does not match the expression.
 	writeFixture(t, dir, "miss.md", "---\nstatus: \"🔲\"\n---\n# Miss\n\nContent here.\n")
 
-	_, stderr, exitCode := runBinaryInDir(t, dir, "", "query", "-v", `status: "✅"`, dir)
+	// Pass the file explicitly (not the dir) to avoid gitignore filtering.
+	missPath := filepath.Join(dir, "miss.md")
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "query", "-v", `status: "✅"`, missPath)
 	assert.Equal(t, 1, exitCode, "expected exit 1 when no files match")
 	assert.Contains(t, stderr, "expression not satisfied",
 		"expected 'expression not satisfied' in verbose stderr, got: %s", stderr)
@@ -152,13 +154,14 @@ func TestE2E_Check_NoFollowSymlinks(t *testing.T) {
 	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked")))
 
 	// Without --no-follow-symlinks, discovery finds dirty.md via symlink.
-	_, _, exitWithout := runBinaryInDir(t, dir, "", "check", "--no-color")
+	// Use --no-gitignore to avoid ancestor .gitignore interference.
+	_, _, exitWithout := runBinaryInDir(t, dir, "", "check", "--no-color", "--no-gitignore")
 	assert.Equal(t, 1, exitWithout,
 		"expected exit 1 without --no-follow-symlinks (dirty file found via discovery)")
 
 	// With --no-follow-symlinks, symlinked dir is skipped; only real/ found.
 	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"check", "--no-color", "--no-follow-symlinks")
+		"check", "--no-color", "--no-gitignore", "--no-follow-symlinks")
 	// Should still find real/dirty.md (exit 1) but the flag exercises resolveOpts.
 	assert.Equal(t, 1, exitCode,
 		"expected exit 1 (real/dirty.md still found), got %d; stderr: %s", exitCode, stderr)
@@ -469,7 +472,11 @@ func TestE2E_Query_Verbose_MixedResults(t *testing.T) {
 	writeFixture(t, dir, "miss.md", "---\nstatus: \"🔲\"\n---\n# Miss\n\nContent here.\n")
 	writeFixture(t, dir, "plain.md", "# Plain\n\nNo front matter here.\n")
 
-	stdout, stderr, exitCode := runBinaryInDir(t, dir, "", "query", "-v", `status: "✅"`, dir)
+	// Pass files explicitly to avoid gitignore filtering on the directory.
+	matchPath := filepath.Join(dir, "match.md")
+	missPath := filepath.Join(dir, "miss.md")
+	plainPath := filepath.Join(dir, "plain.md")
+	stdout, stderr, exitCode := runBinaryInDir(t, dir, "", "query", "-v", `status: "✅"`, matchPath, missPath, plainPath)
 	assert.Equal(t, 0, exitCode, "expected exit 0 (at least one match)")
 	assert.Contains(t, stdout, "match.md", "expected match.md in stdout")
 	assert.Contains(t, stderr, "expression not satisfied",
