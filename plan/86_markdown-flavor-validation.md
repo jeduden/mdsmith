@@ -90,13 +90,34 @@ for ambiguous syntax like `:` (definition lists) and
 goldmark parser with all available extensions enabled
 and re-parses the source. The main parse tree used by
 other rules is untouched. This gives precise AST
-detection without risk to existing rules. Regex
-fallback is used only for the few features without a
-goldmark extension (math, abbreviations,
-superscript/subscript).
+detection without risk to existing rules.
 
-Goldmark built-in extensions cover most features with
-zero third-party dependencies:
+For the four features without a goldmark built-in
+extension, three approaches were compared:
+
+1. **Third-party extensions.** Existing packages
+   (`litao91/goldmark-mathjax`, `bowman2001/
+   goldmark-supersubscript`, `zmtcreative/
+   gm-abbreviations`) are abandoned or have zero
+   adoption. Hugo's `hugo-goldmark-extensions` is
+   actively maintained but tightly coupled to Hugo's
+   rendering pipeline. None are suitable as
+   dependencies.
+
+2. **Custom goldmark extensions (chosen for 3).**
+   Based on the existing PI block parser (~160 LOC),
+   the cost per extension is:
+   - Inline delimiter (`^sup^`, `~sub~`): ~200 LOC
+     with tests
+   - Block fence (`$$...$$`): ~200 LOC with tests
+   - Block def + inline (`*[abbr]: ...`): ~400 LOC
+     with tests
+
+3. **Regex with code-fence skip (chosen for 2).**
+   Best for ambiguous syntax (`$` is common in prose)
+   and rare features (abbreviations).
+
+Final detection strategy per feature:
 
 | Feature | Goldmark built-in | Detection |
 |---|---|---|
@@ -107,10 +128,18 @@ zero third-party dependencies:
 | Definition lists | `extension.DefinitionList` | AST |
 | Heading IDs | `parser.WithAttribute()` | AST |
 | Autolinks | `extension.Linkify` | AST |
-| Math | none built-in | regex |
-| Abbreviations | none built-in | regex |
-| Superscript | none built-in | regex |
-| Subscript | none built-in | regex |
+| Superscript | custom inline ext | AST |
+| Subscript | custom inline ext | AST |
+| Math block | custom block ext | AST |
+| Math inline | none | regex |
+| Abbreviations | none | regex |
+
+Custom extensions for superscript, subscript, and
+math-block because their delimiters are unambiguous
+and the extensions are small (~200 LOC each). Regex
+for math-inline (`$` is too common for reliable
+parsing) and abbreviations (rarest feature, ~400 LOC
+extension not worth it for detection-only).
 
 The dual-parser cost is one extra parse per file, only
 when MDS034 is enabled. Since MDS034 is opt-in and
@@ -185,17 +214,23 @@ any feature where `flavor.Features[f] == false`.
 #### Dual parser setup
 
 MDS034 builds a second goldmark parser in its
-`Check()` method:
+`Check()` method with all built-in extensions plus
+three custom detection-only extensions:
 
 ```go
 p := goldmark.New(
     goldmark.WithExtensions(
+        // Built-in extensions
         extension.Table,
         extension.Strikethrough,
         extension.TaskList,
         extension.Footnote,
         extension.DefinitionList,
         extension.Linkify,
+        // Custom detection-only extensions
+        &SuperscriptExt{},
+        &SubscriptExt{},
+        &MathBlockExt{},
     ),
     goldmark.WithParserOptions(
         parser.WithAttribute(),
@@ -206,7 +241,36 @@ p := goldmark.New(
 This parser is created once per rule instance (not
 per file) and reused across calls.
 
-#### AST detectors (7 features)
+#### Custom goldmark extensions (3)
+
+Three small detection-only extensions, each ~200 LOC
+with tests. They live in
+`internal/rules/markdownflavor/ext/` and follow
+the same pattern as the existing PI block parser
+(`internal/lint/pi.go`):
+
+**SuperscriptExt** -- inline delimiter parser for
+`^text^`. Implements `parser.InlineParser` with
+trigger byte `^`. Produces `KindSuperscript` AST
+nodes. ~100 LOC parser + ~50 LOC node definition.
+
+**SubscriptExt** -- inline delimiter parser for
+`~text~`. Implements `parser.InlineParser` with
+trigger byte `~`. Must distinguish single `~` from
+double `~~` (strikethrough). ~120 LOC parser + ~50
+LOC node definition.
+
+**MathBlockExt** -- block parser for `$$...$$`
+fences. Implements `parser.BlockParser` with trigger
+byte `$`. Produces `KindMathBlock` AST nodes.
+Modeled on goldmark's built-in fenced-code-block
+parser. ~110 LOC parser + ~50 LOC node definition.
+
+These extensions only need to parse (produce AST
+nodes with source positions). They do not need to
+render -- mdsmith never renders HTML.
+
+#### AST detectors (10 features)
 
 Walk the extension-aware AST and collect node
 locations:
@@ -221,23 +285,28 @@ locations:
   `Attribute()` list
 - Autolinks: `extast.KindLinkify` (bare URL nodes
   created by the linkify extension)
+- Superscript: custom `KindSuperscript`
+- Subscript: custom `KindSubscript`
+- Math block: custom `KindMathBlock`
 
 Each detector returns `(line, column)` pairs from
 the node segment positions.
 
-#### Regex detectors (4 features)
+#### Regex detectors (2 features)
 
-For features without a goldmark extension, scan raw
-source lines. Skip lines inside fenced code blocks
-and inline code spans to avoid false positives:
+Regex fallback only for features where a goldmark
+extension is impractical:
 
-- Math inline: `\$[^$\n]+\$` not preceded/followed
-  by `$`
-- Math block: `^\$\$$` as opening/closing fence
-- Abbreviations: `^\*\[[^\]]+\]:`
-- Superscript: `\^[^^]+\^` (not inside code)
-- Subscript: `(?<![~])~(?!~)[^~\n]+~(?!~)` to avoid
-  matching strikethrough `~~`
+- **Math inline** (`$...$`): `\$[^$\n]+\$` not
+  preceded/followed by `$`. The `$` character is too
+  common in prose and code for reliable delimiter
+  parsing; regex with context-awareness (skip code
+  blocks, check surrounding chars) is more precise
+  for detection.
+- **Abbreviations** (`*[abbr]: ...`):
+  `^\*\[[^\]]+\]:`. Rarest feature (~400 LOC
+  extension for block def + inline replacement). Not
+  worth the investment for detection-only.
 
 The code-fence skip logic reuses the fenced-code-block
 line ranges from the AST (which the main parser
@@ -303,34 +372,48 @@ subset. Non-fixable features produce diagnostics only.
 
 1. Add feature enum and flavor registry in
    `internal/rules/markdownflavor/features.go`
-2. Build dual parser: create a second goldmark parser
-   with `extension.Table`, `extension.Strikethrough`,
-   `extension.TaskList`, `extension.Footnote`,
-   `extension.DefinitionList`, `extension.Linkify`,
-   and `parser.WithAttribute()` enabled
-3. Add AST-based detectors for tables, task lists,
-   strikethrough, autolinks, footnotes, definition
-   lists, heading attributes (7 features via AST)
-4. Add regex-based detectors for math, abbreviations,
-   superscript, subscript (4 features via regex) with
-   fenced-code-block skip logic
-5. Implement `rule.go` with `Check()` that re-parses
+2. Write custom `SuperscriptExt` inline parser and
+   `KindSuperscript` AST node in
+   `internal/rules/markdownflavor/ext/superscript.go`
+3. Write custom `SubscriptExt` inline parser and
+   `KindSubscript` AST node in
+   `internal/rules/markdownflavor/ext/subscript.go`
+   (handle `~` vs `~~` disambiguation)
+4. Write custom `MathBlockExt` block parser and
+   `KindMathBlock` AST node in
+   `internal/rules/markdownflavor/ext/mathblock.go`
+5. Add tests for the three custom extensions in
+   `internal/rules/markdownflavor/ext/*_test.go`
+6. Build dual parser: create a second goldmark parser
+   with built-in extensions (`Table`, `Strikethrough`,
+   `TaskList`, `Footnote`, `DefinitionList`,
+   `Linkify`, `WithAttribute`) plus the three custom
+   extensions
+7. Add AST-based detectors for 10 features (tables,
+   task lists, strikethrough, autolinks, footnotes,
+   definition lists, heading attributes, superscript,
+   subscript, math block)
+8. Add regex-based detectors for math inline and
+   abbreviations (2 features) with fenced-code-block
+   skip logic
+9. Implement `rule.go` with `Check()` that re-parses
    with the dual parser, runs all detectors, and
    reports unsupported features
-6. Implement `Fix()` for fixable features (autolinks,
-   strikethrough, heading IDs, task lists)
-7. Add `Configurable` interface: `ApplySettings` for
-   `flavor` string, validate against known flavors
-8. Register rule as MDS034 `markdown-flavor` in
-   category `meta`
-9. Add test fixtures:
-   `internal/rules/MDS034-markdown-flavor/bad/` with
-   files using each unsupported feature per flavor,
-   `good/` with files using only supported features,
-   `fixed/` with expected auto-fix output
-10. Add rule README following
+10. Implement `Fix()` for fixable features (autolinks,
+    strikethrough, heading IDs, task lists,
+    superscript, subscript)
+11. Add `Configurable` interface: `ApplySettings` for
+    `flavor` string, validate against known flavors
+12. Register rule as MDS034 `markdown-flavor` in
+    category `meta`
+13. Add test fixtures:
+    `internal/rules/MDS034-markdown-flavor/bad/` with
+    files using each unsupported feature per flavor,
+    `good/` with files using only supported features,
+    `fixed/` with expected auto-fix output
+14. Add rule README following
     `internal/rules/proto.md` schema
-11. Document the rule in `docs/reference/cli.md` and
+15. Document the rule in `docs/reference/cli.md` and
     add a note to
     `docs/guides/directives/enforcing-structure.md`
     about flavor enforcement
