@@ -118,9 +118,15 @@ Five extensions in
 - **SubscriptExt**: inline `~text~`, distinguishes
   single `~` from strikethrough `~~`, ~170 LOC
 - **MathBlockExt**: block `$$...$$` fence, ~160 LOC
-- **MathInlineExt**: inline `$...$` with Pandoc-style
-  flanking (opening `$` preceded by whitespace, not
-  followed by whitespace), ~200 LOC
+- **MathInlineExt**: inline `$...$` matching Pandoc
+  `tex_math_dollars`
+  (<https://pandoc.org/MANUAL.html#extension-tex_math_dollars>):
+  opening `$` is allowed when the next character is
+  not whitespace; closing `$` is allowed when the
+  previous character is not whitespace and the next
+  character is not a digit. Allows `($x$)` and
+  `foo $x+1$ bar`, rejects `$ x $` and `$20`,
+  ~200 LOC
 - **AbbreviationExt**: block `*[term]: expansion`
   parser + paragraph transformer that marks every
   inline occurrence of the term, ~400 LOC
@@ -144,7 +150,10 @@ Fixable features and their fixes:
   autolink
 - heading IDs: remove `{#id}`
 - strikethrough: remove `~~`
-- task lists: `- [ ]` to `- `
+- task lists: for `-`, `*`, or `+` bullets with
+  `[ ]`, `[x]`, or `[X]`, remove the task marker
+  and keep the bullet (e.g. `- [ ]` to `- `,
+  `* [x]` to `* `)
 - superscript: remove `^`
 - subscript: remove `~`
 
