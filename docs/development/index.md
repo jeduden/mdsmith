@@ -101,17 +101,24 @@ root. The `test` job in `.github/workflows/ci.yml`
 uploads the merged coverage profile to Codecov after
 each run.
 
-To check coverage locally before pushing:
+To reproduce CI's merged coverage locally:
 
 ```bash
-go test -coverprofile=cover.out ./...
-go tool cover -func=cover.out
+mkdir -p e2e-cover
+E2E_COVERDIR=e2e-cover \
+  go test -covermode=atomic \
+  -coverprofile=unit.cov ./...
+head -1 unit.cov > merged.cov
+tail -n +2 unit.cov \
+  | grep -v 'cmd/mdsmith/' >> merged.cov
+tail -n +2 e2e-cover/e2e_coverage.txt \
+  | grep 'cmd/mdsmith/' >> merged.cov
+go tool cover -func=merged.cov
 ```
 
-This gives a quick per-function summary. CI produces
-a more complete profile by merging unit and e2e
-coverage (see the `test` job in `ci.yml` for the
-exact commands).
+Unit tests cannot cover `cmd/mdsmith/` because those
+functions run in a subprocess. The merge replaces
+those zero-count unit lines with the e2e counts.
 
 ## Generated Sections
 
