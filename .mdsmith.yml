@@ -44,7 +44,7 @@ rules:
     include: []
     exclude:
       # Placeholder link in internal/rules/proto.md; not a real repo path.
-      - "../../../docs/design/archetypes/NAME"
+      - "../../../docs/background/archetypes/NAME"
     strict: true
   token-budget:
     max: 8000
@@ -62,6 +62,16 @@ rules:
     max-words-per-sentence: 40
   # Experimental rule: keep disabled until classifier-backed scoring is ready.
   conciseness-scoring: false
+  directory-structure:
+    allowed:
+      - "."
+      - "docs/**"
+      - "plan/**"
+      - "demo/**"
+      - "internal/rules/**"
+      - "internal/metrics/**"
+      - ".claude/**"
+      - ".github/**"
   catalog: true
   required-structure: true
   include: true
@@ -79,7 +89,7 @@ overrides:
       blank-line-around-lists: false
   - files: [".claude/skills/*/SKILL.md",
             ".github/copilot-pr-fixup.md",
-            "AGENTS-PR-FIXUP.md"]
+            ".github/AGENTS-PR-FIXUP.md"]
     rules:
       max-file-length:
         max: 600
@@ -192,6 +202,37 @@ overrides:
       paragraph-structure:
         max-sentences: 12
         max-words-per-sentence: 120
+  - files: ["docs/security/*.md"]
+    rules:
+      line-length:
+        max: 600
+        exclude:
+          - code-blocks
+          - tables
+          - urls
+      required-structure:
+        schema: docs/security/proto.md
+      max-file-length:
+        max: 1000
+      paragraph-readability: false
+      paragraph-structure: false
+      no-emphasis-as-heading: false
+      token-budget:
+        max: 16000
+        mode: heuristic
+        tokens-per-word: 1.33
+        tokenizer: builtin
+        encoding: cl100k_base
+  - files: ["docs/research/**"]
+    rules:
+      first-line-heading: false
+      heading-increment: false
+      paragraph-readability: false
+      paragraph-structure: false
+      token-budget: false
+      max-file-length: false
+      cross-file-reference-integrity: false
+      required-structure: false
 
 ignore:
   - "demo/**"
@@ -203,3 +244,4 @@ ignore:
   - ".claude/skills/proto.md"
   - "plan/proto.md"
   - "internal/rules/proto.md"
+  - "docs/security/proto.md"
