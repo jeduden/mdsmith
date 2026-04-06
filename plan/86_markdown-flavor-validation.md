@@ -32,10 +32,20 @@ has footnotes, heading IDs, and more. Pandoc adds
 math, citations, and sub/superscript. MyST targets
 Sphinx with roles and directives.
 
-Twelve features vary across flavors: tables, task
-lists, strikethrough, bare-URL autolinks, footnotes,
-heading
-IDs, math, and five others.
+Twelve features vary across flavors:
+
+- tables
+- task lists
+- strikethrough
+- bare-URL autolinks
+- footnotes
+- heading IDs
+- inline math
+- block math
+- definition lists
+- abbreviations
+- superscript
+- subscript
 
 ### Detection approach
 
