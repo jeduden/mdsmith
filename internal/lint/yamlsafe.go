@@ -42,9 +42,6 @@ func RejectYAMLAliases(data []byte) error {
 }
 
 func hasYAMLAnchorOrAlias(node *yaml.Node) bool {
-	if node == nil {
-		return false
-	}
 	if node.Anchor != "" || node.Kind == yaml.AliasNode {
 		return true
 	}

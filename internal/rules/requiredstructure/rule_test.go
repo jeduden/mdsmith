@@ -830,3 +830,34 @@ func TestParseSchemaFrontMatter_AnchorRejected(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
 }
+
+func TestCheck_InvalidYAMLFrontMatterDiagnostic(t *testing.T) {
+	schemaPath := writeSchema(t, "---\nid: 'int'\n---\n# ?\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"---\n: invalid: yaml: [unclosed\n---\n# Title\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "front matter: invalid YAML")
+}
+
+func TestCheck_IncludeWithAnchorInSchema(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "schema.md")
+	require.NoError(t, os.WriteFile(schemaPath, []byte(
+		"# ?\n\n<?include\nbase: &base\n  file: fragment.md\n?>\n<?/include?>\n",
+	), 0o644))
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"---\nid: 1\n---\n# Title\n")
+	diags := r.Check(f)
+	// Should produce a diagnostic about the anchor in the include directive.
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "anchors/aliases") ||
+			strings.Contains(d.Message, "include") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected diagnostic about anchor or include, got: %v", diags)
+}
