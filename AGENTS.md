@@ -87,6 +87,36 @@ When adding or changing a rule feature, add both:
 Use coverage to confirm Red/Green TDD cycles exercise
 all code paths.
 
+## Coverage Gate
+
+Codecov enforces that pull requests do not decrease
+per-file statement coverage. Three status checks run
+on every PR:
+
+- **project** — overall coverage must not drop below
+  the base commit.
+- **patch** — changed lines must have coverage at
+  least equal to the project baseline.
+- **changes** — no individual file's coverage may
+  decrease vs the base commit.
+
+If any check fails, Codecov posts a comment listing
+the affected files with baseline, current, and delta
+percentages. Fix regressions by adding tests for the
+uncovered code paths before merging.
+
+Configuration lives in `codecov.yml` at the repo
+root. The `test` job in `.github/workflows/ci.yml`
+uploads the merged coverage profile to Codecov after
+each run.
+
+To check coverage locally before pushing:
+
+```bash
+go test -coverprofile=cover.out ./...
+go tool cover -func=cover.out
+```
+
 ## Generated Sections
 
 Content between `<?directive ... ?>` and
