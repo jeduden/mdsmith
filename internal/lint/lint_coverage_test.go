@@ -145,9 +145,9 @@ func TestResolveGlob_MatchesDirectory(t *testing.T) {
 
 // --- isGitignored tests ---
 
-func TestIsGitignored_NilMatcher(t *testing.T) {
-	// isGitignored with a non-nil matcher but path that cannot be made absolute
-	// should return false gracefully. With a valid dir it should work.
+func TestIsGitignored_MatchAndNoMatch(t *testing.T) {
+	// isGitignored with a real matcher: matching path returns true,
+	// non-matching path returns false.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\n"), 0o644))
 

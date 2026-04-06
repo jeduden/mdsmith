@@ -101,6 +101,9 @@ func TestVisit_SkipsDirWhenNoFollow(t *testing.T) {
 		seen:     make(map[string]bool),
 	}
 
+	// Synthetic: real filepath.Walk reports ModeSymlink without IsDir for
+	// symlinks, but we test the branch guard directly to confirm SkipDir
+	// is returned when the walker sees a symlinked directory entry.
 	info := fakeFileInfo{name: "linked", mode: os.ModeDir | os.ModeSymlink, isDir: true}
 	err := w.visit(filepath.Join(absBase, "linked"), info, nil)
 	assert.Equal(t, filepath.SkipDir, err)

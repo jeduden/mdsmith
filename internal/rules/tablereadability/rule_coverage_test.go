@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Note: this file uses newFile() defined in rule_test.go (same package).
+
 // --- stripPrefix coverage ---
 
 func TestStripPrefix_Empty(t *testing.T) {
