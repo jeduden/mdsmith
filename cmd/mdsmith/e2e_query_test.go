@@ -141,11 +141,7 @@ func TestE2E_Query_AnchorFrontMatterSkipped(t *testing.T) {
 
 	_, stderr, exitCode := runBinaryInDir(
 		t, dir, "", "query", `status: "ok"`, dir)
-	// File with anchor front matter should be skipped or error.
-	if exitCode == 0 {
-		t.Log("anchor file unexpectedly matched")
-	}
-	if strings.Contains(stderr, "anchors/aliases") {
-		t.Log("anchor rejection surfaced in stderr")
-	}
+	// File with anchor front matter must not match.
+	assert.NotEqual(t, 0, exitCode, "anchor file should not match")
+	assert.Contains(t, stderr, "anchors/aliases are not permitted")
 }
