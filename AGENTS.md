@@ -116,7 +116,9 @@ go tool cover -func=merged.cov
 
 Unit tests cannot cover `cmd/mdsmith/` because those
 functions run in a subprocess. The merge replaces
-those zero-count unit lines with the e2e counts.
+those zero-count unit lines with the e2e counts. CI
+performs additional validation (mode header match,
+file existence); see the `test` job in `ci.yml`.
 
 ## Generated Sections
 
@@ -209,4 +211,29 @@ If a file does not match any of these, it does not
 belong in the repo as a standalone Markdown file.
 Consider whether it should be a section in an existing
 document instead.
+
+## Documentation Types
+
+mdsmith documentation follows four types. Place each
+file in the matching directory:
+
+| Type       | Directory                                 | Purpose                              | Example                             |
+|------------|-------------------------------------------|--------------------------------------|-------------------------------------|
+| Guide      | `docs/guides/`                            | Task-oriented: how to achieve a goal | "How to enforce document structure" |
+| Reference  | `docs/reference/`, `internal/rules/MDS*/` | Lookup-oriented: complete specs      | CLI flags, rule README              |
+| Tutorial   | `docs/tutorials/`                         | Learning-oriented: step-by-step      | "Your first schema"                 |
+| Background | `docs/background/`                        | Understanding-oriented: context      | Comparison with other linters       |
+
+When writing documentation:
+
+- **Guides** answer "how do I...?" — start with a
+  use case, show examples, link to reference for
+  full details
+- **References** answer "what is...?" — complete,
+  accurate, generated where possible (use catalog
+  directives)
+- **Tutorials** answer "teach me..." — sequential
+  steps, minimal prerequisites, concrete outcome
+- **Background** answers "why...?" — context,
+  trade-offs, comparisons, design rationale
 <?/include?>

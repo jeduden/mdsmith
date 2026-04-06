@@ -13,6 +13,8 @@ coverage:
     changes:
       default:
         enabled: true
+        target: auto
+        threshold: 0%
 
 comment:
   layout: "condensed_header, condensed_files, condensed_footer"
