@@ -197,8 +197,10 @@ func TestNewGitignoreMatcher_NoGitignore(t *testing.T) {
 	dir := t.TempDir()
 	m := NewGitignoreMatcher(dir)
 	require.NotNil(t, m)
-	// No rules should exist.
-	assert.Empty(t, m.rules)
+	// A directory without its own .gitignore should not ignore an arbitrary
+	// file by default, even though the matcher may still load ancestor rules.
+	path := filepath.Join(dir, t.Name()+"-not-ignored.md")
+	assert.False(t, m.IsIgnored(path, false))
 }
 
 func TestNewGitignoreMatcher_WithGitignore(t *testing.T) {
