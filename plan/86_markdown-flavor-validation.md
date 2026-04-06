@@ -12,10 +12,10 @@ summary: >-
 
 ## Goal
 
-Let users declare a target Markdown flavor so mdsmith
-can flag syntax that the target renderer will not
-understand, preventing silent rendering failures when
-files move between tools.
+Let users declare a target Markdown flavor. mdsmith
+then flags syntax that the target renderer will not
+understand. This prevents silent rendering failures
+when files move between tools.
 
 ## Background
 
@@ -25,19 +25,15 @@ Nine common flavors exist. CommonMark is the strict
 baseline. GFM adds tables, task lists, strikethrough,
 and autolinks. Goldmark supports GFM-like features
 plus optional footnotes, heading IDs, and math.
-PHP Markdown Extra adds footnotes, abbreviations,
-definition lists, and heading IDs. Pandoc extends
-CommonMark with footnotes, definition lists, math,
-citations, superscript, subscript, and heading IDs.
-MyST adds directives, roles, and math. MultiMarkdown
-supports metadata, footnotes, citations, and math.
-GitLab extends GFM with math, diagrams, and
-footnotes. R Markdown builds on Pandoc.
 
-Twelve syntax features differ across flavors: tables,
-task lists, strikethrough, autolinks, footnotes,
-definition lists, math inline, math block, heading
-IDs, abbreviations, superscript, and subscript.
+Other flavors add more features. PHP Markdown Extra
+has footnotes, heading IDs, and more. Pandoc adds
+math, citations, and sub/superscript. MyST targets
+Sphinx with roles and directives.
+
+Twelve features vary across flavors: tables, task
+lists, strikethrough, autolinks, footnotes, heading
+IDs, math, and five others.
 
 ### Detection approach
 
@@ -94,13 +90,12 @@ p := goldmark.New(
 )
 ```
 
-MDS034 should not store the parser on the rule struct
-directly: mdsmith clones configurable rules per file
-([internal/rule/clone.go](../internal/rule/clone.go)),
-so each clone would rebuild the parser. Cache the
-parser in package-level shared state instead, such as
-a `sync.Once` singleton or a flavor-keyed map guarded
-by a mutex.
+mdsmith clones configurable rules per file
+([internal/rule/clone.go](../internal/rule/clone.go)).
+Storing the parser on the rule struct would rebuild it
+per clone. Cache the parser in package-level shared
+state instead (e.g. a `sync.Once` singleton or a
+flavor-keyed map guarded by a mutex).
 
 ### Custom extensions
 
