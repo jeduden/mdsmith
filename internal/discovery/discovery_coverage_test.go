@@ -205,9 +205,10 @@ func TestDiscover_NoFollowSymlinksSkipsSymlinkedFile(t *testing.T) {
 	realPath := filepath.Join(dir, "real.md")
 	require.NoError(t, os.Symlink(realPath, linkPath))
 
-	// filepath.Walk uses os.Lstat and reports ModeSymlink for symlinks.
-	// The walker's isNoFollow check skips entries matching NoFollowSymlinks
-	// patterns. For file symlinks, the walker skips the entry entirely.
+	// filepath.Walk uses os.Lstat, so it reports symlink entries with
+	// ModeSymlink and does not follow them during traversal. The walker's
+	// isNoFollow check can therefore match NoFollowSymlinks patterns and
+	// skip the symlink entry itself.
 	files, err := Discover(Options{
 		Patterns:         []string{"**/*.md"},
 		BaseDir:          dir,
