@@ -23,8 +23,8 @@ when files move between tools.
 
 Nine common flavors exist. CommonMark is the strict
 baseline. GFM adds tables, task lists, strikethrough,
-and bare-URL autolinks. For MDS034, `goldmark` means
-the default Goldmark configuration: GFM-like tables,
+and bare-URL autolinks. For MDS034, `goldmark` is
+an mdsmith-defined profile: Goldmark plus tables,
 task lists, strikethrough, bare-URL autolinks, and
 heading IDs, but not optional footnote,
 definition-list, or math extensions.
@@ -183,10 +183,12 @@ math, abbreviations.
 10. Implement `rule.go` with `Check()` and `Fix()`
 11. Implement `rule.Configurable` for MDS034: add
     `ApplySettings` and `DefaultSettings` for `flavor`
-12. Register as MDS034 in category `meta`
-13. Add test fixtures in
+12. Implement `rule.Defaultable` (`EnabledByDefault`
+    returns `false`) so the rule is opt-in
+13. Register as MDS034 in category `meta`
+14. Add test fixtures in
     `internal/rules/MDS034-markdown-flavor/`
-14. Add rule README and update docs
+15. Add rule README and update docs
 
 ## Acceptance Criteria
 
