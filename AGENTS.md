@@ -118,7 +118,8 @@ Unit tests cannot cover `cmd/mdsmith/` because those
 functions run in a subprocess. The merge replaces
 those zero-count unit lines with the e2e counts. CI
 performs additional validation (mode header match,
-file existence); see the `test` job in `ci.yml`.
+file existence); see the `test` job in
+`.github/workflows/ci.yml`.
 
 ## Generated Sections
 
