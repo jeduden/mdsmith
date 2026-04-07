@@ -55,6 +55,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	selfAnchors := collectHeadingAnchors(f)
 	anchorCache := map[string]map[string]bool{"self": selfAnchors}
 
+	// Precompute the resolved absolute root once for all link checks.
+	resolvedRoot := resolveAbsRoot(f.RootDir)
+
 	var diags []lint.Diagnostic
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -72,6 +75,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			includeMatchers,
 			excludeMatchers,
 			selfAnchors,
+			resolvedRoot,
 			anchorCache,
 		)...)
 
@@ -87,6 +91,7 @@ func (r *Rule) checkLink(
 	includeMatchers []glob.Glob,
 	excludeMatchers []glob.Glob,
 	selfAnchors map[string]bool,
+	resolvedRoot string,
 	anchorCache map[string]map[string]bool,
 ) []lint.Diagnostic {
 	target, ok := parseTarget(string(linkNode.Destination))
@@ -119,8 +124,12 @@ func (r *Rule) checkLink(
 		return nil
 	}
 
-	targetFile, ok := resolveTargetFile(f, linkPath)
+	targetFile, ok := resolveTargetFile(f, linkPath, resolvedRoot)
 	if !ok {
+		// If the link escapes the project root, silently skip it.
+		if resolvedRoot != "" && linkEscapesRoot(f, linkPath, resolvedRoot) {
+			return nil
+		}
 		return []lint.Diagnostic{brokenFileDiag(f.Path, line, col, r, target.Raw)}
 	}
 
@@ -227,9 +236,14 @@ func anchorsForFile(target targetFile, cache map[string]map[string]bool) (map[st
 	return anchors, nil
 }
 
-func resolveTargetFile(f *lint.File, linkPath string) (targetFile, bool) {
+func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile, bool) {
 	if path, ok := resolveTargetOSPath(f.Path, linkPath); ok {
 		if _, err := os.Stat(path); err == nil {
+			// Reject links that resolve outside the project root,
+			// evaluating symlinks to prevent bypass via symlinked dirs.
+			if resolvedRoot != "" && !isWithinRoot(resolvedRoot, path) {
+				return targetFile{}, false
+			}
 			return targetFile{
 				cacheKey: "os:" + path,
 				read: func() ([]byte, error) {
@@ -253,6 +267,54 @@ func resolveTargetFile(f *lint.File, linkPath string) (targetFile, bool) {
 			return fs.ReadFile(f.FS, fsPath)
 		},
 	}, true
+}
+
+// resolveAbsRoot computes the absolute, symlink-resolved root directory
+// path once per rule check. Returns "" if rootDir is empty.
+func resolveAbsRoot(rootDir string) string {
+	if rootDir == "" {
+		return ""
+	}
+	realRoot, err := filepath.EvalSymlinks(rootDir)
+	if err != nil {
+		realRoot = rootDir
+	}
+	abs, err := filepath.Abs(realRoot)
+	if err != nil {
+		return filepath.Clean(realRoot)
+	}
+	return abs
+}
+
+// isWithinRoot checks whether target is inside the pre-resolved absolute
+// root, resolving symlinks on the target to prevent symlink-based traversal.
+func isWithinRoot(resolvedRoot, target string) bool {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+	realTarget, err := filepath.EvalSymlinks(absTarget)
+	if err != nil {
+		// Symlink resolution failed (e.g. dangling link); fall back to
+		// the cleaned absolute path so the root comparison still works.
+		realTarget = filepath.Clean(absTarget)
+	}
+	rel, err := filepath.Rel(resolvedRoot, realTarget)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// linkEscapesRoot checks whether resolving linkPath from f.Path would land
+// outside f.RootDir. Used to silently skip links that traverse above the
+// project root.
+func linkEscapesRoot(f *lint.File, linkPath, resolvedRoot string) bool {
+	resolved, ok := resolveTargetOSPath(f.Path, linkPath)
+	if !ok {
+		return false
+	}
+	return !isWithinRoot(resolvedRoot, resolved)
 }
 
 func resolveTargetOSPath(sourcePath, linkPath string) (string, bool) {

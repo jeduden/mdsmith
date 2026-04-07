@@ -10,6 +10,86 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSanitizeControl(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain text", "hello world", "hello world"},
+		{"strips tab", "hello\tworld", "helloworld"},
+		{"strips newline", "hello\nworld", "helloworld"},
+		{"strips carriage return", "hello\rworld", "helloworld"},
+		{"strips ESC", "hello\x1bworld", "helloworld"},
+		{"strips BEL", "hello\x07world", "helloworld"},
+		{"strips CSI UTF-8", "hello\xc2\x9bworld", "helloworld"},
+		{"strips DEL", "hello\x7fworld", "helloworld"},
+		{"strips null", "hello\x00world", "helloworld"},
+		{"strips full ANSI sequence", "\x1b[31mred\x1b[0m", "[31mred[0m"},
+		{"C1 range stripped UTF-8", "a\xc2\x80\xc2\x81\xc2\x9e\xc2\x9fb", "ab"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeControl(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestSanitizeSourceLine(t *testing.T) {
+	assert.Equal(t, "hello\tworld", sanitizeSourceLine("hello\tworld"), "tabs preserved")
+	assert.Equal(t, "helloworld", sanitizeSourceLine("hello\nworld"), "newlines stripped")
+	assert.Equal(t, "helloworld", sanitizeSourceLine("hello\x1bworld"), "ESC stripped")
+}
+
+func TestTextFormatter_SanitizesHeaderFields(t *testing.T) {
+	f := &TextFormatter{Color: false}
+	var buf bytes.Buffer
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File:    "evil\x1b[31m.md",
+			Line:    1,
+			Column:  1,
+			RuleID:  "MDS001",
+			Message: "bad\x07stuff\x1b[0m",
+		},
+	}
+
+	err := f.Format(&buf, diagnostics)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.NotContains(t, output, "\x1b")
+	assert.NotContains(t, output, "\x07")
+	assert.Contains(t, output, "evil[31m.md")
+	assert.Contains(t, output, "bad")
+}
+
+func TestTextFormatter_SanitizesSourceLines(t *testing.T) {
+	f := &TextFormatter{Color: false}
+	var buf bytes.Buffer
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File:            "test.md",
+			Line:            1,
+			Column:          1,
+			RuleID:          "MDS001",
+			Message:         "test",
+			SourceLines:     []string{"normal", "injected\x1b[31mred\x1b[0m"},
+			SourceStartLine: 1,
+		},
+	}
+
+	err := f.Format(&buf, diagnostics)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.NotContains(t, output, "\x1b")
+	assert.Contains(t, output, "injected[31mred[0m")
+}
+
 func TestTextFormatter_SingleDiagnostic(t *testing.T) {
 	f := &TextFormatter{Color: false}
 	var buf bytes.Buffer

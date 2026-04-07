@@ -3,6 +3,7 @@ package lint
 import (
 	"bytes"
 	"io/fs"
+	"os"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -17,6 +18,7 @@ type File struct {
 	AST         ast.Node
 	FS          fs.FS
 	RootFS      fs.FS
+	RootDir     string
 	FrontMatter []byte
 	LineOffset  int
 
@@ -27,6 +29,12 @@ type File struct {
 	GitignoreFunc func() *GitignoreMatcher
 	gitignoreOnce bool
 	gitignoreVal  *GitignoreMatcher
+}
+
+// SetRootDir configures the project root directory and its fs.FS together.
+func (f *File) SetRootDir(dir string) {
+	f.RootDir = dir
+	f.RootFS = os.DirFS(dir)
 }
 
 // GetGitignore returns the gitignore matcher for this file, creating it

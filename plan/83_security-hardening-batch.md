@@ -1,7 +1,7 @@
 ---
 id: 83
 title: 'Security hardening batch'
-status: "🔲"
+status: "🔳"
 summary: >-
   Bundle of low-risk security fixes: ANSI sanitization,
   path traversal boundary, atomic writes, schema fs.FS,
@@ -129,38 +129,41 @@ Thread `MaxInputBytes` via `lint.File`.
 
 ## Tasks
 
-1. Add `sanitizeTerminal` to `output/text.go`; apply
-   to `d.File`, `d.Message`, and source lines
-2. Add `RootDir` to `lint.File`; populate in runner
-   and fixer
-3. Add `filepath.Rel` boundary check in
-   `resolveTargetFile`
-4. Replace `os.WriteFile` with temp-file-then-rename
-   in `fix.go`
-5. Replace `os.ReadFile(r.Schema)` with
-   `fs.ReadFile(f.RootFS, r.Schema)`
-6. Add newline and `](` detection in catalog template
-   rendering; emit diagnostic
-7. Set `GOMEMLIMIT` at process startup to cap memory
-   for CUE and other unbounded operations
+1. [x] Add `sanitizeControl` / `sanitizeSourceLine`
+   in `output/text.go`; apply them to `d.File`,
+   `d.Message`, and source lines
+2. [x] Add `RootDir` to `lint.File`; populate in
+   runner and fixer
+3. [x] Add `filepath.Rel` boundary check in
+   `resolveTargetFile`; silently skip links above root
+4. [x] Replace `os.WriteFile` with
+   temp-file-then-rename in `fix.go`
+5. [x] Replace `os.ReadFile(r.Schema)` with
+   `fs.ReadFile(f.RootFS, r.Schema)`; reject absolute
+   and `../` paths when `RootFS` is set
+6. [x] Add newline and `](` detection in catalog
+   template rendering; emit diagnostic
+7. [x] Set `GOMEMLIMIT` at process startup to cap
+   memory for CUE and other unbounded operations
 8. Replace `fs.ReadFile` with `ReadFSFileLimited` at
    include and catalog read sites (after plan 81)
-9. Add tests for each fix (A through G)
+9. [x] Add tests for each fix (A through F)
 
 ## Acceptance Criteria
 
-- [ ] ANSI escape bytes (0x1B, 0x9B, 0x07) stripped
-      from text output; tab/newline preserved
-- [ ] Links traversing above `RootDir` are silently
+- [x] ANSI escape bytes (0x1B, 0x9B, 0x07) stripped
+      from text output; header fields remain
+      single-line; source snippets may preserve tabs
+- [x] Links traversing above `RootDir` are silently
       skipped; links within root work
-- [ ] `mdsmith fix` uses atomic temp-file-then-rename
-- [ ] Schema read via `f.RootFS`; absolute/`../` paths
+- [x] `mdsmith fix` uses atomic temp-file-then-rename
+- [x] Schema read via `f.RootFS`; absolute/`../` paths
       rejected
-- [ ] Catalog values with `\n` or `](` produce a
+- [x] Catalog values with `\n` or `](` produce a
       diagnostic
-- [ ] `GOMEMLIMIT` set at process startup to bound
+- [x] `GOMEMLIMIT` set at process startup to bound
       memory for CUE and other operations
 - [ ] Include/catalog reads bounded by
       `MaxInputBytes` (after plan 81)
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

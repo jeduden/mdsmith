@@ -199,6 +199,53 @@ func TestCheck_NoFS(t *testing.T) {
 	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
 
+func TestCheck_PathTraversalAboveRootSkipped(t *testing.T) {
+	// Create a dedicated temp parent containing both RootDir and a sibling
+	// file outside RootDir so all filesystem effects remain test-scoped.
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	sub := filepath.Join(root, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	// Create a file outside root but still under the test-scoped temp parent.
+	outside := filepath.Join(parent, "outside.md")
+	writeFile(t, outside, "# Outside\n")
+
+	// Create a source file linking to the outside file.
+	sourcePath := filepath.Join(sub, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [escape](../../outside.md).\n")
+
+	f := newLintFile(t, sourcePath)
+	f.RootDir = root
+
+	diags := (&Rule{}).Check(f)
+	// The link traverses above RootDir, so it should be silently skipped
+	// (not reported as broken).
+	require.Len(t, diags, 0,
+		"links above RootDir should be silently skipped, got: %v",
+		diagMessages(diags))
+}
+
+func TestCheck_PathWithinRootWorks(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	targetPath := filepath.Join(root, "target.md")
+	writeFile(t, targetPath, "# Target\n")
+
+	sourcePath := filepath.Join(sub, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [target](../target.md).\n")
+
+	f := newLintFile(t, sourcePath)
+	f.RootDir = root
+
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 0,
+		"links within RootDir should work, got: %v",
+		diagMessages(diags))
+}
+
 func newLintFile(t *testing.T, path string) *lint.File {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -222,4 +269,157 @@ func diagMessages(diags []lint.Diagnostic) []string {
 		msgs[i] = d.Message
 	}
 	return msgs
+}
+
+// --- resolveAbsRoot / isWithinRoot unit tests ---
+
+func TestResolveAbsRoot_Empty(t *testing.T) {
+	require.Equal(t, "", resolveAbsRoot(""))
+}
+
+func TestResolveAbsRoot_ValidDir(t *testing.T) {
+	dir := t.TempDir()
+	got := resolveAbsRoot(dir)
+	require.NotEmpty(t, got)
+	require.True(t, filepath.IsAbs(got))
+}
+
+func TestResolveAbsRoot_NonexistentDir(t *testing.T) {
+	// EvalSymlinks fails for nonexistent paths; should fall back to Abs.
+	got := resolveAbsRoot("/tmp/nonexistent-resolve-test-dir")
+	require.NotEmpty(t, got)
+	require.True(t, filepath.IsAbs(got))
+}
+
+func TestResolveAbsRoot_Symlink(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	require.NoError(t, os.Mkdir(real, 0o755))
+	link := filepath.Join(dir, "link")
+	require.NoError(t, os.Symlink(real, link))
+
+	resolved := resolveAbsRoot(link)
+	// Should resolve through the symlink to the real dir.
+	realAbs, _ := filepath.Abs(real)
+	require.Equal(t, realAbs, resolved)
+}
+
+func TestIsWithinRoot_InsideDir(t *testing.T) {
+	dir := t.TempDir()
+	child := filepath.Join(dir, "child.md")
+	writeFile(t, child, "# Child\n")
+
+	root := resolveAbsRoot(dir)
+	require.True(t, isWithinRoot(root, child))
+}
+
+func TestIsWithinRoot_OutsideDir(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "root")
+	require.NoError(t, os.Mkdir(dir, 0o755))
+	outside := filepath.Join(parent, "outside.md")
+	writeFile(t, outside, "# Outside\n")
+
+	root := resolveAbsRoot(dir)
+	require.False(t, isWithinRoot(root, outside))
+}
+
+func TestIsWithinRoot_SymlinkEscape(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "root")
+	require.NoError(t, os.Mkdir(dir, 0o755))
+	outside := filepath.Join(parent, "escape-target.md")
+	writeFile(t, outside, "# Escaped\n")
+
+	// Create a symlink inside the root that points outside.
+	link := filepath.Join(dir, "link.md")
+	require.NoError(t, os.Symlink(outside, link))
+
+	root := resolveAbsRoot(dir)
+	require.False(t, isWithinRoot(root, link),
+		"symlink pointing outside root should be rejected")
+}
+
+func TestLinkEscapesRoot_NoPath(t *testing.T) {
+	f := &lint.File{Path: "standalone.md"}
+	// No directory separator in Path → resolveTargetOSPath returns false.
+	require.False(t, linkEscapesRoot(f, "../escape.md", "/some/root"))
+}
+
+func TestResolveTargetFile_RejectsOutsideRoot(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	sub := filepath.Join(root, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	outside := filepath.Join(parent, "outside.md")
+	writeFile(t, outside, "# Outside\n")
+
+	f := &lint.File{
+		Path: filepath.Join(sub, "doc.md"),
+		FS:   os.DirFS(sub),
+	}
+	resolvedRoot := resolveAbsRoot(root)
+
+	_, ok := resolveTargetFile(f, "../../outside.md", resolvedRoot)
+	require.False(t, ok, "should reject link resolving outside root")
+}
+
+func TestResolveTargetFile_AllowsInsideRoot(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	writeFile(t, filepath.Join(root, "target.md"), "# Target\n")
+
+	f := &lint.File{
+		Path: filepath.Join(sub, "doc.md"),
+		FS:   os.DirFS(sub),
+	}
+	resolvedRoot := resolveAbsRoot(root)
+
+	_, ok := resolveTargetFile(f, "../target.md", resolvedRoot)
+	require.True(t, ok, "should allow link within root")
+}
+
+func TestIsWithinRoot_RelativeTarget(t *testing.T) {
+	// When f.Path is relative, resolveTargetOSPath can return a relative
+	// path. isWithinRoot must convert to absolute via Abs (using CWD)
+	// and then compare to the root. A relative path that happens to
+	// resolve outside root must be rejected.
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	require.NoError(t, os.Mkdir(root, 0o755))
+
+	absRoot := resolveAbsRoot(root)
+	// "some/relative.md" resolves to CWD/some/relative.md which is
+	// outside the temp root — must be rejected (not silently allowed).
+	require.False(t, isWithinRoot(absRoot, "some/relative.md"),
+		"relative path resolving outside root via CWD should be rejected")
+}
+
+func TestIsWithinRoot_RelativeTargetOutside(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "root")
+	require.NoError(t, os.Mkdir(root, 0o755))
+	writeFile(t, filepath.Join(parent, "outside.md"), "# Outside\n")
+
+	absRoot := resolveAbsRoot(root)
+	// "../outside.md" is relative and points outside root.
+	require.False(t, isWithinRoot(absRoot, "../outside.md"),
+		"relative path outside root should be rejected")
+}
+
+func TestIsWithinRoot_NonexistentTarget(t *testing.T) {
+	dir := t.TempDir()
+	root := resolveAbsRoot(dir)
+	// Nonexistent file inside root — EvalSymlinks fails, falls back to Clean.
+	require.True(t, isWithinRoot(root, filepath.Join(dir, "nonexistent.md")))
+}
+
+func TestIsWithinRoot_NonexistentOutside(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "root")
+	require.NoError(t, os.Mkdir(dir, 0o755))
+	root := resolveAbsRoot(dir)
+	require.False(t, isWithinRoot(root, filepath.Join(parent, "nonexistent.md")))
 }

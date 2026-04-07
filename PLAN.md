@@ -40,7 +40,7 @@ footer: |
 | 80  | ✅     | [Terminal recording in README](plan/80_terminal-recording-readme.md)                                            |
 | 81  | 🔲     | [OOM mitigation: configurable file-size limit](plan/81_oom-file-size-limit.md)                                  |
 | 82  | ✅     | [YAML billion-laughs mitigation](plan/82_yaml-billion-laughs.md)                                                |
-| 83  | 🔲     | [Security hardening batch](plan/83_security-hardening-batch.md)                                                 |
+| 83  | 🔳     | [Security hardening batch](plan/83_security-hardening-batch.md)                                                 |
 | 84  | 🔲     | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                                      |
 | 85  | 🔲     | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md)            |
 <?/catalog?>

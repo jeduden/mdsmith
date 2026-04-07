@@ -873,3 +873,102 @@ func TestFix_PreservesFilePermissions(t *testing.T) {
 		t.Errorf("expected permissions 0755, got %04o", info.Mode().Perm())
 	}
 }
+
+func TestAtomicWriteFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+
+	data := []byte("hello world")
+	err := atomicWriteFile(path, data, 0o644)
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, data, got)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+}
+
+func TestAtomicWriteFile_NoPartialWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+
+	// Write initial content.
+	require.NoError(t, os.WriteFile(path, []byte("original"), 0o644))
+
+	// Overwrite atomically.
+	err := atomicWriteFile(path, []byte("replacement"), 0o644)
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, "replacement", string(got))
+
+	// Verify no temp files left behind.
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 1, "should only have the target file")
+}
+
+func TestAtomicWriteFile_PreservesPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission test not applicable on Windows")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+
+	err := atomicWriteFile(path, []byte("data"), 0o755)
+	require.NoError(t, err)
+
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+}
+
+func TestAtomicWriteFile_ReadOnlyTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("read-only file test not reliable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("read-only file test not reliable as root")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "readonly.txt")
+	require.NoError(t, os.WriteFile(path, []byte("original"), 0o444))
+
+	err := atomicWriteFile(path, []byte("replacement"), 0o644)
+	require.Error(t, err, "should fail writing to read-only target")
+
+	// Verify original content is unchanged.
+	got, readErr := os.ReadFile(path)
+	require.NoError(t, readErr)
+	assert.Equal(t, "original", string(got))
+}
+
+func TestAtomicWriteFile_BadDirectory(t *testing.T) {
+	err := atomicWriteFile("/nonexistent-dir/file.txt", []byte("data"), 0o644)
+	require.Error(t, err, "should fail for nonexistent parent directory")
+}
+
+func TestAtomicWriteFile_StatErrorNotENOENT(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-based stat test not reliable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("permission test not reliable as root")
+	}
+	// Create a directory with a file, then remove read+execute perms
+	// on the directory so Stat on the file fails with EACCES, not ENOENT.
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "restricted")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	target := filepath.Join(sub, "file.txt")
+	require.NoError(t, os.WriteFile(target, []byte("data"), 0o644))
+	require.NoError(t, os.Chmod(sub, 0o000))
+	defer func() { _ = os.Chmod(sub, 0o755) }()
+
+	err := atomicWriteFile(target, []byte("new"), 0o644)
+	require.Error(t, err, "should fail when Stat returns non-ENOENT error")
+}

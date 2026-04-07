@@ -861,3 +861,45 @@ func TestCheck_IncludeWithAnchorInSchema(t *testing.T) {
 	assert.True(t, found,
 		"expected diagnostic rejecting anchors/aliases, got: %v", diags)
 }
+
+// =====================================================================
+// Schema read via RootFS
+// =====================================================================
+
+func TestCheck_SchemaViaRootFS(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "schema.md")
+	if err := os.WriteFile(schemaPath, []byte("# Title\n\n## Goal\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Rule{Schema: "schema.md"}
+	f := newTestFile(t, filepath.Join(dir, "doc.md"),
+		"---\ntitle: test\n---\n# Title\n\n## Goal\n")
+	f.SetRootDir(dir)
+
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_SchemaRejectsAbsolutePathWithRootFS(t *testing.T) {
+	dir := t.TempDir()
+	r := &Rule{Schema: "/etc/passwd"}
+	f := newTestFile(t, filepath.Join(dir, "doc.md"), "# Title\n")
+	f.SetRootDir(dir)
+
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "absolute schema path not allowed")
+}
+
+func TestCheck_SchemaRejectsParentTraversalWithRootFS(t *testing.T) {
+	dir := t.TempDir()
+	r := &Rule{Schema: "../escape/schema.md"}
+	f := newTestFile(t, filepath.Join(dir, "doc.md"), "# Title\n")
+	f.SetRootDir(dir)
+
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "escapes project root")
+}

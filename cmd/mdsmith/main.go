@@ -80,6 +80,14 @@ Run 'mdsmith <command> --help' for more information on a command.
 `
 
 func run() int {
+	// Set a process-level memory limit to bound CUE evaluation and
+	// other potentially unbounded operations. The Go runtime will
+	// aggressively GC before hitting this limit and OOM-panic beyond
+	// it. Respect any externally set GOMEMLIMIT environment variable.
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(512 * 1024 * 1024)
+	}
+
 	// Handle no arguments: print usage, exit 0.
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usageText)

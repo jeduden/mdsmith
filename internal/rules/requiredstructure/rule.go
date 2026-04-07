@@ -3,6 +3,7 @@ package requiredstructure
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -79,7 +80,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return diags
 	}
 
-	schData, err := os.ReadFile(r.Schema)
+	schData, err := readSchemaFile(f, r.Schema)
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1,
 			fmt.Sprintf("cannot read schema %q: %v", r.Schema, err)))
@@ -1013,6 +1014,26 @@ func checkFilenamePattern(
 				base, pattern))}
 	}
 	return nil
+}
+
+// readSchemaFile reads the schema file using the file's RootFS when available,
+// falling back to os.ReadFile. When RootFS is set, absolute and
+// parent-traversal paths are rejected to prevent reading outside the
+// project root.
+func readSchemaFile(f *lint.File, schema string) ([]byte, error) {
+	if f.RootFS != nil {
+		// Reject absolute paths and parent traversals.
+		if filepath.IsAbs(schema) {
+			return nil, fmt.Errorf("absolute schema path not allowed")
+		}
+		clean := filepath.ToSlash(filepath.Clean(schema))
+		clean = strings.TrimPrefix(clean, "./")
+		if clean == ".." || strings.HasPrefix(clean, "../") {
+			return nil, fmt.Errorf("schema path %q escapes project root", schema)
+		}
+		return fs.ReadFile(f.RootFS, clean)
+	}
+	return os.ReadFile(schema)
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {

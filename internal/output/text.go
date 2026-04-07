@@ -8,6 +8,34 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
+// sanitizeControl strips all C0/C1 control characters from s.
+// Used for diagnostic header fields (file path, message) where
+// newlines and tabs could break the single-line format.
+func sanitizeControl(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f ||
+			(r >= 0x80 && r <= 0x9f) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// sanitizeSourceLine strips C0/C1 control characters from s but
+// preserves tab for source line indentation display.
+func sanitizeSourceLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' {
+			return r
+		}
+		if r < 0x20 || r == 0x7f ||
+			(r >= 0x80 && r <= 0x9f) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // TextFormatter outputs diagnostics in human-readable text format.
 // When Color is true, the file location is printed in cyan and the rule ID in yellow.
 type TextFormatter struct {
@@ -18,13 +46,15 @@ type TextFormatter struct {
 // source snippet with line-number gutter and caret marker.
 func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error {
 	for _, d := range diagnostics {
+		safeFile := sanitizeControl(d.File)
+		safeMsg := sanitizeControl(d.Message)
 		var err error
 		if f.Color {
 			_, err = fmt.Fprintf(w, "\033[36m%s:%d:%d\033[0m \033[33m%s\033[0m %s\n",
-				d.File, d.Line, d.Column, d.RuleID, d.Message)
+				safeFile, d.Line, d.Column, d.RuleID, safeMsg)
 		} else {
 			_, err = fmt.Fprintf(w, "%s:%d:%d %s %s\n",
-				d.File, d.Line, d.Column, d.RuleID, d.Message)
+				safeFile, d.Line, d.Column, d.RuleID, safeMsg)
 		}
 		if err != nil {
 			return err
@@ -73,11 +103,12 @@ func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
 // writeSourceLine writes a single source line with line-number gutter.
 // Context lines are dimmed when color is on.
 func (f *TextFormatter) writeSourceLine(w io.Writer, gutterWidth, lineNum int, line string, isDiag bool) error {
+	safeLine := sanitizeSourceLine(line)
 	format := "%*d | %s\n"
 	if f.Color && !isDiag {
 		format = "\033[2m%*d | %s\033[0m\n"
 	}
-	_, err := fmt.Fprintf(w, format, gutterWidth, lineNum, line)
+	_, err := fmt.Fprintf(w, format, gutterWidth, lineNum, safeLine)
 	return err
 }
 

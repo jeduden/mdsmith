@@ -99,23 +99,22 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 	dirFS := os.DirFS(filepath.Dir(path))
 	lf.FS = dirFS
 	if f.RootDir != "" {
-		lf.RootFS = os.DirFS(f.RootDir)
+		lf.SetRootDir(f.RootDir)
 	}
 	effective := f.effectiveWithCategories(path)
 
 	f.logRules(effective)
 
 	fixable, settingsErrs := f.fixableRules(effective)
-	errs = append(errs, settingsErrs...)
 	beforeDiags, checkErrs := engine.CheckRules(lf, f.Rules, effective)
-	errs = append(errs, checkErrs...)
+	errs = append(errs, append(settingsErrs, checkErrs...)...)
 
 	current := f.applyFixPasses(path, lf.Source, fixable, dirFS, &errs)
 
 	var modified string
 	if !bytes.Equal(lf.Source, current) {
 		out := lf.FullSource(current)
-		if err := os.WriteFile(path, out, info.Mode()); err != nil {
+		if err := atomicWriteFile(path, out, info.Mode()); err != nil {
 			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
 			return beforeDiags, beforeDiags, "", errs
 		}
@@ -129,6 +128,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 	}
 	finalFile.FS = dirFS
 	finalFile.RootFS = lf.RootFS
+	finalFile.RootDir = lf.RootDir
 	finalFile.FrontMatter = lf.FrontMatter
 	finalFile.LineOffset = lf.LineOffset
 
@@ -154,7 +154,7 @@ func (f *Fixer) applyFixPasses(
 			}
 			parsedFile.FS = dirFS
 			if f.RootDir != "" {
-				parsedFile.RootFS = os.DirFS(f.RootDir)
+				parsedFile.SetRootDir(f.RootDir)
 			}
 
 			diags := fr.Check(parsedFile)
@@ -211,6 +211,54 @@ func (f *Fixer) effectiveWithCategories(path string) map[string]config.RuleCfg {
 	catLookup := func(name string) string { return m[name] }
 
 	return config.ApplyCategories(effective, categories, catLookup, explicit)
+}
+
+// atomicWriteFile writes data to path using a temp-file-then-rename strategy
+// to reduce the risk of partial writes on crash. Directory fsync is omitted
+// for simplicity; full power-loss durability is not guaranteed.
+func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+	// Verify an existing target is writable before creating a temp file.
+	// os.Rename can replace read-only targets (it only needs
+	// directory write permission), so check explicitly.
+	if _, err := os.Stat(path); err == nil {
+		f, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			return err
+		}
+		_ = f.Close()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".mdsmith-fix-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		if tmpPath != "" {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, mode); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	tmpPath = ""
+	return nil
 }
 
 // fixableRules returns enabled rules that implement FixableRule, sorted by ID.

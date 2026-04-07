@@ -64,7 +64,7 @@ func (r *Runner) Run(paths []string) *Result {
 		f.FS = os.DirFS(dir)
 		gitignoreDir := dir
 		if r.RootDir != "" {
-			f.RootFS = os.DirFS(r.RootDir)
+			f.SetRootDir(r.RootDir)
 			gitignoreDir = r.RootDir
 		}
 		gd := gitignoreDir // capture for closure
@@ -106,7 +106,7 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		return res
 	}
 	if r.RootDir != "" {
-		f.RootFS = os.DirFS(r.RootDir)
+		f.SetRootDir(r.RootDir)
 	}
 
 	effective := r.effectiveWithCategories(path)

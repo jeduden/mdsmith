@@ -3129,3 +3129,54 @@ func TestReadFrontMatter_AnchorReturnsNil(t *testing.T) {
 	result := readFrontMatter(mapFS, "doc.md")
 	assert.Nil(t, result)
 }
+
+// =====================================================================
+// Catalog injection warnings
+// =====================================================================
+
+func TestCatalogInjection_NewlineInFrontMatter(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{
+			"filename": "a.md",
+			"summary":  "line1\nline2",
+		}},
+	}
+	diags := checkCatalogInjection("index.md", 5, entries)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "embedded newlines")
+	assert.Equal(t, lint.Warning, diags[0].Severity)
+}
+
+func TestCatalogInjection_LinkSequenceInFrontMatter(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{
+			"filename": "a.md",
+			"summary":  "click](http://evil.com)",
+		}},
+	}
+	diags := checkCatalogInjection("index.md", 5, entries)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "](")
+}
+
+func TestCatalogInjection_CleanValue(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{
+			"filename": "a.md",
+			"summary":  "A clean summary without issues",
+		}},
+	}
+	diags := checkCatalogInjection("index.md", 5, entries)
+	assert.Empty(t, diags)
+}
+
+func TestCatalogInjection_BothNewlineAndLink(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{
+			"filename": "a.md",
+			"summary":  "evil\n](http://evil.com)",
+		}},
+	}
+	diags := checkCatalogInjection("index.md", 5, entries)
+	assert.Len(t, diags, 2, "should report both newline and ]( issues")
+}

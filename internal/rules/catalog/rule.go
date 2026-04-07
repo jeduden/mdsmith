@@ -59,6 +59,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// re-reads front-matter but avoids coupling hints to the engine's
 	// fatal-diagnostic pipeline. Acceptable for typical catalog sizes.
 	diags = append(diags, r.checkCaseMismatches(f)...)
+	// Injection warnings are non-fatal and must not block generation,
+	// so they run as a separate pass outside the engine.
+	diags = append(diags, r.checkInjection(f)...)
 	return diags
 }
 
@@ -318,6 +321,78 @@ func resolveGitignore(f *lint.File, params map[string]string) (*lint.GitignoreMa
 		return nil, ""
 	}
 	return matcher, base
+}
+
+// checkCatalogInjection warns when interpolated front-matter values contain
+// embedded newlines or "](" sequences that could inject Markdown
+// structure into the generated catalog section.
+func checkCatalogInjection(filePath string, line int, entries []fileEntry) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	for _, entry := range entries {
+		entryPath := fieldinterp.Stringify(entry.fields["filename"])
+		// Iterate keys in sorted order for deterministic diagnostic ordering.
+		keys := make([]string, 0, len(entry.fields))
+		for k := range entry.fields {
+			if k != "filename" {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			val := entry.fields[key]
+			s := fieldinterp.Stringify(val)
+			if strings.ContainsAny(s, "\n\r") {
+				diags = append(diags, lint.Diagnostic{
+					File:     filePath,
+					Line:     line,
+					Column:   1,
+					RuleID:   "MDS019",
+					RuleName: "catalog",
+					Severity: lint.Warning,
+					Message: fmt.Sprintf(
+						"front-matter field %q in %q contains embedded newlines; "+
+							"this may inject unexpected Markdown into the catalog",
+						key, entryPath),
+				})
+			}
+			if strings.Contains(s, "](") {
+				diags = append(diags, lint.Diagnostic{
+					File:     filePath,
+					Line:     line,
+					Column:   1,
+					RuleID:   "MDS019",
+					RuleName: "catalog",
+					Severity: lint.Warning,
+					Message: fmt.Sprintf(
+						"front-matter field %q in %q contains \"](\" sequence; "+
+							"this may inject a Markdown link into the catalog",
+						key, entryPath),
+				})
+			}
+		}
+	}
+	return diags
+}
+
+// checkInjection scans catalog directives for front-matter values that could
+// inject Markdown structure. Runs independently of Generate so warnings don't
+// block content generation.
+func (r *Rule) checkInjection(f *lint.File) []lint.Diagnostic {
+	pairs, _ := gensection.FindMarkerPairs(
+		f, r.Name(), r.ID(), r.Name(),
+	)
+	var diags []lint.Diagnostic
+	for _, mp := range pairs {
+		dir, parseDiags := gensection.ParseDirective(
+			f.Path, mp, r.ID(), r.Name(),
+		)
+		if dir == nil || len(parseDiags) > 0 {
+			continue
+		}
+		entries := buildCatalogEntries(f, dir.Params)
+		diags = append(diags, checkCatalogInjection(f.Path, mp.StartLine, entries)...)
+	}
+	return diags
 }
 
 // renderCatalogContent renders catalog entries into the final content string.
