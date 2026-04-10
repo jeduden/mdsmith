@@ -209,6 +209,24 @@ func TestEngine_Check_MalformedNestedEndMarker(t *testing.T) {
 		"expected malformed nested end marker diagnostic, got %v", diags)
 }
 
+func TestEngine_Check_NestedEndMarkerTrailingContent(t *testing.T) {
+	// A nested end marker with trailing content on its line should
+	// emit a diagnostic and not decrement depth.
+	src := "<?mock\nkey: a\n?>\n<?mock\nkey: b\n?>\ninner\n<?/mock?> extra\n<?/mock?>\n<?/mock?>\n"
+	f := newTestFile(t, "test.md", src)
+	d := &mockDirective{content: ""}
+	e := NewEngine(d)
+	diags := e.Check(f)
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "only content on its line") {
+			found = true
+		}
+	}
+	assert.True(t, found,
+		"expected 'only content on its line' diagnostic, got %v", diags)
+}
+
 func TestEngine_Check_InvalidYAML(t *testing.T) {
 	src := "<?mock\n: invalid : yaml ::: [\n?>\n<?/mock?>\n"
 	f := newTestFile(t, "test.md", src)

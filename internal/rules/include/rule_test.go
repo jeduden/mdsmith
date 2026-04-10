@@ -656,6 +656,28 @@ func TestFix_RecursiveExpansionWithFrontmatter(t *testing.T) {
 		"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
 }
 
+func TestFix_RecursiveExpansionSubdir(t *testing.T) {
+	// B is in a subdirectory and includes C relative to itself.
+	// Recursive expansion must resolve C correctly via readFS,
+	// not double the subdirectory path.
+	fsys := fstest.MapFS{
+		"sub/b.md": {Data: []byte(
+			"# B\n\n<?include\nfile: c.md\n?>\n" +
+				"stale\n<?/include?>\n")},
+		"sub/c.md": {Data: []byte("Fresh from C\n")},
+	}
+	src := "# A\n\n<?include\nfile: sub/b.md\n?>\n" +
+		"old\n<?/include?>\n"
+	f := newTestFile(t, "a.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "# A\n\n<?include\nfile: sub/b.md\n?>\n" +
+		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Fresh from C\n<?/include?>\n<?/include?>\n"
+	assert.Equal(t, want, got,
+		"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+}
+
 // =====================================================================
 // No FS
 // =====================================================================
