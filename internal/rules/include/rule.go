@@ -347,7 +347,12 @@ func (r *Rule) expandNestedIncludes(
 		mp := pairs[i]
 		dir, pdiags := gensection.ParseDirective(resolvedFile, mp, "MDS021", "include")
 		if dir == nil || len(pdiags) > 0 {
-			continue
+			return nil, pdiags
+		}
+
+		valDiags := validateIncludeDirective(resolvedFile, mp.StartLine, dir.Params)
+		if len(valDiags) > 0 {
+			return nil, valDiags
 		}
 
 		generated, genDiags := r.generateIncludeContent(
