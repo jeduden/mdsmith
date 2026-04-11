@@ -3182,3 +3182,80 @@ func TestCatalogInjection_BothNewlineAndLink(t *testing.T) {
 	diags := checkCatalogInjection("index.md", 5, entries)
 	assert.Len(t, diags, 2, "should report both newline and ]( issues")
 }
+
+// =====================================================================
+// source-dir: glob resolution from included file's directory (#133)
+// =====================================================================
+
+func TestCatalog_SourceDirResolvesGlobFromSubdir(t *testing.T) {
+	// When source-dir is set, globs should resolve relative to that
+	// directory, not the file's own directory. This supports catalog
+	// directives transplanted by include expansion.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "docs/dev"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/dev/api.md":   {Data: []byte("# API\n")},
+		"docs/dev/guide.md": {Data: []byte("# Guide\n")},
+		"README.md":         {Data: []byte("# Root\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// Filenames should be prefixed with the source-dir so links
+	// resolve correctly from the including file.
+	assert.Contains(t, result, "docs/dev/api.md")
+	assert.Contains(t, result, "docs/dev/guide.md")
+	assert.NotContains(t, result, "README.md")
+}
+
+func TestCatalog_SourceDirWithFrontMatter(t *testing.T) {
+	// source-dir should also read front matter from the correct directory.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "sub"
+row: "- [{title}]({filename})"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"sub/one.md": {Data: []byte("---\ntitle: One\n---\n# One\n")},
+		"sub/two.md": {Data: []byte("---\ntitle: Two\n---\n# Two\n")},
+	}
+	f := newTestFile(t, "root.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "- [One](sub/one.md)")
+	assert.Contains(t, result, "- [Two](sub/two.md)")
+}
+
+func TestCatalog_SourceDirExcludePatterns(t *testing.T) {
+	// Exclude patterns should work relative to source-dir.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "!internal.md"
+source-dir: "docs"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/public.md":   {Data: []byte("# Public\n")},
+		"docs/internal.md": {Data: []byte("# Internal\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "docs/public.md")
+	// The excluded file should not appear as a link in the generated content.
+	assert.NotContains(t, result, "[internal.md](docs/internal.md)")
+}

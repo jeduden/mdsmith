@@ -246,6 +246,19 @@ func processIncludedContent(
 	includedPath := path.Join(path.Dir(filePath), file)
 	text = adjustLinks(text, includedPath, filePath)
 
+	// Inject source-dir into processing instructions so downstream
+	// directives (e.g. catalog) resolve globs relative to the included
+	// file's directory, not the including file's directory (#133).
+	// Skip when content will be wrapped in a code fence, since wrapped
+	// content is displayed as code and PIs are not parsed.
+	if _, wrapped := params["wrap"]; !wrapped {
+		includedDir := path.Dir(includedPath)
+		includerDir := path.Dir(filePath)
+		if includedDir != includerDir && includedDir != "." {
+			text = injectSourceDir(text, includedDir)
+		}
+	}
+
 	if params["heading-level"] == "absolute" {
 		text = adjustHeadings(text, findParentHeadingLevel(f, line))
 	}
@@ -377,6 +390,67 @@ func (r *Rule) expandNestedIncludes(
 	}
 
 	return f.Source, nil
+}
+
+// injectSourceDir adds a source-dir parameter to processing instruction
+// start markers in text. It parses the text as Markdown to avoid modifying
+// PIs inside code blocks.
+func injectSourceDir(text, sourceDir string) string {
+	parsed, err := lint.NewFile("", []byte(text))
+	if err != nil {
+		return text
+	}
+
+	// Collect byte offsets where the source-dir line should be inserted.
+	type injection struct {
+		offset int
+	}
+	var injections []injection
+
+	for n := parsed.AST.FirstChild(); n != nil; n = n.NextSibling() {
+		pi, ok := n.(*lint.ProcessingInstruction)
+		if !ok {
+			continue
+		}
+		// Skip end markers (<?/name?>).
+		if strings.HasPrefix(pi.Name, "/") {
+			continue
+		}
+		firstSeg := pi.Lines().At(0)
+		// Skip single-line PIs (<?name ...?>).
+		if pi.HasClosure() && pi.ClosureLine.Start == firstSeg.Start {
+			continue
+		}
+		// Skip if source-dir is already present in the PI body.
+		already := false
+		for i := 1; i < pi.Lines().Len(); i++ {
+			seg := pi.Lines().At(i)
+			if strings.Contains(string(seg.Value([]byte(text))), "source-dir:") {
+				already = true
+				break
+			}
+		}
+		if already {
+			continue
+		}
+
+		injections = append(injections, injection{offset: firstSeg.Stop})
+	}
+
+	if len(injections) == 0 {
+		return text
+	}
+
+	sdLine := fmt.Sprintf("source-dir: \"%s\"\n", sourceDir)
+	var b strings.Builder
+	prev := 0
+	for _, inj := range injections {
+		b.WriteString(text[prev:inj.offset])
+		b.WriteString(sdLine)
+		prev = inj.offset
+	}
+	b.WriteString(text[prev:])
+	return b.String()
 }
 
 var _ rule.FixableRule = (*Rule)(nil)

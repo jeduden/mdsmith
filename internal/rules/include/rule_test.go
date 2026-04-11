@@ -679,6 +679,61 @@ func TestFix_RecursiveExpansionSubdir(t *testing.T) {
 }
 
 // =====================================================================
+// source-dir injection for nested directives (#133)
+// =====================================================================
+
+func TestFix_InjectsSourceDirIntoCatalog(t *testing.T) {
+	// When an included file contains a <?catalog?> directive, the
+	// include expansion should inject source-dir so the catalog
+	// resolves globs relative to the included file's directory.
+	fsys := fstest.MapFS{
+		"docs/dev/index.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: docs/dev/index.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "README.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "source-dir:")
+	assert.Contains(t, result, "docs/dev")
+}
+
+func TestFix_InjectsSourceDirPreservesExistingParams(t *testing.T) {
+	// source-dir injection should not disturb other catalog parameters.
+	fsys := fstest.MapFS{
+		"sub/catalog.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\nsort: path\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: sub/catalog.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "root.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "source-dir:")
+	assert.Contains(t, result, "glob:")
+	assert.Contains(t, result, "sort: path")
+}
+
+func TestFix_NoSourceDirWhenSameDir(t *testing.T) {
+	// When the included file is in the same directory as the including
+	// file, no source-dir is needed.
+	fsys := fstest.MapFS{
+		"catalog.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: catalog.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "index.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.NotContains(t, result, "source-dir:")
+}
+
+// =====================================================================
 // No FS
 // =====================================================================
 
