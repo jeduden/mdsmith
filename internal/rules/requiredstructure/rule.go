@@ -503,7 +503,7 @@ func expandSchemaInclude(
 	fragData, err := lint.ReadFileLimited(includedPath, maxBytes)
 	if err != nil {
 		return nil, "", fmt.Errorf(
-			"schema include file %q not found: %w", includedPath, err)
+			"cannot read schema include file %q: %w", includedPath, err)
 	}
 
 	_, fragContent := lint.StripFrontMatter(fragData)

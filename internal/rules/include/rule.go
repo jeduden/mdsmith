@@ -195,7 +195,7 @@ func (r *Rule) generateIncludeContent(
 	data, err := lint.ReadFSFileLimited(readFS, readPath, f.MaxInputBytes)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
-			fmt.Sprintf("include file %q not found: %v", file, err))}
+			fmt.Sprintf("cannot read include file %q: %v", file, err))}
 	}
 
 	// Track this file and recursively expand nested includes.

@@ -148,12 +148,26 @@ func readLimitedConfig(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close() //nolint:errcheck // best-effort close on read-only file
+
+	// Stat for accurate size in error messages.
+	var actualSize int64 = -1
+	if info, err := f.Stat(); err == nil {
+		actualSize = info.Size()
+	}
+
 	data, err := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if int64(len(data)) > maxConfigBytes {
-		return nil, fmt.Errorf("config file %q too large (%d bytes, max %d)", path, int64(len(data)), maxConfigBytes)
+		reported := actualSize
+		if reported < 0 {
+			reported = int64(len(data))
+		}
+		return nil, fmt.Errorf(
+			"config file %q too large (%d bytes, max %d)",
+			path, reported, maxConfigBytes,
+		)
 	}
 	return data, nil
 }

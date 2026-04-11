@@ -43,6 +43,7 @@ func TestParseSize_Invalid(t *testing.T) {
 		{"-5MB", "negative size"},
 		{"2TB", "unrecognized unit"},
 		{"2.5MB", "invalid size"},
+		{"9999999999GB", "overflows int64"},
 	}
 
 	for _, tt := range tests {

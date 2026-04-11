@@ -45,9 +45,6 @@ func ReadFSFileLimited(fsys fs.FS, name string, max int64) ([]byte, error) {
 // readLimited reads from r up to max+1 bytes. If the read returns more
 // than max bytes the file is too large. The +1 sentinel distinguishes
 // "exactly at limit" from "truncated".
-// readLimited reads from r up to max+1 bytes. If the read returns more
-// than max bytes the file is too large. The +1 sentinel distinguishes
-// "exactly at limit" from "truncated".
 //
 // When the underlying reader is a file, we stat it first to report the
 // actual file size in the error message. For non-file readers (or when
@@ -70,7 +67,7 @@ func readLimited(r io.Reader, name string, max int64) ([]byte, error) {
 		if reported < 0 {
 			reported = int64(len(data))
 		}
-		return nil, fmt.Errorf("reading %q: file too large (%d bytes, max %d)", name, reported, max)
+		return nil, fmt.Errorf("file too large (%d bytes, max %d)", reported, max)
 	}
 	return data, nil
 }
