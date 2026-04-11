@@ -122,10 +122,11 @@ what specific data must satisfy what condition. Name the
 inputs (front matter fields, glob pattern, heading level)
 not just the mechanism. Avoid vague verbs (match, sync,
 reflect) without saying what is checked against what.
-<?/include?>
+
+### Development Reference
 
 <?include
-file: ../docs/development/index.md
+file: docs/development/index.md
 strip-frontmatter: "true"
 heading-level: "absolute"
 ?>
@@ -354,4 +355,5 @@ When writing documentation:
   steps, minimal prerequisites, concrete outcome
 - **Background** answers "why...?" — context,
   trade-offs, comparisons, design rationale
+<?/include?>
 <?/include?>
