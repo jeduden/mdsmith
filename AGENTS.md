@@ -142,17 +142,9 @@ heading-level: "absolute"
 Build and test reference for mdsmith contributors.
 See also:
 
-<?catalog
-glob:
-  - "*.md"
-  - "!index.md"
-sort: path
-row: "- [{summary}](docs/development/{filename})"
-?>
-- [Codecov coverage gate and CI status checks.](docs/development/coverage.md)
-- [Where to place Markdown files and documentation types.](docs/development/file-placement.md)
-- [Rebase, CI monitoring, and review comment resolution.](docs/development/pr-fixup-workflow.md)
-<?/catalog?>
+- [Coverage gate](docs/development/coverage.md)
+- [File placement](docs/development/file-placement.md)
+- [PR fixup workflow](docs/development/pr-fixup-workflow.md)
 
 ### Build & Test Commands
 
