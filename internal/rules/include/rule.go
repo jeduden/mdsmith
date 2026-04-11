@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
@@ -441,7 +442,7 @@ func injectSourceDir(text, sourceDir string) string {
 		return text
 	}
 
-	sdLine := fmt.Sprintf("source-dir: \"%s\"\n", sourceDir)
+	sdLine := fmt.Sprintf("source-dir: %s\n", strconv.Quote(sourceDir))
 	var b strings.Builder
 	prev := 0
 	for _, inj := range injections {
