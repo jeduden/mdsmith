@@ -1,6 +1,6 @@
 ---
 title: PR Fixup Workflow
-summary: PR fixup workflow for rebase, CI monitoring, review comment resolution, and gh CLI setup.
+summary: Rebase, CI monitoring, and review comment resolution.
 ---
 
 Push changes, monitor CI, and address review comments
