@@ -251,17 +251,40 @@ func splitIncludeExclude(glob string) (include, exclude []string) {
 // resolveGlobFS returns the filesystem to use for glob resolution and
 // a path prefix for display filenames. When source-dir is set (injected
 // by include expansion), globs resolve from that subdirectory of RootFS
-// and matched filenames are prefixed so links work from the including file.
+// and matched filenames are prefixed relative to the catalog-owning
+// file's directory so links work correctly.
 func resolveGlobFS(f *lint.File, params map[string]string) (globFS fs.FS, prefix string) {
 	sourceDir := params["source-dir"]
 	if sourceDir == "" || f.RootFS == nil {
 		return f.FS, ""
 	}
+
+	sourceDir = path.Clean(sourceDir)
+	fileDir := path.Clean(filepath.ToSlash(filepath.Dir(f.Path)))
+
+	// Compute prefix relative to the file's directory so display
+	// filenames produce correct links from the including file.
+	relPrefix, err := filepath.Rel(fileDir, sourceDir)
+	if err != nil {
+		return f.FS, ""
+	}
+	relPrefix = filepath.ToSlash(relPrefix)
+
+	if sourceDir == "." {
+		if relPrefix == "." {
+			return f.RootFS, ""
+		}
+		return f.RootFS, relPrefix
+	}
+
 	sub, err := fs.Sub(f.RootFS, sourceDir)
 	if err != nil {
 		return f.FS, ""
 	}
-	return sub, sourceDir
+	if relPrefix == "." {
+		return sub, ""
+	}
+	return sub, relPrefix
 }
 
 // buildCatalogEntries resolves glob matches, reads front matter, and
@@ -293,14 +316,9 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 	return entries
 }
 
-// resolveGlobMatches expands include patterns, filters out exclude and
-// gitignore matches, and returns deduplicated file paths.
-func resolveGlobMatches(f *lint.File, params map[string]string) []string {
-	return resolveGlobMatchesFrom(f.FS, f, params)
-}
-
-// resolveGlobMatchesFrom is like resolveGlobMatches but uses the given
-// FS for glob resolution instead of f.FS.
+// resolveGlobMatchesFrom expands include patterns using the given FS,
+// filters out exclude and gitignore matches, and returns deduplicated
+// file paths.
 func resolveGlobMatchesFrom(globFS fs.FS, f *lint.File, params map[string]string) []string {
 	includePatterns, excludePatterns := splitIncludeExclude(params["glob"])
 	matcher, base := resolveGitignore(f, params)

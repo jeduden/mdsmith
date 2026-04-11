@@ -3259,3 +3259,51 @@ source-dir: "docs"
 	// The excluded file should not appear as a link in the generated content.
 	assert.NotContains(t, result, "[internal.md](docs/internal.md)")
 }
+
+func TestCatalog_SourceDirRoot(t *testing.T) {
+	// source-dir: "." means globs resolve from the project root.
+	// This happens when a subdirectory file includes a root-level file.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "."
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"api.md":        {Data: []byte("# API\n")},
+		"guide.md":      {Data: []byte("# Guide\n")},
+		"docs/other.md": {Data: []byte("# Other\n")},
+	}
+	f := newTestFile(t, "docs/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// From docs/index.md, root files need a ../ prefix.
+	assert.Contains(t, result, "../api.md")
+	assert.Contains(t, result, "../guide.md")
+	assert.NotContains(t, result, "other.md")
+}
+
+func TestCatalog_SourceDirFromSubdirIncluder(t *testing.T) {
+	// When the catalog-owning file is in a subdirectory and source-dir
+	// points to a sibling subdirectory, the prefix should be relative.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "docs/dev"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/dev/api.md": {Data: []byte("# API\n")},
+		"README.md":       {Data: []byte("# Root\n")},
+	}
+	f := newTestFile(t, "docs/intro.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// From docs/intro.md, docs/dev/api.md is at dev/api.md.
+	assert.Contains(t, result, "dev/api.md")
+	assert.NotContains(t, result, "docs/dev/api.md")
+}

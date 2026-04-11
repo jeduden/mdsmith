@@ -254,7 +254,7 @@ func processIncludedContent(
 	if _, wrapped := params["wrap"]; !wrapped {
 		includedDir := path.Dir(includedPath)
 		includerDir := path.Dir(filePath)
-		if includedDir != includerDir && includedDir != "." {
+		if includedDir != includerDir {
 			text = injectSourceDir(text, includedDir)
 		}
 	}

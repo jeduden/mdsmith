@@ -733,6 +733,22 @@ func TestFix_NoSourceDirWhenSameDir(t *testing.T) {
 	assert.NotContains(t, result, "source-dir:")
 }
 
+func TestFix_InjectsSourceDirForRootInclude(t *testing.T) {
+	// When a subdir file includes a root-level file, source-dir: "."
+	// should be injected so catalog globs resolve from the project root.
+	fsys := fstest.MapFS{
+		"root-catalog.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: ../root-catalog.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "docs/index.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, `source-dir: "."`)
+}
+
 // =====================================================================
 // No FS
 // =====================================================================

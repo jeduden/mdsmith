@@ -16,6 +16,7 @@ mdsmith — a Markdown linter written in Go.
 - [Plan template; see PLAN.md for status, plans live in plan/](../plan/proto.md)
 
 <?catalog
+source-dir: "."
 glob:
   - "docs/**/*.md"
   - "!docs/research/**"
