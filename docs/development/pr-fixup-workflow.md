@@ -289,34 +289,8 @@ gh pr checks "$PR"
 
 Re-run the step 7 query and filter for unresolved
 threads. If the count is 0 and CI is green, cancel
-the recurring loop and proceed to step 11.
-
-### 11. Enqueue the PR for merge
-
-Add the `queue` label to enter the merge queue
-(`jeduden/merge-queue-action`):
-
-```bash
-gh pr edit "$PR" --add-label queue
-```
-
-The action batches labeled PRs (oldest first) into
-a temporary branch and runs CI against it. If CI
-passes, `main` fast-forwards automatically.
-
-Labels track progress: `queue` → `queue:active`
-(in batch) → merged. On failure the action applies
-`queue:failed` and posts a comment with the cause.
-Fix the issue (return to step 6), push, then swap
-labels to re-enter:
-
-```bash
-gh pr edit "$PR" --remove-label queue:failed
-```
-
-```bash
-gh pr edit "$PR" --add-label queue
-```
+the recurring loop. The PR is ready for merge —
+use `/merge-queue` to enqueue it.
 
 ## Notes
 
@@ -330,4 +304,5 @@ gh pr edit "$PR" --add-label queue
   (step 3). Regular pushes after that show
   incremental progress.
 
-The PR is merged once the queue batch passes CI.
+Use `/merge-queue` to enqueue the PR once it is
+ready.
