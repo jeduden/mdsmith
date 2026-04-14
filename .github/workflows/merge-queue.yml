@@ -1,5 +1,7 @@
 name: Merge Queue
 
+# Dummy change to test merge queue action.
+
 on:
   pull_request:
     types: [labeled]
