@@ -34,7 +34,22 @@ Otherwise detect it from the current branch:
 gh pr view --json number -q '.number'
 ```
 
-Note the number as `$PR`.
+Note the number as `$PR`. Then get the repo
+owner and name for later API calls:
+
+```bash
+gh pr view "$PR" --json headRepository \
+  -q '.headRepository.owner.login'
+```
+
+Note as `$OWNER`. Then:
+
+```bash
+gh pr view "$PR" --json headRepository \
+  -q '.headRepository.name'
+```
+
+Note as `$REPO`.
 
 ### 2. Verify readiness
 
@@ -70,7 +85,7 @@ query($owner: String!, $repo: String!, $pr: Int!) {
       }
     }
   }
-}' -f owner=OWNER -f repo=REPO -F pr="$PR" \
+}' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR" \
   -q '[.data.repository.pullRequest.reviewThreads.nodes[]
   | select(.isResolved == false)] | length'
 ```
@@ -82,7 +97,7 @@ threads.
 Check that Copilot reviewed the latest commit:
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/$PR/reviews" \
+gh api "repos/$OWNER/$REPO/pulls/$PR/reviews" \
   -q '[.[] | select(.user.login ==
   "copilot-pull-request-reviewer[bot]")]
   | last | .commit_id'
@@ -101,7 +116,7 @@ wait before enqueuing:
 
 ```bash
 gh api --method POST \
-  "repos/{owner}/{repo}/pulls/$PR/requested_reviewers" \
+  "repos/$OWNER/$REPO/pulls/$PR/requested_reviewers" \
   -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
 
