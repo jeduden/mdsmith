@@ -13,6 +13,16 @@ argument-hint: "[PR number]"
 Enqueue a PR into the label-driven merge queue
 (`jeduden/merge-queue-action`).
 
+## Before you run commands
+
+Run each fenced Bash block as its own Bash call.
+Do not combine commands into one shell invocation,
+and do not prefix commands with inline environment
+or shell variable assignments. Allowed-tools
+matching checks the command prefix, so changing
+that prefix can cause an otherwise-allowed `gh`
+command to be blocked.
+
 ## Steps
 
 ### 1. Identify the PR
@@ -41,6 +51,27 @@ gh pr checks "$PR" --json name,state
 All checks must show `SUCCESS`. If any are
 `FAILURE` or `PENDING`, stop and report the
 blockers instead of enqueuing.
+
+Check for unresolved review threads:
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        nodes { isResolved }
+      }
+    }
+  }
+}' -f owner=OWNER -f repo=REPO -F pr="$PR" \
+  -q '[.data.repository.pullRequest.reviewThreads.nodes[]
+  | select(.isResolved == false)] | length'
+```
+
+Stop if the count is greater than zero. Run
+`/pr-fixup` first to address the remaining
+threads.
 
 Check that Copilot reviewed the latest commit:
 
@@ -91,11 +122,20 @@ gh pr view "$PR" --json labels \
   -q '.labels[].name'
 ```
 
-Check the merge queue workflow run:
+Check the merge queue workflow run for the PR's
+head branch (repo-wide listing would return
+unrelated PRs when multiple are queued):
+
+```bash
+gh pr view "$PR" --json headRefName \
+  -q '.headRefName'
+```
+
+Note the branch as `$BRANCH`, then:
 
 ```bash
 gh run list --workflow merge-queue.yml \
-  --limit 1
+  --branch "$BRANCH" --limit 1
 ```
 
 ### 5. Handle failure
