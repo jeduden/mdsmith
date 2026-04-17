@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 )
 
@@ -11,9 +12,11 @@ import (
 const DefaultMaxInputBytes int64 = 2 * 1024 * 1024
 
 // ReadFileLimited reads path from disk, returning an error if the file
-// exceeds max bytes. When max <= 0 no limit is applied (unlimited mode).
+// exceeds max bytes. When max <= 0 or max == math.MaxInt64 no limit is
+// applied (unlimited mode). MaxInt64 is treated as unlimited because the
+// +1 sentinel used internally would overflow.
 func ReadFileLimited(path string, max int64) ([]byte, error) {
-	if max <= 0 {
+	if max <= 0 || max == math.MaxInt64 {
 		return os.ReadFile(path)
 	}
 
@@ -27,9 +30,10 @@ func ReadFileLimited(path string, max int64) ([]byte, error) {
 }
 
 // ReadFSFileLimited reads name from fsys, returning an error if the file
-// exceeds max bytes. When max <= 0 no limit is applied (unlimited mode).
+// exceeds max bytes. When max <= 0 or max == math.MaxInt64 no limit is
+// applied (unlimited mode).
 func ReadFSFileLimited(fsys fs.FS, name string, max int64) ([]byte, error) {
-	if max <= 0 {
+	if max <= 0 || max == math.MaxInt64 {
 		return fs.ReadFile(fsys, name)
 	}
 

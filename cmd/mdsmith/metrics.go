@@ -99,6 +99,7 @@ type metricsRankOptions struct {
 	format           string
 	noGitignore      bool
 	noFollowSymlinks bool
+	maxInputSize     string
 }
 
 func runMetricsRank(args []string) int {
@@ -122,6 +123,8 @@ func parseMetricsRankOptions(args []string) (metricsRankOptions, []string, error
 	fs.StringVarP(&opts.format, "format", "f", "text", "Output format: text, json")
 	fs.BoolVar(&opts.noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&opts.noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.StringVar(&opts.maxInputSize, "max-input-size", "",
+		"Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(
@@ -162,7 +165,18 @@ func executeMetricsRank(opts metricsRankOptions, fileArgs []string) int {
 		return 2
 	}
 
-	rows, err := metricspkg.Collect(files, defs, lint.DefaultMaxInputBytes)
+	cfg, _, err := loadConfig(opts.configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	rows, err := metricspkg.Collect(files, defs, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2

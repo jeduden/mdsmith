@@ -109,6 +109,7 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 		return res
 	}
+	f.MaxInputBytes = r.MaxInputBytes
 	if r.RootDir != "" {
 		f.SetRootDir(r.RootDir)
 	}

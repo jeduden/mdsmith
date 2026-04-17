@@ -1,6 +1,7 @@
 package lint_test
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -83,6 +84,26 @@ func TestReadFileLimited_EmptyFile(t *testing.T) {
 func TestReadFileLimited_NotFound(t *testing.T) {
 	_, err := lint.ReadFileLimited("/nonexistent/file.md", 100)
 	require.Error(t, err)
+}
+
+func TestReadFileLimited_MaxInt64Unlimited(t *testing.T) {
+	// MaxInt64 must be treated as unlimited to avoid overflow in max+1.
+	dir := t.TempDir()
+	p := filepath.Join(dir, "file.md")
+	require.NoError(t, os.WriteFile(p, []byte("hello"), 0o644))
+
+	data, err := lint.ReadFileLimited(p, math.MaxInt64)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello"), data)
+}
+
+func TestReadFSFileLimited_MaxInt64Unlimited(t *testing.T) {
+	fsys := fstest.MapFS{
+		"test.md": &fstest.MapFile{Data: []byte("hello")},
+	}
+	data, err := lint.ReadFSFileLimited(fsys, "test.md", math.MaxInt64)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello"), data)
 }
 
 func TestReadFSFileLimited_Normal(t *testing.T) {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -581,7 +582,8 @@ func fixFiles(
 // readStdinLimited reads stdin with an optional size limit.
 // When maxBytes <= 0 no limit is applied.
 func readStdinLimited(maxBytes int64) ([]byte, error) {
-	if maxBytes > 0 {
+	// Treat MaxInt64 as unlimited to avoid overflow in the +1 sentinel.
+	if maxBytes > 0 && maxBytes < math.MaxInt64 {
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, maxBytes+1))
 		if err != nil {
 			return nil, err
