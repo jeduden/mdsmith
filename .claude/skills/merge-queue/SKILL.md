@@ -45,17 +45,18 @@ review before enqueuing.
 Check CI:
 
 ```bash
-gh pr checks "$PR" --json name,state,conclusion
+gh pr checks "$PR" --json name,state,bucket
 ```
 
-`gh pr checks` returns `state` as `COMPLETED` or
-`IN_PROGRESS`. The pass/fail verdict lives in
-`conclusion`: `SUCCESS`, `FAILURE`, or `null`
-while a check is still running.
+`gh pr checks` returns two fields worth reading.
+`state` is one of `SUCCESS`, `FAILURE`,
+`IN_PROGRESS`, `QUEUED`, `SKIPPING`. `bucket`
+collapses those into `pass`, `fail`, `pending`,
+`skipping`.
 
-Every check must have `state = COMPLETED` and
-`conclusion = SUCCESS`. Stop if any check is
-pending or reports a non-success conclusion.
+Every check must show `bucket = pass`. Stop if
+any check is `pending`, `fail`, or otherwise
+non-pass.
 
 Check for unresolved review threads:
 
