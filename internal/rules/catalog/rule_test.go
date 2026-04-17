@@ -1882,7 +1882,7 @@ func TestReadFrontMatter_Valid(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ndescription: World\n---\n# Content\n")},
 	}
-	fm := readFrontMatter(fs, "a.md", 0)
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["title"] != "Hello" {
 		t.Errorf("expected title Hello, got %q", fm["title"])
 	}
@@ -1895,7 +1895,7 @@ func TestReadFrontMatter_NoFrontMatter(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("# No front matter\n")},
 	}
-	fm := readFrontMatter(fs, "a.md", 0)
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	assert.Nil(t, fm, "expected nil for no front matter, got %v", fm)
 }
 
@@ -1903,7 +1903,7 @@ func TestReadFrontMatter_InvalidYAML(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ninvalid: [yaml\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md", 0)
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	assert.Nil(t, fm, "expected nil for invalid YAML, got %v", fm)
 }
 
@@ -1911,7 +1911,7 @@ func TestReadFrontMatter_NonStringValue(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ncount: 42\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md", 0)
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["title"] != "Hello" {
 		t.Errorf("expected title Hello, got %q", fm["title"])
 	}
@@ -1922,7 +1922,7 @@ func TestReadFrontMatter_NonStringValue(t *testing.T) {
 
 func TestReadFrontMatter_UnreadableFile(t *testing.T) {
 	fs := fstest.MapFS{}
-	fm := readFrontMatter(fs, "missing.md", 0)
+	fm, _ := readFrontMatter(fs, "missing.md", 0)
 	assert.Nil(t, fm, "expected nil for missing file, got %v", fm)
 }
 
@@ -1930,7 +1930,7 @@ func TestReadFrontMatter_EmptyFile(t *testing.T) {
 	fs := fstest.MapFS{
 		"empty.md": {Data: []byte("")},
 	}
-	fm := readFrontMatter(fs, "empty.md", 0)
+	fm, _ := readFrontMatter(fs, "empty.md", 0)
 	assert.Nil(t, fm, "expected nil for empty file, got %v", fm)
 }
 
@@ -1939,7 +1939,7 @@ func TestReadFrontMatter_OnlyOpeningDelimiter(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\n")},
 	}
-	fm := readFrontMatter(fs, "a.md", 0)
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	assert.Nil(t, fm, "expected nil for unclosed front matter, got %v", fm)
 }
 
@@ -1948,7 +1948,7 @@ func TestReadFrontMatter_BooleanValue(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ndraft: true\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md", 0)
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["draft"] != true {
 		t.Errorf("expected draft true, got %v", fm["draft"])
 	}
@@ -1959,7 +1959,7 @@ func TestReadFrontMatter_ListValue(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ntags: [go, lint]\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md", 0)
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["title"] != "Hello" {
 		t.Errorf("expected title Hello, got %q", fm["title"])
 	}
@@ -3128,7 +3128,7 @@ func TestReadFrontMatter_AnchorReturnsNil(t *testing.T) {
 		"doc.md": {Data: []byte(
 			"---\nbase: &base\n  id: 1\n---\n# Title\n")},
 	}
-	result := readFrontMatter(mapFS, "doc.md", 0)
+	result, _ := readFrontMatter(mapFS, "doc.md", 0)
 	assert.Nil(t, result)
 }
 

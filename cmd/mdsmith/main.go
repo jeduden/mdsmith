@@ -276,15 +276,22 @@ func runFix(args []string) int {
 
 // runQuery implements the "query" subcommand: select files by CUE
 // expression on front matter.
-func runQuery(args []string) int {
-	fs := flag.NewFlagSet("query", flag.ContinueOnError)
-	var (
-		nul     bool
-		verbose bool
-	)
+type queryOptions struct {
+	nul          bool
+	verbose      bool
+	configPath   string
+	maxInputSize string
+}
 
-	fs.BoolVarP(&nul, "null", "0", false, "NUL-delimit output (for xargs -0)")
-	fs.BoolVarP(&verbose, "verbose", "v", false, "Print skipped files and reasons on stderr")
+func parseQueryFlags(args []string) (queryOptions, []string, error) {
+	fs := flag.NewFlagSet("query", flag.ContinueOnError)
+	var opts queryOptions
+
+	fs.BoolVarP(&opts.nul, "null", "0", false, "NUL-delimit output (for xargs -0)")
+	fs.BoolVarP(&opts.verbose, "verbose", "v", false, "Print skipped files and reasons on stderr")
+	fs.StringVarP(&opts.configPath, "config", "c", "", "Override config file path")
+	fs.StringVar(&opts.maxInputSize, "max-input-size", "",
+		"Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "Usage: mdsmith query [flags] <cue-expr> [files...]\n\n"+
@@ -295,10 +302,17 @@ func runQuery(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
+		return opts, nil, err
+	}
+	return opts, fs.Args(), nil
+}
+
+func runQuery(args []string) int {
+	opts, posArgs, err := parseQueryFlags(args)
+	if err != nil {
 		return 2
 	}
 
-	posArgs := fs.Args()
 	if len(posArgs) == 0 {
 		fmt.Fprintf(os.Stderr, "mdsmith: query requires a CUE expression argument\n")
 		return 2
@@ -317,19 +331,29 @@ func runQuery(args []string) int {
 		fileArgs = []string{"."}
 	}
 
-	opts := lint.ResolveOpts{}
-	files, err := lint.ResolveFilesWithOpts(fileArgs, opts)
+	files, err := lint.ResolveFilesWithOpts(fileArgs, lint.ResolveOpts{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	cfg, _, err := loadConfig(opts.configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
 
 	delim := "\n"
-	if nul {
+	if opts.nul {
 		delim = "\x00"
 	}
 
-	matched := queryFiles(matcher, files, delim, verbose)
+	matched := queryFiles(matcher, files, delim, opts.verbose, maxBytes)
 	if matched > 0 {
 		return 0
 	}
@@ -338,10 +362,10 @@ func runQuery(args []string) int {
 
 // queryFiles tests each file against matcher and writes matching paths
 // to stdout. Returns the number of matches.
-func queryFiles(matcher *query.Matcher, files []string, delim string, verbose bool) int {
+func queryFiles(matcher *query.Matcher, files []string, delim string, verbose bool, maxBytes int64) int {
 	matched := 0
 	for _, f := range files {
-		fm, err := readFrontMatterRaw(f)
+		fm, err := readFrontMatterRaw(f, maxBytes)
 		if err != nil {
 			if verbose {
 				fmt.Fprintf(os.Stderr, "skip %s: %v\n", f, err)
@@ -366,8 +390,8 @@ func queryFiles(matcher *query.Matcher, files []string, delim string, verbose bo
 
 // readFrontMatterRaw reads a file, strips front matter, and
 // unmarshals YAML into map[string]any (preserving numeric types).
-func readFrontMatterRaw(path string) (map[string]any, error) {
-	data, err := lint.ReadFileLimited(path, lint.DefaultMaxInputBytes)
+func readFrontMatterRaw(path string, maxBytes int64) (map[string]any, error) {
+	data, err := lint.ReadFileLimited(path, maxBytes)
 	if err != nil {
 		return nil, err
 	}
