@@ -9,7 +9,7 @@ GitHub merge button. Add the `queue` label after CI
 is green and reviews are resolved:
 
 ```bash
-gh pr edit "$PR" --add-label queue
+gh pr edit --add-label queue
 ```
 
 **How it works**: the action collects all PRs labeled
@@ -33,8 +33,8 @@ a comment explaining the cause. Fix the issue, push,
 then replace the label to re-enter the queue:
 
 ```bash
-gh pr edit "$PR" --remove-label queue:failed
-gh pr edit "$PR" --add-label queue
+gh pr edit --remove-label queue:failed
+gh pr edit --add-label queue
 ```
 
 **Bisection**: when a multi-PR batch fails, the
