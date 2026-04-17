@@ -45,12 +45,17 @@ review before enqueuing.
 Check CI:
 
 ```bash
-gh pr checks "$PR" --json name,state
+gh pr checks "$PR" --json name,state,conclusion
 ```
 
-All checks must show `SUCCESS`. If any are
-`FAILURE` or `PENDING`, stop and report the
-blockers instead of enqueuing.
+`gh pr checks` returns `state` as `COMPLETED` or
+`IN_PROGRESS`. The pass/fail verdict lives in
+`conclusion`: `SUCCESS`, `FAILURE`, or `null`
+while a check is still running.
+
+Every check must have `state = COMPLETED` and
+`conclusion = SUCCESS`. Stop if any check is
+pending or reports a non-success conclusion.
 
 Check for unresolved review threads:
 

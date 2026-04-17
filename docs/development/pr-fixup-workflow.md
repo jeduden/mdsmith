@@ -297,7 +297,8 @@ use `/merge-queue` to enqueue it.
 - Works in both local and Claude Code web
   environments. Step 1 installs `gh` if missing.
 - Run `mdsmith check .` and
-  `golangci-lint run --fix` before committing.
+  `go tool golangci-lint run --fix ./...`
+  before committing.
 - Keep fix commits small — one per CI fix, one per
   batch of related review comments.
 - Use `--force-with-lease` only after rebase
