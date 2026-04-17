@@ -1551,3 +1551,14 @@ func TestMetricsRank_MaxInputSize_RespectsConfig(t *testing.T) {
 	assert.Equal(t, 2, exitCode, "expected exit code 2 for oversized file")
 	assert.Contains(t, stderr, "file too large")
 }
+
+func TestQuery_MaxInputSize_InvalidValue(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "a.md", "---\nid: 1\n---\n# Hello\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"query", "--max-input-size", "not-a-size", "id: 1", "a.md")
+	assert.Equal(t, 2, exitCode, "expected exit code 2 for invalid size")
+	assert.Contains(t, stderr, "invalid max-input-size")
+}
