@@ -1523,3 +1523,31 @@ func TestCheckStdin_MaxInputSize_Unlimited(t *testing.T) {
 		"check", "--max-input-size", "0", "-")
 	assert.Equal(t, 0, exitCode, "expected exit code 0 with unlimited stdin")
 }
+
+func TestMetricsRank_MaxInputSize_InvalidValue(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "a.md", "# Hello\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"metrics", "rank", "--max-input-size", "bad-value", "a.md")
+	assert.Equal(t, 2, exitCode, "expected exit code 2 for invalid size")
+	assert.Contains(t, stderr, "invalid max-input-size")
+}
+
+func TestMetricsRank_MaxInputSize_RespectsConfig(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("rules: {}\nmax-input-size: \"5\"\n"), 0o644,
+	))
+
+	writeFixture(t, dir, "a.md", "# Hello world\n")
+
+	// Config sets 5-byte limit → 14-byte file should fail.
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"metrics", "rank", "a.md")
+	assert.Equal(t, 2, exitCode, "expected exit code 2 for oversized file")
+	assert.Contains(t, stderr, "file too large")
+}
