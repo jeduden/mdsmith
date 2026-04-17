@@ -149,8 +149,8 @@ loop iteration.
 List failed checks, then get the run ID:
 
 ```bash
-gh pr checks "$PR" --json name,state,conclusion \
-  -q '.[] | select(.conclusion == "FAILURE")'
+gh pr checks "$PR" --json name,state,bucket \
+  -q '.[] | select(.bucket == "fail")'
 ```
 
 ```bash
