@@ -5,8 +5,7 @@ description: >-
   and reviews are resolved.
 user-invocable: true
 allowed-tools: >-
-  Bash(gh pr:*), Bash(gh run:*), Bash(gh api:*),
-  Bash(git branch:*)
+  Bash(gh pr:*), Bash(gh run:*), Bash(gh api:*)
 argument-hint: "[PR number]"
 ---
 
@@ -34,19 +33,20 @@ Otherwise detect it from the current branch:
 gh pr view --json number -q '.number'
 ```
 
-Note the number as `$PR`. Then get the repo
-owner and name for later API calls:
+Note the number as `$PR`. Then get the base
+repo owner and name for API calls (PR endpoints
+live on the base repo, not the head repo):
 
 ```bash
-gh pr view "$PR" --json headRepository \
-  -q '.headRepository.owner.login'
+gh pr view "$PR" --json baseRepository \
+  -q '.baseRepository.owner.login'
 ```
 
 Note as `$OWNER`. Then:
 
 ```bash
-gh pr view "$PR" --json headRepository \
-  -q '.headRepository.name'
+gh pr view "$PR" --json baseRepository \
+  -q '.baseRepository.name'
 ```
 
 Note as `$REPO`.
@@ -81,14 +81,18 @@ query($owner: String!, $repo: String!, $pr: Int!) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
       reviewThreads(first: 100) {
+        pageInfo { hasNextPage }
         nodes { isResolved }
       }
     }
   }
-}' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR" \
-  -q '[.data.repository.pullRequest.reviewThreads.nodes[]
-  | select(.isResolved == false)] | length'
+}'  -f owner="$OWNER" -f repo="$REPO" -F pr="$PR"
 ```
+
+Count entries where `isResolved` is `false`. Also
+check `pageInfo.hasNextPage` — if `true`, there
+are more than 100 threads and you must paginate
+before trusting the count.
 
 Stop if the count is greater than zero. Run
 `/pr-fixup` first to address the remaining
