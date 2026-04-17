@@ -216,10 +216,14 @@ spaces.
 
 ## Nesting
 
-Same-type nesting is prohibited (`<?catalog?>` inside
-`<?catalog?>` emits an error). Cross-type directives
-between markers may appear but are overwritten by the
-outer generator on `fix`.
+Same-type nesting is supported. When an included file
+contains its own generated sections (include, catalog,
+etc.), the inner markers are treated as literal content
+of the outer directive. `FindMarkerPairs` pairs only the
+outermost markers of each directive type; inner markers
+are skipped. Cross-type directives between markers may
+appear but are overwritten by the outer generator on
+`fix`.
 
 ## Placeholder syntax
 

@@ -235,7 +235,6 @@ rules:
 
 | Condition        | Message                             |
 |------------------|-------------------------------------|
-| Nested start     | `nested...not allowed`              |
 | Invalid YAML     | `...has invalid YAML: ...`          |
 | Non-string value | `...non-string value for key "KEY"` |
 

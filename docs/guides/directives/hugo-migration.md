@@ -49,11 +49,14 @@ See
 [Schema composition](enforcing-structure.md#schema-composition)
 for details.
 
-## No nesting in normal files
+## No block/define nesting
 
 Directives are flat. There is no equivalent of Hugo's
-nested `block`/`define`. Same-type nesting is
-prohibited.
+nested `block`/`define`. Same-type nesting is allowed
+(inner markers are treated as literal content of the
+outer directive). Include directives are recursively
+expanded during `fix`, but catalog and other directives
+are not.
 
 ## CUE paths, not Go template syntax
 

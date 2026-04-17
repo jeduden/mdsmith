@@ -47,6 +47,7 @@ func FindMarkerPairs(
 	var pairs []MarkerPair
 	var diags []lint.Diagnostic
 	var current *MarkerPair
+	depth := 0 // tracks nested markers of the same directive type
 
 	endName := "/" + directiveName
 
@@ -58,9 +59,35 @@ func FindMarkerPairs(
 
 		switch pi.Name {
 		case directiveName:
-			current, diags = handleStartMarker(f, pi, current, diags, ruleID, ruleName)
+			if current != nil {
+				if !pi.HasClosure() {
+					piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+					diags = append(diags, MakeDiag(ruleID, ruleName, f.Path, piLine,
+						fmt.Sprintf("generated section start marker <?%s is missing closing ?>", pi.Name)))
+				} else {
+					// Well-formed nested start marker — skip it and track depth.
+					depth++
+				}
+			} else {
+				current, diags = handleStartMarker(f, pi, current, diags, ruleID, ruleName)
+			}
 		case endName:
-			current, pairs, diags = handleEndMarker(f, pi, current, pairs, diags, ruleID, ruleName)
+			if current != nil && depth > 0 {
+				if !pi.HasClosure() {
+					piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+					diags = append(diags, MakeDiag(ruleID, ruleName, f.Path, piLine,
+						fmt.Sprintf("generated section end marker <?%s is missing closing ?>", pi.Name)))
+				} else if !isEndMarkerAloneOnLine(pi, f) {
+					piLine := f.LineOfOffset(pi.Lines().At(0).Start)
+					diags = append(diags, MakeDiag(ruleID, ruleName, f.Path, piLine,
+						"generated section end marker must be the only content on its line"))
+				} else {
+					// Well-formed nested end marker — reduce depth.
+					depth--
+				}
+			} else {
+				current, pairs, diags = handleEndMarker(f, pi, current, pairs, diags, ruleID, ruleName)
+			}
 		}
 	}
 
@@ -115,12 +142,7 @@ func handleEndMarker(
 				fmt.Sprintf("generated section end marker <?%s is missing closing ?>", pi.Name)))
 	}
 
-	// End marker must be the only content on its line.
-	seg := pi.Lines().At(0)
-	raw := string(seg.Value(f.Source))
-	trimmed := strings.TrimSpace(raw)
-	expected := fmt.Sprintf("<?%s?>", pi.Name)
-	if trimmed != expected {
+	if !isEndMarkerAloneOnLine(pi, f) {
 		return current, pairs, append(diags,
 			MakeDiag(ruleID, ruleName, f.Path, piLine,
 				"generated section end marker must be the only content on its line"))
@@ -129,6 +151,16 @@ func handleEndMarker(
 	current.EndLine = piLine
 	current.ContentTo = piLine - 1
 	return nil, append(pairs, *current), diags
+}
+
+// isEndMarkerAloneOnLine checks that the end marker PI is the only
+// content on its source line.
+func isEndMarkerAloneOnLine(pi *lint.ProcessingInstruction, f *lint.File) bool {
+	seg := pi.Lines().At(0)
+	raw := string(seg.Value(f.Source))
+	trimmed := strings.TrimSpace(raw)
+	expected := fmt.Sprintf("<?%s?>", pi.Name)
+	return trimmed == expected
 }
 
 // extractYAMLBody returns the YAML content from a PI's Lines(),

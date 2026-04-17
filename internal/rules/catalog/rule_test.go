@@ -407,6 +407,8 @@ func TestDiag_OrphanedEndMarker(t *testing.T) {
 }
 
 func TestDiag_NestedStartMarkers(t *testing.T) {
+	// Unbalanced nesting: inner start marker consumes the only end
+	// marker, leaving the outer pair unclosed.
 	src := `<?catalog
 glob: "*.md"
 ?>
@@ -421,15 +423,15 @@ glob: "other/*.md"
 	diags := r.Check(f)
 	found := false
 	for _, d := range diags {
-		if strings.Contains(d.Message, "nested generated section markers are not allowed") {
+		if strings.Contains(d.Message, "no closing marker") {
 			found = true
-			if d.Line != 4 {
-				t.Errorf("expected nested marker diagnostic on line 4, got %d", d.Line)
+			if d.Line != 1 {
+				t.Errorf("expected unclosed marker diagnostic on line 1, got %d", d.Line)
 			}
 			break
 		}
 	}
-	assert.True(t, found, "expected nested marker diagnostic")
+	assert.True(t, found, "expected 'no closing marker' diagnostic for unbalanced nesting")
 }
 
 func TestDiag_NonStringYAMLValues(t *testing.T) {
@@ -2310,11 +2312,11 @@ func diagLineNumberCases() []struct {
 			2, "invalid YAML",
 		},
 		{
-			"nested on nested start line",
+			"nested unclosed on outer start line",
 			"<?catalog\nglob: \"*.md\"\n?>\n" +
 				"prefix\n<?catalog\nglob: \"*.md\"\n?>\n" +
 				"<?/catalog?>\n",
-			5, "nested generated section markers",
+			1, "no closing marker",
 		},
 	}
 }

@@ -2,7 +2,7 @@
 diagnostics:
   - line: 3
     column: 1
-    message: "cyclic include: cycle.md -> data/cycle-b.md -> data/cycle-a.md -> data/cycle-b.md"
+    message: "data/cycle-b.md:3: data/cycle-a.md:3: cyclic include: cycle.md -> data/cycle-b.md -> data/cycle-a.md -> data/cycle-b.md"
 ---
 # Cycle Test
 

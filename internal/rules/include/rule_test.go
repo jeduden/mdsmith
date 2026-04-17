@@ -539,21 +539,143 @@ func TestCheck_MaxDepthExceeded(t *testing.T) {
 }
 
 func TestCheck_NoCycle(t *testing.T) {
-	// A includes B, B includes C (no cycle).
+	// A includes B, B includes C (no cycle). No errors expected.
+	bContent := "# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Final content\n<?/include?>\n"
 	fsys := fstest.MapFS{
-		"b.md": {Data: []byte("# B\n\n<?include\nfile: c.md\n?>\ncontent\n<?/include?>\n")},
+		"b.md": {Data: []byte(bContent)},
 		"c.md": {Data: []byte("Final content\n")},
 	}
-	src := "# A\n\n<?include\nfile: b.md\n?>\n# B\n\n<?include\nfile: c.md\n?>\ncontent\n<?/include?>\n<?/include?>\n"
+	src := "# A\n\n<?include\nfile: b.md\n?>\n" +
+		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Final content\n<?/include?>\n<?/include?>\n"
 	f := newTestFile(t, "a.md", src, fsys)
 	r := &Rule{}
 	diags := r.Check(f)
-	// Should not report cycle errors (may have other errors).
-	for _, d := range diags {
-		if strings.Contains(d.Message, "cyclic") {
-			t.Errorf("unexpected cycle diagnostic: %s", d.Message)
-		}
+	expectDiags(t, diags, 0)
+}
+
+func TestFix_NestedInclude(t *testing.T) {
+	// A includes B, B includes C. Fix should produce B's content
+	// (which contains C's include markers) as-is.
+	bContent := "# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Final content\n<?/include?>\n"
+	fsys := fstest.MapFS{
+		"b.md": {Data: []byte(bContent)},
+		"c.md": {Data: []byte("Final content\n")},
 	}
+	src := "# A\n\n<?include\nfile: b.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "a.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "# A\n\n<?include\nfile: b.md\n?>\n" +
+		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Final content\n<?/include?>\n<?/include?>\n"
+	assert.Equal(t, want, got,
+		"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+}
+
+func TestCheck_NestedIncludeUpToDate(t *testing.T) {
+	// A includes B, B itself contains a catalog section.
+	// The expanded content in A should be accepted without errors.
+	bContent := "# B\n\n<?catalog\nglob: \"*.md\"\n?>\n" +
+		"- item\n<?/catalog?>\n"
+	fsys := fstest.MapFS{
+		"b.md": {Data: []byte(bContent)},
+	}
+	src := "# A\n\n<?include\nfile: b.md\n?>\n" +
+		"# B\n\n<?catalog\nglob: \"*.md\"\n?>\n" +
+		"- item\n<?/catalog?>\n<?/include?>\n"
+	f := newTestFile(t, "a.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// =====================================================================
+// Recursive expansion
+// =====================================================================
+
+func TestFix_RecursiveExpansion(t *testing.T) {
+	// A includes B, B includes C. B.md on disk has stale content for C.
+	// Fix A should recursively expand B's includes to produce correct
+	// content in a single pass.
+	bContent := "# B\n\n<?include\nfile: c.md\n?>\n" +
+		"stale\n<?/include?>\n"
+	fsys := fstest.MapFS{
+		"b.md": {Data: []byte(bContent)},
+		"c.md": {Data: []byte("Fresh from C\n")},
+	}
+	src := "# A\n\n<?include\nfile: b.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "a.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "# A\n\n<?include\nfile: b.md\n?>\n" +
+		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Fresh from C\n<?/include?>\n<?/include?>\n"
+	assert.Equal(t, want, got,
+		"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+}
+
+func TestCheck_RecursiveExpansion(t *testing.T) {
+	// A includes B, B includes C. B.md on disk has stale C content, but
+	// A has the correct recursively-expanded content. Check should pass.
+	bContent := "# B\n\n<?include\nfile: c.md\n?>\n" +
+		"stale\n<?/include?>\n"
+	fsys := fstest.MapFS{
+		"b.md": {Data: []byte(bContent)},
+		"c.md": {Data: []byte("Fresh from C\n")},
+	}
+	src := "# A\n\n<?include\nfile: b.md\n?>\n" +
+		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Fresh from C\n<?/include?>\n<?/include?>\n"
+	f := newTestFile(t, "a.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestFix_RecursiveExpansionWithFrontmatter(t *testing.T) {
+	// B.md has frontmatter and a nested include. Recursive expansion
+	// should preserve frontmatter when reconstructing B's content.
+	bContent := "---\ntitle: B\n---\n# B\n\n<?include\n" +
+		"file: c.md\n?>\nstale\n<?/include?>\n"
+	fsys := fstest.MapFS{
+		"b.md": {Data: []byte(bContent)},
+		"c.md": {Data: []byte("Fresh from C\n")},
+	}
+	src := "# A\n\n<?include\nfile: b.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "a.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	// Frontmatter is stripped by default, so only body appears.
+	want := "# A\n\n<?include\nfile: b.md\n?>\n" +
+		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Fresh from C\n<?/include?>\n<?/include?>\n"
+	assert.Equal(t, want, got,
+		"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+}
+
+func TestFix_RecursiveExpansionSubdir(t *testing.T) {
+	// B is in a subdirectory and includes C relative to itself.
+	// Recursive expansion must resolve C correctly via readFS,
+	// not double the subdirectory path.
+	fsys := fstest.MapFS{
+		"sub/b.md": {Data: []byte(
+			"# B\n\n<?include\nfile: c.md\n?>\n" +
+				"stale\n<?/include?>\n")},
+		"sub/c.md": {Data: []byte("Fresh from C\n")},
+	}
+	src := "# A\n\n<?include\nfile: sub/b.md\n?>\n" +
+		"old\n<?/include?>\n"
+	f := newTestFile(t, "a.md", src, fsys)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	want := "# A\n\n<?include\nfile: sub/b.md\n?>\n" +
+		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"Fresh from C\n<?/include?>\n<?/include?>\n"
+	assert.Equal(t, want, got,
+		"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
 }
 
 // =====================================================================
