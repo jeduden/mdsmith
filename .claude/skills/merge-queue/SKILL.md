@@ -48,9 +48,21 @@ gh pr view "$PR" --json headRepository \
   -q '.headRepository.name'
 ```
 
-Note as `$REPO`. The merge queue only accepts
-same-repo PRs, so head and base repo are the
-same.
+Note as `$REPO`.
+
+Verify the PR is eligible for the merge queue.
+The base branch must be `main` and the PR must
+not be cross-repository:
+
+```bash
+gh pr view "$PR" --json baseRefName,isCrossRepository \
+  -q '.baseRefName + " " + (.isCrossRepository | tostring)'
+```
+
+Stop if the base branch is not `main` or
+`isCrossRepository` is `true`. The merge queue
+workflow only runs for same-repo PRs targeting
+`main`.
 
 ### 2. Verify readiness
 
