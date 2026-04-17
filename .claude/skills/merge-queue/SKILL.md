@@ -33,23 +33,24 @@ Otherwise detect it from the current branch:
 gh pr view --json number -q '.number'
 ```
 
-Note the number as `$PR`. Then get the base
-repo owner and name for API calls (PR endpoints
-live on the base repo, not the head repo):
+Note the number as `$PR`. Then get the repo
+owner and name for API calls:
 
 ```bash
-gh pr view "$PR" --json baseRepository \
-  -q '.baseRepository.owner.login'
+gh pr view "$PR" --json headRepositoryOwner \
+  -q '.headRepositoryOwner.login'
 ```
 
 Note as `$OWNER`. Then:
 
 ```bash
-gh pr view "$PR" --json baseRepository \
-  -q '.baseRepository.name'
+gh pr view "$PR" --json headRepository \
+  -q '.headRepository.name'
 ```
 
-Note as `$REPO`.
+Note as `$REPO`. The merge queue only accepts
+same-repo PRs, so head and base repo are the
+same.
 
 ### 2. Verify readiness
 
