@@ -105,6 +105,30 @@ per-variant walkers; raw-line regex is simpler
 and avoids false positives by restricting the
 match to paragraph-only regions.
 
+#### Link reference exception for `[TOC]`
+
+`[TOC]` is syntactically a valid CommonMark
+shortcut reference link. If the document
+contains a matching link reference definition
+(`[TOC]: <url>`), `[TOC]` resolves to a
+legitimate link and must not be flagged.
+
+Before emitting a diagnostic for the `[TOC]`
+pattern, consult the goldmark parser context's
+link reference map for a definition with the
+label `TOC` (case-insensitive, per the
+[CommonMark matching rules][cm-refs]). If one
+exists, suppress the diagnostic.
+
+[cm-refs]: https://spec.commonmark.org/0.31.2/#matches
+
+The other three patterns do not have this
+ambiguity: `[[_TOC_]]`, `[[toc]]`, and `${toc}`
+do not form valid link references in CommonMark
+and always render as literal text in a
+paragraph. No exception handling is needed for
+them.
+
 ### Configuration
 
 Rule `toc-directive`, category `meta`, disabled
@@ -114,10 +138,12 @@ opt-in posture. No settings.
 ### Error message
 
 ```text
-[TOC] does not render on CommonMark or goldmark; mdsmith has no heading-TOC generator. For file-index use cases, see <?catalog?> (MDS019).
+[TOC] does not render on CommonMark or goldmark; mdsmith has no heading TOC equivalent; use <?catalog?> for file indexes (MDS019)
 ```
 
-Severity: `warning`.
+Severity: `warning`. Lowercase start, no trailing
+punctuation — consistent with the mdsmith error
+message convention in [CLAUDE.md](../CLAUDE.md).
 
 ### No auto-fix
 
@@ -133,12 +159,19 @@ alone.
    with `rule.go`, `README.md`
 2. Implement paragraph-scoped line scanning for
    the four directive patterns
-3. Implement `rule.Defaultable` with
+3. For the `[TOC]` pattern, consult the goldmark
+   parser context's link reference definition
+   map; suppress the diagnostic when a label
+   `TOC` (case-insensitive) is defined
+4. Implement `rule.Defaultable` with
    `EnabledByDefault` returning `false`
-4. Register as MDS035 in category `meta`
-5. Add good/bad fixtures with front-matter
-   specifying the expected diagnostics
-6. Document the rule in the flavor comparison
+5. Register as MDS035 in category `meta`
+6. Add good/bad fixtures with front-matter
+   specifying the expected diagnostics, including
+   a good fixture that has `[TOC]: https://x` as
+   a reference definition alongside a `[TOC]`
+   line
+7. Document the rule in the flavor comparison
    table in
    [docs/background/markdown-linters.md](../docs/background/markdown-linters.md)
 
