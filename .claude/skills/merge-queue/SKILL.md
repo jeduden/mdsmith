@@ -1,0 +1,208 @@
+---
+name: merge-queue
+description: >-
+  Enqueue a PR into the merge queue after CI is green
+  and reviews are resolved.
+user-invocable: true
+allowed-tools: >-
+  Bash(gh pr:*), Bash(gh run:*), Bash(gh api:*)
+argument-hint: "[PR number]"
+---
+
+Enqueue a PR into the label-driven merge queue
+(`jeduden/merge-queue-action`).
+
+## Before you run commands
+
+Run each fenced Bash block as its own Bash call.
+Do not combine commands into one shell invocation,
+and do not prefix commands with inline environment
+or shell variable assignments. Allowed-tools
+matching checks the command prefix, so changing
+that prefix can cause an otherwise-allowed `gh`
+command to be blocked.
+
+## Steps
+
+### 1. Identify the PR
+
+If a PR number was passed as an argument, use it.
+Otherwise detect it from the current branch:
+
+```bash
+gh pr view --json number -q '.number'
+```
+
+Note the number as `$PR`. Then get the repo
+owner and name for API calls:
+
+```bash
+gh pr view "$PR" --json headRepositoryOwner \
+  -q '.headRepositoryOwner.login'
+```
+
+Note as `$OWNER`. Then:
+
+```bash
+gh pr view "$PR" --json headRepository \
+  -q '.headRepository.name'
+```
+
+Note as `$REPO`.
+
+Verify the PR is eligible for the merge queue.
+The base branch must be `main` and the PR must
+not be cross-repository:
+
+```bash
+gh pr view "$PR" --json baseRefName,isCrossRepository \
+  -q '.baseRefName + " " + (.isCrossRepository | tostring)'
+```
+
+Stop if the base branch is not `main` or
+`isCrossRepository` is `true`. The merge queue
+workflow only runs for same-repo PRs targeting
+`main`.
+
+### 2. Verify readiness
+
+Confirm CI is green, no review threads are
+unresolved, and the latest commit has a Copilot
+review before enqueuing.
+
+Check CI:
+
+```bash
+gh pr checks "$PR" --json name,state,bucket
+```
+
+`gh pr checks` returns two fields worth reading.
+`state` is one of `SUCCESS`, `FAILURE`,
+`IN_PROGRESS`, `QUEUED`, `SKIPPING`. `bucket`
+collapses those into `pass`, `fail`, `pending`,
+`skipping`.
+
+Every check must show `bucket = pass`. Stop if
+any check is `pending`, `fail`, or otherwise
+non-pass.
+
+Check for unresolved review threads:
+
+```bash
+gh api graphql -f query='
+query($owner: String!, $repo: String!, $pr: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviewThreads(first: 100) {
+        pageInfo { hasNextPage }
+        nodes { isResolved }
+      }
+    }
+  }
+}'  -f owner="$OWNER" -f repo="$REPO" -F pr="$PR"
+```
+
+Count entries where `isResolved` is `false`. Also
+check `pageInfo.hasNextPage` — if `true`, there
+are more than 100 threads and you must paginate
+before trusting the count.
+
+Stop if the count is greater than zero. Run
+`/pr-fixup` first to address the remaining
+threads.
+
+Check that Copilot reviewed the latest commit:
+
+```bash
+gh api --paginate "repos/$OWNER/$REPO/pulls/$PR/reviews" \
+  -q '[.[] | select(.user.login ==
+  "copilot-pull-request-reviewer[bot]")]
+  | last | .commit_id'
+```
+
+Compare the returned commit SHA with the PR head:
+
+```bash
+gh pr view "$PR" --json commits \
+  -q '.commits[-1].oid'
+```
+
+If the two SHAs do not match, Copilot has not
+reviewed the latest push. Request a review and
+wait before enqueuing:
+
+```bash
+gh api --method POST \
+  "repos/$OWNER/$REPO/pulls/$PR/requested_reviewers" \
+  -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+```
+
+### 3. Add the `queue` label
+
+```bash
+gh pr edit "$PR" --add-label queue
+```
+
+### 4. Monitor label progression
+
+The action moves the PR through three labels:
+
+| Label          | Meaning                           |
+|----------------|-----------------------------------|
+| `queue`        | PR is waiting to be picked up     |
+| `queue:active` | PR is in the current batch        |
+| `queue:failed` | CI failed or merge conflict found |
+
+Check the current label:
+
+```bash
+gh pr view "$PR" --json labels \
+  -q '.labels[].name'
+```
+
+Check the merge queue workflow run for the PR's
+head branch (repo-wide listing would return
+unrelated PRs when multiple are queued):
+
+```bash
+gh pr view "$PR" --json headRefName \
+  -q '.headRefName'
+```
+
+Note the branch as `$BRANCH`, then:
+
+```bash
+gh run list --workflow merge-queue.yml \
+  --branch "$BRANCH" --limit 1
+```
+
+### 5. Handle failure
+
+If the label changes to `queue:failed`, read the
+action's comment on the PR for the failure cause:
+
+```bash
+gh pr view "$PR" --comments
+```
+
+Fix the issue, push, then swap labels to
+re-enter the queue:
+
+```bash
+gh pr edit "$PR" --remove-label queue:failed
+```
+
+```bash
+gh pr edit "$PR" --add-label queue
+```
+
+### 6. Confirm merge
+
+The PR is merged when `gh pr view "$PR"` shows
+state `MERGED`. Report success and the merge
+commit SHA:
+
+```bash
+gh pr view "$PR" --json state,mergeCommit \
+  -q '.state + " " + .mergeCommit.oid'
+```

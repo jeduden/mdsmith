@@ -30,6 +30,7 @@ row: "- [{summary}](../{filename})"
 - [Codecov coverage gate and CI status checks.](../docs/development/coverage.md)
 - [Where to place Markdown files and documentation types.](../docs/development/file-placement.md)
 - [Build commands, project layout, code style, test fixtures, coverage gate, and merge conflicts.](../docs/development/index.md)
+- [Label-driven merge queue workflow using jeduden/merge-queue-action.](../docs/development/merge-queue.md)
 - [Rebase, CI monitoring, and review comment resolution.](../docs/development/pr-fixup-workflow.md)
 - [How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.](../docs/guides/directives/enforcing-structure.md)
 - [How to use catalog and include directives to generate and embed content in Markdown files.](../docs/guides/directives/generating-content.md)
@@ -137,6 +138,7 @@ See also:
 
 - [Coverage gate](../docs/development/coverage.md)
 - [File placement](../docs/development/file-placement.md)
+- [Merge queue](../docs/development/merge-queue.md)
 - [PR fixup workflow](../docs/development/pr-fixup-workflow.md)
 
 #### Build & Test Commands

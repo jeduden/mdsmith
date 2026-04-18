@@ -8,6 +8,7 @@ See also:
 
 - [Coverage gate](coverage.md)
 - [File placement](file-placement.md)
+- [Merge queue](merge-queue.md)
 - [PR fixup workflow](pr-fixup-workflow.md)
 
 ## Build & Test Commands
