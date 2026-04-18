@@ -153,17 +153,29 @@ opt-in posture. No settings.
 
 ### Error message
 
+Templated on the matched directive token, so
+each variant produces its own message. Given a
+matched token `{directive}`:
+
 ```text
-unsupported TOC directive `[TOC]`; mdsmith has no heading TOC equivalent; use `<?catalog?>` for file indexes (MDS019)
+unsupported TOC directive `{directive}`; mdsmith has no heading TOC equivalent; use `<?catalog?>` for file indexes (MDS019)
 ```
 
-The leading word is lowercase and there is no
-trailing punctuation, per the mdsmith error
-message convention in [CLAUDE.md](../CLAUDE.md).
-Both the input directive token (`[TOC]`) and
-the suggested replacement directive
-(`<?catalog?>`) are backticked so they read as
-quoted tokens, not prose.
+Example messages the rule would emit for each
+of the four patterns:
+
+```text
+unsupported TOC directive `[TOC]`; mdsmith has no heading TOC equivalent; use `<?catalog?>` for file indexes (MDS019)
+unsupported TOC directive `[[_TOC_]]`; mdsmith has no heading TOC equivalent; use `<?catalog?>` for file indexes (MDS019)
+unsupported TOC directive `[[toc]]`; mdsmith has no heading TOC equivalent; use `<?catalog?>` for file indexes (MDS019)
+unsupported TOC directive `${toc}`; mdsmith has no heading TOC equivalent; use `<?catalog?>` for file indexes (MDS019)
+```
+
+The leading word is lowercase. No trailing
+punctuation, per [CLAUDE.md](../CLAUDE.md).
+Both the matched token and the replacement
+`<?catalog?>` are backticked so they read as
+quoted directives, not prose.
 
 Severity: `warning`.
 
