@@ -47,8 +47,10 @@ renders as literal text inside a blockquote:
 
 becomes a blockquote whose first line is the
 literal string `[!NOTE]`. The author intended a
-styled callout; the reader sees unstyled text.
-This is a silent failure.
+styled callout; the reader sees unstyled text
+with the marker token visible inside the
+blockquote. The failure is visible, not silent,
+but the author's intent is still lost.
 
 ### Why not a generic container rule
 

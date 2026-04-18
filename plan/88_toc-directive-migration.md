@@ -35,14 +35,22 @@ Four TOC directive variants appear in the wild:
   VitePress
 - `${toc}` — some VitePress configurations
 
-None are part of CommonMark, GFM, or goldmark.
-On those renderers the directive does not
-expand into a TOC; it renders as literal text.
-The exact output depends on the pattern:
+None are standardized TOC directives in
+CommonMark, GFM, or goldmark. `[TOC]` is still
+valid CommonMark syntax — a shortcut reference
+link — so it only renders as literal text when
+no matching `[TOC]: <url>` definition is
+present; with a definition, it renders as a
+link. The other three tokens are not valid
+link-reference shorthand and always render as
+literal text. On those renderers no token in
+this set expands into a generated TOC.
 
-- `[TOC]` without a matching link reference
-  definition renders as the literal string
-  `[TOC]` (goldmark emits a "no matching link
+Concrete render outputs when no link reference
+is present:
+
+- `[TOC]` renders as the literal string `[TOC]`
+  (goldmark emits a "no matching link
   reference" fallback, which is verbatim text)
 - `[[_TOC_]]` renders as `[[_TOC_]]` inside a
   paragraph
