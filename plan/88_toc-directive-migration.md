@@ -154,14 +154,16 @@ opt-in posture. No settings.
 ### Error message
 
 ```text
-unsupported TOC directive `[TOC]`; mdsmith has no heading TOC equivalent; use <?catalog?> for file indexes (MDS019)
+unsupported TOC directive `[TOC]`; mdsmith has no heading TOC equivalent; use `<?catalog?>` for file indexes (MDS019)
 ```
 
 The leading word is lowercase and there is no
 trailing punctuation, per the mdsmith error
 message convention in [CLAUDE.md](../CLAUDE.md).
-The literal directive token is backticked so it
-is quoted, not capitalized prose.
+Both the input directive token (`[TOC]`) and
+the suggested replacement directive
+(`<?catalog?>`) are backticked so they read as
+quoted tokens, not prose.
 
 Severity: `warning`.
 
