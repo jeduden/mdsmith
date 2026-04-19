@@ -263,6 +263,24 @@ mdsmith has the strongest cross-file and project-level
 features. The merge driver and regenerable sections are
 unique to mdsmith.
 
+### Renderer Portability
+
+Several Markdown renderers expand non-standard
+tokens into tables of contents. Common
+variants are `[TOC]` (Python-Markdown),
+`[[_TOC_]]` (GitLab, Azure DevOps), `[[toc]]`
+(markdown-it, VitePress), and `${toc}` (some
+VitePress configs). CommonMark and goldmark —
+the engine mdsmith uses — expand none of
+them. They render as literal text.
+
+[MDS035][mds035] (toc-directive, opt-in) flags
+each of the four tokens on its own line. For
+`[TOC]`, the rule suppresses the diagnostic
+when a matching link reference definition
+makes it a legitimate link. No other linter
+in this comparison detects these tokens.
+
 ### Runtime and Integration
 
 | Property       | mdsmith    | markdownlint   | remark-lint  | Prettier     | Vale       | textlint     | LLM         |
@@ -456,6 +474,7 @@ relaxed rules) for presentation files.
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds030]: ../../internal/rules/MDS030-empty-section-body/README.md
+[mds035]: ../../internal/rules/MDS035-toc-directive/README.md
 <!-- markdownlint links -->
 [markdownlint]: https://github.com/DavidAnson/markdownlint
 [markdownlint-cli2]: https://github.com/DavidAnson/markdownlint-cli2

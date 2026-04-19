@@ -1,7 +1,7 @@
 ---
 id: 88
 title: TOC directive migration aid
-status: "🔲"
+status: "✅"
 summary: >-
   New rule MDS035 that flags renderer-specific
   table-of-contents directives (`[TOC]`,
@@ -197,47 +197,48 @@ alone.
 
 ## Tasks
 
-1. Create `internal/rules/MDS035-toc-directive/`
-   with `rule.go`, `README.md`
-2. Implement paragraph-scoped line scanning for
-   the four directive patterns
-3. For the `[TOC]` pattern, consult the goldmark
-   parser context's link reference definition
-   map; suppress the diagnostic when a label
-   `TOC` (case-insensitive) is defined
-4. Implement `rule.Defaultable` with
+1. [x] Create `internal/rules/MDS035-toc-directive/`
+   with `README.md`, and the implementation in
+   `internal/rules/tocdirective/rule.go`
+2. [x] Implement paragraph-scoped line scanning
+   for the four directive patterns
+3. [x] For the `[TOC]` pattern, consult the
+   goldmark parser context's link reference
+   definition map; suppress the diagnostic when
+   a label `TOC` (case-insensitive) is defined
+4. [x] Implement `rule.Defaultable` with
    `EnabledByDefault` returning `false`
-5. Register as MDS035 in category `meta`
-6. Add good/bad fixtures with front-matter
+5. [x] Register as MDS035 in category `meta`
+6. [x] Add good/bad fixtures with front-matter
    specifying the expected diagnostics, including
-   a good fixture that has `[TOC]: https://x` as
-   a reference definition alongside a `[TOC]`
+   a good fixture that has `[TOC]: https://x`
+   as a reference definition alongside a `[TOC]`
    line
-7. Document the rule in the flavor comparison
-   table in
+7. [x] Document the rule in the renderer
+   portability section in
    [docs/background/markdown-linters.md](../docs/background/markdown-linters.md)
 
 ## Acceptance Criteria
 
-- [ ] `[TOC]` on its own line produces a
+- [x] `[TOC]` on its own line produces a
       diagnostic that names both the heading-TOC
       gap and the `<?catalog?>` file-index
       alternative
-- [ ] `[[_TOC_]]` on its own line produces the
+- [x] `[[_TOC_]]` on its own line produces the
       same diagnostic
-- [ ] `[[toc]]` on its own line produces the
+- [x] `[[toc]]` on its own line produces the
       same diagnostic
-- [ ] `${toc}` on its own line produces the
+- [x] `${toc}` on its own line produces the
       same diagnostic
-- [ ] `[TOC]` inside a fenced code block
+- [x] `[TOC]` inside a fenced code block
       produces no diagnostic
-- [ ] `[TOC]` inside an inline code span
+- [x] `[TOC]` inside an inline code span
       produces no diagnostic
-- [ ] `[TOC]` used as legitimate link text
+- [x] `[TOC]` used as legitimate link text
       (with a matching `[TOC]: url` definition)
       produces no diagnostic
-- [ ] Rule is disabled by default (opt-in)
-- [ ] No auto-fix is applied
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] Rule is disabled by default (opt-in)
+- [x] No auto-fix is applied
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues

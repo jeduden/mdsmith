@@ -35,6 +35,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
+	_ "github.com/jeduden/mdsmith/internal/rules/tocdirective"
 	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
 )
 

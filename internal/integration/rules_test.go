@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -47,6 +48,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"
 	_ "github.com/jeduden/mdsmith/internal/rules/tablereadability"
+	_ "github.com/jeduden/mdsmith/internal/rules/tocdirective"
 	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
 	_ "github.com/jeduden/mdsmith/internal/rules/unclosedcodeblock"
 
@@ -101,8 +103,11 @@ func parseFixtureFrontMatter(
 	return fm.Settings, fm.Diagnostics, content
 }
 
-// applySettingsToRule applies fixture settings to a rule. It saves and restores
-// the default settings after the test to avoid polluting the global singleton.
+// applySettingsToRule applies fixture settings to a rule. It snapshots the
+// rule's value before the change and restores it on test cleanup, so that
+// rules whose internal state cannot be recreated from DefaultSettings
+// alone (e.g. directory-structure's `configured` flag) do not leak state
+// into later tests.
 func applySettingsToRule(
 	t *testing.T, r rule.Rule, settings map[string]any,
 ) {
@@ -119,10 +124,15 @@ func applySettingsToRule(
 		)
 	}
 
-	defaults := cr.DefaultSettings()
-	t.Cleanup(func() {
-		_ = cr.ApplySettings(defaults)
-	})
+	// Snapshot via reflect so cleanup fully restores the pre-test state.
+	rv := reflect.ValueOf(r)
+	if rv.Kind() == reflect.Ptr && !rv.IsNil() {
+		snapshot := reflect.New(rv.Elem().Type()).Elem()
+		snapshot.Set(rv.Elem())
+		t.Cleanup(func() {
+			rv.Elem().Set(snapshot)
+		})
+	}
 
 	if err := cr.ApplySettings(settings); err != nil {
 		t.Fatalf("applying settings: %v", err)
