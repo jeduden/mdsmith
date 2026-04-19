@@ -1297,3 +1297,74 @@ func TestYamlHasKeyRejectsAnchor(t *testing.T) {
 	yml := []byte("base: &base\n  enabled: true\n")
 	assert.False(t, yamlHasKey(yml, "base"))
 }
+
+func TestMergeMaxInputSize_FromLoaded(t *testing.T) {
+	defaults := &Config{
+		Rules: map[string]RuleCfg{"a": {Enabled: true}},
+	}
+	loaded := &Config{
+		Rules:        map[string]RuleCfg{},
+		MaxInputSize: "500KB",
+	}
+	merged := Merge(defaults, loaded)
+	assert.Equal(t, "500KB", merged.MaxInputSize)
+}
+
+func TestMergeMaxInputSize_DefaultWhenOmitted(t *testing.T) {
+	defaults := &Config{
+		Rules:        map[string]RuleCfg{"a": {Enabled: true}},
+		MaxInputSize: "2MB",
+	}
+	loaded := &Config{
+		Rules: map[string]RuleCfg{},
+	}
+	merged := Merge(defaults, loaded)
+	assert.Equal(t, "2MB", merged.MaxInputSize)
+}
+
+func TestMergeNilLoaded_PreservesMaxInputSize(t *testing.T) {
+	defaults := &Config{
+		Rules:        map[string]RuleCfg{"a": {Enabled: true}},
+		MaxInputSize: "1GB",
+	}
+	merged := Merge(defaults, nil)
+	assert.Equal(t, "1GB", merged.MaxInputSize)
+}
+
+func TestReadLimitedConfig_Normal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(path, []byte("rules: {}\n"), 0o644))
+	data, err := readLimitedConfig(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "rules")
+}
+
+func TestReadLimitedConfig_OversizedFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	// Write a file larger than maxConfigBytes (1 MB).
+	oversized := make([]byte, maxConfigBytes+1)
+	for i := range oversized {
+		oversized[i] = '#'
+	}
+	require.NoError(t, os.WriteFile(path, oversized, 0o644))
+	_, err := readLimitedConfig(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too large")
+}
+
+func TestReadLimitedConfig_MissingFile(t *testing.T) {
+	_, err := readLimitedConfig("/nonexistent/.mdsmith.yml")
+	require.Error(t, err)
+}
+
+func TestLoadMaxInputSizeFromYAML(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("max-input-size: 500KB\nrules: {}\n"), 0o644))
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	assert.Equal(t, "500KB", cfg.MaxInputSize)
+}

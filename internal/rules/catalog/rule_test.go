@@ -1927,12 +1927,23 @@ func TestReadFrontMatter_UnreadableFile(t *testing.T) {
 	assert.Error(t, err, "expected error for missing file")
 }
 
+func TestReadFrontMatter_SizeLimitExceeded(t *testing.T) {
+	fs := fstest.MapFS{
+		"big.md": {Data: []byte("---\ntitle: Big\n---\n" + strings.Repeat("x", 200))},
+	}
+	fm, err := readFrontMatter(fs, "big.md", 10)
+	assert.Nil(t, fm, "expected nil for oversized file")
+	assert.Error(t, err, "expected error for oversized file")
+	assert.Contains(t, err.Error(), "file too large")
+}
+
 func TestReadFrontMatter_EmptyFile(t *testing.T) {
 	fs := fstest.MapFS{
 		"empty.md": {Data: []byte("")},
 	}
-	fm, _ := readFrontMatter(fs, "empty.md", 0)
+	fm, err := readFrontMatter(fs, "empty.md", 0)
 	assert.Nil(t, fm, "expected nil for empty file, got %v", fm)
+	assert.NoError(t, err, "empty file should not cause error")
 }
 
 func TestReadFrontMatter_OnlyOpeningDelimiter(t *testing.T) {
@@ -3185,7 +3196,6 @@ func TestCatalogInjection_BothNewlineAndLink(t *testing.T) {
 }
 
 // =====================================================================
-<<<<<<< HEAD
 // source-dir: glob resolution from included file's directory (#133)
 // =====================================================================
 
