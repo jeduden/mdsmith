@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/yuin/goldmark/ast"
+	gtext "github.com/yuin/goldmark/text"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -171,6 +173,42 @@ func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
 	assert.Equal(t, 0, ds["max"])
+	assert.Equal(t, map[string]any{}, ds["per-level"])
+	assert.Equal(t, []any{}, ds["per-heading"])
+}
+
+func TestHeadingLine_FallbackToTextChild(t *testing.T) {
+	src := []byte("# Hi\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+
+	// Build a heading with no Lines() but with a Text child, to exercise
+	// the defensive fallback.
+	h := ast.NewHeading(1)
+	text := ast.NewTextSegment(gtext.NewSegment(2, 4))
+	h.AppendChild(h, text)
+	assert.Equal(t, 1, headingLine(h, f))
+}
+
+func TestHeadingLine_NoLinesNoChildren(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte(""))
+	require.NoError(t, err)
+	h := ast.NewHeading(1)
+	assert.Equal(t, 1, headingLine(h, f))
+}
+
+func TestApplyDefaultSettings_ClearsPerLevelAndPerHeading(t *testing.T) {
+	r := &Rule{
+		Max:      10,
+		PerLevel: map[int]int{2: 3},
+		PerHeading: []HeadingPattern{
+			{Pattern: "x", Regex: regexp.MustCompile("x"), Max: 1},
+		},
+	}
+	require.NoError(t, r.ApplySettings(r.DefaultSettings()))
+	assert.Equal(t, 0, r.Max)
+	assert.Empty(t, r.PerLevel)
+	assert.Empty(t, r.PerHeading)
 }
 
 func TestID(t *testing.T) {

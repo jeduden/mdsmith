@@ -136,9 +136,15 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	return nil
 }
 
-// DefaultSettings implements rule.Configurable.
+// DefaultSettings implements rule.Configurable. All keys are returned so
+// re-applying defaults (e.g., test cleanup) fully clears PerLevel and
+// PerHeading, not just Max.
 func (r *Rule) DefaultSettings() map[string]any {
-	return map[string]any{"max": 0}
+	return map[string]any{
+		"max":         0,
+		"per-level":   map[string]any{},
+		"per-heading": []any{},
+	}
 }
 
 func (r *Rule) resolveMax(h heading) int {
@@ -187,7 +193,15 @@ func collectHeadings(f *lint.File) []heading {
 }
 
 func headingLine(h *ast.Heading, f *lint.File) int {
-	return f.LineOfOffset(h.Lines().At(0).Start)
+	if lines := h.Lines(); lines.Len() > 0 {
+		return f.LineOfOffset(lines.At(0).Start)
+	}
+	for c := h.FirstChild(); c != nil; c = c.NextSibling() {
+		if t, ok := c.(*ast.Text); ok {
+			return f.LineOfOffset(t.Segment.Start)
+		}
+	}
+	return 1
 }
 
 func parsePerLevel(v any) (map[int]int, error) {
