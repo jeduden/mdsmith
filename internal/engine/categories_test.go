@@ -26,6 +26,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/headingstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"
 	_ "github.com/jeduden/mdsmith/internal/rules/listindent"
+	_ "github.com/jeduden/mdsmith/internal/rules/maxsectionlength"
 	_ "github.com/jeduden/mdsmith/internal/rules/nobareurls"
 	_ "github.com/jeduden/mdsmith/internal/rules/noduplicateheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
@@ -33,7 +34,6 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/nomultipleblanks"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"
-	_ "github.com/jeduden/mdsmith/internal/rules/sectionsizelimits"
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
 	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
 )

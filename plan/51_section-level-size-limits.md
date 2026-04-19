@@ -27,11 +27,12 @@ to prevent oversized headings from hiding in otherwise compliant files.
 
 ## Notes
 
-Implemented as MDS036 `section-size-limits`. A section spans from its
-heading line up to (but not including) the next heading line of any
-level, or end of file. Nested subsections are measured independently
-of their parent, so the limit applies to direct content under each
-heading. Lookup order for the applicable max: `per-heading` regex
-(first match), `per-level`, `max`. Disabled by default; enable by
-setting `max` (or any `per-level` / `per-heading` entry) to a positive
-integer in `.mdsmith.yml`.
+Implemented as MDS036 `max-section-length` (named to mirror
+`max-file-length`, since limits are measured in lines). A section
+spans from its heading line up to (but not including) the next heading
+line of any level, or end of file. Nested subsections are measured
+independently of their parent, so the limit applies to direct content
+under each heading. Lookup order for the applicable max: `per-heading`
+regex (first match), `per-level`, `max`. Disabled by default; enable
+by setting `max` (or any `per-level` / `per-heading` entry) to a
+positive integer in `.mdsmith.yml`.

@@ -1,4 +1,4 @@
-package sectionsizelimits
+package maxsectionlength
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ type HeadingPattern struct {
 func (r *Rule) ID() string { return "MDS036" }
 
 // Name implements rule.Rule.
-func (r *Rule) Name() string { return "section-size-limits" }
+func (r *Rule) Name() string { return "max-section-length" }
 
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "heading" }
@@ -106,12 +106,12 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			n, ok := toInt(v)
 			if !ok {
 				return fmt.Errorf(
-					"section-size-limits: max must be an integer, got %T", v,
+					"max-section-length: max must be an integer, got %T", v,
 				)
 			}
 			if n < 0 {
 				return fmt.Errorf(
-					"section-size-limits: max must be non-negative, got %d", n,
+					"max-section-length: max must be non-negative, got %d", n,
 				)
 			}
 			r.Max = n
@@ -129,7 +129,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			r.PerHeading = patterns
 		default:
 			return fmt.Errorf(
-				"section-size-limits: unknown setting %q", k,
+				"max-section-length: unknown setting %q", k,
 			)
 		}
 	}
@@ -208,7 +208,7 @@ func parsePerLevel(v any) (map[int]int, error) {
 	raw, err := asStringMap(v)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"section-size-limits: per-level %w", err,
+			"max-section-length: per-level %w", err,
 		)
 	}
 	out := make(map[int]int, len(raw))
@@ -216,24 +216,24 @@ func parsePerLevel(v any) (map[int]int, error) {
 		level, err := strconv.Atoi(k)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-level key %q must be an integer 1-6", k,
+				"max-section-length: per-level key %q must be an integer 1-6", k,
 			)
 		}
 		if level < 1 || level > 6 {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-level key %d out of range (1-6)", level,
+				"max-section-length: per-level key %d out of range (1-6)", level,
 			)
 		}
 		n, ok := toInt(val)
 		if !ok {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-level[%d] must be an integer, got %T",
+				"max-section-length: per-level[%d] must be an integer, got %T",
 				level, val,
 			)
 		}
 		if n < 0 {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-level[%d] must be non-negative", level,
+				"max-section-length: per-level[%d] must be non-negative", level,
 			)
 		}
 		out[level] = n
@@ -245,7 +245,7 @@ func parsePerHeading(v any) ([]HeadingPattern, error) {
 	items, ok := v.([]any)
 	if !ok {
 		return nil, fmt.Errorf(
-			"section-size-limits: per-heading must be a list, got %T", v,
+			"max-section-length: per-heading must be a list, got %T", v,
 		)
 	}
 	settings := make([]patternSetting, 0, len(items))
@@ -253,25 +253,25 @@ func parsePerHeading(v any) ([]HeadingPattern, error) {
 		m, err := asStringMap(item)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-heading[%d] %w", i, err,
+				"max-section-length: per-heading[%d] %w", i, err,
 			)
 		}
 		pattern, _ := m["pattern"].(string)
 		if pattern == "" {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-heading[%d].pattern must be a non-empty string",
+				"max-section-length: per-heading[%d].pattern must be a non-empty string",
 				i,
 			)
 		}
 		max, ok := toInt(m["max"])
 		if !ok {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-heading[%d].max must be an integer", i,
+				"max-section-length: per-heading[%d].max must be an integer", i,
 			)
 		}
 		if max < 0 {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-heading[%d].max must be non-negative", i,
+				"max-section-length: per-heading[%d].max must be non-negative", i,
 			)
 		}
 		settings = append(settings, patternSetting{Pattern: pattern, Max: max})
@@ -290,7 +290,7 @@ func compilePatterns(in []patternSetting) ([]HeadingPattern, error) {
 		re, err := regexp.Compile(p.Pattern)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"section-size-limits: invalid pattern %q: %w", p.Pattern, err,
+				"max-section-length: invalid pattern %q: %w", p.Pattern, err,
 			)
 		}
 		out = append(out, HeadingPattern{

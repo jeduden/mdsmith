@@ -1,4 +1,4 @@
-package sectionsizelimits
+package maxsectionlength
 
 import (
 	"regexp"
@@ -39,7 +39,7 @@ func TestCheck_SectionOverLimit_Diagnostic(t *testing.T) {
 	require.Len(t, diags, 1)
 	d := diags[0]
 	assert.Equal(t, "MDS036", d.RuleID)
-	assert.Equal(t, "section-size-limits", d.RuleName)
+	assert.Equal(t, "max-section-length", d.RuleName)
 	assert.Equal(t, lint.Warning, d.Severity)
 	assert.Equal(t, 1, d.Line)
 	assert.Equal(t, 1, d.Column)
@@ -216,7 +216,7 @@ func TestID(t *testing.T) {
 }
 
 func TestName(t *testing.T) {
-	assert.Equal(t, "section-size-limits", (&Rule{}).Name())
+	assert.Equal(t, "max-section-length", (&Rule{}).Name())
 }
 
 func TestCategory(t *testing.T) {

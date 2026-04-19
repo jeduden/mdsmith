@@ -52,5 +52,5 @@ row: "| [{id}]({filename}) | `{name}` | {status} | {description} |"
 | [MDS031](MDS031-unclosed-code-block/README.md)                | `unclosed-code-block`                | ready     | Fenced code blocks must have a closing fence delimiter.                                 |
 | [MDS032](MDS032-no-empty-alt-text/README.md)                  | `no-empty-alt-text`                  | ready     | Images must have non-empty alt text for accessibility.                                  |
 | [MDS033](MDS033-directory-structure/README.md)                | `directory-structure`                | ready     | Markdown files must exist only in explicitly allowed directories.                       |
-| [MDS036](MDS036-section-size-limits/README.md)                | `section-size-limits`                | ready     | Section length must not exceed per-level or per-heading limits.                         |
+| [MDS036](MDS036-max-section-length/README.md)                 | `max-section-length`                 | ready     | Section length must not exceed per-level or per-heading limits.                         |
 <?/catalog?>

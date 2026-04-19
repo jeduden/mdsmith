@@ -1,15 +1,15 @@
 ---
 id: MDS036
-name: section-size-limits
+name: max-section-length
 status: ready
 description: Section length must not exceed per-level or per-heading limits.
 ---
-# MDS036: section-size-limits
+# MDS036: max-section-length
 
 Section length must not exceed per-level or per-heading limits.
 
 - **ID**: MDS036
-- **Name**: `section-size-limits`
+- **Name**: `max-section-length`
 - **Status**: ready
 - **Default**: disabled
 - **Fixable**: no
@@ -40,7 +40,7 @@ Enable with a default limit:
 
 ```yaml
 rules:
-  section-size-limits:
+  max-section-length:
     max: 100
 ```
 
@@ -48,7 +48,7 @@ Per-level and per-heading overrides:
 
 ```yaml
 rules:
-  section-size-limits:
+  max-section-length:
     max: 100
     per-level:
       1: 200
@@ -62,7 +62,7 @@ Disable:
 
 ```yaml
 rules:
-  section-size-limits: false
+  max-section-length: false
 ```
 
 ## Examples
