@@ -34,7 +34,7 @@ jobs:
       actions: write
       issues: write
     steps:
-      - uses: jeduden/merge-queue-action@claude/debug-merge-queue-action-QRX4B # debug branch
+      - uses: jeduden/merge-queue-action@v0.5.1
         with:
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
           ci_workflow: .github/workflows/ci.yml
