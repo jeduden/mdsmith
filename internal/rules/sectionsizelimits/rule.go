@@ -74,10 +74,6 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			end = headings[i+1].line - 1
 		}
 		length := end - h.line + 1
-		if length < 0 {
-			length = 0
-		}
-
 		max := r.resolveMax(h)
 		if max <= 0 {
 			continue
@@ -191,31 +187,15 @@ func collectHeadings(f *lint.File) []heading {
 }
 
 func headingLine(h *ast.Heading, f *lint.File) int {
-	lines := h.Lines()
-	if lines.Len() > 0 {
-		return f.LineOfOffset(lines.At(0).Start)
-	}
-	for c := h.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			return f.LineOfOffset(t.Segment.Start)
-		}
-	}
-	return 1
+	return f.LineOfOffset(h.Lines().At(0).Start)
 }
 
 func parsePerLevel(v any) (map[int]int, error) {
-	raw, ok := v.(map[string]any)
-	if !ok {
-		if m, ok := v.(map[any]any); ok {
-			raw = make(map[string]any, len(m))
-			for k, val := range m {
-				raw[fmt.Sprint(k)] = val
-			}
-		} else {
-			return nil, fmt.Errorf(
-				"section-size-limits: per-level must be a map, got %T", v,
-			)
-		}
+	raw, err := asStringMap(v)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"section-size-limits: per-level %w", err,
+		)
 	}
 	out := make(map[int]int, len(raw))
 	for k, val := range raw {
@@ -259,7 +239,7 @@ func parsePerHeading(v any) ([]HeadingPattern, error) {
 		m, err := asStringMap(item)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"section-size-limits: per-heading[%d]: %w", i, err,
+				"section-size-limits: per-heading[%d] %w", i, err,
 			)
 		}
 		pattern, _ := m["pattern"].(string)
@@ -309,17 +289,17 @@ func compilePatterns(in []patternSetting) ([]HeadingPattern, error) {
 }
 
 func asStringMap(v any) (map[string]any, error) {
-	if m, ok := v.(map[string]any); ok {
+	switch m := v.(type) {
+	case map[string]any:
 		return m, nil
-	}
-	if m, ok := v.(map[any]any); ok {
+	case map[any]any:
 		out := make(map[string]any, len(m))
 		for k, val := range m {
 			out[fmt.Sprint(k)] = val
 		}
 		return out, nil
 	}
-	return nil, fmt.Errorf("expected a map, got %T", v)
+	return nil, fmt.Errorf("must be a map, got %T", v)
 }
 
 func toInt(v any) (int, bool) {

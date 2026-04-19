@@ -184,3 +184,145 @@ func TestName(t *testing.T) {
 func TestCategory(t *testing.T) {
 	assert.Equal(t, "heading", (&Rule{}).Category())
 }
+
+func TestEnabledByDefault(t *testing.T) {
+	assert.False(t, (&Rule{}).EnabledByDefault())
+}
+
+func TestCheck_NilAST_NoDiagnostic(t *testing.T) {
+	r := &Rule{Max: 5}
+	assert.Empty(t, r.Check(&lint.File{}))
+}
+
+func TestCheck_FileWithoutTrailingNewline(t *testing.T) {
+	// No trailing newline — last Lines entry is non-empty.
+	f, err := lint.NewFile("t.md", []byte("# A\nline"))
+	require.NoError(t, err)
+	r := &Rule{Max: 1}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "2 > 1")
+}
+
+func TestCheck_PerHeadingNoMatchFallsBackToLevel(t *testing.T) {
+	src := "## Alpha\na\nb\nc\n"
+	r := &Rule{
+		PerLevel: map[int]int{2: 2},
+		PerHeading: []HeadingPattern{
+			{Pattern: "^Zeta$", Regex: regexp.MustCompile("^Zeta$"), Max: 100},
+		},
+	}
+	diags := r.Check(mustFile(t, src))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "## Alpha")
+}
+
+func TestApplySettings_NegativeMax(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": -1})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_Int64Max(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": int64(42)})
+	require.NoError(t, err)
+	assert.Equal(t, 42, r.Max)
+}
+
+func TestApplySettings_Float64IntegerMax(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": float64(25)})
+	require.NoError(t, err)
+	assert.Equal(t, 25, r.Max)
+}
+
+func TestApplySettings_Float64NonIntegerMax(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"max": 3.5})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerLevelNotMap(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"per-level": "not a map"})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerLevelValueNotInt(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-level": map[string]any{"2": "nope"},
+	})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerLevelNegativeValue(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-level": map[string]any{"2": -3},
+	})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerHeadingNotList(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"per-heading": "nope"})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerHeadingItemNotMap(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-heading": []any{"not a map"},
+	})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerLevelFromInterfaceKeyedMap(t *testing.T) {
+	// YAML decoded into `any` can produce map[any]any for nested maps.
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-level": map[any]any{2: 3},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, r.PerLevel[2])
+}
+
+func TestApplySettings_PerHeadingFromInterfaceKeyedMap(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-heading": []any{
+			map[any]any{"pattern": "^Intro$", "max": 7},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, r.PerHeading, 1)
+	assert.Equal(t, 7, r.PerHeading[0].Max)
+}
+
+func TestApplySettings_PerHeadingMissingPattern(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-heading": []any{map[string]any{"max": 10}},
+	})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerHeadingMissingMax(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-heading": []any{map[string]any{"pattern": "x"}},
+	})
+	assert.Error(t, err)
+}
+
+func TestApplySettings_PerHeadingNegativeMax(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"per-heading": []any{
+			map[string]any{"pattern": "x", "max": -1},
+		},
+	})
+	assert.Error(t, err)
+}
