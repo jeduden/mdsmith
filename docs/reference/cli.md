@@ -33,14 +33,48 @@ match, exits 0.
 
 ## Subcommand Flags (check, fix)
 
-| Flag              | Description      |
-|-------------------|------------------|
-| `-c`, `--config`  | Config path      |
-| `-f`, `--format`  | `text` or `json` |
-| `--no-color`      | Plain output     |
-| `--no-gitignore`  | Skip gitignore   |
-| `-q`, `--quiet`   | Quiet mode       |
-| `-v`, `--verbose` | Verbose output   |
+| Flag               | Description                          |
+|--------------------|--------------------------------------|
+| `-c`, `--config`   | Config path                          |
+| `-f`, `--format`   | `text` or `json`                     |
+| `--max-input-size` | Max file size (e.g. `2MB`, `0`=none) |
+| `--no-color`       | Plain output                         |
+| `--no-gitignore`   | Skip gitignore                       |
+| `-q`, `--quiet`    | Quiet mode                           |
+| `-v`, `--verbose`  | Verbose output                       |
+
+## Other Subcommand Flags
+
+`query` accepts `-c`/`--config`, `-v`/`--verbose`,
+`-0`/`--null`, and `--max-input-size`.
+
+`metrics rank` accepts `-c`/`--config`, `-f`/`--format`,
+`--no-gitignore`, `--no-follow-symlinks`,
+`--max-input-size`, plus `--metrics`, `--by`, `--order`,
+`--top`.
+
+## `--max-input-size`
+
+Sets the byte-size cap for any input file read by
+commands that support the flag (`check`, `fix`, `query`,
+`metrics rank`). Behavior on oversize input:
+
+- `check` / `fix`: file is skipped and reported as a
+  runtime error on stderr. Exit code follows the usual
+  precedence — `1` when lint diagnostics are found (even
+  if some files were skipped), `2` when only runtime
+  errors occur.
+- `query`: file is skipped; the per-file error is only
+  printed on stderr when `--verbose` is set. Exit code
+  `1` if no files matched, `0` on a match.
+- `metrics rank`: the whole run fails with exit code
+  `2` on the first oversize file.
+
+An invalid `--max-input-size` value always exits `2`.
+Accepts `KB`, `MB`, `GB` suffixes (binary:
+1 MB = 1,048,576 bytes), bare integers (bytes), or `0`
+to disable the limit. Default: `2MB`. The CLI flag
+overrides the `max-input-size` key in `.mdsmith.yml`.
 
 ## Global Flags
 

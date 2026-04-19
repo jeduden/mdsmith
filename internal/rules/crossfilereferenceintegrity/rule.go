@@ -139,7 +139,7 @@ func (r *Rule) checkLink(
 
 	targetAnchors, err := anchorsForFile(targetFile, anchorCache)
 	if err != nil {
-		return []lint.Diagnostic{brokenFileDiag(f.Path, line, col, r, target.Raw)}
+		return []lint.Diagnostic{unreadableTargetDiag(f.Path, line, col, r, target.Raw, err)}
 	}
 	if targetAnchors[normalizeAnchor(target.Anchor)] {
 		return nil
@@ -237,6 +237,7 @@ func anchorsForFile(target targetFile, cache map[string]map[string]bool) (map[st
 }
 
 func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile, bool) {
+	maxBytes := f.MaxInputBytes
 	if path, ok := resolveTargetOSPath(f.Path, linkPath); ok {
 		if _, err := os.Stat(path); err == nil {
 			// Reject links that resolve outside the project root,
@@ -247,7 +248,7 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 			return targetFile{
 				cacheKey: "os:" + path,
 				read: func() ([]byte, error) {
-					return os.ReadFile(path)
+					return lint.ReadFileLimited(path, maxBytes)
 				},
 			}, true
 		}
@@ -264,7 +265,7 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 	return targetFile{
 		cacheKey: "fs:" + fsPath,
 		read: func() ([]byte, error) {
-			return fs.ReadFile(f.FS, fsPath)
+			return lint.ReadFSFileLimited(f.FS, fsPath, maxBytes)
 		},
 	}, true
 }
@@ -572,6 +573,22 @@ func brokenFileDiag(path string, line, col int, r *Rule, target string) lint.Dia
 		RuleName: r.Name(),
 		Severity: lint.Warning,
 		Message:  fmt.Sprintf("broken link target %q not found", target),
+	}
+}
+
+// unreadableTargetDiag reports a link whose target exists on the
+// filesystem but cannot be read (e.g. exceeds the configured
+// max-input-size). The underlying error is surfaced so users can
+// distinguish these from genuinely missing targets.
+func unreadableTargetDiag(path string, line, col int, r *Rule, target string, err error) lint.Diagnostic {
+	return lint.Diagnostic{
+		File:     path,
+		Line:     line,
+		Column:   col,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  fmt.Sprintf("cannot read link target %q: %v", target, err),
 	}
 }
 

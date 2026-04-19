@@ -192,10 +192,10 @@ func (r *Rule) generateIncludeContent(
 		return "", diags
 	}
 
-	data, err := fs.ReadFile(readFS, readPath)
+	data, err := lint.ReadFSFileLimited(readFS, readPath, f.MaxInputBytes)
 	if err != nil {
 		return "", []lint.Diagnostic{makeDiag(filePath, line,
-			fmt.Sprintf("include file %q not found: %v", file, err))}
+			fmt.Sprintf("cannot read include file %q: %v", file, err))}
 	}
 
 	// Track this file and recursively expand nested includes.
@@ -206,7 +206,7 @@ func (r *Rule) generateIncludeContent(
 			delete(r.visited, resolvedFile)
 			r.chain = r.chain[:len(r.chain)-1]
 		}()
-		expanded, expandDiags := r.expandNestedIncludes(readFS, data, resolvedFile)
+		expanded, expandDiags := r.expandNestedIncludes(readFS, data, resolvedFile, f.MaxInputBytes)
 		if len(expandDiags) > 0 {
 			// Remap diagnostics to this include directive so the
 			// lint pipeline uses the correct file for context.
@@ -342,7 +342,7 @@ func containsDotDotElement(p string) bool {
 // directives and recursively expands them, so that a single fix pass
 // produces the fully flattened output regardless of file order.
 func (r *Rule) expandNestedIncludes(
-	readFS fs.FS, data []byte, resolvedFile string,
+	readFS fs.FS, data []byte, resolvedFile string, maxBytes int64,
 ) ([]byte, []lint.Diagnostic) {
 	// Parse the full data including frontmatter so that marker pair
 	// line numbers match the real file. Goldmark treats frontmatter
@@ -352,6 +352,7 @@ func (r *Rule) expandNestedIncludes(
 	if err != nil {
 		return data, nil
 	}
+	f.MaxInputBytes = maxBytes
 	f.FS = readFS
 	// RootFS must be set so resolveIncludePath uses root-relative
 	// readPath. Without it, readPath is the raw file parameter,

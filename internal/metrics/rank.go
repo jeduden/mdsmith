@@ -3,9 +3,10 @@ package metrics
 import (
 	"fmt"
 	"math"
-	"os"
 	"sort"
 	"strconv"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // Row holds computed metric values for a single file.
@@ -15,10 +16,11 @@ type Row struct {
 }
 
 // Collect computes all selected metrics for each file path.
-func Collect(paths []string, defs []Definition) ([]Row, error) {
+// maxBytes limits the file size that will be read; zero or negative means unlimited.
+func Collect(paths []string, defs []Definition, maxBytes int64) ([]Row, error) {
 	rows := make([]Row, 0, len(paths))
 	for _, path := range paths {
-		source, err := os.ReadFile(path)
+		source, err := lint.ReadFileLimited(path, maxBytes)
 		if err != nil {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}

@@ -3,7 +3,6 @@ package requiredstructure
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,7 +85,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			fmt.Sprintf("cannot read schema %q: %v", r.Schema, err)))
 	}
 
-	sch, err := parseSchema(schData, r.Schema)
+	sch, err := parseSchema(schData, r.Schema, f.MaxInputBytes)
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1,
 			fmt.Sprintf("invalid schema %q: %v", r.Schema, err)))
@@ -351,7 +350,7 @@ const maxSchemaIncludeDepth = 10
 // parseSchema reads schema bytes, extracts frontmatter config and
 // required headings. When schemaPath is non-empty, <?include?> directives
 // are expanded and their headings spliced in.
-func parseSchema(data []byte, schemaPath string) (*parsedSchema, error) {
+func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema, error) {
 	prefix, content := lint.StripFrontMatter(data)
 
 	cfg, err := parseSchemaFrontMatter(prefix)
@@ -378,7 +377,7 @@ func parseSchema(data []byte, schemaPath string) (*parsedSchema, error) {
 		visited := map[string]bool{cleanPath: true}
 		chain := []string{cleanPath}
 		var fp string
-		headings, fp, err = extractSchemaHeadings(f, schemaPath, visited, chain)
+		headings, fp, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -413,7 +412,7 @@ func parseSchema(data []byte, schemaPath string) (*parsedSchema, error) {
 // It uses a visited set for cycle detection.
 func extractSchemaHeadings(
 	schemaFile *lint.File, schemaPath string,
-	visited map[string]bool, chain []string,
+	visited map[string]bool, chain []string, maxBytes int64,
 ) ([]docHeading, string, error) {
 	var headings []docHeading
 	var filenamePattern string
@@ -434,7 +433,7 @@ func extractSchemaHeadings(
 				return ast.WalkContinue, nil
 			}
 			fragHeadings, fp, walkErr := expandSchemaInclude(
-				node, schemaFile.Source, schemaPath, visited, chain)
+				node, schemaFile.Source, schemaPath, visited, chain, maxBytes)
 			if walkErr != nil {
 				return ast.WalkStop, walkErr
 			}
@@ -482,7 +481,7 @@ func resolveSchemaIncludePath(
 
 func expandSchemaInclude(
 	pi *lint.ProcessingInstruction, source []byte,
-	schemaPath string, visited map[string]bool, chain []string,
+	schemaPath string, visited map[string]bool, chain []string, maxBytes int64,
 ) ([]docHeading, string, error) {
 	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
 	if err != nil {
@@ -501,10 +500,10 @@ func expandSchemaInclude(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
-	fragData, err := os.ReadFile(includedPath)
+	fragData, err := lint.ReadFileLimited(includedPath, maxBytes)
 	if err != nil {
 		return nil, "", fmt.Errorf(
-			"schema include file %q not found: %w", includedPath, err)
+			"cannot read schema include file %q: %w", includedPath, err)
 	}
 
 	_, fragContent := lint.StripFrontMatter(fragData)
@@ -522,7 +521,7 @@ func expandSchemaInclude(
 	visited[includedPath] = true
 	chain = append(chain, includedPath)
 	fragHeadings, fp2, err := extractSchemaHeadings(
-		fragFile, includedPath, visited, chain)
+		fragFile, includedPath, visited, chain, maxBytes)
 	delete(visited, includedPath)
 	if err != nil {
 		return nil, "", err
@@ -1031,9 +1030,9 @@ func readSchemaFile(f *lint.File, schema string) ([]byte, error) {
 		if clean == ".." || strings.HasPrefix(clean, "../") {
 			return nil, fmt.Errorf("schema path %q escapes project root", schema)
 		}
-		return fs.ReadFile(f.RootFS, clean)
+		return lint.ReadFSFileLimited(f.RootFS, clean, f.MaxInputBytes)
 	}
-	return os.ReadFile(schema)
+	return lint.ReadFileLimited(schema, f.MaxInputBytes)
 }
 
 func makeDiag(file string, line int, msg string) lint.Diagnostic {

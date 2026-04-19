@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
@@ -55,6 +56,38 @@ func runMergeDriver(args []string) int {
 	}
 }
 
+// mergeAndClean performs the 3-way merge and strips conflict markers.
+// Returns the cleaned content and an exit code (0 on success).
+func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
+	// Step 1: standard 3-way merge into ours.
+	mergeCmd := exec.Command("git", "merge-file", ours, base, theirs)
+	mergeCmd.Stderr = os.Stderr
+	mergeErr := mergeCmd.Run()
+
+	// git merge-file exits 1 for conflicts, 2+ for fatal errors.
+	// Non-ExitError (e.g. git not found) is also fatal.
+	if mergeErr != nil {
+		if exitErr, ok := mergeErr.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+			fmt.Fprintf(os.Stderr, "mdsmith: git merge-file failed: %v\n", mergeErr)
+			return nil, 2
+		}
+	}
+
+	// Step 2: strip conflict markers inside regenerable sections.
+	content, err := lint.ReadFileLimited(ours, maxBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: reading merge result: %v\n", err)
+		return nil, 2
+	}
+
+	cleaned := stripSectionConflicts(content)
+	if err := os.WriteFile(ours, cleaned, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: writing cleaned merge: %v\n", err)
+		return nil, 2
+	}
+	return cleaned, 0
+}
+
 // runMergeDriverRun implements the git merge driver protocol.
 // Arguments: <base> <ours> <theirs> <pathname>
 //
@@ -78,36 +111,27 @@ func runMergeDriverRun(args []string) int {
 
 	base, ours, theirs, pathname := args[0], args[1], args[2], args[3]
 
-	// Step 1: standard 3-way merge into ours.
-	mergeCmd := exec.Command("git", "merge-file", ours, base, theirs)
-	mergeCmd.Stderr = os.Stderr
-	mergeErr := mergeCmd.Run()
-
-	// git merge-file exits 1 for conflicts, 2+ for fatal errors.
-	// Non-ExitError (e.g. git not found) is also fatal.
-	if mergeErr != nil {
-		if exitErr, ok := mergeErr.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
-			fmt.Fprintf(os.Stderr, "mdsmith: git merge-file failed: %v\n", mergeErr)
-			return 2
-		}
-	}
-
-	// Step 2: strip conflict markers inside regenerable sections.
-	content, err := os.ReadFile(ours)
+	// Resolve the effective max-input-size from config so the merge
+	// driver honors the same limit as check/fix.
+	cfg, _, err := loadConfig("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: reading merge result: %v\n", err)
+		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+		return 2
+	}
+	maxBytes, err := resolveMaxInputBytes(cfg, "")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
 
-	cleaned := stripSectionConflicts(content)
-	if err := os.WriteFile(ours, cleaned, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: writing cleaned merge: %v\n", err)
-		return 2
+	cleaned, rc := mergeAndClean(base, ours, theirs, maxBytes)
+	if rc != 0 {
+		return rc
 	}
 
 	// Step 3: run mdsmith fix at the real path and write result
 	// back to ours.
-	fixed, rc := fixAtRealPath(cleaned, ours, pathname)
+	fixed, rc := fixAtRealPath(cleaned, ours, pathname, maxBytes)
 	if rc != 0 {
 		return rc
 	}
@@ -125,14 +149,14 @@ func runMergeDriverRun(args []string) int {
 
 // fixAtRealPath writes cleaned content to pathname, runs mdsmith
 // fix, copies the result to ours, and restores pathname.
-func fixAtRealPath(cleaned []byte, ours, pathname string) ([]byte, int) {
+func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byte, int) {
 	// Capture the original file mode so we can preserve permissions.
 	fileMode := os.FileMode(0644)
 	if info, err := os.Stat(pathname); err == nil {
 		fileMode = info.Mode()
 	}
 
-	backup, backupErr := os.ReadFile(pathname)
+	backup, backupErr := lint.ReadFileLimited(pathname, maxBytes)
 	if backupErr != nil && !os.IsNotExist(backupErr) {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading %s for backup: %v\n", pathname, backupErr)
 		return nil, 2
@@ -142,11 +166,11 @@ func fixAtRealPath(cleaned []byte, ours, pathname string) ([]byte, int) {
 		return nil, 2
 	}
 
-	fixErr := fixFileInPlace(pathname)
+	fixErr := fixFileInPlace(pathname, maxBytes)
 
 	// Restore the original working tree file before checking
 	// fixErr, so the working tree is always left clean.
-	fixed, err := os.ReadFile(pathname)
+	fixed, err := lint.ReadFileLimited(pathname, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading fixed file: %v\n", err)
 		return nil, 2
@@ -179,7 +203,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string) ([]byte, int) {
 }
 
 // fixFileInPlace runs the mdsmith fix pipeline on a single file.
-func fixFileInPlace(path string) error {
+func fixFileInPlace(path string, maxBytes int64) error {
 	cfg, _, err := loadConfig("")
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -190,6 +214,7 @@ func fixFileInPlace(path string) error {
 		Rules:            rule.All(),
 		StripFrontMatter: frontMatterEnabled(cfg),
 		Logger:           &vlog.Logger{},
+		MaxInputBytes:    maxBytes,
 	}
 
 	result := fixer.Fix([]string{path})

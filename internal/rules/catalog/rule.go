@@ -85,7 +85,13 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	params map[string]string, columns map[string]gensection.ColumnConfig,
 ) (string, []lint.Diagnostic) {
 	cols := fromGensectionColumns(columns)
-	entries := buildCatalogEntries(f, params)
+	// Read errors (e.g. "file too large") are fatal for generation:
+	// a partially-rendered catalog would silently hide missing rows,
+	// which is worse than failing loudly with a clear diagnostic.
+	entries, entryDiags := buildCatalogEntries(f, params, filePath, line)
+	if len(entryDiags) > 0 {
+		return "", entryDiags
+	}
 
 	// Check if any matched file includes (directly or indirectly) the
 	// catalog-owning file. If so, the catalog body would contain itself.
@@ -288,8 +294,15 @@ func resolveGlobFS(f *lint.File, params map[string]string) (globFS fs.FS, prefix
 }
 
 // buildCatalogEntries resolves glob matches, reads front matter, and
-// returns sorted file entries for the catalog directive.
-func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
+// returns sorted file entries for the catalog directive. Read errors
+// (notably "file too large") are returned as diagnostics attached to
+// the directive's file+line. Callers in the Generate path treat any
+// returned diagnostic as fatal to avoid producing an incomplete catalog;
+// check-only callers (checkInjection, checkCaseMismatches) discard the
+// diagnostics because Generate already surfaces them.
+func buildCatalogEntries(
+	f *lint.File, params map[string]string, filePath string, line int,
+) ([]fileEntry, []lint.Diagnostic) {
 	globFS, prefix := resolveGlobFS(f, params)
 	files := resolveGlobMatchesFrom(globFS, f, params)
 
@@ -297,6 +310,7 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 	_, hasRow := params["row"]
 	needFM := hasRow || (sortKey != "path" && sortKey != "filename")
 
+	var diags []lint.Diagnostic
 	entries := make([]fileEntry, 0, len(files))
 	for _, p := range files {
 		displayPath := p
@@ -305,7 +319,13 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 		}
 		fields := map[string]any{"filename": displayPath}
 		if needFM {
-			for k, v := range readFrontMatter(globFS, p) {
+			fm, err := readFrontMatter(globFS, p, f.MaxInputBytes)
+			if err != nil {
+				diags = append(diags, makeDiag(filePath, line,
+					fmt.Sprintf("cannot read front matter from %q: %v", displayPath, err)))
+				continue
+			}
+			for k, v := range fm {
 				fields[k] = v
 			}
 		}
@@ -313,7 +333,7 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 	}
 
 	sortEntries(entries, sortKey, descending)
-	return entries
+	return entries, diags
 }
 
 // resolveGlobMatchesFrom expands include patterns using the given FS,
@@ -441,7 +461,8 @@ func (r *Rule) checkInjection(f *lint.File) []lint.Diagnostic {
 		if dir == nil || len(parseDiags) > 0 {
 			continue
 		}
-		entries := buildCatalogEntries(f, dir.Params)
+		// Ignore entry diagnostics here; Generate surfaces them.
+		entries, _ := buildCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
 		diags = append(diags, checkCatalogInjection(f.Path, mp.StartLine, entries)...)
 	}
 	return diags
@@ -517,16 +538,19 @@ func sortValue(entry fileEntry, key string) string {
 
 // readFrontMatter reads a file's YAML front matter and returns it as
 // a map preserving nested structure for CUE path resolution.
-// Returns nil if no front matter is found or on any error.
-func readFrontMatter(fsys fs.FS, path string) map[string]any {
-	data, err := fs.ReadFile(fsys, path)
+// Returns (nil, nil) if no front matter is found or content is
+// malformed. Returns (nil, err) when the file itself cannot be read —
+// notably when it exceeds the configured max-input-size — so callers
+// can surface the failure instead of treating it as "no front matter".
+func readFrontMatter(fsys fs.FS, path string, maxBytes int64) (map[string]any, error) {
+	data, err := lint.ReadFSFileLimited(fsys, path, maxBytes)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	prefix, _ := lint.StripFrontMatter(data)
 	if prefix == nil {
-		return nil
+		return nil, nil
 	}
 
 	// Extract the YAML between --- delimiters.
@@ -534,19 +558,19 @@ func readFrontMatter(fsys fs.FS, path string) map[string]any {
 	s = strings.TrimPrefix(s, "---\n")
 	idx := strings.Index(s, "---\n")
 	if idx < 0 {
-		return nil
+		return nil, nil
 	}
 	yamlStr := s[:idx]
 
 	var raw map[string]any
 	if err := lint.RejectYAMLAliases([]byte(yamlStr)); err != nil {
-		return nil
+		return nil, nil
 	}
 	if err := yaml.Unmarshal([]byte(yamlStr), &raw); err != nil {
-		return nil
+		return nil, nil
 	}
 
-	return raw
+	return raw, nil
 }
 
 // checkCatalogIncludeCycle checks whether any file matched by the catalog
@@ -565,7 +589,7 @@ func checkCatalogIncludeCycle(
 	catalogFile := filepath.Base(filePath)
 	for _, entry := range entries {
 		matchedPath := fieldinterp.Stringify(entry.fields["filename"])
-		if fileIncludesTarget(f.FS, matchedPath, catalogFile) {
+		if fileIncludesTarget(f.FS, matchedPath, catalogFile, f.MaxInputBytes) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				fmt.Sprintf(
 					"catalog includes %q which includes %q via <?include?>, creating a cycle",
@@ -579,10 +603,10 @@ func checkCatalogIncludeCycle(
 // include directives that (directly or indirectly) reference the
 // target file. Uses a visited set to avoid infinite recursion.
 func fileIncludesTarget(
-	fsys fs.FS, filePath, target string,
+	fsys fs.FS, filePath, target string, maxBytes int64,
 ) bool {
 	visited := map[string]bool{filePath: true}
-	return scanIncludesForTarget(fsys, filePath, target, visited, 0)
+	return scanIncludesForTarget(fsys, filePath, target, visited, 0, maxBytes)
 }
 
 // maxIncludeDepth mirrors the include rule's depth limit for consistency.
@@ -590,12 +614,12 @@ const maxIncludeDepth = 10
 
 func scanIncludesForTarget(
 	fsys fs.FS, filePath, target string,
-	visited map[string]bool, depth int,
+	visited map[string]bool, depth int, maxBytes int64,
 ) bool {
 	if depth > maxIncludeDepth {
 		return false
 	}
-	data, err := fs.ReadFile(fsys, filePath)
+	data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
 	if err != nil {
 		return false
 	}
@@ -624,7 +648,7 @@ func scanIncludesForTarget(
 			continue
 		}
 		visited[resolved] = true
-		found := scanIncludesForTarget(fsys, resolved, target, visited, depth+1)
+		found := scanIncludesForTarget(fsys, resolved, target, visited, depth+1, maxBytes)
 		delete(visited, resolved)
 		if found {
 			return true
@@ -720,7 +744,8 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 		if !hasNonBuiltin {
 			continue
 		}
-		entries := buildCatalogEntries(f, dir.Params)
+		// Ignore entry diagnostics here; Generate surfaces them.
+		entries, _ := buildCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
 		diags = append(diags, checkFieldCaseMismatches(f.Path, mp.StartLine, row, entries)...)
 	}
 	return diags

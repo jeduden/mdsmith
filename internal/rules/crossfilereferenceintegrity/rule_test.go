@@ -1,6 +1,7 @@
 package crossfilereferenceintegrity
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -379,6 +380,41 @@ func TestResolveTargetFile_AllowsInsideRoot(t *testing.T) {
 
 	_, ok := resolveTargetFile(f, "../target.md", resolvedRoot)
 	require.True(t, ok, "should allow link within root")
+}
+
+// TestResolveTargetFile_MaxInputBytes verifies that the read closure
+// returned by resolveTargetFile honors f.MaxInputBytes — an oversized
+// target file should produce a "file too large" error, which callers
+// surface via unreadableTargetDiag instead of a misleading "not found".
+func TestResolveTargetFile_MaxInputBytes(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target.md")
+	writeFile(t, target, "# Target\n\n"+strings.Repeat("x", 200))
+
+	f := &lint.File{
+		Path:          filepath.Join(root, "doc.md"),
+		FS:            os.DirFS(root),
+		MaxInputBytes: 50,
+	}
+	resolvedRoot := resolveAbsRoot(root)
+
+	tgt, ok := resolveTargetFile(f, "target.md", resolvedRoot)
+	require.True(t, ok, "expected target resolution to succeed")
+
+	_, err := tgt.read()
+	require.Error(t, err, "expected file too large error")
+	require.Contains(t, err.Error(), "file too large")
+}
+
+func TestUnreadableTargetDiag(t *testing.T) {
+	r := &Rule{}
+	err := errors.New("file too large (200 bytes, max 50)")
+	d := unreadableTargetDiag("doc.md", 5, 10, r, "target.md", err)
+	require.Equal(t, "doc.md", d.File)
+	require.Equal(t, 5, d.Line)
+	require.Equal(t, 10, d.Column)
+	require.Contains(t, d.Message, "cannot read link target")
+	require.Contains(t, d.Message, "file too large")
 }
 
 func TestIsWithinRoot_RelativeTarget(t *testing.T) {

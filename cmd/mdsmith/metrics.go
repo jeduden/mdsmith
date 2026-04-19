@@ -9,6 +9,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	metricspkg "github.com/jeduden/mdsmith/internal/metrics"
 )
@@ -99,6 +100,7 @@ type metricsRankOptions struct {
 	format           string
 	noGitignore      bool
 	noFollowSymlinks bool
+	maxInputSize     string
 }
 
 func runMetricsRank(args []string) int {
@@ -122,6 +124,8 @@ func parseMetricsRankOptions(args []string) (metricsRankOptions, []string, error
 	fs.StringVarP(&opts.format, "format", "f", "text", "Output format: text, json")
 	fs.BoolVar(&opts.noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&opts.noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.StringVar(&opts.maxInputSize, "max-input-size", "",
+		"Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(
@@ -156,13 +160,25 @@ func executeMetricsRank(opts metricsRankOptions, fileArgs []string) int {
 		return 2
 	}
 
-	files, err := resolveRankFiles(opts, fileArgs)
+	cfg, _, err := loadConfig(opts.configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
 
-	rows, err := metricspkg.Collect(files, defs)
+	files, err := resolveRankFiles(cfg, opts, fileArgs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
+	rows, err := metricspkg.Collect(files, defs, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
@@ -226,12 +242,7 @@ func resolveRankSelection(
 	return defs, byDef, order, nil
 }
 
-func resolveRankFiles(opts metricsRankOptions, fileArgs []string) ([]string, error) {
-	cfg, _, err := loadConfig(opts.configPath)
-	if err != nil {
-		return nil, err
-	}
-
+func resolveRankFiles(cfg *config.Config, opts metricsRankOptions, fileArgs []string) ([]string, error) {
 	resolveOptions := resolveOpts(cfg, opts.noGitignore, opts.noFollowSymlinks)
 	return lint.ResolveFilesWithOpts(fileArgs, resolveOptions)
 }

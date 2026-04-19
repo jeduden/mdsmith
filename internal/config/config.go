@@ -31,6 +31,7 @@ type Config struct {
 	Categories       map[string]bool    `yaml:"categories"`
 	Files            []string           `yaml:"files"`
 	NoFollowSymlinks []string           `yaml:"no-follow-symlinks"`
+	MaxInputSize     string             `yaml:"max-input-size"`
 
 	// ExplicitRules tracks rule names that were explicitly set in
 	// the user config (not just inherited from defaults). This is

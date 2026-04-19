@@ -1882,7 +1882,7 @@ func TestReadFrontMatter_Valid(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ndescription: World\n---\n# Content\n")},
 	}
-	fm := readFrontMatter(fs, "a.md")
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["title"] != "Hello" {
 		t.Errorf("expected title Hello, got %q", fm["title"])
 	}
@@ -1895,7 +1895,7 @@ func TestReadFrontMatter_NoFrontMatter(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("# No front matter\n")},
 	}
-	fm := readFrontMatter(fs, "a.md")
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	assert.Nil(t, fm, "expected nil for no front matter, got %v", fm)
 }
 
@@ -1903,7 +1903,7 @@ func TestReadFrontMatter_InvalidYAML(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ninvalid: [yaml\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md")
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	assert.Nil(t, fm, "expected nil for invalid YAML, got %v", fm)
 }
 
@@ -1911,7 +1911,7 @@ func TestReadFrontMatter_NonStringValue(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ncount: 42\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md")
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["title"] != "Hello" {
 		t.Errorf("expected title Hello, got %q", fm["title"])
 	}
@@ -1922,16 +1922,28 @@ func TestReadFrontMatter_NonStringValue(t *testing.T) {
 
 func TestReadFrontMatter_UnreadableFile(t *testing.T) {
 	fs := fstest.MapFS{}
-	fm := readFrontMatter(fs, "missing.md")
+	fm, err := readFrontMatter(fs, "missing.md", 0)
 	assert.Nil(t, fm, "expected nil for missing file, got %v", fm)
+	assert.Error(t, err, "expected error for missing file")
+}
+
+func TestReadFrontMatter_SizeLimitExceeded(t *testing.T) {
+	fs := fstest.MapFS{
+		"big.md": {Data: []byte("---\ntitle: Big\n---\n" + strings.Repeat("x", 200))},
+	}
+	fm, err := readFrontMatter(fs, "big.md", 10)
+	assert.Nil(t, fm, "expected nil for oversized file")
+	assert.Error(t, err, "expected error for oversized file")
+	assert.Contains(t, err.Error(), "file too large")
 }
 
 func TestReadFrontMatter_EmptyFile(t *testing.T) {
 	fs := fstest.MapFS{
 		"empty.md": {Data: []byte("")},
 	}
-	fm := readFrontMatter(fs, "empty.md")
+	fm, err := readFrontMatter(fs, "empty.md", 0)
 	assert.Nil(t, fm, "expected nil for empty file, got %v", fm)
+	assert.NoError(t, err, "empty file should not cause error")
 }
 
 func TestReadFrontMatter_OnlyOpeningDelimiter(t *testing.T) {
@@ -1939,7 +1951,7 @@ func TestReadFrontMatter_OnlyOpeningDelimiter(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\n")},
 	}
-	fm := readFrontMatter(fs, "a.md")
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	assert.Nil(t, fm, "expected nil for unclosed front matter, got %v", fm)
 }
 
@@ -1948,7 +1960,7 @@ func TestReadFrontMatter_BooleanValue(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ndraft: true\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md")
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["draft"] != true {
 		t.Errorf("expected draft true, got %v", fm["draft"])
 	}
@@ -1959,7 +1971,7 @@ func TestReadFrontMatter_ListValue(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("---\ntitle: Hello\ntags: [go, lint]\n---\n")},
 	}
-	fm := readFrontMatter(fs, "a.md")
+	fm, _ := readFrontMatter(fs, "a.md", 0)
 	if fm["title"] != "Hello" {
 		t.Errorf("expected title Hello, got %q", fm["title"])
 	}
@@ -3128,7 +3140,7 @@ func TestReadFrontMatter_AnchorReturnsNil(t *testing.T) {
 		"doc.md": {Data: []byte(
 			"---\nbase: &base\n  id: 1\n---\n# Title\n")},
 	}
-	result := readFrontMatter(mapFS, "doc.md")
+	result, _ := readFrontMatter(mapFS, "doc.md", 0)
 	assert.Nil(t, result)
 }
 
@@ -3431,4 +3443,54 @@ source-dir: ".."
 	// Should not panic or escape; falls back to f.FS.
 	result := string(r.Fix(f))
 	assert.Contains(t, result, "top.md")
+}
+
+// =====================================================================
+// buildCatalogEntries error diagnostics (file-size limit)
+// =====================================================================
+
+func TestBuildCatalogEntries_SizeLimit_EmitsDiagnostic(t *testing.T) {
+	bigContent := strings.Repeat("x", 100)
+	fsys := fstest.MapFS{
+		"big.md": &fstest.MapFile{
+			Data: []byte("---\ntitle: Big\n---\n" + bigContent),
+		},
+	}
+	f := &lint.File{
+		Path:          "index.md",
+		FS:            fsys,
+		MaxInputBytes: 20,
+	}
+	params := map[string]string{
+		"glob": "big.md",
+		"row":  "- [{title}](big.md)",
+	}
+
+	entries, diags := buildCatalogEntries(f, params, "index.md", 1)
+	assert.Empty(t, entries, "entry skipped due to read failure")
+	require.Len(t, diags, 1, "expected one diagnostic")
+	assert.Contains(t, diags[0].Message, "cannot read front matter")
+	assert.Contains(t, diags[0].Message, "file too large")
+}
+
+func TestBuildCatalogEntries_Normal_NoDiagnostics(t *testing.T) {
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{
+			Data: []byte("---\ntitle: A\n---\n# A\n"),
+		},
+	}
+	f := &lint.File{
+		Path:          "index.md",
+		FS:            fsys,
+		MaxInputBytes: 1000,
+	}
+	params := map[string]string{
+		"glob": "a.md",
+		"row":  "- [{title}](a.md)",
+	}
+
+	entries, diags := buildCatalogEntries(f, params, "index.md", 1)
+	assert.Len(t, entries, 1, "entry should be kept")
+	assert.Empty(t, diags)
+	assert.Equal(t, "A", entries[0].fields["title"])
 }

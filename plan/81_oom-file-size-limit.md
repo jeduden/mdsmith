@@ -1,7 +1,7 @@
 ---
 id: 81
 title: 'OOM mitigation: configurable file-size limit'
-status: "🔲"
+status: "✅"
 summary: >-
   Guard every file-read path against OOM by enforcing
   a configurable byte-size cap (default 2 MB).
@@ -124,45 +124,45 @@ during `ApplySettings` or via the runner).
 
 ## Tasks
 
-1. Add `internal/lint/limits.go` with
+1. [x] Add `internal/lint/limits.go` with
    `ReadFileLimited` and `ReadFSFileLimited`
-2. Add `internal/lint/limits_test.go` with tests for
+2. [x] Add `internal/lint/limits_test.go` with tests for
    normal, at-limit, over-limit, zero (unlimited),
    and empty-file cases
-3. Add `internal/config/size.go` with `ParseSize`
-4. Add `internal/config/size_test.go` with tests for
+3. [x] Add `internal/config/size.go` with `ParseSize`
+4. [x] Add `internal/config/size_test.go` with tests for
    `2MB`, `500KB`, `0`, bare integer, invalid input
-5. Add `MaxInputSize` field to `config.Config`
-6. Add `MaxInputBytes` field to `engine.Runner` and
-   `fix.Fixer`
-7. Add `--max-input-size` flag to `check` and `fix`
+5. [x] Add `MaxInputSize` field to `config.Config`
+6. [x] Add `MaxInputBytes` field to `engine.Runner` and
+   `fix.Fixer` (and `lint.File` for rule threading)
+7. [x] Add `--max-input-size` flag to `check` and `fix`
    subcommands
-8. Replace `os.ReadFile` with `ReadFileLimited` at all
+8. [x] Replace `os.ReadFile` with `ReadFileLimited` at all
    primary read sites (runner, fixer, stdin)
-9. Replace `os.ReadFile` / `fs.ReadFile` at all
+9. [x] Replace `os.ReadFile` / `fs.ReadFile` at all
    secondary read sites (include, catalog,
    cross-file-ref, required-structure, metrics, merge
    driver, config)
-10. Thread `MaxInputBytes` to rules that read files
-    (via `lint.File` field or rule configuration)
-11. Add integration test: file exceeding limit produces
+10. [x] Thread `MaxInputBytes` to rules that read files
+    (via `lint.File` field)
+11. [x] Add integration test: file exceeding limit produces
     error diagnostic and exit code 2
-12. Document `max-input-size` in `docs/reference/cli.md`
+12. [x] Document `max-input-size` in `docs/reference/cli.md`
 
 ## Acceptance Criteria
 
-- [ ] `ReadFileLimited` returns error for files
+- [x] `ReadFileLimited` returns error for files
       exceeding the configured limit
-- [ ] `ReadFileLimited` succeeds for files at or below
+- [x] `ReadFileLimited` succeeds for files at or below
       the limit (no off-by-one)
-- [ ] `ReadFileLimited` with `max <= 0` applies no
+- [x] `ReadFileLimited` with `max <= 0` applies no
       limit (unlimited mode)
-- [ ] `ParseSize` handles `2MB`, `500KB`, `1GB`, bare
+- [x] `ParseSize` handles `2MB`, `500KB`, `1GB`, bare
       integers, and `0`
-- [ ] `.mdsmith.yml` `max-input-size` key is respected
-- [ ] `--max-input-size` CLI flag overrides config
-- [ ] `--max-input-size 0` disables the limit
-- [ ] All ~15 read sites use the limited helper
-- [ ] Error message includes actual size and limit
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `.mdsmith.yml` `max-input-size` key is respected
+- [x] `--max-input-size` CLI flag overrides config
+- [x] `--max-input-size 0` disables the limit
+- [x] All ~15 read sites use the limited helper
+- [x] Error message includes actual size and limit
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

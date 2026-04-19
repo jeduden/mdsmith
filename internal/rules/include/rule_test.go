@@ -203,7 +203,7 @@ func TestCheck_MissingFile(t *testing.T) {
 	f := newTestFile(t, "doc.md", src, fsys)
 	r := &Rule{}
 	diags := r.Check(f)
-	expectDiagMsg(t, diags, "not found")
+	expectDiagMsg(t, diags, "cannot read include file")
 }
 
 // =====================================================================

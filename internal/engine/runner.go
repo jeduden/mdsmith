@@ -23,6 +23,9 @@ type Runner struct {
 	// RootDir is the project root directory (parent of .mdsmith.yml).
 	// Used by rules that need to read files relative to the project root.
 	RootDir string
+	// MaxInputBytes is the maximum file size in bytes before a file is
+	// skipped with an error. Zero or negative means unlimited.
+	MaxInputBytes int64
 	// gitignoreCache caches GitignoreMatchers by directory to avoid
 	// re-walking the filesystem for each file.
 	gitignoreCache map[string]*lint.GitignoreMatcher
@@ -49,7 +52,7 @@ func (r *Runner) Run(paths []string) *Result {
 
 		r.log().Printf("file: %s", path)
 
-		source, err := os.ReadFile(path)
+		source, err := lint.ReadFileLimited(path, r.MaxInputBytes)
 		if err != nil {
 			res.Errors = append(res.Errors, fmt.Errorf("reading %q: %w", path, err))
 			continue
@@ -60,6 +63,7 @@ func (r *Runner) Run(paths []string) *Result {
 			res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 			continue
 		}
+		f.MaxInputBytes = r.MaxInputBytes
 		dir := filepath.Dir(path)
 		f.FS = os.DirFS(dir)
 		gitignoreDir := dir
@@ -105,6 +109,7 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 		return res
 	}
+	f.MaxInputBytes = r.MaxInputBytes
 	if r.RootDir != "" {
 		f.SetRootDir(r.RootDir)
 	}
