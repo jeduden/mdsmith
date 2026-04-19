@@ -3182,3 +3182,253 @@ func TestCatalogInjection_BothNewlineAndLink(t *testing.T) {
 	diags := checkCatalogInjection("index.md", 5, entries)
 	assert.Len(t, diags, 2, "should report both newline and ]( issues")
 }
+
+// =====================================================================
+// source-dir: glob resolution from included file's directory (#133)
+// =====================================================================
+
+func TestCatalog_SourceDirResolvesGlobFromSubdir(t *testing.T) {
+	// When source-dir is set, globs should resolve relative to that
+	// directory, not the file's own directory. This supports catalog
+	// directives transplanted by include expansion.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "docs/dev"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/dev/api.md":   {Data: []byte("# API\n")},
+		"docs/dev/guide.md": {Data: []byte("# Guide\n")},
+		"README.md":         {Data: []byte("# Root\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// Filenames should be prefixed with the source-dir so links
+	// resolve correctly from the including file.
+	assert.Contains(t, result, "docs/dev/api.md")
+	assert.Contains(t, result, "docs/dev/guide.md")
+	assert.NotContains(t, result, "README.md")
+}
+
+func TestCatalog_SourceDirWithFrontMatter(t *testing.T) {
+	// source-dir should also read front matter from the correct directory.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "sub"
+row: "- [{title}]({filename})"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"sub/one.md": {Data: []byte("---\ntitle: One\n---\n# One\n")},
+		"sub/two.md": {Data: []byte("---\ntitle: Two\n---\n# Two\n")},
+	}
+	f := newTestFile(t, "root.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "- [One](sub/one.md)")
+	assert.Contains(t, result, "- [Two](sub/two.md)")
+}
+
+func TestCatalog_SourceDirExcludePatterns(t *testing.T) {
+	// Exclude patterns should work relative to source-dir.
+	src := `<?catalog
+glob:
+  - "*.md"
+  - "!internal.md"
+source-dir: "docs"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/public.md":   {Data: []byte("# Public\n")},
+		"docs/internal.md": {Data: []byte("# Internal\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "docs/public.md")
+	// The excluded file should not appear as a link in the generated content.
+	assert.NotContains(t, result, "[internal.md](docs/internal.md)")
+}
+
+func TestCatalog_SourceDirRoot(t *testing.T) {
+	// source-dir: "." means globs resolve from the project root.
+	// This happens when a subdirectory file includes a root-level file.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "."
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"api.md":        {Data: []byte("# API\n")},
+		"guide.md":      {Data: []byte("# Guide\n")},
+		"docs/other.md": {Data: []byte("# Other\n")},
+	}
+	f := newTestFile(t, "docs/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// From docs/index.md, root files need a ../ prefix.
+	assert.Contains(t, result, "../api.md")
+	assert.Contains(t, result, "../guide.md")
+	assert.NotContains(t, result, "other.md")
+}
+
+func TestCatalog_SourceDirFromSubdirIncluder(t *testing.T) {
+	// When the catalog-owning file is in a subdirectory and source-dir
+	// points to a sibling subdirectory, the prefix should be relative.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "docs/dev"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/dev/api.md": {Data: []byte("# API\n")},
+		"README.md":       {Data: []byte("# Root\n")},
+	}
+	f := newTestFile(t, "docs/intro.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// From docs/intro.md, docs/dev/api.md is at dev/api.md.
+	assert.Contains(t, result, "dev/api.md")
+	assert.NotContains(t, result, "docs/dev/api.md")
+}
+
+func TestCatalog_SourceDirRootFromRootFile(t *testing.T) {
+	// source-dir: "." with file at root → relPrefix is ".", so no prefix.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "."
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"alpha.md": {Data: []byte("# A\n")},
+		"beta.md":  {Data: []byte("# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// File is at root, source-dir is root → no prefix needed.
+	assert.Contains(t, result, "[alpha.md](alpha.md)")
+	assert.Contains(t, result, "[beta.md](beta.md)")
+}
+
+func TestCatalog_SourceDirSameAsFileDir(t *testing.T) {
+	// source-dir matches the file's own directory → relPrefix is ".".
+	src := `<?catalog
+glob: "*.md"
+source-dir: "docs"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/one.md": {Data: []byte("# One\n")},
+	}
+	f := newTestFile(t, "docs/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// No prefix needed since source-dir == file dir.
+	assert.Contains(t, result, "[one.md](one.md)")
+}
+
+func TestCatalog_SourceDirNoRootFS(t *testing.T) {
+	// Without RootFS, source-dir is ignored and globs use f.FS.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "sub"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"top.md": {Data: []byte("# Top\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	// Deliberately not setting f.RootFS.
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "top.md")
+}
+
+func TestCatalog_SourceDirRelPrefixError(t *testing.T) {
+	// filepath.Rel fails when one path is absolute and the other
+	// relative. resolveGlobFS should fall back to f.FS.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "sub"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"top.md":   {Data: []byte("# Top\n")},
+		"sub/a.md": {Data: []byte("# A\n")},
+	}
+	f := newTestFile(t, "/absolute/path/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// Falls back to f.FS since Rel fails.
+	assert.Contains(t, result, "top.md")
+}
+
+func TestCatalog_SourceDirInvalidSubFS(t *testing.T) {
+	// fs.Sub rejects paths starting with "/". When both file path
+	// and source-dir are absolute, filepath.Rel succeeds but fs.Sub
+	// fails. resolveGlobFS should fall back to f.FS.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "/proj/sub"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"fallback.md": {Data: []byte("# Fallback\n")},
+	}
+	f := newTestFile(t, "/proj/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "fallback.md")
+}
+
+func TestCatalog_SourceDirTraversalIgnored(t *testing.T) {
+	// source-dir with ".." should not escape the project root for
+	// gitignore resolution. resolveGlobFS rejects it via fs.Sub;
+	// resolveGitignore must also reject it.
+	src := `<?catalog
+glob: "*.md"
+source-dir: ".."
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"top.md": {Data: []byte("# Top\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	// Should not panic or escape; falls back to f.FS.
+	result := string(r.Fix(f))
+	assert.Contains(t, result, "top.md")
+}

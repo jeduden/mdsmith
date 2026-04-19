@@ -672,10 +672,125 @@ func TestFix_RecursiveExpansionSubdir(t *testing.T) {
 	r := &Rule{}
 	got := string(r.Fix(f))
 	want := "# A\n\n<?include\nfile: sub/b.md\n?>\n" +
-		"# B\n\n<?include\nfile: c.md\n?>\n" +
+		"# B\n\n<?include\nsource-dir: \"sub\"\nfile: c.md\n?>\n" +
 		"Fresh from C\n<?/include?>\n<?/include?>\n"
 	assert.Equal(t, want, got,
 		"Fix output mismatch\ngot:\n%s\nwant:\n%s", got, want)
+}
+
+// =====================================================================
+// source-dir injection for nested directives (#133)
+// =====================================================================
+
+func TestFix_InjectsSourceDirIntoCatalog(t *testing.T) {
+	// When an included file contains a <?catalog?> directive, the
+	// include expansion should inject source-dir so the catalog
+	// resolves globs relative to the included file's directory.
+	fsys := fstest.MapFS{
+		"docs/dev/index.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: docs/dev/index.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "README.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "source-dir:")
+	assert.Contains(t, result, "docs/dev")
+}
+
+func TestFix_InjectsSourceDirPreservesExistingParams(t *testing.T) {
+	// source-dir injection should not disturb other catalog parameters.
+	fsys := fstest.MapFS{
+		"sub/catalog.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\nsort: path\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: sub/catalog.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "root.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, "source-dir:")
+	assert.Contains(t, result, "glob:")
+	assert.Contains(t, result, "sort: path")
+}
+
+func TestFix_NoSourceDirWhenSameDir(t *testing.T) {
+	// When the included file is in the same directory as the including
+	// file, no source-dir is needed.
+	fsys := fstest.MapFS{
+		"catalog.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: catalog.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "index.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.NotContains(t, result, "source-dir:")
+}
+
+func TestFix_InjectsSourceDirForRootInclude(t *testing.T) {
+	// When a subdir file includes a root-level file, source-dir: "."
+	// should be injected so catalog globs resolve from the project root.
+	fsys := fstest.MapFS{
+		"root-catalog.md": {Data: []byte(
+			"<?catalog\nglob: \"*.md\"\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: ../root-catalog.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "docs/index.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.Contains(t, result, `source-dir: "."`)
+}
+
+func TestFix_SkipsSourceDirForSingleLinePI(t *testing.T) {
+	// Single-line PIs like <?foo?> should not get source-dir injected.
+	fsys := fstest.MapFS{
+		"sub/content.md": {Data: []byte(
+			"<?foo?>\nSome text\n",
+		)},
+	}
+	src := "<?include\nfile: sub/content.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "root.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.NotContains(t, result, "source-dir:")
+}
+
+func TestFix_SkipsSourceDirIfAlreadyPresent(t *testing.T) {
+	// If a PI already has source-dir, don't inject a second one.
+	fsys := fstest.MapFS{
+		"sub/content.md": {Data: []byte(
+			"<?catalog\nsource-dir: \"other\"\nglob: \"*.md\"\n?>\n<?/catalog?>\n",
+		)},
+	}
+	src := "<?include\nfile: sub/content.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "root.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	// Should keep the existing source-dir, not add another.
+	assert.Equal(t, 1, strings.Count(result, "source-dir:"))
+}
+
+func TestFix_NoSourceDirForPlainText(t *testing.T) {
+	// Included content with no PIs should not get source-dir.
+	fsys := fstest.MapFS{
+		"sub/plain.md": {Data: []byte("# Plain\n\nJust text.\n")},
+	}
+	src := "<?include\nfile: sub/plain.md\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "root.md", src, fsys)
+	r := &Rule{}
+	result := string(r.Fix(f))
+
+	assert.NotContains(t, result, "source-dir:")
 }
 
 // =====================================================================

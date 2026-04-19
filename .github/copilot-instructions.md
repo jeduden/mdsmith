@@ -16,6 +16,7 @@ mdsmith — a Markdown linter written in Go.
 - [Plan template; see PLAN.md for status, plans live in plan/](../plan/proto.md)
 
 <?catalog
+source-dir: "."
 glob:
   - "docs/**/*.md"
   - "!docs/research/**"
@@ -129,6 +130,7 @@ reflect) without saying what is checked against what.
 ### Development Reference
 
 <?include
+source-dir: "."
 file: docs/development/index.md
 strip-frontmatter: "true"
 heading-level: "absolute"

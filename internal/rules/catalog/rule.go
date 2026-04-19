@@ -248,20 +248,64 @@ func splitIncludeExclude(glob string) (include, exclude []string) {
 	return include, exclude
 }
 
+// resolveGlobFS returns the filesystem to use for glob resolution and
+// a path prefix for display filenames. When source-dir is set (injected
+// by include expansion), globs resolve from that subdirectory of RootFS
+// and matched filenames are prefixed relative to the catalog-owning
+// file's directory so links work correctly.
+func resolveGlobFS(f *lint.File, params map[string]string) (globFS fs.FS, prefix string) {
+	sourceDir := params["source-dir"]
+	if sourceDir == "" || f.RootFS == nil {
+		return f.FS, ""
+	}
+
+	sourceDir = path.Clean(sourceDir)
+	fileDir := path.Clean(filepath.ToSlash(filepath.Dir(f.Path)))
+
+	// Compute prefix relative to the file's directory so display
+	// filenames produce correct links from the including file.
+	relPrefix, err := filepath.Rel(fileDir, sourceDir)
+	if err != nil {
+		return f.FS, ""
+	}
+	relPrefix = filepath.ToSlash(relPrefix)
+
+	if sourceDir == "." {
+		if relPrefix == "." {
+			return f.RootFS, ""
+		}
+		return f.RootFS, relPrefix
+	}
+
+	sub, err := fs.Sub(f.RootFS, sourceDir)
+	if err != nil {
+		return f.FS, ""
+	}
+	if relPrefix == "." {
+		return sub, ""
+	}
+	return sub, relPrefix
+}
+
 // buildCatalogEntries resolves glob matches, reads front matter, and
 // returns sorted file entries for the catalog directive.
 func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
-	files := resolveGlobMatches(f, params)
+	globFS, prefix := resolveGlobFS(f, params)
+	files := resolveGlobMatchesFrom(globFS, f, params)
 
 	sortKey, descending := parseSort(params)
 	_, hasRow := params["row"]
 	needFM := hasRow || (sortKey != "path" && sortKey != "filename")
 
 	entries := make([]fileEntry, 0, len(files))
-	for _, path := range files {
-		fields := map[string]any{"filename": path}
+	for _, p := range files {
+		displayPath := p
+		if prefix != "" {
+			displayPath = path.Join(prefix, p)
+		}
+		fields := map[string]any{"filename": displayPath}
 		if needFM {
-			for k, v := range readFrontMatter(f.FS, path) {
+			for k, v := range readFrontMatter(globFS, p) {
 				fields[k] = v
 			}
 		}
@@ -272,16 +316,17 @@ func buildCatalogEntries(f *lint.File, params map[string]string) []fileEntry {
 	return entries
 }
 
-// resolveGlobMatches expands include patterns, filters out exclude and
-// gitignore matches, and returns deduplicated file paths.
-func resolveGlobMatches(f *lint.File, params map[string]string) []string {
+// resolveGlobMatchesFrom expands include patterns using the given FS,
+// filters out exclude and gitignore matches, and returns deduplicated
+// file paths.
+func resolveGlobMatchesFrom(globFS fs.FS, f *lint.File, params map[string]string) []string {
 	includePatterns, excludePatterns := splitIncludeExclude(params["glob"])
 	matcher, base := resolveGitignore(f, params)
 
 	seen := make(map[string]bool)
 	var files []string
 	for _, pattern := range includePatterns {
-		matches, err := doublestar.Glob(f.FS, pattern)
+		matches, err := doublestar.Glob(globFS, pattern)
 		if err != nil {
 			continue
 		}
@@ -289,7 +334,7 @@ func resolveGlobMatches(f *lint.File, params map[string]string) []string {
 			if seen[m] {
 				continue
 			}
-			info, err := fs.Stat(f.FS, m)
+			info, err := fs.Stat(globFS, m)
 			if err != nil || info.IsDir() {
 				continue
 			}
@@ -316,7 +361,14 @@ func resolveGitignore(f *lint.File, params map[string]string) (*lint.GitignoreMa
 	if matcher == nil {
 		return nil, ""
 	}
-	base, err := filepath.Abs(filepath.Dir(f.Path))
+	baseDir := filepath.Dir(f.Path)
+	if sd := params["source-dir"]; sd != "" && f.RootDir != "" {
+		sd = path.Clean(sd)
+		if !filepath.IsAbs(sd) && !containsDotDot(sd) {
+			baseDir = filepath.Join(f.RootDir, sd)
+		}
+	}
+	base, err := filepath.Abs(baseDir)
 	if err != nil {
 		return nil, ""
 	}
