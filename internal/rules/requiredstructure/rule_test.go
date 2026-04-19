@@ -294,6 +294,66 @@ func TestCheck_WrongLevel(t *testing.T) {
 	expectDiagMsg(t, diags, "heading level mismatch")
 }
 
+// Level-mismatch diagnostics must name the offending heading so
+// readers can locate it in documents with many headings.
+func TestCheck_WrongLevel_NamesHeading(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## Settings\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"# My Rule\n\n### Settings\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `"Settings"`)
+	expectDiagMsg(t, diags, "expected h2, got h3")
+}
+
+// Unexpected-section diagnostics should tell the author which
+// required heading was expected at that position.
+func TestCheck_ExtraSection_NamesExpected(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## Goal\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"# My Plan\n\n## Prerequisites\n\n## Goal\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `unexpected section "## Prerequisites"`)
+	expectDiagMsg(t, diags, `expected "## Goal"`)
+}
+
+// Trailing extras (past the last required heading) have no
+// "expected next" to name, so the diagnostic should still be
+// emitted without an expected suffix.
+func TestCheck_ExtraSection_TrailingNoExpected(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## Goal\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"# My Plan\n\n## Goal\n\n## Trailing\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `unexpected section "## Trailing"`)
+}
+
+// When a required section appears but in the wrong order, the
+// rule should report it as out-of-order rather than double-counting
+// it as both "unexpected" and "missing required".
+func TestCheck_OutOfOrderSection(t *testing.T) {
+	schemaPath := writeSchema(t,
+		"# ?\n\n## Goal\n\n## Tasks\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"# My Plan\n\n## Tasks\n\n## Goal\n")
+	diags := r.Check(f)
+	msgs := make([]string, len(diags))
+	for i, d := range diags {
+		msgs[i] = d.Message
+	}
+	// The document holds both required sections, so the rule must
+	// not emit a "missing required" diagnostic for either.
+	for _, m := range msgs {
+		if strings.Contains(m, "missing required section") {
+			t.Errorf("unexpected missing-required diagnostic: %q (all: %v)", m, msgs)
+		}
+	}
+	expectDiagMsg(t, diags, `out of order`)
+}
+
 func TestCheck_AllPresent(t *testing.T) {
 	schemaPath := writeSchema(t,
 		"# ?\n\n## Settings\n\n## Examples\n\n### Good\n\n### Bad\n")

@@ -645,37 +645,44 @@ func checkStructure(
 ) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 
+	// Map each literal required heading text to its schema indices,
+	// so that a doc heading seen at the "wrong" position can be
+	// recognized as an out-of-order required section rather than
+	// double-counted as both "unexpected" and "missing".
+	// Wildcard, `?` and field-interpolated headings are excluded
+	// because their match depends on context.
+	requiredByText := map[string][]int{}
+	for i, req := range sch.Headings {
+		if isSectionWildcard(req) || req.Text == "?" {
+			continue
+		}
+		if fieldinterp.ContainsField(req.Text) {
+			continue
+		}
+		requiredByText[req.Text] = append(requiredByText[req.Text], i)
+	}
+
+	claimed := make(map[int]bool)
 	docIdx := 0
 	allowExtra := false
-	for _, req := range sch.Headings {
+	for schIdx, req := range sch.Headings {
 		if isSectionWildcard(req) {
 			allowExtra = true
 			continue
 		}
-
-		found := false
-		for docIdx < len(docHeadings) {
-			dh := docHeadings[docIdx]
-			if matchesSchema(req, dh) {
-				// Check level.
-				if dh.Level != req.Level {
-					diags = append(diags, makeDiag(f.Path, dh.Line,
-						fmt.Sprintf("heading level mismatch: expected h%d, got h%d",
-							req.Level, dh.Level)))
-				}
-				docIdx++
-				found = true
-				allowExtra = false
-				break
-			}
-			if !allowExtra {
-				diags = append(diags, makeDiag(f.Path, dh.Line,
-					fmt.Sprintf("unexpected section %q",
-						formatHeading(dh.Level, dh.Text))))
-			}
-			docIdx++
+		if claimed[schIdx] {
+			continue
 		}
-		if !found {
+
+		reqDiags, newIdx, found := matchRequired(
+			f, sch, docHeadings, docIdx, schIdx, requiredByText, claimed, allowExtra,
+		)
+		diags = append(diags, reqDiags...)
+		docIdx = newIdx
+		if found {
+			allowExtra = false
+		}
+		if !found && !claimed[schIdx] {
 			diags = append(diags, makeDiag(f.Path, 1,
 				fmt.Sprintf("missing required section %q",
 					formatHeading(req.Level, req.Text))))
@@ -695,6 +702,76 @@ func checkStructure(
 	}
 
 	return diags
+}
+
+// matchRequired advances docIdx to find a doc heading matching req.
+// It emits diagnostics for intervening doc headings: "unexpected" when
+// they don't match any required section, or "out of order" when they
+// match a later required section (which is then claimed to avoid a
+// follow-up "missing required" for the same text).
+func matchRequired(
+	f *lint.File,
+	sch *parsedSchema,
+	docHeadings []docHeading,
+	docIdx, schIdx int,
+	requiredByText map[string][]int,
+	claimed map[int]bool,
+	allowExtra bool,
+) ([]lint.Diagnostic, int, bool) {
+	var diags []lint.Diagnostic
+	req := sch.Headings[schIdx]
+	for docIdx < len(docHeadings) {
+		dh := docHeadings[docIdx]
+		if matchesSchema(req, dh) {
+			if dh.Level != req.Level {
+				diags = append(diags, levelMismatchDiag(f, dh, req))
+			}
+			claimed[schIdx] = true
+			return diags, docIdx + 1, true
+		}
+		if ooIdx := nextUnclaimed(requiredByText[dh.Text], claimed, schIdx+1); ooIdx >= 0 {
+			other := sch.Headings[ooIdx]
+			diags = append(diags, makeDiag(f.Path, dh.Line,
+				fmt.Sprintf("section %q out of order: expected after %q",
+					formatHeading(dh.Level, dh.Text),
+					formatHeading(req.Level, req.Text))))
+			if dh.Level != other.Level {
+				diags = append(diags, levelMismatchDiag(f, dh, other))
+			}
+			claimed[ooIdx] = true
+			docIdx++
+			continue
+		}
+		if !allowExtra {
+			diags = append(diags, makeDiag(f.Path, dh.Line,
+				fmt.Sprintf("unexpected section %q (expected %q)",
+					formatHeading(dh.Level, dh.Text),
+					formatHeading(req.Level, req.Text))))
+		}
+		docIdx++
+	}
+	return diags, docIdx, false
+}
+
+// levelMismatchDiag builds a heading level-mismatch diagnostic that
+// names the offending heading so readers can locate it quickly.
+func levelMismatchDiag(
+	f *lint.File, dh docHeading, req schemaHeading,
+) lint.Diagnostic {
+	return makeDiag(f.Path, dh.Line,
+		fmt.Sprintf("heading level mismatch for %q: expected h%d, got h%d",
+			dh.Text, req.Level, dh.Level))
+}
+
+// nextUnclaimed returns the first index in candidates that is >= minIdx
+// and not yet claimed, or -1 if none qualifies.
+func nextUnclaimed(candidates []int, claimed map[int]bool, minIdx int) int {
+	for _, idx := range candidates {
+		if idx >= minIdx && !claimed[idx] {
+			return idx
+		}
+	}
+	return -1
 }
 
 // matchesSchema checks if a document heading matches a schema heading.

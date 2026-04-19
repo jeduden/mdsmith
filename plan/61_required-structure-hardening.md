@@ -1,7 +1,7 @@
 ---
 id: 61
 title: Required Structure Rule Hardening
-status: 🔲
+status: 🔳
 ---
 # Required Structure Rule Hardening
 

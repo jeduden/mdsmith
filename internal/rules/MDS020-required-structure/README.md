@@ -158,8 +158,9 @@ Describe the goal here.
 | Condition           | Message                                                                       |
 |---------------------|-------------------------------------------------------------------------------|
 | section missing     | missing required section "## Settings"                                        |
-| wrong level         | heading level mismatch: expected h2, got h3                                   |
-| extra section       | unexpected section "## Extra"                                                 |
+| wrong level         | heading level mismatch for "Settings": expected h2, got h3                    |
+| extra section       | unexpected section "## Extra" (expected "## Settings")                        |
+| out of order        | section "## Tasks" out of order: expected after "## Goal"                     |
 | heading sync        | heading does not match frontmatter: expected "MDS001" (from id), got "MDS002" |
 | body sync           | body does not match frontmatter field "description"                           |
 | front matter schema | front matter does not satisfy schema CUE constraints: ...                     |

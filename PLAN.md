@@ -23,7 +23,7 @@ footer: |
 | 54  | ⛔     | [Conciseness Metrics Design and Implementation](plan/54_metrics-guide-tradeoffs.md)                             |
 | 56  | ⛔     | [Spike Ollama for Weasel Detection](plan/56_spike-ollama-weasel-detection.md)                                   |
 | 58  | ⛔     | [Select and Package Fast Weasel Classifier (CPU Fallback)](plan/58_classifier-model-selection-and-embedding.md) |
-| 61  | 🔲     | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                    |
+| 61  | 🔳     | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                    |
 | 62  | ✅     | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                                                |
 | 64  | ✅     | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                        |
 | 65  | 🔲     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                |
