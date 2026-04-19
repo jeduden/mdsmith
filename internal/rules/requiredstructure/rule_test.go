@@ -330,6 +330,30 @@ func TestCheck_ExtraSection_TrailingNoExpected(t *testing.T) {
 	expectDiagMsg(t, diags, `unexpected section "## Trailing"`)
 }
 
+// When a required section appears but in the wrong order, the
+// rule should report it as out-of-order rather than double-counting
+// it as both "unexpected" and "missing required".
+func TestCheck_OutOfOrderSection(t *testing.T) {
+	schemaPath := writeSchema(t,
+		"# ?\n\n## Goal\n\n## Tasks\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"# My Plan\n\n## Tasks\n\n## Goal\n")
+	diags := r.Check(f)
+	msgs := make([]string, len(diags))
+	for i, d := range diags {
+		msgs[i] = d.Message
+	}
+	// The document holds both required sections, so the rule must
+	// not emit a "missing required" diagnostic for either.
+	for _, m := range msgs {
+		if strings.Contains(m, "missing required section") {
+			t.Errorf("unexpected missing-required diagnostic: %q (all: %v)", m, msgs)
+		}
+	}
+	expectDiagMsg(t, diags, `out of order`)
+}
+
 func TestCheck_AllPresent(t *testing.T) {
 	schemaPath := writeSchema(t,
 		"# ?\n\n## Settings\n\n## Examples\n\n### Good\n\n### Bad\n")
