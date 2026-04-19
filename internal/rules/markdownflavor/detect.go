@@ -2,6 +2,7 @@ package markdownflavor
 
 import (
 	"regexp"
+	"sort"
 
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
@@ -12,8 +13,11 @@ import (
 
 // Finding records one detected feature use.
 //
-// Line and Column are 1-based and reference the document body
-// (already adjusted to match the main lint.File line numbering).
+// Line and Column are 1-based positions within the parsed document
+// body in f.Source. The engine's lint.File.AdjustDiagnostics applies
+// any front-matter LineOffset later, so detectors and Rule.Check
+// must report body-relative positions only.
+//
 // Start and End bound the feature in f.Source and are used by Fix.
 type Finding struct {
 	Feature Feature
@@ -43,13 +47,20 @@ var bareURLPattern = regexp.MustCompile(
 )
 
 // Detect runs every enabled feature detector against f and returns
-// findings in document order.
+// findings in document order. The dual-parser and bare-URL passes
+// each emit in document order on their own, but the two streams must
+// be merged: a bare URL on line 3 should sort before a footnote
+// definition on line 5 even though detectFromDual runs first.
 func Detect(f *lint.File) []Finding {
 	var out []Finding
 	dualDoc := Parser().Parser().Parse(text.NewReader(f.Source))
 
 	out = append(out, detectFromDual(f, dualDoc)...)
 	out = append(out, detectBareURLs(f)...)
+
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].Start < out[j].Start
+	})
 	return out
 }
 
@@ -181,6 +192,9 @@ func nodeByteRange(n ast.Node) (int, int) {
 		}
 	}
 	start := firstTextStart(n)
+	if start < 0 {
+		start = 0
+	}
 	return start, start
 }
 
@@ -196,19 +210,20 @@ func lineStartOf(source []byte, offset int) int {
 	return 0
 }
 
+// firstTextStart returns the byte offset of the first descendant Text
+// node, or -1 when none exists. The sentinel matters: returning 0 on
+// "not found" would point at the start of the file and shift inline
+// findings to line 1, column 1.
 func firstTextStart(n ast.Node) int {
+	if t, ok := n.(*ast.Text); ok {
+		return t.Segment.Start
+	}
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			return t.Segment.Start
-		}
 		if s := firstTextStart(c); s >= 0 {
 			return s
 		}
 	}
-	if t, ok := n.(*ast.Text); ok {
-		return t.Segment.Start
-	}
-	return 0
+	return -1
 }
 
 // makeFinding converts a byte range to a Finding with line and column

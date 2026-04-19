@@ -119,3 +119,17 @@ func TestDetectPlainCommonMark(t *testing.T) {
 	fs := findings(t, src)
 	assert.Empty(t, fs)
 }
+
+// TestDetectFindingsAreSortedByStart guards the merge ordering
+// between detectFromDual and detectBareURLs: a bare URL in line 1
+// must sort before a footnote definition further down the file.
+func TestDetectFindingsAreSortedByStart(t *testing.T) {
+	src := "https://example.com paragraph.[^1]\n\n[^1]: note body\n"
+	fs := findings(t, src)
+	require.GreaterOrEqual(t, len(fs), 2)
+	for i := 1; i < len(fs); i++ {
+		assert.LessOrEqual(t, fs[i-1].Start, fs[i].Start,
+			"finding %d (%v) precedes finding %d (%v) but has greater Start",
+			i-1, fs[i-1], i, fs[i])
+	}
+}
