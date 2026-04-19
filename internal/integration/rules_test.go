@@ -32,6 +32,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"
 	_ "github.com/jeduden/mdsmith/internal/rules/listindent"
 	_ "github.com/jeduden/mdsmith/internal/rules/maxfilelength"
+	_ "github.com/jeduden/mdsmith/internal/rules/maxsectionlength"
 	_ "github.com/jeduden/mdsmith/internal/rules/nobareurls"
 	_ "github.com/jeduden/mdsmith/internal/rules/noduplicateheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
@@ -129,6 +130,7 @@ func applySettingsToRule(
 }
 
 func TestRuleFixtures(t *testing.T) {
+	primeDirectoryStructureWarnOnce(t)
 	dirs := discoverFixtureDirs(t)
 
 	for _, dir := range dirs {
@@ -375,6 +377,28 @@ func runFixSingleFile(
 }
 
 // --- shared helpers ---
+
+// primeDirectoryStructureWarnOnce fires MDS033's "no allowed patterns"
+// sync.Once warning up front. Without this, test cleanup in
+// applySettingsToRule leaves MDS033 in a configured-but-empty state,
+// so the warning would fire the first time any post-MDS033 fixture
+// calls checkAllRules, producing a spurious diagnostic.
+func primeDirectoryStructureWarnOnce(t *testing.T) {
+	t.Helper()
+	r := rule.ByID("MDS033")
+	if r == nil {
+		return
+	}
+	cr, ok := r.(rule.Configurable)
+	if !ok {
+		return
+	}
+	require.NoError(t, cr.ApplySettings(map[string]any{"allowed": []any{}}))
+	f, err := lint.NewFile("prime.md", []byte("# x\n"))
+	require.NoError(t, err)
+	_ = r.Check(f)
+	require.NoError(t, cr.ApplySettings(cr.DefaultSettings()))
+}
 
 func discoverFixtureDirs(t *testing.T) []string {
 	t.Helper()

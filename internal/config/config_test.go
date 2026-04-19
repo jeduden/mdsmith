@@ -28,6 +28,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"
 	_ "github.com/jeduden/mdsmith/internal/rules/listindent"
 	_ "github.com/jeduden/mdsmith/internal/rules/maxfilelength"
+	_ "github.com/jeduden/mdsmith/internal/rules/maxsectionlength"
 	_ "github.com/jeduden/mdsmith/internal/rules/nobareurls"
 	_ "github.com/jeduden/mdsmith/internal/rules/noduplicateheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
