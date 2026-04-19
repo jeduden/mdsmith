@@ -1,7 +1,7 @@
 ---
 id: 86
 title: Markdown flavor validation
-status: "🔲"
+status: "🔳"
 summary: >-
   New rule MDS034 that validates Markdown files against
   a declared flavor (CommonMark, GFM, Goldmark, etc.)
