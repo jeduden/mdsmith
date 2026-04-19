@@ -164,31 +164,37 @@ math, abbreviations.
 
 ## Tasks
 
-1. Add feature enum and flavor registry in
-   `internal/rules/markdownflavor/features.go`
-2. Write `SuperscriptExt` inline parser in
-   `internal/rules/markdownflavor/ext/superscript.go`
-3. Write `SubscriptExt` inline parser in
-   `internal/rules/markdownflavor/ext/subscript.go`
-4. Write `MathBlockExt` block parser in
-   `internal/rules/markdownflavor/ext/mathblock.go`
-5. Write `MathInlineExt` inline parser in
-   `internal/rules/markdownflavor/ext/mathinline.go`
-6. Write `AbbreviationExt` block parser + paragraph
-   transformer in
-   `internal/rules/markdownflavor/ext/abbreviation.go`
-7. Add tests for all five custom extensions
-8. Build dual parser with built-in + custom extensions
-9. Add AST-based detectors for all 12 features
-10. Implement `rule.go` with `Check()` and `Fix()`
-11. Implement `rule.Configurable` for MDS034: add
-    `ApplySettings` and `DefaultSettings` for `flavor`
-12. Implement `rule.Defaultable` (`EnabledByDefault`
-    returns `false`) so the rule is opt-in
-13. Register as MDS034 in category `meta`
-14. Add test fixtures in
-    `internal/rules/MDS034-markdown-flavor/`
-15. Add rule README and update docs
+- [x] Add feature enum and flavor registry in
+  `internal/rules/markdownflavor/features.go`
+- [ ] Write `SuperscriptExt` inline parser in
+  `internal/rules/markdownflavor/ext/superscript.go`
+- [ ] Write `SubscriptExt` inline parser in
+  `internal/rules/markdownflavor/ext/subscript.go`
+- [ ] Write `MathBlockExt` block parser in
+  `internal/rules/markdownflavor/ext/mathblock.go`
+- [ ] Write `MathInlineExt` inline parser in
+  `internal/rules/markdownflavor/ext/mathinline.go`
+- [ ] Write `AbbreviationExt` block parser + paragraph
+  transformer in
+  `internal/rules/markdownflavor/ext/abbreviation.go`
+- [ ] Add tests for all five custom extensions
+- [x] Build dual parser with built-in extensions (custom
+  extensions pending)
+- [x] Add AST-based detectors for the seven built-in
+  features (tables, task lists, strikethrough, bare-URL
+  autolinks, footnotes, definition lists, heading IDs);
+  the five custom features remain pending
+- [x] Implement `rule.go` with `Check()`; `Fix()` is
+  pending
+- [x] Implement `rule.Configurable` for MDS034: add
+  `ApplySettings` and `DefaultSettings` for `flavor`
+- [x] Implement `rule.Defaultable` (`EnabledByDefault`
+  returns `false`) so the rule is opt-in
+- [x] Register as MDS034 in category `meta`
+- [x] Add test fixtures in
+  `internal/rules/MDS034-markdown-flavor/` for the seven
+  built-in features
+- [x] Add rule README and update docs
 
 ## Acceptance Criteria
 
