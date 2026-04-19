@@ -55,10 +55,13 @@ func (f *File) GetGitignore() *GitignoreMatcher {
 	return f.gitignoreVal
 }
 
-// NewFile parses source as Markdown and returns a File.
-func NewFile(path string, source []byte) (*File, error) {
-	reader := text.NewReader(source)
-	p := parser.NewParser(
+// NewParser returns a goldmark parser configured identically to the one
+// used by NewFile. Rules that need to re-inspect a document (for example,
+// to consult the link reference definition map) should use this so that
+// processing-instruction blocks and other mdsmith-specific parsing
+// decisions stay consistent with the original lint parse.
+func NewParser() parser.Parser {
+	return parser.NewParser(
 		parser.WithBlockParsers(
 			append(parser.DefaultBlockParsers(),
 				PIBlockParserPrioritized(),
@@ -71,7 +74,12 @@ func NewFile(path string, source []byte) (*File, error) {
 			parser.DefaultParagraphTransformers()...,
 		),
 	)
-	node := p.Parse(reader)
+}
+
+// NewFile parses source as Markdown and returns a File.
+func NewFile(path string, source []byte) (*File, error) {
+	reader := text.NewReader(source)
+	node := NewParser().Parse(reader)
 
 	lines := bytes.Split(source, []byte("\n"))
 

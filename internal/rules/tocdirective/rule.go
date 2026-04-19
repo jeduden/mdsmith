@@ -10,7 +10,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -120,17 +119,17 @@ func buildMessage(token string) string {
 }
 
 // hasTOCLinkReference returns true when the document defines a link
-// reference with label "TOC" (CommonMark-normalized). Re-parsing is the
-// simplest way to delegate label normalization and code-block scoping to
-// goldmark itself, rather than approximating them with a source-level
-// scan.
+// reference with label "TOC" (CommonMark-normalized). It re-parses with
+// lint.NewParser so the parser configuration (including mdsmith's PI
+// block parser) matches the original lint parse; otherwise content
+// absorbed into a processing-instruction block could register as a link
+// reference here while being hidden from the rule's AST walk.
 func hasTOCLinkReference(source []byte) bool {
 	if len(source) == 0 {
 		return false
 	}
-	md := goldmark.New()
 	ctx := parser.NewContext()
-	md.Parser().Parse(text.NewReader(source), parser.WithContext(ctx))
+	lint.NewParser().Parse(text.NewReader(source), parser.WithContext(ctx))
 	_, ok := ctx.Reference("toc")
 	return ok
 }
