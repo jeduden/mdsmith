@@ -275,6 +275,17 @@ func makeFinding(f *lint.File, feat Feature, start, end int) Finding {
 	return Finding{Feature: feat, Line: line, Column: col, Start: start, End: end}
 }
 
+// isASCIISpace reports whether b is one of the ASCII whitespace
+// bytes that can legitimately appear after a heading's attribute
+// block before the line's newline.
+func isASCIISpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\r', '\v', '\f':
+		return true
+	}
+	return false
+}
+
 func lineCol(source []byte, offset int) (int, int) {
 	if offset < 0 {
 		offset = 0
@@ -344,8 +355,9 @@ func findHeadingID(f *lint.File, h *ast.Heading) (Finding, bool) {
 	}
 	attrStart := brace
 	attrEnd := lineEnd
-	// Trim trailing whitespace so fixes keep tidy line endings.
-	for attrEnd > attrStart && f.Source[attrEnd-1] == ' ' {
+	// Trim trailing ASCII whitespace so fixes keep tidy line endings
+	// even when the heading line ends with a tab or CRLF.
+	for attrEnd > attrStart && isASCIISpace(f.Source[attrEnd-1]) {
 		attrEnd--
 	}
 	line, col := lineCol(f.Source, attrStart)

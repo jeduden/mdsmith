@@ -111,6 +111,25 @@ func TestDetectHeadingID(t *testing.T) {
 	require.True(t, hasFeature(fs, FeatureHeadingIDs))
 }
 
+// TestDetectHeadingIDTrimsAllASCIIWhitespace guards the trailing-
+// whitespace trim in findHeadingID: a heading that ends with a tab
+// or CRLF \r before the newline must produce an End offset that
+// stops at '}' rather than swallowing the whitespace.
+func TestDetectHeadingIDTrimsAllASCIIWhitespace(t *testing.T) {
+	for _, trailer := range []string{" \n", "\t\n", " \r\n", "\t \r\n"} {
+		src := "# Heading {#custom}" + trailer
+		fs := findings(t, src)
+		require.True(t, hasFeature(fs, FeatureHeadingIDs), "trailer=%q", trailer)
+		for _, f := range fs {
+			if f.Feature != FeatureHeadingIDs {
+				continue
+			}
+			assert.Equal(t, byte('}'), src[f.End-1],
+				"trailer=%q: End should stop at '}'", trailer)
+		}
+	}
+}
+
 func TestDetectMultipleFeatures(t *testing.T) {
 	src := "# Title {#top}\n\n- [ ] task\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n" +
 		"~~old~~ https://example.com\n"
