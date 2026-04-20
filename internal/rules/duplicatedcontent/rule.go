@@ -36,6 +36,13 @@ type Rule struct {
 	MinChars int
 }
 
+// EnabledByDefault implements rule.Defaultable. MDS037 is opt-in: in a
+// project that intentionally shares prose across agent files (AGENTS.md,
+// CLAUDE.md, .github/copilot-instructions.md, include-expanded docs) the
+// default behavior would fire on every boilerplate paragraph. Projects
+// that want duplication checks enable it explicitly in `.mdsmith.yml`.
+func (r *Rule) EnabledByDefault() bool { return false }
+
 // ID implements rule.Rule.
 func (r *Rule) ID() string { return "MDS037" }
 
@@ -43,7 +50,7 @@ func (r *Rule) ID() string { return "MDS037" }
 func (r *Rule) Name() string { return "duplicated-content" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "content" }
+func (r *Rule) Category() string { return "meta" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
