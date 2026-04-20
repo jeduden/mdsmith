@@ -134,6 +134,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // selects a built-in archetype, the returned path is empty because such
 // schemas cannot reference on-disk include fragments.
 func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
+	if r.Schema != "" && r.Archetype != "" {
+		return nil, "", fmt.Errorf(
+			"schema and archetype are mutually exclusive")
+	}
 	if r.Archetype != "" {
 		data, err := archetypes.Lookup(r.Archetype)
 		if err != nil {

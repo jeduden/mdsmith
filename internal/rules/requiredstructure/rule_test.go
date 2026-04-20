@@ -175,6 +175,15 @@ func TestCheck_ArchetypeUnknown(t *testing.T) {
 	expectDiagMsg(t, diags, "unknown archetype")
 }
 
+func TestCheck_SchemaAndArchetypeBothSet(t *testing.T) {
+	// Bypass ApplySettings to simulate a direct struct construction
+	// with both fields set; the Check path must still guard.
+	r := &Rule{Schema: "foo.md", Archetype: "story-file"}
+	f := newTestFile(t, "doc.md", "# Title\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "mutually exclusive")
+}
+
 func TestSchemaSource(t *testing.T) {
 	assert.Equal(t, "foo.md", (&Rule{Schema: "foo.md"}).schemaSource())
 	assert.Equal(t, "archetype:story-file",

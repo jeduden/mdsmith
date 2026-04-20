@@ -1,6 +1,8 @@
 package archetypes
 
 import (
+	"errors"
+	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,4 +40,20 @@ func TestLookup_UnknownNameListsAvailable(t *testing.T) {
 	_, err := Lookup("not-real")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "story-file")
+	assert.Contains(t, err.Error(), "unknown archetype")
+}
+
+func TestClassifyLookupError_MissingEntry(t *testing.T) {
+	err := classifyLookupError("foo", fs.ErrNotExist, []string{"a", "b"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown archetype")
+	assert.Contains(t, err.Error(), "a, b")
+}
+
+func TestClassifyLookupError_UnexpectedError(t *testing.T) {
+	boom := errors.New("io failure")
+	err := classifyLookupError("foo", boom, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading archetype")
+	assert.True(t, errors.Is(err, boom))
 }
