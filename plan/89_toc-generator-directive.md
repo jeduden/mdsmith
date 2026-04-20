@@ -105,8 +105,8 @@ rule.
 [cfri]: ../internal/rules/crossfilereferenceintegrity/rule.go
 
 Indentation uses the same per-level indent as
-the MDS016 `list-indent` rule (config key
-`list-indent.spaces`, default 2). There is no
+the MDS016 `list-indent` rule's `spaces`
+setting (default 2). There is no
 `<?listindent?>` directive; indentation is a
 property of the emitted output, not a
 configurable parameter of `<?toc?>`.
