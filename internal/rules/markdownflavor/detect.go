@@ -1,6 +1,7 @@
 package markdownflavor
 
 import (
+	"bytes"
 	"regexp"
 	"sort"
 
@@ -44,6 +45,10 @@ type HeadingIDExtra struct {
 	AttrStart int // byte offset of '{'
 	AttrEnd   int // byte offset one past '}'
 }
+
+// alertTokenRe matches the exact content of a GitHub Alert marker line
+// inside a blockquote (case-sensitive per GFM spec).
+var alertTokenRe = regexp.MustCompile(`^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$`)
 
 // bareURLPattern mirrors goldmark's linkify http/https/ftp URL regex
 // closely enough to catch bare URLs in text. Anchors removed so it can
@@ -90,6 +95,10 @@ func DetectFiltered(f *lint.File, accept func(Feature) bool) []Finding {
 
 	if keep(FeatureBareURLAutolinks) {
 		out = append(out, detectBareURLs(f)...)
+	}
+
+	if keep(FeatureGitHubAlerts) {
+		out = append(out, detectGitHubAlerts(f)...)
 	}
 
 	sort.SliceStable(out, func(i, j int) bool {
@@ -487,4 +496,40 @@ func insideNonBareContext(n ast.Node) bool {
 		}
 	}
 	return false
+}
+
+// detectGitHubAlerts walks f.AST for Blockquote nodes whose first paragraph
+// child starts with a GFM alert token (e.g. [!NOTE]).
+func detectGitHubAlerts(f *lint.File) []Finding {
+	var findings []Finding
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		bq, ok := n.(*ast.Blockquote)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		if isGitHubAlert(bq, f.Source) {
+			findings = append(findings, blockFinding(f, bq, FeatureGitHubAlerts))
+		}
+		return ast.WalkContinue, nil
+	})
+	return findings
+}
+
+// isGitHubAlert reports whether bq is a GitHub Alert blockquote: its first
+// paragraph child's first line matches one of the five GFM alert tokens.
+func isGitHubAlert(bq *ast.Blockquote, source []byte) bool {
+	para, ok := bq.FirstChild().(*ast.Paragraph)
+	if !ok {
+		return false
+	}
+	lines := para.Lines()
+	if lines == nil || lines.Len() == 0 {
+		return false
+	}
+	seg := lines.At(0)
+	firstLine := bytes.TrimRight(source[seg.Start:seg.Stop], "\r\n")
+	return alertTokenRe.Match(firstLine)
 }

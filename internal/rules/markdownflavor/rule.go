@@ -2,6 +2,9 @@ package markdownflavor
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/yuin/goldmark/ast"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -92,7 +95,52 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
+// Fix implements rule.FixableRule. It removes the [!TOKEN] marker line from
+// GitHub Alert blockquotes when the configured flavor does not support them.
+// If the marker is the only line in the blockquote, the whole blockquote is
+// removed.
+func (r *Rule) Fix(f *lint.File) []byte {
+	if r.Flavor == 0 || r.Flavor.Supports(FeatureGitHubAlerts) {
+		return f.Source
+	}
+
+	skip := map[int]bool{}
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		bq, ok := n.(*ast.Blockquote)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		if !isGitHubAlert(bq, f.Source) {
+			return ast.WalkContinue, nil
+		}
+		para := bq.FirstChild().(*ast.Paragraph)
+		lines := para.Lines()
+		seg := lines.At(0)
+		markerLine, _ := lineCol(f.Source, seg.Start)
+		skip[markerLine] = true
+		return ast.WalkContinue, nil
+	})
+
+	if len(skip) == 0 {
+		return f.Source
+	}
+
+	var out []string
+	for i, line := range f.Lines {
+		lineNum := i + 1
+		if skip[lineNum] {
+			continue
+		}
+		out = append(out, string(line))
+	}
+	return []byte(strings.Join(out, "\n"))
+}
+
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.FixableRule  = (*Rule)(nil)
 )

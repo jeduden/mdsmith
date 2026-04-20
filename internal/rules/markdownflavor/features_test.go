@@ -80,7 +80,7 @@ func TestFeatureSupportCommonMark(t *testing.T) {
 func TestFeatureSupportGFM(t *testing.T) {
 	assertSupports(t, FlavorGFM,
 		FeatureTables, FeatureTaskLists, FeatureStrikethrough,
-		FeatureBareURLAutolinks)
+		FeatureBareURLAutolinks, FeatureGitHubAlerts)
 }
 
 func TestFeatureSupportGoldmark(t *testing.T) {
@@ -122,8 +122,8 @@ func TestFeatureSupportMyST(t *testing.T) {
 }
 
 func TestAllFeaturesComplete(t *testing.T) {
-	// Ensure AllFeatures enumerates exactly the 12 features we track.
-	require.Len(t, AllFeatures(), 12)
+	// Ensure AllFeatures enumerates exactly the 13 features we track.
+	require.Len(t, AllFeatures(), 13)
 }
 
 func TestFeatureName(t *testing.T) {
@@ -139,4 +139,5 @@ func TestFeatureName(t *testing.T) {
 	assert.Equal(t, "math blocks", FeatureMathBlock.Name())
 	assert.Equal(t, "inline math", FeatureMathInline.Name())
 	assert.Equal(t, "abbreviations", FeatureAbbreviations.Name())
+	assert.Equal(t, "github alerts", FeatureGitHubAlerts.Name())
 }

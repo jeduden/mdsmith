@@ -108,6 +108,7 @@ const (
 	FeatureMathBlock
 	FeatureMathInline
 	FeatureAbbreviations
+	FeatureGitHubAlerts
 )
 
 // AllFeatures returns every tracked feature in declaration order.
@@ -125,6 +126,7 @@ func AllFeatures() []Feature {
 		FeatureMathBlock,
 		FeatureMathInline,
 		FeatureAbbreviations,
+		FeatureGitHubAlerts,
 	}
 }
 
@@ -136,6 +138,8 @@ func (f Feature) Verb() string {
 	case FeatureStrikethrough, FeatureSuperscript, FeatureSubscript,
 		FeatureMathInline:
 		return "is"
+	case FeatureGitHubAlerts:
+		return "are"
 	}
 	return "are"
 }
@@ -167,6 +171,8 @@ func (f Feature) Name() string {
 		return "inline math"
 	case FeatureAbbreviations:
 		return "abbreviations"
+	case FeatureGitHubAlerts:
+		return "github alerts"
 	}
 	return ""
 }
@@ -183,6 +189,7 @@ var support = map[Flavor]map[Feature]bool{
 		FeatureTaskLists:        true,
 		FeatureStrikethrough:    true,
 		FeatureBareURLAutolinks: true,
+		FeatureGitHubAlerts:     true,
 	},
 	FlavorGoldmark: {
 		FeatureTables:           true,
