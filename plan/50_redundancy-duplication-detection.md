@@ -1,7 +1,7 @@
 ---
 id: 50
 title: Redundancy / Duplication Detection
-status: 🔲
+status: 🔳
 ---
 # Redundancy / Duplication Detection
 
