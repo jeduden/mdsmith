@@ -1,7 +1,7 @@
 ---
 id: 69
 title: 'Include enhancements: link adjustment and heading-level'
-status: "🔲"
+status: "✅"
 ---
 # Include enhancements
 
@@ -77,53 +77,53 @@ has `## Build` (level 2) and `### Sub` (level 3).
 
 ## Tasks
 
-1. Add a helper `adjustLinks(content,
+1. [x] Add a helper `adjustLinks(content,
    includedFilePath, includingFilePath)` in
    [`internal/rules/include/`](../internal/rules/include/)
    that rewrites relative link/image targets
-2. Write unit tests for `adjustLinks`: same directory
+2. [x] Write unit tests for `adjustLinks`: same directory
    (no-op), different directories, anchors and
    absolute URLs left untouched, query strings
    preserved
-3. Call `adjustLinks` in `generateIncludeContent`
+3. [x] Call `adjustLinks` in `generateIncludeContent`
    after frontmatter stripping, before wrap
-4. Add a helper `adjustHeadings(content, parentLevel)`
+4. [x] Add a helper `adjustHeadings(content, parentLevel)`
    that shifts ATX and setext heading levels
-5. Write unit tests for `adjustHeadings`: shift up,
+5. [x] Write unit tests for `adjustHeadings`: shift up,
    shift down, cap at 6, no headings (no-op)
-6. Extend `validateIncludeDirective` to accept and
+6. [x] Extend `validateIncludeDirective` to accept and
    validate the `heading-level` parameter (only
    `"absolute"` is valid)
-7. In `generateIncludeContent`, detect the parent
+7. [x] In `generateIncludeContent`, detect the parent
    heading level from the marker position and call
    `adjustHeadings` when `heading-level: "absolute"`
-8. Add test for parent-level detection (marker under
+8. [x] Add test for parent-level detection (marker under
    h2, under h3, at document root)
-9. Update the rule README at
+9. [x] Update the rule README at
    [`MDS021-include/README.md`](../internal/rules/MDS021-include/README.md)
    to document both features
-10. Update existing fixtures and tests if link
+10. [x] Update existing fixtures and tests if link
     adjustment changes their expected output
-11. Run `go test ./...`, `go tool golangci-lint run`,
+11. [x] Run `go test ./...`, `go tool golangci-lint run`,
     and `mdsmith check .`
 
 ## Acceptance Criteria
 
-- [ ] Relative links in included content are rewritten
+- [x] Relative links in included content are rewritten
       so they resolve from the including file's
       directory, not the source file's directory
-- [ ] Absolute URLs, anchor-only links (`#foo`), and
+- [x] Absolute URLs, anchor-only links (`#foo`), and
       protocol links (`http://`, `https://`) are not
       modified
-- [ ] `heading-level: "absolute"` shifts headings so
+- [x] `heading-level: "absolute"` shifts headings so
       the included top-level headings appear one level
       below the enclosing section
-- [ ] When `heading-level` is omitted, heading levels
+- [x] When `heading-level` is omitted, heading levels
       stay unchanged
-- [ ] Heading level never exceeds 6
-- [ ] Invalid `heading-level` values produce a diagnostic
-- [ ] Link adjustment is always applied (no parameter
+- [x] Heading level never exceeds 6
+- [x] Invalid `heading-level` values produce a diagnostic
+- [x] Link adjustment is always applied (no parameter
       needed)
-- [ ] All tests pass: `go test ./...`
-- [ ] `golangci-lint run` reports no issues
-- [ ] `mdsmith check .` reports zero diagnostics
+- [x] All tests pass: `go test ./...`
+- [x] `golangci-lint run` reports no issues
+- [x] `mdsmith check .` reports zero diagnostics
