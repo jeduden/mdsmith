@@ -1,7 +1,7 @@
 ---
 id: 52
 title: Archetype / Template Library for Agentic Patterns
-status: 🔲
+status: 🔳
 ---
 # Archetype / Template Library for Agentic Patterns
 
