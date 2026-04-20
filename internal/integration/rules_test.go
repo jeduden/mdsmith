@@ -141,15 +141,13 @@ func applySettingsToRule(
 }
 
 func TestRuleFixtures(t *testing.T) {
-	primeDirectoryStructureWarnOnce(t)
 	dirs := discoverFixtureDirs(t)
 
 	// MDS033's "no allowed patterns" warning is gated by a
 	// process-level sync.Once. After MDS033's own fixtures run, the
 	// rule is left in configured=true / allowed=[] state by the
-	// defaults-based cleanup. That would fire the warning on the
-	// first checkAllRules walk in any later rule's tests. Consume
-	// the guard up front so the leak cannot surface.
+	// defaults-based cleanup. Silence the guard explicitly so later
+	// checkAllRules walks do not depend on warning emission order.
 	directorystructure.SilenceConfigWarningForTesting()
 
 	for _, dir := range dirs {
@@ -396,28 +394,6 @@ func runFixSingleFile(
 }
 
 // --- shared helpers ---
-
-// primeDirectoryStructureWarnOnce fires MDS033's "no allowed patterns"
-// sync.Once warning up front. Without this, test cleanup in
-// applySettingsToRule leaves MDS033 in a configured-but-empty state,
-// so the warning would fire the first time any post-MDS033 fixture
-// calls checkAllRules, producing a spurious diagnostic.
-func primeDirectoryStructureWarnOnce(t *testing.T) {
-	t.Helper()
-	r := rule.ByID("MDS033")
-	if r == nil {
-		return
-	}
-	cr, ok := r.(rule.Configurable)
-	if !ok {
-		return
-	}
-	require.NoError(t, cr.ApplySettings(map[string]any{"allowed": []any{}}))
-	f, err := lint.NewFile("prime.md", []byte("# x\n"))
-	require.NoError(t, err)
-	_ = r.Check(f)
-	require.NoError(t, cr.ApplySettings(cr.DefaultSettings()))
-}
 
 func discoverFixtureDirs(t *testing.T) []string {
 	t.Helper()
