@@ -149,6 +149,62 @@ func TestCheck_NoFSIsNoop(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+func TestApplySettings_MinChars(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"min-chars": 50}))
+	assert.Equal(t, 50, r.MinChars)
+}
+
+func TestApplySettings_IncludeExclude(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"include": []any{"docs/**"},
+		"exclude": []any{"**/draft.md"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"docs/**"}, r.Include)
+	assert.Equal(t, []string{"**/draft.md"}, r.Exclude)
+}
+
+func TestApplySettings_RejectsUnknownKey(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"unknown": 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown setting")
+}
+
+func TestApplySettings_RejectsBadTypes(t *testing.T) {
+	r := &Rule{}
+	require.Error(t, r.ApplySettings(map[string]any{"min-chars": "oops"}))
+	require.Error(t, r.ApplySettings(map[string]any{"min-chars": -1}))
+	require.Error(t, r.ApplySettings(map[string]any{"include": "not-a-list"}))
+}
+
+func TestApplySettings_RejectsBadGlob(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"include": []any{"[invalid"}})
+	require.Error(t, err)
+}
+
+func TestDefaultSettings_HasMinChars(t *testing.T) {
+	d := (&Rule{}).DefaultSettings()
+	assert.Equal(t, defaultMinChars, d["min-chars"])
+	assert.Contains(t, d, "include")
+	assert.Contains(t, d, "exclude")
+}
+
+func TestCheck_ConfigDiagOnBadGlob(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+longParagraph("xyz")+"\n")
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	r := &Rule{Include: []string{"[invalid"}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, "duplicated-content")
+}
+
 func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
 	t.Helper()
 	data, err := os.ReadFile(path)

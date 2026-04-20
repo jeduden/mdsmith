@@ -51,6 +51,17 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return nil
 	}
 
+	// Validate config first so bad globs surface even on files that
+	// contain no qualifying paragraphs.
+	includeMatchers, err := compileMatchers(r.Include)
+	if err != nil {
+		return []lint.Diagnostic{configDiag(f, r, err)}
+	}
+	excludeMatchers, err := compileMatchers(r.Exclude)
+	if err != nil {
+		return []lint.Diagnostic{configDiag(f, r, err)}
+	}
+
 	minChars := r.MinChars
 	if minChars <= 0 {
 		minChars = defaultMinChars
@@ -64,15 +75,6 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	corpus, selfName := resolveCorpus(f)
 	if corpus == nil {
 		return nil
-	}
-
-	includeMatchers, err := compileMatchers(r.Include)
-	if err != nil {
-		return []lint.Diagnostic{configDiag(f, r, err)}
-	}
-	excludeMatchers, err := compileMatchers(r.Exclude)
-	if err != nil {
-		return []lint.Diagnostic{configDiag(f, r, err)}
 	}
 
 	index := buildCorpusIndex(
@@ -313,3 +315,106 @@ func configDiag(f *lint.File, r *Rule, err error) lint.Diagnostic {
 		Message:  "duplicated-content: " + err.Error(),
 	}
 }
+
+// ApplySettings implements rule.Configurable.
+func (r *Rule) ApplySettings(settings map[string]any) error {
+	for k, v := range settings {
+		switch k {
+		case "include":
+			list, ok := toStringSlice(v)
+			if !ok {
+				return fmt.Errorf(
+					"duplicated-content: include must be a list of strings, got %T",
+					v,
+				)
+			}
+			r.Include = list
+		case "exclude":
+			list, ok := toStringSlice(v)
+			if !ok {
+				return fmt.Errorf(
+					"duplicated-content: exclude must be a list of strings, got %T",
+					v,
+				)
+			}
+			r.Exclude = list
+		case "min-chars":
+			n, ok := toInt(v)
+			if !ok {
+				return fmt.Errorf(
+					"duplicated-content: min-chars must be an integer, got %T",
+					v,
+				)
+			}
+			if n < 0 {
+				return fmt.Errorf(
+					"duplicated-content: min-chars must be >= 0, got %d",
+					n,
+				)
+			}
+			r.MinChars = n
+		default:
+			return fmt.Errorf("duplicated-content: unknown setting %q", k)
+		}
+	}
+
+	if _, err := compileMatchers(r.Include); err != nil {
+		return fmt.Errorf(
+			"duplicated-content: include has invalid glob pattern: %w",
+			err,
+		)
+	}
+	if _, err := compileMatchers(r.Exclude); err != nil {
+		return fmt.Errorf(
+			"duplicated-content: exclude has invalid glob pattern: %w",
+			err,
+		)
+	}
+	return nil
+}
+
+// DefaultSettings implements rule.Configurable.
+func (r *Rule) DefaultSettings() map[string]any {
+	return map[string]any{
+		"include":   []string{},
+		"exclude":   []string{},
+		"min-chars": defaultMinChars,
+	}
+}
+
+func toStringSlice(v any) ([]string, bool) {
+	switch s := v.(type) {
+	case []string:
+		return append([]string(nil), s...), true
+	case []any:
+		out := make([]string, 0, len(s))
+		for _, it := range s {
+			str, ok := it.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, str)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+func toInt(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		if n != float64(int(n)) {
+			return 0, false
+		}
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
+
+var _ rule.Configurable = (*Rule)(nil)
