@@ -90,17 +90,15 @@ heading anchor mdsmith already computes for
 cross-file heading references.
 
 Do not define a TOC-specific slug algorithm.
-Reuse the `slugify` function and
-duplicate-disambiguation logic currently in
+Reuse the `slugify` function and the
+duplicate-disambiguation logic in
 [`internal/rules/crossfilereferenceintegrity/rule.go`][cfri]
-(around lines 349 and 389). Move that helper
-into a shared package — `internal/mdtext/` is
-the natural home — and have both rules call
-the shared code so anchors stay consistent
-across rules. Repeated headings must receive
-the same `-1`, `-2`, … suffixes in source
-order as the existing reference-integrity
-rule.
+(used by `collectHeadingAnchors`). Move it
+into a shared package. `internal/mdtext/` is
+the natural home. Both rules then call shared
+code so anchors stay consistent. Repeated
+headings get `-1`, `-2`, … suffixes in source
+order, matching the reference-integrity rule.
 
 [cfri]: ../internal/rules/crossfilereferenceintegrity/rule.go
 
