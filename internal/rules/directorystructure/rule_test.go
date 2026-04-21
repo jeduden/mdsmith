@@ -157,6 +157,29 @@ func TestName(t *testing.T) {
 	assert.Equal(t, "directory-structure", r.Name(), "expected directory-structure")
 }
 
+func TestCategory(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "meta", r.Category(), "directory-structure belongs to the meta category")
+}
+
+// TestSilenceConfigWarningForTesting covers the helper used by the
+// integration runner to pre-consume the warn-once guard. Calling it
+// twice must be safe and the subsequent Check must not emit the
+// config warning even when the rule is in a configured-but-empty
+// state.
+func TestSilenceConfigWarningForTesting(t *testing.T) {
+	resetConfigWarned()
+	SilenceConfigWarningForTesting()
+	// Second call is a no-op.
+	SilenceConfigWarningForTesting()
+
+	r := newRule(t, []string{})
+	f, err := lint.NewFile("docs/a.md", []byte("# x\n"))
+	require.NoError(t, err)
+	assert.Empty(t, r.Check(f),
+		"after silencing the guard, the configured-empty warning must not fire")
+}
+
 func TestApplySettings(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{

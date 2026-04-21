@@ -20,6 +20,17 @@ func init() {
 // clones the rule per file.
 var configWarned sync.Once
 
+// SilenceConfigWarningForTesting consumes the package-level once-
+// guard with a no-op, so later checks will not fire the "no allowed
+// patterns" warning. Intended for tests that share a process and
+// cannot tolerate a misconfigured-state leak from a previous rule's
+// cleanup. Unlike resetting the sync.Once (which would race with a
+// concurrent Rule.Check), Do is safe to call at any time: after the
+// first call it is a no-op and never writes to the Once.
+func SilenceConfigWarningForTesting() {
+	configWarned.Do(func() {})
+}
+
 // Rule checks that markdown files exist only in explicitly allowed directories.
 type Rule struct {
 	Allowed    []string

@@ -52,6 +52,7 @@ row: "| [{id}]({filename}) | `{name}` | {status} | {description} |"
 | [MDS031](MDS031-unclosed-code-block/README.md)                | `unclosed-code-block`                | ready     | Fenced code blocks must have a closing fence delimiter.                                       |
 | [MDS032](MDS032-no-empty-alt-text/README.md)                  | `no-empty-alt-text`                  | ready     | Images must have non-empty alt text for accessibility.                                        |
 | [MDS033](MDS033-directory-structure/README.md)                | `directory-structure`                | ready     | Markdown files must exist only in explicitly allowed directories.                             |
+| [MDS034](MDS034-markdown-flavor/README.md)                    | `markdown-flavor`                    | ready     | Flags Markdown syntax that the declared target flavor does not render.                        |
 | [MDS035](MDS035-toc-directive/README.md)                      | `toc-directive`                      | ready     | Flag renderer-specific TOC directives that render as literal text on CommonMark and goldmark. |
 | [MDS036](MDS036-max-section-length/README.md)                 | `max-section-length`                 | ready     | Section length must not exceed per-level or per-heading limits.                               |
 <?/catalog?>

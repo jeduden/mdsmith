@@ -1,7 +1,7 @@
 ---
 id: 86
 title: Markdown flavor validation
-status: "🔲"
+status: "🔳"
 summary: >-
   New rule MDS034 that validates Markdown files against
   a declared flavor (CommonMark, GFM, Goldmark, etc.)
@@ -164,63 +164,77 @@ math, abbreviations.
 
 ## Tasks
 
-1. Add feature enum and flavor registry in
-   `internal/rules/markdownflavor/features.go`
-2. Write `SuperscriptExt` inline parser in
-   `internal/rules/markdownflavor/ext/superscript.go`
-3. Write `SubscriptExt` inline parser in
-   `internal/rules/markdownflavor/ext/subscript.go`
-4. Write `MathBlockExt` block parser in
-   `internal/rules/markdownflavor/ext/mathblock.go`
-5. Write `MathInlineExt` inline parser in
-   `internal/rules/markdownflavor/ext/mathinline.go`
-6. Write `AbbreviationExt` block parser + paragraph
-   transformer in
-   `internal/rules/markdownflavor/ext/abbreviation.go`
-7. Add tests for all five custom extensions
-8. Build dual parser with built-in + custom extensions
-9. Add AST-based detectors for all 12 features
-10. Implement `rule.go` with `Check()` and `Fix()`
-11. Implement `rule.Configurable` for MDS034: add
-    `ApplySettings` and `DefaultSettings` for `flavor`
-12. Implement `rule.Defaultable` (`EnabledByDefault`
-    returns `false`) so the rule is opt-in
-13. Register as MDS034 in category `meta`
-14. Add test fixtures in
-    `internal/rules/MDS034-markdown-flavor/`
-15. Add rule README and update docs
+- [x] Add feature enum and flavor registry in
+  `internal/rules/markdownflavor/features.go`
+- [x] Write `SuperscriptExt` inline parser in
+  `internal/rules/markdownflavor/ext/superscript.go`
+- [x] Write `SubscriptExt` inline parser in
+  `internal/rules/markdownflavor/ext/subscript.go`
+- [x] Write `MathBlockExt` block parser in
+  `internal/rules/markdownflavor/ext/mathblock.go`
+- [x] Write `MathInlineExt` inline parser in
+  `internal/rules/markdownflavor/ext/mathinline.go`
+- [x] Write `AbbreviationExt` block parser + paragraph
+  transformer in
+  `internal/rules/markdownflavor/ext/abbreviation.go`
+  <!-- Uses an AST transformer (instead of a per-
+  paragraph transformer) so definitions can appear
+  anywhere in the document; it reads the term table
+  the block parser built during Open. -->
+- [x] Add tests for all five custom extensions
+- [x] Build dual parser with built-in + custom
+  extensions (superscript, subscript, math block,
+  math inline, abbreviations)
+- [x] Add AST-based detectors for all 12 features.
+  Covered: tables, task lists, strikethrough,
+  bare-URL autolinks, footnotes, definition lists,
+  heading IDs, superscript, subscript, math blocks,
+  inline math, and abbreviations.
+- [x] Implement `rule.go` with `Check()`; `Fix()` is
+  pending
+- [x] Implement `rule.Configurable` for MDS034: add
+  `ApplySettings` and `DefaultSettings` for `flavor`
+- [x] Implement `rule.Defaultable` (`EnabledByDefault`
+  returns `false`) so the rule is opt-in
+- [x] Register as MDS034 in category `meta`
+- [x] Add test fixtures in
+  `internal/rules/MDS034-markdown-flavor/` for the seven
+  built-in features
+- [x] Add rule README and update docs
 
 ## Acceptance Criteria
 
-- [ ] `flavor: commonmark` flags tables, task lists,
+- [x] `flavor: commonmark` flags tables, task lists,
       strikethrough, bare-URL autolinks, footnotes,
       definition lists, heading IDs, superscript,
       subscript, math blocks, math inline, and
       abbreviations
-- [ ] `flavor: gfm` accepts tables, task lists,
+- [x] `flavor: gfm` accepts tables, task lists,
       strikethrough, and bare-URL autolinks; flags
       footnotes, definition lists, heading IDs,
       superscript, subscript, math blocks, math
       inline, and abbreviations
-- [ ] `flavor: goldmark` accepts tables, task lists,
+- [x] `flavor: goldmark` accepts tables, task lists,
       strikethrough, bare-URL autolinks, and heading
       IDs; flags footnotes, definition lists,
       superscript, subscript, math blocks, math
       inline, and abbreviations
-- [ ] Error messages name the unsupported feature and
+- [x] Error messages name the unsupported feature and
       the configured flavor
 - [ ] `mdsmith fix` auto-fixes fixable features
-- [ ] Non-fixable features produce diagnostics only
-- [ ] Invalid flavor name produces a config error
-- [ ] Rule is disabled by default (opt-in)
-- [ ] With `flavor: commonmark`, MDS034 reports bare
+      <!-- Fix pipeline not implemented in this
+      slice. -->
+- [x] Non-fixable features produce diagnostics only
+- [x] Invalid flavor name produces a config error
+- [x] Rule is disabled by default (opt-in)
+- [x] With `flavor: commonmark`, MDS034 reports bare
       URLs as unsupported autolinks
-- [ ] With `flavor: gfm` or `flavor: goldmark`,
+- [x] With `flavor: gfm` or `flavor: goldmark`,
       MDS034 treats bare URLs as supported syntax and
       does not emit a flavor diagnostic for them
-- [ ] MDS034 does not emit a duplicate bare-URL
+- [x] MDS034 does not emit a duplicate bare-URL
       diagnostic when the configured flavor supports
       bare URLs, even if MDS012 still enforces its
       own bare-URL style rule
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

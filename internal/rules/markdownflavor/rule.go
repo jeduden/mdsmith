@@ -1,0 +1,98 @@
+package markdownflavor
+
+import (
+	"fmt"
+
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
+)
+
+func init() {
+	rule.Register(&Rule{})
+}
+
+// Rule implements MDS034, validating Markdown against a declared
+// target flavor and flagging syntax the renderer will reject.
+type Rule struct {
+	Flavor Flavor
+}
+
+// ID implements rule.Rule.
+func (r *Rule) ID() string { return "MDS034" }
+
+// Name implements rule.Rule.
+func (r *Rule) Name() string { return "markdown-flavor" }
+
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "meta" }
+
+// EnabledByDefault implements rule.Defaultable. MDS034 is opt-in.
+func (r *Rule) EnabledByDefault() bool { return false }
+
+// ApplySettings implements rule.Configurable.
+func (r *Rule) ApplySettings(settings map[string]any) error {
+	for k, v := range settings {
+		switch k {
+		case "flavor":
+			s, ok := v.(string)
+			if !ok {
+				return fmt.Errorf("markdown-flavor: flavor must be a string, got %T", v)
+			}
+			if s == "" {
+				r.Flavor = 0
+				continue
+			}
+			fl, ok := ParseFlavor(s)
+			if !ok {
+				return fmt.Errorf(
+					"markdown-flavor: unknown flavor %q (expected one of: "+
+						"any, commonmark, gfm, goldmark, multimarkdown, myst, pandoc, phpextra)",
+					s,
+				)
+			}
+			r.Flavor = fl
+		default:
+			return fmt.Errorf("markdown-flavor: unknown setting %q", k)
+		}
+	}
+	return nil
+}
+
+// DefaultSettings implements rule.Configurable.
+func (r *Rule) DefaultSettings() map[string]any {
+	return map[string]any{
+		"flavor": "",
+	}
+}
+
+// Check implements rule.Rule.
+func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	if r.Flavor == 0 {
+		return nil
+	}
+	// Only ask detectors about features this flavor rejects. Detectors
+	// like the bare-URL regex scan then skip large files entirely when
+	// the flavor (gfm, goldmark) accepts them.
+	unsupported := func(feat Feature) bool {
+		return !r.Flavor.Supports(feat)
+	}
+	var diags []lint.Diagnostic
+	for _, found := range DetectFiltered(f, unsupported) {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     found.Line,
+			Column:   found.Column,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message: fmt.Sprintf("%s %s not supported by %s",
+				found.Feature.Name(), found.Feature.Verb(), r.Flavor),
+		})
+	}
+	return diags
+}
+
+var (
+	_ rule.Configurable = (*Rule)(nil)
+	_ rule.Defaultable  = (*Rule)(nil)
+)

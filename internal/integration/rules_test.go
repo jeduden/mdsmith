@@ -22,7 +22,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/catalog"
 	_ "github.com/jeduden/mdsmith/internal/rules/concisenessscoring"
 	_ "github.com/jeduden/mdsmith/internal/rules/crossfilereferenceintegrity"
-	_ "github.com/jeduden/mdsmith/internal/rules/directorystructure"
+	"github.com/jeduden/mdsmith/internal/rules/directorystructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/emptysectionbody"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodelanguage"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
@@ -32,6 +32,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/include"
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"
 	_ "github.com/jeduden/mdsmith/internal/rules/listindent"
+	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 	_ "github.com/jeduden/mdsmith/internal/rules/maxfilelength"
 	_ "github.com/jeduden/mdsmith/internal/rules/maxsectionlength"
 	_ "github.com/jeduden/mdsmith/internal/rules/nobareurls"
@@ -140,8 +141,14 @@ func applySettingsToRule(
 }
 
 func TestRuleFixtures(t *testing.T) {
-	primeDirectoryStructureWarnOnce(t)
 	dirs := discoverFixtureDirs(t)
+
+	// MDS033's "no allowed patterns" warning is gated by a
+	// process-level sync.Once. After MDS033's own fixtures run, the
+	// rule is left in configured=true / allowed=[] state by the
+	// defaults-based cleanup. Silence the guard explicitly so later
+	// checkAllRules walks do not depend on warning emission order.
+	directorystructure.SilenceConfigWarningForTesting()
 
 	for _, dir := range dirs {
 		base := filepath.Base(dir)
@@ -387,28 +394,6 @@ func runFixSingleFile(
 }
 
 // --- shared helpers ---
-
-// primeDirectoryStructureWarnOnce fires MDS033's "no allowed patterns"
-// sync.Once warning up front. Without this, test cleanup in
-// applySettingsToRule leaves MDS033 in a configured-but-empty state,
-// so the warning would fire the first time any post-MDS033 fixture
-// calls checkAllRules, producing a spurious diagnostic.
-func primeDirectoryStructureWarnOnce(t *testing.T) {
-	t.Helper()
-	r := rule.ByID("MDS033")
-	if r == nil {
-		return
-	}
-	cr, ok := r.(rule.Configurable)
-	if !ok {
-		return
-	}
-	require.NoError(t, cr.ApplySettings(map[string]any{"allowed": []any{}}))
-	f, err := lint.NewFile("prime.md", []byte("# x\n"))
-	require.NoError(t, err)
-	_ = r.Check(f)
-	require.NoError(t, cr.ApplySettings(cr.DefaultSettings()))
-}
 
 func discoverFixtureDirs(t *testing.T) []string {
 	t.Helper()
