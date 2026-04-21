@@ -131,6 +131,6 @@ Run linter and tests after every phase:
   remain for the 4-copy and 3-copy groups (replaced by
   `astutil.HeadingLine`/`astutil.ParagraphLine`)
 - [ ] Shared packages have 100% statement coverage
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
 - [ ] Mutation testing on shared helpers kills 95%+
