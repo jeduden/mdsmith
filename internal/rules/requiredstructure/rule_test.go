@@ -259,6 +259,41 @@ func TestDefaultSettings_ArchetypeRoots(t *testing.T) {
 		r.DefaultSettings()["archetype-roots"])
 }
 
+// newFileInRootDirOnly builds a *lint.File with RootDir set but
+// RootFS left nil, exercising the raw-os path in loadArchetype.
+func newFileInRootDirOnly(t *testing.T, root, name, body string) *lint.File {
+	t.Helper()
+	f, err := lint.NewFileFromSource(name, []byte(body), true)
+	require.NoError(t, err)
+	f.RootDir = root
+	return f
+}
+
+func TestCheck_ArchetypeResolvesWithoutRootFS(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
+		"# ?\n\n## Background\n\n## ...\n")
+	r := &Rule{Archetype: "story"}
+	f := newFileInRootDirOnly(t, root, "doc.md",
+		"# Title\n\n## Background\n\nbody\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestCheck_ArchetypeLoadFailureWithoutRootFS(t *testing.T) {
+	root := t.TempDir()
+	// Create an archetype larger than f.MaxInputBytes so
+	// lint.ReadFileLimited errors on size.
+	big := strings.Repeat("x\n", 1024)
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story", big)
+	r := &Rule{Archetype: "story"}
+	f := newFileInRootDirOnly(t, root, "doc.md", "# Title\n")
+	f.MaxInputBytes = 100
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message, "reading archetype")
+}
+
 func TestCheck_ArchetypeResolvesFromDefaultRoot(t *testing.T) {
 	root := t.TempDir()
 	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
