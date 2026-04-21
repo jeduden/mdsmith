@@ -167,6 +167,137 @@ func TestArchetypes_NoArgsShowsUsage(t *testing.T) {
 	assert.Contains(t, stderr, "Subcommands:")
 }
 
+func TestArchetypes_HelpFlag(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "--help")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stderr, "Subcommands:")
+}
+
+func TestArchetypes_InitHelpFlag(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "init", "--help")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stderr, "init")
+}
+
+func TestArchetypes_InitTooManyArgsExits2(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "init", "a", "b")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "at most one argument")
+}
+
+func TestArchetypes_ListHelpFlag(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "list", "--help")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stderr, "list")
+}
+
+func TestArchetypes_ListExtraArgExits2(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "list", "oops")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "takes no arguments")
+}
+
+func TestArchetypes_ShowHelpFlag(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "show", "--help")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stderr, "show")
+}
+
+func TestArchetypes_ShowMissingNameExits2(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "show")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "requires exactly one archetype name")
+}
+
+func TestArchetypes_PathHelpFlag(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "path", "--help")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stderr, "path")
+}
+
+func TestArchetypes_PathTooManyArgsExits2(t *testing.T) {
+	dir := archetypeTestDir(t, []string{"archetypes"}, nil)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "path", "a", "b")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "requires exactly one archetype name")
+}
+
+// badConfigDir writes an unparseable .mdsmith.yml so loadConfig
+// inside archetypesResolver fails.
+func badConfigDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"),
+		[]byte(":\n\tbad yaml\n"), 0o644))
+	return dir
+}
+
+func TestArchetypes_ListFailsOnBadConfig(t *testing.T) {
+	dir := badConfigDir(t)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "list")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith:")
+}
+
+func TestArchetypes_ShowFailsOnBadConfig(t *testing.T) {
+	dir := badConfigDir(t)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "show", "x")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith:")
+}
+
+func TestArchetypes_PathFailsOnBadConfig(t *testing.T) {
+	dir := badConfigDir(t)
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "path", "x")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith:")
+}
+
+func TestArchetypes_InitMkdirFailsOnRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+	// Pre-create the target as a regular file so MkdirAll fails.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "tmpl"), []byte("not a dir\n"), 0o644))
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "init", "tmpl")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith:")
+}
+
+func TestArchetypes_InitKeepsExistingReadme(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+
+	archDir := filepath.Join(dir, "archetypes")
+	require.NoError(t, os.MkdirAll(archDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(archDir, "README.md"), []byte("keep me\n"), 0o644))
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "init")
+	require.Equal(t, 0, code)
+	// Example should still be created but README preserved.
+	assert.Contains(t, stderr, "created")
+	assert.Contains(t, stderr, "kept    ")
+	body, err := os.ReadFile(filepath.Join(archDir, "README.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "keep me\n", string(body))
+}
+
 func TestArchetypes_RuleResolvesFromConfiguredRoot(t *testing.T) {
 	dir := archetypeTestDir(t, []string{"tmpl"}, map[[2]string]string{
 		{"tmpl", "story"}: "# ?\n\n## Summary\n\n## ...\n",

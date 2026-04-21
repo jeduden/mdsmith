@@ -936,6 +936,15 @@ func rootDirFromConfig(cfgPath string) string {
 // merged config, the path that was loaded (empty if defaults only), and
 // any error.
 func loadConfig(configPath string) (*config.Config, string, error) {
+	cfg, path, err := loadConfigRaw(configPath)
+	if err != nil {
+		return nil, "", err
+	}
+	config.InjectArchetypeRoots(cfg)
+	return cfg, path, nil
+}
+
+func loadConfigRaw(configPath string) (*config.Config, string, error) {
 	defaults := config.Defaults()
 
 	if configPath != "" {
@@ -943,30 +952,22 @@ func loadConfig(configPath string) (*config.Config, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		merged := config.Merge(defaults, loaded)
-		config.InjectArchetypeRoots(merged)
-		return merged, configPath, nil
+		return config.Merge(defaults, loaded), configPath, nil
 	}
 
 	// Try to discover a config file.
 	cwd, err := os.Getwd()
 	if err != nil {
-		merged := config.Merge(defaults, nil)
-		config.InjectArchetypeRoots(merged)
-		return merged, "", nil
+		return config.Merge(defaults, nil), "", nil
 	}
 
 	discovered, err := config.Discover(cwd)
 	if err != nil {
-		merged := config.Merge(defaults, nil)
-		config.InjectArchetypeRoots(merged)
-		return merged, "", nil
+		return config.Merge(defaults, nil), "", nil
 	}
 
 	if discovered == "" {
-		merged := config.Merge(defaults, nil)
-		config.InjectArchetypeRoots(merged)
-		return merged, "", nil
+		return config.Merge(defaults, nil), "", nil
 	}
 
 	loaded, err := config.Load(discovered)
@@ -974,9 +975,7 @@ func loadConfig(configPath string) (*config.Config, string, error) {
 		return nil, "", err
 	}
 
-	merged := config.Merge(defaults, loaded)
-	config.InjectArchetypeRoots(merged)
-	return merged, discovered, nil
+	return config.Merge(defaults, loaded), discovered, nil
 }
 
 const helpUsageText = `Usage: mdsmith help <topic>
