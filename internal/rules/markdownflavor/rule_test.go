@@ -281,3 +281,14 @@ func TestRuleFixGitHubAlertsGFMNoChange(t *testing.T) {
 	got := r.Fix(f)
 	assert.Equal(t, src, string(got))
 }
+
+func TestRuleFixGitHubAlertsLazyContinuation(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// Lazy continuation: second line has no "> " prefix but is still
+	// part of the blockquote paragraph. Fix must add it so the line
+	// stays inside a blockquote after the marker is removed.
+	f := mkFile(t, "> [!NOTE]\nlazy content\n")
+	got := r.Fix(f)
+	assert.Equal(t, "> lazy content\n", string(got))
+}

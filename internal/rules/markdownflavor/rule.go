@@ -105,6 +105,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 
 	skip := map[int]bool{}
+	addPrefix := map[int]bool{} // lazy-continuation lines that lose blockquote context
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -121,6 +122,18 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		seg := lines.At(0)
 		markerLine, _ := lineCol(f.Source, seg.Start)
 		skip[markerLine] = true
+
+		// Remaining lines of the first paragraph may use lazy continuation
+		// (no "> " prefix in the raw source). After removing the marker they
+		// would no longer be inside a blockquote, so re-add the prefix.
+		for i := 1; i < lines.Len(); i++ {
+			contSeg := lines.At(i)
+			contLine, _ := lineCol(f.Source, contSeg.Start)
+			raw := strings.TrimLeft(string(f.Lines[contLine-1]), " \t")
+			if !strings.HasPrefix(raw, ">") {
+				addPrefix[contLine] = true
+			}
+		}
 		return ast.WalkContinue, nil
 	})
 
@@ -134,7 +147,11 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		if skip[lineNum] {
 			continue
 		}
-		out = append(out, string(line))
+		s := string(line)
+		if addPrefix[lineNum] {
+			s = "> " + s
+		}
+		out = append(out, s)
 	}
 	return []byte(strings.Join(out, "\n"))
 }
