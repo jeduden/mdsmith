@@ -972,3 +972,57 @@ func TestAtomicWriteFile_StatErrorNotENOENT(t *testing.T) {
 	err := atomicWriteFile(target, []byte("new"), 0o644)
 	require.Error(t, err, "should fail when Stat returns non-ENOENT error")
 }
+
+// mockNonConvergingRule always reports a diagnostic and appends "X" on every
+// Fix call, so content never stabilises and the fixer exhausts all passes.
+type mockNonConvergingRule struct {
+	id   string
+	name string
+}
+
+func (r *mockNonConvergingRule) ID() string       { return r.id }
+func (r *mockNonConvergingRule) Name() string     { return r.name }
+func (r *mockNonConvergingRule) Category() string { return "test" }
+
+func (r *mockNonConvergingRule) Check(f *lint.File) []lint.Diagnostic {
+	return []lint.Diagnostic{{
+		File: f.Path, Line: 1, Column: 1,
+		RuleID: r.id, RuleName: r.name,
+		Severity: lint.Warning, Message: "always needs fixing",
+	}}
+}
+
+func (r *mockNonConvergingRule) Fix(f *lint.File) []byte {
+	return append(append([]byte(nil), f.Source...), 'X')
+}
+
+var _ rule.FixableRule = (*mockNonConvergingRule)(nil)
+
+func TestFix_MaxPassesBoundary(t *testing.T) {
+	// A rule whose Fix always appends "X", so content never converges.
+	// applyFixPasses must exit after exactly maxPasses (10) iterations.
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	initial := []byte("A\n")
+	require.NoError(t, os.WriteFile(mdFile, initial, 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-non-converging": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockNonConvergingRule{id: "MDS999", name: "mock-non-converging"}},
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors, "unexpected errors: %v", result.Errors)
+
+	got, err := os.ReadFile(mdFile)
+	require.NoError(t, err)
+
+	// After 10 passes each appending "X", the file should end with 10 X's.
+	const maxPasses = 10
+	assert.Equal(t, string(initial)+strings.Repeat("X", maxPasses), string(got))
+}

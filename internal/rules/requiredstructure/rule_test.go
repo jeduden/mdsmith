@@ -974,10 +974,22 @@ func TestCueExprForValue_SliceArray(t *testing.T) {
 	assert.Equal(t, `[1,"hello",true]`, expr)
 }
 
+func TestCueExprForValue_Array(t *testing.T) {
+	expr, err := cueExprForValue([]any{"a", "b"})
+	require.NoError(t, err)
+	assert.Equal(t, `["a","b"]`, expr)
+}
+
 func TestCueExprForValue_MapStringAny(t *testing.T) {
 	expr, err := cueExprForValue(map[string]any{"key": "string"})
 	require.NoError(t, err)
 	assert.Contains(t, expr, "key")
+}
+
+func TestCueExprForValue_String(t *testing.T) {
+	expr, err := cueExprForValue("string")
+	require.NoError(t, err)
+	assert.Equal(t, "string", expr)
 }
 
 func TestCueExprForValue_EmptyString(t *testing.T) {
@@ -986,10 +998,34 @@ func TestCueExprForValue_EmptyString(t *testing.T) {
 	assert.Contains(t, err.Error(), "non-empty")
 }
 
+func TestCueExprForValue_WhitespaceString(t *testing.T) {
+	_, err := cueExprForValue("  ")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty")
+}
+
+func TestCueExprForValue_Int(t *testing.T) {
+	expr, err := cueExprForValue(42)
+	require.NoError(t, err)
+	assert.Equal(t, "42", expr)
+}
+
+func TestCueExprForValue_Bool(t *testing.T) {
+	expr, err := cueExprForValue(true)
+	require.NoError(t, err)
+	assert.Equal(t, "true", expr)
+}
+
 func TestCueExprForValue_UnsupportedType(t *testing.T) {
 	_, err := cueExprForValue(uint(42))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported")
+}
+
+func TestCueExprForValue_UnsupportedStruct(t *testing.T) {
+	_, err := cueExprForValue(struct{}{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported schema value type")
 }
 
 // =====================================================================
@@ -1002,16 +1038,34 @@ func TestExtractYAML_NormalCase(t *testing.T) {
 	assert.Equal(t, []byte("key: value\n"), result)
 }
 
+func TestExtractYAML_Normal(t *testing.T) {
+	input := []byte("---\ntitle: hello\nauthor: world\n---\n")
+	got := extractYAML(input)
+	assert.Equal(t, "title: hello\nauthor: world\n", string(got))
+}
+
 func TestExtractYAML_ClosingWithoutNewline(t *testing.T) {
 	input := []byte("---\nkey: value\n---")
 	result := extractYAML(input)
 	assert.Equal(t, []byte("key: value\n"), result)
 }
 
+func TestExtractYAML_NoTrailingNewline(t *testing.T) {
+	input := []byte("---\ntitle: hello\n---")
+	got := extractYAML(input)
+	assert.Equal(t, "title: hello\n", string(got))
+}
+
 func TestExtractYAML_NoClosingDelimiter(t *testing.T) {
 	input := []byte("---\nkey: value\n")
 	result := extractYAML(input)
 	assert.Nil(t, result)
+}
+
+func TestExtractYAML_UnclosedFrontMatter(t *testing.T) {
+	input := []byte("---\ntitle: hello\n")
+	got := extractYAML(input)
+	assert.Nil(t, got, "unclosed front matter should return nil")
 }
 
 // =====================================================================
@@ -1055,7 +1109,6 @@ func TestExtractPIFileParam_MultiLine(t *testing.T) {
 	src := "<?include\nfile: other.md\n?>"
 	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
 	require.NoError(t, err)
-
 	var pi *lint.ProcessingInstruction
 	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
 		if p, ok := c.(*lint.ProcessingInstruction); ok {
@@ -1064,7 +1117,6 @@ func TestExtractPIFileParam_MultiLine(t *testing.T) {
 		}
 	}
 	require.NotNil(t, pi, "expected ProcessingInstruction in parsed AST")
-
 	result, err := extractPIFileParam(pi, []byte(src))
 	require.NoError(t, err)
 	assert.Equal(t, "other.md", result)

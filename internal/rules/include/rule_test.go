@@ -2,6 +2,8 @@ package include
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -201,6 +203,30 @@ func TestCheck_MissingFile(t *testing.T) {
 	fsys := fstest.MapFS{}
 	src := "# Doc\n\n<?include\nfile: missing.md\n?>\nold\n<?/include?>\n"
 	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "cannot read include file")
+}
+
+func TestCheck_UnreadableFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission test not reliable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("permission test not reliable as root")
+	}
+	dir := t.TempDir()
+	target := "target.md"
+	targetPath := dir + "/" + target
+	require.NoError(t, os.WriteFile(targetPath, []byte("# Target\n"), 0o644))
+	require.NoError(t, os.Chmod(targetPath, 0o000))
+	defer func() { _ = os.Chmod(targetPath, 0o644) }()
+
+	src := "# Doc\n\n<?include\nfile: " + target + "\n?>\nold\n<?/include?>\n"
+	f, err := lint.NewFile("doc.md", []byte(src))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiagMsg(t, diags, "cannot read include file")

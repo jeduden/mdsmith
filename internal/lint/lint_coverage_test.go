@@ -3,6 +3,7 @@ package lint
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -222,6 +223,34 @@ func TestNewGitignoreMatcher_NestedGitignore(t *testing.T) {
 	require.NotNil(t, m)
 	// Should have rules from both .gitignore files.
 	assert.True(t, len(m.rules) >= 2)
+}
+
+func TestNewGitignoreMatcher_UnreadableGitignore(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission test not reliable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("permission test not reliable as root")
+	}
+	dir := t.TempDir()
+	// A valid .gitignore in the root so we have something to match against.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("*.log\n"), 0o644))
+
+	// A subdirectory with an unreadable .gitignore (chmod 000).
+	sub := filepath.Join(dir, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	bad := filepath.Join(sub, ".gitignore")
+	require.NoError(t, os.WriteFile(bad, []byte("*.tmp\n"), 0o644))
+	require.NoError(t, os.Chmod(bad, 0o000))
+	defer func() { _ = os.Chmod(bad, 0o644) }()
+
+	// NewGitignoreMatcher should not panic; it silently skips unreadable files.
+	m := NewGitignoreMatcher(dir)
+	require.NotNil(t, m)
+
+	// Rules from the readable root .gitignore should still be active.
+	logFile := filepath.Join(dir, "test.log")
+	assert.True(t, m.IsIgnored(logFile, false), "*.log rule from root .gitignore should still apply")
 }
 
 func TestNewGitignoreMatcher_NegationPattern(t *testing.T) {

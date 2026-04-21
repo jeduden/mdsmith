@@ -468,9 +468,9 @@ func runInit(args []string) int {
 	return 0
 }
 
-// formatDiagnostics writes diagnostics to stderr using the specified format.
+// formatDiagnosticsTo writes diagnostics to w using the specified format.
 // Returns a non-zero exit code on write error, or 0 on success.
-func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int {
+func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) int {
 	var formatter output.Formatter
 	switch format {
 	case "json":
@@ -478,11 +478,16 @@ func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int
 	default:
 		formatter = &output.TextFormatter{Color: !noColor}
 	}
-	if err := formatter.Format(os.Stderr, diags); err != nil {
+	if err := formatter.Format(w, diags); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: error writing output: %v\n", err)
 		return 2
 	}
 	return 0
+}
+
+// formatDiagnostics writes diagnostics to stderr using the specified format.
+func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int {
+	return formatDiagnosticsTo(os.Stderr, diags, format, noColor)
 }
 
 // printErrors writes runtime errors to stderr.
