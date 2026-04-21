@@ -136,10 +136,14 @@ mdsmith archetypes show <name>         # print schema source
 mdsmith archetypes path <name>         # print resolved path
 ```
 
-`archetype` and `schema` are mutually exclusive. For
-schema composition across archetype files, use
-`<?include?>` with paths relative to the archetype
-file's directory.
+`archetype` and `schema` are mutually exclusive.
+Schema files can use `<?include?>`, but in
+`required-structure` those include paths are
+currently resolved relative to the process working
+directory, not the archetype file's directory. Keep
+archetype schemas self-contained, or run `mdsmith`
+from the project root when an archetype schema uses
+`<?include?>`.
 
 ## Allowing intentional empty sections
 

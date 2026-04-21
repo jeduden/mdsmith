@@ -68,8 +68,11 @@ func (r *Resolver) EffectiveRoots() []string {
 // readDir lists a root directory. When r.FS is explicitly set it is
 // used directly. Otherwise Resolver falls back to raw os-level
 // operations joined with r.RootDir, which permits ".." segments that
-// os.DirFS rejects. This matches how schema files are resolved in
-// the required-structure rule.
+// os.DirFS rejects. This fallback is looser than RootFS-backed
+// resolution — callers in the required-structure rule separately
+// reject parent-traversal roots when RootFS is present, so the
+// looseness only surfaces in fixture-style tests and CLI invocations
+// where RootFS is not configured.
 func (r *Resolver) readDir(root string) ([]fs.DirEntry, error) {
 	if r.FS != nil {
 		return fs.ReadDir(r.FS, root)

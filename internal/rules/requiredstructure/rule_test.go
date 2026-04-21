@@ -269,6 +269,50 @@ func newFileInRootDirOnly(t *testing.T, root, name, body string) *lint.File {
 	return f
 }
 
+func TestCheck_ArchetypeRootEscapesProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	f := newFileInRoot(t, root, "doc.md", "# Title\n")
+	r := &Rule{
+		Archetype:      "story",
+		ArchetypeRoots: []string{"../outside"},
+	}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "escapes the project root")
+}
+
+func TestCheck_ArchetypeRootAbsolute(t *testing.T) {
+	root := t.TempDir()
+	f := newFileInRoot(t, root, "doc.md", "# Title\n")
+	r := &Rule{
+		Archetype:      "story",
+		ArchetypeRoots: []string{"/etc"},
+	}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "must be a relative path")
+}
+
+func TestValidateArchetypeRoot(t *testing.T) {
+	for _, tc := range []struct {
+		root    string
+		wantErr bool
+	}{
+		{"archetypes", false},
+		{"./archetypes", false},
+		{"internal/archetypes", false},
+		{"/abs", true},
+		{"..", true},
+		{"../foo", true},
+		{"./../foo", true},
+	} {
+		err := validateArchetypeRoot(tc.root)
+		if tc.wantErr {
+			assert.Errorf(t, err, "root=%q", tc.root)
+		} else {
+			assert.NoErrorf(t, err, "root=%q", tc.root)
+		}
+	}
+}
+
 func TestCheck_ArchetypeResolvesWithoutRootFS(t *testing.T) {
 	root := t.TempDir()
 	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
