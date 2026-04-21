@@ -459,3 +459,110 @@ func TestIsWithinRoot_NonexistentOutside(t *testing.T) {
 	root := resolveAbsRoot(dir)
 	require.False(t, isWithinRoot(root, filepath.Join(parent, "nonexistent.md")))
 }
+
+// =====================================================================
+// Phase 4 coverage: DefaultSettings
+// =====================================================================
+
+func TestDefaultSettings(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	require.Equal(t, false, ds["strict"])
+	include, ok := ds["include"].([]string)
+	require.True(t, ok)
+	require.Len(t, include, 0)
+	exclude, ok := ds["exclude"].([]string)
+	require.True(t, ok)
+	require.Len(t, exclude, 0)
+}
+
+// =====================================================================
+// Phase 4 coverage: configDiag (via invalid glob in Include field)
+// =====================================================================
+
+func TestCheck_InvalidIncludeGlobReturnsConfigDiag(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [link](file.md).\n")
+
+	f := newLintFile(t, sourcePath)
+	// Bypass ApplySettings by setting Include directly to an invalid glob.
+	r := &Rule{Include: []string{"["}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "invalid rule settings")
+	require.Equal(t, "MDS027", diags[0].RuleID)
+}
+
+// =====================================================================
+// Phase 4 coverage: parseTarget edge cases
+// =====================================================================
+
+func TestParseTarget_AnchorOnly(t *testing.T) {
+	target, ok := parseTarget("#section")
+	require.True(t, ok)
+	require.Equal(t, "#section", target.Raw)
+	require.Equal(t, "section", target.Anchor)
+	require.True(t, target.LocalAnchor)
+	require.Equal(t, "", target.Path)
+}
+
+func TestParseTarget_Empty(t *testing.T) {
+	_, ok := parseTarget("")
+	require.False(t, ok)
+}
+
+func TestParseTarget_ProtocolRelative(t *testing.T) {
+	_, ok := parseTarget("//example.com/path")
+	require.False(t, ok)
+}
+
+func TestParseTarget_AbsoluteURL(t *testing.T) {
+	_, ok := parseTarget("https://example.com/path")
+	require.False(t, ok)
+}
+
+func TestParseTarget_PathWithAnchor(t *testing.T) {
+	target, ok := parseTarget("guide.md#intro")
+	require.True(t, ok)
+	require.Equal(t, "guide.md", target.Path)
+	require.Equal(t, "intro", target.Anchor)
+	require.False(t, target.LocalAnchor)
+}
+
+func TestParseTarget_EncodedPath(t *testing.T) {
+	target, ok := parseTarget("my%20file.md")
+	require.True(t, ok)
+	// url.Parse decodes percent-encoded characters in the path.
+	require.Equal(t, "my file.md", target.Path)
+}
+
+// =====================================================================
+// Phase 4 coverage: toStringSlice edge cases
+// =====================================================================
+
+func TestToStringSlice_MixedTypes(t *testing.T) {
+	_, ok := toStringSlice([]any{"valid", 123})
+	require.False(t, ok)
+}
+
+func TestToStringSlice_NonSlice(t *testing.T) {
+	_, ok := toStringSlice("not a slice")
+	require.False(t, ok)
+}
+
+// =====================================================================
+// Phase 4 coverage: anchor-only local ref validated against self anchors
+// =====================================================================
+
+func TestCheck_AnchorOnlyLinkMissingHeading(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	// Link to #missing which doesn't exist in the doc.
+	writeFile(t, sourcePath, "# Doc\n\nSee [here](#missing).\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "#missing")
+}

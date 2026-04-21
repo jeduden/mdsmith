@@ -100,19 +100,26 @@ Phase 3 --- error-path tests for remaining gaps:
 Phase 4 --- deep edge cases (pursue only if 95% not met
 after phases 1--3):
 
-  - [ ] `requiredstructure`: schema include cycles,
-    wildcard heading matching, CUE validation edge cases
-  - [ ] `crossfilereferenceintegrity`: anchor-only refs,
-    encoded URLs, absolute paths
-  - [ ] `concisenessscoring/classifier`: model load
-    errors, artifact validation
-  - [ ] `catalog`: missing source files, custom pad
-    values, `scanIncludesForTarget` fallback
+  - [x] `requiredstructure`: CUE value types (`[]any`,
+    `map[string]any`), `extractYAML` unclosed front
+    matter, `writeNodeText` CodeSpan branch,
+    `advanceToMatch` no-match path, `extractPIFileParam`
+    multi-line PI
+  - [x] `crossfilereferenceintegrity`: anchor-only refs,
+    encoded URLs, `DefaultSettings`, `configDiag` via
+    invalid glob, `toStringSlice` mixed types
+  - [x] `concisenessscoring/classifier`: `validateArtifact`
+    field validation (empty model_id, version, threshold,
+    weights), `compileLexicon` per-list errors
+  - [x] `catalog`: `Category`, `scanIncludesForTarget`
+    fallback paths (max depth, read error, no includes,
+    direct match, cycle skip), `resolveGitignore`
+    param variations
 
 Run linter and tests after every phase:
 
-  - [ ] `go test ./...` passes
-  - [ ] `go tool golangci-lint run` reports no issues
+  - [x] `go test ./...` passes
+  - [x] `go tool golangci-lint run` reports no issues
 
 ## Acceptance Criteria
 

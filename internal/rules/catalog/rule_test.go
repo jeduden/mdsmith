@@ -3494,3 +3494,105 @@ func TestBuildCatalogEntries_Normal_NoDiagnostics(t *testing.T) {
 	assert.Empty(t, diags)
 	assert.Equal(t, "A", entries[0].fields["title"])
 }
+
+// =====================================================================
+// Phase 4 coverage: Rule.Category
+// =====================================================================
+
+func TestRule_Category(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "meta", r.Category())
+}
+
+// =====================================================================
+// Phase 4 coverage: resolveGitignore param variations
+// =====================================================================
+
+func TestResolveGitignore_DisabledByParam(t *testing.T) {
+	f := newTestFile(t, "index.md", "")
+	matcher, base := resolveGitignore(f, map[string]string{"gitignore": "false"})
+	assert.Nil(t, matcher)
+	assert.Equal(t, "", base)
+}
+
+func TestResolveGitignore_NoMatcherAvailable(t *testing.T) {
+	f := newTestFile(t, "index.md", "")
+	// GitignoreFunc is nil → GetGitignore returns nil
+	matcher, base := resolveGitignore(f, map[string]string{})
+	assert.Nil(t, matcher)
+	assert.Equal(t, "", base)
+}
+
+func TestResolveGitignore_WithMatcherAndSourceDir(t *testing.T) {
+	dir := t.TempDir()
+	stub := &lint.GitignoreMatcher{}
+	f := &lint.File{
+		Path:    filepath.Join(dir, "index.md"),
+		RootDir: dir,
+		GitignoreFunc: func() *lint.GitignoreMatcher {
+			return stub
+		},
+	}
+	params := map[string]string{"source-dir": "docs"}
+	matcher, base := resolveGitignore(f, params)
+	assert.Same(t, stub, matcher)
+	assert.NotEmpty(t, base)
+	assert.True(t, filepath.IsAbs(base))
+}
+
+// =====================================================================
+// Phase 4 coverage: scanIncludesForTarget fallback paths
+// =====================================================================
+
+func TestScanIncludesForTarget_MaxDepthExceeded(t *testing.T) {
+	// Pass depth > maxIncludeDepth to immediately return false.
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
+	}
+	visited := map[string]bool{}
+	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, maxIncludeDepth+1, 1000)
+	assert.False(t, result)
+}
+
+func TestScanIncludesForTarget_FileReadError(t *testing.T) {
+	// File does not exist in FS → read error → returns false.
+	fsys := fstest.MapFS{}
+	visited := map[string]bool{}
+	result := scanIncludesForTarget(fsys, "nonexistent.md", "target.md", visited, 0, 1000)
+	assert.False(t, result)
+}
+
+func TestScanIncludesForTarget_NoIncludes(t *testing.T) {
+	// File exists but has no <?include?> directives → returns false.
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{Data: []byte("# A\n\nNo includes here.\n")},
+	}
+	visited := map[string]bool{}
+	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, 0, 1000)
+	assert.False(t, result)
+}
+
+func TestScanIncludesForTarget_DirectMatch(t *testing.T) {
+	// File directly includes target → returns true.
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{
+			Data: []byte("<?include\nfile: target.md\n?>\nsome content\n<?/include?>"),
+		},
+	}
+	visited := map[string]bool{"a.md": true}
+	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, 0, 1000)
+	assert.True(t, result)
+}
+
+func TestScanIncludesForTarget_VisitedCycleSkipped(t *testing.T) {
+	// File includes itself (visited) → should not recurse, returns false.
+	fsys := fstest.MapFS{
+		"a.md": &fstest.MapFile{
+			Data: []byte("<?include\nfile: b.md\n?>\ncontent\n<?/include?>"),
+		},
+	}
+	// Mark b.md as already visited to prevent recursion.
+	visited := map[string]bool{"a.md": true, "b.md": true}
+	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, 0, 1000)
+	assert.False(t, result)
+}

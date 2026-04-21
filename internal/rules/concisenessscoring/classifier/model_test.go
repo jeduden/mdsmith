@@ -1,6 +1,7 @@
 package classifier
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -275,6 +276,117 @@ func TestClassify_EmptyInputKeepsCueSliceNonNil(t *testing.T) {
 			"expected zero triggered cues for empty input, got %d",
 			len(result.TriggeredCues),
 		)
+	}
+}
+
+// =====================================================================
+// Phase 4 coverage: validateArtifact field validation
+// =====================================================================
+
+func TestValidateArtifact_EmptyModelID(t *testing.T) {
+	a := artifact{ModelID: "", Version: "1.0", Threshold: 0.5}
+	err := validateArtifact(a)
+	if err == nil {
+		t.Fatal("expected error for empty model_id")
+	}
+	if !strings.Contains(err.Error(), "model_id") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateArtifact_EmptyVersion(t *testing.T) {
+	a := artifact{ModelID: "test", Version: "", Threshold: 0.5}
+	err := validateArtifact(a)
+	if err == nil {
+		t.Fatal("expected error for empty version")
+	}
+	if !strings.Contains(err.Error(), "version") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateArtifact_InvalidThreshold(t *testing.T) {
+	for _, th := range []float64{0, 1, -0.1, 1.5} {
+		a := artifact{ModelID: "test", Version: "1.0", Threshold: th}
+		err := validateArtifact(a)
+		if err == nil {
+			t.Fatalf("expected error for threshold %v", th)
+		}
+		if !strings.Contains(err.Error(), "threshold") {
+			t.Fatalf("threshold %v: unexpected error: %v", th, err)
+		}
+	}
+}
+
+func TestValidateArtifact_EmptyWeights(t *testing.T) {
+	a := artifact{
+		ModelID:   "test",
+		Version:   "1.0",
+		Threshold: 0.5,
+		Weights:   map[string]float64{},
+	}
+	err := validateArtifact(a)
+	if err == nil {
+		t.Fatal("expected error for empty weights")
+	}
+	if !strings.Contains(err.Error(), "weights") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// =====================================================================
+// Phase 4 coverage: compileLexicon per-list errors
+// =====================================================================
+
+func TestCompileLexicon_InsufficientFillerWords(t *testing.T) {
+	raw := lexiconArtifact{FillerWords: []string{}}
+	_, err := compileLexicon(raw)
+	if err == nil {
+		t.Fatal("expected error for insufficient filler_words")
+	}
+	if !strings.Contains(err.Error(), "filler_words") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompileLexicon_InsufficientModalWords(t *testing.T) {
+	fillers := make([]string, minFillerWords)
+	for i := range fillers {
+		fillers[i] = fmt.Sprintf("filler%d", i)
+	}
+	raw := lexiconArtifact{
+		FillerWords: fillers,
+		ModalWords:  []string{},
+	}
+	_, err := compileLexicon(raw)
+	if err == nil {
+		t.Fatal("expected error for insufficient modal_words")
+	}
+	if !strings.Contains(err.Error(), "modal_words") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompileLexicon_InsufficientVagueWords(t *testing.T) {
+	fillers := make([]string, minFillerWords)
+	for i := range fillers {
+		fillers[i] = fmt.Sprintf("filler%d", i)
+	}
+	modals := make([]string, minModalWords)
+	for i := range modals {
+		modals[i] = fmt.Sprintf("modal%d", i)
+	}
+	raw := lexiconArtifact{
+		FillerWords: fillers,
+		ModalWords:  modals,
+		VagueWords:  []string{},
+	}
+	_, err := compileLexicon(raw)
+	if err == nil {
+		t.Fatal("expected error for insufficient vague_words")
+	}
+	if !strings.Contains(err.Error(), "vague_words") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

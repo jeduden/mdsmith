@@ -963,3 +963,109 @@ func TestCheck_SchemaRejectsParentTraversalWithRootFS(t *testing.T) {
 	require.Len(t, diags, 1)
 	require.Contains(t, diags[0].Message, "escapes project root")
 }
+
+// =====================================================================
+// Phase 4 coverage: cueExprForValue
+// =====================================================================
+
+func TestCueExprForValue_SliceArray(t *testing.T) {
+	expr, err := cueExprForValue([]any{1, "hello", true})
+	require.NoError(t, err)
+	assert.Equal(t, `[1,"hello",true]`, expr)
+}
+
+func TestCueExprForValue_MapStringAny(t *testing.T) {
+	expr, err := cueExprForValue(map[string]any{"key": "string"})
+	require.NoError(t, err)
+	assert.Contains(t, expr, "key")
+}
+
+func TestCueExprForValue_EmptyString(t *testing.T) {
+	_, err := cueExprForValue("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty")
+}
+
+func TestCueExprForValue_UnsupportedType(t *testing.T) {
+	_, err := cueExprForValue(uint(42))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported")
+}
+
+// =====================================================================
+// Phase 4 coverage: extractYAML
+// =====================================================================
+
+func TestExtractYAML_NormalCase(t *testing.T) {
+	input := []byte("---\nkey: value\n---\n")
+	result := extractYAML(input)
+	assert.Equal(t, []byte("key: value\n"), result)
+}
+
+func TestExtractYAML_ClosingWithoutNewline(t *testing.T) {
+	input := []byte("---\nkey: value\n---")
+	result := extractYAML(input)
+	assert.Equal(t, []byte("key: value\n"), result)
+}
+
+func TestExtractYAML_NoClosingDelimiter(t *testing.T) {
+	input := []byte("---\nkey: value\n")
+	result := extractYAML(input)
+	assert.Nil(t, result)
+}
+
+// =====================================================================
+// Phase 4 coverage: writeNodeText via headingText (CodeSpan branch)
+// =====================================================================
+
+func TestHeadingText_WithCodeSpan(t *testing.T) {
+	f := newTestFile(t, "doc.md", "# Heading with `code`\n")
+	headings := extractHeadings(f)
+	require.Len(t, headings, 1)
+	assert.Equal(t, "Heading with code", headings[0].Text)
+}
+
+// =====================================================================
+// Phase 4 coverage: advanceToMatch
+// =====================================================================
+
+func TestAdvanceToMatch_NoMatch(t *testing.T) {
+	req := schemaHeading{Level: 2, Text: "Nonexistent"}
+	headings := []docHeading{
+		{Level: 1, Text: "Intro", Line: 1},
+		{Level: 2, Text: "Details", Line: 3},
+	}
+	matched, nextIdx := advanceToMatch(req, headings, 0)
+	assert.Equal(t, -1, matched)
+	assert.Equal(t, 2, nextIdx)
+}
+
+func TestAdvanceToMatch_EmptyList(t *testing.T) {
+	req := schemaHeading{Level: 2, Text: "Test"}
+	matched, nextIdx := advanceToMatch(req, nil, 0)
+	assert.Equal(t, -1, matched)
+	assert.Equal(t, 0, nextIdx)
+}
+
+// =====================================================================
+// Phase 4 coverage: extractPIFileParam multi-line
+// =====================================================================
+
+func TestExtractPIFileParam_MultiLine(t *testing.T) {
+	src := "<?include\nfile: other.md\n?>"
+	f, err := lint.NewFileFromSource("schema.md", []byte(src), true)
+	require.NoError(t, err)
+
+	var pi *lint.ProcessingInstruction
+	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
+		if p, ok := c.(*lint.ProcessingInstruction); ok {
+			pi = p
+			break
+		}
+	}
+	require.NotNil(t, pi, "expected ProcessingInstruction in parsed AST")
+
+	result, err := extractPIFileParam(pi, []byte(src))
+	require.NoError(t, err)
+	assert.Equal(t, "other.md", result)
+}
