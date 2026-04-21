@@ -3,7 +3,6 @@ package requiredstructure
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -116,9 +115,12 @@ func (r *Rule) DefaultSettings() map[string]any {
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 
-	// Warn when <?require?> appears in a non-schema file.
+	// Warn when <?require?> appears in a non-schema file. A file that
+	// lives under one of the configured archetype roots counts as a
+	// schema file here so <?require?> inside an archetype does not
+	// trigger a false positive.
 	if reqLine := findRequireDirectiveLine(f); reqLine > 0 {
-		if r.Schema == "" || !isSchemaFile(f.Path, r.Schema) {
+		if !r.isSchemaOrArchetypeFile(f) {
 			d := makeDiag(f.Path, reqLine,
 				"<?require?> is only recognized in schema files; this directive has no effect here")
 			d.Severity = lint.Warning
@@ -141,8 +143,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			fmt.Sprintf("invalid schema %q: %v", r.schemaSource(), err)))
 	}
 
-	// Skip the schema file itself when schemas come from disk.
-	if r.Schema != "" && isSchemaFile(f.Path, r.Schema) {
+	// Skip the schema file itself when schemas come from disk, or the
+	// resolved archetype file when archetype-based validation is used.
+	if r.isSchemaOrArchetypeFile(f) {
 		return diags
 	}
 
@@ -168,10 +171,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// loadSchema returns the schema bytes and resolution path. When the
-// rule selects an archetype, the path points at the resolved archetype
-// file so that schema composition via <?include?> works relative to
-// the archetype's directory.
+// loadSchema returns the schema bytes and resolution path. The
+// returned path is the disk path of a disk-based schema, or the
+// RootFS-relative path of an archetype. Note that <?include?>
+// expansion in parseSchema currently reads from the OS filesystem
+// relative to the process working directory, so archetype includes
+// only resolve correctly when mdsmith runs from the project root.
 func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
 	if r.Schema != "" && r.Archetype != "" {
 		return nil, "", fmt.Errorf(
@@ -189,19 +194,58 @@ func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
 
 // loadArchetype resolves the configured archetype and returns its
 // schema bytes along with the fs-relative path (for include
-// resolution).
+// resolution). The read is bounded by f.MaxInputBytes so
+// `--max-input-size` applies uniformly to archetype and disk-based
+// schemas.
 func (r *Rule) loadArchetype(f *lint.File) ([]byte, string, error) {
 	resolver := r.archetypeResolver(f)
 	entry, err := resolver.Lookup(r.Archetype)
 	if err != nil {
 		return nil, "", err
 	}
-	data, err := fs.ReadFile(resolver.FS, entry.Path)
+	data, err := lint.ReadFSFileLimited(resolver.FS, entry.Path, f.MaxInputBytes)
 	if err != nil {
 		return nil, "", fmt.Errorf(
 			"reading archetype %q: %w", r.Archetype, err)
 	}
 	return data, entry.Path, nil
+}
+
+// isSchemaOrArchetypeFile reports whether f is the configured
+// schema file, or any file that lives under one of the configured
+// archetype roots. Files identified this way are treated as schema
+// sources: <?require?> directives in them are meaningful, and the
+// rule skips structural validation against themselves.
+func (r *Rule) isSchemaOrArchetypeFile(f *lint.File) bool {
+	if r.Schema != "" && isSchemaFile(f.Path, r.Schema) {
+		return true
+	}
+	roots := r.ArchetypeRoots
+	if len(roots) == 0 {
+		roots = []string{DefaultArchetypeRoot}
+	}
+	// Try a plain relative-path match (covers common layouts where
+	// mdsmith runs from the project root) and an absolute-to-RootDir
+	// fallback so subdirectory invocations still work.
+	candidates := []string{filepath.ToSlash(filepath.Clean(f.Path))}
+	if f.RootDir != "" {
+		if abs, err := filepath.Abs(f.Path); err == nil {
+			if rel, err := filepath.Rel(f.RootDir, abs); err == nil {
+				candidates = append(candidates,
+					filepath.ToSlash(filepath.Clean(rel)))
+			}
+		}
+	}
+	for _, root := range roots {
+		cleanRoot := filepath.ToSlash(filepath.Clean(root)) + "/"
+		for _, c := range candidates {
+			if strings.HasPrefix(c, cleanRoot) &&
+				strings.HasSuffix(c, ".md") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // archetypeResolver builds an archetypes.Resolver from the rule's

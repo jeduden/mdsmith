@@ -102,10 +102,12 @@ archetype directory and refer to them by name.
 mdsmith archetypes init
 ```
 
-This creates `./archetypes/` (or `./archetypes/<dir>`
-if you pass one) containing an `example.md` schema
-and a `README.md`. It does not touch `.mdsmith.yml`;
-add the snippet it prints yourself.
+This creates `./archetypes/` by default. Passing a
+directory name creates exactly that directory — for
+example, `mdsmith archetypes init templates` creates
+`./templates/`. The directory gets an `example.md`
+schema and a `README.md`. `init` does not touch
+`.mdsmith.yml`; add the printed snippet yourself.
 
 ### Register roots and select an archetype
 

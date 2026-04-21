@@ -54,9 +54,13 @@ mdsmith archetypes show <name>
 mdsmith archetypes path <name>
 ```
 
-Archetypes resolve from the project root filesystem,
-so `<?include?>` fragments continue to work relative
-to the archetype file's directory.
+Archetype schemas resolve from the project root
+filesystem. `<?include?>` fragments inside an
+archetype still expand through the OS filesystem
+relative to the process working directory. Keep
+archetype schemas self-contained. Otherwise, run
+`mdsmith` from the project root so includes resolve
+correctly.
 
 Schema front matter may embed a CUE schema that
 validates document front matter:

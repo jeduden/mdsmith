@@ -49,6 +49,22 @@ func (r *Resolver) roots() []string {
 	return r.Roots
 }
 
+// EffectiveRoots returns the list of root directories actually
+// searched, substituting the default when none are configured. Each
+// returned path is joined with RootDir when RootDir is non-empty, so
+// the result is suitable for user-facing diagnostics.
+func (r *Resolver) EffectiveRoots() []string {
+	base := r.roots()
+	if r.RootDir == "" {
+		return append([]string(nil), base...)
+	}
+	out := make([]string, len(base))
+	for i, root := range base {
+		out[i] = filepath.Join(r.RootDir, root)
+	}
+	return out
+}
+
 func (r *Resolver) fs() fs.FS {
 	if r.FS != nil {
 		return r.FS

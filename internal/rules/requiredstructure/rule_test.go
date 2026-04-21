@@ -341,6 +341,22 @@ func TestCheck_ArchetypeReadErrorAfterLookup(t *testing.T) {
 	expectDiagMsg(t, diags, "reading archetype")
 }
 
+func TestCheck_ArchetypeRootFileSuppressesRequireWarning(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
+		"<?require\nfilename: \"story-*.md\"\n?>\n# ?\n")
+	// Linting the archetype file itself with default roots — no
+	// `archetype:` configured for this file — must not warn about
+	// <?require?> since it lives under the archetype root.
+	f := newFileInRoot(t, root, filepath.Join("archetypes", "story.md"),
+		"<?require\nfilename: \"story-*.md\"\n?>\n# ?\n")
+	r := &Rule{}
+	diags := r.Check(f)
+	for _, d := range diags {
+		assert.NotContains(t, d.Message, "<?require?>")
+	}
+}
+
 func TestCheck_ArchetypeEarlierRootShadowsLater(t *testing.T) {
 	root := t.TempDir()
 	writeArchetype(t, filepath.Join(root, "custom"), "story",
