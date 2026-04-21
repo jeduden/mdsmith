@@ -3,6 +3,7 @@ package lint
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -224,7 +225,10 @@ func TestNewGitignoreMatcher_NestedGitignore(t *testing.T) {
 	assert.True(t, len(m.rules) >= 2)
 }
 
-func TestNewGitignoreMatcher_MalformedGitignore(t *testing.T) {
+func TestNewGitignoreMatcher_UnreadableGitignore(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission test not reliable on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("permission test not reliable as root")
 	}
