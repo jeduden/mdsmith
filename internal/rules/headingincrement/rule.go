@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -42,7 +43,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if prevLevel == 0 {
 			// First heading: should be h1
 			if level > 1 {
-				line := headingLine(heading, f)
+				line := astutil.HeadingLine(heading, f)
 				diags = append(diags, lint.Diagnostic{
 					File:     f.Path,
 					Line:     line,
@@ -54,7 +55,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				})
 			}
 		} else if level > prevLevel+1 {
-			line := headingLine(heading, f)
+			line := astutil.HeadingLine(heading, f)
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     line,
@@ -72,18 +73,4 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	})
 
 	return diags
-}
-
-func headingLine(heading *ast.Heading, f *lint.File) int {
-	lines := heading.Lines()
-	if lines.Len() > 0 {
-		return f.LineOfOffset(lines.At(0).Start)
-	}
-	// For ATX headings, find the line via child text nodes
-	for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			return f.LineOfOffset(t.Segment.Start)
-		}
-	}
-	return 1
 }

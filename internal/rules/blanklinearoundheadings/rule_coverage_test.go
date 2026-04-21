@@ -10,73 +10,6 @@ import (
 	"github.com/yuin/goldmark/ast"
 )
 
-// --- headingLine coverage ---
-
-func TestHeadingLine_SetextHeading(t *testing.T) {
-	src := []byte("Title\n=====\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-
-	var line int
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if h, ok := n.(*ast.Heading); ok {
-			line = headingLine(h, f)
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	assert.Equal(t, 1, line)
-}
-
-func TestHeadingLine_ATXHeading(t *testing.T) {
-	src := []byte("# Title\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-
-	var line int
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if h, ok := n.(*ast.Heading); ok {
-			line = headingLine(h, f)
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	assert.Equal(t, 1, line)
-}
-
-func TestHeadingLine_Fallback_Returns1(t *testing.T) {
-	heading := ast.NewHeading(1)
-	f, err := lint.NewFile("test.md", []byte("# X\n"))
-	require.NoError(t, err)
-	line := headingLine(heading, f)
-	assert.Equal(t, 1, line)
-}
-
-func TestHeadingLine_ATXOnLaterLine(t *testing.T) {
-	src := []byte("Text\n\n## Heading\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-
-	var line int
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if h, ok := n.(*ast.Heading); ok {
-			line = headingLine(h, f)
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-	assert.Equal(t, 3, line)
-}
-
 // --- isNonBlankLine coverage ---
 
 func TestIsNonBlankLine_NonBlank(t *testing.T) {
@@ -230,6 +163,18 @@ func TestFix_Heading_InsertsBlankLines(t *testing.T) {
 	r := &Rule{}
 	result := r.Fix(f)
 	assert.Contains(t, string(result), "\n\nmore text")
+}
+
+// --- headingLastLine fallback ---
+
+func TestHeadingLastLine_NoLines_FallsBackToAstutil(t *testing.T) {
+	// Synthetic heading with no Lines() set exercises the fallback branch
+	// in headingLastLine that delegates to astutil.HeadingLine.
+	heading := ast.NewHeading(1)
+	f, err := lint.NewFile("test.md", []byte("# X\n"))
+	require.NoError(t, err)
+	last := headingLastLine(heading, f)
+	assert.Equal(t, 1, last)
 }
 
 // --- Category ---

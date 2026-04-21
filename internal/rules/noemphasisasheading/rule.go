@@ -3,6 +3,7 @@ package noemphasisasheading
 import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -53,7 +54,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		line := paragraphLine(para, f)
+		line := astutil.ParagraphLine(para, f)
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     line,
@@ -68,12 +69,4 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	})
 
 	return diags
-}
-
-func paragraphLine(para *ast.Paragraph, f *lint.File) int {
-	lines := para.Lines()
-	if lines.Len() > 0 {
-		return f.LineOfOffset(lines.At(0).Start)
-	}
-	return 1
 }
