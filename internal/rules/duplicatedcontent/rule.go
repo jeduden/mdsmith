@@ -267,6 +267,13 @@ func buildCorpusIndex(
 			return nil
 		}
 		if d.IsDir() {
+			// Prune excluded subtrees so a walk that would otherwise
+			// recurse into `.git/`, `node_modules/`, or any user-
+			// configured `exclude` entry bails out at the directory
+			// boundary instead of scanning every file inside it.
+			if path != "." && shouldSkipDir(path, exclude) {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !isMarkdownPath(path) {
@@ -309,7 +316,31 @@ func buildCorpusIndex(
 }
 
 func isMarkdownPath(p string) bool {
-	return strings.HasSuffix(strings.ToLower(p), ".md")
+	lower := strings.ToLower(p)
+	return strings.HasSuffix(lower, ".md") ||
+		strings.HasSuffix(lower, ".markdown")
+}
+
+// shouldSkipDir reports whether a directory path matches one of the
+// exclude globs and should be pruned from the walk. Matching the
+// slash path lets patterns like "vendor/**" hit at the directory
+// boundary; matching basename lets ".git" or "node_modules" skip
+// wherever they appear in the tree. Include globs are intentionally
+// not consulted here: excluding a subtree is safe, but a missing
+// include match at the directory level would skip subtree entries
+// that individual include globs could still allow.
+func shouldSkipDir(path string, exclude []glob.Glob) bool {
+	if len(exclude) == 0 {
+		return false
+	}
+	slashPath := filepath.ToSlash(path)
+	base := filepath.Base(path)
+	for _, g := range exclude {
+		if g.Match(slashPath) || g.Match(base) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchesFilters reports whether path is allowed by include/exclude.

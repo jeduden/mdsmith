@@ -37,7 +37,8 @@ scan to matching paths. An `exclude` entry takes precedence.
 
 ## Performance
 
-Each checked file reads every other `.md` file in scope. A project
+Each checked file reads every other Markdown file in scope
+(`.md` and `.markdown`). A project
 with *N* Markdown files performs *O(N²)* reads. Small and medium
 corpora stay fast. For large corpora add an `exclude` entry for
 generated or vendored directories.

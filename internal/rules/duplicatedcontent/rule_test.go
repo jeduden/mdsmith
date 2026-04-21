@@ -322,6 +322,43 @@ func TestCheck_RootFSRejectsPathEscapingRoot(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+func TestCheck_DetectsDuplicatesInDotMarkdownFiles(t *testing.T) {
+	// The linter's file discovery accepts both .md and .markdown;
+	// the rule's corpus walk must also see .markdown siblings so
+	// they are not silently excluded from duplicate detection.
+	dir := t.TempDir()
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+	writeFile(t, filepath.Join(dir, "a.markdown"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(dir, "b.markdown"), "# B\n\n"+p+"\n")
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "a.markdown"), dir)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "b.markdown")
+}
+
+func TestCheck_ExcludeDirectoryPattern_PrunesWalk(t *testing.T) {
+	// Exclude patterns that match a directory must prune the walk
+	// with fs.SkipDir so large trees like .git/ or vendor/ are not
+	// traversed on every check. Verified indirectly: an unreadable
+	// file inside the excluded subtree would otherwise cause the
+	// walker to surface an error; here we use a duplicate that
+	// would normally fire but must not be reached.
+	dir := t.TempDir()
+	vendor := filepath.Join(dir, "vendor")
+	require.NoError(t, os.MkdirAll(vendor, 0o755))
+
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(vendor, "b.md"), "# B\n\n"+p+"\n")
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	r := &Rule{Exclude: []string{"vendor"}}
+	diags := r.Check(f)
+	assert.Empty(t, diags,
+		"excluded directory 'vendor' must prune the walk, not just filter its files")
+}
+
 func TestCheck_BasenameExcludePatternMatchesAcrossDirs(t *testing.T) {
 	// Consistent with MDS027: a basename pattern ("draft.md") excludes
 	// the file regardless of which directory the walker finds it in.
