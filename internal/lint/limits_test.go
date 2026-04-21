@@ -147,3 +147,9 @@ func TestReadFSFileLimited_AtLimit(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, content, data)
 }
+
+func TestReadFSFileLimited_Nonexistent(t *testing.T) {
+	fsys := fstest.MapFS{}
+	_, err := lint.ReadFSFileLimited(fsys, "no-such.md", 100)
+	require.Error(t, err)
+}

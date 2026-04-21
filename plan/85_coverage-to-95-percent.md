@@ -83,16 +83,16 @@ Phase 2 --- AST heading and paragraph helpers:
 
 Phase 3 --- error-path tests for remaining gaps:
 
-  - [ ] `internal/fix`: test max-passes boundary (10
+  - [x] `internal/fix`: test max-passes boundary (10
     iterations without convergence)
-  - [ ] `internal/lint`: test `resolveGlob` with invalid
+  - [x] `internal/lint`: test `resolveGlob` with invalid
     patterns, `NewGitignoreMatcher` with malformed
     gitignore files
-  - [ ] `internal/rules/include`: test `readFSFile` with
+  - [x] `internal/rules/include`: test `readFSFile` with
     nonexistent and unreadable files
-  - [ ] `cmd/mdsmith`: test `formatDiagnostics` write
+  - [x] `cmd/mdsmith`: test `formatDiagnostics` write
     error via the error-writer pattern
-  - [ ] `internal/rules/requiredstructure`: test
+  - [x] `internal/rules/requiredstructure`: test
     `cueExprForValue` with `[]any` and `map[string]any`
     inputs; test `extractYAML` with unclosed front
     matter

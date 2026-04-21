@@ -468,9 +468,9 @@ func runInit(args []string) int {
 	return 0
 }
 
-// formatDiagnostics writes diagnostics to stderr using the specified format.
+// formatDiagnostics writes diagnostics to w using the specified format.
 // Returns a non-zero exit code on write error, or 0 on success.
-func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int {
+func formatDiagnostics(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) int {
 	var formatter output.Formatter
 	switch format {
 	case "json":
@@ -478,7 +478,7 @@ func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int
 	default:
 		formatter = &output.TextFormatter{Color: !noColor}
 	}
-	if err := formatter.Format(os.Stderr, diags); err != nil {
+	if err := formatter.Format(w, diags); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: error writing output: %v\n", err)
 		return 2
 	}
@@ -538,7 +538,7 @@ func checkFiles(
 	printErrors(result.Errors)
 
 	if !quiet && len(result.Diagnostics) > 0 {
-		if code := formatDiagnostics(result.Diagnostics, format, noColor); code != 0 {
+		if code := formatDiagnostics(os.Stderr, result.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
@@ -584,7 +584,7 @@ func fixFiles(
 	printErrors(fixResult.Errors)
 
 	if !quiet && len(fixResult.Diagnostics) > 0 {
-		if code := formatDiagnostics(fixResult.Diagnostics, format, noColor); code != 0 {
+		if code := formatDiagnostics(os.Stderr, fixResult.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
@@ -662,7 +662,7 @@ func checkStdin(format string, noColor, quiet, verbose bool, configPath, maxInpu
 	printErrors(result.Errors)
 
 	if !quiet && len(result.Diagnostics) > 0 {
-		if code := formatDiagnostics(result.Diagnostics, format, noColor); code != 0 {
+		if code := formatDiagnostics(os.Stderr, result.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
@@ -801,7 +801,7 @@ func checkDiscovered(
 	printErrors(result.Errors)
 
 	if !quiet && len(result.Diagnostics) > 0 {
-		if code := formatDiagnostics(result.Diagnostics, format, noColor); code != 0 {
+		if code := formatDiagnostics(os.Stderr, result.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
@@ -852,7 +852,7 @@ func fixDiscovered(
 	printErrors(fixResult.Errors)
 
 	if !quiet && len(fixResult.Diagnostics) > 0 {
-		if code := formatDiagnostics(fixResult.Diagnostics, format, noColor); code != 0 {
+		if code := formatDiagnostics(os.Stderr, fixResult.Diagnostics, format, noColor); code != 0 {
 			return code
 		}
 	}
