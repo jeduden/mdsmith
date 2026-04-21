@@ -1,7 +1,6 @@
 package concisenessscoring
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -9,6 +8,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
 )
@@ -73,7 +73,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		if isTable(para, f) {
+		if astutil.IsTable(para, f) {
 			return ast.WalkContinue, nil
 		}
 
@@ -83,7 +83,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		line := paragraphLine(para, f)
+		line := astutil.ParagraphLine(para, f)
 		message := fmt.Sprintf(
 			"conciseness score too low (%.2f < %.2f); target >= %.2f",
 			result.Conciseness, r.MinScore, r.MinScore,
@@ -143,29 +143,6 @@ func formatExamples(examples []string) string {
 		values = append(values, fmt.Sprintf("%q", examples[i]))
 	}
 	return strings.Join(values, ", ")
-}
-
-func paragraphLine(para *ast.Paragraph, f *lint.File) int {
-	lines := para.Lines()
-	if lines.Len() > 0 {
-		return f.LineOfOffset(lines.At(0).Start)
-	}
-	return 1
-}
-
-// isTable returns true if the paragraph's first line starts with a pipe,
-// indicating it is a markdown table (goldmark without the table extension
-// parses tables as paragraphs).
-func isTable(para *ast.Paragraph, f *lint.File) bool {
-	lines := para.Lines()
-	if lines.Len() == 0 {
-		return false
-	}
-	seg := lines.At(0)
-	return bytes.HasPrefix(
-		bytes.TrimSpace(f.Source[seg.Start:seg.Stop]),
-		[]byte("|"),
-	)
 }
 
 // ApplySettings implements rule.Configurable.

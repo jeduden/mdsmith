@@ -1,13 +1,13 @@
 package paragraphreadability
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
 )
@@ -58,7 +58,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			if !ok {
 				return ast.WalkContinue, nil
 			}
-			if isTable(para, f) {
+			if astutil.IsTable(para, f) {
 				return ast.WalkContinue, nil
 			}
 
@@ -70,7 +70,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 			score := index(text)
 			if score > maxIndex {
-				line := paragraphLine(para, f)
+				line := astutil.ParagraphLine(para, f)
 				diags = append(diags, lint.Diagnostic{
 					File:     f.Path,
 					Line:     line,
@@ -101,14 +101,6 @@ func readabilityMessage(score, maxIndex float64, words int, text string) string 
 			"; avg sentence length %d words — try splitting long sentences",
 		rounded, maxIndex, avgSentLen,
 	)
-}
-
-func paragraphLine(para *ast.Paragraph, f *lint.File) int {
-	lines := para.Lines()
-	if lines.Len() > 0 {
-		return f.LineOfOffset(lines.At(0).Start)
-	}
-	return 1
 }
 
 // ApplySettings implements rule.Configurable.
@@ -151,15 +143,4 @@ func (r *Rule) DefaultSettings() map[string]any {
 }
 
 // isTable returns true if the paragraph's first line starts with a pipe,
-// indicating it is a markdown table (goldmark without the table extension
-// parses tables as paragraphs).
-func isTable(para *ast.Paragraph, f *lint.File) bool {
-	lines := para.Lines()
-	if lines.Len() == 0 {
-		return false
-	}
-	seg := lines.At(0)
-	return bytes.HasPrefix(bytes.TrimSpace(f.Source[seg.Start:seg.Stop]), []byte("|"))
-}
-
 var _ rule.Configurable = (*Rule)(nil)

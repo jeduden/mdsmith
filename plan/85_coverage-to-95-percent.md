@@ -57,28 +57,29 @@ Phase 1 --- type conversion helpers:
 
 Phase 2 --- AST heading and paragraph helpers:
 
-  - [ ] Create `internal/rules/astutil/astutil.go` with
+  - [x] Create `internal/rules/astutil/astutil.go` with
     `HeadingLine(h, f)`, `ParagraphLine(p, f)`,
     `IsTable(p, f)`, `HeadingText(h, src)`, and
     `ExtractText(n, src, buf)`
-  - [ ] Write tests in
+  - [x] Write tests in
     `internal/rules/astutil/astutil_test.go` covering
     setext headings, ATX headings, the fallback-to-1
     path, table detection, and nested-emphasis
     extraction
-  - [ ] Replace 4 identical `headingLine` copies
+  - [x] Replace 4 identical `headingLine` copies
     (blanklinearoundheadings, noduplicateheadings,
     headingincrement, notrailingpunctuation) with
     `astutil.HeadingLine`; keep the extended variants in
     headingstyle, firstlineheading, and emptysectionbody
     local
-  - [ ] Replace 3 identical `paragraphLine` copies and 3
+  - [x] Replace 4 identical `paragraphLine` copies and 3
     identical `isTable` copies with
     `astutil.ParagraphLine` and `astutil.IsTable`
-  - [ ] Replace `headingText` + `extractText` in
+    (noemphasisasheading also replaced)
+  - [x] Replace `headingText` + `extractText` in
     noduplicateheadings and notrailingpunctuation; keep
     the headingstyle extended version local
-  - [ ] Delete unused private functions and their
+  - [x] Delete unused private functions and their
     per-package coverage tests
 
 Phase 3 --- error-path tests for remaining gaps:
@@ -111,8 +112,8 @@ after phases 1--3):
 
 Run linter and tests after every phase:
 
-  - [ ] `go test ./...` passes
-  - [ ] `go tool golangci-lint run` reports no issues
+  - [x] `go test ./...` passes
+  - [x] `go tool golangci-lint run` reports no issues
 
 ## Acceptance Criteria
 

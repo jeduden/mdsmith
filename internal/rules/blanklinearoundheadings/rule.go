@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -38,7 +39,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		line := headingLine(heading, f)
+		line := astutil.HeadingLine(heading, f)
 
 		// Skip headings whose lines overlap with code block regions.
 		if codeLines[line] {
@@ -141,7 +142,7 @@ func collectHeadingBlankLineInsertions(f *lint.File) (insertBefore, insertAfter 
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		line := headingLine(heading, f)
+		line := astutil.HeadingLine(heading, f)
 		if codeLines[line] {
 			return ast.WalkContinue, nil
 		}
@@ -171,19 +172,6 @@ func isNonBlankLine(lines [][]byte, idx int) bool {
 	return strings.TrimSpace(string(lines[idx])) != ""
 }
 
-func headingLine(heading *ast.Heading, f *lint.File) int {
-	lines := heading.Lines()
-	if lines.Len() > 0 {
-		return f.LineOfOffset(lines.At(0).Start)
-	}
-	for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			return f.LineOfOffset(t.Segment.Start)
-		}
-	}
-	return 1
-}
-
 func headingLastLine(heading *ast.Heading, f *lint.File) int {
 	lines := heading.Lines()
 	if lines.Len() > 0 {
@@ -197,7 +185,7 @@ func headingLastLine(heading *ast.Heading, f *lint.File) int {
 		return textLine
 	}
 	// ATX heading is a single line
-	return headingLine(heading, f)
+	return astutil.HeadingLine(heading, f)
 }
 
 func isSetextHeading(heading *ast.Heading, source []byte) bool {
