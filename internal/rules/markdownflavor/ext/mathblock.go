@@ -117,8 +117,11 @@ func (p *mathBlockParser) CanAcceptIndentedLine() bool { return false }
 type mathBlockExt struct{}
 
 // MathBlock is the goldmark Extender that installs the math-block
-// block parser at priority 700 — lower than goldmark's fenced-code
-// parser (700) — so fenced-code still wins on backtick runs.
+// block parser at priority 700. `$` is not a default block trigger,
+// so no other parser competes; the value is chosen to match
+// goldmark's own fenced-block precedent without claiming any
+// ordering relationship to fenced-code (which triggers on backtick
+// or tilde, not `$`).
 var MathBlock goldmark.Extender = &mathBlockExt{}
 
 // Extend implements goldmark.Extender.

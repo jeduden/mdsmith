@@ -89,9 +89,10 @@ func (p *superscriptParser) CloseBlock(parent ast.Node, pc parser.Context) {}
 type superscriptExt struct{}
 
 // Superscript is the goldmark Extender that installs the superscript
-// inline parser with a priority higher (numerically smaller) than
-// emphasis (100) — `^` is otherwise literal, so no ambiguity, but
-// keeping it tight avoids surprises.
+// inline parser at priority 500. In goldmark a lower priority number
+// runs earlier, so CommonMark emphasis (100) still wins on its own
+// delimiters; `^` has no other default parser, so the ordering here
+// does not introduce ambiguity.
 var Superscript goldmark.Extender = &superscriptExt{}
 
 // Extend implements goldmark.Extender.

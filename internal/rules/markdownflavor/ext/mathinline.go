@@ -108,11 +108,11 @@ func isDigitByte(b byte) bool { return b >= '0' && b <= '9' }
 type mathInlineExt struct{}
 
 // MathInline is the goldmark Extender that installs the math-inline
-// parser at priority 200 — higher than emphasis (100 is reserved;
-// CommonMark emphasis registers at 100) — well, actually a lower
-// number means higher priority in goldmark. Use 200 so Pandoc-style
-// math beats plain-text handling but does not interfere with any
-// other `$`-using parser (there is none by default).
+// parser at priority 200. In goldmark a lower priority number runs
+// earlier, so CommonMark emphasis (100) still wins on its own
+// delimiters. Using 200 lets Pandoc-style math beat plain-text
+// handling and leaves room for a future `$`-using inline parser to
+// take precedence by registering at a lower number.
 var MathInline goldmark.Extender = &mathInlineExt{}
 
 // Extend implements goldmark.Extender.

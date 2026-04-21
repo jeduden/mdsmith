@@ -166,24 +166,29 @@ math, abbreviations.
 
 - [x] Add feature enum and flavor registry in
   `internal/rules/markdownflavor/features.go`
-- [ ] Write `SuperscriptExt` inline parser in
+- [x] Write `SuperscriptExt` inline parser in
   `internal/rules/markdownflavor/ext/superscript.go`
-- [ ] Write `SubscriptExt` inline parser in
+- [x] Write `SubscriptExt` inline parser in
   `internal/rules/markdownflavor/ext/subscript.go`
-- [ ] Write `MathBlockExt` block parser in
+- [x] Write `MathBlockExt` block parser in
   `internal/rules/markdownflavor/ext/mathblock.go`
-- [ ] Write `MathInlineExt` inline parser in
+- [x] Write `MathInlineExt` inline parser in
   `internal/rules/markdownflavor/ext/mathinline.go`
 - [ ] Write `AbbreviationExt` block parser + paragraph
   transformer in
   `internal/rules/markdownflavor/ext/abbreviation.go`
 - [ ] Add tests for all five custom extensions
+  <!-- Tests for Super/Subscript and Math block/inline
+  landed with their extensions; abbreviation tests
+  arrive with that extension. -->
+
 - [x] Build dual parser with built-in extensions (custom
   extensions pending)
 - [x] Add AST-based detectors for the seven built-in
-  features (tables, task lists, strikethrough, bare-URL
-  autolinks, footnotes, definition lists, heading IDs);
-  the five custom features remain pending
+  features. Covered here: tables, task lists,
+  strikethrough, bare-URL autolinks, footnotes,
+  definition lists, and heading IDs. The five custom
+  features remain pending.
 - [x] Implement `rule.go` with `Check()`; `Fix()` is
   pending
 - [x] Implement `rule.Configurable` for MDS034: add
