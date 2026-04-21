@@ -1,7 +1,7 @@
 ---
 id: 52
 title: Archetype / Template Library for Agentic Patterns
-status: 🔳
+status: "✅"
 ---
 # Archetype / Template Library for Agentic Patterns
 
@@ -70,29 +70,29 @@ against those roots.
 
 ## Acceptance Criteria
 
-- [ ] No archetype templates are embedded in the
+- [x] No archetype templates are embedded in the
   binary; the linker-visible symbol footprint for
   archetypes contains no schema text.
-- [ ] `.mdsmith.yml` accepts `archetypes.roots` as a
+- [x] `.mdsmith.yml` accepts `archetypes.roots` as a
   list of relative directories; the linter uses it
   to resolve `archetype: <name>` in required-structure
   settings.
-- [ ] `mdsmith archetypes init` creates the target
+- [x] `mdsmith archetypes init` creates the target
   directory with an example schema, refuses to
   overwrite an existing example, and prints a
   config snippet for the user to add.
-- [ ] `mdsmith archetypes list` prints all
+- [x] `mdsmith archetypes list` prints all
   discovered archetypes, each with its source path,
   sorted by name.
-- [ ] `mdsmith archetypes show <name>` prints the
+- [x] `mdsmith archetypes show <name>` prints the
   raw schema source.
-- [ ] `mdsmith archetypes path <name>` prints the
+- [x] `mdsmith archetypes path <name>` prints the
   filesystem path.
-- [ ] Unknown archetype names produce an error
+- [x] Unknown archetype names produce an error
   that names the configured roots and lists nearby
   candidates.
-- [ ] Guide + MDS020 README document authoring,
+- [x] Guide + MDS020 README document authoring,
   `archetypes.roots` configuration, and each CLI
   verb.
-- [ ] All tests pass: `go test ./...`
-- [ ] `golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `golangci-lint run` reports no issues

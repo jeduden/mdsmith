@@ -90,25 +90,54 @@ directive has no effect`.
 For full reference, see
 [MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md).
 
-## Built-in archetypes
+## Archetype templates
 
-Instead of authoring a schema, select one of the
-built-in archetype schemas for common agentic document
-types:
+Instead of authoring `schema: path/to/schema.md` for
+every override, collect reusable schemas in an
+archetype directory and refer to them by name.
+
+### Bootstrap the directory
+
+```text
+mdsmith archetypes init
+```
+
+This creates `./archetypes/` (or `./archetypes/<dir>`
+if you pass one) containing an `example.md` schema
+and a `README.md`. It does not touch `.mdsmith.yml`;
+add the snippet it prints yourself.
+
+### Register roots and select an archetype
 
 ```yaml
+archetypes:
+  roots:
+    - archetypes
+
 overrides:
   - files: ["stories/**/*.md"]
     rules:
       required-structure:
-        archetype: story-file
+        archetype: story
 ```
 
-Available archetypes: `story-file`, `prd`,
-`agent-definition`, `claude-md`. Archetypes are
-mutually exclusive with `schema`. Built-in archetypes
-cannot reference on-disk `<?include?>` fragments; for
-composition, ship a local schema file instead.
+`archetypes.roots` is a list of directories searched
+in order; earlier roots shadow later ones. When the
+key is omitted, the single root `./archetypes` is
+used.
+
+### Inspect archetypes
+
+```text
+mdsmith archetypes list                # one per line: "<name>\t<path>"
+mdsmith archetypes show <name>         # print schema source
+mdsmith archetypes path <name>         # print resolved path
+```
+
+`archetype` and `schema` are mutually exclusive. For
+schema composition across archetype files, use
+`<?include?>` with paths relative to the archetype
+file's directory.
 
 ## Allowing intentional empty sections
 

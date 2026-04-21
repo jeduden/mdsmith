@@ -3,6 +3,7 @@ package requiredstructure
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,9 +27,14 @@ func init() {
 
 // Rule checks that a document's heading structure matches a schema.
 type Rule struct {
-	Schema    string // path to schema file
-	Archetype string // name of a built-in archetype schema
+	Schema         string   // path to schema file
+	Archetype      string   // name of an archetype schema discovered under ArchetypeRoots
+	ArchetypeRoots []string // directories searched for archetypes; defaults to [DefaultArchetypeRoot]
 }
+
+// DefaultArchetypeRoot is the directory used when no archetype roots
+// are configured for the rule.
+const DefaultArchetypeRoot = "archetypes"
 
 // ID implements rule.Rule.
 func (r *Rule) ID() string { return "MDS020" }
@@ -55,6 +61,12 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				return fmt.Errorf("required-structure: archetype must be a string, got %T", v)
 			}
 			r.Archetype = s
+		case "archetype-roots":
+			roots, err := asStringList("archetype-roots", v)
+			if err != nil {
+				return err
+			}
+			r.ArchetypeRoots = roots
 		default:
 			return fmt.Errorf("required-structure: unknown setting %q", k)
 		}
@@ -66,11 +78,37 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	return nil
 }
 
+// asStringList converts a YAML-unmarshalled []any to []string, or
+// accepts a single string value (wrapping it in a one-element list).
+func asStringList(key string, v any) ([]string, error) {
+	switch x := v.(type) {
+	case []any:
+		out := make([]string, 0, len(x))
+		for i, item := range x {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf(
+					"required-structure: %s[%d] must be a string, got %T", key, i, item)
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	case []string:
+		return append([]string(nil), x...), nil
+	case string:
+		return []string{x}, nil
+	default:
+		return nil, fmt.Errorf(
+			"required-structure: %s must be a list of strings, got %T", key, v)
+	}
+}
+
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"schema":    "",
-		"archetype": "",
+		"schema":          "",
+		"archetype":       "",
+		"archetype-roots": []string{DefaultArchetypeRoot},
 	}
 }
 
@@ -130,26 +168,47 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// loadSchema returns the schema bytes and resolution path. When the rule
-// selects a built-in archetype, the returned path is empty because such
-// schemas cannot reference on-disk include fragments.
+// loadSchema returns the schema bytes and resolution path. When the
+// rule selects an archetype, the path points at the resolved archetype
+// file so that schema composition via <?include?> works relative to
+// the archetype's directory.
 func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
 	if r.Schema != "" && r.Archetype != "" {
 		return nil, "", fmt.Errorf(
 			"schema and archetype are mutually exclusive")
 	}
 	if r.Archetype != "" {
-		data, err := archetypes.Lookup(r.Archetype)
+		resolver := r.archetypeResolver(f)
+		entry, err := resolver.Lookup(r.Archetype)
 		if err != nil {
 			return nil, "", err
 		}
-		return data, "", nil
+		data, err := fs.ReadFile(resolver.FS, entry.Path)
+		if err != nil {
+			return nil, "", fmt.Errorf(
+				"reading archetype %q: %w", r.Archetype, err)
+		}
+		return data, entry.Path, nil
 	}
 	data, err := readSchemaFile(f, r.Schema)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot read schema %q: %v", r.Schema, err)
 	}
 	return data, r.Schema, nil
+}
+
+// archetypeResolver builds an archetypes.Resolver from the rule's
+// configured roots and the file's project root filesystem.
+func (r *Rule) archetypeResolver(f *lint.File) *archetypes.Resolver {
+	roots := r.ArchetypeRoots
+	if len(roots) == 0 {
+		roots = []string{DefaultArchetypeRoot}
+	}
+	return &archetypes.Resolver{
+		Roots:   roots,
+		RootDir: f.RootDir,
+		FS:      f.RootFS,
+	}
 }
 
 // schemaSource returns the user-facing identifier of the configured

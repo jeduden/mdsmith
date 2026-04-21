@@ -21,10 +21,11 @@ schema.
 
 ## Settings
 
-| Setting     | Type   | Default | Description                         |
-|-------------|--------|---------|-------------------------------------|
-| `schema`    | string | `""`    | Path to schema file                 |
-| `archetype` | string | `""`    | Name of a built-in schema archetype |
+| Setting           | Type      | Default          | Description                                                                   |
+|-------------------|-----------|------------------|-------------------------------------------------------------------------------|
+| `schema`          | string    | `""`             | Path to a schema file                                                         |
+| `archetype`       | string    | `""`             | Archetype name; resolved against `archetype-roots`                            |
+| `archetype-roots` | [ ]string | `["archetypes"]` | Directories searched for `<name>.md` schemas; earlier roots shadow later ones |
 
 When both `schema` and `archetype` are empty the rule
 skips structure and front matter validation, but still
@@ -36,20 +37,26 @@ only one.
 
 ### Archetypes
 
-Built-in archetype schemas ship ready-to-use for
-common agentic Markdown patterns:
+Archetypes are user-supplied schema files. Place each
+schema at `<root>/<name>.md` under a directory listed
+in top-level config `archetypes.roots`, or in the
+rule's per-block `archetype-roots` setting. A missing
+archetype errors with a message naming the roots
+searched and the archetypes discovered.
 
-| Name               | Use case                              |
-|--------------------|---------------------------------------|
-| `story-file`       | Agile user story                      |
-| `prd`              | Product Requirements Document         |
-| `agent-definition` | AI agent / persona definition         |
-| `claude-md`        | `CLAUDE.md` project instructions file |
+Use the `mdsmith archetypes` CLI to bootstrap and
+inspect the archetype directory:
 
-Built-in archetypes cannot reference on-disk
-`<?include?>` fragments. For schemas that compose
-across files, ship a local schema file and use
-`schema:` instead.
+```text
+mdsmith archetypes init [dir]
+mdsmith archetypes list
+mdsmith archetypes show <name>
+mdsmith archetypes path <name>
+```
+
+Archetypes resolve from the project root filesystem,
+so `<?include?>` fragments continue to work relative
+to the archetype file's directory.
 
 Schema front matter may embed a CUE schema that
 validates document front matter:
@@ -127,14 +134,20 @@ overrides:
         schema: internal/rules/proto.md
 ```
 
-Apply a built-in archetype to all story files:
+Apply a user-authored archetype to all story files.
+The archetype file must live at
+`archetypes/story.md` (the default root):
 
 ```yaml
+archetypes:
+  roots:
+    - archetypes
+
 overrides:
   - files: ["stories/**/*.md"]
     rules:
       required-structure:
-        archetype: story-file
+        archetype: story
 ```
 
 Disable:

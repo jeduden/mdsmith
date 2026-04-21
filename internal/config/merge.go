@@ -47,6 +47,11 @@ func Merge(defaults, loaded *Config) *Config {
 		maxInputSize = loaded.MaxInputSize
 	}
 
+	archetypes := defaults.Archetypes
+	if len(loaded.Archetypes.Roots) > 0 {
+		archetypes = ArchetypesCfg{Roots: copyStrings(loaded.Archetypes.Roots)}
+	}
+
 	return &Config{
 		Rules:            rules,
 		Ignore:           loaded.Ignore,
@@ -58,6 +63,7 @@ func Merge(defaults, loaded *Config) *Config {
 		ExplicitRules:    explicit,
 		NoFollowSymlinks: loaded.NoFollowSymlinks,
 		MaxInputSize:     maxInputSize,
+		Archetypes:       archetypes,
 	}
 }
 
@@ -85,6 +91,7 @@ func copyConfig(cfg *Config) *Config {
 		MaxInputSize:     cfg.MaxInputSize,
 		ExplicitRules:    explicit,
 		FilesExplicit:    cfg.FilesExplicit,
+		Archetypes:       ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
 	}
 }
 
@@ -226,4 +233,40 @@ func ApplyCategories(
 // and the base name, consistent with how ignore patterns are matched.
 func matchesAny(patterns []string, filePath string) bool {
 	return globMatchAny(patterns, filePath)
+}
+
+// InjectArchetypeRoots copies cfg.Archetypes.Roots into every
+// required-structure rule block (top-level or override) that does not
+// already set its own archetype-roots. This is a no-op when no roots
+// are configured at the top level. Rules with archetype-roots already
+// specified are left untouched.
+func InjectArchetypeRoots(cfg *Config) {
+	if cfg == nil || len(cfg.Archetypes.Roots) == 0 {
+		return
+	}
+	roots := cfg.Archetypes.Roots
+	injectRoots(cfg.Rules, roots)
+	for i := range cfg.Overrides {
+		injectRoots(cfg.Overrides[i].Rules, roots)
+	}
+}
+
+func injectRoots(rules map[string]RuleCfg, roots []string) {
+	const name = "required-structure"
+	rc, ok := rules[name]
+	if !ok || !rc.Enabled {
+		return
+	}
+	if rc.Settings == nil {
+		rc.Settings = map[string]any{}
+	}
+	if _, exists := rc.Settings["archetype-roots"]; exists {
+		return
+	}
+	rootsAny := make([]any, len(roots))
+	for i, r := range roots {
+		rootsAny[i] = r
+	}
+	rc.Settings["archetype-roots"] = rootsAny
+	rules[name] = rc
 }

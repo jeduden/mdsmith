@@ -32,6 +32,7 @@ type Config struct {
 	Files            []string           `yaml:"files"`
 	NoFollowSymlinks []string           `yaml:"no-follow-symlinks"`
 	MaxInputSize     string             `yaml:"max-input-size"`
+	Archetypes       ArchetypesCfg      `yaml:"archetypes"`
 
 	// ExplicitRules tracks rule names that were explicitly set in
 	// the user config (not just inherited from defaults). This is
@@ -45,6 +46,12 @@ type Config struct {
 	// (use defaults) and an explicitly empty list (no files).
 	// Not serialized to YAML.
 	FilesExplicit bool `yaml:"-"`
+}
+
+// ArchetypesCfg configures archetype discovery. Roots are directories
+// searched in order; earlier roots shadow later ones.
+type ArchetypesCfg struct {
+	Roots []string `yaml:"roots"`
 }
 
 // Override applies rule settings to files matching glob patterns.

@@ -73,6 +73,7 @@ Commands:
   help           Show help for rules and topics
   metrics        Show and rank shared Markdown metrics
   merge-driver   Git merge driver for regenerable sections
+  archetypes     Discover, show, and locate archetype schemas
   init           Generate a default .mdsmith.yml config file
   version        Print version and exit
 
@@ -120,6 +121,8 @@ func run() int {
 		return runMetrics(os.Args[2:])
 	case "merge-driver":
 		return runMergeDriver(os.Args[2:])
+	case "archetypes":
+		return runArchetypes(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
 	case "version":
@@ -940,22 +943,30 @@ func loadConfig(configPath string) (*config.Config, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		return config.Merge(defaults, loaded), configPath, nil
+		merged := config.Merge(defaults, loaded)
+		config.InjectArchetypeRoots(merged)
+		return merged, configPath, nil
 	}
 
 	// Try to discover a config file.
 	cwd, err := os.Getwd()
 	if err != nil {
-		return config.Merge(defaults, nil), "", nil
+		merged := config.Merge(defaults, nil)
+		config.InjectArchetypeRoots(merged)
+		return merged, "", nil
 	}
 
 	discovered, err := config.Discover(cwd)
 	if err != nil {
-		return config.Merge(defaults, nil), "", nil
+		merged := config.Merge(defaults, nil)
+		config.InjectArchetypeRoots(merged)
+		return merged, "", nil
 	}
 
 	if discovered == "" {
-		return config.Merge(defaults, nil), "", nil
+		merged := config.Merge(defaults, nil)
+		config.InjectArchetypeRoots(merged)
+		return merged, "", nil
 	}
 
 	loaded, err := config.Load(discovered)
@@ -963,7 +974,9 @@ func loadConfig(configPath string) (*config.Config, string, error) {
 		return nil, "", err
 	}
 
-	return config.Merge(defaults, loaded), discovered, nil
+	merged := config.Merge(defaults, loaded)
+	config.InjectArchetypeRoots(merged)
+	return merged, discovered, nil
 }
 
 const helpUsageText = `Usage: mdsmith help <topic>

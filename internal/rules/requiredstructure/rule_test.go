@@ -191,90 +191,114 @@ func TestSchemaSource(t *testing.T) {
 	assert.Equal(t, "", (&Rule{}).schemaSource())
 }
 
-func TestCheck_ArchetypeStoryFile_Good(t *testing.T) {
-	r := &Rule{Archetype: "story-file"}
-	src := `---
-as: developer
-i-want: to write stories
-so-that: I ship features
----
-# Ship a feature
+// writeArchetype writes an archetype schema under dir/name.md and
+// returns the containing root directory (dir).
+func writeArchetype(t *testing.T, dir, name, body string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, name+".md"), []byte(body), 0o644))
+}
 
-## Background
+// newFileInRoot builds a *lint.File whose RootDir/RootFS points at
+// root so archetype resolution can find fixtures on disk.
+func newFileInRoot(t *testing.T, root, name, body string) *lint.File {
+	t.Helper()
+	f, err := lint.NewFileFromSource(name, []byte(body), true)
+	require.NoError(t, err)
+	f.SetRootDir(root)
+	return f
+}
 
-Some background.
+func TestApplySettings_ArchetypeRoots(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"archetype":       "story",
+		"archetype-roots": []any{"custom", "archetypes"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"custom", "archetypes"}, r.ArchetypeRoots)
+}
 
-## Acceptance Criteria
+func TestApplySettings_ArchetypeRootsInvalidType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"archetype-roots": 42})
+	require.Error(t, err)
+}
 
-- [ ] Done
-`
-	f := newTestFile(t, "doc.md", src)
+func TestApplySettings_ArchetypeRootsInvalidItem(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"archetype-roots": []any{"ok", 42},
+	})
+	require.Error(t, err)
+}
+
+func TestDefaultSettings_ArchetypeRoots(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t,
+		[]string{DefaultArchetypeRoot},
+		r.DefaultSettings()["archetype-roots"])
+}
+
+func TestCheck_ArchetypeResolvesFromDefaultRoot(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
+		"# ?\n\n## Background\n\n## ...\n")
+	r := &Rule{Archetype: "story"}
+	f := newFileInRoot(t, root, "doc.md",
+		"# Title\n\n## Background\n\nsome text\n")
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
 
-func TestCheck_ArchetypeStoryFile_MissingFrontMatter(t *testing.T) {
-	r := &Rule{Archetype: "story-file"}
-	src := `# Ship a feature
+func TestCheck_ArchetypeResolvesFromCustomRoot(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "tmpl"), "story",
+		"# ?\n\n## Overview\n\n## ...\n")
+	r := &Rule{
+		Archetype:      "story",
+		ArchetypeRoots: []string{"tmpl"},
+	}
+	f := newFileInRoot(t, root, "doc.md",
+		"# Title\n\n## Overview\n\nbody\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
 
-## Background
+func TestCheck_ArchetypeEnforcesHeadings(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
+		"# ?\n\n## Background\n\n## Acceptance Criteria\n")
+	r := &Rule{Archetype: "story"}
+	f := newFileInRoot(t, root, "doc.md",
+		"# Title\n\n## Background\n\nbody\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "missing required section")
+}
 
-## Acceptance Criteria
-`
-	f := newTestFile(t, "doc.md", src)
+func TestCheck_ArchetypeEnforcesFrontMatterCUE(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
+		"---\nas: 'string & != \"\"'\n---\n# ?\n\n## ...\n")
+	r := &Rule{Archetype: "story"}
+	f := newFileInRoot(t, root, "doc.md", "# Title\n")
 	diags := r.Check(f)
 	expectDiagMsg(t, diags, "front matter does not satisfy schema CUE constraints")
 }
 
-func TestCheck_ArchetypePRD_Good(t *testing.T) {
-	r := &Rule{Archetype: "prd"}
-	src := `---
-title: New Thing
-status: draft
----
-# New Thing
-
-## Problem
-
-## Goals
-
-## Non-Goals
-
-## Requirements
-`
-	f := newTestFile(t, "doc.md", src)
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
-
-func TestCheck_ArchetypeAgentDefinition_Good(t *testing.T) {
-	r := &Rule{Archetype: "agent-definition"}
-	src := `---
-name: reviewer
-description: reviews pull requests
----
-# Reviewer
-
-## Purpose
-
-## Inputs
-
-## Outputs
-`
-	f := newTestFile(t, "doc.md", src)
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
-
-func TestCheck_ArchetypeClaudeMd_Good(t *testing.T) {
-	r := &Rule{Archetype: "claude-md"}
-	src := `# My Project
-
-## Project
-
-some description.
-`
-	f := newTestFile(t, "doc.md", src)
+func TestCheck_ArchetypeEarlierRootShadowsLater(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "custom"), "story",
+		"# ?\n\n## OverrideOnly\n\n## ...\n")
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
+		"# ?\n\n## DefaultOnly\n\n## ...\n")
+	r := &Rule{
+		Archetype:      "story",
+		ArchetypeRoots: []string{"custom", "archetypes"},
+	}
+	f := newFileInRoot(t, root, "doc.md",
+		"# Title\n\n## OverrideOnly\n\nbody\n")
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
