@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	extast "github.com/yuin/goldmark/extension/ast"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	extast "github.com/yuin/goldmark/extension/ast"
 )
 
 func TestSubscriptParsesSingleTilde(t *testing.T) {
@@ -39,11 +40,14 @@ func TestSubscriptUnbalancedTilde(t *testing.T) {
 }
 
 func TestSubscriptContent(t *testing.T) {
-	src := "H~2~O\n"
-	doc := parseWith(t, src, Subscript)
+	src := []byte("H~2~O\n")
+	doc := parseWith(t, string(src), Subscript)
 	node := walkFindKind(doc, KindSubscript)
 	if assert.NotNil(t, node) {
-		assert.Equal(t, "2", string(node.Text([]byte(src))))
+		child, ok := node.FirstChild().(*ast.Text)
+		if assert.True(t, ok, "subscript first child should be a Text node") {
+			assert.Equal(t, "2", string(child.Segment.Value(src)))
+		}
 	}
 }
 

@@ -50,12 +50,14 @@ func TestSuperscriptUnbalancedCaret(t *testing.T) {
 }
 
 func TestSuperscriptContainsContent(t *testing.T) {
-	doc := parseWith(t, "E = mc^2^\n", Superscript)
+	src := []byte("E = mc^2^\n")
+	doc := parseWith(t, string(src), Superscript)
 	node := walkFindKind(doc, KindSuperscript)
 	require.NotNil(t, node)
 	// The child should carry the "2" text.
-	require.NotNil(t, node.FirstChild())
-	assert.Equal(t, "2", string(node.Text([]byte("E = mc^2^\n"))))
+	child, ok := node.FirstChild().(*ast.Text)
+	require.True(t, ok, "superscript first child should be a Text node")
+	assert.Equal(t, "2", string(child.Segment.Value(src)))
 }
 
 func TestSuperscriptInsideCodeIsIgnored(t *testing.T) {
