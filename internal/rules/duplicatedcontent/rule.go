@@ -390,9 +390,13 @@ func (r *Rule) ApplySettings(cfg map[string]any) error {
 					v,
 				)
 			}
-			if n < 0 {
+			if n <= 0 {
+				// Check treats a zero MinChars as "unset" and applies
+				// defaultMinChars, so an explicit 0 in config would be
+				// silently ignored; reject it at validation time to
+				// keep ApplySettings and Check consistent.
 				return fmt.Errorf(
-					"duplicated-content: min-chars must be >= 0, got %d",
+					"duplicated-content: min-chars must be > 0, got %d",
 					n,
 				)
 			}

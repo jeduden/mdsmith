@@ -431,6 +431,16 @@ func TestApplySettings_TruncatesFractionalFloat(t *testing.T) {
 	assert.Equal(t, 1, r.MinChars)
 }
 
+func TestApplySettings_RejectsZeroMinChars(t *testing.T) {
+	// Check treats MinChars == 0 as unset and falls back to the
+	// default, so an explicit 0 in config would be silently ignored;
+	// ApplySettings must reject it rather than letting it pass.
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"min-chars": 0})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "min-chars must be > 0")
+}
+
 func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
 	t.Helper()
 	data, err := os.ReadFile(path)
