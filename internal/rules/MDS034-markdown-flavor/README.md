@@ -50,13 +50,16 @@ rules:
 
 ## Detected features
 
-MDS034 tracks seven syntax features in this
-increment.
+MDS034 tracks twelve syntax features whose
+support varies across Markdown flavors.
 
-Six are detected from the goldmark AST. Each
-relies on its built-in extension: table,
-strikethrough, task list, footnote, definition
-list, and the heading-ID attribute parser.
+Eleven features are detected from the goldmark AST
+of a dual parse. That parse enables five built-in
+extensions: table, strikethrough, task list,
+footnote, and definition list. It also enables the
+heading-ID attribute parser. Five custom parsers
+add superscript, subscript, math block, inline
+math, and abbreviations.
 
 Bare-URL autolinks are detected separately. The
 detector scans text nodes from the main parse for
@@ -72,12 +75,11 @@ spans, and code blocks.
 | footnotes          | no         | no  | no       |
 | definition lists   | no         | no  | no       |
 | heading IDs        | no         | no  | yes      |
-
-Five further features need custom goldmark
-extensions: superscript, subscript, block math,
-inline math, and abbreviations. They are tracked
-under
-[plan 86](../../../plan/86_markdown-flavor-validation.md).
+| superscript        | no         | no  | no       |
+| subscript          | no         | no  | no       |
+| math blocks        | no         | no  | no       |
+| inline math        | no         | no  | no       |
+| abbreviations      | no         | no  | no       |
 
 ## Examples
 

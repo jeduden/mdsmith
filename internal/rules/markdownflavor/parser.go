@@ -8,6 +8,7 @@ import (
 	"github.com/yuin/goldmark/parser"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor/ext"
 )
 
 var (
@@ -16,9 +17,11 @@ var (
 )
 
 // Parser returns the shared goldmark parser used for dual parsing.
-// It enables every built-in goldmark extension MDS034 actually needs
-// for AST-based feature detection (table, strikethrough, task list,
-// footnote, definition list) and the heading-ID attribute parser.
+// It enables the built-in goldmark extensions for the seven
+// AST-detected core features (table, strikethrough, task list,
+// footnote, definition list) plus the heading-ID attribute parser,
+// and the five custom MDS034 extensions that cover superscript,
+// subscript, math block, math inline, and abbreviations.
 //
 // To keep MDS034 aligned with the rest of mdsmith, the dual parser
 // also registers lint.PIBlockParserPrioritized so a
@@ -44,6 +47,11 @@ func Parser() goldmark.Markdown {
 				extension.TaskList,
 				extension.Footnote,
 				extension.DefinitionList,
+				ext.Superscript,
+				ext.Subscript,
+				ext.MathBlock,
+				ext.MathInline,
+				ext.Abbreviation,
 			),
 			goldmark.WithParserOptions(
 				parser.WithAttribute(),

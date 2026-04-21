@@ -182,13 +182,14 @@ math, abbreviations.
   anywhere in the document; it reads the term table
   the block parser built during Open. -->
 - [x] Add tests for all five custom extensions
-- [x] Build dual parser with built-in extensions (custom
-  extensions pending)
-- [x] Add AST-based detectors for the seven built-in
-  features. Covered here: tables, task lists,
-  strikethrough, bare-URL autolinks, footnotes,
-  definition lists, and heading IDs. The five custom
-  features remain pending.
+- [x] Build dual parser with built-in + custom
+  extensions (superscript, subscript, math block,
+  math inline, abbreviations)
+- [x] Add AST-based detectors for all 12 features.
+  Covered: tables, task lists, strikethrough,
+  bare-URL autolinks, footnotes, definition lists,
+  heading IDs, superscript, subscript, math blocks,
+  inline math, and abbreviations.
 - [x] Implement `rule.go` with `Check()`; `Fix()` is
   pending
 - [x] Implement `rule.Configurable` for MDS034: add
@@ -203,33 +204,21 @@ math, abbreviations.
 
 ## Acceptance Criteria
 
-- [ ] `flavor: commonmark` flags tables, task lists,
+- [x] `flavor: commonmark` flags tables, task lists,
       strikethrough, bare-URL autolinks, footnotes,
       definition lists, heading IDs, superscript,
       subscript, math blocks, math inline, and
       abbreviations
-      <!-- Partial: first seven flagged. Superscript,
-      subscript, math blocks, math inline, and
-      abbreviations remain pending (custom
-      extensions). -->
-- [ ] `flavor: gfm` accepts tables, task lists,
+- [x] `flavor: gfm` accepts tables, task lists,
       strikethrough, and bare-URL autolinks; flags
       footnotes, definition lists, heading IDs,
       superscript, subscript, math blocks, math
       inline, and abbreviations
-      <!-- Partial: acceptance verified; flagging
-      verified for footnotes, definition lists, and
-      heading IDs. The five custom-extension features
-      remain pending. -->
-- [ ] `flavor: goldmark` accepts tables, task lists,
+- [x] `flavor: goldmark` accepts tables, task lists,
       strikethrough, bare-URL autolinks, and heading
       IDs; flags footnotes, definition lists,
       superscript, subscript, math blocks, math
       inline, and abbreviations
-      <!-- Partial: acceptance verified; flagging
-      verified for footnotes and definition lists.
-      The five custom-extension features remain
-      pending. -->
 - [x] Error messages name the unsupported feature and
       the configured flavor
 - [ ] `mdsmith fix` auto-fixes fixable features

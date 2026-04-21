@@ -127,6 +127,10 @@ func (p *abbreviationBlockParser) Open(
 	expCopy := append([]byte(nil), expansion...)
 
 	node := &AbbreviationDefinition{Term: termCopy, Expansion: expCopy}
+	// Record the raw source span so detectors (and a future Fix) can
+	// locate this definition without re-scanning.
+	_, seg := reader.PeekLine()
+	node.Lines().Append(seg)
 	tbl := getAbbrTable(pc)
 	tbl[string(termCopy)] = expCopy
 

@@ -9,6 +9,7 @@ import (
 	"github.com/yuin/goldmark/text"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor/ext"
 )
 
 // Finding records one detected feature use.
@@ -105,6 +106,8 @@ func anyDualFeatureAccepted(keep func(Feature) bool) bool {
 	for _, feat := range []Feature{
 		FeatureTables, FeatureTaskLists, FeatureStrikethrough,
 		FeatureFootnotes, FeatureDefinitionLists, FeatureHeadingIDs,
+		FeatureSuperscript, FeatureSubscript,
+		FeatureMathBlock, FeatureMathInline, FeatureAbbreviations,
 	} {
 		if keep(feat) {
 			return true
@@ -113,52 +116,126 @@ func anyDualFeatureAccepted(keep func(Feature) bool) bool {
 	return false
 }
 
-// detectFromDual walks the dual-parser tree for all extension-based
-// features (tables, strikethrough, task lists, footnotes, definition
-// lists, heading IDs).
+// detectFromDual walks the dual-parser tree for every feature that
+// has an AST representation: the six built-in extensions (tables,
+// strikethrough, task lists, footnotes, definition lists, heading
+// IDs) plus the five MDS034 custom extensions (superscript,
+// subscript, math block, math inline, abbreviations).
 func detectFromDual(f *lint.File, doc ast.Node) []Finding {
 	var findings []Finding
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		switch node := n.(type) {
-		case *extast.Table:
-			findings = append(findings, blockFinding(f, n, FeatureTables))
-			return ast.WalkSkipChildren, nil
-		case *extast.TaskCheckBox:
-			// TaskCheckBox has no text children, so pull position from
-			// the enclosing ListItem block.
-			findings = append(findings, taskCheckBoxFinding(f, n))
-		case *extast.Strikethrough:
-			// Strikethrough's first text child starts after the
-			// opening "~~"; back up two bytes to point at the marker.
-			fin := inlineFinding(f, n, FeatureStrikethrough)
-			if fin.Start >= 2 && f.Source[fin.Start-1] == '~' && f.Source[fin.Start-2] == '~' {
-				fin.Start -= 2
-				fin.Column -= 2
-			}
-			findings = append(findings, fin)
-		case *extast.FootnoteLink:
-			findings = append(findings, inlineExtFinding(f, n, FeatureFootnotes))
-		case *extast.Footnote:
-			findings = append(findings, blockFinding(f, n, FeatureFootnotes))
-			return ast.WalkSkipChildren, nil
-		case *extast.FootnoteList:
-			// Walk children so Footnote definitions report their own
-			// locations; skip emitting a wrapper finding.
-			return ast.WalkContinue, nil
-		case *extast.DefinitionList:
-			findings = append(findings, blockFinding(f, n, FeatureDefinitionLists))
-			return ast.WalkSkipChildren, nil
-		case *ast.Heading:
-			if hf, ok := findHeadingID(f, node); ok {
-				findings = append(findings, hf)
-			}
+		fin, status := featureFindingFor(f, n)
+		if fin != nil {
+			findings = append(findings, *fin)
 		}
-		return ast.WalkContinue, nil
+		return status, nil
 	})
 	return dedupe(findings)
+}
+
+// featureFindingFor maps an AST node to at most one Finding plus
+// the walk-status to return for the rest of the walk. A nil pointer
+// means "no finding for this node".
+func featureFindingFor(f *lint.File, n ast.Node) (*Finding, ast.WalkStatus) {
+	if fin, status, ok := builtinFindingFor(f, n); ok {
+		return fin, status
+	}
+	if fin, status, ok := customFindingFor(f, n); ok {
+		return fin, status
+	}
+	return nil, ast.WalkContinue
+}
+
+// builtinFindingFor handles the six features detected via goldmark's
+// built-in extensions plus the heading-ID attribute parser.
+func builtinFindingFor(f *lint.File, n ast.Node) (*Finding, ast.WalkStatus, bool) {
+	switch node := n.(type) {
+	case *extast.Table:
+		fin := blockFinding(f, n, FeatureTables)
+		return &fin, ast.WalkSkipChildren, true
+	case *extast.TaskCheckBox:
+		fin := taskCheckBoxFinding(f, n)
+		return &fin, ast.WalkContinue, true
+	case *extast.Strikethrough:
+		fin := strikethroughFinding(f, n)
+		return &fin, ast.WalkContinue, true
+	case *extast.FootnoteLink:
+		fin := inlineExtFinding(f, n, FeatureFootnotes)
+		return &fin, ast.WalkContinue, true
+	case *extast.Footnote:
+		fin := blockFinding(f, n, FeatureFootnotes)
+		return &fin, ast.WalkSkipChildren, true
+	case *extast.FootnoteList:
+		// Walk children so Footnote definitions report their own
+		// locations; skip emitting a wrapper finding.
+		return nil, ast.WalkContinue, true
+	case *extast.DefinitionList:
+		fin := blockFinding(f, n, FeatureDefinitionLists)
+		return &fin, ast.WalkSkipChildren, true
+	case *ast.Heading:
+		if hf, ok := findHeadingID(f, node); ok {
+			return &hf, ast.WalkContinue, true
+		}
+		return nil, ast.WalkContinue, true
+	}
+	return nil, ast.WalkContinue, false
+}
+
+// customFindingFor handles the five features covered by MDS034
+// custom extensions: superscript, subscript, math block / inline,
+// and abbreviations (both definition and reference).
+func customFindingFor(f *lint.File, n ast.Node) (*Finding, ast.WalkStatus, bool) {
+	switch n.(type) {
+	case *ext.SuperscriptNode:
+		fin := markerInlineFinding(f, n, FeatureSuperscript, '^')
+		return &fin, ast.WalkContinue, true
+	case *ext.SubscriptNode:
+		fin := markerInlineFinding(f, n, FeatureSubscript, '~')
+		return &fin, ast.WalkContinue, true
+	case *ext.MathBlockNode:
+		fin := blockFinding(f, n, FeatureMathBlock)
+		return &fin, ast.WalkSkipChildren, true
+	case *ext.MathInlineNode:
+		fin := markerInlineFinding(f, n, FeatureMathInline, '$')
+		return &fin, ast.WalkContinue, true
+	case *ext.AbbreviationDefinition:
+		fin := blockFinding(f, n, FeatureAbbreviations)
+		return &fin, ast.WalkSkipChildren, true
+	case *ext.AbbreviationReference:
+		// The reference carries a child Text with the term's exact
+		// source segment, so inlineFinding pulls the real column
+		// rather than the enclosing paragraph start.
+		fin := inlineFinding(f, n, FeatureAbbreviations)
+		return &fin, ast.WalkContinue, true
+	}
+	return nil, ast.WalkContinue, false
+}
+
+// strikethroughFinding backs up past the opening "~~" so the
+// diagnostic points at the marker, not at the content character.
+func strikethroughFinding(f *lint.File, n ast.Node) Finding {
+	fin := inlineFinding(f, n, FeatureStrikethrough)
+	if fin.Start >= 2 && f.Source[fin.Start-1] == '~' && f.Source[fin.Start-2] == '~' {
+		fin.Start -= 2
+		fin.Column -= 2
+	}
+	return fin
+}
+
+// markerInlineFinding backs up a single opening marker byte before
+// the first text descendant. Used for superscript / subscript /
+// inline-math spans where the first child text starts after the
+// single-byte marker.
+func markerInlineFinding(f *lint.File, n ast.Node, feat Feature, marker byte) Finding {
+	fin := inlineFinding(f, n, feat)
+	if fin.Start >= 1 && f.Source[fin.Start-1] == marker {
+		fin.Start--
+		fin.Column--
+	}
+	return fin
 }
 
 // blockFinding reports a block-level feature starting at column 1 of

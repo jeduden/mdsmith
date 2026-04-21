@@ -146,6 +146,31 @@ func TestDetectEmptyDocument(t *testing.T) {
 	assert.Empty(t, fs)
 }
 
+func TestDetectSuperscript(t *testing.T) {
+	fs := findings(t, "E = mc^2^\n")
+	require.True(t, hasFeature(fs, FeatureSuperscript))
+}
+
+func TestDetectSubscript(t *testing.T) {
+	fs := findings(t, "H~2~O\n")
+	require.True(t, hasFeature(fs, FeatureSubscript))
+}
+
+func TestDetectMathBlock(t *testing.T) {
+	fs := findings(t, "$$\na^2 + b^2 = c^2\n$$\n")
+	require.True(t, hasFeature(fs, FeatureMathBlock))
+}
+
+func TestDetectMathInline(t *testing.T) {
+	fs := findings(t, "foo $x+1$ bar\n")
+	require.True(t, hasFeature(fs, FeatureMathInline))
+}
+
+func TestDetectAbbreviations(t *testing.T) {
+	fs := findings(t, "*[API]: Application Programming Interface\n\nUse API here.\n")
+	require.True(t, hasFeature(fs, FeatureAbbreviations))
+}
+
 func TestDetectPlainCommonMark(t *testing.T) {
 	src := "# Heading\n\nA paragraph.\n\n- bullet\n- another\n\n" +
 		"```go\nfmt.Println(\"hi\")\n```\n"
