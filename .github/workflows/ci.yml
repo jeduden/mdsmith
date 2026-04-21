@@ -147,10 +147,10 @@ jobs:
       - name: Merge coverage profiles
         run: |
           head -1 unit.cov > merged.cov
-          # Exclude cmd/mdsmith from unit profile — those functions
-          # are only exercised via the subprocess binary, so the
-          # test-process counters are always zero.
-          tail -n +2 unit.cov | grep -v 'cmd/mdsmith/' >> merged.cov || true
+          # Include all unit-test coverage; cmd/mdsmith functions exercised
+          # only via the subprocess binary will have count 0 here but will
+          # be supplemented by the e2e profile below.
+          tail -n +2 unit.cov >> merged.cov
           e2e_profile="$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt"
           if [ ! -f "$e2e_profile" ]; then
             echo "e2e_coverage.txt not found — cmd/mdsmith coverage will be missing" >&2
