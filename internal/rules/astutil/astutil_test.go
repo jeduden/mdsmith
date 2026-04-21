@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 // --- HeadingLine ---
@@ -269,4 +270,79 @@ func TestExtractText_DirectTextNode(t *testing.T) {
 		}
 		return ast.WalkContinue, nil
 	})
+}
+
+// TestHeadingLine_WalkDescendsIntoNonTextChild exercises the ast.Walk path in
+// HeadingLine for headings where Lines() is empty (e.g. synthetic nodes).
+// The walk must descend through a non-text child (Emphasis) to reach the Text.
+func TestHeadingLine_WalkDescendsIntoNonTextChild(t *testing.T) {
+	src := []byte("Text\n\n## end\n")
+	// "end" starts at byte offset 9 (line 3).
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	heading := ast.NewHeading(2) // no Lines() set
+	emph := ast.NewEmphasis(1)
+	txt := ast.NewText()
+	txt.Segment = text.NewSegment(9, 12)
+	emph.AppendChild(emph, txt)
+	heading.AppendChild(heading, emph)
+
+	assert.Equal(t, 3, HeadingLine(heading, f))
+}
+
+// --- HeadingText and ExtractText additional cases ---
+
+func TestHeadingText_LinkText(t *testing.T) {
+	src := []byte("# [mdsmith](https://example.com)\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	found := false
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if h, ok := n.(*ast.Heading); ok {
+			found = true
+			assert.Equal(t, "mdsmith", HeadingText(h, f.Source))
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.True(t, found)
+}
+
+func TestExtractText_LinkNode(t *testing.T) {
+	src := []byte("# [mdsmith](https://example.com)\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	found := false
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if h, ok := n.(*ast.Heading); ok {
+			link, ok2 := h.FirstChild().(*ast.Link)
+			require.True(t, ok2)
+			var buf bytes.Buffer
+			ExtractText(link, f.Source, &buf)
+			assert.Equal(t, "mdsmith", buf.String())
+			found = true
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.True(t, found)
+}
+
+func TestHeadingText_AndExtractText_NoChildren(t *testing.T) {
+	h := ast.NewHeading(1)
+	assert.Equal(t, "", HeadingText(h, nil))
+
+	var buf bytes.Buffer
+	emptyLink := ast.NewLink()
+	ExtractText(emptyLink, nil, &buf)
+	assert.Equal(t, "", buf.String())
 }

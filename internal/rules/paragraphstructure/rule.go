@@ -135,5 +135,4 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-// isTable returns true if the paragraph's first line starts with a pipe,
 var _ rule.Configurable = (*Rule)(nil)

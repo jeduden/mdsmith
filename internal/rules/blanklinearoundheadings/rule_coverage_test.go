@@ -165,6 +165,18 @@ func TestFix_Heading_InsertsBlankLines(t *testing.T) {
 	assert.Contains(t, string(result), "\n\nmore text")
 }
 
+// --- headingLastLine fallback ---
+
+func TestHeadingLastLine_NoLines_FallsBackToAstutil(t *testing.T) {
+	// Synthetic heading with no Lines() set exercises the fallback branch
+	// in headingLastLine that delegates to astutil.HeadingLine.
+	heading := ast.NewHeading(1)
+	f, err := lint.NewFile("test.md", []byte("# X\n"))
+	require.NoError(t, err)
+	last := headingLastLine(heading, f)
+	assert.Equal(t, 1, last)
+}
+
 // --- Category ---
 
 func TestCategory(t *testing.T) {
