@@ -8,6 +8,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -108,11 +109,11 @@ func paragraphLine(para *ast.Paragraph, f *lint.File) int {
 }
 
 // ApplySettings implements rule.Configurable.
-func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
+func (r *Rule) ApplySettings(s map[string]any) error {
+	for k, v := range s {
 		switch k {
 		case "max-sentences":
-			n, ok := toInt(v)
+			n, ok := settings.ToInt(v)
 			if !ok {
 				return fmt.Errorf(
 					"paragraph-structure: max-sentences must be an integer, got %T", v,
@@ -120,7 +121,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			}
 			r.MaxSentences = n
 		case "max-words-per-sentence":
-			n, ok := toInt(v)
+			n, ok := settings.ToInt(v)
 			if !ok {
 				return fmt.Errorf(
 					"paragraph-structure: max-words-per-sentence must be an integer, got %T", v,
@@ -140,18 +141,6 @@ func (r *Rule) DefaultSettings() map[string]any {
 		"max-sentences":          6,
 		"max-words-per-sentence": 40,
 	}
-}
-
-func toInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case float64:
-		return int(n), true
-	case int64:
-		return int(n), true
-	}
-	return 0, false
 }
 
 // isTable returns true if the paragraph's first line starts with a pipe,

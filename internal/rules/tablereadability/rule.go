@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 )
 
 const (
@@ -101,11 +102,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // ApplySettings implements rule.Configurable.
-func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
+func (r *Rule) ApplySettings(s map[string]any) error {
+	for k, v := range s {
 		switch k {
 		case "max-columns":
-			n, ok := toInt(v)
+			n, ok := settings.ToInt(v)
 			if !ok {
 				return fmt.Errorf("table-readability: max-columns must be an integer, got %T", v)
 			}
@@ -114,7 +115,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			}
 			r.MaxColumns = n
 		case "max-rows":
-			n, ok := toInt(v)
+			n, ok := settings.ToInt(v)
 			if !ok {
 				return fmt.Errorf("table-readability: max-rows must be an integer, got %T", v)
 			}
@@ -123,7 +124,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			}
 			r.MaxRows = n
 		case "max-words-per-cell":
-			n, ok := toInt(v)
+			n, ok := settings.ToInt(v)
 			if !ok {
 				return fmt.Errorf("table-readability: max-words-per-cell must be an integer, got %T", v)
 			}
@@ -132,7 +133,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			}
 			r.MaxWordsPerCell = n
 		case "max-column-width-ratio":
-			n, ok := toFloat(v)
+			n, ok := settings.ToFloat(v)
 			if !ok {
 				return fmt.Errorf("table-readability: max-column-width-ratio must be a number, got %T", v)
 			}
@@ -452,30 +453,6 @@ func isSeparatorRow(cells []string) bool {
 		}
 	}
 	return true
-}
-
-func toInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case float64:
-		return int(n), true
-	case int64:
-		return int(n), true
-	}
-	return 0, false
-}
-
-func toFloat(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	}
-	return 0, false
 }
 
 var _ rule.Configurable = (*Rule)(nil)

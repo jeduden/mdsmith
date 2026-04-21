@@ -9,6 +9,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -168,8 +169,8 @@ func isTable(para *ast.Paragraph, f *lint.File) bool {
 }
 
 // ApplySettings implements rule.Configurable.
-func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
+func (r *Rule) ApplySettings(s map[string]any) error {
+	for k, v := range s {
 		switch k {
 		case "min-score":
 			if err := r.setMinScore(v); err != nil {
@@ -187,7 +188,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 }
 
 func (r *Rule) setMinScore(v any) error {
-	n, ok := toFloat(v)
+	n, ok := settings.ToFloat(v)
 	if !ok {
 		return fmt.Errorf(
 			"conciseness-scoring: min-score must be a number, got %T",
@@ -205,7 +206,7 @@ func (r *Rule) setMinScore(v any) error {
 }
 
 func (r *Rule) setMinWords(v any) error {
-	n, ok := toInt(v)
+	n, ok := settings.ToInt(v)
 	if !ok {
 		return fmt.Errorf(
 			"conciseness-scoring: min-words must be an integer, got %T",
@@ -228,30 +229,6 @@ func (r *Rule) DefaultSettings() map[string]any {
 		"min-score": defaultMinScore,
 		"min-words": defaultMinWords,
 	}
-}
-
-func toFloat(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	}
-	return 0, false
-}
-
-func toInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case float64:
-		return int(n), true
-	case int64:
-		return int(n), true
-	}
-	return 0, false
 }
 
 var _ rule.Configurable = (*Rule)(nil)

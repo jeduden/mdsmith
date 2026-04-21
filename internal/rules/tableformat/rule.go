@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 )
 
 func init() {
@@ -35,11 +36,11 @@ func (r *Rule) Category() string { return "table" }
 func (r *Rule) GetPad() int { return r.Pad }
 
 // ApplySettings implements rule.Configurable.
-func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
+func (r *Rule) ApplySettings(s map[string]any) error {
+	for k, v := range s {
 		switch k {
 		case "pad":
-			n, ok := toInt(v)
+			n, ok := settings.ToInt(v)
 			if !ok {
 				return fmt.Errorf("table-format: pad must be an integer, got %T", v)
 			}
@@ -542,20 +543,6 @@ func tableEqual(a, b table) bool {
 		}
 	}
 	return true
-}
-
-// toInt converts a value to int. Supports int and float64 (YAML decodes
-// numbers as int or float64 depending on context).
-func toInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case float64:
-		return int(n), true
-	case int64:
-		return int(n), true
-	}
-	return 0, false
 }
 
 // FormatString formats all markdown tables in s with the given padding

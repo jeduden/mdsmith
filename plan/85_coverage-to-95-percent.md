@@ -1,7 +1,7 @@
 ---
 id: 85
 title: "Increase test coverage to 95% by extracting shared rule helpers"
-status: "🔲"
+status: "🔳"
 summary: "Refactor duplicated private helpers into shared packages, then test the shared code once."
 ---
 # Increase test coverage to 95% by extracting shared rule helpers
@@ -28,28 +28,31 @@ setext, fallback).
 
 Phase 1 --- type conversion helpers:
 
-  - [ ] Create `internal/rules/settings/settings.go`
+  - [x] Create `internal/rules/settings/settings.go`
     with exported `ToInt(v any) (int, bool)`,
     `ToFloat(v any) (float64, bool)`, and
     `ToStringSlice(v any) ([]string, bool)`
-  - [ ] Write table-driven tests in
+  - [x] Write table-driven tests in
     `internal/rules/settings/settings_test.go` covering
     all type branches (`int`, `float64`, `int64`,
     `string`, `bool`, `nil`)
-  - [ ] Replace private `toInt` in 10 rule packages
+  - [x] Replace private `toInt` in 10 rule packages
     (tablereadability, tableformat, tokenbudget,
     linelength, paragraphreadability,
     paragraphstructure, concisenessscoring,
     nomultipleblanks, maxfilelength, firstlineheading)
     with `settings.ToInt`
-  - [ ] Replace private `toFloat` in 4 rule packages
+  - [x] Replace private `toFloat` in 4 rule packages
     (tablereadability, tokenbudget,
     paragraphreadability, concisenessscoring) with
     `settings.ToFloat`
-  - [ ] Handle the `emptysectionbody` variant (has extra
+  - [x] Handle the `emptysectionbody` variant (has extra
     `int64` validation) --- decide whether to fold that
     branch into the shared version or keep it local
-  - [ ] Delete the now-unused private functions and
+    (decision: kept local because it rejects non-whole
+    floats, which the shared `ToInt` accepts and
+    truncates; same rationale for `maxsectionlength`)
+  - [x] Delete the now-unused private functions and
     their per-package coverage tests
 
 Phase 2 --- AST heading and paragraph helpers:

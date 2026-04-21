@@ -94,41 +94,6 @@ func TestTableDiffMessage_AllSame(t *testing.T) {
 	assert.Equal(t, "table is not formatted", msg)
 }
 
-// --- toInt coverage ---
-
-func TestToInt_Int(t *testing.T) {
-	n, ok := toInt(42)
-	assert.True(t, ok)
-	assert.Equal(t, 42, n)
-}
-
-func TestToInt_Float64(t *testing.T) {
-	n, ok := toInt(float64(3.0))
-	assert.True(t, ok)
-	assert.Equal(t, 3, n)
-}
-
-func TestToInt_Int64(t *testing.T) {
-	n, ok := toInt(int64(7))
-	assert.True(t, ok)
-	assert.Equal(t, 7, n)
-}
-
-func TestToInt_String_Fails(t *testing.T) {
-	_, ok := toInt("not a number")
-	assert.False(t, ok)
-}
-
-func TestToInt_Bool_Fails(t *testing.T) {
-	_, ok := toInt(true)
-	assert.False(t, ok)
-}
-
-func TestToInt_Nil_Fails(t *testing.T) {
-	_, ok := toInt(nil)
-	assert.False(t, ok)
-}
-
 // --- ApplySettings with float64 pad ---
 
 func TestApplySettings_Float64Pad(t *testing.T) {

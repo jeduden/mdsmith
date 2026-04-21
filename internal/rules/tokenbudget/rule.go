@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 )
 
 const (
@@ -191,8 +192,8 @@ func tokenizerCount(text, tokenizer, encoding string) int {
 }
 
 // ApplySettings implements rule.Configurable.
-func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
+func (r *Rule) ApplySettings(s map[string]any) error {
+	for k, v := range s {
 		if err := r.applySetting(k, v); err != nil {
 			return err
 		}
@@ -225,7 +226,7 @@ func (r *Rule) applySetting(k string, v any) error {
 }
 
 func (r *Rule) applyMax(v any) error {
-	n, ok := toInt(v)
+	n, ok := settings.ToInt(v)
 	if !ok {
 		return fmt.Errorf("token-budget: max must be an integer, got %T", v)
 	}
@@ -253,7 +254,7 @@ func (r *Rule) applyMode(v any) error {
 }
 
 func (r *Rule) applyTokensPerWord(v any) error {
-	n, ok := toFloat(v)
+	n, ok := settings.ToFloat(v)
 	if !ok {
 		return fmt.Errorf("token-budget: tokens-per-word must be a number, got %T", v)
 	}
@@ -349,7 +350,7 @@ func parseBudgets(v any) ([]budgetOverride, error) {
 			return nil, fmt.Errorf("token-budget: budgets[%d].glob must not be empty", idx)
 		}
 
-		maxVal, ok := toInt(m["max"])
+		maxVal, ok := settings.ToInt(m["max"])
 		if !ok {
 			return nil, fmt.Errorf("token-budget: budgets[%d].max must be an integer", idx)
 		}
@@ -419,30 +420,6 @@ func isValidEncoding(s string) bool {
 	default:
 		return false
 	}
-}
-
-func toInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case float64:
-		return int(n), true
-	case int64:
-		return int(n), true
-	}
-	return 0, false
-}
-
-func toFloat(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	}
-	return 0, false
 }
 
 var _ rule.Configurable = (*Rule)(nil)

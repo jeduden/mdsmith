@@ -42,7 +42,7 @@ footer: |
 | 82  | ✅     | [YAML billion-laughs mitigation](plan/82_yaml-billion-laughs.md)                                                |
 | 83  | 🔳     | [Security hardening batch](plan/83_security-hardening-batch.md)                                                 |
 | 84  | 🔲     | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                                      |
-| 85  | 🔲     | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md)            |
+| 85  | 🔳     | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md)            |
 | 86  | 🔲     | [Markdown flavor validation](plan/86_markdown-flavor-validation.md)                                             |
 | 87  | 🔲     | [Flavor validation for GitHub Alerts](plan/87_markdown-flavor-github-alerts.md)                                 |
 | 88  | ✅     | [TOC directive migration aid](plan/88_toc-directive-migration.md)                                               |

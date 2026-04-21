@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 )
 
 func init() {
@@ -100,11 +101,11 @@ func (r *Rule) Fix(f *lint.File) []byte {
 }
 
 // ApplySettings implements rule.Configurable.
-func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
+func (r *Rule) ApplySettings(s map[string]any) error {
+	for k, v := range s {
 		switch k {
 		case "max":
-			n, ok := toInt(v)
+			n, ok := settings.ToInt(v)
 			if !ok {
 				return fmt.Errorf("no-multiple-blanks: max must be an integer, got %T", v)
 			}
@@ -121,19 +122,6 @@ func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
 		"max": 1,
 	}
-}
-
-// toInt converts a value to int.
-func toInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case int:
-		return n, true
-	case float64:
-		return int(n), true
-	case int64:
-		return int(n), true
-	}
-	return 0, false
 }
 
 var _ rule.Configurable = (*Rule)(nil)
