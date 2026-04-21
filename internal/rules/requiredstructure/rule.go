@@ -178,23 +178,30 @@ func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
 			"schema and archetype are mutually exclusive")
 	}
 	if r.Archetype != "" {
-		resolver := r.archetypeResolver(f)
-		entry, err := resolver.Lookup(r.Archetype)
-		if err != nil {
-			return nil, "", err
-		}
-		data, err := fs.ReadFile(resolver.FS, entry.Path)
-		if err != nil {
-			return nil, "", fmt.Errorf(
-				"reading archetype %q: %w", r.Archetype, err)
-		}
-		return data, entry.Path, nil
+		return r.loadArchetype(f)
 	}
 	data, err := readSchemaFile(f, r.Schema)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot read schema %q: %v", r.Schema, err)
 	}
 	return data, r.Schema, nil
+}
+
+// loadArchetype resolves the configured archetype and returns its
+// schema bytes along with the fs-relative path (for include
+// resolution).
+func (r *Rule) loadArchetype(f *lint.File) ([]byte, string, error) {
+	resolver := r.archetypeResolver(f)
+	entry, err := resolver.Lookup(r.Archetype)
+	if err != nil {
+		return nil, "", err
+	}
+	data, err := fs.ReadFile(resolver.FS, entry.Path)
+	if err != nil {
+		return nil, "", fmt.Errorf(
+			"reading archetype %q: %w", r.Archetype, err)
+	}
+	return data, entry.Path, nil
 }
 
 // archetypeResolver builds an archetypes.Resolver from the rule's

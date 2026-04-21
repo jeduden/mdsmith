@@ -1,6 +1,7 @@
 package archetypes
 
 import (
+	"errors"
 	"io/fs"
 	"strings"
 	"testing"
@@ -128,6 +129,49 @@ func TestResolver_AbsPathNoRootDir(t *testing.T) {
 	p, err := r.AbsPath("story")
 	require.NoError(t, err)
 	assert.Equal(t, "archetypes/story.md", p)
+}
+
+func TestResolver_AbsPathMissingName(t *testing.T) {
+	r := &Resolver{FS: fsWith(map[string]string{})}
+	_, err := r.AbsPath("missing")
+	require.Error(t, err)
+}
+
+// statErrFS wraps an fs.FS and returns a non-ErrNotExist error from
+// Stat for a specific path, exercising the unexpected-error branch of
+// Lookup.
+type statErrFS struct {
+	fs      fs.FS
+	errPath string
+	err     error
+}
+
+func (s statErrFS) Open(name string) (fs.File, error) {
+	return s.fs.Open(name)
+}
+
+func (s statErrFS) Stat(name string) (fs.FileInfo, error) {
+	if name == s.errPath {
+		return nil, s.err
+	}
+	return fs.Stat(s.fs, name)
+}
+
+func (s statErrFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return fs.ReadDir(s.fs, name)
+}
+
+func TestResolver_LookupPropagatesUnexpectedStatError(t *testing.T) {
+	boom := errors.New("io failure")
+	r := &Resolver{FS: statErrFS{
+		fs:      fsWith(map[string]string{"archetypes/dummy.md": "x"}),
+		errPath: "archetypes/boom.md",
+		err:     boom,
+	}}
+	_, err := r.Lookup("boom")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading archetype")
+	assert.True(t, errors.Is(err, boom))
 }
 
 func TestDefaultRoot(t *testing.T) {

@@ -1,6 +1,8 @@
 package requiredstructure
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,6 +236,22 @@ func TestApplySettings_ArchetypeRootsInvalidItem(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestApplySettings_ArchetypeRootsSingleString(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"archetype-roots": "only"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"only"}, r.ArchetypeRoots)
+}
+
+func TestApplySettings_ArchetypeRootsTypedStringSlice(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"archetype-roots": []string{"a", "b"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a", "b"}, r.ArchetypeRoots)
+}
+
 func TestDefaultSettings_ArchetypeRoots(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t,
@@ -285,6 +303,42 @@ func TestCheck_ArchetypeEnforcesFrontMatterCUE(t *testing.T) {
 	f := newFileInRoot(t, root, "doc.md", "# Title\n")
 	diags := r.Check(f)
 	expectDiagMsg(t, diags, "front matter does not satisfy schema CUE constraints")
+}
+
+// readErrFS wraps a real fs.FS but returns an error when Open is
+// called for a specific path. Stat still delegates to the underlying
+// FS so Lookup succeeds, exercising the archetype read-after-lookup
+// error path in loadArchetype.
+type readErrFS struct {
+	fs      fs.FS
+	errPath string
+	err     error
+}
+
+func (s readErrFS) Open(name string) (fs.File, error) {
+	if name == s.errPath {
+		return nil, s.err
+	}
+	return s.fs.Open(name)
+}
+
+func (s readErrFS) Stat(name string) (fs.FileInfo, error) {
+	return fs.Stat(s.fs, name)
+}
+
+func TestCheck_ArchetypeReadErrorAfterLookup(t *testing.T) {
+	root := t.TempDir()
+	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
+		"# ?\n\n## Background\n\n## ...\n")
+	f := newFileInRoot(t, root, "doc.md", "# Title\n")
+	f.RootFS = readErrFS{
+		fs:      f.RootFS,
+		errPath: filepath.ToSlash(filepath.Join("archetypes", "story.md")),
+		err:     errors.New("simulated read failure"),
+	}
+	r := &Rule{Archetype: "story"}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, "reading archetype")
 }
 
 func TestCheck_ArchetypeEarlierRootShadowsLater(t *testing.T) {
