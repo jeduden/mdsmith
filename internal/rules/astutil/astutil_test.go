@@ -69,6 +69,47 @@ func TestHeadingLine_ATXOnLaterLine(t *testing.T) {
 	assert.Equal(t, 3, line)
 }
 
+func TestHeadingLine_ATXEmphasisOnLaterLine(t *testing.T) {
+	// ATX heading on line 3 whose only child is emphasis (not a direct *ast.Text).
+	// HeadingLine must descend into inline children to find the text segment.
+	src := []byte("Text\n\n## *emph*\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	var line int
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if h, ok := n.(*ast.Heading); ok {
+			line = HeadingLine(h, f)
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	assert.Equal(t, 3, line)
+}
+
+func TestHeadingLine_ATXLinkOnLaterLine(t *testing.T) {
+	// ATX heading on line 3 whose only child is a link node.
+	src := []byte("Text\n\n## [link](url)\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	var line int
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if h, ok := n.(*ast.Heading); ok {
+			line = HeadingLine(h, f)
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	assert.Equal(t, 3, line)
+}
+
 func TestHeadingLine_Fallback_Returns1(t *testing.T) {
 	heading := ast.NewHeading(1)
 	f, err := lint.NewFile("test.md", []byte("# X\n"))

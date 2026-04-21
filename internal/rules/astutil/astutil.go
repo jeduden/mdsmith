@@ -9,18 +9,28 @@ import (
 
 // HeadingLine returns the 1-based source line of a heading node.
 // Setext headings expose their line via Lines(); ATX headings are found
-// by walking child text nodes.  Returns 1 as a safe fallback.
+// by walking inline descendants until the first text segment. Returns 1
+// as a safe fallback.
 func HeadingLine(heading *ast.Heading, f *lint.File) int {
 	lines := heading.Lines()
 	if lines.Len() > 0 {
 		return f.LineOfOffset(lines.At(0).Start)
 	}
-	for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			return f.LineOfOffset(t.Segment.Start)
+
+	line := 1
+	_ = ast.Walk(heading, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering || n == heading {
+			return ast.WalkContinue, nil
 		}
-	}
-	return 1
+		t, ok := n.(*ast.Text)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		line = f.LineOfOffset(t.Segment.Start)
+		return ast.WalkStop, nil
+	})
+
+	return line
 }
 
 // ParagraphLine returns the 1-based source line of a paragraph node.
