@@ -179,10 +179,10 @@ func TestCheck_SameFileMultipleMatchesSortedByLine(t *testing.T) {
 	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
 	diags := (&Rule{}).Check(f)
 	require.Len(t, diags, 2)
-	// Both diagnostics reference b.md; lines ascend.
+	// Both diagnostics reference b.md; lines ascend from the first
+	// duplicate at line 3 to the later duplicate at line 7.
 	assert.Contains(t, diags[0].Message, "b.md:3")
-	assert.Contains(t, diags[1].Message, "b.md:")
-	assert.NotEqual(t, diags[0].Message, diags[1].Message)
+	assert.Contains(t, diags[1].Message, "b.md:7")
 }
 
 func TestCheck_NoFSIsNoop(t *testing.T) {
@@ -247,7 +247,8 @@ func TestCheck_ConfigDiagOnBadGlob(t *testing.T) {
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
 	assert.Equal(t, lint.Error, diags[0].Severity)
-	assert.Contains(t, diags[0].Message, "duplicated-content")
+	assert.Contains(t, diags[0].Message, "include:",
+		"diagnostic must name the offending setting list")
 }
 
 func TestCheck_ConfigDiagOnBadExcludeGlob(t *testing.T) {
@@ -259,6 +260,8 @@ func TestCheck_ConfigDiagOnBadExcludeGlob(t *testing.T) {
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
 	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, "exclude:",
+		"diagnostic must name the offending setting list")
 }
 
 func TestCheck_RootFSWithRelativeFilePath(t *testing.T) {

@@ -63,11 +63,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// contain no qualifying paragraphs.
 	includeMatchers, err := compileMatchers(r.Include)
 	if err != nil {
-		return []lint.Diagnostic{configDiag(f, r, err)}
+		return []lint.Diagnostic{
+			configDiag(f, r, fmt.Errorf("include: %w", err)),
+		}
 	}
 	excludeMatchers, err := compileMatchers(r.Exclude)
 	if err != nil {
-		return []lint.Diagnostic{configDiag(f, r, err)}
+		return []lint.Diagnostic{
+			configDiag(f, r, fmt.Errorf("exclude: %w", err)),
+		}
 	}
 
 	minChars := r.MinChars
