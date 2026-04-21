@@ -6,6 +6,8 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 var (
@@ -18,7 +20,14 @@ var (
 // for AST-based feature detection (table, strikethrough, task list,
 // footnote, definition list) and the heading-ID attribute parser.
 //
-// Linkify is intentionally not enabled here: bare-URL autolinks are
+// To keep MDS034 aligned with the rest of mdsmith, the dual parser
+// also registers lint.PIBlockParserPrioritized so a
+// <?include ... ?> block is treated as a processing-instruction
+// node here — just as lint.NewFile does — rather than as an HTML
+// block. Without this, a table fixture embedded inside a PI block
+// would be flagged by MDS034 but invisible to every other rule.
+//
+// Linkify is intentionally not enabled: bare-URL autolinks are
 // detected separately in detectBareURLs by scanning Text nodes from
 // the main CommonMark parse, so adding Linkify would only duplicate
 // work without changing the result.
@@ -38,6 +47,9 @@ func Parser() goldmark.Markdown {
 			),
 			goldmark.WithParserOptions(
 				parser.WithAttribute(),
+				parser.WithBlockParsers(
+					lint.PIBlockParserPrioritized(),
+				),
 			),
 		)
 	})

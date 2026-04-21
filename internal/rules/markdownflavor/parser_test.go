@@ -8,6 +8,8 @@ import (
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 func TestParserCachesSingleInstance(t *testing.T) {
@@ -49,6 +51,28 @@ func TestParserDetectsDefinitionList(t *testing.T) {
 	doc := parseSource(t, src)
 	assert.True(t, containsKind(doc, extast.KindDefinitionList),
 		"expected definition-list node in dual-parser AST")
+}
+
+// TestParserRecognisesPIBlocks guards that the dual parser uses the
+// same processing-instruction block parser as lint.NewFile so table
+// / list markup embedded inside a <?include ... ?> block is not
+// detected as real document markup by MDS034.
+func TestParserRecognisesPIBlocks(t *testing.T) {
+	src := []byte("<?include\nfile: x.md\n?>\n")
+	doc := parseSource(t, src)
+	found := false
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if n.Kind() == lint.KindProcessingInstruction {
+			found = true
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	assert.True(t, found,
+		"expected ProcessingInstruction node in dual-parser AST")
 }
 
 func TestParserDetectsHeadingAttribute(t *testing.T) {
