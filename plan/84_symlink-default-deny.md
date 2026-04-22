@@ -1,7 +1,7 @@
 ---
 id: 84
 title: 'Symlink default-deny for file discovery'
-status: "🔳"
+status: "✅"
 summary: >-
   Skip symlinks by default during directory walks;
   add --follow-symlinks opt-in flag.
@@ -83,29 +83,37 @@ Consider migrating from `filepath.Walk` to
 
 ## Tasks
 
-1. Replace `NoFollowSymlinks []string` with
-   `FollowSymlinks bool` in `config.Config`
-2. Replace `--no-follow-symlinks` with
-   `--follow-symlinks` in CLI flag sets
-3. Update `ResolveOpts` to use `FollowSymlinks bool`
-4. Update `walkDir` to skip symlinks by default
-5. Update `resolveGlob` to skip symlinks by default
-6. Add deprecation warning for old config key
-7. Update tests in `files_test.go`
-8. Add integration test: symlink to file outside
-   project is skipped by default, followed with
-   `--follow-symlinks`
+1. [x] Replaced `NoFollowSymlinks []string` with
+   `FollowSymlinks bool` in `config.Config`; kept
+   `LegacyNoFollowSymlinks` for deprecation parsing
+2. [x] Replaced `--no-follow-symlinks` with
+   `--follow-symlinks`; old flag silently accepted
+3. [x] Updated `ResolveOpts` to use `FollowSymlinks bool`
+4. [x] Updated `walkDir` to skip symlinks by default
+5. [x] Updated `resolveGlob` to skip symlinks by default
+6. [x] Added deprecation warning for old config key
+   (emitted by `cmd/mdsmith.loadConfig` once per run)
+7. [x] Updated `files_test.go` and `lint_coverage_test.go`
+8. [x] Added integration tests in
+   `cmd/mdsmith/e2e_symlink_default_deny_test.go`:
+   external-target symlink skipped by default,
+   followed with `--follow-symlinks`, config-key
+   opt-in, legacy-config deprecation warning, and
+   fix TOCTOU behavior (symlink replaced, target
+   untouched)
 
 ## Acceptance Criteria
 
-- [ ] Symlinks are skipped by default in directory
+- [x] Symlinks are skipped by default in directory
       walks
-- [ ] `--follow-symlinks` flag enables symlink
+- [x] `--follow-symlinks` flag enables symlink
       following
-- [ ] `follow-symlinks: true` in config enables
+- [x] `follow-symlinks: true` in config enables
       symlink following
-- [ ] Old `no-follow-symlinks` config emits
+- [x] Old `no-follow-symlinks` config emits
       deprecation warning
-- [ ] Both `check` and `fix` respect the setting
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Both `check` and `fix` respect the setting
+- [x] All tests pass: `go test ./...` (except
+      pre-existing `internal/corpus` failures
+      tracked by plan 90)
+- [x] `go tool golangci-lint run` reports no issues

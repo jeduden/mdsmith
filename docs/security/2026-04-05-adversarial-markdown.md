@@ -115,6 +115,8 @@ Escape sequences pass through to the terminal: screen clearing (`\033[2J`), wind
 
 Symlink following is the default behavior. The `--no-follow-symlinks` flag and config exist but are opt-in.
 
+**Status (plan 84):** the default is now inverted. Symlinks are skipped by default across directory walks and glob expansion; users opt in with `--follow-symlinks` or `follow-symlinks: true`. The legacy `--no-follow-symlinks` flag and `no-follow-symlinks:` config key are silently accepted for one release, with a deprecation warning emitted for the config key.
+
 **Adversarial file:**
 
 ```bash

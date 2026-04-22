@@ -34,16 +34,29 @@ match, exits 0.
 
 ## Subcommand Flags (check, fix)
 
-| Flag                   | Default | Description                             |
-|------------------------|---------|-----------------------------------------|
-| `-c`, `--config`       | auto    | Config path (auto-discovers by default) |
-| `-f`, `--format`       | `text`  | `text` or `json`                        |
-| `--max-input-size`     | `2MB`   | Max file size (e.g. `2MB`, `0`=none)    |
-| `--no-color`           | false   | Plain output                            |
-| `--no-follow-symlinks` | false   | Skip symbolic links when walking        |
-| `--no-gitignore`       | false   | Skip gitignore                          |
-| `-q`, `--quiet`        | false   | Quiet mode                              |
-| `-v`, `--verbose`      | false   | Verbose output                          |
+| Flag                | Default | Description                             |
+|---------------------|---------|-----------------------------------------|
+| `-c`, `--config`    | auto    | Config path (auto-discovers by default) |
+| `-f`, `--format`    | `text`  | `text` or `json`                        |
+| `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)    |
+| `--no-color`        | false   | Plain output                            |
+| `--follow-symlinks` | false   | Follow symlinks (default: skip)         |
+| `--no-gitignore`    | false   | Skip gitignore                          |
+| `-q`, `--quiet`     | false   | Quiet mode                              |
+| `-v`, `--verbose`   | false   | Verbose output                          |
+
+Symlinks are skipped by default. This blocks a malicious
+symlink from redirecting `check` or `fix` to files outside
+the project. Both directory walks and glob expansion apply
+the rule.
+
+Pass `--follow-symlinks` to opt in on the command line.
+Set `follow-symlinks: true` in `.mdsmith.yml` to opt in
+from config.
+
+The old `--no-follow-symlinks` flag parses silently.
+The old `no-follow-symlinks:` config key parses too, and
+emits a deprecation warning on stderr.
 
 ## Other Subcommand Flags
 
@@ -55,7 +68,7 @@ and `--scope` (only `file` is supported; defaults to
 `file`).
 
 `metrics rank` accepts `-c`/`--config`, `-f`/`--format`,
-`--no-gitignore`, `--no-follow-symlinks`,
+`--no-gitignore`, `--follow-symlinks`,
 `--max-input-size`, plus `--metrics`, `--by`, `--order`,
 `--top`.
 
