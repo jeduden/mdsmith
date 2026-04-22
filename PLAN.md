@@ -35,12 +35,12 @@ footer: |
 | 75  | ✅     | [Single-brace placeholders everywhere](plan/75_single-brace-placeholders.md)                                    |
 | 76  | ✅     | [Rename misleading parameter names](plan/76_rename-misleading-params.md)                                        |
 | 77  | ✅     | [Template composition and cycle detection](plan/77_template-composition-and-cycles.md)                          |
-| 78  | 🔲     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                         |
+| 78  | ✅     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                         |
 | 79  | ✅     | [Nested front-matter access](plan/79_nested-frontmatter-access.md)                                              |
 | 80  | ✅     | [Terminal recording in README](plan/80_terminal-recording-readme.md)                                            |
 | 81  | ✅     | [OOM mitigation: configurable file-size limit](plan/81_oom-file-size-limit.md)                                  |
 | 82  | ✅     | [YAML billion-laughs mitigation](plan/82_yaml-billion-laughs.md)                                                |
-| 83  | 🔳     | [Security hardening batch](plan/83_security-hardening-batch.md)                                                 |
+| 83  | ✅     | [Security hardening batch](plan/83_security-hardening-batch.md)                                                 |
 | 84  | 🔲     | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                                      |
 | 85  | 🔳     | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md)            |
 | 86  | 🔳     | [Markdown flavor validation](plan/86_markdown-flavor-validation.md)                                             |

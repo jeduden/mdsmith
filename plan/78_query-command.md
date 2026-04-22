@@ -1,7 +1,7 @@
 ---
 id: 78
 title: "Query subcommand for front-matter filtering"
-status: "🔲"
+status: "✅"
 summary: "Add mdsmith query to select files by CUE expression on front matter"
 ---
 # Query subcommand for front-matter filtering
@@ -118,41 +118,41 @@ keep numeric types so `id: >50` works.
 
 ## Tasks
 
-1. Extract `readFrontMatterRaw(path) map[string]any`
+1. [x] Extract `readFrontMatterRaw(path) map[string]any`
    into a shared internal package (or keep a small local
    copy) so both catalog and query can use it
-2. Add `internal/query/query.go` with
+2. [x] Add `internal/query/query.go` with
    `Match(expr string, fm map[string]any) bool`
    wrapping CUE compile-unify-validate
-3. Add `runQuery` in `cmd/mdsmith/main.go` with flag
+3. [x] Add `runQuery` in `cmd/mdsmith/main.go` with flag
    parsing (`-0`, `--verbose`), file resolution, and
    stdout output loop
-4. Register `query` in the subcommand dispatcher and
+4. [x] Register `query` in the subcommand dispatcher and
    update `usageText`
-5. Add `query` to the Commands table in `README.md`
+5. [x] Add `query` to the Commands table in `README.md`
    and `docs/reference/cli.md`
-6. Write unit tests for `internal/query`: matching
+6. [x] Write unit tests for `internal/query`: matching
    expression passes, non-matching fails, missing field
    fails, absent front matter fails, schema-string
    front matter (proto) fails, compound expressions
-7. Write an e2e test: matches printed to stdout, no
+7. [x] Write an e2e test: matches printed to stdout, no
    matches yields exit 1, `-0` uses NUL delimiter
-8. Run `mdsmith check .` and `go test ./...`
+8. [x] Run `mdsmith check .` and `go test ./...`
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith query 'status: "✅"' plan/` prints paths
+- [x] `mdsmith query 'status: "✅"' plan/` prints paths
   of completed plans, one per line
-- [ ] Piping into `xargs git rm` deletes them
-- [ ] Exit 0 on match, exit 1 on no match
-- [ ] `-0` outputs NUL-delimited paths
-- [ ] Files without front matter are silently skipped
-- [ ] `proto.md` is never matched (non-concrete CUE
+- [x] Piping into `xargs git rm` deletes them
+- [x] Exit 0 on match, exit 1 on no match
+- [x] `-0` outputs NUL-delimited paths
+- [x] Files without front matter are silently skipped
+- [x] `proto.md` is never matched (non-concrete CUE
   values fail validation)
-- [ ] All tests pass: `go test ./...`
-- [ ] `README.md` Commands table includes `query`
-- [ ] `docs/reference/cli.md` Commands table includes
+- [x] All tests pass: `go test ./...`
+- [x] `README.md` Commands table includes `query`
+- [x] `docs/reference/cli.md` Commands table includes
   `query`
-- [ ] Invalid CUE expression prints error to stderr
+- [x] Invalid CUE expression prints error to stderr
   and exits 2
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `go tool golangci-lint run` reports no issues

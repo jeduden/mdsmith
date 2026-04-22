@@ -1,7 +1,7 @@
 ---
 id: 83
 title: 'Security hardening batch'
-status: "🔳"
+status: "✅"
 summary: >-
   Bundle of low-risk security fixes: ANSI sanitization,
   path traversal boundary, atomic writes, schema fs.FS,
@@ -145,7 +145,7 @@ Thread `MaxInputBytes` via `lint.File`.
    template rendering; emit diagnostic
 7. [x] Set `GOMEMLIMIT` at process startup to cap
    memory for CUE and other unbounded operations
-8. Replace `fs.ReadFile` with `ReadFSFileLimited` at
+8. [x] Replace `fs.ReadFile` with `ReadFSFileLimited` at
    include and catalog read sites (after plan 81)
 9. [x] Add tests for each fix (A through F)
 
@@ -163,7 +163,7 @@ Thread `MaxInputBytes` via `lint.File`.
       diagnostic
 - [x] `GOMEMLIMIT` set at process startup to bound
       memory for CUE and other operations
-- [ ] Include/catalog reads bounded by
+- [x] Include/catalog reads bounded by
       `MaxInputBytes` (after plan 81)
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues

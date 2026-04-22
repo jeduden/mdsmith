@@ -1562,3 +1562,65 @@ func TestQuery_MaxInputSize_InvalidValue(t *testing.T) {
 	assert.Equal(t, 2, exitCode, "expected exit code 2 for invalid size")
 	assert.Contains(t, stderr, "invalid max-input-size")
 }
+
+func TestQuery_MatchesPrintedToStdout(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "done.md", "---\nstatus: \"✅\"\n---\n# Done\n")
+	writeFixture(t, dir, "todo.md", "---\nstatus: \"🔲\"\n---\n# Todo\n")
+	writeFixture(t, dir, "nofront.md", "# No front matter\n")
+
+	stdout, _, exitCode := runBinaryInDir(t, dir, "",
+		"query", `status: "✅"`, "done.md", "todo.md", "nofront.md")
+	assert.Equal(t, 0, exitCode, "expected exit 0 on match")
+	assert.Contains(t, stdout, "done.md")
+	assert.NotContains(t, stdout, "todo.md")
+	assert.NotContains(t, stdout, "nofront.md")
+}
+
+func TestQuery_NoMatchExitsOne(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "todo.md", "---\nstatus: \"🔲\"\n---\n# Todo\n")
+
+	stdout, _, exitCode := runBinaryInDir(t, dir, "",
+		"query", `status: "✅"`, "todo.md")
+	assert.Equal(t, 1, exitCode, "expected exit 1 on no match")
+	assert.Empty(t, stdout)
+}
+
+func TestQuery_NulDelimiter(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "a.md", "---\nstatus: \"✅\"\n---\n# A\n")
+	writeFixture(t, dir, "b.md", "---\nstatus: \"✅\"\n---\n# B\n")
+
+	stdout, _, exitCode := runBinaryInDir(t, dir, "",
+		"query", "-0", `status: "✅"`, "a.md", "b.md")
+	assert.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "\x00")
+	assert.NotContains(t, stdout, "\n")
+}
+
+func TestQuery_InvalidCUEExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "a.md", "---\nstatus: \"✅\"\n---\n# A\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"query", `status: [[[`, "a.md")
+	assert.Equal(t, 2, exitCode)
+	assert.Contains(t, stderr, "invalid CUE expression")
+}
+
+func TestQuery_FilesWithoutFrontMatterSkipped(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "nofront.md", "# No front matter\n")
+
+	stdout, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"query", `status: "✅"`, "nofront.md")
+	assert.Equal(t, 1, exitCode, "expected exit 1: no match")
+	assert.Empty(t, stdout)
+	assert.Empty(t, stderr, "no-front-matter file should be silently skipped")
+}
