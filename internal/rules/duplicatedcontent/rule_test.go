@@ -665,6 +665,31 @@ func TestApplySettings_RejectsZeroMinChars(t *testing.T) {
 	assert.Contains(t, err.Error(), "min-chars must be > 0")
 }
 
+func TestRootRelative_RelErrorOnRelativeRoot(t *testing.T) {
+	// filepath.Rel cannot compute a relative path when one argument
+	// is absolute and the other is relative (same logic fires on
+	// Windows cross-volume paths). rootRelative must surface that
+	// as ok=false so resolveCorpus falls through to f.FS scope.
+	got, ok := rootRelative("relative_root", "/abs/path")
+	assert.False(t, ok)
+	assert.Empty(t, got)
+}
+
+func TestRootRelative_AbsErrorWhenCWDIsRemoved(t *testing.T) {
+	// filepath.Abs errors when os.Getwd fails, which happens when
+	// the process's current directory was removed underneath it.
+	// Exercise that path to pin the behavior: rootRelative returns
+	// ok=false instead of producing a garbage selfName.
+	dir, err := os.MkdirTemp("", "mds037-abs-err-")
+	require.NoError(t, err)
+	t.Chdir(dir)
+	require.NoError(t, os.Remove(dir))
+
+	got, ok := rootRelative("/some/root", "a.md")
+	assert.False(t, ok)
+	assert.Empty(t, got)
+}
+
 func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
 	t.Helper()
 	data, err := os.ReadFile(path)
