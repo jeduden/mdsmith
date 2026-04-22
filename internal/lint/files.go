@@ -97,6 +97,16 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 		return resolveGlob(arg, opts, addFile)
 	}
 
+	// Reject any path that traverses a symlinked directory. Intermediate
+	// symlinked components would otherwise let a user-supplied path
+	// like `linked/dirty.md` reach an external target, since Lstat
+	// on the leaf follows the intermediate symlink during name
+	// resolution. Symlinked directories are always skipped regardless
+	// of FollowSymlinks, per the Option doc.
+	if hasSymlinkAncestor(arg) {
+		return nil
+	}
+
 	// Default-deny symlinks even for explicit, non-glob paths. Lstat
 	// (not Stat) avoids following the link so that an attacker who
 	// plants `evil.md -> /etc/cron.d/jobs` can't trick a user into
@@ -132,6 +142,40 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 	return nil
 }
 
+// hasSymlinkAncestor reports whether any ancestor directory named
+// by the relative components of path is a symbolic link. It rejects
+// paths like `linked/dirty.md` where `linked` is a symlinked dir —
+// the filesystem would resolve the link during `os.Stat(path)` and
+// let the external target slip past a leaf-only Lstat check.
+//
+// Only relative path components are walked. Absolute paths and
+// paths that escape via `..` are treated as the user's explicit
+// choice: we do not probe above the invocation directory (that
+// would misclassify environments where temp dirs or project roots
+// live behind a system-wide symlink, e.g. `/tmp` on macOS).
+func hasSymlinkAncestor(path string) bool {
+	clean := filepath.Clean(path)
+	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+		return false
+	}
+	dir := filepath.Dir(clean)
+	for dir != "." && dir != "/" {
+		if strings.HasPrefix(dir, "..") {
+			return false
+		}
+		info, err := os.Lstat(dir)
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+	return false
+}
+
 // resolveGlob expands a glob pattern and adds matching markdown files.
 func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 	matches, err := filepath.Glob(pattern)
@@ -139,6 +183,14 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 		return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
 	}
 	for _, m := range matches {
+		// filepath.Glob follows symlinked directory components
+		// during expansion, so a pattern like `linked/*.md` will
+		// return paths rooted under a symlinked dir. Reject any
+		// match whose ancestor chain contains a symlink: symlinked
+		// directories are always skipped.
+		if hasSymlinkAncestor(m) {
+			continue
+		}
 		linfo, lerr := os.Lstat(m)
 		if lerr != nil {
 			continue

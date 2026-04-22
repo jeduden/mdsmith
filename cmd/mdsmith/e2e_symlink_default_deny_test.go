@@ -174,6 +174,58 @@ func TestE2E_Symlink_DirSymlinkWithMdName(t *testing.T) {
 		stderr)
 }
 
+// TestE2E_Symlink_DirSymlinkAncestorPath asserts that a path
+// traversing a symlinked ancestor directory is rejected in both
+// default-deny and opt-in modes. `mdsmith check linked/dirty.md`
+// must not reach the external target even though the leaf itself
+// is a regular file.
+func TestE2E_Symlink_DirSymlinkAncestorPath(t *testing.T) {
+	project := t.TempDir()
+	external := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	writeFixture(t, project, ".mdsmith.yml",
+		"rules:\n  no-trailing-spaces: true\n")
+
+	require.NoError(t, os.WriteFile(filepath.Join(external, "dirty.md"),
+		[]byte("# Evil\n\ntrailing   \n"), 0o644))
+	require.NoError(t, os.Symlink(external, filepath.Join(project, "linked")))
+
+	// Default-deny: explicit path through the symlinked directory.
+	_, _, exitDeny := runBinaryInDir(t, project, "", "check",
+		"--no-color", "--no-gitignore", "linked/dirty.md")
+	assert.Equal(t, 0, exitDeny,
+		"path through a symlinked directory must be skipped by default")
+
+	// Opt-in mode: still skipped. Symlinked directories are always
+	// out of scope (doc on ResolveOpts.FollowSymlinks).
+	_, _, exitOpt := runBinaryInDir(t, project, "", "check",
+		"--no-color", "--no-gitignore", "--follow-symlinks", "linked/dirty.md")
+	assert.Equal(t, 0, exitOpt,
+		"path through a symlinked directory must be skipped under opt-in too")
+}
+
+// TestE2E_Symlink_DirSymlinkAncestorGlob asserts the same bypass
+// via glob expansion: `linked/*.md` must not reach files under the
+// symlinked directory.
+func TestE2E_Symlink_DirSymlinkAncestorGlob(t *testing.T) {
+	project := t.TempDir()
+	external := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	writeFixture(t, project, ".mdsmith.yml",
+		"rules:\n  no-trailing-spaces: true\n")
+
+	require.NoError(t, os.WriteFile(filepath.Join(external, "dirty.md"),
+		[]byte("# Evil\n\ntrailing   \n"), 0o644))
+	require.NoError(t, os.Symlink(external, filepath.Join(project, "linked")))
+
+	_, _, exitCode := runBinaryInDir(t, project, "", "check",
+		"--no-color", "--no-gitignore", "linked/*.md")
+	assert.Equal(t, 0, exitCode,
+		"glob expanding under a symlinked dir must not reach external files")
+}
+
 // TestE2E_Symlink_LegacyFlag_OverridesFollowConfig verifies that the
 // deprecated --no-follow-symlinks flag still has meaning: it forces
 // deny even when `follow-symlinks: true` is set in config. This lets
