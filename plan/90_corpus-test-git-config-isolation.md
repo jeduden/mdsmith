@@ -1,7 +1,7 @@
 ---
 id: 90
 title: Isolate corpus test git config from host signing
-status: "🔲"
+status: "✅"
 summary: >-
   Pin commit.gpgsign, tag.gpgsign, and gpg.format
   off for the temporary repositories built by
@@ -56,10 +56,10 @@ create commits and are unaffected.
 
 ## Acceptance Criteria
 
-- [ ] `go test ./internal/corpus/...` passes on a
+- [x] `go test ./internal/corpus/...` passes on a
       host with `commit.gpgsign=true` globally set.
-- [ ] `makeBareRepo` never reads
+- [x] `makeBareRepo` never reads
       `gpg.program` or `gpg.x509.program` from the
       global git config.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

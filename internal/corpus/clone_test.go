@@ -107,6 +107,9 @@ func makeBareRepo(t *testing.T) (repoPath string, commit string) {
 	runGit(t, "init", work)
 	runGitInDir(t, work, "config", "user.name", "Test User")
 	runGitInDir(t, work, "config", "user.email", "test@example.com")
+	runGitInDir(t, work, "config", "commit.gpgsign", "false")
+	runGitInDir(t, work, "config", "tag.gpgsign", "false")
+	runGitInDir(t, work, "config", "gpg.format", "openpgp")
 
 	docsDir := filepath.Join(work, "docs")
 	if err := os.MkdirAll(docsDir, 0o755); err != nil {

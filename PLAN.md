@@ -25,6 +25,6 @@ footer: |
 | 85  | 🔳     | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md) |
 | 86  | 🔳     | [Markdown flavor validation](plan/86_markdown-flavor-validation.md)                                  |
 | 89  | 🔲     | [TOC generator directive and MDS035 auto-fix](plan/89_toc-generator-directive.md)                    |
-| 90  | 🔲     | [Isolate corpus test git config from host signing](plan/90_corpus-test-git-config-isolation.md)      |
+| 90  | ✅     | [Isolate corpus test git config from host signing](plan/90_corpus-test-git-config-isolation.md)      |
 | 91  | 🔲     | [MDS037 skips paragraphs inside generated sections](plan/91_mds037-skip-generated-sections.md)       |
 <?/catalog?>
