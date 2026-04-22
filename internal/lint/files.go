@@ -143,18 +143,23 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 }
 
 // hasSymlinkAncestor reports whether any ancestor directory of
-// path (up to, but excluding, the invocation directory) is a
-// symbolic link. It rejects paths like `linked/dirty.md` where
-// `linked` is a symlinked dir — the filesystem would resolve the
-// link during `os.Stat(path)` and let the external target slip
-// past a leaf-only Lstat check.
+// path (up to, but excluding, the project boundary) is a symbolic
+// link. It rejects paths like `linked/dirty.md` where `linked` is
+// a symlinked dir — the filesystem would resolve the link during
+// `os.Stat(path)` and let the external target slip past a
+// leaf-only Lstat check.
 //
-// For absolute paths inside the invocation directory, the check
-// is performed on the rel-from-cwd form so that `cwd/linked/...`
-// is still blocked without misclassifying system-level symlinks
-// above cwd (e.g. `/tmp` on macOS). Paths outside the invocation
-// directory are treated as the user's explicit choice and not
-// probed.
+// The project boundary is picked in this order:
+//
+//   - cwd, if the path is under it (so `mdsmith check .` from the
+//     project root catches any symlinked dir inside);
+//   - otherwise, the nearest ancestor of the path that contains a
+//     `.git` entry (so an absolute path run from a sibling shell
+//     is still scanned within the target project);
+//   - otherwise, "" (trust the user — no scan).
+//
+// This keeps system-level symlinks above the boundary (e.g. `/tmp`
+// on macOS) out of the probe.
 func hasSymlinkAncestor(path string) bool {
 	return hasSymlinkAncestorCached(path, make(map[string]bool))
 }
@@ -164,44 +169,61 @@ func hasSymlinkAncestor(path string) bool {
 // per glob match) should share a `cache` across invocations to
 // avoid repeated `os.Lstat` calls on the same ancestor directories.
 func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
-	rel, ok := relForAncestorCheck(path)
-	if !ok {
+	clean := filepath.Clean(path)
+	stop := ancestorStopBoundary(clean)
+	if stop == "" {
 		return false
 	}
-	return ancestorChainHasSymlink(filepath.Dir(rel), cache)
+	return ancestorChainHasSymlink(filepath.Dir(clean), stop, cache)
 }
 
-// relForAncestorCheck normalises path into a cwd-relative form
-// suitable for ancestor probing. It returns (rel, false) to signal
-// "skip the check" for paths that are outside cwd or that escape
-// via `..`.
-func relForAncestorCheck(path string) (string, bool) {
-	clean := filepath.Clean(path)
-	if filepath.IsAbs(clean) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", false
+// ancestorStopBoundary returns the directory at which ancestor
+// probing should stop (exclusive), or "" if the path should not be
+// scanned. For relative paths the boundary is "." (so we only walk
+// the components the user typed). For absolute paths we prefer
+// cwd if the path is under it, falling back to the nearest .git
+// project root above the leaf.
+func ancestorStopBoundary(clean string) string {
+	if !filepath.IsAbs(clean) {
+		if clean == "." || clean == ".." ||
+			strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return ""
 		}
-		rel, err := filepath.Rel(cwd, clean)
-		if err != nil {
-			return "", false
+		return "."
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(cwd, clean); err == nil &&
+			rel != "." && rel != ".." &&
+			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return cwd
 		}
-		clean = rel
 	}
-	if clean == "." || clean == ".." ||
-		strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", false
-	}
-	return clean, true
+	return gitProjectRoot(filepath.Dir(clean))
 }
 
-// ancestorChainHasSymlink walks upward from dir and reports whether
-// any step in the chain is a symbolic link. Results are memoised
-// per directory so sibling paths under a shared ancestor do not
-// re-Lstat the same entries.
-func ancestorChainHasSymlink(dir string, cache map[string]bool) bool {
-	if dir == "." || dir == "/" ||
-		strings.HasPrefix(dir, ".."+string(filepath.Separator)) {
+// gitProjectRoot walks upward from start and returns the first
+// directory that contains a `.git` entry (file or directory), or
+// "" if none is reached before the filesystem root.
+func gitProjectRoot(start string) string {
+	dir := start
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// ancestorChainHasSymlink walks upward from dir up to (but not
+// including) stop and reports whether any step in the chain is a
+// symbolic link. Results are memoised per directory so sibling
+// paths under a shared ancestor do not re-Lstat the same entries.
+func ancestorChainHasSymlink(dir, stop string, cache map[string]bool) bool {
+	if dir == stop || dir == "." || dir == "/" {
 		return false
 	}
 	if v, ok := cache[dir]; ok {
@@ -211,8 +233,11 @@ func ancestorChainHasSymlink(dir string, cache map[string]bool) bool {
 	if info, err := os.Lstat(dir); err == nil &&
 		info.Mode()&os.ModeSymlink != 0 {
 		result = true
-	} else if parent := filepath.Dir(dir); parent != dir {
-		result = ancestorChainHasSymlink(parent, cache)
+	} else {
+		parent := filepath.Dir(dir)
+		if parent != dir {
+			result = ancestorChainHasSymlink(parent, stop, cache)
+		}
 	}
 	cache[dir] = result
 	return result

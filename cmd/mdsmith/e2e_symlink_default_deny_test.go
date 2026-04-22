@@ -259,6 +259,35 @@ func TestE2E_Symlink_DirSymlinkAncestorAbsPath(t *testing.T) {
 		"absolute path through a symlinked directory must be skipped")
 }
 
+// TestE2E_Symlink_DirSymlinkAncestorAbsPathFromOutsideCwd covers the
+// cross-cwd variant: the user is running mdsmith from a sibling
+// directory and points at an absolute path inside a project they
+// own (the target dir contains a .git marker). The ancestor check
+// must still anchor at the project's .git boundary so a symlinked
+// component inside the target tree is rejected.
+func TestE2E_Symlink_DirSymlinkAncestorAbsPathFromOutsideCwd(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	project := t.TempDir()
+	external := t.TempDir()
+	cwd := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	writeFixture(t, project, ".mdsmith.yml",
+		"rules:\n  no-trailing-spaces: true\n")
+
+	require.NoError(t, os.WriteFile(filepath.Join(external, "dirty.md"),
+		[]byte("# Evil\n\ntrailing   \n"), 0o644))
+	require.NoError(t, os.Symlink(external, filepath.Join(project, "linked")))
+
+	absPath := filepath.Join(project, "linked", "dirty.md")
+	// Note: cwd is a sibling directory, NOT the project root.
+	_, _, exitCode := runBinaryInDir(t, cwd, "", "check",
+		"--no-color", "--no-gitignore", absPath)
+	assert.Equal(t, 0, exitCode,
+		"abs path through a symlinked dir in a .git-rooted project must be "+
+			"skipped even when the invocation cwd is outside the project")
+}
+
 // TestE2E_Symlink_LegacyFlag_OverridesFollowConfig verifies that the
 // deprecated --no-follow-symlinks flag still has meaning: it forces
 // deny even when `follow-symlinks: true` is set in config. This lets
