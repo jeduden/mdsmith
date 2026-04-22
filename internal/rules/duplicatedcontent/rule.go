@@ -136,12 +136,17 @@ type externalMatch struct {
 // top-level, well-formed open/close pairs produce a range; malformed or
 // unmatched markers are silently skipped, which is safe because the
 // generated-section rule (MDS031/MDS032) handles those errors separately.
+//
+// Nested same-name pairs (an inner <?include?> inside an outer
+// <?include?> body) are handled with a depth counter so the outer range
+// does not close prematurely on the inner end marker.
 func generatedRanges(f *lint.File) [][2]int {
 	if f.AST == nil {
 		return nil
 	}
 	var ranges [][2]int
 	var openPI *lint.ProcessingInstruction
+	depth := 0
 	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
 		pi, ok := n.(*lint.ProcessingInstruction)
 		if !ok {
@@ -150,14 +155,21 @@ func generatedRanges(f *lint.File) [][2]int {
 		if openPI == nil {
 			if (pi.Name == "include" || pi.Name == "catalog") && pi.HasClosure() {
 				openPI = pi
+				depth = 0
 			}
+		} else if pi.Name == openPI.Name && pi.HasClosure() {
+			depth++
 		} else if pi.Name == "/"+openPI.Name && pi.HasClosure() && pi.Lines().Len() > 0 {
-			start := openPI.ClosureLine.Stop
-			stop := pi.Lines().At(0).Start
-			if stop > start {
-				ranges = append(ranges, [2]int{start, stop})
+			if depth > 0 {
+				depth--
+			} else {
+				start := openPI.ClosureLine.Stop
+				stop := pi.Lines().At(0).Start
+				if stop > start {
+					ranges = append(ranges, [2]int{start, stop})
+				}
+				openPI = nil
 			}
-			openPI = nil
 		}
 	}
 	return ranges

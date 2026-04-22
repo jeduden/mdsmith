@@ -792,6 +792,62 @@ func TestGeneratedRanges_MultiplePairs(t *testing.T) {
 	assert.Len(t, ranges, 2)
 }
 
+func TestGeneratedRanges_NestedSameNamePair(t *testing.T) {
+	// An inner <?include?> inside an outer <?include?> body must not
+	// prematurely close the outer range. The outer range must span all
+	// content between the outer open and outer close markers.
+	src := "<?include\nfile: outer.md\n?>\n" +
+		"before inner\n" +
+		"<?include\nfile: inner.md\n?>\n" +
+		"inner content\n" +
+		"<?/include?>\n" +
+		"after inner\n" +
+		"<?/include?>\n"
+	f, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	ranges := generatedRanges(f)
+	require.Len(t, ranges, 1, "nested pair must produce exactly one outer range")
+	// The range must cover everything from after the outer open to before
+	// the outer close, so both "before inner" and "after inner" are inside it.
+	beforeInnerOffset := strings.Index(src, "before inner")
+	afterInnerOffset := strings.Index(src, "after inner")
+	outerCloseOffset := strings.Index(src, "<?/include?>\n")
+	// Find the *last* <?/include?> — that's the outer close.
+	lastCloseOffset := strings.LastIndex(src, "<?/include?>")
+	assert.LessOrEqual(t, ranges[0][0], beforeInnerOffset,
+		"range start must be before 'before inner'")
+	assert.Greater(t, ranges[0][1], afterInnerOffset,
+		"range end must be after 'after inner'")
+	assert.Equal(t, lastCloseOffset, ranges[0][1],
+		"range end must point to the outer <?/include?> marker")
+	_ = outerCloseOffset // suppress unused warning
+}
+
+func TestCheck_SkipsNestedIncludeGeneratedSection(t *testing.T) {
+	// When the outer generated body contains a nested <?include?> pair,
+	// paragraphs appearing AFTER the inner pair (but still inside the
+	// outer body) must also be skipped.
+	dir := t.TempDir()
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+
+	writeFile(t, filepath.Join(dir, "source.md"), "# Source\n\n"+p+"\n")
+
+	host := "# Host\n\n" +
+		"<?include\nfile: outer.md\n?>\n" +
+		"before inner paragraph is filler content not a real paragraph\n\n" +
+		"<?include\nfile: inner.md\n?>\n" +
+		p + "\n" +
+		"<?/include?>\n" +
+		p + "\n" +
+		"<?/include?>\n"
+	writeFile(t, filepath.Join(dir, "host.md"), host)
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "host.md"), dir)
+	diags := (&Rule{MinChars: 10}).Check(f)
+	assert.Empty(t, diags,
+		"paragraph after inner nested <?include?> but inside outer must not be flagged")
+}
+
 func TestGeneratedRanges_NilAST(t *testing.T) {
 	f := &lint.File{}
 	assert.Empty(t, generatedRanges(f))
