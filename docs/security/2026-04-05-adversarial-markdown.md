@@ -113,9 +113,9 @@ Escape sequences pass through to the terminal: screen clearing (`\033[2J`), wind
 - `internal/lint/files.go:190` — `filepath.Walk` follows file symlinks
 - `internal/fix/fix.go:84-122` — `os.WriteFile` follows symlinks on write
 
-Symlink following is the default behavior. The `--no-follow-symlinks` flag and config exist but are opt-in.
+**Original finding:** symlink following was the default; the `--no-follow-symlinks` flag and config key were opt-in.
 
-**Status (plan 84):** the default is now inverted. Symlinks are skipped by default across directory walks and glob expansion; users opt in with `--follow-symlinks` or `follow-symlinks: true`. The legacy `--no-follow-symlinks` flag and `no-follow-symlinks:` config key are silently accepted for one release, with a deprecation warning emitted for the config key.
+**Status (plan 84, resolved):** the default is inverted. Symlinks are skipped by default across directory walks, glob expansion, and explicit non-glob path arguments. Users opt in with `--follow-symlinks` or `follow-symlinks: true`. The legacy `--no-follow-symlinks` flag and `no-follow-symlinks:` config key are silently accepted for one release, with a deprecation warning emitted for the config key.
 
 **Adversarial file:**
 

@@ -42,6 +42,37 @@ func TestE2E_Symlink_DefaultDeny_ExternalTargetSkipped(t *testing.T) {
 		exitCode, stderr)
 }
 
+// TestE2E_Symlink_DefaultDeny_ExplicitFileArg asserts that the
+// secure default also covers explicit, non-glob path arguments.
+// `mdsmith check ./evil.md` must not process a symlink target.
+func TestE2E_Symlink_DefaultDeny_ExplicitFileArg(t *testing.T) {
+	project := t.TempDir()
+	external := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	writeFixture(t, project, ".mdsmith.yml",
+		"rules:\n  no-trailing-spaces: true\n")
+
+	externalFile := filepath.Join(external, "dirty.md")
+	require.NoError(t, os.WriteFile(externalFile,
+		[]byte("# Evil\n\ntrailing   \n"), 0o644))
+	require.NoError(t, os.Symlink(externalFile,
+		filepath.Join(project, "evil.md")))
+
+	// Default-deny: explicit symlinked file arg is silently skipped;
+	// no diagnostics reported, exit 0.
+	_, _, exitCode := runBinaryInDir(t, project, "", "check",
+		"--no-color", "--no-gitignore", "evil.md")
+	assert.Equal(t, 0, exitCode,
+		"explicit symlinked file arg must be skipped by default")
+
+	// Opt-in: the symlinked file is visited and flagged.
+	_, _, exitOpt := runBinaryInDir(t, project, "", "check",
+		"--no-color", "--no-gitignore", "--follow-symlinks", "evil.md")
+	assert.Equal(t, 1, exitOpt,
+		"with --follow-symlinks the symlink target is linted")
+}
+
 // TestE2E_Symlink_FollowSymlinksFlag_OptsIn asserts the new
 // --follow-symlinks CLI flag walks symlinked entries.
 func TestE2E_Symlink_FollowSymlinksFlag_OptsIn(t *testing.T) {

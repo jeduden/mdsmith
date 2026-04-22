@@ -91,6 +91,18 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 		return resolveGlob(arg, opts, addFile)
 	}
 
+	// Default-deny symlinks even for explicit, non-glob paths. Lstat
+	// (not Stat) avoids following the link so that an attacker who
+	// plants `evil.md -> /etc/cron.d/jobs` can't trick a user into
+	// processing the target with `mdsmith check ./evil.md`.
+	linfo, lerr := os.Lstat(arg)
+	if lerr != nil {
+		return fmt.Errorf("cannot access %q: %w", arg, lerr)
+	}
+	if !opts.FollowSymlinks && linfo.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+
 	info, err := os.Stat(arg)
 	if err != nil {
 		return fmt.Errorf("cannot access %q: %w", arg, err)

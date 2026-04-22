@@ -47,8 +47,10 @@ match, exits 0.
 
 Symlinks are skipped by default. This blocks a malicious
 symlink from redirecting `check` or `fix` to files outside
-the project. Both directory walks and glob expansion apply
-the rule.
+the project. The rule applies to directory walks, glob
+expansion, and explicit file or directory arguments:
+`mdsmith check ./linked.md` silently skips a symlink named
+on the command line.
 
 Pass `--follow-symlinks` to opt in on the command line.
 Set `follow-symlinks: true` in `.mdsmith.yml` to opt in

@@ -37,8 +37,9 @@ type Config struct {
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
-	// symlinks are skipped by default.
-	// Not serialized to YAML in marshalled output.
+	// symlinks are skipped by default. The `omitempty` tag keeps
+	// round-tripped configs from re-emitting the deprecated key
+	// unless a user explicitly supplied it.
 	LegacyNoFollowSymlinks []string `yaml:"no-follow-symlinks,omitempty"`
 
 	// ExplicitRules tracks rule names that were explicitly set in
