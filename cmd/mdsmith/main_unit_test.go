@@ -19,7 +19,8 @@ import (
 )
 
 // captureStderr temporarily redirects os.Stderr and returns the written content.
-// Not safe to call in parallel tests.
+// Must NOT be called from parallel tests (t.Parallel()) because it redirects
+// the global os.Stderr. Tests using this helper must run sequentially.
 func captureStderr(f func()) string {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -36,7 +37,8 @@ func captureStderr(f func()) string {
 }
 
 // captureStdout temporarily redirects os.Stdout and returns the written content.
-// Not safe to call in parallel tests.
+// Must NOT be called from parallel tests (t.Parallel()) because it redirects
+// the global os.Stdout. Tests using this helper must run sequentially.
 func captureStdout(f func()) string {
 	r, w, err := os.Pipe()
 	if err != nil {
