@@ -218,3 +218,131 @@ func TestRuleDefinitionListsDiagnostic(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Equal(t, "definition lists are not supported by gfm", diags[0].Message)
 }
+
+func TestRuleCheckGFMAcceptsAlerts(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "gfm"}))
+	f := mkFile(t, "> [!NOTE]\n> Something.\n")
+	diags := r.Check(f)
+	require.Empty(t, diags)
+}
+
+func TestRuleCheckCommonMarkRejectsAlerts(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	f := mkFile(t, "> [!NOTE]\n> Something.\n")
+	diags := r.Check(f)
+	found := false
+	for _, d := range diags {
+		if d.Message == "github alerts are not supported by commonmark" {
+			found = true
+		}
+	}
+	assert.True(t, found)
+}
+
+func TestRuleCheckGoldmarkRejectsAlerts(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "goldmark"}))
+	f := mkFile(t, "> [!NOTE]\n> Something.\n")
+	diags := r.Check(f)
+	found := false
+	for _, d := range diags {
+		if d.Message == "github alerts are not supported by goldmark" {
+			found = true
+		}
+	}
+	assert.True(t, found)
+}
+
+func TestRuleFixGitHubAlertsRemovesMarkerLine(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	f := mkFile(t, "> [!NOTE]\n> Something to remember.\n")
+	got := r.Fix(f)
+	assert.Equal(t, "> Something to remember.\n", string(got))
+}
+
+func TestRuleFixGitHubAlertsOnlyLine(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	f := mkFile(t, "> [!WARNING]\n")
+	got := r.Fix(f)
+	assert.Equal(t, "", string(got))
+}
+
+func TestRuleFixGitHubAlertsGFMNoChange(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "gfm"}))
+	src := "> [!NOTE]\n> Something.\n"
+	f := mkFile(t, src)
+	got := r.Fix(f)
+	assert.Equal(t, src, string(got))
+}
+
+func TestRuleFixGitHubAlertsLazyContinuation(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// Lazy continuation: second line has no "> " prefix but is still
+	// part of the blockquote paragraph. Fix must add it so the line
+	// stays inside a blockquote after the marker is removed.
+	f := mkFile(t, "> [!NOTE]\nlazy content\n")
+	got := r.Fix(f)
+	assert.Equal(t, "> lazy content\n", string(got))
+}
+
+func TestRuleFixNoAlerts(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// A plain blockquote has no alert marker — Fix must return the source unchanged.
+	src := "> regular blockquote\n"
+	got := r.Fix(mkFile(t, src))
+	assert.Equal(t, src, string(got))
+}
+
+func TestRuleFixHeadingBlockquote(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// A blockquote containing a heading has a non-Paragraph first child;
+	// Fix must treat it as a non-alert and return the source unchanged.
+	src := "> # Heading\n"
+	got := r.Fix(mkFile(t, src))
+	assert.Equal(t, src, string(got))
+}
+
+func TestRuleCheckNestedAlert(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// A GitHub Alert nested inside an outer blockquote is detected because
+	// the walker recurses into all blockquote nodes.
+	f := mkFile(t, "> > [!NOTE]\n> > Something.\n")
+	diags := r.Check(f)
+	found := false
+	for _, d := range diags {
+		if d.Message == "github alerts are not supported by commonmark" {
+			found = true
+		}
+	}
+	assert.True(t, found, "nested alert should be detected")
+}
+
+func TestRuleFixNestedAlert(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// Fix removes the [!NOTE] marker from a nested alert; the outer
+	// blockquote's non-Paragraph first child exercises the !ok guard in
+	// isGitHubAlert, confirming it does not misidentify the outer bq.
+	f := mkFile(t, "> > [!NOTE]\n> > nested content.\n")
+	got := r.Fix(f)
+	assert.Equal(t, "> > nested content.\n", string(got))
+}
+
+func TestRuleFixIndentedLazyContinuation(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"flavor": "commonmark"}))
+	// Lazy continuation inside an indented blockquote: the continuation
+	// line's leading spaces must be preserved before the re-added "> ".
+	f := mkFile(t, "  > [!NOTE]\n  lazy content\n")
+	got := r.Fix(f)
+	assert.Equal(t, "  > lazy content\n", string(got))
+}

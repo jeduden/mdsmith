@@ -15,7 +15,7 @@ flavor does not render.
 - **Name**: `markdown-flavor`
 - **Status**: ready
 - **Default**: disabled
-- **Fixable**: no (fix pipeline lands in a follow-up)
+- **Fixable**: partially (GitHub Alerts only)
 - **Implementation**:
   [source](./)
 - **Category**: meta
@@ -73,7 +73,7 @@ rules:
 
 ## Detected features
 
-MDS034 tracks twelve syntax features whose
+MDS034 tracks thirteen syntax features whose
 support varies across Markdown flavors.
 
 Eleven features are detected from the goldmark AST
@@ -88,6 +88,13 @@ Bare-URL autolinks are detected separately. The
 detector scans text nodes from the main parse for
 URL-shaped text. It skips links, autolinks, code
 spans, and code blocks.
+
+GitHub Alerts are detected from the CommonMark
+AST. The detector matches the five GFM tokens
+(`NOTE`, `TIP`, `IMPORTANT`, `WARNING`,
+`CAUTION`) on the first line of a blockquote
+paragraph. Matching is case-sensitive per the
+GFM spec.
 
 `flavor: any` accepts every feature and is omitted
 from the table below.
@@ -106,6 +113,7 @@ from the table below.
 | math blocks        | no         | no  | no       | yes    | no       | yes           | yes  |
 | inline math        | no         | no  | no       | yes    | no       | yes           | yes  |
 | abbreviations      | no         | no  | no       | no     | yes      | yes           | no   |
+| github alerts      | no         | yes | no       | no     | no       | no            | no   |
 
 ## Examples
 

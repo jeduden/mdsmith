@@ -1,7 +1,7 @@
 ---
 id: 87
 title: Flavor validation for GitHub Alerts
-status: "🔲"
+status: "✅"
 summary: >-
   Extend MDS034 to detect GitHub Alerts syntax
   (`> [!NOTE]` blockquote prefix) as a GFM-only
@@ -115,41 +115,41 @@ features.
 
 ## Tasks
 
-1. Add `GitHubAlerts` to the feature enum in
+1. [x] Add `GitHubAlerts` to the feature enum in
    `internal/rules/markdownflavor/features.go`
-2. Add flavor support table entry: supported in
+2. [x] Add flavor support table entry: supported in
    `gfm`, unsupported in `commonmark` and
    `goldmark`
-3. Implement an AST detector that walks
+3. [x] Implement an AST detector that walks
    `ast.Blockquote` nodes and matches the five
    GFM tokens on the first paragraph child
-4. Implement the fix: strip the marker line;
+4. [x] Implement the fix: strip the marker line;
    drop the blockquote if empty afterward
-5. Add unit tests: each of the five tokens,
+5. [x] Add unit tests: each of the five tokens,
    lower-case tokens (should not match), mixed
    content after the marker, marker as the only
    line
-6. Add good/bad fixtures under
-   `internal/rules/MDS034-markdown-flavor/alerts/`
-7. Update the MDS034 README to list GitHub
+6. [x] Add bad/fixed fixtures under
+   `internal/rules/MDS034-markdown-flavor/`
+7. [x] Update the MDS034 README to list GitHub
    Alerts as the 13th feature
 
 ## Acceptance Criteria
 
-- [ ] `flavor: commonmark` flags all five alert
+- [x] `flavor: commonmark` flags all five alert
       tokens
-- [ ] `flavor: goldmark` flags all five alert
+- [x] `flavor: goldmark` flags all five alert
       tokens
-- [ ] `flavor: gfm` accepts all five tokens
-- [ ] `mdsmith fix` removes the marker line,
+- [x] `flavor: gfm` accepts all five tokens
+- [x] `mdsmith fix` removes the marker line,
       preserves remaining blockquote content
-- [ ] `mdsmith fix` removes the whole blockquote
+- [x] `mdsmith fix` removes the whole blockquote
       when the marker was its only line
-- [ ] Lower-case or unknown tokens (e.g.
+- [x] Lower-case or unknown tokens (e.g.
       `[!note]`, `[!INFO]`) produce no
       diagnostic — they are ordinary blockquote
       text
-- [ ] Nested blockquotes are checked recursively
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] Nested blockquotes are checked recursively
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues

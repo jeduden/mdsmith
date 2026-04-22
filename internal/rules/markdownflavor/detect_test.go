@@ -231,3 +231,33 @@ func TestDetectFindingsAreSortedByStart(t *testing.T) {
 			i-1, fs[i-1], i, fs[i])
 	}
 }
+
+func TestDetectGitHubAlerts(t *testing.T) {
+	tokens := []string{"NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"}
+	for _, tok := range tokens {
+		t.Run(tok, func(t *testing.T) {
+			fs := findings(t, "> [!"+tok+"]\n> Something.\n")
+			assert.True(t, hasFeature(fs, FeatureGitHubAlerts))
+		})
+	}
+}
+
+func TestDetectGitHubAlertsLowercaseNoMatch(t *testing.T) {
+	for _, src := range []string{
+		"> [!note]\n> text.\n",
+		"> [!INFO]\n> text.\n",
+	} {
+		fs := findings(t, src)
+		assert.False(t, hasFeature(fs, FeatureGitHubAlerts), "should not match: %q", src)
+	}
+}
+
+func TestDetectGitHubAlertsMixedContent(t *testing.T) {
+	fs := findings(t, "> [!NOTE]\n> Line one.\n> Line two.\n")
+	assert.True(t, hasFeature(fs, FeatureGitHubAlerts))
+}
+
+func TestDetectGitHubAlertsOnlyLine(t *testing.T) {
+	fs := findings(t, "> [!WARNING]\n")
+	assert.True(t, hasFeature(fs, FeatureGitHubAlerts))
+}
