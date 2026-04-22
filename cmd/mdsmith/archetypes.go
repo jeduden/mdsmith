@@ -124,6 +124,8 @@ they are safe to keep in this directory as metadata:
 
 // runArchetypesInit scaffolds an archetype directory with an example
 // schema and a README. Does not mutate the user's .mdsmith.yml.
+// The dir must be a valid archetype root (relative, non-traversing)
+// so the printed config snippet is immediately registrable.
 func runArchetypesInit(args []string) int {
 	dir := "archetypes"
 	switch len(args) {
@@ -136,6 +138,11 @@ func runArchetypesInit(args []string) int {
 		dir = args[0]
 	default:
 		fmt.Fprintln(os.Stderr, "mdsmith: archetypes init takes at most one argument")
+		return 2
+	}
+
+	if err := archetypes.ValidateRoot(dir); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
 

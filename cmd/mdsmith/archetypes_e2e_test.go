@@ -285,6 +285,28 @@ func TestArchetypes_PathFailsOnBadConfig(t *testing.T) {
 	assert.Contains(t, stderr, "mdsmith:")
 }
 
+func TestArchetypes_InitRejectsAbsoluteDir(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "init", "/abs/path")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "must be a relative path")
+}
+
+func TestArchetypes_InitRejectsTraversalDir(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith.yml"), []byte("rules: {}\n"), 0o644))
+
+	_, stderr, code := runBinaryInDir(t, dir, "", "archetypes", "init", "../outside")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "escapes the project root")
+}
+
 func TestArchetypes_InitMkdirFailsOnRegularFile(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))

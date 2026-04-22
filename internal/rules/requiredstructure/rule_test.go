@@ -194,8 +194,7 @@ func TestSchemaSource(t *testing.T) {
 	assert.Equal(t, "", (&Rule{}).schemaSource())
 }
 
-// writeArchetype writes an archetype schema under dir/name.md and
-// returns the containing root directory (dir).
+// writeArchetype writes an archetype schema under dir/name.md.
 func writeArchetype(t *testing.T, dir, name, body string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(dir, 0o755))

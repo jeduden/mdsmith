@@ -26,6 +26,7 @@ func captureStderr(f func()) string {
 	if err != nil {
 		panic(err)
 	}
+	defer r.Close() //nolint:errcheck // best-effort close on read-only pipe end
 	old := os.Stderr
 	os.Stderr = w
 	f()
@@ -44,6 +45,7 @@ func captureStdout(f func()) string {
 	if err != nil {
 		panic(err)
 	}
+	defer r.Close() //nolint:errcheck // best-effort close on read-only pipe end
 	old := os.Stdout
 	os.Stdout = w
 	f()

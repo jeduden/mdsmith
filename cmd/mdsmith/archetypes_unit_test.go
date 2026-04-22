@@ -153,26 +153,26 @@ func TestRunArchetypesInit_DefaultDir_CreatesFiles(t *testing.T) {
 
 func TestRunArchetypesInit_CustomDir_CreatesFiles(t *testing.T) {
 	dir := t.TempDir()
-	customDir := filepath.Join(dir, "schemas")
+	t.Chdir(dir)
 
 	captureStderr(func() {
-		code := runArchetypesInit([]string{customDir})
+		code := runArchetypesInit([]string{"schemas"})
 		assert.Equal(t, 0, code)
 	})
 
-	assert.FileExists(t, filepath.Join(customDir, "example.md"))
-	assert.FileExists(t, filepath.Join(customDir, "README.md"))
+	assert.FileExists(t, filepath.Join(dir, "schemas", "example.md"))
+	assert.FileExists(t, filepath.Join(dir, "schemas", "README.md"))
 }
 
 func TestRunArchetypesInit_ExistingFiles_Preserved(t *testing.T) {
 	dir := t.TempDir()
-	customDir := filepath.Join(dir, "schemas")
-	require.NoError(t, os.MkdirAll(customDir, 0o755))
-	examplePath := filepath.Join(customDir, "example.md")
+	t.Chdir(dir)
+	require.NoError(t, os.MkdirAll("schemas", 0o755))
+	examplePath := filepath.Join(dir, "schemas", "example.md")
 	require.NoError(t, os.WriteFile(examplePath, []byte("custom content"), 0644))
 
 	captureStderr(func() {
-		code := runArchetypesInit([]string{customDir})
+		code := runArchetypesInit([]string{"schemas"})
 		assert.Equal(t, 0, code)
 	})
 
@@ -183,25 +183,24 @@ func TestRunArchetypesInit_ExistingFiles_Preserved(t *testing.T) {
 
 func TestRunArchetypesInit_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	customDir := filepath.Join(dir, "schemas")
+	t.Chdir(dir)
 
-	captureStderr(func() { runArchetypesInit([]string{customDir}) })
+	captureStderr(func() { runArchetypesInit([]string{"schemas"}) })
 	captureStderr(func() {
-		code := runArchetypesInit([]string{customDir})
+		code := runArchetypesInit([]string{"schemas"})
 		assert.Equal(t, 0, code)
 	})
 }
 
 func TestRunArchetypesInit_NestedDir_CreatesIntermediary(t *testing.T) {
 	dir := t.TempDir()
-	nestedDir := filepath.Join(dir, "a", "b", "c")
+	t.Chdir(dir)
 
 	captureStderr(func() {
-		code := runArchetypesInit([]string{nestedDir})
+		code := runArchetypesInit([]string{"a/b/c"})
 		assert.Equal(t, 0, code)
 	})
-
-	assert.FileExists(t, filepath.Join(nestedDir, "example.md"))
+	assert.FileExists(t, filepath.Join(dir, "a", "b", "c", "example.md"))
 }
 
 // --- runArchetypesList ---
