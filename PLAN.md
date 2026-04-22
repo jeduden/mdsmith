@@ -18,7 +18,7 @@ footer: |
 |-----|--------|------------------------------------------------------------------------------------------------------|
 | 52  | ✅     | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |
 | 61  | 🔳     | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                         |
-| 65  | 🔲     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                     |
+| 65  | ✅     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                     |
 | 78  | ✅     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                              |
 | 83  | ✅     | [Security hardening batch](plan/83_security-hardening-batch.md)                                      |
 | 84  | 🔲     | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                           |
