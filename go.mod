@@ -11,7 +11,7 @@ require (
 	cuelang.org/go v0.16.1
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/gobwas/glob v0.2.3
-	github.com/mattn/go-runewidth v0.0.21
+	github.com/mattn/go-runewidth v0.0.23
 	github.com/neurosnap/sentences v1.1.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
