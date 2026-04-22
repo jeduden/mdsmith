@@ -10,8 +10,8 @@ summary: >-
 ---
 # MDS037 skips paragraphs inside generated sections
 
-Extends [plan 50](50_redundancy-duplication-detection.md)
-(MDS037 duplicated-content).
+Builds on redundancy detection work to skip paragraphs
+inside generated sections (MDS037 duplicated-content).
 
 ## Goal
 
