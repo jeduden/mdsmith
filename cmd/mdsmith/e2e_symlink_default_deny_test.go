@@ -288,6 +288,38 @@ func TestE2E_Symlink_DirSymlinkAncestorAbsPathFromOutsideCwd(t *testing.T) {
 			"skipped even when the invocation cwd is outside the project")
 }
 
+// TestE2E_Symlink_DirSymlinkAncestorDotDotPath covers the
+// `..`-relative variant. An invocation like
+// `mdsmith check ../project/linked/dirty.md` from a sibling
+// directory must still walk the ancestor chain and reject the
+// symlinked `linked` component, because we resolve the arg to an
+// absolute path and then anchor at the .git boundary.
+func TestE2E_Symlink_DirSymlinkAncestorDotDotPath(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	external := filepath.Join(root, "external")
+	cwd := filepath.Join(root, "cwd")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	require.NoError(t, os.MkdirAll(external, 0o755))
+	require.NoError(t, os.MkdirAll(cwd, 0o755))
+	writeFixture(t, project, ".mdsmith.yml",
+		"rules:\n  no-trailing-spaces: true\n")
+
+	require.NoError(t, os.WriteFile(filepath.Join(external, "dirty.md"),
+		[]byte("# Evil\n\ntrailing   \n"), 0o644))
+	require.NoError(t, os.Symlink(external, filepath.Join(project, "linked")))
+
+	// cwd sits next to `project`; the arg crosses the symlinked
+	// component via `..`.
+	_, _, exitCode := runBinaryInDir(t, cwd, "", "check",
+		"--no-color", "--no-gitignore",
+		"../project/linked/dirty.md")
+	assert.Equal(t, 0, exitCode,
+		"`..`-relative path through symlinked dir must be skipped")
+}
+
 // TestE2E_Symlink_LegacyFlag_OverridesFollowConfig verifies that the
 // deprecated --no-follow-symlinks flag still has meaning: it forces
 // deny even when `follow-symlinks: true` is set in config. This lets

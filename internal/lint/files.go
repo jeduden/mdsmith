@@ -169,36 +169,35 @@ func hasSymlinkAncestor(path string) bool {
 // per glob match) should share a `cache` across invocations to
 // avoid repeated `os.Lstat` calls on the same ancestor directories.
 func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
-	clean := filepath.Clean(path)
-	stop := ancestorStopBoundary(clean)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	abs = filepath.Clean(abs)
+	stop := ancestorStopBoundary(abs)
 	if stop == "" {
 		return false
 	}
-	return ancestorChainHasSymlink(filepath.Dir(clean), stop, cache)
+	return ancestorChainHasSymlink(filepath.Dir(abs), stop, cache)
 }
 
 // ancestorStopBoundary returns the directory at which ancestor
 // probing should stop (exclusive), or "" if the path should not be
-// scanned. For relative paths the boundary is "." (so we only walk
-// the components the user typed). For absolute paths we prefer
-// cwd if the path is under it, falling back to the nearest .git
-// project root above the leaf.
-func ancestorStopBoundary(clean string) string {
-	if !filepath.IsAbs(clean) {
-		if clean == "." || clean == ".." ||
-			strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return ""
-		}
-		return "."
-	}
+// scanned. Both relative and absolute forms are resolved to
+// absolute paths before calling this, so the boundary logic is
+// uniform: prefer cwd if the path is under it (cheapest and
+// matches user intent), otherwise walk upward for the nearest
+// `.git` project root (handles absolute paths to sibling projects
+// and `../...` relative paths that escape cwd).
+func ancestorStopBoundary(abs string) string {
 	if cwd, err := os.Getwd(); err == nil {
-		if rel, err := filepath.Rel(cwd, clean); err == nil &&
+		if rel, err := filepath.Rel(cwd, abs); err == nil &&
 			rel != "." && rel != ".." &&
 			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return cwd
 		}
 	}
-	return gitProjectRoot(filepath.Dir(clean))
+	return gitProjectRoot(filepath.Dir(abs))
 }
 
 // gitProjectRoot walks upward from start and returns the first
