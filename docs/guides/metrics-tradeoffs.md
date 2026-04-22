@@ -6,7 +6,7 @@ summary: Trade-offs and threshold guidance for readability, structure, length, a
 
 ## Scope and disclaimer
 
-This guide compares existing mdsmith rules that touch readability and length with token budget awareness and the proposed conciseness scoring (plan 53). Conciseness scoring is not implemented yet; any conciseness scores below are illustrative, not normative.
+This guide compares existing mdsmith rules that touch readability and length with token budget awareness. Any metric scores and trade-offs below are illustrative and focus on the rules that are currently implemented.
 
 ## What the current rules measure
 
@@ -20,13 +20,7 @@ This guide compares existing mdsmith rules that touch readability and length wit
 
 ## Planned metrics (not implemented)
 
-| Metric                                                      | Goal                                       | Status  |
-|-------------------------------------------------------------|--------------------------------------------|---------|
-| [Conciseness Scoring](../../plan/53_conciseness-scoring.md) | Flag low information density in paragraphs | Planned |
-
-## What conciseness scoring is trying to measure
-
-Conciseness scoring (plan 53) focuses on information density rather than complexity or structure. It aims to flag paragraphs that are easy to read but say too little with too many words, which can waste tokens and create drift in agentic contexts. A plausible starting point is a heuristic that penalizes filler words, hedging language, and verbose phrases while rewarding content-bearing terms.
+No additional metrics are planned at this time.
 
 ## What token budget awareness is trying to measure
 

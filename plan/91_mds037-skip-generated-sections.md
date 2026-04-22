@@ -6,12 +6,12 @@ summary: >-
   Paragraphs inside `<?include?>` and `<?catalog?>`
   directive bodies are copies of content owned by
   another file; MDS037 must not count them as
-  cross-file duplicates. Extends plan 50.
+  cross-file duplicates.
 ---
 # MDS037 skips paragraphs inside generated sections
 
-Extends [plan 50](50_redundancy-duplication-detection.md)
-(MDS037 duplicated-content).
+Builds on redundancy detection work to skip paragraphs
+inside generated sections (MDS037 duplicated-content).
 
 ## Goal
 

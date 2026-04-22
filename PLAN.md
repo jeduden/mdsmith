@@ -14,39 +14,17 @@ footer: |
 
 ?>
 
-| ID  | Status | Title                                                                                                           |
-|-----|--------|-----------------------------------------------------------------------------------------------------------------|
-| 50  | ✅     | [Redundancy / Duplication Detection](plan/50_redundancy-duplication-detection.md)                               |
-| 51  | ✅     | [Section-Level Size Limits](plan/51_section-level-size-limits.md)                                               |
-| 52  | ✅     | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                      |
-| 53  | ⛔     | [Conciseness Scoring](plan/53_conciseness-scoring.md)                                                           |
-| 54  | ⛔     | [Conciseness Metrics Design and Implementation](plan/54_metrics-guide-tradeoffs.md)                             |
-| 56  | ⛔     | [Spike Ollama for Weasel Detection](plan/56_spike-ollama-weasel-detection.md)                                   |
-| 58  | ⛔     | [Select and Package Fast Weasel Classifier (CPU Fallback)](plan/58_classifier-model-selection-and-embedding.md) |
-| 61  | 🔳     | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                    |
-| 62  | ✅     | [Corpus Acquisition and Taxonomy](plan/62_corpus-acquisition.md)                                                |
-| 64  | ✅     | [Spike Pure-Go Embedded Weasel Classifier](plan/64_spike-go-native-linear-classifier.md)                        |
-| 65  | 🔲     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                |
-| 66  | ✅     | [Unified Conciseness Score](plan/66_unified-conciseness-score.md)                                               |
-| 68  | ⛔     | [Reorganize Documentation](plan/68_reorganize-docs.md)                                                          |
-| 69  | ✅     | [Include enhancements: link adjustment and heading-level](plan/69_include-enhancements.md)                      |
-| 73  | ✅     | [Unify template and processing directives](plan/73_unify-template-directives.md)                                |
-| 74  | ✅     | [Directive guide](plan/74_directive-guide.md)                                                                   |
-| 75  | ✅     | [Single-brace placeholders everywhere](plan/75_single-brace-placeholders.md)                                    |
-| 76  | ✅     | [Rename misleading parameter names](plan/76_rename-misleading-params.md)                                        |
-| 77  | ✅     | [Template composition and cycle detection](plan/77_template-composition-and-cycles.md)                          |
-| 78  | ✅     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                         |
-| 79  | ✅     | [Nested front-matter access](plan/79_nested-frontmatter-access.md)                                              |
-| 80  | ✅     | [Terminal recording in README](plan/80_terminal-recording-readme.md)                                            |
-| 81  | ✅     | [OOM mitigation: configurable file-size limit](plan/81_oom-file-size-limit.md)                                  |
-| 82  | ✅     | [YAML billion-laughs mitigation](plan/82_yaml-billion-laughs.md)                                                |
-| 83  | ✅     | [Security hardening batch](plan/83_security-hardening-batch.md)                                                 |
-| 84  | 🔲     | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                                      |
-| 85  | 🔳     | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md)            |
-| 86  | 🔳     | [Markdown flavor validation](plan/86_markdown-flavor-validation.md)                                             |
-| 87  | ✅     | [Flavor validation for GitHub Alerts](plan/87_markdown-flavor-github-alerts.md)                                 |
-| 88  | ✅     | [TOC directive migration aid](plan/88_toc-directive-migration.md)                                               |
-| 89  | 🔲     | [TOC generator directive and MDS035 auto-fix](plan/89_toc-generator-directive.md)                               |
-| 90  | 🔲     | [Isolate corpus test git config from host signing](plan/90_corpus-test-git-config-isolation.md)                 |
-| 91  | 🔲     | [MDS037 skips paragraphs inside generated sections](plan/91_mds037-skip-generated-sections.md)                  |
+| ID  | Status | Title                                                                                                |
+|-----|--------|------------------------------------------------------------------------------------------------------|
+| 52  | ✅     | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |
+| 61  | 🔳     | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                         |
+| 65  | 🔲     | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                     |
+| 78  | ✅     | [Query subcommand for front-matter filtering](plan/78_query-command.md)                              |
+| 83  | ✅     | [Security hardening batch](plan/83_security-hardening-batch.md)                                      |
+| 84  | 🔲     | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                           |
+| 85  | 🔳     | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md) |
+| 86  | 🔳     | [Markdown flavor validation](plan/86_markdown-flavor-validation.md)                                  |
+| 89  | 🔲     | [TOC generator directive and MDS035 auto-fix](plan/89_toc-generator-directive.md)                    |
+| 90  | 🔲     | [Isolate corpus test git config from host signing](plan/90_corpus-test-git-config-isolation.md)      |
+| 91  | 🔲     | [MDS037 skips paragraphs inside generated sections](plan/91_mds037-skip-generated-sections.md)       |
 <?/catalog?>
