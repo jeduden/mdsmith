@@ -149,7 +149,8 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		}
 		s := string(line)
 		if addPrefix[lineNum] {
-			s = "> " + s
+			trimmed := strings.TrimLeft(s, " \t")
+			s = s[:len(s)-len(trimmed)] + "> " + trimmed
 		}
 		out = append(out, s)
 	}

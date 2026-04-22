@@ -525,11 +525,7 @@ func isGitHubAlert(bq *ast.Blockquote, source []byte) bool {
 	if !ok {
 		return false
 	}
-	lines := para.Lines()
-	if lines == nil || lines.Len() == 0 {
-		return false
-	}
-	seg := lines.At(0)
+	seg := para.Lines().At(0)
 	firstLine := bytes.TrimRight(source[seg.Start:seg.Stop], "\r\n")
 	return alertTokenRe.Match(firstLine)
 }
