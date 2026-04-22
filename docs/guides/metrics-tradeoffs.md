@@ -6,7 +6,7 @@ summary: Trade-offs and threshold guidance for readability, structure, length, a
 
 ## Scope and disclaimer
 
-This guide compares existing mdsmith rules that touch readability and length with token budget awareness and the proposed conciseness scoring (plan 53). Conciseness scoring is not implemented yet; any conciseness scores below are illustrative, not normative.
+This guide compares existing mdsmith rules that touch readability and length with token budget awareness. Any metric scores and trade-offs below are illustrative and focus on the rules that are currently implemented.
 
 ## What the current rules measure
 

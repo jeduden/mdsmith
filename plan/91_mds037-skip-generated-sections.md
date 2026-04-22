@@ -6,7 +6,7 @@ summary: >-
   Paragraphs inside `<?include?>` and `<?catalog?>`
   directive bodies are copies of content owned by
   another file; MDS037 must not count them as
-  cross-file duplicates. Extends plan 50.
+  cross-file duplicates.
 ---
 # MDS037 skips paragraphs inside generated sections
 
