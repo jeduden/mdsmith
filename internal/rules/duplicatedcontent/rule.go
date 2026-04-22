@@ -231,19 +231,28 @@ func resolveCorpus(f *lint.File) (fs.FS, string) {
 }
 
 // rootRelative returns path expressed relative to rootDir using forward
-// slashes, or ok=false when path escapes rootDir. Already-relative paths
-// are assumed to be rooted at rootDir and only cleaned; absolute paths
-// go through filepath.Rel.
+// slashes, or ok=false when path escapes rootDir.
+//
+// The Runner passes file paths through verbatim from the command line,
+// so a relative path may be CWD-relative rather than root-relative
+// (e.g. running `mdsmith check a.md` from the `docs/` subdirectory
+// gives `f.Path = "a.md"` even though the file lives at `docs/a.md`
+// under RootDir). To handle that uniformly, convert to an absolute
+// path first and then compute the relative against RootDir; that way
+// both absolute inputs and any flavor of relative input resolve to
+// the same root-relative string.
 func rootRelative(rootDir, path string) (string, bool) {
-	var rel string
-	if filepath.IsAbs(path) {
-		r, err := filepath.Rel(rootDir, path)
+	absPath := path
+	if !filepath.IsAbs(path) {
+		var err error
+		absPath, err = filepath.Abs(path)
 		if err != nil {
 			return "", false
 		}
-		rel = r
-	} else {
-		rel = filepath.Clean(path)
+	}
+	rel, err := filepath.Rel(rootDir, absPath)
+	if err != nil {
+		return "", false
 	}
 	slash := filepath.ToSlash(rel)
 	slash = strings.TrimPrefix(slash, "./")
@@ -374,8 +383,15 @@ func shouldSkipDir(p string, exclude []glob.Glob) bool {
 	// gopath.Base does the right thing cross-platform where
 	// filepath.Base would not split on '/' on Windows.
 	base := gopath.Base(p)
+	// Try the directory path with a trailing slash too so that
+	// subtree patterns like "vendor/**" or "docs/generated/**"
+	// match at the directory boundary — fs.WalkDir yields
+	// "docs/generated" (no trailing slash) even for directories,
+	// so the raw glob expects "docs/generated/<rest>" and skips
+	// the bare directory without this.
+	slashed := p + "/"
 	for _, g := range exclude {
-		if g.Match(p) || g.Match(base) {
+		if g.Match(p) || g.Match(slashed) || g.Match(base) {
 			return true
 		}
 	}

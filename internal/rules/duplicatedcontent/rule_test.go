@@ -340,7 +340,11 @@ func TestCheck_RootFSWithRelativeFilePath(t *testing.T) {
 	writeFile(t, filepath.Join(docs, "a.md"), "# A\n\n"+p+"\n")
 	writeFile(t, filepath.Join(guides, "b.md"), "# B\n\n"+p+"\n")
 
-	data, err := os.ReadFile(filepath.Join(docs, "a.md"))
+	// Run the test from dir so a RootDir-relative f.Path resolves
+	// correctly via filepath.Abs inside rootRelative.
+	t.Chdir(dir)
+
+	data, err := os.ReadFile(filepath.Join(dir, "docs", "a.md"))
 	require.NoError(t, err)
 	// Relative path, as ResolveFiles would return.
 	relPath := filepath.Join("docs", "a.md")
@@ -353,6 +357,35 @@ func TestCheck_RootFSWithRelativeFilePath(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "guides/b.md",
 		"RootFS walk should have found the duplicate in a different directory")
+}
+
+func TestCheck_CWDIsSubdirOfRootDir(t *testing.T) {
+	// Running `mdsmith check a.md` from inside docs/ with a
+	// discovered RootDir at the project root: f.Path = "a.md"
+	// (CWD-relative, not RootDir-relative). rootRelative must
+	// compute docs/a.md via filepath.Abs before filepath.Rel,
+	// otherwise the corpus walk would not recognize the current
+	// file as self and would report a paragraph as duplicated in
+	// itself.
+	dir := t.TempDir()
+	docs := filepath.Join(dir, "docs")
+	require.NoError(t, os.MkdirAll(docs, 0o755))
+
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+	writeFile(t, filepath.Join(docs, "a.md"), "# A\n\n"+p+"\n")
+
+	t.Chdir(docs)
+
+	data, err := os.ReadFile("a.md")
+	require.NoError(t, err)
+	f, err := lint.NewFile("a.md", data)
+	require.NoError(t, err)
+	f.FS = os.DirFS(docs)
+	f.SetRootDir(dir)
+
+	diags := (&Rule{}).Check(f)
+	assert.Empty(t, diags,
+		"rule must not flag a file as a duplicate of itself when CWD is a subdir of RootDir")
 }
 
 func TestCheck_RootFSRejectsPathEscapingRoot(t *testing.T) {
@@ -416,6 +449,28 @@ func TestCheck_PrunesGitAndNodeModulesUnconditionally(t *testing.T) {
 	diags := (&Rule{}).Check(f)
 	assert.Empty(t, diags,
 		"duplicates under .git/ and node_modules/ must be pruned by default")
+}
+
+func TestCheck_ExcludeSubtreePattern_PrunesWalk(t *testing.T) {
+	// The README example uses patterns like "docs/generated/**"
+	// for pruning generated directory subtrees. fs.WalkDir yields
+	// the directory path without a trailing slash ("docs/generated"),
+	// so the raw glob does not match; shouldSkipDir must also try a
+	// trailing-slash form so the pattern fires at the directory
+	// boundary and the subtree is skipped.
+	dir := t.TempDir()
+	generated := filepath.Join(dir, "docs", "generated")
+	require.NoError(t, os.MkdirAll(generated, 0o755))
+
+	p := longParagraph("the quick brown fox jumps over the lazy dog")
+	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
+	writeFile(t, filepath.Join(generated, "dup.md"), "# Gen\n\n"+p+"\n")
+
+	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
+	r := &Rule{Exclude: []string{"docs/generated/**"}}
+	diags := r.Check(f)
+	assert.Empty(t, diags,
+		"subtree exclude pattern must prune docs/generated at the directory boundary")
 }
 
 func TestCheck_ExcludeDirectoryPattern_PrunesWalk(t *testing.T) {
