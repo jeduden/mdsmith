@@ -142,38 +142,80 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 	return nil
 }
 
-// hasSymlinkAncestor reports whether any ancestor directory named
-// by the relative components of path is a symbolic link. It rejects
-// paths like `linked/dirty.md` where `linked` is a symlinked dir —
-// the filesystem would resolve the link during `os.Stat(path)` and
-// let the external target slip past a leaf-only Lstat check.
+// hasSymlinkAncestor reports whether any ancestor directory of
+// path (up to, but excluding, the invocation directory) is a
+// symbolic link. It rejects paths like `linked/dirty.md` where
+// `linked` is a symlinked dir — the filesystem would resolve the
+// link during `os.Stat(path)` and let the external target slip
+// past a leaf-only Lstat check.
 //
-// Only relative path components are walked. Absolute paths and
-// paths that escape via `..` are treated as the user's explicit
-// choice: we do not probe above the invocation directory (that
-// would misclassify environments where temp dirs or project roots
-// live behind a system-wide symlink, e.g. `/tmp` on macOS).
+// For absolute paths inside the invocation directory, the check
+// is performed on the rel-from-cwd form so that `cwd/linked/...`
+// is still blocked without misclassifying system-level symlinks
+// above cwd (e.g. `/tmp` on macOS). Paths outside the invocation
+// directory are treated as the user's explicit choice and not
+// probed.
 func hasSymlinkAncestor(path string) bool {
-	clean := filepath.Clean(path)
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+	return hasSymlinkAncestorCached(path, make(map[string]bool))
+}
+
+// hasSymlinkAncestorCached is the memoized form of
+// hasSymlinkAncestor. Callers that run the check repeatedly (e.g.
+// per glob match) should share a `cache` across invocations to
+// avoid repeated `os.Lstat` calls on the same ancestor directories.
+func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
+	rel, ok := relForAncestorCheck(path)
+	if !ok {
 		return false
 	}
-	dir := filepath.Dir(clean)
-	for dir != "." && dir != "/" {
-		if strings.HasPrefix(dir, "..") {
-			return false
+	return ancestorChainHasSymlink(filepath.Dir(rel), cache)
+}
+
+// relForAncestorCheck normalises path into a cwd-relative form
+// suitable for ancestor probing. It returns (rel, false) to signal
+// "skip the check" for paths that are outside cwd or that escape
+// via `..`.
+func relForAncestorCheck(path string) (string, bool) {
+	clean := filepath.Clean(path)
+	if filepath.IsAbs(clean) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", false
 		}
-		info, err := os.Lstat(dir)
-		if err == nil && info.Mode()&os.ModeSymlink != 0 {
-			return true
+		rel, err := filepath.Rel(cwd, clean)
+		if err != nil {
+			return "", false
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return false
-		}
-		dir = parent
+		clean = rel
 	}
-	return false
+	if clean == "." || clean == ".." ||
+		strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return clean, true
+}
+
+// ancestorChainHasSymlink walks upward from dir and reports whether
+// any step in the chain is a symbolic link. Results are memoised
+// per directory so sibling paths under a shared ancestor do not
+// re-Lstat the same entries.
+func ancestorChainHasSymlink(dir string, cache map[string]bool) bool {
+	if dir == "." || dir == "/" ||
+		strings.HasPrefix(dir, ".."+string(filepath.Separator)) {
+		return false
+	}
+	if v, ok := cache[dir]; ok {
+		return v
+	}
+	result := false
+	if info, err := os.Lstat(dir); err == nil &&
+		info.Mode()&os.ModeSymlink != 0 {
+		result = true
+	} else if parent := filepath.Dir(dir); parent != dir {
+		result = ancestorChainHasSymlink(parent, cache)
+	}
+	cache[dir] = result
+	return result
 }
 
 // resolveGlob expands a glob pattern and adds matching markdown files.
@@ -182,13 +224,16 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 	if err != nil {
 		return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
 	}
+	ancestorCache := make(map[string]bool)
 	for _, m := range matches {
 		// filepath.Glob follows symlinked directory components
 		// during expansion, so a pattern like `linked/*.md` will
 		// return paths rooted under a symlinked dir. Reject any
 		// match whose ancestor chain contains a symlink: symlinked
-		// directories are always skipped.
-		if hasSymlinkAncestor(m) {
+		// directories are always skipped. The cache shares Lstat
+		// results across matches so large expansions don't repeat
+		// ancestor syscalls.
+		if hasSymlinkAncestorCached(m, ancestorCache) {
 			continue
 		}
 		linfo, lerr := os.Lstat(m)

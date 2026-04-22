@@ -18,6 +18,7 @@ import (
 // the project must not be walked by default. Running `fix` would
 // otherwise overwrite that external file.
 func TestE2E_Symlink_DefaultDeny_ExternalTargetSkipped(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -46,6 +47,7 @@ func TestE2E_Symlink_DefaultDeny_ExternalTargetSkipped(t *testing.T) {
 // secure default also covers explicit, non-glob path arguments.
 // `mdsmith check ./evil.md` must not process a symlink target.
 func TestE2E_Symlink_DefaultDeny_ExplicitFileArg(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -76,6 +78,7 @@ func TestE2E_Symlink_DefaultDeny_ExplicitFileArg(t *testing.T) {
 // TestE2E_Symlink_FollowSymlinksFlag_OptsIn asserts the new
 // --follow-symlinks CLI flag walks symlinked entries.
 func TestE2E_Symlink_FollowSymlinksFlag_OptsIn(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -99,6 +102,7 @@ func TestE2E_Symlink_FollowSymlinksFlag_OptsIn(t *testing.T) {
 // TestE2E_Symlink_FollowSymlinksConfigKey_OptsIn asserts the new
 // follow-symlinks: true config key works.
 func TestE2E_Symlink_FollowSymlinksConfigKey_OptsIn(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -124,6 +128,7 @@ func TestE2E_Symlink_FollowSymlinksConfigKey_OptsIn(t *testing.T) {
 // for a symlink root; `--follow-symlinks` applies only to file
 // symlinks, as documented on ResolveOpts.FollowSymlinks.
 func TestE2E_Symlink_DirSymlinkAlwaysSkipped(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -152,6 +157,7 @@ func TestE2E_Symlink_DirSymlinkAlwaysSkipped(t *testing.T) {
 // reports IsDir==false and isMarkdown(path) is true, so the entry
 // would be queued and then fail later on "is a directory" read.
 func TestE2E_Symlink_DirSymlinkWithMdName(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -180,6 +186,7 @@ func TestE2E_Symlink_DirSymlinkWithMdName(t *testing.T) {
 // must not reach the external target even though the leaf itself
 // is a regular file.
 func TestE2E_Symlink_DirSymlinkAncestorPath(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -209,6 +216,7 @@ func TestE2E_Symlink_DirSymlinkAncestorPath(t *testing.T) {
 // via glob expansion: `linked/*.md` must not reach files under the
 // symlinked directory.
 func TestE2E_Symlink_DirSymlinkAncestorGlob(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -226,11 +234,37 @@ func TestE2E_Symlink_DirSymlinkAncestorGlob(t *testing.T) {
 		"glob expanding under a symlinked dir must not reach external files")
 }
 
+// TestE2E_Symlink_DirSymlinkAncestorAbsPath covers the absolute-path
+// variant of the ancestor-bypass test. `mdsmith check` invoked with
+// an absolute path that happens to pass through a symlinked directory
+// under cwd must still be rejected — the ancestor check converts the
+// path to cwd-relative form before probing.
+func TestE2E_Symlink_DirSymlinkAncestorAbsPath(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	project := t.TempDir()
+	external := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	writeFixture(t, project, ".mdsmith.yml",
+		"rules:\n  no-trailing-spaces: true\n")
+
+	require.NoError(t, os.WriteFile(filepath.Join(external, "dirty.md"),
+		[]byte("# Evil\n\ntrailing   \n"), 0o644))
+	require.NoError(t, os.Symlink(external, filepath.Join(project, "linked")))
+
+	absPath := filepath.Join(project, "linked", "dirty.md")
+	_, _, exitCode := runBinaryInDir(t, project, "", "check",
+		"--no-color", "--no-gitignore", absPath)
+	assert.Equal(t, 0, exitCode,
+		"absolute path through a symlinked directory must be skipped")
+}
+
 // TestE2E_Symlink_LegacyFlag_OverridesFollowConfig verifies that the
 // deprecated --no-follow-symlinks flag still has meaning: it forces
 // deny even when `follow-symlinks: true` is set in config. This lets
 // users run one-off secure invocations without editing the config.
 func TestE2E_Symlink_LegacyFlag_OverridesFollowConfig(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
@@ -263,6 +297,7 @@ func TestE2E_Symlink_LegacyFlag_OverridesFollowConfig(t *testing.T) {
 // old `no-follow-symlinks:` key still parses and emits a deprecation
 // warning on stderr.
 func TestE2E_Symlink_LegacyNoFollowConfig_Deprecation(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 
 	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
@@ -287,6 +322,7 @@ func TestE2E_Symlink_LegacyNoFollowConfig_Deprecation(t *testing.T) {
 // plan 83 section C), and the in-project symlink is only visited
 // when the flag is set.
 func TestE2E_Symlink_FixRespectsFollowSymlinks(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	project := t.TempDir()
 	external := t.TempDir()
 
