@@ -198,8 +198,18 @@ func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 		// Symlink entries always have Lstat-based info with
 		// IsDir()==false under filepath.Walk, so a plain return nil
 		// here also means Walk won't try to descend.
-		if !followSymlinks && info.Mode()&os.ModeSymlink != 0 {
-			return nil
+		if info.Mode()&os.ModeSymlink != 0 {
+			if !followSymlinks {
+				return nil
+			}
+			// In opt-in mode, follow the link only if it resolves to
+			// a regular file. A symlink-to-dir named "evil.md" would
+			// otherwise be treated as a markdown file and fail on
+			// read; this also matches the FollowSymlinks doc that
+			// says symlinked directories are always skipped.
+			if tgt, statErr := os.Stat(path); statErr != nil || tgt.IsDir() {
+				return nil
+			}
 		}
 
 		if matcher != nil && isGitignored(matcher, path, info.IsDir()) {

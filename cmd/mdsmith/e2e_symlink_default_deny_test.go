@@ -145,6 +145,35 @@ func TestE2E_Symlink_DirSymlinkAlwaysSkipped(t *testing.T) {
 		"symlinked directory must be skipped even with --follow-symlinks")
 }
 
+// TestE2E_Symlink_DirSymlinkWithMdName asserts that a symlink named
+// like a markdown file but pointing at a directory is NOT picked up
+// as a markdown file, even in opt-in mode. This guards against a
+// subtle failure mode: without the target os.Stat, Lstat-based info
+// reports IsDir==false and isMarkdown(path) is true, so the entry
+// would be queued and then fail later on "is a directory" read.
+func TestE2E_Symlink_DirSymlinkWithMdName(t *testing.T) {
+	project := t.TempDir()
+	external := t.TempDir()
+
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	writeFixture(t, project, ".mdsmith.yml",
+		"files:\n  - \"**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, project, "ok.md", "# OK\n\nClean body.\n")
+
+	// Symlink whose name ends in .md but whose target is a directory.
+	require.NoError(t, os.Symlink(external, filepath.Join(project, "evil.md")))
+
+	// Discovery (no explicit file args) with --follow-symlinks: the
+	// dir-symlink-with-.md-name must be filtered out.
+	_, stderr, exitCode := runBinaryInDir(t, project, "",
+		"check", "--no-color", "--no-gitignore", "--follow-symlinks")
+	assert.Equal(t, 0, exitCode,
+		"dir-symlink-with-.md-name must not be read; stderr: %s", stderr)
+	assert.NotContains(t, stderr, "is a directory",
+		"symlink-to-dir must not leak as a markdown read error; stderr: %s",
+		stderr)
+}
+
 // TestE2E_Symlink_LegacyFlag_OverridesFollowConfig verifies that the
 // deprecated --no-follow-symlinks flag still has meaning: it forces
 // deny even when `follow-symlinks: true` is set in config. This lets

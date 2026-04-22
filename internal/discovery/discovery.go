@@ -111,8 +111,17 @@ func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
 	// Symlink entries always have Lstat-based info with
 	// IsDir()==false under filepath.Walk, so returning nil also
 	// means Walk won't try to descend.
-	if !w.followSymlinks && info.Mode()&os.ModeSymlink != 0 {
-		return nil
+	if info.Mode()&os.ModeSymlink != 0 {
+		if !w.followSymlinks {
+			return nil
+		}
+		// In opt-in mode, include the entry only if it resolves to
+		// a regular file. A symlink-to-dir named like "evil.md"
+		// would otherwise match patterns and land in results —
+		// the Options doc says symlinked directories are skipped.
+		if tgt, statErr := os.Stat(path); statErr != nil || tgt.IsDir() {
+			return nil
+		}
 	}
 
 	if w.isGitignored(path, info) {
