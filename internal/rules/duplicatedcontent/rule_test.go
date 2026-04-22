@@ -811,7 +811,6 @@ func TestGeneratedRanges_NestedSameNamePair(t *testing.T) {
 	// the outer close, so both "before inner" and "after inner" are inside it.
 	beforeInnerOffset := strings.Index(src, "before inner")
 	afterInnerOffset := strings.Index(src, "after inner")
-	outerCloseOffset := strings.Index(src, "<?/include?>\n")
 	// Find the *last* <?/include?> — that's the outer close.
 	lastCloseOffset := strings.LastIndex(src, "<?/include?>")
 	assert.LessOrEqual(t, ranges[0][0], beforeInnerOffset,
@@ -820,7 +819,6 @@ func TestGeneratedRanges_NestedSameNamePair(t *testing.T) {
 		"range end must be after 'after inner'")
 	assert.Equal(t, lastCloseOffset, ranges[0][1],
 		"range end must point to the outer <?/include?> marker")
-	_ = outerCloseOffset // suppress unused warning
 }
 
 func TestCheck_SkipsNestedIncludeGeneratedSection(t *testing.T) {
