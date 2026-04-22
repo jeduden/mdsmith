@@ -63,8 +63,12 @@ follow-symlinks: true  # opt-in, default false
 - Deprecate `no-follow-symlinks` config key: if
   present, emit a warning suggesting migration to
   the new `follow-symlinks: false` default.
-- Deprecate `--no-follow-symlinks` CLI flag: accept
-  silently (it's now the default).
+- Remove `--no-follow-symlinks` CLI flag outright:
+  the polarity flipped (`--follow-symlinks` is the
+  new opt-in) and keeping a negated sibling is both
+  redundant with the new secure default and confusing
+  next to it. Passing the removed flag errors out on
+  parse (exit 2), same as any other unknown flag.
 
 ### Write-side protection
 
@@ -87,7 +91,7 @@ Consider migrating from `filepath.Walk` to
    `FollowSymlinks bool` in `config.Config`; kept
    `LegacyNoFollowSymlinks` for deprecation parsing
 2. [x] Replaced `--no-follow-symlinks` with
-   `--follow-symlinks`; old flag silently accepted
+   `--follow-symlinks`; old flag removed outright
 3. [x] Updated `ResolveOpts` to use `FollowSymlinks bool`
 4. [x] Updated `walkDir` to skip symlinks by default
 5. [x] Updated `resolveGlob` to skip symlinks by default

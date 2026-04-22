@@ -320,38 +320,15 @@ func TestE2E_Symlink_DirSymlinkAncestorDotDotPath(t *testing.T) {
 		"`..`-relative path through symlinked dir must be skipped")
 }
 
-// TestE2E_Symlink_LegacyFlag_OverridesFollowConfig verifies that the
-// deprecated --no-follow-symlinks flag still has meaning: it forces
-// deny even when `follow-symlinks: true` is set in config. This lets
-// users run one-off secure invocations without editing the config.
-func TestE2E_Symlink_LegacyFlag_OverridesFollowConfig(t *testing.T) {
-	skipIfSymlinkUnsupported(t)
-	project := t.TempDir()
-	external := t.TempDir()
-
-	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
-	writeFixture(t, project, ".mdsmith.yml",
-		"follow-symlinks: true\nrules:\n  no-trailing-spaces: true\n")
-
-	externalFile := filepath.Join(external, "dirty.md")
-	require.NoError(t, os.WriteFile(externalFile,
-		[]byte("# Evil\n\ntrailing   \n"), 0o644))
-	require.NoError(t, os.Symlink(externalFile,
-		filepath.Join(project, "linked.md")))
-
-	// Baseline: with follow-symlinks:true in config, the linked
-	// file is walked and the dirty line surfaces.
-	_, _, withConfig := runBinaryInDir(t, project, "", "check",
-		"--no-color", "--no-gitignore", ".")
-	require.Equal(t, 1, withConfig,
-		"follow-symlinks: true config must expose the linked file")
-
-	// Legacy --no-follow-symlinks overrides the config and forces
-	// deny for this invocation; no findings.
-	_, _, withLegacy := runBinaryInDir(t, project, "", "check",
+// TestE2E_Symlink_NoFollowFlagRemoved asserts that the deprecated
+// `--no-follow-symlinks` CLI flag has been removed and now errors
+// out as an unknown flag.
+func TestE2E_Symlink_NoFollowFlagRemoved(t *testing.T) {
+	dir := t.TempDir()
+	_, _, exitCode := runBinaryInDir(t, dir, "", "check",
 		"--no-color", "--no-gitignore", "--no-follow-symlinks", ".")
-	assert.Equal(t, 0, withLegacy,
-		"legacy --no-follow-symlinks must force deny over config opt-in")
+	assert.Equal(t, 2, exitCode,
+		"removed --no-follow-symlinks flag must surface as a parse error")
 }
 
 // TestE2E_Symlink_LegacyNoFollowConfig_Deprecation verifies that the

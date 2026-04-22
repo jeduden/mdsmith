@@ -123,7 +123,7 @@ Escape sequences pass through to the terminal: screen clearing (`\033[2J`), wind
 
 **Original finding:** symlink following was the default; the `--no-follow-symlinks` flag and config key were opt-in.
 
-**Status (plan 84, resolved):** the default is inverted. Symlinks are skipped by default across directory walks, glob expansion, and explicit non-glob path arguments. Symlinked directories are always skipped — including when a path or glob traverses through one — regardless of `FollowSymlinks`. Users opt in (for file symlinks) with `--follow-symlinks` or `follow-symlinks: true`. The legacy `--no-follow-symlinks` flag and `no-follow-symlinks:` config key are silently accepted for one release; the config key emits a deprecation warning.
+**Status (plan 84, resolved):** the default is inverted. Symlinks are skipped by default across directory walks, glob expansion, and explicit non-glob path arguments. Symlinked directories are always skipped — including when a path or glob traverses through one — regardless of `FollowSymlinks`. Users opt in (for file symlinks) with `--follow-symlinks` or `follow-symlinks: true`. The old `--no-follow-symlinks` flag has been removed; the legacy `no-follow-symlinks:` config key still parses and emits a deprecation warning.
 
 **Adversarial file:**
 

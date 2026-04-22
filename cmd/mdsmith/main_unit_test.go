@@ -193,13 +193,6 @@ func TestResolveOpts_ConfigFollowSymlinks_Propagated(t *testing.T) {
 	assert.True(t, opts.FollowSymlinks)
 }
 
-func TestResolveOpts_LegacyNoFollowForcesDeny(t *testing.T) {
-	cfg := &config.Config{FollowSymlinks: true}
-	opts := resolveOpts(cfg, walkCLI{followSymlinks: true, legacyNoFollow: true})
-	assert.False(t, opts.FollowSymlinks,
-		"deprecated --no-follow-symlinks flag must win over both config and --follow-symlinks")
-}
-
 // --- printRunStats ---
 
 func TestPrintRunStats_NormalOutputContainsAllFields(t *testing.T) {

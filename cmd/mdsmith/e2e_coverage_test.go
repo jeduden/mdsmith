@@ -137,58 +137,6 @@ func TestE2E_Fix_Discovered_BadConfig_ExitsTwo(t *testing.T) {
 }
 
 // =============================================================
-// 9. Deprecated --no-follow-symlinks flag is silently accepted
-// =============================================================
-
-// TestE2E_Check_LegacyNoFollowSymlinksFlag asserts the removed
-// `--no-follow-symlinks` flag still parses without error (plan 84
-// "accept silently") and that the new secure default leaves the
-// real directory reachable.
-func TestE2E_Check_LegacyNoFollowSymlinksFlag(t *testing.T) {
-	skipIfSymlinkUnsupported(t)
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
-	writeFixture(t, dir, ".mdsmith.yml",
-		"files:\n  - \"**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
-
-	subDir := filepath.Join(dir, "real")
-	require.NoError(t, os.MkdirAll(subDir, 0o755))
-	writeFixture(t, subDir, "dirty.md", "# Title\n\nHello   \n")
-	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked")))
-
-	// Default-deny already skips the symlink; exit 1 from real/dirty.md.
-	_, _, exitWithout := runBinaryInDir(t, dir, "", "check", "--no-color", "--no-gitignore")
-	assert.Equal(t, 1, exitWithout,
-		"expected exit 1 (dirty real/dirty.md found under default-deny)")
-
-	// Same outcome with the deprecated flag present (flag is silently accepted).
-	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"check", "--no-color", "--no-gitignore", "--no-follow-symlinks")
-	assert.Equal(t, 1, exitCode,
-		"legacy --no-follow-symlinks must still parse; stderr: %s", stderr)
-}
-
-// TestE2E_Fix_LegacyNoFollowSymlinksFlag covers the same silent-
-// acceptance path for the fix subcommand.
-func TestE2E_Fix_LegacyNoFollowSymlinksFlag(t *testing.T) {
-	skipIfSymlinkUnsupported(t)
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
-	writeFixture(t, dir, ".mdsmith.yml",
-		"files:\n  - \"**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
-
-	subDir := filepath.Join(dir, "real")
-	require.NoError(t, os.MkdirAll(subDir, 0o755))
-	writeFixture(t, subDir, "fixme.md", "# Title\n\nHello   \n")
-	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked")))
-
-	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"fix", "--no-color", "--no-follow-symlinks")
-	assert.Equal(t, 0, exitCode,
-		"expected exit 0 after fix, got %d; stderr: %s", exitCode, stderr)
-}
-
-// =============================================================
 // 10. rootDirFromConfig — empty cfgPath falls back to cwd
 // =============================================================
 
@@ -691,24 +639,6 @@ func TestE2E_Init_HelpFlag(t *testing.T) {
 	assert.Equal(t, 2, exitCode, "expected exit 2 (pflag ContinueOnError), got %d", exitCode)
 	assert.Contains(t, stderr, "Usage: mdsmith init",
 		"expected init usage, got: %s", stderr)
-}
-
-// =============================================================
-// Additional: metrics rank still accepts deprecated flag
-// =============================================================
-
-// TestE2E_MetricsRank_LegacyNoFollowSymlinksFlag asserts the
-// deprecated --no-follow-symlinks flag is silently accepted by the
-// metrics rank subcommand after plan 84.
-func TestE2E_MetricsRank_LegacyNoFollowSymlinksFlag(t *testing.T) {
-	dir := t.TempDir()
-	writeFixture(t, dir, "a.md", "# Title\n\nSome content here.\n")
-
-	stdout, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"metrics", "rank", "--by", "bytes", "--no-follow-symlinks", ".")
-	require.Equal(t, 0, exitCode,
-		"expected exit 0, got %d; stderr: %s", exitCode, stderr)
-	assert.Contains(t, stdout, "a.md", "expected a.md in output")
 }
 
 // =============================================================

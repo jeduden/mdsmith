@@ -56,8 +56,7 @@ Pass `--follow-symlinks` to opt in on the command line.
 Set `follow-symlinks: true` in `.mdsmith.yml` to opt in
 from config.
 
-The old `--no-follow-symlinks` flag parses silently.
-The old `no-follow-symlinks:` config key parses too, and
+The old `no-follow-symlinks:` config key still parses and
 emits a deprecation warning on stderr.
 
 ## Other Subcommand Flags

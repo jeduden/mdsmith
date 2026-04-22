@@ -171,7 +171,6 @@ func runCheck(args []string) int {
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false, "Follow symlinks (default: skip)")
-	legacyNoFollow := registerLegacyNoFollowSymlinks(fs)
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
@@ -196,7 +195,6 @@ func runCheck(args []string) int {
 	walk := walkCLI{
 		noGitignore:    noGitignore,
 		followSymlinks: followSymlinks,
-		legacyNoFollow: *legacyNoFollow,
 	}
 
 	allArgs := fs.Args()
@@ -237,7 +235,6 @@ func runFix(args []string) int {
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false, "Follow symlinks (default: skip)")
-	legacyNoFollow := registerLegacyNoFollowSymlinks(fs)
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
@@ -262,7 +259,6 @@ func runFix(args []string) int {
 	walk := walkCLI{
 		noGitignore:    noGitignore,
 		followSymlinks: followSymlinks,
-		legacyNoFollow: *legacyNoFollow,
 	}
 
 	allArgs := fs.Args()
@@ -885,35 +881,20 @@ func fixDiscovered(
 	return 0
 }
 
-// registerLegacyNoFollowSymlinks registers the removed
-// `--no-follow-symlinks` flag as a silently-accepted deprecation
-// and returns a pointer to its parsed value. When set, the caller
-// should force `FollowSymlinks` off regardless of config / other
-// flags, so existing invocations remain a safe way to get the
-// secure default without editing the config file.
-func registerLegacyNoFollowSymlinks(fs *flag.FlagSet) *bool {
-	return fs.Bool("no-follow-symlinks", false,
-		"Deprecated: symlinks are now skipped by default")
-}
-
 // walkCLI bundles the CLI flags that affect how files are
 // discovered and resolved, so helpers can thread one value
-// instead of three (and the next addition isn't a parameter
+// instead of two (and the next addition isn't a parameter
 // explosion).
 type walkCLI struct {
 	noGitignore    bool
 	followSymlinks bool
-	legacyNoFollow bool
 }
 
 // frontMatterEnabled returns whether front matter stripping is enabled.
 // Defaults to true if not set in config.
 // resolveOpts builds ResolveOpts from config and CLI flags.
-// CLI precedence for symlinks (highest wins): the deprecated
-// --no-follow-symlinks flag forces deny, then --follow-symlinks
-// opts in, then the `follow-symlinks:` config key. The deprecated
-// flag lets users run in secure mode without editing an existing
-// config that enables symlink following.
+// The `--follow-symlinks` CLI flag overrides `follow-symlinks:`
+// from config; otherwise the config value stands.
 func resolveOpts(cfg *config.Config, walk walkCLI) lint.ResolveOpts {
 	useGitignore := !walk.noGitignore
 	opts := lint.ResolveOpts{
@@ -922,9 +903,6 @@ func resolveOpts(cfg *config.Config, walk walkCLI) lint.ResolveOpts {
 	}
 	if walk.followSymlinks {
 		opts.FollowSymlinks = true
-	}
-	if walk.legacyNoFollow {
-		opts.FollowSymlinks = false
 	}
 	return opts
 }
