@@ -194,16 +194,34 @@ func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
 // `os.Getwd` once and pass it here for every match to avoid the
 // syscall per entry.
 func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
-	abs, err := filepath.Abs(path)
-	if err != nil {
+	abs := absWithCwd(path, cwd)
+	if abs == "" {
 		return false
 	}
-	abs = filepath.Clean(abs)
 	stop := ancestorStopBoundary(abs, cwd)
 	if stop == "" {
 		return false
 	}
 	return ancestorChainHasSymlink(filepath.Dir(abs), stop, cache)
+}
+
+// absWithCwd resolves path to an absolute, cleaned form using the
+// caller-supplied cwd to avoid the per-call `os.Getwd` that
+// `filepath.Abs` performs for relative paths. When cwd is empty
+// (e.g. a Getwd error upstream), it falls back to `filepath.Abs`.
+// Returns "" only on the unreachable `filepath.Abs` failure path.
+func absWithCwd(path, cwd string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	if cwd != "" {
+		return filepath.Clean(filepath.Join(cwd, path))
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	return filepath.Clean(abs)
 }
 
 // ancestorStopBoundary returns the directory at which ancestor

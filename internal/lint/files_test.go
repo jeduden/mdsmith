@@ -475,6 +475,29 @@ func TestAncestorChainHasSymlink_CacheShortcircuits(t *testing.T) {
 	assert.True(t, got, "cache hit must return stored value")
 }
 
+// TestHasSymlinkAncestorWithCwd_HonorsCwdArg confirms that the
+// `cwd` parameter — not the process working directory — is what
+// gets joined to a relative path. Otherwise the precomputed-cwd
+// optimisation in resolveGlob would be a lie and wouldn't avoid
+// the per-match `os.Getwd` it claims to.
+func TestHasSymlinkAncestorWithCwd_HonorsCwdArg(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	target := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(target, "real"), 0o755))
+	require.NoError(t, os.Symlink(
+		filepath.Join(target, "real"), filepath.Join(target, "linked")))
+
+	// Process cwd is NOT `target`. Pass `target` explicitly.
+	processCwd := t.TempDir()
+	t.Chdir(processCwd)
+
+	cache := make(map[string]bool)
+	got := hasSymlinkAncestorWithCwd("linked/foo.md", target, cache)
+	assert.True(t, got,
+		"helper must resolve `linked/foo.md` against the supplied cwd, "+
+			"not os.Getwd; otherwise the precomputed-cwd optimisation is moot")
+}
+
 // skipIfSymlinkUnsupported forwards to the shared testutil helper.
 func skipIfSymlinkUnsupported(t *testing.T) {
 	t.Helper()
