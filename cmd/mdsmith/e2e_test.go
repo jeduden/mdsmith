@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -201,21 +202,12 @@ func writeFixture(t *testing.T, dir, name, content string) string {
 	return path
 }
 
-// skipIfSymlinkUnsupported skips the calling test when the host
-// cannot create symbolic links. This typically happens on Windows
-// without Developer Mode / elevated privileges, and in some
-// sandboxed CI environments.
+// skipIfSymlinkUnsupported is a thin local alias for
+// testutil.SkipIfSymlinkUnsupported so existing call sites stay
+// readable. The probing logic lives in internal/testutil.
 func skipIfSymlinkUnsupported(t *testing.T) {
 	t.Helper()
-	probe := t.TempDir()
-	target := filepath.Join(probe, "t")
-	link := filepath.Join(probe, "l")
-	if err := os.WriteFile(target, nil, 0o644); err != nil {
-		t.Skipf("cannot create probe file: %v", err)
-	}
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symbolic links not supported on this host: %v", err)
-	}
+	testutil.SkipIfSymlinkUnsupported(t)
 }
 
 func parseStats(t *testing.T, stderr string) (checked, fixed, failures, unfixed int) {

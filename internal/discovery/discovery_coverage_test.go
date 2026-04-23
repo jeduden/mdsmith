@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -188,18 +189,8 @@ func TestDiscover_FollowSymlinks_OptIn(t *testing.T) {
 	require.Len(t, files, 2, "both real and linked entries are discovered")
 }
 
-// skipIfSymlinkUnsupported skips the calling test when the host
-// cannot create symbolic links (e.g. Windows without Developer Mode
-// or sandboxed CI).
+// skipIfSymlinkUnsupported forwards to the shared testutil helper.
 func skipIfSymlinkUnsupported(t *testing.T) {
 	t.Helper()
-	probe := t.TempDir()
-	target := filepath.Join(probe, "t")
-	link := filepath.Join(probe, "l")
-	if err := os.WriteFile(target, nil, 0o644); err != nil {
-		t.Skipf("cannot create probe file: %v", err)
-	}
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symbolic links not supported on this host: %v", err)
-	}
+	testutil.SkipIfSymlinkUnsupported(t)
 }

@@ -629,3 +629,23 @@ func TestShowRule_UnknownRule_ExitsTwo(t *testing.T) {
 		})
 	})
 }
+
+// --- printDeprecations ---
+
+func TestPrintDeprecations_NilConfig_NoPanic(t *testing.T) {
+	// Guard: nil-safe.
+	assert.NotPanics(t, func() { printDeprecations(nil) })
+}
+
+func TestPrintDeprecations_EmitsEachMessageAndClears(t *testing.T) {
+	cfg := &config.Config{Deprecations: []string{"first", "second"}}
+	stderr := captureStderr(func() { printDeprecations(cfg) })
+
+	assert.Contains(t, stderr, "mdsmith: deprecated: first")
+	assert.Contains(t, stderr, "mdsmith: deprecated: second")
+	assert.Empty(t, cfg.Deprecations,
+		"consumed deprecations must be cleared so a second call is a no-op")
+
+	stderr2 := captureStderr(func() { printDeprecations(cfg) })
+	assert.Empty(t, stderr2, "second call on the same cfg emits nothing")
+}

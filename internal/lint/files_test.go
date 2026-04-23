@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -372,18 +373,106 @@ func TestResolveFilesWithOpts_Glob_SkipsSymlinksByDefault(t *testing.T) {
 		"glob expansion must yield real.md and target.md and skip link.md")
 }
 
-// skipIfSymlinkUnsupported skips the calling test when the host
-// cannot create symbolic links (e.g. Windows without Developer Mode
-// or sandboxed CI).
+// --- hasSymlinkAncestor / helpers ---
+
+// TestHasSymlinkAncestor_RelativeUnderCwd exercises the common case:
+// a project-relative path whose ancestor is a symbolic link.
+func TestHasSymlinkAncestor_RelativeUnderCwd(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "real"), 0o755))
+	require.NoError(t, os.Symlink(
+		filepath.Join(dir, "real"), filepath.Join(dir, "linked")))
+
+	t.Chdir(dir)
+	assert.True(t, hasSymlinkAncestor("linked/foo.md"),
+		"linked/foo.md must be flagged as crossing a symlinked ancestor")
+	assert.False(t, hasSymlinkAncestor("real/foo.md"),
+		"real/foo.md has no symlink ancestors")
+}
+
+// TestHasSymlinkAncestor_CacheReusedAcrossSiblings covers the
+// memoization path in hasSymlinkAncestorCached: two sibling paths
+// under the same symlinked directory share one Lstat result.
+func TestHasSymlinkAncestor_CacheReusedAcrossSiblings(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "real"), 0o755))
+	require.NoError(t, os.Symlink(
+		filepath.Join(dir, "real"), filepath.Join(dir, "linked")))
+	t.Chdir(dir)
+
+	cache := make(map[string]bool)
+	assert.True(t, hasSymlinkAncestorCached("linked/a.md", cache))
+	assert.True(t, hasSymlinkAncestorCached("linked/b.md", cache))
+	// The shared parent is cached as "true"; both paths return true
+	// without re-Lstat'ing the ancestor.
+	assert.Contains(t, cache, filepath.Join(dir, "linked"),
+		"shared ancestor must be memoised")
+}
+
+// TestHasSymlinkAncestor_AbsPathOutsideCwdWithGitRoot ensures an
+// absolute path outside cwd but inside a .git-rooted project still
+// gets its ancestor chain scanned.
+func TestHasSymlinkAncestor_AbsPathOutsideCwdWithGitRoot(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	cwd := filepath.Join(root, "other")
+	require.NoError(t, os.MkdirAll(filepath.Join(project, ".git"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(project, "real"), 0o755))
+	require.NoError(t, os.MkdirAll(cwd, 0o755))
+	require.NoError(t, os.Symlink(
+		filepath.Join(project, "real"),
+		filepath.Join(project, "linked")))
+
+	t.Chdir(cwd)
+	assert.True(t,
+		hasSymlinkAncestor(filepath.Join(project, "linked", "foo.md")),
+		"abs path into a .git-rooted project must scan its ancestors")
+}
+
+// TestHasSymlinkAncestor_SkipsPathOutsideProjects confirms that an
+// absolute path with no cwd or .git anchor is trusted (no probe).
+// This keeps system-level symlinks like /tmp on macOS out of scope.
+func TestHasSymlinkAncestor_SkipsPathOutsideProjects(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	// /etc/some-file isn't under cwd and no .git ancestor exists
+	// on the path; helper must return false.
+	assert.False(t, hasSymlinkAncestor("/etc/nonexistent/foo.md"))
+}
+
+// TestGitProjectRoot_FindsAncestor and _None cover the boundary
+// helper used for absolute paths outside cwd.
+func TestGitProjectRoot_FindsAncestor(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	sub := filepath.Join(dir, "docs", "guides")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	got := gitProjectRoot(sub)
+	assert.Equal(t, dir, got,
+		"gitProjectRoot must walk up to the nearest .git-containing dir")
+}
+
+func TestGitProjectRoot_NoAncestor(t *testing.T) {
+	dir := t.TempDir()
+	assert.Empty(t, gitProjectRoot(dir),
+		"gitProjectRoot must return \"\" when no .git ancestor exists")
+}
+
+// TestAncestorChainHasSymlink_CacheShortcircuits covers the cache
+// hit branch in the recursive helper: a second call with the same
+// dir skips the Lstat and returns the memoised value.
+func TestAncestorChainHasSymlink_CacheShortcircuits(t *testing.T) {
+	cache := map[string]bool{"/fake/dir": true}
+	got := ancestorChainHasSymlink("/fake/dir", "/fake", cache)
+	assert.True(t, got, "cache hit must return stored value")
+}
+
+// skipIfSymlinkUnsupported forwards to the shared testutil helper.
 func skipIfSymlinkUnsupported(t *testing.T) {
 	t.Helper()
-	probe := t.TempDir()
-	target := filepath.Join(probe, "t")
-	link := filepath.Join(probe, "l")
-	if err := os.WriteFile(target, nil, 0o644); err != nil {
-		t.Skipf("cannot create probe file: %v", err)
-	}
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symbolic links not supported on this host: %v", err)
-	}
+	testutil.SkipIfSymlinkUnsupported(t)
 }

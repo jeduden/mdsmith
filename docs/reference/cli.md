@@ -40,7 +40,7 @@ match, exits 0.
 | `-f`, `--format`    | `text`  | `text` or `json`                        |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)    |
 | `--no-color`        | false   | Plain output                            |
-| `--follow-symlinks` | false   | Follow symlinks (default: skip)         |
+| `--follow-symlinks` | config  | Follow symlinks; tri-state — see below  |
 | `--no-gitignore`    | false   | Skip gitignore                          |
 | `-q`, `--quiet`     | false   | Quiet mode                              |
 | `-v`, `--verbose`   | false   | Verbose output                          |

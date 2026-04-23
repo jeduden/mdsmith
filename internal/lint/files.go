@@ -177,12 +177,21 @@ func hasSymlinkAncestor(path string) bool {
 // per glob match) should share a `cache` across invocations to
 // avoid repeated `os.Lstat` calls on the same ancestor directories.
 func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
+	cwd, _ := os.Getwd() // "" on error; handled downstream
+	return hasSymlinkAncestorWithCwd(path, cwd, cache)
+}
+
+// hasSymlinkAncestorWithCwd is like hasSymlinkAncestorCached but
+// takes a precomputed cwd. Per-glob-expansion callers should read
+// `os.Getwd` once and pass it here for every match to avoid the
+// syscall per entry.
+func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return false
 	}
 	abs = filepath.Clean(abs)
-	stop := ancestorStopBoundary(abs)
+	stop := ancestorStopBoundary(abs, cwd)
 	if stop == "" {
 		return false
 	}
@@ -196,9 +205,10 @@ func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
 // uniform: prefer cwd if the path is under it (cheapest and
 // matches user intent), otherwise walk upward for the nearest
 // `.git` project root (handles absolute paths to sibling projects
-// and `../...` relative paths that escape cwd).
-func ancestorStopBoundary(abs string) string {
-	if cwd, err := os.Getwd(); err == nil {
+// and `../...` relative paths that escape cwd). An empty cwd
+// falls through to the .git walk.
+func ancestorStopBoundary(abs, cwd string) string {
+	if cwd != "" {
 		if rel, err := filepath.Rel(cwd, abs); err == nil &&
 			rel != "." && rel != ".." &&
 			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -256,16 +266,19 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 	if err != nil {
 		return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
 	}
+	// Precompute cwd once: it's the dominant input for
+	// ancestorStopBoundary and doesn't change across matches. The
+	// per-directory Lstat cache is shared across every match too,
+	// so each ancestor dir is Lstat'd at most once per expansion.
+	cwd, _ := os.Getwd()
 	ancestorCache := make(map[string]bool)
 	for _, m := range matches {
 		// filepath.Glob follows symlinked directory components
 		// during expansion, so a pattern like `linked/*.md` will
 		// return paths rooted under a symlinked dir. Reject any
 		// match whose ancestor chain contains a symlink: symlinked
-		// directories are always skipped. The cache shares Lstat
-		// results across matches so large expansions don't repeat
-		// ancestor syscalls.
-		if hasSymlinkAncestorCached(m, ancestorCache) {
+		// directories are always skipped.
+		if hasSymlinkAncestorWithCwd(m, cwd, ancestorCache) {
 			continue
 		}
 		linfo, lerr := os.Lstat(m)
