@@ -122,6 +122,13 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 
 	info, err := os.Stat(arg)
 	if err != nil {
+		// Broken or inaccessible symlink targets are silently
+		// skipped to match walkDir / resolveGlob / discovery
+		// behavior and the FollowSymlinks contract. For a
+		// non-symlink, the missing target is a real error.
+		if isSymlink {
+			return nil
+		}
 		return fmt.Errorf("cannot access %q: %w", arg, err)
 	}
 

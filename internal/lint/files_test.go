@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -278,8 +279,8 @@ func TestResolveFilesWithOpts_GitignoreNegation(t *testing.T) {
 // --- FollowSymlinks tests ---
 
 // TestResolveFilesWithOpts_SkipsSymlinksByDefault asserts that the
-// secure default (FollowSymlinks=false) skips all symlinked files and
-// symlinked directories during directory walks.
+// secure default (FollowSymlinks=false) skips both symlinked files
+// and symlinked directories encountered during the walk.
 func TestResolveFilesWithOpts_SkipsSymlinksByDefault(t *testing.T) {
 	skipIfSymlinkUnsupported(t)
 	dir := t.TempDir()
@@ -287,21 +288,33 @@ func TestResolveFilesWithOpts_SkipsSymlinksByDefault(t *testing.T) {
 	realFile := filepath.Join(dir, "real.md")
 	require.NoError(t, os.WriteFile(realFile, []byte("# Real"), 0o644))
 
+	// Target for the file-symlink case.
 	subDir := filepath.Join(dir, "target")
 	require.NoError(t, os.MkdirAll(subDir, 0o755))
 	targetFile := filepath.Join(subDir, "doc.md")
 	require.NoError(t, os.WriteFile(targetFile, []byte("# Target"), 0o644))
 
+	// Symlinked file (link.md -> target/doc.md).
 	linkFile := filepath.Join(dir, "link.md")
 	require.NoError(t, os.Symlink(targetFile, linkFile))
 
-	// Default: only the real files are walked; symlink is skipped.
+	// Symlinked directory (linked-dir -> target/). A dirty markdown
+	// file inside the target would surface if the walker descended.
+	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked-dir")))
+
+	// Default: only the real files under target/ are walked; both
+	// symlinked entries are skipped.
 	files, err := ResolveFilesWithOpts([]string{dir}, DefaultResolveOpts())
 	require.NoError(t, err)
-	require.Len(t, files, 2)
+	require.Len(t, files, 2,
+		"expected only real.md and target/doc.md, got %v", files)
 	for _, f := range files {
-		assert.NotEqual(t, "link.md", filepath.Base(f),
-			"symlinked link.md must be skipped by default")
+		base := filepath.Base(f)
+		assert.NotEqual(t, "link.md", base,
+			"symlinked file must be skipped by default")
+		assert.False(t,
+			strings.Contains(filepath.ToSlash(f), "/linked-dir/"),
+			"symlinked directory must not be descended")
 	}
 }
 
