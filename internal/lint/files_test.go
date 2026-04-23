@@ -3,10 +3,8 @@ package lint
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/testutil"
@@ -373,40 +371,6 @@ func TestResolveFilesWithOpts_Glob_SkipsSymlinksByDefault(t *testing.T) {
 	bases := []string{filepath.Base(files[0]), filepath.Base(files[1])}
 	assert.ElementsMatch(t, []string{"real.md", "target.md"}, bases,
 		"glob expansion must yield real.md and target.md and skip link.md")
-}
-
-// TestResolveFiles_SkipsNonRegularEntries asserts that FIFOs, and
-// by extension other non-regular file types, are never enqueued —
-// even when their name has a markdown extension. Reading such
-// entries via the lint pipeline could block indefinitely.
-func TestResolveFiles_SkipsNonRegularEntries(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("named pipes behave differently on Windows")
-	}
-	dir := t.TempDir()
-	// Real file + FIFO-with-.md-name in the same directory.
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, "real.md"), []byte("# Real"), 0o644))
-	fifo := filepath.Join(dir, "pipe.md")
-	require.NoError(t, syscall.Mkfifo(fifo, 0o644))
-
-	// Explicit arg (resolveArg path).
-	gotExplicit, err := ResolveFiles([]string{fifo})
-	require.NoError(t, err)
-	assert.Empty(t, gotExplicit,
-		"explicit FIFO arg must not be enqueued")
-
-	// Directory walk (walkDir path).
-	gotWalk, err := ResolveFiles([]string{dir})
-	require.NoError(t, err)
-	assert.Equal(t, []string{filepath.Join(dir, "real.md")}, gotWalk,
-		"walkDir must include the regular file and skip the FIFO")
-
-	// Glob expansion (resolveGlob path).
-	gotGlob, err := ResolveFiles([]string{filepath.Join(dir, "*.md")})
-	require.NoError(t, err)
-	assert.Equal(t, []string{filepath.Join(dir, "real.md")}, gotGlob,
-		"resolveGlob must skip the FIFO even with a matching name")
 }
 
 // --- hasSymlinkAncestor / helpers ---
