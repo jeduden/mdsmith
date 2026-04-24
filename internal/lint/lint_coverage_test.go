@@ -48,36 +48,6 @@ func TestGetGitignore_Cached(t *testing.T) {
 	assert.Equal(t, 1, called, "GitignoreFunc should be called only once")
 }
 
-// --- matchesGlob tests ---
-
-func TestMatchesGlob_ExactMatch(t *testing.T) {
-	assert.True(t, matchesGlob([]string{"readme.md"}, "readme.md"))
-}
-
-func TestMatchesGlob_WildcardMatch(t *testing.T) {
-	assert.True(t, matchesGlob([]string{"*.md"}, "readme.md"))
-}
-
-func TestMatchesGlob_NoMatch(t *testing.T) {
-	assert.False(t, matchesGlob([]string{"*.txt"}, "readme.md"))
-}
-
-func TestMatchesGlob_EmptyPatterns(t *testing.T) {
-	assert.False(t, matchesGlob([]string{}, "readme.md"))
-}
-
-func TestMatchesGlob_InvalidPattern(t *testing.T) {
-	assert.False(t, matchesGlob([]string{"[invalid"}, "readme.md"))
-}
-
-func TestMatchesGlob_MatchesBasename(t *testing.T) {
-	assert.True(t, matchesGlob([]string{"readme.md"}, "/some/path/readme.md"))
-}
-
-func TestMatchesGlob_MatchesCleanedPath(t *testing.T) {
-	assert.True(t, matchesGlob([]string{"foo/bar.md"}, "foo//bar.md"))
-}
-
 // --- useGitignore tests ---
 
 func TestUseGitignore_NilPointer(t *testing.T) {
@@ -505,7 +475,7 @@ func TestExtractPINameBytes_EmptyAfterPI(t *testing.T) {
 // --- Additional walk coverage ---
 
 func TestWalkDir_NonexistentDir(t *testing.T) {
-	_, err := walkDir(filepath.Join(t.TempDir(), "no-such-dir"), false, nil)
+	_, err := walkDir(filepath.Join(t.TempDir(), "no-such-dir"), false, false)
 	assert.Error(t, err)
 }
 
@@ -527,26 +497,6 @@ func TestIsMarkdown(t *testing.T) {
 	assert.True(t, isMarkdown("file.MARKDOWN"))
 	assert.False(t, isMarkdown("file.txt"))
 	assert.False(t, isMarkdown("file.go"))
-}
-
-// --- isSkippedSymlink tests ---
-
-func TestIsSkippedSymlink_NotSymlink(t *testing.T) {
-	dir := t.TempDir()
-	f := filepath.Join(dir, "real.md")
-	require.NoError(t, os.WriteFile(f, []byte("# Test"), 0o644))
-	info, err := os.Stat(f)
-	require.NoError(t, err)
-	assert.False(t, isSkippedSymlink(info, f, []string{"*.md"}))
-}
-
-func TestIsSkippedSymlink_EmptyPatterns(t *testing.T) {
-	dir := t.TempDir()
-	f := filepath.Join(dir, "real.md")
-	require.NoError(t, os.WriteFile(f, []byte("# Test"), 0o644))
-	info, err := os.Stat(f)
-	require.NoError(t, err)
-	assert.False(t, isSkippedSymlink(info, f, nil))
 }
 
 // --- matchRule edge cases ---

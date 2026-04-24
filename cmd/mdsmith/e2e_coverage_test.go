@@ -137,55 +137,6 @@ func TestE2E_Fix_Discovered_BadConfig_ExitsTwo(t *testing.T) {
 }
 
 // =============================================================
-// 9. resolveOpts — --no-follow-symlinks flag
-// =============================================================
-
-func TestE2E_Check_NoFollowSymlinks(t *testing.T) {
-	dir := t.TempDir()
-	// Use a config with rules enabled and file discovery patterns.
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
-	writeFixture(t, dir, ".mdsmith.yml",
-		"files:\n  - \"**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
-
-	// Create a subdirectory with a dirty file, and a symlink to it.
-	subDir := filepath.Join(dir, "real")
-	require.NoError(t, os.MkdirAll(subDir, 0o755))
-	writeFixture(t, subDir, "dirty.md", "# Title\n\nHello   \n")
-	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked")))
-
-	// Without --no-follow-symlinks, discovery finds dirty.md via symlink.
-	// Use --no-gitignore to avoid ancestor .gitignore interference.
-	_, _, exitWithout := runBinaryInDir(t, dir, "", "check", "--no-color", "--no-gitignore")
-	assert.Equal(t, 1, exitWithout,
-		"expected exit 1 without --no-follow-symlinks (dirty file found via discovery)")
-
-	// With --no-follow-symlinks, symlinked dir is skipped; only real/ found.
-	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"check", "--no-color", "--no-gitignore", "--no-follow-symlinks")
-	// Should still find real/dirty.md (exit 1) but the flag exercises resolveOpts.
-	assert.Equal(t, 1, exitCode,
-		"expected exit 1 (real/dirty.md still found), got %d; stderr: %s", exitCode, stderr)
-}
-
-func TestE2E_Fix_NoFollowSymlinks(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
-	writeFixture(t, dir, ".mdsmith.yml",
-		"files:\n  - \"**/*.md\"\nrules:\n  no-trailing-spaces: true\n")
-
-	subDir := filepath.Join(dir, "real")
-	require.NoError(t, os.MkdirAll(subDir, 0o755))
-	writeFixture(t, subDir, "fixme.md", "# Title\n\nHello   \n")
-	require.NoError(t, os.Symlink(subDir, filepath.Join(dir, "linked")))
-
-	// --no-follow-symlinks exercises resolveOpts; real/fixme.md still found.
-	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"fix", "--no-color", "--no-follow-symlinks")
-	assert.Equal(t, 0, exitCode,
-		"expected exit 0 after fix, got %d; stderr: %s", exitCode, stderr)
-}
-
-// =============================================================
 // 10. rootDirFromConfig — empty cfgPath falls back to cwd
 // =============================================================
 
@@ -486,31 +437,36 @@ func TestE2E_Query_Verbose_MixedResults(t *testing.T) {
 }
 
 // =============================================================
-// 36. check with no-follow-symlinks via discovery
+// 36. Legacy no-follow-symlinks config key emits a deprecation
 // =============================================================
 
-func TestE2E_Check_Discovered_NoFollowSymlinks(t *testing.T) {
+// TestE2E_Check_LegacyNoFollowSymlinksConfig asserts that the old
+// `no-follow-symlinks:` config key is still parsed (no hard error)
+// and surfaces a deprecation warning. The new default-deny already
+// achieves what the legacy key intended, so discovery results match
+// what the user expects.
+func TestE2E_Check_LegacyNoFollowSymlinksConfig(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
 	dir := t.TempDir()
-	// Create config that enables no-follow-symlinks.
-	writeFixture(t, dir, ".mdsmith.yml", "no-follow-symlinks:\n  - \"**\"\nrules:\n  no-trailing-spaces: true\n")
+	writeFixture(t, dir, ".mdsmith.yml",
+		"no-follow-symlinks:\n  - \"**\"\nrules:\n  no-trailing-spaces: true\n")
 
-	// Create a real directory with a dirty file.
 	subDir := filepath.Join(dir, "real")
 	require.NoError(t, os.MkdirAll(subDir, 0o755))
 	writeFixture(t, subDir, "dirty.md", "# Title\n\nHello   \n")
 
-	// Create a symlink to the subdirectory.
 	link := filepath.Join(dir, "linked")
 	require.NoError(t, os.Symlink(subDir, link))
 
-	// The real dir's file should be found, but the symlinked one should not.
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color")
-	// We expect exit 1 (real/dirty.md found) but only once.
 	assert.Equal(t, 1, exitCode,
 		"expected exit 1 (real dirty.md found), got %d; stderr: %s", exitCode, stderr)
-	// Should not report the symlinked path.
 	assert.NotContains(t, stderr, "linked/",
-		"expected symlinked dir to be skipped, but found in stderr: %s", stderr)
+		"symlinked dir must be skipped under default-deny; stderr: %s", stderr)
+	assert.Contains(t, stderr, "no-follow-symlinks",
+		"expected deprecation warning, got stderr: %s", stderr)
+	assert.Contains(t, stderr, "deprecated",
+		"expected deprecation warning, got stderr: %s", stderr)
 }
 
 // =============================================================
@@ -683,21 +639,6 @@ func TestE2E_Init_HelpFlag(t *testing.T) {
 	assert.Equal(t, 2, exitCode, "expected exit 2 (pflag ContinueOnError), got %d", exitCode)
 	assert.Contains(t, stderr, "Usage: mdsmith init",
 		"expected init usage, got: %s", stderr)
-}
-
-// =============================================================
-// Additional: metrics rank with --no-follow-symlinks
-// =============================================================
-
-func TestE2E_MetricsRank_NoFollowSymlinks(t *testing.T) {
-	dir := t.TempDir()
-	writeFixture(t, dir, "a.md", "# Title\n\nSome content here.\n")
-
-	stdout, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"metrics", "rank", "--by", "bytes", "--no-follow-symlinks", ".")
-	require.Equal(t, 0, exitCode,
-		"expected exit 0, got %d; stderr: %s", exitCode, stderr)
-	assert.Contains(t, stdout, "a.md", "expected a.md in output")
 }
 
 // =============================================================

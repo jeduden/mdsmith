@@ -108,12 +108,22 @@ Escape sequences pass through to the terminal: screen clearing (`\033[2J`), wind
 
 ### 4. MEDIUM — Symlinks Followed by Default (Read + Write)
 
-**Locations:**
+**Locations (after plan 84):**
 
-- `internal/lint/files.go:190` — `filepath.Walk` follows file symlinks
-- `internal/fix/fix.go:84-122` — `os.WriteFile` follows symlinks on write
+- `internal/lint/files.go` — `resolveArg`, `resolveGlob`, and
+  `walkDir` Lstat each path entry and skip symbolic links unless
+  `FollowSymlinks` opts in. `hasSymlinkAncestor` also rejects any
+  path whose relative ancestors include a symlinked directory, so
+  `linked/dirty.md` and `linked/*.md` cannot reach external targets.
+- `internal/discovery/discovery.go` — the discovery walker applies
+  the same Lstat-based skip during directory traversal.
+- `internal/fix/fix.go` — atomic write via `os.Rename(tmp, path)`
+  replaces the symlink entry itself rather than following it to the
+  target (plan 83 write-side protection).
 
-Symlink following is the default behavior. The `--no-follow-symlinks` flag and config exist but are opt-in.
+**Original finding:** symlink following was the default; the `--no-follow-symlinks` flag and config key were opt-in.
+
+**Status (plan 84, resolved):** the default is inverted. Symlinks are skipped by default across directory walks, glob expansion, and explicit non-glob path arguments. Symlinked directories are always skipped — including when a path or glob traverses through one — regardless of `FollowSymlinks`. Users opt in (for file symlinks) with `--follow-symlinks` or `follow-symlinks: true`. The old `--no-follow-symlinks` flag has been removed; the legacy `no-follow-symlinks:` config key still parses and emits a deprecation warning.
 
 **Adversarial file:**
 

@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/gobwas/glob"
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
@@ -23,8 +22,15 @@ type Options struct {
 	// UseGitignore enables filtering by .gitignore rules.
 	UseGitignore bool
 
-	// NoFollowSymlinks lists glob patterns for symlinks that should be skipped.
-	NoFollowSymlinks []string
+	// FollowSymlinks opts in to including symlinks that resolve
+	// to regular files. The zero value skips all symlinks, which
+	// is the secure default.
+	//
+	// Symlinks resolving to anything other than a regular file
+	// (directories, FIFOs, devices, sockets) are always skipped.
+	// filepath.Walk is Lstat-based, so symlinked directories are
+	// never descended into regardless of this flag.
+	FollowSymlinks bool
 }
 
 // Discover walks BaseDir and returns files matching any of the configured
@@ -55,11 +61,11 @@ func Discover(opts Options) ([]string, error) {
 	}
 
 	w := &walker{
-		absBase:  absBase,
-		patterns: validPatterns,
-		git:      gitMatcher,
-		noFollow: opts.NoFollowSymlinks,
-		seen:     make(map[string]bool),
+		absBase:        absBase,
+		patterns:       validPatterns,
+		git:            gitMatcher,
+		followSymlinks: opts.FollowSymlinks,
+		seen:           make(map[string]bool),
 	}
 
 	if err := filepath.Walk(absBase, w.visit); err != nil {
@@ -83,12 +89,12 @@ func validatePatterns(patterns []string) []string {
 
 // walker holds state for the directory walk.
 type walker struct {
-	absBase  string
-	patterns []string
-	git      *lint.GitignoreMatcher
-	noFollow []string
-	seen     map[string]bool
-	result   []string
+	absBase        string
+	patterns       []string
+	git            *lint.GitignoreMatcher
+	followSymlinks bool
+	seen           map[string]bool
+	result         []string
 }
 
 // visit is the filepath.WalkFunc callback.
@@ -103,11 +109,21 @@ func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
 	}
 	rel = filepath.ToSlash(rel)
 
-	if w.isNoFollow(path, info) {
-		if info.IsDir() {
-			return filepath.SkipDir
+	// Symlink entries always have Lstat-based info with
+	// IsDir()==false under filepath.Walk, so returning nil also
+	// means Walk won't try to descend.
+	if info.Mode()&os.ModeSymlink != 0 {
+		if !w.followSymlinks {
+			return nil
 		}
-		return nil
+		// In opt-in mode, include the entry only if it resolves to
+		// a regular file. Directory targets are skipped (Options
+		// doc); FIFO/device/socket targets are skipped to avoid
+		// blocking reads during linting.
+		if tgt, statErr := os.Stat(path); statErr != nil ||
+			!tgt.Mode().IsRegular() {
+			return nil
+		}
 	}
 
 	if w.isGitignored(path, info) {
@@ -120,22 +136,19 @@ func (w *walker) visit(path string, info os.FileInfo, walkErr error) error {
 	if info.IsDir() {
 		return nil
 	}
+	// Only include regular files and opted-in symlinks whose
+	// target is regular (already verified in the symlink branch
+	// above). FIFO, device, and socket entries are skipped to
+	// avoid blocking reads during linting.
+	isSymlink := info.Mode()&os.ModeSymlink != 0
+	if !isSymlink && !info.Mode().IsRegular() {
+		return nil
+	}
 
 	if w.matchesAny(rel) {
 		w.addFile(rel, path)
 	}
 	return nil
-}
-
-// isNoFollow returns true if the path is a symlink matching no-follow patterns.
-func (w *walker) isNoFollow(path string, info os.FileInfo) bool {
-	if len(w.noFollow) == 0 {
-		return false
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		return false
-	}
-	return matchesPath(w.noFollow, path)
 }
 
 // isGitignored returns true if the path should be skipped by .gitignore rules.
@@ -170,18 +183,4 @@ func (w *walker) addFile(rel, absPath string) {
 		w.seen[absPath] = true
 		w.result = append(w.result, rel)
 	}
-}
-
-func matchesPath(patterns []string, path string) bool {
-	cleanPath := filepath.Clean(path)
-	for _, pattern := range patterns {
-		g, err := glob.Compile(pattern)
-		if err != nil {
-			continue
-		}
-		if g.Match(path) || g.Match(cleanPath) || g.Match(filepath.Base(path)) {
-			return true
-		}
-	}
-	return false
 }

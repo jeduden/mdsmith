@@ -168,35 +168,38 @@ func TestResolveMaxInputBytes_InvalidCLI_Error(t *testing.T) {
 
 func TestResolveOpts_BothFalse_GitignoreEnabled(t *testing.T) {
 	cfg := &config.Config{}
-	opts := resolveOpts(cfg, false, false)
+	opts := resolveOpts(cfg, walkCLI{})
 	require.NotNil(t, opts.UseGitignore)
 	assert.True(t, *opts.UseGitignore)
-	assert.Nil(t, opts.NoFollowSymlinks)
+	assert.False(t, opts.FollowSymlinks)
 }
 
 func TestResolveOpts_NoGitignore_DisablesFilter(t *testing.T) {
 	cfg := &config.Config{}
-	opts := resolveOpts(cfg, true, false)
+	opts := resolveOpts(cfg, walkCLI{noGitignore: true})
 	require.NotNil(t, opts.UseGitignore)
 	assert.False(t, *opts.UseGitignore)
 }
 
-func TestResolveOpts_NoFollowSymlinks_SetsGlobStar(t *testing.T) {
+func TestResolveOpts_FollowSymlinksFlag_OptsIn(t *testing.T) {
 	cfg := &config.Config{}
-	opts := resolveOpts(cfg, false, true)
-	assert.Equal(t, []string{"**"}, opts.NoFollowSymlinks)
+	yes := true
+	opts := resolveOpts(cfg, walkCLI{followSymlinks: &yes})
+	assert.True(t, opts.FollowSymlinks)
 }
 
-func TestResolveOpts_ConfigNoFollowSymlinks_Propagated(t *testing.T) {
-	cfg := &config.Config{NoFollowSymlinks: []string{"vendor/**"}}
-	opts := resolveOpts(cfg, false, false)
-	assert.Equal(t, []string{"vendor/**"}, opts.NoFollowSymlinks)
+func TestResolveOpts_ConfigFollowSymlinks_Propagated(t *testing.T) {
+	cfg := &config.Config{FollowSymlinks: true}
+	opts := resolveOpts(cfg, walkCLI{})
+	assert.True(t, opts.FollowSymlinks)
 }
 
-func TestResolveOpts_CLISymlinksOverridesConfig(t *testing.T) {
-	cfg := &config.Config{NoFollowSymlinks: []string{"vendor/**"}}
-	opts := resolveOpts(cfg, false, true)
-	assert.Equal(t, []string{"**"}, opts.NoFollowSymlinks)
+func TestResolveOpts_ExplicitFalseFlag_OverridesConfigOptIn(t *testing.T) {
+	cfg := &config.Config{FollowSymlinks: true}
+	no := false
+	opts := resolveOpts(cfg, walkCLI{followSymlinks: &no})
+	assert.False(t, opts.FollowSymlinks,
+		"--follow-symlinks=false must force deny over a config opt-in")
 }
 
 // --- printRunStats ---
@@ -625,4 +628,24 @@ func TestShowRule_UnknownRule_ExitsTwo(t *testing.T) {
 			assert.Equal(t, 2, code)
 		})
 	})
+}
+
+// --- printDeprecations ---
+
+func TestPrintDeprecations_NilConfig_NoPanic(t *testing.T) {
+	// Guard: nil-safe.
+	assert.NotPanics(t, func() { printDeprecations(nil) })
+}
+
+func TestPrintDeprecations_EmitsEachMessageAndClears(t *testing.T) {
+	cfg := &config.Config{Deprecations: []string{"first", "second"}}
+	stderr := captureStderr(func() { printDeprecations(cfg) })
+
+	assert.Contains(t, stderr, "mdsmith: deprecated: first")
+	assert.Contains(t, stderr, "mdsmith: deprecated: second")
+	assert.Empty(t, cfg.Deprecations,
+		"consumed deprecations must be cleared so a second call is a no-op")
+
+	stderr2 := captureStderr(func() { printDeprecations(cfg) })
+	assert.Empty(t, stderr2, "second call on the same cfg emits nothing")
 }

@@ -6,29 +6,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/gobwas/glob"
 )
 
 // isMarkdown returns true if the file extension is .md or .markdown.
 func isMarkdown(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return ext == ".md" || ext == ".markdown"
-}
-
-// matchesGlob returns true if path matches any of the given glob patterns.
-func matchesGlob(patterns []string, path string) bool {
-	cleanPath := filepath.Clean(path)
-	for _, pattern := range patterns {
-		g, err := glob.Compile(pattern)
-		if err != nil {
-			continue
-		}
-		if g.Match(path) || g.Match(cleanPath) || g.Match(filepath.Base(path)) {
-			return true
-		}
-	}
-	return false
 }
 
 // hasGlobChars returns true if the string contains glob meta-characters.
@@ -45,10 +28,16 @@ type ResolveOpts struct {
 	// used (see DefaultResolveOpts).
 	UseGitignore *bool
 
-	// NoFollowSymlinks is a list of glob patterns. Symbolic links
-	// whose path matches any pattern are skipped during directory
-	// walking and glob expansion.
-	NoFollowSymlinks []string
+	// FollowSymlinks opts in to following symbolic links that
+	// resolve to regular files. The zero value skips all symlinks,
+	// which is the secure default.
+	//
+	// Symlinks that resolve to anything other than a regular file
+	// are always skipped, regardless of this flag: directories
+	// (filepath.Walk is Lstat-based and does not descend a symlink
+	// root) as well as FIFOs, devices, and sockets (reading them
+	// during linting could block or fail unexpectedly).
+	FollowSymlinks bool
 }
 
 // DefaultResolveOpts returns options with defaults applied.
@@ -108,18 +97,250 @@ func resolveArg(arg string, opts ResolveOpts, addFile func(string)) error {
 		return resolveGlob(arg, opts, addFile)
 	}
 
+	// Reject any path that traverses a symlinked directory. Intermediate
+	// symlinked components would otherwise let a user-supplied path
+	// like `linked/dirty.md` reach an external target, since Lstat
+	// on the leaf follows the intermediate symlink during name
+	// resolution. Symlinked directories are always skipped regardless
+	// of FollowSymlinks, per the Option doc.
+	if hasSymlinkAncestor(arg) {
+		return nil
+	}
+
+	// Default-deny symlinks even for explicit, non-glob paths. Lstat
+	// (not Stat) avoids following the link so that an attacker who
+	// plants `evil.md -> /etc/cron.d/jobs` can't trick a user into
+	// processing the target with `mdsmith check ./evil.md`.
+	linfo, lerr := os.Lstat(arg)
+	if lerr != nil {
+		return fmt.Errorf("cannot access %q: %w", arg, lerr)
+	}
+	isSymlink := linfo.Mode()&os.ModeSymlink != 0
+	if isSymlink && !opts.FollowSymlinks {
+		return nil
+	}
+
 	info, err := os.Stat(arg)
 	if err != nil {
+		// Broken or inaccessible symlink targets are silently
+		// skipped to match walkDir / resolveGlob / discovery
+		// behavior and the FollowSymlinks contract. For a
+		// non-symlink, the missing target is a real error.
+		if isSymlink {
+			return nil
+		}
 		return fmt.Errorf("cannot access %q: %w", arg, err)
+	}
+
+	// Symlinks are followed only when they resolve to a regular
+	// file. Directory targets are skipped (filepath.Walk is
+	// Lstat-based and cannot recurse into a symlink root); device,
+	// FIFO, and socket targets are skipped to avoid blocking reads
+	// later. `--follow-symlinks` applies to file symlinks only.
+	if isSymlink && !info.Mode().IsRegular() {
+		return nil
 	}
 
 	if info.IsDir() {
 		return addDirFiles(arg, opts, addFile)
 	}
 
+	// Non-directory, non-symlink path: reject FIFO, device, and
+	// socket entries even when explicitly named. Reading them via
+	// the lint pipeline could block or error, and nothing markdown
+	// ever lives behind them.
+	if !isSymlink && !info.Mode().IsRegular() {
+		return nil
+	}
+
 	// Explicitly named files are never filtered by gitignore.
 	addFile(arg)
 	return nil
+}
+
+// hasSymlinkAncestor reports whether any ancestor directory of
+// path (up to, but excluding, the project boundary) is a symbolic
+// link. It rejects paths like `linked/dirty.md` where `linked` is
+// a symlinked dir — the filesystem would resolve the link during
+// `os.Stat(path)` and let the external target slip past a
+// leaf-only Lstat check.
+//
+// The project boundary is picked in this order:
+//
+//   - cwd, if the path is under it (so `mdsmith check .` from the
+//     project root catches any symlinked dir inside);
+//   - otherwise, the nearest ancestor of the path that contains a
+//     `.git` entry (so an absolute path run from a sibling shell
+//     is still scanned within the target project);
+//   - otherwise, "" (trust the user — no scan).
+//
+// This keeps system-level symlinks above the boundary (e.g. `/tmp`
+// on macOS) out of the probe.
+func hasSymlinkAncestor(path string) bool {
+	return hasSymlinkAncestorCached(path, make(map[string]bool))
+}
+
+// hasSymlinkAncestorCached is the memoized form of
+// hasSymlinkAncestor. Callers that run the check repeatedly (e.g.
+// per glob match) should share a `cache` across invocations to
+// avoid repeated `os.Lstat` calls on the same ancestor directories.
+func hasSymlinkAncestorCached(path string, cache map[string]bool) bool {
+	cwd, _ := os.Getwd() // "" on error; handled downstream
+	return hasSymlinkAncestorWithCwd(path, cwd, cache)
+}
+
+// hasSymlinkAncestorWithCwd is like hasSymlinkAncestorCached but
+// takes a precomputed cwd. Per-glob-expansion callers should read
+// `os.Getwd` once and pass it here for every match to avoid the
+// syscall per entry.
+//
+// The path is walked component-by-component (preserving `..`
+// segments) so a lexical `filepath.Clean` can't erase a symlinked
+// directory from the scan. For `linked/../dirty.md` where `linked`
+// is a symlinked dir, the walker probes `linked` (detects the
+// symlink) before the `..` pops back; `a/b/../c.md` with no
+// symlinks anywhere is allowed.
+func hasSymlinkAncestorWithCwd(path, cwd string, cache map[string]bool) bool {
+	abs := absWithCwd(path, cwd)
+	if abs == "" {
+		return false
+	}
+	stop := ancestorStopBoundary(abs, cwd)
+	if stop == "" {
+		return false
+	}
+
+	// Determine the starting "current" directory for the walk and
+	// the path suffix to walk from it. For absolute paths we have
+	// to respect the Windows volume/UNC prefix (e.g. `C:\`,
+	// `\\host\share\`); starting at `/` would produce invalid
+	// intermediate paths like `/foo` for an arg of `C:\foo`.
+	current := cwd
+	rest := path
+	if filepath.IsAbs(path) {
+		vol := filepath.VolumeName(path)
+		current = vol + string(filepath.Separator)
+		rest = strings.TrimPrefix(path, vol)
+	} else if current == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return false
+		}
+		current = wd
+	}
+
+	// Walk each component of the original (uncleaned) suffix.
+	// Named segments are probed for symlinkness once we're at or
+	// below the stop boundary; `..` segments pop `current` up;
+	// the leaf segment (last) is never probed — we only check
+	// ancestors.
+	segs := strings.Split(filepath.ToSlash(rest), "/")
+	if len(segs) > 0 {
+		segs = segs[:len(segs)-1]
+	}
+	for _, seg := range segs {
+		switch seg {
+		case "", ".":
+			// no-op
+		case "..":
+			if parent := filepath.Dir(current); parent != current {
+				current = parent
+			}
+		default:
+			current = filepath.Join(current, seg)
+			// Only probe inside the stop boundary (skip
+			// system-level ancestors like `/tmp` on macOS).
+			if current == stop || !isDescendantOf(current, stop) {
+				continue
+			}
+			if v, ok := cache[current]; ok {
+				if v {
+					return true
+				}
+				continue
+			}
+			info, err := os.Lstat(current)
+			isSymlink := err == nil && info.Mode()&os.ModeSymlink != 0
+			cache[current] = isSymlink
+			if isSymlink {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isDescendantOf reports whether p is a strict descendant of base.
+// Returns false when p equals base. Uses filepath.Rel so paths
+// that only differ in separator normalisation still compare
+// correctly on Windows; it does not do case folding, so callers
+// should pass consistently-cased paths (both from the same cwd /
+// Lstat family).
+func isDescendantOf(p, base string) bool {
+	rel, err := filepath.Rel(base, p)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
+}
+
+// absWithCwd resolves path to an absolute, cleaned form using the
+// caller-supplied cwd to avoid the per-call `os.Getwd` that
+// `filepath.Abs` performs for relative paths. When cwd is empty
+// (e.g. a Getwd error upstream), it falls back to `filepath.Abs`.
+// Returns "" only on the unreachable `filepath.Abs` failure path.
+func absWithCwd(path, cwd string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	if cwd != "" {
+		return filepath.Clean(filepath.Join(cwd, path))
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	return filepath.Clean(abs)
+}
+
+// ancestorStopBoundary returns the directory at which ancestor
+// probing should stop (exclusive), or "" if the path should not be
+// scanned. Both relative and absolute forms are resolved to
+// absolute paths before calling this, so the boundary logic is
+// uniform: prefer cwd if the path is under it (cheapest and
+// matches user intent), otherwise walk upward for the nearest
+// `.git` project root (handles absolute paths to sibling projects
+// and `../...` relative paths that escape cwd). An empty cwd
+// falls through to the .git walk.
+func ancestorStopBoundary(abs, cwd string) string {
+	if cwd != "" {
+		if rel, err := filepath.Rel(cwd, abs); err == nil &&
+			rel != "." && rel != ".." &&
+			!strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return cwd
+		}
+	}
+	return gitProjectRoot(filepath.Dir(abs))
+}
+
+// gitProjectRoot walks upward from start and returns the first
+// directory that contains a `.git` entry (file or directory), or
+// "" if none is reached before the filesystem root.
+func gitProjectRoot(start string) string {
+	dir := start
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }
 
 // resolveGlob expands a glob pattern and adds matching markdown files.
@@ -128,25 +349,51 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 	if err != nil {
 		return fmt.Errorf("invalid glob pattern %q: %w", pattern, err)
 	}
+	// Precompute cwd once: it's the dominant input for
+	// ancestorStopBoundary and doesn't change across matches. The
+	// per-directory Lstat cache is shared across every match too,
+	// so each ancestor dir is Lstat'd at most once per expansion.
+	cwd, _ := os.Getwd()
+	ancestorCache := make(map[string]bool)
 	for _, m := range matches {
-		// Skip symlinks matching no-follow-symlinks patterns.
-		if len(opts.NoFollowSymlinks) > 0 {
-			linfo, lerr := os.Lstat(m)
-			if lerr == nil && linfo.Mode()&os.ModeSymlink != 0 {
-				if matchesGlob(opts.NoFollowSymlinks, m) {
-					continue
-				}
-			}
+		// filepath.Glob follows symlinked directory components
+		// during expansion, so a pattern like `linked/*.md` will
+		// return paths rooted under a symlinked dir. Reject any
+		// match whose ancestor chain contains a symlink: symlinked
+		// directories are always skipped.
+		if hasSymlinkAncestorWithCwd(m, cwd, ancestorCache) {
+			continue
+		}
+		linfo, lerr := os.Lstat(m)
+		if lerr != nil {
+			continue
+		}
+		isSymlink := linfo.Mode()&os.ModeSymlink != 0
+		if isSymlink && !opts.FollowSymlinks {
+			continue
 		}
 		info, err := os.Stat(m)
 		if err != nil {
+			continue
+		}
+		// Symlinks are followed only when they resolve to a regular
+		// file; see resolveArg for rationale.
+		if isSymlink && !info.Mode().IsRegular() {
 			continue
 		}
 		if info.IsDir() {
 			if err := addDirFiles(m, opts, addFile); err != nil {
 				return err
 			}
-		} else if isMarkdown(m) {
+			continue
+		}
+		// Skip FIFO, device, and socket entries even when their
+		// name ends in .md; only regular files (and symlinks to
+		// regular files, which passed the check above) are linted.
+		if !isSymlink && !info.Mode().IsRegular() {
+			continue
+		}
+		if isMarkdown(m) {
 			addFile(m)
 		}
 	}
@@ -155,7 +402,7 @@ func resolveGlob(pattern string, opts ResolveOpts, addFile func(string)) error {
 
 // addDirFiles walks a directory and adds all markdown files found.
 func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
-	dirFiles, err := walkDir(dir, opts.useGitignore(), opts.NoFollowSymlinks)
+	dirFiles, err := walkDir(dir, opts.useGitignore(), opts.FollowSymlinks)
 	if err != nil {
 		return err
 	}
@@ -165,22 +412,12 @@ func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
 	return nil
 }
 
-// isSkippedSymlink reports whether path should be skipped because it is
-// a symlink matching one of the no-follow-symlinks patterns.
-func isSkippedSymlink(info os.FileInfo, path string, patterns []string) bool {
-	if len(patterns) == 0 {
-		return false
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		return false
-	}
-	return matchesGlob(patterns, path)
-}
-
 // walkDir recursively walks a directory and returns all markdown files.
 // When useGitignore is true, files matched by .gitignore patterns are skipped.
-// Symlinks whose path matches a noFollowSymlinks pattern are skipped.
-func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string, error) {
+// Symlinks are skipped unless followSymlinks is true. filepath.Walk is
+// Lstat-based, so symlinked directories encountered during the walk are
+// never descended into either way.
+func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 	var matcher *GitignoreMatcher
 	if useGitignore {
 		matcher = NewGitignoreMatcher(dir)
@@ -192,11 +429,22 @@ func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string
 			return err
 		}
 
-		if isSkippedSymlink(info, path, noFollowSymlinks) {
-			if info.IsDir() {
-				return filepath.SkipDir
+		// Symlink entries always have Lstat-based info with
+		// IsDir()==false under filepath.Walk, so a plain return nil
+		// here also means Walk won't try to descend.
+		if info.Mode()&os.ModeSymlink != 0 {
+			if !followSymlinks {
+				return nil
 			}
-			return nil
+			// In opt-in mode, follow the link only if it resolves to
+			// a regular file. Directory targets would be silently
+			// treated as an empty walk; FIFO/device/socket targets
+			// would block or fail later on read. `--follow-symlinks`
+			// applies to file symlinks only.
+			if tgt, statErr := os.Stat(path); statErr != nil ||
+				!tgt.Mode().IsRegular() {
+				return nil
+			}
 		}
 
 		if matcher != nil && isGitignored(matcher, path, info.IsDir()) {
@@ -206,7 +454,17 @@ func walkDir(dir string, useGitignore bool, noFollowSymlinks []string) ([]string
 			return nil
 		}
 
-		if !info.IsDir() && isMarkdown(path) {
+		if info.IsDir() {
+			return nil
+		}
+		// Only regular files and opted-in symlinks (target regular,
+		// verified above) are markdown candidates. Skip FIFOs,
+		// devices, and sockets to avoid blocking reads later.
+		isSymlink := info.Mode()&os.ModeSymlink != 0
+		if !isSymlink && !info.Mode().IsRegular() {
+			return nil
+		}
+		if isMarkdown(path) {
 			files = append(files, path)
 		}
 		return nil

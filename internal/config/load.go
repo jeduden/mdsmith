@@ -34,34 +34,51 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
-	// Detect whether the "files" key was explicitly present in the YAML.
-	cfg.FilesExplicit = yamlHasKey(data, "files")
+	// Detect top-level key presence with a single additional parse so
+	// "files" (omitted vs empty) and deprecated keys can be probed
+	// without re-parsing per key.
+	keys := topLevelKeySet(data)
+	cfg.FilesExplicit = keys["files"]
+
+	if keys["no-follow-symlinks"] {
+		cfg.Deprecations = append(cfg.Deprecations,
+			"config key `no-follow-symlinks` is deprecated; "+
+				"symlinks are now skipped by default — "+
+				"use `follow-symlinks: true` to opt in, "+
+				"or remove the key")
+	}
 
 	return &cfg, nil
 }
 
-// yamlHasKey returns true if the top-level YAML mapping contains the given key.
-func yamlHasKey(data []byte, key string) bool {
+// topLevelKeySet returns the set of top-level YAML mapping keys
+// present in data, or an empty set on parse error. It rejects
+// anchor/alias usage for the same reason yamlHasKey does.
+func topLevelKeySet(data []byte) map[string]bool {
 	if err := lint.RejectYAMLAliases(data); err != nil {
-		return false
+		return map[string]bool{}
 	}
 	var node yaml.Node
 	if err := yaml.Unmarshal(data, &node); err != nil {
-		return false
+		return map[string]bool{}
 	}
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
-		return false
+		return map[string]bool{}
 	}
 	mapping := node.Content[0]
 	if mapping.Kind != yaml.MappingNode {
-		return false
+		return map[string]bool{}
 	}
+	result := make(map[string]bool, len(mapping.Content)/2)
 	for i := 0; i < len(mapping.Content)-1; i += 2 {
-		if mapping.Content[i].Value == key {
-			return true
-		}
+		result[mapping.Content[i].Value] = true
 	}
-	return false
+	return result
+}
+
+// yamlHasKey returns true if the top-level YAML mapping contains the given key.
+func yamlHasKey(data []byte, key string) bool {
+	return topLevelKeySet(data)[key]
 }
 
 // Discover walks up the directory tree from startDir looking for a

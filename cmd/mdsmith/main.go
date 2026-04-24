@@ -154,14 +154,14 @@ func printVersion() {
 func runCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var (
-		configPath       string
-		format           string
-		noColor          bool
-		quiet            bool
-		verbose          bool
-		noGitignore      bool
-		noFollowSymlinks bool
-		maxInputSize     string
+		configPath     string
+		format         string
+		noColor        bool
+		quiet          bool
+		verbose        bool
+		noGitignore    bool
+		followSymlinks bool
+		maxInputSize   string
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -170,7 +170,9 @@ func runCheck(args []string) int {
 	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
-	fs.BoolVar(&noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
+		"Follow symlinks; omitted defers to follow-symlinks config (default skip); "+
+			"=false forces skip over any config opt-in")
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
@@ -192,6 +194,11 @@ func runCheck(args []string) int {
 		verbose = false
 	}
 
+	walk := walkCLI{
+		noGitignore:    noGitignore,
+		followSymlinks: followSymlinksOverride(fs, followSymlinks),
+	}
+
 	allArgs := fs.Args()
 
 	// Check for explicit stdin argument "-".
@@ -202,31 +209,25 @@ func runCheck(args []string) int {
 	}
 
 	if len(fileArgs) > 0 {
-		return checkFiles(
-			fileArgs, configPath, format, noColor, quiet, verbose,
-			noGitignore, noFollowSymlinks, maxInputSize,
-		)
+		return checkFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize)
 	}
 
 	// No file args and no stdin: discover files from config.
-	return checkDiscovered(
-		configPath, format, noColor, quiet, verbose,
-		noGitignore, noFollowSymlinks, maxInputSize,
-	)
+	return checkDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize)
 }
 
 // runFix implements the "fix" subcommand: auto-fix lint issues in place.
 func runFix(args []string) int {
 	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
 	var (
-		configPath       string
-		format           string
-		noColor          bool
-		quiet            bool
-		verbose          bool
-		noGitignore      bool
-		noFollowSymlinks bool
-		maxInputSize     string
+		configPath     string
+		format         string
+		noColor        bool
+		quiet          bool
+		verbose        bool
+		noGitignore    bool
+		followSymlinks bool
+		maxInputSize   string
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -235,7 +236,9 @@ func runFix(args []string) int {
 	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
-	fs.BoolVar(&noFollowSymlinks, "no-follow-symlinks", false, "Skip symbolic links when walking directories")
+	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
+		"Follow symlinks; omitted defers to follow-symlinks config (default skip); "+
+			"=false forces skip over any config opt-in")
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
@@ -257,6 +260,11 @@ func runFix(args []string) int {
 		verbose = false
 	}
 
+	walk := walkCLI{
+		noGitignore:    noGitignore,
+		followSymlinks: followSymlinksOverride(fs, followSymlinks),
+	}
+
 	allArgs := fs.Args()
 
 	// Check for explicit stdin argument "-".
@@ -268,17 +276,11 @@ func runFix(args []string) int {
 	}
 
 	if len(fileArgs) > 0 {
-		return fixFiles(
-			fileArgs, configPath, format, noColor, quiet, verbose,
-			noGitignore, noFollowSymlinks, maxInputSize,
-		)
+		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize)
 	}
 
 	// No file args: discover files from config.
-	return fixDiscovered(
-		configPath, format, noColor, quiet, verbose,
-		noGitignore, noFollowSymlinks, maxInputSize,
-	)
+	return fixDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize)
 }
 
 // runQuery implements the "query" subcommand: select files by CUE
@@ -526,11 +528,11 @@ func printRunStats(format string, quiet bool, stats runStats) {
 // checkFiles lints the given file paths and returns the appropriate exit code.
 func checkFiles(
 	fileArgs []string, configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose bool, walk walkCLI,
 	maxInputSize string,
 ) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
-		fileArgs, configPath, verbose, noGitignore, noFollowSymlinks, maxInputSize,
+		fileArgs, configPath, verbose, walk, maxInputSize,
 	)
 	if code >= 0 {
 		return code
@@ -572,11 +574,11 @@ func checkFiles(
 // fixFiles fixes lint issues in the given file paths.
 func fixFiles(
 	fileArgs []string, configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose bool, walk walkCLI,
 	maxInputSize string,
 ) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
-		fileArgs, configPath, verbose, noGitignore, noFollowSymlinks, maxInputSize,
+		fileArgs, configPath, verbose, walk, maxInputSize,
 	)
 	if code >= 0 {
 		return code
@@ -698,7 +700,7 @@ func checkStdin(format string, noColor, quiet, verbose bool, configPath, maxInpu
 // or -1 on success.
 func loadAndResolve(
 	fileArgs []string, configPath string,
-	verbose, noGitignore, noFollowSymlinks bool,
+	verbose bool, walk walkCLI,
 	maxInputSize string,
 ) (*config.Config, string, *vlog.Logger, []string, int64, int) {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
@@ -712,7 +714,7 @@ func loadAndResolve(
 		logger.Printf("config: %s", cfgPath)
 	}
 
-	opts := resolveOpts(cfg, noGitignore, noFollowSymlinks)
+	opts := resolveOpts(cfg, walk)
 	files, err := lint.ResolveFilesWithOpts(fileArgs, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
@@ -750,7 +752,7 @@ func splitStdinArg(args []string) (hasStdin bool, fileArgs []string) {
 // exit code; the caller should return it directly. A negative code means
 // "continue with the returned values".
 func discoverFiles(
-	configPath string, verbose, noGitignore, noFollowSymlinks bool,
+	configPath string, verbose bool, walk walkCLI,
 ) (*config.Config, string, *vlog.Logger, []string, int) {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
@@ -767,9 +769,9 @@ func discoverFiles(
 	}
 
 	files, err := discovery.Discover(discovery.Options{
-		Patterns:         cfg.Files,
-		UseGitignore:     !noGitignore,
-		NoFollowSymlinks: resolveOpts(cfg, noGitignore, noFollowSymlinks).NoFollowSymlinks,
+		Patterns:       cfg.Files,
+		UseGitignore:   !walk.noGitignore,
+		FollowSymlinks: resolveOpts(cfg, walk).FollowSymlinks,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: discovering files: %v\n", err)
@@ -785,10 +787,10 @@ func discoverFiles(
 // and lints them. Returns the appropriate exit code.
 func checkDiscovered(
 	configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose bool, walk walkCLI,
 	maxInputSize string,
 ) int {
-	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
+	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, walk)
 	if code >= 0 {
 		return code
 	}
@@ -836,10 +838,10 @@ func checkDiscovered(
 // and fixes them. Returns the appropriate exit code.
 func fixDiscovered(
 	configPath, format string,
-	noColor, quiet, verbose, noGitignore, noFollowSymlinks bool,
+	noColor, quiet, verbose bool, walk walkCLI,
 	maxInputSize string,
 ) int {
-	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, noGitignore, noFollowSymlinks)
+	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, walk)
 	if code >= 0 {
 		return code
 	}
@@ -883,21 +885,46 @@ func fixDiscovered(
 	return 0
 }
 
+// walkCLI bundles the CLI flags that affect how files are
+// discovered and resolved, so helpers can thread one value
+// instead of several (and the next addition isn't a parameter
+// explosion). followSymlinks is tri-state: nil means "fall back
+// to cfg.FollowSymlinks"; non-nil overrides config either way,
+// so users can write `--follow-symlinks=false` to force the
+// secure default for a one-off run against a config that opts
+// in.
+type walkCLI struct {
+	noGitignore    bool
+	followSymlinks *bool
+}
+
 // frontMatterEnabled returns whether front matter stripping is enabled.
 // Defaults to true if not set in config.
 // resolveOpts builds ResolveOpts from config and CLI flags.
-// CLI flags override config: --no-gitignore disables gitignore filtering,
-// --no-follow-symlinks skips all symlinks (adds "**" to the pattern list).
-func resolveOpts(cfg *config.Config, noGitignore, noFollowSymlinks bool) lint.ResolveOpts {
-	useGitignore := !noGitignore
-	opts := lint.ResolveOpts{
-		UseGitignore:     &useGitignore,
-		NoFollowSymlinks: cfg.NoFollowSymlinks,
+// The `--follow-symlinks` CLI flag overrides `follow-symlinks:`
+// from config when explicitly set; otherwise the config value
+// stands.
+func resolveOpts(cfg *config.Config, walk walkCLI) lint.ResolveOpts {
+	useGitignore := !walk.noGitignore
+	follow := cfg.FollowSymlinks
+	if walk.followSymlinks != nil {
+		follow = *walk.followSymlinks
 	}
-	if noFollowSymlinks {
-		opts.NoFollowSymlinks = []string{"**"}
+	return lint.ResolveOpts{
+		UseGitignore:   &useGitignore,
+		FollowSymlinks: follow,
 	}
-	return opts
+}
+
+// followSymlinksOverride returns a *bool override for the
+// `--follow-symlinks` flag if it was explicitly set on the
+// command line, or nil to defer to config.
+func followSymlinksOverride(fs *flag.FlagSet, value bool) *bool {
+	if fs.Changed("follow-symlinks") {
+		v := value
+		return &v
+	}
+	return nil
 }
 
 // resolveMaxInputBytes returns the effective max-input-size in bytes.
@@ -959,7 +986,9 @@ func loadConfigRaw(configPath string) (*config.Config, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		return config.Merge(defaults, loaded), configPath, nil
+		merged := config.Merge(defaults, loaded)
+		printDeprecations(merged)
+		return merged, configPath, nil
 	}
 
 	// Try to discover a config file.
@@ -982,7 +1011,22 @@ func loadConfigRaw(configPath string) (*config.Config, string, error) {
 		return nil, "", err
 	}
 
-	return config.Merge(defaults, loaded), discovered, nil
+	merged := config.Merge(defaults, loaded)
+	printDeprecations(merged)
+	return merged, discovered, nil
+}
+
+// printDeprecations writes config deprecation warnings to stderr. It is
+// safe to call multiple times; the warnings are consumed so the second
+// call is a no-op.
+func printDeprecations(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+	for _, msg := range cfg.Deprecations {
+		fmt.Fprintf(os.Stderr, "mdsmith: deprecated: %s\n", msg)
+	}
+	cfg.Deprecations = nil
 }
 
 const helpUsageText = `Usage: mdsmith help <topic>

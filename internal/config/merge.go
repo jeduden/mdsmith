@@ -53,17 +53,19 @@ func Merge(defaults, loaded *Config) *Config {
 	}
 
 	return &Config{
-		Rules:            rules,
-		Ignore:           loaded.Ignore,
-		Overrides:        loaded.Overrides,
-		FrontMatter:      fm,
-		Categories:       cats,
-		Files:            files,
-		FilesExplicit:    filesExplicit,
-		ExplicitRules:    explicit,
-		NoFollowSymlinks: loaded.NoFollowSymlinks,
-		MaxInputSize:     maxInputSize,
-		Archetypes:       archetypes,
+		Rules:                  rules,
+		Ignore:                 loaded.Ignore,
+		Overrides:              loaded.Overrides,
+		FrontMatter:            fm,
+		Categories:             cats,
+		Files:                  files,
+		FilesExplicit:          filesExplicit,
+		ExplicitRules:          explicit,
+		FollowSymlinks:         loaded.FollowSymlinks,
+		LegacyNoFollowSymlinks: copyStrings(loaded.LegacyNoFollowSymlinks),
+		Deprecations:           copyStrings(loaded.Deprecations),
+		MaxInputSize:           maxInputSize,
+		Archetypes:             archetypes,
 	}
 }
 
@@ -81,17 +83,19 @@ func copyConfig(cfg *Config) *Config {
 		explicit[k] = v
 	}
 	return &Config{
-		Rules:            rules,
-		Ignore:           copyStrings(cfg.Ignore),
-		Overrides:        cfg.Overrides,
-		FrontMatter:      cfg.FrontMatter,
-		Categories:       copyCategories(cfg.Categories),
-		Files:            copyStrings(cfg.Files),
-		NoFollowSymlinks: copyStrings(cfg.NoFollowSymlinks),
-		MaxInputSize:     cfg.MaxInputSize,
-		ExplicitRules:    explicit,
-		FilesExplicit:    cfg.FilesExplicit,
-		Archetypes:       ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
+		Rules:                  rules,
+		Ignore:                 copyStrings(cfg.Ignore),
+		Overrides:              cfg.Overrides,
+		FrontMatter:            cfg.FrontMatter,
+		Categories:             copyCategories(cfg.Categories),
+		Files:                  copyStrings(cfg.Files),
+		FollowSymlinks:         cfg.FollowSymlinks,
+		LegacyNoFollowSymlinks: copyStrings(cfg.LegacyNoFollowSymlinks),
+		Deprecations:           copyStrings(cfg.Deprecations),
+		MaxInputSize:           cfg.MaxInputSize,
+		ExplicitRules:          explicit,
+		FilesExplicit:          cfg.FilesExplicit,
+		Archetypes:             ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
 	}
 }
 

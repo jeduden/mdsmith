@@ -34,16 +34,37 @@ match, exits 0.
 
 ## Subcommand Flags (check, fix)
 
-| Flag                   | Default | Description                             |
-|------------------------|---------|-----------------------------------------|
-| `-c`, `--config`       | auto    | Config path (auto-discovers by default) |
-| `-f`, `--format`       | `text`  | `text` or `json`                        |
-| `--max-input-size`     | `2MB`   | Max file size (e.g. `2MB`, `0`=none)    |
-| `--no-color`           | false   | Plain output                            |
-| `--no-follow-symlinks` | false   | Skip symbolic links when walking        |
-| `--no-gitignore`       | false   | Skip gitignore                          |
-| `-q`, `--quiet`        | false   | Quiet mode                              |
-| `-v`, `--verbose`      | false   | Verbose output                          |
+| Flag                | Default | Description                             |
+|---------------------|---------|-----------------------------------------|
+| `-c`, `--config`    | auto    | Config path (auto-discovers by default) |
+| `-f`, `--format`    | `text`  | `text` or `json`                        |
+| `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)    |
+| `--no-color`        | false   | Plain output                            |
+| `--follow-symlinks` | config  | Follow symlinks; tri-state — see below  |
+| `--no-gitignore`    | false   | Skip gitignore                          |
+| `-q`, `--quiet`     | false   | Quiet mode                              |
+| `-v`, `--verbose`   | false   | Verbose output                          |
+
+Symlinks are skipped by default. This blocks a malicious
+symlink from redirecting `check` or `fix` to files outside
+the project. The rule applies to directory walks, glob
+expansion, and explicit file or directory arguments:
+`mdsmith check ./linked.md` silently skips a symlink named
+on the command line. Opt-in follows only symlinks that
+resolve to regular files; directory / FIFO / device / socket
+targets are always skipped.
+
+`--follow-symlinks` is tri-state:
+
+- omitted — fall back to `follow-symlinks:` in
+  `.mdsmith.yml` (default: skip)
+- `--follow-symlinks` or `--follow-symlinks=true` — opt in
+  for this run
+- `--follow-symlinks=false` — force deny for this run, even
+  when the loaded config has `follow-symlinks: true`
+
+The old `no-follow-symlinks:` config key still parses and
+emits a deprecation warning on stderr.
 
 ## Other Subcommand Flags
 
@@ -55,7 +76,7 @@ and `--scope` (only `file` is supported; defaults to
 `file`).
 
 `metrics rank` accepts `-c`/`--config`, `-f`/`--format`,
-`--no-gitignore`, `--no-follow-symlinks`,
+`--no-gitignore`, `--follow-symlinks`,
 `--max-input-size`, plus `--metrics`, `--by`, `--order`,
 `--top`.
 

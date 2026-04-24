@@ -24,15 +24,23 @@ var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
 
 // Config is the top-level configuration.
 type Config struct {
-	Rules            map[string]RuleCfg `yaml:"rules"`
-	Ignore           []string           `yaml:"ignore"`
-	Overrides        []Override         `yaml:"overrides"`
-	FrontMatter      *bool              `yaml:"front-matter"`
-	Categories       map[string]bool    `yaml:"categories"`
-	Files            []string           `yaml:"files"`
-	NoFollowSymlinks []string           `yaml:"no-follow-symlinks"`
-	MaxInputSize     string             `yaml:"max-input-size"`
-	Archetypes       ArchetypesCfg      `yaml:"archetypes"`
+	Rules          map[string]RuleCfg `yaml:"rules"`
+	Ignore         []string           `yaml:"ignore"`
+	Overrides      []Override         `yaml:"overrides"`
+	FrontMatter    *bool              `yaml:"front-matter"`
+	Categories     map[string]bool    `yaml:"categories"`
+	Files          []string           `yaml:"files"`
+	FollowSymlinks bool               `yaml:"follow-symlinks"`
+	MaxInputSize   string             `yaml:"max-input-size"`
+	Archetypes     ArchetypesCfg      `yaml:"archetypes"`
+
+	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
+	// key. Its presence surfaces a deprecation warning via
+	// Deprecations; its contents are otherwise ignored now that
+	// symlinks are skipped by default. The `omitempty` tag keeps
+	// round-tripped configs from re-emitting the deprecated key
+	// unless a user explicitly supplied it.
+	LegacyNoFollowSymlinks []string `yaml:"no-follow-symlinks,omitempty"`
 
 	// ExplicitRules tracks rule names that were explicitly set in
 	// the user config (not just inherited from defaults). This is
@@ -46,6 +54,12 @@ type Config struct {
 	// (use defaults) and an explicitly empty list (no files).
 	// Not serialized to YAML.
 	FilesExplicit bool `yaml:"-"`
+
+	// Deprecations lists human-readable warnings about deprecated
+	// keys found in the loaded config. Callers (cmd/mdsmith) print
+	// them to stderr.
+	// Not serialized to YAML.
+	Deprecations []string `yaml:"-"`
 }
 
 // ArchetypesCfg configures archetype discovery. Roots are directories
