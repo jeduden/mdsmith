@@ -494,6 +494,106 @@ func TestHasSymlinkAncestor_DotDotAfterRealDir(t *testing.T) {
 		"`..` after a non-symlink dir must not trigger rejection")
 }
 
+// TestAbsWithCwd_EmptyCwdUsesGetwd covers the Getwd fallback.
+func TestAbsWithCwd_EmptyCwdUsesGetwd(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	got := absWithCwd("foo.md", "")
+	assert.Equal(t, filepath.Join(dir, "foo.md"), got)
+}
+
+// TestAbsWithCwd_AbsolutePath_Clean covers the absolute-path
+// branch: no Getwd lookup, just cleaned form.
+func TestAbsWithCwd_AbsolutePath_Clean(t *testing.T) {
+	got := absWithCwd("/foo/./bar/../baz.md", "/some/cwd")
+	assert.Equal(t, filepath.Clean("/foo/baz.md"), got)
+}
+
+// TestResolveArg_SymlinkedAncestorPath_Skipped covers the
+// `hasSymlinkAncestor(arg)` branch in resolveArg via the public
+// ResolveFilesWithOpts API.
+func TestResolveArg_SymlinkedAncestorPath_Skipped(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	require.NoError(t, os.MkdirAll(real, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(real, "foo.md"), []byte("# Real"), 0o644))
+	require.NoError(t, os.Symlink(real, filepath.Join(dir, "linked")))
+	t.Chdir(dir)
+
+	got, err := ResolveFiles([]string{"linked/foo.md"})
+	require.NoError(t, err)
+	assert.Empty(t, got, "path through symlinked ancestor must be skipped")
+}
+
+// TestResolveArg_SymlinkFileNoFollow_Skipped covers the
+// `isSymlink && !FollowSymlinks` branch in resolveArg.
+func TestResolveArg_SymlinkFileNoFollow_Skipped(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real.md")
+	require.NoError(t, os.WriteFile(real, []byte("# Real"), 0o644))
+	link := filepath.Join(dir, "link.md")
+	require.NoError(t, os.Symlink(real, link))
+
+	got, err := ResolveFilesWithOpts([]string{link}, DefaultResolveOpts())
+	require.NoError(t, err)
+	assert.Empty(t, got, "symlink file must be skipped under default-deny")
+}
+
+// TestResolveArg_BrokenSymlink_SilentlySkipped covers the
+// `isSymlink && Stat-err` branch in resolveArg.
+func TestResolveArg_BrokenSymlink_SilentlySkipped(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	dir := t.TempDir()
+	link := filepath.Join(dir, "dangling.md")
+	require.NoError(t, os.Symlink(
+		filepath.Join(dir, "does-not-exist.md"), link))
+
+	opts := DefaultResolveOpts()
+	opts.FollowSymlinks = true
+	got, err := ResolveFilesWithOpts([]string{link}, opts)
+	require.NoError(t, err,
+		"broken-symlink arg must not error")
+	assert.Empty(t, got)
+}
+
+// TestResolveArg_NonexistentNonSymlink_Errors covers the
+// `!isSymlink && Stat-err` branch — a typo'd regular path
+// surfaces as an error so users see their mistake.
+func TestResolveArg_NonexistentNonSymlink_Errors(t *testing.T) {
+	_, err := ResolveFiles([]string{
+		filepath.Join(t.TempDir(), "nonexistent.md")})
+	require.Error(t, err,
+		"missing non-symlink path must surface as an error")
+}
+
+// TestIsDescendantOf_NotADescendant covers the negative path:
+// `filepath.Rel` returns a `..`-prefixed string when p is outside
+// base, and isDescendantOf reports false.
+func TestIsDescendantOf_NotADescendant(t *testing.T) {
+	assert.False(t, isDescendantOf("/a/b", "/c/d"),
+		"unrelated tree must not be a descendant")
+}
+
+// TestHasSymlinkAncestorWithCwd_AbsolutePath_UnderCwd exercises
+// the absolute-path branch that initialises `current` with the
+// volume root. The walk must reach the symlinked component.
+func TestHasSymlinkAncestorWithCwd_AbsolutePath_UnderCwd(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "real"), 0o755))
+	require.NoError(t, os.Symlink(
+		filepath.Join(dir, "real"), filepath.Join(dir, "linked")))
+
+	cache := make(map[string]bool)
+	abs := filepath.Join(dir, "linked", "foo.md")
+	got := hasSymlinkAncestorWithCwd(abs, dir, cache)
+	assert.True(t, got,
+		"absolute path through symlinked component must be flagged")
+}
+
 // TestHasSymlinkAncestorCache_SkipsRepeatLstat confirms that once
 // a directory has been Lstat'd, a second hit uses the cached value
 // instead of re-probing.
@@ -534,21 +634,41 @@ func TestHasSymlinkAncestorWithCwd_EmptyCwdFallsBackToGetwd(t *testing.T) {
 
 // TestIsDescendantOf_SelfReturnsFalse pins the `p == base` branch
 // (strict-descendant semantics) so `current == stop` in the walker
-// correctly skips probing.
+// correctly skips probing. filepath.Rel returns "." when the two
+// paths are identical.
 func TestIsDescendantOf_SelfReturnsFalse(t *testing.T) {
 	assert.False(t, isDescendantOf("/foo", "/foo"),
 		"path equal to base is not a strict descendant")
 	assert.True(t, isDescendantOf("/foo/bar", "/foo"))
 	assert.False(t, isDescendantOf("/foo-other", "/foo"),
 		"must not mistake sibling with shared prefix for descendant")
+	assert.False(t, isDescendantOf("/", "/foo"),
+		"ancestor of base is not a descendant")
 }
 
-// TestAbsWithCwd_EmptyCwdUsesGetwd covers the Getwd fallback.
-func TestAbsWithCwd_EmptyCwdUsesGetwd(t *testing.T) {
+// TestHasSymlinkAncestor_NoSymlinkButCached covers the cache-hit
+// `continue` branch: a second walk over paths that share a
+// non-symlink ancestor reuses the cached `false`, skipping the
+// Lstat.
+func TestHasSymlinkAncestor_NoSymlinkButCached(t *testing.T) {
 	dir := t.TempDir()
-	t.Chdir(dir)
-	got := absWithCwd("foo.md", "")
-	assert.Equal(t, filepath.Join(dir, "foo.md"), got)
+	sub := filepath.Join(dir, "sub", "deep")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+
+	cache := make(map[string]bool)
+	assert.False(t,
+		hasSymlinkAncestorWithCwd("sub/deep/a.md", dir, cache))
+	assert.False(t,
+		hasSymlinkAncestorWithCwd("sub/deep/b.md", dir, cache))
+	// The non-symlink ancestor is memoised as `false`.
+	for _, d := range []string{
+		filepath.Join(dir, "sub"),
+		filepath.Join(dir, "sub", "deep"),
+	} {
+		v, ok := cache[d]
+		assert.True(t, ok, "%s must be cached", d)
+		assert.False(t, v, "%s must be cached as non-symlink", d)
+	}
 }
 
 // TestHasSymlinkAncestorWithCwd_HonorsCwdArg confirms that the

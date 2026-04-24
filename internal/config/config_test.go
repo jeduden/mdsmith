@@ -1301,6 +1301,38 @@ func TestYamlHasKeyRejectsAnchor(t *testing.T) {
 	assert.False(t, yamlHasKey(yml, "base"))
 }
 
+// TestTopLevelKeySet_InvalidYAML covers the yaml.Unmarshal error
+// branch of topLevelKeySet: a syntactically bad YAML payload
+// returns an empty set (not a panic) so callers can degrade
+// gracefully.
+func TestTopLevelKeySet_InvalidYAML(t *testing.T) {
+	assert.Empty(t, topLevelKeySet([]byte("{not: valid: yaml:")))
+}
+
+// TestTopLevelKeySet_NotAMapping covers the kind-check branch:
+// a top-level scalar (e.g. a bare string) yields an empty set
+// because there are no keys to list.
+func TestTopLevelKeySet_NotAMapping(t *testing.T) {
+	assert.Empty(t, topLevelKeySet([]byte("bare-string-value\n")))
+}
+
+// TestLoad_LegacyNoFollowSymlinksEmitsDeprecation exercises the
+// deprecation-warning branch of Load: the legacy config key
+// `no-follow-symlinks` is parsed and a warning is appended to
+// cfg.Deprecations for the CLI to print.
+func TestLoad_LegacyNoFollowSymlinksEmitsDeprecation(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath,
+		[]byte("no-follow-symlinks:\n  - \"**\"\n"), 0o644))
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	require.NotEmpty(t, cfg.Deprecations,
+		"legacy no-follow-symlinks key must emit a deprecation")
+	assert.Contains(t, cfg.Deprecations[0], "no-follow-symlinks")
+}
+
 func TestMergeMaxInputSize_FromLoaded(t *testing.T) {
 	defaults := &Config{
 		Rules: map[string]RuleCfg{"a": {Enabled: true}},
