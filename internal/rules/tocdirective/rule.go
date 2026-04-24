@@ -120,36 +120,121 @@ func buildMessage(token string) string {
 // Fix implements rule.FixableRule. Each matched TOC directive token on its
 // own line is replaced with an empty <?toc?>\n<?/toc?> block. Blank lines
 // are inserted above and below when adjacent content would otherwise fuse
-// the block into a paragraph.
+// the block into a paragraph. Only replaces tokens inside Paragraph nodes
+// (same as Check), avoiding code blocks and other contexts.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f == nil {
+	if f == nil || f.AST == nil {
 		return nil
 	}
 	hasTOCRef := hasTOCLinkReference(f.Source)
 
-	rawLines := bytes.Split(f.Source, []byte("\n"))
-	result := make([][]byte, 0, len(rawLines)+4)
+	// Collect byte offsets of all TOC directive lines that need replacement.
+	replacements := collectReplacements(f, hasTOCRef)
 
-	for i, line := range rawLines {
-		lineStr := strings.TrimRight(string(line), "\r")
-		v, matched := matchVariant(lineStr)
-		if !matched || (v.isLinkRefCandidate && hasTOCRef) {
-			result = append(result, line)
-			continue
+	if len(replacements) == 0 {
+		return f.Source
+	}
+
+	return buildFixedSource(f.Source, replacements)
+}
+
+// collectReplacements scans the AST for TOC directive tokens that need replacement.
+func collectReplacements(f *lint.File, hasTOCRef bool) []struct{ start, end int } {
+	var replacements []struct {
+		start, end int
+	}
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
 		}
-		// Insert blank line before if previous non-empty line is content.
-		if len(result) > 0 && len(bytes.TrimSpace(result[len(result)-1])) > 0 {
-			result = append(result, []byte{})
+		para, ok := n.(*ast.Paragraph)
+		if !ok {
+			return ast.WalkContinue, nil
 		}
-		result = append(result, []byte("<?toc?>"))
-		result = append(result, []byte("<?/toc?>"))
-		// Insert blank line after if next line is non-empty content.
-		if i+1 < len(rawLines) && len(bytes.TrimSpace(rawLines[i+1])) > 0 {
-			result = append(result, []byte{})
+		lines := para.Lines()
+		for i := 0; i < lines.Len(); i++ {
+			seg := lines.At(i)
+			lineText := strings.TrimRight(
+				string(seg.Value(f.Source)), "\r\n",
+			)
+			v, matched := matchVariant(lineText)
+			if !matched {
+				continue
+			}
+			if v.isLinkRefCandidate && hasTOCRef {
+				continue
+			}
+			replacements = append(replacements, struct{ start, end int }{
+				start: seg.Start,
+				end:   seg.Stop,
+			})
+		}
+		return ast.WalkContinue, nil
+	})
+	return replacements
+}
+
+// buildFixedSource constructs the fixed source by replacing all collected segments.
+func buildFixedSource(source []byte, replacements []struct{ start, end int }) []byte {
+	// Build result by copying source and replacing matched segments.
+	var result bytes.Buffer
+	pos := 0
+	for _, repl := range replacements {
+		// Copy everything before this replacement.
+		result.Write(source[pos:repl.start])
+
+		// Determine if we need blank lines around the replacement.
+		needBlankBefore, needBlankAfter := computeBlankLines(source, repl.start, repl.end)
+
+		// Write replacement with optional blank lines.
+		if needBlankBefore {
+			result.WriteString("\n")
+		}
+		result.WriteString("<?toc?>\n<?/toc?>\n")
+		if needBlankAfter {
+			result.WriteString("\n")
+		}
+
+		// Skip past the replaced segment. The segment itself doesn't include
+		// the line's trailing newline, but we've already written a newline in
+		// our replacement, so we need to skip one newline after the segment.
+		pos = repl.end
+		if pos < len(source) && source[pos] == '\n' {
+			pos++
+		}
+	}
+	// Copy remainder.
+	result.Write(source[pos:])
+
+	return result.Bytes()
+}
+
+// computeBlankLines determines if blank lines are needed before and after
+// a replacement segment to avoid fusing it into surrounding paragraphs.
+func computeBlankLines(source []byte, start, end int) (needBefore, needAfter bool) {
+	// Check if there's non-blank content before this segment.
+	// Only add a blank line if the immediately preceding line has content.
+	if start > 0 {
+		// Count trailing newlines.
+		trailingNewlines := 0
+		for i := start - 1; i >= 0 && source[i] == '\n'; i-- {
+			trailingNewlines++
+		}
+		// If there are 0 newlines, or 1 newline (meaning line directly above has content),
+		// we need a blank line. If there are 2+ newlines, there's already spacing.
+		needBefore = (trailingNewlines < 2)
+	}
+
+	// Check if there's non-blank content after this segment.
+	if end < len(source) {
+		// If next char is newline, there's already a blank line.
+		// If next char is not newline, next line has content - need blank.
+		if source[end] != '\n' {
+			needAfter = true
 		}
 	}
 
-	return bytes.Join(result, []byte("\n"))
+	return needBefore, needAfter
 }
 
 var _ rule.FixableRule = (*Rule)(nil)

@@ -46,10 +46,13 @@ type TOCItem struct {
 // CollectTOCItems returns all headings from the AST as TOC items, in document
 // order. Anchors are disambiguated by insertion order: first occurrence keeps
 // the plain slug, subsequent duplicates get -1, -2, … suffixes — matching the
-// anchor computation in crossfilereferenceintegrity.
+// anchor computation in crossfilereferenceintegrity. Tracks used anchors (not
+// just base slugs) to guarantee unique anchors even when a later heading's
+// base slug matches an earlier heading's disambiguated anchor.
 func CollectTOCItems(root ast.Node, source []byte) []TOCItem {
 	var items []TOCItem
-	seen := make(map[string]int)
+	usedAnchors := make(map[string]bool)
+	slugCounts := make(map[string]int)
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -63,12 +66,22 @@ func CollectTOCItems(root ast.Node, source []byte) []TOCItem {
 		if slug == "" {
 			return ast.WalkContinue, nil
 		}
-		count := seen[slug]
+
+		// Find a unique anchor by incrementing suffix until unused.
 		anchor := slug
-		if count > 0 {
-			anchor = fmt.Sprintf("%s-%d", slug, count)
+		if usedAnchors[anchor] {
+			count := slugCounts[slug]
+			for {
+				count++
+				anchor = fmt.Sprintf("%s-%d", slug, count)
+				if !usedAnchors[anchor] {
+					break
+				}
+			}
+			slugCounts[slug] = count
 		}
-		seen[slug] = count + 1
+
+		usedAnchors[anchor] = true
 		items = append(items, TOCItem{Level: h.Level, Text: text, Anchor: anchor})
 		return ast.WalkContinue, nil
 	})

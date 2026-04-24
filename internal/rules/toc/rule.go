@@ -89,7 +89,9 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 		stack = append(stack, item.Level)
 
 		indent := strings.Repeat("  ", depth)
-		sb.WriteString(fmt.Sprintf("%s- [%s](#%s)\n", indent, item.Text, item.Anchor))
+		// Escape special characters in link text to avoid breaking Markdown syntax.
+		escapedText := escapeLinkText(item.Text)
+		sb.WriteString(fmt.Sprintf("%s- [%s](#%s)\n", indent, escapedText, item.Anchor))
 	}
 
 	content := sb.String()
@@ -144,4 +146,13 @@ func makeDiag(filePath string, line int, msg string) lint.Diagnostic {
 		Severity: lint.Error,
 		Message:  msg,
 	}
+}
+
+// escapeLinkText escapes special characters in link text that would break
+// Markdown link syntax: backslash, opening bracket, closing bracket.
+func escapeLinkText(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	s = strings.ReplaceAll(s, "]", "\\]")
+	return s
 }

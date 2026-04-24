@@ -125,3 +125,24 @@ func TestGenerate_InvalidParams(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "min-level")
 }
+
+func TestFix_SpecialCharsInHeading(t *testing.T) {
+	// Headings with brackets and backslashes should be escaped in link text.
+	src := "<?toc?>\n<?/toc?>\n\n## A ] B\n\n## C [ D\n\n## E \\ F\n"
+	fixed := string((&Rule{}).Fix(newFile(t, src)))
+	// Link text must escape special characters.
+	// Special chars are removed from anchors by Slugify: "A ] B" → "a-b"
+	assert.Contains(t, fixed, "- [A \\] B](#a-b)")
+	assert.Contains(t, fixed, "- [C \\[ D](#c-d)")
+	assert.Contains(t, fixed, "- [E \\\\ F](#e-f)")
+}
+
+func TestFix_DuplicateAnchorCollision(t *testing.T) {
+	// Headings "Foo", "Foo", "Foo-1" should get anchors foo, foo-1, foo-2
+	// (not foo, foo-1, foo-1 which would collide).
+	src := "<?toc?>\n<?/toc?>\n\n## Foo\n\n## Foo\n\n## Foo-1\n"
+	fixed := string((&Rule{}).Fix(newFile(t, src)))
+	assert.Contains(t, fixed, "- [Foo](#foo)\n")
+	assert.Contains(t, fixed, "- [Foo](#foo-1)\n")
+	assert.Contains(t, fixed, "- [Foo-1](#foo-1-1)\n")
+}

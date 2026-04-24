@@ -228,3 +228,16 @@ func TestCheck_NilFile(t *testing.T) {
 func TestFix_NilFile(t *testing.T) {
 	assert.Nil(t, (&Rule{}).Fix(nil))
 }
+
+func TestFix_CodeBlocks_Untouched(t *testing.T) {
+	// [TOC] inside fenced or indented code blocks must not be replaced.
+	src := []byte("# Title\n\nFenced:\n\n```\n[TOC]\n[[_TOC_]]\n```\n\nIndented:\n\n    [TOC]\n    [[toc]]\n\nEnd.\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+	fixed := string((&Rule{}).Fix(f))
+	// Code block content should be unchanged.
+	assert.Contains(t, fixed, "```\n[TOC]\n[[_TOC_]]\n```")
+	assert.Contains(t, fixed, "    [TOC]\n    [[toc]]")
+	// But not replaced with <?toc?>.
+	assert.NotContains(t, fixed, "<?toc?>")
+}
