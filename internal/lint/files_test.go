@@ -513,6 +513,44 @@ func TestHasSymlinkAncestorCache_SkipsRepeatLstat(t *testing.T) {
 		"shared ancestor must be memoised as a symlink")
 }
 
+// TestHasSymlinkAncestorWithCwd_EmptyCwdFallsBackToGetwd exercises
+// the Getwd fallback for both the stop-boundary and the component
+// walk when the caller passes an empty cwd.
+func TestHasSymlinkAncestorWithCwd_EmptyCwdFallsBackToGetwd(t *testing.T) {
+	skipIfSymlinkUnsupported(t)
+	dir := t.TempDir()
+	// .git marker so gitProjectRoot can anchor the stop boundary.
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "real"), 0o755))
+	require.NoError(t, os.Symlink(
+		filepath.Join(dir, "real"), filepath.Join(dir, "linked")))
+	t.Chdir(dir)
+
+	cache := make(map[string]bool)
+	got := hasSymlinkAncestorWithCwd("linked/a.md", "", cache)
+	assert.True(t, got,
+		"empty cwd arg must fall back to os.Getwd for resolution")
+}
+
+// TestIsDescendantOf_SelfReturnsFalse pins the `p == base` branch
+// (strict-descendant semantics) so `current == stop` in the walker
+// correctly skips probing.
+func TestIsDescendantOf_SelfReturnsFalse(t *testing.T) {
+	assert.False(t, isDescendantOf("/foo", "/foo"),
+		"path equal to base is not a strict descendant")
+	assert.True(t, isDescendantOf("/foo/bar", "/foo"))
+	assert.False(t, isDescendantOf("/foo-other", "/foo"),
+		"must not mistake sibling with shared prefix for descendant")
+}
+
+// TestAbsWithCwd_EmptyCwdUsesGetwd covers the Getwd fallback.
+func TestAbsWithCwd_EmptyCwdUsesGetwd(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	got := absWithCwd("foo.md", "")
+	assert.Equal(t, filepath.Join(dir, "foo.md"), got)
+}
+
 // TestHasSymlinkAncestorWithCwd_HonorsCwdArg confirms that the
 // `cwd` parameter — not the process working directory — is what
 // gets joined to a relative path. Otherwise the precomputed-cwd
