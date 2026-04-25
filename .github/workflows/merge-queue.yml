@@ -38,6 +38,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          persist-credentials: false
 
       - name: Configure git identity
         run: |
