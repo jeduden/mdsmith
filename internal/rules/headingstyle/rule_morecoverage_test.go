@@ -131,3 +131,37 @@ func TestFix_ATXBoldToSetext(t *testing.T) {
 	// Should produce setext-style output.
 	assert.Contains(t, string(result), "Bold Title")
 }
+
+// --- headingByteRange: else branch (Lines().Len() == 0) ---
+// In goldmark, real-parsed headings always have Lines().Len() >= 1, so the
+// else branch in headingByteRange is only reachable via a manually-constructed
+// heading. We call headingByteRange directly to exercise lines 243-248.
+
+func TestHeadingByteRange_NoLinesWithTextChild(t *testing.T) {
+	// src: "# Title\n" — text "Title" at offset 2..7.
+	src := []byte("# Title\n")
+
+	// Build a heading node with Lines().Len() == 0 but a Text child.
+	h := ast.NewHeading(1)
+	textNode := ast.NewText()
+	textNode.Segment = text.NewSegment(2, 7) // "Title"
+	h.AppendChild(h, textNode)
+
+	// Lines().Len() == 0 so else branch runs, finding start from text child.
+	start, end := headingByteRange(h, src)
+	// Start should be at the beginning of the line (0 since it's at offset 0).
+	assert.Equal(t, 0, start)
+	// End should be at end of the "# Title" line (before '\n').
+	assert.Equal(t, 7, end)
+}
+
+func TestHeadingByteRange_NoLinesNoChildren(t *testing.T) {
+	// A heading with Lines().Len() == 0 and no children: start stays 0.
+	src := []byte("# Title\n")
+
+	h := ast.NewHeading(1)
+	// No children, no lines — start defaults to 0.
+	start, end := headingByteRange(h, src)
+	assert.GreaterOrEqual(t, start, 0)
+	assert.GreaterOrEqual(t, end, start)
+}
