@@ -109,9 +109,10 @@ func TestRuleFixBareURLGFMAccepts(t *testing.T) {
 
 // --- combined -----------------------------------------------------------
 
-// TestRuleFixMultipleFeaturesOnOneLine covers reverse-order edit
-// application: two byte-range edits on the same line must compose
-// without one corrupting the other's offsets.
+// TestRuleFixMultipleFeaturesOnOneLine covers the ascending single-
+// pass build in applyEdits: two byte-range edits on the same line
+// must compose into a contiguous output without one corrupting the
+// other's spans.
 func TestRuleFixMultipleFeaturesOnOneLine(t *testing.T) {
 	got := fixWith(t, "commonmark",
 		"# Heading {#top}\n\nText ~~old~~ at https://example.com.\n")
