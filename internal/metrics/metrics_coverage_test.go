@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -321,4 +322,136 @@ func TestSortRows_AscendingOrder(t *testing.T) {
 	assert.Equal(t, "a.md", rows[0].Path)
 	assert.Equal(t, "b.md", rows[1].Path)
 	assert.Equal(t, "c.md", rows[2].Path)
+}
+
+// --- Document cache / error path tests ---
+
+// TestFile_CachedError verifies that when fileReady=true and fileErr is set,
+// File() returns the cached error without calling lint.NewFile again.
+func TestFile_CachedError(t *testing.T) {
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("injected file error")
+	doc.fileReady = true
+	doc.fileErr = sentinel
+	doc.file = nil
+
+	f, err := doc.File()
+	assert.Nil(t, f)
+	assert.ErrorIs(t, err, sentinel, "expected the injected file error to be returned")
+
+	// A second call must still return the cached error (no re-computation).
+	f2, err2 := doc.File()
+	assert.Nil(t, f2)
+	assert.ErrorIs(t, err2, sentinel)
+}
+
+// TestPlainText_CachedError verifies that when plainTextReady=true and
+// plainTextErr is set, PlainText() returns the cached error immediately.
+func TestPlainText_CachedError(t *testing.T) {
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("injected plain-text error")
+	doc.plainTextReady = true
+	doc.plainTextErr = sentinel
+
+	text, err := doc.PlainText()
+	assert.Equal(t, "", text)
+	assert.ErrorIs(t, err, sentinel)
+
+	// Second call also returns the cached error.
+	text2, err2 := doc.PlainText()
+	assert.Equal(t, "", text2)
+	assert.ErrorIs(t, err2, sentinel)
+}
+
+// TestPlainText_PropagatesFileError verifies that when File() returns an
+// error, PlainText() propagates it and caches it in plainTextErr.
+func TestPlainText_PropagatesFileError(t *testing.T) {
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("file parse failure")
+	doc.fileReady = true
+	doc.fileErr = sentinel
+
+	text, err := doc.PlainText()
+	assert.Equal(t, "", text)
+	assert.ErrorIs(t, err, sentinel)
+
+	// plainTextErr and plainTextReady should now be set.
+	assert.True(t, doc.plainTextReady)
+	assert.ErrorIs(t, doc.plainTextErr, sentinel)
+
+	// Subsequent call returns cached error, not the file error directly.
+	text2, err2 := doc.PlainText()
+	assert.Equal(t, "", text2)
+	assert.ErrorIs(t, err2, sentinel)
+}
+
+// TestWordCount_CachedError verifies that when wordCountReady=true and
+// wordCountErr is set, WordCount() returns the cached error immediately.
+func TestWordCount_CachedError(t *testing.T) {
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("injected word-count error")
+	doc.wordCountReady = true
+	doc.wordCountErr = sentinel
+
+	count, err := doc.WordCount()
+	assert.Equal(t, 0, count)
+	assert.ErrorIs(t, err, sentinel)
+
+	// Second call also returns the cached error.
+	count2, err2 := doc.WordCount()
+	assert.Equal(t, 0, count2)
+	assert.ErrorIs(t, err2, sentinel)
+}
+
+// TestWordCount_PropagatesPlainTextError verifies that when PlainText() fails,
+// WordCount() propagates the error and caches it in wordCountErr.
+func TestWordCount_PropagatesPlainTextError(t *testing.T) {
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("plain-text failure")
+	// Inject error at the plainText layer so PlainText() returns it directly.
+	doc.plainTextReady = true
+	doc.plainTextErr = sentinel
+
+	count, err := doc.WordCount()
+	assert.Equal(t, 0, count)
+	assert.ErrorIs(t, err, sentinel)
+
+	// wordCountErr and wordCountReady should now be set.
+	assert.True(t, doc.wordCountReady)
+	assert.ErrorIs(t, doc.wordCountErr, sentinel)
+}
+
+// TestHeadingCount_CachedError verifies that when headingCountReady=true and
+// headingCountErr is set, HeadingCount() returns the cached error immediately.
+func TestHeadingCount_CachedError(t *testing.T) {
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("injected heading-count error")
+	doc.headingCountReady = true
+	doc.headingCountErr = sentinel
+
+	count, err := doc.HeadingCount()
+	assert.Equal(t, 0, count)
+	assert.ErrorIs(t, err, sentinel)
+
+	// Second call also returns the cached error.
+	count2, err2 := doc.HeadingCount()
+	assert.Equal(t, 0, count2)
+	assert.ErrorIs(t, err2, sentinel)
+}
+
+// TestHeadingCount_PropagatesFileError verifies that when File() returns an
+// error, HeadingCount() propagates it and caches it in headingCountErr.
+func TestHeadingCount_PropagatesFileError(t *testing.T) {
+	doc := NewDocument("test.md", []byte("# Hello\n"))
+	sentinel := errors.New("file parse failure")
+	doc.fileReady = true
+	doc.fileErr = sentinel
+
+	count, err := doc.HeadingCount()
+	assert.Equal(t, 0, count)
+	assert.ErrorIs(t, err, sentinel)
+
+	// headingCountErr and headingCountReady should now be set.
+	assert.True(t, doc.headingCountReady)
+	assert.ErrorIs(t, doc.headingCountErr, sentinel)
 }

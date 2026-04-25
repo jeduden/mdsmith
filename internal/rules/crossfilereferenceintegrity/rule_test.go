@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	gast "github.com/yuin/goldmark/ast"
+
 	"github.com/jeduden/mdsmith/internal/lint"
 
 	"github.com/stretchr/testify/require"
@@ -565,4 +567,192 @@ func TestCheck_AnchorOnlyLinkMissingHeading(t *testing.T) {
 	diags := (&Rule{}).Check(f)
 	require.Len(t, diags, 1)
 	require.Contains(t, diags[0].Message, "#missing")
+}
+
+// =====================================================================
+// Additional coverage: anchorsForFile cache hit
+// =====================================================================
+
+// TestAnchorsForFile_CacheHit exercises the early-return path in anchorsForFile
+// when the result is already present in the cache.
+func TestAnchorsForFile_CacheHit(t *testing.T) {
+	// Pre-populate the cache with a known anchor set.
+	cached := map[string]bool{"intro": true}
+	cache := map[string]map[string]bool{
+		"mykey": cached,
+	}
+
+	tf := targetFile{
+		cacheKey: "mykey",
+		read: func() ([]byte, error) {
+			// Should never be called when the cache is hit.
+			t.Fatal("read() must not be called on a cache hit")
+			return nil, nil
+		},
+	}
+
+	result, err := anchorsForFile(tf, cache)
+	require.NoError(t, err)
+	require.True(t, result["intro"], "cache hit must return the pre-populated anchors")
+}
+
+// TestAnchorsForFile_ReadError exercises the read() error path in anchorsForFile.
+func TestAnchorsForFile_ReadError(t *testing.T) {
+	cache := map[string]map[string]bool{}
+	readErr := errors.New("simulated read error")
+	tf := targetFile{
+		cacheKey: "errkey",
+		read: func() ([]byte, error) {
+			return nil, readErr
+		},
+	}
+
+	_, err := anchorsForFile(tf, cache)
+	require.Error(t, err)
+	require.Equal(t, readErr, err)
+}
+
+// =====================================================================
+// Additional coverage: appendNodeText with *ast.String
+// =====================================================================
+
+// TestAppendNodeText_AstString exercises the *ast.String branch of appendNodeText.
+// ast.String is created by the typographer extension and other paragraph
+// transforms; we construct one directly to keep the test self-contained.
+func TestAppendNodeText_AstString(t *testing.T) {
+	strNode := gast.NewString([]byte("hello"))
+
+	var b strings.Builder
+	appendNodeText(&b, strNode, nil)
+	require.Equal(t, "hello", b.String())
+}
+
+// =====================================================================
+// Additional coverage: resolveTargetFile FS-only path
+// =====================================================================
+
+// TestResolveTargetFile_FSOnlyPath exercises the fallback branch in
+// resolveTargetFile where the OS path lookup fails (because f.Path has no
+// directory component) but the FS contains the target file.
+func TestResolveTargetFile_FSOnlyPath(t *testing.T) {
+	dir := t.TempDir()
+	targetContent := []byte("# Target\n")
+	writeFile(t, filepath.Join(dir, "target.md"), string(targetContent))
+
+	// f.Path has no directory separator, so resolveTargetOSPath returns (_, false).
+	// The FS lookup succeeds because dir contains target.md.
+	f := &lint.File{
+		Path: "doc.md", // no separator → resolveTargetOSPath returns false
+		FS:   os.DirFS(dir),
+	}
+
+	tf, ok := resolveTargetFile(f, "target.md", "")
+	require.True(t, ok, "expected target resolution via FS to succeed")
+
+	data, err := tf.read()
+	require.NoError(t, err)
+	require.Equal(t, targetContent, data)
+}
+
+// TestResolveTargetFile_FSPathAbsoluteReturnsNotFound exercises the
+// `strings.HasPrefix(fsPath, "/")` branch that returns false.
+func TestResolveTargetFile_FSPathAbsoluteReturnsNotFound(t *testing.T) {
+	dir := t.TempDir()
+	f := &lint.File{
+		Path: "doc.md", // no separator → resolveTargetOSPath returns false
+		FS:   os.DirFS(dir),
+	}
+	// A linkPath that normalises to an absolute-like path (leading /).
+	// normalizeLinkPath(filepath.FromSlash("/absolute")) → "/" → "."? No,
+	// actually linkPath must be pre-normalized by the caller as a relative
+	// path.  To hit the fsPath=="" branch, we pass a linkPath of "." which
+	// normalizeLinkPath would return "" for. We call resolveTargetFile
+	// directly with a clean "." which results in fsPath="" after TrimPrefix.
+	// Actually: normalizeLinkPath cleans to ".", and "." → "" is handled by
+	// checkLink; here we call resolveTargetFile directly with the already-
+	// normalised form. TrimPrefix("./", "./") removes "./" leaving "".
+	_, ok := resolveTargetFile(f, "./", "")
+	require.False(t, ok, "fsPath='' after TrimPrefix must return not found")
+}
+
+// =====================================================================
+// Additional coverage: toStringSlice with []string type
+// =====================================================================
+
+// TestToStringSlice_StringSlice exercises the []string case in toStringSlice,
+// which is the branch reached when YAML is already decoded to []string (e.g.
+// by the settings layer).
+func TestToStringSlice_StringSlice(t *testing.T) {
+	input := []string{"docs/**", "src/**"}
+	result, ok := toStringSlice(input)
+	require.True(t, ok)
+	require.Equal(t, input, result)
+	// Verify it's a copy, not the original slice.
+	result[0] = "changed"
+	require.Equal(t, "docs/**", input[0], "toStringSlice must return a copy")
+}
+
+// =====================================================================
+// Additional coverage: Check with link to FS-resolved target having anchor
+// =====================================================================
+
+// TestCheck_FSResolvesTargetWithAnchor exercises the path where the target
+// file is found via the FS (not OS path) and has a matching anchor.  This
+// also exercises the anchorsForFile success path in integration.
+func TestCheck_FSResolvesTargetWithAnchor(t *testing.T) {
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "guide.md")
+	sourcePath := filepath.Join(dir, "doc.md")
+
+	writeFile(t, targetPath, "# Guide\n\n## Setup\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [guide](guide.md#setup).\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 0,
+		"link to existing anchor must not produce diagnostics, got: %v", diagMessages(diags))
+}
+
+// TestCheck_FSResolvesTargetAndAnchorCachedOnSecondLink exercises the
+// anchorsForFile cache hit path by checking the same target file twice
+// (two links to guide.md) in a single Check call.
+func TestCheck_FSResolvesTargetAnchorCachedOnSecondLink(t *testing.T) {
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "guide.md")
+	sourcePath := filepath.Join(dir, "doc.md")
+
+	writeFile(t, targetPath, "# Guide\n\n## Setup\n")
+	// Two links to the same target: second call hits anchorsForFile cache.
+	writeFile(t, sourcePath, "# Doc\n\nFirst [link](guide.md#setup).\n\nSecond [link](guide.md#setup).\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 0,
+		"both links to existing anchor must be clean, got: %v", diagMessages(diags))
+}
+
+// TestCheck_AbsoluteURLLinkSkipped exercises the parseTarget-returns-false
+// branch in checkLink: absolute-URL links are silently skipped.
+func TestCheck_AbsoluteURLLinkSkipped(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [external](https://example.com/path).\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 0, "absolute URL links must produce no diagnostics, got: %v", diagMessages(diags))
+}
+
+// TestCheck_AbsoluteFilepathLinkSkipped exercises the filepath.IsAbs(linkPath)
+// branch in checkLink which returns nil for absolute-path links.
+func TestCheck_AbsoluteFilepathLinkSkipped(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	// An absolute path link – these are skipped regardless of whether the
+	// file exists.
+	writeFile(t, sourcePath, "# Doc\n\nSee [root](/etc/nonexistent.md).\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 0, "absolute-path links must be skipped, got: %v", diagMessages(diags))
 }

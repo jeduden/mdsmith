@@ -537,3 +537,98 @@ func TestNewFile_MultiPIs(t *testing.T) {
 	assert.Equal(t, "foo", pis[0].Name)
 	assert.Equal(t, "bar", pis[1].Name)
 }
+
+// --- SetRootDir tests ---
+
+// TestSetRootDir_SetsRootDirAndRootFS verifies that SetRootDir sets both the
+// RootDir string and initialises RootFS as an os.DirFS rooted at that directory.
+func TestSetRootDir_SetsRootDirAndRootFS(t *testing.T) {
+	dir := t.TempDir()
+	f := &File{}
+	f.SetRootDir(dir)
+
+	assert.Equal(t, dir, f.RootDir)
+	require.NotNil(t, f.RootFS, "RootFS must be non-nil after SetRootDir")
+
+	// Write a sentinel file and verify RootFS can open it, which confirms
+	// that RootFS is rooted at dir and not at some other location.
+	sentinel := "sentinel.md"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, sentinel), []byte("# hi"), 0o644))
+	fh, err := f.RootFS.Open(sentinel)
+	require.NoError(t, err, "RootFS must be able to open files under dir")
+	_ = fh.Close()
+}
+
+// --- NewGitignoreMatcher ancestor .gitignore tests ---
+
+// TestNewGitignoreMatcher_AncestorGitignore verifies that rules from a
+// .gitignore file in an ancestor directory (above the root passed to
+// NewGitignoreMatcher) are collected and applied.
+func TestNewGitignoreMatcher_AncestorGitignore(t *testing.T) {
+	// Build: /parent/.gitignore (contains *.ancestor)
+	//        /parent/child/           <- root passed to NewGitignoreMatcher
+	parent := t.TempDir()
+	child := filepath.Join(parent, "child")
+	require.NoError(t, os.MkdirAll(child, 0o755))
+
+	ancestorGitignore := filepath.Join(parent, ".gitignore")
+	require.NoError(t, os.WriteFile(ancestorGitignore, []byte("*.ancestor\n"), 0o644))
+
+	m := NewGitignoreMatcher(child)
+	require.NotNil(t, m)
+
+	// A file in the child dir that matches the ancestor pattern should be ignored.
+	matchedFile := filepath.Join(child, "test.ancestor")
+	assert.True(t, m.IsIgnored(matchedFile, false),
+		"file matching an ancestor .gitignore pattern must be ignored")
+
+	// A file that does not match must not be ignored.
+	otherFile := filepath.Join(child, "test.md")
+	assert.False(t, m.IsIgnored(otherFile, false),
+		"file not matching the ancestor pattern must not be ignored")
+}
+
+// --- addDirFiles error path ---
+
+// TestAddDirFiles_NonexistentDir exercises the error return path of addDirFiles
+// when the target directory does not exist.
+func TestAddDirFiles_NonexistentDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "does-not-exist")
+	err := addDirFiles(dir, DefaultResolveOpts(), func(_ string) {})
+	assert.Error(t, err, "addDirFiles must propagate walkDir errors")
+}
+
+// --- isDescendantOf unreachable-Rel branch (via filepath.Rel on Windows
+//     volume-root mismatch; on POSIX we use the closest equivalent) ---
+
+// TestIsDescendantOf_RelError exercises the filepath.Rel-error branch of
+// isDescendantOf. filepath.Rel returns an error when the two paths reside on
+// different Windows drive letters; on POSIX the function never returns an
+// error for absolute paths, so we verify the happy-path variant that hits the
+// same coverage statement via the `rel == "."` guard (already covered by the
+// existing SelfReturnsFalse test).  This additional test strengthens the
+// assertion that sibling paths are correctly classified.
+func TestIsDescendantOf_Sibling(t *testing.T) {
+	assert.False(t, isDescendantOf("/a/sibling", "/a/other"),
+		"sibling directory must not be a descendant")
+	assert.True(t, isDescendantOf("/a/other/child", "/a/other"),
+		"child must be a descendant of parent")
+}
+
+// --- isGitignored: Abs-error branch ---
+// filepath.Abs virtually never returns an error on POSIX (only in the
+// unreachable os.Getwd failure scenario), so we verify the positive/negative
+// paths that are reachable without simulating a Getwd failure.
+func TestIsGitignored_DirectorySentinel(t *testing.T) {
+	dir := t.TempDir()
+	gitignorePath := filepath.Join(dir, ".gitignore")
+	require.NoError(t, os.WriteFile(gitignorePath, []byte("logs/\n"), 0o644))
+
+	m := NewGitignoreMatcher(dir)
+	logsDir := filepath.Join(dir, "logs")
+	// isGitignored for a directory entry.
+	assert.True(t, isGitignored(m, logsDir, true),
+		"directory matching dir-only pattern must be ignored")
+	assert.False(t, isGitignored(m, logsDir, false),
+		"file with same name must not be ignored by dir-only pattern")
+}

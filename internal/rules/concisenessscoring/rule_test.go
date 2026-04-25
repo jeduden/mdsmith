@@ -191,3 +191,56 @@ func TestEnabledByDefault(t *testing.T) {
 	r := &Rule{}
 	assert.False(t, r.EnabledByDefault(), "conciseness-scoring should be disabled by default")
 }
+
+// --- formatExamples branch coverage ---
+
+// TestFormatExamples_Empty exercises the len==0 branch of formatExamples.
+func TestFormatExamples_Empty(t *testing.T) {
+	result := formatExamples([]string{})
+	assert.Equal(t, "", result)
+}
+
+// TestFormatExamples_SingleExample exercises the `len < limit` branch of
+// formatExamples, which caps at min(2, len).
+func TestFormatExamples_SingleExample(t *testing.T) {
+	result := formatExamples([]string{"basically"})
+	assert.Contains(t, result, "basically")
+	// Only one example, so no comma separator.
+	assert.NotContains(t, result, ", ")
+}
+
+// --- setMinWords error branches ---
+
+// TestApplySettings_InvalidMinWordsType exercises the non-int path in setMinWords.
+func TestApplySettings_InvalidMinWordsType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"min-words": "twenty"})
+	require.Error(t, err, "expected error for non-integer min-words")
+	assert.Contains(t, err.Error(), "min-words must be an integer")
+}
+
+// TestApplySettings_MinWordsZero exercises the n<=0 path in setMinWords.
+func TestApplySettings_MinWordsZero(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"min-words": 0})
+	require.Error(t, err, "expected error for min-words=0")
+	assert.Contains(t, err.Error(), "min-words must be > 0")
+}
+
+// TestApplySettings_MinWordsNegative exercises the n<=0 path in setMinWords
+// with a negative value.
+func TestApplySettings_MinWordsNegative(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"min-words": -5})
+	require.Error(t, err, "expected error for negative min-words")
+	assert.Contains(t, err.Error(), "min-words must be > 0")
+}
+
+// TestApplySettings_MinWordsValid exercises the success path when setMinWords
+// is called via ApplySettings so that the err!=nil return is also covered.
+func TestApplySettings_MinWordsValid(t *testing.T) {
+	r := &Rule{MinScore: defaultMinScore, MinWords: defaultMinWords}
+	err := r.ApplySettings(map[string]any{"min-words": 10})
+	require.NoError(t, err)
+	assert.Equal(t, 10, r.MinWords)
+}
