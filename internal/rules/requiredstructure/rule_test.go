@@ -1450,3 +1450,93 @@ func TestExtractPIFileParam_MultiLine(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "other.md", result)
 }
+
+// =====================================================================
+// Plan 61 hardening: additional edge-case tests
+// =====================================================================
+
+// Wildcard heading (`# ?`) must still enforce the correct level.
+// A document h2 where h1 is required produces a level-mismatch diagnostic.
+func TestCheck_WildcardHeadingLevelMismatch(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md", "## Title\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `heading level mismatch for "Title": expected h1, got h2`)
+}
+
+// Soft-wrapped body paragraph (multiple lines joined by space) must
+// match the front matter field value when concatenated.
+func TestCheck_BodySyncSoftWrapped(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n{description}\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"---\ndescription: Line exceeds maximum length.\n---\n# My Rule\n\n"+
+			"Line exceeds\nmaximum length.\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// The improved body sync diagnostic must include the expected value so
+// authors know what text to write.
+func TestCheck_BodySyncDiagnosticIncludesExpected(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n{description}\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"---\ndescription: Correct description.\n---\n# My Rule\n\nWrong text.\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `expected "Correct description."`)
+}
+
+// Integer front matter values are stringified for heading sync.
+func TestCheck_SyncIntegerFrontMatterValue(t *testing.T) {
+	schemaPath := writeSchema(t, "# {id}: {name}\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"---\nid: 42\nname: line-length\n---\n# 42: line-length\n")
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+// When a synced heading is absent from the document, checkSync must
+// not emit a spurious diagnostic; only checkStructure reports it.
+func TestCheck_SyncNotFiredForMissingHeading(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## {title}\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"---\ntitle: My Section\n---\n# Title\n")
+	diags := r.Check(f)
+	// Exactly one diagnostic: missing required section, no sync error.
+	require.Len(t, diags, 1)
+	expectDiagMsg(t, diags, "missing required section")
+	for _, d := range diags {
+		assert.NotContains(t, d.Message, "sync")
+	}
+}
+
+// When several required sections are all absent, each gets its own
+// "missing required section" diagnostic.
+func TestCheck_MultipleMissingSections(t *testing.T) {
+	schemaPath := writeSchema(t,
+		"# ?\n\n## Goal\n\n## Tasks\n\n## Acceptance Criteria\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md", "# Title\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `missing required section "## Goal"`)
+	expectDiagMsg(t, diags, `missing required section "## Tasks"`)
+	expectDiagMsg(t, diags, `missing required section "## Acceptance Criteria"`)
+}
+
+// A section that is both out of order AND at the wrong level must
+// produce both the out-of-order and the level-mismatch diagnostic.
+func TestCheck_OutOfOrderAlsoReportsLevelMismatch(t *testing.T) {
+	schemaPath := writeSchema(t,
+		"# ?\n\n## Goal\n\n## Tasks\n")
+	r := &Rule{Schema: schemaPath}
+	// Tasks (h2) appears before Goal; Goal appears at h3 (wrong level).
+	f := newTestFile(t, "doc.md",
+		"# Title\n\n## Tasks\n\n### Goal\n")
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `out of order`)
+	expectDiagMsg(t, diags, `heading level mismatch`)
+}

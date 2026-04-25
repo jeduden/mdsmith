@@ -1131,7 +1131,7 @@ func checkBodySync(
 	}
 
 	return []lint.Diagnostic{makeDiag(f.Path, dh.Line,
-		fmt.Sprintf("body does not match frontmatter field %q", field))}
+		fmt.Sprintf("body does not match frontmatter field %q: expected %q", field, expected))}
 }
 
 func validateCUESchemaSyntax(schema string) error {

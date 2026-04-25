@@ -221,7 +221,7 @@ Describe the goal here.
 | extra section       | unexpected section "## Extra" (expected "## Settings")                        |
 | out of order        | section "## Tasks" out of order: expected after "## Goal"                     |
 | heading sync        | heading does not match frontmatter: expected "MDS001" (from id), got "MDS002" |
-| body sync           | body does not match frontmatter field "description"                           |
+| body sync           | body does not match frontmatter field "description": expected "..."           |
 | front matter schema | front matter does not satisfy schema CUE constraints: ...                     |
 | filename mismatch   | filename "foo.md" does not match required pattern "[0-9]*_*.md"               |
 | misplaced require   | <?require?> is only recognized in schema files; this directive has no effect  |
