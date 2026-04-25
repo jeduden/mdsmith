@@ -390,6 +390,228 @@ func TestCompileLexicon_InsufficientVagueWords(t *testing.T) {
 	}
 }
 
+// validWeights returns a map with all required feature keys set to 0.
+func validWeights() map[string]float64 {
+	w := make(map[string]float64, len(featureOrder))
+	for _, k := range featureOrder {
+		w[k] = 0
+	}
+	return w
+}
+
+// makeStrings returns n unique single-token strings prefixed with prefix.
+func makeStrings(prefix string, n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = fmt.Sprintf("%s%d", prefix, i)
+	}
+	return out
+}
+
+// validLexicon returns a lexiconArtifact that passes compileLexicon.
+func validLexicon() lexiconArtifact {
+	return lexiconArtifact{
+		FillerWords:    makeStrings("fw", minFillerWords),
+		ModalWords:     makeStrings("mw", minModalWords),
+		VagueWords:     makeStrings("vw", minVagueWords),
+		ActionWords:    makeStrings("aw", minActionWords),
+		StopWords:      makeStrings("sw", minStopWords),
+		HedgePhrases:   makeStrings("hp", minHedgePhrases),
+		VerbosePhrases: makeStrings("vp", minVerbosePhrases),
+	}
+}
+
+// =====================================================================
+// Additional compileLexicon error paths
+// =====================================================================
+
+func TestCompileLexicon_InsufficientActionWords(t *testing.T) {
+	raw := lexiconArtifact{
+		FillerWords: makeStrings("fw", minFillerWords),
+		ModalWords:  makeStrings("mw", minModalWords),
+		VagueWords:  makeStrings("vw", minVagueWords),
+		ActionWords: []string{},
+	}
+	_, err := compileLexicon(raw)
+	if err == nil {
+		t.Fatal("expected error for insufficient action_words")
+	}
+	if !strings.Contains(err.Error(), "action_words") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompileLexicon_InsufficientStopWords(t *testing.T) {
+	raw := lexiconArtifact{
+		FillerWords: makeStrings("fw", minFillerWords),
+		ModalWords:  makeStrings("mw", minModalWords),
+		VagueWords:  makeStrings("vw", minVagueWords),
+		ActionWords: makeStrings("aw", minActionWords),
+		StopWords:   []string{},
+	}
+	_, err := compileLexicon(raw)
+	if err == nil {
+		t.Fatal("expected error for insufficient stop_words")
+	}
+	if !strings.Contains(err.Error(), "stop_words") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompileLexicon_InsufficientHedgePhrases(t *testing.T) {
+	raw := lexiconArtifact{
+		FillerWords:  makeStrings("fw", minFillerWords),
+		ModalWords:   makeStrings("mw", minModalWords),
+		VagueWords:   makeStrings("vw", minVagueWords),
+		ActionWords:  makeStrings("aw", minActionWords),
+		StopWords:    makeStrings("sw", minStopWords),
+		HedgePhrases: []string{},
+	}
+	_, err := compileLexicon(raw)
+	if err == nil {
+		t.Fatal("expected error for insufficient hedge_phrases")
+	}
+	if !strings.Contains(err.Error(), "hedge_phrases") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCompileLexicon_InsufficientVerbosePhrases(t *testing.T) {
+	raw := lexiconArtifact{
+		FillerWords:    makeStrings("fw", minFillerWords),
+		ModalWords:     makeStrings("mw", minModalWords),
+		VagueWords:     makeStrings("vw", minVagueWords),
+		ActionWords:    makeStrings("aw", minActionWords),
+		StopWords:      makeStrings("sw", minStopWords),
+		HedgePhrases:   makeStrings("hp", minHedgePhrases),
+		VerbosePhrases: []string{},
+	}
+	_, err := compileLexicon(raw)
+	if err == nil {
+		t.Fatal("expected error for insufficient verbose_phrases")
+	}
+	if !strings.Contains(err.Error(), "verbose_phrases") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNormalizeCueList_RejectsEmptyPhraseEntry(t *testing.T) {
+	// tokenOnly=false (phrase list) with a whitespace-only entry.
+	_, err := normalizeCueList("hedge_phrases", []string{"valid phrase", "   "}, 1, false)
+	if err == nil {
+		t.Fatal("expected error for empty phrase entry")
+	}
+	if !strings.Contains(err.Error(), "empty phrase entry") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// =====================================================================
+// validateArtifact: validateWeights and compileLexicon error paths
+// =====================================================================
+
+func TestValidateArtifact_WeightsValidationError(t *testing.T) {
+	// Weights missing a required key.
+	a := artifact{
+		ModelID:   "test",
+		Version:   "1.0",
+		Threshold: 0.5,
+		Weights:   map[string]float64{"filler_rate": 1},
+	}
+	err := validateArtifact(a)
+	if err == nil {
+		t.Fatal("expected error for missing weights key")
+	}
+	if !strings.Contains(err.Error(), "missing required key") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateArtifact_LexiconCompileError(t *testing.T) {
+	// Weights are valid but lexicon is empty (will fail compileLexicon).
+	a := artifact{
+		ModelID:   "test",
+		Version:   "1.0",
+		Threshold: 0.5,
+		Weights:   validWeights(),
+		Lexicon:   lexiconArtifact{}, // empty → fails compileLexicon
+	}
+	err := validateArtifact(a)
+	if err == nil {
+		t.Fatal("expected error for invalid lexicon")
+	}
+	if !strings.Contains(err.Error(), "filler_words") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// =====================================================================
+// countTokenMatches: already-seen token path
+// =====================================================================
+
+func TestCountTokenMatches_DuplicateTokenCountedNotDedupedInCues(t *testing.T) {
+	// "foo" appears twice in tokens; count should be 2 but cues should have it once.
+	set := map[string]struct{}{"foo": {}, "bar": {}}
+	count, cues := countTokenMatches([]string{"foo", "bar", "foo"}, set)
+	if count != 3 {
+		t.Fatalf("expected count=3, got %d", count)
+	}
+	if len(cues) != 2 {
+		t.Fatalf("expected 2 cues (foo, bar), got %v", cues)
+	}
+}
+
+// =====================================================================
+// phraseMarker: empty phrase → returns ""
+// =====================================================================
+
+func TestPhraseMarker_EmptyPhrase(t *testing.T) {
+	result := phraseMarker("   ")
+	if result != "" {
+		t.Fatalf("expected empty string for whitespace-only phrase, got %q", result)
+	}
+}
+
+func TestPhraseMarker_PunctuationOnly(t *testing.T) {
+	result := phraseMarker("!!!")
+	if result != "" {
+		t.Fatalf("expected empty string for punctuation-only phrase, got %q", result)
+	}
+}
+
+// =====================================================================
+// countPhraseMatches: empty marker skip path
+// =====================================================================
+
+func TestCountPhraseMatches_EmptyMarkerSkipped(t *testing.T) {
+	// Pass a phrase that yields no tokens → phraseMarker returns "" → skipped.
+	count, cues := countPhraseMatches(" foo bar ", []string{"!!!", "foo bar"})
+	// "!!!" produces empty marker (skipped), "foo bar" matches " foo bar "
+	if count != 1 {
+		t.Fatalf("expected count=1, got %d", count)
+	}
+	if len(cues) != 1 {
+		t.Fatalf("expected 1 cue, got %v", cues)
+	}
+}
+
+// =====================================================================
+// dedupeSorted: duplicate entry path
+// =====================================================================
+
+func TestDedupeSorted_DuplicatesRemoved(t *testing.T) {
+	result := dedupeSorted([]string{"b", "a", "b", "c", "a"})
+	expected := []string{"a", "b", "c"}
+	if len(result) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, result)
+	}
+	for i, v := range expected {
+		if result[i] != v {
+			t.Fatalf("expected %v, got %v", expected, result)
+		}
+	}
+}
+
 func BenchmarkClassify(b *testing.B) {
 	model, err := LoadEmbedded()
 	if err != nil {

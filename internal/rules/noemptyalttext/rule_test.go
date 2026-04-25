@@ -126,3 +126,10 @@ func TestName(t *testing.T) {
 		t.Errorf("expected no-empty-alt-text, got %s", r.Name())
 	}
 }
+
+func TestCategory(t *testing.T) {
+	r := &Rule{}
+	if r.Category() == "" {
+		t.Error("expected non-empty category")
+	}
+}

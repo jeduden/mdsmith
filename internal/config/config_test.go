@@ -1520,3 +1520,24 @@ func TestInjectArchetypeRoots_CreatesSettingsMapIfNil(t *testing.T) {
 	got := cfg.Rules["required-structure"].Settings["archetype-roots"]
 	assert.Equal(t, []any{"r"}, got)
 }
+
+// TestMergeNilLoadedWithCategories exercises copyCategories with a non-nil
+// categories map, covering the branch at merge.go copyCategories.
+func TestMergeNilLoadedWithCategories(t *testing.T) {
+	defaults := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		Categories: map[string]bool{
+			"heading":    false,
+			"whitespace": true,
+		},
+	}
+	merged := Merge(defaults, nil)
+	require.NotNil(t, merged.Categories, "expected non-nil categories")
+	assert.Equal(t, false, merged.Categories["heading"])
+	assert.Equal(t, true, merged.Categories["whitespace"])
+	// Verify it's a copy, not the same map.
+	defaults.Categories["heading"] = true
+	assert.Equal(t, false, merged.Categories["heading"], "merged categories should be independent copy")
+}

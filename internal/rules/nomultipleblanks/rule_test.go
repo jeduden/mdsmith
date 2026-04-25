@@ -232,3 +232,10 @@ func TestCheck_MaxTwo_FlagsThreeConsecutiveBlanks(t *testing.T) {
 		t.Errorf("expected diagnostic on line 4, got %d", diags[0].Line)
 	}
 }
+
+func TestCategory(t *testing.T) {
+	r := &Rule{}
+	if r.Category() == "" {
+		t.Error("expected non-empty category")
+	}
+}

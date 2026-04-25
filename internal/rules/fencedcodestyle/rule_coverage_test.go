@@ -243,6 +243,76 @@ func TestFenceOpenLine_SecondBlock(t *testing.T) {
 	assert.Equal(t, 5, lines[1])
 }
 
+// --- replaceFenceChars with leading spaces ---
+
+func TestReplaceFenceChars_LeadingSpaces(t *testing.T) {
+	// A fence line with leading spaces: "  ~~~go" -> "  ```go"
+	line := []byte("  ~~~go")
+	result := replaceFenceChars(line, '`')
+	assert.Equal(t, []byte("  ```go"), result)
+}
+
+// --- fenceOpenLineRange: previous sibling branch ---
+
+func TestFenceOpenLineRange_EmptyBlockWithPreviousSibling(t *testing.T) {
+	// Empty tilde code block after a paragraph: PreviousSibling() is non-nil.
+	src := []byte("paragraph\n\n~~~\n~~~\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	found := false
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		fcb, ok := n.(*ast.FencedCodeBlock)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		start, end := FenceOpenLineRange(f.Source, fcb)
+		assert.True(t, start < len(f.Source), "expected start within source")
+		assert.True(t, end >= start, "expected end >= start")
+		found = true
+		return ast.WalkStop, nil
+	})
+	assert.True(t, found, "expected to find a fenced code block")
+}
+
+// --- fenceOpenLineRange: info with trailing non-newline chars ---
+
+func TestFenceOpenLineRange_InfoWithTrailingSpace(t *testing.T) {
+	// Fence with trailing spaces after info string: ```go   \n
+	// The lineEnd loop at line 178 advances past the trailing spaces.
+	src := []byte("```go   \ncode\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if fcb, ok := n.(*ast.FencedCodeBlock); ok {
+			start, end := FenceOpenLineRange(f.Source, fcb)
+			// Opening line is "```go   " — end should be past the trailing spaces
+			assert.Equal(t, 0, start)
+			assert.True(t, end >= 5, "end should be past the info string")
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+}
+
+// --- Fix with empty block after paragraph (exercises previousSibling path) ---
+
+func TestFix_EmptyTildeBlockAfterParagraph(t *testing.T) {
+	src := []byte("paragraph\n\n~~~\n~~~\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "backtick"}
+	result := r.Fix(f)
+	assert.Equal(t, "paragraph\n\n```\n```\n", string(result))
+}
+
 // --- Tilde fence lines ---
 
 func TestFenceLines_Tilde(t *testing.T) {

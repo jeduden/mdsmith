@@ -145,3 +145,10 @@ func TestFix_PreservesCodeBlockLines(t *testing.T) {
 		t.Errorf("expected %q, got %q", expected, string(result))
 	}
 }
+
+func TestCategory(t *testing.T) {
+	r := &Rule{}
+	if r.Category() == "" {
+		t.Error("expected non-empty category")
+	}
+}

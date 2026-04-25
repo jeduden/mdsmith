@@ -523,3 +523,8 @@ func assertCells(t *testing.T, want, got []string) {
 		}
 	}
 }
+
+func TestCategory(t *testing.T) {
+	r := &Rule{}
+	assert.NotEmpty(t, r.Category())
+}

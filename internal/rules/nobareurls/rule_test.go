@@ -140,3 +140,10 @@ func TestCheck_URLInLinkText(t *testing.T) {
 	diags := r.Check(f)
 	require.Len(t, diags, 0, "expected 0 diagnostics, got %d", len(diags))
 }
+
+func TestCategory(t *testing.T) {
+	r := &Rule{}
+	if r.Category() == "" {
+		t.Error("expected non-empty category")
+	}
+}
