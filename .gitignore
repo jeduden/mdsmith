@@ -5,3 +5,6 @@ cover.out
 /.tmp/
 docs/research/conciseness/spikes/wasm-embedded-inference/classifier.wasm
 internal/rules/concisenessscoring/wasmclassifier/classifier.wasm
+e2e-cover/
+unit.cov
+merged.cov
