@@ -96,23 +96,30 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// Fix implements rule.FixableRule. It removes the [!TOKEN] marker line
-// from GitHub Alert blockquotes (line-level edit, runs first because
-// the lazy-continuation handling rewrites multiple lines), then falls
-// through to fixByteRangeFeatures for the six byte-range features:
-// heading IDs, strikethrough, task lists, superscript, subscript, and
-// bare-URL autolinks. Each feature is fixed only when the configured
-// flavor does not support it.
+// Fix implements rule.FixableRule. It first removes the [!TOKEN]
+// marker line from GitHub Alert blockquotes (line-level edit, with
+// lazy-continuation handling), then runs the byte-range fix pipeline
+// over the result for heading IDs, strikethrough, task lists,
+// superscript, subscript, and bare-URL autolinks. Each feature is
+// fixed only when the configured flavor does not support it. When
+// alerts are stripped the byte-range pass re-parses the rewritten
+// source so AST offsets match the new bytes.
 func (r *Rule) Fix(f *lint.File) []byte {
 	if r.Flavor == flavorInvalid {
 		return f.Source
 	}
+	current := f
 	if !r.Flavor.Supports(FeatureGitHubAlerts) {
-		if out := r.fixGitHubAlerts(f); !bytes.Equal(out, f.Source) {
-			return out
+		stripped := r.fixGitHubAlerts(f)
+		if !bytes.Equal(stripped, f.Source) {
+			reparsed, err := lint.NewFile(f.Path, stripped)
+			if err != nil {
+				return stripped
+			}
+			current = reparsed
 		}
 	}
-	return r.fixByteRangeFeatures(f)
+	return r.fixByteRangeFeatures(current)
 }
 
 // fixGitHubAlerts strips [!TOKEN] alert markers from blockquotes,
