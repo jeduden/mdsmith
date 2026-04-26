@@ -24,15 +24,17 @@ var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
 
 // Config is the top-level configuration.
 type Config struct {
-	Rules          map[string]RuleCfg `yaml:"rules"`
-	Ignore         []string           `yaml:"ignore"`
-	Overrides      []Override         `yaml:"overrides"`
-	FrontMatter    *bool              `yaml:"front-matter"`
-	Categories     map[string]bool    `yaml:"categories"`
-	Files          []string           `yaml:"files"`
-	FollowSymlinks bool               `yaml:"follow-symlinks"`
-	MaxInputSize   string             `yaml:"max-input-size"`
-	Archetypes     ArchetypesCfg      `yaml:"archetypes"`
+	Rules          map[string]RuleCfg    `yaml:"rules"`
+	Ignore         []string              `yaml:"ignore"`
+	Overrides      []Override            `yaml:"overrides"`
+	FrontMatter    *bool                 `yaml:"front-matter"`
+	Categories     map[string]bool       `yaml:"categories"`
+	Files          []string              `yaml:"files"`
+	FollowSymlinks bool                  `yaml:"follow-symlinks"`
+	MaxInputSize   string                `yaml:"max-input-size"`
+	Archetypes     ArchetypesCfg         `yaml:"archetypes"`
+	Kinds          map[string]KindBody   `yaml:"kinds,omitempty"`
+	KindAssignment []KindAssignmentEntry `yaml:"kind-assignment,omitempty"`
 
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
@@ -73,6 +75,21 @@ type Override struct {
 	Files      []string           `yaml:"files"`
 	Rules      map[string]RuleCfg `yaml:"rules"`
 	Categories map[string]bool    `yaml:"categories"`
+}
+
+// KindBody is a named bundle of rule settings. It has the same shape as
+// Override minus the Files field; files are bound to kinds separately via
+// front-matter kinds: or kind-assignment:.
+type KindBody struct {
+	Rules      map[string]RuleCfg `yaml:"rules"`
+	Categories map[string]bool    `yaml:"categories"`
+}
+
+// KindAssignmentEntry assigns one or more kinds to files matching glob
+// patterns. The glob syntax is the same as overrides: and ignore:.
+type KindAssignmentEntry struct {
+	Files []string `yaml:"files"`
+	Kinds []string `yaml:"kinds"`
 }
 
 // RuleCfg is a YAML union: can be bool (enable/disable) or map[string]any (settings).

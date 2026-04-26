@@ -76,7 +76,13 @@ func (r *Runner) Run(paths []string) *Result {
 			return r.cachedGitignore(gd)
 		}
 
-		effective := r.effectiveWithCategories(path)
+		fmKinds := lint.ParseFrontMatterKinds(f.FrontMatter)
+		if err := config.ValidateFrontMatterKinds(r.Config, path, fmKinds); err != nil {
+			res.Errors = append(res.Errors, err)
+			continue
+		}
+
+		effective := r.effectiveWithCategories(path, fmKinds)
 
 		r.logRules(effective)
 
@@ -114,7 +120,13 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		f.SetRootDir(r.RootDir)
 	}
 
-	effective := r.effectiveWithCategories(path)
+	fmKinds := lint.ParseFrontMatterKinds(f.FrontMatter)
+	if err := config.ValidateFrontMatterKinds(r.Config, path, fmKinds); err != nil {
+		res.Errors = append(res.Errors, err)
+		return res
+	}
+
+	effective := r.effectiveWithCategories(path, fmKinds)
 
 	r.logRules(effective)
 
@@ -128,10 +140,10 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 // effectiveWithCategories computes the effective rule config for a file
 // path, applying category-based enable/disable on top of per-rule settings.
-func (r *Runner) effectiveWithCategories(path string) map[string]config.RuleCfg {
-	effective := config.Effective(r.Config, path)
-	categories := config.EffectiveCategories(r.Config, path)
-	explicit := config.EffectiveExplicitRules(r.Config, path)
+func (r *Runner) effectiveWithCategories(path string, fmKinds []string) map[string]config.RuleCfg {
+	effective := config.Effective(r.Config, path, fmKinds)
+	categories := config.EffectiveCategories(r.Config, path, fmKinds)
+	explicit := config.EffectiveExplicitRules(r.Config, path, fmKinds)
 
 	// Build rule-name-to-category lookup from the runner's rule list.
 	catLookup := ruleCategoryLookup(r.Rules)

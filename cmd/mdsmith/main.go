@@ -1035,6 +1035,7 @@ const helpUsageText = `Usage: mdsmith help <topic>
 Topics:
   rule [id|name]      Show rule documentation
   metrics [id|name]   Show metric documentation
+  kinds               Show concept page for file kinds
 `
 
 // runHelp implements the "help" subcommand.
@@ -1049,10 +1050,76 @@ func runHelp(args []string) int {
 		return runHelpRule(args[1:])
 	case "metrics":
 		return runHelpMetrics(args[1:])
+	case "kinds":
+		return runHelpKinds()
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith: help: unknown topic %q\n", args[0])
 		return 2
 	}
+}
+
+const helpKindsText = `File Kinds
+
+A kind is a named bundle of rule settings that can be applied to a set of
+files. Kinds let you share per-rule tuning across files that serve the same
+purpose (schema, template, fragment, prompt, …) without repeating overrides.
+
+DECLARATION
+
+Declare kinds under the kinds: key. The body has the same shape as an
+override entry (rules:, categories:) — minus files:, since files are bound
+to kinds separately:
+
+  kinds:
+    plan:
+      rules:
+        required-structure:
+          schema: plan/proto.md
+        paragraph-readability: false
+    proto:
+      rules:
+        paragraph-readability: false
+        front-matter: false
+
+Kind names are project-chosen. mdsmith ships no built-in kinds.
+
+ASSIGNMENT
+
+A file's effective kind list is built from two sources, concatenated in
+this order:
+
+  1. Front-matter kinds: field (YAML list).
+  2. Matching entries in kind-assignment: (config order; each entry's kinds
+     in the order listed).
+
+Duplicate names are dropped after their first occurrence. Referencing an
+undeclared kind is a config error.
+
+  kind-assignment:
+    - files: ["plan/[0-9]*_*.md"]
+      kinds: [plan]
+    - files: ["**/proto.md"]
+      kinds: [proto]
+
+MERGE ORDER
+
+Kinds apply after top-level rules and before glob overrides:
+
+  top-level rules → kinds (effective-list order) → glob overrides
+
+Within kinds, the later kind in the effective list replaces the earlier
+kind's entire rule config for that rule — no deep-merge, same as overrides.
+A file's own glob overrides apply last and take highest precedence.
+
+COMPOSABILITY
+
+Rules never reference kind names. New kinds cannot regress existing behavior.
+`
+
+// runHelpKinds prints the kinds concept page.
+func runHelpKinds() int {
+	fmt.Print(helpKindsText)
+	return 0
 }
 
 // runHelpRule implements "help rule [id|name]".

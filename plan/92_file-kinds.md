@@ -1,7 +1,7 @@
 ---
 id: 92
 title: File kinds — config schema, assignment, merge
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add user-declared file `kinds` that share the existing
@@ -151,24 +151,24 @@ kind-assignment:
 
 ## Tasks
 
-1. Add the `kinds:` and `kind-assignment:` config keys
+1. [x] Add the `kinds:` and `kind-assignment:` config keys
    to the config schema; reuse the existing override
    merge to apply a kind's body.
-2. Add the front-matter `kinds:` list field; resolve
+2. [x] Add the front-matter `kinds:` list field; resolve
    each file's effective kind list per Kind assignment
    above (front-matter first, then `kind-assignment:`
    matches in config order; dedup by first occurrence).
-3. Wire kind-resolved rule config into the engine so
+3. [x] Wire kind-resolved rule config into the engine so
    each file is linted with its merged settings.
-4. Emit a clear config error when kind assignment or
+4. [x] Emit a clear config error when kind assignment or
    front matter references an undeclared kind name.
-5. Grep test asserts the linter's core contains no
+5. [x] Grep test asserts the linter's core contains no
    `if kind == "..."` branches and no hardcoded kind
    names.
-6. `mdsmith help kinds` prints a short concept page
+6. [x] `mdsmith help kinds` prints a short concept page
    covering declaration, assignment, and merge order
    (links to the user guide once plan 96 lands).
-7. `mdsmith init` output includes the new config
+7. [x] `mdsmith init` output includes the new config
    fields: `kinds:` and `kind-assignment:` are valid
    keys in the generated `.mdsmith.yml`. Empty
    defaults are acceptable; fresh `init` followed by
@@ -176,32 +176,32 @@ kind-assignment:
 
 ## Acceptance Criteria
 
-- [ ] A kind declaration parses with the same syntax
+- [x] A kind declaration parses with the same syntax
       as an override entry (minus `files:`); override
       merge is reused for kind merge (verified by
       test).
-- [ ] Two project-declared kinds compose correctly
+- [x] Two project-declared kinds compose correctly
       with each other and with file-glob overrides
       (covered by test).
-- [ ] A file declaring multiple kinds via
+- [x] A file declaring multiple kinds via
       `kinds: [a, b]` in front matter merges them in
       list order (covered by test).
-- [ ] Conflicting settings between kinds resolve by
+- [x] Conflicting settings between kinds resolve by
       block replacement — the later kind in the
       effective list replaces the earlier kind's
       entire rule config (matching today's
       `overrides:` behavior, covered by test).
-- [ ] Files of a kind that sets
+- [x] Files of a kind that sets
       `rules.required-structure.schema:` are validated
       against that schema (covered by test).
-- [ ] Referencing an undeclared kind name produces a
+- [x] Referencing an undeclared kind name produces a
       clear config error.
-- [ ] No kind name is referenced by mdsmith's core
+- [x] No kind name is referenced by mdsmith's core
       (enforced by grep test).
-- [ ] `mdsmith help kinds` prints a concept page.
-- [ ] `mdsmith init` followed by `mdsmith check .`
+- [x] `mdsmith help kinds` prints a concept page.
+- [x] `mdsmith init` followed by `mdsmith check .`
       on a fresh directory exits 0; the generated
       config accepts `kinds:` and `kind-assignment:`
       keys without error.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

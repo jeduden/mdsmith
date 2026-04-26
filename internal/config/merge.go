@@ -66,6 +66,8 @@ func Merge(defaults, loaded *Config) *Config {
 		Deprecations:           copyStrings(loaded.Deprecations),
 		MaxInputSize:           maxInputSize,
 		Archetypes:             archetypes,
+		Kinds:                  loaded.Kinds,
+		KindAssignment:         loaded.KindAssignment,
 	}
 }
 
@@ -96,6 +98,8 @@ func copyConfig(cfg *Config) *Config {
 		ExplicitRules:          explicit,
 		FilesExplicit:          cfg.FilesExplicit,
 		Archetypes:             ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
+		Kinds:                  cfg.Kinds,
+		KindAssignment:         cfg.KindAssignment,
 	}
 }
 
@@ -139,13 +143,56 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 	return result
 }
 
+// resolveEffectiveKinds builds the ordered, deduplicated effective kind list
+// for a file. fmKinds are the kinds declared in the file's front matter;
+// they come first. kind-assignment matches are appended in config order.
+// Duplicate names are dropped after their first occurrence.
+func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string) []string {
+	seen := make(map[string]bool)
+	var result []string
+
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+
+	for _, k := range fmKinds {
+		add(k)
+	}
+	for _, entry := range cfg.KindAssignment {
+		if matchesAny(entry.Files, filePath) {
+			for _, k := range entry.Kinds {
+				add(k)
+			}
+		}
+	}
+	return result
+}
+
 // Effective returns the effective rule configuration for a given file path.
-// It starts with the top-level rules and then applies each override whose
-// file patterns match filePath, in order. Later overrides take precedence.
-func Effective(cfg *Config, filePath string) map[string]RuleCfg {
+// It starts with the top-level rules, applies kinds in effective-list order
+// (fmKinds from front matter first, then kind-assignment matches), and
+// finally applies glob overrides. Later entries take precedence.
+func Effective(cfg *Config, filePath string, fmKinds ...[]string) map[string]RuleCfg {
 	result := make(map[string]RuleCfg, len(cfg.Rules))
 	for k, v := range cfg.Rules {
 		result[k] = v
+	}
+
+	var frontMatterKinds []string
+	if len(fmKinds) > 0 {
+		frontMatterKinds = fmKinds[0]
+	}
+	for _, kindName := range resolveEffectiveKinds(cfg, filePath, frontMatterKinds) {
+		body, ok := cfg.Kinds[kindName]
+		if !ok {
+			continue
+		}
+		for k, v := range body.Rules {
+			result[k] = v
+		}
 	}
 
 	for _, o := range cfg.Overrides {
@@ -161,11 +208,26 @@ func Effective(cfg *Config, filePath string) map[string]RuleCfg {
 
 // EffectiveExplicitRules returns the set of rule names that were explicitly
 // configured for a given file path. It includes rules from the top-level
-// ExplicitRules and any rules set by matching overrides.
-func EffectiveExplicitRules(cfg *Config, filePath string) map[string]bool {
+// ExplicitRules, any rules set by matching kinds, and any rules set by
+// matching overrides.
+func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds ...[]string) map[string]bool {
 	result := make(map[string]bool, len(cfg.ExplicitRules))
 	for k := range cfg.ExplicitRules {
 		result[k] = true
+	}
+
+	var frontMatterKinds []string
+	if len(fmKinds) > 0 {
+		frontMatterKinds = fmKinds[0]
+	}
+	for _, kindName := range resolveEffectiveKinds(cfg, filePath, frontMatterKinds) {
+		body, ok := cfg.Kinds[kindName]
+		if !ok {
+			continue
+		}
+		for k := range body.Rules {
+			result[k] = true
+		}
 	}
 
 	for _, o := range cfg.Overrides {
@@ -180,10 +242,10 @@ func EffectiveExplicitRules(cfg *Config, filePath string) map[string]bool {
 }
 
 // EffectiveCategories returns the effective category settings for a given
-// file path. It starts with the top-level categories and then applies each
-// override whose file patterns match filePath, in order. Categories not
+// file path. It starts with the top-level categories, applies kinds in
+// effective-list order, and then applies matching overrides. Categories not
 // explicitly set default to true (enabled).
-func EffectiveCategories(cfg *Config, filePath string) map[string]bool {
+func EffectiveCategories(cfg *Config, filePath string, fmKinds ...[]string) map[string]bool {
 	// Start with all categories enabled.
 	result := make(map[string]bool, len(ValidCategories))
 	for _, cat := range ValidCategories {
@@ -193,6 +255,21 @@ func EffectiveCategories(cfg *Config, filePath string) map[string]bool {
 	// Apply top-level category settings.
 	for k, v := range cfg.Categories {
 		result[k] = v
+	}
+
+	// Apply kinds in effective-list order.
+	var frontMatterKinds []string
+	if len(fmKinds) > 0 {
+		frontMatterKinds = fmKinds[0]
+	}
+	for _, kindName := range resolveEffectiveKinds(cfg, filePath, frontMatterKinds) {
+		body, ok := cfg.Kinds[kindName]
+		if !ok {
+			continue
+		}
+		for k, v := range body.Categories {
+			result[k] = v
+		}
 	}
 
 	// Apply matching overrides in order.
@@ -240,7 +317,7 @@ func matchesAny(patterns []string, filePath string) bool {
 }
 
 // InjectArchetypeRoots copies cfg.Archetypes.Roots into every
-// required-structure rule block (top-level or override) that does not
+// required-structure rule block (top-level, override, or kind) that does not
 // already set its own archetype-roots. This is a no-op when no roots
 // are configured at the top level. Rules with archetype-roots already
 // specified are left untouched.
@@ -252,6 +329,10 @@ func InjectArchetypeRoots(cfg *Config) {
 	injectRoots(cfg.Rules, roots)
 	for i := range cfg.Overrides {
 		injectRoots(cfg.Overrides[i].Rules, roots)
+	}
+	for name, body := range cfg.Kinds {
+		injectRoots(body.Rules, roots)
+		cfg.Kinds[name] = body
 	}
 }
 
