@@ -261,10 +261,10 @@ func TestEffectiveCategoriesWithKinds(t *testing.T) {
 // --- No hardcoded kind names in rule code (grep test) ---
 
 func TestNoHardcodedKindNamesInConfig(t *testing.T) {
-	// Scan the non-test Go source files in the config and engine packages and
-	// assert that none contain the pattern `kindName == "` or `== kindName`,
-	// which would indicate hardcoded kind-name branches. Rules and engine code
-	// must treat all kind names uniformly.
+	// Scan non-test Go source files in the config and engine packages and
+	// assert that none contain `kindName == "`, which would indicate a
+	// hardcoded kind-name branch in code that uses the "kindName" loop
+	// variable. Rules and engine code must treat all kind names uniformly.
 	dirs := []string{
 		".",
 		"../../internal/engine",

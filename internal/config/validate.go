@@ -2,10 +2,9 @@ package config
 
 import "fmt"
 
-// ValidateKinds returns an error if any kind reference in kind-assignment
-// entries or in the loaded config refers to a name not declared in cfg.Kinds.
-// It checks kind-assignment entries only; front-matter kinds are validated
-// at lint time (see engine).
+// ValidateKinds returns an error if any kind named in a kind-assignment
+// entry is not declared in cfg.Kinds. Front-matter kinds are validated
+// at lint time via ValidateFrontMatterKinds (see engine).
 func ValidateKinds(cfg *Config) error {
 	if len(cfg.Kinds) == 0 && len(cfg.KindAssignment) == 0 {
 		return nil

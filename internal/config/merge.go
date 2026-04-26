@@ -231,8 +231,8 @@ func EffectiveCategories(cfg *Config, filePath string, fmKinds []string) map[str
 }
 
 // EffectiveAll returns the effective rule config, category settings, and
-// explicit rule set for a file path in a single pass — kind resolution and
-// glob matching run once instead of three times.
+// explicit rule set for a file path while resolving effective kinds once and
+// reusing that result across all three computations.
 func EffectiveAll(
 	cfg *Config, filePath string, fmKinds []string,
 ) (map[string]RuleCfg, map[string]bool, map[string]bool) {
