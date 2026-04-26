@@ -1,0 +1,110 @@
+---
+id: 94
+title: Lint-once for `<?include?>` and `<?catalog?>` embeds
+status: "🔲"
+summary: >-
+  Diagnose embedded content only against its source file,
+  never against the host that pulled it in via
+  `<?include?>` or `<?catalog?>`. Avoids duplicate
+  findings and contradictory rule settings.
+---
+# Lint-once for `<?include?>` and `<?catalog?>` embeds
+
+## Goal
+
+When `<?include?>` or `<?catalog?>` pulls Markdown into
+a host file, lint each byte of that content **once** —
+in its source file, under its source file's effective
+config. The host file should not re-diagnose the
+embedded bytes.
+
+## Background
+
+Today, content embedded into a host file via
+`<?include?>` or `<?catalog?>` is parsed as part of the
+host. If a fragment includes a heading or a paragraph,
+that heading/paragraph runs through the host's rules
+and may be flagged twice — once when the fragment is
+linted on its own, once as part of the host. The two
+files can also have different effective configs (e.g.
+different kinds in plan 92), which produces
+inconsistent diagnostics for the same bytes.
+
+The fix is *lint-once*. The host's rules apply to the
+host's own bytes (everything outside generated
+sections). The fragment is responsible for its own
+bytes — checked when the fragment itself is linted.
+
+## Design
+
+### Source attribution
+
+The engine already knows which spans of a host's
+parsed AST came from a generated section (the
+`<?include?>` / `<?catalog?>` body). It must mark each
+diagnostic emitted by a rule with the *source file*
+that owned the byte range. For host-owned spans, the
+source is the host. For embedded spans, the source is
+the fragment.
+
+### Filter at emit time
+
+When a rule emits a diagnostic, the engine drops any
+diagnostic whose source file is not the file currently
+being linted. The fragment, when linted on its own,
+emits its own diagnostics directly.
+
+### Catalog rows
+
+`<?catalog?>` produces row content from front matter of
+many files. Each row's source attribution is the file
+the front matter came from, not the catalog host.
+Errors in a row's data show up against that source
+file when it's linted, not against the catalog host.
+
+### Backward compatibility
+
+Today `mdsmith fix` already regenerates `<?include?>`
+and `<?catalog?>` bodies from source. After this plan,
+the *check* path matches: embedded bytes are no
+longer the host's responsibility either to diagnose
+or to fix.
+
+## Tasks
+
+1. Extend the AST/diagnostic data model to attribute
+   each span to its source file.
+2. At diagnostic emit time, drop diagnostics whose
+   source file is not the file under lint.
+3. Audit rules that walk the AST: ensure none of them
+   short-circuit on host-owned vs embedded spans in a
+   way that produces missing diagnostics on the
+   source file.
+4. Add fixtures: a host with `<?include?>` of a
+   fragment that contains a known violation; lint the
+   host (no diagnostic from the embedded bytes) and
+   the fragment (diagnostic appears).
+5. Same for `<?catalog?>` — front-matter validation
+   errors in a row's source surface against the
+   source, not the catalog host.
+
+## Acceptance Criteria
+
+- [ ] A host file with `<?include?>` of a fragment
+      containing a known violation produces no
+      diagnostic for that violation when the host is
+      linted in isolation.
+- [ ] The same fragment, linted on its own, produces
+      the diagnostic.
+- [ ] A host with `<?catalog?>` does not surface
+      front-matter errors that originate in catalog
+      row sources; those errors surface against the
+      source file (covered by test).
+- [ ] No rule short-circuits on host-owned vs
+      embedded spans in a way that suppresses a
+      diagnostic on the *source* file (covered by
+      test).
+- [ ] Existing fix behavior for `<?include?>` and
+      `<?catalog?>` is unchanged (regression test).
+- [ ] All tests pass: `go test ./...`
+- [ ] `go tool golangci-lint run` reports no issues
