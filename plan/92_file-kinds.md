@@ -2,6 +2,7 @@
 id: 92
 title: File kinds — config schema, assignment, merge
 status: "🔲"
+model: sonnet
 summary: >-
   Add user-declared file `kinds` that share the existing
   rule-config syntax. A file's effective kind list is

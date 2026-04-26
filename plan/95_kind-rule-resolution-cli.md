@@ -2,6 +2,7 @@
 id: 95
 title: Kind/rule resolution observability via `kinds` subcommand
 status: "🔲"
+model: opus
 summary: >-
   Replace `mdsmith config kinds/show/why` with a
   top-level `kinds` subcommand parallel to `archetypes`

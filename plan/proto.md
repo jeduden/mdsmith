@@ -3,6 +3,7 @@ id: 'int & >=1'
 title: 'string & != ""'
 status: '"🔲" | "🔳" | "✅" | "⛔"'
 summary: 'string | *""'
+model: '"haiku" | "sonnet" | "opus" | *""'
 ---
 <?require
 filename: "[0-9]*_*.md"

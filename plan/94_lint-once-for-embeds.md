@@ -2,6 +2,7 @@
 id: 94
 title: Lint-once for `<?include?>` and `<?catalog?>` embeds
 status: "🔲"
+model: sonnet
 summary: >-
   Diagnose embedded content only against its source file,
   never against the host that pulled it in via

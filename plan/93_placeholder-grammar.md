@@ -2,6 +2,7 @@
 id: 93
 title: Placeholder grammar — opt-in token vocabulary
 status: "🔲"
+model: sonnet
 summary: >-
   Lift the ad-hoc placeholder escapes (`# ?`, `## ...`,
   `{var}`, CUE front-matter values) into one named

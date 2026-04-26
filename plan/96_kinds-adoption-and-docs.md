@@ -2,6 +2,7 @@
 id: 96
 title: Adopt kinds in mdsmith repo and ship the docs
 status: "🔲"
+model: sonnet
 summary: >-
   Declare the kinds this repo needs, drop the four
   `proto.md` ignore entries, ship the file-kinds user

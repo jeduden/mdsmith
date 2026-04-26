@@ -2,6 +2,7 @@
 id: 97
 title: Deep-merge for kinds and overrides
 status: "🔲"
+model: opus
 summary: >-
   Replace block-level replacement with deep-merge across
   rule settings, so a later kind or override layer can

@@ -2,6 +2,7 @@
 id: 98
 title: Replace `archetypes` with `kinds`
 status: "🔲"
+model: sonnet
 summary: >-
   Remove the `archetypes` CLI subcommand, config key,
   and doc directory. The `kinds` model from plans
