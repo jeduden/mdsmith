@@ -57,7 +57,7 @@ driver that resolves it automatically.
 `mdsmith query 'status: "✅"' plan/` lists every plan
 that's done — pipe it to a release script, or fail the
 release if anything is still open.
-`mdsmith metrics rank --by tokens --top 10 docs/` is the
+`mdsmith metrics rank --by token-estimate --top 10 docs/` is the
 PR-time complement: spot the file an AI just doubled in
 size before it lands.
 
