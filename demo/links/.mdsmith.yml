@@ -1,0 +1,2 @@
+rules:
+  cross-file-reference-integrity: true
