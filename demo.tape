@@ -19,8 +19,11 @@
 #     in the output GIF (~30 s recording → ~5 min GIF).
 #   - Hidden blocks use TypingSpeed 0 since that typing
 #     is never visible in the output.
-#   - Keep Sleep durations short (50-100ms per step)
-#     to avoid long VHS render times in CI.
+#   - Sleep durations: 50ms for hidden setup steps;
+#     100ms for most visible commands; 300ms after
+#     moderate-output commands (check/help/query/metrics)
+#     so viewers have ~3s to read; 500ms after cat/display
+#     commands (~5s). Longer pauses are intentional.
 #   - Style: show, don't tell. Let mdsmith's output
 #     speak. Comments are minimal labels, not narration.
 
@@ -104,7 +107,7 @@ Sleep 100ms
 Type "head -18 .mdsmith.yml"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 2: Lint and auto-fix ---
 
@@ -135,7 +138,7 @@ Sleep 100ms
 Type "mdsmith check sample.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 3: Generate a catalog from front matter ---
 
@@ -158,12 +161,12 @@ Sleep 100ms
 Type "cat index.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 Type "mdsmith fix index.md && cat index.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 # --- Use case 4: Auto-generate a table of contents ---
 
@@ -181,12 +184,12 @@ Sleep 100ms
 Type "cat guide.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 Type "mdsmith fix guide.md && sed -n '1,12p' guide.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 5: Enforce required document structure ---
 
@@ -204,17 +207,17 @@ Sleep 100ms
 Type "cat schema.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 Type "cat plan.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 Type "mdsmith check plan.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 6: Catch broken cross-file links ---
 
@@ -232,7 +235,7 @@ Sleep 100ms
 Type "cat index.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 Type "ls"
 Sleep 100ms
@@ -242,7 +245,7 @@ Sleep 100ms
 Type "mdsmith check ."
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 7: Restrict file locations ---
 
@@ -260,7 +263,7 @@ Sleep 100ms
 Type "cat .mdsmith.yml"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 Type "ls"
 Sleep 100ms
@@ -270,7 +273,7 @@ Sleep 100ms
 Type "mdsmith check ."
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 8: Keep AI verbosity in check ---
 
@@ -288,12 +291,12 @@ Sleep 100ms
 Type "cat notes.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
 
 Type "mdsmith check notes.md"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 9: Look up a rule ---
 
@@ -311,7 +314,7 @@ Sleep 100ms
 Type "mdsmith help rule line-length | head -20"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 10: Query front matter ---
 
@@ -329,7 +332,7 @@ Sleep 100ms
 Type `mdsmith query 'status: "✅"' plan/`
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 11: Metrics ---
 
@@ -347,7 +350,7 @@ Sleep 100ms
 Type "mdsmith metrics rank --by bytes --top 5 ."
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 12: Archetypes (reusable schemas) ---
 
@@ -382,7 +385,7 @@ Sleep 100ms
 Type "mdsmith archetypes show example | head -8"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 300ms
 
 # --- Use case 13: Git merge driver ---
 
@@ -402,4 +405,4 @@ Sleep 100ms
 Type "mdsmith merge-driver install && cat .gitattributes"
 Sleep 100ms
 Enter
-Sleep 100ms
+Sleep 500ms
