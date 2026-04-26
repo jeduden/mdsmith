@@ -97,23 +97,36 @@ occurrence. Referencing an undeclared kind is a
 config error.
 
 `implicit-kinds:` maps **reference sources** to a
-project-chosen kind name. A reference source is a
-place where one file references another. The
-linter's core has no hardcoded kind names:
+kind name. One source (e.g. `<?include?>`) often
+serves multiple purposes — partials, agent prompts,
+appendices — so each entry can scope the match by
+the path of the *target* (referenced file) and/or
+the *referencer* (file with the directive). First
+match wins:
 
 ```yaml
 implicit-kinds:
-  - source: required-structure.schema  # mdsmith field
-    kind: recipe                       # project name
+  - source: required-structure.schema
+    target-files: ["plan/proto.md"]
+    kind: plan-template
+  - source: required-structure.schema
+    target-files: ["internal/rules/proto.md"]
+    kind: rule-template
   - source: include
+    referencer-files: ["docs/agents/**"]
+    kind: prompt
+  - source: include
+    target-files: ["docs/_partials/**"]
     kind: tip
+  - source: include              # fallback for any
+    kind: fragment               # other include
   - source: catalog
-    kind: tip
+    kind: index
 ```
 
-Declare a `recipe` kind plus
-`required-structure.schema: plan/proto.md`, and
-`plan/proto.md` drops out of `ignore:`.
+An entry without path constraints matches any
+reference of that source type — useful as a fallback.
+Path lists accept negation globs (`!path`).
 
 ### Composability
 
@@ -140,13 +153,11 @@ Declare a `recipe` kind plus
 Placeholder grammars are named tokens (`var-token`
 for `{identifier}`, `heading-question` for `# ?`,
 `cue-frontmatter`, …). Each opt-in rule exposes a
-`placeholders:` setting via `Configurable` — same
-machinery as any other rule setting (see the kind
-declaration above). Adding a grammar is a code change
-in one helper plus opt-ins per rule; it is not
-coupled to any kind. Migration removes `ignore:`
-entries one kind at a time; untagged files behave as
-today.
+`placeholders:` setting via `Configurable` (see the
+kind declaration above). Adding a grammar is one
+helper plus per-rule opt-ins; it is not coupled to
+any kind. Migration removes `ignore:` entries one
+kind at a time; untagged files behave as today.
 
 ## Examples
 
@@ -171,10 +182,8 @@ order.
 ### Glob-based assignment
 
 `kind-assignment:` is a **list** of entries (same
-shape as `overrides:`), so order is deterministic.
-A `files:` entry accepts negation globs (`!path`)
-to exclude paths a broader glob would otherwise
-match — same syntax as `ignore:`.
+shape as `overrides:`); negation globs (`!path`)
+exclude paths a broader glob would catch.
 
 ```yaml
 kind-assignment:
@@ -195,22 +204,12 @@ overrides:
   - files: ["plan/*.md"]
     rules:
       required-structure:
-        schema: plan/proto.md   # → kind 'recipe'
+        schema: plan/proto.md
 ```
 
-Combined with the `implicit-kinds:` block above,
-`plan/proto.md` gains kind `recipe` automatically.
-No `ignore:`, no front-matter tag, no glob needed.
-
-### Composability and lint-once
-
-`docs/_partials/intro.md` (kind `tip`) is included
-by `docs/index.md` via `<?include?>`. The fragment
-is linted once, under `tip`; the host's embedded
-bytes are not re-checked. A file with multiple kinds
-(e.g. `[tip, worksheet]`) gets a deep-merge of both
-kind bodies in list order; file-glob overrides apply
-last. Inspect with `mdsmith config show <path>`.
+The matching `implicit-kinds:` entry above tags
+`plan/proto.md` as `plan-template`. No `ignore:`
+needed.
 
 ## Tasks
 
