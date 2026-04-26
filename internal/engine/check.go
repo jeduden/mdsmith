@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -32,6 +33,10 @@ func ConfigureRule(rl rule.Rule, cfg config.RuleCfg) (rule.Rule, error) {
 // settings for Configurable rules. It adjusts diagnostics using
 // f.AdjustDiagnostics and returns the collected diagnostics and any
 // settings-application errors.
+//
+// Diagnostics whose line falls within a generated section (content between
+// <?include?> or <?catalog?> markers) are dropped. Those bytes are owned
+// by their source file and are linted when that file is checked directly.
 func CheckRules(f *lint.File, rules []rule.Rule, effective map[string]config.RuleCfg) ([]lint.Diagnostic, []error) {
 	var diags []lint.Diagnostic
 	var errs []error
@@ -52,9 +57,32 @@ func CheckRules(f *lint.File, rules []rule.Rule, effective map[string]config.Rul
 		diags = append(diags, d...)
 	}
 
+	// Drop diagnostics on lines owned by embedded (generated) content.
+	// Filtering happens before AdjustDiagnostics so both the diagnostic
+	// lines and the marker-pair lines share the same post-strip coordinate
+	// space (1-based lines within f.Source).
+	genRanges := gensection.FindGeneratedLineRanges(f)
+	if len(genRanges) > 0 {
+		diags = filterGeneratedDiags(diags, genRanges)
+	}
+
 	f.AdjustDiagnostics(diags)
 	populateSourceContext(f, diags, 2)
 	return diags, errs
+}
+
+// filterGeneratedDiags returns a new slice with all diagnostics whose line
+// falls within a generated range removed. Diagnostics with line ≤ 0 are
+// kept (they are positional errors on the directive itself, not embedded content).
+func filterGeneratedDiags(diags []lint.Diagnostic, genRanges []gensection.LineRange) []lint.Diagnostic {
+	out := diags[:0:0] // reuse allocation header but don't alias
+	for _, d := range diags {
+		if d.Line > 0 && gensection.InGeneratedRange(d.Line, genRanges) {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // populateSourceContext fills each diagnostic's SourceLines and

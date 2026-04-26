@@ -12,6 +12,121 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCheckRules_GeneratedSectionDiagsDropped verifies that diagnostics whose
+// lines fall within a generated section (between <?include?> or <?catalog?>
+// markers) are suppressed when linting the host file.
+func TestCheckRules_GeneratedSectionDiagsDropped(t *testing.T) {
+	// Host file with an include generated section. Lines 3-5 are the PI block,
+	// line 6 is embedded content (ContentFrom=ContentTo=6), line 7 is end marker.
+	src := "# Host\n\n<?include\nfile: fragment.md\n?>\nEmbedded content\n<?/include?>\n\nHost content\n"
+	f, err := lint.NewFile("host.md", []byte(src))
+	require.NoError(t, err)
+
+	// Rule that reports a diagnostic on every line.
+	r := &everyLineRule{id: "MDS990", name: "every-line"}
+	effective := map[string]config.RuleCfg{
+		"every-line": {Enabled: true},
+	}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Empty(t, errs)
+
+	// Line 6 ("Embedded content") is inside the generated section; must be dropped.
+	for _, d := range diags {
+		assert.NotEqual(t, 6, d.Line,
+			"diagnostic on line 6 (generated section content) should be suppressed")
+	}
+	// There should still be diagnostics for host-owned lines.
+	assert.NotEmpty(t, diags, "host-owned line diagnostics should not be suppressed")
+}
+
+// TestCheckRules_GeneratedSectionCatalog verifies that diagnostics on lines
+// within a <?catalog?> generated section are also suppressed.
+func TestCheckRules_GeneratedSectionCatalog(t *testing.T) {
+	// Host with a catalog generated section. Line 4 is the embedded content.
+	src := "# Catalog\n\n<?catalog\nglob: \"*.md\"\n?>\nrow content\n<?/catalog?>\n"
+	f, err := lint.NewFile("host.md", []byte(src))
+	require.NoError(t, err)
+
+	r := &everyLineRule{id: "MDS990", name: "every-line"}
+	effective := map[string]config.RuleCfg{"every-line": {Enabled: true}}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Empty(t, errs)
+
+	// Line 6 ("row content") is the catalog generated section content; must be dropped.
+	for _, d := range diags {
+		assert.NotEqual(t, 6, d.Line,
+			"diagnostic on line 6 (catalog generated section content) should be suppressed")
+	}
+	assert.NotEmpty(t, diags, "host-owned line diagnostics should not be suppressed")
+}
+
+// TestCheckRules_FragmentDirectDiagnosticsPreserved verifies that when a
+// fragment is linted directly (not as part of a host), its diagnostics appear.
+func TestCheckRules_FragmentDirectDiagnosticsPreserved(t *testing.T) {
+	// Fragment file: no generated sections, just plain content.
+	src := "Fragment content on line 1\nFragment content on line 2\n"
+	f, err := lint.NewFile("fragment.md", []byte(src))
+	require.NoError(t, err)
+
+	r := &mockRuleAtLine{id: "MDS990", name: "every-line", line: 1, col: 1}
+	effective := map[string]config.RuleCfg{"every-line": {Enabled: true}}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Empty(t, errs)
+
+	// Diagnostic on line 1 should appear since there are no generated sections.
+	require.Len(t, diags, 1, "fragment linted directly should report its diagnostics")
+	assert.Equal(t, 1, diags[0].Line)
+}
+
+// TestCheckRules_MultipleGeneratedSections verifies that multiple generated
+// sections are all filtered, and host content between them is not filtered.
+func TestCheckRules_MultipleGeneratedSections(t *testing.T) {
+	// Lines: 1=heading, 2=blank, 3-5=PI1, 6=gen1, 7=end1,
+	// 8=blank, 9=host-owned, 10=blank, 11-13=PI2, 14=gen2, 15=end2, 16=host
+	src := strings.Join([]string{
+		"# Host",
+		"",
+		"<?include",
+		"file: a.md",
+		"?>",
+		"Generated A",
+		"<?/include?>",
+		"",
+		"Host paragraph",
+		"",
+		"<?include",
+		"file: b.md",
+		"?>",
+		"Generated B",
+		"<?/include?>",
+		"",
+		"End",
+		"",
+	}, "\n")
+	f, err := lint.NewFile("host.md", []byte(src))
+	require.NoError(t, err)
+
+	r := &everyLineRule{id: "MDS990", name: "every-line"}
+	effective := map[string]config.RuleCfg{"every-line": {Enabled: true}}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Empty(t, errs)
+
+	lineSet := make(map[int]bool)
+	for _, d := range diags {
+		lineSet[d.Line] = true
+	}
+
+	// Lines 6 and 14 are in generated sections; must not appear.
+	assert.False(t, lineSet[6], "line 6 (generated A) should be suppressed")
+	assert.False(t, lineSet[14], "line 14 (generated B) should be suppressed")
+	// Line 9 is host-owned; must appear.
+	assert.True(t, lineSet[9], "line 9 (host paragraph) should not be suppressed")
+}
+
 func TestCheckRules_BasicDiagnostics(t *testing.T) {
 	f, err := lint.NewFile("test.md", []byte("# Hello\n"))
 	require.NoError(t, err)

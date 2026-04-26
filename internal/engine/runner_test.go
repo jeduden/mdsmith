@@ -19,6 +19,31 @@ type mockRule struct {
 	name string
 }
 
+// everyLineRule is a test rule that reports a diagnostic on every line.
+type everyLineRule struct {
+	id   string
+	name string
+}
+
+func (r *everyLineRule) ID() string       { return r.id }
+func (r *everyLineRule) Name() string     { return r.name }
+func (r *everyLineRule) Category() string { return "test" }
+func (r *everyLineRule) Check(f *lint.File) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	for i := range f.Lines {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     i + 1,
+			Column:   1,
+			RuleID:   r.id,
+			RuleName: r.name,
+			Severity: lint.Warning,
+			Message:  "every line",
+		})
+	}
+	return diags
+}
+
 func (r *mockRule) ID() string       { return r.id }
 func (r *mockRule) Name() string     { return r.name }
 func (r *mockRule) Category() string { return "test" }

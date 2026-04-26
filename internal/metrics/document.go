@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/yuin/goldmark/ast"
@@ -18,6 +19,12 @@ type Document struct {
 	file      *lint.File
 	fileReady bool
 	fileErr   error
+
+	// authoredSource is the file source with generated-section content
+	// (lines between <?include?> and <?catalog?> markers) removed.
+	// It is computed lazily by AuthoredSource().
+	authoredSource      []byte
+	authoredSourceReady bool
 
 	plainText      string
 	plainTextReady bool
@@ -40,18 +47,65 @@ func NewDocument(path string, source []byte) *Document {
 	}
 }
 
-// ByteCount returns raw file byte count.
-func (d *Document) ByteCount() int {
-	return len(d.Source)
+// AuthoredSource returns the file source with generated-section content
+// (bytes between <?include?> and <?catalog?> markers) removed. This
+// represents only the bytes the author directly wrote — the embedded
+// bytes are attributed to their source files.
+//
+// If parsing fails the full Source is returned unchanged.
+func (d *Document) AuthoredSource() []byte {
+	if d.authoredSourceReady {
+		return d.authoredSource
+	}
+	d.authoredSourceReady = true
+
+	f, err := d.File()
+	if err != nil {
+		d.authoredSource = d.Source
+		return d.authoredSource
+	}
+
+	ranges := gensection.FindGeneratedLineRanges(f)
+	if len(ranges) == 0 {
+		d.authoredSource = d.Source
+		return d.authoredSource
+	}
+
+	// Remove the content lines of each generated range.
+	// f.Lines matches f.Source (already split by bytes.Split on '\n').
+	// Build output by copying only non-generated lines.
+	var buf bytes.Buffer
+	for i, line := range f.Lines {
+		lineNum := i + 1 // 1-based
+		if gensection.InGeneratedRange(lineNum, ranges) {
+			continue
+		}
+		buf.Write(line)
+		if i < len(f.Lines)-1 {
+			buf.WriteByte('\n')
+		}
+	}
+	d.authoredSource = buf.Bytes()
+	return d.authoredSource
 }
 
-// LineCount returns content line count.
+// ByteCount returns the authored byte count: the file size excluding any
+// bytes that fall inside generated sections (<?include?> or <?catalog?>
+// bodies). This ensures a host file's byte metric counts only its own
+// authored content, matching the lint-once attribution model.
+func (d *Document) ByteCount() int {
+	return len(d.AuthoredSource())
+}
+
+// LineCount returns the authored line count, excluding lines that fall
+// inside generated sections. See ByteCount for the rationale.
 func (d *Document) LineCount() int {
-	if len(d.Source) == 0 {
+	src := d.AuthoredSource()
+	if len(src) == 0 {
 		return 0
 	}
-	lines := bytes.Count(d.Source, []byte("\n"))
-	if d.Source[len(d.Source)-1] != '\n' {
+	lines := bytes.Count(src, []byte("\n"))
+	if src[len(src)-1] != '\n' {
 		lines++
 	}
 	return lines

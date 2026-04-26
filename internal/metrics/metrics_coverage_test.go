@@ -10,6 +10,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestByteCount_AuthoredOnly verifies that ByteCount returns the authored-only
+// byte count (excluding generated section content) for a host file.
+func TestByteCount_AuthoredOnly(t *testing.T) {
+	// Host file with a generated section. The generated section content
+	// "Embedded line\n" (14 bytes) should not count toward ByteCount.
+	hostSrc := "# Host\n\n<?include\nfile: frag.md\n?>\nEmbedded line\n<?/include?>\n\nHost end\n"
+	doc := NewDocument("host.md", []byte(hostSrc))
+	fullBytes := len(hostSrc)
+	embeddedBytes := len("Embedded line\n")
+
+	authoredBytes := doc.ByteCount()
+	assert.Equal(t, fullBytes-embeddedBytes, authoredBytes,
+		"ByteCount should exclude generated section content (%d embedded bytes)", embeddedBytes)
+}
+
+// TestLineCount_AuthoredOnly verifies that LineCount returns the authored-only
+// line count (excluding generated section content).
+func TestLineCount_AuthoredOnly(t *testing.T) {
+	// Host file with a generated section. The embedded line should not count.
+	hostSrc := "# Host\n\n<?include\nfile: frag.md\n?>\nEmbedded line\n<?/include?>\n\nHost end\n"
+	doc := NewDocument("host.md", []byte(hostSrc))
+
+	count := doc.LineCount()
+	// Full content has 9 lines; embedded content is 1 line. Authored = 8.
+	assert.Equal(t, 8, count,
+		"LineCount should exclude the 1 generated section line")
+}
+
 // --- Collect tests ---
 
 func TestCollect_BasicFile(t *testing.T) {

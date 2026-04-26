@@ -80,6 +80,17 @@ and `--scope` (only `file` is supported; defaults to
 `--max-input-size`, plus `--metrics`, `--by`, `--order`,
 `--top`.
 
+### Authored-only metrics
+
+`metrics rank` counts only **authored bytes** — content
+the file's author directly wrote. Lines that fall inside
+`<?include?>` or `<?catalog?>` generated sections are
+excluded from `bytes` and `lines` counts. Those bytes
+belong to the source file that was included or cataloged;
+they are counted when that source file is ranked on its
+own. This matches the lint-once attribution model: each
+byte is measured exactly once, against its source file.
+
 ## `archetypes` Subcommands
 
 | Subcommand    | Description                                  |

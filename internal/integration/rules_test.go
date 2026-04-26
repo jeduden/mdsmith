@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark"
@@ -485,6 +486,21 @@ func checkAllRules(f *lint.File) []lint.Diagnostic {
 	var all []lint.Diagnostic
 	for _, r := range rule.All() {
 		all = append(all, r.Check(f)...)
+	}
+	// Drop diagnostics on lines owned by embedded (generated) content.
+	// This mirrors the engine.CheckRules filtering so that good fixtures
+	// with up-to-date <?include?> or <?catalog?> sections are not flagged
+	// for violations inside the embedded bytes.
+	genRanges := gensection.FindGeneratedLineRanges(f)
+	if len(genRanges) > 0 {
+		var filtered []lint.Diagnostic
+		for _, d := range all {
+			if d.Line > 0 && gensection.InGeneratedRange(d.Line, genRanges) {
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+		return filtered
 	}
 	return all
 }
