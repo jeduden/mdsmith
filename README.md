@@ -94,8 +94,9 @@ mdsmith <command> [flags] [files...]
 | `init`         | Generate `.mdsmith.yml`                        |
 | `version`      | Print version, exit                            |
 
-Files can be paths, directories (walked recursively for `*.md`),
-or glob patterns. Directories respect `.gitignore` by default;
+Files can be paths, directories (walked recursively for `*.md`
+and `*.markdown`), or glob patterns. Directories respect
+`.gitignore` by default;
 use `--no-gitignore` to override. Explicitly named files are
 never filtered by `.gitignore`.
 
