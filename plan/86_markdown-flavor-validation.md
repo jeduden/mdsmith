@@ -1,7 +1,7 @@
 ---
 id: 86
 title: Markdown flavor validation
-status: "🔳"
+status: "✅"
 summary: >-
   New rule MDS034 that validates Markdown files against
   a declared flavor (CommonMark, GFM, Goldmark, etc.)
@@ -221,9 +221,11 @@ math, abbreviations.
       inline, and abbreviations
 - [x] Error messages name the unsupported feature and
       the configured flavor
-- [ ] `mdsmith fix` auto-fixes fixable features
-      <!-- Fix pipeline not implemented in this
-      slice. -->
+- [x] `mdsmith fix` auto-fixes fixable features
+      (heading IDs, strikethrough, task lists,
+      superscript, subscript, bare-URL autolinks
+      via `<url>` wrapping; GitHub Alerts marker
+      stripping was already implemented)
 - [x] Non-fixable features produce diagnostics only
 - [x] Invalid flavor name produces a config error
 - [x] Rule is disabled by default (opt-in)
