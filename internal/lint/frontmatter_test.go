@@ -94,6 +94,12 @@ func TestParseFrontMatterKinds(t *testing.T) {
 		},
 	}
 
+	// Also test that passing raw front-matter bytes with invalid YAML returns nil.
+	t.Run("invalid yaml returns nil", func(t *testing.T) {
+		got := ParseFrontMatterKinds([]byte("---\nkinds: [[[invalid\n---\n"))
+		assert.Nil(t, got)
+	})
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var fm []byte

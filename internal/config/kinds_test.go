@@ -302,6 +302,111 @@ func TestMergePreservesKinds(t *testing.T) {
 	require.Len(t, merged.KindAssignment, 1)
 }
 
+// --- EffectiveExplicitRules with kinds ---
+
+func TestEffectiveExplicitRulesIncludesKindRules(t *testing.T) {
+	cfg := &Config{
+		ExplicitRules: map[string]bool{"no-hard-tabs": true},
+		Kinds: map[string]KindBody{
+			"wide": {Rules: map[string]RuleCfg{
+				"line-length": {Enabled: true, Settings: map[string]any{"max": 200}},
+			}},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Files: []string{"wide/*.md"}, Kinds: []string{"wide"}},
+		},
+	}
+	result := EffectiveExplicitRules(cfg, "wide/doc.md")
+	assert.True(t, result["no-hard-tabs"], "top-level explicit rule should be present")
+	assert.True(t, result["line-length"], "kind rule should be marked explicit")
+}
+
+func TestEffectiveExplicitRulesFrontMatterKinds(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {Rules: map[string]RuleCfg{
+				"paragraph-readability": {Enabled: false},
+			}},
+		},
+	}
+	result := EffectiveExplicitRules(cfg, "doc.md", []string{"plan"})
+	assert.True(t, result["paragraph-readability"])
+}
+
+// --- InjectArchetypeRoots with kinds ---
+
+func TestInjectArchetypeRootsInjectsIntoKinds(t *testing.T) {
+	cfg := &Config{
+		Archetypes: ArchetypesCfg{Roots: []string{"archetypes"}},
+		Kinds: map[string]KindBody{
+			"plan": {Rules: map[string]RuleCfg{
+				"required-structure": {Enabled: true},
+			}},
+		},
+	}
+	InjectArchetypeRoots(cfg)
+	roots := cfg.Kinds["plan"].Rules["required-structure"].Settings["archetype-roots"]
+	require.NotNil(t, roots)
+	arr, ok := roots.([]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"archetypes"}, arr)
+}
+
+func TestInjectArchetypeRootsSkipsKindWithExistingRoots(t *testing.T) {
+	existing := []any{"custom-root"}
+	cfg := &Config{
+		Archetypes: ArchetypesCfg{Roots: []string{"archetypes"}},
+		Kinds: map[string]KindBody{
+			"plan": {Rules: map[string]RuleCfg{
+				"required-structure": {
+					Enabled:  true,
+					Settings: map[string]any{"archetype-roots": existing},
+				},
+			}},
+		},
+	}
+	InjectArchetypeRoots(cfg)
+	roots := cfg.Kinds["plan"].Rules["required-structure"].Settings["archetype-roots"]
+	assert.Equal(t, existing, roots, "existing roots should not be overwritten")
+}
+
+// --- Defensive: kind present in effective list but missing from cfg.Kinds ---
+// These paths are unreachable in validated configs but the code handles them.
+
+func TestEffectiveIgnoresMissingKindBody(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+		Kinds:          map[string]KindBody{},
+		KindAssignment: []KindAssignmentEntry{
+			// Directly exercise the resolveEffectiveKinds path with a name that
+			// exists in assignment but not in Kinds (bypassing ValidateKinds).
+		},
+	}
+	// Inject a stale kind name via front-matter (bypasses LoadKinds validation).
+	result := Effective(cfg, "doc.md", []string{"nonexistent"})
+	assert.Equal(t, 80, result["line-length"].Settings["max"], "missing kind body is silently skipped")
+}
+
+func TestEffectiveExplicitRulesIgnoresMissingKindBody(t *testing.T) {
+	cfg := &Config{
+		ExplicitRules: map[string]bool{"line-length": true},
+		Kinds:         map[string]KindBody{},
+	}
+	result := EffectiveExplicitRules(cfg, "doc.md", []string{"nonexistent"})
+	assert.True(t, result["line-length"])
+	assert.False(t, result["nonexistent"])
+}
+
+func TestEffectiveCategoriesIgnoresMissingKindBody(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{},
+	}
+	result := EffectiveCategories(cfg, "doc.md", []string{"nonexistent"})
+	assert.True(t, result["heading"], "default category still enabled")
+}
+
 // --- helpers ---
 
 func loadFromString(t *testing.T, yml string) *Config {

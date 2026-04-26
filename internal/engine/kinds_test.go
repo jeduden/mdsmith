@@ -134,6 +134,29 @@ func TestFrontMatterKinds_UndeclaredIsError(t *testing.T) {
 	assert.Contains(t, result.Errors[0].Error(), "ghost")
 }
 
+// TestRunSource_FrontMatterKinds_UndeclaredIsError verifies that RunSource
+// also validates front-matter kinds and returns an error for undeclared ones.
+func TestRunSource_FrontMatterKinds_UndeclaredIsError(t *testing.T) {
+	src := []byte("---\nkinds: [ghost]\n---\n# Hello\n")
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-rule": {Enabled: true},
+		},
+		Kinds: map[string]config.KindBody{},
+	}
+
+	runner := &Runner{
+		Config:           cfg,
+		Rules:            []rule.Rule{&mockRule{id: "MDS999", name: "mock-rule"}},
+		StripFrontMatter: true,
+	}
+
+	result := runner.RunSource("doc.md", src)
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0].Error(), "ghost")
+}
+
 // TestKindSetsRequiredStructureSchema verifies that a kind setting
 // required-structure.schema is reflected in the effective rule config for
 // files assigned to that kind.
