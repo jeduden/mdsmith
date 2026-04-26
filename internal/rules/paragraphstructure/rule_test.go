@@ -210,7 +210,7 @@ func TestCategory(t *testing.T) {
 
 func TestCheck_Placeholder_VarToken_MaskedToWord(t *testing.T) {
 	// A paragraph consisting only of a var-token placeholder is masked to
-	// "word." (one word, one sentence), well below max-sentences and max-words,
+	// "word" (one word, no punctuation), well below max-sentences and max-words,
 	// so no diagnostic is produced.
 	src := []byte("# Title\n\n{body}\n")
 	f, err := lint.NewFile("test.md", src)
