@@ -131,6 +131,11 @@ placeholder-grammar page.
    `archetypes` subcommand section. The `kinds`
    subcommand replacement is documented under plan
    95.
+9. Update `mdsmith init`: the generated
+   `.mdsmith.yml` must contain no `archetypes:` key
+   and must remain accepted by the loader. Add a
+   regression test that runs `init` in a tempdir and
+   greps for the absence of `archetypes`.
 
 ## Acceptance Criteria
 
@@ -150,5 +155,9 @@ placeholder-grammar page.
       (internal links updated).
 - [ ] `internal/archetypes/` no longer exists; no
       package imports it.
+- [ ] `mdsmith init` in a fresh directory writes a
+      `.mdsmith.yml` containing no `archetypes:` key;
+      the file is accepted by the loader (covered by
+      test).
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues

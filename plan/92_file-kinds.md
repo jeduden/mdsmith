@@ -167,6 +167,11 @@ kind-assignment:
 6. `mdsmith help kinds` prints a short concept page
    covering declaration, assignment, and merge order
    (links to the user guide once plan 96 lands).
+7. `mdsmith init` output includes the new config
+   fields: `kinds:` and `kind-assignment:` are valid
+   keys in the generated `.mdsmith.yml`. Empty
+   defaults are acceptable; fresh `init` followed by
+   `check .` must succeed.
 
 ## Acceptance Criteria
 
@@ -193,5 +198,9 @@ kind-assignment:
 - [ ] No kind name is referenced by mdsmith's core
       (enforced by grep test).
 - [ ] `mdsmith help kinds` prints a concept page.
+- [ ] `mdsmith init` followed by `mdsmith check .`
+      on a fresh directory exits 0; the generated
+      config accepts `kinds:` and `kind-assignment:`
+      keys without error.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues
