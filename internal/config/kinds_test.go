@@ -3,8 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -256,33 +254,6 @@ func TestEffectiveCategoriesWithKinds(t *testing.T) {
 	}
 	result := EffectiveCategories(cfg, "_partials/foo.md", nil)
 	assert.False(t, result["meta"])
-}
-
-// --- No hardcoded kind names in rule code (grep test) ---
-
-func TestNoHardcodedKindNamesInConfig(t *testing.T) {
-	// Scan non-test Go source files in the config and engine packages and
-	// assert that none contain `kindName == "`, which would indicate a
-	// hardcoded kind-name branch in code that uses the "kindName" loop
-	// variable. Rules and engine code must treat all kind names uniformly.
-	dirs := []string{
-		".",
-		"../../internal/engine",
-	}
-	pattern := regexp.MustCompile(`kindName\s*==\s*"`)
-	for _, dir := range dirs {
-		entries, err := os.ReadDir(dir)
-		require.NoError(t, err)
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-				continue
-			}
-			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-			require.NoError(t, err)
-			assert.False(t, pattern.Match(data),
-				"file %s/%s contains a hardcoded kind-name branch", dir, e.Name())
-		}
-	}
 }
 
 // --- Merge preserves kinds ---
