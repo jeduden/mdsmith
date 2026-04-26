@@ -409,7 +409,7 @@ func TestMergePreservesIgnoreAndOverrides(t *testing.T) {
 
 func TestEffectiveWithoutOverrides(t *testing.T) {
 	cfg := Defaults()
-	eff := Effective(cfg, "README.md")
+	eff := Effective(cfg, "README.md", nil)
 
 	require.Len(t, eff, len(rule.All()), "expected %d rules, got %d", len(rule.All()), len(eff))
 	for _, r := range rule.All() {
@@ -437,12 +437,12 @@ func TestEffectiveOverrideAppliesPerFile(t *testing.T) {
 	}
 
 	// CHANGELOG.md should have no-duplicate-headings disabled
-	eff := Effective(cfg, "CHANGELOG.md")
+	eff := Effective(cfg, "CHANGELOG.md", nil)
 	assert.False(t, eff["no-duplicate-headings"].Enabled, "no-duplicate-headings should be disabled for CHANGELOG.md")
 	assert.True(t, eff["line-length"].Enabled, "line-length should remain enabled for CHANGELOG.md")
 
 	// README.md should NOT be affected
-	eff2 := Effective(cfg, "README.md")
+	eff2 := Effective(cfg, "README.md", nil)
 	assert.True(t, eff2["no-duplicate-headings"].Enabled, "no-duplicate-headings should remain enabled for README.md")
 }
 
@@ -470,7 +470,7 @@ func TestEffectiveLaterOverridesWin(t *testing.T) {
 	}
 
 	// docs/api/foo.md matches both overrides; second should win
-	eff := Effective(cfg, "docs/api/foo.md")
+	eff := Effective(cfg, "docs/api/foo.md", nil)
 	rc := eff["line-length"]
 	assert.True(t, rc.Enabled, "line-length should be enabled")
 	if rc.Settings["max"] != 200 {
@@ -565,16 +565,16 @@ func TestEffectiveOverrideMatchesBasename(t *testing.T) {
 	}
 
 	// slides.md at root should match.
-	eff := Effective(cfg, "slides.md")
+	eff := Effective(cfg, "slides.md", nil)
 	assert.False(t, eff["first-line-heading"].Enabled, "first-line-heading should be disabled for slides.md")
 
 	// docs/slides.md should also match via basename (issue #40).
-	eff2 := Effective(cfg, "docs/slides.md")
+	eff2 := Effective(cfg, "docs/slides.md", nil)
 	assert.False(t, eff2["first-line-heading"].Enabled,
 		"first-line-heading should be disabled for docs/slides.md via basename match")
 
 	// other.md should NOT match.
-	eff3 := Effective(cfg, "other.md")
+	eff3 := Effective(cfg, "other.md", nil)
 	assert.True(t, eff3["first-line-heading"].Enabled, "first-line-heading should remain enabled for other.md")
 }
 
@@ -589,11 +589,11 @@ func TestEffectiveGlobPatternMatch(t *testing.T) {
 		},
 	}
 
-	eff := Effective(cfg, "vendor/foo/bar.md")
+	eff := Effective(cfg, "vendor/foo/bar.md", nil)
 	assert.False(t, eff["line-length"].Enabled, "line-length should be disabled for vendor/foo/bar.md")
 
 	// Non-matching file
-	eff2 := Effective(cfg, "src/main.md")
+	eff2 := Effective(cfg, "src/main.md", nil)
 	assert.True(t, eff2["line-length"].Enabled, "line-length should remain enabled for src/main.md")
 }
 
@@ -835,7 +835,7 @@ rules:
 	assert.Nil(t, cfg.Categories, "expected nil categories when omitted, got %v", cfg.Categories)
 
 	// EffectiveCategories should default all to true.
-	cats := EffectiveCategories(cfg, "README.md")
+	cats := EffectiveCategories(cfg, "README.md", nil)
 	for _, name := range ValidCategories {
 		assert.True(t, cats[name], "category %q should default to true", name)
 	}
@@ -918,7 +918,7 @@ func TestEffectiveCategoriesTopLevel(t *testing.T) {
 		},
 	}
 
-	cats := EffectiveCategories(cfg, "README.md")
+	cats := EffectiveCategories(cfg, "README.md", nil)
 	if cats["heading"] != false {
 		t.Error("heading should be false")
 	}
@@ -950,13 +950,13 @@ func TestEffectiveCategoriesOverride(t *testing.T) {
 	}
 
 	// CHANGELOG.md should have heading disabled via override.
-	cats := EffectiveCategories(cfg, "CHANGELOG.md")
+	cats := EffectiveCategories(cfg, "CHANGELOG.md", nil)
 	if cats["heading"] != false {
 		t.Error("heading should be false for CHANGELOG.md")
 	}
 
 	// README.md should keep heading enabled.
-	cats2 := EffectiveCategories(cfg, "README.md")
+	cats2 := EffectiveCategories(cfg, "README.md", nil)
 	if cats2["heading"] != true {
 		t.Error("heading should be true for README.md")
 	}
@@ -980,12 +980,12 @@ func TestEffectiveExplicitRulesFromOverrides(t *testing.T) {
 		},
 	}
 
-	explicit := EffectiveExplicitRules(cfg, "docs/guide.md")
+	explicit := EffectiveExplicitRules(cfg, "docs/guide.md", nil)
 	assert.True(t, explicit["line-length"], "line-length should be explicit (from top-level)")
 	assert.True(t, explicit["heading-style"], "heading-style should be explicit (from matching override)")
 
 	// Non-matching file should not get override rules.
-	explicit2 := EffectiveExplicitRules(cfg, "README.md")
+	explicit2 := EffectiveExplicitRules(cfg, "README.md", nil)
 	assert.False(t, explicit2["heading-style"], "heading-style should not be explicit for README.md")
 }
 

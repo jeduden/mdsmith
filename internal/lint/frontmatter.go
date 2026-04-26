@@ -30,22 +30,27 @@ func CountLines(b []byte) int {
 }
 
 // ParseFrontMatterKinds extracts the kinds: list from a YAML front-matter
-// block (including its --- delimiters). Returns nil if the block is nil,
-// the key is absent, or it cannot be parsed.
-func ParseFrontMatterKinds(fm []byte) []string {
+// block (including its --- delimiters). Returns nil kinds and nil error if
+// the block is nil or the kinds key is absent. Returns an error if the
+// YAML contains anchors/aliases or cannot be parsed.
+func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	if len(fm) == 0 {
-		return nil
+		return nil, nil
 	}
 	// Strip the leading and trailing --- delimiters to get raw YAML.
 	delim := []byte("---\n")
 	body := bytes.TrimPrefix(fm, delim)
 	body = bytes.TrimSuffix(body, delim)
 
+	if err := RejectYAMLAliases(body); err != nil {
+		return nil, err
+	}
+
 	var parsed struct {
 		Kinds []string `yaml:"kinds"`
 	}
 	if err := yaml.Unmarshal(body, &parsed); err != nil {
-		return nil
+		return nil, err
 	}
-	return parsed.Kinds
+	return parsed.Kinds, nil
 }

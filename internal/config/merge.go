@@ -66,8 +66,8 @@ func Merge(defaults, loaded *Config) *Config {
 		Deprecations:           copyStrings(loaded.Deprecations),
 		MaxInputSize:           maxInputSize,
 		Archetypes:             archetypes,
-		Kinds:                  loaded.Kinds,
-		KindAssignment:         loaded.KindAssignment,
+		Kinds:                  copyKinds(loaded.Kinds),
+		KindAssignment:         copyKindAssignment(loaded.KindAssignment),
 	}
 }
 
@@ -98,9 +98,44 @@ func copyConfig(cfg *Config) *Config {
 		ExplicitRules:          explicit,
 		FilesExplicit:          cfg.FilesExplicit,
 		Archetypes:             ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
-		Kinds:                  cfg.Kinds,
-		KindAssignment:         cfg.KindAssignment,
+		Kinds:                  copyKinds(cfg.Kinds),
+		KindAssignment:         copyKindAssignment(cfg.KindAssignment),
 	}
+}
+
+// copyKinds returns a deep copy of a kinds map. Returns nil if input is nil.
+func copyKinds(kinds map[string]KindBody) map[string]KindBody {
+	if kinds == nil {
+		return nil
+	}
+	result := make(map[string]KindBody, len(kinds))
+	for name, body := range kinds {
+		rules := make(map[string]RuleCfg, len(body.Rules))
+		for k, v := range body.Rules {
+			rules[k] = v
+		}
+		result[name] = KindBody{
+			Rules:      rules,
+			Categories: copyCategories(body.Categories),
+		}
+	}
+	return result
+}
+
+// copyKindAssignment returns a deep copy of a kind-assignment slice.
+// Returns nil if input is nil.
+func copyKindAssignment(entries []KindAssignmentEntry) []KindAssignmentEntry {
+	if entries == nil {
+		return nil
+	}
+	result := make([]KindAssignmentEntry, len(entries))
+	for i, e := range entries {
+		result[i] = KindAssignmentEntry{
+			Files: copyStrings(e.Files),
+			Kinds: copyStrings(e.Kinds),
+		}
+	}
+	return result
 }
 
 // copyStrings returns a copy of a string slice. Returns nil if the input is nil.
@@ -175,17 +210,13 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string) []str
 // It starts with the top-level rules, applies kinds in effective-list order
 // (fmKinds from front matter first, then kind-assignment matches), and
 // finally applies glob overrides. Later entries take precedence.
-func Effective(cfg *Config, filePath string, fmKinds ...[]string) map[string]RuleCfg {
+func Effective(cfg *Config, filePath string, fmKinds []string) map[string]RuleCfg {
 	result := make(map[string]RuleCfg, len(cfg.Rules))
 	for k, v := range cfg.Rules {
 		result[k] = v
 	}
 
-	var frontMatterKinds []string
-	if len(fmKinds) > 0 {
-		frontMatterKinds = fmKinds[0]
-	}
-	for _, kindName := range resolveEffectiveKinds(cfg, filePath, frontMatterKinds) {
+	for _, kindName := range resolveEffectiveKinds(cfg, filePath, fmKinds) {
 		body, ok := cfg.Kinds[kindName]
 		if !ok {
 			continue
@@ -210,17 +241,13 @@ func Effective(cfg *Config, filePath string, fmKinds ...[]string) map[string]Rul
 // configured for a given file path. It includes rules from the top-level
 // ExplicitRules, any rules set by matching kinds, and any rules set by
 // matching overrides.
-func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds ...[]string) map[string]bool {
+func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds []string) map[string]bool {
 	result := make(map[string]bool, len(cfg.ExplicitRules))
 	for k := range cfg.ExplicitRules {
 		result[k] = true
 	}
 
-	var frontMatterKinds []string
-	if len(fmKinds) > 0 {
-		frontMatterKinds = fmKinds[0]
-	}
-	for _, kindName := range resolveEffectiveKinds(cfg, filePath, frontMatterKinds) {
+	for _, kindName := range resolveEffectiveKinds(cfg, filePath, fmKinds) {
 		body, ok := cfg.Kinds[kindName]
 		if !ok {
 			continue
@@ -245,7 +272,7 @@ func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds ...[]string) m
 // file path. It starts with the top-level categories, applies kinds in
 // effective-list order, and then applies matching overrides. Categories not
 // explicitly set default to true (enabled).
-func EffectiveCategories(cfg *Config, filePath string, fmKinds ...[]string) map[string]bool {
+func EffectiveCategories(cfg *Config, filePath string, fmKinds []string) map[string]bool {
 	// Start with all categories enabled.
 	result := make(map[string]bool, len(ValidCategories))
 	for _, cat := range ValidCategories {
@@ -258,11 +285,7 @@ func EffectiveCategories(cfg *Config, filePath string, fmKinds ...[]string) map[
 	}
 
 	// Apply kinds in effective-list order.
-	var frontMatterKinds []string
-	if len(fmKinds) > 0 {
-		frontMatterKinds = fmKinds[0]
-	}
-	for _, kindName := range resolveEffectiveKinds(cfg, filePath, frontMatterKinds) {
+	for _, kindName := range resolveEffectiveKinds(cfg, filePath, fmKinds) {
 		body, ok := cfg.Kinds[kindName]
 		if !ok {
 			continue

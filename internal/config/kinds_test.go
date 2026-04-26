@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -172,7 +174,7 @@ func TestEffectiveKindOverridesTopLevelRule(t *testing.T) {
 			{Files: []string{"wide/*.md"}, Kinds: []string{"wide"}},
 		},
 	}
-	result := Effective(cfg, "wide/doc.md")
+	result := Effective(cfg, "wide/doc.md", nil)
 	assert.Equal(t, 200, result["line-length"].Settings["max"])
 }
 
@@ -198,7 +200,7 @@ func TestEffectiveGlobOverrideBeatsKind(t *testing.T) {
 			},
 		},
 	}
-	result := Effective(cfg, "wide/special.md")
+	result := Effective(cfg, "wide/special.md", nil)
 	assert.Equal(t, 120, result["line-length"].Settings["max"])
 }
 
@@ -252,33 +254,35 @@ func TestEffectiveCategoriesWithKinds(t *testing.T) {
 			{Files: []string{"_partials/*.md"}, Kinds: []string{"fragment"}},
 		},
 	}
-	result := EffectiveCategories(cfg, "_partials/foo.md")
+	result := EffectiveCategories(cfg, "_partials/foo.md", nil)
 	assert.False(t, result["meta"])
 }
 
-// --- No hardcoded kind names in rule config (grep test) ---
+// --- No hardcoded kind names in rule code (grep test) ---
 
 func TestNoHardcodedKindNamesInConfig(t *testing.T) {
-	// Verify that the merge logic never branches on specific kind names.
-	// This is a source-level check: the config package must not contain
-	// string comparisons like `== "plan"` or `kindName == "proto"`.
-	// We verify via the public API: adding a brand-new kind name works
-	// identically to any other name, with no special-casing.
-	cfg := &Config{
-		Rules: map[string]RuleCfg{
-			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
-		},
-		Kinds: map[string]KindBody{
-			"completely-novel-kind-xyz123": {Rules: map[string]RuleCfg{
-				"line-length": {Enabled: true, Settings: map[string]any{"max": 999}},
-			}},
-		},
-		KindAssignment: []KindAssignmentEntry{
-			{Files: []string{"*.md"}, Kinds: []string{"completely-novel-kind-xyz123"}},
-		},
+	// Scan the non-test Go source files in the config and engine packages and
+	// assert that none contain the pattern `kindName == "` or `== kindName`,
+	// which would indicate hardcoded kind-name branches. Rules and engine code
+	// must treat all kind names uniformly.
+	dirs := []string{
+		".",
+		"../../internal/engine",
 	}
-	result := Effective(cfg, "doc.md")
-	assert.Equal(t, 999, result["line-length"].Settings["max"])
+	pattern := regexp.MustCompile(`kindName\s*==\s*"`)
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			require.NoError(t, err)
+			assert.False(t, pattern.Match(data),
+				"file %s/%s contains a hardcoded kind-name branch", dir, e.Name())
+		}
+	}
 }
 
 // --- Merge preserves kinds ---
@@ -316,7 +320,7 @@ func TestEffectiveExplicitRulesIncludesKindRules(t *testing.T) {
 			{Files: []string{"wide/*.md"}, Kinds: []string{"wide"}},
 		},
 	}
-	result := EffectiveExplicitRules(cfg, "wide/doc.md")
+	result := EffectiveExplicitRules(cfg, "wide/doc.md", nil)
 	assert.True(t, result["no-hard-tabs"], "top-level explicit rule should be present")
 	assert.True(t, result["line-length"], "kind rule should be marked explicit")
 }

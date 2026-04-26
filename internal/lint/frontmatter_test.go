@@ -94,10 +94,18 @@ func TestParseFrontMatterKinds(t *testing.T) {
 		},
 	}
 
-	// Also test that passing raw front-matter bytes with invalid YAML returns nil.
-	t.Run("invalid yaml returns nil", func(t *testing.T) {
-		got := ParseFrontMatterKinds([]byte("---\nkinds: [[[invalid\n---\n"))
+	// Invalid YAML returns an error.
+	t.Run("invalid yaml returns error", func(t *testing.T) {
+		got, err := ParseFrontMatterKinds([]byte("---\nkinds: [[[invalid\n---\n"))
 		assert.Nil(t, got)
+		assert.Error(t, err)
+	})
+
+	// YAML aliases are rejected.
+	t.Run("yaml aliases rejected", func(t *testing.T) {
+		got, err := ParseFrontMatterKinds([]byte("---\nbase: &a [plan]\nkinds: *a\n---\n"))
+		assert.Nil(t, got)
+		assert.Error(t, err)
 	})
 
 	for _, tt := range tests {
@@ -108,7 +116,8 @@ func TestParseFrontMatterKinds(t *testing.T) {
 				require.NotNil(t, prefix, "expected front matter in input")
 				fm = prefix
 			}
-			got := ParseFrontMatterKinds(fm)
+			got, err := ParseFrontMatterKinds(fm)
+			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})
 	}

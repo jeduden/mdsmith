@@ -76,7 +76,11 @@ func (r *Runner) Run(paths []string) *Result {
 			return r.cachedGitignore(gd)
 		}
 
-		fmKinds := lint.ParseFrontMatterKinds(f.FrontMatter)
+		fmKinds, err := lint.ParseFrontMatterKinds(f.FrontMatter)
+		if err != nil {
+			res.Errors = append(res.Errors, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err))
+			continue
+		}
 		if err := config.ValidateFrontMatterKinds(r.Config, path, fmKinds); err != nil {
 			res.Errors = append(res.Errors, err)
 			continue
@@ -120,7 +124,11 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		f.SetRootDir(r.RootDir)
 	}
 
-	fmKinds := lint.ParseFrontMatterKinds(f.FrontMatter)
+	fmKinds, err := lint.ParseFrontMatterKinds(f.FrontMatter)
+	if err != nil {
+		res.Errors = append(res.Errors, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err))
+		return res
+	}
 	if err := config.ValidateFrontMatterKinds(r.Config, path, fmKinds); err != nil {
 		res.Errors = append(res.Errors, err)
 		return res

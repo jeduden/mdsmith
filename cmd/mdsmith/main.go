@@ -1079,7 +1079,7 @@ to kinds separately:
     proto:
       rules:
         paragraph-readability: false
-        front-matter: false
+        first-line-heading: false
 
 Kind names are project-chosen. mdsmith ships no built-in kinds.
 

@@ -94,18 +94,12 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 		return nil, nil, "", []error{fmt.Errorf("stat %q: %w", path, err)}
 	}
 
-	lf, err := lint.NewFileFromSource(path, source, f.StripFrontMatter)
-	if err != nil {
-		return nil, nil, "", []error{fmt.Errorf("parsing %q: %w", path, err)}
+	lf, dirFS, fmKinds, prepErr := f.prepareFile(path, source)
+	if prepErr != nil {
+		return nil, nil, "", []error{prepErr}
 	}
 
-	lf.MaxInputBytes = f.MaxInputBytes
-	dirFS := os.DirFS(filepath.Dir(path))
-	lf.FS = dirFS
-	if f.RootDir != "" {
-		lf.SetRootDir(f.RootDir)
-	}
-	effective := f.effectiveWithCategories(path)
+	effective := f.effectiveWithCategories(path, fmKinds)
 
 	f.logRules(effective)
 
@@ -200,12 +194,36 @@ func (f *Fixer) logRules(effective map[string]config.RuleCfg) {
 	}
 }
 
+// prepareFile parses a lint.File from source, configures its FS/RootDir,
+// and resolves the file's front-matter kinds. Returns the file, its dirFS,
+// the validated kind list, and any error.
+func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []string, error) {
+	lf, err := lint.NewFileFromSource(path, source, f.StripFrontMatter)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("parsing %q: %w", path, err)
+	}
+	lf.MaxInputBytes = f.MaxInputBytes
+	dirFS := os.DirFS(filepath.Dir(path))
+	lf.FS = dirFS
+	if f.RootDir != "" {
+		lf.SetRootDir(f.RootDir)
+	}
+	kinds, err := lint.ParseFrontMatterKinds(lf.FrontMatter)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
+	}
+	if err := config.ValidateFrontMatterKinds(f.Config, path, kinds); err != nil {
+		return nil, nil, nil, err
+	}
+	return lf, dirFS, kinds, nil
+}
+
 // effectiveWithCategories computes the effective rule config for a file
 // path, applying category-based enable/disable on top of per-rule settings.
-func (f *Fixer) effectiveWithCategories(path string) map[string]config.RuleCfg {
-	effective := config.Effective(f.Config, path)
-	categories := config.EffectiveCategories(f.Config, path)
-	explicit := config.EffectiveExplicitRules(f.Config, path)
+func (f *Fixer) effectiveWithCategories(path string, fmKinds []string) map[string]config.RuleCfg {
+	effective := config.Effective(f.Config, path, fmKinds)
+	categories := config.EffectiveCategories(f.Config, path, fmKinds)
+	explicit := config.EffectiveExplicitRules(f.Config, path, fmKinds)
 
 	// Build rule-name-to-category lookup from the fixer's rule list.
 	m := make(map[string]string, len(f.Rules))
