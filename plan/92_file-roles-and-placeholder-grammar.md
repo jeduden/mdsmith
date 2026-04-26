@@ -4,9 +4,9 @@ title: File roles and placeholder grammar
 status: "🔲"
 summary: >-
   Replace per-file ignore entries for schema and template
-  Markdown with a composable model: declared file roles
-  plus a shared placeholder grammar that every rule can
-  consult.
+  Markdown with a composable model: user-declarable file
+  roles that reuse the existing rule-config syntax, plus
+  a placeholder grammar exposed as per-rule settings.
 ---
 # File roles and placeholder grammar
 
@@ -14,10 +14,9 @@ summary: >-
 
 Remove the need to put schema, template, fragment, and
 other "input-to-other-Markdown" files in `ignore:`.
-Make every Markdown file in the repo lintable under a
-declared **role**, and let rules opt into a shared
-**placeholder grammar** so template tokens stop tripping
-content checks.
+Every Markdown file should be lintable under a declared
+**role**. Roles are configured with the same syntax as
+the existing rule configuration. No new bespoke schema.
 
 ## Background
 
@@ -33,81 +32,113 @@ hatch is `ignore:`. The same pressure recurs for any
 file that seeds or validates other Markdown — templates,
 includes, demo sources, future schemas.
 
-The fix is two orthogonal concepts kept composable:
+The fix is two pieces, both built on existing plumbing:
 
-1. **File roles.** Promote the implicit categories to
-   first-class roles (`document`, `schema`, `template`,
-   `fragment`, `fixture`). Each rule declares how it
-   reacts per role: applies, skips, or applies-with-
-   relaxation. Roles are a *set*, so a file can be both
-   `document` and `fragment` and the disabled-rule sets
-   union.
-2. **Placeholder grammar.** Lift the ad-hoc escapes
-   (`# ?`, `## ...`, `{var}`, CUE front-matter patterns,
-   existing `<?allow-empty-section?>` markers) into one
-   named vocabulary that every rule consults via a
-   shared helper. Rules get two knobs:
-   "recognize placeholders?" and "ignore placeholder
-   tokens?".
+1. **User-declarable roles.** A role is a named block
+   with the same shape as an `overrides:` entry minus
+   `files:`. The five names mdsmith ships with
+   (`document`, `schema`, `template`, `fragment`,
+   `fixture`) are defaults — projects can declare
+   their own (e.g. `agent-prompt`, `runbook`) without
+   touching rule code.
+2. **Placeholder support as rule settings.** Each rule
+   that wants to recognize template tokens (`# ?`,
+   `## ...`, `{var}`, CUE front-matter values) exposes
+   a `placeholders:` setting through the existing
+   `Configurable` interface. Roles enable it the same
+   way any other rule setting is enabled.
 
 ## Design
 
-### Composability rules
+### Role declaration
 
-These invariants keep the model from collapsing into
-per-file special cases:
+A role is a named block under `roles:`. Its body has
+the **same shape as an override entry** (`rules:`,
+`front-matter:`, etc.) — minus `files:`, since files
+are bound to roles separately.
 
-1. **Role union, not override.** Combining roles only
-   *removes* checks. A second role never silently
-   re-enables a check the first role disabled.
-2. **Lint-once.** Content pulled in via `<?include?>`
-   or `<?catalog?>` is linted in its source file under
-   its source role; the host file does not re-diagnose
-   embedded bytes.
-3. **Schema vs subject separation.** A schema file's
-   front matter is validated as a *schema* (CUE
-   patterns OK); referenced subject files are
-   validated as *data*. Same mechanism applies to any
-   future "describes another file" relationship.
-4. **No per-file-type rule forks.** Rule code never
-   branches on `if proto.md`. It branches on
-   `role + placeholder presence` only.
+```yaml
+roles:
+  schema:
+    front-matter: false
+    rules:
+      first-line-heading:
+        placeholders: [var-token, heading-question]
+      cross-file-reference-integrity:
+        placeholders: [var-token]
+      paragraph-readability: false
+      paragraph-structure: false
+      no-emphasis-as-heading: false
+      required-structure:
+        mode: schema
+```
+
+Same merge semantics as overrides apply: later wins,
+settings deep-merge. Five roles ship with mdsmith as
+defaults; users can add or override them.
 
 ### Role assignment
 
 A file's role set is the union of:
 
-- explicit `role:` field in front matter, and
-- glob-based assignment in `.mdsmith.yml`, and
+- explicit `role:` field in front matter;
+- glob-based assignment in `.mdsmith.yml`
+  (`role-assignment:` map, separate from role
+  declaration);
 - implicit roles inferred from config references
-  (e.g. any path used as a `required-structure: schema:`
-  target gains the `schema` role automatically; any
-  path referenced by `<?include?>` gains `fragment`).
+  (any path used as a `required-structure: schema:`
+  target gains role `schema`; any path referenced by
+  `<?include?>` gains `fragment`).
 
 Implicit assignment is what removes the four current
 ignore entries without any user action.
 
-### Placeholder grammar
+### Composability
 
-Initial vocabulary (extensible, registered centrally):
+1. **Role merge follows override merge.** Roles apply
+   in declared order; the file's own glob overrides
+   apply last. Resolution is deterministic and
+   inspectable.
+2. **Lint-once.** Content pulled in via `<?include?>`
+   or `<?catalog?>` is linted in its source file
+   under its source role; the host file does not
+   re-diagnose embedded bytes.
+3. **Schema vs subject separation.** A schema file's
+   front matter is validated as a *schema* (CUE
+   patterns OK); referenced subject files are
+   validated as *data*.
+4. **No role names in rule code.** Rules consult
+   their own settings; they never branch on
+   `if role == "schema"`. New roles cannot regress
+   existing rule behavior because rules have no
+   knowledge of role names.
 
-- `# ?`, `## ?`, `### ?` — placeholder heading text
-- `## ...` — placeholder section name
-- `{identifier}` — variable interpolation token
-- CUE-style front-matter values (string predicates,
-  regex literals, disjunctions)
-- existing `<?allow-empty-section?>` and other PI
-  markers stay as-is
+### Placeholder support
 
-Each rule that opts in receives a token-stripped or
-token-aware view of the AST so detection logic stays
-local to one helper.
+Placeholder grammars are named tokens (`var-token`
+for `{identifier}`, `heading-question` for `# ?`,
+`cue-frontmatter`, …). Each rule that opts in declares
+a `placeholders:` setting via `Configurable` — same
+machinery as any other rule setting. Roles enable the
+right tokens per rule:
+
+```yaml
+roles:
+  schema:
+    rules:
+      cross-file-reference-integrity:
+        placeholders: [var-token]
+```
+
+Adding a new placeholder grammar is a code change in
+one helper plus opt-ins per rule; it is not coupled
+to any role.
 
 ### Migration
 
-Migration removes ignore entries one role at a time and
-keeps the linter green at every step. Behavior on files
-not yet tagged with a role is unchanged.
+Migration removes ignore entries one role at a time
+and keeps the linter green at every step. Behavior on
+files not yet tagged with a role is unchanged.
 
 ## Examples
 
@@ -122,14 +153,12 @@ status: '"ready" | "not-ready"'
 # {id}: {name}
 ```
 
-The `role: schema` field flips the file into schema
-mode; the CUE patterns and `{id}` placeholder stop
-tripping content rules.
+### Glob-based assignment
 
-### Glob-based assignment in config
+Role assignment lives next to role declarations:
 
 ```yaml
-roles:
+role-assignment:
   schema:
     - "**/proto.md"
   template:
@@ -140,62 +169,40 @@ roles:
 
 ### Implicit role from a config reference
 
-A file referenced as a structure schema gets role
-`schema` automatically:
-
 ```yaml
 overrides:
   - files: ["plan/*.md"]
     rules:
       required-structure:
-        schema: plan/proto.md   # plan/proto.md → role: schema
+        schema: plan/proto.md   # plan/proto.md → schema
 ```
 
-No `ignore:` entry, no front-matter tag, no glob
-needed. The same applies to `<?include?>` targets,
-which gain role `fragment`.
+The path `plan/proto.md` gains role `schema`
+implicitly. No `ignore:`, no front-matter tag, no
+glob needed.
 
-### Placeholder grammar in `internal/rules/proto.md`
+### User-declared role (no rule code changes)
 
-Today's file (lines 1–7):
+```yaml
+roles:
+  agent-prompt:
+    rules:
+      paragraph-readability: false
+      first-line-heading:
+        placeholders: [var-token]
 
-```markdown
----
-id: '=~"^MDS[0-9]{3}$"'
-name: 'string & != ""'
-status: '"ready" | "not-ready"'
-description: 'string & != ""'
----
-# {id}: {name}
+role-assignment:
+  agent-prompt:
+    - ".claude/prompts/**"
 ```
 
-Under role `schema`, every placeholder-aware rule sees:
-
-- front matter — values are CUE patterns, validated as
-  schema; not parsed as data.
-- `# {id}: {name}` — recognized as a level-1 heading
-  by `first-line-heading` and `heading-increment`,
-  with `{id}` and `{name}` treated as opaque tokens
-  by content rules.
-- `[NAME](../../../docs/background/archetypes/NAME/)`
-  — `cross-file-reference-integrity` skips the link
-  because `NAME` is a `{var}` placeholder. The current
-  `exclude:` entry on line 47 of `.mdsmith.yml`
-  becomes unnecessary.
-
-### Composability — role union
+### Composability — merged role config
 
 `docs/_partials/setup-snippet.md` carries both
-`fragment` (it is included elsewhere) and `template`
-(it has `{project}` placeholders). Disabled checks:
-
-- `fragment` removes: `first-line-heading`,
-  `heading-increment`.
-- `template` removes: `paragraph-readability`,
-  `paragraph-structure`.
-- Net disabled = union of the two sets.
-- Adding a third role can only enlarge that set,
-  never shrink it.
+`fragment` and `template`. The effective config is a
+deep-merge of both role bodies in declared order.
+File-glob overrides apply last. Inspect the result
+with `mdsmith config show <path>`.
 
 ### Lint-once for embeds
 
@@ -206,11 +213,9 @@ docs/index.md           role: document
 docs/_partials/intro.md role: fragment
 ```
 
-`docs/_partials/intro.md` is linted once, under
-`fragment`. `docs/index.md` is linted as `document`,
-but the embedded intro bytes are skipped by every
-rule because they belong to a fragment that has
-already been checked.
+`docs/_partials/intro.md` is linted under `fragment`.
+The embedded bytes inside `docs/index.md` are not
+re-checked.
 
 ### Schema vs subject
 
@@ -219,87 +224,69 @@ already been checked.
 | `plan/proto.md`                                 | schema   | CUE pattern (`int & >=1`)                |
 | `plan/92_file-roles-and-placeholder-grammar.md` | document | data; matched against `proto.md` pattern |
 
-The schema file's front matter is checked for valid
-*pattern syntax*. The subject file's front matter is
-checked against that pattern.
-
-### Per-rule role table
-
-Behavior per role for the rules currently tripped by
-`proto.md` files:
-
-| Rule                             | document | schema       | template     | fragment |
-|----------------------------------|----------|--------------|--------------|----------|
-| `first-line-heading`             | apply    | placeholders | placeholders | skip     |
-| `heading-increment`              | apply    | apply        | apply        | skip     |
-| `no-emphasis-as-heading`         | apply    | skip         | skip         | apply    |
-| `cross-file-reference-integrity` | apply    | placeholders | placeholders | apply    |
-| `paragraph-readability`          | apply    | skip         | skip         | apply    |
-| `paragraph-structure`            | apply    | skip         | skip         | apply    |
-| front-matter validation          | data     | schema       | schema/data  | data     |
-
-"placeholders" = rule applies but consults the
-placeholder grammar helper.
-
 ## Tasks
 
-1. Inventory current `ignore:` and per-file `overrides:`
-   entries; classify each by intended role
-   (schema / template / fragment / fixture / document).
-2. Define the role enum and a `role:` front-matter
-   field; wire glob-based and implicit assignment
-   from config references.
-3. Define the placeholder grammar registry and a
-   shared helper rules can consult.
-4. Add a `RoleAware` rule capability (analogous to
-   `Configurable`): rules declare per-role behavior;
-   default is "applies as today".
-5. Teach the rules currently tripped by `proto.md`
+1. Inventory current `ignore:` and per-file
+   `overrides:` entries; classify each by intended
+   role.
+2. Add the `roles:` and `role-assignment:` config
+   keys; reuse the existing override merge to apply a
+   role's body.
+3. Add the front-matter `role:` field and the
+   implicit-from-reference assignment path
+   (`required-structure: schema:` and `<?include?>`).
+4. Add a placeholder helper (`var-token`,
+   `heading-question`, `cue-frontmatter`, …) and a
+   `placeholders:` setting on each rule that opts in
    (`first-line-heading`, `heading-increment`,
    `no-emphasis-as-heading`,
    `cross-file-reference-integrity`,
    `paragraph-readability`, `paragraph-structure`,
-   front-matter validation) to honor the placeholder
-   grammar when role includes `schema` or `template`.
+   front-matter validation).
+5. Ship the five built-in roles (`document`,
+   `schema`, `template`, `fragment`, `fixture`) as
+   default config that users can override.
 6. Implement lint-once for `<?include?>` and
-   `<?catalog?>` host files so embedded fragment
-   content is not re-diagnosed.
-7. Drop the four `proto.md` entries from `ignore:` and
-   confirm `mdsmith check .` stays green.
-8. Document the role model and placeholder grammar
-   under `docs/background/archetypes/` (new archetype
-   page) and link from each affected rule README.
-9. Add a config-error path for unknown roles and for
-   placeholder tokens that escape into non-placeholder
-   files.
+   `<?catalog?>` host files.
+7. Drop the four `proto.md` entries from `ignore:`
+   and confirm `mdsmith check .` stays green.
+8. Document the model under
+   `docs/background/archetypes/` and link from each
+   affected rule README.
+9. Add a `mdsmith config show <file>` debug command
+   that prints the resolved role set and merged rule
+   config for a file.
 
 ## Acceptance Criteria
 
 - [ ] `mdsmith check .` passes with the four
       `proto.md` entries removed from `.mdsmith.yml`
       `ignore:`.
+- [ ] A role declaration parses with the same syntax
+      as an override entry (minus `files:`); override
+      merge is reused for role merge (verified by
+      test).
+- [ ] A user-declared role (not in the built-in five)
+      composes correctly with built-ins and with
+      file-glob overrides (covered by test).
 - [ ] Schema files are linted under role `schema`:
       CUE-pattern front matter, `# ?` and `## ...`
       placeholders, and `{var}` tokens produce no
-      diagnostics from rules that opted into the
-      placeholder grammar.
-- [ ] A file declaring two roles receives the **union**
-      of disabled checks; no role silently re-enables a
-      check another role disabled (covered by test).
+      diagnostics from rules whose `placeholders:`
+      setting permits them.
 - [ ] Content embedded into a host file via
       `<?include?>` or `<?catalog?>` produces
-      diagnostics only against the source file, not the
-      host (covered by test).
+      diagnostics only against the source file, not
+      the host (covered by test).
 - [ ] Adding a new schema file under any directory
       requires no change to `ignore:` — the role is
       assigned implicitly from its
       `required-structure: schema:` reference.
-- [ ] Rule code contains no `if filename == "proto.md"`
-      style branches; behavior is selected via role and
-      placeholder helpers only (enforced by review +
-      grep test).
-- [ ] Unknown role names and stray placeholder tokens
-      in non-placeholder files produce clear config or
-      lint errors.
+- [ ] Rule code contains no `if role == "..."`
+      branches; rule behavior is selected through
+      `Configurable` settings only (enforced by grep
+      test).
+- [ ] `mdsmith config show <file>` prints the
+      resolved role set and the merged rule config.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues
