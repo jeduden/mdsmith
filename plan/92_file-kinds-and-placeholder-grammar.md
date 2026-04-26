@@ -175,14 +175,17 @@ order.
 
 ### Glob-based assignment
 
+`kind-assignment:` is a **list** of entries (same
+shape as `overrides:`) so order is deterministic:
+
 ```yaml
 kind-assignment:
-  recipe:
-    - "**/proto.md"
-  worksheet:
-    - ".github/PULL_REQUEST_TEMPLATE.md"
-  tip:
-    - "docs/_partials/**"
+  - files: ["**/proto.md"]
+    kinds: [recipe]
+  - files: [".github/PULL_REQUEST_TEMPLATE.md"]
+    kinds: [worksheet]
+  - files: ["docs/_partials/**"]
+    kinds: [tip]
 ```
 
 ### Implicit kind from a config reference
