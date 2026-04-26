@@ -34,6 +34,17 @@ jobs:
       actions: write
       issues: write
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          persist-credentials: false
+
+      - name: Configure git identity
+        run: |
+          git config user.email "merge-queue@users.noreply.github.com"
+          git config user.name  "merge-queue-bot"
+
       - uses: jeduden/merge-queue-action@5adb5a76e27e96f1da5efd36f097a2c5233e9ad3 # v0.6.0
         with:
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
