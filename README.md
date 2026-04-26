@@ -13,37 +13,26 @@ cross-file integrity. Written in Go.
 
 ## ✨ Why mdsmith
 
-Each subcommand earns its place. The pillars below name the
-subcommand (and rules) that deliver it.
+**🔧 Stop hand-formatting Markdown.**
+Whitespace, heading style, code fences, bare URLs, list
+indentation, table alignment — `mdsmith fix` handles them
+in place. Multi-pass fixing resolves cascading changes so
+you don't run it twice. `mdsmith check` is the read-only
+sibling for CI.
 
-**🔧 Lint and auto-fix — `check`, `fix`.**
-`mdsmith check` reports lint diagnostics with source
-context; `mdsmith fix` corrects most rules in place:
-whitespace, heading style, code fences, bare URLs, list
-indentation, table alignment. Multi-pass fixing resolves
-cascading changes automatically.
-
-**📋 Generated sections — `fix`, `merge-driver`.**
-Embed live content via `<?catalog?>`, `<?toc?>`, and
-`<?include?>` directives — summary tables from front
-matter, tables of contents from headings, file
-inclusions. `fix` regenerates them in place;
-`merge-driver install` registers a Git driver that
-auto-resolves merge conflicts inside those sections.
-
-**🔗 Cross-file integrity — `check`, `archetypes`.**
-Broken links rot in silence.
+**🔗 Catch broken links before they merge.**
+Refactors silently break Markdown links and anchors.
 [`cross-file-reference-integrity`](internal/rules/MDS027-cross-file-reference-integrity/README.md)
-flags missing files and missing heading anchors before merge.
+flags every missing file and missing heading anchor in PR
+review. Pair it with
 [`required-structure`](internal/rules/MDS020-required-structure/README.md)
-checks each file against a schema.
-`mdsmith archetypes` manages those schemas as reusable
-templates discovered under configured roots.
+to enforce that each file has the sections it should
+(reusable schemas live under `mdsmith archetypes`), and
 [`directory-structure`](internal/rules/MDS033-directory-structure/README.md)
-keeps Markdown in the right folders.
+to keep Markdown in the folders it belongs.
 
-**🤖 Keep AI verbosity in check — `check`.**
-AI tools produce walls of text. Cap file length with
+**🤖 Stop AI from bloating your docs.**
+LLMs produce walls of text. Cap file length with
 [`max-file-length`](internal/rules/MDS022-max-file-length/README.md),
 section length with
 [`max-section-length`](internal/rules/MDS036-max-section-length/README.md),
@@ -56,20 +45,28 @@ hold reading-grade and sentence count in line.
 [`duplicated-content`](internal/rules/MDS037-duplicated-content/README.md)
 flags verbatim repetition across files.
 
-**🔍 Status reports and release gates — `query`, `metrics`.**
-At release time, gate the tag on
-`mdsmith query 'status: "✅"' plan/` to confirm every
-plan is done — or feed the list to a status report. At PR
-review time, run `mdsmith metrics rank --by tokens --top
-10 docs/` to spot files that grew too much, before an
-AI-bloated doc merges.
+**📋 Make tables of contents and indexes maintain themselves.**
+Embed `<?toc?>` for a heading list,
+`<?catalog?>` for a table built from front matter,
+or `<?include?>` to splice in another file. `mdsmith fix`
+regenerates them in place. After a merge conflict in one
+of these blocks, `merge-driver install` registers a Git
+driver that resolves it automatically.
 
-**📖 AI-ready specs — `help`, no remote calls.**
-`mdsmith help rule [name]` prints rule docs (settings,
-examples, diagnostics) compiled into the binary. Works
-offline, in CI, or as a source for `.cursor/rules` or
-`AGENTS.md`. `mdsmith help metrics [name]` does the same
-for shared file metrics.
+**📊 Gate releases on doc status.**
+`mdsmith query 'status: "✅"' plan/` lists every plan
+that's done — pipe it to a release script, or fail the
+release if anything is still open.
+`mdsmith metrics rank --by tokens --top 10 docs/` is the
+PR-time complement: spot the file an AI just doubled in
+size before it lands.
+
+**📖 Make rule docs readable by AI agents (and humans).**
+`mdsmith help rule [name]` prints the full rule spec —
+settings, examples, diagnostics — straight from the
+binary. No network calls. Drop the output into
+`.cursor/rules`, `AGENTS.md`, or `CLAUDE.md` and your
+agent knows the rules without an extra fetch.
 
 ## 📦 Installation
 
