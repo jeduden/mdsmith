@@ -44,8 +44,7 @@ The fix is two pieces, both built on existing plumbing:
    each project declares its own vocabulary. Examples
    below use fictional names (`recipe`, `tip`,
    `worksheet`) — the names belong to the project,
-   not to mdsmith. Implicit assignment is itself
-   user-configured (see `implicit-kinds:`).
+   not to mdsmith.
 2. **Placeholder support as rule settings.** Each rule
    that wants to recognize template tokens (`# ?`,
    `## ...`, `{var}`, CUE front-matter values) exposes
@@ -60,21 +59,28 @@ The fix is two pieces, both built on existing plumbing:
 A kind is a named block under `kinds:`. Its body has
 the **same shape as an override entry** (`rules:`,
 `front-matter:`, etc.) — minus `files:`, since files
-are bound to kinds separately. The kind name (`recipe`
-below) is whatever the project picks:
+are bound to kinds separately. The kind name (`plan`
+below) is whatever the project picks. A kind owns its
+schema by setting `rules.required-structure.schema:`
+in its body, no special top-level field needed:
 
 ```yaml
 kinds:
-  recipe:                      # project-chosen name
-    front-matter: false
+  plan:                          # project-chosen name
     rules:
+      required-structure:
+        schema: plan/proto.md    # kind 'plan' owns
+                                 # this schema
       first-line-heading:
         placeholders: [var-token, heading-question]
+      paragraph-readability: false
+      no-emphasis-as-heading: false
+  proto:                         # for the proto.md
+    rules:                       # files themselves
       cross-file-reference-integrity:
         placeholders: [var-token]
       paragraph-readability: false
-      paragraph-structure: false
-      no-emphasis-as-heading: false
+      front-matter: false
 ```
 
 Kinds merge with the same rules as overrides — later
@@ -82,60 +88,26 @@ wins, settings deep-merge.
 
 ### Kind assignment
 
-A file's effective kind list is built from three
-sources, concatenated in this order:
+A file's effective kind list is built from two sources,
+concatenated in this order:
 
 1. front-matter `kinds:` field (a YAML list; a
    single-kind file still uses a one-item list);
 2. matching entries in `kind-assignment:` (config
-   order; each entry's kinds in the order listed);
-3. matching entries in `implicit-kinds:` (config
-   order).
+   order; each entry's kinds in the order listed).
 
 Duplicate names are dropped after their first
-occurrence. Referencing an undeclared kind is a
-config error.
-
-`implicit-kinds:` maps **reference sources** to a
-kind name. One source (e.g. `<?include?>`) often
-serves multiple purposes — partials, agent prompts,
-appendices — so each entry can scope the match by
-the path of the *target* (referenced file) and/or
-the *referencer* (file with the directive). First
-match wins:
-
-```yaml
-implicit-kinds:
-  - source: required-structure.schema
-    target-files: ["plan/proto.md"]
-    kind: plan-template
-  - source: required-structure.schema
-    target-files: ["internal/rules/proto.md"]
-    kind: rule-template
-  - source: include
-    referencer-files: ["docs/agents/**"]
-    kind: prompt
-  - source: include
-    target-files: ["docs/_partials/**"]
-    kind: tip
-  - source: include              # fallback for any
-    kind: fragment               # other include
-  - source: catalog
-    kind: index
-```
-
-An entry without path constraints matches any
-reference of that source type — useful as a fallback.
-Path lists accept negation globs (`!path`).
+occurrence. Referencing an undeclared kind is a config
+error.
 
 ### Composability
 
-1. **Kind merge follows override merge.** Kinds
-   apply in *effective-list* order: front-matter,
-   then `kind-assignment:`, then `implicit-kinds:`,
-   each in config order; duplicates dropped after
-   first occurrence. File-glob overrides apply last.
-   Order is list-driven, so it is stable across runs.
+1. **Kind merge follows override merge.** Kinds apply
+   in *effective-list* order: front-matter first,
+   then `kind-assignment:` matches in config order;
+   duplicates dropped after first occurrence. The
+   file's own glob overrides apply last. Order is
+   list-driven, so it is stable across runs.
 2. **Lint-once.** Content pulled in via `<?include?>`
    or `<?catalog?>` is linted in its source file
    under its source kind; the host file does not
@@ -161,18 +133,18 @@ kind at a time; untagged files behave as today.
 
 ## Examples
 
-> Kind names below (`recipe`, `tip`, `worksheet`)
-> are fictional — projects pick their own.
+> Kind names below (`plan`, `proto`, `tip`,
+> `worksheet`) are fictional — projects pick their own.
 
 ### Explicit kinds in front matter
 
 ```markdown
 ---
-kinds: [recipe]
-id: '=~"^MDS[0-9]{3}$"'
-status: '"ready" | "not-ready"'
+kinds: [plan]
+id: 92
+status: 🔲
 ---
-# {id}: {name}
+# File kinds and placeholder grammar
 ```
 
 A file with multiple kinds uses a multi-element list:
@@ -187,8 +159,10 @@ exclude paths a broader glob would catch.
 
 ```yaml
 kind-assignment:
+  - files: ["plan/*.md", "!plan/proto.md"]
+    kinds: [plan]
   - files: ["**/proto.md"]
-    kinds: [recipe]
+    kinds: [proto]
   - files: [".github/PULL_REQUEST_TEMPLATE.md"]
     kinds: [worksheet]
   - files:
@@ -197,34 +171,26 @@ kind-assignment:
     kinds: [tip]
 ```
 
-### Implicit kind from a config reference
+### Schema linkage
 
-```yaml
-overrides:
-  - files: ["plan/*.md"]
-    rules:
-      required-structure:
-        schema: plan/proto.md
-```
-
-The matching `implicit-kinds:` entry above tags
-`plan/proto.md` as `plan-template`. No `ignore:`
-needed.
+A kind that defines a `rules.required-structure
+.schema:` value applies that CUE schema to every
+file of that kind. The proto.md file itself is
+typically a separate kind (e.g. `proto` above) so
+its placeholder-rich body lints cleanly.
 
 ## Tasks
 
 1. Inventory current `ignore:` and per-file
    `overrides:` entries; classify each by intended
    kind.
-2. Add the `kinds:`, `kind-assignment:`, and
-   `implicit-kinds:` config keys; reuse the existing
-   override merge to apply a kind's body. The
-   linter's core must reference no kind names.
-3. Add the front-matter `kinds:` list field and wire
-   the implicit-from-reference assignment driven by
-   `implicit-kinds:` (supported sources:
-   `required-structure.schema`, `include`,
-   `catalog`).
+2. Add the `kinds:` and `kind-assignment:` config
+   keys; reuse the existing override merge to apply a
+   kind's body. The linter's core must reference no
+   kind names.
+3. Add the front-matter `kinds:` list field; resolve
+   each file's effective kind list per Kind
+   assignment above.
 4. Add a placeholder helper (`var-token`,
    `heading-question`, `cue-frontmatter`, …) and a
    `placeholders:` setting on opt-in rules
@@ -244,9 +210,8 @@ needed.
    entries from `ignore:`; confirm `mdsmith check .`
    stays green.
 7. New guide at `docs/guides/file-kinds.md`
-   describing kind declaration, assignment,
-   `implicit-kinds:`, and merge order. Link from
-   each affected rule README.
+   describing kind declaration, assignment, and
+   merge order. Link from each affected rule README.
 8. New archetype page at
    `docs/background/archetypes/placeholder-grammar/`
    describing the token vocabulary and the
@@ -279,21 +244,18 @@ needed.
 - [ ] A file declaring multiple kinds via
       `kinds: [a, b]` in front matter merges them in
       list order (covered by test).
-- [ ] Implicit kind assignment is configured by
-      `implicit-kinds:`; no kind name is referenced
-      by mdsmith's core or shipped default config
-      (enforced by grep test).
-- [ ] Schema files declared by the project lint
-      under their chosen kind: CUE-pattern front
-      matter, `# ?`, `## ...`, and `{var}` produce
-      no diagnostics where `placeholders:` permits.
+- [ ] No kind name is referenced by mdsmith's core
+      or shipped default config (enforced by grep
+      test).
+- [ ] Files of a kind that sets
+      `rules.required-structure.schema:` are
+      validated against that schema; the schema file
+      itself lints cleanly under its own kind with
+      placeholder-aware rules.
 - [ ] Content embedded into a host file via
       `<?include?>` or `<?catalog?>` produces
       diagnostics only against the source file, not
       the host (covered by test).
-- [ ] Adding a new schema file requires no `ignore:`
-      change — kind is assigned via the matching
-      `required-structure.schema` reference.
 - [ ] Rule code contains no `if kind == "..."`
       branches; rule behavior is selected through
       `Configurable` settings only (enforced by grep
