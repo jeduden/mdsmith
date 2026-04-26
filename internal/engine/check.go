@@ -52,9 +52,33 @@ func CheckRules(f *lint.File, rules []rule.Rule, effective map[string]config.Rul
 		diags = append(diags, d...)
 	}
 
+	diags = filterGeneratedDiags(diags, f.GeneratedRanges)
 	f.AdjustDiagnostics(diags)
 	populateSourceContext(f, diags, 2)
 	return diags, errs
+}
+
+// filterGeneratedDiags removes diagnostics whose line falls within any
+// of the generated section ranges. Called before AdjustDiagnostics, so
+// lines are still in post-front-matter coordinates matching the ranges.
+func filterGeneratedDiags(diags []lint.Diagnostic, ranges []lint.LineRange) []lint.Diagnostic {
+	if len(ranges) == 0 {
+		return diags
+	}
+	out := diags[:0:len(diags)]
+	for _, d := range diags {
+		keep := true
+		for _, r := range ranges {
+			if r.Contains(d.Line) {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // populateSourceContext fills each diagnostic's SourceLines and

@@ -356,3 +356,104 @@ func TestConfigureRule_ApplySettingsError(t *testing.T) {
 	assert.Nil(t, got, "expected nil rule on error, got %v", got)
 	assert.Contains(t, err.Error(), "bad settings", "expected error to contain 'bad settings', got: %v", err)
 }
+
+// --- filterGeneratedDiags tests ---
+
+func TestFilterGeneratedDiags_EmptyRanges(t *testing.T) {
+	diags := []lint.Diagnostic{
+		{Line: 3, Message: "keep me"},
+	}
+	got := filterGeneratedDiags(diags, nil)
+	assert.Len(t, got, 1, "no filtering with empty ranges")
+}
+
+func TestFilterGeneratedDiags_DropInRange(t *testing.T) {
+	ranges := []lint.LineRange{{From: 5, To: 8}}
+	diags := []lint.Diagnostic{
+		{Line: 4, Message: "before"},
+		{Line: 5, Message: "start of range"},
+		{Line: 6, Message: "middle"},
+		{Line: 8, Message: "end of range"},
+		{Line: 9, Message: "after"},
+	}
+	got := filterGeneratedDiags(diags, ranges)
+	require.Len(t, got, 2, "expected 2 diagnostics outside range")
+	assert.Equal(t, "before", got[0].Message)
+	assert.Equal(t, "after", got[1].Message)
+}
+
+func TestFilterGeneratedDiags_MultipleRanges(t *testing.T) {
+	ranges := []lint.LineRange{{From: 3, To: 4}, {From: 8, To: 10}}
+	diags := []lint.Diagnostic{
+		{Line: 2, Message: "keep"},
+		{Line: 3, Message: "drop"},
+		{Line: 9, Message: "drop"},
+		{Line: 11, Message: "keep"},
+	}
+	got := filterGeneratedDiags(diags, ranges)
+	require.Len(t, got, 2)
+	assert.Equal(t, "keep", got[0].Message)
+	assert.Equal(t, "keep", got[1].Message)
+}
+
+func TestCheckRules_FiltersGeneratedRangeDiagnostics(t *testing.T) {
+	// File: 5 lines. Lines 3-4 are in a generated range.
+	source := "line1\nline2\nline3\nline4\nline5\n"
+	f, err := lint.NewFile("host.md", []byte(source))
+	require.NoError(t, err)
+	f.GeneratedRanges = []lint.LineRange{{From: 3, To: 4}}
+
+	// Rule reports on lines 2 and 3. Line 3 is in the generated range.
+	r := &mockMultiLineRule{
+		id:    "MDS999",
+		name:  "multi-rule",
+		lines: []int{2, 3},
+	}
+	effective := map[string]config.RuleCfg{"multi-rule": {Enabled: true}}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Len(t, errs, 0)
+	require.Len(t, diags, 1, "only line-2 diagnostic should survive")
+	assert.Equal(t, 2, diags[0].Line)
+}
+
+func TestCheckRules_FiltersNoHostDiagnosticsUnaffected(t *testing.T) {
+	// Generated range does not overlap the diagnostic line — no filtering.
+	source := "line1\nline2\nline3\n"
+	f, err := lint.NewFile("host.md", []byte(source))
+	require.NoError(t, err)
+	f.GeneratedRanges = []lint.LineRange{{From: 10, To: 12}}
+
+	r := &mockRuleAtLine{id: "MDS999", name: "mock-rule", line: 1, col: 1}
+	effective := map[string]config.RuleCfg{"mock-rule": {Enabled: true}}
+
+	diags, errs := CheckRules(f, []rule.Rule{r}, effective)
+	require.Len(t, errs, 0)
+	require.Len(t, diags, 1, "diagnostic outside generated range must not be filtered")
+}
+
+// mockMultiLineRule reports a diagnostic at each of the given lines.
+type mockMultiLineRule struct {
+	id    string
+	name  string
+	lines []int
+}
+
+func (r *mockMultiLineRule) ID() string       { return r.id }
+func (r *mockMultiLineRule) Name() string     { return r.name }
+func (r *mockMultiLineRule) Category() string { return "test" }
+func (r *mockMultiLineRule) Check(f *lint.File) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	for _, l := range r.lines {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     l,
+			Column:   1,
+			RuleID:   r.id,
+			RuleName: r.name,
+			Severity: lint.Warning,
+			Message:  fmt.Sprintf("violation at line %d", l),
+		})
+	}
+	return diags
+}

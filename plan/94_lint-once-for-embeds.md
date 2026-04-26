@@ -1,7 +1,7 @@
 ---
 id: 94
 title: Lint-once for `<?include?>` and `<?catalog?>` embeds
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Diagnose embedded content only against its source file,
@@ -87,46 +87,57 @@ or to fix.
 
 ## Tasks
 
-1. Extend the AST/diagnostic data model to attribute
-   each span to its source file.
-2. At diagnostic emit time, drop diagnostics whose
+1. [x] Extend the AST/diagnostic data model to attribute
+   each span to its source file. (`lint.LineRange`,
+   `lint.File.GeneratedRanges`,
+   `gensection.FindAllGeneratedRanges`)
+2. [x] At diagnostic emit time, drop diagnostics whose
    source file is not the file under lint.
-3. Audit rules that walk the AST: ensure none of them
+   (`engine.filterGeneratedDiags`, called from
+   `CheckRules` before `AdjustDiagnostics`;
+   `GeneratedRanges` populated in `runner.Run` /
+   `runner.RunSource`)
+3. [x] Audit rules that walk the AST: ensure none of them
    short-circuit on host-owned vs embedded spans in a
    way that produces missing diagnostics on the
-   source file.
-4. Add fixtures: a host with `<?include?>` of a
+   source file. (No rule changes required — filtering
+   is applied at the engine layer after rules emit.)
+4. [x] Add fixtures: a host with `<?include?>` of a
    fragment that contains a known violation; lint the
    host (no diagnostic from the embedded bytes) and
    the fragment (diagnostic appears).
-5. Same for `<?catalog?>` — front-matter validation
+   (`engine.TestLintOnce_IncludeHost`)
+5. [x] Same for `<?catalog?>` — front-matter validation
    errors in a row's source surface against the
    source, not the catalog host.
-6. Update `metrics rank` to count authored bytes only
+   (`engine.TestLintOnce_CatalogHost`)
+6. [x] Update `metrics rank` to count authored bytes only
    (skip generated-section content). Document the
    change in `docs/reference/cli.md`.
+   (`gensection.AuthoredSource` applied in
+   `metrics.Collect`; `metrics.TestCollect_AuthoredMetrics`)
 
 ## Acceptance Criteria
 
-- [ ] A host file with `<?include?>` of a fragment
+- [x] A host file with `<?include?>` of a fragment
       containing a known violation produces no
       diagnostic for that violation when the host is
       linted in isolation.
-- [ ] The same fragment, linted on its own, produces
+- [x] The same fragment, linted on its own, produces
       the diagnostic.
-- [ ] A host with `<?catalog?>` does not surface
+- [x] A host with `<?catalog?>` does not surface
       front-matter errors that originate in catalog
       row sources; those errors surface against the
       source file (covered by test).
-- [ ] No rule short-circuits on host-owned vs
+- [x] No rule short-circuits on host-owned vs
       embedded spans in a way that suppresses a
       diagnostic on the *source* file (covered by
       test).
-- [ ] Existing fix behavior for `<?include?>` and
+- [x] Existing fix behavior for `<?include?>` and
       `<?catalog?>` is unchanged (regression test).
-- [ ] `metrics rank` reports authored-only metrics:
+- [x] `metrics rank` reports authored-only metrics:
       a host with included content has the same
       metric values as the same host with the
       generated section emptied (covered by test).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

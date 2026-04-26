@@ -80,6 +80,12 @@ and `--scope` (only `file` is supported; defaults to
 `--max-input-size`, plus `--metrics`, `--by`, `--order`,
 `--top`.
 
+`metrics rank` counts only **authored bytes** for each
+file: content between `<?include?>` and `<?catalog?>`
+markers is excluded. This matches the lint-once model —
+embedded content is measured against the source file,
+not the host that pulls it in.
+
 ## `archetypes` Subcommands
 
 | Subcommand    | Description                                  |

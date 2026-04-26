@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
@@ -25,7 +26,7 @@ func Collect(paths []string, defs []Definition, maxBytes int64) ([]Row, error) {
 			return nil, fmt.Errorf("reading %q: %w", path, err)
 		}
 
-		doc := NewDocument(path, source)
+		doc := NewDocument(path, gensection.AuthoredSource(source))
 		values := make(map[string]Value, len(defs))
 		for _, def := range defs {
 			v, err := def.Compute(doc)

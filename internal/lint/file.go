@@ -41,6 +41,12 @@ type File struct {
 	GitignoreFunc func() *GitignoreMatcher
 	gitignoreOnce bool
 	gitignoreVal  *GitignoreMatcher
+
+	// GeneratedRanges records the content line ranges of generated
+	// sections (<?include?> / <?catalog?> bodies). Diagnostics whose
+	// line falls within these ranges are suppressed when linting the
+	// host file — the source file is responsible for those bytes.
+	GeneratedRanges []LineRange
 }
 
 // SetRootDir configures the project root directory and its fs.FS together.

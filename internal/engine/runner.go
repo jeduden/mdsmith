@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -82,6 +83,8 @@ func (r *Runner) Run(paths []string) *Result {
 			continue
 		}
 
+		f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+
 		effective := r.effectiveWithCategories(path, fmKinds)
 
 		r.logRules(effective)
@@ -125,6 +128,8 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		res.Errors = append(res.Errors, err)
 		return res
 	}
+
+	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
 
 	effective := r.effectiveWithCategories(path, fmKinds)
 
