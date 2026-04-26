@@ -240,3 +240,44 @@ func TestApplyDefaultSettings_EmitsConfigWarning(t *testing.T) {
 	require.Len(t, diags, 1, "expected 1 diagnostic (config warning)")
 	assert.Contains(t, diags[0].Message, "no \"allowed\" patterns configured")
 }
+
+// =====================================================================
+// Phase 5: additional branch coverage
+// =====================================================================
+
+// ApplySettings: non-string-slice value → error (toStringSlice failure)
+func TestApplySettings_NonStringValue(t *testing.T) {
+	r := &Rule{}
+	// Pass "allowed" as a plain string (not a slice) → toStringSlice default case
+	err := r.ApplySettings(map[string]any{
+		"allowed": "docs/**",
+	})
+	assert.Error(t, err, "expected error for non-slice allowed value")
+	assert.Contains(t, err.Error(), "allowed must be a list of strings")
+}
+
+// ApplySettings: []any with non-string item → toStringSlice !ok
+func TestApplySettings_MixedTypeSlice(t *testing.T) {
+	r := &Rule{}
+	// Pass a []any with an integer element.
+	err := r.ApplySettings(map[string]any{
+		"allowed": []any{"docs/**", 42},
+	})
+	assert.Error(t, err, "expected error for non-string item in allowed list")
+}
+
+// formatAllowed: empty patterns → returns "(none)"
+func TestFormatAllowed_EmptyPatterns(t *testing.T) {
+	result := formatAllowed(nil)
+	assert.Equal(t, "(none)", result)
+
+	result2 := formatAllowed([]string{})
+	assert.Equal(t, "(none)", result2)
+}
+
+// toStringSlice: default case (non-slice, non-string-slice type) → nil, false
+func TestToStringSlice_UnsupportedType(t *testing.T) {
+	result, ok := toStringSlice(42)
+	assert.False(t, ok)
+	assert.Nil(t, result)
+}

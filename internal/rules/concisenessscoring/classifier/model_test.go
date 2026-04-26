@@ -425,6 +425,13 @@ func validLexicon() lexiconArtifact {
 // Additional compileLexicon error paths
 // =====================================================================
 
+func TestCompileLexicon_ValidLexicon(t *testing.T) {
+	_, err := compileLexicon(validLexicon())
+	if err != nil {
+		t.Fatalf("expected no error for valid lexicon: %v", err)
+	}
+}
+
 func TestCompileLexicon_InsufficientActionWords(t *testing.T) {
 	raw := lexiconArtifact{
 		FillerWords: makeStrings("fw", minFillerWords),

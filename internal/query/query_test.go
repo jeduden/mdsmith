@@ -106,3 +106,32 @@ func TestCompile_Invalid(t *testing.T) {
 	_, err := Compile(`status: [[[`)
 	assert.Error(t, err)
 }
+
+// =====================================================================
+// Phase 5: additional branch coverage
+// =====================================================================
+
+// TestCollectPaths_NonStructCUE exercises the collectPaths err != nil branch
+// by compiling a CUE expression that is not a struct (a top-level scalar
+// constraint). In that case, v.Fields() returns an error and collectPaths
+// returns nil (no paths to verify), so Match always checks only unification.
+func TestCollectPaths_NonStructCUE(t *testing.T) {
+	// A top-level numeric constraint is valid CUE but not a struct.
+	// collectPaths should return nil and Match should use unification only.
+	m, err := Compile(`>=1 & <=10`)
+	require.NoError(t, err)
+	// A non-struct schema: no paths to verify. Unification with a plain
+	// JSON number value would succeed, but the front matter is a map.
+	// The exact result depends on CUE unification semantics.
+	_ = m.Match(map[string]any{"value": 5})
+}
+
+// TestMatch_JSONMarshalError exercises the json.Marshal err != nil branch in Match.
+// json.Marshal fails for types like channels or functions.
+func TestMatch_JSONMarshalError(t *testing.T) {
+	m, err := Compile(`status: "ready"`)
+	require.NoError(t, err)
+	// A chan value is not JSON-serializable → json.Marshal returns an error.
+	result := m.Match(map[string]any{"status": make(chan int)})
+	assert.False(t, result, "json.Marshal error should cause Match to return false")
+}

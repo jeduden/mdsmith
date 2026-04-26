@@ -4,8 +4,10 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 func TestCheck_FirstLineH1_NoViolation(t *testing.T) {
@@ -218,4 +220,47 @@ func TestCategory(t *testing.T) {
 	if r.Category() == "" {
 		t.Error("expected non-empty category")
 	}
+}
+
+// =====================================================================
+// Phase 5: additional branch coverage
+// =====================================================================
+
+// TestCheck_FirstChildNil exercises the `firstChild == nil` branch in Check.
+// A source with only whitespace (no AST nodes) produces a nil first child.
+func TestCheck_FirstChildNil(t *testing.T) {
+	src := []byte(" ")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Level: 1}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "whitespace-only source should trigger missing-heading diagnostic")
+	assert.Equal(t, "first line should be a level 1 heading", diags[0].Message)
+}
+
+// TestHeadingLine_TextChild exercises the `for c := heading.FirstChild()` loop
+// when Lines().Len() == 0 and the heading has a direct Text child.
+func TestHeadingLine_TextChild(t *testing.T) {
+	src := []byte("# Hello\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	// Build a heading without lines but with a Text child at offset 0.
+	h := ast.NewHeading(1)
+	textNode := ast.NewText()
+	textNode.Segment = text.NewSegment(0, 7)
+	h.AppendChild(h, textNode)
+
+	line := headingLine(h, f)
+	assert.Equal(t, 1, line)
+}
+
+// TestHeadingLine_FallbackReturn1 exercises the final `return 1` in headingLine
+// when the heading has no lines and no Text children, and the source is empty.
+func TestHeadingLine_FallbackReturn1(t *testing.T) {
+	f := &lint.File{Path: "test.md", Source: []byte{}}
+	h := ast.NewHeading(1)
+	// No lines, no children, empty source → return 1
+	line := headingLine(h, f)
+	assert.Equal(t, 1, line)
 }

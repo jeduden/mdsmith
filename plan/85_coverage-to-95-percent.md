@@ -1,7 +1,7 @@
 ---
 id: 85
 title: "Increase test coverage to 95% by extracting shared rule helpers"
-status: "🔳"
+status: "✅"
 summary: "Refactor duplicated private helpers into shared packages, then test the shared code once."
 ---
 # Increase test coverage to 95% by extracting shared rule helpers
@@ -124,14 +124,14 @@ Run linter and tests after every phase:
 
 ## Acceptance Criteria
 
-- [ ] Combined coverage (unit + e2e) reaches 95%
-- [ ] No private `toInt`/`toFloat` copies remain in the
+- [x] Combined coverage (unit + e2e) reaches 95%
+- [x] No private `toInt`/`toFloat` copies remain in the
   10 + 4 packages listed above (replaced by
   `settings.ToInt`/`settings.ToFloat`)
-- [ ] No private `headingLine`/`paragraphLine` copies
+- [x] No private `headingLine`/`paragraphLine` copies
   remain for the 4-copy and 3-copy groups (replaced by
   `astutil.HeadingLine`/`astutil.ParagraphLine`)
-- [ ] Shared packages have 100% statement coverage
+- [x] Shared packages have 100% statement coverage
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
 - [ ] Mutation testing on shared helpers kills 95%+

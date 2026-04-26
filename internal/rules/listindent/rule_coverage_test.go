@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 // --- firstLineOfChild coverage ---
@@ -247,4 +248,76 @@ func TestApplySettings_Int64Spaces(t *testing.T) {
 	err := r.ApplySettings(map[string]any{"spaces": int64(3)})
 	require.NoError(t, err)
 	assert.Equal(t, 3, r.Spaces)
+}
+
+// =====================================================================
+// Phase 5: additional branch coverage
+// =====================================================================
+
+// Fix: spaces <= 0 → defaults to 2
+func TestFix_ZeroSpacesDefaultsTo2(t *testing.T) {
+	src := []byte("- item\n    - nested\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Spaces: 0}
+	result := r.Fix(f)
+	// With default 2 spaces the nested item should be at 2 spaces.
+	assert.Contains(t, string(result), "  - nested", "Fix with 0 Spaces should default to 2-space indent")
+}
+
+// Fix: negative Spaces also defaults to 2
+func TestFix_NegativeSpacesDefaultsTo2(t *testing.T) {
+	src := []byte("- item\n    - nested\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Spaces: -1}
+	result := r.Fix(f)
+	assert.Contains(t, string(result), "  - nested", "Fix with negative Spaces should default to 2-space indent")
+}
+
+// firstLineOfChild: inline node (Emphasis) with no children → return 0
+func TestFirstLineOfChild_InlineNodeNoChildren(t *testing.T) {
+	emph := ast.NewEmphasis(1)
+	// Emphasis with no children → isInlineNode=true, HasChildren=false → return 0
+	f := &lint.File{Path: "test.md", Source: []byte("test")}
+	result := firstLineOfChild(f, emph)
+	assert.Equal(t, 0, result)
+}
+
+// firstLineOfChild: block node with no lines and no children → return 0
+func TestFirstLineOfChild_BlockNodeNoLinesNoChildren(t *testing.T) {
+	// A bare Paragraph with no lines and no children.
+	para := ast.NewParagraph()
+	f := &lint.File{Path: "test.md", Source: []byte("test")}
+	result := firstLineOfChild(f, para)
+	assert.Equal(t, 0, result)
+}
+
+// firstLineOfChild: block node with no lines but WITH children that return 0 → return 0
+func TestFirstLineOfChild_BlockNodeWithChildrenAllReturning0(t *testing.T) {
+	// A Paragraph (not inline) with no Lines(), containing an Emphasis child
+	// (inline, no children of its own) → child returns 0 → falls through to final return 0.
+	parent := ast.NewParagraph()
+	child := ast.NewEmphasis(1) // inline node with no children
+	parent.AppendChild(parent, child)
+	f := &lint.File{Path: "test.md", Source: []byte("test")}
+	result := firstLineOfChild(f, parent)
+	assert.Equal(t, 0, result)
+}
+
+// firstLineOfChild: block node with no lines, child is *ast.Text that returns > 0
+func TestFirstLineOfChild_BlockNodeWithTextChild(t *testing.T) {
+	// A Paragraph with no Lines but a Text child with a valid segment start=0.
+	// The Text child returns LineOfOffset(0) which is line 1.
+	src := []byte("hello\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	parent := ast.NewParagraph()
+	textChild := ast.NewText()
+	textChild.Segment = text.NewSegment(0, 5)
+	parent.AppendChild(parent, textChild)
+
+	result := firstLineOfChild(f, parent)
+	assert.Equal(t, 1, result, "should find text child on line 1")
 }

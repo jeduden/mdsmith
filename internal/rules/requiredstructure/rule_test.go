@@ -1664,7 +1664,7 @@ func TestParseSchema_SchemaIncludeDepthExceeded(t *testing.T) {
 			[]byte(content), 0o644,
 		))
 	}
-	schema := fmt.Sprintf("# ?\n\n<?include\nfile: d1.md\n?>\n")
+	schema := "# ?\n\n<?include\nfile: d1.md\n?>\n"
 	schemaPath := filepath.Join(dir, "schema.md")
 	require.NoError(t, os.WriteFile(schemaPath, []byte(schema), 0o644))
 
@@ -1805,7 +1805,7 @@ func TestCheck_SyncHeadingNotFoundInDoc(t *testing.T) {
 // guards make this unreachable through normal schema parsing)
 func TestCheckSyncPoint_InvalidCUEPath(t *testing.T) {
 	f := newTestFile(t, "doc.md", "---\nfoo: bar\n---\n# My Title\n")
-	sp := syncPoint{Field: ""}  // empty string → ParseCUEPath returns nil
+	sp := syncPoint{Field: ""} // empty string → ParseCUEPath returns nil
 	req := schemaHeading{Level: 1, Text: "My Title"}
 	dh := docHeading{Level: 1, Text: "My Title", Line: 1}
 	diags := checkSyncPoint(f, sp, req, dh, 0, nil, nil)

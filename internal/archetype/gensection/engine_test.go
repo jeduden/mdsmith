@@ -523,3 +523,21 @@ func TestParseColumnConfig_DefaultWrap(t *testing.T) {
 		t.Errorf("expected default wrap 'truncate', got %q", cols["desc"].Wrap)
 	}
 }
+
+// =====================================================================
+// Phase 5: additional branch coverage
+// =====================================================================
+
+// TestEngine_Fix_SkipsOnInvalidYAML exercises the generateContent
+// `dir == nil || len(diags) > 0` branch in Fix.
+// When the YAML body is invalid, generateContent returns (_, false) and Fix skips.
+func TestEngine_Fix_SkipsOnInvalidYAML(t *testing.T) {
+	src := "<?mock\n: invalid : yaml ::: [\n?>\nold content\n<?/mock?>\n"
+	f := newTestFile(t, "test.md", src)
+	d := &mockDirective{content: "new content\n"}
+	e := NewEngine(d)
+	result := string(e.Fix(f))
+	// Fix should leave old content intact when YAML parsing fails.
+	assert.Contains(t, result, "old content", "expected old content preserved when YAML is invalid")
+	assert.NotContains(t, result, "new content")
+}

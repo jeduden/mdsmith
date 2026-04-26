@@ -1,6 +1,8 @@
 package concisenessscoring
 
 import (
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -243,4 +245,54 @@ func TestApplySettings_MinWordsValid(t *testing.T) {
 	err := r.ApplySettings(map[string]any{"min-words": 10})
 	require.NoError(t, err)
 	assert.Equal(t, 10, r.MinWords)
+}
+
+// =====================================================================
+// Phase 5: additional branch coverage
+// =====================================================================
+
+// TestCheck_LoadError exercises the loadErrorDiag path by injecting a
+// scorer load error via package-level state reset.
+func TestCheck_LoadError(t *testing.T) {
+	// Save non-Once state and restore after the test.
+	origScorer := globalScorer
+	origErr := scorerErr
+	t.Cleanup(func() {
+		// Reset Once objects (cannot copy sync.Once) and restore scorer state.
+		scorerOnce = sync.Once{}
+		errReportedOnce = sync.Once{}
+		globalScorer = origScorer
+		scorerErr = origErr
+		// Mark scorerOnce done with the restored values already set.
+		scorerOnce.Do(func() {})
+	})
+
+	// Inject a fake error so loadScorer() returns it.
+	scorerOnce = sync.Once{}
+	errReportedOnce = sync.Once{}
+	globalScorer = nil
+	scorerErr = errors.New("injected classifier load failure")
+	// Pre-consume the once so loadScorer returns the error immediately.
+	scorerOnce.Do(func() {}) // no-op; scorerErr is already set
+
+	src := []byte("# Title\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	r := &Rule{MinScore: defaultMinScore, MinWords: defaultMinWords}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "expected 1 error diagnostic")
+	assert.Equal(t, lint.Error, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, "classifier load failed")
+
+	// Second call: errReportedOnce suppresses the error.
+	diags2 := r.Check(f)
+	assert.Empty(t, diags2, "second call should not repeat the error diagnostic")
+}
+
+// TestNewScorer_Success verifies NewScorer succeeds with the embedded artifact.
+func TestNewScorer_Success(t *testing.T) {
+	s, err := NewScorer()
+	require.NoError(t, err)
+	assert.NotNil(t, s)
 }
