@@ -76,7 +76,17 @@ func (r *Runner) Run(paths []string) *Result {
 			return r.cachedGitignore(gd)
 		}
 
-		effective := r.effectiveWithCategories(path)
+		fmKinds, err := lint.ParseFrontMatterKinds(f.FrontMatter)
+		if err != nil {
+			res.Errors = append(res.Errors, fmt.Errorf("%s: %w", path, err))
+			continue
+		}
+
+		effective, err := r.effectiveWithCategoriesForKinds(path, fmKinds)
+		if err != nil {
+			res.Errors = append(res.Errors, fmt.Errorf("%s: %w", path, err))
+			continue
+		}
 
 		r.logRules(effective)
 
@@ -114,7 +124,17 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		f.SetRootDir(r.RootDir)
 	}
 
-	effective := r.effectiveWithCategories(path)
+	fmKinds, err := lint.ParseFrontMatterKinds(f.FrontMatter)
+	if err != nil {
+		res.Errors = append(res.Errors, fmt.Errorf("%s: %w", path, err))
+		return res
+	}
+
+	effective, err := r.effectiveWithCategoriesForKinds(path, fmKinds)
+	if err != nil {
+		res.Errors = append(res.Errors, fmt.Errorf("%s: %w", path, err))
+		return res
+	}
 
 	r.logRules(effective)
 
@@ -128,15 +148,42 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 // effectiveWithCategories computes the effective rule config for a file
 // path, applying category-based enable/disable on top of per-rule settings.
+// This is the kinds-unaware path retained for callers that do not parse
+// front matter (e.g. tests). Production callers use
+// effectiveWithCategoriesForKinds, which threads the file's front-matter
+// `kinds:` list through the resolution.
 func (r *Runner) effectiveWithCategories(path string) map[string]config.RuleCfg {
-	effective := config.Effective(r.Config, path)
-	categories := config.EffectiveCategories(r.Config, path)
-	explicit := config.EffectiveExplicitRules(r.Config, path)
+	effective, _ := r.effectiveWithCategoriesForKinds(path, nil)
+	return effective
+}
+
+// effectiveWithCategoriesForKinds computes the effective rule config for a
+// file path, with kind-resolved settings layered between top-level rules
+// and file-glob overrides, and category-based enable/disable applied on
+// top. fmKinds is the file's front-matter `kinds:` list (may be nil).
+//
+// Returns an error if the file references an undeclared kind name (either
+// from front matter or from a matching kind-assignment entry).
+func (r *Runner) effectiveWithCategoriesForKinds(
+	path string, fmKinds []string,
+) (map[string]config.RuleCfg, error) {
+	effective, err := config.EffectiveWithKinds(r.Config, path, fmKinds)
+	if err != nil {
+		return nil, err
+	}
+	categories, err := config.EffectiveCategoriesWithKinds(r.Config, path, fmKinds)
+	if err != nil {
+		return nil, err
+	}
+	explicit, err := config.EffectiveExplicitRulesWithKinds(r.Config, path, fmKinds)
+	if err != nil {
+		return nil, err
+	}
 
 	// Build rule-name-to-category lookup from the runner's rule list.
 	catLookup := ruleCategoryLookup(r.Rules)
 
-	return config.ApplyCategories(effective, categories, catLookup, explicit)
+	return config.ApplyCategories(effective, categories, catLookup, explicit), nil
 }
 
 // cachedGitignore returns a GitignoreMatcher for the given directory,
