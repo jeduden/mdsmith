@@ -5,7 +5,8 @@
 
 ## Installation
 
-Install via `go install`.
+Install via `go install`, or download a binary from the
+[releases page](https://github.com/jeduden/mdsmith/releases).
 
 ## Quick Start
 
