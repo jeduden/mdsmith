@@ -2,6 +2,7 @@ package noemphasisasheading
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -62,20 +63,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 		// If the emphasis text contains a configured placeholder token,
 		// treat it as opaque and suppress the diagnostic.
-		if len(r.Placeholders) > 0 {
-			var emphText string
-			_ = ast.Walk(firstChild, func(inner ast.Node, entering bool) (ast.WalkStatus, error) {
-				if !entering {
-					return ast.WalkContinue, nil
-				}
-				if t, ok2 := inner.(*ast.Text); ok2 {
-					emphText += string(t.Segment.Value(f.Source))
-				}
-				return ast.WalkContinue, nil
-			})
-			if placeholders.ContainsBodyToken(emphText, r.Placeholders) {
-				return ast.WalkContinue, nil
-			}
+		if emphasisContainsPlaceholder(firstChild, f.Source, r.Placeholders) {
+			return ast.WalkContinue, nil
 		}
 
 		line := astutil.ParagraphLine(para, f)
@@ -93,6 +82,28 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	})
 
 	return diags
+}
+
+func emphasisContainsPlaceholder(n ast.Node, src []byte, toks []string) bool {
+	if len(toks) == 0 {
+		return false
+	}
+	var sb strings.Builder
+	found := false
+	_ = ast.Walk(n, func(inner ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if t, ok := inner.(*ast.Text); ok {
+			sb.Write(t.Segment.Value(src))
+			if placeholders.ContainsBodyToken(sb.String(), toks) {
+				found = true
+				return ast.WalkStop, nil
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return found
 }
 
 // ApplySettings implements rule.Configurable.
