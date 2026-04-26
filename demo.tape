@@ -216,7 +216,7 @@ Sleep 100ms
 Enter
 Sleep 100ms
 
-# --- Use case 6: Resolve broken cross-file links ---
+# --- Use case 6: Catch broken cross-file links ---
 
 Hide
 Set TypingSpeed 0
@@ -349,7 +349,42 @@ Sleep 100ms
 Enter
 Sleep 100ms
 
-# --- Use case 12: Git merge driver ---
+# --- Use case 12: Archetypes (reusable schemas) ---
+
+Hide
+Set TypingSpeed 0
+Type "ARCH_SCENE=$(mktemp -d)"
+Enter
+Type "cd $ARCH_SCENE && clear"
+Enter
+Sleep 50ms
+Set TypingSpeed 0.005
+Show
+
+Type "# Archetypes: reusable schemas for required-structure"
+Enter
+Sleep 100ms
+Type "mdsmith archetypes init"
+Sleep 100ms
+Enter
+Sleep 100ms
+
+Type `printf 'archetypes:\n  roots: [archetypes]\n' > .mdsmith.yml`
+Sleep 100ms
+Enter
+Sleep 100ms
+
+Type "mdsmith archetypes list"
+Sleep 100ms
+Enter
+Sleep 100ms
+
+Type "mdsmith archetypes show example | head -8"
+Sleep 100ms
+Enter
+Sleep 100ms
+
+# --- Use case 13: Git merge driver ---
 
 Hide
 Set TypingSpeed 0

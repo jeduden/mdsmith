@@ -13,28 +13,36 @@ cross-file integrity. Written in Go.
 
 ## ✨ Why mdsmith
 
-**🔧 Auto-fix.**
-`mdsmith fix` corrects most rules in place: whitespace,
-heading style, code fences, bare URLs, list indentation,
-and table alignment. Multi-pass fixing resolves cascading
-changes automatically.
+Each subcommand earns its place. The pillars below name the
+subcommand (and rules) that deliver it.
 
-**📋 Generated sections.**
+**🔧 Lint and auto-fix — `check`, `fix`.**
+`mdsmith check` reports lint diagnostics with source
+context; `mdsmith fix` corrects most rules in place:
+whitespace, heading style, code fences, bare URLs, list
+indentation, table alignment. Multi-pass fixing resolves
+cascading changes automatically.
+
+**📋 Generated sections — `fix`, `merge-driver`.**
 Embed live content via `<?catalog?>`, `<?toc?>`, and
 `<?include?>` directives — summary tables from front
-matter, tables of contents from headings, file inclusions.
-`mdsmith fix` regenerates them in place.
+matter, tables of contents from headings, file
+inclusions. `fix` regenerates them in place;
+`merge-driver install` registers a Git driver that
+auto-resolves merge conflicts inside those sections.
 
-**🔗 Cross-file integrity.**
+**🔗 Cross-file integrity — `check`, `archetypes`.**
 Broken links rot in silence.
 [`cross-file-reference-integrity`](internal/rules/MDS027-cross-file-reference-integrity/README.md)
 flags missing files and missing heading anchors before merge.
 [`required-structure`](internal/rules/MDS020-required-structure/README.md)
 checks each file against a schema.
+`mdsmith archetypes` manages those schemas as reusable
+templates discovered under configured roots.
 [`directory-structure`](internal/rules/MDS033-directory-structure/README.md)
 keeps Markdown in the right folders.
 
-**🤖 Keep AI verbosity in check.**
+**🤖 Keep AI verbosity in check — `check`.**
 AI tools produce walls of text. Cap file length with
 [`max-file-length`](internal/rules/MDS022-max-file-length/README.md),
 section length with
@@ -48,7 +56,14 @@ hold reading-grade and sentence count in line.
 [`duplicated-content`](internal/rules/MDS037-duplicated-content/README.md)
 flags verbatim repetition across files.
 
-**📖 AI-ready specs — no remote calls.**
+**🔍 Triage your corpus — `query`, `metrics`.**
+`mdsmith query 'expr' paths…` filters files by a CUE
+expression on front matter (e.g. status, owner).
+`mdsmith metrics rank --by <metric>` ranks files by
+size, tokens, sections, and other shared metrics —
+useful for finding the biggest offenders.
+
+**📖 AI-ready specs — `help`, no remote calls.**
 `mdsmith help rule [name]` prints rule docs (settings,
 examples, diagnostics) compiled into the binary. Works
 offline, in CI, or as a source for `.cursor/rules` or
@@ -83,8 +98,8 @@ mdsmith <command> [flags] [files...]
 
 Files can be paths, directories (walked recursively for `*.md`),
 or glob patterns. Directories respect `.gitignore` by default;
-use `--no-gitignore` to override. Explicitly named paths are
-never filtered.
+use `--no-gitignore` to override. Explicitly named files are
+never filtered by `.gitignore`.
 
 ### Flags
 
@@ -152,7 +167,8 @@ Rules are `true` (defaults), `false` (off), or an object with settings.
 Config is discovered by walking up to the repo root; `--config` overrides.
 
 Commit `.mdsmith.yml` so contributors share the same rule settings and
-mdsmith upgrades become an explicit, reviewable change.
+mdsmith upgrades become an explicit, reviewable change. Run
+`mdsmith version` to see the build you have installed.
 
 ## 📚 More
 
