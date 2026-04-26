@@ -227,12 +227,16 @@ needed.
    `catalog`).
 4. Add a placeholder helper (`var-token`,
    `heading-question`, `cue-frontmatter`, …) and a
-   `placeholders:` setting on each rule that opts in
+   `placeholders:` setting on opt-in rules
    (`first-line-heading`, `heading-increment`,
    `no-emphasis-as-heading`,
    `cross-file-reference-integrity`,
    `paragraph-readability`, `paragraph-structure`,
-   front-matter validation).
+   `required-structure` — which performs front-
+   matter schema checks). Wire the same vocabulary
+   into `catalog` front-matter interpolation and
+   engine front-matter parsing under the
+   `front-matter:` config key.
 5. Implement lint-once for `<?include?>` and
    `<?catalog?>` host files.
 6. Update this repo's `.mdsmith.yml` to declare the
@@ -279,19 +283,16 @@ needed.
       `implicit-kinds:`; no kind name is referenced
       by mdsmith's core or shipped default config
       (enforced by grep test).
-- [ ] Schema files declared by the project are
-      linted under their chosen kind: CUE-pattern
-      front matter, `# ?` and `## ...` placeholders,
-      and `{var}` tokens produce no diagnostics from
-      rules whose `placeholders:` setting permits
-      them.
+- [ ] Schema files declared by the project lint
+      under their chosen kind: CUE-pattern front
+      matter, `# ?`, `## ...`, and `{var}` produce
+      no diagnostics where `placeholders:` permits.
 - [ ] Content embedded into a host file via
       `<?include?>` or `<?catalog?>` produces
       diagnostics only against the source file, not
       the host (covered by test).
-- [ ] Adding a new schema file under any directory
-      requires no change to `ignore:` — the kind is
-      assigned implicitly from its
+- [ ] Adding a new schema file requires no `ignore:`
+      change — kind is assigned via the matching
       `required-structure.schema` reference.
 - [ ] Rule code contains no `if kind == "..."`
       branches; rule behavior is selected through
