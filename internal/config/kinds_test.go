@@ -411,6 +411,52 @@ func TestEffectiveCategoriesIgnoresMissingKindBody(t *testing.T) {
 	assert.True(t, result["heading"], "default category still enabled")
 }
 
+// --- copyKinds / copyRuleCfg isolation ---
+
+func TestCopyKindsIsolatesSettingsFromSource(t *testing.T) {
+	// Verify that mutating the copy's Settings map does not affect the original.
+	original := map[string]KindBody{
+		"wide": {Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		}},
+	}
+	copied := copyKinds(original)
+
+	copied["wide"].Rules["line-length"].Settings["max"] = 999
+
+	assert.Equal(t, 80, original["wide"].Rules["line-length"].Settings["max"],
+		"mutation of copy's Settings should not affect the original")
+}
+
+func TestCopyKindsNilSettingsRemainNil(t *testing.T) {
+	original := map[string]KindBody{
+		"plan": {Rules: map[string]RuleCfg{
+			"no-hard-tabs": {Enabled: true},
+		}},
+	}
+	copied := copyKinds(original)
+	assert.Nil(t, copied["plan"].Rules["no-hard-tabs"].Settings)
+}
+
+func TestMergeKindSettingsIsolatedFromLoaded(t *testing.T) {
+	// Verify that InjectArchetypeRoots on the merged config does not mutate
+	// the loaded config's Settings via shared map references.
+	loaded := &Config{
+		Archetypes: ArchetypesCfg{Roots: []string{"archetypes"}},
+		Kinds: map[string]KindBody{
+			"plan": {Rules: map[string]RuleCfg{
+				"required-structure": {Enabled: true},
+			}},
+		},
+	}
+	merged := Merge(&Config{}, loaded)
+	InjectArchetypeRoots(merged)
+
+	// The original loaded config's Settings must not have been mutated.
+	assert.Nil(t, loaded.Kinds["plan"].Rules["required-structure"].Settings,
+		"InjectArchetypeRoots on merged config must not mutate loaded config's Settings")
+}
+
 // --- helpers ---
 
 func loadFromString(t *testing.T, yml string) *Config {
