@@ -328,6 +328,13 @@ func TestApplySettings_Placeholders_UnknownToken(t *testing.T) {
 	assert.ErrorContains(t, err, "no-such-token")
 }
 
+func TestApplySettings_Placeholders_NonList_FirstLineHeading(t *testing.T) {
+	r := &Rule{Level: 1}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "list of strings")
+}
+
 func TestDefaultSettings_IncludesPlaceholders(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()

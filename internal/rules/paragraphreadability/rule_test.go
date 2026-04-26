@@ -269,6 +269,13 @@ func TestApplySettings_Placeholders_UnknownToken_ParagraphReadability(t *testing
 	require.Error(t, err)
 }
 
+func TestApplySettings_Placeholders_NonList_ParagraphReadability(t *testing.T) {
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list of strings")
+}
+
 func TestDefaultSettings_ParagraphReadability_IncludesPlaceholders(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()

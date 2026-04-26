@@ -246,6 +246,13 @@ func TestApplySettings_Placeholders_UnknownToken_ParagraphStructure(t *testing.T
 	require.Error(t, err)
 }
 
+func TestApplySettings_Placeholders_NonList_ParagraphStructure(t *testing.T) {
+	r := &Rule{MaxSentences: 6, MaxWords: 40}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list of strings")
+}
+
 func TestDefaultSettings_ParagraphStructure_IncludesPlaceholders(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()

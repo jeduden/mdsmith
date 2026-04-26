@@ -112,6 +112,31 @@ func TestCheck_Placeholder_VarTokenInEmphasis_EmptyList(t *testing.T) {
 	require.Len(t, diags, 1, "should flag emphasis-as-heading without placeholders configured")
 }
 
+func TestCheck_Placeholder_NoMatch_StillFlags(t *testing.T) {
+	// Emphasis whose text does not match any configured placeholder is still flagged.
+	// This also exercises the !entering branch of the inner AST walk.
+	src := []byte("# Title\n\n*plain text*\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "emphasis-as-heading with non-matching placeholder should still be flagged")
+}
+
+func TestApplySettings_Placeholders_NonList_NoEmphasisAsHeading(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list of strings")
+}
+
+func TestApplySettings_UnknownKey_NoEmphasisAsHeading(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"unknownkey": true})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown setting")
+}
+
 func TestApplySettings_Placeholders_NoEmphasisAsHeading(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{

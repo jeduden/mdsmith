@@ -600,6 +600,11 @@ func TestRunHelp_ConceptDispatch_ExitsZero(t *testing.T) {
 	assert.Contains(t, out, "Placeholder grammar")
 }
 
+func TestRunHelpConcept_UnknownConcept_ExitsTwo(t *testing.T) {
+	code := runHelpConcept("no-such-concept")
+	assert.Equal(t, 2, code)
+}
+
 // --- runHelpRule ---
 
 func TestRunHelpRule_NoArgs_ListsRules(t *testing.T) {

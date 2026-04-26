@@ -161,12 +161,12 @@ func replaceVarTokens(text string) string {
 	// Split on field boundaries: the parts between placeholders are
 	// kept, the placeholders are replaced.
 	parts := fieldinterp.SplitOnFields(text)
-	fields := fieldinterp.Fields(text)
+	placeholderCount := len(parts) - 1
 
 	var b strings.Builder
 	for i, part := range parts {
 		b.WriteString(part)
-		if i < len(fields) {
+		if i < placeholderCount {
 			b.WriteString(neutralText[VarToken])
 		}
 	}

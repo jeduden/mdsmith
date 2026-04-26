@@ -150,9 +150,6 @@ func (r *Rule) checkLink(
 func checkLocalAnchor(
 	path string, line, col int, r *Rule, target linkTarget, selfAnchors map[string]bool,
 ) []lint.Diagnostic {
-	if target.Anchor == "" {
-		return nil
-	}
 	if selfAnchors[normalizeAnchor(target.Anchor)] {
 		return nil
 	}

@@ -791,6 +791,13 @@ func TestApplySettings_Placeholders_UnknownToken_CrossFile(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestApplySettings_Placeholders_NonList_CrossFile(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list of strings")
+}
+
 func TestDefaultSettings_CrossFile(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()

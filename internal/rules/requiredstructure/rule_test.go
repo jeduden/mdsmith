@@ -1867,12 +1867,7 @@ status: '"🔲" | "🔳" | "✅"'
 	f := newTestFile(t, "proto.md",
 		"---\nid: 'int & >=1'\nstatus: '\"🔲\" | \"🔳\" | \"✅\"'\n---\n# Template\n")
 	diags := r.Check(f)
-	// No CUE constraint violation should be reported.
-	for _, d := range diags {
-		if strings.Contains(d.Message, "CUE constraints") {
-			t.Errorf("should not report CUE constraint violation when cue-frontmatter configured, got: %s", d.Message)
-		}
-	}
+	require.Empty(t, diags, "expected no diagnostics when cue-frontmatter placeholder is configured")
 }
 
 func TestCheck_Placeholder_CUEFrontmatter_EmptyList_StillValidates(t *testing.T) {
@@ -1910,6 +1905,13 @@ func TestApplySettings_Placeholders_UnknownToken_RequiredStructure(t *testing.T)
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"placeholders": []any{"bad"}})
 	require.Error(t, err)
+}
+
+func TestApplySettings_Placeholders_NonList_RequiredStructure(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list of strings")
 }
 
 func TestDefaultSettings_RequiredStructure_IncludesPlaceholders(t *testing.T) {

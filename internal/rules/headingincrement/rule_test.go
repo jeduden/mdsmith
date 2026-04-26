@@ -134,6 +134,20 @@ func TestApplySettings_Placeholders_UnknownToken_HeadingIncrement(t *testing.T) 
 	require.Error(t, err)
 }
 
+func TestApplySettings_Placeholders_NonList_HeadingIncrement(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list of strings")
+}
+
+func TestApplySettings_UnknownKey_HeadingIncrement(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"unknownkey": true})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown setting")
+}
+
 func TestDefaultSettings_HeadingIncrement(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
