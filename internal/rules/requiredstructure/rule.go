@@ -15,6 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/archetypes"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
 	"gopkg.in/yaml.v3"
@@ -29,6 +30,7 @@ type Rule struct {
 	Schema         string   // path to schema file
 	Archetype      string   // name of an archetype schema discovered under ArchetypeRoots
 	ArchetypeRoots []string // directories searched for archetypes; defaults to [archetypes.DefaultRoot]
+	Placeholders   []string // placeholder tokens to treat as opaque
 }
 
 // ID implements rule.Rule.
@@ -62,6 +64,15 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				return err
 			}
 			r.ArchetypeRoots = roots
+		case "placeholders":
+			toks, err := asStringList("placeholders", v)
+			if err != nil {
+				return err
+			}
+			if err := placeholders.Validate(toks); err != nil {
+				return fmt.Errorf("required-structure: %w", err)
+			}
+			r.Placeholders = toks
 		default:
 			return fmt.Errorf("required-structure: unknown setting %q", k)
 		}
@@ -104,6 +115,7 @@ func (r *Rule) DefaultSettings() map[string]any {
 		"schema":          "",
 		"archetype":       "",
 		"archetype-roots": []string{archetypes.DefaultRoot},
+		"placeholders":    []string{},
 	}
 }
 
@@ -155,10 +167,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Check structure: required headings present and in order.
 	diags = append(diags, checkStructure(f, sch, docHeadings)...)
 
-	// Validate document front matter against schema-embedded CUE constraints.
-	if err := validateFrontMatterCUE(sch.Config.FrontMatterCUE, docFMRaw); err != nil {
-		diags = append(diags, makeDiag(f.Path, 1,
-			fmt.Sprintf("front matter does not satisfy schema CUE constraints: %v", err)))
+	// Validate document front matter against schema-embedded CUE constraints,
+	// unless the cue-frontmatter placeholder token is configured (which marks
+	// the front-matter values as CUE expressions rather than concrete data).
+	if !placeholders.HasCUEFrontmatter(r.Placeholders) {
+		if err := validateFrontMatterCUE(sch.Config.FrontMatterCUE, docFMRaw); err != nil {
+			diags = append(diags, makeDiag(f.Path, 1,
+				fmt.Sprintf("front matter does not satisfy schema CUE constraints: %v", err)))
+		}
 	}
 
 	// Check frontmatter-body sync using raw map for nested access.

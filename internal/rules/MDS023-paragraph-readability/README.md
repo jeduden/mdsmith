@@ -10,10 +10,13 @@ Paragraph readability index must not exceed a threshold.
 
 ## Settings
 
-| Setting     | Type  | Default | Description                             |
-|-------------|-------|---------|-----------------------------------------|
-| `max-index` | float | 14.0    | Maximum allowed readability index (ARI) |
-| `min-words` | int   | 20      | Minimum word count to check a paragraph |
+| Setting        | Type  | Default | Description                                                                                                                |
+|----------------|-------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| `max-index`    | float | 14.0    | Maximum allowed readability index (ARI)                                                                                    |
+| `min-words`    | int   | 20      | Minimum word count to check a paragraph                                                                                    |
+| `placeholders` | list  | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+
+Supported tokens: `var-token`, `heading-question`, `placeholder-section`.
 
 Paragraphs with fewer words than `min-words` are skipped.
 Markdown tables and code blocks are skipped.
@@ -87,3 +90,7 @@ The implementation of concurrent distributed systems requires sophisticated unde
 - **Implementation**:
   [source](./)
 - **Category**: meta
+
+## See also
+
+- [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

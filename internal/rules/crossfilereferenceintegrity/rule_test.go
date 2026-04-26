@@ -749,3 +749,50 @@ func TestCheck_AbsoluteFilepathLinkSkipped(t *testing.T) {
 	diags := (&Rule{}).Check(f)
 	require.Len(t, diags, 0, "absolute-path links must be skipped, got: %v", diagMessages(diags))
 }
+
+// --- Placeholder tests ---
+
+func TestCheck_Placeholder_VarTokenInLink_Suppressed(t *testing.T) {
+	// A link whose destination contains a var-token placeholder should
+	// not be flagged when var-token is configured.
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "test.md")
+	writeFile(t, srcPath, "# Title\n\n[link]({base}/docs/page.md)\n")
+	f := newLintFile(t, srcPath)
+	r := &Rule{Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "var-token in link destination should suppress diagnostic")
+}
+
+func TestCheck_Placeholder_VarTokenInLink_EmptyPlaceholders(t *testing.T) {
+	// Without placeholders, a link with a placeholder in the destination is
+	// flagged as a broken link (the path doesn't exist).
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "test.md")
+	writeFile(t, srcPath, "# Title\n\n[link]({base}/docs/page.md)\n")
+	f := newLintFile(t, srcPath)
+	r := &Rule{Placeholders: []string{}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "broken link without placeholders should be flagged")
+}
+
+func TestApplySettings_Placeholders_CrossFile(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"var-token"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"var-token"}, r.Placeholders)
+}
+
+func TestApplySettings_Placeholders_UnknownToken_CrossFile(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": []any{"bad"}})
+	require.Error(t, err)
+}
+
+func TestDefaultSettings_CrossFile(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	require.Equal(t, []string{}, ds["placeholders"])
+}

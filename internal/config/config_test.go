@@ -731,7 +731,6 @@ func TestDumpDefaults_NonConfigurableRulesHaveNoSettings(t *testing.T) {
 
 	// These rules should NOT have settings.
 	nonConfigurableRules := []string{
-		"heading-increment",
 		"no-duplicate-headings",
 		"no-trailing-spaces",
 		"no-hard-tabs",
@@ -742,7 +741,6 @@ func TestDumpDefaults_NonConfigurableRulesHaveNoSettings(t *testing.T) {
 		"blank-line-around-lists",
 		"blank-line-around-fenced-code",
 		"no-trailing-punctuation-in-heading",
-		"no-emphasis-as-heading",
 		"catalog",
 	}
 

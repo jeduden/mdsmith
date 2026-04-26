@@ -70,6 +70,7 @@ rules:
       - "demo/**"
       - "internal/rules/**"
       - "internal/metrics/**"
+      - "internal/concepts/**"
       - ".claude/**"
       - ".github/**"
   catalog: true

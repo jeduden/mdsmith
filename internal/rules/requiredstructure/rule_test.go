@@ -1850,3 +1850,70 @@ func TestValidateCUESchemaSyntax_InvalidCUE(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid schema frontmatter CUE")
 }
+
+// --- Placeholder tests ---
+
+func TestCheck_Placeholder_CUEFrontmatter_Suppressed(t *testing.T) {
+	// When cue-frontmatter is configured, the front-matter CUE validation
+	// is skipped, so a document with CUE-pattern front-matter values passes.
+	schemaPath := writeSchema(t, `---
+id: 'int & >=1'
+status: '"🔲" | "🔳" | "✅"'
+---
+# ?
+`)
+	r := &Rule{Schema: schemaPath, Placeholders: []string{"cue-frontmatter"}}
+	// The document's front matter contains CUE expressions, not concrete values.
+	f := newTestFile(t, "proto.md",
+		"---\nid: 'int & >=1'\nstatus: '\"🔲\" | \"🔳\" | \"✅\"'\n---\n# Template\n")
+	diags := r.Check(f)
+	// No CUE constraint violation should be reported.
+	for _, d := range diags {
+		if strings.Contains(d.Message, "CUE constraints") {
+			t.Errorf("should not report CUE constraint violation when cue-frontmatter configured, got: %s", d.Message)
+		}
+	}
+}
+
+func TestCheck_Placeholder_CUEFrontmatter_EmptyList_StillValidates(t *testing.T) {
+	// Without cue-frontmatter in placeholders, CUE validation runs normally.
+	schemaPath := writeSchema(t, `---
+id: 'int & >=1'
+status: '"🔲" | "🔳" | "✅"'
+---
+# ?
+`)
+	r := &Rule{Schema: schemaPath, Placeholders: []string{}}
+	// Document with a CUE expression as a value violates the int constraint.
+	f := newTestFile(t, "doc.md",
+		"---\nid: 'int & >=1'\nstatus: \"✅\"\n---\n# Title\n")
+	diags := r.Check(f)
+	var hasCUEDiag bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "CUE constraints") {
+			hasCUEDiag = true
+		}
+	}
+	assert.True(t, hasCUEDiag, "CUE constraint violation should be reported without placeholder")
+}
+
+func TestApplySettings_Placeholders_RequiredStructure(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"cue-frontmatter"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"cue-frontmatter"}, r.Placeholders)
+}
+
+func TestApplySettings_Placeholders_UnknownToken_RequiredStructure(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": []any{"bad"}})
+	require.Error(t, err)
+}
+
+func TestDefaultSettings_RequiredStructure_IncludesPlaceholders(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	require.Equal(t, []string{}, ds["placeholders"])
+}

@@ -8,6 +8,14 @@ description: Heading levels should increment by one. No jumping from `#` to `###
 
 Heading levels should increment by one. No jumping from `#` to `###`.
 
+## Settings
+
+| Setting        | Type | Default | Description                                                                                                                |
+|----------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| `placeholders` | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+
+Supported tokens: `heading-question`, `placeholder-section`.
+
 ## Config
 
 Enable:
@@ -68,3 +76,7 @@ Body text.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+
+## See also
+
+- [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

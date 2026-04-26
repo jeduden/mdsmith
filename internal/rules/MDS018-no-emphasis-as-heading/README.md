@@ -8,6 +8,14 @@ description: Don't use bold or emphasis on a standalone line as a heading substi
 
 Don't use bold or emphasis on a standalone line as a heading substitute.
 
+## Settings
+
+| Setting        | Type | Default | Description                                                                                                                |
+|----------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| `placeholders` | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+
+Supported tokens: `var-token`.
+
 ## Config
 
 Enable:
@@ -66,3 +74,7 @@ This is a normal paragraph.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+
+## See also
+
+- [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

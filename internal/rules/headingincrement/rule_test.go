@@ -73,3 +73,69 @@ func TestName(t *testing.T) {
 		t.Errorf("expected heading-increment, got %s", r.Name())
 	}
 }
+
+// --- Placeholder tests ---
+
+func TestCheck_PlaceholderHeadingQuestion_SkipsLevel(t *testing.T) {
+	// A heading with text "?" configured as heading-question should not
+	// produce a diagnostic even when its level skips.
+	src := []byte("# H1\n\n### ?\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Placeholders: []string{"heading-question"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "heading-question placeholder should suppress skip-level diagnostic")
+}
+
+func TestCheck_PlaceholderSection_SkipsLevel(t *testing.T) {
+	// A heading with text "..." configured as placeholder-section should not
+	// produce a diagnostic even when its level skips.
+	src := []byte("# H1\n\n### ...\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Placeholders: []string{"placeholder-section"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "placeholder-section should suppress skip-level diagnostic")
+}
+
+func TestCheck_PlaceholderHeadingQuestion_EmptyList_StillFlags(t *testing.T) {
+	// Without placeholders configured, skipped levels are still flagged.
+	src := []byte("# H1\n\n### ?\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Placeholders: []string{}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "should flag skipped level without placeholders configured")
+}
+
+func TestCheck_Placeholder_LevelTracked(t *testing.T) {
+	// Placeholder headings still update the level tracker.
+	// After h1, a placeholder h3, h4 is ok (following placeholder's level).
+	src := []byte("# H1\n\n### ?\n\n#### H4\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Placeholders: []string{"heading-question"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "h4 after placeholder h3 should be valid")
+}
+
+func TestApplySettings_Placeholders_HeadingIncrement(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"heading-question", "placeholder-section"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"heading-question", "placeholder-section"}, r.Placeholders)
+}
+
+func TestApplySettings_Placeholders_UnknownToken_HeadingIncrement(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": []any{"bad-token"}})
+	require.Error(t, err)
+}
+
+func TestDefaultSettings_HeadingIncrement(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	require.Equal(t, []string{}, ds["placeholders"])
+}

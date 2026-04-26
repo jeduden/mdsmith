@@ -6,6 +6,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
@@ -24,9 +25,10 @@ func init() {
 // a configured maximum. Uses the Automated Readability Index by
 // default.
 type Rule struct {
-	MaxIndex float64
-	MinWords int
-	Index    IndexFunc
+	MaxIndex     float64
+	MinWords     int
+	Index        IndexFunc
+	Placeholders []string // placeholder tokens to treat as opaque
 }
 
 // ID implements rule.Rule.
@@ -63,6 +65,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			}
 
 			text := mdtext.ExtractPlainText(para, f.Source)
+			if len(r.Placeholders) > 0 {
+				text = placeholders.MaskBodyTokens(text, r.Placeholders)
+			}
 			words := mdtext.CountWords(text)
 			if words < minWords {
 				return ast.WalkContinue, nil
@@ -125,6 +130,18 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 				)
 			}
 			r.MinWords = n
+		case "placeholders":
+			toks, ok := settings.ToStringSlice(v)
+			if !ok {
+				return fmt.Errorf(
+					"paragraph-readability: placeholders must be a list of strings, got %T",
+					v,
+				)
+			}
+			if err := placeholders.Validate(toks); err != nil {
+				return fmt.Errorf("paragraph-readability: %w", err)
+			}
+			r.Placeholders = toks
 		default:
 			return fmt.Errorf(
 				"paragraph-readability: unknown setting %q", k,
@@ -137,8 +154,9 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"max-index": 14.0,
-		"min-words": 20,
+		"max-index":    14.0,
+		"min-words":    20,
+		"placeholders": []string{},
 	}
 }
 

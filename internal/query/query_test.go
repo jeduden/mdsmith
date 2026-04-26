@@ -136,3 +136,41 @@ func TestMatch_JSONMarshalError(t *testing.T) {
 	result := m.Match(map[string]any{"status": make(chan int)})
 	assert.False(t, result, "json.Marshal error should cause Match to return false")
 }
+
+// =====================================================================
+// Placeholder grammar regression: CUE-pattern front matter
+// =====================================================================
+
+// TestMatch_CUEPatternFrontMatter verifies that a file with CUE-pattern
+// front-matter values (as found in proto.md) can still be selected by
+// the query matcher when the query uses field-existence checks.
+//
+// Files like proto.md hold CUE schema expressions as front-matter values
+// (e.g. id: 'int & >=1'). The YAML parser reads them as ordinary strings,
+// so readFrontMatterRaw produces map[string]any{"id": "int & >=1", ...}.
+// The matcher should be able to select such files by field presence.
+func TestMatch_CUEPatternFrontMatter(t *testing.T) {
+	// Simulate the front matter of plan/proto.md after YAML parsing.
+	fm := map[string]any{
+		"id":      "int & >=1",
+		"title":   `string & != ""`,
+		"status":  `"🔲" | "🔳" | "✅" | "⛔"`,
+		"summary": `string | *""`,
+		"model":   `"haiku" | "sonnet" | "opus" | *""`,
+	}
+
+	// Query by field existence (underscore = any CUE value).
+	m, err := Compile(`id: _`)
+	require.NoError(t, err)
+	assert.True(t, m.Match(fm), "file with CUE-pattern id field should be selectable by {id: _}")
+
+	// Query by the literal CUE-expression string value.
+	m2, err := Compile(`id: "int & >=1"`)
+	require.NoError(t, err)
+	assert.True(t, m2.Match(fm), "file with CUE-pattern id field should match literal string query")
+
+	// Query for a field that is absent returns false.
+	m3, err := Compile(`missing: _`)
+	require.NoError(t, err)
+	assert.False(t, m3.Match(fm), "absent field should not match")
+}

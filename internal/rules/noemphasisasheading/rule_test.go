@@ -88,3 +88,47 @@ func TestCategory(t *testing.T) {
 		t.Error("expected non-empty category")
 	}
 }
+
+// --- Placeholder tests ---
+
+func TestCheck_Placeholder_VarTokenInEmphasis_Suppressed(t *testing.T) {
+	// Emphasis wrapping a var-token placeholder should not be flagged
+	// when var-token is configured.
+	src := []byte("# Title\n\n*{title}*\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "var-token in emphasis should suppress diagnostic")
+}
+
+func TestCheck_Placeholder_VarTokenInEmphasis_EmptyList(t *testing.T) {
+	// Without placeholders configured, emphasis with var-token is still flagged.
+	src := []byte("# Title\n\n*{title}*\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Placeholders: []string{}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "should flag emphasis-as-heading without placeholders configured")
+}
+
+func TestApplySettings_Placeholders_NoEmphasisAsHeading(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"var-token"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"var-token"}, r.Placeholders)
+}
+
+func TestApplySettings_Placeholders_UnknownToken_NoEmphasisAsHeading(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"placeholders": []any{"bad"}})
+	require.Error(t, err)
+}
+
+func TestDefaultSettings_NoEmphasisAsHeading(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	require.Equal(t, []string{}, ds["placeholders"])
+}

@@ -205,3 +205,49 @@ func TestCategory(t *testing.T) {
 		t.Errorf("expected meta, got %s", r.Category())
 	}
 }
+
+// --- Placeholder tests ---
+
+func TestCheck_Placeholder_VarToken_MaskedToWord(t *testing.T) {
+	// A paragraph consisting only of a var-token placeholder is masked to
+	// "word." (one word, one sentence), well below max-sentences and max-words,
+	// so no diagnostic is produced.
+	src := []byte("# Title\n\n{body}\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{MaxSentences: 6, MaxWords: 40, Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "var-token paragraph masked to neutral word should produce no diagnostic")
+}
+
+func TestCheck_Placeholder_EmptyList_StructureChecksRun(t *testing.T) {
+	// Without placeholders configured, behavior is unchanged.
+	// A paragraph with many sentences still gets flagged.
+	src := []byte("# Title\n\nFirst. Second. Third. Fourth. Fifth. Sixth. Seventh.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{MaxSentences: 6, MaxWords: 40, Placeholders: []string{}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "over-sentence paragraph should still be flagged without placeholders")
+}
+
+func TestApplySettings_Placeholders_ParagraphStructure(t *testing.T) {
+	r := &Rule{MaxSentences: 6, MaxWords: 40}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"var-token"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"var-token"}, r.Placeholders)
+}
+
+func TestApplySettings_Placeholders_UnknownToken_ParagraphStructure(t *testing.T) {
+	r := &Rule{MaxSentences: 6, MaxWords: 40}
+	err := r.ApplySettings(map[string]any{"placeholders": []any{"bad"}})
+	require.Error(t, err)
+}
+
+func TestDefaultSettings_ParagraphStructure_IncludesPlaceholders(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	require.Equal(t, []string{}, ds["placeholders"])
+}
