@@ -25,6 +25,15 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
 
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install mdsmith merge driver
+        run: |
+          go build -o /usr/local/bin/mdsmith ./cmd/mdsmith
+          mdsmith merge-driver install
+
       - uses: jeduden/merge-queue-action@3be8077b142e4057d2fc097635d1ab6ada2bbbf5 # v0.7.1
         with:
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
