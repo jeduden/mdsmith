@@ -8,15 +8,6 @@ description: Don't use bold or emphasis on a standalone line as a heading substi
 
 Don't use bold or emphasis on a standalone line as a heading substitute.
 
-- **ID**: MDS018
-- **Name**: `no-emphasis-as-heading`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 ## Config
 
 Enable:
@@ -64,3 +55,14 @@ This is a normal paragraph.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS018
+- **Name**: `no-emphasis-as-heading`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: heading

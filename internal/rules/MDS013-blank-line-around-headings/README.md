@@ -8,15 +8,6 @@ description: Headings must have a blank line before and after.
 
 Headings must have a blank line before and after.
 
-- **ID**: MDS013
-- **Name**: `blank-line-around-headings`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 ## Config
 
 Enable:
@@ -74,3 +65,14 @@ Content here.
 |-------------------------------------------|--------------------------------------|
 | `heading should have a blank line before` | Previous line is not blank           |
 | `heading should have a blank line after`  | Next line after heading is not blank |
+
+## Meta-Information
+
+- **ID**: MDS013
+- **Name**: `blank-line-around-headings`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: heading

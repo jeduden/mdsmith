@@ -8,15 +8,6 @@ description: No trailing whitespace at the end of lines.
 
 No trailing whitespace at the end of lines.
 
-- **ID**: MDS006
-- **Name**: `no-trailing-spaces`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: whitespace
-
 ## Config
 
 Enable:
@@ -68,3 +59,14 @@ code block with language tag
 ````
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS006
+- **Name**: `no-trailing-spaces`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: whitespace

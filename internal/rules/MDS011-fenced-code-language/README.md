@@ -8,15 +8,6 @@ description: Fenced code blocks must specify a language.
 
 Fenced code blocks must specify a language.
 
-- **ID**: MDS011
-- **Name**: `fenced-code-language`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: code
-
 ## Config
 
 Enable:
@@ -68,3 +59,14 @@ fmt.Println("hello")
 ````
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS011
+- **Name**: `fenced-code-language`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: code

@@ -8,15 +8,6 @@ description: File must end with exactly one newline character.
 
 File must end with exactly one newline character.
 
-- **ID**: MDS009
-- **Name**: `single-trailing-newline`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: whitespace
-
 ## Config
 
 Enable:
@@ -72,3 +63,14 @@ The `<?include?>` output looks identical because the
 wrap always adds a newline, but the actual fixture file
 (`bad/default.md`) ends without one — that missing byte
 is what the rule detects.
+
+## Meta-Information
+
+- **ID**: MDS009
+- **Name**: `single-trailing-newline`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: whitespace

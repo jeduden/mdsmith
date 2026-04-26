@@ -8,15 +8,6 @@ description: Tables must have consistent column widths and padding.
 
 Tables must have consistent column widths and padding.
 
-- **ID**: MDS025
-- **Name**: `table-format`
-- **Status**: ready
-- **Default**: enabled, pad: 1
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: table
-
 ## Settings
 
 | Setting | Type | Default | Description                         |
@@ -138,3 +129,14 @@ wrap: markdown
 | escaped pipe in cell           | `\|` treated as literal, not column boundary       |
 | single-column table            | formatted normally with minimum width of 3         |
 | inline code, links, emphasis   | width measured in display columns, syntax included |
+
+## Meta-Information
+
+- **ID**: MDS025
+- **Name**: `table-format`
+- **Status**: ready
+- **Default**: enabled, pad: 1
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: table

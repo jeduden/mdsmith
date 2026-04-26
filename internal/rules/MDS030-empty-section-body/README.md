@@ -8,17 +8,6 @@ description: Section headings must include meaningful body content.
 
 Section headings must include meaningful body content.
 
-- **ID**: MDS030
-- **Name**: `empty-section-body`
-- **Status**: ready
-- **Default**: enabled, `min-level: 2`, `max-level: 6`
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Guide**:
-  [directive guide](../../../docs/guides/directives/enforcing-structure.md)
-- **Category**: heading
-
 This rule reports sections that only contain whitespace,
 comments, or nested headings without any body content.
 
@@ -166,3 +155,16 @@ This section has real content.
   parent section's range before the next same-or-higher-level heading.
 - Heading-only nesting with no body content is reported.
 - End-of-file sections are checked the same way as middle sections.
+
+## Meta-Information
+
+- **ID**: MDS030
+- **Name**: `empty-section-body`
+- **Status**: ready
+- **Default**: enabled, `min-level: 2`, `max-level: 6`
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Guide**:
+  [directive guide](../../../docs/guides/directives/enforcing-structure.md)
+- **Category**: heading

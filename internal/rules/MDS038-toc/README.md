@@ -9,15 +9,6 @@ description: Keep toc generated heading lists in sync with document headings.
 Keep toc generated heading lists in sync with
 document headings.
 
-- **ID**: MDS038
-- **Name**: `toc`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## What it detects
 
 A `<?toc?>...<?/toc?>` block contains a
@@ -104,3 +95,14 @@ rules:
 
 MDS038 reports a "generated section is out of
 date" diagnostic on the `<?toc?>` line.
+
+## Meta-Information
+
+- **ID**: MDS038
+- **Name**: `toc`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: meta

@@ -8,15 +8,6 @@ description: Paragraph conciseness score must not fall below a threshold.
 
 Paragraph conciseness score must not fall below a threshold.
 
-- **ID**: MDS029
-- **Name**: `conciseness-scoring`
-- **Status**: not-ready
-- **Default**: disabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Setting     | Type   | Default | Description                       |
@@ -97,3 +88,14 @@ little concrete information to the paragraph.
 | Condition             | Message                                                                                                           |
 |-----------------------|-------------------------------------------------------------------------------------------------------------------|
 | score below threshold | `conciseness score too low (0.08 < 0.20); target >= 0.20; reduce verbose cues (e.g., "basically", "in order to")` |
+
+## Meta-Information
+
+- **ID**: MDS029
+- **Name**: `conciseness-scoring`
+- **Status**: not-ready
+- **Default**: disabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: meta

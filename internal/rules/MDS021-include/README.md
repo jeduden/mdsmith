@@ -8,19 +8,6 @@ description: Include section content must match the referenced file.
 
 Include section content must match the referenced file.
 
-- **ID**: MDS021
-- **Name**: `include`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-- **Archetype**:
-  [generated-section](../../../docs/background/archetypes/generated-section/)
-- **Guide**:
-  [directive guide](../../../docs/guides/directives/generating-content.md)
-
 ## Marker Syntax
 
 ```text
@@ -208,3 +195,18 @@ Outdated content
 | invalid heading-level | include directive "heading-level" must be "absolute"               |
 | cyclic include        | cyclic include: a.md -> b.md -> a.md                               |
 | depth exceeded        | include depth exceeds maximum (10)                                 |
+
+## Meta-Information
+
+- **ID**: MDS021
+- **Name**: `include`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: meta
+- **Archetype**:
+  [generated-section](../../../docs/background/archetypes/generated-section/)
+- **Guide**:
+  [directive guide](../../../docs/guides/directives/generating-content.md)

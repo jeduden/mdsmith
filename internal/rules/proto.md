@@ -15,23 +15,6 @@ description: 'string & != ""'
 
 {description}
 
-- **ID**: {id}
-- **Name**: `{name}`
-- **Status**: {status}
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: CATEGORY
-- **Archetype**:
-  [NAME](../../../docs/background/archetypes/NAME/)
-
-<!-- Bullets in this order: ID, Name, Status, Default, Fixable,
-     Implementation, Category, Archetype (if applicable).
-     Default may include key settings: "enabled, max: 80".
-     Categories: code, heading, line, link, list, meta,
-     whitespace. Delete Archetype bullet if not used. -->
-
 <!-- Optional: ## Settings
      Include only when rule implements Configurable.
      Type: int, string, list. Description: fragment,
@@ -86,3 +69,22 @@ rules:
 ## ...
 
 <?allow-empty-section?>
+
+## Meta-Information
+
+- **ID**: {id}
+- **Name**: `{name}`
+- **Status**: {status}
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: CATEGORY
+- **Archetype**:
+  [NAME](../../../docs/background/archetypes/NAME/)
+
+<!-- Bullets in this order: ID, Name, Status, Default, Fixable,
+     Implementation, Category, Archetype (if applicable).
+     Default may include key settings: "enabled, max: 80".
+     Categories: code, heading, line, link, list, meta,
+     whitespace. Delete Archetype bullet if not used. -->

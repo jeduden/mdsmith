@@ -9,19 +9,6 @@ description: Catalog content must reflect selected front matter fields from file
 Catalog content must reflect selected front matter fields
 from files matching its glob.
 
-- **ID**: MDS019
-- **Name**: `catalog`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-- **Archetype**:
-  [generated-section](../../../docs/background/archetypes/generated-section/)
-- **Guide**:
-  [directive guide](../../../docs/guides/directives/generating-content.md)
-
 ## Directive: `catalog`
 
 Lists files matching a glob pattern. Uses *template mode*
@@ -246,3 +233,18 @@ See the
 [archetype documentation](../../../docs/background/archetypes/generated-section/)
 for shared edge cases (markers in code blocks, multiple marker
 pairs, line endings, template errors).
+
+## Meta-Information
+
+- **ID**: MDS019
+- **Name**: `catalog`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: meta
+- **Archetype**:
+  [generated-section](../../../docs/background/archetypes/generated-section/)
+- **Guide**:
+  [directive guide](../../../docs/guides/directives/generating-content.md)

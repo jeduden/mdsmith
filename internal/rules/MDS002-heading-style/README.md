@@ -8,15 +8,6 @@ description: Heading style must be consistent.
 
 Heading style must be consistent.
 
-- **ID**: MDS002
-- **Name**: `heading-style`
-- **Status**: ready
-- **Default**: enabled, style: atx
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 ## Settings
 
 | Setting | Type   | Default | Description                                                      |
@@ -145,3 +136,14 @@ Body text.
 |----------------------------------|---------------------------------------------|
 | `heading style should be atx`    | `style: atx` and a Setext heading is found  |
 | `heading style should be setext` | `style: setext` and an ATX heading is found |
+
+## Meta-Information
+
+- **ID**: MDS002
+- **Name**: `heading-style`
+- **Status**: ready
+- **Default**: enabled, style: atx
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: heading

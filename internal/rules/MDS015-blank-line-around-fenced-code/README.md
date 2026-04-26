@@ -8,15 +8,6 @@ description: Fenced code blocks must have a blank line before and after.
 
 Fenced code blocks must have a blank line before and after.
 
-- **ID**: MDS015
-- **Name**: `blank-line-around-fenced-code`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: code
-
 ## Config
 
 Enable:
@@ -78,3 +69,14 @@ Content here.
 |--------------------------------------------------------|--------------------------------------------|
 | `fenced code block should be preceded by a blank line` | Previous line is not blank                 |
 | `fenced code block should be followed by a blank line` | Next line after closing fence is not blank |
+
+## Meta-Information
+
+- **ID**: MDS015
+- **Name**: `blank-line-around-fenced-code`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: code

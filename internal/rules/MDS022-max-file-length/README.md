@@ -8,15 +8,6 @@ description: File must not exceed maximum number of lines.
 
 File must not exceed maximum number of lines.
 
-- **ID**: MDS022
-- **Name**: `max-file-length`
-- **Status**: ready
-- **Default**: enabled, max: 300
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Setting | Type | Default | Description           |
@@ -72,3 +63,14 @@ Extra line.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS022
+- **Name**: `max-file-length`
+- **Status**: ready
+- **Default**: enabled, max: 300
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: meta

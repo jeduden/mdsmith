@@ -8,19 +8,6 @@ description: Tables must stay within readability complexity limits.
 
 Tables must stay within readability complexity limits.
 
-- **ID**: MDS026
-- **Name**: `table-readability`
-- **Status**: ready
-- **Default**: enabled
-  - `max-columns`: `8`
-  - `max-rows`: `30`
-  - `max-words-per-cell`: `30`
-  - `max-column-width-ratio`: `60.0`
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: table
-
 This rule is separate from MDS023 and MDS024.
 Table complexity needs table-specific metrics.
 
@@ -99,3 +86,18 @@ wrap: markdown
 
 - Tables inside fenced code blocks are skipped.
 - Blockquote and indented tables are checked.
+
+## Meta-Information
+
+- **ID**: MDS026
+- **Name**: `table-readability`
+- **Status**: ready
+- **Default**: enabled
+  - `max-columns`: `8`
+  - `max-rows`: `30`
+  - `max-words-per-cell`: `30`
+  - `max-column-width-ratio`: `60.0`
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: table

@@ -10,15 +10,6 @@ Flag renderer-specific TOC directives that
 render as literal text on CommonMark and
 goldmark.
 
-- **ID**: MDS035
-- **Name**: `toc-directive`
-- **Status**: ready
-- **Default**: disabled (opt-in)
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## What it detects
 
 Four directive variants appear in the wild,
@@ -134,3 +125,14 @@ text on CommonMark and goldmark renderers.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS035
+- **Name**: `toc-directive`
+- **Status**: ready
+- **Default**: disabled (opt-in)
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: meta

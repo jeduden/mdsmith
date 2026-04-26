@@ -8,15 +8,6 @@ description: Images must have non-empty alt text for accessibility.
 
 Images must have non-empty alt text for accessibility.
 
-- **ID**: MDS032
-- **Name**: `no-empty-alt-text`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: accessibility
-
 ## Config
 
 Enable (default):
@@ -64,3 +55,14 @@ wrap: markdown
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS032
+- **Name**: `no-empty-alt-text`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: accessibility

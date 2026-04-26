@@ -8,15 +8,6 @@ description: No tab characters. Use spaces instead.
 
 No tab characters. Use spaces instead.
 
-- **ID**: MDS007
-- **Name**: `no-hard-tabs`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: whitespace
-
 ## Config
 
 Enable:
@@ -69,3 +60,14 @@ No tabs here.
 ````
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS007
+- **Name**: `no-hard-tabs`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: whitespace

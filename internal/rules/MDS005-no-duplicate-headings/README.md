@@ -8,15 +8,6 @@ description: No two headings should have the same text.
 
 No two headings should have the same text.
 
-- **ID**: MDS005
-- **Name**: `no-duplicate-headings`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 ## Config
 
 Enable:
@@ -72,3 +63,14 @@ Body two.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS005
+- **Name**: `no-duplicate-headings`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: heading

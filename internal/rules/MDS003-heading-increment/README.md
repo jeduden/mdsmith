@@ -8,15 +8,6 @@ description: Heading levels should increment by one. No jumping from `#` to `###
 
 Heading levels should increment by one. No jumping from `#` to `###`.
 
-- **ID**: MDS003
-- **Name**: `heading-increment`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 ## Config
 
 Enable:
@@ -66,3 +57,14 @@ Body text.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS003
+- **Name**: `heading-increment`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: heading

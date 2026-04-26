@@ -8,15 +8,6 @@ description: First line of the file should be a heading.
 
 First line of the file should be a heading.
 
-- **ID**: MDS004
-- **Name**: `first-line-heading`
-- **Status**: ready
-- **Default**: enabled, level: 1
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 ## Settings
 
 | Setting | Type | Default | Description                               |
@@ -104,3 +95,14 @@ Some content here.
 | `first line should be a level {level} heading`                   | Line 1 is missing or not a heading                  |
 | `first line should be a level {level} heading, found blank line` | First child is a heading but preceded by blank line |
 | `first heading should be level {level}, got {n}`                 | First heading on line 1 has the wrong level         |
+
+## Meta-Information
+
+- **ID**: MDS004
+- **Name**: `first-line-heading`
+- **Status**: ready
+- **Default**: enabled, level: 1
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: heading

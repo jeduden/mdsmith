@@ -8,15 +8,6 @@ description: Section length must not exceed per-level or per-heading limits.
 
 Section length must not exceed per-level or per-heading limits.
 
-- **ID**: MDS036
-- **Name**: `max-section-length`
-- **Status**: ready
-- **Default**: disabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 A section spans from its heading line up to (but not including) the next
 heading line of any level, or the end of file. Nested subsections are
 measured separately from their parent, so the limit applies to the
@@ -107,3 +98,14 @@ line d
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS036
+- **Name**: `max-section-length`
+- **Status**: ready
+- **Default**: disabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: heading

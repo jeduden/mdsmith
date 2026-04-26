@@ -8,16 +8,6 @@ description: Paragraphs should not repeat verbatim across Markdown files.
 
 Paragraphs should not repeat verbatim across Markdown files.
 
-- **ID**: MDS037
-- **Name**: `duplicated-content`
-- **Status**: ready
-- **Default**: disabled (opt-in via `.mdsmith.yml`);
-  include: [], exclude: [], min-chars: 200
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Setting     | Type | Default | Description                                    |
@@ -141,3 +131,15 @@ suite.
 |-------------------|--------------------------------------------------------------------------|
 | paragraph repeats | paragraph duplicated in {other}:{line}                                   |
 | invalid glob      | duplicated-content: {include,exclude}: invalid glob pattern "{pat}": ... |
+
+## Meta-Information
+
+- **ID**: MDS037
+- **Name**: `duplicated-content`
+- **Status**: ready
+- **Default**: disabled (opt-in via `.mdsmith.yml`);
+  include: [], exclude: [], min-chars: 200
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: meta

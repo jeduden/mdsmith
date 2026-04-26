@@ -8,15 +8,6 @@ description: Paragraphs must not exceed sentence and word limits.
 
 Paragraphs must not exceed sentence and word limits.
 
-- **ID**: MDS024
-- **Name**: `paragraph-structure`
-- **Status**: ready
-- **Default**: enabled, max-sentences: 6, max-words-per-sentence: 40
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Setting                  | Type | Default | Description                     |
@@ -81,3 +72,14 @@ Dogs bark. Cats meow. Birds sing. Fish swim. Frogs croak. Snakes hiss. Bees buzz
 |--------------------|--------------------------------------------|
 | too many sentences | `paragraph has too many sentences (8 > 6)` |
 | sentence too long  | `sentence too long (45 > 40 words)`        |
+
+## Meta-Information
+
+- **ID**: MDS024
+- **Name**: `paragraph-structure`
+- **Status**: ready
+- **Default**: enabled, max-sentences: 6, max-words-per-sentence: 40
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: meta

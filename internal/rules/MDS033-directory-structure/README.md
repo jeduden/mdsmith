@@ -8,15 +8,6 @@ description: Markdown files must exist only in explicitly allowed directories.
 
 Markdown files must exist only in explicitly allowed directories.
 
-- **ID**: MDS033
-- **Name**: `directory-structure`
-- **Status**: ready
-- **Default**: disabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Key     | Type | Description                           |
@@ -87,3 +78,14 @@ This file is not in an allowed directory.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS033
+- **Name**: `directory-structure`
+- **Status**: ready
+- **Default**: disabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: meta

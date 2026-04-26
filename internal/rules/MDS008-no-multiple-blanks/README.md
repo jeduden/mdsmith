@@ -8,15 +8,6 @@ description: No more than one consecutive blank line.
 
 No more than one consecutive blank line.
 
-- **ID**: MDS008
-- **Name**: `no-multiple-blanks`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: whitespace
-
 ## Config
 
 Enable:
@@ -72,3 +63,14 @@ more code with blank lines above
 ````
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS008
+- **Name**: `no-multiple-blanks`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: whitespace

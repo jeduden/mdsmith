@@ -8,15 +8,6 @@ description: Fenced code blocks must have a closing fence delimiter.
 
 Fenced code blocks must have a closing fence delimiter.
 
-- **ID**: MDS031
-- **Name**: `unclosed-code-block`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: code
-
 ## Config
 
 Enable (default):
@@ -69,3 +60,14 @@ wrap: markdown
 ````
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS031
+- **Name**: `unclosed-code-block`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: code

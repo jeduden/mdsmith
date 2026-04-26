@@ -9,16 +9,6 @@ description: Document structure and front matter must match its schema.
 Document structure and front matter must match its
 schema.
 
-- **ID**: MDS020
-- **Name**: `required-structure`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**: [source](./)
-- **Guide**:
-  [directive guide](../../../docs/guides/directives/enforcing-structure.md)
-- **Category**: meta
-
 ## Settings
 
 | Setting           | Type      | Default          | Description                                                                   |
@@ -226,3 +216,15 @@ Describe the goal here.
 | filename mismatch   | filename "foo.md" does not match required pattern "[0-9]*_*.md"               |
 | misplaced require   | <?require?> is only recognized in schema files; this directive has no effect  |
 | schema include loop | cyclic include: a.md -> b.md -> a.md                                          |
+
+## Meta-Information
+
+- **ID**: MDS020
+- **Name**: `required-structure`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**: [source](./)
+- **Guide**:
+  [directive guide](../../../docs/guides/directives/enforcing-structure.md)
+- **Category**: meta

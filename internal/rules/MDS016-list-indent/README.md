@@ -8,15 +8,6 @@ description: List items must use consistent indentation.
 
 List items must use consistent indentation.
 
-- **ID**: MDS016
-- **Name**: `list-indent`
-- **Status**: ready
-- **Default**: enabled, spaces: 2
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: list
-
 ## Settings
 
 | Setting  | Type | Default | Description                            |
@@ -113,3 +104,14 @@ wrap: markdown
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS016
+- **Name**: `list-indent`
+- **Status**: ready
+- **Default**: enabled, spaces: 2
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: list

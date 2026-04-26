@@ -11,15 +11,6 @@ description: >-
 Flags Markdown syntax that the declared target
 flavor does not render.
 
-- **ID**: MDS034
-- **Name**: `markdown-flavor`
-- **Status**: ready
-- **Default**: disabled
-- **Fixable**: partially (GitHub Alerts only)
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Key    | Type   | Description                     |
@@ -151,3 +142,14 @@ wrap: markdown
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS034
+- **Name**: `markdown-flavor`
+- **Status**: ready
+- **Default**: disabled
+- **Fixable**: partially (GitHub Alerts only)
+- **Implementation**:
+  [source](./)
+- **Category**: meta

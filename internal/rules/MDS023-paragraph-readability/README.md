@@ -8,15 +8,6 @@ description: Paragraph readability index must not exceed a threshold.
 
 Paragraph readability index must not exceed a threshold.
 
-- **ID**: MDS023
-- **Name**: `paragraph-readability`
-- **Status**: ready
-- **Default**: enabled, max-index: 14.0, min-words: 20
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Setting     | Type  | Default | Description                             |
@@ -85,3 +76,14 @@ The implementation of concurrent distributed systems requires sophisticated unde
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS023
+- **Name**: `paragraph-readability`
+- **Status**: ready
+- **Default**: enabled, max-index: 14.0, min-words: 20
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: meta

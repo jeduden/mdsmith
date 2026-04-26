@@ -8,15 +8,6 @@ description: Lists must have a blank line before and after.
 
 Lists must have a blank line before and after.
 
-- **ID**: MDS014
-- **Name**: `blank-line-around-lists`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: list
-
 ## Config
 
 Enable:
@@ -76,3 +67,14 @@ Content here.
 |-------------------------------------------|----------------------------|
 | `list should be preceded by a blank line` | Previous line is not blank |
 | `list should be followed by a blank line` | Next line is not blank     |
+
+## Meta-Information
+
+- **ID**: MDS014
+- **Name**: `blank-line-around-lists`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: list

@@ -8,15 +8,6 @@ description: Fenced code blocks must use a consistent delimiter.
 
 Fenced code blocks must use a consistent delimiter.
 
-- **ID**: MDS010
-- **Name**: `fenced-code-style`
-- **Status**: ready
-- **Default**: enabled, style: backtick
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: code
-
 ## Settings
 
 | Setting | Type   | Default      | Description                                   |
@@ -117,3 +108,14 @@ fmt.Println("hello")
 ````
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS010
+- **Name**: `fenced-code-style`
+- **Status**: ready
+- **Default**: enabled, style: backtick
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: code

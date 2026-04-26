@@ -8,15 +8,6 @@ description: Line exceeds maximum length.
 
 Line exceeds maximum length.
 
-- **ID**: MDS001
-- **Name**: `line-length`
-- **Status**: ready
-- **Default**: enabled, max: 80
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: line
-
 ## Settings
 
 | Setting          | Type | Default                             | Description                                                |
@@ -246,3 +237,14 @@ This line inside a code block is over 80 characters but within the code-block-ma
 ````
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS001
+- **Name**: `line-length`
+- **Status**: ready
+- **Default**: enabled, max: 80
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: line

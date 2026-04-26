@@ -8,15 +8,6 @@ description: Links to local files and heading anchors must resolve.
 
 Links to local files and heading anchors must resolve.
 
-- **ID**: MDS027
-- **Name**: `cross-file-reference-integrity`
-- **Status**: ready
-- **Default**: enabled, include: [], exclude: [], strict: false
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: link
-
 ## Settings
 
 | Setting   | Type | Default | Description                   |
@@ -124,3 +115,14 @@ See [guide](bad/ref/guide.md#missing-section).
 |-----------------|------------------------------------------------------------------|
 | missing file    | broken link target "x.md" not found                              |
 | missing heading | broken link target "x.md#section" has no matching heading anchor |
+
+## Meta-Information
+
+- **ID**: MDS027
+- **Name**: `cross-file-reference-integrity`
+- **Status**: ready
+- **Default**: enabled, include: [], exclude: [], strict: false
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: link

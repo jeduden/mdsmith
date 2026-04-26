@@ -8,15 +8,6 @@ description: Headings should not end with punctuation.
 
 Headings should not end with punctuation.
 
-- **ID**: MDS017
-- **Name**: `no-trailing-punctuation-in-heading`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: heading
-
 Flags headings that end with `.`, `,`, `:`, `;`, or `!`.
 
 ## Config
@@ -68,3 +59,14 @@ Body text.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS017
+- **Name**: `no-trailing-punctuation-in-heading`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: heading

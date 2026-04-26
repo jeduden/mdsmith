@@ -8,16 +8,6 @@ description: File must not exceed a token budget.
 
 File must not exceed a token budget.
 
-- **ID**: MDS028
-- **Name**: `token-budget`
-- **Status**: ready
-- **Default**: enabled, max: 8000, mode: heuristic, tokens-per-word: 1.33,
-  tokenizer: builtin, encoding: cl100k_base
-- **Fixable**: no
-- **Implementation**:
-  [source](./)
-- **Category**: meta
-
 ## Settings
 
 | Setting           | Type   | Default       | Description                                                                          |
@@ -102,3 +92,15 @@ one two three four five six
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS028
+- **Name**: `token-budget`
+- **Status**: ready
+- **Default**: enabled, max: 8000, mode: heuristic, tokens-per-word: 1.33,
+  tokenizer: builtin, encoding: cl100k_base
+- **Fixable**: no
+- **Implementation**:
+  [source](./)
+- **Category**: meta

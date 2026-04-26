@@ -8,15 +8,6 @@ description: URLs must be wrapped in angle brackets or as a link, not left bare.
 
 URLs must be wrapped in angle brackets or as a link, not left bare.
 
-- **ID**: MDS012
-- **Name**: `no-bare-urls`
-- **Status**: ready
-- **Default**: enabled
-- **Fixable**: yes
-- **Implementation**:
-  [source](./)
-- **Category**: link
-
 ## Config
 
 Enable:
@@ -64,3 +55,14 @@ Visit [example](https://example.com) for more.
 ```
 
 <?/include?>
+
+## Meta-Information
+
+- **ID**: MDS012
+- **Name**: `no-bare-urls`
+- **Status**: ready
+- **Default**: enabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: link
