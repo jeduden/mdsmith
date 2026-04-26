@@ -19,8 +19,11 @@
 #     in the output GIF (~30 s recording → ~5 min GIF).
 #   - Hidden blocks use TypingSpeed 0 since that typing
 #     is never visible in the output.
-#   - Keep Sleep durations short (50-100ms per step)
-#     to avoid long VHS render times in CI.
+#   - Sleep durations: 50ms for hidden setup steps;
+#     100ms for most visible commands; 300ms after
+#     moderate-output commands (check/help/query/metrics)
+#     so viewers have ~3s to read; 500ms after cat/display
+#     commands (~5s). Longer pauses are intentional.
 #   - Style: show, don't tell. Let mdsmith's output
 #     speak. Comments are minimal labels, not narration.
 
