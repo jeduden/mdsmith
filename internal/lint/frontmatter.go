@@ -42,6 +42,11 @@ func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	body := bytes.TrimPrefix(fm, delim)
 	body = bytes.TrimSuffix(body, delim)
 
+	// Fast path: skip full YAML decode when no "kinds:" key is present.
+	if !bytes.Contains(body, []byte("kinds:")) {
+		return nil, nil
+	}
+
 	if err := RejectYAMLAliases(body); err != nil {
 		return nil, err
 	}

@@ -716,3 +716,60 @@ func TestE2E_Fix_Discovered_UnfixableDiagnostic(t *testing.T) {
 	assert.Contains(t, stderr, "MDS017",
 		"expected MDS017 diagnostic in stderr, got: %s", stderr)
 }
+
+// =============================================================
+// Kinds: help kinds command
+// =============================================================
+
+func TestE2E_HelpKinds_PrintsConceptPage(t *testing.T) {
+	stdout, _, exitCode := runBinary(t, "", "help", "kinds")
+	assert.Equal(t, 0, exitCode, "expected exit 0, got %d", exitCode)
+	assert.Contains(t, stdout, "DECLARATION",
+		"expected DECLARATION in kinds help output, got: %s", stdout)
+	assert.Contains(t, stdout, "kind-assignment",
+		"expected 'kind-assignment' in kinds help output, got: %s", stdout)
+}
+
+// =============================================================
+// Kinds: kind-assignment config disables a rule end-to-end
+// =============================================================
+
+func TestE2E_Check_KindAssignment_DisablesRule(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, ".mdsmith.yml", strings.Join([]string{
+		"rules:",
+		"  no-trailing-spaces: true",
+		"kinds:",
+		"  nospace:",
+		"    rules:",
+		"      no-trailing-spaces: false",
+		"kind-assignment:",
+		"  - files: [\"docs/*.md\"]",
+		"    kinds: [nospace]",
+		"",
+	}, "\n"))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	writeFixture(t, dir, "docs/page.md", "# Title\n\nHello   \n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color", "docs/page.md")
+	assert.Equal(t, 0, exitCode,
+		"expected exit 0 (kind disables no-trailing-spaces), got %d; stderr: %s", exitCode, stderr)
+}
+
+// =============================================================
+// Kinds: front-matter kinds field disables a rule end-to-end
+// =============================================================
+
+func TestE2E_Check_FrontMatterKinds_DisablesRule(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  no-trailing-spaces: true\nkinds:\n  nospace:\n    rules:\n      no-trailing-spaces: false\n")
+	writeFixture(t, dir, "page.md",
+		"---\nkinds: [nospace]\n---\n# Title\n\nHello   \n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "--no-color", "page.md")
+	assert.Equal(t, 0, exitCode,
+		"expected exit 0 (front-matter kind disables no-trailing-spaces), got %d; stderr: %s", exitCode, stderr)
+}

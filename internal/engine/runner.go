@@ -76,12 +76,8 @@ func (r *Runner) Run(paths []string) *Result {
 			return r.cachedGitignore(gd)
 		}
 
-		fmKinds, err := lint.ParseFrontMatterKinds(f.FrontMatter)
+		fmKinds, err := r.parseFrontMatterKinds(path, f.FrontMatter)
 		if err != nil {
-			res.Errors = append(res.Errors, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err))
-			continue
-		}
-		if err := config.ValidateFrontMatterKinds(r.Config, path, fmKinds); err != nil {
 			res.Errors = append(res.Errors, err)
 			continue
 		}
@@ -124,12 +120,8 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		f.SetRootDir(r.RootDir)
 	}
 
-	fmKinds, err := lint.ParseFrontMatterKinds(f.FrontMatter)
+	fmKinds, err := r.parseFrontMatterKinds(path, f.FrontMatter)
 	if err != nil {
-		res.Errors = append(res.Errors, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err))
-		return res
-	}
-	if err := config.ValidateFrontMatterKinds(r.Config, path, fmKinds); err != nil {
 		res.Errors = append(res.Errors, err)
 		return res
 	}
@@ -144,6 +136,19 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 	sortDiagnostics(res.Diagnostics)
 	return res
+}
+
+// parseFrontMatterKinds parses and validates the kinds list from a file's
+// front-matter block, returning a combined error on parse or validation failure.
+func (r *Runner) parseFrontMatterKinds(path string, fm []byte) ([]string, error) {
+	kinds, err := lint.ParseFrontMatterKinds(fm)
+	if err != nil {
+		return nil, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
+	}
+	if err := config.ValidateFrontMatterKinds(r.Config, path, kinds); err != nil {
+		return nil, err
+	}
+	return kinds, nil
 }
 
 // effectiveWithCategories computes the effective rule config for a file

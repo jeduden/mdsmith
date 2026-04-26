@@ -575,6 +575,23 @@ func TestRunHelp_RuleDispatch_ExitsZero(t *testing.T) {
 	})
 }
 
+func TestRunHelp_MetricsDispatch_ExitsZero(t *testing.T) {
+	out := captureStdout(func() {
+		code := runHelp([]string{"metrics"})
+		assert.Equal(t, 0, code)
+	})
+	assert.NotEmpty(t, out)
+}
+
+func TestRunHelp_KindsDispatch_ExitsZero(t *testing.T) {
+	out := captureStdout(func() {
+		code := runHelp([]string{"kinds"})
+		assert.Equal(t, 0, code)
+	})
+	assert.Contains(t, out, "DECLARATION")
+	assert.Contains(t, out, "kind-assignment")
+}
+
 // --- runHelpRule ---
 
 func TestRunHelpRule_NoArgs_ListsRules(t *testing.T) {

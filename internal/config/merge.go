@@ -103,7 +103,8 @@ func copyConfig(cfg *Config) *Config {
 	}
 }
 
-// copyKinds returns a deep copy of a kinds map. Returns nil if input is nil.
+// copyKinds returns a deep copy of a kinds map, including each RuleCfg's
+// Settings map. Returns nil if input is nil.
 func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 	if kinds == nil {
 		return nil
@@ -112,7 +113,7 @@ func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 	for name, body := range kinds {
 		rules := make(map[string]RuleCfg, len(body.Rules))
 		for k, v := range body.Rules {
-			rules[k] = v
+			rules[k] = copyRuleCfg(v)
 		}
 		result[name] = KindBody{
 			Rules:      rules,
@@ -120,6 +121,20 @@ func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 		}
 	}
 	return result
+}
+
+// copyRuleCfg returns a copy of a RuleCfg with its Settings map deep-copied
+// so that mutations (e.g. InjectArchetypeRoots) do not affect the source.
+func copyRuleCfg(rc RuleCfg) RuleCfg {
+	if rc.Settings == nil {
+		return rc
+	}
+	settings := make(map[string]any, len(rc.Settings))
+	for k, v := range rc.Settings {
+		settings[k] = v
+	}
+	rc.Settings = settings
+	return rc
 }
 
 // copyKindAssignment returns a deep copy of a kind-assignment slice.
