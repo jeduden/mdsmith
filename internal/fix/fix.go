@@ -221,18 +221,12 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 // effectiveWithCategories computes the effective rule config for a file
 // path, applying category-based enable/disable on top of per-rule settings.
 func (f *Fixer) effectiveWithCategories(path string, fmKinds []string) map[string]config.RuleCfg {
-	effective := config.Effective(f.Config, path, fmKinds)
-	categories := config.EffectiveCategories(f.Config, path, fmKinds)
-	explicit := config.EffectiveExplicitRules(f.Config, path, fmKinds)
-
-	// Build rule-name-to-category lookup from the fixer's rule list.
+	effective, categories, explicit := config.EffectiveAll(f.Config, path, fmKinds)
 	m := make(map[string]string, len(f.Rules))
 	for _, rl := range f.Rules {
 		m[rl.Name()] = rl.Category()
 	}
-	catLookup := func(name string) string { return m[name] }
-
-	return config.ApplyCategories(effective, categories, catLookup, explicit)
+	return config.ApplyCategories(effective, categories, func(name string) string { return m[name] }, explicit)
 }
 
 // atomicWriteFile writes data to path using a temp-file-then-rename strategy

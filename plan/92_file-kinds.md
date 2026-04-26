@@ -168,11 +168,12 @@ kind-assignment:
 6. [x] `mdsmith help kinds` prints a short concept page
    covering declaration, assignment, and merge order
    (links to the user guide once plan 96 lands).
-7. [x] `mdsmith init` output includes the new config
-   fields: `kinds:` and `kind-assignment:` are valid
-   keys in the generated `.mdsmith.yml`. Empty
-   defaults are acceptable; fresh `init` followed by
-   `check .` must succeed.
+7. [x] `mdsmith init` produces a config that accepts
+   `kinds:` and `kind-assignment:` when added manually.
+   Both fields are `omitempty` so they do not appear in
+   the init output by default; adding them to the
+   generated `.mdsmith.yml` must not cause `check .` to
+   fail.
 
 ## Acceptance Criteria
 

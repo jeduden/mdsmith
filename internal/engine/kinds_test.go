@@ -46,6 +46,44 @@ func (r *configurableRule) DefaultSettings() map[string]any {
 
 var _ rule.Configurable = (*configurableRule)(nil)
 
+// TestKindAssignment_ConfiguresRuleSettings verifies that a kind's rule
+// settings are applied via ApplySettings, enabling per-kind rule behavior
+// beyond simple enable/disable.
+func TestKindAssignment_ConfiguresRuleSettings(t *testing.T) {
+	dir := t.TempDir()
+	planFile := filepath.Join(dir, "plan", "001_foo.md")
+	otherFile := filepath.Join(dir, "other.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(planFile), 0o755))
+	require.NoError(t, os.WriteFile(planFile, []byte("# Hello\n"), 0o644))
+	require.NoError(t, os.WriteFile(otherFile, []byte("# Hello\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			// Global settings disable the rule via its own "enabled" setting.
+			"mock-configurable": {Enabled: true, Settings: map[string]any{"enabled": false}},
+		},
+		Kinds: map[string]config.KindBody{
+			"plan": {Rules: map[string]config.RuleCfg{
+				// Kind re-enables the rule via settings.
+				"mock-configurable": {Enabled: true, Settings: map[string]any{"enabled": true}},
+			}},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Files: []string{"**/plan/*.md"}, Kinds: []string{"plan"}},
+		},
+	}
+
+	runner := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&configurableRule{id: "MDS998", name: "mock-configurable"}},
+	}
+
+	result := runner.Run([]string{planFile, otherFile})
+	require.Empty(t, result.Errors)
+	require.Len(t, result.Diagnostics, 1, "kind settings should enable the rule for plan files only")
+	assert.Equal(t, planFile, result.Diagnostics[0].File)
+}
+
 // TestKindAssignment_DisablesRule verifies that a kind assigned via
 // kind-assignment disables a rule for matching files.
 func TestKindAssignment_DisablesRule(t *testing.T) {

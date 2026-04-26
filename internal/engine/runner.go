@@ -149,14 +149,8 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 // effectiveWithCategories computes the effective rule config for a file
 // path, applying category-based enable/disable on top of per-rule settings.
 func (r *Runner) effectiveWithCategories(path string, fmKinds []string) map[string]config.RuleCfg {
-	effective := config.Effective(r.Config, path, fmKinds)
-	categories := config.EffectiveCategories(r.Config, path, fmKinds)
-	explicit := config.EffectiveExplicitRules(r.Config, path, fmKinds)
-
-	// Build rule-name-to-category lookup from the runner's rule list.
-	catLookup := ruleCategoryLookup(r.Rules)
-
-	return config.ApplyCategories(effective, categories, catLookup, explicit)
+	effective, categories, explicit := config.EffectiveAll(r.Config, path, fmKinds)
+	return config.ApplyCategories(effective, categories, ruleCategoryLookup(r.Rules), explicit)
 }
 
 // cachedGitignore returns a GitignoreMatcher for the given directory,

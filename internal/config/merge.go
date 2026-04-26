@@ -211,12 +211,43 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string) []str
 // (fmKinds from front matter first, then kind-assignment matches), and
 // finally applies glob overrides. Later entries take precedence.
 func Effective(cfg *Config, filePath string, fmKinds []string) map[string]RuleCfg {
+	return effectiveRules(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds))
+}
+
+// EffectiveExplicitRules returns the set of rule names that were explicitly
+// configured for a given file path. It includes rules from the top-level
+// ExplicitRules, any rules set by matching kinds, and any rules set by
+// matching overrides.
+func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds []string) map[string]bool {
+	return effectiveExplicit(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds))
+}
+
+// EffectiveCategories returns the effective category settings for a given
+// file path. It starts with the top-level categories, applies kinds in
+// effective-list order, and then applies matching overrides. Categories not
+// explicitly set default to true (enabled).
+func EffectiveCategories(cfg *Config, filePath string, fmKinds []string) map[string]bool {
+	return effectiveCats(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds))
+}
+
+// EffectiveAll returns the effective rule config, category settings, and
+// explicit rule set for a file path in a single pass — kind resolution and
+// glob matching run once instead of three times.
+func EffectiveAll(
+	cfg *Config, filePath string, fmKinds []string,
+) (map[string]RuleCfg, map[string]bool, map[string]bool) {
+	kinds := resolveEffectiveKinds(cfg, filePath, fmKinds)
+	return effectiveRules(cfg, filePath, kinds),
+		effectiveCats(cfg, filePath, kinds),
+		effectiveExplicit(cfg, filePath, kinds)
+}
+
+func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]RuleCfg {
 	result := make(map[string]RuleCfg, len(cfg.Rules))
 	for k, v := range cfg.Rules {
 		result[k] = v
 	}
-
-	for _, kindName := range resolveEffectiveKinds(cfg, filePath, fmKinds) {
+	for _, kindName := range kinds {
 		body, ok := cfg.Kinds[kindName]
 		if !ok {
 			continue
@@ -225,7 +256,6 @@ func Effective(cfg *Config, filePath string, fmKinds []string) map[string]RuleCf
 			result[k] = v
 		}
 	}
-
 	for _, o := range cfg.Overrides {
 		if matchesAny(o.Files, filePath) {
 			for k, v := range o.Rules {
@@ -233,21 +263,15 @@ func Effective(cfg *Config, filePath string, fmKinds []string) map[string]RuleCf
 			}
 		}
 	}
-
 	return result
 }
 
-// EffectiveExplicitRules returns the set of rule names that were explicitly
-// configured for a given file path. It includes rules from the top-level
-// ExplicitRules, any rules set by matching kinds, and any rules set by
-// matching overrides.
-func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds []string) map[string]bool {
+func effectiveExplicit(cfg *Config, filePath string, kinds []string) map[string]bool {
 	result := make(map[string]bool, len(cfg.ExplicitRules))
 	for k := range cfg.ExplicitRules {
 		result[k] = true
 	}
-
-	for _, kindName := range resolveEffectiveKinds(cfg, filePath, fmKinds) {
+	for _, kindName := range kinds {
 		body, ok := cfg.Kinds[kindName]
 		if !ok {
 			continue
@@ -256,7 +280,6 @@ func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds []string) map[
 			result[k] = true
 		}
 	}
-
 	for _, o := range cfg.Overrides {
 		if matchesAny(o.Files, filePath) {
 			for k := range o.Rules {
@@ -264,28 +287,18 @@ func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds []string) map[
 			}
 		}
 	}
-
 	return result
 }
 
-// EffectiveCategories returns the effective category settings for a given
-// file path. It starts with the top-level categories, applies kinds in
-// effective-list order, and then applies matching overrides. Categories not
-// explicitly set default to true (enabled).
-func EffectiveCategories(cfg *Config, filePath string, fmKinds []string) map[string]bool {
-	// Start with all categories enabled.
+func effectiveCats(cfg *Config, filePath string, kinds []string) map[string]bool {
 	result := make(map[string]bool, len(ValidCategories))
 	for _, cat := range ValidCategories {
 		result[cat] = true
 	}
-
-	// Apply top-level category settings.
 	for k, v := range cfg.Categories {
 		result[k] = v
 	}
-
-	// Apply kinds in effective-list order.
-	for _, kindName := range resolveEffectiveKinds(cfg, filePath, fmKinds) {
+	for _, kindName := range kinds {
 		body, ok := cfg.Kinds[kindName]
 		if !ok {
 			continue
@@ -294,8 +307,6 @@ func EffectiveCategories(cfg *Config, filePath string, fmKinds []string) map[str
 			result[k] = v
 		}
 	}
-
-	// Apply matching overrides in order.
 	for _, o := range cfg.Overrides {
 		if matchesAny(o.Files, filePath) {
 			for k, v := range o.Categories {
@@ -303,7 +314,6 @@ func EffectiveCategories(cfg *Config, filePath string, fmKinds []string) map[str
 			}
 		}
 	}
-
 	return result
 }
 
