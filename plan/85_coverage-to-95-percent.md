@@ -127,7 +127,10 @@ Run linter and tests after every phase:
 - [x] Combined coverage (unit + e2e) reaches 95%
 - [x] No private `toInt`/`toFloat` copies remain in the
   10 + 4 packages listed above (replaced by
-  `settings.ToInt`/`settings.ToFloat`)
+  `settings.ToInt`/`settings.ToFloat`); intentional
+  exceptions: `emptysectionbody` and `maxsectionlength`
+  kept local variants because they reject non-whole
+  floats (see Phase 1 task note)
 - [x] No private `headingLine`/`paragraphLine` copies
   remain for the 4-copy and 3-copy groups (replaced by
   `astutil.HeadingLine`/`astutil.ParagraphLine`)
