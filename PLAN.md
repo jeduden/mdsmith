@@ -27,5 +27,5 @@ footer: |
 | 89  | ✅     | [TOC generator directive and MDS035 auto-fix](plan/89_toc-generator-directive.md)                    |
 | 90  | ✅     | [Isolate corpus test git config from host signing](plan/90_corpus-test-git-config-isolation.md)      |
 | 91  | ✅     | [MDS037 skips paragraphs inside generated sections](plan/91_mds037-skip-generated-sections.md)       |
-| 92  | 🔳     | [File kinds — config schema, assignment, merge](plan/92_file-kinds.md)                               |
+| 92  | ✅     | [File kinds — config schema, assignment, merge](plan/92_file-kinds.md)                               |
 <?/catalog?>

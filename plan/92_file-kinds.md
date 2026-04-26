@@ -1,7 +1,7 @@
 ---
 id: 92
 title: File kinds — config schema, assignment, merge
-status: "🔳"
+status: "✅"
 summary: >-
   Add a kind: a named bundle of rule settings, assigned
   to files via front-matter `kinds:` or
@@ -56,44 +56,44 @@ deep-merge comes in plan 97).
 
 ## Tasks
 
-1. [ ] Add `kinds:` and `kind-assignment:` config keys
+1. [x] Add `kinds:` and `kind-assignment:` config keys
    to the config schema; reuse existing override merge
    to apply a kind's body.
-2. [ ] Add front-matter `kinds:` list field; resolve
+2. [x] Add front-matter `kinds:` list field; resolve
    each file's effective kind list per the algorithm
    above.
-3. [ ] Wire kind-resolved rule config into the engine
+3. [x] Wire kind-resolved rule config into the engine
    so each file is linted with its merged settings.
-4. [ ] Emit a clear config error when kind assignment
+4. [x] Emit a clear config error when kind assignment
    or front matter references an undeclared kind name.
-5. [ ] Add a grep test asserting the linter's core
+5. [x] Add a grep test asserting the linter's core
    contains no `if kind == "..."` branches and no
    hardcoded kind names.
-6. [ ] `mdsmith help kinds` prints a short concept page
+6. [x] `mdsmith help kinds` prints a short concept page
    covering declaration, assignment, and merge order.
 
 ## Acceptance Criteria
 
-- [ ] A kind declaration parses with the same syntax
+- [x] A kind declaration parses with the same syntax
       as an override entry (minus `files:`); override
       merge is reused (verified by test).
-- [ ] Two project-declared kinds compose correctly
+- [x] Two project-declared kinds compose correctly
       with each other and with file-glob overrides
       (covered by test).
-- [ ] A file declaring multiple kinds via `kinds:
+- [x] A file declaring multiple kinds via `kinds:
       [a, b]` in front matter merges them in list
       order (covered by test).
-- [ ] Conflicting settings between kinds resolve by
+- [x] Conflicting settings between kinds resolve by
       block replacement — the later kind replaces the
       earlier kind's entire rule config (covered by
       test).
-- [ ] Files of a kind that sets
+- [x] Files of a kind that sets
       `rules.required-structure.schema:` are validated
       against that schema (covered by test).
-- [ ] Referencing an undeclared kind name produces a
+- [x] Referencing an undeclared kind name produces a
       clear config error.
-- [ ] No kind name is referenced by mdsmith's core
+- [x] No kind name is referenced by mdsmith's core
       (enforced by grep test).
-- [ ] `mdsmith help kinds` prints a concept page.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith help kinds` prints a concept page.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
