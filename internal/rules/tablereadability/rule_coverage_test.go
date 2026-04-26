@@ -322,7 +322,6 @@ func TestColumnWidthRatio_OneEmptyOneNonEmpty(t *testing.T) {
 	}
 	ratio := tbl.columnWidthRatio()
 	assert.True(t, math.IsInf(ratio, 1), "expected +Inf when min column avg is 0")
-	_ = math.MaxFloat64 // suppress unused import warning
 }
 
 // columnWidthRatio: only separator rows → columns==0 → return 0

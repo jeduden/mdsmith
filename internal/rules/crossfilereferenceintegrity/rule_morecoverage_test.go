@@ -197,16 +197,7 @@ func TestCheck_InvalidExcludeGlobReturnsConfigDiag(t *testing.T) {
 
 // --- parseTarget: path == "" && u.Opaque != "" ---
 // An opaque URI like "mailto:user@example.com" has Opaque set.
-// But url.Parse of "mailto:user@example.com" sets Scheme="mailto", so it
-// returns false before reaching the opaque branch.
-// To reach opaque: need Scheme=="" and Opaque!="". This is an unusual URL
-// like "C:path" on Windows (opaque path). We construct it directly.
-func TestParseTarget_OpaqueURL(t *testing.T) {
-	// url.Parse("C:relative") → {Opaque: "relative", Scheme: "C"} — has Scheme, returns false.
-	// It's very hard to get Scheme="" and Opaque!="" via url.Parse in practice.
-	// The only case is if url.Parse fails to identify a scheme but sets Opaque.
-	// Actually this branch may be dead code; skip it and test something else.
-	// Instead test a path with just a fragment but no hash prefix.
+func TestParseTarget_PlainRelativePath(t *testing.T) {
 	target, ok := parseTarget("guide.md")
 	require.True(t, ok)
 	require.Equal(t, "guide.md", target.Path)

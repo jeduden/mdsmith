@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"fmt"
 	"io/fs"
 	"testing"
 	"testing/fstest"
@@ -8,6 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// errFS is an fs.FS that always returns an error on Open, forcing ReadDir to fail.
+type errFS struct{}
+
+func (errFS) Open(string) (fs.File, error) { return nil, fmt.Errorf("forced readdir error") }
 
 func TestListRules_SortedByID(t *testing.T) {
 	rules, err := ListRules()
@@ -150,20 +156,8 @@ func TestListRulesFromFS_SkipsMissingStatus(t *testing.T) {
 
 // listRulesFromFS: ReadDir error
 func TestListRulesFromFS_ReadDirError(t *testing.T) {
-	// An empty fstest.MapFS with a sub-path causes ReadDir(".")
-	// to succeed, but we can use a sub-FS that errors on ReadDir.
-	// The simplest way: use an fs.Sub on a non-existent subdirectory.
-	fsys := fstest.MapFS{
-		"readme.txt": &fstest.MapFile{Data: []byte("not a dir")},
-	}
-	// fs.Sub on a file path causes ReadDir to fail.
-	sub, err := fs.Sub(fsys, "readme.txt")
-	if err == nil {
-		_, err = listRulesFromFS(sub)
-		// Whether it errors or not depends on the FS implementation;
-		// the key is we exercise the ReadDir error path.
-		_ = err
-	}
+	_, err := listRulesFromFS(errFS{})
+	require.Error(t, err)
 }
 
 // listRulesFromFS: non-directory entry → continue
@@ -202,17 +196,8 @@ func TestListRulesFromFS_SkipsEmptyDir(t *testing.T) {
 
 // lookupRuleFromFS: listRulesFromFS error propagation
 func TestLookupRuleFromFS_PropagatesReadDirError(t *testing.T) {
-	// Use an FS that returns an error on ReadDir.
-	fsys := fstest.MapFS{
-		"readme.txt": &fstest.MapFile{Data: []byte("file")},
-	}
-	sub, err := fs.Sub(fsys, "readme.txt")
-	if err == nil {
-		_, err = lookupRuleFromFS(sub, "anything")
-		// Error may or may not occur depending on implementation;
-		// this exercises the lookupRuleFromFS error propagation path.
-		_ = err
-	}
+	_, err := lookupRuleFromFS(errFS{}, "anything")
+	require.Error(t, err)
 }
 
 // parseFrontMatter: missing ID → error

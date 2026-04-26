@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
@@ -437,13 +438,14 @@ func TestAtomicWriteFile_TmpFileCleanedUpOnRenameFailure(t *testing.T) {
 	targetDir := filepath.Join(dir, "target")
 	require.NoError(t, os.Mkdir(targetDir, 0o755))
 
-	_ = atomicWriteFile(targetDir, []byte("data"), 0o644)
+	err := atomicWriteFile(targetDir, []byte("data"), 0o644)
+	require.Error(t, err)
 
 	// Verify no orphaned temp files remain in the directory after the failure.
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 	for _, e := range entries {
-		assert.False(t, len(e.Name()) > len(".mdsmith-fix-"),
+		assert.False(t, strings.HasPrefix(e.Name(), ".mdsmith-fix-"),
 			"unexpected leftover temp file: %s", e.Name())
 	}
 }

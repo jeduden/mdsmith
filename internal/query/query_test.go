@@ -120,10 +120,11 @@ func TestCollectPaths_NonStructCUE(t *testing.T) {
 	// collectPaths should return nil and Match should use unification only.
 	m, err := Compile(`>=1 & <=10`)
 	require.NoError(t, err)
-	// A non-struct schema: no paths to verify. Unification with a plain
-	// JSON number value would succeed, but the front matter is a map.
-	// The exact result depends on CUE unification semantics.
-	_ = m.Match(map[string]any{"value": 5})
+	// A non-struct schema has no paths to verify. Match therefore falls back
+	// to unification only, and a map-shaped front matter value cannot unify
+	// with a top-level numeric constraint.
+	result := m.Match(map[string]any{"value": 5})
+	assert.False(t, result, "non-struct CUE schema should not match a map value")
 }
 
 // TestMatch_JSONMarshalError exercises the json.Marshal err != nil branch in Match.

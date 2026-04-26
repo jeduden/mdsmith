@@ -1577,10 +1577,8 @@ func TestUnmarshalYAML_NonScalarNonMappingValue(t *testing.T) {
 	input := "rules:\n  line-length:\n    - item1\n    - item2\n"
 	var cfg Config
 	err := yaml.Unmarshal([]byte(input), &cfg)
-	// The error may occur during YAML unmarshalling.
-	// If the custom UnmarshalYAML triggers the "not bool or mapping" path, we get an error.
-	// Just check we don't panic.
-	_ = err
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rule config must be a bool or a mapping")
 }
 
 // TestTopLevelKeySet_DocumentNodeEmpty exercises the
