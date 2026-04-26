@@ -29,8 +29,20 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Check out trusted mdsmith source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: trusted-mdsmith
+          token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+
       - name: Install mdsmith merge driver
-        run: go run ./cmd/mdsmith merge-driver install
+        working-directory: trusted-mdsmith
+        run: |
+          go build -o "$RUNNER_TEMP/mdsmith" ./cmd/mdsmith
+          "$RUNNER_TEMP/mdsmith" merge-driver install
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - uses: jeduden/merge-queue-action@3be8077b142e4057d2fc097635d1ab6ada2bbbf5 # v0.7.1
         with:
