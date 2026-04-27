@@ -1236,6 +1236,18 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	content := string(attrs)
 	assert.Contains(t, content, "PLAN.md merge=mdsmith", "expected PLAN.md entry in .gitattributes")
 	assert.Contains(t, content, "README.md merge=mdsmith", "expected README.md entry in .gitattributes")
+
+	// Verify pre-merge-commit hook was installed and is executable.
+	hookPath := filepath.Join(dir, ".git", "hooks", "pre-merge-commit")
+	info, err := os.Stat(hookPath)
+	require.NoError(t, err, "expected pre-merge-commit hook at %s", hookPath)
+	assert.NotZero(t, info.Mode()&0o111, "hook must be executable")
+	hookData, err := os.ReadFile(hookPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(hookData), "fix",
+		"hook must invoke mdsmith fix; got:\n%s", hookData)
+	assert.Contains(t, string(hookData), "PLAN.md")
+	assert.Contains(t, string(hookData), "README.md")
 }
 
 func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {

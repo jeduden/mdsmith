@@ -391,10 +391,82 @@ func runMergeDriverInstall(args []string) int {
 		return 2
 	}
 
+	if err := ensurePreMergeCommitHook(repoRoot, files); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: installing pre-merge-commit hook: %v\n", err)
+		return 2
+	}
+
+	hookPath := filepath.Join(repoRoot, ".git", "hooks", "pre-merge-commit")
 	fmt.Fprintf(os.Stderr, "mdsmith: merge driver 'mdsmith' installed\n")
 	fmt.Fprintf(os.Stderr, "  git config: merge.mdsmith.driver\n")
 	fmt.Fprintf(os.Stderr, "  .gitattributes: %s\n", attrPath)
+	fmt.Fprintf(os.Stderr, "  pre-merge-commit hook: %s\n", hookPath)
 	return 0
+}
+
+// preMergeCommitHookMarker identifies the hook as managed by
+// mdsmith so re-running install can safely replace it without
+// stomping on a user-authored hook of the same name.
+const preMergeCommitHookMarker = "# mdsmith merge-driver pre-merge-commit hook"
+
+// ensurePreMergeCommitHook writes .git/hooks/pre-merge-commit so
+// that after git resolves all per-file merges (including any
+// driver-resolved sections) and before the merge commit is
+// created, mdsmith fix runs once on the registered files.
+//
+// The per-file merge driver cannot do this on its own: when it
+// runs on PLAN.md, sibling plan/*.md source files may still hold
+// "ours" content because git has not merged them yet, so the
+// regenerated catalog reflects a stale view of its sources. The
+// pre-merge-commit hook re-fixes the same files once every path
+// has reached its final merged state.
+func ensurePreMergeCommitHook(repoRoot string, files []string) error {
+	exe, err := resolveInstalledBinary()
+	if err != nil {
+		return fmt.Errorf("cannot locate mdsmith binary: %w", err)
+	}
+
+	hooksDir := filepath.Join(repoRoot, ".git", "hooks")
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+
+	// Refuse to clobber a hook the user wrote themselves; replace
+	// only hooks that carry our marker.
+	if existing, err := os.ReadFile(hookPath); err == nil {
+		if !strings.Contains(string(existing), preMergeCommitHookMarker) {
+			return fmt.Errorf(
+				"%s already exists and is not managed by mdsmith; "+
+					"remove or merge it manually",
+				hookPath)
+		}
+	}
+
+	// Build the per-file fix loop. Files that no longer exist
+	// (e.g. renamed in this branch) are skipped so the hook stays
+	// resilient across schema changes.
+	var fixLoop strings.Builder
+	for _, f := range files {
+		fmt.Fprintf(&fixLoop,
+			"if [ -e %s ]; then %s fix %s && git add -- %s; fi\n",
+			shellQuote(f), shellQuote(exe), shellQuote(f), shellQuote(f))
+	}
+
+	content := "#!/bin/sh\n" +
+		preMergeCommitHookMarker + "\n" +
+		"# Re-runs mdsmith fix once git has resolved every per-file\n" +
+		"# merge, so generated sections reflect the final merged\n" +
+		"# state of every source file. Re-install with:\n" +
+		"#   mdsmith merge-driver install\n" +
+		"set -e\n" +
+		fixLoop.String()
+
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", hooksDir, err)
+	}
+	if err := os.WriteFile(hookPath, []byte(content), 0o755); err != nil {
+		return fmt.Errorf("writing %s: %w", hookPath, err)
+	}
+	return nil
 }
 
 // registerMergeDriver writes the merge.mdsmith.* keys to local

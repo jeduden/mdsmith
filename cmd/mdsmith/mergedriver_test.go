@@ -453,6 +453,95 @@ func TestIsTemporaryBinary_RelativePath_RelErrorReturnsFalse(t *testing.T) {
 	assert.False(t, isTemporaryBinary("relative/path/mdsmith"))
 }
 
+// --- ensurePreMergeCommitHook ---
+
+func TestEnsurePreMergeCommitHook_CreatesExecutableHook(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git", "hooks"), 0o755))
+
+	// Stub binary resolution so the hook content is deterministic.
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md", "README.md"})
+	require.NoError(t, err)
+
+	hookPath := filepath.Join(dir, ".git", "hooks", "pre-merge-commit")
+	info, err := os.Stat(hookPath)
+	require.NoError(t, err, "hook must exist at %s", hookPath)
+	// Hook must be executable for git to invoke it.
+	assert.NotZero(t, info.Mode()&0o111, "hook must have an execute bit set")
+
+	data, err := os.ReadFile(hookPath)
+	require.NoError(t, err)
+	content := string(data)
+	assert.Contains(t, content, preMergeCommitHookMarker)
+	assert.Contains(t, content, "'/usr/local/bin/mdsmith' fix",
+		"hook must invoke the resolved mdsmith binary with fix")
+	assert.Contains(t, content, "'PLAN.md'")
+	assert.Contains(t, content, "'README.md'")
+}
+
+func TestEnsurePreMergeCommitHook_OverwritesManagedHook(t *testing.T) {
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	// Pre-existing hook with our marker — install must replace it.
+	old := "#!/bin/sh\n" + preMergeCommitHookMarker + "\n# stale content\n"
+	require.NoError(t, os.WriteFile(hookPath, []byte(old), 0o755))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	require.NoError(t, ensurePreMergeCommitHook(dir, []string{"PLAN.md"}))
+
+	data, err := os.ReadFile(hookPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "stale content",
+		"managed hook must be replaced, not preserved")
+	assert.Contains(t, string(data), "'PLAN.md'")
+}
+
+func TestEnsurePreMergeCommitHook_RefusesUnmanagedHook(t *testing.T) {
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	// User-authored hook without our marker — must be left intact.
+	user := "#!/bin/sh\necho user hook\n"
+	require.NoError(t, os.WriteFile(hookPath, []byte(user), 0o755))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md"})
+	require.Error(t, err, "must fail when an unmanaged hook is present")
+
+	data, err := os.ReadFile(hookPath)
+	require.NoError(t, err)
+	assert.Equal(t, user, string(data), "unmanaged hook content must be untouched")
+}
+
+func TestEnsurePreMergeCommitHook_BinaryNotFound(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git", "hooks"), 0o755))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) {
+		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
+	}
+	t.Setenv("PATH", "")
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot locate mdsmith binary")
+}
+
 // --- registerMergeDriver ---
 
 func TestRegisterMergeDriver_BinaryNotFound_ReturnsError(t *testing.T) {
