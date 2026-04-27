@@ -4,7 +4,9 @@ import (
 	"fmt"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
 )
@@ -15,7 +17,8 @@ func init() {
 
 // Rule checks that the first line of the file is a heading of the configured level.
 type Rule struct {
-	Level int // expected heading level (default: 1)
+	Level        int      // expected heading level (default: 1)
+	Placeholders []string // placeholder tokens to treat as opaque
 }
 
 // ID implements rule.Rule.
@@ -55,6 +58,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	if heading.Level != level {
+		// If the heading text matches a configured placeholder token,
+		// treat it as opaque and suppress the level diagnostic.
+		text := astutil.HeadingText(heading, f.Source)
+		if placeholders.ContainsBodyToken(text, r.Placeholders) {
+			return nil
+		}
 		return r.diag(f, fmt.Sprintf("first heading should be level %d, got %d", level, heading.Level))
 	}
 
@@ -87,6 +96,15 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 				return fmt.Errorf("first-line-heading: level must be 1-6, got %d", n)
 			}
 			r.Level = n
+		case "placeholders":
+			toks, ok := settings.ToStringSlice(v)
+			if !ok {
+				return fmt.Errorf("first-line-heading: placeholders must be a list of strings, got %T", v)
+			}
+			if err := placeholders.Validate(toks); err != nil {
+				return fmt.Errorf("first-line-heading: %w", err)
+			}
+			r.Placeholders = toks
 		default:
 			return fmt.Errorf("first-line-heading: unknown setting %q", k)
 		}
@@ -97,7 +115,8 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"level": 1,
+		"level":        1,
+		"placeholders": []string{},
 	}
 }
 

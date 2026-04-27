@@ -11,6 +11,7 @@ import (
 	flag "github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 
+	"github.com/jeduden/mdsmith/internal/concepts"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/discovery"
 	"github.com/jeduden/mdsmith/internal/engine"
@@ -1033,9 +1034,10 @@ func printDeprecations(cfg *config.Config) {
 const helpUsageText = `Usage: mdsmith help <topic>
 
 Topics:
-  rule [id|name]      Show rule documentation
-  metrics [id|name]   Show metric documentation
-  kinds               Show concept page for file kinds
+  rule [id|name]        Show rule documentation
+  metrics [id|name]     Show metric documentation
+  kinds                 Show concept page for file kinds
+  placeholder-grammar   Show placeholder vocabulary reference
 `
 
 // runHelp implements the "help" subcommand.
@@ -1052,6 +1054,8 @@ func runHelp(args []string) int {
 		return runHelpMetrics(args[1:])
 	case "kinds":
 		return runHelpKinds()
+	case "placeholder-grammar":
+		return runHelpConcept("placeholder-grammar")
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith: help: unknown topic %q\n", args[0])
 		return 2
@@ -1119,6 +1123,17 @@ Rules never reference kind names. New kinds cannot regress existing behavior.
 // runHelpKinds prints the kinds concept page.
 func runHelpKinds() int {
 	fmt.Print(helpKindsText)
+	return 0
+}
+
+// runHelpConcept prints the named concept page.
+func runHelpConcept(name string) int {
+	content, err := concepts.Lookup(name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+	fmt.Print(content)
 	return 0
 }
 

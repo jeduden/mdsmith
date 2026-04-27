@@ -11,11 +11,14 @@ schema.
 
 ## Settings
 
-| Setting           | Type      | Default          | Description                                                                   |
-|-------------------|-----------|------------------|-------------------------------------------------------------------------------|
-| `schema`          | string    | `""`             | Path to a schema file                                                         |
-| `archetype`       | string    | `""`             | Archetype name; resolved against `archetype-roots`                            |
-| `archetype-roots` | [ ]string | `["archetypes"]` | Directories searched for `<name>.md` schemas; earlier roots shadow later ones |
+| Setting           | Type      | Default          | Description                                                                                                                |
+|-------------------|-----------|------------------|----------------------------------------------------------------------------------------------------------------------------|
+| `schema`          | string    | `""`             | Path to a schema file                                                                                                      |
+| `archetype`       | string    | `""`             | Archetype name; resolved against `archetype-roots`                                                                         |
+| `archetype-roots` | [ ]string | `["archetypes"]` | Directories searched for `<name>.md` schemas; earlier roots shadow later ones                                              |
+| `placeholders`    | list      | `[]`             | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+
+Useful tokens: `cue-frontmatter`.
 
 When both `schema` and `archetype` are empty the rule
 skips structure and front matter validation, but still
@@ -229,3 +232,7 @@ Describe the goal here.
 - **Guide**:
   [directive guide](../../../docs/guides/directives/enforcing-structure.md)
 - **Category**: meta
+
+## See also
+
+- [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

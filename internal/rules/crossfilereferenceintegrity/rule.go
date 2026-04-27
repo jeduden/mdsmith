@@ -11,6 +11,7 @@ import (
 	"github.com/gobwas/glob"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
 )
@@ -22,9 +23,10 @@ func init() {
 // Rule checks Markdown links for missing target files and missing heading
 // anchors in linked Markdown files.
 type Rule struct {
-	Include []string
-	Exclude []string
-	Strict  bool
+	Include      []string
+	Exclude      []string
+	Strict       bool
+	Placeholders []string // placeholder tokens to treat as opaque
 }
 
 // ID implements rule.Rule.
@@ -99,16 +101,14 @@ func (r *Rule) checkLink(
 		return nil
 	}
 
+	if placeholders.ContainsBodyToken(target.Raw, r.Placeholders) {
+		return nil
+	}
+
 	line, col := linkPosition(f, linkNode)
 
 	if target.LocalAnchor {
-		if target.Anchor == "" {
-			return nil
-		}
-		if selfAnchors[normalizeAnchor(target.Anchor)] {
-			return nil
-		}
-		return []lint.Diagnostic{brokenHeadingDiag(f.Path, line, col, r, target.Raw)}
+		return checkLocalAnchor(f.Path, line, col, r, target, selfAnchors)
 	}
 
 	linkPath := normalizeLinkPath(target.Path)
@@ -147,6 +147,15 @@ func (r *Rule) checkLink(
 	return []lint.Diagnostic{brokenHeadingDiag(f.Path, line, col, r, target.Raw)}
 }
 
+func checkLocalAnchor(
+	path string, line, col int, r *Rule, target linkTarget, selfAnchors map[string]bool,
+) []lint.Diagnostic {
+	if selfAnchors[normalizeAnchor(target.Anchor)] {
+		return nil
+	}
+	return []lint.Diagnostic{brokenHeadingDiag(path, line, col, r, target.Raw)}
+}
+
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
@@ -178,6 +187,18 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				)
 			}
 			r.Strict = b
+		case "placeholders":
+			toks, ok := toStringSlice(v)
+			if !ok {
+				return fmt.Errorf(
+					"cross-file-reference-integrity: placeholders must be a list of strings, got %T",
+					v,
+				)
+			}
+			if err := placeholders.Validate(toks); err != nil {
+				return fmt.Errorf("cross-file-reference-integrity: %w", err)
+			}
+			r.Placeholders = toks
 		default:
 			return fmt.Errorf(
 				"cross-file-reference-integrity: unknown setting %q",
@@ -185,7 +206,10 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			)
 		}
 	}
+	return r.validateGlobSettings()
+}
 
+func (r *Rule) validateGlobSettings() error {
 	if _, err := compileMatchers(r.Include); err != nil {
 		return fmt.Errorf(
 			"cross-file-reference-integrity: include has invalid glob pattern: %w",
@@ -198,16 +222,16 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			err,
 		)
 	}
-
 	return nil
 }
 
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"include": []string{},
-		"exclude": []string{},
-		"strict":  false,
+		"include":      []string{},
+		"exclude":      []string{},
+		"strict":       false,
+		"placeholders": []string{},
 	}
 }
 

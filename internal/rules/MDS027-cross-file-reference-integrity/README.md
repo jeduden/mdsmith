@@ -10,11 +10,14 @@ Links to local files and heading anchors must resolve.
 
 ## Settings
 
-| Setting   | Type | Default | Description                   |
-|-----------|------|---------|-------------------------------|
-| `include` | list | `[]`    | glob patterns to include      |
-| `exclude` | list | `[]`    | glob patterns to skip         |
-| `strict`  | bool | `false` | check non-Markdown file links |
+| Setting        | Type | Default | Description                                                                                                                |
+|----------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| `include`      | list | `[]`    | glob patterns to include                                                                                                   |
+| `exclude`      | list | `[]`    | glob patterns to skip                                                                                                      |
+| `strict`       | bool | `false` | check non-Markdown file links                                                                                              |
+| `placeholders` | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+
+Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
 
 With `strict: false`, only Markdown targets (`.md`, `.markdown`)
 are checked. External links (`http:`, `https:`, `mailto:`) are
@@ -126,3 +129,7 @@ See [guide](bad/ref/guide.md#missing-section).
 - **Implementation**:
   [source](./)
 - **Category**: link
+
+## See also
+
+- [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

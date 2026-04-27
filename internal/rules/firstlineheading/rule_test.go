@@ -264,3 +264,79 @@ func TestHeadingLine_FallbackReturn1(t *testing.T) {
 	line := headingLine(h, f)
 	assert.Equal(t, 1, line)
 }
+
+// --- Placeholder tests ---
+
+func TestCheck_PlaceholderHeadingQuestion_WrongLevel_Suppressed(t *testing.T) {
+	// A heading-question placeholder at the wrong level should not be flagged
+	// when heading-question is in the placeholders list.
+	src := []byte("## ?\n\nSome text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Level: 1, Placeholders: []string{"heading-question"}}
+	diags := r.Check(f)
+	assert.Empty(t, diags, "heading-question placeholder should suppress level mismatch")
+}
+
+func TestCheck_PlaceholderHeadingQuestion_WrongLevel_EmptyPlaceholders(t *testing.T) {
+	// Without placeholders configured, wrong-level heading is still flagged.
+	src := []byte("## ?\n\nSome text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Level: 1, Placeholders: []string{}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "should flag wrong-level heading without placeholders configured")
+	assert.Equal(t, "first heading should be level 1, got 2", diags[0].Message)
+}
+
+func TestCheck_PlaceholderVarToken_WrongLevel_Suppressed(t *testing.T) {
+	// When var-token is configured and the heading text is a placeholder,
+	// the level check is suppressed.
+	src := []byte("## {title}\n\nSome text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Level: 1, Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	assert.Empty(t, diags, "var-token placeholder heading should suppress level check")
+}
+
+func TestCheck_PlaceholderVarToken_WrongLevel_EmptyPlaceholders(t *testing.T) {
+	// Without placeholders, var-token heading still fails the level check.
+	src := []byte("## {title}\n\nSome text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Level: 1, Placeholders: []string{}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "should flag wrong-level heading without placeholders configured")
+}
+
+func TestApplySettings_Placeholders_Valid(t *testing.T) {
+	r := &Rule{Level: 1}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"heading-question", "var-token"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"heading-question", "var-token"}, r.Placeholders)
+}
+
+func TestApplySettings_Placeholders_UnknownToken(t *testing.T) {
+	r := &Rule{Level: 1}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"no-such-token"},
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "no-such-token")
+}
+
+func TestApplySettings_Placeholders_NonList_FirstLineHeading(t *testing.T) {
+	r := &Rule{Level: 1}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "list of strings")
+}
+
+func TestDefaultSettings_IncludesPlaceholders(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	assert.Equal(t, []string{}, ds["placeholders"])
+}

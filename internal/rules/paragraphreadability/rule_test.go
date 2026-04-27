@@ -224,3 +224,60 @@ func TestCategory(t *testing.T) {
 		t.Errorf("expected meta, got %s", r.Category())
 	}
 }
+
+// --- Placeholder tests ---
+
+func TestCheck_Placeholder_VarToken_MaskedBelowMinWords(t *testing.T) {
+	// A paragraph containing only a var-token is masked to a single word
+	// ("word"), which is below min-words (20), so no diagnostic is produced.
+	src := []byte("# Title\n\n{summary}\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI, Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "var-token paragraph masked below min-words should produce no diagnostic")
+}
+
+func TestCheck_Placeholder_EmptyList_PlaceholderTextFlagged(t *testing.T) {
+	// Without placeholders configured, behavior is unchanged: a paragraph
+	// with very few words never reaches the readability threshold anyway.
+	// We verify the rule still runs normally when placeholders is empty.
+	longPara := "The implementation of concurrent distributed systems requires sophisticated " +
+		"understanding of fundamental computational paradigms and synchronization mechanisms " +
+		"that must guarantee linearizability across heterogeneous processing environments " +
+		"and architectural configurations."
+	src := []byte("# Title\n\n" + longPara + "\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI, Placeholders: []string{}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "long hard-to-read paragraph should still be flagged")
+}
+
+func TestApplySettings_Placeholders_ParagraphReadability(t *testing.T) {
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
+	err := r.ApplySettings(map[string]any{
+		"placeholders": []any{"var-token"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"var-token"}, r.Placeholders)
+}
+
+func TestApplySettings_Placeholders_UnknownToken_ParagraphReadability(t *testing.T) {
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
+	err := r.ApplySettings(map[string]any{"placeholders": []any{"bad"}})
+	require.Error(t, err)
+}
+
+func TestApplySettings_Placeholders_NonList_ParagraphReadability(t *testing.T) {
+	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
+	err := r.ApplySettings(map[string]any{"placeholders": "not-a-list"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list of strings")
+}
+
+func TestDefaultSettings_ParagraphReadability_IncludesPlaceholders(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	require.Equal(t, []string{}, ds["placeholders"])
+}

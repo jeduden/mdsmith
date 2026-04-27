@@ -10,9 +10,12 @@ First line of the file should be a heading.
 
 ## Settings
 
-| Setting | Type | Default | Description                               |
-|---------|------|---------|-------------------------------------------|
-| `level` | int  | 1       | Required heading level for the first line |
+| Setting        | Type | Default | Description                                                                                                                |
+|----------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| `level`        | int  | 1       | Required heading level for the first line                                                                                  |
+| `placeholders` | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+
+Useful tokens: `heading-question`, `var-token`, `placeholder-section`.
 
 ## Config
 
@@ -106,3 +109,7 @@ Some content here.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+
+## See also
+
+- [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

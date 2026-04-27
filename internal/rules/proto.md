@@ -88,3 +88,7 @@ rules:
      Default may include key settings: "enabled, max: 80".
      Categories: code, heading, line, link, list, meta,
      whitespace. Delete Archetype bullet if not used. -->
+
+## ...
+
+<?allow-empty-section?>

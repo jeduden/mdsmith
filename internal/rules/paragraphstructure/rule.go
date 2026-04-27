@@ -6,6 +6,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
@@ -20,6 +21,7 @@ func init() {
 type Rule struct {
 	MaxSentences int
 	MaxWords     int
+	Placeholders []string // placeholder tokens to treat as opaque
 }
 
 // ID implements rule.Rule.
@@ -48,6 +50,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		text := mdtext.ExtractPlainText(para, f.Source)
+		if len(r.Placeholders) > 0 {
+			text = placeholders.MaskBodyTokens(text, r.Placeholders)
+		}
 		sentences := mdtext.SplitSentences(text)
 		line := astutil.ParagraphLine(para, f)
 
@@ -120,6 +125,17 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 				)
 			}
 			r.MaxWords = n
+		case "placeholders":
+			toks, ok := settings.ToStringSlice(v)
+			if !ok {
+				return fmt.Errorf(
+					"paragraph-structure: placeholders must be a list of strings, got %T", v,
+				)
+			}
+			if err := placeholders.Validate(toks); err != nil {
+				return fmt.Errorf("paragraph-structure: %w", err)
+			}
+			r.Placeholders = toks
 		default:
 			return fmt.Errorf("paragraph-structure: unknown setting %q", k)
 		}
@@ -132,6 +148,7 @@ func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
 		"max-sentences":          6,
 		"max-words-per-sentence": 40,
+		"placeholders":           []string{},
 	}
 }
 

@@ -10,10 +10,13 @@ Paragraphs must not exceed sentence and word limits.
 
 ## Settings
 
-| Setting                  | Type | Default | Description                     |
-|--------------------------|------|---------|---------------------------------|
-| `max-sentences`          | int  | 6       | Maximum sentences per paragraph |
-| `max-words-per-sentence` | int  | 40      | Maximum words per sentence      |
+| Setting                  | Type | Default | Description                                                                                                                |
+|--------------------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| `max-sentences`          | int  | 6       | Maximum sentences per paragraph                                                                                            |
+| `max-words-per-sentence` | int  | 40      | Maximum words per sentence                                                                                                 |
+| `placeholders`           | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+
+Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
 
 Markdown tables and code blocks are skipped.
 
@@ -83,3 +86,7 @@ Dogs bark. Cats meow. Birds sing. Fish swim. Frogs croak. Snakes hiss. Bees buzz
 - **Implementation**:
   [source](./)
 - **Category**: meta
+
+## See also
+
+- [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

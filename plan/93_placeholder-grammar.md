@@ -1,7 +1,7 @@
 ---
 id: 93
 title: Placeholder grammar — opt-in token vocabulary
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Lift the ad-hoc placeholder escapes (`# ?`, `## ...`,
@@ -134,32 +134,32 @@ the list comes from config.
 
 ## Acceptance Criteria
 
-- [ ] The helper recognizes the four initial tokens
+- [x] The helper recognizes the four initial tokens
       and exposes detection + masking APIs.
-- [ ] Each opt-in rule reads its `placeholders:`
+- [x] Each opt-in rule reads its `placeholders:`
       setting via `Configurable` and consults the
       helper (verified by per-rule unit test).
-- [ ] With `placeholders:` empty, every rule produces
+- [x] With `placeholders:` empty, every rule produces
       the same diagnostics it does today (regression
       test).
-- [ ] With `placeholders:` set, configured tokens
+- [x] With `placeholders:` set, configured tokens
       produce no diagnostics from that rule.
-- [ ] `catalog` front-matter interpolation and
+- [x] `catalog` front-matter interpolation and
       engine front-matter parsing honor the same
       vocabulary (test covers a CUE-pattern value in
       a `<?catalog?>`-eligible file).
-- [ ] Adding a new token is a one-file change in the
+- [x] Adding a new token is a one-file change in the
       helper plus per-rule opt-ins; no rule names
       tokens hardcoded in its logic (enforced by
       review).
-- [ ] Concept page at
+- [x] Concept page at
       `docs/background/concepts/placeholder-grammar.md`
       describes the contract and is linked from each
       opt-in rule README.
-- [ ] `mdsmith help placeholder-grammar` prints the
+- [x] `mdsmith help placeholder-grammar` prints the
       concept page summary.
-- [ ] `mdsmith query` parses a file with CUE-pattern
+- [x] `mdsmith query` parses a file with CUE-pattern
       front matter under a placeholder-aware kind
       (covered by test).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
