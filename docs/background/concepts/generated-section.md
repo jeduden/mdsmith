@@ -1,17 +1,17 @@
 ---
 summary: How generated sections work — markers, directives, and fix behavior.
 ---
-# Generated Section (Archetype)
+# Generated Section
 
 A **generated section** is a region of Markdown delimited by
 HTML processing instruction markers. A linting rule checks that
 the content between the markers matches what the directive would
 produce, and a fix command regenerates it in place.
 
-This archetype documents the shared mechanics. Individual rules —
-[MDS019 catalog](../../../../internal/rules/MDS019-catalog/),
-[MDS021 include](../../../../internal/rules/MDS021-include/),
-and [MDS038 toc](../../../../internal/rules/MDS038-toc/) — define
+This page documents the shared mechanics. Individual rules —
+[MDS019 catalog](../../../internal/rules/MDS019-catalog/),
+[MDS021 include](../../../internal/rules/MDS021-include/),
+and [MDS038 toc](../../../internal/rules/MDS038-toc/) — define
 their own parameters, template fields, and behaviors.
 
 ## Marker Syntax

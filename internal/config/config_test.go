@@ -1403,120 +1403,19 @@ func TestLoadMaxInputSizeFromYAML(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------
-// Archetype roots
+// archetypes: key is rejected
 // ---------------------------------------------------------------------
 
-func TestMerge_ArchetypeRootsFromLoaded(t *testing.T) {
-	loaded := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"custom", "templates"}},
-	}
-	merged := Merge(&Config{}, loaded)
-	assert.Equal(t,
-		[]string{"custom", "templates"}, merged.Archetypes.Roots)
-}
+func TestLoad_ArchetypesKeyProducesError(t *testing.T) {
+	yml := "archetypes:\n  roots:\n    - schemas\nrules: {}\n"
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(yml), 0o644))
 
-func TestMerge_ArchetypeRootsFromDefaultsWhenLoadedEmpty(t *testing.T) {
-	defaults := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"default-dir"}},
-	}
-	merged := Merge(defaults, &Config{})
-	assert.Equal(t,
-		[]string{"default-dir"}, merged.Archetypes.Roots)
-}
-
-func TestMerge_NilLoadedCopiesArchetypes(t *testing.T) {
-	defaults := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"a"}},
-	}
-	merged := Merge(defaults, nil)
-	assert.Equal(t, []string{"a"}, merged.Archetypes.Roots)
-}
-
-func TestInjectArchetypeRoots_TopLevelRule(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"custom"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true, Settings: map[string]any{
-				"archetype": "story",
-			}},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"custom"}, got)
-}
-
-func TestInjectArchetypeRoots_DoesNotOverwriteExistingSetting(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"from-top-level"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true, Settings: map[string]any{
-				"archetype":       "story",
-				"archetype-roots": []any{"explicit"},
-			}},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"explicit"}, got)
-}
-
-func TestInjectArchetypeRoots_OverrideRule(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"r1"}},
-		Overrides: []Override{{
-			Files: []string{"*.md"},
-			Rules: map[string]RuleCfg{
-				"required-structure": {Enabled: true, Settings: map[string]any{
-					"archetype": "prd",
-				}},
-			},
-		}},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Overrides[0].Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"r1"}, got)
-}
-
-func TestInjectArchetypeRoots_NoOpWhenNoRoots(t *testing.T) {
-	cfg := &Config{
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true, Settings: map[string]any{
-				"archetype": "story",
-			}},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	_, exists := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.False(t, exists)
-}
-
-func TestInjectArchetypeRoots_NilConfig(t *testing.T) {
-	InjectArchetypeRoots(nil)
-}
-
-func TestInjectArchetypeRoots_RuleNotEnabled(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"r"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: false},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	_, exists := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.False(t, exists)
-}
-
-func TestInjectArchetypeRoots_CreatesSettingsMapIfNil(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"r"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"r"}, got)
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "archetypes:")
+	assert.Contains(t, err.Error(), "kinds:")
 }
 
 // TestMergeNilLoadedWithCategories exercises copyCategories with a non-nil

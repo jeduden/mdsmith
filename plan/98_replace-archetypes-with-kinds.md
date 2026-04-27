@@ -1,7 +1,7 @@
 ---
 id: 98
 title: Replace `archetypes` with `kinds`
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Remove the `archetypes` CLI subcommand, config key,
@@ -41,8 +41,7 @@ schema":
    `archetypes.roots:` config key, the
    `internal/archetypes` Resolver, and a doc
    directory `docs/background/archetypes/`.
-   Documented at
-   [internal/archetypes/archetypes.go](../internal/archetypes/archetypes.go):
+   Formerly documented in `internal/archetypes/archetypes.go`:
    *"An archetype is a Markdown schema file whose
    basename (without the ".md" extension) is the
    archetype name."*
@@ -140,25 +139,25 @@ placeholder-grammar page.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith archetypes` exits 2 with "unknown
+- [x] `mdsmith archetypes` exits 2 with "unknown
       command".
-- [ ] `mdsmith kinds list` is the only listing
+- [x] `mdsmith kinds list` is the only listing
       surface for named schemas.
-- [ ] `archetypes:` keys in `.mdsmith.yml` produce a
+- [x] `archetypes:` keys in `.mdsmith.yml` produce a
       config error directing the user to `kinds:`.
-- [ ] `required-structure.schema:` accepts a path;
+- [x] `required-structure.schema:` accepts a path;
       a name (e.g. `schema: story`) produces a clear
       error.
-- [ ] `docs/background/concepts/generated-section.md`
+- [x] `docs/background/concepts/generated-section.md`
       exists; `docs/background/archetypes/` no
       longer exists.
-- [ ] `mdsmith check .` is green after all renames
+- [x] `mdsmith check .` is green after all renames
       (internal links updated).
-- [ ] `internal/archetypes/` no longer exists; no
+- [x] `internal/archetypes/` no longer exists; no
       package imports it.
-- [ ] `mdsmith init` in a fresh directory writes a
+- [x] `mdsmith init` in a fresh directory writes a
       `.mdsmith.yml` containing no `archetypes:` key;
       the file is accepted by the loader (covered by
       test).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

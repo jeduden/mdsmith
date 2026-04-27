@@ -19,7 +19,6 @@ mdsmith <command> [flags] [files...]
 | `help`         | Show help for rules/topics                     |
 | `metrics`      | List and rank shared metrics                   |
 | `merge-driver` | Git merge driver for regenerable sections      |
-| `archetypes`   | Scaffold, list, show, and locate archetypes    |
 | `init`         | Generate `.mdsmith.yml`                        |
 | `version`      | Print version, exit                            |
 
@@ -85,22 +84,6 @@ file: content between the `<?include?>` and `<?catalog?>`
 markers is excluded. This matches the lint-once model —
 embedded content is measured against the source file,
 not the host that pulls it in.
-
-## `archetypes` Subcommands
-
-| Subcommand    | Description                                  |
-|---------------|----------------------------------------------|
-| `init [dir]`  | Scaffold archetype dir with example + README |
-| `list`        | Print discovered archetypes (name + path)    |
-| `show <name>` | Print raw schema source to stdout            |
-| `path <name>` | Print resolved filesystem path               |
-
-Archetype roots come from the top-level
-`archetypes.roots` key in `.mdsmith.yml`. When absent,
-`./archetypes` is used. `init` never mutates the
-config file; it prints the snippet to add manually.
-`list` exits `1` when no archetypes are discovered;
-`show` and `path` exit `2` on unknown names.
 
 ## `--max-input-size`
 

@@ -77,7 +77,6 @@ Commands:
   help           Show help for rules and topics
   metrics        Show and rank shared Markdown metrics
   merge-driver   Git merge driver for regenerable sections
-  archetypes     Discover, show, and locate archetype schemas
   init           Generate a default .mdsmith.yml config file
   version        Print version and exit
 
@@ -125,8 +124,6 @@ func run() int {
 		return runMetrics(os.Args[2:])
 	case "merge-driver":
 		return runMergeDriver(os.Args[2:])
-	case "archetypes":
-		return runArchetypes(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
 	case "version":
@@ -972,12 +969,7 @@ func rootDirFromConfig(cfgPath string) string {
 // merged config, the path that was loaded (empty if defaults only), and
 // any error.
 func loadConfig(configPath string) (*config.Config, string, error) {
-	cfg, path, err := loadConfigRaw(configPath)
-	if err != nil {
-		return nil, "", err
-	}
-	config.InjectArchetypeRoots(cfg)
-	return cfg, path, nil
+	return loadConfigRaw(configPath)
 }
 
 func loadConfigRaw(configPath string) (*config.Config, string, error) {

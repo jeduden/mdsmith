@@ -56,7 +56,7 @@ from all patterns (deduplicated), then sorted together.
 
 Do not use YAML folded scalars (`>`, `>-`) in the YAML
 body. See the
-[archetype docs](../../../docs/background/archetypes/generated-section/)
+[generated-section docs](../../../docs/background/concepts/generated-section.md)
 for details.
 
 ### Template fields
@@ -115,7 +115,7 @@ matter is only read when the sort key needs it.
 3. No files, no `empty`: zero lines between markers
 
 See the
-[archetype docs](../../../docs/background/archetypes/generated-section/)
+[generated-section docs](../../../docs/background/concepts/generated-section.md)
 for newline handling and chomp details.
 
 ## Config
@@ -193,7 +193,7 @@ All messages above are prefixed with
 `generated section directive`. Column is always 1.
 
 See the
-[archetype documentation](../../../docs/background/archetypes/generated-section/)
+[generated-section documentation](../../../docs/background/concepts/generated-section.md)
 for shared diagnostics (content mismatch, unclosed markers,
 nested markers, YAML errors, template errors).
 
@@ -230,7 +230,7 @@ nested markers, YAML errors, template errors).
 | Files + `empty`      | `empty` ignored  |
 
 See the
-[archetype documentation](../../../docs/background/archetypes/generated-section/)
+[generated-section documentation](../../../docs/background/concepts/generated-section.md)
 for shared edge cases (markers in code blocks, multiple marker
 pairs, line endings, template errors).
 
@@ -245,6 +245,6 @@ pairs, line endings, template errors).
   [source](./)
 - **Category**: meta
 - **Archetype**:
-  [generated-section](../../../docs/background/archetypes/generated-section/)
+  [generated-section](../../../docs/background/concepts/generated-section.md)
 - **Guide**:
   [directive guide](../../../docs/guides/directives/generating-content.md)

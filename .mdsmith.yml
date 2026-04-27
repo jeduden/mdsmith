@@ -42,9 +42,7 @@ rules:
     max-words-per-cell: 30
   cross-file-reference-integrity:
     include: []
-    exclude:
-      # Placeholder link in internal/rules/proto.md; not a real repo path.
-      - "../../../docs/background/archetypes/NAME"
+    exclude: []
     strict: true
   token-budget:
     max: 8000
