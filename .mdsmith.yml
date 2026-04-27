@@ -193,7 +193,7 @@ overrides:
       paragraph-structure:
         max-sentences: 12
         max-words-per-sentence: 120
-  - files: ["docs/security/[0-9]*.md"]
+  - files: ["docs/security/*.md"]
     rules:
       line-length:
         max: 600
@@ -201,8 +201,6 @@ overrides:
           - code-blocks
           - tables
           - urls
-      required-structure:
-        schema: docs/security/proto.md
       max-file-length:
         max: 1000
       paragraph-readability: false
@@ -285,5 +283,5 @@ kind-assignment:
     kinds: [rule-readme]
   - files: [".claude/skills/proto.md", ".claude/skills/*/SKILL.md"]
     kinds: [skill]
-  - files: ["docs/security/proto.md", "docs/security/[0-9]*.md"]
+  - files: ["docs/security/proto.md", "docs/security/*.md"]
     kinds: [security-note]
