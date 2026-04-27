@@ -42,9 +42,7 @@ rules:
     max-words-per-cell: 30
   cross-file-reference-integrity:
     include: []
-    exclude:
-      # Placeholder link in internal/rules/proto.md; not a real repo path.
-      - "../../../docs/background/archetypes/NAME"
+    exclude: []
     strict: true
   token-budget:
     max: 8000
@@ -159,7 +157,7 @@ overrides:
     rules:
       required-structure:
         schema: internal/rules/proto.md
-  - files: ["plan/*.md"]
+  - files: ["plan/[0-9]*_*.md"]
     rules:
       required-structure:
         schema: plan/proto.md
@@ -203,7 +201,7 @@ overrides:
       paragraph-structure:
         max-sentences: 12
         max-words-per-sentence: 120
-  - files: ["docs/security/*.md"]
+  - files: ["docs/security/[0-9]*.md"]
     rules:
       line-length:
         max: 600
@@ -242,7 +240,58 @@ ignore:
   - "internal/rules/*/good/**"
   - "internal/rules/*/fixed/**"
   - ".claude/worktrees/**"
-  - ".claude/skills/proto.md"
-  - "plan/proto.md"
-  - "internal/rules/proto.md"
-  - "docs/security/proto.md"
+
+kinds:
+  proto:
+    rules:
+      # proto.md files lead with directives and placeholder
+      # headings rather than a content level-1 heading; the
+      # opt-in placeholder vocabulary cannot rewrite that
+      # structure, so the structural heading rules step aside
+      # for this kind.
+      first-line-heading: false
+      heading-increment: false
+      blank-line-around-headings: false
+      no-emphasis-as-heading: false
+      # Links in proto.md bodies are placeholder text
+      # (e.g. `NAME`, not `{name}`) — they aren't real
+      # repo paths and var-token cannot match them. Plan
+      # 98's archetype-to-kinds rename will eliminate the
+      # one remaining placeholder link.
+      cross-file-reference-integrity: false
+      paragraph-readability: false
+      paragraph-structure: false
+  plan:
+    rules:
+      required-structure:
+        schema: plan/proto.md
+  rule-readme:
+    rules:
+      required-structure:
+        schema: internal/rules/proto.md
+  skill:
+    rules:
+      required-structure:
+        schema: .claude/skills/proto.md
+  security-note:
+    rules:
+      required-structure:
+        schema: docs/security/proto.md
+
+# kind-assignment order matters: proto applies first so each
+# proto.md also picks up its project kind, whose
+# required-structure.schema points back at the file itself.
+# That marks proto.md as its own schema, suppressing the
+# "<?require?> outside a schema" warning and skipping
+# structural self-validation.
+kind-assignment:
+  - files: ["**/proto.md"]
+    kinds: [proto]
+  - files: ["plan/proto.md", "plan/[0-9]*_*.md"]
+    kinds: [plan]
+  - files: ["internal/rules/proto.md", "internal/rules/MDS*/README.md"]
+    kinds: [rule-readme]
+  - files: [".claude/skills/proto.md", ".claude/skills/*/SKILL.md"]
+    kinds: [skill]
+  - files: ["docs/security/proto.md", "docs/security/[0-9]*.md"]
+    kinds: [security-note]
