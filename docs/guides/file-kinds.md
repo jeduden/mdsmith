@@ -94,26 +94,22 @@ kind-assignment:
 
 Globs use the same matcher as `overrides:` and `ignore:`.
 There is no `!`-negation; to exclude a narrower path,
-write a glob that doesn't match it. `plan/[0-9]*_*.md`
-naturally excludes `plan/proto.md`. To pick up the
-narrower file with a different kind, list it explicitly
-in another `kind-assignment:` entry — duplicate kinds
-across entries are deduplicated, and the most specific
-glob can carry an additional kind.
+write a glob that doesn't match it. The plan entry above
+uses `plan/[0-9]*_*.md` — the leading-digit pattern
+matches every numbered plan file but skips `proto.md`,
+which is then handled separately.
 
-A file that should belong to two kinds (for example, the
-schema template that is both a `proto` and a `plan` file)
-appears in both globs:
+When a file should belong to two kinds, two entries can
+match it. The order of those entries fixes the merge
+order — kinds picked up earlier appear earlier in the
+effective list.
 
-```yaml
-- files: ["**/proto.md"]
-  kinds: [proto]
-- files: ["plan/proto.md", "plan/[0-9]*_*.md"]
-  kinds: [plan]
-```
-
-`plan/proto.md` resolves to `[proto, plan]`; `plan/96.md`
-resolves to `[plan]`.
+In the example above, `plan/proto.md` matches both
+`**/proto.md` (proto kind) and the explicit `plan/proto.md`
+entry (plan kind), so its effective kind list is
+`[proto, plan]`. A regular plan file like
+`plan/96_kinds-adoption-and-docs.md` only matches the
+`plan/[0-9]*_*.md` glob, so it resolves to `[plan]`.
 
 ## Merge order
 

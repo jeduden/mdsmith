@@ -161,12 +161,13 @@ Each `proto.md` file resolves to two kinds.
 
 - The broad `**/proto.md` entry picks up the proto kind.
 - A directory-scoped entry picks up the project-specific
-  kind. For `plan/` and `docs/security/` the directory
-  glob (`plan/*.md`, `docs/security/*.md`) already
-  matches `proto.md`. For `internal/rules/` and
-  `.claude/skills/` the directory glob targets a
-  different filename (`MDS*/README.md`, `*/SKILL.md`),
-  so those entries also list `proto.md` explicitly.
+  kind. The convention globs are exclusion patterns —
+  `plan/[0-9]*_*.md` and `docs/security/[0-9]*.md` match
+  numbered plans and date-prefixed security notes
+  without matching `proto.md`. Each schema kind lists
+  its `proto.md` path explicitly so the file still picks
+  up the kind that supplies its
+  `required-structure.schema:`.
 
 The later schema kind sets `required-structure.schema:`
 to `proto.md` itself. That marks the file as its own
