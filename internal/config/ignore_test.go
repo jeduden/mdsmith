@@ -34,3 +34,25 @@ func TestIsIgnored_CleanedPath(t *testing.T) {
 	patterns := []string{"vendor/**"}
 	assert.True(t, IsIgnored(patterns, "vendor/./lib.md"), "expected cleaned path to match")
 }
+
+func TestIsIgnored_NegationReIncludes(t *testing.T) {
+	patterns := []string{"plan/*.md", "!plan/proto.md"}
+	assert.True(t, IsIgnored(patterns, "plan/96_kinds.md"),
+		"plan/96_kinds.md should match the inclusion pattern")
+	assert.False(t, IsIgnored(patterns, "plan/proto.md"),
+		"plan/proto.md should be re-included by the negation")
+}
+
+func TestIsIgnored_NegationOrderIndependent(t *testing.T) {
+	beforeInclude := []string{"!plan/proto.md", "plan/*.md"}
+	assert.False(t, IsIgnored(beforeInclude, "plan/proto.md"),
+		"negation must win even when listed before its inclusion")
+}
+
+func TestIsIgnored_OnlyExclusionsMatchNothing(t *testing.T) {
+	patterns := []string{"!plan/proto.md"}
+	assert.False(t, IsIgnored(patterns, "plan/proto.md"),
+		"a list of only exclusions should not match anything")
+	assert.False(t, IsIgnored(patterns, "plan/96_kinds.md"),
+		"a list of only exclusions should not match anything")
+}

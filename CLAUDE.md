@@ -29,9 +29,11 @@ row: "- [{summary}]({filename})"
 - [How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.](docs/guides/directives/enforcing-structure.md)
 - [How to use catalog and include directives to generate and embed content in Markdown files.](docs/guides/directives/generating-content.md)
 - [Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.](docs/guides/directives/hugo-migration.md)
+- [How to declare file kinds, assign files to them, and read the merged rule config that results.](docs/guides/file-kinds.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](docs/guides/index.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
 - [CLI commands, flags, exit codes, and output format.](docs/reference/cli.md)
+- [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](docs/reference/globs.md)
 <?/catalog?>
 
 ## Development Workflow

@@ -1,7 +1,7 @@
 ---
 id: 96
 title: Adopt kinds in mdsmith repo and ship the docs
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Declare the kinds this repo needs, drop the four
@@ -123,43 +123,92 @@ plan — the collision is gone.
 
 ## Tasks
 
-1. Add the kind declarations and `kind-assignment:`
+1. [x] Add the kind declarations and `kind-assignment:`
    entries shown above to `.mdsmith.yml`.
-2. Drop the four `proto.md` entries from `ignore:`
+2. [x] Drop the four `proto.md` entries from `ignore:`
    and the placeholder-link entry from
    `cross-file-reference-integrity.exclude:`.
-3. Confirm `mdsmith check .` stays green; iterate on
+3. [x] Confirm `mdsmith check .` stays green; iterate on
    kind bodies if any rule still flags a placeholder
    that's part of a real schema/template file.
-4. Write `docs/guides/file-kinds.md` covering kind
+4. [x] Write `docs/guides/file-kinds.md` covering kind
    declaration, assignment (front matter + globs),
    merge order, and conflict resolution. Walk through
    `mdsmith kinds resolve <file>` as the
    troubleshooting path.
-5. Update each rule README that gained a
+5. [x] Update each rule README that gained a
    `placeholders:` setting to link to the
-   placeholder-grammar concept page.
+   placeholder-grammar concept page (already covered
+   by plan 93).
+
+## Implementation Notes
+
+The proto kind disables seven rules outright:
+`first-line-heading`, `heading-increment`,
+`blank-line-around-headings`, `no-emphasis-as-heading`,
+`cross-file-reference-integrity`, `paragraph-readability`,
+`paragraph-structure`.
+
+Body tokens cannot mask the structural placement of
+`<?require?>` directives and HTML comments before the
+first heading. The one external link in
+`internal/rules/proto.md` uses an unbraced `NAME`
+placeholder. No token matches that form. Plan 98 will
+replace the link as part of the archetype-to-kinds
+rename.
+
+Each `proto.md` file resolves to two kinds.
+
+- The broad `**/proto.md` entry picks up the proto kind.
+- A directory-scoped entry picks up the project-specific
+  kind. The plan and docs/security entries use `*.md`
+  globs that naturally include `proto.md`. The
+  internal/rules and .claude/skills directory globs
+  target a different filename (`MDS*/README.md`,
+  `*/SKILL.md`), so those entries list `proto.md`
+  explicitly alongside the convention glob.
+
+The later schema kind sets `required-structure.schema:`
+to `proto.md` itself. That marks the file as its own
+schema. The "<?require?> outside a schema file" warning
+then stays silent. With deep-merge (plan 97) the schema
+setting from the project kind composes with the proto
+kind's other settings rather than replacing them.
+
+`!`-prefix exclusion (added to the config matcher in
+this plan) is used in the `docs/security/*.md` override
+to keep its content tunings off `proto.md`. It is not
+used in `kind-assignment:` for schema kinds — excluding
+`proto.md` from the project kind would strip the
+schema. See [docs/reference/globs.md](../docs/reference/globs.md)
+for full glob semantics.
+
+The redundant schema overrides on `plan/*.md`,
+`docs/security/*.md`, and `internal/rules/MDS*/README.md`
+were removed once the matching kinds covered them.
+Schema attachment for a file class now lives in one
+place.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith check .` passes with the four
+- [x] `mdsmith check .` passes with the four
       `proto.md` entries removed from `.mdsmith.yml`
       `ignore:` and the placeholder-link
       `cross-file-reference-integrity.exclude:`
       entry removed.
-- [ ] Each `proto.md` file is linted under its
+- [x] Each `proto.md` file is linted under its
       project kind, with placeholder-aware rules
       passing on its placeholder-rich body.
-- [ ] Adding a new schema file requires no
+- [x] Adding a new schema file requires no
       `ignore:` change — assigning it to an existing
       kind via `kind-assignment:` is enough.
-- [ ] `docs/guides/file-kinds.md` exists, describes
+- [x] `docs/guides/file-kinds.md` exists, describes
       declaration / assignment / merge / conflict
       resolution, and references
       `mdsmith kinds resolve` as the troubleshooting
       path.
-- [ ] Each rule that gained a `placeholders:`
+- [x] Each rule that gained a `placeholders:`
       setting in plan 93 has a README link to the
       placeholder-grammar concept page.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
