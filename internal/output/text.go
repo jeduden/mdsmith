@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -63,8 +64,56 @@ func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 		if err := f.formatSnippet(w, d); err != nil {
 			return err
 		}
+
+		if err := f.formatExplanation(w, d.Explanation); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// formatExplanation writes a one-line trailer naming the rule and
+// the winning source of each leaf setting that contributed to the
+// rule's effective config. No-op when explanation is nil.
+//
+// Rule names, leaf paths, leaf values, and source labels can come from
+// user-controlled YAML (kind names, settings keys/values), so each
+// piece is run through sanitizeControl before it's joined into the
+// single-line trailer to prevent newlines or ANSI escapes from
+// breaking the format or injecting terminal sequences.
+func (f *TextFormatter) formatExplanation(w io.Writer, e *lint.Explanation) error {
+	if e == nil {
+		return nil
+	}
+	parts := make([]string, 0, len(e.Leaves))
+	for _, l := range e.Leaves {
+		parts = append(parts, fmt.Sprintf("%s=%s (%s)",
+			sanitizeControl(l.Path),
+			sanitizeControl(formatLeafValue(l.Value)),
+			sanitizeControl(l.Source)))
+	}
+	body := strings.Join(parts, ", ")
+	if body == "" {
+		body = "(no settings)"
+	}
+	rule := sanitizeControl(e.Rule)
+	prefix := "  └─ "
+	if f.Color {
+		_, err := fmt.Fprintf(w, "%s\033[2m%s: %s\033[0m\n", prefix, rule, body)
+		return err
+	}
+	_, err := fmt.Fprintf(w, "%s%s: %s\n", prefix, rule, body)
+	return err
+}
+
+// formatLeafValue renders a leaf value compactly (JSON-like) so settings
+// maps / lists / scalars all print on one line.
+func formatLeafValue(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
 }
 
 // formatSnippet writes the source context lines with a line-number gutter
@@ -78,9 +127,6 @@ func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
 
 	maxLineNum := d.SourceStartLine + len(d.SourceLines) - 1
 	gutterWidth := len(fmt.Sprintf("%d", maxLineNum))
-	if gutterWidth < 1 {
-		gutterWidth = 1
-	}
 
 	for i, line := range d.SourceLines {
 		lineNum := d.SourceStartLine + i

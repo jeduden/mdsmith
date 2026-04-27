@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
+	"github.com/jeduden/mdsmith/internal/explain"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -27,6 +28,10 @@ type Fixer struct {
 	// MaxInputBytes is the maximum file size in bytes before a file is
 	// skipped with an error. Zero or negative means unlimited.
 	MaxInputBytes int64
+	// Explain, when true, attaches per-leaf rule provenance to each
+	// remaining diagnostic so output formatters can render an
+	// explanation trailer.
+	Explain bool
 }
 
 // Result holds the outcome of a fix run.
@@ -132,6 +137,9 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 
 	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
+	if f.Explain {
+		explain.Attach(diags, f.Config, path, fmKinds)
+	}
 	return beforeDiags, diags, modified, errs
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/explain"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -27,6 +28,9 @@ type Runner struct {
 	// MaxInputBytes is the maximum file size in bytes before a file is
 	// skipped with an error. Zero or negative means unlimited.
 	MaxInputBytes int64
+	// Explain, when true, attaches per-leaf rule provenance to each
+	// diagnostic so output formatters can render an explanation trailer.
+	Explain bool
 	// gitignoreCache caches GitignoreMatchers by directory to avoid
 	// re-walking the filesystem for each file.
 	gitignoreCache map[string]*lint.GitignoreMatcher
@@ -90,6 +94,9 @@ func (r *Runner) Run(paths []string) *Result {
 		r.logRules(effective)
 
 		diags, errs := CheckRules(f, r.Rules, effective)
+		if r.Explain {
+			explain.Attach(diags, r.Config, path, fmKinds)
+		}
 		res.Diagnostics = append(res.Diagnostics, diags...)
 		res.Errors = append(res.Errors, errs...)
 	}
@@ -136,6 +143,9 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 	r.logRules(effective)
 
 	diags, errs := CheckRules(f, r.Rules, effective)
+	if r.Explain {
+		explain.Attach(diags, r.Config, path, fmKinds)
+	}
 	res.Diagnostics = append(res.Diagnostics, diags...)
 	res.Errors = append(res.Errors, errs...)
 

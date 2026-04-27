@@ -20,6 +20,7 @@ mdsmith <command> [flags] [files...]
 | `metrics`      | List and rank shared metrics                   |
 | `merge-driver` | Git merge driver for regenerable sections      |
 | `archetypes`   | Scaffold, list, show, and locate archetypes    |
+| `kinds`        | Inspect declared kinds and resolve config      |
 | `init`         | Generate `.mdsmith.yml`                        |
 | `version`      | Print version, exit                            |
 
@@ -85,6 +86,74 @@ file: content between the `<?include?>` and `<?catalog?>`
 markers is excluded. This matches the lint-once model —
 embedded content is measured against the source file,
 not the host that pulls it in.
+
+## `kinds` Subcommands
+
+| Subcommand          | Description                                        |
+|---------------------|----------------------------------------------------|
+| `list`              | Print declared kinds and their merged bodies       |
+| `show <name>`       | Print one kind's merged body                       |
+| `path <name>`       | Print resolved schema path of `required-structure` |
+| `resolve <file>`    | Resolved kind list and per-leaf provenance summary |
+| `why <file> <rule>` | Full per-rule merge chain, including no-op layers  |
+
+Each subcommand accepts `--json` for stable structured
+output. Unknown kinds and unresolved schemas exit `2`.
+
+## `--explain` on `check` / `fix`
+
+`--explain` attaches per-leaf rule provenance to each
+diagnostic. Text output prints a `└─` trailer naming
+the rule and the winning source for each leaf setting;
+JSON adds an `explanation` field (see schema below).
+
+## JSON Schemas
+
+Stable shapes for LSP / tool consumption. `leaves[]`
+always lists every leaf of the final rule config —
+`enabled` plus one entry per `settings.<key>`; output
+never elides leaves. Source labels: `default`,
+`front-matter override`, `front-matter`,
+`kind-assignment[<i>]`, `kinds.<name>`, or
+`overrides[<i>]`.
+
+`check --explain` adds an `explanation` field to each
+diag (omitted without `--explain`):
+
+```json
+"explanation": {"rule": "line-length", "leaves": [
+  {"path": "enabled", "value": true, "source": "default"},
+  {"path": "settings.max", "value": 30, "source": "kinds.short"}
+]}
+```
+
+`kinds list` → `{"kinds": [<body>...]}`; `show <name>`
+→ one body. Body: `{"name", "rules", "categories"}`
+where `rules[<name>]` follows the YAML rule-cfg union
+(`false`, `true`, or the settings map).
+
+`kinds resolve <file>` returns `{file, kinds, categories,
+rules}`. Each rule entry is `{final, leaves}` with a leaf
+per `enabled` and `settings.<key>`.
+
+`kinds why <file> <rule>` adds two arrays. `layers[]`
+lists every applicable layer in chain order. No-op layers
+carry `"set": false` and omit `value`. `leaves[].chain`
+records the layers that set the leaf, in chain order:
+
+```json
+{"file": "plan/9_big.md", "rule": "max-file-length",
+ "final": {"max": 900},
+ "layers": [
+   {"source": "default", "set": true, "value": {"max": 300}},
+   {"source": "kinds.plan", "set": true, "value": {"max": 500}},
+   {"source": "overrides[0]", "set": true, "value": {"max": 900}}],
+ "leaves": [{"path": "settings.max", "value": 900,
+   "source": "overrides[0]", "chain": [
+     {"source": "default", "value": 300},
+     {"source": "kinds.plan", "value": 500},
+     {"source": "overrides[0]", "value": 900}]}]}
+```
 
 ## `archetypes` Subcommands
 
