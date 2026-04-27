@@ -27,3 +27,24 @@ type Configurable interface {
 type Defaultable interface {
 	EnabledByDefault() bool
 }
+
+// MergeMode describes how a list-typed rule setting combines across
+// config layers (defaults, kinds, overrides).
+type MergeMode int
+
+const (
+	// MergeReplace is the default: a later layer's list replaces the
+	// earlier layer's list wholesale.
+	MergeReplace MergeMode = iota
+	// MergeAppend concatenates a later layer's list onto the earlier
+	// layer's list, preserving layer-chain order.
+	MergeAppend
+)
+
+// ListMerger is implemented by Configurable rules that opt one or more
+// list-typed settings out of the default MergeReplace behavior. The
+// merge function calls SettingMergeMode(key) at config-resolution time
+// and treats unknown keys as MergeReplace.
+type ListMerger interface {
+	SettingMergeMode(key string) MergeMode
+}

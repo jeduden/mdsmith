@@ -113,4 +113,15 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-var _ rule.Configurable = (*Rule)(nil)
+// SettingMergeMode implements rule.ListMerger.
+func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
+	if key == "placeholders" {
+		return rule.MergeAppend
+	}
+	return rule.MergeReplace
+}
+
+var (
+	_ rule.Configurable = (*Rule)(nil)
+	_ rule.ListMerger   = (*Rule)(nil)
+)

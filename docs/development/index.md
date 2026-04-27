@@ -73,6 +73,27 @@ When adding or changing a rule feature, add both:
    are discovered automatically by the integration test
    runner in `internal/integration/rules_test.go`.
 
+## Config Merge Semantics
+
+Layered config (defaults → kinds → overrides) is
+**deep-merged** rule by rule:
+
+- Maps merge key by key; sibling settings set in earlier
+  layers survive when a later layer touches only one key.
+- Scalars at a leaf are replaced wholesale by the later
+  layer.
+- List-typed settings replace by default. A rule opts a
+  particular list setting into `append` by implementing
+  `rule.ListMerger.SettingMergeMode(key)` and returning
+  `rule.MergeAppend`. The placeholder vocabulary
+  (`placeholders:`) is the canonical append-mode setting.
+- A bool-only layer (`rule-name: false`) toggles
+  `enabled` without erasing inherited settings.
+
+When adding a new list-typed setting, decide whether
+it should `append` or `replace`. Document the choice
+next to its `ApplySettings` handler.
+
 ## Generated Sections
 
 Content between `<?directive ... ?>` and

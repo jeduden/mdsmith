@@ -122,6 +122,14 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
+// SettingMergeMode implements rule.ListMerger.
+func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
+	if key == "placeholders" {
+		return rule.MergeAppend
+	}
+	return rule.MergeReplace
+}
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -333,7 +341,10 @@ func (r *Rule) diag(file string, line int, msg string) lint.Diagnostic {
 	}
 }
 
-var _ rule.Configurable = (*Rule)(nil)
+var (
+	_ rule.Configurable = (*Rule)(nil)
+	_ rule.ListMerger   = (*Rule)(nil)
+)
 
 // schemaConfig holds the parsed schema frontmatter.
 type schemaConfig struct {

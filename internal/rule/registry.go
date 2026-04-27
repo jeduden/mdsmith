@@ -24,6 +24,16 @@ func ByID(id string) Rule {
 	return nil
 }
 
+// ByName returns the registered rule with the given Name, or nil.
+func ByName(name string) Rule {
+	for _, r := range registry {
+		if r.Name() == name {
+			return r
+		}
+	}
+	return nil
+}
+
 // Reset clears the registry. Used for testing.
 func Reset() {
 	registry = nil

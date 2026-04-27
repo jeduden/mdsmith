@@ -125,6 +125,38 @@ Accepts `KB`, `MB`, `GB` suffixes (binary:
 to disable the limit. Default: `2MB`. The CLI flag
 overrides the `max-input-size` key in `.mdsmith.yml`.
 
+## Merge Semantics
+
+Rule settings come from a chain of layers. The chain
+starts with the built-in defaults. Then every `kinds:`
+block whose name matches the file applies. Front-matter
+`kinds:` come first; `kind-assignment:` entries follow
+in config order. Last, every `overrides:` block whose
+`files:` glob matches the file applies.
+
+Each layer **deep-merges** onto the accumulator:
+
+- **Maps** are merged key by key; nested maps recurse on
+  shared keys.
+- **Scalars** at a leaf are replaced by the later layer.
+- **Lists** are replaced wholesale by default. Selected
+  list settings opt into **append** so a later kind or
+  override extends the inherited list rather than
+  replacing it. The placeholder vocabulary
+  (`placeholders:` on `first-line-heading`,
+  `required-structure`, `paragraph-structure`,
+  `paragraph-readability`, `heading-increment`,
+  `no-emphasis-as-heading`, and
+  `cross-file-reference-integrity`) appends.
+- A **bool-only** layer (e.g. `line-length: false`)
+  toggles `enabled` for that rule but preserves the
+  inherited settings. A later layer that re-enables the
+  rule sees the original settings still in place.
+
+A layer that fully restates a rule's body still wins on
+every key, so the previous block-replacement behavior is
+a special case of deep-merge.
+
 ## Global Flags
 
 | Flag     | Short | Description |
