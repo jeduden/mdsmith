@@ -122,6 +122,18 @@ func (r *Rule) DefaultSettings() map[string]any {
 
 var _ rule.Configurable = (*Rule)(nil)
 
+// SettingsMergeModes implements rule.SettingsMerger. Placeholders is a
+// vocabulary list: a kind that adds a token shouldn't have to restate
+// every token from earlier layers, so it concatenates across the layer
+// chain instead of replacing wholesale.
+func (r *Rule) SettingsMergeModes() map[string]rule.SettingsMergeMode {
+	return map[string]rule.SettingsMergeMode{
+		"placeholders": rule.MergeAppend,
+	}
+}
+
+var _ rule.SettingsMerger = (*Rule)(nil)
+
 func headingLine(heading *ast.Heading, f *lint.File) int {
 	lines := heading.Lines()
 	if lines.Len() > 0 {

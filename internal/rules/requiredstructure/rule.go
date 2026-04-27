@@ -335,6 +335,17 @@ func (r *Rule) diag(file string, line int, msg string) lint.Diagnostic {
 
 var _ rule.Configurable = (*Rule)(nil)
 
+// SettingsMergeModes implements rule.SettingsMerger so the placeholders
+// list concatenates across config layers (defaults -> kinds -> overrides)
+// instead of replacing wholesale.
+func (r *Rule) SettingsMergeModes() map[string]rule.SettingsMergeMode {
+	return map[string]rule.SettingsMergeMode{
+		"placeholders": rule.MergeAppend,
+	}
+}
+
+var _ rule.SettingsMerger = (*Rule)(nil)
+
 // schemaConfig holds the parsed schema frontmatter.
 type schemaConfig struct {
 	FrontMatterCUE  string

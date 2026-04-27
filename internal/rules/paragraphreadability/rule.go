@@ -161,3 +161,14 @@ func (r *Rule) DefaultSettings() map[string]any {
 }
 
 var _ rule.Configurable = (*Rule)(nil)
+
+// SettingsMergeModes implements rule.SettingsMerger so the placeholders
+// list concatenates across config layers (defaults -> kinds -> overrides)
+// instead of replacing wholesale.
+func (r *Rule) SettingsMergeModes() map[string]rule.SettingsMergeMode {
+	return map[string]rule.SettingsMergeMode{
+		"placeholders": rule.MergeAppend,
+	}
+}
+
+var _ rule.SettingsMerger = (*Rule)(nil)

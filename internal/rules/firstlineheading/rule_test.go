@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
@@ -339,4 +340,13 @@ func TestDefaultSettings_IncludesPlaceholders(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
 	assert.Equal(t, []string{}, ds["placeholders"])
+}
+
+func TestSettingsMergeModes_PlaceholdersAppend(t *testing.T) {
+	var r any = &Rule{}
+	sm, ok := r.(rule.SettingsMerger)
+	require.True(t, ok, "Rule must implement rule.SettingsMerger")
+	modes := sm.SettingsMergeModes()
+	assert.Equal(t, rule.MergeAppend, modes["placeholders"],
+		"placeholders should opt into append-mode merging")
 }
