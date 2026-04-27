@@ -258,28 +258,63 @@ func EffectiveAll(
 }
 
 func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]RuleCfg {
+	return effectiveRulesWithModes(cfg, filePath, kinds, defaultMergeModes)
+}
+
+// effectiveRulesWithModes is the deep-merge engine. It walks the layer
+// chain (top-level rules → kinds in effective list order → matching
+// overrides) and deep-merges each layer's RuleCfg onto the accumulator.
+// modes maps a rule name to its per-key merge-mode table; nil means
+// every list setting replaces.
+func effectiveRulesWithModes(
+	cfg *Config,
+	filePath string,
+	kinds []string,
+	modes func(ruleName string) map[string]MergeMode,
+) map[string]RuleCfg {
 	result := make(map[string]RuleCfg, len(cfg.Rules))
 	for k, v := range cfg.Rules {
-		result[k] = v
+		result[k] = copyRuleCfg(v)
+	}
+	apply := func(rules map[string]RuleCfg) {
+		for k, v := range rules {
+			base, present := result[k]
+			if !present {
+				// New rule key in this layer: copy as-is (with map clone).
+				result[k] = copyRuleCfg(v)
+				continue
+			}
+			result[k] = deepMergeRuleCfg(base, v, ruleModes(modes, k))
+		}
 	}
 	for _, kindName := range kinds {
 		body, ok := cfg.Kinds[kindName]
 		if !ok {
 			continue
 		}
-		for k, v := range body.Rules {
-			result[k] = v
-		}
+		apply(body.Rules)
 	}
 	for _, o := range cfg.Overrides {
 		if matchesAny(o.Files, filePath) {
-			for k, v := range o.Rules {
-				result[k] = v
-			}
+			apply(o.Rules)
 		}
 	}
 	return result
 }
+
+// ruleModes is a small helper to call modes safely when nil.
+func ruleModes(modes func(string) map[string]MergeMode, ruleName string) map[string]MergeMode {
+	if modes == nil {
+		return nil
+	}
+	return modes(ruleName)
+}
+
+// defaultMergeModes is the production merge-mode lookup. It consults
+// the rule registry and asks each rule (when it implements
+// rule.SettingsMerger) for its per-key merge modes. Set in init() in
+// modes.go.
+var defaultMergeModes func(ruleName string) map[string]MergeMode
 
 func effectiveExplicit(cfg *Config, filePath string, kinds []string) map[string]bool {
 	result := make(map[string]bool, len(cfg.ExplicitRules))
