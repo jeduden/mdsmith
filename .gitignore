@@ -1,4 +1,5 @@
 /mdsmith
+.claude/worktrees/
 eval/corpus/config.local.yml
 coverage.out
 cover.out
