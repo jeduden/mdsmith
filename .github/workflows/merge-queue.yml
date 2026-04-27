@@ -46,3 +46,16 @@ jobs:
           batch_size: "5"
           bisect: ${{ github.event.inputs.bisect }}
           batch_prs: ${{ github.event.inputs.batch_prs }}
+
+      - name: Fix generated sections after merge
+        run: |
+          # After merge-queue creates the batch, regenerate any stale
+          # generated sections (e.g., PLAN.md catalog) and amend the
+          # merge commit if needed
+          if "$HOME/.local/bin/mdsmith" fix PLAN.md; then
+            if ! git diff --quiet PLAN.md; then
+              git add PLAN.md
+              git commit --amend --no-edit
+              git push -f origin HEAD
+            fi
+          fi
