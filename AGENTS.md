@@ -47,6 +47,7 @@ row: "- [{summary}]({filename})"
 - [User guides for mdsmith directives, structure enforcement, and migration.](docs/guides/index.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
 - [CLI commands, flags, exit codes, and output format.](docs/reference/cli.md)
+- [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](docs/reference/globs.md)
 <?/catalog?>
 
 ## Development Workflow

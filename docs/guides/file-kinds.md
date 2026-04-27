@@ -92,12 +92,18 @@ kind-assignment:
     kinds: [skill]
 ```
 
-Globs use the same matcher as `overrides:` and `ignore:`.
-There is no `!`-negation; to exclude a narrower path,
-write a glob that doesn't match it. The plan entry above
-uses `plan/[0-9]*_*.md` — the leading-digit pattern
-matches every numbered plan file but skips `proto.md`,
-which is then handled separately.
+Globs use the same matcher as `overrides:` and `ignore:`
+(see [Glob patterns](../reference/globs.md)). The plan
+entry above uses `plan/[0-9]*_*.md` — the leading-digit
+pattern matches every numbered plan file but skips
+`proto.md`, which is then handled separately. A `!`-prefix
+on a pattern re-excludes a path; that's useful in
+`overrides:` (where excluding `proto.md` from
+content-tuning settings is harmless) but not in
+`kind-assignment:` for schema kinds, because excluding
+`proto.md` there would also strip the
+`required-structure.schema` that marks it as its own
+schema.
 
 When a file should belong to two kinds, two entries can
 match it. The order of those entries fixes the merge
