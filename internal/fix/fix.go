@@ -27,6 +27,10 @@ type Fixer struct {
 	// MaxInputBytes is the maximum file size in bytes before a file is
 	// skipped with an error. Zero or negative means unlimited.
 	MaxInputBytes int64
+	// Explain, when true, attaches per-leaf rule provenance to each
+	// remaining diagnostic so output formatters can render an
+	// explanation trailer.
+	Explain bool
 }
 
 // Result holds the outcome of a fix run.
@@ -132,7 +136,32 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 
 	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
+	if f.Explain && len(diags) > 0 {
+		f.attachExplanations(diags, path, fmKinds)
+	}
 	return beforeDiags, diags, modified, errs
+}
+
+// attachExplanations populates Diagnostic.Explanation for each diag
+// emitted by a file path using the rule's resolved leaves.
+func (f *Fixer) attachExplanations(diags []lint.Diagnostic, path string, fmKinds []string) {
+	res := config.ResolveFile(f.Config, path, fmKinds)
+	for i := range diags {
+		rr, ok := res.Rules[diags[i].RuleName]
+		if !ok {
+			continue
+		}
+		leaves := make([]lint.ExplanationLeaf, 0, len(rr.Leaves))
+		for _, l := range rr.Leaves {
+			leaves = append(leaves, lint.ExplanationLeaf{
+				Path: l.Path, Value: l.Value, Source: l.Source(),
+			})
+		}
+		diags[i].Explanation = &lint.Explanation{
+			Rule:   diags[i].RuleName,
+			Leaves: leaves,
+		}
+	}
 }
 
 // applyFixPasses repeatedly applies fixable rules until the content stabilizes.

@@ -1,6 +1,7 @@
 package output
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -63,8 +64,47 @@ func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 		if err := f.formatSnippet(w, d); err != nil {
 			return err
 		}
+
+		if err := f.formatExplanation(w, d.Explanation); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// formatExplanation writes a one-line trailer naming the rule and
+// the winning source of each leaf setting that contributed to the
+// rule's effective config. No-op when explanation is nil.
+func (f *TextFormatter) formatExplanation(w io.Writer, e *lint.Explanation) error {
+	if e == nil {
+		return nil
+	}
+	parts := make([]string, 0, len(e.Leaves))
+	for _, l := range e.Leaves {
+		parts = append(parts, fmt.Sprintf("%s=%s (%s)",
+			l.Path, formatLeafValue(l.Value), l.Source))
+	}
+	body := strings.Join(parts, ", ")
+	if body == "" {
+		body = "(no settings)"
+	}
+	prefix := "  └─ "
+	if f.Color {
+		_, err := fmt.Fprintf(w, "%s\033[2m%s: %s\033[0m\n", prefix, e.Rule, body)
+		return err
+	}
+	_, err := fmt.Fprintf(w, "%s%s: %s\n", prefix, e.Rule, body)
+	return err
+}
+
+// formatLeafValue renders a leaf value compactly (JSON-like) so settings
+// maps / lists / scalars all print on one line.
+func formatLeafValue(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
 }
 
 // formatSnippet writes the source context lines with a line-number gutter
