@@ -30,7 +30,7 @@ footer: |
 | 92  | ✅     | sonnet | [File kinds — config schema, assignment, merge](plan/92_file-kinds.md)                               |
 | 93  | 🔲     | sonnet | [Placeholder grammar — opt-in token vocabulary](plan/93_placeholder-grammar.md)                      |
 | 94  | 🔲     | sonnet | [Lint-once for `<?include?>` and `<?catalog?>` embeds](plan/94_lint-once-for-embeds.md)              |
-| 95  | 🔲     | opus   | [Kind/rule resolution observability via `kinds` subcommand](plan/95_kind-rule-resolution-cli.md)     |
+| 95  | 🔳     | opus   | [Kind/rule resolution observability via `kinds` subcommand](plan/95_kind-rule-resolution-cli.md)     |
 | 96  | 🔲     | sonnet | [Adopt kinds in mdsmith repo and ship the docs](plan/96_kinds-adoption-and-docs.md)                  |
 | 97  | 🔲     | opus   | [Deep-merge for kinds and overrides](plan/97_deep-merge-config.md)                                   |
 | 98  | 🔲     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                        |
