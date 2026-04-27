@@ -40,15 +40,15 @@ func runKinds(args []string) int {
 		fmt.Fprint(os.Stderr, kindsUsage)
 		return 0
 	case "list":
-		return runKindsList(args[1:])
+		return runKindsList(os.Stdout, args[1:])
 	case "show":
-		return runKindsShow(args[1:])
+		return runKindsShow(os.Stdout, args[1:])
 	case "path":
-		return runKindsPath(args[1:])
+		return runKindsPath(os.Stdout, args[1:])
 	case "resolve":
-		return runKindsResolve(args[1:])
+		return runKindsResolve(os.Stdout, args[1:])
 	case "why":
-		return runKindsWhy(args[1:])
+		return runKindsWhy(os.Stdout, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: kinds: unknown subcommand %q\n\n%s",
@@ -78,7 +78,7 @@ func sortedKindNames(cfg *config.Config) []string {
 }
 
 // runKindsList prints declared kinds with their merged bodies.
-func runKindsList(args []string) int {
+func runKindsList(stdout io.Writer, args []string) int {
 	fs := flag.NewFlagSet("kinds list", flag.ContinueOnError)
 	var asJSON bool
 	fs.BoolVar(&asJSON, "json", false, "Emit JSON output")
@@ -110,7 +110,7 @@ func runKindsList(args []string) int {
 		for _, name := range names {
 			out.Kinds = append(out.Kinds, kindsout.MakeBodyJSON(name, cfg.Kinds[name]))
 		}
-		return writeJSON(os.Stdout, out)
+		return writeJSON(stdout, out)
 	}
 
 	if len(names) == 0 {
@@ -119,11 +119,11 @@ func runKindsList(args []string) int {
 	}
 	for i, name := range names {
 		if i > 0 {
-			if _, err := fmt.Fprintln(os.Stdout); err != nil {
+			if _, err := fmt.Fprintln(stdout); err != nil {
 				return printErr(err)
 			}
 		}
-		if err := kindsout.WriteBodyText(os.Stdout, name, cfg.Kinds[name]); err != nil {
+		if err := kindsout.WriteBodyText(stdout, name, cfg.Kinds[name]); err != nil {
 			return printErr(err)
 		}
 	}
@@ -131,7 +131,7 @@ func runKindsList(args []string) int {
 }
 
 // runKindsShow prints one kind's merged body.
-func runKindsShow(args []string) int {
+func runKindsShow(stdout io.Writer, args []string) int {
 	fs := flag.NewFlagSet("kinds show", flag.ContinueOnError)
 	var asJSON bool
 	fs.BoolVar(&asJSON, "json", false, "Emit JSON output")
@@ -162,10 +162,10 @@ func runKindsShow(args []string) int {
 	}
 
 	if asJSON {
-		return writeJSON(os.Stdout, kindsout.MakeBodyJSON(name, body))
+		return writeJSON(stdout, kindsout.MakeBodyJSON(name, body))
 	}
 
-	if err := kindsout.WriteBodyText(os.Stdout, name, body); err != nil {
+	if err := kindsout.WriteBodyText(stdout, name, body); err != nil {
 		return printErr(err)
 	}
 	return 0
@@ -205,7 +205,7 @@ func kindSchemaPath(body config.KindBody, name string) (string, int) {
 // runKindsPath prints the resolved schema path of the kind's
 // required-structure rule. Exits 2 when the kind is unknown or the
 // kind does not configure a schema.
-func runKindsPath(args []string) int {
+func runKindsPath(stdout io.Writer, args []string) int {
 	fs := flag.NewFlagSet("kinds path", flag.ContinueOnError)
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: mdsmith kinds path <name>")
@@ -244,7 +244,7 @@ func runKindsPath(args []string) int {
 			resolved = filepath.Join(root, schema)
 		}
 	}
-	if _, err := fmt.Fprintln(os.Stdout, resolved); err != nil {
+	if _, err := fmt.Fprintln(stdout, resolved); err != nil {
 		return printErr(err)
 	}
 	return 0
@@ -263,24 +263,35 @@ func readFrontMatterKinds(path string, maxBytes int64) ([]string, error) {
 
 // resolveFileFromCLI loads config, parses the file's front matter for
 // kinds: and returns a FileResolution. Errors are printed to stderr.
+//
+// When the config disables front matter (`front-matter: false`), front
+// matter is neither parsed nor validated so the resolution mirrors the
+// engine's behavior; the file is still stat'd to surface a clear error
+// for missing or unreadable paths.
 func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, int) {
 	cfg, _, code := kindsConfig()
 	if code != 0 {
 		return nil, nil, code
 	}
-	maxBytes, err := resolveMaxInputBytes(cfg, "")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return nil, nil, 2
-	}
 
-	fmKinds, err := readFrontMatterKinds(path, maxBytes)
-	if err != nil {
+	var fmKinds []string
+	if frontMatterEnabled(cfg) {
+		maxBytes, err := resolveMaxInputBytes(cfg, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return nil, nil, 2
+		}
+		fmKinds, err = readFrontMatterKinds(path, maxBytes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: reading %s: %v\n", path, err)
+			return nil, nil, 2
+		}
+		if err := config.ValidateFrontMatterKinds(cfg, path, fmKinds); err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return nil, nil, 2
+		}
+	} else if _, err := os.Stat(path); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading %s: %v\n", path, err)
-		return nil, nil, 2
-	}
-	if err := config.ValidateFrontMatterKinds(cfg, path, fmKinds); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, nil, 2
 	}
 
@@ -289,7 +300,7 @@ func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, in
 
 // runKindsResolve prints the resolved kind list and merged rule config
 // for a single file, with per-leaf provenance.
-func runKindsResolve(args []string) int {
+func runKindsResolve(stdout io.Writer, args []string) int {
 	fs := flag.NewFlagSet("kinds resolve", flag.ContinueOnError)
 	var asJSON bool
 	fs.BoolVar(&asJSON, "json", false, "Emit JSON output")
@@ -314,16 +325,16 @@ func runKindsResolve(args []string) int {
 	}
 
 	if asJSON {
-		return writeJSON(os.Stdout, kindsout.FileResolution(res))
+		return writeJSON(stdout, kindsout.FileResolution(res))
 	}
-	if err := kindsout.WriteFileResolutionText(os.Stdout, res); err != nil {
+	if err := kindsout.WriteFileResolutionText(stdout, res); err != nil {
 		return printErr(err)
 	}
 	return 0
 }
 
 // runKindsWhy prints the full merge chain for one rule on one file.
-func runKindsWhy(args []string) int {
+func runKindsWhy(stdout io.Writer, args []string) int {
 	fs := flag.NewFlagSet("kinds why", flag.ContinueOnError)
 	var asJSON bool
 	fs.BoolVar(&asJSON, "json", false, "Emit JSON output")
@@ -355,9 +366,9 @@ func runKindsWhy(args []string) int {
 	}
 
 	if asJSON {
-		return writeJSON(os.Stdout, kindsout.RuleResolution(res.File, rr))
+		return writeJSON(stdout, kindsout.RuleResolution(res.File, rr))
 	}
-	if err := kindsout.WriteRuleResolutionText(os.Stdout, res.File, rr); err != nil {
+	if err := kindsout.WriteRuleResolutionText(stdout, res.File, rr); err != nil {
 		return printErr(err)
 	}
 	return 0

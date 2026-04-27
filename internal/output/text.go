@@ -127,9 +127,6 @@ func (f *TextFormatter) formatSnippet(w io.Writer, d lint.Diagnostic) error {
 
 	maxLineNum := d.SourceStartLine + len(d.SourceLines) - 1
 	gutterWidth := len(fmt.Sprintf("%d", maxLineNum))
-	if gutterWidth < 1 {
-		gutterWidth = 1
-	}
 
 	for i, line := range d.SourceLines {
 		lineNum := d.SourceStartLine + i

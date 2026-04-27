@@ -1147,7 +1147,7 @@ schema is documented in docs/reference/cli.md.
 
 Provenance layers are: 'default' (top-level rules: + built-ins),
 'kinds.<name>' (one per kind in the effective list), and
-'overrides[i]' (one per matching glob override entry).
+'overrides[<i>]' (one per matching glob override entry).
 
 See also: 'mdsmith check --explain' / 'mdsmith fix --explain' to
 attach the same provenance trailer to each diagnostic.

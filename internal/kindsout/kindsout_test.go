@@ -306,6 +306,46 @@ func TestLeavesJSON_PreservesChain(t *testing.T) {
 	t.Fatalf("settings.max leaf missing from %v", out.Leaves)
 }
 
+// erroringYAMLMarshaler implements yaml.Marshaler with a method that
+// always returns an error so we can drive yaml.Marshal down its
+// error-return path.
+type erroringYAMLMarshaler struct{}
+
+func (erroringYAMLMarshaler) MarshalYAML() (any, error) {
+	return nil, errors.New("synthetic marshal error")
+}
+
+// TestWriteBodyText_YAMLMarshalError covers the yaml.Marshal failure
+// branch: a setting whose value implements yaml.Marshaler and returns
+// an error makes yaml.Marshal surface that error rather than panicking.
+func TestWriteBodyText_YAMLMarshalError(t *testing.T) {
+	var buf bytes.Buffer
+	body := config.KindBody{
+		Rules: map[string]config.RuleCfg{
+			"x": {
+				Enabled:  true,
+				Settings: map[string]any{"bad": erroringYAMLMarshaler{}},
+			},
+		},
+	}
+	err := WriteBodyText(&buf, "k", body)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "synthetic marshal error")
+}
+
+// TestWriteFileResolutionText_NoneWriteError covers the (none) Fprintln
+// error branch: an empty kinds list combined with a writer that fails
+// after the first two writes.
+func TestWriteFileResolutionText_NoneWriteError(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{"r": {Enabled: true}},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	w := &failingWriter{err: errors.New("io"), after: 2}
+	err := WriteFileResolutionText(w, res)
+	require.Error(t, err)
+}
+
 // Ensure WriteBodyText output is sorted deterministically.
 func TestWriteBodyText_DeterministicOutput(t *testing.T) {
 	body := config.KindBody{

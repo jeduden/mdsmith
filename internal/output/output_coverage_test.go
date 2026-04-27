@@ -226,3 +226,55 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 	}
 	return len(p), nil
 }
+
+// TestFormat_ExplanationWriterError covers the propagation branch in
+// Format: the header succeeds, the diagnostic has no SourceLines so
+// formatSnippet writes nothing, and the explanation trailer write fails.
+func TestFormat_ExplanationWriterError(t *testing.T) {
+	f := &TextFormatter{Color: false}
+	w := &limitedWriter{limit: 1}
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File:     "test.md",
+			Line:     1,
+			Column:   1,
+			RuleID:   "MDS001",
+			RuleName: "test",
+			Message:  "test",
+			Explanation: &lint.Explanation{
+				Rule: "test",
+				Leaves: []lint.ExplanationLeaf{
+					{Path: "settings.max", Value: 80, Source: "default"},
+				},
+			},
+		},
+	}
+
+	err := f.Format(w, diagnostics)
+	assert.Error(t, err, "expected error from failing explanation write")
+}
+
+// TestFormat_CaretWriterError covers the writeCaretLine error return in
+// formatSnippet: the header and source line succeed, but the caret
+// gutter write fails.
+func TestFormat_CaretWriterError(t *testing.T) {
+	f := &TextFormatter{Color: false}
+	w := &limitedWriter{limit: 2}
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File:            "test.md",
+			Line:            1,
+			Column:          1,
+			RuleID:          "MDS001",
+			RuleName:        "test",
+			Message:         "test",
+			SourceLines:     []string{"hello"},
+			SourceStartLine: 1,
+		},
+	}
+
+	err := f.Format(w, diagnostics)
+	assert.Error(t, err, "expected error from failing caret write")
+}
