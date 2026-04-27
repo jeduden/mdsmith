@@ -16,6 +16,11 @@ footer: |
 
 | ID  | Status | Model  | Title                                                                                                |
 |-----|--------|--------|------------------------------------------------------------------------------------------------------|
+| 100 | 🔲     | sonnet | [build config block and MDS040 recipe-safety rule](plan/100_build-config-and-mds040.md)              |
+| 101 | 🔲     | sonnet | [build directive and MDS039 lint rule](plan/101_build-directive-mds039.md)                           |
+| 102 | 🔲     | opus   | [Builder interface and mdsmith build subcommand](plan/102_build-subcommand.md)                       |
+| 103 | 🔲     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)               |
+| 104 | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                            |
 | 120 | 🔲     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                   |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                         |
