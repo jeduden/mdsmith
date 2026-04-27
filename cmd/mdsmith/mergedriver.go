@@ -472,7 +472,7 @@ func ensurePreMergeCommitHook(repoRoot string, files []string) error {
 	var fixCmds strings.Builder
 	for _, f := range files {
 		fmt.Fprintf(&fixCmds,
-			"if [ -e %s ]; then\n  %s fix %s\n  git add -- %s\nfi\n",
+			"if [ -e %s ]; then\n  %s fix -- %s\n  git add -- %s\nfi\n",
 			shellQuote(f), shellQuote(exe), shellQuote(f), shellQuote(f))
 	}
 

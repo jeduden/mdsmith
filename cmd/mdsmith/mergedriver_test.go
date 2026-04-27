@@ -471,15 +471,17 @@ func TestEnsurePreMergeCommitHook_CreatesExecutableHook(t *testing.T) {
 	hookPath := filepath.Join(dir, ".git", "hooks", "pre-merge-commit")
 	info, err := os.Stat(hookPath)
 	require.NoError(t, err, "hook must exist at %s", hookPath)
-	// Hook must be executable for git to invoke it.
-	assert.NotZero(t, info.Mode()&0o111, "hook must have an execute bit set")
+	// Hook must be executable for git to invoke it (POSIX only).
+	if runtime.GOOS != "windows" {
+		assert.NotZero(t, info.Mode()&0o111, "hook must have an execute bit set")
+	}
 
 	data, err := os.ReadFile(hookPath)
 	require.NoError(t, err)
 	content := string(data)
 	assert.Contains(t, content, preMergeCommitHookMarker)
-	assert.Contains(t, content, "'/usr/local/bin/mdsmith' fix",
-		"hook must invoke the resolved mdsmith binary with fix")
+	assert.Contains(t, content, "'/usr/local/bin/mdsmith' fix --",
+		"hook must invoke the resolved mdsmith binary with fix --")
 	assert.Contains(t, content, "'PLAN.md'")
 	assert.Contains(t, content, "'README.md'")
 }

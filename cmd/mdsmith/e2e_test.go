@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -192,7 +193,6 @@ func isolateDir(t *testing.T, dir string) {
 	}
 }
 
-// writeFixture creates a file with the given content in the given directory.
 // gitHooksDir returns the effective hooks directory for the git repo at dir,
 // derived via git itself so it respects core.hooksPath.
 func gitHooksDir(t *testing.T, dir string) string {
@@ -206,6 +206,7 @@ func gitHooksDir(t *testing.T, dir string) string {
 	return filepath.Clean(p)
 }
 
+// writeFixture creates a file with the given content in the given directory.
 func writeFixture(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -1255,7 +1256,9 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	hookPath := filepath.Join(gitHooksDir(t, dir), "pre-merge-commit")
 	info, err := os.Stat(hookPath)
 	require.NoError(t, err, "expected pre-merge-commit hook at %s", hookPath)
-	assert.NotZero(t, info.Mode()&0o111, "hook must be executable")
+	if runtime.GOOS != "windows" {
+		assert.NotZero(t, info.Mode()&0o111, "hook must be executable")
+	}
 	hookData, err := os.ReadFile(hookPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(hookData), "fix",
