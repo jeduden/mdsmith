@@ -63,8 +63,9 @@ nothing.
 
 ## Directive globs (`<?catalog?>`)
 
-`<?catalog?>` accepts a `glob:` parameter that is split
-on whitespace/newlines into a list. The matcher is
+`<?catalog?>` accepts a `glob:` parameter whose patterns
+are split on newlines into a list. A YAML `glob:` list
+becomes one pattern per line. The matcher is
 [`doublestar`](https://github.com/bmatcuk/doublestar),
 which supports `**`, brace expansion, and other
 extensions on top of the standard glob syntax.

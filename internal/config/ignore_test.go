@@ -40,7 +40,7 @@ func TestIsIgnored_NegationReIncludes(t *testing.T) {
 	assert.True(t, IsIgnored(patterns, "plan/96_kinds.md"),
 		"plan/96_kinds.md should match the inclusion pattern")
 	assert.False(t, IsIgnored(patterns, "plan/proto.md"),
-		"plan/proto.md should be re-excluded by the negation")
+		"plan/proto.md should be re-included by the negation")
 }
 
 func TestIsIgnored_NegationOrderIndependent(t *testing.T) {
