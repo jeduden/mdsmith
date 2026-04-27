@@ -9,7 +9,7 @@ summary: >-
   shape as the built-in `portable`, `github`, and
   `plain`. No inheritance — each profile stands
   alone.
-model: ""
+model: sonnet
 ---
 # User-defined flavor profiles
 

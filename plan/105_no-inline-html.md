@@ -9,7 +9,7 @@ summary: >-
   attack surface for XSS and the largest source of
   parser ambiguity, per the bgslabs.org/why-are-we-
   using-markdown rant.
-model: ""
+model: sonnet
 ---
 # No inline HTML rule
 

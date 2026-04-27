@@ -8,7 +8,7 @@ summary: >-
   italic. Removes the bold/italic ambiguity called
   out as "Exhibit A" in the bgslabs.org markdown
   rant.
-model: ""
+model: sonnet
 ---
 # Emphasis style rule
 

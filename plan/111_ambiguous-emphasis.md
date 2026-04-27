@@ -9,7 +9,7 @@ summary: >-
   Targets the parser-stress cases ("Exhibit A") and
   the ReDoS pattern shape called out in the
   bgslabs.org rant.
-model: ""
+model: sonnet
 ---
 # Ambiguous emphasis rule
 

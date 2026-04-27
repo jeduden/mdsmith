@@ -7,7 +7,7 @@ summary: >-
   as the bullet for unordered lists. Removes the
   three-way ambiguity called out in "Exhibit C" of
   the bgslabs.org rant.
-model: ""
+model: sonnet
 ---
 # List marker style rule
 

@@ -8,7 +8,7 @@ summary: >-
   ones (`1. 1. 1.`). Removes the "ordered list which
   doesn't care how you ordered them" surprise from
   "Exhibit C" of the bgslabs.org rant.
-model: ""
+model: sonnet
 ---
 # Ordered list numbering rule
 

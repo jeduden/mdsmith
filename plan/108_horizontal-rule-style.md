@@ -9,7 +9,7 @@ summary: >-
   a setext heading underline. Closes one of the
   ambiguity cases in "Exhibit C" of the bgslabs.org
   rant.
-model: ""
+model: sonnet
 ---
 # Horizontal rule style rule
 

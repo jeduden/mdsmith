@@ -9,7 +9,7 @@ summary: >-
   Three profiles ship: portable (CommonMark
   everywhere), github (GFM on github.com), and plain
   (Markdown that survives `cat`).
-model: ""
+model: opus
 ---
 # Flavor profiles refactor
 

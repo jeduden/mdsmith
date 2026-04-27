@@ -8,7 +8,7 @@ summary: >-
   definition resolution, moving Markdown from a
   context-free to a context-sensitive grammar — the
   "Exhibit D" complaint in the bgslabs.org rant.
-model: ""
+model: opus
 ---
 # No reference-style links rule
 
