@@ -1,5 +1,5 @@
 ---
-id: 99
+id: 105
 title: No inline HTML rule
 status: "🔲"
 summary: >-

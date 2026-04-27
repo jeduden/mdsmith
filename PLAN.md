@@ -21,6 +21,11 @@ footer: |
 | 102 | 🔲     | opus   | [Builder interface and mdsmith build subcommand](plan/102_build-subcommand.md)                       |
 | 103 | 🔲     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)               |
 | 104 | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                            |
+| 105 | 🔲     |        | [No inline HTML rule](plan/105_no-inline-html.md)                                                    |
+| 106 | 🔲     |        | [Emphasis style rule](plan/106_emphasis-style.md)                                                    |
+| 107 | 🔲     |        | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
+| 108 | 🔲     |        | [Horizontal rule style rule](plan/108_horizontal-rule-style.md)                                      |
+| 109 | 🔲     |        | [List marker style rule](plan/109_list-marker-style.md)                                              |
 | 120 | 🔲     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                   |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                         |
@@ -40,5 +45,4 @@ footer: |
 | 96  | ✅     | sonnet | [Adopt kinds in mdsmith repo and ship the docs](plan/96_kinds-adoption-and-docs.md)                  |
 | 97  | ✅     | opus   | [Deep-merge for kinds and overrides](plan/97_deep-merge-config.md)                                   |
 | 98  | 🔲     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                        |
-| 99  | 🔲     |        | [No inline HTML rule](plan/99_no-inline-html.md)                                                     |
 <?/catalog?>
