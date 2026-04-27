@@ -157,21 +157,32 @@ placeholder. No token matches that form. Plan 98 will
 replace the link as part of the archetype-to-kinds
 rename.
 
-`kind-assignment:` lists each `proto.md` path twice.
+Each `proto.md` file resolves to two kinds.
 
 - The broad `**/proto.md` entry picks up the proto kind.
-- The directory-scoped entry picks up the
-  project-specific kind.
+- A directory-scoped entry picks up the project-specific
+  kind. For `plan/` and `docs/security/` the directory
+  glob (`plan/*.md`, `docs/security/*.md`) already
+  matches `proto.md`. For `internal/rules/` and
+  `.claude/skills/` the directory glob targets a
+  different filename (`MDS*/README.md`, `*/SKILL.md`),
+  so those entries also list `proto.md` explicitly.
 
 The later schema kind sets `required-structure.schema:`
 to `proto.md` itself. That marks the file as its own
 schema. The "<?require?> outside a schema file" warning
-then stays silent.
+then stays silent. With deep-merge (plan 97) the schema
+setting from the project kind composes with the proto
+kind's other settings rather than replacing them.
 
-The `plan/*.md` and `docs/security/*.md` overrides were
-narrowed to `plan/[0-9]*_*.md` and
-`docs/security/[0-9]*.md`. They no longer collide with
-the proto kind on `proto.md` files.
+The redundant schema overrides were removed:
+
+- `plan/*.md`
+- `docs/security/*.md`
+- `internal/rules/MDS*/README.md`
+
+Each schema now lives in its kind. Schema attachment
+for a file class lives in one place.
 
 ## Acceptance Criteria
 

@@ -277,11 +277,11 @@ kinds:
 kind-assignment:
   - files: ["**/proto.md"]
     kinds: [proto]
-  - files: ["plan/proto.md", "plan/[0-9]*_*.md"]
+  - files: ["plan/*.md"]
     kinds: [plan]
   - files: ["internal/rules/proto.md", "internal/rules/MDS*/README.md"]
     kinds: [rule-readme]
   - files: [".claude/skills/proto.md", ".claude/skills/*/SKILL.md"]
     kinds: [skill]
-  - files: ["docs/security/proto.md", "docs/security/*.md"]
+  - files: ["docs/security/*.md"]
     kinds: [security-note]

@@ -180,13 +180,17 @@ diagnostic you expected doesn't fire — start with the
 resolved kind list and the merged rule config for that
 file.
 
-A planned `mdsmith kinds resolve <file>` subcommand
-(tracked in plan 95) will print both: the effective kind
-list and the merged rule settings, with a per-leaf source
-so you can see which layer set each value.
+`mdsmith kinds resolve <file>` prints both: the effective
+kind list and the merged rule settings, with a per-leaf
+source so you can see which layer set each value. Add
+`--json` for a structured form. For a single rule's full
+merge chain, use `mdsmith kinds why <file> <rule>`. To
+attach the same source trailer to each diagnostic, run
+`mdsmith check --explain` (or `fix --explain`).
 
-Until that lands, the same information is recoverable by
-reading `.mdsmith.yml` against the merge rules above:
+If you'd rather walk the merge by hand, the same
+information is recoverable by reading `.mdsmith.yml`
+against the merge rules above:
 
 1. Read the file's front matter for any `kinds:` field.
 2. Walk `kind-assignment:` top to bottom and collect
