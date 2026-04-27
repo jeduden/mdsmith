@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
+	"github.com/jeduden/mdsmith/internal/explain"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -136,32 +137,10 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 
 	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
-	if f.Explain && len(diags) > 0 {
-		f.attachExplanations(diags, path, fmKinds)
+	if f.Explain {
+		explain.Attach(diags, f.Config, path, fmKinds)
 	}
 	return beforeDiags, diags, modified, errs
-}
-
-// attachExplanations populates Diagnostic.Explanation for each diag
-// emitted by a file path using the rule's resolved leaves.
-func (f *Fixer) attachExplanations(diags []lint.Diagnostic, path string, fmKinds []string) {
-	res := config.ResolveFile(f.Config, path, fmKinds)
-	for i := range diags {
-		rr, ok := res.Rules[diags[i].RuleName]
-		if !ok {
-			continue
-		}
-		leaves := make([]lint.ExplanationLeaf, 0, len(rr.Leaves))
-		for _, l := range rr.Leaves {
-			leaves = append(leaves, lint.ExplanationLeaf{
-				Path: l.Path, Value: l.Value, Source: l.Source(),
-			})
-		}
-		diags[i].Explanation = &lint.Explanation{
-			Rule:   diags[i].RuleName,
-			Leaves: leaves,
-		}
-	}
 }
 
 // applyFixPasses repeatedly applies fixable rules until the content stabilizes.

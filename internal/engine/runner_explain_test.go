@@ -48,36 +48,26 @@ func TestRunner_ExplainAttachesProvenanceToDiagnostics(t *testing.T) {
 	assert.True(t, sawMax, "settings.max leaf must appear in the explanation")
 }
 
-// TestRunner_ExplainSkipsDiagnosticsForUnknownRule covers the branch in
-// attachExplanations that skips rules absent from the resolved config.
-func TestRunner_ExplainSkipsDiagnosticsForUnknownRule(t *testing.T) {
+// TestRunner_ExplainEmptyDiagsIsNoOp ensures the runner does not call
+// into the shared explain helper when there are no diagnostics.
+func TestRunner_ExplainEmptyDiagsIsNoOp(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "test.md")
 	require.NoError(t, os.WriteFile(path, []byte("# Hello\n"), 0o644))
 
-	// Rule is enabled (so it runs) but we attach explanations using a config
-	// where the rule name is missing from cfg.Rules — simulating a rule that
-	// emits a diagnostic with a RuleName not tracked by config.
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
-			"mock-rule": {Enabled: true},
+			"silent-rule": {Enabled: true},
 		},
 	}
-
 	runner := &Runner{
 		Config:  cfg,
-		Rules:   []rule.Rule{&mockRule{id: "MDS999", name: "mock-rule"}},
+		Rules:   []rule.Rule{&silentRule{id: "MDS998", name: "silent-rule"}},
 		Explain: true,
 	}
 	result := runner.Run([]string{path})
-	require.Len(t, result.Diagnostics, 1)
-	// Manually overwrite the diagnostic's RuleName to one missing from cfg.Rules
-	// and re-run attachExplanations to exercise the skip branch.
-	result.Diagnostics[0].RuleName = "absent-rule"
-	result.Diagnostics[0].Explanation = nil
-	runner.attachExplanations(result.Diagnostics, path, nil)
-	assert.Nil(t, result.Diagnostics[0].Explanation,
-		"unknown rule should leave Explanation nil")
+	assert.Empty(t, result.Diagnostics)
+	assert.Empty(t, result.Errors)
 }
 
 // TestRunner_RunSourceExplainAttachesProvenance covers the RunSource

@@ -75,6 +75,12 @@ func (f *TextFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 // formatExplanation writes a one-line trailer naming the rule and
 // the winning source of each leaf setting that contributed to the
 // rule's effective config. No-op when explanation is nil.
+//
+// Rule names, leaf paths, leaf values, and source labels can come from
+// user-controlled YAML (kind names, settings keys/values), so each
+// piece is run through sanitizeControl before it's joined into the
+// single-line trailer to prevent newlines or ANSI escapes from
+// breaking the format or injecting terminal sequences.
 func (f *TextFormatter) formatExplanation(w io.Writer, e *lint.Explanation) error {
 	if e == nil {
 		return nil
@@ -82,18 +88,21 @@ func (f *TextFormatter) formatExplanation(w io.Writer, e *lint.Explanation) erro
 	parts := make([]string, 0, len(e.Leaves))
 	for _, l := range e.Leaves {
 		parts = append(parts, fmt.Sprintf("%s=%s (%s)",
-			l.Path, formatLeafValue(l.Value), l.Source))
+			sanitizeControl(l.Path),
+			sanitizeControl(formatLeafValue(l.Value)),
+			sanitizeControl(l.Source)))
 	}
 	body := strings.Join(parts, ", ")
 	if body == "" {
 		body = "(no settings)"
 	}
+	rule := sanitizeControl(e.Rule)
 	prefix := "  └─ "
 	if f.Color {
-		_, err := fmt.Fprintf(w, "%s\033[2m%s: %s\033[0m\n", prefix, e.Rule, body)
+		_, err := fmt.Fprintf(w, "%s\033[2m%s: %s\033[0m\n", prefix, rule, body)
 		return err
 	}
-	_, err := fmt.Fprintf(w, "%s%s: %s\n", prefix, e.Rule, body)
+	_, err := fmt.Fprintf(w, "%s%s: %s\n", prefix, rule, body)
 	return err
 }
 

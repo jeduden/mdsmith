@@ -2,6 +2,7 @@ package output
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -93,4 +94,47 @@ func TestTextFormatter_ExplainEmptyLeavesPrintsNoSettings(t *testing.T) {
 	}}
 	require.NoError(t, f.Format(&buf, diags))
 	assert.Contains(t, buf.String(), "(no settings)")
+}
+
+// TestTextFormatter_ExplainSanitizesControlChars makes sure that
+// rule/leaf/source values from user-controlled YAML cannot break the
+// single-line trailer with newlines or inject terminal escape codes.
+func TestTextFormatter_ExplainSanitizesControlChars(t *testing.T) {
+	f := &TextFormatter{Color: false}
+	var buf bytes.Buffer
+
+	diags := []lint.Diagnostic{{
+		File: "x.md", Line: 1, Column: 1,
+		RuleID: "MDS001", RuleName: "evil",
+		Severity: lint.Error, Message: "msg",
+		Explanation: &lint.Explanation{
+			Rule: "evil\nrule\x1b[31m",
+			Leaves: []lint.ExplanationLeaf{
+				{
+					Path:   "settings.bad\x07key",
+					Value:  "v\x1b[31m",
+					Source: "kinds.bad\nkind",
+				},
+			},
+		},
+	}}
+	require.NoError(t, f.Format(&buf, diags))
+
+	out := buf.String()
+	// One trailer line; no embedded newlines, no ESC, no BEL after split.
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	var trailer string
+	for _, ln := range lines {
+		if strings.Contains(ln, "└─") {
+			trailer = ln
+			break
+		}
+	}
+	require.NotEmpty(t, trailer, "trailer line not found in %q", out)
+	assert.NotContains(t, trailer, "\x1b")
+	assert.NotContains(t, trailer, "\x07")
+	// Sanitized rule/leaf/source content remains visible.
+	assert.Contains(t, trailer, "evilrule")
+	assert.Contains(t, trailer, "settings.badkey")
+	assert.Contains(t, trailer, "kinds.badkind")
 }

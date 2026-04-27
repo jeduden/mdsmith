@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/explain"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -93,8 +94,8 @@ func (r *Runner) Run(paths []string) *Result {
 		r.logRules(effective)
 
 		diags, errs := CheckRules(f, r.Rules, effective)
-		if r.Explain && len(diags) > 0 {
-			r.attachExplanations(diags, path, fmKinds)
+		if r.Explain {
+			explain.Attach(diags, r.Config, path, fmKinds)
 		}
 		res.Diagnostics = append(res.Diagnostics, diags...)
 		res.Errors = append(res.Errors, errs...)
@@ -102,28 +103,6 @@ func (r *Runner) Run(paths []string) *Result {
 
 	sortDiagnostics(res.Diagnostics)
 	return res
-}
-
-// attachExplanations populates Diagnostic.Explanation for each diag
-// emitted by a file path using the rule's resolved leaves.
-func (r *Runner) attachExplanations(diags []lint.Diagnostic, path string, fmKinds []string) {
-	res := config.ResolveFile(r.Config, path, fmKinds)
-	for i := range diags {
-		rr, ok := res.Rules[diags[i].RuleName]
-		if !ok {
-			continue
-		}
-		leaves := make([]lint.ExplanationLeaf, 0, len(rr.Leaves))
-		for _, l := range rr.Leaves {
-			leaves = append(leaves, lint.ExplanationLeaf{
-				Path: l.Path, Value: l.Value, Source: l.Source(),
-			})
-		}
-		diags[i].Explanation = &lint.Explanation{
-			Rule:   diags[i].RuleName,
-			Leaves: leaves,
-		}
-	}
 }
 
 // RunSource lints in-memory source bytes (e.g. from stdin) and returns a
@@ -164,8 +143,8 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 	r.logRules(effective)
 
 	diags, errs := CheckRules(f, r.Rules, effective)
-	if r.Explain && len(diags) > 0 {
-		r.attachExplanations(diags, path, fmKinds)
+	if r.Explain {
+		explain.Attach(diags, r.Config, path, fmKinds)
 	}
 	res.Diagnostics = append(res.Diagnostics, diags...)
 	res.Errors = append(res.Errors, errs...)

@@ -49,9 +49,9 @@ func TestFix_ExplainAttachesProvenanceToRemainingDiagnostics(t *testing.T) {
 	assert.True(t, sawMax, "settings.max leaf must appear in the explanation")
 }
 
-// TestFix_ExplainSkipsDiagnosticForUnknownRule covers the branch in
-// attachExplanations that skips rules absent from the resolved config.
-func TestFix_ExplainSkipsDiagnosticForUnknownRule(t *testing.T) {
+// TestFix_ExplainOmittedWhenFlagUnset ensures the fixer does not
+// populate Diagnostic.Explanation when Explain is false.
+func TestFix_ExplainOmittedWhenFlagUnset(t *testing.T) {
 	dir := t.TempDir()
 	mdFile := filepath.Join(dir, "test.md")
 	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello\n"), 0o644))
@@ -62,16 +62,11 @@ func TestFix_ExplainSkipsDiagnosticForUnknownRule(t *testing.T) {
 		},
 	}
 	fixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockNonFixableRule{id: "MDS999", name: "mock-nonfixable"}},
-		Explain: true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockNonFixableRule{id: "MDS999", name: "mock-nonfixable"}},
 	}
 	result := fixer.Fix([]string{mdFile})
 	require.Len(t, result.Diagnostics, 1)
-	// Re-attach with a RuleName not in cfg.Rules to exercise the skip branch.
-	result.Diagnostics[0].RuleName = "absent-rule"
-	result.Diagnostics[0].Explanation = nil
-	fixer.attachExplanations(result.Diagnostics, mdFile, nil)
 	assert.Nil(t, result.Diagnostics[0].Explanation,
-		"unknown rule should leave Explanation nil")
+		"Explanation must remain nil when Explain is false")
 }
