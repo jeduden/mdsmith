@@ -1413,6 +1413,146 @@ func TestE2E_MergeDriver_SectionMarkersInsideConflict_Preserved(t *testing.T) {
 	assert.Contains(t, content, ">>>>>>>", "expected >>>>>>> marker preserved")
 }
 
+// TestE2E_MergeDriver_FileOrderingRace_Resolved reproduces the
+// CI failure from run 24971661273.
+//
+// Two branches each bump the status of a different plan file from
+// 🔲 to ✅ AND each regenerate PLAN.md against their own working
+// tree. When the branches are merged, both sides have modified
+// PLAN.md vs base, so git invokes the merge driver. The driver's
+// own `mdsmith fix` reads sibling plan/*.md files from the
+// working tree at that moment — but git has not yet processed
+// every plan path, so the regenerated catalog is stale relative
+// to the final merged state.
+//
+// With the pre-merge-commit hook installed by `merge-driver
+// install`, mdsmith fix runs again after every per-file merge has
+// settled, so PLAN.md ends up consistent with plan/*.md.
+const planTmpl = `---
+id: %d
+title: Plan %d
+status: "%s"
+---
+# Plan %d
+
+Body.
+`
+
+const planMdTmpl = "# Plans\n\n" +
+	"<?catalog\n" +
+	"glob:\n  - \"plan/*.md\"\n" +
+	"sort: id\n" +
+	"header: |\n\n  | ID | Status | Title |\n  |----|--------|-------|\n" +
+	"row: \"| {id} | {status} | [{title}]({filename}) |\"\n" +
+	"footer: |\n\n" +
+	"?>\n" +
+	"<?/catalog?>\n"
+
+// completePlanOnBranch creates branch from start, sets plan/<id>.md
+// status to ✅, regenerates PLAN.md, and commits.
+func completePlanOnBranch(t *testing.T, dir, branch, start string, planID int) {
+	t.Helper()
+	gitInDir(t, dir, "checkout", "-b", branch, start)
+	writeFixture(t, dir, fmt.Sprintf("plan/%02d.md", planID),
+		fmt.Sprintf(planTmpl, planID, planID, "✅", planID))
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "%s fix failed: %s", branch, stderr)
+	gitCommit(t, dir, fmt.Sprintf("complete plan %d", planID))
+}
+
+func TestE2E_MergeDriver_FileOrderingRace_Resolved(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	// Catalog over plan/*.md, sorted by id; rule names match the
+	// directives the merge driver knows how to regenerate.
+	writeFixture(t, dir, ".mdsmith.yml",
+		"rules:\n  catalog: true\n  include: true\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "plan"), 0o755))
+	writeFixture(t, dir, "plan/01.md", fmt.Sprintf(planTmpl, 1, 1, "🔲", 1))
+	writeFixture(t, dir, "plan/02.md", fmt.Sprintf(planTmpl, 2, 2, "🔲", 2))
+	writeFixture(t, dir, "PLAN.md", planMdTmpl)
+
+	// Populate the catalog body once so the base commit is clean.
+	_, stderr, code := runBinaryInDir(t, dir, "", "fix", "PLAN.md")
+	require.Equal(t, 0, code, "seed fix failed: %s", stderr)
+	gitCommit(t, dir, "seed")
+	seedSHA := strings.TrimSpace(gitInDir(t, dir, "rev-parse", "HEAD"))
+
+	completePlanOnBranch(t, dir, "ours", seedSHA, 1)
+	completePlanOnBranch(t, dir, "theirs", seedSHA, 2)
+
+	// Install the merge driver — registers git config + the
+	// pre-merge-commit hook that closes the race.
+	gitInDir(t, dir, "checkout", "ours")
+	_, stderr, code = runBinaryInDir(t, dir, "", "merge-driver", "install")
+	require.Equal(t, 0, code, "install failed: %s", stderr)
+
+	// Merge theirs into ours. Both sides modified PLAN.md, so the
+	// per-file driver runs; the hook then re-fixes once every plan
+	// file is in its final merged state.
+	out, err := exec.Command("git", "-C", dir,
+		"-c", "commit.gpgsign=false",
+		"merge", "--no-ff", "-m", "merge theirs", "theirs").CombinedOutput()
+	require.NoError(t, err, "git merge failed: %s", out)
+
+	// PLAN.md catalog must reflect the post-merge plan files.
+	plan, err := os.ReadFile(filepath.Join(dir, "PLAN.md"))
+	require.NoError(t, err)
+	planStr := string(plan)
+	assert.Regexp(t, `\| 1 +\| ✅ +\|`, planStr,
+		"row 1 must show ✅ in merged PLAN.md, got:\n%s", planStr)
+	assert.Regexp(t, `\| 2 +\| ✅ +\|`, planStr,
+		"row 2 must show ✅ in merged PLAN.md, got:\n%s", planStr)
+
+	// Source plan files must agree with the catalog rows.
+	for _, path := range []string{"plan/01.md", "plan/02.md"} {
+		data, err := os.ReadFile(filepath.Join(dir, path))
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `status: "✅"`,
+			"%s status must be ✅ after merge", path)
+	}
+
+	// Whole-tree consistency: a fresh check must report no issues
+	// — exactly what failed in CI run 24971661273.
+	_, stderr, code = runBinaryInDir(t, dir, "", "check", ".")
+	assert.Equal(t, 0, code,
+		"check after merge must pass; stderr:\n%s", stderr)
+}
+
+// gitInit initializes a git repo with isolated user/sign config so
+// commits succeed on machines that have global signing turned on.
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	cmds := [][]string{
+		{"init", "-q", "-b", "main", dir},
+		{"-C", dir, "config", "user.name", "test"},
+		{"-C", dir, "config", "user.email", "test@example.com"},
+		{"-C", dir, "config", "commit.gpgsign", "false"},
+		{"-C", dir, "config", "tag.gpgsign", "false"},
+	}
+	for _, c := range cmds {
+		out, err := exec.Command("git", c...).CombinedOutput()
+		require.NoError(t, err, "git %v: %s", c, out)
+	}
+}
+
+// gitInDir runs git in dir and returns stdout. Test fails on non-zero.
+func gitInDir(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	full := append([]string{"-C", dir}, args...)
+	out, err := exec.Command("git", full...).CombinedOutput()
+	require.NoError(t, err, "git %v: %s", args, out)
+	return string(out)
+}
+
+// gitCommit stages everything and commits with the given message.
+func gitCommit(t *testing.T, dir, msg string) {
+	t.Helper()
+	gitInDir(t, dir, "add", "-A")
+	gitInDir(t, dir, "commit", "-q", "-m", msg)
+}
+
 // ── max-input-size ──────────────────────────────────────────────
 
 func TestCheck_MaxInputSize_ExceedingLimit(t *testing.T) {
