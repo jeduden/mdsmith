@@ -355,6 +355,65 @@ func TestWriteFileResolutionText_NoneWriteError(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestSanitizeControl_StripsCtrls covers the sanitizeControl helper.
+func TestSanitizeControl_StripsCtrls(t *testing.T) {
+	assert.Equal(t, "ab", sanitizeControl("a\nb"))     // C0: LF
+	assert.Equal(t, "ab", sanitizeControl("a\x07b"))   // C0: BEL
+	assert.Equal(t, "ab", sanitizeControl("a\x1bb"))   // C0: ESC
+	assert.Equal(t, "ab", sanitizeControl("a\u009fb")) // C1: U+009F
+	assert.Equal(t, "hello", sanitizeControl("hello"))
+}
+
+// TestWriteBodyText_SanitizesKindName ensures control chars in the kind
+// name are stripped from the header line.
+func TestWriteBodyText_SanitizesKindName(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, WriteBodyText(&buf, "evil\nkind", config.KindBody{}))
+	assert.NotContains(t, buf.String(), "\n\n") // no extra blank line from injected newline
+	assert.Contains(t, buf.String(), "evilkind:")
+}
+
+// TestWriteFileResolutionText_SanitizesKindName ensures control chars
+// in kind names (from user YAML) are stripped from the text output.
+func TestWriteFileResolutionText_SanitizesKindName(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true},
+		},
+		Kinds: map[string]config.KindBody{
+			"evil\x1bkind": {Rules: map[string]config.RuleCfg{
+				"line-length": {Enabled: true},
+			}},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Files: []string{"x.md"}, Kinds: []string{"evil\x1bkind"}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	assert.NotContains(t, buf.String(), "\x1b")
+	assert.Contains(t, buf.String(), "evilkind")
+}
+
+// TestWriteRuleResolutionText_SanitizesFields ensures control chars in
+// file/rule/source fields are stripped from the text output.
+func TestWriteRuleResolutionText_SanitizesFields(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line\x07length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+	}
+	res := config.ResolveFile(cfg, "evil\x07file.md", nil)
+	rr := res.Rules["line\x07length"]
+	var buf bytes.Buffer
+	require.NoError(t, WriteRuleResolutionText(&buf, "evil\x07file.md", rr))
+	out := buf.String()
+	assert.NotContains(t, out, "\x07")
+	assert.Contains(t, out, "linelength")  // BEL stripped from rule name
+	assert.Contains(t, out, "evilfile.md") // BEL stripped from file name
+}
+
 // Ensure WriteBodyText output is sorted deterministically.
 func TestWriteBodyText_DeterministicOutput(t *testing.T) {
 	body := config.KindBody{

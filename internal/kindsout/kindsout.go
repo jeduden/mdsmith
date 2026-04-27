@@ -192,7 +192,7 @@ func WriteJSON(w io.Writer, v any) error {
 // WriteBodyText prints a kind body as YAML, wrapped with a header line
 // naming the kind.
 func WriteBodyText(w io.Writer, name string, body config.KindBody) error {
-	if _, err := fmt.Fprintf(w, "%s:\n", name); err != nil {
+	if _, err := fmt.Fprintf(w, "%s:\n", sanitizeControl(name)); err != nil {
 		return err
 	}
 	wrap := struct {
@@ -221,7 +221,7 @@ func WriteBodyText(w io.Writer, name string, body config.KindBody) error {
 // WriteFileResolutionText renders a per-file resolution as text, with
 // effective kinds and per-leaf source info for every rule.
 func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
-	if _, err := fmt.Fprintf(w, "file: %s\n", res.File); err != nil {
+	if _, err := fmt.Fprintf(w, "file: %s\n", sanitizeControl(res.File)); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "effective kinds:"); err != nil {
@@ -233,7 +233,8 @@ func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
 		}
 	} else {
 		for _, k := range res.Kinds {
-			if _, err := fmt.Fprintf(w, "  - %s (from %s)\n", k.Name, k.Source); err != nil {
+			if _, err := fmt.Fprintf(w, "  - %s (from %s)\n",
+				sanitizeControl(k.Name), sanitizeControl(string(k.Source))); err != nil {
 				return err
 			}
 		}
@@ -249,12 +250,13 @@ func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
 	sort.Strings(names)
 	for _, name := range names {
 		rr := res.Rules[name]
-		if _, err := fmt.Fprintf(w, "  %s:\n", name); err != nil {
+		if _, err := fmt.Fprintf(w, "  %s:\n", sanitizeControl(name)); err != nil {
 			return err
 		}
 		for _, leaf := range rr.Leaves {
 			if _, err := fmt.Fprintf(w, "    %s = %s  (from %s)\n",
-				leaf.Path, FormatValue(leaf.Value), leaf.Source()); err != nil {
+				sanitizeControl(leaf.Path), FormatValue(leaf.Value),
+				sanitizeControl(leaf.Source())); err != nil {
 				return err
 			}
 		}
@@ -266,16 +268,17 @@ func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
 // including no-op layers and the chain for every leaf.
 func WriteRuleResolutionText(w io.Writer, file string, rr config.RuleResolution) error {
 	if _, err := fmt.Fprintf(w, "file: %s\nrule: %s\n\nmerge chain (oldest -> newest):\n",
-		file, rr.Rule); err != nil {
+		sanitizeControl(file), sanitizeControl(rr.Rule)); err != nil {
 		return err
 	}
 	for _, l := range rr.Layers {
 		var line string
 		if l.Set {
 			line = fmt.Sprintf("  %-30s set    %s\n",
-				l.Source, FormatValue(RuleCfgValue(l.Value)))
+				sanitizeControl(l.Source), FormatValue(RuleCfgValue(l.Value)))
 		} else {
-			line = fmt.Sprintf("  %-30s no-op  (rule untouched)\n", l.Source)
+			line = fmt.Sprintf("  %-30s no-op  (rule untouched)\n",
+				sanitizeControl(l.Source))
 		}
 		if _, err := fmt.Fprint(w, line); err != nil {
 			return err
@@ -286,12 +289,13 @@ func WriteRuleResolutionText(w io.Writer, file string, rr config.RuleResolution)
 	}
 	for _, leaf := range rr.Leaves {
 		if _, err := fmt.Fprintf(w, "  %s = %s  (winning source: %s)\n",
-			leaf.Path, FormatValue(leaf.Value), leaf.Source()); err != nil {
+			sanitizeControl(leaf.Path), FormatValue(leaf.Value),
+			sanitizeControl(leaf.Source())); err != nil {
 			return err
 		}
 		for _, c := range leaf.Chain {
 			if _, err := fmt.Fprintf(w, "    %-28s %s\n",
-				c.Source, FormatValue(c.Value)); err != nil {
+				sanitizeControl(c.Source), FormatValue(c.Value)); err != nil {
 				return err
 			}
 		}
@@ -307,4 +311,16 @@ func FormatValue(v any) string {
 		return fmt.Sprintf("%v", v)
 	}
 	return string(b)
+}
+
+// sanitizeControl strips C0/C1 control characters from s so that
+// user-controlled strings (kind names, rule names, file paths, source
+// labels) cannot inject newlines or ANSI escapes into text output.
+func sanitizeControl(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return -1
+		}
+		return r
+	}, s)
 }

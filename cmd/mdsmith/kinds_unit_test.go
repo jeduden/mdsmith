@@ -19,21 +19,17 @@ import (
 // and why have a non-trivial chain to render.
 const kindsTestConfig = `rules:
   line-length:
-    enabled: true
     max: 80
 kinds:
   alpha:
     rules:
       line-length:
-        enabled: true
         max: 30
       required-structure:
-        enabled: true
         schema: schemas/alpha.yml
   beta:
     rules:
       line-length:
-        enabled: true
         max: 40
 kind-assignment:
   - files: ["alpha/*"]
@@ -282,13 +278,11 @@ func TestRunKindsResolve_FrontMatterDisabledSkipsParsing(t *testing.T) {
 	cfgBody := `front-matter: false
 rules:
   line-length:
-    enabled: true
     max: 80
 kinds:
   alpha:
     rules:
       line-length:
-        enabled: true
         max: 30
 `
 	dir := chdirToConfig(t, cfgBody)
