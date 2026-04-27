@@ -26,6 +26,9 @@ footer: |
 | 107 | 🔲     |        | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
 | 108 | 🔲     |        | [Horizontal rule style rule](plan/108_horizontal-rule-style.md)                                      |
 | 109 | 🔲     |        | [List marker style rule](plan/109_list-marker-style.md)                                              |
+| 110 | 🔲     |        | [Ordered list numbering rule](plan/110_ordered-list-numbering.md)                                    |
+| 111 | 🔲     |        | [Ambiguous emphasis rule](plan/111_ambiguous-emphasis.md)                                            |
+| 112 | 🔲     |        | [Flavor profiles refactor](plan/112_flavor-profiles.md)                                              |
 | 120 | 🔲     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                   |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                         |

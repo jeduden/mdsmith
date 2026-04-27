@@ -76,6 +76,19 @@ The definition must sit immediately after the
 referencing paragraph. Numeric `[^1]` is rejected
 because the number carries no anchor.
 
+### Flavor activation
+
+[Plan 112](112_flavor-profiles.md) ships profiles
+that auto-enable this rule:
+
+- `profile: mdsmith-strict` activates with
+  `allow-footnotes: false`.
+- `profile: mdsmith-relaxed` does not activate
+  this rule.
+
+User overrides on top of the profile still win via
+deep-merge.
+
 ### Detection
 
 Walk `*ast.Link` nodes. For each link, read the

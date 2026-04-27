@@ -57,6 +57,19 @@ rules:
 
 Category: `list`. Disabled by default (opt-in).
 
+### Flavor activation
+
+[Plan 112](112_flavor-profiles.md) ships profiles
+that auto-enable this rule:
+
+- `profile: mdsmith-strict` activates with
+  `style: dash` and empty `nested`.
+- `profile: mdsmith-relaxed` activates with the
+  same defaults.
+
+User overrides on top of the profile still win via
+deep-merge.
+
 ### Detection
 
 Walk `*ast.List` with `!IsOrdered()`. For each list:

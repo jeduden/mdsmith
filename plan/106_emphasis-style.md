@@ -65,6 +65,20 @@ and the new MDS039.
 
 Disabled by default (opt-in) — existing corpora vary.
 
+### Flavor activation
+
+[Plan 112](112_flavor-profiles.md) ships profiles
+that auto-enable this rule:
+
+- `profile: mdsmith-strict` activates with
+  `bold: asterisk`, `italic: underscore`, and
+  `forbid-mixed-nesting: true`.
+- `profile: mdsmith-relaxed` activates with the
+  same defaults.
+
+User overrides on top of the profile still win via
+deep-merge.
+
 ### Detection
 
 Walk the AST. For every `*ast.Emphasis`:

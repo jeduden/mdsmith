@@ -86,6 +86,19 @@ default, matching the rest of the codebase except
 default empty list does so by listing every tag they
 need.
 
+### Flavor activation
+
+[Plan 112](112_flavor-profiles.md) ships profiles
+that auto-enable this rule:
+
+- `profile: mdsmith-strict` activates with empty
+  `allow` and `allow-comments: true`.
+- `profile: mdsmith-relaxed` activates with
+  `allow: [details, summary, sub, sup, kbd]`.
+
+User overrides on top of the profile still win via
+deep-merge.
+
 ### Detection
 
 Walk `f.AST`. For every `*ast.HTMLBlock` and every
