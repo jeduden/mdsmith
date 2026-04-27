@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
@@ -339,4 +340,11 @@ func TestDefaultSettings_IncludesPlaceholders(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
 	assert.Equal(t, []string{}, ds["placeholders"])
+}
+
+func TestSettingMergeMode_FirstLineHeading(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, rule.MergeAppend, r.SettingMergeMode("placeholders"))
+	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("level"))
+	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }

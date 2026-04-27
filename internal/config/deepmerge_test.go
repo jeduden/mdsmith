@@ -127,6 +127,57 @@ func TestMergeRuleCfgIsolatesNestedMapMutation(t *testing.T) {
 	assert.Equal(t, 80, original["max"], "mutating result must not mutate earlier source")
 }
 
+// --- settingMergeMode fallback paths ---
+
+func TestSettingMergeMode_UnknownRule(t *testing.T) {
+	// An unknown rule name → ByName returns nil → default MergeReplace.
+	earlier := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"items": []any{"a", "b"}},
+	}
+	later := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"items": []any{"c"}},
+	}
+	got := mergeRuleCfg("no-such-rule", earlier, later)
+	// List should replace (not append) when rule is unknown.
+	assert.Equal(t, []any{"c"}, got.Settings["items"])
+}
+
+// --- cloneAny branch coverage ---
+
+func TestCloneAny_StringSlice(t *testing.T) {
+	original := map[string]any{"tags": []string{"a", "b"}}
+	cloned := cloneSettings(original)
+	cloned["tags"].([]string)[0] = "z"
+	assert.Equal(t, "a", original["tags"].([]string)[0], "cloneAny must deep-copy []string")
+}
+
+func TestCloneAny_IntSlice(t *testing.T) {
+	original := map[string]any{"counts": []int{1, 2, 3}}
+	cloned := cloneSettings(original)
+	cloned["counts"].([]int)[0] = 99
+	assert.Equal(t, 1, original["counts"].([]int)[0], "cloneAny must deep-copy []int")
+}
+
+func TestCloneSettingsNil(t *testing.T) {
+	assert.Nil(t, cloneSettings(nil))
+}
+
+func TestToAnySlice_IntSlice(t *testing.T) {
+	// Exercise the []int case in toAnySlice via mergeAny.
+	earlier := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"nums": []int{1, 2}},
+	}
+	later := RuleCfg{
+		Enabled:  true,
+		Settings: map[string]any{"nums": []int{3}},
+	}
+	got := mergeRuleCfg("some-rule", earlier, later)
+	assert.Equal(t, []any{3}, got.Settings["nums"])
+}
+
 // --- effectiveRules deep-merge through the layer chain ---
 
 func TestEffectiveTwoKindsContributeDifferentKeys(t *testing.T) {
@@ -256,6 +307,22 @@ func TestEffectiveBoolOnlyLayerPreservesInheritedSettings(t *testing.T) {
 
 // --- Regression: a layer that fully restates the rule body wins on
 // every key, matching the pre-deep-merge behavior for that layer.
+
+func TestEffectiveKindAddsRuleNotInDefaults(t *testing.T) {
+	// A kind introduces a rule not present in the top-level defaults at
+	// all. The else branch in effectiveRules (copyRuleCfg) must fire.
+	cfg := &Config{
+		Rules: map[string]RuleCfg{},
+		Kinds: map[string]KindBody{
+			"plan": {Rules: map[string]RuleCfg{
+				"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+			}},
+		},
+	}
+	got := Effective(cfg, "doc.md", []string{"plan"})
+	assert.True(t, got["line-length"].Enabled)
+	assert.Equal(t, 80, got["line-length"].Settings["max"])
+}
 
 func TestEffectiveFullyRestatedLayerStillWins(t *testing.T) {
 	cfg := &Config{
