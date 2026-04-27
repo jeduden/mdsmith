@@ -1,7 +1,7 @@
 ---
 id: 97
 title: Deep-merge for kinds and overrides
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Replace block-level replacement with deep-merge across
