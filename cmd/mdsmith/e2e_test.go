@@ -193,6 +193,19 @@ func isolateDir(t *testing.T, dir string) {
 }
 
 // writeFixture creates a file with the given content in the given directory.
+// gitHooksDir returns the effective hooks directory for the git repo at dir,
+// derived via git itself so it respects core.hooksPath.
+func gitHooksDir(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--git-path", "hooks").Output()
+	require.NoError(t, err, "git rev-parse --git-path hooks")
+	p := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(dir, p)
+	}
+	return filepath.Clean(p)
+}
+
 func writeFixture(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -1238,7 +1251,8 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	assert.Contains(t, content, "README.md merge=mdsmith", "expected README.md entry in .gitattributes")
 
 	// Verify pre-merge-commit hook was installed and is executable.
-	hookPath := filepath.Join(dir, ".git", "hooks", "pre-merge-commit")
+	// Use gitHooksDir to respect core.hooksPath if set globally.
+	hookPath := filepath.Join(gitHooksDir(t, dir), "pre-merge-commit")
 	info, err := os.Stat(hookPath)
 	require.NoError(t, err, "expected pre-merge-commit hook at %s", hookPath)
 	assert.NotZero(t, info.Mode()&0o111, "hook must be executable")
@@ -1272,7 +1286,8 @@ func TestE2E_MergeDriver_Install_UnmanagedHook(t *testing.T) {
 	require.NoError(t, exec.Command("git", "init", dir).Run(), "git init")
 
 	// Place a user-authored hook (no mdsmith marker) before running install.
-	hooksDir := filepath.Join(dir, ".git", "hooks")
+	// Use gitHooksDir so setup targets the same path that install will check.
+	hooksDir := gitHooksDir(t, dir)
 	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
 	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
 	userHook := "#!/bin/sh\necho user hook\n"

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -575,6 +576,9 @@ func TestShellQuote_PathWithSpaces(t *testing.T) {
 }
 
 func TestEnsurePreMergeCommitHook_UnreadableHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("running as root: permission checks don't apply")
 	}
@@ -596,6 +600,9 @@ func TestEnsurePreMergeCommitHook_UnreadableHook(t *testing.T) {
 }
 
 func TestEnsurePreMergeCommitHook_MkdirAllFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("running as root: permission checks don't apply")
 	}
@@ -615,6 +622,9 @@ func TestEnsurePreMergeCommitHook_MkdirAllFails(t *testing.T) {
 }
 
 func TestEnsurePreMergeCommitHook_WriteFileFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("running as root: permission checks don't apply")
 	}
@@ -644,11 +654,18 @@ func TestResolveHooksDir_NotGitRepo(t *testing.T) {
 }
 
 func TestResolveHooksDir_DefaultGitRepo(t *testing.T) {
-	// Real git repo without custom hooksPath: returns .git/hooks.
+	// Derive expected path from git itself so the test is resilient
+	// against a global core.hooksPath set in the developer's git config.
 	dir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", dir).Run())
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--git-path", "hooks").Output()
+	require.NoError(t, err)
+	expected := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(expected) {
+		expected = filepath.Join(dir, expected)
+	}
 	got := resolveHooksDir(dir)
-	assert.Equal(t, filepath.Join(dir, ".git", "hooks"), got)
+	assert.Equal(t, filepath.Clean(expected), got)
 }
 
 func TestResolveHooksDir_CustomRelativeHooksPath(t *testing.T) {
