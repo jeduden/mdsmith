@@ -182,6 +182,31 @@ with a dot path (`····^`) pointing to the exact column.
 The `source_lines` and `source_start_line` fields are omitted when
 source context is unavailable (e.g., empty diagnostics).
 
+## Merge semantics
+
+Per-file rule config comes from a layer chain. The order is:
+top-level `rules:` first. Then matching `kinds:` in effective list
+order (front matter first, then `kind-assignment:` matches). Then
+matching `overrides:` in config order, with file-glob overrides last.
+Each layer that touches a rule is **deep-merged** onto the
+accumulator:
+
+- **Maps** merge key by key. A later layer that sets one nested key
+  preserves siblings set by earlier layers — e.g. an override that
+  sets `line-length.max` does not erase `line-length.exclude` set
+  by a kind.
+- **Scalars** are replaced by the later layer's value.
+- **Lists** are replaced wholesale by default. A rule may opt a
+  list setting into **append**, in which case later layers
+  concatenate onto earlier ones; the shared `placeholders:`
+  vocabulary uses this mode so a kind that adds one token does not
+  have to restate the others.
+- A bare `false` (disabling a rule) clears any prior settings; a
+  bare `true` only flips `enabled` and preserves earlier settings.
+
+Block replacement remains a special case: a layer that specifies a
+rule's full body still wins, because every leaf is replaced.
+
 ## Pre-commit (lefthook)
 
 ```yaml

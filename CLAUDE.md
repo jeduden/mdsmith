@@ -169,6 +169,18 @@ layout](https://go.dev/doc/modules/layout):
   punctuation
 - Prefer returning errors over panicking
 
+### Config Merge Semantics
+
+Per-file rule config is built by deep-merging a layer chain
+(top-level `rules:` → matching `kinds:` → matching `overrides:`).
+Maps merge key by key; scalars replace; lists replace by default.
+A rule that wants a list setting to concatenate across layers
+implements `rule.SettingsMerger` and returns
+`rule.MergeAppend` for that key — `placeholders:` uses this mode.
+
+See [Merge semantics in the CLI reference](docs/reference/cli.md#merge-semantics)
+for the user-facing description.
+
 ### Test Fixtures
 
 Rule test fixtures live in

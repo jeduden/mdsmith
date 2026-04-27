@@ -1,7 +1,7 @@
 ---
 id: 97
 title: Deep-merge for kinds and overrides
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Replace block-level replacement with deep-merge across
@@ -105,23 +105,32 @@ explicit per setting, not a global flag.
 
 ## Acceptance Criteria
 
-- [ ] Two kinds setting different nested keys on the
+- [x] Two kinds setting different nested keys on the
       same rule both contribute to the effective rule
-      config (covered by test).
-- [ ] An override that sets only one key does not
+      config (covered by test
+      `TestEffectiveTwoKindsContributeNonOverlappingNestedKeys`).
+- [x] An override that sets only one key does not
       erase sibling keys set earlier (covered by
-      test).
-- [ ] List settings declared `append` concatenate
+      test `TestEffectiveOverrideKeepsSiblingFromKind`).
+- [x] List settings declared `append` concatenate
       across layers; lists declared `replace` (the
-      default) replace wholesale (covered by test).
+      default) replace wholesale (covered by tests
+      `TestEffectiveListAppendModeAcrossLayers` and
+      `TestEffectiveListReplaceByDefault`).
 - [ ] `mdsmith config show` provenance reflects the
       new merge — each leaf setting carries the layer
       that contributed its value (covered by test).
-- [ ] No existing rule's behavior changes
+      **Skipped:** `config show` does not yet exist;
+      this is plan 95's deliverable. Re-verify when
+      that command lands.
+- [x] No existing rule's behavior changes
       unexpectedly: a regression test runs the
       pre-deep-merge fixture set against the new
       merge and asserts diagnostics are unchanged for
       configs that already specify the rule body in
-      full at the latest layer.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+      full at the latest layer (covered by
+      `TestDeepMergeRegressionFullBlockReplace` plus
+      `mdsmith check .` on the repo, which still
+      passes after the swap).
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
