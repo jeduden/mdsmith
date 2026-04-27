@@ -391,10 +391,107 @@ func runMergeDriverInstall(args []string) int {
 		return 2
 	}
 
+	if err := ensurePreMergeCommitHook(repoRoot, files); err != nil {
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: installing pre-merge-commit hook: %v\n", err)
+		return 2
+	}
+
+	hookPath := filepath.Join(resolveHooksDir(repoRoot), "pre-merge-commit")
 	fmt.Fprintf(os.Stderr, "mdsmith: merge driver 'mdsmith' installed\n")
 	fmt.Fprintf(os.Stderr, "  git config: merge.mdsmith.driver\n")
 	fmt.Fprintf(os.Stderr, "  .gitattributes: %s\n", attrPath)
+	fmt.Fprintf(os.Stderr, "  pre-merge-commit hook: %s\n", hookPath)
 	return 0
+}
+
+// preMergeCommitHookMarker identifies the hook as managed by
+// mdsmith so re-running install can safely replace it without
+// stomping on a user-authored hook of the same name.
+const preMergeCommitHookMarker = "# mdsmith merge-driver pre-merge-commit hook"
+
+// resolveHooksDir returns the directory where git hooks should be
+// installed. It respects core.hooksPath if configured so that
+// installations work correctly in repos that redirect hooks to a
+// custom path (e.g. via git config or a repo management tool).
+// Falls back to .git/hooks when git cannot be queried.
+func resolveHooksDir(repoRoot string) string {
+	cmd := exec.Command("git", "-C", repoRoot, "rev-parse", "--git-path", "hooks")
+	if out, err := cmd.Output(); err == nil {
+		p := strings.TrimSpace(string(out))
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(repoRoot, p)
+		}
+		return filepath.Clean(p)
+	}
+	return filepath.Join(repoRoot, ".git", "hooks")
+}
+
+// ensurePreMergeCommitHook writes the pre-merge-commit hook so
+// that after git resolves all per-file merges (including any
+// driver-resolved sections) and before the merge commit is
+// created, mdsmith fix runs once on the registered files.
+//
+// The per-file merge driver cannot do this on its own: when it
+// runs on PLAN.md, sibling plan/*.md source files may still hold
+// "ours" content because git has not merged them yet, so the
+// regenerated catalog reflects a stale view of its sources. The
+// pre-merge-commit hook re-fixes the same files once every path
+// has reached its final merged state.
+func ensurePreMergeCommitHook(repoRoot string, files []string) error {
+	exe, err := resolveInstalledBinary()
+	if err != nil {
+		return fmt.Errorf("cannot locate mdsmith binary: %w", err)
+	}
+
+	hooksDir := resolveHooksDir(repoRoot)
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+
+	// Refuse to clobber a hook the user wrote themselves; replace
+	// only hooks that carry our marker. A non-ENOENT read error is
+	// treated as a safety failure to avoid silently overwriting an
+	// unreadable hook.
+	existing, readErr := os.ReadFile(hookPath)
+	switch {
+	case readErr == nil:
+		if !strings.Contains(string(existing), preMergeCommitHookMarker) {
+			return fmt.Errorf(
+				"%s already exists and is not managed by mdsmith; "+
+					"remove or merge it manually",
+				hookPath)
+		}
+	case os.IsNotExist(readErr):
+		// Hook doesn't exist; safe to create.
+	default:
+		return fmt.Errorf("reading existing hook %s: %w", hookPath, readErr)
+	}
+
+	// Build per-file fix commands as separate lines so that "set -e"
+	// aborts the hook if mdsmith fix or git add fails. Files that no
+	// longer exist (e.g. renamed in this branch) are skipped.
+	var fixCmds strings.Builder
+	for _, f := range files {
+		fmt.Fprintf(&fixCmds,
+			"if [ -e %s ]; then\n  %s fix -- %s\n  git add -- %s\nfi\n",
+			shellQuote(f), shellQuote(exe), shellQuote(f), shellQuote(f))
+	}
+
+	content := "#!/bin/sh\n" +
+		preMergeCommitHookMarker + "\n" +
+		"# Re-runs mdsmith fix once git has resolved every per-file\n" +
+		"# merge, so generated sections reflect the final merged\n" +
+		"# state of every source file. Re-install with:\n" +
+		"#   mdsmith merge-driver install\n" +
+		"set -e\n" +
+		fixCmds.String()
+
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", hooksDir, err)
+	}
+	if err := os.WriteFile(hookPath, []byte(content), 0o755); err != nil {
+		return fmt.Errorf("writing %s: %w", hookPath, err)
+	}
+	return nil
 }
 
 // registerMergeDriver writes the merge.mdsmith.* keys to local

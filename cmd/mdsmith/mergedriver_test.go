@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -453,6 +454,97 @@ func TestIsTemporaryBinary_RelativePath_RelErrorReturnsFalse(t *testing.T) {
 	assert.False(t, isTemporaryBinary("relative/path/mdsmith"))
 }
 
+// --- ensurePreMergeCommitHook ---
+
+func TestEnsurePreMergeCommitHook_CreatesExecutableHook(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git", "hooks"), 0o755))
+
+	// Stub binary resolution so the hook content is deterministic.
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md", "README.md"})
+	require.NoError(t, err)
+
+	hookPath := filepath.Join(dir, ".git", "hooks", "pre-merge-commit")
+	info, err := os.Stat(hookPath)
+	require.NoError(t, err, "hook must exist at %s", hookPath)
+	// Hook must be executable for git to invoke it (POSIX only).
+	if runtime.GOOS != "windows" {
+		assert.NotZero(t, info.Mode()&0o111, "hook must have an execute bit set")
+	}
+
+	data, err := os.ReadFile(hookPath)
+	require.NoError(t, err)
+	content := string(data)
+	assert.Contains(t, content, preMergeCommitHookMarker)
+	assert.Contains(t, content, "'/usr/local/bin/mdsmith' fix --",
+		"hook must invoke the resolved mdsmith binary with fix --")
+	assert.Contains(t, content, "'PLAN.md'")
+	assert.Contains(t, content, "'README.md'")
+}
+
+func TestEnsurePreMergeCommitHook_OverwritesManagedHook(t *testing.T) {
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	// Pre-existing hook with our marker — install must replace it.
+	old := "#!/bin/sh\n" + preMergeCommitHookMarker + "\n# stale content\n"
+	require.NoError(t, os.WriteFile(hookPath, []byte(old), 0o755))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	require.NoError(t, ensurePreMergeCommitHook(dir, []string{"PLAN.md"}))
+
+	data, err := os.ReadFile(hookPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "stale content",
+		"managed hook must be replaced, not preserved")
+	assert.Contains(t, string(data), "'PLAN.md'")
+}
+
+func TestEnsurePreMergeCommitHook_RefusesUnmanagedHook(t *testing.T) {
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	// User-authored hook without our marker — must be left intact.
+	user := "#!/bin/sh\necho user hook\n"
+	require.NoError(t, os.WriteFile(hookPath, []byte(user), 0o755))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md"})
+	require.Error(t, err, "must fail when an unmanaged hook is present")
+
+	data, err := os.ReadFile(hookPath)
+	require.NoError(t, err)
+	assert.Equal(t, user, string(data), "unmanaged hook content must be untouched")
+}
+
+func TestEnsurePreMergeCommitHook_BinaryNotFound(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git", "hooks"), 0o755))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) {
+		return filepath.Join(os.TempDir(), "go-run-fake", "mdsmith"), nil
+	}
+	t.Setenv("PATH", "")
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot locate mdsmith binary")
+}
+
 // --- registerMergeDriver ---
 
 func TestRegisterMergeDriver_BinaryNotFound_ReturnsError(t *testing.T) {
@@ -483,4 +575,116 @@ func TestShellQuote_ContainsSingleQuote(t *testing.T) {
 
 func TestShellQuote_PathWithSpaces(t *testing.T) {
 	assert.Equal(t, "'/home/my user/bin/mdsmith'", shellQuote("/home/my user/bin/mdsmith"))
+}
+
+func TestEnsurePreMergeCommitHook_UnreadableHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	// Write-only: os.ReadFile returns a non-ENOENT error.
+	require.NoError(t, os.WriteFile(hookPath, []byte("#!/bin/sh\n"), 0o200))
+	t.Cleanup(func() { _ = os.Chmod(hookPath, 0o755) })
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading existing hook")
+}
+
+func TestEnsurePreMergeCommitHook_MkdirAllFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	dir := t.TempDir()
+	// .git exists but is not writable, so MkdirAll(.git/hooks) fails.
+	gitDir := filepath.Join(dir, ".git")
+	require.NoError(t, os.Mkdir(gitDir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(gitDir, 0o755) })
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "creating")
+}
+
+func TestEnsurePreMergeCommitHook_WriteFileFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	dir := t.TempDir()
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	// Remove write permission so os.WriteFile on the hook file fails.
+	require.NoError(t, os.Chmod(hooksDir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(hooksDir, 0o755) })
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	err := ensurePreMergeCommitHook(dir, []string{"PLAN.md"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "writing")
+}
+
+// --- resolveHooksDir ---
+
+func TestResolveHooksDir_NotGitRepo(t *testing.T) {
+	// Not a git repo: git fails, falls back to .git/hooks.
+	dir := t.TempDir()
+	got := resolveHooksDir(dir)
+	assert.Equal(t, filepath.Join(dir, ".git", "hooks"), got)
+}
+
+func TestResolveHooksDir_DefaultGitRepo(t *testing.T) {
+	// Derive expected path from git itself so the test is resilient
+	// against a global core.hooksPath set in the developer's git config.
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--git-path", "hooks").Output()
+	require.NoError(t, err)
+	expected := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(expected) {
+		expected = filepath.Join(dir, expected)
+	}
+	got := resolveHooksDir(dir)
+	assert.Equal(t, filepath.Clean(expected), got)
+}
+
+func TestResolveHooksDir_CustomRelativeHooksPath(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	require.NoError(t, exec.Command("git", "-C", dir, "config",
+		"core.hooksPath", "custom-hooks").Run())
+	got := resolveHooksDir(dir)
+	assert.Equal(t, filepath.Join(dir, "custom-hooks"), got)
+}
+
+func TestResolveHooksDir_CustomAbsoluteHooksPath(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	absPath := filepath.Join(dir, "abs-hooks")
+	require.NoError(t, exec.Command("git", "-C", dir, "config",
+		"core.hooksPath", absPath).Run())
+	got := resolveHooksDir(dir)
+	assert.Equal(t, absPath, got)
 }

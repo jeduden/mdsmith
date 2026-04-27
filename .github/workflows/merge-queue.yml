@@ -27,8 +27,8 @@ jobs:
 
       - name: Install mdsmith merge driver
         env:
-          MDSMITH_VERSION: v0.5.0
-          MDSMITH_SHA256: 87519781aa7b5ab147d5ab1d75d4e0a1c6213479110055972a21025b537ce171
+          MDSMITH_VERSION: v0.7.0
+          MDSMITH_SHA256: 4ace848c804ce991b6d8a1bf80998e2baaf2fb026f6f240fed3155823d5cf305
         run: |
           curl -fsSL "https://github.com/jeduden/mdsmith/releases/download/${MDSMITH_VERSION}/mdsmith-linux-amd64" \
             -o "$RUNNER_TEMP/mdsmith"
