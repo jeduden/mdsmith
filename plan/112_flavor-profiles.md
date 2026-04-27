@@ -143,8 +143,9 @@ need extra rules that do not exist yet:
   `[text](url)` literally in plaintext.
 
 These three rules are out of scope for this plan
-and would land as plans 113-115. When they ship,
-the `plain` profile gains them automatically and
+and would land in follow-up plans for the
+plaintext-focused rules. When they ship, the
+`plain` profile gains them automatically and
 diverges from `portable`.
 
 Profiles are declared in

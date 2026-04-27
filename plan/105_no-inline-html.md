@@ -4,11 +4,11 @@ title: No inline HTML rule
 status: "🔲"
 summary: >-
   New rule MDS039 that flags raw HTML in Markdown
-  (block and inline), with an allowlist for tags that
-  have no Markdown equivalent. Closes the largest
-  attack surface for XSS and the largest source of
-  parser ambiguity, per the bgslabs.org/why-are-we-
-  using-markdown rant.
+  (block and inline), with an allowlist for tags
+  that have no Markdown equivalent. Closes the
+  largest attack surface for XSS and the largest
+  source of parser ambiguity, per the "Why are we
+  using Markdown?" bgslabs.org rant.
 model: sonnet
 ---
 # No inline HTML rule
@@ -38,11 +38,15 @@ types for raw HTML:
 
 The PI block parser
 ([internal/lint/pi.go](../internal/lint/pi.go))
-already replaces `<?name ... ?>` directives with a
-distinct AST node, so directives are *not* HTMLBlocks
-and will not be flagged by this rule. HTML comments
-(`<!-- ... -->`) remain `*ast.HTMLBlock`s — see the
-allowlist discussion below.
+already replaces block-level `<?name ... ?>`
+directives with a distinct AST node, so block
+directives are *not* HTMLBlocks. Inline
+`<?name ... ?>` inside a paragraph lands as
+`*ast.RawHTML`. The rule must skip both forms
+unconditionally — see "What is *not* flagged"
+below. HTML comments (`<!-- ... -->`) remain
+`*ast.HTMLBlock`s — see the allowlist discussion
+below.
 
 ### Why a separate rule from MDS034
 
@@ -107,11 +111,15 @@ deep-merge.
 Walk `f.AST`. For every `*ast.HTMLBlock` and every
 `*ast.RawHTML`:
 
-1. Extract the tag name (lowercase) from the raw
+1. If the bytes start with `<?`, skip
+   unconditionally. This covers inline mdsmith
+   directives that the block PI parser does not
+   reach. The allowance is not configurable.
+2. Extract the tag name (lowercase) from the raw
    bytes. If the bytes start with `<!--`, treat as a
    comment and skip when `allow-comments` is true.
-2. If the tag name is in `allow`, skip.
-3. Otherwise emit a diagnostic at the node's start
+3. If the tag name is in `allow`, skip.
+4. Otherwise emit a diagnostic at the node's start
    line/column: `inline HTML <{tag}> is not allowed;
    use a Markdown construct or an mdsmith directive
    instead`.
@@ -128,8 +136,11 @@ tags (`<br/>`, `<img/>`) count once.
 - Inline code spans (`*ast.CodeSpan`).
 - Autolinks (`<https://example.com>`) and email
   autolinks — these are `*ast.AutoLink`, not RawHTML.
-- mdsmith directives (`<?name ... ?>`) — already
-  carved out by the PI parser.
+- mdsmith directives (`<?name ... ?>`) — block
+  forms are carved out by the PI parser; inline
+  forms are skipped explicitly by step 1 of
+  Detection. The allowance is unconditional and not
+  affected by `allow:` or `allow-comments:`.
 - HTML entities in text (`&amp;`, `&#x2014;`) — these
   are `*ast.Text` after entity decoding; flagging
   them would be a separate rule.
@@ -199,8 +210,14 @@ distinct.
 - [ ] `<!-- comment -->` emits no diagnostic when
       `allow-comments: true`, and one diagnostic
       naming `<!--` when `allow-comments: false`.
-- [ ] `<?include file: foo.md ?>` and `<?catalog ... ?>`
-      emit no diagnostic.
+- [ ] `<?include file: foo.md ?>` and
+      `<?catalog ... ?>` block directives emit no
+      diagnostic.
+- [ ] `text <?inline?> text` inline directive emits
+      no diagnostic.
+- [ ] An inline `<?...?>` directive emits no
+      diagnostic even when `allow: []` and
+      `allow-comments: false`.
 - [ ] `<https://example.com>` autolink emits no
       diagnostic.
 - [ ] Fenced code blocks containing HTML emit no
