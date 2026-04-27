@@ -78,6 +78,7 @@ Commands:
   metrics        Show and rank shared Markdown metrics
   merge-driver   Git merge driver for regenerable sections
   archetypes     Discover, show, and locate archetype schemas
+  kinds          Inspect declared kinds and resolve effective config per file
   init           Generate a default .mdsmith.yml config file
   version        Print version and exit
 
@@ -127,6 +128,8 @@ func run() int {
 		return runMergeDriver(os.Args[2:])
 	case "archetypes":
 		return runArchetypes(os.Args[2:])
+	case "kinds":
+		return runKinds(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
 	case "version":
@@ -156,14 +159,8 @@ func printVersion() {
 func runCheck(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var (
-		configPath     string
-		format         string
-		noColor        bool
-		quiet          bool
-		verbose        bool
-		noGitignore    bool
-		followSymlinks bool
-		maxInputSize   string
+		configPath, format, maxInputSize                              string
+		noColor, quiet, verbose, noGitignore, followSymlinks, explain bool
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -176,6 +173,7 @@ func runCheck(args []string) int {
 		"Follow symlinks; omitted defers to follow-symlinks config (default skip); "+
 			"=false forces skip over any config opt-in")
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
+	fs.BoolVar(&explain, "explain", false, "Attach per-leaf rule provenance to each diagnostic")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
@@ -207,29 +205,23 @@ func runCheck(args []string) int {
 	hasStdin, fileArgs := splitStdinArg(allArgs)
 
 	if hasStdin {
-		return checkStdin(format, noColor, quiet, verbose, configPath, maxInputSize)
+		return checkStdin(format, noColor, quiet, verbose, configPath, maxInputSize, explain)
 	}
 
 	if len(fileArgs) > 0 {
-		return checkFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize)
+		return checkFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain)
 	}
 
 	// No file args and no stdin: discover files from config.
-	return checkDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize)
+	return checkDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain)
 }
 
 // runFix implements the "fix" subcommand: auto-fix lint issues in place.
 func runFix(args []string) int {
 	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
 	var (
-		configPath     string
-		format         string
-		noColor        bool
-		quiet          bool
-		verbose        bool
-		noGitignore    bool
-		followSymlinks bool
-		maxInputSize   string
+		configPath, format, maxInputSize                              string
+		noColor, quiet, verbose, noGitignore, followSymlinks, explain bool
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -242,6 +234,7 @@ func runFix(args []string) int {
 		"Follow symlinks; omitted defers to follow-symlinks config (default skip); "+
 			"=false forces skip over any config opt-in")
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
+	fs.BoolVar(&explain, "explain", false, "Attach per-leaf rule provenance to each remaining diagnostic")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith fix [flags] [files...]\n\n"+
@@ -278,11 +271,11 @@ func runFix(args []string) int {
 	}
 
 	if len(fileArgs) > 0 {
-		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize)
+		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain)
 	}
 
 	// No file args: discover files from config.
-	return fixDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize)
+	return fixDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain)
 }
 
 // runQuery implements the "query" subcommand: select files by CUE
@@ -531,7 +524,7 @@ func printRunStats(format string, quiet bool, stats runStats) {
 func checkFiles(
 	fileArgs []string, configPath, format string,
 	noColor, quiet, verbose bool, walk walkCLI,
-	maxInputSize string,
+	maxInputSize string, explain bool,
 ) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, configPath, verbose, walk, maxInputSize,
@@ -547,6 +540,7 @@ func checkFiles(
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
+		Explain:          explain,
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -577,7 +571,7 @@ func checkFiles(
 func fixFiles(
 	fileArgs []string, configPath, format string,
 	noColor, quiet, verbose bool, walk walkCLI,
-	maxInputSize string,
+	maxInputSize string, explain bool,
 ) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, configPath, verbose, walk, maxInputSize,
@@ -593,6 +587,7 @@ func fixFiles(
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
+		Explain:          explain,
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
@@ -640,7 +635,7 @@ func readStdinLimited(maxBytes int64) ([]byte, error) {
 
 // checkStdin reads from stdin, lints the content, and returns the appropriate
 // exit code. Uses runner.RunSource to ensure Configurable settings are applied.
-func checkStdin(format string, noColor, quiet, verbose bool, configPath, maxInputSize string) int {
+func checkStdin(format string, noColor, quiet, verbose bool, configPath, maxInputSize string, explain bool) int {
 	logger := &vlog.Logger{Enabled: verbose, W: os.Stderr}
 
 	cfg, cfgPath, err := loadConfig(configPath)
@@ -671,6 +666,7 @@ func checkStdin(format string, noColor, quiet, verbose bool, configPath, maxInpu
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
+		Explain:          explain,
 	}
 	result := runner.RunSource("<stdin>", source)
 	printErrors(result.Errors)
@@ -790,7 +786,7 @@ func discoverFiles(
 func checkDiscovered(
 	configPath, format string,
 	noColor, quiet, verbose bool, walk walkCLI,
-	maxInputSize string,
+	maxInputSize string, explain bool,
 ) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, walk)
 	if code >= 0 {
@@ -810,6 +806,7 @@ func checkDiscovered(
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
+		Explain:          explain,
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -841,7 +838,7 @@ func checkDiscovered(
 func fixDiscovered(
 	configPath, format string,
 	noColor, quiet, verbose bool, walk walkCLI,
-	maxInputSize string,
+	maxInputSize string, explain bool,
 ) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, walk)
 	if code >= 0 {
@@ -861,6 +858,7 @@ func fixDiscovered(
 		Logger:           logger,
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
+		Explain:          explain,
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
@@ -1037,6 +1035,7 @@ Topics:
   rule [id|name]        Show rule documentation
   metrics [id|name]     Show metric documentation
   kinds                 Show concept page for file kinds
+  kinds-cli             Summarize the 'kinds' subcommand surface
   placeholder-grammar   Show placeholder vocabulary reference
 `
 
@@ -1054,6 +1053,8 @@ func runHelp(args []string) int {
 		return runHelpMetrics(args[1:])
 	case "kinds":
 		return runHelpKinds()
+	case "kinds-cli":
+		return runHelpKindsCLI()
 	case "placeholder-grammar":
 		return runHelpConcept("placeholder-grammar")
 	default:
@@ -1123,6 +1124,38 @@ Rules never reference kind names. New kinds cannot regress existing behavior.
 // runHelpKinds prints the kinds concept page.
 func runHelpKinds() int {
 	fmt.Print(helpKindsText)
+	return 0
+}
+
+const helpKindsCLIText = `Kinds Subcommand
+
+mdsmith kinds <subcommand> [args]
+
+Subcommands:
+  list                  Print declared kinds with their merged bodies.
+  show <name>           Print one kind's merged body.
+  path <name>           Print the resolved schema path of the kind's
+                        required-structure rule, if any.
+  resolve <file>        Print the resolved kind list and merged rule
+                        config for a file, with per-leaf provenance.
+  why <file> <rule>     Print the full merge chain for one rule on
+                        one file: every applicable layer, including
+                        no-ops, with the value at each step.
+
+Each subcommand accepts --json for stable structured output. The
+schema is documented in docs/reference/cli.md.
+
+Provenance layers are: 'default' (top-level rules: + built-ins),
+'kinds.<name>' (one per kind in the effective list), and
+'overrides[i]' (one per matching glob override entry).
+
+See also: 'mdsmith check --explain' / 'mdsmith fix --explain' to
+attach the same provenance trailer to each diagnostic.
+`
+
+// runHelpKindsCLI prints the kinds-cli help topic.
+func runHelpKindsCLI() int {
+	fmt.Print(helpKindsCLIText)
 	return 0
 }
 
