@@ -77,6 +77,7 @@ Commands:
   metrics        Show and rank shared Markdown metrics
   merge-driver   Git merge driver for regenerable sections
   archetypes     Discover, show, and locate archetype schemas
+  kinds          Inspect declared kinds and per-file rule resolution
   init           Generate a default .mdsmith.yml config file
   version        Print version and exit
 
@@ -126,6 +127,8 @@ func run() int {
 		return runMergeDriver(os.Args[2:])
 	case "archetypes":
 		return runArchetypes(os.Args[2:])
+	case "kinds":
+		return runKinds(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
 	case "version":
@@ -1036,6 +1039,7 @@ Topics:
   rule [id|name]      Show rule documentation
   metrics [id|name]   Show metric documentation
   kinds               Show concept page for file kinds
+  kinds-cli           Summary of the 'mdsmith kinds' subcommand surface
 `
 
 // runHelp implements the "help" subcommand.
@@ -1052,10 +1056,48 @@ func runHelp(args []string) int {
 		return runHelpMetrics(args[1:])
 	case "kinds":
 		return runHelpKinds()
+	case "kinds-cli":
+		return runHelpKindsCLI()
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith: help: unknown topic %q\n", args[0])
 		return 2
 	}
+}
+
+const helpKindsCLIText = `kinds CLI — observability for kind/rule resolution
+
+  mdsmith kinds list [--json]
+      Print every declared kind and its merged body (rules + categories).
+
+  mdsmith kinds show <name> [--json]
+      Print one kind's merged body. Exits 2 on unknown kind.
+
+  mdsmith kinds path <name>
+      Print the filesystem path of the kind's required-structure.schema.
+      Exits 2 when the kind has no schema.
+
+  mdsmith kinds resolve <file> [--json]
+      Print the file's effective kind list and the merged rule config.
+      Each leaf setting is tagged with the source layer that won
+      (default / kinds.<name> / overrides[i] / front-matter override).
+
+  mdsmith kinds why <file> <rule> [--json]
+      Print the full merge chain for one rule on one file. Every layer
+      is reported, including kinds and overrides that did NOT touch the
+      rule, so you can see exactly where a value comes from.
+
+Each subcommand also has a --json form that emits a stable structured
+document. See docs/reference/cli.md for the schema.
+
+Related: 'mdsmith help kinds' explains the kinds concept itself.
+'mdsmith check --explain' / 'mdsmith fix --explain' annotate diagnostics
+with the same provenance trailer as 'kinds resolve'.
+`
+
+// runHelpKindsCLI prints the kinds-cli summary topic.
+func runHelpKindsCLI() int {
+	fmt.Print(helpKindsCLIText)
+	return 0
 }
 
 const helpKindsText = `File Kinds
