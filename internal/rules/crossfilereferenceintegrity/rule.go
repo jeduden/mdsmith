@@ -235,6 +235,14 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
+// SettingMergeMode implements rule.ListMerger.
+func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
+	if key == "placeholders" {
+		return rule.MergeAppend
+	}
+	return rule.MergeReplace
+}
+
 type targetFile struct {
 	cacheKey string
 	read     func() ([]byte, error)
@@ -625,4 +633,7 @@ func toStringSlice(v any) ([]string, bool) {
 	}
 }
 
-var _ rule.Configurable = (*Rule)(nil)
+var (
+	_ rule.Configurable = (*Rule)(nil)
+	_ rule.ListMerger   = (*Rule)(nil)
+)

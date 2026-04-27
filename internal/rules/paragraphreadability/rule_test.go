@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-
+	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -280,4 +281,11 @@ func TestDefaultSettings_ParagraphReadability_IncludesPlaceholders(t *testing.T)
 	r := &Rule{}
 	ds := r.DefaultSettings()
 	require.Equal(t, []string{}, ds["placeholders"])
+}
+
+func TestSettingMergeMode_ParagraphReadability(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, rule.MergeAppend, r.SettingMergeMode("placeholders"))
+	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("max-index"))
+	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }

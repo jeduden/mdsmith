@@ -123,17 +123,10 @@ func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 	return result
 }
 
-// copyRuleCfg returns a copy of a RuleCfg with its Settings map deep-copied
-// so that mutations (e.g. InjectArchetypeRoots) do not affect the source.
+// copyRuleCfg returns a copy of a RuleCfg with its Settings deeply cloned
+// so that mutations to nested maps or slices do not affect the source.
 func copyRuleCfg(rc RuleCfg) RuleCfg {
-	if rc.Settings == nil {
-		return rc
-	}
-	settings := make(map[string]any, len(rc.Settings))
-	for k, v := range rc.Settings {
-		settings[k] = v
-	}
-	rc.Settings = settings
+	rc.Settings = cloneSettings(rc.Settings)
 	return rc
 }
 
@@ -260,7 +253,14 @@ func EffectiveAll(
 func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]RuleCfg {
 	result := make(map[string]RuleCfg, len(cfg.Rules))
 	for k, v := range cfg.Rules {
-		result[k] = v
+		result[k] = copyRuleCfg(v)
+	}
+	apply := func(name string, layer RuleCfg) {
+		if existing, ok := result[name]; ok {
+			result[name] = mergeRuleCfg(name, existing, layer)
+			return
+		}
+		result[name] = copyRuleCfg(layer)
 	}
 	for _, kindName := range kinds {
 		body, ok := cfg.Kinds[kindName]
@@ -268,13 +268,13 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 			continue
 		}
 		for k, v := range body.Rules {
-			result[k] = v
+			apply(k, v)
 		}
 	}
 	for _, o := range cfg.Overrides {
 		if matchesAny(o.Files, filePath) {
 			for k, v := range o.Rules {
-				result[k] = v
+				apply(k, v)
 			}
 		}
 	}
