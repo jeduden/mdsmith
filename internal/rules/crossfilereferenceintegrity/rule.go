@@ -235,6 +235,15 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
+// ListMergeModes implements rule.MergeModes. The placeholders list
+// concatenates across config layers so each kind/override can opt
+// into additional placeholder tokens without restating the rest.
+func (r *Rule) ListMergeModes() map[string]rule.ListMergeMode {
+	return map[string]rule.ListMergeMode{
+		"placeholders": rule.ListAppend,
+	}
+}
+
 type targetFile struct {
 	cacheKey string
 	read     func() ([]byte, error)
@@ -626,3 +635,4 @@ func toStringSlice(v any) ([]string, bool) {
 }
 
 var _ rule.Configurable = (*Rule)(nil)
+var _ rule.MergeModes = (*Rule)(nil)

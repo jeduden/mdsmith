@@ -122,6 +122,15 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
+// ListMergeModes implements rule.MergeModes. The placeholders list
+// concatenates across config layers so each kind/override can opt
+// into additional placeholder tokens without restating the rest.
+func (r *Rule) ListMergeModes() map[string]rule.ListMergeMode {
+	return map[string]rule.ListMergeMode{
+		"placeholders": rule.ListAppend,
+	}
+}
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -334,6 +343,7 @@ func (r *Rule) diag(file string, line int, msg string) lint.Diagnostic {
 }
 
 var _ rule.Configurable = (*Rule)(nil)
+var _ rule.MergeModes = (*Rule)(nil)
 
 // schemaConfig holds the parsed schema frontmatter.
 type schemaConfig struct {
