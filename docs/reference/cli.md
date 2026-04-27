@@ -118,28 +118,26 @@ JSON adds an `explanation` field (see schema below).
 
 ## JSON Schemas
 
-Stable shapes intended for LSP / VS Code extension
-consumption.
+Stable shapes for LSP / tool consumption. `leaves[]`
+always lists every leaf of the final rule config:
+`enabled` plus one entry per `settings.<key>`. Output
+never elides leaves.
 
-`check --explain` adds an `explanation` field to each
-diagnostic; omitted unless `--explain` is set:
+`check --explain` adds an `explanation` to each diag
+(omitted without `--explain`):
 
 ```json
 "explanation": {
   "rule": "line-length",
   "leaves": [
+    {"path": "enabled", "value": true, "source": "default"},
     {"path": "settings.max", "value": 30, "source": "kinds.short"}
   ]
 }
 ```
 
-`kinds list` returns `{"kinds": [<body>...]}`; `show`
-returns one body. Body shape:
-
-```json
-{"name": "plan", "rules": {...}, "categories": {...}}
-```
-
+`kinds list` → `{"kinds": [<body>...]}`; `show` → one
+body. Body shape: `{"name", "rules", "categories"}`.
 `rules[<name>]` follows the YAML rule-cfg union:
 `false`, `true`, or the settings map.
 
@@ -154,6 +152,7 @@ returns one body. Body shape:
     "max-file-length": {
       "final": {"max": 500},
       "leaves": [
+        {"path": "enabled", "value": true, "source": "default"},
         {"path": "settings.max", "value": 500, "source": "kinds.plan"}
       ]
     }
@@ -164,7 +163,8 @@ returns one body. Body shape:
 `kinds[].source` is `front-matter` or
 `kind-assignment[<i>]`.
 
-`kinds why <file> <rule>`:
+`kinds why <file> <rule>` (`leaves[].chain` records
+every layer that set the leaf):
 
 ```json
 {
@@ -181,6 +181,7 @@ returns one body. Body shape:
      "source": "overrides[0]",
      "chain": [
        {"source": "default", "value": 300},
+       {"source": "kinds.plan", "value": 500},
        {"source": "overrides[0]", "value": 900}
      ]}
   ]
@@ -188,7 +189,6 @@ returns one body. Body shape:
 ```
 
 No-op layers carry `"set": false` and omit `value`.
-`leaves[].chain` records only layers that set that leaf.
 
 ## `archetypes` Subcommands
 
