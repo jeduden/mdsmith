@@ -30,12 +30,14 @@ jobs:
           MDSMITH_VERSION: v0.7.1
           MDSMITH_SHA256: 94df7987309d48b2b9b1aead4554f2904a35e9b1b6bff7f12e64f5514e2692f8
         run: |
+          # Install to a stable path that will persist for the hook to use
+          mkdir -p "$HOME/.local/bin"
           curl -fsSL "https://github.com/jeduden/mdsmith/releases/download/${MDSMITH_VERSION}/mdsmith-linux-amd64" \
-            -o "$RUNNER_TEMP/mdsmith"
-          echo "${MDSMITH_SHA256}  $RUNNER_TEMP/mdsmith" | sha256sum -c
-          chmod +x "$RUNNER_TEMP/mdsmith"
-          "$RUNNER_TEMP/mdsmith" merge-driver install
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+            -o "$HOME/.local/bin/mdsmith"
+          echo "${MDSMITH_SHA256}  $HOME/.local/bin/mdsmith" | sha256sum -c
+          chmod +x "$HOME/.local/bin/mdsmith"
+          "$HOME/.local/bin/mdsmith" merge-driver install
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - uses: jeduden/merge-queue-action@3be8077b142e4057d2fc097635d1ab6ada2bbbf5 # v0.7.1
         with:
