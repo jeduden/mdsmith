@@ -74,14 +74,49 @@ func TestBuildRuleResolution_RuleNeverInLayers(t *testing.T) {
 	assert.Nil(t, rr.Leaves)
 }
 
+// TestBuildRuleResolution_BoolOnlyLayerPreservesInheritedSettings
+// pins the deep-merge behavior in buildRuleResolution: a bool-only
+// later layer toggles Enabled but must not erase the running merged
+// Settings, and the inherited leaf must still report its original
+// source.
+func TestBuildRuleResolution_BoolOnlyLayerPreservesInheritedSettings(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+		Kinds: map[string]KindBody{
+			// Bool-only layer: toggles Enabled off, no Settings.
+			"off": {Rules: map[string]RuleCfg{
+				"line-length": {Enabled: false},
+			}},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Files: []string{"x.md"}, Kinds: []string{"off"}},
+		},
+	}
+	res := ResolveFile(cfg, "x.md", nil)
+	rr := res.Rules["line-length"]
+	require.NotNil(t, rr)
+	assert.False(t, rr.Final.Enabled, "kind layer must toggle Enabled off")
+	require.NotNil(t, rr.Final.Settings,
+		"deep-merge must preserve inherited Settings even when later layer is bool-only")
+	assert.EqualValues(t, 80, rr.Final.Settings["max"])
+
+	maxLeaf := rr.LeafByPath("settings.max")
+	require.NotNil(t, maxLeaf)
+	require.Len(t, maxLeaf.Chain, 1)
+	assert.Equal(t, "default", maxLeaf.Chain[0].Source,
+		"settings.max provenance must point at the default layer that set it")
+}
+
 // TestBuildLeaves_ChainSkipsLayersMissingPath covers the buildLeaves
 // branch where one layer in the chain does not set a particular leaf
 // path: it must not appear in that leaf's Chain, but other layers that
-// do set the path still contribute. Because effectiveRules replaces
-// (rather than deep-merges) RuleCfg, the only way to leave the final
-// Settings keyed by `max` while a previous layer has no Settings is to
-// declare the rule with no Settings in the default layer and add the
-// keyed value via a kind layer.
+// do set the path still contribute. effectiveRules deep-merges RuleCfg
+// across layers, so an earlier layer can declare the rule with no
+// Settings while a later layer adds `settings.max`. The final RuleCfg
+// then includes `max`, but the leaf chain for `settings.max` should
+// include only the layer that actually set that path.
 func TestBuildLeaves_ChainSkipsLayersMissingPath(t *testing.T) {
 	cfg := &Config{
 		Rules: map[string]RuleCfg{

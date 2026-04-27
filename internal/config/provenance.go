@@ -176,7 +176,15 @@ func buildRuleResolution(name string, layers []layerInfo) RuleResolution {
 		if ok {
 			cp := copyRuleCfg(v)
 			chain = append(chain, LayerEntry{Source: l.Source, Set: true, Value: cp})
-			final = cp
+			if !seen {
+				final = cp
+			} else {
+				// Deep-merge later layers onto the running effective so
+				// `final` mirrors the engine's merged config (e.g. a
+				// bool-only kind toggling Enabled does not erase
+				// inherited Settings).
+				final = mergeRuleCfg(name, final, cp)
+			}
 			seen = true
 		} else {
 			chain = append(chain, LayerEntry{Source: l.Source, Set: false})

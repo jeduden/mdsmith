@@ -52,10 +52,16 @@ func MakeBodyJSON(name string, body config.KindBody) BodyJSON {
 // RuleCfgValue returns the JSON-friendly value of a RuleCfg, matching
 // its YAML marshalling: false, true, or the settings map.
 func RuleCfgValue(rc config.RuleCfg) any {
-	if !rc.Enabled && rc.Settings == nil {
+	// A disabled rule maps to `false` regardless of inherited Settings.
+	// Deep-merge can produce {Enabled: false, Settings: <inherited>}
+	// when a bool-only later layer toggles the rule off; reporting
+	// `final: true` (or the settings map) in that case would
+	// contradict the `enabled` leaf. The per-leaf chain still carries
+	// the inherited values for tooling that needs them.
+	if !rc.Enabled {
 		return false
 	}
-	if rc.Enabled && len(rc.Settings) > 0 {
+	if len(rc.Settings) > 0 {
 		return rc.Settings
 	}
 	return true

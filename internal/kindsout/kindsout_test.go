@@ -38,6 +38,15 @@ func TestRuleCfgValue_AllForms(t *testing.T) {
 	m, ok := v.(map[string]any)
 	require.True(t, ok)
 	assert.EqualValues(t, 30, m["max"])
+
+	// Deep-merge can leave Enabled=false with non-nil Settings (a
+	// bool-only layer toggling Enabled while inheriting Settings from
+	// an earlier layer). The output value must report `false` so it
+	// cannot contradict the `enabled` leaf.
+	assert.Equal(t, false, RuleCfgValue(config.RuleCfg{
+		Enabled:  false,
+		Settings: map[string]any{"max": 30},
+	}))
 }
 
 func TestRuleCfgJSON_Marshal(t *testing.T) {
