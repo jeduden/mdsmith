@@ -152,4 +152,16 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-var _ rule.Configurable = (*Rule)(nil)
+// ListMergeMode implements rule.ListMerger: placeholders concatenate
+// across config layers.
+func (r *Rule) ListMergeMode(key string) rule.ListMergeMode {
+	if key == "placeholders" {
+		return rule.ListAppend
+	}
+	return rule.ListReplace
+}
+
+var (
+	_ rule.Configurable = (*Rule)(nil)
+	_ rule.ListMerger   = (*Rule)(nil)
+)

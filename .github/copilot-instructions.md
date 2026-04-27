@@ -206,6 +206,34 @@ When adding or changing a rule feature, add both:
    are discovered automatically by the integration test
    runner in `internal/integration/rules_test.go`.
 
+#### Merge Semantics
+
+Rule settings **deep-merge** across config layers.
+Block replacement is gone.
+
+Layer order is: top-level `rules:`, then matching
+`kinds:` in effective list order, then matching
+`overrides:` in config order. Front-matter `kinds:`
+come first; `kind-assignment:` matches follow.
+
+For each layer that touches a rule:
+
+- **Maps** merge key by key. Nested maps recurse.
+- **Scalars** take the later value.
+- **Lists** replace wholesale by default. A rule may
+  opt a setting key into **append** by implementing
+  `rule.ListMerger`.
+
+Today the `placeholders:` key uses `append` on these
+rules: `first-line-heading`, `heading-increment`,
+`no-emphasis-as-heading`, `paragraph-readability`,
+`paragraph-structure`, `required-structure`,
+`cross-file-reference-integrity`.
+
+A layer that restates the full rule body still wins on
+every leaf. Setting `<rule>: false` clears the
+accumulator and disables the rule outright.
+
 #### Generated Sections
 
 Content between `<?directive ... ?>` and

@@ -182,6 +182,29 @@ with a dot path (`····^`) pointing to the exact column.
 The `source_lines` and `source_start_line` fields are omitted when
 source context is unavailable (e.g., empty diagnostics).
 
+## Merge Semantics
+
+Rule settings **deep-merge** across layers. The chain
+is: top-level `rules:`, then matching `kinds:` in
+effective list order, then matching `overrides:` in
+config order.
+
+For each layer that touches a rule:
+
+- maps merge key by key. Nested maps recurse.
+- scalars take the later value.
+- lists replace wholesale by default. A rule opts a
+  list key into **append** via `rule.ListMerger`.
+
+Every rule with a `placeholders:` setting uses
+`append`. Later layers extend the token list rather
+than replacing it.
+
+A layer that restates the full rule body wins on every
+leaf, matching the old block-replacement result.
+Setting `<rule>: false` clears the accumulator and
+disables the rule.
+
 ## Pre-commit (lefthook)
 
 ```yaml

@@ -120,7 +120,19 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-var _ rule.Configurable = (*Rule)(nil)
+// ListMergeMode implements rule.ListMerger: placeholders concatenate
+// across config layers; other keys (none today) replace by default.
+func (r *Rule) ListMergeMode(key string) rule.ListMergeMode {
+	if key == "placeholders" {
+		return rule.ListAppend
+	}
+	return rule.ListReplace
+}
+
+var (
+	_ rule.Configurable = (*Rule)(nil)
+	_ rule.ListMerger   = (*Rule)(nil)
+)
 
 func headingLine(heading *ast.Heading, f *lint.File) int {
 	lines := heading.Lines()

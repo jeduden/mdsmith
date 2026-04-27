@@ -710,6 +710,94 @@ func TestRunSource_AppliesConfigurableSettings(t *testing.T) {
 	}
 }
 
+// TestRunner_OverrideKeepsSiblingSettings exercises the deep-merge
+// behavior end-to-end: an override that touches only one nested key
+// must not erase sibling keys set by the top-level rule body.
+func TestRunner_OverrideKeepsSiblingSettings(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	line := strings.Repeat("a", 100) + "\n"
+	require.NoError(t, os.WriteFile(mdFile, []byte(line), 0o644))
+
+	// Top-level: max=80 (default-equivalent). Override sets a sibling
+	// key (one we ignore in this rule) — max should remain 80, so the
+	// 100-char line still flags.
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {
+				Enabled:  true,
+				Settings: map[string]any{"max": 80},
+			},
+		},
+		Overrides: []config.Override{
+			{
+				Files: []string{"*.md"},
+				Rules: map[string]config.RuleCfg{
+					// Touch only an unrelated key; max from the
+					// top-level body must survive deep-merge.
+					"line-length": {
+						Enabled:  true,
+						Settings: map[string]any{"sibling": true},
+					},
+				},
+			},
+		},
+	}
+
+	runner := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&configurableLengthRule{Max: 80}},
+	}
+
+	result := runner.Run([]string{mdFile})
+	require.Len(t, result.Diagnostics, 1,
+		"top-level max=80 should survive an override that only sets a sibling key")
+}
+
+// TestRunner_FullBodyOverrideUnchangedByDeepMerge is the deep-merge
+// regression: an override that restates the entire rule body (every
+// leaf) must produce the same diagnostics as it did under block
+// replacement. The override's max=120 wins; the 100-char file should
+// not flag.
+func TestRunner_FullBodyOverrideUnchangedByDeepMerge(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	line := strings.Repeat("a", 100) + "\n"
+	require.NoError(t, os.WriteFile(mdFile, []byte(line), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {
+				Enabled:  true,
+				Settings: map[string]any{"max": 80},
+			},
+		},
+		Overrides: []config.Override{
+			{
+				Files: []string{"*.md"},
+				Rules: map[string]config.RuleCfg{
+					// Full body restated — block replacement and deep
+					// merge produce identical results here.
+					"line-length": {
+						Enabled:  true,
+						Settings: map[string]any{"max": 120},
+					},
+				},
+			},
+		},
+	}
+
+	runner := &Runner{
+		Config: cfg,
+		Rules:  []rule.Rule{&configurableLengthRule{Max: 80}},
+	}
+
+	result := runner.Run([]string{mdFile})
+	require.Len(t, result.Errors, 0, "unexpected errors: %v", result.Errors)
+	require.Len(t, result.Diagnostics, 0,
+		"override with full body should set max=120 and silence the 100-char line")
+}
+
 func TestRunSource_EmptyInput(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{

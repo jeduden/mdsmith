@@ -333,7 +333,19 @@ func (r *Rule) diag(file string, line int, msg string) lint.Diagnostic {
 	}
 }
 
-var _ rule.Configurable = (*Rule)(nil)
+// ListMergeMode implements rule.ListMerger: placeholders concatenate
+// across config layers; archetype-roots replace by default.
+func (r *Rule) ListMergeMode(key string) rule.ListMergeMode {
+	if key == "placeholders" {
+		return rule.ListAppend
+	}
+	return rule.ListReplace
+}
+
+var (
+	_ rule.Configurable = (*Rule)(nil)
+	_ rule.ListMerger   = (*Rule)(nil)
+)
 
 // schemaConfig holds the parsed schema frontmatter.
 type schemaConfig struct {

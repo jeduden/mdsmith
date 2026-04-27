@@ -99,11 +99,16 @@ error.
 
 ### Conflict resolution
 
-Two kinds can disagree about a setting. The later kind
-in the effective list replaces the earlier kind's
-config for that rule wholesale — no deep-merge, same
-as `overrides:` today. A follow-up may add deep-merge
-across both kinds and overrides; see plan 97.
+Two kinds can disagree about a setting. The layers
+**deep-merge** across the chain (top-level rules,
+kinds in effective list order, overrides), so a later
+kind that touches one nested key only changes that
+key — sibling keys set by earlier layers survive.
+Lists replace wholesale unless the rule opts in to
+`append` via `rule.ListMerger`. See plan 97 for the
+live behavior and the merge semantics docs in
+[development](../docs/development/index.md#merge-semantics)
+and [CLI reference](../docs/reference/cli.md#merge-semantics).
 
 ## Examples
 

@@ -258,27 +258,8 @@ func EffectiveAll(
 }
 
 func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]RuleCfg {
-	result := make(map[string]RuleCfg, len(cfg.Rules))
-	for k, v := range cfg.Rules {
-		result[k] = v
-	}
-	for _, kindName := range kinds {
-		body, ok := cfg.Kinds[kindName]
-		if !ok {
-			continue
-		}
-		for k, v := range body.Rules {
-			result[k] = v
-		}
-	}
-	for _, o := range cfg.Overrides {
-		if matchesAny(o.Files, filePath) {
-			for k, v := range o.Rules {
-				result[k] = v
-			}
-		}
-	}
-	return result
+	rules, _ := effectiveRulesWithProvenance(cfg, filePath, kinds)
+	return rules
 }
 
 func effectiveExplicit(cfg *Config, filePath string, kinds []string) map[string]bool {
