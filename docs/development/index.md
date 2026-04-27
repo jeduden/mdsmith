@@ -73,6 +73,31 @@ When adding or changing a rule feature, add both:
    are discovered automatically by the integration test
    runner in `internal/integration/rules_test.go`.
 
+## Config Merge Semantics
+
+Rule settings compose across layers using deep-merge.
+The chain is: defaults, top-level `rules:`, matching
+kinds in effective-list order, then `overrides:` in
+config order.
+
+- **Maps** merge key-by-key. A later layer that sets
+  one nested key leaves the rule's other keys intact.
+- **Scalars** are replaced by the later value.
+- **Lists** are replaced wholesale by default.
+- **List append** is opt-in per setting. A rule
+  implements `rule.ListMerger` and returns the keys
+  that concatenate from `MergeModes()`.
+
+`placeholders:` is the only setting that opts in to
+append today. Other list keys (e.g. `archetype-roots:`
+or `cross-file-reference-integrity.exclude:`) stay in
+replace mode.
+
+When adding a list-valued setting, pick the mode. Use
+`rule.MergeAppend` if the chain is additive. Use the
+default `rule.MergeReplace` if each layer redefines
+the list.
+
 ## Generated Sections
 
 Content between `<?directive ... ?>` and

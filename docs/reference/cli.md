@@ -182,6 +182,32 @@ with a dot path (`····^`) pointing to the exact column.
 The `source_lines` and `source_start_line` fields are omitted when
 source context is unavailable (e.g., empty diagnostics).
 
+## Merge Semantics
+
+Rule settings come from layered configuration. The
+layer chain for each file is:
+
+1. registered defaults
+2. top-level `rules:` in `.mdsmith.yml`
+3. each matching `kinds:` entry, applied in
+   effective-list order (front-matter `kinds:` first,
+   then `kind-assignment:` matches in config order)
+4. each matching `overrides:` entry, in config order
+
+The layers deep-merge for each rule. A later layer
+keeps sibling keys it does not touch. Maps merge
+key-by-key. Scalars are replaced. Lists are replaced
+wholesale by default.
+
+Some list settings opt in to **append** semantics. A
+child layer then extends the parent's list rather than
+replacing it. Today only `placeholders:` opts in.
+
+A layer that restates a rule's full body still wins
+on every leaf. Configs written for the older
+block-replacement behavior keep the same effective
+settings.
+
 ## Pre-commit (lefthook)
 
 ```yaml

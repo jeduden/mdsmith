@@ -99,11 +99,13 @@ error.
 
 ### Conflict resolution
 
-Two kinds can disagree about a setting. The later kind
-in the effective list replaces the earlier kind's
-config for that rule wholesale — no deep-merge, same
-as `overrides:` today. A follow-up may add deep-merge
-across both kinds and overrides; see plan 97.
+Two kinds can disagree about a setting. The live merge
+behavior is **deep-merge across the whole layer
+chain**, delivered in [plan 97](97_deep-merge-config.md):
+a later layer wins on every leaf it touches but does
+not erase sibling keys it omits. A layer that
+restates a rule's full body still acts as a block
+replacement because every leaf is overwritten.
 
 ## Examples
 
