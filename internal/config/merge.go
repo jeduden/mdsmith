@@ -123,17 +123,10 @@ func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 	return result
 }
 
-// copyRuleCfg returns a copy of a RuleCfg with its Settings map deep-copied
-// so that mutations (e.g. InjectArchetypeRoots) do not affect the source.
+// copyRuleCfg returns a copy of a RuleCfg with its Settings deeply cloned
+// so that mutations to nested maps or slices do not affect the source.
 func copyRuleCfg(rc RuleCfg) RuleCfg {
-	if rc.Settings == nil {
-		return rc
-	}
-	settings := make(map[string]any, len(rc.Settings))
-	for k, v := range rc.Settings {
-		settings[k] = v
-	}
-	rc.Settings = settings
+	rc.Settings = cloneSettings(rc.Settings)
 	return rc
 }
 

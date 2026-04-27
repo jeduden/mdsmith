@@ -5,6 +5,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Register the rules whose SettingMergeMode is exercised by name
+	// in mergeRuleCfg and Effective tests below, making this file
+	// self-contained rather than relying on config_test.go's imports.
+	_ "github.com/jeduden/mdsmith/internal/rules/crossfilereferenceintegrity"
+	_ "github.com/jeduden/mdsmith/internal/rules/firstlineheading"
 )
 
 // --- mergeRuleCfg unit tests ---

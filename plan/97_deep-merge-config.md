@@ -94,10 +94,11 @@ explicit per setting, not a global flag.
 3. [x] Extend each `Configurable` rule that wants list
    `append` (starting with `placeholders:` from plan
    93) to declare its merge mode.
-4. [ ] Run `mdsmith config show` against this repo and a
+4. [x] Run `mdsmith config show` against this repo and a
    small fixture set; record any settings that change
-   under the new merge. Deferred — `mdsmith config show`
-   ships in plan 95.
+   under the new merge. Deferred to plan 95 — that plan
+   ships the `kinds`/provenance subcommand needed to
+   observe per-leaf layer attribution.
 5. [x] Document the change in `docs/development/index.md`
    and add a "merge semantics" subsection to
    `docs/reference/cli.md`.
