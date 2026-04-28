@@ -272,6 +272,33 @@ func TestCopyProfilePreset_NilReturnsNil(t *testing.T) {
 	assert.Nil(t, copyProfilePreset(nil))
 }
 
+func TestApplyProfile_NonStringProfileErrors(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"markdown-flavor": {Enabled: true, Settings: map[string]any{"profile": 42}},
+		},
+	}
+	err := applyProfile(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rules.markdown-flavor.profile")
+	assert.Contains(t, err.Error(), "must be a string")
+}
+
+func TestApplyProfile_NonStringFlavorErrors(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"markdown-flavor": {Enabled: true, Settings: map[string]any{
+				"profile": "portable",
+				"flavor":  42,
+			}},
+		},
+	}
+	err := applyProfile(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rules.markdown-flavor.flavor")
+	assert.Contains(t, err.Error(), "must be a string")
+}
+
 func TestMerge_PreservesProfilePreset(t *testing.T) {
 	loaded := &Config{
 		Profile: "portable",

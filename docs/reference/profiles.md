@@ -128,20 +128,49 @@ list them explicitly:
 
 A profile applies its rule presets at config load
 time, so disabling `markdown-flavor` itself does not
-disable the rules a profile turned on:
+disable the rules a profile turned on. Two
+configuration shapes work; pick the one that matches
+your scope.
+
+Project-wide silence with the profile still active —
+disable MDS034 in an override that matches every
+file:
 
 ```yaml
 rules:
   markdown-flavor:
     profile: portable
-    # …then disable MDS034's own diagnostics:
-  markdown-flavor: false
+overrides:
+  - files: ["**/*"]
+    rules:
+      markdown-flavor: false
 ```
 
-The other rules' presets stay in effect. Only
-MDS034's own flavor reporting is silenced. The split
-keeps MDS034 focused on "what does this renderer
-support." Profiles orchestrate style separately.
+Per-kind silence — toggle MDS034 off only inside a
+named kind (useful when one class of files comes
+from upstream and you don't want to police its
+flavor):
+
+```yaml
+rules:
+  markdown-flavor:
+    profile: portable
+kinds:
+  upstream:
+    rules:
+      markdown-flavor: false
+```
+
+A bool-only later layer toggles `enabled` without
+erasing the profile preset's settings, so the rule
+stays configured but Check is gated off. The other
+rules in the preset are untouched. Disabling MDS034
+the obvious way (`rules.markdown-flavor: false` next
+to `rules.markdown-flavor: { profile: portable }`)
+does not work — YAML disallows duplicate mapping
+keys, and the rule's mapping form forces
+`Enabled=true`. The override or kind layer is the
+supported escape hatch.
 
 ## Inspecting an effective profile
 

@@ -30,7 +30,10 @@ func applyProfile(cfg *Config) error {
 	if !ok {
 		return nil
 	}
-	profileName, _ := rc.Settings["profile"].(string)
+	profileName, err := stringSetting(rc.Settings, "profile", "rules.markdown-flavor.profile")
+	if err != nil {
+		return err
+	}
 	if profileName == "" {
 		return nil
 	}
@@ -38,13 +41,15 @@ func applyProfile(cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("rules.markdown-flavor.profile: %w", err)
 	}
-	if userFlavor, ok := rc.Settings["flavor"].(string); ok && userFlavor != "" {
-		if userFlavor != profile.Flavor.String() {
-			return fmt.Errorf(
-				"rules.markdown-flavor: profile %q requires flavor %q, but flavor is set to %q",
-				profile.Name, profile.Flavor, userFlavor,
-			)
-		}
+	userFlavor, err := stringSetting(rc.Settings, "flavor", "rules.markdown-flavor.flavor")
+	if err != nil {
+		return err
+	}
+	if userFlavor != "" && userFlavor != profile.Flavor.String() {
+		return fmt.Errorf(
+			"rules.markdown-flavor: profile %q requires flavor %q, but flavor is set to %q",
+			profile.Name, profile.Flavor, userFlavor,
+		)
 	}
 
 	preset := make(map[string]RuleCfg, len(profile.Rules))
@@ -57,6 +62,23 @@ func applyProfile(cfg *Config) error {
 	cfg.Profile = profile.Name
 	cfg.ProfilePreset = preset
 	return nil
+}
+
+// stringSetting reads a string-typed setting from a settings map. A
+// missing key returns "" with no error; a present key with a non-string
+// value returns an error naming the offending field path so users see
+// the problem at config load time rather than getting a silent "no
+// profile" or "no flavor" outcome.
+func stringSetting(settings map[string]any, key, fieldPath string) (string, error) {
+	v, ok := settings[key]
+	if !ok {
+		return "", nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("%s: must be a string, got %T", fieldPath, v)
+	}
+	return s, nil
 }
 
 // copyProfilePreset returns a deep copy of a profile preset map. Each

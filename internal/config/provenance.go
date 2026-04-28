@@ -8,9 +8,10 @@ import (
 
 // Provenance layer-source string forms. A layer source is a stable
 // identifier that names one step in the rule-config merge pipeline.
+// Layers are listed below in apply order (oldest → newest):
 //
-//   - "default"               built-in defaults plus the user's top-level rules:
 //   - "profile.<name>"        the markdown-flavor profile preset, when set
+//   - "default"               built-in defaults plus the user's top-level rules:
 //   - "kinds.<name>"          a kind body in the file's effective kind list
 //   - "overrides[<i>]"        the i-th override entry that matched this file
 //   - "front-matter override" the file's own front-matter rule overrides
