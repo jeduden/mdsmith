@@ -39,7 +39,7 @@ jobs:
           "$HOME/.local/bin/mdsmith" merge-driver install
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - uses: jeduden/merge-queue-action@ad202a5128ce96b866c6ea8e75a44dfc05586d95 # v0.7.4
+      - uses: jeduden/merge-queue-action@5c1d6f305f87060b4901e4807880dbb72c1125e6 # v0.7.5
         with:
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
           ci_workflow: .github/workflows/ci.yml
