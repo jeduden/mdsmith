@@ -54,6 +54,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphreadability"
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphstructure"
+	_ "github.com/jeduden/mdsmith/internal/rules/recipesafety"
 	_ "github.com/jeduden/mdsmith/internal/rules/requiredstructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"
@@ -541,6 +542,7 @@ func checkFiles(
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
 		Explain:          explain,
+		ConfigPath:       cfgPath,
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -667,6 +669,7 @@ func checkStdin(format string, noColor, quiet, verbose bool, configPath, maxInpu
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
 		Explain:          explain,
+		ConfigPath:       cfgPath,
 	}
 	result := runner.RunSource("<stdin>", source)
 	printErrors(result.Errors)
@@ -807,6 +810,7 @@ func checkDiscovered(
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
 		Explain:          explain,
+		ConfigPath:       cfgPath,
 	}
 	result := runner.Run(files)
 	printErrors(result.Errors)
@@ -975,6 +979,7 @@ func loadConfig(configPath string) (*config.Config, string, error) {
 		return nil, "", err
 	}
 	config.InjectArchetypeRoots(cfg)
+	config.InjectBuildConfig(cfg, path)
 	return cfg, path, nil
 }
 

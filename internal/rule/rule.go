@@ -48,3 +48,12 @@ const (
 type ListMerger interface {
 	SettingMergeMode(key string) MergeMode
 }
+
+// ConfigTarget is implemented by rules that validate the project
+// config file (.mdsmith.yml) rather than individual Markdown files.
+// The engine runner runs these rules once against a synthetic lint.File
+// for the config file before per-file markdown processing; they return
+// nil for all other file paths when configured in production mode.
+type ConfigTarget interface {
+	IsConfigFileRule() bool
+}

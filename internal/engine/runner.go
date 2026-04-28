@@ -31,6 +31,10 @@ type Runner struct {
 	// Explain, when true, attaches per-leaf rule provenance to each
 	// diagnostic so output formatters can render an explanation trailer.
 	Explain bool
+	// ConfigPath is the path to the loaded .mdsmith.yml. When set,
+	// config-target rules (rule.ConfigTarget) are run once against a
+	// synthetic lint.File for this path before per-file processing.
+	ConfigPath string
 	// gitignoreCache caches GitignoreMatchers by directory to avoid
 	// re-walking the filesystem for each file.
 	gitignoreCache map[string]*lint.GitignoreMatcher
@@ -48,6 +52,11 @@ type Result struct {
 // all diagnostics (sorted by file, line, column) and any errors encountered.
 func (r *Runner) Run(paths []string) *Result {
 	res := &Result{}
+
+	// Run config-target rules once against the config file before per-file
+	// markdown processing. These rules (e.g. recipe-safety / MDS040) validate
+	// the project config rather than individual Markdown files.
+	r.runConfigTargetRules(res)
 
 	for _, path := range paths {
 		if config.IsIgnored(r.Config.Ignore, path) {
@@ -225,6 +234,39 @@ func ruleCategoryLookup(rules []rule.Rule) func(string) string {
 	}
 	return func(name string) string {
 		return m[name]
+	}
+}
+
+// runConfigTargetRules runs rules that implement rule.ConfigTarget once
+// against a synthetic lint.File for the config file. These rules validate
+// the project config rather than individual Markdown files. They are skipped
+// in the normal per-file loop because their Check method returns nil for
+// non-config file paths.
+func (r *Runner) runConfigTargetRules(res *Result) {
+	if r.ConfigPath == "" {
+		return
+	}
+	effective := r.effectiveWithCategories(r.ConfigPath, nil)
+	f, err := lint.NewFile(r.ConfigPath, []byte{})
+	if err != nil {
+		res.Errors = append(res.Errors, fmt.Errorf("creating config lint.File: %w", err))
+		return
+	}
+	for _, rl := range r.Rules {
+		if _, ok := rl.(rule.ConfigTarget); !ok {
+			continue
+		}
+		cfg, ok := effective[rl.Name()]
+		if !ok || !cfg.Enabled {
+			continue
+		}
+		configured, err := ConfigureRule(rl, cfg)
+		if err != nil {
+			res.Errors = append(res.Errors, err)
+			continue
+		}
+		diags := configured.Check(f)
+		res.Diagnostics = append(res.Diagnostics, diags...)
 	}
 }
 

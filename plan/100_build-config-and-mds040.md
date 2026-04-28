@@ -1,7 +1,7 @@
 ---
 id: 100
 title: build config block and MDS040 recipe-safety rule
-status: "🔲"
+status: "✅"
 summary: >-
   Add a `build:` config section that declares `base-url`
   and user-defined `recipes`. MDS040 lints each recipe's
@@ -155,31 +155,31 @@ delimiter (MDS040)
 
 ## Acceptance Criteria
 
-- [ ] `build:` parses correctly with both keys absent,
+- [x] `build:` parses correctly with both keys absent,
       one present, or both present
-- [ ] A recipe with `command: "mmdc -i {input} -o {output}"`,
+- [x] A recipe with `command: "mmdc -i {input} -o {output}"`,
       `params.required: [input]`, and
       `params.optional: [theme]` round-trips through
       config parse without error
-- [ ] A `{param}` token in `command` that is not in
+- [x] A `{param}` token in `command` that is not in
       `required` or `optional` produces a config error
-- [ ] `{alt}` or `{output}` appearing in `command`
+- [x] `{alt}` or `{output}` appearing in `command`
       produces a config error
-- [ ] MDS040 flags a recipe whose `command` starts with
+- [x] MDS040 flags a recipe whose `command` starts with
       `bash`, `sh`, `/bin/bash`, or `/bin/sh`
-- [ ] MDS040 flags a recipe whose `command` contains a
+- [x] MDS040 flags a recipe whose `command` contains a
       shell operator token (`&&`, `||`, `;`, `|`, `>`, etc.)
-- [ ] MDS040 flags a recipe whose `command` token
+- [x] MDS040 flags a recipe whose `command` token
       contains fused adjacent `{param}` placeholders
       (e.g. `{a}{b}`)
-- [ ] MDS040 flags a recipe whose executable token
+- [x] MDS040 flags a recipe whose executable token
       contains `..`
-- [ ] MDS040 warns (not errors) when a recipe declares
+- [x] MDS040 warns (not errors) when a recipe declares
       a `params.required` or `params.optional` entry
       that no `{param}` token in `command` references
-- [ ] MDS040 passes a clean command like
+- [x] MDS040 passes a clean command like
       `mmdc -i {input} -o {output}`
-- [ ] A config with no `build:` key passes MDS040
+- [x] A config with no `build:` key passes MDS040
       without error
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

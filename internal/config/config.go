@@ -35,6 +35,7 @@ type Config struct {
 	Archetypes     ArchetypesCfg         `yaml:"archetypes"`
 	Kinds          map[string]KindBody   `yaml:"kinds,omitempty"`
 	KindAssignment []KindAssignmentEntry `yaml:"kind-assignment,omitempty"`
+	Build          BuildConfig           `yaml:"build,omitempty"`
 
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
