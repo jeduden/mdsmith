@@ -102,7 +102,7 @@ func (r *Runner) Run(paths []string) *Result {
 
 		r.logRules(effective)
 
-		diags, errs := CheckRules(f, r.Rules, effective)
+		diags, errs := CheckRules(f, r.markdownRules(), effective)
 		if r.Explain {
 			explain.Attach(diags, r.Config, path, fmKinds)
 		}
@@ -155,7 +155,7 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 	r.logRules(effective)
 
-	diags, errs := CheckRules(f, r.Rules, effective)
+	diags, errs := CheckRules(f, r.markdownRules(), effective)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds)
 	}
@@ -164,6 +164,24 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 	sortDiagnostics(res.Diagnostics)
 	return res
+}
+
+// markdownRules returns the subset of rules to run against individual Markdown
+// files. When ConfigPath is set, config-target rules are excluded because they
+// have already run once (via runConfigTargetRules) and their Check method
+// returns nil for any non-config path anyway.
+func (r *Runner) markdownRules() []rule.Rule {
+	if r.ConfigPath == "" {
+		return r.Rules
+	}
+	filtered := make([]rule.Rule, 0, len(r.Rules))
+	for _, rl := range r.Rules {
+		if ct, ok := rl.(rule.ConfigTarget); ok && ct.IsConfigFileRule() {
+			continue
+		}
+		filtered = append(filtered, rl)
+	}
+	return filtered
 }
 
 // parseFrontMatterKinds parses and validates the kinds list from a file's

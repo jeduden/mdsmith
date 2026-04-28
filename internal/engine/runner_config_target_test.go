@@ -58,6 +58,31 @@ func (e *applySettingsError) Error() string { return e.msg }
 
 // --- runConfigTargetRules tests ---
 
+func TestMarkdownRules_NoConfigPath_ReturnsAllRules(t *testing.T) {
+	rules := []rule.Rule{
+		&mockRule{id: "MDS998", name: "mock-rule"},
+		&configTargetRule{id: "MDS999", name: "ct-rule"},
+	}
+	runner := &Runner{Config: &config.Config{}, Rules: rules}
+	got := runner.markdownRules()
+	assert.Len(t, got, 2, "all rules returned when ConfigPath is empty")
+}
+
+func TestMarkdownRules_WithConfigPath_FiltersConfigTargetRules(t *testing.T) {
+	rules := []rule.Rule{
+		&mockRule{id: "MDS998", name: "mock-rule"},
+		&configTargetRule{id: "MDS999", name: "ct-rule"},
+	}
+	runner := &Runner{
+		Config:     &config.Config{},
+		Rules:      rules,
+		ConfigPath: ".mdsmith.yml",
+	}
+	got := runner.markdownRules()
+	require.Len(t, got, 1)
+	assert.Equal(t, "MDS998", got[0].ID())
+}
+
 func TestRunConfigTargetRules_NoConfigPath_Skipped(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
