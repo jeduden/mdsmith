@@ -90,60 +90,29 @@ directive has no effect`.
 For full reference, see
 [MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md).
 
-## Archetype templates
+## Reusing schemas with kinds
 
-Instead of authoring `schema: path/to/schema.md` for
-every override, collect reusable schemas in an
-archetype directory and refer to them by name.
-
-### Bootstrap the directory
-
-```text
-mdsmith archetypes init
-```
-
-This creates `./archetypes/` by default. Passing a
-directory name creates exactly that directory — for
-example, `mdsmith archetypes init templates` creates
-`./templates/`. The directory gets an `example.md`
-schema and a `README.md`. `init` does not touch
-`.mdsmith.yml`; add the printed snippet yourself.
-
-### Register roots and select an archetype
+Instead of repeating `schema: path/to/schema.md` in
+every override, declare a kind that bundles the schema
+setting and assign files to it:
 
 ```yaml
-archetypes:
-  roots:
-    - archetypes
-
-overrides:
-  - files: ["stories/**/*.md"]
+kinds:
+  story:
     rules:
       required-structure:
-        archetype: story
+        schema: schemas/story.md
+
+kind-assignment:
+  - files: ["stories/**/*.md"]
+    kinds: [story]
 ```
 
-`archetypes.roots` is a list of directories searched
-in order; earlier roots shadow later ones. When the
-key is omitted, the single root `./archetypes` is
-used.
-
-### Inspect archetypes
-
-```text
-mdsmith archetypes list                # one per line: "<name>\t<path>"
-mdsmith archetypes show <name>         # print schema source
-mdsmith archetypes path <name>         # print resolved path
-```
-
-`archetype` and `schema` are mutually exclusive.
-Schema files can use `<?include?>`, but in
-`required-structure` those include paths are
-currently resolved relative to the process working
-directory, not the archetype file's directory. Keep
-archetype schemas self-contained, or run `mdsmith`
-from the project root when an archetype schema uses
-`<?include?>`.
+Use `mdsmith kinds list` to inspect declared kinds and
+`mdsmith kinds path <name>` to print the resolved
+schema path. See
+[file kinds](../../guides/file-kinds.md) for the full
+assignment and merge semantics.
 
 ## Allowing intentional empty sections
 

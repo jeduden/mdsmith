@@ -45,7 +45,7 @@ for the shared mechanics.
 
 [catalog]: ../internal/rules/MDS019-catalog/README.md
 [include]: ../internal/rules/MDS021-include/README.md
-[gensection]: ../docs/background/archetypes/generated-section/README.md
+[gensection]: ../docs/background/concepts/generated-section.md
 
 ### Why both pieces in one plan
 

@@ -26,7 +26,7 @@ body. Markdown parsers interpret `>` at the start of a
 line as a blockquote marker, which breaks the processing
 instruction content. Use literal block scalars (`|`,
 `|-`, `|+`) or quoted strings instead. See the
-[archetype docs](../../../docs/background/archetypes/generated-section/)
+[archetype docs](../../../docs/background/concepts/generated-section.md)
 for details.
 
 ## Parameters
@@ -206,7 +206,7 @@ Outdated content
 - **Implementation**:
   [source](./)
 - **Category**: meta
-- **Archetype**:
-  [generated-section](../../../docs/background/archetypes/generated-section/)
+- **Pattern**:
+  [generated-section](../../../docs/background/concepts/generated-section.md)
 - **Guide**:
   [directive guide](../../../docs/guides/directives/generating-content.md)
