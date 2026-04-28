@@ -273,7 +273,10 @@ func expectedNumber(style string, start, i int) int {
 // parseListItemNumber finds the literal number on a list-item line.
 // Returns the number, the byte indices of the digits within the line,
 // and the marker character ('.' or ')'). ok is false when the line
-// does not begin with an ordered-list marker.
+// does not begin with an ordered-list marker, or when the digit run
+// is too long to fit in an int (CommonMark caps markers at 9 digits;
+// raw source lines can carry longer digit runs that we treat as
+// non-markers rather than risk an overflowed value flowing into Fix).
 func parseListItemNumber(line []byte) (number int, digitStart, digitEnd int, markerChar byte, ok bool) {
 	i := 0
 	for i < len(line) && line[i] == ' ' {
@@ -281,7 +284,6 @@ func parseListItemNumber(line []byte) (number int, digitStart, digitEnd int, mar
 	}
 	digitStart = i
 	for i < len(line) && isDigit(line[i]) {
-		number = number*10 + int(line[i]-'0')
 		i++
 	}
 	digitEnd = i
@@ -294,6 +296,11 @@ func parseListItemNumber(line []byte) (number int, digitStart, digitEnd int, mar
 	if line[i] != '.' && line[i] != ')' {
 		return 0, 0, 0, 0, false
 	}
+	n, err := strconv.Atoi(string(line[digitStart:digitEnd]))
+	if err != nil {
+		return 0, 0, 0, 0, false
+	}
+	number = n
 	markerChar = line[i]
 	return number, digitStart, digitEnd, markerChar, true
 }

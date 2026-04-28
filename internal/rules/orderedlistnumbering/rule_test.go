@@ -289,6 +289,13 @@ func TestParseListItemNumber_ParenMarker(t *testing.T) {
 	assert.Equal(t, byte(')'), marker)
 }
 
+func TestParseListItemNumber_OverflowDigits(t *testing.T) {
+	// A 30-digit marker overflows int. parseListItemNumber must reject
+	// it rather than wrap to a bogus value that could corrupt Fix.
+	_, _, _, _, ok := parseListItemNumber([]byte("123456789012345678901234567890. item"))
+	assert.False(t, ok)
+}
+
 func TestApplyIndentShift_Zero(t *testing.T) {
 	in := []byte("hello")
 	out := applyIndentShift(in, 0)
