@@ -586,16 +586,24 @@ func linkSourceSpan(link *ast.Link, source []byte) (int, int, string) {
 	return openBracket, end, string(source[textStart:textEnd])
 }
 
-// findClosingBracket scans from `pos` for the `]` that closes the
-// link text, honoring backslash escapes. CommonMark forbids
-// unescaped `[` inside link text, so a depth counter is unnecessary.
+// findClosingBracket scans from `pos` for the `]` that balances the
+// opening `[` immediately before `pos`, honoring backslash escapes
+// and nested brackets. Goldmark accepts nested brackets in link text
+// when an inline link is embedded — for example, `[a [b](x)][id]` —
+// so a depth counter is required to identify the outer `]`.
 func findClosingBracket(source []byte, pos int) int {
+	depth := 1
 	for ; pos < len(source); pos++ {
 		switch source[pos] {
 		case '\\':
 			pos++
+		case '[':
+			depth++
 		case ']':
-			return pos
+			depth--
+			if depth == 0 {
+				return pos
+			}
 		}
 	}
 	return pos

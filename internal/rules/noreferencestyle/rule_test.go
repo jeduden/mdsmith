@@ -341,6 +341,17 @@ func TestFix_EmphasizedLinkText(t *testing.T) {
 	assert.NotContains(t, string(got), "[s]:")
 }
 
+func TestFix_NestedBracketsInLinkText(t *testing.T) {
+	// Goldmark accepts a full reference link whose text contains a
+	// bare `[b]` pair: `[a [b] c][s]`. findClosingBracket must use
+	// depth tracking to land on the outer `]`, not the inner one.
+	src := "See [a [b] c][s].\n\n[s]: https://example.com\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Contains(t, string(got),
+		"[a [b] c](https://example.com)")
+	assert.NotContains(t, string(got), "[s]: https://example.com")
+}
+
 func TestFix_LinkTextWithEscapedBracket(t *testing.T) {
 	// Link text contains an escaped bracket. The Fix must walk past
 	// the escape rather than treat `]` after `\` as the closer.
