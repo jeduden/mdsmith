@@ -433,13 +433,13 @@ func TestWriteBodyText_DeterministicOutput(t *testing.T) {
 	}
 }
 
-func TestWriteFileResolutionText_ShowsProfileLayer(t *testing.T) {
+func TestWriteFileResolutionText_ShowsConventionLayer(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
 			"line-length": {Enabled: true, Settings: map[string]any{"max": 120}},
 		},
-		Profile: "portable",
-		ProfilePreset: map[string]config.RuleCfg{
+		Convention: "portable",
+		ConventionPreset: map[string]config.RuleCfg{
 			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
 		},
 	}
@@ -448,18 +448,18 @@ func TestWriteFileResolutionText_ShowsProfileLayer(t *testing.T) {
 	require.NoError(t, WriteFileResolutionText(&buf, res))
 	out := buf.String()
 	// User's max=120 wins; provenance shows default as winning source
-	// because cfg.Rules sits above the profile layer.
+	// because cfg.Rules sits above the convention layer.
 	assert.Contains(t, out, "settings.max = 120")
 	assert.Contains(t, out, "(from default)")
 }
 
-func TestWriteRuleResolutionText_ShowsProfileLayer(t *testing.T) {
+func TestWriteRuleResolutionText_ShowsConventionLayer(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
 			"line-length": {Enabled: true, Settings: map[string]any{"max": 120}},
 		},
-		Profile: "portable",
-		ProfilePreset: map[string]config.RuleCfg{
+		Convention: "portable",
+		ConventionPreset: map[string]config.RuleCfg{
 			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
 		},
 	}
@@ -468,7 +468,8 @@ func TestWriteRuleResolutionText_ShowsProfileLayer(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, WriteRuleResolutionText(&buf, "x.md", rr))
 	out := buf.String()
-	assert.Contains(t, out, "profile.portable", "profile layer must appear in chain")
+	assert.Contains(t, out, "convention.portable",
+		"convention layer must appear in chain")
 	assert.Contains(t, out, "winning source: default",
-		"user value wins over profile preset")
+		"user value wins over convention preset")
 }

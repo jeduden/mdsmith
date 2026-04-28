@@ -34,58 +34,9 @@ func TestRuleDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
 	assert.Equal(t, "", ds["flavor"])
-	assert.Equal(t, "", ds["profile"])
-}
-
-func TestRuleApplySettingsProfile(t *testing.T) {
-	t.Run("known profile", func(t *testing.T) {
-		r := &Rule{}
-		require.NoError(t, r.ApplySettings(map[string]any{"profile": "portable"}))
-		assert.Equal(t, "portable", r.Profile)
-	})
-
-	t.Run("empty profile clears", func(t *testing.T) {
-		r := &Rule{Profile: "portable"}
-		require.NoError(t, r.ApplySettings(map[string]any{"profile": ""}))
-		assert.Equal(t, "", r.Profile)
-	})
-
-	t.Run("unknown profile errors", func(t *testing.T) {
-		r := &Rule{}
-		err := r.ApplySettings(map[string]any{"profile": "bogus"})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unknown profile")
-		assert.Contains(t, err.Error(), "bogus")
-	})
-
-	t.Run("non-string profile errors", func(t *testing.T) {
-		r := &Rule{}
-		err := r.ApplySettings(map[string]any{"profile": 42})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "profile must be a string")
-	})
-
-	t.Run("flavor profile mismatch errors", func(t *testing.T) {
-		r := &Rule{}
-		err := r.ApplySettings(map[string]any{
-			"flavor":  "gfm",
-			"profile": "portable",
-		})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "portable")
-		assert.Contains(t, err.Error(), "commonmark")
-		assert.Contains(t, err.Error(), "gfm")
-	})
-
-	t.Run("flavor profile agreement accepted", func(t *testing.T) {
-		r := &Rule{}
-		require.NoError(t, r.ApplySettings(map[string]any{
-			"flavor":  "gfm",
-			"profile": "github",
-		}))
-		assert.Equal(t, "github", r.Profile)
-		assert.Equal(t, FlavorGFM, r.Flavor)
-	})
+	_, hasProfile := ds["profile"]
+	assert.False(t, hasProfile,
+		"profile is no longer a per-rule setting; convention lives at top level")
 }
 
 func TestRuleApplySettingsValid(t *testing.T) {

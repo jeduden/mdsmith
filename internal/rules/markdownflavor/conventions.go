@@ -6,40 +6,42 @@ import (
 	"strings"
 )
 
-// Profile is an opinionated bundle that pairs a Markdown flavor with a
-// table of rule presets. Selecting a profile in config applies both:
-// MDS034 runs against the named flavor, and the named rule presets are
-// applied as a base layer beneath the user's own rule config.
+// Convention is an opinionated bundle that pairs a Markdown flavor
+// with a table of rule presets. Selecting a convention in config
+// applies both: MDS034 runs against the named flavor, and the named
+// rule presets are applied as a base layer beneath the user's own
+// rule config.
 //
-// Profiles are codebase-versioned. The Rules table may reference rules
-// that are not yet registered (presets for upcoming MDS04x rules ship
-// alongside the profile so that adding the rule does not require
-// updating every consumer's config). The config loader treats presets
-// for unregistered rules as a no-op at check time; the settings remain
-// in the merged config and activate automatically once the rule lands.
-type Profile struct {
+// Conventions are codebase-versioned. The Rules table may reference
+// rules that are not yet registered (presets for upcoming MDS04x
+// rules ship alongside the convention so that adding the rule does
+// not require updating every consumer's config). The config loader
+// treats presets for unregistered rules as a no-op at check time;
+// the settings remain in the merged config and activate
+// automatically once the rule lands.
+type Convention struct {
 	// Name is the lowercase identifier used in YAML config.
 	Name string
 	// Flavor is the Markdown flavor MDS034 should validate against.
 	Flavor Flavor
 	// Rules maps rule name (e.g. "no-inline-html") to the preset that
-	// the profile applies for that rule.
+	// the convention applies for that rule.
 	Rules map[string]RulePreset
 }
 
-// RulePreset is a profile's preset for a single rule. It mirrors the
-// shape of config.RuleCfg without depending on the config package, so
-// the markdownflavor package can declare profile tables without the
-// import cycle that would otherwise result.
+// RulePreset is a convention's preset for a single rule. It mirrors
+// the shape of config.RuleCfg without depending on the config
+// package, so the markdownflavor package can declare convention
+// tables without the import cycle that would otherwise result.
 type RulePreset struct {
 	Enabled  bool
 	Settings map[string]any
 }
 
-// profiles is the built-in profile table. Each entry pairs a target
-// flavor with rule-by-rule presets. New profiles are added here; the
-// table is consulted via Lookup.
-var profiles = map[string]Profile{
+// conventions is the built-in convention table. Each entry pairs a
+// target flavor with rule-by-rule presets. New conventions are added
+// here; the table is consulted via Lookup.
+var conventions = map[string]Convention{
 	"portable": {
 		Name:   "portable",
 		Flavor: FlavorCommonMark,
@@ -160,23 +162,25 @@ var profiles = map[string]Profile{
 	},
 }
 
-// Lookup returns the profile table entry for name. It returns an error
-// naming the field and listing valid names when name is not a known
-// profile, matching the failure-mode contract in plan 112.
-func Lookup(name string) (Profile, error) {
-	p, ok := profiles[name]
+// Lookup returns the convention table entry for name. It returns an
+// error naming the field and listing valid names when name is not a
+// known convention, matching the failure-mode contract in plan 112.
+func Lookup(name string) (Convention, error) {
+	c, ok := conventions[name]
 	if !ok {
-		return Profile{}, fmt.Errorf(
-			"unknown profile %q (valid: %s)", name, strings.Join(ProfileNames(), ", "),
+		return Convention{}, fmt.Errorf(
+			"unknown convention %q (valid: %s)",
+			name, strings.Join(ConventionNames(), ", "),
 		)
 	}
-	return p, nil
+	return c, nil
 }
 
-// ProfileNames returns the sorted list of built-in profile names.
-func ProfileNames() []string {
-	names := make([]string, 0, len(profiles))
-	for k := range profiles {
+// ConventionNames returns the sorted list of built-in convention
+// names.
+func ConventionNames() []string {
+	names := make([]string, 0, len(conventions))
+	for k := range conventions {
 		names = append(names, k)
 	}
 	sort.Strings(names)

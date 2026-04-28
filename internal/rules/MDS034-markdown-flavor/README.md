@@ -15,9 +15,12 @@ MDS034 is the *flavor gate*: it answers "will the
 target renderer interpret this syntax as the named
 feature?" Style choices among equally-valid forms
 (emphasis style, list marker, horizontal rule) live
-in separate rules. See
-[flavor vs rule](../../../docs/background/concepts/flavor-vs-rules.md)
-for the distinction and where the two overlap.
+in separate rules. Project-level bundles that pair
+a flavor with style rules live in
+[conventions](../../../docs/reference/conventions.md).
+For the conceptual line between flavor, rule,
+convention, and kind see
+[the concepts doc](../../../docs/background/concepts/flavor-rule-convention-kind.md).
 
 ## Settings
 

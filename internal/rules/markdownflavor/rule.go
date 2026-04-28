@@ -16,14 +16,13 @@ func init() {
 }
 
 // Rule implements MDS034, validating Markdown against a declared
-// target flavor and flagging syntax the renderer will reject. The
-// rule also accepts a profile name; the profile mechanism is mostly a
-// config-loader concern (it pushes rule presets for other rules into
-// the merged config), but the profile is stored here so MDS034 itself
-// can validate that profile and flavor agree when a user sets both.
+// target flavor and flagging syntax the renderer does not interpret
+// as a feature. The rule reads only the flavor; project-level
+// convention selection (which can preset this rule's flavor and
+// other rules' settings) is handled at config load — see
+// internal/config/convention.go.
 type Rule struct {
-	Flavor  Flavor
-	Profile string
+	Flavor Flavor
 }
 
 // ID implements rule.Rule.
@@ -40,13 +39,6 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {
-	// Apply flavor and profile in one pass, then cross-validate, so the
-	// agreement check sees the merged values regardless of map iteration
-	// order.
-	var (
-		flavorSet  bool
-		profileSet bool
-	)
 	for k, v := range settings {
 		switch k {
 		case "flavor":
@@ -67,32 +59,8 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				)
 			}
 			r.Flavor = fl
-			flavorSet = true
-		case "profile":
-			s, ok := v.(string)
-			if !ok {
-				return fmt.Errorf("markdown-flavor: profile must be a string, got %T", v)
-			}
-			if s == "" {
-				r.Profile = ""
-				continue
-			}
-			if _, err := Lookup(s); err != nil {
-				return fmt.Errorf("markdown-flavor: %w", err)
-			}
-			r.Profile = s
-			profileSet = true
 		default:
 			return fmt.Errorf("markdown-flavor: unknown setting %q", k)
-		}
-	}
-	if flavorSet && profileSet && r.Profile != "" {
-		p, _ := Lookup(r.Profile)
-		if r.Flavor != flavorInvalid && r.Flavor != p.Flavor {
-			return fmt.Errorf(
-				"markdown-flavor: profile %q requires flavor %q, but flavor is set to %q",
-				r.Profile, p.Flavor, r.Flavor,
-			)
 		}
 	}
 	return nil
@@ -101,8 +69,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"flavor":  "",
-		"profile": "",
+		"flavor": "",
 	}
 }
 

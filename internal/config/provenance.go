@@ -10,18 +10,18 @@ import (
 // identifier that names one step in the rule-config merge pipeline.
 // Layers are listed below in apply order (oldest → newest):
 //
-//   - "profile.<name>"        the markdown-flavor profile preset, when set
+//   - "convention.<name>"     the markdown-flavor convention preset, when set
 //   - "default"               built-in defaults plus the user's top-level rules:
 //   - "kinds.<name>"          a kind body in the file's effective kind list
 //   - "overrides[<i>]"        the i-th override entry that matched this file
 //   - "front-matter override" the file's own front-matter rule overrides
 //
-// "default" collapses built-in defaults and the user's top-level rules:
-// block, since cfg.Rules already has them merged. The profile layer
-// sits beneath default so the user's top-level rules win via
-// deep-merge; the preset is the floor a profile installs.
-// "front-matter override" is reserved for the future per-file
-// front-matter rules: feature.
+// "default" collapses built-in defaults and the user's top-level
+// rules: block, since cfg.Rules already has them merged. The
+// convention layer sits beneath default so the user's top-level
+// rules win via deep-merge; the preset is the floor a convention
+// installs. "front-matter override" is reserved for the future
+// per-file front-matter rules: feature.
 const (
 	layerSourceDefault     = "default"
 	layerSourceFrontMatter = "front-matter override"
@@ -134,10 +134,10 @@ type layerInfo struct {
 
 func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo {
 	layers := make([]layerInfo, 0, 1+len(kinds)+len(cfg.Overrides))
-	if cfg.Profile != "" && len(cfg.ProfilePreset) > 0 {
+	if cfg.Convention != "" && len(cfg.ConventionPreset) > 0 {
 		layers = append(layers, layerInfo{
-			Source: "profile." + cfg.Profile,
-			Rules:  cfg.ProfilePreset,
+			Source: "convention." + cfg.Convention,
+			Rules:  cfg.ConventionPreset,
 		})
 	}
 	layers = append(layers, layerInfo{Source: layerSourceDefault, Rules: cfg.Rules})

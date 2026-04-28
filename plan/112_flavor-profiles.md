@@ -1,40 +1,66 @@
 ---
 id: 112
-title: Flavor profiles refactor
+title: Markdown convention bundles for MDS034
 status: "✅"
 summary: >-
-  Refactor MDS034 from "extension support detector"
-  to a flavor orchestrator. Add a profile concept
-  that bundles extension policy with style policy.
-  Three profiles ship: portable (CommonMark
-  everywhere), github (GFM on github.com), and plain
-  (Markdown that survives `cat`).
+  Introduce a top-level `convention:` config key that
+  pairs a Markdown flavor with a set of style-rule
+  presets. Three conventions ship: portable
+  (CommonMark everywhere), github (GFM on
+  github.com), and plain (Markdown that survives
+  `cat`). Convention applies as a base layer beneath
+  the user's top-level rules.
 model: opus
 ---
-# Flavor profiles refactor
+# Markdown convention bundles for MDS034
 
 ## Goal
 
-Make `flavor:` the single knob for "what subset of
-Markdown does this project use." Today MDS034 only
-answers which extensions a renderer supports. This
-plan extends it to also answer which CommonMark
-constructs a team allows and which style choices
-they pin. One config key, one mental model.
+Give a project one knob for "what kind of Markdown
+do we write" without overloading the renderer's
+flavor. Today MDS034 only answers which extensions a
+renderer supports. Adding seven style rules
+(MDS041-MDS047) without a bundle would make a
+strict-Markdown setup take eight separate config
+keys. A convention collapses those eight choices
+into one.
 
 ## Background
 
+### Three concepts, three scopes
+
+mdsmith already names two related ideas. **Flavor**
+is a property of a renderer — what CommonMark, GFM,
+or goldmark recognize. **Kind** is a property of a
+file — a role tag attached via front matter or
+glob. Convention is the missing third concept: a
+property of the *project* — what the team writes,
+project-wide.
+
+The three answer different questions:
+
+- Flavor: "what *renderer* do we target?" (one)
+- Convention: "what *kind of Markdown* does this
+  project write?" (one)
+- Kind: "what *role* does this file play?" (zero or
+  many)
+
+Conflating any two leads to broken designs. Treating
+flavor as opinionated style would imply renderers
+that don't exist. Treating convention as a kind
+would suggest different files in the same project
+target different renderers, which they cannot. See
+the
+[concepts doc](../docs/background/concepts/flavor-rule-convention-kind.md)
+for the full distinction.
+
 ### Today's flavor model
 
-MDS034
-([internal/rules/markdownflavor/](../internal/rules/markdownflavor/))
-defines three flavors: `commonmark`, `gfm`,
-`goldmark`. Each declares which of 12 extension
-features it supports. The rule emits diagnostics
-when the configured flavor does not support a
-feature the file uses.
-
-Settings:
+The
+[markdownflavor rule](../internal/rules/markdownflavor/)
+defines several flavors. It emits diagnostics when
+the configured flavor does not interpret a feature
+the file uses.
 
 ```yaml
 rules:
@@ -49,62 +75,84 @@ independently.
 
 ### What plans 105-111 add
 
-Seven new rules cover MDS041 through MDS047. Each
-restricts a different CommonMark ambiguity. Today
-they would each be enabled and configured
-separately:
-
-```yaml
-rules:
-  no-inline-html: true
-  no-reference-style: { allow-footnotes: false }
-  emphasis-style: { bold: asterisk, italic: underscore }
-  horizontal-rule-style: { style: dash, length: 3 }
-  list-marker-style: { style: dash }
-  ordered-list-numbering: { style: sequential, start: 1 }
-  ambiguous-emphasis: { max-run: 2 }
-  markdown-flavor: { flavor: commonmark }
-```
-
-Eight separate knobs to land on a strict
-Markdown setup. The user request is to collapse
-these into one.
-
-### Why "profile" and not "flavor"
-
-A flavor today corresponds to a renderer. Adding
-`portable` as a flavor would suggest there is
-a renderer by that name, which there is not. The
-plan introduces **profiles** as a layer above
-flavors. A profile names a flavor *plus* a set of
-rule presets. Selecting a profile applies both.
-
-This keeps the existing `flavor:` enum honest
-(`commonmark | gfm | goldmark`) and adds a separate
-`profile:` field for opinionated bundles.
+Seven rules cover MDS041 through MDS047. Each
+restricts a different CommonMark ambiguity. Without
+a convention bundle they would each be enabled and
+configured separately, multiplying config friction.
 
 ## Design
 
 ### Configuration
 
+A new top-level `convention:` config key, sibling to
+`rules:`, `kinds:`, and `overrides:`:
+
 ```yaml
-rules:
-  markdown-flavor:
-    flavor: commonmark        # renderer grammar
-    profile: portable   # opinionated bundle
+convention: portable
 ```
 
-Both fields are optional. `flavor` defaults to
-`commonmark`. `profile` defaults to empty.
+That single line pins a flavor and a curated set of
+style-rule settings. The convention applies as a
+base layer beneath the user's `rules:` block. A
+user can set `convention: portable` and adjust one
+rule on top:
 
-When a profile is set, it implies a flavor. Setting
-both is allowed only when they agree; a mismatch
-(e.g. `flavor: gfm` with a profile that requires
-`commonmark`) is a config error.
+```yaml
+convention: github
+rules:
+  no-inline-html:
+    allow: [details, summary, sub, sup]
+```
 
-### Built-in profiles
+Convention is project-wide. There is one selection
+per config file. Setting an unknown name is a config
+error at load.
 
-Three profiles ship initially. Each names a target.
+### Flavor and convention
+
+A convention implies a flavor. Setting both is
+allowed only when they agree. A mismatch is a
+config error:
+
+```yaml
+convention: portable
+rules:
+  markdown-flavor:
+    flavor: gfm     # ← error: portable requires commonmark
+```
+
+### Why top-level and not nested
+
+An earlier draft put `profile:` inside the MDS034
+rule's settings. That broke down for three reasons.
+Disabling MDS034 (`rules.markdown-flavor: false`)
+collided with `rules.markdown-flavor: { profile: ...
+}` because YAML disallows duplicate mapping keys.
+Discoverability was poor — a project-level concept
+buried inside a per-rule settings block. Validation
+ran in two places (the rule and the loader), forcing
+the cross-check to live twice.
+
+Top-level `convention:` fixes all three. It sits
+where users look for project decisions. Disabling
+MDS034 now works the obvious way. Validation is one
+config-load pass.
+
+### Why "convention" and not "profile"
+
+"Profile" reads as a near-synonym of "flavor"
+(both feel like "kind of Markdown"). The line
+between them is real but the names blur it.
+"Convention" reframes the concept around what it
+actually is: the team's writing convention, distinct
+from the renderer's grammar. Three concepts, three
+words, no name collision: flavor (renderer),
+convention (project), kind (file).
+
+### Built-in conventions
+
+Three conventions ship initially. Each names a
+target.
 
 - **`portable`** — Markdown that renders the same in
   every CommonMark parser. `flavor: commonmark`, all
@@ -117,66 +165,60 @@ Three profiles ship initially. Each names a target.
   github.com. `flavor: gfm`, MDS041 enabled with
   `<details>` and `<summary>` in the allowlist,
   MDS042 and MDS045 enabled with defaults, the rest
-  disabled. Targets teams that use GFM for GitHub
-  rendering but still want consistent emphasis and
-  bullet style.
-- **`plain`** — Markdown that survives `cat`. The
-  rendered output should look about the same as the
-  source viewed in a plaintext reader. Same
-  activations as `portable` today, plus
+  disabled.
+- **`plain`** — Markdown that survives `cat`. Same
+  activations as `portable` plus
   `allow-comments: false` on MDS041 (HTML comments
-  leak through as `<!-- ... -->` in plaintext).
+  leak through as literal text in plaintext readers).
 
-The `plain` profile sits close to `portable` in
-this plan. A truly plaintext-faithful profile would
-need extra rules that do not exist yet:
-
-- **no-emphasis** — forbid `*` and `_` runs entirely.
-  In plaintext readers they appear as literal
-  characters around the word, which is noise.
-- **no-fenced-code** — require indented code blocks
-  rather than fenced ones, since the fence delimiters
-  show up literally.
-- **prefer-bare-urls** — invert MDS012 so
-  `https://example.com` is preferred over
-  `[text](url)`, since the latter renders as
-  `[text](url)` literally in plaintext.
-
-These three rules are out of scope for this plan
-and would land in follow-up plans for the
-plaintext-focused rules. When they ship, the
-`plain` profile gains them automatically and
+The `plain` convention sits close to `portable`
+today. A truly plaintext-faithful convention would
+need rules that do not exist yet (no-emphasis,
+no-fenced-code, prefer-bare-urls). When those rules
+land in follow-up plans, `plain` gains them and
 diverges from `portable`.
 
-Profiles are declared in
-`internal/rules/markdownflavor/profiles.go` as a
-table: profile name → flavor + rule preset map.
+Conventions are declared in the
+[markdownflavor package](../internal/rules/markdownflavor/conventions.go)
+as a table: name → flavor + rule preset map.
 
 ### How preset application works
 
-Profiles do not re-implement the rule logic. They
-push settings into the existing rule registry
+Conventions do not re-implement the rule logic.
+They push settings into the existing rule config
 during config load. The flow:
 
-1. Config loader reads `markdown-flavor.profile`.
-2. If non-empty, it looks up the profile table.
-3. For each rule named in the profile preset, the
-   loader applies the preset *as a base layer*
-   under any user override.
+1. Config loader reads top-level `convention:`.
+2. If non-empty, it looks up the convention table.
+3. The preset is captured on `Config.ConventionPreset`.
+4. `effectiveRules` merges the preset as the lowest
+   layer (oldest), beneath `default`, kinds, and
+   overrides.
 
 This piggybacks on the existing deep-merge config
-([plan 97](97_deep-merge-config.md)). User overrides
-still win — a team can set
-`profile: portable` and then opt back in to
-inline HTML for `<sub>` and `<sup>` by setting
-`rules.no-inline-html.allow: [sub, sup]`. The
+([plan 97](97_deep-merge-config.md)). User
+overrides still win.
+
+A team can set `convention: github` and extend the
+inline-HTML allowlist:
+
+```yaml
+convention: github
+rules:
+  no-inline-html:
+    allow: [details, summary, sub, sup]
+```
+
+Lists default to replace, so the effective allowlist
+becomes `[sub, sup, details, summary]` only if the
+user keeps the preset entries explicitly. The
 preset provides the floor.
 
 ### MDS034 runtime changes
 
 MDS034's `Check()` does not gain new diagnostics.
-Its job stays the same. Detect unsupported
-extensions for the configured flavor. The profile
+Its job stays the same: detect features the
+configured flavor does not interpret. The convention
 mechanism is a config-layer concern. The reasons:
 
 - Each rule already owns its detection logic.
@@ -185,89 +227,85 @@ mechanism is a config-layer concern. The reasons:
 - Tests for MDS041-MDS047 should not depend on
   MDS034 being enabled.
 - Disabling MDS034 should not silently disable the
-  style rules a profile turned on.
+  style rules a convention turned on.
 
-What MDS034 does gain: a `profile` field in its
-`ApplySettings` handler, plus validation that
-`flavor` and `profile` agree.
+MDS034 itself does **not** read the convention name.
+It still only reads `flavor:` from its own settings.
+The convention preset writes `flavor:` into MDS034's
+settings as part of its preset, and MDS034's
+existing ApplySettings handles it normally.
 
 ### Failure modes
 
-- Unknown profile name → config error at load time
-  with the list of valid names.
-- Profile/flavor disagreement → config error naming
-  both values.
-- Profile names a rule that no longer exists →
-  config error naming the rule. Profiles are
-  versioned with the codebase; this case only
-  fires after a removal.
+- Unknown convention name → config error at load
+  time with the list of valid names.
+- Convention/flavor disagreement → config error
+  naming both values.
+- Convention is non-string → config error naming
+  the field.
 
 ## Tasks
 
-1. [x] Add `profiles.go` in
-   `internal/rules/markdownflavor/` with the
-   profile table and a `Lookup(name string)
-   (Profile, error)` helper.
-2. [x] Extend `ApplySettings` on MDS034 to accept
-   `profile` and validate against `flavor`.
-3. [x] Wire profile-preset application into the config
-   loader as a base layer beneath user overrides.
-   Reuse the deep-merge path from plan 97.
-   Implementation: `applyProfile` in
-   `internal/config/profile.go` runs after
-   `ValidateKinds` in `Load`, captures the preset on
-   `Config.ProfilePreset`, and `effectiveRules`
-   merges it as the lowest layer beneath
-   `cfg.Rules`.
-4. [x] Add a `profile` layer to the kinds resolution
-   output ([plan 95](95_kind-rule-resolution-cli.md))
-   so `mdsmith kinds resolve` shows which rules a
-   profile turned on. The layer source is
-   `profile.<name>`; it appears beneath `default` in
-   the per-leaf chain.
-5. [x] Document the three built-in profiles in a new
-   `docs/reference/profiles.md`.
-6. [x] Add fixture tests covering each profile
-   applied to a passing file and a failing file.
-   Implementation deviation: fixtures were added to
-   the existing `good/` and `bad/` directories
-   (`profile-portable*`, `profile-github*`,
-   `profile-plain*`), not a new
-   `MDS034-markdown-flavor/profiles/` directory, so
-   the existing folder-format fixture runner picks
-   them up without changes.
+1. [x] Add a Convention type and built-in table in
+   the
+   [markdownflavor package](../internal/rules/markdownflavor/conventions.go)
+   with a `Lookup(name string) (Convention, error)`
+   helper.
+2. [x] Add a top-level `Convention string` field on
+   `config.Config` with a `convention:` YAML tag.
+3. [x] Add `applyConvention(cfg *Config) error` in
+   [internal/config/convention.go](../internal/config/convention.go)
+   that runs after `ValidateKinds` in `Load`,
+   resolves the convention name, validates against
+   any user-set flavor, and stores the preset on
+   `Config.ConventionPreset`.
+4. [x] Update `effectiveRules` to merge
+   `cfg.ConventionPreset` as the lowest layer
+   beneath `cfg.Rules`.
+5. [x] Add a `convention.<name>` layer to the kinds
+   resolution output
+   ([plan 95](95_kind-rule-resolution-cli.md)) so
+   `mdsmith kinds resolve` shows which rules a
+   convention turned on.
+6. [x] Document the three built-in conventions in
+   [docs/reference/conventions.md](../docs/reference/conventions.md).
+7. [x] Cover convention vs flavor vs kind in the
+   [concepts doc](../docs/background/concepts/flavor-rule-convention-kind.md).
 
 ## Acceptance Criteria
 
-- [x] Setting `profile: portable` enables
+- [x] Setting `convention: portable` enables
       MDS041-MDS047 with documented preset values.
-      The preset table in `profiles.go` ships the
-      full set; activations against the live rule
-      registry are deferred until plans 105-111 land
-      those rules. Today the preset settings are
-      applied at config load; their checks light up
-      automatically once the rules register.
-- [x] Setting `profile: github` enables MDS041,
+      The preset table ships the full set;
+      activations against the live rule registry
+      are deferred until plans 105-111 land those
+      rules.
+- [x] Setting `convention: github` enables MDS041,
       MDS042, MDS045 with their documented presets
       and leaves the rest disabled.
-- [x] Setting `profile: plain` enables
+- [x] Setting `convention: plain` enables
       MDS041-MDS047 with the portable presets plus
       `allow-comments: false` on MDS041.
-- [x] User overrides win over profile presets via
-      deep-merge (e.g. extending the inline-HTML
+- [x] User overrides win over convention presets
+      via deep-merge (e.g. extending the inline-HTML
       allowlist).
-- [x] Setting both `flavor: gfm` and a profile that
-      requires `commonmark` produces a config error.
-- [x] Setting an unknown profile name produces a
-      config error naming the field.
+- [x] Setting both `convention: portable` and
+      `rules.markdown-flavor.flavor: gfm` produces a
+      config error naming both values.
+- [x] Setting an unknown convention name produces a
+      config error naming the field and listing the
+      valid names.
+- [x] Setting `convention:` to a non-string value
+      produces a config error.
 - [x] `mdsmith kinds resolve` reports which rules a
-      profile activated and with which settings via
-      the `profile.<name>` layer source.
+      convention activated via the
+      `convention.<name>` layer source.
 - [x] MDS034 itself does not emit new diagnostic
-      types; all profile-driven diagnostics come
+      types; all convention-driven diagnostics come
       from MDS041-MDS047.
-- [x] Disabling MDS034 does not disable the rules a
-      profile turned on (the preset has already
-      been applied at config load).
+- [x] Disabling MDS034 (`rules.markdown-flavor:
+      false`) does not disable the rules a
+      convention turned on; the preset has already
+      been applied at config load.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues

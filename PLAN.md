@@ -28,8 +28,8 @@ footer: |
 | 109 | 🔲     | sonnet | [List marker style rule](plan/109_list-marker-style.md)                                              |
 | 110 | 🔲     | sonnet | [Ordered list numbering rule](plan/110_ordered-list-numbering.md)                                    |
 | 111 | 🔲     | sonnet | [Ambiguous emphasis rule](plan/111_ambiguous-emphasis.md)                                            |
-| 112 | ✅     | opus   | [Flavor profiles refactor](plan/112_flavor-profiles.md)                                              |
-| 113 | 🔲     | sonnet | [User-defined flavor profiles](plan/113_user-defined-profiles.md)                                    |
+| 112 | ✅     | opus   | [Markdown convention bundles for MDS034](plan/112_flavor-profiles.md)                                |
+| 113 | 🔲     | sonnet | [User-defined Markdown conventions](plan/113_user-defined-profiles.md)                               |
 | 114 | ✅     | sonnet | [MDS034 message clarity and flavor-vs-rule docs](plan/114_mds034-message-and-flavor-vs-rule-docs.md) |
 | 120 | 🔲     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                   |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |

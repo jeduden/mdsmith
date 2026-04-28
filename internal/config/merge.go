@@ -50,8 +50,8 @@ func Merge(defaults, loaded *Config) *Config {
 		Archetypes:             archetypes,
 		Kinds:                  copyKinds(loaded.Kinds),
 		KindAssignment:         copyKindAssignment(loaded.KindAssignment),
-		Profile:                loaded.Profile,
-		ProfilePreset:          copyProfilePreset(loaded.ProfilePreset),
+		Convention:             loaded.Convention,
+		ConventionPreset:       copyConventionPreset(loaded.ConventionPreset),
 	}
 }
 
@@ -102,8 +102,8 @@ func copyConfig(cfg *Config) *Config {
 		Archetypes:             ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
 		Kinds:                  copyKinds(cfg.Kinds),
 		KindAssignment:         copyKindAssignment(cfg.KindAssignment),
-		Profile:                cfg.Profile,
-		ProfilePreset:          copyProfilePreset(cfg.ProfilePreset),
+		Convention:             cfg.Convention,
+		ConventionPreset:       copyConventionPreset(cfg.ConventionPreset),
 	}
 }
 
@@ -256,7 +256,7 @@ func EffectiveAll(
 
 func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]RuleCfg {
 	result := make(map[string]RuleCfg, len(cfg.Rules))
-	for k, v := range cfg.ProfilePreset {
+	for k, v := range cfg.ConventionPreset {
 		result[k] = copyRuleCfg(v)
 	}
 	apply := func(name string, layer RuleCfg) {

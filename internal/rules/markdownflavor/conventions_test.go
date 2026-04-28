@@ -9,17 +9,17 @@ import (
 )
 
 func TestLookup_Portable(t *testing.T) {
-	p, err := Lookup("portable")
+	c, err := Lookup("portable")
 	require.NoError(t, err)
-	assert.Equal(t, "portable", p.Name)
-	assert.Equal(t, FlavorCommonMark, p.Flavor)
+	assert.Equal(t, "portable", c.Name)
+	assert.Equal(t, FlavorCommonMark, c.Flavor)
 
-	mf, ok := p.Rules["markdown-flavor"]
+	mf, ok := c.Rules["markdown-flavor"]
 	require.True(t, ok)
 	assert.True(t, mf.Enabled)
 	assert.Equal(t, "commonmark", mf.Settings["flavor"])
 
-	hr, ok := p.Rules["horizontal-rule-style"]
+	hr, ok := c.Rules["horizontal-rule-style"]
 	require.True(t, ok)
 	assert.Equal(t, "dash", hr.Settings["style"])
 	assert.Equal(t, 3, hr.Settings["length"])
@@ -27,44 +27,44 @@ func TestLookup_Portable(t *testing.T) {
 }
 
 func TestLookup_Github(t *testing.T) {
-	p, err := Lookup("github")
+	c, err := Lookup("github")
 	require.NoError(t, err)
-	assert.Equal(t, FlavorGFM, p.Flavor)
+	assert.Equal(t, FlavorGFM, c.Flavor)
 
-	html, ok := p.Rules["no-inline-html"]
+	html, ok := c.Rules["no-inline-html"]
 	require.True(t, ok)
 	assert.Equal(t, []any{"details", "summary"}, html.Settings["allow"])
 
-	// github profile leaves the strict rules off; horizontal-rule-style
+	// github convention leaves the strict rules off; horizontal-rule-style
 	// should not be in the github preset.
-	_, hasHR := p.Rules["horizontal-rule-style"]
-	assert.False(t, hasHR, "github profile does not enable horizontal-rule-style")
+	_, hasHR := c.Rules["horizontal-rule-style"]
+	assert.False(t, hasHR, "github convention does not enable horizontal-rule-style")
 }
 
 func TestLookup_Plain(t *testing.T) {
-	p, err := Lookup("plain")
+	c, err := Lookup("plain")
 	require.NoError(t, err)
-	assert.Equal(t, FlavorCommonMark, p.Flavor)
+	assert.Equal(t, FlavorCommonMark, c.Flavor)
 
-	html, ok := p.Rules["no-inline-html"]
+	html, ok := c.Rules["no-inline-html"]
 	require.True(t, ok)
 	assert.Equal(t, false, html.Settings["allow-comments"],
-		"plain profile forbids HTML comments")
+		"plain convention forbids HTML comments")
 }
 
 func TestLookup_Unknown(t *testing.T) {
 	_, err := Lookup("bogus")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown profile")
+	assert.Contains(t, err.Error(), "unknown convention")
 	assert.Contains(t, err.Error(), "bogus")
 	assert.Contains(t, err.Error(), "github")
 	assert.Contains(t, err.Error(), "plain")
 	assert.Contains(t, err.Error(), "portable")
 }
 
-func TestProfileNamesSorted(t *testing.T) {
-	names := ProfileNames()
+func TestConventionNamesSorted(t *testing.T) {
+	names := ConventionNames()
 	assert.True(t, sort.StringsAreSorted(names),
-		"ProfileNames should return a sorted slice; got %v", names)
+		"ConventionNames should return a sorted slice; got %v", names)
 	assert.ElementsMatch(t, []string{"github", "plain", "portable"}, names)
 }
