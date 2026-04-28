@@ -1,7 +1,7 @@
 ---
 id: 109
 title: List marker style rule
-status: "🔳"
+status: "✅"
 summary: >-
   New rule MDS045 that pins one of `-`, `*`, or `+`
   as the bullet for unordered lists. Removes the
@@ -99,34 +99,34 @@ unordered list at depth {n} uses {actual}; expected {expected}
 
 ## Tasks
 
-1. Scaffold `internal/rules/listmarkerstyle/`.
-2. Implement `Check()` walking `*ast.List` and
+1. [x] Scaffold `internal/rules/listmarkerstyle/`.
+2. [x] Implement `Check()` walking `*ast.List` and
    computing depth.
-3. Implement `rule.Configurable` for `style` and
+3. [x] Implement `rule.Configurable` for `style` and
    `nested`. Document `nested` as replace-mode.
-4. Implement `Fix()` replacing the marker byte at
+4. [x] Implement `Fix()` replacing the marker byte at
    each item start.
-5. Register as MDS045 in category `list`.
-6. Add fixture tests covering each marker choice,
+5. [x] Register as MDS045 in category `list`.
+6. [x] Add fixture tests covering each marker choice,
    mixed markers in one list, nested lists with and
    without `nested` set, and ordered lists (must
    not flag).
-7. Add rule README.
+7. [x] Add rule README.
 
 ## Acceptance Criteria
 
-- [ ] `- item` with `style: dash` emits no diagnostic.
-- [ ] `* item` with `style: dash` emits one
+- [x] `- item` with `style: dash` emits no diagnostic.
+- [x] `* item` with `style: dash` emits one
       diagnostic and fixes to `- item`.
-- [ ] `+ item` with `style: dash` emits one
+- [x] `+ item` with `style: dash` emits one
       diagnostic and fixes to `- item`.
-- [ ] A nested list using `*` inside a `-` parent
+- [x] A nested list using `*` inside a `-` parent
       emits no diagnostic when
       `nested: [dash, asterisk]`.
-- [ ] A nested list using `-` inside a `-` parent
+- [x] A nested list using `-` inside a `-` parent
       emits one diagnostic when
       `nested: [dash, asterisk]`.
-- [ ] Ordered lists (`1. item`) emit no diagnostic.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Ordered lists (`1. item`) emit no diagnostic.
+- [x] Rule is disabled by default.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
