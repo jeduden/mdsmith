@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -237,4 +239,52 @@ func TestApplyProfile_ListsValidProfileNamesInError(t *testing.T) {
 		assert.True(t, strings.Contains(err.Error(), name),
 			"error must list valid profile %q; got %q", name, err.Error())
 	}
+}
+
+func TestApplyProfile_NilCfg(t *testing.T) {
+	assert.NoError(t, applyProfile(nil))
+}
+
+func TestApplyProfile_NoMarkdownFlavorRule(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: true},
+		},
+	}
+	require.NoError(t, applyProfile(cfg))
+	assert.Empty(t, cfg.Profile)
+	assert.Nil(t, cfg.ProfilePreset)
+}
+
+func TestLoad_InvalidProfileSurfacesError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := "rules:\n  markdown-flavor:\n    profile: bogus\n"
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "applying profile")
+	assert.Contains(t, err.Error(), "bogus")
+}
+
+func TestCopyProfilePreset_NilReturnsNil(t *testing.T) {
+	assert.Nil(t, copyProfilePreset(nil))
+}
+
+func TestMerge_PreservesProfilePreset(t *testing.T) {
+	loaded := &Config{
+		Profile: "portable",
+		ProfilePreset: map[string]RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+	}
+	merged := Merge(&Config{Rules: map[string]RuleCfg{}}, loaded)
+	assert.Equal(t, "portable", merged.Profile)
+	require.Contains(t, merged.ProfilePreset, "line-length")
+	assert.Equal(t, 80, merged.ProfilePreset["line-length"].Settings["max"])
+
+	// Mutating the merged copy must not bleed back into the source.
+	merged.ProfilePreset["line-length"].Settings["max"] = 999
+	assert.Equal(t, 80, loaded.ProfilePreset["line-length"].Settings["max"])
 }
