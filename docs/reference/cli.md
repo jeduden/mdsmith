@@ -19,7 +19,6 @@ mdsmith <command> [flags] [files...]
 | `help`         | Show help for rules/topics                     |
 | `metrics`      | List and rank shared metrics                   |
 | `merge-driver` | Git merge driver for regenerable sections      |
-| `archetypes`   | Scaffold, list, show, and locate archetypes    |
 | `kinds`        | Inspect declared kinds and resolve config      |
 | `init`         | Generate `.mdsmith.yml`                        |
 | `version`      | Print version, exit                            |
@@ -154,22 +153,6 @@ records the layers that set the leaf, in chain order:
      {"source": "kinds.plan", "value": 500},
      {"source": "overrides[0]", "value": 900}]}]}
 ```
-
-## `archetypes` Subcommands
-
-| Subcommand    | Description                                  |
-|---------------|----------------------------------------------|
-| `init [dir]`  | Scaffold archetype dir with example + README |
-| `list`        | Print discovered archetypes (name + path)    |
-| `show <name>` | Print raw schema source to stdout            |
-| `path <name>` | Print resolved filesystem path               |
-
-Archetype roots come from the top-level
-`archetypes.roots` key in `.mdsmith.yml`. When absent,
-`./archetypes` is used. `init` never mutates the
-config file; it prints the snippet to add manually.
-`list` exits `1` when no archetypes are discovered;
-`show` and `path` exit `2` on unknown names.
 
 ## `--max-input-size`
 
