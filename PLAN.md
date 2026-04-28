@@ -23,7 +23,7 @@ footer: |
 | 104 | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                            |
 | 105 | ✅     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                    |
 | 106 | 🔲     | sonnet | [Emphasis style rule](plan/106_emphasis-style.md)                                                    |
-| 107 | 🔲     | opus   | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
+| 107 | ✅     | opus   | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
 | 108 | 🔲     | sonnet | [Horizontal rule style rule](plan/108_horizontal-rule-style.md)                                      |
 | 109 | 🔲     | sonnet | [List marker style rule](plan/109_list-marker-style.md)                                              |
 | 110 | ✅     | sonnet | [Ordered list numbering rule](plan/110_ordered-list-numbering.md)                                    |

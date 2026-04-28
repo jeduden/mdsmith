@@ -43,6 +43,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
 	_ "github.com/jeduden/mdsmith/internal/rules/noinlinehtml"
 	_ "github.com/jeduden/mdsmith/internal/rules/nomultipleblanks"
+	_ "github.com/jeduden/mdsmith/internal/rules/noreferencestyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"
 	_ "github.com/jeduden/mdsmith/internal/rules/orderedlistnumbering"
@@ -191,7 +192,7 @@ func runSingleFileFixtures(
 	t.Helper()
 
 	t.Run("good", func(t *testing.T) {
-		runGoodSingleFile(t, dir)
+		runGoodSingleFile(t, dir, r)
 	})
 	t.Run("bad", func(t *testing.T) {
 		runBadSingleFile(t, dir, r, ruleID)
@@ -264,7 +265,7 @@ func runGoodFolderFile(
 	f, err := lint.NewFile(filepath.Base(filePath), content)
 	require.NoError(t, err, "parsing %s: %v", filepath.Base(filePath), err)
 	f.FS = os.DirFS(filepath.Dir(filePath))
-	diags := checkAllRules(f)
+	diags := checkAllRules(f, r)
 	reportUnexpectedDiags(t, filepath.Base(filePath), diags)
 }
 
@@ -332,19 +333,19 @@ func runFixFolderFile(
 	)
 	require.NoError(t, err, "parsing fixed output: %v", err)
 	fixedFile.FS = os.DirFS(filepath.Dir(fixedPath))
-	diags := checkAllRules(fixedFile)
+	diags := checkAllRules(fixedFile, r)
 	reportUnexpectedDiags(t, filepath.Base(fixedPath), diags)
 }
 
 // --- single-file format helpers (backward compat) ---
 
-func runGoodSingleFile(t *testing.T, dir string) {
+func runGoodSingleFile(t *testing.T, dir string, r rule.Rule) {
 	t.Helper()
 	src := readFixture(t, filepath.Join(dir, "good.md"))
 	f, err := lint.NewFile("good.md", src)
 	require.NoError(t, err, "parsing good.md: %v", err)
 	f.FS = os.DirFS(dir)
-	diags := checkAllRules(f)
+	diags := checkAllRules(f, r)
 	reportUnexpectedDiags(t, "good.md", diags)
 }
 
@@ -393,7 +394,7 @@ func runFixSingleFile(
 	fixedFile, err := lint.NewFile("fixed.md", want)
 	require.NoError(t, err, "parsing fixed.md: %v", err)
 	fixedFile.FS = os.DirFS(dir)
-	diags := checkAllRules(fixedFile)
+	diags := checkAllRules(fixedFile, r)
 	reportUnexpectedDiags(t, "fixed.md", diags)
 }
 
@@ -483,12 +484,27 @@ func readFixture(t *testing.T, path string) []byte {
 	return data
 }
 
-func checkAllRules(f *lint.File) []lint.Diagnostic {
+// checkAllRules runs every default-enabled rule against f, plus the
+// `under` rule (the rule whose fixture is being verified) when it is
+// disabled by default. Production gates rules by `cfg.Enabled`; this
+// mirrors that so a good fixture for one opt-in rule does not trip
+// another opt-in rule that happens to recognise the same syntax.
+func checkAllRules(f *lint.File, under rule.Rule) []lint.Diagnostic {
 	var all []lint.Diagnostic
 	for _, r := range rule.All() {
+		if !ruleEnabledForFixture(r, under) {
+			continue
+		}
 		all = append(all, r.Check(f)...)
 	}
 	return all
+}
+
+func ruleEnabledForFixture(r rule.Rule, under rule.Rule) bool {
+	if d, ok := r.(rule.Defaultable); ok && !d.EnabledByDefault() {
+		return under != nil && r.ID() == under.ID()
+	}
+	return true
 }
 
 func filterByRule(
