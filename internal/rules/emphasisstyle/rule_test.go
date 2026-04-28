@@ -6,6 +6,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 func parseFile(t *testing.T, src string) *lint.File {
@@ -363,4 +365,98 @@ func TestDefaultSettings(t *testing.T) {
 func TestEnabledByDefault(t *testing.T) {
 	r := &Rule{}
 	assert.False(t, r.EnabledByDefault())
+}
+
+// --- Direct helper-function tests (defensive branch coverage) ---------------
+
+// TestEmphCloseStart_NoLastChild covers the nil-last-child guard (line 317).
+func TestEmphCloseStart_NoLastChild(t *testing.T) {
+	em := ast.NewEmphasis(1)
+	assert.Equal(t, -1, emphCloseStart(em))
+}
+
+// TestEmphInfo_NegativePos covers line 282: text whose Segment.Start <
+// totalLevels produces pos < 0, so emphInfo returns (0, -1).
+func TestEmphInfo_NegativePos(t *testing.T) {
+	em := ast.NewEmphasis(1)
+	txt := ast.NewText()
+	txt.Segment = text.NewSegment(0, 5) // pos = 0 − 1 = −1
+	em.AppendChild(em, txt)
+	d, pos := emphInfo(em, []byte("hello"))
+	assert.Equal(t, byte(0), d)
+	assert.Equal(t, -1, pos)
+}
+
+// TestEmphInfo_NoChildren covers line 301: the loop is never entered when
+// the emphasis has no children, falling through to the final return.
+func TestEmphInfo_NoChildren(t *testing.T) {
+	em := ast.NewEmphasis(1)
+	d, pos := emphInfo(em, []byte("*x*"))
+	assert.Equal(t, byte(0), d)
+	assert.Equal(t, -1, pos)
+}
+
+// TestEmphInfo_DefaultBranchSuccess covers lines 294-296: the default branch
+// of emphInfo succeeds when firstTextStart(child) − totalLevels points to a
+// valid delimiter run.  *[*text*](url)* is a concrete case: the outer italic
+// wraps a Link whose subtree's first Text lands exactly one byte after a '*'.
+func TestEmphInfo_DefaultBranchSuccess(t *testing.T) {
+	r := newRule("", "underscore", false)
+	f := parseFile(t, "# Heading\n\n*[*text*](url)*\n")
+	// emphInfo for the outer italic hits the default branch and finds '*' →
+	// a diagnostic is emitted for both the outer and the inner italic.
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	// The inner *text* is fully fixable; the outer is not (closeStart = -1).
+	got := string(r.Fix(f))
+	assert.Equal(t, "# Heading\n\n*[_text_](url)*\n", got)
+}
+
+// TestEmphReplacements_ClosingNotDelim covers lines 204-206: emphReplacements
+// returns nil when the bytes at closeStart are not the expected delimiter.
+func TestEmphReplacements_ClosingNotDelim(t *testing.T) {
+	r := &Rule{Italic: "underscore"}
+	src := []byte("*hello.")
+	em := ast.NewEmphasis(1)
+	txt := ast.NewText()
+	txt.Segment = text.NewSegment(1, 6) // "hello"; Stop=6 → source[6]='.'
+	em.AppendChild(em, txt)
+	reps := r.emphReplacements(em, src)
+	assert.Nil(t, reps)
+}
+
+// TestIsTripleRun_InnerNoChildren covers lines 359-361: isTripleRun returns
+// false when emphOpenStart cannot be determined (inner has no children →
+// emphInfo exhausts the loop and returns (0, -1)).
+func TestIsTripleRun_InnerNoChildren(t *testing.T) {
+	outer := ast.NewEmphasis(1)
+	inner := ast.NewEmphasis(2)
+	outer.AppendChild(outer, inner)
+	assert.False(t, isTripleRun(outer, []byte("***")))
+}
+
+// TestIsTripleRun_OutOfBounds covers lines 363-365: isTripleRun returns false
+// when openStart + total exceeds the source length.
+func TestIsTripleRun_OutOfBounds(t *testing.T) {
+	// outer(level=1) → inner(level=2) → text at Segment.Start=3
+	// source "**" (2 bytes): pos=0, openStart=0, total=3 → 0+3 > 2
+	src := []byte("**")
+	outer := ast.NewEmphasis(1)
+	inner := ast.NewEmphasis(2)
+	txt := ast.NewText()
+	txt.Segment = text.NewSegment(3, 4)
+	inner.AppendChild(inner, txt)
+	outer.AppendChild(outer, inner)
+	assert.False(t, isTripleRun(outer, src))
+}
+
+// TestIsDelimRun_NegativeStart covers lines 377-379 (start < 0 branch).
+func TestIsDelimRun_NegativeStart(t *testing.T) {
+	assert.False(t, isDelimRun([]byte("*hello*"), -1, 1, '*'))
+}
+
+// TestIsDelimRun_StartPlusLengthOutOfBounds covers lines 377-379
+// (start+length > len(source) branch).
+func TestIsDelimRun_StartPlusLengthOutOfBounds(t *testing.T) {
+	assert.False(t, isDelimRun([]byte("*"), 0, 2, '*'))
 }
