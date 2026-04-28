@@ -62,6 +62,32 @@ func TestLookup_Unknown(t *testing.T) {
 	assert.Contains(t, err.Error(), "portable")
 }
 
+func TestCloneValue_TypedSlices(t *testing.T) {
+	// cloneValue must handle slices typed concretely as []string,
+	// []int, and []bool (a contributor adding a preset directly in
+	// Go code might use any of these). The bug we are guarding
+	// against: the default branch returned the original slice, so a
+	// caller mutating the clone could rewrite the package-level
+	// convention table.
+	src := map[string]any{
+		"strs":  []string{"a", "b"},
+		"ints":  []int{1, 2},
+		"bools": []bool{true, false},
+	}
+	got := cloneAny(src)
+
+	got["strs"].([]string)[0] = "tampered"
+	got["ints"].([]int)[0] = 99
+	got["bools"].([]bool)[0] = false
+
+	assert.Equal(t, "a", src["strs"].([]string)[0],
+		"[]string must be deep-copied")
+	assert.Equal(t, 1, src["ints"].([]int)[0],
+		"[]int must be deep-copied")
+	assert.Equal(t, true, src["bools"].([]bool)[0],
+		"[]bool must be deep-copied")
+}
+
 func TestCloneValue_NestedMapsAndSlices(t *testing.T) {
 	// cloneValue handles three shapes: nested maps, slices, and
 	// scalars. The built-in convention table happens not to contain

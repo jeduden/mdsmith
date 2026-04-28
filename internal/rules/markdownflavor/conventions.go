@@ -226,6 +226,18 @@ func cloneValue(v any) any {
 			out[i] = cloneValue(e)
 		}
 		return out
+	case []string:
+		out := make([]string, len(x))
+		copy(out, x)
+		return out
+	case []int:
+		out := make([]int, len(x))
+		copy(out, x)
+		return out
+	case []bool:
+		out := make([]bool, len(x))
+		copy(out, x)
+		return out
 	default:
 		return v
 	}

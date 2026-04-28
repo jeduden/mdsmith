@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
@@ -85,4 +88,43 @@ func copyConventionPreset(p map[string]RuleCfg) map[string]RuleCfg {
 		out[k] = copyRuleCfg(v)
 	}
 	return out
+}
+
+// validateConventionScalar returns an error when the top-level
+// `convention:` value in the raw YAML is not a string scalar.
+// yaml.v3 silently coerces bare ints and bools into string fields,
+// which would surface as "unknown convention 123" instead of a
+// clean type error. Inspecting the raw node tag is the only way to
+// catch the type mismatch before that coercion happens.
+func validateConventionScalar(data []byte) error {
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		// A YAML parse error is reported by Load's yaml.Unmarshal
+		// call already; do not double-report.
+		return nil
+	}
+	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
+		return nil
+	}
+	mapping := node.Content[0]
+	if mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value != "convention" {
+			continue
+		}
+		v := mapping.Content[i+1]
+		if v.Kind != yaml.ScalarNode {
+			return fmt.Errorf("convention: must be a string scalar")
+		}
+		if v.Tag != "" && v.Tag != "!!str" {
+			return fmt.Errorf(
+				"convention: must be a string, got %s",
+				strings.TrimPrefix(v.Tag, "!!"),
+			)
+		}
+		return nil
+	}
+	return nil
 }

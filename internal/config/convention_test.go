@@ -225,6 +225,29 @@ func TestApplyConvention_NilCfg(t *testing.T) {
 	assert.NoError(t, applyConvention(nil))
 }
 
+func TestApplyConvention_MarkdownFlavorWithoutFlavorKey(t *testing.T) {
+	// Cover the stringSetting "key not in map" branch: the user
+	// sets the markdown-flavor rule but does not provide a flavor.
+	// applyConvention must read no flavor (no error) and apply the
+	// preset normally.
+	cfg := &Config{
+		Convention: "portable",
+		Rules: map[string]RuleCfg{
+			"markdown-flavor": {Enabled: true},
+		},
+	}
+	require.NoError(t, applyConvention(cfg))
+	require.NotNil(t, cfg.ConventionPreset)
+}
+
+func TestValidateConventionScalar_NonMappingDocument(t *testing.T) {
+	// Defensive branch: non-mapping documents (e.g. an empty file
+	// or a top-level scalar) cannot carry a "convention:" key, so
+	// validateConventionScalar is a no-op.
+	assert.NoError(t, validateConventionScalar([]byte("")))
+	assert.NoError(t, validateConventionScalar([]byte("just-a-string\n")))
+}
+
 func TestLoad_TopLevelConventionLoaded(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".mdsmith.yml")
@@ -235,6 +258,36 @@ func TestLoad_TopLevelConventionLoaded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "portable", cfg.Convention)
 	assert.NotNil(t, cfg.ConventionPreset)
+}
+
+func TestLoad_NonStringConventionScalarRejected(t *testing.T) {
+	// yaml.v3 will silently coerce bare ints and bools into a
+	// string field, which would surface as "unknown convention
+	// 123". Catch the type mismatch before that coercion happens
+	// and report a clean error naming the field.
+	cases := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{"int", "convention: 123\n", "got int"},
+		{"bool", "convention: true\n", "got bool"},
+		{"float", "convention: 1.5\n", "got float"},
+		{"sequence", "convention: [a, b]\n", "must be a string scalar"},
+		{"mapping", "convention:\n  a: 1\n", "must be a string scalar"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, ".mdsmith.yml")
+			require.NoError(t, os.WriteFile(path, []byte(tc.yaml), 0o600))
+
+			_, err := Load(path)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "convention")
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
 }
 
 func TestLoad_InvalidConventionSurfacesError(t *testing.T) {
