@@ -177,11 +177,11 @@ func (r *Rule) validateRecipes(filePath string) []lint.Diagnostic {
 }
 
 func (r *Rule) checkRecipe(filePath, name string, rec recipe) []lint.Diagnostic {
-	if rec.Command == "" {
+	tokens := strings.Fields(rec.Command)
+	if len(tokens) == 0 {
 		return []lint.Diagnostic{r.diag(filePath, lint.Error,
 			fmt.Sprintf("recipe %q: command must not be empty", name))}
 	}
-	tokens := strings.Fields(rec.Command)
 	diags := r.checkExecutable(filePath, name, tokens[0])
 	diags = append(diags, r.checkTokens(filePath, name, tokens)...)
 	diags = append(diags, r.checkUnusedParams(filePath, name, rec)...)
@@ -195,12 +195,22 @@ func (r *Rule) checkExecutable(filePath, name, exe string) []lint.Diagnostic {
 			fmt.Sprintf("recipe %q: command uses shell interpreter %q — use the direct binary",
 				name, exe)))
 	}
-	if strings.Contains(exe, "..") {
+	if hasDotDotSegment(exe) {
 		diags = append(diags, r.diag(filePath, lint.Error,
 			fmt.Sprintf("recipe %q: executable %q contains a .. path component",
 				name, exe)))
 	}
 	return diags
+}
+
+// hasDotDotSegment reports whether the path has a segment that is exactly "..".
+func hasDotDotSegment(p string) bool {
+	for _, seg := range strings.FieldsFunc(p, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Rule) checkTokens(filePath, name string, tokens []string) []lint.Diagnostic {

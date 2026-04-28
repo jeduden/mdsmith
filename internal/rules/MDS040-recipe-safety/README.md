@@ -44,7 +44,7 @@ build:
   base-url: ""
   recipes:
     mermaid:
-      command: "mmdc -i {input} -o {output}"
+      command: "mmdc -i {input} --theme {theme}"
       body_template: "![{alt}]({output})"
       params:
         required: [input]
@@ -67,10 +67,10 @@ rules:
 build:
   recipes:
     mermaid:
-      command: "mmdc -i {input} -o {output}"
+      command: "mmdc -i {input} --theme {theme}"
       params:
         required: [input]
-        optional: [output]
+        optional: [theme]
 ```
 
 ### Bad — shell interpreter

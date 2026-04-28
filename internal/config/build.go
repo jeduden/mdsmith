@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -33,11 +34,18 @@ var placeholderRe = regexp.MustCompile(`\{([^{}]+)\}`)
 
 // ValidateBuildConfig returns an error if any recipe command references
 // an unknown param or uses a reserved param name.
+// Recipe names are validated in sorted order for deterministic errors.
 func ValidateBuildConfig(cfg *Config) error {
 	if cfg == nil {
 		return nil
 	}
-	for name, recipe := range cfg.Build.Recipes {
+	names := make([]string, 0, len(cfg.Build.Recipes))
+	for name := range cfg.Build.Recipes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		recipe := cfg.Build.Recipes[name]
 		if recipe.Command == "" {
 			continue
 		}

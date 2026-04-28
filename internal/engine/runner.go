@@ -270,9 +270,11 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 	}
 }
 
-// sortDiagnostics sorts diagnostics by file, line, column.
+// sortDiagnostics sorts diagnostics by file, line, column, then message.
+// sort.SliceStable preserves the pre-sorted order of same-position diagnostics
+// from rules that already emit in deterministic order (e.g. MDS040).
 func sortDiagnostics(diags []lint.Diagnostic) {
-	sort.Slice(diags, func(i, j int) bool {
+	sort.SliceStable(diags, func(i, j int) bool {
 		di, dj := diags[i], diags[j]
 		if di.File != dj.File {
 			return di.File < dj.File
@@ -280,6 +282,9 @@ func sortDiagnostics(diags []lint.Diagnostic) {
 		if di.Line != dj.Line {
 			return di.Line < dj.Line
 		}
-		return di.Column < dj.Column
+		if di.Column != dj.Column {
+			return di.Column < dj.Column
+		}
+		return di.Message < dj.Message
 	})
 }
