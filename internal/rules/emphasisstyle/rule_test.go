@@ -197,6 +197,23 @@ func TestCheck_UndetectableDelimiter_NoDiag(t *testing.T) {
 	assert.Empty(t, r.Check(f))
 }
 
+func TestCheck_LinkLastChild_Diag(t *testing.T) {
+	// **text [link](url)** has Text as first child (delimiter detectable) but
+	// Link as last child (emphCloseStart returns -1). Check emits a diagnostic;
+	// Fix must not touch the source.
+	r := newRule("underscore", "", false)
+	f := parseFile(t, "# Heading\n\n**text [link](url)**\n")
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "bold uses asterisk; configured style is underscore", diags[0].Message)
+}
+
+func TestFix_LinkLastChild_NoChange(t *testing.T) {
+	r := newRule("underscore", "", false)
+	f := parseFile(t, "# Heading\n\n**text [link](url)**\n")
+	assert.Equal(t, string(f.Source), string(r.Fix(f)))
+}
+
 func TestFix_LinkFirstChild_NoChange(t *testing.T) {
 	// emphDelim returns 0 for **[link](url)** because the inferred offset
 	// lands on "*[" not "**"; Fix must leave source unchanged.
