@@ -85,31 +85,6 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	return nil
 }
 
-// asStringList converts a YAML-unmarshalled []any to []string, or
-// accepts a single string value (wrapping it in a one-element list).
-func asStringList(key string, v any) ([]string, error) {
-	switch x := v.(type) {
-	case []any:
-		out := make([]string, 0, len(x))
-		for i, item := range x {
-			s, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf(
-					"required-structure: %s[%d] must be a string, got %T", key, i, item)
-			}
-			out = append(out, s)
-		}
-		return out, nil
-	case []string:
-		return append([]string(nil), x...), nil
-	case string:
-		return []string{x}, nil
-	default:
-		return nil, fmt.Errorf(
-			"required-structure: %s must be a list of strings, got %T", key, v)
-	}
-}
-
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{

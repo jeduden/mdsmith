@@ -308,7 +308,6 @@ func TestEffectiveExplicitRulesFrontMatterKinds(t *testing.T) {
 	assert.True(t, result["paragraph-readability"])
 }
 
-
 // --- Defensive: kind present in effective list but missing from cfg.Kinds ---
 // These paths are unreachable in validated configs but the code handles them.
 

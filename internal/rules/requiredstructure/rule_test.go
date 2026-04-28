@@ -172,16 +172,6 @@ func TestSchemaSource(t *testing.T) {
 	assert.Equal(t, "", (&Rule{}).schemaSource())
 }
 
-// newFileInRoot builds a *lint.File whose RootDir/RootFS points at
-// root so schema resolution can find fixtures on disk.
-func newFileInRoot(t *testing.T, root, name, body string) *lint.File {
-	t.Helper()
-	f, err := lint.NewFileFromSource(name, []byte(body), true)
-	require.NoError(t, err)
-	f.SetRootDir(root)
-	return f
-}
-
 // TestApplySettings_SchemaNameWithoutSlashProducesError verifies that
 // a schema: value that looks like a bare name (no "/" or ".md") is
 // rejected with a helpful message.
@@ -239,7 +229,6 @@ func TestCheck_RequireWarningSuppressedWhenFileIsSchema(t *testing.T) {
 		assert.NotContains(t, d.Message, "<?require?>")
 	}
 }
-
 
 // =====================================================================
 // No-op when schema is empty

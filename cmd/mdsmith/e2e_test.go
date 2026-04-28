@@ -551,6 +551,7 @@ func TestE2E_Init_CreatesConfig(t *testing.T) {
 	assert.Contains(t, s, "rules:", "config file should contain 'rules:', got: %s", s)
 	assert.Contains(t, s, "front-matter:", "config file should contain 'front-matter:', got: %s", s)
 	assert.Contains(t, s, "line-length", "config file should contain 'line-length', got: %s", s)
+	assert.NotContains(t, s, "archetypes", "config file must not contain 'archetypes', got: %s", s)
 }
 
 func TestE2E_Init_RefusesIfExists(t *testing.T) {

@@ -33,7 +33,7 @@ content violations today:
 
 - `first-line-heading` flags `# ?`
 - `cross-file-reference-integrity` flags
-  `[NAME](../../../docs/background/archetypes/NAME/)`
+  `[NAME](../../../docs/background/concepts/NAME.md)`
 - `paragraph-readability`, `paragraph-structure` flag
   the placeholder paragraphs
 - front-matter validation rejects CUE syntax

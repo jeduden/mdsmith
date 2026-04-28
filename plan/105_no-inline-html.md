@@ -21,7 +21,7 @@ also drives most parser ambiguity, since every
 Markdown parser must also be a forgiving HTML parser.
 Teams that adopt this rule keep their corpus in pure
 Markdown plus the project's [directive
-vocabulary](../docs/background/archetypes/generated-section/README.md).
+vocabulary](../docs/background/concepts/generated-section.md).
 
 ## Background
 

@@ -1,7 +1,7 @@
 ---
 id: 98
 title: Replace `archetypes` with `kinds`
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   Remove the `archetypes` CLI subcommand, config key,
@@ -41,11 +41,9 @@ schema":
    `archetypes.roots:` config key, the
    `internal/archetypes` Resolver, and a doc
    directory `docs/background/archetypes/`.
-   Documented at
-   [internal/archetypes/archetypes.go](../internal/archetypes/archetypes.go):
-   *"An archetype is a Markdown schema file whose
-   basename (without the ".md" extension) is the
-   archetype name."*
+   Defined as: *"An archetype is a Markdown schema
+   file whose basename (without the ".md" extension)
+   is the archetype name."*
 2. `kinds` (plans 92/95) — a named bundle of rule
    settings that may include
    `rules.required-structure.schema:` pointing to a
@@ -106,33 +104,33 @@ placeholder-grammar page.
 
 ## Tasks
 
-1. Remove `cmd/mdsmith/archetypes.go`, the
+1. [x] Remove `cmd/mdsmith/archetypes.go`, the
    `archetypes` dispatch in `main.go`, and the
    `internal/archetypes/` package. Update affected
    tests.
-2. Remove the `archetypes:` config key (and `Roots`
+2. [x] Remove the `archetypes:` config key (and `Roots`
    field on `Config`). Remove its loader code and
    the `ValidateRoots` helper.
-3. Remove the name-lookup path in `required-
+3. [x] Remove the name-lookup path in `required-
    structure`'s schema resolution. The rule's
    `schema:` setting accepts only a path now.
-4. Move
+4. [x] Move
    `docs/background/archetypes/generated-section/README.md`
    to `docs/background/concepts/generated-section.md`.
    Update internal links throughout the repo.
-5. Move the placeholder-grammar concept page (plan
+5. [x] Move the placeholder-grammar concept page (plan
    93) to `docs/background/concepts/` if it is not
    already there.
-6. Delete `docs/background/archetypes/` (including
+6. [x] Delete `docs/background/archetypes/` (including
    its README) once empty.
-7. Update `CLAUDE.md`'s catalog directive include
+7. [x] Update `CLAUDE.md`'s catalog directive include
    list to drop the archetypes glob and add the
    concepts glob.
-8. Update `docs/reference/cli.md` to remove the
+8. [x] Update `docs/reference/cli.md` to remove the
    `archetypes` subcommand section. The `kinds`
    subcommand replacement is documented under plan
    95.
-9. Update `mdsmith init`: the generated
+9. [x] Update `mdsmith init`: the generated
    `.mdsmith.yml` must contain no `archetypes:` key
    and must remain accepted by the loader. Add a
    regression test that runs `init` in a tempdir and
@@ -140,25 +138,25 @@ placeholder-grammar page.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith archetypes` exits 2 with "unknown
+- [x] `mdsmith archetypes` exits 2 with "unknown
       command".
-- [ ] `mdsmith kinds list` is the only listing
+- [x] `mdsmith kinds list` is the only listing
       surface for named schemas.
-- [ ] `archetypes:` keys in `.mdsmith.yml` produce a
+- [x] `archetypes:` keys in `.mdsmith.yml` produce a
       config error directing the user to `kinds:`.
-- [ ] `required-structure.schema:` accepts a path;
+- [x] `required-structure.schema:` accepts a path;
       a name (e.g. `schema: story`) produces a clear
       error.
-- [ ] `docs/background/concepts/generated-section.md`
+- [x] `docs/background/concepts/generated-section.md`
       exists; `docs/background/archetypes/` no
       longer exists.
-- [ ] `mdsmith check .` is green after all renames
+- [x] `mdsmith check .` is green after all renames
       (internal links updated).
-- [ ] `internal/archetypes/` no longer exists; no
+- [x] `internal/archetypes/` no longer exists; no
       package imports it.
-- [ ] `mdsmith init` in a fresh directory writes a
+- [x] `mdsmith init` in a fresh directory writes a
       `.mdsmith.yml` containing no `archetypes:` key;
       the file is accepted by the loader (covered by
       test).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

@@ -11,60 +11,24 @@ schema.
 
 ## Settings
 
-| Setting           | Type      | Default          | Description                                                                                                                |
-|-------------------|-----------|------------------|----------------------------------------------------------------------------------------------------------------------------|
-| `schema`          | string    | `""`             | Path to a schema file                                                                                                      |
-| `archetype`       | string    | `""`             | Archetype name; resolved against `archetype-roots`                                                                         |
-| `archetype-roots` | [ ]string | `["archetypes"]` | Directories searched for `<name>.md` schemas; earlier roots shadow later ones                                              |
-| `placeholders`    | list      | `[]`             | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+| Setting        | Type   | Default | Description                                                                                                                |
+|----------------|--------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| `schema`       | string | `""`    | Path to a schema file                                                                                                      |
+| `placeholders` | list   | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
 
 Useful tokens: `cue-frontmatter`.
 
-When both `schema` and `archetype` are empty the rule
-skips structure and front matter validation, but still
-warns on misplaced `<?require?>` directives. Use
-overrides to apply schemas to specific file groups.
+When `schema` is empty the rule skips structure and
+front matter validation, but still warns on misplaced
+`<?require?>` directives. Use overrides or kinds to
+apply schemas to specific file groups.
 
-`schema` and `archetype` are mutually exclusive; set
-only one.
-
-### Archetypes
-
-Archetypes are user-supplied schema files. Place each
-schema at `<root>/<name>.md` under a directory listed
-in top-level config `archetypes.roots`, or in the
-rule's per-block `archetype-roots` setting. A missing
-archetype errors with a message naming the roots
-searched and the archetypes discovered.
-
-Use the `mdsmith archetypes` CLI to bootstrap and
-inspect the archetype directory:
-
-```text
-mdsmith archetypes init [dir]
-mdsmith archetypes list
-mdsmith archetypes show <name>
-mdsmith archetypes path <name>
-```
-
-Archetype schemas resolve from the project root
-filesystem. `<?include?>` fragments inside an
-archetype still expand through the OS filesystem
-relative to the process working directory. Keep
-archetype schemas self-contained. Otherwise, run
-`mdsmith` from the project root so includes resolve
-correctly.
-
-### Reserved filenames
-
-Discovery skips repository metadata files so they
-stay in the archetype directory without leaking into
-the archetype namespace:
-
-- `README.md`, `LICENSE.md`, `CONTRIBUTING.md`,
-  `CODEOWNERS.md` (case-insensitive)
-- Any filename beginning with `_` (scratch) or `.`
-  (hidden)
+Schema files resolve from the project root filesystem.
+`<?include?>` fragments inside a schema still expand
+through the OS filesystem relative to the process
+working directory. Keep schema files self-contained.
+Otherwise, run `mdsmith` from the project root so
+includes resolve correctly.
 
 Schema front matter may embed a CUE schema that
 validates document front matter:
@@ -142,20 +106,18 @@ overrides:
         schema: internal/rules/proto.md
 ```
 
-Apply a user-authored archetype to all story files.
-The archetype file must live at
-`archetypes/story.md` (the default root):
+Apply a schema to all story files using a kind:
 
 ```yaml
-archetypes:
-  roots:
-    - archetypes
-
-overrides:
-  - files: ["stories/**/*.md"]
+kinds:
+  story:
     rules:
       required-structure:
-        archetype: story
+        schema: schemas/story.md
+
+kind-assignment:
+  - files: ["stories/**/*.md"]
+    kinds: [story]
 ```
 
 Disable:
