@@ -214,6 +214,15 @@ func TestFix_LinkLastChild_NoChange(t *testing.T) {
 	assert.Equal(t, string(f.Source), string(r.Fix(f)))
 }
 
+func TestFix_OuterEmphInnerLinkLastChild_NoChange(t *testing.T) {
+	// **_text [link](url)_** — outer bold wraps inner italic whose last child
+	// is a Link; emphCloseStart recurses into inner and returns -1, propagating
+	// up so Fix skips the outer node too.
+	r := newRule("underscore", "", false)
+	f := parseFile(t, "# Heading\n\n**_text [link](url)_**\n")
+	assert.Equal(t, string(f.Source), string(r.Fix(f)))
+}
+
 func TestFix_LinkFirstChild_NoChange(t *testing.T) {
 	// emphDelim returns 0 for **[link](url)** because the inferred offset
 	// lands on "*[" not "**"; Fix must leave source unchanged.
@@ -237,7 +246,7 @@ func TestFix_Unconfigured_NoChange(t *testing.T) {
 	assert.Equal(t, string(f.Source), string(r.Fix(f)))
 }
 
-func TestFix_WantZeroSkipsUnconfiredRole(t *testing.T) {
+func TestFix_WantZeroSkipsUnconfiguredRole(t *testing.T) {
 	// Only bold configured; italic emphasis in source must be skipped.
 	r := newRule("asterisk", "", false)
 	f := parseFile(t, "# Heading\n\n__bold__ and *italic*\n")

@@ -135,11 +135,7 @@ func (r *Rule) mixedNestingViolation(em *ast.Emphasis, f *lint.File, delim byte)
 }
 
 func emphLine(em *ast.Emphasis, f *lint.File) int {
-	pos := emphOpenStart(em, f.Source)
-	if pos >= 0 {
-		return f.LineOfOffset(pos)
-	}
-	return 1
+	return f.LineOfOffset(emphOpenStart(em, f.Source))
 }
 
 type replacement struct {
@@ -368,9 +364,6 @@ func isTripleRun(em *ast.Emphasis, source []byte) bool {
 		return false
 	}
 	c := source[openStart]
-	if c != '*' && c != '_' {
-		return false
-	}
 	for i := 1; i < total; i++ {
 		if source[openStart+i] != c {
 			return false
