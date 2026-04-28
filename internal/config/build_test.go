@@ -201,7 +201,7 @@ func TestInjectBuildConfig_InjectsRecipesAndPath(t *testing.T) {
 	mermaid, ok := recipes["mermaid"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "mmdc -i {input} -o {output}", mermaid["command"])
-	assert.Equal(t, "![alt]({output})", mermaid["body_template"])
+	assert.Equal(t, "![alt]({output})", mermaid["body-template"])
 
 	params, ok := mermaid["params"].(map[string]any)
 	require.True(t, ok)
@@ -261,7 +261,7 @@ func TestSerializeRecipes_NoBodyTemplate_NoParams(t *testing.T) {
 	m, ok := out["simple"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "tool run", m["command"])
-	assert.NotContains(t, m, "body_template")
+	assert.NotContains(t, m, "body-template")
 	assert.NotContains(t, m, "params")
 }
 
@@ -270,7 +270,7 @@ func TestSerializeRecipes_WithBodyTemplate(t *testing.T) {
 		"x": {Command: "tool", BodyTemplate: "![out]({output})"},
 	})
 	m := out["x"].(map[string]any)
-	assert.Equal(t, "![out]({output})", m["body_template"])
+	assert.Equal(t, "![out]({output})", m["body-template"])
 }
 
 func TestSerializeRecipes_RequiredOnly(t *testing.T) {

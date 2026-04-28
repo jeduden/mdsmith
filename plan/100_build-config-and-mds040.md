@@ -41,13 +41,13 @@ build:
   recipes:            # user-defined recipes (map)
     mermaid:
       command: "mmdc -i {input} -o {output}"
-      body_template: "![{alt}]({output})"
+      body-template: "![{alt}]({output})"
       params:
         required: [input]
         optional: [theme]
     api-spec:
       command: "redocly bundle {input} -o {output}"
-      body_template: "[API spec]({output})"
+      body-template: "[API spec]({output})"
       params:
         required: [input]
 ```
@@ -68,7 +68,7 @@ Map from recipe name to a recipe declaration:
 | Field             | Required | Description                                                                 |
 |-------------------|----------|-----------------------------------------------------------------------------|
 | `command`         | yes      | Argv template; `{param}` tokens expand at build time                        |
-| `body_template`   | no       | Markdown body rendered by `mdsmith fix`; defaults to `[{output}]({output})` |
+| `body-template`   | no       | Markdown body rendered by `mdsmith fix`; defaults to `[{output}]({output})` |
 | `params.required` | no       | Param names the directive must supply                                       |
 | `params.optional` | no       | Param names the directive may supply                                        |
 
@@ -78,7 +78,7 @@ token (one not in `required` or `optional`) is a
 config error.
 
 `{alt}` is a reserved template variable available in
-`body_template`; it maps to the Markdown image alt-text
+`body-template`; it maps to the Markdown image alt-text
 and must not appear in `command`. `{output}` is NOT
 reserved — it may be declared as a regular recipe
 parameter and used in `command`.
@@ -141,7 +141,7 @@ delimiter (MDS040)
    `command` are all declared in `required` or
    `optional`; emit a config error for unknowns.
    Validate that `{alt}` does not appear
-   in `command` (it is reserved for body_template only).
+   in `command` (it is reserved for body-template only).
 2. Add MDS040 (`recipe-safety`) implementation in
    `internal/rules/recipesafety/` (Go package).
    Implement the six checks above (the five

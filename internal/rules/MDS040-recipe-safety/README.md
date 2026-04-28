@@ -45,7 +45,7 @@ build:
   recipes:
     mermaid:
       command: "mmdc -i {input} -o {output}"
-      body_template: "![{alt}]({output})"
+      body-template: "![{alt}]({output})"
       params:
         required: [input]
         optional: [output]

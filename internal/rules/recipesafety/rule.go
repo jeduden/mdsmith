@@ -31,6 +31,9 @@ var shellInterpreters = map[string]bool{
 	"/bin/fish":     true,
 	"/usr/bin/sh":   true,
 	"/usr/bin/bash": true,
+	"/usr/bin/zsh":  true,
+	"/usr/bin/ksh":  true,
+	"/usr/bin/fish": true,
 }
 
 // shellOperators are substrings that indicate shell pipeline/redirection when

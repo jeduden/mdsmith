@@ -16,7 +16,7 @@ type BuildConfig struct {
 // RecipeCfg is a single user-defined recipe declaration.
 type RecipeCfg struct {
 	Command      string   `yaml:"command"`
-	BodyTemplate string   `yaml:"body_template,omitempty"`
+	BodyTemplate string   `yaml:"body-template,omitempty"`
 	Params       ParamCfg `yaml:"params,omitempty"`
 }
 
@@ -118,7 +118,7 @@ func serializeRecipes(recipes map[string]RecipeCfg) map[string]any {
 	for name, r := range recipes {
 		m := map[string]any{"command": r.Command}
 		if r.BodyTemplate != "" {
-			m["body_template"] = r.BodyTemplate
+			m["body-template"] = r.BodyTemplate
 		}
 		params := map[string]any{}
 		if len(r.Params.Required) > 0 {
