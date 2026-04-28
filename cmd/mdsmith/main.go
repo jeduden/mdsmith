@@ -49,6 +49,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
 	_ "github.com/jeduden/mdsmith/internal/rules/noemptyalttext"
 	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
+	_ "github.com/jeduden/mdsmith/internal/rules/noinlinehtml"
 	_ "github.com/jeduden/mdsmith/internal/rules/nomultipleblanks"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"

@@ -21,7 +21,7 @@ footer: |
 | 102 | 🔲     | opus   | [Builder interface and mdsmith build subcommand](plan/102_build-subcommand.md)                       |
 | 103 | 🔲     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)               |
 | 104 | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                            |
-| 105 | 🔲     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                    |
+| 105 | ✅     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                    |
 | 106 | 🔲     | sonnet | [Emphasis style rule](plan/106_emphasis-style.md)                                                    |
 | 107 | 🔲     | opus   | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
 | 108 | 🔲     | sonnet | [Horizontal rule style rule](plan/108_horizontal-rule-style.md)                                      |
