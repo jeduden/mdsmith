@@ -1,7 +1,7 @@
 ---
 id: 110
 title: Ordered list numbering rule
-status: "🔲"
+status: "✅"
 summary: >-
   New rule MDS046 that pins how ordered lists number
   their items: literal sequential (`1. 2. 3.`) or all
@@ -120,38 +120,39 @@ ordered list item {position} numbered {actual}; expected {expected}
 
 ## Tasks
 
-1. Scaffold `internal/rules/orderedlistnumbering/`.
-2. Implement `Check()` walking ordered `*ast.List`.
-3. Implement source-line parsing for the literal
+1. [x] Scaffold `internal/rules/orderedlistnumbering/`.
+2. [x] Implement `Check()` walking ordered `*ast.List`.
+3. [x] Implement source-line parsing for the literal
    item number.
-4. Implement `rule.Configurable` for `style` and
+4. [x] Implement `rule.Configurable` for `style` and
    `start`.
-5. Implement `Fix()` rewriting numbers and adjusting
+5. [x] Implement `Fix()` rewriting numbers and adjusting
    continuation indentation when marker width
    changes.
-6. Register as MDS046 in category `list`.
-7. Add fixture tests covering each style, the
+6. [x] Register as MDS046 in category `list`.
+7. [x] Add fixture tests covering each style, the
    width-change case (single-digit to double-digit),
-   wrong start, nested ordered lists, and unordered
-   lists (must not flag).
-8. Add rule README.
+   wrong start, nested ordered lists (each nested list
+   is checked independently), and unordered lists
+   (which the rule must not flag).
+8. [x] Add rule README.
 
 ## Acceptance Criteria
 
-- [ ] `1. a\n2. b\n3. c` with `style: sequential`
+- [x] `1. a\n2. b\n3. c` with `style: sequential`
       emits no diagnostic.
-- [ ] `1. a\n1. b\n1. c` with `style: sequential`
+- [x] `1. a\n1. b\n1. c` with `style: sequential`
       emits two diagnostics and fixes to `1. 2. 3.`.
-- [ ] `1. a\n1. b\n1. c` with `style: all-ones`
+- [x] `1. a\n1. b\n1. c` with `style: all-ones`
       emits no diagnostic.
-- [ ] `1. a\n3. b\n7. c` with `style: all-ones`
+- [x] `1. a\n3. b\n7. c` with `style: all-ones`
       emits two diagnostics and fixes to all `1.`.
-- [ ] `5. a\n6. b` with `start: 1` emits one
+- [x] `5. a\n6. b` with `start: 1` emits one
       diagnostic naming the wrong start.
-- [ ] A 12-item sequential list fixes the
+- [x] A 12-item sequential list fixes the
       single-to-double-digit boundary without
       breaking continuation indent.
-- [ ] Unordered lists emit no diagnostic.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Unordered lists emit no diagnostic.
+- [x] Rule is disabled by default.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

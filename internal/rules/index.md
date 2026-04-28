@@ -57,4 +57,5 @@ row: "| [{id}]({filename}) | `{name}` | {status} | {description} |"
 | [MDS036](MDS036-max-section-length/README.md)                 | `max-section-length`                 | ready     | Section length must not exceed per-level or per-heading limits.                               |
 | [MDS037](MDS037-duplicated-content/README.md)                 | `duplicated-content`                 | ready     | Paragraphs should not repeat verbatim across Markdown files.                                  |
 | [MDS038](MDS038-toc/README.md)                                | `toc`                                | ready     | Keep toc generated heading lists in sync with document headings.                              |
+| [MDS046](MDS046-ordered-list-numbering/README.md)             | `ordered-list-numbering`             | ready     | Ordered list items must be numbered in the configured style.                                  |
 <?/catalog?>
