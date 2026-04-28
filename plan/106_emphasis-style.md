@@ -1,7 +1,7 @@
 ---
 id: 106
 title: Emphasis style rule
-status: "🔲"
+status: "✅"
 summary: >-
   New rule MDS042 that pins one delimiter per role:
   one of asterisk or underscore for bold, one for
@@ -120,39 +120,39 @@ mixed emphasis delimiters: {outer} wraps {inner}
 
 ## Tasks
 
-1. Scaffold `internal/rules/emphasisstyle/` with
+1. [x] Scaffold `internal/rules/emphasisstyle/` with
    `rule.go`, `rule_test.go`, and `init()`
    `rule.Register`.
-2. Implement `Check()` walking `*ast.Emphasis` and
+2. [x] Implement `Check()` walking `*ast.Emphasis` and
    reading the source byte before each emphasis
    segment.
-3. Implement `rule.Configurable` for `bold`,
+3. [x] Implement `rule.Configurable` for `bold`,
    `italic`, and `forbid-mixed-nesting`.
-4. Implement `rule.Defaultable` returning `false`.
-5. Implement `Fix()` for bold and italic delimiter
+4. [x] Implement `rule.Defaultable` returning `false`.
+5. [x] Implement `Fix()` for bold and italic delimiter
    replacement; skip triple-delimiter runs.
-6. Register as MDS042 in category `meta`.
-7. Add fixture tests in
+6. [x] Register as MDS042 in category `meta`.
+7. [x] Add fixture tests in
    `internal/rules/MDS042-emphasis-style/` covering
    each delimiter combination, mixed nesting, triple
    delimiters, and emphasis inside code spans
    (must not flag).
-8. Add rule README.
+8. [x] Add rule README.
 
 ## Acceptance Criteria
 
-- [ ] `**bold**` with `bold: asterisk` emits no
+- [x] `**bold**` with `bold: asterisk` emits no
       diagnostic.
-- [ ] `__bold__` with `bold: asterisk` emits one
+- [x] `__bold__` with `bold: asterisk` emits one
       diagnostic and fixes to `**bold**`.
-- [ ] `*italic*` with `italic: underscore` emits one
+- [x] `*italic*` with `italic: underscore` emits one
       diagnostic and fixes to `_italic_`.
-- [ ] `_*x*_` with `forbid-mixed-nesting: true` emits
+- [x] `_*x*_` with `forbid-mixed-nesting: true` emits
       one diagnostic for the mixed nest.
-- [ ] `***x***` triple-delimiter run emits a
+- [x] `***x***` triple-delimiter run emits a
       diagnostic but is not auto-fixed.
-- [ ] Emphasis inside `` `code` `` and fenced code
+- [x] Emphasis inside `` `code` `` and fenced code
       blocks emits no diagnostic.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Rule is disabled by default.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

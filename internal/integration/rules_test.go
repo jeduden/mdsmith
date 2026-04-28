@@ -24,6 +24,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/crossfilereferenceintegrity"
 	"github.com/jeduden/mdsmith/internal/rules/directorystructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/duplicatedcontent"
+	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/emptysectionbody"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodelanguage"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
