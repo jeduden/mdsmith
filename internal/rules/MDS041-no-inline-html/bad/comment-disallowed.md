@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 1
-    message: "inline HTML <<!--> is not allowed"
+    message: "inline HTML <!-- is not allowed"
 ---
 # Title
 

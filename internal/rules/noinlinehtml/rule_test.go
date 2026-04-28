@@ -93,25 +93,29 @@ func TestCheck_BlockHTML_EmitsDiag(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Equal(t, "MDS041", diags[0].RuleID)
 	assert.Equal(t, 3, diags[0].Line)
+	assert.Equal(t, 1, diags[0].Column)
 	assert.Equal(t, "inline HTML <div> is not allowed", diags[0].Message)
 }
 
 func TestCheck_InlineHTML_EmitsDiag(t *testing.T) {
 	r := newRule(t, nil)
+	// "<span>" starts at column 6 ("text " = 5 chars)
 	f := parse(t, "# Title\n\ntext <span>marked</span> text\n")
 	diags := r.Check(f)
 	require.Len(t, diags, 1, "closing tag must not produce extra diagnostic")
-	assert.Equal(t, "span", extractTag([]byte("<span>")))
 	assert.Equal(t, "inline HTML <span> is not allowed", diags[0].Message)
 	assert.Equal(t, 3, diags[0].Line)
+	assert.Equal(t, 6, diags[0].Column)
 }
 
 func TestCheck_SelfClosingBr_OneDiag(t *testing.T) {
 	r := newRule(t, nil)
+	// "<br/>" starts at column 5 ("text" = 4 chars)
 	f := parse(t, "# Title\n\ntext<br/>more\n")
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
 	assert.Equal(t, "inline HTML <br> is not allowed", diags[0].Message)
+	assert.Equal(t, 5, diags[0].Column)
 }
 
 func TestCheck_AllowedTag_NoDiag(t *testing.T) {
@@ -140,7 +144,8 @@ func TestCheck_Comment_FlaggedWhenDisallowed(t *testing.T) {
 	f := parse(t, "# Title\n\n<!-- comment -->\n")
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
-	assert.Equal(t, "inline HTML <<!--> is not allowed", diags[0].Message)
+	assert.Equal(t, "inline HTML <!-- is not allowed", diags[0].Message)
+	assert.Equal(t, 1, diags[0].Column)
 }
 
 func TestCheck_PIDirective_NoDiag(t *testing.T) {

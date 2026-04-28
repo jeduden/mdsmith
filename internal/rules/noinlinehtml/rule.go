@@ -78,14 +78,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 		switch node := n.(type) {
 		case *ast.HTMLBlock:
-			raw := htmlBlockBytes(node, f.Source)
-			if d, ok := r.checkRaw(f, allowed, raw, func() int { return blockLine(node, f) }); ok {
+			seg := node.Lines().At(0)
+			if d, ok := r.checkRaw(f, allowed, seg.Value(f.Source), seg.Start); ok {
 				diags = append(diags, d)
 			}
 
 		case *ast.RawHTML:
+			seg := node.Segments.At(0)
 			raw := rawHTMLBytes(node, f.Source)
-			if d, ok := r.checkRaw(f, allowed, raw, func() int { return inlineLine(node, f) }); ok {
+			if d, ok := r.checkRaw(f, allowed, raw, seg.Start); ok {
 				diags = append(diags, d)
 			}
 		}
@@ -97,8 +98,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // checkRaw inspects raw HTML bytes and returns a diagnostic if the HTML
-// should be flagged. lineFn is called lazily only when a diagnostic is emitted.
-func (r *Rule) checkRaw(f *lint.File, allowed map[string]bool, raw []byte, lineFn func() int) (lint.Diagnostic, bool) {
+// should be flagged. offset is the byte position of the HTML in f.Source.
+func (r *Rule) checkRaw(f *lint.File, allowed map[string]bool, raw []byte, offset int) (lint.Diagnostic, bool) {
 	tag := extractTag(raw)
 	switch {
 	case tag == "":
@@ -108,14 +109,14 @@ func (r *Rule) checkRaw(f *lint.File, allowed map[string]bool, raw []byte, lineF
 		if r.AllowComments {
 			return lint.Diagnostic{}, false
 		}
-		return r.diag(f, lineFn(), "<!--"), true
+		return r.diag(f, offset, "<!--"), true
 	case isClosingTag(raw):
 		// Closing tags produce no extra diagnostic
 		return lint.Diagnostic{}, false
 	case allowed[tag]:
 		return lint.Diagnostic{}, false
 	default:
-		return r.diag(f, lineFn(), tag), true
+		return r.diag(f, offset, "<"+tag+">"), true
 	}
 }
 
@@ -127,16 +128,31 @@ func (r *Rule) allowSet() map[string]bool {
 	return m
 }
 
-func (r *Rule) diag(f *lint.File, line int, tag string) lint.Diagnostic {
+func (r *Rule) diag(f *lint.File, offset int, display string) lint.Diagnostic {
+	line, col := lineColOfOffset(f.Source, offset)
 	return lint.Diagnostic{
 		File:     f.Path,
 		Line:     line,
-		Column:   1,
+		Column:   col,
 		RuleID:   r.ID(),
 		RuleName: r.Name(),
 		Severity: lint.Warning,
-		Message:  fmt.Sprintf("inline HTML <%s> is not allowed", tag),
+		Message:  fmt.Sprintf("inline HTML %s is not allowed", display),
 	}
+}
+
+// lineColOfOffset converts a byte offset in source to 1-based line and column numbers.
+func lineColOfOffset(source []byte, offset int) (line, col int) {
+	line = 1
+	lineStart := 0
+	for i := 0; i < offset && i < len(source); i++ {
+		if source[i] == '\n' {
+			line++
+			lineStart = i + 1
+		}
+	}
+	col = offset - lineStart + 1
+	return
 }
 
 var tagNameRe = regexp.MustCompile(`(?i)</?([a-zA-Z][a-zA-Z0-9-]*)`)
@@ -163,11 +179,6 @@ func isClosingTag(raw []byte) bool {
 	return closingTagRe.Match(bytes.TrimSpace(raw))
 }
 
-func htmlBlockBytes(n *ast.HTMLBlock, source []byte) []byte {
-	seg := n.Lines().At(0)
-	return seg.Value(source)
-}
-
 func rawHTMLBytes(n *ast.RawHTML, source []byte) []byte {
 	var b []byte
 	for i := 0; i < n.Segments.Len(); i++ {
@@ -175,16 +186,6 @@ func rawHTMLBytes(n *ast.RawHTML, source []byte) []byte {
 		b = append(b, seg.Value(source)...)
 	}
 	return b
-}
-
-func blockLine(n *ast.HTMLBlock, f *lint.File) int {
-	seg := n.Lines().At(0)
-	return f.LineOfOffset(seg.Start)
-}
-
-func inlineLine(n *ast.RawHTML, f *lint.File) int {
-	seg := n.Segments.At(0)
-	return f.LineOfOffset(seg.Start)
 }
 
 var (
