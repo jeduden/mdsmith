@@ -5,6 +5,8 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -230,6 +232,12 @@ func TestApplySettings_InvalidStyle(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestApplySettings_StyleNotString(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"style": 42})
+	assert.Error(t, err)
+}
+
 func TestApplySettings_InvalidStartType(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"start": "one"})
@@ -377,4 +385,97 @@ func TestFix_WidthGrowth_RecursesIntoNestedList(t *testing.T) {
 		"\n" +
 		"11. eleven\n"
 	assert.Equal(t, want, string(got))
+}
+
+func TestCheckItem_ZeroLine(t *testing.T) {
+	r := &Rule{Style: StyleSequential, Start: 1}
+	f, err := lint.NewFile("test.md", []byte("1. a\n"))
+	require.NoError(t, err)
+	d, ok := r.checkItem(f, 0, 0)
+	assert.False(t, ok)
+	assert.Equal(t, lint.Diagnostic{}, d)
+}
+
+func TestCheckItem_LineOutOfBounds(t *testing.T) {
+	r := &Rule{Style: StyleSequential, Start: 1}
+	f, err := lint.NewFile("test.md", []byte("1. a\n"))
+	require.NoError(t, err)
+	d, ok := r.checkItem(f, 999, 0)
+	assert.False(t, ok)
+	assert.Equal(t, lint.Diagnostic{}, d)
+}
+
+func TestCheckItem_NonMarkerLine(t *testing.T) {
+	r := &Rule{Style: StyleSequential, Start: 1}
+	f, err := lint.NewFile("test.md", []byte("hello world\n"))
+	require.NoError(t, err)
+	d, ok := r.checkItem(f, 1, 0)
+	assert.False(t, ok)
+	assert.Equal(t, lint.Diagnostic{}, d)
+}
+
+func TestCollectItemEdits_EmptyItem(t *testing.T) {
+	// A ListItem with no children yields firstLineOfListItem=0,
+	// triggering the bounds guard in collectItemEdits.
+	r := &Rule{Style: StyleSequential, Start: 1}
+	f, err := lint.NewFile("test.md", []byte("1. a\n"))
+	require.NoError(t, err)
+	item := ast.NewListItem(0)
+	markerEdits := map[int]markerEdit{}
+	indentDeltas := map[int]int{}
+	r.collectItemEdits(f, item, 0, markerEdits, indentDeltas)
+	assert.Empty(t, markerEdits)
+	assert.Empty(t, indentDeltas)
+}
+
+func TestFirstLineOfListItem_WithLineSegments(t *testing.T) {
+	// Manually populate Lines() on a ListItem to exercise the
+	// li.Lines().Len() > 0 fast path in firstLineOfListItem.
+	src := []byte("1. a\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	item := ast.NewListItem(0)
+	item.Lines().Append(text.NewSegment(0, 4))
+	line := firstLineOfListItem(f, item)
+	assert.Equal(t, 1, line)
+}
+
+func TestCollectItemEdits_NonMarkerLine(t *testing.T) {
+	// A ListItem whose Lines() point to a non-marker line exercises the
+	// !ok guard in collectItemEdits (and the li.Lines() path in firstLineOfListItem).
+	r := &Rule{Style: StyleSequential, Start: 1}
+	f, err := lint.NewFile("test.md", []byte("hello\n"))
+	require.NoError(t, err)
+	item := ast.NewListItem(0)
+	item.Lines().Append(text.NewSegment(0, 5)) // "hello" — not a list marker
+	markerEdits := map[int]markerEdit{}
+	indentDeltas := map[int]int{}
+	r.collectItemEdits(f, item, 0, markerEdits, indentDeltas)
+	assert.Empty(t, markerEdits)
+	assert.Empty(t, indentDeltas)
+}
+
+func TestCheck_BlockquoteInListItem(t *testing.T) {
+	// An item whose content starts with a blockquote exercises
+	// blockFirstLine's container-block recursion path: BlockQuote
+	// has Lines().Len()==0 and must be recursed into to find the
+	// paragraph that carries the source line.
+	src := []byte("1. > quoted\n2. normal\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: StyleSequential, Start: 1}
+	diags := r.Check(f)
+	assert.Empty(t, diags)
+}
+
+func TestFix_BlockquoteInListItem(t *testing.T) {
+	// Same scenario for Fix: blockFirstLine recursion must correctly
+	// locate the outer list marker so the fix leaves it unchanged
+	// (already sequential).
+	src := []byte("1. > quoted\n2. normal\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: StyleSequential, Start: 1}
+	got := r.Fix(f)
+	assert.Equal(t, string(src), string(got))
 }
