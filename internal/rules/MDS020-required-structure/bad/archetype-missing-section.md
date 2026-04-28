@@ -1,8 +1,6 @@
 ---
 settings:
-  archetype: story
-  archetype-roots:
-    - ../../internal/rules/MDS020-required-structure/bad/data/archetypes
+  schema: ../../internal/rules/MDS020-required-structure/bad/data/archetypes/story.md
 diagnostics:
   - line: 1
     column: 1

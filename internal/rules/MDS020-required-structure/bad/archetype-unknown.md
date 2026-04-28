@@ -1,12 +1,10 @@
 ---
 settings:
-  archetype: nonexistent
-  archetype-roots:
-    - ../../internal/rules/MDS020-required-structure/bad/data/archetypes
+  schema: nonexistent-schema.md
 diagnostics:
   - line: 1
     column: 1
-    message: 'unknown archetype "nonexistent": available under roots [../../internal/rules/MDS020-required-structure/bad/data/archetypes]: story'
+    message: 'cannot read schema "nonexistent-schema.md": open nonexistent-schema.md: no such file or directory'
 ---
 # Ship the thing
 

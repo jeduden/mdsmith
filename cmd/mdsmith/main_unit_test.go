@@ -660,6 +660,22 @@ func TestShowRule_UnknownRule_ExitsTwo(t *testing.T) {
 	})
 }
 
+// --- archetypes subcommand removed ---
+
+// TestRun_ArchetypesIsUnknownCommand verifies that `mdsmith archetypes`
+// exits 2 with "unknown command" now that the subcommand has been removed.
+func TestRun_ArchetypesIsUnknownCommand(t *testing.T) {
+	old := os.Args
+	os.Args = []string{"mdsmith", "archetypes"}
+	defer func() { os.Args = old }()
+
+	got := captureStderr(func() {
+		code := run()
+		assert.Equal(t, 2, code)
+	})
+	assert.Contains(t, got, "unknown command")
+}
+
 // --- printDeprecations ---
 
 func TestPrintDeprecations_NilConfig_NoPanic(t *testing.T) {

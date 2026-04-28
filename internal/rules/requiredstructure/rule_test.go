@@ -1,15 +1,12 @@
 package requiredstructure
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/archetypes"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 
@@ -143,69 +140,40 @@ func TestDefaultSettings(t *testing.T) {
 			"expected schema=\"\", got %v", ds["schema"],
 		)
 	}
-	if ds["archetype"] != "" {
-		t.Errorf(
-			"expected archetype=\"\", got %v", ds["archetype"],
-		)
-	}
+	// archetype and archetype-roots must not appear in defaults
+	_, hasArchetype := ds["archetype"]
+	assert.False(t, hasArchetype, "archetype must not appear in default settings")
+	_, hasRoots := ds["archetype-roots"]
+	assert.False(t, hasRoots, "archetype-roots must not appear in default settings")
 }
 
-func TestApplySettings_ValidArchetype(t *testing.T) {
+// TestApplySettings_ArchetypeProducesError verifies that using the removed
+// archetype: setting produces a clear error directing users to schema:.
+func TestApplySettings_ArchetypeProducesError(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"archetype": "story-file"})
-	require.NoError(t, err)
-	assert.Equal(t, "story-file", r.Archetype)
-}
-
-func TestApplySettings_InvalidArchetypeType(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{"archetype": 42})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "archetype:")
+	assert.Contains(t, err.Error(), "removed")
 }
 
-func TestApplySettings_SchemaAndArchetypeMutuallyExclusive(t *testing.T) {
+// TestApplySettings_ArchetypeRootsProducesError verifies that using the
+// removed archetype-roots: setting produces a clear error.
+func TestApplySettings_ArchetypeRootsProducesError(t *testing.T) {
 	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"schema":    "foo.md",
-		"archetype": "story-file",
-	})
+	err := r.ApplySettings(map[string]any{"archetype-roots": []any{"custom"}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "mutually exclusive")
-}
-
-func TestCheck_ArchetypeUnknown(t *testing.T) {
-	r := &Rule{Archetype: "not-a-real-archetype"}
-	f := newTestFile(t, "doc.md", "# Title\n")
-	diags := r.Check(f)
-	expectDiagMsg(t, diags, "unknown archetype")
-}
-
-func TestCheck_SchemaAndArchetypeBothSet(t *testing.T) {
-	// Bypass ApplySettings to simulate a direct struct construction
-	// with both fields set; the Check path must still guard.
-	r := &Rule{Schema: "foo.md", Archetype: "story-file"}
-	f := newTestFile(t, "doc.md", "# Title\n")
-	diags := r.Check(f)
-	expectDiagMsg(t, diags, "mutually exclusive")
+	assert.Contains(t, err.Error(), "archetype-roots:")
+	assert.Contains(t, err.Error(), "removed")
 }
 
 func TestSchemaSource(t *testing.T) {
 	assert.Equal(t, "foo.md", (&Rule{Schema: "foo.md"}).schemaSource())
-	assert.Equal(t, "archetype:story-file",
-		(&Rule{Archetype: "story-file"}).schemaSource())
 	assert.Equal(t, "", (&Rule{}).schemaSource())
 }
 
-// writeArchetype writes an archetype schema under dir/name.md.
-func writeArchetype(t *testing.T, dir, name, body string) {
-	t.Helper()
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.WriteFile(
-		filepath.Join(dir, name+".md"), []byte(body), 0o644))
-}
-
 // newFileInRoot builds a *lint.File whose RootDir/RootFS points at
-// root so archetype resolution can find fixtures on disk.
+// root so schema resolution can find fixtures on disk.
 func newFileInRoot(t *testing.T, root, name, body string) *lint.File {
 	t.Helper()
 	f, err := lint.NewFileFromSource(name, []byte(body), true)
@@ -214,262 +182,64 @@ func newFileInRoot(t *testing.T, root, name, body string) *lint.File {
 	return f
 }
 
-func TestApplySettings_ArchetypeRoots(t *testing.T) {
+// TestApplySettings_SchemaNameWithoutSlashProducesError verifies that
+// a schema: value that looks like a bare name (no "/" or ".md") is
+// rejected with a helpful message.
+func TestApplySettings_SchemaNameWithoutSlashProducesError(t *testing.T) {
 	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"archetype":       "story",
-		"archetype-roots": []any{"custom", "archetypes"},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"custom", "archetypes"}, r.ArchetypeRoots)
-}
-
-func TestApplySettings_ArchetypeRootsInvalidType(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{"archetype-roots": 42})
+	err := r.ApplySettings(map[string]any{"schema": "story"})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "story")
+	assert.Contains(t, err.Error(), "path")
 }
 
-func TestApplySettings_ArchetypeRootsInvalidItem(t *testing.T) {
+// TestApplySettings_SchemaWithSlashIsAccepted verifies that a schema
+// value containing a "/" is accepted (it's a path).
+func TestApplySettings_SchemaWithSlashIsAccepted(t *testing.T) {
 	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"archetype-roots": []any{"ok", 42},
-	})
-	require.Error(t, err)
-}
-
-func TestApplySettings_ArchetypeRootsSingleString(t *testing.T) {
-	r := &Rule{}
-	err := r.ApplySettings(map[string]any{"archetype-roots": "only"})
+	err := r.ApplySettings(map[string]any{"schema": "schemas/story.md"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"only"}, r.ArchetypeRoots)
+	assert.Equal(t, "schemas/story.md", r.Schema)
 }
 
-func TestApplySettings_ArchetypeRootsTypedStringSlice(t *testing.T) {
+// TestApplySettings_SchemaDotMdWithoutSlashIsAccepted verifies that
+// a value ending in ".md" without a slash is accepted (single-level path).
+func TestApplySettings_SchemaDotMdWithoutSlashIsAccepted(t *testing.T) {
 	r := &Rule{}
-	err := r.ApplySettings(map[string]any{
-		"archetype-roots": []string{"a", "b"},
-	})
+	err := r.ApplySettings(map[string]any{"schema": "story.md"})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"a", "b"}, r.ArchetypeRoots)
+	assert.Equal(t, "story.md", r.Schema)
 }
 
-func TestDefaultSettings_ArchetypeRoots(t *testing.T) {
+// TestCheck_RequireWarningOnNonSchemaFile verifies that <?require?> in a
+// regular doc (not the configured schema) emits a warning.
+func TestCheck_RequireWarningOnNonSchemaFile(t *testing.T) {
+	schemaPath := writeSchema(t, "<?require\nfilename: \"doc-*.md\"\n?>\n# ?\n")
+	// This test doesn't configure a schema for doc.md so it's treated as non-schema.
 	r := &Rule{}
-	assert.Equal(t,
-		[]string{archetypes.DefaultRoot},
-		r.DefaultSettings()["archetype-roots"])
-}
-
-// newFileInRootDirOnly builds a *lint.File with RootDir set but
-// RootFS left nil, exercising the raw-os path in loadArchetype.
-func newFileInRootDirOnly(t *testing.T, root, name, body string) *lint.File {
-	t.Helper()
-	f, err := lint.NewFileFromSource(name, []byte(body), true)
-	require.NoError(t, err)
-	f.RootDir = root
-	return f
-}
-
-func TestCheck_DotRootOnlyMatchesTopLevelMarkdown(t *testing.T) {
-	root := t.TempDir()
-	// Nested doc under a subdirectory — must NOT be treated as an
-	// archetype source just because archetype-roots is ".".
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
-	src := "<?require\nfilename: \"doc-*.md\"\n?>\n# Title\n"
-	f := newFileInRoot(t, root, filepath.Join("docs", "doc.md"), src)
-	r := &Rule{ArchetypeRoots: []string{"."}}
-	diags := r.Check(f)
-	// Expect the misplaced-require warning because docs/doc.md is a
-	// normal doc, not a top-level schema source.
-	expectDiagMsg(t, diags, "<?require?>")
-}
-
-func TestCheck_NonDotRootOnlyMatchesDirectChildren(t *testing.T) {
-	root := t.TempDir()
-	// File lives in archetypes/sub/story.md — deeper than archetype
-	// discovery supports, so not a schema source.
-	require.NoError(t, os.MkdirAll(
-		filepath.Join(root, "archetypes", "sub"), 0o755))
-	src := "<?require\nfilename: \"story-*.md\"\n?>\n# ?\n"
-	f := newFileInRoot(t, root,
-		filepath.Join("archetypes", "sub", "story.md"), src)
-	r := &Rule{}
+	f := newTestFile(t, "doc.md",
+		"<?require\nfilename: \"doc-*.md\"\n?>\n# Title\n")
+	_ = schemaPath // not used
 	diags := r.Check(f)
 	expectDiagMsg(t, diags, "<?require?>")
 }
 
-func TestCheck_ArchetypeRootEscapesProjectRoot(t *testing.T) {
-	root := t.TempDir()
-	f := newFileInRoot(t, root, "doc.md", "# Title\n")
-	r := &Rule{
-		Archetype:      "story",
-		ArchetypeRoots: []string{"../outside"},
-	}
-	diags := r.Check(f)
-	expectDiagMsg(t, diags, "escapes the project root")
-}
-
-func TestCheck_ArchetypeRootAbsolute(t *testing.T) {
-	root := t.TempDir()
-	f := newFileInRoot(t, root, "doc.md", "# Title\n")
-	r := &Rule{
-		Archetype:      "story",
-		ArchetypeRoots: []string{"/etc"},
-	}
-	diags := r.Check(f)
-	expectDiagMsg(t, diags, "must be a relative path")
-}
-
-func TestCheck_ArchetypeResolvesWithoutRootFS(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
-		"# ?\n\n## Background\n\n## ...\n")
-	r := &Rule{Archetype: "story"}
-	f := newFileInRootDirOnly(t, root, "doc.md",
-		"# Title\n\n## Background\n\nbody\n")
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
-
-func TestCheck_ArchetypeLoadFailureWithoutRootFS(t *testing.T) {
-	root := t.TempDir()
-	// Create an archetype larger than f.MaxInputBytes so
-	// lint.ReadFileLimited errors on size.
-	big := strings.Repeat("x\n", 1024)
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story", big)
-	r := &Rule{Archetype: "story"}
-	f := newFileInRootDirOnly(t, root, "doc.md", "# Title\n")
-	f.MaxInputBytes = 100
-	diags := r.Check(f)
-	require.NotEmpty(t, diags)
-	assert.Contains(t, diags[0].Message, "reading archetype")
-}
-
-func TestCheck_ArchetypeResolvesFromDefaultRoot(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
-		"# ?\n\n## Background\n\n## ...\n")
-	r := &Rule{Archetype: "story"}
-	f := newFileInRoot(t, root, "doc.md",
-		"# Title\n\n## Background\n\nsome text\n")
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
-
-func TestCheck_ArchetypeResolvesFromCustomRoot(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "tmpl"), "story",
-		"# ?\n\n## Overview\n\n## ...\n")
-	r := &Rule{
-		Archetype:      "story",
-		ArchetypeRoots: []string{"tmpl"},
-	}
-	f := newFileInRoot(t, root, "doc.md",
-		"# Title\n\n## Overview\n\nbody\n")
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
-
-func TestCheck_ArchetypeEnforcesHeadings(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
-		"# ?\n\n## Background\n\n## Acceptance Criteria\n")
-	r := &Rule{Archetype: "story"}
-	f := newFileInRoot(t, root, "doc.md",
-		"# Title\n\n## Background\n\nbody\n")
-	diags := r.Check(f)
-	expectDiagMsg(t, diags, "missing required section")
-}
-
-func TestCheck_ArchetypeEnforcesFrontMatterCUE(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
-		"---\nas: 'string & != \"\"'\n---\n# ?\n\n## ...\n")
-	r := &Rule{Archetype: "story"}
-	f := newFileInRoot(t, root, "doc.md", "# Title\n")
-	diags := r.Check(f)
-	expectDiagMsg(t, diags, "front matter does not satisfy schema CUE constraints")
-}
-
-// readErrFS wraps a real fs.FS but returns an error when Open is
-// called for a specific path. Stat still delegates to the underlying
-// FS so Lookup succeeds, exercising the archetype read-after-lookup
-// error path in loadArchetype.
-type readErrFS struct {
-	fs      fs.FS
-	errPath string
-	err     error
-}
-
-func (s readErrFS) Open(name string) (fs.File, error) {
-	if name == s.errPath {
-		return nil, s.err
-	}
-	return s.fs.Open(name)
-}
-
-func (s readErrFS) Stat(name string) (fs.FileInfo, error) {
-	return fs.Stat(s.fs, name)
-}
-
-func TestCheck_ArchetypeReadErrorAfterLookup(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
-		"# ?\n\n## Background\n\n## ...\n")
-	f := newFileInRoot(t, root, "doc.md", "# Title\n")
-	f.RootFS = readErrFS{
-		fs:      f.RootFS,
-		errPath: filepath.ToSlash(filepath.Join("archetypes", "story.md")),
-		err:     errors.New("simulated read failure"),
-	}
-	r := &Rule{Archetype: "story"}
-	diags := r.Check(f)
-	expectDiagMsg(t, diags, "reading archetype")
-}
-
-func TestCheck_ArchetypeRootFileSuppressesRequireWarning(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
-		"<?require\nfilename: \"story-*.md\"\n?>\n# ?\n")
-	// Linting the archetype file itself with default roots — no
-	// `archetype:` configured for this file — must not warn about
-	// <?require?> since it lives under the archetype root.
-	f := newFileInRoot(t, root, filepath.Join("archetypes", "story.md"),
-		"<?require\nfilename: \"story-*.md\"\n?>\n# ?\n")
-	r := &Rule{}
+// TestCheck_RequireWarningSuppressedWhenFileIsSchema verifies that
+// <?require?> in the configured schema file does not emit a warning.
+func TestCheck_RequireWarningSuppressedWhenFileIsSchema(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := filepath.Join(dir, "schema.md")
+	require.NoError(t, os.WriteFile(schemaPath,
+		[]byte("<?require\nfilename: \"doc-*.md\"\n?>\n# ?\n"), 0o644))
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, schemaPath,
+		"<?require\nfilename: \"doc-*.md\"\n?>\n# ?\n")
 	diags := r.Check(f)
 	for _, d := range diags {
 		assert.NotContains(t, d.Message, "<?require?>")
 	}
 }
 
-func TestCheck_DotArchetypeRootFileSuppressesRequireWarning(t *testing.T) {
-	root := t.TempDir()
-	f := newFileInRoot(t, root, "story.md",
-		"<?require\nfilename: \"story-*.md\"\n?>\n# ?\n")
-	r := &Rule{ArchetypeRoots: []string{"."}}
-	diags := r.Check(f)
-	for _, d := range diags {
-		assert.NotContains(t, d.Message, "<?require?>")
-	}
-}
-
-func TestCheck_ArchetypeEarlierRootShadowsLater(t *testing.T) {
-	root := t.TempDir()
-	writeArchetype(t, filepath.Join(root, "custom"), "story",
-		"# ?\n\n## OverrideOnly\n\n## ...\n")
-	writeArchetype(t, filepath.Join(root, "archetypes"), "story",
-		"# ?\n\n## DefaultOnly\n\n## ...\n")
-	r := &Rule{
-		Archetype:      "story",
-		ArchetypeRoots: []string{"custom", "archetypes"},
-	}
-	f := newFileInRoot(t, root, "doc.md",
-		"# Title\n\n## OverrideOnly\n\nbody\n")
-	diags := r.Check(f)
-	expectDiags(t, diags, 0)
-}
 
 // =====================================================================
 // No-op when schema is empty
@@ -1807,12 +1577,19 @@ func TestCheckSyncPoint_InvalidCUEPath(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "invalid CUE path")
 }
 
-// isSchemaOrArchetypeFile: candidates not ending in .md → continue
-func TestIsSchemaOrArchetypeFile_NonMdFile(t *testing.T) {
-	r := &Rule{ArchetypeRoots: []string{"archetypes"}}
-	// File without .md extension should not match archetype root.
-	f := &lint.File{Path: "archetypes/myschema.yaml"}
-	result := r.isSchemaOrArchetypeFile(f)
+// isSchemaFile: path not matching configured schema returns false
+func TestIsSchemaFile_NonMatchingPath(t *testing.T) {
+	r := &Rule{Schema: "schemas/plan.md"}
+	f := &lint.File{Path: "schemas/other.md"}
+	result := r.isSchemaFile(f)
+	assert.False(t, result)
+}
+
+// isSchemaFile: empty schema returns false
+func TestIsSchemaFile_EmptySchema(t *testing.T) {
+	r := &Rule{}
+	f := &lint.File{Path: "schemas/plan.md"}
+	result := r.isSchemaFile(f)
 	assert.False(t, result)
 }
 

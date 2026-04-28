@@ -47,11 +47,6 @@ func Merge(defaults, loaded *Config) *Config {
 		maxInputSize = loaded.MaxInputSize
 	}
 
-	archetypes := defaults.Archetypes
-	if len(loaded.Archetypes.Roots) > 0 {
-		archetypes = ArchetypesCfg{Roots: copyStrings(loaded.Archetypes.Roots)}
-	}
-
 	return &Config{
 		Rules:                  rules,
 		Ignore:                 loaded.Ignore,
@@ -65,7 +60,6 @@ func Merge(defaults, loaded *Config) *Config {
 		LegacyNoFollowSymlinks: copyStrings(loaded.LegacyNoFollowSymlinks),
 		Deprecations:           copyStrings(loaded.Deprecations),
 		MaxInputSize:           maxInputSize,
-		Archetypes:             archetypes,
 		Kinds:                  copyKinds(loaded.Kinds),
 		KindAssignment:         copyKindAssignment(loaded.KindAssignment),
 	}
@@ -97,7 +91,6 @@ func copyConfig(cfg *Config) *Config {
 		MaxInputSize:           cfg.MaxInputSize,
 		ExplicitRules:          explicit,
 		FilesExplicit:          cfg.FilesExplicit,
-		Archetypes:             ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
 		Kinds:                  copyKinds(cfg.Kinds),
 		KindAssignment:         copyKindAssignment(cfg.KindAssignment),
 	}
@@ -364,42 +357,3 @@ func matchesAny(patterns []string, filePath string) bool {
 	return globMatchAny(patterns, filePath)
 }
 
-// InjectArchetypeRoots copies cfg.Archetypes.Roots into every
-// required-structure rule block (top-level, override, or kind) that does not
-// already set its own archetype-roots. This is a no-op when no roots
-// are configured at the top level. Rules with archetype-roots already
-// specified are left untouched.
-func InjectArchetypeRoots(cfg *Config) {
-	if cfg == nil || len(cfg.Archetypes.Roots) == 0 {
-		return
-	}
-	roots := cfg.Archetypes.Roots
-	injectRoots(cfg.Rules, roots)
-	for i := range cfg.Overrides {
-		injectRoots(cfg.Overrides[i].Rules, roots)
-	}
-	for name, body := range cfg.Kinds {
-		injectRoots(body.Rules, roots)
-		cfg.Kinds[name] = body
-	}
-}
-
-func injectRoots(rules map[string]RuleCfg, roots []string) {
-	const name = "required-structure"
-	rc, ok := rules[name]
-	if !ok || !rc.Enabled {
-		return
-	}
-	if rc.Settings == nil {
-		rc.Settings = map[string]any{}
-	}
-	if _, exists := rc.Settings["archetype-roots"]; exists {
-		return
-	}
-	rootsAny := make([]any, len(roots))
-	for i, r := range roots {
-		rootsAny[i] = r
-	}
-	rc.Settings["archetype-roots"] = rootsAny
-	rules[name] = rc
-}

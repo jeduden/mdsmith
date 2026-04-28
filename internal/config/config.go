@@ -32,7 +32,6 @@ type Config struct {
 	Files          []string              `yaml:"files"`
 	FollowSymlinks bool                  `yaml:"follow-symlinks"`
 	MaxInputSize   string                `yaml:"max-input-size"`
-	Archetypes     ArchetypesCfg         `yaml:"archetypes"`
 	Kinds          map[string]KindBody   `yaml:"kinds,omitempty"`
 	KindAssignment []KindAssignmentEntry `yaml:"kind-assignment,omitempty"`
 
@@ -62,12 +61,6 @@ type Config struct {
 	// them to stderr.
 	// Not serialized to YAML.
 	Deprecations []string `yaml:"-"`
-}
-
-// ArchetypesCfg configures archetype discovery. Roots are directories
-// searched in order; earlier roots shadow later ones.
-type ArchetypesCfg struct {
-	Roots []string `yaml:"roots"`
 }
 
 // Override applies rule settings to files matching glob patterns.

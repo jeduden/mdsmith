@@ -48,6 +48,12 @@ func Load(path string) (*Config, error) {
 				"or remove the key")
 	}
 
+	if keys["archetypes"] {
+		return nil, fmt.Errorf(
+			"config key `archetypes:` has been removed; " +
+				"use `kinds:` with explicit `rules.required-structure.schema:` paths instead")
+	}
+
 	if err := ValidateKinds(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
