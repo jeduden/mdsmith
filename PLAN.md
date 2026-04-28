@@ -27,7 +27,7 @@ footer: |
 | 108 | 🔲     | sonnet | [Horizontal rule style rule](plan/108_horizontal-rule-style.md)                                      |
 | 109 | 🔲     | sonnet | [List marker style rule](plan/109_list-marker-style.md)                                              |
 | 110 | 🔲     | sonnet | [Ordered list numbering rule](plan/110_ordered-list-numbering.md)                                    |
-| 111 | 🔲     | sonnet | [Ambiguous emphasis rule](plan/111_ambiguous-emphasis.md)                                            |
+| 111 | ✅     | sonnet | [Ambiguous emphasis rule](plan/111_ambiguous-emphasis.md)                                            |
 | 112 | 🔲     | opus   | [Flavor profiles refactor](plan/112_flavor-profiles.md)                                              |
 | 113 | 🔲     | sonnet | [User-defined flavor profiles](plan/113_user-defined-profiles.md)                                    |
 | 120 | 🔲     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                   |
