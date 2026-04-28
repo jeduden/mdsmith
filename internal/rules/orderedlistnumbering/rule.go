@@ -100,7 +100,13 @@ func (r *Rule) checkList(f *lint.File, list *ast.List) []lint.Diagnostic {
 // checkItem produces a diagnostic when an item's literal number does
 // not match the expected number under the configured style and start.
 func (r *Rule) checkItem(f *lint.File, line, i int) (lint.Diagnostic, bool) {
-	literal, _, _, _, _ := parseListItemNumber(f.Lines[line-1])
+	if line <= 0 || line > len(f.Lines) {
+		return lint.Diagnostic{}, false
+	}
+	literal, _, _, _, ok := parseListItemNumber(f.Lines[line-1])
+	if !ok {
+		return lint.Diagnostic{}, false
+	}
 	expected := expectedNumber(r.Style, r.Start, i)
 	if literal == expected {
 		return lint.Diagnostic{}, false
@@ -186,7 +192,13 @@ func (r *Rule) collectItemEdits(
 	markerEdits map[int]markerEdit, indentDeltas map[int]int,
 ) {
 	line := firstLineOfListItem(f, item)
-	literal, _, _, _, _ := parseListItemNumber(f.Lines[line-1])
+	if line <= 0 || line > len(f.Lines) {
+		return
+	}
+	literal, _, _, _, ok := parseListItemNumber(f.Lines[line-1])
+	if !ok {
+		return
+	}
 	expected := expectedNumber(r.Style, r.Start, i)
 	if literal != expected {
 		markerEdits[line] = markerEdit{newDigits: expected}
@@ -314,9 +326,15 @@ func countLeadingSpaces(line []byte) int {
 }
 
 // firstLineOfListItem returns the 1-based source line of an item's
-// marker. ListItem.Lines() is empty in goldmark; the marker line lives
-// on the first block child (paragraph, code block, nested list).
+// marker. When the ListItem carries line segments, the first segment's
+// start offset gives the marker line directly. Otherwise the marker
+// line is derived from the first block child (paragraph, code block,
+// nested list).
 func firstLineOfListItem(f *lint.File, li *ast.ListItem) int {
+	if li.Lines().Len() > 0 {
+		seg := li.Lines().At(0)
+		return f.LineOfOffset(seg.Start)
+	}
 	for c := li.FirstChild(); c != nil; c = c.NextSibling() {
 		if line := blockFirstLine(f, c); line > 0 {
 			return line
