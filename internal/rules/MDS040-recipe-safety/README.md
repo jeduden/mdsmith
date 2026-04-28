@@ -44,11 +44,11 @@ build:
   base-url: ""
   recipes:
     mermaid:
-      command: "mmdc -i {input} --theme {theme}"
+      command: "mmdc -i {input} -o {output}"
       body_template: "![{alt}]({output})"
       params:
         required: [input]
-        optional: [theme]
+        optional: [output]
 ```
 
 MDS040 is enabled by default and configured implicitly from
@@ -67,10 +67,10 @@ rules:
 build:
   recipes:
     mermaid:
-      command: "mmdc -i {input} --theme {theme}"
+      command: "mmdc -i {input} -o {output}"
       params:
         required: [input]
-        optional: [theme]
+        optional: [output]
 ```
 
 ### Bad — shell interpreter
