@@ -48,5 +48,5 @@ footer: |
 | 95  | ✅     | opus   | [Kind/rule resolution observability via `kinds` subcommand](plan/95_kind-rule-resolution-cli.md)     |
 | 96  | ✅     | sonnet | [Adopt kinds in mdsmith repo and ship the docs](plan/96_kinds-adoption-and-docs.md)                  |
 | 97  | ✅     | opus   | [Deep-merge for kinds and overrides](plan/97_deep-merge-config.md)                                   |
-| 98  | 🔲     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                        |
+| 98  | 🔳     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                        |
 <?/catalog?>

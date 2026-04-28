@@ -1,7 +1,7 @@
 ---
 id: 98
 title: Replace `archetypes` with `kinds`
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   Remove the `archetypes` CLI subcommand, config key,
