@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 1
-    message: "math blocks are not supported by commonmark"
+    message: "commonmark does not interpret math blocks as a feature"
 ---
 # Heading
 

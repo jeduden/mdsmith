@@ -10,25 +10,14 @@ func Merge(defaults, loaded *Config) *Config {
 		return copyConfig(defaults)
 	}
 
-	rules := make(map[string]RuleCfg, len(defaults.Rules))
-	for k, v := range defaults.Rules {
-		rules[k] = v
-	}
-
-	// Apply loaded rules on top.
-	for k, v := range loaded.Rules {
-		rules[k] = v
-	}
+	rules, explicit := mergeRules(defaults, loaded)
 
 	fm := defaults.FrontMatter
 	if loaded.FrontMatter != nil {
 		fm = loaded.FrontMatter
 	}
-
-	// Merge categories: start with defaults, apply loaded on top.
 	cats := mergeCategories(defaults.Categories, loaded.Categories)
 
-	// Merge files: loaded overrides defaults if explicitly set.
 	files := copyStrings(defaults.Files)
 	filesExplicit := false
 	if loaded.FilesExplicit {
@@ -36,17 +25,10 @@ func Merge(defaults, loaded *Config) *Config {
 		filesExplicit = true
 	}
 
-	// Track which rules were explicitly set in the loaded config.
-	explicit := make(map[string]bool, len(loaded.Rules))
-	for k := range loaded.Rules {
-		explicit[k] = true
-	}
-
 	maxInputSize := defaults.MaxInputSize
 	if loaded.MaxInputSize != "" {
 		maxInputSize = loaded.MaxInputSize
 	}
-
 	archetypes := defaults.Archetypes
 	if len(loaded.Archetypes.Roots) > 0 {
 		archetypes = ArchetypesCfg{Roots: copyStrings(loaded.Archetypes.Roots)}
@@ -68,7 +50,27 @@ func Merge(defaults, loaded *Config) *Config {
 		Archetypes:             archetypes,
 		Kinds:                  copyKinds(loaded.Kinds),
 		KindAssignment:         copyKindAssignment(loaded.KindAssignment),
+		Convention:             loaded.Convention,
+		ConventionPreset:       copyConventionPreset(loaded.ConventionPreset),
 	}
+}
+
+// mergeRules combines the defaults' rule map with the loaded config's
+// rules and reports which rules were explicitly set by the loaded
+// layer (used downstream for category override resolution).
+func mergeRules(defaults, loaded *Config) (map[string]RuleCfg, map[string]bool) {
+	rules := make(map[string]RuleCfg, len(defaults.Rules))
+	for k, v := range defaults.Rules {
+		rules[k] = v
+	}
+	for k, v := range loaded.Rules {
+		rules[k] = v
+	}
+	explicit := make(map[string]bool, len(loaded.Rules))
+	for k := range loaded.Rules {
+		explicit[k] = true
+	}
+	return rules, explicit
 }
 
 // copyConfig returns a shallow copy of a Config with copied slices and
@@ -100,6 +102,8 @@ func copyConfig(cfg *Config) *Config {
 		Archetypes:             ArchetypesCfg{Roots: copyStrings(cfg.Archetypes.Roots)},
 		Kinds:                  copyKinds(cfg.Kinds),
 		KindAssignment:         copyKindAssignment(cfg.KindAssignment),
+		Convention:             cfg.Convention,
+		ConventionPreset:       copyConventionPreset(cfg.ConventionPreset),
 	}
 }
 
@@ -251,9 +255,25 @@ func EffectiveAll(
 }
 
 func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]RuleCfg {
+	// Layer order, oldest → newest:
+	//   1. defaults     (cfg.Rules entries the user did not explicitly set)
+	//   2. convention   (cfg.ConventionPreset, when set)
+	//   3. user         (cfg.Rules entries the user explicitly set)
+	//   4. kinds        (each kind body in the file's effective list)
+	//   5. overrides    (each matching override entry)
+	//
+	// Splitting cfg.Rules into "default" and "user" layers around
+	// the convention is the only way a convention preset can flip
+	// a rule that is disabled by default (e.g. MDS034 markdown-flavor
+	// is opt-in; `convention: portable` should enable it). Without
+	// the split, the default's `Enabled: false` would land on top of
+	// the convention's `Enabled: true` and silently disable the rule
+	// the user just asked the convention to enable.
 	result := make(map[string]RuleCfg, len(cfg.Rules))
 	for k, v := range cfg.Rules {
-		result[k] = copyRuleCfg(v)
+		if !cfg.ExplicitRules[k] {
+			result[k] = copyRuleCfg(v)
+		}
 	}
 	apply := func(name string, layer RuleCfg) {
 		if existing, ok := result[name]; ok {
@@ -261,6 +281,14 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 			return
 		}
 		result[name] = copyRuleCfg(layer)
+	}
+	for k, v := range cfg.ConventionPreset {
+		apply(k, v)
+	}
+	for k, v := range cfg.Rules {
+		if cfg.ExplicitRules[k] {
+			apply(k, v)
+		}
 	}
 	for _, kindName := range kinds {
 		body, ok := cfg.Kinds[kindName]

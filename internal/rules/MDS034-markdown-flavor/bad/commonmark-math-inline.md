@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 5
-    message: "inline math is not supported by commonmark"
+    message: "commonmark does not interpret inline math as a feature"
 ---
 # Heading
 

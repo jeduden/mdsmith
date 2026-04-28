@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 1
-    message: "github alerts are not supported by commonmark"
+    message: "commonmark does not interpret github alerts as a feature"
 ---
 # Alerts
 

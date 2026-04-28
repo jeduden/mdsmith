@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 1
     column: 11
-    message: "heading IDs are not supported by commonmark"
+    message: "commonmark does not interpret heading IDs as a feature"
 ---
 # Heading {#top}
 

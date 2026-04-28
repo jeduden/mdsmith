@@ -16,7 +16,11 @@ func init() {
 }
 
 // Rule implements MDS034, validating Markdown against a declared
-// target flavor and flagging syntax the renderer will reject.
+// target flavor and flagging syntax the renderer does not interpret
+// as a feature. The rule reads only the flavor; project-level
+// convention selection (which can preset this rule's flavor and
+// other rules' settings) is handled at config load — see
+// internal/config/convention.go.
 type Rule struct {
 	Flavor Flavor
 }
@@ -89,8 +93,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message: fmt.Sprintf("%s %s not supported by %s",
-				found.Feature.Name(), found.Feature.Verb(), r.Flavor),
+			Message: fmt.Sprintf("%s does not interpret %s as a feature",
+				r.Flavor, found.Feature.Name()),
 		})
 	}
 	return diags

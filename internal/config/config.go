@@ -36,6 +36,14 @@ type Config struct {
 	Kinds          map[string]KindBody   `yaml:"kinds,omitempty"`
 	KindAssignment []KindAssignmentEntry `yaml:"kind-assignment,omitempty"`
 
+	// Convention names a Markdown convention bundle. Built-in
+	// values: "portable", "github", "plain". Empty means no
+	// convention; the user's top-level rules and the built-in
+	// defaults are the only base layers. See
+	// internal/rules/markdownflavor/conventions.go for the table
+	// and docs/reference/conventions.md for end-user docs.
+	Convention string `yaml:"convention,omitempty"`
+
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
@@ -62,6 +70,15 @@ type Config struct {
 	// them to stderr.
 	// Not serialized to YAML.
 	Deprecations []string `yaml:"-"`
+
+	// ConventionPreset is the convention's rule preset table,
+	// captured at config load time. It is applied as a base layer
+	// beneath the user's top-level rules: in effective-rule
+	// resolution, the preset is merged first, the user's cfg.Rules
+	// wins via deep-merge, then kinds and overrides apply on top.
+	// Empty when no convention is selected.
+	// Not serialized to YAML.
+	ConventionPreset map[string]RuleCfg `yaml:"-"`
 }
 
 // ArchetypesCfg configures archetype discovery. Roots are directories

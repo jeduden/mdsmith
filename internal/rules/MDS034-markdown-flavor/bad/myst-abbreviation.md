@@ -4,10 +4,10 @@ settings:
 diagnostics:
   - line: 3
     column: 1
-    message: "abbreviations are not supported by myst"
+    message: "myst does not interpret abbreviations as a feature"
   - line: 5
     column: 5
-    message: "abbreviations are not supported by myst"
+    message: "myst does not interpret abbreviations as a feature"
 ---
 # Heading
 

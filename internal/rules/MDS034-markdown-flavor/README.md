@@ -11,6 +11,17 @@ description: >-
 Flags Markdown syntax that the declared target
 flavor does not render.
 
+MDS034 is the *flavor gate*: it answers "will the
+target renderer interpret this syntax as the named
+feature?" Style choices among equally-valid forms
+(emphasis style, list marker, horizontal rule) live
+in separate rules. Project-level bundles that pair
+a flavor with style rules live in
+[conventions](../../../docs/reference/conventions.md).
+For the conceptual line between flavor, rule,
+convention, and kind see
+[the concepts doc](../../../docs/background/concepts/flavor-rule-convention-kind.md).
+
 ## Settings
 
 | Key    | Type   | Description                     |
@@ -25,8 +36,8 @@ values:
 - `gfm` — GitHub Flavored Markdown; adds tables,
   task lists, strikethrough, and bare-URL
   autolinks.
-- `goldmark` — mdsmith-defined profile; GFM plus
-  heading IDs.
+- `goldmark` — mdsmith-defined flavor variant; GFM
+  plus heading IDs.
 - `pandoc` — Pandoc's default markdown; GFM plus
   footnotes, definition lists, heading IDs,
   superscript, subscript, math block, and inline

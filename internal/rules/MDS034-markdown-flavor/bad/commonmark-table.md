@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 1
-    message: "tables are not supported by commonmark"
+    message: "commonmark does not interpret tables as a feature"
 ---
 # Heading
 

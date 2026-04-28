@@ -4,10 +4,10 @@ settings:
 diagnostics:
   - line: 3
     column: 1
-    message: "footnotes are not supported by gfm"
+    message: "gfm does not interpret footnotes as a feature"
   - line: 5
     column: 1
-    message: "footnotes are not supported by gfm"
+    message: "gfm does not interpret footnotes as a feature"
 ---
 # Heading
 

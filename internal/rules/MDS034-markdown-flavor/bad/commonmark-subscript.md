@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 2
-    message: "subscript is not supported by commonmark"
+    message: "commonmark does not interpret subscript as a feature"
 ---
 # Heading
 

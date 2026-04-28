@@ -318,10 +318,14 @@ func TestKinds_WhyJSON(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
 	assert.Equal(t, "max-file-length", out.Rule)
-	require.Len(t, out.Layers, 3)
+	// max-file-length is set in the user's top-level rules, the
+	// plan kind, and an override; defaults register the rule too,
+	// so all four layers appear in the chain.
+	require.Len(t, out.Layers, 4)
 	assert.Equal(t, "default", out.Layers[0].Source)
-	assert.Equal(t, "kinds.plan", out.Layers[1].Source)
-	assert.Equal(t, "overrides[0]", out.Layers[2].Source)
+	assert.Equal(t, "user", out.Layers[1].Source)
+	assert.Equal(t, "kinds.plan", out.Layers[2].Source)
+	assert.Equal(t, "overrides[0]", out.Layers[3].Source)
 }
 
 func TestKinds_WhyUnknownRuleExits2(t *testing.T) {

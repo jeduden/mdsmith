@@ -432,3 +432,46 @@ func TestWriteBodyText_DeterministicOutput(t *testing.T) {
 		assert.True(t, strings.Contains(first.String(), name))
 	}
 }
+
+func TestWriteFileResolutionText_ShowsConventionLayer(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 120}},
+		},
+		ExplicitRules: map[string]bool{"line-length": true},
+		Convention:    "portable",
+		ConventionPreset: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	out := buf.String()
+	// User's max=120 wins because the user layer sits above the
+	// convention layer in the merge chain.
+	assert.Contains(t, out, "settings.max = 120")
+	assert.Contains(t, out, "(from user)")
+}
+
+func TestWriteRuleResolutionText_ShowsConventionLayer(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 120}},
+		},
+		ExplicitRules: map[string]bool{"line-length": true},
+		Convention:    "portable",
+		ConventionPreset: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	rr := res.Rules["line-length"]
+	var buf bytes.Buffer
+	require.NoError(t, WriteRuleResolutionText(&buf, "x.md", rr))
+	out := buf.String()
+	assert.Contains(t, out, "convention.portable",
+		"convention layer must appear in chain")
+	assert.Contains(t, out, "winning source: user",
+		"user value wins over convention preset")
+}

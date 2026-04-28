@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 7
-    message: "superscript is not supported by commonmark"
+    message: "commonmark does not interpret superscript as a feature"
 ---
 # Heading
 

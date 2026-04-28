@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 7
-    message: "bare-URL autolinks are not supported by commonmark"
+    message: "commonmark does not interpret bare-URL autolinks as a feature"
 ---
 # Heading
 

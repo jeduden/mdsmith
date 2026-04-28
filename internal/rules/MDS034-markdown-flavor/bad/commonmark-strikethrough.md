@@ -4,7 +4,7 @@ settings:
 diagnostics:
   - line: 3
     column: 6
-    message: "strikethrough is not supported by commonmark"
+    message: "commonmark does not interpret strikethrough as a feature"
 ---
 # Heading
 

@@ -8,17 +8,33 @@ import (
 
 // Provenance layer-source string forms. A layer source is a stable
 // identifier that names one step in the rule-config merge pipeline.
+// Layers are listed below in apply order (oldest → newest):
 //
-//   - "default"               built-in defaults plus the user's top-level rules:
-//   - "kinds.<name>"          a kind body in the file's effective kind list
-//   - "overrides[<i>]"        the i-th override entry that matched this file
-//   - "front-matter override" the file's own front-matter rule overrides
+//   - "default"               built-in defaults: rules in cfg.Rules
+//     that the user did not explicitly set
+//   - "convention.<name>"     the markdown-flavor convention preset,
+//     when set
+//   - "user"                  the user's top-level rules block: rules
+//     in cfg.Rules with an entry in
+//     cfg.ExplicitRules
+//   - "kinds.<name>"          a kind body in the file's effective
+//     kind list
+//   - "overrides[<i>]"        the i-th override entry that matched
+//     this file
+//   - "front-matter override" the file's own front-matter rule
+//     overrides
 //
-// "default" collapses built-in defaults and the user's top-level rules:
-// block, since cfg.Rules already has them merged. "front-matter override"
-// is reserved for the future per-file front-matter rules: feature.
+// Splitting cfg.Rules into a "default" layer (defaults) and a
+// "user" layer (explicit user entries) around the convention preset
+// is what lets a convention enable a rule that is disabled by
+// default. Without the split, the default's `Enabled: false` would
+// land on top of the convention's `Enabled: true` and silently
+// disable the rule. The "user" layer only appears when the user
+// explicitly set at least one rule. "front-matter override" is
+// reserved for the future per-file front-matter rules: feature.
 const (
 	layerSourceDefault     = "default"
+	layerSourceUser        = "user"
 	layerSourceFrontMatter = "front-matter override"
 )
 
@@ -128,8 +144,21 @@ type layerInfo struct {
 }
 
 func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo {
-	layers := []layerInfo{
-		{Source: layerSourceDefault, Rules: cfg.Rules},
+	layers := make([]layerInfo, 0, 3+len(kinds)+len(cfg.Overrides))
+
+	defaults, user := splitRulesByExplicit(cfg)
+
+	if len(defaults) > 0 {
+		layers = append(layers, layerInfo{Source: layerSourceDefault, Rules: defaults})
+	}
+	if cfg.Convention != "" && len(cfg.ConventionPreset) > 0 {
+		layers = append(layers, layerInfo{
+			Source: "convention." + cfg.Convention,
+			Rules:  cfg.ConventionPreset,
+		})
+	}
+	if len(user) > 0 {
+		layers = append(layers, layerInfo{Source: layerSourceUser, Rules: user})
 	}
 	for _, k := range kinds {
 		body, ok := cfg.Kinds[k.Name]
@@ -150,6 +179,24 @@ func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo
 		}
 	}
 	return layers
+}
+
+// splitRulesByExplicit divides cfg.Rules into two maps using
+// cfg.ExplicitRules as the discriminator: defaults (rules the user
+// did not explicitly set) and user (rules with an entry in
+// cfg.ExplicitRules). The split lets buildLayers emit "default" and
+// "user" as distinct provenance layers.
+func splitRulesByExplicit(cfg *Config) (defaults, user map[string]RuleCfg) {
+	defaults = make(map[string]RuleCfg)
+	user = make(map[string]RuleCfg)
+	for k, v := range cfg.Rules {
+		if cfg.ExplicitRules[k] {
+			user[k] = v
+		} else {
+			defaults[k] = v
+		}
+	}
+	return defaults, user
 }
 
 func allRuleNames(layers []layerInfo) []string {
