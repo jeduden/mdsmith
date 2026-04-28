@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -44,33 +45,29 @@ func (r *Rule) Category() string { return "link" }
 func (r *Rule) EnabledByDefault() bool { return false }
 
 const (
-	msgRefLink       = "reference-style link; use inline form [text](url)"
-	msgFootnote      = "footnote reference; footnotes are not allowed"
-	msgFootnoteNum   = "footnote slug is numeric; use a meaningful slug"
-	msgFootnotePlace = "footnote definition must follow its referencing paragraph"
-	msgUnusedDef     = "unused reference definition: [%s]"
+	msgRefLink         = "reference-style link; use inline form [text](url)"
+	msgFootnote        = "footnote reference; footnotes are not allowed"
+	msgFootnoteNum     = "footnote slug is numeric; use a meaningful slug"
+	msgFootnoteMissing = "footnote reference has no matching definition"
+	msgFootnotePlace   = "footnote definition must follow its referencing paragraph"
+	msgUnusedDef       = "unused reference definition: [%s]"
 )
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	if f.AST == nil {
-		return nil
-	}
-
-	diags, hasRefLinks, usedRefs := r.checkLinks(f)
-	diags = append(diags, r.checkUnusedDefinitions(f, usedRefs, hasRefLinks)...)
+	diags, hasRefLinks := r.checkLinks(f)
+	diags = append(diags, r.checkUnusedDefinitions(f, hasRefLinks)...)
 	diags = append(diags, r.checkFootnotes(f)...)
 
 	return diags
 }
 
 // checkLinks walks the AST for *ast.Link nodes. Returns the diagnostic
-// list, whether any reference-style links were found (so unused-def
-// detection can stay quiet), and the set of normalised labels that any
-// reference-style link in the file consumed.
-func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool, map[string]bool) {
+// list and whether any reference-style links were found (so the
+// unused-def pass can stay quiet when the link diagnostics already
+// cover the file).
+func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool) {
 	var diags []lint.Diagnostic
-	used := map[string]bool{}
 	hasRef := false
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -82,7 +79,6 @@ func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool, map[string]boo
 			return ast.WalkContinue, nil
 		}
 		hasRef = true
-		used[util.ToLinkReference(link.Reference.Value)] = true
 		line, col := nodePosition(link, f.Source)
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
@@ -96,7 +92,7 @@ func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool, map[string]boo
 		return ast.WalkContinue, nil
 	})
 
-	return diags, hasRef, used
+	return diags, hasRef
 }
 
 // checkUnusedDefinitions emits a diagnostic for each reference
@@ -104,21 +100,14 @@ func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool, map[string]boo
 // When the file contains reference-style links, the link diagnostics
 // already cover the issue and definitions are left alone.
 func (r *Rule) checkUnusedDefinitions(
-	f *lint.File, usedRefs map[string]bool, hasRefLinks bool,
+	f *lint.File, hasRefLinks bool,
 ) []lint.Diagnostic {
 	if hasRefLinks {
 		return nil
 	}
 	defs := collectReferenceDefinitions(f.Source)
-	if len(defs) == 0 {
-		return nil
-	}
 	var diags []lint.Diagnostic
 	for _, d := range defs {
-		key := util.ToLinkReference([]byte(d.label))
-		if usedRefs[key] {
-			continue
-		}
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     d.line,
@@ -169,7 +158,8 @@ func (r *Rule) checkFootnotes(f *lint.File) []lint.Diagnostic {
 			})
 			continue
 		}
-		if !definitionImmediatelyAfter(ref, defs, f.Source) {
+		msg := footnotePlacementMessage(ref, defs, f.Source)
+		if msg != "" {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     ref.line,
@@ -177,7 +167,7 @@ func (r *Rule) checkFootnotes(f *lint.File) []lint.Diagnostic {
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
-				Message:  msgFootnotePlace,
+				Message:  msg,
 			})
 		}
 	}
@@ -198,9 +188,6 @@ type referenceDefinition struct {
 // never appear in the document AST), then locates each in source so
 // the rule can report a precise position.
 func collectReferenceDefinitions(source []byte) []referenceDefinition {
-	if len(source) == 0 {
-		return nil
-	}
 	ctx := parser.NewContext()
 	lint.NewParser().Parse(text.NewReader(source), parser.WithContext(ctx))
 
@@ -210,14 +197,15 @@ func collectReferenceDefinitions(source []byte) []referenceDefinition {
 	}
 
 	var out []referenceDefinition
-	seen := map[int]bool{}
+	usedSpans := map[int]bool{}
 	for _, ref := range refs {
-		label := string(ref.Label())
-		def, ok := findReferenceDefinitionInSource(source, label, seen)
+		def, ok := findReferenceDefinitionInSource(
+			source, string(ref.Label()), usedSpans,
+		)
 		if !ok {
 			continue
 		}
-		seen[def.start] = true
+		usedSpans[def.start] = true
 		out = append(out, def)
 	}
 	return out
@@ -251,11 +239,7 @@ func findReferenceDefinitionInSource(
 		if end < len(source) && source[end] == '\n' {
 			end++
 		}
-		bracket := bytes.IndexByte(source[start:m[1]], '[')
-		if bracket < 0 {
-			bracket = 0
-		}
-		bracketAbs := start + bracket
+		bracketAbs := m[2] - 1 // m[2] starts the label, so `[` is the byte before
 		line := lineOfOffset(source, bracketAbs)
 		col := columnOfOffset(source, bracketAbs)
 		return referenceDefinition{
@@ -278,9 +262,12 @@ type footnoteOccurrence struct {
 	end   int
 }
 
-// footnoteRefRE matches a footnote-style reference: `[^slug]` not
-// followed by `:` (which would make it a definition).
-var footnoteRefRE = regexp.MustCompile(`\[\^([^\]\n]+)\](?:[^:]|$)`)
+// footnoteRefRE matches a footnote-style token `[^slug]`. Whether
+// the token is a reference vs a definition is decided afterwards by
+// isFootnoteDefinitionAt — keeping the regex narrow ensures adjacent
+// references like `[^a][^b]` are both detected (an alternation that
+// consumed the trailing byte would swallow the `[` of the second).
+var footnoteRefRE = regexp.MustCompile(`\[\^([^\]\n]+)\]`)
 
 // footnoteDefRE matches a footnote definition line: optional indent,
 // `[^slug]:` then any text.
@@ -289,9 +276,6 @@ var footnoteDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[\^([^\]\n]+)\]:`)
 func scanFootnoteReferences(
 	source []byte, codeLines map[int]bool, codeSpans []byteRange,
 ) []footnoteOccurrence {
-	if len(source) == 0 {
-		return nil
-	}
 	matches := footnoteRefRE.FindAllSubmatchIndex(source, -1)
 	var out []footnoteOccurrence
 	for _, m := range matches {
@@ -342,28 +326,32 @@ func scanFootnoteDefinitions(
 
 // isFootnoteDefinitionAt reports whether the `[^...]` token at offset
 // `start` is followed by `:` after the closing `]`, making it a
-// definition rather than a reference.
+// definition rather than a reference. The caller has already matched
+// `[^...]` at `start`, so `]` is guaranteed to appear later.
 func isFootnoteDefinitionAt(source []byte, start int) bool {
 	close := bytes.IndexByte(source[start:], ']')
-	if close < 0 {
-		return false
-	}
 	pos := start + close + 1
 	return pos < len(source) && source[pos] == ':'
 }
 
-// definitionImmediatelyAfter reports whether `ref` has a matching
-// footnote definition that begins on the line immediately after the
-// paragraph containing the reference. A single blank line separator
-// is allowed (matching the typical footnote-block style).
-func definitionImmediatelyAfter(
+// footnotePlacementMessage returns the empty string when `ref` has a
+// matching definition immediately after its paragraph. Otherwise it
+// returns a diagnostic message that distinguishes "no matching
+// definition" from "definition exists but is misplaced". A single
+// blank line separator is allowed (matching the typical footnote-
+// block style).
+func footnotePlacementMessage(
 	ref footnoteOccurrence,
 	defs []footnoteOccurrence,
 	source []byte,
-) bool {
+) string {
 	defLines := map[int]bool{}
+	hasMatchingSlug := false
 	for _, d := range defs {
 		defLines[d.line] = true
+		if d.slug == ref.slug {
+			hasMatchingSlug = true
+		}
 	}
 	endLine := paragraphEndLine(source, ref.line, defLines)
 	for _, d := range defs {
@@ -371,10 +359,13 @@ func definitionImmediatelyAfter(
 			continue
 		}
 		if d.line == endLine+1 || d.line == endLine+2 {
-			return true
+			return ""
 		}
 	}
-	return false
+	if !hasMatchingSlug {
+		return msgFootnoteMissing
+	}
+	return msgFootnotePlace
 }
 
 // paragraphEndLine returns the 1-based line number of the last line
@@ -524,9 +515,6 @@ func firstDescendantText(n ast.Node) text.Segment {
 }
 
 func lineOfOffset(source []byte, off int) int {
-	if off > len(source) {
-		off = len(source)
-	}
 	line := 1
 	for i := 0; i < off; i++ {
 		if source[i] == '\n' {
@@ -537,9 +525,6 @@ func lineOfOffset(source []byte, off int) int {
 }
 
 func columnOfOffset(source []byte, off int) int {
-	if off > len(source) {
-		off = len(source)
-	}
 	start := off
 	for start > 0 && source[start-1] != '\n' {
 		start--
@@ -558,12 +543,6 @@ type fixCut struct {
 // link to its inline equivalent and drops the matching reference
 // definitions. Footnotes are not auto-fixed.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f.AST == nil {
-		out := make([]byte, len(f.Source))
-		copy(out, f.Source)
-		return out
-	}
-
 	linkCuts, usedLabels := collectLinkRewrites(f)
 	defCuts := collectDefinitionCuts(f.Source, usedLabels)
 	cuts := append(linkCuts, defCuts...)
@@ -620,11 +599,9 @@ func collectDefinitionCuts(source []byte, usedLabels map[string]bool) []fixCut {
 }
 
 func applyCuts(source []byte, cuts []fixCut) []byte {
-	for i := 1; i < len(cuts); i++ {
-		for j := i; j > 0 && cuts[j].start < cuts[j-1].start; j-- {
-			cuts[j], cuts[j-1] = cuts[j-1], cuts[j]
-		}
-	}
+	sort.Slice(cuts, func(i, j int) bool {
+		return cuts[i].start < cuts[j].start
+	})
 	var out bytes.Buffer
 	prev := 0
 	for _, c := range cuts {

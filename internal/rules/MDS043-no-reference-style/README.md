@@ -160,6 +160,7 @@ A claim with a citation.[^source]
 | `reference-style link; use inline form ...`       | Full, collapsed, or shortcut reference link found                       |
 | `footnote reference; footnotes are not allowed`   | A `[^slug]` reference appeared while `allow-footnotes` is false         |
 | `footnote slug is numeric; use a meaningful slug` | `allow-footnotes` is true but the slug is purely digits                 |
+| `footnote reference has no matching definition`   | `allow-footnotes` is true and no `[^slug]:` definition exists           |
 | `footnote definition must follow ...`             | `allow-footnotes` is true but the definition is not adjacent to the ref |
 | `unused reference definition: [id]`               | A reference definition has no matching link in the file                 |
 

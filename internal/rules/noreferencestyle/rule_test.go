@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -161,4 +162,172 @@ func TestApplySettings(t *testing.T) {
 // f is a shorter alias for newFile for the assertion-heavy tests.
 func f(t *testing.T, src string) *lint.File {
 	return newFile(t, src)
+}
+
+func TestDefaultSettings(t *testing.T) {
+	r := &Rule{}
+	got := r.DefaultSettings()
+	assert.Equal(t, map[string]any{"allow-footnotes": false}, got)
+}
+
+func TestFix_NoReferenceLinksReturnsCopy(t *testing.T) {
+	src := "Just [inline](https://example.com) text.\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Equal(t, src, string(got))
+}
+
+func TestFix_PreservesUnusedDefinition(t *testing.T) {
+	// [unused] has no link; only [used] is rewritten and its
+	// definition removed. The unused def is left in place.
+	src := "See [t][used].\n\n[used]: https://example.com\n[unused]: https://example.org\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Contains(t, string(got), "[unused]: https://example.org")
+	assert.Contains(t, string(got), "[t](https://example.com)")
+	assert.NotContains(t, string(got), "[used]: https://example.com")
+}
+
+func TestCheck_MultipleReferenceLinks(t *testing.T) {
+	src := "See [a][s] and [b][s].\n\n[s]: https://example.com\n"
+	diags := (&Rule{}).Check(f(t, src))
+	require.Len(t, diags, 2)
+	for _, d := range diags {
+		assert.Equal(t, msgRefLink, d.Message)
+	}
+}
+
+func TestCheck_MultipleUnusedDefinitions(t *testing.T) {
+	src := "Plain prose.\n\n[a]: https://x.example\n[b]: https://y.example\n"
+	diags := (&Rule{}).Check(f(t, src))
+	require.Len(t, diags, 2)
+	for _, d := range diags {
+		assert.Contains(t, d.Message, "unused reference definition")
+	}
+}
+
+func TestCheck_FootnoteDefinitionWithoutReference(t *testing.T) {
+	// A bare definition with no `[^slug]` reference produces no
+	// diagnostic — we only flag references.
+	src := "Plain prose.\n\n[^orphan]: A floating note.\n"
+	r := &Rule{AllowFootnotes: false}
+	diags := r.Check(f(t, src))
+	assert.Empty(t, diags)
+}
+
+func TestCheck_FootnoteAllowed_NoMatchingDefinition(t *testing.T) {
+	// `allow-footnotes: true` but there is no def at all — the
+	// "missing" diagnostic fires (distinct from "misplaced").
+	src := "Some text.[^missing]\n"
+	r := &Rule{AllowFootnotes: true}
+	diags := r.Check(f(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, msgFootnoteMissing, diags[0].Message)
+}
+
+func TestCheck_AdjacentFootnoteRefs(t *testing.T) {
+	// `[^a][^b]` — both refs must be detected; neither swallows the
+	// `[` of the next.
+	src := "See [^a][^b]\n"
+	r := &Rule{AllowFootnotes: false}
+	diags := r.Check(f(t, src))
+	require.Len(t, diags, 2)
+	for _, d := range diags {
+		assert.Equal(t, msgFootnote, d.Message)
+	}
+}
+
+func TestPathColumns(t *testing.T) {
+	// Column numbers run on the source byte offset of `[`, not the
+	// inner text node.
+	src := "abc [example][site] xyz.\n\n[site]: https://example.com\n"
+	diags := (&Rule{}).Check(f(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Equal(t, 5, diags[0].Column)
+}
+
+func TestIsNumericSlug(t *testing.T) {
+	assert.True(t, isNumericSlug("1"))
+	assert.True(t, isNumericSlug("123"))
+	assert.False(t, isNumericSlug(""))
+	assert.False(t, isNumericSlug("a1"))
+	assert.False(t, isNumericSlug("note"))
+}
+
+func TestApplySettings_NilOK(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(nil))
+	assert.False(t, r.AllowFootnotes)
+}
+
+func TestCheck_EmptySource(t *testing.T) {
+	diags := (&Rule{}).Check(f(t, ""))
+	assert.Empty(t, diags)
+}
+
+func TestCheck_LinkWithEmphasizedText(t *testing.T) {
+	// Link text is `*foo*` — the first text descendant lives inside
+	// an Emphasis node, so nodePosition must walk into the link.
+	src := "See [*foo*][s].\n\n[s]: https://example.com\n"
+	diags := (&Rule{}).Check(f(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, msgRefLink, diags[0].Message)
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Equal(t, 5, diags[0].Column)
+}
+
+func TestFix_MultipleLinksAndDefinitions(t *testing.T) {
+	src := "[a][x] then [b][y].\n\n[x]: https://x.example\n[y]: https://y.example\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Contains(t, string(got), "[a](https://x.example)")
+	assert.Contains(t, string(got), "[b](https://y.example)")
+	assert.NotContains(t, string(got), "[x]:")
+	assert.NotContains(t, string(got), "[y]:")
+}
+
+func TestFix_DefinitionWithTitle(t *testing.T) {
+	src := "See [t][s].\n\n[s]: https://example.com \"My title\"\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Contains(t, string(got), `[t](https://example.com "My title")`)
+}
+
+func TestCheck_FootnoteAcrossBlankLineFails(t *testing.T) {
+	// allow-footnotes: true and a definition exists, but it sits two
+	// blank lines after — placement message fires (not "missing").
+	src := "Some text.[^note]\n\nMore prose.\n\n[^note]: A note.\n"
+	r := &Rule{AllowFootnotes: true}
+	diags := r.Check(f(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, msgFootnotePlace, diags[0].Message)
+}
+
+func TestCheck_FootnoteDefinitionInsideCodeBlock(t *testing.T) {
+	// `[^1]: ...` inside a fenced block must not register as a real
+	// definition. The reference outside the block still fires.
+	src := "Use it.[^1]\n\n```text\n[^1]: not a real def\n```\n"
+	r := &Rule{AllowFootnotes: false}
+	diags := r.Check(f(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, msgFootnote, diags[0].Message)
+	assert.Equal(t, 1, diags[0].Line)
+}
+
+func TestFix_LinkTextWithEscapedBracket(t *testing.T) {
+	// Link text contains an escaped bracket. The Fix must walk past
+	// the escape rather than treat `]` after `\` as the closer.
+	src := "See [a\\]b][s].\n\n[s]: https://example.com\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Contains(t, string(got), "[a\\]b](https://example.com)")
+	assert.NotContains(t, string(got), "[s]:")
+}
+
+func TestRegistration(t *testing.T) {
+	// init() registered an instance; verify it's the *Rule type and
+	// configurable.
+	r := &Rule{}
+	_, ok := any(r).(rule.Configurable)
+	assert.True(t, ok)
+	_, ok = any(r).(rule.FixableRule)
+	assert.True(t, ok)
+	_, ok = any(r).(rule.Defaultable)
+	assert.True(t, ok)
 }
