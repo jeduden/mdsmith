@@ -56,6 +56,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	skip := lint.CollectCodeBlockLines(f)
 	codeSpanRanges := collectCodeSpanRanges(f)
+	lineStarts := computeLineStarts(f.Source)
 
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
@@ -63,7 +64,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if skip[lineNum] {
 			continue
 		}
-		masked := maskCodeSpans(line, lineNum, codeSpanRanges, f)
+		masked := maskCodeSpans(line, lineNum, codeSpanRanges, lineStarts)
 		diags = append(diags, r.checkLine(f, lineNum, masked)...)
 	}
 
@@ -236,7 +237,6 @@ func (r *Rule) adjacentSameDelimDiags(f *lint.File, lineNum int, line []byte, ru
 			continue
 		}
 		var r2 emphRun
-		found2 := false
 		for j := i + 1; j < len(runs); j++ {
 			rj := runs[j]
 			if rj.char != k.char || rj.length() != k.length {
@@ -246,7 +246,6 @@ func (r *Rule) adjacentSameDelimDiags(f *lint.File, lineNum int, line []byte, ru
 				continue
 			}
 			r2 = rj
-			found2 = true
 			startK := j + 1
 			for m := startK; m < len(runs); m++ {
 				rm := runs[m]
@@ -272,7 +271,6 @@ func (r *Rule) adjacentSameDelimDiags(f *lint.File, lineNum int, line []byte, ru
 				break
 			}
 		}
-		_ = found2
 	}
 	return diags
 }
@@ -341,11 +339,11 @@ func collectCodeSpanRanges(f *lint.File) []codeSpanRange {
 // code span replaced by a space. Spaces never participate in emphasis
 // detection, so the mask removes the bytes from delimiter accounting
 // without disturbing column positions.
-func maskCodeSpans(line []byte, lineNum int, ranges []codeSpanRange, f *lint.File) []byte {
+func maskCodeSpans(line []byte, lineNum int, ranges []codeSpanRange, lineStarts []int) []byte {
 	if len(ranges) == 0 {
 		return line
 	}
-	lineStart := lineStartOffset(f, lineNum)
+	lineStart := lineStarts[lineNum-1]
 	lineEnd := lineStart + len(line)
 
 	var out []byte
@@ -375,22 +373,18 @@ func maskCodeSpans(line []byte, lineNum int, ranges []codeSpanRange, f *lint.Fil
 	return out
 }
 
-// lineStartOffset returns the 0-based byte offset in f.Source of the
-// first character of the given 1-based line.
-func lineStartOffset(f *lint.File, lineNum int) int {
-	if lineNum <= 1 {
-		return 0
-	}
-	count := 1
-	for i := 0; i < len(f.Source); i++ {
-		if f.Source[i] == '\n' {
-			count++
-			if count == lineNum {
-				return i + 1
-			}
+// computeLineStarts returns a slice s such that s[i] is the 0-based
+// byte offset in src of the first character of the (i+1)-th line. The
+// slice has one entry per line so callers can index by line number
+// without rescanning the source.
+func computeLineStarts(src []byte) []int {
+	starts := []int{0}
+	for i, b := range src {
+		if b == '\n' {
+			starts = append(starts, i+1)
 		}
 	}
-	return len(f.Source)
+	return starts
 }
 
 // ApplySettings implements rule.Configurable.
