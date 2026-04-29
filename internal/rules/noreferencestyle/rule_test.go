@@ -372,6 +372,25 @@ func TestCheck_MidLineFootnoteLikeNotDefinition(t *testing.T) {
 	assert.Equal(t, msgFootnote, diags[0].Message)
 }
 
+func TestFix_EmptyLinkTextSkipsRewrite(t *testing.T) {
+	// A reference link with no text content (e.g. `[][id]`) has no
+	// text descendant, so linkSourceSpan can't recover the span. Fix
+	// must skip the rewrite (and leave the definition in place)
+	// rather than computing a negative start offset and panicking.
+	src := "See [][site].\n\n[site]: https://example.com\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Equal(t, src, string(got))
+}
+
+func TestFix_NoReferenceLinksSkipsDefinitionScan(t *testing.T) {
+	// When no reference-style link exists, collectDefinitionCuts must
+	// short-circuit before re-parsing for definitions. The output is
+	// a byte-identical copy of the source.
+	src := "Just [inline](https://example.com) text and more prose.\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Equal(t, src, string(got))
+}
+
 func TestRegistration(t *testing.T) {
 	// init() registered an instance; verify it's the *Rule type and
 	// configurable.

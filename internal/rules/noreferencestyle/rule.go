@@ -523,7 +523,13 @@ func collectLinkRewrites(f *lint.File) ([]fixCut, map[string]bool) {
 		if !ok || link.Reference == nil {
 			return ast.WalkContinue, nil
 		}
-		start, end, txt := linkSourceSpan(link, f.Source)
+		start, end, txt, ok := linkSourceSpan(link, f.Source)
+		if !ok {
+			// Cannot recover the source span (e.g. empty-text link).
+			// Leave the link and its definition untouched so we never
+			// emit a malformed rewrite.
+			return ast.WalkContinue, nil
+		}
 		usedLabels[util.ToLinkReference(link.Reference.Value)] = true
 		cuts = append(cuts, fixCut{
 			start: start,
@@ -536,6 +542,9 @@ func collectLinkRewrites(f *lint.File) ([]fixCut, map[string]bool) {
 }
 
 func collectDefinitionCuts(f *lint.File, usedLabels map[string]bool) []fixCut {
+	if len(usedLabels) == 0 {
+		return nil
+	}
 	source := f.Source
 	defs := collectReferenceDefinitions(f)
 	var cuts []fixCut
@@ -575,19 +584,26 @@ func applyCuts(source []byte, cuts []fixCut) []byte {
 // linkSourceSpan returns the byte span of an entire link expression
 // (`[text](...)` or `[text][id]` etc.) and the inner text. For
 // reference links the closing bracket is followed by either nothing
-// (shortcut), `[]` (collapsed), or `[id]` (full). The link's
-// existence is guaranteed by the AST walk, so we can rely on
-// well-formed bracketing.
-func linkSourceSpan(link *ast.Link, source []byte) (int, int, string) {
+// (shortcut), `[]` (collapsed), or `[id]` (full). The third return
+// is false when the link has no text descendants — an empty-text
+// link like `[][id]` — in which case the source span cannot be
+// recovered from the AST and the caller should skip the rewrite.
+func linkSourceSpan(link *ast.Link, source []byte) (int, int, string, bool) {
 	seg := firstDescendantText(link)
+	if seg == (text.Segment{}) {
+		return 0, 0, "", false
+	}
 	textStart := seg.Start
 	for textStart > 0 && source[textStart-1] != '\n' && source[textStart-1] != '[' {
 		textStart--
 	}
+	if textStart == 0 || source[textStart-1] != '[' {
+		return 0, 0, "", false
+	}
 	openBracket := textStart - 1
 	textEnd := findClosingBracket(source, textStart)
 	end := skipReferenceLabel(source, textEnd+1)
-	return openBracket, end, string(source[textStart:textEnd])
+	return openBracket, end, string(source[textStart:textEnd]), true
 }
 
 // findClosingBracket scans from `pos` for the `]` that balances the
