@@ -7,6 +7,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -67,7 +68,8 @@ func (r *Rule) checkHorizontalRule(f *lint.File, line int) []lint.Diagnostic {
 		return diags
 	}
 
-	lineContent := string(bytes.TrimSpace(f.Lines[lineIdx]))
+	rawLine := string(bytes.TrimRight(f.Lines[lineIdx], "\n\r"))
+	_, lineContent := extractHRContent(rawLine)
 	delimiter, count, hasSpaces := parseHorizontalRule(lineContent)
 
 	diags = append(diags, r.checkDelimiter(f, line, delimiter)...)
@@ -223,10 +225,13 @@ func collectHorizontalRuleChanges(
 			return ast.WalkContinue, nil
 		}
 
-		// Build canonical replacement
-		delimiter := delimiterChar(r.Style)
-		canonical := strings.Repeat(string(delimiter), r.Length)
-		replacements[line] = canonical
+		// Build canonical replacement, preserving any leading prefix
+		rawLine := string(bytes.TrimRight(f.Lines[lineIdx], "\n\r"))
+		prefix, token := extractHRContent(rawLine)
+		canonical := strings.Repeat(string(delimiterChar(r.Style)), r.Length)
+		if token != canonical {
+			replacements[line] = prefix + canonical
+		}
 
 		// Check if blank lines are needed
 		if r.RequireBlankLines {
@@ -246,7 +251,26 @@ func collectHorizontalRuleChanges(
 		return ast.WalkContinue, nil
 	})
 
+	// Deduplicate: if inserting after line N and before line N+1,
+	// the after-insertion already provides the needed blank line.
+	for n := range afterSet {
+		if beforeSet[n+1] {
+			delete(beforeSet, n+1)
+		}
+	}
+
 	return beforeSet, afterSet, replacements
+}
+
+// extractHRContent splits a raw source line into its leading prefix
+// (blockquote markers, list indentation, spaces) and the thematic-break
+// token itself. For example "> ---" returns ("> ", "---").
+func extractHRContent(rawLine string) (prefix, token string) {
+	idx := strings.IndexAny(rawLine, "-*_")
+	if idx < 0 {
+		return rawLine, ""
+	}
+	return rawLine[:idx], strings.TrimSpace(rawLine[idx:])
 }
 
 // parseHorizontalRule analyzes a horizontal rule line and returns:
@@ -324,30 +348,26 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
 		switch k {
 		case "style":
-			s, ok := v.(string)
+			styleStr, ok := v.(string)
 			if !ok {
 				return fmt.Errorf("horizontal-rule-style: style must be a string, got %T", v)
 			}
-			if s != "dash" && s != "asterisk" && s != "underscore" {
-				return fmt.Errorf("horizontal-rule-style: invalid style %q (valid: dash, asterisk, underscore)", s)
+			if styleStr != "dash" && styleStr != "asterisk" && styleStr != "underscore" {
+				return fmt.Errorf(
+					"horizontal-rule-style: invalid style %q (valid: dash, asterisk, underscore)",
+					styleStr,
+				)
 			}
-			r.Style = s
+			r.Style = styleStr
 		case "length":
-			switch val := v.(type) {
-			case int:
-				if val < 3 {
-					return fmt.Errorf("horizontal-rule-style: length must be at least 3, got %d", val)
-				}
-				r.Length = val
-			case float64:
-				intVal := int(val)
-				if intVal < 3 {
-					return fmt.Errorf("horizontal-rule-style: length must be at least 3, got %d", intVal)
-				}
-				r.Length = intVal
-			default:
+			intVal, ok := rulesettings.ToInt(v)
+			if !ok {
 				return fmt.Errorf("horizontal-rule-style: length must be an integer, got %T", v)
 			}
+			if intVal < 3 {
+				return fmt.Errorf("horizontal-rule-style: length must be at least 3, got %d", intVal)
+			}
+			r.Length = intVal
 		case "require-blank-lines":
 			b, ok := v.(bool)
 			if !ok {

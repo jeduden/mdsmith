@@ -1,100 +1,185 @@
-# MDS044 - horizontal-rule-style
+---
+id: MDS044
+name: horizontal-rule-style
+status: ready
+description: Thematic breaks must use a consistent delimiter style, exact length, and blank-line spacing.
+---
+# MDS044: horizontal-rule-style
 
-Enforce consistent horizontal rule (thematic break) delimiter style.
+Thematic breaks must use a consistent delimiter style, exact length, and blank-line spacing.
 
-## Rationale
+## Settings
 
-CommonMark accepts three delimiters for horizontal rules: `---`, `***`, and `___`. Using a single, consistent delimiter makes documents more predictable and easier to edit. Additionally, `---` can be confused with a setext heading underline when not properly separated by blank lines.
+| Setting               | Type   | Default  | Description                                                                            |
+|-----------------------|--------|----------|----------------------------------------------------------------------------------------|
+| `style`               | string | `"dash"` | Delimiter character: `"dash"` (`---`), `"asterisk"` (`***`), or `"underscore"` (`___`) |
+| `length`              | int    | `3`      | Exact number of delimiter characters required (minimum 3)                              |
+| `require-blank-lines` | bool   | `true`   | Blank lines must appear before and after each thematic break                           |
 
-## Configuration
+## Config
+
+Enable with defaults:
 
 ```yaml
 rules:
   horizontal-rule-style:
-    enabled: false  # Disabled by default
-    style: dash     # dash | asterisk | underscore
-    length: 3       # Exact number of delimiter characters
-    require-blank-lines: true  # Require blank lines before/after
+    style: dash
+    length: 3
+    require-blank-lines: true
+```
+
+Disable:
+
+```yaml
+rules:
+  horizontal-rule-style: false
+```
+
+Custom (asterisk style, length 5):
+
+```yaml
+rules:
+  horizontal-rule-style:
+    style: asterisk
+    length: 5
 ```
 
 ## Examples
 
-### Bad
+### Good (default settings)
+
+<?include
+file: good/default.md
+wrap: markdown
+?>
 
 ```markdown
-# Title
+# Test Document
 
-Text before
-***
-Text after
+Some text before.
+
+---
+
+Some text after.
 ```
 
-With `style: dash`, the asterisk delimiter is wrong.
+<?/include?>
+
+### Good (asterisk style)
+
+<?include
+file: good/asterisk.md
+wrap: markdown
+?>
 
 ```markdown
-# Title
+# Test Document
 
-Text before
+Some text before.
+
+***
+
+Some text after.
+```
+
+<?/include?>
+
+### Bad (wrong delimiter)
+
+<?include
+file: bad/wrong-delimiter.md
+wrap: markdown
+?>
+
+```markdown
+# Test Document
+
+Some text before.
+
+***
+
+Some text after.
+```
+
+<?/include?>
+
+### Bad (internal spaces)
+
+<?include
+file: bad/internal-spaces.md
+wrap: markdown
+?>
+
+```markdown
+# Test Document
+
+Some text before.
+
 - - -
-Text after
+
+Some text after.
 ```
 
-Internal spaces are not allowed.
+<?/include?>
+
+### Bad (wrong length)
+
+<?include
+file: bad/wrong-length.md
+wrap: markdown
+?>
 
 ```markdown
-# Title
+# Test Document
 
-Text before
+Some text before.
+
 -----
-Text after
+
+Some text after.
 ```
 
-With `length: 3`, five dashes is wrong.
+<?/include?>
+
+### Bad (missing blank line above)
+
+<?include
+file: bad/no-blank-above.md
+wrap: markdown
+?>
 
 ```markdown
-# Title
-
-Text before
----
-Text after
-```
-
-With `require-blank-lines: true`, missing blank lines above/below violate the rule.
-
-### Good
-
-```markdown
-# Title
-
-Text before
-
+# Test Document
 ---
 
-Text after
+Text after.
 ```
 
-With default settings (`style: dash`, `length: 3`, `require-blank-lines: true`), this is correct.
+<?/include?>
+
+### Bad (missing blank line below)
+
+<?include
+file: bad/no-blank-below.md
+wrap: markdown
+?>
 
 ```markdown
-# Title
+# Test Document
 
-Text before
-
-***
-
-Text after
+---
+Text after.
 ```
 
-With `style: asterisk`, this is correct.
+<?/include?>
 
-## Fixable
+## Meta-Information
 
-Yes. This rule can automatically replace horizontal rules with the configured delimiter and add missing blank lines.
-
-## Category
-
-`whitespace`
-
-## See Also
-
-- [MDS002 - heading-style](../MDS002-heading-style/README.md) - Control ATX vs setext heading style (setext uses `---` which can collide with horizontal rules)
+- **ID**: MDS044
+- **Name**: `horizontal-rule-style`
+- **Status**: ready
+- **Default**: disabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: whitespace

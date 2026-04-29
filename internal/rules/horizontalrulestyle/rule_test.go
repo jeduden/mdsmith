@@ -28,13 +28,6 @@ Text after.
 	require.NoError(t, err)
 
 	diags := r.Check(f)
-	for _, d := range diags {
-		t.Logf("diagnostic: line %d, message: %s", d.Line, d.Message)
-	}
-	t.Logf("f.Lines has %d lines", len(f.Lines))
-	for i, line := range f.Lines {
-		t.Logf("  Line %d: %q", i+1, string(line))
-	}
 	assert.Empty(t, diags, "valid horizontal rule should not produce diagnostics")
 
 	// Test 2: Wrong delimiter
