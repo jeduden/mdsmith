@@ -68,6 +68,15 @@ binary. No network calls. Drop the output into
 `.cursor/rules`, `AGENTS.md`, or `CLAUDE.md` and your
 agent knows the rules without an extra fetch.
 
+**🆚 How does it compare?** See:
+<?catalog
+glob:
+  - "docs/background/markdown-linters.md"
+row: "- [{summary}]({filename})"
+?>
+- [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
+<?/catalog?>
+
 ## 📦 Installation
 
 ```bash

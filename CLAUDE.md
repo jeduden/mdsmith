@@ -21,7 +21,7 @@ row: "- [{summary}]({filename})"
 - [Shared patterns (archetypes) reused across multiple linting rules.](docs/background/archetypes/README.md)
 - [How "flavor" (a property of the renderer), "rule" (a single check), "convention" (a project-wide bundle), and "kind" (a per-file role tag) differ in mdsmith, the cases where they overlap, and how the four concepts compose.](docs/background/concepts/flavor-rule-convention-kind.md)
 - [How the placeholder vocabulary lets rules treat template tokens as opaque rather than flagging them as content violations.](docs/background/concepts/placeholder-grammar.md)
-- [Comparison of mdsmith with other Markdown linters and formatters.](docs/background/markdown-linters.md)
+- [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
 - [Codecov coverage gate and CI status checks.](docs/development/coverage.md)
 - [Where to place Markdown files and documentation types.](docs/development/file-placement.md)
 - [Build commands, project layout, code style, test fixtures, coverage gate, and merge conflicts.](docs/development/index.md)

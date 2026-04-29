@@ -1,5 +1,5 @@
 ---
-summary: Comparison of mdsmith with other Markdown linters and formatters.
+summary: How mdsmith compares to other Markdown linters.
 ---
 # Markdown Linters Comparison
 
@@ -99,7 +99,75 @@ modeled after ESLint. ~3.1k stars.
   v15.2) for AI assistant integration
 - Strong Japanese language support
 
-### LLM as Linter
+### [Hugo][]
+
+Go binary. Static site generator, not a linter. ~78k
+stars. Included here because Hugo's templating overlaps
+with mdsmith's directive system, and teams often weigh
+the two when deciding where docs automation should live.
+
+- Reads Markdown plus YAML/TOML/JSON front matter and
+  renders to HTML via Go templates
+- [Shortcodes][hugo-shortcodes] (`{{< ... >}}`) inject
+  generated content (TOC, file inclusion, catalog-like
+  lists) at build time
+- No linting or diagnostics — invalid Markdown either
+  renders silently or fails the build
+- Output lives in `public/` and is typically gitignored;
+  the rendered HTML is the deliverable
+- Front matter is the canonical metadata source for
+  taxonomies, list pages, and template variables
+
+Hugo and mdsmith differ on **where** generated content
+lives:
+
+| Aspect              | Hugo                           | mdsmith                          |
+|---------------------|--------------------------------|----------------------------------|
+| Generated output    | Separate `public/` HTML tree   | In-place inside the source `.md` |
+| Source readability  | Templates obscure final body   | Source always renders as-is      |
+| Validation          | None (build succeeds or fails) | Diagnostics + autofix            |
+| TOC / list-of-files | Shortcodes / list templates    | `<?toc?>` / `<?catalog?>`        |
+| File inclusion      | `{{< readfile >}}` shortcode   | `<?include?>` directive          |
+| Variable syntax     | `{{ .Title }}` (Go template)   | `{title}` (front matter field)   |
+| Merge conflicts     | Re-render at build time        | `merge-driver install` resolves  |
+| Agent friendliness  | Indirect (must run build)      | Direct (file is the source)      |
+
+To ease migration, mdsmith maps common Hugo template
+fields to placeholders. See the
+[Hugo migration guide][hugo-migration] for that mapping.
+
+### [Obsidian][]
+
+Electron app. Markdown note-taking tool with local-first
+storage. ~60k stars. Included here because teams that
+write docs in Obsidian often want structural linting on
+the same `.md` files.
+
+- Uses its own [Obsidian Flavored Markdown][obsidian-fm]
+  (OFM): wikilinks (`[[Page]]`), callouts (blockquote
+  with `[!type]` prefix), embed syntax (`![[file.png]]`),
+  and inline metadata (`key:: value`)
+- No built-in linter — community plugins (e.g. [Linter
+  plugin][obsidian-linter]) add YAML front matter fixes,
+  heading normalisation, and whitespace rules
+- Files are plain `.md` on disk and are committed to Git
+  like any other source; CI can run mdsmith over the vault
+
+| Aspect             | Obsidian                          | mdsmith                              |
+|--------------------|-----------------------------------|--------------------------------------|
+| Purpose            | Note-taking editor                | Linter / fixer                       |
+| Linting            | Community plugin only             | Built-in, CI-ready                   |
+| Wikilinks          | Native (`[[Page]]`)               | Treated as text; no validation       |
+| Callouts           | Native (`> [!note]`)              | Treated as blockquotes               |
+| Front matter       | YAML or Dataview inline (`key::`) | YAML only (inline not recognized)    |
+| Agent friendliness | Editor-centric, manual saves      | Direct file access, no editor needed |
+
+mdsmith can lint the Markdown subset that Obsidian and
+standard parsers share. Wikilinks and callouts pass
+through without errors (they look like valid Markdown
+to CommonMark parsers). Dataview inline fields are not
+front matter and will not be read by mdsmith's
+`require`/`schema` directives.
 
 Using language models (GPT-4, Claude, etc.) directly to
 check prose quality, conciseness, and style. This is
@@ -162,48 +230,45 @@ Weaknesses:
 
 ### Structural Linting
 
-| Capability          | mdsmith                        | markdownlint                             | remark-lint                     |
-|---------------------|--------------------------------|------------------------------------------|---------------------------------|
-| Heading hierarchy   | [MDS003][mds003]               | [MD001][md001]                           | [heading-increment][rl-hi]      |
-| First-line heading  | [MDS004][mds004]               | [MD041][md041]                           | [first-heading-level][rl-fhl]   |
-| Duplicate headings  | [MDS005][mds005]               | [MD024][md024]                           | [no-duplicate-headings][rl-ndh] |
-| Blank line spacing  | [MDS013][mds013]-[015][mds015] | [MD022][md022],[025][md025],[031][md031] | plugins                         |
-| List indentation    | [MDS016][mds016]               | [MD007][md007]                           | [list-item-indent][rl-lii]      |
-| Code fence style    | [MDS010][mds010]               | [MD048][md048]                           | [fenced-code-flag][rl-fcf]      |
-| Code block language | [MDS011][mds011]               | [MD040][md040]                           | [fenced-code-flag][rl-fcf]      |
-| Bare URLs           | [MDS012][mds012]               | [MD034][md034]                           | [no-literal-urls][rl-nlu]       |
-| Line length         | [MDS001][mds001]               | [MD013][md013]                           | [maximum-line-length][rl-mll]   |
-| Trailing spaces     | [MDS006][mds006]               | [MD009][md009]                           | [hard-break-spaces][rl-hbs]     |
+| Capability          | mdsmith                        | markdownlint                             | remark-lint                                       |
+|---------------------|--------------------------------|------------------------------------------|---------------------------------------------------|
+| Heading hierarchy   | [MDS003][mds003]               | [MD001][md001]                           | [heading-increment][rl-hi]                        |
+| First-line heading  | [MDS004][mds004]               | [MD041][md041]                           | [first-heading-level][rl-fhl]                     |
+| Duplicate headings  | [MDS005][mds005]               | [MD024][md024]                           | [no-duplicate-headings][rl-ndh]                   |
+| Blank line spacing  | [MDS013][mds013]-[015][mds015] | [MD022][md022],[025][md025],[031][md031] | plugins                                           |
+| List indentation    | [MDS016][mds016]               | [MD007][md007]                           | [list-item-indent][rl-lii]                        |
+| Code fence style    | [MDS010][mds010]               | [MD048][md048]                           | [fenced-code-flag][rl-fcf]                        |
+| Code block language | [MDS011][mds011]               | [MD040][md040]                           | [fenced-code-flag][rl-fcf]                        |
+| Bare URLs           | [MDS012][mds012]               | [MD034][md034]                           | [no-literal-urls][rl-nlu]                         |
+| Line length         | [MDS001][mds001]               | [MD013][md013]                           | [maximum-line-length][rl-mll]                     |
+| Trailing spaces     | [MDS006][mds006]               | [MD009][md009]                           | [hard-break-spaces][rl-hbs]                       |
+| Inline HTML         | planned ([plan 105][plan105])  | [MD033][md033]                           | [no-html][rl-nh]                                  |
+| Image alt text      | [MDS032][mds032]               | [MD045][md045]                           | [no-empty-image-alt-text][rl-neiat] (third-party) |
+| OL numbering        | [MDS046][mds046]               | [MD029][md029]                           | [ordered-list-marker-style][rl-olms]              |
+| UL marker style     | planned ([plan 109][plan109])  | [MD004][md004]                           | [unordered-list-marker-style][rl-ulms]            |
+| Emphasis style      | planned ([plan 106][plan106])  | [MD049][md049], [MD050][md050]           | [emphasis-marker][rl-em]                          |
+| HR style            | planned ([plan 108][plan108])  | [MD035][md035]                           | [rule-style][rl-rs]                               |
+| Ambiguous emphasis  | planned ([plan 111][plan111])  | [MD037][md037]                           | no                                                |
+| Space in code       | no                             | [MD038][md038]                           | no                                                |
+| Space in links      | no                             | [MD039][md039]                           | no                                                |
+| Proper names        | no                             | [MD044][md044]                           | no                                                |
+| Required headings   | [MDS020][mds020] (via schema)  | [MD043][md043]                           | no                                                |
+| Single H1           | no                             | [MD047][md047]                           | no                                                |
+| Link fragments      | [MDS027][mds027] (cross-file)  | [MD051][md051]                           | no                                                |
+| Reference links     | planned ([plan 107][plan107])  | [MD052][md052], [MD053][md053]           | no                                                |
 
 All three cover core structural rules. markdownlint has
-the broadest rule set (~60 rules). mdsmith and remark-lint
-are comparable in structural coverage.
-
-### Rules mdsmith Lacks
-
-markdownlint has ~30 rules without mdsmith equivalents.
-Notable gaps:
-
-| Rule area         | markdownlint                   | remark-lint                                       |
-|-------------------|--------------------------------|---------------------------------------------------|
-| Inline HTML       | [MD033][md033] no-inline-html  | [no-html][rl-nh]                                  |
-| Image alt text    | [MD045][md045] no-alt-text     | [no-empty-image-alt-text][rl-neiat] (third-party) |
-| OL numbering      | [MD029][md029] ol-prefix       | [ordered-list-marker-style][rl-olms]              |
-| UL marker style   | [MD004][md004] ul-style        | [unordered-list-marker-style][rl-ulms]            |
-| Emphasis style    | [MD049][md049], [MD050][md050] | [emphasis-marker][rl-em]                          |
-| HR style          | [MD035][md035] hr-style        | [rule-style][rl-rs]                               |
-| Space in emphasis | [MD037][md037]                 | no                                                |
-| Space in code     | [MD038][md038]                 | no                                                |
-| Space in links    | [MD039][md039]                 | no                                                |
-| Proper names      | [MD044][md044]                 | no                                                |
-| Required headings | [MD043][md043]                 | no                                                |
-| Single H1         | [MD047][md047]                 | no                                                |
-| Link fragments    | [MD051][md051]                 | no                                                |
-| Reference links   | [MD052][md052], [MD053][md053] | no                                                |
-
-mdsmith covers readability, tokens, and generated content
-rather than formatting details. Teams that need full
-coverage can pair mdsmith with markdownlint.
+the broadest rule set. mdsmith has plans for inline
+HTML ([plan 105][plan105]), UL marker style
+([plan 109][plan109]), emphasis style
+([plan 106][plan106]), HR style ([plan 108][plan108]),
+ambiguous emphasis ([plan 111][plan111]), and
+reference-style links ([plan 107][plan107]).
+Image alt text ([MDS032][mds032]) and OL numbering
+([MDS046][mds046]) are already implemented.
+Teams that need the remaining gaps (space in code,
+space in links, proper names, single H1) can pair
+mdsmith with markdownlint.
 
 ### Prose and Readability
 
@@ -254,6 +319,7 @@ markdownlint fixes structural violations.
 | Include sections     | [MDS021][mds021] | no           | no                              |
 | Catalog generation   | [MDS019][mds019] | no           | no                              |
 | Required structure   | [MDS020][mds020] | no           | no                              |
+| Front-matter query   | `mdsmith query`  | no           | no                              |
 | Git merge driver     | yes              | no           | no                              |
 | Metrics ranking      | yes              | no           | no                              |
 | Gitignore aware      | yes              | yes          | no                              |
@@ -261,7 +327,11 @@ markdownlint fixes structural violations.
 
 mdsmith has the strongest cross-file and project-level
 features. The merge driver and regenerable sections are
-unique to mdsmith.
+unique to mdsmith. The `query` subcommand
+([plan 78][plan78]) selects files by a CUE expression
+over front matter (e.g.
+`mdsmith query 'status: "✅"' plan/`), which no other
+tool in this comparison offers natively.
 
 ### Renderer Portability
 
@@ -457,6 +527,89 @@ Teams using Slidev alongside standard Markdown docs
 should use separate config overrides (e.g. ignore or
 relaxed rules) for presentation files.
 
+## Security Posture
+
+A Markdown linter parses untrusted input from any
+contributor. It also walks the repo file tree.
+Adversarial input has caused OOMs, YAML
+billion-laughs expansion, ANSI escape injection,
+symlink escapes, and path traversal in the wider
+linter ecosystem.
+
+mdsmith ran a
+[10-finding adversarial review][mdsmith-sec]. It
+covered the parser, front-matter loader, terminal
+output, file walker, include directive, and CUE
+schemas. Findings were addressed in
+[plan 83][plan83] (security hardening batch) and
+[plan 84][plan84] (symlink default-deny). The
+current posture:
+
+| Hardening                          | mdsmith                | markdownlint    | remark-lint      | Prettier         | Vale      |
+|------------------------------------|------------------------|-----------------|------------------|------------------|-----------|
+| File-size cap on input             | yes                    | no              | no               | no               | no        |
+| YAML billion-laughs guard          | yes (alias rejection)  | n/a (no FM)     | parser-dependent | parser-dependent | n/a       |
+| ANSI escape sanitization           | yes                    | no              | no               | n/a              | no        |
+| Symlinks denied by default         | yes                    | follows         | follows          | follows          | follows   |
+| Cross-file links sandboxed to repo | yes ([MDS027][mds027]) | n/a             | plugin-dependent | n/a              | n/a       |
+| Include size cap                   | yes                    | n/a             | n/a              | n/a              | n/a       |
+| Schema/CUE path validation         | yes ([MDS020][mds020]) | n/a             | n/a              | n/a              | n/a       |
+| Atomic writes in fix mode          | yes                    | n/a             | n/a              | yes              | n/a       |
+| Network access at runtime          | none                   | none            | none             | none             | none      |
+| Dependency surface                 | Go stdlib + goldmark   | Node + npm tree | Node + npm tree  | Node + npm tree  | Go stdlib |
+
+Two structural properties reduce the attack surface
+relative to Node.js linters:
+
+- **Single static binary.** No runtime package
+  resolution, no `node_modules` to audit.
+  Supply-chain risk is the Go module graph in
+  `go.mod`, reviewed at upgrade time.
+- **No network calls.** Rule docs, schemas, and
+  tokenizers ship inside the binary. CI does not need
+  outbound network for linting, and adversarial
+  Markdown cannot exfiltrate via SSRF.
+
+Teams handling untrusted Markdown (PRs from external
+contributors, user-submitted content) should treat the
+linter as a parser of untrusted input. mdsmith aims to
+fail safely on adversarial input rather than crash or
+escape the repo root.
+
+## Future Plans
+
+Open work is tracked in [PLAN.md](../../PLAN.md). The
+items most relevant to this comparison are:
+
+- **Build subsystem** (plans
+  [101][plan101], [102][plan102], [103][plan103],
+  [104][plan104]) — a `mdsmith build` subcommand with
+  a `<?build?>` directive, staleness tracking, and
+  lifecycle hooks. This will close part of the gap
+  with Hugo: deriving artifacts from Markdown sources
+  without leaving the linter.
+- **Closing rule gaps with markdownlint** — plans
+  [105][plan105] (no-inline-html / MD033),
+  [106][plan106] (emphasis style / MD049, MD050),
+  [107][plan107] (no reference-style links),
+  [108][plan108] (horizontal rule style / MD035),
+  [109][plan109] (list marker style / MD004), and
+  [111][plan111] (ambiguous emphasis / MD037).
+- **User-defined Markdown conventions**
+  ([plan 113][plan113]) — let teams package their own
+  rule presets the way the built-in conventions
+  ([reference][conventions]) do today.
+- **Glob unification** ([plan 120][plan120]) — one
+  glob matcher across config, directives, and CLI
+  arguments.
+- **Recipe-safety rule MDS040 and a build-config
+  block** ([plan 100][plan100]) — guard rails on the
+  forthcoming build directive so it cannot run
+  arbitrary commands without explicit opt-in.
+
+Pin a version (`go install github.com/jeduden/mdsmith/cmd/mdsmith@vX.Y.Z`) if
+you need a stable rule set while these land.
+
 <!-- mdsmith rule links -->
 [mds001]: ../../internal/rules/MDS001-line-length/README.md
 [mds003]: ../../internal/rules/MDS003-heading-increment/README.md
@@ -479,8 +632,10 @@ relaxed rules) for presentation files.
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds030]: ../../internal/rules/MDS030-empty-section-body/README.md
+[mds032]: ../../internal/rules/MDS032-no-empty-alt-text/README.md
 [mds035]: ../../internal/rules/MDS035-toc-directive/README.md
 [mds038]: ../../internal/rules/MDS038-toc/README.md
+[mds046]: ../../internal/rules/MDS046-ordered-list-numbering/README.md
 <!-- markdownlint links -->
 [markdownlint]: https://github.com/DavidAnson/markdownlint
 [markdownlint-cli2]: https://github.com/DavidAnson/markdownlint-cli2
@@ -565,3 +720,30 @@ relaxed rules) for presentation files.
 [claude-action]: https://github.com/anthropics/claude-code-action
 [CoEdIT]: https://github.com/vipulraheja/coedit
 [coedit-paper]: https://arxiv.org/abs/2305.09857
+<!-- hugo links -->
+[Hugo]: https://gohugo.io/
+[hugo-shortcodes]: https://gohugo.io/content-management/shortcodes/
+[hugo-migration]: ../guides/directives/hugo-migration.md
+<!-- obsidian links -->
+[Obsidian]: https://obsidian.md/
+[obsidian-fm]: https://help.obsidian.md/Editing+and+formatting/Obsidian+Flavored+Markdown
+[obsidian-linter]: https://github.com/platers/obsidian-linter
+<!-- mdsmith plan + security + reference links -->
+[mdsmith-sec]: ../security/2026-04-05-adversarial-markdown.md
+[conventions]: ../reference/conventions.md
+[plan78]: ../../plan/78_query-command.md
+[plan83]: ../../plan/83_security-hardening-batch.md
+[plan84]: ../../plan/84_symlink-default-deny.md
+[plan100]: ../../plan/100_build-config-and-mds040.md
+[plan101]: ../../plan/101_build-directive-mds039.md
+[plan102]: ../../plan/102_build-subcommand.md
+[plan103]: ../../plan/103_build-staleness-and-deps.md
+[plan104]: ../../plan/104_build-lifecycle-hooks.md
+[plan105]: ../../plan/105_no-inline-html.md
+[plan106]: ../../plan/106_emphasis-style.md
+[plan107]: ../../plan/107_no-reference-style.md
+[plan108]: ../../plan/108_horizontal-rule-style.md
+[plan109]: ../../plan/109_list-marker-style.md
+[plan111]: ../../plan/111_ambiguous-emphasis.md
+[plan113]: ../../plan/113_user-defined-profiles.md
+[plan120]: ../../plan/120_glob-unification.md
