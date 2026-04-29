@@ -79,7 +79,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		switch node := n.(type) {
 		case *ast.HTMLBlock:
 			seg := node.Lines().At(0)
-			if d, ok := r.checkRaw(f, allowed, seg.Value(f.Source), seg.Start); ok {
+			raw := seg.Value(f.Source)
+			offset := seg.Start
+			if i := bytes.IndexByte(raw, '<'); i >= 0 {
+				offset += i
+			}
+			if d, ok := r.checkRaw(f, allowed, raw, offset); ok {
 				diags = append(diags, d)
 			}
 

@@ -97,6 +97,17 @@ func TestCheck_BlockHTML_EmitsDiag(t *testing.T) {
 	assert.Equal(t, "inline HTML <div> is not allowed", diags[0].Message)
 }
 
+func TestCheck_IndentedBlockHTML_CorrectColumn(t *testing.T) {
+	r := newRule(t, nil)
+	// CommonMark allows up to 3 spaces of indentation for block HTML.
+	// Column should point at '<', not at the indentation start.
+	f := parse(t, "# Title\n\n   <div>indented</div>\n")
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 3, diags[0].Line)
+	assert.Equal(t, 4, diags[0].Column) // 3 spaces + '<' = column 4
+}
+
 func TestCheck_InlineHTML_EmitsDiag(t *testing.T) {
 	r := newRule(t, nil)
 	// "<span>" starts at column 6 ("text " = 5 chars)
