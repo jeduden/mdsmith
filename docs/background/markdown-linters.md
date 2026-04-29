@@ -199,48 +199,45 @@ Weaknesses:
 
 ### Structural Linting
 
-| Capability          | mdsmith                        | markdownlint                             | remark-lint                     |
-|---------------------|--------------------------------|------------------------------------------|---------------------------------|
-| Heading hierarchy   | [MDS003][mds003]               | [MD001][md001]                           | [heading-increment][rl-hi]      |
-| First-line heading  | [MDS004][mds004]               | [MD041][md041]                           | [first-heading-level][rl-fhl]   |
-| Duplicate headings  | [MDS005][mds005]               | [MD024][md024]                           | [no-duplicate-headings][rl-ndh] |
-| Blank line spacing  | [MDS013][mds013]-[015][mds015] | [MD022][md022],[025][md025],[031][md031] | plugins                         |
-| List indentation    | [MDS016][mds016]               | [MD007][md007]                           | [list-item-indent][rl-lii]      |
-| Code fence style    | [MDS010][mds010]               | [MD048][md048]                           | [fenced-code-flag][rl-fcf]      |
-| Code block language | [MDS011][mds011]               | [MD040][md040]                           | [fenced-code-flag][rl-fcf]      |
-| Bare URLs           | [MDS012][mds012]               | [MD034][md034]                           | [no-literal-urls][rl-nlu]       |
-| Line length         | [MDS001][mds001]               | [MD013][md013]                           | [maximum-line-length][rl-mll]   |
-| Trailing spaces     | [MDS006][mds006]               | [MD009][md009]                           | [hard-break-spaces][rl-hbs]     |
+| Capability          | mdsmith                        | markdownlint                             | remark-lint                                       |
+|---------------------|--------------------------------|------------------------------------------|---------------------------------------------------|
+| Heading hierarchy   | [MDS003][mds003]               | [MD001][md001]                           | [heading-increment][rl-hi]                        |
+| First-line heading  | [MDS004][mds004]               | [MD041][md041]                           | [first-heading-level][rl-fhl]                     |
+| Duplicate headings  | [MDS005][mds005]               | [MD024][md024]                           | [no-duplicate-headings][rl-ndh]                   |
+| Blank line spacing  | [MDS013][mds013]-[015][mds015] | [MD022][md022],[025][md025],[031][md031] | plugins                                           |
+| List indentation    | [MDS016][mds016]               | [MD007][md007]                           | [list-item-indent][rl-lii]                        |
+| Code fence style    | [MDS010][mds010]               | [MD048][md048]                           | [fenced-code-flag][rl-fcf]                        |
+| Code block language | [MDS011][mds011]               | [MD040][md040]                           | [fenced-code-flag][rl-fcf]                        |
+| Bare URLs           | [MDS012][mds012]               | [MD034][md034]                           | [no-literal-urls][rl-nlu]                         |
+| Line length         | [MDS001][mds001]               | [MD013][md013]                           | [maximum-line-length][rl-mll]                     |
+| Trailing spaces     | [MDS006][mds006]               | [MD009][md009]                           | [hard-break-spaces][rl-hbs]                       |
+| Inline HTML         | planned ([plan 105][plan105])  | [MD033][md033]                           | [no-html][rl-nh]                                  |
+| Image alt text      | [MDS032][mds032]               | [MD045][md045]                           | [no-empty-image-alt-text][rl-neiat] (third-party) |
+| OL numbering        | [MDS046][mds046]               | [MD029][md029]                           | [ordered-list-marker-style][rl-olms]              |
+| UL marker style     | planned ([plan 109][plan109])  | [MD004][md004]                           | [unordered-list-marker-style][rl-ulms]            |
+| Emphasis style      | planned ([plan 106][plan106])  | [MD049][md049], [MD050][md050]           | [emphasis-marker][rl-em]                          |
+| HR style            | planned ([plan 108][plan108])  | [MD035][md035]                           | [rule-style][rl-rs]                               |
+| Ambiguous emphasis  | planned ([plan 111][plan111])  | [MD037][md037]                           | no                                                |
+| Space in code       | no                             | [MD038][md038]                           | no                                                |
+| Space in links      | no                             | [MD039][md039]                           | no                                                |
+| Proper names        | no                             | [MD044][md044]                           | no                                                |
+| Required headings   | [MDS020][mds020] (via schema)  | [MD043][md043]                           | no                                                |
+| Single H1           | no                             | [MD047][md047]                           | no                                                |
+| Link fragments      | [MDS027][mds027] (cross-file)  | [MD051][md051]                           | no                                                |
+| Reference links     | planned ([plan 107][plan107])  | [MD052][md052], [MD053][md053]           | no                                                |
 
 All three cover core structural rules. markdownlint has
-the broadest rule set (~60 rules). mdsmith and remark-lint
-are comparable in structural coverage.
-
-### Rules mdsmith Lacks
-
-markdownlint has ~30 rules without mdsmith equivalents.
-Notable gaps:
-
-| Rule area         | markdownlint                   | remark-lint                                       |
-|-------------------|--------------------------------|---------------------------------------------------|
-| Inline HTML       | [MD033][md033] no-inline-html  | [no-html][rl-nh]                                  |
-| Image alt text    | [MD045][md045] no-alt-text     | [no-empty-image-alt-text][rl-neiat] (third-party) |
-| OL numbering      | [MD029][md029] ol-prefix       | [ordered-list-marker-style][rl-olms]              |
-| UL marker style   | [MD004][md004] ul-style        | [unordered-list-marker-style][rl-ulms]            |
-| Emphasis style    | [MD049][md049], [MD050][md050] | [emphasis-marker][rl-em]                          |
-| HR style          | [MD035][md035] hr-style        | [rule-style][rl-rs]                               |
-| Space in emphasis | [MD037][md037]                 | no                                                |
-| Space in code     | [MD038][md038]                 | no                                                |
-| Space in links    | [MD039][md039]                 | no                                                |
-| Proper names      | [MD044][md044]                 | no                                                |
-| Required headings | [MD043][md043]                 | no                                                |
-| Single H1         | [MD047][md047]                 | no                                                |
-| Link fragments    | [MD051][md051]                 | no                                                |
-| Reference links   | [MD052][md052], [MD053][md053] | no                                                |
-
-mdsmith covers readability, tokens, and generated content
-rather than formatting details. Teams that need full
-coverage can pair mdsmith with markdownlint.
+the broadest rule set. mdsmith has plans for inline
+HTML ([plan 105][plan105]), UL marker style
+([plan 109][plan109]), emphasis style
+([plan 106][plan106]), HR style ([plan 108][plan108]),
+ambiguous emphasis ([plan 111][plan111]), and
+reference-style links ([plan 107][plan107]).
+Image alt text ([MDS032][mds032]) and OL numbering
+([MDS046][mds046]) are already implemented.
+Teams that need the remaining gaps (space in code,
+space in links, proper names, single H1) can pair
+mdsmith with markdownlint.
 
 ### Prose and Readability
 
@@ -605,8 +602,10 @@ you need a stable rule set while these land.
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds030]: ../../internal/rules/MDS030-empty-section-body/README.md
+[mds032]: ../../internal/rules/MDS032-no-empty-alt-text/README.md
 [mds035]: ../../internal/rules/MDS035-toc-directive/README.md
 [mds038]: ../../internal/rules/MDS038-toc/README.md
+[mds046]: ../../internal/rules/MDS046-ordered-list-numbering/README.md
 <!-- markdownlint links -->
 [markdownlint]: https://github.com/DavidAnson/markdownlint
 [markdownlint-cli2]: https://github.com/DavidAnson/markdownlint-cli2
