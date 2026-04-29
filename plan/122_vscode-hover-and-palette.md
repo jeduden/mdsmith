@@ -32,27 +32,18 @@ first feature they would disable.
 
 ## Background
 
-Plan 121 covers diagnostics and per-file fix code
-actions. It leaves eight subcommands without an
-editor surface: `help`, `kinds`, `archetypes`,
-`metrics`, `query`, `init`, `merge-driver`,
-`version`. A reviewer audit grouped them by shape:
+Plan 121 covers diagnostics and per-file fixes.
+Eight subcommands stay outside the editor:
+`help`, `kinds`, `archetypes`, `metrics`,
+`query`, `init`, `merge-driver`, `version`. A
+reviewer audit grouped them:
 
-- Discovery during reading: `help` (what does this
-  rule mean?). Right shape: hover.
-- One-shot workspace actions: `init`,
-  `merge-driver install`, fix-everything. Right
-  shape: command palette.
-- On-demand inspection: `kinds why`,
-  `kinds resolve`. Right shape: palette command
-  that opens a virtual document.
-- Workspace browsing / ranking: `archetypes list`,
-  `metrics rank`, `query`. Reviewers would
-  uninstall a tree view that surfaced these. The
-  CLI is the right shape; this plan does not wire
-  them.
-- Static info: `version`. Reviewers all flagged a
-  status-bar pill as chrome. Out of scope.
+- **Hover**: `help` (what does this rule mean?).
+- **Palette**: `init`, `merge-driver install`,
+  fix-everything, `kinds why`, `kinds resolve`.
+- **CLI only**: `archetypes`, `metrics`, `query`,
+  `version` — reviewers would uninstall a tree
+  view or status-bar pill surfacing these.
 
 ## Design
 
@@ -131,6 +122,76 @@ For `kinds.why`, the handler shows a quick-pick of
 diagnostic rule IDs on the active editor; the
 selection drives `mdsmith kinds why <file> <rule>`.
 
+### Workspace trust
+
+The extension declares `capabilities.untrustedWorkspaces`
+in `editors/vscode/package.json`:
+
+```jsonc
+"capabilities": {
+  "untrustedWorkspaces": {
+    "supported": "limited",
+    "description": "Diagnostics and hover work in restricted mode. Commands that modify files outside the editor are disabled until the workspace is trusted.",
+    "restrictedConfigurations": [
+      "mdsmith.path",
+      "mdsmith.config"
+    ]
+  }
+}
+```
+
+- `"limited"` lets the language client and hover
+  load in an untrusted workspace; neither writes
+  files.
+- The two destructive palette commands hide
+  behind `when: isWorkspaceTrusted` on their
+  menu entries. Handlers re-check
+  `workspace.isTrusted` before running.
+- `restrictedConfigurations` blocks workspace
+  overrides of `mdsmith.path` and `mdsmith.config`.
+  An untrusted folder cannot redirect the
+  extension to a malicious binary.
+- The extension subscribes to
+  `onDidGrantWorkspaceTrust`; gated commands
+  appear without a reload after trust is granted.
+
+### Rule docs render in VS Code's Markdown engine
+
+VS Code's hover renderer is Markdown-only and
+strips inline HTML. The plan does not sanitize at
+runtime. It enforces "no inline HTML" at lint
+time on the rule README files. The vehicle is the
+existing `rule-readme` kind in `.mdsmith.yml`.
+That kind already targets
+`internal/rules/MDS*/README.md`.
+
+Today the kind only pins
+`required-structure.schema`. MDS041
+(`no-inline-html`) is opt-in
+([`internal/rules/noinlinehtml/rule.go`](../internal/rules/noinlinehtml/rule.go)
+`EnabledByDefault() = false`). The plan adds it:
+
+```yaml
+rule-readme:
+  rules:
+    required-structure:
+      schema: internal/rules/proto.md
+    no-inline-html:
+      enabled: true
+      allow: [kbd]
+```
+
+A spot audit of
+[`internal/rules/MDS*/README.md`](../internal/rules)
+found no raw HTML outside code blocks. The
+change is purely preventive. It stops a future
+contributor from adding HTML the hover would
+silently drop.
+
+Editing `.mdsmith.yml` requires user consent per
+[`CLAUDE.md`](../CLAUDE.md). The task surfaces
+the diff first.
+
 ### What this plan removes
 
 | Earlier proposal                         | Decision        |
@@ -185,6 +246,23 @@ feedback.
    subcommand and its editor entry point. Mark
    `archetypes`, `metrics`, `query`, and `version`
    as "CLI only".
+8. Wire workspace trust per the design above. Add
+   the `capabilities.untrustedWorkspaces` block to
+   `editors/vscode/package.json`. Gate the
+   `fixWorkspace` and `mergeDriver.install` menu
+   entries with `when: isWorkspaceTrusted`.
+   Re-check `workspace.isTrusted` inside each
+   handler. Subscribe to
+   `onDidGrantWorkspaceTrust` to refresh the
+   command surface without a reload.
+9. Propose enabling `no-inline-html` on the
+   `rule-readme` kind in `.mdsmith.yml`. Surface
+   the diff before applying. CLAUDE.md treats
+   linter configuration as user-consent
+   territory; this task lands the change only
+   after authorisation. Add a regression test:
+   a fixture rule README with a raw `<span>`
+   outside a code block fails `mdsmith check`.
 
 ## Acceptance Criteria
 
@@ -214,19 +292,18 @@ feedback.
 - [ ] `mdsmith check .` passes (subject to plan
       121's open question about `editors/**`
       exclusion).
-
-## Open Questions
-
-- **Workspace trust for fixWorkspace and
-  mergeDriver.install.** Both write outside the
-  active buffer. Pick the right
-  `untrustedWorkspaces` capability flag during
-  implementation.
-- **Markdown rendering inside hovers.** VS Code
-  renders LSP hover Markdown but strips inline
-  HTML. Confirm the rule-help bodies do not rely
-  on raw HTML; route through a sanitizer if any
-  do.
+- [ ] Opening an untrusted workspace hides the
+      `mdsmith.fixWorkspace` and
+      `mdsmith.mergeDriver.install` palette
+      entries; granting trust reveals them
+      without a reload.
+- [ ] An untrusted workspace cannot redirect
+      `mdsmith.path` or `mdsmith.config`; the
+      extension uses the user-level value.
+- [ ] After the `rule-readme` kind change lands,
+      a fixture rule README containing a raw
+      `<span>` outside a code block fails
+      `mdsmith check` with `MDS041`.
 
 ## ...
 
