@@ -12,7 +12,6 @@ import (
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
-	"github.com/jeduden/mdsmith/internal/archetypes"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -28,10 +27,8 @@ func init() {
 
 // Rule checks that a document's heading structure matches a schema.
 type Rule struct {
-	Schema         string   // path to schema file
-	Archetype      string   // name of an archetype schema discovered under ArchetypeRoots
-	ArchetypeRoots []string // directories searched for archetypes; defaults to [archetypes.DefaultRoot]
-	Placeholders   []string // placeholder tokens to treat as opaque
+	Schema       string   // path to schema file
+	Placeholders []string // placeholder tokens to treat as opaque
 }
 
 // ID implements rule.Rule.
@@ -53,18 +50,6 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				return fmt.Errorf("required-structure: schema must be a string, got %T", v)
 			}
 			r.Schema = s
-		case "archetype":
-			s, ok := v.(string)
-			if !ok {
-				return fmt.Errorf("required-structure: archetype must be a string, got %T", v)
-			}
-			r.Archetype = s
-		case "archetype-roots":
-			roots, err := asStringList("archetype-roots", v)
-			if err != nil {
-				return err
-			}
-			r.ArchetypeRoots = roots
 		case "placeholders":
 			toks, ok := rulesettings.ToStringSlice(v)
 			if !ok {
@@ -80,45 +65,15 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			return fmt.Errorf("required-structure: unknown setting %q", k)
 		}
 	}
-	if r.Schema != "" && r.Archetype != "" {
-		return fmt.Errorf(
-			"required-structure: schema and archetype are mutually exclusive")
-	}
 	return nil
 }
 
-// asStringList converts a YAML-unmarshalled []any to []string, or
-// accepts a single string value (wrapping it in a one-element list).
-func asStringList(key string, v any) ([]string, error) {
-	switch x := v.(type) {
-	case []any:
-		out := make([]string, 0, len(x))
-		for i, item := range x {
-			s, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf(
-					"required-structure: %s[%d] must be a string, got %T", key, i, item)
-			}
-			out = append(out, s)
-		}
-		return out, nil
-	case []string:
-		return append([]string(nil), x...), nil
-	case string:
-		return []string{x}, nil
-	default:
-		return nil, fmt.Errorf(
-			"required-structure: %s must be a list of strings, got %T", key, v)
-	}
-}
 
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"schema":          "",
-		"archetype":       "",
-		"archetype-roots": []string{archetypes.DefaultRoot},
-		"placeholders":    []string{},
+		"schema":       "",
+		"placeholders": []string{},
 	}
 }
 
@@ -134,12 +89,9 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 
-	// Warn when <?require?> appears in a non-schema file. A file that
-	// lives under one of the configured archetype roots counts as a
-	// schema file here so <?require?> inside an archetype does not
-	// trigger a false positive.
+	// Warn when <?require?> appears in a non-schema file.
 	if reqLine := findRequireDirectiveLine(f); reqLine > 0 {
-		if !r.isSchemaOrArchetypeFile(f) {
+		if !r.isSchemaFile(f) {
 			d := makeDiag(f.Path, reqLine,
 				"<?require?> is only recognized in schema files; this directive has no effect here")
 			d.Severity = lint.Warning
@@ -147,7 +99,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 	}
 
-	if r.Schema == "" && r.Archetype == "" {
+	if r.Schema == "" {
 		return diags
 	}
 
@@ -159,12 +111,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	sch, err := parseSchema(schData, schPath, f.MaxInputBytes)
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1,
-			fmt.Sprintf("invalid schema %q: %v", r.schemaSource(), err)))
+			fmt.Sprintf("invalid schema %q: %v", r.Schema, err)))
 	}
 
-	// Skip the schema file itself when schemas come from disk, or the
-	// resolved archetype file when archetype-based validation is used.
-	if r.isSchemaOrArchetypeFile(f) {
+	// Skip the schema file itself when schemas come from disk.
+	if r.isSchemaFile(f) {
 		return diags
 	}
 
@@ -194,20 +145,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// loadSchema returns the schema bytes and resolution path. The
-// returned path is the disk path of a disk-based schema, or the
-// RootFS-relative path of an archetype. Note that <?include?>
-// expansion in parseSchema currently reads from the OS filesystem
-// relative to the process working directory, so archetype includes
-// only resolve correctly when mdsmith runs from the project root.
+// loadSchema returns the schema bytes and resolution path.
 func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
-	if r.Schema != "" && r.Archetype != "" {
-		return nil, "", fmt.Errorf(
-			"schema and archetype are mutually exclusive")
-	}
-	if r.Archetype != "" {
-		return r.loadArchetype(f)
-	}
 	data, err := readSchemaFile(f, r.Schema)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot read schema %q: %v", r.Schema, err)
@@ -215,118 +154,12 @@ func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
 	return data, r.Schema, nil
 }
 
-// loadArchetype resolves the configured archetype and returns its
-// schema bytes along with the fs-relative path (for include
-// resolution). The read is bounded by f.MaxInputBytes so
-// `--max-input-size` applies uniformly to archetype and disk-based
-// schemas.
-func (r *Rule) loadArchetype(f *lint.File) ([]byte, string, error) {
-	if f.RootFS != nil {
-		if err := archetypes.ValidateRoots(r.archetypeRoots()); err != nil {
-			return nil, "", err
-		}
+// isSchemaFile reports whether f is the configured schema file.
+func (r *Rule) isSchemaFile(f *lint.File) bool {
+	if r.Schema == "" {
+		return false
 	}
-	resolver := r.archetypeResolver(f)
-	entry, err := resolver.Lookup(r.Archetype)
-	if err != nil {
-		return nil, "", err
-	}
-	var data []byte
-	if resolver.FS != nil {
-		data, err = lint.ReadFSFileLimited(
-			resolver.FS, entry.Path, f.MaxInputBytes)
-	} else {
-		path := entry.Path
-		if resolver.RootDir != "" {
-			path = filepath.Join(resolver.RootDir, entry.Path)
-		}
-		data, err = lint.ReadFileLimited(path, f.MaxInputBytes)
-	}
-	if err != nil {
-		return nil, "", fmt.Errorf(
-			"reading archetype %q: %w", r.Archetype, err)
-	}
-	return data, entry.Path, nil
-}
-
-// isSchemaOrArchetypeFile reports whether f is the configured
-// schema file, or any file that lives under one of the configured
-// archetype roots. Files identified this way are treated as schema
-// sources: <?require?> directives in them are meaningful, and the
-// rule skips structural validation against themselves.
-func (r *Rule) isSchemaOrArchetypeFile(f *lint.File) bool {
-	if r.Schema != "" && isSchemaFile(f.Path, r.Schema) {
-		return true
-	}
-	roots := r.ArchetypeRoots
-	if len(roots) == 0 {
-		roots = []string{archetypes.DefaultRoot}
-	}
-	// Try a plain relative-path match (covers common layouts where
-	// mdsmith runs from the project root) and an absolute-to-RootDir
-	// fallback so subdirectory invocations still work.
-	candidates := []string{filepath.ToSlash(filepath.Clean(f.Path))}
-	if f.RootDir != "" {
-		if abs, err := filepath.Abs(f.Path); err == nil {
-			if rel, err := filepath.Rel(f.RootDir, abs); err == nil {
-				candidates = append(candidates,
-					filepath.ToSlash(filepath.Clean(rel)))
-			}
-		}
-	}
-	for _, root := range roots {
-		cleanRoot := filepath.ToSlash(filepath.Clean(root))
-		for _, c := range candidates {
-			if !strings.HasSuffix(c, ".md") {
-				continue
-			}
-			// An archetype lives at "<root>/<name>.md" — exactly one
-			// file deep. `.` is a root with no prefix at all, so the
-			// candidate must have no path separators.
-			var rel string
-			switch {
-			case cleanRoot == ".":
-				rel = c
-			case strings.HasPrefix(c, cleanRoot+"/"):
-				rel = strings.TrimPrefix(c, cleanRoot+"/")
-			default:
-				continue
-			}
-			if rel == "" || strings.Contains(rel, "/") {
-				continue
-			}
-			return true
-		}
-	}
-	return false
-}
-
-// archetypeRoots returns the effective list of roots, substituting
-// the default when the rule's setting is empty.
-func (r *Rule) archetypeRoots() []string {
-	if len(r.ArchetypeRoots) == 0 {
-		return []string{archetypes.DefaultRoot}
-	}
-	return r.ArchetypeRoots
-}
-
-// archetypeResolver builds an archetypes.Resolver from the rule's
-// configured roots and the file's project root filesystem.
-func (r *Rule) archetypeResolver(f *lint.File) *archetypes.Resolver {
-	return &archetypes.Resolver{
-		Roots:   r.archetypeRoots(),
-		RootDir: f.RootDir,
-		FS:      f.RootFS,
-	}
-}
-
-// schemaSource returns the user-facing identifier of the configured
-// schema, either the file path or "archetype:<name>".
-func (r *Rule) schemaSource() string {
-	if r.Archetype != "" {
-		return "archetype:" + r.Archetype
-	}
-	return r.Schema
+	return isSchemaFile(f.Path, r.Schema)
 }
 
 func (r *Rule) diag(file string, line int, msg string) lint.Diagnostic {
