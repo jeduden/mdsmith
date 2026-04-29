@@ -228,7 +228,13 @@ then.
     `publishDiagnostics` latency on synthetic 1k
     and 5k line documents. The benchmark uses
     `*testing.B`; wire the budgets above as
-    `b.Fatalf` thresholds so a regression fails CI.
+    `b.Fatalf` thresholds. Add a step to
+    [`.github/workflows/`](../.github/workflows)
+    that runs the benchmark explicitly
+    (`go test -run=^$ -bench=. ./internal/lsp/...`);
+    `go test ./...` does not invoke benchmarks by
+    default. Document the invocation in
+    `docs/guides/editors/vscode.md`.
 
 ## Acceptance Criteria
 
@@ -240,9 +246,10 @@ then.
       violation in VS Code shows the squiggle
       inline within 500 ms of save (manual smoke
       test documented in the new guide).
-- [ ] The `internal/lsp/bench_test.go` benchmark
-      reports p95 latency under the 150 ms / 500 ms
-      budgets on the 1k / 5k-line fixtures.
+- [ ] CI runs `go test -run=^$ -bench=.
+      ./internal/lsp/...` and the benchmark reports
+      p95 latency under the 150 ms / 500 ms budgets
+      on the 1k / 5k-line fixtures.
 - [ ] Quick-fix code actions appear for fixable
       rules and apply only the corresponding range;
       the file's other diagnostics are unaffected.
