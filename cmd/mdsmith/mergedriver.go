@@ -59,6 +59,15 @@ func runMergeDriver(args []string) int {
 	}
 }
 
+// fileMode returns the mode of the named file, or defaultMode if the
+// file cannot be stat'd (e.g. does not exist yet).
+func fileMode(name string, defaultMode os.FileMode) os.FileMode {
+	if info, err := os.Stat(name); err == nil {
+		return info.Mode()
+	}
+	return defaultMode
+}
+
 // mergeAndClean performs the 3-way merge and strips conflict markers.
 // Returns the cleaned content and an exit code (0 on success).
 func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
@@ -86,10 +95,7 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 	}
 
 	// Preserve the original permissions of git's temp file.
-	oursMode := os.FileMode(0o600)
-	if info, err := os.Stat(ours); err == nil {
-		oursMode = info.Mode()
-	}
+	oursMode := fileMode(ours, 0o644)
 	cleaned := stripSectionConflicts(content)
 	if err := os.WriteFile(ours, cleaned, oursMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing cleaned merge: %v\n", err)
@@ -160,24 +166,16 @@ func runMergeDriverRun(args []string) int {
 // fixAtRealPath writes cleaned content to pathname, runs mdsmith
 // fix, copies the result to ours, and restores pathname.
 func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byte, int) {
-	// Capture the original file mode so we can preserve permissions.
-	fileMode := os.FileMode(0o644)
-	if info, err := os.Stat(pathname); err == nil {
-		fileMode = info.Mode()
-	}
-
-	// Capture the original permissions of git's temp file.
-	oursMode := os.FileMode(0o600)
-	if info, err := os.Stat(ours); err == nil {
-		oursMode = info.Mode()
-	}
+	// Capture the original file modes so we can preserve permissions.
+	pathnameMode := fileMode(pathname, 0o644)
+	oursMode := fileMode(ours, 0o644)
 
 	backup, backupErr := lint.ReadFileLimited(pathname, maxBytes)
 	if backupErr != nil && !os.IsNotExist(backupErr) {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading %s for backup: %v\n", pathname, backupErr)
 		return nil, 2
 	}
-	if err := os.WriteFile(pathname, cleaned, fileMode); err != nil {
+	if err := os.WriteFile(pathname, cleaned, pathnameMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing to %s: %v\n", pathname, err)
 		return nil, 2
 	}
@@ -194,7 +192,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 
 	var restoreErr error
 	if backupErr == nil {
-		restoreErr = os.WriteFile(pathname, backup, fileMode)
+		restoreErr = os.WriteFile(pathname, backup, pathnameMode)
 	} else if os.IsNotExist(backupErr) {
 		restoreErr = os.Remove(pathname)
 	}
@@ -622,11 +620,7 @@ func goEnvPath() (string, error) {
 // ensureGitattributes reads .gitattributes, adds any missing
 // merge driver entries for the given files, and writes it back.
 func ensureGitattributes(attrPath string, files []string) error {
-	// Capture existing file info (permissions, existence).
-	attrMode := os.FileMode(0o644)
-	if info, err := os.Stat(attrPath); err == nil {
-		attrMode = info.Mode()
-	}
+	attrMode := fileMode(attrPath, 0o644)
 
 	existing, err := os.ReadFile(attrPath)
 	if err != nil && !os.IsNotExist(err) {
