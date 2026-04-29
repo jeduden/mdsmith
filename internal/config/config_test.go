@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -1331,6 +1332,28 @@ func TestLoad_LegacyNoFollowSymlinksEmitsDeprecation(t *testing.T) {
 	assert.Contains(t, cfg.Deprecations[0], "no-follow-symlinks")
 }
 
+func TestLoad_ArchetypesKeyEmitsDeprecation(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath,
+		[]byte("archetypes:\n  roots:\n    - archetypes\n"), 0o644))
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+	require.NotEmpty(t, cfg.Deprecations,
+		"removed archetypes key must emit a deprecation")
+	found := false
+	for _, d := range cfg.Deprecations {
+		if strings.Contains(d, "archetypes") {
+			found = true
+			assert.Contains(t, d, "kinds",
+				"deprecation should mention migration to 'kinds'")
+			break
+		}
+	}
+	assert.True(t, found, "deprecation must mention 'archetypes'")
+}
+
 func TestMergeMaxInputSize_FromLoaded(t *testing.T) {
 	defaults := &Config{
 		Rules: map[string]RuleCfg{"a": {Enabled: true}},
@@ -1400,123 +1423,6 @@ func TestLoadMaxInputSizeFromYAML(t *testing.T) {
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
 	assert.Equal(t, "500KB", cfg.MaxInputSize)
-}
-
-// ---------------------------------------------------------------------
-// Archetype roots
-// ---------------------------------------------------------------------
-
-func TestMerge_ArchetypeRootsFromLoaded(t *testing.T) {
-	loaded := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"custom", "templates"}},
-	}
-	merged := Merge(&Config{}, loaded)
-	assert.Equal(t,
-		[]string{"custom", "templates"}, merged.Archetypes.Roots)
-}
-
-func TestMerge_ArchetypeRootsFromDefaultsWhenLoadedEmpty(t *testing.T) {
-	defaults := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"default-dir"}},
-	}
-	merged := Merge(defaults, &Config{})
-	assert.Equal(t,
-		[]string{"default-dir"}, merged.Archetypes.Roots)
-}
-
-func TestMerge_NilLoadedCopiesArchetypes(t *testing.T) {
-	defaults := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"a"}},
-	}
-	merged := Merge(defaults, nil)
-	assert.Equal(t, []string{"a"}, merged.Archetypes.Roots)
-}
-
-func TestInjectArchetypeRoots_TopLevelRule(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"custom"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true, Settings: map[string]any{
-				"archetype": "story",
-			}},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"custom"}, got)
-}
-
-func TestInjectArchetypeRoots_DoesNotOverwriteExistingSetting(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"from-top-level"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true, Settings: map[string]any{
-				"archetype":       "story",
-				"archetype-roots": []any{"explicit"},
-			}},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"explicit"}, got)
-}
-
-func TestInjectArchetypeRoots_OverrideRule(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"r1"}},
-		Overrides: []Override{{
-			Files: []string{"*.md"},
-			Rules: map[string]RuleCfg{
-				"required-structure": {Enabled: true, Settings: map[string]any{
-					"archetype": "prd",
-				}},
-			},
-		}},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Overrides[0].Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"r1"}, got)
-}
-
-func TestInjectArchetypeRoots_NoOpWhenNoRoots(t *testing.T) {
-	cfg := &Config{
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true, Settings: map[string]any{
-				"archetype": "story",
-			}},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	_, exists := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.False(t, exists)
-}
-
-func TestInjectArchetypeRoots_NilConfig(t *testing.T) {
-	InjectArchetypeRoots(nil)
-}
-
-func TestInjectArchetypeRoots_RuleNotEnabled(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"r"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: false},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	_, exists := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.False(t, exists)
-}
-
-func TestInjectArchetypeRoots_CreatesSettingsMapIfNil(t *testing.T) {
-	cfg := &Config{
-		Archetypes: ArchetypesCfg{Roots: []string{"r"}},
-		Rules: map[string]RuleCfg{
-			"required-structure": {Enabled: true},
-		},
-	}
-	InjectArchetypeRoots(cfg)
-	got := cfg.Rules["required-structure"].Settings["archetype-roots"]
-	assert.Equal(t, []any{"r"}, got)
 }
 
 // TestMergeNilLoadedWithCategories exercises copyCategories with a non-nil
