@@ -38,6 +38,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/firstlineheading"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingincrement"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingstyle"
+	_ "github.com/jeduden/mdsmith/internal/rules/horizontalrulestyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/include"
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"
 	_ "github.com/jeduden/mdsmith/internal/rules/listindent"
