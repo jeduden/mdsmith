@@ -8,8 +8,9 @@ summary: >-
   help text shows on hover over a diagnostic, plus a
   small set of VS Code command-palette entries —
   `init`, `merge-driver install`, `fix workspace`,
-  `kinds why` — that cover the remaining
-  subcommands without adding chrome to the editor.
+  `kinds why`, `kinds resolve` — that cover the
+  remaining subcommands without adding chrome to the
+  editor.
 ---
 # VS Code hover help and palette commands
 
@@ -32,7 +33,7 @@ first feature they would disable.
 ## Background
 
 Plan 121 covers diagnostics and per-file fix code
-actions. It leaves seven subcommands without an
+actions. It leaves eight subcommands without an
 editor surface: `help`, `kinds`, `archetypes`,
 `metrics`, `query`, `init`, `merge-driver`,
 `version`. A reviewer audit grouped them by shape:
@@ -219,7 +220,7 @@ feedback.
 - **Markdown rendering inside hovers.** VS Code
   renders LSP hover Markdown but strips inline
   HTML. Confirm the rule-help bodies do not rely
-  on raw HTML; route through a sanitiser if any
+  on raw HTML; route through a sanitizer if any
   do.
 
 ## ...

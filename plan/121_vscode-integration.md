@@ -239,8 +239,9 @@ then.
     `internal/lsp/bench_test.go` that measures
     end-to-end `didChange` →
     `publishDiagnostics` latency on synthetic 1k
-    and 5k line documents. Wire the budgets above
-    as `t.Fatal` thresholds.
+    and 5k line documents. The benchmark uses
+    `*testing.B`; wire the budgets above as
+    `b.Fatalf` thresholds so a regression fails CI.
 
 ## Acceptance Criteria
 
