@@ -46,6 +46,7 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 const (
 	msgRefLink         = "reference-style link; use inline form [text](url)"
+	msgRefImage        = "reference-style image; use inline form ![alt](url)"
 	msgFootnote        = "footnote reference; footnotes are not allowed"
 	msgFootnoteNum     = "footnote slug is numeric; use a meaningful slug"
 	msgFootnoteMissing = "footnote reference has no matching definition"
@@ -62,10 +63,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// checkLinks walks the AST for *ast.Link nodes. Returns the diagnostic
-// list and whether any reference-style links were found (so the
-// unused-def pass can stay quiet when the link diagnostics already
-// cover the file).
+// checkLinks walks the AST for *ast.Link and *ast.Image nodes that use
+// reference-style syntax. Returns the diagnostic list and whether any
+// reference-style link/image was found (so the unused-def pass can stay
+// quiet when the link diagnostics already cover the file).
 func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool) {
 	var diags []lint.Diagnostic
 	hasRef := false
@@ -74,12 +75,23 @@ func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		link, ok := n.(*ast.Link)
-		if !ok || link.Reference == nil {
+		var msg string
+		switch v := n.(type) {
+		case *ast.Link:
+			if v.Reference == nil {
+				return ast.WalkContinue, nil
+			}
+			msg = msgRefLink
+		case *ast.Image:
+			if v.Reference == nil {
+				return ast.WalkContinue, nil
+			}
+			msg = msgRefImage
+		default:
 			return ast.WalkContinue, nil
 		}
 		hasRef = true
-		line, col := nodePosition(link, f)
+		line, col := nodePosition(n, f)
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     line,
@@ -87,7 +99,7 @@ func (r *Rule) checkLinks(f *lint.File) ([]lint.Diagnostic, bool) {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  msgRefLink,
+			Message:  msg,
 		})
 		return ast.WalkContinue, nil
 	})
@@ -186,7 +198,9 @@ type referenceDefinition struct {
 // collectReferenceDefinitions re-parses the source with goldmark to
 // pick up reference definitions (which are consumed at parse time and
 // never appear in the document AST), then locates each in source so
-// the rule can report a precise position.
+// the rule can report a precise position. Lines inside fenced or
+// indented code blocks are excluded so that definition-shaped lines
+// in examples cannot produce false matches or corrupt Fix output.
 func collectReferenceDefinitions(f *lint.File) []referenceDefinition {
 	source := f.Source
 	ctx := parser.NewContext()
@@ -200,10 +214,16 @@ func collectReferenceDefinitions(f *lint.File) []referenceDefinition {
 		return nil
 	}
 
+	codeLines := lint.CollectCodeBlockLines(f)
 	var out []referenceDefinition
 	for _, m := range refDefRE.FindAllSubmatchIndex(source, -1) {
 		raw := source[m[2]:m[3]]
 		if !wanted[util.ToLinkReference(raw)] {
+			continue
+		}
+		bracketAbs := m[2] - 1
+		matchLine := f.LineOfOffset(bracketAbs)
+		if codeLines[matchLine] {
 			continue
 		}
 		end := m[1]
@@ -211,10 +231,9 @@ func collectReferenceDefinitions(f *lint.File) []referenceDefinition {
 		if end < len(source) && source[end] == '\n' {
 			end++
 		}
-		bracketAbs := m[2] - 1
 		out = append(out, referenceDefinition{
 			label: string(raw),
-			line:  f.LineOfOffset(bracketAbs),
+			line:  matchLine,
 			col:   f.ColumnOfOffset(bracketAbs),
 			start: m[0],
 			end:   end,
@@ -519,22 +538,42 @@ func collectLinkRewrites(f *lint.File) ([]fixCut, map[string]bool) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		link, ok := n.(*ast.Link)
-		if !ok || link.Reference == nil {
+		var ref *ast.ReferenceLink
+		var dest, title []byte
+		isImage := false
+		switch v := n.(type) {
+		case *ast.Link:
+			if v.Reference == nil {
+				return ast.WalkContinue, nil
+			}
+			ref = v.Reference
+			dest, title = v.Destination, v.Title
+		case *ast.Image:
+			if v.Reference == nil {
+				return ast.WalkContinue, nil
+			}
+			ref = v.Reference
+			dest, title = v.Destination, v.Title
+			isImage = true
+		default:
 			return ast.WalkContinue, nil
 		}
-		start, end, txt, ok := linkSourceSpan(link, f.Source)
+		start, end, txt, ok := linkSourceSpan(n, f.Source)
 		if !ok {
-			// Cannot recover the source span (e.g. empty-text link).
-			// Leave the link and its definition untouched so we never
+			// Cannot recover the source span (e.g. empty-text link/image).
+			// Leave the link/image and its definition untouched so we never
 			// emit a malformed rewrite.
 			return ast.WalkContinue, nil
 		}
-		usedLabels[util.ToLinkReference(link.Reference.Value)] = true
+		// For images `![alt][id]`, the `!` sits just before `[`.
+		if isImage && start > 0 && f.Source[start-1] == '!' {
+			start--
+		}
+		usedLabels[util.ToLinkReference(ref.Value)] = true
 		cuts = append(cuts, fixCut{
 			start: start,
 			end:   end,
-			repl:  buildInlineLink(txt, link.Destination, link.Title),
+			repl:  buildInlineMedia(txt, dest, title, isImage),
 		})
 		return ast.WalkContinue, nil
 	})
@@ -581,15 +620,17 @@ func applyCuts(source []byte, cuts []fixCut) []byte {
 	return out.Bytes()
 }
 
-// linkSourceSpan returns the byte span of an entire link expression
+// linkSourceSpan returns the byte span of an entire link/image expression
 // (`[text](...)` or `[text][id]` etc.) and the inner text. For
 // reference links the closing bracket is followed by either nothing
 // (shortcut), `[]` (collapsed), or `[id]` (full). The third return
 // is false when the link has no text descendants — an empty-text
 // link like `[][id]` — in which case the source span cannot be
 // recovered from the AST and the caller should skip the rewrite.
-func linkSourceSpan(link *ast.Link, source []byte) (int, int, string, bool) {
-	seg := firstDescendantText(link)
+// Note: for images the returned start points to `[`, not `!`; the
+// caller is responsible for extending start by one to include `!`.
+func linkSourceSpan(n ast.Node, source []byte) (int, int, string, bool) {
+	seg := firstDescendantText(n)
 	if seg == (text.Segment{}) {
 		return 0, 0, "", false
 	}
@@ -645,9 +686,13 @@ func skipReferenceLabel(source []byte, end int) int {
 	return end
 }
 
-// buildInlineLink renders `[text](dest "title")`.
-func buildInlineLink(text string, dest, title []byte) []byte {
+// buildInlineMedia renders `[text](dest "title")` for links or
+// `![text](dest "title")` for images.
+func buildInlineMedia(text string, dest, title []byte, image bool) []byte {
 	var b bytes.Buffer
+	if image {
+		b.WriteByte('!')
+	}
 	b.WriteByte('[')
 	b.WriteString(text)
 	b.WriteByte(']')

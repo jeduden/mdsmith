@@ -391,6 +391,54 @@ func TestFix_NoReferenceLinksSkipsDefinitionScan(t *testing.T) {
 	assert.Equal(t, src, string(got))
 }
 
+func TestCheck_ReferenceStyleImage(t *testing.T) {
+	// Reference-style images (![alt][id]) must be flagged with
+	// msgRefImage, distinct from msgRefLink.
+	src := "![logo][img]\n\n[img]: https://example.com/logo.png\n"
+	diags := (&Rule{}).Check(f(t, src))
+	require.Len(t, diags, 1)
+	assert.Equal(t, msgRefImage, diags[0].Message)
+	assert.Equal(t, 1, diags[0].Line)
+}
+
+func TestCheck_ReferenceImageCountsAsHasRef(t *testing.T) {
+	// A reference-style image counts as "hasRef" so the unused-def
+	// diagnostic is suppressed (the image already flags the issue).
+	src := "![logo][img]\n\n[img]: https://example.com/logo.png\n"
+	diags := (&Rule{}).Check(f(t, src))
+	for _, d := range diags {
+		assert.NotEqual(t, "unused reference definition", d.Message)
+	}
+}
+
+func TestFix_ReferenceStyleImage(t *testing.T) {
+	// Fix rewrites reference-style images to inline form `![alt](url)`
+	// and removes the definition.
+	src := "![logo][img]\n\n[img]: https://example.com/logo.png\n"
+	got := (&Rule{}).Fix(f(t, src))
+	assert.Contains(t, string(got), "![logo](https://example.com/logo.png)")
+	assert.NotContains(t, string(got), "[img]:")
+}
+
+func TestCheck_DefinitionInCodeBlockNotFlagged(t *testing.T) {
+	// A line matching `[label]: url` inside a fenced code block must
+	// not be reported as an unused reference definition.
+	src := "Plain prose.\n\n```text\n[ref]: https://example.com\n```\n"
+	diags := (&Rule{}).Check(f(t, src))
+	assert.Empty(t, diags)
+}
+
+func TestFix_DefinitionInCodeBlockNotRemoved(t *testing.T) {
+	// Fix must not remove definition-like lines from code blocks, even
+	// when a real reference for the same label exists in the document.
+	src := "See [ref][ref].\n\n[ref]: https://example.com\n\n```text\n[ref]: https://example.com\n```\n"
+	got := (&Rule{}).Fix(f(t, src))
+	// Reference link is rewritten to inline form.
+	assert.Contains(t, string(got), "See [ref](https://example.com).")
+	// Real definition is removed; code block content must be preserved.
+	assert.Contains(t, string(got), "```text\n[ref]: https://example.com\n```")
+}
+
 func TestRegistration(t *testing.T) {
 	// init() registered an instance; verify it's the *Rule type and
 	// configurable.
