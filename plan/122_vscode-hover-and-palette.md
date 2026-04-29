@@ -166,10 +166,11 @@ That kind already targets
 `internal/rules/MDS*/README.md`.
 
 Today the kind only pins
-`required-structure.schema`. MDS041
-(`no-inline-html`) is opt-in
-([`internal/rules/noinlinehtml/rule.go`](../internal/rules/noinlinehtml/rule.go)
-`EnabledByDefault() = false`). The plan adds it:
+`required-structure.schema`. The plan adds
+MDS041 (`no-inline-html`). The rule is opt-in
+by default. A settings mapping turns it on. There
+is no `enabled` key — see
+[`RuleCfg.UnmarshalYAML`](../internal/config/config.go):
 
 ```yaml
 rule-readme:
@@ -177,7 +178,6 @@ rule-readme:
     required-structure:
       schema: internal/rules/proto.md
     no-inline-html:
-      enabled: true
       allow: [kbd]
 ```
 
