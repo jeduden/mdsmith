@@ -25,7 +25,7 @@ footer: |
 | 106 | 🔲     | sonnet | [Emphasis style rule](plan/106_emphasis-style.md)                                                    |
 | 107 | 🔲     | opus   | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
 | 108 | 🔲     | sonnet | [Horizontal rule style rule](plan/108_horizontal-rule-style.md)                                      |
-| 109 | 🔲     | sonnet | [List marker style rule](plan/109_list-marker-style.md)                                              |
+| 109 | ✅     | sonnet | [List marker style rule](plan/109_list-marker-style.md)                                              |
 | 110 | ✅     | sonnet | [Ordered list numbering rule](plan/110_ordered-list-numbering.md)                                    |
 | 111 | 🔲     | sonnet | [Ambiguous emphasis rule](plan/111_ambiguous-emphasis.md)                                            |
 | 112 | ✅     | opus   | [Markdown convention bundles for MDS034](plan/112_flavor-profiles.md)                                |

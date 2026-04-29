@@ -7,6 +7,9 @@ diagnostics:
   - line: 6
     column: 1
     message: "unordered list at depth 1 uses dash; expected asterisk"
+  - line: 7
+    column: 1
+    message: "unordered list at depth 1 uses dash; expected asterisk"
 ---
 # Bad nested with wrong inner marker
 

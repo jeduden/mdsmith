@@ -31,8 +31,9 @@ func TestCheck_DashStyle_FlagsAsterisk(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Style: StyleDash}
 	diags := r.Check(f)
-	require.Len(t, diags, 1)
+	require.Len(t, diags, 2, "one diagnostic per mismatching item")
 	assert.Equal(t, 1, diags[0].Line)
+	assert.Equal(t, 2, diags[1].Line)
 	assert.Contains(t, diags[0].Message, "uses asterisk")
 	assert.Contains(t, diags[0].Message, "configured style is dash")
 }
@@ -43,7 +44,7 @@ func TestCheck_DashStyle_FlagsPlus(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Style: StyleDash}
 	diags := r.Check(f)
-	require.Len(t, diags, 1)
+	require.Len(t, diags, 2, "one diagnostic per mismatching item")
 	assert.Contains(t, diags[0].Message, "uses plus")
 	assert.Contains(t, diags[0].Message, "configured style is dash")
 }
@@ -99,8 +100,9 @@ func TestCheck_NestedList_WithNestedConfig_Bad(t *testing.T) {
 	require.NoError(t, err)
 	r := &Rule{Style: StyleDash, Nested: []string{StyleDash, StyleAsterisk}}
 	diags := r.Check(f)
-	require.Len(t, diags, 1)
+	require.Len(t, diags, 2, "one diagnostic per mismatching inner item")
 	assert.Equal(t, 2, diags[0].Line)
+	assert.Equal(t, 3, diags[1].Line)
 	assert.Contains(t, diags[0].Message, "depth 1")
 	assert.Contains(t, diags[0].Message, "uses dash")
 	assert.Contains(t, diags[0].Message, "expected asterisk")
@@ -186,6 +188,45 @@ func TestApplySettings_InvalidStyle(t *testing.T) {
 	err := r.ApplySettings(map[string]any{"style": "invalid"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid style")
+}
+
+func TestApplySettings_ValidNested_StringSlice(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"nested": []string{"dash", "asterisk"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{StyleDash, StyleAsterisk}, r.Nested)
+}
+
+func TestCheck_MixedMarkers_InSequentialLists(t *testing.T) {
+	// CommonMark creates a new list node when markers change, so each
+	// run of same-marker items forms its own *ast.List. When style is
+	// dash, all asterisk and plus items must be flagged regardless of
+	// which list node they belong to.
+	src := []byte("- correct\n* wrong asterisk\n+ wrong plus\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: StyleDash}
+	diags := r.Check(f)
+	// line 1 is dash (correct), lines 2 and 3 are in separate lists with wrong markers
+	require.Len(t, diags, 2, "one diagnostic per mismatching item across all lists")
+	assert.Equal(t, 2, diags[0].Line)
+	assert.Contains(t, diags[0].Message, "uses asterisk")
+	assert.Equal(t, 3, diags[1].Line)
+	assert.Contains(t, diags[1].Message, "uses plus")
+}
+
+func TestCheck_MixedMarkers_FixedPerItem(t *testing.T) {
+	// When different items on consecutive lines use different markers,
+	// Fix must correct each individual item to the configured style.
+	src := []byte("* wrong\n+ also wrong\n- correct\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: StyleDash}
+	got := r.Fix(f)
+	want := "- wrong\n- also wrong\n- correct\n"
+	assert.Equal(t, want, string(got))
 }
 
 func TestApplySettings_ValidNested(t *testing.T) {

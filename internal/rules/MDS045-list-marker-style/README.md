@@ -1,50 +1,38 @@
-# MDS045 - list-marker-style
+---
+id: MDS045
+name: list-marker-style
+status: ready
+description: Unordered list items must use the configured bullet marker character.
+---
+# MDS045: list-marker-style
 
-Enforce consistent bullet character for unordered lists.
+Unordered list items must use the configured bullet marker character.
 
-## Rationale
+## Settings
 
-CommonMark accepts three different characters for unordered list
-markers: `-`, `*`, and `+`. When a codebase mixes these markers,
-diffs become noisy (changing one marker to another shows up as a
-change even when the content is identical), and readers may wonder
-whether the different markers carry semantic meaning.
+| Setting  | Type         | Default  | Description                                               |
+|----------|--------------|----------|-----------------------------------------------------------|
+| `style`  | string       | `"dash"` | `"dash"` (`-`), `"asterisk"` (`*`), or `"plus"` (`+`)     |
+| `nested` | list(string) | `[]`     | Per-depth style rotation; cycles by `depth % len(nested)` |
 
-This rule pins a single marker character project-wide, eliminating
-the three-way ambiguity and keeping diffs focused on content
-changes.
+## Config
 
-## Default Configuration
+Enable with dash style (the default when enabled):
 
 ```yaml
 rules:
   list-marker-style:
-    enabled: false  # opt-in
-    style: dash     # dash | asterisk | plus
-    nested: []      # optional list for depth rotation
+    style: dash
 ```
 
-The rule is disabled by default. Users must explicitly enable it and
-choose a style.
+Disable (default):
 
-## Settings
+```yaml
+rules:
+  list-marker-style: false
+```
 
-### `style`
-
-The marker character to use for all unordered lists (when `nested`
-is empty).
-
-- `dash`: Use `-`
-- `asterisk`: Use `*`
-- `plus`: Use `+`
-
-### `nested`
-
-Optional list of style names to cycle through by depth. When set,
-the marker at depth _n_ is `nested[n % len(nested)]`. Depth 0 is
-the outermost list.
-
-Example rotating between dash and asterisk:
+Depth-based rotation (outer uses `-`, inner uses `*`):
 
 ```yaml
 rules:
@@ -54,69 +42,103 @@ rules:
       - asterisk
 ```
 
-With this configuration:
-- Depth 0 (outer) lists use `-`
-- Depth 1 (nested once) lists use `*`
-- Depth 2 (nested twice) lists use `-` again
-- And so on
-
-When `nested` is empty (the default), all lists use `style`
-regardless of depth.
-
 ## Examples
 
-### Good (style: dash)
+### Good -- dash style
+
+<?include
+file: good/dash.md
+wrap: markdown
+?>
 
 ```markdown
+# Good dash marker
+
+This file uses dash markers consistently.
+
 - First item
 - Second item
 - Third item
+
+Nested list:
+
+- Outer item
+  - Inner item
+  - Another inner item
+- Another outer item
 ```
 
-### Bad (style: dash)
+<?/include?>
+
+### Good -- nested rotation
+
+<?include
+file: good/nested.md
+wrap: markdown
+?>
 
 ```markdown
+# Good nested with rotation
+
+Outer lists use dash, inner use asterisk.
+
+- Outer item
+  * Inner item
+  * Another inner item
+- Another outer item
+  * More inner
+    - Depth 2 cycles back to dash
+      * Depth 3 cycles to asterisk
+```
+
+<?/include?>
+
+### Bad -- wrong marker
+
+<?include
+file: bad/asterisk-with-dash.md
+wrap: markdown
+?>
+
+```markdown
+# Bad asterisk with dash config
+
+This list uses asterisks but dash is configured.
+
 * First item
 * Second item
 * Third item
 ```
 
-The list uses `*` but the configured style is `dash`. The rule will
-flag this and auto-fix to `-`.
+<?/include?>
 
-### Good (nested: [dash, asterisk])
+### Bad -- wrong nested marker
+
+<?include
+file: bad/nested-wrong.md
+wrap: markdown
+?>
 
 ```markdown
+# Bad nested with wrong inner marker
+
+Outer uses dash (correct), inner should use asterisk but uses dash.
+
 - Outer item
-  * Inner item
-  * Another inner item
+  - Inner item should be asterisk
+  - Another inner item should be asterisk
 - Another outer item
 ```
 
-### Bad (nested: [dash, asterisk])
+<?/include?>
 
-```markdown
-- Outer item
-  - Inner item (should be asterisk)
-  - Another inner item
-- Another outer item
-```
+## Meta-Information
 
-The inner list at depth 1 should use `*` but uses `-`.
-
-## Interaction with Other Rules
-
-- **MDS016 (list-indent)**: Enforces proper indentation of nested
-  lists. MDS045 only controls the marker character, not spacing.
-- **MDS046 (ordered-list-numbering)**: Applies to ordered lists
-  (numbered), while MDS045 applies only to unordered lists (bulleted).
-
-## Auto-fix
-
-The rule replaces the marker byte at the start of each list item.
-Because all three markers (`-`, `*`, `+`) are single bytes, the
-fix does not affect column alignment or indentation.
-
-## Category
-
-`list`
+- **ID**: MDS045
+- **Name**: `list-marker-style`
+- **Status**: ready
+- **Default**: disabled
+- **Fixable**: yes
+- **Implementation**:
+  [source](./)
+- **Category**: list

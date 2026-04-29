@@ -5,6 +5,12 @@ diagnostics:
   - line: 5
     column: 1
     message: "unordered list uses asterisk; configured style is dash"
+  - line: 6
+    column: 1
+    message: "unordered list uses asterisk; configured style is dash"
+  - line: 7
+    column: 1
+    message: "unordered list uses asterisk; configured style is dash"
 ---
 # Bad asterisk with dash config
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -54,44 +55,65 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if !ok || list.IsOrdered() {
 			return ast.WalkContinue, nil
 		}
-		if d, ok := r.checkList(f, list); ok {
-			diags = append(diags, d)
-		}
+		diags = append(diags, r.checkList(f, list)...)
 		return ast.WalkContinue, nil
 	})
 
 	return diags
 }
 
-// checkList emits a diagnostic when the list's marker does not match
-// the expected marker for its depth. Returns the diagnostic and true
-// if one was produced, false otherwise.
-func (r *Rule) checkList(f *lint.File, list *ast.List) (lint.Diagnostic, bool) {
+// checkList emits diagnostics when any list item's marker does not match
+// the expected marker for the list's depth. Returns one diagnostic per
+// mismatching item. Per-item checking is used because Goldmark's
+// list.Marker may not reflect the actual bytes on each source line.
+func (r *Rule) checkList(f *lint.File, list *ast.List) []lint.Diagnostic {
 	depth := r.computeDepth(list)
 	expected := r.expectedMarker(depth)
-	actual := list.Marker
 
-	if actual == expected {
-		return lint.Diagnostic{}, false
+	var diags []lint.Diagnostic
+	for c := list.FirstChild(); c != nil; c = c.NextSibling() {
+		item := c.(*ast.ListItem)
+		line := r.firstLineOfListItem(f, item)
+		if line <= 0 {
+			continue
+		}
+		actual := r.markerOnLine(f, line)
+		if actual == 0 || actual == expected {
+			continue
+		}
+		msg := r.formatMessage(actual, expected, depth)
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  msg,
+		})
 	}
+	return diags
+}
 
-	// Emit diagnostic at the first list item's line
-	firstLine := 0
-	if list.FirstChild() != nil {
-		item := list.FirstChild().(*ast.ListItem)
-		firstLine = r.firstLineOfListItem(f, item)
+// markerOnLine reads the actual list marker byte from the given 1-based
+// source line by skipping leading whitespace and returning the first
+// character that is -, *, or +. Returns 0 if the line is out of range
+// or no marker is found.
+func (r *Rule) markerOnLine(f *lint.File, line int) byte {
+	idx := line - 1
+	if idx < 0 || idx >= len(f.Lines) {
+		return 0
 	}
-
-	msg := r.formatMessage(actual, expected, depth)
-	return lint.Diagnostic{
-		File:     f.Path,
-		Line:     firstLine,
-		Column:   1,
-		RuleID:   r.ID(),
-		RuleName: r.Name(),
-		Severity: lint.Warning,
-		Message:  msg,
-	}, true
+	for _, b := range f.Lines[idx] {
+		if b == ' ' || b == '\t' {
+			continue
+		}
+		if b == '-' || b == '*' || b == '+' {
+			return b
+		}
+		break
+	}
+	return 0
 }
 
 // computeDepth counts the number of *ast.List ancestors of the given node.
@@ -225,23 +247,24 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	return joinLines(resultLines)
 }
 
-// collectListEdits records marker replacements for all items in a list.
+// collectListEdits records marker replacements for all items in a list
+// whose actual source marker differs from the expected marker.
 func (r *Rule) collectListEdits(f *lint.File, list *ast.List, markerEdits map[int]byte) {
 	depth := r.computeDepth(list)
 	expected := r.expectedMarker(depth)
-	actual := list.Marker
 
-	if actual == expected {
-		return
-	}
-
-	// Collect edits for each list item
+	// Collect edits for each list item whose source marker is wrong
 	for c := list.FirstChild(); c != nil; c = c.NextSibling() {
 		item := c.(*ast.ListItem)
 		line := r.firstLineOfListItem(f, item)
-		if line > 0 {
-			markerEdits[line] = expected
+		if line <= 0 {
+			continue
 		}
+		actual := r.markerOnLine(f, line)
+		if actual == 0 || actual == expected {
+			continue
+		}
+		markerEdits[line] = expected
 	}
 }
 
@@ -298,22 +321,16 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 			}
 			r.Style = str
 		case "nested":
-			slice, ok := v.([]any)
+			slice, ok := settings.ToStringSlice(v)
 			if !ok {
-				return fmt.Errorf("list-marker-style: nested must be a list, got %T", v)
+				return fmt.Errorf("list-marker-style: nested must be a list of strings, got %T", v)
 			}
-			nested := make([]string, len(slice))
-			for i, item := range slice {
-				str, ok := item.(string)
-				if !ok {
-					return fmt.Errorf("list-marker-style: nested[%d] must be a string, got %T", i, item)
-				}
+			for i, str := range slice {
 				if !isValidStyle(str) {
 					return fmt.Errorf("list-marker-style: invalid nested[%d] style %q", i, str)
 				}
-				nested[i] = str
 			}
-			r.Nested = nested
+			r.Nested = slice
 		default:
 			return fmt.Errorf("list-marker-style: unknown setting %q", k)
 		}
