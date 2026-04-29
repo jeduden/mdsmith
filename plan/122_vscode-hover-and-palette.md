@@ -173,12 +173,13 @@ is no `enabled` key — see
 [`RuleCfg.UnmarshalYAML`](../internal/config/config.go):
 
 ```yaml
-rule-readme:
-  rules:
-    required-structure:
-      schema: internal/rules/proto.md
-    no-inline-html:
-      allow: [kbd]
+kinds:
+  rule-readme:
+    rules:
+      required-structure:
+        schema: internal/rules/proto.md
+      no-inline-html:
+        allow: [kbd]
 ```
 
 A spot audit of
