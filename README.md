@@ -68,19 +68,14 @@ binary. No network calls. Drop the output into
 `.cursor/rules`, `AGENTS.md`, or `CLAUDE.md` and your
 agent knows the rules without an extra fetch.
 
-**🆚 How does it compare?**
-See
-[Markdown linters compared](docs/background/markdown-linters.md)
-for a rule-by-rule breakdown. It covers
-[markdownlint](https://github.com/DavidAnson/markdownlint),
-[remark-lint](https://github.com/remarkjs/remark-lint),
-[Prettier](https://prettier.io/),
-[Vale](https://github.com/errata-ai/vale),
-[textlint](https://github.com/textlint/textlint), and
-[Hugo](https://gohugo.io/). It also notes the
-differences in autofix, the merge driver, the `query`
-subcommand, security posture, and future plans
-tracked in [PLAN.md](PLAN.md).
+**🆚 How does it compare?** See:
+<?catalog
+glob:
+  - "docs/background/markdown-linters.md"
+row: "- [{summary}]({filename})"
+?>
+- [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
+<?/catalog?>
 
 ## 📦 Installation
 

@@ -1,5 +1,5 @@
 ---
-summary: Comparison of mdsmith with other Markdown linters and formatters.
+summary: How mdsmith compares to other Markdown linters.
 ---
 # Markdown Linters Comparison
 
@@ -136,7 +136,38 @@ To ease migration, mdsmith maps common Hugo template
 fields to placeholders. See the
 [Hugo migration guide][hugo-migration] for that mapping.
 
-### LLM as Linter
+### [Obsidian][]
+
+Electron app. Markdown note-taking tool with local-first
+storage. ~60k stars. Included here because teams that
+write docs in Obsidian often want structural linting on
+the same `.md` files.
+
+- Uses its own [Obsidian Flavored Markdown][obsidian-fm]
+  (OFM): wikilinks (`[[Page]]`), callouts (blockquote
+  with `[!type]` prefix), embed syntax (`![[file.png]]`),
+  and inline metadata (`key:: value`)
+- No built-in linter — community plugins (e.g. [Linter
+  plugin][obsidian-linter]) add YAML front matter fixes,
+  heading normalisation, and whitespace rules
+- Files are plain `.md` on disk and are committed to Git
+  like any other source; CI can run mdsmith over the vault
+
+| Aspect             | Obsidian                          | mdsmith                              |
+|--------------------|-----------------------------------|--------------------------------------|
+| Purpose            | Note-taking editor                | Linter / fixer                       |
+| Linting            | Community plugin only             | Built-in, CI-ready                   |
+| Wikilinks          | Native (`[[Page]]`)               | Treated as text; no validation       |
+| Callouts           | Native (`> [!note]`)              | Treated as blockquotes               |
+| Front matter       | YAML or Dataview inline (`key::`) | YAML only (inline not recognized)    |
+| Agent friendliness | Editor-centric, manual saves      | Direct file access, no editor needed |
+
+mdsmith can lint the Markdown subset that Obsidian and
+standard parsers share. Wikilinks and callouts pass
+through without errors (they look like valid Markdown
+to CommonMark parsers). Dataview inline fields are not
+front matter and will not be read by mdsmith's
+`require`/`schema` directives.
 
 Using language models (GPT-4, Claude, etc.) directly to
 check prose quality, conciseness, and style. This is
@@ -517,8 +548,8 @@ current posture:
 | Hardening                          | mdsmith                | markdownlint    | remark-lint      | Prettier         | Vale      |
 |------------------------------------|------------------------|-----------------|------------------|------------------|-----------|
 | File-size cap on input             | yes                    | no              | no               | no               | no        |
-| YAML billion-laughs guard          | yes (anchor cap)       | n/a (no FM)     | parser-dependent | parser-dependent | n/a       |
-| ANSI escape sanitisation           | yes                    | no              | no               | n/a              | no        |
+| YAML billion-laughs guard          | yes (alias rejection)  | n/a (no FM)     | parser-dependent | parser-dependent | n/a       |
+| ANSI escape sanitization           | yes                    | no              | no               | n/a              | no        |
 | Symlinks denied by default         | yes                    | follows         | follows          | follows          | follows   |
 | Cross-file links sandboxed to repo | yes ([MDS027][mds027]) | n/a             | plugin-dependent | n/a              | n/a       |
 | Include size cap                   | yes                    | n/a             | n/a              | n/a              | n/a       |
@@ -555,7 +586,7 @@ items most relevant to this comparison are:
   [104][plan104]) — a `mdsmith build` subcommand with
   a `<?build?>` directive, staleness tracking, and
   lifecycle hooks. This will close part of the gap
-  with Hugo: deriving artefacts from Markdown sources
+  with Hugo: deriving artifacts from Markdown sources
   without leaving the linter.
 - **Closing rule gaps with markdownlint** — plans
   [105][plan105] (no-inline-html / MD033),
@@ -693,6 +724,10 @@ you need a stable rule set while these land.
 [Hugo]: https://gohugo.io/
 [hugo-shortcodes]: https://gohugo.io/content-management/shortcodes/
 [hugo-migration]: ../guides/directives/hugo-migration.md
+<!-- obsidian links -->
+[Obsidian]: https://obsidian.md/
+[obsidian-fm]: https://help.obsidian.md/Editing+and+formatting/Obsidian+Flavored+Markdown
+[obsidian-linter]: https://github.com/platers/obsidian-linter
 <!-- mdsmith plan + security + reference links -->
 [mdsmith-sec]: ../security/2026-04-05-adversarial-markdown.md
 [conventions]: ../reference/conventions.md
