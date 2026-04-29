@@ -179,11 +179,15 @@ Rule test fixtures live in
 `internal/rules/<id>-<name>/`. Each rule has `good/` and
 `bad/` examples (or `good.md` / `bad.md`).
 
-Good fixtures must pass **all** rules, not just their
-own. When a good fixture uses non-default settings
-(e.g. setext headings, tilde fences), add a matching
-override in `.mdsmith.yml` so that `mdsmith check .`
-also passes.
+Good fixtures must pass **all default-enabled rules**
+plus the rule under test. Default-disabled (opt-in)
+rules are skipped for other rules' fixtures: a
+good fixture for MDS001 is not required to also
+satisfy MDS043, since MDS043 is opt-in and would not
+fire in a default project. When a good fixture uses
+non-default settings (e.g. setext headings, tilde
+fences), add a matching override in `.mdsmith.yml`
+so that `mdsmith check .` also passes.
 
 Bad fixtures are excluded via the `ignore:` section in
 `.mdsmith.yml`.
