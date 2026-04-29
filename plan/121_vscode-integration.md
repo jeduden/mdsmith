@@ -75,10 +75,9 @@ LSP capabilities the server advertises:
 
 | Capability                        | Behavior                                         |
 |-----------------------------------|--------------------------------------------------|
-| `textDocumentSync = Full`         | Re-lint on every change; cheap for `*.md`        |
+| `textDocumentSync = Full`         | Re-lint on every change; debounced               |
 | `publishDiagnostics`              | One push after each lint                         |
 | `codeActionProvider`              | Per-diagnostic quick fixes (see below)           |
-| `executeCommandProvider`          | `mdsmith.fixFile` runs whole-file fix            |
 | `workspace.configuration`         | Pull `mdsmith.path`, `mdsmith.config`            |
 | `workspace.didChangeWatchedFiles` | Re-lint open buffers when `.mdsmith.yml` changes |
 
@@ -137,9 +136,14 @@ Settings the extension contributes:
 |------------------------|-------------|---------------------------------------|
 | `mdsmith.path`         | `"mdsmith"` | Binary path; resolved against `$PATH` |
 | `mdsmith.config`       | `""`        | Override `-c` config path             |
-| `mdsmith.run`          | `"onType"`  | `onType`, `onSave`, or `off`          |
+| `mdsmith.run`          | `"onSave"`  | `onType`, `onSave`, or `off`          |
 | `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save |
 | `mdsmith.trace.server` | `"off"`     | LSP trace verbosity                   |
+
+The default is `onSave`. Re-linting on every
+keystroke is opt-in: a user editing a long runbook
+during an incident must not pay debounce latency
+they did not ask for.
 
 Document selector: `markdown` and `*.markdown` files.
 Activation event: `onLanguage:markdown`. The
@@ -159,15 +163,19 @@ buffer so config edits take effect immediately.
 
 ### Lifecycle and performance
 
-- Per-document lint runs synchronously on the
-  document goroutine and is debounced 200 ms after
-  the last `didChange`. Markdown files are small
-  enough that re-linting on every keystroke is fine
-  past the debounce.
-- The server is single-process, multi-document; one
-  client = one server. No daemon mode.
+- Per-document lint runs on the document goroutine
+  and is debounced 200 ms after the last
+  `didChange`.
+- The server is single-process, multi-document. One
+  client equals one server. No daemon mode.
 - Memory budget: same `GOMEMLIMIT` (512 MB) the CLI
   sets in [`cmd/mdsmith/main.go`](../cmd/mdsmith/main.go).
+- **Latency budget**: p95 squiggle-update under
+  150 ms on a 1 000-line file and under 500 ms on a
+  5 000-line file, measured end-to-end (`didChange`
+  to `publishDiagnostics`). The benchmark drives
+  the perf task; missing it blocks the default flip
+  to `onType`.
 
 ### Distribution
 
@@ -227,11 +235,12 @@ then.
     to flip "VS Code: no" to "yes". Add a new
     `docs/guides/editors/vscode.md` covering
     install, settings, and troubleshooting.
-11. Add the new `editors/**` and `**/*.ts` files to
-    the appropriate `ignore:` block of
-    `.mdsmith.yml` (only with explicit user
-    consent — see CLAUDE.md) so the TypeScript
-    sources are not linted as Markdown.
+11. Add a benchmark
+    `internal/lsp/bench_test.go` that measures
+    end-to-end `didChange` →
+    `publishDiagnostics` latency on synthetic 1k
+    and 5k line documents. Wire the budgets above
+    as `t.Fatal` thresholds.
 
 ## Acceptance Criteria
 
@@ -240,10 +249,12 @@ then.
       `initialize` → `didOpen` → `didChange` →
       `shutdown` round trip in an integration test.
 - [ ] Opening a Markdown file with a `MDS001`
-      violation in VS Code shows the diagnostic
-      inline within 500 ms of the offending edit
-      (manual smoke test documented in the new
-      guide).
+      violation in VS Code shows the squiggle
+      inline within 500 ms of save (manual smoke
+      test documented in the new guide).
+- [ ] The `internal/lsp/bench_test.go` benchmark
+      reports p95 latency under the 150 ms / 500 ms
+      budgets on the 1k / 5k-line fixtures.
 - [ ] Quick-fix code actions appear for fixable
       rules and apply only the corresponding range;
       the file's other diagnostics are unaffected.
@@ -270,6 +281,16 @@ then.
 
 ## Open Questions
 
+- **Excluding TypeScript from `mdsmith check`.**
+  The new `editors/vscode/**/*.ts` files must not
+  be linted as Markdown. CLAUDE.md forbids
+  modifying `.mdsmith.yml` without explicit user
+  consent. Resolve before implementation: either
+  the user authorises an `ignore:` entry, or the
+  extension lives outside the repo (separate
+  `mdsmith-vscode` repository). The acceptance
+  criterion `mdsmith check .` cannot be verified
+  until this is decided.
 - **Marketplace publication.** Publishing to the
   VS Code Marketplace requires an Azure DevOps
   publisher account and a `VSCE_PAT` secret in CI.
