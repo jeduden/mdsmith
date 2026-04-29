@@ -12,17 +12,17 @@ import (
 
 func init() {
 	rule.Register(&Rule{
-		Style:              "dash",
-		Length:             3,
-		RequireBlankLines:  true,
+		Style:             "dash",
+		Length:            3,
+		RequireBlankLines: true,
 	})
 }
 
 // Rule checks that horizontal rules use a consistent delimiter style.
 type Rule struct {
-	Style              string // "dash", "asterisk", or "underscore"
-	Length             int    // exact number of delimiter characters required
-	RequireBlankLines  bool   // whether blank lines are required before/after
+	Style             string // "dash", "asterisk", or "underscore"
+	Length            int    // exact number of delimiter characters required
+	RequireBlankLines bool   // whether blank lines are required before/after
 }
 
 // ID implements rule.Rule.
@@ -51,96 +51,120 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		line := nodeLineNumber(tb, f)
-		lineIdx := line - 1
-		if lineIdx < 0 || lineIdx >= len(f.Lines) {
-			return ast.WalkContinue, nil
-		}
-
-		lineContent := string(bytes.TrimSpace(f.Lines[lineIdx]))
-
-		// Parse the horizontal rule
-		delimiter, count, hasSpaces := parseHorizontalRule(lineContent)
-
-		// Check delimiter style
-		expectedDelim := delimiterChar(r.Style)
-		if delimiter != expectedDelim {
-			actualStyle := styleFromDelimiter(delimiter)
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  fmt.Sprintf("horizontal rule uses %s; configured style is %s", actualStyle, r.Style),
-			})
-		}
-
-		// Check for internal spaces
-		if hasSpaces {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  "horizontal rule has internal spaces",
-			})
-		}
-
-		// Check length
-		if count != r.Length {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  fmt.Sprintf("horizontal rule has length %d; configured length is %d", count, r.Length),
-			})
-		}
-
-		// Check blank lines if required
-		if r.RequireBlankLines {
-			// Check line above
-			if line > 1 {
-				prevLineIdx := line - 2
-				if prevLineIdx >= 0 && prevLineIdx < len(f.Lines) {
-					if !isBlank(f.Lines[prevLineIdx]) {
-						diags = append(diags, lint.Diagnostic{
-							File:     f.Path,
-							Line:     line,
-							Column:   1,
-							RuleID:   r.ID(),
-							RuleName: r.Name(),
-							Severity: lint.Warning,
-							Message:  "horizontal rule needs a blank line above",
-						})
-					}
-				}
-			}
-
-			// Check line below
-			nextLineIdx := line
-			if nextLineIdx < len(f.Lines) {
-				if !isBlank(f.Lines[nextLineIdx]) {
-					diags = append(diags, lint.Diagnostic{
-						File:     f.Path,
-						Line:     line,
-						Column:   1,
-						RuleID:   r.ID(),
-						RuleName: r.Name(),
-						Severity: lint.Warning,
-						Message:  "horizontal rule needs a blank line below",
-					})
-				}
-			}
-		}
+		diags = append(diags, r.checkHorizontalRule(f, line)...)
 
 		return ast.WalkContinue, nil
 	})
+
+	return diags
+}
+
+func (r *Rule) checkHorizontalRule(f *lint.File, line int) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+
+	lineIdx := line - 1
+	if lineIdx < 0 || lineIdx >= len(f.Lines) {
+		return diags
+	}
+
+	lineContent := string(bytes.TrimSpace(f.Lines[lineIdx]))
+	delimiter, count, hasSpaces := parseHorizontalRule(lineContent)
+
+	diags = append(diags, r.checkDelimiter(f, line, delimiter)...)
+	diags = append(diags, r.checkSpaces(f, line, hasSpaces)...)
+	diags = append(diags, r.checkLength(f, line, count)...)
+	diags = append(diags, r.checkBlankLines(f, line)...)
+
+	return diags
+}
+
+func (r *Rule) checkDelimiter(f *lint.File, line int, delimiter rune) []lint.Diagnostic {
+	expectedDelim := delimiterChar(r.Style)
+	if delimiter != expectedDelim {
+		actualStyle := styleFromDelimiter(delimiter)
+		return []lint.Diagnostic{{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  fmt.Sprintf("horizontal rule uses %s; configured style is %s", actualStyle, r.Style),
+		}}
+	}
+	return nil
+}
+
+func (r *Rule) checkSpaces(f *lint.File, line int, hasSpaces bool) []lint.Diagnostic {
+	if hasSpaces {
+		return []lint.Diagnostic{{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  "horizontal rule has internal spaces",
+		}}
+	}
+	return nil
+}
+
+func (r *Rule) checkLength(f *lint.File, line int, count int) []lint.Diagnostic {
+	if count != r.Length {
+		return []lint.Diagnostic{{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  fmt.Sprintf("horizontal rule has length %d; configured length is %d", count, r.Length),
+		}}
+	}
+	return nil
+}
+
+func (r *Rule) checkBlankLines(f *lint.File, line int) []lint.Diagnostic {
+	if !r.RequireBlankLines {
+		return nil
+	}
+
+	var diags []lint.Diagnostic
+
+	// Check line above
+	if line > 1 {
+		prevLineIdx := line - 2
+		if prevLineIdx >= 0 && prevLineIdx < len(f.Lines) {
+			if !isBlank(f.Lines[prevLineIdx]) {
+				diags = append(diags, lint.Diagnostic{
+					File:     f.Path,
+					Line:     line,
+					Column:   1,
+					RuleID:   r.ID(),
+					RuleName: r.Name(),
+					Severity: lint.Warning,
+					Message:  "horizontal rule needs a blank line above",
+				})
+			}
+		}
+	}
+
+	// Check line below
+	nextLineIdx := line
+	if nextLineIdx < len(f.Lines) {
+		if !isBlank(f.Lines[nextLineIdx]) {
+			diags = append(diags, lint.Diagnostic{
+				File:     f.Path,
+				Line:     line,
+				Column:   1,
+				RuleID:   r.ID(),
+				RuleName: r.Name(),
+				Severity: lint.Warning,
+				Message:  "horizontal rule needs a blank line below",
+			})
+		}
+	}
 
 	return diags
 }
@@ -177,7 +201,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 // collectHorizontalRuleChanges walks the AST and returns:
 // - sets of line numbers needing blank line insertions
 // - map of line numbers to replacement content
-func collectHorizontalRuleChanges(f *lint.File, r *Rule) (beforeSet, afterSet map[int]bool, replacements map[int]string) {
+func collectHorizontalRuleChanges(
+	f *lint.File, r *Rule,
+) (beforeSet, afterSet map[int]bool, replacements map[int]string) {
 	beforeSet = make(map[int]bool)
 	afterSet = make(map[int]bool)
 	replacements = make(map[int]string)
@@ -237,10 +263,11 @@ func parseHorizontalRule(line string) (delimiter rune, count int, hasSpaces bool
 	}
 
 	// Count delimiters and check for spaces
-	for _, r := range line {
-		if r == delimiter {
+	for _, char := range line {
+		switch char {
+		case delimiter:
 			count++
-		} else if r == ' ' || r == '\t' {
+		case ' ', '\t':
 			hasSpaces = true
 		}
 	}

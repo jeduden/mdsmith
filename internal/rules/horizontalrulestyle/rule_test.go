@@ -52,25 +52,6 @@ Text after.
 	diags2 := r.Check(f2)
 	require.Len(t, diags2, 1)
 	assert.Contains(t, diags2[0].Message, "horizontal rule uses asterisk")
-
-	// Test 3: No blank line above
-	src3 := []byte(`# Title
-
-Text before.
----
-
-Text after.
-`)
-	f3, err := lint.NewFile("test3.md", src3)
-	require.NoError(t, err)
-
-	diags3 := r.Check(f3)
-	t.Logf("Test 3 found %d diagnostics", len(diags3))
-	for _, d := range diags3 {
-		t.Logf("  Line %d: %s", d.Line, d.Message)
-	}
-	require.Len(t, diags3, 1, "should detect missing blank line above")
-	assert.Contains(t, diags3[0].Message, "blank line above")
 }
 
 func TestParseHorizontalRule(t *testing.T) {

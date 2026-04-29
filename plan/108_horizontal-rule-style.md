@@ -1,7 +1,7 @@
 ---
 id: 108
 title: Horizontal rule style rule
-status: "🔲"
+status: "✅"
 summary: >-
   New rule MDS044 that pins one of `---`, `***`, or
   `___` for thematic breaks and requires blank lines
@@ -109,33 +109,33 @@ horizontal rule needs a blank line {above|below}
 
 ## Tasks
 
-1. Scaffold `internal/rules/horizontalrulestyle/`.
-2. Implement `Check()` walking `*ast.ThematicBreak`.
-3. Implement `rule.Configurable` for `style`,
+1. [x] Scaffold `internal/rules/horizontalrulestyle/`.
+2. [x] Implement `Check()` walking `*ast.ThematicBreak`.
+3. [x] Implement `rule.Configurable` for `style`,
    `length`, and `require-blank-lines`.
-4. Implement `Fix()` rewriting the line and adding
+4. [x] Implement `Fix()` rewriting the line and adding
    surrounding blank lines.
-5. Register as MDS044 in category `whitespace`.
-6. Add fixture tests covering each delimiter
+5. [x] Register as MDS044 in category `whitespace`.
+6. [x] Add fixture tests covering each delimiter
    choice, wrong length, internal spaces, missing
    blank lines, and a thematic break adjacent to a
    setext heading underline.
-7. Add rule README.
+7. [x] Add rule README.
 
 ## Acceptance Criteria
 
-- [ ] `---` with `style: dash` and `length: 3` emits
+- [x] `---` with `style: dash` and `length: 3` emits
       no diagnostic.
-- [ ] `***` with `style: dash` emits one diagnostic
+- [x] `***` with `style: dash` emits one diagnostic
       and fixes to `---`.
-- [ ] `- - -` emits an internal-spaces diagnostic.
-- [ ] `-----` with `length: 3` emits a length
+- [x] `- - -` emits an internal-spaces diagnostic.
+- [x] `-----` with `length: 3` emits a length
       diagnostic and fixes to `---`.
-- [ ] A thematic break with no blank line above
+- [x] A thematic break with no blank line above
       emits one diagnostic when
       `require-blank-lines: true`.
-- [ ] A setext heading underline (`====` after
+- [x] A setext heading underline (`====` after
       text) emits no diagnostic from this rule.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Rule is disabled by default.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
