@@ -117,6 +117,28 @@ func TestDiscoverFiles_FindsDirectives(t *testing.T) {
 	assert.NotContains(t, got, ".hidden/secret.md")
 }
 
+func TestDiscoverFiles_IgnoresDirectivesInsideFencedCode(t *testing.T) {
+	dir := t.TempDir()
+	// docs file shows a directive only inside a fenced code block,
+	// e.g. as a documentation example. mdsmith does not parse such
+	// markers, so DiscoverFiles must skip the file.
+	docs := "# Generating Content\n\n" +
+		"```markdown\n" +
+		"<?catalog glob: plan/*.md ?>\n" +
+		"<?/catalog?>\n" +
+		"```\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "docs", "guide.md"),
+		[]byte(docs), 0o644))
+
+	// real.md has the directive at document root.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "real.md"),
+		[]byte("# Real\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	got := DiscoverFiles(dir, 1024*1024)
+	assert.Equal(t, []string{"real.md"}, got)
+}
+
 func TestDiscoverFiles_IgnoresDirectiveMentionsInProse(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
@@ -251,6 +273,16 @@ func TestNormalizeManagedPath_RejectsWhitespace(t *testing.T) {
 	_, err := NormalizeManagedPath("/repo", "doc with space.md")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "whitespace")
+}
+
+func TestNormalizeManagedPath_AcceptsRepoRootWithSpaces(t *testing.T) {
+	// The whitespace check must inspect the repo-relative result,
+	// not the raw input, so a repo whose own path contains spaces
+	// (e.g. macOS / Windows home dir) accepts an absolute path that
+	// resolves to a whitespace-free repo-relative tail.
+	got, err := NormalizeManagedPath("/repo with space", "/repo with space/docs/a.md")
+	require.NoError(t, err)
+	assert.Equal(t, "docs/a.md", got)
 }
 
 func TestNormalizeManagedPath_RejectsEscape(t *testing.T) {

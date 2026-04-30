@@ -356,12 +356,12 @@ func hasConflictMarkers(content []byte) bool {
 }
 
 // resolveManagedFiles returns the canonical (repo-relative,
-// forward-slash) list of files to manage for an install command. If
-// args is non-empty, those paths are normalized via
-// githooks.NormalizeManagedPaths. Otherwise discovery walks the repo
-// for files with generated-section directives. The second return is
-// the process exit code: 0 on success, 2 on a user-facing error
-// (already printed to stderr).
+// forward-slash) list of files to manage for an install command.
+// Both branches — explicit args and auto-discovery — go through
+// githooks.NormalizeManagedPaths so the on-disk artefacts and the
+// drift checker agree on what counts as the canonical form. The
+// second return is the process exit code: 0 on success, 2 on a
+// user-facing error (already printed to stderr).
 func resolveManagedFiles(repoRoot string, args []string) ([]string, int) {
 	if len(args) > 0 {
 		normalized, err := githooks.NormalizeManagedPaths(repoRoot, args)
@@ -381,7 +381,13 @@ func resolveManagedFiles(repoRoot string, args []string) ([]string, int) {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
-	return discoverFilesWithGeneratedContent(repoRoot, maxBytes), 0
+	discovered := discoverFilesWithGeneratedContent(repoRoot, maxBytes)
+	normalized, err := githooks.NormalizeManagedPaths(repoRoot, discovered)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return nil, 2
+	}
+	return normalized, 0
 }
 
 // runMergeDriverInstall registers the mdsmith merge driver in
@@ -503,8 +509,9 @@ func ensurePreMergeCommitHook(repoRoot string, files []string) error {
 		preMergeCommitHookMarker + "\n" +
 		"# Re-runs mdsmith fix once git has resolved every per-file\n" +
 		"# merge, so generated sections reflect the final merged\n" +
-		"# state of every source file. Re-install with:\n" +
+		"# state of every source file. Re-install with either:\n" +
 		"#   mdsmith merge-driver install\n" +
+		"#   mdsmith pre-merge-commit install\n" +
 		"set -e\n" +
 		fixCmds.String()
 

@@ -135,9 +135,31 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 // processing-instruction start or end marker for any of the named
 // directives. It scans line-by-line so a backticked or otherwise
 // inline mention like `<?catalog?>` in prose is not treated as a
-// directive.
+// directive. Markers that fall inside a fenced code block (lines
+// between matching ``` or ~~~ fences, with the closing fence using
+// the same character and at least the same length as the opener)
+// are also ignored; mdsmith's own parser only honors processing-
+// instructions at the document root.
 func hasDirectiveMarker(content []byte, names []string) bool {
+	var fenceChar byte
+	var fenceLen int
 	for _, line := range bytes.Split(content, []byte("\n")) {
+		ch, run := openingFence(line)
+		switch {
+		case fenceChar == 0 && ch != 0:
+			// Entering a fenced block.
+			fenceChar = ch
+			fenceLen = run
+			continue
+		case fenceChar != 0 && ch == fenceChar && run >= fenceLen:
+			// Closing fence (same char, length >= opener).
+			fenceChar = 0
+			fenceLen = 0
+			continue
+		case fenceChar != 0:
+			// Inside a fenced block: ignore any directive markers.
+			continue
+		}
 		for _, n := range names {
 			if gensection.IsRawStartMarker(line, n) || gensection.IsRawEndMarker(line, n) {
 				return true
@@ -145,6 +167,34 @@ func hasDirectiveMarker(content []byte, names []string) bool {
 		}
 	}
 	return false
+}
+
+// openingFence reports the fence character and run length of a line
+// that begins (after up to 3 spaces of indentation) with a sequence
+// of three or more backticks or tildes. Returns (0, 0) if the line
+// is not a fence.
+func openingFence(line []byte) (byte, int) {
+	// Allow up to three spaces of indentation per CommonMark.
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+	if i >= len(line) {
+		return 0, 0
+	}
+	c := line[i]
+	if c != '`' && c != '~' {
+		return 0, 0
+	}
+	run := 0
+	for i < len(line) && line[i] == c {
+		i++
+		run++
+	}
+	if run < 3 {
+		return 0, 0
+	}
+	return c, run
 }
 
 // FilesMatch reports whether a and b contain the same set of files,
@@ -233,17 +283,16 @@ func ExtractGitattributesFiles(content string) []string {
 // repo-relative path with forward-slash separators that does not
 // escape repoRoot.
 //
-// Whitespace inside paths is rejected because .gitattributes splits
-// attributes on whitespace and the rule's Fields-based parser cannot
-// recover the original token; tab and newline are likewise rejected.
-// Allowing them would make the installer and the drift checker
-// disagree on what was installed.
+// Whitespace inside the *resulting* repo-relative path is rejected
+// because .gitattributes splits attributes on whitespace and the
+// rule's Fields-based parser cannot recover the original token. The
+// check runs after Rel/ToSlash so an absolute input rooted at a
+// repo whose own path contains whitespace (e.g. a Windows or macOS
+// home dir with spaces) is still accepted, as long as the
+// repo-relative tail is whitespace-free.
 func NormalizeManagedPath(repoRoot, p string) (string, error) {
 	if strings.TrimSpace(p) == "" {
 		return "", fmt.Errorf("empty path")
-	}
-	if strings.ContainsAny(p, " \t\n\r") {
-		return "", fmt.Errorf("path %q contains whitespace, which is not supported in managed file lists", p)
 	}
 
 	abs := p
@@ -260,7 +309,11 @@ func NormalizeManagedPath(repoRoot, p string) (string, error) {
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", fmt.Errorf("path %q escapes repository root", p)
 	}
-	return filepath.ToSlash(rel), nil
+	out := filepath.ToSlash(rel)
+	if strings.ContainsAny(out, " \t\n\r") {
+		return "", fmt.Errorf("path %q contains whitespace, which is not supported in managed file lists", p)
+	}
+	return out, nil
 }
 
 // NormalizeManagedPaths normalizes each entry via NormalizeManagedPath.
