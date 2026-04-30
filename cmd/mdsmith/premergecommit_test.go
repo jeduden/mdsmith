@@ -84,6 +84,101 @@ func TestRunPreMergeCommitStatus_NotInRepo(t *testing.T) {
 	assert.Contains(t, got, "not in a git repository")
 }
 
+// TestRunPreMergeCommitUninstall_ReadError makes hookPath a directory
+// so os.ReadFile returns a non-IsNotExist error, exercising the
+// read-error branch.
+func TestRunPreMergeCommitUninstall_ReadError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(filepath.Join(hooksDir, "pre-merge-commit"), 0o755))
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitUninstall(nil))
+	})
+	assert.Contains(t, got, "reading hook")
+}
+
+// TestRunPreMergeCommitStatus_ReadError exercises the same branch in
+// the status command.
+func TestRunPreMergeCommitStatus_ReadError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(filepath.Join(hooksDir, "pre-merge-commit"), 0o755))
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitStatus(nil))
+	})
+	assert.Contains(t, got, "reading hook")
+}
+
+// TestRunPreMergeCommitUninstall_RemoveError points hookPath at a
+// non-empty directory bearing the mdsmith marker so os.Remove fails
+// with ENOTEMPTY, covering the remove-error branch.
+func TestRunPreMergeCommitUninstall_RemoveError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	hooksDir := resolveHooksDir(dir)
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	require.NoError(t, os.MkdirAll(hookPath, 0o755))
+	// Hook content lives in a child file so the marker is present
+	// when ReadFile is replaced with a successful read of the
+	// "hook"... but ReadFile fails on directories anyway, so we
+	// instead replace the directory with a file containing the
+	// marker, then make the parent unable to be removed by adding a
+	// child entry.
+	// Simpler approach: create hookPath as a file with our marker,
+	// then chmod the parent to read-only is not reliable as root.
+	// Instead, replace hookPath with a non-empty directory so Remove
+	// returns ENOTEMPTY. Manually craft the marker file path so the
+	// existing read returns content with the marker.
+	require.NoError(t, os.RemoveAll(hookPath))
+	require.NoError(t, os.WriteFile(hookPath,
+		[]byte("#!/bin/sh\n"+preMergeCommitHookMarker+"\n"), 0o755))
+
+	// Make the hooks directory read-only so os.Remove fails. As root
+	// this still respects the immutable bit if available; on a
+	// regular tmpfs the chmod will reduce write permission for the
+	// owner, but root bypasses it. Skip the assertion when the chmod
+	// can't actually deny removal (running as root).
+	require.NoError(t, os.Chmod(hooksDir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(hooksDir, 0o755) })
+
+	if removeWillSucceed(hookPath) {
+		t.Skip("filesystem permissions did not block remove (likely running as root); skip remove-error branch")
+	}
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitUninstall(nil))
+	})
+	assert.Contains(t, got, "removing hook")
+}
+
+// removeWillSucceed reports whether the current process can remove
+// path. Used by tests that need to skip when root-mode bypasses the
+// chmod-based denial they rely on.
+func removeWillSucceed(path string) bool {
+	tmp := path + ".probe"
+	if err := os.Rename(path, tmp); err != nil {
+		return false
+	}
+	_ = os.Rename(tmp, path)
+	return true
+}
+
 func TestRunPreMergeCommitUninstall_HookNotPresent(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", dir).Run())

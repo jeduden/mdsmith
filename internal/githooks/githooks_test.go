@@ -137,6 +137,22 @@ func TestDiscoverFiles_IgnoresDirectiveMentionsInProse(t *testing.T) {
 	assert.NotContains(t, got, "docs/guide.md")
 }
 
+func TestDiscoverFiles_SkipsSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	// A real file with a directive that should be discovered.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "real.md"),
+		[]byte("# real\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+	// A symlink whose name ends in .md and would otherwise be read
+	// twice (or follow outside the repo). DiscoverFiles must skip
+	// it because it is not a regular file.
+	target := filepath.Join(dir, "real.md")
+	link := filepath.Join(dir, "link.md")
+	require.NoError(t, os.Symlink(target, link))
+
+	got := DiscoverFiles(dir, 1024*1024)
+	assert.Equal(t, []string{"real.md"}, got)
+}
+
 func TestDiscoverFiles_SortedAndDeduplicated(t *testing.T) {
 	dir := t.TempDir()
 	// Create files with directives in non-alphabetical layout to
@@ -246,6 +262,15 @@ func TestNormalizeManagedPath_RejectsEscape(t *testing.T) {
 func TestNormalizeManagedPaths_FailFast(t *testing.T) {
 	_, err := NormalizeManagedPaths("/repo", []string{"good.md", "bad name.md"})
 	assert.Error(t, err)
+}
+
+func TestNormalizeManagedPaths_SuccessAll(t *testing.T) {
+	got, err := NormalizeManagedPaths("/repo", []string{
+		filepath.Join("docs", "a.md"),
+		"/repo/b.md",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"docs/a.md", "b.md"}, got)
 }
 
 func TestEnableRuleSnippet(t *testing.T) {
