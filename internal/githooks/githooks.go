@@ -166,19 +166,19 @@ func hasDirectiveMarker(content []byte, names []string) bool {
 	var fenceChar byte
 	var fenceLen int
 	for _, line := range bytes.Split(content, []byte("\n")) {
-		ch, run := openingFence(line)
-		switch {
-		case fenceChar == 0 && ch != 0:
-			// Entering a fenced block.
-			fenceChar = ch
-			fenceLen = run
-			continue
-		case fenceChar != 0 && ch == fenceChar && run >= fenceLen:
-			// Closing fence (same char, length >= opener).
-			fenceChar = 0
-			fenceLen = 0
-			continue
-		case fenceChar != 0:
+		if fenceChar == 0 {
+			if ch, run := openingFence(line); ch != 0 {
+				// Entering a fenced block.
+				fenceChar = ch
+				fenceLen = run
+				continue
+			}
+		} else {
+			if isClosingFence(line, fenceChar, fenceLen) {
+				fenceChar = 0
+				fenceLen = 0
+				continue
+			}
 			// Inside a fenced block: ignore any directive markers.
 			continue
 		}
@@ -238,6 +238,34 @@ func openingFence(line []byte) (byte, int) {
 		return 0, 0
 	}
 	return c, run
+}
+
+// isClosingFence reports whether line closes an open fenced block
+// that uses ch with opener length >= openLen. Per CommonMark, the
+// closing fence may be preceded by up to three spaces of indentation
+// and may only be followed by whitespace (no info string allowed),
+// so a line like "```not-a-closing-fence" is treated as content,
+// not as a fence terminator.
+func isClosingFence(line []byte, ch byte, openLen int) bool {
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+	run := 0
+	for i < len(line) && line[i] == ch {
+		i++
+		run++
+	}
+	if run < openLen {
+		return false
+	}
+	for i < len(line) {
+		if line[i] != ' ' && line[i] != '\t' && line[i] != '\r' {
+			return false
+		}
+		i++
+	}
+	return true
 }
 
 // FilesMatch reports whether a and b contain the same set of files,

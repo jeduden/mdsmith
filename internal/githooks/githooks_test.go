@@ -139,6 +139,24 @@ func TestDiscoverFiles_IgnoresDirectivesInsideFencedCode(t *testing.T) {
 	assert.Equal(t, []string{"real.md"}, got)
 }
 
+func TestDiscoverFiles_FenceWithTrailingTextStillEncloses(t *testing.T) {
+	dir := t.TempDir()
+	// A line of `````` characters followed by non-whitespace is NOT a
+	// closing fence in CommonMark. The marker on the next line must
+	// remain inside the fenced block and so must NOT count.
+	content := "# x\n\n" +
+		"```sh\n" +
+		"```not-a-closing-fence\n" +
+		"<?catalog?>\n" +
+		"<?/catalog?>\n" +
+		"```\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "file.md"),
+		[]byte(content), 0o644))
+
+	got := DiscoverFiles(dir, 1024*1024)
+	assert.Empty(t, got, "marker inside fence with trailing-text line must not count")
+}
+
 func TestDiscoverFiles_IgnoresDirectivesInIndentedCodeBlocks(t *testing.T) {
 	dir := t.TempDir()
 	// Indented (4-space) and tab-indented blocks are CommonMark

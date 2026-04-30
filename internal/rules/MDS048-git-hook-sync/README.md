@@ -58,14 +58,17 @@ The rule:
    `mdsmith fix --` lines against the discovered files
 4. Reports a warning if either source is out of sync
 
-If the repository has no directive-bearing files, the rule
-emits no diagnostic.
+If discovery is empty:
+
+- If neither managed source lists files, the rule is silent.
+- If a managed source still lists files, the rule reports
+  those entries as stale (drift against an empty set).
 
 The install commands (`mdsmith merge-driver install` and
-`mdsmith pre-merge-commit install`) apply a fallback list
-of `PLAN.md` and `README.md` when discovery is empty. That
-fallback is install-only. The rule itself never compares
-against fictional defaults.
+`pre-merge-commit install`) apply a fallback list of
+`PLAN.md` and `README.md` when discovery is empty. The
+fallback is install-only. Stale entries from it can still
+trip the rule above.
 
 The rule emits at most one diagnostic per repository. The
 guard lives for the lifetime of the mdsmith process, so
