@@ -385,8 +385,7 @@ func TestRule_Check_OncePerRepoAcrossClones(t *testing.T) {
 	diags1 := clone1.Check(f1)
 	diags2 := clone2.Check(f2)
 	assert.Len(t, diags1, 1, "first clone reports drift")
-	assert.Len(t, diags2, 1,
-		"second clone in the same dir also reports drift (needed for auto-fix)")
+	assert.Empty(t, diags2, "second clone in the same dir does not report (once-per-repo guard)")
 }
 
 func TestRule_Check_MultipleFilesReportDrift(t *testing.T) {
@@ -418,7 +417,7 @@ func TestRule_Check_MultipleFilesReportDrift(t *testing.T) {
 	diags1 := r.Check(f1)
 	diags2 := r.Check(f2)
 	assert.Len(t, diags1, 1, "first file reports drift")
-	assert.Len(t, diags2, 1, "second file also reports drift (enables auto-fix)")
+	assert.Empty(t, diags2, "second file does not report (once-per-repo guard)")
 }
 
 func TestRule_Metadata(t *testing.T) {

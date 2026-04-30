@@ -34,9 +34,18 @@ type Rule struct{}
 // by fixedMu. This lives at package scope so per-file Rule clones
 // share state. The fix should only run once per repo per process since
 // it writes .gitattributes.
+//
+// discoveredCache stores the result of DiscoverFiles per repo to avoid
+// re-scanning the repo for every file. Discovery is expensive (full
+// repo walk + file reads), so caching it significantly improves
+// performance when checking many files in the same repo.
 var (
-	fixedMu    sync.Mutex
-	fixedRepos = make(map[string]bool)
+	fixedMu          sync.Mutex
+	fixedRepos       = make(map[string]bool)
+	discoveredMu     sync.Mutex
+	discoveredCache  = make(map[string][]string)
+	reportedMu       sync.Mutex
+	reportedRepos    = make(map[string]bool)
 )
 
 // ID implements rule.Rule.
@@ -84,7 +93,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return nil
 	}
 
-	discovered := githooks.DiscoverFiles(repoRoot, f.MaxInputBytes)
+	// Check if we've already reported drift for this repo. Report
+	// drift at most once per repo per process to avoid noisy output
+	// when checking many files. The fixer (Fix method) needs at
+	// least one diagnostic to trigger, so we report once.
+	if !r.markReported(repoRoot) {
+		return nil
+	}
+
+	// Get discovered files (cached per repo to avoid repeated scans)
+	discovered := r.getDiscovered(repoRoot, f.MaxInputBytes)
 
 	// Collect drift descriptions from both sources. A blank
 	// description from a source means it is in sync (or the user
@@ -264,7 +282,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	discovered := githooks.DiscoverFiles(repoRoot, f.MaxInputBytes)
+	discovered := r.getDiscovered(repoRoot, f.MaxInputBytes)
 	attrPath := filepath.Join(repoRoot, ".gitattributes")
 
 	// Check if .gitattributes actually needs fixing
@@ -302,6 +320,38 @@ func (r *Rule) markFixed(repoRoot string) bool {
 	}
 	fixedRepos[repoRoot] = true
 	return true
+}
+
+// markReported returns true exactly once per repoRoot for the lifetime
+// of the process. Subsequent calls return false to ensure we only emit
+// one diagnostic per repo (avoiding noisy repeated warnings when checking
+// many files). Shared via package-level state so the guarantee holds
+// even when the engine clones the rule per file.
+func (r *Rule) markReported(repoRoot string) bool {
+	reportedMu.Lock()
+	defer reportedMu.Unlock()
+	if reportedRepos[repoRoot] {
+		return false
+	}
+	reportedRepos[repoRoot] = true
+	return true
+}
+
+// getDiscovered returns the discovered files for a repo, using a cached
+// result if available. Discovery is expensive (full repo walk + file
+// reads), so caching it significantly improves performance when checking
+// many files in the same repo.
+func (r *Rule) getDiscovered(repoRoot string, maxBytes int64) []string {
+	discoveredMu.Lock()
+	defer discoveredMu.Unlock()
+
+	if files, ok := discoveredCache[repoRoot]; ok {
+		return files
+	}
+
+	files := githooks.DiscoverFiles(repoRoot, maxBytes)
+	discoveredCache[repoRoot] = files
+	return files
 }
 
 
