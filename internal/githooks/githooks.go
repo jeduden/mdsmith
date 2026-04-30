@@ -205,9 +205,16 @@ func EnableRuleSnippet(ruleName string) string {
 	return fmt.Sprintf("rules:\n  %s: true\n", ruleName)
 }
 
-// firstQuotedAfter returns the first single-quoted token that appears
-// after marker in line. Returns ok=false if the marker is missing or
-// no quoted token follows it.
+// firstQuotedAfter returns the first POSIX single-quoted token that
+// appears after marker in line, decoding shell-quote escapes so a
+// filename containing a single quote round-trips correctly. The
+// installer uses POSIX `'…'` quoting where a literal quote is
+// emitted as `'\''` (close-quote, backslash-escaped quote, re-open
+// quote). For example `a'b.md` is written as `'a'\''b.md'` and is
+// decoded back to `a'b.md` here.
+//
+// Returns ok=false if the marker is missing or no quoted token
+// follows it.
 func firstQuotedAfter(line, marker string) (string, bool) {
 	idx := strings.Index(line, marker)
 	if idx == -1 {
@@ -218,11 +225,25 @@ func firstQuotedAfter(line, marker string) (string, bool) {
 		return "", false
 	}
 	rest = rest[1:]
-	end := strings.IndexByte(rest, '\'')
-	if end == -1 {
-		return "", false
+
+	var b strings.Builder
+	for {
+		end := strings.IndexByte(rest, '\'')
+		if end == -1 {
+			return "", false
+		}
+		b.WriteString(rest[:end])
+		rest = rest[end+1:]
+		// Continuation: `\''` after a closing quote means a literal
+		// single quote followed by a re-opened quoted segment.
+		if strings.HasPrefix(rest, `\''`) {
+			b.WriteByte('\'')
+			rest = rest[3:]
+			continue
+		}
+		break
 	}
-	tok := rest[:end]
+	tok := b.String()
 	if tok == "" {
 		return "", false
 	}

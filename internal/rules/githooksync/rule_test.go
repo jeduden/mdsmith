@@ -144,8 +144,9 @@ func TestRule_Check_DriverRegisteredButNoGitattributes(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithDriver(t, dir)
 
-	// File with a directive exists but .gitattributes is missing, so
-	// the rule should silently skip the merge-driver check.
+	// File with a directive exists but .gitattributes has no
+	// merge=mdsmith entries, which means the registered driver will
+	// not run for any file. The rule should warn about that.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"),
 		[]byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
 
@@ -155,7 +156,10 @@ func TestRule_Check_DriverRegisteredButNoGitattributes(t *testing.T) {
 		Source:        []byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"),
 		MaxInputBytes: 1048576,
 	}
-	assert.Empty(t, r.Check(f))
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message,
+		"merge.mdsmith.driver is registered but .gitattributes has no merge=mdsmith entries")
 }
 
 func TestRule_Check_HookWithoutMdsmithMarker(t *testing.T) {
@@ -180,6 +184,35 @@ func TestRule_Check_HookWithoutMdsmithMarker(t *testing.T) {
 		MaxInputBytes: 1048576,
 	}
 	assert.Empty(t, r.Check(f))
+}
+
+func TestRule_Check_CombinesBothDriftSourcesIntoOneDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithDriver(t, dir)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"),
+		[]byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+	// Both sources drift simultaneously: .gitattributes lists a
+	// different file and the hook lists yet another file.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
+		[]byte("OTHER.md merge=mdsmith\n"), 0o644))
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookContent := "#!/bin/sh\n" + githooks.PreMergeCommitMarker + "\n" +
+		"mdsmith fix -- 'STALE.md'\n"
+	require.NoError(t, os.WriteFile(filepath.Join(hooksDir, "pre-merge-commit"),
+		[]byte(hookContent), 0o755))
+
+	r := &Rule{}
+	f := &lint.File{
+		Path:          filepath.Join(dir, "README.md"),
+		Source:        []byte("# Test\n"),
+		MaxInputBytes: 1048576,
+	}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "rule must emit at most one diagnostic per repo")
+	assert.Contains(t, diags[0].Message, "merge-driver assignments in .gitattributes")
+	assert.Contains(t, diags[0].Message, "pre-merge-commit hook is out of sync")
 }
 
 func TestRule_Check_OncePerRepo(t *testing.T) {

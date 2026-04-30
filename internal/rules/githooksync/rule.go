@@ -65,10 +65,29 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	discovered := githooks.DiscoverFiles(repoRoot, f.MaxInputBytes)
 
-	var diags []lint.Diagnostic
-	diags = append(diags, r.checkMergeDriverAttrs(f, repoRoot, discovered)...)
-	diags = append(diags, r.checkPreMergeCommitHook(f, repoRoot, discovered)...)
-	return diags
+	// Collect drift descriptions from both sources so the rule emits
+	// at most one diagnostic per repository per lint run. A blank
+	// description from a source means it is in sync (or the user has
+	// not opted into that source at all).
+	var parts []string
+	if msg := r.mergeDriverDrift(repoRoot, discovered); msg != "" {
+		parts = append(parts, msg)
+	}
+	if msg := r.preMergeCommitHookDrift(repoRoot, discovered); msg != "" {
+		parts = append(parts, msg)
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     1,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  strings.Join(parts, "; "),
+	}}
 }
 
 // markReported returns true exactly once per repoRoot for the lifetime
@@ -88,68 +107,64 @@ func (r *Rule) markReported(repoRoot string) bool {
 	return true
 }
 
-// checkMergeDriverAttrs reads .gitattributes (the real source of truth
-// for which files use the mdsmith merge driver) and reports drift
-// against the discovered file list. The check only runs when
-// `merge.mdsmith.driver` is registered, so repos that have not opted
-// in are not flagged.
-func (r *Rule) checkMergeDriverAttrs(f *lint.File, repoRoot string, discovered []string) []lint.Diagnostic {
+// mergeDriverDrift returns a human-readable description of any drift
+// between .gitattributes (the real source of truth for which files
+// use the mdsmith merge driver) and the discovered file list. The
+// check only runs when `merge.mdsmith.driver` is registered, so repos
+// that have not opted in are not flagged. Returns an empty string
+// when no drift is detected.
+//
+// An empty `merge=mdsmith` assignment list with the driver registered
+// and discovered files present is treated as drift: the merge driver
+// will not run for any file, defeating the registration.
+func (r *Rule) mergeDriverDrift(repoRoot string, discovered []string) string {
 	if !githooks.HasMdsmithMergeDriver(repoRoot) {
-		return nil
+		return ""
 	}
 	data, err := os.ReadFile(filepath.Join(repoRoot, ".gitattributes"))
-	if err != nil {
-		return nil
+	if err != nil && !os.IsNotExist(err) {
+		return ""
 	}
 	installed := githooks.ExtractGitattributesFiles(string(data))
-	if len(installed) == 0 || githooks.FilesMatch(installed, discovered) {
-		return nil
+	if githooks.FilesMatch(installed, discovered) {
+		return ""
 	}
-	return []lint.Diagnostic{{
-		File:     f.Path,
-		Line:     1,
-		Column:   1,
-		RuleID:   r.ID(),
-		RuleName: r.Name(),
-		Severity: lint.Warning,
-		Message: fmt.Sprintf(
-			"merge-driver assignments in .gitattributes are out of sync (has: %s, should have: %s)",
-			strings.Join(installed, ", "),
+	if len(installed) == 0 {
+		return fmt.Sprintf(
+			"merge.mdsmith.driver is registered but .gitattributes has no merge=mdsmith entries (should have: %s)",
 			strings.Join(discovered, ", "),
-		),
-	}}
+		)
+	}
+	return fmt.Sprintf(
+		"merge-driver assignments in .gitattributes are out of sync (has: %s, should have: %s)",
+		strings.Join(installed, ", "),
+		strings.Join(discovered, ", "),
+	)
 }
 
-// checkPreMergeCommitHook reads the pre-merge-commit hook (if any)
-// installed by mdsmith and reports drift against the discovered file
-// list. Hooks not bearing the mdsmith marker are left alone.
-func (r *Rule) checkPreMergeCommitHook(f *lint.File, repoRoot string, discovered []string) []lint.Diagnostic {
+// preMergeCommitHookDrift returns a human-readable description of any
+// drift between the installed pre-merge-commit hook and the discovered
+// file list. Returns an empty string if no hook is installed, the
+// hook is not mdsmith-managed, or the file list matches.
+func (r *Rule) preMergeCommitHookDrift(repoRoot string, discovered []string) string {
 	hookPath := filepath.Join(githooks.ResolveHooksDir(repoRoot), "pre-merge-commit")
 	data, err := os.ReadFile(hookPath)
 	if err != nil {
-		return nil
+		return ""
 	}
 	hook := string(data)
 	if !strings.Contains(hook, githooks.PreMergeCommitMarker) {
-		return nil
+		return ""
 	}
 	installed := githooks.ExtractHookFiles(hook)
-	if len(installed) == 0 || githooks.FilesMatch(installed, discovered) {
-		return nil
+	if githooks.FilesMatch(installed, discovered) {
+		return ""
 	}
-	return []lint.Diagnostic{{
-		File:     f.Path,
-		Line:     1,
-		Column:   1,
-		RuleID:   r.ID(),
-		RuleName: r.Name(),
-		Severity: lint.Warning,
-		Message: fmt.Sprintf(
-			"pre-merge-commit hook is out of sync (has: %s, should have: %s)",
-			strings.Join(installed, ", "),
-			strings.Join(discovered, ", "),
-		),
-	}}
+	return fmt.Sprintf(
+		"pre-merge-commit hook is out of sync (has: %s, should have: %s)",
+		strings.Join(installed, ", "),
+		strings.Join(discovered, ", "),
+	)
 }
 
 // ApplySettings implements rule.Configurable. The rule has no runtime

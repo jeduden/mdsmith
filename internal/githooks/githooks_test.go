@@ -38,6 +38,17 @@ func TestFilesMatch(t *testing.T) {
 	}
 }
 
+func TestExtractHookFiles_DecodesShellQuoteEscapes(t *testing.T) {
+	// shellQuote encodes a literal single quote as `'\''` so the
+	// filename `a'b.md` is written as `'a'\''b.md'`. The parser
+	// must decode that back to the original.
+	content := "mdsmith fix -- 'a'\\''b.md'\n" +
+		"git add -- 'a'\\''b.md'\n" +
+		"mdsmith fix -- 'plain.md'\n"
+	got := ExtractHookFiles(content)
+	assert.Equal(t, []string{"a'b.md", "plain.md"}, got)
+}
+
 func TestExtractHookFiles_QuotedTokens(t *testing.T) {
 	content := "#!/bin/sh\n" +
 		PreMergeCommitMarker + "\n" +
