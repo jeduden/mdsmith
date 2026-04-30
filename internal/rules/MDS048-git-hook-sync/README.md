@@ -1,10 +1,10 @@
 ---
-id: MDS047
+id: MDS048
 name: git-hook-sync
 status: ready
 description: Git hooks (merge-driver and pre-merge-commit) must be in sync with files containing generated content directives.
 ---
-# MDS047: git-hook-sync
+# MDS048: git-hook-sync
 
 Git hooks (merge-driver and pre-merge-commit) must be in sync with files containing generated content directives.
 
@@ -104,7 +104,7 @@ Hooks are installed but for different files:
 
 ## Meta-Information
 
-- **ID**: MDS047
+- **ID**: MDS048
 - **Name**: `git-hook-sync`
 - **Status**: ready
 - **Default**: disabled

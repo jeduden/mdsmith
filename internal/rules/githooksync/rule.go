@@ -24,7 +24,7 @@ type Rule struct {
 }
 
 // ID implements rule.Rule.
-func (r *Rule) ID() string { return "MDS047" }
+func (r *Rule) ID() string { return "MDS048" }
 
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "git-hook-sync" }
