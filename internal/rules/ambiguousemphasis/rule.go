@@ -293,10 +293,12 @@ func (r *Rule) adjacentSameDelimDiags(f *lint.File, lineNum int, line []byte, ru
 }
 
 // gapNonEmptyAllNonWhitespace reports whether b is non-empty and
-// contains no whitespace. The adjacent-same-delim detector treats a
-// gap that contains a space as a clean separation: CommonMark's
-// flanking rules then resolve the runs unambiguously, so the rule
-// stays silent.
+// contains no ASCII space or tab. Gaps are computed within a single
+// line (newlines never appear), so space and tab cover the relevant
+// CommonMark whitespace cases. The adjacent-same-delim detector
+// treats a gap that contains a space or tab as a clean separation:
+// CommonMark's flanking rules then resolve the runs unambiguously,
+// so the rule stays silent.
 func gapNonEmptyAllNonWhitespace(b []byte) bool {
 	if len(b) == 0 {
 		return false
