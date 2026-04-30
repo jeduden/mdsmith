@@ -129,6 +129,20 @@ func TestPreMergeCommitInstall_BadMaxInputSize(t *testing.T) {
 	assert.Contains(t, got, "invalid max-input-size")
 }
 
+func TestPreMergeCommitInstall_RejectsWhitespacePath(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitInstall([]string{"bad name.md"}))
+	})
+	assert.Contains(t, got, "whitespace")
+}
+
 func TestPreMergeCommitInstall_RefusesUserHook(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", dir).Run())

@@ -353,6 +353,24 @@ func TestRunMergeDriverInstall_BadMaxInputSize(t *testing.T) {
 	assert.Contains(t, got, "invalid max-input-size")
 }
 
+func TestRunMergeDriverInstall_RejectsWhitespacePath(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverInstall([]string{"bad name.md"}))
+	})
+	assert.Contains(t, got, "whitespace")
+}
+
 func TestRunMergeDriverInstall_NoArgsUsesDiscovery(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", dir).Run())
