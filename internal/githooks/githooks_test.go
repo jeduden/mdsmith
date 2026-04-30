@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -208,6 +209,7 @@ func TestDiscoverFiles_IgnoresDirectiveMentionsInProse(t *testing.T) {
 }
 
 func TestDiscoverFiles_SkipsSymlinks(t *testing.T) {
+	testutil.SkipIfSymlinkUnsupported(t)
 	dir := t.TempDir()
 	// A real file with a directive that should be discovered.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "real.md"),
