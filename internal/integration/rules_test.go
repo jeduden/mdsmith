@@ -28,6 +28,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodelanguage"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/firstlineheading"
+	_ "github.com/jeduden/mdsmith/internal/rules/githooksync"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingincrement"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/include"
