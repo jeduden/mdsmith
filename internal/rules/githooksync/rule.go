@@ -74,9 +74,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	discovered := githooks.DiscoverFiles(repoRoot, f.MaxInputBytes)
 
 	// Collect drift descriptions from both sources so the rule emits
-	// at most one diagnostic per repository per lint run. A blank
-	// description from a source means it is in sync (or the user has
-	// not opted into that source at all).
+	// at most one diagnostic per repository during the lifetime of
+	// this process (the reportedRepos guard is process-scoped, not
+	// run-scoped — see markReported). A blank description from a
+	// source means it is in sync (or the user has not opted into
+	// that source at all).
 	var parts []string
 	if msg := r.mergeDriverDrift(repoRoot, discovered); msg != "" {
 		parts = append(parts, msg)

@@ -360,11 +360,16 @@ func NormalizeManagedPaths(repoRoot string, paths []string) ([]string, error) {
 
 // HasMdsmithMergeDriver reports whether the repository's local git
 // config defines `merge.mdsmith.driver` (i.e. the merge driver itself
-// has been registered). A missing driver is reported as false rather
-// than as an error so callers can treat the merge-driver setup as
-// "not installed".
+// has been registered for this repo). The lookup is scoped to the
+// repo's local config (`--local`), not global/system config, so a
+// user with a personal merge driver elsewhere cannot accidentally
+// opt every clone into MDS048's drift checks. A missing driver is
+// reported as false rather than as an error so callers can treat
+// the merge-driver setup as "not installed".
 func HasMdsmithMergeDriver(repoRoot string) bool {
-	out, err := exec.Command("git", "-C", repoRoot, "config", "--get", "merge.mdsmith.driver").Output()
+	out, err := exec.Command(
+		"git", "-C", repoRoot, "config", "--local", "--get", "merge.mdsmith.driver",
+	).Output()
 	if err != nil {
 		return false
 	}

@@ -58,9 +58,9 @@ The rule:
    `mdsmith fix --` lines against the discovered files
 4. Reports a warning if either source is out of sync
 
-The rule emits at most one diagnostic per repository per
-lint run regardless of how many files in that repository are
-linted.
+The rule emits at most one diagnostic per repository. The
+guard lives for the lifetime of the mdsmith process, so
+linting many files in the same repo will not duplicate it.
 
 ## Fix
 

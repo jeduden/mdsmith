@@ -17,8 +17,8 @@ Subcommands:
         Install the pre-merge-commit hook that runs mdsmith fix
         on specified files after git completes all per-file merges
         but before creating the merge commit. This ensures that
-        generated sections (catalog, include) reflect the final
-        merged state of every source file.
+        generated sections (catalog, include, toc) reflect the
+        final merged state of every source file.
 
         If files are conflicted, mdsmith fix resolves them and
         the hook stages the resolved files with 'git add' to
