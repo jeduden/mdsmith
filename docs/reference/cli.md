@@ -11,18 +11,19 @@ mdsmith <command> [flags] [files...]
 
 ## Commands
 
-| Command        | Description                                    |
-|----------------|------------------------------------------------|
-| `check`        | Lint files                                     |
-| `fix`          | Auto-fix issues in place                       |
-| `query`        | Select files by CUE expression on front matter |
-| `help`         | Show help for rules/topics                     |
-| `metrics`      | List and rank shared metrics                   |
-| `merge-driver` | Git merge driver for regenerable sections      |
-| `archetypes`   | Scaffold, list, show, and locate archetypes    |
-| `kinds`        | Inspect declared kinds and resolve config      |
-| `init`         | Generate `.mdsmith.yml`                        |
-| `version`      | Print version, exit                            |
+| Command            | Description                                    |
+|--------------------|------------------------------------------------|
+| `check`            | Lint files                                     |
+| `fix`              | Auto-fix issues in place                       |
+| `query`            | Select files by CUE expression on front matter |
+| `help`             | Show help for rules/topics                     |
+| `metrics`          | List and rank shared metrics                   |
+| `merge-driver`     | Git merge driver for regenerable sections      |
+| `pre-merge-commit` | Install/manage pre-merge-commit hook           |
+| `archetypes`       | Scaffold, list, show, and locate archetypes    |
+| `kinds`            | Inspect declared kinds and resolve config      |
+| `init`             | Generate `.mdsmith.yml`                        |
+| `version`          | Print version, exit                            |
 
 The `check` and `fix` commands accept file paths,
 directories, and glob patterns as positional arguments.
@@ -170,6 +171,34 @@ Archetype roots come from the top-level
 config file; it prints the snippet to add manually.
 `list` exits `1` when no archetypes are discovered;
 `show` and `path` exit `2` on unknown names.
+
+## `pre-merge-commit` Subcommands
+
+| Subcommand      | Description                                       |
+|-----------------|---------------------------------------------------|
+| `install [...]` | Install hook to run mdsmith fix during merges     |
+| `uninstall`     | Remove hook if installed by mdsmith               |
+| `status`        | Show hook installation state and configured files |
+
+The `pre-merge-commit` hook runs after git completes all
+per-file merges but before creating the merge commit. This
+ensures generated sections (`<?catalog?>`, `<?include?>`)
+reflect the final merged state of every source file.
+
+When files have conflict markers, `mdsmith fix` resolves
+them. The hook then stages the resolved files with
+`git add` to clear the conflict state.
+
+`install` accepts a list of files to process (default:
+`PLAN.md README.md`). The hook is installed at
+`.git/hooks/pre-merge-commit` or the path configured via
+`core.hooksPath`.
+
+`uninstall` refuses to remove user-authored hooks (those
+without the mdsmith marker comment).
+
+`status` exits `1` when the hook is not installed, `0`
+when installed, and `2` on errors.
 
 ## `--max-input-size`
 
