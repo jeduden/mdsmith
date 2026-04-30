@@ -27,7 +27,9 @@ Subcommands:
   install [files...]
         Register the merge driver in git config and ensure
         .gitattributes assigns it to the listed files.
-        Default files: PLAN.md README.md
+
+        When no files are specified, automatically discovers
+        files with generated content (catalog, include, toc).
 
 Git config (set by install):
   merge.mdsmith.driver = '/absolute/path/to/mdsmith' merge-driver run %O %A %B %P
@@ -352,10 +354,6 @@ func hasConflictMarkers(content []byte) bool {
 	return false
 }
 
-// defaultMergeDriverFiles are the files assigned to the merge
-// driver when install is run without explicit file arguments.
-var defaultMergeDriverFiles = []string{"PLAN.md", "README.md"}
-
 // runMergeDriverInstall registers the mdsmith merge driver in
 // the local git config and ensures .gitattributes assigns it.
 func runMergeDriverInstall(args []string) int {
@@ -378,10 +376,24 @@ func runMergeDriverInstall(args []string) int {
 		return 2
 	}
 
-	// Determine file list: use args if given, else defaults.
-	files := defaultMergeDriverFiles
+	// Determine file list: use args if given, else discover files
+	// with generated content.
+	var files []string
 	if len(args) > 0 {
 		files = args
+	} else {
+		// Resolve max input size from config.
+		cfg, _, err := loadConfig("")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+			return 2
+		}
+		maxBytes, err := resolveMaxInputBytes(cfg, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return 2
+		}
+		files = discoverFilesWithGeneratedContent(repoRoot, maxBytes)
 	}
 
 	attrPath := filepath.Join(repoRoot, ".gitattributes")

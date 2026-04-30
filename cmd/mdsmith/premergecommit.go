@@ -22,7 +22,8 @@ Subcommands:
         the hook stages the resolved files with 'git add' to
         clear the conflict state from the git index.
 
-        Default files: PLAN.md README.md
+        When no files are specified, automatically discovers
+        files with generated content (catalog, include, toc).
 
   uninstall
         Remove the pre-merge-commit hook if it was installed
@@ -68,10 +69,6 @@ func runPreMergeCommit(args []string) int {
 	}
 }
 
-// defaultPreMergeCommitFiles are the files processed by the hook
-// when install is run without explicit file arguments.
-var defaultPreMergeCommitFiles = []string{"PLAN.md", "README.md"}
-
 // runPreMergeCommitInstall installs the pre-merge-commit hook.
 func runPreMergeCommitInstall(args []string) int {
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
@@ -88,10 +85,24 @@ func runPreMergeCommitInstall(args []string) int {
 	}
 	repoRoot := strings.TrimSpace(string(out))
 
-	// Determine file list: use args if given, else defaults.
-	files := defaultPreMergeCommitFiles
+	// Determine file list: use args if given, else discover files
+	// with generated content.
+	var files []string
 	if len(args) > 0 {
 		files = args
+	} else {
+		// Resolve max input size from config.
+		cfg, _, err := loadConfig("")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+			return 2
+		}
+		maxBytes, err := resolveMaxInputBytes(cfg, "")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return 2
+		}
+		files = discoverFilesWithGeneratedContent(repoRoot, maxBytes)
 	}
 
 	if err := ensurePreMergeCommitHook(repoRoot, files); err != nil {
