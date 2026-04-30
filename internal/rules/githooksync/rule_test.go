@@ -366,9 +366,6 @@ func TestRule_Check_OncePerRepoAcrossClones(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
 		[]byte("README.md merge=mdsmith\n"), 0o644))
 
-	t.Cleanup(resetReportedForTest)
-	resetReportedForTest()
-
 	clone1 := rule.CloneRule(&Rule{}).(*Rule)
 	clone2 := rule.CloneRule(&Rule{}).(*Rule)
 
@@ -387,12 +384,12 @@ func TestRule_Check_OncePerRepoAcrossClones(t *testing.T) {
 
 	diags1 := clone1.Check(f1)
 	diags2 := clone2.Check(f2)
-	assert.Len(t, diags1, 1, "first clone reports drift once")
-	assert.Empty(t, diags2,
-		"second clone in the same repo must not duplicate the diagnostic")
+	assert.Len(t, diags1, 1, "first clone reports drift")
+	assert.Len(t, diags2, 1,
+		"second clone in the same repo also reports drift (needed for auto-fix)")
 }
 
-func TestRule_Check_OncePerRepo(t *testing.T) {
+func TestRule_Check_MultipleFilesReportDrift(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithDriver(t, dir)
 
@@ -403,9 +400,6 @@ func TestRule_Check_OncePerRepo(t *testing.T) {
 	// .gitattributes lists only README.md, so drift is real.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
 		[]byte("README.md merge=mdsmith\n"), 0o644))
-
-	t.Cleanup(resetReportedForTest)
-	resetReportedForTest()
 
 	r := &Rule{}
 	f1 := &lint.File{
@@ -423,8 +417,8 @@ func TestRule_Check_OncePerRepo(t *testing.T) {
 
 	diags1 := r.Check(f1)
 	diags2 := r.Check(f2)
-	assert.Len(t, diags1, 1, "first file should report drift")
-	assert.Empty(t, diags2, "second file in same repo should not duplicate the diagnostic")
+	assert.Len(t, diags1, 1, "first file reports drift")
+	assert.Len(t, diags2, 1, "second file also reports drift (enables auto-fix)")
 }
 
 func TestRule_Metadata(t *testing.T) {

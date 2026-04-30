@@ -422,6 +422,51 @@ func NormalizeManagedPaths(repoRoot string, paths []string) ([]string, error) {
 	return out, nil
 }
 
+// WriteGitattributes writes a .gitattributes file at the given path
+// with merge=mdsmith assignments for the provided files. The header
+// comment is preserved from any existing .gitattributes, or a default
+// header is added if creating the file from scratch. Files are written
+// in the order provided (DiscoverFiles already sorts them).
+func WriteGitattributes(path string, files []string) error {
+	// Read existing content to preserve header comments
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	// Extract header comments (lines starting with # before first non-comment)
+	var header strings.Builder
+	if len(existing) > 0 {
+		for _, line := range strings.Split(string(existing), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			if !strings.HasPrefix(trimmed, "#") {
+				break
+			}
+			header.WriteString(line)
+			header.WriteString("\n")
+		}
+	}
+
+	// If no header found, add default
+	if header.Len() == 0 {
+		header.WriteString("# Custom merge driver for files with auto-generated sections\n")
+		header.WriteString("# (catalog, include). Resolves section conflicts via mdsmith fix.\n")
+		header.WriteString("# Run: mdsmith merge-driver install\n")
+	}
+
+	// Build new content
+	var content strings.Builder
+	content.WriteString(header.String())
+	for _, f := range files {
+		fmt.Fprintf(&content, "%s merge=mdsmith\n", f)
+	}
+
+	return os.WriteFile(path, []byte(content.String()), 0644)
+}
+
 // HasMdsmithMergeDriver reports whether the repository's local git
 // config defines `merge.mdsmith.driver` (i.e. the merge driver itself
 // has been registered for this repo). The lookup is scoped to the

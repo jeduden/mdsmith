@@ -28,21 +28,15 @@ func init() {
 // true`. ApplySettings is still implemented to validate unknown keys
 // when the user provides a mapping, but execution does not depend on
 // it being called.
-//
-// "At most one diagnostic per repository" is enforced via package-
-// level state rather than per-Rule state, because the engine clones
-// Configurable rules per file when the rule is enabled with a
-// settings mapping (even an empty `{}`). With per-instance state,
-// each clone would re-emit the diagnostic for every file in the
-// repo.
 type Rule struct{}
 
-// reportedRepos tracks repositories already reported against during
-// the lifetime of this process, guarded by reportedMu. The set lives
-// at package scope so per-file Rule clones share the same state.
+// fixedRepos tracks repositories where Fix() has already run, guarded
+// by fixedMu. This lives at package scope so per-file Rule clones
+// share state. The fix should only run once per repo per process since
+// it writes .gitattributes.
 var (
-	reportedMu    sync.Mutex
-	reportedRepos = make(map[string]bool)
+	fixedMu    sync.Mutex
+	fixedRepos = make(map[string]bool)
 )
 
 // ID implements rule.Rule.
@@ -77,10 +71,6 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return nil
 	}
 
-	if !r.markReported(repoRoot) {
-		return nil
-	}
-
 	// Cheap opt-in probes before the (expensive) repo walk. The
 	// merge-driver source only applies when the local config
 	// registers `merge.mdsmith.driver`, and the hook source only
@@ -96,12 +86,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	discovered := githooks.DiscoverFiles(repoRoot, f.MaxInputBytes)
 
-	// Collect drift descriptions from both sources so the rule emits
-	// at most one diagnostic per repository during the lifetime of
-	// this process (the reportedRepos guard is process-scoped, not
-	// run-scoped — see markReported). A blank description from a
-	// source means it is in sync (or the user has not opted into
-	// that source at all).
+	// Collect drift descriptions from both sources. A blank
+	// description from a source means it is in sync (or the user
+	// has not opted into that source at all).
 	var parts []string
 	if msg := r.mergeDriverDrift(repoRoot, discovered); msg != "" {
 		parts = append(parts, msg)
@@ -154,30 +141,6 @@ func peekHookSource(repoRoot string) hookSource {
 		return hookSourceManaged
 	}
 	return hookSourceUnmanaged
-}
-
-// markReported returns true exactly once per repoRoot for the
-// lifetime of the process. Subsequent calls for the same repo return
-// false so duplicate diagnostics are not emitted while linting many
-// files in the same repo. Shared via package-level state so the
-// guarantee holds even when the engine clones the rule per file.
-func (r *Rule) markReported(repoRoot string) bool {
-	reportedMu.Lock()
-	defer reportedMu.Unlock()
-	if reportedRepos[repoRoot] {
-		return false
-	}
-	reportedRepos[repoRoot] = true
-	return true
-}
-
-// resetReportedForTest clears the package-level reported set. Tests
-// call it via t.Cleanup so independent cases do not leak state into
-// each other.
-func resetReportedForTest() {
-	reportedMu.Lock()
-	defer reportedMu.Unlock()
-	reportedRepos = make(map[string]bool)
 }
 
 // mergeDriverDrift returns a human-readable description of any drift
@@ -265,6 +228,83 @@ func (r *Rule) preMergeCommitHookDrift(repoRoot string, discovered []string) str
 	)
 }
 
+// Fix implements rule.FixableRule. It regenerates .gitattributes to
+// match the discovered file list when the merge driver is registered.
+// The pre-merge-commit hook is not auto-fixed because it is an
+// executable script and modifying executable files during automated
+// fixes could be surprising or unsafe. Users must run
+// `mdsmith pre-merge-commit install` manually to update the hook.
+//
+// The fix only runs when f.FS != nil (a real file, not stdin) and
+// when the repository has opted into the merge driver via
+// `git config merge.mdsmith.driver`. If neither condition holds, the
+// original file content is returned unchanged.
+//
+// Like Check, Fix only runs once per repository per process to avoid
+// redundant file writes when linting many files in the same repo.
+func (r *Rule) Fix(f *lint.File) []byte {
+	// Skip stdin and other in-memory inputs (same logic as Check).
+	if f.FS == nil {
+		return f.Source
+	}
+
+	repoRoot, err := githooks.GitRepoRoot(filepath.Dir(f.Path))
+	if err != nil {
+		return f.Source
+	}
+
+	// Only fix once per repo per process
+	if !r.markFixed(repoRoot) {
+		return f.Source
+	}
+
+	// Only fix when the merge driver is registered. If the driver
+	// isn't set up, there's no .gitattributes to repair.
+	if !githooks.HasMdsmithMergeDriver(repoRoot) {
+		return f.Source
+	}
+
+	discovered := githooks.DiscoverFiles(repoRoot, f.MaxInputBytes)
+	attrPath := filepath.Join(repoRoot, ".gitattributes")
+
+	// Check if .gitattributes actually needs fixing
+	data, err := os.ReadFile(attrPath)
+	if err == nil {
+		installed := githooks.ExtractGitattributesFiles(string(data))
+		if githooks.FilesMatch(installed, discovered) {
+			// Already in sync, nothing to fix
+			return f.Source
+		}
+	}
+
+	// Write the corrected .gitattributes
+	if err := githooks.WriteGitattributes(attrPath, discovered); err != nil {
+		// If write fails, return original content unchanged
+		return f.Source
+	}
+
+	// Return original file content unchanged (the fix is in .gitattributes,
+	// not in the markdown file being linted)
+	return f.Source
+}
+
+
+// markFixed returns true exactly once per repoRoot for the lifetime
+// of the process. Subsequent calls for the same repo return false so
+// .gitattributes is not written multiple times while fixing many
+// files in the same repo. Shared via package-level state so the
+// guarantee holds even when the engine clones the rule per file.
+func (r *Rule) markFixed(repoRoot string) bool {
+	fixedMu.Lock()
+	defer fixedMu.Unlock()
+	if fixedRepos[repoRoot] {
+		return false
+	}
+	fixedRepos[repoRoot] = true
+	return true
+}
+
+
 // ApplySettings implements rule.Configurable. The rule has no runtime
 // settings, so this only rejects unknown keys when a user supplies a
 // mapping. The rule executes regardless of whether ApplySettings is
@@ -284,4 +324,5 @@ func (r *Rule) DefaultSettings() map[string]any {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.FixableRule  = (*Rule)(nil)
 )
