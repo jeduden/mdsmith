@@ -86,6 +86,29 @@ func TestRunPreMergeCommitUninstall_HookNotPresent(t *testing.T) {
 	assert.Contains(t, got, "no pre-merge-commit hook found")
 }
 
+func TestPreMergeCommitInstall_RefusesUserHook(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hooksDir, "pre-merge-commit"),
+		[]byte("#!/bin/sh\necho user hook\n"), 0o755))
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitInstall([]string{"PLAN.md"}))
+	})
+	assert.Contains(t, got, "installing pre-merge-commit hook")
+}
+
 func TestPreMergeCommitInstall_NoArgsUsesDiscovery(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", dir).Run())

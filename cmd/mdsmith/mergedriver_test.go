@@ -299,6 +299,45 @@ func TestRunMergeDriverInstall_HelpFlag_ExitsZero(t *testing.T) {
 	})
 }
 
+func TestRunMergeDriverInstall_NotInRepo(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git"),
+		[]byte("not a real gitdir"), 0o644))
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverInstall(nil))
+	})
+	assert.Contains(t, got, "not in a git repository")
+}
+
+func TestRunMergeDriverInstall_NoArgsUsesDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	// Generate a markdown file with a directive so discovery returns
+	// it instead of the PLAN.md/README.md fallback.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "guide.md"),
+		[]byte("# Guide\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 0, runMergeDriverInstall(nil))
+	})
+	assert.Contains(t, got, "merge driver 'mdsmith' installed")
+	// Make sure the snippet print landed too.
+	assert.Contains(t, got, "git-hook-sync: true")
+}
+
 // --- resolveInstalledBinary ---
 
 func TestResolveInstalledBinary_NonTemporaryExe(t *testing.T) {

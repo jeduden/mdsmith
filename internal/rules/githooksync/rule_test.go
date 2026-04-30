@@ -155,6 +155,48 @@ func TestRule_Check_GitattributesOutOfSync(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "has: README.md")
 }
 
+func TestRule_Check_DriverRegisteredButNoGitattributes(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithDriver(t, dir)
+
+	// File with a directive exists but .gitattributes is missing, so
+	// the rule should silently skip the merge-driver check.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"),
+		[]byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	r := &Rule{configured: true}
+	f := &lint.File{
+		Path:          filepath.Join(dir, "README.md"),
+		Source:        []byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"),
+		MaxInputBytes: 1048576,
+	}
+	assert.Empty(t, r.Check(f))
+}
+
+func TestRule_Check_HookWithoutMdsmithMarker(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithDriver(t, dir)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"),
+		[]byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitattributes"),
+		[]byte("README.md merge=mdsmith\n"), 0o644))
+
+	// User-authored hook lacking the mdsmith marker — must be ignored.
+	hooksDir := filepath.Join(dir, ".git", "hooks")
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hooksDir, "pre-merge-commit"),
+		[]byte("#!/bin/sh\necho user hook\n"), 0o755))
+
+	r := &Rule{configured: true}
+	f := &lint.File{
+		Path:          filepath.Join(dir, "README.md"),
+		Source:        []byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"),
+		MaxInputBytes: 1048576,
+	}
+	assert.Empty(t, r.Check(f))
+}
+
 func TestRule_Check_OncePerRepo(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithDriver(t, dir)

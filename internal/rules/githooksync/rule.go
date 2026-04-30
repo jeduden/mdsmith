@@ -54,11 +54,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Resolve the repo root from the directory of the file being
 	// linted so the rule does not depend on the process working
 	// directory. When a file is not inside a git repo, skip silently.
-	dir := filepath.Dir(f.Path)
-	if dir == "" {
-		dir = "."
-	}
-	repoRoot, err := githooks.GitRepoRoot(dir)
+	repoRoot, err := githooks.GitRepoRoot(filepath.Dir(f.Path))
 	if err != nil {
 		return nil
 	}

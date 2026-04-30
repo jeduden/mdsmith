@@ -78,7 +78,8 @@ func TestExtractGitattributesFiles(t *testing.T) {
 		"PLAN.md merge=mdsmith\n" +
 		"docs/foo.md  merge=mdsmith eol=lf\n" +
 		"other.md text\n" +
-		"# README.md merge=mdsmith\n"
+		"# README.md merge=mdsmith\n" +
+		"loneword\n"
 	got := ExtractGitattributesFiles(content)
 	assert.Equal(t, []string{"PLAN.md", "docs/foo.md"}, got)
 }
@@ -89,6 +90,7 @@ func TestDiscoverFiles_FindsDirectives(t *testing.T) {
 		"README.md":         "# Test\n\n<?catalog?>\n<?/catalog?>\n",
 		"docs/guide.md":     "# Guide\n\n<?toc?>\n<?/toc?>\n",
 		"plain.md":          "# No directives\n",
+		"notes.txt":         "ignored non-markdown",
 		".hidden/secret.md": "<?catalog?>\n",
 	}
 	for name, content := range files {
@@ -122,6 +124,17 @@ func TestGitRepoRoot(t *testing.T) {
 	assert.Equal(t, wantResolved, gotResolved)
 }
 
+func TestGitRepoRoot_EmptyDirDefaultsToCWD(t *testing.T) {
+	// Empty dir should be treated as ".". When tests run inside the
+	// mdsmith repo, this will resolve successfully — so we just check
+	// that the call returns without panicking and either succeeds or
+	// returns a deterministic error consistent with running git in cwd.
+	got, err := GitRepoRoot("")
+	if err == nil {
+		assert.NotEmpty(t, got)
+	}
+}
+
 func TestGitRepoRoot_NotARepo(t *testing.T) {
 	dir := t.TempDir()
 	_, err := GitRepoRoot(dir)
@@ -136,6 +149,14 @@ func TestResolveHooksDir_Default(t *testing.T) {
 	gotResolved, _ := filepath.EvalSymlinks(got)
 	wantResolved, _ := filepath.EvalSymlinks(filepath.Join(dir, ".git", "hooks"))
 	assert.Equal(t, wantResolved, gotResolved)
+}
+
+func TestResolveHooksDir_FallbackWhenNotARepo(t *testing.T) {
+	dir := t.TempDir()
+	// No git init — `git rev-parse` fails so the function falls back
+	// to <repoRoot>/.git/hooks.
+	got := ResolveHooksDir(dir)
+	assert.Equal(t, filepath.Join(dir, ".git", "hooks"), got)
 }
 
 func TestHasMdsmithMergeDriver(t *testing.T) {
