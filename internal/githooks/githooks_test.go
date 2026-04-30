@@ -154,3 +154,26 @@ func TestEnableRuleSnippet(t *testing.T) {
 	got := EnableRuleSnippet("git-hook-sync")
 	assert.Equal(t, "rules:\n  git-hook-sync: true\n", got)
 }
+
+func TestFirstQuotedAfter(t *testing.T) {
+	tests := []struct {
+		line   string
+		marker string
+		want   string
+		ok     bool
+	}{
+		{"mdsmith fix -- 'a.md'", "fix --", "a.md", true},
+		{"mdsmith fix -- '' && true", "fix --", "", false},
+		{"mdsmith fix -- not-quoted", "fix --", "", false},
+		{"unrelated line", "fix --", "", false},
+		{"mdsmith fix -- 'unterminated", "fix --", "", false},
+		{"mdsmith fix --", "fix --", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			got, ok := firstQuotedAfter(tt.line, tt.marker)
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

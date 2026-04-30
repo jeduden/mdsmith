@@ -185,6 +185,15 @@ func TestRule_Check_OncePerRepo(t *testing.T) {
 	assert.Empty(t, diags2, "second file in same repo should not duplicate the diagnostic")
 }
 
+func TestRule_Metadata(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS048", r.ID())
+	assert.Equal(t, "git-hook-sync", r.Name())
+	assert.Equal(t, "meta", r.Category())
+	assert.False(t, r.EnabledByDefault())
+	assert.Equal(t, map[string]any{}, r.DefaultSettings())
+}
+
 func TestRule_ApplySettings(t *testing.T) {
 	r := &Rule{}
 	assert.False(t, r.configured)

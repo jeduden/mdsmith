@@ -11,7 +11,123 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// chdirToNonRepo changes the working directory to a fresh temp dir
+// that is not inside any git repository, so commands under test
+// exercise their "not in a git repo" branch.
+func chdirToNonRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	// Plant an empty .git so `git rev-parse --show-toplevel` fails.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".git"), []byte("not a real gitdir"), 0o644))
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+	return dir
+}
+
 // --- runPreMergeCommit dispatch ---
+
+func TestRunPreMergeCommit_DispatchInstall(t *testing.T) {
+	chdirToNonRepo(t)
+	captureStderr(func() {
+		// install dispatched but bails out on "not in git repo".
+		assert.Equal(t, 2, runPreMergeCommit([]string{"install"}))
+	})
+}
+
+func TestRunPreMergeCommit_DispatchUninstall(t *testing.T) {
+	chdirToNonRepo(t)
+	captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommit([]string{"uninstall"}))
+	})
+}
+
+func TestRunPreMergeCommit_DispatchStatus(t *testing.T) {
+	chdirToNonRepo(t)
+	captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommit([]string{"status"}))
+	})
+}
+
+func TestRunPreMergeCommitInstall_NotInRepo(t *testing.T) {
+	chdirToNonRepo(t)
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitInstall(nil))
+	})
+	assert.Contains(t, got, "not in a git repository")
+}
+
+func TestRunPreMergeCommitUninstall_NotInRepo(t *testing.T) {
+	chdirToNonRepo(t)
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitUninstall(nil))
+	})
+	assert.Contains(t, got, "not in a git repository")
+}
+
+func TestRunPreMergeCommitStatus_NotInRepo(t *testing.T) {
+	chdirToNonRepo(t)
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitStatus(nil))
+	})
+	assert.Contains(t, got, "not in a git repository")
+}
+
+func TestRunPreMergeCommitUninstall_HookNotPresent(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 0, runPreMergeCommitUninstall(nil))
+	})
+	assert.Contains(t, got, "no pre-merge-commit hook found")
+}
+
+func TestPreMergeCommitInstall_NoArgsUsesDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	// Generate a markdown file with a directive so discovery finds
+	// something concrete instead of falling back to defaults.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "guide.md"),
+		[]byte("# Guide\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 0, runPreMergeCommitInstall(nil))
+	})
+	assert.Contains(t, got, "guide.md")
+}
+
+func TestPreMergeCommitStatus_UnmanagedHook(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(hooksDir, "pre-merge-commit"),
+		[]byte("#!/bin/sh\necho user hook\n"), 0o755))
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 0, runPreMergeCommitStatus(nil))
+	})
+	assert.Contains(t, got, "managed by: user")
+	assert.Contains(t, got, "not installed by mdsmith")
+}
 
 func TestRunPreMergeCommit_NoArgs_ExitsZero(t *testing.T) {
 	captureStderr(func() {
