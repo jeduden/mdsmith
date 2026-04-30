@@ -215,6 +215,20 @@ func runPreMergeCommitStatus(args []string) int {
 		if len(files) > 0 {
 			fmt.Fprintf(os.Stderr, "  files: %s\n", strings.Join(files, ", "))
 		}
+
+		// Check if hook files are in sync with discovered files.
+		cfg, _, err := loadConfig("")
+		if err == nil {
+			maxBytes, err := resolveMaxInputBytes(cfg, "")
+			if err == nil {
+				discoveredFiles := discoverFilesWithGeneratedContent(repoRoot, maxBytes)
+				if !filesMatch(files, discoveredFiles) {
+					fmt.Fprintf(os.Stderr, "\n⚠ Warning: hook files are out of sync with repository\n")
+					fmt.Fprintf(os.Stderr, "  discovered files: %s\n", strings.Join(discoveredFiles, ", "))
+					fmt.Fprintf(os.Stderr, "\nRun 'mdsmith pre-merge-commit install' to update the hook.\n")
+				}
+			}
+		}
 	} else {
 		fmt.Fprintf(os.Stderr, "  managed by: user (not mdsmith)\n")
 		fmt.Fprintf(os.Stderr, "\nThis hook was not installed by mdsmith.\n")
@@ -252,4 +266,27 @@ func extractFilesFromHook(content string) []string {
 		}
 	}
 	return files
+}
+
+// filesMatch checks if two file lists contain the same files,
+// regardless of order. Returns true if they match, false otherwise.
+func filesMatch(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// Create a map to track files in list a.
+	filesInA := make(map[string]bool)
+	for _, f := range a {
+		filesInA[f] = true
+	}
+
+	// Check that all files in b are also in a.
+	for _, f := range b {
+		if !filesInA[f] {
+			return false
+		}
+	}
+
+	return true
 }

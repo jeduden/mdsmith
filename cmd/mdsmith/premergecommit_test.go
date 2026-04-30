@@ -270,3 +270,123 @@ func TestExtractFilesFromHook_WithConditionals(t *testing.T) {
 	files := extractFilesFromHook(content)
 	assert.Equal(t, []string{"PLAN.md"}, files)
 }
+
+// --- filesMatch ---
+
+func TestFilesMatch_EmptyLists(t *testing.T) {
+	assert.True(t, filesMatch(nil, nil))
+	assert.True(t, filesMatch([]string{}, []string{}))
+}
+
+func TestFilesMatch_SameFiles(t *testing.T) {
+	a := []string{"PLAN.md", "README.md"}
+	b := []string{"PLAN.md", "README.md"}
+	assert.True(t, filesMatch(a, b))
+}
+
+func TestFilesMatch_SameFilesDifferentOrder(t *testing.T) {
+	a := []string{"PLAN.md", "README.md"}
+	b := []string{"README.md", "PLAN.md"}
+	assert.True(t, filesMatch(a, b))
+}
+
+func TestFilesMatch_DifferentLengths(t *testing.T) {
+	a := []string{"PLAN.md"}
+	b := []string{"PLAN.md", "README.md"}
+	assert.False(t, filesMatch(a, b))
+}
+
+func TestFilesMatch_DifferentFiles(t *testing.T) {
+	a := []string{"PLAN.md", "README.md"}
+	b := []string{"PLAN.md", "CLAUDE.md"}
+	assert.False(t, filesMatch(a, b))
+}
+
+func TestFilesMatch_OneEmpty(t *testing.T) {
+	a := []string{"PLAN.md"}
+	b := []string{}
+	assert.False(t, filesMatch(a, b))
+}
+
+// --- sync detection integration ---
+
+func TestPreMergeCommitStatus_ShowsWarningWhenOutOfSync(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	// Create a file with generated content that will be discovered.
+	testFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(testFile, []byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	// Install hook with different files (PLAN.md).
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	hookContent := "#!/bin/sh\n" + preMergeCommitHookMarker + "\n" +
+		"'/usr/local/bin/mdsmith' fix -- 'PLAN.md'\ngit add -- 'PLAN.md'\n"
+	require.NoError(t, os.WriteFile(hookPath, []byte(hookContent), 0o755))
+
+	// Create .mdsmith.yml to avoid config load errors.
+	configPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(configPath, []byte("max-input-bytes: 1048576\n"), 0o644))
+
+	// Change to temp git repo.
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	// Capture stderr.
+	got := captureStderr(func() {
+		code := runPreMergeCommitStatus(nil)
+		assert.Equal(t, 0, code)
+	})
+
+	// Should show warning about out-of-sync files.
+	assert.Contains(t, got, "Warning: hook files are out of sync")
+	assert.Contains(t, got, "discovered files: test.md")
+	assert.Contains(t, got, "Run 'mdsmith pre-merge-commit install' to update")
+}
+
+func TestPreMergeCommitStatus_NoWarningWhenInSync(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	// Create a file with generated content.
+	testFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(testFile, []byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	// Install hook with the same file that will be discovered.
+	hooksDir := resolveHooksDir(dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	hookPath := filepath.Join(hooksDir, "pre-merge-commit")
+	hookContent := "#!/bin/sh\n" + preMergeCommitHookMarker + "\n" +
+		"'/usr/local/bin/mdsmith' fix -- 'test.md'\ngit add -- 'test.md'\n"
+	require.NoError(t, os.WriteFile(hookPath, []byte(hookContent), 0o755))
+
+	// Create .mdsmith.yml.
+	configPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(configPath, []byte("max-input-bytes: 1048576\n"), 0o644))
+
+	// Change to temp git repo.
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	// Capture stderr.
+	got := captureStderr(func() {
+		code := runPreMergeCommitStatus(nil)
+		assert.Equal(t, 0, code)
+	})
+
+	// Should NOT show warning since files match.
+	assert.NotContains(t, got, "Warning: hook files are out of sync")
+	assert.Contains(t, got, "pre-merge-commit hook: installed")
+}
