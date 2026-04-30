@@ -117,6 +117,38 @@ func TestDiscoverFiles_FindsDirectives(t *testing.T) {
 	assert.NotContains(t, got, ".hidden/secret.md")
 }
 
+func TestDiscoverFiles_IgnoresDirectiveMentionsInProse(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"README.md":      "# Test\n\nUse `<?catalog?>` in generated sections.\n",
+		"docs/guide.md":  "# Guide\n\nThis guide mentions `<?toc?>` and `<?/toc?>` inline.\n",
+		"docs/real.md":   "# Real\n\n<?include file: \"docs/source.md\"?>\n<?/include?>\n",
+		"docs/source.md": "source content\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+	}
+
+	got := DiscoverFiles(dir, 1024*1024)
+	assert.Contains(t, got, "docs/real.md")
+	assert.NotContains(t, got, "README.md")
+	assert.NotContains(t, got, "docs/guide.md")
+}
+
+func TestDiscoverFiles_SortedAndDeduplicated(t *testing.T) {
+	dir := t.TempDir()
+	// Create files with directives in non-alphabetical layout to
+	// confirm DiscoverFiles returns a sorted slice.
+	for _, name := range []string{"z.md", "a.md", "m.md"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name),
+			[]byte("# x\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+	}
+	got := DiscoverFiles(dir, 1024*1024)
+	assert.Equal(t, []string{"a.md", "m.md", "z.md"}, got)
+}
+
 func TestDiscoverFiles_FallbackOnEmpty(t *testing.T) {
 	dir := t.TempDir()
 	got := DiscoverFiles(dir, 1024*1024)

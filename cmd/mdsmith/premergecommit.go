@@ -228,7 +228,7 @@ func runPreMergeCommitStatus(args []string) int {
 			if err == nil {
 				discoveredFiles := discoverFilesWithGeneratedContent(repoRoot, maxBytes)
 				if !filesMatch(files, discoveredFiles) {
-					fmt.Fprintf(os.Stderr, "\n⚠ Warning: hook files are out of sync with repository\n")
+					fmt.Fprintf(os.Stderr, "\nWarning: hook files are out of sync with repository\n")
 					fmt.Fprintf(os.Stderr, "  discovered files: %s\n", strings.Join(discoveredFiles, ", "))
 					fmt.Fprintf(os.Stderr, "\nRun 'mdsmith pre-merge-commit install' to update the hook.\n")
 				}

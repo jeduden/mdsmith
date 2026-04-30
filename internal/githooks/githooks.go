@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
@@ -66,13 +67,14 @@ func ResolveHooksDir(repoRoot string) string {
 // the behavior of the original CLI helper. Falls back to
 // ["PLAN.md", "README.md"] when discovery yields no files.
 func DiscoverFiles(repoRoot string, maxBytes int64) []string {
-	directiveNames := make(map[string]bool)
+	directiveNames := make([]string, 0)
 	for _, r := range rule.All() {
 		if d, ok := r.(gensection.Directive); ok {
-			directiveNames[d.Name()] = true
+			directiveNames = append(directiveNames, d.Name())
 		}
 	}
 
+	seen := make(map[string]struct{})
 	var files []string
 	err := filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -84,6 +86,13 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 			}
 			return nil
 		}
+		// Only follow regular files. Skip symlinks (consistent with
+		// the project's secure-by-default symlink stance) and any
+		// other non-regular type (FIFOs, devices, sockets), which
+		// would otherwise cause hangs or read outside the repo.
+		if !info.Mode().IsRegular() {
+			return nil
+		}
 		name := info.Name()
 		if !strings.HasSuffix(name, ".md") && !strings.HasSuffix(name, ".markdown") {
 			return nil
@@ -92,22 +101,50 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		if err != nil {
 			return nil
 		}
-		for n := range directiveNames {
-			if bytes.Contains(content, []byte("<?"+n)) {
-				rel, err := filepath.Rel(repoRoot, path)
-				if err == nil {
-					files = append(files, filepath.ToSlash(rel))
-				}
-				break
-			}
+		// Detect real directive markers line-by-line via the marker
+		// parser so prose/inline-code mentions of `<?catalog?>` do
+		// not bloat the discovered set.
+		if !hasDirectiveMarker(content, directiveNames) {
+			return nil
 		}
+		rel, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			return nil
+		}
+		key := filepath.ToSlash(rel)
+		if _, dup := seen[key]; dup {
+			return nil
+		}
+		seen[key] = struct{}{}
+		files = append(files, key)
 		return nil
 	})
 
 	if err != nil || len(files) == 0 {
 		return []string{"PLAN.md", "README.md"}
 	}
+	// Sort so the file list is stable across platforms and
+	// filesystems; the result is printed to users and embedded into
+	// the pre-merge-commit hook and .gitattributes, where churn
+	// hurts review diffs.
+	sort.Strings(files)
 	return files
+}
+
+// hasDirectiveMarker reports whether content contains a real
+// processing-instruction start or end marker for any of the named
+// directives. It scans line-by-line so a backticked or otherwise
+// inline mention like `<?catalog?>` in prose is not treated as a
+// directive.
+func hasDirectiveMarker(content []byte, names []string) bool {
+	for _, line := range bytes.Split(content, []byte("\n")) {
+		for _, n := range names {
+			if gensection.IsRawStartMarker(line, n) || gensection.IsRawEndMarker(line, n) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // FilesMatch reports whether a and b contain the same set of files,
