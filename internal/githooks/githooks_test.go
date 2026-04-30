@@ -418,7 +418,7 @@ func TestFirstQuotedAfter(t *testing.T) {
 	}
 }
 func TestWriteGitattributes(t *testing.T) {
-	t.Run("creates new file with default header", func(t *testing.T) {
+	t.Run("creates new file with managed block", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, ".gitattributes")
 		files := []string{"a.md", "b.md"}
@@ -429,36 +429,66 @@ func TestWriteGitattributes(t *testing.T) {
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		expected := "# Custom merge driver for files with auto-generated sections\n" +
-			"# (catalog, include). Resolves section conflicts via mdsmith fix.\n" +
-			"# Run: mdsmith merge-driver install\n" +
+		expected := "# BEGIN mdsmith merge-driver\n" +
 			"a.md merge=mdsmith\n" +
-			"b.md merge=mdsmith\n"
+			"b.md merge=mdsmith\n" +
+			"# END mdsmith merge-driver\n"
 		assert.Equal(t, expected, string(content))
 	})
 
-	t.Run("preserves existing header", func(t *testing.T) {
+	t.Run("preserves existing non-mdsmith entries", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, ".gitattributes")
 
-		// Write initial content with custom header
-		initial := "# My custom header\n" +
-			"# Line 2\n" +
-			"old.md merge=mdsmith\n"
+		// Write initial content with non-mdsmith entries
+		initial := "*.txt text eol=lf\n" +
+			"*.jpg binary\n"
 		err := os.WriteFile(path, []byte(initial), 0644)
 		require.NoError(t, err)
 
-		// Overwrite with new file list
-		files := []string{"new.md"}
+		// Add mdsmith managed block
+		files := []string{"test.md"}
 		err = WriteGitattributes(path, files)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		expected := "# My custom header\n" +
-			"# Line 2\n" +
-			"new.md merge=mdsmith\n"
+		expected := "*.txt text eol=lf\n" +
+			"*.jpg binary\n" +
+			"# BEGIN mdsmith merge-driver\n" +
+			"test.md merge=mdsmith\n" +
+			"# END mdsmith merge-driver\n"
+		assert.Equal(t, expected, string(content))
+	})
+
+	t.Run("replaces existing managed block", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, ".gitattributes")
+
+		// Write initial content with managed block
+		initial := "*.txt text eol=lf\n" +
+			"# BEGIN mdsmith merge-driver\n" +
+			"old.md merge=mdsmith\n" +
+			"# END mdsmith merge-driver\n" +
+			"*.jpg binary\n"
+		err := os.WriteFile(path, []byte(initial), 0644)
+		require.NoError(t, err)
+
+		// Update managed block
+		files := []string{"new.md", "other.md"}
+		err = WriteGitattributes(path, files)
+		require.NoError(t, err)
+
+		content, err := os.ReadFile(path)
+		require.NoError(t, err)
+
+		expected := "*.txt text eol=lf\n" +
+			"# BEGIN mdsmith merge-driver\n" +
+			"new.md merge=mdsmith\n" +
+			"other.md merge=mdsmith\n" +
+			"# END mdsmith merge-driver\n" +
+			"*.jpg binary\n"
 		assert.Equal(t, expected, string(content))
 	})
 
@@ -472,10 +502,9 @@ func TestWriteGitattributes(t *testing.T) {
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		// Only header, no file entries
-		expected := "# Custom merge driver for files with auto-generated sections\n" +
-			"# (catalog, include). Resolves section conflicts via mdsmith fix.\n" +
-			"# Run: mdsmith merge-driver install\n"
+		// Only markers, no file entries
+		expected := "# BEGIN mdsmith merge-driver\n" +
+			"# END mdsmith merge-driver\n"
 		assert.Equal(t, expected, string(content))
 	})
 
@@ -492,29 +521,26 @@ func TestWriteGitattributes(t *testing.T) {
 		assert.Contains(t, err.Error(), "reading")
 	})
 
-	t.Run("skips blank and comment-only lines in header detection", func(t *testing.T) {
+	t.Run("appends block when no newline at EOF", func(t *testing.T) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, ".gitattributes")
 
-		// Write content with blank lines between comments
-		initial := "# Header 1\n" +
-			"\n" +
-			"# Header 2\n" +
-			"file.md merge=mdsmith\n"
+		// Write content without trailing newline
+		initial := "*.txt text eol=lf"
 		err := os.WriteFile(path, []byte(initial), 0644)
 		require.NoError(t, err)
 
-		files := []string{"new.md"}
+		files := []string{"test.md"}
 		err = WriteGitattributes(path, files)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(path)
 		require.NoError(t, err)
 
-		// Should preserve both header comments, skipping blank line
-		expected := "# Header 1\n" +
-			"# Header 2\n" +
-			"new.md merge=mdsmith\n"
+		expected := "*.txt text eol=lf\n" +
+			"# BEGIN mdsmith merge-driver\n" +
+			"test.md merge=mdsmith\n" +
+			"# END mdsmith merge-driver\n"
 		assert.Equal(t, expected, string(content))
 	})
 }

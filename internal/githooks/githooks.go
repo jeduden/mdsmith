@@ -422,49 +422,74 @@ func NormalizeManagedPaths(repoRoot string, paths []string) ([]string, error) {
 	return out, nil
 }
 
-// WriteGitattributes writes a .gitattributes file at the given path
-// with merge=mdsmith assignments for the provided files. The header
-// comment is preserved from any existing .gitattributes, or a default
-// header is added if creating the file from scratch. Files are written
-// in the order provided (DiscoverFiles already sorts them).
+// Marker comments for the managed block in .gitattributes
+const (
+	gitattributesManagedBlockStart = "# BEGIN mdsmith merge-driver"
+	gitattributesManagedBlockEnd   = "# END mdsmith merge-driver"
+)
+
+// WriteGitattributes updates .gitattributes to register the given files
+// with the mdsmith merge driver. It preserves all non-mdsmith entries and
+// updates only the mdsmith-managed block (delimited by BEGIN/END markers).
+//
+// If the file does not exist, it is created with only the managed block.
+// If the file exists but has no managed block, one is appended.
+// If a managed block exists, it is replaced with the new file list.
+//
+// This approach ensures that other .gitattributes entries (e.g., text,
+// eol=lf, linguist settings, other merge drivers) are never dropped.
 func WriteGitattributes(path string, files []string) error {
-	// Read existing content to preserve header comments
 	existing, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
 
-	// Extract header comments (lines starting with # before first non-comment)
-	var header strings.Builder
-	if len(existing) > 0 {
-		for _, line := range strings.Split(string(existing), "\n") {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" {
-				continue
+	// Build the new managed block
+	var managedBlock strings.Builder
+	managedBlock.WriteString(gitattributesManagedBlockStart)
+	managedBlock.WriteString("\n")
+	for _, f := range files {
+		fmt.Fprintf(&managedBlock, "%s merge=mdsmith\n", f)
+	}
+	managedBlock.WriteString(gitattributesManagedBlockEnd)
+	managedBlock.WriteString("\n")
+
+	var newContent strings.Builder
+
+	if len(existing) == 0 {
+		// New file: just write the managed block
+		newContent.WriteString(managedBlock.String())
+	} else {
+		// Existing file: preserve non-mdsmith content, replace managed block
+		content := string(existing)
+		startIdx := strings.Index(content, gitattributesManagedBlockStart)
+		endIdx := strings.Index(content, gitattributesManagedBlockEnd)
+
+		if startIdx == -1 || endIdx == -1 || endIdx < startIdx {
+			// No valid managed block found: append new block
+			newContent.WriteString(content)
+			if !strings.HasSuffix(content, "\n") {
+				newContent.WriteString("\n")
 			}
-			if !strings.HasPrefix(trimmed, "#") {
-				break
+			newContent.WriteString(managedBlock.String())
+		} else {
+			// Replace existing managed block
+			// Find the end of the END marker line
+			endLineEnd := strings.Index(content[endIdx:], "\n")
+			if endLineEnd == -1 {
+				endLineEnd = len(content)
+			} else {
+				endLineEnd += endIdx + 1 // Include the newline
 			}
-			header.WriteString(line)
-			header.WriteString("\n")
+
+			// Write: content before block + new block + content after block
+			newContent.WriteString(content[:startIdx])
+			newContent.WriteString(managedBlock.String())
+			newContent.WriteString(content[endLineEnd:])
 		}
 	}
 
-	// If no header found, add default
-	if header.Len() == 0 {
-		header.WriteString("# Custom merge driver for files with auto-generated sections\n")
-		header.WriteString("# (catalog, include). Resolves section conflicts via mdsmith fix.\n")
-		header.WriteString("# Run: mdsmith merge-driver install\n")
-	}
-
-	// Build new content
-	var content strings.Builder
-	content.WriteString(header.String())
-	for _, f := range files {
-		fmt.Fprintf(&content, "%s merge=mdsmith\n", f)
-	}
-
-	return os.WriteFile(path, []byte(content.String()), 0644)
+	return os.WriteFile(path, []byte(newContent.String()), 0644)
 }
 
 // HasMdsmithMergeDriver reports whether the repository's local git

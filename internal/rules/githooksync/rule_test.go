@@ -524,7 +524,7 @@ func TestRule_Fix_RegeneratesGitattributes(t *testing.T) {
 
 	// Create .gitattributes with wrong content
 	attrPath := filepath.Join(dir, ".gitattributes")
-	initial := "# Custom header\nold.md merge=mdsmith\n"
+	initial := "# BEGIN mdsmith merge-driver\nold.md merge=mdsmith\n# END mdsmith merge-driver\n"
 	require.NoError(t, os.WriteFile(attrPath, []byte(initial), 0644))
 
 	r := &Rule{}
@@ -542,7 +542,7 @@ func TestRule_Fix_RegeneratesGitattributes(t *testing.T) {
 	content, err := os.ReadFile(attrPath)
 	require.NoError(t, err)
 
-	expected := "# Custom header\ntest.md merge=mdsmith\n"
+	expected := "# BEGIN mdsmith merge-driver\ntest.md merge=mdsmith\n# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
 }
 
@@ -563,7 +563,7 @@ func TestRule_Fix_OnlyFixesOncePerRepo(t *testing.T) {
 
 	// Create .gitattributes with wrong content
 	attrPath := filepath.Join(dir, ".gitattributes")
-	initial := "# Header\nold.md merge=mdsmith\n"
+	initial := "# BEGIN mdsmith merge-driver\nold.md merge=mdsmith\n# END mdsmith merge-driver\n"
 	require.NoError(t, os.WriteFile(attrPath, []byte(initial), 0644))
 
 	r := &Rule{}
@@ -584,7 +584,7 @@ func TestRule_Fix_OnlyFixesOncePerRepo(t *testing.T) {
 	r.Fix(f1)
 	content1, err := os.ReadFile(attrPath)
 	require.NoError(t, err)
-	expected := "# Header\na.md merge=mdsmith\nb.md merge=mdsmith\n"
+	expected := "# BEGIN mdsmith merge-driver\na.md merge=mdsmith\nb.md merge=mdsmith\n# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content1))
 
 	// Corrupt .gitattributes again
@@ -612,7 +612,7 @@ func TestRule_Fix_SkipsWhenAlreadyInSync(t *testing.T) {
 
 	// Create .gitattributes with correct content
 	attrPath := filepath.Join(dir, ".gitattributes")
-	correct := "# Header\ntest.md merge=mdsmith\n"
+	correct := "# BEGIN mdsmith merge-driver\ntest.md merge=mdsmith\n# END mdsmith merge-driver\n"
 	require.NoError(t, os.WriteFile(attrPath, []byte(correct), 0644))
 
 	// Record modification time
