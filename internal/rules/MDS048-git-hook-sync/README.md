@@ -70,33 +70,54 @@ The install commands (`mdsmith merge-driver install` and
 fallback is install-only. Stale entries from it can still
 trip the rule above.
 
-The rule emits at most one diagnostic per repository. The
-guard lives for the lifetime of the mdsmith process, so
-linting many files in the same repo will not duplicate it.
+The rule reports drift for every file linted in a repository
+to enable auto-fix (the fixer only calls `Fix()` when
+`Check()` returns diagnostics). A once-per-repo guard in
+`Fix()` ensures `.gitattributes` is written only once per
+mdsmith process.
 
 ## Fix
 
-This rule is not auto-fixable. Git hook installation is a
-side-effecting operation. To bring the hooks back into
-sync, re-run the install commands. They pick up the
-current set of files with generated directives:
+This rule is **partially auto-fixable**:
+
+- **`.gitattributes`** is auto-fixed by `mdsmith fix` when
+  the merge driver is registered (`merge.mdsmith.driver` in
+  git config). The fixer regenerates `.gitattributes` with
+  the current discovered file list, preserving header
+  comments.
+- **Pre-merge-commit hook** is not auto-fixed (it is an
+  executable script). You must manually re-run:
 
 ```bash
-# Re-install the merge driver and refresh .gitattributes
+mdsmith pre-merge-commit install
+```
+
+### Why Auto-Fix .gitattributes?
+
+`.gitattributes` is a tracked file (not system configuration,
+not executable) and should be auto-fixable like other
+content issues. This enables build systems running
+`mdsmith fix` to automatically resolve drift.
+
+The pre-merge-commit hook remains manual-only because
+modifying executable files during automated fixes could be
+surprising or unsafe.
+
+### Manual Installation
+
+If the merge driver is not registered, or to update the
+pre-merge-commit hook, run:
+
+```bash
+# Register merge driver and regenerate .gitattributes
 mdsmith merge-driver install
 
 # Re-install the pre-merge-commit hook
 mdsmith pre-merge-commit install
 ```
 
-`mdsmith pre-merge-commit install` rewrites the hook
-script in place. Reinstalling clears stale entries from
-the hook.
-
-`mdsmith merge-driver install` is append-only: it adds
-missing `merge=mdsmith` lines to `.gitattributes` and does
-not remove stale ones. After dropping a managed file, edit
-`.gitattributes` by hand to delete the obsolete line.
+Both commands pick up the current set of files with
+generated directives.
 
 ## Examples
 
@@ -150,7 +171,7 @@ are out of sync (has: PLAN.md, should have: test.md)`
 - **Name**: `git-hook-sync`
 - **Status**: ready
 - **Default**: disabled
-- **Fixable**: no (re-run `mdsmith merge-driver install` /
-  `mdsmith pre-merge-commit install`)
+- **Fixable**: partial (`.gitattributes` is auto-fixed;
+  hook requires manual `mdsmith pre-merge-commit install`)
 - **Implementation**: [source](../githooksync/rule.go)
 - **Category**: meta
