@@ -139,6 +139,27 @@ func TestDiscoverFiles_IgnoresDirectivesInsideFencedCode(t *testing.T) {
 	assert.Equal(t, []string{"real.md"}, got)
 }
 
+func TestDiscoverFiles_IgnoresDirectivesInIndentedCodeBlocks(t *testing.T) {
+	dir := t.TempDir()
+	// Indented (4-space) and tab-indented blocks are CommonMark
+	// indented code blocks; mdsmith's PI parser refuses them too.
+	indented := "# Examples\n\n" +
+		"    <?catalog glob: plan/*.md ?>\n" +
+		"    <?/catalog?>\n\n" +
+		"\t<?include file: x.md ?>\n" +
+		"\t<?/include?>\n"
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "docs", "guide.md"),
+		[]byte(indented), 0o644))
+
+	// real.md has the directive at column 0.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "real.md"),
+		[]byte("# Real\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	got := DiscoverFiles(dir, 1024*1024)
+	assert.Equal(t, []string{"real.md"}, got)
+}
+
 func TestDiscoverFiles_IgnoresDirectiveMentionsInProse(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{

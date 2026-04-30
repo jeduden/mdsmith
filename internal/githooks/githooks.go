@@ -140,6 +140,12 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 // the same character and at least the same length as the opener)
 // are also ignored; mdsmith's own parser only honors processing-
 // instructions at the document root.
+//
+// The same indentation gate applied by internal/lint.pi_parser is
+// used here: a line that begins with a tab or with more than three
+// spaces is an indented code block per CommonMark and cannot host a
+// processing-instruction, so any directive-looking text on such a
+// line is ignored.
 func hasDirectiveMarker(content []byte, names []string) bool {
 	var fenceChar byte
 	var fenceLen int
@@ -160,6 +166,9 @@ func hasDirectiveMarker(content []byte, names []string) bool {
 			// Inside a fenced block: ignore any directive markers.
 			continue
 		}
+		if isIndentedCodeBlock(line) {
+			continue
+		}
 		for _, n := range names {
 			if gensection.IsRawStartMarker(line, n) || gensection.IsRawEndMarker(line, n) {
 				return true
@@ -167,6 +176,24 @@ func hasDirectiveMarker(content []byte, names []string) bool {
 		}
 	}
 	return false
+}
+
+// isIndentedCodeBlock reports whether line begins an indented code
+// block per CommonMark: a tab character or four or more spaces of
+// indentation. internal/lint.pi_parser uses the same rule, so this
+// keeps discovery aligned with the actual mdsmith parser.
+func isIndentedCodeBlock(line []byte) bool {
+	if len(line) == 0 {
+		return false
+	}
+	if line[0] == '\t' {
+		return true
+	}
+	spaces := 0
+	for spaces < len(line) && line[spaces] == ' ' {
+		spaces++
+	}
+	return spaces >= 4
 }
 
 // openingFence reports the fence character and run length of a line
