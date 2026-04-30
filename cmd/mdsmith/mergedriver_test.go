@@ -313,6 +313,46 @@ func TestRunMergeDriverInstall_NotInRepo(t *testing.T) {
 	assert.Contains(t, got, "not in a git repository")
 }
 
+func TestRunMergeDriverInstall_LoadConfigError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("not: [valid: yaml\n"), 0o644))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverInstall(nil))
+	})
+	assert.Contains(t, got, "loading config")
+}
+
+func TestRunMergeDriverInstall_BadMaxInputSize(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("max-input-size: nonsense\n"), 0o644))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverInstall(nil))
+	})
+	assert.Contains(t, got, "invalid max-input-size")
+}
+
 func TestRunMergeDriverInstall_NoArgsUsesDiscovery(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", dir).Run())

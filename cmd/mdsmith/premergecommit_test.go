@@ -11,6 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestRun_DispatchesPreMergeCommit covers the `pre-merge-commit`
+// case in main.go's run() dispatch.
+func TestRun_DispatchesPreMergeCommit(t *testing.T) {
+	origArgs := os.Args
+	t.Cleanup(func() { os.Args = origArgs })
+	os.Args = []string{"mdsmith", "pre-merge-commit", "--help"}
+	captureStderr(func() {
+		assert.Equal(t, 0, run())
+	})
+}
+
 // chdirToNonRepo changes the working directory to a fresh temp dir
 // that is not inside any git repository, so commands under test
 // exercise their "not in a git repo" branch.
@@ -84,6 +95,38 @@ func TestRunPreMergeCommitUninstall_HookNotPresent(t *testing.T) {
 		assert.Equal(t, 0, runPreMergeCommitUninstall(nil))
 	})
 	assert.Contains(t, got, "no pre-merge-commit hook found")
+}
+
+func TestPreMergeCommitInstall_LoadConfigError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("not: [valid: yaml\n"), 0o644))
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitInstall(nil))
+	})
+	assert.Contains(t, got, "loading config")
+}
+
+func TestPreMergeCommitInstall_BadMaxInputSize(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "init", dir).Run())
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("max-input-size: nonsense\n"), 0o644))
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runPreMergeCommitInstall(nil))
+	})
+	assert.Contains(t, got, "invalid max-input-size")
 }
 
 func TestPreMergeCommitInstall_RefusesUserHook(t *testing.T) {
