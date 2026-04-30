@@ -194,7 +194,7 @@ func TestPreMergeCommitStatus_NotInstalled(t *testing.T) {
 	os.Stderr = w
 	t.Cleanup(func() {
 		os.Stderr = origStderr
-		w.Close()
+		_ = w.Close()
 	})
 
 	code := runPreMergeCommitStatus(nil)
@@ -228,7 +228,7 @@ func TestPreMergeCommitStatus_Installed(t *testing.T) {
 	os.Stderr = w
 	t.Cleanup(func() {
 		os.Stderr = origStderr
-		w.Close()
+		_ = w.Close()
 	})
 
 	code := runPreMergeCommitStatus(nil)
