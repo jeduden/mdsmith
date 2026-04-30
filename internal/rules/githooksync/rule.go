@@ -81,6 +81,19 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return nil
 	}
 
+	// Cheap opt-in probes before the (expensive) repo walk. The
+	// merge-driver source only applies when the local config
+	// registers `merge.mdsmith.driver`, and the hook source only
+	// applies when an mdsmith-marked pre-merge-commit hook is
+	// installed. If neither is opted in (and the hook is not
+	// unreadable, which would still warrant a warning) there is
+	// nothing to compare against, so skip the discovery walk.
+	hasDriver := githooks.HasMdsmithMergeDriver(repoRoot)
+	hookState := peekHookSource(repoRoot)
+	if !hasDriver && hookState != hookSourceManaged && hookState != hookSourceUnreadable {
+		return nil
+	}
+
 	discovered := githooks.DiscoverFiles(repoRoot, f.MaxInputBytes)
 
 	// Collect drift descriptions from both sources so the rule emits
@@ -108,6 +121,39 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		Severity: lint.Warning,
 		Message:  strings.Join(parts, "; "),
 	}}
+}
+
+// hookSource describes the state of the pre-merge-commit hook for
+// the cheap pre-check in Check. Distinguishing "not installed"
+// (ENOENT) from "couldn't read" lets the rule still surface IO
+// errors via preMergeCommitHookDrift even when the merge driver
+// isn't registered.
+type hookSource int
+
+const (
+	hookSourceAbsent hookSource = iota
+	hookSourceManaged
+	hookSourceUnmanaged
+	hookSourceUnreadable
+)
+
+// peekHookSource reports the current state of the pre-merge-commit
+// hook without parsing its file list. It is a cheap probe used by
+// Check to decide whether the (expensive) repo discovery walk is
+// needed at all.
+func peekHookSource(repoRoot string) hookSource {
+	hookPath := filepath.Join(githooks.ResolveHooksDir(repoRoot), "pre-merge-commit")
+	data, err := os.ReadFile(hookPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return hookSourceAbsent
+		}
+		return hookSourceUnreadable
+	}
+	if strings.Contains(string(data), githooks.PreMergeCommitMarker) {
+		return hookSourceManaged
+	}
+	return hookSourceUnmanaged
 }
 
 // markReported returns true exactly once per repoRoot for the

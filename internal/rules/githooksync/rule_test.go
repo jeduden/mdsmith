@@ -46,6 +46,28 @@ func initRepoWithDriver(t *testing.T, dir string) {
 	).Run())
 }
 
+func TestRule_Check_SkipsWhenNoSourceOptedIn(t *testing.T) {
+	// Neither the merge driver nor an mdsmith-managed
+	// pre-merge-commit hook is installed. The rule must not run
+	// the repo-wide discovery walk and must emit no diagnostics.
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+
+	// Put a directive file in the repo to confirm the rule does
+	// not attempt drift comparison against it.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"),
+		[]byte("# Test\n\n<?catalog?>\n<?/catalog?>\n"), 0o644))
+
+	r := &Rule{}
+	f := &lint.File{
+		Path:          filepath.Join(dir, "README.md"),
+		Source:        []byte("# Test\n"),
+		MaxInputBytes: 1048576,
+		FS:            os.DirFS(dir),
+	}
+	assert.Empty(t, r.Check(f))
+}
+
 func TestRule_Check_SkipsWhenFSIsNil(t *testing.T) {
 	// stdin and other in-memory inputs leave f.FS == nil. The rule
 	// must short-circuit so it does not scan whatever git repo
