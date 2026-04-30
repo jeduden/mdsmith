@@ -249,26 +249,28 @@ Weaknesses:
 | Emphasis style      | planned ([plan 106][plan106])  | [MD049][md049], [MD050][md050]           | [emphasis-marker][rl-em]                          |
 | HR style            | planned ([plan 108][plan108])  | [MD035][md035]                           | [rule-style][rl-rs]                               |
 | Ambiguous emphasis  | planned ([plan 111][plan111])  | [MD037][md037]                           | no                                                |
-| Space in code       | no                             | [MD038][md038]                           | no                                                |
-| Space in links      | no                             | [MD039][md039]                           | no                                                |
-| Proper names        | no                             | [MD044][md044]                           | no                                                |
+| Space in code       | planned ([plan 124][plan124])  | [MD038][md038]                           | no                                                |
+| Space in links      | planned ([plan 125][plan125])  | [MD039][md039]                           | no                                                |
+| Proper names        | planned ([plan 126][plan126])  | [MD044][md044]                           | no                                                |
 | Required headings   | [MDS020][mds020] (via schema)  | [MD043][md043]                           | no                                                |
-| Single H1           | no                             | [MD047][md047]                           | no                                                |
+| Single H1           | planned ([plan 127][plan127])  | [MD047][md047]                           | no                                                |
 | Link fragments      | [MDS027][mds027] (cross-file)  | [MD051][md051]                           | no                                                |
 | Reference links     | planned ([plan 107][plan107])  | [MD052][md052], [MD053][md053]           | no                                                |
 
 All three cover core structural rules. markdownlint has
-the broadest rule set. mdsmith has plans for inline
-HTML ([plan 105][plan105]), UL marker style
+the broadest rule set. Plans cover inline HTML
+([plan 105][plan105]), UL marker style
 ([plan 109][plan109]), emphasis style
-([plan 106][plan106]), HR style ([plan 108][plan108]),
-ambiguous emphasis ([plan 111][plan111]), and
-reference-style links ([plan 107][plan107]).
+([plan 106][plan106]), and HR style
+([plan 108][plan108]). More plans cover ambiguous
+emphasis ([plan 111][plan111]), reference-style links
+([plan 107][plan107]), no-space-in-code-spans
+([plan 124][plan124]), no-space-in-link-text
+([plan 125][plan125]), proper names
+([plan 126][plan126]), and single H1
+([plan 127][plan127]).
 Image alt text ([MDS032][mds032]) and OL numbering
 ([MDS046][mds046]) are already implemented.
-Teams that need the remaining gaps (space in code,
-space in links, proper names, single H1) can pair
-mdsmith with markdownlint.
 
 ### Prose and Readability
 
@@ -747,3 +749,7 @@ you need a stable rule set while these land.
 [plan111]: ../../plan/111_ambiguous-emphasis.md
 [plan113]: ../../plan/113_user-defined-profiles.md
 [plan120]: ../../plan/120_glob-unification.md
+[plan124]: ../../plan/124_no-space-in-code-spans.md
+[plan125]: ../../plan/125_no-space-in-link-text.md
+[plan126]: ../../plan/126_proper-names.md
+[plan127]: ../../plan/127_single-h1.md
