@@ -730,3 +730,26 @@ func TestRule_Fix_ReturnsOriginalOnWriteError(t *testing.T) {
 	}
 	assert.Equal(t, f.Source, r.Fix(f))
 }
+
+func TestRule_ResolveRepoRoot_NotInRepo(t *testing.T) {
+	// A directory outside any git repo must produce a cached error
+	// entry so subsequent lookups skip the subprocess.
+	dir := t.TempDir()
+	r := &Rule{}
+	repoRootMu.Lock()
+	delete(repoRootCache, dir)
+	repoRootMu.Unlock()
+
+	_, err := r.resolveRepoRoot(dir)
+	require.Error(t, err)
+
+	repoRootMu.Lock()
+	entry, ok := repoRootCache[dir]
+	repoRootMu.Unlock()
+	require.True(t, ok, "non-repo lookup must populate the cache")
+	assert.Error(t, entry.err)
+
+	// Second lookup hits the cached error branch.
+	_, err = r.resolveRepoRoot(dir)
+	assert.Error(t, err)
+}

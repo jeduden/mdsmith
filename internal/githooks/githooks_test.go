@@ -1011,3 +1011,76 @@ func TestHookMatchesCanonical_RejectsMissingStagingLine(t *testing.T) {
 		"fi\n"
 	assert.False(t, HookMatchesCanonical(hook))
 }
+
+func TestIsRepresentableGitattributesPattern(t *testing.T) {
+	cases := []struct {
+		pattern string
+		want    bool
+	}{
+		{"", false},
+		{"*.md", true},
+		{"docs/**", true},
+		{"!docs/*.md", false},
+		{"with space.md", false},
+		{"with\ttab.md", false},
+		{"with\nnewline.md", false},
+		{"with\rcr.md", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.pattern, func(t *testing.T) {
+			assert.Equal(t, tc.want, isRepresentableGitattributesPattern(tc.pattern))
+		})
+	}
+}
+
+func TestGlobsFromConfig_DropsUnrepresentablePatterns(t *testing.T) {
+	cfg := &config.Config{Ignore: []string{
+		"demo/**",
+		"!docs/*.md", // negation: skipped
+		"with space",  // whitespace: skipped
+		"vendor/**",
+	}}
+	got := GlobsFromConfig(cfg)
+	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude,
+		"only representable patterns survive the validation filter")
+}
+
+func TestHookMatchesCanonical_RejectsMissingStagingPipeline(t *testing.T) {
+	hook := "#!/bin/sh\n" + PreMergeCommitMarker + "\n" +
+		"set -e\n" +
+		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"if ! '/usr/local/bin/mdsmith' fix .; then\n" +
+		"  status=$?\n" +
+		"  if [ \"$status\" -ne 1 ]; then exit \"$status\"; fi\n" +
+		"fi\n" +
+		// Missing the `git diff --name-only ... |` pipeline header.
+		"while IFS= read -r f; do git add -- \"$f\"; done\n"
+	assert.False(t, HookMatchesCanonical(hook))
+}
+
+func TestHookMatchesCanonical_RejectsMissingReadLoop(t *testing.T) {
+	hook := "#!/bin/sh\n" + PreMergeCommitMarker + "\n" +
+		"set -e\n" +
+		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"if ! '/usr/local/bin/mdsmith' fix .; then\n" +
+		"  status=$?\n" +
+		"  if [ \"$status\" -ne 1 ]; then exit \"$status\"; fi\n" +
+		"fi\n" +
+		"git diff --name-only -- '*.md' '*.markdown' | xargs git add --\n"
+	assert.False(t, HookMatchesCanonical(hook),
+		"a non-canonical staging pipeline (e.g. xargs without the read loop) must be flagged")
+}
+
+func TestHookMatchesCanonical_RejectsMissingExitGuard(t *testing.T) {
+	// fix .; then is present but the `[ "$status" -ne 1 ]` guard
+	// is missing, meaning genuine errors would be swallowed.
+	hook := "#!/bin/sh\n" + PreMergeCommitMarker + "\n" +
+		"set -e\n" +
+		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"if ! '/usr/local/bin/mdsmith' fix .; then\n" +
+		"  true\n" +
+		"fi\n" +
+		"git diff --name-only -- '*.md' '*.markdown' | while IFS= read -r f; do\n" +
+		"  git add -- \"$f\"\ndone\n"
+	assert.False(t, HookMatchesCanonical(hook))
+}
