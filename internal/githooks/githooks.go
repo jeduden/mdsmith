@@ -532,13 +532,13 @@ func WriteGitattributes(path string, files []string) error {
 		// `# update via mdsmith merge-driver install` cannot be
 		// mistaken for the managed-block start marker.
 		content := string(existing)
-		// Track whether the original content ended with a newline so
-		// the rewrite preserves the original final-newline state.
-		hasTrailingNewline := strings.HasSuffix(content, "\n")
-		// Split on \n. Note: a trailing newline produces an empty last
-		// element which we drop here and re-add via hasTrailingNewline.
+		// strings.Split on a trailing newline produces an empty last
+		// element. Trim it so each element is a real line; the writer
+		// always appends a final newline below (managedBlock and
+		// joinLines both emit one), normalising the file to end with
+		// a newline regardless of the input's prior state.
 		lines := strings.Split(content, "\n")
-		if hasTrailingNewline {
+		if strings.HasSuffix(content, "\n") {
 			lines = lines[:len(lines)-1]
 		}
 		startLine, endLine := findManagedBlockLines(lines)
