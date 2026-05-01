@@ -520,6 +520,63 @@ func TestWriteGitattributes_StripsStaleMdsmithEntriesOutsideBlock(t *testing.T) 
 	assert.Equal(t, expected, string(content))
 }
 
+func TestWriteGitattributes_StripsStaleMdsmithEntriesWithTrailingAttributes(t *testing.T) {
+	// Stale entries can carry extra attributes after merge=mdsmith
+	// (e.g., `path merge=mdsmith eol=lf`). ExtractGitattributesFiles
+	// treats those as managed, so the strip logic must too.
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	initial := "*.txt text eol=lf\n" +
+		"stale.md merge=mdsmith eol=lf\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"old.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	err := os.WriteFile(path, []byte(initial), 0644)
+	require.NoError(t, err)
+
+	err = WriteGitattributes(path, []string{"new.md"})
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	expected := "*.txt text eol=lf\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"new.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	assert.Equal(t, expected, string(content))
+}
+
+func TestWriteGitattributes_PreservesCommentsThatMentionMdsmith(t *testing.T) {
+	// Comment lines must be preserved even if they textually contain
+	// `merge=mdsmith` (e.g., a documentation comment). The strip logic
+	// matches ExtractGitattributesFiles, which ignores comment lines.
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	initial := "# Custom: README.md merge=mdsmith\n" +
+		"*.txt text eol=lf\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"old.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	err := os.WriteFile(path, []byte(initial), 0644)
+	require.NoError(t, err)
+
+	err = WriteGitattributes(path, []string{"new.md"})
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	expected := "# Custom: README.md merge=mdsmith\n" +
+		"*.txt text eol=lf\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"new.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	assert.Equal(t, expected, string(content))
+}
+
 func TestWriteGitattributes_StripsStaleMdsmithEntriesWhenNoBlockExists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".gitattributes")

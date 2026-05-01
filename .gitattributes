@@ -1,6 +1,7 @@
 # Custom merge driver for files with auto-generated sections
 # (catalog, include). Resolves section conflicts via mdsmith fix.
 # Run: mdsmith merge-driver install
+# BEGIN mdsmith merge-driver
 AGENTS.md merge=mdsmith
 CLAUDE.md merge=mdsmith
 PLAN.md merge=mdsmith
@@ -63,3 +64,4 @@ internal/rules/MDS041-no-inline-html/README.md merge=mdsmith
 internal/rules/MDS043-no-reference-style/README.md merge=mdsmith
 internal/rules/MDS046-ordered-list-numbering/README.md merge=mdsmith
 internal/rules/index.md merge=mdsmith
+# END mdsmith merge-driver

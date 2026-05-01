@@ -388,7 +388,7 @@ func TestRule_Check_OncePerRepoAcrossClones(t *testing.T) {
 	assert.Empty(t, diags2, "second clone in the same repo does not report (once-per-repo guard)")
 }
 
-func TestRule_Check_MultipleFilesReportDrift(t *testing.T) {
+func TestRule_Check_SuppressesDuplicateDriftWithinSameRepo(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithDriver(t, dir)
 

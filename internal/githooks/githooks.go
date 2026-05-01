@@ -428,18 +428,35 @@ const (
 	gitattributesManagedBlockEnd   = "# END mdsmith merge-driver"
 )
 
-// stripStaleMergeMdsmithLines drops any line that assigns merge=mdsmith
-// outside the managed block. ExtractGitattributesFiles treats every
-// merge=mdsmith line as installed, so leaving stray entries would make
-// the file appear out of sync immediately after a fix and could leave
-// duplicates from older append-only installs.
+// stripStaleMergeMdsmithLines drops any non-comment line that assigns
+// the mdsmith merge driver outside the managed block. The match logic
+// mirrors ExtractGitattributesFiles: blank/comment lines are ignored,
+// and a line is considered a merge-driver assignment when any field
+// after the path equals `merge=mdsmith`. Without this, leftover
+// entries from older append-only installs (or hand-edits) would make
+// .gitattributes appear out of sync immediately after a fix, and
+// could leave the resulting file with duplicate path assignments.
 func stripStaleMergeMdsmithLines(content string) string {
 	lines := strings.Split(content, "\n")
 	kept := make([]string, 0, len(lines))
 	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[len(fields)-1] == "merge=mdsmith" {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			kept = append(kept, line)
 			continue
+		}
+		fields := strings.Fields(trimmed)
+		if len(fields) >= 2 {
+			hasDriver := false
+			for _, f := range fields[1:] {
+				if f == "merge=mdsmith" {
+					hasDriver = true
+					break
+				}
+			}
+			if hasDriver {
+				continue
+			}
 		}
 		kept = append(kept, line)
 	}
