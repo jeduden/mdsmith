@@ -104,12 +104,13 @@ The pre-merge-commit hook remains manual-only because
 modifying executable files during automated fixes could be
 surprising or unsafe.
 
-**Note**: When `mdsmith fix` updates `.gitattributes`, you
-must manually stage the change with `git add .gitattributes`.
-The fix happens as a side effect of linting markdown files
-and cannot automatically stage `.gitattributes` into the
-commit. In pre-merge-commit hook workflows, the hook only
-stages the markdown files it processes, not `.gitattributes`.
+When `mdsmith fix` updates `.gitattributes`, the fixer also
+runs `git add -- .gitattributes`. The regenerated file then
+lands in the index next to the markdown files the hook stages.
+A merge commit produced by the pre-merge-commit hook flow
+includes both. If staging fails (for example, the index is
+locked), the on-disk fix is still applied. You can stage the
+file yourself in that case.
 
 ### Manual Installation
 

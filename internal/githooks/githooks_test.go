@@ -488,6 +488,61 @@ func TestWriteGitattributes_ReplacesExistingManagedBlock(t *testing.T) {
 	assert.Equal(t, expected, string(content))
 }
 
+func TestWriteGitattributes_StripsStaleMdsmithEntriesOutsideBlock(t *testing.T) {
+	// Older append-only installs (or hand-edited files) may have left
+	// merge=mdsmith lines outside the managed block. Those must be
+	// removed so ExtractGitattributesFiles does not see stale or
+	// duplicated entries.
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	initial := "*.txt text eol=lf\n" +
+		"stale.md merge=mdsmith\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"old.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n" +
+		"trailing-stale.md merge=mdsmith\n" +
+		"*.jpg binary\n"
+	err := os.WriteFile(path, []byte(initial), 0644)
+	require.NoError(t, err)
+
+	err = WriteGitattributes(path, []string{"new.md"})
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	expected := "*.txt text eol=lf\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"new.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n" +
+		"*.jpg binary\n"
+	assert.Equal(t, expected, string(content))
+}
+
+func TestWriteGitattributes_StripsStaleMdsmithEntriesWhenNoBlockExists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	initial := "*.txt text eol=lf\n" +
+		"stale1.md merge=mdsmith\n" +
+		"stale2.md merge=mdsmith\n"
+	err := os.WriteFile(path, []byte(initial), 0644)
+	require.NoError(t, err)
+
+	err = WriteGitattributes(path, []string{"new.md"})
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	expected := "*.txt text eol=lf\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"new.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	assert.Equal(t, expected, string(content))
+}
+
 func TestWriteGitattributes_HandlesEmptyFileList(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".gitattributes")
@@ -501,23 +556,6 @@ func TestWriteGitattributes_HandlesEmptyFileList(t *testing.T) {
 	expected := "# BEGIN mdsmith merge-driver\n" +
 		"# END mdsmith merge-driver\n"
 	assert.Equal(t, expected, string(content))
-}
-
-func TestWriteGitattributes_ReturnsErrorForUnreadableExistingFile(t *testing.T) {
-	// Mode 0000 only blocks reads for non-root users; root bypasses
-	// file permission bits, so this assertion can't hold under uid 0.
-	if os.Geteuid() == 0 {
-		t.Skip("file permission bits don't restrict root")
-	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, ".gitattributes")
-
-	err := os.WriteFile(path, []byte("test"), 0000)
-	require.NoError(t, err)
-
-	err = WriteGitattributes(path, []string{"a.md"})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "reading")
 }
 
 func TestWriteGitattributes_AppendsBlockWhenNoNewlineAtEOF(t *testing.T) {

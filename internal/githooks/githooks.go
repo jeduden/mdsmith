@@ -428,9 +428,30 @@ const (
 	gitattributesManagedBlockEnd   = "# END mdsmith merge-driver"
 )
 
+// stripStaleMergeMdsmithLines drops any line that assigns merge=mdsmith
+// outside the managed block. ExtractGitattributesFiles treats every
+// merge=mdsmith line as installed, so leaving stray entries would make
+// the file appear out of sync immediately after a fix and could leave
+// duplicates from older append-only installs.
+func stripStaleMergeMdsmithLines(content string) string {
+	lines := strings.Split(content, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[len(fields)-1] == "merge=mdsmith" {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
 // WriteGitattributes updates .gitattributes to register the given files
 // with the mdsmith merge driver. It preserves all non-mdsmith entries and
 // updates only the mdsmith-managed block (delimited by BEGIN/END markers).
+// Stray `merge=mdsmith` lines outside the managed block (left behind by
+// older append-only installs or hand-edited files) are removed so the
+// resulting file matches the provided files exactly.
 //
 // If the file does not exist, it is created with only the managed block.
 // If the file exists but has no managed block, one is appended.
@@ -460,36 +481,51 @@ func WriteGitattributes(path string, files []string) error {
 		// New file: just write the managed block
 		newContent.WriteString(managedBlock.String())
 	} else {
-		// Existing file: preserve non-mdsmith content, replace managed block
+		// Existing file: preserve non-mdsmith content, replace managed
+		// block. Strip stale merge=mdsmith lines from the surrounding
+		// text independently so the original ordering of unrelated
+		// entries (text, eol=lf, linguist settings) is preserved.
 		content := string(existing)
 		startIdx := strings.Index(content, gitattributesManagedBlockStart)
 		endIdx := strings.Index(content, gitattributesManagedBlockEnd)
 
+		var before, after string
 		if startIdx == -1 || endIdx == -1 || endIdx < startIdx {
-			// No valid managed block found: append new block
-			newContent.WriteString(content)
-			if !strings.HasSuffix(content, "\n") {
+			// No valid managed block: everything is "before"; the new
+			// block is appended at the end after the preserved content.
+			before = stripStaleMergeMdsmithLines(content)
+			newContent.WriteString(before)
+			if before != "" && !strings.HasSuffix(before, "\n") {
 				newContent.WriteString("\n")
 			}
 			newContent.WriteString(managedBlock.String())
 		} else {
-			// Replace existing managed block
-			// Find the end of the END marker line
 			endLineEnd := strings.Index(content[endIdx:], "\n")
 			if endLineEnd == -1 {
 				endLineEnd = len(content)
 			} else {
 				endLineEnd += endIdx + 1 // Include the newline
 			}
-
-			// Write: content before block + new block + content after block
-			newContent.WriteString(content[:startIdx])
+			before = stripStaleMergeMdsmithLines(content[:startIdx])
+			after = stripStaleMergeMdsmithLines(content[endLineEnd:])
+			newContent.WriteString(before)
 			newContent.WriteString(managedBlock.String())
-			newContent.WriteString(content[endLineEnd:])
+			newContent.WriteString(after)
 		}
 	}
 
 	return os.WriteFile(path, []byte(newContent.String()), 0644)
+}
+
+// StageGitattributes runs `git add -- .gitattributes` against repoRoot
+// so updates written by Fix end up in the index. Without this, the
+// pre-merge-commit hook flow stages only the markdown file passed to
+// `mdsmith fix`, leaving the regenerated .gitattributes in the working
+// tree but absent from the resulting merge commit. Errors are surfaced
+// so callers can decide whether to roll back; the working-tree write
+// itself is already done at the point this is called.
+func StageGitattributes(repoRoot string) error {
+	return exec.Command("git", "-C", repoRoot, "add", "--", ".gitattributes").Run()
 }
 
 // HasMdsmithMergeDriver reports whether the repository's local git

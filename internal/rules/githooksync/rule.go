@@ -301,6 +301,14 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
+	// Stage the regenerated .gitattributes so the pre-merge-commit
+	// hook flow includes it in the merge commit alongside the
+	// markdown files mdsmith fix touched. A failed `git add` (e.g.,
+	// the path is excluded by an ignore rule, or the index is locked
+	// by a concurrent operation) is non-fatal: the on-disk fix
+	// already happened, and the user can stage the file themselves.
+	_ = githooks.StageGitattributes(repoRoot)
+
 	// Return original file content unchanged (the fix is in .gitattributes,
 	// not in the markdown file being linted)
 	return f.Source
