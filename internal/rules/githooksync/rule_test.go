@@ -730,3 +730,35 @@ func TestRule_Fix_ReturnsOriginalOnWriteError(t *testing.T) {
 	}
 	assert.Equal(t, f.Source, r.Fix(f))
 }
+
+func TestHookMatchesCanonical_AcceptsCanonicalScript(t *testing.T) {
+	hook := githooks.BuildHookScript("/usr/local/bin/mdsmith")
+	assert.True(t, hookMatchesCanonical(hook))
+}
+
+func TestHookMatchesCanonical_RejectsMissingChdir(t *testing.T) {
+	// Drop the `cd "$(git rev-parse ...)"` line.
+	hook := "#!/bin/sh\n" + githooks.PreMergeCommitMarker + "\n" +
+		"set -e\n" +
+		"'/usr/local/bin/mdsmith' fix . || true\n" +
+		"git diff --name-only -z -- '*.md' '*.markdown' | xargs -0 -r git add --\n"
+	assert.False(t, hookMatchesCanonical(hook))
+}
+
+func TestHookMatchesCanonical_RejectsLegacyFixCommand(t *testing.T) {
+	// Old per-file `fix --` style instead of glob-based `fix . || true`.
+	hook := "#!/bin/sh\n" + githooks.PreMergeCommitMarker + "\n" +
+		"set -e\n" +
+		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"'/usr/local/bin/mdsmith' fix -- 'PLAN.md'\n" +
+		"git diff --name-only -z -- '*.md' '*.markdown' | xargs -0 -r git add --\n"
+	assert.False(t, hookMatchesCanonical(hook))
+}
+
+func TestHookMatchesCanonical_RejectsMissingStagingLine(t *testing.T) {
+	hook := "#!/bin/sh\n" + githooks.PreMergeCommitMarker + "\n" +
+		"set -e\n" +
+		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"'/usr/local/bin/mdsmith' fix . || true\n"
+	assert.False(t, hookMatchesCanonical(hook))
+}

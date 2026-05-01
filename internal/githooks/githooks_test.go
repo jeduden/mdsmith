@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -779,4 +780,181 @@ func TestStageGitattributes_ReturnsErrorOutsideRepo(t *testing.T) {
 	// dir is not a git repo; `git -C dir add` exits non-zero.
 	err := StageGitattributes(dir)
 	assert.Error(t, err)
+}
+
+func TestDefaultIncludes(t *testing.T) {
+	got := DefaultIncludes()
+	assert.Equal(t, []string{"*.md", "*.markdown"}, got)
+	// Each call must return a fresh slice so callers can mutate it
+	// without affecting later callers.
+	got[0] = "mutated"
+	assert.Equal(t, []string{"*.md", "*.markdown"}, DefaultIncludes())
+}
+
+func TestGlobsFromConfig_NilConfig(t *testing.T) {
+	got := GlobsFromConfig(nil)
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Empty(t, got.Exclude)
+}
+
+func TestGlobsFromConfig_TranslatesIgnore(t *testing.T) {
+	cfg := &config.Config{Ignore: []string{"demo/**", "vendor/**"}}
+	got := GlobsFromConfig(cfg)
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude)
+}
+
+func TestGlobsFromConfig_IsolatesIgnoreSlice(t *testing.T) {
+	// Mutating the returned Exclude slice must not corrupt the
+	// config the caller passed in.
+	cfg := &config.Config{Ignore: []string{"demo/**"}}
+	got := GlobsFromConfig(cfg)
+	got.Exclude[0] = "mutated"
+	assert.Equal(t, []string{"demo/**"}, cfg.Ignore)
+}
+
+func TestLoadGlobs_MissingConfig(t *testing.T) {
+	dir := t.TempDir()
+	got := LoadGlobs(dir)
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Empty(t, got.Exclude)
+}
+
+func TestLoadGlobs_ReadsIgnorePatterns(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("ignore:\n  - \"demo/**\"\n  - \"vendor/**\"\n"), 0644))
+	got := LoadGlobs(dir)
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude)
+}
+
+func TestLoadGlobs_UnparseableConfigFallsBackToDefaults(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("not: [valid: yaml\n"), 0644))
+	got := LoadGlobs(dir)
+	assert.Equal(t, DefaultIncludes(), got.Include)
+	assert.Empty(t, got.Exclude,
+		"unparseable config must fall back to no exclusions, not error")
+}
+
+func TestRenderManagedBlock_IncludeAndExclude(t *testing.T) {
+	got := RenderManagedBlock(Globs{
+		Include: []string{"*.md", "*.markdown"},
+		Exclude: []string{"demo/**", "vendor/*.md"},
+	})
+	expected := "# BEGIN mdsmith merge-driver\n" +
+		"*.md merge=mdsmith\n" +
+		"*.markdown merge=mdsmith\n" +
+		"demo/** -merge\n" +
+		"vendor/*.md -merge\n" +
+		"# END mdsmith merge-driver\n"
+	assert.Equal(t, expected, got)
+}
+
+func TestRenderManagedBlock_EmptyGlobs(t *testing.T) {
+	got := RenderManagedBlock(Globs{})
+	expected := "# BEGIN mdsmith merge-driver\n" +
+		"# END mdsmith merge-driver\n"
+	assert.Equal(t, expected, got)
+}
+
+func TestExtractGlobs_NoManagedBlock(t *testing.T) {
+	got, ok := ExtractGlobs("*.txt text\n")
+	assert.False(t, ok)
+	assert.Empty(t, got.Include)
+	assert.Empty(t, got.Exclude)
+}
+
+func TestExtractGlobs_RoundTripsRender(t *testing.T) {
+	original := Globs{
+		Include: []string{"*.md", "*.markdown"},
+		Exclude: []string{"demo/**", "vendor/*.md"},
+	}
+	rendered := RenderManagedBlock(original)
+	got, ok := ExtractGlobs(rendered)
+	require.True(t, ok)
+	assert.Equal(t, original.Include, got.Include)
+	assert.Equal(t, original.Exclude, got.Exclude)
+}
+
+func TestExtractGlobs_IgnoresCommentsAndBlankLinesInBlock(t *testing.T) {
+	content := "# BEGIN mdsmith merge-driver\n" +
+		"\n" +
+		"# inline comment inside the block\n" +
+		"*.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	got, ok := ExtractGlobs(content)
+	require.True(t, ok)
+	assert.Equal(t, []string{"*.md"}, got.Include)
+	assert.Empty(t, got.Exclude)
+}
+
+func TestExtractGlobs_IgnoresUnknownAttributes(t *testing.T) {
+	// A line inside the managed block that is not a merge=mdsmith
+	// or -merge assignment must be ignored, not counted as a glob.
+	content := "# BEGIN mdsmith merge-driver\n" +
+		"*.md merge=mdsmith\n" +
+		"*.txt text\n" +
+		"# END mdsmith merge-driver\n"
+	got, ok := ExtractGlobs(content)
+	require.True(t, ok)
+	assert.Equal(t, []string{"*.md"}, got.Include)
+	assert.Empty(t, got.Exclude)
+}
+
+func TestExtractGlobs_BlockWithoutTrailingNewline(t *testing.T) {
+	// strings.Split on a trailing newline produces an empty last
+	// element; make sure ExtractGlobs handles content that does NOT
+	// end with a newline.
+	content := "# BEGIN mdsmith merge-driver\n" +
+		"*.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver"
+	got, ok := ExtractGlobs(content)
+	require.True(t, ok)
+	assert.Equal(t, []string{"*.md"}, got.Include)
+}
+
+func TestGlobsEqual(t *testing.T) {
+	a := Globs{Include: []string{"*.md"}, Exclude: []string{"demo/**"}}
+	b := Globs{Include: []string{"*.md"}, Exclude: []string{"demo/**"}}
+	assert.True(t, GlobsEqual(a, b))
+
+	// Different include length.
+	assert.False(t, GlobsEqual(a, Globs{Include: []string{"*.md", "*.markdown"}, Exclude: a.Exclude}))
+	// Different exclude length.
+	assert.False(t, GlobsEqual(a, Globs{Include: a.Include}))
+	// Same length, different include order (last-match-wins makes
+	// this a real behaviour change).
+	assert.False(t, GlobsEqual(
+		Globs{Include: []string{"a", "b"}},
+		Globs{Include: []string{"b", "a"}},
+	))
+	// Same length, different exclude content.
+	assert.False(t, GlobsEqual(
+		Globs{Include: []string{"*.md"}, Exclude: []string{"demo/**"}},
+		Globs{Include: []string{"*.md"}, Exclude: []string{"vendor/**"}},
+	))
+}
+
+func TestBuildHookScript_EmbedsBinaryAndUsesGlobs(t *testing.T) {
+	got := BuildHookScript("/usr/local/bin/mdsmith")
+	assert.Contains(t, got, "#!/bin/sh")
+	assert.Contains(t, got, PreMergeCommitMarker)
+	assert.Contains(t, got, "cd \"$(git rev-parse --show-toplevel)\"")
+	assert.Contains(t, got, "'/usr/local/bin/mdsmith' fix . || true")
+	assert.Contains(t, got, "git diff --name-only -z -- '*.md' '*.markdown' | xargs -0 -r git add --")
+}
+
+func TestBuildHookScript_QuotesBinaryWithEmbeddedQuote(t *testing.T) {
+	got := BuildHookScript("/path/it's/mdsmith")
+	assert.Contains(t, got, `'/path/it'\''s/mdsmith' fix . || true`,
+		"single quote in path must be encoded as `'\\''` so the shell sees the literal path")
+}
+
+func TestShellQuote_RoundTrip(t *testing.T) {
+	assert.Equal(t, "'plain'", shellQuote("plain"))
+	assert.Equal(t, `'a'\''b'`, shellQuote("a'b"))
+	assert.Equal(t, "'with space'", shellQuote("with space"))
 }

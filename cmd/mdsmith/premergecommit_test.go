@@ -532,3 +532,30 @@ func TestPreMergeCommitInstall_RejectsExplicitFiles(t *testing.T) {
 	})
 	assert.Contains(t, got, "no longer accepts explicit files")
 }
+
+func TestHookMatchesCanonical_AcceptsCanonicalScript(t *testing.T) {
+	hook := githooks.BuildHookScript("/usr/local/bin/mdsmith")
+	assert.True(t, hookMatchesCanonical(hook))
+}
+
+func TestHookMatchesCanonical_RejectsLegacyHook(t *testing.T) {
+	hook := "#!/bin/sh\n" + preMergeCommitHookMarker + "\n" +
+		"set -e\n'/usr/local/bin/mdsmith' fix -- 'PLAN.md'\n"
+	assert.False(t, hookMatchesCanonical(hook))
+}
+
+func TestHookMatchesCanonical_RejectsMissingChdir(t *testing.T) {
+	hook := "#!/bin/sh\n" + preMergeCommitHookMarker + "\n" +
+		"set -e\n" +
+		"'/usr/local/bin/mdsmith' fix . || true\n" +
+		"git diff --name-only -z -- '*.md' '*.markdown' | xargs -0 -r git add --\n"
+	assert.False(t, hookMatchesCanonical(hook))
+}
+
+func TestHookMatchesCanonical_RejectsMissingStagingLine(t *testing.T) {
+	hook := "#!/bin/sh\n" + preMergeCommitHookMarker + "\n" +
+		"set -e\n" +
+		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"'/usr/local/bin/mdsmith' fix . || true\n"
+	assert.False(t, hookMatchesCanonical(hook))
+}
