@@ -96,7 +96,6 @@ A `shortcut` setting (`always` | `collapsed-only` |
 ```yaml
 rules:
   no-undefined-reference-labels:
-    enabled: true
     shortcut: heuristic
     placeholders: []
 ```

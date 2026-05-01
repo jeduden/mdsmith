@@ -46,8 +46,7 @@ independent of fenced-block policy.
 
 ```yaml
 rules:
-  no-space-in-code-spans:
-    enabled: true
+  no-space-in-code-spans: true
 ```
 
 Category: `whitespace`. Disabled by default (opt-in).

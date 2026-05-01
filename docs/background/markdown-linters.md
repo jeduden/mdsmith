@@ -149,7 +149,7 @@ the same `.md` files.
   and inline metadata (`key:: value`)
 - No built-in linter — community plugins (e.g. [Linter
   plugin][obsidian-linter]) add YAML front matter fixes,
-  heading normalisation, and whitespace rules
+  heading normalization, and whitespace rules
 - Files are plain `.md` on disk and are committed to Git
   like any other source; CI can run mdsmith over the vault
 

@@ -53,7 +53,6 @@ it only caps the count when one or more are present.
 ```yaml
 rules:
   single-h1:
-    enabled: true
     front-matter-title: title
 ```
 
@@ -97,7 +96,7 @@ applied in that case — emit the diagnostic only.
 
 ```text
 extra H1 heading; only one H1 is allowed per file
-H1 heading conflicts with front-matter title
+h1 heading conflicts with front-matter title
 ```
 
 ## Tasks

@@ -79,7 +79,6 @@ before comparison.
 ```yaml
 rules:
   no-unused-link-definitions:
-    enabled: true
     ignored-labels: []
 ```
 

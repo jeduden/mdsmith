@@ -56,7 +56,6 @@ because the text portion is still visible.
 ```yaml
 rules:
   no-space-in-link-text:
-    enabled: true
     check-images: true
 ```
 
