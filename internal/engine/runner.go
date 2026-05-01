@@ -101,8 +101,47 @@ func (r *Runner) Run(paths []string) *Result {
 		res.Errors = append(res.Errors, errs...)
 	}
 
+	res.Diagnostics = DedupeDiagnostics(res.Diagnostics)
 	sortDiagnostics(res.Diagnostics)
 	return res
+}
+
+// DedupeDiagnostics returns diags with duplicate (file, line, column,
+// rule, message) tuples collapsed to a single entry. Repo-level rules
+// (notably MDS048 git-hook-sync) emit a diagnostic anchored to the
+// repository artifact for every linted file in the repo, so a fresh
+// `mdsmith check` over a large tree would otherwise display the same
+// warning N times and inflate Failures counts. Earlier-encountered
+// duplicates win so the diagnostic order from the first hit is
+// preserved.
+func DedupeDiagnostics(diags []lint.Diagnostic) []lint.Diagnostic {
+	if len(diags) <= 1 {
+		return diags
+	}
+	type key struct {
+		File    string
+		Line    int
+		Column  int
+		RuleID  string
+		Message string
+	}
+	seen := make(map[key]struct{}, len(diags))
+	out := diags[:0]
+	for _, d := range diags {
+		k := key{
+			File:    d.File,
+			Line:    d.Line,
+			Column:  d.Column,
+			RuleID:  d.RuleID,
+			Message: d.Message,
+		}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, d)
+	}
+	return out
 }
 
 // RunSource lints in-memory source bytes (e.g. from stdin) and returns a

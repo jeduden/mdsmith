@@ -851,7 +851,9 @@ func BuildHookScript(exe string) string {
 		"fi\n" +
 		"git diff --name-only -- '*.md' '*.markdown' | " +
 		"while IFS= read -r f; do\n" +
-		"  [ -n \"$f\" ] && git add -- \"$f\"\n" +
+		"  if [ -n \"$f\" ]; then\n" +
+		"    git add -- \"$f\"\n" +
+		"  fi\n" +
 		"done\n"
 }
 
@@ -863,24 +865,42 @@ func BuildHookScript(exe string) string {
 // stage modified markdown files via the POSIX `while read` loop.
 // Both the CLI status output and the git-hook-sync rule call this
 // so they cannot disagree on what counts as in-sync.
+//
+// Required fragments are matched only on non-comment lines so a
+// drifted hook with the canonical commands sitting in a comment
+// (or otherwise inert text) is reliably detected as drift.
 func HookMatchesCanonical(hook string) bool {
-	if !strings.Contains(hook, "cd \"$(git rev-parse --show-toplevel)\"") {
-		return false
+	required := []string{
+		`cd "$(git rev-parse --show-toplevel)"`,
+		"fix .; then",
+		`if [ "$status" -ne 1 ]; then`,
+		"git diff --name-only -- '*.md' '*.markdown' |",
+		`while IFS= read -r f; do`,
 	}
-	if !strings.Contains(hook, "fix .; then") {
-		return false
-	}
-	if !strings.Contains(hook, `if [ "$status" -ne 1 ]; then`) {
-		return false
-	}
-	if !strings.Contains(hook,
-		"git diff --name-only -- '*.md' '*.markdown' |") {
-		return false
-	}
-	if !strings.Contains(hook, `while IFS= read -r f; do`) {
-		return false
+	for _, frag := range required {
+		if !hookHasNonCommentLineContaining(hook, frag) {
+			return false
+		}
 	}
 	return true
+}
+
+// hookHasNonCommentLineContaining reports whether hook contains
+// fragment on at least one line that is not blank and does not
+// start with a `#` shell comment marker. Substring matching alone
+// would treat a documentation comment ("# example: fix .; then")
+// as canonical, masking real drift.
+func hookHasNonCommentLineContaining(hook, fragment string) bool {
+	for _, line := range strings.Split(hook, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.Contains(line, fragment) {
+			return true
+		}
+	}
+	return false
 }
 
 // shellQuote single-quotes s for use in a POSIX shell, encoding any

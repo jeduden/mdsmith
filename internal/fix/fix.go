@@ -54,6 +54,13 @@ type Result struct {
 func (f *Fixer) Fix(paths []string) *Result {
 	res := &Result{}
 
+	// Aggregate `before` diagnostics across files so the Failures
+	// count can be deduped after the loop. Repo-level rules
+	// (notably MDS048 git-hook-sync) anchor a single warning to a
+	// repository artifact for every linted file in the repo, so
+	// raw len(beforeDiags) summed per file would inflate Failures
+	// to N when only one underlying issue exists.
+	var allBefore []lint.Diagnostic
 	for _, path := range paths {
 		if config.IsIgnored(f.Config.Ignore, path) {
 			continue
@@ -61,14 +68,16 @@ func (f *Fixer) Fix(paths []string) *Result {
 		res.FilesChecked++
 		f.log().Printf("file: %s", path)
 		beforeDiags, remainingDiags, modified, errs := f.fixFile(path)
-		res.Failures += len(beforeDiags)
+		allBefore = append(allBefore, beforeDiags...)
 		res.Diagnostics = append(res.Diagnostics, remainingDiags...)
 		if modified != "" {
 			res.Modified = append(res.Modified, modified)
 		}
 		res.Errors = append(res.Errors, errs...)
 	}
+	res.Failures = len(engine.DedupeDiagnostics(allBefore))
 
+	res.Diagnostics = engine.DedupeDiagnostics(res.Diagnostics)
 	sort.Slice(res.Diagnostics, func(i, j int) bool {
 		di, dj := res.Diagnostics[i], res.Diagnostics[j]
 		if di.File != dj.File {

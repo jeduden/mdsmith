@@ -1115,3 +1115,32 @@ func TestWriteGitattributes_PropagatesNonENOENTReadError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reading")
 }
+
+func TestHookMatchesCanonical_RejectsCanonicalLinesInsideComments(t *testing.T) {
+	// A drifted hook that mentions the canonical commands inside
+	// shell comments must not be treated as canonical. Only
+	// non-comment lines satisfy the required-fragment checks.
+	hook := "#!/bin/sh\n" + PreMergeCommitMarker + "\n" +
+		"# example: cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"# example: fix .; then\n" +
+		"# example: if [ \"$status\" -ne 1 ]; then\n" +
+		"# example: git diff --name-only -- '*.md' '*.markdown' |\n" +
+		"# example: while IFS= read -r f; do\n" +
+		"echo placeholder\n"
+	assert.False(t, HookMatchesCanonical(hook),
+		"required commands sitting in comments must not satisfy the drift check")
+}
+
+func TestHookHasNonCommentLineContaining_IgnoresBlankAndComments(t *testing.T) {
+	got := hookHasNonCommentLineContaining(
+		"#!/bin/sh\n# example: needle\n\n  needle in real line\n",
+		"needle",
+	)
+	assert.True(t, got)
+
+	got = hookHasNonCommentLineContaining(
+		"#!/bin/sh\n# example: needle\n\n",
+		"needle",
+	)
+	assert.False(t, got, "comment-only matches must not satisfy the search")
+}
