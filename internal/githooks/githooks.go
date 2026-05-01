@@ -903,10 +903,13 @@ func hookHasNonCommentLineContaining(hook, fragment string) bool {
 	return false
 }
 
-// shellQuote single-quotes s for use in a POSIX shell, encoding any
-// embedded single quote as `'\”` (close quote, escaped quote,
-// reopen quote) so the result round-trips through the shell's
-// quoting rules.
+// shellQuote single-quotes s for use in a POSIX shell. An embedded
+// single quote is encoded as the four-byte sequence U+0027 U+005C
+// U+0027 U+0027 (close-quote, backslash-escaped quote, reopen-quote)
+// so the result round-trips through the shell's quoting rules. The
+// sequence is spelled out by codepoint here because gofmt's godoc
+// smart-quote substitution rewrites two adjacent ASCII apostrophes
+// into a curly close-quote and corrupts the literal example.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
