@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
+	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
@@ -75,6 +76,17 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		}
 	}
 
+	// Load the project's ignore patterns so discovery does not list
+	// files that mdsmith would skip during `mdsmith fix`. Without this
+	// the merge driver and pre-merge-commit hook would fire on paths
+	// (e.g. fixture files under `internal/rules/*/{good,bad,fixed}/**`)
+	// where mdsmith fix is a no-op, leaving real conflicts unresolved.
+	// A missing or unparseable config simply means no ignore filtering.
+	var ignorePatterns []string
+	if cfg, err := config.Load(filepath.Join(repoRoot, configFileName)); err == nil {
+		ignorePatterns = cfg.Ignore
+	}
+
 	seen := make(map[string]struct{})
 	var files []string
 	_ = filepath.Walk(repoRoot, func(path string, info os.FileInfo, err error) error {
@@ -98,6 +110,14 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		if !strings.HasSuffix(name, ".md") && !strings.HasSuffix(name, ".markdown") {
 			return nil
 		}
+		rel, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			return nil
+		}
+		key := filepath.ToSlash(rel)
+		if config.IsIgnored(ignorePatterns, key) {
+			return nil
+		}
 		content, err := lint.ReadFileLimited(path, maxBytes)
 		if err != nil {
 			return nil
@@ -108,11 +128,6 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 		if !hasDirectiveMarker(content, directiveNames) {
 			return nil
 		}
-		rel, err := filepath.Rel(repoRoot, path)
-		if err != nil {
-			return nil
-		}
-		key := filepath.ToSlash(rel)
 		if _, dup := seen[key]; dup {
 			return nil
 		}
@@ -128,6 +143,11 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 	sort.Strings(files)
 	return files
 }
+
+// configFileName is duplicated from internal/config to keep this file
+// from importing the package's exported `Load` for any reason other
+// than reading ignore patterns.
+const configFileName = ".mdsmith.yml"
 
 // DiscoverFilesForInstall is the install-time variant of DiscoverFiles
 // that supplies a sensible default file list when the repository has

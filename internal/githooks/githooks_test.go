@@ -105,6 +105,45 @@ func TestExtractGitattributesFiles(t *testing.T) {
 	assert.Equal(t, []string{"PLAN.md", "docs/foo.md"}, got)
 }
 
+func TestDiscoverFiles_RespectsConfigIgnorePatterns(t *testing.T) {
+	// Discovery must consult the project's .mdsmith.yml ignore list
+	// so the merge-driver assignments and pre-merge-commit hook only
+	// reference paths mdsmith would actually process. Without the
+	// filter, .gitattributes ends up listing fixture/example files
+	// that mdsmith fix skips, so a real merge conflict in those
+	// files would invoke the merge driver but fix nothing.
+	dir := t.TempDir()
+	files := map[string]string{
+		".mdsmith.yml": "ignore:\n" +
+			"  - \"fixtures/**\"\n" +
+			"  - \"vendor/inner/skip.md\"\n",
+		"README.md":            "# Test\n\n<?catalog?>\n<?/catalog?>\n",
+		"docs/guide.md":        "# Guide\n\n<?toc?>\n<?/toc?>\n",
+		"fixtures/bad.md":      "# Bad fixture\n\n<?catalog?>\n<?/catalog?>\n",
+		"fixtures/sub/x.md":    "# Sub\n\n<?include file=\"y.md\"?><?/include?>\n",
+		"vendor/inner/skip.md": "# Skip\n\n<?toc?>\n<?/toc?>\n",
+		"vendor/inner/keep.md": "# Kept\n\n<?catalog?>\n<?/catalog?>\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+	}
+
+	got := DiscoverFiles(dir, 1024*1024)
+
+	assert.Contains(t, got, "README.md", "non-ignored top-level file is discovered")
+	assert.Contains(t, got, "docs/guide.md", "non-ignored nested file is discovered")
+	assert.Contains(t, got, "vendor/inner/keep.md",
+		"siblings of an ignored exact path are still discovered")
+	assert.NotContains(t, got, "fixtures/bad.md",
+		"file matched by `fixtures/**` must be filtered out")
+	assert.NotContains(t, got, "fixtures/sub/x.md",
+		"file matched by `fixtures/**` must be filtered out (deep)")
+	assert.NotContains(t, got, "vendor/inner/skip.md",
+		"exact-path ignore must filter that file")
+}
+
 func TestDiscoverFiles_FindsDirectives(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
