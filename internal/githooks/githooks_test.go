@@ -792,23 +792,25 @@ func TestDefaultIncludes(t *testing.T) {
 }
 
 func TestGlobsFromConfig_NilConfig(t *testing.T) {
-	got := GlobsFromConfig(nil)
+	got, skipped := GlobsFromConfig(nil)
 	assert.Equal(t, DefaultIncludes(), got.Include)
 	assert.Empty(t, got.Exclude)
+	assert.Empty(t, skipped)
 }
 
 func TestGlobsFromConfig_TranslatesIgnore(t *testing.T) {
 	cfg := &config.Config{Ignore: []string{"demo/**", "vendor/**"}}
-	got := GlobsFromConfig(cfg)
+	got, skipped := GlobsFromConfig(cfg)
 	assert.Equal(t, DefaultIncludes(), got.Include)
 	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude)
+	assert.Empty(t, skipped, "representable patterns must not be reported as skipped")
 }
 
 func TestGlobsFromConfig_IsolatesIgnoreSlice(t *testing.T) {
 	// Mutating the returned Exclude slice must not corrupt the
 	// config the caller passed in.
 	cfg := &config.Config{Ignore: []string{"demo/**"}}
-	got := GlobsFromConfig(cfg)
+	got, _ := GlobsFromConfig(cfg)
 	got.Exclude[0] = "mutated"
 	assert.Equal(t, []string{"demo/**"}, cfg.Ignore)
 }
@@ -1037,12 +1039,14 @@ func TestGlobsFromConfig_DropsUnrepresentablePatterns(t *testing.T) {
 	cfg := &config.Config{Ignore: []string{
 		"demo/**",
 		"!docs/*.md", // negation: skipped
-		"with space",  // whitespace: skipped
+		"with space", // whitespace: skipped
 		"vendor/**",
 	}}
-	got := GlobsFromConfig(cfg)
+	got, skipped := GlobsFromConfig(cfg)
 	assert.Equal(t, []string{"demo/**", "vendor/**"}, got.Exclude,
 		"only representable patterns survive the validation filter")
+	assert.Equal(t, []string{"!docs/*.md", "with space"}, skipped,
+		"dropped patterns are returned in input order so callers can warn")
 }
 
 func TestHookMatchesCanonical_RejectsMissingStagingPipeline(t *testing.T) {
@@ -1083,4 +1087,31 @@ func TestHookMatchesCanonical_RejectsMissingExitGuard(t *testing.T) {
 		"git diff --name-only -- '*.md' '*.markdown' | while IFS= read -r f; do\n" +
 		"  git add -- \"$f\"\ndone\n"
 	assert.False(t, HookMatchesCanonical(hook))
+}
+
+func TestExtractGlobs_SkipsSingleFieldLines(t *testing.T) {
+	// A managed-block line with only a pattern (no attribute) is
+	// not a valid merge=mdsmith or -merge assignment; ExtractGlobs
+	// must skip it instead of treating the lone token as a glob.
+	content := "# BEGIN mdsmith merge-driver\n" +
+		"orphan-token\n" +
+		"*.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	got, ok := ExtractGlobs(content)
+	require.True(t, ok)
+	assert.Equal(t, []string{"*.md"}, got.Include)
+	assert.Empty(t, got.Exclude)
+}
+
+func TestWriteGitattributes_PropagatesNonENOENTReadError(t *testing.T) {
+	// .gitattributes is a directory, so os.ReadFile returns a
+	// non-IsNotExist error. WriteGitattributes must surface that
+	// rather than silently overwriting the directory.
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+	require.NoError(t, os.Mkdir(path, 0o755))
+
+	err := WriteGitattributes(path, Globs{Include: []string{"*.md"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading")
 }

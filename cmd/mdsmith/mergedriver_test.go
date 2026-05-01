@@ -735,3 +735,124 @@ func TestResolveHooksDir_CustomAbsoluteHooksPath(t *testing.T) {
 	got := resolveHooksDir(dir)
 	assert.Equal(t, absPath, got)
 }
+
+func TestRunMergeDriverInstall_DropsAndWarnsForUnrepresentableIgnore(t *testing.T) {
+	// .mdsmith.yml ignore patterns containing whitespace or `!`
+	// negation cannot be represented in a .gitattributes managed
+	// block. The install command drops them but warns on stderr
+	// so the operator notices the divergence between the merge
+	// driver scope and `mdsmith fix`'s ignore semantics.
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("ignore:\n  - \"with space.md\"\n  - \"!negated.md\"\n  - \"vendor/**\"\n"), 0o644))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	stderr := captureStderr(func() {
+		assert.Equal(t, 0, runMergeDriverInstall(nil))
+	})
+	assert.Contains(t, stderr, "skipped unsupported ignore patterns")
+	assert.Contains(t, stderr, "with space.md")
+	assert.Contains(t, stderr, "!negated.md")
+
+	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
+	require.NoError(t, err)
+	content := string(attrs)
+	assert.Contains(t, content, "vendor/** -merge",
+		"representable ignore patterns survive")
+	assert.NotContains(t, content, "with space.md",
+		"unrepresentable ignore patterns are dropped from the managed block")
+	assert.NotContains(t, content, "!negated.md",
+		"negation patterns are dropped from the managed block")
+}
+
+func TestRunMergeDriverInstall_FailsWhenGitattributesIsDir(t *testing.T) {
+	// .gitattributes is a directory, so WriteGitattributes returns
+	// an error. The install command must surface it with exit 2,
+	// not silently succeed.
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".gitattributes"), 0o755))
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverInstall(nil))
+	})
+	assert.Contains(t, got, "updating .gitattributes")
+}
+
+func TestRunMergeDriverInstall_FailsWhenHooksDirNotWritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics not applicable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("running as root: permission checks don't apply")
+	}
+	// .git is read-only so MkdirAll(.git/hooks) fails inside
+	// ensurePreMergeCommitHook, surfacing exit 2 with a clear
+	// "installing pre-merge-commit hook" prefix.
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+	gitDir := filepath.Join(dir, ".git")
+	hooksDir := filepath.Join(gitDir, "hooks")
+	// Remove the existing hooks dir created by initTestRepo, then
+	// drop write permission on .git so MkdirAll cannot recreate it.
+	require.NoError(t, os.RemoveAll(hooksDir))
+	require.NoError(t, os.Chmod(gitDir, 0o555))
+	t.Cleanup(func() { _ = os.Chmod(gitDir, 0o755) })
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	got := captureStderr(func() {
+		assert.Equal(t, 2, runMergeDriverInstall(nil))
+	})
+	assert.Contains(t, got, "installing pre-merge-commit hook")
+}
+
+func TestRunMergeDriverInstall_CustomIncludeGlobs(t *testing.T) {
+	// Explicit args replace the default include set so callers can
+	// scope the merge driver to a custom pattern. The .gitattributes
+	// managed block must use the supplied globs verbatim.
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+
+	orig := executableFunc
+	t.Cleanup(func() { executableFunc = orig })
+	executableFunc = func() (string, error) { return "/usr/local/bin/mdsmith", nil }
+
+	origWd, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	captureStderr(func() {
+		assert.Equal(t, 0, runMergeDriverInstall([]string{"docs/**/*.md", "CHANGELOG.md"}))
+	})
+
+	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
+	require.NoError(t, err)
+	content := string(attrs)
+	assert.Contains(t, content, "docs/**/*.md merge=mdsmith")
+	assert.Contains(t, content, "CHANGELOG.md merge=mdsmith")
+	assert.NotContains(t, content, "*.md merge=mdsmith\n*.markdown",
+		"default include set must be replaced when custom globs are given")
+}

@@ -368,39 +368,42 @@ func hasConflictMarkers(content []byte) bool {
 // resolveManagedGlobs returns the merge-driver glob set for an
 // install command. With no args, the default include set
 // (`*.md`, `*.markdown`) is used and the project's .mdsmith.yml
-// `ignore:` patterns become exclude overrides. Explicit args replace
-// the include set so callers can scope the merge driver to a custom
-// pattern (e.g. `docs/**/*.md`); the .mdsmith.yml exclusions still
-// apply on top via last-match-wins. The second return is the process
-// exit code: 0 on success, 2 on a user-facing error (already printed
-// to stderr).
-//
-// Whitespace in any pattern is rejected because .gitattributes splits
-// fields on whitespace, so a pattern containing a space cannot be
-// represented in the managed block.
+// `ignore:` patterns become exclude overrides — patterns that
+// cannot appear verbatim in `.gitattributes` (whitespace, leading
+// `!`) are silently dropped by `GlobsFromConfig`. Explicit args
+// replace the include set so callers can scope the merge driver to
+// a custom pattern (e.g. `docs/**/*.md`); whitespace in any
+// caller-provided include is rejected up front because
+// .gitattributes splits attribute lines on whitespace and the bad
+// pattern would corrupt the managed block. The second return is
+// the process exit code: 0 on success, 2 on a user-facing error
+// (already printed to stderr).
 func resolveManagedGlobs(_ string, args []string) (githooks.Globs, int) {
 	cfg, _, err := loadConfig("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
 		return githooks.Globs{}, 2
 	}
-	globs := githooks.GlobsFromConfig(cfg)
+	globs, skipped := githooks.GlobsFromConfig(cfg)
+	if len(skipped) > 0 {
+		// Surface dropped ignore patterns so operators can see when
+		// the generated merge-driver scope diverges from the
+		// `ignore:` semantics mdsmith fix itself respects.
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: skipped unsupported ignore patterns "+
+				"(negation or whitespace) when generating "+
+				".gitattributes: %s\n",
+			strings.Join(skipped, ", "))
+	}
 	if len(args) > 0 {
+		for _, p := range args {
+			if strings.ContainsAny(p, " \t\n\r") {
+				fmt.Fprintf(os.Stderr,
+					"mdsmith: include pattern %q contains whitespace, which is not supported in .gitattributes\n", p)
+				return githooks.Globs{}, 2
+			}
+		}
 		globs.Include = append([]string{}, args...)
-	}
-	for _, p := range globs.Include {
-		if strings.ContainsAny(p, " \t\n\r") {
-			fmt.Fprintf(os.Stderr,
-				"mdsmith: include pattern %q contains whitespace, which is not supported in .gitattributes\n", p)
-			return githooks.Globs{}, 2
-		}
-	}
-	for _, p := range globs.Exclude {
-		if strings.ContainsAny(p, " \t\n\r") {
-			fmt.Fprintf(os.Stderr,
-				"mdsmith: ignore pattern %q contains whitespace, which is not supported in .gitattributes\n", p)
-			return githooks.Globs{}, 2
-		}
 	}
 	return globs, 0
 }

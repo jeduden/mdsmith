@@ -154,9 +154,9 @@ const configFileName = ".mdsmith.yml"
 // Last-match-wins in .gitattributes lets the excludes override the
 // broader markdown includes. cfg may be nil (no exclusions then).
 //
-// Patterns that cannot be represented directly in .gitattributes are
-// dropped from the exclude set so MDS048's auto-fix never produces a
-// broken managed block:
+// Patterns that cannot be represented directly in .gitattributes
+// are dropped from the exclude set so MDS048's auto-fix never
+// produces a broken managed block:
 //
 //   - .gitattributes splits attribute lines on whitespace, so a
 //     pattern containing a space or tab would be parsed as a path
@@ -166,24 +166,26 @@ const configFileName = ".mdsmith.yml"
 //     ignored by git (or treated as a literal path starting with
 //     `!`), which is misleading.
 //
-// Unrepresentable patterns are silently skipped: the rule's Fix
-// path has no error channel back to the user, and the alternative
-// (writing the bad line) corrupts the merge driver's behaviour.
-// Authors who rely on negation or whitespace patterns should keep
-// `git-hook-sync` disabled.
-func GlobsFromConfig(cfg *config.Config) Globs {
+// The returned `skipped` slice lists any ignore patterns that were
+// dropped, in input order. Callers that have an error channel
+// (notably the install commands) surface them on stderr; the
+// rule's auto-fix path silently discards the list because it runs
+// per-file and would otherwise flood diagnostic output.
+func GlobsFromConfig(cfg *config.Config) (Globs, []string) {
 	g := Globs{Include: DefaultIncludes()}
 	if cfg == nil || len(cfg.Ignore) == 0 {
-		return g
+		return g, nil
 	}
 	g.Exclude = make([]string, 0, len(cfg.Ignore))
+	var skipped []string
 	for _, p := range cfg.Ignore {
 		if !isRepresentableGitattributesPattern(p) {
+			skipped = append(skipped, p)
 			continue
 		}
 		g.Exclude = append(g.Exclude, p)
 	}
-	return g
+	return g, skipped
 }
 
 // isRepresentableGitattributesPattern reports whether pattern can be
@@ -202,13 +204,17 @@ func isRepresentableGitattributesPattern(pattern string) bool {
 
 // LoadGlobs reads .mdsmith.yml from repoRoot and returns the merge-
 // driver glob set. A missing or unparseable config falls back to the
-// default include set with no exclusions.
+// default include set with no exclusions. Skipped (unrepresentable)
+// ignore patterns are silently discarded — callers that need to
+// surface them should use GlobsFromConfig directly.
 func LoadGlobs(repoRoot string) Globs {
 	cfg, err := config.Load(filepath.Join(repoRoot, configFileName))
 	if err != nil {
-		return GlobsFromConfig(nil)
+		g, _ := GlobsFromConfig(nil)
+		return g
 	}
-	return GlobsFromConfig(cfg)
+	g, _ := GlobsFromConfig(cfg)
+	return g
 }
 
 // DiscoverFilesForInstall is the install-time variant of DiscoverFiles

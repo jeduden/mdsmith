@@ -8,7 +8,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,7 +22,8 @@ import (
 // the rule expects when no .mdsmith.yml is present (default include
 // patterns, no exclusions).
 func canonicalManagedBlock() string {
-	return githooks.RenderManagedBlock(githooks.GlobsFromConfig(nil))
+	g, _ := githooks.GlobsFromConfig(nil)
+	return githooks.RenderManagedBlock(g)
 }
 
 // initTestRepo runs `git init` on dir and pins core.hooksPath to
@@ -350,12 +350,12 @@ func TestRule_ResolveRepoRootIsCached(t *testing.T) {
 		"second call must return the cached repo root, not re-run git")
 }
 
-func TestRule_Check_ReportsConsistentlyAcrossClones(t *testing.T) {
-	// The engine clones the rule per file when configured with a
-	// settings mapping. Each clone must observe drift independently:
-	// suppressing duplicate diagnostics here would prevent the fixer
-	// pipeline (which calls Check before deciding whether to run Fix)
-	// from triggering Fix on subsequent files.
+func TestRule_Check_AnchorsDiagnosticToGitattributesPath(t *testing.T) {
+	// The diagnostic File field points at the .gitattributes
+	// artifact, not the markdown file the engine happened to be
+	// linting. Drift is a repo-level concern, and anchoring the
+	// report at the artifact lets downstream tooling collapse
+	// duplicate reports by (file, line, ruleID).
 	dir := t.TempDir()
 	initRepoWithDriver(t, dir)
 
@@ -363,18 +363,17 @@ func TestRule_Check_ReportsConsistentlyAcrossClones(t *testing.T) {
 		[]byte("# BEGIN mdsmith merge-driver\nREADME.md merge=mdsmith\n# END mdsmith merge-driver\n"),
 		0o644))
 
-	clone1 := rule.CloneRule(&Rule{}).(*Rule)
-	clone2 := rule.CloneRule(&Rule{}).(*Rule)
-
+	r := &Rule{}
 	f := &lint.File{
 		Path:          filepath.Join(dir, "README.md"),
 		Source:        []byte("# README\n"),
 		MaxInputBytes: 1048576,
 		FS:            os.DirFS(dir),
 	}
-
-	assert.Len(t, clone1.Check(f), 1, "first clone reports drift")
-	assert.Len(t, clone2.Check(f), 1, "second clone also reports so Fix can trigger")
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, filepath.Join(dir, ".gitattributes"), diags[0].File,
+		"diagnostic should point at the artifact, not the linted markdown")
 }
 
 func TestRule_Metadata(t *testing.T) {

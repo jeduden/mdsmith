@@ -129,8 +129,17 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if len(parts) == 0 {
 		return nil
 	}
+
+	// Anchor the diagnostic to the .gitattributes path (the
+	// repo-level artifact this rule checks) rather than the
+	// markdown file the engine happened to be linting. Drift is a
+	// repo-level concern, and pointing every duplicate report at
+	// the same artifact path lets downstream tooling collapse them
+	// by (file, line, ruleID) and makes the source of the warning
+	// explicit in the diagnostic output.
+	diagPath := filepath.Join(repoRoot, ".gitattributes")
 	return []lint.Diagnostic{{
-		File:     f.Path,
+		File:     diagPath,
 		Line:     1,
 		Column:   1,
 		RuleID:   r.ID(),

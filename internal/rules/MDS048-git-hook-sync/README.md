@@ -10,10 +10,19 @@ Git artifacts must match the canonical glob-based template
 derived from .mdsmith.yml.
 
 The `.gitattributes` managed block and the
-pre-merge-commit hook must match a canonical template.
-That template is computed from the project's
-`.mdsmith.yml` ignore patterns. Editing `.mdsmith.yml`
-keeps both git artifacts in sync.
+pre-merge-commit hook must match a canonical
+template. That template is computed from the
+project's `.mdsmith.yml` ignore patterns. Editing
+`.mdsmith.yml` keeps both git artifacts in sync.
+
+One limitation: ignore patterns that cannot appear
+verbatim in `.gitattributes` are dropped from the
+managed block. Negation patterns starting with `!`
+and patterns containing whitespace fall in this
+bucket. `mdsmith fix` itself still honors them, so
+the merge-driver scope can diverge from `mdsmith
+fix`'s scope when the `ignore:` list relies on those
+forms.
 
 ## Rationale
 
