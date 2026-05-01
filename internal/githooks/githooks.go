@@ -144,9 +144,8 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 	return files
 }
 
-// configFileName is duplicated from internal/config to keep this file
-// from importing the package's exported `Load` for any reason other
-// than reading ignore patterns.
+// configFileName duplicates the config filename locally so this
+// package does not need `internal/config` to export the constant.
 const configFileName = ".mdsmith.yml"
 
 // GlobsFromConfig returns the canonical merge-driver glob set for a
