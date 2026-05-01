@@ -45,12 +45,25 @@ type Rule struct{}
 // the working tree. Surfacing the failure through Check makes it
 // retryable: subsequent Fix calls re-run the staging step until it
 // succeeds, at which point the entry is cleared.
+// repoRootCache memoises the result of GitRepoRoot(dir) so per-file
+// Check/Fix calls do not respawn `git rev-parse --show-toplevel` for
+// every file. Entries with a non-nil error are also cached so
+// non-repo directories are remembered too. Keyed by the directory
+// passed to resolveRepoRoot, not the resolved root, because two
+// directories under the same repo still produce one git invocation.
 var (
 	discoveredMu    sync.Mutex
 	discoveredCache = make(map[string][]string)
 	stagingMu       sync.Mutex
 	stagingErrors   = make(map[string]error)
+	repoRootMu      sync.Mutex
+	repoRootCache   = make(map[string]repoRootEntry)
 )
+
+type repoRootEntry struct {
+	root string
+	err  error
+}
 
 // ID implements rule.Rule.
 func (r *Rule) ID() string { return "MDS048" }
@@ -79,7 +92,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Resolve the repo root from the directory of the file being
 	// linted so the rule does not depend on the process working
 	// directory. When a file is not inside a git repo, skip silently.
-	repoRoot, err := githooks.GitRepoRoot(filepath.Dir(f.Path))
+	// The lookup result is memoised per directory so linting many
+	// files in the same repo does not respawn `git rev-parse` for
+	// each one.
+	repoRoot, err := r.resolveRepoRoot(filepath.Dir(f.Path))
 	if err != nil {
 		return nil
 	}
@@ -120,7 +136,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// description from a source means it is in sync (or the user
 	// has not opted into that source at all).
 	var parts []string
-	if msg := r.mergeDriverDrift(repoRoot, getDiscovered); msg != "" {
+	if msg := r.mergeDriverDrift(repoRoot, hasDriver, getDiscovered); msg != "" {
 		parts = append(parts, msg)
 	}
 	if msg := r.preMergeCommitHookDrift(repoRoot, getDiscovered); msg != "" {
@@ -190,13 +206,17 @@ func peekHookSource(repoRoot string) hookSource {
 // that have not opted in are not flagged. Returns an empty string
 // when no drift is detected.
 //
+// hasDriver is taken as a parameter rather than re-probed via
+// HasMdsmithMergeDriver so Check does not pay an extra `git config`
+// subprocess per linted file: the caller has already computed it.
+//
 // An empty `merge=mdsmith` assignment list with the driver registered
 // and discovered files present is treated as drift: the merge driver
 // will not run for any file, defeating the registration. A non-ENOENT
 // read error is surfaced as drift too rather than silently passing,
 // so permission/IO failures cannot mask real misconfiguration.
-func (r *Rule) mergeDriverDrift(repoRoot string, getDiscovered func() []string) string {
-	if !githooks.HasMdsmithMergeDriver(repoRoot) {
+func (r *Rule) mergeDriverDrift(repoRoot string, hasDriver bool, getDiscovered func() []string) string {
+	if !hasDriver {
 		return ""
 	}
 	data, err := os.ReadFile(filepath.Join(repoRoot, ".gitattributes"))
@@ -294,7 +314,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	repoRoot, err := githooks.GitRepoRoot(filepath.Dir(f.Path))
+	repoRoot, err := r.resolveRepoRoot(filepath.Dir(f.Path))
 	if err != nil {
 		return f.Source
 	}
@@ -370,6 +390,23 @@ func stagingError(repoRoot string) error {
 	stagingMu.Lock()
 	defer stagingMu.Unlock()
 	return stagingErrors[repoRoot]
+}
+
+// resolveRepoRoot wraps githooks.GitRepoRoot with a per-directory
+// cache so the per-file diagnostic flow does not respawn
+// `git rev-parse --show-toplevel` for every linted file in the same
+// repo. Failures (the linted file is not inside a git repo) are
+// cached too so a directory tree without a `.git` ancestor is also
+// only probed once.
+func (r *Rule) resolveRepoRoot(dir string) (string, error) {
+	repoRootMu.Lock()
+	defer repoRootMu.Unlock()
+	if entry, ok := repoRootCache[dir]; ok {
+		return entry.root, entry.err
+	}
+	root, err := githooks.GitRepoRoot(dir)
+	repoRootCache[dir] = repoRootEntry{root: root, err: err}
+	return root, err
 }
 
 // getDiscovered returns the discovered files for a repo, using a cached

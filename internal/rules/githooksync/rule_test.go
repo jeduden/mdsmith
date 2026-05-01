@@ -357,6 +357,33 @@ func TestRule_Check_HookListsFilesButRepoHasNoDirectives(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "should have: (none)")
 }
 
+func TestRule_ResolveRepoRootIsCached(t *testing.T) {
+	// resolveRepoRoot must memoise the GitRepoRoot lookup so per-file
+	// Check/Fix calls don't respawn `git rev-parse` for every linted
+	// file. We verify by deleting the .git directory between calls
+	// and asserting the cached value is still returned.
+	dir := t.TempDir()
+	initTestRepo(t, dir)
+
+	r := &Rule{}
+	repoRootMu.Lock()
+	delete(repoRootCache, dir)
+	repoRootMu.Unlock()
+
+	first, err := r.resolveRepoRoot(dir)
+	require.NoError(t, err)
+	require.NotEmpty(t, first)
+
+	// Remove .git so a fresh GitRepoRoot lookup would now fail.
+	require.NoError(t, os.RemoveAll(filepath.Join(dir, ".git")))
+
+	second, err := r.resolveRepoRoot(dir)
+	assert.NoError(t, err,
+		"cached lookup must succeed even after .git is removed")
+	assert.Equal(t, first, second,
+		"second call must return the cached repo root, not re-run git")
+}
+
 func TestRule_GetDiscoveredCacheHit(t *testing.T) {
 	// Two consecutive Check() calls in the same repo must hit the
 	// discoveredCache rather than re-scan. We verify by deleting the
