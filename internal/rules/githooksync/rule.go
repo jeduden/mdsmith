@@ -336,17 +336,22 @@ func (r *Rule) markFixed(repoRoot string) bool {
 // getDiscovered returns the discovered files for a repo, using a cached
 // result if available. Discovery is expensive (full repo walk + file
 // reads), so caching it significantly improves performance when checking
-// many files in the same repo.
+// many files in the same repo. The cache key includes maxBytes because
+// DiscoverFiles passes that limit to ReadFileLimited when scanning each
+// file: a different limit can change which files qualify as
+// directive-bearing, so reusing a slice computed under a different
+// budget would return an incorrect list.
 func (r *Rule) getDiscovered(repoRoot string, maxBytes int64) []string {
 	discoveredMu.Lock()
 	defer discoveredMu.Unlock()
 
-	if files, ok := discoveredCache[repoRoot]; ok {
+	cacheKey := fmt.Sprintf("%s:%d", repoRoot, maxBytes)
+	if files, ok := discoveredCache[cacheKey]; ok {
 		return files
 	}
 
 	files := githooks.DiscoverFiles(repoRoot, maxBytes)
-	discoveredCache[repoRoot] = files
+	discoveredCache[cacheKey] = files
 	return files
 }
 

@@ -664,6 +664,33 @@ func TestWriteGitattributes_HandlesEndMarkerWithoutTrailingNewline(t *testing.T)
 	assert.Equal(t, expected, string(content))
 }
 
+func TestWriteGitattributes_DoesNotMatchMarkerInsideOtherComment(t *testing.T) {
+	// The BEGIN/END strings must be matched as standalone trimmed
+	// lines, not substrings. If a comment elsewhere mentions the
+	// marker text (e.g. install instructions), the writer must still
+	// treat the file as having no managed block and append a fresh
+	// one rather than replacing content around the bogus match.
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	initial := "# Run `# BEGIN mdsmith merge-driver` to install\n" +
+		"*.txt text eol=lf\n"
+	require.NoError(t, os.WriteFile(path, []byte(initial), 0644))
+
+	require.NoError(t, WriteGitattributes(path, []string{"new.md"}))
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	expected := "# Run `# BEGIN mdsmith merge-driver` to install\n" +
+		"*.txt text eol=lf\n" +
+		"# BEGIN mdsmith merge-driver\n" +
+		"new.md merge=mdsmith\n" +
+		"# END mdsmith merge-driver\n"
+	assert.Equal(t, expected, string(content),
+		"comment that contains the marker text must not be mistaken for the block start")
+}
+
 func TestStageGitattributes_AddsFileToIndex(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, exec.Command("git", "init", dir).Run())

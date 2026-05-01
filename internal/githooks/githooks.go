@@ -463,6 +463,31 @@ func stripStaleMergeMdsmithLines(content string) string {
 	return strings.Join(kept, "\n")
 }
 
+// findManagedBlockLines returns the half-open line range
+// [startLine, endLineExclusive) covering the managed block in lines.
+// A block is recognized only when the BEGIN and END markers appear as
+// standalone trimmed lines (not embedded in another comment), with the
+// END marker at or after the BEGIN marker. Returns (-1, -1) when no
+// valid block exists.
+func findManagedBlockLines(lines []string) (int, int) {
+	startLine := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == gitattributesManagedBlockStart {
+			startLine = i
+			break
+		}
+	}
+	if startLine == -1 {
+		return -1, -1
+	}
+	for i := startLine; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == gitattributesManagedBlockEnd {
+			return startLine, i + 1
+		}
+	}
+	return -1, -1
+}
+
 // WriteGitattributes updates .gitattributes to register the given files
 // with the mdsmith merge driver. It preserves all non-mdsmith entries and
 // updates only the mdsmith-managed block (delimited by BEGIN/END markers).
@@ -502,29 +527,42 @@ func WriteGitattributes(path string, files []string) error {
 		// block. Strip stale merge=mdsmith lines from the surrounding
 		// text independently so the original ordering of unrelated
 		// entries (text, eol=lf, linguist settings) is preserved.
+		// Block boundaries are matched against full trimmed lines, not
+		// substrings, so a comment like
+		// `# update via mdsmith merge-driver install` cannot be
+		// mistaken for the managed-block start marker.
 		content := string(existing)
-		startIdx := strings.Index(content, gitattributesManagedBlockStart)
-		endIdx := strings.Index(content, gitattributesManagedBlockEnd)
+		// Track whether the original content ended with a newline so
+		// the rewrite preserves the original final-newline state.
+		hasTrailingNewline := strings.HasSuffix(content, "\n")
+		// Split on \n. Note: a trailing newline produces an empty last
+		// element which we drop here and re-add via hasTrailingNewline.
+		lines := strings.Split(content, "\n")
+		if hasTrailingNewline {
+			lines = lines[:len(lines)-1]
+		}
+		startLine, endLine := findManagedBlockLines(lines)
 
-		var before, after string
-		if startIdx == -1 || endIdx == -1 || endIdx < startIdx {
+		joinLines := func(ls []string) string {
+			if len(ls) == 0 {
+				return ""
+			}
+			return strings.Join(ls, "\n") + "\n"
+		}
+
+		if startLine == -1 {
 			// No valid managed block: everything is "before"; the new
 			// block is appended at the end after the preserved content.
-			before = stripStaleMergeMdsmithLines(content)
+			before := stripStaleMergeMdsmithLines(joinLines(lines))
+			before = strings.TrimSuffix(before, "\n")
 			newContent.WriteString(before)
-			if before != "" && !strings.HasSuffix(before, "\n") {
+			if before != "" {
 				newContent.WriteString("\n")
 			}
 			newContent.WriteString(managedBlock.String())
 		} else {
-			endLineEnd := strings.Index(content[endIdx:], "\n")
-			if endLineEnd == -1 {
-				endLineEnd = len(content)
-			} else {
-				endLineEnd += endIdx + 1 // Include the newline
-			}
-			before = stripStaleMergeMdsmithLines(content[:startIdx])
-			after = stripStaleMergeMdsmithLines(content[endLineEnd:])
+			before := stripStaleMergeMdsmithLines(joinLines(lines[:startLine]))
+			after := stripStaleMergeMdsmithLines(joinLines(lines[endLine:]))
 			newContent.WriteString(before)
 			newContent.WriteString(managedBlock.String())
 			newContent.WriteString(after)

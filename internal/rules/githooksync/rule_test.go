@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/githooks"
@@ -387,6 +388,37 @@ func TestRule_GetDiscoveredCacheHit(t *testing.T) {
 	got := r.getDiscovered(dir, 1048576)
 	assert.Equal(t, []string{"test.md"}, got,
 		"second call must return cached discovery, not rescan")
+}
+
+func TestRule_GetDiscoveredCacheKeyIncludesMaxBytes(t *testing.T) {
+	// DiscoverFiles uses maxBytes when reading each candidate file.
+	// A different limit can change which files qualify, so the cache
+	// must key on (repoRoot, maxBytes), not repoRoot alone — otherwise
+	// the second caller would receive a slice computed under the
+	// first caller's limit and could miss real drift.
+	dir := t.TempDir()
+	initRepoWithDriver(t, dir)
+
+	// File contains the directive token only beyond byte 50.
+	mdFile := filepath.Join(dir, "deep.md")
+	pad := strings.Repeat("x", 200)
+	content := "# Test\n" + pad + "\n<?catalog?>\n<?/catalog?>\n"
+	require.NoError(t, os.WriteFile(mdFile, []byte(content), 0o644))
+
+	r := &Rule{}
+
+	// With a tight read budget, DiscoverFiles cannot see the
+	// directive: deep.md is not discovered.
+	gotSmall := r.getDiscovered(dir, 50)
+	assert.Empty(t, gotSmall,
+		"with a tight maxBytes budget the directive past byte 50 is not visible")
+
+	// With a generous budget, the same repo MUST be re-scanned and
+	// deep.md must show up. If the cache keyed only on repoRoot, the
+	// previous empty result would be reused.
+	gotLarge := r.getDiscovered(dir, 1<<20)
+	assert.Equal(t, []string{"deep.md"}, gotLarge,
+		"a different maxBytes must trigger rediscovery, not reuse the small-budget cache")
 }
 
 func TestRule_Check_HookReadErrorIsReported(t *testing.T) {
