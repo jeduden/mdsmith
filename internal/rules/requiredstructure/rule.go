@@ -193,10 +193,7 @@ func (r *Rule) isSchemaFile(f *lint.File) bool {
 	if f.RootDir == "" {
 		return false
 	}
-	abs, err := filepath.Abs(f.Path)
-	if err != nil {
-		return false
-	}
+	abs, _ := filepath.Abs(f.Path)
 	rel, err := filepath.Rel(f.RootDir, abs)
 	if err != nil {
 		return false

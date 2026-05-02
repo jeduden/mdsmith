@@ -167,6 +167,12 @@ func TestApplySettings_PathSchemaIsAccepted(t *testing.T) {
 	}
 }
 
+func TestApplySettings_EmptySchemaIsAccepted(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"schema": ""}))
+	require.Equal(t, "", r.Schema)
+}
+
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
@@ -1014,6 +1020,16 @@ func TestIsSchemaFile_NormalizesAgainstRootDir(t *testing.T) {
 
 	require.True(t, r.isSchemaFile(f),
 		"schema file with absolute Path should match root-relative Schema setting")
+}
+
+func TestIsSchemaFile_RelativeRootDirGivesNoMatch(t *testing.T) {
+	// filepath.Rel returns an error when base is relative and target
+	// is absolute; verify isSchemaFile returns false rather than panicking.
+	r := &Rule{Schema: "plan/proto.md"}
+	f := newTestFile(t, "/some/abs/plan/proto.md", "# Title\n")
+	f.RootDir = "relative/rootdir"
+
+	require.False(t, r.isSchemaFile(f))
 }
 
 // =====================================================================
