@@ -24,6 +24,7 @@ import (
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
 
 	// Import all rule packages so their init() functions register rules.
+	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"
