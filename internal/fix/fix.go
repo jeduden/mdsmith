@@ -42,27 +42,26 @@ type Fixer struct {
 }
 
 // cachedGitignore returns a GitignoreMatcher for the given directory,
-// creating and caching it on first use. Mirrors engine.Runner so the
-// fix path's lint.File values give catalog (and any other rule that
-// calls f.GetGitignore()) the same matcher the check path would.
+// creating and caching it on first use so the matcher tree is walked
+// once per (Fixer, dir). Mirrors engine.Runner so the fix path's
+// lint.File values give catalog (and any other rule that calls
+// f.GetGitignore()) the same matcher the check path would.
 //
-// filepath.Abs is allowed to error (it can fail when the process
-// can't read its current directory); on that path it returns the
-// input string unchanged, which is still a usable cache key — the
-// only consequence is that two callers passing the same relative
-// path from different working directories would share a cache entry,
-// which is acceptable for the fix pipeline that always passes either
-// filepath.Dir(path) or f.RootDir.
+// The cache is keyed on the raw dir string. lint.NewGitignoreMatcher
+// canonicalizes the path internally before walking, so the matcher
+// itself is correctly rooted regardless of whether dir was passed
+// absolute or relative; the cache key just has to be deterministic
+// across calls within a Fix run, which prepareFile guarantees by
+// always passing the same form (filepath.Dir(path) or f.RootDir).
 func (f *Fixer) cachedGitignore(dir string) *lint.GitignoreMatcher {
 	if f.gitignoreCache == nil {
 		f.gitignoreCache = make(map[string]*lint.GitignoreMatcher)
 	}
-	absDir, _ := filepath.Abs(dir)
-	if m, ok := f.gitignoreCache[absDir]; ok {
+	if m, ok := f.gitignoreCache[dir]; ok {
 		return m
 	}
-	m := lint.NewGitignoreMatcher(absDir)
-	f.gitignoreCache[absDir] = m
+	m := lint.NewGitignoreMatcher(dir)
+	f.gitignoreCache[dir] = m
 	return m
 }
 

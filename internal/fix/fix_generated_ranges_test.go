@@ -161,6 +161,38 @@ func TestFix_FilesHaveGitignoreFunc(t *testing.T) {
 	}
 }
 
+// TestFixer_CachedGitignore_DistinctKeys directly exercises the
+// cache contract: distinct inputs must yield distinct matchers, and
+// a repeat input must hit the cache. The previous implementation
+// canonicalized via filepath.Abs and silently swallowed Abs's error
+// return, which would collapse every relative path to the empty
+// string ("") cache key on Abs failure (e.g., unreadable cwd) and
+// share one matcher across unrelated directories.
+func TestFixer_CachedGitignore_DistinctKeys(t *testing.T) {
+	fixer := &Fixer{}
+
+	a1 := fixer.cachedGitignore("/tmp/aaa")
+	b := fixer.cachedGitignore("/tmp/bbb")
+	a2 := fixer.cachedGitignore("/tmp/aaa")
+	empty1 := fixer.cachedGitignore("")
+	empty2 := fixer.cachedGitignore("")
+
+	require.NotNil(t, a1)
+	require.NotNil(t, b)
+	require.NotNil(t, empty1)
+
+	assert.NotSame(t, a1, b,
+		"different directories must produce different matchers; the previous "+
+			"Abs-no-fallback impl shared one cache entry across unrelated dirs "+
+			"on the Abs-error path")
+	assert.Same(t, a1, a2,
+		"repeated input must hit the cache and return the same matcher pointer")
+	assert.Same(t, empty1, empty2,
+		"empty-string input is its own cache entry, not aliased with /tmp/aaa")
+	assert.NotSame(t, a1, empty1,
+		"empty-string input must not collide with /tmp/aaa")
+}
+
 // TestFix_FilesHaveGitignoreFuncWithRootDir covers the prepareFile
 // branch where Fixer.RootDir is set (gitignore matcher is anchored at
 // the root rather than the file's directory). Without a test that
