@@ -144,6 +144,29 @@ func TestApplySettings_RemovedArchetypeSettings(t *testing.T) {
 	}
 }
 
+func TestApplySettings_BareNameSchemaIsRejected(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"schema": "story"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "looks like an archetype name")
+	require.Contains(t, err.Error(), "kinds")
+}
+
+func TestApplySettings_PathSchemaIsAccepted(t *testing.T) {
+	for _, s := range []string{
+		"archetypes/story.md",
+		"./story.md",
+		"story.md",
+		"plan/proto.md",
+	} {
+		t.Run(s, func(t *testing.T) {
+			r := &Rule{}
+			require.NoError(t, r.ApplySettings(map[string]any{"schema": s}))
+			require.Equal(t, s, r.Schema)
+		})
+	}
+}
+
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()
@@ -976,6 +999,21 @@ func TestCheck_SchemaRejectsParentTraversalWithRootFS(t *testing.T) {
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
 	require.Contains(t, diags[0].Message, "escapes project root")
+}
+
+func TestIsSchemaFile_NormalizesAgainstRootDir(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "plan")
+	require.NoError(t, os.MkdirAll(subdir, 0o755))
+	schemaPath := filepath.Join(subdir, "proto.md")
+	require.NoError(t, os.WriteFile(schemaPath, []byte("# Title\n"), 0o644))
+
+	r := &Rule{Schema: "plan/proto.md"}
+	f := newTestFile(t, schemaPath, "# Title\n")
+	f.SetRootDir(dir)
+
+	require.True(t, r.isSchemaFile(f),
+		"schema file with absolute Path should match root-relative Schema setting")
 }
 
 // =====================================================================

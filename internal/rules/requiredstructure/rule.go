@@ -49,6 +49,13 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			if !ok {
 				return fmt.Errorf("required-structure: schema must be a string, got %T", v)
 			}
+			if isLikelyArchetypeName(s) {
+				return fmt.Errorf(
+					"required-structure: schema %q looks like an archetype name; "+
+						"name-based lookup has been removed — set `schema:` to "+
+						"an explicit path (e.g. archetypes/%s.md), or declare a "+
+						"kind under `kinds:` — see docs/guides/file-kinds.md", s, s)
+			}
 			r.Schema = s
 		case "placeholders":
 			toks, ok := rulesettings.ToStringSlice(v)
@@ -79,6 +86,20 @@ func (r *Rule) DefaultSettings() map[string]any {
 		"schema":       "",
 		"placeholders": []string{},
 	}
+}
+
+// isLikelyArchetypeName reports whether s looks like a bare archetype
+// name (a single identifier with no path separator and no file
+// extension), which is the most common migration mistake when moving
+// from `archetype:` to `schema:`.
+func isLikelyArchetypeName(s string) bool {
+	if s == "" {
+		return false
+	}
+	if strings.ContainsAny(s, "/\\") {
+		return false
+	}
+	return filepath.Ext(s) == ""
 }
 
 // SettingMergeMode implements rule.ListMerger.
@@ -158,12 +179,29 @@ func (r *Rule) loadSchema(f *lint.File) ([]byte, string, error) {
 	return data, r.Schema, nil
 }
 
-// isSchemaFile reports whether f is the configured schema file.
+// isSchemaFile reports whether f is the configured schema file. It
+// normalizes f.Path against f.RootDir so the check still succeeds when
+// mdsmith runs from a subdirectory while `schema:` paths remain
+// project-root-relative.
 func (r *Rule) isSchemaFile(f *lint.File) bool {
 	if r.Schema == "" {
 		return false
 	}
-	return isSchemaFile(f.Path, r.Schema)
+	if isSchemaFile(f.Path, r.Schema) {
+		return true
+	}
+	if f.RootDir == "" {
+		return false
+	}
+	abs, err := filepath.Abs(f.Path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(f.RootDir, abs)
+	if err != nil {
+		return false
+	}
+	return isSchemaFile(rel, r.Schema)
 }
 
 func (r *Rule) diag(file string, line int, msg string) lint.Diagnostic {
