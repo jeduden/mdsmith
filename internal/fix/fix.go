@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	"github.com/jeduden/mdsmith/internal/explain"
@@ -118,6 +119,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 	f.logRules(effective)
 
 	fixable, settingsErrs := f.fixableRules(effective)
+	lf.GeneratedRanges = gensection.FindAllGeneratedRanges(lf)
 	beforeDiags, checkErrs := engine.CheckRules(lf, f.Rules, effective)
 	errs = append(errs, append(settingsErrs, checkErrs...)...)
 
@@ -143,6 +145,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 	finalFile.RootDir = lf.RootDir
 	finalFile.FrontMatter = lf.FrontMatter
 	finalFile.LineOffset = lf.LineOffset
+	finalFile.GeneratedRanges = gensection.FindAllGeneratedRanges(finalFile)
 
 	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
