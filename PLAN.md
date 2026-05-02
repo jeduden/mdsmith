@@ -21,9 +21,9 @@ footer: |
 | 102 | 🔲     | opus   | [Builder interface and mdsmith build subcommand](plan/102_build-subcommand.md)                       |
 | 103 | 🔲     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)               |
 | 104 | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                            |
-| 105 | 🔲     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                    |
-| 106 | 🔲     | sonnet | [Emphasis style rule](plan/106_emphasis-style.md)                                                    |
-| 107 | 🔲     | opus   | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
+| 105 | ✅     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                    |
+| 106 | ✅     | sonnet | [Emphasis style rule](plan/106_emphasis-style.md)                                                    |
+| 107 | ✅     | opus   | [No reference-style links rule](plan/107_no-reference-style.md)                                      |
 | 108 | 🔲     | sonnet | [Horizontal rule style rule](plan/108_horizontal-rule-style.md)                                      |
 | 109 | 🔲     | sonnet | [List marker style rule](plan/109_list-marker-style.md)                                              |
 | 110 | ✅     | sonnet | [Ordered list numbering rule](plan/110_ordered-list-numbering.md)                                    |
@@ -32,6 +32,12 @@ footer: |
 | 113 | 🔲     | sonnet | [User-defined Markdown conventions](plan/113_user-defined-profiles.md)                               |
 | 114 | ✅     | sonnet | [MDS034 message clarity and flavor-vs-rule docs](plan/114_mds034-message-and-flavor-vs-rule-docs.md) |
 | 120 | 🔲     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                   |
+| 124 | 🔲     | sonnet | [No space inside code spans rule](plan/124_no-space-in-code-spans.md)                                |
+| 125 | 🔲     | sonnet | [No space inside link text rule](plan/125_no-space-in-link-text.md)                                  |
+| 126 | 🔲     | sonnet | [Proper-name capitalization rule](plan/126_proper-names.md)                                          |
+| 127 | 🔲     | sonnet | [Single H1 per file rule](plan/127_single-h1.md)                                                     |
+| 128 | 🔲     | sonnet | [Reject undefined reference-link labels](plan/128_no-undefined-reference-labels.md)                  |
+| 129 | 🔲     | sonnet | [Flag unused or duplicate link reference definitions](plan/129_no-unused-link-definitions.md)        |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                         |
 | 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                     |

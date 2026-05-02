@@ -75,6 +75,7 @@ rules:
   required-structure: true
   include: true
   unclosed-code-block: true
+  git-hook-sync: true
 
 overrides:
   - files: ["CLAUDE.md"]
@@ -122,7 +123,7 @@ overrides:
   - files: ["internal/rules/index.md"]
     rules:
       table-readability:
-        max-rows: 40
+        max-rows: 45
   - files: ["README.md"]
     rules:
       line-length:

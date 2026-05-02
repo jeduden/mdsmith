@@ -1,5 +1,13 @@
 # Custom merge driver for files with auto-generated sections
 # (catalog, include). Resolves section conflicts via mdsmith fix.
 # Run: mdsmith merge-driver install
-PLAN.md merge=mdsmith
-README.md merge=mdsmith
+# BEGIN mdsmith merge-driver
+*.md merge=mdsmith
+*.markdown merge=mdsmith
+demo/** -merge
+internal/rules/*/bad/** -merge
+internal/rules/*/bad.md -merge
+internal/rules/*/good/** -merge
+internal/rules/*/fixed/** -merge
+.claude/worktrees/** -merge
+# END mdsmith merge-driver

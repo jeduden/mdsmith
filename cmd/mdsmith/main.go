@@ -32,10 +32,12 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/crossfilereferenceintegrity"
 	_ "github.com/jeduden/mdsmith/internal/rules/directorystructure"
 	_ "github.com/jeduden/mdsmith/internal/rules/duplicatedcontent"
+	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/emptysectionbody"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodelanguage"
 	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/firstlineheading"
+	_ "github.com/jeduden/mdsmith/internal/rules/githooksync"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingincrement"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/include"
@@ -49,7 +51,9 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
 	_ "github.com/jeduden/mdsmith/internal/rules/noemptyalttext"
 	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
+	_ "github.com/jeduden/mdsmith/internal/rules/noinlinehtml"
 	_ "github.com/jeduden/mdsmith/internal/rules/nomultipleblanks"
+	_ "github.com/jeduden/mdsmith/internal/rules/noreferencestyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"
 	_ "github.com/jeduden/mdsmith/internal/rules/orderedlistnumbering"
@@ -73,16 +77,17 @@ func main() {
 const usageText = `Usage: mdsmith <command> [flags] [files...]
 
 Commands:
-  check          Lint Markdown files (default when given file arguments)
-  fix            Auto-fix lint issues in place
-  query          Select files by CUE expression on front matter
-  help           Show help for rules and topics
-  metrics        Show and rank shared Markdown metrics
-  merge-driver   Git merge driver for regenerable sections
-  archetypes     Discover, show, and locate archetype schemas
-  kinds          Inspect declared kinds and resolve effective config per file
-  init           Generate a default .mdsmith.yml config file
-  version        Print version and exit
+  check             Lint Markdown files (default when given file arguments)
+  fix               Auto-fix lint issues in place
+  query             Select files by CUE expression on front matter
+  help              Show help for rules and topics
+  metrics           Show and rank shared Markdown metrics
+  merge-driver      Git merge driver for regenerable sections
+  pre-merge-commit  Install/manage pre-merge-commit hook
+  archetypes        Discover, show, and locate archetype schemas
+  kinds             Inspect declared kinds and resolve effective config per file
+  init              Generate a default .mdsmith.yml config file
+  version           Print version and exit
 
 Global flags:
   -h, --help      Show this help
@@ -128,6 +133,8 @@ func run() int {
 		return runMetrics(os.Args[2:])
 	case "merge-driver":
 		return runMergeDriver(os.Args[2:])
+	case "pre-merge-commit":
+		return runPreMergeCommit(os.Args[2:])
 	case "archetypes":
 		return runArchetypes(os.Args[2:])
 	case "kinds":

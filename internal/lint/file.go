@@ -159,3 +159,16 @@ func (f *File) LineOfOffset(offset int) int {
 	}
 	return line
 }
+
+// ColumnOfOffset converts a byte offset in Source to a 1-based column
+// number on its line.
+func (f *File) ColumnOfOffset(offset int) int {
+	if offset > len(f.Source) {
+		offset = len(f.Source)
+	}
+	start := offset
+	for start > 0 && f.Source[start-1] != '\n' {
+		start--
+	}
+	return offset - start + 1
+}

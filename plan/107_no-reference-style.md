@@ -1,7 +1,7 @@
 ---
 id: 107
 title: No reference-style links rule
-status: "🔲"
+status: "✅"
 summary: >-
   New rule MDS043 that forbids reference-style links
   and footnotes. These constructs require global
@@ -135,40 +135,40 @@ unused reference definition: [{id}]
 
 ## Tasks
 
-1. Scaffold `internal/rules/noreferencestyle/`.
-2. Implement source-aware link form detection.
-3. Implement footnote checks gated on
-   `allow-footnotes`.
-4. Implement unused-definition detection.
-5. Implement inline-rewrite auto-fix for
-   reference-style links only.
-6. Register as MDS043 in category `link`.
-7. Add fixture tests covering inline, full
-   reference, collapsed reference, shortcut
-   reference, footnote (with and without
-   `allow-footnotes`), unused definition, and
-   numeric footnote slug.
-8. Add rule README.
+- [x] Scaffold `internal/rules/noreferencestyle/`.
+- [x] Implement source-aware link form detection.
+- [x] Implement footnote checks gated on
+      `allow-footnotes`.
+- [x] Implement unused-definition detection.
+- [x] Implement inline-rewrite auto-fix for
+      reference-style links only.
+- [x] Register as MDS043 in category `link`.
+- [x] Add fixture tests covering inline, full
+      reference, collapsed reference, shortcut
+      reference, footnote (with and without
+      `allow-footnotes`), unused definition, and
+      numeric footnote slug.
+- [x] Add rule README.
 
 ## Acceptance Criteria
 
-- [ ] `[text](url)` emits no diagnostic.
-- [ ] `[text][id]` plus `[id]: url` emits one
+- [x] `[text](url)` emits no diagnostic.
+- [x] `[text][id]` plus `[id]: url` emits one
       diagnostic per link occurrence and fixes to
       `[text](url)`.
-- [ ] `[text][]` collapsed reference emits one
+- [x] `[text][]` collapsed reference emits one
       diagnostic.
-- [ ] `[text]` shortcut reference (with matching
+- [x] `[text]` shortcut reference (with matching
       definition) emits one diagnostic.
-- [ ] `[^1]` with `allow-footnotes: false` emits one
+- [x] `[^1]` with `allow-footnotes: false` emits one
       diagnostic.
-- [ ] `[^1]` with `allow-footnotes: true` emits one
+- [x] `[^1]` with `allow-footnotes: true` emits one
       diagnostic for numeric slug.
-- [ ] `[^slug]` with `allow-footnotes: true` and
+- [x] `[^slug]` with `allow-footnotes: true` and
       definition right after the paragraph emits no
       diagnostic.
-- [ ] `[id]: url` with no link referencing it emits
+- [x] `[id]: url` with no link referencing it emits
       one diagnostic.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] Rule is disabled by default.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

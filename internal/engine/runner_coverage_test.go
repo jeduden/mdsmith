@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
@@ -210,4 +211,52 @@ func TestRun_RootDirSetsGitignoreFunc(t *testing.T) {
 	result := runner.Run([]string{mdFile})
 	require.Len(t, result.Errors, 0)
 	assert.Equal(t, 1, result.FilesChecked)
+}
+
+func TestDedupeDiagnostics_RemovesDuplicates(t *testing.T) {
+	d := func(file string, line, col int, ruleID, msg string) lint.Diagnostic {
+		return lint.Diagnostic{
+			File: file, Line: line, Column: col,
+			RuleID: ruleID, RuleName: ruleID, Severity: lint.Warning,
+			Message: msg,
+		}
+	}
+	in := []lint.Diagnostic{
+		d(".gitattributes", 1, 1, "MDS048", "drift"),
+		d(".gitattributes", 1, 1, "MDS048", "drift"),
+		d("README.md", 5, 1, "MDS001", "long line"),
+		d(".gitattributes", 1, 1, "MDS048", "drift"),
+		d("README.md", 5, 1, "MDS001", "long line"),
+	}
+	got := DedupeDiagnostics(in)
+	require.Len(t, got, 2, "duplicates collapse to one entry per (file, line, col, rule, message)")
+	assert.Equal(t, "MDS048", got[0].RuleID)
+	assert.Equal(t, "MDS001", got[1].RuleID)
+}
+
+func TestDedupeDiagnostics_PreservesDistinctMessages(t *testing.T) {
+	d := func(msg string) lint.Diagnostic {
+		return lint.Diagnostic{
+			File: "f", Line: 1, Column: 1,
+			RuleID: "X", Message: msg,
+		}
+	}
+	in := []lint.Diagnostic{d("a"), d("b"), d("a")}
+	got := DedupeDiagnostics(in)
+	assert.Len(t, got, 2, "different messages at same coordinates remain distinct")
+}
+
+func TestDedupeDiagnostics_HandlesShortInput(t *testing.T) {
+	assert.Nil(t, DedupeDiagnostics(nil))
+
+	one := []lint.Diagnostic{{File: "f", RuleID: "X"}}
+	got := DedupeDiagnostics(one)
+	assert.Equal(t, one, got, "single-element input round-trips by content")
+
+	// Result must be a freshly-allocated slice so mutating it does
+	// not corrupt the caller's input. Mutate the result's first
+	// element and confirm the input is unchanged.
+	got[0].File = "mutated"
+	assert.Equal(t, "f", one[0].File,
+		"single-element result must not alias the input slice")
 }

@@ -1244,15 +1244,16 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	assert.Contains(t, driver, "merge-driver run %O %A %B %P",
 		"expected merge driver config with run+placeholders, got: %s", driver)
 
-	// Verify .gitattributes.
+	// Verify .gitattributes uses the glob-based managed block.
 	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
 	require.NoError(t, err, "reading .gitattributes: %v", err)
 	content := string(attrs)
-	assert.Contains(t, content, "PLAN.md merge=mdsmith", "expected PLAN.md entry in .gitattributes")
-	assert.Contains(t, content, "README.md merge=mdsmith", "expected README.md entry in .gitattributes")
+	assert.Contains(t, content, "*.md merge=mdsmith",
+		"expected glob include for *.md in .gitattributes")
+	assert.Contains(t, content, "*.markdown merge=mdsmith",
+		"expected glob include for *.markdown in .gitattributes")
 
 	// Verify pre-merge-commit hook was installed and is executable.
-	// Use gitHooksDir to respect core.hooksPath if set globally.
 	hookPath := filepath.Join(gitHooksDir(t, dir), "pre-merge-commit")
 	info, err := os.Stat(hookPath)
 	require.NoError(t, err, "expected pre-merge-commit hook at %s", hookPath)
@@ -1261,10 +1262,10 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	}
 	hookData, err := os.ReadFile(hookPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(hookData), "fix",
-		"hook must invoke mdsmith fix; got:\n%s", hookData)
-	assert.Contains(t, string(hookData), "PLAN.md")
-	assert.Contains(t, string(hookData), "README.md")
+	assert.Contains(t, string(hookData), "fix .; then",
+		"hook must invoke mdsmith fix . via the exit-1-tolerant guard; got:\n%s", hookData)
+	assert.Contains(t, string(hookData), "git diff --name-only -- '*.md' '*.markdown'",
+		"hook must stage modified markdown files via the glob-based diff")
 }
 
 func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {
@@ -1278,10 +1279,10 @@ func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "merge-driver", "install")
 	assert.Equal(t, 0, exitCode, "expected exit 0 on second install, got %d; stderr: %s", exitCode, stderr)
 
-	// .gitattributes should not have duplicates.
+	// The managed block must contain each include pattern exactly once.
 	attrs, _ := os.ReadFile(filepath.Join(dir, ".gitattributes"))
-	count := strings.Count(string(attrs), "PLAN.md merge=mdsmith")
-	assert.Equal(t, 1, count, "expected 1 PLAN.md entry, got %d; content:\n%s", count, attrs)
+	count := strings.Count(string(attrs), "*.md merge=mdsmith")
+	assert.Equal(t, 1, count, "expected 1 *.md entry, got %d; content:\n%s", count, attrs)
 }
 
 func TestE2E_MergeDriver_Install_UnmanagedHook(t *testing.T) {
@@ -1308,30 +1309,35 @@ func TestE2E_MergeDriver_Install_UnmanagedHook(t *testing.T) {
 	assert.Equal(t, userHook, string(data), "user hook content must be preserved")
 }
 
-func TestE2E_MergeDriver_Install_CustomFiles(t *testing.T) {
+func TestE2E_MergeDriver_Install_CustomGlobs(t *testing.T) {
 	dir := t.TempDir()
 
 	cmd := exec.Command("git", "init", dir)
 	require.NoError(t, cmd.Run(), "git init")
 
+	// Explicit args override the default include set, so callers can
+	// scope the merge driver to a custom pattern (e.g. only docs/).
 	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"merge-driver", "install", "CHANGELOG.md", "docs/INDEX.md")
+		"merge-driver", "install", "docs/**/*.md", "CHANGELOG.md")
 	assert.Equal(t, 0, exitCode, "expected exit 0, got %d; stderr: %s", exitCode, stderr)
 
 	// Verify git config.
 	out, err := exec.Command("git", "-C", dir, "config", "merge.mdsmith.driver").Output()
 	require.NoError(t, err, "reading git config: %v", err)
 	driver := strings.TrimSpace(string(out))
-	assert.Contains(t, driver, "merge-driver run %O %A %B %P", "expected merge driver config, got: %s", driver)
+	assert.Contains(t, driver, "merge-driver run %O %A %B %P",
+		"expected merge driver config, got: %s", driver)
 
-	// Verify .gitattributes has custom files, not defaults.
+	// Verify .gitattributes uses the custom include patterns.
 	attrs, err := os.ReadFile(filepath.Join(dir, ".gitattributes"))
 	require.NoError(t, err, "reading .gitattributes: %v", err)
 	content := string(attrs)
-	assert.Contains(t, content, "CHANGELOG.md merge=mdsmith", "expected CHANGELOG.md entry in .gitattributes")
-	assert.Contains(t, content, "docs/INDEX.md merge=mdsmith", "expected docs/INDEX.md entry in .gitattributes")
-	assert.NotContains(t, content, "PLAN.md", "default PLAN.md should not appear when custom files given")
-	assert.NotContains(t, content, "README.md", "default README.md should not appear when custom files given")
+	assert.Contains(t, content, "docs/**/*.md merge=mdsmith",
+		"expected custom include glob in .gitattributes")
+	assert.Contains(t, content, "CHANGELOG.md merge=mdsmith",
+		"expected custom include path in .gitattributes")
+	assert.NotContains(t, content, "*.md merge=mdsmith\n*.markdown",
+		"default include set must be replaced when custom globs are given")
 }
 
 func TestE2E_MergeDriver_IncludeConflict_Resolved(t *testing.T) {

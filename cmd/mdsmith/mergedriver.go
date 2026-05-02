@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -24,10 +25,22 @@ Subcommands:
         runs mdsmith fix to regenerate them, and exits non-zero
         if unresolved conflict markers remain.
 
-  install [files...]
+  install [globs...]
         Register the merge driver in git config and ensure
-        .gitattributes assigns it to the listed files.
-        Default files: PLAN.md README.md
+        .gitattributes assigns it. The managed block uses globs
+        derived from the project's .mdsmith.yml: include patterns
+        (default: *.md and *.markdown) followed by an exclude line
+        for each ignore pattern (last-match-wins overrides).
+
+        Optional positional args replace the default include set
+        when callers want to scope the merge driver to a custom
+        pattern (e.g. docs/**/*.md); .mdsmith.yml ignore
+        patterns still apply on top via -merge overrides. Custom
+        include globs are not compatible with the MDS048
+        git-hook-sync rule's auto-fix, which restores the
+        canonical default include set plus ignore-derived
+        excludes; do not enable git-hook-sync if you rely on a
+        custom include set.
 
 Git config (set by install):
   merge.mdsmith.driver = '/absolute/path/to/mdsmith' merge-driver run %O %A %B %P
@@ -352,9 +365,48 @@ func hasConflictMarkers(content []byte) bool {
 	return false
 }
 
-// defaultMergeDriverFiles are the files assigned to the merge
-// driver when install is run without explicit file arguments.
-var defaultMergeDriverFiles = []string{"PLAN.md", "README.md"}
+// resolveManagedGlobs returns the merge-driver glob set for an
+// install command. With no args, the default include set
+// (`*.md`, `*.markdown`) is used and the project's .mdsmith.yml
+// `ignore:` patterns become exclude overrides — patterns that
+// cannot appear verbatim in `.gitattributes` (whitespace, leading
+// `!`) are silently dropped by `GlobsFromConfig`. Explicit args
+// replace the include set so callers can scope the merge driver to
+// a custom pattern (e.g. `docs/**/*.md`); whitespace in any
+// caller-provided include is rejected up front because
+// .gitattributes splits attribute lines on whitespace and the bad
+// pattern would corrupt the managed block. The second return is
+// the process exit code: 0 on success, 2 on a user-facing error
+// (already printed to stderr).
+func resolveManagedGlobs(_ string, args []string) (githooks.Globs, int) {
+	cfg, _, err := loadConfig("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+		return githooks.Globs{}, 2
+	}
+	globs, skipped := githooks.GlobsFromConfig(cfg)
+	if len(skipped) > 0 {
+		// Surface dropped ignore patterns so operators can see when
+		// the generated merge-driver scope diverges from the
+		// `ignore:` semantics mdsmith fix itself respects.
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: skipped unsupported ignore patterns "+
+				"(negation or whitespace) when generating "+
+				".gitattributes: %s\n",
+			strings.Join(skipped, ", "))
+	}
+	if len(args) > 0 {
+		for _, p := range args {
+			if strings.ContainsAny(p, " \t\n\r") {
+				fmt.Fprintf(os.Stderr,
+					"mdsmith: include pattern %q contains whitespace, which is not supported in .gitattributes\n", p)
+				return githooks.Globs{}, 2
+			}
+		}
+		globs.Include = append([]string{}, args...)
+	}
+	return globs, 0
+}
 
 // runMergeDriverInstall registers the mdsmith merge driver in
 // the local git config and ensures .gitattributes assigns it.
@@ -378,20 +430,19 @@ func runMergeDriverInstall(args []string) int {
 		return 2
 	}
 
-	// Determine file list: use args if given, else defaults.
-	files := defaultMergeDriverFiles
-	if len(args) > 0 {
-		files = args
+	globs, rc := resolveManagedGlobs(repoRoot, args)
+	if rc != 0 {
+		return rc
 	}
 
 	attrPath := filepath.Join(repoRoot, ".gitattributes")
-	if err := ensureGitattributes(attrPath, files); err != nil {
+	if err := githooks.WriteGitattributes(attrPath, globs); err != nil {
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: updating .gitattributes: %v\n", err)
 		return 2
 	}
 
-	if err := ensurePreMergeCommitHook(repoRoot, files); err != nil {
+	if err := ensurePreMergeCommitHook(repoRoot); err != nil {
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: installing pre-merge-commit hook: %v\n", err)
 		return 2
@@ -402,43 +453,40 @@ func runMergeDriverInstall(args []string) int {
 	fmt.Fprintf(os.Stderr, "  git config: merge.mdsmith.driver\n")
 	fmt.Fprintf(os.Stderr, "  .gitattributes: %s\n", attrPath)
 	fmt.Fprintf(os.Stderr, "  pre-merge-commit hook: %s\n", hookPath)
+	fmt.Fprintf(os.Stderr,
+		"\nTo also enable drift detection, add this to your .mdsmith.yml:\n\n%s\n",
+		githooks.EnableRuleSnippet("git-hook-sync"))
 	return 0
 }
 
 // preMergeCommitHookMarker identifies the hook as managed by
 // mdsmith so re-running install can safely replace it without
-// stomping on a user-authored hook of the same name.
-const preMergeCommitHookMarker = "# mdsmith merge-driver pre-merge-commit hook"
+// stomping on a user-authored hook of the same name. The canonical
+// constant lives in internal/githooks; this alias keeps existing
+// references in this package and its tests stable.
+const preMergeCommitHookMarker = githooks.PreMergeCommitMarker
 
 // resolveHooksDir returns the directory where git hooks should be
-// installed. It respects core.hooksPath if configured so that
-// installations work correctly in repos that redirect hooks to a
-// custom path (e.g. via git config or a repo management tool).
-// Falls back to .git/hooks when git cannot be queried.
+// installed for the repo at repoRoot. The implementation lives in
+// internal/githooks so the CLI and the git-hook-sync rule resolve
+// the same path.
 func resolveHooksDir(repoRoot string) string {
-	cmd := exec.Command("git", "-C", repoRoot, "rev-parse", "--git-path", "hooks")
-	if out, err := cmd.Output(); err == nil {
-		p := strings.TrimSpace(string(out))
-		if !filepath.IsAbs(p) {
-			p = filepath.Join(repoRoot, p)
-		}
-		return filepath.Clean(p)
-	}
-	return filepath.Join(repoRoot, ".git", "hooks")
+	return githooks.ResolveHooksDir(repoRoot)
 }
 
 // ensurePreMergeCommitHook writes the pre-merge-commit hook so
 // that after git resolves all per-file merges (including any
 // driver-resolved sections) and before the merge commit is
-// created, mdsmith fix runs once on the registered files.
+// created, `mdsmith fix .` runs once over the worktree.
 //
 // The per-file merge driver cannot do this on its own: when it
 // runs on PLAN.md, sibling plan/*.md source files may still hold
 // "ours" content because git has not merged them yet, so the
 // regenerated catalog reflects a stale view of its sources. The
-// pre-merge-commit hook re-fixes the same files once every path
-// has reached its final merged state.
-func ensurePreMergeCommitHook(repoRoot string, files []string) error {
+// hook re-fixes once every path has reached its final merged
+// state. The hook content is glob-driven (no per-file list) so it
+// stays in sync with .mdsmith.yml ignore patterns automatically.
+func ensurePreMergeCommitHook(repoRoot string) error {
 	exe, err := resolveInstalledBinary()
 	if err != nil {
 		return fmt.Errorf("cannot locate mdsmith binary: %w", err)
@@ -466,24 +514,7 @@ func ensurePreMergeCommitHook(repoRoot string, files []string) error {
 		return fmt.Errorf("reading existing hook %s: %w", hookPath, readErr)
 	}
 
-	// Build per-file fix commands as separate lines so that "set -e"
-	// aborts the hook if mdsmith fix or git add fails. Files that no
-	// longer exist (e.g. renamed in this branch) are skipped.
-	var fixCmds strings.Builder
-	for _, f := range files {
-		fmt.Fprintf(&fixCmds,
-			"if [ -e %s ]; then\n  %s fix -- %s\n  git add -- %s\nfi\n",
-			shellQuote(f), shellQuote(exe), shellQuote(f), shellQuote(f))
-	}
-
-	content := "#!/bin/sh\n" +
-		preMergeCommitHookMarker + "\n" +
-		"# Re-runs mdsmith fix once git has resolved every per-file\n" +
-		"# merge, so generated sections reflect the final merged\n" +
-		"# state of every source file. Re-install with:\n" +
-		"#   mdsmith merge-driver install\n" +
-		"set -e\n" +
-		fixCmds.String()
+	content := githooks.BuildHookScript(exe)
 
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", hooksDir, err)
@@ -604,50 +635,4 @@ func goEnvPath() (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-// ensureGitattributes reads .gitattributes, adds any missing
-// merge driver entries for the given files, and writes it back.
-func ensureGitattributes(path string, files []string) error {
-	existing, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reading %s: %w", path, err)
-	}
-	content := string(existing)
-
-	// Build entries from file list.
-	entries := make([]string, len(files))
-	for i, f := range files {
-		entries[i] = f + " merge=mdsmith"
-	}
-
-	// Build a set of normalized existing lines to avoid substring
-	// matches against comments or whitespace differences.
-	existingSet := make(map[string]struct{})
-	for _, line := range strings.Split(content, "\n") {
-		norm := strings.Join(strings.Fields(line), " ")
-		if norm != "" {
-			existingSet[norm] = struct{}{}
-		}
-	}
-
-	var missing []string
-	for _, entry := range entries {
-		norm := strings.Join(strings.Fields(entry), " ")
-		if _, ok := existingSet[norm]; !ok {
-			missing = append(missing, entry)
-		}
-	}
-
-	if len(missing) == 0 {
-		return nil
-	}
-
-	// Ensure trailing newline before appending.
-	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-
-	content += strings.Join(missing, "\n") + "\n"
-	return os.WriteFile(path, []byte(content), 0644)
 }

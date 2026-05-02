@@ -1,7 +1,7 @@
 ---
 id: 105
 title: No inline HTML rule
-status: "🔲"
+status: "✅"
 summary: >-
   New rule MDS041 that flags raw HTML in Markdown
   (block and inline), with an allowlist for tags
@@ -200,33 +200,33 @@ distinct.
 
 ## Acceptance Criteria
 
-- [ ] `<div>...</div>` on its own line emits one
+- [x] `<div>...</div>` on its own line emits one
       diagnostic naming the `<div>` tag.
-- [ ] `text <span>x</span> text` inside a paragraph
+- [x] `text <span>x</span> text` inside a paragraph
       emits one diagnostic naming the `<span>` tag.
-- [ ] `<br/>` and `<br>` both emit exactly one
+- [x] `<br/>` and `<br>` both emit exactly one
       diagnostic.
-- [ ] A tag listed in `allow:` emits no diagnostic.
-- [ ] `<!-- comment -->` emits no diagnostic when
+- [x] A tag listed in `allow:` emits no diagnostic.
+- [x] `<!-- comment -->` emits no diagnostic when
       `allow-comments: true`, and one diagnostic
       naming `<!--` when `allow-comments: false`.
-- [ ] `<?include file: foo.md ?>` and
+- [x] `<?include file: foo.md ?>` and
       `<?catalog ... ?>` block directives emit no
       diagnostic.
-- [ ] `text <?inline?> text` inline directive emits
+- [x] `text <?inline?> text` inline directive emits
       no diagnostic.
-- [ ] An inline `<?...?>` directive emits no
+- [x] An inline `<?...?>` directive emits no
       diagnostic even when `allow: []` and
       `allow-comments: false`.
-- [ ] `<https://example.com>` autolink emits no
+- [x] `<https://example.com>` autolink emits no
       diagnostic.
-- [ ] Fenced code blocks containing HTML emit no
+- [x] Fenced code blocks containing HTML emit no
       diagnostic.
-- [ ] Rule is disabled by default; enabling it via
+- [x] Rule is disabled by default; enabling it via
       `rules.no-inline-html: true` activates checking
       with empty allowlist.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes on the repo with the
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes on the repo with the
       rule disabled (no regression for existing
       docs).

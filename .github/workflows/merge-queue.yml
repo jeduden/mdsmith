@@ -25,10 +25,10 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
 
-      - name: Install mdsmith merge driver
+      - name: Install mdsmith merge driver and pre-merge-commit hook
         env:
-          MDSMITH_VERSION: v0.7.1
-          MDSMITH_SHA256: 94df7987309d48b2b9b1aead4554f2904a35e9b1b6bff7f12e64f5514e2692f8
+          MDSMITH_VERSION: v0.9.0
+          MDSMITH_SHA256: db39f381fe6d7497f41a179a3bc00e573b6b4abb6381b05337d32677dac5f99d
         run: |
           # Install to a stable path that will persist for the hook to use
           mkdir -p "$HOME/.local/bin"
@@ -37,9 +37,10 @@ jobs:
           echo "${MDSMITH_SHA256}  $HOME/.local/bin/mdsmith" | sha256sum -c
           chmod +x "$HOME/.local/bin/mdsmith"
           "$HOME/.local/bin/mdsmith" merge-driver install
+          "$HOME/.local/bin/mdsmith" pre-merge-commit install
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - uses: jeduden/merge-queue-action@5c1d6f305f87060b4901e4807880dbb72c1125e6 # v0.7.5
+      - uses: jeduden/merge-queue-action@92cf09d5df63db0abe8b6824f6db1f74b69cb793 # v0.7.7
         with:
           token: ${{ secrets.MERGE_QUEUE_TOKEN }}
           ci_workflow: .github/workflows/ci.yml
