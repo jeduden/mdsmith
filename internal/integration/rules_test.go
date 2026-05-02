@@ -16,6 +16,7 @@ import (
 	"github.com/yuin/goldmark/text"
 	"go.abhg.dev/goldmark/frontmatter"
 
+	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"

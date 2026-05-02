@@ -1,7 +1,7 @@
 ---
 id: 111
 title: Ambiguous emphasis rule
-status: "🔲"
+status: "✅"
 summary: >-
   New rule MDS047 that flags emphasis runs whose
   meaning a human cannot predict at a glance even
@@ -136,33 +136,40 @@ adjacent same-delimiter emphasis is ambiguous
 
 ## Tasks
 
-1. Scaffold `internal/rules/ambiguousemphasis/`.
-2. Implement source-range computation that excludes
-   code spans and code blocks.
-3. Implement the three pattern detectors.
-4. Implement `rule.Configurable` for `max-run`,
+1. [x] Scaffold `internal/rules/ambiguousemphasis/`.
+2. [x] Implement source-range computation that
+   excludes code spans and code blocks.
+3. [x] Implement the three pattern detectors.
+4. [x] Implement `rule.Configurable` for `max-run`,
    `forbid-escaped-in-run`, and
    `forbid-adjacent-same-delim`.
-5. Register as MDS047 in category `meta`.
-6. Add fixture tests covering each pattern,
+5. [x] Register as MDS047 in category `meta`.
+6. [x] Add fixture tests covering each pattern,
    patterns inside code spans (must not flag),
    patterns inside fenced code blocks (must not
    flag), and the rant's exact strings
    (`*****\*a*`, `***Peter* Piper**`).
-7. Add rule README.
+7. [x] Add rule README.
 
 ## Acceptance Criteria
 
-- [ ] `**bold**` emits no diagnostic.
-- [ ] `***bold-italic***` emits one diagnostic when
-      `max-run: 2`.
-- [ ] `*****\*a*` emits diagnostics for both run
+- [x] `**bold**` emits no diagnostic.
+- [x] `***bold-italic***` emits one diagnostic when
+      `max-run: 2`. The two symmetric `***` runs
+      collapse into a single report by deduplicating
+      diagnostics per `(char, length)` per line.
+- [x] `*****\*a*` emits diagnostics for both run
       length and escaped-in-run.
-- [ ] `__a__b__` emits one
+- [x] `__a__b__` emits one
       adjacent-same-delim diagnostic.
-- [ ] The same patterns inside `` `code` `` or a
+- [x] The same patterns inside `` `code` `` or a
       fenced block emit no diagnostic.
-- [ ] No auto-fix is attempted.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] No auto-fix is attempted.
+- [x] Rule is disabled by default. `DefaultSettings`
+      ships `max-run: 0` and both bool flags `false`
+      so the rule remains a no-op in any pipeline
+      that wires it without explicit settings;
+      profile activation in plan 112 supplies the
+      active values.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
