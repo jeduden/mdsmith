@@ -485,7 +485,18 @@ func TestHasGlobChars(t *testing.T) {
 	assert.True(t, hasGlobChars("*.md"))
 	assert.True(t, hasGlobChars("file?.md"))
 	assert.True(t, hasGlobChars("[abc].md"))
+	assert.True(t, hasGlobChars("docs/{a,b}.md"))  // brace expansion with comma
 	assert.False(t, hasGlobChars("readme.md"))
+	assert.False(t, hasGlobChars("{draft}.md")) // single-item brace — not expansion
+}
+
+func TestHasBraceExpansion(t *testing.T) {
+	assert.True(t, hasBraceExpansion("docs/{a,b}.md"))
+	assert.True(t, hasBraceExpansion("{guide,ref}.md"))
+	assert.True(t, hasBraceExpansion("a/{x,y}/b"))  // nested depth with comma
+	assert.False(t, hasBraceExpansion("{draft}.md")) // no comma inside braces
+	assert.False(t, hasBraceExpansion("readme.md"))  // no braces at all
+	assert.False(t, hasBraceExpansion("a,b"))        // comma but no enclosing brace
 }
 
 // --- isMarkdown tests ---
