@@ -3,7 +3,7 @@ id: 129
 title: Flag unused or duplicate link reference definitions
 status: "✅"
 summary: >-
-  New rule MDS053 that flags `[label]: url` link
+  New rule MDS054 that flags `[label]: url` link
   reference definitions that are never used by any
   reference-style link or image, and definitions that
   duplicate an existing label. Closes the parity gap
@@ -25,9 +25,9 @@ to definitions whose URL points at a now-missing file:
 without a usage to anchor MDS027 to, the broken target
 is invisible.
 
-This rule complements [MDS052][mds052-plan]
-(no-undefined-reference-labels). MDS052 catches
-references with no definition. MDS053 catches
+This rule complements [MDS053][mds053-plan]
+(no-undefined-reference-labels). MDS053 catches
+references with no definition. MDS054 catches
 definitions with no reference. Together they keep the
 two halves of the reference-link table in sync.
 
@@ -41,7 +41,7 @@ nodes. goldmark exposes link reference definitions via
 `parser.Context.Reference(label)`. It never emits an
 AST node for an *unused* definition. MDS027 cannot
 see it. A typo in the consuming reference (caught by
-MDS052) leaves the definition orphaned. This rule
+MDS053) leaves the definition orphaned. This rule
 flags the orphan so the user notices.
 
 The same pattern surfaces in
@@ -49,7 +49,7 @@ The same pattern surfaces in
 a plan file (e.g. `120_glob-unification.md`) can
 leave a stale `[plan121]: ../../plan/121_old-name.md`
 entry behind. Nothing references it. It points at a
-file that no longer exists. MDS053 catches the
+file that no longer exists. MDS054 catches the
 orphan. Follow-on MDS027 catches the broken target
 once the orphan is either removed or re-referenced.
 
@@ -59,7 +59,7 @@ CommonMark says: when two definitions share the same
 normalized label, the *first* wins and the second is
 silently ignored. Editors rarely notice the second
 definition is dead. markdownlint's [MD053][md053]
-flags duplicates as a separate violation. MDS053
+flags duplicates as a separate violation. MDS054
 follows the same rule: emit on every definition past
 the first for any normalized label.
 
@@ -90,7 +90,7 @@ override layer); document this next to the
 ### Detection
 
 1. Re-parse with `lint.NewParser()` so PI blocks are
-   skipped consistently with MDS052 and the TOC
+   skipped consistently with MDS053 and the TOC
    directive.
 2. Collect every link reference definition by walking
    the document. goldmark stores definitions in the
@@ -204,7 +204,7 @@ first defined on line 42
 
 [md053]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md
 [mds027]: ../internal/rules/MDS027-cross-file-reference-integrity/README.md
-[mds052-plan]: 128_no-undefined-reference-labels.md
+[mds053-plan]: 128_no-undefined-reference-labels.md
 [plan107]: 107_no-reference-style.md
 [plan128]: 128_no-undefined-reference-labels.md
 [config-merge]: ../docs/development/index.md

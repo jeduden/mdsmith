@@ -9,10 +9,12 @@ description: Inline code spans with leading or trailing whitespace inside the ba
 Inline code spans with leading or trailing whitespace inside the
 backticks are almost always typos; flag them.
 
-CommonMark strips exactly one space from each side of a code span
-when both sides have a single space (`` ` x ` `` → `x`). Any other
-leading or trailing whitespace — a double space, a tab, or a space
-on only one side — renders verbatim. This rule flags those cases.
+CommonMark strips one space from each side of a code span when the
+content starts *and* ends with a space and is not entirely whitespace
+(`` ` x ` `` → `x`, `` `  x ` `` → `` ` x` ``). Whitespace that
+remains after this normalisation — a double space on one side, a tab,
+a space on only one side, or a newline — renders verbatim. This rule
+flags those cases.
 
 ## Settings
 

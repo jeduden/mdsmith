@@ -46,12 +46,28 @@ func TestCheck_LeadingSpace(t *testing.T) {
 }
 
 func TestCheck_LeadingSpaceLongContent(t *testing.T) {
-	// n >= 3, leading space, no trailing — exercises isBalancedSingleSpace
-	// when raw[0]==' ' but raw[n-1]!=' '.
 	f := newFile(t, "Use ` abc` here.\n")
 	diags := (&Rule{}).Check(f)
 	require.Len(t, diags, 1)
 	assert.Equal(t, msgLeading, diags[0].Message)
+}
+
+func TestCheck_AsymmetricDoubleLeading_OnlyLeading(t *testing.T) {
+	// `  x ` — CommonMark strips one space from each side (both sides have one),
+	// leaving ` x` in the segment. Only the leading space is visible; no trailing.
+	f := newFile(t, "Use `  x ` here.\n")
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, msgLeading, diags[0].Message)
+}
+
+func TestCheck_AsymmetricDoubleTrailing_OnlyTrailing(t *testing.T) {
+	// ` x  ` — CommonMark strips one from each side, leaving `x ` in the segment.
+	// Only the trailing space is visible; no leading.
+	f := newFile(t, "Use ` x  ` here.\n")
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, msgTrailing, diags[0].Message)
 }
 
 func TestCheck_TrailingSpace(t *testing.T) {

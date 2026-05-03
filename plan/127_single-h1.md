@@ -3,7 +3,7 @@ id: 127
 title: Single H1 per file rule
 status: "✅"
 summary: >-
-  New rule MDS051 that requires at most one top-level
+  New rule MDS052 that requires at most one top-level
   H1 heading per Markdown file. Closes the gap with
   markdownlint MD025/MD047 and complements MDS004
   (first-line-heading) by catching extra H1s further
@@ -36,13 +36,13 @@ heading-level mistake. markdownlint covers this as
   headings with the same *text*. Two H1s with
   different text pass MDS005.
 
-MDS051 closes the remaining hole: file-level
+MDS052 closes the remaining hole: file-level
 uniqueness of the H1 *level*, irrespective of text.
 
 ### Front matter title
 
 Some files set the title in YAML front matter
-(`title:`) and skip the H1 entirely. MDS051 should
+(`title:`) and skip the H1 entirely. MDS052 should
 not require an H1 to exist (that's MDS004's job) —
 it only caps the count when one or more are present.
 
@@ -111,9 +111,9 @@ h1 heading conflicts with front-matter title
 4. Implement `Fix()` that demotes the second-and-
    later H1 nodes to H2 (ATX or setext).
 5. Implement `rule.Defaultable` returning `false`.
-6. Register as MDS051 in category `heading`.
+6. Register as MDS052 in category `heading`.
 7. Add fixture tests in
-   `internal/rules/MDS051-single-h1/` covering:
+   `internal/rules/MDS052-single-h1/` covering:
    single H1 (clean), zero H1 with front-matter
    title (clean), zero H1 without title (clean), two
    H1s (second flagged + demoted), three H1s (second

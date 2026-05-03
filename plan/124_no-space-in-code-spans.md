@@ -92,7 +92,8 @@ code span has trailing whitespace
    `rule.go`, `rule_test.go`, and the `init()`
    `rule.Register` call.
 2. [x] Implement `Check()` walking `*ast.CodeSpan` and
-   reading the raw source bytes between delimiters.
+   inspecting goldmark's post-CommonMark-trim segment to detect
+   whitespace that is visible after rendering (not the raw source bytes).
 3. [x] Implement `Fix()` that trims whitespace inside the
    delimiters while preserving backtick count.
 4. [x] Implement `rule.Defaultable` returning `false`.

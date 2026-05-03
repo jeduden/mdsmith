@@ -3,7 +3,7 @@ id: 128
 title: Reject undefined reference-link labels
 status: "🔲"
 summary: >-
-  New rule MDS052 that flags reference-style links and
+  New rule MDS053 that flags reference-style links and
   images whose label has no matching link reference
   definition in the file. Closes the parity gap with
   markdownlint MD052 and catches a class of broken link
@@ -48,9 +48,9 @@ stylistic policy. Some projects opt out (including
 the comparison page in this repo) because reference
 style keeps wide tables readable.
 
-MDS052 must work *with* reference-style links by
+MDS053 must work *with* reference-style links by
 verifying their labels resolve. The two rules compose.
-Plan 107 lets you ban reference style; MDS052 lets
+Plan 107 lets you ban reference style; MDS053 lets
 projects that allow reference style catch typos.
 
 ### CommonMark normalization
@@ -162,9 +162,9 @@ reference definition
 3. Implement `rule.Configurable` for `shortcut` and
    `placeholders`.
 4. Implement `rule.Defaultable` returning `true`.
-5. Register as MDS052 in category `link`.
+5. Register as MDS053 in category `link`.
 6. Add fixture tests in
-   `internal/rules/MDS052-no-undefined-reference-labels/`
+   `internal/rules/MDS053-no-undefined-reference-labels/`
    covering: matching full reference (clean), matching
    collapsed reference (clean), matching shortcut
    (clean), undefined full reference (flagged),

@@ -99,9 +99,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // Fix implements rule.FixableRule. It trims leading and trailing whitespace
 // from code span content in the source file. Spans that become empty after
-// trimming, or whose trimmed content starts or ends with a backtick (which
-// would merge with the delimiter run and change the parsed value), are left
-// unchanged.
+// trimming are left unchanged. When the trimmed content starts or ends with a
+// backtick, one protective space is kept on that side so the backtick does not
+// merge into the delimiter run and change the parsed value.
 func (r *Rule) Fix(f *lint.File) []byte {
 	type cut struct {
 		start, end int
