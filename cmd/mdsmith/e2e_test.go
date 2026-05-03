@@ -1888,6 +1888,15 @@ func TestE2E_PreMergeCommitHook_ExitOneStagesFixed(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "Hello   ",
 		"trailing spaces must have been removed and staged")
+
+	// Confirm that unfixable diagnostics genuinely remain after the hook ran,
+	// which is what drives `mdsmith fix` to exit 1. If check exits 0 here the
+	// fixture no longer exercises the exit-1 branch and the test is vacuous.
+	_, _, checkCode := runBinaryInDir(t, dir, "", "check", ".")
+	assert.NotEqual(t, 0, checkCode,
+		"mdsmith check must still report diagnostics after the hook: "+
+			"the unfixable issue (heading punctuation) must remain so the "+
+			"test actually exercises the fix-exits-1 branch")
 }
 
 // TestE2E_PreMergeCommitHook_PropagatesHardError covers the branch
