@@ -36,6 +36,13 @@ const (
 )
 
 // Check implements rule.Rule.
+//
+// Detection uses the goldmark text-segment bytes, which already reflect
+// CommonMark's single-space-trim rule (one space stripped from each side
+// when both sides have one and the content is not all spaces). Inspecting
+// the post-trim segment avoids false positives on spans like “ `  x ` “
+// where only the leading double-space is visible after CommonMark normalises
+// the source.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -46,18 +53,24 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		raw, openBt, ok2 := rawContent(cs, f.Source)
-		if !ok2 || len(raw) == 0 {
+		first, last, ok2 := spanBounds(cs)
+		if !ok2 || last == first {
 			return ast.WalkContinue, nil
 		}
-		if isBalancedSingleSpace(raw) {
-			return ast.WalkContinue, nil
+		seg := f.Source[first:last]
+
+		// Find opening backtick offset for position reporting.
+		// recoverContentBounds undoes the CommonMark leading-space strip so we
+		// step back to the raw content boundary before walking through backticks.
+		rawStart, _ := recoverContentBounds(first, last, f.Source)
+		btStart := rawStart
+		for btStart > 0 && f.Source[btStart-1] == '`' {
+			btStart--
 		}
+		line := f.LineOfOffset(btStart)
+		col := f.ColumnOfOffset(btStart)
 
-		line := f.LineOfOffset(openBt)
-		col := f.ColumnOfOffset(openBt)
-
-		if isASCIIWhitespace(raw[0]) {
+		if isASCIIWhitespace(seg[0]) {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     line,
@@ -68,7 +81,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				Message:  msgLeading,
 			})
 		}
-		if isASCIIWhitespace(raw[len(raw)-1]) {
+		if isASCIIWhitespace(seg[len(seg)-1]) {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     line,
@@ -85,7 +98,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // Fix implements rule.FixableRule. It trims leading and trailing whitespace
-// from code span content. Spans that become empty after trimming are left
+// from code span content in the source file. Spans that become empty after
+// trimming, or whose trimmed content starts or ends with a backtick (which
+// would merge with the delimiter run and change the parsed value), are left
 // unchanged.
 func (r *Rule) Fix(f *lint.File) []byte {
 	type cut struct {
@@ -102,24 +117,39 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		raw, _, ok2 := rawContent(cs, f.Source)
-		if !ok2 || len(raw) == 0 {
+		first, last, ok2 := spanBounds(cs)
+		if !ok2 || last == first {
 			return ast.WalkContinue, nil
 		}
-		if isBalancedSingleSpace(raw) {
+		// Use the goldmark segment (post-CommonMark-trim) to decide whether
+		// this span needs fixing.
+		seg := f.Source[first:last]
+		if !isASCIIWhitespace(seg[0]) && !isASCIIWhitespace(seg[len(seg)-1]) {
 			return ast.WalkContinue, nil
 		}
-		if !isASCIIWhitespace(raw[0]) && !isASCIIWhitespace(raw[len(raw)-1]) {
-			return ast.WalkContinue, nil
-		}
-		// Use bytes.Trim with an explicit ASCII cutset to avoid the rune-to-byte
-		// truncation hazard of bytes.TrimFunc with non-ASCII content.
+		// Recover the full raw content (pre-trim) from the source.
+		start, end := recoverContentBounds(first, last, f.Source)
+		raw := f.Source[start:end]
+
+		// Use bytes.Trim with an explicit ASCII cutset (not TrimFunc) to
+		// avoid the rune-to-byte truncation hazard with non-ASCII content.
 		trimmed := bytes.Trim(raw, " \t\n\r")
 		if len(trimmed) == 0 {
 			return ast.WalkContinue, nil
 		}
-		first, last, _ := spanBounds(cs)
-		start, end := recoverContentBounds(first, last, f.Source)
+		// If the trimmed content starts or ends with a backtick, naively
+		// removing the surrounding spaces would merge those backticks into
+		// the delimiter run and change the rendered code span. Preserve one
+		// protective space on the affected side instead.
+		if trimmed[0] == '`' {
+			trimmed = append([]byte{' '}, trimmed...)
+		}
+		if trimmed[len(trimmed)-1] == '`' {
+			trimmed = append(trimmed, ' ')
+		}
+		if bytes.Equal(trimmed, raw) {
+			return ast.WalkContinue, nil
+		}
 		cuts = append(cuts, cut{start: start, end: end, repl: trimmed})
 		return ast.WalkContinue, nil
 	})
@@ -142,29 +172,6 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	return out.Bytes()
 }
 
-// rawContent returns the raw bytes between the backtick delimiters of cs
-// (before any CommonMark single-space trim) and the byte offset of the
-// opening backtick, for position reporting.
-//
-// Goldmark applies the CommonMark rule "if both sides have exactly one space
-// and the content is not all-whitespace, strip one space from each side"
-// before recording the text-child segments. To recover the original bytes
-// we peek at the adjacent bytes: if a space precedes the first segment and
-// a backtick precedes that space, the space was stripped.
-func rawContent(cs *ast.CodeSpan, source []byte) (raw []byte, openBt int, ok bool) {
-	first, last, ok2 := spanBounds(cs)
-	if !ok2 {
-		return nil, 0, false
-	}
-	start, end := recoverContentBounds(first, last, source)
-	// Find opening backtick.
-	btStart := start
-	for btStart > 0 && source[btStart-1] == '`' {
-		btStart--
-	}
-	return source[start:end], btStart, true
-}
-
 // recoverContentBounds returns the [start, end) byte range of a code span's
 // raw content, undoing the CommonMark single-space trim that goldmark applies
 // before recording the text-child segments.
@@ -185,7 +192,7 @@ func recoverContentBounds(first, last int, source []byte) (start, end int) {
 }
 
 // spanBounds returns the [start, end) byte range of a CodeSpan's content
-// as reported by goldmark (post-trim) by walking text children.
+// as reported by goldmark (post-CommonMark-trim) by walking text children.
 func spanBounds(cs *ast.CodeSpan) (first, last int, ok bool) {
 	first = -1
 	last = -1
@@ -202,20 +209,6 @@ func spanBounds(cs *ast.CodeSpan) (first, last int, ok bool) {
 		}
 	}
 	return first, last, first >= 0 && last >= first
-}
-
-// isBalancedSingleSpace reports whether raw has exactly one ASCII space on
-// each side with no additional whitespace at either boundary — the CommonMark
-// single-space-trim case that renders without leading or trailing space.
-func isBalancedSingleSpace(raw []byte) bool {
-	n := len(raw)
-	if n < 3 {
-		return false
-	}
-	if raw[0] != ' ' || raw[n-1] != ' ' {
-		return false
-	}
-	return !isASCIIWhitespace(raw[1]) && !isASCIIWhitespace(raw[n-2])
 }
 
 func isASCIIWhitespace(b byte) bool {

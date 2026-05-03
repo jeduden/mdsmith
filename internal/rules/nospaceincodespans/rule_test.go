@@ -187,9 +187,14 @@ func TestSpanBounds_NoTextChildren(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// TestRawContent_NoChildren exercises the !ok2 early-return in rawContent.
-func TestRawContent_NoChildren(t *testing.T) {
-	cs := ast.NewCodeSpan()
-	_, _, ok := rawContent(cs, []byte("source"))
-	assert.False(t, ok)
+// TestFix_ContentBacktick_ProtectiveSpace verifies that trimming a span whose
+// content starts or ends with a backtick adds a protective space to prevent
+// the content backtick from merging into the delimiter run.
+func TestFix_ContentBacktick_ProtectiveSpace(t *testing.T) {
+	// Content is " `x` " inside double-backtick delimiters.
+	// Trimming naively would give `x` which merges with `` into ```x``` (wrong).
+	// The fix must produce ` `x` ` (one protective space each side).
+	f := newFile(t, "Use ``  `x`  `` here.\n")
+	got := string((&Rule{}).Fix(f))
+	assert.Equal(t, "Use `` `x` `` here.\n", got)
 }

@@ -3,7 +3,7 @@ id: 126
 title: Proper-name capitalization rule
 status: "✅"
 summary: >-
-  New rule MDS050 that pins capitalization for a
+  New rule MDS051 that pins capitalization for a
   user-defined list of proper names (e.g. `JavaScript`,
   `GitHub`, `mdsmith`) so casing stays consistent
   across the corpus. Closes the gap with markdownlint
