@@ -495,3 +495,42 @@ func TestFixSkipsGeneratedRange(t *testing.T) {
 	result := fixWithGeneratedRanges(t, src, []lint.LineRange{{From: 3, To: 3}})
 	assert.Equal(t, src, result)
 }
+
+func TestTabLeadingWhitespace(t *testing.T) {
+	// [\ttext](url) — tab as leading whitespace inside link brackets.
+	diags := check(t, "# T\n\n[\ttext](url)\n", true)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "link text has leading whitespace", diags[0].Message)
+}
+
+func TestTabTrailingWhitespace(t *testing.T) {
+	// [text\t](url) — tab as trailing whitespace inside link brackets.
+	diags := check(t, "# T\n\n[text\t](url)\n", true)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "link text has trailing whitespace", diags[0].Message)
+}
+
+func TestFixTabWhitespace(t *testing.T) {
+	// Fix must trim leading and trailing tabs as well as spaces.
+	result := fix(t, "# T\n\n[\ttext\t](url)\n", true)
+	assert.Equal(t, "# T\n\n[text](url)\n", result)
+}
+
+func TestReferenceImageLeadingSpace(t *testing.T) {
+	// ![ alt ][ref] — reference-style image with leading/trailing space in alt text.
+	src := "# T\n\n![ alt ][ref]\n\n[ref]: img.png\n"
+	diags := check(t, src, true)
+	msgs := make([]string, len(diags))
+	for i, d := range diags {
+		msgs[i] = d.Message
+	}
+	assert.Contains(t, msgs, "image alt text has leading whitespace")
+	assert.Contains(t, msgs, "image alt text has trailing whitespace")
+}
+
+func TestFixReferenceImage(t *testing.T) {
+	// Fix must trim alt text whitespace for reference-style images.
+	src := "# T\n\n![ alt ][ref]\n\n[ref]: img.png\n"
+	result := fix(t, src, true)
+	assert.Equal(t, "# T\n\n![alt][ref]\n\n[ref]: img.png\n", result)
+}
