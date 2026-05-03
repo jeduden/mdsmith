@@ -1,0 +1,18 @@
+kinds:
+  plan:
+    rules:
+      max-file-length:
+        max: 800
+      paragraph-readability: false
+  prompt:
+    rules:
+      max-file-length:
+        max: 200
+      line-length:
+        max: 100
+
+kind-assignment:
+  - files: ["plan/*.md"]
+    kinds: [plan]
+  - files: ["prompt/*.md"]
+    kinds: [prompt]
