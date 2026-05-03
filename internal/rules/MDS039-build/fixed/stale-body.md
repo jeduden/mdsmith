@@ -1,9 +1,9 @@
 # Stale Body
 
 <?build
-recipe: vhs
-input: demo.tape
-output: demo.gif
+recipe: render
+source: diagram.svg
+output: docs/diagram.png
 ?>
-![vhs output: demo.gif](demo.gif)
+![render output: docs/diagram.png](docs/diagram.png)
 <?/build?>

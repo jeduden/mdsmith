@@ -1,16 +1,23 @@
 ---
+settings:
+  recipes:
+    render:
+      body-template: "![{alt}]({output})"
+      params:
+        required:
+          - source
 diagnostics:
   - line: 3
     column: 1
-    message: 'build directive recipe "vhs": unknown parameter "bogus"'
+    message: 'build directive recipe "render": unknown parameter "bogus"'
 ---
 # Unknown Param
 
 <?build
-recipe: vhs
-input: demo.tape
-output: demo.gif
+recipe: render
+source: diagram.svg
+output: out.png
 bogus: value
 ?>
-![vhs output: demo.gif](demo.gif)
+![render output: out.png](out.png)
 <?/build?>

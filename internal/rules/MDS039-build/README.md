@@ -15,8 +15,8 @@ in sync with the recipe's rendered body_template.
 
 MDS039 validates each `<?build?>` directive in a Markdown file:
 
-1. **`recipe` resolves** — the recipe name must be a built-in
-   (`screenshot`, `vhs`) or declared in `build.recipes`.
+1. **`recipe` resolves** — the recipe name must be declared in
+   `build.recipes` in `.mdsmith.yml`.
 2. **`output` is present and safe** — `output` is required and
    must not contain `..` path components.
 3. **Required params present** — params listed as required by the
@@ -34,21 +34,11 @@ No external tool is executed.
 
 ```text
 <?build
-recipe: screenshot
-url: /inbox
-output: docs/inbox.png
+recipe: RECIPE-NAME
+output: path/to/artifact.ext
+[recipe-specific params]
 ?>
-![screenshot output: docs/inbox.png](docs/inbox.png)
-<?/build?>
-```
-
-```text
-<?build
-recipe: vhs
-input: demo.tape
-output: demo.gif
-?>
-![vhs output: demo.gif](demo.gif)
+RENDERED BODY
 <?/build?>
 ```
 
@@ -56,66 +46,42 @@ output: demo.gif
 
 | Name     | Required | Description                                                     |
 |----------|----------|-----------------------------------------------------------------|
-| `recipe` | yes      | Built-in or user-declared recipe name                           |
+| `recipe` | yes      | Recipe name declared in `build.recipes`                         |
 | `output` | yes      | Artifact path relative to the Markdown file; no `..` components |
 
 `output` accepts any file extension; MDS039 applies no extension
 filter.
 
-## Built-in recipe schemas
-
-### `screenshot`
-
-| Param      | Required | Default    |
-|------------|----------|------------|
-| `url`      | yes      | —          |
-| `selector` | no       | full page  |
-| `viewport` | no       | `1280x800` |
-| `wait`     | no       | `0` ms     |
-| `click`    | no       | —          |
-| `hide`     | no       | `[]`       |
-
-### `vhs`
-
-| Param   | Required |
-|---------|----------|
-| `input` | yes      |
-
 ## Generated body
 
-Each recipe has a `body_template` rendered by `mdsmith fix`. The
-`{output}` placeholder is replaced with the `output` param value.
-The `{alt}` placeholder defaults to `"{recipe} output: {output}"`.
+Each recipe has a `body_template` rendered by `mdsmith fix`. Two
+placeholders are available:
 
-| Recipe       | Default `body_template` |
-|--------------|-------------------------|
-| `screenshot` | `![{alt}]({output})`    |
-| `vhs`        | `![{alt}]({output})`    |
-| custom       | `[{output}]({output})`  |
+| Placeholder | Value                                   |
+|-------------|-----------------------------------------|
+| `{output}`  | The `output` param value                |
+| `{alt}`     | `"{recipe} output: {output}"` (default) |
 
-The default `body_template` for built-in recipes produces a
-Markdown image with non-empty alt text, satisfying MDS032.
-
-User-declared recipes may override `body_template` via
-`build.recipes.NAME.body-template` in `.mdsmith.yml`.
+When `body-template` is omitted from the recipe declaration, the
+default `[{output}]({output})` is used.
 
 ## Config
 
 ```yaml
-rules:
-  build: false  # disable MDS039
-```
-
-User-declared recipes are read from `build.recipes` (plan 100):
-
-```yaml
 build:
   recipes:
-    chart:
+    render:
       body-template: "![{alt}]({output})"
       params:
-        required: [data]
+        required: [source]
         optional: [title]
+```
+
+To disable MDS039:
+
+```yaml
+rules:
+  build: false
 ```
 
 ## Examples
@@ -124,11 +90,11 @@ build:
 
 ```markdown
 <?build
-recipe: vhs
-input: demo.tape
-output: demo.gif
+recipe: render
+source: diagram.svg
+output: docs/diagram.png
 ?>
-![vhs output: demo.gif](demo.gif)
+![render output: docs/diagram.png](docs/diagram.png)
 <?/build?>
 ```
 
@@ -136,9 +102,9 @@ output: demo.gif
 
 ```markdown
 <?build
-recipe: vhs
-input: demo.tape
-output: demo.gif
+recipe: render
+source: diagram.svg
+output: docs/diagram.png
 ?>
 outdated content
 <?/build?>
@@ -163,7 +129,7 @@ MDS039 reports: `build directive references unknown recipe "nonexistent"`
 
 ```markdown
 <?build
-recipe: screenshot
+recipe: render
 output: out.png
 ?>
 content
@@ -171,7 +137,7 @@ content
 ```
 
 MDS039 reports:
-`build directive recipe "screenshot": missing required parameter "url"`
+`build directive recipe "render": missing required parameter "source"`
 
 ## Meta-Information
 

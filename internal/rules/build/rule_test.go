@@ -16,6 +16,18 @@ func newFile(t *testing.T, src string) *lint.File {
 	return f
 }
 
+// renderRecipe is a helper user-declared recipe used across tests.
+var renderRecipe = recipeSchema{
+	Required:     []string{"source"},
+	Optional:     []string{"title"},
+	BodyTemplate: "![{alt}]({output})",
+}
+
+// ruleWithRender returns a Rule pre-loaded with the "render" recipe.
+func ruleWithRender() *Rule {
+	return &Rule{recipes: map[string]recipeSchema{"render": renderRecipe}}
+}
+
 // --- Metadata ---
 
 func TestRule_ID(t *testing.T) {
@@ -73,18 +85,11 @@ func TestApplySettings_Recipes_NotMap(t *testing.T) {
 
 // --- resolveRecipe ---
 
-func TestResolveRecipe_Builtin_Screenshot(t *testing.T) {
-	r := &Rule{}
-	schema, ok := r.resolveRecipe("screenshot")
+func TestResolveRecipe_UserDeclared(t *testing.T) {
+	r := ruleWithRender()
+	schema, ok := r.resolveRecipe("render")
 	require.True(t, ok)
-	assert.Contains(t, schema.Required, "url")
-}
-
-func TestResolveRecipe_Builtin_VHS(t *testing.T) {
-	r := &Rule{}
-	schema, ok := r.resolveRecipe("vhs")
-	require.True(t, ok)
-	assert.Contains(t, schema.Required, "input")
+	assert.Equal(t, []string{"source"}, schema.Required)
 }
 
 func TestResolveRecipe_Unknown(t *testing.T) {
@@ -93,37 +98,32 @@ func TestResolveRecipe_Unknown(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestResolveRecipe_UserDeclared(t *testing.T) {
-	r := &Rule{
-		recipes: map[string]recipeSchema{
-			"chart": {Required: []string{"data"}},
-		},
-	}
-	schema, ok := r.resolveRecipe("chart")
-	require.True(t, ok)
-	assert.Equal(t, []string{"data"}, schema.Required)
+func TestResolveRecipe_UnknownWhenNoRecipes(t *testing.T) {
+	r := &Rule{} // no recipes loaded
+	_, ok := r.resolveRecipe("render")
+	assert.False(t, ok)
 }
 
 // --- validateHard ---
 
 func TestValidateHard_MissingRecipe(t *testing.T) {
-	r := &Rule{}
+	r := ruleWithRender()
 	diags := r.validateHard("test.md", 1, map[string]string{"output": "out.png"})
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, `missing required "recipe"`)
 }
 
 func TestValidateHard_MissingOutput(t *testing.T) {
-	r := &Rule{}
-	diags := r.validateHard("test.md", 1, map[string]string{"recipe": "vhs", "input": "demo.tape"})
+	r := ruleWithRender()
+	diags := r.validateHard("test.md", 1, map[string]string{"recipe": "render", "source": "a.svg"})
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, `missing required "output"`)
 }
 
 func TestValidateHard_DotDotOutput(t *testing.T) {
-	r := &Rule{}
+	r := ruleWithRender()
 	diags := r.validateHard("test.md", 1, map[string]string{
-		"recipe": "vhs", "input": "demo.tape", "output": "../out/file.gif",
+		"recipe": "render", "source": "a.svg", "output": "../out/file.png",
 	})
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, `".." path component`)
@@ -139,26 +139,18 @@ func TestValidateHard_UnknownRecipe(t *testing.T) {
 }
 
 func TestValidateHard_MissingRequiredParam(t *testing.T) {
-	r := &Rule{}
+	r := ruleWithRender()
 	diags := r.validateHard("test.md", 1, map[string]string{
-		"recipe": "screenshot", "output": "out.png",
+		"recipe": "render", "output": "out.png",
 	})
 	require.Len(t, diags, 1)
-	assert.Contains(t, diags[0].Message, `missing required parameter "url"`)
+	assert.Contains(t, diags[0].Message, `missing required parameter "source"`)
 }
 
-func TestValidateHard_Valid_Screenshot(t *testing.T) {
-	r := &Rule{}
+func TestValidateHard_Valid(t *testing.T) {
+	r := ruleWithRender()
 	diags := r.validateHard("test.md", 1, map[string]string{
-		"recipe": "screenshot", "output": "out.png", "url": "/home",
-	})
-	assert.Empty(t, diags)
-}
-
-func TestValidateHard_Valid_VHS(t *testing.T) {
-	r := &Rule{}
-	diags := r.validateHard("test.md", 1, map[string]string{
-		"recipe": "vhs", "output": "demo.gif", "input": "demo.tape",
+		"recipe": "render", "output": "out.png", "source": "diagram.svg",
 	})
 	assert.Empty(t, diags)
 }
@@ -166,19 +158,25 @@ func TestValidateHard_Valid_VHS(t *testing.T) {
 // --- warnUnknownParams ---
 
 func TestWarnUnknownParams_Clean(t *testing.T) {
-	r := &Rule{}
-	schema := builtinRecipes["vhs"]
-	diags := r.warnUnknownParams("test.md", 1, "vhs", schema, map[string]string{
-		"recipe": "vhs", "output": "demo.gif", "input": "demo.tape",
+	r := ruleWithRender()
+	diags := r.warnUnknownParams("test.md", 1, "render", renderRecipe, map[string]string{
+		"recipe": "render", "output": "out.png", "source": "diagram.svg",
+	})
+	assert.Empty(t, diags)
+}
+
+func TestWarnUnknownParams_OptionalAllowed(t *testing.T) {
+	r := ruleWithRender()
+	diags := r.warnUnknownParams("test.md", 1, "render", renderRecipe, map[string]string{
+		"recipe": "render", "output": "out.png", "source": "a.svg", "title": "My Chart",
 	})
 	assert.Empty(t, diags)
 }
 
 func TestWarnUnknownParams_Unknown(t *testing.T) {
-	r := &Rule{}
-	schema := builtinRecipes["vhs"]
-	diags := r.warnUnknownParams("test.md", 1, "vhs", schema, map[string]string{
-		"recipe": "vhs", "output": "demo.gif", "input": "demo.tape", "extra": "val",
+	r := ruleWithRender()
+	diags := r.warnUnknownParams("test.md", 1, "render", renderRecipe, map[string]string{
+		"recipe": "render", "output": "out.png", "source": "a.svg", "extra": "val",
 	})
 	require.Len(t, diags, 1)
 	assert.Equal(t, lint.Warning, diags[0].Severity)
@@ -186,10 +184,9 @@ func TestWarnUnknownParams_Unknown(t *testing.T) {
 }
 
 func TestWarnUnknownParams_Sorted(t *testing.T) {
-	r := &Rule{}
-	schema := builtinRecipes["vhs"]
-	diags := r.warnUnknownParams("test.md", 1, "vhs", schema, map[string]string{
-		"recipe": "vhs", "output": "demo.gif", "input": "demo.tape",
+	r := ruleWithRender()
+	diags := r.warnUnknownParams("test.md", 1, "render", renderRecipe, map[string]string{
+		"recipe": "render", "output": "out.png", "source": "a.svg",
 		"zzz": "1", "aaa": "2",
 	})
 	require.Len(t, diags, 2)
@@ -199,51 +196,32 @@ func TestWarnUnknownParams_Sorted(t *testing.T) {
 
 // --- generateBody ---
 
-func TestGenerateBody_Screenshot_DefaultAlt(t *testing.T) {
-	r := &Rule{}
+func TestGenerateBody_CustomTemplate(t *testing.T) {
+	r := ruleWithRender()
 	body, diags := r.generateBody("test.md", 1, map[string]string{
-		"recipe": "screenshot", "output": "docs/out.png", "url": "/home",
+		"recipe": "render", "output": "docs/out.png", "source": "a.svg",
 	})
 	require.Empty(t, diags)
-	assert.Equal(t, "![screenshot output: docs/out.png](docs/out.png)\n", body)
+	assert.Equal(t, "![render output: docs/out.png](docs/out.png)\n", body)
 }
 
-func TestGenerateBody_VHS_DefaultAlt(t *testing.T) {
-	r := &Rule{}
+func TestGenerateBody_DefaultTemplate(t *testing.T) {
+	r := &Rule{recipes: map[string]recipeSchema{
+		"plain": {Required: []string{"data"}},
+	}}
 	body, diags := r.generateBody("test.md", 1, map[string]string{
-		"recipe": "vhs", "output": "demo.gif", "input": "demo.tape",
+		"recipe": "plain", "output": "out.txt", "data": "input.csv",
 	})
 	require.Empty(t, diags)
-	assert.Equal(t, "![vhs output: demo.gif](demo.gif)\n", body)
+	assert.Equal(t, "[out.txt](out.txt)\n", body)
 }
 
-func TestGenerateBody_CustomRecipe_DefaultTemplate(t *testing.T) {
-	r := &Rule{
-		recipes: map[string]recipeSchema{
-			"chart": {Required: []string{"data"}},
-		},
-	}
-	body, diags := r.generateBody("test.md", 1, map[string]string{
-		"recipe": "chart", "output": "chart.png", "data": "data.csv",
+func TestGenerateBody_AltDefault(t *testing.T) {
+	r := ruleWithRender()
+	body, _ := r.generateBody("test.md", 1, map[string]string{
+		"recipe": "render", "output": "fig.png", "source": "a.svg",
 	})
-	require.Empty(t, diags)
-	assert.Equal(t, "[chart.png](chart.png)\n", body)
-}
-
-func TestGenerateBody_CustomRecipe_CustomTemplate(t *testing.T) {
-	r := &Rule{
-		recipes: map[string]recipeSchema{
-			"chart": {
-				Required:     []string{"data"},
-				BodyTemplate: "![{alt}]({output})",
-			},
-		},
-	}
-	body, diags := r.generateBody("test.md", 1, map[string]string{
-		"recipe": "chart", "output": "chart.png", "data": "data.csv",
-	})
-	require.Empty(t, diags)
-	assert.Equal(t, "![chart output: chart.png](chart.png)\n", body)
+	assert.Equal(t, "![render output: fig.png](fig.png)\n", body)
 }
 
 // --- Check (integration) ---
@@ -254,17 +232,17 @@ func TestCheck_NoDirectives(t *testing.T) {
 	assert.Empty(t, r.Check(f))
 }
 
-func TestCheck_CorrectBody_VHS(t *testing.T) {
-	r := &Rule{}
-	src := "# Demo\n\n<?build\nrecipe: vhs\ninput: demo.tape\noutput: demo.gif\n?>\n" +
-		"![vhs output: demo.gif](demo.gif)\n<?/build?>\n"
+func TestCheck_CorrectBody(t *testing.T) {
+	r := ruleWithRender()
+	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutput: out.png\n?>\n" +
+		"![render output: out.png](out.png)\n<?/build?>\n"
 	f := newFile(t, src)
 	assert.Empty(t, r.Check(f))
 }
 
 func TestCheck_StaleBody(t *testing.T) {
-	r := &Rule{}
-	src := "# Demo\n\n<?build\nrecipe: vhs\ninput: demo.tape\noutput: demo.gif\n?>\nwrong content\n<?/build?>\n"
+	r := ruleWithRender()
+	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutput: out.png\n?>\nwrong\n<?/build?>\n"
 	f := newFile(t, src)
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
@@ -281,9 +259,9 @@ func TestCheck_UnknownRecipe(t *testing.T) {
 }
 
 func TestCheck_UnknownParam_AndCorrectBody(t *testing.T) {
-	r := &Rule{}
-	src := "# Demo\n\n<?build\nrecipe: vhs\ninput: demo.tape\noutput: demo.gif\nextra: val\n?>\n" +
-		"![vhs output: demo.gif](demo.gif)\n<?/build?>\n"
+	r := ruleWithRender()
+	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutput: out.png\nextra: val\n?>\n" +
+		"![render output: out.png](out.png)\n<?/build?>\n"
 	f := newFile(t, src)
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
@@ -292,43 +270,42 @@ func TestCheck_UnknownParam_AndCorrectBody(t *testing.T) {
 }
 
 func TestCheck_UnknownParam_AndStaleBody(t *testing.T) {
-	r := &Rule{}
-	src := "# Demo\n\n<?build\nrecipe: vhs\ninput: demo.tape\noutput: demo.gif\nextra: val\n?>\nwrong\n<?/build?>\n"
+	r := ruleWithRender()
+	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutput: out.png\nextra: val\n?>\nwrong\n<?/build?>\n"
 	f := newFile(t, src)
 	diags := r.Check(f)
 	require.Len(t, diags, 2)
-	// Warning for unknown param
 	assert.Equal(t, lint.Warning, diags[0].Severity)
 	assert.Contains(t, diags[0].Message, `unknown parameter "extra"`)
-	// Error for stale body
 	assert.Equal(t, lint.Error, diags[1].Severity)
 	assert.Contains(t, diags[1].Message, "out of date")
 }
 
 // --- Fix ---
 
-func TestFix_RegeneratesBody_VHS(t *testing.T) {
-	r := &Rule{}
-	src := "# Demo\n\n<?build\nrecipe: vhs\ninput: demo.tape\noutput: demo.gif\n?>\nwrong content\n<?/build?>\n"
+func TestFix_RegeneratesBody(t *testing.T) {
+	r := ruleWithRender()
+	src := "# Demo\n\n<?build\nrecipe: render\nsource: a.svg\noutput: out.png\n?>\nwrong content\n<?/build?>\n"
 	f := newFile(t, src)
 	got := string(r.Fix(f))
-	assert.Contains(t, got, "![vhs output: demo.gif](demo.gif)")
+	assert.Contains(t, got, "![render output: out.png](out.png)")
 	assert.NotContains(t, got, "wrong content")
 }
 
-func TestFix_RegeneratesBody_Screenshot(t *testing.T) {
-	r := &Rule{}
-	src := "# Page\n\n<?build\nrecipe: screenshot\nurl: /home\noutput: docs/home.png\n?>\nstale\n<?/build?>\n"
+func TestFix_DefaultTemplate(t *testing.T) {
+	r := &Rule{recipes: map[string]recipeSchema{
+		"plain": {Required: []string{"data"}},
+	}}
+	src := "# Test\n\n<?build\nrecipe: plain\ndata: input.csv\noutput: out.txt\n?>\nstale\n<?/build?>\n"
 	f := newFile(t, src)
 	got := string(r.Fix(f))
-	assert.Contains(t, got, "![screenshot output: docs/home.png](docs/home.png)")
+	assert.Contains(t, got, "[out.txt](out.txt)")
 }
 
 func TestFix_SkipsInvalidDirective(t *testing.T) {
 	r := &Rule{}
 	src := "# Test\n\n<?build\nrecipe: ghost\noutput: out.png\n?>\ncontent\n<?/build?>\n"
 	f := newFile(t, src)
-	// Fix should not panic and should leave content unchanged
 	got := r.Fix(f)
 	assert.Equal(t, src, string(got))
 }
@@ -356,10 +333,10 @@ func TestHasDotDotSegment(t *testing.T) {
 // --- output extension filter ---
 
 func TestValidateHard_AnyExtension(t *testing.T) {
-	r := &Rule{}
+	r := ruleWithRender()
 	for _, ext := range []string{"out.gif", "out.mp4", "out.svg", "out.txt", "out"} {
 		diags := r.validateHard("test.md", 1, map[string]string{
-			"recipe": "vhs", "output": ext, "input": "demo.tape",
+			"recipe": "render", "output": ext, "source": "a.svg",
 		})
 		assert.Empty(t, diags, "extension %q should be accepted", ext)
 	}

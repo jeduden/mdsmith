@@ -1,4 +1,11 @@
 ---
+settings:
+  recipes:
+    render:
+      body-template: "![{alt}]({output})"
+      params:
+        required:
+          - source
 diagnostics:
   - line: 3
     column: 1
@@ -7,9 +14,9 @@ diagnostics:
 # Stale Body
 
 <?build
-recipe: vhs
-input: demo.tape
-output: demo.gif
+recipe: render
+source: diagram.svg
+output: docs/diagram.png
 ?>
 outdated content here
 <?/build?>

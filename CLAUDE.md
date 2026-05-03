@@ -26,7 +26,7 @@ row: "- [{summary}]({filename})"
 - [Build commands, project layout, code style, test fixtures, coverage gate, and merge conflicts.](docs/development/index.md)
 - [Label-driven merge queue workflow using jeduden/merge-queue-action.](docs/development/merge-queue.md)
 - [Rebase, CI monitoring, and review comment resolution.](docs/development/pr-fixup-workflow.md)
-- [How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure built-in and user recipes.](docs/guides/directives/build.md)
+- [How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure user-declared recipes.](docs/guides/directives/build.md)
 - [How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.](docs/guides/directives/enforcing-structure.md)
 - [How to use catalog and include directives to generate and embed content in Markdown files.](docs/guides/directives/generating-content.md)
 - [Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.](docs/guides/directives/hugo-migration.md)

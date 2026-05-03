@@ -23,20 +23,7 @@ type recipeSchema struct {
 	BodyTemplate string
 }
 
-// builtinRecipes are the hard-coded built-in recipe schemas.
-var builtinRecipes = map[string]recipeSchema{
-	"screenshot": {
-		Required:     []string{"url"},
-		Optional:     []string{"selector", "viewport", "wait", "click", "hide"},
-		BodyTemplate: "![{alt}]({output})",
-	},
-	"vhs": {
-		Required:     []string{"input"},
-		BodyTemplate: "![{alt}]({output})",
-	},
-}
-
-// defaultBodyTemplate is the fallback body_template for custom recipes.
+// defaultBodyTemplate is the fallback body_template for recipes that omit body-template.
 const defaultBodyTemplate = "[{output}]({output})"
 
 // Rule implements MDS039 (build).
@@ -270,12 +257,8 @@ func (r *Rule) generateBody(
 	return gensection.EnsureTrailingNewline(body), nil
 }
 
-// resolveRecipe looks up a recipe by name, checking built-ins first,
-// then user-declared recipes.
+// resolveRecipe looks up a recipe by name in the user-declared recipes.
 func (r *Rule) resolveRecipe(name string) (recipeSchema, bool) {
-	if s, ok := builtinRecipes[name]; ok {
-		return s, true
-	}
 	if r.recipes != nil {
 		if s, ok := r.recipes[name]; ok {
 			return s, true

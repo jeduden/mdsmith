@@ -1,4 +1,10 @@
 ---
+settings:
+  recipes:
+    render:
+      params:
+        required:
+          - source
 diagnostics:
   - line: 3
     column: 1
@@ -7,8 +13,8 @@ diagnostics:
 # Dotdot Output
 
 <?build
-recipe: screenshot
-url: /inbox
+recipe: render
+source: diagram.svg
 output: ../out/file.png
 ?>
 content

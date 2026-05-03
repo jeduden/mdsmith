@@ -1,4 +1,10 @@
 ---
+settings:
+  recipes:
+    render:
+      params:
+        required:
+          - source
 diagnostics:
   - line: 3
     column: 1
@@ -7,8 +13,8 @@ diagnostics:
 # Missing Output
 
 <?build
-recipe: vhs
-input: demo.tape
+recipe: render
+source: diagram.svg
 ?>
 content
 <?/build?>

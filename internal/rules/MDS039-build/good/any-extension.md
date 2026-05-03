@@ -1,9 +1,18 @@
+---
+settings:
+  recipes:
+    render:
+      body-template: "![{alt}]({output})"
+      params:
+        required:
+          - source
+---
 # Any Extension
 
 <?build
-recipe: vhs
-input: demo.tape
+recipe: render
+source: demo.tape
 output: demo.mp4
 ?>
-![vhs output: demo.mp4](demo.mp4)
+![render output: demo.mp4](demo.mp4)
 <?/build?>
