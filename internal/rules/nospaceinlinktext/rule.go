@@ -183,8 +183,12 @@ func findCloseBracket(source []byte, open int) int {
 	for i < len(source) && depth > 0 {
 		switch source[i] {
 		case '`':
-			i = skipCodeSpan(source, i)
-			continue
+			if j := skipCodeSpan(source, i); j < len(source) {
+				i = j
+				continue
+			}
+			// Unmatched backtick sequence: treat as literal text so bracket
+			// scanning continues and finds the structural ] normally.
 		case '\\':
 			if i+1 < len(source) {
 				i += 2

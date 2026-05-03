@@ -430,6 +430,17 @@ func TestBracketSpanOpenBracketNotFound(t *testing.T) {
 	assert.Equal(t, -1, close)
 }
 
+func TestUnmatchedBacktickInLinkText(t *testing.T) {
+	// [ text `broken ](url) — unmatched backtick inside link text.
+	// goldmark parses this as a valid link; the rule must detect the trailing space.
+	diags := check(t, "# T\n\n[ text `broken ](url)\n", true)
+	msgs := make([]string, len(diags))
+	for i, d := range diags {
+		msgs[i] = d.Message
+	}
+	assert.Contains(t, msgs, "link text has leading whitespace")
+}
+
 func TestBracketSpanCloseBracketNotFound(t *testing.T) {
 	// bracketSpan returns (-1,-1) when [ is found but has no matching ].
 	// Crafted: source "abc [hello", [ at 4, text at 5, no ] anywhere.
