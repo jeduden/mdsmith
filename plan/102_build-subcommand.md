@@ -1,199 +1,234 @@
 ---
 id: 102
-title: Builder interface and mdsmith build subcommand
+title: Multi-output `<?build?>` directive
 status: "🔲"
 summary: >-
-  Implement the `Builder` interface, built-in recipe
-  drivers (`screenshot` via chromedp, `vhs` via exec,
-  custom via `os/exec` argv), and the `mdsmith build`
-  subcommand that walks files, dispatches to recipe
-  drivers, and writes artifacts atomically.
+  Replace `output:` (singular) with `outputs:`
+  (list) on the `<?build?>` directive. Add
+  `inputs:` (list, validation only — staleness
+  lands in plan 103). Render `body-template`
+  once per output. Add `{outputs}` and
+  `{inputs}` argv placeholders to recipe
+  `command`. No backwards compatibility.
 model: opus
 ---
-# Builder interface and mdsmith build subcommand
+# Multi-output `<?build?>` directive
 
 ## Goal
 
-Execute `<?build?>` directives: run the declared
-recipe, write the artifact, and report per-file
-success or failure. `mdsmith check` and `mdsmith fix`
-remain unaffected — no external tool runs at lint
-time.
+The `<?build?>` directive declares a list of
+artifact paths in `outputs:` (was a single
+string `output:` in plan 101) and a list of
+input paths or globs in `inputs:`. The body
+template renders once per output. Recipe
+`command` strings can reference `{outputs}` and
+`{inputs}` to pass the lists to the recipe
+binary as separate argv arguments.
 
 ## Context
 
-Depends on plan 101 (`<?build?>` directive and
-MDS039). The directive parser and recipe resolution
-from plan 101 are reused here. The `build:` config
-schema from plan 100 provides recipe declarations
-and `base-url`.
+Builds on plan 101 (the `<?build?>` directive
+and MDS039) and plan 100 (`build:` config and
+MDS040). Plan 115 wires the resulting targets
+through a `Builder` and into `mdsmith fix`.
+Plan 103 layers staleness on top of `inputs:` /
+`outputs:`.
+
+`output:` and `outputs:` are not both accepted.
+This is a clean break — there is no backwards
+compatibility for the singular form, no
+deprecation warning, no migration diagnostic.
+MDS039 simply rejects unknown directive params,
+so `output:` becomes an error like any typo.
 
 ## Design
 
-### Builder interface
-
-```go
-// internal/build/builder.go
-type Builder interface {
-    Build(ctx context.Context, params map[string]string,
-          output string) error
-}
-```
-
-`params` contains the directive's key/value pairs.
-`output` is the resolved absolute path for the
-artifact. Each recipe driver implements `Builder`.
-
-A registry maps recipe name → `Builder`. At startup,
-the `mdsmith build` command registers built-ins and
-constructs a custom `Builder` for each entry in
-`build.recipes`.
-
-### Built-in recipe drivers
-
-**`screenshot`** — uses
-[chromedp](https://github.com/chromedp/chromedp):
-
-| Param      | Required | Default    |
-|------------|----------|------------|
-| `url`      | yes      | —          |
-| `selector` | no       | full page  |
-| `viewport` | no       | `1280x800` |
-| `wait`     | no       | `0` ms     |
-| `click`    | no       | —          |
-| `hide`     | no       | `[]`       |
-
-`build.base-url` is prepended to path-only `url`
-values (starting with `/`).
-
-**`vhs`** — runs the `vhs` binary via `os/exec`:
-
-| Param   | Required |
-|---------|----------|
-| `input` | yes      |
-
-Skipped when `vhs` is not in `PATH`.
-
-### Custom recipe driver
-
-User-declared recipes in `build.recipes` are
-compiled into a `Builder` at config load time:
-
-1. `command` is split on whitespace into an argv
-   list (the same split used by MDS040 in plan 100).
-2. `{param}` tokens are replaced with the
-   corresponding directive param value at call time.
-3. The resulting argv is passed directly to
-   `os/exec.Cmd` — no `sh -c`, no shell
-   metacharacter expansion.
-
-A value like `foo; rm -rf /` is passed literally to
-the binary as a single argument, not interpreted by
-a shell.
-
-### `mdsmith build` subcommand
+### New directive shape
 
 ```text
-mdsmith build [paths...] [flags]
+<?build
+recipe: pandoc
+inputs:
+  - chapters/intro.md
+  - chapters/01-prologue.md
+outputs:
+  - book.html
+  - book.epub
+?>
+- [book.html](book.html)
+- [book.epub](book.epub)
+<?/build?>
 ```
 
-Flags:
+`outputs:` requires at least one entry. An
+empty list is a diagnostic.
 
-| Flag                 | Description                             |
-|----------------------|-----------------------------------------|
-| `--recipe NAME`      | Only build directives using this recipe |
-| `--base-url URL`     | Override `build.base-url` from config   |
-| `--dry-run`          | List every target; run no tool          |
-| `--timeout DURATION` | Per-recipe timeout (default `30s`)      |
+`inputs:` may be empty (some recipes have no
+file inputs — e.g. a recipe that scrapes a
+remote URL). Plan 103 treats `inputs: []` as
+"always stale".
 
-Behavior:
+Each entry in `outputs:` is a literal relative
+path. No globs. Every output must be a path the
+recipe will write. This keeps post-build
+verification deterministic (every declared
+output must exist on disk after the recipe
+returns).
 
-1. Walk `paths` (default: current directory); collect
-   all `<?build?>` blocks via the plan 101 directive
-   parser.
-2. Apply `--recipe` filter when set.
-3. `--dry-run`: print each target (`recipe → output`)
-   and exit 0.
-4. Dispatch to the recipe driver. Write the artifact
-   to `output` atomically (write to a temp file, then
-   rename).
-5. Print a per-file `OK | FAIL` summary. Exit non-zero
-   if any recipe fails.
+Each entry in `inputs:` is a literal path or a
+glob. Globs are evaluated at build time (plan
+115). Plan 102 only validates the path shape
+(see "MDS039 update" below).
 
-### Security
+### Body template — rendered once per output
 
-Custom recipe `command` values are split into an argv
-list at config load; `{param}` tokens become
-individual arguments passed to `exec.Cmd`. No shell is
-involved at any stage. MDS040 (plan 100) enforces
-this at lint time.
+The recipe's `body-template` is rendered once
+per `outputs` entry, in declared order. The
+rendered lines are joined with newlines and
+stored as the section body.
 
-Path params (`output`, `input`) are validated by
-MDS039 (plan 101) as relative paths with no `..`
-components before the build command runs.
+| Placeholder | Value per render iteration                   |
+|-------------|----------------------------------------------|
+| `{output}`  | The current output path                      |
+| `{alt}`     | `"{recipe} output: {output}"` for that entry |
 
-### CI without chromium
+With `outputs: [foo.png]` the body is one line.
+With `outputs: [a.png, b.png]` the body is two
+lines, in declared order.
 
-The `screenshot` builder is skipped and its tests
-are marked `t.Skip` when chromium is not in `PATH`.
-All other tests run normally. CI without chromium
-still passes.
+Any change to `outputs:` makes the rendered
+body diverge, and MDS039 reports `generated
+section is out of date` — same guarantee as
+plan 101.
+
+### MDS039 update
+
+MDS039 (plan 101) is changed to:
+
+1. Reject `output:` (singular) — it is no
+   longer a known param. The standard "unknown
+   param" diagnostic applies.
+2. Require `outputs:` (list of strings,
+   non-empty). Each entry is a relative path,
+   no `..`, inside the project root. An empty
+   list is a diagnostic.
+3. Accept optional `inputs:` (list of strings,
+   may be empty). Each entry is a relative
+   path with no `..` or a glob. The glob shape
+   is validated; resolution is plan 115's job.
+4. Render `body-template` once per `outputs`
+   entry as described above.
+
+### Recipe `command` placeholders
+
+Recipe `command` strings (plan 100) keep
+existing `{param}` rules. Two new collective
+placeholders are added:
+
+| Placeholder | Expansion                               |
+|-------------|-----------------------------------------|
+| `{outputs}` | One argv per directive `outputs:` entry |
+| `{inputs}`  | One argv per resolved `inputs:` entry   |
+
+`outputs` and `inputs` become reserved param
+names. They may not appear in
+`params.required` or `params.optional`. MDS040
+checks this.
+
+A single-output recipe uses a named param:
+`command: "tool -o {dest}"` with the directive
+supplying `dest: foo.png` and `outputs:
+[foo.png]`. The author keeps both fields in
+sync; MDS039 does not auto-link them.
+
+A multi-output recipe uses `{outputs}`:
+`command: "magick convert in.svg {outputs}"`.
+The directive supplies `outputs: [a.png,
+b.png]`; argv expansion appends each as a
+separate argument.
+
+The actual argv expansion happens in plan 115.
+Plan 102's MDS040 update only validates that
+the reserved names are not declared as params.
+
+### Fixture and doc updates
+
+- `internal/rules/MDS039-build/good/`,
+  `bad/`, and `fixed/` fixtures are rewritten
+  for the new directive shape.
+- `docs/guides/directives/build.md` documents
+  `outputs:` and `inputs:` and the once-per-
+  output body render. Sentences referring to
+  the old singular form are deleted, not
+  marked deprecated.
 
 ## Tasks
 
-1. Define the `Builder` interface and recipe registry
-   in `internal/build/`. Implement the custom recipe
-   driver that tokenizes `command` at config load and
-   dispatches via `os/exec`.
-2. Implement the `screenshot` builder using chromedp.
-   Support `selector`, `viewport`, `wait`, `click`,
-   and `hide` params. Prepend `build.base-url` to
-   path-only `url` values.
-3. Implement the `vhs` builder via `os/exec`. Skip
-   when `vhs` is not in `PATH`.
-4. Add `mdsmith build` subcommand with all flags.
-   Wire the directive parser (plan 101) and recipe
-   registry. Write artifacts atomically. Print
-   `OK | FAIL` summary; exit non-zero on failure.
-5. Integration tests:
+1. Update MDS039 in `internal/rules/build/`:
 
-  - `screenshot` against `httptest.Server` writes
-     a non-empty PNG. Skip when chromium absent.
-  - A `cp`-based custom recipe declared in
-     `build.recipes` writes the output file.
+  - Drop `output` from the known-param set.
+  - Add `outputs` as required (list of
+    strings, non-empty, each a safe relative
+    path).
+  - Add `inputs` as optional (list of strings,
+    each a safe relative path or glob).
 
-6. Update `docs/guides/directives/build.md` (from
-   plan 101) with a section covering `mdsmith build`
-   flags, the `--dry-run` output format, and the
-   `OK | FAIL` summary.
-7. Update `demo.tape` to use a static HTML file
-   (no dev server) as the screenshot source.
+2. Update body rendering in
+   `internal/rules/build/`: render
+   `body-template` once per `outputs` entry
+   and join with newlines. `{output}` refers
+   to the current entry in each iteration.
+3. Update MDS040 in
+   `internal/rules/recipesafety/`: add
+   `inputs` and `outputs` to the
+   reserved-param list. A recipe that
+   declares either as a `params.required`
+   or `params.optional` entry is a config
+   error.
+4. Rewrite MDS039 fixtures (`good/`, `bad/`,
+   `fixed/`) for the new directive shape.
+5. Update unit tests in
+   `internal/rules/build/rule_test.go`:
+   replace every `output:` use with
+   `outputs:` (list). Add cases for
+   multi-output body rendering and for empty
+   `outputs:`.
+6. Update the user guide
+   `docs/guides/directives/build.md`:
+   document `outputs:` (list), `inputs:`
+   (list), the once-per-output body render,
+   and the `{outputs}` / `{inputs}`
+   placeholders. Delete singular-form prose.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith build` against `httptest.Server`
-      writes a non-empty PNG for a `screenshot` recipe
-- [ ] A `cp`-based custom recipe declared in
-      `build.recipes` writes the output file
-- [ ] Custom recipe `command` is executed via
-      `os/exec` with an explicit argv list — no shell
-      interpreter is invoked
-- [ ] `build.base-url` is prepended to path-only
-      `url` values; a full URL is passed unchanged
-- [ ] `mdsmith build --dry-run` lists every target
-      (`recipe → output`) without running any tool
-      and exits 0
-- [ ] `mdsmith build` exits non-zero on failure with
-      a per-file `OK | FAIL` summary
-- [ ] `mdsmith build --recipe screenshot` only runs
-      `screenshot` directives; other recipes are skipped
-- [ ] `mdsmith build --timeout 5s` applies the
-      timeout per recipe invocation
-- [ ] Artifacts are written atomically (temp file +
-      rename); a failed recipe leaves no partial file
-- [ ] CI without chromium still passes; `screenshot`
-      tests are skipped, not failed
-- [ ] `mdsmith check` does **not** run any external
-      tool (lint and build remain separate)
+- [ ] `<?build?>` requires `outputs:` (list,
+      non-empty); `output:` is rejected as an
+      unknown param
+- [ ] `<?build?>` accepts optional `inputs:`
+      (list of paths or globs)
+- [ ] Each `outputs:` entry is validated as a
+      relative path with no `..` and no
+      absolute-path prefix
+- [ ] Each `inputs:` entry is validated as a
+      relative path with no `..` (globs
+      allowed)
+- [ ] An empty `outputs:` list is a
+      diagnostic
+- [ ] `body-template` renders once per
+      `outputs` entry, joined with newlines,
+      in declared order
+- [ ] `{output}` in `body-template` refers to
+      the current output in each render
+      iteration
+- [ ] MDS040 rejects a recipe declaring
+      `inputs` or `outputs` in
+      `params.required` or `params.optional`
+- [ ] All MDS039 fixtures use the new
+      directive shape
+- [ ] `docs/guides/directives/build.md`
+      describes `outputs:` and `inputs:`; no
+      singular-form prose remains
 - [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [ ] `go tool golangci-lint run` reports no
+      issues
