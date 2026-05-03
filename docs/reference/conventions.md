@@ -55,16 +55,16 @@ parser. Selects `flavor: commonmark` and turns on
 the strict-style rules with their recommended
 defaults.
 
-| Rule                     | Setting                                                 |
-|--------------------------|---------------------------------------------------------|
-| `markdown-flavor`        | `flavor: commonmark`                                    |
-| `no-inline-html`         | enabled                                                 |
-| `no-reference-style`     | `allow-footnotes: false`                                |
-| `emphasis-style`         | `bold: asterisk`, `italic: underscore`                  |
-| `horizontal-rule-style`  | `style: dash`, `length: 3`, `require-blank-lines: true` |
-| `list-marker-style`      | `style: dash`                                           |
-| `ordered-list-numbering` | `style: sequential`, `start: 1`                         |
-| `ambiguous-emphasis`     | `max-run: 2`                                            |
+| Rule                     | Setting                                                                         |
+|--------------------------|---------------------------------------------------------------------------------|
+| `markdown-flavor`        | `flavor: commonmark`                                                            |
+| `no-inline-html`         | enabled                                                                         |
+| `no-reference-style`     | `allow-footnotes: false`                                                        |
+| `emphasis-style`         | `bold: asterisk`, `italic: underscore`                                          |
+| `horizontal-rule-style`  | `style: dash`, `length: 3`, `require-blank-lines: true`                         |
+| `list-marker-style`      | `style: dash`                                                                   |
+| `ordered-list-numbering` | `style: sequential`, `start: 1`                                                 |
+| `ambiguous-emphasis`     | `max-run: 2`, `forbid-escaped-in-run: true`, `forbid-adjacent-same-delim: true` |
 
 ### `github`
 

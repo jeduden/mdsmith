@@ -83,8 +83,12 @@ var conventions = map[string]Convention{
 				},
 			},
 			"ambiguous-emphasis": {
-				Enabled:  true,
-				Settings: map[string]any{"max-run": 2},
+				Enabled: true,
+				Settings: map[string]any{
+					"max-run":                    2,
+					"forbid-escaped-in-run":      true,
+					"forbid-adjacent-same-delim": true,
+				},
 			},
 		},
 	},
@@ -156,8 +160,12 @@ var conventions = map[string]Convention{
 				},
 			},
 			"ambiguous-emphasis": {
-				Enabled:  true,
-				Settings: map[string]any{"max-run": 2},
+				Enabled: true,
+				Settings: map[string]any{
+					"max-run":                    2,
+					"forbid-escaped-in-run":      true,
+					"forbid-adjacent-same-delim": true,
+				},
 			},
 		},
 	},
