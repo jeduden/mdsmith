@@ -74,8 +74,7 @@ func runMergeDriver(args []string) int {
 
 // mergeFileMode returns the low 9 permission bits (Mode().Perm()) of the named
 // file, or defaultMode if the file cannot be stat'd for any reason (including
-// ENOENT and permission errors). Uses Lstat so symlinks are not followed;
-// callers should guard the path with guardFn before invoking this helper.
+// ENOENT and permission errors). Uses Lstat so symlinks are not followed.
 func mergeFileMode(name string, defaultMode os.FileMode) os.FileMode {
 	if info, err := os.Lstat(name); err == nil {
 		return info.Mode().Perm()

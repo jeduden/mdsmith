@@ -798,8 +798,8 @@ func writeGitattributesFile(path, content string) error {
 	return nil
 }
 
-// createTempFn, closeTempFn, and chmodFn are variables so tests can inject
-// failures into atomicWriteGitattributes without needing OS-level tricks.
+// createTempFn, syncTempFn, closeTempFn, and chmodFn are variables so tests
+// can inject failures into atomicWriteGitattributes without OS-level tricks.
 var createTempFn = os.CreateTemp
 var syncTempFn = (*os.File).Sync
 var closeTempFn = (*os.File).Close
@@ -810,6 +810,17 @@ var chmodFn = os.Chmod
 // replaces the directory entry atomically, so it cannot follow a symlink
 // that might have been introduced between an earlier lstat check and the write.
 func atomicWriteGitattributes(path string, data []byte, mode os.FileMode) error {
+	// Verify an existing target is writable. os.Rename can replace read-only
+	// files when the directory is writable, so we check explicitly.
+	if _, err := lstatFile(path); err == nil {
+		f, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			return err
+		}
+		_ = f.Close()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	dir := filepath.Dir(path)
 	tmp, err := createTempFn(dir, ".mdsmith-gitattributes-*")
 	if err != nil {

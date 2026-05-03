@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -1197,6 +1198,30 @@ func TestAtomicWriteGitattributes_ChmodFails_ReturnsError(t *testing.T) {
 	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "mock chmod failure")
+}
+
+func TestAtomicWriteGitattributes_TargetIsDirectory_ReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("not reliable on Windows")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	require.NoError(t, os.Mkdir(target, 0o755))
+
+	err := atomicWriteGitattributes(target, []byte("content"), 0o644)
+	require.Error(t, err)
+}
+
+func TestAtomicWriteGitattributes_LstatNonENOENTError_ReturnsError(t *testing.T) {
+	orig := lstatFile
+	t.Cleanup(func() { lstatFile = orig })
+	lstatFile = func(string) (os.FileInfo, error) {
+		return nil, fmt.Errorf("mock lstat failure")
+	}
+
+	err := atomicWriteGitattributes("/any/path", []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock lstat failure")
 }
 
 func TestWriteGitattributes_LstatNonENOENTError_ReturnsError(t *testing.T) {
