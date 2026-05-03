@@ -93,6 +93,10 @@ func guardRegularFile(path string) error {
 	return nil
 }
 
+// guardFn is a variable so tests can substitute a failing implementation
+// to exercise guardRegularFile error paths without creating real symlinks.
+var guardFn = guardRegularFile
+
 // osWriteFile is a variable so tests can substitute a failing implementation
 // to exercise error paths without needing OS tricks.
 var osWriteFile = os.WriteFile
@@ -103,7 +107,7 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 	// Validate all three inputs before letting git read or write them,
 	// so symlinks cannot pull in data from outside the worktree.
 	for _, path := range []string{ours, base, theirs} {
-		if err := guardRegularFile(path); err != nil {
+		if err := guardFn(path); err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 			return nil, 2
 		}
@@ -136,6 +140,11 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 		return nil, 2
 	}
 	cleaned := stripSectionConflicts(content)
+	// Re-check immediately before writing to narrow the TOCTOU window.
+	if err := guardFn(ours); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return nil, 2
+	}
 	if err := osWriteFile(ours, cleaned, oursMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing cleaned merge: %v\n", err)
 		return nil, 2
@@ -209,21 +218,25 @@ func runMergeDriverRun(args []string) int {
 // fixAtRealPath writes cleaned content to pathname, runs mdsmith
 // fix, copies the result to ours, and restores pathname.
 func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byte, int) {
-	// Capture the original file modes so we can preserve permissions.
 	pathnameMode := mergeFileMode(pathname, 0o644)
 	oursMode := mergeFileMode(ours, 0o644)
 
-	if err := guardRegularFile(pathname); err != nil {
+	if err := guardFn(pathname); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
-	if err := guardRegularFile(ours); err != nil {
+	if err := guardFn(ours); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
 	backup, backupErr := lint.ReadFileLimited(pathname, maxBytes)
 	if backupErr != nil && !os.IsNotExist(backupErr) {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading %s for backup: %v\n", pathname, backupErr)
+		return nil, 2
+	}
+	// Re-check immediately before writing to narrow the TOCTOU window.
+	if err := guardFn(pathname); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return nil, 2
 	}
 	if err := osWriteFile(pathname, cleaned, pathnameMode); err != nil {
@@ -233,32 +246,21 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 
 	fixErr := fixFileInPlace(pathname, maxBytes)
 
-	// Restore the original working tree file before checking
-	// fixErr, so the working tree is always left clean.
-	fixed, err := lint.ReadFileLimited(pathname, maxBytes)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: reading fixed file: %v\n", err)
-		return nil, 2
+	fixed, code := readAndRestore(pathname, backup, backupErr, pathnameMode, maxBytes)
+	if code != 0 {
+		return fixed, code
 	}
 
-	var restoreErr error
-	if backupErr == nil {
-		restoreErr = os.WriteFile(pathname, backup, pathnameMode)
-	} else if os.IsNotExist(backupErr) {
-		restoreErr = os.Remove(pathname)
-	}
-	if restoreErr != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: restoring %s: %v\n", pathname, restoreErr)
-		return fixed, 2
-	}
-
-	// Check fixErr before writing to ours so broken content is
-	// not used as the merge result.
 	if fixErr != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: fix failed: %v\n", fixErr)
 		return fixed, 2
 	}
 
+	// Re-check ours immediately before writing the final merge result.
+	if err := guardFn(ours); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return nil, 2
+	}
 	if err := osWriteFile(ours, fixed, oursMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing merge output: %v\n", err)
 		return nil, 2
@@ -268,6 +270,34 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 		return nil, 2
 	}
 
+	return fixed, 0
+}
+
+// readAndRestore reads the fixed content from pathname, restores its original
+// content (or removes it if it did not previously exist), and returns the fixed
+// bytes. A non-zero exit code means the caller should propagate the error.
+func readAndRestore(pathname string, backup []byte, backupErr error, mode os.FileMode, maxBytes int64) ([]byte, int) {
+	fixed, err := lint.ReadFileLimited(pathname, maxBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: reading fixed file: %v\n", err)
+		return nil, 2
+	}
+
+	var restoreErr error
+	if backupErr == nil {
+		// Re-check before restore to narrow TOCTOU window.
+		if err := guardFn(pathname); err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return fixed, 2
+		}
+		restoreErr = osWriteFile(pathname, backup, mode)
+	} else if os.IsNotExist(backupErr) {
+		restoreErr = os.Remove(pathname)
+	}
+	if restoreErr != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: restoring %s: %v\n", pathname, restoreErr)
+		return fixed, 2
+	}
 	return fixed, 0
 }
 
