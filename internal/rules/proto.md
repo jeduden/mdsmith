@@ -80,14 +80,14 @@ rules:
 - **Implementation**:
   [source](./)
 - **Category**: CATEGORY
-- **Archetype**:
-  [NAME](../../../docs/background/archetypes/NAME/)
+- **Concept**:
+  [NAME](../../../docs/background/concepts/NAME.md)
 
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
-     Implementation, Category, Archetype (if applicable).
+     Implementation, Category, Concept (if applicable).
      Default may include key settings: "enabled, max: 80".
      Categories: code, heading, line, link, list, meta,
-     whitespace. Delete Archetype bullet if not used. -->
+     whitespace. Delete Concept bullet if not used. -->
 
 ## ...
 

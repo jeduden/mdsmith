@@ -247,9 +247,7 @@ kinds:
       no-emphasis-as-heading: false
       # Links in proto.md bodies are placeholder text
       # (e.g. `NAME`, not `{name}`) — they aren't real
-      # repo paths and var-token cannot match them. Plan
-      # 98's archetype-to-kinds rename will eliminate the
-      # one remaining placeholder link.
+      # repo paths and var-token cannot match them.
       cross-file-reference-integrity: false
       paragraph-readability: false
       paragraph-structure: false

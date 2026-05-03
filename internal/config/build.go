@@ -122,11 +122,11 @@ func validateCommandPlaceholders(recipeName, command string, allowed map[string]
 }
 
 // InjectBuildConfig copies cfg.Build.Recipes into the recipe-safety
-// rule settings, alongside the config file path. This mirrors
-// InjectArchetypeRoots: it is called after config loading in main so
-// the rule receives its inputs through the normal ApplySettings path.
-// cfgPath is the path to the loaded .mdsmith.yml; it is set in the
-// config-path setting so MDS040 can report diagnostics against the
+// rule settings, alongside the config file path. It is called after
+// config loading in main so the rule receives its inputs through the
+// normal ApplySettings path. cfgPath is the path to the loaded
+// .mdsmith.yml; it is set in the config-path setting so MDS040 can
+// report diagnostics against the
 // right file.
 func InjectBuildConfig(cfg *Config, cfgPath string) {
 	if cfg == nil || len(cfg.Build.Recipes) == 0 {

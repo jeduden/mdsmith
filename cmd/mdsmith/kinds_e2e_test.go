@@ -346,7 +346,7 @@ func TestKinds_WhyMissingArgsExits2(t *testing.T) {
 }
 
 // kindsBadConfigDir writes an unparseable .mdsmith.yml so loadConfig
-// fails inside kindsConfig(). Mirrors archetypes' badConfigDir.
+// fails inside kindsConfig().
 func kindsBadConfigDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
