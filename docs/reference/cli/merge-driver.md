@@ -23,7 +23,11 @@ Register the merge driver in `git config` and ensure
 `.gitattributes` assigns it. The managed block uses globs
 derived from `.mdsmith.yml`: include patterns (default
 `*.md` and `*.markdown`) followed by an `-merge` exclude
-line for each `ignore:` pattern (last-match wins).
+line for each representable `ignore:` pattern (last-match
+wins). `ignore:` entries that cannot be expressed in
+`.gitattributes` — `!` negation patterns and patterns
+containing whitespace — are skipped, so the hook's scope
+may include files the merge driver isn't registered for.
 
 Optional positional args replace the default include set
 when scoping to a custom pattern (e.g. `docs/**/*.md`).

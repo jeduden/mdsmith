@@ -99,7 +99,7 @@ sort: command
 header: |
   | Command | Description |
   |---------|-------------|
-row: "| [`{command}`](docs/reference/cli/{command}.md) | {summary} |"
+row: "| [`{command}`]({filename}) | {summary} |"
 ?>
 | Command                                                      | Description                                                                          |
 |--------------------------------------------------------------|--------------------------------------------------------------------------------------|

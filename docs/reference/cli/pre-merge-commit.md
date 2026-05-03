@@ -21,10 +21,14 @@ mdsmith pre-merge-commit <subcommand> [args]
 
 Install the hook at `.git/hooks/pre-merge-commit`, or at
 the path configured by `core.hooksPath`. The hook walks
-the worktree using `.mdsmith.yml` `ignore:`. That is the
-same set marked with `merge=mdsmith` in `.gitattributes`,
-so the hook scope follows the same globbing strategy as
-the managed `.gitattributes` block.
+the worktree using `.mdsmith.yml` `ignore:`.
+
+The hook's scope is a superset of the merge driver's:
+`.gitattributes` generation skips `ignore:` entries that
+can't be represented (`!` negation patterns, patterns
+with whitespace), so the hook may run `mdsmith fix` on
+files the [merge driver](merge-driver.md) wasn't
+registered for.
 
 Explicit file lists are not accepted. Scope the hook by
 editing `.mdsmith.yml` `ignore:` instead.

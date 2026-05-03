@@ -35,9 +35,14 @@ row: "| [`{command}`]({filename}) | {summary} |"
 The `check`, `fix`, and `query` commands accept file
 paths, directories, and glob patterns as positional
 arguments. `check` and `query` also accept `-` to read
-from stdin. With no file arguments, `check`, `fix`, and
-`metrics rank` discover files using `files:` from
-`.mdsmith.yml` (default: `["**/*.md", "**/*.markdown"]`).
+from stdin.
+
+With no file arguments:
+
+- `check` and `fix` discover files using `files:` from
+  `.mdsmith.yml` (default: `["**/*.md", "**/*.markdown"]`).
+- `query` and `metrics rank` default to the current
+  directory (`.`) and walk it recursively.
 
 ## Global flags
 
