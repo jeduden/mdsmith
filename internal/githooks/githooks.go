@@ -973,6 +973,7 @@ func BuildHookScript(exe string) string {
 func HookMatchesCanonical(hook string) bool {
 	required := []string{
 		`cd "$(git rev-parse --show-toplevel)"`,
+		"set +e",
 		" fix .",
 		"status=$?",
 		`if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then`,

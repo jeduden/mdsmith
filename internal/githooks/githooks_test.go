@@ -968,6 +968,27 @@ func TestHookMatchesCanonical_AcceptsCanonicalScript(t *testing.T) {
 	assert.True(t, HookMatchesCanonical(hook))
 }
 
+func TestHookMatchesCanonical_RejectsMissingSetPlusE(t *testing.T) {
+	// A hook that invokes `mdsmith fix .` without first disabling
+	// errexit (`set +e`) will abort immediately when fix exits 1, so
+	// the staging loop never runs. The drift check must reject it so
+	// `pre-merge-commit status` prompts a reinstall.
+	hook := "#!/bin/sh\n" + PreMergeCommitMarker + "\n" +
+		"set -e\n" +
+		"cd \"$(git rev-parse --show-toplevel)\"\n" +
+		"'/usr/local/bin/mdsmith' fix .\n" + // no `set +e` guard before this
+		"status=$?\n" +
+		"set -e\n" +
+		"if [ \"$status\" -ne 0 ] && [ \"$status\" -ne 1 ]; then\n" +
+		"  exit \"$status\"\n" +
+		"fi\n" +
+		"git diff --name-only -- '*.md' '*.markdown' | while IFS= read -r f; do\n" +
+		"  if [ -n \"$f\" ]; then git add -- \"$f\"; fi\n" +
+		"done\n"
+	assert.False(t, HookMatchesCanonical(hook),
+		"hook running fix under set -e (without set +e guard) must be flagged as drifted")
+}
+
 func TestHookMatchesCanonical_RejectsMissingChdir(t *testing.T) {
 	// Drop the `cd "$(git rev-parse ...)"` line.
 	hook := "#!/bin/sh\n" + PreMergeCommitMarker + "\n" +
