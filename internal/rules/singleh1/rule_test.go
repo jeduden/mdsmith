@@ -167,3 +167,139 @@ func TestDefaultSettings(t *testing.T) {
 func TestEnabledByDefault(t *testing.T) {
 	assert.False(t, (&Rule{}).EnabledByDefault())
 }
+
+func TestCategory(t *testing.T) {
+	assert.Equal(t, "heading", (&Rule{}).Category())
+}
+
+// TestCheck_FrontMatterTitle_MultipleH1s exercises the branch where
+// hasFMTitle=true AND there are 2+ in-document H1s: the first H1 gets
+// the front-matter conflict message and subsequent ones get the extra-H1 message.
+func TestCheck_FrontMatterTitle_MultipleH1s(t *testing.T) {
+	src := "---\ntitle: Foo\n---\n\n# First\n\n# Second\n"
+	f := newFileStrip(t, src)
+	diags := (&Rule{FrontMatterTitle: "title"}).Check(f)
+	require.Len(t, diags, 2)
+	assert.Equal(t, "h1 heading conflicts with front-matter title", diags[0].Message)
+	assert.Equal(t, "extra H1 heading; only one H1 is allowed per file", diags[1].Message)
+}
+
+// TestFix_FrontMatterConflict_ExtraH1s exercises the branch where
+// hasFMTitle=true AND there are 2+ H1s: Fix should demote the second H1
+// (which is a pure extra) but leave the first (front-matter conflict) alone.
+func TestFix_FrontMatterConflict_ExtraH1s(t *testing.T) {
+	src := "---\ntitle: Foo\n---\n\n# First\n\n# Second\n"
+	f := newFileStrip(t, src)
+	got := (&Rule{FrontMatterTitle: "title"}).Fix(f)
+	// First H1 is untouched; second H1 is demoted to H2.
+	// f.Source starts with a blank line (the blank line between --- and # First
+	// after front-matter stripping), so the fixed output does too.
+	assert.Equal(t, "\n# First\n\n## Second\n", string(got))
+}
+
+// TestCheck_HeadingNotOnFirstLine exercises headingLineStart's offset-rewind
+// loop, which only runs when a heading appears after line 1.
+func TestCheck_HeadingNotOnFirstLine(t *testing.T) {
+	// Two H1s where neither is on line 1.
+	src := "# First\n\n# Second\n\n# Third\n"
+	f := newFile(t, src)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 2)
+	assert.Equal(t, 3, diags[0].Line)
+	assert.Equal(t, 5, diags[1].Line)
+}
+
+// TestCheck_HeadingWithEmphasis exercises the headingLineStart walk path for
+// headings whose inline content includes non-Text nodes (e.g. Emphasis).
+func TestCheck_HeadingWithEmphasis(t *testing.T) {
+	src := "# *First*\n\n# *Second*\n"
+	f := newFile(t, src)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 3, diags[0].Line)
+}
+
+// TestFix_HeadingWithEmphasis ensures Fix demotes an emphasized H1.
+func TestFix_HeadingWithEmphasis(t *testing.T) {
+	src := "# First\n\n# *Second*\n"
+	f := newFile(t, src)
+	got := (&Rule{}).Fix(f)
+	assert.Equal(t, "# First\n\n## *Second*\n", string(got))
+}
+
+// TestApplySettings_NonStringValue exercises the type-assertion failure path.
+func TestApplySettings_NonStringValue(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"front-matter-title": 42})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must be a string")
+}
+
+// TestFrontMatterHasTitle_BadYAML exercises the yaml.Unmarshal error path.
+func TestFrontMatterHasTitle_BadYAML(t *testing.T) {
+	// Construct a file whose FrontMatter contains invalid YAML.
+	f, err := lint.NewFileFromSource("test.md", []byte("---\n: bad: yaml: [\n---\n\n# Title\n"), true)
+	require.NoError(t, err)
+	r := &Rule{FrontMatterTitle: "title"}
+	// Should not panic; bad YAML means title is absent → no conflict.
+	assert.False(t, r.frontMatterHasTitle(f))
+}
+
+// TestFrontMatterHasTitle_NonStringValue exercises the path where the
+// configured field is present but its YAML value is not a string.
+func TestFrontMatterHasTitle_NonStringValue(t *testing.T) {
+	src := "---\ntitle: 42\n---\n\n# Title\n"
+	f := newFileStrip(t, src)
+	r := &Rule{FrontMatterTitle: "title"}
+	assert.False(t, r.frontMatterHasTitle(f))
+}
+
+// TestExtractYAMLBody strips delimiters correctly.
+func TestExtractYAMLBody(t *testing.T) {
+	got := extractYAMLBody([]byte("---\ntitle: Foo\n---\n"))
+	assert.Equal(t, "title: Foo\n", string(got))
+}
+
+// TestFrontMatterHasTitle_SourceFallback covers the path where f.FrontMatter is
+// empty (lint.NewFile called) but the source itself contains front matter.
+func TestFrontMatterHasTitle_SourceFallback(t *testing.T) {
+	// newFile does not strip FM, so f.FrontMatter is nil; rule extracts from source.
+	f := newFile(t, "---\ntitle: From Source\n---\n\n# Title\n")
+	r := &Rule{FrontMatterTitle: "title"}
+	assert.True(t, r.frontMatterHasTitle(f))
+}
+
+// TestFrontMatterHasTitle_YAMLAliasRejected checks that alias-bearing YAML is
+// rejected (treated as no title) rather than expanded.
+func TestFrontMatterHasTitle_YAMLAliasRejected(t *testing.T) {
+	f := newFileStrip(t, "---\nbase: &a Foo\ntitle: *a\n---\n\n# Title\n")
+	r := &Rule{FrontMatterTitle: "title"}
+	assert.False(t, r.frontMatterHasTitle(f))
+}
+
+// TestFrontMatterHasTitle_EmptyBody covers the extractYAMLBody→empty path.
+func TestFrontMatterHasTitle_EmptyBody(t *testing.T) {
+	// Front matter with just delimiters and no YAML fields.
+	f := newFileStrip(t, "---\n---\n\n# Title\n")
+	r := &Rule{FrontMatterTitle: "title"}
+	assert.False(t, r.frontMatterHasTitle(f))
+}
+
+// TestCheck_IndentedATXHeading exercises the leading-space handling in
+// isATXHeading and buildDemoteReplacement for CommonMark-allowed indented ATX.
+func TestCheck_IndentedATXHeading(t *testing.T) {
+	// CommonMark allows 1-3 spaces before the # marker.
+	src := "# First\n\n  # Second\n"
+	f := newFile(t, src)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "extra H1 heading; only one H1 is allowed per file", diags[0].Message)
+}
+
+// TestFix_IndentedATXHeading verifies Fix demotes a space-indented H1 correctly.
+func TestFix_IndentedATXHeading(t *testing.T) {
+	src := "# First\n\n  # Second\n"
+	f := newFile(t, src)
+	got := (&Rule{}).Fix(f)
+	assert.Equal(t, "# First\n\n  ## Second\n", string(got))
+}

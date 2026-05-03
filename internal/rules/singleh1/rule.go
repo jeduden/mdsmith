@@ -1,6 +1,7 @@
 package singleh1
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -178,6 +179,9 @@ func (r *Rule) frontMatterHasTitle(f *lint.File) bool {
 	if len(yamlBytes) == 0 {
 		return false
 	}
+	if err := lint.RejectYAMLAliases(yamlBytes); err != nil {
+		return false
+	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
 		return false
@@ -190,16 +194,14 @@ func (r *Rule) frontMatterHasTitle(f *lint.File) bool {
 	return ok && s != ""
 }
 
-// extractYAMLBody strips the opening/closing --- delimiters and returns
-// the raw YAML content.
+var fmDelim = []byte("---\n")
+
+// extractYAMLBody trims the opening and closing --- delimiters from a
+// StripFrontMatter-produced block and returns the raw YAML bytes.
 func extractYAMLBody(fm []byte) []byte {
-	s := string(fm)
-	s = strings.TrimPrefix(s, "---\n")
-	idx := strings.Index(s, "\n---")
-	if idx < 0 {
-		return nil
-	}
-	return []byte(s[:idx+1])
+	body := bytes.TrimPrefix(fm, fmDelim)
+	body = bytes.TrimSuffix(body, fmDelim)
+	return body
 }
 
 type rep struct {
@@ -208,13 +210,17 @@ type rep struct {
 }
 
 // buildDemoteReplacement returns the byte replacement needed to demote an
-// H1 to H2. ATX: inserts a '#'. Setext: replaces '=' underline with '-'.
+// H1 to H2. ATX: inserts a '#' after any leading spaces and the existing
+// '#' run. Setext: replaces the '=' underline with '-'.
 func buildDemoteReplacement(heading *ast.Heading, source []byte) (rep, bool) {
 	if isATXHeading(heading, source) {
 		start, end := atxHeadingLineRange(heading, source)
 		line := source[start:end]
-		// Find the '#' characters and insert one more '#'.
+		// Skip up to 3 CommonMark-allowed leading spaces, then the '#' run.
 		i := 0
+		for i < len(line) && line[i] == ' ' {
+			i++
+		}
 		for i < len(line) && line[i] == '#' {
 			i++
 		}
@@ -224,18 +230,11 @@ func buildDemoteReplacement(heading *ast.Heading, source []byte) (rep, bool) {
 
 	// Setext heading: replace the underline line '===...' with '---...'
 	textStart, underlineEnd := setextHeadingRange(heading, source)
-	if textStart < 0 {
-		return rep{}, false
-	}
-	// Find start of underline line (line after the text line).
 	textEnd := textStart
 	for textEnd < len(source) && source[textEnd] != '\n' {
 		textEnd++
 	}
 	underlineStart := textEnd + 1
-	if underlineStart >= len(source) {
-		return rep{}, false
-	}
 	underlineContent := source[underlineStart:underlineEnd]
 	newUnderline := strings.ReplaceAll(string(underlineContent), "=", "-")
 	newText := string(source[textStart:underlineStart]) + newUnderline
@@ -243,35 +242,23 @@ func buildDemoteReplacement(heading *ast.Heading, source []byte) (rep, bool) {
 }
 
 // isATXHeading returns true if the heading uses ATX style (# prefix).
+// CommonMark allows 0-3 leading spaces before the # marker.
 func isATXHeading(heading *ast.Heading, source []byte) bool {
 	start := headingLineStart(heading, source)
-	if start < 0 || start >= len(source) {
-		return true
+	spaces := 0
+	for spaces < 3 && start+spaces < len(source) && source[start+spaces] == ' ' {
+		spaces++
 	}
-	return source[start] == '#'
+	start += spaces
+	return start < len(source) && source[start] == '#'
 }
 
 // headingLineStart returns the byte offset of the start of the line
-// containing the heading's text content.
+// containing the heading. goldmark sets Lines() for all heading types,
+// so Lines().At(0).Start provides the content offset; we rewind to the
+// line-start to include any leading-space or # prefix bytes.
 func headingLineStart(heading *ast.Heading, source []byte) int {
-	lines := heading.Lines()
-	var offset int
-	if lines.Len() > 0 {
-		offset = lines.At(0).Start
-	} else {
-		var found int
-		_ = ast.Walk(heading, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			if !entering || n == heading {
-				return ast.WalkContinue, nil
-			}
-			if t, ok := n.(*ast.Text); ok {
-				found = t.Segment.Start
-				return ast.WalkStop, nil
-			}
-			return ast.WalkContinue, nil
-		})
-		offset = found
-	}
+	offset := heading.Lines().At(0).Start
 	for offset > 0 && source[offset-1] != '\n' {
 		offset--
 	}
@@ -294,15 +281,10 @@ func atxHeadingLineRange(heading *ast.Heading, source []byte) (int, int) {
 // the trailing newline of the underline).
 func setextHeadingRange(heading *ast.Heading, source []byte) (int, int) {
 	textStart := headingLineStart(heading, source)
-	if textStart < 0 {
-		return -1, -1
-	}
-	// End of text line.
 	textEnd := textStart
 	for textEnd < len(source) && source[textEnd] != '\n' {
 		textEnd++
 	}
-	// Underline line.
 	underlineStart := textEnd + 1
 	underlineEnd := underlineStart
 	for underlineEnd < len(source) && source[underlineEnd] != '\n' {
