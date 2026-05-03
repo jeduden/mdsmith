@@ -27,8 +27,8 @@ jobs:
 
       - name: Install mdsmith merge driver and pre-merge-commit hook
         env:
-          MDSMITH_VERSION: v0.11.0
-          MDSMITH_SHA256: 33ec093d4460d76a05074628ade5e69847c9033231841e7aa76af379cc17e5e4
+          MDSMITH_VERSION: v0.12.0
+          MDSMITH_SHA256: a93f966ae68447b5de18fbb3d57f4a6122f5d364a91341e31fd7cfc3c3881f48
         run: |
           # Install to a stable path that will persist for the hook to use
           mkdir -p "$HOME/.local/bin"
