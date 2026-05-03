@@ -541,6 +541,30 @@ func TestResolveFiles_LiteralBrace(t *testing.T) {
 	assert.Equal(t, "{draft}.md", filepath.Base(files[0]))
 }
 
+// TestResolveFiles_DoubleStarRecursive verifies that ** in a CLI argument
+// recurses into subdirectories via doublestar.FilepathGlob.
+func TestResolveFiles_DoubleStarRecursive(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "top.md"), []byte("# T\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "nested.md"), []byte("# N\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "other.txt"), []byte("txt"), 0o644))
+
+	orig, _ := os.Getwd()
+	require.NoError(t, os.Chdir(dir))
+	defer func() { _ = os.Chdir(orig) }()
+
+	files, err := ResolveFiles([]string{"**/*.md"})
+	require.NoError(t, err)
+	names := make([]string, len(files))
+	for i, f := range files {
+		names[i] = filepath.Base(f)
+	}
+	sort.Strings(names)
+	assert.Equal(t, []string{"nested.md", "top.md"}, names, "** should recurse into subdirs")
+}
+
 // --- isMarkdown tests ---
 
 func TestIsMarkdown(t *testing.T) {

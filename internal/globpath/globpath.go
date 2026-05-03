@@ -1,5 +1,10 @@
-// Package globpath provides the shared glob matcher used by mdsmith config
-// surfaces (ignore:, overrides:, kind-assignment:) and the catalog directive.
+// Package globpath provides glob matching and pattern utilities for mdsmith
+// config surfaces: ignore:, overrides:, kind-assignment:, and rule settings
+// (allowed:, include:, exclude:, budgets[].glob).
+//
+// The catalog directive uses SplitIncludeExclude from this package to split
+// !-prefixed exclusion patterns; include resolution and exclude matching in
+// the catalog use doublestar directly with full-path semantics.
 //
 // CLI argument expansion uses doublestar.FilepathGlob directly and does not
 // route through this package; !-prefix exclusion is not available on the CLI.
