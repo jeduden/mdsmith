@@ -134,9 +134,9 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 			return nil, 2
 		}
 	}
-	// Preserve the original permissions of git's temp file.
-	// os.WriteFile only applies perm on creation; chmod enforces it
-	// on existing files too (e.g. if git truncated rather than recreated).
+	// Capture the permissions of git's temp file. os.WriteFile preserves
+	// the existing mode on truncating writes, so this is only the fallback
+	// creation mode for files that do not yet exist.
 	oursMode := mergeFileMode(ours, 0o644)
 
 	// Step 1: standard 3-way merge into ours.
@@ -156,6 +156,11 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 	}
 
 	// Step 2: strip conflict markers inside regenerable sections.
+	// Re-check before reading to guard against a symlink swap after the merge.
+	if err := guardFn(ours); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return nil, 2
+	}
 	content, err := lint.ReadFileLimited(ours, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading merge result: %v\n", err)
@@ -169,10 +174,6 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 	}
 	if err := osWriteFile(ours, cleaned, oursMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing cleaned merge: %v\n", err)
-		return nil, 2
-	}
-	if err := chmodFunc(ours, oursMode); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: chmod merge result: %v\n", err)
 		return nil, 2
 	}
 	return cleaned, 0
@@ -287,11 +288,6 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 		fmt.Fprintf(os.Stderr, "mdsmith: writing merge output: %v\n", err)
 		return nil, 2
 	}
-	if err := chmodFunc(ours, oursMode); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: chmod merge output: %v\n", err)
-		return nil, 2
-	}
-
 	return fixed, 0
 }
 
@@ -299,6 +295,11 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 // content (or removes it if it did not previously exist), and returns the fixed
 // bytes. A non-zero exit code means the caller should propagate the error.
 func readAndRestore(pathname string, backup []byte, backupErr error, mode os.FileMode, maxBytes int64) ([]byte, int) {
+	// Re-check before reading the fixed result to guard against a symlink swap.
+	if err := guardFn(pathname); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return nil, 2
+	}
 	fixed, err := readFileLimited(pathname, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading fixed file: %v\n", err)

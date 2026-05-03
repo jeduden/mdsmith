@@ -933,9 +933,10 @@ func TestGuardRegularFile_LstatNonENOENTError_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "lstat")
 }
 
-func TestMergeAndClean_ReGuardFails_ExitsTwo(t *testing.T) {
-	// The re-check of ours immediately before osWriteFile (4th guardFn call
-	// in mergeAndClean: ours/base/theirs at start, then ours again pre-write).
+func TestMergeAndClean_PreReadGuardFails_ExitsTwo(t *testing.T) {
+	// guardFn call sequence in mergeAndClean:
+	//   1 = ours, 2 = base, 3 = theirs (loop), 4 = ours pre-read, 5 = ours pre-write
+	// This test exercises call 4 (the pre-read re-check).
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
@@ -953,7 +954,41 @@ func TestMergeAndClean_ReGuardFails_ExitsTwo(t *testing.T) {
 	t.Cleanup(func() { guardFn = orig })
 	guardFn = func(path string) error {
 		calls++
-		if calls == 4 { // 4th call = re-check of ours before write
+		if calls == 4 {
+			return fmt.Errorf("injected pre-read guard")
+		}
+		return orig(path)
+	}
+
+	got := captureStderr(func() {
+		_, code := mergeAndClean(base, ours, theirs, 1<<20)
+		assert.Equal(t, 2, code)
+	})
+	assert.Contains(t, got, "injected pre-read guard")
+}
+
+func TestMergeAndClean_ReGuardFails_ExitsTwo(t *testing.T) {
+	// guardFn call sequence in mergeAndClean:
+	//   1 = ours, 2 = base, 3 = theirs (loop), 4 = ours pre-read, 5 = ours pre-write
+	// This test exercises call 5 (the pre-write re-check).
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	content := "# Hello\n"
+	base := filepath.Join(dir, "base.md")
+	ours := filepath.Join(dir, "ours.md")
+	theirs := filepath.Join(dir, "theirs.md")
+	require.NoError(t, os.WriteFile(base, []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(ours, []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(theirs, []byte(content), 0o644))
+
+	var calls int
+	orig := guardFn
+	t.Cleanup(func() { guardFn = orig })
+	guardFn = func(path string) error {
+		calls++
+		if calls == 5 { // 5th call = re-check of ours before write
 			return fmt.Errorf("injected: %s not regular", path)
 		}
 		return orig(path)
@@ -1051,59 +1086,6 @@ func TestFixAtRealPath_WriteToOursFails_ExitsTwo(t *testing.T) {
 	assert.Contains(t, got, "writing merge output")
 }
 
-func TestMergeAndClean_ChmodFails_ExitsTwo(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
-	dir := t.TempDir()
-
-	content := "# Hello\n"
-	base := filepath.Join(dir, "base.md")
-	ours := filepath.Join(dir, "ours.md")
-	theirs := filepath.Join(dir, "theirs.md")
-	require.NoError(t, os.WriteFile(base, []byte(content), 0o644))
-	require.NoError(t, os.WriteFile(ours, []byte(content), 0o644))
-	require.NoError(t, os.WriteFile(theirs, []byte(content), 0o644))
-
-	orig := chmodFunc
-	t.Cleanup(func() { chmodFunc = orig })
-	chmodFunc = func(string, os.FileMode) error {
-		return fmt.Errorf("mock chmod failure")
-	}
-
-	got := captureStderr(func() {
-		_, code := mergeAndClean(base, ours, theirs, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "chmod merge result")
-}
-
-func TestFixAtRealPath_ChmodFails_ExitsTwo(t *testing.T) {
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	content := []byte("# Hello\n\nWorld.\n")
-	pathname := filepath.Join(dir, "PLAN.md")
-	ours := filepath.Join(dir, "ours.md")
-	require.NoError(t, os.WriteFile(pathname, content, 0o644))
-	require.NoError(t, os.WriteFile(ours, content, 0o644))
-
-	orig := chmodFunc
-	t.Cleanup(func() { chmodFunc = orig })
-	chmodFunc = func(string, os.FileMode) error {
-		return fmt.Errorf("mock chmod failure")
-	}
-
-	got := captureStderr(func() {
-		_, code := fixAtRealPath(content, ours, pathname, 1<<20)
-		assert.Equal(t, 2, code)
-	})
-	assert.Contains(t, got, "chmod merge output")
-}
-
 // guardCallN returns a guardFn replacement that delegates to the real
 // guardRegularFile for the first n-1 calls, then returns an error on call n,
 // then delegates again for all subsequent calls.
@@ -1143,7 +1125,11 @@ func TestFixAtRealPath_ThirdGuardFails_ExitsTwo(t *testing.T) {
 }
 
 func TestFixAtRealPath_FourthGuardFails_ExitsTwo(t *testing.T) {
-	// 4th guardFn call = re-check of pathname before restore write.
+	// guardFn call sequence in fixAtRealPath + readAndRestore (backup exists):
+	//   1 = pathname, 2 = ours (start), 3 = pathname pre-write,
+	//   4 = pathname pre-read (readAndRestore), 5 = pathname pre-restore,
+	//   6 = ours pre-final-write
+	// This test exercises call 4 (pre-read guard in readAndRestore).
 	dir := t.TempDir()
 	origWd, err := os.Getwd()
 	require.NoError(t, err)
@@ -1157,7 +1143,31 @@ func TestFixAtRealPath_FourthGuardFails_ExitsTwo(t *testing.T) {
 
 	orig := guardFn
 	t.Cleanup(func() { guardFn = orig })
-	guardFn = guardCallN(4, "injected pre-restore guard")
+	guardFn = guardCallN(4, "injected pre-read guard")
+
+	got := captureStderr(func() {
+		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
+		assert.Equal(t, 2, code)
+	})
+	assert.Contains(t, got, "injected pre-read guard")
+}
+
+func TestFixAtRealPath_FifthGuardFails_ExitsTwo(t *testing.T) {
+	// guardFn call 5 = re-check of pathname before restore write.
+	dir := t.TempDir()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	pathname := filepath.Join(dir, "PLAN.md")
+	ours := filepath.Join(dir, "ours.md")
+	require.NoError(t, os.WriteFile(pathname, []byte("# Hello\n"), 0o644))
+	require.NoError(t, os.WriteFile(ours, []byte("# Hello\n"), 0o644))
+
+	orig := guardFn
+	t.Cleanup(func() { guardFn = orig })
+	guardFn = guardCallN(5, "injected pre-restore guard")
 
 	got := captureStderr(func() {
 		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
@@ -1166,8 +1176,8 @@ func TestFixAtRealPath_FourthGuardFails_ExitsTwo(t *testing.T) {
 	assert.Contains(t, got, "injected pre-restore guard")
 }
 
-func TestFixAtRealPath_FifthGuardFails_ExitsTwo(t *testing.T) {
-	// 5th guardFn call = re-check of ours before final write.
+func TestFixAtRealPath_SixthGuardFails_ExitsTwo(t *testing.T) {
+	// guardFn call 6 = re-check of ours before final write.
 	dir := t.TempDir()
 	origWd, err := os.Getwd()
 	require.NoError(t, err)
@@ -1181,7 +1191,7 @@ func TestFixAtRealPath_FifthGuardFails_ExitsTwo(t *testing.T) {
 
 	orig := guardFn
 	t.Cleanup(func() { guardFn = orig })
-	guardFn = guardCallN(5, "injected pre-ours-write guard")
+	guardFn = guardCallN(6, "injected pre-ours-write guard")
 
 	got := captureStderr(func() {
 		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
@@ -1256,10 +1266,10 @@ func TestFixAtRealPath_GuardBeforeRemoveFails_ExitsTwo(t *testing.T) {
 	//   1 = pathname at top of fixAtRealPath
 	//   2 = ours at top of fixAtRealPath
 	//   3 = pathname re-check before write
-	//   4 = pathname re-check before os.Remove in readAndRestore
-	// (the restore guard inside readAndRestore is skipped because backupErr
-	// is ENOENT, so the ENOENT branch runs instead)
-	guardFn = guardCallN(4, "injected pre-remove guard")
+	//   4 = pathname pre-read in readAndRestore
+	//   5 = pathname re-check before os.Remove in readAndRestore
+	// (the restore guard is skipped because backupErr is ENOENT)
+	guardFn = guardCallN(5, "injected pre-remove guard")
 
 	got := captureStderr(func() {
 		_, code := fixAtRealPath([]byte("# Hello\n"), ours, pathname, 1<<20)
