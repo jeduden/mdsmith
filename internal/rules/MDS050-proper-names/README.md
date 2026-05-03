@@ -63,8 +63,12 @@ For each configured name, the rule scans prose text for
 case-insensitive matches that start at a word boundary. The byte
 immediately before the match in the full source must be a
 non-alphanumeric, non-underscore character, or the match must
-begin at the start of the file. When the matched bytes differ from
-the canonical spelling, a diagnostic is emitted.
+begin at the start of the file. Only the **left** boundary is
+enforced — there is no right-boundary check. A name like
+`JavaScript` therefore matches the prefix of `JavaScripts` and
+reports (and fixes) that prefix, leaving the trailing `s` unchanged.
+When the matched bytes differ from the canonical spelling, a
+diagnostic is emitted.
 
 URLs inside link destinations and autolinks are never checked.
 

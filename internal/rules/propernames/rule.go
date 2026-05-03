@@ -236,8 +236,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // Fix implements rule.FixableRule. It replaces each wrong-cased match with
-// the canonical spelling in place. Whole-word left-boundary matching makes
-// this a safe rewrite.
+// the canonical spelling. Only the left boundary is enforced — the byte
+// before the match must be a non-word character (or start of file), but no
+// right-boundary check is applied. The matched prefix is replaced and any
+// trailing word characters (e.g. the 's' in "JavaScripts") are left as-is.
 func (r *Rule) Fix(f *lint.File) []byte {
 	matches := normalizeMatches(r.collectMatches(f))
 	if len(matches) == 0 {
