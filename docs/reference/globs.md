@@ -38,7 +38,7 @@ supports:
 On config surfaces, a pattern matches a file if it matches
 any of the following candidates. This applies to `ignore:`,
 `overrides:`, `kind-assignment:`, and rule settings such
-as `allowed:`, `include:`, `exclude:`, `budgets[].glob`.
+as `include:`, `exclude:`, `budgets[].glob`.
 
 - the raw path as given (`docs/foo.md`),
 - the cleaned path (`docs/./foo.md` → `docs/foo.md`), or

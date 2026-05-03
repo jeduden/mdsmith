@@ -1,6 +1,9 @@
 // Package globpath provides glob matching and pattern utilities for mdsmith
 // config surfaces: ignore:, overrides:, kind-assignment:, and rule settings
-// (allowed:, include:, exclude:, budgets[].glob).
+// (include:, exclude:, budgets[].glob).
+//
+// Note: directory-structure.allowed uses doublestar directly against the
+// cleaned full path without basename fallback; it does not route here.
 //
 // The catalog directive uses SplitIncludeExclude from this package to split
 // !-prefixed exclusion patterns; include resolution and exclude matching in
