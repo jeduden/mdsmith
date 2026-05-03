@@ -266,20 +266,25 @@ func isATXHeadingAt(lineStart int, source []byte) bool {
 // containing the heading, or -1 if the position cannot be determined.
 // goldmark normally sets Lines() for all heading types; when Lines() is
 // empty (possible for ATX headings in some goldmark versions), falls back
-// to the first child text segment.
+// to the first descendant ast.Text segment (matching astutil.HeadingLine).
 func headingLineStart(heading *ast.Heading, source []byte) int {
 	var offset int
 	if heading.Lines().Len() > 0 {
 		offset = heading.Lines().At(0).Start
 	} else {
 		found := false
-		for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
-			if t, ok := c.(*ast.Text); ok {
-				offset = t.Segment.Start
-				found = true
-				break
+		_ = ast.Walk(heading, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering || n == heading {
+				return ast.WalkContinue, nil
 			}
-		}
+			t, ok := n.(*ast.Text)
+			if !ok {
+				return ast.WalkContinue, nil
+			}
+			offset = t.Segment.Start
+			found = true
+			return ast.WalkStop, nil
+		})
 		if !found {
 			return -1
 		}

@@ -316,8 +316,26 @@ func TestHeadingLineStart_NoLines_WithTextChild(t *testing.T) {
 	child := goldast.NewText()
 	child.Segment = seg
 	h.AppendChild(h, child)
-	// Lines().Len() == 0, so headingLineStart walks children to find offset 2,
+	// Lines().Len() == 0, so headingLineStart descends to find offset 2,
 	// then rewinds to the '#' at offset 0.
+	got := headingLineStart(h, source)
+	assert.Equal(t, 0, got)
+}
+
+// TestHeadingLineStart_NoLines_NestedTextChild covers the walk-continue path
+// when Lines().Len() == 0 and the text segment is nested inside an inline node
+// (e.g. Emphasis contains Text).
+func TestHeadingLineStart_NoLines_NestedTextChild(t *testing.T) {
+	// source: "# *Title*\n" — emphasis wraps the text
+	source := []byte("# *Title*\n")
+	h := goldast.NewHeading(1)
+	em := goldast.NewEmphasis(1)
+	seg := text.NewSegment(3, 8) // points at "Title" inside *...*
+	inner := goldast.NewText()
+	inner.Segment = seg
+	em.AppendChild(em, inner)
+	h.AppendChild(h, em)
+	// Walk skips the Emphasis node (not Text) then finds the inner Text.
 	got := headingLineStart(h, source)
 	assert.Equal(t, 0, got)
 }
