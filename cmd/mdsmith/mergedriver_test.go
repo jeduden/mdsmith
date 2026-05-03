@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -918,4 +919,123 @@ func TestMergeFileMode_ExistingFile(t *testing.T) {
 func TestMergeFileMode_MissingFile_UsesDefault(t *testing.T) {
 	got := mergeFileMode("/nonexistent/path/file.md", 0o644)
 	assert.Equal(t, os.FileMode(0o644), got)
+}
+
+func TestMergeAndClean_WriteFileFails_ExitsTwo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+
+	content := "# Hello\n"
+	base := filepath.Join(dir, "base.md")
+	ours := filepath.Join(dir, "ours.md")
+	theirs := filepath.Join(dir, "theirs.md")
+	require.NoError(t, os.WriteFile(base, []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(ours, []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(theirs, []byte(content), 0o644))
+
+	orig := osWriteFile
+	t.Cleanup(func() { osWriteFile = orig })
+	osWriteFile = func(string, []byte, os.FileMode) error {
+		return fmt.Errorf("mock write failure")
+	}
+
+	got := captureStderr(func() {
+		_, code := mergeAndClean(base, ours, theirs, 1<<20)
+		assert.Equal(t, 2, code)
+	})
+	assert.Contains(t, got, "writing cleaned merge")
+}
+
+func TestFixAtRealPath_WriteToPathnameFails_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	content := []byte("# Hello\n")
+	pathname := filepath.Join(dir, "PLAN.md")
+	ours := filepath.Join(dir, "ours.md")
+	require.NoError(t, os.WriteFile(pathname, content, 0o644))
+	require.NoError(t, os.WriteFile(ours, content, 0o644))
+
+	orig := osWriteFile
+	t.Cleanup(func() { osWriteFile = orig })
+	osWriteFile = func(name string, data []byte, perm os.FileMode) error {
+		if name == pathname {
+			return fmt.Errorf("mock: write to pathname failed")
+		}
+		return os.WriteFile(name, data, perm)
+	}
+
+	got := captureStderr(func() {
+		_, code := fixAtRealPath(content, ours, pathname, 1<<20)
+		assert.Equal(t, 2, code)
+	})
+	assert.Contains(t, got, "writing to")
+}
+
+func TestFixAtRealPath_WriteToOursFails_ExitsTwo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	dir := t.TempDir()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	content := []byte("# Hello\n")
+	pathname := filepath.Join(dir, "PLAN.md")
+	ours := filepath.Join(dir, "ours.md")
+	require.NoError(t, os.WriteFile(pathname, content, 0o644))
+	require.NoError(t, os.WriteFile(ours, content, 0o644))
+
+	orig := osWriteFile
+	t.Cleanup(func() { osWriteFile = orig })
+	osWriteFile = func(name string, data []byte, perm os.FileMode) error {
+		if name == ours {
+			return fmt.Errorf("mock: write to ours failed")
+		}
+		return os.WriteFile(name, data, perm)
+	}
+
+	got := captureStderr(func() {
+		_, code := fixAtRealPath(content, ours, pathname, 1<<20)
+		assert.Equal(t, 2, code)
+	})
+	assert.Contains(t, got, "writing merge output")
+}
+
+func TestFixAtRealPath_PreservesOursFileMode(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("file mode bits not meaningful on Windows")
+	}
+
+	dir := t.TempDir()
+	origWd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	content := []byte("# Hello\n\nWorld.\n")
+	pathname := filepath.Join(dir, "PLAN.md")
+	ours := filepath.Join(dir, "ours.md")
+	require.NoError(t, os.WriteFile(pathname, content, 0o644))
+	require.NoError(t, os.WriteFile(ours, content, 0o600))
+
+	fixed, code := fixAtRealPath(content, ours, pathname, 1<<20)
+	require.Equal(t, 0, code)
+	assert.NotEmpty(t, fixed)
+
+	info, err := os.Stat(ours)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm(),
+		"fixAtRealPath must preserve the original permissions of ours")
 }

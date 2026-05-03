@@ -81,6 +81,10 @@ func mergeFileMode(name string, defaultMode os.FileMode) os.FileMode {
 	return defaultMode
 }
 
+// osWriteFile is a variable so tests can substitute a failing implementation
+// to exercise error paths without needing OS tricks.
+var osWriteFile = os.WriteFile
+
 // mergeAndClean performs the 3-way merge and strips conflict markers.
 // Returns the cleaned content and an exit code (0 on success).
 func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
@@ -110,7 +114,7 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 	// Preserve the original permissions of git's temp file.
 	oursMode := mergeFileMode(ours, 0o644)
 	cleaned := stripSectionConflicts(content)
-	if err := os.WriteFile(ours, cleaned, oursMode); err != nil {
+	if err := osWriteFile(ours, cleaned, oursMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing cleaned merge: %v\n", err)
 		return nil, 2
 	}
@@ -188,7 +192,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 		fmt.Fprintf(os.Stderr, "mdsmith: reading %s for backup: %v\n", pathname, backupErr)
 		return nil, 2
 	}
-	if err := os.WriteFile(pathname, cleaned, pathnameMode); err != nil {
+	if err := osWriteFile(pathname, cleaned, pathnameMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing to %s: %v\n", pathname, err)
 		return nil, 2
 	}
@@ -221,7 +225,7 @@ func fixAtRealPath(cleaned []byte, ours, pathname string, maxBytes int64) ([]byt
 		return fixed, 2
 	}
 
-	if err := os.WriteFile(ours, fixed, oursMode); err != nil {
+	if err := osWriteFile(ours, fixed, oursMode); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: writing merge output: %v\n", err)
 		return nil, 2
 	}
