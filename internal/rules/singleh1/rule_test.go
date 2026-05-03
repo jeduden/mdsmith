@@ -368,3 +368,42 @@ func TestBuildDemoteReplacement_Setext_NoLines_NoChildren(t *testing.T) {
 	_, ok := buildDemoteReplacement(h, source)
 	assert.False(t, ok)
 }
+
+// --- Generated range tests ---
+
+// TestCheck_GeneratedH1_DoesNotFlagAuthoredH1 verifies that an H1 inside a
+// generated range is excluded from the authored heading count, so an authored
+// H1 outside the range is not flagged as an "extra" H1.
+func TestCheck_GeneratedH1_DoesNotFlagAuthoredH1(t *testing.T) {
+	// Lines: 1=generated H1, 2=blank, 3=authored H1
+	src := "# Generated\n\n# Authored\n"
+	f := newFile(t, src)
+	// Mark line 1 (the generated H1) as generated.
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 1}}
+	diags := (&Rule{}).Check(f)
+	assert.Empty(t, diags, "authored H1 on line 3 should not be flagged when the only other H1 is generated")
+}
+
+// TestCheck_TwoAuthoredH1s_GeneratedH1Ignored verifies that a generated H1
+// does not affect the authored H1 count: two authored H1s are still both
+// detected when a third H1 lives in a generated range.
+func TestCheck_TwoAuthoredH1s_GeneratedH1Ignored(t *testing.T) {
+	// Lines: 1=generated H1, 3=authored H1, 5=authored H1
+	src := "# Generated\n\n# First\n\n# Second\n"
+	f := newFile(t, src)
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 1}}
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 5, diags[0].Line)
+}
+
+// TestFix_GeneratedH1_NotDemoted verifies that Fix does not demote an H1
+// inside a generated range.
+func TestFix_GeneratedH1_NotDemoted(t *testing.T) {
+	src := "# Generated\n\n# Authored\n"
+	f := newFile(t, src)
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 1}}
+	got := (&Rule{}).Fix(f)
+	// No demotion should occur because only one authored H1 exists.
+	assert.Equal(t, src, string(got))
+}

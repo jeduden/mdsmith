@@ -133,7 +133,8 @@ var (
 	_ rule.Defaultable  = (*Rule)(nil)
 )
 
-// collectH1s returns all H1 heading nodes in document order.
+// collectH1s returns all authored H1 heading nodes in document order,
+// excluding headings whose source line falls within a generated range.
 func collectH1s(f *lint.File) []*ast.Heading {
 	var h1s []*ast.Heading
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -141,9 +142,16 @@ func collectH1s(f *lint.File) []*ast.Heading {
 			return ast.WalkContinue, nil
 		}
 		h, ok := n.(*ast.Heading)
-		if ok && h.Level == 1 {
-			h1s = append(h1s, h)
+		if !ok || h.Level != 1 {
+			return ast.WalkContinue, nil
 		}
+		line := astutil.HeadingLine(h, f)
+		for _, r := range f.GeneratedRanges {
+			if r.Contains(line) {
+				return ast.WalkContinue, nil
+			}
+		}
+		h1s = append(h1s, h)
 		return ast.WalkContinue, nil
 	})
 	return h1s
