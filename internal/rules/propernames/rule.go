@@ -69,7 +69,6 @@ func asciiToLower(b []byte) []byte {
 type wrongMatch struct {
 	start  int // byte offset in f.Source
 	length int
-	actual string
 	name   string
 }
 
@@ -90,7 +89,8 @@ func (r *Rule) scanBytes(text []byte, baseOffset int, source []byte) []wrongMatc
 			continue
 		}
 		// Lowercase the name once per name, not once per position.
-		lowerName := asciiToLower([]byte(name))
+		nameBytes := []byte(name)
+		lowerName := asciiToLower(nameBytes)
 		for i := 0; i <= len(lowerText)-n; i++ {
 			// Left boundary: the byte before the match (in source) must not
 			// be a word character, or the match is at the start of the source.
@@ -102,15 +102,13 @@ func (r *Rule) scanBytes(text []byte, baseOffset int, source []byte) []wrongMatc
 			if !bytes.Equal(lowerText[i:i+n], lowerName) {
 				continue
 			}
-			// Compare actual casing to the canonical name.
-			actual := string(text[i : i+n])
-			if actual == name {
+			// Skip if casing already matches the canonical spelling.
+			if bytes.Equal(text[i:i+n], nameBytes) {
 				continue
 			}
 			results = append(results, wrongMatch{
 				start:  absOffset,
 				length: n,
-				actual: actual,
 				name:   name,
 			})
 		}
@@ -244,7 +242,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  fmt.Sprintf("proper name %q should be %q", m.actual, m.name),
+			Message:  fmt.Sprintf("proper name %q should be %q", string(f.Source[m.start:m.start+m.length]), m.name),
 		})
 	}
 	return diags
