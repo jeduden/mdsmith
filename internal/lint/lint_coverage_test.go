@@ -494,10 +494,11 @@ func TestHasGlobChars(t *testing.T) {
 func TestHasBraceExpansion(t *testing.T) {
 	assert.True(t, hasBraceExpansion("docs/{a,b}.md"))
 	assert.True(t, hasBraceExpansion("{guide,ref}.md"))
-	assert.True(t, hasBraceExpansion("a/{x,y}/b"))   // nested depth with comma
-	assert.False(t, hasBraceExpansion("{draft}.md")) // no comma inside braces
-	assert.False(t, hasBraceExpansion("readme.md"))  // no braces at all
-	assert.False(t, hasBraceExpansion("a,b"))        // comma but no enclosing brace
+	assert.True(t, hasBraceExpansion("a/{x,y}/b"))               // nested depth with comma
+	assert.False(t, hasBraceExpansion("{draft}.md"))             // no comma inside braces
+	assert.False(t, hasBraceExpansion("readme.md"))              // no braces at all
+	assert.False(t, hasBraceExpansion("a,b"))                    // comma but no enclosing brace
+	assert.False(t, hasBraceExpansion("notes/{draft,review.md")) // unclosed brace
 }
 
 // TestResolveFiles_BraceExpansion verifies that a brace-expansion CLI argument

@@ -35,7 +35,8 @@ supports:
 - `[abc]` — character class
 - `{a,b}` — brace expansion (matches either `a` or `b`)
 
-A pattern matches a file if it matches any of:
+On config and CLI surfaces, a pattern matches a file if
+it matches any of:
 
 - the raw path as given (`docs/foo.md`),
 - the cleaned path (`docs/./foo.md` → `docs/foo.md`), or
@@ -43,6 +44,11 @@ A pattern matches a file if it matches any of:
 
 Basename matching means a pattern like `CHANGELOG.md` (no
 slash) matches `CHANGELOG.md` in any directory.
+
+Note: the `<?catalog?>` directive uses `doublestar.Glob`
+for include patterns. It matches full relative paths only.
+A bare filename like `CHANGELOG.md` finds only files in
+the catalog file's directory, not nested paths.
 
 ## Exclusion with `!`-prefix
 

@@ -25,20 +25,27 @@ func hasGlobChars(s string) bool {
 }
 
 // hasBraceExpansion reports whether s contains at least one brace group
-// with a comma inside, indicating real doublestar brace expansion syntax.
+// with a comma inside a properly closed brace group, indicating real
+// doublestar brace expansion syntax. An unclosed brace (e.g. {a,b.md)
+// is not treated as expansion so it reaches normal path handling.
 func hasBraceExpansion(s string) bool {
-	depth := 0
+	// commaStack tracks whether each open brace depth has seen a comma.
+	var commaStack []bool
 	for _, c := range s {
 		switch c {
 		case '{':
-			depth++
+			commaStack = append(commaStack, false)
 		case '}':
-			if depth > 0 {
-				depth--
+			if len(commaStack) > 0 {
+				hadComma := commaStack[len(commaStack)-1]
+				commaStack = commaStack[:len(commaStack)-1]
+				if hadComma {
+					return true
+				}
 			}
 		case ',':
-			if depth > 0 {
-				return true
+			if len(commaStack) > 0 {
+				commaStack[len(commaStack)-1] = true
 			}
 		}
 	}
