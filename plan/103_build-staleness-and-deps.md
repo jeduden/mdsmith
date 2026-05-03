@@ -40,20 +40,17 @@ not change.
 
 ### Pattern borrowed from `cmd/go/internal/cache`
 
-Go's build cache hashes
-`(action description ‖ input contents)` into
-an ActionID and keys results by it. The
-package is `internal/`, but the model fits
-mdsmith: inputs are content-addressed (not
-mtime), recipe edits invalidate every target
-using that recipe, and the cache is a flat
-`ActionID → outputs` map. mdsmith mirrors
-this with a JSON file instead of a content-
-addressed store — simpler, and we have
+Go's build cache hashes `(action description ‖
+input contents)` into an ActionID and keys
+results by it. The package is `internal/` but
+the model fits: inputs are content-addressed
+(not mtime), recipe edits invalidate every
+target using that recipe, the cache is a flat
+`ActionID → outputs` map. mdsmith uses a JSON
+file rather than a content-addressed store —
 hundreds of targets, not millions. Content
-hashing also wins over mtime because git
-checkouts and CI cache restores rarely
-preserve mtimes.
+hashing also beats mtime because git checkouts
+and CI cache restores rarely preserve mtimes.
 
 ## Design
 
@@ -61,9 +58,8 @@ preserve mtimes.
 
 Recipes may declare implicit inputs in
 `build.recipes.NAME.default-inputs`. Each
-entry is either a literal relative path or a
-`{param}` token that expands to the
-directive's value for that param.
+entry is a literal relative path or a
+`{param}` token. Example:
 
 ```yaml
 build:
@@ -77,38 +73,37 @@ build:
 
 A directive supplying `tape: demo.tape` has
 its effective input set computed as
-`{ demo.tape } ∪ directive.inputs`.
-
-`default-inputs` lets recipes encode "the
-recipe's source file is implicitly an input"
-so authors do not have to restate it.
+`{ demo.tape } ∪ directive.inputs`. Authors
+do not restate the recipe's own source file.
 
 ### ActionID
 
-For each target, the ActionID is:
+The ActionID is sha256 of the concatenation
+of these fields. Each field is prefixed with
+its byte length (8 bytes big-endian). Fields,
+in order:
 
 ```text
-sha256(
-  recipe.command ‖
-  sorted(directive.params) ‖
-  sorted(resolved input paths) ‖
-  concat(sha256(content) for each resolved input) ‖
-  sorted(resolved output paths) ‖
-  cache.version
-)
+recipe.command
+canonical(directive.params)         (key=value\0 pairs, sorted)
+canonical(sorted resolved inputs)   (path\0 entries)
+concat(sha256(content) per input, same order)
+canonical(sorted resolved outputs)  (path\0 entries)
+cache.version
 ```
 
-`recipe.command` is the unparsed command-
-template string (so renaming a flag
-invalidates the cache). `directive.params` is
-sorted by key. Resolved input paths are
-post-glob-expansion and sorted. Output paths
-are sorted for determinism even though
-declared as a list.
+Length-prefixing prevents path-collision
+attacks where a NUL or sentinel byte
+collapses two input sets into one hash. Plan
+102 rejects NUL and newline in declared
+paths. Resolved glob matches could still
+contain control bytes from hostile
+filenames; the length frame makes that
+benign.
 
-`cache.version` lets a future mdsmith release
-rev the schema and force a single rebuild
-without crashing on stale entries.
+`cache.version` lets a future mdsmith
+release rev the schema and force a single
+rebuild without crashing on stale entries.
 
 ### Staleness check
 
@@ -123,39 +118,42 @@ Per target, in order:
 4. Look up the target's cache entry by
    sorted-output-set key. If absent or
    stored ActionID differs → stale.
-5. Otherwise → fresh; skip the recipe.
+5. Hash each declared output's current
+   on-disk content. If the hash differs from
+   the cache entry's stored output hash →
+   stale (the artifact was tampered with or
+   regenerated externally).
+6. Otherwise → fresh; skip the recipe.
+
+Step 5 protects against a poisoned cache or
+a hand-edited artifact masking as fresh. The
+output-hash check is what makes the cache
+*advisory* rather than authoritative.
 
 A target is identified in the cache by its
-sorted `outputs` list joined with `\0`. Two
-directives declaring the same output set is a
-build error reported with both source
-locations; neither recipe runs.
+sorted `outputs` list, length-framed and
+joined. Two directives declaring the same
+output set is a build error reported with
+both source locations; neither recipe runs.
 
 ### Cache file
 
-Stored at `.mdsmith/build-cache.json`:
+Stored at `.mdsmith/build-cache.json`. Each
+entry has:
 
-```json
-{
-  "version": 1,
-  "entries": [
-    {
-      "outputs": ["book.epub", "book.html"],
-      "action-id": "sha256:...",
-      "built-at": "2026-04-27T12:00:00Z",
-      "inputs": [
-        "chapters/01-prologue.md",
-        "chapters/intro.md"
-      ],
-      "recipe": "pandoc"
-    }
-  ]
-}
-```
+- `outputs[]`: `{path, hash}` pairs sorted by
+  path. `hash` is sha256 of the artifact at
+  build time, used by staleness step 5.
+- `inputs[]`: sorted, post-glob-expansion
+  paths. Informational; the ActionID covers
+  their content.
+- `action-id`: the length-framed sha256.
+- `recipe`, `built-at`: informational only.
+  Neither is part of the ActionID; neither
+  is consulted by the staleness check.
 
-`outputs` and `inputs` are stored relative to
-the project root, sorted, and post-glob-
-expansion. `recipe` is informational only.
+All paths are stored relative to the project
+root.
 
 Cache writes are atomic: write to
 `.mdsmith/build-cache.json.tmp` and rename. A
@@ -196,11 +194,10 @@ runs unless combined with `--build-only`.
 
 ### Out of scope
 
-Reverse dependency tracking, watch mode, and
-cross-machine cache sharing. Tool-version
-hashing is also out — users who care should
-bake a version tag into their `command`.
-Parallel builds are tracked separately.
+Reverse dependency tracking, watch mode,
+cross-machine cache sharing, tool-version
+hashing. Parallel builds are tracked
+separately (plan 116).
 
 ## Tasks
 
@@ -216,8 +213,11 @@ Parallel builds are tracked separately.
 3. Implement `internal/build/staleness.go`:
    resolve directive `inputs` ∪ recipe
    `default-inputs`, expand globs, compute
-   ActionID, check output presence, return
+   the length-framed ActionID, check output
+   presence and content hash, return
    `STALE | FRESH | ERROR` per target.
+   On rebuild, hash each output and store
+   in the cache entry.
 4. Detect duplicate-output-set targets:
    report a clear error naming both source
    locations; do not run either recipe.
@@ -292,8 +292,16 @@ Parallel builds are tracked separately.
       `FAIL`, and `SKIP`
 - [ ] `.mdsmith/build-cache.json` has a
       `version` field and per-target entries
-      with `outputs`, `action-id`,
-      `built-at`, `inputs`, `recipe`
+      with `outputs[]` (path + content hash),
+      `action-id`, `built-at`, `inputs`,
+      `recipe`
+- [ ] Hand-editing an artifact triggers a
+      rebuild on the next `fix` run (output
+      content hash mismatch)
+- [ ] ActionID computation is length-framed:
+      a path containing NUL or a sentinel
+      byte does not collide with another
+      input set
 - [ ] Cache writes are atomic (temp+rename);
       a mid-build crash leaves the previous
       cache readable

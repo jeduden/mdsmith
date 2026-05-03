@@ -25,23 +25,12 @@ explicit and CI-friendly.
 ## Context
 
 Plan 115 ships the build pass inside `mdsmith
-fix`. Plan 103 adds staleness. Both stop short
-of the "setup/teardown" lifecycle every real
-build system provides.
-
-The motivating example is a screenshot recipe
-(now user-declared — there are no built-ins as
-of plan 115): it needs a running dev server.
-Today the user starts the server in a separate
-terminal, runs `fix`, then stops the server.
-Hooks fold that into one command.
-
-The article that motivated this work
-([bgslabs.org/blog/why-are-we-using-markdown][post])
-argues for "custom hooks to be executed
-before, during and after the compilation". The
-"during" hook is `<?build?>` (plan 101). This
-plan adds before and after.
+fix`; plan 103 adds staleness. Neither
+provides setup/teardown lifecycle. The
+motivating example is a user-declared
+screenshot recipe that needs a dev server
+running. Hooks fold "start server, run
+recipes, stop server" into one command.
 
 [post]: https://bgslabs.org/blog/why-are-we-using-markdown
 [plan-100]: 100_build-config-and-mds040.md
@@ -108,11 +97,10 @@ and recipes.
   recipe-fail → `after-fail` → 0.
 
 The asymmetry is intentional. A failed
-`before` means setup is incomplete; recipes
+`before` means setup is incomplete. Recipes
 would produce garbage, so abort. A failed
-`after` means teardown is broken; the
-artifacts are already written, so report
-and exit non-zero.
+`after` means teardown is broken. Artifacts
+are written; report and exit non-zero.
 
 ### Argv expansion
 
@@ -149,6 +137,39 @@ A hook `params` entry must be referenced by
 at least one `{param}` token in its
 `command`; unused params are a warning.
 
+### Hook param value validation
+
+Hook `params` values are pure config strings.
+MDS040's path-shape checks apply only to the
+executable token, not to substituted values,
+so `params: { target: "../../etc/shadow" }`
+with `command: "cat {target}"` slips through
+without further checks.
+
+MDS040 enforces a baseline on every hook
+param value: no NUL byte, no newline or
+carriage return, no leading or trailing
+whitespace, length ≤ 4 KB. Operators who
+need stricter checks (port range, URL shape,
+project-relative paths) wrap the binary in a
+script that does its own validation.
+
+The baseline is intentionally narrow.
+Tightening to per-kind schemas (`kind: path
+| port | url`) is a future extension; for
+now the threat surface is reduced to "no
+control characters can sneak into argv" and
+operators retain full flexibility.
+
+### Execution gate
+
+The build pass refuses to run if MDS040
+emits any error against `build.hooks` or
+`build.recipes`. A lint-clean config is a
+precondition for executing any user-declared
+binary. `--no-build` still works for
+debugging without the gate.
+
 ### Flags on `mdsmith fix`
 
 | Flag                            | Behavior                                                    |
@@ -175,16 +196,11 @@ predictability.
 
 ### Out of scope
 
-- Per-recipe hooks. Wrap the recipe in a
-  script if you need it.
-- Hook timeouts separate from recipe
-  timeouts. `--build-timeout` (plan 115)
-  applies to both.
-- Conditional hooks. Compose at the script
-  level.
-- Background hooks. `before` returns
-  synchronously; spawn a server and exit;
-  your `after` kills it by PID file.
+Per-recipe hooks. Separate hook timeouts.
+Conditional `if:` clauses. Per-kind param
+schemas. Background hooks — `before`
+returns synchronously; spawn-then-kill
+via PID file.
 
 ## Tasks
 
@@ -287,6 +303,12 @@ predictability.
 - [ ] A config without `build.hooks` parses
       cleanly and runs `mdsmith fix` without
       hook overhead
+- [ ] MDS040 rejects hook `params` values
+      with NUL, newline, leading/trailing
+      whitespace, or > 4 KB
+- [ ] Build pass refuses to run when MDS040
+      reports any error against `build.hooks`
+      or `build.recipes`
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no
       issues

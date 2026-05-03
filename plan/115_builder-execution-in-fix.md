@@ -27,30 +27,20 @@ check` stays lint-only.
 
 ## Context
 
-Builds on plan 102 (`outputs:` / `inputs:`
-directive params) and plan 100 (`build:` config,
-MDS040). Plan 103 layers staleness on top.
-Plan 104 adds before / after hooks.
+Builds on plan 102 (directive params) and
+plan 100 (config). Plan 103 layers
+staleness on top. Plan 104 adds hooks. Plan
+116 covers stdout/stderr UX and parallel
+execution.
 
-The original 102 plan proposed a separate
-`mdsmith build` subcommand. It also shipped
-two built-in recipe drivers: `screenshot`
-(chromedp) and `vhs`. Both are removed:
-
-- **No built-in recipes.** Every recipe lives
-  in `build.recipes`. Plan 101 enforces this
-  at lint time; plan 115 enforces it at
-  execution time.
-- **No `mdsmith build` subcommand.** Builds
-  run inside `mdsmith fix`. `fix --build-only`
-  runs only the build pass; `fix --no-build`
-  skips it.
-
-`build.base-url` is removed from the config
-schema. It existed only for the deleted
-built-in `screenshot`. Users who need URL
-composition do it inside their recipe
-`command`.
+The original 102 plan included a separate
+`mdsmith build` subcommand and two built-in
+recipe drivers (`screenshot` via chromedp,
+`vhs`). All are removed: builds run inside
+`mdsmith fix`; every recipe lives in
+`build.recipes`. `build.base-url` is also
+removed (its only consumer was the deleted
+screenshot driver).
 
 ## Design
 
@@ -70,33 +60,36 @@ type Target struct {
 }
 ```
 
-The custom-recipe builder is the sole impl. It
-is constructed once per recipe in
-`build.recipes`. At `Build` time it tokenizes
-`command` on whitespace, substitutes `{param}`
-tokens (and `{inputs}` / `{outputs}` to N argv
-entries), and dispatches via `os/exec.Cmd`. No
-shell.
+The custom-recipe builder is the sole impl.
+One instance per recipe in `build.recipes`.
 
-A value like `foo; rm -rf /` in any param is
+### Argv tokenization
+
+Tokenization uses `strings.Fields` on
+`command` at config load. Substitution of
+`{param}`, `{inputs}`, `{outputs}` happens
+*after* tokenization, so a param value
+containing whitespace stays a single argv
+entry. A value like `foo; rm -rf /` is
 passed literally as one argument.
 
 ### Atomic multi-output write
 
-The contract:
+The basic contract (plan 117 hardens it):
 
-1. mdsmith creates a temp dir per target:
-   `<output-dir>/.mdsmith-build-<rand>/`.
-2. Each declared output path maps to a file
-   inside the temp dir. The recipe is invoked
-   with the temp paths substituted for
-   `{outputs}` and any output-path params.
-3. On recipe success, mdsmith renames every
-   temp file to its final location. All
-   succeed or none do — partial-failure
-   restores from backups.
-4. On recipe failure, the temp dir is
-   removed. No declared output is touched.
+1. mdsmith creates a per-target temp dir.
+2. The recipe is invoked with the temp
+   paths substituted for `{outputs}` and
+   any output-path params.
+3. On success, mdsmith renames every temp
+   file to its final location.
+4. On failure, the temp dir is removed; no
+   declared output is touched.
+
+Plan 117 adds the security hardening:
+trust gate, hermetic env, `O_EXCL`
+staging, output post-conditions, and
+process-group kill on timeout.
 
 ### Wiring into `mdsmith fix`
 
@@ -138,62 +131,41 @@ exclusive. The `--build-*` prefix groups
 build flags and avoids collision with future
 lint-fix flags.
 
-### Security
-
-Custom recipe `command` values become argv at
-config load. `{param}`, `{inputs}`,
-`{outputs}` substitutions become individual
-`os/exec` args. No shell. MDS040 enforces
-this at lint time. Path params are validated
-by MDS039 as relative paths with no `..`
-before the build runs.
-
-### Removed surface
-
-- `mdsmith build` subcommand (whichever stub
-  exists from earlier work).
-- Built-in `screenshot` driver and chromedp
-  dependency.
-- Built-in `vhs` driver.
-- `build.base-url` config field.
-
 ## Tasks
 
 1. Define `Builder` and `Target` in a new
    package `internal/build/`. Implement the
-   custom-recipe builder. Support `{param}`,
-   `{inputs}`, `{outputs}` substitutions.
-2. Implement multi-output atomic write: temp
-   dir, post-recipe rename, full rollback on
-   partial failure or non-zero exit.
+   custom-recipe builder. Tokenize via
+   `strings.Fields`; substitute `{param}`,
+   `{inputs}`, `{outputs}` after.
+2. Implement basic multi-output atomic
+   write: per-target temp dir, post-recipe
+   rename, full rollback on failure. Plan
+   117 adds the hardening.
 3. Remove `build.base-url` from
-   `internal/config/build.go` and its tests.
-   Drop docs that reference it.
-4. Wire the build pass into `mdsmith fix` in
-   `cmd/mdsmith/`. Add the five flags above.
-   Print per-target summary; non-zero exit
-   on failure.
+   `internal/config/build.go` and its
+   tests. Drop docs that reference it.
+4. Wire the build pass into `mdsmith fix`
+   in `cmd/mdsmith/`. Add the five flags
+   above. Print per-target summary;
+   non-zero exit on failure.
 5. Integration tests:
 
-  - `cp`-based single-output recipe runs via
-    `fix`.
+  - `cp`-based single-output recipe runs
+    via `fix`.
   - `tee`-based multi-output recipe writes
     both files atomically.
-  - Failing recipe leaves no partial outputs.
-  - `--no-build` skips build pass.
-  - `--build-only` skips lint-fix pass.
-  - `--build-dry-run` lists targets, runs
-    none.
-  - `--build-recipe NAME` filters correctly.
-  - `--build-timeout 5s` enforces the
-    timeout.
+  - Failing recipe leaves no partial
+    outputs.
+  - All five `--build-*` flags work as
+    documented.
   - `mdsmith check` runs no recipe.
 
 6. Update `docs/guides/directives/build.md`:
    document the build pass, the new `fix`
-   flags, the per-target summary, and the
+   flags, the per-target summary, and
    `{outputs}` / `{inputs}` argv expansion.
-   Remove all references to `mdsmith build`,
+   Remove references to `mdsmith build`,
    built-in recipes, and `base-url`.
 7. Update `demo.tape` to use a `cp`-based
    custom recipe so the demo shows `fix`
@@ -201,43 +173,33 @@ before the build runs.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith fix` runs the build pass after
-      lint-fix; `mdsmith check` runs no
-      recipe
-- [ ] `mdsmith fix --no-build` skips the
-      build pass
-- [ ] `mdsmith fix --build-only` skips the
-      lint-fix pass
-- [ ] `mdsmith fix --no-build --build-only`
-      is an error
-- [ ] `mdsmith fix --build-recipe NAME` only
-      builds matching directives
-- [ ] `mdsmith fix --build-dry-run` lists
-      targets without running any recipe
-- [ ] `mdsmith fix --build-timeout 5s`
-      applies per recipe invocation
-- [ ] A `cp`-based recipe writes its single
-      declared output via `fix`
-- [ ] A multi-output recipe writes every
-      declared output via one invocation
+- [ ] `mdsmith fix` runs the build pass
+      after lint-fix; `mdsmith check` runs
+      no recipe
+- [ ] All five `--build-*` flags work as
+      documented; `--no-build` and
+      `--build-only` are mutually exclusive
+- [ ] Single-output and multi-output `cp`/
+      `tee` recipes write every declared
+      output via one invocation
 - [ ] A failing recipe leaves no partial
       output; pre-existing outputs survive
-- [ ] Custom recipe `command` is dispatched
-      via `os/exec` with explicit argv; no
+- [ ] Custom `command` is dispatched via
+      `os/exec` with explicit argv; no
       shell is invoked
-- [ ] `{outputs}` expands to one argv per
-      directive output entry
-- [ ] `{inputs}` expands to one argv per
-      resolved input entry
+- [ ] `{outputs}` and `{inputs}` each
+      expand to one argv per resolved entry
+- [ ] Tokenization uses `strings.Fields`;
+      param values containing whitespace
+      pass as one argv entry
 - [ ] `mdsmith fix` exits non-zero on any
       recipe failure with per-target
       `OK | FAIL` summary
 - [ ] `build.base-url` is removed; a config
-      that still sets it errors with
-      "unknown field"
+      still setting it errors with "unknown
+      field"
 - [ ] No built-in recipes ship; an unknown
-      `recipe:` is a lint error (MDS039,
-      plan 101)
+      `recipe:` is a lint error (MDS039)
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no
       issues

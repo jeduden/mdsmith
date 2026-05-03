@@ -109,15 +109,57 @@ MDS039 (plan 101) is changed to:
    longer a known param. The standard "unknown
    param" diagnostic applies.
 2. Require `outputs:` (list of strings,
-   non-empty). Each entry is a relative path,
-   no `..`, inside the project root. An empty
-   list is a diagnostic.
+   non-empty). Each entry is validated per
+   "Path-shape rules" below.
 3. Accept optional `inputs:` (list of strings,
    may be empty). Each entry is a relative
    path with no `..` or a glob. The glob shape
    is validated; resolution is plan 115's job.
 4. Render `body-template` once per `outputs`
    entry as described above.
+
+### Path-shape rules
+
+Every entry in `outputs:` and `inputs:`
+(globs included) is validated against this
+allowlist before MDS039 accepts it:
+
+- Non-empty after trim. Empty or whitespace-
+  only entries are a diagnostic.
+- No NUL byte, no newline, no carriage
+  return, no leading or trailing ASCII
+  whitespace.
+- Forward-slash separators only. Backslash,
+  Windows drive letters (`C:`), UNC prefixes
+  (`\\?\`), NTFS alternate data streams
+  (`foo:bar`), and reserved device names
+  (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`,
+  `LPT1`-`LPT9`) are rejected on every
+  platform.
+- Relative path; absolute paths and `~`
+  prefixes are rejected.
+- After `path.Clean`, the result must not
+  start with `..` and must not contain `..`
+  segments.
+- For `outputs:`: no glob characters
+  (`*`, `?`, `[`). Outputs are literal paths.
+- For `inputs:` globs: `**` is allowed only
+  inside a path (not as the first segment) to
+  bound expansion at the project root.
+
+At build time (plan 115) the resolved path is
+re-checked: `filepath.EvalSymlinks` must not
+escape the project root. A symlinked output
+or input pointing outside the project is a
+build error.
+
+### Glob match cap
+
+A single `inputs:` glob that matches more
+than 10 000 files is a build error. The cap
+is per directive entry, not per directive,
+so an author who needs more declares
+multiple narrower patterns.
 
 ### Recipe `command` placeholders
 
@@ -168,10 +210,15 @@ the reserved names are not declared as params.
 
   - Drop `output` from the known-param set.
   - Add `outputs` as required (list of
-    strings, non-empty, each a safe relative
-    path).
-  - Add `inputs` as optional (list of strings,
-    each a safe relative path or glob).
+    strings, non-empty). Each entry validated
+    by the path-shape rules above.
+  - Add `inputs` as optional (list of strings).
+    Each entry validated by the path-shape
+    rules; globs allowed except `**` at
+    position 0.
+  - Enforce the 10 000-match cap on each
+    `inputs:` glob during resolution (plan
+    115 calls into the same validator).
 
 2. Update body rendering in
    `internal/rules/build/`: render
@@ -207,14 +254,23 @@ the reserved names are not declared as params.
       unknown param
 - [ ] `<?build?>` accepts optional `inputs:`
       (list of paths or globs)
-- [ ] Each `outputs:` entry is validated as a
-      relative path with no `..` and no
-      absolute-path prefix
-- [ ] Each `inputs:` entry is validated as a
-      relative path with no `..` (globs
-      allowed)
-- [ ] An empty `outputs:` list is a
-      diagnostic
+- [ ] Each `outputs:` and `inputs:` entry
+      passes the path-shape rules: no NUL,
+      no newline, no leading/trailing
+      whitespace, no Windows drive letters,
+      no UNC prefix, no NTFS ADS, no reserved
+      device names, no `..` after `Clean`
+- [ ] An empty `outputs:` list, or any empty
+      or whitespace-only entry inside either
+      list, is a diagnostic
+- [ ] `outputs:` entries reject glob
+      characters (`*`, `?`, `[`); `inputs:`
+      globs reject `**` at position 0
+- [ ] An `inputs:` glob that resolves to
+      more than 10 000 files is a build error
+- [ ] A symlinked output or input that
+      escapes the project root is a build
+      error
 - [ ] `body-template` renders once per
       `outputs` entry, joined with newlines,
       in declared order

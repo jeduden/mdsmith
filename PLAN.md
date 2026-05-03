@@ -32,6 +32,8 @@ footer: |
 | 113 | ✅     | sonnet | [User-defined Markdown conventions](plan/113_user-defined-profiles.md)                                                    |
 | 114 | ✅     | sonnet | [MDS034 message clarity and flavor-vs-rule docs](plan/114_mds034-message-and-flavor-vs-rule-docs.md)                      |
 | 115 | 🔲     | opus   | [Builder execution wired into `mdsmith fix`](plan/115_builder-execution-in-fix.md)                                        |
+| 116 | 🔲     | opus   | [Build execution UX (stdout/stderr, debug, parallel)](plan/116_build-execution-ux.md)                                     |
+| 117 | 🔲     | opus   | [Build execution hardening](plan/117_build-execution-hardening.md)                                                        |
 | 120 | ✅     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                                        |
 | 121 | ✅     | opus   | [Expose mdsmith to VS Code via Language Server Protocol](plan/121_vscode-integration.md)                                  |
 | 121 | ✅     | sonnet | [Review and centralize YAML handling](plan/121_yaml-handling-review.md)                                                   |
