@@ -300,46 +300,28 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // Fix implements rule.FixableRule. Trims leading/trailing space/tab inside
 // each bracket pair while leaving the surrounding markdown structure intact.
+// Nested link/image brackets are fixed in a single pass.
 func (r *Rule) Fix(f *lint.File) []byte {
-	type replacement struct {
-		open  int
-		close int
-		text  []byte
-	}
+	return fixSpans(f.Source, r.collectSpans(f), 0, len(f.Source))
+}
 
-	var reps []replacement
-	for _, s := range r.collectSpans(f) {
-		inner := f.Source[s.open+1 : s.close]
-		trimmed := trimSpaceTab(inner)
-		if len(trimmed) == len(inner) {
-			continue
-		}
-		reps = append(reps, replacement{
-			open:  s.open + 1,
-			close: s.close,
-			text:  trimmed,
-		})
-	}
-
-	if len(reps) == 0 {
-		result := make([]byte, len(f.Source))
-		copy(result, f.Source)
-		return result
-	}
-
+// fixSpans builds the fixed output for source[from:to] by trimming each
+// collected span whose opening bracket falls in [from, to). Nested spans are
+// fixed recursively before the outer boundary is trimmed, so both outer and
+// inner whitespace are removed in a single call.
+func fixSpans(source []byte, spans []span, from, to int) []byte {
 	var result []byte
-	prev := 0
-	for _, rep := range reps {
-		if rep.open < prev {
-			// This span is nested inside a previously fixed span.
-			// Skip it — a subsequent fix pass will address it.
+	prev := from
+	for i, s := range spans {
+		if s.open < from || s.open >= to || s.open < prev {
 			continue
 		}
-		result = append(result, f.Source[prev:rep.open]...)
-		result = append(result, rep.text...)
-		prev = rep.close
+		result = append(result, source[prev:s.open+1]...) // up to and including [
+		inner := fixSpans(source, spans[i+1:], s.open+1, s.close)
+		result = append(result, trimSpaceTab(inner)...)
+		prev = s.close
 	}
-	result = append(result, f.Source[prev:]...)
+	result = append(result, source[prev:to]...)
 	return result
 }
 

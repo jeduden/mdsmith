@@ -224,15 +224,11 @@ func TestLinkWithTextAndNestedImage(t *testing.T) {
 	assert.Contains(t, msgs, "image alt text has trailing whitespace")
 }
 
-func TestFixNestedSpanNoOverlapPanic(t *testing.T) {
-	// Fix must not panic when outer link and inner image both need trimming.
-	// The outer fix is applied; the inner requires a second pass.
+func TestFixNestedSpanSinglePass(t *testing.T) {
+	// Fix must trim both outer link and inner image whitespace in a single call.
 	src := "# T\n\n[ text ![ alt ](img.png) ](url)\n"
 	result := fix(t, src, true)
-	// Outer boundary spaces must be removed.
-	assert.Contains(t, string(result), "[text !")
-	// Source must not be unchanged (at least outer fix applied).
-	assert.NotEqual(t, src, result)
+	assert.Equal(t, "# T\n\n[text ![alt](img.png)](url)\n", result)
 }
 
 func TestLinkWithTextAndNestedImageClean(t *testing.T) {
