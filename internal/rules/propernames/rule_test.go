@@ -5,9 +5,9 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
 )
 
 func newFile(t *testing.T, src string) *lint.File {
@@ -226,6 +226,23 @@ func TestScanBytes_NameLongerThanText_Skipped(t *testing.T) {
 	f := newFile(t, "hi\n")
 	diags := r.Check(f)
 	assert.Empty(t, diags)
+}
+
+func TestScanBytes_EmptyText_Skipped(t *testing.T) {
+	r := &Rule{Names: []string{"JavaScript"}}
+	results := r.scanBytes([]byte{}, 0, []byte{})
+	assert.Nil(t, results)
+}
+
+func TestScanCodeSpanChildren_NonTextChild_Skipped(t *testing.T) {
+	// A CodeSpan whose only child is not *ast.Text — the branch must be skipped without panic.
+	f := newFile(t, "test\n")
+	r := &Rule{Names: []string{"JavaScript"}}
+	cs := ast.NewCodeSpan()
+	// ast.NewString is an inline node that is not *ast.Text, making the !ok branch reachable.
+	cs.AppendChild(cs, ast.NewString([]byte("javascript")))
+	out := r.scanCodeSpanChildren(cs, f)
+	assert.Nil(t, out)
 }
 
 func TestApplySettings_InvalidCheckHTML(t *testing.T) {
