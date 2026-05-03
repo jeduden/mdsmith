@@ -51,9 +51,9 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 			}
 			if isLikelyArchetypeName(s) {
 				return fmt.Errorf(
-					"required-structure: schema %q looks like an archetype name; "+
+					"required-structure: schema %q looks like a bare name; "+
 						"name-based lookup has been removed — set `schema:` to "+
-						"an explicit path (e.g. archetypes/%s.md), or declare a "+
+						"an explicit path (e.g. schemas/%s.md), or declare a "+
 						"kind under `kinds:` — see docs/guides/file-kinds.md", s, s)
 			}
 			r.Schema = s

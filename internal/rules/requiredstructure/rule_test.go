@@ -148,13 +148,13 @@ func TestApplySettings_BareNameSchemaIsRejected(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"schema": "story"})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "looks like an archetype name")
+	require.Contains(t, err.Error(), "looks like a bare name")
 	require.Contains(t, err.Error(), "kinds")
 }
 
 func TestApplySettings_PathSchemaIsAccepted(t *testing.T) {
 	for _, s := range []string{
-		"archetypes/story.md",
+		"schemas/story.md",
 		"./story.md",
 		"story.md",
 		"plan/proto.md",

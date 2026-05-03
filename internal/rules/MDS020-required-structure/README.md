@@ -107,7 +107,7 @@ kinds:
   story:
     rules:
       required-structure:
-        schema: archetypes/story.md
+        schema: schemas/story.md
 
 kind-assignment:
   - files: ["stories/**/*.md"]
@@ -121,7 +121,7 @@ overrides:
   - files: ["stories/**/*.md"]
     rules:
       required-structure:
-        schema: archetypes/story.md
+        schema: schemas/story.md
 ```
 
 Disable:
