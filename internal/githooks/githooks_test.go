@@ -1104,18 +1104,84 @@ func TestExtractGlobs_SkipsSingleFieldLines(t *testing.T) {
 	assert.Empty(t, got.Exclude)
 }
 
-func TestWriteGitattributes_WriteFileFails_ReturnsError(t *testing.T) {
+func TestWriteGitattributes_AtomicWriteFails_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".gitattributes")
 
-	orig := writeFile
-	t.Cleanup(func() { writeFile = orig })
-	writeFile = func(string, []byte, os.FileMode) error {
+	orig := atomicWriteFn
+	t.Cleanup(func() { atomicWriteFn = orig })
+	atomicWriteFn = func(string, []byte, os.FileMode) error {
 		return fmt.Errorf("mock write failure")
 	}
 
 	err := WriteGitattributes(path, Globs{Include: []string{"a.md"}})
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "mock write failure")
+}
+
+func TestAtomicWriteGitattributes_CreateTempFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := createTempFn
+	t.Cleanup(func() { createTempFn = orig })
+	createTempFn = func(string, string) (*os.File, error) {
+		return nil, fmt.Errorf("mock createtemp failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock createtemp failure")
+}
+
+func TestAtomicWriteGitattributes_WriteFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	origCreate := createTempFn
+	t.Cleanup(func() { createTempFn = origCreate })
+	// Return a closed file so Write fails.
+	createTempFn = func(dir, pattern string) (*os.File, error) {
+		f, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		_ = f.Close()
+		return f, nil
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+}
+
+func TestAtomicWriteGitattributes_CloseFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := closeTempFn
+	t.Cleanup(func() { closeTempFn = orig })
+	closeTempFn = func(*os.File) error {
+		return fmt.Errorf("mock close failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock close failure")
+}
+
+func TestAtomicWriteGitattributes_ChmodFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := chmodFn
+	t.Cleanup(func() { chmodFn = orig })
+	chmodFn = func(string, os.FileMode) error {
+		return fmt.Errorf("mock chmod failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock chmod failure")
 }
 
 func TestWriteGitattributes_LstatNonENOENTError_ReturnsError(t *testing.T) {

@@ -19,10 +19,10 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-// readFile, writeFile, and lstatFile are variables so tests can substitute
+// readFile, atomicWriteFn, and lstatFile are variables so tests can substitute
 // failing implementations to exercise error paths in WriteGitattributes.
 var readFile = os.ReadFile
-var writeFile = os.WriteFile
+var atomicWriteFn = atomicWriteGitattributes
 var lstatFile = os.Lstat
 
 // PreMergeCommitMarker is the comment line written into the
@@ -778,13 +778,11 @@ func WriteGitattributes(path string, globs Globs) error {
 	return writeGitattributesFile(path, newContent.String())
 }
 
-// writeGitattributesFile writes content to path, preserving an existing
-// file's permissions. Re-validates that path is still a regular file to
-// narrow the TOCTOU window between WriteGitattributes' initial check and
-// the actual write.
+// writeGitattributesFile writes content to path using a temp-then-rename
+// strategy. Even if path is swapped to a symlink between the lstat guard in
+// WriteGitattributes and this call, os.Rename replaces the directory entry
+// rather than following the link, so the write cannot escape the repository.
 func writeGitattributesFile(path, content string) error {
-	// Default mode for new files; os.WriteFile preserves existing mode
-	// on truncating writes so no chmod is needed for existing files.
 	mode := os.FileMode(0o644)
 	if info, err := lstatFile(path); err == nil {
 		if !info.Mode().IsRegular() {
@@ -794,10 +792,41 @@ func writeGitattributesFile(path, content string) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("writing %s: lstat: %w", path, err)
 	}
-	if err := writeFile(path, []byte(content), mode); err != nil {
+	if err := atomicWriteFn(path, []byte(content), mode); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil
+}
+
+// createTempFn, closeTempFn, and chmodFn are variables so tests can inject
+// failures into atomicWriteGitattributes without needing OS-level tricks.
+var createTempFn = os.CreateTemp
+var closeTempFn = (*os.File).Close
+var chmodFn = os.Chmod
+
+// atomicWriteGitattributes writes data to a temp file in the same directory
+// as path, sets its permissions, then renames it over path. The rename
+// replaces the directory entry atomically, so it cannot follow a symlink
+// that might have been introduced between an earlier lstat check and the write.
+func atomicWriteGitattributes(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := createTempFn(dir, ".mdsmith-gitattributes-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := closeTempFn(tmp); err != nil {
+		return err
+	}
+	if err := chmodFn(tmpName, mode); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // StageGitattributes runs `git add -- .gitattributes` against repoRoot
