@@ -93,7 +93,7 @@ Enable with a schema for rule READMEs:
 
 ```yaml
 overrides:
-  - files: ["internal/rules/*/README.md"]
+  - glob: ["internal/rules/*/README.md"]
     rules:
       required-structure:
         schema: internal/rules/proto.md
@@ -110,7 +110,7 @@ kinds:
         schema: schemas/story.md
 
 kind-assignment:
-  - files: ["stories/**/*.md"]
+  - glob: ["stories/**/*.md"]
     kinds: [story]
 ```
 
@@ -118,7 +118,7 @@ Or set the path inline on an override:
 
 ```yaml
 overrides:
-  - files: ["stories/**/*.md"]
+  - glob: ["stories/**/*.md"]
     rules:
       required-structure:
         schema: schemas/story.md

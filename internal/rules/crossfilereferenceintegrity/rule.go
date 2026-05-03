@@ -488,8 +488,8 @@ func normalizeLinkPath(linkPath string) string {
 // validatePatterns checks that all patterns are valid doublestar patterns.
 func validatePatterns(patterns []string) error {
 	for _, p := range patterns {
-		if !doublestar.ValidatePattern(p) {
-			return fmt.Errorf("invalid pattern %q", p)
+		if _, err := doublestar.Match(p, ""); err != nil {
+			return fmt.Errorf("invalid pattern %q: %w", p, err)
 		}
 	}
 	return nil

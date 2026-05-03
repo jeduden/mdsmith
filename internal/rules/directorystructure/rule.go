@@ -134,8 +134,8 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				if p == "." {
 					continue
 				}
-				if !doublestar.ValidatePattern(p) {
-					return fmt.Errorf("directory-structure: invalid glob pattern %q", p)
+				if _, err := doublestar.Match(p, ""); err != nil {
+					return fmt.Errorf("directory-structure: invalid glob pattern %q: %w", p, err)
 				}
 			}
 		default:

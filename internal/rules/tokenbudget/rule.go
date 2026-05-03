@@ -326,8 +326,8 @@ func parseBudgets(v any) ([]budgetOverride, error) {
 			return nil, fmt.Errorf("token-budget: budgets[%d].max must be positive, got %d", idx, maxVal)
 		}
 
-		if !doublestar.ValidatePattern(globStr) {
-			return nil, fmt.Errorf("token-budget: budgets[%d].glob is invalid: %q", idx, globStr)
+		if _, err := doublestar.Match(globStr, ""); err != nil {
+			return nil, fmt.Errorf("token-budget: budgets[%d].glob is invalid %q: %w", idx, globStr, err)
 		}
 
 		result = append(result, budgetOverride{

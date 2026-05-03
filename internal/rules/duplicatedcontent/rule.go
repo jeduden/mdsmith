@@ -489,8 +489,8 @@ func (r *Rule) validateFilters() error {
 // validatePatterns checks that all patterns are valid doublestar patterns.
 func validatePatterns(patterns []string) error {
 	for _, pat := range patterns {
-		if !doublestar.ValidatePattern(pat) {
-			return fmt.Errorf("invalid glob pattern %q", pat)
+		if _, err := doublestar.Match(pat, ""); err != nil {
+			return fmt.Errorf("invalid glob pattern %q: %w", pat, err)
 		}
 	}
 	return nil

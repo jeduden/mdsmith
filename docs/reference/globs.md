@@ -47,6 +47,12 @@ as `allowed:`, `include:`, `exclude:`, `budgets[].glob`.
 Basename matching means a pattern like `CHANGELOG.md` (no
 slash) matches `CHANGELOG.md` in any directory.
 
+The top-level `files:` key in `.mdsmith.yml` is not a
+config pattern surface. It controls which files are
+discovered when no file arguments are given. It uses
+`doublestar.Match` on relative paths — no basename
+fallback, no `!`-prefix exclusion.
+
 CLI argument expansion uses `doublestar.FilepathGlob`
 directly — patterns are matched against the filesystem,
 not candidates derived from the path. A bare filename like
