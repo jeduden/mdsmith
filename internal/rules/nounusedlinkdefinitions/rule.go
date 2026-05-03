@@ -159,10 +159,15 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			continue
 		}
 		start := d.start
-		// Consume the blank line before the definition so removal does not
-		// leave back-to-back newlines.
+		// Consume the blank line before the definition only when a blank line
+		// also follows (or the definition ends the file). This preserves the
+		// paragraph separator when the definition sat between two block elements
+		// with only a single blank line on each side.
 		if start >= 2 && source[start-1] == '\n' && source[start-2] == '\n' {
-			start--
+			afterDefIsBlankOrEOF := d.end >= len(source) || source[d.end] == '\n'
+			if afterDefIsBlankOrEOF {
+				start--
+			}
 		}
 		cuts = append(cuts, fixCut{start: start, end: d.end})
 	}

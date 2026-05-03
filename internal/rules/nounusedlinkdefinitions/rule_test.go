@@ -186,13 +186,41 @@ func TestFix_DuplicateDefinition_RemovesSecond(t *testing.T) {
 }
 
 func TestFix_UnusedBetweenBlanks_CollapsesBlanks(t *testing.T) {
-	// Blank line before and after the definition: fix should not leave
-	// a double-blank behind.
+	// Blank line before AND after: collapsing the preceding blank line
+	// is safe because the following blank line still separates paragraphs.
 	src := "# Heading\n\nSome text.\n\n[orphan]: https://example.com\n\nMore text.\n"
 	f := newFile(t, src)
 	r := &Rule{}
 	got := string(r.Fix(f))
 	assert.Equal(t, "# Heading\n\nSome text.\n\nMore text.\n", got)
+}
+
+func TestFix_UnusedNoBlankAfter_PreservesParagraphSeparator(t *testing.T) {
+	// Blank line ONLY before the definition (none after): the preceding blank
+	// line must NOT be consumed or the two paragraphs would merge.
+	src := "First para.\n\n[orphan]: https://example.com\nSecond para.\n"
+	f := newFile(t, src)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	assert.Equal(t, "First para.\n\nSecond para.\n", got)
+}
+
+func TestCheck_DefinitionInsidePIBlock_NoDiagnostic(t *testing.T) {
+	// A definition-shaped line inside a PI block must not be collected
+	// and must not produce a diagnostic.
+	src := "# Heading\n\n<?ignore\n[orphan]: https://inside-pi.com\n?>\n\nSome text.\n"
+	f := newFile(t, src)
+	r := &Rule{}
+	assert.Empty(t, r.Check(f))
+}
+
+func TestFix_DefinitionInsidePIBlock_Unchanged(t *testing.T) {
+	// Fix must not remove a definition-shaped line inside a PI block.
+	src := "# Heading\n\n<?ignore\n[orphan]: https://inside-pi.com\n?>\n\nSome text.\n"
+	f := newFile(t, src)
+	r := &Rule{}
+	got := string(r.Fix(f))
+	assert.Equal(t, src, got)
 }
 
 func TestFix_IgnoredLabel_Preserved(t *testing.T) {
@@ -273,12 +301,15 @@ func TestCheck_CodeBlockLabel_OnlyExternalDefinitionCounted(t *testing.T) {
 }
 
 func TestFix_MultipleUnused_AllRemoved(t *testing.T) {
-	// Two unused definitions: verifies applyCuts handles non-overlapping cuts.
+	// Two consecutive unused definitions with no blank between them: both are
+	// removed. The preceding blank line is not consumed (no blank follows [a]),
+	// so the result has a trailing double-newline — MDS009 cleans that up in
+	// the same fix pass.
 	src := "# Heading\n\n[a]: https://a.com\n[b]: https://b.com\n"
 	f := newFile(t, src)
 	r := &Rule{}
 	got := string(r.Fix(f))
-	assert.Equal(t, "# Heading\n", got)
+	assert.Equal(t, "# Heading\n\n", got)
 }
 
 func TestApplyCuts_OverlappingCuts_Skipped(t *testing.T) {
