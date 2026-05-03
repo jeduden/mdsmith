@@ -35,7 +35,7 @@ footer: |
 | 121 | 🔲     | opus   | [Expose mdsmith to VS Code via Language Server Protocol](plan/121_vscode-integration.md)             |
 | 121 | 🔲     | sonnet | [Review and centralize YAML handling](plan/121_yaml-handling-review.md)                              |
 | 122 | 🔲     | sonnet | [VS Code hover help and palette commands](plan/122_vscode-hover-and-palette.md)                      |
-| 124 | 🔲     | sonnet | [No space inside code spans rule](plan/124_no-space-in-code-spans.md)                                |
+| 124 | ✅     | sonnet | [No space inside code spans rule](plan/124_no-space-in-code-spans.md)                                |
 | 125 | 🔲     | sonnet | [No space inside link text rule](plan/125_no-space-in-link-text.md)                                  |
 | 126 | 🔲     | sonnet | [Proper-name capitalization rule](plan/126_proper-names.md)                                          |
 | 127 | 🔲     | sonnet | [Single H1 per file rule](plan/127_single-h1.md)                                                     |

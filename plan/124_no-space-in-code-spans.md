@@ -1,9 +1,9 @@
 ---
 id: 124
 title: No space inside code spans rule
-status: "🔲"
+status: "✅"
 summary: >-
-  New rule MDS048 that flags inline code spans with
+  New rule MDS049 that flags inline code spans with
   leading or trailing whitespace inside the backticks
   (`` ` x ` `` instead of `` `x` ``). Closes the gap
   with markdownlint MD038.
@@ -107,22 +107,22 @@ code span has trailing whitespace
 
 ## Acceptance Criteria
 
-- [ ] `` `x` `` emits no diagnostic.
-- [ ] `` ` x ` `` (balanced single space) emits no
+- [x] `` `x` `` emits no diagnostic.
+- [x] `` ` x ` `` (balanced single space) emits no
       diagnostic.
-- [ ] `` ` x` `` emits one leading-whitespace
+- [x] `` ` x` `` emits one leading-whitespace
       diagnostic and fixes to `` `x` ``.
-- [ ] `` `x ` `` emits one trailing-whitespace
+- [x] `` `x ` `` emits one trailing-whitespace
       diagnostic and fixes to `` `x` ``.
-- [ ] `` `  x  ` `` (double space each side) emits
+- [x] `` `  x  ` `` (double space each side) emits
       both diagnostics and fixes to `` `x` ``.
-- [ ] `` `\tx` `` (leading tab) emits a leading-
+- [x] `` `\tx` `` (leading tab) emits a leading-
       whitespace diagnostic.
-- [ ] An empty-after-trim span (e.g. `` `   ` ``)
+- [x] An empty-after-trim span (e.g. `` `   ` ``)
       emits diagnostics but is not auto-fixed.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes on the repo with the
+- [x] Rule is disabled by default.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes on the repo with the
       rule disabled (no regression for existing
       docs).
