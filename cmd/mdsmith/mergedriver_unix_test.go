@@ -39,6 +39,38 @@ func TestMergeAndClean_OursIsSymlink_ExitsTwo(t *testing.T) {
 	assert.Equal(t, 2, code)
 }
 
+func TestMergeAndClean_BaseIsSymlink_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.md")
+	link := filepath.Join(dir, "base.md")
+	require.NoError(t, os.WriteFile(target, []byte("# content\n"), 0o644))
+	require.NoError(t, os.Symlink(target, link))
+
+	ours := filepath.Join(dir, "ours.md")
+	theirs := filepath.Join(dir, "theirs.md")
+	require.NoError(t, os.WriteFile(ours, []byte("# content\n"), 0o644))
+	require.NoError(t, os.WriteFile(theirs, []byte("# content\n"), 0o644))
+
+	_, code := mergeAndClean(link, ours, theirs, 1<<20)
+	assert.Equal(t, 2, code)
+}
+
+func TestMergeAndClean_TheirsIsSymlink_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.md")
+	link := filepath.Join(dir, "theirs.md")
+	require.NoError(t, os.WriteFile(target, []byte("# content\n"), 0o644))
+	require.NoError(t, os.Symlink(target, link))
+
+	base := filepath.Join(dir, "base.md")
+	ours := filepath.Join(dir, "ours.md")
+	require.NoError(t, os.WriteFile(base, []byte("# content\n"), 0o644))
+	require.NoError(t, os.WriteFile(ours, []byte("# content\n"), 0o644))
+
+	_, code := mergeAndClean(base, ours, link, 1<<20)
+	assert.Equal(t, 2, code)
+}
+
 func TestFixAtRealPath_PathnameIsSymlink_ExitsTwo(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target.md")

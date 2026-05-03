@@ -100,11 +100,13 @@ var osWriteFile = os.WriteFile
 // mergeAndClean performs the 3-way merge and strips conflict markers.
 // Returns the cleaned content and an exit code (0 on success).
 func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
-	// Validate and capture the mode of ours before letting git write to it,
-	// so a symlink at ours cannot be followed by git merge-file.
-	if err := guardRegularFile(ours); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return nil, 2
+	// Validate all three inputs before letting git read or write them,
+	// so symlinks cannot pull in data from outside the worktree.
+	for _, path := range []string{ours, base, theirs} {
+		if err := guardRegularFile(path); err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return nil, 2
+		}
 	}
 	// Preserve the original permissions of git's temp file.
 	// os.WriteFile only applies perm on creation; chmod enforces it
