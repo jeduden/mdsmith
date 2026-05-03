@@ -72,10 +72,12 @@ func runMergeDriver(args []string) int {
 	}
 }
 
-// mergeFileMode returns the permission bits of the named file, or
-// defaultMode if the file cannot be stat'd (e.g. does not exist yet).
-// It strips file-type bits (ModeDir, ModeSymlink, …) but preserves
-// special permission bits (setuid/setgid/sticky) if present.
+// mergeFileMode returns the named file's mode with file-type bits
+// (ModeDir, ModeSymlink, …) masked off, or defaultMode if the file
+// cannot be stat'd (e.g. does not exist yet). The returned value is
+// info.Mode() &^ os.ModeType, which keeps the rwx permission bits
+// along with setuid/setgid/sticky — wider than Mode().Perm(), which
+// returns only the low 9 bits.
 func mergeFileMode(name string, defaultMode os.FileMode) os.FileMode {
 	if info, err := os.Stat(name); err == nil {
 		return info.Mode() &^ os.ModeType
