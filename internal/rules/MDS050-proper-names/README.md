@@ -64,9 +64,11 @@ case-insensitive matches that start at a word boundary. The byte
 immediately before the match in the full source must be a
 non-alphanumeric, non-underscore character, or the match must
 begin at the start of the file. Only the **left** boundary is
-enforced — there is no right-boundary check. A name like
-`JavaScript` therefore matches the prefix of `JavaScripts` and
-reports (and fixes) that prefix, leaving the trailing `s` unchanged.
+enforced — there is no right-boundary check. For example,
+`Javascripts` (wrong case) matches `JavaScript` at the left
+boundary; the rule reports and fixes the `Javascripts` prefix to
+`JavaScript`, leaving the trailing `s` unchanged. Correctly-cased
+prefixes in longer words (e.g. `JavaScripts`) are not flagged.
 When the matched bytes differ from the canonical spelling, a
 diagnostic is emitted.
 

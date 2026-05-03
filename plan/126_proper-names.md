@@ -149,8 +149,8 @@ proper name "{actual}" should be "{configured}"
 - [x] `Javascript is fun` emits one diagnostic and
       fixes to `JavaScript is fun`.
 - [x] `JAVASCRIPT` emits one diagnostic.
-- [x] `JavaScripts` (trailing letter) emits one
-      diagnostic on the `JavaScript` portion.
+- [x] `Javascripts` (trailing letter, wrong case) emits one
+      diagnostic on the `Javascript` portion.
 - [x] `GitHubber` does not match `GitHub` (no
       diagnostic).
 - [x] Heading `# Github` emits one diagnostic.
