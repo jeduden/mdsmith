@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -179,11 +178,8 @@ func (r *Rule) frontMatterHasTitle(f *lint.File) bool {
 	if len(yamlBytes) == 0 {
 		return false
 	}
-	if err := lint.RejectYAMLAliases(yamlBytes); err != nil {
-		return false
-	}
 	var raw map[string]any
-	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
 		return false
 	}
 	v, ok := raw[r.FrontMatterTitle]
