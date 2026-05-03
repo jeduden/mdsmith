@@ -1,9 +1,7 @@
 ---
 summary: CLI commands, flags, exit codes, and output format.
 ---
-# CLI Design
-
-## Usage
+# CLI Reference
 
 ```text
 mdsmith <command> [flags] [files...]
@@ -11,154 +9,48 @@ mdsmith <command> [flags] [files...]
 
 ## Commands
 
-| Command            | Description                                    |
-|--------------------|------------------------------------------------|
-| `check`            | Lint files                                     |
-| `fix`              | Auto-fix issues in place                       |
-| `query`            | Select files by CUE expression on front matter |
-| `help`             | Show help for rules/topics                     |
-| `metrics`          | List and rank shared metrics                   |
-| `merge-driver`     | Git merge driver for regenerable sections      |
-| `pre-merge-commit` | Install/manage pre-merge-commit hook           |
-| `kinds`            | Inspect declared kinds and resolve config      |
-| `init`             | Generate `.mdsmith.yml`                        |
-| `version`          | Print version, exit                            |
+<?catalog
+glob:
+  - "cli/*.md"
+sort: command
+header: |
+  | Command | Description |
+  |---------|-------------|
+row: "| [`{command}`]({filename}) | {summary} |"
+?>
+| Command                                       | Description                                                                          |
+|-----------------------------------------------|--------------------------------------------------------------------------------------|
+| [`check`](cli/check.md)                       | Lint Markdown files for style issues.                                                |
+| [`fix`](cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
+| [`help`](cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
+| [`init`](cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
+| [`kinds`](cli/kinds.md)                       | Inspect declared file kinds and resolve effective rule config per file.              |
+| [`merge-driver`](cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
+| [`metrics`](cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
+| [`pre-merge-commit`](cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
+| [`query`](cli/query.md)                       | Select Markdown files by a CUE expression on front matter.                           |
+| [`version`](cli/version.md)                   | Print the mdsmith build version and exit.                                            |
+<?/catalog?>
 
-The `check` and `fix` commands accept file paths,
-directories, and glob patterns as positional arguments.
-Pass `-` to read from stdin.
+The `check`, `fix`, and `query` commands accept file
+paths, directories, and glob patterns as positional
+arguments. `check` and `query` also accept `-` to read
+from stdin. With no file arguments, `check`, `fix`, and
+`metrics rank` discover files using `files:` from
+`.mdsmith.yml` (default: `["**/*.md", "**/*.markdown"]`).
 
-When no file arguments are given, `check` and `fix`
-discover files using the `files` glob patterns from config
-(default: `["**/*.md", "**/*.markdown"]`). If no files
-match, exits 0.
+## Global flags
 
-## Subcommand Flags (check, fix)
+| Flag     | Short | Description |
+|----------|-------|-------------|
+| `--help` | `-h`  | Show help   |
 
-| Flag                | Default | Description                             |
-|---------------------|---------|-----------------------------------------|
-| `-c`, `--config`    | auto    | Config path (auto-discovers by default) |
-| `-f`, `--format`    | `text`  | `text` or `json`                        |
-| `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)    |
-| `--no-color`        | false   | Plain output                            |
-| `--follow-symlinks` | config  | Follow symlinks; tri-state — see below  |
-| `--no-gitignore`    | false   | Skip gitignore                          |
-| `-q`, `--quiet`     | false   | Quiet mode                              |
-| `-v`, `--verbose`   | false   | Verbose output                          |
-
-Symlinks are skipped by default. This blocks a malicious
-symlink from redirecting `check` or `fix` to files outside
-the project. The rule applies to directory walks, glob
-expansion, and explicit file or directory arguments:
-`mdsmith check ./linked.md` silently skips a symlink named
-on the command line. Opt-in follows only symlinks that
-resolve to regular files; directory / FIFO / device / socket
-targets are always skipped.
-
-`--follow-symlinks` is tri-state:
-
-- omitted — fall back to `follow-symlinks:` in
-  `.mdsmith.yml` (default: skip)
-- `--follow-symlinks` or `--follow-symlinks=true` — opt in
-  for this run
-- `--follow-symlinks=false` — force deny for this run, even
-  when the loaded config has `follow-symlinks: true`
-
-The old `no-follow-symlinks:` config key still parses and
-emits a deprecation warning on stderr.
-
-## Other Subcommand Flags
-
-`query` accepts `-c`/`--config`, `-v`/`--verbose`,
-`-0`/`--null`, and `--max-input-size`.
-
-`metrics list` accepts `-f`/`--format` (`text` or `json`)
-and `--scope` (only `file` is supported; defaults to
-`file`).
-
-`metrics rank` accepts `-c`/`--config`, `-f`/`--format`,
-`--no-gitignore`, `--follow-symlinks`,
-`--max-input-size`, plus `--metrics`, `--by`, `--order`,
-`--top`.
-
-`metrics rank` counts only **authored bytes** for each
-file: content between the `<?include?>` and `<?catalog?>`
-markers is excluded. This matches the lint-once model —
-embedded content is measured against the source file,
-not the host that pulls it in.
-
-## `kinds` Subcommands
-
-| Subcommand          | Description                                        |
-|---------------------|----------------------------------------------------|
-| `list`              | Print declared kinds and their merged bodies       |
-| `show <name>`       | Print one kind's merged body                       |
-| `path <name>`       | Print resolved schema path of `required-structure` |
-| `resolve <file>`    | Resolved kind list and per-leaf provenance summary |
-| `why <file> <rule>` | Full per-rule merge chain, including no-op layers  |
-
-Each subcommand accepts `--json` for stable structured
-output. Unknown kinds and unresolved schemas exit `2`.
-
-## `--explain` on `check` / `fix`
-
-`--explain` attaches per-leaf rule provenance to each
-diagnostic. Text output prints a `└─` trailer naming
-the rule and the winning source for each leaf setting;
-JSON adds an `explanation` field (see schema below).
-
-## JSON Schemas
-
-Stable shapes for LSP / tool consumption. `leaves[]`
-always lists every leaf of the final rule config —
-`enabled` plus one entry per `settings.<key>`; output
-never elides leaves. Source labels: `default`,
-`front-matter override`, `front-matter`,
-`kind-assignment[<i>]`, `kinds.<name>`, or
-`overrides[<i>]`.
-
-`check --explain` adds an `explanation` field to each
-diag (omitted without `--explain`):
-
-```json
-"explanation": {"rule": "line-length", "leaves": [
-  {"path": "enabled", "value": true, "source": "default"},
-  {"path": "settings.max", "value": 30, "source": "kinds.short"}
-]}
-```
-
-`kinds list` → `{"kinds": [<body>...]}`; `show <name>`
-→ one body. Body: `{"name", "rules", "categories"}`
-where `rules[<name>]` follows the YAML rule-cfg union
-(`false`, `true`, or the settings map).
-
-`kinds resolve <file>` returns `{file, kinds, categories,
-rules}`. Each rule entry is `{final, leaves}` with a leaf
-per `enabled` and `settings.<key>`.
-
-`kinds why <file> <rule>` adds two arrays. `layers[]`
-lists every applicable layer in chain order. No-op layers
-carry `"set": false` and omit `value`. `leaves[].chain`
-records the layers that set the leaf, in chain order:
-
-```json
-{"file": "plan/9_big.md", "rule": "max-file-length",
- "final": {"max": 900},
- "layers": [
-   {"source": "default", "set": true, "value": {"max": 300}},
-   {"source": "kinds.plan", "set": true, "value": {"max": 500}},
-   {"source": "overrides[0]", "set": true, "value": {"max": 900}}],
- "leaves": [{"path": "settings.max", "value": 900,
-   "source": "overrides[0]", "chain": [
-     {"source": "default", "value": 300},
-     {"source": "kinds.plan", "value": 500},
-     {"source": "overrides[0]", "value": 900}]}]}
-```
+Use `--` to separate flags from filenames starting with `-`.
 
 ## `--max-input-size`
 
-Sets the byte-size cap for any input file read by
-commands that support the flag (`check`, `fix`, `query`,
+Sets the byte-size cap for any input file read by commands
+that support the flag (`check`, `fix`, `query`,
 `metrics rank`). Behavior on oversize input:
 
 - `check` / `fix`: file is skipped and reported as a
@@ -166,25 +58,25 @@ commands that support the flag (`check`, `fix`, `query`,
   precedence — `1` when lint diagnostics are found (even
   if some files were skipped), `2` when only runtime
   errors occur.
-- `query`: file is skipped; the per-file error is only
-  printed on stderr when `--verbose` is set. Exit code
-  `1` if no files matched, `0` on a match.
-- `metrics rank`: the whole run fails with exit code
-  `2` on the first oversize file.
+- `query`: file is skipped; the per-file error prints on
+  stderr only when `--verbose` is set. Exit code `1` if no
+  files matched, `0` on a match.
+- `metrics rank`: the whole run fails with exit code `2`
+  on the first oversize file.
 
 An invalid `--max-input-size` value always exits `2`.
-Accepts `KB`, `MB`, `GB` suffixes (binary:
-1 MB = 1,048,576 bytes), bare integers (bytes), or `0`
-to disable the limit. Default: `2MB`. The CLI flag
-overrides the `max-input-size` key in `.mdsmith.yml`.
+Accepts `KB`, `MB`, `GB` suffixes (binary: 1 MB =
+1,048,576 bytes), bare integers (bytes), or `0` to disable
+the limit. Default: `2MB`. The CLI flag overrides the
+`max-input-size:` key in `.mdsmith.yml`.
 
-## Merge Semantics
+## Configuration merge semantics
 
 Rule settings come from a chain of layers. The chain
 starts with the built-in defaults. Then every `kinds:`
 block whose name matches the file applies. Front-matter
-`kinds:` come first; `kind-assignment:` entries follow
-in config order. Last, every `overrides:` block whose
+`kinds:` come first; `kind-assignment:` entries follow in
+config order. Last, every `overrides:` block whose
 `files:` glob matches the file applies.
 
 Each layer **deep-merges** onto the accumulator:
@@ -201,30 +93,25 @@ Each layer **deep-merges** onto the accumulator:
   `paragraph-readability`, `heading-increment`,
   `no-emphasis-as-heading`, and
   `cross-file-reference-integrity`) appends.
-- A **bool-only** layer (e.g. `line-length: false`)
-  toggles `enabled` for that rule but preserves the
-  inherited settings. A later layer that re-enables the
-  rule sees the original settings still in place.
+- A **bool-only** layer (e.g. `line-length: false`) toggles
+  `enabled` for that rule but preserves the inherited
+  settings. A later layer that re-enables the rule sees
+  the original settings still in place.
 
 A layer that fully restates a rule's body still wins on
-every key, so the previous block-replacement behavior is
-a special case of deep-merge.
+every key, so the previous block-replacement behavior is a
+special case of deep-merge. Use [`mdsmith kinds why`](cli/kinds.md)
+to see the full chain on a single rule.
 
-## Global Flags
-
-| Flag     | Short | Description |
-|----------|-------|-------------|
-| `--help` | `-h`  | Show help   |
-
-Use `--` to separate flags from filenames starting with `-`.
-
-## Exit Codes
+## Exit codes
 
 | Code | Meaning                        |
 |------|--------------------------------|
 | 0    | No lint issues found           |
 | 1    | Lint issues found              |
 | 2    | Runtime or configuration error |
+
+Per-command exits may vary; see the per-command pages.
 
 ## Output
 
@@ -242,9 +129,10 @@ README.md:10:81 MDS001 line too long (120 > 80)
 12 | Another context line.
 ```
 
-Each diagnostic prints a header line (`file:line:col rule message`).
-When source context is available, up to 5 surrounding lines appear
-with a dot path (`····^`) pointing to the exact column.
+Each diagnostic prints a header line
+(`file:line:col rule message`). When source context is
+available, up to 5 surrounding lines appear with a dot
+path (`····^`) pointing to the exact column.
 
 **json**:
 
@@ -264,19 +152,13 @@ with a dot path (`····^`) pointing to the exact column.
 ]
 ```
 
-The `source_lines` and `source_start_line` fields are omitted when
-source context is unavailable (e.g., empty diagnostics).
+The `source_lines` and `source_start_line` fields are
+omitted when source context is unavailable (e.g., empty
+diagnostics). With `--explain`, each diag also gains an
+`explanation` field — see [`mdsmith check`](cli/check.md).
 
-## Pre-commit (lefthook)
+## See also
 
-```yaml
-# lefthook.yml
-pre-commit:
-  commands:
-    mdsmith:
-      glob: "*.{md,markdown}"
-      run: mdsmith check {staged_files}
-      # To auto-fix and re-stage:
-      # run: mdsmith fix {staged_files}
-      # stage_fixed: true
-```
+- [Configuration globs](globs.md) — pattern syntax across
+  config, directives, and CLI args
+- [Conventions](conventions.md) — built-in rule presets

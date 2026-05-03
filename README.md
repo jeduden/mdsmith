@@ -92,33 +92,34 @@ mdsmith <command> [flags] [files...]
 
 ### Commands
 
-| Command        | Description                                    |
-|----------------|------------------------------------------------|
-| `check`        | Lint files (default command)                   |
-| `fix`          | Auto-fix issues in place                       |
-| `query`        | Select files by CUE expression on front matter |
-| `help`         | Show help for rules and topics                 |
-| `metrics`      | List and rank Markdown metrics                 |
-| `merge-driver` | Git merge driver for regenerable sections      |
-| `kinds`        | Inspect declared kinds and resolve config      |
-| `init`         | Generate `.mdsmith.yml`                        |
-| `version`      | Print version, exit                            |
+<?catalog
+glob:
+  - "docs/reference/cli/*.md"
+sort: command
+header: |
+  | Command | Description |
+  |---------|-------------|
+row: "| [`{command}`](docs/reference/cli/{command}.md) | {summary} |"
+?>
+| Command                                                      | Description                                                                          |
+|--------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| [`check`](docs/reference/cli/check.md)                       | Lint Markdown files for style issues.                                                |
+| [`fix`](docs/reference/cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
+| [`help`](docs/reference/cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
+| [`init`](docs/reference/cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
+| [`kinds`](docs/reference/cli/kinds.md)                       | Inspect declared file kinds and resolve effective rule config per file.              |
+| [`merge-driver`](docs/reference/cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
+| [`metrics`](docs/reference/cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
+| [`pre-merge-commit`](docs/reference/cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
+| [`query`](docs/reference/cli/query.md)                       | Select Markdown files by a CUE expression on front matter.                           |
+| [`version`](docs/reference/cli/version.md)                   | Print the mdsmith build version and exit.                                            |
+<?/catalog?>
 
 Files can be paths, directories (walked recursively for `*.md`
 and `*.markdown`), or glob patterns. Directories respect
 `.gitignore` by default;
 use `--no-gitignore` to override. Explicitly named files are
 never filtered by `.gitignore`.
-
-### Flags
-
-| Flag             | Description      |
-|------------------|------------------|
-| `-c`, `--config` | Config path      |
-| `-f`, `--format` | `text` or `json` |
-| `--no-color`     | Plain output     |
-| `--no-gitignore` | Skip gitignore   |
-| `-q`, `--quiet`  | Quiet mode       |
 
 ### Examples
 
@@ -129,27 +130,10 @@ mdsmith check -f json docs/    # JSON output
 mdsmith metrics rank --by bytes --top 10 .
 ```
 
-### Output
-
-Diagnostics are printed to stderr with source context when available:
-
-```text
-README.md:10:81 MDS001 line too long (135 > 80)
- 8 | Context lines appear above and below the diagnostic with line numbers.
- 9 | They help you see the surrounding code at a glance.
-10 | This line is deliberately made long so it exceeds the eighty character limit and keeps going and going.
-·····················································································^
-11 | A dot path runs from column 1 to the caret, marking the line and column.
-12 | Up to two lines of context are shown on each side.
-```
-
-### Exit codes
-
-| Code | Meaning                        |
-|------|--------------------------------|
-| 0    | No lint issues found           |
-| 1    | Lint issues found              |
-| 2    | Runtime or configuration error |
+See the [CLI reference](docs/reference/cli.md) for shared
+flags, exit codes, output format, and configuration merge
+semantics. Individual subcommand pages above cover their
+own flags and examples.
 
 ## ⚙️ Configuration
 
