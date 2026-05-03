@@ -39,8 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git push *)",
-            "command": "BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) && PR=$(gh api repos/jeduden/mdsmith/pulls --jq \".[] | select(.head.ref == \\\"$BRANCH\\\") | .number\" 2>/dev/null | head -1) && [ -n \"$PR\" ] && gh api \"repos/jeduden/mdsmith/pulls/$PR/requested_reviewers\" -X POST -f \"reviewers[]=jeduden\" 2>/dev/null || true",
+            "command": "jq -re '.tool_input.command // \"\"' | grep -q 'git push' && BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) && PR=$(gh api repos/jeduden/mdsmith/pulls --jq \".[] | select(.head.ref == \\\"$BRANCH\\\") | .number\" 2>/dev/null | head -1) && [ -n \"$PR\" ] && gh api \"repos/jeduden/mdsmith/pulls/$PR/requested_reviewers\" -X POST -f \"reviewers[]=jeduden\" 2>/dev/null; true",
             "statusMessage": "Requesting code review..."
           }
         ]
