@@ -1,9 +1,11 @@
 package githooks
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -1103,17 +1105,211 @@ func TestExtractGlobs_SkipsSingleFieldLines(t *testing.T) {
 	assert.Empty(t, got.Exclude)
 }
 
-func TestWriteGitattributes_PropagatesNonENOENTReadError(t *testing.T) {
-	// .gitattributes is a directory, so os.ReadFile returns a
-	// non-IsNotExist error. WriteGitattributes must surface that
-	// rather than silently overwriting the directory.
+func TestWriteGitattributes_AtomicWriteFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := atomicWriteFn
+	t.Cleanup(func() { atomicWriteFn = orig })
+	atomicWriteFn = func(string, []byte, os.FileMode) error {
+		return fmt.Errorf("mock write failure")
+	}
+
+	err := WriteGitattributes(path, Globs{Include: []string{"a.md"}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "mock write failure")
+}
+
+func TestAtomicWriteGitattributes_CreateTempFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := createTempFn
+	t.Cleanup(func() { createTempFn = orig })
+	createTempFn = func(string, string) (*os.File, error) {
+		return nil, fmt.Errorf("mock createtemp failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock createtemp failure")
+}
+
+func TestAtomicWriteGitattributes_WriteFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	origCreate := createTempFn
+	t.Cleanup(func() { createTempFn = origCreate })
+	// Return a closed file so Write fails.
+	createTempFn = func(dir, pattern string) (*os.File, error) {
+		f, err := os.CreateTemp(dir, pattern)
+		if err != nil {
+			return nil, err
+		}
+		_ = f.Close()
+		return f, nil
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+}
+
+func TestAtomicWriteGitattributes_SyncFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := syncTempFn
+	t.Cleanup(func() { syncTempFn = orig })
+	syncTempFn = func(*os.File) error {
+		return fmt.Errorf("mock sync failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock sync failure")
+}
+
+func TestAtomicWriteGitattributes_CloseFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := closeTempFn
+	t.Cleanup(func() { closeTempFn = orig })
+	closeTempFn = func(*os.File) error {
+		return fmt.Errorf("mock close failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock close failure")
+}
+
+func TestAtomicWriteGitattributes_ChmodFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+
+	orig := chmodFn
+	t.Cleanup(func() { chmodFn = orig })
+	chmodFn = func(string, os.FileMode) error {
+		return fmt.Errorf("mock chmod failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock chmod failure")
+}
+
+func TestAtomicWriteGitattributes_TargetIsDirectory_ReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("not reliable on Windows")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	require.NoError(t, os.Mkdir(target, 0o755))
+
+	err := atomicWriteGitattributes(target, []byte("content"), 0o644)
+	require.Error(t, err)
+}
+
+func TestAtomicWriteGitattributes_LstatNonENOENTError_ReturnsError(t *testing.T) {
+	orig := lstatFile
+	t.Cleanup(func() { lstatFile = orig })
+	lstatFile = func(string) (os.FileInfo, error) {
+		return nil, fmt.Errorf("mock lstat failure")
+	}
+
+	err := atomicWriteGitattributes("/any/path", []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock lstat failure")
+}
+
+func TestAtomicWriteGitattributes_FstatFails_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+	require.NoError(t, os.WriteFile(path, []byte("existing"), 0o644))
+
+	orig := fstatFn
+	t.Cleanup(func() { fstatFn = orig })
+	fstatFn = func(*os.File) (os.FileInfo, error) {
+		return nil, fmt.Errorf("mock fstat failure")
+	}
+
+	err := atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mock fstat failure")
+}
+
+func TestAtomicWriteGitattributes_LstatFdMismatch_ReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+	other := filepath.Join(dir, "other")
+	require.NoError(t, os.WriteFile(path, []byte("existing"), 0o644))
+	require.NoError(t, os.WriteFile(other, []byte("other"), 0o644))
+
+	otherInfo, err := os.Lstat(other)
+	require.NoError(t, err)
+
+	// Inject lstatFile to return info for 'other' (different inode than path).
+	orig := lstatFile
+	t.Cleanup(func() { lstatFile = orig })
+	lstatFile = func(string) (os.FileInfo, error) {
+		return otherInfo, nil
+	}
+
+	err = atomicWriteGitattributes(path, []byte("content"), 0o644)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "changed since lstat")
+}
+
+func TestWriteGitattributes_LstatNonENOENTError_ReturnsError(t *testing.T) {
+	orig := lstatFile
+	t.Cleanup(func() { lstatFile = orig })
+	lstatFile = func(string) (os.FileInfo, error) {
+		return nil, fmt.Errorf("mock lstat failure")
+	}
+	err := WriteGitattributes("/any/path", Globs{Include: []string{"*.md"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lstat")
+}
+
+func TestWriteGitattributesFile_LstatNonENOENTError_ReturnsError(t *testing.T) {
+	orig := lstatFile
+	t.Cleanup(func() { lstatFile = orig })
+	lstatFile = func(string) (os.FileInfo, error) {
+		return nil, fmt.Errorf("mock lstat failure")
+	}
+	err := writeGitattributesFile("/any/path", "content")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lstat")
+}
+
+func TestWriteGitattributes_ReadFileFails_ReturnsWrappedError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitattributes")
+	require.NoError(t, os.WriteFile(path, []byte("existing\n"), 0o644))
+
+	orig := readFile
+	t.Cleanup(func() { readFile = orig })
+	readFile = func(string) ([]byte, error) {
+		return nil, fmt.Errorf("mock read failure")
+	}
+
+	err := WriteGitattributes(path, Globs{Include: []string{"*.md"}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading")
+}
+
+func TestWriteGitattributes_RejectsDirectory(t *testing.T) {
+	// .gitattributes is a directory — the Lstat guard must reject it
+	// before any read or write is attempted.
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".gitattributes")
 	require.NoError(t, os.Mkdir(path, 0o755))
 
 	err := WriteGitattributes(path, Globs{Include: []string{"*.md"}})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "reading")
+	assert.Contains(t, err.Error(), "not a regular file")
 }
 
 func TestHookMatchesCanonical_RejectsCanonicalLinesInsideComments(t *testing.T) {
