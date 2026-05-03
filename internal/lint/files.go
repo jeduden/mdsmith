@@ -17,8 +17,32 @@ func isMarkdown(path string) bool {
 }
 
 // hasGlobChars returns true if the string contains glob meta-characters.
+// Brace expansion is only recognised when a brace group contains a comma
+// (e.g. {a,b}), so that literal filenames with braces (e.g. {draft}.md)
+// are not mistakenly routed through glob expansion.
 func hasGlobChars(s string) bool {
-	return strings.ContainsAny(s, "*?[{")
+	return strings.ContainsAny(s, "*?[") || hasBraceExpansion(s)
+}
+
+// hasBraceExpansion reports whether s contains at least one brace group
+// with a comma inside, indicating real doublestar brace expansion syntax.
+func hasBraceExpansion(s string) bool {
+	depth := 0
+	for _, c := range s {
+		switch c {
+		case '{':
+			depth++
+		case '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth > 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ResolveOpts controls how file resolution behaves.
