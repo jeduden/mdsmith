@@ -138,7 +138,6 @@ func TestValidateHard_AbsoluteOutput(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "relative path")
 }
 
-
 func TestValidateHard_EmptyRequiredParamValue(t *testing.T) {
 	r := ruleWithRender()
 	diags := r.validateHard("test.md", 1, map[string]string{
