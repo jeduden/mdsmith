@@ -245,6 +245,17 @@ func TestFixBlockquoteInsertsPrefix(t *testing.T) {
 	assert.Contains(t, out, "> ---\n>\n> More text.")
 }
 
+func TestFixListItemInsertsEmptyBlankLine(t *testing.T) {
+	// Thematic break indented inside a list item (blank line above avoids
+	// setext collision). Fix() inserts an empty blank line below. CommonMark
+	// does not require blank lines inside a list item to be indented — the
+	// subsequent indented line still belongs to the list item.
+	src := []byte("- item\n\n  ---\n  more text.\n")
+	f := newFile(t, "f.md", src)
+	out := string(newRule().Fix(f))
+	assert.Contains(t, out, "  ---\n\n  more text.")
+}
+
 func TestApplySettingsNonStringStyle(t *testing.T) {
 	r := newRule()
 	assert.Error(t, r.ApplySettings(map[string]any{"style": 42}))
