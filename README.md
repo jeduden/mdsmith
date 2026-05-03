@@ -150,7 +150,7 @@ ignore:
   - "vendor/**"
 
 overrides:
-  - files: ["CHANGELOG.md"]
+  - glob: ["CHANGELOG.md"]
     rules:
       no-duplicate-headings: false
 ```

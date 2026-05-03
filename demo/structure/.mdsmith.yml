@@ -2,7 +2,7 @@ rules:
   required-structure: true
 
 overrides:
-  - files: ["plan.md"]
+  - glob: ["plan.md"]
     rules:
       required-structure:
         schema: schema.md

@@ -12,7 +12,7 @@ kinds:
         max: 100
 
 kind-assignment:
-  - files: ["plan/*.md"]
+  - glob: ["plan/*.md"]
     kinds: [plan]
-  - files: ["prompt/*.md"]
+  - glob: ["prompt/*.md"]
     kinds: [prompt]
