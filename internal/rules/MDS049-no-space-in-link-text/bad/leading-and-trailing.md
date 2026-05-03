@@ -1,7 +1,7 @@
 ---
 diagnostics:
   - line: 3
-    column: 1
+    column: 2
     message: "link text has leading whitespace"
   - line: 3
     column: 7

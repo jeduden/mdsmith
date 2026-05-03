@@ -279,8 +279,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if first == ' ' || first == '\t' {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
-				Line:     f.LineOfOffset(s.open),
-				Column:   f.ColumnOfOffset(s.open),
+				Line:     f.LineOfOffset(s.open + 1),
+				Column:   f.ColumnOfOffset(s.open + 1),
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
