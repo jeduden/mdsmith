@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -478,14 +479,8 @@ func TestEnsurePreMergeCommitHook_CreatesExecutableHook(t *testing.T) {
 
 	data, err := os.ReadFile(hookPath)
 	require.NoError(t, err)
-	content := string(data)
-	assert.Contains(t, content, preMergeCommitHookMarker)
-	assert.Contains(t, content, "if ! '/usr/local/bin/mdsmith' fix .; then",
-		"hook must invoke the resolved mdsmith binary inside the exit-1-tolerant guard")
-	assert.Contains(t, content, `if [ "$status" -ne 1 ]; then`,
-		"hook must propagate exit codes other than 1 (unfixed diagnostics)")
-	assert.Contains(t, content, "git diff --name-only -- '*.md' '*.markdown'",
-		"hook must stage modified markdown files via the glob-based diff")
+	assert.Equal(t, githooks.BuildHookScript("/usr/local/bin/mdsmith"), string(data),
+		"installed hook must match the canonical template")
 }
 
 func TestEnsurePreMergeCommitHook_OverwritesManagedHook(t *testing.T) {
@@ -507,8 +502,8 @@ func TestEnsurePreMergeCommitHook_OverwritesManagedHook(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "stale content",
 		"managed hook must be replaced, not preserved")
-	assert.Contains(t, string(data), "fix .; then",
-		"replaced hook must use the glob-based template")
+	assert.Equal(t, githooks.BuildHookScript("/usr/local/bin/mdsmith"), string(data),
+		"replaced hook must match the canonical template")
 }
 
 func TestEnsurePreMergeCommitHook_SetsExecutableBitOnExistingHook(t *testing.T) {

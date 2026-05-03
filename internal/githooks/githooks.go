@@ -937,11 +937,18 @@ func BuildHookScript(exe string) string {
 		"# marked with merge=mdsmith in .gitattributes.\n" +
 		"set -e\n" +
 		"cd \"$(git rev-parse --show-toplevel)\"\n" +
-		"if ! " + shellQuote(exe) + " fix .; then\n" +
-		"  status=$?\n" +
-		"  if [ \"$status\" -ne 1 ]; then\n" +
-		"    exit \"$status\"\n" +
-		"  fi\n" +
+		"# `set +e` around the fix invocation so we can capture its\n" +
+		"# raw exit code. `if ! cmd; then status=$?; ...` looks\n" +
+		"# tempting, but POSIX `! cmd` returns the logical NOT of\n" +
+		"# cmd's exit status, so `$?` immediately after is 0 when\n" +
+		"# cmd exited 1 — and the `[ \"$status\" -ne 1 ]` guard\n" +
+		"# would then exit before the staging loop ever runs.\n" +
+		"set +e\n" +
+		shellQuote(exe) + " fix .\n" +
+		"status=$?\n" +
+		"set -e\n" +
+		"if [ \"$status\" -ne 0 ] && [ \"$status\" -ne 1 ]; then\n" +
+		"  exit \"$status\"\n" +
 		"fi\n" +
 		"git diff --name-only -- '*.md' '*.markdown' | " +
 		"while IFS= read -r f; do\n" +
@@ -966,8 +973,10 @@ func BuildHookScript(exe string) string {
 func HookMatchesCanonical(hook string) bool {
 	required := []string{
 		`cd "$(git rev-parse --show-toplevel)"`,
-		"fix .; then",
-		`if [ "$status" -ne 1 ]; then`,
+		"set +e",
+		" fix .",
+		"status=$?",
+		`if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then`,
 		"git diff --name-only -- '*.md' '*.markdown' |",
 		`while IFS= read -r f; do`,
 	}

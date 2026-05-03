@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1260,12 +1261,11 @@ func TestE2E_MergeDriver_Install(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		assert.NotZero(t, info.Mode()&0o111, "hook must be executable")
 	}
+	// The exact hook content is verified by the golden-file test in
+	// internal/githooks; here we confirm that install wrote a non-empty file.
 	hookData, err := os.ReadFile(hookPath)
 	require.NoError(t, err)
-	assert.Contains(t, string(hookData), "fix .; then",
-		"hook must invoke mdsmith fix . via the exit-1-tolerant guard; got:\n%s", hookData)
-	assert.Contains(t, string(hookData), "git diff --name-only -- '*.md' '*.markdown'",
-		"hook must stage modified markdown files via the glob-based diff")
+	assert.NotEmpty(t, hookData, "installed hook must not be empty")
 }
 
 func TestE2E_MergeDriver_Install_Idempotent(t *testing.T) {
@@ -1770,4 +1770,159 @@ func TestQuery_MaxInputSize_InvalidValue(t *testing.T) {
 		"query", "--max-input-size", "not-a-size", "id: 1", "a.md")
 	assert.Equal(t, 2, exitCode, "expected exit code 2 for invalid size")
 	assert.Contains(t, stderr, "invalid max-input-size")
+}
+
+// ── pre-merge-commit hook behavior ──────────────────────────────────────────
+//
+// Each test runs the installed hook script directly (as git would after
+// `git merge --no-commit`) and verifies one branch of the hook logic.
+
+// runHookScript executes .git/hooks/pre-merge-commit in dir and returns
+// its exit code.
+func runHookScript(t *testing.T, dir string) int {
+	t.Helper()
+	hookPath := filepath.Join(gitHooksDir(t, dir), "pre-merge-commit")
+	cmd := exec.Command(hookPath)
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
+		t.Fatalf("unexpected error running hook: %v", err)
+	}
+	return 0
+}
+
+// gitDiffNames returns the set of files shown by `git diff --name-only`
+// (working tree vs index) in dir — the same query the hook uses to decide
+// what to stage.
+func gitDiffNames(t *testing.T, dir string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "diff", "--name-only").Output()
+	require.NoError(t, err)
+	return strings.TrimSpace(string(out))
+}
+
+// TestE2E_PreMergeCommitHook_ExitZeroNothingStaged covers the branch
+// where mdsmith fix exits 0 and the working tree is already clean: the
+// staging loop runs but `git diff` finds nothing, so nothing is staged
+// and the hook exits 0.
+func TestE2E_PreMergeCommitHook_ExitZeroNothingStaged(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-merge-commit is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+	writeFixture(t, dir, "README.md", "# Title\n\nHello\n")
+	gitCommit(t, dir, "init")
+
+	_, _, code := runBinaryInDir(t, dir, "", "pre-merge-commit", "install")
+	require.Equal(t, 0, code, "pre-merge-commit install must succeed")
+
+	assert.Equal(t, 0, runHookScript(t, dir),
+		"hook must exit 0 when there is nothing to fix")
+	assert.Empty(t, gitDiffNames(t, dir),
+		"nothing should be staged when the working tree is already clean")
+}
+
+// TestE2E_PreMergeCommitHook_ExitZeroStagesFixed covers the branch
+// where mdsmith fix modifies files and exits 0 (all issues resolved):
+// the staging loop must detect the changed files and stage them.
+func TestE2E_PreMergeCommitHook_ExitZeroStagesFixed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-merge-commit is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+	writeFixture(t, dir, "README.md", "# Title\n\nHello\n")
+	gitCommit(t, dir, "init")
+
+	// Simulate post-merge index state: the merged file has trailing spaces.
+	writeFixture(t, dir, "README.md", "# Title\n\nHello   \n")
+	gitInDir(t, dir, "add", "README.md")
+
+	_, _, code := runBinaryInDir(t, dir, "", "pre-merge-commit", "install")
+	require.Equal(t, 0, code)
+
+	assert.Equal(t, 0, runHookScript(t, dir),
+		"hook must exit 0 when all issues are fixed")
+	assert.Empty(t, gitDiffNames(t, dir),
+		"hook must stage the fix so working tree and index match")
+
+	data, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# Title\n\nHello\n", string(data),
+		"mdsmith fix must have removed the trailing spaces")
+}
+
+// TestE2E_PreMergeCommitHook_ExitOneStagesFixed is the regression test
+// for the merge-queue bisect failure: when mdsmith exits 1 (unfixable
+// diagnostics remain), the staging loop must still run and stage the
+// files that fix did manage to clean up.
+func TestE2E_PreMergeCommitHook_ExitOneStagesFixed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-merge-commit is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+	writeFixture(t, dir, ".mdsmith.yml", "rules: {}\n")
+	writeFixture(t, dir, "README.md", "# Title\n\nHello\n")
+	gitCommit(t, dir, "init")
+
+	// File with a fixable issue (trailing space) AND an unfixable one
+	// (heading contains `!`, caught by a default rule), so fix exits 1.
+	writeFixture(t, dir, "README.md", "# Title!\n\nHello   \n")
+	gitInDir(t, dir, "add", "README.md")
+
+	_, _, code := runBinaryInDir(t, dir, "", "pre-merge-commit", "install")
+	require.Equal(t, 0, code)
+
+	assert.Equal(t, 0, runHookScript(t, dir),
+		"hook must exit 0 even when mdsmith fix exits 1 (unfixed diagnostics remain)")
+	assert.Empty(t, gitDiffNames(t, dir),
+		"hook must stage the fixable changes even when mdsmith fix exits 1")
+
+	data, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "Hello   ",
+		"trailing spaces must have been removed and staged")
+
+	// Confirm that unfixable diagnostics genuinely remain after the hook ran,
+	// which is what drives `mdsmith fix` to exit 1. If check exits 0 here the
+	// fixture no longer exercises the exit-1 branch and the test is vacuous.
+	_, _, checkCode := runBinaryInDir(t, dir, "", "check", ".")
+	assert.NotEqual(t, 0, checkCode,
+		"mdsmith check must still report diagnostics after the hook: "+
+			"the unfixable issue (heading punctuation) must remain so the "+
+			"test actually exercises the fix-exits-1 branch")
+}
+
+// TestE2E_PreMergeCommitHook_PropagatesHardError covers the branch
+// where mdsmith exits with a code other than 0 or 1 (fatal error). The
+// hook must propagate that code so the merge commit aborts.
+func TestE2E_PreMergeCommitHook_PropagatesHardError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pre-merge-commit is a POSIX shell script")
+	}
+	dir := t.TempDir()
+	gitInit(t, dir)
+
+	// Fake mdsmith that exits 2, simulating a fatal error (config parse
+	// failure, crash, etc.).
+	fakeMdsmith := filepath.Join(dir, "fake-mdsmith")
+	require.NoError(t, os.WriteFile(fakeMdsmith,
+		[]byte("#!/bin/sh\nexit 2\n"), 0o755))
+
+	hooksDir := gitHooksDir(t, dir)
+	require.NoError(t, os.MkdirAll(hooksDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(hooksDir, "pre-merge-commit"),
+		[]byte(githooks.BuildHookScript(fakeMdsmith)),
+		0o755,
+	))
+
+	assert.Equal(t, 2, runHookScript(t, dir),
+		"hook must propagate fatal exit codes (anything other than 0 or 1) to abort the merge")
 }
