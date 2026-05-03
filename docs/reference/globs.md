@@ -35,8 +35,10 @@ supports:
 - `[abc]` — character class
 - `{a,b}` — brace expansion (matches either `a` or `b`)
 
-On config and CLI surfaces, a pattern matches a file if
-it matches any of:
+On config surfaces, a pattern matches a file if it matches
+any of the following candidates. This applies to `ignore:`,
+`overrides:`, `kind-assignment:`, and rule settings such
+as `allowed:`, `include:`, `exclude:`, `budgets[].glob`.
 
 - the raw path as given (`docs/foo.md`),
 - the cleaned path (`docs/./foo.md` → `docs/foo.md`), or
@@ -45,8 +47,14 @@ it matches any of:
 Basename matching means a pattern like `CHANGELOG.md` (no
 slash) matches `CHANGELOG.md` in any directory.
 
-Note: the `<?catalog?>` directive uses `doublestar.Glob`
-for include patterns. It matches full relative paths only.
+CLI argument expansion uses `doublestar.FilepathGlob`
+directly — patterns are matched against the filesystem,
+not candidates derived from the path. A bare filename like
+`CHANGELOG.md` on the CLI is a literal path in the working
+directory, not a basename search.
+
+The `<?catalog?>` directive uses `doublestar.Glob` for
+include patterns. It matches full relative paths only.
 A bare filename like `CHANGELOG.md` finds only files in
 the catalog file's directory, not nested paths.
 
@@ -106,6 +114,19 @@ crossed path separators. The canonical `glob:` key uses
 `doublestar` semantics where `*` matches a single path
 component. Update patterns like `docs/guides/*.md` to
 `docs/guides/**/*.md` if they relied on that behavior.
+
+### Rule-level glob settings and `*` behavior
+
+Rule settings that accept glob patterns now use `doublestar`
+semantics. The affected settings are:
+
+- `token-budget.budgets[].glob`
+- `cross-file-reference-integrity.include` / `.exclude`
+- `duplicated-content.include` / `.exclude`
+- `directory-structure.allowed`
+
+Update any pattern that relied on `*` crossing path
+separators (old `gobwas/glob` behavior) to use `**`.
 
 ## Directive globs (`<?catalog?>`)
 
