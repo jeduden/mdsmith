@@ -55,13 +55,18 @@ type Builder interface {
 type Target struct {
     Recipe  string
     Params  map[string]string
-    Inputs  []string  // resolved absolute paths
-    Outputs []string  // resolved absolute paths
+    Root    string    // absolute project root
+    Inputs  []string  // project-root-relative, slash-normalized
+    Outputs []string  // project-root-relative, slash-normalized
 }
 ```
 
 The custom-recipe builder is the sole impl.
 One instance per recipe in `build.recipes`.
+Paths are stored relative so plan 103's
+ActionID is stable across clone locations;
+absolute paths are recomposed via
+`filepath.Join(target.Root, p)` at exec time.
 
 ### Argv tokenization
 

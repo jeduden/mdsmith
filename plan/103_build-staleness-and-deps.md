@@ -72,28 +72,33 @@ do not restate the recipe's own source file.
 
 ### ActionID
 
-The ActionID is sha256 of the concatenation
-of these fields. Each field is prefixed with
-its byte length (8 bytes big-endian). Fields,
-in order:
+The ActionID is sha256 over these fields,
+each prefixed with its byte length (8 bytes
+big-endian). Paths are project-root-
+relative. Symlinks are resolved first.
+Separators are normalized via
+`filepath.ToSlash`. Plan 115's `Target`
+carries the absolute `Root` separately. The
+ActionID is therefore stable across clones
+and platforms. Fields, in order:
 
 ```text
 recipe.command
 canonical(directive.params)         (sorted; per pair: len(key)|key|len(value)|value)
-canonical(sorted resolved inputs)   (per entry: len(path)|path)
+canonical(sorted relative inputs)   (per entry: len(path)|path)
 concat(sha256(content) per input, same order)
-canonical(sorted resolved outputs)  (per entry: len(path)|path)
+canonical(sorted relative outputs)  (per entry: len(path)|path)
 cache.version
 ```
 
 Every field has an outer 8-byte big-endian
-length prefix. Inside the param and path
-canonicalisations each key, value, and path
-is itself length-framed the same way. No
-separator byte is used. Two-layer length
-framing prevents collisions even when param
-keys contain `=` or `\0` and when filenames
-contain control bytes from hostile globs.
+length prefix; each key, value, and path
+inside the canonicalisations is itself
+length-framed. No separator byte is used.
+Two-layer framing prevents collisions even
+when param keys contain `=` or `\0` and
+when filenames contain control bytes from
+hostile globs.
 
 `cache.version` lets a future mdsmith
 release rev the schema and force a single
@@ -148,9 +153,9 @@ entry has:
   paths. Informational; the ActionID covers
   their content.
 - `action-id`: the length-framed sha256.
-- `recipe`, `built-at`: informational only.
-  Neither is part of the ActionID; neither
-  is consulted by the staleness check.
+- `recipe`, `built-at`: informational only;
+  neither is in the ActionID or consulted
+  by staleness.
 
 All paths are stored relative to the project
 root.
@@ -183,21 +188,18 @@ runs unless combined with `--build-only`.
 ### Interaction with plan 115
 
 - The build pass calls the staleness check
-  before invoking `Builder.Build`. Fresh
-  targets are skipped silently.
-- Per-target summary: `OK` (recipe ran and
-  succeeded), `FAIL` (recipe ran and failed),
-  `SKIP` (target was fresh).
-- `--build-dry-run` (plan 115) gains a
-  staleness verdict per target
-  (`STALE | FRESH`).
+  before `Builder.Build`; fresh targets are
+  skipped silently.
+- Per-target summary: `OK` (ran, succeeded),
+  `FAIL` (ran, failed), `SKIP` (was fresh).
+- `--build-dry-run` (plan 115) gains a per-
+  target verdict (`STALE | FRESH`).
 
 ### Out of scope
 
 Reverse dependency tracking, watch mode,
 cross-machine cache sharing, tool-version
-hashing. Parallel builds are tracked
-separately (plan 116).
+hashing. Parallel builds: plan 116.
 
 ## Tasks
 

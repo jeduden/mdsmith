@@ -71,9 +71,12 @@ build pass, not per directive.
 4. after[0], after[1], …             (in order, plan 104)
 ```
 
-Hooks are part of the build pass. `mdsmith
-fix --no-build` (plan 115) skips both hooks
-and recipes.
+Hooks are part of the build pass.
+`--no-build` (plan 115) skips the build pass
+and therefore both hook lists. `--build-only`
+(plan 115) skips step 1 (lint-fix) but still
+runs steps 2–4 in order — hooks bracket the
+recipe pass either way.
 
 ### Failure semantics
 
