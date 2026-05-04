@@ -148,11 +148,11 @@ entry has:
   at build time, used by staleness step 5.
 - `inputs[]`: sorted post-glob paths;
   informational (ActionID covers content).
-- `action-id`: the length-framed sha256
-  serialized as `sha256-<64 lowercase hex>`
-  — used as cache key, log filename
-  (`<action-id>.log`), and wire form. No
-  path-unsafe characters.
+- `action-id`: length-framed sha256
+  serialized as `sha256-<64 lowercase hex>`.
+  Stored as entry metadata (*not* the JSON
+  map key); used as log filename
+  (`<action-id>.log`) and on the wire.
 - `recipe`, `built-at`: informational only;
   neither is in the ActionID or consulted
   by staleness.

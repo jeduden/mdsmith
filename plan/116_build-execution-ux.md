@@ -75,14 +75,13 @@ run.
 
 Each cache entry (plan 103) carries an
 `action-id` whose log lives at
-`build-logs/<action-id>.log`. Logs survive
-until their entry is invalidated; a plan
-103 schema-version bump removes both.
-`--build-no-cache` writes logs but no entry,
-so at the start of the next `mdsmith fix`,
-mdsmith deletes any `build-logs/<id>.log`
-whose `<id>` matches no cache entry's
-`action-id` — bounding orphans to one run.
+`.mdsmith/build-logs/<action-id>.log`.
+Logs survive until their entry is
+invalidated; a schema-version bump removes
+both. `--build-no-cache` writes logs but
+no entry; the next `mdsmith fix` deletes
+any `.mdsmith/build-logs/<id>.log` whose
+`<id>` matches no entry's `action-id`.
 
 ### Failure diagnostic format
 
@@ -242,8 +241,9 @@ output (future, behind `--build-format json`).
 8. Wire log retention. Cache eviction
    deletes the matching log file. At the
    start of each `mdsmith fix`, delete any
-   `build-logs/<id>.log` whose `<id>` has
-   no cache entry; this clears orphans
+   `.mdsmith/build-logs/<id>.log` whose
+   `<id>` has no cache entry; this clears
+   orphans
    from a prior `--build-no-cache` run.
 9. Integration tests:
 

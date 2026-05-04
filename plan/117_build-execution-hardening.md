@@ -102,11 +102,11 @@ Plan 115's basic atomic write is replaced
 by:
 
 1. mdsmith `Lstat`s `.mdsmith/build-staging/`.
-   If absent, mdsmith creates it via
-   `os.MkdirAll` with mode `0o700`. If
-   present but a symlink or non-directory,
-   mdsmith refuses, blocking pre-replaced
-   staging roots.
+   If absent, it creates the directory and
+   `Chmod`s to `0o700` (umask would otherwise
+   filter `MkdirAll`'s mode). If present but
+   a symlink or non-directory, mdsmith
+   refuses.
 2. mdsmith refuses if
    `.mdsmith/build-staging/` is world-
    writable on Unix (`0o002` set); the
