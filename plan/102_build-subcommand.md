@@ -28,18 +28,17 @@ binary as separate argv arguments.
 ## Context
 
 Builds on plan 101 (the `<?build?>` directive
-and MDS039) and plan 100 (`build:` config and
-MDS040). Plan 115 wires targets through a
-`Builder` into `mdsmith fix`; plan 103 layers
-staleness on top.
+and MDS039) and plan 100 (`build:` config
+and MDS040). Plan 115 wires targets through
+a `Builder` into `mdsmith fix`; plan 103
+layers staleness.
 
-`output:` and `outputs:` are not both accepted.
-Clean break: no deprecation, no migration. The
-hard failure comes from `outputs:` being
-required (see "MDS039 update" below); a
-directive with only `output:` fails because
-`outputs:` is missing. MDS039 also warns on the
-stray `output:` as an unknown param.
+`output:` and `outputs:` are not both
+accepted. Clean break: no deprecation, no
+migration. A directive with only `output:`
+fails because `outputs:` is required (see
+"MDS039 update" below). MDS039 also warns
+on the stray `output:` as an unknown param.
 
 ## Design
 
@@ -63,15 +62,16 @@ outputs:
 `outputs:` requires at least one entry. An
 empty list is a diagnostic.
 
-`inputs:` may be empty (some recipes have no
-file inputs — e.g. a recipe that scrapes a
-remote URL). With no file inputs, plan 103's
-ActionID still covers the recipe spec and
-the sorted output paths; the target stays
-fresh until one of those changes. Plan 103's
-per-output content-hash check still catches
-tampered or hand-edited artifacts on the
-next run.
+`inputs:` may be empty when the recipe is a
+pure function of its config. Plan 103's
+ActionID still covers recipe spec and
+output paths.
+
+Empty `inputs:` is *not* right for recipes
+depending on remote state. The cache key
+is unstable. Use a synthetic input file the
+author touches to force a rebuild, or run
+`--build-force` on a schedule.
 
 Each entry in `outputs:` is a literal relative
 path. No globs. Every output must be a path the
@@ -148,9 +148,10 @@ allowlist before MDS039 accepts it:
   segments.
 - For `outputs:`: no glob characters
   (`*`, `?`, `[`). Outputs are literal paths.
-- For `inputs:` globs: `**` is allowed only
-  inside a path (not as the first segment) to
-  bound expansion at the project root.
+- For `inputs:`: full doublestar syntax per
+  `docs/reference/globs.md`, including
+  leading `**/`. Matches are bounded to the
+  project root (entries are relative).
 
 At build time (plan 115) the resolved path
 is re-checked against the project root.
@@ -219,14 +220,13 @@ the reserved names are not declared as params.
 
 ### Fixture and doc updates
 
-- `internal/rules/MDS039-build/good/`,
-  `bad/`, and `fixed/` fixtures are rewritten
-  for the new directive shape.
+- `internal/rules/MDS039-build/good/`, `bad/`,
+  and `fixed/` fixtures are rewritten for the
+  new directive shape.
 - `docs/guides/directives/build.md` documents
-  `outputs:` and `inputs:` and the once-per-
-  output body render. Sentences referring to
-  the old singular form are deleted, not
-  marked deprecated.
+  `outputs:`, `inputs:`, and the once-per-
+  output body render. The old singular form
+  is deleted outright, not marked deprecated.
 
 ## Tasks
 

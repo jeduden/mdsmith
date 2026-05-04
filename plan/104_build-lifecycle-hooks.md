@@ -82,7 +82,8 @@ and recipes.
   no `after` hooks. The lint-fix pass already
   ran; its results stand.
 - **Recipe fails**: finish the recipe pass
-  per plan 115's `OK | FAIL | SKIP` summary,
+  per plan 115's `OK | FAIL` summary (plan
+  103 adds `SKIP` once staleness lands),
   then run `after` hooks. Final exit non-zero.
 - **`after` fails**: print stderr and exit
   code, continue running remaining `after`

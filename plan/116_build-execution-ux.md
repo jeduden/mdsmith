@@ -169,12 +169,13 @@ makes `N>1` work:
 - The cache write happens in a single
   pass after all recipes finish.
 
-Plan 103 already errors on any overlap in
-declared `outputs:` paths. This covers exact
-collisions and directory-prefix collisions.
-Config validation thus satisfies the
-parallel-execution safety contract. Every
-pair of targets writes to disjoint paths.
+Plan 103 rejects any overlap in declared
+`outputs:` paths at target-graph load,
+after every `<?build?>` directive has been
+collected. It covers exact and directory-
+prefix collisions. A clean load guarantees
+disjoint output paths, so the parallel-
+safety contract holds for free.
 
 Output ordering: per-target lines (`OK`,
 `FAIL`, `SKIP`) print in the order
@@ -195,10 +196,9 @@ Extends the build-pass flag set:
 
 ### Out of scope
 
-Persistent worker processes. Remote cache
-sharing. IDE / LSP integration of build
-output. Structured JSON output (future,
-behind `--build-format json`).
+Persistent workers, remote cache sharing,
+IDE/LSP integration, structured JSON
+output (future, behind `--build-format json`).
 
 ## Tasks
 
