@@ -354,14 +354,14 @@ func TestE2E_MergeDriver_Install_OutsideGitRepo_ExitsTwo(t *testing.T) {
 
 func TestE2E_Check_HelpFlag(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "check", "--help")
-	assert.Equal(t, 2, exitCode, "expected exit 2 (pflag ContinueOnError), got %d", exitCode)
+	assert.Equal(t, 0, exitCode, "--help is a successful exit per pflag.ErrHelp")
 	assert.Contains(t, stderr, "Usage: mdsmith check",
 		"expected check usage text, got: %s", stderr)
 }
 
 func TestE2E_Fix_HelpFlag(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "fix", "--help")
-	assert.Equal(t, 2, exitCode, "expected exit 2 (pflag ContinueOnError), got %d", exitCode)
+	assert.Equal(t, 0, exitCode, "--help is a successful exit per pflag.ErrHelp")
 	assert.Contains(t, stderr, "Usage: mdsmith fix",
 		"expected fix usage text, got: %s", stderr)
 }
@@ -562,14 +562,14 @@ func TestE2E_Fix_UnknownFlag_ExitsTwo(t *testing.T) {
 
 func TestE2E_MetricsRank_HelpFlag(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "metrics", "rank", "--help")
-	assert.Equal(t, 2, exitCode, "expected exit 2 (pflag ContinueOnError), got %d", exitCode)
+	assert.Equal(t, 0, exitCode, "--help is a successful exit per pflag.ErrHelp")
 	assert.Contains(t, stderr, "Usage: mdsmith metrics rank",
 		"expected rank usage, got: %s", stderr)
 }
 
 func TestE2E_MetricsList_HelpFlag(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "metrics", "list", "--help")
-	assert.Equal(t, 2, exitCode, "expected exit 2 (pflag ContinueOnError), got %d", exitCode)
+	assert.Equal(t, 0, exitCode, "--help is a successful exit per pflag.ErrHelp")
 	assert.Contains(t, stderr, "Usage: mdsmith metrics list",
 		"expected list usage, got: %s", stderr)
 }
@@ -636,7 +636,7 @@ func TestE2E_HelpMetrics_ByID(t *testing.T) {
 
 func TestE2E_Init_HelpFlag(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "init", "--help")
-	assert.Equal(t, 2, exitCode, "expected exit 2 (pflag ContinueOnError), got %d", exitCode)
+	assert.Equal(t, 0, exitCode, "--help is a successful exit per pflag.ErrHelp")
 	assert.Contains(t, stderr, "Usage: mdsmith init",
 		"expected init usage, got: %s", stderr)
 }

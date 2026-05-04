@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -156,7 +157,9 @@ func runCheck(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: check"); code >= 0 {
+			return code
+		}
 	}
 
 	// --quiet suppresses verbose
@@ -217,7 +220,9 @@ func runFix(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: fix"); code >= 0 {
+			return code
+		}
 	}
 
 	// --quiet suppresses verbose
@@ -284,7 +289,9 @@ func parseQueryFlags(args []string) (queryOptions, []string, error) {
 func runQuery(args []string) int {
 	opts, posArgs, err := parseQueryFlags(args)
 	if err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: query"); code >= 0 {
+			return code
+		}
 	}
 
 	if len(posArgs) == 0 {
@@ -400,7 +407,9 @@ func runInit(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: init"); code >= 0 {
+			return code
+		}
 	}
 
 	if fs.NArg() > 0 {
@@ -895,6 +904,27 @@ func followSymlinksOverride(fs *flag.FlagSet, value bool) *bool {
 		return &v
 	}
 	return nil
+}
+
+// reportFlagParseErr converts an fs.Parse error into the
+// canonical CLI exit code while making sure the user sees WHY
+// parsing failed. pflag with ContinueOnError silently returns
+// the error from Parse — it does not write to fs.Output() — so
+// every subcommand that just `return 2`s on a parse error left
+// the user staring at a non-zero exit with nothing on stderr.
+//
+//   - nil           → -1 (caller continues)
+//   - flag.ErrHelp  →  0 (Usage was already printed by pflag)
+//   - any other err →  2 with `<prefix>: <err>` on stderr
+func reportFlagParseErr(err error, stderr io.Writer, prefix string) int {
+	if err == nil {
+		return -1
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		return 0
+	}
+	_, _ = fmt.Fprintf(stderr, "%s: %v\n", prefix, err)
+	return 2
 }
 
 // resolveMaxInputBytes returns the effective max-input-size in bytes.

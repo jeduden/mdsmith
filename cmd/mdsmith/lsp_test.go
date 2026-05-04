@@ -73,7 +73,12 @@ type lspPipe struct {
 
 func startLSPSubprocess(t *testing.T, ctx context.Context, binary string) *lspPipe {
 	t.Helper()
-	cmd := exec.CommandContext(ctx, binary, "lsp")
+	// Pass `--stdio` exactly like vscode-languageclient does for
+	// TransportKind.stdio. Without it, the subprocess wouldn't
+	// exercise the no-op flag we accept for compatibility, and a
+	// regression that broke flag acceptance (as it did before
+	// 4dbb669) would slip through this test.
+	cmd := exec.CommandContext(ctx, binary, "lsp", "--stdio")
 	cmd.Dir = repoRoot(t)
 	cmd.Env = envWithCoverDir(coverDir)
 	stdin, err := cmd.StdinPipe()

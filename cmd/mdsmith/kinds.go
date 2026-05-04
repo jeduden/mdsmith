@@ -86,10 +86,9 @@ func runKindsList(stdout io.Writer, args []string) int {
 		fmt.Fprintln(os.Stderr, "Usage: mdsmith kinds list [--json]")
 	}
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: kinds"); code >= 0 {
+			return code
 		}
-		return 2
 	}
 	if fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "mdsmith: kinds list takes no positional arguments")
@@ -139,10 +138,9 @@ func runKindsShow(stdout io.Writer, args []string) int {
 		fmt.Fprintln(os.Stderr, "Usage: mdsmith kinds show <name> [--json]")
 	}
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: kinds"); code >= 0 {
+			return code
 		}
-		return 2
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "mdsmith: kinds show requires exactly one kind name")
@@ -211,10 +209,9 @@ func runKindsPath(stdout io.Writer, args []string) int {
 		fmt.Fprintln(os.Stderr, "Usage: mdsmith kinds path <name>")
 	}
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: kinds"); code >= 0 {
+			return code
 		}
-		return 2
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "mdsmith: kinds path requires exactly one kind name")
@@ -320,10 +317,9 @@ func runKindsResolve(stdout io.Writer, args []string) int {
 		fmt.Fprintln(os.Stderr, "Usage: mdsmith kinds resolve <file> [--json]")
 	}
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: kinds"); code >= 0 {
+			return code
 		}
-		return 2
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "mdsmith: kinds resolve requires exactly one file argument")
@@ -354,10 +350,9 @@ func runKindsWhy(stdout io.Writer, args []string) int {
 		fmt.Fprintln(os.Stderr, "Usage: mdsmith kinds why <file> <rule> [--json]")
 	}
 	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: kinds"); code >= 0 {
+			return code
 		}
-		return 2
 	}
 	if fs.NArg() != 2 {
 		fmt.Fprintln(os.Stderr, "mdsmith: kinds why requires <file> and <rule>")

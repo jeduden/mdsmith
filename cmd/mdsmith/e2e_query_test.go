@@ -130,7 +130,7 @@ func TestE2E_Query_NoFileArgs_DefaultsCwd(t *testing.T) {
 
 func TestE2E_Query_HelpFlag(t *testing.T) {
 	_, stderr, exitCode := runBinary(t, "", "query", "--help")
-	assert.Equal(t, 2, exitCode)
+	assert.Equal(t, 0, exitCode, "--help is a successful exit per pflag.ErrHelp")
 	assert.Contains(t, stderr, "Usage: mdsmith query")
 }
 
