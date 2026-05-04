@@ -1,7 +1,7 @@
 ---
 id: 113
 title: User-defined Markdown conventions
-status: "🔲"
+status: "🔳"
 summary: >-
   Extend the convention system from plan 112 with a
   top-level `conventions:` block in `.mdsmith.yml`.
