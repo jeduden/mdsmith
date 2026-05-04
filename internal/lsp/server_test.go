@@ -1012,6 +1012,76 @@ func TestScheduleLintTimerRaceLeavesNewTimer(t *testing.T) {
 	s.stopPendingLints()
 }
 
+// TestShutdownRejectsLaterRequests pins the post-shutdown request
+// rejection: once `shutdown` has succeeded, any non-`exit` request
+// must respond with InvalidRequest instead of running through the
+// dispatch switch (LSP §3.16). Notifications are silently dropped.
+func TestShutdownRejectsLaterRequests(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	_, errResp = h.request("shutdown", nil)
+	require.Nil(t, errResp)
+	// Any request after shutdown must come back with InvalidRequest.
+	_, errResp = h.request("textDocument/codeAction", nil)
+	require.NotNil(t, errResp)
+	assert.Equal(t, codeInvalidRequest, errResp.Code)
+	assert.Contains(t, errResp.Message, "shutting down")
+}
+
+// TestScheduleLintImmediateCancelsPendingDebounce pins the
+// fast-path branch in scheduleLint: when an immediate trigger
+// (open/save/config) arrives while a didChange-armed debounce timer
+// is still pending for the same URI, the existing timer must be
+// stopped and removed so it cannot fire later and republish stale
+// diagnostics.
+func TestScheduleLintImmediateCancelsPendingDebounce(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All(), Debounce: 10 * time.Second})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n"),
+	})
+	// Arm a long debounced timer via a didChange-style trigger.
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	s.pendingMu.Lock()
+	require.Len(t, s.pending, 1)
+	s.pendingMu.Unlock()
+	// An immediate trigger (e.g. didOpen) must drop the pending
+	// timer rather than letting it linger.
+	s.scheduleLint("file:///x.md", lintTriggerOpen)
+	s.pendingMu.Lock()
+	assert.Empty(t, s.pending,
+		"immediate trigger should remove any pending debounce timer for the URI")
+	s.pendingMu.Unlock()
+}
+
+// TestScheduleLintTimerSkipsAfterShutdown pins the in-callback
+// shutdown re-check: a debounce timer that armed before shutdown
+// but fires after must not call runLint or publish diagnostics.
+func TestScheduleLintTimerSkipsAfterShutdown(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All(), Debounce: 5 * time.Millisecond})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	// Flip shutdown before the timer can fire so the callback's
+	// re-check returns early.
+	s.shutdown.Store(true)
+	// Wait long enough for the timer to elapse.
+	time.Sleep(50 * time.Millisecond)
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"a timer firing after shutdown must not publish diagnostics")
+}
+
 func TestRunReturnsAfterShutdownPlusExit(t *testing.T) {
 	t.Parallel()
 	srvIn, clientWriter := io.Pipe()

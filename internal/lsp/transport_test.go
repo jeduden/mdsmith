@@ -200,6 +200,17 @@ func TestWriteJSONPreservesFirstError(t *testing.T) {
 	assert.Same(t, errPtr(first), errPtr(tr.WriteError()))
 }
 
+// TestRecordWriteErrIgnoresNil pins the early-return guard:
+// recordWriteErr(nil) must not stash a sentinel-typed nil under
+// the atomic pointer (which would make WriteError() return a
+// non-nil error from a nil error value via interface wrapping).
+func TestRecordWriteErrIgnoresNil(t *testing.T) {
+	t.Parallel()
+	tr := newTransport(strings.NewReader(""), io.Discard)
+	tr.recordWriteErr(nil)
+	assert.NoError(t, tr.WriteError())
+}
+
 // errPtr lets the test assert pointer-identity on error values.
 func errPtr(e error) any { return e }
 
