@@ -1,9 +1,9 @@
 ---
 id: 128
 title: Reject undefined reference-link labels
-status: "🔲"
+status: "✅"
 summary: >-
-  New rule MDS052 that flags reference-style links and
+  New rule MDS054 that flags reference-style links and
   images whose label has no matching link reference
   definition in the file. Closes the parity gap with
   markdownlint MD052 and catches a class of broken link
@@ -48,9 +48,9 @@ stylistic policy. Some projects opt out (including
 the comparison page in this repo) because reference
 style keeps wide tables readable.
 
-MDS052 must work *with* reference-style links by
+MDS054 must work *with* reference-style links by
 verifying their labels resolve. The two rules compose.
-Plan 107 lets you ban reference style; MDS052 lets
+Plan 107 lets you ban reference style; MDS054 lets
 projects that allow reference style catch typos.
 
 ### CommonMark normalization
@@ -162,9 +162,9 @@ reference definition
 3. Implement `rule.Configurable` for `shortcut` and
    `placeholders`.
 4. Implement `rule.Defaultable` returning `true`.
-5. Register as MDS052 in category `link`.
+5. Register as MDS054 in category `link`.
 6. Add fixture tests in
-   `internal/rules/MDS052-no-undefined-reference-labels/`
+   `internal/rules/MDS054-no-undefined-reference-labels/`
    covering: matching full reference (clean), matching
    collapsed reference (clean), matching shortcut
    (clean), undefined full reference (flagged),
@@ -186,38 +186,38 @@ reference definition
 
 ## Acceptance Criteria
 
-- [ ] `[a][b]` with `[b]: url` defined emits no
+- [x] `[a][b]` with `[b]: url` defined emits no
       diagnostic.
-- [ ] `[b][]` with `[b]: url` defined emits no
+- [x] `[b][]` with `[b]: url` defined emits no
       diagnostic.
-- [ ] `[b]` with `[b]: url` defined emits no
+- [x] `[b]` with `[b]: url` defined emits no
       diagnostic.
-- [ ] `[a][b]` with no `[b]: ...` definition emits one
+- [x] `[a][b]` with no `[b]: ...` definition emits one
       diagnostic on the link position.
-- [ ] `[b][]` with no `[b]: ...` definition emits one
+- [x] `[b][]` with no `[b]: ...` definition emits one
       diagnostic.
-- [ ] `[plan128]` with no definition emits a
+- [x] `[plan128]` with no definition emits a
       diagnostic under `shortcut: heuristic` because
       the label looks like a reference target.
-- [ ] `[just brackets]` in prose emits no diagnostic
+- [x] `[just brackets]` in prose emits no diagnostic
       under `shortcut: heuristic`.
-- [ ] `[Foo Bar]` resolves to `[foo bar]: ...`
+- [x] `[Foo Bar]` resolves to `[foo bar]: ...`
       (CommonMark-normalized).
-- [ ] A label listed in `placeholders` is never
+- [x] A label listed in `placeholders` is never
       flagged regardless of definition state.
-- [ ] Reference-style links inside code spans, fenced
+- [x] Reference-style links inside code spans, fenced
       code, indented code, and `<?...?>` PI blocks are
       not flagged.
-- [ ] Re-running the rule on
+- [x] Re-running the rule on
       `docs/background/markdown-linters.md` (with a
       deliberately undefined `[plan999]` reference)
       flags exactly one diagnostic; removing the
       reference makes the file clean again.
-- [ ] Rule is enabled by default in the standard
+- [x] Rule is enabled by default in the standard
       convention.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes on the repo.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes on the repo.
 
 ## See also
 

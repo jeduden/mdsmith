@@ -1,11 +1,11 @@
 ---
 id: 124
 title: No space inside code spans rule
-status: "🔲"
+status: "✅"
 summary: >-
-  New rule MDS048 that flags inline code spans with
+  New rule MDS052 that flags inline code spans with
   leading or trailing whitespace inside the backticks
-  (`` ` x ` `` instead of `` `x` ``). Closes the gap
+  (e.g. `` ` x` `` or `` `x ` ``). Closes the gap
   with markdownlint MD038.
 model: sonnet
 ---
@@ -57,20 +57,19 @@ enforce.
 
 Walk `*ast.CodeSpan`. For each node:
 
-1. Read the span's source bytes (between the
-   delimiters).
-2. If both the first and last byte are a single
-   ASCII space and no other whitespace is present at
-   the boundaries, treat as the CommonMark
-   single-space-trim case and skip.
-3. Otherwise, if the bytes start with whitespace,
+1. Inspect goldmark's post-CommonMark-trim text
+   segment (the bytes the AST records after stripping
+   one space from each side when both sides have a
+   space and the content is not all-whitespace).
+2. If the segment's first byte is ASCII whitespace,
    emit `code span has leading whitespace`.
-4. If the bytes end with whitespace, emit `code
-   span has trailing whitespace`.
+3. If the segment's last byte is ASCII whitespace,
+   emit `code span has trailing whitespace`.
 
-Tabs, newlines, and runs of two or more spaces at
-either boundary always emit. The single-space-trim
-exception only covers one ASCII space on each side.
+Using the post-trim segment avoids false positives.
+For `` `  x ` ``, CommonMark strips one space from
+each side, leaving one visible leading space — not
+two.
 
 ### Auto-fix
 
@@ -88,41 +87,44 @@ code span has trailing whitespace
 
 ## Tasks
 
-1. Scaffold `internal/rules/nospaceincodespans/` with
+1. [x] Scaffold `internal/rules/nospaceincodespans/` with
    `rule.go`, `rule_test.go`, and the `init()`
    `rule.Register` call.
-2. Implement `Check()` walking `*ast.CodeSpan` and
-   reading the raw source bytes between delimiters.
-3. Implement `Fix()` that trims whitespace inside the
+2. [x] Implement `Check()` walking `*ast.CodeSpan` and
+   inspecting goldmark's post-CommonMark-trim segment to detect
+   whitespace that is visible after rendering (not the raw source bytes).
+3. [x] Implement `Fix()` that trims whitespace inside the
    delimiters while preserving backtick count.
-4. Implement `rule.Defaultable` returning `false`.
-5. Register as MDS048 in category `whitespace`.
-6. Add fixture tests in
-   `internal/rules/MDS048-no-space-in-code-spans/`
+4. [x] Implement `rule.Defaultable` returning `false`.
+5. [x] Register as MDS052 in category `whitespace` (MDS048 was taken by
+   `git-hook-sync`; MDS049–MDS051 taken by rules merged to main first).
+6. [x] Add fixture tests in
+   `internal/rules/MDS052-no-space-in-code-spans/`
    covering: balanced single space (legal), leading
    space, trailing space, both-side double space,
-   tab, newline-inside (rare), and the empty-after-
-   trim edge case.
-7. Add rule README following the MDS012 template.
+   tab, and the empty-after-trim edge case.
+7. [x] Add rule README following the MDS012 template.
 
 ## Acceptance Criteria
 
-- [ ] `` `x` `` emits no diagnostic.
-- [ ] `` ` x ` `` (balanced single space) emits no
+- [x] `` `x` `` emits no diagnostic.
+- [x] `` ` x ` `` (balanced single space) emits no
       diagnostic.
-- [ ] `` ` x` `` emits one leading-whitespace
+- [x] `` ` x` `` emits one leading-whitespace
       diagnostic and fixes to `` `x` ``.
-- [ ] `` `x ` `` emits one trailing-whitespace
+- [x] `` `x ` `` emits one trailing-whitespace
       diagnostic and fixes to `` `x` ``.
-- [ ] `` `  x  ` `` (double space each side) emits
+- [x] `` `  x  ` `` (double space each side) emits
       both diagnostics and fixes to `` `x` ``.
-- [ ] `` `\tx` `` (leading tab) emits a leading-
+- [x] `` `\tx` `` (leading tab) emits a leading-
       whitespace diagnostic.
-- [ ] An empty-after-trim span (e.g. `` `   ` ``)
+- [x] An empty-after-trim span (e.g. `` `   ` ``)
       emits diagnostics but is not auto-fixed.
-- [ ] Rule is disabled by default.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes on the repo with the
+- [x] Rule is disabled by default.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes on the repo with the
       rule disabled (no regression for existing
       docs).
+
+[md038]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md

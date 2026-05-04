@@ -25,8 +25,8 @@ to definitions whose URL points at a now-missing file:
 without a usage to anchor MDS027 to, the broken target
 is invisible.
 
-This rule complements [MDS052][mds052-plan]
-(no-undefined-reference-labels). MDS052 catches
+This rule complements [MDS054][mds054-plan]
+(no-undefined-reference-labels). MDS054 catches
 references with no definition. MDS053 catches
 definitions with no reference. Together they keep the
 two halves of the reference-link table in sync.
@@ -41,7 +41,7 @@ nodes. goldmark exposes link reference definitions via
 `parser.Context.Reference(label)`. It never emits an
 AST node for an *unused* definition. MDS027 cannot
 see it. A typo in the consuming reference (caught by
-MDS052) leaves the definition orphaned. This rule
+MDS054) leaves the definition orphaned. This rule
 flags the orphan so the user notices.
 
 The same pattern surfaces in
@@ -90,7 +90,7 @@ override layer); document this next to the
 ### Detection
 
 1. Re-parse with `lint.NewParser()` so PI blocks are
-   skipped consistently with MDS052 and the TOC
+   skipped consistently with MDS054 and the TOC
    directive.
 2. Collect every link reference definition by walking
    the document. goldmark stores definitions in the
@@ -204,7 +204,7 @@ first defined on line 42
 
 [md053]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md
 [mds027]: ../internal/rules/MDS027-cross-file-reference-integrity/README.md
-[mds052-plan]: 128_no-undefined-reference-labels.md
+[mds054-plan]: 128_no-undefined-reference-labels.md
 [plan107]: 107_no-reference-style.md
 [plan128]: 128_no-undefined-reference-labels.md
 [config-merge]: ../docs/development/index.md

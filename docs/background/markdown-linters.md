@@ -249,32 +249,33 @@ Weaknesses:
 | Emphasis style      | planned ([plan 106][plan106])  | [MD049][md049], [MD050][md050]           | [emphasis-marker][rl-em]                          |
 | HR style            | planned ([plan 108][plan108])  | [MD035][md035]                           | [rule-style][rl-rs]                               |
 | Ambiguous emphasis  | planned ([plan 111][plan111])  | [MD037][md037]                           | no                                                |
-| Space in code       | planned ([plan 124][plan124])  | [MD038][md038]                           | no                                                |
-| Space in links      | planned ([plan 125][plan125])  | [MD039][md039]                           | no                                                |
-| Proper names        | planned ([plan 126][plan126])  | [MD044][md044]                           | no                                                |
+| Space in code       | [MDS052][mds052]               | [MD038][md038]                           | no                                                |
+| Space in links      | [MDS049][mds049]               | [MD039][md039]                           | no                                                |
+| Proper names        | [MDS050][mds050]               | [MD044][md044]                           | no                                                |
 | Required headings   | [MDS020][mds020] (via schema)  | [MD043][md043]                           | no                                                |
-| Single H1           | planned ([plan 127][plan127])  | [MD047][md047]                           | no                                                |
+| Single H1           | [MDS051][mds051]               | [MD025][md025]                           | no                                                |
 | Link fragments      | [MDS027][mds027] (cross-file)  | [MD051][md051]                           | no                                                |
-| Forbid ref-style    | planned ([plan 107][plan107])  | no                                       | no                                                |
+| Forbid ref-style    | [MDS043][mds043]               | no                                       | no                                                |
 | Undefined ref label | planned ([plan 128][plan128])  | [MD052][md052]                           | no                                                |
-| Unused/dup ref def  | planned ([plan 129][plan129])  | [MD053][md053]                           | no                                                |
+| Unused/dup ref def  | [MDS053][mds053]               | [MD053][md053]                           | no                                                |
 
 All three cover core structural rules. markdownlint has
 the broadest rule set. Plans cover inline HTML
 ([plan 105][plan105]), UL marker style
 ([plan 109][plan109]), emphasis style
 ([plan 106][plan106]), and HR style
-([plan 108][plan108]). More plans cover ambiguous
-emphasis ([plan 111][plan111]), reference-style links
-([plan 107][plan107]), no-space-in-code-spans
-([plan 124][plan124]), no-space-in-link-text
-([plan 125][plan125]), proper names
-([plan 126][plan126]), single H1
-([plan 127][plan127]), undefined reference labels
-([plan 128][plan128]), and unused link reference
-definitions ([plan 129][plan129]).
-Image alt text ([MDS032][mds032]) and OL numbering
-([MDS046][mds046]) are already implemented.
+([plan 108][plan108]). More plans cover ambiguous emphasis
+([plan 111][plan111]) and undefined reference labels
+([plan 128][plan128]).
+Image alt text ([MDS032][mds032]), OL numbering
+([MDS046][mds046]), no-space-in-code-spans
+([MDS052][mds052], [plan 124][plan124]),
+no-space-in-link-text ([MDS049][mds049]),
+proper names ([MDS050][mds050]), single H1
+([MDS051][mds051]), no-reference-style
+([MDS043][mds043]), and unused link reference
+definitions ([MDS053][mds053]) are already
+implemented.
 
 ### Prose and Readability
 
@@ -597,7 +598,6 @@ items most relevant to this comparison are:
 - **Closing rule gaps with markdownlint** — plans
   [105][plan105] (no-inline-html / MD033),
   [106][plan106] (emphasis style / MD049, MD050),
-  [107][plan107] (no reference-style links),
   [108][plan108] (horizontal rule style / MD035),
   [109][plan109] (list marker style / MD004), and
   [111][plan111] (ambiguous emphasis / MD037).
@@ -639,9 +639,15 @@ you need a stable rule set while these land.
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds030]: ../../internal/rules/MDS030-empty-section-body/README.md
 [mds032]: ../../internal/rules/MDS032-no-empty-alt-text/README.md
+[mds043]: ../../internal/rules/MDS043-no-reference-style/README.md
 [mds035]: ../../internal/rules/MDS035-toc-directive/README.md
 [mds038]: ../../internal/rules/MDS038-toc/README.md
 [mds046]: ../../internal/rules/MDS046-ordered-list-numbering/README.md
+[mds049]: ../../internal/rules/MDS049-no-space-in-link-text/README.md
+[mds050]: ../../internal/rules/MDS050-proper-names/README.md
+[mds051]: ../../internal/rules/MDS051-single-h1/README.md
+[mds052]: ../../internal/rules/MDS052-no-space-in-code-spans/README.md
+[mds053]: ../../internal/rules/MDS053-no-unused-link-definitions/README.md
 <!-- markdownlint links -->
 [markdownlint]: https://github.com/DavidAnson/markdownlint
 [markdownlint-cli2]: https://github.com/DavidAnson/markdownlint-cli2
@@ -669,7 +675,6 @@ you need a stable rule set while these land.
 [md043]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md043.md
 [md044]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md044.md
 [md045]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md045.md
-[md047]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md047.md
 [md048]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md048.md
 [md049]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md049.md
 [md050]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md050.md
@@ -747,15 +752,10 @@ you need a stable rule set while these land.
 [plan104]: ../../plan/104_build-lifecycle-hooks.md
 [plan105]: ../../plan/105_no-inline-html.md
 [plan106]: ../../plan/106_emphasis-style.md
-[plan107]: ../../plan/107_no-reference-style.md
 [plan108]: ../../plan/108_horizontal-rule-style.md
 [plan109]: ../../plan/109_list-marker-style.md
 [plan111]: ../../plan/111_ambiguous-emphasis.md
 [plan113]: ../../plan/113_user-defined-profiles.md
 [plan120]: ../../plan/120_glob-unification.md
 [plan124]: ../../plan/124_no-space-in-code-spans.md
-[plan125]: ../../plan/125_no-space-in-link-text.md
-[plan126]: ../../plan/126_proper-names.md
-[plan127]: ../../plan/127_single-h1.md
 [plan128]: ../../plan/128_no-undefined-reference-labels.md
-[plan129]: ../../plan/129_no-unused-link-definitions.md

@@ -169,3 +169,5 @@ proper name "{actual}" should be "{configured}"
 - [x] `mdsmith check .` passes on the repo with the
       rule disabled (no regression for existing
       docs).
+
+[md044]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md044.md

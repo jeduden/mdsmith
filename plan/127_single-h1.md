@@ -5,7 +5,7 @@ status: "✅"
 summary: >-
   New rule MDS051 that requires at most one top-level
   H1 heading per Markdown file. Closes the gap with
-  markdownlint MD025/MD047 and complements MDS004
+  markdownlint MD025 and complements MDS004
   (first-line-heading) by catching extra H1s further
   down the document.
 model: sonnet
@@ -149,3 +149,8 @@ h1 heading conflicts with front-matter title
 - [x] `mdsmith check .` passes on the repo with the
       rule disabled (no regression for existing
       docs).
+
+[md025]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md
+[mds003]: ../internal/rules/MDS003-heading-increment/README.md
+[mds004]: ../internal/rules/MDS004-first-line-heading/README.md
+[mds005]: ../internal/rules/MDS005-no-duplicate-headings/README.md

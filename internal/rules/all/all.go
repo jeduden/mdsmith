@@ -38,6 +38,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/include"                     // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"                  // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/listindent"                  // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/listmarkerstyle"             // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"              // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/maxfilelength"               // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/maxsectionlength"            // registers rule
@@ -49,9 +50,11 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/noinlinehtml"                // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/nomultipleblanks"            // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/noreferencestyle"            // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/nospaceincodespans"          // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/nospaceinlinktext"           // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"       // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"            // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/noundefinedreferencelabels"  // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/nounusedlinkdefinitions"     // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/orderedlistnumbering"        // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/paragraphreadability"        // registers rule
