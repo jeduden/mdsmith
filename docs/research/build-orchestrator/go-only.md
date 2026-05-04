@@ -200,7 +200,11 @@ $ mdsmith targets --json
 
 That output is enough for any orchestrator to generate a
 Taskfile.yml, a Makefile, or a Justfile that invokes
-`mdsmith fix --build-only --build-recipe NAME` per target.
+`mdsmith fix --build-only --build-recipe NAME` per
+recipe. Per-target invocation (running a single
+directive in isolation) would need a path-based
+selector that mdsmith does not yet expose; the side
+door treats one recipe as the smallest unit.
 
 ### User-facing flow
 

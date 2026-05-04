@@ -227,18 +227,18 @@ output (future, behind `--build-format json`).
    after path normalization). No match
    exits non-zero with "no target named X".
    Plan 103's overlap rule rules out
-   ambiguity at config load.
+   ambiguity at target-graph load.
 6. Implement `--build-verify`: run each
    recipe twice in independent staging
    dirs (plan 117), `diff` outputs,
    warn and set the `unstable` cache
    flag on mismatch.
-7. Implement `--build-jobs N`:
-   concurrent recipe execution behind a
-   work-pool. Plan 103 already rejects
-   overlapping `outputs:` at config load,
-   so the work-pool may dispatch any pair
-   of targets in parallel.
+7. Implement `--build-jobs N`: concurrent
+   recipe execution behind a work-pool.
+   Plan 103 already rejects overlapping
+   `outputs:` at target-graph load, so the
+   work-pool may dispatch any pair of
+   targets in parallel.
 8. Wire log retention. Cache eviction
    deletes the matching log file. At the
    start of each `mdsmith fix`, delete any
@@ -306,8 +306,8 @@ output (future, behind `--build-format json`).
 - [ ] `--build-jobs N` (default 1) runs
       up to N recipes concurrently;
       overlapping `outputs:` paths are
-      already rejected at config load
-      (plan 103)
+      already rejected at target-graph
+      load (plan 103)
 - [ ] Cache eviction deletes the matching
       log file; orphan logs from a prior
       `--build-no-cache` run are deleted at

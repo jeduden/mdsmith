@@ -86,10 +86,11 @@ The basic contract (plan 117 hardens it):
 4. On failure, the temp dir is removed; no
    declared output is touched.
 
-Plan 117 adds the security hardening:
-trust gate, hermetic env, `O_EXCL`
-staging, output post-conditions, and
-process-group kill on timeout.
+Plan 117 adds the security hardening.
+That covers the trust gate, hermetic env,
+hardened staging dir, output post-
+conditions, and process-group kill on
+timeout.
 
 ### Wiring into `mdsmith fix`
 
