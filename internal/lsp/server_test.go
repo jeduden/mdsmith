@@ -909,16 +909,15 @@ func TestToLSPEmptyLineProducesZeroWidthRange(t *testing.T) {
 		"empty line should produce a zero-width range, not extend past the line")
 }
 
-func TestUtf16ColumnTreatsInvalidRunesAsOneUnit(t *testing.T) {
+func TestUtf16FromByteOffsetInvalidRunes(t *testing.T) {
 	t.Parallel()
-	// Unpaired high surrogate (\uD800). Go's range over a string
-	// yields utf8.RuneError for invalid sequences, which has
-	// RuneLen 1 — but we want to make sure the helper never adds a
-	// negative width even when an actual lone surrogate sneaks in
-	// via the rune literal.
-	s := string([]rune{0xD800, 'a'})
-	got := utf16Column(s, 2)
-	assert.Positive(t, got, "utf16Column must stay non-negative on invalid runes")
+	// `string([]rune{0xD800, 'a'})` produces a UTF-8 sequence
+	// containing utf8.RuneError; the helper must keep counting and
+	// must not drop below zero even when utf16.RuneLen returns -1
+	// for the offending rune.
+	line := []byte(string([]rune{0xD800, 'a'}))
+	got := utf16FromByteOffset(line, len(line))
+	assert.Positive(t, got, "utf16FromByteOffset must stay non-negative on invalid runes")
 }
 
 func TestDispatchRawInvalidJSONRespondsWithParseError(t *testing.T) {
@@ -1613,13 +1612,13 @@ func TestSeverityForMappings(t *testing.T) {
 	assert.Equal(t, severityError, severityFor("note"))
 }
 
-func TestCurrentLineOutOfRange(t *testing.T) {
+func TestCurrentLineBytesOutOfRange(t *testing.T) {
 	t.Parallel()
 	lines := [][]byte{[]byte("first"), []byte("second")}
-	assert.Equal(t, "first", currentLine(lines, 1))
-	assert.Equal(t, "second", currentLine(lines, 2))
-	assert.Equal(t, "", currentLine(lines, 0))
-	assert.Equal(t, "", currentLine(lines, 99))
+	assert.Equal(t, []byte("first"), currentLineBytes(lines, 1))
+	assert.Equal(t, []byte("second"), currentLineBytes(lines, 2))
+	assert.Nil(t, currentLineBytes(lines, 0))
+	assert.Nil(t, currentLineBytes(lines, 99))
 }
 
 func TestSplitLines(t *testing.T) {
@@ -1638,13 +1637,56 @@ func TestSplitLines(t *testing.T) {
 	assert.Equal(t, [][]byte{[]byte("a"), []byte("b")}, splitLines([]byte("a\r\nb")))
 }
 
-func TestUtf16ColumnSurrogatePair(t *testing.T) {
+func TestUtf16FromByteOffsetSurrogatePair(t *testing.T) {
 	t.Parallel()
-	// A non-BMP rune (\U0001F600 — 😀) takes two UTF-16 code units.
-	// utf16Column at rune 1 should report 2.
-	assert.Equal(t, 0, utf16Column("😀x", 0))
-	assert.Equal(t, 2, utf16Column("😀x", 1))
-	assert.Equal(t, 3, utf16Column("😀x", 2))
+	// A non-BMP rune (\U0001F600 — 😀) is encoded as 4 UTF-8 bytes
+	// and 2 UTF-16 code units. The trailing 'x' is one of each.
+	line := []byte("😀x")
+	assert.Equal(t, 0, utf16FromByteOffset(line, 0))
+	assert.Equal(t, 2, utf16FromByteOffset(line, 4)) // after the emoji
+	assert.Equal(t, 3, utf16FromByteOffset(line, 5)) // after the 'x'
+	// Out-of-range byte offsets clamp to the line's UTF-16 length
+	// rather than overflowing.
+	assert.Equal(t, 3, utf16FromByteOffset(line, 999))
+}
+
+func TestUtf16FromByteOffsetClampsNegative(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 0, utf16FromByteOffset([]byte("hello"), -1))
+}
+
+// TestToLSPMultiByteRuneBeforeColumn pins the byte-vs-rune fix for
+// lint.Diagnostic.Column. The column is a 1-based UTF-8 byte
+// position, so a diagnostic anchored "after the é" must report a
+// UTF-16 character offset that accounts for the 2-byte encoding of
+// é but only 1 UTF-16 unit. Treating Column as a rune offset would
+// have produced character 2 (off by one too far) in this scenario.
+func TestToLSPMultiByteRuneBeforeColumn(t *testing.T) {
+	t.Parallel()
+	// "é" is 0xC3 0xA9 in UTF-8 (2 bytes, 1 UTF-16 unit). The 'x'
+	// starts at byte offset 2 → mdsmith Column = 3 (1-based).
+	line := []byte("éx")
+	got := toLSP(
+		lint.Diagnostic{Line: 1, Column: 3, RuleID: "MDS001", Severity: lint.Error},
+		[][]byte{line},
+	)
+	assert.Equal(t, 1, got.Range.Start.Character,
+		"Column 3 (byte offset 2 = after é) should map to UTF-16 character 1")
+}
+
+// TestToLSPSurrogatePairBeforeColumn pins the same byte-offset
+// contract for runes that take 2 UTF-16 code units (non-BMP).
+func TestToLSPSurrogatePairBeforeColumn(t *testing.T) {
+	t.Parallel()
+	// "😀" is 4 UTF-8 bytes / 2 UTF-16 units. Column 5 = byte
+	// offset 4 = after the emoji.
+	line := []byte("😀x")
+	got := toLSP(
+		lint.Diagnostic{Line: 1, Column: 5, RuleID: "MDS001", Severity: lint.Error},
+		[][]byte{line},
+	)
+	assert.Equal(t, 2, got.Range.Start.Character,
+		"after a non-BMP rune the start character should advance by 2 UTF-16 units")
 }
 
 func TestFrontMatterEnabledExplicit(t *testing.T) {

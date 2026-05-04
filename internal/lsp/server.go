@@ -764,8 +764,7 @@ func documentEndPosition(source []byte) (int, int) {
 	if len(lines) == 0 {
 		return 0, 0
 	}
-	last := string(lines[len(lines)-1])
-	return len(lines) - 1, utf16Column(last, runeLen(last))
+	return len(lines) - 1, utf16Length(lines[len(lines)-1])
 }
 
 // snapshotConfig returns the cached config, its source path, and the

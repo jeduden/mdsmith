@@ -3,6 +3,7 @@ package lsp
 import (
 	"bytes"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 )
@@ -10,26 +11,27 @@ import (
 // toLSP converts an mdsmith diagnostic to the LSP wire shape.
 //
 // Coordinates flip from 1-based (mdsmith) to 0-based (LSP). The end
-// column is derived from the source so the squiggle covers the
-// remainder of the line; rules can later widen this with their own
-// per-rule end column once LSP-aware spans land in the engine.
+// column is set to the line's UTF-16 length so the squiggle covers
+// the remainder of the line; rules can later widen this with their
+// own per-rule end column once LSP-aware spans land in the engine.
 //
-// LSP positions count UTF-16 code units, not bytes. mdsmith
-// columns are 1-based rune offsets, so we convert by counting
-// UTF-16 units up to the rune at the diagnostic column.
+// LSP positions count UTF-16 code units. mdsmith's
+// `lint.Diagnostic.Column` is a 1-based UTF-8 byte column (see
+// `lint.File.ColumnOfOffset`, which derives column from byte offsets
+// inside the source). We convert by walking the line's bytes,
+// summing the UTF-16 width of every rune we cross until we reach
+// the byte offset that maps to `Column-1`. This matters for any
+// document containing non-ASCII text — treating Column as a rune
+// offset would misplace the squiggle by N-1 positions for every
+// preceding rune that takes N>1 bytes.
 func toLSP(d lint.Diagnostic, lines [][]byte) Diagnostic {
 	startLine := d.Line - 1
 	if startLine < 0 {
 		startLine = 0
 	}
-	line := currentLine(lines, d.Line)
-	startCol := utf16Column(line, d.Column-1)
-	// End at the line's UTF-16 length so empty lines produce a
-	// zero-width range (start == end) instead of a range whose end
-	// character (1) lies past the actual line length. Clients
-	// typically clamp out-of-range positions, but emitting a valid
-	// range is cheaper and avoids surprising downstream tooling.
-	endCol := utf16Column(line, runeLen(line))
+	line := currentLineBytes(lines, d.Line)
+	startCol := utf16FromByteOffset(line, d.Column-1)
+	endCol := utf16Length(line)
 	if endCol < startCol {
 		endCol = startCol
 	}
@@ -90,47 +92,56 @@ func splitLines(source []byte) [][]byte {
 	return parts
 }
 
-// currentLine returns the content of 1-based line number n as a
-// string, or "" when out of range.
-func currentLine(lines [][]byte, n int) string {
+// currentLineBytes returns the content of 1-based line number n as a
+// byte slice, or nil when out of range. The byte form lets the
+// callers (toLSP, utf16Length) avoid an extra string conversion on
+// the hot path.
+func currentLineBytes(lines [][]byte, n int) []byte {
 	if n < 1 || n > len(lines) {
-		return ""
+		return nil
 	}
-	return string(lines[n-1])
+	return lines[n-1]
 }
 
-// runeLen returns the number of runes in s.
-func runeLen(s string) int {
-	n := 0
-	for range s {
-		n++
-	}
-	return n
+// utf16Length returns the total UTF-16 code-unit length of line.
+// Equivalent to utf16FromByteOffset(line, len(line)) but spelled out
+// for readability at call sites that just want "end of line".
+func utf16Length(line []byte) int {
+	return utf16FromByteOffset(line, len(line))
 }
 
-// utf16Column returns the UTF-16 code-unit offset that corresponds to
-// rune offset col in s. Clamps to the string's UTF-16 length.
-//
-// utf16.RuneLen returns -1 for unpaired surrogates and other invalid
-// code points; we treat those as a single UTF-16 unit so positions
-// stay non-negative even when the document contains adversarial
-// input.
-func utf16Column(s string, col int) int {
-	if col <= 0 {
+// utf16FromByteOffset returns the UTF-16 code-unit offset that
+// corresponds to UTF-8 byte offset `byteOff` within `line`. The
+// result is clamped to [0, utf16Length(line)] so callers cannot
+// receive a negative or past-end position even when given a
+// malformed mdsmith column. Invalid UTF-8 sequences count as a
+// single replacement-character UTF-16 unit each, so the result
+// stays non-negative on adversarial input.
+func utf16FromByteOffset(line []byte, byteOff int) int {
+	if byteOff <= 0 {
 		return 0
 	}
+	if byteOff > len(line) {
+		byteOff = len(line)
+	}
 	units := 0
-	consumed := 0
-	for _, r := range s {
-		if consumed >= col {
+	for i := 0; i < byteOff; {
+		r, size := utf8.DecodeRune(line[i:])
+		// A zero-size decode means we'd loop forever; bail out
+		// safely. utf8.DecodeRune returns (RuneError, 1) for invalid
+		// sequences, so size == 0 only happens on an empty input.
+		if size == 0 {
 			break
 		}
 		w := utf16.RuneLen(r)
 		if w < 0 {
+			// Unpaired surrogate or other invalid code point: count
+			// as one UTF-16 unit so the running total never drops
+			// below zero.
 			w = 1
 		}
 		units += w
-		consumed++
+		i += size
 	}
 	return units
 }
