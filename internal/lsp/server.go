@@ -744,11 +744,10 @@ func quickFixTitle(rule string) string {
 // fullFileEdit returns a WorkspaceEdit that replaces the entire
 // document with `after`. The replacement range covers `before`
 // (the buffer the client currently has): start at {0, 0} and end at
-// documentEndPosition(before), which is {lineCount, 0} for newline-
-// terminated content and {lastLine, lastLineLen} otherwise. Sizing
-// the range against `before` matches the LSP contract — clients
-// apply a TextEdit by replacing the named range in the existing
-// document.
+// documentEndPosition(before) — see that function's doc for the
+// exact end coordinates. Sizing the range against `before` matches
+// the LSP contract — clients apply a TextEdit by replacing the
+// named range in the existing document.
 func fullFileEdit(uri string, before, after []byte) *workspaceEdit {
 	endLine, endChar := documentEndPosition(before)
 	return &workspaceEdit{
@@ -767,9 +766,18 @@ func fullFileEdit(uri string, before, after []byte) *workspaceEdit {
 }
 
 // documentEndPosition returns the LSP end position covering the
-// entire `source`. Trailing-newline-terminated files end at
-// {Line: lineCount, Character: 0}; files without a trailing newline
-// end at the last line's UTF-16 length. Empty input returns (0, 0).
+// entire `source`. The end position is one-past-the-last-character
+// in LSP coordinates:
+//
+//   - Empty input: (0, 0).
+//   - Trailing-newline-terminated content (e.g. "abc\n"): the line
+//     index equal to the number of newlines, character 0 — i.e. the
+//     virtual empty line just past the final \n. For "abc\n" the
+//     result is (1, 0); for "abc\ndef\n" it is (2, 0). This matches
+//     LSP §3.18 (TextDocumentItem) where a final \n produces a
+//     trailing empty line whose position is the file's end.
+//   - No trailing newline: the last line's index plus its UTF-16
+//     length, e.g. (0, 3) for "abc" or (1, 3) for "abc\ndef".
 func documentEndPosition(source []byte) (int, int) {
 	if len(source) == 0 {
 		return 0, 0

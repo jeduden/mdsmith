@@ -61,7 +61,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           event.document.uri,
           new vscode.Range(0, 0, event.document.lineCount, 0),
           "source.fixAll.mdsmith"
-        ).then((actions) => collectFixAllEdits(actions, event.document.uri))
+        ).then(
+          // collectFixAllEdits is typed against the structural
+          // `TextEditLike` so wiring.ts stays decoupled from the
+          // `vscode` runtime package; cast back to `vscode.TextEdit[]`
+          // here because that's what `event.waitUntil` expects from a
+          // willSave handler. The runtime objects are real
+          // `vscode.TextEdit` instances forwarded from
+          // executeCodeActionProvider, so the cast is safe.
+          (actions) =>
+            collectFixAllEdits(actions, event.document.uri) as vscode.TextEdit[]
+        )
       );
     })
   );

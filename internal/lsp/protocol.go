@@ -205,10 +205,9 @@ type codeActionContext struct {
 
 // Code action kinds — match the strings VS Code expects.
 const (
-	kindQuickFix         = "quickfix"
-	kindSourceFixAll     = "source.fixAll.mdsmith"
-	titleFixAllMdsmith   = "Fix all mdsmith issues"
-	titleQuickFixPattern = "Fix %s with mdsmith"
+	kindQuickFix       = "quickfix"
+	kindSourceFixAll   = "source.fixAll.mdsmith"
+	titleFixAllMdsmith = "Fix all mdsmith issues"
 )
 
 // codeAction is what the server returns from textDocument/codeAction.
