@@ -64,6 +64,7 @@ func TestLSPInitializeOverPipe(t *testing.T) {
 // interleaved with the publishDiagnostics notifications we wait for.
 type lspPipe struct {
 	t      *testing.T
+	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout *bufio.Reader
 }
@@ -83,7 +84,7 @@ func startLSPSubprocess(t *testing.T, ctx context.Context, binary string) *lspPi
 		_ = stdin.Close()
 		_ = cmd.Wait()
 	})
-	return &lspPipe{t: t, stdin: stdin, stdout: bufio.NewReader(stdout)}
+	return &lspPipe{t: t, cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout)}
 }
 
 func (p *lspPipe) writeFrame(v any) {
@@ -198,6 +199,12 @@ func (p *lspPipe) shutdown(t *testing.T) {
 	resp := p.request("shutdown", 99, nil)
 	require.Equal(t, float64(99), resp["id"])
 	p.notify("exit", nil)
+	// Wait for the subprocess to actually exit before the test
+	// function returns. The CommandContext's `defer cancel()`
+	// otherwise races the subprocess's exit and can SIGKILL it
+	// before its coverage counters are flushed to GOCOVERDIR.
+	_ = p.stdin.Close()
+	_ = p.cmd.Wait()
 }
 
 func assertHasMDS006(t *testing.T, diags publishDiagnosticsParams) {
