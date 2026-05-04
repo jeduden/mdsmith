@@ -163,22 +163,31 @@ var conventions = map[string]Convention{
 	},
 }
 
-// Lookup returns the convention table entry for name. It returns an
-// error naming the field and listing valid names when name is not a
-// known convention, matching the failure-mode contract in plan 112.
+// Lookup returns the convention table entry for name.
 //
-// The returned Convention is a deep copy of the package-level table
-// entry. Callers may mutate the result without corrupting the
-// shared built-in table.
-func Lookup(name string) (Convention, error) {
-	c, ok := conventions[name]
-	if !ok {
-		return Convention{}, fmt.Errorf(
-			"unknown convention %q (valid: %s)",
-			name, strings.Join(ConventionNames(), ", "),
-		)
+// Resolution order:
+//  1. userConventions (if non-nil) — consulted first.
+//  2. Built-in table — fallback.
+//
+// It returns an error naming the field and listing valid names
+// (both built-in and user-defined) when name is not found in either
+// map, matching the failure-mode contract in plan 112.
+//
+// The returned Convention is a deep copy so callers may mutate the
+// result without corrupting the shared built-in table or the caller's
+// user map.
+func Lookup(name string, userConventions map[string]Convention) (Convention, error) {
+	if c, ok := userConventions[name]; ok {
+		return cloneConvention(c), nil
 	}
-	return cloneConvention(c), nil
+	if c, ok := conventions[name]; ok {
+		return cloneConvention(c), nil
+	}
+	allNames := allConventionNames(userConventions)
+	return Convention{}, fmt.Errorf(
+		"unknown convention %q (valid: %s)",
+		name, strings.Join(allNames, ", "),
+	)
 }
 
 // cloneConvention returns a deep copy of c. Each rule preset's
@@ -249,6 +258,24 @@ func cloneValue(v any) any {
 func ConventionNames() []string {
 	names := make([]string, 0, len(conventions))
 	for k := range conventions {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// allConventionNames returns a sorted, deduplicated list of all known
+// convention names: built-ins plus any user-defined ones.
+func allConventionNames(userConventions map[string]Convention) []string {
+	seen := make(map[string]bool, len(conventions)+len(userConventions))
+	for k := range conventions {
+		seen[k] = true
+	}
+	for k := range userConventions {
+		seen[k] = true
+	}
+	names := make([]string, 0, len(seen))
+	for k := range seen {
 		names = append(names, k)
 	}
 	sort.Strings(names)

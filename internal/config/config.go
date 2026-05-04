@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
 
 // ValidCategories lists the recognized rule category names.
@@ -45,6 +47,12 @@ type Config struct {
 	// and docs/reference/conventions.md for end-user docs.
 	Convention string `yaml:"convention,omitempty"`
 
+	// Conventions is the user-defined convention map. Each entry has
+	// the same shape as a built-in convention: { flavor, rules }.
+	// User-defined names must not collide with the built-in names
+	// "portable", "github", and "plain". Validated at config load.
+	Conventions map[string]UserConventionCfg `yaml:"conventions,omitempty"`
+
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
@@ -80,6 +88,13 @@ type Config struct {
 	// Empty when no convention is selected.
 	// Not serialized to YAML.
 	ConventionPreset map[string]RuleCfg `yaml:"-"`
+
+	// UserConventions is the parsed and validated form of the
+	// `conventions:` block. It is built from cfg.Conventions at
+	// config load time and passed to markdownflavor.Lookup so user
+	// convention names resolve before the built-in table is checked.
+	// Not serialized to YAML.
+	UserConventions map[string]markdownflavor.Convention `yaml:"-"`
 }
 
 // Override applies rule settings to files matching glob patterns.
@@ -130,6 +145,14 @@ func (e KindAssignmentEntry) Patterns() []string {
 		return e.Glob
 	}
 	return e.Files
+}
+
+// UserConventionCfg is one entry in the top-level `conventions:` map.
+// It mirrors the built-in convention shape: a flavor and a table of
+// per-rule presets. Each entry is validated at config load time.
+type UserConventionCfg struct {
+	Flavor string             `yaml:"flavor"`
+	Rules  map[string]RuleCfg `yaml:"rules,omitempty"`
 }
 
 // RuleCfg is a YAML union: can be bool (enable/disable) or map[string]any (settings).

@@ -172,9 +172,70 @@ This split keeps MDS034 focused on "what does this
 renderer interpret as a feature." Conventions
 orchestrate style separately.
 
+## User-defined conventions
+
+Teams that need a convention the three built-ins do
+not cover can define one inline in `.mdsmith.yml`
+under a top-level `conventions:` key:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+      no-reference-style:
+        allow-footnotes: true
+
+convention: our-team
+```
+
+The `conventions:` map mirrors the built-in
+convention table. Each entry is a `{ flavor, rules
+}` pair, where `rules:` uses the same schema as the
+top-level `rules:` block.
+
+**Reserved names.** User-defined names must not
+collide with the three built-in names. Defining
+`conventions.portable`, `conventions.github`, or
+`conventions.plain` produces a config error. The
+built-in names are reserved so docs and tutorials
+keep meaning what they say.
+
+**Validation.** Each user-defined convention is
+validated at config load:
+
+- `flavor` must be a known flavor string
+  (`commonmark`, `gfm`, `goldmark`, `any`, `pandoc`,
+  `phpextra`, `multimarkdown`, `myst`).
+- Each key under `rules:` must name a registered
+  rule.
+- Each rule's settings must pass the same validation
+  as the top-level `rules:` block.
+
+Validation errors name the convention and the rule:
+`convention "our-team" rule "no-inline-html":
+unknown setting "allowed"`.
+
+**Resolution order.** When the top-level
+`convention:` selector resolves, user-defined
+conventions are consulted first, then the built-in
+table. If neither matches, a config error lists both
+sets of names.
+
+**Provenance.** `mdsmith kinds resolve <file>` shows
+user convention layers with a `(user)` suffix so
+they are distinguishable from built-in layers in the
+output: `convention.our-team (user)`.
+
 ## Inspecting an effective convention
 
 `mdsmith kinds resolve <file>` shows the merge
 chain for every rule, including the
-`convention.<name>` layer. Use it to confirm which
-value won and where it came from.
+`convention.<name>` layer (or
+`convention.<name> (user)` for user-defined
+conventions). Use it to confirm which value won and
+where it came from.

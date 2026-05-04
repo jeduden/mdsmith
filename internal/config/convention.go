@@ -6,8 +6,103 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
+
+// reservedConventionNames are the built-in names that user-defined
+// conventions must not shadow.
+var reservedConventionNames = map[string]bool{
+	"portable": true,
+	"github":   true,
+	"plain":    true,
+}
+
+// validateUserConventions validates the user-defined conventions map:
+//   - Reserved names ("portable", "github", "plain") are rejected.
+//   - Each convention's flavor must be a known flavor string.
+//   - Each rule key must name a registered rule.
+//   - Each rule's settings must pass ApplySettings validation.
+//
+// It also builds and returns the markdownflavor.Convention map that
+// the Lookup call site needs.
+func validateUserConventions(
+	userCfg map[string]UserConventionCfg,
+) (map[string]markdownflavor.Convention, error) {
+	if len(userCfg) == 0 {
+		return nil, nil
+	}
+
+	out := make(map[string]markdownflavor.Convention, len(userCfg))
+	for name, entry := range userCfg {
+		if reservedConventionNames[name] {
+			return nil, fmt.Errorf(
+				"conventions.%s: name is reserved; built-in convention names "+
+					"(portable, github, plain) cannot be redefined",
+				name,
+			)
+		}
+
+		fl, ok := markdownflavor.ParseFlavor(entry.Flavor)
+		if !ok {
+			return nil, fmt.Errorf(
+				"conventions.%s: flavor %q is not a known flavor "+
+					"(valid: commonmark, gfm, goldmark, any, pandoc, "+
+					"phpextra, multimarkdown, myst)",
+				name, entry.Flavor,
+			)
+		}
+
+		if err := validateUserConventionRules(name, entry.Rules); err != nil {
+			return nil, err
+		}
+
+		rules := make(map[string]markdownflavor.RulePreset, len(entry.Rules))
+		for ruleName, rc := range entry.Rules {
+			rules[ruleName] = markdownflavor.RulePreset{
+				Enabled:  rc.Enabled,
+				Settings: cloneSettings(rc.Settings),
+			}
+		}
+		out[name] = markdownflavor.Convention{
+			Name:   name,
+			Flavor: fl,
+			Rules:  rules,
+		}
+	}
+	return out, nil
+}
+
+// validateUserConventionRules validates every rule entry in a
+// user-defined convention: the rule must be registered, and its
+// settings must pass ApplySettings validation against a fresh instance.
+func validateUserConventionRules(conventionName string, rules map[string]RuleCfg) error {
+	for ruleName, rc := range rules {
+		r := rule.ByName(ruleName)
+		if r == nil {
+			return fmt.Errorf(
+				"convention %q rule %q: unknown rule name",
+				conventionName, ruleName,
+			)
+		}
+		if len(rc.Settings) == 0 {
+			continue
+		}
+		c, ok := r.(rule.Configurable)
+		if !ok {
+			// Rule exists but is not configurable; extra settings are
+			// silently ignored (same as the top-level rules: block).
+			continue
+		}
+		if err := c.ApplySettings(cloneSettings(rc.Settings)); err != nil {
+			return fmt.Errorf(
+				"convention %q rule %q: %w",
+				conventionName, ruleName, err,
+			)
+		}
+	}
+	return nil
+}
 
 // applyConvention reads the top-level Convention selector from the
 // loaded config (if any) and stores its rule presets on
@@ -19,18 +114,29 @@ import (
 //
 // Validation:
 //
+//   - Reserved user-convention names → error.
 //   - Unknown convention name → error naming the field and listing
-//     valid names.
+//     valid names (built-in and user-defined).
 //   - Convention and a user-supplied rules.markdown-flavor.flavor
 //     disagree → error naming both values. A convention sets a
 //     flavor; a user-supplied flavor that does not match is
 //     rejected at config load so the error surfaces once, not on
 //     every check.
 func applyConvention(cfg *Config) error {
-	if cfg == nil || cfg.Convention == "" {
+	if cfg == nil {
 		return nil
 	}
-	convention, err := markdownflavor.Lookup(cfg.Convention)
+
+	userMap, err := validateUserConventions(cfg.Conventions)
+	if err != nil {
+		return fmt.Errorf("validating user conventions: %w", err)
+	}
+	cfg.UserConventions = userMap
+
+	if cfg.Convention == "" {
+		return nil
+	}
+	convention, err := markdownflavor.Lookup(cfg.Convention, userMap)
 	if err != nil {
 		return fmt.Errorf("convention: %w", err)
 	}
