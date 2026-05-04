@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -969,6 +971,11 @@ func TestWorkspaceRelativePathHandling(t *testing.T) {
 		// A naive HasPrefix(rel, "..") would have rejected this.
 		{"/repo", "/repo/..foo.md", "..foo.md"},
 		{"/repo", "/repo/sub/..bar.md", "sub/..bar.md"},
+		// filepath.Rel returns an error when root is relative and
+		// path is absolute (it can't relativize without knowing the
+		// process cwd). Pin the function's defensive path-pass-
+		// through behavior in that case.
+		{"rel/dir", "/abs/foo.md", "/abs/foo.md"},
 	}
 	for _, tc := range tests {
 		got := workspaceRelative(tc.root, tc.path)
@@ -1186,6 +1193,30 @@ func TestReloadConfigBadYAMLFallsBack(t *testing.T) {
 	cfg, path, _ := s.snapshotConfig()
 	require.NotNil(t, cfg, "must fall back to defaults on bad YAML")
 	assert.Empty(t, path, "path should be empty when load fails")
+}
+
+// Regression: a config.Discover error path also surfaces via
+// window/logMessage, not just a load error. The Discover
+// implementation almost never fails in practice (only when
+// filepath.Abs cannot resolve a relative path), but the branch
+// must still report — otherwise an unreadable workspace silently
+// falls back to defaults.
+func TestReloadConfigSurfacesDiscoverFailure(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.discoverConfig = func(string) (string, error) {
+		return "", errors.New("synthetic discover failure")
+	}
+	s.configMu.Lock()
+	s.rootDir = "/some/root"
+	s.configMu.Unlock()
+	s.reloadConfig()
+
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "discovering")
+	assert.Contains(t, out, "synthetic discover failure")
 }
 
 // Regression: reloadConfig must surface load failures via
@@ -1616,6 +1647,36 @@ func TestUriToPathRemoteHostRejectedOnUnix(t *testing.T) {
 	// uriToPath returns "" and the caller skips the document.
 	got := uriToPath("file://server/share/foo.md")
 	assert.Empty(t, got)
+}
+
+// Cover the Windows branches of uriToPath from any platform by
+// driving uriToPathOnOS directly with goos="windows".
+func TestUriToPathOnWindowsHostBecomesUNC(t *testing.T) {
+	t.Parallel()
+	got := uriToPathOnOS("file://server/share/foo.md", "windows")
+	// Windows UNC join produces \\server\share\foo.md (filepath.Clean
+	// is platform-dependent; on Linux it returns / separators, but
+	// the leading double-backslash and host segment are what matter).
+	assert.Contains(t, got, "server")
+	assert.Contains(t, got, "share")
+	assert.Contains(t, got, "foo.md")
+}
+
+func TestUriToPathOnWindowsStripsDriveLetterSlash(t *testing.T) {
+	t.Parallel()
+	got := uriToPathOnOS("file:///C:/Users/me/foo.md", "windows")
+	// The leading slash before "C:" is stripped on Windows so the
+	// path is a real Windows path. Use ToSlash to make the assertion
+	// portable across the test runner's platform.
+	assert.Equal(t, "C:/Users/me/foo.md", filepath.ToSlash(got))
+}
+
+func TestUriToPathOnLinuxLeavesDriveLetterAlone(t *testing.T) {
+	t.Parallel()
+	// On non-Windows the drive-letter rewrite must not fire — the
+	// path stays as-is, including the leading slash.
+	got := uriToPathOnOS("file:///C:/Users/me/foo.md", "linux")
+	assert.Equal(t, "/C:/Users/me/foo.md", got)
 }
 
 func TestIsWholeFileOnly(t *testing.T) {
@@ -2123,6 +2184,120 @@ func TestDocumentStoreGetMissing(t *testing.T) {
 	d, ok := s.get("file:///none")
 	assert.Nil(t, d)
 	assert.False(t, ok)
+}
+
+// fetchClientSettings returns silently when the transport's
+// writeRequest fails — the request never reached the client, so
+// there's nothing to wait for. This pins the early-return branch.
+func TestFetchClientSettingsWriteRequestFailureReturnsEarly(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: failingWriter{}})
+	s.fetchTimeout = 100 * time.Millisecond
+	// Should return promptly via the writeRequest err branch — far
+	// faster than the fetchTimeout deadline.
+	start := time.Now()
+	s.fetchClientSettings(context.Background())
+	assert.Less(t, time.Since(start), 50*time.Millisecond,
+		"writeRequest failure must return before the fetchTimeout fires")
+}
+
+// Run's dispatch loop checks transport.WriteError() at the TOP of
+// every iteration (in addition to after dispatch). Pre-record an
+// error on the transport before calling Run so the very first
+// iteration's top-of-loop check returns it, exercising the early
+// termination branch.
+func TestRunReturnsErrorRecordedBeforeFirstIteration(t *testing.T) {
+	t.Parallel()
+	r, w := io.Pipe()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
+	s := New(Options{Reader: r, Writer: io.Discard, Rules: rule.All()})
+	// Pre-record the error directly on the transport so the next
+	// loop iteration's top-of-loop WriteError check returns it
+	// without needing a real write to fail first.
+	s.t.recordWriteErr(errors.New("pre-recorded transport failure"))
+
+	err := s.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pre-recorded transport failure")
+}
+
+// Run's dispatch loop checks transport.WriteError() at the top of
+// every iteration so a write failure (e.g. EPIPE on the client's
+// stdout) terminates Run. Drive a couple of frames into a server
+// whose writer always fails; the second iteration's WriteError
+// check returns the recorded error.
+func TestRunReturnsRecordedWriteError(t *testing.T) {
+	t.Parallel()
+	// Two valid frames so the loop completes one full iteration
+	// (which records a write error from writeResponse) before the
+	// next iteration's WriteError check returns.
+	body1 := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}`
+	body2 := `{"jsonrpc":"2.0","method":"exit"}`
+	frames := fmt.Sprintf("Content-Length: %d\r\n\r\n%sContent-Length: %d\r\n\r\n%s",
+		len(body1), body1, len(body2), body2)
+
+	s := New(Options{
+		Reader: strings.NewReader(frames),
+		Writer: failingWriter{},
+		Rules:  rule.All(),
+	})
+	err := s.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "short write")
+}
+
+// deliverResponse drops on a full channel — it must not block,
+// because the dispatch loop calls it inline. Fill the buffer-1
+// channel and assert a second deliver is silently dropped instead
+// of deadlocking.
+func TestDeliverResponseDropsWhenChannelFull(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	id := `"deliver-full"`
+	ch := s.registerPendingResponse(id)
+	defer s.unregisterPendingResponse(id)
+
+	s.deliverResponse(id, rpcResponse{Result: json.RawMessage(`1`)})
+	// Second deliver lands on a full channel; the default branch
+	// drops it. The first message is still readable.
+	s.deliverResponse(id, rpcResponse{Result: json.RawMessage(`2`)})
+
+	select {
+	case got := <-ch:
+		assert.Equal(t, json.RawMessage(`1`), got.Result)
+	case <-time.After(time.Second):
+		t.Fatal("first deliverResponse never reached the channel")
+	}
+	// The second deliver was dropped, so the channel is now empty.
+	select {
+	case <-ch:
+		t.Fatal("second deliverResponse should have been dropped on a full channel")
+	default:
+	}
+}
+
+// fetchClientSettings has a configurable timeout. With no client
+// reply, the timeout branch runs and the call returns without
+// touching cached settings. We pin a 5 ms timeout so the test
+// completes quickly.
+func TestFetchClientSettingsTimeoutLeavesSettings(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.fetchTimeout = 5 * time.Millisecond
+	// Capture starting settings so we can confirm the timeout branch
+	// did not mutate them.
+	s.settingsMu.Lock()
+	s.settings = userSettings{Run: runOnSave}
+	s.settingsMu.Unlock()
+
+	s.fetchClientSettings(context.Background())
+
+	s.settingsMu.RLock()
+	got := s.settings
+	s.settingsMu.RUnlock()
+	assert.Equal(t, runOnSave, got.Run, "timeout branch must not change cached settings")
 }
 
 // Regression: documentStore.set must deep-copy text so a caller

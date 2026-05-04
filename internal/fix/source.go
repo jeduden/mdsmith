@@ -105,10 +105,13 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 		fixable = filtered
 	}
 	lf.GeneratedRanges = gensection.FindAllGeneratedRanges(lf)
-	var errs []error
-	fixed := f.applyFixPasses(opts.Path, lf.Source, fixable, lf, dirFS, &errs)
-	if len(errs) > 0 {
-		return nil, errs[0]
-	}
+	// applyFixPasses' error sink is unreachable today: the only
+	// path that appends is `lint.NewFile`'s error return, and
+	// NewFile is currently infallible. We pass a discarded sink
+	// so the call site mirrors fix.go without carrying a dead
+	// error pass-through.
+	var sink []error
+	fixed := f.applyFixPasses(opts.Path, lf.Source, fixable, lf, dirFS, &sink)
+	_ = sink
 	return lf.FullSource(fixed), nil
 }

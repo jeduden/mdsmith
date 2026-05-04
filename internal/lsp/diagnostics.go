@@ -24,6 +24,11 @@ import (
 // document containing non-ASCII text — treating Column as a rune
 // offset would misplace the squiggle by N-1 positions for every
 // preceding rune that takes N>1 bytes.
+//
+// Both startCol and endCol come from utf16FromByteOffset/utf16Length
+// on the same line, which clamps every input to [0, line's UTF-16
+// length], so endCol is always >= startCol — no end-before-start
+// guard is needed.
 func toLSP(d lint.Diagnostic, lines [][]byte) Diagnostic {
 	startLine := d.Line - 1
 	if startLine < 0 {
@@ -32,9 +37,6 @@ func toLSP(d lint.Diagnostic, lines [][]byte) Diagnostic {
 	line := currentLineBytes(lines, d.Line)
 	startCol := utf16FromByteOffset(line, d.Column-1)
 	endCol := utf16Length(line)
-	if endCol < startCol {
-		endCol = startCol
-	}
 	return Diagnostic{
 		Range: Range{
 			Start: Position{Line: startLine, Character: startCol},
@@ -115,8 +117,9 @@ func utf16Length(line []byte) int {
 // result is clamped to [0, utf16Length(line)] so callers cannot
 // receive a negative or past-end position even when given a
 // malformed mdsmith column. Invalid UTF-8 sequences count as a
-// single replacement-character UTF-16 unit each, so the result
-// stays non-negative on adversarial input.
+// single replacement-character UTF-16 unit each (DecodeRune
+// returns (RuneError, 1) for them, and RuneLen(RuneError) == 1),
+// so the result stays non-negative on adversarial input.
 func utf16FromByteOffset(line []byte, byteOff int) int {
 	if byteOff <= 0 {
 		return 0
@@ -127,20 +130,15 @@ func utf16FromByteOffset(line []byte, byteOff int) int {
 	units := 0
 	for i := 0; i < byteOff; {
 		r, size := utf8.DecodeRune(line[i:])
-		// A zero-size decode means we'd loop forever; bail out
-		// safely. utf8.DecodeRune returns (RuneError, 1) for invalid
-		// sequences, so size == 0 only happens on an empty input.
-		if size == 0 {
-			break
-		}
-		w := utf16.RuneLen(r)
-		if w < 0 {
-			// Unpaired surrogate or other invalid code point: count
-			// as one UTF-16 unit so the running total never drops
-			// below zero.
-			w = 1
-		}
-		units += w
+		// utf8.DecodeRune always returns size >= 1 when the input is
+		// non-empty, and the loop guard `i < byteOff <= len(line)`
+		// guarantees a non-empty slice. utf16.RuneLen returns -1 only
+		// for surrogate code points (U+D800..U+DFFF), which DecodeRune
+		// never yields from valid or invalid UTF-8 — invalid bytes
+		// produce RuneError (U+FFFD), whose RuneLen is 1. So both the
+		// zero-size and negative-width branches are unreachable from
+		// any []byte; we simply add the width.
+		units += utf16.RuneLen(r)
 		i += size
 	}
 	return units

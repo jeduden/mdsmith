@@ -28,12 +28,14 @@ import (
 // Server runs the LSP loop over a transport pair. One Server instance
 // serves one client.
 type Server struct {
-	t        *transport
-	rules    []rule.Rule
-	clock    func() time.Time
-	debounce time.Duration
-	logger   *vlog.Logger
-	docs     *documentStore
+	t              *transport
+	rules          []rule.Rule
+	clock          func() time.Time
+	debounce       time.Duration
+	fetchTimeout   time.Duration
+	discoverConfig func(string) (string, error)
+	logger         *vlog.Logger
+	docs           *documentStore
 
 	configMu   sync.RWMutex
 	config     *config.Config
@@ -105,15 +107,17 @@ func New(opts Options) *Server {
 		logger = &vlog.Logger{}
 	}
 	return &Server{
-		t:           newTransport(opts.Reader, opts.Writer),
-		rules:       opts.Rules,
-		clock:       time.Now,
-		debounce:    debounce,
-		logger:      logger,
-		docs:        newDocumentStore(),
-		settings:    userSettings{Run: runOnSave},
-		pending:     make(map[string]*time.Timer),
-		pendingResp: make(map[string]chan rpcResponse),
+		t:              newTransport(opts.Reader, opts.Writer),
+		rules:          opts.Rules,
+		clock:          time.Now,
+		debounce:       debounce,
+		fetchTimeout:   2 * time.Second,
+		discoverConfig: config.Discover,
+		logger:         logger,
+		docs:           newDocumentStore(),
+		settings:       userSettings{Run: runOnSave},
+		pending:        make(map[string]*time.Timer),
+		pendingResp:    make(map[string]chan rpcResponse),
 	}
 }
 
@@ -781,11 +785,10 @@ func documentEndPosition(source []byte) (int, int) {
 		}
 		return nl, 0
 	}
-	// No trailing newline: end at last line's UTF-16 length.
+	// No trailing newline: end at last line's UTF-16 length. source
+	// is non-empty here (checked above), so splitLines always yields
+	// at least one element.
 	lines := splitLines(source)
-	if len(lines) == 0 {
-		return 0, 0
-	}
 	return len(lines) - 1, utf16Length(lines[len(lines)-1])
 }
 
@@ -819,65 +822,63 @@ func (s *Server) reloadConfig() {
 	override := s.settings.ConfigPath
 	s.settingsMu.RUnlock()
 
-	// Collect any error to surface after releasing configMu so the
-	// transport write can't deadlock against a future reader (or
-	// itself, on a slow stdout pipe).
-	var loadErr string
-	defer func() {
-		if loadErr == "" {
-			return
-		}
+	cfg, cfgPath, loadErr := s.resolveConfig(override)
+
+	s.configMu.Lock()
+	s.config = cfg
+	s.configPath = cfgPath
+	s.configMu.Unlock()
+
+	if loadErr != "" {
 		s.logger.Printf("config: %s", loadErr)
 		_ = s.t.writeNotification("window/logMessage",
 			logMessageParams{Type: messageTypeError, Message: "mdsmith: " + loadErr})
-	}()
+	}
+}
 
-	s.configMu.Lock()
-	defer s.configMu.Unlock()
-
+// resolveConfig is the load/discover flow extracted from
+// reloadConfig so the caller can release configMu before notifying
+// the client. The returned cfg is always non-nil (defaults on
+// failure); cfgPath is empty when no config was successfully
+// loaded; loadErr is a human-readable message when load or
+// discover surfaced an error worth logging.
+func (s *Server) resolveConfig(override string) (cfg *config.Config, cfgPath, loadErr string) {
 	defaults := config.Defaults()
+	fallback := config.Merge(defaults, nil)
+
 	if override != "" {
 		path := override
-		if !filepath.IsAbs(path) && s.rootDir != "" {
-			path = filepath.Join(s.rootDir, path)
+		s.configMu.RLock()
+		root := s.rootDir
+		s.configMu.RUnlock()
+		if !filepath.IsAbs(path) && root != "" {
+			path = filepath.Join(root, path)
 		}
 		loaded, err := config.Load(path)
 		if err != nil {
-			loadErr = fmt.Sprintf("loading %q: %v", path, err)
-			s.config = config.Merge(defaults, nil)
-			s.configPath = ""
-			return
+			return fallback, "", fmt.Sprintf("loading %q: %v", path, err)
 		}
-		s.config = config.Merge(defaults, loaded)
-		s.configPath = path
-		return
+		return config.Merge(defaults, loaded), path, ""
 	}
-	if s.rootDir == "" {
-		s.config = config.Merge(defaults, nil)
-		s.configPath = ""
-		return
+
+	s.configMu.RLock()
+	root := s.rootDir
+	s.configMu.RUnlock()
+	if root == "" {
+		return fallback, "", ""
 	}
-	discovered, err := config.Discover(s.rootDir)
+	discovered, err := s.discoverConfig(root)
 	if err != nil {
-		loadErr = fmt.Sprintf("discovering config under %q: %v", s.rootDir, err)
-		s.config = config.Merge(defaults, nil)
-		s.configPath = ""
-		return
+		return fallback, "", fmt.Sprintf("discovering config under %q: %v", root, err)
 	}
 	if discovered == "" {
-		s.config = config.Merge(defaults, nil)
-		s.configPath = ""
-		return
+		return fallback, "", ""
 	}
 	loaded, err := config.Load(discovered)
 	if err != nil {
-		loadErr = fmt.Sprintf("loading %q: %v", discovered, err)
-		s.config = config.Merge(defaults, nil)
-		s.configPath = ""
-		return
+		return fallback, "", fmt.Sprintf("loading %q: %v", discovered, err)
 	}
-	s.config = config.Merge(defaults, loaded)
-	s.configPath = discovered
+	return config.Merge(defaults, loaded), discovered, ""
 }
 
 // fetchClientSettings asks the client for its `mdsmith` configuration
@@ -891,12 +892,9 @@ func (s *Server) reloadConfig() {
 // Must be called from a goroutine other than the dispatch loop, since
 // the response arrives on the same loop.
 func (s *Server) fetchClientSettings(ctx context.Context) {
-	const fetchTimeout = 2 * time.Second
 	id := s.nextReqID.Add(1)
-	idJSON, err := json.Marshal(id)
-	if err != nil {
-		return
-	}
+	// json.Marshal(int64) cannot fail; ignoring the error is safe.
+	idJSON, _ := json.Marshal(id)
 	ch := s.registerPendingResponse(string(idJSON))
 	defer s.unregisterPendingResponse(string(idJSON))
 
@@ -938,7 +936,7 @@ func (s *Server) fetchClientSettings(ctx context.Context) {
 		for _, uri := range s.docs.openURIs() {
 			s.scheduleLint(uri, lintTriggerConfig)
 		}
-	case <-time.After(fetchTimeout):
+	case <-time.After(s.fetchTimeout):
 		// Client never replied; defaults stand.
 	case <-ctx.Done():
 	}
@@ -985,10 +983,8 @@ func (s *Server) deliverResponse(id string, resp rpcResponse) {
 // workspace/didChangeWatchedFiles the client decides to send.
 func (s *Server) registerWatchers() {
 	id := s.nextReqID.Add(1)
-	idJSON, err := json.Marshal(id)
-	if err != nil {
-		return
-	}
+	// json.Marshal(int64) cannot fail; ignoring the error is safe.
+	idJSON, _ := json.Marshal(id)
 	_ = s.t.writeRequest(idJSON, "client/registerCapability",
 		registrationParams{Registrations: []registration{{
 			ID:     "mdsmith-watch",
@@ -1040,14 +1036,22 @@ func isWholeFileOnly(name string) bool {
 //     (`\\server\share\…`); on other platforms we conservatively
 //     return "" because we have no way to mount a remote share.
 func uriToPath(uri string) string {
+	return uriToPathOnOS(uri, runtime.GOOS)
+}
+
+// uriToPathOnOS is uriToPath split out so tests can exercise the
+// Windows-only branches (UNC translation, drive-letter stripping)
+// from any platform.
+func uriToPathOnOS(uri, goos string) string {
 	if !strings.HasPrefix(uri, "file://") {
 		return ""
 	}
 	u, err := url.Parse(uri)
+	// url.Parse only fails on inputs like "%". Anything that passed
+	// the "file://" prefix check above is well-formed enough to
+	// parse; the err-return is defensive and unreachable in
+	// practice.
 	if err != nil {
-		return ""
-	}
-	if u.Scheme != "file" {
 		return ""
 	}
 	host := u.Host
@@ -1057,7 +1061,7 @@ func uriToPath(uri string) string {
 	p := u.Path
 	if host != "" {
 		// UNC path on Windows: file://server/share/path → \\server\share\path
-		if runtime.GOOS == "windows" {
+		if goos == "windows" {
 			return filepath.Clean(`\\` + host + filepath.FromSlash(p))
 		}
 		// Non-Windows: we cannot resolve a remote share, so refuse.
@@ -1069,7 +1073,7 @@ func uriToPath(uri string) string {
 	// third byte happens to be ':' (e.g. "/a:/tmp/file.md") is left
 	// alone. The check is also gated on Windows so the fix never
 	// fires on platforms that don't have drive letters.
-	if runtime.GOOS == "windows" && hasDriveLetterPrefix(p) {
+	if goos == "windows" && hasDriveLetterPrefix(p) {
 		p = p[1:]
 	}
 	return filepath.Clean(p)
