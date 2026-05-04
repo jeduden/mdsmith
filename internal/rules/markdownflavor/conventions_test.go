@@ -145,3 +145,67 @@ func TestConventionNamesSorted(t *testing.T) {
 		"ConventionNames should return a sorted slice; got %v", names)
 	assert.ElementsMatch(t, []string{"github", "plain", "portable"}, names)
 }
+
+func TestLookup_UserConventionFound(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"list-marker-style": {
+					Enabled:  true,
+					Settings: map[string]any{"style": "dash"},
+				},
+			},
+		},
+	}
+	c, err := Lookup("our-team", user)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", c.Name)
+	assert.Equal(t, FlavorGFM, c.Flavor)
+	lm, ok := c.Rules["list-marker-style"]
+	require.True(t, ok)
+	assert.Equal(t, "dash", lm.Settings["style"])
+}
+
+func TestLookup_UserConventionFallsBackToBuiltin(t *testing.T) {
+	// When user map does not contain the name, built-ins are consulted.
+	c, err := Lookup("portable", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "portable", c.Name)
+}
+
+func TestLookup_UnknownNameListsBothSets(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	_, err := Lookup("bogus", user)
+	require.Error(t, err)
+	// Error must list built-ins.
+	assert.Contains(t, err.Error(), "github")
+	assert.Contains(t, err.Error(), "plain")
+	assert.Contains(t, err.Error(), "portable")
+	// Error must also list user-defined names.
+	assert.Contains(t, err.Error(), "our-team")
+}
+
+func TestLookup_UserConventionIsDeepCopied(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"list-marker-style": {
+					Enabled:  true,
+					Settings: map[string]any{"style": "dash"},
+				},
+			},
+		},
+	}
+	got, err := Lookup("our-team", user)
+	require.NoError(t, err)
+	// Mutating the returned copy must not corrupt the source map.
+	got.Rules["list-marker-style"].Settings["style"] = "tampered"
+	assert.Equal(t, "dash", user["our-team"].Rules["list-marker-style"].Settings["style"],
+		"deep copy must isolate the returned convention from the user map")
+}
