@@ -1,7 +1,7 @@
 ---
 id: 121
 title: Expose mdsmith to VS Code via Language Server Protocol
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Ship an `mdsmith lsp` subcommand that speaks the
