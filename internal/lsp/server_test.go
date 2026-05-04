@@ -1205,6 +1205,49 @@ func TestReloadConfigOverrideRelativePath(t *testing.T) {
 	assert.Equal(t, dir+"/cfg.yml", path)
 }
 
+// Regression: when the workspace folder is a subdirectory of the
+// repo and `mdsmith.config` points to a config one level up, the
+// effective root returned by snapshotConfig must be the config's
+// directory (matching the CLI's rootDirFromConfig). Otherwise
+// ignore globs / RootDir-relative rule behavior drift between LSP
+// and `mdsmith check`.
+func TestSnapshotConfigRootMatchesConfigDir(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	sub := repo + "/sub"
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	require.NoError(t, writeFile(repo+"/.mdsmith.yml", "rules: {}\n"))
+
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = sub
+	s.configMu.Unlock()
+	s.settingsMu.Lock()
+	s.settings.ConfigPath = repo + "/.mdsmith.yml"
+	s.settingsMu.Unlock()
+	s.reloadConfig()
+
+	_, path, root := s.snapshotConfig()
+	assert.Equal(t, repo+"/.mdsmith.yml", path)
+	assert.Equal(t, repo, root, "root must follow the config file, not the workspace folder")
+}
+
+// When no config is loaded, snapshotConfig falls back to the
+// workspace folder root that initialize was given.
+func TestSnapshotConfigRootFallsBackToWorkspace(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig() // no config in dir → configPath stays empty
+
+	_, path, root := s.snapshotConfig()
+	assert.Equal(t, "", path)
+	assert.Equal(t, dir, root)
+}
+
 func TestRunReturnsOnContextCancel(t *testing.T) {
 	t.Parallel()
 	r, _ := io.Pipe()
@@ -2024,6 +2067,23 @@ func TestDocumentStoreGetMissing(t *testing.T) {
 	d, ok := s.get("file:///none")
 	assert.Nil(t, d)
 	assert.False(t, ok)
+}
+
+// Regression: documentStore.set must deep-copy text so a caller
+// that mutates its own slice afterwards cannot race with concurrent
+// get() readers observing the stored bytes.
+func TestDocumentStoreSetDeepCopiesText(t *testing.T) {
+	t.Parallel()
+	s := newDocumentStore()
+	original := []byte("hello world")
+	s.set("file:///x.md", &document{uri: "file:///x.md", path: "/x.md", text: original, version: 1})
+
+	// Mutate the caller's slice; the store must not see it.
+	original[0] = 'H'
+
+	got, ok := s.get("file:///x.md")
+	assert.True(t, ok)
+	assert.Equal(t, []byte("hello world"), got.text)
 }
 
 func TestUnregisterPendingResponseClearsSlot(t *testing.T) {

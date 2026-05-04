@@ -775,12 +775,22 @@ func documentEndPosition(source []byte) (int, int) {
 }
 
 // snapshotConfig returns the cached config, its source path, and the
-// project root. All return values may be empty when no config has
-// been loaded yet.
+// effective project root used for glob/ignore matching and as
+// Runner.RootDir. The root mirrors the CLI's rootDirFromConfig:
+// when a config file is loaded, the project root is the directory
+// containing it (so ignore globs and overrides match the CLI even
+// when the workspace folder is a subdirectory or the user pointed
+// `mdsmith.config` at a config outside the workspace). When no
+// config was discovered, the workspace folder root is used. Either
+// value may be empty when neither is known yet.
 func (s *Server) snapshotConfig() (*config.Config, string, string) {
 	s.configMu.RLock()
 	defer s.configMu.RUnlock()
-	return s.config, s.configPath, s.rootDir
+	root := s.rootDir
+	if s.configPath != "" {
+		root = filepath.Dir(s.configPath)
+	}
+	return s.config, s.configPath, root
 }
 
 // reloadConfig walks from rootDir (or the user-supplied
