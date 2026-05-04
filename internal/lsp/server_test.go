@@ -1037,6 +1037,32 @@ func TestRunReturnsAfterShutdownPlusExit(t *testing.T) {
 	}
 }
 
+func TestRunSurfacesTransportWriteError(t *testing.T) {
+	t.Parallel()
+	// Drive a single initialize request through the server with a
+	// writer that always fails. The dispatch handler will try to
+	// write the response, fail, and Run must return the recorded
+	// transport error rather than silently looping forever.
+	srvIn, clientWriter := io.Pipe()
+	defer func() { _ = clientWriter.Close() }()
+	s := New(Options{Reader: srvIn, Writer: failingWriter{}, Rules: rule.All()})
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(context.Background()) }()
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	_, err := clientWriter.Write([]byte("Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + body))
+	require.NoError(t, err)
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.ErrorIs(t, err, io.ErrShortWrite)
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Run did not return after a transport write failure")
+	}
+}
+
 func TestRunSurfacesNonEOFError(t *testing.T) {
 	t.Parallel()
 	// A reader that returns garbage forces readRaw into an error.

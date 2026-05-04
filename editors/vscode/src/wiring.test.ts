@@ -45,6 +45,22 @@ describe("buildServerOptions", () => {
     const exe = opts.run as { command: string };
     expect(exe.command).toBe("mdsmith");
   });
+
+  test("sets options.cwd on both run and debug when supplied", () => {
+    const opts = buildServerOptions("mdsmith", TransportKindStdio, "/repo/root");
+    for (const variant of ["run", "debug"] as const) {
+      const exe = opts[variant] as { options?: { cwd?: string } };
+      expect(exe.options?.cwd).toBe("/repo/root");
+    }
+  });
+
+  test("omits options entirely when no cwd is supplied", () => {
+    // Some clients reject an Executable.options that exists with all
+    // undefined fields; passing nothing keeps the launch shape clean.
+    const opts = buildServerOptions("mdsmith", TransportKindStdio);
+    const exe = opts.run as { options?: unknown };
+    expect(exe.options).toBeUndefined();
+  });
 });
 
 describe("buildClientOptions", () => {

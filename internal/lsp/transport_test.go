@@ -179,6 +179,30 @@ func TestWriteJSONBodyWriteFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "writing body")
 }
 
+func TestWriteJSONRecordsFirstError(t *testing.T) {
+	t.Parallel()
+	tr := newTransport(strings.NewReader(""), failingWriter{})
+	require.NoError(t, tr.WriteError(), "no writes yet, no error")
+	err := tr.writeJSON(map[string]any{"x": 1})
+	require.Error(t, err)
+	assert.ErrorIs(t, tr.WriteError(), io.ErrShortWrite,
+		"transport must remember the first write failure for Run() to surface")
+}
+
+func TestWriteJSONPreservesFirstError(t *testing.T) {
+	t.Parallel()
+	tr := newTransport(strings.NewReader(""), failingWriter{})
+	_ = tr.writeJSON(map[string]any{"x": 1})
+	first := tr.WriteError()
+	// A second write also fails, but WriteError must still return the
+	// original wrapped error so the caller sees the first cause.
+	_ = tr.writeJSON(map[string]any{"x": 2})
+	assert.Same(t, errPtr(first), errPtr(tr.WriteError()))
+}
+
+// errPtr lets the test assert pointer-identity on error values.
+func errPtr(e error) any { return e }
+
 func itoaTransport(i int) string {
 	return strconv.Itoa(i)
 }

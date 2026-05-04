@@ -21,10 +21,22 @@ export interface FileSystemWatcherLike {
   ignoreDeleteEvents?: boolean;
 }
 
-export function buildServerOptions(binary: string, transport: TransportKind): ServerOptions {
+export function buildServerOptions(
+  binary: string,
+  transport: TransportKind,
+  cwd?: string
+): ServerOptions {
+  // Anchor the spawned server at the workspace root when one is
+  // available. mdsmith's lint pipeline now passes
+  // workspace-relative paths into the engine (so config globs
+  // match), but a handful of rules still call os.Stat on paths
+  // derived from f.Path; without a stable CWD they would resolve
+  // against whatever directory VS Code's extension host happens
+  // to be running from, which drifts from CLI behavior.
+  const options = cwd ? { cwd } : undefined;
   return {
-    run: { command: binary, args: ["lsp"], transport },
-    debug: { command: binary, args: ["lsp"], transport }
+    run: { command: binary, args: ["lsp"], transport, options },
+    debug: { command: binary, args: ["lsp"], transport, options }
   };
 }
 

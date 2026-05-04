@@ -18,8 +18,13 @@ let client: LanguageClient | undefined;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const cfg = vscode.workspace.getConfiguration("mdsmith");
   const binary = cfg.get<string>("path", "mdsmith");
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-  const serverOptions: ServerOptions = buildServerOptions(binary, TransportKind.stdio);
+  const serverOptions: ServerOptions = buildServerOptions(
+    binary,
+    TransportKind.stdio,
+    workspaceRoot
+  );
   const clientOptions: LanguageClientOptions = buildClientOptions(
     vscode.workspace.createFileSystemWatcher("**/.mdsmith.yml")
   );

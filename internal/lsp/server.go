@@ -116,12 +116,17 @@ func New(opts Options) *Server {
 	}
 }
 
-// Run drives the server until the input stream returns io.EOF or the
-// client sends `exit`.
+// Run drives the server until the input stream returns io.EOF, the
+// client sends `exit`, the supplied context is canceled, or a
+// transport-level write fails (typically EPIPE when the client drops
+// its stdout pipe).
 func (s *Server) Run(ctx context.Context) error {
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if err := s.t.WriteError(); err != nil {
+			return err
 		}
 		raw, err := s.t.readRaw()
 		if err != nil {
@@ -131,6 +136,9 @@ func (s *Server) Run(ctx context.Context) error {
 			return err
 		}
 		s.dispatchRaw(ctx, raw)
+		if err := s.t.WriteError(); err != nil {
+			return err
+		}
 		if s.shutdown.Load() && s.exitRequested.Load() {
 			return nil
 		}

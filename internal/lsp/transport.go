@@ -9,6 +9,7 @@ import (
 	"net/textproto"
 	"strconv"
 	"sync"
+	"sync/atomic"
 )
 
 // transport reads and writes LSP-framed JSON-RPC messages over the
@@ -21,10 +22,16 @@ import (
 // Concurrent readers are not supported; concurrent writers are
 // serialized via writeMu so the server can publish notifications from
 // any goroutine.
+//
+// The first write failure (typically EPIPE when the client drops its
+// stdout pipe) is captured in writeErr and exposed via WriteError().
+// Run() polls that field after every dispatch so the server exits
+// non-zero on transport failure rather than silently continuing.
 type transport struct {
-	r       *bufio.Reader
-	w       io.Writer
-	writeMu sync.Mutex
+	r        *bufio.Reader
+	w        io.Writer
+	writeMu  sync.Mutex
+	writeErr atomic.Pointer[error]
 }
 
 func newTransport(r io.Reader, w io.Writer) *transport {
@@ -59,7 +66,11 @@ func (t *transport) readRaw() ([]byte, error) {
 	return body, nil
 }
 
-// writeJSON marshals v and emits a framed message.
+// writeJSON marshals v and emits a framed message. The first
+// transport-level write failure is recorded in writeErr so Run()
+// can surface it as a non-zero exit; subsequent writes still try
+// (the caller may already have started a teardown sequence) but the
+// stored error is not overwritten.
 func (t *transport) writeJSON(v any) error {
 	body, err := json.Marshal(v)
 	if err != nil {
@@ -68,10 +79,32 @@ func (t *transport) writeJSON(v any) error {
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
 	if _, err := fmt.Fprintf(t.w, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
-		return fmt.Errorf("lsp: writing header: %w", err)
+		wrapped := fmt.Errorf("lsp: writing header: %w", err)
+		t.recordWriteErr(wrapped)
+		return wrapped
 	}
 	if _, err := t.w.Write(body); err != nil {
-		return fmt.Errorf("lsp: writing body: %w", err)
+		wrapped := fmt.Errorf("lsp: writing body: %w", err)
+		t.recordWriteErr(wrapped)
+		return wrapped
+	}
+	return nil
+}
+
+// recordWriteErr stores err as the first-seen transport error.
+// Subsequent calls are no-ops so the original cause is preserved.
+func (t *transport) recordWriteErr(err error) {
+	if err == nil {
+		return
+	}
+	t.writeErr.CompareAndSwap(nil, &err)
+}
+
+// WriteError returns the first write error seen by the transport, or
+// nil when every write so far has succeeded.
+func (t *transport) WriteError() error {
+	if p := t.writeErr.Load(); p != nil {
+		return *p
 	}
 	return nil
 }
