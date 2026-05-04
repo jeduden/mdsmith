@@ -766,8 +766,8 @@ func (s *Server) computeCodeActions(
 }
 
 // quickFixEditFor returns the WorkspaceEdit produced by running just
-// `rule` over the buffer, or nil if the rule is not fixable, is
-// whole-file-only, or its fix is a no-op against the current buffer.
+// `rule` over the buffer, or nil if the rule is not fixable or its
+// fix is a no-op against the current buffer.
 //
 // The returned edit replaces the entire document because rules
 // produce whole-file-fix output rather than per-range edits. The
@@ -778,9 +778,6 @@ func (s *Server) quickFixEditFor(
 	rule string, doc *document, cfg *config.Config, root, uri string,
 ) *workspaceEdit {
 	if !isFixable(s.rules, rule) {
-		return nil
-	}
-	if isWholeFileOnly(rule) {
 		return nil
 	}
 	relPath := workspaceRelative(root, doc.path)
@@ -1101,18 +1098,6 @@ func isFixable(rules []rule.Rule, name string) bool {
 		}
 		_, ok := r.(rule.FixableRule)
 		return ok
-	}
-	return false
-}
-
-// isWholeFileOnly excludes rules whose fix touches multiple
-// non-contiguous ranges from per-diagnostic quick fixes.
-// catalog/include/toc rewrite a whole generated section; surfacing
-// them as quick fixes invites partial regenerations.
-func isWholeFileOnly(name string) bool {
-	switch name {
-	case "catalog", "toc", "toc-directive", "include":
-		return true
 	}
 	return false
 }

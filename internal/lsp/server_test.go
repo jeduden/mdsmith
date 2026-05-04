@@ -1693,14 +1693,6 @@ func TestUriToPathOnLinuxLeavesDriveLetterAlone(t *testing.T) {
 	assert.Equal(t, "/C:/Users/me/foo.md", got)
 }
 
-func TestIsWholeFileOnly(t *testing.T) {
-	t.Parallel()
-	for _, name := range []string{"catalog", "toc", "toc-directive", "include"} {
-		assert.True(t, isWholeFileOnly(name), "expected %s to be whole-file-only", name)
-	}
-	assert.False(t, isWholeFileOnly("line-length"))
-}
-
 func TestIsFixableUsesRegistry(t *testing.T) {
 	t.Parallel()
 	rules := rule.All()
@@ -1948,13 +1940,24 @@ func TestRunModeFallsBackOnUnknown(t *testing.T) {
 	assert.Equal(t, runOnSave, s.runMode())
 }
 
-func TestQuickFixEditForRejectsWholeFileRule(t *testing.T) {
+// Regression: catalog/toc/include used to be excluded from
+// per-diagnostic Quick Fix actions on the (incorrect) theory
+// that their fixes "invite partial regenerations". They produce
+// whole-file fixes the same way every other rule does — and the
+// action title says "Fix all <rule> with mdsmith" already — so
+// there's no scope ambiguity. Excluding them left users with
+// only the AI extension's "Fix" entry visible in the lightbulb
+// menu when clicking a stale catalog/toc/include diagnostic.
+func TestQuickFixEditForCatalogProducesEdit(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
-	doc := &document{path: "x.md", text: []byte("# Hi\n")}
+	stale := []byte("# Doc\n\n<?catalog\nglob: [\"a.md\"]\n?>\nold body\n<?/catalog?>\n")
+	doc := &document{path: "x.md", text: stale}
 	edit := s.quickFixEditFor("catalog", doc, cfg, "", "file:///x.md")
-	assert.Nil(t, edit, "whole-file-only rules must not produce per-diagnostic fixes")
+	require.NotNil(t, edit, "catalog must surface a quick-fix action; "+
+		"users expect mdsmith fix in the Quick Fix lightbulb menu")
+	require.Contains(t, edit.Changes, "file:///x.md")
 }
 
 func TestQuickFixEditForUnknownRule(t *testing.T) {

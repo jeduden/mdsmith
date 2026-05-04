@@ -91,10 +91,11 @@ Within one `codeAction` request the server runs each
 rule's fix exactly once, regardless of how many
 diagnostics from that rule are present. All
 quick-fix actions for the same rule reference the
-same `WorkspaceEdit`. Rules whose fix touches
-multiple non-contiguous ranges (catalog, toc,
-include) are excluded from quick fixes — they only
-surface as whole-file actions.
+same `WorkspaceEdit`. Generated-section rules
+(catalog, toc, include) regenerate the section in
+their fix — the quick-fix action surfaces normally,
+labelled "Fix all `<rule>` with mdsmith" so the
+whole-file scope is explicit.
 
 **Whole-file fix.** The action kind
 `source.fixAll.mdsmith` runs `mdsmith fix` on the
@@ -220,10 +221,14 @@ files, switch `mdsmith.run` from `onType` to
 `onSave`. Run the latency benchmark below to
 characterize your environment before filing a bug.
 
-**Quick fix does nothing.** A few rules
-(catalog, toc, include) only expose whole-file
-fixes. Use `source.fixAll.mdsmith` or run
-`mdsmith fix <file>` from the terminal.
+**Quick fix does nothing visible.** Confirm the
+LSP is running (status bar should not say "mdsmith
+disabled"). Open the "mdsmith" Output channel and
+trigger a re-lint by editing the buffer; if no
+JSON-RPC traffic appears, the server is not running.
+For generated-section rules (catalog, toc, include),
+the action regenerates the entire block — the
+"diff" the editor applies is whole-file.
 
 **Config edits outside the workspace do not take
 effect.** The watcher's glob is rooted at the
