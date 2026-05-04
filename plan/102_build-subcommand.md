@@ -65,8 +65,10 @@ empty list is a diagnostic.
 
 `inputs:` may be empty (some recipes have no
 file inputs — e.g. a recipe that scrapes a
-remote URL). Plan 103 treats `inputs: []` as
-"always stale".
+remote URL). With no file inputs, plan 103's
+ActionID covers the recipe spec and output
+hashes only; the target stays fresh until
+the recipe spec or outputs change.
 
 Each entry in `outputs:` is a literal relative
 path. No globs. Every output must be a path the

@@ -32,11 +32,6 @@ screenshot recipe that needs a dev server
 running. Hooks fold "start server, run
 recipes, stop server" into one command.
 
-[post]: https://bgslabs.org/blog/why-are-we-using-markdown
-[plan-100]: 100_build-config-and-mds040.md
-[plan-115]: 115_builder-execution-in-fix.md
-[plan-103]: 103_build-staleness-and-deps.md
-
 ## Design
 
 ### Config schema
@@ -206,8 +201,8 @@ via PID file.
 
 1. Extend `BuildConfig` in `internal/config/`
    with `Hooks HooksCfg`. Define `HooksCfg`
-   with `Before []HookCfg` and `After
-   []HookCfg`. Validate each `HookCfg` like
+   with `Before []HookCfg` and `After []HookCfg`.
+   Validate each `HookCfg` like
    `RecipeCfg.command`, including the
    reserved-name list from plan 102.
 2. Extend MDS040 to lint hook `command`

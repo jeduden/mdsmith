@@ -8,8 +8,8 @@ summary: >-
   cloned repo cannot run recipes silently.
   Hermetic env (allowlisted PATH and env
   pass-through). Atomic-write hardening
-  (`O_EXCL` staging, world-writable parent
-  refusal, symlink-safe rename). Output
+  (random-suffix staging, world-writable
+  parent refusal, symlink-safe rename). Output
   post-conditions: every declared output
   must exist; no undeclared write may slip
   out. Process-group kill on timeout.
@@ -36,10 +36,6 @@ input. This plan closes the gap so cloning
 a strange repo and running `mdsmith fix`
 does not detonate.
 
-[plan-100]: 100_build-config-and-mds040.md
-[plan-102]: 102_build-subcommand.md
-[plan-115]: 115_builder-execution-in-fix.md
-
 ## Design
 
 ### Trust gate
@@ -54,16 +50,16 @@ config as trusted (direnv-style):
   unconditionally.
 - The build pass runs only when a sibling
   file `.mdsmith.yml.trust` exists and its
-  content is the sha256 of the current
-  `.mdsmith.yml`. Any drift makes the build
-  pass exit with a clear "config changed
-  since trusted; review and re-trust"
+  content is byte-for-byte identical to the
+  current `.mdsmith.yml`. Any drift makes
+  the build pass exit with a clear "config
+  changed since trusted; review and re-trust"
   message.
 - `mdsmith trust` (a tiny new subcommand)
-  prints the diff of `.mdsmith.yml` since
-  the last trust marker and writes the new
-  hash to `.mdsmith.yml.trust` on
-  confirmation.
+  diffs the current `.mdsmith.yml` against
+  the stored `.mdsmith.yml.trust` contents
+  and overwrites `.mdsmith.yml.trust` with
+  the current config on confirmation.
 - `mdsmith fix --no-build` is the only
   override: it skips the build pass without
   touching the trust marker.
@@ -104,8 +100,7 @@ Plan 115's basic atomic write is replaced
 by:
 
 1. mdsmith creates the staging dir via
-   `os.MkdirTemp` (cryptographic random
-   suffix, `O_CREAT|O_EXCL`) under
+   `os.MkdirTemp` with a random suffix under
    `.mdsmith/build-staging/`. Putting the
    staging root under the project root
    prevents a hostile output dir from
@@ -172,16 +167,17 @@ pass-through name is empty or contains `=`.
 
 1. Implement the trust gate in
    `internal/build/trust.go`: read
-   `.mdsmith.yml.trust`, compute and
-   compare the sha256 of the loaded
-   config, honour `MDSMITH_TRUST_BUILD=1`,
-   and refuse the build pass on mismatch.
+   `.mdsmith.yml.trust`, compare its bytes
+   to the current `.mdsmith.yml`, honour
+   `MDSMITH_TRUST_BUILD=1`, and refuse the
+   build pass on mismatch.
 2. Add `mdsmith trust` subcommand: print
    the diff (using `diff`-style output)
-   between the current config and the
-   trusted snapshot, prompt for
-   confirmation, write the new hash on
-   accept.
+   between `.mdsmith.yml` and the stored
+   `.mdsmith.yml.trust` contents, prompt
+   for confirmation, overwrite
+   `.mdsmith.yml.trust` with the current
+   config on accept.
 3. Extend `BuildConfig` in
    `internal/config/build.go` with
    `Exec ExecCfg` (path, env-pass-through).
@@ -193,7 +189,7 @@ pass-through name is empty or contains `=`.
    process group (Windows), SIGTERM-then-
    SIGKILL on timeout.
 5. Replace plan 115's basic atomic write
-   with the hardened version: `O_EXCL`
+   with the hardened version: `os.MkdirTemp`
    staging under `.mdsmith/build-staging/`,
    world-writable parent refusal,
    `RENAME_NOREPLACE` (Linux) or symlink-
@@ -258,8 +254,8 @@ pass-through name is empty or contains `=`.
 - [ ] Recipe exiting 0 without producing
       every declared output is a build
       failure
-- [ ] Atomic write uses `os.MkdirTemp` +
-      `O_EXCL` under
+- [ ] Atomic write uses `os.MkdirTemp` with
+      a random suffix under
       `.mdsmith/build-staging/`; world-
       writable staging parent is refused
 - [ ] Rename phase uses

@@ -46,11 +46,6 @@ drive this plan:
 - Parallel builds collide on undeclared
   shared state.
 
-[plan-100]: 100_build-config-and-mds040.md
-[plan-103]: 103_build-staleness-and-deps.md
-[plan-115]: 115_builder-execution-in-fix.md
-[plan-117]: 117_build-execution-hardening.md
-
 ## Design
 
 ### Stdout/stderr capture

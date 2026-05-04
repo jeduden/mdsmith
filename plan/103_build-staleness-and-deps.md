@@ -34,10 +34,6 @@ recipes this wastes time and floods git diffs
 with regenerated artifacts whose inputs did
 not change.
 
-[plan-100]: 100_build-config-and-mds040.md
-[plan-102]: 102_build-subcommand.md
-[plan-115]: 115_builder-execution-in-fix.md
-
 ### Pattern borrowed from `cmd/go/internal/cache`
 
 Go's build cache hashes `(action description ‖
