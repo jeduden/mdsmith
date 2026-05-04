@@ -1,5 +1,7 @@
 package config
 
+import "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
+
 // Merge merges a loaded config on top of defaults. The loaded config's rules
 // override the defaults; any rule not mentioned in loaded keeps its default
 // value. Ignore and Overrides come from the loaded config only.
@@ -48,6 +50,8 @@ func Merge(defaults, loaded *Config) *Config {
 		Build:                  copyBuildConfig(loaded.Build),
 		Convention:             loaded.Convention,
 		ConventionPreset:       copyConventionPreset(loaded.ConventionPreset),
+		Conventions:            loaded.Conventions,
+		UserConventions:        copyUserConventions(loaded.UserConventions),
 	}
 }
 
@@ -100,6 +104,8 @@ func copyConfig(cfg *Config) *Config {
 		Build:                  copyBuildConfig(cfg.Build),
 		Convention:             cfg.Convention,
 		ConventionPreset:       copyConventionPreset(cfg.ConventionPreset),
+		Conventions:            cfg.Conventions,
+		UserConventions:        copyUserConventions(cfg.UserConventions),
 	}
 }
 
@@ -408,4 +414,20 @@ func ApplyCategories(
 // and the base name, consistent with how ignore patterns are matched.
 func matchesAny(patterns []string, filePath string) bool {
 	return globMatchAny(patterns, filePath)
+}
+
+// copyUserConventions returns a shallow copy of a user-convention map.
+// The Convention values themselves are value types (containing a Flavor int
+// and a Rules map); the Rules map is shared but Convention entries from
+// ValidateUserConventions already hold deep copies of the original settings,
+// so sharing within the same session is safe. Returns nil if the input is nil.
+func copyUserConventions(m map[string]markdownflavor.Convention) map[string]markdownflavor.Convention {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]markdownflavor.Convention, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
 
 // ValidCategories lists the recognized rule category names.
@@ -44,6 +46,21 @@ type Config struct {
 	// internal/rules/markdownflavor/conventions.go for the table
 	// and docs/reference/conventions.md for end-user docs.
 	Convention string `yaml:"convention,omitempty"`
+
+	// Conventions holds the user-defined convention entries parsed
+	// from the top-level `conventions:` block in .mdsmith.yml. Each
+	// entry declares a flavor and rule presets with the same schema
+	// as the built-in convention table. Reserved names ("portable",
+	// "github", "plain") are rejected at validation time.
+	// Not serialized back to YAML — the canonical form is the raw
+	// .mdsmith.yml; the parsed representation is stored separately.
+	Conventions map[string]UserConventionCfg `yaml:"conventions,omitempty"`
+
+	// UserConventions is the validated and converted form of
+	// cfg.Conventions. It maps convention names to markdownflavor.Convention
+	// values ready for Lookup. Populated by ValidateUserConventions during
+	// config loading. Not serialized to YAML.
+	UserConventions map[string]markdownflavor.Convention `yaml:"-"`
 
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
@@ -130,6 +147,19 @@ func (e KindAssignmentEntry) Patterns() []string {
 		return e.Glob
 	}
 	return e.Files
+}
+
+// UserConventionCfg is the YAML-parseable form of a user-defined convention
+// entry inside the top-level `conventions:` block. After loading it is
+// validated and converted to a markdownflavor.Convention by
+// ValidateUserConventions.
+type UserConventionCfg struct {
+	// Flavor is the Markdown flavor string ("commonmark", "gfm", "goldmark",
+	// etc.) the convention targets.
+	Flavor string `yaml:"flavor"`
+	// Rules maps rule names to their preset configs, using the same
+	// RuleCfg union as the top-level rules: block.
+	Rules map[string]RuleCfg `yaml:"rules"`
 }
 
 // RuleCfg is a YAML union: can be bool (enable/disable) or map[string]any (settings).

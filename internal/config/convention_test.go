@@ -9,9 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	// Register markdown-flavor so rule.ByName lookups in deep-merge
-	// resolve while the convention mechanism is exercised.
-	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
+
+	// Register rules used by the tests so rule.ByName lookups
+	// in ValidateUserConventions and deep-merge resolve correctly.
+	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
+	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
 )
 
 func TestApplyConvention_NoConventionSet_NoOp(t *testing.T) {
@@ -367,4 +370,277 @@ func TestMerge_PreservesConvention(t *testing.T) {
 	// Mutating the merged copy must not bleed back into the source.
 	merged.ConventionPreset["line-length"].Settings["max"] = 999
 	assert.Equal(t, 80, loaded.ConventionPreset["line-length"].Settings["max"])
+}
+
+// ---- ValidateUserConventions tests ----
+
+func TestValidateUserConventions_ValidConvention(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"ambiguous-emphasis": {
+						Enabled:  true,
+						Settings: map[string]any{"max-run": 2},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, ValidateUserConventions(cfg))
+	require.NotNil(t, cfg.UserConventions)
+	conv, ok := cfg.UserConventions["our-team"]
+	require.True(t, ok, "our-team must be in UserConventions")
+	assert.Equal(t, "our-team", conv.Name)
+	assert.Equal(t, "gfm", conv.Flavor.String())
+	lms, ok := conv.Rules["ambiguous-emphasis"]
+	require.True(t, ok)
+	assert.True(t, lms.Enabled)
+	assert.Equal(t, 2, lms.Settings["max-run"])
+}
+
+func TestValidateUserConventions_EmptyConventions_NoOp(t *testing.T) {
+	cfg := &Config{}
+	require.NoError(t, ValidateUserConventions(cfg))
+	assert.Nil(t, cfg.UserConventions)
+}
+
+func TestValidateUserConventions_ReservedNamePortableRejected(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"portable": {Flavor: "gfm"},
+		},
+	}
+	err := ValidateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "portable")
+	assert.Contains(t, err.Error(), "reserved")
+}
+
+func TestValidateUserConventions_ReservedNameGithubRejected(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"github": {Flavor: "gfm"},
+		},
+	}
+	err := ValidateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "github")
+	assert.Contains(t, err.Error(), "reserved")
+}
+
+func TestValidateUserConventions_ReservedNamePlainRejected(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"plain": {Flavor: "commonmark"},
+		},
+	}
+	err := ValidateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "plain")
+	assert.Contains(t, err.Error(), "reserved")
+}
+
+func TestValidateUserConventions_UnknownFlavorRejected(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"our-team": {Flavor: "markdown"},
+		},
+	}
+	err := ValidateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "markdown")
+}
+
+func TestValidateUserConventions_UnknownRuleNameRejected(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-such-rule": {Enabled: true},
+				},
+			},
+		},
+	}
+	err := ValidateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "no-such-rule")
+}
+
+func TestValidateUserConventions_InvalidRuleSettingRejected(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"ambiguous-emphasis": {
+						Enabled:  true,
+						Settings: map[string]any{"max-run": "not-a-number"},
+					},
+				},
+			},
+		},
+	}
+	err := ValidateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "ambiguous-emphasis")
+}
+
+func TestValidateUserConventions_SettingsOnNonConfigurableRuleRejected(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-hard-tabs": {
+						Enabled:  true,
+						Settings: map[string]any{"bad-setting": true},
+					},
+				},
+			},
+		},
+	}
+	err := ValidateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "no-hard-tabs")
+}
+
+func TestValidateUserConventions_NoSettings_NonConfigurableRuleAccepted(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionCfg{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-hard-tabs": {Enabled: true},
+				},
+			},
+		},
+	}
+	require.NoError(t, ValidateUserConventions(cfg))
+}
+
+// TestLoad_UserConventionLoaded verifies full end-to-end loading of a
+// user-defined convention from a .mdsmith.yml file.
+func TestLoad_UserConventionLoaded(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      ambiguous-emphasis:
+        max-run: 3
+convention: our-team
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", cfg.Convention)
+	require.NotNil(t, cfg.UserConventions)
+	require.Contains(t, cfg.UserConventions, "our-team")
+	assert.Equal(t, "gfm", cfg.UserConventions["our-team"].Flavor.String())
+	require.NotNil(t, cfg.ConventionPreset)
+	ae := cfg.ConventionPreset["ambiguous-emphasis"]
+	assert.True(t, ae.Enabled)
+	assert.Equal(t, 3, ae.Settings["max-run"])
+}
+
+func TestLoad_UserConventionReservedNameError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `
+conventions:
+  portable:
+    flavor: gfm
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "portable")
+	assert.Contains(t, err.Error(), "reserved")
+}
+
+func TestLoad_UnknownConventionListsUserDefinedNames(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `
+conventions:
+  our-team:
+    flavor: gfm
+convention: bogus
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
+	// Must list built-in names
+	assert.True(t, strings.Contains(err.Error(), "github"), "error must mention github")
+	assert.True(t, strings.Contains(err.Error(), "portable"), "error must mention portable")
+	assert.True(t, strings.Contains(err.Error(), "plain"), "error must mention plain")
+	// Must list user-defined names
+	assert.True(t, strings.Contains(err.Error(), "our-team"), "error must mention our-team")
+}
+
+func TestLoad_UserConventionTopLevelRulesOverrideWins(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      ambiguous-emphasis:
+        max-run: 3
+convention: our-team
+rules:
+  ambiguous-emphasis:
+    max-run: 5
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	loaded, err := Load(path)
+	require.NoError(t, err)
+	merged := Merge(Defaults(), loaded)
+	got := Effective(merged, "doc.md", nil)
+	ae, ok := got["ambiguous-emphasis"]
+	require.True(t, ok)
+	assert.True(t, ae.Enabled)
+	assert.Equal(t, 5, ae.Settings["max-run"],
+		"top-level rules must override user convention presets")
+}
+
+func TestProvenance_UserConventionLayerHasSuffix(t *testing.T) {
+	// When a user-defined convention is selected, the provenance layer
+	// source must include "(user)" to distinguish it from built-in
+	// conventions.
+	cfg := &Config{
+		Convention: "our-team",
+		ConventionPreset: map[string]RuleCfg{
+			"ambiguous-emphasis": {Enabled: true, Settings: map[string]any{"max-run": 3}},
+		},
+		UserConventions: map[string]markdownflavor.Convention{
+			"our-team": {},
+		},
+	}
+
+	res := ResolveFile(cfg, "doc.md", nil)
+	rr, ok := res.Rules["ambiguous-emphasis"]
+	require.True(t, ok)
+
+	var sources []string
+	for _, l := range rr.Layers {
+		sources = append(sources, l.Source)
+	}
+	require.Contains(t, sources, "convention.our-team (user)",
+		"user convention source must carry (user) suffix")
 }

@@ -172,6 +172,81 @@ This split keeps MDS034 focused on "what does this
 renderer interpret as a feature." Conventions
 orchestrate style separately.
 
+## User-defined conventions
+
+When the three built-in conventions do not match
+your team's needs, define your own inline in
+`.mdsmith.yml`:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+      no-reference-style:
+        allow-footnotes: true
+
+convention: our-team
+```
+
+The `conventions:` block is a map from name to a
+`{ flavor, rules }` pair — the same shape as the
+built-in table. Each `rules:` entry uses the same
+schema as the top-level `rules:` block.
+
+### Constraints
+
+**Reserved names.** The three built-in names
+(`portable`, `github`, `plain`) are reserved. Using
+one as a user-defined name is a config error.
+
+**`flavor:` must be a valid flavor string.**
+Accepted values: `commonmark`, `gfm`, `goldmark`,
+`any`, `pandoc`, `phpextra`, `multimarkdown`, `myst`.
+An unknown value is a config error naming the
+convention and the bad value.
+
+**Rule names must be registered.** Each key under
+`rules:` must name a rule mdsmith knows about. An
+unknown name produces a config error:
+`convention "our-team" rule "no-such-rule": unknown
+rule name`.
+
+**Settings must pass the rule's validator.** Each
+rule's `ApplySettings` is called at config load
+time. An invalid setting produces a config error
+naming the convention and the rule:
+`convention "our-team" rule "no-inline-html": …`.
+
+### Resolution order
+
+When `convention: our-team` is set, mdsmith looks
+up `our-team` in the user-defined map first, then
+falls back to the built-in table. Because reserved
+names are rejected at parse time, user-defined
+names cannot shadow built-ins.
+
+If the name is not found in either map, the error
+message lists both built-in and user-defined names.
+
+### How user conventions appear in `kinds resolve`
+
+`mdsmith kinds resolve <file>` labels user-defined
+convention layers with a `(user)` suffix to
+distinguish them from built-ins:
+
+```text
+  convention.our-team (user)  set    {"max-run":3}
+```
+
+This makes it easy to spot which layer came from
+the project's `.mdsmith.yml` versus which came from
+the mdsmith binary.
+
 ## Inspecting an effective convention
 
 `mdsmith kinds resolve <file>` shows the merge
