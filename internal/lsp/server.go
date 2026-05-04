@@ -535,7 +535,14 @@ func workspaceRelative(root, path string) string {
 		return path
 	}
 	rel, err := filepath.Rel(root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil {
+		return path
+	}
+	// Only treat true parent traversals as outside root. A bare
+	// HasPrefix(rel, "..") would also match in-root files whose
+	// names happen to start with two dots (e.g. "..foo.md"),
+	// breaking glob/ignore matching for those files.
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return path
 	}
 	return rel

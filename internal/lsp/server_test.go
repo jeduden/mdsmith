@@ -963,6 +963,11 @@ func TestWorkspaceRelativePathHandling(t *testing.T) {
 		{"/repo", "rel.md", "rel.md"},
 		{"/repo", "/repo/docs/foo.md", "docs/foo.md"},
 		{"/repo", "/elsewhere/foo.md", "/elsewhere/foo.md"},
+		// Regression: an in-root file whose name happens to start
+		// with two dots must not be treated as a parent traversal.
+		// A naive HasPrefix(rel, "..") would have rejected this.
+		{"/repo", "/repo/..foo.md", "..foo.md"},
+		{"/repo", "/repo/sub/..bar.md", "sub/..bar.md"},
 	}
 	for _, tc := range tests {
 		got := workspaceRelative(tc.root, tc.path)
