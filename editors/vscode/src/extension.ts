@@ -6,37 +6,31 @@ import {
   TransportKind
 } from "vscode-languageclient/node";
 
+import {
+  buildClientOptions,
+  buildServerOptions,
+  collectFixAllEdits,
+  startupErrorMessage
+} from "./wiring";
+
 let client: LanguageClient | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const cfg = vscode.workspace.getConfiguration("mdsmith");
   const binary = cfg.get<string>("path", "mdsmith");
 
-  const serverOptions: ServerOptions = {
-    run: { command: binary, args: ["lsp"], transport: TransportKind.stdio },
-    debug: { command: binary, args: ["lsp"], transport: TransportKind.stdio }
-  };
-
-  const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { scheme: "file", language: "markdown" }
-    ],
-    synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/.mdsmith.yml")
-    },
-    outputChannelName: "mdsmith"
-  };
+  const serverOptions: ServerOptions = buildServerOptions(binary, TransportKind.stdio);
+  const clientOptions: LanguageClientOptions = buildClientOptions(
+    vscode.workspace.createFileSystemWatcher("**/.mdsmith.yml")
+  );
 
   client = new LanguageClient("mdsmith", "mdsmith", serverOptions, clientOptions);
 
   try {
     await client.start();
   } catch (err) {
-    const message =
-      `Failed to start mdsmith Language Server: ${err}. ` +
-      `Set the binary path with the "mdsmith.path" setting or download mdsmith.`;
     const choice = await vscode.window.showErrorMessage(
-      message,
+      startupErrorMessage(err),
       "Download mdsmith",
       "Open Settings"
     );
@@ -62,21 +56,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           event.document.uri,
           new vscode.Range(0, 0, event.document.lineCount, 0),
           "source.fixAll.mdsmith"
-        ).then(async (actions) => {
-          const list = (actions ?? []) as vscode.CodeAction[];
-          const edits: vscode.TextEdit[] = [];
-          for (const action of list) {
-            if (action.kind?.value !== "source.fixAll.mdsmith") continue;
-            if (!action.edit) continue;
-            for (const [uri, items] of action.edit.entries()) {
-              if (uri.toString() !== event.document.uri.toString()) continue;
-              for (const item of items) {
-                edits.push(item as vscode.TextEdit);
-              }
-            }
-          }
-          return edits;
-        })
+        ).then((actions) => collectFixAllEdits(actions, event.document.uri))
       );
     })
   );

@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.vsix
 package-lock.json
+yarn.lock
+pnpm-lock.yaml

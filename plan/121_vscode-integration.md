@@ -114,10 +114,12 @@ omitted to avoid partial regenerations.
 ### Client: VS Code extension
 
 Lives in a new top-level directory `editors/vscode/`
-to keep the Go module clean. TypeScript, built with
-`esbuild`, packaged with `vsce`. The entry point
-uses Microsoft's `vscode-languageclient` package to
-speak to `mdsmith lsp` over stdio.
+to keep the Go module clean. TypeScript, built and
+tested with [Bun](https://bun.sh) (`bun build` for
+the bundle, `bun test` for the unit tests),
+packaged with `vsce`. The entry point uses
+Microsoft's `vscode-languageclient` package to speak
+to `mdsmith lsp` over stdio.
 
 Settings the extension contributes:
 

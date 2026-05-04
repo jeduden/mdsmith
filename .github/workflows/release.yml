@@ -54,15 +54,18 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+      - uses: oven-sh/setup-bun@4bc047ad259df6fc24a6c9b0f9a0cb08cf17fbe5 # v2
         with:
-          node-version: "20"
+          bun-version: "1.3.11"
       - name: Install extension dependencies
         working-directory: editors/vscode
-        run: npm install --no-audit --no-fund
+        run: bun install --frozen-lockfile
+      - name: Run extension unit tests
+        working-directory: editors/vscode
+        run: bun test
       - name: Compile extension
         working-directory: editors/vscode
-        run: npm run compile
+        run: bun run build.ts --production
       - name: Package .vsix
         env:
           VERSION: ${{ github.ref_name }}
@@ -70,7 +73,7 @@ jobs:
         run: |
           # Strip the leading 'v' so the .vsix carries a clean SemVer.
           ver="${VERSION#v}"
-          npx --yes @vscode/vsce@^3.0.0 package --no-dependencies \
+          bunx --bun @vscode/vsce package --no-dependencies \
             --out "mdsmith-${ver}.vsix"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

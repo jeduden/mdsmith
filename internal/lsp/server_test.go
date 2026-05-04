@@ -1347,8 +1347,15 @@ func TestDidSaveLintsWhenRunOnSave(t *testing.T) {
 	assert.Equal(t, uri, p.URI)
 }
 
-// TestRunOffSuppressesLint verifies run=off skips lint passes from
-// didChange but didOpen still produces an initial snapshot.
+// TestRunOffSuppressesLint pins the contract that flipping
+// mdsmith.run to "off" stops the server from publishing further
+// diagnostics on subsequent didChange events. The initial open is
+// linted under whatever mode was active at didOpen (here the test
+// harness's onType default), so we await + drop that publish before
+// flipping the setting; the assertion is that no further publish
+// arrives during the brief watch window. scheduleLint's runOff
+// short-circuit covers didOpen too — see the runMode docs for the
+// full table.
 func TestRunOffSuppressesLint(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

@@ -61,19 +61,20 @@
     }
   },
   "scripts": {
-    "compile": "node ./esbuild.js",
-    "watch": "node ./esbuild.js --watch",
+    "compile": "bun run build.ts",
+    "watch": "bun run build.ts --watch",
+    "test": "bun test",
     "package": "vsce package --out mdsmith.vsix",
-    "vscode:prepublish": "node ./esbuild.js --production"
+    "vscode:prepublish": "bun run build.ts --production"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@types/bun": "^1.1.0",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.0.0",
-    "esbuild": "^0.24.0",
     "typescript": "^5.4.0"
   }
 }

@@ -207,9 +207,23 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 	if r.SourceFS != nil {
 		f.FS = r.SourceFS
 	}
-	if r.RootDir != "" {
+	// Mirror processFile's gitignore wiring so on-disk Run() and
+	// in-memory RunSource() agree on whether a path is ignored.
+	// Anchor at RootDir when set, otherwise fall back to the
+	// document directory (filepath.Dir(path)) when path is absolute.
+	// In-memory callers with neither RootDir nor an absolute path
+	// (the bare `<stdin>` case) leave GitignoreFunc nil — the
+	// matcher would have no meaningful root to walk anyway.
+	gitignoreDir := ""
+	switch {
+	case r.RootDir != "":
 		f.SetRootDir(r.RootDir)
-		gd := r.RootDir
+		gitignoreDir = r.RootDir
+	case filepath.IsAbs(path):
+		gitignoreDir = filepath.Dir(path)
+	}
+	if gitignoreDir != "" {
+		gd := gitignoreDir
 		f.GitignoreFunc = func() *lint.GitignoreMatcher {
 			return r.cachedGitignore(gd)
 		}

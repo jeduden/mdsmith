@@ -881,9 +881,12 @@ func (s *Server) deliverResponse(id string, resp rpcResponse) {
 }
 
 // registerWatchers asks the client to watch the project's
-// `.mdsmith.yml` and notify the server on change. Best-effort; clients
-// that lack dynamic registration ignore this and the server falls
-// back to the polled config.
+// `.mdsmith.yml` and notify the server on change. The request is
+// best-effort: clients that don't support dynamic registration
+// silently ignore it. There is no polling fallback — when the
+// watcher is absent, the server only sees a config change on the
+// next initialize, didChangeConfiguration, or explicit
+// workspace/didChangeWatchedFiles the client decides to send.
 func (s *Server) registerWatchers() {
 	id := s.nextReqID.Add(1)
 	idJSON, err := json.Marshal(id)

@@ -37,6 +37,20 @@ See the
 for prerequisites, code actions, troubleshooting, and the
 performance benchmark.
 
+## Building from source
+
+The extension uses [Bun](https://bun.sh) for both bundling
+and tests:
+
+```bash
+bun install
+bun test
+bun run build.ts            # one-shot bundle to dist/
+bun run build.ts --watch    # rebuild on change
+```
+
+`bunx --bun @vscode/vsce package` produces the `.vsix`.
+
 ## License
 
 MIT.

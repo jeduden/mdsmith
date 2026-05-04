@@ -2,7 +2,8 @@
 .vscodeignore
 src/**
 tsconfig.json
-esbuild.js
+build.ts
+bun.lock
 node_modules/**
 **/*.map
 **/*.ts
