@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
 
 // ValidCategories lists the recognized rule category names.
@@ -23,19 +25,30 @@ var ValidCategories = []string{
 // discovery when no file arguments are given on the command line.
 var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
 
+// UserConventionBody is the YAML shape of a single user-defined
+// convention entry under the top-level `conventions:` key.
+type UserConventionBody struct {
+	// Flavor is the Markdown flavor name (e.g. "gfm", "commonmark").
+	Flavor string `yaml:"flavor"`
+	// Rules maps rule name to its preset config, with the same union
+	// semantics as the top-level `rules:` block.
+	Rules map[string]RuleCfg `yaml:"rules"`
+}
+
 // Config is the top-level configuration.
 type Config struct {
-	Rules          map[string]RuleCfg    `yaml:"rules"`
-	Ignore         []string              `yaml:"ignore"`
-	Overrides      []Override            `yaml:"overrides"`
-	FrontMatter    *bool                 `yaml:"front-matter"`
-	Categories     map[string]bool       `yaml:"categories"`
-	Files          []string              `yaml:"files"`
-	FollowSymlinks bool                  `yaml:"follow-symlinks"`
-	MaxInputSize   string                `yaml:"max-input-size"`
-	Kinds          map[string]KindBody   `yaml:"kinds,omitempty"`
-	KindAssignment []KindAssignmentEntry `yaml:"kind-assignment,omitempty"`
-	Build          BuildConfig           `yaml:"build,omitempty"`
+	Rules          map[string]RuleCfg            `yaml:"rules"`
+	Ignore         []string                      `yaml:"ignore"`
+	Overrides      []Override                    `yaml:"overrides"`
+	FrontMatter    *bool                         `yaml:"front-matter"`
+	Categories     map[string]bool               `yaml:"categories"`
+	Files          []string                      `yaml:"files"`
+	FollowSymlinks bool                          `yaml:"follow-symlinks"`
+	MaxInputSize   string                        `yaml:"max-input-size"`
+	Kinds          map[string]KindBody           `yaml:"kinds,omitempty"`
+	KindAssignment []KindAssignmentEntry         `yaml:"kind-assignment,omitempty"`
+	Build          BuildConfig                   `yaml:"build,omitempty"`
+	Conventions    map[string]UserConventionBody `yaml:"conventions,omitempty"`
 
 	// Convention names a Markdown convention bundle. Built-in
 	// values: "portable", "github", "plain". Empty means no
@@ -80,6 +93,12 @@ type Config struct {
 	// Empty when no convention is selected.
 	// Not serialized to YAML.
 	ConventionPreset map[string]RuleCfg `yaml:"-"`
+
+	// UserConventions is the validated set of user-defined conventions
+	// built from the `conventions:` YAML block. It is passed to
+	// markdownflavor.Lookup so user names are found before built-ins.
+	// Not serialized to YAML.
+	UserConventions map[string]markdownflavor.Convention `yaml:"-"`
 }
 
 // Override applies rule settings to files matching glob patterns.

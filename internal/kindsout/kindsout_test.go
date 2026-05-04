@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -474,4 +475,61 @@ func TestWriteRuleResolutionText_ShowsConventionLayer(t *testing.T) {
 		"convention layer must appear in chain")
 	assert.Contains(t, out, "winning source: user",
 		"user value wins over convention preset")
+}
+
+func TestWriteFileResolutionText_UserConventionSuffix(t *testing.T) {
+	// When the selected convention is user-defined, the layer source
+	// must carry the "(user)" suffix so `kinds resolve` output
+	// distinguishes user conventions from built-ins.
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+		Convention: "our-team",
+		ConventionPreset: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+		UserConventions: map[string]markdownflavor.Convention{
+			"our-team": {
+				Name:   "our-team",
+				Flavor: markdownflavor.FlavorGFM,
+				Rules:  map[string]markdownflavor.RulePreset{},
+			},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	out := buf.String()
+	assert.Contains(t, out, "convention.our-team (user)",
+		"user convention layer must carry the (user) suffix")
+}
+
+func TestWriteRuleResolutionText_UserConventionSuffix(t *testing.T) {
+	// The per-rule merge chain must also show the (user) suffix for
+	// user-defined conventions.
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 120}},
+		},
+		ExplicitRules: map[string]bool{"line-length": true},
+		Convention:    "our-team",
+		ConventionPreset: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+		UserConventions: map[string]markdownflavor.Convention{
+			"our-team": {
+				Name:   "our-team",
+				Flavor: markdownflavor.FlavorGFM,
+				Rules:  map[string]markdownflavor.RulePreset{},
+			},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	rr := res.Rules["line-length"]
+	var buf bytes.Buffer
+	require.NoError(t, WriteRuleResolutionText(&buf, "x.md", rr))
+	out := buf.String()
+	assert.Contains(t, out, "convention.our-team (user)",
+		"user convention layer must carry the (user) suffix in the chain")
 }

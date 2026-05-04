@@ -1,5 +1,7 @@
 package config
 
+import "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
+
 // Merge merges a loaded config on top of defaults. The loaded config's rules
 // override the defaults; any rule not mentioned in loaded keeps its default
 // value. Ignore and Overrides come from the loaded config only.
@@ -48,6 +50,8 @@ func Merge(defaults, loaded *Config) *Config {
 		Build:                  copyBuildConfig(loaded.Build),
 		Convention:             loaded.Convention,
 		ConventionPreset:       copyConventionPreset(loaded.ConventionPreset),
+		UserConventions:        copyUserConventions(loaded.UserConventions),
+		Conventions:            copyConventionBodies(loaded.Conventions),
 	}
 }
 
@@ -100,6 +104,8 @@ func copyConfig(cfg *Config) *Config {
 		Build:                  copyBuildConfig(cfg.Build),
 		Convention:             cfg.Convention,
 		ConventionPreset:       copyConventionPreset(cfg.ConventionPreset),
+		UserConventions:        copyUserConventions(cfg.UserConventions),
+		Conventions:            copyConventionBodies(cfg.Conventions),
 	}
 }
 
@@ -408,4 +414,48 @@ func ApplyCategories(
 // and the base name, consistent with how ignore patterns are matched.
 func matchesAny(patterns []string, filePath string) bool {
 	return globMatchAny(patterns, filePath)
+}
+
+// copyUserConventions returns a deep copy of a user-conventions map.
+// Returns nil when the input is nil.
+func copyUserConventions(m map[string]markdownflavor.Convention) map[string]markdownflavor.Convention {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]markdownflavor.Convention, len(m))
+	for k, v := range m {
+		rules := make(map[string]markdownflavor.RulePreset, len(v.Rules))
+		for rk, rv := range v.Rules {
+			rules[rk] = markdownflavor.RulePreset{
+				Enabled:  rv.Enabled,
+				Settings: cloneSettings(rv.Settings),
+			}
+		}
+		out[k] = markdownflavor.Convention{
+			Name:   v.Name,
+			Flavor: v.Flavor,
+			Rules:  rules,
+		}
+	}
+	return out
+}
+
+// copyConventionBodies returns a deep copy of a UserConventionBody map.
+// Returns nil when the input is nil.
+func copyConventionBodies(m map[string]UserConventionBody) map[string]UserConventionBody {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]UserConventionBody, len(m))
+	for k, v := range m {
+		rules := make(map[string]RuleCfg, len(v.Rules))
+		for rk, rv := range v.Rules {
+			rules[rk] = copyRuleCfg(rv)
+		}
+		out[k] = UserConventionBody{
+			Flavor: v.Flavor,
+			Rules:  rules,
+		}
+	}
+	return out
 }
