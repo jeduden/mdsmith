@@ -81,21 +81,21 @@ in order:
 
 ```text
 recipe.command
-canonical(directive.params)         (key=value\0 pairs, sorted)
-canonical(sorted resolved inputs)   (path\0 entries)
+canonical(directive.params)         (sorted; per pair: len(key)|key|len(value)|value)
+canonical(sorted resolved inputs)   (per entry: len(path)|path)
 concat(sha256(content) per input, same order)
-canonical(sorted resolved outputs)  (path\0 entries)
+canonical(sorted resolved outputs)  (per entry: len(path)|path)
 cache.version
 ```
 
-Length-prefixing prevents path-collision
-attacks where a NUL or sentinel byte
-collapses two input sets into one hash. Plan
-102 rejects NUL and newline in declared
-paths. Resolved glob matches could still
-contain control bytes from hostile
-filenames; the length frame makes that
-benign.
+Every field has an outer 8-byte big-endian
+length prefix. Inside the param and path
+canonicalisations each key, value, and path
+is itself length-framed the same way. No
+separator byte is used. Two-layer length
+framing prevents collisions even when param
+keys contain `=` or `\0` and when filenames
+contain control bytes from hostile globs.
 
 `cache.version` lets a future mdsmith
 release rev the schema and force a single

@@ -8,8 +8,10 @@ summary: >-
   cloned repo cannot run recipes silently.
   Hermetic env (allowlisted PATH and env
   pass-through). Atomic-write hardening
-  (random-suffix staging, world-writable
-  parent refusal, symlink-safe rename). Output
+  (random-suffix staging, refuse if the
+  `.mdsmith/build-staging/` root is a
+  symlink or world-writable, symlink-safe
+  rename). Output
   post-conditions: every declared output
   must exist; no undeclared write may slip
   out. Process-group kill on timeout.
@@ -220,14 +222,15 @@ pass-through name is empty or contains `=`.
    process group (Windows), SIGTERM-then-
    SIGKILL on timeout.
 5. Replace plan 115's basic atomic write
-   with the hardened version: staging-root
-   `Lstat` directory check, world-writable
-   parent refusal, `os.MkdirTemp` per-recipe
-   dir, per-destination `Lstat` symlink
-   refusal followed by `os.Rename`. Document
-   the partial-failure semantics for
-   multi-output rename (best-effort cleanup;
-   next `fix` reruns the recipe).
+   with the hardened version: `Lstat`
+   `.mdsmith/build-staging/` and refuse if
+   it is a symlink, not a directory, or
+   world-writable; `os.MkdirTemp` per-recipe
+   dir under it; per-destination `Lstat`
+   symlink refusal followed by `os.Rename`.
+   Document the partial-failure semantics
+   for multi-output rename (best-effort
+   cleanup; next `fix` reruns the recipe).
 6. Implement output post-conditions in
    `internal/build/postcheck.go`: snapshot
    staging dir + output parents pre-recipe,
@@ -252,8 +255,8 @@ pass-through name is empty or contains `=`.
   - Recipe exiting 0 without producing a
     declared output is a build failure.
   - World-writable
-    `.mdsmith/build-staging/` parent dir
-    is refused at start.
+    `.mdsmith/build-staging/` is refused
+    at start.
   - A recipe that spawns a child process
     and exceeds `--build-timeout` is
     killed (process group); the child is
@@ -289,10 +292,10 @@ pass-through name is empty or contains `=`.
       failure
 - [ ] Atomic write uses `os.MkdirTemp` with
       a random suffix under
-      `.mdsmith/build-staging/`; world-
-      writable staging parent is refused;
-      a non-directory or symlink at the
-      staging root is refused
+      `.mdsmith/build-staging/`; that
+      staging root is refused if it is a
+      symlink, not a directory, or
+      world-writable
 - [ ] Rename phase `Lstat`s each output
       destination, refuses to replace a
       symlink, then uses `os.Rename`;

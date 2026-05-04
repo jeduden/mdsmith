@@ -75,19 +75,14 @@ written. Useful for a single-target debug
 run.
 
 Log files are kept until the cache entry
-that names them is invalidated, so a user
-can read the log of a recipe that ran an
-hour ago. A schema-version bump (plan 103)
-deletes the cache entry and its log file
-together. `--build-no-cache` is different:
-it bypasses the cache-write step entirely,
-so each run's logs are still written under
-`.mdsmith/build-logs/<action-id>.log` but
-are never associated with a cache entry.
-Those orphan logs are removed at the start
-of the next `mdsmith fix` invocation, so the
-build-logs dir contains at most one
-`--build-no-cache` run's output at a time.
+that names them is invalidated; a plan 103
+schema-version bump deletes the matching
+log. `--build-no-cache` writes logs but no
+cache entry. At the start of the next
+`mdsmith fix`, mdsmith deletes any
+`build-logs/<id>.log` whose `<id>` has no
+cache entry, bounding orphans to one
+`--build-no-cache` run.
 
 ### Failure diagnostic format
 
@@ -227,9 +222,12 @@ behind `--build-format json`).
    line-by-line with target-name prefix;
    log file still written.
 5. Implement `--build-explain TARGET`:
-   resolve target by first output path
-   or recipe+first-param; print ActionID
-   input fields and cache lookup result.
+   match `TARGET` against each directive's
+   first declared output (string equality
+   after path normalization). No match
+   exits non-zero with "no target named X".
+   Plan 103's overlap rule rules out
+   ambiguity at config load.
 6. Implement `--build-verify`: run each
    recipe twice in independent staging
    dirs (plan 117), `diff` outputs,
@@ -241,10 +239,12 @@ behind `--build-format json`).
    overlapping `outputs:` at config load,
    so the work-pool may dispatch any pair
    of targets in parallel.
-8. Wire log retention into cache
-   invalidation (plan 103): on cache
-   eviction or `--build-no-cache`,
-   delete the corresponding log files.
+8. Wire log retention. Cache eviction
+   deletes the matching log file. At the
+   start of each `mdsmith fix`, delete any
+   `build-logs/<id>.log` whose `<id>` has
+   no cache entry; this clears orphans
+   from a prior `--build-no-cache` run.
 9. Integration tests:
 
   - Default mode: failing recipe prints
@@ -271,9 +271,10 @@ behind `--build-format json`).
   - Hung recipe printout includes the
     last 20 lines of each stream
     before the SIGTERM.
-  - Log files are deleted when the
-    corresponding cache entry is
-    evicted.
+  - Cache eviction deletes the matching
+    log file; orphan logs from a previous
+    `--build-no-cache` run are removed at
+    the start of the next `mdsmith fix`.
 
 10. Document the streams, log retention,
     diagnostic format, and the four new
@@ -307,8 +308,10 @@ behind `--build-format json`).
       overlapping `outputs:` paths are
       already rejected at config load
       (plan 103)
-- [ ] Log files are deleted on cache
-      eviction or `--build-no-cache`
+- [ ] Cache eviction deletes the matching
+      log file; orphan logs from a prior
+      `--build-no-cache` run are deleted at
+      the start of the next `mdsmith fix`
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run`
       reports no issues

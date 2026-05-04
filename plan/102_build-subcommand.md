@@ -158,11 +158,16 @@ Inputs (which must exist) use
 `filepath.EvalSymlinks` to resolve the full
 chain. Outputs may not exist yet: the check
 walks the longest existing prefix of the
-output path with `EvalSymlinks` and applies
-`filepath.Clean` to the rest, then verifies
-the joined result stays under the project
-root. A symlinked output or input pointing
-outside the project is a build error.
+output path with `EvalSymlinks` and joins
+the remaining segments with
+`filepath.Join`. The full check uses OS-
+native separators internally; the result is
+normalised back to forward slashes via
+`filepath.ToSlash` before comparison and
+diagnostic output, preserving the slash-
+only invariant on Windows. A symlinked
+output or input pointing outside the
+project is a build error.
 
 ### Glob match cap
 
