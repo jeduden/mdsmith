@@ -77,6 +77,9 @@ jobs:
 
   vscode-extension:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -92,9 +95,19 @@ jobs:
       - name: Install extension dependencies
         working-directory: editors/vscode
         run: bun install --frozen-lockfile
-      - name: Run extension unit tests
+      - name: Run extension unit tests with coverage
         working-directory: editors/vscode
-        run: bun test
+        # `text` keeps the human-readable summary in the job log;
+        # `lcov` writes coverage/lcov.info for the codecov upload.
+        run: bun test --coverage --coverage-reporter=text --coverage-reporter=lcov
+      - name: Upload TypeScript coverage to Codecov
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+        with:
+          use_oidc: true
+          files: editors/vscode/coverage/lcov.info
+          flags: typescript
+          fail_ci_if_error: false
       - name: Compile extension
         working-directory: editors/vscode
         run: bun run build.ts --production
@@ -164,10 +177,11 @@ jobs:
             echo '```'
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload coverage to Codecov
+      - name: Upload Go coverage to Codecov
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           use_oidc: true
           files: merged.cov
+          flags: go
           fail_ci_if_error: false
