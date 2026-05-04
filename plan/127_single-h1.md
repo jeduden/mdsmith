@@ -149,3 +149,8 @@ h1 heading conflicts with front-matter title
 - [x] `mdsmith check .` passes on the repo with the
       rule disabled (no regression for existing
       docs).
+
+[md025]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md
+[mds003]: ../internal/rules/MDS003-heading-increment/README.md
+[mds004]: ../internal/rules/MDS004-first-line-heading/README.md
+[mds005]: ../internal/rules/MDS005-no-duplicate-headings/README.md

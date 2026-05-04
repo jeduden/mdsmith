@@ -126,3 +126,5 @@ code span has trailing whitespace
 - [x] `mdsmith check .` passes on the repo with the
       rule disabled (no regression for existing
       docs).
+
+[md038]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md

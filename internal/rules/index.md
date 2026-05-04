@@ -72,4 +72,5 @@ row: "| [{id}]({filename}) | `{name}` | {status} | {description} |"
 | [MDS051](MDS051-single-h1/README.md)                          | `single-h1`                          | ready     | At most one H1 heading is allowed per file.                                                                                   |
 | [MDS052](MDS052-no-space-in-code-spans/README.md)             | `no-space-in-code-spans`             | ready     | Inline code spans with leading or trailing whitespace inside the backticks are almost always typos; flag them.                |
 | [MDS053](MDS053-no-unused-link-definitions/README.md)         | `no-unused-link-definitions`         | ready     | Every `[label]: url` definition must be consumed by at least one reference-style link or image; duplicate labels are flagged. |
+| [MDS054](MDS054-no-undefined-reference-labels/README.md)      | `no-undefined-reference-labels`      | ready     | Reference-style links and images must have a matching link reference definition in the same file.                             |
 <?/catalog?>

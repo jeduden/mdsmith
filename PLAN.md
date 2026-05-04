@@ -39,7 +39,7 @@ footer: |
 | 125 | ✅     | sonnet | [No space inside link text rule](plan/125_no-space-in-link-text.md)                                  |
 | 126 | ✅     | sonnet | [Proper-name capitalization rule](plan/126_proper-names.md)                                          |
 | 127 | ✅     | sonnet | [Single H1 per file rule](plan/127_single-h1.md)                                                     |
-| 128 | 🔲     | sonnet | [Reject undefined reference-link labels](plan/128_no-undefined-reference-labels.md)                  |
+| 128 | ✅     | sonnet | [Reject undefined reference-link labels](plan/128_no-undefined-reference-labels.md)                  |
 | 129 | ✅     | sonnet | [Flag unused or duplicate link reference definitions](plan/129_no-unused-link-definitions.md)        |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)           |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                         |
