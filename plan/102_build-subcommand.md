@@ -238,8 +238,7 @@ the reserved names are not declared as params.
     by the path-shape rules above.
   - Add `inputs` as optional (list of strings).
     Each entry validated by the path-shape
-    rules; globs allowed except `**` at
-    position 0.
+    rules; full doublestar globs accepted.
   - Enforce the 10 000-match cap on each
     `inputs:` glob during resolution (plan
     115 calls into the same validator).
@@ -289,7 +288,8 @@ the reserved names are not declared as params.
       list, is a diagnostic
 - [ ] `outputs:` entries reject glob
       characters (`*`, `?`, `[`); `inputs:`
-      globs reject `**` at position 0
+      accepts full doublestar globs
+      (including leading `**/`)
 - [ ] An `inputs:` glob that resolves to
       more than 10 000 files is a build error
 - [ ] A symlinked output or input that

@@ -117,14 +117,14 @@ its new value, not the old.
 
 ### `mdsmith fix` flags
 
-| Flag                  | Behavior                                  |
-|-----------------------|-------------------------------------------|
-| (none)                | Lint-fix pass + build pass                |
-| `--no-build`          | Lint-fix pass only                        |
-| `--build-only`        | Build pass only                           |
-| `--build-recipe NAME` | Only build directives with `recipe: NAME` |
-| `--build-dry-run`     | Enumerate targets; run no recipe          |
-| `--build-timeout DUR` | Per-recipe timeout (default `30s`)        |
+| Flag                  | Behavior                                                       |
+|-----------------------|----------------------------------------------------------------|
+| (none)                | Lint-fix pass + build pass                                     |
+| `--no-build`          | Lint-fix pass only                                             |
+| `--build-only`        | Build pass only                                                |
+| `--build-recipe NAME` | Only build directives with `recipe: NAME`                      |
+| `--build-dry-run`     | Enumerate targets (and hooks once plan 104 lands); run nothing |
+| `--build-timeout DUR` | Per-recipe timeout (default `30s`)                             |
 
 `--no-build` and `--build-only` are mutually
 exclusive. The `--build-*` prefix groups
