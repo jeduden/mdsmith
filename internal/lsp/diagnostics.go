@@ -99,17 +99,6 @@ func utf16Column(s string, col int) int {
 	if col <= 0 {
 		return 0
 	}
-	idx := 0
-	for _, r := range s {
-		if idx >= col {
-			break
-		}
-		// At this point we've consumed `idx` runes; we want to count
-		// how many UTF-16 units they represent.
-		_ = r
-		idx++
-	}
-	// Recount in code units up to rune offset col.
 	units := 0
 	consumed := 0
 	for _, r := range s {

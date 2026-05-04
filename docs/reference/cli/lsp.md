@@ -20,12 +20,22 @@ responses and notifications on stdout.
 
 ## Capabilities advertised
 
-| Capability                        | Behavior                                                   |
-|-----------------------------------|------------------------------------------------------------|
-| `textDocumentSync = Full`         | Re-lint on every change; debounced 200 ms                  |
-| `publishDiagnostics`              | One push after each lint                                   |
-| `codeActionProvider`              | `quickfix` per fixable diagnostic, `source.fixAll.mdsmith` |
-| `workspace/didChangeWatchedFiles` | Re-lint open buffers when `.mdsmith.yml` changes           |
+| Capability                        | Behavior                                                      |
+|-----------------------------------|---------------------------------------------------------------|
+| `textDocumentSync = Full`         | Full-document sync; lint trigger gated by `mdsmith.run`       |
+| `publishDiagnostics`              | One push after each lint                                      |
+| `codeActionProvider`              | `quickfix` per fixable diagnostic, `source.fixAll.mdsmith`    |
+| `workspace/didChangeWatchedFiles` | Immediate re-lint of open buffers when `.mdsmith.yml` changes |
+
+`mdsmith.run` controls when the server actually re-lints:
+
+- `onSave` (default): lint on `didOpen`, `didSave`, and config
+  changes. `didChange` events update the buffer but do not trigger a
+  lint pass.
+- `onType`: lint on every `didChange` (debounced 200 ms) plus the
+  same triggers as `onSave`.
+- `off`: never lint automatically. Code actions still work when
+  invoked explicitly.
 
 ## Diagnostic mapping
 
@@ -52,12 +62,16 @@ prints:
 
 ## Configuration discovery
 
-The server walks up from the document URI to find a
-`.mdsmith.yml`, the same way the CLI does. Clients can override
-this via the `mdsmith.config` workspace setting, which the
-server pulls through `workspace/configuration`. Edits to
-`.mdsmith.yml` invalidate the cached config and re-lint every
-open document.
+The server uses workspace-wide discovery. It walks up
+from the workspace root to find `.mdsmith.yml`. The root
+comes from `initialize.rootUri` or the first
+`workspaceFolders` entry. Every open buffer shares the
+loaded config; the server does not re-discover per file.
+
+Clients override the discovery with `mdsmith.config`. The
+server pulls that path through `workspace/configuration`.
+Edits to `.mdsmith.yml` invalidate the cached config. The
+server then re-lints every open document immediately.
 
 ## Example
 

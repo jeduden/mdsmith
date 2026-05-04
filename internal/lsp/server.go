@@ -261,8 +261,9 @@ func (s *Server) handleDidOpen(ctx context.Context, raw json.RawMessage) {
 		text:    []byte(p.TextDocument.Text),
 		version: p.TextDocument.Version,
 	})
-	// didOpen always lints regardless of run setting; the user is
-	// asking for an initial diagnostic snapshot.
+	// didOpen lints unless run=off — the user wants an initial
+	// snapshot when linting is on at all. scheduleLint applies the
+	// same off-skip as every other trigger.
 	s.scheduleLint(ctx, p.TextDocument.URI, lintTriggerOpen)
 }
 
@@ -330,10 +331,11 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 }
 
 func (s *Server) handleDidChangeConfiguration(ctx context.Context) {
+	// fetchClientSettings reschedules the per-document lint passes
+	// after the new settings (and re-discovered config) land, so the
+	// republished diagnostics reflect the updated state instead of
+	// the stale settings the dispatch goroutine still has cached.
 	go s.fetchClientSettings(ctx)
-	for _, uri := range s.docs.openURIs() {
-		s.scheduleLint(ctx, uri, lintTriggerConfig)
-	}
 }
 
 // lintTrigger names what caused a lint pass to be scheduled.
@@ -649,9 +651,12 @@ func (s *Server) reloadConfig() {
 }
 
 // fetchClientSettings asks the client for its `mdsmith` configuration
-// section, waits for the response, and applies it to s.settings. If
-// the client does not respond within fetchTimeout the call returns
-// without touching the cached settings — the previous values stand.
+// section, waits for the response, applies it to s.settings, and
+// reschedules a lint pass for every open document so the diagnostics
+// reflect the new run mode and config. If the client does not
+// respond within fetchTimeout the call returns without touching
+// either the cached settings or the open buffers — the previous
+// values stand.
 //
 // Must be called from a goroutine other than the dispatch loop, since
 // the response arrives on the same loop.
@@ -695,8 +700,14 @@ func (s *Server) fetchClientSettings(ctx context.Context) {
 		}
 		s.settings = current
 		s.settingsMu.Unlock()
-		// Reload config in case `mdsmith.config` changed.
+		// Reload config in case `mdsmith.config` changed, then
+		// re-lint open buffers so diagnostics reflect the freshly
+		// applied settings rather than whatever was in effect when
+		// handleDidChangeConfiguration fired.
 		s.reloadConfig()
+		for _, uri := range s.docs.openURIs() {
+			s.scheduleLint(ctx, uri, lintTriggerConfig)
+		}
 	case <-time.After(fetchTimeout):
 		// Client never replied; defaults stand.
 	case <-ctx.Done():

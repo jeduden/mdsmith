@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -55,7 +56,10 @@ func runLSPWith(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		Reader: stdin,
 		Writer: stdout,
 	})
-	if err := srv.Run(ctx); err != nil {
+	// SIGINT/SIGTERM cancel ctx, so srv.Run returns context.Canceled.
+	// That's a clean shutdown (the user or the OS asked us to exit), not
+	// a runtime error — return 0 and stay silent on stderr.
+	if err := srv.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		_, _ = fmt.Fprintf(stderr, "mdsmith: lsp: %v\n", err)
 		return 2
 	}

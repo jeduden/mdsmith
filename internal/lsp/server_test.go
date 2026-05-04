@@ -757,9 +757,12 @@ func TestDidChangeWatchedFilesIgnoresUnrelatedFiles(t *testing.T) {
 	}
 }
 
-// TestHandleDidChangeConfigurationRelintsOpenDocs exercises the
-// handler directly so the test does not race the server-initiated
-// workspace/configuration request that runs in a goroutine.
+// TestHandleDidChangeConfigurationRelintsOpenDocs verifies that a
+// configuration-change notification triggers a re-lint of every open
+// document — but only after the new settings actually land. The
+// handler kicks off fetchClientSettings asynchronously; once the
+// client replies (or, here, we inject a synthetic reply) the lint
+// pass fires.
 func TestHandleDidChangeConfigurationRelintsOpenDocs(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
@@ -770,11 +773,36 @@ func TestHandleDidChangeConfigurationRelintsOpenDocs(t *testing.T) {
 	s.docs.set("file:///x.md", &document{
 		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
 	})
-	// We don't care about the goroutine fetchClientSettings spawns;
-	// the contract being checked is that scheduleLint fires for
-	// every open doc.
 	s.handleDidChangeConfiguration(context.Background())
-	assert.Contains(t, buf.String(), "MDS006")
+
+	// Drive the goroutine: wait for the pending response slot to
+	// appear, then deliver a settings reply that keeps run=onType.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		s.pendingRespMu.Lock()
+		var key string
+		for k := range s.pendingResp {
+			key = k
+		}
+		s.pendingRespMu.Unlock()
+		if key != "" {
+			s.deliverResponse(key, rpcResponse{
+				Result: json.RawMessage(`[{"run":"onType"}]`),
+			})
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// The post-fetch re-lint runs synchronously inside the
+	// goroutine; poll for the resulting publishDiagnostics frame.
+	for time.Now().Before(deadline.Add(2 * time.Second)) {
+		if strings.Contains(buf.String(), "MDS006") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("never saw MDS006 after settings landed; buffer: %s", buf.String())
 }
 
 func TestDebouncedLintCollapsesRapidChanges(t *testing.T) {

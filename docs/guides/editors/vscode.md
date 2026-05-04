@@ -27,8 +27,10 @@ gets the same behavior by pointing at `mdsmith lsp`.
   or download from the
   [GitHub releases page](https://github.com/jeduden/mdsmith/releases).
 - VS Code 1.85 or later.
-- A `.mdsmith.yml` at the repo root or in a parent
-  directory (the same file the CLI discovers).
+- A `.mdsmith.yml` at the workspace root (the
+  `initialize.rootUri` or first workspace folder).
+  Discovery is workspace-wide, so every open Markdown
+  buffer in the workspace uses the same config.
 
 ## Install
 
@@ -99,18 +101,20 @@ same behavior without touching `editor.codeActionsOnSave`.
 
 ## Configuration discovery
 
-The server walks up from the document URI to find a
-`.mdsmith.yml`, the same way the CLI does. Setting
-`mdsmith.config` to a non-empty path overrides this
-walk; the path is resolved relative to the workspace
-root.
+The server walks up from the workspace root
+(`initialize.rootUri` or the first workspace folder)
+to find a `.mdsmith.yml`. Discovery is workspace-wide,
+not per-document: every open buffer shares one cached
+config. Setting `mdsmith.config` to a non-empty path
+overrides the walk; the path is resolved relative to
+the workspace root.
 
 Edits to `.mdsmith.yml` re-lint every open document
-without restarting the editor. The server subscribes
-to `**/.mdsmith.yml` via
-`workspace/didChangeWatchedFiles`, invalidates its
-cached config, and republishes diagnostics on the
-next document change or focus.
+immediately. The server subscribes to `**/.mdsmith.yml`
+via `workspace/didChangeWatchedFiles`, invalidates
+its cached config on a change event, and republishes
+diagnostics for every open buffer in the same handler
+— no extra edit or focus event is required.
 
 ## Diagnostic mapping
 
@@ -123,7 +127,7 @@ fields as follows:
 | `message`        | `message`                                       |
 | `severity`       | `severity` (error → 1, warning → 2)             |
 | `line`, `column` | `range.start`; end column derived per-rule      |
-| `explanation`    | `data` (preserved for code-action handlers)     |
+| rule name        | `data.rule` (echoed back on `codeAction`)       |
 
 The same JSON schema documented in
 [Output and JSON](../../reference/cli.md#output)

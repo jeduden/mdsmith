@@ -49,8 +49,11 @@ func TestLSPInitializeOverPipe(t *testing.T) {
 	assertHasMDS006(t, diags)
 
 	pipe.changeDocument(uri, 2, "# Hi\n\nclean line\n")
-	cleared := pipe.awaitDiagnostics(t, uri, time.Now().Add(30*time.Second))
-	assertNoMDS006(t, cleared)
+	// fetchClientSettings re-lints once the workspace/configuration
+	// reply lands, so a stale dirty-buffer publish can race the
+	// post-didChange clean publish. Drain frames until we see a
+	// publish whose diagnostics no longer include MDS006.
+	pipe.awaitClearedDiagnostics(t, uri, time.Now().Add(30*time.Second), "MDS006")
 
 	pipe.shutdown(t)
 }
@@ -207,11 +210,28 @@ func assertHasMDS006(t *testing.T, diags publishDiagnosticsParams) {
 	t.Fatalf("expected MDS006 in published diagnostics, got %+v", diags.Diagnostics)
 }
 
-func assertNoMDS006(t *testing.T, diags publishDiagnosticsParams) {
+// awaitClearedDiagnostics keeps reading publishDiagnostics frames
+// for uri until one arrives that no longer carries the named code.
+// This handles the case where a stale lint pass (e.g. the re-lint
+// fetchClientSettings issues after the workspace/configuration
+// response lands) publishes the old diagnostics in between the
+// caller's didChange and the post-change publish.
+func (p *lspPipe) awaitClearedDiagnostics(t *testing.T, uri string, deadline time.Time, code string) {
 	t.Helper()
-	for _, d := range diags.Diagnostics {
-		assert.NotEqual(t, "MDS006", d.Code, "MDS006 should be cleared after fix")
+	for time.Now().Before(deadline) {
+		diags := p.awaitDiagnostics(t, uri, deadline)
+		var stillHas bool
+		for _, d := range diags.Diagnostics {
+			if d.Code == code {
+				stillHas = true
+				break
+			}
+		}
+		if !stillHas {
+			return
+		}
 	}
+	t.Fatalf("timed out waiting for %s to clear from %s", code, uri)
 }
 
 // repoRoot returns the repository root via `git rev-parse`.
