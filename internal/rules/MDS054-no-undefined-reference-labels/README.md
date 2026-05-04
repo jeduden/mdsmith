@@ -1,10 +1,10 @@
 ---
-id: MDS052
+id: MDS054
 name: no-undefined-reference-labels
 status: ready
 description: Reference-style links and images must have a matching link reference definition in the same file.
 ---
-# MDS052: no-undefined-reference-labels
+# MDS054: no-undefined-reference-labels
 
 Reference-style links and images must have a matching link reference
 definition in the same file.
@@ -158,7 +158,7 @@ against `[bar]: url`.
 
 ## Meta-Information
 
-- **ID**: MDS052
+- **ID**: MDS054
 - **Name**: `no-undefined-reference-labels`
 - **Status**: ready
 - **Default**: enabled, shortcut: heuristic, placeholders: []

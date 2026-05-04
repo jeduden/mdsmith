@@ -1,4 +1,4 @@
-// Package noundefinedreferencelabels implements MDS052, which flags
+// Package noundefinedreferencelabels implements MDS054, which flags
 // reference-style links and images whose label has no matching link
 // reference definition in the file.
 package noundefinedreferencelabels
@@ -29,7 +29,7 @@ type Rule struct {
 }
 
 // ID implements rule.Rule.
-func (r *Rule) ID() string { return "MDS052" }
+func (r *Rule) ID() string { return "MDS054" }
 
 // Name implements rule.Rule.
 func (r *Rule) Name() string { return "no-undefined-reference-labels" }

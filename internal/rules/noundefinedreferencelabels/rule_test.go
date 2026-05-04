@@ -28,7 +28,7 @@ func checkWith(t *testing.T, src string, r *Rule) []lint.Diagnostic {
 
 func TestRuleMetadata(t *testing.T) {
 	r := &Rule{}
-	assert.Equal(t, "MDS052", r.ID())
+	assert.Equal(t, "MDS054", r.ID())
 	assert.Equal(t, "no-undefined-reference-labels", r.Name())
 	assert.Equal(t, "link", r.Category())
 	assert.True(t, r.EnabledByDefault())
