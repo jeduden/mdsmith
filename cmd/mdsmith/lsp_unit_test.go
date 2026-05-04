@@ -34,6 +34,17 @@ func TestRunLSPRejectsUnknownFlag(t *testing.T) {
 	assert.Equal(t, 2, code)
 }
 
+func TestRunLSPHelpFlag(t *testing.T) {
+	t.Parallel()
+	// pflag's auto-help prints usage to the configured output and
+	// returns ErrHelp from Parse, which runLSPWith maps to exit 2.
+	// Either exit code is fine; the goal is to exercise the Usage
+	// callback so its body counts toward coverage.
+	var out, errBuf bytes.Buffer
+	_ = runLSPWith([]string{"-h"}, strings.NewReader(""), &out, &errBuf)
+	assert.Contains(t, errBuf.String(), "Usage: mdsmith lsp")
+}
+
 // TestRunLSPRoundTrip drives the server end to end through
 // runLSPWith using in-memory pipes. Exercises the CLI entry point
 // and the full Run loop including a clean shutdown.

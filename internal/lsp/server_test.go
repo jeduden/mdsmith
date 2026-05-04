@@ -597,20 +597,15 @@ func TestHandleCodeActionInvalidJSON(t *testing.T) {
 	assert.Contains(t, buf.String(), "invalid codeAction params")
 }
 
-func TestQuickFixForFixerError(t *testing.T) {
-	// Invalid path should propagate from the fixer, returning false.
+func TestQuickFixEditForFixerError(t *testing.T) {
+	// Invalid path used to be propagated from the fixer; today it is
+	// just a label so the fix typically succeeds. The point of the
+	// test is that the helper does not crash on an unusual path.
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
 	doc := &document{path: "/no/such/path/x.md", text: []byte("# Hi\n\ndirty   \n")}
-	d := Diagnostic{Code: "MDS006", Data: &diagnosticData{RuleName: "no-trailing-spaces"}}
-	a, ok := s.quickFixFor(d, doc, cfg, "", "file:///x.md")
-	if !ok {
-		// Some platforms still fix successfully because path is just a
-		// label; the test passes either way as long as quickFixFor
-		// doesn't crash.
-		_ = a
-	}
+	_ = s.quickFixEditFor("no-trailing-spaces", doc, cfg, "", "file:///x.md")
 }
 
 func TestDispatchHandlesNotificationsWithoutResponse(t *testing.T) {
@@ -620,6 +615,98 @@ func TestDispatchHandlesNotificationsWithoutResponse(t *testing.T) {
 	s.dispatch(context.Background(), &requestMessage{Method: "$/cancelRequest"})
 	s.dispatch(context.Background(), &requestMessage{Method: "$/setTrace"})
 	s.dispatch(context.Background(), &requestMessage{Method: "$/progress"})
+}
+
+func TestDispatchUnknownNotificationIsSilentlyDropped(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// No ID → notification → must not write any frame.
+	s.dispatch(context.Background(), &requestMessage{Method: "completely/unknown"})
+	assert.Empty(t, buf.String())
+}
+
+func TestDispatchExitTogglesShutdownFlags(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.dispatch(context.Background(), &requestMessage{Method: "exit"})
+	assert.True(t, s.shutdown.Load())
+	assert.True(t, s.exitRequested.Load())
+}
+
+func TestRunReturnsAfterShutdownPlusExit(t *testing.T) {
+	t.Parallel()
+	srvIn, clientWriter := io.Pipe()
+	s := New(Options{Reader: srvIn, Writer: io.Discard, Rules: rule.All()})
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(context.Background()) }()
+
+	// Send shutdown then exit. Both arrive as JSON-RPC frames.
+	send := func(body string) {
+		_, err := clientWriter.Write([]byte("Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + body))
+		require.NoError(t, err)
+	}
+	send(`{"jsonrpc":"2.0","id":1,"method":"shutdown"}`)
+	send(`{"jsonrpc":"2.0","method":"exit"}`)
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		_ = clientWriter.Close()
+		t.Fatalf("Run did not return after shutdown+exit")
+	}
+}
+
+func TestRunSurfacesNonEOFError(t *testing.T) {
+	t.Parallel()
+	// A reader that returns garbage forces readRaw into an error.
+	r := strings.NewReader("not a valid LSP frame at all")
+	s := New(Options{Reader: r, Writer: io.Discard, Rules: rule.All()})
+	err := s.Run(context.Background())
+	assert.Error(t, err)
+	assert.NotErrorIs(t, err, context.Canceled)
+}
+
+func TestUriToPathInvalidURL(t *testing.T) {
+	t.Parallel()
+	// Malformed file URI — url.Parse rejects spaces in opaque.
+	got := uriToPath("file://%zz/tmp/foo")
+	assert.Empty(t, got)
+}
+
+func TestReloadConfigBadYAMLFallsBack(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(dir+"/.mdsmith.yml", "rules: [not-a-map\n"))
+
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg, "must fall back to defaults on bad YAML")
+	assert.Empty(t, path, "path should be empty when load fails")
+}
+
+func TestReloadConfigOverrideRelativePath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(dir+"/cfg.yml", "rules:\n  line-length: false\n"))
+
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.settingsMu.Lock()
+	s.settings.ConfigPath = "cfg.yml"
+	s.settingsMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg)
+	assert.Equal(t, dir+"/cfg.yml", path)
 }
 
 func TestRunReturnsOnContextCancel(t *testing.T) {
@@ -1112,33 +1199,71 @@ func TestRunModeFallsBackOnUnknown(t *testing.T) {
 	assert.Equal(t, runOnSave, s.runMode())
 }
 
-func TestQuickFixForRejectsNilData(t *testing.T) {
+func TestQuickFixEditForRejectsWholeFileRule(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
 	doc := &document{path: "x.md", text: []byte("# Hi\n")}
-	_, ok := s.quickFixFor(Diagnostic{Code: "MDS006"}, doc, cfg, "", "file:///x.md")
-	assert.False(t, ok, "diagnostic with no data must not produce a quick fix")
+	edit := s.quickFixEditFor("catalog", doc, cfg, "", "file:///x.md")
+	assert.Nil(t, edit, "whole-file-only rules must not produce per-diagnostic fixes")
 }
 
-func TestQuickFixForRejectsWholeFileRule(t *testing.T) {
+func TestQuickFixEditForUnknownRule(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
 	doc := &document{path: "x.md", text: []byte("# Hi\n")}
-	d := Diagnostic{Code: "MDS019", Data: &diagnosticData{RuleName: "catalog"}}
-	_, ok := s.quickFixFor(d, doc, cfg, "", "file:///x.md")
-	assert.False(t, ok, "whole-file-only rules must not produce per-diagnostic fixes")
+	edit := s.quickFixEditFor("no-such-rule", doc, cfg, "", "file:///x.md")
+	assert.Nil(t, edit)
 }
 
-func TestQuickFixForUnknownRule(t *testing.T) {
+func TestQuickFixEditForNoOpReturnsNil(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
-	doc := &document{path: "x.md", text: []byte("# Hi\n")}
-	d := Diagnostic{Code: "X", Data: &diagnosticData{RuleName: "no-such-rule"}}
-	_, ok := s.quickFixFor(d, doc, cfg, "", "file:///x.md")
-	assert.False(t, ok)
+	// Buffer has no trailing-spaces violations, so the fix is a no-op.
+	doc := &document{path: "x.md", text: []byte("# Hi\n\nclean line\n")}
+	edit := s.quickFixEditFor("no-trailing-spaces", doc, cfg, "", "file:///x.md")
+	assert.Nil(t, edit, "no-op fix should not surface as a code action")
+}
+
+// TestComputeCodeActionsDedupesPerRule pins the perf invariant that
+// N diagnostics from the same rule trigger only one fix.SourceWithRules
+// pass. Without dedup, the codeAction request would re-run the fix
+// per-diagnostic and blow the latency budget on noisy files.
+func TestComputeCodeActionsDedupesPerRule(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{
+		path: "x.md",
+		text: []byte("# Hi\n\ndirty1   \ndirty2   \ndirty3   \n"),
+	}
+	// Three diagnostics, all from no-trailing-spaces.
+	mkDiag := func() Diagnostic {
+		return Diagnostic{
+			Code: "MDS006",
+			Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+		}
+	}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{mkDiag(), mkDiag(), mkDiag()},
+			Only:        []string{kindQuickFix},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	require.Len(t, actions, 3, "one quickfix action per diagnostic")
+	// All three actions must reference the same WorkspaceEdit so the
+	// fix only runs once.
+	for i := 1; i < len(actions); i++ {
+		assert.Same(t, actions[0].Edit, actions[i].Edit,
+			"quickfix actions for the same rule must share the cached edit")
+	}
+	for _, a := range actions {
+		assert.Equal(t, "Fix all no-trailing-spaces with mdsmith", a.Title)
+	}
 }
 
 func TestRunLintIgnoredFile(t *testing.T) {

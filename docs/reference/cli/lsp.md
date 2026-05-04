@@ -52,26 +52,37 @@ prints:
 
 ## Code actions
 
-- **`quickfix`** — one per fixable diagnostic. Rules whose fix
-  touches multiple non-contiguous ranges (catalog, toc,
-  include) are excluded so partial regenerations are not
-  exposed.
+- **`quickfix`** — one per fixable diagnostic. Each
+  edit replaces the whole document with the output of
+  running the single rule, so it covers every
+  occurrence of that rule (the action title reads
+  "Fix all `<rule>` with mdsmith"). Within one
+  request all quick-fix actions for the same rule
+  share one `WorkspaceEdit`; the fix is run once
+  regardless of how many diagnostics carry that
+  rule. Rules whose fix touches multiple
+  non-contiguous ranges (catalog, toc, include) are
+  excluded so partial regenerations are not exposed.
 - **`source.fixAll.mdsmith`** — runs `mdsmith fix` on the
   current buffer; produces the same bytes the on-disk fixer
   would write.
 
 ## Configuration discovery
 
-The server uses workspace-wide discovery. It walks up
-from the workspace root to find `.mdsmith.yml`. The root
-comes from `initialize.rootUri` or the first
-`workspaceFolders` entry. Every open buffer shares the
-loaded config; the server does not re-discover per file.
+The server uses workspace-wide discovery. It starts
+at the workspace root supplied at `initialize`
+(`rootUri` or the first `workspaceFolders` entry)
+and walks upward until it finds a `.mdsmith.yml` or
+hits a `.git` boundary — the same walk `mdsmith
+check` uses from its CWD. Every open buffer shares
+the resolved config; the server does not re-discover
+per file.
 
-Clients override the discovery with `mdsmith.config`. The
-server pulls that path through `workspace/configuration`.
-Edits to `.mdsmith.yml` invalidate the cached config. The
-server then re-lints every open document immediately.
+Clients override the walk with `mdsmith.config`,
+which the server pulls via `workspace/configuration`.
+Edits to `.mdsmith.yml` invalidate the cached
+config. The server then re-lints every open document
+immediately.
 
 ## Example
 

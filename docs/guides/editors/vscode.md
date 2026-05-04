@@ -27,10 +27,13 @@ gets the same behavior by pointing at `mdsmith lsp`.
   or download from the
   [GitHub releases page](https://github.com/jeduden/mdsmith/releases).
 - VS Code 1.85 or later.
-- A `.mdsmith.yml` at the workspace root (the
-  `initialize.rootUri` or first workspace folder).
-  Discovery is workspace-wide, so every open Markdown
-  buffer in the workspace uses the same config.
+- A `.mdsmith.yml` reachable from the workspace root
+  by walking up to the nearest `.git` directory. The
+  server matches the CLI's discovery (the same
+  `config.Discover` walk) but starts from the workspace
+  root supplied at `initialize`, not from each open
+  document. Every open buffer in the workspace shares
+  the resolved config.
 
 ## Install
 
@@ -73,14 +76,25 @@ budget is tighter (see [Performance](#performance)).
 The server advertises two action kinds.
 
 **Quick fix per diagnostic.** Each diagnostic from a
-fixable rule produces a `WorkspaceEdit` that applies
-just that rule's fix to the affected range. Trigger
-with the lightbulb on a squiggle, or
-`editor.action.quickFix`. Rules whose fix touches
+fixable rule produces a `WorkspaceEdit`. Trigger it
+with the lightbulb on a squiggle or
+`editor.action.quickFix`. The action title reads
+"Fix all `<rule>` with mdsmith" — the edit replaces
+the entire document with the output of running the
+single rule's fix, so it covers every occurrence of
+that rule, not only the diagnostic the user clicked
+on. Rules use that scope because mdsmith's fix
+pipeline is whole-file: a rule emits the corrected
+document, not a per-range diff.
+
+Within one `codeAction` request the server runs each
+rule's fix exactly once, regardless of how many
+diagnostics from that rule are present. All
+quick-fix actions for the same rule reference the
+same `WorkspaceEdit`. Rules whose fix touches
 multiple non-contiguous ranges (catalog, toc,
-include) are excluded from per-diagnostic actions to
-avoid partial regenerations — they only surface as
-whole-file actions.
+include) are excluded from quick fixes — they only
+surface as whole-file actions.
 
 **Whole-file fix.** The action kind
 `source.fixAll.mdsmith` runs `mdsmith fix` on the
@@ -101,20 +115,31 @@ same behavior without touching `editor.codeActionsOnSave`.
 
 ## Configuration discovery
 
-The server walks up from the workspace root
-(`initialize.rootUri` or the first workspace folder)
-to find a `.mdsmith.yml`. Discovery is workspace-wide,
-not per-document: every open buffer shares one cached
-config. Setting `mdsmith.config` to a non-empty path
-overrides the walk; the path is resolved relative to
+The server starts at the workspace root supplied at
+`initialize` (`rootUri` or the first workspace
+folder) and walks upward until it finds a
+`.mdsmith.yml` or hits a `.git` boundary — the same
+walk `mdsmith check` uses from the CWD. Discovery is
+workspace-wide, not per-document: every open buffer
+shares the resolved config.
+
+Setting `mdsmith.config` to a non-empty path skips
+the walk entirely; relative paths resolve against
 the workspace root.
 
 Edits to `.mdsmith.yml` re-lint every open document
-immediately. The server subscribes to `**/.mdsmith.yml`
-via `workspace/didChangeWatchedFiles`, invalidates
-its cached config on a change event, and republishes
-diagnostics for every open buffer in the same handler
-— no extra edit or focus event is required.
+immediately. The server subscribes to
+`**/.mdsmith.yml` via
+`workspace/didChangeWatchedFiles`, invalidates its
+cached config on a change event, and republishes
+diagnostics for every open buffer in the same
+handler — no extra edit or focus event is required.
+The watcher's glob is rooted at the workspace, so
+edits to a `.mdsmith.yml` outside the workspace (for
+example a shared file pointed at via
+`mdsmith.config`) do not trigger a re-lint; reload
+the window or save any open Markdown buffer to force
+one.
 
 ## Diagnostic mapping
 
@@ -164,12 +189,12 @@ characterize your environment before filing a bug.
 fixes. Use `source.fixAll.mdsmith` or run
 `mdsmith fix <file>` from the terminal.
 
-**Config edits do not take effect.** The watcher
-only fires for `.mdsmith.yml` paths inside the
-workspace. If you edit a config outside the
-workspace (e.g. via `mdsmith.config` pointing at a
-shared file elsewhere), reload the window or save
-any open Markdown buffer to force a re-lint.
+**Config edits outside the workspace do not take
+effect.** The watcher's glob is rooted at the
+workspace, so a `.mdsmith.yml` referenced via
+`mdsmith.config` from elsewhere on disk does not
+trigger a re-lint when edited. Reload the window or
+save any open Markdown buffer to force one.
 
 ## Performance
 

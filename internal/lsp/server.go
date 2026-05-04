@@ -178,10 +178,12 @@ func (s *Server) dispatch(ctx context.Context, msg *requestMessage) {
 		s.handleInitialized(ctx)
 	case "shutdown":
 		s.shutdown.Store(true)
+		s.stopPendingLints()
 		_ = s.t.writeResponse(msg.ID, nil)
 	case "exit":
 		s.shutdown.Store(true)
 		s.exitRequested.Store(true)
+		s.stopPendingLints()
 	case "textDocument/didOpen":
 		s.handleDidOpen(ctx, msg.Params)
 	case "textDocument/didChange":
@@ -380,6 +382,12 @@ func (s *Server) scheduleLint(ctx context.Context, uri string, trigger lintTrigg
 		existing.Stop()
 	}
 	s.pending[uri] = time.AfterFunc(s.debounce, func() {
+		// Re-check shutdown so a timer that armed before
+		// shutdown/exit but fires after them does not publish
+		// stale diagnostics during teardown.
+		if s.shutdown.Load() {
+			return
+		}
 		s.pendingMu.Lock()
 		delete(s.pending, uri)
 		s.pendingMu.Unlock()
@@ -387,6 +395,18 @@ func (s *Server) scheduleLint(ctx context.Context, uri string, trigger lintTrigg
 	})
 	s.pendingMu.Unlock()
 	_ = ctx
+}
+
+// stopPendingLints cancels every armed debounce timer. Called from
+// the shutdown/exit handlers so we do not publish diagnostics after
+// the client asked us to stop.
+func (s *Server) stopPendingLints() {
+	s.pendingMu.Lock()
+	defer s.pendingMu.Unlock()
+	for uri, timer := range s.pending {
+		timer.Stop()
+		delete(s.pending, uri)
+	}
 }
 
 func (s *Server) runMode() string {
@@ -452,6 +472,13 @@ func (s *Server) handleCodeAction(msg *requestMessage) {
 // codeAction request. When `Only` is supplied we short-circuit kinds
 // the client did not ask for so we don't run fix passes whose output
 // the client will discard.
+//
+// Per-rule fix passes are deduped within a single request: a file
+// with N MDS006 diagnostics issues only one fix.SourceWithRules call,
+// not N. The resulting WorkspaceEdit is shared across the
+// per-diagnostic actions, since each one would have produced the
+// same whole-file edit anyway. This keeps the latency budget bounded
+// even on files with many diagnostics from the same rule.
 func (s *Server) computeCodeActions(
 	p codeActionParams, doc *document, cfg *config.Config, root string,
 ) []codeAction {
@@ -461,12 +488,29 @@ func (s *Server) computeCodeActions(
 	actions := make([]codeAction, 0, len(p.Context.Diagnostics)+1)
 
 	if wantQuickFix {
+		// Cache fix results per rule so we run one fix.SourceWithRules
+		// pass per distinct rule. nil entries mark rules whose fix is
+		// either unavailable or a no-op against the current buffer.
+		ruleEdits := make(map[string]*workspaceEdit)
 		for _, d := range p.Context.Diagnostics {
-			action, ok := s.quickFixFor(d, doc, cfg, root, p.TextDocument.URI)
-			if !ok {
+			if d.Data == nil || d.Data.RuleName == "" {
 				continue
 			}
-			actions = append(actions, action)
+			rule := d.Data.RuleName
+			edit, cached := ruleEdits[rule]
+			if !cached {
+				edit = s.quickFixEditFor(rule, doc, cfg, root, p.TextDocument.URI)
+				ruleEdits[rule] = edit
+			}
+			if edit == nil {
+				continue
+			}
+			actions = append(actions, codeAction{
+				Title:       quickFixTitle(rule),
+				Kind:        kindQuickFix,
+				Diagnostics: []Diagnostic{d},
+				Edit:        edit,
+			})
 		}
 	}
 
@@ -491,17 +535,23 @@ func (s *Server) computeCodeActions(
 	return actions
 }
 
-func (s *Server) quickFixFor(
-	d Diagnostic, doc *document, cfg *config.Config, root, uri string,
-) (codeAction, bool) {
-	if d.Data == nil || d.Data.RuleName == "" {
-		return codeAction{}, false
+// quickFixEditFor returns the WorkspaceEdit produced by running just
+// `rule` over the buffer, or nil if the rule is not fixable, is
+// whole-file-only, or its fix is a no-op against the current buffer.
+//
+// The returned edit replaces the entire document because rules
+// produce whole-file-fix output rather than per-range edits. The
+// quick fix therefore covers every occurrence of the rule, not only
+// the diagnostic the user clicked on; the action title reflects this
+// ("Fix all <rule> with mdsmith").
+func (s *Server) quickFixEditFor(
+	rule string, doc *document, cfg *config.Config, root, uri string,
+) *workspaceEdit {
+	if !isFixable(s.rules, rule) {
+		return nil
 	}
-	if !isFixable(s.rules, d.Data.RuleName) {
-		return codeAction{}, false
-	}
-	if isWholeFileOnly(d.Data.RuleName) {
-		return codeAction{}, false
+	if isWholeFileOnly(rule) {
+		return nil
 	}
 	fixed, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
 		Config:           cfg,
@@ -510,16 +560,11 @@ func (s *Server) quickFixFor(
 		Source:           doc.text,
 		RootDir:          root,
 		StripFrontMatter: frontMatterEnabled(cfg),
-	}, []string{d.Data.RuleName})
+	}, []string{rule})
 	if err != nil || string(fixed) == string(doc.text) {
-		return codeAction{}, false
+		return nil
 	}
-	return codeAction{
-		Title:       quickFixTitle(d.Data.RuleName),
-		Kind:        kindQuickFix,
-		Diagnostics: []Diagnostic{d},
-		Edit:        fullFileEdit(uri, doc.text, fixed),
-	}, true
+	return fullFileEdit(uri, doc.text, fixed)
 }
 
 // wantsKind reports whether the client's `Only` filter accepts the
@@ -539,8 +584,12 @@ func wantsKind(only []string, kind string) bool {
 	return false
 }
 
+// quickFixTitle returns the lightbulb label. Phrased "Fix all" to
+// signal that the action's WorkspaceEdit covers every occurrence of
+// the rule, not only the diagnostic the user clicked on — see the
+// comment on quickFixEditFor for why the edit is whole-file scoped.
 func quickFixTitle(rule string) string {
-	return "Fix " + rule + " with mdsmith"
+	return "Fix all " + rule + " with mdsmith"
 }
 
 // fullFileEdit returns a WorkspaceEdit that replaces the entire
