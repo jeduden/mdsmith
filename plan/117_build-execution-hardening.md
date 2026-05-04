@@ -157,13 +157,13 @@ issue 14543 lesson):
   success is not enough.
 - **No undeclared write** landed in the
   project tree. mdsmith snapshots the
-  output-paths' parent dirs (file list +
-  size + mtime + mode + sha256 of contents)
-  before the recipe and diffs after. Hashing
+  output-paths' parent dirs (file list, size,
+  mtime, mode, sha256 of contents) before
+  the recipe and diffs after. Content hashing
   catches edits that preserve size and mtime;
-  mode catches `chmod`-only changes. Any
-  added, removed, or modified file outside
-  the declared `outputs:` is a build failure.
+  mode catches `chmod`. Any added, removed,
+  or modified file outside declared
+  `outputs:` is a build failure.
 
 The undeclared-write check has two known
 limits:
@@ -178,10 +178,12 @@ limits:
   `os.Readlink` for the link target; mdsmith
   never follows them.
 
-Writes outside are constrained by the
-hermetic env's allowlisted PATH and the
-absence of any `Cmd.Dir` outside the
-staging dir.
+PATH allowlisting and `Cmd.Dir` are for
+build determinism, not filesystem
+confinement: a recipe can still write via
+absolute paths or `../`, and writes outside
+the snapshot scope are undetected. Real
+confinement needs a sandbox.
 
 ### Config schema additions
 

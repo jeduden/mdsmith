@@ -29,17 +29,17 @@ binary as separate argv arguments.
 
 Builds on plan 101 (the `<?build?>` directive
 and MDS039) and plan 100 (`build:` config and
-MDS040). Plan 115 wires the resulting targets
-through a `Builder` and into `mdsmith fix`.
-Plan 103 layers staleness on top of `inputs:` /
-`outputs:`.
+MDS040). Plan 115 wires targets through a
+`Builder` into `mdsmith fix`; plan 103 layers
+staleness on top.
 
 `output:` and `outputs:` are not both accepted.
-This is a clean break — there is no backwards
-compatibility for the singular form, no
-deprecation warning, no migration diagnostic.
-MDS039 simply rejects unknown directive params,
-so `output:` becomes an error like any typo.
+Clean break: no deprecation, no migration. The
+hard failure comes from `outputs:` being
+required (see "MDS039 update" below); a
+directive with only `output:` fails because
+`outputs:` is missing. MDS039 also warns on the
+stray `output:` as an unknown param.
 
 ## Design
 
