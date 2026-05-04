@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -273,7 +274,7 @@ func (s *Server) handleDidOpen(ctx context.Context, raw json.RawMessage) {
 	// didOpen lints unless run=off — the user wants an initial
 	// snapshot when linting is on at all. scheduleLint applies the
 	// same off-skip as every other trigger.
-	s.scheduleLint(ctx, p.TextDocument.URI, lintTriggerOpen)
+	s.scheduleLint(p.TextDocument.URI, lintTriggerOpen)
 }
 
 func (s *Server) handleDidChange(ctx context.Context, raw json.RawMessage) {
@@ -292,7 +293,7 @@ func (s *Server) handleDidChange(ctx context.Context, raw json.RawMessage) {
 	doc.text = []byte(last.Text)
 	doc.version = p.TextDocument.Version
 	s.docs.set(p.TextDocument.URI, doc)
-	s.scheduleLint(ctx, p.TextDocument.URI, lintTriggerChange)
+	s.scheduleLint(p.TextDocument.URI, lintTriggerChange)
 }
 
 // handleDidSave re-lints when the user saves. This is the only event
@@ -304,7 +305,7 @@ func (s *Server) handleDidSave(ctx context.Context, raw json.RawMessage) {
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
 	}
-	s.scheduleLint(ctx, p.TextDocument.URI, lintTriggerSave)
+	s.scheduleLint(p.TextDocument.URI, lintTriggerSave)
 }
 
 func (s *Server) handleDidClose(raw json.RawMessage) {
@@ -335,7 +336,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	}
 	s.reloadConfig()
 	for _, uri := range s.docs.openURIs() {
-		s.scheduleLint(ctx, uri, lintTriggerConfig)
+		s.scheduleLint(uri, lintTriggerConfig)
 	}
 }
 
@@ -368,7 +369,7 @@ const (
 //
 // open/save/config triggers always run synchronously so the user sees
 // the result without waiting for the debounce timer.
-func (s *Server) scheduleLint(ctx context.Context, uri string, trigger lintTrigger) {
+func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	if s.shutdown.Load() {
 		return
 	}
@@ -410,7 +411,6 @@ func (s *Server) scheduleLint(ctx context.Context, uri string, trigger lintTrigg
 	})
 	s.pending[uri] = timer
 	s.pendingMu.Unlock()
-	_ = ctx
 }
 
 // stopPendingLints cancels every armed debounce timer. Called from
@@ -646,11 +646,13 @@ func quickFixTitle(rule string) string {
 }
 
 // fullFileEdit returns a WorkspaceEdit that replaces the entire
-// document with `after`. The end position uses
-// {Line: lineCount, Character: 0} per the LSP convention for
-// "everything in the document" edits. Counting `after` lines covers
-// trailing newlines and avoids handing VS Code a position past the
-// last existing line.
+// document with `after`. The replacement range covers `before`
+// (the buffer the client currently has): start at {0, 0} and end at
+// documentEndPosition(before), which is {lineCount, 0} for newline-
+// terminated content and {lastLine, lastLineLen} otherwise. Sizing
+// the range against `before` matches the LSP contract — clients
+// apply a TextEdit by replacing the named range in the existing
+// document.
 func fullFileEdit(uri string, before, after []byte) *workspaceEdit {
 	endLine, endChar := documentEndPosition(before)
 	return &workspaceEdit{
@@ -808,7 +810,7 @@ func (s *Server) fetchClientSettings(ctx context.Context) {
 		// handleDidChangeConfiguration fired.
 		s.reloadConfig()
 		for _, uri := range s.docs.openURIs() {
-			s.scheduleLint(ctx, uri, lintTriggerConfig)
+			s.scheduleLint(uri, lintTriggerConfig)
 		}
 	case <-time.After(fetchTimeout):
 		// Client never replied; defaults stand.
@@ -900,6 +902,14 @@ func isWholeFileOnly(name string) bool {
 
 // uriToPath converts a `file://` URI to a filesystem path. Non-file
 // URIs return "" so the caller can skip them.
+//
+// Host handling:
+//
+//   - Empty host (`file:///path`) is the common case.
+//   - "localhost" is treated as empty per RFC 8089 §3.
+//   - On Windows, a non-empty/non-localhost host produces a UNC path
+//     (`\\server\share\…`); on other platforms we conservatively
+//     return "" because we have no way to mount a remote share.
 func uriToPath(uri string) string {
 	if !strings.HasPrefix(uri, "file://") {
 		return ""
@@ -911,8 +921,20 @@ func uriToPath(uri string) string {
 	if u.Scheme != "file" {
 		return ""
 	}
+	host := u.Host
+	if strings.EqualFold(host, "localhost") {
+		host = ""
+	}
 	p := u.Path
-	// Windows: file:///C:/foo decodes to "/C:/foo".
+	if host != "" {
+		// UNC path on Windows: file://server/share/path → \\server\share\path
+		if runtime.GOOS == "windows" {
+			return filepath.Clean(`\\` + host + filepath.FromSlash(p))
+		}
+		// Non-Windows: we cannot resolve a remote share, so refuse.
+		return ""
+	}
+	// Windows: file:///C:/foo decodes to "/C:/foo"; strip the leading slash.
 	if len(p) >= 3 && p[0] == '/' && p[2] == ':' {
 		p = p[1:]
 	}

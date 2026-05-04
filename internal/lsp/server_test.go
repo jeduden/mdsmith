@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/textproto"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -669,7 +670,7 @@ func TestScheduleLintSkipsWhenShutdown(t *testing.T) {
 	s.docs.set("file:///x.md", &document{
 		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
 	})
-	s.scheduleLint(context.Background(), "file:///x.md", lintTriggerOpen)
+	s.scheduleLint("file:///x.md", lintTriggerOpen)
 	// Server is shutting down — no diagnostics should land on the wire.
 	assert.NotContains(t, buf.String(), "publishDiagnostics")
 }
@@ -682,7 +683,7 @@ func TestScheduleLintOnSaveSkipsChange(t *testing.T) {
 	s.docs.set("file:///x.md", &document{
 		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
 	})
-	s.scheduleLint(context.Background(), "file:///x.md", lintTriggerChange)
+	s.scheduleLint("file:///x.md", lintTriggerChange)
 	assert.NotContains(t, buf.String(), "publishDiagnostics")
 }
 
@@ -695,7 +696,7 @@ func TestStopPendingLintsCancelsTimers(t *testing.T) {
 	s.docs.set("file:///x.md", &document{
 		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n"),
 	})
-	s.scheduleLint(context.Background(), "file:///x.md", lintTriggerChange)
+	s.scheduleLint("file:///x.md", lintTriggerChange)
 	s.pendingMu.Lock()
 	require.Len(t, s.pending, 1)
 	s.pendingMu.Unlock()
@@ -937,10 +938,10 @@ func TestScheduleLintTimerRaceLeavesNewTimer(t *testing.T) {
 		defer s.pendingMu.Unlock()
 		return s.pending["file:///x.md"]
 	}
-	s.scheduleLint(context.Background(), "file:///x.md", lintTriggerChange)
+	s.scheduleLint("file:///x.md", lintTriggerChange)
 	first := getTimer()
 	require.NotNil(t, first)
-	s.scheduleLint(context.Background(), "file:///x.md", lintTriggerChange)
+	s.scheduleLint("file:///x.md", lintTriggerChange)
 	second := getTimer()
 	require.NotNil(t, second)
 	assert.NotSame(t, first, second, "replacement must produce a fresh timer")
@@ -1310,6 +1311,27 @@ func TestUriToPathRoundTrip(t *testing.T) {
 	for _, tc := range tests {
 		assert.Equal(t, tc.want, uriToPath(tc.uri), "uri=%s", tc.uri)
 	}
+}
+
+func TestUriToPathLocalhostHostIsTreatedAsEmpty(t *testing.T) {
+	t.Parallel()
+	// RFC 8089 §3: "localhost" host is equivalent to an empty
+	// host, so file://localhost/tmp/foo.md must resolve identically
+	// to file:///tmp/foo.md.
+	got := uriToPath("file://localhost/tmp/foo.md")
+	assert.Equal(t, "/tmp/foo.md", got)
+}
+
+func TestUriToPathRemoteHostRejectedOnUnix(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("UNC paths only meaningful on Windows")
+	}
+	// A non-empty, non-localhost host produces a UNC path on
+	// Windows; on Unix we have no way to mount a remote share, so
+	// uriToPath returns "" and the caller skips the document.
+	got := uriToPath("file://server/share/foo.md")
+	assert.Empty(t, got)
 }
 
 func TestIsWholeFileOnly(t *testing.T) {
