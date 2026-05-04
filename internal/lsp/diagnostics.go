@@ -116,10 +116,9 @@ func utf16Length(line []byte) int {
 // corresponds to UTF-8 byte offset `byteOff` within `line`. The
 // result is clamped to [0, utf16Length(line)] so callers cannot
 // receive a negative or past-end position even when given a
-// malformed mdsmith column. Invalid UTF-8 sequences count as a
-// single replacement-character UTF-16 unit each (DecodeRune
-// returns (RuneError, 1) for them, and RuneLen(RuneError) == 1),
-// so the result stays non-negative on adversarial input.
+// malformed mdsmith column. See nonNegativeUTF16RuneLen for the
+// width contract — every counted rune contributes >= 0 units, so
+// the running total never drops below zero on the wire.
 func utf16FromByteOffset(line []byte, byteOff int) int {
 	if byteOff <= 0 {
 		return 0
@@ -130,16 +129,23 @@ func utf16FromByteOffset(line []byte, byteOff int) int {
 	units := 0
 	for i := 0; i < byteOff; {
 		r, size := utf8.DecodeRune(line[i:])
-		// utf8.DecodeRune always returns size >= 1 when the input is
-		// non-empty, and the loop guard `i < byteOff <= len(line)`
-		// guarantees a non-empty slice. utf16.RuneLen returns -1 only
-		// for surrogate code points (U+D800..U+DFFF), which DecodeRune
-		// never yields from valid or invalid UTF-8 — invalid bytes
-		// produce RuneError (U+FFFD), whose RuneLen is 1. So both the
-		// zero-size and negative-width branches are unreachable from
-		// any []byte; we simply add the width.
-		units += utf16.RuneLen(r)
+		units += nonNegativeUTF16RuneLen(r)
 		i += size
 	}
 	return units
+}
+
+// nonNegativeUTF16RuneLen wraps utf16.RuneLen so its negative
+// "invalid code point" return cannot decrement the caller's
+// running total. utf8.DecodeRune already maps invalid bytes to
+// RuneError (U+FFFD, width 1), so in practice w is always >= 0;
+// the guard is defensive against a future Go change that weakens
+// that invariant. A negative width means the rune is outside
+// [0, MaxRune] or is a surrogate, both of which are 1 UTF-16 unit
+// when serialized as RuneError.
+func nonNegativeUTF16RuneLen(r rune) int {
+	if w := utf16.RuneLen(r); w >= 0 {
+		return w
+	}
+	return 1
 }

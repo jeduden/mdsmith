@@ -923,6 +923,20 @@ func TestUtf16FromByteOffsetInvalidRunes(t *testing.T) {
 	assert.Positive(t, got, "utf16FromByteOffset must stay non-negative on invalid runes")
 }
 
+// nonNegativeUTF16RuneLen exists to defend the running offset
+// total against a (currently impossible) negative utf16.RuneLen
+// return. Verify both branches: a normal BMP rune passes through
+// at width 1, and a surrogate code point (which utf16.RuneLen
+// reports as -1) clamps to 1.
+func TestNonNegativeUTF16RuneLen(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 1, nonNegativeUTF16RuneLen('a'))
+	assert.Equal(t, 2, nonNegativeUTF16RuneLen('😀'))
+	// 0xD800 is a high-surrogate code point; utf16.RuneLen returns
+	// -1 for it and the helper clamps to 1.
+	assert.Equal(t, 1, nonNegativeUTF16RuneLen(rune(0xD800)))
+}
+
 func TestDispatchRawInvalidJSONRespondsWithParseError(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
@@ -2054,6 +2068,57 @@ func TestRunLintIgnoredFile(t *testing.T) {
 	s.runLint("file:///x/ignored.md")
 	out := buf.String()
 	assert.Contains(t, out, `"diagnostics":[]`)
+}
+
+// Regression: surfaceForeignDiagnostics writes one
+// window/logMessage per foreign diagnostic, with a "<file>:<line>
+// <message> [<rule>]" prefix the user can use to navigate to the
+// actual config-file issue.
+func TestSurfaceForeignDiagnosticsEmitsLogMessage(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.surfaceForeignDiagnostics("file:///doc.md", []lint.Diagnostic{
+		{File: "/repo/.mdsmith.yml", Line: 7, Message: "bad value", RuleName: "directory-structure"},
+	})
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "/repo/.mdsmith.yml:7")
+	assert.Contains(t, out, "bad value")
+	assert.Contains(t, out, "[directory-structure]")
+}
+
+// resolveMaxInputBytes returns the parse error to the client via
+// window/logMessage and falls back to the default cap so a typo
+// in `max-input-size:` doesn't break linting.
+func TestResolveMaxInputBytesSurfacesParseError(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.MaxInputSize = "not-a-size"
+
+	got := s.resolveMaxInputBytes(cfg)
+
+	assert.Equal(t, lint.DefaultMaxInputBytes, got, "parse failure must fall back to the default")
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "invalid max-input-size")
+	assert.Contains(t, out, "not-a-size")
+}
+
+// resolveMaxInputBytes honors `max-input-size: 0` as unlimited so
+// a workspace that opts out of the default 2 MB cap is respected
+// in the LSP path.
+func TestResolveMaxInputBytesUnlimited(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.MaxInputSize = "0"
+
+	got := s.resolveMaxInputBytes(cfg)
+
+	assert.Equal(t, int64(0), got, "max-input-size: 0 must propagate as 0 (unlimited)")
 }
 
 // Regression: partitionDocDiagnostics keeps document-scoped

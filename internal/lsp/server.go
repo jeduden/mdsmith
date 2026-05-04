@@ -516,12 +516,13 @@ func (s *Server) runLint(uri string) {
 			publishDiagnosticsParams{URI: uri, Diagnostics: []Diagnostic{}})
 		return
 	}
+	maxBytes := s.resolveMaxInputBytes(cfg)
 	r := &engine.Runner{
 		Config:           cfg,
 		Rules:            s.rules,
 		StripFrontMatter: frontMatterEnabled(cfg),
 		RootDir:          root,
-		MaxInputBytes:    lint.DefaultMaxInputBytes,
+		MaxInputBytes:    maxBytes,
 		SourceFS:         dirFSForPath(doc.path),
 		// ConfigPath gates whether config-target rules execute (see
 		// engine.Runner.runConfigTargetRules); without it, LSP
@@ -547,16 +548,50 @@ func (s *Server) runLint(uri string) {
 	// only publish diagnostics whose File matches the document we
 	// just linted.
 	docDiags, otherDiags := partitionDocDiagnostics(res.Diagnostics, relPath)
-	for _, d := range otherDiags {
+	s.surfaceForeignDiagnostics(uri, otherDiags)
+	lspDiags := toLSPAll(docDiags, doc.text)
+	_ = s.t.writeNotification("textDocument/publishDiagnostics",
+		publishDiagnosticsParams{URI: uri, Diagnostics: lspDiags})
+}
+
+// resolveMaxInputBytes mirrors cmd/mdsmith's resolution of the
+// project's `max-input-size`: unset (empty string) → default cap,
+// "0" → unlimited, otherwise the parsed byte count. Parse errors
+// fall back to the default and are surfaced via window/logMessage
+// so the editor user can correct the config.
+func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
+	raw := ""
+	if cfg != nil {
+		raw = cfg.MaxInputSize
+	}
+	if raw == "" {
+		return lint.DefaultMaxInputBytes
+	}
+	n, err := config.ParseSize(raw)
+	if err != nil {
+		s.logger.Printf("config: invalid max-input-size %q: %v", raw, err)
+		_ = s.t.writeNotification("window/logMessage", logMessageParams{
+			Type:    messageTypeError,
+			Message: fmt.Sprintf("mdsmith: invalid max-input-size %q: %v", raw, err),
+		})
+		return lint.DefaultMaxInputBytes
+	}
+	return n
+}
+
+// surfaceForeignDiagnostics logs and notifies the client about
+// diagnostics produced for a different file than the markdown
+// buffer that triggered the lint pass — typically config-target
+// rule findings against .mdsmith.yml. Pulled out of runLint so
+// the routing has a unit-testable seam.
+func (s *Server) surfaceForeignDiagnostics(uri string, diags []lint.Diagnostic) {
+	for _, d := range diags {
 		s.logger.Printf("lint %s: %s:%d %s [%s]", uri, d.File, d.Line, d.Message, d.RuleName)
 		_ = s.t.writeNotification("window/logMessage", logMessageParams{
 			Type:    messageTypeError,
 			Message: fmt.Sprintf("mdsmith: %s:%d %s [%s]", d.File, d.Line, d.Message, d.RuleName),
 		})
 	}
-	lspDiags := toLSPAll(docDiags, doc.text)
-	_ = s.t.writeNotification("textDocument/publishDiagnostics",
-		publishDiagnosticsParams{URI: uri, Diagnostics: lspDiags})
 }
 
 // partitionDocDiagnostics splits Runner-produced diagnostics into
@@ -702,6 +737,7 @@ func (s *Server) computeCodeActions(
 			RootDir:          root,
 			SourceFS:         dirFSForPath(doc.path),
 			StripFrontMatter: frontMatterEnabled(cfg),
+			MaxInputBytes:    s.resolveMaxInputBytes(cfg),
 		})
 		if err == nil && !bytes.Equal(fixed, doc.text) {
 			actions = append(actions, codeAction{
@@ -742,6 +778,7 @@ func (s *Server) quickFixEditFor(
 		RootDir:          root,
 		SourceFS:         dirFSForPath(doc.path),
 		StripFrontMatter: frontMatterEnabled(cfg),
+		MaxInputBytes:    s.resolveMaxInputBytes(cfg),
 	}, []string{rule})
 	if err != nil || bytes.Equal(fixed, doc.text) {
 		return nil

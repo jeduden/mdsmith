@@ -8,7 +8,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -22,7 +21,12 @@ type SourceOptions struct {
 	Source           []byte
 	RootDir          string
 	StripFrontMatter bool
-	MaxInputBytes    int64
+	// MaxInputBytes caps Source size before any fix runs. Semantics
+	// match lint.ReadFileLimited: <= 0 or math.MaxInt64 means
+	// unlimited; > 0 means reject buffers larger than that many
+	// bytes. Callers that want the default 2 MB cap must pass
+	// lint.DefaultMaxInputBytes explicitly.
+	MaxInputBytes int64
 	// SourceFS, when non-nil, is the filesystem the fixable rules
 	// (include/catalog/cross-file) see for the buffer. Callers that
 	// pass a workspace-relative Path (for config glob matching) MUST
@@ -52,13 +56,18 @@ func SourceWithRules(opts SourceOptions, names []string) ([]byte, error) {
 
 func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	maxBytes := opts.MaxInputBytes
-	if maxBytes <= 0 {
-		maxBytes = lint.DefaultMaxInputBytes
-	}
-	// Mirror the on-disk cap that lint.ReadFileLimited applies during
-	// `mdsmith fix`. Without this guard, LSP code actions could fix
-	// buffers far larger than the CLI would accept.
-	if maxBytes != math.MaxInt64 && int64(len(opts.Source)) > maxBytes {
+	// Mirror the on-disk cap that lint.ReadFileLimited applies
+	// during `mdsmith fix`. The same convention is used here so
+	// callers who already resolved the project's max-input-size
+	// (CLI, LSP) can pass the value through unchanged:
+	//   - max <= 0           → unlimited (matches `max-input-size: 0`).
+	//   - max == math.MaxInt64 → unlimited.
+	//   - max > 0            → cap the buffer at that many bytes.
+	// When the caller wants the default 2 MB cap, they must pass
+	// lint.DefaultMaxInputBytes explicitly (resolveMaxInputBytes
+	// in cmd/mdsmith/main.go shows the canonical resolution).
+	if maxBytes > 0 && maxBytes != math.MaxInt64 &&
+		int64(len(opts.Source)) > maxBytes {
 		return nil, fmt.Errorf("%s: file too large (%d bytes, max %d)",
 			opts.Path, len(opts.Source), maxBytes)
 	}
