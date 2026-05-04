@@ -18,35 +18,33 @@ model: opus
 ## Goal
 
 The build pass inside `mdsmith fix` (plan 115)
-runs only the recipes whose declared inputs or
-recipe spec have changed, or whose declared
-outputs are missing. mdsmith hashes one
-ActionID per target and stores it in JSON. The
-next `fix` run skips fresh targets.
+runs only recipes whose inputs or recipe spec
+changed, or whose declared outputs are
+missing. mdsmith hashes one ActionID per
+target and stores it in JSON; the next `fix`
+skips fresh targets.
 
 ## Context
 
-Plan 102 adds `inputs:` and `outputs:` to the
-`<?build?>` directive. Plan 115 wires the
-build pass into `mdsmith fix` and always
-rebuilds every target. For doc trees with many
-recipes this wastes time and floods git diffs
-with regenerated artifacts whose inputs did
-not change.
+Plan 102 adds `inputs:` and `outputs:` to
+`<?build?>`. Plan 115 wires the build pass
+into `mdsmith fix` and rebuilds every target
+unconditionally — wasting time and flooding
+git diffs with regenerated artifacts whose
+inputs did not change.
 
 ### Pattern borrowed from `cmd/go/internal/cache`
 
 Go's build cache hashes `(action description ‖
 input contents)` into an ActionID and keys
-results by it. The package is `internal/` but
-the model fits: inputs are content-addressed
-(not mtime), recipe edits invalidate every
-target using that recipe, the cache is a flat
-`ActionID → outputs` map. mdsmith uses a JSON
-file rather than a content-addressed store —
-hundreds of targets, not millions. Content
-hashing also beats mtime because git checkouts
-and CI cache restores rarely preserve mtimes.
+results by it. mdsmith borrows the
+content-addressed input model but stores its
+cache as JSON (hundreds of targets, not
+millions) keyed by sorted `outputs` set, with
+the ActionID stored *inside* each entry (see
+"Cache file" below). Content hashing beats
+mtime: git checkouts and CI restores rarely
+preserve mtimes.
 
 ## Design
 

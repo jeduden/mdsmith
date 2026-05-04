@@ -226,7 +226,7 @@ output (future, behind `--build-format json`).
    first declared output (string equality
    after path normalization). No match
    exits non-zero with "no target named X".
-   Plan 103's overlap rule rules out
+   Plan 103's overlap rule eliminates
    ambiguity at target-graph load.
 6. Implement `--build-verify`: run each
    recipe twice in independent staging

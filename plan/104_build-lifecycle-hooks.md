@@ -108,7 +108,7 @@ Same as recipes (plan 100):
 3. Pass the resulting argv to `os/exec.Cmd`.
    No shell.
 
-`{param}` tokens with no matching `params`
+A `{param}` token with no matching `params`
 entry is a config error caught by MDS040. The
 reserved-name list (`inputs`, `outputs`, plan
 102) applies: a hook's `params` may not
