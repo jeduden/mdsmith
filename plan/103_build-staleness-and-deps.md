@@ -128,9 +128,15 @@ output-hash check is what makes the cache
 
 A target is identified in the cache by its
 sorted `outputs` list, length-framed and
-joined. Two directives declaring the same
-output set is a build error reported with
-both source locations; neither recipe runs.
+joined. Any overlap across two directives'
+`outputs:` paths is a build error reporting
+both source locations. Overlap covers exact
+path collisions and directory-prefix
+collisions (one target declares `book/`,
+another declares `book/index.html`). Without
+this rule cache ownership is ambiguous and
+serial builds become "last writer wins";
+plan 116 reuses the rule for parallel safety.
 
 ### Cache file
 

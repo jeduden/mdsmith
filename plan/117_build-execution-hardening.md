@@ -117,13 +117,26 @@ by:
    `{outputs}` and any output-path params.
 4. After post-condition checks (below),
    mdsmith renames each staged file to its
-   final location using
-   `unix.Renameat2(RENAME_NOREPLACE)` on
-   Linux and `os.Rename` after explicit
-   `Lstat` symlink checks elsewhere. All
-   succeed or none do.
-5. On any failure, the staging dir is
-   removed; no declared output is touched.
+   final location. For each destination,
+   mdsmith first `Lstat`s the existing path:
+   if it is a symlink, the build fails
+   ("output path is a symlink; refuse to
+   replace"). Otherwise mdsmith uses
+   `os.Rename`, which atomically replaces
+   the destination on POSIX systems.
+   Multi-output rename is *not* transactionally
+   atomic across files: per-file rename is
+   atomic, but if rename N+1 fails after N
+   succeeded, mdsmith logs the partial state
+   ("rebuild left in inconsistent state;
+   re-run to recover"), removes the staging
+   dir, and exits with FAIL. The next
+   `mdsmith fix` reruns the recipe (the
+   ActionID still mismatches the cache
+   because no cache write happened).
+5. On any pre-rename failure, the staging
+   dir is removed; no declared output is
+   touched.
 
 ### Output post-conditions
 
@@ -138,13 +151,25 @@ issue 14543 lesson):
   success is not enough.
 - **No undeclared write** landed in the
   project tree. mdsmith snapshots the
-  staging dir and the output-paths' parent
-  dirs (file list + size + mtime) before
-  the recipe and diffs after. An
-  undeclared write is a build failure.
+  output-paths' parent dirs (file list +
+  size + mtime + mode + sha256 of contents)
+  before the recipe and diffs after. Hashing
+  catches edits that preserve size and mtime;
+  mode catches `chmod`-only changes. Any
+  added, removed, or modified file outside
+  the declared `outputs:` is a build failure.
 
-The undeclared-write check is best-effort.
-It covers writes inside the project tree.
+The undeclared-write check has two known
+limits:
+
+- It only covers the parent dirs of declared
+  outputs (full-tree scans would be too
+  expensive for large repos). A recipe that
+  writes into an unrelated subtree is missed.
+- Hashing happens once before and once after
+  per file. Symlinks in the snapshot are
+  recorded by `Lstat` target, not by following.
+
 Writes outside are constrained by the
 hermetic env's allowlisted PATH and the
 absence of any `Cmd.Dir` outside the

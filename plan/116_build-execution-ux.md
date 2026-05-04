@@ -166,14 +166,12 @@ makes `N>1` work:
 - The cache write happens in a single
   pass after all recipes finish.
 
-mdsmith refuses `N>1` if any directive
-declares an `outputs:` set that
-overlaps another's `outputs:`. Plan 103
-already errors on duplicate output sets;
-this rule extends to *any* path overlap
-(e.g. one target's `outputs: [book/]`
-and another's `outputs: [book/index.html]`
-overlap and force serial).
+Plan 103 already errors on any overlap in
+declared `outputs:` paths. This covers exact
+collisions and directory-prefix collisions.
+Config validation thus satisfies the
+parallel-execution safety contract. Every
+pair of targets writes to disjoint paths.
 
 Output ordering: per-target lines (`OK`,
 `FAIL`, `SKIP`) print in the order
@@ -231,9 +229,10 @@ behind `--build-format json`).
    flag on mismatch.
 7. Implement `--build-jobs N`:
    concurrent recipe execution behind a
-   work-pool. Refuse `N>1` when any
-   pair of targets has overlapping
-   `outputs:` paths.
+   work-pool. Plan 103 already rejects
+   overlapping `outputs:` at config load,
+   so the work-pool may dispatch any pair
+   of targets in parallel.
 8. Wire log retention into cache
    invalidation (plan 103): on cache
    eviction or `--build-no-cache`,
@@ -257,9 +256,10 @@ behind `--build-format json`).
     concurrently against four
     independent targets; output is
     interleaved-but-line-coherent.
-  - `--build-jobs 4` refuses with a
-    clear message when two directives
-    have overlapping `outputs:`.
+  - Two directives with overlapping
+    `outputs:` are rejected at config
+    load (plan 103) regardless of
+    `--build-jobs`.
   - Hung recipe printout includes the
     last 20 lines of each stream
     before the SIGTERM.
@@ -295,10 +295,10 @@ behind `--build-format json`).
       the cache records an `unstable`
       flag on the target
 - [ ] `--build-jobs N` (default 1) runs
-      up to N recipes concurrently
-- [ ] `--build-jobs N` with `N>1` is
-      refused when any pair of targets
-      has overlapping `outputs:` paths
+      up to N recipes concurrently;
+      overlapping `outputs:` paths are
+      already rejected at config load
+      (plan 103)
 - [ ] Log files are deleted on cache
       eviction or `--build-no-cache`
 - [ ] All tests pass: `go test ./...`
