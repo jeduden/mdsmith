@@ -3,11 +3,24 @@
 // file consumed by VS Code, marking `vscode` as external because
 // the host supplies it at runtime.
 
+import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const args = Bun.argv.slice(2);
 const watch = args.includes("--watch");
 const production = args.includes("--production");
+
+// Stage the repo's MIT LICENSE inside the extension directory
+// before packaging. vsce only ships LICENSE / LICENSE.md /
+// LICENSE.txt that lives next to package.json, and warns
+// "LICENSE, LICENSE.md, or LICENSE.txt not found" otherwise. The
+// staged copy is git-ignored so the repo root remains the single
+// source of truth.
+const repoLicense = join(import.meta.dir, "..", "..", "LICENSE");
+const stagedLicense = join(import.meta.dir, "LICENSE");
+if (existsSync(repoLicense)) {
+  copyFileSync(repoLicense, stagedLicense);
+}
 
 const config: Parameters<typeof Bun.build>[0] = {
   entrypoints: ["src/extension.ts"],
