@@ -99,3 +99,20 @@ func TestFixSourceWithRulesAcceptsZeroMaxBytes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "# Hi\n\ndirty\n", string(out))
 }
+
+// TestFixSourceNilConfigUsesDefaults pins the nil-Config fallback so
+// callers can pass a zero-value Options without crashing
+// prepareFile (which derefs Fixer.Config via
+// config.ValidateFrontMatterKinds).
+func TestFixSourceNilConfigUsesDefaults(t *testing.T) {
+	t.Parallel()
+	out, err := fixpkg.Source(fixpkg.SourceOptions{
+		Rules:            rule.All(),
+		Path:             "buf.md",
+		Source:           []byte("# Hi\n\ndirty   \n"),
+		StripFrontMatter: true,
+		// Config left nil — must not panic.
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "# Hi\n\ndirty\n", string(out))
+}

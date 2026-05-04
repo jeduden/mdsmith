@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,6 +36,14 @@ type Runner struct {
 	// config-target rules (rule.ConfigTarget) are run once against a
 	// synthetic lint.File for this path before per-file processing.
 	ConfigPath string
+	// SourceFS, when non-nil, is set as lint.File.FS for RunSource so
+	// in-memory linting (e.g. an LSP buffer) sees the same filesystem
+	// view processFile constructs for on-disk runs. Rules like
+	// include/catalog short-circuit on a nil FS; without this hook
+	// LSP diagnostics drift from the CLI's. Run() (path-based)
+	// ignores this field and continues to derive FS from filepath.Dir
+	// per file.
+	SourceFS fs.FS
 	// gitignoreCache caches GitignoreMatchers by directory to avoid
 	// re-walking the filesystem for each file.
 	gitignoreCache map[string]*lint.GitignoreMatcher
@@ -163,16 +172,21 @@ func DedupeDiagnostics(diags []lint.Diagnostic) []lint.Diagnostic {
 	return out
 }
 
-// RunSource lints in-memory source bytes (e.g. from stdin) and returns a
-// Result. It creates a File via NewFileFromSource, determines the
-// effective config, and uses CheckRules (which includes clone+settings
-// logic and line-offset adjustment).
+// RunSource lints in-memory source bytes (e.g. from stdin or an LSP
+// buffer) and returns a Result. It creates a File via
+// NewFileFromSource, determines the effective config, and uses
+// CheckRules (which includes clone+settings logic and line-offset
+// adjustment).
 //
-// The File's FS field is left nil because in-memory source has no
-// meaningful filesystem context. Rules that access f.FS must handle nil
-// (include short-circuits when FS is nil). RootFS is set when RootDir
-// is configured for potential future use, but currently has no effect
-// on stdin since the include rule requires FS to be non-nil.
+// When Runner.SourceFS is non-nil, RunSource wires it onto the File
+// as f.FS and configures f.GitignoreFunc against the runner's
+// rootDir (or the SourceFS's directory when no rootDir is set). This
+// lets in-memory linting see the same filesystem view processFile
+// sets up for on-disk runs, so include/catalog/cross-file rules
+// behave identically.
+//
+// When SourceFS is nil (the stdin case), FS stays nil and rules that
+// require it short-circuit just as they did before.
 func (r *Runner) RunSource(path string, source []byte) *Result {
 	res := &Result{FilesChecked: 1}
 
@@ -188,8 +202,15 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		return res
 	}
 	f.MaxInputBytes = r.MaxInputBytes
+	if r.SourceFS != nil {
+		f.FS = r.SourceFS
+	}
 	if r.RootDir != "" {
 		f.SetRootDir(r.RootDir)
+		gd := r.RootDir
+		f.GitignoreFunc = func() *lint.GitignoreMatcher {
+			return r.cachedGitignore(gd)
+		}
 	}
 
 	fmKinds, err := r.parseFrontMatterKinds(path, f.FrontMatter)

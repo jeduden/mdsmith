@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -151,6 +153,11 @@ func (s *Server) dispatchRaw(ctx context.Context, raw []byte) {
 		Params  json.RawMessage `json:"params,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &probe); err != nil {
+		// JSON-RPC 2.0 §5.1: unparseable input gets a parse error
+		// response with id: null. Without this, a client that sent
+		// a request with a malformed body would hang waiting for a
+		// reply we silently dropped.
+		_ = s.t.writeError(json.RawMessage("null"), codeParseError, "parse error")
 		return
 	}
 	if probe.JSONRPC != "2.0" {
@@ -213,7 +220,7 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 	var p initializeParams
 	if len(msg.Params) > 0 {
 		if err := json.Unmarshal(msg.Params, &p); err != nil {
-			_ = s.t.writeError(msg.ID, codeParseError, "invalid initialize params")
+			_ = s.t.writeError(msg.ID, codeInvalidParams, "invalid initialize params")
 			return
 		}
 	}
@@ -377,11 +384,17 @@ func (s *Server) scheduleLint(ctx context.Context, uri string, trigger lintTrigg
 		s.runLint(uri)
 		return
 	}
+	// Identity-checked replacement: the closure captures its own
+	// timer handle and only removes it from the pending map if the
+	// map still points at it. Without that check, a callback whose
+	// firing raced with a fresh scheduleLint would delete the new
+	// timer's map entry, breaking debouncing for the next change.
 	s.pendingMu.Lock()
 	if existing, ok := s.pending[uri]; ok {
 		existing.Stop()
 	}
-	s.pending[uri] = time.AfterFunc(s.debounce, func() {
+	var timer *time.Timer
+	timer = time.AfterFunc(s.debounce, func() {
 		// Re-check shutdown so a timer that armed before
 		// shutdown/exit but fires after them does not publish
 		// stale diagnostics during teardown.
@@ -389,10 +402,13 @@ func (s *Server) scheduleLint(ctx context.Context, uri string, trigger lintTrigg
 			return
 		}
 		s.pendingMu.Lock()
-		delete(s.pending, uri)
+		if s.pending[uri] == timer {
+			delete(s.pending, uri)
+		}
 		s.pendingMu.Unlock()
 		s.runLint(uri)
 	})
+	s.pending[uri] = timer
 	s.pendingMu.Unlock()
 	_ = ctx
 }
@@ -422,6 +438,14 @@ func (s *Server) runMode() string {
 
 // runLint executes one lint pass on the buffer and publishes the
 // resulting diagnostics. Safe to call from any goroutine.
+//
+// The path passed to engine.RunSource is normalized to be
+// workspace-relative when possible, since config.IsIgnored,
+// kind-assignment, and override matching all glob against repo-style
+// paths ("docs/foo.md") rather than absolute file URIs. RunSource is
+// then asked to wire FS=os.DirFS(absoluteDir) so rules that read
+// neighbouring files (include, catalog) see the same view the CLI
+// would.
 func (s *Server) runLint(uri string) {
 	doc, ok := s.docs.get(uri)
 	if !ok {
@@ -431,7 +455,8 @@ func (s *Server) runLint(uri string) {
 	if cfg == nil {
 		cfg = config.Merge(config.Defaults(), nil)
 	}
-	if config.IsIgnored(cfg.Ignore, doc.path) {
+	relPath := workspaceRelative(root, doc.path)
+	if config.IsIgnored(cfg.Ignore, relPath) {
 		_ = s.t.writeNotification("textDocument/publishDiagnostics",
 			publishDiagnosticsParams{URI: uri, Diagnostics: []Diagnostic{}})
 		return
@@ -442,17 +467,45 @@ func (s *Server) runLint(uri string) {
 		StripFrontMatter: frontMatterEnabled(cfg),
 		RootDir:          root,
 		MaxInputBytes:    lint.DefaultMaxInputBytes,
+		SourceFS:         dirFSForPath(doc.path),
 	}
-	res := r.RunSource(doc.path, doc.text)
+	res := r.RunSource(relPath, doc.text)
 	lspDiags := toLSPAll(res.Diagnostics, doc.text)
 	_ = s.t.writeNotification("textDocument/publishDiagnostics",
 		publishDiagnosticsParams{URI: uri, Diagnostics: lspDiags})
 }
 
+// workspaceRelative converts an absolute filesystem path to a path
+// relative to the workspace root. Returns the input unchanged when
+// root is empty, when path is already relative, or when path lies
+// outside root (which would otherwise produce an unhelpful "../"
+// prefix that does not match repo-style globs).
+func workspaceRelative(root, path string) string {
+	if root == "" || !filepath.IsAbs(path) {
+		return path
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return path
+	}
+	return rel
+}
+
+// dirFSForPath returns os.DirFS rooted at the directory containing
+// path, or nil when path is not absolute (e.g. an in-memory test
+// label). engine.Runner treats a nil SourceFS as "do not override
+// the default" so this is safe in all cases.
+func dirFSForPath(path string) fs.FS {
+	if !filepath.IsAbs(path) {
+		return nil
+	}
+	return os.DirFS(filepath.Dir(path))
+}
+
 func (s *Server) handleCodeAction(msg *requestMessage) {
 	var p codeActionParams
 	if err := json.Unmarshal(msg.Params, &p); err != nil {
-		_ = s.t.writeError(msg.ID, codeParseError, "invalid codeAction params")
+		_ = s.t.writeError(msg.ID, codeInvalidParams, "invalid codeAction params")
 		return
 	}
 	doc, ok := s.docs.get(p.TextDocument.URI)

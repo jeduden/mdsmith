@@ -41,8 +41,16 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	if maxBytes <= 0 {
 		maxBytes = lint.DefaultMaxInputBytes
 	}
+	cfg := opts.Config
+	if cfg == nil {
+		// prepareFile dereferences Fixer.Config (via
+		// config.ValidateFrontMatterKinds), so a nil Config would
+		// panic. Treat absent config as defaults so callers can pass
+		// a zero-value Options.
+		cfg = config.Merge(config.Defaults(), nil)
+	}
 	f := &Fixer{
-		Config:           opts.Config,
+		Config:           cfg,
 		Rules:            opts.Rules,
 		StripFrontMatter: opts.StripFrontMatter,
 		RootDir:          opts.RootDir,
