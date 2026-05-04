@@ -203,6 +203,16 @@ bundle the binary because the Go executable is
 platform-specific and a single `.vsix` should not
 ship six binaries.
 
+**"mdsmith server crashed too many times in a row."**
+The extension's restart limiter (25 close events in
+3 minutes) tripped, typically because the binary is
+crashing on every request. Open the "mdsmith" Output
+channel to read the server's stderr (panic stack
+trace, "mdsmith: lsp:" line, etc.), fix the
+underlying issue, then run `mdsmith: Restart
+Language Server` from the Command Palette to bring
+the LSP back online without reloading the window.
+
 **Diagnostics lag behind edits.** Per-document lint
 runs are debounced 200 ms after the last
 `didChange`. If the editor still feels slow on large
