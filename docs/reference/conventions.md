@@ -172,6 +172,85 @@ This split keeps MDS034 focused on "what does this
 renderer interpret as a feature." Conventions
 orchestrate style separately.
 
+## User-defined conventions
+
+Add a `conventions:` block at the top level of
+`.mdsmith.yml`, sibling to `kinds:` and `rules:`,
+to define a convention inline:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+      no-reference-style:
+        allow-footnotes: true
+
+convention: our-team
+```
+
+Each entry in `conventions:` has the same shape as
+a built-in convention: a `flavor:` key and an
+optional `rules:` block.
+
+### Reserved names
+
+The built-in names `portable`, `github`, and
+`plain` are reserved. Defining one of them in
+`conventions:` is a config error at load time.
+
+### Validation
+
+Each user-defined convention is validated at config
+load:
+
+- `flavor` must be one of `commonmark | gfm |
+  goldmark`.
+- Each key under `rules:` must name a registered
+  rule.
+- Each rule's settings must validate against that
+  rule's existing schema.
+
+Validation errors name the convention and the rule:
+`convention "our-team" rule "no-inline-html":
+unknown setting "allowed"`.
+
+### Resolution order
+
+When `convention:` resolves a name:
+
+1. User-defined `conventions:` map is checked
+   first.
+2. Built-in table is the fallback.
+3. If neither matches, a config error lists both
+   sets of names.
+
+User conventions cannot shadow built-ins: reserved
+names are rejected at parse time, not at lookup.
+
+### Interaction with user rules
+
+User-defined conventions apply as a base layer
+beneath any top-level `rules:` overrides, the same
+as built-ins. Top-level `rules:` always wins via
+deep-merge.
+
+### `kinds resolve` output
+
+`mdsmith kinds resolve <file>` appends `(user)` to
+the convention layer source when a user-defined
+convention is active:
+
+```text
+convention.our-team (user)   set    ...
+```
+
+Built-in conventions appear without the suffix.
+
 ## Inspecting an effective convention
 
 `mdsmith kinds resolve <file>` shows the merge

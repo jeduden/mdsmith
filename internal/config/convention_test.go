@@ -12,6 +12,8 @@ import (
 	// Register markdown-flavor so rule.ByName lookups in deep-merge
 	// resolve while the convention mechanism is exercised.
 	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
+	// Register no-inline-html so settings validation tests can use it.
+	_ "github.com/jeduden/mdsmith/internal/rules/noinlinehtml"
 )
 
 func TestApplyConvention_NoConventionSet_NoOp(t *testing.T) {
@@ -367,4 +369,305 @@ func TestMerge_PreservesConvention(t *testing.T) {
 	// Mutating the merged copy must not bleed back into the source.
 	merged.ConventionPreset["line-length"].Settings["max"] = 999
 	assert.Equal(t, 80, loaded.ConventionPreset["line-length"].Settings["max"])
+}
+
+// --- User-defined convention tests ---
+
+func TestValidateUserConventions_ReservedName(t *testing.T) {
+	for _, name := range []string{"portable", "github", "plain"} {
+		t.Run(name, func(t *testing.T) {
+			cfg := &Config{
+				Conventions: map[string]UserConventionBody{
+					name: {Flavor: "gfm"},
+				},
+			}
+			err := validateUserConventions(cfg)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), name)
+			assert.Contains(t, err.Error(), "reserved")
+		})
+	}
+}
+
+func TestValidateUserConventions_UnknownFlavor(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionBody{
+			"our-team": {Flavor: "bogus-flavor"},
+		},
+	}
+	err := validateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus-flavor")
+}
+
+func TestValidateUserConventions_UnknownRule(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-such-rule": {Enabled: true},
+				},
+			},
+		},
+	}
+	err := validateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"our-team"`)
+	assert.Contains(t, err.Error(), `"no-such-rule"`)
+}
+
+func TestValidateUserConventions_InvalidRuleSetting(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-inline-html": {
+						Enabled:  true,
+						Settings: map[string]any{"allowed": "not-the-right-key"},
+					},
+				},
+			},
+		},
+	}
+	err := validateUserConventions(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `"our-team"`)
+	assert.Contains(t, err.Error(), `"no-inline-html"`)
+}
+
+func TestValidateUserConventions_ValidConvention(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-inline-html": {
+						Enabled:  true,
+						Settings: map[string]any{"allow": []any{"details", "summary", "kbd"}},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, validateUserConventions(cfg))
+}
+
+func TestApplyConvention_UserConventionSetsPreset(t *testing.T) {
+	cfg := &Config{
+		Convention: "our-team",
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-inline-html": {
+						Enabled:  true,
+						Settings: map[string]any{"allow": []any{"details", "summary", "kbd"}},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, applyConvention(cfg))
+	require.NotNil(t, cfg.ConventionPreset)
+	rc, ok := cfg.ConventionPreset["no-inline-html"]
+	require.True(t, ok)
+	assert.True(t, rc.Enabled)
+	assert.Equal(t, []any{"details", "summary", "kbd"}, rc.Settings["allow"])
+}
+
+func TestApplyConvention_UserConventionUnknownListsBoth(t *testing.T) {
+	cfg := &Config{
+		Convention: "missing",
+		Conventions: map[string]UserConventionBody{
+			"our-team": {Flavor: "gfm"},
+		},
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing")
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "github")
+}
+
+func TestEffectiveRules_UserConventionIsBaseLayer(t *testing.T) {
+	// User convention sets no-inline-html allow list; top-level rules:
+	// override wins via deep-merge (list replace).
+	cfg := &Config{
+		Convention: "our-team",
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-inline-html": {
+						Enabled:  true,
+						Settings: map[string]any{"allow": []any{"details", "summary"}},
+					},
+				},
+			},
+		},
+		Rules: map[string]RuleCfg{
+			"no-inline-html": {
+				Enabled:  true,
+				Settings: map[string]any{"allow": []any{"sub", "sup"}},
+			},
+		},
+		ExplicitRules: map[string]bool{"no-inline-html": true},
+	}
+	require.NoError(t, applyConvention(cfg))
+
+	got := Effective(cfg, "doc.md", nil)
+	rc, ok := got["no-inline-html"]
+	require.True(t, ok)
+	assert.True(t, rc.Enabled)
+	assert.Equal(t, []any{"sub", "sup"}, rc.Settings["allow"],
+		"user top-level rules: list replaces user convention preset list")
+}
+
+func TestLoad_UserConventionYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+convention: our-team
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", cfg.Convention)
+	require.NotNil(t, cfg.ConventionPreset)
+	rc, ok := cfg.ConventionPreset["no-inline-html"]
+	require.True(t, ok)
+	assert.True(t, rc.Enabled)
+}
+
+func TestLoad_UserConventionReservedName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := "conventions:\n  portable:\n    flavor: gfm\n"
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "portable")
+	assert.Contains(t, err.Error(), "reserved")
+}
+
+func TestLoad_UserConventionUnknownRule(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-such-rule: true
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "no-such-rule")
+}
+
+func TestLoad_UserConventionInvalidSetting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allowed: not-the-right-key
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "no-inline-html")
+}
+
+func TestProvenance_UserConventionLayerVisible(t *testing.T) {
+	cfg := &Config{
+		Convention: "our-team",
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-inline-html": {
+						Enabled:  true,
+						Settings: map[string]any{"allow": []any{"details"}},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, applyConvention(cfg))
+
+	res := ResolveFile(cfg, "doc.md", nil)
+	rr, ok := res.Rules["no-inline-html"]
+	require.True(t, ok)
+
+	var sources []string
+	for _, l := range rr.Layers {
+		sources = append(sources, l.Source)
+	}
+	assert.Contains(t, sources, "convention.our-team (user)",
+		"user convention layer must appear with (user) suffix")
+}
+
+func TestProvenance_BuiltInConventionNoUserSuffix(t *testing.T) {
+	cfg := &Config{Convention: "portable"}
+	require.NoError(t, applyConvention(cfg))
+
+	res := ResolveFile(cfg, "doc.md", nil)
+	rr, ok := res.Rules["horizontal-rule-style"]
+	require.True(t, ok)
+
+	var sources []string
+	for _, l := range rr.Layers {
+		sources = append(sources, l.Source)
+	}
+	assert.Contains(t, sources, "convention.portable",
+		"built-in convention must appear without (user) suffix")
+	for _, s := range sources {
+		assert.NotContains(t, s, "(user)",
+			"built-in convention must not have (user) suffix")
+	}
+}
+
+func TestMerge_PreservesUserConventions(t *testing.T) {
+	loaded := &Config{
+		Convention: "our-team",
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-inline-html": {
+						Enabled:  true,
+						Settings: map[string]any{"allow": []any{"details"}},
+					},
+				},
+			},
+		},
+	}
+	merged := Merge(&Config{Rules: map[string]RuleCfg{}}, loaded)
+	assert.Equal(t, "our-team", merged.Convention)
+	require.NotNil(t, merged.Conventions)
+	body, ok := merged.Conventions["our-team"]
+	require.True(t, ok)
+	assert.Equal(t, "gfm", body.Flavor)
+
+	// Mutating the merged copy must not bleed back into the source.
+	merged.Conventions["our-team"].Rules["no-inline-html"].Settings["allow"] = []any{"tampered"}
+	origAllow := loaded.Conventions["our-team"].Rules["no-inline-html"].Settings["allow"]
+	assert.Equal(t, []any{"details"}, origAllow,
+		"mutating merged conventions must not affect source")
 }
