@@ -8,7 +8,7 @@ import (
 )
 
 // SourceOptions configures an in-memory fix run. The fix functions
-// (FixSource, FixSourceWithRules) do not touch disk; they reuse the
+// (Source, SourceWithRules) do not touch disk; they reuse the
 // same prep/apply machinery the path-based Fixer uses on a buffer.
 type SourceOptions struct {
 	Config           *config.Config
@@ -20,16 +20,16 @@ type SourceOptions struct {
 	MaxInputBytes    int64
 }
 
-// FixSource applies every fixable rule allowed by the effective
+// Source applies every fixable rule allowed by the effective
 // config and returns the resulting bytes. The returned bytes equal
 // the input when no rule produced an edit.
-func FixSource(opts SourceOptions) ([]byte, error) {
+func Source(opts SourceOptions) ([]byte, error) {
 	return fixSourceImpl(opts, nil)
 }
 
-// FixSourceWithRules is like FixSource but only the named rules are
+// SourceWithRules is like Source but only the named rules are
 // applied. An empty names slice produces no fixes.
-func FixSourceWithRules(opts SourceOptions, names []string) ([]byte, error) {
+func SourceWithRules(opts SourceOptions, names []string) ([]byte, error) {
 	if len(names) == 0 {
 		return opts.Source, nil
 	}

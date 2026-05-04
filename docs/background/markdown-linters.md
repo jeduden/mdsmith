@@ -371,7 +371,7 @@ nested heading list.
 | Install        | binary     | npm            | npm          | npm          | binary     | npm          | varies      |
 | Config format  | YAML       | JSONC/YAML/JS  | JSON/YAML/JS | JSON/YAML/JS | INI+YAML   | JSON/YAML/JS | prompt      |
 | Output formats | text, JSON | text, JSON     | text         | none         | text, JSON | text, JSON   | text        |
-| VS Code        | no         | yes            | yes          | yes          | yes        | yes          | varies      |
+| VS Code        | yes (LSP)  | yes            | yes          | yes          | yes        | yes          | varies      |
 | GitHub Action  | no         | yes            | via npm      | via npm      | yes        | via npm      | custom      |
 | Pre-commit     | lefthook   | husky/lefthook | husky        | husky        | hooks      | husky        | impractical |
 | Offline        | yes        | yes            | yes          | yes          | yes        | yes          | no          |

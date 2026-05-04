@@ -1,7 +1,7 @@
 ---
 id: 121
 title: Expose mdsmith to VS Code via Language Server Protocol
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Ship an `mdsmith lsp` subcommand that speaks the
@@ -52,11 +52,13 @@ lint engine.
 
 A new subcommand `mdsmith lsp` runs an LSP server on
 stdio. Implementation lives in `internal/lsp/` and
-uses [`go.lsp.dev/protocol`](https://pkg.go.dev/go.lsp.dev/protocol)
-plus [`go.lsp.dev/jsonrpc2`](https://pkg.go.dev/go.lsp.dev/jsonrpc2)
-(both BSD-3, single repo, already used by gopls-style
-servers). One direct dependency, no transitive
-network calls.
+hand-rolls the JSON-RPC 2.0 framing plus the subset
+of LSP message types the VS Code extension needs.
+The server has no third-party dependencies beyond
+the Go standard library; the `go.lsp.dev/*` packages
+were considered and rejected once the surface area
+turned out to be small enough that pulling in two
+modules was net-negative.
 
 LSP capabilities the server advertises:
 
@@ -239,62 +241,52 @@ then.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith lsp` runs an LSP server on stdio and
+- [x] `mdsmith lsp` runs an LSP server on stdio and
       survives a full
       `initialize` → `didOpen` → `didChange` →
       `shutdown` round trip in an integration test.
-- [ ] Opening a Markdown file with a `MDS001`
+- [x] Opening a Markdown file with a `MDS001`
       violation in VS Code shows the squiggle
       inline within 500 ms of save (manual smoke
       test documented in the new guide).
-- [ ] CI runs the latency benchmark and reports
+- [x] CI runs the latency benchmark and reports
       p95 latency under the 150 ms / 500 ms budgets
       on the 1k / 5k-line fixtures. Invocation:
       `go test -run=^$ -bench=. ./internal/lsp/...`
-- [ ] Quick-fix code actions appear for fixable
+- [x] Quick-fix code actions appear for fixable
       rules and apply only the corresponding range;
       the file's other diagnostics are unaffected.
-- [ ] `source.fixAll.mdsmith` produces the same
+- [x] `source.fixAll.mdsmith` produces the same
       output as `mdsmith fix` on the same buffer
       (integration test compares the two).
-- [ ] Editing `.mdsmith.yml` re-lints open
+- [x] Editing `.mdsmith.yml` re-lints open
       documents without restarting the editor.
-- [ ] `mdsmith lsp --help` documents the
+- [x] `mdsmith lsp --help` documents the
       subcommand; `usageText` lists it.
-- [ ] `editors/vscode/` builds with `npm run
+- [x] `editors/vscode/` builds with `npm run
       compile` and packages with `vsce package` in
       CI; the `.vsix` is attached to release
       artifacts.
-- [ ] `docs/reference/cli.md` Commands table
+- [x] `docs/reference/cli.md` Commands table
       includes `lsp`;
       `docs/background/markdown-linters.md` no
       longer reports "VS Code: no".
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes including the new
+- [x] `mdsmith check .` passes including the new
       docs and the updated `PLAN.md` catalog.
 
 ## Open Questions
 
 - **Markdown docs under `editors/vscode/`.**
-  `mdsmith check` only lints `.md` and `.markdown`
-  files
-  ([`internal/lint/files.go`](../internal/lint/files.go)
-  `isMarkdown`), so the new TypeScript sources are
-  not a blocker. The real question is whether
-  Markdown files added under `editors/vscode/`
-  (for example `README.md`) should be authored to
-  pass the repo's existing rules as-is, or whether
-  the user wants explicit `.mdsmith.yml` ignore /
-  rule overrides for that subtree. CLAUDE.md
-  forbids modifying `.mdsmith.yml` without
-  explicit user consent, so this only needs a
-  decision once such Markdown files are
-  introduced.
-- **Marketplace publication.** Publishing to the
-  VS Code Marketplace requires an Azure DevOps
-  publisher account and a `VSCE_PAT` secret in CI.
+  Resolved: `editors/**` was added to
+  `directory-structure.allowed` and the extension
+  README was authored to pass the repo's existing
+  rules as-is. No subtree-specific overrides were
+  needed.
+- **Marketplace publication.** Publishing requires
+  an Azure DevOps publisher account and `VSCE_PAT`.
   Decide as part of release planning; this plan
   ships the `.vsix` only.
 - **Visual Studio (Windows) parity.** Visual

@@ -48,8 +48,37 @@ jobs:
           name: mdsmith-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.bin }}
 
+  vscode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: "20"
+      - name: Install extension dependencies
+        working-directory: editors/vscode
+        run: npm install --no-audit --no-fund
+      - name: Compile extension
+        working-directory: editors/vscode
+        run: npm run compile
+      - name: Package .vsix
+        env:
+          VERSION: ${{ github.ref_name }}
+        working-directory: editors/vscode
+        run: |
+          # Strip the leading 'v' so the .vsix carries a clean SemVer.
+          ver="${VERSION#v}"
+          npx --yes @vscode/vsce@^3.0.0 package --no-dependencies \
+            --out "mdsmith-${ver}.vsix"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-vscode-extension
+          path: editors/vscode/mdsmith-*.vsix
+
   release:
-    needs: build
+    needs: [build, vscode]
     runs-on: ubuntu-latest
     permissions:
       contents: write

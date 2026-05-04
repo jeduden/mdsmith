@@ -1,0 +1,79 @@
+{
+  "name": "mdsmith",
+  "displayName": "mdsmith",
+  "description": "Inline mdsmith diagnostics and quick fixes for Markdown via the mdsmith Language Server.",
+  "version": "0.1.0",
+  "publisher": "jeduden",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "markdown",
+    "linter",
+    "mdsmith",
+    "language-server"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeduden/mdsmith"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "mdsmith",
+      "properties": {
+        "mdsmith.path": {
+          "type": "string",
+          "default": "mdsmith",
+          "description": "Path to the mdsmith binary. A bare name is resolved against $PATH."
+        },
+        "mdsmith.config": {
+          "type": "string",
+          "default": "",
+          "description": "Override the .mdsmith.yml path (-c). Empty defers to the auto-discovered config."
+        },
+        "mdsmith.run": {
+          "type": "string",
+          "enum": ["onType", "onSave", "off"],
+          "default": "onSave",
+          "description": "When to run the linter. `onSave` re-lints on save. `onType` re-lints with each keystroke (debounced). `off` disables linting."
+        },
+        "mdsmith.fixOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run mdsmith fix on save. Equivalent to wiring source.fixAll.mdsmith into editor.codeActionsOnSave."
+        },
+        "mdsmith.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "LSP trace verbosity. Output appears in the 'mdsmith' Output channel."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node ./esbuild.js",
+    "watch": "node ./esbuild.js --watch",
+    "package": "vsce package --out mdsmith.vsix",
+    "vscode:prepublish": "node ./esbuild.js --production"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.4.0"
+  }
+}

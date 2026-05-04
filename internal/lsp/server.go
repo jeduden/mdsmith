@@ -351,7 +351,7 @@ func (s *Server) computeCodeActions(
 		if isWholeFileOnly(d.Data.RuleName) {
 			continue
 		}
-		fixed, err := fixpkg.FixSourceWithRules(fixpkg.SourceOptions{
+		fixed, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
 			Config:           cfg,
 			Rules:            s.rules,
 			Path:             doc.path,
@@ -371,7 +371,7 @@ func (s *Server) computeCodeActions(
 	}
 
 	// Source action: fix-all.
-	fixed, err := fixpkg.FixSource(fixpkg.SourceOptions{
+	fixed, err := fixpkg.Source(fixpkg.SourceOptions{
 		Config:           cfg,
 		Rules:            s.rules,
 		Path:             doc.path,

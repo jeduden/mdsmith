@@ -294,3 +294,140 @@ func TestShutdownReturnsNullResult(t *testing.T) {
 	require.Nil(t, errResp)
 	assert.Equal(t, "null", string(resultRaw))
 }
+
+func TestDidChangeUpdatesDiagnostics(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/change.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{
+			URI: uri, LanguageID: "markdown", Version: 1,
+			Text: "# Hi\n\nclean line\n",
+		},
+	})
+	first := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p1 publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(first, &p1))
+	assert.Empty(t, p1.Diagnostics)
+
+	// Inject a trailing-spaces violation.
+	h.notify("textDocument/didChange", didChangeTextDocumentParams{
+		TextDocument: versionedTextDocumentIdentifier{URI: uri, Version: 2},
+		ContentChanges: []textDocumentContentChangeEvent{
+			{Text: "# Hi\n\ndirty line   \n"},
+		},
+	})
+	second := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p2 publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(second, &p2))
+	var saw006 bool
+	for _, d := range p2.Diagnostics {
+		if d.Code == "MDS006" {
+			saw006 = true
+			break
+		}
+	}
+	assert.True(t, saw006, "expected MDS006 after didChange, got %+v", p2.Diagnostics)
+}
+
+func TestCodeActionQuickFix(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/qf.md"
+	dirty := "# Hi\n\ndirty line   \n"
+	clean := "# Hi\n\ndirty line\n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: dirty},
+	})
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+
+	var trailing Diagnostic
+	for _, d := range p.Diagnostics {
+		if d.Code == "MDS006" {
+			trailing = d
+			break
+		}
+	}
+	require.NotEmpty(t, trailing.Code, "no MDS006 in %+v", p.Diagnostics)
+
+	resultRaw, errResp := h.request("textDocument/codeAction", codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Range:        trailing.Range,
+		Context:      codeActionContext{Diagnostics: []Diagnostic{trailing}},
+	})
+	require.Nil(t, errResp)
+
+	var actions []codeAction
+	require.NoError(t, json.Unmarshal(resultRaw, &actions))
+	require.NotEmpty(t, actions, "expected at least one code action")
+
+	var qf *codeAction
+	for i, a := range actions {
+		if a.Kind == kindQuickFix {
+			qf = &actions[i]
+			break
+		}
+	}
+	require.NotNil(t, qf, "expected quickfix action; got %+v", actions)
+	require.NotNil(t, qf.Edit)
+	edits, ok := qf.Edit.Changes[uri]
+	require.True(t, ok)
+	require.Len(t, edits, 1)
+	assert.Equal(t, clean, edits[0].NewText)
+}
+
+func TestCodeActionSourceFixAll(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/all.md"
+	dirty := "# Hi\n\ndirty line   \n"
+	clean := "# Hi\n\ndirty line\n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: dirty},
+	})
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+	require.NotEmpty(t, p.Diagnostics)
+
+	resultRaw, errResp := h.request("textDocument/codeAction", codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Range:        Range{},
+		Context:      codeActionContext{Diagnostics: p.Diagnostics, Only: []string{kindSourceFixAll}},
+	})
+	require.Nil(t, errResp)
+	var actions []codeAction
+	require.NoError(t, json.Unmarshal(resultRaw, &actions))
+	var fixAll *codeAction
+	for i, a := range actions {
+		if a.Kind == kindSourceFixAll {
+			fixAll = &actions[i]
+			break
+		}
+	}
+	require.NotNil(t, fixAll, "expected source.fixAll.mdsmith action; got %+v", actions)
+	edits := fixAll.Edit.Changes[uri]
+	require.Len(t, edits, 1)
+	assert.Equal(t, clean, edits[0].NewText)
+}
+
+func TestUnknownMethodReturnsError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	_, errResp = h.request("textDocument/bogus", nil)
+	require.NotNil(t, errResp)
+	assert.Equal(t, codeMethodNotFound, errResp.Code)
+}

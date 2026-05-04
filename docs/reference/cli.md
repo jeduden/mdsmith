@@ -25,6 +25,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 | [`help`](cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
 | [`init`](cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
 | [`kinds`](cli/kinds.md)                       | Inspect declared file kinds and resolve effective rule config per file.              |
+| [`lsp`](cli/lsp.md)                           | Run a Language Server Protocol server on stdio for editor integrations.              |
 | [`merge-driver`](cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
 | [`metrics`](cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
 | [`pre-merge-commit`](cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |

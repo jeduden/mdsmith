@@ -53,9 +53,9 @@ const (
 // LSP types — only the subset the server actually emits or consumes.
 
 type initializeParams struct {
-	ProcessID        int               `json:"processId,omitempty"`
-	RootURI          string            `json:"rootUri,omitempty"`
-	WorkspaceFolders []workspaceFolder `json:"workspaceFolders,omitempty"`
+	ProcessID        int                `json:"processId,omitempty"`
+	RootURI          string             `json:"rootUri,omitempty"`
+	WorkspaceFolders []workspaceFolder  `json:"workspaceFolders,omitempty"`
 	Capabilities     clientCapabilities `json:"capabilities"`
 }
 
@@ -108,12 +108,15 @@ type codeActionOptions struct {
 	CodeActionKinds []string `json:"codeActionKinds,omitempty"`
 }
 
-// Position and Range are 0-based offsets in characters and lines.
+// Position is a 0-based location within a text document. Line and
+// Character are zero-indexed; Character counts UTF-16 code units, per
+// the LSP spec.
 type Position struct {
 	Line      int `json:"line"`
 	Character int `json:"character"`
 }
 
+// Range covers a span between two Positions; End is exclusive.
 type Range struct {
 	Start Position `json:"start"`
 	End   Position `json:"end"`
