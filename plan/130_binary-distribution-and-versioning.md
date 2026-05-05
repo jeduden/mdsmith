@@ -218,13 +218,13 @@ the tag on every channel.
    run `set-version.sh` before `vsce package`, then
    add two publish steps that reuse the exact `.vsix`
    the job produced: `bunx --bun @vscode/vsce publish
-   --packagePath <vsix> --pat $VSCE_PAT` for the
-   Marketplace and `bunx --bun ovsx publish <vsix>
-   --pat $OVSX_PAT` for Open VSX. Before the first
-   tag, claim the `jeduden` namespace on Open VSX,
-   mint a Marketplace PAT scoped to "Marketplace >
-   Manage", and store both as `VSCE_PAT` and
-   `OVSX_PAT` repository secrets.
+   --packagePath <vsix> --pat $VSCE_PAT` (Marketplace)
+   and `bunx --bun ovsx publish --packagePath <vsix>
+   --pat $OVSX_PAT` (Open VSX). Before the first tag,
+   claim the `jeduden` namespace on Open VSX, mint a
+   Marketplace PAT scoped to "Marketplace > Manage",
+   and store both as `VSCE_PAT` and `OVSX_PAT`
+   repository secrets.
 4. Scaffold `npm/mdsmith/` with `package.json` and
    `bin/mdsmith.js`. Add a Bun unit test that mocks
    `os.platform()` and `os.arch()` and verifies the
