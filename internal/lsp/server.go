@@ -599,6 +599,17 @@ func (s *Server) runLint(uri string) {
 		ConfigPath: configPath,
 	}
 	res := r.RunSource(relPath, doc.text)
+	// engine.RunSource is CPU-bound and can run for hundreds of
+	// milliseconds on large buffers. The client may have requested
+	// shutdown/exit while we were busy; if so, drop everything we
+	// would have published so the dispatch loop's teardown path is
+	// not racing publishDiagnostics writes against a half-closed
+	// pipe. The shutdown flag is set both by the explicit shutdown
+	// handler and by Run's deferred cleanup, so checking it covers
+	// every termination cause.
+	if s.shutdown.Load() {
+		return
+	}
 	// Mirror `mdsmith check`: surface lint pipeline errors (parse
 	// failures, oversized buffers, config-target rule errors) to
 	// the editor instead of silently dropping them. Otherwise the
@@ -651,15 +662,30 @@ func (s *Server) resolveMaxInputBytes(cfg *config.Config) int64 {
 // diagnostics produced for a different file than the markdown
 // buffer that triggered the lint pass — typically config-target
 // rule findings against .mdsmith.yml. Pulled out of runLint so
-// the routing has a unit-testable seam.
+// the routing has a unit-testable seam. Each diagnostic's
+// severity is mapped to the matching window/logMessage type so
+// warnings stay distinguishable from errors in the editor's
+// output channel.
 func (s *Server) surfaceForeignDiagnostics(uri string, diags []lint.Diagnostic) {
 	for _, d := range diags {
 		s.logger.Printf("lint %s: %s:%d %s [%s]", uri, d.File, d.Line, d.Message, d.RuleName)
 		_ = s.t.writeNotification("window/logMessage", logMessageParams{
-			Type:    messageTypeError,
+			Type:    messageTypeForLint(d.Severity),
 			Message: fmt.Sprintf("mdsmith: %s:%d %s [%s]", d.File, d.Line, d.Message, d.RuleName),
 		})
 	}
+}
+
+// messageTypeForLint maps a lint severity to the
+// window/logMessage MessageType the LSP spec defines (§3.18.1).
+// Anything that isn't an explicit warning is reported as Error
+// so the user notices — config-target findings tend to be
+// actionable.
+func messageTypeForLint(s lint.Severity) messageType {
+	if s == lint.Warning {
+		return messageTypeWarning
+	}
+	return messageTypeError
 }
 
 // partitionDocDiagnostics splits Runner-produced diagnostics into

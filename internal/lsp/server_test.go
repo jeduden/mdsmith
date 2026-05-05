@@ -2109,6 +2109,48 @@ func TestSurfaceForeignDiagnosticsEmitsLogMessage(t *testing.T) {
 	assert.Contains(t, out, "/repo/.mdsmith.yml:7")
 	assert.Contains(t, out, "bad value")
 	assert.Contains(t, out, "[directory-structure]")
+	// Default severity (zero value) is Error → MessageType 1.
+	assert.Contains(t, out, `"type":1`)
+}
+
+// Regression: surfaceForeignDiagnostics must preserve severity
+// in the window/logMessage Type field, otherwise warnings show
+// up as errors in the editor's output channel.
+func TestSurfaceForeignDiagnosticsPreservesWarningSeverity(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.surfaceForeignDiagnostics("file:///doc.md", []lint.Diagnostic{
+		{File: "/repo/.mdsmith.yml", Line: 3, Message: "soft hint",
+			RuleName: "directory-structure", Severity: lint.Warning},
+	})
+	out := buf.String()
+	// MessageType.Warning is 2 per LSP §3.18.1.
+	assert.Contains(t, out, `"type":2`)
+	assert.NotContains(t, out, `"type":1`,
+		"Warning severity must not surface as messageTypeError")
+}
+
+// Regression: runLint must not publish diagnostics after the
+// shutdown flag is set. A lint pass already in flight when the
+// client sends shutdown/exit could otherwise race the dispatch
+// loop's teardown and write to a half-closed pipe. The check
+// covers the publishDiagnostics, window/logMessage error
+// surfacing, and surfaceForeignDiagnostics paths.
+func TestRunLintSkipsPublishWhenShutdownAfterLint(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "/x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	// Simulate "shutdown arrived while engine.RunSource was
+	// running" by flipping the flag before runLint reaches its
+	// post-lint write block.
+	s.shutdown.Store(true)
+	s.runLint("file:///x.md")
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"runLint must drop the publish when shutdown was requested mid-flight")
 }
 
 // resolveMaxInputBytes returns the parse error to the client via
