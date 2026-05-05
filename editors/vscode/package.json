@@ -2,7 +2,7 @@
   "name": "mdsmith",
   "displayName": "mdsmith",
   "description": "Inline mdsmith diagnostics and quick fixes for Markdown via the mdsmith Language Server.",
-  "version": "0.1.2",
+  "version": "0.0.0-dev",
   "publisher": "jeduden",
   "license": "MIT",
   "engines": {

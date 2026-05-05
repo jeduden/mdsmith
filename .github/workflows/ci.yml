@@ -43,6 +43,18 @@ jobs:
           go-version-file: go.mod
       - run: go tool golangci-lint run
 
+  # Tracked manifests must stay pinned at 0.0.0-dev between releases;
+  # the release workflow rewrites them with scripts/set-version.sh
+  # before publishing each channel. A hand edit on main would ship a
+  # wrong version on the next tag, so fail fast here.
+  version-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - run: ./scripts/check-versions.sh
+
   mdsmith:
     runs-on: ubuntu-latest
     steps:

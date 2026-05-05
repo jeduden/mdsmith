@@ -1,0 +1,8 @@
+# `files` in package.json is the allowlist npm uses to build the
+# tarball, but local devs publishing by hand benefit from a denylist
+# fallback that pares the tarball down to the runtime shim.
+node_modules/
+test/
+tsconfig.json
+bun.lock
+*.test.ts

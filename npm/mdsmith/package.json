@@ -1,0 +1,41 @@
+{
+  "name": "mdsmith",
+  "version": "0.0.0-dev",
+  "description": "Fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content.",
+  "license": "MIT",
+  "homepage": "https://github.com/jeduden/mdsmith",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeduden/mdsmith"
+  },
+  "keywords": [
+    "markdown",
+    "linter",
+    "formatter",
+    "mdsmith",
+    "docs"
+  ],
+  "bin": {
+    "mdsmith": "bin/mdsmith.js"
+  },
+  "files": [
+    "bin/mdsmith.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@mdsmith/linux-x64": "0.0.0-dev",
+    "@mdsmith/linux-arm64": "0.0.0-dev",
+    "@mdsmith/darwin-x64": "0.0.0-dev",
+    "@mdsmith/darwin-arm64": "0.0.0-dev",
+    "@mdsmith/win32-x64": "0.0.0-dev"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.0",
+    "@types/node": "^20.11.0"
+  }
+}

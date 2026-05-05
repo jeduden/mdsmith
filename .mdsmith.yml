@@ -72,6 +72,8 @@ rules:
       - ".claude/**"
       - ".github/**"
       - "editors/**"
+      - "npm/**"
+      - "python/**"
   catalog: true
   required-structure: true
   include: true

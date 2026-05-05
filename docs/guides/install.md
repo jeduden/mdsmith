@@ -1,0 +1,138 @@
+---
+title: Installation
+summary: >-
+  Every channel that ships the mdsmith binary or the VS
+  Code extension — npm, PyPI, asdf, mise, the GitHub
+  release, and the Visual Studio Marketplace plus Open
+  VSX — and which channel to pick for which workflow.
+---
+# Installation
+
+Each `vX.Y.Z` git tag ships the same Go binary through
+several channels. `mdsmith version` reports the same
+value on every channel because the version is stamped
+into the binary at build time. Pick one path:
+
+| Channel        | Command                                                                                             | Best for                                            |
+|----------------|-----------------------------------------------------------------------------------------------------|-----------------------------------------------------|
+| Go             | `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`                                          | Go developers with a working Go toolchain           |
+| npm            | `npm install -g mdsmith`                                                                            | Node / TypeScript repos and npm-friendly CI         |
+| npx            | `npx mdsmith check .`                                                                               | One-off checks without a global install             |
+| PyPI (pip)     | `pip install mdsmith`                                                                               | Python projects and Python-only CI images           |
+| uvx            | `uvx mdsmith check .`                                                                               | Ephemeral runs via uv                               |
+| pipx           | `pipx install mdsmith`                                                                              | Isolated CLI install on Python hosts                |
+| asdf           | `asdf plugin add mdsmith && asdf install mdsmith latest`                                            | Polyglot repos already using asdf for tool versions |
+| mise           | `mise use mdsmith@latest`                                                                           | Repos already using mise to pin tool versions       |
+| GitHub release | Download `mdsmith-<os>-<arch>` from the [release page](https://github.com/jeduden/mdsmith/releases) | Air-gapped hosts and direct binary control          |
+
+The binary ships for linux x86_64, linux aarch64, macOS
+x86_64, macOS arm64, and Windows amd64. Other targets
+require a Go toolchain.
+
+## npm
+
+```bash
+npm install -g mdsmith
+mdsmith version
+```
+
+The root `mdsmith` package is a small Node.js shim. It
+declares `optionalDependencies` for one platform
+sub-package per supported host
+(`@mdsmith/linux-x64`, `@mdsmith/linux-arm64`,
+`@mdsmith/darwin-x64`, `@mdsmith/darwin-arm64`,
+`@mdsmith/win32-x64`); npm installs only the one that
+matches `process.platform` and `process.arch`. There
+is no `postinstall` hook, so `npm install` works in
+offline / air-gapped CI and on hosts that ban network
+calls during install.
+
+`npx mdsmith` and `pnpm dlx mdsmith` work the same way
+without a permanent install.
+
+## PyPI (pip / uvx / pipx)
+
+```bash
+pip install mdsmith
+mdsmith version
+```
+
+```bash
+uvx mdsmith check .
+```
+
+The PyPI release ships one platform-tagged wheel per
+supported host. Each wheel bundles the prebuilt
+binary under `mdsmith/_bin/` and exposes an `mdsmith`
+console script that `os.execv`s the binary. `pip`,
+`uv pip`, `pipx`, `uvx`, and `python -m mdsmith`
+all work.
+
+## asdf
+
+```bash
+asdf plugin add mdsmith https://github.com/jeduden/asdf-mdsmith.git
+asdf install mdsmith latest
+asdf set mdsmith latest
+mdsmith version
+```
+
+Once the plugin is listed in
+[`asdf-vm/asdf-plugins`](https://github.com/asdf-vm/asdf-plugins),
+the explicit URL becomes optional:
+`asdf plugin add mdsmith` resolves on its own.
+
+## mise
+
+```bash
+mise use mdsmith@latest
+mdsmith version
+```
+
+mise reads our GitHub release assets directly through
+its `ubi` backend, so no plugin code ships separately.
+On versions of mise that predate the registry entry,
+`mise use asdf:jeduden/asdf-mdsmith` keeps working.
+
+## GitHub release (direct download)
+
+The [release page](https://github.com/jeduden/mdsmith/releases)
+attaches one binary per platform and a
+`checksums.txt`. Download, verify the SHA-256, and
+move the binary onto `$PATH`:
+
+```bash
+curl -L -o mdsmith \
+  https://github.com/jeduden/mdsmith/releases/latest/download/mdsmith-linux-amd64
+sha256sum -c <(grep mdsmith-linux-amd64 checksums.txt)
+install -m 0755 mdsmith /usr/local/bin/mdsmith
+```
+
+This path is also the documented fallback if any of
+the package channels above is unavailable on a given
+day.
+
+## VS Code extension
+
+The extension talks to the Go binary over LSP. Install
+the binary by one of the channels above, then add the
+extension:
+
+- **Visual Studio Marketplace** (stock VS Code, GitHub
+  Codespaces, GitHub.dev): search for `jeduden.mdsmith`
+  in the Extensions view, or run
+  `code --install-extension jeduden.mdsmith`.
+- **Open VSX** (VSCodium, Cursor, Theia, Gitpod):
+  install from the marketplace UI, or run
+  `codium --install-extension jeduden.mdsmith`.
+- **GitHub release**: download the `.vsix` from the
+  release page and run
+  `code --install-extension mdsmith-X.Y.Z.vsix`.
+
+The Marketplace, Open VSX, and GitHub-release `.vsix`
+have identical SHA-256 sums; they're the same
+artifact uploaded to three places.
+
+See [VS Code Integration](editors/vscode.md) for the
+configuration surface (`mdsmith.path`, `mdsmith.run`,
+`mdsmith.fixOnSave`, `mdsmith.trace.server`).

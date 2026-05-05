@@ -62,6 +62,10 @@ jobs:
         with:
           bun-version: "1.3.11"
           no-cache: true
+      - name: Stamp tracked manifests with the tag
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: ./scripts/set-version.sh "${VERSION#v}"
       - name: Install extension dependencies
         working-directory: editors/vscode
         run: bun install --frozen-lockfile
@@ -76,14 +80,129 @@ jobs:
           VERSION: ${{ github.ref_name }}
         working-directory: editors/vscode
         run: |
-          # Strip the leading 'v' so the .vsix carries a clean SemVer.
           ver="${VERSION#v}"
           bunx --bun @vscode/vsce package --no-dependencies \
             --out "mdsmith-${ver}.vsix"
+      - name: Publish to Visual Studio Marketplace
+        # The GitHub release .vsix is the documented fallback, so a
+        # transient Marketplace outage should not block the release
+        # job downstream of this one.
+        continue-on-error: true
+        env:
+          VERSION: ${{ github.ref_name }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        working-directory: editors/vscode
+        # Reuse the exact .vsix the artifact upload below ships, so
+        # Marketplace, Open VSX, and the GitHub release are byte-
+        # identical. The publisher namespace is jeduden — claim it
+        # in https://aka.ms/vscode-create-publisher before the first
+        # release. PAT scope: Marketplace > Manage. Azure caps PATs
+        # at one year; rotate annually and record the date in
+        # CLAUDE.md.
+        run: |
+          ver="${VERSION#v}"
+          bunx --bun @vscode/vsce publish \
+            --no-dependencies \
+            --packagePath "mdsmith-${ver}.vsix" \
+            --pat "$VSCE_PAT"
+      - name: Publish to Open VSX
+        continue-on-error: true
+        env:
+          VERSION: ${{ github.ref_name }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        working-directory: editors/vscode
+        # Open VSX is the registry VSCodium, Cursor, Theia, and
+        # Gitpod query. Claim the jeduden namespace on
+        # https://open-vsx.org and store the publisher token as the
+        # OVSX_PAT secret before the first release. Rotate annually.
+        run: |
+          ver="${VERSION#v}"
+          bunx --bun ovsx publish \
+            --packagePath "mdsmith-${ver}.vsix" \
+            --pat "$OVSX_PAT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mdsmith-vscode-extension
           path: editors/vscode/mdsmith-*.vsix
+
+  npm:
+    needs: [build]
+    runs-on: ubuntu-latest
+    # `id-token: write` lets `npm publish --provenance` mint an OIDC
+    # token so the npm registry stamps each tarball with verifiable
+    # build metadata pointing at this exact workflow run.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v6.0.0
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Stamp tracked manifests with the tag
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: ./scripts/set-version.sh "${VERSION#v}"
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Build platform packages
+        run: ./scripts/build-npm-platforms.sh artifacts npm/dist
+      - name: Publish platform packages
+        # Platform packages publish first so the root never advertises
+        # an optionalDependency npm cannot find. The root package
+        # publishes last, after every platform exists.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for pkg in npm/dist/*; do
+            (cd "$pkg" && npm publish --access public --provenance)
+          done
+      - name: Publish root package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        working-directory: npm/mdsmith
+        run: npm publish --access public --provenance
+
+  pypi:
+    needs: [build]
+    runs-on: ubuntu-latest
+    # `id-token: write` lets pypa/gh-action-pypi-publish use Trusted
+    # Publishing (OIDC) so PyPI accepts each upload without a
+    # long-lived API token. Configure the trusted publisher on
+    # pypi.org → Manage Project → Publishing before the first tag.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@e348410f2ed5c0a4cf69d4eedea8c3a8aa3afdfa # v6.0.0
+        with:
+          python-version: "3.12"
+      - name: Stamp tracked manifests with the tag
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: ./scripts/set-version.sh "${VERSION#v}"
+      - name: Install build tooling
+        run: python -m pip install --upgrade build
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Build platform wheels
+        run: ./scripts/build-wheels.sh artifacts python/dist
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.13.0
+        with:
+          packages-dir: python/dist
 
   release:
     needs: [build, vscode]
@@ -105,3 +224,58 @@ jobs:
           files: |
             mdsmith-*
             checksums.txt
+
+  smoke-test:
+    # Wait until every channel is on the new version before checking
+    # — the npm and PyPI registries can take ~60s to surface a fresh
+    # publish, so the channel-specific install commands re-run if the
+    # registry briefly returns the previous version.
+    needs: [npm, pypi, release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - channel: npm
+            container: node:lts-alpine
+            install: |
+              # alpine ships busybox sh; the npm shim is plain JS so
+              # no glibc shim is needed for the install.
+              apk add --no-cache bash
+              npm install -g --force "mdsmith@${VERSION#v}"
+            run: mdsmith version
+          - channel: pip
+            container: python:3.12-slim
+            install: |
+              python -m pip install --upgrade pip
+              # `--upgrade` forces pip to pick the just-published
+              # wheel rather than a cached older one.
+              for attempt in 1 2 3 4 5; do
+                if python -m pip install --upgrade "mdsmith==${VERSION#v}"; then
+                  break
+                fi
+                sleep 15
+              done
+            run: mdsmith version
+          - channel: mise
+            container: jdxcode/mise:latest
+            install: |
+              mise use -g "mdsmith@${VERSION#v}"
+            run: |
+              eval "$(mise activate bash --shims)"
+              mdsmith version
+    runs-on: ubuntu-latest
+    container: ${{ matrix.container }}
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - name: Install
+        run: ${{ matrix.install }}
+      - name: Verify version
+        run: |
+          got=$(${{ matrix.run }})
+          want="mdsmith ${VERSION}"
+          if [ "$got" != "$want" ]; then
+            echo "channel=${{ matrix.channel }}: got '$got', want '$want'" >&2
+            exit 1
+          fi
+          echo "channel=${{ matrix.channel }}: $got"
