@@ -2,12 +2,33 @@ package config
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
+
+// UserConventionBody is the YAML shape for one entry in the top-level
+// `conventions:` map. It mirrors the shape of the built-in convention
+// table: a flavor plus a map of rule presets.
+type UserConventionBody struct {
+	// Flavor is the Markdown flavor this convention targets. Must be
+	// one of "commonmark", "gfm", or "goldmark".
+	Flavor string `yaml:"flavor"`
+	// Rules maps rule names to preset RuleCfg values.
+	Rules map[string]RuleCfg `yaml:"rules"`
+}
+
+// reservedConventionNames is the set of built-in convention names that
+// users must not redefine.
+var reservedConventionNames = map[string]bool{
+	"portable": true,
+	"github":   true,
+	"plain":    true,
+}
 
 // applyConvention reads the top-level Convention selector from the
 // loaded config (if any) and stores its rule presets on
@@ -30,7 +51,8 @@ func applyConvention(cfg *Config) error {
 	if cfg == nil || cfg.Convention == "" {
 		return nil
 	}
-	convention, err := markdownflavor.Lookup(cfg.Convention)
+	userMap := buildUserConventionMap(cfg.UserConventions)
+	convention, err := markdownflavor.Lookup(cfg.Convention, userMap)
 	if err != nil {
 		return fmt.Errorf("convention: %w", err)
 	}
@@ -88,6 +110,107 @@ func copyConventionPreset(p map[string]RuleCfg) map[string]RuleCfg {
 		out[k] = copyRuleCfg(v)
 	}
 	return out
+}
+
+// buildUserConventionMap converts a map[string]UserConventionBody into
+// a map[string]markdownflavor.Convention for use with Lookup.
+func buildUserConventionMap(uc map[string]UserConventionBody) map[string]markdownflavor.Convention {
+	if len(uc) == 0 {
+		return nil
+	}
+	out := make(map[string]markdownflavor.Convention, len(uc))
+	for name, body := range uc {
+		rules := make(map[string]markdownflavor.RulePreset, len(body.Rules))
+		for rname, rc := range body.Rules {
+			rules[rname] = markdownflavor.RulePreset{
+				Enabled:  rc.Enabled,
+				Settings: cloneSettings(rc.Settings),
+			}
+		}
+		flavor, _ := markdownflavor.ParseFlavor(body.Flavor)
+		out[name] = markdownflavor.Convention{
+			Name:   name,
+			Flavor: flavor,
+			Rules:  rules,
+		}
+	}
+	return out
+}
+
+// validateUserConventions validates all entries in cfg.UserConventions.
+// It rejects reserved names, unknown flavors, unknown rule names, and
+// invalid rule settings. Errors name the convention and (where applicable)
+// the rule so users see the problem at config load time.
+func validateUserConventions(cfg *Config) error {
+	if len(cfg.UserConventions) == 0 {
+		return nil
+	}
+
+	// Validate flavor values.
+	validFlavors := map[string]bool{
+		"commonmark": true,
+		"gfm":        true,
+		"goldmark":   true,
+	}
+
+	// Sort names for deterministic error ordering.
+	names := make([]string, 0, len(cfg.UserConventions))
+	for name := range cfg.UserConventions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		body := cfg.UserConventions[name]
+
+		// Reject reserved names.
+		if reservedConventionNames[name] {
+			return fmt.Errorf(
+				"conventions.%s: %q is a reserved built-in convention name",
+				name, name,
+			)
+		}
+
+		// Validate flavor.
+		if body.Flavor != "" && !validFlavors[body.Flavor] {
+			return fmt.Errorf(
+				"convention %q: invalid flavor %q (valid: commonmark, gfm, goldmark)",
+				name, body.Flavor,
+			)
+		}
+
+		// Validate each rule preset.
+		for ruleName, rc := range body.Rules {
+			r := rule.ByName(ruleName)
+			if r == nil {
+				return fmt.Errorf(
+					"convention %q rule %q: unknown rule",
+					name, ruleName,
+				)
+			}
+			c, ok := r.(rule.Configurable)
+			if !ok {
+				continue
+			}
+			if err := c.ApplySettings(rc.Settings); err != nil {
+				return fmt.Errorf(
+					"convention %q rule %q: %w",
+					name, ruleName, err,
+				)
+			}
+		}
+	}
+	return nil
+}
+
+// IsUserConvention reports whether name is a user-defined convention in
+// the config's UserConventions map.
+func IsUserConvention(cfg *Config, name string) bool {
+	if cfg == nil {
+		return false
+	}
+	_, ok := cfg.UserConventions[name]
+	return ok
 }
 
 // validateConventionScalar returns an error when the top-level

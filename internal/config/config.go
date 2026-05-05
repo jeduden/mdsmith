@@ -45,6 +45,13 @@ type Config struct {
 	// and docs/reference/conventions.md for end-user docs.
 	Convention string `yaml:"convention,omitempty"`
 
+	// UserConventions holds the user-defined convention bodies declared
+	// under the top-level `conventions:` key in .mdsmith.yml. Each
+	// entry is a { flavor, rules } pair analogous to the built-in
+	// convention table. Names must not collide with the three reserved
+	// built-in names ("portable", "github", "plain").
+	UserConventions map[string]UserConventionBody `yaml:"conventions,omitempty"`
+
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
