@@ -106,20 +106,31 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
   try {
     await client.start();
   } catch (err) {
+    // start() rejected — leave the LanguageClient referenceable
+    // briefly so the user can hit "Show Output" to read the
+    // failure log, then drop the reference. Without this clear,
+    // a partially-started client lingers and a subsequent
+    // deactivate() / restart would call stop() on something that
+    // never reached the running state, throwing inside vscode-
+    // languageclient. Also tear down the watcher; startServer
+    // will install a fresh one on next attempt.
     const choice = await vscode.window.showErrorMessage(
       startupErrorMessage(err),
       "Download mdsmith",
       "Open Settings",
       "Show Output"
     );
+    if (choice === "Show Output") {
+      showOutput();
+    }
+    client = undefined;
+    disposeConfigWatcher();
     if (choice === "Download mdsmith") {
       await vscode.env.openExternal(
         vscode.Uri.parse("https://github.com/jeduden/mdsmith/releases")
       );
     } else if (choice === "Open Settings") {
       await vscode.commands.executeCommand("workbench.action.openSettings", "mdsmith");
-    } else if (choice === "Show Output") {
-      showOutput();
     }
   }
 }
@@ -225,7 +236,15 @@ async function promptRestartAfterRepeatedFailures(): Promise<void> {
 
 export async function deactivate(): Promise<void> {
   if (client) {
-    await client.stop();
+    try {
+      await client.stop();
+    } catch {
+      // A client whose start() failed (or that is still in the
+      // "starting" state when the host shuts the extension down)
+      // can throw from stop(); swallow so deactivate always
+      // completes cleanly. Dropping the reference below is
+      // enough to release the client object regardless.
+    }
     client = undefined;
   }
   // The watcher is also pushed onto context.subscriptions in

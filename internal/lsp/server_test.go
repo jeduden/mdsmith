@@ -1145,14 +1145,31 @@ func TestScheduleLintImmediateCancelsPendingDebounce(t *testing.T) {
 	s.scheduleLint("file:///x.md", lintTriggerChange)
 	s.pendingMu.Lock()
 	require.Len(t, s.pending, 1)
+	originalTimer := s.pending["file:///x.md"]
 	s.pendingMu.Unlock()
-	// An immediate trigger (e.g. didOpen) must drop the pending
-	// timer rather than letting it linger.
+	// An immediate trigger (e.g. didOpen) replaces the pending
+	// debounce timer with a zero-delay immediate timer instead of
+	// running runLint synchronously (which would block dispatch).
+	// The original timer is Stop()'d.
 	s.scheduleLint("file:///x.md", lintTriggerOpen)
 	s.pendingMu.Lock()
-	assert.Empty(t, s.pending,
-		"immediate trigger should remove any pending debounce timer for the URI")
+	require.Len(t, s.pending, 1, "immediate trigger should replace the pending debounce timer")
+	require.NotSame(t, originalTimer, s.pending["file:///x.md"],
+		"immediate trigger should install a new (zero-delay) timer, not reuse the debounce one")
 	s.pendingMu.Unlock()
+	// Wait briefly for the immediate timer to fire and clear
+	// itself, then assert the pending map is empty.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		s.pendingMu.Lock()
+		empty := len(s.pending) == 0
+		s.pendingMu.Unlock()
+		if empty {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("pending map never drained after immediate trigger fired")
 }
 
 // TestScheduleLintTimerSkipsAfterShutdown pins the in-callback

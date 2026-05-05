@@ -480,22 +480,18 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	if mode == runOnSave && trigger == lintTriggerChange {
 		return
 	}
-	immediate := trigger != lintTriggerChange
-	if immediate || s.debounce == 0 {
-		// Cancel any debounce timer armed by an earlier didChange
-		// for the same URI. Without this an open/save/config-change
-		// can fire its lint synchronously, then the older timer
-		// fires too and republishes diagnostics for the same buffer
-		// version a moment later — wasted work and a flicker for
-		// the user.
-		s.pendingMu.Lock()
-		if existing, ok := s.pending[uri]; ok {
-			existing.Stop()
-			delete(s.pending, uri)
-		}
-		s.pendingMu.Unlock()
-		s.runLint(uri)
-		return
+	// Both the immediate (open/save/config) and the debounced
+	// (didChange) trigger paths run runLint via time.AfterFunc so
+	// the dispatch goroutine never blocks on a CPU-bound lint
+	// pass. Synchronous runLint blocked the loop from processing
+	// inbound responses to server-initiated requests
+	// (workspace/configuration, client/registerCapability) and
+	// could deadlock on slow files. Immediate triggers use a
+	// duration of 0 so the goroutine runs as soon as the runtime
+	// schedules it; debounced triggers use s.debounce.
+	delay := s.debounce
+	if trigger != lintTriggerChange {
+		delay = 0
 	}
 	// Identity-checked replacement: the closure captures its own
 	// timer handle and only removes it from the pending map if the
@@ -507,7 +503,7 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 		existing.Stop()
 	}
 	var timer *time.Timer
-	timer = time.AfterFunc(s.debounce, func() {
+	timer = time.AfterFunc(delay, func() {
 		// Re-check shutdown so a timer that armed before
 		// shutdown/exit but fires after them does not publish
 		// stale diagnostics during teardown.
