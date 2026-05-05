@@ -67,9 +67,11 @@ uvx mdsmith check .
 The PyPI release ships one platform-tagged wheel per
 supported host. Each wheel bundles the prebuilt
 binary under `mdsmith/_bin/` and exposes an `mdsmith`
-console script that `os.execv`s the binary. `pip`,
-`uv pip`, `pipx`, `uvx`, and `python -m mdsmith`
-all work.
+console script that runs the binary in place: `os.execv`
+on POSIX (so signals and exit codes pass through
+unchanged) and `subprocess.run` on Windows, which has
+no `execv` semantics. `pip`, `uv pip`, `pipx`, `uvx`,
+and `python -m mdsmith` all work.
 
 ## asdf
 

@@ -267,7 +267,11 @@ func TestSetVersionRejectsLeadingZero(t *testing.T) {
 	repo := projectRoot(t)
 	script := filepath.Join(repo, "scripts", "set-version.sh")
 
-	for _, bad := range []string{"01.2.3", "1.02.3", "1.2.03"} {
+	// Each of MAJOR/MINOR/PATCH and any purely-numeric prerelease
+	// identifier must reject a leading zero. Build metadata IS
+	// allowed to carry leading zeros per spec, so it is NOT in
+	// this list.
+	for _, bad := range []string{"01.2.3", "1.02.3", "1.2.03", "1.2.3-01", "1.2.3-rc.01"} {
 		root := t.TempDir()
 		fixtureManifests(t, root)
 		_, stderr, err := runScript(t, script, bad, "--root", root)
@@ -276,6 +280,26 @@ func TestSetVersionRejectsLeadingZero(t *testing.T) {
 		}
 		if !strings.Contains(stderr, "not valid semver") {
 			t.Errorf("%s: stderr did not flag the leading zero:\n%s", bad, stderr)
+		}
+	}
+}
+
+func TestSetVersionAcceptsValidSemverShapes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("set-version.sh requires a POSIX shell")
+	}
+	repo := projectRoot(t)
+	script := filepath.Join(repo, "scripts", "set-version.sh")
+
+	// `rc01` is alphanumeric so the leading 0 is permitted; build
+	// metadata identifiers (`+build.001`) are allowed leading zeros
+	// outright. Cover both so the regex tightening in the previous
+	// case doesn't over-reject.
+	for _, ok := range []string{"1.2.3", "1.2.3-rc01", "1.2.3-rc.1", "1.2.3+build.001", "1.2.3-rc.1+build.5"} {
+		root := t.TempDir()
+		fixtureManifests(t, root)
+		if _, stderr, err := runScript(t, script, ok, "--root", root); err != nil {
+			t.Errorf("%s: unexpected failure for valid semver:\n%s", ok, stderr)
 		}
 	}
 }
