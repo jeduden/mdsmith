@@ -44,12 +44,13 @@ is the dual-schema problem.
 Both tools want to validate front matter, and
 neither can read the other's schema language.
 
-| Concern                            | mdsmith                                    | mdbase                                 |
-|------------------------------------|--------------------------------------------|----------------------------------------|
-| Schema language                    | CUE (`*.cue` files referenced from config) | mdbase DSL (YAML inside `_types/*.md`) |
-| Schema location                    | `internal/concepts/` or anywhere in repo   | `_types/` in the collection            |
-| Schema discoverable from file tree | only by reading `.mdsmith.yml`             | yes — `_types/*.md` are normal files   |
-| Reads the other's schema           | no                                         | no                                     |
+| Concern                            | mdsmith                                                                    | mdbase                               |
+|------------------------------------|----------------------------------------------------------------------------|--------------------------------------|
+| Schema file format                 | Markdown `proto.md` (CUE in front matter, heading template in body)        | Markdown in `_types/<name>.md` (DSL) |
+| Schema reference                   | `kinds: { <name>: { rules: { required-structure: { schema: <path> } } } }` | folder convention `_types/`          |
+| Schema location                    | anywhere referenced by a kind, by convention next to the files             | fixed `_types/` folder               |
+| Schema discoverable from file tree | yes — `proto.md` is a normal Markdown file                                 | yes — `_types/*.md` are normal files |
+| Reads the other's schema           | no                                                                         | no                                   |
 
 The pain points:
 
@@ -158,8 +159,11 @@ drift cost is acceptable.
 Write a script that:
 
 - Reads `_types/*.md` (mdbase types)
-- Emits CUE schemas under `internal/concepts/` or
-  similar
+- Emits matching mdsmith `proto.md` schema files
+  next to the matching kind, with the type DSL
+  translated into CUE in the front matter and the
+  documentation body preserved or replaced with a
+  heading template
 
 Or the reverse direction. Run the script in CI; fail
 if the generated output drifts from committed
@@ -188,17 +192,17 @@ Below is one layout that runs both tools cleanly.
 ```text
 my-vault/
 ├── mdbase.yaml              # mdbase config
-├── .mdsmith.yml             # mdsmith config
+├── .mdsmith.yml             # mdsmith config (kinds + rules)
 ├── _types/                  # mdbase type defs (Strategy A)
 │   ├── note.md
 │   ├── task.md
 │   └── person.md
-├── internal/concepts/       # mdsmith CUE schemas (if Strategy B/C)
-│   └── note.cue
 ├── notes/                   # actual content
+│   ├── proto.md             # mdsmith schema (Strategy B/C; CUE in FM)
 │   ├── 2026-05-05-meeting.md
 │   └── …
 ├── tasks/
+│   ├── proto.md             # mdsmith schema for tasks
 │   └── …
 ├── _types/_migrations/      # mdbase migrations (L6)
 └── .mdbase/                 # gitignored cache
@@ -326,7 +330,9 @@ between the two schema surfaces. Sketch:
               └─────────────────────┘
                         │
                         ▼
-                 internal/concepts/*.cue
+              mdsmith proto.md schemas
+              (CUE in front matter,
+               heading template in body)
 ```
 
 A first cut would handle the common subset:

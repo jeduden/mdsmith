@@ -117,8 +117,10 @@ call hierarchy). The shipped LSP is
 diagnostic-and-fix only.
 
 What is planned: hover for rule and directive docs
-(plan 122) and full symbol navigation (plan 131,
-PR #238). After plan 131 lands, the editor session
+([plan 122][plan122w]) and full symbol navigation
+(plan 131, tracked in [PR #238][pr238w]; the plan
+file lives on that branch and is not yet on
+`main`). After plan 131 lands, the editor session
 also gets:
 
 - File outline (`documentSymbol`) following the
@@ -509,11 +511,12 @@ this surface, but differently.
   advertised in the project README at the time of
   writing.
 - **mdsmith** today exposes only diagnostics and
-  code actions over LSP. Plan 131 (PR #238) adds
-  `documentSymbol`, `definition`, `implementation`,
-  `references`, `workspace/symbol`, and call
-  hierarchy. The plan explicitly maps the nine
-  Claude-LSP methods onto the existing AST and
+  code actions over LSP. Plan 131 ([PR #238][pr238w];
+  the plan file is on that branch, not yet on
+  `main`) adds `documentSymbol`, `definition`,
+  `implementation`, `references`, `workspace/symbol`,
+  and call hierarchy. The plan explicitly maps the
+  nine Claude-LSP methods onto the existing AST and
   link graph.
 
 Once plan 131 lands, an agent can ask the mdsmith
@@ -600,7 +603,7 @@ the contributor must read top to bottom.
 | What's a file?                  | Text to lint and fix      | A typed record            |
 | What's metadata?                | YAML the rules read       | Effective FM + computed   |
 | Who validates?                  | Per-rule severity         | Per-mode (off/warn/error) |
-| Who creates?                    | Humans (mdsmith doesn't)  | mdsmith + `mdbase create` |
+| Who creates?                    | Humans (mdsmith doesn't)  | Humans or `mdbase create` |
 | Who renames?                    | `mv` + manual link fix    | `mdbase rename`           |
 | Who indexes?                    | No one (re-read each run) | SQLite (L6)               |
 | Who watches?                    | LSP per-session           | Watch mode (L6)           |
@@ -620,3 +623,6 @@ Both can be true of the same files at the same time.
 The combined workflow gets both: typed, queryable,
 rename-safe records that are also well-formed,
 readable, and have synced generated sections.
+
+[plan122w]: ../../../plan/122_vscode-hover-and-palette.md
+[pr238w]: https://github.com/jeduden/mdsmith/pull/238

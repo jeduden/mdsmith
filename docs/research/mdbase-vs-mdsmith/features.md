@@ -98,15 +98,21 @@ Single config file at the collection root. Required:
 | Per-role rule bundle   | `kinds:` map                   | type files in `_types/`     |
 | Schema validation flag | per-rule severity (Error/Warn) | `default_validation` global |
 
-mdbase declares schemas as Markdown files in
-`_types/`; mdsmith declares them as CUE schema files
-referenced from `.mdsmith.yml`. This is the cleanest
-illustration of the tools' opposite bets:
+Both tools declare schemas as Markdown files. The
+difference is where the file lives and what it
+covers:
 
-- mdsmith pulls schemas into the lint config alongside
-  rule settings.
-- mdbase pushes schemas into the vault as first-class
-  content, so the schema travels with the data.
+- mdbase types live in a fixed `_types/` folder
+  next to the content, discoverable from the file
+  tree alone. The front matter carries the typed
+  schema; the body is documentation.
+- mdsmith schemas (typically `proto.md`) live
+  wherever the team puts them, referenced from a
+  kind in `.mdsmith.yml` via
+  `required-structure.schema:`. The front matter
+  carries CUE expressions; the body carries the
+  required heading template. mdsmith schemas
+  validate body structure as well as front matter.
 
 ## 3. Type / kind definitions
 
@@ -114,17 +120,16 @@ illustration of the tools' opposite bets:
 
 Defined in `.mdsmith.yml` under the `kinds:` map. A
 kind is a named bundle of rule overrides plus
-optionally a CUE schema and category toggles
-(`internal/config/config.go`):
+optionally a `required-structure.schema:` pointer
+to a Markdown schema file (`proto.md`) and category
+toggles (`internal/config/config.go`):
 
 ```yaml
 kinds:
-  proto:
+  rule-readme:
     rules:
-      first-line-heading: false
-      heading-increment: false
       required-structure:
-        schema: internal/concepts/rule.cue
+        schema: internal/rules/proto.md
   api-doc:
     rules:
       line-length:
@@ -135,13 +140,19 @@ kinds:
 
 Assignment to files works in two ways:
 
-1. Front-matter declaration — `kinds: [proto]` or
-   `kind: proto` in the file's YAML
+1. Front-matter declaration — `kinds: [rule-readme]`
+   or `kind: rule-readme` in the file's YAML
 2. Glob from `kind-assignment:` in `.mdsmith.yml`
 
 Inheritance: there is no kind-to-kind inheritance.
 A file can carry multiple kinds; each is deep-merged
 into the effective config in declaration order.
+
+(Note: `internal/concepts/` in this repo holds
+implementation architecture documentation
+— placeholder grammar, concept notes — not
+user-facing schemas. Schemas are the `proto.md`
+files referenced from kinds.)
 
 ### mdbase: types
 
@@ -197,25 +208,33 @@ at read time using the expression language from
 spec §11. They are not persisted to the front matter;
 queries can still reference them.
 
-**Side by side.** In summary:
+**Side by side.** A kind in mdsmith is the
+user-facing concept that ties files to a rule
+bundle and an optional schema; a type in mdbase is
+the user-facing concept that ties files to a typed
+schema. Both can carry a Markdown schema file.
 
-| Aspect              | mdsmith kinds                  | mdbase types                                |
-|---------------------|--------------------------------|---------------------------------------------|
-| Storage             | YAML in `.mdsmith.yml`         | Markdown files in `_types/`                 |
-| Travels with files  | No (config-only)               | Yes (in-vault)                              |
-| Inheritance         | None                           | Single (`extends`)                          |
-| Computed fields     | No                             | Yes (expression-based, read-time)           |
-| Bundles rule config | Yes (deep-merge)               | No (rules are mdsmith's, not mdbase's)      |
-| Bundles schema      | Yes (CUE path)                 | Yes (declarative DSL)                       |
-| Multi-type per file | Yes (kind list, deep-merged)   | Yes (multi-match, intersect constraints)    |
-| Path constraint     | `kind-assignment` globs        | `path_pattern` (validates and generates)    |
-| Discoverability     | Run `mdsmith kinds` to inspect | List `_types/`; each type doc is the schema |
+| Aspect                    | mdsmith kinds                                                            | mdbase types                                 |
+|---------------------------|--------------------------------------------------------------------------|----------------------------------------------|
+| User-facing concept       | `kind` (per-file role)                                                   | `type` (per-file shape)                      |
+| Kind/type definition      | `kinds:` map in `.mdsmith.yml`                                           | Markdown file in `_types/`                   |
+| Schema file format        | Markdown `proto.md` (CUE in FM, headings in body)                        | Markdown in `_types/` (DSL in FM, body docs) |
+| Schema travels with files | Yes — the `proto.md` is in the repo                                      | Yes — `_types/*.md` is in the vault          |
+| Inheritance               | None across kinds; schemas compose via `<?include?>`                     | Single (`extends`)                           |
+| Computed fields           | No                                                                       | Yes (expression-based, read-time)            |
+| Bundles rule config       | Yes (deep-merge)                                                         | No (rules are mdsmith's, not mdbase's)       |
+| Validates body structure  | Yes (heading template + `<?require?>`)                                   | No (body is documentation only)              |
+| Multi-type per file       | Yes (kind list, deep-merged)                                             | Yes (multi-match, intersect constraints)     |
+| Path constraint           | `kind-assignment` globs                                                  | `path_pattern` (validates and generates)     |
+| Discoverability           | `mdsmith kinds` lists effective config; schema files are normal Markdown | List `_types/`                               |
 
-The crucial difference: an mdbase type file is
-itself a valid Markdown file in the vault, so any
-text editor reads it. An mdsmith kind is YAML inside
-the linter config and is invisible from the editor's
-file tree unless the user opens `.mdsmith.yml`.
+A kind without a schema is still useful: it can
+just toggle rule settings for a slice of files
+(e.g. `proto` disables structural rules on
+`proto.md` files themselves). A kind with a
+schema points at a `proto.md` that validates
+matched files. The two concepts compose via
+deep-merge.
 
 ## 4. File-to-type / kind matching
 
@@ -268,29 +287,75 @@ mdsmith requires explicit kind tags or globs.
 
 ## 5. Field type system
 
-### mdsmith: CUE schemas
+### mdsmith: schema files via [MDS020][mds020]
 
-Front-matter validation happens via [MDS020
-required-structure][mds020]. Schemas are CUE files
-referenced from `.mdsmith.yml` or kind config:
+Front-matter and body-structure validation both
+happen through [MDS020 required-structure][mds020].
+A schema is a Markdown file (typically named
+`proto.md`) referenced from a kind in `.mdsmith.yml`:
 
-```cue
-// internal/concepts/rule.cue
-package rule
-
-#Rule: {
-    id:          string
-    name:        string
-    status:      "ready" | "not-ready"
-    description: string
-    settings?: {[string]: _}
-}
+```yaml
+kinds:
+  rule-readme:
+    rules:
+      required-structure:
+        schema: internal/rules/proto.md
 ```
 
-CUE provides rich constraints: regex patterns, enum
-disjunctions, optional fields with `?`, structural
-types, value coercion. Errors are reported as MDS020
-diagnostics with line/column anchors.
+The schema file itself carries CUE expressions in
+its YAML front matter (validating the document's
+front matter) and a heading template in its body
+(validating the document's heading structure).
+Example schema:
+
+```markdown
+---
+id: '=~"^MDS[0-9]{3}$"'
+name: 'string & != ""'
+status: '"ready" | "not-ready"'
+description: 'string & != ""'
+"settings?": {[string]: _}
+---
+<?require
+filename: "[0-9]*-*/README.md"
+?>
+
+# ?
+
+## Settings
+
+## Examples
+
+## Meta-Information
+```
+
+CUE in the front matter provides rich constraints
+(regex, enum disjunctions, optional fields, value
+coercion). The body provides the heading template
+that documents must match. `<?require?>` declares
+extra constraints (e.g. filename glob).
+`<?include?>` lets schemas compose by splicing in
+fragments. Errors surface as MDS020 diagnostics
+with line/column anchors.
+
+This means an mdsmith schema and an mdbase type
+file have very similar shape: both are Markdown
+files with declarative front matter, and both
+travel with the project under version control.
+The differences sit in scope and ownership:
+
+- mdsmith schemas validate **both** front matter
+  (CUE) **and** body heading structure (template).
+- mdbase types validate only the front matter
+  (typed fields, constraints, generated values),
+  and the body is documentation for humans.
+- mdsmith schemas are referenced from `kinds:` in
+  `.mdsmith.yml`. They live anywhere; the
+  project convention is one `proto.md` next to
+  the files it describes.
+- mdbase types live under a fixed `_types/`
+  folder so they are discoverable from the file
+  tree alone.
 
 ### mdbase: 12 field types
 
@@ -318,17 +383,19 @@ not applied when a field is present-but-null.
 
 **Comparison.** Side-by-side breakdown:
 
-| Concern                 | mdsmith (CUE)                 | mdbase (DSL)                                    |
-|-------------------------|-------------------------------|-------------------------------------------------|
-| Validation language     | CUE, an external language     | Inline YAML in type front matter                |
-| Type discoverability    | Read CUE files                | Read `_types/*.md`                              |
-| Built-in types          | Anything CUE supports         | 12 fixed types                                  |
-| Custom constraints      | Yes (full CUE)                | Limited to the per-type knobs                   |
-| Inheritance             | CUE definitions / unification | `extends:` single inheritance                   |
-| Computed fields         | No (CUE is purely structural) | Yes (expression-based)                          |
-| Generated values        | No                            | `generated:` (ULID, UUID, sequence, timestamps) |
-| Deprecation flag        | No                            | Yes (`deprecated: true`)                        |
-| Cross-field constraints | Yes (CUE)                     | Limited                                         |
+| Concern                 | mdsmith (CUE)                                    | mdbase (DSL)                                    |
+|-------------------------|--------------------------------------------------|-------------------------------------------------|
+| Schema file format      | `proto.md` (CUE in FM, heading template in body) | `_types/<name>.md` (DSL in FM, docs in body)    |
+| Validation language     | CUE in front matter                              | Inline YAML in type front matter                |
+| Type discoverability    | Read the `proto.md` referenced by a kind         | Read `_types/*.md`                              |
+| Built-in types          | Anything CUE supports                            | 12 fixed types                                  |
+| Custom constraints      | Yes (full CUE)                                   | Limited to the per-type knobs                   |
+| Inheritance             | CUE unification + schema `<?include?>`           | `extends:` single inheritance                   |
+| Body structure check    | Yes (heading template, `<?require?>`)            | No (out of scope)                               |
+| Computed fields         | No (CUE is purely structural)                    | Yes (expression-based)                          |
+| Generated values        | No                                               | `generated:` (ULID, UUID, sequence, timestamps) |
+| Deprecation flag        | No                                               | Yes (`deprecated: true`)                        |
+| Cross-field constraints | Yes (CUE)                                        | Limited                                         |
 
 CUE is the more powerful constraint language;
 mdbase's DSL is simpler but covers the typical Markdown
@@ -752,7 +819,7 @@ mdbase has none — it does not lint prose at all.
 | MDS040 | Recipe safety (build command syntax check)          |
 | MDS048 | Git-hook sync (`.gitattributes` and pre-merge hook) |
 
-**Observation.**mdbase has no equivalent. A vault using mdbase for
+**Observation.** mdbase has no equivalent. A vault using mdbase for
 data layering still needs a linter for prose quality,
 heading conventions, and table formatting. mdsmith
 fits this gap.
@@ -901,20 +968,22 @@ typical code-LSPs and toward explicit support for
 agent-driven navigation (Claude Code's LSP tool,
 Neovim, Helix):
 
-- **Plan 122** adds `textDocument/hover` for rule
-  IDs and directive names, surfacing the offline
-  rule docs and directive parameter help inline.
-- **Plan 131** ([PR #238][pr238]) adds symbol
-  navigation: `documentSymbol`, `definition`,
-  `implementation`, `references`,
-  `workspace/symbol`, plus call hierarchy
-  (`prepareCallHierarchy`, `incomingCalls`,
-  `outgoingCalls`). The design models a Markdown
-  file as a "function" and outbound references
-  (links, includes, catalog matches, build
-  targets) as "calls", so an agent can ask
-  "who depends on this runbook?" or "what does
-  this overview embed?" through standard LSP
+- **Plan 122** ([`plan/122_vscode-hover-and-palette.md`][plan122])
+  adds `textDocument/hover` for rule IDs and
+  directive names, surfacing the offline rule docs
+  and directive parameter help inline.
+- **Plan 131** is tracked in [PR #238][pr238]; the
+  plan file lives on that branch and is not yet on
+  `main`. It adds symbol navigation:
+  `documentSymbol`, `definition`, `implementation`,
+  `references`, `workspace/symbol`, plus call
+  hierarchy (`prepareCallHierarchy`,
+  `incomingCalls`, `outgoingCalls`). The design
+  models a Markdown file as a "function" and
+  outbound references (links, includes, catalog
+  matches, build targets) as "calls", so an agent
+  can ask "who depends on this runbook?" or "what
+  does this overview embed?" through standard LSP
   methods.
 
 Plan 131 explicitly maps the nine LSP methods that
@@ -1183,3 +1252,4 @@ the conformance test cases.
 [mds038]: ../../../internal/rules/MDS038-toc/README.md
 [mds039]: ../../../internal/rules/MDS039-build/README.md
 [pr238]: https://github.com/jeduden/mdsmith/pull/238
+[plan122]: ../../../plan/122_vscode-hover-and-palette.md
