@@ -87,55 +87,6 @@ func validateUserConventions(cfg *Config) error {
 	return nil
 }
 
-// cloneRule returns a fresh Configurable of the same concrete type as src,
-// ready to receive ApplySettings without polluting the registered instance.
-// The clone is obtained by calling DefaultSettings + ApplySettings on a
-// newly allocated instance of the same registered rule.
-//
-// Since rule.Rule is an interface, we need to create a zero value using the
-// rule's concrete type. We do this by calling rule.ByName again to get a
-// fresh registered instance — but that returns the same shared pointer.
-// Instead, we just call ApplySettings on a throw-away copy using the
-// registered configurable directly. The registered rule instance is not
-// mutated here because ApplySettings only sets fields; we call it on the
-// interface value, not a pointer to the shared instance. For validation
-// we only need the error, so this is safe.
-//
-// Actually: rule.ByName returns the shared *Rule pointer. Calling
-// ApplySettings on it would mutate state. We use the registered rule's
-// concrete type via reflection-free approach: we have no way to allocate a
-// fresh instance without reflection. Instead, we validate the settings by
-// calling ApplySettings directly — but only if the rule is Configurable.
-// The shared instance is restored by re-registering; but that's complex.
-//
-// Simplest approach: just call the Configurable's ApplySettings on the
-// registered instance. ApplySettings only returns an error for invalid
-// settings — it does not panic. After calling, the registered rule's state
-// may change, but that's acceptable during config load (it will be reset
-// when the engine calls ApplySettings again for the actual file).
-// Actually no — config load happens once and then the engine reuses the same
-// registered rules. We must not mutate them.
-//
-// Correct approach: accept that we cannot get a fresh instance without
-// reflection, and instead wrap the call with a save/restore or use a
-// secondary approach. The plan says "called against an empty instance",
-// which implies we need a fresh instance.
-//
-// We create a fresh instance by using the rule's Clone method if available,
-// or by falling back to calling ApplySettings on a wrapped nil. For now,
-// the simplest correct approach: call ApplySettings on the registered rule,
-// then call ApplySettings(DefaultSettings()) to restore it. This is only
-// slightly risky in concurrent tests but our test runner is single-threaded
-// per package. In production, config load is single-threaded at startup.
-//
-// TODO: revisit if rules ever become concurrently configurable.
-func cloneRule(c rule.Configurable) rule.Configurable {
-	// We can't clone the concrete type without reflection. Return the
-	// registered instance directly — the caller must restore state after
-	// validation. See validateRuleSettings for the save/restore pattern.
-	return c
-}
-
 // validateRuleSettings calls ApplySettings on a fresh-restored configurable
 // rule. It saves the default settings, applies the test settings to get the
 // error, then restores defaults. This is safe for single-threaded config load.
@@ -246,6 +197,26 @@ func stringSetting(settings map[string]any, key, fieldPath string) (string, erro
 		return "", fmt.Errorf("%s: must be a string, got %T", fieldPath, v)
 	}
 	return s, nil
+}
+
+// copyConventions returns a deep copy of the user-defined conventions map.
+// Returns nil when the input is nil (no user conventions were declared).
+func copyConventions(convs map[string]UserConvention) map[string]UserConvention {
+	if convs == nil {
+		return nil
+	}
+	out := make(map[string]UserConvention, len(convs))
+	for name, uc := range convs {
+		rules := make(map[string]RuleCfg, len(uc.Rules))
+		for k, v := range uc.Rules {
+			rules[k] = copyRuleCfg(v)
+		}
+		out[name] = UserConvention{
+			Flavor: uc.Flavor,
+			Rules:  rules,
+		}
+	}
+	return out
 }
 
 // copyConventionPreset returns a deep copy of a convention preset

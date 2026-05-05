@@ -6,12 +6,11 @@ summary: >-
 ---
 # Markdown conventions
 
-A **convention** is an opinionated bundle of rule
-settings that pairs a Markdown flavor with a set of
-style choices. Setting `convention:` at the top of
-your `.mdsmith.yml` selects one of the built-in
-bundles; the rule presets in that bundle are applied
-as a base layer beneath your own rule config.
+A **convention** is a named bundle that pairs a
+Markdown flavor with rule presets. Setting
+`convention:` in `.mdsmith.yml` selects one bundle.
+The presets apply as a base layer beneath your own
+rule config.
 
 Conventions answer "what kind of Markdown does this
 project write?" with one config knob instead of
@@ -38,8 +37,11 @@ config key, sibling to `rules:`, `kinds:`, and
 `overrides:`. Setting an unknown name is a config
 error at load time.
 
-Built-in values: `portable`, `github`, `plain`. The
-key is optional; omit it for no convention.
+Built-in values: `portable`, `github`, `plain`. You
+can also define your own — see
+[User-defined conventions](#user-defined-conventions)
+below. The key is optional; omit it for no
+convention.
 
 You may also set `flavor:` inside `markdown-flavor`
 alongside `convention:`. If both are set, they must
@@ -145,6 +147,81 @@ Lists default to replace, so the effective
 allowlist becomes `[sub, sup]`. To keep the
 preset's entries, list them explicitly:
 `allow: [details, summary, sub, sup]`.
+
+## User-defined conventions
+
+If none of the built-in conventions fits your
+project, define your own inline in `.mdsmith.yml`:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+      no-reference-style:
+        allow-footnotes: true
+
+convention: our-team
+```
+
+The `conventions:` block is a top-level map, sibling
+to `kinds:` and `overrides:`. Each entry has the
+same shape as a built-in convention: an optional
+`flavor:` string and an optional `rules:` block.
+
+The `flavor:` value must be one of `commonmark`,
+`gfm`, or `goldmark`. The `rules:` block uses the
+same schema as the top-level `rules:` block: a bool
+to enable or disable, or a map of settings.
+
+Validation errors are reported at config load time
+and name both the convention and the rule:
+
+```text
+convention "our-team" rule "no-inline-html": unknown setting "allowed"
+```
+
+### Name collisions
+
+The built-in names `portable`, `github`, and `plain`
+are reserved. Defining a `conventions.portable`
+entry in `.mdsmith.yml` is a config error. This
+keeps documentation and tutorials consistent: when
+you read "use `convention: portable`", it always
+means the built-in table.
+
+### Resolution order
+
+When `convention: <name>` resolves:
+
+1. Look up the name in the user-defined
+   `conventions:` map first.
+2. Fall back to the built-in table.
+3. If neither matches, emit a config error listing
+   both sets of names.
+
+Because reserved names are rejected at parse time,
+user conventions cannot shadow built-ins.
+
+### Identifying user conventions in output
+
+`mdsmith kinds resolve` shows the convention layer
+with a `(user)` suffix when the active convention is
+user-defined:
+
+```text
+convention.our-team (user)    set    true
+```
+
+Built-in conventions show no suffix:
+
+```text
+convention.portable           set    true
+```
 
 ## Disabling MDS034
 

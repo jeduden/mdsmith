@@ -555,3 +555,33 @@ func TestKinds_PathPreservesAbsoluteSchema(t *testing.T) {
 	require.Equal(t, 0, code)
 	assert.Equal(t, "/etc/passwd", strings.TrimSpace(stdout))
 }
+
+func TestKinds_ResolveShowsUserConventionSuffix(t *testing.T) {
+	// When a user-defined convention is active, `kinds resolve` must
+	// show the convention layer with a "(user)" suffix so it is
+	// distinguishable from built-in conventions.
+	cfg := `conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html: true
+convention: our-team
+`
+	dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# Hello\n"})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "convention.our-team (user)",
+		"user convention layer must carry (user) suffix in output")
+}
+
+func TestKinds_ResolveBuiltInConventionHasNoUserSuffix(t *testing.T) {
+	// Built-in convention names must NOT carry the "(user)" suffix.
+	cfg := "convention: portable\n"
+	dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# Hello\n"})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "convention.portable",
+		"built-in convention layer must appear in output")
+	assert.NotContains(t, stdout, "(user)",
+		"built-in convention must not carry (user) suffix")
+}
