@@ -168,21 +168,22 @@ complementary: mdsmith plan 131 gives the
 include/catalog graph; mdbase-lsp gives the
 typed-link graph.
 
-| Editor experience        | mdsmith today | mdsmith planned        | mdbase-lsp |
-|--------------------------|---------------|------------------------|------------|
-| Inline diagnostics       | yes           | yes                    | yes        |
-| Quick fix per diagnostic | yes           | yes                    | no         |
-| Fix all in file          | yes           | yes                    | no         |
-| Field-name completion    | no            | no                     | yes        |
-| Type-name hover          | no            | yes (rules/directives) | yes        |
-| Go-to type definition    | no            | partial (`kind:`)      | yes        |
-| Go-to anchor / heading   | no            | yes (plan 131)         | yes        |
-| Workspace symbol search  | no            | yes (plan 131)         | unknown    |
-| File outline             | no            | yes (plan 131)         | partial    |
-| Find references          | no            | yes (plan 131)         | unknown    |
-| Call hierarchy           | no            | yes (plan 131)         | no         |
-| Rename refactor          | no            | no                     | yes (L5)   |
-| Backlinks panel          | no            | yes (plan 131)         | yes (L5)   |
+| Editor experience        | mdsmith today | mdsmith planned   | mdbase-lsp |
+|--------------------------|---------------|-------------------|------------|
+| Inline diagnostics       | yes           | yes               | yes        |
+| Quick fix per diagnostic | yes           | yes               | no         |
+| Fix all in file          | yes           | yes               | no         |
+| Field-name completion    | no            | no                | yes        |
+| Rule / directive hover   | no            | yes (plan 122)    | n/a        |
+| Type / kind hover        | no            | no                | yes        |
+| Go-to type definition    | no            | partial (`kind:`) | yes        |
+| Go-to anchor / heading   | no            | yes (plan 131)    | yes        |
+| Workspace symbol search  | no            | yes (plan 131)    | unknown    |
+| File outline             | no            | yes (plan 131)    | partial    |
+| Find references          | no            | yes (plan 131)    | unknown    |
+| Call hierarchy           | no            | yes (plan 131)    | no         |
+| Rename refactor          | no            | no                | yes (L5)   |
+| Backlinks panel          | no            | yes (plan 131)    | yes (L5)   |
 
 ## 4. Schema evolution
 
