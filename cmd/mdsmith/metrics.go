@@ -58,7 +58,9 @@ func runMetricsList(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: metrics list"); code >= 0 {
+			return code
+		}
 	}
 	if fs.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "mdsmith: metrics list takes no file arguments\n")
@@ -106,8 +108,12 @@ type metricsRankOptions struct {
 func runMetricsRank(args []string) int {
 	opts, fileArgs, err := parseMetricsRankOptions(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return 2
+		// parseMetricsRankOptions returns both flag.ErrHelp from
+		// fs.Parse and post-parse validation errors (e.g. --top
+		// < 0). reportFlagParseErr handles the help/parse cases
+		// with the right prefix; everything else gets surfaced
+		// with the same shape here.
+		return reportFlagParseErr(err, os.Stderr, "mdsmith: metrics rank")
 	}
 	return executeMetricsRank(opts, fileArgs)
 }

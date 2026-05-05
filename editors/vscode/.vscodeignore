@@ -1,0 +1,9 @@
+.gitignore
+.vscodeignore
+src/**
+tsconfig.json
+build.ts
+bun.lock
+node_modules/**
+**/*.map
+**/*.ts

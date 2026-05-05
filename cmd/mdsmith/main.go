@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -23,61 +24,12 @@ import (
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 
-	// Import all rule packages so their init() functions register rules.
-	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
-	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"
-	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"
-	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"
-	_ "github.com/jeduden/mdsmith/internal/rules/build"
-	_ "github.com/jeduden/mdsmith/internal/rules/catalog"
-	_ "github.com/jeduden/mdsmith/internal/rules/concisenessscoring"
-	_ "github.com/jeduden/mdsmith/internal/rules/crossfilereferenceintegrity"
-	_ "github.com/jeduden/mdsmith/internal/rules/directorystructure"
-	_ "github.com/jeduden/mdsmith/internal/rules/duplicatedcontent"
-	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"
-	_ "github.com/jeduden/mdsmith/internal/rules/emptysectionbody"
-	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodelanguage"
-	_ "github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
-	_ "github.com/jeduden/mdsmith/internal/rules/firstlineheading"
-	_ "github.com/jeduden/mdsmith/internal/rules/githooksync"
-	_ "github.com/jeduden/mdsmith/internal/rules/headingincrement"
-	_ "github.com/jeduden/mdsmith/internal/rules/headingstyle"
-	_ "github.com/jeduden/mdsmith/internal/rules/horizontalrulestyle"
-	_ "github.com/jeduden/mdsmith/internal/rules/include"
-	_ "github.com/jeduden/mdsmith/internal/rules/linelength"
-	_ "github.com/jeduden/mdsmith/internal/rules/listindent"
-	_ "github.com/jeduden/mdsmith/internal/rules/listmarkerstyle"
-	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
-	_ "github.com/jeduden/mdsmith/internal/rules/maxfilelength"
-	_ "github.com/jeduden/mdsmith/internal/rules/maxsectionlength"
-	_ "github.com/jeduden/mdsmith/internal/rules/nobareurls"
-	_ "github.com/jeduden/mdsmith/internal/rules/noduplicateheadings"
-	_ "github.com/jeduden/mdsmith/internal/rules/noemphasisasheading"
-	_ "github.com/jeduden/mdsmith/internal/rules/noemptyalttext"
-	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
-	_ "github.com/jeduden/mdsmith/internal/rules/noinlinehtml"
-	_ "github.com/jeduden/mdsmith/internal/rules/nomultipleblanks"
-	_ "github.com/jeduden/mdsmith/internal/rules/noreferencestyle"
-	_ "github.com/jeduden/mdsmith/internal/rules/nospaceincodespans"
-	_ "github.com/jeduden/mdsmith/internal/rules/nospaceinlinktext"
-	_ "github.com/jeduden/mdsmith/internal/rules/notrailingpunctuation"
-	_ "github.com/jeduden/mdsmith/internal/rules/notrailingspaces"
-	_ "github.com/jeduden/mdsmith/internal/rules/noundefinedreferencelabels"
-	_ "github.com/jeduden/mdsmith/internal/rules/nounusedlinkdefinitions"
-	_ "github.com/jeduden/mdsmith/internal/rules/orderedlistnumbering"
-	_ "github.com/jeduden/mdsmith/internal/rules/paragraphreadability"
-	_ "github.com/jeduden/mdsmith/internal/rules/paragraphstructure"
-	_ "github.com/jeduden/mdsmith/internal/rules/propernames"
-	_ "github.com/jeduden/mdsmith/internal/rules/recipesafety"
-	_ "github.com/jeduden/mdsmith/internal/rules/requiredstructure"
-	_ "github.com/jeduden/mdsmith/internal/rules/singleh1"
-	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"
-	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"
-	_ "github.com/jeduden/mdsmith/internal/rules/tablereadability"
-	_ "github.com/jeduden/mdsmith/internal/rules/toc"
-	_ "github.com/jeduden/mdsmith/internal/rules/tocdirective"
-	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"
-	_ "github.com/jeduden/mdsmith/internal/rules/unclosedcodeblock"
+	// Import every production rule package via the shared barrel so
+	// the registry is populated by init(). Tests that need the same
+	// set (e.g. internal/lsp/bench_test.go) blank-import the same
+	// path; the barrel is the single source of truth for "what
+	// rules ship in mdsmith".
+	_ "github.com/jeduden/mdsmith/internal/rules/all"
 )
 
 func main() {
@@ -96,6 +48,7 @@ Commands:
   pre-merge-commit  Install/manage pre-merge-commit hook
   kinds             Inspect declared kinds and resolve effective config per file
   init              Generate a default .mdsmith.yml config file
+  lsp               Run the Language Server Protocol server on stdio
   version           Print version and exit
 
 Global flags:
@@ -148,6 +101,8 @@ func run() int {
 		return runKinds(os.Args[2:])
 	case "init":
 		return runInit(os.Args[2:])
+	case "lsp":
+		return runLSP(os.Args[2:])
 	case "version":
 		printVersion()
 		return 0
@@ -202,7 +157,9 @@ func runCheck(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: check"); code >= 0 {
+			return code
+		}
 	}
 
 	// --quiet suppresses verbose
@@ -263,7 +220,9 @@ func runFix(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: fix"); code >= 0 {
+			return code
+		}
 	}
 
 	// --quiet suppresses verbose
@@ -330,7 +289,9 @@ func parseQueryFlags(args []string) (queryOptions, []string, error) {
 func runQuery(args []string) int {
 	opts, posArgs, err := parseQueryFlags(args)
 	if err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: query"); code >= 0 {
+			return code
+		}
 	}
 
 	if len(posArgs) == 0 {
@@ -446,7 +407,9 @@ func runInit(args []string) int {
 	}
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: init"); code >= 0 {
+			return code
+		}
 	}
 
 	if fs.NArg() > 0 {
@@ -941,6 +904,27 @@ func followSymlinksOverride(fs *flag.FlagSet, value bool) *bool {
 		return &v
 	}
 	return nil
+}
+
+// reportFlagParseErr converts an fs.Parse error into the
+// canonical CLI exit code while making sure the user sees WHY
+// parsing failed. pflag with ContinueOnError silently returns
+// the error from Parse — it does not write to fs.Output() — so
+// every subcommand that just `return 2`s on a parse error left
+// the user staring at a non-zero exit with nothing on stderr.
+//
+//   - nil           → -1 (caller continues)
+//   - flag.ErrHelp  →  0 (Usage was already printed by pflag)
+//   - any other err →  2 with `<prefix>: <err>` on stderr
+func reportFlagParseErr(err error, stderr io.Writer, prefix string) int {
+	if err == nil {
+		return -1
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		return 0
+	}
+	_, _ = fmt.Fprintf(stderr, "%s: %v\n", prefix, err)
+	return 2
 }
 
 // resolveMaxInputBytes returns the effective max-input-size in bytes.

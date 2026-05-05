@@ -71,6 +71,7 @@ rules:
       - "internal/concepts/**"
       - ".claude/**"
       - ".github/**"
+      - "editors/**"
   catalog: true
   required-structure: true
   include: true
@@ -232,6 +233,8 @@ ignore:
   - "internal/rules/*/good/**"
   - "internal/rules/*/fixed/**"
   - ".claude/worktrees/**"
+  - "editors/**/node_modules/**"
+  - "editors/**/dist/**"
 
 kinds:
   proto:

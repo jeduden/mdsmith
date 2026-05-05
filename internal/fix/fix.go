@@ -33,6 +33,15 @@ type Fixer struct {
 	// remaining diagnostic so output formatters can render an
 	// explanation trailer.
 	Explain bool
+	// SourceFS, when non-nil, overrides the per-file dirFS that
+	// prepareFile would otherwise derive from filepath.Dir(path).
+	// Used by Source / SourceWithRules so callers can pass a
+	// workspace-relative path for config matching while still giving
+	// include/catalog/cross-file rules a real filesystem rooted at
+	// the document's actual directory. Disk-based Fix() (path-based)
+	// leaves this nil and continues to derive dirFS from each file's
+	// absolute path.
+	SourceFS fs.FS
 
 	// gitignoreCache caches GitignoreMatchers by directory so the
 	// matcher tree is walked once per directory across a fix run,
@@ -275,7 +284,15 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 	}
 	lf.MaxInputBytes = f.MaxInputBytes
 	dir := filepath.Dir(path)
-	dirFS := os.DirFS(dir)
+	var dirFS fs.FS
+	if f.SourceFS != nil {
+		// In-memory callers (LSP) supply an explicit FS rooted at the
+		// document's real on-disk directory; the path itself can be
+		// workspace-relative for config glob matching.
+		dirFS = f.SourceFS
+	} else {
+		dirFS = os.DirFS(dir)
+	}
 	lf.FS = dirFS
 	gitignoreDir := dir
 	if f.RootDir != "" {

@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -661,6 +662,51 @@ func TestRunSource_BasicDiagnostics(t *testing.T) {
 	}
 }
 
+// fileSnapRule captures the lint.File pointer it was given so a test
+// can assert on the file's FS / GitignoreFunc fields after RunSource
+// returns.
+type fileSnapRule struct {
+	id, name string
+	last     *lint.File
+}
+
+func (r *fileSnapRule) ID() string       { return r.id }
+func (r *fileSnapRule) Name() string     { return r.name }
+func (r *fileSnapRule) Category() string { return "test" }
+func (r *fileSnapRule) Check(f *lint.File) []lint.Diagnostic {
+	r.last = f
+	return nil
+}
+
+func TestRunSource_WiresSourceFSAndGitignore(t *testing.T) {
+	// LSP buffers come without a real on-disk file. RunSource must
+	// still set up FS and GitignoreFunc when SourceFS+RootDir are
+	// supplied so include/catalog/cross-file rules see the same view
+	// processFile sets up for on-disk runs.
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"snap-rule": {Enabled: true},
+		},
+	}
+
+	snap := &fileSnapRule{id: "MDS999", name: "snap-rule"}
+	runner := &Runner{
+		Config:   cfg,
+		Rules:    []rule.Rule{snap},
+		RootDir:  t.TempDir(),
+		SourceFS: os.DirFS(t.TempDir()),
+	}
+
+	result := runner.RunSource("file.md", []byte("# Hi\n"))
+	require.Empty(t, result.Errors)
+	require.NotNil(t, snap.last, "rule should have seen the file")
+	require.NotNil(t, snap.last.FS, "SourceFS should land on lint.File.FS")
+	require.NotNil(t, snap.last.GitignoreFunc, "GitignoreFunc should be wired when RootDir is set")
+	// Exercise the closure so cachedGitignore is hit.
+	matcher := snap.last.GitignoreFunc()
+	require.NotNil(t, matcher)
+}
+
 func TestRunSource_FrontMatterLineOffset(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{
@@ -726,4 +772,34 @@ func TestRunSource_EmptyInput(t *testing.T) {
 	require.Len(t, result.Errors, 0, "expected 0 errors, got %d: %v", len(result.Errors), result.Errors)
 	require.Len(t, result.Diagnostics, 0,
 		"expected 0 diagnostics, got %d: %v", len(result.Diagnostics), result.Diagnostics)
+}
+
+// Regression: in-memory sources must respect Runner.MaxInputBytes
+// the same way on-disk reads respect lint.ReadFileLimited. Without
+// this guard, LSP and other in-memory callers would diverge from
+// `mdsmith check`'s "file too large" behavior.
+func TestRunSource_RejectsOversizedSource(t *testing.T) {
+	cfg := &config.Config{}
+	runner := &Runner{
+		Config:        cfg,
+		Rules:         []rule.Rule{&silentRule{id: "MDS998", name: "mock-rule"}},
+		MaxInputBytes: 16,
+	}
+	result := runner.RunSource("doc.md", []byte("this body is well past sixteen bytes"))
+	require.Len(t, result.Errors, 1)
+	assert.Contains(t, result.Errors[0].Error(), "file too large")
+	assert.Empty(t, result.Diagnostics, "no diagnostics expected when input is rejected")
+}
+
+// MaxInputBytes <= 0 means unlimited; oversized buffers must lint
+// normally instead of being rejected.
+func TestRunSource_UnlimitedMaxInputBytes(t *testing.T) {
+	cfg := &config.Config{}
+	runner := &Runner{
+		Config:        cfg,
+		Rules:         []rule.Rule{&silentRule{id: "MDS998", name: "mock-rule"}},
+		MaxInputBytes: 0,
+	}
+	result := runner.RunSource("doc.md", []byte("# Heading\n\nbody body body\n"))
+	assert.Empty(t, result.Errors)
 }

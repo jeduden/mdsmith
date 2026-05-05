@@ -1,0 +1,2571 @@
+package lsp
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/textproto"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
+
+	// Register the production rule set so rule.All() returns what an
+	// editor would actually see. The barrel keeps "what rules ship"
+	// in a single place rather than duplicating the import list.
+	_ "github.com/jeduden/mdsmith/internal/rules/all"
+)
+
+// testHarness wires a Server to a pair of in-memory pipes plus a
+// dedicated reader goroutine that demultiplexes incoming frames so
+// tests can wait for specific notifications without racing on the
+// underlying bufio.Reader.
+type testHarness struct {
+	t            *testing.T
+	srv          *Server
+	clientWriter io.WriteCloser
+	srvDone      chan error
+	cancel       context.CancelFunc
+
+	writeMu sync.Mutex
+	nextID  atomic.Int64
+
+	// Channels populated by the reader goroutine.
+	notifications chan parsedNotification
+	responses     chan parsedResponse
+
+	// seenServer counts auto-acked server-initiated requests by
+	// method, in case a test wants to assert they fired without
+	// driving the read loop itself.
+	seenMu     sync.Mutex
+	seenServer map[string]int
+}
+
+type parsedNotification struct {
+	Method string
+	Params json.RawMessage
+}
+
+type parsedResponse struct {
+	ID   string
+	Resp rpcResponse
+}
+
+func newHarness(t *testing.T) *testHarness {
+	return newHarnessWithDebounce(t, -1)
+}
+
+func newDebouncedHarness(t *testing.T, debounce time.Duration) *testHarness {
+	return newHarnessWithDebounce(t, debounce)
+}
+
+func newHarnessWithDebounce(t *testing.T, debounce time.Duration) *testHarness {
+	t.Helper()
+	srvIn, clientWriter := io.Pipe()
+	clientRawReader, srvOut := io.Pipe()
+	srv := New(Options{
+		Rules:    rule.All(),
+		Reader:   srvIn,
+		Writer:   srvOut,
+		Debounce: debounce,
+	})
+	// Tests want lint-on-didChange to fire so they can verify the
+	// pipeline. Production defaults to onSave (skipping didChange);
+	// flipping to onType keeps the existing tests deterministic.
+	srv.settingsMu.Lock()
+	srv.settings.Run = runOnType
+	srv.settingsMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Run(ctx)
+		_ = srvOut.Close()
+	}()
+
+	h := &testHarness{
+		t:             t,
+		srv:           srv,
+		clientWriter:  clientWriter,
+		srvDone:       done,
+		cancel:        cancel,
+		notifications: make(chan parsedNotification, 64),
+		responses:     make(chan parsedResponse, 64),
+		seenServer:    make(map[string]int),
+	}
+
+	go h.readPump(bufio.NewReader(clientRawReader))
+
+	t.Cleanup(func() {
+		_ = clientWriter.Close()
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Logf("server did not exit cleanly")
+		}
+	})
+	return h
+}
+
+// readPump is the only goroutine that reads from the pipe. It demuxes
+// frames into the notifications / responses channels, and auto-acks
+// server-initiated requests so the dispatch loop never blocks.
+func (h *testHarness) readPump(r *bufio.Reader) {
+	for {
+		raw, err := readFrame(r)
+		if err != nil {
+			return
+		}
+		var probe struct {
+			ID     json.RawMessage `json:"id,omitempty"`
+			Method string          `json:"method,omitempty"`
+			Params json.RawMessage `json:"params,omitempty"`
+			Result json.RawMessage `json:"result,omitempty"`
+			Error  *responseError  `json:"error,omitempty"`
+		}
+		if err := json.Unmarshal(raw, &probe); err != nil {
+			continue
+		}
+
+		// Server-initiated request: auto-ack with nil result so the
+		// server's dispatch loop can move on, then record that we saw it.
+		if probe.Method != "" && len(probe.ID) > 0 {
+			h.write(struct {
+				JSONRPC string          `json:"jsonrpc"`
+				ID      json.RawMessage `json:"id"`
+				Result  any             `json:"result"`
+			}{JSONRPC: "2.0", ID: probe.ID, Result: nil})
+			h.seenMu.Lock()
+			h.seenServer[probe.Method]++
+			h.seenMu.Unlock()
+			continue
+		}
+
+		// Notification (no id, has method).
+		if probe.Method != "" {
+			select {
+			case h.notifications <- parsedNotification{Method: probe.Method, Params: probe.Params}:
+			default:
+				// Drop on overflow — tests only care about a small
+				// suffix of notifications.
+			}
+			continue
+		}
+
+		// Response to a client request.
+		if len(probe.ID) > 0 {
+			select {
+			case h.responses <- parsedResponse{
+				ID:   string(probe.ID),
+				Resp: rpcResponse{Result: probe.Result, Error: probe.Error},
+			}:
+			default:
+			}
+		}
+	}
+}
+
+func readFrame(r *bufio.Reader) ([]byte, error) {
+	tp := textproto.NewReader(r)
+	hdr, err := tp.ReadMIMEHeader()
+	if err != nil {
+		return nil, err
+	}
+	cl := hdr.Get("Content-Length")
+	if cl == "" {
+		return nil, fmt.Errorf("missing Content-Length")
+	}
+	n, err := strconv.Atoi(cl)
+	if err != nil {
+		return nil, err
+	}
+	body := make([]byte, n)
+	if _, err := io.ReadFull(r, body); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func (h *testHarness) write(v any) {
+	body, err := json.Marshal(v)
+	require.NoError(h.t, err)
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
+	if _, err := fmt.Fprintf(h.clientWriter, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
+		return
+	}
+	_, _ = h.clientWriter.Write(body)
+}
+
+func (h *testHarness) request(method string, params any) (json.RawMessage, *responseError) {
+	h.t.Helper()
+	id := h.nextID.Add(1)
+	idJSON, err := json.Marshal(id)
+	require.NoError(h.t, err)
+	h.write(struct {
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Method  string          `json:"method"`
+		Params  any             `json:"params,omitempty"`
+	}{JSONRPC: "2.0", ID: idJSON, Method: method, Params: params})
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case r := <-h.responses:
+			if r.ID == string(idJSON) {
+				return r.Resp.Result, r.Resp.Error
+			}
+		case <-deadline:
+			h.t.Fatalf("timeout waiting for response to %s", method)
+			return nil, nil
+		}
+	}
+}
+
+func (h *testHarness) notify(method string, params any) {
+	h.t.Helper()
+	h.write(notificationMessage{JSONRPC: "2.0", Method: method, Params: params})
+}
+
+// awaitNotification consumes from the notifications channel until it
+// finds one matching method or hits the timeout.
+func (h *testHarness) awaitNotification(method string, timeout time.Duration) json.RawMessage {
+	h.t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case n := <-h.notifications:
+			if n.Method == method {
+				return n.Params
+			}
+		case <-deadline:
+			h.t.Fatalf("timeout waiting for notification %s", method)
+			return nil
+		}
+	}
+}
+
+func TestInitializeAdvertisesCapabilities(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	resultRaw, errResp := h.request("initialize", initializeParams{
+		Capabilities: clientCapabilities{Workspace: &workspaceClientCapabilities{Configuration: true}},
+	})
+	require.Nil(t, errResp)
+
+	var res initializeResult
+	require.NoError(t, json.Unmarshal(resultRaw, &res))
+	assert.True(t, res.Capabilities.TextDocumentSync.OpenClose)
+	assert.Equal(t, syncFull, res.Capabilities.TextDocumentSync.Change)
+	assert.Contains(t, res.Capabilities.CodeActionProvider.CodeActionKinds, kindQuickFix)
+	assert.Contains(t, res.Capabilities.CodeActionProvider.CodeActionKinds, kindSourceFixAll)
+	assert.Equal(t, "mdsmith", res.ServerInfo.Name)
+}
+
+func TestDidOpenPublishesDiagnostics(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	doc := didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{
+			URI:        "file:///workspace/sample.md",
+			LanguageID: "markdown",
+			Version:    1,
+			Text:       "# Title\n\nThis line has trailing spaces   \n",
+		},
+	}
+	h.notify("textDocument/didOpen", doc)
+
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+	assert.Equal(t, doc.TextDocument.URI, p.URI)
+
+	var found bool
+	for _, d := range p.Diagnostics {
+		if d.Code == "MDS006" {
+			found = true
+			assert.NotZero(t, int(d.Severity))
+			assert.Equal(t, "mdsmith", d.Source)
+			require.NotNil(t, d.Data)
+			assert.Equal(t, "no-trailing-spaces", d.Data.RuleName)
+			break
+		}
+	}
+	assert.True(t, found, "expected MDS006 diagnostic in %+v", p.Diagnostics)
+}
+
+func TestDidCloseClearsDiagnostics(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/clear.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\ntrailing  \n"},
+	})
+	first := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(first, &p))
+	assert.NotEmpty(t, p.Diagnostics)
+
+	h.notify("textDocument/didClose", didCloseTextDocumentParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+	})
+	second := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var cleared publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(second, &cleared))
+	assert.Equal(t, uri, cleared.URI)
+	assert.Empty(t, cleared.Diagnostics)
+}
+
+func TestShutdownReturnsNullResult(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	resultRaw, errResp := h.request("shutdown", nil)
+	require.Nil(t, errResp)
+	assert.Equal(t, "null", string(resultRaw))
+}
+
+func TestDidChangeUpdatesDiagnostics(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/change.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{
+			URI: uri, LanguageID: "markdown", Version: 1,
+			Text: "# Hi\n\nclean line\n",
+		},
+	})
+	first := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p1 publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(first, &p1))
+	assert.Empty(t, p1.Diagnostics)
+
+	h.notify("textDocument/didChange", didChangeTextDocumentParams{
+		TextDocument: versionedTextDocumentIdentifier{URI: uri, Version: 2},
+		ContentChanges: []textDocumentContentChangeEvent{
+			{Text: "# Hi\n\ndirty line   \n"},
+		},
+	})
+	second := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p2 publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(second, &p2))
+	var saw006 bool
+	for _, d := range p2.Diagnostics {
+		if d.Code == "MDS006" {
+			saw006 = true
+			break
+		}
+	}
+	assert.True(t, saw006, "expected MDS006 after didChange, got %+v", p2.Diagnostics)
+}
+
+func TestCodeActionQuickFix(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/qf.md"
+	dirty := "# Hi\n\ndirty line   \n"
+	clean := "# Hi\n\ndirty line\n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: dirty},
+	})
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+
+	var trailing Diagnostic
+	for _, d := range p.Diagnostics {
+		if d.Code == "MDS006" {
+			trailing = d
+			break
+		}
+	}
+	require.NotEmpty(t, trailing.Code, "no MDS006 in %+v", p.Diagnostics)
+
+	resultRaw, errResp := h.request("textDocument/codeAction", codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Range:        trailing.Range,
+		Context:      codeActionContext{Diagnostics: []Diagnostic{trailing}},
+	})
+	require.Nil(t, errResp)
+
+	var actions []codeAction
+	require.NoError(t, json.Unmarshal(resultRaw, &actions))
+	require.NotEmpty(t, actions)
+
+	var qf *codeAction
+	for i, a := range actions {
+		if a.Kind == kindQuickFix {
+			qf = &actions[i]
+			break
+		}
+	}
+	require.NotNil(t, qf)
+	require.NotNil(t, qf.Edit)
+	edits, ok := qf.Edit.Changes[uri]
+	require.True(t, ok)
+	require.Len(t, edits, 1)
+	assert.Equal(t, clean, edits[0].NewText)
+}
+
+func TestCodeActionSourceFixAll(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/all.md"
+	dirty := "# Hi\n\ndirty line   \n"
+	clean := "# Hi\n\ndirty line\n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: dirty},
+	})
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+	require.NotEmpty(t, p.Diagnostics)
+
+	resultRaw, errResp := h.request("textDocument/codeAction", codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Range:        Range{},
+		Context:      codeActionContext{Diagnostics: p.Diagnostics, Only: []string{kindSourceFixAll}},
+	})
+	require.Nil(t, errResp)
+	var actions []codeAction
+	require.NoError(t, json.Unmarshal(resultRaw, &actions))
+	var fixAll *codeAction
+	for i, a := range actions {
+		if a.Kind == kindSourceFixAll {
+			fixAll = &actions[i]
+			break
+		}
+	}
+	require.NotNil(t, fixAll, "expected source.fixAll.mdsmith action; got %+v", actions)
+	edits := fixAll.Edit.Changes[uri]
+	require.Len(t, edits, 1)
+	assert.Equal(t, clean, edits[0].NewText)
+}
+
+func TestCodeActionOnlyFiltersOutQuickFix(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/only.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\ndirty   \n"},
+	})
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+	require.NotEmpty(t, p.Diagnostics)
+
+	// Ask only for source.fixAll — quickfix actions must not be returned.
+	resultRaw, errResp := h.request("textDocument/codeAction", codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Range:        Range{},
+		Context:      codeActionContext{Diagnostics: p.Diagnostics, Only: []string{kindSourceFixAll}},
+	})
+	require.Nil(t, errResp)
+	var actions []codeAction
+	require.NoError(t, json.Unmarshal(resultRaw, &actions))
+	for _, a := range actions {
+		assert.NotEqual(t, kindQuickFix, a.Kind, "Only=source.fixAll filter should suppress quickfix actions")
+	}
+}
+
+func TestUnknownMethodReturnsError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	_, errResp = h.request("textDocument/bogus", nil)
+	require.NotNil(t, errResp)
+	assert.Equal(t, codeMethodNotFound, errResp.Code)
+}
+
+func TestRegisterWatchersWritesRequest(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.registerWatchers()
+	out := buf.String()
+	assert.Contains(t, out, "client/registerCapability")
+	assert.Contains(t, out, "**/.mdsmith.yml")
+}
+
+func TestHandleInitializedRunsConfigAndWatchers(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// Mirror what a fully-featured client (VS Code) advertises so
+	// handleInitialized fires both fetchClientSettings and
+	// registerWatchers.
+	s.clientCapsMu.Lock()
+	s.clientCaps = clientCapabilities{
+		Workspace: &workspaceClientCapabilities{
+			Configuration: true,
+			DidChangeWatchedFiles: &struct {
+				DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+			}{DynamicRegistration: true},
+		},
+	}
+	s.clientCapsMu.Unlock()
+
+	s.handleInitialized(context.Background())
+
+	// reloadConfig populated the config; registerWatchers wrote the
+	// registration request synchronously.
+	cfg, _, _ := s.snapshotConfig()
+	assert.NotNil(t, cfg)
+	assert.Contains(t, buf.String(), "client/registerCapability")
+
+	// fetchClientSettings ran in a goroutine. Poll briefly for its
+	// outgoing workspace/configuration request before asserting.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(buf.String(), "workspace/configuration") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("workspace/configuration never written; buffer: %s", buf.String())
+}
+
+// Regression: clients without workspace.configuration must not see
+// a workspace/configuration request, and clients without
+// didChangeWatchedFiles.dynamicRegistration must not see a
+// client/registerCapability request. handleInitialized should
+// reload config either way and exit cleanly.
+func TestHandleInitializedSkipsWhenCapabilitiesMissing(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// Empty capabilities — Workspace pointer is nil.
+	s.handleInitialized(context.Background())
+	// Give any rogue goroutine a chance to write before asserting.
+	time.Sleep(50 * time.Millisecond)
+
+	out := buf.String()
+	assert.NotContains(t, out, "workspace/configuration",
+		"must skip fetchClientSettings without workspace.configuration capability")
+	assert.NotContains(t, out, "client/registerCapability",
+		"must skip registerWatchers without dynamic-registration capability")
+}
+
+func TestHandleInitializeMalformedParams(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	msg := &requestMessage{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "initialize",
+		Params:  json.RawMessage(`not json`),
+	}
+	s.handleInitialize(msg)
+	out := buf.String()
+	assert.Contains(t, out, "invalid initialize params")
+}
+
+func TestHandleInitializeEmptyParams(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	msg := &requestMessage{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "initialize",
+	}
+	s.handleInitialize(msg)
+	out := buf.String()
+	assert.Contains(t, out, `"capabilities"`)
+	assert.Contains(t, out, "mdsmith")
+}
+
+func TestHandleCodeActionUnknownDocument(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	body, _ := json.Marshal(codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///none.md"},
+	})
+	msg := &requestMessage{ID: json.RawMessage(`1`), Method: "textDocument/codeAction", Params: body}
+	s.handleCodeAction(msg)
+	// Response is an empty action array.
+	assert.Contains(t, buf.String(), `"result":[]`)
+}
+
+func TestHandleCodeActionInvalidJSON(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	msg := &requestMessage{ID: json.RawMessage(`1`), Params: json.RawMessage("oops")}
+	s.handleCodeAction(msg)
+	assert.Contains(t, buf.String(), "invalid codeAction params")
+}
+
+func TestQuickFixEditForFixerError(t *testing.T) {
+	// Invalid path used to be propagated from the fixer; today it is
+	// just a label so the fix typically succeeds. The point of the
+	// test is that the helper does not crash on an unusual path.
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "/no/such/path/x.md", text: []byte("# Hi\n\ndirty   \n")}
+	_ = s.quickFixEditFor("no-trailing-spaces", doc, cfg, "", "file:///x.md")
+}
+
+func TestDispatchHandlesNotificationsWithoutResponse(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	// $/cancelRequest is silently accepted.
+	s.dispatch(context.Background(), &requestMessage{Method: "$/cancelRequest"})
+	s.dispatch(context.Background(), &requestMessage{Method: "$/setTrace"})
+	s.dispatch(context.Background(), &requestMessage{Method: "$/progress"})
+}
+
+func TestDispatchUnknownNotificationIsSilentlyDropped(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// No ID → notification → must not write any frame.
+	s.dispatch(context.Background(), &requestMessage{Method: "completely/unknown"})
+	assert.Empty(t, buf.String())
+}
+
+func TestDispatchExitTogglesShutdownFlags(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.dispatch(context.Background(), &requestMessage{Method: "exit"})
+	assert.True(t, s.shutdown.Load())
+	assert.True(t, s.exitRequested.Load())
+}
+
+func TestDispatchRoutesInitializedToHandler(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// handleInitialized gates registerWatchers on the client's
+	// dynamic-registration capability; pretend the client supports
+	// it so the dispatch route is observable.
+	s.clientCapsMu.Lock()
+	s.clientCaps = clientCapabilities{
+		Workspace: &workspaceClientCapabilities{
+			DidChangeWatchedFiles: &struct {
+				DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+			}{DynamicRegistration: true},
+		},
+	}
+	s.clientCapsMu.Unlock()
+	s.dispatch(context.Background(), &requestMessage{Method: "initialized"})
+	// handleInitialized writes the registerWatchers request
+	// synchronously. fetchClientSettings runs in a goroutine and
+	// may or may not have written by the time we check.
+	assert.Contains(t, buf.String(), "client/registerCapability")
+}
+
+func TestDispatchRoutesDidChangeConfigurationToHandler(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	// handleDidChangeConfiguration spawns fetchClientSettings; we
+	// don't wait for the response — covering the dispatch arm is
+	// enough.
+	s.dispatch(context.Background(), &requestMessage{Method: "workspace/didChangeConfiguration"})
+}
+
+func TestDispatchRoutesDidChangeWatchedFilesToHandler(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	body, _ := json.Marshal(didChangeWatchedFilesParams{
+		Changes: []fileEvent{{URI: "file:///workspace/.mdsmith.yml", Type: 2}},
+	})
+	s.dispatch(context.Background(), &requestMessage{
+		Method: "workspace/didChangeWatchedFiles",
+		Params: body,
+	})
+}
+
+func TestDispatchRawRoutesResponseToWaiter(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ch := s.registerPendingResponse(`42`)
+	defer s.unregisterPendingResponse(`42`)
+	s.dispatchRaw(context.Background(),
+		[]byte(`{"jsonrpc":"2.0","id":42,"result":{"k":1}}`))
+	select {
+	case resp := <-ch:
+		assert.NotEmpty(t, resp.Result)
+	case <-time.After(time.Second):
+		t.Fatalf("response not delivered")
+	}
+}
+
+func TestDispatchRawIDOnlyFrameIsInvalidRequest(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// {jsonrpc:2.0, id:1} with no method/result/error is not a valid
+	// JSON-RPC frame; the server must reply with -32600 instead of
+	// silently routing it to a (non-existent) pending waiter.
+	s.dispatchRaw(context.Background(), []byte(`{"jsonrpc":"2.0","id":1}`))
+	out := buf.String()
+	assert.Contains(t, out, `"code":-32600`)
+	assert.Contains(t, out, `"id":1`)
+}
+
+func TestDispatchRawErrorOnlyResponseIsRouted(t *testing.T) {
+	t.Parallel()
+	// A response with `error` (and no `result`) must still be
+	// classified as a response and forwarded to the waiter.
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ch := s.registerPendingResponse(`7`)
+	defer s.unregisterPendingResponse(`7`)
+	s.dispatchRaw(context.Background(),
+		[]byte(`{"jsonrpc":"2.0","id":7,"error":{"code":-1,"message":"x"}}`))
+	select {
+	case resp := <-ch:
+		require.NotNil(t, resp.Error)
+		assert.Equal(t, -1, resp.Error.Code)
+	case <-time.After(time.Second):
+		t.Fatalf("error response not delivered")
+	}
+}
+
+func TestDispatchRawRejectsWrongVersionWithID(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.dispatchRaw(context.Background(),
+		[]byte(`{"jsonrpc":"1.0","id":7,"method":"x"}`))
+	out := buf.String()
+	assert.Contains(t, out, `"id":7`)
+	assert.Contains(t, out, "jsonrpc must be 2.0")
+}
+
+func TestScheduleLintSkipsWhenShutdown(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.shutdown.Store(true)
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	s.scheduleLint("file:///x.md", lintTriggerOpen)
+	// Server is shutting down — no diagnostics should land on the wire.
+	assert.NotContains(t, buf.String(), "publishDiagnostics")
+}
+
+func TestScheduleLintOnSaveSkipsChange(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// Default run mode is onSave.
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	assert.NotContains(t, buf.String(), "publishDiagnostics")
+}
+
+func TestStopPendingLintsCancelsTimers(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All(), Debounce: 10 * time.Second})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n"),
+	})
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	s.pendingMu.Lock()
+	require.Len(t, s.pending, 1)
+	s.pendingMu.Unlock()
+	s.stopPendingLints()
+	s.pendingMu.Lock()
+	assert.Empty(t, s.pending, "stopPendingLints should clear the pending map")
+	s.pendingMu.Unlock()
+}
+
+func TestRunModeFallsBackOnEmpty(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.settingsMu.Lock()
+	s.settings.Run = ""
+	s.settingsMu.Unlock()
+	assert.Equal(t, runOnSave, s.runMode())
+}
+
+func TestFetchClientSettingsHandlesEmptyArray(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	// Drive the goroutine: deliver an empty array — VS Code returns
+	// this when the section has no settings. The call should leave
+	// settings unchanged.
+	deliverPendingResponse(t, s, json.RawMessage(`[]`), nil)
+	// fetchClientSettings is single-shot: when it returns,
+	// `done` closes. Wait for that explicitly instead of an
+	// unconditional sleep so the test isn't timing-dependent.
+	awaitDone(t, done)
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	assert.Equal(t, runOnSave, s.settings.Run)
+}
+
+func TestFetchClientSettingsHandlesMalformedResult(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	// Result is not an array — defaults must stand.
+	deliverPendingResponse(t, s, json.RawMessage(`"oops"`), nil)
+	awaitDone(t, done)
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	assert.Equal(t, runOnSave, s.settings.Run)
+}
+
+// deliverPendingResponse polls s.pendingResp for the (single)
+// outstanding request id and delivers a response to it. Returns
+// the response key for callers that need it.
+//
+// Replaces the older "sleep + assert" pattern that was flaky
+// under load: instead of waiting an arbitrary 50 ms and hoping
+// the goroutine got there, we hand-deliver the response and let
+// the caller wait on the goroutine's done channel.
+func deliverPendingResponse(
+	t *testing.T, s *Server, result json.RawMessage, errResp *responseError,
+) string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		s.pendingRespMu.Lock()
+		var key string
+		for k := range s.pendingResp {
+			key = k
+		}
+		s.pendingRespMu.Unlock()
+		if key != "" {
+			s.deliverResponse(key, rpcResponse{Result: result, Error: errResp})
+			return key
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("no pending response slot appeared within deadline")
+	return ""
+}
+
+// awaitDone blocks until the supplied done channel closes,
+// failing the test if the deadline elapses first. Used to gate
+// assertions on a goroutine's actual return rather than on a
+// heuristic sleep.
+func awaitDone(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("goroutine did not return within deadline")
+	}
+}
+
+func TestFetchClientSettingsHonorsContextCancel(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		s.fetchClientSettings(ctx)
+		close(done)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("fetchClientSettings did not return on ctx cancel")
+	}
+}
+
+func TestComputeCodeActionsSkipsDiagnosticsWithoutData(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "x.md", text: []byte("# Hi\n\ndirty   \n")}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{
+				{Code: "MDS006"}, // no Data — must be skipped
+			},
+			Only: []string{kindQuickFix},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	assert.Empty(t, actions, "diagnostic without Data should not produce a quickfix")
+}
+
+func TestComputeCodeActionsCachesNilEdits(t *testing.T) {
+	t.Parallel()
+	// Verify that the per-rule cache stores the negative result for
+	// rules whose fix is unavailable, so a second diagnostic from
+	// the same rule does not retry the fix.
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "x.md", text: []byte("# Hi\n")}
+	d := Diagnostic{Code: "X", Data: &diagnosticData{RuleName: "no-such-rule"}}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{d, d, d},
+			Only:        []string{kindQuickFix},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	assert.Empty(t, actions)
+}
+
+func TestToLSPClampsZeroLine(t *testing.T) {
+	t.Parallel()
+	got := toLSP(lint.Diagnostic{Line: 0, Column: 1, RuleID: "MDS001", Severity: lint.Error},
+		[][]byte{[]byte("a")})
+	assert.Equal(t, 0, got.Range.Start.Line)
+}
+
+func TestToLSPEmptyLineProducesZeroWidthRange(t *testing.T) {
+	t.Parallel()
+	// Diagnostic on an empty line: the range must end at column 0,
+	// not column 1 — column 1 would be past the line.
+	got := toLSP(
+		lint.Diagnostic{Line: 2, Column: 1, RuleID: "MDS001", Severity: lint.Error},
+		[][]byte{[]byte("first"), []byte("")},
+	)
+	assert.Equal(t, 1, got.Range.Start.Line)
+	assert.Equal(t, 0, got.Range.Start.Character)
+	assert.Equal(t, 0, got.Range.End.Character,
+		"empty line should produce a zero-width range, not extend past the line")
+}
+
+func TestUtf16FromByteOffsetInvalidRunes(t *testing.T) {
+	t.Parallel()
+	// `string([]rune{0xD800, 'a'})` produces a UTF-8 sequence
+	// containing utf8.RuneError; the helper must keep counting and
+	// must not drop below zero even when utf16.RuneLen returns -1
+	// for the offending rune.
+	line := []byte(string([]rune{0xD800, 'a'}))
+	got := utf16FromByteOffset(line, len(line))
+	assert.Positive(t, got, "utf16FromByteOffset must stay non-negative on invalid runes")
+}
+
+// nonNegativeUTF16RuneLen exists to defend the running offset
+// total against a (currently impossible) negative utf16.RuneLen
+// return. Verify both branches: a normal BMP rune passes through
+// at width 1, and a surrogate code point (which utf16.RuneLen
+// reports as -1) clamps to 1.
+func TestNonNegativeUTF16RuneLen(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 1, nonNegativeUTF16RuneLen('a'))
+	assert.Equal(t, 2, nonNegativeUTF16RuneLen('😀'))
+	// 0xD800 is a high-surrogate code point; utf16.RuneLen returns
+	// -1 for it and the helper clamps to 1.
+	assert.Equal(t, 1, nonNegativeUTF16RuneLen(rune(0xD800)))
+}
+
+func TestDispatchRawInvalidJSONRespondsWithParseError(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.dispatchRaw(context.Background(), []byte("not json"))
+	out := buf.String()
+	assert.Contains(t, out, `"code":-32700`)
+	assert.Contains(t, out, `"id":null`)
+}
+
+func TestHandleInitializeMalformedReturnsInvalidParams(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.handleInitialize(&requestMessage{
+		ID:     json.RawMessage(`1`),
+		Method: "initialize",
+		Params: json.RawMessage(`not json`),
+	})
+	// JSON-RPC §5.1: bad params → -32602.
+	assert.Contains(t, buf.String(), `"code":-32602`)
+}
+
+func TestHandleCodeActionMalformedReturnsInvalidParams(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.handleCodeAction(&requestMessage{
+		ID:     json.RawMessage(`1`),
+		Params: json.RawMessage(`not json`),
+	})
+	assert.Contains(t, buf.String(), `"code":-32602`)
+}
+
+func TestWorkspaceRelativePathHandling(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		root, path, want string
+	}{
+		{"", "/abs/foo.md", "/abs/foo.md"},
+		{"/repo", "rel.md", "rel.md"},
+		{"/repo", "/repo/docs/foo.md", "docs/foo.md"},
+		{"/repo", "/elsewhere/foo.md", "/elsewhere/foo.md"},
+		// Regression: an in-root file whose name happens to start
+		// with two dots must not be treated as a parent traversal.
+		// A naive HasPrefix(rel, "..") would have rejected this.
+		{"/repo", "/repo/..foo.md", "..foo.md"},
+		{"/repo", "/repo/sub/..bar.md", "sub/..bar.md"},
+		// filepath.Rel returns an error when root is relative and
+		// path is absolute (it can't relativize without knowing the
+		// process cwd). Pin the function's defensive path-pass-
+		// through behavior in that case.
+		{"rel/dir", "/abs/foo.md", "/abs/foo.md"},
+	}
+	for _, tc := range tests {
+		got := workspaceRelative(tc.root, tc.path)
+		assert.Equal(t, tc.want, got, "root=%q path=%q", tc.root, tc.path)
+	}
+}
+
+func TestDirFSForPathRelativeIsNil(t *testing.T) {
+	t.Parallel()
+	// A relative path label has no meaningful directory; engine
+	// treats nil SourceFS as "do not override".
+	assert.Nil(t, dirFSForPath("rel.md"))
+	assert.NotNil(t, dirFSForPath("/abs/foo.md"))
+}
+
+// TestScheduleLintTimerRaceLeavesNewTimer pins the identity-checked
+// replacement: a closure whose firing races a fresh scheduleLint
+// must not delete the new timer's map entry.
+func TestScheduleLintTimerRaceLeavesNewTimer(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All(), Debounce: 10 * time.Second})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n"),
+	})
+	// Arm a timer, then forge a stale "old timer fired" call by
+	// invoking the scheduleLint deletion logic with a tampered map
+	// pointer (we can simulate via a second scheduleLint that
+	// overwrites). The real concern is the pointer-equality guard;
+	// here we verify the new timer remains in the map after the
+	// replacement.
+	getTimer := func() *time.Timer {
+		s.pendingMu.Lock()
+		defer s.pendingMu.Unlock()
+		return s.pending["file:///x.md"]
+	}
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	first := getTimer()
+	require.NotNil(t, first)
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	second := getTimer()
+	require.NotNil(t, second)
+	assert.NotSame(t, first, second, "replacement must produce a fresh timer")
+	// stopPendingLints clears for cleanup.
+	s.stopPendingLints()
+}
+
+// TestShutdownRejectsLaterRequests pins the post-shutdown request
+// rejection: once `shutdown` has succeeded, any non-`exit` request
+// must respond with InvalidRequest instead of running through the
+// dispatch switch (LSP §3.16). Notifications are silently dropped.
+func TestShutdownRejectsLaterRequests(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	_, errResp = h.request("shutdown", nil)
+	require.Nil(t, errResp)
+	// Any request after shutdown must come back with InvalidRequest.
+	_, errResp = h.request("textDocument/codeAction", nil)
+	require.NotNil(t, errResp)
+	assert.Equal(t, codeInvalidRequest, errResp.Code)
+	assert.Contains(t, errResp.Message, "shutting down")
+}
+
+// TestScheduleLintImmediateCancelsPendingDebounce pins the
+// fast-path branch in scheduleLint: when an immediate trigger
+// (open/save/config) arrives while a didChange-armed debounce timer
+// is still pending for the same URI, the existing timer must be
+// stopped and removed so it cannot fire later and republish stale
+// diagnostics.
+func TestScheduleLintImmediateCancelsPendingDebounce(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All(), Debounce: 10 * time.Second})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n"),
+	})
+	// Arm a long debounced timer via a didChange-style trigger.
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	s.pendingMu.Lock()
+	require.Len(t, s.pending, 1)
+	originalTimer := s.pending["file:///x.md"]
+	s.pendingMu.Unlock()
+	// An immediate trigger (e.g. didOpen) replaces the pending
+	// debounce timer with a zero-delay immediate timer instead of
+	// running runLint synchronously (which would block dispatch).
+	// The original timer is Stop()'d.
+	s.scheduleLint("file:///x.md", lintTriggerOpen)
+	s.pendingMu.Lock()
+	require.Len(t, s.pending, 1, "immediate trigger should replace the pending debounce timer")
+	require.NotSame(t, originalTimer, s.pending["file:///x.md"],
+		"immediate trigger should install a new (zero-delay) timer, not reuse the debounce one")
+	s.pendingMu.Unlock()
+	// Wait briefly for the immediate timer to fire and clear
+	// itself, then assert the pending map is empty.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		s.pendingMu.Lock()
+		empty := len(s.pending) == 0
+		s.pendingMu.Unlock()
+		if empty {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("pending map never drained after immediate trigger fired")
+}
+
+// TestScheduleLintTimerSkipsAfterShutdown pins the in-callback
+// shutdown re-check: a debounce timer that armed before shutdown
+// but fires after must not call runLint or publish diagnostics.
+func TestScheduleLintTimerSkipsAfterShutdown(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All(), Debounce: 5 * time.Millisecond})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	s.scheduleLint("file:///x.md", lintTriggerChange)
+	// Flip shutdown before the timer can fire so the callback's
+	// re-check returns early.
+	s.shutdown.Store(true)
+	// Wait long enough for the timer to elapse.
+	time.Sleep(50 * time.Millisecond)
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"a timer firing after shutdown must not publish diagnostics")
+}
+
+func TestRunReturnsAfterShutdownPlusExit(t *testing.T) {
+	t.Parallel()
+	srvIn, clientWriter := io.Pipe()
+	s := New(Options{Reader: srvIn, Writer: io.Discard, Rules: rule.All()})
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(context.Background()) }()
+
+	// Send shutdown then exit. Both arrive as JSON-RPC frames.
+	send := func(body string) {
+		_, err := clientWriter.Write([]byte("Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + body))
+		require.NoError(t, err)
+	}
+	send(`{"jsonrpc":"2.0","id":1,"method":"shutdown"}`)
+	send(`{"jsonrpc":"2.0","method":"exit"}`)
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		_ = clientWriter.Close()
+		t.Fatalf("Run did not return after shutdown+exit")
+	}
+}
+
+func TestRunSurfacesTransportWriteError(t *testing.T) {
+	t.Parallel()
+	// Drive a single initialize request through the server with a
+	// writer that always fails. The dispatch handler will try to
+	// write the response, fail, and Run must return the recorded
+	// transport error rather than silently looping forever.
+	srvIn, clientWriter := io.Pipe()
+	defer func() { _ = clientWriter.Close() }()
+	s := New(Options{Reader: srvIn, Writer: failingWriter{}, Rules: rule.All()})
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(context.Background()) }()
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
+	_, err := clientWriter.Write([]byte("Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + body))
+	require.NoError(t, err)
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.ErrorIs(t, err, io.ErrShortWrite)
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Run did not return after a transport write failure")
+	}
+}
+
+func TestRunSurfacesNonEOFError(t *testing.T) {
+	t.Parallel()
+	// A reader that returns garbage forces readRaw into an error.
+	r := strings.NewReader("not a valid LSP frame at all")
+	s := New(Options{Reader: r, Writer: io.Discard, Rules: rule.All()})
+	err := s.Run(context.Background())
+	assert.Error(t, err)
+	assert.NotErrorIs(t, err, context.Canceled)
+}
+
+func TestUriToPathInvalidURL(t *testing.T) {
+	t.Parallel()
+	// Malformed file URI — url.Parse rejects spaces in opaque.
+	got := uriToPath("file://%zz/tmp/foo")
+	assert.Empty(t, got)
+}
+
+func TestReloadConfigDiscoverEmptyFallsBack(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// No .mdsmith.yml under dir, and no .git boundary either; the
+	// discover walk hits the filesystem root without finding a
+	// config and returns "" — the function should fall back to the
+	// defaults rather than crashing or holding stale state.
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg, "must fall back to defaults when no config is discovered")
+	assert.Empty(t, path, "configPath should be empty when discovery returns nothing")
+}
+
+func TestReloadConfigBadYAMLFallsBack(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(dir+"/.mdsmith.yml", "rules: [not-a-map\n"))
+
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg, "must fall back to defaults on bad YAML")
+	assert.Empty(t, path, "path should be empty when load fails")
+}
+
+// Regression: a config.Discover error path also surfaces via
+// window/logMessage, not just a load error. The Discover
+// implementation almost never fails in practice (only when
+// filepath.Abs cannot resolve a relative path), but the branch
+// must still report — otherwise an unreadable workspace silently
+// falls back to defaults.
+func TestReloadConfigSurfacesDiscoverFailure(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.discoverConfig = func(string) (string, error) {
+		return "", errors.New("synthetic discover failure")
+	}
+	s.configMu.Lock()
+	s.rootDir = "/some/root"
+	s.configMu.Unlock()
+	s.reloadConfig()
+
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "discovering")
+	assert.Contains(t, out, "synthetic discover failure")
+}
+
+// Regression: reloadConfig must surface load failures via
+// window/logMessage instead of silently falling back to defaults,
+// so the editor user can diagnose misconfiguration.
+func TestReloadConfigSurfacesLoadFailure(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(dir+"/.mdsmith.yml", "rules: [not-a-map\n"))
+
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "loading")
+	assert.Contains(t, out, ".mdsmith.yml")
+}
+
+func TestReloadConfigOverrideRelativePath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(dir+"/cfg.yml", "rules:\n  line-length: false\n"))
+
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.settingsMu.Lock()
+	s.settings.ConfigPath = "cfg.yml"
+	s.settingsMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg)
+	assert.Equal(t, dir+"/cfg.yml", path)
+}
+
+// Regression: when the workspace folder is a subdirectory of the
+// repo and `mdsmith.config` points to a config one level up, the
+// effective root returned by snapshotConfig must be the config's
+// directory (matching the CLI's rootDirFromConfig). Otherwise
+// ignore globs / RootDir-relative rule behavior drift between LSP
+// and `mdsmith check`.
+func TestSnapshotConfigRootMatchesConfigDir(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	sub := repo + "/sub"
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	require.NoError(t, writeFile(repo+"/.mdsmith.yml", "rules: {}\n"))
+
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = sub
+	s.configMu.Unlock()
+	s.settingsMu.Lock()
+	s.settings.ConfigPath = repo + "/.mdsmith.yml"
+	s.settingsMu.Unlock()
+	s.reloadConfig()
+
+	_, path, root := s.snapshotConfig()
+	assert.Equal(t, repo+"/.mdsmith.yml", path)
+	assert.Equal(t, repo, root, "root must follow the config file, not the workspace folder")
+}
+
+// When no config is loaded, snapshotConfig falls back to the
+// workspace folder root that initialize was given.
+func TestSnapshotConfigRootFallsBackToWorkspace(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig() // no config in dir → configPath stays empty
+
+	_, path, root := s.snapshotConfig()
+	assert.Equal(t, "", path)
+	assert.Equal(t, dir, root)
+}
+
+func TestRunReturnsOnContextCancel(t *testing.T) {
+	t.Parallel()
+	r, _ := io.Pipe()
+	s := New(Options{Reader: r, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := s.Run(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestFetchClientSettingsAppliesResponse(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	deliverPendingResponse(t, s,
+		json.RawMessage(`[{"run":"onType","config":"/tmp/x.yml"}]`), nil)
+	awaitDone(t, done)
+
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	assert.Equal(t, "onType", s.settings.Run)
+	assert.Equal(t, "/tmp/x.yml", s.settings.ConfigPath)
+}
+
+func TestFetchClientSettingsIgnoresErrorResponse(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	deliverPendingResponse(t, s, nil, &responseError{Code: -32000, Message: "fail"})
+	awaitDone(t, done)
+	// Run should remain at the default; we just verify no panic.
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	assert.Equal(t, runOnSave, s.settings.Run)
+}
+
+func TestDidChangeWatchedFilesRelintsOpenDocs(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/watched.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\ndirty   \n"},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	h.notify("workspace/didChangeWatchedFiles", didChangeWatchedFilesParams{
+		Changes: []fileEvent{{URI: "file:///workspace/.mdsmith.yml", Type: 2}},
+	})
+
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+	assert.Equal(t, uri, p.URI)
+}
+
+func TestDidChangeWatchedFilesIgnoresUnrelatedFiles(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	// Unrelated file: must not crash, no notification expected.
+	h.notify("workspace/didChangeWatchedFiles", didChangeWatchedFilesParams{
+		Changes: []fileEvent{{URI: "file:///workspace/other.txt", Type: 2}},
+	})
+	// Give the server a moment to process. We assert no diagnostics arrive.
+	select {
+	case n := <-h.notifications:
+		t.Fatalf("unexpected notification: %s", n.Method)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// TestHandleDidChangeConfigurationRelintsOpenDocs verifies that a
+// configuration-change notification triggers a re-lint of every open
+// document — but only after the new settings actually land. The
+// handler kicks off fetchClientSettings asynchronously; once the
+// client replies (or, here, we inject a synthetic reply) the lint
+// pass fires.
+func TestHandleDidChangeConfigurationRelintsOpenDocs(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	s.handleDidChangeConfiguration(context.Background())
+
+	// Drive the goroutine: wait for the pending response slot to
+	// appear, then deliver a settings reply that keeps run=onType.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		s.pendingRespMu.Lock()
+		var key string
+		for k := range s.pendingResp {
+			key = k
+		}
+		s.pendingRespMu.Unlock()
+		if key != "" {
+			s.deliverResponse(key, rpcResponse{
+				Result: json.RawMessage(`[{"run":"onType"}]`),
+			})
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// The post-fetch re-lint runs synchronously inside the
+	// goroutine; poll for the resulting publishDiagnostics frame.
+	for time.Now().Before(deadline.Add(2 * time.Second)) {
+		if strings.Contains(buf.String(), "MDS006") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("never saw MDS006 after settings landed; buffer: %s", buf.String())
+}
+
+func TestDebouncedLintCollapsesRapidChanges(t *testing.T) {
+	t.Parallel()
+	h := newDebouncedHarness(t, 50*time.Millisecond)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/debounce.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\nclean\n"},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	for i, txt := range []string{"# Hi\n\ndirty1   \n", "# Hi\n\ndirty2   \n", "# Hi\n\nfinal   \n"} {
+		h.notify("textDocument/didChange", didChangeTextDocumentParams{
+			TextDocument:   versionedTextDocumentIdentifier{URI: uri, Version: i + 2},
+			ContentChanges: []textDocumentContentChangeEvent{{Text: txt}},
+		})
+	}
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+	assert.Equal(t, uri, p.URI)
+	var saw006 bool
+	for _, d := range p.Diagnostics {
+		if d.Code == "MDS006" {
+			saw006 = true
+			break
+		}
+	}
+	assert.True(t, saw006)
+}
+
+// TestDidSaveLintsWhenRunOnSave verifies that save events still
+// produce diagnostics when run=onSave.
+func TestDidSaveLintsWhenRunOnSave(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	// Reset to onSave to exercise the save-only path.
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOnSave
+	h.srv.settingsMu.Unlock()
+
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/save.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\ndirty   \n"},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	h.notify("textDocument/didSave", map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	})
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var p publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &p))
+	assert.Equal(t, uri, p.URI)
+}
+
+// TestRunOffSuppressesLint pins the contract that flipping
+// mdsmith.run to "off" stops the server from publishing further
+// diagnostics on subsequent didChange events. The initial open is
+// linted under whatever mode was active at didOpen (here the test
+// harness's onType default), so we await + drop that publish before
+// flipping the setting; the assertion is that no further publish
+// arrives during the brief watch window. scheduleLint's runOff
+// short-circuit covers didOpen too — see the runMode docs for the
+// full table.
+func TestRunOffSuppressesLint(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/off.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: "# Hi\n\nclean\n"},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Switch run mode to off.
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+
+	h.notify("textDocument/didChange", didChangeTextDocumentParams{
+		TextDocument:   versionedTextDocumentIdentifier{URI: uri, Version: 2},
+		ContentChanges: []textDocumentContentChangeEvent{{Text: "# Hi\n\ndirty   \n"}},
+	})
+	select {
+	case n := <-h.notifications:
+		t.Fatalf("unexpected diagnostic notification when run=off: %s", n.Method)
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func TestUriToPathRoundTrip(t *testing.T) {
+	t.Parallel()
+	// The drive-letter strip is gated on runtime.GOOS, so the
+	// expected output for `file:///C:/...` differs across platforms.
+	driveURI := "file:///C:/Users/x/foo.md"
+	driveWant := "/C:/Users/x/foo.md"
+	if runtime.GOOS == "windows" {
+		driveWant = "C:/Users/x/foo.md"
+	}
+	tests := []struct {
+		uri  string
+		want string
+	}{
+		{"file:///tmp/foo.md", "/tmp/foo.md"},
+		{driveURI, driveWant},
+		{"https://example.com", ""},
+		{"untitled:Untitled-1", ""},
+	}
+	for _, tc := range tests {
+		assert.Equal(t, tc.want, uriToPath(tc.uri), "uri=%s", tc.uri)
+	}
+}
+
+func TestUriToPathLeavesNonDriveColonPathUnchanged(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix-only: drive-letter check would fire on Windows")
+	}
+	// On Unix, a path like `/a:/tmp/file.md` is a perfectly valid
+	// absolute path. The drive-letter heuristic must not strip its
+	// leading slash; otherwise the result becomes a relative path
+	// that loses its anchoring.
+	got := uriToPath("file:///a:/tmp/file.md")
+	assert.Equal(t, "/a:/tmp/file.md", got)
+}
+
+func TestHasDriveLetterPrefix(t *testing.T) {
+	t.Parallel()
+	assert.True(t, hasDriveLetterPrefix("/C:/foo"))
+	assert.True(t, hasDriveLetterPrefix("/c:/foo"))
+	assert.True(t, hasDriveLetterPrefix("/Z:"))
+	assert.False(t, hasDriveLetterPrefix("/0:/foo"))
+	assert.False(t, hasDriveLetterPrefix("/abc:/foo"))
+	assert.False(t, hasDriveLetterPrefix("C:/foo"))
+	assert.False(t, hasDriveLetterPrefix(""))
+}
+
+func TestUriToPathLocalhostHostIsTreatedAsEmpty(t *testing.T) {
+	t.Parallel()
+	// RFC 8089 §3: "localhost" host is equivalent to an empty
+	// host, so file://localhost/tmp/foo.md must resolve identically
+	// to file:///tmp/foo.md.
+	got := uriToPath("file://localhost/tmp/foo.md")
+	assert.Equal(t, "/tmp/foo.md", got)
+}
+
+func TestUriToPathRemoteHostRejectedOnUnix(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("UNC paths only meaningful on Windows")
+	}
+	// A non-empty, non-localhost host produces a UNC path on
+	// Windows; on Unix we have no way to mount a remote share, so
+	// uriToPath returns "" and the caller skips the document.
+	got := uriToPath("file://server/share/foo.md")
+	assert.Empty(t, got)
+}
+
+// Cover the Windows branches of uriToPath from any platform by
+// driving uriToPathOnOS directly with goos="windows".
+func TestUriToPathOnWindowsHostBecomesUNC(t *testing.T) {
+	t.Parallel()
+	got := uriToPathOnOS("file://server/share/foo.md", "windows")
+	// Windows UNC join produces \\server\share\foo.md (filepath.Clean
+	// is platform-dependent; on Linux it returns / separators, but
+	// the leading double-backslash and host segment are what matter).
+	assert.Contains(t, got, "server")
+	assert.Contains(t, got, "share")
+	assert.Contains(t, got, "foo.md")
+}
+
+func TestUriToPathOnWindowsStripsDriveLetterSlash(t *testing.T) {
+	t.Parallel()
+	got := uriToPathOnOS("file:///C:/Users/me/foo.md", "windows")
+	// The leading slash before "C:" is stripped on Windows so the
+	// path is a real Windows path. Use ToSlash to make the assertion
+	// portable across the test runner's platform.
+	assert.Equal(t, "C:/Users/me/foo.md", filepath.ToSlash(got))
+}
+
+func TestUriToPathOnLinuxLeavesDriveLetterAlone(t *testing.T) {
+	t.Parallel()
+	// On non-Windows the drive-letter rewrite must not fire — the
+	// path stays as-is, including the leading slash.
+	got := uriToPathOnOS("file:///C:/Users/me/foo.md", "linux")
+	assert.Equal(t, "/C:/Users/me/foo.md", got)
+}
+
+func TestIsFixableUsesRegistry(t *testing.T) {
+	t.Parallel()
+	rules := rule.All()
+	assert.True(t, isFixable(rules, "no-trailing-spaces"))
+	assert.False(t, isFixable(rules, "no-such-rule"))
+}
+
+func TestDocumentStoreOpenURIs(t *testing.T) {
+	t.Parallel()
+	s := newDocumentStore()
+	s.set("file:///a", &document{uri: "file:///a", path: "/a"})
+	s.set("file:///b", &document{uri: "file:///b", path: "/b"})
+	got := s.openURIs()
+	assert.ElementsMatch(t, []string{"file:///a", "file:///b"}, got)
+}
+
+func TestPickRootPrefersWorkspaceFolder(t *testing.T) {
+	t.Parallel()
+	fallback := "file:///fallback"
+	legacy := "file:///legacy"
+	got := pickRoot(initializeParams{
+		WorkspaceFolders: []workspaceFolder{{URI: "file:///ws/root", Name: "ws"}},
+		RootURI:          &fallback,
+	})
+	assert.Equal(t, "/ws/root", got)
+
+	got = pickRoot(initializeParams{RootURI: &legacy})
+	assert.Equal(t, "/legacy", got)
+
+	got = pickRoot(initializeParams{})
+	assert.Equal(t, "", got)
+}
+
+func TestWantsKind(t *testing.T) {
+	t.Parallel()
+	assert.True(t, wantsKind(nil, "quickfix"))
+	assert.True(t, wantsKind([]string{"quickfix"}, "quickfix"))
+	assert.True(t, wantsKind([]string{"source"}, "source.fixAll.mdsmith"))
+	assert.False(t, wantsKind([]string{"refactor"}, "quickfix"))
+}
+
+func TestDocumentEndPositionTrailingNewline(t *testing.T) {
+	t.Parallel()
+	endLine, endChar := documentEndPosition([]byte("hello\nworld\n"))
+	assert.Equal(t, 2, endLine)
+	assert.Equal(t, 0, endChar)
+}
+
+func TestDocumentEndPositionNoTrailingNewline(t *testing.T) {
+	t.Parallel()
+	endLine, endChar := documentEndPosition([]byte("hello\nworld"))
+	assert.Equal(t, 1, endLine)
+	assert.Equal(t, 5, endChar)
+}
+
+func TestDocumentEndPositionEmpty(t *testing.T) {
+	t.Parallel()
+	endLine, endChar := documentEndPosition(nil)
+	assert.Equal(t, 0, endLine)
+	assert.Equal(t, 0, endChar)
+}
+
+func TestReloadConfigEmptyRoot(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.reloadConfig()
+	cfg, _, _ := s.snapshotConfig()
+	assert.NotNil(t, cfg, "expected default config when no root is set")
+}
+
+func TestReloadConfigDiscoverInTempDir(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(dir+"/.mdsmith.yml", "rules:\n  line-length: false\n"))
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg)
+	assert.Equal(t, dir+"/.mdsmith.yml", path)
+}
+
+func TestReloadConfigOverridePath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfgPath := dir + "/custom.yml"
+	require.NoError(t, writeFile(cfgPath, "rules:\n  line-length: false\n"))
+
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.settingsMu.Lock()
+	s.settings.ConfigPath = cfgPath
+	s.settingsMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg)
+	assert.Equal(t, cfgPath, path)
+}
+
+func TestReloadConfigOverridePathInvalidUsesDefaults(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.settingsMu.Lock()
+	s.settings.ConfigPath = "/no/such/path.yml"
+	s.settingsMu.Unlock()
+	s.reloadConfig()
+	cfg, path, _ := s.snapshotConfig()
+	require.NotNil(t, cfg, "expected fallback to defaults on missing override")
+	assert.Empty(t, path)
+}
+
+// writeFile is a tiny test helper that writes a file.
+func writeFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func TestSeverityForMappings(t *testing.T) {
+	t.Parallel()
+	// lint.Warning maps to severityWarning; everything else (including
+	// Error and any future severity) defaults to severityError, since
+	// LSP only knows error/warning/info/hint and we conservatively
+	// elevate unknown severities.
+	assert.Equal(t, severityWarning, severityFor("warning"))
+	assert.Equal(t, severityError, severityFor("error"))
+	assert.Equal(t, severityError, severityFor("note"))
+}
+
+func TestCurrentLineBytesOutOfRange(t *testing.T) {
+	t.Parallel()
+	lines := [][]byte{[]byte("first"), []byte("second")}
+	assert.Equal(t, []byte("first"), currentLineBytes(lines, 1))
+	assert.Equal(t, []byte("second"), currentLineBytes(lines, 2))
+	assert.Nil(t, currentLineBytes(lines, 0))
+	assert.Nil(t, currentLineBytes(lines, 99))
+}
+
+func TestSplitLines(t *testing.T) {
+	t.Parallel()
+	// Empty input → 1-element slice with an empty line, matching
+	// bytes.Split's contract and therefore lint.File.Lines. The
+	// LSP toLSP path uses currentLineBytes(lines, n) with 1-based
+	// line numbers, so an empty buffer must report at least one
+	// line or a diagnostic anchored at line 1 would fall through
+	// the out-of-range guard and clamp to the wrong column.
+	assert.Equal(t, [][]byte{nil}, splitLines(nil))
+	assert.Equal(t, [][]byte{nil}, splitLines([]byte{}))
+	// No trailing newline → N parts.
+	assert.Equal(t, [][]byte{[]byte("a"), []byte("b")}, splitLines([]byte("a\nb")))
+	// Trailing newline → N+1 parts (preserves the empty line so
+	// indexing matches lint.File.Lines / bytes.Split).
+	assert.Equal(t,
+		[][]byte{[]byte("a"), []byte("b"), {}},
+		splitLines([]byte("a\nb\n")))
+	// CRLF endings strip per-line CR.
+	assert.Equal(t, [][]byte{[]byte("a"), []byte("b")}, splitLines([]byte("a\r\nb")))
+}
+
+func TestUtf16FromByteOffsetSurrogatePair(t *testing.T) {
+	t.Parallel()
+	// A non-BMP rune (\U0001F600 — 😀) is encoded as 4 UTF-8 bytes
+	// and 2 UTF-16 code units. The trailing 'x' is one of each.
+	line := []byte("😀x")
+	assert.Equal(t, 0, utf16FromByteOffset(line, 0))
+	assert.Equal(t, 2, utf16FromByteOffset(line, 4)) // after the emoji
+	assert.Equal(t, 3, utf16FromByteOffset(line, 5)) // after the 'x'
+	// Out-of-range byte offsets clamp to the line's UTF-16 length
+	// rather than overflowing.
+	assert.Equal(t, 3, utf16FromByteOffset(line, 999))
+}
+
+func TestUtf16FromByteOffsetClampsNegative(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 0, utf16FromByteOffset([]byte("hello"), -1))
+}
+
+// TestToLSPMultiByteRuneBeforeColumn pins the byte-vs-rune fix for
+// lint.Diagnostic.Column. The column is a 1-based UTF-8 byte
+// position, so a diagnostic anchored "after the é" must report a
+// UTF-16 character offset that accounts for the 2-byte encoding of
+// é but only 1 UTF-16 unit. Treating Column as a rune offset would
+// have produced character 2 (off by one too far) in this scenario.
+func TestToLSPMultiByteRuneBeforeColumn(t *testing.T) {
+	t.Parallel()
+	// "é" is 0xC3 0xA9 in UTF-8 (2 bytes, 1 UTF-16 unit). The 'x'
+	// starts at byte offset 2 → mdsmith Column = 3 (1-based).
+	line := []byte("éx")
+	got := toLSP(
+		lint.Diagnostic{Line: 1, Column: 3, RuleID: "MDS001", Severity: lint.Error},
+		[][]byte{line},
+	)
+	assert.Equal(t, 1, got.Range.Start.Character,
+		"Column 3 (byte offset 2 = after é) should map to UTF-16 character 1")
+}
+
+// TestToLSPSurrogatePairBeforeColumn pins the same byte-offset
+// contract for runes that take 2 UTF-16 code units (non-BMP).
+func TestToLSPSurrogatePairBeforeColumn(t *testing.T) {
+	t.Parallel()
+	// "😀" is 4 UTF-8 bytes / 2 UTF-16 units. Column 5 = byte
+	// offset 4 = after the emoji.
+	line := []byte("😀x")
+	got := toLSP(
+		lint.Diagnostic{Line: 1, Column: 5, RuleID: "MDS001", Severity: lint.Error},
+		[][]byte{line},
+	)
+	assert.Equal(t, 2, got.Range.Start.Character,
+		"after a non-BMP rune the start character should advance by 2 UTF-16 units")
+}
+
+func TestFrontMatterEnabledExplicit(t *testing.T) {
+	t.Parallel()
+	// nil cfg → default true.
+	assert.True(t, frontMatterEnabled(nil))
+	// nil pointer → default true.
+	cfg := &config.Config{}
+	assert.True(t, frontMatterEnabled(cfg))
+	// Explicit false.
+	f := false
+	cfg.FrontMatter = &f
+	assert.False(t, frontMatterEnabled(cfg))
+	// Explicit true.
+	tr := true
+	cfg.FrontMatter = &tr
+	assert.True(t, frontMatterEnabled(cfg))
+}
+
+func TestDispatchRawIgnoresInvalidJSON(t *testing.T) {
+	t.Parallel()
+	srv := New(Options{Reader: nil, Writer: io.Discard})
+	// Should not panic on invalid JSON.
+	srv.dispatchRaw(context.Background(), []byte("not json"))
+}
+
+func TestDispatchRawRejectsWrongVersion(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	srv := New(Options{Reader: nil, Writer: &buf})
+	srv.dispatchRaw(context.Background(), []byte(`{"jsonrpc":"1.0","id":1,"method":"x"}`))
+	out := buf.String()
+	assert.Contains(t, out, "jsonrpc must be 2.0")
+}
+
+func TestRunModeFallsBackOnUnknown(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.settingsMu.Lock()
+	s.settings.Run = "garbage-mode"
+	s.settingsMu.Unlock()
+	assert.Equal(t, runOnSave, s.runMode())
+}
+
+// Regression: catalog/toc/include used to be excluded from
+// per-diagnostic Quick Fix actions on the (incorrect) theory
+// that their fixes "invite partial regenerations". They produce
+// whole-file fixes the same way every other rule does — and the
+// action title says "Fix all <rule> with mdsmith" already — so
+// there's no scope ambiguity. Excluding them left users with
+// only the AI extension's "Fix" entry visible in the lightbulb
+// menu when clicking a stale catalog/toc/include diagnostic.
+func TestQuickFixEditForCatalogProducesEdit(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	stale := []byte("# Doc\n\n<?catalog\nglob: [\"a.md\"]\n?>\nold body\n<?/catalog?>\n")
+	doc := &document{path: "x.md", text: stale}
+	edit := s.quickFixEditFor("catalog", doc, cfg, "", "file:///x.md")
+	require.NotNil(t, edit, "catalog must surface a quick-fix action; "+
+		"users expect mdsmith fix in the Quick Fix lightbulb menu")
+	require.Contains(t, edit.Changes, "file:///x.md")
+}
+
+func TestQuickFixEditForUnknownRule(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "x.md", text: []byte("# Hi\n")}
+	edit := s.quickFixEditFor("no-such-rule", doc, cfg, "", "file:///x.md")
+	assert.Nil(t, edit)
+}
+
+func TestQuickFixEditForNoOpReturnsNil(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	// Buffer has no trailing-spaces violations, so the fix is a no-op.
+	doc := &document{path: "x.md", text: []byte("# Hi\n\nclean line\n")}
+	edit := s.quickFixEditFor("no-trailing-spaces", doc, cfg, "", "file:///x.md")
+	assert.Nil(t, edit, "no-op fix should not surface as a code action")
+}
+
+// TestComputeCodeActionsDedupesPerRule pins the perf invariant that
+// N diagnostics from the same rule trigger only one fix.SourceWithRules
+// pass. Without dedup, the codeAction request would re-run the fix
+// per-diagnostic and blow the latency budget on noisy files.
+// TestHandleCodeActionRespectsIgnoreList pins the contract that
+// VS Code's `source.fixAll.mdsmith` (which can fire on save even
+// when no diagnostics were published) does not rewrite a buffer
+// that the project's ignore globs would skip in `mdsmith fix`.
+func TestHandleCodeActionRespectsIgnoreList(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+
+	// Wire a config that ignores the doc's path; share rootDir so
+	// the relative path inside computeCodeActions matches the glob.
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.Ignore = []string{"ignored.md"}
+	s.configMu.Lock()
+	s.config = cfg
+	s.rootDir = "/repo"
+	s.configMu.Unlock()
+	s.docs.set("file:///repo/ignored.md", &document{
+		uri:  "file:///repo/ignored.md",
+		path: "/repo/ignored.md",
+		text: []byte("# Hi\n\ndirty   \n"),
+	})
+
+	body, _ := json.Marshal(codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///repo/ignored.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{{
+				Code: "MDS006",
+				Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+			}},
+		},
+	})
+	s.handleCodeAction(&requestMessage{ID: json.RawMessage(`1`), Params: body})
+	// Empty action array — no quick fixes, no fix-all.
+	assert.Contains(t, buf.String(), `"result":[]`)
+}
+
+func TestComputeCodeActionsDedupesPerRule(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{
+		path: "x.md",
+		text: []byte("# Hi\n\ndirty1   \ndirty2   \ndirty3   \n"),
+	}
+	// Three diagnostics, all from no-trailing-spaces.
+	mkDiag := func() Diagnostic {
+		return Diagnostic{
+			Code: "MDS006",
+			Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+		}
+	}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{mkDiag(), mkDiag(), mkDiag()},
+			Only:        []string{kindQuickFix},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	require.Len(t, actions, 3, "one quickfix action per diagnostic")
+	// All three actions must reference the same WorkspaceEdit so the
+	// fix only runs once.
+	for i := 1; i < len(actions); i++ {
+		assert.Same(t, actions[0].Edit, actions[i].Edit,
+			"quickfix actions for the same rule must share the cached edit")
+	}
+	for _, a := range actions {
+		assert.Equal(t, "Fix all no-trailing-spaces with mdsmith", a.Title)
+	}
+}
+
+func TestRunLintIgnoredFile(t *testing.T) {
+	t.Parallel()
+	// runLint publishes empty diagnostics for files matched by
+	// cfg.Ignore. We use a configMu-locked ignore list and a
+	// in-memory writer so we can inspect what the server emitted.
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.Ignore = []string{"**/ignored.md"}
+	s.configMu.Lock()
+	s.config = cfg
+	s.configMu.Unlock()
+	s.docs.set("file:///x/ignored.md", &document{
+		uri: "file:///x/ignored.md", path: "x/ignored.md", text: []byte("# Hi\n"),
+	})
+	s.runLint("file:///x/ignored.md")
+	out := buf.String()
+	assert.Contains(t, out, `"diagnostics":[]`)
+}
+
+// Regression: surfaceForeignDiagnostics writes one
+// window/logMessage per foreign diagnostic, with a "<file>:<line>
+// <message> [<rule>]" prefix the user can use to navigate to the
+// actual config-file issue.
+func TestSurfaceForeignDiagnosticsEmitsLogMessage(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.surfaceForeignDiagnostics("file:///doc.md", []lint.Diagnostic{
+		{File: "/repo/.mdsmith.yml", Line: 7, Message: "bad value", RuleName: "directory-structure"},
+	})
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "/repo/.mdsmith.yml:7")
+	assert.Contains(t, out, "bad value")
+	assert.Contains(t, out, "[directory-structure]")
+	// Default severity (zero value) is Error → MessageType 1.
+	assert.Contains(t, out, `"type":1`)
+}
+
+// Regression: surfaceForeignDiagnostics must preserve severity
+// in the window/logMessage Type field, otherwise warnings show
+// up as errors in the editor's output channel.
+func TestSurfaceForeignDiagnosticsPreservesWarningSeverity(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.surfaceForeignDiagnostics("file:///doc.md", []lint.Diagnostic{
+		{File: "/repo/.mdsmith.yml", Line: 3, Message: "soft hint",
+			RuleName: "directory-structure", Severity: lint.Warning},
+	})
+	out := buf.String()
+	// MessageType.Warning is 2 per LSP §3.18.1.
+	assert.Contains(t, out, `"type":2`)
+	assert.NotContains(t, out, `"type":1`,
+		"Warning severity must not surface as messageTypeError")
+}
+
+// Regression: runLint must not publish diagnostics after the
+// shutdown flag is set. A lint pass already in flight when the
+// client sends shutdown/exit could otherwise race the dispatch
+// loop's teardown and write to a half-closed pipe. The check
+// covers the publishDiagnostics, window/logMessage error
+// surfacing, and surfaceForeignDiagnostics paths.
+func TestRunLintSkipsPublishWhenShutdownAfterLint(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "/x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	// Simulate "shutdown arrived while engine.RunSource was
+	// running" by flipping the flag before runLint reaches its
+	// post-lint write block.
+	s.shutdown.Store(true)
+	s.runLint("file:///x.md")
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"runLint must drop the publish when shutdown was requested mid-flight")
+}
+
+// resolveMaxInputBytes returns the parse error to the client via
+// window/logMessage and falls back to the default cap so a typo
+// in `max-input-size:` doesn't break linting.
+func TestResolveMaxInputBytesSurfacesParseError(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.MaxInputSize = "not-a-size"
+
+	got := s.resolveMaxInputBytes(cfg)
+
+	assert.Equal(t, lint.DefaultMaxInputBytes, got, "parse failure must fall back to the default")
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "invalid max-input-size")
+	assert.Contains(t, out, "not-a-size")
+}
+
+// resolveMaxInputBytes honors `max-input-size: 0` as unlimited so
+// a workspace that opts out of the default 2 MB cap is respected
+// in the LSP path.
+func TestResolveMaxInputBytesUnlimited(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.MaxInputSize = "0"
+
+	got := s.resolveMaxInputBytes(cfg)
+
+	assert.Equal(t, int64(0), got, "max-input-size: 0 must propagate as 0 (unlimited)")
+}
+
+// Regression: partitionDocDiagnostics keeps document-scoped
+// diagnostics (matching File, or empty File) for the squiggle
+// publish path and peels off config-target findings (different
+// File) for window/logMessage. Without this filter, a config-file
+// finding would appear as a squiggle at its (file, line) inside
+// the markdown buffer that triggered the lint — wrong file, wrong
+// line.
+func TestPartitionDocDiagnosticsRoutesByFile(t *testing.T) {
+	t.Parallel()
+	docPath := "docs/foo.md"
+	configPath := "/repo/.mdsmith.yml"
+	diags := []lint.Diagnostic{
+		{File: docPath, Line: 1, RuleName: "line-length", Message: "too long"},
+		{File: "", Line: 2, RuleName: "old-rule", Message: "no file set"},
+		{File: configPath, Line: 7, RuleName: "directory-structure", Message: "config issue"},
+	}
+
+	forDoc, other := partitionDocDiagnostics(diags, docPath)
+
+	require.Len(t, forDoc, 2, "doc-scoped + empty-File entries belong to forDoc")
+	assert.Equal(t, "line-length", forDoc[0].RuleName)
+	assert.Equal(t, "old-rule", forDoc[1].RuleName)
+
+	require.Len(t, other, 1, "config-file diagnostic is routed to other")
+	assert.Equal(t, configPath, other[0].File)
+	assert.Equal(t, "directory-structure", other[0].RuleName)
+}
+
+// Regression: runLint must not silently swallow Runner.RunSource
+// errors. Triggering the size guard yields a Runner error; the
+// server should both publish empty diagnostics and emit a
+// window/logMessage so the editor can show actionable feedback.
+func TestRunLintSurfacesRunnerErrorsViaLogMessage(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.MaxInputSize = "16"
+	s.configMu.Lock()
+	s.config = cfg
+	s.configMu.Unlock()
+	s.docs.set("file:///x/big.md", &document{
+		uri:  "file:///x/big.md",
+		path: "x/big.md",
+		text: []byte("# H\n\nthis is well past sixteen bytes of body content\n"),
+	})
+	// Default MaxInputBytes (2 MiB) is too generous to trip the
+	// guard; runLint's runner pins to lint.DefaultMaxInputBytes,
+	// so we exercise the path by sending a buffer larger than 2 MiB.
+	bigSize := lint.DefaultMaxInputBytes + 1
+	s.docs.set("file:///x/huge.md", &document{
+		uri:  "file:///x/huge.md",
+		path: "x/huge.md",
+		text: bytes.Repeat([]byte("a"), int(bigSize)),
+	})
+	s.runLint("file:///x/huge.md")
+	out := buf.String()
+	assert.Contains(t, out, `"window/logMessage"`)
+	assert.Contains(t, out, "file too large")
+	assert.Contains(t, out, `"diagnostics":[]`)
+}
+
+func TestRunLintMissingDoc(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	// No-op when uri is unknown.
+	s.runLint("file:///none.md")
+}
+
+// safeBuffer is a goroutine-safe bytes.Buffer used as an LSP writer
+// when we want to inspect what was written.
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf = append(b.buf, p...)
+	return len(p), nil
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(b.buf)
+}
+
+func TestHandleDidOpenInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	// Should silently return on invalid JSON.
+	s.handleDidOpen(context.Background(), json.RawMessage("not json"))
+}
+
+func TestHandleDidOpenNonFileURI(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	body, _ := json.Marshal(didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: "untitled:Untitled-1", Text: ""},
+	})
+	s.handleDidOpen(context.Background(), body)
+	assert.Empty(t, s.docs.openURIs(), "non-file URI should be skipped")
+}
+
+func TestHandleDidChangeInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.handleDidChange(context.Background(), json.RawMessage("oops"))
+}
+
+func TestHandleDidChangeUnknownURI(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	body, _ := json.Marshal(didChangeTextDocumentParams{
+		TextDocument:   versionedTextDocumentIdentifier{URI: "file:///none.md", Version: 1},
+		ContentChanges: []textDocumentContentChangeEvent{{Text: "x"}},
+	})
+	s.handleDidChange(context.Background(), body)
+}
+
+func TestHandleDidChangeEmptyContentChanges(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.docs.set("file:///x.md", &document{uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n")})
+	body, _ := json.Marshal(didChangeTextDocumentParams{
+		TextDocument: versionedTextDocumentIdentifier{URI: "file:///x.md", Version: 2},
+	})
+	s.handleDidChange(context.Background(), body)
+}
+
+func TestHandleDidCloseInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.handleDidClose(json.RawMessage("oops"))
+}
+
+func TestHandleDidSaveInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.handleDidSave(context.Background(), json.RawMessage("oops"))
+}
+
+func TestHandleDidChangeWatchedFilesInvalidJSON(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.handleDidChangeWatchedFiles(context.Background(), json.RawMessage("oops"))
+}
+
+func TestDocumentStoreGetMissing(t *testing.T) {
+	t.Parallel()
+	s := newDocumentStore()
+	d, ok := s.get("file:///none")
+	assert.Nil(t, d)
+	assert.False(t, ok)
+}
+
+// fetchClientSettings returns silently when the transport's
+// writeRequest fails — the request never reached the client, so
+// there's nothing to wait for. This pins the early-return branch.
+func TestFetchClientSettingsWriteRequestFailureReturnsEarly(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: failingWriter{}})
+	s.fetchTimeout = 100 * time.Millisecond
+	// Should return promptly via the writeRequest err branch — far
+	// faster than the fetchTimeout deadline.
+	start := time.Now()
+	s.fetchClientSettings(context.Background())
+	assert.Less(t, time.Since(start), 50*time.Millisecond,
+		"writeRequest failure must return before the fetchTimeout fires")
+}
+
+// Regression: an `exit` notification without a prior successful
+// `shutdown` request must terminate Run with an error so the CLI
+// exits non-zero. LSP §3.16 marks this as an abnormal termination.
+func TestRunExitWithoutShutdownReturnsError(t *testing.T) {
+	t.Parallel()
+	body := `{"jsonrpc":"2.0","method":"exit"}`
+	frames := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(body), body)
+	s := New(Options{
+		Reader: strings.NewReader(frames),
+		Writer: io.Discard,
+		Rules:  rule.All(),
+	})
+	err := s.Run(context.Background())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errExitWithoutShutdown)
+}
+
+// Companion: a clean shutdown→exit pair returns nil from Run.
+func TestRunShutdownThenExitReturnsNil(t *testing.T) {
+	t.Parallel()
+	shutdownBody := `{"jsonrpc":"2.0","id":99,"method":"shutdown"}`
+	exitBody := `{"jsonrpc":"2.0","method":"exit"}`
+	frames := fmt.Sprintf(
+		"Content-Length: %d\r\n\r\n%sContent-Length: %d\r\n\r\n%s",
+		len(shutdownBody), shutdownBody, len(exitBody), exitBody,
+	)
+	s := New(Options{
+		Reader: strings.NewReader(frames),
+		Writer: io.Discard,
+		Rules:  rule.All(),
+	})
+	err := s.Run(context.Background())
+	require.NoError(t, err)
+}
+
+// Regression: LSP clients may legitimately send `processId: null`
+// (and `rootUri: null`). The previous concrete int/string types
+// made json.Unmarshal fail with "cannot unmarshal null into ...",
+// causing handleInitialize to reject the very first request.
+func TestHandleInitializeAcceptsNullProcessIDAndRootURI(t *testing.T) {
+	t.Parallel()
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize",` +
+		`"params":{"processId":null,"rootUri":null,"capabilities":{}}}`
+	frames := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(body), body)
+	var buf safeBuffer
+	s := New(Options{
+		Reader: strings.NewReader(frames),
+		Writer: &buf,
+		Rules:  rule.All(),
+	})
+	// Run blocks on stdin; the test reader hits EOF after the one
+	// frame, Run returns nil, and we inspect what was written.
+	err := s.Run(context.Background())
+	require.NoError(t, err)
+	out := buf.String()
+	// Successful initialize includes a result object, NOT an
+	// error response (which would carry "code":-32602).
+	assert.Contains(t, out, `"result":`)
+	assert.NotContains(t, out, "invalid initialize params")
+}
+
+// Run's dispatch loop checks transport.WriteError() at the TOP of
+// every iteration (in addition to after dispatch). Pre-record an
+// error on the transport before calling Run so the very first
+// iteration's top-of-loop check returns it, exercising the early
+// termination branch.
+func TestRunReturnsErrorRecordedBeforeFirstIteration(t *testing.T) {
+	t.Parallel()
+	r, w := io.Pipe()
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
+	s := New(Options{Reader: r, Writer: io.Discard, Rules: rule.All()})
+	// Pre-record the error directly on the transport so the next
+	// loop iteration's top-of-loop WriteError check returns it
+	// without needing a real write to fail first.
+	s.t.recordWriteErr(errors.New("pre-recorded transport failure"))
+
+	err := s.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "pre-recorded transport failure")
+}
+
+// Run's dispatch loop checks transport.WriteError() at the top of
+// every iteration so a write failure (e.g. EPIPE on the client's
+// stdout) terminates Run. Drive a couple of frames into a server
+// whose writer always fails; the second iteration's WriteError
+// check returns the recorded error.
+func TestRunReturnsRecordedWriteError(t *testing.T) {
+	t.Parallel()
+	// Two valid frames so the loop completes one full iteration
+	// (which records a write error from writeResponse) before the
+	// next iteration's WriteError check returns.
+	body1 := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}`
+	body2 := `{"jsonrpc":"2.0","method":"exit"}`
+	frames := fmt.Sprintf("Content-Length: %d\r\n\r\n%sContent-Length: %d\r\n\r\n%s",
+		len(body1), body1, len(body2), body2)
+
+	s := New(Options{
+		Reader: strings.NewReader(frames),
+		Writer: failingWriter{},
+		Rules:  rule.All(),
+	})
+	err := s.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "short write")
+}
+
+// deliverResponse drops on a full channel — it must not block,
+// because the dispatch loop calls it inline. Fill the buffer-1
+// channel and assert a second deliver is silently dropped instead
+// of deadlocking.
+func TestDeliverResponseDropsWhenChannelFull(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	id := `"deliver-full"`
+	ch := s.registerPendingResponse(id)
+	defer s.unregisterPendingResponse(id)
+
+	s.deliverResponse(id, rpcResponse{Result: json.RawMessage(`1`)})
+	// Second deliver lands on a full channel; the default branch
+	// drops it. The first message is still readable.
+	s.deliverResponse(id, rpcResponse{Result: json.RawMessage(`2`)})
+
+	select {
+	case got := <-ch:
+		assert.Equal(t, json.RawMessage(`1`), got.Result)
+	case <-time.After(time.Second):
+		t.Fatal("first deliverResponse never reached the channel")
+	}
+	// The second deliver was dropped, so the channel is now empty.
+	select {
+	case <-ch:
+		t.Fatal("second deliverResponse should have been dropped on a full channel")
+	default:
+	}
+}
+
+// fetchClientSettings has a configurable timeout. With no client
+// reply, the timeout branch runs and the call returns without
+// touching cached settings. We pin a 5 ms timeout so the test
+// completes quickly.
+func TestFetchClientSettingsTimeoutLeavesSettings(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.fetchTimeout = 5 * time.Millisecond
+	// Capture starting settings so we can confirm the timeout branch
+	// did not mutate them.
+	s.settingsMu.Lock()
+	s.settings = userSettings{Run: runOnSave}
+	s.settingsMu.Unlock()
+
+	s.fetchClientSettings(context.Background())
+
+	s.settingsMu.RLock()
+	got := s.settings
+	s.settingsMu.RUnlock()
+	assert.Equal(t, runOnSave, got.Run, "timeout branch must not change cached settings")
+}
+
+// Regression: documentStore.set must deep-copy text so a caller
+// that mutates its own slice afterwards cannot race with concurrent
+// get() readers observing the stored bytes.
+func TestDocumentStoreSetDeepCopiesText(t *testing.T) {
+	t.Parallel()
+	s := newDocumentStore()
+	original := []byte("hello world")
+	s.set("file:///x.md", &document{uri: "file:///x.md", path: "/x.md", text: original, version: 1})
+
+	// Mutate the caller's slice; the store must not see it.
+	original[0] = 'H'
+
+	got, ok := s.get("file:///x.md")
+	assert.True(t, ok)
+	assert.Equal(t, []byte("hello world"), got.text)
+}
+
+func TestUnregisterPendingResponseClearsSlot(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	ch := s.registerPendingResponse("1")
+	require.NotNil(t, ch)
+	s.unregisterPendingResponse("1")
+	// deliverResponse for an id with no waiter is a no-op.
+	s.deliverResponse("1", rpcResponse{})
+}
+
+func TestDeliverResponseUnknownIDIsNoOp(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	// Must not panic and must not block.
+	s.deliverResponse("999", rpcResponse{})
+}

@@ -2,6 +2,8 @@ package engine
 
 import (
 	"fmt"
+	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,6 +37,14 @@ type Runner struct {
 	// config-target rules (rule.ConfigTarget) are run once against a
 	// synthetic lint.File for this path before per-file processing.
 	ConfigPath string
+	// SourceFS, when non-nil, is set as lint.File.FS for RunSource so
+	// in-memory linting (e.g. an LSP buffer) sees the same filesystem
+	// view processFile constructs for on-disk runs. Rules like
+	// include/catalog short-circuit on a nil FS; without this hook
+	// LSP diagnostics drift from the CLI's. Run() (path-based)
+	// ignores this field and continues to derive FS from filepath.Dir
+	// per file.
+	SourceFS fs.FS
 	// gitignoreCache caches GitignoreMatchers by directory to avoid
 	// re-walking the filesystem for each file.
 	gitignoreCache map[string]*lint.GitignoreMatcher
@@ -163,22 +173,54 @@ func DedupeDiagnostics(diags []lint.Diagnostic) []lint.Diagnostic {
 	return out
 }
 
-// RunSource lints in-memory source bytes (e.g. from stdin) and returns a
-// Result. It creates a File via NewFileFromSource, determines the
-// effective config, and uses CheckRules (which includes clone+settings
-// logic and line-offset adjustment).
+// RunSource lints in-memory source bytes (e.g. from stdin or an LSP
+// buffer) and returns a Result. It creates a File via
+// NewFileFromSource, determines the effective config, and uses
+// CheckRules (which includes clone+settings logic and line-offset
+// adjustment).
 //
-// The File's FS field is left nil because in-memory source has no
-// meaningful filesystem context. Rules that access f.FS must handle nil
-// (include short-circuits when FS is nil). RootFS is set when RootDir
-// is configured for potential future use, but currently has no effect
-// on stdin since the include rule requires FS to be non-nil.
+// When Runner.SourceFS is non-nil, RunSource wires it onto the File
+// as f.FS so include/catalog/cross-file rules see the same
+// filesystem view processFile sets up for on-disk runs.
+//
+// f.GitignoreFunc is wired against a directory chosen in this order:
+//
+//  1. Runner.RootDir, when set (matches processFile's anchoring).
+//  2. filepath.Dir(path), when path is absolute and RootDir is empty.
+//
+// With a relative path and no RootDir (the bare `<stdin>` case),
+// GitignoreFunc stays nil — the matcher would have no meaningful
+// root to walk anyway. FS-aware rules still see SourceFS regardless.
+//
+// When SourceFS is nil (the stdin case), FS stays nil and rules that
+// require it short-circuit just as they did before.
 func (r *Runner) RunSource(path string, source []byte) *Result {
 	res := &Result{FilesChecked: 1}
 
 	// Run config-target rules once before processing the in-memory source,
 	// matching the behavior of Run() so config diagnostics surface via stdin.
+	// This must happen before the size guard so an oversized buffer cannot
+	// hide config-level errors that Run() would have surfaced regardless of
+	// any individual file's size.
 	r.runConfigTargetRules(res)
+
+	// Mirror the on-disk size cap that lint.ReadFileLimited /
+	// readStdinLimited apply to file and stdin reads. Without this
+	// guard, in-memory callers (LSP, other integrations) would parse
+	// arbitrarily large buffers and diverge from `mdsmith check`'s
+	// "file too large" failure mode.
+	if r.MaxInputBytes > 0 && r.MaxInputBytes != math.MaxInt64 &&
+		int64(len(source)) > r.MaxInputBytes {
+		// Match the on-disk error shape — processFile wraps
+		// lint.ReadFileLimited's "file too large" via
+		// `reading %q: %w`, so editor / log output stays
+		// uniform whether the source came from stdin, an LSP
+		// buffer, or a real file on disk.
+		res.Errors = append(res.Errors,
+			fmt.Errorf("reading %q: file too large (%d bytes, max %d)",
+				path, len(source), r.MaxInputBytes))
+		return res
+	}
 
 	r.log().Printf("file: %s", path)
 
@@ -188,8 +230,29 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		return res
 	}
 	f.MaxInputBytes = r.MaxInputBytes
-	if r.RootDir != "" {
+	if r.SourceFS != nil {
+		f.FS = r.SourceFS
+	}
+	// Mirror processFile's gitignore wiring so on-disk Run() and
+	// in-memory RunSource() agree on whether a path is ignored.
+	// Anchor at RootDir when set, otherwise fall back to the
+	// document directory (filepath.Dir(path)) when path is absolute.
+	// In-memory callers with neither RootDir nor an absolute path
+	// (the bare `<stdin>` case) leave GitignoreFunc nil — the
+	// matcher would have no meaningful root to walk anyway.
+	gitignoreDir := ""
+	switch {
+	case r.RootDir != "":
 		f.SetRootDir(r.RootDir)
+		gitignoreDir = r.RootDir
+	case filepath.IsAbs(path):
+		gitignoreDir = filepath.Dir(path)
+	}
+	if gitignoreDir != "" {
+		gd := gitignoreDir
+		f.GitignoreFunc = func() *lint.GitignoreMatcher {
+			return r.cachedGitignore(gd)
+		}
 	}
 
 	fmKinds, err := r.parseFrontMatterKinds(path, f.FrontMatter)

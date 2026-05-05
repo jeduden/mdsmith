@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.vsix
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+# build.ts copies the repo-root LICENSE here before packaging
+# (vsce requires LICENSE next to package.json). The repo root is
+# the single source of truth, so the staged copy is ignored.
+LICENSE
