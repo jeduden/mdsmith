@@ -37,9 +37,22 @@ Markdown stack they own.
   problem, recommended layouts, future bridge
 - [learn-from-mdbase.md](learn-from-mdbase.md) —
   systematic gap enumeration: every mdbase
-  capability mdsmith doesn't have, triaged into
-  in-scope / out-of-scope / in-flight, with a
-  per-gap mini-plan for the in-scope ones
+  capability mdsmith doesn't have, with a per-gap
+  mini-plan covering goal, sketch, surface,
+  effort, and the **trigger** under which
+  shipping it becomes worth the cost. mdsmith's
+  feature set is open; this doc maps candidates
+  rather than committing to any.
+- [aggregation-use-cases.md](aggregation-use-cases.md)
+  — six worked aggregation workloads (sprint
+  dashboard, reviewer-load report, knowledge-graph
+  backlinks, time-bucketed velocity, cross-type
+  join, real-time editor decoration), the cases
+  where a SQLite-class index pays vs. where it
+  doesn't, and a serious look at stateless-fast
+  (`fzf` / `ripgrep`-style) approaches as an
+  alternative to a persistent cache. The deepest
+  open design question for mdsmith.
 
 ## TL;DR
 
@@ -157,9 +170,15 @@ for combining both.
 
 For a design exercise, read
 [learn-from-mdbase.md](learn-from-mdbase.md):
-every gap mdsmith has against mdbase, triaged and
-sketched as a mini-plan. Twelve in-scope items
-plus rationale for the out-of-scope ones.
+every gap mdsmith has against mdbase, sketched as
+a mini-plan with a concrete trigger for when
+shipping it would pay. Then dive into
+[aggregation-use-cases.md](aggregation-use-cases.md)
+for the toughest open question — when, if ever,
+mdsmith should grow an index — including a
+serious look at stateless-fast (`fzf` /
+`ripgrep`-style) approaches as an alternative to
+a SQLite cache.
 
 ## Sources
 

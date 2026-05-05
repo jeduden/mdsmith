@@ -1,18 +1,17 @@
 ---
-summary: Systematic enumeration of mdbase capabilities mdsmith does not yet have, with a per-gap mini-plan covering goal, design sketch, surface, effort, and open questions.
+summary: Systematic enumeration of mdbase capabilities mdsmith does not yet have, with a per-gap mini-plan covering goal, design sketch, surface, effort, trigger, and open questions.
 status: 🔳
 ---
 # What mdsmith can learn from mdbase
 
 This document is a research exercise, not a roadmap.
-It enumerates every mdbase capability that mdsmith
-either lacks or expresses differently, triages each
-into in-scope / out-of-scope / already-in-flight,
-and sketches a mini-plan for the in-scope ones. The
-goal is to give a future maintainer a list of
-discrete, well-framed work items they can promote
-into actual `plan/<n>_*.md` files when the time
-comes.
+mdsmith does not have a closed feature set; it is
+evolving. Every gap below is a candidate direction.
+The point of the exercise is to map the candidates,
+sketch each one concretely enough to argue about,
+and name the **trigger** under which shipping it
+becomes worth the cost — not to declare any of them
+in or out.
 
 ## Method
 
@@ -20,100 +19,101 @@ comes.
 2. For each row where mdbase has a capability and
    mdsmith does not, note it as a gap with a short
    identifier (e.g. `S-1`, `Q-3`).
-3. Triage:
+3. For each gap, record:
 
-  - **In-scope** — fits the existing mdsmith
-     mission (lint, fix, generate over Markdown
-     files in a repo) and would benefit a real use
-     case from [use-cases.md](use-cases.md).
-  - **Out-of-scope** — would change what mdsmith
-     is. Note why and the principled alternative.
-  - **In-flight** — already covered by an open
-     plan or PR.
+  - an **effort** estimate (S / M / L: a day, a
+     week, a month)
+  - a **trigger**: a concrete condition under
+     which shipping the gap is worth the cost
+     (real user demand, a profiling result, a
+     dependency from another shipped feature, a
+     coherence pull from a subsystem)
+  - whether work is already in flight (linking
+     the open plan or PR)
 
-4. For each in-scope gap, write a mini-plan with:
+4. Write a mini-plan per gap with:
 
   - **Goal** — one sentence
+  - **Trigger** — when shipping becomes worth it
   - **Sketch** — proposed mechanism, including
      concrete syntax where it helps
   - **Surface** — what new config / CLI / output
      the user sees
-  - **Effort** — S / M / L (a day, a week, a
-     month)
+  - **Effort** — S / M / L
   - **Depends on** — gaps or existing plans this
      builds on
   - **Open questions** — things a real plan would
      have to settle
 
-## Triage tables
+## Capability tables
 
-Tables split by area for readability. Twelve
-in-scope gaps follow as mini-plans below; the
-out-of-scope and in-flight items get a brief
-rationale at the end.
+Tables split by area for readability. Each row
+names a candidate direction with effort and
+trigger; the mini-plan below carries the design
+sketch.
 
 ### Schema language (S)
 
-| ID  | Gap                                          | Status       | Priority |
-|-----|----------------------------------------------|--------------|----------|
-| S-1 | Inline schema in `kinds:`                    | in-scope     | high     |
-| S-2 | Named field-type taxonomy as CUE shortcuts   | in-scope     | medium   |
-| S-3 | Schema inheritance (`extends:`)              | in-scope     | medium   |
-| S-4 | Computed fields surfaced in catalog / query  | in-scope     | medium   |
-| S-5 | Generated values on write (ULID, timestamps) | out-of-scope | n/a      |
-| S-6 | Field deprecation flag                       | in-scope     | low      |
+| ID  | Gap                                          | Effort | Trigger / status                                            |
+|-----|----------------------------------------------|--------|-------------------------------------------------------------|
+| S-1 | Inline schema in `kinds:`                    | M      | one team asks for a schema without a separate `proto.md`    |
+| S-2 | Named field-type taxonomy as CUE shortcuts   | S      | S-1 lands and the YAML shorthand becomes useful             |
+| S-3 | Schema inheritance (`extends:`)              | S–M    | a project has three or more schemas with shared fields      |
+| S-4 | Computed fields surfaced in catalog / query  | M      | a real catalog wants a field derived from FM                |
+| S-5 | Generated values on write (ULID, timestamps) | M      | mdsmith grows a `create` or scaffolding subcommand          |
+| S-6 | Field deprecation flag                       | S      | a real schema migration needs to deprecate without breaking |
 
 ### File-to-kind matching (M)
 
-| ID  | Gap                                      | Status   | Priority |
-|-----|------------------------------------------|----------|----------|
-| M-1 | Field-presence kind assignment           | in-scope | high     |
-| M-2 | Field-value kind assignment (`where:`)   | in-scope | low      |
-| M-3 | `path-pattern` (validates and generates) | in-scope | medium   |
+| ID  | Gap                                      | Effort | Trigger / status                                                 |
+|-----|------------------------------------------|--------|------------------------------------------------------------------|
+| M-1 | Field-presence kind assignment           | S      | a project tags >100 files with `kinds:` boilerplate              |
+| M-2 | Field-value kind assignment (`where:`)   | S–M    | a project wants derived kinds (e.g. open-task vs archived-task)  |
+| M-3 | `path-pattern` (validates and generates) | S      | a project enforces filename conventions today via custom scripts |
 
 ### CRUD and rename (C)
 
-| ID  | Gap                            | Status       | Priority |
-|-----|--------------------------------|--------------|----------|
-| C-1 | Create typed file              | out-of-scope | n/a      |
-| C-2 | Update fields from CLI         | out-of-scope | n/a      |
-| C-3 | Delete with broken-ref warning | out-of-scope | n/a      |
-| C-4 | Atomic rename + ref rewrite    | in-scope     | high     |
-| C-5 | Batch ops with `--where`       | out-of-scope | n/a      |
-| C-6 | Dry-run mode for fix           | in-scope     | low      |
+| ID  | Gap                            | Effort | Trigger / status                                                           |
+|-----|--------------------------------|--------|----------------------------------------------------------------------------|
+| C-1 | Create typed file              | M      | a user-facing demand for scaffolding from inside mdsmith (e.g. agent loop) |
+| C-2 | Update fields from CLI         | M      | C-1 lands; consistency pulls update along                                  |
+| C-3 | Delete with broken-ref warning | S      | C-1 / C-2 ship; deletion completes the CRUD surface                        |
+| C-4 | Atomic rename + ref rewrite    | L      | rename pain shows up in real workflows (issue threads, agent retries)      |
+| C-5 | Batch ops with `--where`       | M      | a CRUD surface (C-1..C-4) needs scoping beyond globs                       |
+| C-6 | Dry-run mode for fix           | S      | first agent or CI user asks to preview changes                             |
 
 ### Links (L)
 
-| ID  | Gap                                   | Status          | Priority |
-|-----|---------------------------------------|-----------------|----------|
-| L-1 | Wikilink awareness                    | in-scope        | high     |
-| L-2 | ID-field link resolution              | out-of-scope    | n/a      |
-| L-3 | Auto-rewrite incoming links on rename | in-scope (=C-4) | high     |
-| L-4 | Backlinks subcommand                  | in-scope        | high     |
-| L-5 | Multi-hop link traversal in queries   | out-of-scope    | n/a      |
+| ID  | Gap                                   | Effort | Trigger / status                                                         |
+|-----|---------------------------------------|--------|--------------------------------------------------------------------------|
+| L-1 | Wikilink awareness                    | M      | the first Obsidian-vault user files a "wikilinks aren't validated" issue |
+| L-2 | ID-field link resolution              | M      | a project imposes its own ID system and wants link-by-ID                 |
+| L-3 | Auto-rewrite incoming links on rename | L      | (covered by C-4)                                                         |
+| L-4 | Backlinks subcommand                  | S      | first agent or doc-team request for "what links to X"                    |
+| L-5 | Multi-hop link traversal in queries   | M      | a project wants `[[A]] → asFile().status` semantics in `query`           |
 
 ### Query (Q)
 
-| ID  | Gap                                   | Status       | Priority |
-|-----|---------------------------------------|--------------|----------|
-| Q-1 | Sort (`--order-by`)                   | in-scope     | medium   |
-| Q-2 | Pagination (`--limit` / `--offset`)   | in-scope     | low      |
-| Q-3 | Body full-text search in query        | in-scope     | medium   |
-| Q-4 | Date arithmetic with duration strings | in-scope     | low      |
-| Q-5 | Aggregations (formulas, summaries)    | out-of-scope | n/a      |
-| Q-6 | Cross-file traversal in queries       | out-of-scope | n/a      |
-| Q-7 | Bases-compatible expression syntax    | in-scope     | low      |
+| ID  | Gap                                   | Effort | Trigger / status                                                |
+|-----|---------------------------------------|--------|-----------------------------------------------------------------|
+| Q-1 | Sort (`--order-by`)                   | S      | first script piping `query` through `sort` complains            |
+| Q-2 | Pagination (`--limit` / `--offset`)   | S      | first script wraps `query` with `head` / `tail`                 |
+| Q-3 | Body full-text search in query        | S–M    | first user request for FM + body filter combined                |
+| Q-4 | Date arithmetic with duration strings | M      | due-date / mtime queries become common in CI                    |
+| Q-5 | Aggregations (formulas, summaries)    | L      | a recurring "group plans by status" pattern shows up in user CI |
+| Q-6 | Cross-file traversal in queries       | M      | L-1 + L-4 ship; traversal becomes the obvious next step         |
+| Q-7 | Bases-compatible expression syntax    | M      | enough Obsidian users ask for it that two query languages pays  |
 
 ### Cache, watch, migrations, conformance, LSP
 
-| ID  | Gap                                    | Status          | Priority |
-|-----|----------------------------------------|-----------------|----------|
-| P-1 | SQLite-backed cache for large repos    | out-of-scope    | n/a      |
-| P-2 | Watch mode beyond LSP per-session      | out-of-scope    | n/a      |
-| V-1 | Migration manifests                    | out-of-scope    | n/a      |
-| X-1 | Spec-first / multi-impl model          | out-of-scope    | n/a      |
-| H-1 | LSP hover for rules / directives       | in-flight (122) | n/a      |
-| H-2 | LSP symbol navigation + call hierarchy | in-flight (131) | n/a      |
+| ID  | Gap                                    | Effort | Trigger / status                                                              |
+|-----|----------------------------------------|--------|-------------------------------------------------------------------------------|
+| P-1 | Persistent on-disk index               | L      | profiling on a real >5k-file repo shows the cold-start cost is the bottleneck |
+| P-2 | Watch mode beyond LSP per-session      | M      | a CLI workflow needs cross-process freshness (rare today)                     |
+| V-1 | Migration manifests                    | L      | mdsmith grows write-back to FM (S-5 / C-2) and breaking schema changes hurt   |
+| X-1 | Spec-first / multi-impl model          | XL     | a second implementation appears (fork, or upstream split); revisit then       |
+| H-1 | LSP hover for rules / directives       | —      | in-flight (plan 122)                                                          |
+| H-2 | LSP symbol navigation + call hierarchy | —      | in-flight (plan 131, PR #238)                                                 |
 
 ## Schema language plans
 
@@ -122,6 +122,10 @@ rationale at the end.
 **Goal.** Let `kinds:` carry a schema directly,
 without forcing every kind to point at a separate
 `proto.md`.
+
+**Trigger.** A team or contributor asks for an inline schema rather than
+maintaining a separate `proto.md` per kind, especially when the
+schema is small enough to read at a glance from the config.
 
 **Sketch.** Extend the kind config to accept an
 optional `schema:` block alongside (or instead of)
@@ -176,6 +180,10 @@ fragment composition)? Probably yes, for parity.
 **Goal.** Make CUE schemas more ergonomic by
 shipping reusable definitions for the common types
 mdbase names directly (date, datetime, enum, link).
+
+**Trigger.** S-1 lands and the YAML shorthand for common types (`date`,
+`email`, `url`) starts paying more than the cost of teaching
+users two ways to spell the same constraint.
 
 **Sketch.** Add a small CUE library
 `internal/cue/types.cue` that defines:
@@ -233,6 +241,10 @@ and grow from real use.
 **Goal.** Let one kind / schema extend another so
 common front-matter fields live in a base schema.
 
+**Trigger.** A project carries three or more schemas with overlapping
+required fields (e.g. all RFCs share `id`, `status`, `created`,
+`authors`) and the duplication has begun to drift.
+
 **Sketch.** Two parts:
 
 - **In `kinds:`** — `extends:` lists parent kinds
@@ -275,6 +287,10 @@ a field from other front-matter fields, surface
 the result in `<?catalog?>` columns and `mdsmith
 query`, and never persist it back to disk.
 
+**Trigger.** A real catalog or query case wants a field derived from FM
+rather than stored — for example `days_since_review` — strongly
+enough that users are working around the gap.
+
 **Sketch.** Computed fields live in the schema
 (inline or proto.md) under a `computed:` block:
 
@@ -313,6 +329,10 @@ out of scope.
 **Goal.** Let a schema mark a field deprecated;
 mdsmith warns when it appears in front matter.
 
+**Trigger.** A schema change needs to deprecate a field without breaking
+existing files, and the absence of a soft-deprecation signal
+forces a hard removal.
+
 **Sketch.** In the schema, `deprecated: true` on a
 field. MDS020 emits a Warning (not an Error) when
 the field is present.
@@ -342,6 +362,10 @@ schema:
 **Goal.** Auto-assign a kind when specific
 front-matter fields are present, removing the need
 for an explicit `kind:` tag.
+
+**Trigger.** A project tags more than ~100 files with `kinds:` boilerplate
+and the duplication is painful enough that auto-assignment by
+FM shape is worth a new mechanism.
 
 **Sketch.** Extend `kind-assignment:` with a
 `fields-present:` selector:
@@ -377,6 +401,10 @@ mdbase's "non-null required" semantics.
 expression over front matter, e.g. "files where
 status is 'open'".
 
+**Trigger.** A project wants derived kinds — `open-task` vs `archived-task`,
+draft vs published — and globs aren't expressive enough to
+capture the distinction.
+
 **Sketch.** Extend `kind-assignment:` with a
 `where:` selector that takes a CUE struct
 literal — same syntax as `mdsmith query`:
@@ -411,6 +439,10 @@ real use.
 that validates existing files (does the path
 match?) and templates new ones (where should a
 new file live?).
+
+**Trigger.** A project enforces filename conventions today via custom CI
+scripts and would benefit from declaring the pattern alongside
+the kind.
 
 **Sketch.** Add `path-pattern:` to a kind:
 
@@ -449,6 +481,10 @@ Match what mdbase does for portability.
 heavy vaults can use mdsmith without flagging
 every wikilink as text.
 
+**Trigger.** The first Obsidian-vault user files a "wikilinks aren't
+validated" issue, or a docs team adopts wikilinks for navigation
+and finds MDS027 silent.
+
 **Sketch.** Add a wikilink parser to the lint
 pipeline (alongside the existing Markdown link
 extractor in `internal/lint/`). Resolution rules
@@ -486,6 +522,11 @@ breaks Obsidian for users who want wikilinks.
 **Goal.** A `mdsmith refactor rename <old> <new>`
 subcommand that moves a file and rewrites every
 incoming link.
+
+**Trigger.** Rename pain shows up in real workflows — recurring PRs that
+touch tens of files for one rename, or agent retries looping on
+broken links — strongly enough that a one-shot refactor command
+pays.
 
 **Sketch.** New subcommand:
 
@@ -532,6 +573,10 @@ syntactically links.
 that lists every workspace file with a link to
 the target.
 
+**Trigger.** First agent or docs-team request for "what links to this file?"
+The link graph becomes load-bearing for navigation or impact
+analysis.
+
 **Sketch.** Reuses the link graph that MDS027
 already builds during a check pass:
 
@@ -569,6 +614,9 @@ covers the common case.
 **Goal.** Support `--order-by FIELD` and
 `--limit N` / `--offset N` on `mdsmith query`.
 
+**Trigger.** First script that pipes `mdsmith query` through `sort` / `head` /
+`tail` files an issue asking for native flags. Low bar; small fix.
+
 **Sketch.** New flags:
 
 ```bash
@@ -594,6 +642,10 @@ output unchanged.
 
 **Goal.** Filter files by body content as well as
 front matter.
+
+**Trigger.** First user asks for a query that combines FM filtering with body
+content — typically agents or CI scripts looking for `TODO`
+markers in scoped subsets of the corpus.
 
 **Sketch.** New flag `--body-contains REGEX`:
 
@@ -626,6 +678,10 @@ the next 7 days":
 ```bash
 mdsmith query 'due: <=time.Add(time.Now(), "7d24h")' tasks/
 ```
+
+**Trigger.** Due-date, mtime, or created-since queries become common in CI,
+and CUE's lack of duration arithmetic forces verbose timestamp
+construction.
 
 **Sketch.** Add a small CUE package
 `internal/cue/time.cue` that defines `Add`,
@@ -661,6 +717,10 @@ top-level `timezone:` config key.
 expressions in `mdsmith query`, so users coming
 from a vault don't have to learn CUE for simple
 filters.
+
+**Trigger.** Enough Obsidian users ask for Bases-style filters to overcome
+the cost of supporting two query languages. Likely never, but
+the sketch is here so a real request lands on solid ground.
 
 **Sketch.** Add a `--lang bases` flag:
 
@@ -701,6 +761,10 @@ translation pass, not a parallel implementation.
 **Goal.** Show what `mdsmith fix` would change
 without writing.
 
+**Trigger.** First agent or CI user asks to preview changes before writing —
+typically when agents run `mdsmith fix` autonomously and want a
+safety net.
+
 **Sketch.** New flag `--dry-run`:
 
 ```bash
@@ -723,32 +787,280 @@ write.
 
 **Open questions.** None.
 
-## Out-of-scope items: rationale
+## Mini-plans-lite for the heavier directions
 
-For each "out-of-scope" gap, a one-line reason and
-the principled alternative.
+Several directions cross the line from
+"read-and-fix" into write, persistence, or
+multi-impl territory. They are fully on the table;
+they just carry larger trade-offs and clearer
+triggers. Each gets a brief sketch and the
+condition under which it would pay.
 
-| ID  | Why not                                                                    | Alternative                                 |
-|-----|----------------------------------------------------------------------------|---------------------------------------------|
-| S-5 | mdsmith does not author files; agents and humans do                        | Use `mdbase create` for typed scaffolding   |
-| C-1 | mdsmith is lint-and-fix, not author-and-edit                               | Editor / agent / mdbase                     |
-| C-2 | Same as C-1                                                                | Same                                        |
-| C-3 | Same as C-1                                                                | Same                                        |
-| C-5 | Batch CRUD is out-of-scope; lint/fix already scopes by glob                | mdbase batch ops, or a shell loop           |
-| L-2 | ID-field resolution requires a canonical ID system mdsmith does not impose | Use mdbase if you need ID-keyed links       |
-| L-5 | Multi-hop traversal couples query with link graph; large complexity        | mdbase Bases queries with `asFile()`        |
-| Q-5 | Aggregations grow into a database surface mdsmith does not own             | mdbase Query+ formulas / summaries          |
-| Q-6 | Same coupling as L-5                                                       | Same                                        |
-| P-1 | Stateless re-read is a design feature: deterministic, no stale state       | mdbase SQLite cache for vault-scale work    |
-| P-2 | LSP per-session covers editor flows; persistent daemon adds risk           | LSP, plus mdbase watch mode for vault flows |
-| V-1 | Migrations require write-back to data files; mdsmith does not              | mdbase migrate manifests                    |
-| X-1 | mdsmith is the implementation; spec-first costs maintenance                | If forks happen, revisit                    |
+### S-5: Generated values on write
 
-The recurring theme: mdsmith owns the
-**read-and-fix-source** layer. Anything that wants
-to **author or edit data** crosses a category line.
-mdbase's CRUD-and-cache layer is the principled
-home for those features.
+**Goal.** Support `generated:` strategies (ULID,
+UUID, sequence, `now_on_write`) that fill a field
+when a typed file is created.
+
+**Trigger.** mdsmith grows a `create` or
+scaffolding subcommand (C-1) and users want
+ULID-keyed records or `created` timestamps filled
+automatically. Without C-1 there is no write
+moment for these to fire.
+
+**Sketch.** Schema field block adds
+`generated: ulid | uuid | sequence | now_on_write`.
+The create command applies the strategy at write
+time; the lint engine treats generated fields as
+present-in-effective-FM whether or not they are
+on disk.
+
+**Effort.** M after C-1.
+**Depends on.** C-1.
+
+### C-1: Create typed file (`mdsmith create`)
+
+**Goal.** Scaffold a new typed file from a kind's
+schema, filling defaults and generated values.
+
+**Trigger.** A user-facing demand for scaffolding
+from inside mdsmith — an agent loop that wants to
+issue one command, a docs team that wants a
+templated `new-rfc` flow without external tooling.
+
+**Sketch.** New `mdsmith create <kind> [path]`
+subcommand. Reads the kind's schema, prompts for
+required fields without defaults (or accepts
+`--field key=value`), writes the file atomically.
+The body uses the schema's heading template if
+present.
+
+**Effort.** M.
+**Depends on.** S-1 makes the schema legible
+inline; without it the command still works, just
+reads from `proto.md`.
+
+### C-2: Update fields from CLI
+
+**Goal.** Edit one or more FM fields in a file
+without opening an editor.
+
+**Trigger.** C-1 lands and consistency pulls
+update along. Or an agent loop wants to flip
+`status: open` → `status: done` programmatically.
+
+**Sketch.** New `mdsmith update <path> --field key=value`.
+Validates against the file's effective kind /
+schema before writing. Atomic write with mtime
+optimistic-concurrency check.
+
+**Effort.** M.
+**Depends on.** C-1 (shared write surface).
+
+### C-3: Delete with broken-ref warning
+
+**Goal.** Delete a file and warn about incoming
+references that will break.
+
+**Trigger.** C-1 / C-2 ship; deletion completes
+the CRUD surface. Without the other two it is a
+small odd one-off.
+
+**Sketch.** `mdsmith delete <path>` runs MDS027's
+link graph in reverse, lists incoming references,
+asks for confirmation (or `--force`), then
+removes the file.
+
+**Effort.** S after the link-graph work for L-4.
+**Depends on.** L-4.
+
+### C-5: Batch ops with `--where`
+
+**Goal.** Apply create / update / delete across
+files matching a query.
+
+**Trigger.** A CRUD surface (C-1..C-4) has
+shipped and users want to scope batch edits
+beyond what globs express.
+
+**Sketch.** `mdsmith update --where 'status: "open"' --field reviewer=alice`.
+Validates all matched files first, then applies;
+fails fast on validation errors unless `--continue`.
+`--dry-run` previews.
+
+**Effort.** M after C-2.
+**Depends on.** C-2, C-6.
+
+### L-2: ID-field link resolution
+
+**Goal.** Resolve `[[chen-2024]]` to a file
+whose `id_field` equals `chen-2024`, regardless
+of filename.
+
+**Trigger.** A project imposes its own ID system
+(citation keys, ticket IDs) and wants link-by-ID
+that survives renames.
+
+**Sketch.** Config knob
+`cross-file-reference-integrity.id-field: id`.
+When the link target has no path separator and
+no `.md` extension, MDS027 first tries ID-field
+match, then filename match. Same wikilink-style
+resolution rules as mdbase L4.
+
+**Effort.** M.
+**Depends on.** L-1 (the wikilink form is the
+primary user surface).
+
+### L-5: Multi-hop link traversal in queries
+
+**Goal.** Let `mdsmith query` walk a link to its
+target and read the target's FM, e.g.
+`assignee.asFile().role`.
+
+**Trigger.** L-1 + L-4 ship and users start asking
+"filter tasks by assignee.role" — i.e. queries
+that cross the link graph rather than just FM.
+
+**Sketch.** Add `.asFile()` to the CUE query
+namespace. Resolves the link in front matter,
+returns the target's effective FM as a struct.
+Depth limit (default 5). Null propagation on
+broken links.
+
+**Effort.** M.
+**Depends on.** L-1, L-4. Possibly P-1 for
+performance at scale (each hop reads another
+file).
+
+### Q-5: Aggregations (formulas, summaries)
+
+**Goal.** Group, count, sum, min/max, percentile
+across a query result set.
+
+**Trigger.** A recurring "group plans by status,
+count each" pattern shows up in user CI scripts —
+typically when teams use `mdsmith query` as a
+lightweight reporting layer.
+
+**Sketch.** A new flag combo, e.g.
+
+```bash
+mdsmith query 'kind: "plan"' \
+  --group-by status \
+  --aggregate count,priority:avg
+```
+
+Output is a tabular result, JSON-serializable.
+Reuses the in-memory result set produced by Q-1
+through Q-4.
+
+**Effort.** L.
+**Depends on.** Q-1 (sort), Q-3 (body filter).
+This is the strongest argument for an index: at
+scale, computing aggregations from a fresh parse
+pass per query is the costly pattern. See
+[the aggregation use cases doc](aggregation-use-cases.md)
+for a deeper exploration of where the index pays
+and where stateless approaches still hold up.
+
+### Q-6: Cross-file traversal in queries
+
+**Goal.** Query expressions that follow link
+fields into other files (the query-language form
+of L-5).
+
+**Trigger.** L-5 ships and users ask for the
+same in batch queries.
+
+**Sketch.** Same `.asFile()` accessor in CUE
+expressions, evaluated per-file with the depth
+limit.
+
+**Effort.** included in L-5.
+**Depends on.** L-5.
+
+### P-1: Persistent on-disk index
+
+**Goal.** A cache of parsed FM, link edges, and
+computed fields that survives across CLI runs.
+
+**Trigger.** Profiling on a real >5k-file repo
+shows the cold-start parse cost dominates wall
+time, OR an in-flight feature (Q-5 aggregations,
+L-4 backlinks at scale) makes per-run rebuild
+visibly slow. The deeper analysis below
+(*A closer look at P-1*) walks six implementation
+options and what would tip the choice.
+
+**Sketch.** See the next section.
+
+**Effort.** L.
+**Depends on.** Whichever feature triggers it.
+
+### P-2: Watch mode beyond LSP per-session
+
+**Goal.** A persistent watcher that reflects file
+changes into a shared cache or event stream
+between CLI invocations.
+
+**Trigger.** A CLI workflow needs cross-process
+freshness — for example, a long-running agent
+that fires `mdsmith query` repeatedly and the
+mdsmith side wants warm state. Today the LSP
+session covers editor cases.
+
+**Sketch.** Optional `mdsmith watch` daemon that
+runs alongside the project, exposing a Unix
+socket for queries. Other CLI invocations check
+for the socket, use it if present, fall back to
+stateless run otherwise.
+
+**Effort.** M.
+**Depends on.** P-1 (a daemon without a cache is
+just a re-runner).
+
+### V-1: Migration manifests
+
+**Goal.** Declare schema-version deltas and
+backfill expressions, applied via `mdsmith migrate`.
+
+**Trigger.** mdsmith grows write-back to FM
+(via S-5 / C-2), and breaking schema changes
+start hurting real projects with hundreds of
+already-typed files.
+
+**Sketch.** YAML manifests under a
+`<schemas>/_migrations/` folder. Each names
+`from_version`, `to_version`, and a list of
+field-level transforms (rename, default backfill,
+type coerce). `mdsmith migrate` walks files of
+the affected kinds and applies transforms with
+optimistic-concurrency mtime checks.
+
+**Effort.** L.
+**Depends on.** C-2.
+
+### X-1: Spec-first / multi-impl model
+
+**Goal.** Promote mdsmith's behavior to a
+specification so other implementations can
+conform.
+
+**Trigger.** A second implementation appears —
+either a fork that needs to merge back, or an
+upstream split (e.g. a Rust port). Until then
+the cost of spec maintenance has no payoff.
+
+**Sketch.** Extract the rule semantics, schema
+DSL, query language, and directive grammar into
+a versioned spec under `spec/`. Add a
+conformance test suite in YAML. Tier
+implementations by capability ("conformance
+level") the way mdbase does.
+
+**Effort.** XL.
+**Depends on.** Real second-impl pressure.
 
 ### A closer look at P-1 (SQLite cache)
 
@@ -860,26 +1172,62 @@ implementations, ranked by complexity:
    Tantivy via cgo). Useful only if Q-3 (body
    FTS) becomes central. Overkill otherwise.
 
-**Where mdsmith would land.** Probably option 2
-for the LSP server (extending what's there) and
-option 4 (BoltDB-style) if a persistent on-disk
-cache is ever needed. Option 5 (SQLite) carries
-the most operational baggage — a binary cache
-file that needs schema versioning, a driver
-dependency, and a "delete it if it gets weird"
-escape hatch — for capability mdsmith does not
-yet need. The strongest argument for SQLite is
-mdbase's Q-5 aggregations; mdsmith does not plan
-to ship those.
+**Where mdsmith might land.** The choice depends
+on which trigger fires. Option 2 (in-memory,
+process-scoped) is already implicit in the LSP
+server and is the cheapest extension for plan 131
+needs (`documentSymbol`, `references`, call
+hierarchy). For one-shot CLI use, option 1
+(parallel re-read with no cache) holds up to
+roughly 5k files on commodity hardware; beyond
+that the choice between options 3, 4, and 5
+depends on which queries dominate.
 
-The right framing for now: **add an in-memory
-link graph to the LSP server (option 2)** when
-plan 131 lands, since `documentSymbol` /
-`references` / call hierarchy all want one. If a
-follow-up plan adds backlinks to the CLI (L-4),
-prototype with parallel re-read (option 1) and
-only escalate to a persistent cache when real
-profiling shows a regression on a real corpus.
+The strongest argument for SQLite (option 5) is
+relational aggregation (Q-5): grouping, counting,
+joining across types. If mdsmith grows in that
+direction the SQL surface pays for itself. If
+mdsmith stays predominantly in
+filter-and-emit-paths territory, option 4
+(BoltDB / Badger) gives most of the persistence
+without the SQL maintenance cost.
+
+A pragmatic sequencing:
+
+- **Today** — option 1 (no cache) covers the
+  CLI; option 2 (in-memory) covers the LSP.
+- **First trigger** — when a real profiling
+  case shows cold-start as the bottleneck, or
+  when L-4 / Q-5 demand cross-file traversal at
+  scale, prototype option 4 and measure.
+- **Second trigger** — if the prototype's
+  hand-rolled queries become unwieldy, escalate
+  to option 5 (SQLite). The migration is well-
+  understood: BoltDB's bucket model maps onto
+  SQL tables.
+
+Three less-conventional alternatives are also
+worth a serious look. They sit alongside the six
+above rather than replacing them; see
+[aggregation-use-cases.md](aggregation-use-cases.md)
+for the deeper exploration:
+
+- **Stateless-fast (`fzf` / `ripgrep` style).**
+  Re-read every run, but make the read fast
+  enough that no cache is needed. ripgrep
+  searches millions of lines per second; an FM
+  + body parser tuned the same way could put
+  cold-start under one second on tens of
+  thousands of files.
+- **Content-addressed cache (`git`-style
+  objects).** A loose-objects directory of
+  hashed FM blobs. No staleness check at all:
+  the hash is the cache key. Faster than mtime
+  but slower than mmap.
+- **Tiered: fast cold start + opt-in warm
+  daemon.** Default to stateless. A
+  `mdsmith watch` daemon (P-2) adds warm
+  caching only for sessions that elect it.
 
 ## In-flight items
 
@@ -888,54 +1236,60 @@ profiling shows a regression on a real corpus.
 | H-1 | plan 122           | Hover for rule and directive docs             |
 | H-2 | plan 131 (PR #238) | Symbol navigation, references, call hierarchy |
 
-## Suggested sequencing
+## Sequencing observations
 
-If a maintainer wants to ship a few of these, the
-ones with the highest payoff per unit of effort
-are:
+Where the gaps cluster suggests a few natural
+groupings rather than a fixed roadmap. None of
+these are commitments; each waits for the trigger
+named in its mini-plan.
 
-1. **L-1 (wikilink awareness)** — unlocks Obsidian
-   vault use; small effort, high impact.
-2. **L-4 (backlinks subcommand)** — surfaces
-   value already in MDS027; small effort.
-3. **M-1 (field-presence kind assignment)** —
-   ergonomic win; small effort.
-4. **C-6 (dry-run for fix)** — agent-friendly;
-   small effort.
-5. **S-1 (inline schema)** — ergonomic win for
-   teams not wanting a separate proto.md; medium
-   effort but unlocks S-3, S-4, S-6.
-6. **Q-1 / Q-2 (sort and limit)** — small effort,
-   makes `query` actually useful in scripts.
-7. **L-3 / C-4 (rename refactor)** — large effort
-   but high-leverage; closes the biggest workflow
-   gap.
-
-The remaining items are nice-to-haves whose
-priority depends on real user demand.
+- **Quick ergonomic wins.** L-1, L-4, M-1, C-6,
+  Q-1, Q-2 are all small in effort and respond
+  to triggers a single user request can satisfy.
+  They unblock larger work without committing to
+  it.
+- **Schema ergonomics cluster.** S-1 unlocks S-2,
+  S-3, S-4, S-6 by making inline schemas the
+  primary surface. If schema work happens at all,
+  it tends to start here.
+- **The link-graph cluster.** L-1, L-4, L-3 / C-4
+  all read or write the same workspace link
+  graph. Doing them together reuses the parsing
+  and indexing investment.
+- **The CRUD cluster.** C-1 makes C-2, C-3, C-5,
+  S-5, V-1 reachable. Without C-1 the others
+  have no write moment to attach to. Whether to
+  enter the cluster at all depends on whether
+  mdsmith should grow a write surface; that is a
+  bigger product question than any single gap.
+- **The index cluster.** P-1, P-2, Q-5, Q-6, L-5
+  all become more attractive together. The
+  trigger for one is often the trigger for
+  several; the [aggregation use-cases
+  doc](aggregation-use-cases.md) walks the
+  combined trade-off.
 
 ## What this exercise revealed
 
-Three structural observations fall out of working
-through the gaps systematically.
+Three observations fall out of working through
+the gaps systematically. They are descriptive,
+not prescriptive — each leaves room for the
+direction to change as triggers fire.
 
-1. **mdsmith's stateless single-pass design is a
-   feature, not a missing piece.** Most "missing"
-   features (cache, watch, CRUD, migrations) trade
-   determinism for capability. The right answer
-   for vault-scale typed-record work is mdbase,
-   not a richer mdsmith.
-
-2. **mdsmith's schema mechanism is closer to
-   mdbase's than the surface suggests.** Both use
-   Markdown files with declarative front matter as
-   schemas. The differences (CUE vs DSL, body
-   structure check vs body-as-docs) are real but
-   smaller than they look. S-1 + S-2 + S-3 close
-   most of the ergonomic gap.
-
+1. **Most "missing" features are write-side or
+   cache-side.** Cache, watch, CRUD, migrations
+   each trade some of mdsmith's determinism for
+   capability. None are wrong; each carries a
+   visible trigger and a visible cost.
+2. **Schemas are closer than the surface
+   suggests.** Both mdsmith and mdbase use
+   Markdown files with declarative front matter.
+   The differences (CUE vs DSL, body structure
+   check vs body-as-docs) are real but smaller
+   than they look. S-1 + S-2 + S-3 close most of
+   the ergonomic gap if the trigger ever fires.
 3. **The link graph is mdsmith's biggest
    underused asset.** MDS027 already builds it.
    Backlinks (L-4), wikilinks (L-1), and rename
-   refactor (L-3) all flow from making that graph
-   first-class instead of a per-rule internal.
+   refactor (L-3) all flow from promoting that
+   graph to a first-class subsystem.

@@ -1019,27 +1019,27 @@ project README at the time of writing.
 mdsmith after plans 122 + 131 land, and
 mdbase-lsp today.
 
-| LSP feature              | mdsmith today | mdsmith planned   | mdbase-lsp       |
-|--------------------------|---------------|-------------------|------------------|
-| `publishDiagnostics`     | yes           | yes               | yes              |
-| `codeAction` (quick fix) | yes           | yes               | n/a (no autofix) |
-| `codeAction` (fix all)   | yes           | yes               | n/a              |
-| `hover`                  | no            | yes (plan 122)    | yes              |
-| `completion`             | no            | no (out of scope) | yes              |
-| `documentSymbol`         | no            | yes (plan 131)    | partial          |
-| `definition`             | no            | yes (plan 131)    | yes              |
-| `implementation`         | no            | yes (plan 131)    | unknown          |
-| `references`             | no            | yes (plan 131)    | unknown          |
-| `workspace/symbol`       | no            | yes (plan 131)    | unknown          |
-| `prepareCallHierarchy`   | no            | yes (plan 131)    | no               |
-| `incomingCalls`          | no            | yes (plan 131)    | no               |
-| `outgoingCalls`          | no            | yes (plan 131)    | no               |
-| `rename`                 | no            | no (out of scope) | yes (L5)         |
-| `signatureHelp`          | no            | no                | no               |
-| `semanticTokens`         | no            | no                | no               |
-| `inlayHint`              | no            | no                | no               |
-| `codeLens`               | no            | no                | no               |
-| `didChangeWatchedFiles`  | yes (`.yml`)  | yes (`**/*.md`)   | yes              |
+| LSP feature              | mdsmith today | mdsmith planned | mdbase-lsp       |
+|--------------------------|---------------|-----------------|------------------|
+| `publishDiagnostics`     | yes           | yes             | yes              |
+| `codeAction` (quick fix) | yes           | yes             | n/a (no autofix) |
+| `codeAction` (fix all)   | yes           | yes             | n/a              |
+| `hover`                  | no            | yes (plan 122)  | yes              |
+| `completion`             | no            | not yet planned | yes              |
+| `documentSymbol`         | no            | yes (plan 131)  | partial          |
+| `definition`             | no            | yes (plan 131)  | yes              |
+| `implementation`         | no            | yes (plan 131)  | unknown          |
+| `references`             | no            | yes (plan 131)  | unknown          |
+| `workspace/symbol`       | no            | yes (plan 131)  | unknown          |
+| `prepareCallHierarchy`   | no            | yes (plan 131)  | no               |
+| `incomingCalls`          | no            | yes (plan 131)  | no               |
+| `outgoingCalls`          | no            | yes (plan 131)  | no               |
+| `rename`                 | no            | candidate (L-3) | yes (L5)         |
+| `signatureHelp`          | no            | no              | no               |
+| `semanticTokens`         | no            | no              | no               |
+| `inlayHint`              | no            | no              | no               |
+| `codeLens`               | no            | no              | no               |
+| `didChangeWatchedFiles`  | yes (`.yml`)  | yes (`**/*.md`) | yes              |
 
 The two LSPs are non-overlapping in practice
 today. A team running both gets diagnostics from
