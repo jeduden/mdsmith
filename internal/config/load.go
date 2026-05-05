@@ -58,6 +58,17 @@ func Load(path string) (*Config, error) {
 				"see docs/guides/file-kinds.md")
 	}
 
+	// Mark every rule that appeared in the top-level rules: block as
+	// explicit so that effectiveRules places them in the "user" layer
+	// (above the convention preset). Without this, a convention preset
+	// would override a rule the user explicitly set in the YAML file.
+	if len(cfg.Rules) > 0 {
+		cfg.ExplicitRules = make(map[string]bool, len(cfg.Rules))
+		for name := range cfg.Rules {
+			cfg.ExplicitRules[name] = true
+		}
+	}
+
 	detectFilesKeyDeprecations(&cfg)
 
 	if err := ValidateKinds(&cfg); err != nil {

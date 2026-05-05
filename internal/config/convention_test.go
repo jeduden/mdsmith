@@ -248,6 +248,38 @@ func TestApplyConvention_UserConventionInApplyConvention(t *testing.T) {
 	assert.Equal(t, "asterisk", lm.Settings["style"])
 }
 
+// TestProvenance_UserConventionSuffixInLayerSource verifies that
+// mdsmith kinds resolve distinguishes user conventions from built-ins
+// by appending " (user)" to the layer source name.
+func TestProvenance_UserConventionSuffixInLayerSource(t *testing.T) {
+	cfg := &Config{
+		Convention: "our-team",
+		Conventions: map[string]UserConventionBody{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"list-marker-style": {
+						Enabled:  true,
+						Settings: map[string]any{"style": "dash"},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, applyConvention(cfg))
+
+	res := ResolveFile(cfg, "doc.md", nil)
+	rr, ok := res.Rules["list-marker-style"]
+	require.True(t, ok, "list-marker-style must appear in resolution")
+
+	var sources []string
+	for _, l := range rr.Layers {
+		sources = append(sources, l.Source)
+	}
+	require.Contains(t, sources, "convention.our-team (user)",
+		"user convention layer source must carry (user) suffix")
+}
+
 func TestApplyConvention_NoConventionSet_NoOp(t *testing.T) {
 	cfg := &Config{
 		Rules: map[string]RuleCfg{

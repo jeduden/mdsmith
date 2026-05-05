@@ -172,6 +172,79 @@ This split keeps MDS034 focused on "what does this
 renderer interpret as a feature." Conventions
 orchestrate style separately.
 
+## User-defined conventions
+
+None of the three built-in conventions fit your
+project? Define one inline in `.mdsmith.yml`. Add a
+top-level `conventions:` map, sibling to `kinds:`.
+Each key is a convention name. Each value carries a
+`flavor` and a `rules` map — the same shape as the
+built-in table:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+
+convention: our-team
+```
+
+Each user-defined convention is validated at config
+load:
+
+- `flavor` must be `commonmark`, `gfm`, or
+  `goldmark`.
+- Each key under `rules:` must name a registered
+  rule.
+- Each rule's settings must satisfy that rule's own
+  schema — the same path that validates the
+  top-level `rules:` block.
+
+A validation error names the convention and the
+rule:
+
+```text
+convention "our-team" rule "no-inline-html":
+unknown setting "allowed"
+```
+
+### Reserved names
+
+User-defined names must not collide with the three
+built-in names. Defining `conventions.portable` (or
+`github` / `plain`) is a config error at load time.
+The built-in names are reserved so docs and
+tutorials keep their meaning.
+
+### Interaction with built-ins
+
+Collisions between user-defined names and built-in
+names are rejected at parse time. The lookup order
+is:
+
+1. User-defined `conventions:` map.
+2. Built-in table.
+
+An unknown name produces an error that lists both
+sets of valid names.
+
+### Provenance
+
+`mdsmith kinds resolve <file>` appends `(user)` to
+the layer source name for user-defined conventions:
+
+```text
+convention.our-team (user)   set  ...
+```
+
+This distinguishes user conventions from built-ins
+in the merge chain.
+
 ## Inspecting an effective convention
 
 `mdsmith kinds resolve <file>` shows the merge

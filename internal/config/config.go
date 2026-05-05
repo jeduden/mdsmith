@@ -45,6 +45,15 @@ type Config struct {
 	// and docs/reference/conventions.md for end-user docs.
 	Convention string `yaml:"convention,omitempty"`
 
+	// Conventions holds user-defined convention bundles declared
+	// in the `conventions:` block of .mdsmith.yml. Each entry has
+	// the same shape as a built-in convention: a flavor and a map
+	// of rule presets. Names must not collide with the three
+	// built-in convention names ("portable", "github", "plain").
+	// Not serialized to YAML output (omitempty keeps it absent
+	// when the user config has no conventions: block).
+	Conventions map[string]UserConventionBody `yaml:"conventions,omitempty"`
+
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
@@ -130,6 +139,17 @@ func (e KindAssignmentEntry) Patterns() []string {
 		return e.Glob
 	}
 	return e.Files
+}
+
+// UserConventionBody is the YAML shape of a single entry under the
+// top-level `conventions:` map. It mirrors the structure of the
+// built-in convention table entries: a target Markdown flavor and a
+// table of rule presets. Flavor must be one of "commonmark", "gfm",
+// or "goldmark". Rule names must be registered; each rule's settings
+// are validated against the rule's existing schema at config load.
+type UserConventionBody struct {
+	Flavor string             `yaml:"flavor"`
+	Rules  map[string]RuleCfg `yaml:"rules"`
 }
 
 // RuleCfg is a YAML union: can be bool (enable/disable) or map[string]any (settings).
