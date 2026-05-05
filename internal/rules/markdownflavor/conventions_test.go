@@ -145,3 +145,78 @@ func TestConventionNamesSorted(t *testing.T) {
 		"ConventionNames should return a sorted slice; got %v", names)
 	assert.ElementsMatch(t, []string{"github", "plain", "portable"}, names)
 }
+
+func TestLookup_UserConventionFound(t *testing.T) {
+	userConventions := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"no-inline-html": {
+					Enabled:  true,
+					Settings: map[string]any{"allow": []any{"details", "summary", "kbd"}},
+				},
+			},
+		},
+	}
+	c, err := Lookup("our-team", userConventions)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", c.Name)
+	assert.Equal(t, FlavorGFM, c.Flavor)
+	html, ok := c.Rules["no-inline-html"]
+	require.True(t, ok)
+	assert.Equal(t, []any{"details", "summary", "kbd"}, html.Settings["allow"])
+}
+
+func TestLookup_BuiltInStillFoundWithUserMap(t *testing.T) {
+	userConventions := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	c, err := Lookup("portable", userConventions)
+	require.NoError(t, err)
+	assert.Equal(t, "portable", c.Name)
+}
+
+func TestLookup_UnknownListsBothSets(t *testing.T) {
+	userConventions := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	_, err := Lookup("bogus", userConventions)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "github")
+}
+
+func TestLookup_NilUserMapUsesBuiltIns(t *testing.T) {
+	c, err := Lookup("github", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "github", c.Name)
+}
+
+func TestLookup_UserConventionDeepCopied(t *testing.T) {
+	userConventions := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"list-marker-style": {Enabled: true, Settings: map[string]any{"style": "dash"}},
+			},
+		},
+	}
+	c, err := Lookup("our-team", userConventions)
+	require.NoError(t, err)
+	// Mutating the returned value must not affect the input map.
+	c.Rules["list-marker-style"].Settings["style"] = "tampered"
+	assert.Equal(t, "dash", userConventions["our-team"].Rules["list-marker-style"].Settings["style"],
+		"Lookup must return a deep copy for user conventions")
+}
+
+func TestIsUserConvention(t *testing.T) {
+	userConventions := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	assert.True(t, IsUserConvention("our-team", userConventions))
+	assert.False(t, IsUserConvention("portable", userConventions))
+	assert.False(t, IsUserConvention("our-team", nil))
+}
