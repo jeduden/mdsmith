@@ -23,17 +23,27 @@ import {
   type UriLike
 } from "./wiring";
 
+// ExecutableLaunchShape is the subset of vscode-languageclient's
+// `Executable` we actually build in buildServerOptions. ServerOptions
+// is a union type — TypeScript cannot index it with a string literal
+// — so cast through this shape when reaching into opts.run/opts.debug
+// from tests.
+type ExecutableLaunchShape = {
+  command: string;
+  args: string[];
+  transport: number;
+  options?: { cwd?: string };
+};
+type RunDebug = { run: ExecutableLaunchShape; debug: ExecutableLaunchShape };
+
 describe("buildServerOptions", () => {
   test("spawns the configured binary with the lsp subcommand on stdio", () => {
-    const opts = buildServerOptions("/abs/path/mdsmith", TransportKindStdio);
+    const opts = buildServerOptions("/abs/path/mdsmith", TransportKindStdio) as RunDebug;
     // Both run + debug share the same launch shape so the same
     // server is used for normal launches and editor debug.
     for (const variant of ["run", "debug"] as const) {
-      const launch = opts[variant];
-      expect(launch).toBeDefined();
-      // ServerOptions's run/debug union has many shapes; cast to
-      // the Executable variant we know we built.
-      const exe = launch as { command: string; args: string[]; transport: number };
+      const exe = opts[variant];
+      expect(exe).toBeDefined();
       expect(exe.command).toBe("/abs/path/mdsmith");
       expect(exe.args).toEqual(["lsp"]);
       expect(exe.transport).toBe(TransportKindStdio);
@@ -41,25 +51,22 @@ describe("buildServerOptions", () => {
   });
 
   test("preserves a bare binary name so $PATH resolves it", () => {
-    const opts = buildServerOptions("mdsmith", TransportKindStdio);
-    const exe = opts.run as { command: string };
-    expect(exe.command).toBe("mdsmith");
+    const opts = buildServerOptions("mdsmith", TransportKindStdio) as RunDebug;
+    expect(opts.run.command).toBe("mdsmith");
   });
 
   test("sets options.cwd on both run and debug when supplied", () => {
-    const opts = buildServerOptions("mdsmith", TransportKindStdio, "/repo/root");
+    const opts = buildServerOptions("mdsmith", TransportKindStdio, "/repo/root") as RunDebug;
     for (const variant of ["run", "debug"] as const) {
-      const exe = opts[variant] as { options?: { cwd?: string } };
-      expect(exe.options?.cwd).toBe("/repo/root");
+      expect(opts[variant].options?.cwd).toBe("/repo/root");
     }
   });
 
   test("omits options entirely when no cwd is supplied", () => {
     // Some clients reject an Executable.options that exists with all
     // undefined fields; passing nothing keeps the launch shape clean.
-    const opts = buildServerOptions("mdsmith", TransportKindStdio);
-    const exe = opts.run as { options?: unknown };
-    expect(exe.options).toBeUndefined();
+    const opts = buildServerOptions("mdsmith", TransportKindStdio) as RunDebug;
+    expect(opts.run.options).toBeUndefined();
   });
 });
 
@@ -72,7 +79,12 @@ describe("buildClientOptions", () => {
     ]);
     // The same watcher object is forwarded so VS Code can reuse it
     // without us re-registering the `**/.mdsmith.yml` glob.
-    expect(opts.synchronize?.fileEvents).toBe(watcher as unknown);
+    // The same watcher object is forwarded so VS Code can reuse it
+    // without us re-registering the `**/.mdsmith.yml` glob. The
+    // structural FileSystemWatcherLike doesn't satisfy bun's
+    // strictly-typed `toBe` overloads, so cast through `unknown` and
+    // then to never to short-circuit the typecheck.
+    expect(opts.synchronize?.fileEvents as unknown).toBe(watcher as unknown);
     expect(opts.outputChannelName).toBe("mdsmith");
   });
 });

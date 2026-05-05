@@ -20,6 +20,12 @@ import {
 } from "./wiring";
 
 let client: LanguageClient | undefined;
+// Track the .mdsmith.yml file watcher across the activate /
+// startServer / restartServer / deactivate lifecycle. A new
+// watcher is created on every server start; the old one must be
+// disposed first or VS Code accumulates watchers and emits
+// duplicate change events for every restart.
+let configWatcher: vscode.FileSystemWatcher | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Register commands first so they remain available even when the
@@ -66,7 +72,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 // failure it surfaces a quick-fix dialog (Download / Open Settings)
 // without throwing, because the commands registered in activate()
 // must remain usable so the user can retry.
-async function startServer(_context: vscode.ExtensionContext): Promise<void> {
+async function startServer(context: vscode.ExtensionContext): Promise<void> {
   const cfg = vscode.workspace.getConfiguration("mdsmith");
   const binary = cfg.get<string>("path", "mdsmith");
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -76,9 +82,15 @@ async function startServer(_context: vscode.ExtensionContext): Promise<void> {
     TransportKind.stdio,
     workspaceRoot
   );
-  const clientOptions: LanguageClientOptions = buildClientOptions(
-    vscode.workspace.createFileSystemWatcher("**/.mdsmith.yml")
-  );
+  // Replace any previous watcher before creating a new one.
+  // restartServer disposes via disposeConfigWatcher, but
+  // defensively dispose here too so a future caller of
+  // startServer (other than restartServer) cannot accidentally
+  // leak. context.subscriptions covers deactivate-time cleanup.
+  disposeConfigWatcher();
+  configWatcher = vscode.workspace.createFileSystemWatcher("**/.mdsmith.yml");
+  context.subscriptions.push(configWatcher);
+  const clientOptions: LanguageClientOptions = buildClientOptions(configWatcher);
   // Replace the default ErrorHandler (DoNotRestart after 5 close
   // events in 3 minutes) with one that gives the user a clear
   // recovery path. We let the client keep restarting up to a
@@ -126,7 +138,20 @@ async function restartServer(context: vscode.ExtensionContext): Promise<void> {
     }
     client = undefined;
   }
+  // Clean up the previous file watcher; startServer will install a
+  // fresh one.
+  disposeConfigWatcher();
   await startServer(context);
+}
+
+// disposeConfigWatcher releases the active .mdsmith.yml watcher
+// so a new one can take over. Idempotent — calling it without an
+// active watcher is a no-op.
+function disposeConfigWatcher(): void {
+  if (configWatcher) {
+    configWatcher.dispose();
+    configWatcher = undefined;
+  }
 }
 
 // showOutput reveals the "mdsmith" output channel where the
@@ -203,4 +228,10 @@ export async function deactivate(): Promise<void> {
     await client.stop();
     client = undefined;
   }
+  // The watcher is also pushed onto context.subscriptions in
+  // startServer, but VS Code disposes those AFTER deactivate
+  // returns; clear it explicitly so the dispose ordering is
+  // tight and configWatcher does not survive into a subsequent
+  // activation.
+  disposeConfigWatcher();
 }

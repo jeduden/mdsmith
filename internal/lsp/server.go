@@ -45,6 +45,9 @@ type Server struct {
 	settingsMu sync.RWMutex
 	settings   userSettings
 
+	clientCapsMu sync.RWMutex
+	clientCaps   clientCapabilities
+
 	pendingMu     sync.Mutex
 	pending       map[string]*time.Timer
 	pendingRespMu sync.Mutex
@@ -62,6 +65,19 @@ type Server struct {
 type userSettings struct {
 	ConfigPath string `json:"config"`
 	Run        string `json:"run"`
+}
+
+// clientSettings is the JSON shape we accept from
+// workspace/configuration. Pointer fields distinguish "client
+// supplied an explicit value" (including empty string) from
+// "client did not supply a value at all" (returns null per
+// LSP §5.6, which Unmarshal turns into nil). Without this
+// distinction we could never let the user clear a previously-set
+// `mdsmith.config` back to the empty default; the cached
+// non-empty value would stick across configuration changes.
+type clientSettings struct {
+	ConfigPath *string `json:"config"`
+	Run        *string `json:"run"`
 }
 
 // runMode enumerates valid `mdsmith.run` values. Anything else is
@@ -284,6 +300,16 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 	s.configMu.Lock()
 	s.rootDir = root
 	s.configMu.Unlock()
+	// Record the client's advertised capabilities so handleInitialized
+	// can gate optional follow-up requests (workspace/configuration,
+	// dynamic file watchers) instead of sending them blind. Clients
+	// without `workspace.configuration` would otherwise return an
+	// error for fetchClientSettings; those without
+	// `didChangeWatchedFiles.dynamicRegistration` cannot honor the
+	// register-capability request and we should not bother sending it.
+	s.clientCapsMu.Lock()
+	s.clientCaps = p.Capabilities
+	s.clientCapsMu.Unlock()
 
 	res := initializeResult{
 		Capabilities: serverCapabilities{
@@ -305,10 +331,29 @@ func (s *Server) handleInitialized(ctx context.Context) {
 	// Load the workspace config eagerly so the first document event
 	// already finds it cached.
 	s.reloadConfig()
-	// fetchClientSettings runs in a goroutine because dispatch must
-	// remain available to deliver the response.
-	go s.fetchClientSettings(ctx)
-	s.registerWatchers()
+	s.clientCapsMu.RLock()
+	caps := s.clientCaps
+	s.clientCapsMu.RUnlock()
+	// Gate workspace/configuration on the client's advertised
+	// capability. Per LSP §5.6 a client that doesn't list
+	// `workspace.configuration` will reject the request; without this
+	// guard we would log a window/logMessage error on every Helix /
+	// JetBrains-LSP / Neovim launch.
+	if caps.Workspace != nil && caps.Workspace.Configuration {
+		// fetchClientSettings runs in a goroutine because dispatch must
+		// remain available to deliver the response.
+		go s.fetchClientSettings(ctx)
+	}
+	// Same gate for dynamic file watchers. Clients without
+	// `workspace.didChangeWatchedFiles.dynamicRegistration` cannot
+	// honor a client/registerCapability request, so don't bother.
+	// Users on those clients still get config reloads on the next
+	// document event (no-op fallback) — they just don't get
+	// instant re-lint when they edit .mdsmith.yml in another window.
+	if caps.Workspace != nil && caps.Workspace.DidChangeWatchedFiles != nil &&
+		caps.Workspace.DidChangeWatchedFiles.DynamicRegistration {
+		s.registerWatchers()
+	}
 }
 
 func (s *Server) handleDidOpen(ctx context.Context, raw json.RawMessage) {
@@ -538,7 +583,7 @@ func (s *Server) runLint(uri string) {
 	relPath := workspaceRelative(root, doc.path)
 	if config.IsIgnored(cfg.Ignore, relPath) {
 		_ = s.t.writeNotification("textDocument/publishDiagnostics",
-			publishDiagnosticsParams{URI: uri, Diagnostics: []Diagnostic{}})
+			publishDiagnosticsParams{URI: uri, Version: doc.version, Diagnostics: []Diagnostic{}})
 		return
 	}
 	maxBytes := s.resolveMaxInputBytes(cfg)
@@ -576,7 +621,7 @@ func (s *Server) runLint(uri string) {
 	s.surfaceForeignDiagnostics(uri, otherDiags)
 	lspDiags := toLSPAll(docDiags, doc.text)
 	_ = s.t.writeNotification("textDocument/publishDiagnostics",
-		publishDiagnosticsParams{URI: uri, Diagnostics: lspDiags})
+		publishDiagnosticsParams{URI: uri, Version: doc.version, Diagnostics: lspDiags})
 }
 
 // resolveMaxInputBytes mirrors cmd/mdsmith's resolution of the
@@ -1010,23 +1055,24 @@ func (s *Server) fetchClientSettings(ctx context.Context) {
 		}
 		// The result is an array (one entry per requested item). Our
 		// single item ("mdsmith") yields a one-element array.
-		var arr []userSettings
+		var arr []clientSettings
 		if err := json.Unmarshal(resp.Result, &arr); err != nil || len(arr) == 0 {
 			return
 		}
 		s.settingsMu.Lock()
-		// Only overwrite values the client supplied — VS Code returns
-		// `null` for unset entries, which Unmarshal turns into the
-		// zero value, so we'd otherwise wipe defaults.
+		// Only the fields the client actually supplied land in
+		// s.settings. Pointer-nil means "absent" (e.g. JSON null
+		// for an unset key), so the cached default stays. A
+		// pointer to "" means the client explicitly cleared the
+		// setting — propagate it so the user can revert
+		// `mdsmith.config` back to the default.
 		next := arr[0]
-		current := s.settings
-		if next.ConfigPath != "" {
-			current.ConfigPath = next.ConfigPath
+		if next.ConfigPath != nil {
+			s.settings.ConfigPath = *next.ConfigPath
 		}
-		if next.Run != "" {
-			current.Run = next.Run
+		if next.Run != nil {
+			s.settings.Run = *next.Run
 		}
-		s.settings = current
 		s.settingsMu.Unlock()
 		// Reload config in case `mdsmith.config` changed, then
 		// re-lint open buffers so diagnostics reflect the freshly

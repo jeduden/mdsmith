@@ -60,9 +60,11 @@ prints:
   request all quick-fix actions for the same rule
   share one `WorkspaceEdit`; the fix is run once
   regardless of how many diagnostics carry that
-  rule. Rules whose fix touches multiple
-  non-contiguous ranges (catalog, toc, include) are
-  excluded so partial regenerations are not exposed.
+  rule. Generated-section rules (catalog, toc,
+  include) regenerate the section in their fix; the
+  action surfaces normally and the title
+  ("Fix all `<rule>` with mdsmith") is explicit
+  about the whole-file scope.
 - **`source.fixAll.mdsmith`** — runs `mdsmith fix` on the
   current buffer; produces the same bytes the on-disk fixer
   would write.

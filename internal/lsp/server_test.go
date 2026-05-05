@@ -531,6 +531,20 @@ func TestHandleInitializedRunsConfigAndWatchers(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// Mirror what a fully-featured client (VS Code) advertises so
+	// handleInitialized fires both fetchClientSettings and
+	// registerWatchers.
+	s.clientCapsMu.Lock()
+	s.clientCaps = clientCapabilities{
+		Workspace: &workspaceClientCapabilities{
+			Configuration: true,
+			DidChangeWatchedFiles: &struct {
+				DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+			}{DynamicRegistration: true},
+		},
+	}
+	s.clientCapsMu.Unlock()
+
 	s.handleInitialized(context.Background())
 
 	// reloadConfig populated the config; registerWatchers wrote the
@@ -549,6 +563,27 @@ func TestHandleInitializedRunsConfigAndWatchers(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("workspace/configuration never written; buffer: %s", buf.String())
+}
+
+// Regression: clients without workspace.configuration must not see
+// a workspace/configuration request, and clients without
+// didChangeWatchedFiles.dynamicRegistration must not see a
+// client/registerCapability request. handleInitialized should
+// reload config either way and exit cleanly.
+func TestHandleInitializedSkipsWhenCapabilitiesMissing(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// Empty capabilities — Workspace pointer is nil.
+	s.handleInitialized(context.Background())
+	// Give any rogue goroutine a chance to write before asserting.
+	time.Sleep(50 * time.Millisecond)
+
+	out := buf.String()
+	assert.NotContains(t, out, "workspace/configuration",
+		"must skip fetchClientSettings without workspace.configuration capability")
+	assert.NotContains(t, out, "client/registerCapability",
+		"must skip registerWatchers without dynamic-registration capability")
 }
 
 func TestHandleInitializeMalformedParams(t *testing.T) {
@@ -644,6 +679,18 @@ func TestDispatchRoutesInitializedToHandler(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+	// handleInitialized gates registerWatchers on the client's
+	// dynamic-registration capability; pretend the client supports
+	// it so the dispatch route is observable.
+	s.clientCapsMu.Lock()
+	s.clientCaps = clientCapabilities{
+		Workspace: &workspaceClientCapabilities{
+			DidChangeWatchedFiles: &struct {
+				DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
+			}{DynamicRegistration: true},
+		},
+	}
+	s.clientCapsMu.Unlock()
 	s.dispatch(context.Background(), &requestMessage{Method: "initialized"})
 	// handleInitialized writes the registerWatchers request
 	// synchronously. fetchClientSettings runs in a goroutine and
@@ -786,25 +833,16 @@ func TestFetchClientSettingsHandlesEmptyArray(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-	go s.fetchClientSettings(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
 	// Drive the goroutine: deliver an empty array — VS Code returns
 	// this when the section has no settings. The call should leave
 	// settings unchanged.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		s.pendingRespMu.Lock()
-		var key string
-		for k := range s.pendingResp {
-			key = k
-		}
-		s.pendingRespMu.Unlock()
-		if key != "" {
-			s.deliverResponse(key, rpcResponse{Result: json.RawMessage(`[]`)})
-			break
-		}
-		time.Sleep(time.Millisecond)
-	}
-	time.Sleep(50 * time.Millisecond)
+	deliverPendingResponse(t, s, json.RawMessage(`[]`), nil)
+	// fetchClientSettings is single-shot: when it returns,
+	// `done` closes. Wait for that explicitly instead of an
+	// unconditional sleep so the test isn't timing-dependent.
+	awaitDone(t, done)
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
 	assert.Equal(t, runOnSave, s.settings.Run)
@@ -814,7 +852,28 @@ func TestFetchClientSettingsHandlesMalformedResult(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-	go s.fetchClientSettings(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	// Result is not an array — defaults must stand.
+	deliverPendingResponse(t, s, json.RawMessage(`"oops"`), nil)
+	awaitDone(t, done)
+	s.settingsMu.RLock()
+	defer s.settingsMu.RUnlock()
+	assert.Equal(t, runOnSave, s.settings.Run)
+}
+
+// deliverPendingResponse polls s.pendingResp for the (single)
+// outstanding request id and delivers a response to it. Returns
+// the response key for callers that need it.
+//
+// Replaces the older "sleep + assert" pattern that was flaky
+// under load: instead of waiting an arbitrary 50 ms and hoping
+// the goroutine got there, we hand-deliver the response and let
+// the caller wait on the goroutine's done channel.
+func deliverPendingResponse(
+	t *testing.T, s *Server, result json.RawMessage, errResp *responseError,
+) string {
+	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		s.pendingRespMu.Lock()
@@ -824,16 +883,26 @@ func TestFetchClientSettingsHandlesMalformedResult(t *testing.T) {
 		}
 		s.pendingRespMu.Unlock()
 		if key != "" {
-			// Result is not an array — defaults must stand.
-			s.deliverResponse(key, rpcResponse{Result: json.RawMessage(`"oops"`)})
-			break
+			s.deliverResponse(key, rpcResponse{Result: result, Error: errResp})
+			return key
 		}
 		time.Sleep(time.Millisecond)
 	}
-	time.Sleep(50 * time.Millisecond)
-	s.settingsMu.RLock()
-	defer s.settingsMu.RUnlock()
-	assert.Equal(t, runOnSave, s.settings.Run)
+	t.Fatalf("no pending response slot appeared within deadline")
+	return ""
+}
+
+// awaitDone blocks until the supplied done channel closes,
+// failing the test if the deadline elapses first. Used to gate
+// assertions on a goroutine's actual return rather than on a
+// heuristic sleep.
+func awaitDone(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("goroutine did not return within deadline")
+	}
 }
 
 func TestFetchClientSettingsHonorsContextCancel(t *testing.T) {
@@ -1329,45 +1398,11 @@ func TestFetchClientSettingsAppliesResponse(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-	// fetchClientSettings registers a pending channel keyed by the
-	// JSON-encoded id. We deliver a synthetic response right after
-	// the call publishes, so the goroutine receives it before its
-	// internal timeout fires.
 	done := make(chan struct{})
-	go func() {
-		s.fetchClientSettings(context.Background())
-		close(done)
-	}()
-
-	// Wait until fetchClientSettings has registered a pending channel.
-	deadline := time.After(2 * time.Second)
-	for {
-		select {
-		case <-deadline:
-			t.Fatalf("fetchClientSettings never registered a pending response")
-			return
-		default:
-		}
-		s.pendingRespMu.Lock()
-		var key string
-		for k := range s.pendingResp {
-			key = k
-		}
-		s.pendingRespMu.Unlock()
-		if key != "" {
-			s.deliverResponse(key, rpcResponse{
-				Result: json.RawMessage(`[{"run":"onType","config":"/tmp/x.yml"}]`),
-			})
-			break
-		}
-		time.Sleep(time.Millisecond)
-	}
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("fetchClientSettings never returned")
-	}
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	deliverPendingResponse(t, s,
+		json.RawMessage(`[{"run":"onType","config":"/tmp/x.yml"}]`), nil)
+	awaitDone(t, done)
 
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
@@ -1379,33 +1414,11 @@ func TestFetchClientSettingsIgnoresErrorResponse(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-
-	go func() {
-		s.fetchClientSettings(context.Background())
-	}()
-
-	// Wait for the pending channel and reply with an error.
-	deadline := time.After(2 * time.Second)
-	for {
-		select {
-		case <-deadline:
-			t.Fatalf("never registered pending response")
-		default:
-		}
-		s.pendingRespMu.Lock()
-		var key string
-		for k := range s.pendingResp {
-			key = k
-		}
-		s.pendingRespMu.Unlock()
-		if key != "" {
-			s.deliverResponse(key, rpcResponse{Error: &responseError{Code: -32000, Message: "fail"}})
-			break
-		}
-		time.Sleep(time.Millisecond)
-	}
+	done := make(chan struct{})
+	go func() { defer close(done); s.fetchClientSettings(context.Background()) }()
+	deliverPendingResponse(t, s, nil, &responseError{Code: -32000, Message: "fail"})
+	awaitDone(t, done)
 	// Run should remain at the default; we just verify no panic.
-	time.Sleep(50 * time.Millisecond)
 	s.settingsMu.RLock()
 	defer s.settingsMu.RUnlock()
 	assert.Equal(t, runOnSave, s.settings.Run)

@@ -95,6 +95,13 @@ jobs:
       - name: Install extension dependencies
         working-directory: editors/vscode
         run: bun install --frozen-lockfile
+      - name: TypeScript typecheck
+        working-directory: editors/vscode
+        # Bun's bundler/transpiler tolerates type errors, so `bun
+        # test` and `bun run build.ts` both happily accept code
+        # that `tsc` would reject. Run an explicit `tsc --noEmit`
+        # so a TS regression fails CI before it ships in the .vsix.
+        run: bunx tsc --noEmit
       - name: Run extension unit tests with coverage
         working-directory: editors/vscode
         # `text` keeps the human-readable summary in the job log;

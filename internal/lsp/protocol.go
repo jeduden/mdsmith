@@ -162,8 +162,14 @@ type diagnosticData struct {
 	RuleName string `json:"rule"`
 }
 
+// publishDiagnosticsParams is LSP §3.18.6 PublishDiagnosticsParams.
+// Version is optional but lets clients drop stale results when lint
+// runs overlap (a debounced timer firing while an immediate lint is
+// also running). Always send the document version we linted so the
+// client can compare against its own buffer state.
 type publishDiagnosticsParams struct {
 	URI         string       `json:"uri"`
+	Version     int          `json:"version,omitempty"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 

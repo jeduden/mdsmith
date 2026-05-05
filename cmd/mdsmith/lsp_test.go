@@ -148,9 +148,28 @@ func (p *lspPipe) notify(method string, params any) {
 	})
 }
 
+// fullClientCapabilities mirrors the subset of VS Code's
+// capabilities the server actually consults. The test must send
+// these so the server's caps-gated follow-ups (workspace/
+// configuration, client/registerCapability) actually fire — the
+// pipe relies on responding to them to drive run-mode-dependent
+// behavior (didChange linting, watcher-triggered re-lints).
+func fullClientCapabilities() map[string]any {
+	return map[string]any{
+		"workspace": map[string]any{
+			"configuration": true,
+			"didChangeWatchedFiles": map[string]any{
+				"dynamicRegistration": true,
+			},
+		},
+	}
+}
+
 func (p *lspPipe) assertInitializeAck(t *testing.T) {
 	t.Helper()
-	resp := p.request("initialize", 1, map[string]any{"capabilities": map[string]any{}})
+	resp := p.request("initialize", 1, map[string]any{
+		"capabilities": fullClientCapabilities(),
+	})
 	require.Equal(t, float64(1), resp["id"])
 	res, ok := resp["result"].(map[string]any)
 	require.True(t, ok, "expected result object, got %T", resp["result"])
