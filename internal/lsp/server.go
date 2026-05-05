@@ -30,7 +30,6 @@ import (
 type Server struct {
 	t              *transport
 	rules          []rule.Rule
-	clock          func() time.Time
 	debounce       time.Duration
 	fetchTimeout   time.Duration
 	discoverConfig func(string) (string, error)
@@ -126,7 +125,6 @@ func New(opts Options) *Server {
 	return &Server{
 		t:              newTransport(opts.Reader, opts.Writer),
 		rules:          opts.Rules,
-		clock:          time.Now,
 		debounce:       debounce,
 		fetchTimeout:   2 * time.Second,
 		discoverConfig: config.Discover,

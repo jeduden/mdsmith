@@ -78,12 +78,10 @@ describe("buildClientOptions", () => {
       { scheme: "file", language: "markdown" }
     ]);
     // The same watcher object is forwarded so VS Code can reuse it
-    // without us re-registering the `**/.mdsmith.yml` glob.
-    // The same watcher object is forwarded so VS Code can reuse it
     // without us re-registering the `**/.mdsmith.yml` glob. The
     // structural FileSystemWatcherLike doesn't satisfy bun's
-    // strictly-typed `toBe` overloads, so cast through `unknown` and
-    // then to never to short-circuit the typecheck.
+    // strictly-typed `toBe` overloads, so cast through `unknown` to
+    // short-circuit the typecheck.
     expect(opts.synchronize?.fileEvents as unknown).toBe(watcher as unknown);
     expect(opts.outputChannelName).toBe("mdsmith");
   });
