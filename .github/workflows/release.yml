@@ -242,7 +242,15 @@ jobs:
             # no bash before `apk add` runs.
             container: node:lts
             install: |
-              npm install -g --force "mdsmith@${VERSION#v}"
+              # npm registry propagation can lag the publish by ~60s,
+              # so retry with backoff until the just-published version
+              # is resolvable. Mirrors the pip retry loop below.
+              for attempt in 1 2 3 4 5; do
+                if npm install -g --force "mdsmith@${VERSION#v}"; then
+                  break
+                fi
+                sleep 15
+              done
             run: mdsmith version
           - channel: pip
             container: python:3.12-slim
@@ -260,7 +268,12 @@ jobs:
           - channel: mise
             container: jdxcode/mise:latest
             install: |
-              mise use -g "mdsmith@${VERSION#v}"
+              for attempt in 1 2 3 4 5; do
+                if mise use -g "mdsmith@${VERSION#v}"; then
+                  break
+                fi
+                sleep 15
+              done
             run: |
               eval "$(mise activate bash --shims)"
               mdsmith version

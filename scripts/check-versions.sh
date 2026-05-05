@@ -32,9 +32,23 @@ fi
 
 fail=0
 
+# A required manifest going missing is a hard failure — the same
+# "fail fast" stance set-version.sh takes. The CI version-guard job
+# would otherwise silently pass when a tracked manifest was deleted
+# or renamed and only blow up later in the tag/release workflow.
+require_file() {
+  local file="$1"
+  if [ ! -f "$file" ]; then
+    echo "check-versions.sh: required manifest missing: $file" >&2
+    fail=1
+    return 1
+  fi
+  return 0
+}
+
 check_json_version() {
   local file="$1"
-  [ -f "$file" ] || return 0
+  require_file "$file" || return 0
   local actual
   actual=$(perl -ne '
     if (/^\s*"version"\s*:\s*"([^"]+)"/) { print $1; exit }
@@ -47,7 +61,7 @@ check_json_version() {
 
 check_optional_deps() {
   local file="$1"
-  [ -f "$file" ] || return 0
+  require_file "$file" || return 0
   local mismatches
   mismatches=$(EXPECTED="$expected" perl -ne '
     if (/^\s*"\@mdsmith\/[^"]+"\s*:\s*"([^"]+)"/ && $1 ne $ENV{EXPECTED}) {
@@ -83,7 +97,7 @@ check_optional_deps() {
 
 check_pyproject_version() {
   local file="$1"
-  [ -f "$file" ] || return 0
+  require_file "$file" || return 0
   local actual
   actual=$(perl -ne '
     if (/^\s*version\s*=\s*"([^"]+)"/) { print $1; exit }

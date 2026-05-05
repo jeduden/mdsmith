@@ -246,6 +246,34 @@ func TestCheckVersionsRejectsHandEdit(t *testing.T) {
 	}
 }
 
+func TestCheckVersionsFailsOnMissingManifest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("check-versions.sh requires a POSIX shell")
+	}
+	repo := projectRoot(t)
+	script := filepath.Join(repo, "scripts", "check-versions.sh")
+	root := t.TempDir()
+	fixtureManifests(t, root)
+
+	// Simulate a renamed/deleted manifest. The version-guard's whole
+	// point is to keep these in sync, so a vanished file must fail
+	// the check rather than silently pass.
+	if err := os.Remove(filepath.Join(root, "editors/vscode/package.json")); err != nil {
+		t.Fatalf("remove vscode manifest: %v", err)
+	}
+
+	_, stderr, err := runScript(t, script, "--root", root)
+	if err == nil {
+		t.Fatal("expected failure when a tracked manifest is missing")
+	}
+	if !strings.Contains(stderr, "editors/vscode/package.json") {
+		t.Errorf("stderr did not name the missing file:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "required manifest missing") {
+		t.Errorf("stderr did not flag the missing manifest:\n%s", stderr)
+	}
+}
+
 func TestCheckVersionsRejectsOptionalDepDrift(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("check-versions.sh requires a POSIX shell")
