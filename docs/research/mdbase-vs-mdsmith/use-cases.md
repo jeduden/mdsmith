@@ -246,9 +246,9 @@ There is no watch mode beyond the LSP per-session.
 fills in `id` (ULID), `created` (`now_on_write`),
 defaults. `mdbase update TASK-0231 --status done`
 edits the file. Bases query covers sort, filter,
-and the computed `days_overdue` field. `mdbase rename`
-
-+ `mdbase watch` round out the workflow.
+and the computed `days_overdue` field.
+`mdbase rename` plus `mdbase watch` round out the
+workflow.
 
 **Verdict.** mdbase. This is the canonical use case
 mdbase was designed for. mdsmith can lint task
