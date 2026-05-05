@@ -55,11 +55,14 @@ case "$ver" in
     ;;
 esac
 
-# MAJOR.MINOR.PATCH plus an optional pre-release identifier (-FOO)
+# Validate against the semver.org grammar: each of MAJOR/MINOR/PATCH
+# must be either "0" or a digit string with no leading zero
+# (`[1-9][0-9]*`), then an optional pre-release identifier (-FOO)
 # and an optional build metadata identifier (+BAR), independently.
-# This matches the semver.org grammar; npm and PyPI both reject
-# anything weaker, so refuse early.
-if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+# npm and PyPI both reject leading-zero numeric identifiers, so
+# refuse them here rather than only at publish time.
+semver_num='(0|[1-9][0-9]*)'
+if ! [[ "$ver" =~ ^${semver_num}\.${semver_num}\.${semver_num}(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
   echo "version '$ver' is not valid semver" >&2
   exit 2
 fi

@@ -62,15 +62,18 @@ check_json_version() {
 check_optional_deps() {
   local file="$1"
   require_file "$file" || return 0
+  # Emit "<pkg>\t<actual>" per drifted line so the failure message
+  # below can name the offending key — multiple drifted pins
+  # otherwise blur together into anonymous version strings.
   local mismatches
   mismatches=$(EXPECTED="$expected" perl -ne '
-    if (/^\s*"\@mdsmith\/[^"]+"\s*:\s*"([^"]+)"/ && $1 ne $ENV{EXPECTED}) {
-      print "$1\n";
+    if (/^\s*"(\@mdsmith\/[^"]+)"\s*:\s*"([^"]+)"/ && $2 ne $ENV{EXPECTED}) {
+      print "$1\t$2\n";
     }
   ' "$file")
   if [ -n "$mismatches" ]; then
-    while IFS= read -r v; do
-      echo "$file: optionalDependencies pin '$v', want '$expected'" >&2
+    while IFS=$'\t' read -r pkg actual; do
+      echo "$file: $pkg pin '$actual', want '$expected'" >&2
     done <<< "$mismatches"
     fail=1
   fi

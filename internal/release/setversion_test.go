@@ -260,6 +260,26 @@ func TestSetVersionRejectsNonSemver(t *testing.T) {
 	}
 }
 
+func TestSetVersionRejectsLeadingZero(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("set-version.sh requires a POSIX shell")
+	}
+	repo := projectRoot(t)
+	script := filepath.Join(repo, "scripts", "set-version.sh")
+
+	for _, bad := range []string{"01.2.3", "1.02.3", "1.2.03"} {
+		root := t.TempDir()
+		fixtureManifests(t, root)
+		_, stderr, err := runScript(t, script, bad, "--root", root)
+		if err == nil {
+			t.Fatalf("%s: expected failure (semver forbids leading zeros)", bad)
+		}
+		if !strings.Contains(stderr, "not valid semver") {
+			t.Errorf("%s: stderr did not flag the leading zero:\n%s", bad, stderr)
+		}
+	}
+}
+
 func TestCheckVersionsAcceptsDevSentinel(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("check-versions.sh requires a POSIX shell")
@@ -364,7 +384,11 @@ func TestCheckVersionsRejectsOptionalDepDrift(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected failure when an optional-dep pin drifts from the dev sentinel")
 	}
-	if !strings.Contains(stderr, "optionalDependencies pin '1.2.3'") {
-		t.Errorf("stderr did not flag the drifted optional-dep pin:\n%s", stderr)
+	// The error must name the drifted pin (`@mdsmith/linux-x64`)
+	// AND the offending value (`1.2.3`) so a multi-pin drift
+	// produces actionable lines instead of anonymous version
+	// strings.
+	if !strings.Contains(stderr, "@mdsmith/linux-x64 pin '1.2.3'") {
+		t.Errorf("stderr did not name the drifted pin and value:\n%s", stderr)
 	}
 }
