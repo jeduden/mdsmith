@@ -18,13 +18,12 @@ model: opus
 
 ## Goal
 
-Each `v*` tag should ship the existing release binaries
-through five extra channels: npm, PyPI, asdf, mise, and
-the two VS Code extension registries. Every published
-manifest should carry the tag version, not a hand-edited
-string. Users pick the package manager their stack
-already uses, and mdsmith reports the same version
-regardless of the channel.
+Each `v*` tag should ship the existing binaries
+through five extra channels: npm, PyPI, asdf, mise,
+and the two VS Code extension registries. Every
+published manifest carries the tag version (not a
+hand-edited string), so `mdsmith version` reports
+the same value on every channel.
 
 ## Background
 
@@ -110,16 +109,18 @@ Publish a separate repo `jeduden/asdf-mdsmith` with
 the standard plugin layout:
 
 - `bin/list-all` calls `git ls-remote --tags` on the
-  mdsmith repo. No GitHub token is required; it works
-  behind firewalls that allow HTTPS git.
+  mdsmith repo, then strips `refs/tags/`, drops the
+  `^{}` deref entries, and removes the leading `v`
+  so the output is plain `X.Y.Z` as asdf expects. No
+  GitHub token required; works through HTTPS git.
 - `bin/download` `curl -fL`s the matching release
   asset.
 - `bin/install` verifies it against `checksums.txt`
   and places the binary as `bin/mdsmith`.
 - `bin/list-bin-paths` prints `bin`.
 
-After one release cycle of self-hosted use, file a PR
-to `asdf-vm/asdf-plugins` so `asdf plugin add mdsmith`
+After one release cycle, file a PR to
+`asdf-vm/asdf-plugins` so `asdf plugin add mdsmith`
 resolves without an explicit URL.
 
 ### mise
