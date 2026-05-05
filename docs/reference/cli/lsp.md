@@ -10,13 +10,18 @@ stdio. The server reuses the same lint and fix pipelines as
 quick fixes plus a whole-file `source.fixAll.mdsmith` action.
 
 ```text
-mdsmith lsp
+mdsmith lsp [--stdio]
 ```
 
-The subcommand takes no arguments. Designed to be spawned by an
-LSP client (VS Code, Neovim, Helix, JetBrains LSP plugin), not
-run interactively. It reads JSON-RPC frames on stdin and writes
+The subcommand is designed to be spawned by an LSP client (VS
+Code, Neovim, Helix, JetBrains LSP plugin), not run
+interactively. It reads JSON-RPC frames on stdin and writes
 responses and notifications on stdout.
+
+`--stdio` is accepted as a no-op for compatibility with LSP
+clients (notably `vscode-languageclient`) that append the flag
+whenever the client selects stdio transport. The server always
+uses stdio either way.
 
 ## Capabilities advertised
 
