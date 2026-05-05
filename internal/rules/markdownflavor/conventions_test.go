@@ -8,8 +8,63 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLookup_UserConvention_Returned(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"list-marker-style": {Enabled: true, Settings: map[string]any{"style": "dash"}},
+			},
+		},
+	}
+	c, err := Lookup("our-team", user)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", c.Name)
+	assert.Equal(t, FlavorGFM, c.Flavor)
+	lms, ok := c.Rules["list-marker-style"]
+	require.True(t, ok)
+	assert.Equal(t, "dash", lms.Settings["style"])
+}
+
+func TestLookup_UserConvention_DeepCopied(t *testing.T) {
+	// Mutating the returned convention must not corrupt the user map.
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"list-marker-style": {Enabled: true, Settings: map[string]any{"style": "dash"}},
+			},
+		},
+	}
+	c, err := Lookup("our-team", user)
+	require.NoError(t, err)
+	c.Rules["list-marker-style"].Settings["style"] = "tampered"
+
+	// The original map must be unchanged.
+	assert.Equal(t, "dash", user["our-team"].Rules["list-marker-style"].Settings["style"])
+}
+
+func TestLookup_NilUserMap_FallsBackToBuiltIn(t *testing.T) {
+	c, err := Lookup("portable", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "portable", c.Name)
+}
+
+func TestLookup_UnknownNameListsBothSets(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	_, err := Lookup("bogus", user)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "github")
+}
+
 func TestLookup_Portable(t *testing.T) {
-	c, err := Lookup("portable")
+	c, err := Lookup("portable", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "portable", c.Name)
 	assert.Equal(t, FlavorCommonMark, c.Flavor)
