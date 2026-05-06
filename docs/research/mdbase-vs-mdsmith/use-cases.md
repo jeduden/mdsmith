@@ -3,7 +3,6 @@ summary: >-
   Concrete worked scenarios that exercise the differences between
   mdsmith and mdbase, showing where each tool fits naturally and where
   the gaps surface.
-status: 🔳
 ---
 # Use cases and worked examples
 

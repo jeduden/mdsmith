@@ -3,7 +3,6 @@ summary: >-
   Systematic enumeration of mdbase capabilities mdsmith does not yet
   have, with a per-gap mini-plan covering goal, design sketch, surface,
   effort, trigger, and open questions.
-status: 🔳
 ---
 # What mdsmith can learn from mdbase
 

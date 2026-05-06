@@ -4,7 +4,6 @@ summary: >-
   distribution, configuration, type system, validation, queries, links,
   generated content, prose linting, conventions, cache, CLI, LSP, output
   formats, and security posture.
-status: 🔳
 ---
 # Feature-by-feature comparison
 

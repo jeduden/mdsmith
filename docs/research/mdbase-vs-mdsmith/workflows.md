@@ -3,7 +3,6 @@ summary: >-
   Way-of-working comparison — daily authoring, repo bootstrap, schema
   evolution, file rename, CI pipeline, editor session, Obsidian-vault
   use, LLM/agent workflows, contributor onboarding.
-status: 🔳
 ---
 # Way-of-working comparison
 

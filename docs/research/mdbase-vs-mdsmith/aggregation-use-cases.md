@@ -4,7 +4,6 @@ summary: >-
   question for mdsmith — whether the index that makes them fast in
   mdbase has a stateless equivalent. Walks the workload shapes, the
   SQLite payoff, and the fzf / ripgrep-style alternative.
-status: 🔳
 ---
 # Aggregation use cases and the index question
 
@@ -45,6 +44,45 @@ the same way. With a stateless-fast approach (see
 section 5), four out of five are reachable
 without state.
 
+## Operational mode matters more than tool choice
+
+Each use case below names an **operational mode**
+assumption before quoting numbers, because the
+mode dominates the comparison far more than the
+tool. There are two modes:
+
+- **Cold-start mode.** A one-shot CLI invocation
+  in a fresh process. CI runners (which spin up
+  ephemeral containers per push), agent loops
+  that exec subcommands, and ad-hoc terminal use
+  all fall here. No persistent state survives
+  between runs except what is on disk and in
+  the OS file cache.
+- **Long-lived-session mode.** A running process
+  that handles many queries: an LSP server
+  attached to an editor, a `mdbase watch`
+  daemon, an interactive REPL. State (parsed
+  AST, link graph, FM index) survives between
+  queries.
+
+Both tools can be evaluated under either mode.
+The analyses below compare like-with-like:
+
+| Mode               | mdbase                                           | mdsmith                                                                                  |
+|--------------------|--------------------------------------------------|------------------------------------------------------------------------------------------|
+| Cold start         | validate cache (stat + maybe hash) → query       | parse files in parallel → query                                                          |
+| Long-lived session | watch mode keeps cache live → query is index hit | in-memory index built lazily / on-demand → query is index hit (P-1 / plan 131 territory) |
+
+The persistent SQLite cache is **not** what
+makes mdbase fast in long-lived mode; the live
+in-memory state is. The cache exists to bridge
+between sessions (or to skip parsing during
+validation). Granting a running server to mdbase
+means granting one to mdsmith too — and once
+both have one, the parse work has already been
+done in either tool. The numbers below reflect
+this.
+
 ## Worked use cases
 
 ### A-1: Sprint dashboard
@@ -54,6 +92,11 @@ Markdown files under `tasks/`. ~800 active tasks,
 ~5,000 historical. CI runs a "sprint dashboard"
 job after every push that produces a status
 summary as JSON, fed into a Slack notification.
+
+**Mode assumption.** Cold start. CI runners are
+ephemeral containers; cache state from previous
+runs does not survive. Both tools start fresh
+on every push.
 
 **Query.** The query shape:
 
@@ -72,14 +115,19 @@ order_by: count desc
 assignee, in-progress task count, average
 priority. ~10 rows.
 
-**Cost driver.** 5,800 files scanned, 800
-matching, 800 grouped. Per-file work is parsing
-the FM (~1ms cold). 5.8 seconds cold, 50ms warm.
+**Cost driver.** 5,800 files. Per-file work is
+parsing the FM (~100μs–1ms warm CPU).
 
-**With mdbase.** SQLite index makes this a single
-`SELECT assignee, COUNT(*), AVG(priority) FROM tasks
-WHERE status='in-progress' GROUP BY assignee`.
-Sub-millisecond.
+**With mdbase, cold start.** No prior cache.
+Either build the cache from scratch (~600ms of
+parse work, comparable to a fresh re-read) and
+then run the SQL, or skip the cache and walk
+files. Total wall time roughly the same as
+mdsmith stateless. **The "sub-millisecond" SQL
+query only applies once the cache exists** — and
+that requires either a previous run whose cache
+survived (rare in CI) or a long-lived process
+that built the index earlier.
 
 **With mdsmith stateless.** Parallel re-read
 through every `.md` file in `tasks/`, filter by
@@ -88,9 +136,24 @@ class IO and FM parsing in Go, ~600ms cold on
 modern hardware. JSON output piped to the next
 step.
 
-**Verdict.** Stateless is fine for a CI job
-running once per push. The 600ms is hidden in
-the test pipeline.
+**With either tool in long-lived mode.** Not
+applicable to this use case — CI runs are
+one-shot. If the team moved to a long-running
+sprint-dashboard service that watched the
+`tasks/` folder, both tools could serve queries
+from a warm in-memory state in <1ms each. The
+incremental cost of running a service for this
+purpose is operationally larger than the
+one-shot CI cost.
+
+**Verdict.** Roughly equivalent for the CI use
+case. ~600ms parse on either side is hidden in
+the test pipeline. Switching to mdbase does not
+buy speed here unless the team also adopts a
+long-running indexer, at which point mdsmith's
+in-memory equivalent (P-1 option 2 in
+[learn-from-mdbase.md](learn-from-mdbase.md))
+would close the gap symmetrically.
 
 ### A-2: Reviewer load report
 
@@ -98,6 +161,9 @@ the test pipeline.
 Weekly report: "Show all RFCs whose author or
 reviewer is X, grouped by status, with the
 five-most-recent in each group."
+
+**Mode assumption.** Cold start. Weekly cron
+job in CI; no surviving cache.
 
 **Query.** The query shape:
 
@@ -113,23 +179,37 @@ top_per_group: 5
 order_by: created desc
 ```
 
-**Cost driver.** 3,000 files scanned, 200
-matching, 200 grouped, top-5 per group. Per-file
-work the same ~1ms.
+**Cost driver.** 3,000 files. Per-file work the
+same ~100μs–1ms.
 
-**With mdbase.** Index hit on the `author`
-column, secondary scan of the `reviewers` array,
-GROUP BY in SQL. Sub-second even cold; the cache
-warms across queries.
+**With mdbase, cold start.** Cache build (~300ms)
 
-**With mdsmith stateless.** Same parallel re-read
-shape. ~300ms cold for the filter alone; sort and
-top-5 per group in process. Total ~400ms.
++ SQL query (~1ms) ≈ 300ms total. If the runner
+preserves `.mdbase/` between weekly runs, only
+files changed since last week need re-parse;
+weekly delta on a stable corpus is small, so
+~50ms validation + 1ms query ≈ 50ms. CI
+preservation depends on caching strategy.
 
-**Verdict.** Stateless still works but the gap is
-narrowing. At 30,000 RFCs the per-query cost
-(~3 seconds) starts to feel slow for an interactive
-dashboard.
+**With mdsmith stateless.** Parallel re-read,
+filter by FM, sort and top-5 per group
+in process. ~400ms cold.
+
+**With either in long-lived mode.** Both serve
+sub-ms after the first query in the session.
+Not applicable to a weekly cron unless the team
+runs a daemon for it.
+
+**Verdict.** Cold-vs-cold both around 300–400ms.
+mdbase wins meaningfully only when weekly
+cache state is preserved between runs (CI cache
+buckets), at which point it drops to ~50ms.
+mdsmith would need a similar persistence
+mechanism (P-1) to match. At 30,000 RFCs the
+cold-start gap widens — both tools take ~3
+seconds without preserved state — and either's
+preserved-state version becomes the obvious
+choice.
 
 ### A-3: Knowledge-graph backlinks at scale
 
@@ -137,6 +217,20 @@ dashboard.
 with dense `[[wikilinks]]`. Researcher opens a
 paper note and wants the backlinks panel:
 "What cites this paper?" In milliseconds.
+
+**Mode assumption.** Long-lived editor session.
+The researcher has the editor open all day;
+queries run inside that session.
+
+**Pre-conditions matter for this one.** Three
+distinct points in the session:
+
+- **Pre-1: cold session** — editor just opened,
+  no warm state.
+- **Pre-2: first backlink query** — researcher
+  asks "what cites this?" for the first time.
+- **Pre-3: subsequent backlink queries** —
+  later in the same session.
 
 **Query.** The query shape:
 
@@ -152,25 +246,65 @@ the load-bearing structure. Each query needs an
 edge lookup `(target → sources)` and then a group
 by tag.
 
-**With mdbase.** Indexed `(target_path, source_path)`
-edge table. The lookup is a single B-tree probe;
-the group-by uses the cached tag column.
-Sub-millisecond.
+**With mdbase, watch mode running.** Across the three pre-conditions:
 
-**With mdsmith stateless.** Re-read 12,000 files
-to rebuild the link graph per query. Even with
-parallel IO and fast parsing, ~2 seconds cold.
-Unacceptable for an interactive backlinks panel.
+- Pre-1: at session start, mdbase has either a
+  warm SQLite cache (from prior session) or
+  rebuilds it (~2s for 12k files of full-body
+  parse). With cache preserved, validation pass
+  takes ~120ms.
+- Pre-2: first query, indexed edge lookup,
+  sub-millisecond.
+- Pre-3: subsequent, also sub-ms.
 
-**Verdict.** Stateless does not work at this
-scale for interactive use. This is the case
-where the SQLite-class index pays.
+**With mdsmith stateless CLI.** Across the same three pre-conditions:
+
+- Pre-1: not applicable; CLI doesn't persist a
+  session.
+- Pre-2: re-read 12,000 files, ~2 seconds cold.
+  Unacceptable as an interactive panel.
+- Pre-3: same — every query is a cold start.
+
+**With mdsmith in-memory link graph in the LSP
+server (planned, P-1 option 2 + plan 131).**
+Across the same pre-conditions:
+
+- Pre-1: at LSP startup, walk the workspace and
+  build the link graph in memory. ~2s on 12k
+  files (parallel parse). Or build it in the
+  background with priority queries (see
+  "Background indexing" earlier in this doc),
+  so the editor opens immediately and the
+  index fills out.
+- Pre-2: indexed edge lookup, sub-millisecond.
+- Pre-3: sub-ms; the in-memory graph stays warm
+  for the session.
+
+**Verdict.** With the editor session
+explicitly assumed, both tools serve queries in
+sub-millisecond after the first cold build.
+mdsmith CLI does not work for this use case at
+this scale; mdsmith's planned LSP-resident link
+graph does. The win for mdbase is the
+cross-session warmth from the SQLite cache: a
+researcher closing and reopening the editor
+gets a faster Pre-1 with mdbase than with
+mdsmith's in-memory-only model.
+
+That cross-session warmth is the actual SQLite
+payoff. Whether it justifies the cache
+operational cost depends on how often the
+editor restarts versus stays open all day.
 
 ### A-4: Time-bucketed velocity
 
 **Setting.** Plan tracker. ~500 plans across
 two years. Quarterly review: "Plans completed
 per month, last 12 months."
+
+**Mode assumption.** Cold start. Quarterly
+report run by hand or in CI; no surviving
+cache assumed.
 
 **Query.** The query shape:
 
@@ -185,15 +319,23 @@ order_by: time_bucket asc
 **Cost driver.** 500 files; light. The time-
 bucket logic is the interesting part.
 
-**With mdbase.** Date functions in expressions
-plus GROUP BY on the bucket key. Trivial in SQL.
+**With mdbase, cold start.** Cache build
+(~50ms) + SQL with GROUP BY on bucket key
+(~1ms) ≈ 50ms total.
 
 **With mdsmith stateless.** Parallel parse, in-
 process bucket, count. ~50ms even cold.
 
-**Verdict.** Stateless wins. The corpus is
-small, the aggregation is light. Adding a cache
-would only slow things down.
+**With either in long-lived mode.** Sub-ms after
+first query; not relevant for a quarterly job.
+
+**Verdict.** Roughly equivalent at this scale
+in cold-start mode. The corpus is small enough
+that cache validation overhead and fresh parse
+work converge. mdbase's GROUP BY syntax is
+nicer to read; mdsmith would need Q-5
+aggregations to match. The choice here is
+expressiveness, not speed.
 
 ### A-5: Cross-type join
 
@@ -201,6 +343,11 @@ would only slow things down.
 its `owner: alice`. Task type also has
 `assignee: alice`. Query: "List Alice's open RFCs
 with at least one in-progress related task."
+
+**Mode assumption.** Either. The query is run
+ad-hoc from the CLI in some teams, embedded in
+a dashboard that polls in others. Numbers below
+cover both modes.
 
 **Query.** The query shape:
 
@@ -216,19 +363,31 @@ where: |
 matching RFC triggers per-task lookups on
 `related_tasks`, which is a list of paths.
 
-**With mdbase.** The `asFile()` call goes through
-the index: link target → cached FM → status
-column. ~10 lookups per RFC, all O(log n).
-Total: 200 × 10 = 2,000 index hits. Fast.
+**With mdbase, cold start.** Cache build
+(~500ms for 5,200 files) + traversal-aware SQL
+(2,000 index hits ≈ 10ms) ≈ 500ms total.
+
+**With mdbase, long-lived (watch mode).** Cache
+warm; ~10ms per query.
 
 **With mdsmith stateless.** Re-read all RFCs
-(filter), then re-read each related task (200 ×
-~3 hops × ~1ms parse = 600ms additional). Total
-~1 second cold. Acceptable but not great.
+(filter, ~200ms), then read each related task
+(200 RFCs × ~3 hops × ~1ms parse = 600ms). Total
+~800ms cold.
 
-**Verdict.** Marginal. At this scale, stateless
-is on the edge. Once joins go more than two
-hops or the corpus doubles, the index pays.
+**With mdsmith long-lived (LSP-resident link
+graph + planned L-5 traversal).** Same ~10ms
+per query as mdbase, after the cold index
+build.
+
+**Verdict.** Cold-vs-cold roughly comparable
+(500–800ms). Long-lived mode lets either tool
+serve queries in tens of milliseconds. The
+SQLite cache pays for cross-session warmth, the
+same as A-3. At larger scales (20k+ tasks, 4+
+hops) the cold-start gap widens for both,
+favoring whichever tool has a working long-
+lived path.
 
 ### A-6: Real-time editor decoration
 
@@ -237,6 +396,24 @@ inline decoration: every wikilink shows the
 target's title in light text after the link.
 Updates as files change.
 
+**Mode assumption.** Long-lived editor session
+with LSP server attached. Decoration runs on
+every keystroke that affects rendering, so this
+is unequivocally a session-mode use case;
+stateless CLI does not apply.
+
+**Pre-conditions matter.** Four moments matter inside the session:
+
+- **Pre-1: editor opens** — first decoration
+  pass on the visible file.
+- **Pre-2: typing inside the file** — link
+  targets unchanged, decorations stable.
+- **Pre-3: navigating to a different file** —
+  new decorations.
+- **Pre-4: external file change** — target
+  file's title updated, decoration must
+  refresh.
+
 **Query.** Per visible link, fetch
 `asFile().title`. Hundreds of times per file
 open, called from the LSP server.
@@ -244,20 +421,43 @@ open, called from the LSP server.
 **Cost driver.** Latency. 50ms feels slow;
 200ms is unacceptable.
 
-**With mdbase.** Index-backed lookup.
-Sub-millisecond per resolution.
+**With mdbase, watch mode.** Across the four pre-conditions:
 
-**With mdsmith stateless.** Per-resolution disk
-read. Even with read coalescing, 5–10ms per
-target file. With 100 visible links: 500ms-1s of
-work per editor open. Bad.
+- Pre-1: ~120ms validation if cache exists,
+  else ~2s rebuild. After that, decorations
+  resolve sub-millisecond.
+- Pre-2/3/4: sub-ms each, regardless of
+  surrounding edits.
 
-**Verdict.** This is an LSP case. The right
-shape is option 2 from
-[learn-from-mdbase.md §P-1](learn-from-mdbase.md):
-in-memory, process-scoped index in the LSP
-server. No disk cache; the editor session keeps
-state, the CLI does not.
+**With mdsmith stateless CLI.** Not applicable;
+the CLI exits between queries. A per-decoration
+shell-out would cost 5–10ms per resolution
+just for process startup, plus disk read. Fails
+all four pre-conditions.
+
+**With mdsmith LSP-resident link graph (planned
+P-1 option 2 + plan 131).** Across the same four
+pre-conditions:
+
+- Pre-1: ~2s cold rebuild, or instant if
+  background indexing is in place and the
+  editor opens before the index completes
+  (decorations fill in as targets become
+  resolvable).
+- Pre-2: sub-ms (no link-target changes).
+- Pre-3: sub-ms.
+- Pre-4: relies on the LSP's
+  `didChangeWatchedFiles` invalidating one
+  file's cache entry; <10ms refresh.
+
+**Verdict.** Both tools handle this in
+long-lived mode. Stateless does not work for
+either; the question is just whether the
+long-lived process is mdbase-lsp or mdsmith's
+LSP. Cross-session warmth (Pre-1 specifically)
+is where mdbase's persistent cache wins;
+restart frequency determines whether that
+matters.
 
 ## What an index actually costs
 
@@ -685,41 +885,68 @@ on hardened parsing today (because they did the
 review). Both share the path-sandboxing baseline
 the spec mandates.
 
-## When the index pays
+## When operational mode + persistence pays
 
-Reading across the six cases, three signals
-predict when an index earns its cost:
+Reading across the six cases with the
+mode-and-pre-condition framing, three signals
+predict whether *some* form of cached or
+indexed state earns its cost:
 
-1. **Interactive latency.** A query that runs
+1. **Interactive latency.** Queries that run
    inside a UI (LSP decoration, backlinks panel,
-   editor hover) needs <100ms response. Stateless
-   re-read gets there only at small file counts.
-2. **Repeated queries on a stable corpus.** A CI
-   job runs once per push and caches don't help.
-   A researcher running queries all day in a
-   stable vault sees the cache pay every minute.
+   editor hover) need <100ms response. Stateless
+   one-shot CLI does not get there at workspace
+   scale; some form of long-lived state is
+   required.
+2. **Cross-session restart cost.** If a tool's
+   long-lived process restarts often (editor
+   close-and-reopen, agent loop respawn), warm
+   state must be reconstructed each time. A
+   persistent cache that survives restart pays
+   here. A pure in-memory model rebuilds.
 3. **Cross-file joins beyond one hop.** Single-
    file queries scale linearly with the corpus.
-   Joins multiply the cost; an index turns each
-   hop from O(n) to O(log n).
+   Joins multiply the cost; any form of index
+   (persistent or in-memory) turns each hop
+   from O(n) to O(log n).
 
-The cross-product:
+The cross-product, with explicit modes:
 
-| Use case             | Latency need | Repeated? | Joins?  | Index pays? |
-|----------------------|--------------|-----------|---------|-------------|
-| A-1 sprint dashboard | CI (seconds) | no        | no      | no          |
-| A-2 reviewer load    | weekly job   | no        | one hop | borderline  |
-| A-3 backlinks panel  | UI (<100ms)  | yes       | one hop | yes         |
-| A-4 velocity         | report (~s)  | no        | no      | no          |
-| A-5 cross-type join  | report (~s)  | no        | 2+ hops | borderline  |
-| A-6 editor decor     | UI (<50ms)   | yes       | one hop | yes         |
+| Use case              | Mode (most natural) | Latency need | Joins?  | Cold-shot OK? | Long-lived helps? | Persistent cache adds? |
+|-----------------------|---------------------|--------------|---------|---------------|-------------------|------------------------|
+| A-1 sprint dashboard  | one-shot CI         | seconds      | no      | yes           | no (one-shot)     | only if CI preserves   |
+| A-2 reviewer load     | one-shot weekly     | seconds      | one hop | yes           | not natural       | only if CI preserves   |
+| A-3 backlinks panel   | long-lived editor   | <100ms       | one hop | no            | yes (decisive)    | cross-restart warmth   |
+| A-4 velocity          | one-shot quarterly  | seconds      | no      | yes           | no (one-shot)     | minimal                |
+| A-5 cross-type join   | either              | seconds–ms   | 2+ hops | yes (cold)    | yes (warm)        | cross-restart warmth   |
+| A-6 editor decoration | long-lived LSP      | <50ms        | one hop | no            | yes (decisive)    | cross-restart warmth   |
 
-Two of six clearly need an index; two clearly
-don't; two sit on the edge. The interesting
-design question for mdsmith is whether the two
-clear cases (A-3 backlinks panel, A-6 editor
-decoration) can be served by an in-memory index
-inside the LSP server without ever shipping a
+Two patterns fall out:
+
+- **Cold-shot use cases (A-1, A-2, A-4).**
+  Roughly equivalent across both tools at
+  cold-vs-cold. Persistent cache helps only if
+  the runner preserves it (CI cache buckets).
+  This is more about the deployment than the
+  tool.
+- **Long-lived use cases (A-3, A-5, A-6).**
+  Both tools serve sub-millisecond after the
+  first cold build *within* a session. The
+  distinguishing axis is **cross-session
+  warmth**: does state survive restart? mdbase's
+  SQLite cache is the most direct way to make
+  that warmth survive a process exit. mdsmith's
+  current trajectory (in-memory in the LSP)
+  rebuilds at session start; whether that's
+  acceptable depends on how often sessions
+  restart.
+
+The interesting design question for mdsmith is
+whether the two clear long-lived cases (A-3
+backlinks panel, A-6 editor decoration) can be
+served by an in-memory index inside the LSP
+server, plus background indexing to mask cold
+build, without ever shipping a
 persistent on-disk cache.
 
 ## Stateless-fast: the `fzf` / `ripgrep` model

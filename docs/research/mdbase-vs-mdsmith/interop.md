@@ -3,7 +3,6 @@ summary: >-
   Running mdsmith and mdbase on the same files — coexistence model, the
   dual-schema problem, recommended layouts, suggested integration
   patterns, and a sketch of a future schema bridge.
-status: 🔳
 ---
 # Interop and combined use
 
