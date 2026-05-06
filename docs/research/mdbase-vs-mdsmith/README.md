@@ -102,7 +102,7 @@ DSL compatible with Obsidian Bases for queries,
 optional SQLite-backed caching, watch mode, and
 rename with link rewriting.
 
-**Both projects in detail share these properties.** Together, these properties hold for both:
+Shared by both projects:
 
 - Files on disk are authoritative
 - No proprietary format

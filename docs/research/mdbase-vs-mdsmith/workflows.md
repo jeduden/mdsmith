@@ -13,7 +13,8 @@ feel like to do this work."
 
 ## 1. Bootstrap a new project
 
-**mdsmith.** mdsmith side:
+**mdsmith.** Init writes a default config; the
+first lint runs straight away.
 
 ```bash
 cd my-docs
@@ -27,7 +28,8 @@ on every `check`. Adding kinds, schemas, and
 overrides is opt-in — projects with no special needs
 never edit `.mdsmith.yml` after init.
 
-**mdbase.** mdbase side:
+**mdbase.** Init creates the collection skeleton;
+the first type comes next.
 
 ```bash
 cd my-collection
@@ -257,7 +259,8 @@ commit."
 
 ## 5. Rename a file
 
-**mdsmith.** mdsmith side:
+**mdsmith.** Plain `mv` plus a re-lint surfaces broken
+links; rewriting them is manual.
 
 ```bash
 mv docs/old-name.md docs/new-name.md
@@ -299,7 +302,8 @@ from mdbase here.
 
 ## 6. Find and select files
 
-**mdsmith.** mdsmith side:
+**mdsmith.** A CUE struct literal filters files by
+front matter.
 
 ```bash
 mdsmith query 'status: "✅"' plan/
@@ -310,7 +314,8 @@ The output is a list of file paths. Pipe into other
 tools as needed. There is no body search, no sort,
 no pagination.
 
-**mdbase.** mdbase side:
+**mdbase.** A query document carries `types`,
+`where`, sort and pagination.
 
 ```bash
 mdbase query '
@@ -390,7 +395,10 @@ issues; mdbase reports schema and link issues.
 
 ## 8. Pre-commit / pre-merge
 
-**mdsmith.** mdsmith side:
+**mdsmith.** Two installers wire git hooks: the
+pre-merge-commit runs `mdsmith fix` after a merge,
+and the merge driver auto-resolves conflicts inside
+generated sections.
 
 ```bash
 mdsmith pre-merge-commit install

@@ -191,7 +191,7 @@ Backlinks find supersession chains. But: no
 heading-template enforcement, no readability
 checks, no index-table generation in-place.
 
-**Verdict.** mdsmith leans. The four-section
+**Verdict.** mdsmith (lean). The four-section
 template is the structural backbone of the artifact;
 mdsmith owns that. mdbase types add typed-data
 nicety, but the team can get most of the same
