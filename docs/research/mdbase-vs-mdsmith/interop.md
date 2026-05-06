@@ -268,16 +268,25 @@ my-vault/
 ```
 
 `.mdsmith.yml` settings — pick the granularity
-deliberately:
+deliberately. Two copy/paste-valid options:
+
+**Option 1: full exclusion** (no mdsmith lint at
+all on `_types/`).
 
 ```yaml
-# Option 1: full exclusion (no mdsmith lint at all on _types/)
+# .mdsmith.yml
 ignore:
   - "_types/**"      # mdbase owns these end-to-end
   - ".mdbase/**"     # gitignored cache, never lint
+```
 
-# Option 2: lint prose/whitespace in _types/, just skip schema
-# validation conflicts. Replace the _types/ ignore line above with:
+**Option 2: lint prose/whitespace in `_types/`,
+skip schema-validation conflicts only.** Disable
+just `required-structure` on `_types/` via an
+override; everything else still runs.
+
+```yaml
+# .mdsmith.yml
 overrides:
   - glob: ["_types/**"]
     rules:
@@ -290,11 +299,11 @@ ignore:
 prose readability, line length, table formatting,
 and link integrity — for the matched files. That
 matches the "mdbase owns these end-to-end"
-intent. If the team wants type files to be
-linted for prose and whitespace consistency
-(they are normal Markdown after all) but doesn't
-want MDS020 fighting mdbase, the `overrides:`
-form is the better fit.
+intent in Option 1. If the team wants type
+files to be linted for prose and whitespace
+consistency (they are normal Markdown after all)
+but doesn't want MDS020 fighting mdbase, the
+`overrides:` form in Option 2 is the better fit.
 
 `mdbase.yaml` `exclude:` entries:
 

@@ -49,10 +49,15 @@ convention preset (portable | github | plain)
   ↓ deep-merge
 top-level rules:
   ↓ deep-merge
-overrides: [{glob, rules}, …]
-  ↓ deep-merge
 kinds assigned to file (front-matter or kind-assignment)
+  ↓ deep-merge
+overrides: [{glob, rules}, …]
 ```
+
+(Layer order matches `internal/config/merge.go`'s
+`effectiveRules`: defaults → convention → user
+rules → kinds → overrides, with later layers
+winning on conflict.)
 
 Deep-merge semantics (see
 `internal/config/deepmerge.go`):

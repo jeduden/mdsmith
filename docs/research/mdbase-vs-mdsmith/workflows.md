@@ -600,7 +600,7 @@ the contributor must read top to bottom.
 | Config to read           | `.mdsmith.yml`                            | `mdbase.yaml` + `_types/`         |
 | Per-type docs            | `internal/rules/<id>/README.md` (in repo) | `_types/<name>.md` body (in repo) |
 | Inspect effective config | `mdsmith kinds`                           | `mdbase types --inspect`          |
-| Offline rule docs        | `mdsmith help <id>`                       | spec doc on github                |
+| Offline rule docs        | `mdsmith help <id>`                       | spec doc on GitHub                |
 
 ## 12. Mental model summary
 

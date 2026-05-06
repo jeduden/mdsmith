@@ -768,6 +768,177 @@ FM is enough. Q-3-like workloads do need an FTS
 index; whether bodies inline or external is a
 size-vs-IO call.
 
+### What the reference impls actually do
+
+The spec is permissive about cache architecture.
+There are two reference implementations of mdbase
+today, and they make materially different
+choices. Both affect the cost estimates above.
+
+**TypeScript impl** ([`mdbase`][mdbase-ts]) —
+used by `mdbase-cli`.
+
+Reading [`src/cache/async-store.ts`][async-store]:
+
+- **SQLite via `sql.js` (WebAssembly).** The
+  cache uses [`sql.js`][sqljs], not a native
+  driver. The entire database loads into RAM at
+  process start, mutates in-memory, and writes
+  back on `flush()`/`close()`. No incremental
+  disk writes; no `mmap`.
+- **Schema declares more than it populates.**
+  Tables: `files` (path, mtime_ms, size,
+  content_hash, frontmatter_json, body,
+  types_json), plus `field_values` (denormalized
+  FM with text/number/int columns and indexes),
+  `links` (edge table), `tags`, and `meta`. The
+  standard `upsertFile` writes only the `files`
+  row. `field_values`, `links`, and `tags` are
+  scaffolded but not populated by the basic
+  cache writer.
+- **Body inline, no FTS5.** Body is a TEXT
+  column on `files`. Body queries scan linearly
+  through in-memory strings.
+- **Staleness via mtime_ms + size.**
+  `content_hash` exists as a column but is not
+  populated or checked in the code paths
+  reviewed.
+- **Link index built per query.** Each query
+  that needs backlinks calls `buildLinkIndex`
+  against the in-memory file cache, walks every
+  file's typed link fields and body links, and
+  builds a `Map<targetPath, Set<sourcePath>>`
+  from scratch. The on-disk `links` table is
+  not consulted.
+
+**Rust impl** ([`mdbase-rs`][mdbase-rs]) — used
+by `mdbase-lsp`.
+
+Reading [`src/cache/schema.sql`][rs-schema] and
+[`src/cache/indexer.rs`][rs-indexer]:
+
+- **Native SQLite via `rusqlite` (bundled).**
+  Real persistent SQLite file with incremental
+  writes; no full memory load. This is the
+  shape that makes "persistent cache" earn its
+  name.
+- **Schema actively populated.** Tables: `files`
+  (path, mtime_ns, ctime_ns, size,
+  frontmatter_json, body, effective_json,
+  parse_error), `file_types` (path, type_name),
+  `links` (source_path, target_path, location,
+  field, raw_target), `unique_values` (type +
+  field + value + path, for ID uniqueness),
+  `meta`. The indexer writes to **all** of
+  these on update.
+- **Body inline, no FTS5.** Same as TS.
+- **Staleness via mtime_ns** (nanosecond
+  precision; TS uses ms). No content hash.
+- **Effective FM cached.** `effective_json`
+  stores the merged FM with defaults applied,
+  so reads skip recomputing defaults.
+- **Link table actively used.** Backlinks can be
+  served from the indexed `links(target_path)`
+  table — a B-tree probe rather than a per-
+  query rebuild.
+
+**Side-by-side at the storage layer.** The two impls in one table:
+
+| Concern                 | TS impl (`mdbase`)           | Rust impl (`mdbase-rs`)              |
+|-------------------------|------------------------------|--------------------------------------|
+| SQLite binding          | `sql.js` (WebAssembly)       | `rusqlite` with bundled SQLite       |
+| Persistence model       | In-memory; flush on close    | Incremental disk writes              |
+| Body storage            | Inline TEXT column           | Inline TEXT column                   |
+| FTS index               | None                         | None                                 |
+| Staleness               | `mtime_ms` + `size`          | `mtime_ns` (+ separate ctime column) |
+| Content hash            | Column exists, unused        | Not in schema                        |
+| Effective FM cached     | No (recomputed)              | Yes (`effective_json`)               |
+| `files` table populated | Yes                          | Yes                                  |
+| `links` table populated | No (rebuilt per query)       | Yes                                  |
+| `file_types` populated  | n/a (uses `types_json` blob) | Yes (denormalized rows)              |
+| `unique_values`         | n/a                          | Yes (for ID uniqueness checks)       |
+| Body queries            | Linear scan in RAM           | Linear scan via SQL                  |
+
+**What this means for the cost estimates above.** Walking the worked use cases:
+
+- **A-3 backlinks at 12,000 files.** The
+  "indexed edge lookup, sub-millisecond" claim
+  fits the **Rust impl** (B-tree on
+  `links(target_path)`). The **TS impl** rebuilds
+  the link index per query from in-memory FM +
+  body — fast at RAM speed but tens of
+  milliseconds, not sub-ms. The two impls have
+  noticeably different latency on this workload.
+- **A-6 editor decoration.** The Rust LSP can
+  serve title lookups via direct table read on
+  `file_types`/`files`. The TS impl pattern
+  (rebuild per query) is fine for occasional
+  decoration but not per-keystroke.
+- **Q-3 body full-text search.** Linear scan
+  either way — both impls store body inline
+  with no FTS5. Acceptable for ad-hoc queries,
+  not for interactive use at scale.
+- **Cache size.** Both store body inline; cache
+  size ≈ corpus size + FM/types overhead. TS at
+  10,000 files of 5KB average = ~50MB; Rust
+  similar.
+- **Cold start to first query.** TS loads the
+  whole cache file into RAM (~hundreds of ms
+  at 50MB plus `sql.js` WASM init). Rust opens
+  the SQLite file and runs queries against it
+  via the OS page cache; cold start is much
+  cheaper.
+
+A different conforming impl — native SQLite
+with FTS5, or a non-SQL store, or content-
+addressed loose objects — would have other
+trade-offs. The cost analysis in the rest of
+this doc was written against the spec's
+permissive picture; the actual impls sit at
+two distinct points on the persistence /
+indexing spectrum.
+
+**For mdsmith's hypothetical cache** (P-1),
+both impls are useful prior art:
+
+- **TS-shape (in-memory + flush-on-close).** A
+  persistent file that's fully loaded at
+  startup. Operationally close to option 2
+  (in-memory) in the P-1 alternatives table
+  plus a save-on-exit step. Doesn't need
+  SQLite's machinery; could be written as a
+  Go `gob` blob or BoltDB.
+- **Rust-shape (incremental persistent
+  SQLite).** Real database with indexed access
+  and small-disk-write update model. Closer to
+  option 5 in the P-1 alternatives table. Pays
+  for the cost of indexed joins, FTS5 if added,
+  and concurrent reader/writer separation.
+
+The choice between them depends on which
+workloads matter and whether incremental writes
+are needed during a session. mdsmith's existing
+LSP-resident config cache already follows the
+in-memory pattern; extending that to a link
+graph and FM map (without persistence) is the
+cheapest extension. Persistence — TS-shape or
+Rust-shape — is a separate decision triggered
+by cross-session warmth needs (see the trigger
+analysis in
+[learn-from-mdbase.md](learn-from-mdbase.md)).
+
+[mdbase-ts]: https://github.com/callumalpass/mdbase
+[mdbase-rs]: https://github.com/callumalpass/mdbase-rs
+[async-store]:
+  https://github.com/callumalpass/mdbase/blob/main/src/cache/async-store.ts
+[query-engine]:
+  https://github.com/callumalpass/mdbase/blob/main/src/operations/query-engine.ts
+[rs-schema]:
+  https://github.com/callumalpass/mdbase-rs/blob/main/src/cache/schema.sql
+[rs-indexer]:
+  https://github.com/callumalpass/mdbase-rs/blob/main/src/cache/indexer.rs
+[sqljs]: https://github.com/sql-js/sql.js
+
 ### Does mdbase query body content beyond links?
 
 Per spec §10, queries can reach the body via
