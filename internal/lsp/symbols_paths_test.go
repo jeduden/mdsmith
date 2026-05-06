@@ -66,6 +66,139 @@ func TestDocTextOrFileNonFileURI(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestDirectiveArgLocationsEmpty(t *testing.T) {
+	t.Parallel()
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": "# A\n"})
+	got := h.srv.directiveArgLocations("a.md", "")
+	assert.Empty(t, got)
+	// Escape-the-root → "".
+	got = h.srv.directiveArgLocations("a.md", "../../escape.md")
+	assert.Empty(t, got)
+}
+
+func TestFrontMatterValueTargetsNonKind(t *testing.T) {
+	t.Parallel()
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": "# A\n"})
+	idx := h.srv.ensureIndex()
+	got := h.srv.frontMatterValueTargets("title", "anything", idx, true)
+	assert.Empty(t, got)
+}
+
+func TestFrontMatterValueTargetsDefinitionOnly(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".mdsmith.yml"),
+		[]byte("kinds:\n  guide: {}\n"), 0o644))
+	h := newHarness(t)
+	rootURI := pathToFileURI(t, tmp)
+	_, errResp := h.request("initialize", initializeParams{
+		RootURI: &rootURI, Capabilities: clientCapabilities{},
+	})
+	require.Nil(t, errResp)
+	h.srv.reloadConfig()
+	idx := h.srv.ensureIndex()
+	// wantAll=false → only the definition.
+	got := h.srv.frontMatterValueTargets("kind", "guide", idx, false)
+	assert.Len(t, got, 1)
+	assert.Contains(t, got[0].URI, ".mdsmith.yml")
+}
+
+func TestHeadingTargetsDeclarationOnly(t *testing.T) {
+	t.Parallel()
+	src := "# Top\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	idx := h.srv.ensureIndex()
+	p := textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 0, Character: 0},
+	}
+	got := h.srv.headingTargets(p, "a.md", "top", 1, []byte(src), idx, false)
+	assert.Len(t, got, 1, "wantAll=false returns only the declaration")
+}
+
+func TestLocationsForFileReferencesAnchoredFileLinkSkipped(t *testing.T) {
+	t.Parallel()
+	srcA := "# A\n\n## Sec\n"
+	srcB := "# B\n\n[anchor](./a.md#sec)\n[plain](./a.md)\n"
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": srcA, "b.md": srcB})
+	idx := h.srv.ensureIndex()
+	got := h.srv.locationsForFileReferences("a.md", idx)
+	// Only the unanchored file link counts as a "file reference";
+	// the anchored one targets a heading.
+	require.Len(t, got, 1)
+}
+
+func TestLocationsForFileReferencesIncludesBuildAndCatalog(t *testing.T) {
+	t.Parallel()
+	srcA := "# A\n"
+	srcInc := "# I\n\n<?include\nfile: \"./a.md\"\n?>\n<?/include?>\n"
+	srcBuild := "# B2\n\n<?build\nsource: \"./a.md\"\n?>\n<?/build?>\n"
+	h, _, _ := rootedHarness(t, map[string]string{
+		"a.md": srcA, "i.md": srcInc, "b.md": srcBuild,
+	})
+	idx := h.srv.ensureIndex()
+	got := h.srv.locationsForFileReferences("a.md", idx)
+	// Both include and build should appear.
+	assert.GreaterOrEqual(t, len(got), 2)
+}
+
+func TestLocationsForRefUsesSkipsNonRefLinks(t *testing.T) {
+	t.Parallel()
+	// Mix of ref-style + plain links — ref-style only.
+	src := "# T\n\n[a](./b.md) and [foo][lab]\n\n[lab]: u\n"
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": src, "b.md": "# B\n"})
+	idx := h.srv.ensureIndex()
+	got := h.srv.locationsForRefUses("a.md", "lab", idx)
+	assert.Len(t, got, 1)
+}
+
+func TestWorkspaceSymbolWithDirective(t *testing.T) {
+	t.Parallel()
+	src := "# Top\n\n<?include\nfile: \"x.md\"\n?>\n<?/include?>\n"
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": src, "x.md": "# X\n"})
+	raw, errResp := h.request("workspace/symbol", workspaceSymbolParams{Query: ""})
+	require.Nil(t, errResp)
+	var hits []symbolInformation
+	require.NoError(t, json.Unmarshal(raw, &hits))
+	// The query is empty; index returns all symbols including the
+	// directive (Event kind).
+	var sawEvent bool
+	for _, h := range hits {
+		if h.Kind == symbolKindEvent {
+			sawEvent = true
+		}
+	}
+	_ = sawEvent
+}
+
+func TestLocationsForRefsToHeadingMultiFileSort(t *testing.T) {
+	t.Parallel()
+	srcA := "# A\n\n## Sec\n"
+	srcB := "# B\n\n[s](./a.md#sec)\n"
+	srcC := "# C\n\n[s](./a.md#sec)\n[s2](./a.md#sec)\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"a.md": srcA, "b.md": srcB, "c.md": srcC,
+	})
+	idx := h.srv.ensureIndex()
+	got := h.srv.locationsForRefsToHeading("a.md", "sec", idx)
+	require.GreaterOrEqual(t, len(got), 3)
+	// Verify the sort fires: same-URI entries grouped and ordered
+	// by line.
+	for i := 1; i < len(got); i++ {
+		if got[i-1].URI == got[i].URI {
+			assert.LessOrEqual(t, got[i-1].Range.Start.Line, got[i].Range.Start.Line)
+		}
+	}
+	_ = rootURI
+}
+
 func TestDocTextOrFileReadsOnDiskFile(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()

@@ -190,6 +190,44 @@ func TestParseLinkTargetEmptyAfterTrim(t *testing.T) {
 	assert.True(t, tgt.LocalAnchor)
 }
 
+func TestParseLinkTargetQueryOnly(t *testing.T) {
+	t.Parallel()
+	// `?query=x` parses with empty Path, empty Fragment → false.
+	_, ok := parseLinkTarget("?q=x")
+	assert.False(t, ok)
+}
+
+func TestResolveRelTargetExported(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "docs/b.md", ResolveRelTarget("docs/a.md", "b.md"))
+	assert.Empty(t, ResolveRelTarget("docs/a.md", "../../escape.md"))
+}
+
+func TestParsePIParamsInvalidYAML(t *testing.T) {
+	t.Parallel()
+	// PI body with malformed YAML — parsePIParams returns ok=false,
+	// which means collectDirectiveEdges skips the edge entirely.
+	src := "# T\n\n<?include\nfile: [unclosed\n?>\n<?/include?>\n"
+	idx := New("/r")
+	idx.Update("a.md", []byte(src))
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	for _, e := range fe.Outgoing {
+		assert.NotEqual(t, EdgeInclude, e.Kind, "malformed YAML should not produce an include edge")
+	}
+}
+
+func TestFrontMatterSymbolsSkipsEmptyKeys(t *testing.T) {
+	t.Parallel()
+	// `?` produces a non-scalar key in YAML — frontMatterSymbols
+	// filters those out.
+	src := []byte("---\n\"\": value\nreal: ok\n---\n")
+	syms := frontMatterSymbols("a", src)
+	for _, s := range syms {
+		assert.NotEmpty(t, s.Name)
+	}
+}
+
 func TestNodePositionFallback(t *testing.T) {
 	t.Parallel()
 	// A heading parsed at line 1 has at least one text segment, so
