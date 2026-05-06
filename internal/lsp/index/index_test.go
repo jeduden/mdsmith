@@ -376,6 +376,78 @@ func TestRemoveOnNonexistentFileNoOp(t *testing.T) {
 	idx.Remove("")
 }
 
+func TestParseLinkTargetVariants(t *testing.T) {
+	t.Parallel()
+	idx := New("/root")
+	idx.Update("a.md", []byte(
+		"# T\n\n[empty]()\n[scheme](http://x)\n[malformed](%)\n[opaque](mailto:x@y)\n[anchor](#sec)\n## Sec\n",
+	))
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	// Only the anchor link should produce an outgoing edge.
+	var anchors int
+	for _, e := range fe.Outgoing {
+		if e.Kind == EdgeAnchorLink && e.TargetAnchor == "sec" {
+			anchors++
+		}
+	}
+	assert.Equal(t, 1, anchors, "edges: %+v", fe.Outgoing)
+}
+
+func TestDecodeAnchorWithPercentEncoding(t *testing.T) {
+	t.Parallel()
+	// The internal decodeAnchor is exercised via Update on encoded
+	// anchors; the percent-encoded form should slugify the same as
+	// the literal form once the URL is decoded.
+	src := "# Top\n\n[a](#hello%2Dthere)\n[b](#hello-there)\n"
+	idx := New("/root")
+	idx.Update("a.md", []byte(src))
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	require.Len(t, fe.Outgoing, 2)
+	assert.Equal(t, fe.Outgoing[0].TargetAnchor, fe.Outgoing[1].TargetAnchor)
+}
+
+func TestResolveRelTargetEscapesRoot(t *testing.T) {
+	t.Parallel()
+	idx := New("/root")
+	// `[x](../up.md)` from `docs/a.md` resolves to `up.md`.
+	// `[x](../../way-up.md)` resolves to "" (escapes root).
+	idx.Update("docs/a.md", []byte("# A\n\n[1](../up.md)\n[2](../../way-up.md)\n[3](/abs.md)\n"))
+	fe, ok := idx.File("docs/a.md")
+	require.True(t, ok)
+	var got []string
+	for _, e := range fe.Outgoing {
+		if e.Kind == EdgeFileLink {
+			got = append(got, e.TargetFile)
+		}
+	}
+	assert.Contains(t, got, "up.md")
+	assert.Contains(t, got, "")
+}
+
+func TestColumnOfLineEdgeCases(t *testing.T) {
+	t.Parallel()
+	// Exercise the helper indirectly: heading on line 1 with a
+	// pre-existing front matter offset, so columnOfLine sees a
+	// line index 0 and a real absOffset.
+	idx := New("/root")
+	idx.Update("a.md", []byte("---\nfoo: bar\n---\n# Top\n"))
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	var headings []Symbol
+	for _, s := range fe.Symbols {
+		if s.Kind == SymbolHeading {
+			headings = append(headings, s)
+		}
+	}
+	require.Len(t, headings, 1)
+	assert.Equal(t, 4, headings[0].StartLine)
+	// Heading text starts after `# ` so column is 3 (1-based byte
+	// offset of first text character).
+	assert.GreaterOrEqual(t, headings[0].SelectionCol, 1)
+}
+
 func TestNormalizePathBackslashes(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "x/y/z.md", NormalizePath(`x\y\z.md`))

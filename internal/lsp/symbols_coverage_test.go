@@ -2,11 +2,14 @@ package lsp
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/lsp/index"
 )
 
 // These tests fill out coverage on the LSP navigation handlers'
@@ -535,6 +538,119 @@ func TestCodeActionStillWorksAfterSymbolRequest(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &actions))
 	// No diagnostics → no quickfixes; optional source.fixAll.
 	assert.NotNil(t, actions)
+}
+
+func TestHeadingDisplayAndDetailEdgeCases(t *testing.T) {
+	t.Parallel()
+	// Empty-name heading falls back to the level marker.
+	got := headingDisplay(index.Symbol{Level: 2})
+	assert.Equal(t, "##", got)
+	assert.Empty(t, headingDetail(index.Symbol{}))
+	assert.Equal(t, "#anchor", headingDetail(index.Symbol{Anchor: "anchor"}))
+	// leafDetail dispatches by kind.
+	assert.Equal(t, "<?include?>", leafDetail(index.Symbol{Kind: index.SymbolDirective, Name: "include"}))
+	assert.Equal(t, "[label]:", leafDetail(index.Symbol{Kind: index.SymbolLinkRef, Name: "label"}))
+	assert.Empty(t, leafDetail(index.Symbol{Kind: index.SymbolFrontMatter}))
+}
+
+func TestLocationsForKindDefinitionAbsentKind(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	// No config → no kind block → empty.
+	assert.Empty(t, h.srv.locationsForKindDefinition("nope"))
+}
+
+func TestIndexUpdateRunsAfterEnsureIndex(t *testing.T) {
+	t.Parallel()
+	// Force the index to build, then drive a didChange so
+	// indexUpdate's non-nil-index branch runs.
+	src := "# Top\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	// Build the index.
+	_, _ = h.request("textDocument/documentSymbol", documentSymbolParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+	})
+	// Now trigger didChange so indexUpdate sees a non-nil idx.
+	h.notify("textDocument/didChange", didChangeTextDocumentParams{
+		TextDocument: versionedTextDocumentIdentifier{URI: uri, Version: 2},
+		ContentChanges: []textDocumentContentChangeEvent{
+			{Text: "# Updated\n"},
+		},
+	})
+	// Re-query — outline should reflect the new heading.
+	raw, errResp := h.request("textDocument/documentSymbol", documentSymbolParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+	})
+	require.Nil(t, errResp)
+	var syms []documentSymbol
+	require.NoError(t, json.Unmarshal(raw, &syms))
+	require.NotEmpty(t, syms)
+	assert.Equal(t, "Updated", syms[0].Name)
+}
+
+func TestIndexReloadFromDiskHandlesMissingFile(t *testing.T) {
+	t.Parallel()
+	src := "# Top\n"
+	h, tmp, _ := rootedHarness(t, map[string]string{"a.md": src})
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	// Build the index.
+	_, _ = h.request("workspace/symbol", workspaceSymbolParams{Query: "Top"})
+	// Delete the file and trigger a watcher reload.
+	abs := filepath.Join(tmp, "a.md")
+	require.NoError(t, removeFileForTest(abs))
+	h.notify("workspace/didChangeWatchedFiles", didChangeWatchedFilesParams{
+		Changes: []fileEvent{{URI: "file://" + abs, Type: 3}}, // Deleted
+	})
+	// Subsequent search no longer finds the file.
+	raw, errResp := h.request("workspace/symbol", workspaceSymbolParams{Query: "Top"})
+	require.Nil(t, errResp)
+	var hits []symbolInformation
+	require.NoError(t, json.Unmarshal(raw, &hits))
+	assert.Empty(t, hits)
+}
+
+// removeFileForTest deletes path; pulled into a helper so the test
+// reads top-down without an inline std-lib import.
+func removeFileForTest(path string) error {
+	return os.Remove(path)
+}
+
+func TestLocationsForFileTopFiltersAnchored(t *testing.T) {
+	t.Parallel()
+	srcA := "# A\n\n## Sec\n"
+	// b.md links to a.md#sec (anchored) — locationsForFileTop must
+	// skip it because it filters EdgeFileLink with empty anchor only.
+	srcB := "# B\n\n[r](./a.md#sec)\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": srcA, "b.md": srcB})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	raw, errResp := h.request("textDocument/references", referencesParams{
+		textDocumentPositionParams: textDocumentPositionParams{
+			TextDocument: textDocumentIdentifier{URI: uri},
+			Position:     Position{Line: 0, Character: 0},
+		},
+		Context: referencesContext{IncludeDeclaration: false},
+	})
+	require.Nil(t, errResp)
+	var locs []location
+	require.NoError(t, json.Unmarshal(raw, &locs))
+	assert.Empty(t, locs, "anchored links shouldn't match file-top references")
 }
 
 func TestPathToURIDriveLetter(t *testing.T) {

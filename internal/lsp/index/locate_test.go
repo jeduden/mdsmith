@@ -182,6 +182,31 @@ func TestLocateRefDefOnLineWithoutLabel(t *testing.T) {
 	assert.Equal(t, TokenHeading, res.Tag)
 }
 
+func TestLocateEmptyAnchorOnRefDef(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\n[label]: https://x.com\n"
+	res := Locator{Path: "a.md"}.Locate([]byte(src), 3, 3)
+	assert.Equal(t, TokenRefDef, res.Tag)
+	assert.Equal(t, "label", res.Label)
+}
+
+func TestLocatePIContainsLineMultiline(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\n<?include\nfile: \"x.md\"\nstrip-frontmatter: \"true\"\n?>\n<?/include?>\n"
+	// Line 5 is inside the multi-line PI.
+	res := Locator{Path: "a.md"}.Locate([]byte(src), 5, 1)
+	assert.Equal(t, TokenDirectiveArg, res.Tag)
+	assert.Equal(t, "include", res.DirectiveName)
+}
+
+func TestLocatePIWithSingleLineClosure(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\n<?allow-empty-section?>\n"
+	res := Locator{Path: "a.md"}.Locate([]byte(src), 3, 5)
+	assert.Equal(t, TokenDirectiveArg, res.Tag)
+	assert.Equal(t, "allow-empty-section", res.DirectiveName)
+}
+
 func TestSafeURLPathEscape(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "abc", SafeURLPathEscape("abc"))
