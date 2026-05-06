@@ -665,7 +665,12 @@ func TestHandlePrepareCallHierarchyMissingDocument(t *testing.T) {
 
 func TestHandlePrepareCallHierarchyDirectiveMissingTarget(t *testing.T) {
 	t.Parallel()
-	// Directive with non-file/source arg → falls back to file-level.
+	// Cursor on a directive arg whose key isn't `file:` or
+	// `source:` — handlePrepareCallHierarchy has no target file
+	// to anchor at, so the response is an empty item slice rather
+	// than a synthetic file-level fallback. The empty slice is
+	// what the editor needs to render "no call hierarchy here"
+	// without spawning a phantom item.
 	src := "# T\n\n<?include\nstrip-frontmatter: \"true\"\n?>\n<?/include?>\n"
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
 	uri := rootURI + "/a.md"

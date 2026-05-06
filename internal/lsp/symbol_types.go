@@ -6,11 +6,12 @@ package lsp
 // focused on the lifecycle / diagnostics surface that pre-dates the
 // navigation work.
 
-// LSP SymbolKind enum (LSP §3.18). The values mdsmith emits are a
-// small subset; the full enum is reproduced as named constants for
-// readability. Editors render each kind with a distinct icon, so
-// picking the right one matters even though we never read the value
-// back.
+// LSP SymbolKind enum (LSP §3.18). Only the four values mdsmith
+// actually emits are declared here — Property for front-matter
+// keys, String for headings, Key for link-reference definitions,
+// and Event for directives. Editors render each kind with a
+// distinct icon, so picking the right one matters even though we
+// never read the value back.
 type symbolKind int
 
 const (
