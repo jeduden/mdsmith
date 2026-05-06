@@ -16,13 +16,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
+
+	flag "github.com/spf13/pflag"
 
 	"github.com/jeduden/mdsmith/internal/release"
 )
 
-const usageText = `usage: mdsmith-release <command> [args]
+const usageText = `Usage: mdsmith-release <command> [args]
 
 Commands:
   stamp <version>                 Rewrite tracked manifests to <version>.
@@ -51,38 +55,121 @@ func run(args []string) int {
 		fmt.Print(usageText)
 		return 0
 	case "stamp":
-		if len(rest) != 1 {
-			fmt.Fprint(os.Stderr, "usage: mdsmith-release stamp <version>\n")
-			return 2
-		}
-		return reportError(release.Stamp(root, rest[0]))
+		return runStamp(root, rest)
 	case "check":
-		if len(rest) != 0 {
-			fmt.Fprint(os.Stderr, "usage: mdsmith-release check\n")
-			return 2
-		}
-		if err := release.Check(root); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		fmt.Println("all manifests pinned at " + release.DevSentinel)
-		return 0
+		return runCheck(root, rest)
 	case "build-npm":
-		if len(rest) != 2 {
-			fmt.Fprint(os.Stderr, "usage: mdsmith-release build-npm <artifacts> <out>\n")
-			return 2
-		}
-		return reportError(release.BuildNpmPlatforms(root, rest[0], rest[1]))
+		return runBuildNpm(root, rest)
 	case "build-wheels":
-		if len(rest) != 2 {
-			fmt.Fprint(os.Stderr, "usage: mdsmith-release build-wheels <artifacts> <out>\n")
-			return 2
-		}
-		return reportError(release.BuildWheels(root, rest[0], rest[1]))
+		return runBuildWheels(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2
 	}
+}
+
+func runStamp(root string, args []string) int {
+	fs := flag.NewFlagSet("stamp", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release stamp <version>\n\n"+
+			"Rewrite every tracked manifest's version field to <version>\n"+
+			"(no leading 'v'). Idempotent.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: stamp"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+	return reportError(release.Stamp(root, fs.Arg(0)))
+}
+
+func runCheck(root string, args []string) int {
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release check\n\n"+
+			"Verify every tracked manifest is pinned at the dev\n"+
+			"sentinel ("+release.DevSentinel+"). Used by the\n"+
+			"version-guard CI job.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: check"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+	if err := release.Check(root); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Println("all manifests pinned at " + release.DevSentinel)
+	return 0
+}
+
+func runBuildNpm(root string, args []string) int {
+	fs := flag.NewFlagSet("build-npm", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release build-npm <artifacts-dir> <out-dir>\n\n"+
+			"Emit one ready-to-publish npm sub-package per supported\n"+
+			"platform under <out-dir>, pulling each binary from\n"+
+			"<artifacts-dir>.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: build-npm"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 2 {
+		fs.Usage()
+		return 2
+	}
+	return reportError(release.BuildNpmPlatforms(root, fs.Arg(0), fs.Arg(1)))
+}
+
+func runBuildWheels(root string, args []string) int {
+	fs := flag.NewFlagSet("build-wheels", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release build-wheels <artifacts-dir> <out-dir>\n\n"+
+			"Build one platform-tagged wheel per supported host under\n"+
+			"<out-dir>, staging each binary from <artifacts-dir>.\n"+
+			"Requires python -m build, python -m wheel, and the\n"+
+			"hatchling build backend on PATH.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: build-wheels"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 2 {
+		fs.Usage()
+		return 2
+	}
+	return reportError(release.BuildWheels(root, fs.Arg(0), fs.Arg(1)))
+}
+
+// reportFlagParseErr mirrors the helper in cmd/mdsmith/main.go:
+// pflag with ContinueOnError silently returns the parse error
+// without writing to fs.Output(), so subcommands that just
+// `return 2` left the user with nothing on stderr.
+//
+//   - nil           → -1 (caller continues)
+//   - flag.ErrHelp  →  0 (Usage was already printed by pflag)
+//   - any other err →  2 with `<prefix>: <err>` on stderr
+func reportFlagParseErr(err error, stderr io.Writer, prefix string) int {
+	if err == nil {
+		return -1
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		return 0
+	}
+	_, _ = fmt.Fprintf(stderr, "%s: %v\n", prefix, err)
+	return 2
 }
 
 func reportError(err error) int {

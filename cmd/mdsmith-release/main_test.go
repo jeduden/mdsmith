@@ -105,6 +105,29 @@ func TestReportErrorMapsExitCodes(t *testing.T) {
 	}
 }
 
+// TestSubcommandHelpExitsZero exercises the pflag --help branch
+// of reportFlagParseErr per subcommand. pflag prints the Usage
+// itself, so the dispatcher just needs to surface exit code 0.
+func TestSubcommandHelpExitsZero(t *testing.T) {
+	cases := []string{"stamp", "check", "build-npm", "build-wheels"}
+	for _, sub := range cases {
+		if code := run([]string{sub, "--help"}); code != 0 {
+			t.Errorf("%s --help: exit code %d, want 0", sub, code)
+		}
+	}
+}
+
+// TestSubcommandRejectsUnknownFlag exercises the non-help, non-nil
+// branch of reportFlagParseErr.
+func TestSubcommandRejectsUnknownFlag(t *testing.T) {
+	cases := []string{"stamp", "check", "build-npm", "build-wheels"}
+	for _, sub := range cases {
+		if code := run([]string{sub, "--bogus"}); code != 2 {
+			t.Errorf("%s --bogus: exit code %d, want 2", sub, code)
+		}
+	}
+}
+
 // writeFixture mirrors internal/release/version_test.go's
 // fixtureManifests but without taking a dependency back on the
 // internal package's test helpers.

@@ -169,6 +169,135 @@ func TestBuildWheelsFailsWhenPythonSourceMissing(t *testing.T) {
 	}
 }
 
+// TestBuildWheelsFailsWhenArtifactMissing covers the buildOneWheel
+// path that fails on os.Stat(asset) before any python invocation.
+// The fixture writes python/pyproject.toml so the
+// python-source-missing fast-fail above does not fire.
+func TestBuildWheelsFailsWhenArtifactMissing(t *testing.T) {
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	emptyArtifacts := t.TempDir()
+
+	err := BuildWheels(root, emptyArtifacts, filepath.Join(root, "wheels"))
+	if err == nil {
+		t.Fatal("expected missing-artifact error")
+	}
+	if !strings.Contains(err.Error(), "missing release asset") {
+		t.Errorf("error did not flag missing asset: %v", err)
+	}
+}
+
+// Helper-level tests so the staging/listing/moving primitives
+// have direct coverage instead of only the happy-path big test.
+
+func TestListWheelsEmpty(t *testing.T) {
+	wheels, err := listWheels(t.TempDir())
+	if err != nil {
+		t.Fatalf("listWheels: %v", err)
+	}
+	if len(wheels) != 0 {
+		t.Errorf("expected zero wheels, got %v", wheels)
+	}
+}
+
+func TestListWheelsFiltersNonWheels(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"foo.whl", "bar.tar.gz", "baz.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	wheels, err := listWheels(dir)
+	if err != nil {
+		t.Fatalf("listWheels: %v", err)
+	}
+	if len(wheels) != 1 || filepath.Base(wheels[0]) != "foo.whl" {
+		t.Errorf("expected [foo.whl], got %v", wheels)
+	}
+}
+
+func TestListWheelsErrorOnMissingDir(t *testing.T) {
+	_, err := listWheels(filepath.Join(t.TempDir(), "missing"))
+	if err == nil {
+		t.Fatal("expected error for missing dir")
+	}
+}
+
+func TestMoveWheelsEmpty(t *testing.T) {
+	// moveWheels iterates listWheels output; an empty staging dir
+	// must be a no-op, not an error.
+	staging := t.TempDir()
+	out := t.TempDir()
+	if err := moveWheels(staging, out); err != nil {
+		t.Errorf("moveWheels on empty staging: %v", err)
+	}
+}
+
+func TestMoveWheelsRelocates(t *testing.T) {
+	staging := t.TempDir()
+	out := t.TempDir()
+	for _, name := range []string{"a.whl", "b.whl"} {
+		if err := os.WriteFile(filepath.Join(staging, name), []byte(name), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if err := moveWheels(staging, out); err != nil {
+		t.Fatalf("moveWheels: %v", err)
+	}
+	for _, name := range []string{"a.whl", "b.whl"} {
+		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
+			t.Errorf("missing %s in out: %v", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(staging, name)); !os.IsNotExist(err) {
+			t.Errorf("%s still in staging: %v", name, err)
+		}
+	}
+}
+
+func TestCopyDirCopiesNestedTree(t *testing.T) {
+	src := t.TempDir()
+	dst := filepath.Join(t.TempDir(), "dst")
+	if err := os.MkdirAll(filepath.Join(src, "sub", "deep"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	files := map[string]string{
+		"a.txt":          "hello",
+		"sub/b.txt":      "world",
+		"sub/deep/c.txt": "deep",
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(src, rel), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	if err := copyDir(src, dst); err != nil {
+		t.Fatalf("copyDir: %v", err)
+	}
+	for rel, want := range files {
+		got, err := os.ReadFile(filepath.Join(dst, rel))
+		if err != nil {
+			t.Errorf("read %s: %v", rel, err)
+			continue
+		}
+		if string(got) != want {
+			t.Errorf("%s: got %q, want %q", rel, got, want)
+		}
+	}
+}
+
+func TestStagePythonTreeFailsWhenAssetMissing(t *testing.T) {
+	src := t.TempDir()
+	if err := os.WriteFile(filepath.Join(src, "pyproject.toml"),
+		[]byte("[project]\nname=\"x\"\n"), 0o644); err != nil {
+		t.Fatalf("write pyproject: %v", err)
+	}
+	stage, err := stagePythonTree(src, filepath.Join(t.TempDir(), "missing-asset"), "mdsmith")
+	if err == nil {
+		_ = os.RemoveAll(stage)
+		t.Fatal("expected missing-asset error")
+	}
+}
+
 // TestBuildWheelsLayout calls BuildWheels directly and asserts
 // (a) one wheel per platform tag, (b) the dist-info/WHEEL metadata
 // inside each wheel claims the matching platform tag instead of
