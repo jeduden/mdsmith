@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // fixtureManifests writes the same set of manifests the release
@@ -15,12 +17,8 @@ func fixtureManifests(t *testing.T, root string) {
 	t.Helper()
 	write := func(rel, body string) {
 		full := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
-		}
-		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", full, err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		require.NoError(t, os.WriteFile(full, []byte(body), 0o644))
 	}
 
 	write("editors/vscode/package.json", `{
@@ -58,19 +56,14 @@ version = "0.0.0-dev"
 func mustRead(t *testing.T, path string) string {
 	t.Helper()
 	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
+	require.NoError(t, err, "read %s", path)
 	return string(body)
 }
 
 func TestStampRewritesEveryManifest(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
-
-	if err := Stamp(root, "1.2.3"); err != nil {
-		t.Fatalf("Stamp: %v", err)
-	}
+	require.NoError(t, Stamp(root, "1.2.3"))
 
 	cases := []struct {
 		path string
@@ -86,22 +79,16 @@ func TestStampRewritesEveryManifest(t *testing.T) {
 	}
 	for _, c := range cases {
 		body := mustRead(t, filepath.Join(root, c.path))
-		if !strings.Contains(body, c.want) {
-			t.Errorf("%s: missing %q\n%s", c.path, c.want, body)
-		}
-		if strings.Contains(body, DevSentinel) {
-			t.Errorf("%s: still contains %q after Stamp\n%s", c.path, DevSentinel, body)
-		}
+		assert.Contains(t, body, c.want, "missing rewrite in %s", c.path)
+		assert.NotContains(t, body, DevSentinel, "%s still carries dev sentinel", c.path)
 	}
 }
 
 func TestStampIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
+	require.NoError(t, Stamp(root, "9.9.9"))
 
-	if err := Stamp(root, "9.9.9"); err != nil {
-		t.Fatalf("first Stamp: %v", err)
-	}
 	paths := []string{
 		"editors/vscode/package.json",
 		"npm/mdsmith/package.json",
@@ -112,42 +99,26 @@ func TestStampIsIdempotent(t *testing.T) {
 	for _, p := range paths {
 		first[p] = mustRead(t, filepath.Join(root, p))
 	}
-
-	if err := Stamp(root, "9.9.9"); err != nil {
-		t.Fatalf("second Stamp: %v", err)
-	}
+	require.NoError(t, Stamp(root, "9.9.9"))
 	for _, p := range paths {
-		got := mustRead(t, filepath.Join(root, p))
-		if got != first[p] {
-			t.Errorf("%s changed on second Stamp\n--- first ---\n%s\n--- second ---\n%s", p, first[p], got)
-		}
+		assert.Equal(t, first[p], mustRead(t, filepath.Join(root, p)), "%s changed on second Stamp", p)
 	}
 }
 
 func TestStampRejectsLeadingV(t *testing.T) {
 	err := Stamp(t.TempDir(), "v1.2.3")
-	if err == nil {
-		t.Fatal("expected leading-v rejection")
-	}
-	if !strings.Contains(err.Error(), "must not start with 'v'") {
-		t.Errorf("error did not mention leading v: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must not start with 'v'")
 }
 
 func TestStampRejectsLeadingZeros(t *testing.T) {
 	// Each of MAJOR/MINOR/PATCH and any purely-numeric prerelease
 	// identifier must reject a leading zero. Build metadata IS
 	// allowed leading zeros per spec.
-	bad := []string{"01.2.3", "1.02.3", "1.2.03", "1.2.3-01", "1.2.3-rc.01"}
-	for _, v := range bad {
+	for _, v := range []string{"01.2.3", "1.02.3", "1.2.03", "1.2.3-01", "1.2.3-rc.01"} {
 		err := Stamp(t.TempDir(), v)
-		if err == nil {
-			t.Errorf("%s: expected semver rejection", v)
-			continue
-		}
-		if !strings.Contains(err.Error(), "not valid semver") {
-			t.Errorf("%s: error did not mention semver: %v", v, err)
-		}
+		require.Error(t, err, v)
+		assert.Contains(t, err.Error(), "not valid semver", v)
 	}
 }
 
@@ -158,30 +129,20 @@ func TestStampAcceptsValidSemverShapes(t *testing.T) {
 	for _, v := range []string{"1.2.3", "1.2.3-rc01", "1.2.3-rc.1", "1.2.3+build.001", "1.2.3-rc.1+build.5"} {
 		root := t.TempDir()
 		fixtureManifests(t, root)
-		if err := Stamp(root, v); err != nil {
-			t.Errorf("%s: unexpected failure: %v", v, err)
-		}
+		assert.NoError(t, Stamp(root, v), v)
 	}
 }
 
 func TestStampRejectsNonSemver(t *testing.T) {
 	err := Stamp(t.TempDir(), "1.2")
-	if err == nil {
-		t.Fatal("expected non-semver rejection")
-	}
-	if !strings.Contains(err.Error(), "not valid semver") {
-		t.Errorf("error did not mention semver: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not valid semver")
 }
 
 func TestValidateSemverRejectsEmpty(t *testing.T) {
 	err := ValidateSemver("")
-	if err == nil {
-		t.Fatal("expected empty-string rejection")
-	}
-	if !strings.Contains(err.Error(), "non-empty") {
-		t.Errorf("error did not flag empty input: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty")
 }
 
 func TestStampFailsWhenManifestHasNoVersionField(t *testing.T) {
@@ -189,18 +150,13 @@ func TestStampFailsWhenManifestHasNoVersionField(t *testing.T) {
 	fixtureManifests(t, root)
 	// Drop the version key so the regex no-ops; without the guard
 	// the rewrite would silently leave 0.0.0-dev in place.
-	if err := os.WriteFile(filepath.Join(root, "editors/vscode/package.json"),
-		[]byte(`{"name": "mdsmith"}`), 0o644); err != nil {
-		t.Fatalf("rewrite vscode manifest: %v", err)
-	}
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "editors/vscode/package.json"),
+		[]byte(`{"name": "mdsmith"}`), 0o644))
 
 	err := Stamp(root, "1.2.3")
-	if err == nil {
-		t.Fatal("expected missing-version error")
-	}
-	if !strings.Contains(err.Error(), "no version field") {
-		t.Errorf("error did not flag the missing field: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no version field")
 }
 
 func TestStampFailsWhenOptionalDepsBlockMissing(t *testing.T) {
@@ -209,45 +165,32 @@ func TestStampFailsWhenOptionalDepsBlockMissing(t *testing.T) {
 	// Drop the @mdsmith/* pins. The npm root must always advertise
 	// its platform sub-packages, so a missing block is a hard
 	// error rather than a silent no-op.
-	if err := os.WriteFile(filepath.Join(root, "npm/mdsmith/package.json"), []byte(`{
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "npm/mdsmith/package.json"), []byte(`{
   "name": "@mdsmith/cli",
   "version": "0.0.0-dev"
 }
-`), 0o644); err != nil {
-		t.Fatalf("rewrite npm root manifest: %v", err)
-	}
+`), 0o644))
 
 	err := Stamp(root, "1.2.3")
-	if err == nil {
-		t.Fatal("expected missing optional-deps error")
-	}
-	if !strings.Contains(err.Error(), "no @mdsmith/* optionalDependencies") {
-		t.Errorf("error did not flag the missing optional-deps block: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no @mdsmith/* optionalDependencies")
 }
 
 func TestStampFailsWhenManifestMissing(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
-	if err := os.Remove(filepath.Join(root, "editors/vscode/package.json")); err != nil {
-		t.Fatalf("remove vscode manifest: %v", err)
-	}
+	require.NoError(t, os.Remove(filepath.Join(root, "editors/vscode/package.json")))
 
 	err := Stamp(root, "1.2.3")
-	if err == nil {
-		t.Fatal("expected missing-manifest error")
-	}
-	if !strings.Contains(err.Error(), "required manifest missing") {
-		t.Errorf("error did not flag the missing file: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "required manifest missing")
 }
 
 func TestCheckAcceptsDevSentinel(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
-	if err := Check(root); err != nil {
-		t.Errorf("Check rejected the dev sentinel: %v", err)
-	}
+	assert.NoError(t, Check(root))
 }
 
 func TestCheckRejectsHandEdit(t *testing.T) {
@@ -255,22 +198,17 @@ func TestCheckRejectsHandEdit(t *testing.T) {
 	fixtureManifests(t, root)
 	// Simulate a forgotten edit: vscode manifest still carries a
 	// real version, every other manifest is at 0.0.0-dev.
-	if err := os.WriteFile(filepath.Join(root, "editors/vscode/package.json"), []byte(`{
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "editors/vscode/package.json"), []byte(`{
   "name": "mdsmith",
   "version": "0.1.2",
   "publisher": "jeduden"
 }
-`), 0o644); err != nil {
-		t.Fatalf("rewrite vscode manifest: %v", err)
-	}
+`), 0o644))
 
 	err := Check(root)
-	if err == nil {
-		t.Fatal("expected drift rejection")
-	}
-	if !strings.Contains(err.Error(), "editors/vscode/package.json") {
-		t.Errorf("error did not name the offending file: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "editors/vscode/package.json")
 }
 
 func TestCheckRejectsOptionalDepDrift(t *testing.T) {
@@ -288,17 +226,12 @@ func TestCheckRejectsOptionalDepDrift(t *testing.T) {
   }
 }
 `
-	if err := os.WriteFile(filepath.Join(root, "npm/mdsmith/package.json"), []byte(mismatched), 0o644); err != nil {
-		t.Fatalf("rewrite npm root manifest: %v", err)
-	}
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "npm/mdsmith/package.json"), []byte(mismatched), 0o644))
 
 	err := Check(root)
-	if err == nil {
-		t.Fatal("expected optional-dep drift rejection")
-	}
-	if !strings.Contains(err.Error(), `@mdsmith/linux-x64 pin "1.2.3"`) {
-		t.Errorf("error did not name the drifted pin: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `@mdsmith/linux-x64 pin "1.2.3"`)
 }
 
 func TestCheckRejectsMissingOptionalDepKey(t *testing.T) {
@@ -318,31 +251,20 @@ func TestCheckRejectsMissingOptionalDepKey(t *testing.T) {
   }
 }
 `
-	if err := os.WriteFile(filepath.Join(root, "npm/mdsmith/package.json"), []byte(missing), 0o644); err != nil {
-		t.Fatalf("rewrite npm root manifest: %v", err)
-	}
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "npm/mdsmith/package.json"), []byte(missing), 0o644))
 
 	err := Check(root)
-	if err == nil {
-		t.Fatal("expected missing-key rejection")
-	}
-	if !strings.Contains(err.Error(), "@mdsmith/win32-x64") {
-		t.Errorf("error did not flag the missing key: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "@mdsmith/win32-x64")
 }
 
 func TestCheckFailsOnMissingManifest(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
-	if err := os.Remove(filepath.Join(root, "editors/vscode/package.json")); err != nil {
-		t.Fatalf("remove vscode manifest: %v", err)
-	}
+	require.NoError(t, os.Remove(filepath.Join(root, "editors/vscode/package.json")))
 
 	err := Check(root)
-	if err == nil {
-		t.Fatal("expected missing-manifest rejection")
-	}
-	if !strings.Contains(err.Error(), "required manifest missing") {
-		t.Errorf("error did not flag the missing file: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "required manifest missing")
 }

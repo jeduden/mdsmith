@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // fakeArtifacts populates the layout `actions/download-artifact`
@@ -13,9 +15,7 @@ import (
 // a single flat directory.
 func fakeArtifacts(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir %s: %v", dir, err)
-	}
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 	for _, asset := range []string{
 		"mdsmith-linux-amd64",
 		"mdsmith-linux-arm64",
@@ -24,24 +24,19 @@ func fakeArtifacts(t *testing.T, dir string) {
 		"mdsmith-windows-amd64.exe",
 	} {
 		body := []byte("#!/bin/sh\necho fake-" + asset + "\n")
-		if err := os.WriteFile(filepath.Join(dir, asset), body, 0o755); err != nil {
-			t.Fatalf("write %s: %v", asset, err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(dir, asset), body, 0o755))
 	}
 }
 
 func assertPlatformPackage(t *testing.T, out, dir, bin, expectedOS, expectedCPU, expectedVer string) {
 	t.Helper()
-	if _, err := os.Stat(filepath.Join(out, dir, "bin", bin)); err != nil {
-		t.Errorf("missing binary %s/bin/%s: %v", dir, bin, err)
-		return
-	}
+	_, err := os.Stat(filepath.Join(out, dir, "bin", bin))
+	require.NoError(t, err, "binary %s/bin/%s missing", dir, bin)
+
 	manifest := filepath.Join(out, dir, "package.json")
 	body, err := os.ReadFile(manifest)
-	if err != nil {
-		t.Errorf("read %s: %v", manifest, err)
-		return
-	}
+	require.NoError(t, err, "read %s", manifest)
+
 	var pkg struct {
 		Name    string   `json:"name"`
 		Version string   `json:"version"`
@@ -49,38 +44,23 @@ func assertPlatformPackage(t *testing.T, out, dir, bin, expectedOS, expectedCPU,
 		CPU     []string `json:"cpu"`
 		Files   []string `json:"files"`
 	}
-	if err := json.Unmarshal(body, &pkg); err != nil {
-		t.Errorf("decode %s: %v\n%s", manifest, err, body)
-		return
-	}
-	if want := "@mdsmith/" + dir; pkg.Name != want {
-		t.Errorf("%s: name=%q, want %q", manifest, pkg.Name, want)
-	}
-	if pkg.Version != expectedVer {
-		t.Errorf("%s: version=%q, want %s", manifest, pkg.Version, expectedVer)
-	}
-	if len(pkg.OS) != 1 || pkg.OS[0] != expectedOS {
-		t.Errorf("%s: os=%v, want [%s]", manifest, pkg.OS, expectedOS)
-	}
-	if len(pkg.CPU) != 1 || pkg.CPU[0] != expectedCPU {
-		t.Errorf("%s: cpu=%v, want [%s]", manifest, pkg.CPU, expectedCPU)
-	}
+	require.NoError(t, json.Unmarshal(body, &pkg), "decode %s", manifest)
+	assert.Equal(t, "@mdsmith/"+dir, pkg.Name, "%s name", manifest)
+	assert.Equal(t, expectedVer, pkg.Version, "%s version", manifest)
+	assert.Equal(t, []string{expectedOS}, pkg.OS, "%s os", manifest)
+	assert.Equal(t, []string{expectedCPU}, pkg.CPU, "%s cpu", manifest)
 }
 
 func TestBuildNpmPlatformsLayout(t *testing.T) {
 	const ver = "4.5.6"
 	root := t.TempDir()
 	fixtureManifests(t, root)
-	if err := Stamp(root, ver); err != nil {
-		t.Fatalf("Stamp: %v", err)
-	}
+	require.NoError(t, Stamp(root, ver))
+
 	artifacts := filepath.Join(root, "artifacts")
 	fakeArtifacts(t, artifacts)
 	out := filepath.Join(root, "dist")
-
-	if err := BuildNpmPlatforms(root, artifacts, out); err != nil {
-		t.Fatalf("BuildNpmPlatforms: %v", err)
-	}
+	require.NoError(t, BuildNpmPlatforms(root, artifacts, out))
 
 	cases := []struct {
 		dir, bin, os, cpu string
@@ -100,21 +80,17 @@ func TestBuildNpmPlatformsMissingArtifact(t *testing.T) {
 	const ver = "4.5.6"
 	root := t.TempDir()
 	fixtureManifests(t, root)
-	if err := Stamp(root, ver); err != nil {
-		t.Fatalf("Stamp: %v", err)
-	}
+	require.NoError(t, Stamp(root, ver))
+
 	// Stage every artifact except one. The build must fail with
 	// an actionable message naming the missing file.
 	artifacts := filepath.Join(root, "artifacts")
 	fakeArtifacts(t, artifacts)
-	if err := os.Remove(filepath.Join(artifacts, "mdsmith-darwin-arm64")); err != nil {
-		t.Fatalf("remove artifact: %v", err)
-	}
+	require.NoError(t, os.Remove(filepath.Join(artifacts, "mdsmith-darwin-arm64")))
 
 	err := BuildNpmPlatforms(root, artifacts, filepath.Join(root, "dist"))
-	if err == nil {
-		t.Fatal("expected missing-asset error")
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing release asset")
 }
 
 func TestBuildNpmPlatformsFailsWhenRootManifestMissing(t *testing.T) {
@@ -126,12 +102,8 @@ func TestBuildNpmPlatformsFailsWhenRootManifestMissing(t *testing.T) {
 	fakeArtifacts(t, artifacts)
 
 	err := BuildNpmPlatforms(root, artifacts, filepath.Join(root, "dist"))
-	if err == nil {
-		t.Fatal("expected missing-root-manifest error")
-	}
-	if !strings.Contains(err.Error(), "npm/mdsmith/package.json") {
-		t.Errorf("error did not name the missing manifest: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "npm/mdsmith/package.json")
 }
 
 func TestBuildNpmPlatformsCopiesLicense(t *testing.T) {
@@ -141,28 +113,19 @@ func TestBuildNpmPlatformsCopiesLicense(t *testing.T) {
 	const ver = "4.5.6"
 	root := t.TempDir()
 	fixtureManifests(t, root)
-	if err := Stamp(root, ver); err != nil {
-		t.Fatalf("Stamp: %v", err)
-	}
+	require.NoError(t, Stamp(root, ver))
+
 	licenseBody := []byte("MIT License — sentinel\n")
-	if err := os.WriteFile(filepath.Join(root, "LICENSE"), licenseBody, 0o644); err != nil {
-		t.Fatalf("write LICENSE: %v", err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "LICENSE"), licenseBody, 0o644))
+
 	artifacts := filepath.Join(root, "artifacts")
 	fakeArtifacts(t, artifacts)
 	out := filepath.Join(root, "dist")
-	if err := BuildNpmPlatforms(root, artifacts, out); err != nil {
-		t.Fatalf("BuildNpmPlatforms: %v", err)
-	}
+	require.NoError(t, BuildNpmPlatforms(root, artifacts, out))
 
 	for _, plat := range []string{"linux-x64", "darwin-arm64", "win32-x64"} {
 		got, err := os.ReadFile(filepath.Join(out, plat, "LICENSE"))
-		if err != nil {
-			t.Errorf("%s: LICENSE not staged: %v", plat, err)
-			continue
-		}
-		if string(got) != string(licenseBody) {
-			t.Errorf("%s: LICENSE content mismatch:\n%s", plat, got)
-		}
+		require.NoError(t, err, "%s LICENSE", plat)
+		assert.Equal(t, string(licenseBody), string(got), "%s LICENSE content", plat)
 	}
 }

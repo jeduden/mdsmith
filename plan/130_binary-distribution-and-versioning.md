@@ -103,37 +103,15 @@ does not silently do nothing. Works under `pip`,
 `uv pip`, `pipx`, `uvx`, and `python -m mdsmith`.
 Sources live under `python/`.
 
-### asdf
+### asdf and mise
 
-Publish a separate repo `jeduden/asdf-mdsmith` with
-the standard plugin layout:
-
-- `bin/list-all` calls `git ls-remote --tags` on the
-  mdsmith repo, then strips `refs/tags/`, drops the
-  `^{}` deref entries, and removes the leading `v`
-  so the output is plain `X.Y.Z` as asdf expects. No
-  GitHub token required; works through HTTPS git.
-- `bin/download` `curl -fL`s the matching release
-  asset.
-- `bin/install` verifies it against `checksums.txt`
-  and places the binary as `bin/mdsmith`.
-- `bin/list-bin-paths` prints `bin`.
-
-After one release cycle, file a PR to
-`asdf-vm/asdf-plugins` so `asdf plugin add mdsmith`
-resolves without an explicit URL.
-
-### mise
-
-Preferred path: add an entry to `mise-plugins/registry`
-using the `ubi` backend. mise's `ubi` reads GitHub
-release assets directly given our naming, so
-`mise use mdsmith@latest` works without us shipping
-plugin code. Fallback: mise consumes asdf plugins
-natively, so `mise use asdf:jeduden/asdf-mdsmith`
-keeps working even before the registry PR lands.
-Document the registry path as primary in
-`docs/guides/install.md` (task 9).
+The asdf-plugin repo and the mise registry entry
+both live outside this repo, so they are tracked in
+[plan/145](145_asdf-mise-registry-submissions.md).
+Until those land, users on mise can still pull the
+binary directly via the `ubi:` backend
+(`mise use ubi:jeduden/mdsmith@latest`), which the
+release smoke-test exercises today.
 
 ### VS Code Marketplace and Open VSX
 
@@ -251,17 +229,6 @@ the tag on every channel.
   platform tag with `python -m build`, and uploads
   via `pypa/gh-action-pypi-publish` using PyPI
   trusted publishing (OIDC). No long-lived token.
-- [ ] **Follow-up (separate repo):** create
-  `jeduden/asdf-mdsmith` with `bin/list-all`,
-  `bin/download`, `bin/install`, and
-  `bin/list-bin-paths`; add a CI workflow that runs
-  `asdf install mdsmith latest` against the most
-  recent release; open a PR to `asdf-vm/asdf-plugins`
-  after one successful release cycle.
-- [ ] **Follow-up (external PR):** submit a PR to
-  `mise-plugins/registry` adding mdsmith via the
-  `ubi` backend pointing at `jeduden/mdsmith`
-  releases.
 - [x] Add `docs/guides/install.md` covering
   `npm i -g @mdsmith/cli`, `npx @mdsmith/cli`,
   `pip install mdsmith`, `uvx mdsmith`,

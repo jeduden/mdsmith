@@ -5,54 +5,43 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRunStampThenCheck exercises the CLI dispatcher end-to-end:
 // stamp a temp tree with a real version, then run check against
-// the same tree (which should now succeed nowhere because the
-// dev sentinel is gone). Confirms the subcommand wiring and the
-// cwd-as-root contract.
+// the same tree (which should now fail because the dev sentinel
+// is gone). Confirms the subcommand wiring and the cwd-as-root
+// contract.
 func TestRunStampThenCheck(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root)
 
 	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.Chdir(wd) })
-	if err := os.Chdir(root); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	require.NoError(t, os.Chdir(root))
 
-	if code := run([]string{"stamp", "1.2.3"}); code != 0 {
-		t.Fatalf("stamp exited %d", code)
-	}
+	assert.Equal(t, 0, run([]string{"stamp", "1.2.3"}))
 	// After stamping, check should fail because the manifests no
 	// longer carry the dev sentinel.
-	if code := run([]string{"check"}); code != 1 {
-		t.Fatalf("check after stamp: exit code %d, want 1", code)
-	}
+	assert.Equal(t, 1, run([]string{"check"}))
 }
 
 func TestRunRejectsUnknownCommand(t *testing.T) {
-	if code := run([]string{"frobnicate"}); code != 2 {
-		t.Errorf("unknown command: exit code %d, want 2", code)
-	}
+	assert.Equal(t, 2, run([]string{"frobnicate"}))
 }
 
 func TestRunHelpExitsZero(t *testing.T) {
 	for _, arg := range []string{"-h", "--help", "help"} {
-		if code := run([]string{arg}); code != 0 {
-			t.Errorf("%s: exit code %d, want 0", arg, code)
-		}
+		assert.Equal(t, 0, run([]string{arg}), "%s", arg)
 	}
 }
 
 func TestRunNoArgsPrintsUsage(t *testing.T) {
-	if code := run(nil); code != 2 {
-		t.Errorf("no args: exit code %d, want 2", code)
-	}
+	assert.Equal(t, 2, run(nil))
 }
 
 func TestRunRejectsBadArity(t *testing.T) {
@@ -69,9 +58,7 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"build-wheels with one arg", []string{"build-wheels", "art"}},
 	}
 	for _, c := range cases {
-		if code := run(c.args); code != 2 {
-			t.Errorf("%s: exit code %d, want 2", c.name, code)
-		}
+		assert.Equal(t, 2, run(c.args), c.name)
 	}
 }
 
@@ -79,52 +66,34 @@ func TestRunStampReturnsErrorOnInvalidVersion(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root)
 	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.Chdir(wd) })
-	if err := os.Chdir(root); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
+	require.NoError(t, os.Chdir(root))
 
-	if code := run([]string{"stamp", "v1.2.3"}); code != 1 {
-		t.Errorf("invalid version: exit code %d, want 1", code)
-	}
+	assert.Equal(t, 1, run([]string{"stamp", "v1.2.3"}))
 }
 
 // TestReportErrorMapsExitCodes pins the wrapper that translates a
 // (possibly nil) error into the integer exit code main returns.
-// This is the smallest unit but it gates whether the CLI surfaces
-// the underlying error to CI.
 func TestReportErrorMapsExitCodes(t *testing.T) {
-	if got := reportError(nil); got != 0 {
-		t.Errorf("nil error: exit code %d, want 0", got)
-	}
-	if got := reportError(errors.New("sentinel error")); got != 1 {
-		t.Errorf("non-nil error: exit code %d, want 1", got)
-	}
+	assert.Equal(t, 0, reportError(nil))
+	assert.Equal(t, 1, reportError(errors.New("sentinel error")))
 }
 
 // TestSubcommandHelpExitsZero exercises the pflag --help branch
 // of reportFlagParseErr per subcommand. pflag prints the Usage
 // itself, so the dispatcher just needs to surface exit code 0.
 func TestSubcommandHelpExitsZero(t *testing.T) {
-	cases := []string{"stamp", "check", "build-npm", "build-wheels"}
-	for _, sub := range cases {
-		if code := run([]string{sub, "--help"}); code != 0 {
-			t.Errorf("%s --help: exit code %d, want 0", sub, code)
-		}
+	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels"} {
+		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
 }
 
 // TestSubcommandRejectsUnknownFlag exercises the non-help, non-nil
 // branch of reportFlagParseErr.
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
-	cases := []string{"stamp", "check", "build-npm", "build-wheels"}
-	for _, sub := range cases {
-		if code := run([]string{sub, "--bogus"}); code != 2 {
-			t.Errorf("%s --bogus: exit code %d, want 2", sub, code)
-		}
+	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels"} {
+		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
 }
 
@@ -158,11 +127,7 @@ version = "0.0.0-dev"
 	}
 	for rel, body := range files {
 		full := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", filepath.Dir(full), err)
-		}
-		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", full, err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		require.NoError(t, os.WriteFile(full, []byte(body), 0o644))
 	}
 }

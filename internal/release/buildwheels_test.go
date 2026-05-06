@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func haveCmd(name string) bool {
@@ -37,21 +40,15 @@ func pythonExe() string {
 func readZipMember(t *testing.T, whlPath, member string) string {
 	t.Helper()
 	r, err := zip.OpenReader(whlPath)
-	if err != nil {
-		t.Fatalf("open %s: %v", whlPath, err)
-	}
+	require.NoError(t, err, "open %s", whlPath)
 	defer func() { _ = r.Close() }()
 	for _, f := range r.File {
 		if strings.HasSuffix(f.Name, member) {
 			rc, err := f.Open()
-			if err != nil {
-				t.Fatalf("open zip member %s: %v", f.Name, err)
-			}
+			require.NoError(t, err, "open zip member %s", f.Name)
 			body, err := io.ReadAll(rc)
 			_ = rc.Close()
-			if err != nil {
-				t.Fatalf("read zip member %s: %v", f.Name, err)
-			}
+			require.NoError(t, err, "read zip member %s", f.Name)
 			return string(body)
 		}
 	}
@@ -61,9 +58,7 @@ func readZipMember(t *testing.T, whlPath, member string) string {
 func zipHasFile(t *testing.T, whlPath, name string) bool {
 	t.Helper()
 	r, err := zip.OpenReader(whlPath)
-	if err != nil {
-		t.Fatalf("open %s: %v", whlPath, err)
-	}
+	require.NoError(t, err, "open %s", whlPath)
 	defer func() { _ = r.Close() }()
 	for _, f := range r.File {
 		if f.Name == name {
@@ -81,9 +76,7 @@ func zipHasFile(t *testing.T, whlPath, name string) bool {
 func stagePython(t *testing.T, root string) {
 	t.Helper()
 	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
+	require.NoError(t, err)
 	repo := filepath.Clean(filepath.Join(wd, "..", ".."))
 
 	for _, p := range []string{
@@ -93,16 +86,10 @@ func stagePython(t *testing.T, root string) {
 		"python/mdsmith/__main__.py",
 	} {
 		body, err := os.ReadFile(filepath.Join(repo, p))
-		if err != nil {
-			t.Fatalf("read %s: %v", p, err)
-		}
+		require.NoError(t, err, "read %s", p)
 		dst := filepath.Join(root, p)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", filepath.Dir(dst), err)
-		}
-		if err := os.WriteFile(dst, body, 0o644); err != nil {
-			t.Fatalf("write %s: %v", dst, err)
-		}
+		require.NoError(t, os.MkdirAll(filepath.Dir(dst), 0o755))
+		require.NoError(t, os.WriteFile(dst, body, 0o644))
 	}
 }
 
@@ -136,20 +123,15 @@ func assertWheel(t *testing.T, out string, entries []os.DirEntry, c wheelCase) {
 		for _, e := range entries {
 			names = append(names, e.Name())
 		}
-		t.Errorf("no wheel matched filename containing %q in %v", c.uniqueFilenameSubstr, names)
+		assert.Failf(t, "no wheel matched filename containing %q", "got %v", c.uniqueFilenameSubstr, names)
 		return
 	}
 	whl := filepath.Join(out, match)
 	meta := readZipMember(t, whl, "/WHEEL")
-	if !strings.Contains(meta, c.tagInWheelMetadata) {
-		t.Errorf("%s: WHEEL metadata missing platform tag %q\n%s", whl, c.tagInWheelMetadata, meta)
-	}
-	if strings.Contains(meta, "py3-none-any") {
-		t.Errorf("%s: WHEEL metadata still claims py3-none-any\n%s", whl, meta)
-	}
-	if !zipHasFile(t, whl, "mdsmith/_bin/"+c.binName) {
-		t.Errorf("%s: bundled binary mdsmith/_bin/%s missing", whl, c.binName)
-	}
+	assert.Contains(t, meta, c.tagInWheelMetadata, "%s WHEEL metadata", whl)
+	assert.NotContains(t, meta, "py3-none-any", "%s still claims py3-none-any", whl)
+	assert.Truef(t, zipHasFile(t, whl, "mdsmith/_bin/"+c.binName),
+		"%s: bundled binary mdsmith/_bin/%s missing", whl, c.binName)
 }
 
 // TestBuildWheelsFailsWhenPythonSourceMissing exercises the
@@ -161,12 +143,8 @@ func TestBuildWheelsFailsWhenPythonSourceMissing(t *testing.T) {
 	fakeArtifacts(t, artifacts)
 
 	err := BuildWheels(root, artifacts, filepath.Join(root, "wheels"))
-	if err == nil {
-		t.Fatal("expected python-source-missing error")
-	}
-	if !strings.Contains(err.Error(), "python source missing") {
-		t.Errorf("error did not flag missing python tree: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "python source missing")
 }
 
 // TestBuildWheelsFailsWhenArtifactMissing covers the buildOneWheel
@@ -179,12 +157,8 @@ func TestBuildWheelsFailsWhenArtifactMissing(t *testing.T) {
 	emptyArtifacts := t.TempDir()
 
 	err := BuildWheels(root, emptyArtifacts, filepath.Join(root, "wheels"))
-	if err == nil {
-		t.Fatal("expected missing-artifact error")
-	}
-	if !strings.Contains(err.Error(), "missing release asset") {
-		t.Errorf("error did not flag missing asset: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing release asset")
 }
 
 // Helper-level tests so the staging/listing/moving primitives
@@ -192,110 +166,76 @@ func TestBuildWheelsFailsWhenArtifactMissing(t *testing.T) {
 
 func TestListWheelsEmpty(t *testing.T) {
 	wheels, err := listWheels(t.TempDir())
-	if err != nil {
-		t.Fatalf("listWheels: %v", err)
-	}
-	if len(wheels) != 0 {
-		t.Errorf("expected zero wheels, got %v", wheels)
-	}
+	require.NoError(t, err)
+	assert.Empty(t, wheels)
 }
 
 func TestListWheelsFiltersNonWheels(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"foo.whl", "bar.tar.gz", "baz.txt"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644))
 	}
 	wheels, err := listWheels(dir)
-	if err != nil {
-		t.Fatalf("listWheels: %v", err)
-	}
-	if len(wheels) != 1 || filepath.Base(wheels[0]) != "foo.whl" {
-		t.Errorf("expected [foo.whl], got %v", wheels)
-	}
+	require.NoError(t, err)
+	require.Len(t, wheels, 1)
+	assert.Equal(t, "foo.whl", filepath.Base(wheels[0]))
 }
 
 func TestListWheelsErrorOnMissingDir(t *testing.T) {
 	_, err := listWheels(filepath.Join(t.TempDir(), "missing"))
-	if err == nil {
-		t.Fatal("expected error for missing dir")
-	}
+	require.Error(t, err)
 }
 
 func TestMoveWheelsEmpty(t *testing.T) {
 	// moveWheels iterates listWheels output; an empty staging dir
 	// must be a no-op, not an error.
-	staging := t.TempDir()
-	out := t.TempDir()
-	if err := moveWheels(staging, out); err != nil {
-		t.Errorf("moveWheels on empty staging: %v", err)
-	}
+	assert.NoError(t, moveWheels(t.TempDir(), t.TempDir()))
 }
 
 func TestMoveWheelsRelocates(t *testing.T) {
 	staging := t.TempDir()
 	out := t.TempDir()
 	for _, name := range []string{"a.whl", "b.whl"} {
-		if err := os.WriteFile(filepath.Join(staging, name), []byte(name), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(staging, name), []byte(name), 0o644))
 	}
-	if err := moveWheels(staging, out); err != nil {
-		t.Fatalf("moveWheels: %v", err)
-	}
+	require.NoError(t, moveWheels(staging, out))
 	for _, name := range []string{"a.whl", "b.whl"} {
-		if _, err := os.Stat(filepath.Join(out, name)); err != nil {
-			t.Errorf("missing %s in out: %v", name, err)
-		}
-		if _, err := os.Stat(filepath.Join(staging, name)); !os.IsNotExist(err) {
-			t.Errorf("%s still in staging: %v", name, err)
-		}
+		_, err := os.Stat(filepath.Join(out, name))
+		assert.NoError(t, err, "%s missing in out", name)
+		_, err = os.Stat(filepath.Join(staging, name))
+		assert.True(t, os.IsNotExist(err), "%s still in staging", name)
 	}
 }
 
 func TestCopyDirCopiesNestedTree(t *testing.T) {
 	src := t.TempDir()
 	dst := filepath.Join(t.TempDir(), "dst")
-	if err := os.MkdirAll(filepath.Join(src, "sub", "deep"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Join(src, "sub", "deep"), 0o755))
 	files := map[string]string{
 		"a.txt":          "hello",
 		"sub/b.txt":      "world",
 		"sub/deep/c.txt": "deep",
 	}
 	for rel, body := range files {
-		if err := os.WriteFile(filepath.Join(src, rel), []byte(body), 0o644); err != nil {
-			t.Fatalf("write %s: %v", rel, err)
-		}
+		require.NoError(t, os.WriteFile(filepath.Join(src, rel), []byte(body), 0o644))
 	}
-	if err := copyDir(src, dst); err != nil {
-		t.Fatalf("copyDir: %v", err)
-	}
+	require.NoError(t, copyDir(src, dst))
 	for rel, want := range files {
 		got, err := os.ReadFile(filepath.Join(dst, rel))
-		if err != nil {
-			t.Errorf("read %s: %v", rel, err)
-			continue
-		}
-		if string(got) != want {
-			t.Errorf("%s: got %q, want %q", rel, got, want)
-		}
+		require.NoError(t, err, "%s", rel)
+		assert.Equal(t, want, string(got), "%s content", rel)
 	}
 }
 
 func TestStagePythonTreeFailsWhenAssetMissing(t *testing.T) {
 	src := t.TempDir()
-	if err := os.WriteFile(filepath.Join(src, "pyproject.toml"),
-		[]byte("[project]\nname=\"x\"\n"), 0o644); err != nil {
-		t.Fatalf("write pyproject: %v", err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
+		[]byte("[project]\nname=\"x\"\n"), 0o644))
 	stage, err := stagePythonTree(src, filepath.Join(t.TempDir(), "missing-asset"), "mdsmith")
 	if err == nil {
 		_ = os.RemoveAll(stage)
-		t.Fatal("expected missing-asset error")
 	}
+	require.Error(t, err)
 }
 
 // TestBuildWheelsLayout calls BuildWheels directly and asserts
@@ -315,29 +255,17 @@ func TestBuildWheelsLayout(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
 	stagePython(t, root)
-	if err := Stamp(root, ver); err != nil {
-		t.Fatalf("Stamp: %v", err)
-	}
+	require.NoError(t, Stamp(root, ver))
+
 	artifacts := filepath.Join(root, "artifacts")
 	fakeArtifacts(t, artifacts)
 	out := filepath.Join(root, "wheels")
-
-	if err := BuildWheels(root, artifacts, out); err != nil {
-		t.Fatalf("BuildWheels: %v", err)
-	}
+	require.NoError(t, BuildWheels(root, artifacts, out))
 
 	cases := wheelCases()
 	entries, err := os.ReadDir(out)
-	if err != nil {
-		t.Fatalf("readdir %s: %v", out, err)
-	}
-	if len(entries) != len(cases) {
-		names := []string{}
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		t.Fatalf("expected %d wheels, got %d: %v", len(cases), len(entries), names)
-	}
+	require.NoError(t, err)
+	require.Len(t, entries, len(cases))
 	for _, c := range cases {
 		assertWheel(t, out, entries, c)
 	}
