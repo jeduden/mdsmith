@@ -149,6 +149,33 @@ func TestResolveRelTargetVariants(t *testing.T) {
 	assert.Empty(t, resolveRelTarget("a.md", "../up.md"))
 }
 
+func TestResolveRelTargetRejectsAbsoluteSrcFile(t *testing.T) {
+	t.Parallel()
+	// Absolute srcFile would let `../` escape via path.Join's
+	// abs-path semantics. The function rejects it instead.
+	assert.Empty(t, resolveRelTarget("/abs/a.md", "../../etc/passwd"))
+	assert.Empty(t, resolveRelTarget("/abs/a.md", "b.md"))
+	// Windows drive-letter form.
+	assert.Empty(t, resolveRelTarget(`C:/work/a.md`, "b.md"))
+	// UNC.
+	assert.Empty(t, resolveRelTarget(`//server/share/a.md`, "b.md"))
+}
+
+func TestResolveRelTargetTranslatesBackslashes(t *testing.T) {
+	t.Parallel()
+	// A Windows-authored link `sub\\x.md` from `docs/a.md`
+	// resolves to `docs/sub/x.md` regardless of host OS.
+	assert.Equal(t, "docs/sub/x.md", resolveRelTarget("docs/a.md", `sub\x.md`))
+}
+
+func TestResolveRelTargetRejectsAbsoluteCleaned(t *testing.T) {
+	t.Parallel()
+	// `srcFile` that's already escape-the-root via path.Clean
+	// would land outside the workspace; the absolute-cleaned
+	// guard catches it.
+	assert.Empty(t, resolveRelTarget("a/../../b.md", "x.md"))
+}
+
 func TestParseLinkTargetOpaqueMailto(t *testing.T) {
 	t.Parallel()
 	// `mailto:user@host` parses with scheme="mailto" → rejected on

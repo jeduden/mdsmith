@@ -52,9 +52,13 @@ func TestWorkspaceURIWithEmptyRoot(t *testing.T) {
 	h := newHarness(t)
 	_, errResp := h.request("initialize", initializeParams{})
 	require.Nil(t, errResp)
-	// No root → workspaceURI returns the rel path itself.
-	got := h.srv.workspaceURI("docs/x.md")
-	assert.Equal(t, "docs/x.md", got)
+	// No root + relative path → workspaceURI returns "" so the
+	// caller drops the location instead of emitting an invalid
+	// `docs/x.md` URI to the client.
+	assert.Empty(t, h.srv.workspaceURI("docs/x.md"))
+	// Absolute path works even without a root: file:// is built
+	// from the path directly.
+	assert.NotEmpty(t, h.srv.workspaceURI("/abs/x.md"))
 }
 
 func TestDocTextOrFileNonFileURI(t *testing.T) {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"path"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -535,10 +534,30 @@ func ResolveRelTarget(srcFile, linkPath string) string {
 }
 
 // resolveRelTarget is the package-internal implementation of
-// ResolveRelTarget; see that function's doc.
+// ResolveRelTarget; see that function's doc. The function is
+// strict about its inputs:
+//
+//   - srcFile must already be workspace-relative (no leading `/`,
+//     no drive letter, no UNC `\\` prefix). Callers that hold
+//     absolute paths must run them through workspaceRelative
+//     first; otherwise a `../../etc/passwd`-style linkPath could
+//     escape via path.Join's absolute-path semantics.
+//   - linkPath has both `\` and `/` translated to `/` before
+//     joining so a Windows-authored `sub\x.md` resolves the same
+//     way on Linux. (filepath.ToSlash is OS-dependent and a no-op
+//     on POSIX hosts; the rest of the codebase translates
+//     explicitly via strings.ReplaceAll, see NormalizePath.)
+//   - Both `path.IsAbs` and the cleaned-path escape check fire as
+//     belt-and-suspenders: an absolute linkPath, an absolute
+//     srcFile, or any combination that produces an absolute
+//     cleaned path returns "".
 func resolveRelTarget(srcFile, linkPath string) string {
-	linkPath = filepath.ToSlash(linkPath)
-	if path.IsAbs(linkPath) {
+	srcFile = strings.ReplaceAll(srcFile, `\`, `/`)
+	linkPath = strings.ReplaceAll(linkPath, `\`, `/`)
+	if path.IsAbs(srcFile) || path.IsAbs(linkPath) {
+		return ""
+	}
+	if isDriveOrUNC(srcFile) || isDriveOrUNC(linkPath) {
 		return ""
 	}
 	dir := path.Dir(srcFile)
@@ -546,7 +565,24 @@ func resolveRelTarget(srcFile, linkPath string) string {
 	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return ""
 	}
+	if path.IsAbs(cleaned) {
+		return ""
+	}
 	return cleaned
+}
+
+// isDriveOrUNC reports whether p starts with a Windows drive
+// letter (e.g. `C:`) or a UNC prefix (`//server`). Callers use
+// this to refuse non-relative inputs even when running on POSIX
+// hosts, where filepath.IsAbs wouldn't flag them.
+func isDriveOrUNC(p string) bool {
+	if len(p) >= 2 && p[1] == ':' {
+		c := p[0]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+			return true
+		}
+	}
+	return strings.HasPrefix(p, "//")
 }
 
 // nodePosition returns the 1-based source line and column of the

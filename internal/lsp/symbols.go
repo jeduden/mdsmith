@@ -288,7 +288,16 @@ func isWindowsDrivePath(p string) bool {
 func (s *Server) workspaceURI(rel string) string {
 	_, _, root := s.snapshotConfig()
 	if root == "" {
-		return rel
+		// No workspace configured. If the caller already has an
+		// absolute path (Windows drive / UNC / POSIX root) we can
+		// still emit a real file:// URI from it; otherwise we
+		// have nothing the LSP spec considers valid for
+		// Location.URI, so return "" and let the caller fall
+		// through to "no location".
+		if filepath.IsAbs(rel) || isWindowsDrivePath(rel) || strings.HasPrefix(rel, `\\`) {
+			return pathToURI(rel)
+		}
+		return ""
 	}
 	abs := filepath.Join(root, filepath.FromSlash(rel))
 	return pathToURI(abs)
