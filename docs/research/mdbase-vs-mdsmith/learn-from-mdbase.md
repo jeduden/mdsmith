@@ -187,8 +187,16 @@ mdbase names directly (date, datetime, enum, link).
 `email`, `url`) starts paying more than the cost of teaching
 users two ways to spell the same constraint.
 
-**Sketch.** Add a small CUE library
-`internal/cue/types.cue` that defines:
+**Sketch.** Ship a small CUE library that
+schemas can import. The library lives at a
+publicly importable module path (e.g.
+`github.com/jeduden/mdsmith/types`); the source
+in this repo would sit somewhere like
+`cue/types/types.cue` or be exposed via
+mdsmith's CUE overlay (Go's `internal/` path
+is not importable from outside, so a public
+module path is required for schemas in user
+projects). The library defines common patterns:
 
 ```cue
 package mdsmith
@@ -212,6 +220,11 @@ created:  types.#date
 modified: types.#datetime
 ```
 
+(The exact module path is illustrative; this
+mini-plan would need to settle the canonical
+location and how mdsmith ships the overlay so
+external schemas can resolve the import.)
+
 Optionally expose a more compact YAML shorthand in
 inline schemas (S-1):
 
@@ -234,9 +247,9 @@ useful; without it the patterns are still helpful
 in `proto.md` schemas.
 
 **Open questions.** What's the canonical list?
-Start with the seven mdbase covers (string, int,
-number, bool, date, datetime, time, enum, link)
-and grow from real use.
+Start with the nine mdbase scalar types (string,
+int, number, bool, date, datetime, time, enum,
+link) and grow from real use.
 
 ### S-3: Schema inheritance via `extends`
 
