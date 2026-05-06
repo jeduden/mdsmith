@@ -376,149 +376,141 @@ schema:
 **Goal.** Type the body of structured Markdown
 documents beyond the heading sequence: nested
 sections with per-field content rules (word and
-character counts, forbidden text patterns,
-required patterns, skip rules), cross-reference
+character counts, forbidden / required text
+patterns, scoped skip rules), cross-reference
 validation, acronym tracking, and document-wide
-index generation. This closes the
+index generation. Closes the
 "structural body typing" gap noted in
 [query-and-types.md](query-and-types.md) §
-"Where each is genuinely silent".
+"What's missing in both".
 
-**Trigger.** A real project authors structured
-Markdown beyond docs and RFCs — presentation
-decks (slides plus speaker notes), training
-material (lessons plus exercises), structured
-runbooks (incidents plus steps plus
-verification), regulatory documents (clauses
-plus citations). Today every such project
-writes custom lint scripts. The trigger fires
-when two or more of these projects emerge and
-the constraint vocabulary repeats; that is when
-shipping a generic schema language pays.
+**Trigger.** Two or more projects in the same
+repo (or in adjacent repos a team maintains)
+author structured Markdown beyond docs and RFCs
+— runbooks, training material, presentation
+decks, regulatory documents, change-log
+manifests — and the constraint vocabulary
+starts to repeat across their custom lint
+scripts. That repeat is the signal: a generic
+schema language earns its keep when teams
+discover they want the same eight rules in
+three different places.
 
-**Sketch.** A schema language (the form is
-open — could be a richer YAML in `proto.md`
-front matter, a separate CUE-flavoured DSL, or
-an extension of the existing MDS020 schema)
-covering five capabilities current MDS020 does
-not address. The illustrative shape, sketched
-for a presentation-deck schema:
+**Sketch.** A schema describes a document's
+body the way MDS020 today describes a heading
+template, but reaches deeper. The form is
+genuinely open — the language could be richer
+YAML in `proto.md` front matter, extended CUE,
+or a small DSL designed for this. The shape
+below is an illustrative skeleton, not a
+finished design; it sketches what the schema
+language would need to express. The example is
+a runbook because runbooks are common,
+generic, and exercise every capability without
+a vocabulary tied to one domain.
 
 ```yaml
+# illustrative — not a final syntax
+
 sections:
-  - heading: "## Deck Parameters"
+  - heading: "## Overview"
     required: true
-  - heading: "## Horizontal Flow"
+
+  - heading: "## Symptoms"
     required: true
-    aliases: ["## Horizontal Flow (Title Sequence)"]
-  - heading: "## Section"
-    required: true
-    repeatable: true
-    pattern: "## Section \\d+:.*"
-  - heading: "## Backup Slides"
+    aliases: ["## Indicators"]
+
+  - heading: "## Diagnosis"
     required: true
     children:
-      pattern: "### B{n}:*"
-      sequential: false      # gaps allowed
+      pattern: "### Step {n}"
+      sequential: true               # no gaps; no duplicates
       fields:
-        - heading: "#### Extends"
+        - heading: "#### Check"
           required: true
-        - heading: "#### Pull condition"
+          max_words: 50
+        - heading: "#### Expected"
           required: true
-        - heading: "#### Speaker notes"
+        - heading: "#### If different"
           required: false
-          max_words: 300
+          required_patterns:
+            - pattern: "see Step \\d+"
+              error: "missing forward reference"
+              skip_indices: [-1]     # last step exempt
 
-# Slide definition (children of Section headings)
-slides:
-  pattern: "### Slide {n}"
-  sequential: true            # no gaps, no duplicates
-  fields:
-    - heading: "#### Action Title"
-      required: true
-      min_words: 3
-      max_words: 12
-      max_chars: 65
-      forbidden_starts: ["We ", "Our "]
-      forbidden_contains: [" and "]
-      skip_slides: [1]        # cover slide exempt
-    - heading: "#### Speaker notes"
-      required: true
-      max_words: 300
-      required_patterns:
-        - pattern: "TRANSITION:"
-          error: "Missing TRANSITION marker"
-          skip_slides: [-1]   # last slide exempt
+  - heading: "## Pass criteria"
+    required: true
+    fields:
+      - heading: "#### Indicator"
+        required: true
+        max_words: 30
+        forbidden_starts: ["We ", "The system "]
+        forbidden_contains: ["should", "may", "might"]
 
-# Cross-reference validation
+  - heading: "## References"
+    required: false
+
+# Cross-reference validation: "Step 4" mentions
+# must resolve to an actual "### Step 4" heading.
 cross_references:
-  - pattern: "Slide (\\d+)"
-    must_match: "### Slide {n}"
-    skip_lines_matching: "^> \\*\\*"  # skip version-history blockquotes
-  - pattern: "\\bB(\\d+)\\b"
-    must_match: "### B{n}"
+  - pattern: "\\bStep (\\d+)\\b"
+    must_match: "### Step {n}"
+    skip_lines_matching: "^> "       # skip blockquoted text
 
-# Acronym tracking — flag acronyms used before expansion
+# Flag acronyms before their first expansion;
+# allowlist covers infrastructure terms.
 acronym_tracking:
-  known_safe: [AI, IDE, PR, CI, CD, QA, URL, API, KPI]
-  scope: on_slide_content       # which h4 sections to check
+  known_safe: [API, HTTP, TLS, DNS, IAM, CDN, SLA, JSON]
+  scope: ["#### Check", "#### Expected"]
 
-# Cross-ref ban: "Slide N" refs that break leave-behind PDFs
-cross_ref_standalone:
-  ban_in: [On-slide content, Visual concept]
-  allow_in: [Speaker notes, Editorial notes]
-
-# Index output for downstream tooling
+# Generate a JSON side-output for downstream tooling.
 index:
-  output: ".narrative-index.json"
-  include: [slide_map, backup_map, cross_ref_graph, word_counts]
+  output: ".runbook-index.json"
+  include: [step_map, cross_ref_graph, word_counts]
 ```
 
-The five capabilities, each absent from MDS020
-today:
+The shape exercises five capabilities current
+MDS020 does not address:
 
-1. **Hierarchical body structure** — nested
-   sections with required/optional/repeatable
-   semantics, plus child patterns
-   (`### Slide {n}` with sequential / non-
-   sequential numbering).
-2. **Per-field content rules** — word and
-   character counts, forbidden / required text
-   patterns, regex-based pattern checks, scoped
-   skip rules (e.g. "cover slide is exempt
-   from the action-title length cap").
-3. **Cross-reference validation** — text like
-   "Slide 5" must resolve to an actual
-   `### Slide 5` heading; broken refs are
-   diagnostics. Skip rules let version-history
-   blockquotes carry stale refs without
-   firing.
-4. **Acronym tracking** — flag acronym uses
-   that appear before their expansion, with a
-   known-safe allowlist and a per-field scope.
-5. **Index generation** — produce a JSON index
-   of the document's structure (slide map,
-   backup map, cross-reference graph, word
-   counts per subsection) for downstream
-   tooling. Effectively a side-output of the
-   parse pass that already happens during lint.
+1. **Hierarchical body structure.** Nested
+   sections with required / optional /
+   repeatable semantics; child patterns
+   (`### Step {n}`) with sequential or
+   non-sequential numbering.
+2. **Per-field content rules.** Word counts,
+   character counts, forbidden starts and
+   contents, required text patterns, scoped
+   skip rules (e.g. "the last step is exempt
+   from the forward-reference requirement").
+3. **Cross-reference validation.** Text like
+   "Step 4" must resolve to a real
+   `### Step 4` heading; broken refs are
+   diagnostics. Skip rules let blockquoted
+   stale text pass through.
+4. **Acronym tracking.** First-use detection
+   with a known-safe allowlist and a
+   per-section scope.
+5. **Index generation.** A JSON side-output
+   of the parse pass — step map, cross-ref
+   graph, per-field word counts. Downstream
+   tooling consumes the index instead of
+   re-parsing the document.
 
 **Surface.** A new schema format alongside (or
-extending) the current `proto.md` schema body.
-Either an extension of MDS020 (richer schema
-language inside the existing rule) or a sister
-rule (MDS-something) that runs alongside.
-`mdsmith fix` regenerates the index file when
-the document changes; `mdsmith check` reports
-violations with file/line/column anchors.
+extending) the current `proto.md` body. Either
+an extension of MDS020 (richer schema language
+inside the existing rule) or a sister rule that
+runs alongside. `mdsmith fix` regenerates the
+index file when the document changes;
+`mdsmith check` reports violations with file /
+line / column anchors.
 
-**Effort.** L. This is the largest schema-side
+**Effort.** L. The largest schema-side
 candidate. The schema language needs careful
-design (CUE? YAML? hybrid?), the validator does
-real work (per-field rules, cross-reference
-resolution, acronym tracking are each their own
-small subsystem), and index generation adds an
-output surface.
+design; the validator does real work (per-field
+rules, cross-reference resolution, acronym
+tracking are each a small subsystem); index
+generation adds an output surface.
 
 **Depends on.** S-1 (inline schemas) as a
 stepping stone — the YAML form here is in
@@ -535,22 +527,20 @@ have to settle:
   a new DSL designed for this. Each has costs.
 - **Composition with MDS020.** Is this a richer
   MDS020 schema, or a sister rule that runs
-  alongside? Composition matters: a project
-  might want both heading-template constraints
-  (MDS020 today) and the richer body rules
-  (this proposal) on the same files.
+  alongside? A project might want both
+  heading-template constraints (MDS020 today)
+  and the richer body rules on the same files.
 - **Index output location and format.** JSON
   next to the source file, gitignored cache,
-  or somewhere else? What's the schema of the
-  index? mdbase's `effective_json` per-file
-  cache is one shape; a per-document
-  `.narrative-index.json` is another.
-- **Cross-reference scope.** "Slide 5" refs
-  must resolve, but version-history
-  blockquotes break this. The schema example
-  has `skip_lines_matching`; that's a
-  configurable escape hatch. Does it
-  generalize?
+  or somewhere else? mdbase's
+  `effective_json` per-file cache is one
+  shape; a per-document `.runbook-index.json`
+  is another.
+- **Cross-reference scope.** Refs must resolve,
+  but blockquoted text and version-history
+  notes break this. The schema example has
+  `skip_lines_matching`; that's a configurable
+  escape hatch. Does it generalize?
 - **Relationship to mdbase types.** mdbase
   types declare FM shape; this proposal
   declares body structure. They are
@@ -561,8 +551,8 @@ have to settle:
   body half?
 - **Performance.** Per-field word counts and
   cross-reference resolution scale with file
-  size. Most documents are small; runbooks and
-  decks fit. Books would not.
+  size. Runbooks, decks, training modules
+  fit; books would not.
 
 **Why this matters in the comparison.** mdbase's
 data-layer typing and mdsmith's heading-template
