@@ -55,16 +55,17 @@ split by category for readability.
 
 #### Front matter and type assignment
 
-| Aspect                         | mdbase types             | mdsmith MDS020 schema       | mdsmith broader rule set |
-|--------------------------------|--------------------------|-----------------------------|--------------------------|
-| FM field types                 | yes (12 named types, §7) | yes (CUE in schema FM)      | n/a                      |
-| FM field constraints           | per-type knobs           | full CUE                    | n/a                      |
-| FM required / optional         | `required: true`         | CUE `?` suffix              | n/a                      |
-| FM cross-field constraints     | limited                  | full CUE (`if/then`)        | n/a                      |
-| Computed FM fields             | yes (`computed:` block)  | no (CUE is structural)      | n/a                      |
-| Generated FM values            | yes (ULID, timestamps)   | n/a (mdsmith doesn't write) | n/a                      |
-| Type assignment by FM presence | yes (`fields_present`)   | no                          | no (kinds: globs / tags) |
-| Type assignment by FM where    | yes (`where:`)           | no                          | no                       |
+| Aspect                           | mdbase types             | mdsmith MDS020 schema          | mdsmith broader rule set                            |
+|----------------------------------|--------------------------|--------------------------------|-----------------------------------------------------|
+| FM field types                   | yes (12 named types, §7) | yes (CUE in schema FM)         | n/a                                                 |
+| FM field constraints             | per-type knobs           | full CUE                       | n/a                                                 |
+| FM required / optional           | `required: true`         | CUE `?` suffix                 | n/a                                                 |
+| FM cross-field constraints       | limited                  | full CUE (`if/then`)           | n/a                                                 |
+| Computed FM fields               | yes (`computed:` block)  | no (CUE is structural)         | n/a                                                 |
+| Generated FM values              | yes (ULID, timestamps)   | n/a (mdsmith doesn't write)    | n/a                                                 |
+| Type assignment by FM presence   | yes (`fields_present`)   | no                             | no (kinds: globs / tags)                            |
+| Type assignment by FM where      | yes (`where:`)           | no                             | no                                                  |
+| FM ↔ body sync (e.g. title ↔ H1) | no                       | yes (placeholders in template) | yes (catalog/include/build directives drift-detect) |
 
 #### Filename, directory, headings
 
@@ -221,6 +222,123 @@ mdsmith's experimental MDS029
 (conciseness-scoring) is a step toward
 content-quality typing but is opt-in and
 classifier-based rather than declarative.
+
+## Front matter and body — keeping them in sync
+
+Front matter and body are structurally disjoint
+pieces of a Markdown file. The YAML at the top
+parses to one tree, the Markdown below to another;
+nothing in standard Markdown makes them
+co-vary. A file with `title: Migration Plan` and
+a body H1 reading `# Outline` is syntactically
+fine — but obviously incoherent. What does each
+tool offer to **enforce coherence between front
+matter and body**?
+
+This is a place mdsmith is materially stronger
+than mdbase, and it falls out of the broader
+rule-set/directive split:
+
+### mdsmith mechanisms for FM↔body sync
+
+Five mechanisms tie FM to body content, all
+schema-style or directive-driven:
+
+| Mechanism                     | What it ties                                                                                                                   | Rule                        |
+|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| Heading template placeholders | `# {title}` in schema body → body H1 must match FM `title`                                                                     | MDS020 (required-structure) |
+| Catalog directive             | `<?catalog?>` table cells reference FM fields like `{summary}`, `{filename}` of matched files                                  | MDS019 (catalog)            |
+| Include directive variables   | `<?include?>` body can substitute FM fields from the host file                                                                 | MDS021 (include)            |
+| Build directive params        | `<?build?>` recipe params can come from FM                                                                                     | MDS039 (build)              |
+| TOC directive                 | `<?toc?>` derives body section list from body headings (not from FM, but keeps a body-derived index in sync with body content) | MDS038 (toc)                |
+
+The first four detect drift: edit the FM, the
+body table or heading is now stale; `mdsmith fix`
+regenerates it. The fifth tracks body-internal
+sync (heading list ↔ TOC).
+
+Concretely, an MDS020 schema body of the form
+
+```markdown
+---
+title: 'string'
+---
+# {title}
+
+## Description
+```
+
+requires that any document tagged with this kind
+has a body H1 matching its FM `title` exactly
+(after placeholder substitution). Change the FM
+title without touching the body, and the lint
+fires on the next run.
+
+### mdbase mechanisms for FM↔body sync
+
+mdbase has one mechanism, and it ties FM to the
+**filesystem**, not the body:
+
+| Mechanism      | What it ties                      | Where   |
+|----------------|-----------------------------------|---------|
+| `path_pattern` | FM field values → filename / path | spec §5 |
+
+A type like `tasks/{date}-{title}.md` enforces
+that an FM `date: 2026-05-04, title: oidc` file
+lives at `tasks/2026-05-04-oidc.md`. Useful, but
+about filesystem layout.
+
+For the body itself, mdbase offers nothing.
+`file.body` is queryable as a string; queries
+can compare FM fields against body substrings
+(`file.body.contains(title)`) at read time, but
+there is no enforcement: writing a body that
+doesn't match FM is permitted by mdbase. The
+spec does not define body templates, body
+heading constraints, or body-from-FM generation.
+
+### Side-by-side
+
+| Sync direction           | mdsmith                                   | mdbase         |
+|--------------------------|-------------------------------------------|----------------|
+| FM → filename            | n/a (MDS033 directory-structure separate) | `path_pattern` |
+| FM → body H1             | MDS020 heading template with `{title}`    | no             |
+| FM → body table cells    | `<?catalog?>` directive (drift-detected)  | no             |
+| FM → body include vars   | `<?include?>` directive variables         | no             |
+| FM → body build artifact | `<?build?>` directive                     | no             |
+| Body → body TOC          | `<?toc?>` directive                       | no             |
+| FM → query-only check    | (could grow; not present)                 | yes, read-only |
+
+### What this implies
+
+An mdbase team using FM as the typed source of
+truth has no built-in way to ensure their body
+H1 matches their FM title, that a catalog page
+reflects current FM, or that referenced FM
+fields appear in the body. They handle this
+with conventions or external tools.
+
+An mdsmith team has these out of the box. The
+five directives cover most FM→body relations
+that come up in practice; MDS020 placeholders
+are the last-mile linker for the schema-body
+case.
+
+This is not a gap mdbase is silent on by
+oversight — the tool is scoped to data-layer
+typing. Body content is treated as opaque
+prose. mdsmith covers it because the broader
+rule-and-directive surface includes generated
+content and template-driven validation.
+
+For the question "what does each tool offer to
+keep FM and body in sync?", the honest answer
+is: **mdsmith ships explicit FM↔body sync
+mechanisms across schemas and directives;
+mdbase offers FM↔filename via `path_pattern`
+and nothing on the body side.** A team that
+needs both is running mdsmith for the body sync
+even if mdbase owns the FM types.
 
 ## How the type definitions look
 
