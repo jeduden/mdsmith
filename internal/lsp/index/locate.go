@@ -41,8 +41,12 @@ const (
 	// TokenFrontMatterValue is the cursor on a value beside a top-level
 	// FM key — currently used only for `kind:` value lookups.
 	TokenFrontMatterValue
-	// TokenFileTop is the cursor on the very first line of the body
-	// (line 1 of the source). Used to anchor file-level references.
+	// TokenFileTop is the cursor at the first line of the body —
+	// the line immediately after any stripped YAML front matter,
+	// not necessarily line 1 of the source. The locator strips
+	// `---\n…\n---\n` before tagging, so on a file with front
+	// matter (line 1, col 1) lands inside the front-matter range
+	// and surfaces as TokenFrontMatterKey instead.
 	TokenFileTop
 )
 
