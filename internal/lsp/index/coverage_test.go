@@ -149,6 +149,27 @@ func TestResolveRelTargetVariants(t *testing.T) {
 	assert.Empty(t, resolveRelTarget("a.md", "../up.md"))
 }
 
+func TestParseLinkTargetOpaqueMailto(t *testing.T) {
+	t.Parallel()
+	// `mailto:user@host` parses with scheme="mailto" → rejected on
+	// the scheme check. We need to construct a destination that
+	// parses with empty scheme but a non-empty Opaque to hit the
+	// `p == "" && u.Opaque != ""` branch. Such inputs are extremely
+	// rare in markdown; the branch is defensive.
+	t.Skip("opaque branch is defensive; reachable only with crafted URL.URL inputs")
+}
+
+func TestParseLinkTargetEmptyAfterTrim(t *testing.T) {
+	t.Parallel()
+	// All-whitespace destination → empty after trim → false.
+	_, ok := parseLinkTarget("   ")
+	assert.False(t, ok)
+	// Pure fragment without a path returns LocalAnchor.
+	tgt, ok := parseLinkTarget("#sec")
+	assert.True(t, ok)
+	assert.True(t, tgt.LocalAnchor)
+}
+
 func TestNodePositionFallback(t *testing.T) {
 	t.Parallel()
 	// A heading parsed at line 1 has at least one text segment, so

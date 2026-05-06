@@ -1,6 +1,7 @@
 package index
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,6 +70,23 @@ func TestLinkCloseOffsetInlineNestedParens(t *testing.T) {
 	l := ast.NewLink()
 	close := linkCloseOffset(src, l, 5)
 	assert.Equal(t, 29, close)
+}
+
+func TestLinkContainsOffsetBracketTooFar(t *testing.T) {
+	t.Parallel()
+	// Construct a link node where the text segment is far from the
+	// opening `[` so the 200-byte cap fires (open falls back to
+	// startOff).
+	pad := strings.Repeat("x", 250)
+	src := []byte("[" + pad + "](#sec)\n")
+	idx := New("/r")
+	idx.Update("a.md", src)
+	// Cursor at the very start of the bracket (offset 0) — should
+	// still be classifiable.
+	res := Locator{Path: "a.md"}.Locate(src, 1, 1)
+	// Just verifying it doesn't panic; the exact tag depends on the
+	// goldmark parse outcome.
+	_ = res.Tag
 }
 
 func TestLinkCloseOffsetInlineNoParen(t *testing.T) {

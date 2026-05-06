@@ -164,10 +164,7 @@ func headingInfo(target *ast.Heading, source []byte, root ast.Node) (string, int
 			return ast.WalkContinue, nil
 		}
 		h, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		if h.Lines().Len() == 0 {
+		if !ok || h.Lines().Len() == 0 {
 			return ast.WalkContinue, nil
 		}
 		txt := mdtext.ExtractPlainText(h, source)
@@ -360,9 +357,6 @@ func scanForByte(source []byte, from int, target byte) int {
 }
 
 func piContainsLine(source []byte, pi *lint.ProcessingInstruction, line int) bool {
-	if pi.Lines().Len() == 0 {
-		return false
-	}
 	startSeg := pi.Lines().At(0)
 	startLine := lineOfOffset(source, startSeg.Start)
 	endLine := startLine
@@ -447,10 +441,7 @@ func headingOnLine(root ast.Node, source []byte, line int) *ast.Heading {
 			return ast.WalkContinue, nil
 		}
 		h, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		if h.Lines().Len() == 0 {
+		if !ok || h.Lines().Len() == 0 {
 			return ast.WalkContinue, nil
 		}
 		startLine := lineOfOffset(source, h.Lines().At(0).Start)

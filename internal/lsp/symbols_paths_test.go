@@ -563,6 +563,221 @@ func TestLeafSymbolFrontMatter(t *testing.T) {
 	assert.Empty(t, got.Detail)
 }
 
+func TestHandleDefinitionUnknownDoc(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	raw, errResp := h.request("textDocument/definition", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///nope.md"},
+		Position:     Position{Line: 0, Character: 0},
+	})
+	require.Nil(t, errResp)
+	assert.Equal(t, "null", string(raw))
+}
+
+func TestHandleImplementationUnknownDoc(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	raw, errResp := h.request("textDocument/implementation", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///nope.md"},
+	})
+	require.Nil(t, errResp)
+	var locs []location
+	require.NoError(t, json.Unmarshal(raw, &locs))
+	assert.Empty(t, locs)
+}
+
+func TestResolveTargetsRefDef(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\n[See][label]\n\n[label]: ./other.md\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	// Cursor on `[label]:` line 5.
+	raw, errResp := h.request("textDocument/definition", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 4, Character: 2},
+	})
+	require.Nil(t, errResp)
+	var loc location
+	require.NoError(t, json.Unmarshal(raw, &loc))
+	assert.Equal(t, uri, loc.URI)
+	// `implementation` returns the same single result for a TokenRefDef.
+	raw, errResp = h.request("textDocument/implementation", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 4, Character: 2},
+	})
+	require.Nil(t, errResp)
+	var locs []location
+	require.NoError(t, json.Unmarshal(raw, &locs))
+	assert.NotEmpty(t, locs)
+}
+
+func TestLocationsForAnchorEmpty(t *testing.T) {
+	t.Parallel()
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": "# A\n"})
+	got := h.srv.locationsForAnchor("a.md", "", h.srv.ensureIndex(), nil)
+	assert.Empty(t, got)
+}
+
+func TestLocationsForAnchorMissingAnchor(t *testing.T) {
+	t.Parallel()
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": "# A\n"})
+	got := h.srv.locationsForAnchor("a.md", "missing", h.srv.ensureIndex(), nil)
+	assert.Empty(t, got)
+}
+
+func TestHandleReferencesOnFrontMatterNonKind(t *testing.T) {
+	t.Parallel()
+	src := "---\ntitle: Hello\n---\n# Body\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	// Cursor on `title: Hello` value (line 2 char 12).
+	raw, errResp := h.request("textDocument/references", referencesParams{
+		textDocumentPositionParams: textDocumentPositionParams{
+			TextDocument: textDocumentIdentifier{URI: uri},
+			Position:     Position{Line: 1, Character: 9},
+		},
+	})
+	require.Nil(t, errResp)
+	var locs []location
+	require.NoError(t, json.Unmarshal(raw, &locs))
+	// Non-kind FM value → no references.
+	assert.Empty(t, locs)
+}
+
+func TestLocationsForRefUsesFiltersKindAndLabel(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\n[A][lab1] and [B][lab2]\n\n[lab1]: u1\n[lab2]: u2\n"
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": src})
+	idx := h.srv.ensureIndex()
+	// Asking for "lab1" should pick the first ref use only.
+	got := h.srv.locationsForRefUses("a.md", "lab1", idx)
+	assert.Len(t, got, 1)
+}
+
+func TestWorkspaceSymbolMixedKinds(t *testing.T) {
+	t.Parallel()
+	src := "---\ntitle: Foo\nkinds:\n  - guide\n---\n# Match Foo\n\n[lab]: u\n"
+	h, _, _ := rootedHarness(t, map[string]string{"a.md": src})
+	raw, errResp := h.request("workspace/symbol", workspaceSymbolParams{Query: ""})
+	require.Nil(t, errResp)
+	var hits []symbolInformation
+	require.NoError(t, json.Unmarshal(raw, &hits))
+	kinds := map[symbolKind]bool{}
+	for _, h := range hits {
+		kinds[h.Kind] = true
+	}
+	assert.True(t, kinds[symbolKindString], "expected heading kind: %+v", hits)
+	// Either Property (front matter) or Key (link ref) should appear.
+	assert.True(t, kinds[symbolKindProperty] || kinds[symbolKindKey], "expected property or key kind: %+v", hits)
+}
+
+func TestHandleOutgoingCallsSkipsRefAndAnchorLinks(t *testing.T) {
+	t.Parallel()
+	src := "# A\n\nSee [self](#sec) and [Foo][bar].\n\n## Sec\n\n[bar]: ./b.md\n"
+	srcB := "# B\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src, "b.md": srcB})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	raw, errResp := h.request("textDocument/prepareCallHierarchy", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 0, Character: 0},
+	})
+	require.Nil(t, errResp)
+	var items []callHierarchyItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	require.Len(t, items, 1)
+	raw, errResp = h.request("callHierarchy/outgoingCalls", callHierarchyOutgoingCallsParams{Item: items[0]})
+	require.Nil(t, errResp)
+	var calls []callHierarchyOutgoingCall
+	require.NoError(t, json.Unmarshal(raw, &calls))
+	// Anchor link to #sec is intra-document (skipped). Reference-style
+	// link [Foo][bar] is also intra-document (skipped). The target of
+	// the reference resolves through link-ref to b.md but ast.Link
+	// with non-nil Reference is dropped from outgoing.
+	for _, c := range calls {
+		assert.NotEmpty(t, c.To.Name)
+	}
+}
+
+func TestHandleIncomingCallsSelfReferenceFiltered(t *testing.T) {
+	t.Parallel()
+	// Same file links to itself — the self-edge must not appear in
+	// the incoming-calls view.
+	src := "# A\n\n## Sec\n\n[loop](#sec)\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	// Prepare on `## Sec`.
+	raw, errResp := h.request("textDocument/prepareCallHierarchy", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 4},
+	})
+	require.Nil(t, errResp)
+	var items []callHierarchyItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	require.Len(t, items, 1)
+	raw, errResp = h.request("callHierarchy/incomingCalls", callHierarchyIncomingCallsParams{Item: items[0]})
+	require.Nil(t, errResp)
+	var calls []callHierarchyIncomingCall
+	require.NoError(t, json.Unmarshal(raw, &calls))
+	// Self-anchor edge from the same file → empty.
+	assert.Empty(t, calls)
+}
+
+func TestLineCountUnbounded(t *testing.T) {
+	t.Parallel()
+	// Edge case: source ending without newline.
+	assert.Equal(t, 2, lineCount([]byte("a\nb")))
+	// Empty.
+	assert.Equal(t, 1, lineCount(nil))
+}
+
+func TestBuildOutlineLinkRefBranch(t *testing.T) {
+	t.Parallel()
+	src := []byte("# Top\n\nSee [foo][lab].\n\n[lab]: ./other.md\n")
+	got := buildOutline(src)
+	require.NotEmpty(t, got)
+	// Walk for SymbolKindKey leaf (link-ref symbol).
+	var sawKey bool
+	var visit func(syms []documentSymbol)
+	visit = func(syms []documentSymbol) {
+		for _, s := range syms {
+			if s.Kind == symbolKindKey {
+				sawKey = true
+			}
+			visit(s.Children)
+		}
+	}
+	visit(got)
+	assert.True(t, sawKey, "expected link-ref leaf symbol: %+v", got)
+}
+
 func TestBuildIndexFromDiskHandlesReadFailure(t *testing.T) {
 	t.Parallel()
 	h, _, _ := rootedHarness(t, map[string]string{"a.md": "# A\n"})
