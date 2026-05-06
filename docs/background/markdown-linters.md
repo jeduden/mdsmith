@@ -210,12 +210,20 @@ What each tool **does** with the same bytes:
 | `mdbase rename` runs           | n/a                                           | moves the file and rewrites every incoming link           |
 | Body conciseness, readability  | yes (MDS023, MDS024, MDS028)                  | no                                                        |
 
-The **shared** layer is the YAML front matter:
-both tools treat `status`, `priority`, `due` as
-typed data. The **split** is the body — mdsmith
-owns prose, structure, and generated content;
-mdbase owns rename refactoring, the link graph,
-and richer queries.
+The **shared** layer is the YAML front matter.
+Both tools read `status`, `priority`, `due` as
+structured fields. mdbase enforces field types
+out of the box via `_types/`. mdsmith does the
+same when a CUE schema is wired up via MDS020;
+without one, it treats them as plain YAML.
+
+The **current surface difference** sits in the
+body and the link graph. mdsmith ships prose,
+structure, and generated-content rules today.
+mdbase ships rename refactoring, the link graph,
+and richer queries today. Either surface is a
+snapshot, not a charter — see the deep-dive for
+evolutionary candidates either way.
 
 See the [deep-dive comparison][mdbase-deep-dive].
 It covers types, queries, validation, links, the fix

@@ -78,29 +78,64 @@ work in practice are below.
 ### Strategy A: Use mdbase as the source of truth
 
 Pick mdbase types as the authoritative schema. Use
-mdsmith for **everything else** (prose, structure,
-generated content, link integrity) and skip MDS020
-entirely.
+mdsmith for prose, structure, generated content,
+and link integrity. Decide explicitly what to do
+with MDS020.
+
+Two configurations work, with different
+trade-offs:
+
+**A.1: Disable MDS020 entirely.** Simplest. The
+mdbase types validate front matter; mdsmith does
+not touch FM shape:
 
 ```yaml
 # .mdsmith.yml
 rules:
-  required-structure: false  # mdbase owns FM validation
+  required-structure: false  # mdbase owns all FM + structure checks
 ```
+
+Note this also disables MDS020's heading-template
+enforcement (the body-structure half of the rule),
+since `false` toggles the whole rule. If the
+project wants mdsmith to keep enforcing the
+heading template while letting mdbase own FM
+typing, use A.2 instead.
+
+**A.2: Keep MDS020 with a permissive FM schema.**
+Define an mdsmith schema (`proto.md`) whose front
+matter accepts anything (`[string]: _`) but whose
+body still carries the heading template. mdsmith
+validates structure, mdbase validates FM, neither
+overlaps:
+
+```markdown
+<!-- common/permissive-fm.md -->
+---
+[string]: _    # accept any FM; mdbase will validate
+---
+# {title}
+
+## ?
+```
+
+Then reference it from the kind that owns body
+structure but lets mdbase own FM.
 
 Pros:
 
-- One schema layer (`_types/`) to maintain
-- mdsmith stays focused on what it does best
+- One source of FM truth (`_types/`)
+- mdsmith stays focused on linting and structure
 - The schema is self-documenting (each type file
   has a body explaining the type)
 
 Cons:
 
-- mdsmith cannot block PRs on FM-shape errors;
-  rely on `mdbase validate` in CI
+- mdsmith cannot block PRs on FM-shape errors
+  (rely on `mdbase validate` in CI)
 - The CUE constraint surface (cross-field, regex,
-  bounds) is not available
+  bounds) is not available unless A.2 is used and
+  even then only at body-structure granularity
 
 This is the recommended pattern when you want the
 mdbase typed-vault experience plus mdsmith's
@@ -217,13 +252,34 @@ my-vault/
 .mdbase/
 ```
 
-`.mdsmith.yml` `ignore:` entries:
+`.mdsmith.yml` settings — pick the granularity
+deliberately:
 
 ```yaml
+# Option 1: full exclusion (no mdsmith lint at all on _types/)
 ignore:
-  - "_types/**"      # mdbase owns these; skip MDS020 etc.
+  - "_types/**"      # mdbase owns these end-to-end
+  - ".mdbase/**"     # gitignored cache, never lint
+
+# Option 2: lint prose/whitespace in _types/, just skip schema
+# validation conflicts. Replace the _types/ ignore line above with:
+overrides:
+  - glob: ["_types/**"]
+    rules:
+      required-structure: false  # mdbase owns FM shape
+ignore:
   - ".mdbase/**"
 ```
+
+`ignore:` skips **all** mdsmith rules — including
+prose readability, line length, table formatting,
+and link integrity — for the matched files. That
+matches the "mdbase owns these end-to-end"
+intent. If the team wants type files to be
+linted for prose and whitespace consistency
+(they are normal Markdown after all) but doesn't
+want MDS020 fighting mdbase, the `overrides:`
+form is the better fit.
 
 `mdbase.yaml` `exclude:` entries:
 
