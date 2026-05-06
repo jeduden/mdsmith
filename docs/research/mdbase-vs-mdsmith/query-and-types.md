@@ -792,9 +792,19 @@ benefit either side.
    schemas come closest with the heading
    template, but they don't reach inside
    sections (no "first paragraph must mention
-   the project name"). For doc consistency
-   this is genuinely useful and not yet
-   covered.
+   the project name", no "this field has a
+   word-count cap", no cross-reference
+   resolution between body sections). For
+   structured Markdown documents — decks,
+   runbooks, training material, regulatory
+   text — this is the largest untyped surface.
+   **Candidate plan: S-7** in
+   [learn-from-mdbase.md](learn-from-mdbase.md)
+   sketches a rich-body-schema language with
+   nested sections, per-field rules
+   (word/char counts, forbidden patterns,
+   skip rules), cross-reference validation,
+   acronym tracking, and index generation.
 2. **Schema-aware query validation.** A typo
    in a field name silently returns no
    results. Either tool's schema layer is rich
@@ -807,9 +817,11 @@ benefit either side.
    [interop.md §7](interop.md) sketches a
    bridge that doesn't exist yet.
 
-The first two are clear candidates for either
-project. The third is a coordination problem
-that needs cross-tool buy-in.
+S-7 is the most ambitious of the three. The
+other two are clear candidates for either
+project; the cross-impl bridge is a
+coordination problem that needs cross-tool
+buy-in.
 
 ## Sources
 
