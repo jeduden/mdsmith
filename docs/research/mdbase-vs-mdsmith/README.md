@@ -61,6 +61,16 @@ for each.
   background indexing with priority queries), and
   a serious look at stateless-fast (`fzf` /
   `ripgrep`-style) approaches as an alternative.
+- [query-and-types.md](query-and-types.md) —
+  in-depth comparison of the query languages
+  (CUE struct literal vs Bases-compatible DSL)
+  and the type systems. Walks what each tool
+  actually types (FM? body? filenames?), how
+  schemas compose, the expressiveness matrix
+  between the two languages, and the answer to
+  whether mdbase's type system is limited to
+  front matter (almost — with two named
+  exceptions).
 
 ## TL;DR
 

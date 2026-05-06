@@ -693,15 +693,16 @@ types: [task]
 where: file.body.contains("OIDC")
 ```
 
-```bash
-# mdsmith: combine `query` with ripgrep
-mdsmith query 'kind: "task"' tasks/ | xargs rg -l 'OIDC'
+```text
+# mdsmith: not expressible in `query` today. The
+# right answer is a native body-content matcher
+# built into mdsmith, not a pipe to an external
+# tool — mdsmith ships as a single static binary
+# and should not require ripgrep or grep on PATH.
+# Q-3 in learn-from-mdbase.md sketches a native
+# `--body-contains REGEX` flag using Go's regexp
+# engine and the existing parallel file walk.
 ```
-
-mdsmith works via shell composition; mdbase
-keeps it inside the query DSL. Q-3 in
-[learn-from-mdbase.md](learn-from-mdbase.md)
-sketches a native `--body-contains` flag.
 
 **Q-G: sort and limit — "top 5 oldest open tasks".** The five oldest open tasks.
 
@@ -715,15 +716,17 @@ order_by:
 limit: 5
 ```
 
-```bash
-# mdsmith: filter, then pipe
-mdsmith query 'status: "open"' tasks/ \
-  | xargs grep -l "^created:" \
-  | sort -t: -k2 \
-  | head -5
+```text
+# mdsmith: not expressible in `query` today.
+# Q-1 (`--order-by`) and Q-2 (`--limit`) in
+# learn-from-mdbase.md add native flags;
+# until they land, the user filters with
+# `mdsmith query` and orders/limits in the
+# calling script. The native answer is in
+# mdsmith, not in a pipe.
 ```
 
-The shell pipeline gets verbose. Q-1 / Q-2 in
+Q-1 / Q-2 in
 [learn-from-mdbase.md](learn-from-mdbase.md)
 add `--order-by` and `--limit` flags.
 
@@ -740,25 +743,35 @@ aggregate:
 order_by: count desc
 ```
 
-```bash
-# mdsmith: filter + jq, or filter + awk
-mdsmith query 'status: "open"' --format json tasks/ \
-  | jq -r '.[].frontmatter.assignee' \
-  | sort | uniq -c | sort -rn
+```text
+# mdsmith: not expressible in `query` today.
+# Q-5 in learn-from-mdbase.md sketches a native
+# `--group-by` / `--aggregate` surface on
+# `mdsmith query`. mdsmith should not require
+# jq, awk, or other external tools to do
+# aggregation — the binary ships standalone.
 ```
 
-Aggregation is mdbase-only territory today.
-Q-5 in [learn-from-mdbase.md](learn-from-mdbase.md)
-sketches what native support would look like.
+Aggregation lives in the mdbase DSL today;
+mdsmith would grow a native equivalent if the
+trigger fires.
 
 **Reading across.** mdsmith's query covers the
-common filter case ergonomically and composes
-with shell tools for everything else. mdbase
+common filter case ergonomically. mdbase
 covers more inside the DSL — date arithmetic,
 cross-file traversal, body search, aggregation
 — at the cost of a richer language to learn.
-For ad-hoc CI use, mdsmith plus pipes works.
-For interactive vault navigation where the user
+The candidate plans (Q-1 through Q-5 in
+[learn-from-mdbase.md](learn-from-mdbase.md))
+all describe **native mdsmith** implementations
+of these capabilities, not workarounds via
+shell pipelines or external dependencies.
+mdsmith's single-binary identity is preserved
+either way: today by keeping `query` simple, or
+later by adding the native operations alongside
+the existing parallel-walk and FM-parse
+infrastructure. For interactive vault
+navigation where the user
 is composing many queries quickly, mdbase pays
 for its language complexity.
 
