@@ -727,16 +727,29 @@ is read-and-fix; mdbase is read-write-CRUD.
 
 Block-form processing instructions. Each pairs with
 a rule that detects drift and a fix that regenerates
-the body. Five active directives, all using the form
+the body. Four active body-generating directives,
+all using the form
 `<?name [params]?>...body...<?/name?>`:
 
-| Directive                | Rule             | Generates                                                 |
-|--------------------------|------------------|-----------------------------------------------------------|
-| `<?catalog?>`            | [MDS019][mds019] | Table of files matching a glob, with FM fields as columns |
-| `<?include?>`            | [MDS021][mds021] | Inline content from another Markdown file                 |
-| `<?toc?>`                | [MDS038][mds038] | Nested heading list with GitHub anchors                   |
-| `<?build?>`              | [MDS039][mds039] | Body from a recipe template (no execution today)          |
-| `<?required-structure?>` | [MDS020][mds020] | Heading-by-heading template enforcement                   |
+| Directive     | Rule             | Generates                                                 |
+|---------------|------------------|-----------------------------------------------------------|
+| `<?catalog?>` | [MDS019][mds019] | Table of files matching a glob, with FM fields as columns |
+| `<?include?>` | [MDS021][mds021] | Inline content from another Markdown file                 |
+| `<?toc?>`     | [MDS038][mds038] | Nested heading list with GitHub anchors                   |
+| `<?build?>`   | [MDS039][mds039] | Body from a recipe template (no execution today)          |
+
+Heading-template enforcement is **not** a
+directive; it is the [MDS020][mds020] rule
+applied to a kind whose
+`required-structure.schema:` points at a schema
+file (typically `proto.md`). The schema's body
+carries the required heading skeleton; the rule
+checks that real files match. Schemas can
+themselves use `<?include?>` to compose
+fragments, and a schema-only PI `<?require?>`
+declares filename / structural constraints
+(spec'd in
+`internal/rules/MDS020-required-structure/README.md`).
 
 Plus support directives:
 

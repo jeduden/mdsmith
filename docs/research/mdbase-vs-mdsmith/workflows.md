@@ -74,10 +74,12 @@ hook or CI). Diagnostics surface where the file
 violates rules; the user fixes them or lets
 `mdsmith fix` rewrite the body.
 
-mdsmith does not author files. There is no template
-mechanism beyond `<?required-structure?>` (which
-enforces a heading skeleton) and `<?include?>` /
-`<?catalog?>` (which fill in body content).
+mdsmith does not author files. The closest things
+to a template are MDS020's schema files (a
+`proto.md` whose body carries a heading skeleton
+that real files must match) and the `<?include?>`
+/ `<?catalog?>` directives (which fill in body
+content).
 
 **mdbase.**
 The user can either:
