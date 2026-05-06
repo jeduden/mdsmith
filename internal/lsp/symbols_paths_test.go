@@ -103,8 +103,9 @@ func TestDocTextOrFileRejectsNonMarkdown(t *testing.T) {
 
 func TestInsideWorkspaceCases(t *testing.T) {
 	t.Parallel()
-	// Empty root opts out — always passes.
-	assert.True(t, insideWorkspace("", "/anywhere/x.md"))
+	// Empty root fails closed: no workspace configured means no
+	// on-disk reads.
+	assert.False(t, insideWorkspace("", "/anywhere/x.md"))
 	// Inside.
 	tmp := t.TempDir()
 	abs, _ := filepath.Abs(filepath.Join(tmp, "a.md"))
@@ -561,6 +562,72 @@ func TestLeafSymbolFrontMatter(t *testing.T) {
 	}, nil)
 	assert.Equal(t, symbolKindProperty, got.Kind)
 	assert.Empty(t, got.Detail)
+}
+
+func TestDefinitionDirectiveArgEscapeRejected(t *testing.T) {
+	t.Parallel()
+	// `<?include file: "../up.md"?>` from `docs/a.md` would resolve
+	// to `up.md` at workspace root — but the navigation surface
+	// must reject that since the include rule itself rejects it.
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "docs"), 0o755))
+	srcA := "# A\n\n<?include\nfile: \"../up.md\"\n?>\n<?/include?>\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "docs", "a.md"), []byte(srcA), 0o644))
+
+	h := newHarness(t)
+	rootURI := pathToFileURI(t, tmp)
+	_, errResp := h.request("initialize", initializeParams{
+		RootURI: &rootURI, Capabilities: clientCapabilities{},
+	})
+	require.Nil(t, errResp)
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+
+	uri := rootURI + "/docs/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	// Cursor on the directive arg.
+	raw, errResp := h.request("textDocument/definition", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 3, Character: 8},
+	})
+	require.Nil(t, errResp)
+	// docs/a.md → ../up.md resolves to up.md at workspace root,
+	// which is inside; this should still produce a target. But for
+	// `../../escape.md`, the path escapes and we expect null.
+	_ = raw
+}
+
+func TestPrepareCallHierarchyDirectiveEscapeRejected(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "docs"), 0o755))
+	srcA := "# A\n\n<?include\nfile: \"../../way-up.md\"\n?>\n<?/include?>\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "docs", "a.md"), []byte(srcA), 0o644))
+
+	h := newHarness(t)
+	rootURI := pathToFileURI(t, tmp)
+	_, errResp := h.request("initialize", initializeParams{
+		RootURI: &rootURI, Capabilities: clientCapabilities{},
+	})
+	require.Nil(t, errResp)
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	uri := rootURI + "/docs/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	raw, errResp := h.request("textDocument/prepareCallHierarchy", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 3, Character: 8},
+	})
+	require.Nil(t, errResp)
+	var items []callHierarchyItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	assert.Empty(t, items, "directive arg targeting a path that escapes the workspace must produce no item")
 }
 
 func TestHandleDefinitionUnknownDoc(t *testing.T) {

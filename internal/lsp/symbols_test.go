@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,8 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/jeduden/mdsmith/internal/rule"
 
 	_ "github.com/jeduden/mdsmith/internal/rules/all"
 )
@@ -530,9 +527,3 @@ func TestWatcherSkipsOpenBuffer(t *testing.T) {
 	require.NotEmpty(t, syms)
 	assert.Equal(t, "Live Heading", syms[0].Name)
 }
-
-// silence unused warnings in this file
-var (
-	_ = context.Background
-	_ = rule.All
-)

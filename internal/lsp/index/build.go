@@ -512,13 +512,19 @@ func decodeAnchor(s string) string {
 	return s
 }
 
-// resolveRelTarget joins srcFile's directory with linkPath and
+// ResolveRelTarget joins srcFile's directory with linkPath and
 // returns the workspace-relative result. Absolute paths and ones
 // that escape the workspace root after normalization return the
 // empty string — callers must treat "" as "no in-workspace target"
-// rather than as a valid path. (Earlier drafts said "passed through
-// unchanged"; that wording was wrong, the implementation always
-// dropped them.)
+// rather than as a valid path. Exported so the LSP server's
+// directive-arg navigation paths can apply the same escape rules
+// as the index's edge collector.
+func ResolveRelTarget(srcFile, linkPath string) string {
+	return resolveRelTarget(srcFile, linkPath)
+}
+
+// resolveRelTarget is the package-internal implementation of
+// ResolveRelTarget; see that function's doc.
 func resolveRelTarget(srcFile, linkPath string) string {
 	linkPath = filepath.ToSlash(linkPath)
 	if path.IsAbs(linkPath) {

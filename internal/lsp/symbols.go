@@ -284,12 +284,13 @@ func (s *Server) docTextOrFile(uri string) ([]byte, string, bool) {
 }
 
 // insideWorkspace reports whether p resolves inside root after
-// path normalization. Empty root opts out of the check (no
-// workspace configured); a relative path always passes through
-// because the caller couldn't have escaped a non-existent root.
+// path normalization. An empty root fails closed: when no
+// workspace was supplied at initialize, on-disk reads must be
+// rejected so a client can't drive symbol requests against
+// arbitrary local files outside any project.
 func insideWorkspace(root, p string) bool {
 	if root == "" {
-		return true
+		return false
 	}
 	abs, err := filepath.Abs(p)
 	if err != nil {
@@ -615,61 +616,82 @@ func (s *Server) resolveTargets(p textDocumentPositionParams, wantAll bool) []lo
 	line := p.Position.Line + 1
 	col := lspPositionToByteColumn(source, line, p.Position.Character)
 	res := index.Locator{Path: rel}.Locate(source, line, col)
+	return s.resolveByTag(p, res, line, source, rel, idx, wantAll)
+}
 
+// resolveByTag dispatches on the locator's TokenTag and returns the
+// matching navigation targets. Split out of resolveTargets so the
+// switch stays small enough for funlen.
+func (s *Server) resolveByTag(
+	p textDocumentPositionParams, res index.LocateResult,
+	line int, source []byte, rel string, idx *index.Index, wantAll bool,
+) []location {
 	switch res.Tag {
 	case index.TokenAnchorLink:
 		return s.locationsForAnchor(rel, res.TargetAnchor, idx, source)
 	case index.TokenFileLink:
 		return s.locationsForFileLink(res.TargetFile, res.TargetAnchor, idx)
-	case index.TokenRefUse:
-		if loc, ok := s.locationForRefDef(rel, res.Label, source); ok {
-			return []location{loc}
-		}
-	case index.TokenRefDef:
+	case index.TokenRefUse, index.TokenRefDef:
 		if loc, ok := s.locationForRefDef(rel, res.Label, source); ok {
 			return []location{loc}
 		}
 	case index.TokenDirectiveArg:
-		if res.DirectiveTargetFile != "" {
-			tgt := index.NormalizePath(path.Clean(path.Join(path.Dir(rel), filepath.ToSlash(res.DirectiveTargetFile))))
-			return []location{{
-				URI:   s.workspaceURI(tgt),
-				Range: Range{Start: Position{Line: 0, Character: 0}, End: Position{Line: 0, Character: 0}},
-			}}
-		}
+		return s.directiveArgLocations(rel, res.DirectiveTargetFile)
 	case index.TokenHeading:
-		// Definition is the heading itself; implementation widens
-		// to every workspace link to (file, anchor).
-		decl := []location{{
-			URI:   p.TextDocument.URI,
-			Range: rangeAt(line, 1, source),
-		}}
-		if !wantAll {
-			return decl
-		}
-		impls := s.locationsForRefsToHeading(rel, res.Anchor, idx)
-		return append(decl, impls...)
+		return s.headingTargets(p, rel, res.Anchor, line, source, idx, wantAll)
 	case index.TokenFileTop:
 		return []location{{
 			URI:   p.TextDocument.URI,
 			Range: rangeAt(1, 1, source),
 		}}
 	case index.TokenFrontMatterValue:
-		// `kind:` value resolves to the kind block in .mdsmith.yml
-		// (Definition) and to every file with that kind
-		// (Implementation).
-		key := res.FrontMatterKey
-		val := res.FrontMatterValue
-		if key == "kind" || key == "kinds" {
-			defs := s.locationsForKindDefinition(val)
-			if !wantAll {
-				return defs
-			}
-			impls := s.locationsForFilesByKind(val, idx)
-			return append(defs, impls...)
-		}
+		return s.frontMatterValueTargets(res.FrontMatterKey, res.FrontMatterValue, idx, wantAll)
 	}
 	return nil
+}
+
+func (s *Server) directiveArgLocations(rel, target string) []location {
+	if target == "" {
+		return nil
+	}
+	tgt := index.ResolveRelTarget(rel, target)
+	if tgt == "" {
+		return nil
+	}
+	return []location{{
+		URI:   s.workspaceURI(tgt),
+		Range: Range{Start: Position{Line: 0, Character: 0}, End: Position{Line: 0, Character: 0}},
+	}}
+}
+
+// headingTargets returns the heading itself for definition, plus
+// every link to it for implementation.
+func (s *Server) headingTargets(
+	p textDocumentPositionParams, rel, anchor string,
+	line int, source []byte, idx *index.Index, wantAll bool,
+) []location {
+	decl := []location{{
+		URI:   p.TextDocument.URI,
+		Range: rangeAt(line, 1, source),
+	}}
+	if !wantAll {
+		return decl
+	}
+	return append(decl, s.locationsForRefsToHeading(rel, anchor, idx)...)
+}
+
+// frontMatterValueTargets handles the `kind:` / `kinds:` value arm:
+// definition resolves to the kind block in `.mdsmith.yml`,
+// implementation widens to every file with that kind.
+func (s *Server) frontMatterValueTargets(key, val string, idx *index.Index, wantAll bool) []location {
+	if key != "kind" && key != "kinds" {
+		return nil
+	}
+	defs := s.locationsForKindDefinition(val)
+	if !wantAll {
+		return defs
+	}
+	return append(defs, s.locationsForFilesByKind(val, idx)...)
 }
 
 // locationsForAnchor returns the in-file heading targeted by an
@@ -854,8 +876,9 @@ func (s *Server) handleReferences(msg *requestMessage) {
 		// behavior) hid the directive-to-directive references that
 		// users actually need when navigating include / build chains.
 		if res.DirectiveTargetFile != "" {
-			tgt := index.NormalizePath(path.Clean(path.Join(path.Dir(rel), filepath.ToSlash(res.DirectiveTargetFile))))
-			out = s.locationsForFileReferences(tgt, idx)
+			if tgt := index.ResolveRelTarget(rel, res.DirectiveTargetFile); tgt != "" {
+				out = s.locationsForFileReferences(tgt, idx)
+			}
 		}
 	}
 	if out == nil {
@@ -1026,7 +1049,11 @@ func (s *Server) handlePrepareCallHierarchy(msg *requestMessage) {
 		}
 	case index.TokenDirectiveArg:
 		if res.DirectiveTargetFile != "" {
-			tgt := index.NormalizePath(path.Clean(path.Join(path.Dir(rel), filepath.ToSlash(res.DirectiveTargetFile))))
+			tgt := index.ResolveRelTarget(rel, res.DirectiveTargetFile)
+			if tgt == "" {
+				_ = s.t.writeResponse(msg.ID, []callHierarchyItem{})
+				return
+			}
 			item = callHierarchyItem{
 				Name:           tgt,
 				Kind:           symbolKindString,
