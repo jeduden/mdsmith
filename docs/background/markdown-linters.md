@@ -199,16 +199,16 @@ See the [migration log](./auth-migration-log.md).
 
 What each tool **does** with the same bytes:
 
-| Layer                          | mdsmith                                       | mdbase                                                    |
-|--------------------------------|-----------------------------------------------|-----------------------------------------------------------|
-| YAML front matter              | reads it; can validate shape via CUE schema   | reads it; validates against `_types/task.md`              |
-| Body content (prose, headings) | lints line length, headings, prose, links     | not in scope                                              |
-| Cross-file link                | flags broken `auth-migration-log.md` (MDS027) | flags broken link (L4) and rewrites it on rename (L5)     |
-| `status: in-progress`          | available to `mdsmith query`                  | filterable in Bases queries; appears in backlink graphs   |
-| `due: 2026-06-01`              | available to query                            | filterable with date arithmetic (`due <= today() + "7d"`) |
-| `mdsmith fix` runs             | reformats tables, regenerates TOC/catalog     | n/a                                                       |
-| `mdbase rename` runs           | n/a                                           | moves the file and rewrites every incoming link           |
-| Body conciseness, readability  | yes (MDS023, MDS024, MDS028)                  | no                                                        |
+| Layer                                     | mdsmith                                                 | mdbase                                                    |
+|-------------------------------------------|---------------------------------------------------------|-----------------------------------------------------------|
+| YAML front matter                         | reads it; can validate shape via CUE schema             | reads it; validates against `_types/task.md`              |
+| Body content (prose, headings)            | lints line length, headings, prose, links               | not in scope                                              |
+| Cross-file link                           | flags broken `auth-migration-log.md` (MDS027)           | flags broken link (L4) and rewrites it on rename (L5)     |
+| `status: in-progress`                     | available to `mdsmith query`                            | filterable in Bases queries; appears in backlink graphs   |
+| `due: 2026-06-01`                         | available to query                                      | filterable with date arithmetic (`due <= today() + "7d"`) |
+| `mdsmith fix` runs                        | reformats tables, regenerates TOC/catalog               | n/a                                                       |
+| `mdbase rename` runs                      | n/a                                                     | moves the file and rewrites every incoming link           |
+| Body readability, structure, token budget | yes (MDS023 ARI, MDS024 sentences, MDS028 token budget) | no                                                        |
 
 The **shared** layer is the YAML front matter.
 Both tools read `status`, `priority`, `due` as
