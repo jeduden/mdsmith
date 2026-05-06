@@ -106,6 +106,42 @@ func TestBuildNpmPlatformsFailsWhenRootManifestMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), "npm/mdsmith/package.json")
 }
 
+func TestBuildNpmPlatformsFailsWhenOutDirIsFile(t *testing.T) {
+	// outDir resolves to a regular file. os.MkdirAll on a path
+	// whose parent is a file fails; the per-platform mkdir inside
+	// buildOneNpmPlatform exercises that branch.
+	const ver = "4.5.6"
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	require.NoError(t, Stamp(root, ver))
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	outFile := filepath.Join(root, "out-as-file")
+	require.NoError(t, os.WriteFile(outFile, []byte("x"), 0o644))
+
+	err := BuildNpmPlatforms(root, artifacts, outFile)
+	require.Error(t, err)
+}
+
+func TestBuildNpmPlatformsFailsWhenPkgDirCollides(t *testing.T) {
+	// outDir is a real directory but contains a regular file at
+	// the per-platform path. MkdirAll on a path whose final
+	// component is a non-directory returns "not a directory".
+	// Covers buildOneNpmPlatform's mkdir-fails branch.
+	const ver = "4.5.6"
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	require.NoError(t, Stamp(root, ver))
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	out := filepath.Join(root, "dist")
+	require.NoError(t, os.MkdirAll(out, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(out, "linux-x64"), []byte("x"), 0o644))
+
+	err := BuildNpmPlatforms(root, artifacts, out)
+	require.Error(t, err)
+}
+
 func TestBuildNpmPlatformsCopiesLicense(t *testing.T) {
 	// When the repo carries a top-level LICENSE, each platform
 	// sub-package should ship the same file. A missing LICENSE

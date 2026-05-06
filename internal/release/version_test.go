@@ -268,3 +268,30 @@ func TestCheckFailsOnMissingManifest(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "required manifest missing")
 }
+
+// TestTrackedManifestsListsPlatformSubpackages mirrors the
+// release workflow's expectation that platform sub-packages
+// under npm/platforms/ are picked up by both Stamp and Check.
+// The fixture creates the platform tree, so the helper must
+// return all of them — exercising the readdir branch.
+func TestTrackedManifestsListsPlatformSubpackages(t *testing.T) {
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	got := TrackedManifests(root)
+
+	want := []string{
+		filepath.Join(root, "editors", "vscode", "package.json"),
+		filepath.Join(root, "npm", "mdsmith", "package.json"),
+		filepath.Join(root, "npm", "platforms", "darwin-arm64", "package.json"),
+		filepath.Join(root, "npm", "platforms", "darwin-x64", "package.json"),
+		filepath.Join(root, "npm", "platforms", "linux-arm64", "package.json"),
+		filepath.Join(root, "npm", "platforms", "linux-x64", "package.json"),
+		filepath.Join(root, "npm", "platforms", "win32-x64", "package.json"),
+		filepath.Join(root, "python", "pyproject.toml"),
+	}
+	gotPaths := make([]string, len(got))
+	for i, m := range got {
+		gotPaths[i] = m.Path
+	}
+	assert.ElementsMatch(t, want, gotPaths)
+}

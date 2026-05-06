@@ -80,6 +80,14 @@ func TestReportErrorMapsExitCodes(t *testing.T) {
 	assert.Equal(t, 1, reportError(errors.New("sentinel error")))
 }
 
+// TestReportFlagParseErrNilReturnsContinue exercises the nil
+// branch of reportFlagParseErr that real subcommand callers
+// only hit when fs.Parse() succeeds. A direct unit test ensures
+// the contract holds.
+func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
+	assert.Equal(t, -1, reportFlagParseErr(nil, os.Stderr, "test"))
+}
+
 // TestSubcommandHelpExitsZero exercises the pflag --help branch
 // of reportFlagParseErr per subcommand. pflag prints the Usage
 // itself, so the dispatcher just needs to surface exit code 0.

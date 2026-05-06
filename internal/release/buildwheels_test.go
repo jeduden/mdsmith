@@ -238,6 +238,57 @@ func TestStagePythonTreeFailsWhenAssetMissing(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStagePythonTreeFailsWhenSourceMissing(t *testing.T) {
+	// copyDir bubbles a WalkDir error when src does not exist; the
+	// stagePythonTree wrapper must propagate it instead of leaving
+	// the caller staring at a half-written stage dir.
+	stage, err := stagePythonTree(filepath.Join(t.TempDir(), "missing-src"),
+		filepath.Join(t.TempDir(), "missing-asset"), "mdsmith")
+	if err == nil {
+		_ = os.RemoveAll(stage)
+	}
+	require.Error(t, err)
+}
+
+func TestCopyFileSourceMissing(t *testing.T) {
+	err := copyFile(filepath.Join(t.TempDir(), "missing-src"),
+		filepath.Join(t.TempDir(), "dst"), 0o644)
+	require.Error(t, err)
+}
+
+func TestCopyFileDestUnwritable(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "src")
+	require.NoError(t, os.WriteFile(src, []byte("hello"), 0o644))
+	err := copyFile(src, filepath.Join(t.TempDir(), "missing-parent", "dst"), 0o644)
+	require.Error(t, err)
+}
+
+func TestCopyDirSourceMissing(t *testing.T) {
+	err := copyDir(filepath.Join(t.TempDir(), "missing-src"), t.TempDir())
+	require.Error(t, err)
+}
+
+func TestMoveWheelsFailsWhenRenameFails(t *testing.T) {
+	staging := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(staging, "a.whl"), []byte("x"), 0o644))
+	// "outDir" is actually a regular file: os.Rename refuses to
+	// move a file under a non-directory path.
+	outFile := filepath.Join(t.TempDir(), "out-as-file")
+	require.NoError(t, os.WriteFile(outFile, []byte("x"), 0o644))
+
+	err := moveWheels(staging, outFile)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "move ")
+}
+
+func TestRetagWheelsErrorOnMissingDir(t *testing.T) {
+	// retagWheels delegates to listWheels first, so a missing
+	// staging dir surfaces as a listWheels error, not as a python
+	// invocation. No python required.
+	err := retagWheels(filepath.Join(t.TempDir(), "missing"), "win_amd64")
+	require.Error(t, err)
+}
+
 // TestBuildWheelsLayout calls BuildWheels directly and asserts
 // (a) one wheel per platform tag, (b) the dist-info/WHEEL metadata
 // inside each wheel claims the matching platform tag instead of
