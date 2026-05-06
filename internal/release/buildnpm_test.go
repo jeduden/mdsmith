@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
-// fakeArtifacts populates the layout that `actions/download-artifact`
-// produces under `merge-multiple: true` — a single flat directory
-// holding one binary per asset name.
+// fakeArtifacts populates the layout `actions/download-artifact`
+// produces under `merge-multiple: true` — one binary per asset in
+// a single flat directory.
 func fakeArtifacts(t *testing.T, dir string) {
 	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", dir, err)
+	}
 	for _, asset := range []string{
 		"mdsmith-linux-amd64",
 		"mdsmith-linux-arm64",
@@ -20,53 +22,11 @@ func fakeArtifacts(t *testing.T, dir string) {
 		"mdsmith-darwin-arm64",
 		"mdsmith-windows-amd64.exe",
 	} {
-		path := filepath.Join(dir, asset)
 		body := []byte("#!/bin/sh\necho fake-" + asset + "\n")
-		if err := os.WriteFile(path, body, 0o755); err != nil {
-			t.Fatalf("write %s: %v", path, err)
+		if err := os.WriteFile(filepath.Join(dir, asset), body, 0o755); err != nil {
+			t.Fatalf("write %s: %v", asset, err)
 		}
 	}
-}
-
-// stageBuildNpm prepares a temp tree that mirrors the repo layout
-// build-npm-platforms.sh expects (manifests stamped at the target
-// version, fake release artifacts staged, the script copied so its
-// `dirname/..` resolves to the temp root) and returns the artifacts
-// dir, the staged-script path, and the output dir.
-func stageBuildNpm(t *testing.T, version string) (string, string, string) {
-	t.Helper()
-	repo := projectRoot(t)
-	root := t.TempDir()
-	fixtureManifests(t, root)
-
-	if _, stderr, err := runScript(t,
-		filepath.Join(repo, "scripts", "set-version.sh"),
-		version, "--root", root,
-	); err != nil {
-		t.Fatalf("set-version.sh: %v\nstderr: %s", err, stderr)
-	}
-
-	artifacts := filepath.Join(root, "artifacts")
-	if err := os.MkdirAll(artifacts, 0o755); err != nil {
-		t.Fatalf("mkdir artifacts: %v", err)
-	}
-	fakeArtifacts(t, artifacts)
-
-	scriptsDir := filepath.Join(root, "scripts")
-	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
-		t.Fatalf("mkdir scripts: %v", err)
-	}
-	scriptSrc := filepath.Join(repo, "scripts", "build-npm-platforms.sh")
-	scriptDst := filepath.Join(scriptsDir, "build-npm-platforms.sh")
-	body, err := os.ReadFile(scriptSrc)
-	if err != nil {
-		t.Fatalf("read script: %v", err)
-	}
-	if err := os.WriteFile(scriptDst, body, 0o755); err != nil {
-		t.Fatalf("copy script: %v", err)
-	}
-
-	return artifacts, scriptDst, filepath.Join(root, "dist")
 }
 
 func assertPlatformPackage(t *testing.T, out, dir, bin, expectedOS, expectedCPU, expectedVer string) {
@@ -107,14 +67,18 @@ func assertPlatformPackage(t *testing.T, out, dir, bin, expectedOS, expectedCPU,
 }
 
 func TestBuildNpmPlatformsLayout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("build-npm-platforms.sh requires a POSIX shell")
-	}
 	const ver = "4.5.6"
-	artifacts, script, out := stageBuildNpm(t, ver)
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	if err := Stamp(root, ver); err != nil {
+		t.Fatalf("Stamp: %v", err)
+	}
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	out := filepath.Join(root, "dist")
 
-	if _, stderr, err := runScript(t, script, artifacts, out); err != nil {
-		t.Fatalf("build-npm-platforms.sh failed: %v\nstderr: %s", err, stderr)
+	if err := BuildNpmPlatforms(root, artifacts, out); err != nil {
+		t.Fatalf("BuildNpmPlatforms: %v", err)
 	}
 
 	cases := []struct {
@@ -128,5 +92,26 @@ func TestBuildNpmPlatformsLayout(t *testing.T) {
 	}
 	for _, c := range cases {
 		assertPlatformPackage(t, out, c.dir, c.bin, c.os, c.cpu, ver)
+	}
+}
+
+func TestBuildNpmPlatformsMissingArtifact(t *testing.T) {
+	const ver = "4.5.6"
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	if err := Stamp(root, ver); err != nil {
+		t.Fatalf("Stamp: %v", err)
+	}
+	// Stage every artifact except one. The build must fail with
+	// an actionable message naming the missing file.
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	if err := os.Remove(filepath.Join(artifacts, "mdsmith-darwin-arm64")); err != nil {
+		t.Fatalf("remove artifact: %v", err)
+	}
+
+	err := BuildNpmPlatforms(root, artifacts, filepath.Join(root, "dist"))
+	if err == nil {
+		t.Fatal("expected missing-asset error")
 	}
 }

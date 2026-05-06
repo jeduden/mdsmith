@@ -178,8 +178,8 @@ The npm root, npm platform subpackages, and the
 Python wheel all need the same treatment.
 
 Approach: never commit a real version. Pin every
-manifest at `"version": "0.0.0-dev"`. A new
-`scripts/set-version.sh <ver>` helper takes the
+manifest at `"version": "0.0.0-dev"`. The internal
+`cmd/mdsmith-release stamp <ver>` CLI takes the
 cleaned tag (no leading `v`) and rewrites every
 tracked manifest:
 
@@ -204,9 +204,9 @@ the tag on every channel.
 
 ## Tasks
 
-- [x] Add `scripts/set-version.sh` plus a unit test
-  that asserts each tracked manifest is rewritten
-  correctly and the script is idempotent.
+- [x] Add `cmd/mdsmith-release/` (subcommands stamp,
+  check, build-npm, build-wheels) and Go tests under
+  `internal/release/`. stamp is idempotent.
 - [x] Add a `version-guard` step to
   [ci.yml](../.github/workflows/ci.yml) that fails
   on non-tag builds when any tracked manifest has a
@@ -231,11 +231,11 @@ the tag on every channel.
   shim resolves to the expected platform package
   path. Mirror the lint/format setup used by the VS
   Code extension.
-- [x] Add `scripts/build-npm-platforms.sh` that,
-  given the downloaded GitHub release artifacts,
-  emits one directory per platform with the binary
-  in `bin/` and a generated `package.json`. Add a
-  new `npm` job in
+- [x] Add `mdsmith-release build-npm` that, given
+  the downloaded GitHub release artifacts, emits
+  one directory per platform with the binary in
+  `bin/` and a generated `package.json`. Add a new
+  `npm` job in
   [release.yml](../.github/workflows/release.yml)
   that depends on `build`, downloads artifacts, runs
   the generator, and `npm publish --access public`s
@@ -244,7 +244,7 @@ the tag on every channel.
 - [x] Add `python/pyproject.toml`,
   `python/mdsmith/__init__.py`, and
   `python/mdsmith/__main__.py`. Add
-  `scripts/build-wheels.sh`. Wire a `pypi` job in
+  `mdsmith-release build-wheels`. Wire a `pypi` job in
   [release.yml](../.github/workflows/release.yml)
   that stages the binary artifacts under
   `python/mdsmith/_bin/`, builds one wheel per

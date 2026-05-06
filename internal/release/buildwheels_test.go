@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -18,75 +17,21 @@ func haveCmd(name string) bool {
 
 func haveModule(t *testing.T, mod string) bool {
 	t.Helper()
-	if !haveCmd("python") && !haveCmd("python3") {
+	py := pythonExe()
+	if py == "" {
 		return false
 	}
-	py := "python"
-	if !haveCmd(py) {
-		py = "python3"
-	}
-	cmd := exec.Command(py, "-c", "import "+mod)
-	return cmd.Run() == nil
+	return exec.Command(py, "-c", "import "+mod).Run() == nil
 }
 
-func stageBuildWheels(t *testing.T, version string) (string, string, string) {
-	t.Helper()
-	repo := projectRoot(t)
-	root := t.TempDir()
-	fixtureManifests(t, root)
-
-	// Replace the minimal fixture pyproject.toml with the real one,
-	// otherwise hatchling won't pick up the build configuration.
-	realPy, err := os.ReadFile(filepath.Join(repo, "python", "pyproject.toml"))
-	if err != nil {
-		t.Fatalf("read pyproject.toml: %v", err)
+func pythonExe() string {
+	if haveCmd("python") {
+		return "python"
 	}
-	if err := os.WriteFile(filepath.Join(root, "python", "pyproject.toml"), realPy, 0o644); err != nil {
-		t.Fatalf("write pyproject.toml: %v", err)
+	if haveCmd("python3") {
+		return "python3"
 	}
-	// Hatchling needs the package source tree and a README.
-	for _, p := range []string{"python/mdsmith/__init__.py", "python/mdsmith/__main__.py", "python/README.md"} {
-		body, err := os.ReadFile(filepath.Join(repo, p))
-		if err != nil {
-			t.Fatalf("read %s: %v", p, err)
-		}
-		dst := filepath.Join(root, p)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", filepath.Dir(dst), err)
-		}
-		if err := os.WriteFile(dst, body, 0o644); err != nil {
-			t.Fatalf("write %s: %v", dst, err)
-		}
-	}
-
-	if _, stderr, err := runScript(t,
-		filepath.Join(repo, "scripts", "set-version.sh"),
-		version, "--root", root,
-	); err != nil {
-		t.Fatalf("set-version.sh: %v\nstderr: %s", err, stderr)
-	}
-
-	artifacts := filepath.Join(root, "artifacts")
-	if err := os.MkdirAll(artifacts, 0o755); err != nil {
-		t.Fatalf("mkdir artifacts: %v", err)
-	}
-	fakeArtifacts(t, artifacts)
-
-	scriptsDir := filepath.Join(root, "scripts")
-	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
-		t.Fatalf("mkdir scripts: %v", err)
-	}
-	scriptSrc := filepath.Join(repo, "scripts", "build-wheels.sh")
-	scriptDst := filepath.Join(scriptsDir, "build-wheels.sh")
-	body, err := os.ReadFile(scriptSrc)
-	if err != nil {
-		t.Fatalf("read script: %v", err)
-	}
-	if err := os.WriteFile(scriptDst, body, 0o755); err != nil {
-		t.Fatalf("copy script: %v", err)
-	}
-
-	return artifacts, scriptDst, filepath.Join(root, "wheels")
+	return ""
 }
 
 func readZipMember(t *testing.T, whlPath, member string) string {
@@ -113,7 +58,6 @@ func readZipMember(t *testing.T, whlPath, member string) string {
 	return ""
 }
 
-// zipHasFile reports whether the wheel contains the named entry.
 func zipHasFile(t *testing.T, whlPath, name string) bool {
 	t.Helper()
 	r, err := zip.OpenReader(whlPath)
@@ -129,9 +73,39 @@ func zipHasFile(t *testing.T, whlPath, name string) bool {
 	return false
 }
 
-// wheelCase pins a single platform-tagged wheel: the substring that
-// uniquely identifies its filename and the platform tag substring its
-// dist-info/WHEEL metadata must carry after retagging.
+// stagePython copies the real python/ tree from the repo into root
+// so BuildWheels has something to assemble. The fixtureManifests
+// helper already wrote a stub pyproject; we replace it with the
+// real one (and the package source) so hatchling has the real
+// build configuration.
+func stagePython(t *testing.T, root string) {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	repo := filepath.Clean(filepath.Join(wd, "..", ".."))
+
+	for _, p := range []string{
+		"python/pyproject.toml",
+		"python/README.md",
+		"python/mdsmith/__init__.py",
+		"python/mdsmith/__main__.py",
+	} {
+		body, err := os.ReadFile(filepath.Join(repo, p))
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		dst := filepath.Join(root, p)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(dst), err)
+		}
+		if err := os.WriteFile(dst, body, 0o644); err != nil {
+			t.Fatalf("write %s: %v", dst, err)
+		}
+	}
+}
+
 type wheelCase struct {
 	uniqueFilenameSubstr string
 	tagInWheelMetadata   string
@@ -178,26 +152,32 @@ func assertWheel(t *testing.T, out string, entries []os.DirEntry, c wheelCase) {
 	}
 }
 
-// TestBuildWheelsLayout shells out to scripts/build-wheels.sh and
-// asserts (a) one wheel per platform tag, (b) the WHEEL metadata
-// inside each wheel claims the same platform tag the filename does,
-// and (c) the bundled binary is present under mdsmith/_bin/.
+// TestBuildWheelsLayout calls BuildWheels directly and asserts
+// (a) one wheel per platform tag, (b) the dist-info/WHEEL metadata
+// inside each wheel claims the matching platform tag instead of
+// the py3-none-any default, and (c) the bundled binary lives at
+// mdsmith/_bin/.
 func TestBuildWheelsLayout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("build-wheels.sh requires a POSIX shell")
-	}
-	if !haveCmd("python") && !haveCmd("python3") {
-		t.Skip("python is required to exercise build-wheels.sh")
+	if pythonExe() == "" {
+		t.Skip("python is required to exercise BuildWheels")
 	}
 	if !haveModule(t, "build") || !haveModule(t, "wheel") || !haveModule(t, "hatchling") {
 		t.Skip("python -m build, python -m wheel, and hatchling are required")
 	}
 
 	const ver = "7.8.9"
-	artifacts, script, out := stageBuildWheels(t, ver)
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	stagePython(t, root)
+	if err := Stamp(root, ver); err != nil {
+		t.Fatalf("Stamp: %v", err)
+	}
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	out := filepath.Join(root, "wheels")
 
-	if _, stderr, err := runScript(t, script, artifacts, out); err != nil {
-		t.Fatalf("build-wheels.sh failed: %v\nstderr: %s", err, stderr)
+	if err := BuildWheels(root, artifacts, out); err != nil {
+		t.Fatalf("BuildWheels: %v", err)
 	}
 
 	cases := wheelCases()
