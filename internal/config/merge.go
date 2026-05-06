@@ -213,9 +213,22 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 // kind-assignment match in order, deduplicated. Exposed for callers
 // outside the config package (e.g. the LSP symbol index) that need
 // effective-kind resolution without re-implementing the merge rules.
+//
+// When cfg is nil there are no kind-assignment globs to apply, so
+// the result is just fmKinds with duplicates dropped — preserving
+// the dedup contract callers rely on.
 func EffectiveKinds(cfg *Config, filePath string, fmKinds []string) []string {
 	if cfg == nil {
-		return append([]string(nil), fmKinds...)
+		seen := make(map[string]bool, len(fmKinds))
+		out := make([]string, 0, len(fmKinds))
+		for _, k := range fmKinds {
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			out = append(out, k)
+		}
+		return out
 	}
 	return resolveEffectiveKinds(cfg, filePath, fmKinds)
 }

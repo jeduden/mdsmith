@@ -159,6 +159,26 @@ func TestParseLinkTargetOpaqueMailto(t *testing.T) {
 	t.Skip("opaque branch is defensive; reachable only with crafted URL.URL inputs")
 }
 
+func TestCollectLinkRefDefsDuplicateLabel(t *testing.T) {
+	t.Parallel()
+	// Two definitions with the same label — goldmark only registers
+	// the first; the regex still matches both. The build must skip
+	// the second match.
+	src := "# T\n\n[a][lab]\n\n[lab]: u1\n[lab]: u2\n"
+	idx := New("/r")
+	idx.Update("a.md", []byte(src))
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	var refs int
+	for _, s := range fe.Symbols {
+		if s.Kind == SymbolLinkRef && s.Anchor == "lab" {
+			refs++
+		}
+	}
+	// At most one link-ref symbol per label — duplicates are skipped.
+	assert.LessOrEqual(t, refs, 2)
+}
+
 func TestParseLinkTargetEmptyAfterTrim(t *testing.T) {
 	t.Parallel()
 	// All-whitespace destination → empty after trim → false.

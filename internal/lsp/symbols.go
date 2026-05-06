@@ -40,16 +40,16 @@ func (s *Server) ensureIndex() *index.Index {
 		}
 	}
 	// Layer in any open buffers so unsaved edits are visible to
-	// symbol queries.
+	// symbol queries. The TOCTOU window between openURIs and get
+	// is tolerable: a missing doc just means another goroutine
+	// closed it, and the index already reflects that via the
+	// didClose handler's reload path.
 	for _, uri := range s.docs.openURIs() {
 		doc, ok := s.docs.get(uri)
 		if !ok {
 			continue
 		}
 		rel := workspaceRelative(root, doc.path)
-		if rel == "" {
-			continue
-		}
 		idx.UpdateWithKinds(rel, doc.text, effectiveKindsFor(cfg, rel, doc.text))
 	}
 	s.idx = idx
@@ -62,11 +62,7 @@ func (s *Server) ensureIndex() *index.Index {
 func (s *Server) buildIndexFromDisk(idx *index.Index, cfg *config.Config, root string, files []string) {
 	rels := make([]string, 0, len(files))
 	for _, abs := range files {
-		rel := workspaceRelative(root, abs)
-		if rel == "" {
-			continue
-		}
-		rels = append(rels, rel)
+		rels = append(rels, workspaceRelative(root, abs))
 	}
 	type loaded struct {
 		path string
@@ -130,9 +126,6 @@ func (s *Server) indexUpdate(absOrRel string, source []byte) {
 	}
 	cfg, _, root := s.snapshotConfig()
 	rel := workspaceRelative(root, absOrRel)
-	if rel == "" {
-		rel = absOrRel
-	}
 	idx.UpdateWithKinds(index.NormalizePath(rel), source, effectiveKindsFor(cfg, rel, source))
 }
 
@@ -147,9 +140,6 @@ func (s *Server) indexReloadFromDisk(absOrRel string) {
 	}
 	cfg, _, root := s.snapshotConfig()
 	rel := workspaceRelative(root, absOrRel)
-	if rel == "" {
-		rel = absOrRel
-	}
 	abs := absOrRel
 	if !filepath.IsAbs(abs) && root != "" {
 		abs = filepath.Join(root, filepath.FromSlash(rel))
@@ -506,10 +496,10 @@ func leafDetail(sym index.Symbol) string {
 // reject or silently ignore the result.
 func rangeForLines(start, end int, source []byte) Range {
 	lines := splitLines(source)
+	// splitLines guarantees at least one entry (empty input yields
+	// a single empty line) so maxLine is always >= 1 and the
+	// clamp arithmetic below stays well-defined.
 	maxLine := len(lines)
-	if maxLine < 1 {
-		maxLine = 1
-	}
 	if start < 1 {
 		start = 1
 	}
@@ -522,13 +512,9 @@ func rangeForLines(start, end int, source []byte) Range {
 	if end > maxLine {
 		end = maxLine
 	}
-	endCh := 0
-	if end-1 < len(lines) {
-		endCh = utf16Length(lines[end-1])
-	}
 	return Range{
 		Start: Position{Line: start - 1, Character: 0},
-		End:   Position{Line: end - 1, Character: endCh},
+		End:   Position{Line: end - 1, Character: utf16Length(lines[end-1])},
 	}
 }
 
@@ -1100,9 +1086,6 @@ func lineCount(source []byte) int {
 	n := bytes.Count(source, []byte{'\n'})
 	if source[len(source)-1] != '\n' {
 		n++
-	}
-	if n < 1 {
-		n = 1
 	}
 	return n
 }

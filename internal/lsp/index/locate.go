@@ -84,8 +84,12 @@ type LocateResult struct {
 	DirectiveArg string
 	// Directive argument value (raw, untrimmed).
 	DirectiveValue string
-	// Directive argument resolved relative to the host file (when
-	// the value names a file, e.g. include/build).
+	// DirectiveTargetFile is the raw `file:` (for include) or
+	// `source:` (for build) value the cursor sits on, copied
+	// verbatim from the directive body. It is *not* resolved
+	// against the host file's directory — the LSP layer pipes it
+	// through index.ResolveRelTarget, which applies the same
+	// escape-the-root rejection rules as the edge collector.
 	DirectiveTargetFile string
 
 	// Front-matter key (when on TokenFrontMatterKey/Value).

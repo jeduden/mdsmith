@@ -225,12 +225,16 @@ func frontMatterSymbols(filePath string, fm []byte) []Symbol {
 	}
 	out := make([]Symbol, 0, len(mapping.Content)/2)
 	// yaml.v3 line numbers are 1-based within the parsed buffer; the
-	// stripped buffer drops the leading "---" line so add 1. Mapping
-	// keys in YAML can in theory be non-scalar (sequences, mappings),
-	// but mdsmith's front-matter schema only allows scalar keys, so
-	// non-scalars are silently skipped via k.Value being empty.
+	// stripped buffer drops the leading "---" line so add 1.
+	// Non-scalar keys (mapping or sequence keys per YAML spec) and
+	// empty key values are skipped — they don't produce a sensible
+	// outline entry and an empty Symbol.Name would render as a
+	// blank row in the editor's outline.
 	for i := 0; i < len(mapping.Content); i += 2 {
 		k := mapping.Content[i]
+		if k.Kind != yaml.ScalarNode || k.Value == "" {
+			continue
+		}
 		out = append(out, Symbol{
 			File:          filePath,
 			Kind:          SymbolFrontMatter,
@@ -492,10 +496,10 @@ func parseLinkTarget(dest string) (linkTarget, bool) {
 	if u.Scheme != "" || u.Host != "" {
 		return linkTarget{}, false
 	}
+	// u.Opaque is non-empty only when there's a scheme; the scheme
+	// check above already rejects those cases, so we don't need to
+	// fold u.Opaque into u.Path here.
 	p := u.Path
-	if p == "" && u.Opaque != "" {
-		p = u.Opaque
-	}
 	if p == "" && u.Fragment != "" {
 		return linkTarget{Anchor: u.Fragment, LocalAnchor: true}, true
 	}

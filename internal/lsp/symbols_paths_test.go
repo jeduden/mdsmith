@@ -66,6 +66,23 @@ func TestDocTextOrFileNonFileURI(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestDocTextOrFileReadsOnDiskFile(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "a.md"), []byte("# A\n"), 0o644))
+	h := newHarness(t)
+	rootURI := pathToFileURI(t, tmp)
+	_, errResp := h.request("initialize", initializeParams{
+		RootURI: &rootURI, Capabilities: clientCapabilities{},
+	})
+	require.Nil(t, errResp)
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(tmp, "a.md"))}
+	data, rel, ok := h.srv.docTextOrFile(u.String())
+	assert.True(t, ok)
+	assert.Equal(t, "a.md", rel)
+	assert.NotEmpty(t, data)
+}
+
 func TestDocTextOrFileRejectsOutsideWorkspace(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
@@ -566,12 +583,12 @@ func TestLeafSymbolFrontMatter(t *testing.T) {
 
 func TestDefinitionDirectiveArgEscapeRejected(t *testing.T) {
 	t.Parallel()
-	// `<?include file: "../up.md"?>` from `docs/a.md` would resolve
-	// to `up.md` at workspace root — but the navigation surface
-	// must reject that since the include rule itself rejects it.
+	// `<?include file: "../../escape.md"?>` from `docs/a.md`
+	// resolves outside the workspace root — definition must
+	// return null, not a Location pointing at a sibling project.
 	tmp := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "docs"), 0o755))
-	srcA := "# A\n\n<?include\nfile: \"../up.md\"\n?>\n<?/include?>\n"
+	srcA := "# A\n\n<?include\nfile: \"../../escape.md\"\n?>\n<?/include?>\n"
 	require.NoError(t, os.WriteFile(filepath.Join(tmp, "docs", "a.md"), []byte(srcA), 0o644))
 
 	h := newHarness(t)
@@ -588,16 +605,86 @@ func TestDefinitionDirectiveArgEscapeRejected(t *testing.T) {
 	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
 		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
 	})
-	// Cursor on the directive arg.
+	// Cursor on the directive arg line (line 4 → 0-based 3).
 	raw, errResp := h.request("textDocument/definition", textDocumentPositionParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
 		Position:     Position{Line: 3, Character: 8},
 	})
 	require.Nil(t, errResp)
-	// docs/a.md → ../up.md resolves to up.md at workspace root,
-	// which is inside; this should still produce a target. But for
-	// `../../escape.md`, the path escapes and we expect null.
-	_ = raw
+	assert.Equal(t, "null", string(raw),
+		"escapes-the-root directive target must produce a null definition: %s", raw)
+}
+
+func TestDefinitionDirectiveArgWithinRoot(t *testing.T) {
+	t.Parallel()
+	// `<?include file: "../sibling.md"?>` from `docs/a.md` resolves
+	// to `sibling.md` — still inside the workspace, so definition
+	// must return that file.
+	tmp := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(tmp, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "sibling.md"), []byte("# Sibling\n"), 0o644))
+	srcA := "# A\n\n<?include\nfile: \"../sibling.md\"\n?>\n<?/include?>\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "docs", "a.md"), []byte(srcA), 0o644))
+
+	h := newHarness(t)
+	rootURI := pathToFileURI(t, tmp)
+	_, errResp := h.request("initialize", initializeParams{
+		RootURI: &rootURI, Capabilities: clientCapabilities{},
+	})
+	require.Nil(t, errResp)
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	uri := rootURI + "/docs/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	raw, errResp := h.request("textDocument/definition", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 3, Character: 8},
+	})
+	require.Nil(t, errResp)
+	var loc location
+	require.NoError(t, json.Unmarshal(raw, &loc))
+	assert.Equal(t, rootURI+"/sibling.md", loc.URI)
+}
+
+func TestReferencesOnFrontMatterKindValueListsFiles(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".mdsmith.yml"),
+		[]byte("kinds:\n  guide: {}\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "src.md"),
+		[]byte("---\nkind: guide\n---\n# Cursor here\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "fm.md"),
+		[]byte("---\nkinds:\n  - guide\n---\n# FM declared\n"), 0o644))
+	h := newHarness(t)
+	rootURI := pathToFileURI(t, tmp)
+	_, errResp := h.request("initialize", initializeParams{
+		RootURI: &rootURI, Capabilities: clientCapabilities{},
+	})
+	require.Nil(t, errResp)
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.srv.reloadConfig()
+	h.srv.invalidateIndex()
+	uri := rootURI + "/src.md"
+	src := "---\nkind: guide\n---\n# Cursor here\n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	// Cursor on `kind: guide` value (line 2 char 8).
+	raw, errResp := h.request("textDocument/references", referencesParams{
+		textDocumentPositionParams: textDocumentPositionParams{
+			TextDocument: textDocumentIdentifier{URI: uri},
+			Position:     Position{Line: 1, Character: 8},
+		},
+	})
+	require.Nil(t, errResp)
+	var locs []location
+	require.NoError(t, json.Unmarshal(raw, &locs))
+	assert.NotEmpty(t, locs)
 }
 
 func TestPrepareCallHierarchyDirectiveEscapeRejected(t *testing.T) {
@@ -752,6 +839,34 @@ func TestWorkspaceSymbolMixedKinds(t *testing.T) {
 	assert.True(t, kinds[symbolKindString], "expected heading kind: %+v", hits)
 	// Either Property (front matter) or Key (link ref) should appear.
 	assert.True(t, kinds[symbolKindProperty] || kinds[symbolKindKey], "expected property or key kind: %+v", hits)
+}
+
+func TestHandleOutgoingCallsCatalogPlaceholder(t *testing.T) {
+	t.Parallel()
+	src := "# A\n\n<?catalog\nglob:\n  - \"*.md\"\n?>\n<?/catalog?>\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src, "b.md": "# B\n"})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	raw, errResp := h.request("textDocument/prepareCallHierarchy", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 0, Character: 0},
+	})
+	require.Nil(t, errResp)
+	var items []callHierarchyItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	require.Len(t, items, 1)
+	raw, errResp = h.request("callHierarchy/outgoingCalls", callHierarchyOutgoingCallsParams{Item: items[0]})
+	require.Nil(t, errResp)
+	var calls []callHierarchyOutgoingCall
+	require.NoError(t, json.Unmarshal(raw, &calls))
+	// Catalog edge has no concrete target; the helper points at the
+	// host directory as a placeholder.
+	require.NotEmpty(t, calls)
 }
 
 func TestHandleOutgoingCallsSkipsRefAndAnchorLinks(t *testing.T) {

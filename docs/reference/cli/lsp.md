@@ -123,13 +123,13 @@ refs.
 
 ### References
 
-| Cursor on…                | References returned                              |
-|---------------------------|--------------------------------------------------|
-| Heading                   | every workspace link to `(file, anchor)`         |
-| `[label]: url` definition | every `[text][label]` and shortcut in the file   |
-| File line 1               | every link target with this path (no anchor)     |
-| `kind:` value             | every file with that kind assignment             |
-| Directive block           | every directive whose `file:` / `source:` = this |
+| Cursor on…                          | References returned                              |
+|-------------------------------------|--------------------------------------------------|
+| Heading                             | every workspace link to `(file, anchor)`         |
+| `[label]: url` definition           | every `[text][label]` and shortcut in the file   |
+| File line 1                         | every link target with this path (no anchor)     |
+| `kind:` value                       | every file with that kind assignment             |
+| Directive arg (`file:` / `source:`) | every directive whose `file:` / `source:` = this |
 
 `includeDeclaration: false` excludes the heading or
 definition itself.
