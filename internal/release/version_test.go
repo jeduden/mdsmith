@@ -174,6 +174,16 @@ func TestStampRejectsNonSemver(t *testing.T) {
 	}
 }
 
+func TestValidateSemverRejectsEmpty(t *testing.T) {
+	err := ValidateSemver("")
+	if err == nil {
+		t.Fatal("expected empty-string rejection")
+	}
+	if !strings.Contains(err.Error(), "non-empty") {
+		t.Errorf("error did not flag empty input: %v", err)
+	}
+}
+
 func TestStampFailsWhenManifestHasNoVersionField(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)

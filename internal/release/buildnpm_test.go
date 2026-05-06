@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -113,5 +114,55 @@ func TestBuildNpmPlatformsMissingArtifact(t *testing.T) {
 	err := BuildNpmPlatforms(root, artifacts, filepath.Join(root, "dist"))
 	if err == nil {
 		t.Fatal("expected missing-asset error")
+	}
+}
+
+func TestBuildNpmPlatformsFailsWhenRootManifestMissing(t *testing.T) {
+	// BuildNpmPlatforms reads the version off npm/mdsmith/package.json.
+	// A missing root manifest must produce an actionable error rather
+	// than silently emitting empty-version sub-packages.
+	root := t.TempDir()
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+
+	err := BuildNpmPlatforms(root, artifacts, filepath.Join(root, "dist"))
+	if err == nil {
+		t.Fatal("expected missing-root-manifest error")
+	}
+	if !strings.Contains(err.Error(), "npm/mdsmith/package.json") {
+		t.Errorf("error did not name the missing manifest: %v", err)
+	}
+}
+
+func TestBuildNpmPlatformsCopiesLicense(t *testing.T) {
+	// When the repo carries a top-level LICENSE, each platform
+	// sub-package should ship the same file. A missing LICENSE
+	// is fine — the copy is best-effort.
+	const ver = "4.5.6"
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	if err := Stamp(root, ver); err != nil {
+		t.Fatalf("Stamp: %v", err)
+	}
+	licenseBody := []byte("MIT License — sentinel\n")
+	if err := os.WriteFile(filepath.Join(root, "LICENSE"), licenseBody, 0o644); err != nil {
+		t.Fatalf("write LICENSE: %v", err)
+	}
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	out := filepath.Join(root, "dist")
+	if err := BuildNpmPlatforms(root, artifacts, out); err != nil {
+		t.Fatalf("BuildNpmPlatforms: %v", err)
+	}
+
+	for _, plat := range []string{"linux-x64", "darwin-arm64", "win32-x64"} {
+		got, err := os.ReadFile(filepath.Join(out, plat, "LICENSE"))
+		if err != nil {
+			t.Errorf("%s: LICENSE not staged: %v", plat, err)
+			continue
+		}
+		if string(got) != string(licenseBody) {
+			t.Errorf("%s: LICENSE content mismatch:\n%s", plat, got)
+		}
 	}
 }

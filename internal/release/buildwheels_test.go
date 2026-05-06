@@ -152,6 +152,23 @@ func assertWheel(t *testing.T, out string, entries []os.DirEntry, c wheelCase) {
 	}
 }
 
+// TestBuildWheelsFailsWhenPythonSourceMissing exercises the
+// fast-fail path that runs before any python invocation, so the
+// test does not need python on PATH.
+func TestBuildWheelsFailsWhenPythonSourceMissing(t *testing.T) {
+	root := t.TempDir()
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+
+	err := BuildWheels(root, artifacts, filepath.Join(root, "wheels"))
+	if err == nil {
+		t.Fatal("expected python-source-missing error")
+	}
+	if !strings.Contains(err.Error(), "python source missing") {
+		t.Errorf("error did not flag missing python tree: %v", err)
+	}
+}
+
 // TestBuildWheelsLayout calls BuildWheels directly and asserts
 // (a) one wheel per platform tag, (b) the dist-info/WHEEL metadata
 // inside each wheel claims the matching platform tag instead of

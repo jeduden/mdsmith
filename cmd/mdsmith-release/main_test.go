@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -51,6 +52,56 @@ func TestRunHelpExitsZero(t *testing.T) {
 func TestRunNoArgsPrintsUsage(t *testing.T) {
 	if code := run(nil); code != 2 {
 		t.Errorf("no args: exit code %d, want 2", code)
+	}
+}
+
+func TestRunRejectsBadArity(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"stamp without version", []string{"stamp"}},
+		{"stamp with extra args", []string{"stamp", "1.2.3", "extra"}},
+		{"check with extra arg", []string{"check", "extra"}},
+		{"build-npm without args", []string{"build-npm"}},
+		{"build-npm with one arg", []string{"build-npm", "art"}},
+		{"build-wheels without args", []string{"build-wheels"}},
+		{"build-wheels with one arg", []string{"build-wheels", "art"}},
+	}
+	for _, c := range cases {
+		if code := run(c.args); code != 2 {
+			t.Errorf("%s: exit code %d, want 2", c.name, code)
+		}
+	}
+}
+
+func TestRunStampReturnsErrorOnInvalidVersion(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if code := run([]string{"stamp", "v1.2.3"}); code != 1 {
+		t.Errorf("invalid version: exit code %d, want 1", code)
+	}
+}
+
+// TestReportErrorMapsExitCodes pins the wrapper that translates a
+// (possibly nil) error into the integer exit code main returns.
+// This is the smallest unit but it gates whether the CLI surfaces
+// the underlying error to CI.
+func TestReportErrorMapsExitCodes(t *testing.T) {
+	if got := reportError(nil); got != 0 {
+		t.Errorf("nil error: exit code %d, want 0", got)
+	}
+	if got := reportError(errors.New("sentinel error")); got != 1 {
+		t.Errorf("non-nil error: exit code %d, want 1", got)
 	}
 }
 
