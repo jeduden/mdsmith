@@ -18,41 +18,34 @@ summary: >-
 
 ## Goal
 
-Promote MDS020's heading-template engine into a
-small schema engine with two sources and one
-scope-tree representation. Make per-section
-rule config the primary way to express
-"this section is stricter than the rest of the
-document".
-
-The bigger schema directions — content rules,
-cross-references, acronyms, index — sit on top
-of this foundation in plans 142 and 143.
+Promote MDS020's heading-template engine into
+a small schema engine with two sources and one
+scope-tree representation. Per-section rule
+config becomes the way to say "this section is
+stricter than the rest of the document". The
+bigger schema directions — content rules,
+cross-references, acronyms, index — sit on
+top in plans 142 and 143.
 
 ## Background
 
-Today MDS020 reads a `proto.md` file. Its front
-matter holds CUE constraints; its body is a
-flat heading template plus optional
-`<?require filename:?>`. Two limits show up:
+Today MDS020 reads a `proto.md`: front matter
+holds CUE constraints, body is a flat heading
+template plus optional `<?require filename:?>`.
+Two limits: a small schema needs a separate
+file (gap **S-1**), and rule config is per
+file, not per section.
 
-- A small schema needs a separate file (gap
-  **S-1**).
-- A rule can be configured per file but not per
-  section. A document with one strict section
-  and a lenient body has no surface today.
-
-This plan ships the inline-schema source and
-the per-scope rule override. Plans 142 and 143
-add the rich content / cross-ref / acronym /
-index shapes.
+This plan ships the inline-schema source, the
+recursive section tree, and the per-scope rule
+override. Plans 142 and 143 add content rules,
+cross-refs, acronyms, and index.
 
 ## Non-Goals
 
-- Content constraints, cross-references,
-  acronyms, index. Plans 142 and 143.
-- Auto-fix for new diagnostics. Auto-fix stays
-  where rules already support it.
+- Content rules, cross-references, acronyms,
+  index. Plans 142 and 143.
+- Auto-fix for new diagnostics.
 - Schema versioning. V-1.
 
 ## Design
@@ -151,9 +144,51 @@ Section keys:
 - `min:` / `max:` — bounds on a repeating
   section's match count.
 
-Order matters at each level. Out-of-order
-sections produce a diagnostic naming the
-expected and actual sequences.
+### Order, openness, unknown sections
+
+A scope asserts two things: required sections
+are present, and listed sections appear in the
+declared order. Optional sections may be
+skipped without breaking neighbors' order.
+
+By default a scope is **open**: unlisted
+headings are allowed anywhere among the listed
+sections. `closed: true` makes the scope
+strict; an unlisted heading then produces a
+diagnostic.
+
+```yaml
+schema:
+  closed: true
+  sections:
+    - heading: "Overview"
+    - heading: "Decision"
+```
+
+`closed:` is per-scope. A strict root with
+permissive subsections sets `closed: true` at
+the root and omits it on each child.
+
+A `"..."` entry is a positional escape hatch.
+It does not require any heading. It tolerates
+any unlisted sections at that position even
+under `closed: true`:
+
+```yaml
+schema:
+  closed: true
+  sections:
+    - heading: "Overview"
+    - "..."
+    - heading: "References"
+```
+
+The schema requires Overview first. References
+last. Anything between. Nothing before
+Overview or after References.
+
+Out-of-order listed sections produce a
+diagnostic naming expected and actual.
 
 ### Per-scope rule overrides
 
@@ -182,22 +217,22 @@ section-scoped; only the config differs.
 
 ### Coexistence with existing rules
 
-Existing rules read the same AST as the schema
-engine. They accept per-section config through
-the scope tree with no code change to any
-`Configurable` rule. The engine emits
-diagnostics through the same `lint.Diagnostic`
-shape. The schema ships as wiring on top of the
-existing rule set, not a parallel system.
+Existing rules read the same AST. They accept
+per-section config through the scope tree with
+no code change to any `Configurable` rule. The
+engine emits diagnostics through the existing
+`lint.Diagnostic` shape. The schema is wiring,
+not a parallel system.
 
 ## Tasks
 
-1. Define `internal/schema/Schema`:
-   `Frontmatter`, `Require`, and `Sections []Scope`.
+1. Define `internal/schema/Schema` with
+   `Frontmatter`, `Require`, `Sections []Scope`.
    Each `Scope` carries `Heading`, `Required`,
    `Aliases`, `Sections` (recursive),
-   `Repeats`, `Sequential`, `Min`, `Max`, and
-   `Rules`.
+   `Repeats`, `Sequential`, `Min`, `Max`,
+   `Closed`, and `Rules`. A `"..."` entry
+   parses to a `Scope` with `Wildcard: true`.
 2. Build two parsers feeding the same struct:
    inline (YAML under `kinds.<name>.schema:`)
    and file (`proto.md` extended).
@@ -211,10 +246,12 @@ existing rule set, not a parallel system.
 5. Implement the recursive section-tree
    validator: presence, aliases, repeating
    matches with `sequential:` / `min:` /
-   `max:`, recursion into nested `sections:`.
-   Levels come from tree depth; mismatched
-   document levels produce a diagnostic.
-   Diagnostics use plan 133's shape.
+   `max:`, recursion into nested `sections:`,
+   open-vs-closed scope handling, and
+   `"..."` wildcard slots. Levels come from
+   tree depth; mismatched document levels
+   produce a diagnostic. Diagnostics use plan
+   133's shape.
 6. Plumb per-scope rule-config overrides.
    While walking a section's subtree, apply
    the section's `rules:` overrides on top of
@@ -243,6 +280,20 @@ existing rule set, not a parallel system.
       `min:`), and recursion to at least
       three levels of depth on a runbook
       fixture.
+- [ ] A scope without `closed:` allows
+      unlisted headings between listed
+      sections (regression: a runbook with
+      one extra `## Notes` section between
+      `## Symptoms` and `## Diagnosis`
+      passes).
+- [ ] A scope with `closed: true` flags an
+      unlisted heading and names it in the
+      diagnostic.
+- [ ] A `"..."` wildcard slot in `sections:`
+      tolerates unknown headings at that
+      position even under `closed: true`,
+      while still enforcing the surrounding
+      listed sections' order.
 - [ ] A document whose heading levels do not
       match the schema's tree depth produces
       a diagnostic naming the expected and
