@@ -98,42 +98,58 @@ CUE per FM key. `?` for optional. Plan 134
 
 ### Section tree
 
+`sections:` is one recursive list. The level of
+each section is its depth in the tree: H2 at
+the root's `sections:`, H3 inside that, and so
+on. The document's H1 is reserved for the title
+and is constrained separately (via the
+`first-line-heading` rule and any `title:` FM
+field).
+
 ```yaml
 schema:
   sections:
-    - heading: "## Overview"
+    - heading: "Overview"
       required: true
-    - heading: "## Symptoms"
+    - heading: "Symptoms"
       required: true
-      aliases: ["## Indicators"]
-    - heading: "## Diagnosis"
+      aliases: ["Indicators"]
+    - heading: "Diagnosis"
       required: true
-      children:
-        pattern: "### Step {n}"
-        sequential: true
-        min: 1
-        fields:
-          - heading: "#### Check"
-            required: true
-          - heading: "#### Expected"
-            required: true
-    - heading: "## References"
+      sections:
+        - heading: "Step {n}"
+          repeats: true
+          sequential: true
+          min: 1
+          sections:
+            - heading: "Check"
+              required: true
+            - heading: "Expected"
+              required: true
+            - heading: "If different"
+              required: false
+    - heading: "References"
       required: false
 ```
 
 Section keys:
 
-- `heading:` — literal heading; level from
-  `#` count.
+- `heading:` — the heading text. No `#`
+  markers; the level comes from depth.
+  Placeholders allowed: `{n}` (sequence
+  number), `{slug}` (any identifier),
+  `{title}` (free text).
 - `required:` — default `true`.
-- `aliases:` — alternate headings.
-- `children:` — recursive template with a
-  `pattern:` for child headings. `{n}` is a
-  sequence number, `{slug}` is any
-  identifier. `sequential: true` enforces no
-  gaps and no duplicates.
-- `fields:` — nested sections inside each
-  child match.
+- `aliases:` — alternate heading texts.
+- `sections:` — nested sections (one level
+  deeper).
+- `repeats:` — when `true`, the heading is a
+  pattern; the document may have zero or more
+  sections matching it.
+- `sequential:` — on a repeating section,
+  enforces no gaps and no duplicates in `{n}`.
+- `min:` / `max:` — bounds on a repeating
+  section's match count.
 
 Order matters at each level. Out-of-order
 sections produce a diagnostic naming the
@@ -179,7 +195,8 @@ existing rule set, not a parallel system.
 1. Define `internal/schema/Schema`:
    `Frontmatter`, `Require`, and `Sections []Scope`.
    Each `Scope` carries `Heading`, `Required`,
-   `Aliases`, `Children`, `Fields`, and
+   `Aliases`, `Sections` (recursive),
+   `Repeats`, `Sequential`, `Min`, `Max`, and
    `Rules`.
 2. Build two parsers feeding the same struct:
    inline (YAML under `kinds.<name>.schema:`)
@@ -188,12 +205,16 @@ existing rule set, not a parallel system.
    file sources on one kind.
 4. Re-implement MDS020 on top of the schema
    engine. Today's heading-template behavior
-   becomes the flat-sections code path; every
-   existing fixture passes unchanged.
-5. Implement the section-tree validator:
-   presence, aliases, child patterns,
-   sequential numbering, recursion into
-   `fields:`. Diagnostics use plan 133's shape.
+   becomes a `sections:` list with no
+   `repeats:` and no nested `sections:`;
+   every existing fixture passes unchanged.
+5. Implement the recursive section-tree
+   validator: presence, aliases, repeating
+   matches with `sequential:` / `min:` /
+   `max:`, recursion into nested `sections:`.
+   Levels come from tree depth; mismatched
+   document levels produce a diagnostic.
+   Diagnostics use plan 133's shape.
 6. Plumb per-scope rule-config overrides.
    While walking a section's subtree, apply
    the section's `rules:` overrides on top of
@@ -216,10 +237,16 @@ existing rule set, not a parallel system.
       + flat sections) emits the same
       diagnostics as the equivalent
       `proto.md`-referenced kind.
-- [ ] A schema with a section tree validates
-      presence, aliases, child patterns, and
-      sequential numbering on a runbook
+- [ ] A schema with a nested section tree
+      validates presence, aliases, repeating
+      matches (`repeats:` + `sequential:` +
+      `min:`), and recursion to at least
+      three levels of depth on a runbook
       fixture.
+- [ ] A document whose heading levels do not
+      match the schema's tree depth produces
+      a diagnostic naming the expected and
+      actual levels.
 - [ ] A schema `rules:` block on a section
       applies the override to that section
       only (verified with same prose in two

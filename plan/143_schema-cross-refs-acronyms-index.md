@@ -55,7 +55,7 @@ the document:
 schema:
   cross-references:
     - pattern: "\\bStep (\\d+)\\b"
-      must-match: "### Step {n}"
+      must-match: "Step {n}"
       skip-lines-matching: "^> "
 ```
 
@@ -78,7 +78,7 @@ notes that mention old step numbers.
 schema:
   acronyms:
     known-safe: [API, HTTP, TLS, JSON]
-    scope: ["#### Check", "#### Expected"]
+    scope: ["Check", "Expected"]
 ```
 
 A scoped pass walks the named scopes and flags
@@ -88,10 +88,11 @@ without a parenthesized expansion. "OIDC" on
 first use without "(OpenID Connect)" produces a
 diagnostic; "OIDC (OpenID Connect)" passes.
 
-`scope:` is a list of section headings (or
-heading patterns); the rule applies only to
-text inside those scopes. Omitting `scope:`
-applies it document-wide.
+`scope:` is a list of section names (matching
+the `heading:` text in plan 132's section
+tree); the rule applies only inside those
+scopes. Omitting `scope:` applies it
+document-wide.
 
 ### Index side-output
 
@@ -143,8 +144,8 @@ walk completes.
    shared with
    [`internal/lint`](../internal/lint).
    Per-scope first-use state. A scope of
-   `["#### Check"]` matches every section
-   whose heading is `#### Check`.
+   `["Check"]` matches every section whose
+   `heading:` is `Check`.
 4. Implement index emission. Triggered only
    by `mdsmith fix`. Path is relative to the
    document. Atomic write.
@@ -162,7 +163,8 @@ walk completes.
 
 - [ ] A `cross-references:` entry flags an
       unresolved reference (e.g. "Step 7"
-      with no `### Step 7` heading).
+      with no `Step 7` heading anywhere in
+      the document).
 - [ ] A `cross-references:` entry passes a
       reference to an existing heading.
 - [ ] `skip-lines-matching:` skips
