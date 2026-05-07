@@ -43,7 +43,7 @@ footer: |
 | 129 | ✅     | sonnet | [Flag unused or duplicate link reference definitions](plan/129_no-unused-link-definitions.md)                                         |
 | 130 | 🔳     | opus   | [Distribute mdsmith binaries via npm, PyPI, asdf, mise, and the VS Code marketplaces](plan/130_binary-distribution-and-versioning.md) |
 | 131 | 🔲     | opus   | [LSP symbol navigation for agents (Claude)](plan/131_lsp-symbol-navigation.md)                                                        |
-| 132 | 🔲     | opus   | [Inline schema in the `kinds` map](plan/132_inline-schema-in-kinds.md)                                                                |
+| 132 | 🔲     | opus   | [Schema engine — sources, scope tree, per-scope rules](plan/132_inline-schema-in-kinds.md)                                            |
 | 133 | 🔲     | opus   | [Actionable schema diagnostics for MDS020](plan/133_actionable-schema-diagnostics.md)                                                 |
 | 134 | 🔲     | sonnet | [Named field-type shortcuts for inline schemas](plan/134_named-field-type-shortcuts.md)                                               |
 | 135 | 🔲     | sonnet | [Schema inheritance via `extends`](plan/135_schema-extends.md)                                                                        |
@@ -52,6 +52,8 @@ footer: |
 | 138 | 🔲     | sonnet | [`mdsmith backlinks` subcommand](plan/138_backlinks-subcommand.md)                                                                    |
 | 139 | 🔲     | sonnet | [Field-presence kind assignment](plan/139_field-presence-kind-assignment.md)                                                          |
 | 140 | 🔲     | sonnet | [Per-kind `path-pattern` for filename validation](plan/140_kind-path-pattern.md)                                                      |
+| 142 | 🔲     | sonnet | [Schema content constraints](plan/142_schema-content-constraints.md)                                                                  |
+| 143 | 🔲     | sonnet | [Schema cross-references, acronyms, and index](plan/143_schema-cross-refs-acronyms-index.md)                                          |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                            |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                                          |
 | 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                                      |

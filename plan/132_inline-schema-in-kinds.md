@@ -1,200 +1,238 @@
 ---
 id: 132
-title: Inline schema in the `kinds` map
+title: Schema engine — sources, scope tree, per-scope rules
 status: "🔲"
 model: opus
 summary: >-
-  Let `kinds:` carry a `schema:` block directly so a
-  small schema (front matter constraints, heading
-  template, filename glob) does not require a
-  separate `proto.md`. The schema engine receives
-  the same parsed AST whether the source is inline
-  YAML or a referenced file.
+  Replace MDS020's heading-template engine with
+  an AST-rooted scope tree. Schemas come from two
+  sources (inline `kinds.<name>.schema:` or a
+  `proto.md` file) and parse to one in-memory
+  representation. Each scope binds an AST subtree
+  to per-rule config overrides; existing rules
+  reuse-with-no-code-change. Foundation for plans
+  142 (content constraints) and 143
+  (cross-references, acronyms, index).
 ---
-# Inline schema in the `kinds` map
+# Schema engine — sources, scope tree, per-scope rules
 
 ## Goal
 
-Let a `kinds:` entry declare its schema inline.
-The schema sits alongside the rule overrides.
-A small schema — a few front-matter fields, a
-flat heading template, a filename glob — should
-fit in the config the user already maintains.
-No separate `proto.md` for the small case.
+Promote MDS020's heading-template engine into a
+small schema engine with two sources and one
+scope-tree representation. Make per-section
+rule config the primary way to express
+"this section is stricter than the rest of the
+document".
+
+The bigger schema directions — content rules,
+cross-references, acronyms, index — sit on top
+of this foundation in plans 142 and 143.
 
 ## Background
 
-Today every kind that wants front-matter or
-structure validation sets
-`required-structure.schema:` to a path. The schema
-file is a Markdown document whose front matter
-holds CUE patterns and whose body is the heading
-template. That path makes sense for plans
-([`plan/proto.md`](../plan/proto.md)) and rule
-docs, where the body is a real heading template
-worth reading on its own. It is overhead for kinds
-whose schema is "two FM fields and a filename
-glob".
+Today MDS020 reads a `proto.md` file. Its front
+matter holds CUE constraints; its body is a
+flat heading template plus optional
+`<?require filename:?>`. Two limits show up:
 
-The
-[mdbase research](../docs/research/mdbase-vs-mdsmith/learn-from-mdbase.md)
-records this gap as **S-1**. mdbase keeps its
-typing in a single config file
-(`_types/<name>.md`); mdsmith asks for one file
-per kind. The cost is small per kind and high in
-aggregate when a project has eight or ten kinds.
+- A small schema needs a separate file (gap
+  **S-1**).
+- A rule can be configured per file but not per
+  section. A document with one strict section
+  and a lenient body has no surface today.
 
-## Design
-
-### Config shape
-
-A kind accepts a `schema:` block alongside
-`rules:`:
-
-```yaml
-kinds:
-  task:
-    rules:
-      line-length:
-        max: 100
-    schema:
-      frontmatter:
-        id: '=~"^TASK-[0-9]{4}$"'
-        status: '"open" | "in-progress" | "done"'
-        priority: 'int & >=1 & <=5'
-        "due?": "string"
-      structure:
-        - "# {title}"
-        - "## Goal"
-        - "## Acceptance"
-      require:
-        filename: "TASK-[0-9][0-9][0-9][0-9].md"
-```
-
-Three sub-blocks, each optional:
-
-- `frontmatter:` — a map from field name to a CUE
-  expression (string). Keys ending in `?` are
-  optional, matching CUE's existing convention.
-- `structure:` — a list of heading template lines.
-  Each line is the same Markdown a `proto.md` body
-  would contain.
-- `require:` — the same fields the `<?require?>`
-  directive accepts today (`filename:` to start).
-
-The schema loader reads the block, synthesizes the
-equivalent `proto.md` AST in memory, and hands it
-to the existing schema engine. The engine does
-not learn a second representation.
-
-### Coexistence with file schemas
-
-`required-structure.schema:` continues to work for
-kinds whose schema is large enough to want a real
-file. A kind can set **either** `schema:` (inline)
-**or** `rules.required-structure.schema:` (path),
-not both — the loader rejects a kind that sets
-both with a config error naming the kind and both
-sources.
-
-### Surface
-
-Three things change for the user:
-
-- New `schema:` key in each kind.
-- `mdsmith kinds` (plan 95) shows whether a
-  kind's schema is `inline` or `file:<path>` so a
-  user can tell at a glance which kinds carry
-  config-embedded constraints.
-- `required-structure.schema:` keeps its current
-  behavior. Existing repos see no change unless
-  they opt in.
-
-### Composition with directives
-
-`structure:` lines may use `<?include?>` for
-fragment composition the same way a `proto.md`
-body does. This keeps inline and file schemas at
-parity: a project that starts inline and grows
-out can move the block to a file without changing
-its semantics.
+This plan ships the inline-schema source and
+the per-scope rule override. Plans 142 and 143
+add the rich content / cross-ref / acronym /
+index shapes.
 
 ## Non-Goals
 
-- New schema features. The expressiveness of
-  `frontmatter:` and `structure:` exactly matches
-  what `proto.md` supports today.
-- A migration tool that converts `proto.md` files
-  into inline blocks (or vice versa). Manual
-  rewrite is straightforward; automation pays off
-  only if a real project needs it.
+- Content constraints, cross-references,
+  acronyms, index. Plans 142 and 143.
+- Auto-fix for new diagnostics. Auto-fix stays
+  where rules already support it.
+- Schema versioning. V-1.
+
+## Design
+
+### Two sources, one engine
+
+- **Inline.** A `schema:` block on a kind in
+  `.mdsmith.yml`.
+- **File.** A `proto.md` referenced by
+  `rules.required-structure.schema:`.
+
+A kind sets at most one source. The loader
+rejects a kind with both, naming the kind and
+both paths. Both parse to one in-memory
+`Schema` struct.
+
+### Scope tree
+
+A schema is a tree of scopes. A scope binds an
+AST subtree to constraints (presence, aliases)
+plus per-rule config overrides that apply only
+inside that subtree. The root scope covers the
+whole document; section scopes nest. Today's
+flat heading template is the no-children case.
+
+### Front matter and filename
+
+```yaml
+schema:
+  frontmatter:
+    id: '=~"^RFC-[0-9]{4}$"'
+    status: '"draft" | "ratified" | "deprecated"'
+    authors: '[...string] & len(authors) >= 1'
+    created: date
+  require:
+    filename: "RFC-[0-9][0-9][0-9][0-9].md"
+```
+
+CUE per FM key. `?` for optional. Plan 134
+(shortcuts), 135 (`extends:`), and 136
+(deprecation) attach here.
+`require.filename:` uses glob syntax.
+
+### Section tree
+
+```yaml
+schema:
+  sections:
+    - heading: "## Overview"
+      required: true
+    - heading: "## Symptoms"
+      required: true
+      aliases: ["## Indicators"]
+    - heading: "## Diagnosis"
+      required: true
+      children:
+        pattern: "### Step {n}"
+        sequential: true
+        min: 1
+        fields:
+          - heading: "#### Check"
+            required: true
+          - heading: "#### Expected"
+            required: true
+    - heading: "## References"
+      required: false
+```
+
+Section keys:
+
+- `heading:` — literal heading; level from
+  `#` count.
+- `required:` — default `true`.
+- `aliases:` — alternate headings.
+- `children:` — recursive template with a
+  `pattern:` for child headings. `{n}` is a
+  sequence number, `{slug}` is any
+  identifier. `sequential: true` enforces no
+  gaps and no duplicates.
+- `fields:` — nested sections inside each
+  child match.
+
+Order matters at each level. Out-of-order
+sections produce a diagnostic naming the
+expected and actual sequences.
+
+### Per-scope rule overrides
+
+Any scope may carry a `rules:` block:
+
+```yaml
+schema:
+  sections:
+    - heading: "## Decision"
+      required: true
+      rules:
+        paragraph-readability:
+          max-readability: 12.0
+        max-section-length:
+          max-words: 200
+```
+
+The override applies only inside that scope.
+The merge stacks on top of the file's
+effective config: defaults → kinds → file
+globs → schema scope. Existing rules need no
+changes — the engine threads the right config
+through the subtree walk. Same
+`paragraph-readability` runs document-wide and
+section-scoped; only the config differs.
+
+### Coexistence with existing rules
+
+Existing rules read the same AST as the schema
+engine. They accept per-section config through
+the scope tree with no code change to any
+`Configurable` rule. The engine emits
+diagnostics through the same `lint.Diagnostic`
+shape. The schema ships as wiring on top of the
+existing rule set, not a parallel system.
 
 ## Tasks
 
-1. Extend the kind config struct in
-   `internal/config/` with an optional
-   `Schema *KindSchema` field carrying
-   `Frontmatter`, `Structure`, and `Require`
-   sub-blocks.
-2. Add a synthesizer in
-   `internal/rules/requiredstructure/` that turns
-   a `KindSchema` into the in-memory AST the rule
-   already consumes from a parsed `proto.md`.
-3. Reject configs that set both `schema:` (inline)
-   and `rules.required-structure.schema:` (path)
-   on the same kind. The error names the kind and
-   both sources.
-4. Teach the loader to feed inline schemas through
-   the same caching path file schemas use, keyed
-   on the kind name plus a content hash.
-5. Update `mdsmith kinds` output (plan 95) to
-   show `schema: inline` or `schema: file:<path>`
-   per kind.
-6. Document inline schemas in
-   [`docs/guides/file-kinds.md`](../docs/guides/file-kinds.md)
-   with a worked task example. Cross-link from
-   the
+1. Define `internal/schema/Schema`:
+   `Frontmatter`, `Require`, and `Sections []Scope`.
+   Each `Scope` carries `Heading`, `Required`,
+   `Aliases`, `Children`, `Fields`, and
+   `Rules`.
+2. Build two parsers feeding the same struct:
+   inline (YAML under `kinds.<name>.schema:`)
+   and file (`proto.md` extended).
+3. Reject configs that set both inline and
+   file sources on one kind.
+4. Re-implement MDS020 on top of the schema
+   engine. Today's heading-template behavior
+   becomes the flat-sections code path; every
+   existing fixture passes unchanged.
+5. Implement the section-tree validator:
+   presence, aliases, child patterns,
+   sequential numbering, recursion into
+   `fields:`. Diagnostics use plan 133's shape.
+6. Plumb per-scope rule-config overrides.
+   While walking a section's subtree, apply
+   the section's `rules:` overrides on top of
+   the file's effective config.
+7. Document the engine in the
    [MDS020 README](../internal/rules/MDS020-required-structure/README.md).
-7. Add a fixture under
-   `internal/rules/MDS020-required-structure/good/`
-   exercising an inline-schema kind, and a `bad/`
-   counterpart whose front matter violates the
-   inline `frontmatter:` constraints.
-8. Unit tests:
-
-  - inline `frontmatter:` produces the same
-     diagnostics a path-equivalent `proto.md`
-     would,
-  - inline `structure:` validates heading
-     sequences identically,
-  - inline `require.filename:` validates basenames
-     identically,
-  - dual-source error fires with both schemas set.
+   Add a starter guide at
+   `docs/guides/schemas.md` (subsections for
+   plans 142 and 143 follow).
+8. Add fixtures: a runbook exercising the
+   section tree; a per-scope-rule fixture
+   with the same prose in two sections,
+   showing the scoped
+   `paragraph-readability` override fires
+   only in one.
 
 ## Acceptance Criteria
 
-- [ ] A kind with `schema.frontmatter:` validates
-      a file's front matter and produces the same
-      MDS020 diagnostics as the equivalent
-      `proto.md`-referenced kind (regression test
-      compares both).
-- [ ] A kind with `schema.structure:` validates
-      heading sequences identically to a
-      file-schema kind.
-- [ ] A kind with `schema.require.filename:`
-      validates basenames identically to a
-      `<?require filename:?>` directive in a file
-      schema.
-- [ ] A kind that sets both `schema:` and
-      `rules.required-structure.schema:` produces
-      a config error naming the kind and both
-      sources.
-- [ ] `mdsmith kinds` reports `schema: inline` for
-      inline-schema kinds and `schema:
-      file:<path>` for file-schema kinds.
-- [ ] [docs/guides/file-kinds.md](../docs/guides/file-kinds.md)
-      describes the inline form with one worked
-      example.
+- [ ] An inline `schema:` block (front matter
+      + flat sections) emits the same
+      diagnostics as the equivalent
+      `proto.md`-referenced kind.
+- [ ] A schema with a section tree validates
+      presence, aliases, child patterns, and
+      sequential numbering on a runbook
+      fixture.
+- [ ] A schema `rules:` block on a section
+      applies the override to that section
+      only (verified with same prose in two
+      sections).
+- [ ] Setting both `schema:` and
+      `rules.required-structure.schema:` on a
+      kind produces a config error naming the
+      kind and both sources.
+- [ ] All existing MDS020 fixtures pass
+      against the new engine without
+      modification.
+- [ ] The MDS020 README documents the engine
+      with one worked example.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no
       issues.
