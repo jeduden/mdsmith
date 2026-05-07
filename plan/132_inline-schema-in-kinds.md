@@ -162,7 +162,7 @@ Any scope may carry a `rules:` block:
 ```yaml
 schema:
   sections:
-    - heading: "## Decision"
+    - heading: "Decision"
       required: true
       rules:
         paragraph-readability:

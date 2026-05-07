@@ -16,9 +16,17 @@ summary: >-
 
 Let a kind declare a path-shape constraint
 alongside its rule overrides and schema. A file
-with `kinds: [plan]` whose path is not
-`plan/<int>_<slug>.md` produces a clear
-diagnostic without a custom CI script.
+with `kinds: [plan]` whose path does not match
+the kind's `path-pattern:` glob — e.g. one
+under `plan/` not starting with digits when the
+project requires `plan/[0-9][0-9]*_*.md` —
+produces a clear diagnostic without a custom
+CI script. The constraint is a glob; full
+"integer-only" enforcement is not expressible
+(globs cannot say "exactly digits, no other
+characters" without listing each digit
+position), so the example pattern is an
+approximation, not a regex.
 
 ## Background
 

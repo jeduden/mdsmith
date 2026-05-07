@@ -96,7 +96,7 @@ Per-section (via plan 132):
 ```yaml
 schema:
   sections:
-    - heading: "## Diagnosis"
+    - heading: "Diagnosis"
       rules:
         forbidden-text:
           contains: ["should", "may"]
