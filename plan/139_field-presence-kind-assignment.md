@@ -14,10 +14,10 @@ summary: >-
 ## Goal
 
 Let a project assign a kind from front-matter
-shape instead of a glob or an explicit `kind:`
-tag. A file that carries `status`, `priority`,
-and `assignee` is a `task`, regardless of where
-it lives.
+shape instead of a glob or an explicit
+`kinds:` list. A file that carries `status`,
+`priority`, and `assignee` is a `task`,
+regardless of where it lives.
 
 ## Background
 

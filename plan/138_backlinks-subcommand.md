@@ -89,7 +89,8 @@ mdsmith backlinks --format json docs/api.md
 [
   {"source":"docs/index.md","line":14,
    "text":"API reference","target":"api.md"},
-  …
+  {"source":"plan/045_api-overhaul.md","line":8,
+   "text":"api","target":"../docs/api.md"}
 ]
 ```
 

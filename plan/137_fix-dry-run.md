@@ -68,11 +68,12 @@ Files with no fixes do not appear. A trailing
 summary matches the existing `fix` summary line:
 
 ```text
-stats: checked=12 fixed=0 unfixed=4 would-fix=8
+stats: checked=12 unfixed=4 would-fix=8
 ```
 
-`would-fix` replaces `fixed` in the dry-run line
-so users do not mistake the run for a real apply.
+The dry-run summary omits the `fixed=` field
+entirely so users do not mistake the run for a
+real apply.
 
 ### JSON output
 
@@ -80,12 +81,11 @@ so users do not mistake the run for a real apply.
 
 ```json
 {"path":"docs/api.md","would_fix":3,
- "rules":["MDS001","MDS006"],"diagnostics":[…]}
+ "rules":["MDS001","MDS006"],"diagnostics":[]}
 ```
 
 The `diagnostics` array carries the same shape
-`check --format json` returns today, so tooling
-can reuse its parser.
+`check --format json` returns today.
 
 ### Exit code
 

@@ -16,7 +16,7 @@ summary: >-
 
 Let a kind declare a path-shape constraint
 alongside its rule overrides and schema. A file
-that claims `kind: plan` whose path is not
+with `kinds: [plan]` whose path is not
 `plan/<int>_<slug>.md` produces a clear
 diagnostic without a custom CI script.
 
@@ -111,13 +111,13 @@ kind requires.
 
 ### Surfacing
 
-`mdsmith kinds <name>` (plan 95) prints the
-pattern when set:
+`mdsmith kinds show <name>` prints the pattern
+when set:
 
 ```text
-kind: plan
-schema: file:plan/proto.md
-path-pattern: plan/[0-9]*_*.md
+plan:
+  schema: file:plan/proto.md
+  path-pattern: plan/[0-9]*_*.md
 ```
 
 A reader can audit constraints from one
