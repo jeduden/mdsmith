@@ -62,7 +62,7 @@ path. The provisional path is
 settles it on landing. The initial vocabulary:
 
 ```cue
-package mdsmith
+package types
 
 #date:     =~"^\\d{4}-\\d{2}-\\d{2}$"
 #datetime: =~"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"

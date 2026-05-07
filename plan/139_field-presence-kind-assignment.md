@@ -6,8 +6,8 @@ model: sonnet
 summary: >-
   Auto-assign a kind when a file's front matter
   carries a configured set of fields. Removes the
-  per-file `kind:` boilerplate for projects that
-  identify file types by FM shape.
+  per-file `kinds:` list boilerplate for projects
+  that identify file types by FM shape.
 ---
 # Field-presence kind assignment
 
@@ -28,9 +28,9 @@ selector; mdsmith's `kind-assignment:` accepts
 globs and explicit tags.
 
 The trigger is a project carrying enough files
-that boilerplate (a `kind:` field on every task)
-is paying less than the FM-shape rule that would
-replace it.
+that boilerplate (a `kinds: [task]` line on
+every task) is paying less than the FM-shape
+rule that would replace it.
 
 The selector composes with the existing glob
 form. A project keeps using globs for stable
