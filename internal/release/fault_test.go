@@ -207,6 +207,23 @@ func TestBuildNpmPlatformsFailsOnCopyWrite(t *testing.T) {
 	assert.ErrorIs(t, err, errInjected)
 }
 
+func TestBuildNpmPlatformsFailsOnManifestWrite(t *testing.T) {
+	// Per-platform WriteFile order: copyFile's binary copy (1),
+	// the package.json manifest itself (2). Without LICENSE
+	// staged, no third write fires.
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	require.NoError(t, Stamp(root, "1.2.3"))
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	ff := newFakeFS()
+	ff.failOnWriteFileCall = 2
+
+	err := NewWithFS(ff).BuildNpmPlatforms(root, artifacts, filepath.Join(root, "dist"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
 func TestBuildNpmPlatformsFailsOnLicenseWrite(t *testing.T) {
 	// Stage a LICENSE so buildOneNpmPlatform takes the license-
 	// copy branch. Calls in order per platform (5 platforms

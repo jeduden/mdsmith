@@ -177,6 +177,11 @@ func TestListWheelsFiltersNonWheels(t *testing.T) {
 	for _, name := range []string{"foo.whl", "bar.tar.gz", "baz.txt"} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644))
 	}
+	// A directory whose name happens to end in `.whl` must be
+	// ignored so listWheels never returns directory entries to
+	// `python -m wheel tags` / os.Rename.
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "subdir.whl"), 0o755))
+
 	wheels, err := New().listWheels(dir)
 	require.NoError(t, err)
 	require.Len(t, wheels, 1)
