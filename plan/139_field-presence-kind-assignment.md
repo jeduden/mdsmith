@@ -105,10 +105,13 @@ analogue of plan 95's per-file provenance.
 ### Performance
 
 Presence is a constant-time map lookup per
-field per file. The matcher walks rules in
-config order and short-circuits on the first
-match. At 50,000 files the overhead is in the
-front-matter parse, which mdsmith already does.
+field per file. The matcher walks every entry
+in config order and unions the kinds from each
+matching entry, the same as
+[`resolveEffectiveKinds`](../internal/config/merge.go)
+does today. At 50,000 files the overhead is in
+the front-matter parse, which mdsmith already
+does.
 
 ## Tasks
 

@@ -65,7 +65,7 @@ settles it on landing. The initial vocabulary:
 package types
 
 #date:     =~"^\\d{4}-\\d{2}-\\d{2}$"
-#datetime: =~"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}"
+#datetime: =~"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})?$"
 #time:     =~"^\\d{2}:\\d{2}(:\\d{2})?$"
 #email:    =~"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
 #url:      =~"^https?://"
