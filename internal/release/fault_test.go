@@ -474,3 +474,50 @@ func TestBuildOneWheelPropagatesPythonFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errInjected)
 }
+
+// preStageWheel sets up a real source tree, asset, and an
+// outDir/.staging-<plat>/fake.whl so buildOneWheel can reach
+// retagWheels and moveWheels without invoking real python.
+// Returns (src, artifactsDir, outDir, wheelBuild).
+func preStageWheel(t *testing.T) (string, string, string, wheelBuild) {
+	t.Helper()
+	src := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
+		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	asset := filepath.Join(t.TempDir(), "asset")
+	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
+	out := t.TempDir()
+	wb := wheelBuilds[0]
+	staging := filepath.Join(out, ".staging-"+wb.PlatTag)
+	require.NoError(t, os.MkdirAll(staging, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(staging, "fake.whl"),
+		[]byte("x"), 0o644))
+	return src, filepath.Dir(asset), out, wheelBuild{
+		Asset: filepath.Base(asset), PlatTag: wb.PlatTag, Exe: wb.Exe,
+	}
+}
+
+func TestBuildOneWheelPropagatesRetagFailure(t *testing.T) {
+	// runPythonBuild succeeds (call 1); retagWheels finds the
+	// pre-staged wheel and invokes the runner for `wheel tags`,
+	// which we fail (call 2).
+	src, artifacts, out, wb := preStageWheel(t)
+	tk := NewWithDeps(osFS{}, &fakeRunner{failOnCall: 2})
+	err := tk.buildOneWheel(src, artifacts, out, wb)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestBuildOneWheelPropagatesMoveFailure(t *testing.T) {
+	// runner succeeds for both python invocations; FS.Rename
+	// fails when moveWheels tries to move the pre-staged wheel,
+	// covering the buildOneWheel branch that returns moveWheels'
+	// error.
+	src, artifacts, out, wb := preStageWheel(t)
+	ff := newFakeFS()
+	ff.failOnRenameCall = 1
+	tk := NewWithDeps(ff, &fakeRunner{})
+	err := tk.buildOneWheel(src, artifacts, out, wb)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
