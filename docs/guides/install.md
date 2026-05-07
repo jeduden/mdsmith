@@ -25,8 +25,9 @@ into the binary at build time. Pick one path:
 | GitHub release       | Download `mdsmith-<os>-<arch>` from the [release page](https://github.com/jeduden/mdsmith/releases) | Air-gapped hosts and direct binary control                              |
 
 asdf and the short `mise use mdsmith@latest` form depend on
-follow-up registry submissions tracked in plan/130; the sections
-below explain how to use each one once those land.
+follow-up registry submissions tracked in
+[plan/145](../../plan/145_asdf-mise-registry-submissions.md); the
+sections below explain how to use each one once those land.
 
 The binary ships for linux x86_64, linux aarch64, macOS
 x86_64, macOS arm64, and Windows amd64. Other targets
@@ -83,7 +84,7 @@ and `python -m mdsmith` all work.
 
 > **Pending follow-up.** The `jeduden/asdf-mdsmith` plugin repo is
 > a follow-up tracked in
-> [plan/130](../../plan/130_binary-distribution-and-versioning.md).
+> [plan/145](../../plan/145_asdf-mise-registry-submissions.md).
 > Until that repo exists, the commands below will not resolve.
 > Use one of the channels above in the meantime.
 
