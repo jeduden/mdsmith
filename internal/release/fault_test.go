@@ -260,15 +260,18 @@ func TestBuildWheelsFailsOnOutDirMkdir(t *testing.T) {
 }
 
 func TestBuildWheelsFailsOnStagingMkdir(t *testing.T) {
-	// outDir's MkdirAll is call #1; stagePythonTree's binDir
-	// MkdirAll fires inside the loop. The .staging-<plat>
-	// MkdirAll is call #3.
+	// MkdirAll call order in BuildWheels:
+	//   1. outDir
+	//   2. copyDir's dst-tree mkdir (inside stagePythonTree)
+	//   3. stagePythonTree's mdsmith/_bin
+	//   4. buildOneWheel's outDir/.staging-<plat>
+	// We want to trip the staging mkdir specifically.
 	root := t.TempDir()
 	fixtureManifests(t, root)
 	artifacts := filepath.Join(root, "artifacts")
 	fakeArtifacts(t, artifacts)
 	ff := newFakeFS()
-	ff.failOnMkdirAllCall = 3
+	ff.failOnMkdirAllCall = 4
 
 	err := NewWithFS(ff).BuildWheels(root, artifacts, filepath.Join(root, "wheels"))
 	require.Error(t, err)
@@ -331,6 +334,35 @@ func TestCopyDirFailsOnInnerWrite(t *testing.T) {
 	ff.failOnWriteFileCall = 1
 
 	err := NewWithFS(ff).copyDir(src, filepath.Join(t.TempDir(), "dst"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestCopyDirRecursiveFailureBubblesUp(t *testing.T) {
+	// Stage src with a top-level file AND a subdirectory file;
+	// fail on the SECOND ReadFile so the recursive copyDir(sp,
+	// dp) call returns an error from inside the sub. Covers the
+	// outer "if err := t.copyDir(sp, dp); err != nil { return err }"
+	// branch.
+	src := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(src, "a.txt"), []byte("x"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(src, "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "sub", "b.txt"), []byte("y"), 0o644))
+	ff := newFakeFS()
+	// ReadFile #1 = a.txt (succeeds), #2 = sub/b.txt (fails).
+	ff.failOnReadFileCall = 2
+
+	err := NewWithFS(ff).copyDir(src, filepath.Join(t.TempDir(), "dst"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestMoveWheelsListWheelsErrorPropagates(t *testing.T) {
+	// moveWheels delegates to listWheels first; a ReadDir fault
+	// must surface as a moveWheels error, not as a no-op.
+	ff := newFakeFS()
+	ff.failOnReadDirCall = 1
+	err := NewWithFS(ff).moveWheels(t.TempDir(), t.TempDir())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errInjected)
 }
