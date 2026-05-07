@@ -113,10 +113,12 @@ front-matter parse, which mdsmith already does.
 1. Extend the `KindAssignment` struct in
    `internal/config/` with
    `FieldsPresent []string`.
-2. Update the kind matcher in
-   `internal/config/kinds.go` (or wherever the
-   match logic lives) to AND `glob:` and
-   `fields-present:` within an entry.
+2. Update the kind matcher to AND `glob:` and
+   `fields-present:` within an entry. The match
+   logic lives in `resolveEffectiveKinds`
+   ([`internal/config/merge.go`](../internal/config/merge.go));
+   the provenance counterpart lives in
+   [`internal/config/provenance.go`](../internal/config/provenance.go).
 3. Define presence semantics: a non-null value
    in FM. Document and test the null case.
 4. Extend `mdsmith kinds <file>` output to

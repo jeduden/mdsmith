@@ -93,10 +93,10 @@ mdsmith backlinks --format json docs/api.md
 ]
 ```
 
-The struct shape matches existing
-`mdsmith query --format json` records.
-Agents already parsing query output can
-reuse the parser.
+The struct shape is one record per incoming
+link with `source`, `line`, `text`, `target`.
+Stable keys; agents can parse with a small
+schema.
 
 ### Filtering
 

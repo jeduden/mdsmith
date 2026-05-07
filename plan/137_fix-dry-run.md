@@ -109,7 +109,8 @@ unchanged. The new line in the summary
 ## Tasks
 
 1. Add `--dry-run` to the `fix` subcommand flag
-   set in `cmd/mdsmith/fix`.
+   set in
+   [`runFix` in `cmd/mdsmith/main.go`](../cmd/mdsmith/main.go).
 2. Gate the write step in the fix pipeline:
    build the fixed buffer as today, but on
    `--dry-run` skip the write and record the
