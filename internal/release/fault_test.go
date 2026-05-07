@@ -423,6 +423,32 @@ func TestCopyFileSourceMissing(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCopyDirFailsOnDstMkdir(t *testing.T) {
+	src := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(src, "a.txt"), []byte("x"), 0o644))
+	ff := newFakeFS()
+	ff.failOnMkdirAllCall = 1
+	err := NewWithFS(ff).copyDir(src, filepath.Join(t.TempDir(), "dst"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestCheckManifestWithoutVersionField(t *testing.T) {
+	// A manifest that exists but lacks a top-level "version"
+	// field should fall through to the "no version field"
+	// branch in checkManifest; without this test that branch
+	// is unreachable from the OS-only path.
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "editors/vscode/package.json"),
+		[]byte(`{"name":"x"}`), 0o644))
+
+	err := Check(root)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no version field found")
+}
+
 // fakeRunner is a Runner that returns errInjected on the Nth
 // call (1-indexed). Lets tests cover runPythonBuild and
 // retagWheels failure branches without requiring python on PATH.
