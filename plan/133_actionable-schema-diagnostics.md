@@ -192,10 +192,15 @@ additive.
 5. Replace structure-violation messages with
    `SchemaDiagnostic` instances. Same for
    `<?require filename:?>`.
-6. Add `Code: "MDS020"` and `Source: "mdsmith"`
-   on every emitted diagnostic. The LSP code
-   already does this in some paths; make it
-   consistent.
+6. Ensure every `SchemaDiagnostic` carries
+   `RuleID: "MDS020"` and `RuleName:
+   "required-structure"`. The LSP conversion
+   in
+   [`internal/lint/diagnostic.go`](../internal/lint/diagnostic.go)
+   already maps these onto the wire-level
+   `Code` and `Source` fields; this task makes
+   sure they are populated at emit time so the
+   LSP and JSON outputs stay consistent.
 7. Update fixtures in
    `internal/rules/MDS020-required-structure/bad/`
    so the front-matter assertions match the new
@@ -228,8 +233,11 @@ additive.
 - [ ] Missing sections, unexpected sections, and
       filename violations all use the same
       `field / actual / expected` shape.
-- [ ] Every emitted diagnostic carries `Code:
-      "MDS020"` and `Source: "mdsmith"`.
+- [ ] Every emitted diagnostic carries
+      `RuleID: "MDS020"` and
+      `RuleName: "required-structure"`, and the
+      LSP conversion preserves these as `Code`
+      and `Source` on the wire.
 - [ ] Schema reference (`schema: <file>:<line>`
       or `schema: kind <name> / schema:<line>` for
       inline) appears on every diagnostic.

@@ -114,11 +114,23 @@ kinds:
         homepage: url
 ```
 
-The loader recognizes the registered short names
-and rewrites them to the canonical CUE expression
-before unification. A name that is not registered
-falls through as a literal CUE expression — so
-`status: '"open" | "done"'` continues to work.
+The loader splits values into two cases:
+
+- **Bare name** — a YAML scalar that is a single
+  identifier (no quotes, no operators, no
+  whitespace). Must resolve in the registry, or
+  the loader rejects the config with an error
+  naming the field and the unknown name.
+- **Anything else** — values containing
+  operators, quotes, parentheses, or whitespace
+  — passes through as raw CUE. So
+  `status: '"open" | "done"'` continues to work
+  unchanged.
+
+The split keeps intent unambiguous. A typo on a
+bare shortcut surfaces early. A real CUE
+expression is never silently re-read as a
+shortcut.
 
 ### Composition with CUE
 
