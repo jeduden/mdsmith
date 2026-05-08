@@ -29,24 +29,26 @@ top in plans 142 and 143.
 
 ## Background
 
-Today MDS020 reads a `proto.md`: front matter
-holds CUE constraints, body is a flat heading
-template plus optional `<?require filename:?>`.
-Two limits: a small schema needs a separate
-file (gap **S-1**), and rule config is per
-file, not per section.
-
-This plan ships the inline-schema source, the
-recursive section tree, and the per-scope rule
-override. Plans 142 and 143 add content rules,
-cross-refs, acronyms, and index.
+MDS020 today: `proto.md` front matter holds CUE
+constraints, body is a flat heading template
+plus optional `<?require filename:?>`. Limits:
+a small schema needs a separate file (gap
+**S-1**), and rule config is per file, not per
+section. This plan ships the inline source,
+the recursive section tree, and the per-scope
+rule override; plans 142 and 143 add content
+rules, cross-refs, acronyms, and index. The
+choice of language for FM and body is the
+subject of an in-flight
+[schema-unification spike](../docs/research/schema-unification/spike.md);
+its recommendation folds back into this plan.
 
 ## Non-Goals
 
-- Content rules, cross-references, acronyms,
-  index. Plans 142 and 143.
+- Content rules, cross-refs, acronyms, index
+  (plans 142 / 143).
 - Auto-fix for new diagnostics.
-- Schema versioning. V-1.
+- Schema versioning (V-1).
 
 ## Design
 
@@ -286,18 +288,15 @@ not a parallel system.
       one extra `## Notes` section between
       `## Symptoms` and `## Diagnosis`
       passes).
-- [ ] A scope with `closed: true` flags an
-      unlisted heading and names it in the
-      diagnostic.
-- [ ] A `"..."` wildcard slot in `sections:`
-      tolerates unknown headings at that
-      position even under `closed: true`,
-      while still enforcing the surrounding
-      listed sections' order.
-- [ ] A document whose heading levels do not
-      match the schema's tree depth produces
-      a diagnostic naming the expected and
-      actual levels.
+- [ ] `closed: true` flags an unlisted
+      heading and names it.
+- [ ] A `"..."` wildcard slot tolerates
+      unknown headings at that position even
+      under `closed: true`, while enforcing
+      surrounding listed sections' order.
+- [ ] Mismatched heading depths flag a
+      diagnostic naming expected vs actual
+      levels.
 - [ ] A schema `rules:` block on a section
       applies the override to that section
       only (verified with same prose in two
