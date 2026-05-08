@@ -173,17 +173,13 @@ jobs:
           cache: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "20"
+          # Node 24 ships npm 11.x. npm Trusted Publishing
+          # requires npm >= 11.5; older CLIs silently fall back
+          # to token auth and the registry returns 404 for
+          # missing-credential publishes (404 instead of 401 so
+          # package existence isn't leaked).
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
-      - name: Upgrade npm
-        # Node 20 LTS ships npm 10.x. npm Trusted Publishing
-        # requires npm >= 11.5 — without it the CLI silently
-        # falls back to token auth and the registry returns 404
-        # (npm uses 404 instead of 401 for publishing-without-
-        # auth so package existence isn't leaked).
-        run: |
-          npm install -g npm@latest
-          npm --version
       - name: Stamp tracked manifests with the tag
         env:
           VERSION: ${{ github.ref_name }}
