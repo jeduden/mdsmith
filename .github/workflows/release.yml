@@ -180,6 +180,25 @@ jobs:
           # package existence isn't leaked).
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - name: Verify npm >= 11.5 for Trusted Publishing
+        # Defensive guardrail: even though Node 24 currently ships
+        # npm 11.x, a future Node 24 patch could bundle an older
+        # CLI. If npm < 11.5 the publish would silently 404.
+        run: |
+          actual=$(npm --version)
+          echo "npm version: $actual"
+          node -e '
+            const v = process.argv[1].split(".").map(Number);
+            const min = [11, 5, 0];
+            for (let i = 0; i < 3; i++) {
+              if (v[i] > min[i]) process.exit(0);
+              if (v[i] < min[i]) {
+                console.error("npm " + process.argv[1] +
+                  " is too old for Trusted Publishing (need >= 11.5.0)");
+                process.exit(1);
+              }
+            }
+          ' "$actual"
       - name: Stamp tracked manifests with the tag
         env:
           VERSION: ${{ github.ref_name }}
