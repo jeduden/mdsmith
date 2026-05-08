@@ -2,6 +2,7 @@ package release
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -731,8 +732,10 @@ func (r *wheelStagingRunner) RunCommand(dir, name string, args ...string) error 
 	if r.calls == 1 {
 		for i, a := range args {
 			if a == "--outdir" && i+1 < len(args) {
-				_ = os.WriteFile(filepath.Join(args[i+1], "fake.whl"),
-					[]byte("x"), 0o644)
+				if err := os.WriteFile(filepath.Join(args[i+1], "fake.whl"),
+					[]byte("x"), 0o644); err != nil {
+					return fmt.Errorf("wheelStagingRunner: stage fake wheel: %w", err)
+				}
 				break
 			}
 		}
