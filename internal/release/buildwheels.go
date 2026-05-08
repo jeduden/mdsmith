@@ -20,6 +20,14 @@ func pythonExecutable() string {
 	return "python3"
 }
 
+// absPath is a package-level indirection over filepath.Abs so
+// tests can drive its error branch — filepath.Abs only fails
+// when os.Getwd does, which is essentially unreachable from a
+// running test process. BuildWheels wraps absPath errors with
+// path context, and codecov flags those wraps as uncovered
+// without this seam.
+var absPath = filepath.Abs
+
 // wheelBuild pins one entry of the PyPI distribution matrix.
 // Stays in lock-step with the build matrix in
 // .github/workflows/release.yml.
@@ -49,7 +57,23 @@ var wheelBuilds = []wheelBuild{
 // hatchling build backend on PATH. Stamp must run first so
 // pyproject.toml carries the published version.
 func (t *Toolkit) BuildWheels(rootDir, artifactsDir, outDir string) error {
-	if err := t.fs.MkdirAll(outDir, 0o755); err != nil {
+	// Resolve outDir and artifactsDir to absolute paths up
+	// front. buildOneWheel runs `python -m build --outdir <…>`
+	// with cmd.Dir set to a staged temp tree, so a relative
+	// outDir would be interpreted by python relative to that
+	// temp dir — the wheel would land somewhere we never look,
+	// listWheels would return an empty slice, and (without the
+	// post-build guard) the workflow would silently move on
+	// with an empty python/dist before failing at publish time.
+	absOut, err := absPath(outDir)
+	if err != nil {
+		return fmt.Errorf("resolve outDir %q: %w", outDir, err)
+	}
+	absArtifacts, err := absPath(artifactsDir)
+	if err != nil {
+		return fmt.Errorf("resolve artifactsDir %q: %w", artifactsDir, err)
+	}
+	if err := t.fs.MkdirAll(absOut, 0o755); err != nil {
 		return err
 	}
 	src := filepath.Join(rootDir, "python")
@@ -57,7 +81,7 @@ func (t *Toolkit) BuildWheels(rootDir, artifactsDir, outDir string) error {
 		return fmt.Errorf("python source missing: %w", err)
 	}
 	for _, wb := range wheelBuilds {
-		if err := t.buildOneWheel(src, artifactsDir, outDir, wb); err != nil {
+		if err := t.buildOneWheel(src, absArtifacts, absOut, wb); err != nil {
 			return err
 		}
 	}
@@ -85,13 +109,33 @@ func (t *Toolkit) buildOneWheel(src, artifactsDir, outDir string, wb wheelBuild)
 	defer func() { _ = t.fs.RemoveAll(stage) }()
 
 	staging := filepath.Join(outDir, ".staging-"+wb.PlatTag)
+	// Wipe before mkdir so a stale `.staging-<plat>/` left over
+	// from a killed previous run cannot fool the post-build
+	// empty-wheel guard. RemoveAll on a missing path is a no-op.
+	if err := t.fs.RemoveAll(staging); err != nil {
+		return fmt.Errorf("wipe staging %s: %w", staging, err)
+	}
 	if err := t.fs.MkdirAll(staging, 0o755); err != nil {
-		return err
+		return fmt.Errorf("mkdir staging %s: %w", staging, err)
 	}
 	defer func() { _ = t.fs.RemoveAll(staging) }()
 
 	if err := t.runPythonBuild(stage, staging, wb.PlatTag); err != nil {
 		return err
+	}
+	// `python -m build --wheel` exits 0 even when, for whatever
+	// reason, no wheel actually lands in the staging directory.
+	// We can't catch that via Run() alone, and the empty-loop
+	// silence in retagWheels / moveWheels would let the workflow
+	// continue with an empty outDir and only fail later at
+	// publish-time. Verify here instead.
+	staged, err := t.listWheels(staging)
+	if err != nil {
+		return err
+	}
+	if len(staged) == 0 {
+		return fmt.Errorf("python -m build (%s) produced no wheel in %s",
+			wb.PlatTag, staging)
 	}
 	if err := t.retagWheels(staging, wb.PlatTag); err != nil {
 		return err
