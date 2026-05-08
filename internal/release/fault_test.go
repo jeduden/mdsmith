@@ -564,6 +564,79 @@ func TestCopyDirFailsOnEntryInfoError(t *testing.T) {
 	assert.ErrorIs(t, err, errInjected)
 }
 
+// recordingRunner captures the arguments of every RunCommand
+// call so a test can assert that downstream callers (e.g.
+// `python -m build --outdir <…>`) are invoked with absolute
+// paths. python interprets `--outdir` relative to its own
+// cwd, which we set to a staged temp tree; if outDir is
+// relative, the wheel lands somewhere we never look.
+type recordingRunner struct {
+	calls []recordedCall
+}
+
+type recordedCall struct {
+	dir  string
+	name string
+	args []string
+}
+
+func (r *recordingRunner) RunCommand(dir, name string, args ...string) error {
+	r.calls = append(r.calls, recordedCall{dir: dir, name: name, args: append([]string{}, args...)})
+	return nil
+}
+
+// TestBuildWheelsPassesAbsoluteOutdirToPython is a regression
+// for the "python/dist is empty after build" silent-failure.
+// `python -m build --outdir <…>` with cmd.Dir pointing at a
+// staged temp tree must receive an absolute --outdir;
+// otherwise python writes the wheel under <stage>/<relative>/
+// while the Go side reads from <repo-cwd>/<relative>/, finds
+// nothing, and the workflow skips happily to publish.
+func TestBuildWheelsPassesAbsoluteOutdirToPython(t *testing.T) {
+	root := t.TempDir()
+	fixtureManifests(t, root)
+	artifacts := filepath.Join(root, "artifacts")
+	fakeArtifacts(t, artifacts)
+	rec := &recordingRunner{}
+
+	// Run from a working directory where the relative outDir
+	// resolves predictably; chdir into a temp parent so the
+	// resulting absolute path is observable.
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	// Pass a relative outDir; the Toolkit must resolve it to
+	// absolute before invoking python.
+	err = NewWithDeps(osFS{}, rec).BuildWheels(root, artifacts, "rel-out")
+	// Build always errors since the recordingRunner doesn't
+	// actually create wheels — the empty-wheel guard fires on
+	// the first iteration. The recorded calls before that are
+	// what we verify.
+	require.Error(t, err)
+
+	require.NotEmpty(t, rec.calls, "no python invocations recorded")
+	// First recorded call should be `python -m build --wheel
+	// --outdir <abs>`. Find the --outdir arg and confirm it's
+	// absolute.
+	first := rec.calls[0]
+	idx := -1
+	for i, a := range first.args {
+		if a == "--outdir" {
+			idx = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, idx, "no --outdir flag in first invocation: %v", first.args)
+	require.Greater(t, len(first.args), idx+1, "--outdir has no value: %v", first.args)
+	outdir := first.args[idx+1]
+	assert.True(t, filepath.IsAbs(outdir),
+		"python -m build received relative --outdir %q; "+
+			"wheel would land under cmd.Dir not requested outDir",
+		outdir)
+}
+
 // TestBuildOneWheelFailsWhenPythonProducesNoWheel pins the
 // post-runPythonBuild guard: a Runner that exits 0 without
 // writing any .whl into staging must still fail buildOneWheel,
@@ -590,6 +663,39 @@ func TestBuildOneWheelFailsWhenPythonProducesNoWheel(t *testing.T) {
 	assert.Contains(t, err.Error(), "produced no wheel")
 }
 
+// TestBuildOneWheelWipesStaleStaging is a regression for stale
+// `.staging-<plat>/` left over by a killed previous run. Without
+// the pre-build wipe, listWheels would see the stale wheel,
+// the empty-wheel guard wouldn't fire, and retagWheels +
+// moveWheels would relabel and ship the stale artifact.
+func TestBuildOneWheelWipesStaleStaging(t *testing.T) {
+	src := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
+		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	asset := filepath.Join(t.TempDir(), "asset")
+	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
+	out := t.TempDir()
+	wb := wheelBuilds[0]
+
+	// Plant a stale wheel where buildOneWheel will create its
+	// staging dir. If the wipe is missing, listWheels finds it
+	// and the empty-wheel guard would NOT fire — buildOneWheel
+	// would happily move on, retag the stale wheel, and ship it.
+	staleStaging := filepath.Join(out, ".staging-"+wb.PlatTag)
+	require.NoError(t, os.MkdirAll(staleStaging, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(staleStaging, "stale.whl"),
+		[]byte("stale"), 0o644))
+
+	// Default fakeRunner exits 0 without writing anything new.
+	tk := NewWithDeps(osFS{}, &fakeRunner{})
+	err := tk.buildOneWheel(src, filepath.Dir(asset), out, wheelBuild{
+		Asset: filepath.Base(asset), PlatTag: wb.PlatTag, Exe: wb.Exe,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "produced no wheel",
+		"stale wheel must not satisfy the empty-wheel guard")
+}
+
 func TestBuildOneWheelPropagatesPythonFailure(t *testing.T) {
 	// Stage a real source tree so stagePythonTree succeeds, then
 	// fail on the first runner call (python -m build).
@@ -608,11 +714,39 @@ func TestBuildOneWheelPropagatesPythonFailure(t *testing.T) {
 	assert.ErrorIs(t, err, errInjected)
 }
 
-// preStageWheel sets up a real source tree, asset, and an
-// outDir/.staging-<plat>/fake.whl so buildOneWheel can reach
-// retagWheels and moveWheels without invoking real python.
-// Returns (src, artifactsDir, outDir, wheelBuild).
-func preStageWheel(t *testing.T) (string, string, string, wheelBuild) {
+// wheelStagingRunner is a fakeRunner that, on the first
+// `python -m build --outdir <dir>` invocation, drops a fake
+// `*.whl` into <dir> — mimicking what the real interpreter
+// produces. Lets tests reach retagWheels and moveWheels without
+// pre-staging a wheel (which would now be wiped by the
+// build-time RemoveAll).
+type wheelStagingRunner struct {
+	fakeRunner
+}
+
+func (r *wheelStagingRunner) RunCommand(dir, name string, args ...string) error {
+	r.calls++
+	// First call (python -m build): drop a fake.whl under
+	// --outdir so listWheels finds it on the next pass.
+	if r.calls == 1 {
+		for i, a := range args {
+			if a == "--outdir" && i+1 < len(args) {
+				_ = os.WriteFile(filepath.Join(args[i+1], "fake.whl"),
+					[]byte("x"), 0o644)
+				break
+			}
+		}
+	}
+	if r.failOnCall != 0 && r.calls == r.failOnCall {
+		return errInjected
+	}
+	return nil
+}
+
+// stageBuildOneWheelInputs sets up the (src, artifactsDir,
+// outDir, wheelBuild) inputs buildOneWheel expects without
+// pre-staging the staging dir — that's the runner's job now.
+func stageBuildOneWheelInputs(t *testing.T) (string, string, string, wheelBuild) {
 	t.Helper()
 	src := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
@@ -621,35 +755,33 @@ func preStageWheel(t *testing.T) (string, string, string, wheelBuild) {
 	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
 	out := t.TempDir()
 	wb := wheelBuilds[0]
-	staging := filepath.Join(out, ".staging-"+wb.PlatTag)
-	require.NoError(t, os.MkdirAll(staging, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(staging, "fake.whl"),
-		[]byte("x"), 0o644))
 	return src, filepath.Dir(asset), out, wheelBuild{
 		Asset: filepath.Base(asset), PlatTag: wb.PlatTag, Exe: wb.Exe,
 	}
 }
 
 func TestBuildOneWheelPropagatesRetagFailure(t *testing.T) {
-	// runPythonBuild succeeds (call 1); retagWheels finds the
-	// pre-staged wheel and invokes the runner for `wheel tags`,
-	// which we fail (call 2).
-	src, artifacts, out, wb := preStageWheel(t)
-	tk := NewWithDeps(osFS{}, &fakeRunner{failOnCall: 2})
+	// runPythonBuild succeeds AND drops a wheel (call 1);
+	// retagWheels finds it and invokes the runner for `wheel
+	// tags`, which we fail (call 2).
+	src, artifacts, out, wb := stageBuildOneWheelInputs(t)
+	tk := NewWithDeps(osFS{}, &wheelStagingRunner{
+		fakeRunner: fakeRunner{failOnCall: 2},
+	})
 	err := tk.buildOneWheel(src, artifacts, out, wb)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errInjected)
 }
 
 func TestBuildOneWheelPropagatesMoveFailure(t *testing.T) {
-	// runner succeeds for both python invocations; FS.Rename
-	// fails when moveWheels tries to move the pre-staged wheel,
-	// covering the buildOneWheel branch that returns moveWheels'
-	// error.
-	src, artifacts, out, wb := preStageWheel(t)
+	// runner succeeds for both python invocations and drops a
+	// wheel during the first call; FS.Rename fails when
+	// moveWheels tries to move the now-real wheel, covering the
+	// buildOneWheel branch that returns moveWheels' error.
+	src, artifacts, out, wb := stageBuildOneWheelInputs(t)
 	ff := newFakeFS()
 	ff.failOnRenameCall = 1
-	tk := NewWithDeps(ff, &fakeRunner{})
+	tk := NewWithDeps(ff, &wheelStagingRunner{})
 	err := tk.buildOneWheel(src, artifacts, out, wb)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errInjected)
