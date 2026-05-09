@@ -323,10 +323,13 @@ jobs:
         # workflow file at this exact tag, so an attacker who
         # rewrites checksums.txt on the release page can't also
         # forge a matching signature without compromising
-        # release.yml on this repo. Verify with:
+        # release.yml on this repo. The bundle file carries both
+        # the signature and the signing certificate; cosign 3.x
+        # deprecated the separate --output-signature /
+        # --output-certificate flags in favor of --bundle.
+        # Verify with:
         #   cosign verify-blob \
-        #     --certificate checksums.txt.pem \
-        #     --signature checksums.txt.sig \
+        #     --bundle checksums.txt.bundle \
         #     --certificate-identity-regexp \
         #       "^https://github.com/jeduden/mdsmith/.github/workflows/release.yml@" \
         #     --certificate-oidc-issuer \
@@ -336,8 +339,7 @@ jobs:
           COSIGN_YES: "true"
         run: |
           cosign sign-blob \
-            --output-signature checksums.txt.sig \
-            --output-certificate checksums.txt.pem \
+            --bundle checksums.txt.bundle \
             checksums.txt
       - name: Create release
         env:
@@ -348,8 +350,7 @@ jobs:
           files: |
             mdsmith-*
             checksums.txt
-            checksums.txt.sig
-            checksums.txt.pem
+            checksums.txt.bundle
 
   smoke-test:
     # Wait until every channel is on the new version before checking
