@@ -47,6 +47,8 @@ footer: |
 | 133 | 🔲     | sonnet | [LSP hover for rule and directive docs](plan/133_lsp-hover.md)                                                                        |
 | 134 | 🔲     | sonnet | [LSP completion for anchors, refs, kinds, and directive args](plan/134_lsp-completion.md)                                             |
 | 145 | 🔲     | opus   | [Publish mdsmith via asdf and mise registry submissions](plan/145_asdf-mise-registry-submissions.md)                                  |
+| 151 | 🔲     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                                           |
+| 152 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/152_claude-code-skills-agents-hooks.md)                                  |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                            |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                                          |
 | 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                                      |
