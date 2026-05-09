@@ -1,8 +1,10 @@
 ---
 name: gh-resolve-threads
 description: >-
-  Resolve pull request review threads using the gh
-  CLI. MUST use this skill whenever you need to
+  Canonical workflow for resolving pull request review
+  threads via the gh CLI — single source of truth that
+  other skills (e.g. pr-fixup) should defer to instead
+  of duplicating. MUST use whenever you need to
   resolve, fetch, or interact with PR review threads.
   GitHub MCP CANNOT resolve review threads and CANNOT
   retrieve thread IDs — do NOT attempt GitHub MCP for
@@ -10,8 +12,6 @@ description: >-
   threads", "mark as resolved", "address review
   comments", "clean up the PR", "which comments are
   still open", or any reference to PR review feedback.
-  If already in the pr-fixup skill, still follow these
-  steps for thread resolution — do not improvise.
 user-invocable: true
 allowed-tools: >-
   Bash(gh pr:*), Bash(gh api:*), Bash(gh auth:*),
@@ -87,15 +87,19 @@ cp /tmp/gh_2.92.0_linux_amd64/bin/gh /usr/local/bin/gh
 ```
 
 Or use `$HOME/.local/bin/gh` for a user-local install
-(no root needed; ensure that directory is on `$PATH`):
+(no root needed; ensure that directory is on `$PATH`).
+Make sure the directory exists first:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+```
 
 ```bash
 cp /tmp/gh_2.92.0_linux_amd64/bin/gh "$HOME/.local/bin/gh"
 ```
 
-```bash
-gh auth login --with-token <<< "${GITHUB_TOKEN}"
-```
+Authentication is handled by the trailing
+"Authenticate if needed" block.
 
 If that fails (redirect blocked), try apt. Each line
 is its own Bash call:
@@ -104,8 +108,13 @@ is its own Bash call:
 type -p wget >/dev/null
 ```
 
-If that exits non-zero, install wget first (separate
-block so `apt-get` is the leading command):
+If that exits non-zero, refresh the package index then
+install wget (separate blocks so each leading command
+is allowlisted):
+
+```bash
+apt-get update
+```
 
 ```bash
 apt-get install wget -y
