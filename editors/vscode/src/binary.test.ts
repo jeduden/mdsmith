@@ -1,4 +1,7 @@
 // Unit tests for binary resolution logic.
+// The extension bundles a cross-platform mdsmith binary that works on
+// all platforms from a single .vsix install; these tests verify the
+// fallback behavior when bundling fails.
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { existsSync } from "node:fs";

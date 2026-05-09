@@ -1,17 +1,22 @@
 // Binary resolution logic for the mdsmith extension.
-// Resolves the mdsmith binary path, trying the bundled version as a
-// fallback when the user-configured path is the bare "mdsmith" string.
+// The extension bundles a cross-platform mdsmith binary from npm that
+// works on all supported platforms (Linux, macOS, Windows) via a single
+// .vsix install. This module resolves the bundled binary when the user
+// leaves the default "mdsmith" path, falling back to PATH if bundling
+// failed.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 // resolveBinary returns the path to the mdsmith binary. When the
-// configured path is the bare string "mdsmith", it first checks
-// whether the optional @mdsmith/cli dependency bundled a binary into
-// node_modules/.bin/mdsmith (or the platform-specific wrapper). If
-// that file exists, return its absolute path. Otherwise return the
-// configured path unchanged so the LanguageClient spawns it and
-// lets the shell resolve it against PATH (the original behavior).
+// configured path is the bare string "mdsmith", it first checks for
+// the bundled binary at node_modules/.bin/mdsmith (Unix) or
+// node_modules/.bin/mdsmith.cmd (Windows). The @mdsmith/cli npm package
+// ships with platform-specific binaries as optional dependencies, so
+// a single extension install works on all platforms. If the bundled
+// binary exists, return its absolute path. Otherwise return the
+// configured path unchanged so the LanguageClient resolves it against
+// PATH (fallback for proxy/offline install failures).
 //
 // The extensionPath should be the vscode.ExtensionContext.extensionPath
 // (the directory containing package.json and node_modules/).
@@ -22,12 +27,13 @@ export function resolveBinary(configuredPath: string, extensionPath: string): st
     return configuredPath;
   }
 
-  // The user left the default "mdsmith". Check whether the optional
-  // dependency installed a bundled binary. @mdsmith/cli's bin wrapper
-  // lives at node_modules/.bin/mdsmith (Unix) or
-  // node_modules/.bin/mdsmith.cmd (Windows). Node package managers
-  // (npm, pnpm, yarn, bun) all populate .bin/ symlinks/wrappers for
-  // bin entries; we can rely on that convention.
+  // The user left the default "mdsmith". Check for the bundled binary
+  // from @mdsmith/cli. The npm package ships with platform-specific
+  // binaries (linux-x64, darwin-arm64, win32-x64, etc.) as optional
+  // dependencies; npm installs the correct one for the current platform
+  // during extension install. The bin wrapper lives at
+  // node_modules/.bin/mdsmith (Unix) or node_modules/.bin/mdsmith.cmd
+  // (Windows). This works across all platforms with a single .vsix.
   const binDir = join(extensionPath, "node_modules", ".bin");
   const unixBin = join(binDir, "mdsmith");
   const winBin = join(binDir, "mdsmith.cmd");

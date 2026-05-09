@@ -10,11 +10,11 @@ runs `mdsmith fix` on the whole buffer.
 ## Prerequisites
 
 - **VS Code 1.85 or later.**
-- **The `mdsmith` binary** — the extension bundles the binary
-  from npm as an optional dependency, so no separate install
-  is required in most cases. If the bundled binary fails to
-  install (corporate proxies, offline environments), you can
-  still install `mdsmith` manually:
+- **The `mdsmith` binary** — the extension bundles a cross-platform
+  binary from npm that works on Linux, macOS, and Windows from a
+  single extension install. No separate binary install is required in
+  most cases. If the bundled binary fails to install (corporate
+  proxies, offline environments), you can install `mdsmith` manually:
   - `npm install -g @mdsmith/cli`
   - `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`
   - Download from the
@@ -31,7 +31,7 @@ code --install-extension mdsmith-<version>.vsix
 
 | Setting                | Default     | Purpose                                                                                                                      |
 |------------------------|-------------|------------------------------------------------------------------------------------------------------------------------------|
-| `mdsmith.path`         | `"mdsmith"` | Binary path; defaults to bundled binary. Falls back to PATH resolution. Set absolute path if needed (e.g. `/go/bin/mdsmith`) |
+| `mdsmith.path`         | `"mdsmith"` | Binary path; defaults to bundled cross-platform binary. Falls back to PATH resolution. Set absolute path if needed (e.g. `/go/bin/mdsmith`) |
 | `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                    |
 | `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                                                   |
 | `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                                        |
