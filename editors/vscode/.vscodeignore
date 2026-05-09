@@ -5,8 +5,5 @@ tsconfig.json
 build.ts
 bun.lock
 node_modules/**
-!node_modules/.bin/mdsmith
-!node_modules/.bin/mdsmith.cmd
-!node_modules/@mdsmith/**
 **/*.map
 **/*.ts

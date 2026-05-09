@@ -2,8 +2,10 @@
 // Bundles src/extension.ts into dist/extension.js as a single CJS
 // file consumed by VS Code, marking `vscode` as external because
 // the host supplies it at runtime.
+// Also copies platform binaries from @mdsmith/* packages into dist/bin/
+// so they can be bundled in the .vsix (even with --no-dependencies).
 
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const args = Bun.argv.slice(2);
@@ -21,6 +23,47 @@ const stagedLicense = join(import.meta.dir, "LICENSE");
 if (existsSync(repoLicense)) {
   copyFileSync(repoLicense, stagedLicense);
 }
+
+// Copy platform binaries from @mdsmith/* packages into dist/bin/
+// so they ship in the .vsix even with vsce package --no-dependencies.
+// The npm packages install as optional dependencies; when present,
+// bundle them. When absent (offline install, proxy), the extension
+// falls back to PATH resolution.
+function copyPlatformBinaries() {
+  const distBin = join(import.meta.dir, "dist", "bin");
+  mkdirSync(distBin, { recursive: true });
+
+  // Platform packages that @mdsmith/cli declares as optionalDependencies
+  const platforms = [
+    { pkg: "@mdsmith/linux-x64", binary: "mdsmith" },
+    { pkg: "@mdsmith/linux-arm64", binary: "mdsmith" },
+    { pkg: "@mdsmith/darwin-x64", binary: "mdsmith" },
+    { pkg: "@mdsmith/darwin-arm64", binary: "mdsmith" },
+    { pkg: "@mdsmith/win32-x64", binary: "mdsmith.exe" },
+  ];
+
+  let copied = 0;
+  for (const { pkg, binary } of platforms) {
+    const srcBin = join(import.meta.dir, "node_modules", pkg, "bin", binary);
+    if (existsSync(srcBin)) {
+      const destBin = join(distBin, `${pkg.replace("@mdsmith/", "")}-${binary}`);
+      copyFileSync(srcBin, destBin);
+      copied++;
+    }
+  }
+
+  if (copied > 0) {
+    console.log(`copied ${copied} platform binary/binaries → dist/bin/`);
+  } else {
+    console.warn(
+      "warning: no platform binaries found in node_modules/@mdsmith/; " +
+      "extension will fall back to PATH resolution. Run `npm install` " +
+      "to bundle binaries."
+    );
+  }
+}
+
+copyPlatformBinaries();
 
 const config: Parameters<typeof Bun.build>[0] = {
   entrypoints: ["src/extension.ts"],
