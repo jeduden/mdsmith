@@ -31,6 +31,14 @@ jobs:
         uses: github/codeql-action/upload-sarif@5c8a8a642e79153f5d047b10ec1cba1d1cc65699 # v3
         with:
           sarif_file: results.sarif
+      # `zizmor --format sarif` always exits 0 so the SARIF reaches
+      # the upload step. Re-run in text mode after the upload to
+      # exit 13 on any finding, which fails the job and blocks the
+      # PR. Use if: always() so a fork PR (where the upload step is
+      # skipped) still gates on findings.
+      - name: Fail on findings
+        if: always()
+        run: zizmor .
 
   lint:
     runs-on: ubuntu-latest

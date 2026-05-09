@@ -16,6 +16,12 @@ concurrency:
   group: merge-queue
   cancel-in-progress: false
 
+# Only merge-queue-action below needs MERGE_QUEUE_TOKEN's elevated
+# scope; the rest of the job runs under the default GITHUB_TOKEN
+# capped at read-only.
+permissions:
+  contents: read
+
 jobs:
   queue:
     runs-on: ubuntu-latest
@@ -23,7 +29,11 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          token: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          # Default GITHUB_TOKEN (constrained by the permissions: block
+          # above) is enough for read-only checkout. MERGE_QUEUE_TOKEN
+          # stays scoped to the merge-queue-action step that actually
+          # needs branch-protection bypass.
+          persist-credentials: false
 
       - name: Install mdsmith merge driver and pre-merge-commit hook
         env:
