@@ -130,11 +130,48 @@ move the binary onto `$PATH`:
 
 ```bash
 base="https://github.com/jeduden/mdsmith/releases/latest/download"
-curl -L -o mdsmith       "$base/mdsmith-linux-amd64"
-curl -L -o checksums.txt "$base/checksums.txt"
+curl -L -o mdsmith-linux-amd64 "$base/mdsmith-linux-amd64"
+curl -L -o checksums.txt       "$base/checksums.txt"
 sha256sum -c <(grep mdsmith-linux-amd64 checksums.txt)
-install -m 0755 mdsmith /usr/local/bin/mdsmith
+install -m 0755 mdsmith-linux-amd64 /usr/local/bin/mdsmith
 ```
+
+Keep the binary saved under its release-asset name
+(`mdsmith-linux-amd64`) until verification is done —
+both `sha256sum -c` and `gh attestation verify` below
+match local files against that exact name. `install`
+copies the file rather than moving it, so the original
+remains for the verification steps.
+
+For supply-chain-sensitive deployments, the release
+also ships a SLSA build provenance attestation per
+binary and a Sigstore signature on `checksums.txt`.
+Verify the provenance with `gh`:
+
+```bash
+gh attestation verify mdsmith-linux-amd64 \
+  -R jeduden/mdsmith
+```
+
+Verify the checksums-file signature with `cosign`:
+
+```bash
+curl -L -o checksums.txt.sig "$base/checksums.txt.sig"
+curl -L -o checksums.txt.pem "$base/checksums.txt.pem"
+cosign verify-blob \
+  --certificate checksums.txt.pem \
+  --signature   checksums.txt.sig \
+  --certificate-identity-regexp \
+    "^https://github.com/jeduden/mdsmith/.github/workflows/release.yml@" \
+  --certificate-oidc-issuer \
+    https://token.actions.githubusercontent.com \
+  checksums.txt
+```
+
+Both verifications resolve through the workflow's
+GitHub OIDC identity, so a forged binary or rewritten
+checksums file fails verification unless the attacker
+also controls `release.yml` on `jeduden/mdsmith`.
 
 This path is also the documented fallback if any of
 the package channels above is unavailable on a given
