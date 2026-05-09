@@ -19,6 +19,11 @@ import {
   startupErrorMessage
 } from "./wiring";
 import { resolveBinary } from "./binary";
+import { runFixWorkspace } from "./commands/fix-workspace";
+import { runInit } from "./commands/init";
+import { runMergeDriverInstall } from "./commands/merge-driver";
+import { runKindsResolve, runKindsWhy, makeKindsContentProvider } from "./commands/kinds";
+import { KINDS_SCHEME } from "./commands/virtual-doc";
 
 let client: LanguageClient | undefined;
 // Track the .mdsmith.yml file watcher across the activate /
@@ -37,6 +42,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("mdsmith.restartServer", () => restartServer(context)),
     vscode.commands.registerCommand("mdsmith.showOutput", () => showOutput())
   );
+
+  registerPaletteCommands(context);
 
   // Wire fix-on-save once. The handler reads the setting on every
   // save so toggling the option does not require a restart.
@@ -234,6 +241,179 @@ async function promptRestartAfterRepeatedFailures(): Promise<void> {
   } else if (choice === "Show Output") {
     showOutput();
   }
+}
+
+// getOutputChannel lazily accesses the output channel that the
+// LanguageClient registers under "mdsmith". Falls back to creating a
+// standalone channel when the client is not running so palette commands
+// can still surface stderr.
+let standaloneOutputChannel: vscode.OutputChannel | undefined;
+
+function getOutputChannel(): vscode.OutputChannel {
+  if (client?.outputChannel) return client.outputChannel;
+  if (!standaloneOutputChannel) {
+    standaloneOutputChannel = vscode.window.createOutputChannel("mdsmith");
+  }
+  return standaloneOutputChannel;
+}
+
+// resolveActiveBinary reads `mdsmith.path` at call time so the palette
+// commands pick up config edits without a window reload.
+function resolveActiveBinary(extensionPath: string): string {
+  const cfg = vscode.workspace.getConfiguration("mdsmith");
+  return resolveBinary(cfg.get<string>("path", "mdsmith"), extensionPath);
+}
+
+// registerPaletteCommands wires the five mdsmith.* palette commands and
+// registers the mdsmith-kinds: virtual-document scheme. Called once from
+// activate(); the trust-gated commands also subscribe to
+// onDidGrantWorkspaceTrust so they appear without a reload.
+function registerPaletteCommands(context: vscode.ExtensionContext): void {
+  const getBinary = () => resolveActiveBinary(context.extensionPath);
+  const getWorkspaceRoot = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const isTrusted = () => vscode.workspace.isTrusted;
+
+  const outputDeps = () => ({
+    appendOutput: (text: string) => {
+      const ch = getOutputChannel();
+      ch.append(text);
+    },
+    showOutput: () => getOutputChannel().show(true),
+  });
+
+  const confirmDestructive = (label: string) => async () => {
+    const answer = await vscode.window.showWarningMessage(
+      `Run \`${label}\` in the workspace? This will modify files.`,
+      { modal: true },
+      "Proceed"
+    );
+    return answer === "Proceed";
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mdsmith.init", async () => {
+      const od = outputDeps();
+      await runInit({
+        binary: getBinary(),
+        workspaceRoot: getWorkspaceRoot(),
+        showInfo: (msg, ...buttons) =>
+          vscode.window.showInformationMessage(msg, ...buttons),
+        showError: (msg) => vscode.window.showErrorMessage(msg).then(() => {}),
+        ...od,
+      });
+    }),
+
+    vscode.commands.registerCommand("mdsmith.mergeDriver.install", async () => {
+      const od = outputDeps();
+      await runMergeDriverInstall({
+        binary: getBinary(),
+        workspaceRoot: getWorkspaceRoot(),
+        isTrusted,
+        confirm: confirmDestructive("mdsmith merge-driver install"),
+        showInfo: (msg, ...buttons) =>
+          vscode.window.showInformationMessage(msg, ...buttons),
+        showError: (msg) => vscode.window.showErrorMessage(msg).then(() => {}),
+        ...od,
+      });
+    }),
+
+    vscode.commands.registerCommand("mdsmith.fixWorkspace", async () => {
+      const od = outputDeps();
+      await runFixWorkspace({
+        binary: getBinary(),
+        workspaceRoot: getWorkspaceRoot(),
+        isTrusted,
+        confirm: confirmDestructive("mdsmith fix ."),
+        showInfo: (msg, ...buttons) =>
+          vscode.window.showInformationMessage(msg, ...buttons),
+        showError: (msg) => vscode.window.showErrorMessage(msg).then(() => {}),
+        ...od,
+      });
+    }),
+
+    vscode.commands.registerCommand("mdsmith.kinds.resolve", async () => {
+      await runKindsResolve({
+        binary: getBinary(),
+        workspaceRoot: getWorkspaceRoot(),
+        getActiveFilePath: () =>
+          vscode.window.activeTextEditor?.document.uri.fsPath,
+        getDiagnostics: (filePath) =>
+          vscode.languages.getDiagnostics(vscode.Uri.file(filePath)),
+        pickRule: async (rules) =>
+          vscode.window.showQuickPick(rules, {
+            placeHolder: "Pick a rule ID (no diagnostics — enter any rule ID)",
+          }),
+        openVirtualDoc: async (uri) => {
+          const doc = await vscode.workspace.openTextDocument(
+            vscode.Uri.parse(uri)
+          );
+          await vscode.window.showTextDocument(doc, {
+            preview: true,
+            viewColumn: vscode.ViewColumn.Beside,
+          });
+        },
+        showError: (msg) => vscode.window.showErrorMessage(msg).then(() => {}),
+      });
+    }),
+
+    vscode.commands.registerCommand("mdsmith.kinds.why", async () => {
+      await runKindsWhy({
+        binary: getBinary(),
+        workspaceRoot: getWorkspaceRoot(),
+        getActiveFilePath: () =>
+          vscode.window.activeTextEditor?.document.uri.fsPath,
+        getDiagnostics: (filePath) =>
+          vscode.languages.getDiagnostics(vscode.Uri.file(filePath)),
+        pickRule: async (rules) => {
+          const items =
+            rules.length > 0
+              ? rules
+              : await vscode.window.showInputBox({
+                  prompt: "No active diagnostics. Enter a rule ID (e.g. MDS001)",
+                  placeHolder: "MDS001",
+                }).then((v) => (v ? [v] : []));
+          if (!items || items.length === 0) return undefined;
+          if (items.length === 1) return items[0];
+          return vscode.window.showQuickPick(items, {
+            placeHolder: "Pick a rule to explain",
+          });
+        },
+        openVirtualDoc: async (uri) => {
+          const doc = await vscode.workspace.openTextDocument(
+            vscode.Uri.parse(uri)
+          );
+          await vscode.window.showTextDocument(doc, {
+            preview: true,
+            viewColumn: vscode.ViewColumn.Beside,
+          });
+        },
+        showError: (msg) => vscode.window.showErrorMessage(msg).then(() => {}),
+      });
+    }),
+
+    // Register the virtual document provider for the mdsmith-kinds: scheme.
+    vscode.workspace.registerTextDocumentContentProvider(
+      KINDS_SCHEME,
+      {
+        provideTextDocumentContent: (uri: vscode.Uri) => {
+          const provider = makeKindsContentProvider(
+            getBinary(),
+            getWorkspaceRoot()
+          );
+          return provider.provideTextDocumentContent(uri.toString());
+        },
+      }
+    ),
+
+    // Reveal the trust-gated commands without a reload when trust is granted.
+    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      void vscode.commands.executeCommand(
+        "setContext",
+        "mdsmith.workspaceTrusted",
+        true
+      );
+    })
+  );
 }
 
 export async function deactivate(): Promise<void> {

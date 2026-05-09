@@ -28,6 +28,16 @@
   "activationEvents": [
     "onLanguage:markdown"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Diagnostics work in restricted mode. Commands that modify files outside the editor are disabled until the workspace is trusted.",
+      "restrictedConfigurations": [
+        "mdsmith.path",
+        "mdsmith.config"
+      ]
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -39,8 +49,53 @@
         "command": "mdsmith.showOutput",
         "title": "Show Output Channel",
         "category": "mdsmith"
+      },
+      {
+        "command": "mdsmith.init",
+        "title": "Initialize config",
+        "category": "mdsmith"
+      },
+      {
+        "command": "mdsmith.mergeDriver.install",
+        "title": "Install Git merge driver",
+        "category": "mdsmith"
+      },
+      {
+        "command": "mdsmith.fixWorkspace",
+        "title": "Fix all Markdown",
+        "category": "mdsmith"
+      },
+      {
+        "command": "mdsmith.kinds.why",
+        "title": "Explain rule on this file",
+        "category": "mdsmith"
+      },
+      {
+        "command": "mdsmith.kinds.resolve",
+        "title": "Show resolved config",
+        "category": "mdsmith"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "mdsmith.mergeDriver.install",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "mdsmith.fixWorkspace",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "mdsmith.kinds.why",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "mdsmith.kinds.resolve",
+          "when": "editorLangId == markdown"
+        }
+      ]
+    },
     "configuration": {
       "title": "mdsmith",
       "properties": {

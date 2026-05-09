@@ -198,13 +198,51 @@ CLI, file an issue.
 
 ## Commands
 
-The extension contributes two commands available in the
-Command Palette under the `mdsmith:` category:
+The extension contributes commands available in the
+Command Palette under the `mdsmith:` category.
+
+### Server commands
 
 | Command                            | Action                                                                                                                                                                 |
 |------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `mdsmith: Restart Language Server` | Stop the LSP client and spawn a fresh one. Use after editing `mdsmith.path`, rebuilding the binary, or recovering from a startup failure without reloading the window. |
 | `mdsmith: Show Output Channel`     | Reveal the "mdsmith" Output channel where the client logs RPC traffic and the server's stderr. Quickest way to read a startup error.                                   |
+
+### Palette commands
+
+| Command                              | Requires trust | Action                                                                      |
+|--------------------------------------|:--------------:|-----------------------------------------------------------------------------|
+| `mdsmith: Initialize config`         |                | Run `mdsmith init` in the workspace root to create `.mdsmith.yml`.          |
+| `mdsmith: Install Git merge driver`  | yes            | Run `mdsmith merge-driver install` after a confirmation dialog.             |
+| `mdsmith: Fix all Markdown`          | yes            | Run `mdsmith fix .` against the workspace; show a fixed-of-total summary.   |
+| `mdsmith: Explain rule on this file` |                | Pick a rule; open `mdsmith kinds why <file> <rule> --json` in a side panel. |
+| `mdsmith: Show resolved config`      |                | Open `mdsmith kinds resolve <file> --json` in a side panel.                 |
+
+`mdsmith: Fix all Markdown` and `mdsmith: Install Git merge driver`
+are hidden from the palette in untrusted workspaces and show a
+confirmation dialog before modifying files.
+
+`mdsmith: Explain rule on this file` and
+`mdsmith: Show resolved config` are visible only when a Markdown
+file is active. Both open a read-only Markdown panel populated
+from JSON output; closing the panel discards the buffer.
+
+### CLI-subcommand coverage
+
+| mdsmith subcommand | Editor entry point                        |
+|--------------------|-------------------------------------------|
+| `check`            | Inline diagnostics (squiggles)            |
+| `fix`              | Code actions; `mdsmith: Fix all Markdown` |
+| `lsp`              | Extension spawns automatically            |
+| `init`             | `mdsmith: Initialize config`              |
+| `merge-driver`     | `mdsmith: Install Git merge driver`       |
+| `kinds resolve`    | `mdsmith: Show resolved config`           |
+| `kinds why`        | `mdsmith: Explain rule on this file`      |
+| `help` (rules)     | Hover (plan 133)                          |
+| `archetypes`       | CLI only                                  |
+| `metrics`          | CLI only                                  |
+| `query`            | CLI only                                  |
+| `version`          | CLI only                                  |
 
 ## Troubleshooting
 

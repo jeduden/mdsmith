@@ -1,7 +1,7 @@
 ---
 id: 122
 title: VS Code palette commands
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   A small set of VS Code command-palette entries —
@@ -148,31 +148,31 @@ feedback.
 
 ## Tasks
 
-1. Register the five palette commands in
+1. [x] Register the five palette commands in
    `editors/vscode/package.json`. Add one handler
    per command in `editors/vscode/src/commands/`.
    Each spawns the binary, surfaces stderr, and
    shows a notification on non-zero exit.
-2. Implement `mdsmith.fixWorkspace`. Run
+2. [x] Implement `mdsmith.fixWorkspace`. Run
    `mdsmith fix .` from the workspace root. Parse
    the `stats:` line from stderr (see
    `printRunStats`). Show a notification with the
    fixed-of-total count. Cover with a VS Code
    extension test that mocks the child process.
-3. Implement `mdsmith.kinds.why` and
+3. [x] Implement `mdsmith.kinds.why` and
    `mdsmith.kinds.resolve` against the
    `mdsmith-kinds:` virtual document scheme.
    Register a `TextDocumentContentProvider` that
    returns the JSON output rendered as Markdown.
-4. Update the VS Code guide
+4. [x] Update the VS Code guide
    `docs/guides/editors/vscode.md` (created in
    plan 121) with one section per palette command.
-5. Add a CLI-subcommand table to
+5. [x] Add a CLI-subcommand table to
    `docs/guides/editors/vscode.md` listing every
    subcommand and its editor entry point. Mark
    `archetypes`, `metrics`, `query`, and `version`
    as "CLI only".
-6. Wire workspace trust per the design above. Add
+6. [x] Wire workspace trust per the design above. Add
    the `capabilities.untrustedWorkspaces` block to
    `editors/vscode/package.json`. Gate the
    `fixWorkspace` and `mergeDriver.install` menu
@@ -184,33 +184,33 @@ feedback.
 
 ## Acceptance Criteria
 
-- [ ] The command palette lists the five
+- [x] The command palette lists the five
       `mdsmith.*` commands in a workspace with a
       Markdown file open.
-- [ ] `mdsmith: Fix all Markdown` runs through a
+- [x] `mdsmith: Fix all Markdown` runs through a
       confirmation dialog, executes
       `mdsmith fix .`, and shows the fixed-count
       notification.
-- [ ] `mdsmith: Explain rule on this file` opens a
+- [x] `mdsmith: Explain rule on this file` opens a
       virtual document with the kinds-why output
       for the selected rule.
-- [ ] No CodeLens, status-bar item, or
+- [x] No CodeLens, status-bar item, or
       activity-bar container is registered by the
       extension (verified by a CI grep on
       `editors/vscode/package.json`).
-- [ ] All tests pass: `go test ./...` and
+- [x] All tests pass: `go test ./...` and
       `npm test` inside `editors/vscode/`.
-- [ ] `go tool golangci-lint run` reports no
+- [x] `go tool golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes (subject to plan
+- [x] `mdsmith check .` passes (subject to plan
       121's open question about `editors/**`
       exclusion).
-- [ ] Opening an untrusted workspace hides the
+- [x] Opening an untrusted workspace hides the
       `mdsmith.fixWorkspace` and
       `mdsmith.mergeDriver.install` palette
       entries; granting trust reveals them
       without a reload.
-- [ ] An untrusted workspace cannot redirect
+- [x] An untrusted workspace cannot redirect
       `mdsmith.path` or `mdsmith.config`; the
       extension uses the user-level value.
 
