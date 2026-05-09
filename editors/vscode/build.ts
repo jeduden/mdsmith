@@ -3,9 +3,10 @@
 // file consumed by VS Code, marking `vscode` as external because
 // the host supplies it at runtime.
 // Also copies platform binaries from @mdsmith/* packages into dist/bin/
-// so they can be bundled in the .vsix (even with --no-dependencies).
+// when available. Note: npm platform packages have os/cpu constraints,
+// so only the host platform binary will be bundled.
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const args = Bun.argv.slice(2);
@@ -25,15 +26,18 @@ if (existsSync(repoLicense)) {
 }
 
 // Copy platform binaries from @mdsmith/* packages into dist/bin/
-// so they ship in the .vsix even with vsce package --no-dependencies.
-// The npm packages install as optional dependencies; when present,
-// bundle them. When absent (offline install, proxy), the extension
-// falls back to PATH resolution.
+// when available. Note: The @mdsmith/* platform packages have os/cpu
+// constraints, so npm only installs the package matching the build
+// host's platform. This means only the host platform binary will be
+// bundled (typically linux-x64 in CI). Other platforms fall back to
+// PATH resolution.
 function copyPlatformBinaries() {
   const distBin = join(import.meta.dir, "dist", "bin");
   mkdirSync(distBin, { recursive: true });
 
-  // Platform packages that @mdsmith/cli declares as optionalDependencies
+  // Platform packages that @mdsmith/cli declares as optionalDependencies.
+  // Only the host platform package will actually be installed due to
+  // os/cpu constraints.
   const platforms = [
     { pkg: "@mdsmith/linux-x64", binary: "mdsmith" },
     { pkg: "@mdsmith/linux-arm64", binary: "mdsmith" },
@@ -57,7 +61,7 @@ function copyPlatformBinaries() {
   } else {
     console.warn(
       "warning: no platform binaries found in node_modules/@mdsmith/; " +
-      "extension will fall back to PATH resolution. Run `npm install` " +
+      "extension will fall back to PATH resolution. Run `bun install` " +
       "to bundle binaries."
     );
   }

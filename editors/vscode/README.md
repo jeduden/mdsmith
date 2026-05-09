@@ -10,20 +10,17 @@ runs `mdsmith fix` on the whole buffer.
 ## Prerequisites
 
 - VS Code 1.85 or later.
-- **The `mdsmith` binary** — the extension bundles pre-built binaries
-  for all platforms (Linux, macOS, Windows) from npm. The build step
-  copies platform binaries from the `@mdsmith/*` npm packages into
-  `dist/bin/`, so they ship in the .vsix and work on all platforms
-  from a single install. No separate binary install is required in
-  most cases.
+- **The `mdsmith` binary** — the extension includes a bundled binary
+  for the host platform (typically Linux from CI builds). If you're on
+  the same platform as the build host, no separate install is required.
 
-  If the bundled binary is unavailable or you prefer a custom build,
-  you can install `mdsmith` manually:
+  For other platforms or if the bundled binary is unavailable, install
+  `mdsmith` manually:
   - `npm install -g @mdsmith/cli`
   - `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`
   - Download from the
     [releases page](https://github.com/jeduden/mdsmith/releases)
-  - Then configure `mdsmith.path` to point to the binary.
+  - Then optionally configure `mdsmith.path` to point to the binary.
 
 ## Install
 

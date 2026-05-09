@@ -1,26 +1,28 @@
 // Binary resolution logic for the mdsmith extension.
-// The extension bundles cross-platform mdsmith binaries from npm packages
-// into dist/bin/ during the build step. This module resolves the correct
-// platform binary when the user leaves the default "mdsmith" path, falling
-// back to PATH if bundling failed or binaries are unavailable.
+// The extension bundles platform binaries from npm packages into dist/bin/
+// during the build step when available. Due to npm os/cpu constraints on
+// the @mdsmith/* packages, only the host platform binary is bundled (typically
+// linux-x64 in CI). This module resolves the bundled binary when present,
+// falling back to PATH for other platforms or when bundling failed.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 // resolveBinary returns the path to the mdsmith binary. When the
 // configured path is the bare string "mdsmith", it first checks for
-// bundled binaries in dist/bin/ (copied there by build.ts from the
+// a bundled binary in dist/bin/ (copied there by build.ts from the
 // @mdsmith/* npm packages). Platform-specific binaries are named like
 // "linux-x64-mdsmith", "win32-x64-mdsmith.exe", etc. If the bundled
 // binary exists, return its absolute path. Otherwise return the
 // configured path unchanged so the LanguageClient resolves it against
-// PATH (fallback for dev builds or when optional deps failed to install).
+// PATH (fallback for dev builds, non-host platforms, or when optional
+// deps failed to install).
 //
-// Cross-platform bundling: The build script copies binaries from ALL
-// @mdsmith/* platform packages (linux-x64, darwin-arm64, win32-x64, etc.)
-// into dist/bin/. This works even with `vsce package --no-dependencies`
-// because dist/ is included in the .vsix. At runtime, this function
-// selects the binary matching the user's OS+arch.
+// Platform bundling limitation: The @mdsmith/* platform packages have
+// os/cpu constraints, so npm only installs the package matching the
+// build host. This means only one platform binary is bundled per .vsix
+// (typically linux-x64 from CI). Other platforms fall back to PATH and
+// require manual mdsmith installation.
 //
 // The extensionPath should be the vscode.ExtensionContext.extensionPath
 // (the directory containing package.json and dist/).
