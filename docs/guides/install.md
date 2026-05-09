@@ -130,11 +130,18 @@ move the binary onto `$PATH`:
 
 ```bash
 base="https://github.com/jeduden/mdsmith/releases/latest/download"
-curl -L -o mdsmith       "$base/mdsmith-linux-amd64"
-curl -L -o checksums.txt "$base/checksums.txt"
+curl -L -o mdsmith-linux-amd64 "$base/mdsmith-linux-amd64"
+curl -L -o checksums.txt       "$base/checksums.txt"
 sha256sum -c <(grep mdsmith-linux-amd64 checksums.txt)
-install -m 0755 mdsmith /usr/local/bin/mdsmith
+install -m 0755 mdsmith-linux-amd64 /usr/local/bin/mdsmith
 ```
+
+Keep the binary saved under its release-asset name
+(`mdsmith-linux-amd64`) until verification is done —
+both `sha256sum -c` and `gh attestation verify` below
+match local files against that exact name. `install`
+copies the file rather than moving it, so the original
+remains for the verification steps.
 
 For supply-chain-sensitive deployments, the release
 also ships a SLSA build provenance attestation per

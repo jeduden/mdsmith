@@ -36,12 +36,16 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          # Force a static binary on every target. Cross-compiles
-          # auto-disable CGO, but the native linux/amd64 build
-          # would otherwise pull in glibc-resolved net and
-          # os/user, breaking the manylinux_2_17 wheel and the
-          # @mdsmith/linux-x64 npm package on Alpine/musl and
-          # systems with glibc older than the wheel tag claims.
+          # Disable cgo so the native linux/amd64 build resolves
+          # net and os/user purely in Go. Cross-compiles already
+          # auto-disable CGO; the native build would otherwise
+          # bind glibc's resolver into the binary, breaking the
+          # manylinux_2_17 wheel and the @mdsmith/linux-x64 npm
+          # package on Alpine/musl and on systems whose glibc is
+          # older than the wheel tag claims. macOS and Windows
+          # binaries still link the platform syscall layer
+          # (libSystem, kernel32) — this knob is about avoiding
+          # glibc on Linux, not achieving full static linkage.
           CGO_ENABLED: "0"
           VERSION: ${{ github.ref_name }}
         run: |
