@@ -9,7 +9,7 @@ runs `mdsmith fix` on the whole buffer.
 
 ## Prerequisites
 
-- **VS Code 1.85 or later.**
+- VS Code 1.85 or later.
 - **The `mdsmith` binary** — the extension bundles pre-built binaries
   for all platforms (Linux, macOS, Windows) from npm. The build step
   copies platform binaries from the `@mdsmith/*` npm packages into
@@ -33,13 +33,13 @@ code --install-extension mdsmith-<version>.vsix
 
 ## Settings
 
-| Setting                | Default     | Purpose                                                                                                                      |
-|------------------------|-------------|------------------------------------------------------------------------------------------------------------------------------|
+| Setting                | Default     | Purpose                                                                                                                                                                 |
+|------------------------|-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `mdsmith.path`         | `"mdsmith"` | Binary path; defaults to bundled binary in dist/bin/. Falls back to PATH resolution if bundled binary unavailable. Set absolute path if needed (e.g. `/go/bin/mdsmith`) |
-| `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                    |
-| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                                                   |
-| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                                        |
-| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity                                                                                                          |
+| `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                                                               |
+| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                                                                                              |
+| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                                                                                   |
+| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity                                                                                                                                                     |
 
 See the
 [full guide](https://github.com/jeduden/mdsmith/blob/main/docs/guides/editors/vscode.md)
