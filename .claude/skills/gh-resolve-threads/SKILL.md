@@ -40,22 +40,33 @@ PR's branch.
 gh --version
 ```
 
-If missing, install from GitHub releases. The block
-below downloads `gh` v2.92.0 and verifies the
-published SHA256 before extracting:
+If missing, install `gh` v2.92.0 from GitHub releases.
+Run each block as its own Bash call so allowlist
+prefix matching keeps working — every command starts
+with an allowed prefix, with no leading shell
+assignment, subshell, or `echo` pipe.
+
+Download the linux_amd64 tarball:
 
 ```bash
-GH_VERSION=2.92.0
-# Hash for gh_${GH_VERSION}_linux_amd64.tar.gz from
-# https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_checksums.txt
-GH_SHA256=b57848131bdf0c229cd35e1f2a51aa718199858b2e728410b37e89a428943ec4
 curl -fsSL --max-time 600 \
-  "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
+  "https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_linux_amd64.tar.gz" \
   -o /tmp/gh.tar.gz
-echo "${GH_SHA256}  /tmp/gh.tar.gz" | sha256sum -c -
-tar xz -C /tmp -f /tmp/gh.tar.gz
-cp /tmp/gh_${GH_VERSION}_linux_amd64/bin/gh /usr/local/bin/gh
-echo "${GITHUB_TOKEN}" | gh auth login --with-token
+```
+
+Verify the SHA256 before extracting. The hash below
+matches the published checksums at this URL:
+
+```text
+https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_checksums.txt
+```
+
+The heredoc keeps `sha256sum` as the leading command:
+
+```bash
+sha256sum -c - <<'EOF'
+b57848131bdf0c229cd35e1f2a51aa718199858b2e728410b37e89a428943ec4  /tmp/gh.tar.gz
+EOF
 ```
 
 If `sha256sum -c` reports a mismatch, stop and report
@@ -63,16 +74,46 @@ the failure — do not run the unverified binary. For
 non-amd64 Linux or macOS, fetch the matching hash
 from the same checksums file before downloading.
 
-If that fails (redirect blocked), try apt:
+```bash
+tar xz -C /tmp -f /tmp/gh.tar.gz
+```
 
 ```bash
-(type -p wget >/dev/null || apt-get install wget -y)
+cp /tmp/gh_2.92.0_linux_amd64/bin/gh /usr/local/bin/gh
+```
+
+```bash
+gh auth login --with-token <<< "${GITHUB_TOKEN}"
+```
+
+If that fails (redirect blocked), try apt. Each line
+is its own Bash call:
+
+```bash
+type -p wget >/dev/null || apt-get install wget -y
+```
+
+```bash
 mkdir -p -m 755 /etc/apt/keyrings
+```
+
+```bash
 wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
   | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-  | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-apt-get update && apt-get install gh -y
+```
+
+```bash
+tee /etc/apt/sources.list.d/github-cli.list > /dev/null <<EOF
+deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
+EOF
+```
+
+```bash
+apt-get update
+```
+
+```bash
+apt-get install gh -y
 ```
 
 If both fail, the user needs to allow
@@ -86,7 +127,7 @@ gh auth status
 ```
 
 ```bash
-echo "${GITHUB_TOKEN}" | gh auth login --with-token
+gh auth login --with-token <<< "${GITHUB_TOKEN}"
 ```
 
 ## Step 2 — Identify PR and repo
