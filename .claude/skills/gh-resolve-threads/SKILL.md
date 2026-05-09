@@ -16,6 +16,10 @@ user-invocable: true
 allowed-tools: >-
   Bash(gh pr:*), Bash(gh api:*), Bash(gh auth:*),
   Bash(gh --version:*),
+  Bash(curl:*), Bash(sha256sum:*), Bash(tar:*),
+  Bash(cp:*),
+  Bash(apt-get:*), Bash(wget:*), Bash(tee:*),
+  Bash(mkdir:*), Bash(dpkg:*), Bash(type:*),
   Bash(git push:*), Bash(git add:*),
   Bash(git commit:*), Bash(git branch:*)
 ---
@@ -88,15 +92,17 @@ echo "${GITHUB_TOKEN}" | gh auth login --with-token
 ## Step 2 — Identify PR and repo
 
 ```bash
-PR=$(gh pr view --json number -q '.number')
-echo "PR: $PR"
+gh pr view --json number -q '.number'
 ```
 
+Note the number as `$PR`. Then:
+
 ```bash
-REPO=$(gh pr view --json headRepository \
-  -q '.headRepository.owner.login + "/" + .headRepository.name')
-echo "Repo: $REPO"
+gh pr view --json headRepository \
+  -q '.headRepository.owner.login + "/" + .headRepository.name'
 ```
+
+Note the repo (e.g. `owner/name`) as `$REPO`.
 
 ## Step 3 — Fetch review threads
 
@@ -106,6 +112,7 @@ query($owner: String!, $repo: String!, $pr: Int!) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $pr) {
       reviewThreads(first: 100) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           isResolved
@@ -123,6 +130,12 @@ query($owner: String!, $repo: String!, $pr: Int!) {
   }
 }' -f owner="${REPO%%/*}" -f repo="${REPO##*/}" -F pr="$PR"
 ```
+
+Returns the first 100 threads (10 comments each). If
+`pageInfo.hasNextPage` is `true`, paginate by passing
+the returned `endCursor` as an `after:` argument until
+it is `false` — otherwise unresolved threads beyond the
+first 100 will be silently omitted.
 
 For each unresolved thread, note its `id` and read the
 comment at `comments.nodes[0]` to understand what to

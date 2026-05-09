@@ -84,7 +84,7 @@ re-review (the skills do this automatically).
 When implementing work tracked by `plan/`:
 
 - Update the plan file **as part of the
-  implementation**, not as follow-up
+  implementation**, not as a follow-up
 - Check off each task and acceptance criterion as it
   is completed or verified
 - Move front-matter `status` from `🔲` to `🔳` on
@@ -96,7 +96,8 @@ When implementing work tracked by `plan/`:
 
 ### Terminal Demo (`demo.tape`)
 
-VHS tape that records the demo GIF. When editing:
+`demo.tape` is the VHS tape that records the demo
+GIF. When editing it:
 
 - Use backtick-delimited strings for embedded quotes:
   `` Type `cmd 'status: "✅"'` ``. Do NOT use `\"`
@@ -106,7 +107,8 @@ VHS tape that records the demo GIF. When editing:
 - `demo/sample.md` is in the `.mdsmith.yml` ignore
   list; hidden setup copies it to a temp dir for
   check/fix steps
-- Keep Sleeps short (1–2 s) for fast CI renders
+- Keep Sleep durations short (1–2 s) for fast CI
+  renders
 - Use only fixable rules in `demo/sample.md` (trailing
   spaces, long lines, bare URLs) so the fix→check
   flow works
