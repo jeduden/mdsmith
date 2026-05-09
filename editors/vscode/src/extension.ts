@@ -18,6 +18,7 @@ import {
   collectFixAllEdits,
   startupErrorMessage
 } from "./wiring";
+import { resolveBinary } from "./binary";
 
 let client: LanguageClient | undefined;
 // Track the .mdsmith.yml file watcher across the activate /
@@ -74,7 +75,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 // must remain usable so the user can retry.
 async function startServer(context: vscode.ExtensionContext): Promise<void> {
   const cfg = vscode.workspace.getConfiguration("mdsmith");
-  const binary = cfg.get<string>("path", "mdsmith");
+  const configuredPath = cfg.get<string>("path", "mdsmith");
+  const binary = resolveBinary(configuredPath, context.extensionPath);
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
   const serverOptions: ServerOptions = buildServerOptions(

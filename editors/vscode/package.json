@@ -47,7 +47,7 @@
         "mdsmith.path": {
           "type": "string",
           "default": "mdsmith",
-          "description": "Path to the mdsmith binary. A bare name is resolved against VS Code's extension-host PATH, which is the container/login-shell environment — interactive-only files like ~/.bashrc and ~/.zshrc are NOT sourced. If `which mdsmith` works in a terminal but the extension reports `spawn ENOENT`, set this to an absolute path (e.g. /go/bin/mdsmith) or symlink the binary into /usr/local/bin."
+          "description": "Path to the mdsmith binary. Defaults to the bundled binary in dist/bin/ when available (host platform only, typically linux-x64 from CI). Falls back to resolving 'mdsmith' against PATH if bundled binary unavailable or on non-host platforms. Set to an absolute path if you installed mdsmith elsewhere (e.g. /go/bin/mdsmith)."
         },
         "mdsmith.config": {
           "type": "string",
@@ -83,6 +83,9 @@
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
+  },
+  "optionalDependencies": {
+    "@mdsmith/cli": "0.0.0-dev"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
