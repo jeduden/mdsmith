@@ -153,7 +153,10 @@ gh attestation verify mdsmith-linux-amd64 \
   -R jeduden/mdsmith
 ```
 
-Verify the checksums-file signature with `cosign`:
+Verify the checksums-file signature with `cosign`
+(requires cosign v3.0.0 or newer — earlier versions
+do not accept `verify-blob --bundle`; check yours
+with `cosign version`):
 
 ```bash
 curl -L -o checksums.txt.bundle "$base/checksums.txt.bundle"
