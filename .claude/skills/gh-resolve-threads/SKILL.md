@@ -90,21 +90,41 @@ If that fails (redirect blocked), try apt. Each line
 is its own Bash call:
 
 ```bash
-type -p wget >/dev/null || apt-get install wget -y
+type -p wget >/dev/null
+```
+
+If that exits non-zero, install wget first (separate
+block so `apt-get` is the leading command):
+
+```bash
+apt-get install wget -y
 ```
 
 ```bash
 mkdir -p -m 755 /etc/apt/keyrings
 ```
 
+Download the keyring directly to its destination
+(no pipe, single-command):
+
 ```bash
-wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-  | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
+wget -q -O /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+  https://cli.github.com/packages/githubcli-archive-keyring.gpg
 ```
+
+Print the architecture in its own block:
+
+```bash
+dpkg --print-architecture
+```
+
+Note the value (e.g. `amd64`) as `$ARCH`. Then write
+the sources list. The heredoc references `$ARCH` from
+your shell — no command substitution runs inside:
 
 ```bash
 tee /etc/apt/sources.list.d/github-cli.list > /dev/null <<EOF
-deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
+deb [arch=$ARCH signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
 EOF
 ```
 
@@ -196,7 +216,13 @@ git commit -m "fix: address review comments"
 ```
 
 ```bash
-git push origin "$(git branch --show-current)"
+git branch --show-current
+```
+
+Note the branch as `$BRANCH`. Then:
+
+```bash
+git push origin "$BRANCH"
 ```
 
 After every push, request a Copilot re-review so the
