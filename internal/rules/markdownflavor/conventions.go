@@ -163,22 +163,37 @@ var conventions = map[string]Convention{
 	},
 }
 
-// Lookup returns the convention table entry for name. It returns an
-// error naming the field and listing valid names when name is not a
-// known convention, matching the failure-mode contract in plan 112.
+// Lookup returns the convention with the given name. It first checks
+// userConventions (user-defined entries from .mdsmith.yml), then the
+// built-in table. Returns a deep copy so callers can mutate the
+// result without corrupting the shared tables. Error lists both sets
+// of valid names when neither matches.
 //
-// The returned Convention is a deep copy of the package-level table
-// entry. Callers may mutate the result without corrupting the
-// shared built-in table.
-func Lookup(name string) (Convention, error) {
+// userConventions may be nil; a nil map is treated as empty.
+func Lookup(name string, userConventions map[string]Convention) (Convention, error) {
+	if c, ok := userConventions[name]; ok {
+		return cloneConvention(c), nil
+	}
 	c, ok := conventions[name]
 	if !ok {
+		names := conventionNamesWithUser(userConventions)
 		return Convention{}, fmt.Errorf(
 			"unknown convention %q (valid: %s)",
-			name, strings.Join(ConventionNames(), ", "),
+			name, strings.Join(names, ", "),
 		)
 	}
 	return cloneConvention(c), nil
+}
+
+// conventionNamesWithUser returns a sorted list of all available
+// convention names — built-in names plus user-defined names.
+func conventionNamesWithUser(userConventions map[string]Convention) []string {
+	names := ConventionNames()
+	for name := range userConventions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // cloneConvention returns a deep copy of c. Each rule preset's
