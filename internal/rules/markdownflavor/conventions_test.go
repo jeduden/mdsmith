@@ -9,7 +9,7 @@ import (
 )
 
 func TestLookup_Portable(t *testing.T) {
-	c, err := Lookup("portable")
+	c, err := Lookup("portable", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "portable", c.Name)
 	assert.Equal(t, FlavorCommonMark, c.Flavor)
@@ -27,7 +27,7 @@ func TestLookup_Portable(t *testing.T) {
 }
 
 func TestLookup_Github(t *testing.T) {
-	c, err := Lookup("github")
+	c, err := Lookup("github", nil)
 	require.NoError(t, err)
 	assert.Equal(t, FlavorGFM, c.Flavor)
 
@@ -42,7 +42,7 @@ func TestLookup_Github(t *testing.T) {
 }
 
 func TestLookup_Plain(t *testing.T) {
-	c, err := Lookup("plain")
+	c, err := Lookup("plain", nil)
 	require.NoError(t, err)
 	assert.Equal(t, FlavorCommonMark, c.Flavor)
 
@@ -53,7 +53,7 @@ func TestLookup_Plain(t *testing.T) {
 }
 
 func TestLookup_Unknown(t *testing.T) {
-	_, err := Lookup("bogus")
+	_, err := Lookup("bogus", nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown convention")
 	assert.Contains(t, err.Error(), "bogus")
@@ -120,7 +120,7 @@ func TestLookup_ReturnsDeepCopy(t *testing.T) {
 	// Mutating the returned Convention must not corrupt the
 	// package-level table. Lookup is exported, so callers could
 	// otherwise rewrite the built-ins by accident.
-	first, err := Lookup("portable")
+	first, err := Lookup("portable", nil)
 	require.NoError(t, err)
 	first.Rules["markdown-flavor"].Settings["flavor"] = "tampered"
 	first.Rules["new-rule"] = RulePreset{Enabled: true}
@@ -129,7 +129,7 @@ func TestLookup_ReturnsDeepCopy(t *testing.T) {
 		allow.Settings["allow"] = []any{"tampered"}
 	}
 
-	second, err := Lookup("portable")
+	second, err := Lookup("portable", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "commonmark",
 		second.Rules["markdown-flavor"].Settings["flavor"],
@@ -144,4 +144,85 @@ func TestConventionNamesSorted(t *testing.T) {
 	assert.True(t, sort.StringsAreSorted(names),
 		"ConventionNames should return a sorted slice; got %v", names)
 	assert.ElementsMatch(t, []string{"github", "plain", "portable"}, names)
+}
+
+// --- Plan 113: user-defined convention tests ---
+
+func TestLookup_UserConvention_ReturnsUserEntry(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"markdown-flavor": {
+					Enabled:  true,
+					Settings: map[string]any{"flavor": "gfm"},
+				},
+			},
+		},
+	}
+	c, err := Lookup("our-team", user)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", c.Name)
+	assert.Equal(t, FlavorGFM, c.Flavor)
+
+	mf, ok := c.Rules["markdown-flavor"]
+	require.True(t, ok)
+	assert.True(t, mf.Enabled)
+	assert.Equal(t, "gfm", mf.Settings["flavor"])
+}
+
+func TestLookup_UserConventionNilMap_FallsBackToBuiltin(t *testing.T) {
+	c, err := Lookup("portable", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "portable", c.Name)
+}
+
+func TestLookup_BuiltinNotShadowedByUserMap(t *testing.T) {
+	// User map has no entry for "github"; should still fall back to built-in.
+	user := map[string]Convention{
+		"other": {Name: "other", Flavor: FlavorGFM},
+	}
+	c, err := Lookup("github", user)
+	require.NoError(t, err)
+	assert.Equal(t, "github", c.Name)
+}
+
+func TestLookup_UnknownWithUserConventions_ListsBothSets(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	_, err := Lookup("bogus", user)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
+	// Must list built-in names.
+	assert.Contains(t, err.Error(), "github")
+	assert.Contains(t, err.Error(), "portable")
+	// Must list user-defined name.
+	assert.Contains(t, err.Error(), "our-team")
+}
+
+func TestLookup_UserConvention_ReturnsDeepCopy(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"markdown-flavor": {
+					Enabled:  true,
+					Settings: map[string]any{"flavor": "gfm"},
+				},
+			},
+		},
+	}
+	first, err := Lookup("our-team", user)
+	require.NoError(t, err)
+	// Mutate the returned copy.
+	first.Rules["markdown-flavor"].Settings["flavor"] = "tampered"
+
+	// The original user map must not be corrupted.
+	second, err := Lookup("our-team", user)
+	require.NoError(t, err)
+	assert.Equal(t, "gfm", second.Rules["markdown-flavor"].Settings["flavor"],
+		"user map must not be corrupted by mutating a returned Convention")
 }

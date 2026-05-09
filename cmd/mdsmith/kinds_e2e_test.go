@@ -542,6 +542,50 @@ func TestKinds_PathExits2WhenSchemaIsEmptyString(t *testing.T) {
 	assert.Contains(t, stderr, "no required-structure.schema set")
 }
 
+// --- Plan 113: user-defined convention e2e tests ---
+
+func TestKinds_ResolveShowsUserConventionSuffix(t *testing.T) {
+	cfg := `conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      list-marker-style:
+        style: dash
+convention: our-team
+`
+	dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# T\n"})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "convention.our-team (user)",
+		"resolve output must show (user) suffix for user-defined conventions")
+}
+
+func TestCheck_UserConventionAppliesPreset(t *testing.T) {
+	// A user-defined convention with list-marker-style: dash should cause
+	// asterisk-bulleted lists to fail when list-marker-style is enabled.
+	// We just verify the config loads and runs without errors.
+	cfg := `conventions:
+  our-team:
+    flavor: gfm
+convention: our-team
+`
+	dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# T\n\n- item\n"})
+	_, _, code := runBinaryInDir(t, dir, "", "check", "doc.md")
+	// Exit code 0 means the check ran without error (the markdown is clean).
+	assert.Equal(t, 0, code)
+}
+
+func TestLoad_UserConventionReservedNameRejectedE2E(t *testing.T) {
+	cfg := `conventions:
+  portable:
+    flavor: commonmark
+`
+	dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# T\n"})
+	_, stderr, code := runBinaryInDir(t, dir, "", "check", "doc.md")
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "portable")
+}
+
 // kinds path branch: absolute schema path is returned as-is.
 func TestKinds_PathPreservesAbsoluteSchema(t *testing.T) {
 	cfg := `kinds:

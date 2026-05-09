@@ -1,8 +1,9 @@
 ---
 summary: >-
   Built-in Markdown conventions, the rule presets
-  each one applies, and how user config layers on
-  top via deep-merge.
+  each one applies, how user config layers on top
+  via deep-merge, and how to define your own
+  convention inline in .mdsmith.yml.
 ---
 # Markdown conventions
 
@@ -171,6 +172,88 @@ other rules in the preset are untouched.
 This split keeps MDS034 focused on "what does this
 renderer interpret as a feature." Conventions
 orchestrate style separately.
+
+## User-defined conventions
+
+Teams that need a convention the three built-ins do
+not cover can define one inline in `.mdsmith.yml`
+using the top-level `conventions:` block:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+      no-reference-style:
+        allow-footnotes: true
+
+convention: our-team
+```
+
+Each entry in `conventions:` is a `{ flavor, rules
+}` pair with the same shape as the built-in table.
+The `flavor` field accepts the same values as
+`rules.markdown-flavor.flavor` (`commonmark`, `gfm`,
+`goldmark`). The `rules` block uses the same schema
+as the top-level `rules:` block and is validated
+against each rule's own settings schema at config
+load.
+
+### Reserved names
+
+The names `portable`, `github`, and `plain` are
+reserved for the three built-in conventions.
+Defining a `conventions.portable` (or `github` or
+`plain`) entry in `.mdsmith.yml` is a config error
+at load time.
+
+### Resolution order
+
+When the top-level `convention:` selector resolves:
+
+1. The name is looked up in the user-defined
+   `conventions:` map first.
+2. If not found there, the built-in table is checked
+   next.
+3. If neither matches, a config error lists all
+   valid names — both built-in and user-defined.
+
+User-defined names cannot shadow built-ins.
+Collisions are rejected at parse time.
+
+### Validation
+
+Each entry is validated at config load:
+
+- `flavor` must be one of `commonmark`, `gfm`, or
+  `goldmark`. An unknown value is a config error
+  naming the convention.
+- Each key under `rules:` must name a registered
+  rule. An unknown rule name is a config error naming
+  the convention and the rule.
+- Each rule's settings must be valid for that rule.
+  Invalid settings are a config error naming the
+  convention, the rule, and the bad setting.
+
+### Interaction with top-level rules
+
+User-defined conventions apply as a base layer,
+exactly like built-in conventions. Your top-level
+`rules:` overrides win via deep-merge.
+
+### Inspecting user conventions
+
+`mdsmith kinds resolve <file>` marks user-defined
+conventions with a `(user)` suffix in the merge
+chain, so you can tell them apart from built-ins:
+
+```text
+convention.our-team (user)    set  ...
+```
 
 ## Inspecting an effective convention
 

@@ -55,7 +55,7 @@ row: "- [{summary}](../{filename})"
 - [Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.](../docs/reference/cli/pre-merge-commit.md)
 - [Select Markdown files by a CUE expression on front matter.](../docs/reference/cli/query.md)
 - [Print the mdsmith build version and exit.](../docs/reference/cli/version.md)
-- [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](../docs/reference/conventions.md)
+- [Built-in Markdown conventions, the rule presets each one applies, how user config layers on top via deep-merge, and how to define your own convention inline in .mdsmith.yml.](../docs/reference/conventions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](../docs/reference/globs.md)
 <?/catalog?>
 

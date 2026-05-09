@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
 
 // ValidCategories lists the recognized rule category names.
@@ -45,6 +47,13 @@ type Config struct {
 	// and docs/reference/conventions.md for end-user docs.
 	Convention string `yaml:"convention,omitempty"`
 
+	// Conventions holds the user-defined convention map declared in the
+	// top-level `conventions:` block of .mdsmith.yml. Each entry is a
+	// { flavor, rules } pair with the same shape as the built-in table.
+	// Validated at config load; reserved names (portable, github, plain)
+	// are rejected. Nil when no `conventions:` block is present.
+	Conventions map[string]ConventionBody `yaml:"conventions,omitempty"`
+
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
@@ -80,6 +89,27 @@ type Config struct {
 	// Empty when no convention is selected.
 	// Not serialized to YAML.
 	ConventionPreset map[string]RuleCfg `yaml:"-"`
+
+	// UserConventions is the resolved map of user-defined conventions
+	// built from the Conventions field after config load validation.
+	// Stored separately so it can be passed to markdownflavor.Lookup
+	// and the provenance layer can distinguish user conventions from
+	// built-ins. Not serialized to YAML.
+	UserConventions map[string]markdownflavor.Convention `yaml:"-"`
+
+	// IsUserConvention records whether the selected Convention name was
+	// defined by the user (true) or resolved from the built-in table
+	// (false). Used to append a "(user)" suffix in `kinds resolve`
+	// output.
+	// Not serialized to YAML.
+	IsUserConvention bool `yaml:"-"`
+}
+
+// ConventionBody is one entry in the top-level `conventions:` map.
+// It has the same shape as the built-in convention table entries.
+type ConventionBody struct {
+	Flavor string             `yaml:"flavor"`
+	Rules  map[string]RuleCfg `yaml:"rules,omitempty"`
 }
 
 // Override applies rule settings to files matching glob patterns.

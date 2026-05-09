@@ -152,8 +152,12 @@ func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo
 		layers = append(layers, layerInfo{Source: layerSourceDefault, Rules: defaults})
 	}
 	if cfg.Convention != "" && len(cfg.ConventionPreset) > 0 {
+		conventionSource := "convention." + cfg.Convention
+		if cfg.IsUserConvention {
+			conventionSource += " (user)"
+		}
 		layers = append(layers, layerInfo{
-			Source: "convention." + cfg.Convention,
+			Source: conventionSource,
 			Rules:  cfg.ConventionPreset,
 		})
 	}
