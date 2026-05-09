@@ -73,69 +73,43 @@ row: "- [{summary}](../{filename})"
 
 ### PR Workflow
 
-Use `gh` for all GitHub PR operations:
-
-```bash
-# View PR comments
-gh pr view <number> --comments
-
-# List review comments on a PR
-gh api repos/"$(gh repo view --json nameWithOwner \
-  -q '.nameWithOwner')"/pulls/<number>/comments \
-  --paginate
-
-# Resolve a review thread after addressing it
-gh api graphql -f query='mutation {
-  resolveReviewThread(input: {threadId: "ID"}) {
-    thread { id isResolved }
-  }
-}'
-
-# Push updates after addressing comments
-git push origin <branch>
-```
-
-These commands are auto-approved in
-[`.claude/settings.json`](../.claude/settings.json).
+Use the `/pr-fixup`, `/gh-resolve-threads`, and
+`/merge-queue` skills for PR work — they cover
+rebases, CI monitoring, thread resolution, and merge
+enqueuing. After every push, request a Copilot
+re-review (the skills do this automatically).
 
 ### Plan Maintenance
 
-When implementing work tracked by a plan file in
-`plan/`:
+When implementing work tracked by `plan/`:
 
 - Update the plan file **as part of the
-  implementation**, not as a separate follow-up
-- Check off each task (`- [x]`) as it is completed
-- Check off each acceptance criterion when verified
-- When all acceptance criteria are met, change the
-  front-matter `status` from `🔲` or `🔳` to `✅`
-- When work begins on a not-started plan, change
-  `status` from `🔲` to `🔳`
-- If the implementation deviates from the plan
-  (e.g. a parameter name changes), update the plan
-  text to match what was actually built
-- Run `mdsmith fix PLAN.md` after changing a plan's
-  front matter so the catalog table stays current
+  implementation**, not as follow-up
+- Check off each task and acceptance criterion as it
+  is completed or verified
+- Move front-matter `status` from `🔲` to `🔳` on
+  start, then to `✅` when all criteria pass
+- If implementation deviates, update plan text to
+  match what was built
+- Run `mdsmith fix PLAN.md` after editing plan front
+  matter so the catalog table stays current
 
 ### Terminal Demo (`demo.tape`)
 
-The repo includes a VHS tape file (`demo.tape`) that
-records a terminal demo GIF. When editing this file:
+VHS tape that records the demo GIF. When editing:
 
-- VHS uses backtick-delimited strings to embed quotes:
-  `` Type `cmd 'status: "✅"'` `` — do NOT use `\"`
-  inside double-quoted Type strings (VHS crashes)
-- The tape runs `set +e` (hidden) at the start so
-  non-zero exits don't abort the recording — no need
-  to append `; true` to commands
+- Use backtick-delimited strings for embedded quotes:
+  `` Type `cmd 'status: "✅"'` ``. Do NOT use `\"`
+  inside double-quoted Type strings — VHS crashes
+- A hidden `set +e` runs at start, so don't append
+  `; true` to commands
 - `demo/sample.md` is in the `.mdsmith.yml` ignore
-  list; the hidden setup copies it to a temp dir
-  for check/fix steps
-- Keep Sleep durations short (1–2 s) so VHS renders
-  quickly in CI
-- Only use fixable lint rules in `demo/sample.md`
-  (e.g. trailing spaces, long lines, bare URLs) so
-  the "fix then clean check" flow works
+  list; hidden setup copies it to a temp dir for
+  check/fix steps
+- Keep Sleeps short (1–2 s) for fast CI renders
+- Use only fixable rules in `demo/sample.md` (trailing
+  spaces, long lines, bare URLs) so the fix→check
+  flow works
 
 ### Writing Guidelines
 
