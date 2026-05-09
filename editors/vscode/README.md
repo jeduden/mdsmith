@@ -10,11 +10,15 @@ runs `mdsmith fix` on the whole buffer.
 ## Prerequisites
 
 - **VS Code 1.85 or later.**
-- **The `mdsmith` binary** — the extension bundles a cross-platform
-  binary from npm that works on Linux, macOS, and Windows from a
-  single extension install. No separate binary install is required in
-  most cases. If the bundled binary fails to install (corporate
-  proxies, offline environments), you can install `mdsmith` manually:
+- **The `mdsmith` binary** — the extension bundles pre-built binaries
+  for all platforms (Linux, macOS, Windows) from npm. The build step
+  copies platform binaries from the `@mdsmith/*` npm packages into
+  `dist/bin/`, so they ship in the .vsix and work on all platforms
+  from a single install. No separate binary install is required in
+  most cases.
+
+  If the bundled binary is unavailable or you prefer a custom build,
+  you can install `mdsmith` manually:
   - `npm install -g @mdsmith/cli`
   - `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`
   - Download from the
@@ -31,7 +35,7 @@ code --install-extension mdsmith-<version>.vsix
 
 | Setting                | Default     | Purpose                                                                                                                      |
 |------------------------|-------------|------------------------------------------------------------------------------------------------------------------------------|
-| `mdsmith.path`         | `"mdsmith"` | Binary path; defaults to bundled cross-platform binary. Falls back to PATH resolution. Set absolute path if needed (e.g. `/go/bin/mdsmith`) |
+| `mdsmith.path`         | `"mdsmith"` | Binary path; defaults to bundled binary in dist/bin/. Falls back to PATH resolution if bundled binary unavailable. Set absolute path if needed (e.g. `/go/bin/mdsmith`) |
 | `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                    |
 | `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                                                   |
 | `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                                        |
