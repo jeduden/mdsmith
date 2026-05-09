@@ -140,6 +140,22 @@ handlers, which already resolve via
 by the server (plan 121) and re-read on
 `.mdsmith.yml` change.
 
+Note: scalar `kind:` is an LSP-layer convenience.
+The lint pipeline parses only `kinds:` via
+[`lint.ParseFrontMatterKinds`](../internal/lint/frontmatter.go),
+and the user-facing
+[file-kinds guide](../docs/guides/file-kinds.md)
+documents only the list form.
+
+So `mdsmith check` and `mdsmith fix` will not
+honor a scalar `kind:` even though the LSP
+treats both as equivalent. A future plan can
+align the lint pipeline and the docs with the
+LSP behavior. Until then, completion offers
+`kind:` because `effectiveKindsFor` already
+does, but contributors should prefer `kinds:`
+in fixtures.
+
 ### Directive-arg completion
 
 For `<?include file: "…"?>` and `<?build source:

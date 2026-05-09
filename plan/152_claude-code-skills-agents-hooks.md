@@ -92,6 +92,12 @@ entry pointing at it.
 
 ### Marketplace update
 
+The full `marketplace.json` (per plan 132) keeps
+its `name`, `owner`, `description`, and
+`$schema` fields. Only the `plugins` array
+grows. The block below is a fragment, not a
+complete file:
+
 ```json
 {
   "plugins": [
@@ -233,13 +239,25 @@ but it does not auto-install.
    allowed (per plan 132's audit), so no change
    should be required — confirm during smoke
    test.
-8. Add a `README.md` covering install, the three
+8. Extend [.mdsmith.yml](../.mdsmith.yml)'s
+   `kind-assignment` and the matching override
+   block to cover
+   `editors/claude-code-tools/skills/*/SKILL.md`.
+   The existing `skill` kind currently targets
+   only `.claude/skills/*/SKILL.md` (lines 93
+   and 99 of `.mdsmith.yml`); without the
+   extension the new SKILL.md files would fail
+   `first-line-heading` and other rules the
+   `skill` override disables. Surface the diff
+   per [CLAUDE.md](../CLAUDE.md) before
+   applying.
+9. Add a `README.md` covering install, the three
    skills, the agent, the hook, and the binary
    prerequisite.
-9. Document the new plugin in
-   [docs/guides/install.md](../docs/guides/install.md)
-   under the Claude Code section plan 132 added.
-10. Smoke-test end-to-end: install `mdsmith-tools`
+10. Document the new plugin in
+    [docs/guides/install.md](../docs/guides/install.md)
+    under the Claude Code section plan 132 added.
+11. Smoke-test end-to-end: install `mdsmith-tools`
     in a scratch workspace, run each skill, invoke
     the agent on a sample Markdown file, edit a
     `.md` file and verify the post-edit hook
@@ -275,23 +293,18 @@ but it does not auto-install.
 ## Open Questions
 
 - **Combined plugin alternative.** A single
-  `mdsmith` plugin bundling LSP + skills + agent
-  + hook would be one install instead of two.
-  The split mirrors the official-marketplace
-  convention (`gopls-lsp` is LSP-only) but adds
-  user friction. Revisit if reviewer feedback
-  prefers a single plugin.
-- **Hook scope.** Running `mdsmith fix` after
-  every Edit can be surprising in projects where
-  the user prefers manual fixes. The hook is
-  opt-in via plugin enable, but a per-file
-  ignore mechanism may be needed.
+  `mdsmith` plugin bundling everything is one
+  install vs two. Split mirrors the official
+  convention (`gopls-lsp` is LSP-only). Revisit
+  if reviewers prefer one plugin.
+- **Hook scope.** Auto-`fix` on every Edit may
+  surprise users who prefer manual fixes. The
+  hook is opt-in via plugin enable; a per-file
+  override may be needed later.
 - **Agent vs. skill for review.** The
-  `markdown-reviewer` agent is heavyweight.
-  A `/mdsmith-tools:review <file>` skill might
-  cover most use cases more cheaply. Build the
-  agent first, drop to a skill if telemetry
-  shows low invocation.
+  `markdown-reviewer` agent is heavyweight; a
+  `/mdsmith-tools:review` skill might cover
+  most cases more cheaply.
 
 ## ...
 
