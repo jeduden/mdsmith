@@ -58,6 +58,29 @@ func zipHasFile(t *testing.T, whlPath, name string) bool {
 	return false
 }
 
+func zipFileNames(t *testing.T, whlPath string) []string {
+	t.Helper()
+	r, err := zip.OpenReader(whlPath)
+	require.NoError(t, err, "open %s", whlPath)
+	defer func() { _ = r.Close() }()
+	var names []string
+	for _, f := range r.File {
+		names = append(names, f.Name)
+	}
+	return names
+}
+
+func hasDuplicates(names []string) bool {
+	seen := make(map[string]bool)
+	for _, name := range names {
+		if seen[name] {
+			return true
+		}
+		seen[name] = true
+	}
+	return false
+}
+
 // stagePython copies the real python/ tree from the repo into root
 // so BuildWheels has something to assemble. The fixtureManifests
 // helper already wrote a stub pyproject; we replace it with the
@@ -123,6 +146,14 @@ func assertWheel(t *testing.T, out string, entries []os.DirEntry, c wheelCase) {
 	assert.NotContains(t, meta, "py3-none-any", "%s still claims py3-none-any", whl)
 	assert.Truef(t, zipHasFile(t, whl, "mdsmith/_bin/"+c.binName),
 		"%s: bundled binary mdsmith/_bin/%s missing", whl, c.binName)
+	// Regression guard: PyPI rejects wheels with duplicate local
+	// headers (i.e., two zip entries carrying the same filename).
+	// Previous pyproject.toml configured both `artifacts` and
+	// `force-include` for mdsmith/_bin/, causing hatchling to
+	// include the binaries twice.
+	names := zipFileNames(t, whl)
+	assert.Falsef(t, hasDuplicates(names),
+		"%s: wheel contains duplicate filenames (PyPI rejects these)", whl)
 }
 
 // TestBuildWheelsFailsWhenPythonSourceMissing exercises the

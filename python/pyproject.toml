@@ -38,12 +38,9 @@ packages = ["mdsmith"]
 # cmd/mdsmith-release build-wheels stages the prebuilt binary at
 # mdsmith/_bin/mdsmith[.exe] before invoking `python -m build`.
 # Hatchling otherwise drops the staged file because it isn't
-# checked in; force-include adds the whole `_bin/` tree to every
-# wheel.
+# checked in; artifacts includes both possible binary names so
+# the wheel contains whichever one build-wheels staged.
 artifacts = [
   "mdsmith/_bin/mdsmith",
   "mdsmith/_bin/mdsmith.exe",
 ]
-
-[tool.hatch.build.targets.wheel.force-include]
-"mdsmith/_bin" = "mdsmith/_bin"
