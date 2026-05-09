@@ -30,6 +30,7 @@ uses stdio either way.
 | `textDocumentSync = Full`         | Full-document sync; lint trigger gated by `mdsmith.run`                            |
 | `publishDiagnostics`              | One push after each lint                                                           |
 | `codeActionProvider`              | `quickfix` per fixable diagnostic, `source.fixAll.mdsmith`                         |
+| `hoverProvider`                   | Rule docs on hover over a diagnostic; directive docs on hover inside `<?…?>`       |
 | `documentSymbolProvider`          | Hierarchical outline (headings, link refs, front matter, directives)               |
 | `definitionProvider`              | Jump-to-definition for anchor / file / ref-style links and directive arguments     |
 | `implementationProvider`          | Multi-target jump for `kind:` values and headings (every link target)              |
@@ -47,6 +48,27 @@ uses stdio either way.
   same triggers as `onSave`.
 - `off`: never lint automatically. Code actions still work when
   invoked explicitly.
+
+## Hover
+
+`textDocument/hover` resolves in two passes:
+
+1. **Diagnostic-first.** If the cursor falls inside an active diagnostic
+   range, the server returns a `MarkupContent` (kind `markdown`). The
+   body begins with the diagnostic message followed by the rule's full
+   help text — the same text `mdsmith help rule <id>` prints.
+
+2. **Directive fallback.** If no diagnostic covers the cursor, the
+   server checks whether the cursor is inside a `<?directive …?>`
+   block. If so, it returns the directive's guide page from
+   `docs/guides/directives/`. The documented directives are
+   `catalog`, `include`, `toc`, `build`, `allow-empty-section`,
+   `require`, and `ignore`.
+
+If neither pass finds a match, the server returns `null` (no hover).
+Each hover response includes a `range` field set to the matched span
+— the diagnostic range or the full directive block range — so clients
+can anchor the popup to the right span.
 
 ## Diagnostic mapping
 

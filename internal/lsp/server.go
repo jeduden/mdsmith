@@ -60,6 +60,12 @@ type Server struct {
 	idxMu sync.Mutex
 	idx   *index.Index
 
+	// diagsMu guards diags, the per-URI cache of the last published
+	// LSP diagnostics. Hover uses this to answer diagnostic-first
+	// requests without re-running lint.
+	diagsMu sync.RWMutex
+	diags   map[string][]Diagnostic
+
 	nextReqID        atomic.Int64
 	shutdown         atomic.Bool // we are tearing down (any cause)
 	shutdownReceived atomic.Bool // client sent a `shutdown` request
@@ -141,6 +147,7 @@ func New(opts Options) *Server {
 		settings:       userSettings{Run: runOnSave},
 		pending:        make(map[string]*time.Timer),
 		pendingResp:    make(map[string]chan rpcResponse),
+		diags:          make(map[string][]Diagnostic),
 	}
 }
 
@@ -316,6 +323,8 @@ func (s *Server) dispatchDocument(ctx context.Context, msg *requestMessage) bool
 		s.handleDidClose(msg.Params)
 	case "textDocument/codeAction":
 		s.handleCodeAction(msg)
+	case "textDocument/hover":
+		s.handleHover(msg)
 	default:
 		return false
 	}
@@ -396,6 +405,7 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 			CodeActionProvider: codeActionOptions{
 				CodeActionKinds: []string{kindQuickFix, kindSourceFixAll},
 			},
+			HoverProvider:           true,
 			DocumentSymbolProvider:  true,
 			DefinitionProvider:      true,
 			ImplementationProvider:  true,
@@ -507,7 +517,10 @@ func (s *Server) handleDidClose(raw json.RawMessage) {
 	if doc != nil {
 		s.indexReloadFromDisk(doc.path)
 	}
-	// Clear diagnostics so VS Code stops showing stale squiggles.
+	// Clear cached diagnostics and squiggles on close.
+	s.diagsMu.Lock()
+	delete(s.diags, p.TextDocument.URI)
+	s.diagsMu.Unlock()
 	_ = s.t.writeNotification("textDocument/publishDiagnostics",
 		publishDiagnosticsParams{URI: p.TextDocument.URI, Diagnostics: []Diagnostic{}})
 }
@@ -708,6 +721,9 @@ func (s *Server) runLint(uri string) {
 	}
 	relPath := workspaceRelative(root, doc.path)
 	if config.IsIgnored(cfg.Ignore, relPath) {
+		s.diagsMu.Lock()
+		s.diags[uri] = nil
+		s.diagsMu.Unlock()
 		_ = s.t.writeNotification("textDocument/publishDiagnostics",
 			publishDiagnosticsParams{URI: uri, Version: doc.version, Diagnostics: []Diagnostic{}})
 		return
@@ -757,6 +773,11 @@ func (s *Server) runLint(uri string) {
 	docDiags, otherDiags := partitionDocDiagnostics(res.Diagnostics, relPath)
 	s.surfaceForeignDiagnostics(uri, otherDiags)
 	lspDiags := toLSPAll(docDiags, doc.text)
+	// Cache before publishing so hover requests that arrive after the
+	// client observes the notification always find current diagnostics.
+	s.diagsMu.Lock()
+	s.diags[uri] = lspDiags
+	s.diagsMu.Unlock()
 	_ = s.t.writeNotification("textDocument/publishDiagnostics",
 		publishDiagnosticsParams{URI: uri, Version: doc.version, Diagnostics: lspDiags})
 }

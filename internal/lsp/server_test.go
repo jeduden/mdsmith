@@ -2569,3 +2569,128 @@ func TestDeliverResponseUnknownIDIsNoOp(t *testing.T) {
 	// Must not panic and must not block.
 	s.deliverResponse("999", rpcResponse{})
 }
+
+// --- Hover tests ---
+
+func TestHoverAdvertisedInCapabilities(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	resultRaw, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	var res initializeResult
+	require.NoError(t, json.Unmarshal(resultRaw, &res))
+	assert.True(t, res.Capabilities.HoverProvider, "hoverProvider must be true in initialize response")
+}
+
+func TestHoverDiagnosticFirst(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/hover_diag.md"
+	// MDS006 fires on line 2 (0-based) due to trailing spaces.
+	text := "# Title\n\ntrailing   \n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{
+			URI: uri, LanguageID: "markdown", Version: 1, Text: text,
+		},
+	})
+	// Wait for lint pass to cache diagnostics.
+	raw := h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	var published publishDiagnosticsParams
+	require.NoError(t, json.Unmarshal(raw, &published))
+	var found bool
+	for _, d := range published.Diagnostics {
+		if d.Code == "MDS006" {
+			found = true
+		}
+	}
+	require.True(t, found, "expected MDS006 in published diagnostics before hover")
+
+	// Hover on the trailing-spaces line, character 9 (first trailing space,
+	// which is inside the MDS006 diagnostic range starting at character 8).
+	resultRaw, hoverErr := h.request("textDocument/hover", hoverParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 9},
+	})
+	require.Nil(t, hoverErr)
+	require.NotEqual(t, "null", string(resultRaw), "hover over diagnostic must return content")
+
+	var result hoverResult
+	require.NoError(t, json.Unmarshal(resultRaw, &result))
+	assert.Equal(t, "markdown", result.Contents.Kind)
+	assert.Contains(t, result.Contents.Value, "MDS006")
+	assert.NotNil(t, result.Range, "hover over diagnostic must include range")
+}
+
+func TestHoverDirectiveFallback(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/hover_directive.md"
+	// A catalog directive with no trailing-space diagnostics.
+	text := "# Title\n\n<?catalog\nglob: \"*.md\"\n?>\n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{
+			URI: uri, LanguageID: "markdown", Version: 1, Text: text,
+		},
+	})
+	// Wait for lint pass to complete so the hover handler finds a live doc.
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Hover on the <?catalog line (line 2, 0-based) — no diagnostic there.
+	resultRaw, hoverErr := h.request("textDocument/hover", hoverParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 3},
+	})
+	require.Nil(t, hoverErr)
+	require.NotEqual(t, "null", string(resultRaw), "hover inside catalog directive must return content")
+
+	var result hoverResult
+	require.NoError(t, json.Unmarshal(resultRaw, &result))
+	assert.Equal(t, "markdown", result.Contents.Kind)
+	assert.NotEmpty(t, result.Contents.Value)
+	assert.NotNil(t, result.Range)
+}
+
+func TestHoverNoMatch(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	uri := "file:///workspace/hover_nomatch.md"
+	text := "# Title\n\nPlain prose without issues.\n"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{
+			URI: uri, LanguageID: "markdown", Version: 1, Text: text,
+		},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Hover on the heading (no diagnostic, no directive).
+	resultRaw, hoverErr := h.request("textDocument/hover", hoverParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 0, Character: 3},
+	})
+	require.Nil(t, hoverErr)
+	assert.Equal(t, "null", string(resultRaw), "hover on plain prose must return null")
+}
+
+func TestHoverUnknownDocument(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	// Hover on a URI that was never opened.
+	resultRaw, hoverErr := h.request("textDocument/hover", hoverParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///not/open.md"},
+		Position:     Position{Line: 0, Character: 0},
+	})
+	require.Nil(t, hoverErr)
+	assert.Equal(t, "null", string(resultRaw), "hover on unknown document must return null")
+}

@@ -97,6 +97,7 @@ type serverInfo struct {
 type serverCapabilities struct {
 	TextDocumentSync        textDocumentSyncOptions `json:"textDocumentSync"`
 	CodeActionProvider      codeActionOptions       `json:"codeActionProvider"`
+	HoverProvider           bool                    `json:"hoverProvider,omitempty"`
 	DocumentSymbolProvider  bool                    `json:"documentSymbolProvider,omitempty"`
 	DefinitionProvider      bool                    `json:"definitionProvider,omitempty"`
 	ImplementationProvider  bool                    `json:"implementationProvider,omitempty"`
@@ -298,4 +299,23 @@ const (
 type logMessageParams struct {
 	Type    messageType `json:"type"`
 	Message string      `json:"message"`
+}
+
+// hoverParams is the LSP §3.18.5 HoverParams wire shape.
+type hoverParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+}
+
+// markupContent is LSP MarkupContent with kind "markdown" or "plaintext".
+type markupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+// hoverResult is the LSP Hover response. Range is optional; when set it
+// anchors the hover popup to the matched span.
+type hoverResult struct {
+	Contents markupContent `json:"contents"`
+	Range    *Range        `json:"range,omitempty"`
 }

@@ -1,7 +1,7 @@
 ---
 id: 133
 title: LSP hover for rule and directive docs
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   Add `textDocument/hover` to `mdsmith lsp` so editors
@@ -140,28 +140,28 @@ the capability see the same server. The
 
 ## Tasks
 
-1. Wire hover's rule lookup through
+1. ✅ Wire hover's rule lookup through
    [`internal/rules`](../internal/rules) APIs
    (`LookupRule(query) (string, error)` and
    `ListRules()`). Cover known rules, unknown
    rules, and rules whose docs have no
    rule-specific body (fall back to a generic
    "see `mdsmith help rule <id>`" line).
-2. Add `textDocument/hover` to the LSP server in
+2. ✅ Add `textDocument/hover` to the LSP server in
    [`internal/lsp/server.go`](../internal/lsp/server.go).
    Implement the diagnostic-first then directive-
    fallback resolution. Return `null` when neither
    matches.
-3. Add a directive-doc loader that reads from
+3. ✅ Add a directive-doc loader that reads from
    [docs/guides/directives/](../docs/guides/directives/)
    keyed by directive name. Cache the parsed
    contents on first read.
-4. Add an integration test in
+4. ✅ Add an integration test in
    [`cmd/mdsmith`](../cmd/mdsmith) that drives an
    `initialize` → `didOpen` → `hover` round trip
    for both the diagnostic and directive cases,
    and the no-match case.
-5. Add `hoverProvider` to the capability table in
+5. ✅ Add `hoverProvider` to the capability table in
    [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
    and document the resolution order.
 6. Propose enabling `no-inline-html` on the
@@ -173,21 +173,21 @@ the capability see the same server. The
 
 ## Acceptance Criteria
 
-- [ ] `hoverProvider` appears in the
+- [x] `hoverProvider` appears in the
       `initialize` capabilities response.
-- [ ] Hovering over an `MDS001` diagnostic
+- [x] Hovering over an `MDS006` diagnostic
       returns a `MarkupContent` whose body
-      contains the line-length help text.
-- [ ] Hovering inside a `<?catalog?>` directive
+      contains the rule help text.
+- [x] Hovering inside a `<?catalog?>` directive
       returns the catalog directive docs even when
       no diagnostic is present at the cursor.
-- [ ] Hovering on plain prose (no diagnostic, no
+- [x] Hovering on plain prose (no diagnostic, no
       directive) returns `null`.
 - [ ] After the `rule-readme` kind change lands,
       a fixture rule README containing a raw
       `<span>` outside a code block fails
       `mdsmith check` with `MDS041`.
-- [ ] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
+- [x] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
       lists `hoverProvider` in the capability
       table.
 - [ ] All tests pass: `go test ./...`.

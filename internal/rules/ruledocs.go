@@ -118,6 +118,12 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 	return info, nil
 }
 
+// StripFrontMatter removes the leading YAML front matter block (--- ... ---)
+// and any immediately following blank line from content.
+func StripFrontMatter(content string) string {
+	return stripFrontMatter(content)
+}
+
 // stripFrontMatter removes the leading YAML front matter block (--- ... ---)
 // and any immediately following blank line from content.
 func stripFrontMatter(content string) string {
