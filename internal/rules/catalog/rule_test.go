@@ -1568,30 +1568,30 @@ func TestSort_TiebreakerAndCaseInsensitive(t *testing.T) {
 // =====================================================================
 
 func TestParseSort_Default(t *testing.T) {
-	key, desc := parseSort(map[string]string{})
-	if key != "path" || desc {
-		t.Errorf("expected (path, false), got (%s, %v)", key, desc)
+	key, desc, numeric := parseSort(map[string]string{})
+	if key != "path" || desc || numeric {
+		t.Errorf("expected (path, false, false), got (%s, %v, %v)", key, desc, numeric)
 	}
 }
 
 func TestParseSort_Ascending(t *testing.T) {
-	key, desc := parseSort(map[string]string{"sort": "title"})
-	if key != "title" || desc {
-		t.Errorf("expected (title, false), got (%s, %v)", key, desc)
+	key, desc, numeric := parseSort(map[string]string{"sort": "title"})
+	if key != "title" || desc || numeric {
+		t.Errorf("expected (title, false, false), got (%s, %v, %v)", key, desc, numeric)
 	}
 }
 
 func TestParseSort_Descending(t *testing.T) {
-	key, desc := parseSort(map[string]string{"sort": "-title"})
-	if key != "title" || !desc {
-		t.Errorf("expected (title, true), got (%s, %v)", key, desc)
+	key, desc, numeric := parseSort(map[string]string{"sort": "-title"})
+	if key != "title" || !desc || numeric {
+		t.Errorf("expected (title, true, false), got (%s, %v, %v)", key, desc, numeric)
 	}
 }
 
 func TestParseSort_EmptyValue(t *testing.T) {
-	key, desc := parseSort(map[string]string{"sort": ""})
-	if key != "path" || desc {
-		t.Errorf("expected (path, false) for empty, got (%s, %v)", key, desc)
+	key, desc, numeric := parseSort(map[string]string{"sort": ""})
+	if key != "path" || desc || numeric {
+		t.Errorf("expected (path, false, false) for empty, got (%s, %v, %v)", key, desc, numeric)
 	}
 }
 
@@ -1778,7 +1778,7 @@ func TestSortEntries_PathAscending(t *testing.T) {
 		{fields: map[string]any{"filename": "a.md"}},
 		{fields: map[string]any{"filename": "b.md"}},
 	}
-	sortEntries(entries, "path", false)
+	sortEntries(entries, "path", false, false)
 	if entries[0].fields["filename"] != "a.md" {
 		t.Errorf("expected first entry a.md, got %s", entries[0].fields["filename"])
 	}
@@ -1793,7 +1793,7 @@ func TestSortEntries_PathDescending(t *testing.T) {
 		{fields: map[string]any{"filename": "c.md"}},
 		{fields: map[string]any{"filename": "b.md"}},
 	}
-	sortEntries(entries, "path", true)
+	sortEntries(entries, "path", true, false)
 	if entries[0].fields["filename"] != "c.md" {
 		t.Errorf("expected first entry c.md, got %s", entries[0].fields["filename"])
 	}
@@ -1807,7 +1807,7 @@ func TestSortEntries_FrontMatterKey(t *testing.T) {
 		{fields: map[string]any{"filename": "a.md", "title": "Zulu"}},
 		{fields: map[string]any{"filename": "b.md", "title": "Alpha"}},
 	}
-	sortEntries(entries, "title", false)
+	sortEntries(entries, "title", false, false)
 	if entries[0].fields["title"] != "Alpha" {
 		t.Errorf("expected Alpha first, got %s", entries[0].fields["title"])
 	}
@@ -1818,7 +1818,7 @@ func TestSortEntries_Tiebreaker(t *testing.T) {
 		{fields: map[string]any{"filename": "b.md", "title": "Same"}},
 		{fields: map[string]any{"filename": "a.md", "title": "Same"}},
 	}
-	sortEntries(entries, "title", false)
+	sortEntries(entries, "title", false, false)
 	if entries[0].fields["filename"] != "a.md" {
 		t.Errorf("expected a.md first (tiebreaker), got %s", entries[0].fields["filename"])
 	}
@@ -1830,7 +1830,7 @@ func TestSortEntries_TiebreakerDescending(t *testing.T) {
 		{fields: map[string]any{"filename": "b.md", "title": "Same"}},
 		{fields: map[string]any{"filename": "a.md", "title": "Same"}},
 	}
-	sortEntries(entries, "title", true)
+	sortEntries(entries, "title", true, false)
 	if entries[0].fields["filename"] != "a.md" {
 		t.Errorf("expected a.md first (tiebreaker ascending), got %s", entries[0].fields["filename"])
 	}
@@ -1841,10 +1841,148 @@ func TestSortEntries_FilenameDescending(t *testing.T) {
 		{fields: map[string]any{"filename": "a/alpha.md"}},
 		{fields: map[string]any{"filename": "z/zulu.md"}},
 	}
-	sortEntries(entries, "filename", true)
+	sortEntries(entries, "filename", true, false)
 	if entries[0].fields["filename"] != "z/zulu.md" {
 		t.Errorf("expected z/zulu.md first (filename descending), got %s", entries[0].fields["filename"])
 	}
+}
+
+// =====================================================================
+// Numeric sort
+// =====================================================================
+
+func TestSortEntries_NumericAscending(t *testing.T) {
+	// Mixed 2-digit and 3-digit IDs must sort numerically: 52 < 100 < 132.
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "plan/100.md", "id": "100"}},
+		{fields: map[string]any{"filename": "plan/52.md", "id": "52"}},
+		{fields: map[string]any{"filename": "plan/132.md", "id": "132"}},
+	}
+	sortEntries(entries, "id", false, true)
+	require.Equal(t, "52", entries[0].fields["id"], "first entry should be 52")
+	require.Equal(t, "100", entries[1].fields["id"], "second entry should be 100")
+	require.Equal(t, "132", entries[2].fields["id"], "third entry should be 132")
+}
+
+func TestSortEntries_NumericDescending(t *testing.T) {
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "plan/52.md", "id": "52"}},
+		{fields: map[string]any{"filename": "plan/100.md", "id": "100"}},
+		{fields: map[string]any{"filename": "plan/132.md", "id": "132"}},
+	}
+	sortEntries(entries, "id", true, true)
+	require.Equal(t, "132", entries[0].fields["id"], "first entry should be 132")
+	require.Equal(t, "100", entries[1].fields["id"], "second entry should be 100")
+	require.Equal(t, "52", entries[2].fields["id"], "third entry should be 52")
+}
+
+func TestSortEntries_NumericFallbackOnNonNumeric(t *testing.T) {
+	// When a field value is non-numeric, fall back to string compare without error.
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "b.md", "tag": "beta"}},
+		{fields: map[string]any{"filename": "a.md", "tag": "alpha"}},
+	}
+	sortEntries(entries, "tag", false, true)
+	// Falls back to string compare: alpha < beta.
+	require.Equal(t, "alpha", entries[0].fields["tag"], "first entry should be alpha (string fallback)")
+	require.Equal(t, "beta", entries[1].fields["tag"], "second entry should be beta (string fallback)")
+}
+
+func TestSortEntries_NumericFallbackPartialNonNumeric(t *testing.T) {
+	// When any entry fails Atoi, fall back to string compare for all entries.
+	entries := []fileEntry{
+		{fields: map[string]any{"filename": "c.md", "id": "100"}},
+		{fields: map[string]any{"filename": "a.md", "id": "bad"}},
+		{fields: map[string]any{"filename": "b.md", "id": "52"}},
+	}
+	sortEntries(entries, "id", false, true)
+	// String compare: "100" < "52" < "bad".
+	require.Equal(t, "100", entries[0].fields["id"], "first entry should be 100 (string order)")
+	require.Equal(t, "52", entries[1].fields["id"], "second entry should be 52 (string order)")
+	require.Equal(t, "bad", entries[2].fields["id"], "third entry should be bad (string order)")
+}
+
+func TestParseSort_NumericAscending(t *testing.T) {
+	key, desc, numeric := parseSort(map[string]string{"sort": "numeric:id"})
+	require.Equal(t, "id", key, "expected key 'id'")
+	require.False(t, desc, "expected ascending")
+	require.True(t, numeric, "expected numeric=true")
+}
+
+func TestParseSort_NumericDescending(t *testing.T) {
+	key, desc, numeric := parseSort(map[string]string{"sort": "-numeric:id"})
+	require.Equal(t, "id", key, "expected key 'id'")
+	require.True(t, desc, "expected descending")
+	require.True(t, numeric, "expected numeric=true")
+}
+
+func TestParseSort_NonNumericStillLexicographic(t *testing.T) {
+	key, desc, numeric := parseSort(map[string]string{"sort": "id"})
+	require.Equal(t, "id", key, "expected key 'id'")
+	require.False(t, desc, "expected ascending")
+	require.False(t, numeric, "expected numeric=false")
+}
+
+func TestSort_NumericID(t *testing.T) {
+	// Integration test: catalog with numeric:id puts 52 before 100.
+	src := "<?catalog\nglob: \"plan/*.md\"\nsort: numeric:id\n" +
+		"row: \"- [{id}]({filename})\"\n?>\n" +
+		"- [52](plan/52.md)\n- [100](plan/100.md)\n- [132](plan/132.md)\n<?/catalog?>\n"
+	mapFS := fstest.MapFS{
+		"plan/100.md": {Data: []byte("---\nid: 100\n---\n")},
+		"plan/52.md":  {Data: []byte("---\nid: 52\n---\n")},
+		"plan/132.md": {Data: []byte("---\nid: 132\n---\n")},
+	}
+	f := newTestFile(t, "PLAN.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSort_NumericIDDescending(t *testing.T) {
+	// Integration test: -numeric:id puts 132 before 100 before 52.
+	src := "<?catalog\nglob: \"plan/*.md\"\nsort: -numeric:id\n" +
+		"row: \"- [{id}]({filename})\"\n?>\n" +
+		"- [132](plan/132.md)\n- [100](plan/100.md)\n- [52](plan/52.md)\n<?/catalog?>\n"
+	mapFS := fstest.MapFS{
+		"plan/100.md": {Data: []byte("---\nid: 100\n---\n")},
+		"plan/52.md":  {Data: []byte("---\nid: 52\n---\n")},
+		"plan/132.md": {Data: []byte("---\nid: 132\n---\n")},
+	}
+	f := newTestFile(t, "PLAN.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSort_NumericFallbackNoError(t *testing.T) {
+	// A non-numeric field with numeric: prefix falls back to string sort, no error.
+	src := "<?catalog\nglob: \"*.md\"\nsort: numeric:tag\n" +
+		"row: \"- [{tag}]({filename})\"\n?>\n" +
+		"- [alpha](a.md)\n- [beta](b.md)\n<?/catalog?>\n"
+	mapFS := fstest.MapFS{
+		"a.md": {Data: []byte("---\ntag: alpha\n---\n")},
+		"b.md": {Data: []byte("---\ntag: beta\n---\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestSort_LexicographicIDRegression(t *testing.T) {
+	// Existing sort: id (no numeric: prefix) stays lexicographic — 100 < 52.
+	src := "<?catalog\nglob: \"plan/*.md\"\nsort: id\n" +
+		"row: \"- [{id}]({filename})\"\n?>\n" +
+		"- [100](plan/100.md)\n- [52](plan/52.md)\n<?/catalog?>\n"
+	mapFS := fstest.MapFS{
+		"plan/52.md":  {Data: []byte("---\nid: 52\n---\n")},
+		"plan/100.md": {Data: []byte("---\nid: 100\n---\n")},
+	}
+	f := newTestFile(t, "PLAN.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
 }
 
 func TestSortValue_Path(t *testing.T) {

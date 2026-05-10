@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -229,6 +230,12 @@ func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 		return []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("generated section directive has invalid sort value %q", sortVal))}
 	}
+	// Strip numeric: prefix before further validation.
+	key = strings.TrimPrefix(key, "numeric:")
+	if key == "" {
+		return []lint.Diagnostic{makeDiag(filePath, line,
+			fmt.Sprintf("generated section directive has invalid sort value %q", sortVal))}
+	}
 	// Built-in sort keys don't need CUE path validation.
 	if key == "path" || key == "filename" {
 		return nil
@@ -300,7 +307,7 @@ func buildCatalogEntries(
 	globFS, prefix := resolveGlobFS(f, params)
 	files := resolveGlobMatchesFrom(globFS, f, params)
 
-	sortKey, descending := parseSort(params)
+	sortKey, descending, numericSort := parseSort(params)
 	_, hasRow := params["row"]
 	needFM := hasRow || (sortKey != "path" && sortKey != "filename")
 
@@ -326,7 +333,7 @@ func buildCatalogEntries(
 		entries = append(entries, fileEntry{fields: fields})
 	}
 
-	sortEntries(entries, sortKey, descending)
+	sortEntries(entries, sortKey, descending, numericSort)
 	return entries, diags
 }
 
@@ -476,31 +483,89 @@ func renderCatalogContent(
 	return renderTemplate(params, entries, cols)
 }
 
-// parseSort parses the sort value from params, returning the key and direction.
-func parseSort(params map[string]string) (key string, descending bool) {
+// parseSort parses the sort value from params, returning the key, direction, and
+// whether numeric sorting is requested. The numeric: prefix (e.g. "numeric:id"
+// or "-numeric:id") enables integer-based comparison with string fallback.
+func parseSort(params map[string]string) (key string, descending bool, numeric bool) {
 	sortVal, ok := params["sort"]
 	if !ok || sortVal == "" {
-		return "path", false
+		return "path", false, false
 	}
 
 	if strings.HasPrefix(sortVal, "-") {
-		return sortVal[1:], true
+		key = sortVal[1:]
+		descending = true
+	} else {
+		key = sortVal
 	}
-	return sortVal, false
+
+	if strings.HasPrefix(key, "numeric:") {
+		key = key[len("numeric:"):]
+		numeric = true
+	}
+
+	return key, descending, numeric
 }
 
-// sortEntries sorts file entries by the given key.
-func sortEntries(entries []fileEntry, key string, descending bool) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		vi := sortValue(entries[i], key)
-		vj := sortValue(entries[j], key)
+// sortableEntry pairs a fileEntry with its pre-computed sort values so that
+// sort comparisons remain consistent after the slice is rearranged.
+type sortableEntry struct {
+	entry   fileEntry
+	strVal  string // lower-cased string sort value
+	intVal  int    // parsed integer value (only valid when intVals mode is active)
+	hasInt  bool   // whether intVal was successfully parsed
+	pathVal string // lower-cased filename for tiebreaker
+}
 
-		cmp := strings.Compare(strings.ToLower(vi), strings.ToLower(vj))
+// sortEntries sorts file entries by the given key. When numeric is true,
+// each entry's field is parsed via strconv.Atoi; if all entries parse
+// successfully they are compared by integer value, otherwise the sort
+// falls back to case-insensitive string comparison.
+func sortEntries(entries []fileEntry, key string, descending bool, numeric bool) {
+	if len(entries) == 0 {
+		return
+	}
+
+	// Build sortable wrappers with pre-computed values.
+	sortable := make([]sortableEntry, len(entries))
+	allNumeric := numeric // start optimistic; cleared if any Atoi fails
+	for i, e := range entries {
+		v := sortValue(e, key)
+		se := sortableEntry{
+			entry:   e,
+			strVal:  strings.ToLower(v),
+			pathVal: strings.ToLower(fieldinterp.Stringify(e.fields["filename"])),
+		}
+		if numeric {
+			n, err := strconv.Atoi(strings.TrimSpace(v))
+			if err != nil {
+				allNumeric = false
+			} else {
+				se.intVal = n
+				se.hasInt = true
+			}
+		}
+		sortable[i] = se
+	}
+
+	// If any value failed Atoi, fall back to string compare for all entries.
+	useInt := numeric && allNumeric
+
+	sort.SliceStable(sortable, func(i, j int) bool {
+		var cmp int
+		if useInt {
+			if sortable[i].intVal < sortable[j].intVal {
+				cmp = -1
+			} else if sortable[i].intVal > sortable[j].intVal {
+				cmp = 1
+			}
+		} else {
+			cmp = strings.Compare(sortable[i].strVal, sortable[j].strVal)
+		}
+
 		if cmp == 0 {
 			// Tiebreaker: path ascending, case-insensitive.
-			pi := strings.ToLower(fieldinterp.Stringify(entries[i].fields["filename"]))
-			pj := strings.ToLower(fieldinterp.Stringify(entries[j].fields["filename"]))
-			return pi < pj
+			return sortable[i].pathVal < sortable[j].pathVal
 		}
 
 		if descending {
@@ -508,6 +573,11 @@ func sortEntries(entries []fileEntry, key string, descending bool) {
 		}
 		return cmp < 0
 	})
+
+	// Write sorted entries back.
+	for i, se := range sortable {
+		entries[i] = se.entry
+	}
 }
 
 // sortValue returns the sort value for a file entry given a key.

@@ -109,10 +109,33 @@ gitignore: "false"
 
 ### Sorting
 
-Format: `[-]KEY`. A `-` prefix means descending.
-Built-in keys: `path`, `filename`. Any other key is
-looked up in front matter. Missing values sort as
-empty string.
+Format: `[-][numeric:]KEY`. A `-` prefix means
+descending. Built-in keys: `path`, `filename`. Any
+other key is looked up in front matter. Missing values
+sort as empty string.
+
+The `numeric:` prefix enables integer-based ordering.
+Without it, all comparisons are case-insensitive string
+comparisons, so `"100"` sorts before `"52"` because
+`"1" < "5"`. With `numeric:`, values are parsed as
+integers and compared numerically:
+
+```markdown
+<?catalog
+glob: "plan/*.md"
+sort: numeric:id
+row: "- [{id} — {title}]({filename})"
+?>
+- [52 — First plan](plan/52_first.md)
+- [100 — Later plan](plan/100_later.md)
+- [132 — Newest plan](plan/132_newest.md)
+<?/catalog?>
+```
+
+If any entry's field value fails integer parsing, the
+sort falls back to case-insensitive string comparison
+for all entries — no error is raised. Descending order
+uses the `-numeric:` prefix (e.g. `sort: -numeric:id`).
 
 ### What happens when no files match
 
