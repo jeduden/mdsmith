@@ -439,10 +439,11 @@ func (s *Server) renameHeading(
 	// Reject a new heading text that slugifies to nothing (e.g.
 	// punctuation-only). The renamed heading would have no
 	// addressable anchor — CollectTOCItems and the index's heading
-	// walk both skip empty slugs — and the per-edge rewrite would
-	// produce `#` placeholders that break every incoming link
-	// instead of redirecting them.
-	if res.Anchor != "" && mdtext.Slugify(newName) == "" {
+	// walk both skip empty slugs — so cross-file links would have
+	// nowhere to land. The check is unconditional so the behavior
+	// matches the docs: any rename to an empty-slug name fails,
+	// regardless of whether the old heading had a slug.
+	if mdtext.Slugify(newName) == "" {
 		_ = s.t.writeError(msg.ID, codeInvalidParams,
 			"new heading text has no addressable slug; pick text containing letters or digits")
 		return
