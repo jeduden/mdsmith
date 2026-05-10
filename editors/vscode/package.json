@@ -59,27 +59,27 @@
       },
       {
         "command": "mdsmith.init",
-        "title": "Initialize config",
+        "title": "Initialize Config",
         "category": "mdsmith"
       },
       {
         "command": "mdsmith.mergeDriver.install",
-        "title": "Install Git merge driver",
+        "title": "Install Git Merge Driver",
         "category": "mdsmith"
       },
       {
         "command": "mdsmith.fixWorkspace",
-        "title": "Fix all Markdown",
+        "title": "Fix All Markdown",
         "category": "mdsmith"
       },
       {
         "command": "mdsmith.kinds.why",
-        "title": "Explain rule on this file",
+        "title": "Explain Rule on This File",
         "category": "mdsmith"
       },
       {
         "command": "mdsmith.kinds.resolve",
-        "title": "Show resolved config",
+        "title": "Show Resolved Config",
         "category": "mdsmith"
       }
     ],
