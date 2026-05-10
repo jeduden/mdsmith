@@ -175,10 +175,7 @@ func relFromDir(dir, target string) string {
 	if dir == "" {
 		return target
 	}
-	rel, err := filepath.Rel(filepath.FromSlash(dir), filepath.FromSlash(target))
-	if err != nil {
-		return target
-	}
+	rel, _ := filepath.Rel(filepath.FromSlash(dir), filepath.FromSlash(target))
 	return filepath.ToSlash(rel)
 }
 

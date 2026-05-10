@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
+	"github.com/yuin/goldmark/ast"
 )
 
 func TestCompletionContextAnchorCurrentFile(t *testing.T) {
@@ -290,4 +292,127 @@ func TestCompletionContextAnchorOtherFileEscapingWorkspace(t *testing.T) {
 	} else {
 		assert.Equal(t, CompletionNone, res.Tag)
 	}
+}
+
+func TestCompletionContextLineZero(t *testing.T) {
+	t.Parallel()
+	// line=0 is clamped to 1; line 1 of body is "# Heading" → no anchor context.
+	src := "# Heading\n\nSee [link](#\n"
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 0, 12)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestCompletionContextColZero(t *testing.T) {
+	t.Parallel()
+	// col=0 is clamped to 1; at col=1 the text-before-cursor is empty → no match.
+	src := "# Top\n\nSee [link](#heading\n"
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 3, 0)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestCompletionContextLineOutOfRange(t *testing.T) {
+	t.Parallel()
+	// line=999 is beyond the document → bodyLine > len(bodyLines) → CompletionNone.
+	src := "# Heading\n\nShort doc.\n"
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 999, 1)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestCompletionContextDirectiveColBeyondLine(t *testing.T) {
+	t.Parallel()
+	// col=100 on a short PI line triggers the cursorByteCol > len(lineBytes) clamp.
+	src := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		`glob: "docs/"`,
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	// Line 4 is `glob: "docs/"` (13 chars). col=100 is clamped to len.
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 4, 100)
+	assert.Equal(t, CompletionDirectivePath, res.Tag)
+	assert.Equal(t, "docs/", res.Prefix)
+}
+
+func TestCompletionContextScanBackwardListItemContinue(t *testing.T) {
+	t.Parallel()
+	// Another list item above the cursor triggers the "skip list item" continue
+	// (L250-251) in scanBackwardForPIKey before reaching the parent "glob:" key.
+	src := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		"glob:",
+		`  - "docs/*.md"`,
+		`  - "docs/g`,
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	// Line 6, cursor at end of `  - "docs/g`.
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 6, 12)
+	assert.Equal(t, CompletionDirectivePath, res.Tag)
+	assert.Equal(t, "docs/g", res.Prefix)
+	assert.Equal(t, "glob", res.DirectiveArg)
+}
+
+func TestCompletionContextScanBackwardBreak(t *testing.T) {
+	t.Parallel()
+	// A non-key, non-list line with no colon causes the scanner to break
+	// (L256) before finding the parent key → CompletionNone.
+	src := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		"glob:",
+		"  comment without colon",
+		`  - "docs/g`,
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 6, 12)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestScanBackwardForPIKeyExhaustsLoop(t *testing.T) {
+	t.Parallel()
+	// All preceding lines are list items; the for-loop exhausts and returns ""
+	// (L258) — verifies the trailing return after the loop.
+	lines := [][]byte{
+		[]byte("  - alpha"),
+		[]byte("  - beta"),
+		[]byte(`  - "docs/g`),
+	}
+	result := scanBackwardForPIKey(lines, 2)
+	assert.Equal(t, "", result)
+}
+
+func TestDirectiveCompletionContextLineGuard(t *testing.T) {
+	t.Parallel()
+	// line=0 is out of bounds → returns CompletionNone (L161-163).
+	pi := &lint.ProcessingInstruction{Name: "catalog"}
+	lines := [][]byte{[]byte(`glob: "docs/"`)}
+	res := directiveCompletionContext(pi, lines, 0, 5)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestDirectiveCompletionContextColNegative(t *testing.T) {
+	t.Parallel()
+	// col=0 makes cursorByteCol = -1 < 0 → clamped to 0 (L167-169).
+	// With empty text-up-to-cursor, piArgRE and yamlListItemValue both fail → CompletionNone.
+	pi := &lint.ProcessingInstruction{Name: "catalog"}
+	lines := [][]byte{[]byte(`glob: "docs/"`)}
+	res := directiveCompletionContext(pi, lines, 1, 0)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestCodeNodeContainsLineEmpty(t *testing.T) {
+	t.Parallel()
+	// A code block node with no content lines (Len() == 0) → returns false (L285-287).
+	body := []byte("# Top\n\n```\n```\n")
+	block := ast.NewFencedCodeBlock(nil)
+	assert.False(t, codeNodeContainsLine(body, block, 3))
 }
