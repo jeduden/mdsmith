@@ -296,6 +296,7 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
       await runInit({
         binary: getBinary(),
         workspaceRoot: getWorkspaceRoot(),
+        isTrusted,
         showInfo: (msg, ...buttons) =>
           Promise.resolve(vscode.window.showInformationMessage(msg, ...buttons)),
         showError: (msg) =>
@@ -436,4 +437,11 @@ export async function deactivate(): Promise<void> {
   // tight and configWatcher does not survive into a subsequent
   // activation.
   disposeConfigWatcher();
+  // Dispose the standalone output channel created when the LSP
+  // client is not running. context.subscriptions is flushed after
+  // deactivate returns, so dispose explicitly here for tight ordering.
+  if (standaloneOutputChannel) {
+    standaloneOutputChannel.dispose();
+    standaloneOutputChannel = undefined;
+  }
 }

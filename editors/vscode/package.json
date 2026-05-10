@@ -79,6 +79,10 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "mdsmith.init",
+          "when": "isWorkspaceTrusted"
+        },
+        {
           "command": "mdsmith.mergeDriver.install",
           "when": "isWorkspaceTrusted"
         },

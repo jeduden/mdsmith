@@ -1,7 +1,7 @@
 ---
 id: 122
 title: VS Code palette commands
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   A small set of VS Code command-palette entries —
