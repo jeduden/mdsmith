@@ -1,5 +1,5 @@
 // Handler logic for mdsmith.init: runs "mdsmith init" in the workspace root.
-// Trust-gated because it creates (or overwrites) .mdsmith.yml.
+// Trust-gated because it creates .mdsmith.yml (fails if the file already exists).
 
 import { SpawnFn, defaultSpawn } from "./runner";
 

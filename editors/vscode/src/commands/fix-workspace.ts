@@ -52,9 +52,9 @@ export interface FixWorkspaceHandlerDeps {
   spawn?: SpawnFn;
 }
 
-// runFixWorkspace executes the fix command and resolves with the
-// notification message or undefined when cancelled / failed. It is
-// extracted so tests can drive it without a VS Code host.
+// runFixWorkspace executes the fix command and resolves when complete
+// (or returns early when cancelled or on error). Extracted so tests
+// can drive it without a VS Code host.
 export async function runFixWorkspace(deps: FixWorkspaceHandlerDeps): Promise<void> {
   if (!deps.workspaceRoot) {
     await deps.showError("mdsmith: Fix all Markdown requires an open workspace folder.");

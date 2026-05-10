@@ -6,6 +6,7 @@
 //   mdsmith-kinds://resolve?file=<encoded-path>
 //   mdsmith-kinds://why?file=<encoded-path>&rule=<rule-id>
 
+import { dirname } from "path";
 import { SpawnFn, defaultSpawn } from "./runner";
 
 export const KINDS_SCHEME = "mdsmith-kinds";
@@ -63,7 +64,7 @@ export async function fetchKindsContent(
 
   let result: Awaited<ReturnType<typeof spawn>>;
   try {
-    result = await spawn(binary, args, workspaceRoot);
+    result = await spawn(binary, args, workspaceRoot ?? dirname(parsed.file));
   } catch (err) {
     return `**mdsmith ${args.slice(0, 2).join(" ")} could not start**\n\n\`\`\`\n${err}\n\`\`\``;
   }

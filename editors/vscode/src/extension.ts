@@ -263,8 +263,9 @@ function resolveActiveBinary(extensionPath: string): string {
 
 // registerPaletteCommands wires the five mdsmith.* palette commands and
 // registers the mdsmith-kinds: virtual-document scheme. Called once from
-// activate(); the trust-gated commands also subscribe to
-// onDidGrantWorkspaceTrust so they appear without a reload.
+// activate(). Trust-gated commands use the built-in isWorkspaceTrusted
+// when condition, which VS Code re-evaluates automatically when trust
+// is granted — no onDidGrantWorkspaceTrust subscription is required.
 function registerPaletteCommands(context: vscode.ExtensionContext): void {
   const getBinary = () => resolveActiveBinary(context.extensionPath);
   const getWorkspaceRoot = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
