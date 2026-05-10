@@ -168,16 +168,23 @@ single file that was just edited.
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
-        "command": "mdsmith fix -- \"$CLAUDE_FILE_PATH\""
+        "hooks": [
+          {
+            "type": "command",
+            "command": "F=$(jq -r '.tool_input.file_path // empty'); case \"$F\" in *.md|*.markdown) mdsmith fix -- \"$F\";; esac"
+          }
+        ]
       }
     ]
   }
 }
 ```
 
-The `--` terminator stops `$CLAUDE_FILE_PATH` from
-being parsed as a flag if a filename starts with
-`-`.
+The hook receives tool input as JSON on stdin.
+`jq` extracts `tool_input.file_path`. The `case`
+filters to Markdown extensions. The `--`
+terminator stops the path from being parsed as
+a flag.
 
 The hook is opt-in via the plugin's enable/disable
 toggle. Users who prefer to run `fix` manually
@@ -292,11 +299,6 @@ but it does not auto-install.
 
 ## Open Questions
 
-- **Combined plugin alternative.** A single
-  `mdsmith` plugin bundling everything is one
-  install vs two. Split mirrors the official
-  convention (`gopls-lsp` is LSP-only). Revisit
-  if reviewers prefer one plugin.
 - **Hook scope.** Auto-`fix` on every Edit may
   surprise users who prefer manual fixes. The
   hook is opt-in via plugin enable; a per-file

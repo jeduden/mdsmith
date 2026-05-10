@@ -1,0 +1,17 @@
+{
+  "description": "Run mdsmith fix on a Markdown file after Edit or Write",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "F=$(jq -r '.tool_input.file_path // empty'); case \"$F\" in *.md|*.markdown) mdsmith fix -- \"$F\";; esac",
+            "statusMessage": "Running mdsmith fix on edited Markdown file..."
+          }
+        ]
+      }
+    ]
+  }
+}
