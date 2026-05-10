@@ -481,6 +481,273 @@ kind-assignment:
 	assert.True(t, uris[rootURI+"/assigned.md"], "expected assigned.md in implementations: %v", locs)
 }
 
+func TestCompletionAdvertisesCapability(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	resultRaw, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+	var res initializeResult
+	require.NoError(t, json.Unmarshal(resultRaw, &res))
+	require.NotNil(t, res.Capabilities.CompletionProvider, "completionProvider must be set")
+	assert.Equal(t, []string{"#", "[", ":", "/", "\""}, res.Capabilities.CompletionProvider.TriggerCharacters)
+	assert.False(t, res.Capabilities.CompletionProvider.ResolveProvider)
+}
+
+func TestCompletionAnchorCurrentFile(t *testing.T) {
+	t.Parallel()
+	src := "# Alpha Heading\n\n## Beta Section\n\nSee [ref](#al\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after "al" in "[ref](#al" → LSP line 4 (0-based), char 13.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 4, Character: 13},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	require.NotEmpty(t, list.Items, "expected anchor completion items")
+	labels := make([]string, len(list.Items))
+	for i, item := range list.Items {
+		labels[i] = item.Label
+	}
+	assert.Contains(t, labels, "alpha-heading", "expected alpha-heading anchor")
+	for _, label := range labels {
+		assert.True(t, strings.HasPrefix(label, "al"), "all items should start with prefix 'al': %q", label)
+	}
+	// Kind must be Reference.
+	assert.Equal(t, completionItemKindReference, list.Items[0].Kind)
+}
+
+func TestCompletionAnchorCurrentFileDuplicateSlugs(t *testing.T) {
+	t.Parallel()
+	// Two headings that produce the same base slug; the second gets a -1 suffix.
+	src := "# Foo\n\n# Foo\n\nSee [link](#foo\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"dup.md": src})
+	uri := rootURI + "/dup.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after "foo" in "#foo" — LSP line 4 (0-based), char 15.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 4, Character: 15},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	labels := make(map[string]bool, len(list.Items))
+	for _, item := range list.Items {
+		labels[item.Label] = true
+	}
+	assert.True(t, labels["foo"], "expected 'foo' anchor")
+	assert.True(t, labels["foo-1"], "expected disambiguated 'foo-1' anchor")
+}
+
+func TestCompletionAnchorOtherFile(t *testing.T) {
+	t.Parallel()
+	srcA := "# Doc A\n\nSee [ref](./b.md#be\n"
+	srcB := "# Beta Heading\n\n## Gamma Section\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": srcA, "b.md": srcB})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after "be" in "./b.md#be" → LSP line 2 (0-based), char 26.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 26},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	require.NotEmpty(t, list.Items)
+	labels := make([]string, len(list.Items))
+	for i, item := range list.Items {
+		labels[i] = item.Label
+	}
+	assert.Contains(t, labels, "beta-heading", "expected beta-heading from b.md")
+	// Labels from a.md (doc-a) must NOT appear since we targeted b.md.
+	for _, label := range labels {
+		assert.NotEqual(t, "doc-a", label, "items from a.md must be excluded")
+	}
+}
+
+func TestCompletionRefLabel(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\nSee [x][fo\n\n[foo]: https://example.com\n[bar]: https://other.com\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after "fo" in "[x][fo" → LSP line 2 (0-based), char 10.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 10},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	require.NotEmpty(t, list.Items)
+	labels := make([]string, len(list.Items))
+	for i, item := range list.Items {
+		labels[i] = item.Label
+	}
+	assert.Contains(t, labels, "foo", "expected 'foo' label")
+	// 'bar' does not start with 'fo', so must be excluded.
+	for _, label := range labels {
+		assert.NotEqual(t, "bar", label, "bar must be excluded by prefix filter")
+	}
+}
+
+func TestCompletionRefLabelExcludesOtherFiles(t *testing.T) {
+	t.Parallel()
+	srcA := "# A\n\nSee [x][\n"
+	srcB := "# B\n\n[remote]: https://example.com\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": srcA, "b.md": srcB})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after '[' in "[x][" → char 9 on line 2 (0-based).
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 9},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	for _, item := range list.Items {
+		assert.NotEqual(t, "remote", item.Label, "labels from b.md must be excluded")
+	}
+}
+
+func TestCompletionKindValue(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, ".mdsmith.yml"), []byte(`
+kinds:
+  guide: {}
+  tutorial: {}
+  reference: {}
+`), 0o644))
+	srcText := "---\nkind: gu\n---\n# Body\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmp, "a.md"), []byte(srcText), 0o644))
+
+	h := newHarness(t)
+	rootURI := pathToFileURI(t, tmp)
+	_, errResp := h.request("initialize", initializeParams{
+		RootURI:      &rootURI,
+		Capabilities: clientCapabilities{},
+	})
+	require.Nil(t, errResp)
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.srv.reloadConfig()
+	h.srv.invalidateIndex()
+
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcText},
+	})
+
+	// Cursor on "gu" value: FM line 2 is `kind: gu`, character 8 is
+	// in the value. LSP line 1 (0-based), char 8.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 1, Character: 8},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	require.NotEmpty(t, list.Items, "expected kind completion items")
+	labels := make([]string, len(list.Items))
+	for i, item := range list.Items {
+		labels[i] = item.Label
+		assert.Equal(t, completionItemKindEnumMember, item.Kind)
+		assert.Equal(t, ".mdsmith.yml", item.Detail)
+	}
+	assert.Contains(t, labels, "guide")
+	for _, label := range labels {
+		assert.True(t, strings.HasPrefix(label, "gu"), "all items should start with 'gu': %q", label)
+	}
+}
+
+func TestCompletionDirectivePath(t *testing.T) {
+	t.Parallel()
+	srcA := strings.Join([]string{
+		"# Top",
+		"",
+		"<?include",
+		`file: "doc`,
+		"?>",
+		"<?/include?>",
+		"",
+	}, "\n")
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"a.md":      srcA,
+		"docs/b.md": "# B\n",
+		"docs/c.md": "# C\n",
+		"other.md":  "# Other\n",
+	})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after `"doc` on line 4 (0-based: 3), char 10.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 3, Character: 10},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	require.NotEmpty(t, list.Items, "expected path completion items for 'doc' prefix")
+	for _, item := range list.Items {
+		assert.Equal(t, completionItemKindFile, item.Kind)
+		assert.True(t, strings.HasPrefix(strings.ToLower(item.Label), "doc"),
+			"all items should start with 'doc': %q", item.Label)
+	}
+}
+
+func TestCompletionOutsideContextReturnsEmpty(t *testing.T) {
+	t.Parallel()
+	src := "# Heading\n\nJust plain prose here.\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 8},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	assert.Empty(t, list.Items, "expected no completions on plain prose")
+	assert.False(t, list.IsIncomplete)
+}
+
 func TestWatcherSkipsOpenBuffer(t *testing.T) {
 	t.Parallel()
 	// File on disk has no headings. Editor buffer has one, so the

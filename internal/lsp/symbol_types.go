@@ -117,3 +117,46 @@ type callHierarchyIncomingCallsParams struct {
 type callHierarchyOutgoingCallsParams struct {
 	Item callHierarchyItem `json:"item"`
 }
+
+// completionItemKind mirrors LSP CompletionItemKind enum values (LSP §3.18.4).
+type completionItemKind int
+
+const (
+	completionItemKindFile       completionItemKind = 17
+	completionItemKindReference  completionItemKind = 18
+	completionItemKindEnumMember completionItemKind = 20
+)
+
+// completionItem is one entry in a textDocument/completion response (LSP §3.18.4).
+type completionItem struct {
+	Label      string             `json:"label"`
+	Kind       completionItemKind `json:"kind,omitempty"`
+	Detail     string             `json:"detail,omitempty"`
+	SortText   string             `json:"sortText,omitempty"`
+	InsertText string             `json:"insertText,omitempty"`
+}
+
+// completionList is the textDocument/completion response (LSP §3.18.4).
+type completionList struct {
+	IsIncomplete bool             `json:"isIncomplete"`
+	Items        []completionItem `json:"items"`
+}
+
+// completionParams is the textDocument/completion request params (LSP §3.18.4).
+type completionParams struct {
+	TextDocument textDocumentIdentifier    `json:"textDocument"`
+	Position     Position                  `json:"position"`
+	Context      *completionTriggerContext `json:"context,omitempty"`
+}
+
+// completionTriggerContext carries optional trigger metadata (LSP §3.18.4).
+type completionTriggerContext struct {
+	TriggerKind      int    `json:"triggerKind"`
+	TriggerCharacter string `json:"triggerCharacter,omitempty"`
+}
+
+// completionOptions is advertised in serverCapabilities (LSP §3.18.4).
+type completionOptions struct {
+	TriggerCharacters []string `json:"triggerCharacters"`
+	ResolveProvider   bool     `json:"resolveProvider"`
+}

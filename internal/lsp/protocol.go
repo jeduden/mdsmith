@@ -104,6 +104,7 @@ type serverCapabilities struct {
 	ReferencesProvider      bool                    `json:"referencesProvider,omitempty"`
 	WorkspaceSymbolProvider bool                    `json:"workspaceSymbolProvider,omitempty"`
 	CallHierarchyProvider   bool                    `json:"callHierarchyProvider,omitempty"`
+	CompletionProvider      *completionOptions      `json:"completionProvider,omitempty"`
 }
 
 // textDocumentSyncKind is the LSP enum for change notification mode.
