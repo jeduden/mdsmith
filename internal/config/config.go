@@ -23,6 +23,18 @@ var ValidCategories = []string{
 // discovery when no file arguments are given on the command line.
 var DefaultFiles = []string{"**/*.md", "**/*.markdown"}
 
+// UserConvention is a user-defined convention bundle declared in the
+// top-level `conventions:` block in .mdsmith.yml. It has the same
+// { flavor, rules } shape as the built-in convention table.
+type UserConvention struct {
+	// Flavor is the Markdown flavor MDS034 should validate against
+	// (e.g. "commonmark", "gfm", "goldmark").
+	Flavor string `yaml:"flavor"`
+	// Rules maps rule names to their presets, using the same schema
+	// as the top-level `rules:` block.
+	Rules map[string]RuleCfg `yaml:"rules,omitempty"`
+}
+
 // Config is the top-level configuration.
 type Config struct {
 	Rules          map[string]RuleCfg    `yaml:"rules"`
@@ -38,12 +50,18 @@ type Config struct {
 	Build          BuildConfig           `yaml:"build,omitempty"`
 
 	// Convention names a Markdown convention bundle. Built-in
-	// values: "portable", "github", "plain". Empty means no
-	// convention; the user's top-level rules and the built-in
-	// defaults are the only base layers. See
-	// internal/rules/markdownflavor/conventions.go for the table
-	// and docs/reference/conventions.md for end-user docs.
+	// values: "portable", "github", "plain". User-defined
+	// conventions may also be referenced here after being declared
+	// under the top-level `conventions:` key. Empty means no
+	// convention. See internal/rules/markdownflavor/conventions.go
+	// and docs/reference/conventions.md.
 	Convention string `yaml:"convention,omitempty"`
+
+	// Conventions holds user-defined convention bundles declared
+	// under the top-level `conventions:` key. Each entry is a
+	// { flavor, rules } pair. Names must not collide with the
+	// built-in conventions ("portable", "github", "plain").
+	Conventions map[string]UserConvention `yaml:"conventions,omitempty"`
 
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via

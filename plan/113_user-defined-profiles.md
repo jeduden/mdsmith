@@ -1,7 +1,7 @@
 ---
 id: 113
 title: User-defined Markdown conventions
-status: "🔲"
+status: "✅"
 summary: >-
   Extend the convention system from plan 112 with a
   top-level `conventions:` block in `.mdsmith.yml`.
@@ -171,24 +171,24 @@ unchanged.
 
 ## Acceptance Criteria
 
-- [ ] `conventions:` block in `.mdsmith.yml`
+- [x] `conventions:` block in `.mdsmith.yml`
       defines a named convention with `flavor:` and
       `rules:`.
-- [ ] Top-level `convention: our-team` selects a
+- [x] Top-level `convention: our-team` selects a
       user-defined convention and applies its rule
       presets.
-- [ ] Defining `conventions.portable` (or `github` /
+- [x] Defining `conventions.portable` (or `github` /
       `plain`) produces a config error naming the
       reserved name.
-- [ ] An unknown convention name lists both
+- [x] An unknown convention name lists both
       built-in and user-defined options in the error
       message.
-- [ ] Top-level `rules:` overrides win over user
+- [x] Top-level `rules:` overrides win over user
       convention presets via deep-merge.
-- [ ] Invalid rule names or settings inside a user
+- [x] Invalid rule names or settings inside a user
       convention produce a config error naming the
       convention and the rule.
-- [ ] `mdsmith kinds resolve` distinguishes user
+- [x] `mdsmith kinds resolve` distinguishes user
       conventions from built-ins in its output.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

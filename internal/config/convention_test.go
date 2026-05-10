@@ -9,9 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	// Register markdown-flavor so rule.ByName lookups in deep-merge
-	// resolve while the convention mechanism is exercised.
+	// Register rules so rule.ByName lookups resolve while the
+	// convention mechanism is exercised.
+	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
+	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
 )
 
 func TestApplyConvention_NoConventionSet_NoOp(t *testing.T) {
@@ -350,6 +352,279 @@ func TestConvention_EnablesOptInRuleEndToEnd(t *testing.T) {
 		"convention: portable must enable markdown-flavor (opt-in by default)")
 	assert.Equal(t, "commonmark", mf.Settings["flavor"],
 		"convention preset must populate flavor on MDS034")
+}
+
+// ---- User-defined convention tests ----
+
+func TestApplyConvention_UserConvention_Valid(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"markdown-flavor": {
+						Enabled:  true,
+						Settings: map[string]any{"flavor": "gfm"},
+					},
+				},
+			},
+		},
+		Convention: "our-team",
+	}
+	require.NoError(t, applyConvention(cfg))
+	require.NotNil(t, cfg.ConventionPreset)
+	mf, ok := cfg.ConventionPreset["markdown-flavor"]
+	require.True(t, ok, "preset must contain markdown-flavor")
+	assert.True(t, mf.Enabled)
+	assert.Equal(t, "gfm", mf.Settings["flavor"])
+}
+
+func TestApplyConvention_UserConvention_ReservedName(t *testing.T) {
+	for _, reserved := range []string{"portable", "github", "plain"} {
+		t.Run(reserved, func(t *testing.T) {
+			cfg := &Config{
+				Conventions: map[string]UserConvention{
+					reserved: {Flavor: "gfm"},
+				},
+			}
+			err := applyConvention(cfg)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), reserved)
+			assert.Contains(t, err.Error(), "reserved")
+		})
+	}
+}
+
+func TestApplyConvention_UserConvention_InvalidFlavor(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {Flavor: "notaflavor"},
+		},
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "notaflavor")
+}
+
+func TestApplyConvention_UserConvention_UnknownRule(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-such-rule": {Enabled: true},
+				},
+			},
+		},
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "no-such-rule")
+}
+
+func TestApplyConvention_UserConvention_InvalidSetting(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"markdown-flavor": {
+						Enabled:  true,
+						Settings: map[string]any{"no-such-setting": "val"},
+					},
+				},
+			},
+		},
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "markdown-flavor")
+	assert.Contains(t, err.Error(), "no-such-setting")
+}
+
+func TestApplyConvention_UserConvention_TopLevelRulesOverride(t *testing.T) {
+	// Convention presets emphasis-style with bold=asterisk; user's top-level
+	// rules override bold to underscore. The user layer wins.
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"emphasis-style": {
+						Enabled:  true,
+						Settings: map[string]any{"bold": "asterisk"},
+					},
+				},
+			},
+		},
+		Convention: "our-team",
+		Rules: map[string]RuleCfg{
+			"emphasis-style": {
+				Enabled:  true,
+				Settings: map[string]any{"bold": "underscore"},
+			},
+		},
+		ExplicitRules: map[string]bool{"emphasis-style": true},
+	}
+	require.NoError(t, applyConvention(cfg))
+
+	got := Effective(cfg, "doc.md", nil)
+	es, ok := got["emphasis-style"]
+	require.True(t, ok)
+	assert.True(t, es.Enabled)
+	// User's explicit setting overrides the convention preset.
+	assert.Equal(t, "underscore", es.Settings["bold"],
+		"top-level rules must win over user convention preset")
+}
+
+func TestApplyConvention_UserConvention_ErrorListsBothSets(t *testing.T) {
+	// When convention: references an unknown name, the error must list
+	// both built-in and user-defined convention names.
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {Flavor: "gfm"},
+		},
+		Convention: "bogus",
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
+	assert.Contains(t, err.Error(), "our-team",
+		"error must include user-defined convention names")
+	assert.Contains(t, err.Error(), "portable",
+		"error must include built-in convention names")
+}
+
+func TestApplyConvention_UserConvention_NotSelectedStillValidated(t *testing.T) {
+	// A user convention declared but not selected must still be validated.
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"bad-convention": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-such-rule": {Enabled: true},
+				},
+			},
+		},
+		// Convention is NOT set — we don't select bad-convention.
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err, "unselected convention with bad rule must still fail")
+	assert.Contains(t, err.Error(), "no-such-rule")
+}
+
+func TestProvenance_UserConventionLayerHasUserSuffix(t *testing.T) {
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"markdown-flavor": {
+						Enabled:  true,
+						Settings: map[string]any{"flavor": "gfm"},
+					},
+				},
+			},
+		},
+		Convention: "our-team",
+	}
+	require.NoError(t, applyConvention(cfg))
+
+	res := ResolveFile(cfg, "doc.md", nil)
+	rr, ok := res.Rules["markdown-flavor"]
+	require.True(t, ok)
+
+	var sources []string
+	for _, l := range rr.Layers {
+		sources = append(sources, l.Source)
+	}
+	require.Contains(t, sources, "convention.our-team (user)",
+		"user convention layer must carry the (user) suffix")
+}
+
+func TestLoad_UserConvention_Valid(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := `conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      markdown-flavor:
+        flavor: gfm
+convention: our-team
+`
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	cfg, err := Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", cfg.Convention)
+	assert.NotNil(t, cfg.ConventionPreset)
+	mf, ok := cfg.ConventionPreset["markdown-flavor"]
+	require.True(t, ok)
+	assert.Equal(t, "gfm", mf.Settings["flavor"])
+}
+
+func TestLoad_UserConvention_ReservedName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mdsmith.yml")
+	yaml := "conventions:\n  portable:\n    flavor: gfm\n"
+	require.NoError(t, os.WriteFile(path, []byte(yaml), 0o600))
+
+	_, err := Load(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "portable")
+	assert.Contains(t, err.Error(), "reserved")
+}
+
+func TestApplyConvention_UserConvention_NonConfigurableRuleWithSettings(t *testing.T) {
+	// no-hard-tabs has no ApplySettings; passing settings for it must
+	// return a "rule has no configurable settings" error.
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-hard-tabs": {
+						Enabled:  true,
+						Settings: map[string]any{"some-setting": "val"},
+					},
+				},
+			},
+		},
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "no-hard-tabs")
+	assert.Contains(t, err.Error(), "no configurable settings")
+}
+
+func TestMerge_PreservesUserConventions(t *testing.T) {
+	loaded := &Config{
+		Convention: "our-team",
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"markdown-flavor": {Enabled: true, Settings: map[string]any{"flavor": "gfm"}},
+				},
+			},
+		},
+		ConventionPreset: map[string]RuleCfg{
+			"markdown-flavor": {Enabled: true, Settings: map[string]any{"flavor": "gfm"}},
+		},
+	}
+	merged := Merge(&Config{Rules: map[string]RuleCfg{}}, loaded)
+	assert.Equal(t, "our-team", merged.Convention)
+	require.Contains(t, merged.Conventions, "our-team")
+	assert.Equal(t, "gfm", merged.Conventions["our-team"].Flavor)
+
+	// Mutating the merged map must not bleed into the source.
+	merged.Conventions["our-team"] = UserConvention{Flavor: "tampered"}
+	assert.Equal(t, "gfm", loaded.Conventions["our-team"].Flavor)
 }
 
 func TestMerge_PreservesConvention(t *testing.T) {

@@ -172,6 +172,84 @@ This split keeps MDS034 focused on "what does this
 renderer interpret as a feature." Conventions
 orchestrate style separately.
 
+## User-defined conventions
+
+The three built-in conventions cover common cases.
+Teams that need something custom define it inline in
+`.mdsmith.yml`. The top-level `conventions:` key holds
+the map:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+      no-reference-style:
+        allow-footnotes: true
+
+convention: our-team
+```
+
+Each entry is a `{ flavor, rules }` pair. The `rules`
+block uses the same schema as the top-level `rules:`
+block.
+
+### Validation
+
+User-defined conventions are validated at config load:
+
+- `flavor` must be a recognised flavor string such as
+  `commonmark`, `gfm`, or `goldmark`.
+- Each key under `rules:` must name a registered rule.
+- Each rule's settings must pass the rule's own schema
+  check.
+
+Validation errors name the convention and the rule:
+
+```text
+convention "our-team" rule "no-inline-html": no-inline-html: unknown setting "allowed"
+```
+
+### Reserved names
+
+The built-in names `portable`, `github`, and `plain`
+are reserved. Defining a `conventions.portable` entry
+is a config error. This keeps the built-in names
+stable across docs and tutorials.
+
+### Resolution order
+
+The lookup checks user-defined conventions first,
+then falls back to the built-in table. Collisions with
+reserved names are rejected at load time, so shadowing
+is impossible. When neither table matches, the error
+lists both sets:
+
+```text
+unknown convention "bogus" (valid: github, our-team, plain, portable)
+```
+
+### Interaction with top-level rules
+
+User-defined conventions apply as a base layer, exactly
+like the built-in conventions. A top-level `rules:`
+entry overrides the convention preset for that rule.
+The rest of the preset remains.
+
+### Inspecting user conventions
+
+`mdsmith kinds resolve <file>` labels user convention
+layers with a `(user)` suffix. Built-in conventions
+carry no suffix. Example merge-chain output:
+
+```text
+convention.our-team (user)   set    {flavor: gfm}
+```
+
 ## Inspecting an effective convention
 
 `mdsmith kinds resolve <file>` shows the merge

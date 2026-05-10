@@ -25,7 +25,27 @@ root. The `test` job in `.github/workflows/ci.yml`
 uploads the merged coverage profile to Codecov after
 each run.
 
-To reproduce CI's merged coverage locally:
+## Branch and function coverage
+
+Statement coverage does not track which branches of
+an `if` or `switch` were taken.
+[gobco](https://github.com/rillig/gobco) provides
+condition-level branch coverage:
+
+```bash
+go tool gobco ./...
+```
+
+Flags:
+
+- `-branch` — report branch coverage instead of
+  condition coverage.
+- `-list-all` — include fully-covered conditions in
+  the output (default: only partially-covered).
+- `-stats file.json` — persist results across runs to
+  track progress over time.
+
+## Reproducing CI statement coverage locally
 
 ```bash
 mkdir -p e2e-cover
