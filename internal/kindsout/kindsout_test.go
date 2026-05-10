@@ -475,3 +475,48 @@ func TestWriteRuleResolutionText_ShowsConventionLayer(t *testing.T) {
 	assert.Contains(t, out, "winning source: user",
 		"user value wins over convention preset")
 }
+
+func TestWriteRuleResolutionText_UserConventionHasSuffix(t *testing.T) {
+	// A user-defined convention must show the "(user)" suffix in the
+	// layer source so `mdsmith kinds resolve` distinguishes it from
+	// built-in conventions.
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 120}},
+		},
+		ExplicitRules:    map[string]bool{"line-length": true},
+		Convention:       "our-team",
+		ConventionIsUser: true,
+		ConventionPreset: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	rr := res.Rules["line-length"]
+	var buf bytes.Buffer
+	require.NoError(t, WriteRuleResolutionText(&buf, "x.md", rr))
+	out := buf.String()
+	assert.Contains(t, out, "convention.our-team (user)",
+		"user convention layer must include (user) suffix")
+}
+
+func TestWriteFileResolutionText_UserConventionHasSuffix(t *testing.T) {
+	// Parallel check for WriteFileResolutionText: the convention layer
+	// source must include "(user)" for user-defined conventions.
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+		Convention:       "our-team",
+		ConventionIsUser: true,
+		ConventionPreset: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	out := buf.String()
+	assert.Contains(t, out, "convention.our-team (user)",
+		"user convention layer must appear with (user) suffix")
+}

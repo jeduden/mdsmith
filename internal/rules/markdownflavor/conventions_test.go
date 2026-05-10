@@ -145,3 +145,72 @@ func TestConventionNamesSorted(t *testing.T) {
 		"ConventionNames should return a sorted slice; got %v", names)
 	assert.ElementsMatch(t, []string{"github", "plain", "portable"}, names)
 }
+
+// Tests for Lookup with a user-defined convention map.
+
+func TestLookup_UserConvention_ReturnsUserEntry(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"list-marker-style": {Enabled: true, Settings: map[string]any{"style": "dash"}},
+			},
+		},
+	}
+	c, err := LookupWithUser("our-team", user)
+	require.NoError(t, err)
+	assert.Equal(t, "our-team", c.Name)
+	assert.Equal(t, FlavorGFM, c.Flavor)
+	lms, ok := c.Rules["list-marker-style"]
+	require.True(t, ok)
+	assert.Equal(t, "dash", lms.Settings["style"])
+}
+
+func TestLookup_UserConvention_BuiltInStillReachable(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	c, err := LookupWithUser("portable", user)
+	require.NoError(t, err)
+	assert.Equal(t, "portable", c.Name)
+}
+
+func TestLookup_UserConvention_UnknownListsBothSets(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {Name: "our-team", Flavor: FlavorGFM},
+	}
+	_, err := LookupWithUser("bogus", user)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "bogus")
+	assert.Contains(t, err.Error(), "our-team", "error must list user convention names")
+	assert.Contains(t, err.Error(), "portable", "error must list built-in names")
+}
+
+func TestLookup_UserConvention_NilMapFallsBack(t *testing.T) {
+	// A nil user map behaves identically to Lookup(name).
+	c, err := LookupWithUser("github", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "github", c.Name)
+}
+
+func TestLookup_UserConvention_ReturnsDeepCopy(t *testing.T) {
+	user := map[string]Convention{
+		"our-team": {
+			Name:   "our-team",
+			Flavor: FlavorGFM,
+			Rules: map[string]RulePreset{
+				"list-marker-style": {Enabled: true, Settings: map[string]any{"style": "dash"}},
+			},
+		},
+	}
+	first, err := LookupWithUser("our-team", user)
+	require.NoError(t, err)
+	first.Rules["list-marker-style"].Settings["style"] = "asterisk"
+
+	second, err := LookupWithUser("our-team", user)
+	require.NoError(t, err)
+	// The mutation of first must not have affected the user map copy.
+	assert.Equal(t, "dash", second.Rules["list-marker-style"].Settings["style"],
+		"LookupWithUser must return a deep copy")
+}

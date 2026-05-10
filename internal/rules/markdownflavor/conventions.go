@@ -171,14 +171,46 @@ var conventions = map[string]Convention{
 // entry. Callers may mutate the result without corrupting the
 // shared built-in table.
 func Lookup(name string) (Convention, error) {
-	c, ok := conventions[name]
-	if !ok {
-		return Convention{}, fmt.Errorf(
-			"unknown convention %q (valid: %s)",
-			name, strings.Join(ConventionNames(), ", "),
-		)
+	return LookupWithUser(name, nil)
+}
+
+// LookupWithUser returns the convention for name, consulting
+// userConventions first (plan 113 user-defined conventions), then
+// falling back to the built-in table. When name is not found in
+// either map, it returns an error listing all known names from both
+// maps. A nil userConventions map is treated as empty.
+//
+// The returned Convention is a deep copy; callers may mutate it
+// without corrupting either map.
+func LookupWithUser(name string, userConventions map[string]Convention) (Convention, error) {
+	if c, ok := userConventions[name]; ok {
+		return cloneConvention(c), nil
 	}
-	return cloneConvention(c), nil
+	if c, ok := conventions[name]; ok {
+		return cloneConvention(c), nil
+	}
+	return Convention{}, fmt.Errorf(
+		"unknown convention %q (valid: %s)",
+		name, strings.Join(allConventionNames(userConventions), ", "),
+	)
+}
+
+// allConventionNames returns the sorted combined list of built-in and
+// user-defined convention names, for use in error messages.
+func allConventionNames(userConventions map[string]Convention) []string {
+	seen := make(map[string]bool, len(conventions)+len(userConventions))
+	for k := range conventions {
+		seen[k] = true
+	}
+	for k := range userConventions {
+		seen[k] = true
+	}
+	names := make([]string, 0, len(seen))
+	for k := range seen {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // cloneConvention returns a deep copy of c. Each rule preset's

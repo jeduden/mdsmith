@@ -45,6 +45,14 @@ type Config struct {
 	// and docs/reference/conventions.md for end-user docs.
 	Convention string `yaml:"convention,omitempty"`
 
+	// Conventions holds user-defined convention bundles declared in
+	// .mdsmith.yml. Each entry has the same { flavor, rules } shape
+	// as a built-in convention. The reserved names "portable",
+	// "github", and "plain" may not be used as keys here; doing so
+	// is a config error. When convention: names a key present in this
+	// map, it takes precedence over the built-in table.
+	Conventions map[string]UserConvention `yaml:"conventions,omitempty"`
+
 	// LegacyNoFollowSymlinks captures the removed `no-follow-symlinks`
 	// key. Its presence surfaces a deprecation warning via
 	// Deprecations; its contents are otherwise ignored now that
@@ -80,6 +88,23 @@ type Config struct {
 	// Empty when no convention is selected.
 	// Not serialized to YAML.
 	ConventionPreset map[string]RuleCfg `yaml:"-"`
+
+	// ConventionIsUser records whether the active convention is
+	// user-defined (present in cfg.Conventions). Used by buildLayers
+	// to emit a "(user)" suffix in the provenance layer source so
+	// `mdsmith kinds resolve` can distinguish user conventions from
+	// built-ins. Set by applyConvention; not serialized to YAML.
+	ConventionIsUser bool `yaml:"-"`
+}
+
+// UserConvention is a user-defined convention bundle declared under
+// the conventions: key in .mdsmith.yml. It has the same { flavor,
+// rules } shape as a built-in convention. flavor must be one of
+// "commonmark", "gfm", or "goldmark". Each rules entry uses the same
+// schema as a top-level rules: entry.
+type UserConvention struct {
+	Flavor string             `yaml:"flavor"`
+	Rules  map[string]RuleCfg `yaml:"rules,omitempty"`
 }
 
 // Override applies rule settings to files matching glob patterns.

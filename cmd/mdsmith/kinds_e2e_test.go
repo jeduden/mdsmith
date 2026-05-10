@@ -542,6 +542,51 @@ func TestKinds_PathExits2WhenSchemaIsEmptyString(t *testing.T) {
 	assert.Contains(t, stderr, "no required-structure.schema set")
 }
 
+// --- User-defined conventions (plan 113) ---
+
+func TestKinds_ResolveShowsUserConventionSuffix(t *testing.T) {
+	cfg := `conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      list-marker-style:
+        style: dash
+convention: our-team
+`
+	dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# Title\n"})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "convention.our-team (user)",
+		"user convention layer must show (user) suffix in kinds resolve")
+}
+
+func TestLoad_ReservedConventionNameRejected(t *testing.T) {
+	for _, name := range []string{"portable", "github", "plain"} {
+		t.Run(name, func(t *testing.T) {
+			cfg := "conventions:\n  " + name + ":\n    flavor: gfm\n"
+			dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# T\n"})
+			_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
+			assert.Equal(t, 2, code)
+			assert.Contains(t, stderr, name)
+			assert.Contains(t, stderr, "reserved")
+		})
+	}
+}
+
+func TestLoad_UserConventionUnknownNameListsBothSets(t *testing.T) {
+	cfg := `conventions:
+  our-team:
+    flavor: gfm
+convention: nonexistent
+`
+	dir := kindsTestDir(t, cfg, map[string]string{"doc.md": "# T\n"})
+	_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "nonexistent")
+	assert.Contains(t, stderr, "our-team")
+	assert.Contains(t, stderr, "portable")
+}
+
 // kinds path branch: absolute schema path is returned as-is.
 func TestKinds_PathPreservesAbsoluteSchema(t *testing.T) {
 	cfg := `kinds:

@@ -172,6 +172,91 @@ This split keeps MDS034 focused on "what does this
 renderer interpret as a feature." Conventions
 orchestrate style separately.
 
+## User-defined conventions
+
+A team that needs a convention that does not match
+any built-in can define one inline in
+`.mdsmith.yml`:
+
+```yaml
+conventions:
+  our-team:
+    flavor: gfm
+    rules:
+      no-inline-html:
+        allow: [details, summary, kbd]
+      list-marker-style:
+        style: dash
+
+convention: our-team
+```
+
+Each entry under `conventions:` has the same `{
+flavor, rules }` shape as the built-in table.
+`flavor` must be one of `commonmark`, `gfm`, or
+`goldmark`. The `rules` block uses the same schema
+as the top-level `rules:` block.
+
+### Reserved names
+
+The names `portable`, `github`, and `plain` are
+reserved. Defining a `conventions.portable` (or
+`github` / `plain`) in `.mdsmith.yml` is a config
+error. The reserved names keep docs and tutorials
+consistent.
+
+### Resolution order
+
+When the `convention:` key is resolved:
+
+1. Look up the name in user-defined `conventions:`
+   first.
+2. Fall back to the built-in table.
+3. If neither matches, emit a config error listing
+   all known names from both sets.
+
+User conventions cannot shadow built-ins. Name
+collisions are rejected at parse time.
+
+### Validation
+
+User-defined conventions are validated at config
+load:
+
+- `flavor` must be one of `commonmark | gfm |
+  goldmark`.
+- Each key under `rules:` that names a registered
+  rule has its settings validated via the rule's
+  existing schema. Unknown rule names are silently
+  accepted for forward-compatibility (presets for
+  upcoming rules can ship early).
+
+Validation errors name the convention and the rule:
+
+```text
+convention "our-team" rule "list-marker-style":
+unknown style "bogus"
+```
+
+### Interaction with top-level rules
+
+User-defined conventions layer exactly like
+built-in conventions — they are a base layer
+beneath any top-level `rules:` overrides. A team
+can set `convention: our-team` and then override
+one rule in the top-level `rules:` block; the
+override wins.
+
+### Inspecting user conventions
+
+`mdsmith kinds resolve <file>` labels user
+convention layers with a `(user)` suffix so they
+are easy to distinguish from built-ins:
+
+```text
+convention.our-team (user)  set  true
+```
+
 ## Inspecting an effective convention
 
 `mdsmith kinds resolve <file>` shows the merge

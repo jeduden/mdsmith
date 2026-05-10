@@ -47,7 +47,9 @@ func Merge(defaults, loaded *Config) *Config {
 		KindAssignment:         copyKindAssignment(loaded.KindAssignment),
 		Build:                  copyBuildConfig(loaded.Build),
 		Convention:             loaded.Convention,
+		Conventions:            copyUserConventions(loaded.Conventions),
 		ConventionPreset:       copyConventionPreset(loaded.ConventionPreset),
+		ConventionIsUser:       loaded.ConventionIsUser,
 	}
 }
 
@@ -99,8 +101,30 @@ func copyConfig(cfg *Config) *Config {
 		KindAssignment:         copyKindAssignment(cfg.KindAssignment),
 		Build:                  copyBuildConfig(cfg.Build),
 		Convention:             cfg.Convention,
+		Conventions:            copyUserConventions(cfg.Conventions),
 		ConventionPreset:       copyConventionPreset(cfg.ConventionPreset),
+		ConventionIsUser:       cfg.ConventionIsUser,
 	}
+}
+
+// copyUserConventions returns a deep copy of a user-defined conventions map.
+// Returns nil when input is nil.
+func copyUserConventions(m map[string]UserConvention) map[string]UserConvention {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]UserConvention, len(m))
+	for k, uc := range m {
+		rules := make(map[string]RuleCfg, len(uc.Rules))
+		for rk, rv := range uc.Rules {
+			rules[rk] = copyRuleCfg(rv)
+		}
+		out[k] = UserConvention{
+			Flavor: uc.Flavor,
+			Rules:  rules,
+		}
+	}
+	return out
 }
 
 // copyBuildConfig returns a deep copy of a BuildConfig, duplicating the
