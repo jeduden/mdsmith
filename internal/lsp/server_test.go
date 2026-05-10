@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -2740,6 +2741,32 @@ func TestDirectiveDocFor(t *testing.T) {
 		_, found := directiveDocFor(name)
 		assert.False(t, found, "%s must return false until a guide page exists", name)
 	}
+}
+
+// TestLoadDirectiveDocs_SkipsMissingFile covers the err != nil branch in
+// loadDirectiveDocs: when a referenced guide file is absent from the FS the
+// entry is silently skipped so hover returns null rather than crashing.
+func TestLoadDirectiveDocs_SkipsMissingFile(t *testing.T) {
+	t.Parallel()
+	docs := loadDirectiveDocs(fstest.MapFS{}) // empty FS — all reads fail
+	assert.Empty(t, docs, "missing files must produce an empty map")
+}
+
+// TestLoadDirectiveDocs_DeduplicatesFiles covers the seen-map guard:
+// multiple directives share one guide file, so the file is read only once.
+func TestLoadDirectiveDocs_DeduplicatesFiles(t *testing.T) {
+	t.Parallel()
+	// Provide the real generating-content.md so both catalog and include
+	// resolve to a non-empty entry without touching the other guide files.
+	content := []byte("---\nsummary: test\n---\n# Guide\n")
+	fsys := fstest.MapFS{
+		"generating-content.md":  &fstest.MapFile{Data: content},
+		"build.md":               &fstest.MapFile{Data: content},
+		"enforcing-structure.md": &fstest.MapFile{Data: content},
+	}
+	docs := loadDirectiveDocs(fsys)
+	// Three distinct files should be loaded once each.
+	assert.Len(t, docs, 3)
 }
 
 // TestRuleHoverContentFallback covers the error branch of ruleHoverContent

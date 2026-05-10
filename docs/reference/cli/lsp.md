@@ -62,8 +62,8 @@ uses stdio either way.
    server checks whether the cursor is inside a `<?directive …?>`
    block. If so, it returns the directive's guide page from
    `docs/guides/directives/`. The documented directives are
-   `catalog`, `include`, `toc`, `build`, `allow-empty-section`,
-   `require`, and `ignore`.
+   `catalog`, `include`, `build`, `allow-empty-section`, and
+   `require`.
 
 If neither pass finds a match, the server returns `null` (no hover).
 Each hover response includes a `range` field set to the matched span

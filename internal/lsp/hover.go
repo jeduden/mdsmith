@@ -39,21 +39,32 @@ func directiveDocFor(name string) (string, bool) {
 		return "", false
 	}
 	directiveDocCache.Do(func() {
-		directiveDocCache.docs = make(map[string]string)
-		// Only load the distinct filenames actually referenced by the map.
-		// directives.FS is embedded, so ReadFile never errors.
-		seen := make(map[string]bool)
-		for _, fname := range directiveToDocFile {
-			if seen[fname] {
-				continue
-			}
-			seen[fname] = true
-			data, _ := fs.ReadFile(directives.FS, fname)
-			directiveDocCache.docs[fname] = rules.StripFrontMatter(string(data))
-		}
+		directiveDocCache.docs = loadDirectiveDocs(directives.FS)
 	})
 	content, ok := directiveDocCache.docs[filename]
 	return content, ok && content != ""
+}
+
+// loadDirectiveDocs reads the distinct guide files referenced by
+// directiveToDocFile from fsys, strips front matter, and returns the
+// resulting filename→content map. Files that cannot be read (e.g. not
+// yet embedded) are silently omitted so hover returns null for those
+// directives rather than crashing.
+func loadDirectiveDocs(fsys fs.FS) map[string]string {
+	docs := make(map[string]string)
+	seen := make(map[string]bool)
+	for _, fname := range directiveToDocFile {
+		if seen[fname] {
+			continue
+		}
+		seen[fname] = true
+		data, err := fs.ReadFile(fsys, fname)
+		if err != nil {
+			continue
+		}
+		docs[fname] = rules.StripFrontMatter(string(data))
+	}
+	return docs
 }
 
 // handleHover resolves a textDocument/hover request. Resolution order:
