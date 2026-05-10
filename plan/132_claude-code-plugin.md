@@ -90,7 +90,7 @@ extension untouched.
   "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
   "name": "mdsmith",
   "owner": {
-    "name": "Jens-Uwe Eden",
+    "name": "Jan-Eric Duden",
     "url": "https://github.com/jeduden"
   },
   "description": "Markdown linter for Claude Code via LSP",
