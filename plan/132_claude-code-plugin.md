@@ -138,11 +138,12 @@ requires. First launch downloads `@mdsmith/cli`
 plus the platform binary subpackage (e.g.
 `@mdsmith/linux-x64`) from npm and caches them; the
 explicit `-p @mdsmith/cli mdsmith` form makes the
-bin selection unambiguous. Users who installed
-`mdsmith` globally via any plan-130 channel can
-shadow the npx-fetched copy by ensuring the binary
-appears earlier on `$PATH`, but no manual install
-is required for the plugin to work.
+bin selection unambiguous. `npx` prepends its
+package bin dir to the spawned command's `$PATH`,
+so the package's `mdsmith` always wins regardless of
+any system install. Users who want a pinned version
+edit `args` to use `@mdsmith/cli@<ver>` in place of
+`@mdsmith/cli`.
 
 ### Discovery and install
 

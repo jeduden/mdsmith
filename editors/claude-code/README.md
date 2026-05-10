@@ -26,10 +26,9 @@ already requires. First launch downloads
 `@mdsmith/cli` and the platform binary subpackage
 from npm; later launches reuse the npm cache.
 
-To pin a specific build, install `mdsmith` via any
-channel in the
-[install guide](../../docs/guides/install.md). A
-binary earlier on `$PATH` shadows the npx copy.
+To pin a specific version, edit the plugin
+manifest's `args` to read
+`@mdsmith/cli@<ver>` instead of `@mdsmith/cli`.
 
 ## Troubleshooting
 

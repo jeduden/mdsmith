@@ -225,8 +225,9 @@ the plugin:
 requires. First launch downloads `@mdsmith/cli` and
 the platform binary subpackage from npm; later
 launches reuse the npm cache. No global `mdsmith`
-install is needed. To pin a specific build, install
-the binary via any of the channels above.
+install is needed. To pin a version, edit the
+plugin manifest's `args` to read
+`@mdsmith/cli@<ver>` in place of `@mdsmith/cli`.
 
 If the `/plugin` Errors tab shows `Executable not
 found in $PATH`, Node.js is missing from the shell
