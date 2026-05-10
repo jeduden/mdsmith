@@ -719,7 +719,10 @@ func anchorFragmentBytes(row []byte, textStart int, oldSlug string) (int, int, b
 
 // destBounds returns the `(` open and `)` close byte offsets of a
 // link destination starting at or after `from` on row, accounting
-// for nested parens.
+// for nested parens. Backslash-escaped parens are treated as
+// literal bytes (CommonMark allows `\(` / `\)` inside the
+// destination), so a link like `[t](foo\(bar\)#sec)` resolves to
+// the outer parens, not the escaped inner ones.
 func destBounds(row []byte, from int) (int, int, bool) {
 	open := -1
 	for i := from; i < len(row)-1; i++ {
@@ -734,6 +737,9 @@ func destBounds(row []byte, from int) (int, int, bool) {
 	close := -1
 	depth := 1
 	for j := open; j < len(row) && close < 0; j++ {
+		if isBackslashEscaped(row, j) {
+			continue
+		}
 		switch row[j] {
 		case '(':
 			depth++
@@ -748,6 +754,16 @@ func destBounds(row []byte, from int) (int, int, bool) {
 		return 0, 0, false
 	}
 	return open, close, true
+}
+
+// isBackslashEscaped reports whether row[i] is preceded by an odd
+// number of backslashes — the CommonMark escape signal.
+func isBackslashEscaped(row []byte, i int) bool {
+	n := 0
+	for k := i - 1; k >= 0 && row[k] == '\\'; k-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 // indexOfHash returns the offset of the first `#` in row[open:close],
