@@ -364,7 +364,7 @@ func (s *Server) handleRename(msg *requestMessage) {
 	case index.TokenHeading:
 		s.renameHeading(msg, p, source, rel, line, res, p.NewName)
 	case index.TokenRefDef, index.TokenRefUse:
-		s.renameLinkRef(msg, p, source, rel, res.Label, p.NewName)
+		s.renameLinkRef(msg, p, source, res.Label, p.NewName)
 	default:
 		_ = s.t.writeError(msg.ID, codeInvalidParams, "rename not supported at this position")
 	}
@@ -768,7 +768,7 @@ func stableSortEdits(changes map[string][]textEdit) {
 // error catches it before the edit applies.
 func (s *Server) renameLinkRef(
 	msg *requestMessage, p renameParams,
-	source []byte, rel, oldLabel, newName string,
+	source []byte, oldLabel, newName string,
 ) {
 	if strings.TrimSpace(newName) == "" {
 		_ = s.t.writeError(msg.ID, codeInvalidParams, "label cannot be empty")
@@ -779,8 +779,7 @@ func (s *Server) renameLinkRef(
 		_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: map[string][]textEdit{}})
 		return
 	}
-	idx := s.ensureIndex()
-	if conflict := labelConflict(idx, rel, newLabel); conflict != "" {
+	if conflict := labelConflict(source, oldLabel, newLabel); conflict != "" {
 		_ = s.t.writeErrorWithData(msg.ID, codeInvalidParams,
 			"rename would collide with link reference ["+conflict+"]",
 			renameCollisionData{Conflict: conflict})
@@ -797,19 +796,29 @@ func (s *Server) renameLinkRef(
 }
 
 // labelConflict returns the conflicting label name (preserving the
-// original casing) when newLabel matches another link-reference
-// definition in the same file. Empty string means "no conflict".
-func labelConflict(idx *index.Index, rel, newLabel string) string {
-	fe, ok := idx.File(rel)
-	if !ok {
-		return ""
-	}
-	for _, sym := range fe.Symbols {
-		if sym.Kind != index.SymbolLinkRef {
+// original casing) when newLabel matches a link-reference
+// definition in the file other than the one being renamed. Empty
+// string means "no conflict".
+//
+// The scan goes through the source directly rather than through
+// idx.File(rel).Symbols, because the index intentionally
+// deduplicates link-reference definitions: only the first def per
+// normalized label survives. Trusting the index would let a rename
+// pass collision when the buffer carries a duplicate `[label]: …`
+// line for newLabel — silently producing two coexisting defs that
+// MDS028 / MDS029 would have to clean up later.
+func labelConflict(source []byte, oldLabel, newLabel string) string {
+	body, _ := bodyAndFMOffset(source)
+	for _, m := range index.RefDefRegexpMatches(body) {
+		raw := body[m[2]:m[3]]
+		norm := normalizedLabel(raw)
+		if norm == oldLabel {
+			// Defs that match the rename's source label are the
+			// ones being rewritten — they don't count as collisions.
 			continue
 		}
-		if sym.Anchor == newLabel {
-			return sym.Name
+		if norm == newLabel {
+			return string(raw)
 		}
 	}
 	return ""

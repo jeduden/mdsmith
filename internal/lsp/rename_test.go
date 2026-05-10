@@ -240,6 +240,32 @@ func TestRenameLinkRefLabelCollision(t *testing.T) {
 	assert.Equal(t, codeInvalidParams, errResp.Code)
 }
 
+// TestRenameLinkRefDetectsDuplicateDefCollision verifies that the
+// collision check inspects the source directly, not the deduped
+// symbol index. The index only stores the first def per normalized
+// label, so a buffer that already carries two `[manual]: …` lines
+// (one of which is unused) would otherwise pass the collision
+// check silently.
+func TestRenameLinkRefDetectsDuplicateDefCollision(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\nSee [t][docs].\n\n[docs]: https://x\n[manual]: https://y\n[manual]: https://z\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	_, errResp := h.request("textDocument/rename", renameParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		// Cursor on `[docs]: …` (line 5, 1-based) → LSP line 4.
+		Position: Position{Line: 4, Character: 2},
+		NewName:  "manual",
+	})
+	require.NotNil(t, errResp)
+	assert.Equal(t, codeInvalidParams, errResp.Code)
+}
+
 // TestRenameOnPlainProseReturnsError checks that a rename request
 // at a position with no renameable symbol surfaces InvalidParams
 // rather than silently returning an empty WorkspaceEdit (which an
