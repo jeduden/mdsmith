@@ -254,7 +254,10 @@ lint hook. Install separately:
 
 The plugin shells out to the `mdsmith` CLI, so
 make sure it is on `$PATH` (e.g.
-`npm i -g @mdsmith/cli`). See the
+`npm i -g @mdsmith/cli`). The post-edit hook
+additionally requires `jq` to parse Claude Code's
+tool-input JSON; install it via your package
+manager. See the
 [mdsmith-tools editor README](../../editors/claude-code-tools/README.md)
 for the full component list and the hook's
 file-extension scope.

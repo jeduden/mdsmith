@@ -21,10 +21,11 @@ or the LSP `source.fixAll.mdsmith` action.
 1. Identify the Markdown file(s) under review. For
    a PR, use `gh pr diff --name-only` to list
    changed `*.md` paths.
-2. Run `mdsmith check --json -- <files>` to get
-   structured diagnostics. Group by rule ID.
-3. Run `mdsmith metrics -- <files>` for length,
-   token-budget, readability, structure scores.
+2. Run `mdsmith check --format json -- <files>`
+   to get structured diagnostics. Group by rule ID.
+3. Run `mdsmith metrics rank -- <files>` for
+   length, token-budget, readability, and structure
+   scores ranked across the input set.
 4. Read each file. Note prose-quality issues that
    the linter cannot catch: unclear claims, vague
    verbs, missing context, jargon without

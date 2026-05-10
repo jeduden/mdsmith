@@ -21,26 +21,32 @@ but does not require it.
 
 ## Components
 
-| Type  | Name                                      | Purpose                          |
-|-------|-------------------------------------------|----------------------------------|
-| Skill | `/mdsmith-tools:fix`                      | Run `mdsmith fix .` on workspace |
-| Skill | `/mdsmith-tools:kinds`                    | Show kind assignments + config   |
-| Skill | `/mdsmith-tools:check`                    | Run `mdsmith check .`            |
-| Agent | `markdown-reviewer`                       | Review Markdown PRs and drafts   |
-| Hook  | `PostToolUse` on `Edit`/`Write` of `*.md` | Auto-run `mdsmith fix` per file  |
+| Type  | Name                                        | Purpose                          |
+|-------|---------------------------------------------|----------------------------------|
+| Skill | `/mdsmith-tools:fix`                        | Run `mdsmith fix .` on workspace |
+| Skill | `/mdsmith-tools:kinds`                      | Show kind assignments + config   |
+| Skill | `/mdsmith-tools:check`                      | Run `mdsmith check .`            |
+| Agent | `markdown-reviewer`                         | Review Markdown PRs and drafts   |
+| Hook  | `PostToolUse` on `Edit`/`Write` of Markdown | Auto-run `mdsmith fix` per file  |
 
-## Prerequisite
+## Prerequisites
 
 Each component shells out to `mdsmith`. Install
 globally with `npm i -g @mdsmith/cli`. Node 18+
 (with npm) must be on `$PATH`.
 
+The post-edit hook also depends on `jq` to parse
+the tool-input JSON Claude Code sends on stdin.
+`jq` ships in most distros and Homebrew; install it
+with `apt`, `brew`, or your package manager.
+
 ## Hook scope
 
 The post-edit hook fires on `Edit` and `Write` of
-`*.md` files only. `MultiEdit` is intentionally
-skipped — use the LSP `source.fixAll.mdsmith`
-action from `mdsmith-lsp` for multi-buffer fixes.
+`*.md` and `*.markdown` files. `MultiEdit` is
+intentionally skipped — use the LSP
+`source.fixAll.mdsmith` action from `mdsmith-lsp`
+for multi-buffer fixes.
 
 Disable the plugin if you prefer to run `fix`
 manually.

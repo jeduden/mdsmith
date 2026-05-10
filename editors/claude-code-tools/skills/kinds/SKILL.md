@@ -26,35 +26,45 @@ reference is
 
 ## Steps
 
-### 1. Resolve the target path
+### 1. Pick the subcommand
 
-If the user passed a path argument, use it. Otherwise
-list kinds across the workspace from `.`.
-
-Note the value as `$TARGET`.
+If the user passed a path argument, run `kinds
+resolve` against that file. Note the value as
+`$TARGET` and use `kinds resolve`. Otherwise run
+`kinds list` to print every declared kind with its
+merged body, then ask the user which file they want
+to dig into.
 
 ### 2. Run mdsmith kinds
 
-```bash
-mdsmith kinds -- "$TARGET"
-```
-
-If the binary is not on `$PATH`, fall back to:
+For a single file:
 
 ```bash
-npx -y -p @mdsmith/cli mdsmith kinds -- "$TARGET"
+mdsmith kinds resolve -- "$TARGET"
 ```
+
+For the workspace-wide list:
+
+```bash
+mdsmith kinds list
+```
+
+If the binary is not on `$PATH`, prepend
+`npx -y -p @mdsmith/cli ` to either command.
 
 ### 3. Read the output
 
-The command lists each file with its assigned kinds
-and (when relevant) the merged rule keys that differ
-from the defaults. Surface the relevant block back
-to the user verbatim.
+`kinds resolve` lists the file's effective kinds plus
+each rule key that differs from defaults, with
+per-leaf provenance. `kinds list` lists every
+declared kind. Surface the relevant block back to
+the user verbatim.
 
-Non-zero exit usually means a config error or a
-malformed kind-assignment — surface stderr so the
-user sees the parse error.
+Exit 1 means lint-style issues; exit 2 indicates a
+runtime or configuration error (malformed
+kind-assignment, missing config, etc.). Surface
+stderr in both cases so the user sees the parse
+error or rule context.
 
 ## Notes
 

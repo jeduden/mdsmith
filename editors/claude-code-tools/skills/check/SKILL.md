@@ -56,8 +56,12 @@ a `stats:` summary line. Surface the diagnostics
 verbatim grouped by file so the user can navigate to
 each `path:line:col` location.
 
-Non-zero exit means at least one diagnostic was
-emitted. Do not suppress stderr.
+Exit 1 means at least one diagnostic was emitted.
+Exit 2 indicates a runtime or configuration error
+(unreadable file, bad config, etc.) and the lint
+pass did not run — surface stderr so the user
+sees the underlying error. Do not suppress stderr
+in either case.
 
 ## Notes
 

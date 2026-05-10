@@ -52,10 +52,13 @@ npx -y -p @mdsmith/cli mdsmith fix -- "$TARGET"
 lists files checked, fixed, failures, and unfixed
 issues. Quote that line back to the user.
 
-Non-zero exit means at least one file still has
-unfixable issues after the fix pass. Surface stderr
-when that happens so the user sees the rule IDs and
-file locations that need manual attention.
+Exit 1 means at least one file still has unfixable
+issues after the fix pass. Exit 2 means a runtime
+or configuration error (bad path, unreadable
+config, etc.) — the file may not have been touched
+at all. Surface stderr in both cases so the user
+sees the rule IDs and file locations, or the
+config error.
 
 ## Notes
 
