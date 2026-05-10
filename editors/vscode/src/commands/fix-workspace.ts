@@ -56,6 +56,11 @@ export interface FixWorkspaceHandlerDeps {
 // notification message or undefined when cancelled / failed. It is
 // extracted so tests can drive it without a VS Code host.
 export async function runFixWorkspace(deps: FixWorkspaceHandlerDeps): Promise<void> {
+  if (!deps.workspaceRoot) {
+    await deps.showError("mdsmith: Fix all Markdown requires an open workspace folder.");
+    return;
+  }
+
   if (!deps.isTrusted()) {
     await deps.showError("mdsmith: Fix all Markdown requires a trusted workspace.");
     return;

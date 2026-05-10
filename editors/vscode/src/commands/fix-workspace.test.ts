@@ -82,6 +82,16 @@ describe("runFixWorkspace", () => {
     return { deps, infoMessages, errorMessages, output };
   }
 
+  test("shows an error and returns when no workspace folder is open", async () => {
+    let spawned = false;
+    const { deps, errorMessages } = makeDeps({ workspaceRoot: undefined });
+    deps.spawn = async () => { spawned = true; return { stdout: "", stderr: "", exitCode: 0 }; };
+    await runFixWorkspace(deps);
+    expect(errorMessages).toHaveLength(1);
+    expect(errorMessages[0]).toContain("workspace folder");
+    expect(spawned).toBe(false);
+  });
+
   test("shows an error and returns when workspace is not trusted", async () => {
     const { deps, errorMessages } = makeDeps({ isTrusted: () => false });
     deps.spawn = async () => ({ stdout: "", stderr: "", exitCode: 0 });

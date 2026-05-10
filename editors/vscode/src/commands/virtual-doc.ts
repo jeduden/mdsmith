@@ -61,7 +61,12 @@ export async function fetchKindsContent(
       ? ["kinds", "resolve", parsed.file, "--json"]
       : ["kinds", "why", parsed.file, parsed.rule!, "--json"];
 
-  const result = await spawn(binary, args, workspaceRoot);
+  let result: Awaited<ReturnType<typeof spawn>>;
+  try {
+    result = await spawn(binary, args, workspaceRoot);
+  } catch (err) {
+    return `**mdsmith ${args.slice(0, 2).join(" ")} could not start**\n\n\`\`\`\n${err}\n\`\`\``;
+  }
 
   if (result.exitCode !== 0) {
     return `**mdsmith ${args.slice(0, 2).join(" ")} failed (exit ${result.exitCode})**\n\n\`\`\`\n${result.stderr.trim()}\n\`\`\``;

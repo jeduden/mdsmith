@@ -18,6 +18,11 @@ export interface MergeDriverHandlerDeps {
 }
 
 export async function runMergeDriverInstall(deps: MergeDriverHandlerDeps): Promise<void> {
+  if (!deps.workspaceRoot) {
+    await deps.showError("mdsmith: Install Git merge driver requires an open workspace folder.");
+    return;
+  }
+
   if (!deps.isTrusted()) {
     await deps.showError("mdsmith: Install Git merge driver requires a trusted workspace.");
     return;

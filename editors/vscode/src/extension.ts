@@ -410,14 +410,10 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
       }
     ),
 
-    // Reveal the trust-gated commands without a reload when trust is granted.
-    vscode.workspace.onDidGrantWorkspaceTrust(() => {
-      void vscode.commands.executeCommand(
-        "setContext",
-        "mdsmith.workspaceTrusted",
-        true
-      );
-    })
+    // VS Code automatically re-evaluates the built-in `isWorkspaceTrusted`
+    // context when trust is granted, so menu entries gated with
+    // `when: isWorkspaceTrusted` appear without a reload — no explicit
+    // handler needed here.
   );
 }
 
