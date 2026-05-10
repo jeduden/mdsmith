@@ -239,3 +239,22 @@ bundles npm and npx — then run `/reload-plugins`.
 See the
 [Claude Code editor README](../../editors/claude-code/README.md)
 for the install commands and troubleshooting steps.
+
+### Workflow extensions: `mdsmith-tools`
+
+`mdsmith-lsp` is LSP-only. The companion plugin
+`mdsmith-tools` adds three slash-command skills,
+a Markdown reviewer subagent, and a post-edit
+lint hook. Install separately:
+
+```text
+/plugin install mdsmith-tools@mdsmith
+/reload-plugins
+```
+
+The plugin shells out to the `mdsmith` CLI, so
+make sure it is on `$PATH` (e.g.
+`npm i -g @mdsmith/cli`). See the
+[mdsmith-tools editor README](../../editors/claude-code-tools/README.md)
+for the full component list and the hook's
+file-extension scope.

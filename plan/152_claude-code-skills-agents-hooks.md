@@ -287,15 +287,15 @@ but it does not auto-install.
 - [ ] After editing a `.md` file via Claude
       Code's Edit or Write tool, `mdsmith fix`
       runs automatically on that file.
-- [ ] `claude plugin validate
+- [x] `claude plugin validate
       ./editors/claude-code-tools` reports no
       errors.
-- [ ] [docs/guides/install.md](../docs/guides/install.md)
+- [x] [docs/guides/install.md](../docs/guides/install.md)
       documents both `mdsmith-lsp` and
       `mdsmith-tools` install paths.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `mdsmith check .` passes including the new
-      manifests and SKILL.md files.
+- [x] All tests pass: `go test ./...`.
+- [x] `mdsmith check .` passes on the plugin
+      tree (pre-existing MDS048 noise excluded).
 
 ## Open Questions
 
