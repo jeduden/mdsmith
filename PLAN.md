@@ -29,12 +29,12 @@ footer: |
 | 110 | ✅     | sonnet | [Ordered list numbering rule](plan/110_ordered-list-numbering.md)                                                                     |
 | 111 | ✅     | sonnet | [Ambiguous emphasis rule](plan/111_ambiguous-emphasis.md)                                                                             |
 | 112 | ✅     | opus   | [Markdown convention bundles for MDS034](plan/112_flavor-profiles.md)                                                                 |
-| 113 | 🔲     | sonnet | [User-defined Markdown conventions](plan/113_user-defined-profiles.md)                                                                |
+| 113 | ✅     | sonnet | [User-defined Markdown conventions](plan/113_user-defined-profiles.md)                                                                |
 | 114 | ✅     | sonnet | [MDS034 message clarity and flavor-vs-rule docs](plan/114_mds034-message-and-flavor-vs-rule-docs.md)                                  |
 | 120 | ✅     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                                                    |
 | 121 | ✅     | opus   | [Expose mdsmith to VS Code via Language Server Protocol](plan/121_vscode-integration.md)                                              |
 | 121 | ✅     | sonnet | [Review and centralize YAML handling](plan/121_yaml-handling-review.md)                                                               |
-| 122 | 🔲     | sonnet | [VS Code hover help and palette commands](plan/122_vscode-hover-and-palette.md)                                                       |
+| 122 | ✅     | sonnet | [VS Code palette commands](plan/122_vscode-hover-and-palette.md)                                                                      |
 | 124 | ✅     | sonnet | [No space inside code spans rule](plan/124_no-space-in-code-spans.md)                                                                 |
 | 125 | ✅     | sonnet | [No space inside link text rule](plan/125_no-space-in-link-text.md)                                                                   |
 | 126 | ✅     | sonnet | [Proper-name capitalization rule](plan/126_proper-names.md)                                                                           |
@@ -42,9 +42,12 @@ footer: |
 | 128 | ✅     | sonnet | [Reject undefined reference-link labels](plan/128_no-undefined-reference-labels.md)                                                   |
 | 129 | ✅     | sonnet | [Flag unused or duplicate link reference definitions](plan/129_no-unused-link-definitions.md)                                         |
 | 130 | 🔳     | opus   | [Distribute mdsmith binaries via npm, PyPI, asdf, mise, and the VS Code marketplaces](plan/130_binary-distribution-and-versioning.md) |
-| 131 | 🔲     | opus   | [LSP symbol navigation for agents (Claude)](plan/131_lsp-symbol-navigation.md)                                                        |
+| 131 | ✅     | opus   | [LSP symbol navigation for agents (Claude)](plan/131_lsp-symbol-navigation.md)                                                        |
+| 132 | 🔳     | sonnet | [Package mdsmith LSP as a Claude Code plugin](plan/132_claude-code-plugin.md)                                                         |
 | 132 | 🔲     | opus   | [Schema engine — sources, scope tree, per-scope rules](plan/132_inline-schema-in-kinds.md)                                            |
 | 133 | 🔲     | opus   | [Actionable schema diagnostics for MDS020](plan/133_actionable-schema-diagnostics.md)                                                 |
+| 133 | 🔳     | sonnet | [LSP hover for rule and directive docs](plan/133_lsp-hover.md)                                                                        |
+| 134 | 🔲     | sonnet | [LSP completion for anchors, refs, kinds, and directive args](plan/134_lsp-completion.md)                                             |
 | 134 | 🔲     | sonnet | [Named field-type shortcuts for inline schemas](plan/134_named-field-type-shortcuts.md)                                               |
 | 135 | 🔲     | sonnet | [Schema inheritance via `extends`](plan/135_schema-extends.md)                                                                        |
 | 136 | 🔲     | sonnet | [Field deprecation flag in schemas](plan/136_field-deprecation-flag.md)                                                               |
@@ -54,6 +57,10 @@ footer: |
 | 140 | 🔲     | sonnet | [Per-kind `path-pattern` for filename validation](plan/140_kind-path-pattern.md)                                                      |
 | 142 | 🔲     | sonnet | [Content rules for prose constraints](plan/142_schema-content-constraints.md)                                                         |
 | 143 | 🔲     | sonnet | [Schema cross-references, acronyms, and index](plan/143_schema-cross-refs-acronyms-index.md)                                          |
+| 144 | 🔲     | sonnet | [Numeric sort for `<?catalog?>` directive](plan/144_catalog-numeric-sort.md)                                                          |
+| 145 | 🔲     | opus   | [Publish mdsmith via asdf and mise registry submissions](plan/145_asdf-mise-registry-submissions.md)                                  |
+| 151 | 🔲     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                                           |
+| 152 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/152_claude-code-skills-agents-hooks.md)                                  |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                            |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                                          |
 | 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                                      |
