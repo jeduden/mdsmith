@@ -9,10 +9,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	// Register markdown-flavor so rule.ByName lookups in deep-merge
-	// resolve while the convention mechanism is exercised.
+	// Register rules so rule.ByName lookups resolve while the
+	// convention mechanism is exercised.
 	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
+	_ "github.com/jeduden/mdsmith/internal/rules/nohardtabs"
 )
 
 func TestApplyConvention_NoConventionSet_NoOp(t *testing.T) {
@@ -576,6 +577,29 @@ func TestLoad_UserConvention_ReservedName(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "portable")
 	assert.Contains(t, err.Error(), "reserved")
+}
+
+func TestApplyConvention_UserConvention_NonConfigurableRuleWithSettings(t *testing.T) {
+	// no-hard-tabs has no ApplySettings; passing settings for it must
+	// return a "rule has no configurable settings" error.
+	cfg := &Config{
+		Conventions: map[string]UserConvention{
+			"our-team": {
+				Flavor: "gfm",
+				Rules: map[string]RuleCfg{
+					"no-hard-tabs": {
+						Enabled:  true,
+						Settings: map[string]any{"some-setting": "val"},
+					},
+				},
+			},
+		},
+	}
+	err := applyConvention(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "our-team")
+	assert.Contains(t, err.Error(), "no-hard-tabs")
+	assert.Contains(t, err.Error(), "no configurable settings")
 }
 
 func TestMerge_PreservesUserConventions(t *testing.T) {

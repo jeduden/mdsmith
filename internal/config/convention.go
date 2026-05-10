@@ -182,14 +182,7 @@ func validateConventionRuleSettings(
 			conventionName, ruleName,
 		)
 	}
-	clone := rule.CloneRule(r)
-	cc, ok := clone.(rule.Configurable)
-	if !ok {
-		return fmt.Errorf(
-			"convention %q rule %q: cloned rule is not configurable",
-			conventionName, ruleName,
-		)
-	}
+	cc := rule.CloneRule(r).(rule.Configurable)
 	if err := cc.ApplySettings(settings); err != nil {
 		return fmt.Errorf("convention %q rule %q: %w", conventionName, ruleName, err)
 	}
