@@ -193,8 +193,6 @@ function makeDeps(overrides: Partial<KindsWhyHandlerDeps> = {}): {
   const openedUris: string[] = [];
   const errors: string[] = [];
   const deps: KindsWhyHandlerDeps = {
-    binary: "mdsmith",
-    workspaceRoot: "/repo",
     getActiveFilePath: () => "/repo/doc.md",
     getDiagnostics: () => [],
     pickRule: async (rules) => rules[0],

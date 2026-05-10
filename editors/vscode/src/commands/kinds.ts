@@ -23,14 +23,13 @@ export function extractRuleIds(diagnostics: DiagnosticLike[]): string[] {
 }
 
 // KindsResolveHandlerDeps covers the resolve command, which needs no rule picker.
+// binary/workspaceRoot/spawn are NOT included here — they belong to
+// makeKindsContentProvider, which owns the spawning.
 export interface KindsResolveHandlerDeps {
-  binary: string;
-  workspaceRoot: string | undefined;
   getActiveFilePath: () => string | undefined;
   getDiagnostics: (filePath: string) => DiagnosticLike[];
   openVirtualDoc: (uri: string) => Promise<void>;
   showError: (msg: string) => Promise<void>;
-  spawn?: SpawnFn;
 }
 
 // KindsWhyHandlerDeps extends resolve deps with a rule picker for the why command.

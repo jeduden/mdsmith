@@ -358,8 +358,6 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("mdsmith.kinds.resolve", async () => {
       await runKindsResolve({
-        binary: getBinary(),
-        workspaceRoot: getWorkspaceRoot(),
         getActiveFilePath: () =>
           vscode.window.activeTextEditor?.document.uri.fsPath,
         getDiagnostics: (filePath) =>
@@ -381,8 +379,6 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("mdsmith.kinds.why", async () => {
       await runKindsWhy({
-        binary: getBinary(),
-        workspaceRoot: getWorkspaceRoot(),
         getActiveFilePath: () =>
           vscode.window.activeTextEditor?.document.uri.fsPath,
         getDiagnostics: (filePath) =>
