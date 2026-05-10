@@ -366,8 +366,8 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
           const doc = await vscode.workspace.openTextDocument(
             vscode.Uri.parse(uri)
           );
-          await vscode.languages.setTextDocumentLanguage(doc, "markdown");
-          await vscode.window.showTextDocument(doc, {
+          const mdDoc = await vscode.languages.setTextDocumentLanguage(doc, "markdown");
+          await vscode.window.showTextDocument(mdDoc, {
             preview: true,
             viewColumn: vscode.ViewColumn.Beside,
           });
@@ -401,8 +401,8 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
           const doc = await vscode.workspace.openTextDocument(
             vscode.Uri.parse(uri)
           );
-          await vscode.languages.setTextDocumentLanguage(doc, "markdown");
-          await vscode.window.showTextDocument(doc, {
+          const mdDoc = await vscode.languages.setTextDocumentLanguage(doc, "markdown");
+          await vscode.window.showTextDocument(mdDoc, {
             preview: true,
             viewColumn: vscode.ViewColumn.Beside,
           });
