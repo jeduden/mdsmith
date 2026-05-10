@@ -185,8 +185,9 @@ immediately.
 ## Example
 
 For client setup and troubleshooting see the
-[VS Code guide](../../guides/editors/vscode.md). Other LSP
-clients can spawn the binary directly:
+[VS Code guide](../../guides/editors/vscode.md) or the
+[Claude Code plugin README](../../../editors/claude-code/README.md).
+Other LSP clients can spawn the binary directly:
 
 ```bash
 mdsmith lsp

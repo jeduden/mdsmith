@@ -41,7 +41,7 @@ row: "- [{summary}](../{filename})"
 - [Install the mdsmith VS Code extension, configure how it spawns `mdsmith lsp`, and read diagnostics inline as you edit Markdown files.](../docs/guides/editors/vscode.md)
 - [How to declare file kinds, assign files to them, and read the merged rule config that results.](../docs/guides/file-kinds.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](../docs/guides/index.md)
-- [Every channel that ships the mdsmith binary or the VS Code extension — npm, PyPI, asdf, mise, the GitHub release, and the Visual Studio Marketplace plus Open VSX — and which channel to pick for which workflow.](../docs/guides/install.md)
+- [Every channel that ships the mdsmith binary, the VS Code extension, or the Claude Code plugin — npm, PyPI, asdf, mise, the GitHub release, the Visual Studio Marketplace plus Open VSX, and the in-repository Claude Code marketplace — and which channel to pick for which workflow.](../docs/guides/install.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](../docs/guides/metrics-tradeoffs.md)
 - [CLI commands, flags, exit codes, and output format.](../docs/reference/cli.md)
 - [Lint Markdown files for style issues.](../docs/reference/cli/check.md)

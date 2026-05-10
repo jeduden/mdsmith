@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "mdsmith-lsp",
+  "description": "Inline mdsmith diagnostics and Markdown navigation via LSP",
+  "homepage": "https://github.com/jeduden/mdsmith",
+  "repository": "https://github.com/jeduden/mdsmith",
+  "license": "MIT",
+  "keywords": ["markdown", "linter", "lsp"],
+  "lspServers": {
+    "mdsmith": {
+      "command": "npx",
+      "args": ["-y", "-p", "@mdsmith/cli", "mdsmith", "lsp"],
+      "extensionToLanguage": {
+        ".md": "markdown",
+        ".markdown": "markdown"
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 ---
 id: 132
 title: Package mdsmith LSP as a Claude Code plugin
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   Ship a `.claude-plugin/marketplace.json` plus a
@@ -49,12 +49,12 @@ hand-edit settings to spawn the binary.
 
 ## Non-Goals
 
-- Bundling the `mdsmith` binary inside the plugin.
-  The binary ships through the channels in plan 130
-  (npm, PyPI, asdf, mise, GitHub release, VS Code
-  marketplace). The plugin documents the binary
-  prerequisite the same way `gopls-lsp` documents
-  `gopls`.
+- Committing per-platform `mdsmith` binaries inside
+  the plugin repo. The plugin instead spawns
+  `npx -y -p @mdsmith/cli mdsmith lsp`, leaning on
+  the npm package shipped by plan 130 — first
+  launch fetches the platform binary subpackage
+  from npm and caches it locally.
 - Authoring tools (slash commands, agents, hooks).
   Scope is the LSP wiring only.
 - Submitting to the official Anthropic marketplace.
@@ -90,7 +90,7 @@ extension untouched.
   "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
   "name": "mdsmith",
   "owner": {
-    "name": "Jens-Uwe Eden",
+    "name": "Jan-Eric Duden",
     "url": "https://github.com/jeduden"
   },
   "description": "Markdown linter for Claude Code via LSP",
@@ -122,8 +122,8 @@ maps both common Markdown extensions to the
   "keywords": ["markdown", "linter", "lsp"],
   "lspServers": {
     "mdsmith": {
-      "command": "mdsmith",
-      "args": ["lsp"],
+      "command": "npx",
+      "args": ["-y", "-p", "@mdsmith/cli", "mdsmith", "lsp"],
       "extensionToLanguage": {
         ".md": "markdown",
         ".markdown": "markdown"
@@ -133,13 +133,18 @@ maps both common Markdown extensions to the
 }
 ```
 
-The `command` resolves against `$PATH`. Users who
-installed `mdsmith` via npm, PyPI, asdf, or mise
-(plan 130) get the binary on `$PATH` automatically.
-Users with a custom path can override
-`mdsmithLspPath` (no per-plugin config exists yet,
-so the documented fallback is to put the binary on
-`$PATH`).
+`npx` is bundled with npm, which standard Node.js
+installers ship and Claude Code already requires.
+First launch downloads `@mdsmith/cli` plus the
+platform binary subpackage (e.g.
+`@mdsmith/linux-x64`) from npm and caches them; the
+explicit `-p @mdsmith/cli mdsmith` form makes the
+bin selection unambiguous. `npx` prepends its
+package bin dir to the spawned command's `$PATH`,
+so the package's `mdsmith` always wins regardless of
+any system install. Users who want a pinned version
+edit `args` to use `@mdsmith/cli@<ver>` in place of
+`@mdsmith/cli`.
 
 ### Discovery and install
 
@@ -179,21 +184,22 @@ documented stdio invocation.
    [`docs/guides/install.md`](../docs/guides/install.md)
    listing the two `/plugin` commands and linking
    to the new editor README.
-5. Update [.mdsmith.yml](../.mdsmith.yml)'s
-   `directory-structure.allowed` list to include
-   `.claude-plugin/**` (the new top-level
-   marketplace dir). The current allow-list (lines
-   63–74) covers `.claude/**` but not
-   `.claude-plugin/**`; without the addition,
-   `mdsmith check .` fails on the new manifest.
-   `editors/**` is already allowed, so the plugin
-   manifest under `editors/claude-code/` does not
-   need a separate entry. This change is
-   config-touching, so surface the diff before
-   applying per [CLAUDE.md](../CLAUDE.md). Add an
-   `ignore:` entry too if the JSON manifests
-   trigger any rules; default to leaving them
-   linted.
+5. No change to
+   [.mdsmith.yml](../.mdsmith.yml)'s
+   `directory-structure.allowed` list is needed:
+   the rule only applies to Markdown files, and
+   the new `.claude-plugin/` tree contains JSON
+   only. `editors/**` is already allowed, so the
+   Markdown README under `editors/claude-code/`
+   does not need a separate entry either. Add a
+   tight per-glob override under `overrides:` for
+   `editors/claude-code/**/*.md` (line-length 72,
+   max-file-length 80, paragraph-structure 3
+   sentences / 25 words, paragraph-readability 12,
+   token-budget 2000) so the new plugin README
+   stays terse. This change is config-touching, so
+   surface the diff before applying per
+   [CLAUDE.md](../CLAUDE.md).
 6. Validate the manifest locally with
    `claude plugin validate ./editors/claude-code` (or
    `/plugin validate` inside an active Claude Code
@@ -213,31 +219,41 @@ documented stdio invocation.
 
 - [ ] `/plugin marketplace add jeduden/mdsmith`
       registers the marketplace without errors.
+      *(Pending end-to-end smoke test inside an active
+      Claude Code session.)*
 - [ ] `/plugin install mdsmith-lsp@mdsmith` installs
-      the plugin to user scope.
+      the plugin to user scope. *(Pending end-to-end
+      smoke test.)*
 - [ ] After install and `/reload-plugins`, opening
       a `.md` file with a known MDS rule violation
       surfaces the diagnostic to the agent (visible
       via Ctrl+O when the "diagnostics found"
-      indicator appears).
+      indicator appears). *(Pending end-to-end smoke
+      test.)*
 - [ ] After install, the agent can run
       `textDocument/definition` on an anchor link
-      and receive the heading location.
+      and receive the heading location. *(Pending
+      end-to-end smoke test.)*
 - [ ] `claude plugin validate` reports no errors on
-      the new manifests.
-- [ ] After the `.mdsmith.yml`
-      `directory-structure.allowed` update, `mdsmith
-      check .` passes against the new
-      `.claude-plugin/marketplace.json` location.
-- [ ] When the `mdsmith` binary is absent from
-      `$PATH`, the `/plugin` Errors tab shows
-      `Executable not found in $PATH` (no silent
-      hang, no generic crash).
-- [ ] [`docs/guides/install.md`](../docs/guides/install.md)
+      the new manifests. *(Pending — `claude` CLI not
+      available in the build sandbox.)*
+- [x] `mdsmith check .` passes against the new
+      `.claude-plugin/marketplace.json` location
+      without any change to
+      `directory-structure.allowed` (the rule only
+      fires on Markdown files, and the new tree
+      contains JSON only).
+- [ ] When Node.js is absent from `$PATH`, the
+      `/plugin` Errors tab shows `Executable not
+      found in $PATH` (no silent hang, no generic
+      crash). *(Pending end-to-end smoke test;
+      `mdsmith` itself is fetched via npx so its
+      absence is no longer a failure mode.)*
+- [x] [`docs/guides/install.md`](../docs/guides/install.md)
       documents the Claude Code install path and
       the binary prerequisite.
-- [ ] `mdsmith check .` passes with the new files.
-- [ ] All tests pass: `go test ./...`.
+- [x] `mdsmith check .` passes with the new files.
+- [x] All tests pass: `go test ./...`.
 
 ## Open Questions
 
