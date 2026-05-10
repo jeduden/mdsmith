@@ -180,7 +180,7 @@ describe("runFixWorkspace", () => {
       return { stdout: "", stderr: "stats: checked=0 fixed=0 failures=0 unfixed=0\n", exitCode: 0 };
     };
     await runFixWorkspace(deps);
-    expect(capturedArgs).toEqual(["fix", ".", "--config", "/custom/.mdsmith.yml"]);
+    expect(capturedArgs).toEqual(["fix", "--config", "/custom/.mdsmith.yml", "."]);
   });
 
   test("shows could-not-start notification when spawn rejects", async () => {

@@ -210,13 +210,13 @@ Command Palette under the `mdsmith:` category.
 
 ### Palette commands
 
-| Command                              | Requires trust | Action                                                                      |
-|--------------------------------------|:--------------:|-----------------------------------------------------------------------------|
-| `mdsmith: Initialize config`         | yes            | Run `mdsmith init` in the workspace root to create `.mdsmith.yml`.          |
-| `mdsmith: Install Git merge driver`  | yes            | Run `mdsmith merge-driver install` after a confirmation dialog.             |
-| `mdsmith: Fix all Markdown`          | yes            | Run `mdsmith fix .` against the workspace; show a fixed-of-total summary.   |
-| `mdsmith: Explain rule on this file` | —              | Pick a rule; open `mdsmith kinds why <file> <rule> --json` in a side panel. |
-| `mdsmith: Show resolved config`      | —              | Open `mdsmith kinds resolve <file> --json` in a side panel.                 |
+| Command                              | Requires trust | Action                                                                         |
+|--------------------------------------|:--------------:|--------------------------------------------------------------------------------|
+| `mdsmith: Initialize config`         | yes            | Run `mdsmith init` in the workspace root to create `.mdsmith.yml`.             |
+| `mdsmith: Install Git merge driver`  | yes            | Run `mdsmith merge-driver install` after a confirmation dialog.                |
+| `mdsmith: Fix all Markdown`          | yes            | Run `mdsmith fix .` against the workspace; show a fixed-of-total summary.      |
+| `mdsmith: Explain rule on this file` | —              | Pick a rule; open `mdsmith kinds why --json -- <file> <rule>` in a side panel. |
+| `mdsmith: Show resolved config`      | —              | Open `mdsmith kinds resolve --json -- <file>` in a side panel.                 |
 
 `mdsmith: Initialize config`, `mdsmith: Fix all Markdown`, and
 `mdsmith: Install Git merge driver` are hidden from the palette in

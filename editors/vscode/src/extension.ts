@@ -274,7 +274,6 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
     const uri = vscode.window.activeTextEditor?.document.uri;
     return uri?.scheme === "file" ? uri : undefined;
   };
-  const getBinary = () => resolveActiveBinary(context.extensionPath, getActiveFileUri());
   // In multi-root workspaces, prefer the folder containing the active
   // editor so file-modifying commands operate in the folder the user is
   // working in. Falls back to the first folder when there is no active
@@ -291,8 +290,17 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
     }
     return folders[0].uri.fsPath;
   };
+  // Scope configuration lookups to the workspace folder being operated on
+  // so per-folder mdsmith.path / mdsmith.config values are respected in
+  // multi-root workspaces. Falls back to the active file URI when no
+  // workspace folder is available (e.g. for the kinds virtual-doc commands).
+  const getConfigScope = (): vscode.Uri | undefined => {
+    const root = getWorkspaceRoot();
+    return root ? vscode.Uri.file(root) : getActiveFileUri();
+  };
+  const getBinary = () => resolveActiveBinary(context.extensionPath, getConfigScope());
   const getConfigPath = (): string | undefined => {
-    const v = vscode.workspace.getConfiguration("mdsmith", getActiveFileUri()).get<string>("config", "");
+    const v = vscode.workspace.getConfiguration("mdsmith", getConfigScope()).get<string>("config", "");
     return v || undefined;
   };
   const isTrusted = () => vscode.workspace.isTrusted;

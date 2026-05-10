@@ -69,7 +69,7 @@ export async function runFixWorkspace(deps: FixWorkspaceHandlerDeps): Promise<vo
 
   const spawnFn = deps.spawn ?? defaultSpawn;
   const args = deps.configPath
-    ? ["fix", ".", "--config", deps.configPath]
+    ? ["fix", "--config", deps.configPath, "."]
     : ["fix", "."];
   let result: SpawnResult;
   try {
