@@ -211,8 +211,7 @@ User-defined conventions are validated at config load:
 Validation errors name the convention and the rule:
 
 ```text
-convention "our-team" rule "no-inline-html":
-    unknown setting "allowed"
+convention "our-team" rule "no-inline-html": no-inline-html: unknown setting "allowed"
 ```
 
 ### Reserved names
@@ -231,8 +230,7 @@ is impossible. When neither table matches, the error
 lists both sets:
 
 ```text
-unknown convention "bogus" (valid: github, our-team,
-    plain, portable)
+unknown convention "bogus" (valid: github, our-team, plain, portable)
 ```
 
 ### Interaction with top-level rules

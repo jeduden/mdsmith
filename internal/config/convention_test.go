@@ -11,6 +11,7 @@ import (
 
 	// Register markdown-flavor so rule.ByName lookups in deep-merge
 	// resolve while the convention mechanism is exercised.
+	_ "github.com/jeduden/mdsmith/internal/rules/emphasisstyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/markdownflavor"
 )
 
@@ -444,37 +445,38 @@ func TestApplyConvention_UserConvention_InvalidSetting(t *testing.T) {
 }
 
 func TestApplyConvention_UserConvention_TopLevelRulesOverride(t *testing.T) {
-	// User convention enables markdown-flavor with gfm; user's top-level
-	// rules override it with commonmark. The user rule wins.
+	// Convention presets emphasis-style with bold=asterisk; user's top-level
+	// rules override bold to underscore. The user layer wins.
 	cfg := &Config{
 		Conventions: map[string]UserConvention{
 			"our-team": {
 				Flavor: "gfm",
 				Rules: map[string]RuleCfg{
-					"markdown-flavor": {
+					"emphasis-style": {
 						Enabled:  true,
-						Settings: map[string]any{"flavor": "gfm"},
+						Settings: map[string]any{"bold": "asterisk"},
 					},
 				},
 			},
 		},
 		Convention: "our-team",
 		Rules: map[string]RuleCfg{
-			"markdown-flavor": {
+			"emphasis-style": {
 				Enabled:  true,
-				Settings: map[string]any{"flavor": "gfm"}, // must match convention flavor
+				Settings: map[string]any{"bold": "underscore"},
 			},
 		},
-		ExplicitRules: map[string]bool{"markdown-flavor": true},
+		ExplicitRules: map[string]bool{"emphasis-style": true},
 	}
 	require.NoError(t, applyConvention(cfg))
 
 	got := Effective(cfg, "doc.md", nil)
-	mf, ok := got["markdown-flavor"]
+	es, ok := got["emphasis-style"]
 	require.True(t, ok)
-	assert.True(t, mf.Enabled)
-	// User rule is explicit, so it wins over the convention preset.
-	assert.Equal(t, "gfm", mf.Settings["flavor"])
+	assert.True(t, es.Enabled)
+	// User's explicit setting overrides the convention preset.
+	assert.Equal(t, "underscore", es.Settings["bold"],
+		"top-level rules must win over user convention preset")
 }
 
 func TestApplyConvention_UserConvention_ErrorListsBothSets(t *testing.T) {
