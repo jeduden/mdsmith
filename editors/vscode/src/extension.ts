@@ -419,7 +419,7 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
         provideTextDocumentContent: (uri: vscode.Uri) => {
           const provider = makeKindsContentProvider(
             getBinary(),
-            getWorkspaceRoot()
+            undefined
           );
           return provider.provideTextDocumentContent(uri.toString());
         },
