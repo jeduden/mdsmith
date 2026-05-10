@@ -370,7 +370,12 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("mdsmith.kinds.resolve", async () => {
       await runKindsResolve({
-        getActiveFilePath: () => getActiveFileUri()?.fsPath,
+        getActiveFilePath: () => {
+          const editor = vscode.window.activeTextEditor;
+          if (!editor || editor.document.uri.scheme !== "file") return undefined;
+          if (editor.document.languageId !== "markdown") return undefined;
+          return editor.document.uri.fsPath;
+        },
         getDiagnostics: (filePath) =>
           vscode.languages.getDiagnostics(vscode.Uri.file(filePath)),
         openVirtualDoc: async (uri) => {
@@ -390,7 +395,12 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("mdsmith.kinds.why", async () => {
       await runKindsWhy({
-        getActiveFilePath: () => getActiveFileUri()?.fsPath,
+        getActiveFilePath: () => {
+          const editor = vscode.window.activeTextEditor;
+          if (!editor || editor.document.uri.scheme !== "file") return undefined;
+          if (editor.document.languageId !== "markdown") return undefined;
+          return editor.document.uri.fsPath;
+        },
         getDiagnostics: (filePath) =>
           vscode.languages.getDiagnostics(vscode.Uri.file(filePath)),
         pickRule: async (rules) => {
