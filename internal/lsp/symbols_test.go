@@ -727,6 +727,94 @@ func TestCompletionDirectivePath(t *testing.T) {
 	}
 }
 
+func TestCompletionKindValueNoConfig(t *testing.T) {
+	t.Parallel()
+	// kindItems returns empty when no .mdsmith.yml is loaded (cfg == nil).
+	srcText := "---\nkind: gu\n---\n# Body\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": srcText})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcText},
+	})
+
+	// LSP line 1 (0-based), char 8 — inside the kind value.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 1, Character: 8},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	assert.Empty(t, list.Items, "no kinds without a config file")
+}
+
+func TestCompletionAnchorOtherFileEscapingWorkspace(t *testing.T) {
+	t.Parallel()
+	// A workspace-escaping path ("../../") produces an empty TargetFile; the
+	// handler must return an empty list without panicking (exercises the
+	// ctx.TargetFile == "" guard in completionItems).
+	src := "# Top\n\nSee [ref](../../escape.md#sec\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after "sec" in "../../escape.md#sec" → line 2 (0-based), char 35.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 2, Character: 35},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	assert.Empty(t, list.Items)
+}
+
+func TestCompletionDirectivePathFromSubdir(t *testing.T) {
+	t.Parallel()
+	// Buffer is in docs/; returned paths must be relative to docs/ (exercises
+	// the dir != "" path in directivePathItems and relFromDir).
+	srcGuide := strings.Join([]string{
+		"# Guide",
+		"",
+		"<?include",
+		`file: "oth`,
+		"?>",
+		"<?/include?>",
+		"",
+	}, "\n")
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/guide.md": srcGuide,
+		"docs/other.md": "# Other\n",
+		"docs/notes.md": "# Notes\n",
+		"root.md":       "# Root\n",
+	})
+	uri := rootURI + "/docs/guide.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcGuide},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after `"oth` on line 4 (0-based: 3), char 10.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 3, Character: 10},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	require.NotEmpty(t, list.Items)
+	for _, item := range list.Items {
+		// Paths must be relative to docs/, so "other.md" not "docs/other.md".
+		assert.False(t, strings.HasPrefix(item.Label, "docs/"),
+			"path should be relative to docs/, got %q", item.Label)
+		assert.True(t, strings.HasPrefix(strings.ToLower(item.Label), "oth"),
+			"expected 'oth' prefix, got %q", item.Label)
+	}
+}
+
 func TestCompletionOutsideContextReturnsEmpty(t *testing.T) {
 	t.Parallel()
 	src := "# Heading\n\nJust plain prose here.\n"

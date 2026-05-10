@@ -200,6 +200,85 @@ func TestCompletionContextNoneForNonKindFrontMatter(t *testing.T) {
 	assert.Equal(t, CompletionNone, res.Tag)
 }
 
+func TestCompletionContextNoneFMKeyPosition(t *testing.T) {
+	t.Parallel()
+	// Cursor on the key side of a FM entry (col ≤ colon) → TokenFrontMatterKey,
+	// not TokenFrontMatterValue → condition at completionContextFrontMatter is false.
+	src := "---\ntitle: foo\n---\n# Body\n"
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 2, 3)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestCompletionContextNoneInsideIndentedCodeBlock(t *testing.T) {
+	t.Parallel()
+	// 4-space indented code block suppresses completion (*ast.CodeBlock).
+	src := "# Top\n\nPara.\n\n    [link](#anchor\n    more code\n\nEnd.\n"
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 5, 12)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestCompletionContextCatalogBareListItem(t *testing.T) {
+	t.Parallel()
+	// Bare "-" list item (no trailing space) → empty prefix. A blank line
+	// between "glob:" and "-" exercises the empty-line skip in scanBackwardForPIKey.
+	src := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		"glob:",
+		"",
+		"  -",
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	// Cursor at end of "  -" (line 6, col 4).
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 6, 4)
+	assert.Equal(t, CompletionDirectivePath, res.Tag)
+	assert.Equal(t, "", res.Prefix)
+	assert.Equal(t, "glob", res.DirectiveArg)
+}
+
+func TestCompletionContextNoneCatalogNonListLine(t *testing.T) {
+	t.Parallel()
+	// Cursor on "sort: path" (non-list line) inside catalog PI → yamlListItemValue
+	// returns false → CompletionNone.
+	src := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		"glob:",
+		`  - "docs/*.md"`,
+		"sort: path",
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	// Cursor on "sort: path" line (line 6), col 7.
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 6, 7)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
+func TestCompletionContextNoneCatalogListItemNonGlobKey(t *testing.T) {
+	t.Parallel()
+	// List item under a non-glob key → parentKey != "glob" → CompletionNone.
+	src := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		"glob:",
+		`  - "docs/*.md"`,
+		"fields:",
+		"  - title",
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	// Cursor on "  - title" (line 7), col 9.
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 7, 9)
+	assert.Equal(t, CompletionNone, res.Tag)
+}
+
 func TestCompletionContextAnchorOtherFileEscapingWorkspace(t *testing.T) {
 	t.Parallel()
 	src := "# Top\n\nSee [link](../../escape.md#sec\n"

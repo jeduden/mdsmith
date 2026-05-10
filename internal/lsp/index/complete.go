@@ -263,7 +263,7 @@ func scanBackwardForPIKey(lines [][]byte, idx int) string {
 func insideCodeBlock(root ast.Node, body []byte, bodyLine int) bool {
 	var found bool
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering || found {
+		if !entering {
 			return ast.WalkContinue, nil
 		}
 		switch n.(type) {
