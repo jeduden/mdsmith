@@ -241,7 +241,6 @@ from JSON output; closing the panel discards the buffer.
 | `kinds resolve`    | `mdsmith: Show resolved config`           |
 | `kinds why`        | `mdsmith: Explain rule on this file`      |
 | `help` (rules)     | Hover (plan 133)                          |
-| `archetypes`       | CLI only                                  |
 | `metrics`          | CLI only                                  |
 | `query`            | CLI only                                  |
 | `version`          | CLI only                                  |

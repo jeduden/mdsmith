@@ -33,9 +33,9 @@ Plan 133 covers hover for `help rule` and
 directive docs only — the rest of `mdsmith help`
 (e.g. `help metrics`, `help kinds`,
 `help concepts`) stays CLI-only since those topics
-have no in-buffer anchor to hover over. Eight
+have no in-buffer anchor to hover over. Seven
 subcommands stay outside the editor:
-`help`, `kinds`, `archetypes`, `metrics`,
+`help`, `kinds`, `metrics`,
 `query`, `init`, `merge-driver`, `version`. A
 reviewer audit grouped them:
 
@@ -43,8 +43,8 @@ reviewer audit grouped them:
   fix-everything, `kinds why`, `kinds resolve`.
 - **Hover (plan 133)**: `help rule <id>` and the
   directive-doc subset.
-- **CLI only**: the rest of `help`, `archetypes`,
-  `metrics`, `query`, `version` — reviewers would
+- **CLI only**: the rest of `help`, `metrics`,
+  `query`, `version` — reviewers would
   uninstall a tree view or status-bar pill
   surfacing these.
 
@@ -170,7 +170,7 @@ feedback.
 5. [x] Add a CLI-subcommand table to
    `docs/guides/editors/vscode.md` listing every
    subcommand and its editor entry point. Mark
-   `archetypes`, `metrics`, `query`, and `version`
+   `metrics`, `query`, and `version`
    as "CLI only".
 6. [x] Wire workspace trust per the design above. Add
    the `capabilities.untrustedWorkspaces` block to
