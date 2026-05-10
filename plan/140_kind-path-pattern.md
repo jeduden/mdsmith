@@ -3,7 +3,7 @@ id: 140
 title: "Per-kind `path-pattern` for filename validation"
 status: "🔲"
 model: sonnet
-depends-on: [133]
+depends-on: [147]
 summary: >-
   Let a kind declare a `path-pattern:` glob that the
   file's path must match. Replaces hand-rolled CI
@@ -56,7 +56,7 @@ constraint visible in `mdsmith kinds`.
 - Replacing `<?require filename:?>`. The
   directive stays as the file-schema surface;
   `path-pattern:` is the kind-config surface.
-  Plan 132 wires both onto the same engine, so
+  Plan 146 wires both onto the same engine, so
   diagnostics are consistent.
 - Multiple patterns per kind. One pattern per
   kind keeps the surface small. A kind with two
@@ -90,7 +90,7 @@ behavior — no filename constraint.
 Take a file whose effective kind has a
 `path-pattern:`. The workspace-relative path
 must match the glob. On a mismatch, mdsmith
-emits an MDS020 diagnostic through plan 133's
+emits an MDS020 diagnostic through plan 147's
 actionable shape:
 
 ```text
@@ -142,7 +142,7 @@ command.
    (likely a shared helper in
    `internal/rules/requiredstructure/`).
 3. Emit the diagnostic via the actionable
-   shape from plan 133, with `field:
+   shape from plan 147, with `field:
    filename`, `actual:` the workspace path,
    `expected:` "glob `<pattern>`",
    `schema_ref: kinds[<name>] / path-pattern`.
@@ -160,7 +160,7 @@ command.
     diagnostic,
   - a file claiming the kind whose path does
     not match produces a clear diagnostic,
-  - the diagnostic uses plan 133's shape,
+  - the diagnostic uses plan 147's shape,
   - `path-pattern:` plus
     `<?require filename:?>` together emit
     one diagnostic per failure,
@@ -173,7 +173,7 @@ command.
       the workspace-relative path of every
       file assigned to that kind.
 - [ ] A path mismatch produces an MDS020
-      diagnostic in the plan 133 shape with
+      diagnostic in the plan 147 shape with
       `field: filename`.
 - [ ] A kind with both `path-pattern:` and a
       schema `<?require filename:?>` emits

@@ -53,7 +53,7 @@ A schema has six top-level keys, all optional:
 |---------------------|------------------------------------|
 | `frontmatter:`      | FM field constraints               |
 | `require:`          | Filename / path / kind constraints |
-| `sections:`         | Recursive section tree (plan 132)  |
+| `sections:`         | Recursive section tree (plan 146)  |
 | `cross-references:` | Text-pattern-to-heading checks     |
 | `acronyms:`         | First-use detection with safe-list |
 | `index:`            | JSON side-output                   |
@@ -61,8 +61,8 @@ A schema has six top-level keys, all optional:
 Plus three modifiers that attach anywhere:
 
 - `extends:` — schema inheritance (plan 135)
-- `closed:` — strict mode (plan 132)
-- `rules:` — per-scope rule overrides (plan 132)
+- `closed:` — strict mode (plan 146)
+- `rules:` — per-scope rule overrides (plan 146)
 
 ## Front-matter constraints
 
@@ -84,7 +84,7 @@ schema:
 Type names: `string`, `int`, `number`, `bool`,
 `date`, `datetime`, `time`, `email`, `url`,
 `filename`, `slug`, `uuid`, `non-empty`. The
-list extends per plan 134.
+list extends per plan 148.
 
 Optional fields use a `?` suffix:
 
@@ -162,7 +162,7 @@ frontmatter:
 
 The validator unifies the CUE expression
 against the field's parsed JSON value. The
-diagnostic shape (plan 133) wraps any CUE
+diagnostic shape (plan 147) wraps any CUE
 error: `field: approver`, `actual: "draft-bot"`,
 `expected: <CUE expression rendered>`,
 `hint: status="ratified" requires approver != …`.
@@ -195,10 +195,10 @@ emits the YAML equivalent, and flags any field
 that requires `cue:` so the maintainer
 reviews the escape.
 
-## Sections (plan 132 shape)
+## Sections (plan 146 shape)
 
 Body structure uses the recursive `sections:`
-list from plan 132 — heading text, level from
+list from plan 146 — heading text, level from
 depth, optional `repeats:` for sequence
 patterns, `closed:` for strict mode, `"..."`
 for wildcard slots:
@@ -219,7 +219,7 @@ schema:
       required: false
 ```
 
-This block is unchanged from plan 132's design.
+This block is unchanged from plan 146's design.
 Direction B does not change the body shape; it
 unifies the FM shape with the body shape under
 one syntax.
@@ -433,7 +433,7 @@ kinds:
 The schema enforces "every slide is at most 60
 words" via plan 142's `max-section-length`
 rule, scoped to each `Slide {n}` section
-through plan 132's per-scope override.
+through plan 146's per-scope override.
 
 ## Worked example: cross-field constraint
 
@@ -528,7 +528,7 @@ What the validator does, end to end:
    covers the file).
 2. **Schema load.** The inline `runbook:`
    schema parses to the in-memory `Schema`
-   struct from plan 132.
+   struct from plan 146.
 3. **FM validation.** Walk the schema's
    `frontmatter:` block. `id` is `RB-0042`:
    matches `^RB-[0-9]{4}$` ✓. `owner` is a
@@ -632,12 +632,12 @@ The migration tool is a candidate plan
 
 ## What folds back into the plans
 
-- **Plan 132** keeps its body design intact
+- **Plan 146** keeps its body design intact
   (sections, repeats, closed/open, wildcard,
   per-scope rules). FM section gains the
   YAML shape — bare names, constraint maps,
   `cue:` escape.
-- **Plan 134** (named field-type shortcuts)
+- **Plan 148** (named field-type shortcuts)
   becomes the bare-name vocabulary in the
   YAML DSL. The CUE library is still
   available as the implementation backing
@@ -657,9 +657,9 @@ The migration tool is a candidate plan
 - [Spike — schema-language unification](spike.md)
 - [Languages survey](languages-survey.md)
 - Plans
-  [132](../../../plan/132_inline-schema-in-kinds.md),
-  [133](../../../plan/133_actionable-schema-diagnostics.md),
-  [134](../../../plan/134_named-field-type-shortcuts.md),
+  [146](../../../plan/146_inline-schema-in-kinds.md),
+  [147](../../../plan/147_actionable-schema-diagnostics.md),
+  [148](../../../plan/148_named-field-type-shortcuts.md),
   [135](../../../plan/135_schema-extends.md),
   [136](../../../plan/136_field-deprecation-flag.md),
   [142](../../../plan/142_schema-content-constraints.md),

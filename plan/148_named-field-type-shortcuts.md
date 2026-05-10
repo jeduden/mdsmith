@@ -1,13 +1,13 @@
 ---
-id: 134
+id: 148
 title: Named field-type shortcuts for inline schemas
 status: "🔲"
 model: sonnet
-depends-on: [132]
+depends-on: [146]
 summary: >-
   Ship a small CUE library of common field
   patterns (`date`, `datetime`, `email`, `url`,
-  `filename`) and let inline schemas (plan 132)
+  `filename`) and let inline schemas (plan 146)
   reference them by short name. Schemas in
   `proto.md` files import the same library.
 ---
@@ -15,7 +15,7 @@ summary: >-
 
 ## Goal
 
-Make inline schemas (plan 132) shorter and more
+Make inline schemas (plan 146) shorter and more
 readable for the common case. A user writing
 `created: date` should not have to re-derive the
 ISO-date regex; nor should three projects each
@@ -33,10 +33,10 @@ patterns. The mdbase research records this gap as
 **S-2**: not a missing capability, but a missing
 ergonomic layer over CUE.
 
-Plan 132 (inline schemas) is the trigger. Before
-plan 132 the patterns can live in a shared
+Plan 146 (inline schemas) is the trigger. Before
+plan 146 the patterns can live in a shared
 `proto.md` and be reused by import; after plan
-132 each inline `frontmatter:` block re-derives
+146 each inline `frontmatter:` block re-derives
 them.
 
 ## Non-Goals
@@ -101,7 +101,7 @@ import is opt-in.
 
 ### Inline-schema shortcut form
 
-Inline schemas (plan 132) accept the unprefixed
+Inline schemas (plan 146) accept the unprefixed
 short name as a string value:
 
 ```yaml
@@ -168,7 +168,7 @@ complex stays raw CUE.
    without network access.
 3. In `internal/config/`, add a registry of
    short names → canonical CUE expressions.
-4. In the inline-schema loader (plan 132), look
+4. In the inline-schema loader (plan 146), look
    up bare-string `frontmatter:` values in the
    registry; rewrite to the canonical expression
    before evaluation. Anything else passes

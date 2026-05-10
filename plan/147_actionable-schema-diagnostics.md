@@ -1,5 +1,5 @@
 ---
-id: 133
+id: 147
 title: Actionable schema diagnostics for MDS020
 status: "🔲"
 model: opus
@@ -9,7 +9,7 @@ summary: >-
   per-violation diagnostics that name the field,
   show the actual value, name the constraint, and
   suggest a concrete fix. Apply to inline schemas
-  (plan 132), file schemas, and structure / require
+  (plan 146), file schemas, and structure / require
   failures.
 ---
 # Actionable schema diagnostics for MDS020

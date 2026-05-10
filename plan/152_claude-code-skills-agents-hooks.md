@@ -4,7 +4,7 @@ title: Claude Code plugin extensions — skills, agents, hooks
 status: "🔲"
 model: sonnet
 summary: >-
-  Extend the Claude Code marketplace from plan 132
+  Extend the Claude Code marketplace from plan 146
   with a second plugin (`mdsmith-tools`) that bundles
   three slash-command skills (`fix`, `kinds`,
   `check`), a `markdown-reviewer` subagent, and a
@@ -16,7 +16,7 @@ summary: >-
 ## Goal
 
 Ship a second plugin in the mdsmith Claude Code
-marketplace from plan 132. The new plugin adds
+marketplace from plan 146. The new plugin adds
 the three component types the LSP plugin omits:
 skills, subagents, and hooks. Skills run mdsmith
 workflows by name. The subagent delegates
@@ -26,14 +26,14 @@ work from the bare LSP server.
 
 ## Background
 
-Plan 132 ships `mdsmith-lsp`. That plugin is LSP
+Plan 146 ships `mdsmith-lsp`. That plugin is LSP
 only. The marketplace lives at the repo root.
 The Claude Code [plugin reference][plug-ref]
 defines five component types:
 
 [plug-ref]: https://code.claude.com/docs/en/plugins-reference
 
-| Component   | Plan 132 | This plan |
+| Component   | Plan 146 | This plan |
 |-------------|----------|-----------|
 | LSP servers | ✅       | —         |
 | Skills      | —        | ✅        |
@@ -67,7 +67,7 @@ separate plugins.
 .claude-plugin/
   marketplace.json          # adds mdsmith-tools entry
 editors/
-  claude-code/              # mdsmith-lsp (plan 132)
+  claude-code/              # mdsmith-lsp (plan 146)
   claude-code-tools/        # mdsmith-tools (this plan)
     .claude-plugin/
       plugin.json
@@ -84,12 +84,12 @@ editors/
 
 The `editors/claude-code-tools/` directory mirrors
 the layout of `editors/claude-code/`. The
-marketplace.json from plan 132 grows a second
+marketplace.json from plan 146 grows a second
 entry pointing at it.
 
 ### Marketplace update
 
-The full `marketplace.json` (per plan 132) keeps
+The full `marketplace.json` (per plan 146) keeps
 its `name`, `owner`, `description`, and
 `$schema` fields. Only the `plugins` array
 grows. The block below is a fragment, not a
@@ -211,7 +211,7 @@ stays small.
 
 ### Backwards compatibility
 
-`mdsmith-lsp` (plan 132) is unchanged. The
+`mdsmith-lsp` (plan 146) is unchanged. The
 marketplace.json gains one entry. Users who
 already installed `mdsmith-lsp` see the new
 plugin in `/plugin marketplace update` output
@@ -232,12 +232,12 @@ but it does not auto-install.
    describing capabilities and triggers.
 5. Add `hooks/hooks.json` with the `PostToolUse`
    entry.
-6. Extend the marketplace.json from plan 132 to
+6. Extend the marketplace.json from plan 146 to
    include the new plugin entry.
 7. Update [.mdsmith.yml](../.mdsmith.yml)'s
    `directory-structure.allowed` if needed to
    cover the new path. `editors/**` is already
-   allowed (per plan 132's audit), so no change
+   allowed (per plan 146's audit), so no change
    should be required — confirm during smoke
    test.
 8. Extend [.mdsmith.yml](../.mdsmith.yml)'s
@@ -256,7 +256,7 @@ but it does not auto-install.
    prerequisite.
 10. Document the new plugin in
     [docs/guides/install.md](../docs/guides/install.md)
-    under the Claude Code section plan 132 added.
+    under the Claude Code section plan 146 added.
 11. Smoke-test end-to-end: install `mdsmith-tools`
     in a scratch workspace, run each skill, invoke
     the agent on a sample Markdown file, edit a

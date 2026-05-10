@@ -3,7 +3,7 @@ id: 142
 title: Content rules for prose constraints
 status: "🔲"
 model: sonnet
-depends-on: [132]
+depends-on: [146]
 summary: >-
   Ship four new content rules
   (`forbidden-paragraph-starts`, `forbidden-text`,
@@ -11,7 +11,7 @@ summary: >-
   and extend MDS036 with word and paragraph
   caps. All default-disabled, configurable
   document-wide today and per-section once plan
-  132's per-scope override lands. No new schema
+  146's per-scope override lands. No new schema
   language — the schema just reuses the standard
   `rules:` block.
 ---
@@ -25,7 +25,7 @@ starts, forbidden contains, required patterns,
 required mentions) as ordinary mdsmith rules.
 Each rule is configurable like every other
 rule. The schema language gets no new shape;
-it just reuses plan 132's per-scope `rules:`
+it just reuses plan 146's per-scope `rules:`
 block.
 
 ## Background
@@ -40,14 +40,14 @@ discover. The cleaner answer is normal rules:
 they register in the rule set, they expose
 settings via `Configurable`, they appear in
 `mdsmith kinds resolve`, and they apply
-per-scope as soon as plan 132 ships its
+per-scope as soon as plan 146 ships its
 override mechanism.
 
 The
 [mdbase research](../docs/research/mdbase-vs-mdsmith/learn-from-mdbase.md)
 describes these constraints as part of S-7;
 this plan ships the rule-set half, leaving the
-schema-side wiring to plan 132.
+schema-side wiring to plan 146.
 
 ## Non-Goals
 
@@ -56,7 +56,7 @@ schema-side wiring to plan 132.
   rewriting it is the user's job.
 - A schema-side `max-words:` / `forbidden-starts:`
   shape. The schema is purely a scope tree
-  (plan 132); rule config goes through the
+  (plan 146); rule config goes through the
   standard `rules:` surface.
 
 ## Design
@@ -77,7 +77,7 @@ All four new rules are default-disabled. A
 project that wants document-wide enforcement
 sets the rule globally in `.mdsmith.yml`; a
 project that wants section-scoped enforcement
-relies on plan 132's per-scope override. Both
+relies on plan 146's per-scope override. Both
 surfaces feed the same rule code.
 
 ### Document-wide and per-section
@@ -92,7 +92,7 @@ rules:
     contains: ["should", "may", "might"]
 ```
 
-Per-section (via plan 132):
+Per-section (via plan 146):
 
 ```yaml
 schema:
@@ -125,7 +125,7 @@ specific child indices ("the last step is
 exempt"; negative indices count from the end).
 This setting is meaningful only when the rule
 runs from a scope override on a section with
-`children:` (plan 132); document-wide use
+`children:` (plan 146); document-wide use
 ignores it.
 
 ### Tokenization
@@ -156,12 +156,12 @@ helper. No new tokenization code.
 5. Add `MDS058 required-mentions`. Substring
    match on the scope's text.
 6. Verify each new rule composes with plan
-   132's per-scope override mechanism. Add a
+   146's per-scope override mechanism. Add a
    fixture that runs the rule globally on
    one document and per-section on another.
 7. Document the rule pack in the new
    `docs/guides/schemas.md` (introduced by
-   plan 132) under "Content constraints".
+   plan 146) under "Content constraints".
    Each rule also gets its standard
    `internal/rules/<id>-<name>/README.md`.
 8. Add good and bad fixtures per rule under
@@ -196,7 +196,7 @@ helper. No new tokenization code.
       `rules:`.
 - [ ] Each new rule applies per-section when
       configured under a schema scope's
-      `rules:` block (plan 132).
+      `rules:` block (plan 146).
 - [ ] All new rules are default-disabled.
 - [ ] Each new rule has a README under
       `internal/rules/<id>-<name>/` and a

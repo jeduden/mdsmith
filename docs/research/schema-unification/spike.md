@@ -3,7 +3,7 @@ summary: >-
   Spike investigating whether mdsmith should unify
   the two schema surfaces it has today — CUE for
   front matter, a YAML scope tree for body
-  structure (plans 132 / 142 / 143) — into one
+  structure (plans 146 / 142 / 143) — into one
   language, and which language(s) best minimize
   the surface area an agent or human must learn
   to type a Markdown document.
@@ -20,7 +20,7 @@ in one schema file:
 - **A YAML scope tree** for body structure
   (sections, repeats, per-scope rule overrides,
   closed/open) — proposed in
-  [plan 132](../../../plan/132_inline-schema-in-kinds.md),
+  [plan 146](../../../plan/146_inline-schema-in-kinds.md),
   with content rules in
   [plan 142](../../../plan/142_schema-content-constraints.md)
   and cross-refs / acronyms / index in
@@ -74,7 +74,7 @@ they bite:
    author should be able to type "RFC has these
    fields and these sections" without two doc
    pages.
-2. **Per-scope rule reuse.** Plan 132 asks
+2. **Per-scope rule reuse.** Plan 146 asks
    existing rules to apply per-section without
    code change. The schema language must thread
    rule config through subtrees.
@@ -87,9 +87,9 @@ they bite:
    Some constraints span multiple subtrees.
 5. **FM constraints we have today.** Disjunctions,
    regex, ranges, `?`-optional fields,
-   `extends:` (plan 135), shortcuts (plan 134),
+   `extends:` (plan 135), shortcuts (plan 148),
    `deprecated:` (plan 136).
-6. **Diagnostics.** Plan 133's actionable shape
+6. **Diagnostics.** Plan 147's actionable shape
    — `field`, `actual`, `expected`, `hint`,
    `schema_ref`. New language must hit the same
    bar.
@@ -296,7 +296,7 @@ schema:
 - Per-scope rule overrides land naturally —
   same shape as the rest of `.mdsmith.yml`.
 - The validator is a small Go program;
-  diagnostics can match plan 133 exactly with
+  diagnostics can match plan 147 exactly with
   no engine quirks to translate.
 
 - **B loses on:** giving up CUE's expressiveness on FM:
@@ -344,7 +344,7 @@ single JSON document.
 Keep two surfaces (CUE for FM constraints, YAML
 scope tree for body) but share definitions: one
 **named-type registry**
-([plan 134](../../../plan/134_named-field-type-shortcuts.md))
+([plan 148](../../../plan/148_named-field-type-shortcuts.md))
 serves both. Inside CUE the registry shows up
 as `types.#date`; inside the YAML scope tree as
 the shortcut `date`. Same set; different
@@ -360,7 +360,7 @@ schema:
       required: true
 ```
 
-- **D wins on:** being the smallest delta from where plans 132–143
+- **D wins on:** being the smallest delta from where plans 146–143
   are heading.
 - CUE keeps FM expressivity. YAML keeps body
   ergonomics. The shared registry of named
@@ -382,9 +382,9 @@ schema:
 
 ### Direction E — Status quo
 
-Plans 132 / 142 / 143 ship as written. CUE for
+Plans 146 / 142 / 143 ship as written. CUE for
 FM, YAML for body, no shared primitives beyond
-plan 134's named types.
+plan 148's named types.
 
 - **E wins on:** smallest implementation cost. Already mostly
   designed.
@@ -447,7 +447,7 @@ both" goal fights this established pattern.
 rules is rare in practice. The robust choice is
 "one language for the grammar, named rules for
 the cross-cutting" — which is approximately
-what plans 132–143 already encode.
+what plans 146–143 already encode.
 
 ### Surface area: agent vs human
 
@@ -479,7 +479,7 @@ expressivity.
 ### Body validation: build vs adopt
 
 No off-the-shelf language has body validation
-for Markdown that matches plan 132's ambition.
+for Markdown that matches plan 146's ambition.
 Astro's Zod-on-frontmatter is the closest in
 the JS ecosystem and stops at FM.
 
@@ -522,7 +522,7 @@ with an escape valve**:
   schema embed a CUE expression as a string.
   The validator unifies the CUE expression
   against the field's parsed value.
-- The body side ships as plans 132–143
+- The body side ships as plans 146–143
   describe.
 
 This minimizes surface area (one language)
@@ -535,7 +535,7 @@ The fallback recommendation is **Direction
 D**: keep both surfaces, add a single named-
 type registry that both consult. Less
 ambitious but lower risk; this is what plans
-134 already buys, so it is also where the
+148 already buys, so it is also where the
 status quo "settles" if no one drives the
 unification.
 
@@ -567,7 +567,7 @@ more CUE.
 4. **Diagnostics from a CUE escape valve.**
    If Direction B keeps a `cue:` escape
    hatch, the diagnostics from that path need
-   to look like the rest of plan 133's
+   to look like the rest of plan 147's
    format. Doable, but needs design work.
 5. **Tooling.** LSP hover, completion, and
    error squiggles are easier on a YAML DSL
@@ -579,11 +579,11 @@ more CUE.
 
 Once a direction is picked:
 
-- **Plan 132**'s FM section either keeps the
+- **Plan 146**'s FM section either keeps the
   CUE-shape (Directions A, D, E) or moves to
   the new YAML DSL (Direction B), or wraps
   CUE in YAML (Direction C).
-- **Plan 134** (named field-type shortcuts)
+- **Plan 148** (named field-type shortcuts)
   remains in any direction; the shape changes
   per-direction.
 - **Plan 135** (`extends:`) is purely a
@@ -598,7 +598,7 @@ Once a direction is picked:
 This spike's job is to gather inputs, not to
 land a decision. The next step is to pick a
 direction with the project owner, fold the
-choice back into plan 132, and adjust 134 /
+choice back into plan 146, and adjust 148 /
 135 / 142 / 143 to match.
 
 ## See also
@@ -610,8 +610,8 @@ choice back into plan 132, and adjust 134 /
 - [interop §7 schema bridge sketch](../mdbase-vs-mdsmith/interop.md)
   — the cross-tool schema bridge.
 - Plans
-  [132](../../../plan/132_inline-schema-in-kinds.md),
-  [134](../../../plan/134_named-field-type-shortcuts.md),
+  [146](../../../plan/146_inline-schema-in-kinds.md),
+  [148](../../../plan/148_named-field-type-shortcuts.md),
   [135](../../../plan/135_schema-extends.md),
   [142](../../../plan/142_schema-content-constraints.md),
   [143](../../../plan/143_schema-cross-refs-acronyms-index.md).

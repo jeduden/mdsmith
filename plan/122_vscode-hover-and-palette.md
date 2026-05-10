@@ -8,14 +8,14 @@ summary: >-
   `init`, `merge-driver install`, `fix workspace`,
   `kinds why`, `kinds resolve` — that cover the
   remaining mdsmith subcommands without adding chrome
-  to the editor. Hover help is split into plan 133.
+  to the editor. Hover help is split into plan 147.
 ---
 # VS Code palette commands
 
 ## Goal
 
 After plan 121 ships diagnostics and code actions
-and plan 133 adds hover for rule docs, one question
+and plan 147 adds hover for rule docs, one question
 stays unanswered from the editor: "how do I run a
 mdsmith subcommand without leaving VS Code?". This
 plan answers it with a short palette menu.
@@ -29,7 +29,7 @@ first feature they would disable.
 ## Background
 
 Plan 121 covers diagnostics and per-file fixes.
-Plan 133 covers hover for `help rule` and
+Plan 147 covers hover for `help rule` and
 directive docs only — the rest of `mdsmith help`
 (e.g. `help metrics`, `help kinds`,
 `help concepts`) stays CLI-only since those topics
@@ -41,7 +41,7 @@ reviewer audit grouped them:
 
 - **Palette**: `init`, `merge-driver install`,
   fix-everything, `kinds why`, `kinds resolve`.
-- **Hover (plan 133)**: `help rule <id>` and the
+- **Hover (plan 147)**: `help rule <id>` and the
   directive-doc subset.
 - **CLI only**: the rest of `help`, `metrics`,
   `query`, `version` — reviewers would

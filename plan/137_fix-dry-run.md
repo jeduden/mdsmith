@@ -68,12 +68,19 @@ Files with no fixes do not appear. A trailing
 summary matches the existing `fix` summary line:
 
 ```text
-stats: checked=12 unfixed=4 would-fix=8
+stats: checked=12 fixed=0 failures=0 unfixed=4 would-fix=8
 ```
 
-The dry-run summary omits the `fixed=` field
-entirely so users do not mistake the run for a
-real apply.
+The dry-run summary keeps the existing
+`checked=` / `fixed=` / `failures=` / `unfixed=`
+fields for machine-parsability. `fixed=0` is
+always literal-zero on a dry run, since nothing
+was written. `would-fix=N` is additive — the
+count of violations a real run would have
+auto-fixed. A consumer that only watches
+`fixed=` therefore sees 0 (no surprise apply);
+a consumer that watches `would-fix=` sees the
+preview count.
 
 ### JSON output
 

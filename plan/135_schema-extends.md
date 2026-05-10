@@ -3,13 +3,13 @@ id: 135
 title: Schema inheritance via `extends`
 status: "🔲"
 model: sonnet
-depends-on: [132, 133]
+depends-on: [146, 147]
 summary: >-
   Let one kind's schema extend another so common
   front-matter fields and structure templates live
   in a base. Single-parent inheritance with
   child-wins semantics, applied to both inline
-  (plan 132) and file schemas. Errors point at the
+  (plan 146) and file schemas. Errors point at the
   layer that introduced a conflict.
 ---
 # Schema inheritance via `extends`
@@ -31,11 +31,11 @@ schema can compose via `import` plus struct
 embedding today. What is missing is an explicit
 `extends:` surface that:
 
-- works in inline schemas (plan 132), where
+- works in inline schemas (plan 146), where
   `import` is not the user's primary tool,
 - shows up in `mdsmith kinds` so the inheritance
   chain is visible without reading every schema,
-- gives an actionable error (plan 133) when a
+- gives an actionable error (plan 147) when a
   child conflicts with its parent.
 
 ## Non-Goals
@@ -158,7 +158,7 @@ schemas. This is the `extends:` analogue of plan
 
 A child's CUE expression may be unsatisfiable
 against its parent's. Parent says `int`; child
-says `string`. The diagnostic from plan 133
+says `string`. The diagnostic from plan 147
 names both layers:
 
 ```text
@@ -192,7 +192,7 @@ both layer names without grepping.
    `frontmatter:` and `require:`. Replace
    wholesale for `structure:`. Reject conflicts
    with the diagnostic shape above (depends on
-   plan 133).
+   plan 147).
 6. Extend `mdsmith kinds show <name>` to print
    the inheritance chain and per-field
    provenance for `frontmatter:`.
@@ -227,7 +227,7 @@ both layer names without grepping.
       cycle path.
 - [ ] A child whose CUE expression cannot unify
       with its parent's produces a diagnostic
-      naming both layers (depends on plan 133).
+      naming both layers (depends on plan 147).
 - [ ] `mdsmith kinds show <name>` prints the
       inheritance chain and per-field
       provenance.

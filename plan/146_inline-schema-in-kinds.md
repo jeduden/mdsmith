@@ -1,5 +1,5 @@
 ---
-id: 132
+id: 146
 title: Schema engine — sources, scope tree, per-scope rules
 status: "🔲"
 model: opus
@@ -86,7 +86,7 @@ schema:
     filename: "RFC-[0-9][0-9][0-9][0-9].md"
 ```
 
-CUE per FM key. `?` for optional. Plan 134
+CUE per FM key. `?` for optional. Plan 148
 (shortcuts), 135 (`extends:`), and 136
 (deprecation) attach here.
 `require.filename:` uses glob syntax.
@@ -253,7 +253,7 @@ not a parallel system.
    `"..."` wildcard slots. Levels come from
    tree depth; mismatched document levels
    produce a diagnostic. Diagnostics use plan
-   133's shape.
+   147's shape.
 6. Plumb per-scope rule-config overrides.
    While walking a section's subtree, apply
    the section's `rules:` overrides on top of

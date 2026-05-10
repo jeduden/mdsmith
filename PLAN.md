@@ -44,11 +44,8 @@ footer: |
 | 130 | 🔳     | opus   | [Distribute mdsmith binaries via npm, PyPI, asdf, mise, and the VS Code marketplaces](plan/130_binary-distribution-and-versioning.md) |
 | 131 | ✅     | opus   | [LSP symbol navigation for agents (Claude)](plan/131_lsp-symbol-navigation.md)                                                        |
 | 132 | 🔳     | sonnet | [Package mdsmith LSP as a Claude Code plugin](plan/132_claude-code-plugin.md)                                                         |
-| 132 | 🔲     | opus   | [Schema engine — sources, scope tree, per-scope rules](plan/132_inline-schema-in-kinds.md)                                            |
-| 133 | 🔲     | opus   | [Actionable schema diagnostics for MDS020](plan/133_actionable-schema-diagnostics.md)                                                 |
 | 133 | 🔳     | sonnet | [LSP hover for rule and directive docs](plan/133_lsp-hover.md)                                                                        |
 | 134 | 🔲     | sonnet | [LSP completion for anchors, refs, kinds, and directive args](plan/134_lsp-completion.md)                                             |
-| 134 | 🔲     | sonnet | [Named field-type shortcuts for inline schemas](plan/134_named-field-type-shortcuts.md)                                               |
 | 135 | 🔲     | sonnet | [Schema inheritance via `extends`](plan/135_schema-extends.md)                                                                        |
 | 136 | 🔲     | sonnet | [Field deprecation flag in schemas](plan/136_field-deprecation-flag.md)                                                               |
 | 137 | 🔲     | sonnet | [`mdsmith fix --dry-run`](plan/137_fix-dry-run.md)                                                                                    |
@@ -59,6 +56,9 @@ footer: |
 | 143 | 🔲     | sonnet | [Schema cross-references, acronyms, and index](plan/143_schema-cross-refs-acronyms-index.md)                                          |
 | 144 | 🔲     | sonnet | [Numeric sort for `<?catalog?>` directive](plan/144_catalog-numeric-sort.md)                                                          |
 | 145 | 🔲     | opus   | [Publish mdsmith via asdf and mise registry submissions](plan/145_asdf-mise-registry-submissions.md)                                  |
+| 146 | 🔲     | opus   | [Schema engine — sources, scope tree, per-scope rules](plan/146_inline-schema-in-kinds.md)                                            |
+| 147 | 🔲     | opus   | [Actionable schema diagnostics for MDS020](plan/147_actionable-schema-diagnostics.md)                                                 |
+| 148 | 🔲     | sonnet | [Named field-type shortcuts for inline schemas](plan/148_named-field-type-shortcuts.md)                                               |
 | 151 | 🔲     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                                           |
 | 152 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/152_claude-code-skills-agents-hooks.md)                                  |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                            |

@@ -3,7 +3,7 @@ id: 136
 title: Field deprecation flag in schemas
 status: "🔲"
 model: sonnet
-depends-on: [132, 133]
+depends-on: [146, 147]
 summary: >-
   Let a schema mark a front-matter field
   deprecated. MDS020 emits a warning (not an
@@ -97,7 +97,7 @@ legacy_owner: deprecated field
 severity: warning
 ```
 
-The diagnostic uses plan 133's shape with
+The diagnostic uses plan 147's shape with
 `Severity: Warning` instead of `Error`. The
 file's exit code (with `--error-on warning`
 unset) does not change.
@@ -145,7 +145,7 @@ schema's existing closed/open posture.
 
 ## Tasks
 
-1. Extend the inline-schema parser (plan 132)
+1. Extend the inline-schema parser (plan 146)
    and the `proto.md` front-matter parser to
    accept the map form (`{type, deprecated,
    message, replaced-by}`) for a field.
@@ -153,7 +153,7 @@ schema's existing closed/open posture.
    schema engine's per-field state.
 3. Emit a Warning-severity diagnostic when a
    deprecated field is present in front matter,
-   using plan 133's `SchemaDiagnostic` shape.
+   using plan 147's `SchemaDiagnostic` shape.
 4. Continue evaluating the field's `type:`
    constraint; emit a separate diagnostic if it
    fails. The warning and the type error

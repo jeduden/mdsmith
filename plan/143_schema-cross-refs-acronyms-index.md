@@ -3,10 +3,10 @@ id: 143
 title: Schema cross-references, acronyms, and index
 status: "🔲"
 model: sonnet
-depends-on: [132]
+depends-on: [146]
 summary: >-
   Add three top-level schema blocks on top of the
-  engine from plan 132: `cross-references:` for
+  engine from plan 146: `cross-references:` for
   text patterns whose matches must resolve to
   real headings, `acronyms:` for first-use
   detection with a known-safe allowlist, and
@@ -27,7 +27,7 @@ consumes instead of re-parsing.
 
 ## Background
 
-Plans 132 and 142 cover what fits inside one
+Plans 146 and 142 cover what fits inside one
 section. The remaining S-7 capabilities span
 the document:
 
@@ -90,7 +90,7 @@ first use without "(OpenID Connect)" produces a
 diagnostic; "OIDC (OpenID Connect)" passes.
 
 `scope:` is a list of section names (matching
-the `heading:` text in plan 132's section
+the `heading:` text in plan 146's section
 tree); the rule applies only inside those
 scopes. Omitting `scope:` applies it
 document-wide.

@@ -57,7 +57,8 @@ as an integer and compare numerically when so.
 
 ### Surface
 
-A new `sort:` mode `numeric-id` (or `numeric`):
+A new `sort:` prefix, `numeric:`, that parses
+the named field as an int before comparing:
 
 ```markdown
 <?catalog
@@ -72,8 +73,8 @@ row: "..."
 
 The `numeric:` prefix says "parse the named
 field as an int, fall back to string compare on
-parse failure". Direction works: `-numeric:id`
-descending.
+parse failure". Descending works the same way:
+`-numeric:id`.
 
 The existing `sort: id` continues to work
 (lexicographic) for backwards compatibility.
