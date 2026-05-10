@@ -195,8 +195,12 @@ func trimmedRange(row []byte) (int, int) {
 }
 
 // refDefPrepareRange builds the rename range for a `[label]: url`
-// definition. The range covers the label between `[` and `]`.
-func refDefPrepareRange(source []byte, line int, label string) (prepareRenameResult, bool) {
+// definition. The range covers the label between `[` and `]`. The
+// placeholder is the raw source slice — Locator's `label` field is
+// normalized via util.ToLinkReference (lowercased + whitespace
+// collapsed), which would mismatch the document's actual casing
+// when the editor pre-fills the rename popup.
+func refDefPrepareRange(source []byte, line int, _ string) (prepareRenameResult, bool) {
 	lines := splitLines(source)
 	if line-1 >= len(lines) {
 		return prepareRenameResult{}, false
@@ -213,7 +217,7 @@ func refDefPrepareRange(source []byte, line int, label string) (prepareRenameRes
 			Start: Position{Line: line - 1, Character: startCh},
 			End:   Position{Line: line - 1, Character: endCh},
 		},
-		Placeholder: label,
+		Placeholder: string(row[m[0]:m[1]]),
 	}, true
 }
 
@@ -250,7 +254,10 @@ func refDefBracketBytes(row []byte) []int {
 // link use (`[text][label]`, `[label][]`, or `[label]`). The cursor
 // position determines whether the user is editing the label or the
 // text — both are valid rename surfaces, and both edit the same
-// label.
+// label. The placeholder reflects the document's raw bracket
+// content (preserving casing and spacing) so the rename popup
+// pre-fills with what the user sees in the buffer, not the
+// normalized form that powers cross-link matching.
 func refUsePrepareRange(source []byte, line, col int, label string) (prepareRenameResult, bool) {
 	lines := splitLines(source)
 	if line-1 >= len(lines) {
@@ -268,7 +275,7 @@ func refUsePrepareRange(source []byte, line, col int, label string) (prepareRena
 			Start: Position{Line: line - 1, Character: startCh},
 			End:   Position{Line: line - 1, Character: endCh},
 		},
-		Placeholder: label,
+		Placeholder: string(row[startByte:endByte]),
 	}, true
 }
 
@@ -416,19 +423,22 @@ func (s *Server) renameHeading(
 // new duplicate base slug. The returned slices share index ordering:
 // oldSlugs[i] is the slug of the i-th heading before rename and
 // newSlugs[i] is its slug after.
+//
+// The walk includes every heading, including ones whose slug is
+// empty (punctuation-only text). Skipping them — as
+// mdtext.CollectTOCItems does — would desynchronize the per-heading
+// indices from the heading-line walk and mis-identify the renamed
+// heading on files with empty-slug headings before the cursor's
+// line. It would also block the case of renaming an empty-slug
+// heading to a real one (which can shift later disambiguators).
 func computeSlugRemap(source []byte, line int, oldText, newText string) ([]string, []string, string) {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	oldItems := mdtext.CollectTOCItems(root, body)
-	// Match the heading whose source line equals the cursor's line
-	// (after subtracting the front-matter offset). CollectTOCItems
-	// walks headings in document order, so the index lines up with
-	// walkHeadings.
-	headStarts := headingStartLines(root, body)
+	headings := walkAllHeadings(root, body)
 	bodyLine := line - fmOffset
 	target := -1
-	for i, sl := range headStarts {
-		if sl == bodyLine {
+	for i, h := range headings {
+		if h.bodyLine == bodyLine {
 			target = i
 			break
 		}
@@ -436,13 +446,9 @@ func computeSlugRemap(source []byte, line int, oldText, newText string) ([]strin
 	if target < 0 {
 		return nil, nil, ""
 	}
-	// Build a synthetic heading-text list: copy old, substitute new.
-	texts := make([]string, len(oldItems))
-	for i, it := range oldItems {
-		texts[i] = it.Text
-	}
-	if target >= len(texts) {
-		return nil, nil, ""
+	texts := make([]string, len(headings))
+	for i, h := range headings {
+		texts[i] = h.text
 	}
 	texts[target] = newText
 	// Collision check: any other heading shares the new bare slug?
@@ -453,24 +459,27 @@ func computeSlugRemap(source []byte, line int, oldText, newText string) ([]strin
 				continue
 			}
 			if mdtext.Slugify(t) == newBase {
-				return nil, nil, oldItems[i].Text
+				return nil, nil, headings[i].text
 			}
 		}
 	}
-	newItems := slugifyAll(texts, oldItems)
-	oldSlugs := make([]string, len(oldItems))
-	newSlugs := make([]string, len(newItems))
-	for i := range oldItems {
-		oldSlugs[i] = oldItems[i].Anchor
-		newSlugs[i] = newItems[i].Anchor
-	}
+	oldSlugs := assignSlugs(slicesOfText(headings))
+	newSlugs := assignSlugs(texts)
 	return oldSlugs, newSlugs, ""
 }
 
-// headingStartLines returns the 1-based body line of every heading
-// in document order.
-func headingStartLines(root ast.Node, body []byte) []int {
-	var out []int
+// headingWalk records the body-line and visible text of one heading
+// node. Carries no slug — the slug is computed in lockstep with the
+// rename so empty-slug headings don't get silently dropped.
+type headingWalk struct {
+	bodyLine int
+	text     string
+}
+
+// walkAllHeadings returns every heading in document order, including
+// ones whose slugified text is empty.
+func walkAllHeadings(root ast.Node, body []byte) []headingWalk {
+	var out []headingWalk
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -479,28 +488,40 @@ func headingStartLines(root ast.Node, body []byte) []int {
 		if !ok || h.Lines().Len() == 0 {
 			return ast.WalkContinue, nil
 		}
-		out = append(out, lineOfBodyOffset(body, h.Lines().At(0).Start))
+		out = append(out, headingWalk{
+			bodyLine: lineOfBodyOffset(body, h.Lines().At(0).Start),
+			text:     mdtext.ExtractPlainText(h, body),
+		})
 		return ast.WalkContinue, nil
 	})
 	return out
 }
 
-// slugifyAll recomputes the slug map for a parallel slice of
-// heading texts, mirroring mdtext.CollectTOCItems' disambiguator
-// logic. The level field is preserved from `like` so the returned
-// items carry the same metadata shape as a true CollectTOCItems
-// run.
-func slugifyAll(texts []string, like []mdtext.TOCItem) []mdtext.TOCItem {
+func slicesOfText(walks []headingWalk) []string {
+	out := make([]string, len(walks))
+	for i, w := range walks {
+		out[i] = w.text
+	}
+	return out
+}
+
+// assignSlugs runs the same disambiguator pass mdtext.CollectTOCItems
+// uses, but operates on a parallel slice of texts so callers can
+// substitute a renamed heading's text in place without losing
+// alignment with the heading walk. Headings whose base slug is
+// empty stay at "" — those have no anchor and never participate in
+// link rewrites.
+func assignSlugs(texts []string) []string {
 	used := map[string]bool{}
 	counts := map[string]int{}
-	out := make([]mdtext.TOCItem, len(texts))
+	out := make([]string, len(texts))
 	for i, t := range texts {
 		base := mdtext.Slugify(t)
-		anchor := base
 		if base == "" {
-			out[i] = mdtext.TOCItem{Level: like[i].Level, Text: t}
+			out[i] = ""
 			continue
 		}
+		anchor := base
 		if used[anchor] {
 			c := counts[base]
 			for {
@@ -513,7 +534,7 @@ func slugifyAll(texts []string, like []mdtext.TOCItem) []mdtext.TOCItem {
 			counts[base] = c
 		}
 		used[anchor] = true
-		out[i] = mdtext.TOCItem{Level: like[i].Level, Text: t, Anchor: anchor}
+		out[i] = anchor
 	}
 	return out
 }

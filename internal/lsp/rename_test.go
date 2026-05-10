@@ -263,6 +263,68 @@ func TestRenameOnPlainProseReturnsError(t *testing.T) {
 	assert.Equal(t, codeInvalidParams, errResp.Code)
 }
 
+// TestPrepareRenameLabelPlaceholderPreservesCase verifies that
+// prepareRename returns the document's raw label text in
+// `placeholder`, not the lowercased / whitespace-collapsed form
+// the index uses for cross-link matching. Without this the editor
+// would pre-fill the rename popup with `docs api` for a label
+// written `Docs API`, surprising the user mid-rename.
+func TestPrepareRenameLabelPlaceholderPreservesCase(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\nSee [text][Docs API].\n\n[Docs API]: https://example.com\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	raw, errResp := h.request("textDocument/prepareRename", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		// Cursor on `[Docs API]:` (line 5, 1-based) → LSP line 4.
+		Position: Position{Line: 4, Character: 2},
+	})
+	require.Nil(t, errResp)
+	var res prepareRenameResult
+	require.NoError(t, json.Unmarshal(raw, &res))
+	assert.Equal(t, "Docs API", res.Placeholder)
+}
+
+// TestRenameHeadingHandlesEmptySlugSibling verifies that
+// computeSlugRemap stays in sync when an earlier heading has an
+// empty slug. mdtext.CollectTOCItems would skip that heading; the
+// rename walk must include it so the index lookup matches the
+// renamed heading on its actual line.
+func TestRenameHeadingHandlesEmptySlugSibling(t *testing.T) {
+	t.Parallel()
+	// First heading slugifies to "" (only punctuation), so a naive
+	// implementation would mis-identify which heading the cursor
+	// lands on.
+	src := "# !!!\n\n## Setup\n\nbody\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	raw, errResp := h.request("textDocument/rename", renameParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		// Cursor on `## Setup` (line 3, 1-based) → LSP line 2.
+		Position: Position{Line: 2, Character: 4},
+		NewName:  "Configuration",
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Contains(t, edit.Changes, uri)
+	require.Len(t, edit.Changes[uri], 1)
+	// The edit must target the `## Setup` line (LSP line 2), not
+	// the `# !!!` line (LSP line 0).
+	assert.Equal(t, 2, edit.Changes[uri][0].Range.Start.Line)
+	assert.Equal(t, "Configuration", edit.Changes[uri][0].NewText)
+}
+
 // TestAtxHeadingTextByteRange covers the heading-line parsing used
 // for prepareRename. These cases drive the rename popup's range so
 // they need to stay tight against the documented behavior.
