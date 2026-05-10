@@ -84,6 +84,15 @@ describe("buildClientOptions", () => {
     // short-circuit the typecheck.
     expect(opts.synchronize?.fileEvents as unknown).toBe(watcher as unknown);
     expect(opts.outputChannelName).toBe("mdsmith");
+    expect(opts.outputChannel).toBeUndefined();
+  });
+
+  test("forwards a shared OutputChannel and omits outputChannelName", () => {
+    const watcher: FileSystemWatcherLike = {};
+    const channel = { id: "shared" };
+    const opts = buildClientOptions(watcher, channel);
+    expect(opts.outputChannel as unknown).toBe(channel as unknown);
+    expect(opts.outputChannelName).toBeUndefined();
   });
 });
 

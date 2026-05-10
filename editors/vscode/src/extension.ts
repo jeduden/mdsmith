@@ -99,7 +99,10 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
   disposeConfigWatcher();
   configWatcher = vscode.workspace.createFileSystemWatcher("**/.mdsmith.yml");
   context.subscriptions.push(configWatcher);
-  const clientOptions: LanguageClientOptions = buildClientOptions(configWatcher);
+  const clientOptions: LanguageClientOptions = buildClientOptions(
+    configWatcher,
+    getOutputChannel()
+  );
   // Replace the default ErrorHandler (DoNotRestart after 5 close
   // events in 3 minutes) with one that gives the user a clear
   // recovery path. We let the client keep restarting up to a
@@ -240,18 +243,18 @@ async function promptRestartAfterRepeatedFailures(): Promise<void> {
   }
 }
 
-// getOutputChannel lazily accesses the output channel that the
-// LanguageClient registers under "mdsmith". Falls back to creating a
-// standalone channel when the client is not running so palette commands
-// can still surface stderr.
-let standaloneOutputChannel: vscode.OutputChannel | undefined;
+// getOutputChannel returns the single "mdsmith" OutputChannel shared
+// between palette commands and the LanguageClient. Created lazily on
+// first use so we don't reserve a channel before anyone needs it; the
+// same instance is passed into LanguageClientOptions.outputChannel so
+// the LSP client doesn't register a second channel with the same name.
+let outputChannel: vscode.OutputChannel | undefined;
 
 function getOutputChannel(): vscode.OutputChannel {
-  if (client?.outputChannel) return client.outputChannel;
-  if (!standaloneOutputChannel) {
-    standaloneOutputChannel = vscode.window.createOutputChannel("mdsmith");
+  if (!outputChannel) {
+    outputChannel = vscode.window.createOutputChannel("mdsmith");
   }
-  return standaloneOutputChannel;
+  return outputChannel;
 }
 
 // resolveActiveBinary reads `mdsmith.path` at call time so the palette
@@ -453,11 +456,11 @@ export async function deactivate(): Promise<void> {
   // tight and configWatcher does not survive into a subsequent
   // activation.
   disposeConfigWatcher();
-  // Dispose the standalone output channel created when the LSP
-  // client is not running. context.subscriptions is flushed after
-  // deactivate returns, so dispose explicitly here for tight ordering.
-  if (standaloneOutputChannel) {
-    standaloneOutputChannel.dispose();
-    standaloneOutputChannel = undefined;
+  // Dispose the shared output channel. context.subscriptions is
+  // flushed after deactivate returns, so dispose explicitly here
+  // for tight ordering.
+  if (outputChannel) {
+    outputChannel.dispose();
+    outputChannel = undefined;
   }
 }

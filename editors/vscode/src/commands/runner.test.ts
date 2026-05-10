@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { defaultSpawn } from "./runner";
 
 describe("defaultSpawn", () => {
+  // Use the current runtime (Node when running under Node, Bun under Bun)
+  // so the test never assumes a "node" binary exists on PATH.
+  const runtime = process.execPath;
+
   test("captures stdout, stderr, and exit code from a real process", async () => {
-    // Use node -e so the test is cross-platform (no shell required).
-    const result = await defaultSpawn("node", [
+    const result = await defaultSpawn(runtime, [
       "-e",
       "process.stdout.write('out\\n'); process.stderr.write('err\\n'); process.exit(0);",
     ]);
@@ -14,7 +17,7 @@ describe("defaultSpawn", () => {
   });
 
   test("captures a non-zero exit code", async () => {
-    const result = await defaultSpawn("node", ["-e", "process.exit(2);"]);
+    const result = await defaultSpawn(runtime, ["-e", "process.exit(2);"]);
     expect(result.exitCode).toBe(2);
   });
 
