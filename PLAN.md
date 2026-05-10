@@ -45,7 +45,7 @@ footer: |
 | 131 | ✅     | opus   | [LSP symbol navigation for agents (Claude)](plan/131_lsp-symbol-navigation.md)                                            |
 | 132 | ✅     | sonnet | [Package mdsmith LSP as a Claude Code plugin](plan/132_claude-code-plugin.md)                                             |
 | 133 | 🔳     | sonnet | [LSP hover for rule and directive docs](plan/133_lsp-hover.md)                                                            |
-| 134 | 🔲     | sonnet | [LSP completion for anchors, refs, kinds, and directive args](plan/134_lsp-completion.md)                                 |
+| 134 | ✅     | sonnet | [LSP completion for anchors, refs, kinds, and directive args](plan/134_lsp-completion.md)                                 |
 | 135 | 🔲     | sonnet | [Schema inheritance via `extends`](plan/135_schema-extends.md)                                                            |
 | 136 | 🔲     | sonnet | [Field deprecation flag in schemas](plan/136_field-deprecation-flag.md)                                                   |
 | 137 | 🔲     | sonnet | [`mdsmith fix --dry-run`](plan/137_fix-dry-run.md)                                                                        |
