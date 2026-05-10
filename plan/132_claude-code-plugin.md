@@ -1,7 +1,7 @@
 ---
 id: 132
 title: Package mdsmith LSP as a Claude Code plugin
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   Ship a `.claude-plugin/marketplace.json` plus a

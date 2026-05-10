@@ -3,7 +3,7 @@ id: 130
 title: >-
   Distribute mdsmith binaries via npm, PyPI, asdf,
   mise, and the VS Code marketplaces
-status: "🔳"
+status: "✅"
 summary: >-
   Publish the prebuilt mdsmith binaries already produced
   by the release workflow through npm, PyPI (consumed by
