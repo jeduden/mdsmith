@@ -50,17 +50,21 @@ export async function fetchKindsContent(
   uri: string,
   binary: string,
   workspaceRoot: string | undefined,
-  spawn: SpawnFn = defaultSpawn
+  spawn: SpawnFn = defaultSpawn,
+  configPath?: string
 ): Promise<string> {
   const parsed = parseKindsUri(uri);
   if (!parsed) {
     return `<!-- mdsmith: malformed kinds URI: ${uri} -->`;
   }
 
-  const args =
+  const baseArgs =
     parsed.command === "resolve"
-      ? ["kinds", "resolve", parsed.file, "--json"]
-      : ["kinds", "why", parsed.file, parsed.rule!, "--json"];
+      ? ["kinds", "resolve", parsed.file]
+      : ["kinds", "why", parsed.file, parsed.rule!];
+  const args = configPath
+    ? [...baseArgs, "--config", configPath, "--json"]
+    : [...baseArgs, "--json"];
 
   let result: Awaited<ReturnType<typeof spawn>>;
   try {

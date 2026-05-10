@@ -24,6 +24,7 @@ import { runInit } from "./commands/init";
 import { runMergeDriverInstall } from "./commands/merge-driver";
 import { runKindsResolve, runKindsWhy, makeKindsContentProvider } from "./commands/kinds";
 import { KINDS_SCHEME } from "./commands/virtual-doc";
+import { defaultSpawn } from "./commands/runner";
 
 let client: LanguageClient | undefined;
 // Track the .mdsmith.yml file watcher across the activate /
@@ -269,6 +270,10 @@ function resolveActiveBinary(extensionPath: string): string {
 function registerPaletteCommands(context: vscode.ExtensionContext): void {
   const getBinary = () => resolveActiveBinary(context.extensionPath);
   const getWorkspaceRoot = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const getConfigPath = (): string | undefined => {
+    const v = vscode.workspace.getConfiguration("mdsmith").get<string>("config", "");
+    return v || undefined;
+  };
   const isTrusted = () => vscode.workspace.isTrusted;
 
   const outputDeps = () => ({
@@ -323,6 +328,7 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
       await runFixWorkspace({
         binary: getBinary(),
         workspaceRoot: getWorkspaceRoot(),
+        configPath: getConfigPath(),
         isTrusted,
         confirm: confirmDestructive("mdsmith fix ."),
         showInfo: (msg, ...buttons) =>
@@ -400,7 +406,9 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
         provideTextDocumentContent: (uri: vscode.Uri) => {
           const provider = makeKindsContentProvider(
             getBinary(),
-            getWorkspaceRoot()
+            getWorkspaceRoot(),
+            defaultSpawn,
+            getConfigPath()
           );
           return provider.provideTextDocumentContent(uri.toString());
         },

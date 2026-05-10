@@ -176,4 +176,15 @@ describe("runFixWorkspace", () => {
     expect(capturedArgs).toEqual(["fix", "."]);
     expect(capturedCwd).toBe("/repo");
   });
+
+  test("passes --config flag when configPath is set", async () => {
+    let capturedArgs: string[] = [];
+    const { deps } = makeDeps({ configPath: "/custom/.mdsmith.yml" });
+    deps.spawn = async (_bin, args) => {
+      capturedArgs = args;
+      return { stdout: "", stderr: "stats: checked=0 fixed=0 failures=0 unfixed=0\n", exitCode: 0 };
+    };
+    await runFixWorkspace(deps);
+    expect(capturedArgs).toEqual(["fix", ".", "--config", "/custom/.mdsmith.yml"]);
+  });
 });

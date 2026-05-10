@@ -43,6 +43,7 @@ export function buildFixNotificationMessage(stats: FixStats): string {
 export interface FixWorkspaceHandlerDeps {
   binary: string;
   workspaceRoot: string | undefined;
+  configPath?: string;
   isTrusted: () => boolean;
   confirm: () => Promise<boolean>;
   showInfo: (msg: string, ...buttons: string[]) => Promise<string | undefined>;
@@ -70,11 +71,10 @@ export async function runFixWorkspace(deps: FixWorkspaceHandlerDeps): Promise<vo
   if (!confirmed) return;
 
   const spawnFn = deps.spawn ?? defaultSpawn;
-  const result = await spawnFn(
-    deps.binary,
-    ["fix", "."],
-    deps.workspaceRoot
-  );
+  const args = deps.configPath
+    ? ["fix", ".", "--config", deps.configPath]
+    : ["fix", "."];
+  const result = await spawnFn(deps.binary, args, deps.workspaceRoot);
 
   deps.appendOutput(result.stderr);
   if (result.stdout) deps.appendOutput(result.stdout);

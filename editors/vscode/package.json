@@ -26,7 +26,14 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "onCommand:mdsmith.restartServer",
+    "onCommand:mdsmith.showOutput",
+    "onCommand:mdsmith.init",
+    "onCommand:mdsmith.mergeDriver.install",
+    "onCommand:mdsmith.fixWorkspace",
+    "onCommand:mdsmith.kinds.why",
+    "onCommand:mdsmith.kinds.resolve"
   ],
   "capabilities": {
     "untrustedWorkspaces": {

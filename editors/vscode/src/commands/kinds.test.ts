@@ -180,6 +180,24 @@ describe("fetchKindsContent", () => {
     await fetchKindsContent(buildWhyUri("/repo/a.md", "MDS005"), "mdsmith", undefined, spawn);
     expect(capturedArgs).toEqual(["kinds", "why", "/repo/a.md", "MDS005", "--json"]);
   });
+
+  test("passes --config flag when configPath is set", async () => {
+    let capturedArgs: string[] = [];
+    const spawn = async (_bin: string, args: string[]) => {
+      capturedArgs = args;
+      return { stdout: "{}", stderr: "", exitCode: 0 };
+    };
+    await fetchKindsContent(
+      buildResolveUri("/repo/a.md"),
+      "mdsmith",
+      undefined,
+      spawn,
+      "/custom/.mdsmith.yml"
+    );
+    expect(capturedArgs).toEqual([
+      "kinds", "resolve", "/repo/a.md", "--config", "/custom/.mdsmith.yml", "--json",
+    ]);
+  });
 });
 
 // ---- runKindsResolve / runKindsWhy ----
