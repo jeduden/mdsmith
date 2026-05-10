@@ -602,6 +602,30 @@ func TestRenameOnCodeBlockRefDefRejected(t *testing.T) {
 	assert.Equal(t, codeInvalidParams, errResp.Code)
 }
 
+// TestIsValidRefDefLineBodyLineUnderflow covers the
+// bodyLine < 1 short-circuit. A cursor whose source line is
+// inside (or before) the front matter would translate to a
+// non-positive bodyLine after the offset subtraction.
+func TestIsValidRefDefLineBodyLineUnderflow(t *testing.T) {
+	t.Parallel()
+	src := []byte("---\ntitle: T\n---\n[a]: x\n")
+	// line=1 sits inside the front matter; subtracting fmOffset (3)
+	// pushes bodyLine to -2, so the helper short-circuits to false.
+	assert.False(t, isValidRefDefLine(src, 1))
+}
+
+// TestResolveURIAndSourceWorkspaceURIEmpty exercises the
+// workspaceURI=="" fallback. Without a configured root and with
+// no open buffer matching the rel, resolveURIAndSource has no way
+// to produce a URI and returns false.
+func TestResolveURIAndSourceWorkspaceURIEmpty(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	_, _, ok := s.resolveURIAndSource("nope.md")
+	assert.False(t, ok)
+}
+
 // TestPrepareRenameSkipsCodeBlockDefLookalike verifies that
 // prepareRename returns null for `[label]: url` lines inside a
 // fenced code block — those are content, not defs, and the
