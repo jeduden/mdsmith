@@ -445,6 +445,14 @@ function registerPaletteCommands(context: vscode.ExtensionContext): void {
           const fileFolder = parsed
             ? vscode.workspace.getWorkspaceFolder(vscode.Uri.file(parsed.file))
             : undefined;
+          // When workspace folders are open, reject files outside the workspace
+          // to prevent crafted URIs from analyzing arbitrary paths on disk.
+          const folders = vscode.workspace.workspaceFolders;
+          if (parsed && folders && folders.length > 0 && !fileFolder) {
+            return Promise.resolve(
+              `**mdsmith: file is outside the workspace**\n\n\`\`\`\n${parsed.file}\n\`\`\``
+            );
+          }
           const binaryScope = fileFolder?.uri ?? getActiveFileUri();
           const binary = resolveActiveBinary(context.extensionPath, binaryScope);
           const provider = makeKindsContentProvider(binary, fileFolder?.uri.fsPath);
