@@ -51,7 +51,8 @@ var compAnchorCurrentFileRE = regexp.MustCompile(`(?:^|[^!])\[[^\]]*\]\(#([^)#\s
 
 // compAnchorOtherFileRE matches [text](path.md#prefix at end of string.
 // Group 1 captures the file path, group 2 the partial anchor prefix.
-var compAnchorOtherFileRE = regexp.MustCompile(`(?:^|[^!])\[[^\]]*\]\(([^)#\s]+\.(?:md|markdown))#([^)#\s]*)$`)
+// The extension match is case-insensitive so .MD/.MARKDOWN also trigger.
+var compAnchorOtherFileRE = regexp.MustCompile(`(?:^|[^!])\[[^\]]*\]\(([^)#\s]+\.(?i:md|markdown))#([^)#\s]*)$`)
 
 // compRefLabelRE matches [text][prefix at end of string.
 // Group 1 captures the partial label prefix.

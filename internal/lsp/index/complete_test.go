@@ -416,3 +416,14 @@ func TestCodeNodeContainsLineEmpty(t *testing.T) {
 	block := ast.NewFencedCodeBlock(nil)
 	assert.False(t, codeNodeContainsLine(body, block, 3))
 }
+
+func TestCompletionContextAnchorOtherFileUppercaseExt(t *testing.T) {
+	t.Parallel()
+	// Cross-file anchor completion triggers even when the extension is uppercase
+	// (e.g. .MD). compAnchorOtherFileRE uses (?i:md|markdown) for case-insensitive
+	// extension matching consistent with isMarkdownExt.
+	src := "# Top\n\nSee [link](./OTHER.MD#sec\n"
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 3, 26)
+	assert.Equal(t, CompletionAnchorOtherFile, res.Tag)
+	assert.Equal(t, "sec", res.Prefix)
+}

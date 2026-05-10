@@ -205,17 +205,17 @@ matches first for anchor completion.
 
 ### Supported contexts
 
-| Cursor on…                       | Items returned                  | `kind`       |
-|----------------------------------|---------------------------------|--------------|
-| `[text](#prefix`                 | Heading anchors in current file | `Reference`  |
-| `[text](./other.md#prefix`       | Heading anchors in `other.md`   | `Reference`  |
-| `[text][prefix`                  | Link-ref labels in current file | `Reference`  |
-| Front-matter `kind: prefix`      | Kind names from `.mdsmith.yml`  | `EnumMember` |
-| Front-matter `kinds:` list item  | Kind names from `.mdsmith.yml`  | `EnumMember` |
-| `<?include file: "prefix"?>` arg | Workspace Markdown paths        | `File`       |
-| `<?build source: "prefix"?>` arg | Workspace Markdown paths        | `File`       |
-| `<?catalog glob: "prefix"` entry | Workspace Markdown paths        | `File`       |
-| Any other position               | Empty list (no error)           | —            |
+| Cursor on…                         | Items returned                  | `kind`       |
+|------------------------------------|---------------------------------|--------------|
+| `[text](#prefix`                   | Heading anchors in current file | `Reference`  |
+| `[text](./other.md#prefix`         | Heading anchors in `other.md`   | `Reference`  |
+| `[text][prefix`                    | Link-ref labels in current file | `Reference`  |
+| Front-matter `kind: prefix`        | Kind names from `.mdsmith.yml`  | `EnumMember` |
+| Front-matter `kinds:` list item    | Kind names from `.mdsmith.yml`  | `EnumMember` |
+| `<?include file: "prefix"?>` arg   | Workspace Markdown paths        | `File`       |
+| `<?build source: "prefix"?>` arg   | Workspace Markdown paths        | `File`       |
+| `<?catalog glob: "prefix"?>` entry | Workspace Markdown paths        | `File`       |
+| Any other position                 | Empty list (no error)           | —            |
 
 The `detail` field carries the source file path for headings and
 link-ref labels, and `.mdsmith.yml` for kind names.
