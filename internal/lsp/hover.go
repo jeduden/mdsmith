@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -39,18 +40,10 @@ func directiveDocFor(name string) (string, bool) {
 	}
 	directiveDocCache.Do(func() {
 		directiveDocCache.docs = make(map[string]string)
-		entries, err := fs.ReadDir(directives.FS, ".")
-		if err != nil {
-			return
-		}
+		// directives.FS is an embedded FS — ReadDir and ReadFile never error.
+		entries, _ := fs.ReadDir(directives.FS, ".")
 		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			data, err := fs.ReadFile(directives.FS, e.Name())
-			if err != nil {
-				continue
-			}
+			data, _ := fs.ReadFile(directives.FS, e.Name())
 			directiveDocCache.docs[e.Name()] = rules.StripFrontMatter(string(data))
 		}
 	})
@@ -133,7 +126,11 @@ func directiveHoverAt(source []byte, pos Position) *hoverResult {
 			return ast.WalkContinue, nil
 		}
 
-		startLine := f.LineOfOffset(pi.Lines().At(0).Start) - 1 // 0-based
+		openSeg := pi.Lines().At(0)
+		openContent := source[openSeg.Start:openSeg.Stop]
+		// startChar is the column of <? (indent may be 0–3 spaces per grammar).
+		startChar := len(openContent) - len(bytes.TrimLeft(openContent, " "))
+		startLine := f.LineOfOffset(openSeg.Start) - 1 // 0-based
 
 		var endLine int
 		if pi.HasClosure() {
@@ -146,6 +143,18 @@ func directiveHoverAt(source []byte, pos Position) *hoverResult {
 		if pos.Line < startLine || pos.Line > endLine {
 			return ast.WalkContinue, nil
 		}
+		// On the opening line the cursor must be at or after the <? column.
+		if pos.Line == startLine && pos.Character < startChar {
+			return ast.WalkContinue, nil
+		}
+		// For single-line PIs the cursor must also fall within the directive
+		// span itself, not on trailing prose after ?>.
+		if startLine == endLine {
+			closeIdx := bytes.Index(openContent, []byte("?>"))
+			if closeIdx >= 0 && pos.Character >= utf16Length(openContent[:closeIdx+2]) {
+				return ast.WalkContinue, nil
+			}
+		}
 
 		docContent, ok := directiveDocFor(pi.Name)
 		if !ok {
@@ -155,7 +164,7 @@ func directiveHoverAt(source []byte, pos Position) *hoverResult {
 		}
 
 		hoverRange := Range{
-			Start: Position{Line: startLine, Character: 0},
+			Start: Position{Line: startLine, Character: startChar},
 			End:   Position{Line: endLine, Character: utf16Length(currentLineBytes(lines, endLine+1))},
 		}
 		result = &hoverResult{
