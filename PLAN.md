@@ -44,7 +44,7 @@ footer: |
 | 130 | 🔳     | opus   | [Distribute mdsmith binaries via npm, PyPI, asdf, mise, and the VS Code marketplaces](plan/130_binary-distribution-and-versioning.md) |
 | 131 | ✅     | opus   | [LSP symbol navigation for agents (Claude)](plan/131_lsp-symbol-navigation.md)                                                        |
 | 132 | 🔲     | sonnet | [Package mdsmith LSP as a Claude Code plugin](plan/132_claude-code-plugin.md)                                                         |
-| 133 | 🔲     | sonnet | [LSP hover for rule and directive docs](plan/133_lsp-hover.md)                                                                        |
+| 133 | ✅     | sonnet | [LSP hover for rule and directive docs](plan/133_lsp-hover.md)                                                                        |
 | 134 | 🔲     | sonnet | [LSP completion for anchors, refs, kinds, and directive args](plan/134_lsp-completion.md)                                             |
 | 145 | 🔲     | opus   | [Publish mdsmith via asdf and mise registry submissions](plan/145_asdf-mise-registry-submissions.md)                                  |
 | 151 | 🔲     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                                           |

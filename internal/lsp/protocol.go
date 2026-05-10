@@ -97,12 +97,31 @@ type serverInfo struct {
 type serverCapabilities struct {
 	TextDocumentSync        textDocumentSyncOptions `json:"textDocumentSync"`
 	CodeActionProvider      codeActionOptions       `json:"codeActionProvider"`
+	HoverProvider           bool                    `json:"hoverProvider,omitempty"`
 	DocumentSymbolProvider  bool                    `json:"documentSymbolProvider,omitempty"`
 	DefinitionProvider      bool                    `json:"definitionProvider,omitempty"`
 	ImplementationProvider  bool                    `json:"implementationProvider,omitempty"`
 	ReferencesProvider      bool                    `json:"referencesProvider,omitempty"`
 	WorkspaceSymbolProvider bool                    `json:"workspaceSymbolProvider,omitempty"`
 	CallHierarchyProvider   bool                    `json:"callHierarchyProvider,omitempty"`
+}
+
+// hoverParams is the parameter shape for textDocument/hover.
+type hoverParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+}
+
+// markupContent is LSP MarkupContent.
+type markupContent struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
+}
+
+// hoverResult is the LSP Hover response shape.
+type hoverResult struct {
+	Contents markupContent `json:"contents"`
+	Range    *Range        `json:"range,omitempty"`
 }
 
 // textDocumentSyncKind is the LSP enum for change notification mode.

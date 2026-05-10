@@ -1,7 +1,7 @@
 ---
 id: 133
 title: LSP hover for rule and directive docs
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add `textDocument/hover` to `mdsmith lsp` so editors
@@ -173,27 +173,29 @@ the capability see the same server. The
 
 ## Acceptance Criteria
 
-- [ ] `hoverProvider` appears in the
+- [x] `hoverProvider` appears in the
       `initialize` capabilities response.
-- [ ] Hovering over an `MDS001` diagnostic
+- [x] Hovering over an `MDS001` diagnostic
       returns a `MarkupContent` whose body
       contains the line-length help text.
-- [ ] Hovering inside a `<?catalog?>` directive
+- [x] Hovering inside a `<?catalog?>` directive
       returns the catalog directive docs even when
       no diagnostic is present at the cursor.
-- [ ] Hovering on plain prose (no diagnostic, no
+- [x] Hovering on plain prose (no diagnostic, no
       directive) returns `null`.
 - [ ] After the `rule-readme` kind change lands,
       a fixture rule README containing a raw
       `<span>` outside a code block fails
-      `mdsmith check` with `MDS041`.
-- [ ] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
+      `mdsmith check` with `MDS041`. (Task 6 —
+      pending user consent to modify
+      `.mdsmith.yml`.)
+- [x] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
       lists `hoverProvider` in the capability
       table.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
 
 ## ...
 

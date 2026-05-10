@@ -316,6 +316,8 @@ func (s *Server) dispatchDocument(ctx context.Context, msg *requestMessage) bool
 		s.handleDidClose(msg.Params)
 	case "textDocument/codeAction":
 		s.handleCodeAction(msg)
+	case "textDocument/hover":
+		s.handleHover(msg)
 	default:
 		return false
 	}
@@ -396,6 +398,7 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 			CodeActionProvider: codeActionOptions{
 				CodeActionKinds: []string{kindQuickFix, kindSourceFixAll},
 			},
+			HoverProvider:           true,
 			DocumentSymbolProvider:  true,
 			DefinitionProvider:      true,
 			ImplementationProvider:  true,

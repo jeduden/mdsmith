@@ -30,6 +30,7 @@ uses stdio either way.
 | `textDocumentSync = Full`         | Full-document sync; lint trigger gated by `mdsmith.run`                            |
 | `publishDiagnostics`              | One push after each lint                                                           |
 | `codeActionProvider`              | `quickfix` per fixable diagnostic, `source.fixAll.mdsmith`                         |
+| `hoverProvider`                   | Rule docs on hover over a diagnostic; directive docs on hover inside `<?…?>`       |
 | `documentSymbolProvider`          | Hierarchical outline (headings, link refs, front matter, directives)               |
 | `definitionProvider`              | Jump-to-definition for anchor / file / ref-style links and directive arguments     |
 | `implementationProvider`          | Multi-target jump for `kind:` values and headings (every link target)              |
@@ -60,6 +61,26 @@ prints:
 | `line`, `column` | `range.start`; end is the line's UTF-16 length (squiggle → end-of-line) |
 | `message`        | `message`                                                               |
 | rule name        | `data.rule` (echoed back on codeAction)                                 |
+
+## Hover
+
+`textDocument/hover` returns `MarkupContent` (kind
+`markdown`) for the cursor position.
+
+Resolution order:
+
+1. **Diagnostic-first.** If the cursor falls inside
+   any active diagnostic range for the document, the
+   hover body is the diagnostic message followed by
+   the rule's full documentation (same content as
+   `mdsmith help rule <id>`). The `range` hint is
+   the diagnostic span.
+2. **Directive fallback.** If no diagnostic covers
+   the cursor but it is inside a `<?directive?>`
+   block, the hover body is the directive's
+   documentation from `docs/guides/directives/`.
+   The `range` hint is the directive block span.
+3. **No match.** Returns `null`.
 
 ## Code actions
 
