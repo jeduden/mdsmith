@@ -1,7 +1,7 @@
 ---
 id: 132
 title: Package mdsmith LSP as a Claude Code plugin
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   Ship a `.claude-plugin/marketplace.json` plus a
@@ -213,31 +213,38 @@ documented stdio invocation.
 
 - [ ] `/plugin marketplace add jeduden/mdsmith`
       registers the marketplace without errors.
+      *(Pending end-to-end smoke test inside an active
+      Claude Code session.)*
 - [ ] `/plugin install mdsmith-lsp@mdsmith` installs
-      the plugin to user scope.
+      the plugin to user scope. *(Pending end-to-end
+      smoke test.)*
 - [ ] After install and `/reload-plugins`, opening
       a `.md` file with a known MDS rule violation
       surfaces the diagnostic to the agent (visible
       via Ctrl+O when the "diagnostics found"
-      indicator appears).
+      indicator appears). *(Pending end-to-end smoke
+      test.)*
 - [ ] After install, the agent can run
       `textDocument/definition` on an anchor link
-      and receive the heading location.
+      and receive the heading location. *(Pending
+      end-to-end smoke test.)*
 - [ ] `claude plugin validate` reports no errors on
-      the new manifests.
-- [ ] After the `.mdsmith.yml`
+      the new manifests. *(Pending — `claude` CLI not
+      available in the build sandbox.)*
+- [x] After the `.mdsmith.yml`
       `directory-structure.allowed` update, `mdsmith
       check .` passes against the new
       `.claude-plugin/marketplace.json` location.
 - [ ] When the `mdsmith` binary is absent from
       `$PATH`, the `/plugin` Errors tab shows
       `Executable not found in $PATH` (no silent
-      hang, no generic crash).
-- [ ] [`docs/guides/install.md`](../docs/guides/install.md)
+      hang, no generic crash). *(Pending end-to-end
+      smoke test.)*
+- [x] [`docs/guides/install.md`](../docs/guides/install.md)
       documents the Claude Code install path and
       the binary prerequisite.
-- [ ] `mdsmith check .` passes with the new files.
-- [ ] All tests pass: `go test ./...`.
+- [x] `mdsmith check .` passes with the new files.
+- [x] All tests pass: `go test ./...`.
 
 ## Open Questions
 

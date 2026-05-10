@@ -1,10 +1,12 @@
 ---
 title: Installation
 summary: >-
-  Every channel that ships the mdsmith binary or the VS
-  Code extension — npm, PyPI, asdf, mise, the GitHub
-  release, and the Visual Studio Marketplace plus Open
-  VSX — and which channel to pick for which workflow.
+  Every channel that ships the mdsmith binary, the VS
+  Code extension, or the Claude Code plugin — npm,
+  PyPI, asdf, mise, the GitHub release, the Visual
+  Studio Marketplace plus Open VSX, and the
+  in-repository Claude Code marketplace — and which
+  channel to pick for which workflow.
 ---
 # Installation
 
@@ -202,3 +204,28 @@ artifact uploaded to three places.
 See [VS Code Integration](editors/vscode.md) for the
 configuration surface (`mdsmith.path`, `mdsmith.run`,
 `mdsmith.fixOnSave`, `mdsmith.trace.server`).
+
+## Claude Code plugin
+
+The Claude Code plugin spawns `mdsmith lsp`. The
+agent receives Markdown diagnostics inline after
+every edit. It also gains definition, references,
+symbol search, and call-hierarchy queries across
+the docs. Install the binary by one of the channels
+above. Then register the marketplace and install
+the plugin:
+
+```text
+/plugin marketplace add jeduden/mdsmith
+/plugin install mdsmith-lsp@mdsmith
+/reload-plugins
+```
+
+The plugin resolves `mdsmith` from `$PATH`. If the
+`/plugin` Errors tab shows `Executable not found in
+$PATH`, install the binary via one of the channels
+above and run `/reload-plugins`.
+
+See the
+[Claude Code editor README](../../editors/claude-code/README.md)
+for the install commands and troubleshooting steps.

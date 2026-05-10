@@ -70,6 +70,7 @@ rules:
       - "internal/metrics/**"
       - "internal/concepts/**"
       - ".claude/**"
+      - ".claude-plugin/**"
       - ".github/**"
       - "editors/**"
       - "npm/**"
@@ -213,6 +214,28 @@ overrides:
       no-emphasis-as-heading: false
       token-budget:
         max: 16000
+        mode: heuristic
+        tokens-per-word: 1.33
+        tokenizer: builtin
+        encoding: cl100k_base
+  - glob: ["editors/claude-code/**/*.md"]
+    rules:
+      line-length:
+        max: 72
+        exclude:
+          - code-blocks
+          - tables
+          - urls
+      max-file-length:
+        max: 80
+      paragraph-structure:
+        max-sentences: 3
+        max-words-per-sentence: 25
+      paragraph-readability:
+        max-index: 12.0
+        min-words: 20
+      token-budget:
+        max: 2000
         mode: heuristic
         tokens-per-word: 1.33
         tokenizer: builtin
