@@ -220,6 +220,58 @@ func TestValidateKindAllowsInlineWithoutFileSchemaSetting(t *testing.T) {
 	}
 }
 
+// TestEmptyInlineSchemaDoesNotTriggerMutex covers the edge case
+// where `kinds.<n>.schema:` is set to an empty map (e.g. via
+// templating). It should be treated as "no inline schema" rather
+// than triggering the mutual-exclusion error against a file-based
+// schema setting under rules.required-structure.
+func TestEmptyInlineSchemaDoesNotTriggerMutex(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"k": {
+				Schema: map[string]any{}, // empty inline source
+				Rules: map[string]RuleCfg{
+					"required-structure": {Enabled: true, Settings: map[string]any{
+						"schema": "schemas/k.md",
+					}},
+				},
+			},
+		},
+	}
+	assert.NoError(t, ValidateKinds(cfg),
+		"empty inline schema map must not count as a declared source")
+}
+
+// TestEmptyInlineSchemaDoesNotClearPriorState ensures the merge
+// layer doesn't wipe a file-schema path when a later kind has
+// `schema: {}`. An empty map is "no source", so prior state
+// survives unchanged.
+func TestEmptyInlineSchemaDoesNotClearPriorState(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"required-structure": {Enabled: true},
+		},
+		ExplicitRules: map[string]bool{"required-structure": true},
+		Kinds: map[string]KindBody{
+			"a": {Rules: map[string]RuleCfg{
+				"required-structure": {Enabled: true, Settings: map[string]any{
+					"schema": "schemas/a.md",
+				}},
+			}},
+			"b": {Schema: map[string]any{}}, // empty — should be ignored
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"a", "b"}},
+		},
+	}
+	effective := Effective(cfg, "foo.md", nil)
+	rs := effective["required-structure"]
+	assert.Equal(t, "schemas/a.md", rs.Settings["schema"],
+		"empty schema map must not clear prior file-source")
+	assert.NotContains(t, rs.Settings, "inline-schema",
+		"empty schema map must not install an inline-schema entry")
+}
+
 // TestBoolOnlyRequiredStructureRuleCfg covers the case where a
 // kind or override sets `required-structure: true/false` — the
 // RuleCfg has Settings=nil, and ValidateKinds / Effective must not

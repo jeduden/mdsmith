@@ -882,6 +882,38 @@ func TestIsCUEIdent_EmptyAndDigitFirst(t *testing.T) {
 	assert.True(t, isCUEIdent("foo123"))
 }
 
+// TestValidate_OutOfOrderHonoursPlaceholderHeadings regresses
+// the fallback that lets out-of-order detection see scopes whose
+// heading carries a placeholder. requiredByText keys only literal
+// scopes; the field-interpolated scope is found via
+// scopeMatchesHeading instead.
+func TestValidate_OutOfOrderHonoursPlaceholderHeadings(t *testing.T) {
+	dir := t.TempDir()
+	// File-based schema with two scopes: literal "Goal" and
+	// field-interpolated "{id}: {name}". Doc has them reversed.
+	p := writeFile(t, dir, "proto.md",
+		"# ?\n\n## Goal\n\n## {id}: {name}\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## MDS001: line-length\n\nx\n\n## Goal\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var oo bool
+	var missing bool
+	for _, d := range diags {
+		if d.Message == `section "## MDS001: line-length" out of order: expected after "## Goal"` {
+			oo = true
+		}
+		if d.Message == `missing required section "## {id}: {name}"` {
+			missing = true
+		}
+	}
+	assert.True(t, oo,
+		"placeholder-pattern scope must participate in out-of-order detection")
+	assert.False(t, missing,
+		"placeholder scope must not also surface as missing once claimed")
+}
+
 // TestValidate_OpenScopeFlagsLateListedScope regresses a Copilot
 // finding: schema [A(req), B(opt), C(req)] with doc A → C → B
 // previously silently accepted B because the open trailing loop

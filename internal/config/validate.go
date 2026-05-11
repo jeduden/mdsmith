@@ -44,14 +44,14 @@ func validateKindSchemaSources(name string, body KindBody) error {
 	pathSet, pathSetting := schemaPathSetting(rsCfg, hasRS)
 	inlineSet, _ := schemaInlineSetting(rsCfg, hasRS)
 
-	if body.Schema != nil && pathSet {
+	if len(body.Schema) > 0 && pathSet {
 		return fmt.Errorf(
 			"kind %q: schema is declared both inline (kinds.%s.schema:) "+
 				"and as a file (kinds.%s.rules.required-structure.schema: %q); "+
 				"pick one source",
 			name, name, name, pathSetting)
 	}
-	if body.Schema != nil && inlineSet {
+	if len(body.Schema) > 0 && inlineSet {
 		return fmt.Errorf(
 			"kind %q: schema is declared both inline (kinds.%s.schema:) "+
 				"and under kinds.%s.rules.required-structure.inline-schema:; "+

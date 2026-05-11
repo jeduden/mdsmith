@@ -248,7 +248,7 @@ func matchScope(
 		if scopeMatchesHeading(sc, dh) {
 			return claimMatch(f, sc, idx, expectedLevel, docHeads, docIdx, claimed, mkDiag, diags)
 		}
-		if ooIdx := nextUnclaimed(requiredByText[dh.Text], claimed, idx+1); ooIdx >= 0 {
+		if ooIdx := findOutOfOrderIdx(scopes, dh, requiredByText, claimed, idx+1); ooIdx >= 0 {
 			if !sc.Required {
 				// The current scope is optional — its absence is not
 				// a violation, so dh matching a later listed scope is
@@ -346,6 +346,36 @@ func claimOutOfOrder(
 func nextUnclaimed(cands []int, claimed map[int]bool, minIdx int) int {
 	for _, i := range cands {
 		if i >= minIdx && !claimed[i] {
+			return i
+		}
+	}
+	return -1
+}
+
+// findOutOfOrderIdx returns the first unclaimed scope at index >=
+// minIdx that matches dh, scanning placeholder-bearing scopes too.
+// requiredByText keys only the scopes whose heading is literal (no
+// {field} interpolation) because we cannot index those by text; the
+// fallback closes the gap by calling scopeMatchesHeading on every
+// remaining candidate so a placeholder-pattern scope can still be
+// claimed as out-of-order.
+func findOutOfOrderIdx(
+	scopes []Scope, dh DocHeading,
+	requiredByText map[string][]int, claimed map[int]bool, minIdx int,
+) int {
+	if i := nextUnclaimed(requiredByText[dh.Text], claimed, minIdx); i >= 0 {
+		return i
+	}
+	for i := minIdx; i < len(scopes); i++ {
+		sc := scopes[i]
+		if claimed[i] || sc.Wildcard {
+			continue
+		}
+		if !fieldinterp.ContainsField(sc.Heading) {
+			// Literal scopes are already indexed in requiredByText.
+			continue
+		}
+		if scopeMatchesHeading(sc, dh) {
 			return i
 		}
 	}

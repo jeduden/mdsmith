@@ -365,7 +365,7 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 		if kindDeclaresSchema(body) {
 			clearSchemaState(result)
 		}
-		if body.Schema != nil {
+		if len(body.Schema) > 0 {
 			applyInlineSchema(result, body.Schema)
 		}
 		for k, v := range body.Rules {
@@ -389,7 +389,7 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 // source — either inline (KindBody.Schema) or via the
 // rules.required-structure.{schema,inline-schema} settings.
 func kindDeclaresSchema(body KindBody) bool {
-	if body.Schema != nil {
+	if len(body.Schema) > 0 {
 		return true
 	}
 	return rulesDeclareSchema(body.Rules)
