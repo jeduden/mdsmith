@@ -333,7 +333,7 @@ func (s *Server) dispatchDocument(ctx context.Context, msg *requestMessage) bool
 
 // dispatchNavigation handles the symbol-navigation surface added in
 // plan 131: documentSymbol, definition, implementation, references,
-// workspace/symbol, and the call-hierarchy trio.
+// workspace/symbol, and the call-hierarchy trio. Plan 134 adds completion.
 func (s *Server) dispatchNavigation(msg *requestMessage) bool {
 	switch msg.Method {
 	case "textDocument/documentSymbol":
@@ -352,6 +352,8 @@ func (s *Server) dispatchNavigation(msg *requestMessage) bool {
 		s.handleIncomingCalls(msg)
 	case "callHierarchy/outgoingCalls":
 		s.handleOutgoingCalls(msg)
+	case "textDocument/completion":
+		s.handleCompletion(msg)
 	default:
 		return false
 	}
@@ -412,6 +414,10 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 			ReferencesProvider:      true,
 			WorkspaceSymbolProvider: true,
 			CallHierarchyProvider:   true,
+			CompletionProvider: &completionOptions{
+				TriggerCharacters: []string{"#", "[", ":", "/", "\""},
+				ResolveProvider:   false,
+			},
 		},
 		ServerInfo: serverInfo{Name: "mdsmith", Version: "lsp"},
 	}

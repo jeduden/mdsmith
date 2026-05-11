@@ -37,6 +37,7 @@ uses stdio either way.
 | `referencesProvider`              | Workspace links pointing at the symbol under the cursor                            |
 | `workspaceSymbolProvider`         | Substring search across headings, link refs, front-matter `title:`, and kind names |
 | `callHierarchyProvider`           | File-level call graph over `<?include?>`, `<?catalog?>`, `<?build?>`, and links    |
+| `completionProvider`              | Heading anchors, link-ref labels, kind names, and directive file paths             |
 | `workspace/didChangeWatchedFiles` | Re-lint open buffers on `.mdsmith.yml` change; index refresh on Markdown changes   |
 
 `mdsmith.run` controls when the server actually re-lints:
@@ -186,6 +187,48 @@ carries the source file and the reference line.
 `outgoingCalls` returns every edge out of the item;
 catalog matches collapse to one entry per directive
 (expansion would inflate large globs into noise).
+
+## Completion
+
+The server handles `textDocument/completion` and advertises:
+
+```jsonc
+"completionProvider": {
+  "triggerCharacters": ["#", "[", ":", "/", "\""],
+  "resolveProvider": false
+}
+```
+
+Completion items are fully computed in one pass from the workspace symbol
+index (`resolveProvider: false`). Items are returned sorted with same-file
+matches first for anchor completion.
+
+### Supported contexts
+
+| Cursor on…                         | Items returned                  | `kind`       |
+|------------------------------------|---------------------------------|--------------|
+| `[text](#prefix`                   | Heading anchors in current file | `Reference`  |
+| `[text](./other.md#prefix`         | Heading anchors in `other.md`   | `Reference`  |
+| `[text][prefix`                    | Link-ref labels in current file | `Reference`  |
+| Front-matter `kind: prefix`        | Kind names from `.mdsmith.yml`  | `EnumMember` |
+| Front-matter `kinds:` list item    | Kind names from `.mdsmith.yml`  | `EnumMember` |
+| `<?include file: "prefix"?>` arg   | Workspace Markdown paths        | `File`       |
+| `<?build source: "prefix"?>` arg   | Workspace Markdown paths        | `File`       |
+| `<?catalog glob: "prefix"?>` entry | Workspace Markdown paths        | `File`       |
+| Any other position                 | Empty list (no error)           | —            |
+
+The `detail` field carries the source file path for headings and
+link-ref labels, and `.mdsmith.yml` for kind names.
+
+Duplicate-slug anchors (`foo`, `foo-1`, `foo-2`, …) are each returned
+as separate items.
+
+Directive-arg paths are relative to the open buffer's directory.
+This matches how `ResolveRelTarget` resolves them at lint time.
+Both `.md` and `.markdown` files appear as candidates.
+
+Image links (`![alt](#…`) do not trigger anchor completion.
+Completion inside fenced or indented code blocks returns an empty list.
 
 ## Configuration discovery
 

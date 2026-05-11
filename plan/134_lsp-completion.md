@@ -1,7 +1,7 @@
 ---
 id: 134
 title: LSP completion for anchors, refs, kinds, and directive args
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add `textDocument/completion` to `mdsmith lsp` so
@@ -233,41 +233,41 @@ server.
 
 ## Acceptance Criteria
 
-- [ ] `completionProvider` appears in the
+- [x] `completionProvider` appears in the
       `initialize` capabilities response with
       `triggerCharacters: ["#", "[", ":", "/", "\""]`.
-- [ ] Completion triggered after `[x](#` returns
+- [x] Completion triggered after `[x](#` returns
       every heading in the current file by anchor
       slug.
-- [ ] Completion triggered after `[x](./other.md#`
+- [x] Completion triggered after `[x](./other.md#`
       returns every heading in `other.md`.
-- [ ] Completion triggered after `[x][` returns
+- [x] Completion triggered after `[x][` returns
       every link-reference label defined in the
       current file and excludes labels from other
       files.
-- [ ] Completion inside a `kinds:` list item in
+- [x] Completion inside a `kinds:` list item in
       front matter returns every kind name in
       `.mdsmith.yml`.
-- [ ] Completion after scalar `kind:` in front
+- [x] Completion after scalar `kind:` in front
       matter returns every kind name in
       `.mdsmith.yml`, matching the
       `effectiveKindsFor` server behavior.
-- [ ] Completion triggered inside an
+- [x] Completion triggered inside an
       `<?include file: "…"?>` arg returns
       workspace `.md` paths whose prefix matches.
-- [ ] Completion outside any of the above contexts
+- [x] Completion outside any of the above contexts
       returns an empty list (not `null`, no
       error).
-- [ ] Completion latency stays under 50 ms on a
+- [x] Completion latency stays under 50 ms on a
       synthetic 1 000-file workspace; bench reused
       from plan 131.
-- [ ] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
+- [x] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
       lists `completionProvider` in the capability
       table and documents the supported contexts.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
 
 ## Open Questions
 
