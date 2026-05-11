@@ -243,6 +243,25 @@ func TestE2E_Backlinks_ParentTraversalTarget_ExitsTwo(t *testing.T) {
 	assert.Contains(t, stderr, "must be workspace-relative")
 }
 
+// TestE2E_Backlinks_EncodedEscapeRejected guards against a bypass of
+// the workspace-relative target contract: `%2Fetc%2Fpasswd` decodes
+// to `/etc/passwd` and `%2e%2e/foo.md` to `../foo.md`, both of which
+// must be rejected with exit 2.
+func TestE2E_Backlinks_EncodedEscapeRejected(t *testing.T) {
+	dir := setupBacklinksWorkspace(t)
+	cases := []string{
+		"%2Fetc%2Fpasswd",
+		"%2e%2e/foo.md",
+	}
+	for _, target := range cases {
+		t.Run(target, func(t *testing.T) {
+			_, stderr, exitCode := runBinaryInDir(t, dir, "", "backlinks", target)
+			require.Equal(t, 2, exitCode)
+			assert.Contains(t, stderr, "must be workspace-relative")
+		})
+	}
+}
+
 func TestE2E_Backlinks_RespectsIgnore(t *testing.T) {
 	// Sources matched by `ignore:` patterns must not contribute
 	// backlinks, mirroring `check` / `fix` behavior.

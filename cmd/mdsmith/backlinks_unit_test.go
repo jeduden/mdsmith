@@ -62,39 +62,8 @@ func TestResolveLinkTarget(t *testing.T) {
 }
 
 func TestNormalizeWorkspacePath(t *testing.T) {
-	root := t.TempDir()
-	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("docs/api.md", root))
-	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("./docs/api.md", root))
-	// Absolute path inside root maps to relative.
-	abs := filepath.Join(root, "docs", "api.md")
-	assert.Equal(t, "docs/api.md", normalizeWorkspacePath(abs, root))
-}
-
-// TestNormalizeWorkspacePath_FileNameStartsWithTwoDots guards against
-// the prefix-check bug: a legitimate workspace file like `..foo.md`
-// (whose relative path starts with two dots without a separator)
-// must not be misclassified as a parent-directory traversal.
-func TestNormalizeWorkspacePath_FileNameStartsWithTwoDots(t *testing.T) {
-	root := t.TempDir()
-	abs := filepath.Join(root, "..foo.md")
-	got := normalizeWorkspacePath(abs, root)
-	assert.Equal(t, "..foo.md", got,
-		"file name beginning with two dots must still be treated as in-workspace")
-}
-
-// TestNormalizeWorkspacePath_RealParentTraversalRejected confirms
-// that absolute paths genuinely outside the workspace fall back to
-// the cleaned absolute form (so backlinks against them match nothing).
-func TestNormalizeWorkspacePath_RealParentTraversalRejected(t *testing.T) {
-	root := t.TempDir()
-	parent := filepath.Dir(root)
-	outside := filepath.Join(parent, "outside.md")
-	got := normalizeWorkspacePath(outside, root)
-	// The path is not made workspace-relative; the cleaned absolute
-	// (forward-slashed) form is returned and won't match any
-	// workspace-internal source path.
-	assert.NotEqual(t, "..outside.md", got)
-	assert.NotEqual(t, "outside.md", got)
+	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("docs/api.md"))
+	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("./docs/api.md"))
 }
 
 // TestNormalizeWorkspacePath_PercentEncoded verifies that the CLI
@@ -104,9 +73,8 @@ func TestNormalizeWorkspacePath_RealParentTraversalRejected(t *testing.T) {
 // supplied query must do the same or `mdsmith backlinks
 // docs/my%20file.md` would silently match nothing.
 func TestNormalizeWorkspacePath_PercentEncoded(t *testing.T) {
-	root := t.TempDir()
 	assert.Equal(t, "docs/my file.md",
-		normalizeWorkspacePath("docs/my%20file.md", root))
+		normalizeWorkspacePath("docs/my%20file.md"))
 }
 
 func TestSourceMatches(t *testing.T) {

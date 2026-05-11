@@ -109,7 +109,7 @@ func runBacklinks(args []string) int {
 	}
 
 	rootDir := rootDirFromConfig(cfgPath)
-	wantTarget := normalizeWorkspacePath(targetPath, rootDir)
+	wantTarget := normalizeWorkspacePath(targetPath)
 
 	records, errs := collectBacklinks(
 		files, rootDir, wantTarget, targetAnchor,
@@ -152,7 +152,12 @@ func validateBacklinksArgs(opts backlinksOptions, posArgs []string) (targetPath,
 	// or a parent-traversal entry normalises to something outside the
 	// workspace and would silently match nothing — which a caller
 	// cannot distinguish from a genuine empty result. Reject upfront
-	// so the failure is loud.
+	// so the failure is loud. Decode percent-escapes first so an
+	// encoded `%2Fetc%2Fpasswd` or `%2e%2e/foo.md` can't slip past the
+	// absolute / `..` checks.
+	if decoded, err := url.PathUnescape(targetPath); err == nil {
+		targetPath = decoded
+	}
 	if !isWorkspaceRelativeTarget(targetPath) {
 		fmt.Fprintf(os.Stderr, "mdsmith: target %q must be workspace-relative\n", targetPath)
 		return "", "", 2
@@ -192,33 +197,23 @@ func splitTarget(arg string) (path, anchor string) {
 	return arg, ""
 }
 
-// normalizeWorkspacePath returns a workspace-relative form of target,
-// keyed by rootDir. Absolute paths are converted via filepath.Rel.
-// Paths that escape rootDir return the cleaned absolute form so they
-// match nothing — backlinks are workspace-internal only.
+// normalizeWorkspacePath returns the cleaned workspace-relative form
+// of target. validateBacklinksArgs already rejects absolute paths
+// and `..` traversals (including percent-encoded forms), so this
+// helper only has to handle a relative, decoded path: strip a
+// leading `./`, normalize separators, and clean the result.
 //
-// Percent-encoded segments are decoded so the CLI target aligns with
+// Percent-decoding is also done here so the CLI target aligns with
 // linkgraph.ParseTarget, which decodes the destinations it extracts
 // from Markdown links. Without this step, a query like
 // `backlinks docs/my%20file.md` would never match `[X](my%20file.md)`
 // (which resolves to `docs/my file.md` under the workspace root).
-func normalizeWorkspacePath(target, rootDir string) string {
+func normalizeWorkspacePath(target string) string {
 	if decoded, err := url.PathUnescape(target); err == nil {
 		target = decoded
 	}
 	t := filepath.ToSlash(target)
 	t = strings.TrimPrefix(t, "./")
-	if filepath.IsAbs(filepath.FromSlash(t)) && rootDir != "" {
-		absRoot, _ := filepath.Abs(rootDir)
-		rel, err := filepath.Rel(absRoot, filepath.FromSlash(t))
-		// `HasPrefix(rel, "..")` would misclassify in-root files
-		// whose names happen to start with two dots (e.g.
-		// `..notes.md`). Only treat a leading `..` followed by a
-		// path separator (or the bare `..`) as a true escape.
-		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			t = filepath.ToSlash(rel)
-		}
-	}
 	return path.Clean(t)
 }
 
