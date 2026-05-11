@@ -297,6 +297,46 @@ func TestCheck_InlineSchema_ScopeRuleDeterministicOrdering(t *testing.T) {
 	}
 }
 
+// TestCheck_InlineSchema_ScopeRuleDoesNotLeakAcrossSiblings
+// regresses a scopeEndLine bug: when a scope matched via the
+// level-mismatch fallback (schema at H2, doc at H3), the section
+// window must follow the doc heading's actual level so a sibling
+// H3 section doesn't get folded into the override's range.
+func TestCheck_InlineSchema_ScopeRuleDoesNotLeakAcrossSiblings(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading": "Strict",
+				"rules": map[string]any{
+					"line-length": map[string]any{
+						"max":     20,
+						"stern":   true,
+						"exclude": []any{},
+					},
+				},
+			},
+		},
+	})}
+	// Strict at H3 (level-mismatch fallback), then a sibling H3
+	// section that holds a long line. The long line must NOT fire
+	// the strict cap because it lives in a different section.
+	src := "# T\n\n" +
+		"### Strict\n\n" +
+		"Short.\n\n" +
+		"### Sibling\n\n" +
+		"This sibling line is well over twenty chars and stays loose.\n"
+	f := newTestFile(t, "doc.md", src)
+	diags := r.Check(f)
+	var leak bool
+	for _, d := range diags {
+		if d.RuleID == "MDS001" && d.Line >= 7 {
+			leak = true
+		}
+	}
+	assert.False(t, leak,
+		"strict override must not extend into the sibling H3 section")
+}
+
 // TestApplyScopeRules_NilSchemaShortCircuits covers the defensive
 // guard at the top of applyScopeRules so coverage reflects the
 // fact that nil schemas are handled.

@@ -77,7 +77,13 @@ func walkScopes(
 		}
 		claimed[matched] = true
 		dh := heads[matched]
-		end := scopeEndLine(heads, matched, expectedLevel, parentEnd)
+		// The section's end boundary follows the doc heading's real
+		// level, not the schema's expectedLevel. When the two
+		// differ (level-mismatch fallback), basing the end on
+		// expectedLevel would let sibling sections at the doc's
+		// level leak into the scope (deeper doc level) or truncate
+		// the section short (shallower doc level).
+		end := scopeEndLine(heads, matched, dh.Level, parentEnd)
 		visit(sc, dh.Line, end)
 		if len(sc.Sections) > 0 {
 			walkScopes(sc.Sections, heads,
@@ -133,17 +139,18 @@ func scanHeads(
 
 // scopeEndLine returns the exclusive end-line of the section
 // beginning at heads[matched]. The section ends at the first
-// subsequent heading whose level is <= expectedLevel and whose line
+// subsequent heading whose level is <= boundaryLevel and whose line
 // falls inside the parent window, or at parentEnd when no such
-// heading follows.
+// heading follows. boundaryLevel is normally the matched heading's
+// own level so the section range tracks the document's nesting.
 func scopeEndLine(
-	heads []schema.DocHeading, matched, expectedLevel, parentEnd int,
+	heads []schema.DocHeading, matched, boundaryLevel, parentEnd int,
 ) int {
 	for j := matched + 1; j < len(heads); j++ {
 		if heads[j].Line >= parentEnd {
 			break
 		}
-		if heads[j].Level <= expectedLevel {
+		if heads[j].Level <= boundaryLevel {
 			return heads[j].Line
 		}
 	}
