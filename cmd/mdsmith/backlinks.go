@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	flag "github.com/spf13/pflag"
 
 	"github.com/jeduden/mdsmith/internal/globpath"
@@ -99,6 +100,11 @@ func runBacklinks(args []string) int {
 		return 2
 	}
 
+	if err := validateIncludePatterns(opts.includePatterns); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+
 	cfg, cfgPath, _, files, code := discoverFiles(opts.configPath, false, opts.walk)
 	if code >= 0 {
 		// 0 means "config + discovery returned no files"; for backlinks
@@ -118,9 +124,25 @@ func runBacklinks(args []string) int {
 	rootDir := rootDirFromConfig(cfgPath)
 	wantTarget := normalizeWorkspacePath(targetPath, rootDir)
 
-	records := collectBacklinks(files, rootDir, wantTarget, targetAnchor, opts.includePatterns, maxBytes)
+	records, errs := collectBacklinks(files, rootDir, wantTarget, targetAnchor, opts.includePatterns, maxBytes)
+	for _, e := range errs {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", e)
+	}
 
 	return emitBacklinks(os.Stdout, records, opts.format, opts.limit)
+}
+
+// validateIncludePatterns rejects any --include glob that doublestar
+// would silently reject (returning false from every Match call). A
+// typo like `--include "["` would otherwise filter out every source
+// and surface as "no backlinks found" instead of a clear error.
+func validateIncludePatterns(patterns []string) error {
+	for _, p := range patterns {
+		if !doublestar.ValidatePattern(p) {
+			return fmt.Errorf("invalid --include glob %q", p)
+		}
+	}
+	return nil
 }
 
 // splitTarget separates `path#anchor` into (path, anchor). A bare
@@ -156,18 +178,23 @@ func normalizeWorkspacePath(target, rootDir string) string {
 // resolved workspace-relative target equals wantTarget. When anchor
 // is non-empty, the link's anchor must also match (after slugifying).
 // includePatterns, when non-empty, filters source paths.
+//
+// Per-file read or parse failures do not abort the walk; instead they
+// are collected and returned so the caller can surface them on stderr
+// alongside whatever results were produced.
 func collectBacklinks(
 	files []string,
 	rootDir, wantTarget, wantAnchor string,
 	includePatterns []string,
 	maxBytes int64,
-) []backlinkRecord {
+) ([]backlinkRecord, []error) {
 	wantAnchorSlug := ""
 	if wantAnchor != "" {
 		wantAnchorSlug = linkgraph.NormalizeAnchor(wantAnchor)
 	}
 
 	var records []backlinkRecord
+	var errs []error
 	for _, src := range files {
 		srcRel := workspaceRelativePath(src, rootDir)
 		if !sourceMatches(srcRel, includePatterns) {
@@ -179,12 +206,14 @@ func collectBacklinks(
 		}
 		data, err := lint.ReadFileLimited(src, maxBytes)
 		if err != nil {
+			errs = append(errs, fmt.Errorf("reading %s: %w", srcRel, err))
 			continue
 		}
 		// Reuse the lint pipeline's front-matter handling so line
 		// numbers in records match what users see in editors.
 		f, err := lint.NewFileFromSource(src, data, true)
 		if err != nil {
+			errs = append(errs, fmt.Errorf("parsing %s: %w", srcRel, err))
 			continue
 		}
 		for _, link := range linkgraph.ExtractLinks(f) {
@@ -203,7 +232,11 @@ func collectBacklinks(
 			}
 			records = append(records, backlinkRecord{
 				Source: srcRel,
-				Line:   link.Line,
+				// ExtractLinks returns body-relative lines (rules need
+				// that for the engine's offset-adjustment); the CLI
+				// shows file-relative line numbers, so add f.LineOffset
+				// back in.
+				Line:   link.Line + f.LineOffset,
 				Text:   link.Text,
 				Target: t.Raw,
 			})
@@ -215,7 +248,7 @@ func collectBacklinks(
 		}
 		return records[i].Line < records[j].Line
 	})
-	return records
+	return records, errs
 }
 
 // workspaceRelativePath returns p relative to rootDir using forward

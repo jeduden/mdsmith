@@ -54,6 +54,34 @@ func TestCheck_MissingHeadingAnchor(t *testing.T) {
 		"message = %q, want to include guide.md#missing", diags[0].Message)
 }
 
+// TestCheck_FrontMatterLineNumbersBodyRelative verifies that MDS027
+// emits body-relative line numbers when the source has front matter.
+// The engine adds f.LineOffset to every diagnostic in CheckRules, so
+// link.Line must NOT already include that offset — otherwise the line
+// is shifted twice and points past the end of the file.
+func TestCheck_FrontMatterLineNumbersBodyRelative(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	// 3 lines of front matter + body. The broken link is on body line 3.
+	source := "---\ntitle: x\n---\n# Doc\n\nSee [missing](missing.md).\n"
+	writeFile(t, sourcePath, source)
+
+	data, err := os.ReadFile(sourcePath)
+	require.NoError(t, err)
+	// Use NewFileFromSource (the same shape the engine uses for files
+	// with front matter): strips the prefix, records LineOffset=3.
+	f, err := lint.NewFileFromSource(sourcePath, data, true)
+	require.NoError(t, err)
+	f.FS = os.DirFS(filepath.Dir(sourcePath))
+
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	// Body-relative: link is on body line 3 ("See [missing]…"), not
+	// file-relative 6. The engine adds LineOffset later.
+	require.Equal(t, 3, diags[0].Line,
+		"diagnostic must use body-relative coordinates; engine adds f.LineOffset")
+}
+
 func TestCheck_ValidRelativeAndLocalAnchors(t *testing.T) {
 	dir := t.TempDir()
 	targetPath := filepath.Join(dir, "guide.md")

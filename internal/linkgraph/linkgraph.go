@@ -74,6 +74,12 @@ func ParseTarget(dest string) (Target, bool) {
 // from ExtractLinks results because their destinations resolve through
 // the link-reference map rather than a URL; the link-graph builder
 // only sees direct destinations.
+//
+// Line is body-relative — counted from the start of the parsed body,
+// not the original file. Lint rules return body-relative diagnostics
+// because the engine applies f.LineOffset for front-matter adjustment.
+// CLI callers (like `mdsmith backlinks`) that want file-relative line
+// numbers must add f.LineOffset themselves.
 type Link struct {
 	Line   int
 	Column int
@@ -82,8 +88,8 @@ type Link struct {
 }
 
 // ExtractLinks walks f.AST and returns every regular Markdown link in
-// document order. f.LineOffset (front matter) is applied so Line is in
-// the original file's coordinate system.
+// document order. Lines are body-relative (post front-matter strip);
+// see the Link doc for why.
 func ExtractLinks(f *lint.File) []Link {
 	if f == nil || f.AST == nil {
 		return nil
@@ -108,7 +114,7 @@ func ExtractLinks(f *lint.File) []Link {
 		}
 		line, col := linkPosition(f, l)
 		out = append(out, Link{
-			Line:   line + f.LineOffset,
+			Line:   line,
 			Column: col,
 			Text:   linkText(l, f.Source),
 			Target: target,

@@ -85,15 +85,17 @@ func TestExtractLinks_NilFile(t *testing.T) {
 	assert.Nil(t, ExtractLinks(nil))
 }
 
-func TestExtractLinks_RespectsLineOffset(t *testing.T) {
+func TestExtractLinks_LinesAreBodyRelative(t *testing.T) {
 	source := []byte("---\ntitle: x\n---\nSee [g](g.md).\n")
 	f, err := lint.NewFileFromSource("file.md", source, true)
 	require.NoError(t, err)
 	links := ExtractLinks(f)
 	require.Len(t, links, 1)
-	// Front matter occupies 3 lines; the link's body-relative line is
-	// 1, so the file-relative line is 1 + 3 = 4.
-	assert.Equal(t, 4, links[0].Line)
+	// Body starts after the 3-line front-matter prefix. The link is
+	// on body line 1; lint rules will have f.AdjustDiagnostics add
+	// f.LineOffset later, so ExtractLinks must NOT pre-apply it.
+	assert.Equal(t, 1, links[0].Line)
+	assert.Equal(t, 3, f.LineOffset, "front matter occupies 3 lines")
 }
 
 func TestCollectAnchors(t *testing.T) {
