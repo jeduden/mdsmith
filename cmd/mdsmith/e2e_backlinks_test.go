@@ -185,6 +185,32 @@ func TestE2E_Backlinks_UnreadableSource_ExitsTwo(t *testing.T) {
 	assert.Contains(t, stderr, "reading src.md")
 }
 
+func TestE2E_Backlinks_PercentEncodedTarget(t *testing.T) {
+	// A workspace file with a space in its name, linked to via
+	// `%20` from another source. linkgraph.ParseTarget decodes the
+	// link destination to `my file.md`, so the CLI target must also
+	// decode to match — otherwise `backlinks docs/my%20file.md`
+	// silently returns nothing.
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("files:\n  - \"**/*.md\"\nrules:\n  cross-file-reference-integrity: false\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "docs", "my file.md"),
+		[]byte("# Target\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "src.md"),
+		[]byte("# Src\n\nSee [it](docs/my%20file.md).\n"), 0o644))
+
+	// Encoded query form.
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "docs/my%20file.md")
+	require.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "src.md:")
+	// Decoded query form must also match.
+	stdout, _, exitCode = runBinaryInDir(t, dir, "", "backlinks", "docs/my file.md")
+	require.Equal(t, 0, exitCode)
+	assert.Contains(t, stdout, "src.md:")
+}
+
 func TestE2E_Backlinks_DiscoveryEmpty_ExitsOne(t *testing.T) {
 	// A workspace whose `files:` glob matches nothing should exit 1
 	// (no backlinks found) rather than crash.

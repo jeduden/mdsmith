@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -185,7 +186,16 @@ func splitTarget(arg string) (path, anchor string) {
 // keyed by rootDir. Absolute paths are converted via filepath.Rel.
 // Paths that escape rootDir return the cleaned absolute form so they
 // match nothing — backlinks are workspace-internal only.
+//
+// Percent-encoded segments are decoded so the CLI target aligns with
+// linkgraph.ParseTarget, which decodes the destinations it extracts
+// from Markdown links. Without this step, a query like
+// `backlinks docs/my%20file.md` would never match `[X](my%20file.md)`
+// (which resolves to `docs/my file.md` under the workspace root).
 func normalizeWorkspacePath(target, rootDir string) string {
+	if decoded, err := url.PathUnescape(target); err == nil {
+		target = decoded
+	}
 	t := filepath.ToSlash(target)
 	t = strings.TrimPrefix(t, "./")
 	if filepath.IsAbs(filepath.FromSlash(t)) && rootDir != "" {

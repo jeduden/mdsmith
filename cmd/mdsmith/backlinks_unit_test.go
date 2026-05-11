@@ -97,6 +97,18 @@ func TestNormalizeWorkspacePath_RealParentTraversalRejected(t *testing.T) {
 	assert.NotEqual(t, "outside.md", got)
 }
 
+// TestNormalizeWorkspacePath_PercentEncoded verifies that the CLI
+// target accepts percent-encoded path components and decodes them
+// to match link paths. linkgraph.ParseTarget decodes link
+// destinations (e.g. `my%20file.md` → `my file.md`), so the user-
+// supplied query must do the same or `mdsmith backlinks
+// docs/my%20file.md` would silently match nothing.
+func TestNormalizeWorkspacePath_PercentEncoded(t *testing.T) {
+	root := t.TempDir()
+	assert.Equal(t, "docs/my file.md",
+		normalizeWorkspacePath("docs/my%20file.md", root))
+}
+
 func TestSourceMatches(t *testing.T) {
 	assert.True(t, sourceMatches("docs/api.md", nil))
 	assert.True(t, sourceMatches("docs/api.md", []string{"docs/**"}))
