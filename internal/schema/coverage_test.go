@@ -947,6 +947,38 @@ func TestValidate_LateListedScopeRecursesIntoChildren(t *testing.T) {
 		"late B's nested required B-child must still be checked")
 }
 
+// TestValidate_WildcardHeadingParticipatesInOutOfOrder regresses
+// the "?" wildcard fallback: a later listed scope whose Heading is
+// "?" must still be claimable via out-of-order detection, because
+// "?" can't appear in the literal-text map but scopeMatchesHeading
+// treats it as matching any heading.
+func TestValidate_WildcardHeadingParticipatesInOutOfOrder(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": "A", "required": true},
+			map[string]any{"heading": "?", "required": true},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// Doc: B first (matches the "?" wildcard), then A.
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## B\n\nx\n\n## A\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var oo bool
+	for _, d := range diags {
+		if d.Message == `section "## B" out of order: expected after "## A"` {
+			oo = true
+		}
+		assert.NotContains(t, d.Message, "missing required",
+			"the ? wildcard must claim B via out-of-order, not stay missing")
+		assert.NotContains(t, d.Message, "unexpected",
+			"B should not surface as unexpected when ? can claim it")
+	}
+	assert.True(t, oo,
+		"`?` wildcard heading must participate in out-of-order detection")
+}
+
 // TestValidate_PlaceholderAliasParticipatesInOutOfOrder regresses
 // the buildRequiredByText + findOutOfOrderIdx fix: a scope with a
 // literal heading and a placeholder alias must still be detected

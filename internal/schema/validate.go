@@ -235,20 +235,33 @@ func buildRequiredByText(scopes []Scope) map[string][]int {
 		if sc.Wildcard {
 			continue
 		}
-		if !fieldinterp.ContainsField(sc.Heading) {
+		// Skip the "?" wildcard and placeholder patterns — neither
+		// can sit in a literal-text map; the findOutOfOrderIdx
+		// fallback handles them via scopeMatchesHeading.
+		if !indexableLiteral(sc.Heading) {
+			// no-op
+		} else {
 			out[sc.Heading] = append(out[sc.Heading], i)
 		}
 		for _, a := range sc.Aliases {
-			// Skip placeholder aliases — they cannot be a literal
-			// map key; the findOutOfOrderIdx fallback handles them
-			// via scopeMatchesHeading.
-			if fieldinterp.ContainsField(a) {
+			if !indexableLiteral(a) {
 				continue
 			}
 			out[a] = append(out[a], i)
 		}
 	}
 	return out
+}
+
+// indexableLiteral reports whether text is a fully-literal heading
+// that can be used as a map key. "?" and patterns containing
+// placeholders match many doc texts and cannot be pre-indexed; the
+// fallback scan handles those.
+func indexableLiteral(text string) bool {
+	if text == "?" {
+		return false
+	}
+	return !fieldinterp.ContainsField(text)
 }
 
 // matchScope advances docIdx looking for a heading matching the
@@ -404,7 +417,7 @@ func findOutOfOrderIdx(
 		if claimed[i] || sc.Wildcard {
 			continue
 		}
-		if !scopeHasPlaceholder(sc) {
+		if !scopeNeedsMatchScan(sc) {
 			// Fully-literal scopes are already indexed in
 			// requiredByText; nothing the fallback can find.
 			continue
@@ -416,12 +429,18 @@ func findOutOfOrderIdx(
 	return -1
 }
 
-func scopeHasPlaceholder(sc Scope) bool {
-	if fieldinterp.ContainsField(sc.Heading) {
+// scopeNeedsMatchScan reports whether scopeMatchesHeading must be
+// invoked to decide if a scope claims a heading. Fully-literal
+// scopes are pre-indexed in requiredByText and don't need the
+// fallback; scopes with placeholder interpolation in either
+// Heading or Aliases do — and so does the "?" wildcard, which
+// matches any text but can't appear in a literal-text map.
+func scopeNeedsMatchScan(sc Scope) bool {
+	if sc.Heading == "?" || fieldinterp.ContainsField(sc.Heading) {
 		return true
 	}
 	for _, a := range sc.Aliases {
-		if fieldinterp.ContainsField(a) {
+		if a == "?" || fieldinterp.ContainsField(a) {
 			return true
 		}
 	}
@@ -461,11 +480,11 @@ func scopeMatchesHeading(sc Scope, dh DocHeading) bool {
 // headings) on every validation pass; caching by pattern string
 // keeps the hot loop allocation-free after warm-up.
 //
-// The map value is a *regexp.Regexp, stored as a non-pointer
-// interface so a successful entry survives the type assertion. A
-// compile error is signalled by storing the patternCompileFailed
-// sentinel; tests assert on the sentinel rather than relying on
-// nil-interface semantics.
+// Stored values are *regexp.Regexp. A compile error is signalled
+// by storing the patternCompileFailed sentinel — a dedicated
+// non-nil pointer that the loader distinguishes from a successful
+// entry by identity, avoiding the typed-nil-interface trap that
+// would make `v == nil` silently fail.
 var patternRegexCache sync.Map
 
 // patternCompileFailed is the sentinel value stored in
