@@ -2,9 +2,7 @@ package requiredstructure
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/schema"
@@ -90,12 +88,30 @@ func walkScopes(
 // findMatchingHead returns the earliest unclaimed heading index in
 // heads whose level matches expectedLevel and whose text matches
 // sc, restricted to the [parentStart, parentEnd) line window. When
-// no in-window heading matches, it falls back to an out-of-window
-// match so the walker mirrors the validator's out-of-order claim.
+// no in-window heading at the expected level matches, it falls back
+// to an in-window heading at any level — the same level-mismatch
+// case the validator's matchScope claims. The fallback stays inside
+// the parent window so the walker never pairs a scope with a
+// heading the validator could not have claimed.
 func findMatchingHead(
 	sc schema.Scope, heads []schema.DocHeading,
 	expectedLevel, parentStart, parentEnd int,
 	claimed map[int]bool,
+) int {
+	if idx := scanHeads(sc, heads, parentStart, parentEnd, claimed, expectedLevel); idx >= 0 {
+		return idx
+	}
+	return scanHeads(sc, heads, parentStart, parentEnd, claimed, -1)
+}
+
+// scanHeads returns the first unclaimed heading in heads whose line
+// is in [parentStart, parentEnd) and whose level equals
+// requireLevel (or any level when requireLevel < 0), and whose text
+// matches sc.
+func scanHeads(
+	sc schema.Scope, heads []schema.DocHeading,
+	parentStart, parentEnd int, claimed map[int]bool,
+	requireLevel int,
 ) int {
 	for j, dh := range heads {
 		if claimed[j] {
@@ -104,22 +120,10 @@ func findMatchingHead(
 		if dh.Line < parentStart || dh.Line >= parentEnd {
 			continue
 		}
-		if dh.Level != expectedLevel {
+		if requireLevel >= 0 && dh.Level != requireLevel {
 			continue
 		}
-		if scopeTextMatches(sc, dh) {
-			return j
-		}
-	}
-	// Fallback: scan all unclaimed headings, ignoring the line
-	// window. This mirrors the validator claiming a heading whose
-	// expected level differs (level-mismatch case) or which appears
-	// out of position.
-	for j, dh := range heads {
-		if claimed[j] {
-			continue
-		}
-		if scopeTextMatches(sc, dh) {
+		if schema.MatchesHeading(sc, dh) {
 			return j
 		}
 	}
@@ -143,48 +147,6 @@ func scopeEndLine(
 		}
 	}
 	return parentEnd
-}
-
-// scopeTextMatches reports whether sc matches dh by heading text.
-// "?" matches any text; aliases are tried alongside the primary
-// heading. Field-interpolated patterns use a literal-fragment scan
-// so the walker can identify the heading the validator just
-// confirmed, without re-deriving the field values.
-func scopeTextMatches(sc schema.Scope, dh schema.DocHeading) bool {
-	if sc.Wildcard {
-		return false
-	}
-	if sc.Heading == "?" {
-		return true
-	}
-	if matchesScopeText(sc.Heading, dh.Text) {
-		return true
-	}
-	for _, a := range sc.Aliases {
-		if matchesScopeText(a, dh.Text) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchesScopeText(pattern, text string) bool {
-	if !fieldinterp.ContainsField(pattern) {
-		return pattern == text
-	}
-	parts := fieldinterp.SplitOnFields(pattern)
-	idx := 0
-	for _, p := range parts {
-		if p == "" {
-			continue
-		}
-		next := strings.Index(text[idx:], p)
-		if next < 0 {
-			return false
-		}
-		idx += next + len(p)
-	}
-	return true
 }
 
 // runScopeRules executes each rule named in sc.Rules and returns

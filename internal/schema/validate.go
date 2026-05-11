@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
@@ -301,6 +302,16 @@ func nextUnclaimed(cands []int, claimed map[int]bool, minIdx int) int {
 	return -1
 }
 
+// MatchesHeading reports whether sc matches the heading text in dh.
+// Exported so callers outside the validator (notably the per-scope
+// rule walker in internal/rules/requiredstructure) reuse the same
+// matching semantics — anchored regex for field-interpolated
+// patterns, exact text otherwise, plus aliases and the "?"
+// wildcard.
+func MatchesHeading(sc Scope, dh DocHeading) bool {
+	return scopeMatchesHeading(sc, dh)
+}
+
 func scopeMatchesHeading(sc Scope, dh DocHeading) bool {
 	if sc.Wildcard {
 		return false // wildcards never match a specific heading directly.
@@ -319,9 +330,29 @@ func scopeMatchesHeading(sc Scope, dh DocHeading) bool {
 	return false
 }
 
+// patternRegexCache memoises compiled regexes for field-interpolated
+// heading patterns. Recompiling per-call would be O(scopes ×
+// headings) on every validation pass; caching by pattern string
+// keeps the hot loop allocation-free after warm-up.
+var patternRegexCache sync.Map // map[string]*regexp.Regexp; nil entry means compile error
+
 func matchesText(pattern, text string) bool {
 	if !fieldinterp.ContainsField(pattern) {
 		return pattern == text
+	}
+	re := patternRegex(pattern)
+	if re == nil {
+		return false
+	}
+	return re.MatchString(text)
+}
+
+func patternRegex(pattern string) *regexp.Regexp {
+	if v, ok := patternRegexCache.Load(pattern); ok {
+		if v == nil {
+			return nil
+		}
+		return v.(*regexp.Regexp)
 	}
 	parts := fieldinterp.SplitOnFields(pattern)
 	var b strings.Builder
@@ -335,9 +366,11 @@ func matchesText(pattern, text string) bool {
 	b.WriteString("$")
 	re, err := regexp.Compile(b.String())
 	if err != nil {
-		return false
+		patternRegexCache.Store(pattern, (*regexp.Regexp)(nil))
+		return nil
 	}
-	return re.MatchString(text)
+	patternRegexCache.Store(pattern, re)
+	return re
 }
 
 func formatHeading(level int, text string) string {

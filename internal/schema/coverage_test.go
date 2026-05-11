@@ -358,6 +358,82 @@ func TestParseFile_IncludeMissingFile(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot read schema include")
 }
 
+func TestParseFile_RequireSingleLine(t *testing.T) {
+	// Exercises the single-line PI body branch in piYAMLBody.
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"<?require filename: \"plan-*.md\" ?>\n\n# ?\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	assert.Equal(t, "plan-*.md", sch.Require.Filename)
+}
+
+func TestParseFile_RequireMalformedYAML(t *testing.T) {
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"<?require\nfilename: [unterminated\n?>\n\n# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid <?require?>")
+}
+
+func TestParseFile_FrontmatterWithoutTrailingNewline(t *testing.T) {
+	// Exercises stripDelimiters fallback when the closing "---" has
+	// no trailing newline.
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"---\nid: 'string'\n---\n# ?\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	assert.Equal(t, "string", sch.Frontmatter["id"])
+}
+
+func TestParseFile_IncludeFragmentWithFilename(t *testing.T) {
+	// A fragment that itself carries a <?require?> propagates the
+	// filename pattern up to the host schema. Exercises the
+	// fragment-fp branch in expandInclude / parseFileBytes.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "frag.md"),
+		[]byte("<?require\nfilename: \"frag-*.md\"\n?>\n\n## Tasks\n"),
+		0o644))
+	p := writeFile(t, dir, "proto.md",
+		"# ?\n\n<?include\nfile: frag.md\n?>\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	assert.Equal(t, "frag-*.md", sch.Require.Filename,
+		"fragment's filename pattern should win when host has none")
+}
+
+func TestParseFile_HostFilenameBeatsIncludeFilename(t *testing.T) {
+	// When the host schema declares a filename, the fragment's
+	// filename is ignored — covers the "fp != \"\" && cfg.Filename
+	// == \"\"" guard.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "frag.md"),
+		[]byte("<?require\nfilename: \"frag-*.md\"\n?>\n\n## Tasks\n"),
+		0o644))
+	p := writeFile(t, dir, "proto.md",
+		"<?require\nfilename: \"plan-*.md\"\n?>\n\n# ?\n\n<?include\nfile: frag.md\n?>\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	assert.Equal(t, "plan-*.md", sch.Require.Filename)
+}
+
+func TestParseFile_HeadingWithCodeSpan(t *testing.T) {
+	// Exercises writeNodeText's CodeSpan and recursive-child
+	// branches by giving a heading inline code.
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"# `id` Title\n\n## Goal\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 1)
+	// The heading text should include the inline code contents.
+	assert.Contains(t, sch.Sections[0].Heading, "id")
+}
+
 func TestParseFile_RootFSRejectsAbsolute(t *testing.T) {
 	r := &FileReader{RootFS: os.DirFS(t.TempDir())}
 	_, err := ParseFile(r, "/absolute/path.md")
@@ -495,6 +571,89 @@ func TestParseInline_FrontmatterEmptyString(t *testing.T) {
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "non-empty")
+}
+
+// ---- Validate edge cases ----
+
+func TestMatchesHeading_Exported(t *testing.T) {
+	// Exported wrapper used by the per-scope-rule walker.
+	sc := Scope{Heading: "Goal"}
+	assert.True(t, MatchesHeading(sc, DocHeading{Text: "Goal", Level: 2}))
+	assert.False(t, MatchesHeading(sc, DocHeading{Text: "Other", Level: 2}))
+	// Wildcard scopes never match a specific heading.
+	assert.False(t, MatchesHeading(Scope{Wildcard: true}, DocHeading{Text: "Anything"}))
+	// "?" matches any text.
+	assert.True(t, MatchesHeading(Scope{Heading: "?"}, DocHeading{Text: "Anything"}))
+	// Aliases match.
+	sc2 := Scope{Heading: "Symptoms", Aliases: []string{"Indicators"}}
+	assert.True(t, MatchesHeading(sc2, DocHeading{Text: "Indicators"}))
+}
+
+func TestPatternRegexCache_ReusesCompiled(t *testing.T) {
+	// Two calls with the same pattern must hit the cache the second
+	// time. Cover both the cache-miss and cache-hit branches.
+	pattern := "Step {n}"
+	first := patternRegex(pattern)
+	require.NotNil(t, first)
+	second := patternRegex(pattern)
+	assert.Same(t, first, second,
+		"second call must return the cached compiled regex")
+}
+
+func TestValidate_NilSchemaShortCircuits(t *testing.T) {
+	doc := newDocFile(t, "doc.md", "# T\n")
+	assert.Empty(t, Validate(doc, nil, nil, false, makeDiagForTest))
+	assert.Empty(t, Validate(doc, &Schema{}, nil, false, makeDiagForTest))
+}
+
+func TestValidate_OutOfOrderWithNestedSections(t *testing.T) {
+	// Exercises claimOutOfOrder's recursion branch: when a doc
+	// heading matches a later listed scope and that scope has
+	// nested sections, the children must still be validated.
+	raw := map[string]any{
+		"closed": true,
+		"sections": []any{
+			map[string]any{"heading": "Goal"},
+			map[string]any{
+				"heading": "Tasks",
+				"sections": []any{
+					map[string]any{"heading": "Step A"},
+				},
+			},
+		},
+	}
+	sch, err := ParseInline(raw, "kind plan")
+	require.NoError(t, err)
+	// Tasks appears first (out-of-order); its Step A child still
+	// validates within Tasks.
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Tasks\n\n### Step A\n\nx\n\n## Goal\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	// Expect the out-of-order diagnostic but no "missing Step A".
+	var found bool
+	for _, d := range diags {
+		if d.Message == `section "## Tasks" out of order: expected after "## Goal"` {
+			found = true
+		}
+		assert.NotContains(t, d.Message, "Step A",
+			"Step A should have been claimed inside out-of-order Tasks")
+	}
+	assert.True(t, found, "expected the Tasks out-of-order diagnostic")
+}
+
+func TestValidateFrontmatter_AcceptsEmptyConstraints(t *testing.T) {
+	sch := &Schema{}
+	assert.NoError(t, ValidateFrontmatter(sch, map[string]any{"id": "x"}))
+}
+
+func TestValidateFrontmatter_InvalidCUERejects(t *testing.T) {
+	// matchesText with a malformed pattern should not panic; the
+	// CUE compile path here exercises ValidateFrontmatter's error
+	// branch on a bad CUE expression.
+	sch := &Schema{Frontmatter: map[string]string{"id": "int &"}}
+	err := ValidateFrontmatter(sch, map[string]any{"id": "x"})
+	require.Error(t, err)
 }
 
 // ---- Validate frontmatter CUE-placeholder skip ----
