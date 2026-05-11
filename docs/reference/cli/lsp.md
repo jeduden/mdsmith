@@ -228,7 +228,7 @@ This matches how `ResolveRelTarget` resolves them at lint time.
 Both `.md` and `.markdown` files appear as candidates.
 
 Image links (`![alt](#…`) do not trigger anchor completion.
-Completion inside fenced code blocks returns an empty list.
+Completion inside fenced or indented code blocks returns an empty list.
 
 ## Configuration discovery
 

@@ -152,6 +152,26 @@ func completionContextLinks(srcPath string, bodyLines [][]byte, bodyLine, col in
 	return CompletionContext{Tag: CompletionNone}
 }
 
+// piArgCompletion maps a (directiveName, argKey, argVal) triple to a
+// CompletionDirectivePath context. Returns (ctx, true) on a recognised pair.
+func piArgCompletion(piName, argKey, argVal string) (CompletionContext, bool) {
+	type pair struct{ name, key string }
+	m := map[pair]string{
+		{"include", "file"}: "file",
+		{"build", "source"}: "source",
+		{"catalog", "glob"}: "glob",
+	}
+	if arg, ok := m[pair{piName, argKey}]; ok {
+		return CompletionContext{
+			Tag:           CompletionDirectivePath,
+			Prefix:        argVal,
+			DirectiveName: piName,
+			DirectiveArg:  arg,
+		}, true
+	}
+	return CompletionContext{}, false
+}
+
 // directiveCompletionContext returns the completion context for a cursor
 // inside a processing instruction. Handles include/build/catalog directives.
 //
@@ -173,33 +193,18 @@ func directiveCompletionContext(pi *lint.ProcessingInstruction, lines [][]byte, 
 	}
 	lineUpToCursor := string(lineBytes[:cursorByteCol])
 
-	// Try key: value pattern on text up to cursor.
+	// Try key: value on the cursor line, first raw (multi-line PI) then with
+	// the "<?name " opener stripped (single-line PI like <?include file: "…"?>).
 	m := piArgRE.FindStringSubmatch(lineUpToCursor)
+	if m == nil {
+		if stripped, ok := strings.CutPrefix(lineUpToCursor, "<?"+pi.Name+" "); ok {
+			m = piArgRE.FindStringSubmatch(stripped)
+		}
+	}
 	if len(m) >= 3 {
-		argKey := m[1]
 		argVal := strings.Trim(strings.TrimSpace(m[2]), `"'`)
-		switch {
-		case pi.Name == "include" && argKey == "file":
-			return CompletionContext{
-				Tag:           CompletionDirectivePath,
-				Prefix:        argVal,
-				DirectiveName: "include",
-				DirectiveArg:  "file",
-			}
-		case pi.Name == "build" && argKey == "source":
-			return CompletionContext{
-				Tag:           CompletionDirectivePath,
-				Prefix:        argVal,
-				DirectiveName: "build",
-				DirectiveArg:  "source",
-			}
-		case pi.Name == "catalog" && argKey == "glob":
-			return CompletionContext{
-				Tag:           CompletionDirectivePath,
-				Prefix:        argVal,
-				DirectiveName: "catalog",
-				DirectiveArg:  "glob",
-			}
+		if ctx, ok := piArgCompletion(pi.Name, m[1], argVal); ok {
+			return ctx
 		}
 	}
 

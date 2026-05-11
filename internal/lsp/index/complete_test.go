@@ -451,6 +451,21 @@ func TestCompletionContextAnchorOtherFileUppercaseExt(t *testing.T) {
 	assert.Equal(t, "sec", res.Prefix)
 }
 
+func TestCompletionContextDirectiveSingleLine(t *testing.T) {
+	t.Parallel()
+	// Single-line PI form: all args on the same line as the opener.
+	// piArgRE is anchored at ^ so a plain FindStringSubmatch on the full line
+	// fails; directiveCompletionContext must strip the "<?include " opener
+	// before retrying the regex.
+	src := "# Top\n\n<?include file: \"docs/guide.md\"?>\n"
+	// "<?include file: \"docs/g" is 23 bytes → col 24 places cursor after 'g'.
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 3, 24)
+	assert.Equal(t, CompletionDirectivePath, res.Tag)
+	assert.Equal(t, "docs/g", res.Prefix)
+	assert.Equal(t, "include", res.DirectiveName)
+	assert.Equal(t, "file", res.DirectiveArg)
+}
+
 func TestCodeNodeContainsLineNoSpillover(t *testing.T) {
 	t.Parallel()
 	// Goldmark segments include the trailing newline in Stop. Without the
