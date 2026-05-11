@@ -293,6 +293,41 @@ func TestApplyScopeRules_NilSchemaShortCircuits(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+// TestCheck_InlineSchema_ScopeRulesWrongLevelStillPairs covers
+// scanHeads' wrong-level skip + fallback branches. Schema expects
+// Parent at H2; doc has Parent at H3 — the walker's fallback still
+// pairs them so the rule override fires.
+func TestCheck_InlineSchema_ScopeRulesWrongLevelStillPairs(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading": "Strict",
+				"rules": map[string]any{
+					"line-length": map[string]any{
+						"max":     20,
+						"stern":   true,
+						"exclude": []any{},
+					},
+				},
+			},
+		},
+	})}
+	// Strict appears at H3 instead of the expected H2.
+	src := "# T\n\n" +
+		"### Strict\n\n" +
+		"This line is well over twenty chars and should fire under the cap.\n"
+	f := newTestFile(t, "doc.md", src)
+	diags := r.Check(f)
+	var lineLength []lint.Diagnostic
+	for _, d := range diags {
+		if d.RuleID == "MDS001" {
+			lineLength = append(lineLength, d)
+		}
+	}
+	require.NotEmpty(t, lineLength,
+		"level-mismatch fallback should still claim Strict for rule overrides")
+}
+
 // TestCheck_InlineSchema_NestedScopeRuleOverride covers walkScopes'
 // recursion branch: a parent scope with a `rules:` block AND nested
 // children, both with overrides.

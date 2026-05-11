@@ -220,6 +220,48 @@ func TestValidateKindAllowsInlineWithoutFileSchemaSetting(t *testing.T) {
 	}
 }
 
+func TestClearSchemaState_NoRequiredStructureEntry(t *testing.T) {
+	// clearSchemaState should be a no-op when result has no
+	// required-structure entry. Cover the early-return branch.
+	cfg := &Config{
+		Rules: map[string]RuleCfg{"line-length": {Enabled: true}},
+		Kinds: map[string]KindBody{
+			"k": {Schema: map[string]any{
+				"sections": []any{map[string]any{"heading": "X"}},
+			}},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"k"}},
+		},
+	}
+	effective := Effective(cfg, "foo.md", nil)
+	rs, ok := effective["required-structure"]
+	require.True(t, ok)
+	assert.Contains(t, rs.Settings, "inline-schema")
+}
+
+func TestClearSchemaState_NilSettings(t *testing.T) {
+	// clearSchemaState with required-structure present but Settings
+	// nil — early return on settings-nil branch.
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"required-structure": {Enabled: true},
+		},
+		ExplicitRules: map[string]bool{"required-structure": true},
+		Kinds: map[string]KindBody{
+			"k": {Schema: map[string]any{
+				"sections": []any{map[string]any{"heading": "X"}},
+			}},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"*.md"}, Kinds: []string{"k"}},
+		},
+	}
+	effective := Effective(cfg, "foo.md", nil)
+	rs := effective["required-structure"]
+	assert.Contains(t, rs.Settings, "inline-schema")
+}
+
 func TestKindDeclaresSchemaRecognisesInlineSchemaSetting(t *testing.T) {
 	// A kind that supplies `inline-schema` via the rules map (not
 	// via KindBody.Schema) still counts as a schema source so the

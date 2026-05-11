@@ -946,6 +946,62 @@ func TestValidate_DeeperHeadingConsumedAsOrphan(t *testing.T) {
 	}
 }
 
+func TestParseInline_ScopeLevelClosed(t *testing.T) {
+	// `closed:` on a scope (not the root) — covers the
+	// applyScopeFields "closed" branch at parse_inline.go:228.
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading":  "Parent",
+				"required": true,
+				"closed":   true,
+				"sections": []any{
+					map[string]any{"heading": "Child"},
+				},
+			},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 1)
+	assert.True(t, sch.Sections[0].Closed)
+}
+
+func TestSetScopeInt_AcceptsPlainInt(t *testing.T) {
+	// `int` (Go-typed, not int64 or float64) is uncommon from a
+	// YAML decoder but the helper accepts it. Pass via the
+	// applyScopeFields path so we exercise setScopeInt directly.
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading": "Repeating",
+				"min":     int(2),
+				"max":     int(5),
+			},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	assert.Equal(t, 2, sch.Sections[0].Min)
+	assert.Equal(t, 5, sch.Sections[0].Max)
+}
+
+func TestSetScopeSections_RejectsNonList(t *testing.T) {
+	// `sections:` at a nested scope set to a string instead of a
+	// list — exercises setScopeSections' error branch.
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading":  "Parent",
+				"sections": "not-a-list",
+			},
+		},
+	}
+	_, err := ParseInline(raw, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sections must be a list")
+}
+
 func TestPatternRegex_NilCacheHit(t *testing.T) {
 	// First call caches the nil for a compile-failing pattern; the
 	// second call hits the cache-nil branch.
