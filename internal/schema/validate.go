@@ -207,6 +207,14 @@ func matchScope(
 			return claimMatch(f, sc, idx, expectedLevel, docHeads, docIdx, claimed, mkDiag, diags)
 		}
 		if ooIdx := nextUnclaimed(requiredByText[dh.Text], claimed, idx+1); ooIdx >= 0 {
+			if !sc.Required {
+				// The current scope is optional — its absence is not
+				// a violation, so dh matching a later listed scope is
+				// not "out of order". Return without claiming so the
+				// outer loop advances to the matching scope, which
+				// will pair dh on its own iteration.
+				return docIdx, diags, false
+			}
 			newIdx, ooDiags := claimOutOfOrder(
 				f, scopes, idx, ooIdx, expectedLevel, docHeads, docIdx, claimed, mkDiag)
 			diags = append(diags, ooDiags...)

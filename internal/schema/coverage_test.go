@@ -865,6 +865,52 @@ func TestIsCUEIdent_EmptyAndDigitFirst(t *testing.T) {
 	assert.True(t, isCUEIdent("foo123"))
 }
 
+// TestValidate_OptionalScopeNotOutOfOrder regresses a Copilot
+// review finding: when the current scope is optional and the doc
+// only contains a later listed scope's heading, matchScope should
+// not surface an "out of order" diagnostic. Omitting an optional
+// section is legitimate; the next scope picks up the heading on
+// its own iteration.
+func TestValidate_OptionalScopeNotOutOfOrder(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": "A", "required": false},
+			map[string]any{"heading": "B", "required": false},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md", "# T\n\n## B\n\nx\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	for _, d := range diags {
+		assert.NotContains(t, d.Message, "out of order",
+			"optional A omitted should not trigger out-of-order on B")
+	}
+}
+
+// TestValidate_RequiredScopeStillFlagsOutOfOrder keeps the genuine
+// out-of-order case working: A is required and B appears before
+// it, so B must still be flagged.
+func TestValidate_RequiredScopeStillFlagsOutOfOrder(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": "A", "required": true},
+			map[string]any{"heading": "B", "required": true},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md", "# T\n\n## B\n\nx\n\n## A\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var ooFound bool
+	for _, d := range diags {
+		if d.Message == `section "## B" out of order: expected after "## A"` {
+			ooFound = true
+		}
+	}
+	assert.True(t, ooFound, "required scope must still surface out-of-order")
+}
+
 func TestValidate_ClosedTrailingExtra(t *testing.T) {
 	// Trailing heading past all required scopes with closed=true
 	// produces the trailing-loop "unexpected section" diagnostic
