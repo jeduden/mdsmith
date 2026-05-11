@@ -384,7 +384,20 @@ func scopeMatchesHeading(sc Scope, dh DocHeading) bool {
 // heading patterns. Recompiling per-call would be O(scopes ×
 // headings) on every validation pass; caching by pattern string
 // keeps the hot loop allocation-free after warm-up.
-var patternRegexCache sync.Map // map[string]*regexp.Regexp; nil entry means compile error
+//
+// The map value is a *regexp.Regexp, stored as a non-pointer
+// interface so a successful entry survives the type assertion. A
+// compile error is signalled by storing the patternCompileFailed
+// sentinel; tests assert on the sentinel rather than relying on
+// nil-interface semantics.
+var patternRegexCache sync.Map
+
+// patternCompileFailed is the sentinel value stored in
+// patternRegexCache when regexp.Compile failed. A separate value
+// (instead of a typed-nil *regexp.Regexp) lets the loader
+// distinguish "never tried" from "tried and failed" via a regular
+// type assertion.
+var patternCompileFailed = &regexp.Regexp{}
 
 func matchesText(pattern, text string) bool {
 	if !fieldinterp.ContainsField(pattern) {
@@ -399,10 +412,11 @@ func matchesText(pattern, text string) bool {
 
 func patternRegex(pattern string) *regexp.Regexp {
 	if v, ok := patternRegexCache.Load(pattern); ok {
-		if v == nil {
+		re, ok := v.(*regexp.Regexp)
+		if !ok || re == patternCompileFailed {
 			return nil
 		}
-		return v.(*regexp.Regexp)
+		return re
 	}
 	parts := fieldinterp.SplitOnFields(pattern)
 	var b strings.Builder
@@ -416,7 +430,7 @@ func patternRegex(pattern string) *regexp.Regexp {
 	b.WriteString("$")
 	re, err := regexp.Compile(b.String())
 	if err != nil {
-		patternRegexCache.Store(pattern, (*regexp.Regexp)(nil))
+		patternRegexCache.Store(pattern, patternCompileFailed)
 		return nil
 	}
 	patternRegexCache.Store(pattern, re)

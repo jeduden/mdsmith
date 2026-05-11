@@ -151,8 +151,12 @@ func scopeEndLine(
 
 // runScopeRules executes each rule named in sc.Rules and returns
 // diagnostics that fall within the scope's line range. Each rule is
-// cloned and configured with its defaults deep-merged with the
-// scope's override.
+// cloned with its DefaultSettings and then has the scope's override
+// applied via ApplySettings — keys touched by the override replace
+// the defaults wholesale; nested maps and list merge modes are NOT
+// honoured the way config-layer merging does. Implementing a true
+// config-style deep-merge for scope overrides is part of the
+// follow-up tracked on plan 146.
 //
 // Misconfigurations (unknown rule name, ApplySettings error) surface
 // as MDS020 diagnostics at the scope's heading line so users see the

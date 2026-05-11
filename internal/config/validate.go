@@ -42,7 +42,7 @@ func ValidateKinds(cfg *Config) error {
 func validateKindSchemaSources(name string, body KindBody) error {
 	rsCfg, hasRS := body.Rules["required-structure"]
 	pathSet, pathSetting := schemaPathSetting(rsCfg, hasRS)
-	inlineSet, inlineSetting := schemaInlineSetting(rsCfg, hasRS)
+	inlineSet, _ := schemaInlineSetting(rsCfg, hasRS)
 
 	if body.Schema != nil && pathSet {
 		return fmt.Errorf(
@@ -65,7 +65,6 @@ func validateKindSchemaSources(name string, body KindBody) error {
 				"pick one source",
 			name, pathSetting, name)
 	}
-	_ = inlineSetting
 	return nil
 }
 
@@ -88,11 +87,7 @@ func schemaInlineSetting(rs RuleCfg, hasRS bool) (bool, map[string]any) {
 	if !hasRS || rs.Settings == nil {
 		return false, nil
 	}
-	v, ok := rs.Settings["inline-schema"]
-	if !ok {
-		return false, nil
-	}
-	m, ok := v.(map[string]any)
+	m, ok := rs.Settings["inline-schema"].(map[string]any)
 	if !ok || len(m) == 0 {
 		return false, nil
 	}

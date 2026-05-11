@@ -136,8 +136,11 @@ Section keys:
 - `closed:` — when `true`, unlisted headings inside this
   scope produce a diagnostic. Default `false`.
 - `rules:` — per-scope rule-config overrides. Each entry
-  maps a rule name to a settings map that deep-merges
-  over the rule's defaults inside the scope's subtree.
+  maps a rule name to a settings map that applies on
+  top of the rule's defaults inside the scope's
+  subtree. Today's apply is a plain ApplySettings call,
+  not a config-style deep-merge — keys the override
+  sets replace the defaults wholesale.
 
 A bare `"..."` entry is a positional wildcard slot.
 It tolerates unlisted sections at that position even

@@ -107,9 +107,11 @@ document.
 ### Per-scope rule overrides
 
 Any scope may carry a `rules:` block. The override
-deep-merges with the rule's defaults and applies only
-inside that scope's heading range. This is the way to
-say "this section is stricter than the rest of the
+sits on top of the rule's defaults — keys it sets
+replace the defaults wholesale; keys it omits keep
+their default value. The override applies only inside
+that scope's heading range. This is the way to say
+"this section is stricter than the rest of the
 document" without scattering glob overrides.
 
 ```yaml
@@ -123,13 +125,15 @@ sections:
         max-words: 200
 ```
 
-Today the per-scope override stacks on top of the
-rule's defaults, not the rule's full per-file config.
-Outside the scope, the per-file config still applies
-unchanged; inside, the scope's override sits on rule
-defaults. Threading the full
+Two follow-ups land later, tracked on plan 146:
+first, the override is not yet a config-style deep
+merge — nested maps and list merge modes (e.g.
+`placeholders` append) behave like a plain
+ApplySettings call. Second, the override stacks on
+rule defaults, not the rule's full per-file config;
+threading the full
 defaults → kinds → file globs → scope merge through
-the engine is tracked as a follow-up on plan 146.
+the engine is the same follow-up.
 
 If a scope's `rules:` block names a rule that does
 not exist or supplies settings the rule rejects, the

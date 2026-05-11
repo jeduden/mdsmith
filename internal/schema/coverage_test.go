@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1094,13 +1093,14 @@ func TestSetScopeSections_RejectsNonList(t *testing.T) {
 	assert.Contains(t, err.Error(), "sections must be a list")
 }
 
-func TestPatternRegex_NilCacheHit(t *testing.T) {
-	// First call caches the nil for a compile-failing pattern; the
-	// second call hits the cache-nil branch.
+func TestPatternRegex_SentinelCacheHit(t *testing.T) {
+	// First call caches the compile-failed sentinel for a
+	// compile-failing pattern; the second call hits the sentinel
+	// branch and returns nil.
 	pattern := "{x} bad ( pattern"
-	patternRegexCache.Store(pattern, (*regexp.Regexp)(nil))
+	patternRegexCache.Store(pattern, patternCompileFailed)
 	got := patternRegex(pattern)
-	assert.Nil(t, got, "cache-hit on nil should return nil")
+	assert.Nil(t, got, "cache-hit on sentinel should return nil")
 }
 
 func TestValidate_FilenameMatchesPattern(t *testing.T) {
@@ -1115,14 +1115,14 @@ func TestValidate_FilenameMatchesPattern(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
-func TestPatternRegex_NilOnCompileError(t *testing.T) {
-	// Stuff a deliberately broken pattern into the cache and ensure
+func TestPatternRegex_SentinelOnCompileError(t *testing.T) {
+	// Stuff the compile-failed sentinel into the cache and ensure
 	// matchesText handles the nil return without panicking. Using
 	// a unique pattern avoids contention with other tests.
 	pattern := "{n} (broken ["
-	patternRegexCache.Store(pattern, (*regexp.Regexp)(nil))
+	patternRegexCache.Store(pattern, patternCompileFailed)
 	assert.False(t, matchesText(pattern, "anything"),
-		"matchesText should return false when patternRegex is nil")
+		"matchesText should return false when the cache stores the failed sentinel")
 }
 
 // ---- Validate frontmatter CUE-placeholder skip ----
