@@ -1,29 +1,34 @@
 ---
 id: 130
 title: >-
-  Distribute mdsmith binaries via npm, PyPI, asdf,
-  mise, and the VS Code marketplaces
+  Distribute mdsmith binaries via npm, PyPI, and the
+  VS Code marketplaces
 status: "✅"
 summary: >-
   Publish the prebuilt mdsmith binaries already produced
-  by the release workflow through npm, PyPI (consumed by
-  pip and uv), asdf, and mise on every git tag, and
-  publish the VS Code extension to the Visual Studio
-  Marketplace and Open VSX. Derive every published
-  manifest's version from the tag instead of a
-  hard-coded literal.
+  by the release workflow through npm and PyPI (consumed
+  by pip and uv) on every git tag, and publish the VS
+  Code extension to the Visual Studio Marketplace and
+  Open VSX. Derive every published manifest's version
+  from the tag instead of a hard-coded literal. The
+  asdf and mise channels are deferred to plan 145
+  because both registry submissions live outside this
+  repo.
 model: opus
 ---
-# Distribute mdsmith via npm, PyPI, asdf, mise, and VS Code marketplaces
+# Distribute mdsmith via npm, PyPI, and VS Code marketplaces
 
 ## Goal
 
 Each `v*` tag should ship the existing binaries
-through five extra channels: npm, PyPI, asdf, mise,
-and the two VS Code extension registries. Every
-published manifest carries the tag version (not a
-hand-edited string), so `mdsmith version` reports
-the same value on every channel.
+through three extra channels: npm, PyPI, and the two
+VS Code extension registries. Every published
+manifest carries the tag version (not a hand-edited
+string), so `mdsmith version` reports the same value
+on every channel. The asdf and mise channels live in
+[plan/145](145_asdf-mise-registry-submissions.md)
+since their registry submissions sit outside this
+repo.
 
 ## Background
 
