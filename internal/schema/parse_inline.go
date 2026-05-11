@@ -209,32 +209,35 @@ func parseInlineScopeEntry(entry any, path string) (Scope, error) {
 	if err := applyScopeFields(m, &sc, path); err != nil {
 		return Scope{}, err
 	}
-	if err := validateScopeShape(sc, path); err != nil {
+	if err := validateScopeShape(sc, m, path); err != nil {
 		return Scope{}, err
+	}
+	// Required defaults to true for literal scopes (matches the
+	// file-based parser). Preamble and slot scopes have no heading
+	// to require — both parsers should produce Required=false for
+	// them. Slots reject `required:` outright; preambles accept
+	// it. Apply the default deterministically here, after fields
+	// have settled, so map-iteration order in applyScopeFields
+	// cannot leave Required at the parseInlineScopeEntry default
+	// for non-literal scopes.
+	if sc.Wildcard {
+		sc.Required = false
+	} else if sc.Preamble {
+		if _, explicit := m["required"]; !explicit {
+			sc.Required = false
+		}
 	}
 	return sc, nil
 }
 
 // validateScopeShape rejects scope combinations that don't make
-// semantic sense after the fields are applied: an empty literal
-// heading, aliases or sub-sections on a preamble or slot scope,
-// the literal text "..." as a heading or alias, and so on. Centralising
-// these checks keeps applyScopeFields itself a plain field-walker.
-func validateScopeShape(sc Scope, path string) error {
+// semantic sense. It looks at the parsed Scope (for heading kind
+// and field values) and at the raw map (so a forbidden key is
+// caught by its presence, not its post-parsed value).
+func validateScopeShape(sc Scope, m map[string]any, path string) error {
 	if !sc.Wildcard && !sc.Preamble && strings.TrimSpace(sc.Heading) == "" {
 		return fmt.Errorf(
 			"%s: literal scope must set a non-empty heading", path)
-	}
-	if (sc.Preamble || sc.Wildcard) && len(sc.Aliases) > 0 {
-		return fmt.Errorf(
-			"%s: aliases are not allowed on a preamble or slot scope "+
-				"(no heading text to alias)", path)
-	}
-	if sc.Preamble && len(sc.Sections) > 0 {
-		return fmt.Errorf(
-			"%s: preamble (`heading: null`) cannot carry `sections:` "+
-				"— the first heading terminates the preamble's range",
-			path)
 	}
 	if strings.TrimSpace(sc.Heading) == SectionWildcard {
 		return fmt.Errorf(
@@ -249,6 +252,31 @@ func validateScopeShape(sc Scope, path string) error {
 					"declare a separate `heading: {unlisted: true}` "+
 					"entry if you need a slot at that position",
 				path, SectionWildcard)
+		}
+	}
+	if sc.Wildcard {
+		return rejectKeys(m, path, "slot (`heading: {unlisted: true}`)",
+			"required", "aliases", "closed", "sections", "rules")
+	}
+	if sc.Preamble {
+		return rejectKeys(m, path, "preamble (`heading: null`)",
+			"aliases", "sections")
+	}
+	return nil
+}
+
+// rejectKeys errors if any forbidden key is present in m. The
+// shape label and key list go into the error so the user sees
+// which field is incompatible and why. Forbidden keys are checked
+// by presence (zero-value or false still rejects), matching the
+// repeating-pattern rejection's contract.
+func rejectKeys(m map[string]any, path, shape string, keys ...string) error {
+	for _, k := range keys {
+		if _, ok := m[k]; ok {
+			return fmt.Errorf(
+				"%s: `%s:` is not allowed on a %s scope "+
+					"(the key is silently ignored — remove it)",
+				path, k, shape)
 		}
 	}
 	return nil

@@ -88,9 +88,12 @@ takes one of three shapes:
   not list by name. The slot is positional, but
   out-of-order detection still claims a heading whose
   text matches a later listed scope, so the slot only
-  absorbs truly-unlisted sections. Slots cannot carry
-  `aliases:`. Plan 142/149 will extend the mapping
-  form with `{any: true}` and `{pattern: "..."}`.
+  absorbs truly-unlisted sections. Slots are
+  positional-only — they cannot carry `aliases:`,
+  `sections:`, `rules:`, `closed:`, or `required:`;
+  the parser rejects those keys. Plan 142/149 will
+  extend the mapping form with `{any: true}` and
+  `{pattern: "..."}`.
 
 ### Nested sections
 

@@ -159,6 +159,13 @@ Out-of-order detection still claims a heading whose
 text matches a later listed scope, so the slot only
 absorbs truly-unlisted sections.
 
+Slots are positional-only: the parser rejects
+`aliases:`, `sections:`, `rules:`, `closed:`, and
+`required:` on a slot scope. The preamble
+(`heading: null`) accepts `required:`, `closed:`,
+and `rules:` for its line range; it rejects
+`aliases:` and `sections:`.
+
 The document's H1 is reserved for the title and is
 validated by `first-line-heading`; inline schemas
 constrain H2 and below.

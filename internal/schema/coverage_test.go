@@ -1000,7 +1000,7 @@ func TestParseInline_RejectsAliasesOnPreamble(t *testing.T) {
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "aliases are not allowed")
+	assert.Contains(t, err.Error(), "`aliases:` is not allowed")
 }
 
 func TestParseInline_RejectsSectionsOnPreamble(t *testing.T) {
@@ -1029,7 +1029,72 @@ func TestParseInline_RejectsAliasesOnSlot(t *testing.T) {
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "aliases are not allowed")
+	assert.Contains(t, err.Error(), "`aliases:` is not allowed")
+}
+
+// TestParseInline_RejectsSlotForbiddenKeys regresses the round-3
+// review: a slot's `sections:` / `rules:` / `closed:` / `required:`
+// fields used to parse silently because validateScopes skips
+// wildcard scopes. Reject them by key presence at parse time so
+// authors see the misconfiguration immediately.
+func TestParseInline_RejectsSlotForbiddenKeys(t *testing.T) {
+	cases := []struct {
+		key string
+		val any
+	}{
+		{"sections", []any{map[string]any{"heading": "Sub"}}},
+		{"rules", map[string]any{
+			"paragraph-readability": map[string]any{"max-index": 12.0},
+		}},
+		{"closed", true},
+		{"required", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			raw := map[string]any{
+				"sections": []any{
+					map[string]any{
+						"heading": map[string]any{"unlisted": true},
+						tc.key:    tc.val,
+					},
+				},
+			}
+			_, err := ParseInline(raw, "kind x")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.key)
+			assert.Contains(t, err.Error(), "slot")
+		})
+	}
+}
+
+func TestParseInline_SlotClearsRequiredDefault(t *testing.T) {
+	// Slots inherit the parseInlineScopeEntry default Required=true,
+	// but the heading mapping flips it back to false so the
+	// in-memory shape matches the file-based parser.
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": map[string]any{"unlisted": true}},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 1)
+	assert.False(t, sch.Sections[0].Required,
+		"slot scopes must report Required=false")
+}
+
+func TestParseInline_PreambleClearsRequiredDefault(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": nil},
+			map[string]any{"heading": "Goal"},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 2)
+	assert.False(t, sch.Sections[0].Required,
+		"preamble scopes must report Required=false")
 }
 
 func TestParseInline_RejectsEmptyHeadingMapping(t *testing.T) {

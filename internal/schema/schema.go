@@ -93,8 +93,11 @@ type Scope struct {
 	Heading string
 
 	// Required reports whether a matching heading must appear in
-	// the document. Defaults to true on parse; wildcard scopes set
-	// it to false.
+	// the document. Literal scopes default to true; preamble and
+	// slot (wildcard) scopes have no heading to require — both
+	// parsers leave Required at false for them. The parser rejects
+	// an explicit `required:` key on preamble or slot entries so
+	// the in-memory value is unambiguous.
 	Required bool
 
 	// Aliases lists alternate heading texts that match this scope.
