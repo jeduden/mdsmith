@@ -32,27 +32,30 @@ repo.
 
 ## Background
 
+This section describes the pre-implementation state.
+
 [release.yml](../.github/workflows/release.yml)
-already builds `mdsmith-<goos>-<goarch>[.exe]` for
+already built `mdsmith-<goos>-<goarch>[.exe]` for
 linux and darwin on amd64 and arm64, plus windows on
-amd64. It also packages the VS Code extension as a
-`.vsix` and uploads everything plus a `checksums.txt`
-to a GitHub release. The Go binary embeds the tag via
+amd64. It also packaged the VS Code extension as a
+`.vsix` and uploaded everything plus a `checksums.txt`
+to a GitHub release. The Go binary embedded the tag via
 `-ldflags="-X main.version=${VERSION}"` (see
 [main.go](../cmd/mdsmith/main.go)).
 
-Three gaps remain. First,
+Three gaps remained. First,
 [editors/vscode/package.json](../editors/vscode/package.json)
-ships a hard-coded `"version": "0.1.2"`; the
-`vsce package --out` flag only controls the filename.
-Second, there is no npm, PyPI, asdf, or mise channel.
+shipped a hard-coded `"version": "0.1.2"`; the
+`vsce package --out` flag only controlled the filename.
+Second, there was no npm, PyPI, asdf, or mise channel.
 
-Third, the `.vsix` is only attached to the GitHub
-release. It is not on the Visual Studio Marketplace,
-so VS Code's "Install" button cannot find it. It is
+Third, the `.vsix` was only attached to the GitHub
+release. It was not on the Visual Studio Marketplace,
+so VS Code's "Install" button could not find it. It was
 not on Open VSX either, so VSCodium, Cursor, Theia,
-and Gitpod users have no source. This plan closes
-all three gaps in one pass.
+and Gitpod users had no source. This plan closed the
+npm, PyPI, and VS Code marketplace gaps; asdf and mise
+moved to [plan/145](145_asdf-mise-registry-submissions.md).
 
 ## Distribution strategy per manager
 
