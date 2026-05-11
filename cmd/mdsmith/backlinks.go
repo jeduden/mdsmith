@@ -252,9 +252,11 @@ func collectBacklinks(
 	var errs []error
 	for _, src := range files {
 		srcRel := workspaceRelativePath(src, rootDir)
+		// Self-links count: the contract is "every workspace file
+		// that links to <target>", and a file that links to itself
+		// satisfies that as literally as any other source.
 		if !sourceMatches(srcRel, includePatterns) ||
-			config.IsIgnored(ignorePatterns, srcRel) ||
-			srcRel == wantTarget {
+			config.IsIgnored(ignorePatterns, srcRel) {
 			continue
 		}
 		rs, err := extractBacklinksFromSource(

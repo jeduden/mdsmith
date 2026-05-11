@@ -282,6 +282,25 @@ func TestCollectBacklinks_IgnorePatternsExclude(t *testing.T) {
 	}
 }
 
+// TestCollectBacklinks_SelfLink confirms self-references count as
+// incoming edges. The contract is "every workspace file that links
+// to <target>" — a file that links to itself satisfies that as
+// literally as any other source.
+func TestCollectBacklinks_SelfLink(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	// docs/api.md links to itself via `api.md`.
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "api.md"),
+		[]byte("# API\n\nSee [back to top](api.md).\n"), 0o644))
+	files := []string{filepath.Join(root, "docs", "api.md")}
+
+	got, errs := collectBacklinks(files, root, "docs/api.md", "", nil, nil, 0, true)
+	require.Empty(t, errs)
+	require.Len(t, got, 1)
+	assert.Equal(t, "docs/api.md", got[0].Source)
+	assert.Equal(t, "api.md", got[0].Target)
+}
+
 // TestCollectBacklinks_FrontMatterStrippingDisabled verifies the
 // stripFrontMatter parameter is honored. When set to false (matching
 // `frontMatter: false` in config), collectBacklinks parses the entire
