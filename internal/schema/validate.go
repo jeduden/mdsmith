@@ -139,48 +139,77 @@ func validateScopes(
 		}
 	}
 
-	// Handle remaining doc headings. A leftover that matches an
-	// unclaimed listed scope is flagged as out-of-order regardless
-	// of open/closed — the user listed the section, so its position
-	// is still a constraint. Other leftovers depend on closed:
-	// flagged as unexpected in closed scopes, silently consumed in
-	// open ones.
+	newIdx, leftoverDiags := handleLeftoverHeadings(
+		f, scopes, claimed, docHeads, docIdx, expectedLevel,
+		closed, allowExtra, mkDiag)
+	diags = append(diags, leftoverDiags...)
+	return newIdx, diags
+}
+
+// handleLeftoverHeadings processes doc headings that survived the
+// scope iteration. A leftover that matches an unclaimed listed
+// scope is flagged as out-of-order regardless of open/closed — the
+// user listed the section, so its position is still a constraint —
+// and its child sections are validated recursively so nested
+// required sections still surface. Other leftovers depend on
+// closed: flagged as unexpected in closed scopes, silently
+// consumed in open ones.
+func handleLeftoverHeadings(
+	f *lint.File, scopes []Scope, claimed map[int]bool,
+	docHeads []DocHeading, docIdx, expectedLevel int,
+	closed, allowExtra bool, mkDiag MakeDiag,
+) (int, []lint.Diagnostic) {
+	var diags []lint.Diagnostic
 	for docIdx < len(docHeads) {
 		dh := docHeads[docIdx]
 		if dh.Level < expectedLevel {
 			break
 		}
-		if dh.Level == expectedLevel {
-			diags = append(diags, leftoverDiag(
-				f, dh, scopes, claimed, expectedLevel, closed, allowExtra, mkDiag)...)
+		if dh.Level != expectedLevel {
+			docIdx++
+			continue
+		}
+		if idx := unclaimedListedScope(scopes, dh, claimed); idx >= 0 {
+			newIdx, claimDiags := claimLateScope(
+				f, scopes, idx, expectedLevel, docHeads, docIdx, claimed, mkDiag)
+			diags = append(diags, claimDiags...)
+			docIdx = newIdx
+			continue
+		}
+		if !allowExtra && closed {
+			diags = append(diags, mkDiag(f.Path, dh.Line,
+				fmt.Sprintf("unexpected section %q",
+					formatHeading(dh.Level, dh.Text))))
 		}
 		docIdx++
 	}
 	return docIdx, diags
 }
 
-// leftoverDiag returns diagnostics for a doc heading that survived
-// the matchScope iteration. If it matches an unclaimed listed scope
-// (a section the user explicitly named), emit "out of order" and
-// mark that scope claimed. Otherwise, emit "unexpected" only when
-// the parent is closed and no wildcard tolerates the slot.
-func leftoverDiag(
-	f *lint.File, dh DocHeading, scopes []Scope, claimed map[int]bool,
-	expectedLevel int, closed, allowExtra bool, mkDiag MakeDiag,
-) []lint.Diagnostic {
-	if idx := unclaimedListedScope(scopes, dh, claimed); idx >= 0 {
-		claimed[idx] = true
-		return []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-			fmt.Sprintf(
-				"section %q out of order: expected before this position",
-				formatHeading(dh.Level, dh.Text)))}
+// claimLateScope marks a late-arriving listed scope as claimed,
+// emits its out-of-order diagnostic, and recurses into the scope's
+// nested children so missing-required-section diagnostics still
+// surface beneath a late parent.
+func claimLateScope(
+	f *lint.File, scopes []Scope, idx, expectedLevel int,
+	docHeads []DocHeading, docIdx int, claimed map[int]bool,
+	mkDiag MakeDiag,
+) (int, []lint.Diagnostic) {
+	dh := docHeads[docIdx]
+	diags := []lint.Diagnostic{mkDiag(f.Path, dh.Line,
+		fmt.Sprintf(
+			"section %q out of order: expected before this position",
+			formatHeading(dh.Level, dh.Text)))}
+	claimed[idx] = true
+	docIdx++
+	if len(scopes[idx].Sections) > 0 {
+		newIdx, childDiags := validateScopes(
+			f, scopes[idx].Sections, scopes[idx].Closed,
+			docHeads, docIdx, expectedLevel+1, mkDiag)
+		diags = append(diags, childDiags...)
+		docIdx = newIdx
 	}
-	if !allowExtra && closed {
-		return []lint.Diagnostic{mkDiag(f.Path, dh.Line,
-			fmt.Sprintf("unexpected section %q",
-				formatHeading(dh.Level, dh.Text)))}
-	}
-	return nil
+	return docIdx, diags
 }
 
 // unclaimedListedScope returns the index of the first unclaimed
@@ -206,11 +235,16 @@ func buildRequiredByText(scopes []Scope) map[string][]int {
 		if sc.Wildcard {
 			continue
 		}
-		if fieldinterp.ContainsField(sc.Heading) {
-			continue
+		if !fieldinterp.ContainsField(sc.Heading) {
+			out[sc.Heading] = append(out[sc.Heading], i)
 		}
-		out[sc.Heading] = append(out[sc.Heading], i)
 		for _, a := range sc.Aliases {
+			// Skip placeholder aliases — they cannot be a literal
+			// map key; the findOutOfOrderIdx fallback handles them
+			// via scopeMatchesHeading.
+			if fieldinterp.ContainsField(a) {
+				continue
+			}
 			out[a] = append(out[a], i)
 		}
 	}
@@ -354,11 +388,10 @@ func nextUnclaimed(cands []int, claimed map[int]bool, minIdx int) int {
 
 // findOutOfOrderIdx returns the first unclaimed scope at index >=
 // minIdx that matches dh, scanning placeholder-bearing scopes too.
-// requiredByText keys only the scopes whose heading is literal (no
-// {field} interpolation) because we cannot index those by text; the
-// fallback closes the gap by calling scopeMatchesHeading on every
-// remaining candidate so a placeholder-pattern scope can still be
-// claimed as out-of-order.
+// requiredByText keys only fully-literal heading/alias text; a
+// scope with placeholder interpolation in either its Heading or
+// any of its Aliases falls through to the scopeMatchesHeading
+// scan, so out-of-order detection still picks it up.
 func findOutOfOrderIdx(
 	scopes []Scope, dh DocHeading,
 	requiredByText map[string][]int, claimed map[int]bool, minIdx int,
@@ -371,8 +404,9 @@ func findOutOfOrderIdx(
 		if claimed[i] || sc.Wildcard {
 			continue
 		}
-		if !fieldinterp.ContainsField(sc.Heading) {
-			// Literal scopes are already indexed in requiredByText.
+		if !scopeHasPlaceholder(sc) {
+			// Fully-literal scopes are already indexed in
+			// requiredByText; nothing the fallback can find.
 			continue
 		}
 		if scopeMatchesHeading(sc, dh) {
@@ -380,6 +414,18 @@ func findOutOfOrderIdx(
 		}
 	}
 	return -1
+}
+
+func scopeHasPlaceholder(sc Scope) bool {
+	if fieldinterp.ContainsField(sc.Heading) {
+		return true
+	}
+	for _, a := range sc.Aliases {
+		if fieldinterp.ContainsField(a) {
+			return true
+		}
+	}
+	return false
 }
 
 // MatchesHeading reports whether sc matches the heading text in dh.

@@ -293,8 +293,14 @@ func resolveIncludePath(
 // readPath reads through RootFS when configured, falling back to the
 // OS filesystem. The behaviour mirrors the legacy
 // requiredstructure.readSchemaFile helper so existing fixtures keep
-// resolving paths the same way.
+// resolving paths the same way. A zero MaxBytes is normalised to
+// lint.DefaultMaxInputBytes so a default-constructed FileReader
+// does not silently read unbounded schema/include files.
 func (r *FileReader) readPath(path string) ([]byte, error) {
+	maxBytes := r.MaxBytes
+	if maxBytes == 0 {
+		maxBytes = lint.DefaultMaxInputBytes
+	}
 	if r.RootFS != nil {
 		if filepath.IsAbs(path) {
 			return nil, fmt.Errorf("absolute schema path not allowed")
@@ -304,9 +310,9 @@ func (r *FileReader) readPath(path string) ([]byte, error) {
 		if clean == ".." || strings.HasPrefix(clean, "../") {
 			return nil, fmt.Errorf("schema path %q escapes project root", path)
 		}
-		return lint.ReadFSFileLimited(r.RootFS, clean, r.MaxBytes)
+		return lint.ReadFSFileLimited(r.RootFS, clean, maxBytes)
 	}
-	return lint.ReadFileLimited(path, r.MaxBytes)
+	return lint.ReadFileLimited(path, maxBytes)
 }
 
 // headingsToScopes converts a flat list of (level, text) headings

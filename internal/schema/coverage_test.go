@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -912,6 +913,95 @@ func TestValidate_OutOfOrderHonoursPlaceholderHeadings(t *testing.T) {
 		"placeholder-pattern scope must participate in out-of-order detection")
 	assert.False(t, missing,
 		"placeholder scope must not also surface as missing once claimed")
+}
+
+// TestValidate_LateListedScopeRecursesIntoChildren regresses the
+// case where the trailing loop claims a late-arriving listed scope
+// — it must also validate that scope's nested required sections so
+// missing children still surface as diagnostics. The optional B is
+// the trigger: matchScope skips it on the way past (optional-skip
+// shortcut), so B only surfaces via the trailing loop.
+func TestValidate_LateListedScopeRecursesIntoChildren(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": "A", "required": true},
+			map[string]any{
+				"heading":  "B",
+				"required": false,
+				"sections": []any{
+					map[string]any{"heading": "B-child", "required": true},
+				},
+			},
+			map[string]any{"heading": "C", "required": true},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// Doc: A, C, then late B without its B-child.
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## A\n\nx\n\n## C\n\ny\n\n## B\n\nz\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var oo, missing bool
+	for _, d := range diags {
+		if d.Message == `section "## B" out of order: expected before this position` {
+			oo = true
+		}
+		if d.Message == `missing required section "### B-child"` {
+			missing = true
+		}
+	}
+	assert.True(t, oo, "late optional B should be flagged out-of-order")
+	assert.True(t, missing,
+		"late B's nested required B-child must still be checked")
+}
+
+// TestValidate_PlaceholderAliasParticipatesInOutOfOrder regresses
+// the buildRequiredByText + findOutOfOrderIdx fix: a scope with a
+// literal heading and a placeholder alias must still be detected
+// as a later listed match via the fallback scan.
+func TestValidate_PlaceholderAliasParticipatesInOutOfOrder(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": "A", "required": true},
+			map[string]any{
+				"heading":  "Profile",
+				"required": true,
+				"aliases":  []any{"{user}: {role}"},
+			},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## alice: admin\n\nx\n\n## A\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var oo bool
+	for _, d := range diags {
+		if d.Message == `section "## alice: admin" out of order: expected after "## A"` {
+			oo = true
+		}
+		assert.NotContains(t, d.Message, "missing required",
+			"placeholder alias must claim the heading, not leave Profile missing")
+	}
+	assert.True(t, oo,
+		"placeholder alias must participate in out-of-order detection")
+}
+
+// TestParseFile_DefaultMaxBytesCapped regresses the FileReader
+// MaxBytes default: a zero-value reader now defaults to
+// lint.DefaultMaxInputBytes so a 5 MB schema file is rejected
+// instead of silently read.
+func TestParseFile_DefaultMaxBytesCapped(t *testing.T) {
+	dir := t.TempDir()
+	// Build a file larger than the 2 MB default.
+	big := make([]byte, lint.DefaultMaxInputBytes+1)
+	for i := range big {
+		big[i] = 'a'
+	}
+	p := writeFile(t, dir, "proto.md", "# ?\n\n## "+string(big)+"\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file too large")
 }
 
 // TestValidate_OpenScopeFlagsLateListedScope regresses a Copilot
