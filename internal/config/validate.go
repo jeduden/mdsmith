@@ -28,32 +28,75 @@ func ValidateKinds(cfg *Config) error {
 	return nil
 }
 
-// validateKindSchemaSources rejects a kind that declares a schema
-// through both the inline `schema:` block and the legacy
-// `rules.required-structure.schema:` path. The two sources are
-// equivalent but mutually exclusive; setting both makes the
-// effective schema ambiguous.
+// validateKindSchemaSources rejects a kind that declares more than
+// one schema source. The three forms that conflict pairwise:
+//
+//   - `kinds.<name>.schema:` (inline block on KindBody.Schema)
+//   - `kinds.<name>.rules.required-structure.schema:` (file path)
+//   - `kinds.<name>.rules.required-structure.inline-schema:`
+//     (inline map under the rule settings)
+//
+// Any two of these on the same kind make the effective schema
+// ambiguous; the validator surfaces the conflict at load time with
+// a message naming both sources.
 func validateKindSchemaSources(name string, body KindBody) error {
-	if body.Schema == nil {
-		return nil
+	rsCfg, hasRS := body.Rules["required-structure"]
+	pathSet, pathSetting := schemaPathSetting(rsCfg, hasRS)
+	inlineSet, inlineSetting := schemaInlineSetting(rsCfg, hasRS)
+
+	if body.Schema != nil && pathSet {
+		return fmt.Errorf(
+			"kind %q: schema is declared both inline (kinds.%s.schema:) "+
+				"and as a file (kinds.%s.rules.required-structure.schema: %q); "+
+				"pick one source",
+			name, name, name, pathSetting)
 	}
-	rsCfg, ok := body.Rules["required-structure"]
+	if body.Schema != nil && inlineSet {
+		return fmt.Errorf(
+			"kind %q: schema is declared both inline (kinds.%s.schema:) "+
+				"and under kinds.%s.rules.required-structure.inline-schema:; "+
+				"pick one source — keep the top-level kinds.%s.schema: block",
+			name, name, name, name)
+	}
+	if pathSet && inlineSet {
+		return fmt.Errorf(
+			"kind %q: required-structure has both `schema:` (%q) and "+
+				"`inline-schema:` set under kinds.%s.rules.required-structure; "+
+				"pick one source",
+			name, pathSetting, name)
+	}
+	_ = inlineSetting
+	return nil
+}
+
+func schemaPathSetting(rs RuleCfg, hasRS bool) (bool, string) {
+	if !hasRS {
+		return false, ""
+	}
+	v, ok := rs.Settings["schema"]
 	if !ok {
-		return nil
+		return false, ""
 	}
-	pathSetting, ok := rsCfg.Settings["schema"]
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return false, ""
+	}
+	return true, s
+}
+
+func schemaInlineSetting(rs RuleCfg, hasRS bool) (bool, map[string]any) {
+	if !hasRS {
+		return false, nil
+	}
+	v, ok := rs.Settings["inline-schema"]
 	if !ok {
-		return nil
+		return false, nil
 	}
-	path, ok := pathSetting.(string)
-	if !ok || path == "" {
-		return nil
+	m, ok := v.(map[string]any)
+	if !ok || len(m) == 0 {
+		return false, nil
 	}
-	return fmt.Errorf(
-		"kind %q: schema is declared both inline (kinds.%s.schema:) "+
-			"and as a file (kinds.%s.rules.required-structure.schema: %q); "+
-			"pick one source",
-		name, name, name, path)
+	return true, m
 }
 
 // ValidateFrontMatterKinds returns an error if any of the supplied front-matter

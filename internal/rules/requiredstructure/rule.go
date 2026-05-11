@@ -52,6 +52,9 @@ func (r *Rule) Category() string { return "meta" }
 
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {
+	if err := rejectDualSchemaSettings(settings); err != nil {
+		return err
+	}
 	for k, v := range settings {
 		switch k {
 		case "schema":
@@ -99,6 +102,28 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// rejectDualSchemaSettings refuses a settings map that supplies both
+// `schema` (file path) and `inline-schema` (inline map). The merge
+// layer clears the prior source when a later layer installs a new
+// one, so the rule normally sees only one — this guard catches the
+// case where a single config layer lists both.
+func rejectDualSchemaSettings(settings map[string]any) error {
+	pathV, hasPath := settings["schema"]
+	mapV, hasInline := settings["inline-schema"]
+	if !hasPath || !hasInline {
+		return nil
+	}
+	path, _ := pathV.(string)
+	inline, _ := mapV.(map[string]any)
+	if path == "" || len(inline) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"required-structure: cannot set both `schema` (%q) and "+
+			"`inline-schema` on the same layer — pick one source",
+		path)
 }
 
 // DefaultSettings implements rule.Configurable.

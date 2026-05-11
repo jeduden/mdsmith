@@ -30,6 +30,55 @@ kinds:
 	require.Contains(t, body.Schema, "sections")
 }
 
+// TestKindRejectsInlineMapInRules rejects a kind whose
+// `rules.required-structure.inline-schema` is set together with the
+// top-level `schema:` block — both declare an inline source.
+func TestKindRejectsInlineMapInRules(t *testing.T) {
+	yml := `
+kinds:
+  rfc:
+    schema:
+      sections:
+        - heading: "Overview"
+    rules:
+      required-structure:
+        inline-schema:
+          sections:
+            - heading: "Other"
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(yml), 0o644))
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rfc")
+	assert.Contains(t, err.Error(), "inline-schema")
+}
+
+// TestKindRejectsBothSchemaAndInlineUnderRules covers the case
+// where a single kind sets both `schema` and `inline-schema` under
+// rules.required-structure (no top-level `schema:` block).
+func TestKindRejectsBothSchemaAndInlineUnderRules(t *testing.T) {
+	yml := `
+kinds:
+  rfc:
+    rules:
+      required-structure:
+        schema: schemas/rfc.md
+        inline-schema:
+          sections:
+            - heading: "Overview"
+`
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(yml), 0o644))
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rfc")
+	assert.Contains(t, err.Error(), "schema:")
+	assert.Contains(t, err.Error(), "inline-schema:")
+}
+
 // TestKindRejectsDualSchemaSources covers acceptance criterion #8:
 // declaring both an inline schema and the legacy file-schema path on
 // the same kind must error at load time.

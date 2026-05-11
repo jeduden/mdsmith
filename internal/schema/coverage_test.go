@@ -865,6 +865,96 @@ func TestIsCUEIdent_EmptyAndDigitFirst(t *testing.T) {
 	assert.True(t, isCUEIdent("foo123"))
 }
 
+func TestValidate_ClosedTrailingExtra(t *testing.T) {
+	// Trailing heading past all required scopes with closed=true
+	// produces the trailing-loop "unexpected section" diagnostic
+	// (validateScopes line 151-155).
+	raw := map[string]any{
+		"closed": true,
+		"sections": []any{
+			map[string]any{"heading": "Goal"},
+		},
+	}
+	sch, err := ParseInline(raw, "kind plan")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Goal\n\nx\n\n## Trailing\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var trailing bool
+	for _, d := range diags {
+		if d.Message == `unexpected section "## Trailing"` {
+			trailing = true
+		}
+	}
+	assert.True(t, trailing,
+		"expected the trailing-extra diagnostic from validateScopes")
+}
+
+func TestValidate_ShallowNonMatchEndsScopeList(t *testing.T) {
+	// In a nested validateScopes call, when the next doc heading is
+	// shallower than expected AND doesn't match the current scope's
+	// text, matchScope returns false without claiming. This covers
+	// the "return docIdx, diags, false" line at validate.go:204.
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading":  "Parent",
+				"required": true,
+				"sections": []any{
+					map[string]any{"heading": "Child"},
+				},
+			},
+			map[string]any{
+				"heading":  "Sibling",
+				"required": true,
+			},
+		},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// Doc: Parent then Sibling at H2 — Child is missing, and
+	// Sibling is shallower than the H3 the nested call expects.
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Parent\n\nx\n\n## Sibling\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var missing bool
+	for _, d := range diags {
+		if d.Message == `missing required section "### Child"` {
+			missing = true
+		}
+	}
+	assert.True(t, missing, "expected missing-Child diagnostic")
+}
+
+func TestValidate_DeeperHeadingConsumedAsOrphan(t *testing.T) {
+	// Doc has a deeper heading that doesn't match the scope and
+	// doesn't match any later listed scope. matchScope must skip
+	// it silently (validate.go:220-222).
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": "Goal"},
+		},
+	}
+	sch, err := ParseInline(raw, "kind plan")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n### Orphan\n\nx\n\n## Goal\n\ny\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	for _, d := range diags {
+		assert.NotContains(t, d.Message, "Orphan",
+			"deeper orphan should not trip a diagnostic")
+	}
+}
+
+func TestPatternRegex_NilCacheHit(t *testing.T) {
+	// First call caches the nil for a compile-failing pattern; the
+	// second call hits the cache-nil branch.
+	pattern := "{x} bad ( pattern"
+	patternRegexCache.Store(pattern, (*regexp.Regexp)(nil))
+	got := patternRegex(pattern)
+	assert.Nil(t, got, "cache-hit on nil should return nil")
+}
+
 func TestValidate_FilenameMatchesPattern(t *testing.T) {
 	// The "matched" return branch of validateFilename.
 	raw := map[string]any{

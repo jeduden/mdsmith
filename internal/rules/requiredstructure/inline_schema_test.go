@@ -257,6 +257,35 @@ func TestCheck_InlineSchema_FrontmatterCUE(t *testing.T) {
 // TestApplyScopeRules_NilSchemaShortCircuits covers the defensive
 // guard at the top of applyScopeRules so coverage reflects the
 // fact that nil schemas are handled.
+// TestApplySettings_RejectsBothSources covers the rule-level
+// mutual-exclusion guard: a single settings map that names both
+// `schema` and `inline-schema` is rejected.
+func TestApplySettings_RejectsBothSources(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"schema": "schemas/rfc.md",
+		"inline-schema": map[string]any{
+			"sections": []any{map[string]any{"heading": "X"}},
+		},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot set both")
+}
+
+func TestApplySettings_AllowsEmptySchemaWithInline(t *testing.T) {
+	// An empty `schema:""` next to a real `inline-schema` is the
+	// merge-clears-prior-state state; the rule must still accept it.
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"schema": "",
+		"inline-schema": map[string]any{
+			"sections": []any{map[string]any{"heading": "X"}},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, r.InlineSchema)
+}
+
 func TestApplyScopeRules_NilSchemaShortCircuits(t *testing.T) {
 	r := &Rule{}
 	f := newTestFile(t, "doc.md", "# T\n\n## Foo\n")
