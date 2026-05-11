@@ -386,37 +386,38 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 }
 
 // kindDeclaresSchema reports whether a kind body declares a schema
-// source — either inline (KindBody.Schema) or via the legacy
-// rules.required-structure.schema: path.
+// source — either inline (KindBody.Schema) or via the
+// rules.required-structure.{schema,inline-schema} settings.
 func kindDeclaresSchema(body KindBody) bool {
 	if body.Schema != nil {
 		return true
 	}
-	rs, ok := body.Rules["required-structure"]
-	if !ok {
-		return false
-	}
-	v, ok := rs.Settings["schema"]
-	if !ok {
-		return false
-	}
-	s, ok := v.(string)
-	return ok && s != ""
+	return rulesDeclareSchema(body.Rules)
 }
 
 // overrideDeclaresSchema reports whether a glob override sets a
-// schema source on required-structure.
+// schema source on required-structure. Both schema sources count —
+// without this, an inline schema installed by an override would
+// leave a prior file-schema path intact and "last source wins"
+// could yield ambiguous configs.
 func overrideDeclaresSchema(o Override) bool {
-	rs, ok := o.Rules["required-structure"]
+	return rulesDeclareSchema(o.Rules)
+}
+
+// rulesDeclareSchema reports whether a per-layer rules map sets
+// either schema source on required-structure.
+func rulesDeclareSchema(rules map[string]RuleCfg) bool {
+	rs, ok := rules["required-structure"]
 	if !ok {
 		return false
 	}
-	v, ok := rs.Settings["schema"]
-	if !ok {
-		return false
+	if path, ok := rs.Settings["schema"].(string); ok && path != "" {
+		return true
 	}
-	s, ok := v.(string)
-	return ok && s != ""
+	if m, ok := rs.Settings["inline-schema"].(map[string]any); ok && len(m) > 0 {
+		return true
+	}
+	return false
 }
 
 // clearSchemaState removes any prior schema source from the

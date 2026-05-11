@@ -174,14 +174,14 @@ for the full file-based reference.
 
 ## Choosing a source
 
-| Need                                   | Inline | File      |
-|----------------------------------------|--------|-----------|
-| Short schema with no templated body    | yes    | works     |
-| Schema reused via `<?include?>`        | no     | yes       |
-| Frontmatter-body `{field}` sync        | no     | yes       |
-| Nested section tree                    | yes    | flat only |
-| Per-scope rule overrides               | yes    | no        |
-| Stays next to other kind rule settings | yes    | indirect  |
+| Need                                   | Inline | File               |
+|----------------------------------------|--------|--------------------|
+| Short schema with no templated body    | yes    | works              |
+| Schema reused via `<?include?>`        | no     | yes                |
+| Frontmatter-body `{field}` sync        | no     | yes                |
+| Nested section tree                    | yes    | via heading levels |
+| Per-scope rule overrides               | yes    | no                 |
+| Stays next to other kind rule settings | yes    | indirect           |
 
 A project can mix sources across kinds — some kinds use
 inline schemas, others use `proto.md` — but a single

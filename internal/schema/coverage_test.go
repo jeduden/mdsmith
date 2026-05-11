@@ -1,8 +1,10 @@
 package schema
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -654,6 +656,132 @@ func TestValidateFrontmatter_InvalidCUERejects(t *testing.T) {
 	sch := &Schema{Frontmatter: map[string]string{"id": "int &"}}
 	err := ValidateFrontmatter(sch, map[string]any{"id": "x"})
 	require.Error(t, err)
+}
+
+func TestValidate_ShallowLevelMismatchClaimedByText(t *testing.T) {
+	// A scope at H3 matches a doc heading at H2 (shallower) by
+	// text. Without the shallower-match branch in matchScope, this
+	// would cascade into "missing required" + "unexpected" pair.
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading":  "Diagnosis",
+				"required": true,
+				"sections": []any{
+					map[string]any{"heading": "Step"},
+				},
+			},
+		},
+	}
+	sch, err := ParseInline(raw, "kind runbook")
+	require.NoError(t, err)
+	// Doc has Step at H2 instead of H3.
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Diagnosis\n\n## Step\n\nx\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var levelDiag bool
+	for _, d := range diags {
+		if d.Message == `heading level mismatch for "Step": expected h3, got h2` {
+			levelDiag = true
+		}
+		assert.NotContains(t, d.Message, "missing required",
+			"shallow-match should claim the scope, not leave it missing")
+	}
+	assert.True(t, levelDiag,
+		"expected a level-mismatch diagnostic for shallow Step")
+}
+
+func TestValidate_DeeperOrphanConsumedSilently(t *testing.T) {
+	// A deeper heading whose text matches nothing should be skipped
+	// silently (covers matchScope's dh.Level > expectedLevel
+	// branch in the no-out-of-order path).
+	raw := map[string]any{
+		"closed": true,
+		"sections": []any{
+			map[string]any{"heading": "Goal"},
+		},
+	}
+	sch, err := ParseInline(raw, "kind plan")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Goal\n\n### Orphan\n\nx\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags,
+		"deeper orphan heading should be consumed silently")
+}
+
+func TestValidate_InvalidFilenamePattern(t *testing.T) {
+	// A pattern that filepath.Match rejects (e.g., unmatched
+	// bracket) surfaces as a diagnostic at the document level.
+	raw := map[string]any{
+		"require": map[string]any{"filename": "[unterminated"},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md", "# T\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "invalid filename pattern")
+}
+
+func TestValidateFrontmatter_HandlesNilFM(t *testing.T) {
+	sch := &Schema{Frontmatter: map[string]string{
+		"id?": "string",
+	}}
+	// nil fm is normalised to an empty map; with optional fields
+	// the schema still validates.
+	assert.NoError(t, ValidateFrontmatter(sch, nil))
+}
+
+func TestParseFile_FrontmatterEmptyBody(t *testing.T) {
+	// "---\n---\n" yields empty content between delimiters; the
+	// parser should accept it as an empty (no constraints) FM.
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md", "---\n---\n# ?\n")
+	sch, err := ParseFile(&FileReader{}, p)
+	require.NoError(t, err)
+	assert.Empty(t, sch.Frontmatter)
+}
+
+func TestParseFile_FrontmatterMalformedYAML(t *testing.T) {
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"---\nid: [unterminated\n---\n# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parsing schema frontmatter")
+}
+
+func TestParseFile_IncludeMaxDepthExceeded(t *testing.T) {
+	// Eleven nested files (a -> b -> ... -> k) push the chain
+	// length past maxIncludeDepth (10).
+	dir := t.TempDir()
+	const n = 12
+	for i := 0; i < n; i++ {
+		name := fmt.Sprintf("f%d.md", i)
+		var body string
+		if i+1 < n {
+			body = fmt.Sprintf("<?include\nfile: f%d.md\n?>\n", i+1)
+		} else {
+			body = "## Tail\n"
+		}
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, name), []byte(body), 0o644))
+	}
+	_, err := ParseFile(&FileReader{},
+		filepath.Join(dir, "f0.md"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "include depth exceeds maximum")
+}
+
+func TestPatternRegex_NilOnCompileError(t *testing.T) {
+	// Stuff a deliberately broken pattern into the cache and ensure
+	// matchesText handles the nil return without panicking. Using
+	// a unique pattern avoids contention with other tests.
+	pattern := "{n} (broken ["
+	patternRegexCache.Store(pattern, (*regexp.Regexp)(nil))
+	assert.False(t, matchesText(pattern, "anything"),
+		"matchesText should return false when patternRegex is nil")
 }
 
 // ---- Validate frontmatter CUE-placeholder skip ----

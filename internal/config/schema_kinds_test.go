@@ -118,6 +118,35 @@ func TestEffectiveClearsPriorSchemaWhenNewSourceArrives(t *testing.T) {
 		"later inline source should be present")
 }
 
+// TestEffectiveClearsPriorSchemaForOverrideInlineSchema covers the
+// path where an override (not a kind) installs an inline-schema:
+// the helper rulesDeclareSchema must recognise inline-schema as a
+// source so the prior file-schema path gets cleared.
+func TestEffectiveClearsPriorSchemaForOverrideInlineSchema(t *testing.T) {
+	cfg := &Config{
+		Rules: map[string]RuleCfg{
+			"required-structure": {Enabled: true, Settings: map[string]any{
+				"schema": "schemas/base.md",
+			}},
+		},
+		ExplicitRules: map[string]bool{"required-structure": true},
+		Overrides: []Override{
+			{Glob: []string{"*.md"}, Rules: map[string]RuleCfg{
+				"required-structure": {Enabled: true, Settings: map[string]any{
+					"inline-schema": map[string]any{
+						"sections": []any{map[string]any{"heading": "X"}},
+					},
+				}},
+			}},
+		},
+	}
+	effective := Effective(cfg, "foo.md", nil)
+	rs := effective["required-structure"]
+	assert.NotContains(t, rs.Settings, "schema",
+		"override installing inline-schema should clear prior file source")
+	assert.Contains(t, rs.Settings, "inline-schema")
+}
+
 // TestEffectiveClearsInlineWhenFileSourceArrives is the symmetric
 // case: inline first, file second. The later file source wins.
 func TestEffectiveClearsInlineWhenFileSourceArrives(t *testing.T) {
