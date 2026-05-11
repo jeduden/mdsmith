@@ -64,7 +64,7 @@ of these blocks, `merge-driver install` registers a Git
 driver that resolves it automatically.
 
 **📊 Gate releases on doc status.**
-`mdsmith query 'status: "✅"' plan/` lists every plan
+`mdsmith list query 'status: "✅"' plan/` lists every plan
 that's done — pipe it to a release script, or fail the
 release if anything is still open.
 `mdsmith metrics rank --by token-estimate --top 10 docs/` is the
@@ -143,17 +143,18 @@ row: "| [`{command}`]({filename}) | {summary} |"
 ?>
 | Command                                                      | Description                                                                          |
 |--------------------------------------------------------------|--------------------------------------------------------------------------------------|
-| [`backlinks`](docs/reference/cli/backlinks.md)               | List workspace links that point at a file.                                           |
 | [`check`](docs/reference/cli/check.md)                       | Lint Markdown files for style issues.                                                |
 | [`fix`](docs/reference/cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
 | [`help`](docs/reference/cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
 | [`init`](docs/reference/cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
 | [`kinds`](docs/reference/cli/kinds.md)                       | Inspect declared file kinds and resolve effective rule config per file.              |
+| [`list`](docs/reference/cli/list.md)                         | Selection-style commands that walk the workspace and emit matches.                   |
+| [`list backlinks`](docs/reference/cli/backlinks.md)          | List workspace links that point at a file.                                           |
+| [`list query`](docs/reference/cli/query.md)                  | Select Markdown files by a CUE expression on front matter.                           |
 | [`lsp`](docs/reference/cli/lsp.md)                           | Run a Language Server Protocol server on stdio for editor integrations.              |
 | [`merge-driver`](docs/reference/cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
 | [`metrics`](docs/reference/cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
 | [`pre-merge-commit`](docs/reference/cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
-| [`query`](docs/reference/cli/query.md)                       | Select Markdown files by a CUE expression on front matter.                           |
 | [`version`](docs/reference/cli/version.md)                   | Print the mdsmith build version and exit.                                            |
 <?/catalog?>
 

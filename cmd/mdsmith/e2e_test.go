@@ -1767,7 +1767,7 @@ func TestQuery_MaxInputSize_InvalidValue(t *testing.T) {
 	writeFixture(t, dir, "a.md", "---\nid: 1\n---\n# Hello\n")
 
 	_, stderr, exitCode := runBinaryInDir(t, dir, "",
-		"query", "--max-input-size", "not-a-size", "id: 1", "a.md")
+		"list", "query", "--max-input-size", "not-a-size", "id: 1", "a.md")
 	assert.Equal(t, 2, exitCode, "expected exit code 2 for invalid size")
 	assert.Contains(t, stderr, "invalid max-input-size")
 }

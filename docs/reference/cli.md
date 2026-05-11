@@ -20,17 +20,18 @@ row: "| [`{command}`]({filename}) | {summary} |"
 ?>
 | Command                                       | Description                                                                          |
 |-----------------------------------------------|--------------------------------------------------------------------------------------|
-| [`backlinks`](cli/backlinks.md)               | List workspace links that point at a file.                                           |
 | [`check`](cli/check.md)                       | Lint Markdown files for style issues.                                                |
 | [`fix`](cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
 | [`help`](cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
 | [`init`](cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
 | [`kinds`](cli/kinds.md)                       | Inspect declared file kinds and resolve effective rule config per file.              |
+| [`list`](cli/list.md)                         | Selection-style commands that walk the workspace and emit matches.                   |
+| [`list backlinks`](cli/backlinks.md)          | List workspace links that point at a file.                                           |
+| [`list query`](cli/query.md)                  | Select Markdown files by a CUE expression on front matter.                           |
 | [`lsp`](cli/lsp.md)                           | Run a Language Server Protocol server on stdio for editor integrations.              |
 | [`merge-driver`](cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
 | [`metrics`](cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
 | [`pre-merge-commit`](cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
-| [`query`](cli/query.md)                       | Select Markdown files by a CUE expression on front matter.                           |
 | [`version`](cli/version.md)                   | Print the mdsmith build version and exit.                                            |
 <?/catalog?>
 

@@ -22,7 +22,7 @@ func TestE2E_Query_Verbose_ExpressionNotSatisfied(t *testing.T) {
 
 	// Pass the file explicitly (not the dir) to avoid gitignore filtering.
 	missPath := filepath.Join(dir, "miss.md")
-	_, stderr, exitCode := runBinaryInDir(t, dir, "", "query", "-v", `status: "✅"`, missPath)
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "list", "query", "-v", `status: "✅"`, missPath)
 	assert.Equal(t, 1, exitCode, "expected exit 1 when no files match")
 	assert.Contains(t, stderr, "expression not satisfied",
 		"expected 'expression not satisfied' in verbose stderr, got: %s", stderr)
@@ -427,7 +427,8 @@ func TestE2E_Query_Verbose_MixedResults(t *testing.T) {
 	matchPath := filepath.Join(dir, "match.md")
 	missPath := filepath.Join(dir, "miss.md")
 	plainPath := filepath.Join(dir, "plain.md")
-	stdout, stderr, exitCode := runBinaryInDir(t, dir, "", "query", "-v", `status: "✅"`, matchPath, missPath, plainPath)
+	stdout, stderr, exitCode := runBinaryInDir(
+		t, dir, "", "list", "query", "-v", `status: "✅"`, matchPath, missPath, plainPath)
 	assert.Equal(t, 0, exitCode, "expected exit 0 (at least one match)")
 	assert.Contains(t, stdout, "match.md", "expected match.md in stdout")
 	assert.Contains(t, stderr, "expression not satisfied",

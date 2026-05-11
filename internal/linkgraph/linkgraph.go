@@ -83,7 +83,7 @@ func ParseTarget(dest string) (Target, bool) {
 // Line is body-relative — counted from the start of the parsed body,
 // not the original file. Lint rules return body-relative diagnostics
 // because the engine applies f.LineOffset for front-matter adjustment.
-// CLI callers (like `mdsmith backlinks`) that want file-relative line
+// CLI callers (like `mdsmith list backlinks`) that want file-relative line
 // numbers must add f.LineOffset themselves.
 type Link struct {
 	Line   int
@@ -175,7 +175,7 @@ func linkPosition(f *lint.File, n ast.Node) (int, int) {
 	// f.ColumnOfOffset scans backward from offset to the previous
 	// newline, so it's O(column) per call instead of the O(offset)
 	// forward scan a hand-rolled version would do — meaningful for
-	// `mdsmith backlinks` which can call this many times per file.
+	// `mdsmith list backlinks` which can call this many times per file.
 	return f.LineOfOffset(offset), f.ColumnOfOffset(offset)
 }
 

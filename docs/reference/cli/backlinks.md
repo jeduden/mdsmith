@@ -1,8 +1,8 @@
 ---
-command: backlinks
+command: list backlinks
 summary: List workspace links that point at a file.
 ---
-# `mdsmith backlinks`
+# `mdsmith list backlinks`
 
 Print every workspace file that links to `<target>`,
 one row per incoming link. The link graph is the same
@@ -10,7 +10,7 @@ one MDS027 (cross-file-reference-integrity) walks for
 broken-link checking, queried in reverse.
 
 ```text
-mdsmith backlinks [flags] <target>
+mdsmith list backlinks [flags] <target>
 ```
 
 `<target>` is workspace-relative. Append `#anchor` to
@@ -82,19 +82,19 @@ Keys are stable. Empty results emit `[]`, not `null`.
 List everything that points at `docs/api.md`:
 
 ```bash
-mdsmith backlinks docs/api.md
+mdsmith list backlinks docs/api.md
 ```
 
 Filter to a specific anchor on the target:
 
 ```bash
-mdsmith backlinks docs/api.md#authentication
+mdsmith list backlinks docs/api.md#authentication
 ```
 
 Limit to the plan directory and the first ten rows:
 
 ```bash
-mdsmith backlinks --include "plan/**" --limit 10 docs/api.md
+mdsmith list backlinks --include "plan/**" --limit 10 docs/api.md
 ```
 
 ## Scope

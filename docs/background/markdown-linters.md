@@ -204,7 +204,7 @@ What each tool **does** with the same bytes:
 | YAML front matter                         | reads it; can validate shape via CUE schema             | reads it; validates against `_types/task.md`              |
 | Body content (prose, headings)            | lints line length, headings, prose, links               | not in scope                                              |
 | Cross-file link                           | flags broken `auth-migration-log.md` (MDS027)           | flags broken link (L4) and rewrites it on rename (L5)     |
-| `status: in-progress`                     | available to `mdsmith query`                            | filterable in Bases queries; appears in backlink graphs   |
+| `status: in-progress`                     | available to `mdsmith list query`                       | filterable in Bases queries; appears in backlink graphs   |
 | `due: 2026-06-01`                         | available to query                                      | filterable with date arithmetic (`due <= today() + "7d"`) |
 | `mdsmith fix` runs                        | reformats tables, regenerates TOC/catalog               | n/a                                                       |
 | `mdbase rename` runs                      | n/a                                                     | moves the file and rewrites every incoming link           |
@@ -380,24 +380,24 @@ markdownlint fixes structural violations.
 
 ### Cross-File and Project Features
 
-| Capability           | mdsmith          | markdownlint | remark-lint                     |
-|----------------------|------------------|--------------|---------------------------------|
-| Link integrity       | [MDS027][mds027] | no           | [remark-validate-links][rl-vl]  |
-| Include sections     | [MDS021][mds021] | no           | no                              |
-| Catalog generation   | [MDS019][mds019] | no           | no                              |
-| Required structure   | [MDS020][mds020] | no           | no                              |
-| Front-matter query   | `mdsmith query`  | no           | no                              |
-| Git merge driver     | yes              | no           | no                              |
-| Metrics ranking      | yes              | no           | no                              |
-| Gitignore aware      | yes              | yes          | no                              |
-| Front matter support | yes              | via plugin   | via [remark-frontmatter][rl-fm] |
+| Capability           | mdsmith              | markdownlint | remark-lint                     |
+|----------------------|----------------------|--------------|---------------------------------|
+| Link integrity       | [MDS027][mds027]     | no           | [remark-validate-links][rl-vl]  |
+| Include sections     | [MDS021][mds021]     | no           | no                              |
+| Catalog generation   | [MDS019][mds019]     | no           | no                              |
+| Required structure   | [MDS020][mds020]     | no           | no                              |
+| Front-matter query   | `mdsmith list query` | no           | no                              |
+| Git merge driver     | yes                  | no           | no                              |
+| Metrics ranking      | yes                  | no           | no                              |
+| Gitignore aware      | yes                  | yes          | no                              |
+| Front matter support | yes                  | via plugin   | via [remark-frontmatter][rl-fm] |
 
 mdsmith has the strongest cross-file and project-level
 features. The merge driver and regenerable sections are
 unique to mdsmith. The `query` subcommand
 ([plan 78][plan78]) selects files by a CUE expression
 over front matter (e.g.
-`mdsmith query 'status: "✅"' plan/`), which no other
+`mdsmith list query 'status: "✅"' plan/`), which no other
 tool in this comparison offers natively.
 
 ### Renderer Portability

@@ -37,7 +37,7 @@ type backlinksOptions struct {
 	walk            walkCLI
 }
 
-// parseBacklinksFlags parses the flags for `mdsmith backlinks` and
+// parseBacklinksFlags parses the flags for `mdsmith list backlinks` and
 // returns the options plus the remaining positional arguments.
 func parseBacklinksFlags(args []string) (backlinksOptions, []string, error) {
 	fs := flag.NewFlagSet("backlinks", flag.ContinueOnError)
@@ -58,7 +58,7 @@ func parseBacklinksFlags(args []string) (backlinksOptions, []string, error) {
 		"Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "Usage: mdsmith backlinks [flags] <target>\n\n"+
+		fmt.Fprint(os.Stderr, "Usage: mdsmith list backlinks [flags] <target>\n\n"+
 			"List every workspace link that points at <target>. Optionally\n"+
 			"scope by anchor with `path#anchor`.\n\n"+
 			"Exit codes: 0 found, 1 none, 2 error\n\nFlags:\n")

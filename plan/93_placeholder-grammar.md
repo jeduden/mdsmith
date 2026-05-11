@@ -158,7 +158,7 @@ the list comes from config.
       opt-in rule README.
 - [x] `mdsmith help placeholder-grammar` prints the
       concept page summary.
-- [x] `mdsmith query` parses a file with CUE-pattern
+- [x] `mdsmith list query` parses a file with CUE-pattern
       front matter under a placeholder-aware kind
       (covered by test).
 - [x] All tests pass: `go test ./...`

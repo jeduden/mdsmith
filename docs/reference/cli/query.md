@@ -1,14 +1,14 @@
 ---
-command: query
+command: list query
 summary: Select Markdown files by a CUE expression on front matter.
 ---
-# `mdsmith query`
+# `mdsmith list query`
 
 Print paths of Markdown files whose front matter satisfies
 a CUE expression.
 
 ```text
-mdsmith query [flags] <cue-expr> [files...]
+mdsmith list query [flags] <cue-expr> [files...]
 ```
 
 With no file arguments, searches the current directory
@@ -27,9 +27,9 @@ recursively. Files without front matter are skipped (use
 ## Examples
 
 ```bash
-mdsmith query 'status: "✅"' plan/
-mdsmith query '#mdsxx & {status: "ready"}' internal/rules/
-mdsmith query -0 'kinds: [..."plan"...]' . | xargs -0 wc -l
+mdsmith list query 'status: "✅"' plan/
+mdsmith list query '#mdsxx & {status: "ready"}' internal/rules/
+mdsmith list query -0 'kinds: [..."plan"...]' . | xargs -0 wc -l
 ```
 
 The expression is full CUE — match scalars, regex, list

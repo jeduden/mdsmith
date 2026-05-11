@@ -370,7 +370,7 @@ Show
 Type "# Query: filter files by a CUE expression on front matter"
 Enter
 Sleep 100ms
-Type `mdsmith query 'status: "✅"' plan/`
+Type `mdsmith list query 'status: "✅"' plan/`
 Sleep 100ms
 Enter
 Sleep 300ms

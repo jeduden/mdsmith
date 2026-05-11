@@ -2,7 +2,7 @@
 id: 78
 title: "Query subcommand for front-matter filtering"
 status: "✅"
-summary: "Add mdsmith query to select files by CUE expression on front matter"
+summary: "Add mdsmith list query to select files by CUE expression on front matter"
 ---
 # Query subcommand for front-matter filtering
 
@@ -18,7 +18,7 @@ A general `query` subcommand prints matching file paths
 to stdout. Callers compose it with Unix tools:
 
 ```bash
-mdsmith query 'status: "✅"' "plan/[0-9]*.md" \
+mdsmith list query 'status: "✅"' "plan/[0-9]*.md" \
   | xargs git rm
 ```
 
@@ -29,14 +29,14 @@ same mechanism `validateFrontMatterCUE` uses.
 
 ## Goal
 
-Add `mdsmith query` to print paths of Markdown files
+Add `mdsmith list query` to print paths of Markdown files
 whose front matter satisfies a CUE expression, one path
 per line on stdout.
 
 ## Design
 
 ```bash
-mdsmith query [flags] <cue-expr> [files...]
+mdsmith list query [flags] <cue-expr> [files...]
 ```
 
 Flags:
@@ -53,20 +53,20 @@ Examples:
 
 ```bash
 # List completed plans
-mdsmith query 'status: "✅"' "plan/[0-9]*.md"
+mdsmith list query 'status: "✅"' "plan/[0-9]*.md"
 
 # Delete them
-mdsmith query 'status: "✅"' "plan/[0-9]*.md" \
+mdsmith list query 'status: "✅"' "plan/[0-9]*.md" \
   | xargs git rm
 
 # NUL-delimited for paths with spaces
-mdsmith query -0 'status: "✅"' plan/ | xargs -0 rm
+mdsmith list query -0 'status: "✅"' plan/ | xargs -0 rm
 
 # Compound condition
-mdsmith query 'status: "✅", id: >50' plan/
+mdsmith list query 'status: "✅", id: >50' plan/
 
 # All plans not yet started
-mdsmith query 'status: "🔲"' plan/
+mdsmith list query 'status: "🔲"' plan/
 ```
 
 Output goes to stdout (one path per line). Status
@@ -141,7 +141,7 @@ keep numeric types so `id: >50` works.
 
 ## Acceptance Criteria
 
-- [x] `mdsmith query 'status: "✅"' plan/` prints paths
+- [x] `mdsmith list query 'status: "✅"' plan/` prints paths
   of completed plans, one per line
 - [x] Piping into `xargs git rm` deletes them
 - [x] Exit 0 on match, exit 1 on no match

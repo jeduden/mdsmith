@@ -41,8 +41,7 @@ const usageText = `Usage: mdsmith <command> [flags] [files...]
 Commands:
   check             Lint Markdown files (default when given file arguments)
   fix               Auto-fix lint issues in place
-  query             Select files by CUE expression on front matter
-  backlinks         List workspace links that point at a file
+  list              Select files by query (front matter or link graph)
   help              Show help for rules and topics
   metrics           Show and rank shared Markdown metrics
   merge-driver      Git merge driver for regenerable sections
@@ -88,10 +87,8 @@ func run() int {
 		return runCheck(os.Args[2:])
 	case "fix":
 		return runFix(os.Args[2:])
-	case "query":
-		return runQuery(os.Args[2:])
-	case "backlinks":
-		return runBacklinks(os.Args[2:])
+	case "list":
+		return runList(os.Args[2:])
 	case "help":
 		return runHelp(os.Args[2:])
 	case "metrics":
@@ -276,7 +273,7 @@ func parseQueryFlags(args []string) (queryOptions, []string, error) {
 		"Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, "Usage: mdsmith query [flags] <cue-expr> [files...]\n\n"+
+		fmt.Fprint(os.Stderr, "Usage: mdsmith list query [flags] <cue-expr> [files...]\n\n"+
 			"Print paths of Markdown files whose front matter satisfies a CUE expression.\n"+
 			"With no file arguments, searches the current directory recursively.\n\n"+
 			"Exit codes: 0 match, 1 no match, 2 error\n\nFlags:\n")

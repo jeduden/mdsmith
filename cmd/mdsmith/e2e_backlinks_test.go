@@ -48,7 +48,7 @@ func setupBacklinksWorkspace(t *testing.T) string {
 
 func TestE2E_Backlinks_ThreeSources_Text(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
-	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "docs/api.md")
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "docs/api.md")
 	require.Equal(t, 0, exitCode, "expected exit 0 when matches found")
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	require.Len(t, lines, 3, "expected 3 backlink rows, got: %q", stdout)
@@ -61,7 +61,7 @@ func TestE2E_Backlinks_ThreeSources_Text(t *testing.T) {
 
 func TestE2E_Backlinks_Anchor_Filter(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
-	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "docs/api.md#authentication")
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "docs/api.md#authentication")
 	require.Equal(t, 0, exitCode)
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	require.Len(t, lines, 1, "anchor-scoped query expected to return one row, got: %q", stdout)
@@ -70,14 +70,14 @@ func TestE2E_Backlinks_Anchor_Filter(t *testing.T) {
 
 func TestE2E_Backlinks_Anchor_NoHits_ExitsOne(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
-	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "docs/api.md#no-such-section")
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "docs/api.md#no-such-section")
 	require.Equal(t, 1, exitCode, "no matches → exit 1")
 	assert.Empty(t, strings.TrimSpace(stdout))
 }
 
 func TestE2E_Backlinks_JSON_Shape(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
-	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "--format", "json", "docs/api.md")
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "--format", "json", "docs/api.md")
 	require.Equal(t, 0, exitCode)
 	var got []backlinkRecordE2E
 	require.NoError(t, json.Unmarshal([]byte(stdout), &got))
@@ -94,7 +94,7 @@ func TestE2E_Backlinks_IncludeAndLimit(t *testing.T) {
 	// --include docs/** filters out the plan/ source; --limit 1
 	// then caps the remaining two rows.
 	stdout, _, exitCode := runBinaryInDir(
-		t, dir, "", "backlinks", "--include", "docs/**", "--limit", "1", "docs/api.md")
+		t, dir, "", "list", "backlinks", "--include", "docs/**", "--limit", "1", "docs/api.md")
 	require.Equal(t, 0, exitCode)
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	require.Len(t, lines, 1, "include + limit: expected 1 row, got: %q", stdout)
@@ -103,34 +103,34 @@ func TestE2E_Backlinks_IncludeAndLimit(t *testing.T) {
 }
 
 func TestE2E_Backlinks_NoTarget_ExitsTwo(t *testing.T) {
-	_, stderr, exitCode := runBinary(t, "", "backlinks")
+	_, stderr, exitCode := runBinary(t, "", "list", "backlinks")
 	assert.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "requires a target file argument")
 }
 
 func TestE2E_Backlinks_HelpFlag(t *testing.T) {
-	_, stderr, exitCode := runBinary(t, "", "backlinks", "--help")
+	_, stderr, exitCode := runBinary(t, "", "list", "backlinks", "--help")
 	assert.Equal(t, 0, exitCode)
-	assert.Contains(t, stderr, "Usage: mdsmith backlinks")
+	assert.Contains(t, stderr, "Usage: mdsmith list backlinks")
 }
 
 func TestE2E_Backlinks_InvalidIncludeGlob_ExitsTwo(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
 	_, stderr, exitCode := runBinaryInDir(
-		t, dir, "", "backlinks", "--include", "[", "docs/api.md")
+		t, dir, "", "list", "backlinks", "--include", "[", "docs/api.md")
 	require.Equal(t, 2, exitCode, "invalid glob must exit 2, not silently match nothing")
 	assert.Contains(t, stderr, "invalid --include glob")
 }
 
 func TestE2E_Backlinks_TooManyArgs_ExitsTwo(t *testing.T) {
-	_, stderr, exitCode := runBinary(t, "", "backlinks", "a.md", "b.md")
+	_, stderr, exitCode := runBinary(t, "", "list", "backlinks", "a.md", "b.md")
 	require.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "takes one target argument")
 }
 
 func TestE2E_Backlinks_AnchorOnlyTarget_ExitsTwo(t *testing.T) {
 	// "#anchor" alone has no file path; backlinks always require one.
-	_, stderr, exitCode := runBinary(t, "", "backlinks", "#anchor-only")
+	_, stderr, exitCode := runBinary(t, "", "list", "backlinks", "#anchor-only")
 	require.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "target must include a file path")
 }
@@ -141,7 +141,7 @@ func TestE2E_Backlinks_NegativeLimit_ExitsTwo(t *testing.T) {
 	// only caps when limit > 0. Reject upfront.
 	dir := setupBacklinksWorkspace(t)
 	_, stderr, exitCode := runBinaryInDir(
-		t, dir, "", "backlinks", "--limit", "-1", "docs/api.md")
+		t, dir, "", "list", "backlinks", "--limit", "-1", "docs/api.md")
 	require.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "--limit must be >= 0")
 }
@@ -149,7 +149,7 @@ func TestE2E_Backlinks_NegativeLimit_ExitsTwo(t *testing.T) {
 func TestE2E_Backlinks_InvalidMaxInputSize_ExitsTwo(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
 	_, stderr, exitCode := runBinaryInDir(
-		t, dir, "", "backlinks", "--max-input-size", "garbage", "docs/api.md")
+		t, dir, "", "list", "backlinks", "--max-input-size", "garbage", "docs/api.md")
 	require.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "max-input-size")
 }
@@ -158,7 +158,7 @@ func TestE2E_Backlinks_JSON_EmptyResult(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
 	// A target that exists but has no incoming links.
 	stdout, _, exitCode := runBinaryInDir(
-		t, dir, "", "backlinks", "--format", "json", "docs/changelog.md")
+		t, dir, "", "list", "backlinks", "--format", "json", "docs/changelog.md")
 	require.Equal(t, 1, exitCode, "no matches → exit 1")
 	// Stable shape: `[]`, never `null`.
 	assert.Contains(t, stdout, "[]")
@@ -180,7 +180,7 @@ func TestE2E_Backlinks_UnreadableSource_ExitsTwo(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "target.md"), []byte("# Target\n"), 0o644))
 
 	_, stderr, exitCode := runBinaryInDir(
-		t, dir, "", "backlinks", "--max-input-size", "10", "target.md")
+		t, dir, "", "list", "backlinks", "--max-input-size", "10", "target.md")
 	require.Equal(t, 2, exitCode, "unreadable sources → runtime error → exit 2")
 	assert.Contains(t, stderr, "reading src.md")
 }
@@ -202,11 +202,11 @@ func TestE2E_Backlinks_PercentEncodedTarget(t *testing.T) {
 		[]byte("# Src\n\nSee [it](docs/my%20file.md).\n"), 0o644))
 
 	// Encoded query form.
-	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "docs/my%20file.md")
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "docs/my%20file.md")
 	require.Equal(t, 0, exitCode)
 	assert.Contains(t, stdout, "src.md:")
 	// Decoded query form must also match.
-	stdout, _, exitCode = runBinaryInDir(t, dir, "", "backlinks", "docs/my file.md")
+	stdout, _, exitCode = runBinaryInDir(t, dir, "", "list", "backlinks", "docs/my file.md")
 	require.Equal(t, 0, exitCode)
 	assert.Contains(t, stdout, "src.md:")
 }
@@ -219,7 +219,7 @@ func TestE2E_Backlinks_DiscoveryEmpty_ExitsOne(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
 		[]byte("files:\n  - \"no-such-pattern/**/*.md\"\nrules: {}\n"), 0o644))
 
-	_, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "target.md")
+	_, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "target.md")
 	require.Equal(t, 1, exitCode)
 }
 
@@ -229,7 +229,7 @@ func TestE2E_Backlinks_AbsoluteTarget_ExitsTwo(t *testing.T) {
 	// silently match nothing, indistinguishable from a real empty
 	// result. Reject upfront.
 	dir := setupBacklinksWorkspace(t)
-	_, stderr, exitCode := runBinaryInDir(t, dir, "", "backlinks", "/etc/passwd")
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "/etc/passwd")
 	require.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "must be workspace-relative")
 }
@@ -238,7 +238,7 @@ func TestE2E_Backlinks_ParentTraversalTarget_ExitsTwo(t *testing.T) {
 	// Same justification: `../foo.md` resolves outside the workspace
 	// and would silently match nothing.
 	dir := setupBacklinksWorkspace(t)
-	_, stderr, exitCode := runBinaryInDir(t, dir, "", "backlinks", "../foo.md")
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "../foo.md")
 	require.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "must be workspace-relative")
 }
@@ -255,7 +255,7 @@ func TestE2E_Backlinks_EncodedEscapeRejected(t *testing.T) {
 	}
 	for _, target := range cases {
 		t.Run(target, func(t *testing.T) {
-			_, stderr, exitCode := runBinaryInDir(t, dir, "", "backlinks", target)
+			_, stderr, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", target)
 			require.Equal(t, 2, exitCode)
 			assert.Contains(t, stderr, "must be workspace-relative")
 		})
@@ -275,7 +275,7 @@ func TestE2E_Backlinks_MalformedTargetRejected(t *testing.T) {
 	}
 	for _, target := range cases {
 		t.Run(target, func(t *testing.T) {
-			_, stderr, exitCode := runBinaryInDir(t, dir, "", "backlinks", target)
+			_, stderr, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", target)
 			require.Equal(t, 2, exitCode)
 			assert.Contains(t, stderr, "invalid target")
 		})
@@ -297,7 +297,7 @@ func TestE2E_Backlinks_RespectsIgnore(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "vendor", "lib.md"),
 		[]byte("# Vendor\n\n[skip](../target.md)\n"), 0o644))
 
-	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "target.md")
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "target.md")
 	require.Equal(t, 0, exitCode)
 	assert.Contains(t, stdout, "src.md:")
 	assert.NotContains(t, stdout, "vendor/", "ignored sources must not appear in backlinks output")
@@ -317,7 +317,7 @@ func TestE2E_Backlinks_FrontMatterLines_FileRelative(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "src.md"),
 		[]byte("---\ntitle: src\n---\n# Src\n\nSee [it](target.md).\n"), 0o644))
 
-	stdout, _, exitCode := runBinaryInDir(t, dir, "", "backlinks", "target.md")
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", "target.md")
 	require.Equal(t, 0, exitCode)
 	assert.Contains(t, stdout, "src.md:6:")
 }

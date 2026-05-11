@@ -57,6 +57,7 @@ row: "- [{summary}]({filename})"
 - [Show built-in documentation for rules, metrics, and concept pages.](docs/reference/cli/help.md)
 - [Generate a default `.mdsmith.yml` config in the current directory.](docs/reference/cli/init.md)
 - [Inspect declared file kinds and resolve effective rule config per file.](docs/reference/cli/kinds.md)
+- [Selection-style commands that walk the workspace and emit matches.](docs/reference/cli/list.md)
 - [Run a Language Server Protocol server on stdio for editor integrations.](docs/reference/cli/lsp.md)
 - [Git merge driver that resolves conflicts inside generated sections.](docs/reference/cli/merge-driver.md)
 - [List and rank shared Markdown metrics (file length, token estimate, readability, …).](docs/reference/cli/metrics.md)
