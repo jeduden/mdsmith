@@ -1,7 +1,7 @@
 ---
 id: 138
 title: "`mdsmith backlinks` subcommand"
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   Surface MDS027's link graph as a CLI subcommand.
