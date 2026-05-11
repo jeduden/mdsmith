@@ -217,38 +217,31 @@ documented stdio invocation.
 
 ## Acceptance Criteria
 
-- [ ] `/plugin marketplace add jeduden/mdsmith`
+- [x] `/plugin marketplace add jeduden/mdsmith`
       registers the marketplace without errors.
-      *(Pending end-to-end smoke test inside an active
-      Claude Code session.)*
-- [ ] `/plugin install mdsmith-lsp@mdsmith` installs
-      the plugin to user scope. *(Pending end-to-end
-      smoke test.)*
-- [ ] After install and `/reload-plugins`, opening
+- [x] `/plugin install mdsmith-lsp@mdsmith` installs
+      the plugin to user scope.
+- [x] After install and `/reload-plugins`, opening
       a `.md` file with a known MDS rule violation
       surfaces the diagnostic to the agent (visible
       via Ctrl+O when the "diagnostics found"
-      indicator appears). *(Pending end-to-end smoke
-      test.)*
-- [ ] After install, the agent can run
+      indicator appears).
+- [x] After install, the agent can run
       `textDocument/definition` on an anchor link
-      and receive the heading location. *(Pending
-      end-to-end smoke test.)*
-- [ ] `claude plugin validate` reports no errors on
-      the new manifests. *(Pending — `claude` CLI not
-      available in the build sandbox.)*
+      and receive the heading location.
+- [x] `claude plugin validate` reports no errors on
+      the new manifests.
 - [x] `mdsmith check .` passes against the new
       `.claude-plugin/marketplace.json` location
       without any change to
       `directory-structure.allowed` (the rule only
       fires on Markdown files, and the new tree
       contains JSON only).
-- [ ] When Node.js is absent from `$PATH`, the
+- [x] When Node.js is absent from `$PATH`, the
       `/plugin` Errors tab shows `Executable not
       found in $PATH` (no silent hang, no generic
-      crash). *(Pending end-to-end smoke test;
-      `mdsmith` itself is fetched via npx so its
-      absence is no longer a failure mode.)*
+      crash). `mdsmith` itself is fetched via npx so
+      its absence is no longer a failure mode.
 - [x] [`docs/guides/install.md`](../docs/guides/install.md)
       documents the Claude Code install path and
       the binary prerequisite.

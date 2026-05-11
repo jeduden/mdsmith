@@ -244,41 +244,45 @@ the tag on every channel.
 
 ## Acceptance Criteria
 
-- [ ] Pushing a `vX.Y.Z` tag publishes
+- [x] Pushing a `vX.Y.Z` tag publishes
       `@mdsmith/cli@X.Y.Z` and the five
       `@mdsmith/<platform>` subpackages on npm.
-- [ ] The same tag publishes `mdsmith==X.Y.Z` wheels
+- [x] The same tag publishes `mdsmith==X.Y.Z` wheels
       for the five supported platform tags on PyPI.
-- [ ] The same tag still produces the existing GitHub
+- [x] The same tag still produces the existing GitHub
       release assets and `.vsix`.
-- [ ] `npm i -g @mdsmith/cli && mdsmith version`
+- [x] `npm i -g @mdsmith/cli && mdsmith version`
       prints `mdsmith vX.Y.Z` on all five supported
       platforms.
-- [ ] `pip install mdsmith==X.Y.Z && mdsmith version`
+- [x] `pip install mdsmith==X.Y.Z && mdsmith version`
       and `uvx mdsmith@X.Y.Z version` print
       `mdsmith vX.Y.Z` on the same five platforms.
-- [ ] `mise use mdsmith@X.Y.Z && mdsmith version`
-      prints `mdsmith vX.Y.Z`.
-- [ ] `asdf plugin add mdsmith` then
-      `asdf install mdsmith X.Y.Z` prints
-      `mdsmith vX.Y.Z`.
-- [ ] The `.vsix` from the `vscode` job has its
+- [x] The `.vsix` from the `vscode` job has its
       internal `package.json` `version` equal to
       `X.Y.Z`.
-- [ ] After the tag job finishes, `jeduden.mdsmith`
+- [x] After the tag job finishes, `jeduden.mdsmith`
       `X.Y.Z` is listed on the Visual Studio
       Marketplace and installs via
       `code --install-extension jeduden.mdsmith`.
-- [ ] The same version is listed on Open VSX and
+- [x] The same version is listed on Open VSX and
       installs in VSCodium via
       `codium --install-extension jeduden.mdsmith`.
-- [ ] The Marketplace, Open VSX, and GitHub release
+- [x] The Marketplace, Open VSX, and GitHub release
       `.vsix` have identical SHA-256 sums.
-- [ ] CI on `main` fails when any tracked manifest
+- [x] CI on `main` fails when any tracked manifest
       has a version other than `0.0.0-dev`.
-- [ ] The new `docs/guides/install.md` documents
+- [x] The new `docs/guides/install.md` documents
       every channel above and is linked from the
       README and the catalog in
       [CLAUDE.md](../CLAUDE.md).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues.
+
+Deferred to [plan/145](145_asdf-mise-registry-submissions.md)
+(out-of-repo registry submissions):
+
+- `mise use mdsmith@X.Y.Z && mdsmith version` prints
+  `mdsmith vX.Y.Z`.
+- `asdf plugin add mdsmith` then
+  `asdf install mdsmith X.Y.Z` prints
+  `mdsmith vX.Y.Z`.
