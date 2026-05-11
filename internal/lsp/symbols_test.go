@@ -728,6 +728,48 @@ func TestCompletionDirectivePath(t *testing.T) {
 	}
 }
 
+func TestCompletionDirectivePathExclusionPrefix(t *testing.T) {
+	t.Parallel()
+	// When a catalog glob list item starts with "!", the "!" is stripped for
+	// path matching and prepended on each label, so exclusion patterns like
+	// `- "!docs/internal/` get real completions.
+	srcA := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		"glob:",
+		`  - "docs/*.md"`,
+		`  - "!docs/`,
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"a.md":                 srcA,
+		"docs/guide.md":        "# Guide\n",
+		"docs/internal/ref.md": "# Ref\n",
+	})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: srcA},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+
+	// Cursor after "!docs/" on line 5 (0-based), character 11.
+	raw, errResp := h.request("textDocument/completion", completionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 5, Character: 11},
+	})
+	require.Nil(t, errResp)
+	var list completionList
+	require.NoError(t, json.Unmarshal(raw, &list))
+	require.NotEmpty(t, list.Items, "expected items for exclusion prefix !docs/")
+	for _, item := range list.Items {
+		assert.True(t, strings.HasPrefix(item.Label, "!docs/"),
+			"all labels should start with !docs/: %q", item.Label)
+	}
+}
+
 func TestCompletionKindValueNoConfig(t *testing.T) {
 	t.Parallel()
 	// kindItems returns empty when no .mdsmith.yml is loaded (cfg == nil).

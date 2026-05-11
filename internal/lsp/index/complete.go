@@ -291,6 +291,14 @@ func codeNodeContainsLine(body []byte, n ast.Node, bodyLine int) bool {
 		return false
 	}
 	start := lineOfOffset(body, ls.At(0).Start)
-	end := lineOfOffset(body, ls.At(ls.Len()-1).Stop)
+	stop := ls.At(ls.Len() - 1).Stop
+	// Goldmark segments include the trailing newline in Stop, so Stop points
+	// to the first byte of the following line. Subtract one when that byte is
+	// a newline so the end-line calculation lands on the actual last content
+	// line rather than spilling into the line that follows the code block.
+	if stop > 0 && stop <= len(body) && body[stop-1] == '\n' {
+		stop--
+	}
+	end := lineOfOffset(body, stop)
 	return bodyLine >= start && bodyLine <= end
 }

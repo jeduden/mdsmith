@@ -7,6 +7,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
 )
 
 func TestCompletionContextAnchorCurrentFile(t *testing.T) {
@@ -447,4 +449,23 @@ func TestCompletionContextAnchorOtherFileUppercaseExt(t *testing.T) {
 	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 3, 26)
 	assert.Equal(t, CompletionAnchorOtherFile, res.Tag)
 	assert.Equal(t, "sec", res.Prefix)
+}
+
+func TestCodeNodeContainsLineNoSpillover(t *testing.T) {
+	t.Parallel()
+	// Goldmark segments include the trailing newline in Stop. Without the
+	// stop-- fix, codeNodeContainsLine would report that the line immediately
+	// after a code block is inside it, suppressing completion there.
+	// Build a source with an indented code block followed by plain text:
+	//   line 1: # Top
+	//   line 2: (empty)
+	//   line 3:     indented code
+	//   line 4: (empty — ends indented code block)
+	//   line 5: normal text
+	body := []byte("# Top\n\n    indented code\n\nnormal text\n")
+	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	// Line 3 (the code line) must be inside the block.
+	assert.True(t, insideCodeBlock(root, body, 3), "line 3 should be inside code block")
+	// Line 5 (normal text after the blank separator) must NOT be inside the block.
+	assert.False(t, insideCodeBlock(root, body, 5), "line 5 must not be inside code block")
 }

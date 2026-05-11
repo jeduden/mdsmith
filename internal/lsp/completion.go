@@ -146,12 +146,21 @@ func (s *Server) kindItems(prefix string) []completionItem {
 // directivePathItems returns workspace Markdown paths (both .md and .markdown)
 // matching prefix, expressed relative to the open buffer's directory (matching
 // how include/build/catalog directives resolve paths via ResolveRelTarget).
+//
+// When prefix starts with "!" (glob exclusion syntax), the leading "!" is
+// stripped for matching and re-prepended on each returned label so that users
+// can complete negation patterns like `- "!docs/internal/`.
 func (s *Server) directivePathItems(rel, prefix string, idx *index.Index) []completionItem {
 	dir := path.Dir(rel)
 	if dir == "." {
 		dir = ""
 	}
-	prefixLower := strings.ToLower(prefix)
+	exclude := strings.HasPrefix(prefix, "!")
+	matchPrefix := prefix
+	if exclude {
+		matchPrefix = prefix[1:]
+	}
+	prefixLower := strings.ToLower(matchPrefix)
 	files := idx.Files()
 	var items []completionItem
 	for _, f := range files {
@@ -159,8 +168,12 @@ func (s *Server) directivePathItems(rel, prefix string, idx *index.Index) []comp
 		if !strings.HasPrefix(strings.ToLower(relF), prefixLower) {
 			continue
 		}
+		label := relF
+		if exclude {
+			label = "!" + relF
+		}
 		items = append(items, completionItem{
-			Label: relF,
+			Label: label,
 			Kind:  completionItemKindFile,
 		})
 	}
