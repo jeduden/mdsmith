@@ -1225,21 +1225,14 @@ func refUseEdit(
 	textOpenCol := textStart - lineStart - 1 // include the `[`
 	textCloseCol := textEnd - lineStart      // points just past last text byte
 	pairs := bracketPairs(row)
-	// Goldmark parsed a reference link, so the link's text bytes
-	// live inside a top-level bracket pair on this line; matchingPair
-	// always finds it. Full references additionally have a flush
-	// trailing pair containing the label, so `second` is also valid
-	// in that arm.
 	first, second := matchingPair(pairs, textOpenCol, textCloseCol)
-	target := first
-	switch l.Reference.Type {
-	case ast.ReferenceLinkFull:
-		target = second
-	case ast.ReferenceLinkCollapsed:
-		// Collapsed `[text][]` — text doubles as the label.
-		// Rewrite the first pair.
-	default:
-		// Shortcut: only the first pair exists; rewrite it.
+	target, ok := targetPairForRefUse(first, second, l.Reference.Type)
+	if !ok {
+		// Multi-line links or unusual goldmark output can leave
+		// matchingPair without a valid pair for the cursor's
+		// line. Skip the edge rather than emit a zero-width
+		// edit anchored at column 0.
+		return textEdit{}, false
 	}
 	startCh := utf16FromByteOffset(row, target.open+1)
 	endCh := utf16FromByteOffset(row, target.close)
@@ -1250,6 +1243,31 @@ func refUseEdit(
 		},
 		NewText: newName,
 	}, true
+}
+
+// targetPairForRefUse picks the bracket pair refUseEdit should
+// rewrite for one reference-style link. Full `[text][label]`
+// rewrites the trailing pair; shortcut `[label]` and collapsed
+// `[label][]` rewrite the leading pair. Returns ok=false when
+// matchingPair couldn't locate the relevant pair on the cursor's
+// line — multi-line link spans and stray Reference shapes both
+// surface as sentinel (-1,-1) pairs that must not be turned into
+// zero-width edits.
+func targetPairForRefUse(first, second bracketPair, refType ast.ReferenceLinkType) (bracketPair, bool) {
+	if first.open < 0 || first.close <= first.open {
+		return bracketPair{}, false
+	}
+	if refType == ast.ReferenceLinkFull {
+		if second.open < 0 || second.close <= second.open {
+			return bracketPair{}, false
+		}
+		return second, true
+	}
+	// Collapsed `[label][]` keeps the empty trailing pair and
+	// rewrites the leading one (text == label by definition).
+	// Shortcut `[label]` has only the leading pair. Both share
+	// the same target.
+	return first, true
 }
 
 // linkTextBounds returns the [start, end) absolute byte offsets of

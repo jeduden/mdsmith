@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
 
 	"github.com/jeduden/mdsmith/internal/lsp/index"
 )
@@ -783,6 +784,79 @@ func TestAppendAnchorEditsForHeadingDropsUnresolvableEdge(t *testing.T) {
 	changes := map[string][]textEdit{}
 	h.srv.appendAnchorEditsForHeading(changes, idx, "ghost.md", "sec", "newsec")
 	assert.Empty(t, changes)
+}
+
+// TestRenameLinkRefSkipsMultiLineUse verifies that a
+// `[text\nwrap][label]` reference whose text spans two lines
+// doesn't crash refUseEdit — the line-local bracket walker
+// returns no matching pair, refUseEdit's targetPairForRefUse
+// guard fires, and the link is silently skipped while the def
+// + any single-line uses still rewrite cleanly.
+func TestRenameLinkRefSkipsMultiLineUse(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\nA [wrap\ntext][docs] B.\n\nC [docs] D.\n\n[docs]: https://x\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	raw, errResp := h.request("textDocument/rename", renameParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		// Cursor on `[docs]: …` (line 8, 1-based) → LSP line 7.
+		Position: Position{Line: 7, Character: 2},
+		NewName:  "manual",
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Contains(t, edit.Changes, uri)
+	// Multi-line use is skipped; def + single-line shortcut use
+	// (2 edits) still apply.
+	require.NotEmpty(t, edit.Changes[uri])
+	for _, e := range edit.Changes[uri] {
+		// No edit should land on the wrap line (line 2,
+		// 0-based) — that's the multi-line use's first line.
+		assert.NotEqual(t, 2, e.Range.Start.Line)
+	}
+}
+
+// TestTargetPairForRefUseShapes covers every documented branch
+// of the helper: invalid first pair, full ref with missing
+// trailing pair, full ref with valid trailing pair, shortcut /
+// collapsed routing through the leading pair.
+func TestTargetPairForRefUseShapes(t *testing.T) {
+	t.Parallel()
+	bad := bracketPair{open: -1, close: -1}
+	zeroWidth := bracketPair{open: 5, close: 5}
+	good1 := bracketPair{open: 0, close: 5}
+	good2 := bracketPair{open: 6, close: 13}
+
+	// First pair invalid → not ok.
+	_, ok := targetPairForRefUse(bad, good2, ast.ReferenceLinkFull)
+	assert.False(t, ok)
+	// First pair is zero-width → not ok.
+	_, ok = targetPairForRefUse(zeroWidth, good2, ast.ReferenceLinkFull)
+	assert.False(t, ok)
+	// Full ref but second is missing → not ok.
+	_, ok = targetPairForRefUse(good1, bad, ast.ReferenceLinkFull)
+	assert.False(t, ok)
+	// Full ref with a zero-width second → not ok.
+	_, ok = targetPairForRefUse(good1, zeroWidth, ast.ReferenceLinkFull)
+	assert.False(t, ok)
+	// Full ref with both valid → returns the trailing pair.
+	got, ok := targetPairForRefUse(good1, good2, ast.ReferenceLinkFull)
+	require.True(t, ok)
+	assert.Equal(t, good2, got)
+	// Shortcut routes through the leading pair.
+	got, ok = targetPairForRefUse(good1, bad, ast.ReferenceLinkShortcut)
+	require.True(t, ok)
+	assert.Equal(t, good1, got)
+	// Collapsed also routes through the leading pair (empty
+	// trailing `[]` is fine).
+	got, ok = targetPairForRefUse(good1, zeroWidth, ast.ReferenceLinkCollapsed)
+	require.True(t, ok)
+	assert.Equal(t, good1, got)
 }
 
 // TestBracketPairsHandlesNestedBrackets verifies that the
