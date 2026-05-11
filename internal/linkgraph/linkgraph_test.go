@@ -164,6 +164,23 @@ func TestParseTarget_MalformedURL(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestCollectAnchors_AstStringHeading guards against a regression:
+// when a heading's child is an *ast.String (emitted by typographer
+// or smart-quote extensions), the slug must still pick up the
+// string's value. mdtext.ExtractPlainText is the shared routine that
+// handles this; without the dedicated branch the heading collapses
+// to an empty slug and anchor lookups silently miss.
+func TestCollectAnchors_AstStringHeading(t *testing.T) {
+	heading := ast.NewHeading(2)
+	heading.AppendChild(heading, ast.NewString([]byte("hello world")))
+	root := ast.NewDocument()
+	root.AppendChild(root, heading)
+	f := &lint.File{AST: root, Source: nil}
+
+	anchors := CollectAnchors(f)
+	assert.True(t, anchors["hello-world"], "ast.String value should drive the slug")
+}
+
 // TestExtractLinks_LinkWithNoTextChildren covers the linkPosition
 // `offset < 0` fallback. A link node without any text children yields
 // firstTextOffset = -1, so linkPosition returns (1, 1).

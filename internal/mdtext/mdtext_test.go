@@ -83,6 +83,19 @@ func TestExtractPlainText_SoftLineBreak(t *testing.T) {
 	assert.Equal(t, "Hello world.", mdtext.ExtractPlainText(para, src))
 }
 
+// TestExtractPlainText_AstString covers heading/paragraph children
+// emitted as *ast.String — the goldmark typographer extension and
+// other inline transformers replace text segments with String nodes
+// whose value lives in the node rather than the source buffer.
+// Without explicit handling, ExtractPlainText drops them, which
+// silently breaks anchor slugs and link-text extraction for any
+// heading or link processed by such an extension.
+func TestExtractPlainText_AstString(t *testing.T) {
+	para := ast.NewParagraph()
+	para.AppendChild(para, ast.NewString([]byte("hello world")))
+	assert.Equal(t, "hello world", mdtext.ExtractPlainText(para, nil))
+}
+
 // --- CountWords tests ---
 
 func TestCountWords_Simple(t *testing.T) {

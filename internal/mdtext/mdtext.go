@@ -107,6 +107,17 @@ func extractText(buf *strings.Builder, node ast.Node, source []byte) {
 		return
 	}
 
+	// For string nodes (emitted by typographer / smart-quote /
+	// auto-link extensions and some paragraph transformers), the
+	// payload lives on the node, not in the source buffer. Without
+	// this branch, ExtractPlainText silently drops them — and any
+	// heading whose text was rewritten by such an extension would
+	// produce a blank slug or an incorrect anchor.
+	if s, ok := node.(*ast.String); ok {
+		buf.Write(s.Value)
+		return
+	}
+
 	// For code spans, extract the text content from children.
 	if _, ok := node.(*ast.CodeSpan); ok {
 		for c := node.FirstChild(); c != nil; c = c.NextSibling() {
