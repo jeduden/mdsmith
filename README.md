@@ -87,7 +87,7 @@ row: "- [{summary}]({filename})"
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
 <?/catalog?>
 
-## 📦 Install
+## 📦 Installation
 
 CLI:
 
