@@ -251,6 +251,10 @@ func scanBackwardForPIKey(lines [][]byte, idx int) string {
 		if strings.HasPrefix(trimmed, "- ") || trimmed == "-" {
 			continue
 		}
+		// Skip YAML comment lines — valid between glob: and its list items.
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
 		if c := strings.IndexByte(row, ':'); c >= 0 {
 			return strings.TrimSpace(row[:c])
 		}

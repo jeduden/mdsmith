@@ -225,6 +225,7 @@ as separate items.
 
 Directive-arg paths are relative to the open buffer's directory.
 This matches how `ResolveRelTarget` resolves them at lint time.
+Both `.md` and `.markdown` files appear as candidates.
 
 Image links (`![alt](#…`) do not trigger anchor completion.
 Completion inside fenced code blocks returns an empty list.

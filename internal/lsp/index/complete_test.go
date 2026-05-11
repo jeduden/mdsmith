@@ -358,16 +358,37 @@ func TestCompletionContextScanBackwardListItemContinue(t *testing.T) {
 	assert.Equal(t, "glob", res.DirectiveArg)
 }
 
-func TestCompletionContextScanBackwardBreak(t *testing.T) {
+func TestCompletionContextScanBackwardYAMLComment(t *testing.T) {
 	t.Parallel()
-	// A non-key, non-list line with no colon causes the scanner to break
-	// (L256) before finding the parent key → CompletionNone.
+	// A YAML comment line (# ...) between glob: and a list item is skipped so
+	// catalog glob completion still fires (scanBackwardForPIKey continues past it).
 	src := strings.Join([]string{
 		"# Top",
 		"",
 		"<?catalog",
 		"glob:",
-		"  comment without colon",
+		"  # valid YAML comment",
+		`  - "docs/g`,
+		"?>",
+		"<?/catalog?>",
+		"",
+	}, "\n")
+	res := Locator{Path: "a.md"}.CompletionContext([]byte(src), 6, 12)
+	assert.Equal(t, CompletionDirectivePath, res.Tag)
+	assert.Equal(t, "docs/g", res.Prefix)
+	assert.Equal(t, "glob", res.DirectiveArg)
+}
+
+func TestCompletionContextScanBackwardBreak(t *testing.T) {
+	t.Parallel()
+	// A non-key, non-list, non-comment line with no colon causes the scanner
+	// to break before finding the parent key → CompletionNone.
+	src := strings.Join([]string{
+		"# Top",
+		"",
+		"<?catalog",
+		"glob:",
+		"  word without colon",
 		`  - "docs/g`,
 		"?>",
 		"<?/catalog?>",
