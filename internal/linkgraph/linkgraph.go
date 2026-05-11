@@ -5,7 +5,6 @@
 package linkgraph
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -17,9 +16,15 @@ import (
 
 // Target is the parsed shape of a link destination URL.
 //
-// Raw is the original destination string. Path and Anchor are URL-
-// decoded. LocalAnchor is true when the destination was an anchor-only
+// Raw is the original destination string as it appeared in the source.
+// Path and Anchor are the decoded path and fragment components — both
+// are populated from url.URL, which percent-decodes them on parse.
+// LocalAnchor is true when the destination was an anchor-only
 // reference (e.g. `#section`).
+//
+// Anchor matching against CollectAnchors output must still go through
+// NormalizeAnchor: that runs Slugify (and a defensive PathUnescape) to
+// produce the same form CollectAnchors stores.
 type Target struct {
 	Raw         string
 	Path        string
@@ -125,41 +130,21 @@ func ExtractLinks(f *lint.File) []Link {
 }
 
 // CollectAnchors returns the set of heading anchors defined in f, with
-// GitHub-compatible disambiguation suffixes (-1, -2, …) when the same
-// slug repeats. The set keys are the slugified anchor names; values
-// are always true so callers can use map-lookup.
+// GitHub-compatible disambiguation suffixes (-1, -2, …) when slugs
+// would otherwise collide. Uniqueness is enforced against the running
+// set of produced anchors so a sequence like "Intro" / "Intro" /
+// "Intro-1" yields three distinct keys (`intro`, `intro-1`,
+// `intro-1-1`) rather than two distinct ones with a collision.
+// The set keys are the slugified anchor names; values are always true
+// so callers can use map-lookup.
 func CollectAnchors(f *lint.File) map[string]bool {
 	anchors := make(map[string]bool)
 	if f == nil || f.AST == nil {
 		return anchors
 	}
-	seen := make(map[string]int)
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		h, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		slug := mdtext.Slugify(headingText(h, f.Source))
-		if slug == "" {
-			return ast.WalkContinue, nil
-		}
-
-		count := seen[slug]
-		anchor := slug
-		if count > 0 {
-			anchor = fmt.Sprintf("%s-%d", slug, count)
-		}
-		seen[slug] = count + 1
-		anchors[anchor] = true
-
-		return ast.WalkContinue, nil
-	})
-
+	for _, item := range mdtext.CollectTOCItems(f.AST, f.Source) {
+		anchors[item.Anchor] = true
+	}
 	return anchors
 }
 
@@ -170,32 +155,6 @@ func NormalizeAnchor(raw string) string {
 		raw = decoded
 	}
 	return mdtext.Slugify(raw)
-}
-
-// headingText concatenates the heading's text-bearing leaves into a
-// plain string. Code spans and other inline nodes pass through their
-// text children. This mirrors the behavior MDS027 used before the
-// link-graph refactor; LSP/index uses a richer ExtractPlainText but
-// the two agree on heading content because headings contain only
-// text-like children in practice.
-func headingText(node ast.Node, source []byte) string {
-	var b strings.Builder
-	appendHeadingText(&b, node, source)
-	return b.String()
-}
-
-func appendHeadingText(b *strings.Builder, node ast.Node, source []byte) {
-	switch n := node.(type) {
-	case *ast.Text:
-		b.Write(n.Segment.Value(source))
-		return
-	case *ast.String:
-		b.Write(n.Value)
-		return
-	}
-	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
-		appendHeadingText(b, child, source)
-	}
 }
 
 // linkText returns the visible link text (everything between `[` and

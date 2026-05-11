@@ -108,6 +108,23 @@ func TestCollectAnchors(t *testing.T) {
 	assert.False(t, anchors[""], "empty-text headings produce no slug")
 }
 
+// TestCollectAnchors_CollisionWithPreNumberedHeading guards against
+// the disambiguation bug where two "Intro" headings followed by an
+// "Intro-1" heading collapse onto the same `intro-1` anchor — the
+// duplicate "Intro" generates `intro-1`, then the literal "Intro-1"
+// heading also slugifies to `intro-1` and overwrites it. The fix
+// must give each heading a globally unique anchor.
+func TestCollectAnchors_CollisionWithPreNumberedHeading(t *testing.T) {
+	f := newFile(t, "# Intro\n\n# Intro\n\n# Intro-1\n")
+	anchors := CollectAnchors(f)
+	// All three headings must appear under distinct anchors. The
+	// canonical GitHub behavior is to keep numbering until no
+	// collision exists, so the third heading becomes `intro-1-1`.
+	assert.True(t, anchors["intro"], "first heading keeps the plain slug")
+	assert.True(t, anchors["intro-1"], "second heading uses the next free suffix")
+	assert.True(t, anchors["intro-1-1"], "third heading must not collide with the second")
+}
+
 func TestCollectAnchors_NilFile(t *testing.T) {
 	got := CollectAnchors(nil)
 	assert.NotNil(t, got)
@@ -145,23 +162,6 @@ func TestParseTarget_MalformedURL(t *testing.T) {
 	// %ZZ is an invalid percent-encoded escape; url.Parse rejects it.
 	_, ok := ParseTarget("guide.md%ZZ")
 	assert.False(t, ok)
-}
-
-// TestCollectAnchors_AstStringNode constructs a heading whose body is
-// an ast.String node (created by some inline transforms, but not by
-// the default parser). The headingText walker must read the value of
-// such nodes to compute the slug; without coverage of this branch,
-// any future parser extension that emits ast.String would silently
-// produce an empty slug.
-func TestCollectAnchors_AstStringNode(t *testing.T) {
-	heading := ast.NewHeading(2)
-	heading.AppendChild(heading, ast.NewString([]byte("hello world")))
-	root := ast.NewDocument()
-	root.AppendChild(root, heading)
-	f := &lint.File{AST: root, Source: nil}
-
-	anchors := CollectAnchors(f)
-	assert.True(t, anchors["hello-world"], "ast.String value should drive the slug")
 }
 
 // TestExtractLinks_LinkWithNoTextChildren covers the linkPosition
