@@ -62,12 +62,15 @@ broken release window:
    tag push for the publisher tokens, a `queue` label
    for the merge-queue token). Confirm it succeeds.
 4. **Revoke** the previous credential at the issuer.
-5. **Update** the `last-rotated` date in the front
-   matter of this file. Commit and merge — the
-   reminder workflow uses that date to compute the
-   next due date.
-6. **Close** the open `secret-rotation` issue (the
-   reminder workflow does not auto-close).
+5. **Record** the rotation: go to the Actions tab,
+   pick **Record Secret Rotation**, click
+   **Run workflow**, select the rotated secret and
+   (optionally) a date. The workflow updates the
+   `last-rotated` field in this file's front matter
+   and opens a PR with `Closes #N` for the open
+   reminder issue. Review and merge the PR —
+   CODEOWNERS still gates the change, and the merge
+   auto-closes the reminder issue.
 
 ## VSCE_PAT — Visual Studio Marketplace
 
