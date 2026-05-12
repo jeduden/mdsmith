@@ -164,18 +164,19 @@ the first release.
 
 #### Long-Lived Publisher Tokens
 
-Three secrets are still long-lived PATs. They are
-gated by the `release` environment so a workflow run
-outside an approved release cannot read them.
+Two secrets used in the release pipeline are still
+long-lived PATs. The `release` environment gates them
+so a workflow run outside an approved release cannot
+read them.
 
-| Secret              | Used by                      | Scope                    | Rotation |
-|---------------------|------------------------------|--------------------------|----------|
-| `VSCE_PAT`          | `vsce publish`               | Marketplace > Manage     | Annually |
-| `OVSX_PAT`          | `ovsx publish`               | Open VSX publisher       | Annually |
-| `MERGE_QUEUE_TOKEN` | `jeduden/merge-queue-action` | Branch-protection bypass | Annually |
+| Secret     | Used by        | Scope                | Rotation |
+|------------|----------------|----------------------|----------|
+| `VSCE_PAT` | `vsce publish` | Marketplace > Manage | Annually |
+| `OVSX_PAT` | `ovsx publish` | Open VSX publisher   | Annually |
 
-Record each rotation date in `CLAUDE.md` so the next
-expiry is visible at a glance.
+Record each rotation date in `CLAUDE.md`.
+`MERGE_QUEUE_TOKEN`, used by `merge-queue.yml`
+outside the release path, stays a plain repo secret.
 
 #### Supply-Chain Hardening
 
@@ -254,12 +255,11 @@ place.
 3. [ ] Add the PyPI Trusted Publisher with the same
    environment scope.
 4. [ ] Enable `2fa-required` on every npm package.
-5. [ ] Store `VSCE_PAT`, `OVSX_PAT`, and
-   `MERGE_QUEUE_TOKEN` as repo secrets scoped to the
-   `release` environment.
+5. [ ] Store `VSCE_PAT` and `OVSX_PAT` as repo
+   secrets scoped to the `release` environment.
 6. [ ] Enable branch protection on `main` requiring
-   CODEOWNERS review for `.github/workflows/**` and
-   every `package.json`.
+   CODEOWNERS review for the paths in
+   `.github/CODEOWNERS`.
 7. [ ] Enable required signed tags for `v*` so an
    unsigned tag cannot trigger a release.
 

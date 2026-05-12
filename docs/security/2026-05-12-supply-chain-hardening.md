@@ -189,11 +189,16 @@ this security note.
 
 ## Residual Risk
 
-- **Long-lived `VSCE_PAT` / `OVSX_PAT` /
-  `MERGE_QUEUE_TOKEN`** are still long-lived PATs.
-  The `release` environment gates them behind
-  reviewers; rotate annually (calendar reminders
-  live in `CLAUDE.md`).
+- **Long-lived publisher PATs.** `VSCE_PAT` and
+  `OVSX_PAT` are gated by the `release` GitHub
+  environment so a workflow run outside an approved
+  release cannot read them. `MERGE_QUEUE_TOKEN`,
+  consumed by `merge-queue.yml` on PR-label events,
+  is intentionally not env-scoped (the merge queue
+  runs on every PR-merge cycle, not tag pushes) — its
+  blast radius is branch-protection bypass on `main`.
+  Rotate all three annually (calendar reminders live
+  in `CLAUDE.md`).
 - **`codecov-action` with `id-token: write` runs on
   PRs from same-repo branches.** The OIDC token's
   audience is `codecov`, so it cannot be replayed
