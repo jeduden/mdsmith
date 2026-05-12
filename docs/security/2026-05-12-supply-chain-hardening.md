@@ -129,7 +129,7 @@ step:
 
 ## Defense-in-Depth Hardening Applied 2026-05-12
 
-The above leaves three residual concerns. The
+The above leaves four residual concerns. The
 2026-05-12 commit closes them and centralizes the
 ongoing posture in
 [`docs/development/release.md`](../development/release.md).
