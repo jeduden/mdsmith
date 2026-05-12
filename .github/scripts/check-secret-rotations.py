@@ -126,8 +126,12 @@ def _issue_body(entry: dict, status: str, days: int) -> str:
     else:
         headline = f"`{name}` is due in {days} days."
     repo_url = _repo_url()
-    doc_anchor = name.lower().replace("_", "-")
-    doc_url = f"{repo_url}/blob/main/docs/development/secret-rotations.md#{doc_anchor}"
+    # Link to the doc without a heading anchor: GitHub's slug rules
+    # (lowercase, hyphenated, with the em-dash stripped) do not match
+    # what a naive name-to-slug derivation produces, so an anchored
+    # link would 404 mid-page. The doc is short — a reader scrolling
+    # to the `{name}` section finds it instantly.
+    doc_url = f"{repo_url}/blob/main/docs/development/secret-rotations.md"
     workflow_url = f"{repo_url}/blob/main/.github/workflows/secret-rotation-reminder.yml"
     return f"""\
 {headline}
@@ -141,8 +145,8 @@ def _issue_body(entry: dict, status: str, days: int) -> str:
 | Last rotated  | {last}                                           |
 | Period (days) | {period}                                         |
 
-The rotation procedure for `{name}` lives at
-{doc_url}.
+Rotation procedure (jump to the `{name}` section):
+{doc_url}
 
 After rotation:
 
