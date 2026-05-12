@@ -38,6 +38,15 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 	if err := parseInlineSections(raw, sch); err != nil {
 		return nil, err
 	}
+	if err := parseInlineCrossReferences(raw, sch); err != nil {
+		return nil, err
+	}
+	if err := parseInlineAcronyms(raw, sch); err != nil {
+		return nil, err
+	}
+	if err := parseInlineIndex(raw, sch); err != nil {
+		return nil, err
+	}
 
 	if err := rejectUnknownTopKeys(raw); err != nil {
 		return nil, err
@@ -47,10 +56,20 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 }
 
 var inlineTopKeys = map[string]bool{
-	"frontmatter": true,
-	"require":     true,
-	"closed":      true,
-	"sections":    true,
+	"frontmatter":      true,
+	"require":          true,
+	"closed":           true,
+	"sections":         true,
+	"cross-references": true,
+	"acronyms":         true,
+	"index":            true,
+}
+
+var validIndexIncludes = map[string]bool{
+	IndexIncludeStepMap:      true,
+	IndexIncludeCrossRefs:    true,
+	IndexIncludeWordCounts:   true,
+	IndexIncludeHeadingsFlat: true,
 }
 
 func rejectUnknownTopKeys(raw map[string]any) error {
@@ -479,6 +498,160 @@ func cueFieldLabel(key string) string {
 		return key
 	}
 	return strconv.Quote(key)
+}
+
+func parseInlineCrossReferences(raw map[string]any, sch *Schema) error {
+	v, ok := raw["cross-references"]
+	if !ok {
+		return nil
+	}
+	list, ok := v.([]any)
+	if !ok {
+		return fmt.Errorf("schema.cross-references must be a list, got %T", v)
+	}
+	sch.CrossReferences = make([]CrossRef, 0, len(list))
+	for i, entry := range list {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			return fmt.Errorf(
+				"schema.cross-references[%d] must be a mapping, got %T", i, entry)
+		}
+		cr, err := parseCrossRefEntry(m, i)
+		if err != nil {
+			return err
+		}
+		sch.CrossReferences = append(sch.CrossReferences, cr)
+	}
+	return nil
+}
+
+func parseCrossRefEntry(m map[string]any, i int) (CrossRef, error) {
+	cr := CrossRef{}
+	for k, vv := range m {
+		s, ok := vv.(string)
+		if !ok {
+			return CrossRef{}, fmt.Errorf(
+				"schema.cross-references[%d].%s must be a string, got %T",
+				i, k, vv)
+		}
+		switch k {
+		case "pattern":
+			cr.Pattern = s
+		case "must-match":
+			cr.MustMatch = s
+		case "skip-lines-matching":
+			cr.SkipLinesMatching = s
+		default:
+			return CrossRef{}, fmt.Errorf(
+				"schema.cross-references[%d]: unknown key %q", i, k)
+		}
+	}
+	if strings.TrimSpace(cr.Pattern) == "" {
+		return CrossRef{}, fmt.Errorf(
+			"schema.cross-references[%d]: `pattern:` is required", i)
+	}
+	if strings.TrimSpace(cr.MustMatch) == "" {
+		return CrossRef{}, fmt.Errorf(
+			"schema.cross-references[%d]: `must-match:` is required", i)
+	}
+	return cr, nil
+}
+
+func parseInlineAcronyms(raw map[string]any, sch *Schema) error {
+	v, ok := raw["acronyms"]
+	if !ok {
+		return nil
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("schema.acronyms must be a mapping, got %T", v)
+	}
+	a := &AcronymRule{}
+	for k, vv := range m {
+		switch k {
+		case "known-safe":
+			list, err := stringList(vv, "schema.acronyms.known-safe")
+			if err != nil {
+				return err
+			}
+			a.KnownSafe = list
+		case "scope":
+			list, err := stringList(vv, "schema.acronyms.scope")
+			if err != nil {
+				return err
+			}
+			a.Scope = list
+		default:
+			return fmt.Errorf("schema.acronyms: unknown key %q", k)
+		}
+	}
+	sch.Acronyms = a
+	return nil
+}
+
+func parseInlineIndex(raw map[string]any, sch *Schema) error {
+	v, ok := raw["index"]
+	if !ok {
+		return nil
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("schema.index must be a mapping, got %T", v)
+	}
+	idx := &IndexSpec{}
+	for k, vv := range m {
+		switch k {
+		case "output":
+			s, ok := vv.(string)
+			if !ok {
+				return fmt.Errorf(
+					"schema.index.output must be a string, got %T", vv)
+			}
+			idx.Output = s
+		case "include":
+			list, err := stringList(vv, "schema.index.include")
+			if err != nil {
+				return err
+			}
+			for _, item := range list {
+				if !validIndexIncludes[item] {
+					return fmt.Errorf(
+						"schema.index.include: unknown entry %q "+
+							"(valid: step-map, cross-ref-graph, "+
+							"word-counts, headings)", item)
+				}
+			}
+			idx.Include = list
+		default:
+			return fmt.Errorf("schema.index: unknown key %q", k)
+		}
+	}
+	if strings.TrimSpace(idx.Output) == "" {
+		return fmt.Errorf("schema.index: `output:` is required")
+	}
+	if len(idx.Include) == 0 {
+		return fmt.Errorf(
+			"schema.index: `include:` must list at least one entry")
+	}
+	sch.Index = idx
+	return nil
+}
+
+func stringList(v any, path string) ([]string, error) {
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be a list, got %T", path, v)
+	}
+	out := make([]string, 0, len(list))
+	for i, item := range list {
+		s, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf(
+				"%s[%d] must be a string, got %T", path, i, item)
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 
 func isCUEIdent(s string) bool {

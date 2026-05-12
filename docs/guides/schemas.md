@@ -165,6 +165,52 @@ not exist or supplies settings the rule rejects, the
 override surfaces as an MDS020 diagnostic at the
 scope's heading line.
 
+### Cross-references, acronyms, and index
+
+Three top-level schema blocks add document-wide
+checks and a JSON side-output:
+
+```yaml
+kinds:
+  runbook:
+    schema:
+      cross-references:
+        - pattern: "\\bStep (\\d+)\\b"
+          must-match: "Step {n}"
+          skip-lines-matching: "^> "
+      acronyms:
+        known-safe: [API, HTTP, TLS, JSON]
+        scope: ["Check", "Expected"]
+      index:
+        output: ".runbook-index.json"
+        include: [step-map, cross-ref-graph, word-counts, headings]
+```
+
+`cross-references:` checks that every match of
+`pattern:` in the document body resolves to a heading
+slug after filling captures into `must-match:`. Use
+`{n}` for the first capture, `{1}` / `{2}` for
+numbered captures, or a named group name. The
+`skip-lines-matching:` regex exempts blockquoted or
+historical lines.
+
+`acronyms:` flags first-use all-caps tokens
+(length 2-6) that lack a parenthesised expansion.
+`known-safe:` is the allowlist. `scope:` restricts
+the check to sections whose heading text matches one
+of the listed names; omitting `scope:` applies the
+check document-wide.
+
+`index:` asks `mdsmith fix` to write a JSON side-
+output next to the source file describing requested
+sub-objects (`step-map`, `cross-ref-graph`,
+`word-counts`, `headings`). `mdsmith check` never
+writes the file. Output paths are resolved relative
+to the source file's directory; absolute paths and
+`..` traversal are rejected. See
+[MDS020 required-structure](../../internal/rules/MDS020-required-structure/README.md#index-side-output)
+for the JSON shape per include entry.
+
 Today the scope override runs the rule again with
 the override's settings, in addition to the engine's
 normal run with the file-level settings. If the same

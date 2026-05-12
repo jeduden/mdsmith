@@ -170,6 +170,75 @@ The document's H1 is reserved for the title and is
 validated by `first-line-heading`; inline schemas
 constrain H2 and below.
 
+### Cross-references
+
+A `cross-references:` block names text patterns whose
+matches must resolve to a real heading in the document.
+Each entry walks the document's inline text once and
+fills numeric (`{n}`, `{1}`, `{2}`, …) or named
+captures from the regex into the `must-match:` template;
+the result is slugified and looked up in the heading
+slug set. Unresolved references produce a diagnostic at
+the match's source line.
+
+```yaml
+schema:
+  cross-references:
+    - pattern: "\\bStep (\\d+)\\b"
+      must-match: "Step {n}"
+      skip-lines-matching: "^> "
+```
+
+`skip-lines-matching:` is a regex; raw source lines
+that match it are exempt from the resolution check.
+The intended use is blockquoted stale text and version-
+history notes that mention old step numbers.
+
+### Acronyms
+
+An `acronyms:` block flags all-caps tokens (length
+2-6, leading letter, alphanumeric) on their first use
+inside a configured scope when they appear without a
+parenthesised expansion. `known-safe:` lists tokens
+allowed without expansion; `scope:` restricts the
+check to sections whose heading text matches one of
+the listed names. Omitting `scope:` applies the check
+document-wide. First-use state is per-scope.
+
+```yaml
+schema:
+  acronyms:
+    known-safe: [API, HTTP, TLS, JSON]
+    scope: ["Check", "Expected"]
+```
+
+### Index side-output
+
+An `index:` block asks `mdsmith fix` to write a JSON
+side-output next to the source file. `mdsmith check`
+does not write the file (read-only contract). The
+output path is resolved relative to the document's
+directory; absolute paths and `..` traversal are
+rejected.
+
+```yaml
+schema:
+  index:
+    output: ".runbook-index.json"
+    include: [step-map, cross-ref-graph, word-counts, headings]
+```
+
+`include:` is a closed enum:
+
+- `step-map` — `{section-slug: [child-slugs]}`
+- `cross-ref-graph` — `{ref-text: target-slug}`
+- `word-counts` — `{section-slug: int}`
+- `headings` — flat list of
+  `{level, text, slug, line}`
+
+The set is closed so downstream tooling can parse the
+file without a schema reference.
+
 ## Config
 
 Enable with a schema for rule READMEs:
@@ -275,7 +344,7 @@ Describe the goal here.
 - **Name**: `required-structure`
 - **Status**: ready
 - **Default**: enabled
-- **Fixable**: no
+- **Fixable**: index side-output only (when `schema.index:` is set)
 - **Implementation**:
   [source](./)
 - **Guide**:

@@ -200,7 +200,26 @@ func (r *Rule) checkInlineSchema(f *lint.File) []lint.Diagnostic {
 	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
 	diags = append(diags, schema.Validate(f, r.InlineSchema, docFMRaw, fmIsCUE, makeDiag)...)
 	diags = append(diags, r.applyScopeRules(f, r.InlineSchema)...)
+	diags = append(diags, schema.ValidateCrossReferences(f, r.InlineSchema, makeDiag)...)
+	diags = append(diags, schema.ValidateAcronyms(f, r.InlineSchema, makeDiag)...)
+	diags = append(diags, schema.ValidateIndex(f, r.InlineSchema, makeDiag)...)
 	return diags
+}
+
+// Fix implements rule.FixableRule. The rule does not modify the
+// document body — it returns f.Source unchanged — but when the
+// inline schema declares an `index:` block, Fix emits the JSON
+// side-output next to the source file. `mdsmith check` skips this
+// path entirely, preserving check's read-only contract (plan 143).
+func (r *Rule) Fix(f *lint.File) []byte {
+	if r.hasInlineSchema() && r.InlineSchema.Index != nil {
+		// Best-effort write: a failure here surfaces on the next
+		// Check via the missing-or-stale index; we deliberately do
+		// not turn the I/O error into a diagnostic from inside Fix
+		// because Fix returns bytes, not diagnostics.
+		_ = schema.WriteIndex(f, r.InlineSchema)
+	}
+	return f.Source
 }
 
 // checkFileSchema retains the legacy proto.md heading-template
@@ -298,6 +317,7 @@ func (r *Rule) diag(file string, line int, msg string) lint.Diagnostic {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.ListMerger   = (*Rule)(nil)
+	_ rule.FixableRule  = (*Rule)(nil)
 )
 
 // schemaConfig holds the parsed schema frontmatter.

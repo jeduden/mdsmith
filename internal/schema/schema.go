@@ -68,7 +68,61 @@ type Schema struct {
 	// proto.md uses — usually 1 for a `# ?` wildcard, 2 when the
 	// file declares only `## ...` rows.
 	RootLevel int
+
+	// CrossReferences lists patterns whose matches in the document
+	// body must resolve to a heading slug. See plan 143.
+	CrossReferences []CrossRef
+
+	// Acronyms, if non-nil, asks the validator to flag first-use
+	// acronyms (length 2-6, all caps) that lack a parenthesised
+	// expansion. See plan 143.
+	Acronyms *AcronymRule
+
+	// Index, if non-nil, asks `mdsmith fix` to emit a JSON
+	// side-output describing the document. `mdsmith check` ignores
+	// it. See plan 143.
+	Index *IndexSpec
 }
+
+// CrossRef declares one text-pattern → slug-template binding. The
+// validator searches text nodes for Pattern; for each match it fills
+// the captured groups (numeric `{n}` or named `{slug}`) into
+// MustMatch, slugifies the result, and looks it up in the document's
+// heading slug set. Lines whose raw text matches SkipLinesMatching
+// are exempt — typically blockquoted stale text.
+type CrossRef struct {
+	Pattern           string
+	MustMatch         string
+	SkipLinesMatching string
+}
+
+// AcronymRule configures first-use acronym detection. KnownSafe is
+// the allowlist of tokens that may appear without expansion. Scope,
+// if non-empty, restricts the check to text inside sections whose
+// heading text matches one of the listed names; empty Scope applies
+// the check document-wide.
+type AcronymRule struct {
+	KnownSafe []string
+	Scope     []string
+}
+
+// IndexSpec configures the index side-output. Output is the path
+// (relative to the source file's directory) where `mdsmith fix`
+// writes the JSON document. Include selects which sub-objects are
+// emitted; the set is closed so downstream tools can parse the file
+// without referencing a schema.
+type IndexSpec struct {
+	Output  string
+	Include []string
+}
+
+// Valid include keys for IndexSpec.Include.
+const (
+	IndexIncludeStepMap      = "step-map"
+	IndexIncludeCrossRefs    = "cross-ref-graph"
+	IndexIncludeWordCounts   = "word-counts"
+	IndexIncludeHeadingsFlat = "headings"
+)
 
 // Require captures the schema-level constraints that apply to the
 // document as a whole.
@@ -165,7 +219,10 @@ func (s *Schema) IsEmpty() bool {
 	}
 	return len(s.Frontmatter) == 0 &&
 		s.Require.Filename == "" &&
-		len(s.Sections) == 0
+		len(s.Sections) == 0 &&
+		len(s.CrossReferences) == 0 &&
+		s.Acronyms == nil &&
+		s.Index == nil
 }
 
 // EffectiveRootLevel returns the heading level of the root scope

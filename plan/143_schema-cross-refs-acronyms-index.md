@@ -1,7 +1,7 @@
 ---
 id: 143
 title: Schema cross-references, acronyms, and index
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: [146]
 summary: >-
@@ -162,27 +162,45 @@ walk completes.
 
 ## Acceptance Criteria
 
-- [ ] A `cross-references:` entry flags an
+- [x] A `cross-references:` entry flags an
       unresolved reference (e.g. "Step 7"
       with no `Step 7` heading anywhere in
       the document).
-- [ ] A `cross-references:` entry passes a
+- [x] A `cross-references:` entry passes a
       reference to an existing heading.
-- [ ] `skip-lines-matching:` skips
+- [x] `skip-lines-matching:` skips
       blockquoted lines from the resolution
       check.
-- [ ] An `acronyms:` block flags a first-use
+- [x] An `acronyms:` block flags a first-use
       without expansion and passes a
       `known-safe` entry.
-- [ ] An `acronyms:` block scoped to one
+- [x] An `acronyms:` block scoped to one
       heading does not fire on text outside
       that scope.
-- [ ] `mdsmith fix` writes the index file
+- [x] `mdsmith fix` writes the index file
       named in `index.output:`.
-- [ ] `mdsmith check` does not write the
+- [x] `mdsmith check` does not write the
       index file even when `index:` is set.
-- [ ] The index JSON matches the documented
+- [x] The index JSON matches the documented
       shape for every `include:` entry.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.
+
+## Implementation Notes
+
+- `Check` emits a "stale index" diagnostic when
+  the on-disk file is missing or out of date.
+  This is what causes the fixer to invoke
+  `Rule.Fix`, which writes the bytes. The Fix
+  pass returns `f.Source` unchanged — the
+  schema rule never rewrites the document
+  body.
+- `mdsmith check` never writes the index file
+  (verified by a dedicated unit test). Users
+  who don't want the staleness warning during
+  `check` can gitignore the index path and run
+  `mdsmith fix` before pushing.
+- Word counts in the index attribute body text
+  to the immediately-enclosing heading; sub-
+  sections appear under their own slug.
