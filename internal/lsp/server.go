@@ -653,43 +653,66 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	if trigger != lintTriggerChange {
 		delay = 0
 	}
-	// Identity-checked replacement: the closure captures its own
-	// timer handle and only removes it from the pending map if the
-	// map still points at it. Without that check, a callback whose
-	// firing raced with a fresh scheduleLint would delete the new
-	// timer's map entry, breaking debouncing for the next change.
+	// Identity-checked replacement: see runLintIfCurrent below. The
+	// callback receives the address of the local `timer` variable
+	// rather than its value, so an immediate-trigger goroutine that
+	// the runtime schedules before the `timer = AfterFunc(...)`
+	// assignment finishes still observes the correct pointer once
+	// scheduleLint releases pendingMu.
 	s.pendingMu.Lock()
 	if existing, ok := s.pending[uri]; ok {
 		existing.Stop()
 	}
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
-		// Re-check shutdown so a timer that armed before
-		// shutdown/exit but fires after them does not publish
-		// stale diagnostics during teardown.
-		if s.shutdown.Load() {
-			return
-		}
-		// Only run lint if THIS timer is still the live one for
-		// uri. A racing scheduleLint(uri) may have replaced us
-		// with a newer timer; that newer timer (or its immediate
-		// runLint, when debounce==0) is responsible for the next
-		// publish. Without this guard, an already-replaced timer
-		// could fire after Stop() lost the race and emit stale
-		// diagnostics on top of fresher ones.
-		s.pendingMu.Lock()
-		live := s.pending[uri] == timer
-		if live {
-			delete(s.pending, uri)
-		}
-		s.pendingMu.Unlock()
-		if !live {
-			return
-		}
-		s.runLint(uri)
+		s.runLintIfCurrent(uri, &timer)
 	})
 	s.pending[uri] = timer
 	s.pendingMu.Unlock()
+}
+
+// runLintIfCurrent is the body of the AfterFunc callback armed by
+// scheduleLint. It is a method (not an inline closure) so the
+// live-flag branch — which a real timer race only reaches
+// nondeterministically — is unit-testable.
+//
+// `timerPtr` is the address of scheduleLint's `timer` variable.
+// Taking a pointer-to-pointer (rather than the value) sidesteps a
+// race specific to immediate triggers (`delay==0`): time.AfterFunc
+// can start the callback's goroutine before the caller's
+// `timer = AfterFunc(...)` assignment finishes, so the closure
+// evaluating `timer` at goroutine entry could still see nil.
+// Dereferencing `*timerPtr` only after we acquire `s.pendingMu` is
+// safe because scheduleLint holds that mutex across the assignment
+// and only releases it once the timer is registered in
+// `s.pending[uri]`.
+//
+// We only run lint if `s.pending[uri]` still points at the same
+// *Timer: a racing scheduleLint(uri) may have replaced us with a
+// newer timer after this one fired (time.Timer.Stop() does not
+// kill a callback that already started). That newer timer is
+// responsible for the next publish; this stale callback must bail
+// out silently or the editor sees back-to-back lints with the older
+// one flashing stale diagnostics on every fast keystroke.
+//
+// The shutdown re-check at the top is a cheap early-return for
+// timers that armed before Run's deferred cleanup ran; it covers
+// the window where stopPendingLints has not yet emptied the map.
+func (s *Server) runLintIfCurrent(uri string, timerPtr **time.Timer) {
+	if s.shutdown.Load() {
+		return
+	}
+	s.pendingMu.Lock()
+	timer := *timerPtr
+	live := s.pending[uri] == timer
+	if live {
+		delete(s.pending, uri)
+	}
+	s.pendingMu.Unlock()
+	if !live {
+		return
+	}
+	s.runLint(uri)
 }
 
 // stopPendingLints cancels every armed debounce timer. Called from

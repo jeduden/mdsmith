@@ -1196,6 +1196,98 @@ func TestScheduleLintTimerSkipsAfterShutdown(t *testing.T) {
 		"a timer firing after shutdown must not publish diagnostics")
 }
 
+// runLintIfCurrentFixture spins up a Server configured for the
+// three runLintIfCurrent unit tests below. It uses a long debounce
+// so any timer minted only as a *Timer placeholder never fires on
+// its own — the tests invoke runLintIfCurrent directly to exercise
+// each branch deterministically.
+func runLintIfCurrentFixture(t *testing.T) (*Server, *safeBuffer) {
+	t.Helper()
+	buf := &safeBuffer{}
+	s := New(Options{Reader: nil, Writer: buf, Rules: rule.All(), Debounce: time.Hour})
+	s.settingsMu.Lock()
+	s.settings.Run = runOnType
+	s.settingsMu.Unlock()
+	s.docs.set("file:///x.md", &document{
+		uri: "file:///x.md", path: "x.md", text: []byte("# Hi\n\ndirty   \n"),
+	})
+	return s, buf
+}
+
+// TestRunLintIfCurrentRunsWhenLive covers the happy path: the
+// timer passed in is still registered in pending, so the call
+// clears pending[uri] and forwards to runLint, which publishes
+// diagnostics for the document.
+func TestRunLintIfCurrentRunsWhenLive(t *testing.T) {
+	t.Parallel()
+	s, buf := runLintIfCurrentFixture(t)
+	timer := time.AfterFunc(time.Hour, func() {})
+	t.Cleanup(func() { timer.Stop() })
+	s.pendingMu.Lock()
+	s.pending["file:///x.md"] = timer
+	s.pendingMu.Unlock()
+
+	s.runLintIfCurrent("file:///x.md", &timer)
+
+	s.pendingMu.Lock()
+	_, stillPending := s.pending["file:///x.md"]
+	s.pendingMu.Unlock()
+	assert.False(t, stillPending, "live=true must delete pending[uri]")
+	assert.Contains(t, buf.String(), "publishDiagnostics",
+		"live=true must reach runLint and publish diagnostics")
+}
+
+// TestRunLintIfCurrentSkipsWhenReplaced covers the race-replaced
+// path: a newer scheduleLint has already swapped pending[uri] to a
+// different timer, so the stale callback must return without
+// touching pending and without publishing.
+func TestRunLintIfCurrentSkipsWhenReplaced(t *testing.T) {
+	t.Parallel()
+	s, buf := runLintIfCurrentFixture(t)
+	stale := time.AfterFunc(time.Hour, func() {})
+	t.Cleanup(func() { stale.Stop() })
+	current := time.AfterFunc(time.Hour, func() {})
+	t.Cleanup(func() { current.Stop() })
+	s.pendingMu.Lock()
+	s.pending["file:///x.md"] = current
+	s.pendingMu.Unlock()
+
+	s.runLintIfCurrent("file:///x.md", &stale)
+
+	s.pendingMu.Lock()
+	got := s.pending["file:///x.md"]
+	s.pendingMu.Unlock()
+	assert.Same(t, current, got,
+		"stale-timer callback must not touch the new pending entry")
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"stale-timer callback must not reach runLint")
+}
+
+// TestRunLintIfCurrentShortCircuitsOnShutdown covers the top-of-
+// callback shutdown re-check: a callback whose AfterFunc fires
+// after Run's deferred cleanup must return before touching pending
+// or runLint, even when pending[uri] still points at this timer.
+func TestRunLintIfCurrentShortCircuitsOnShutdown(t *testing.T) {
+	t.Parallel()
+	s, buf := runLintIfCurrentFixture(t)
+	timer := time.AfterFunc(time.Hour, func() {})
+	t.Cleanup(func() { timer.Stop() })
+	s.pendingMu.Lock()
+	s.pending["file:///x.md"] = timer
+	s.pendingMu.Unlock()
+
+	s.shutdown.Store(true)
+	s.runLintIfCurrent("file:///x.md", &timer)
+
+	s.pendingMu.Lock()
+	got := s.pending["file:///x.md"]
+	s.pendingMu.Unlock()
+	assert.Same(t, timer, got,
+		"shutdown re-check must return before mutating pending")
+	assert.NotContains(t, buf.String(), "publishDiagnostics",
+		"shutdown re-check must return before runLint")
+}
+
 func TestRunReturnsAfterShutdownPlusExit(t *testing.T) {
 	t.Parallel()
 	srvIn, clientWriter := io.Pipe()
