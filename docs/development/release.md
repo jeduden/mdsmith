@@ -1,37 +1,15 @@
-# Security Policy
-
-## Reporting a Vulnerability
-
-Please report security vulnerabilities by opening a [GitHub Security
-Advisory](https://github.com/jeduden/mdsmith/security/advisories/new).
-Do not file a public issue.
-
-The maintainer aims to acknowledge reports within
-five business days.
-
-## Supported Versions
-
-Only the latest minor release receives security
-updates. Pin to a specific patch version in CI and
-update via dependabot.
-
-## Release Pipeline and Supply-Chain Posture
-
-The release pipeline is the single source of truth.
-It documents how mdsmith publishes binaries and how
-supply-chain controls are wired into the build. The
-canonical file is
-[`docs/development/release.md`](docs/development/release.md).
-Its content is included below. Edit the canonical
-file; re-run `mdsmith fix SECURITY.md` to refresh
-this page.
-
-<?include
-file: docs/development/release.md
-strip-frontmatter: "true"
-heading-level: "absolute"
-?>
-### Release Pipeline
+---
+title: Release Pipeline
+summary: >-
+  How tag pushes publish mdsmith to npm, PyPI, the
+  Visual Studio Marketplace, Open VSX, and GitHub
+  Releases — the workflow structure, the OIDC trusted
+  publishers it relies on, the `release` environment
+  that gates every publishing job, and the
+  supply-chain hardening features baked into the
+  pipeline.
+---
+# Release Pipeline
 
 A single GitHub Actions workflow publishes mdsmith to
 six channels: `.github/workflows/release.yml`. Every
@@ -40,7 +18,7 @@ token. The two long-lived publisher PATs that remain
 (`VSCE_PAT`, `OVSX_PAT`) are gated by the `release`
 GitHub environment.
 
-#### Triggering a Release
+## Triggering a Release
 
 A maintainer tags the commit and pushes:
 
@@ -60,7 +38,7 @@ No other trigger publishes anything. There is no
 `workflow_dispatch`, no `pull_request_target`, no
 `workflow_run` chained from CI.
 
-#### Channels and Jobs
+## Channels and Jobs
 
 ```text
 build (matrix: 5 platforms)
@@ -84,7 +62,7 @@ Every job that holds a credential is also gated by
 `if: github.repository == 'jeduden/mdsmith'` and runs
 in the `release` GitHub environment.
 
-#### OIDC Trusted Publishing
+## OIDC Trusted Publishing
 
 npm and PyPI accept the workflow's GitHub OIDC token
 in place of a long-lived API token. The OIDC token
@@ -139,7 +117,7 @@ Trusted Publishing satisfies the 2FA requirement
 because the OIDC token already proves the workflow's
 identity.
 
-#### The `release` GitHub Environment
+## The `release` GitHub Environment
 
 Every job that holds a publishing credential — `npm`,
 `pypi`, `vscode`, `release` — declares
@@ -162,7 +140,7 @@ workflow run whose claim set does not include
 `environment=release`, so the env must exist before
 the first release.
 
-#### Long-Lived Publisher Tokens
+## Long-Lived Publisher Tokens
 
 Three secrets are still long-lived PATs. They are
 gated by the `release` environment so a workflow run
@@ -177,7 +155,7 @@ outside an approved release cannot read them.
 Record each rotation date in `CLAUDE.md` so the next
 expiry is visible at a glance.
 
-#### Supply-Chain Hardening
+## Supply-Chain Hardening
 
 The release pipeline applies the following controls.
 Each item is enforced by the workflow file, the npm
@@ -238,7 +216,7 @@ note](../security/2026-05-12-supply-chain-hardening.md)
 walks through the above against the TanStack /
 mini-shai-hulud attack chain.
 
-#### Operational Checklist
+## Operational Checklist
 
 Run this list once when bootstrapping a fresh clone
 or after rotating credentials. Each item below is a
@@ -263,38 +241,13 @@ place.
 7. [ ] Enable required signed tags for `v*` so an
    unsigned tag cannot trigger a release.
 
-#### Verifying a Released Artifact
+## Verifying a Released Artifact
 
 End-user verification is documented in the
-[installation guide](docs/guides/install.md#github-release-direct-download).
+[installation guide](../guides/install.md#github-release-direct-download).
 It covers `cosign verify-blob`, `gh attestation
 verify`, and `sha256sum -c`. Each step resolves
 through the workflow's GitHub OIDC identity. A
 forged binary or rewritten checksums file fails
 verification unless the attacker also controls
 `release.yml` on this repository.
-<?/include?>
-
-## Security Audit Log
-
-Point-in-time security reviews live in
-[`docs/security/`](docs/security/) and follow the
-filename pattern `YYYY-MM-DD-<slug>.md`. Each note
-records the scope, the review method, the findings,
-and the fix or follow-up.
-
-<?catalog
-glob:
-  - "docs/security/*.md"
-  - "!docs/security/proto.md"
-sort: -date
-header: |
-  | Date | Review | Scope |
-  |------|--------|-------|
-row: "| {date} | [{title}]({filename}) | {scope} |"
-?>
-| Date       | Review                                                                                                          | Scope                                                                                                                          |
-|------------|-----------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| 2026-05-12 | [Supply-Chain Hardening — mini-shai-hulud / TanStack Class](docs/security/2026-05-12-supply-chain-hardening.md) | npm, PyPI, VS Code Marketplace, and Open VSX publishing surface; GitHub Actions CI/CD; lockfile and lifecycle-script handling. |
-| 2026-04-05 | [Adversarial Markdown Input](docs/security/2026-04-05-adversarial-markdown.md)                                  | Adversarial markdown input causing unintended side effects on the host machine                                                 |
-<?/catalog?>
