@@ -55,3 +55,25 @@ func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	}
 	return parsed.Kinds, nil
 }
+
+// ParseFrontMatterFields decodes a YAML front-matter block (including its
+// --- delimiters) into a map of top-level keys to raw values. Returns nil
+// and nil error when fm is empty or contains no mapping. Used by the
+// kind-assignment field-presence selector — a field is considered present
+// when its value is non-null.
+func ParseFrontMatterFields(fm []byte) (map[string]any, error) {
+	if len(fm) == 0 {
+		return nil, nil
+	}
+	delim := []byte("---\n")
+	body := bytes.TrimPrefix(fm, delim)
+	body = bytes.TrimSuffix(body, delim)
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, nil
+	}
+	var parsed map[string]any
+	if err := yamlutil.UnmarshalSafe(body, &parsed); err != nil {
+		return nil, err
+	}
+	return parsed, nil
+}

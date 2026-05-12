@@ -1,7 +1,7 @@
 ---
 id: 139
 title: Field-presence kind assignment
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Auto-assign a kind when a file's front matter
@@ -146,23 +146,23 @@ does.
 
 ## Acceptance Criteria
 
-- [ ] A `kind-assignment:` entry with
+- [x] A `kind-assignment:` entry with
       `fields-present: [a, b]` matches files
       whose FM contains both fields with
       non-null values.
-- [ ] An entry combining `glob:` and
+- [x] An entry combining `glob:` and
       `fields-present:` matches only files
       satisfying both.
-- [ ] Existing entries without
+- [x] Existing entries without
       `fields-present:` retain current
       behavior (regression test).
-- [ ] A field present but null does not count
+- [x] A field present but null does not count
       as present (regression test).
-- [ ] `mdsmith kinds resolve <file>` output
+- [x] `mdsmith kinds resolve <file>` output
       names the matching entry and selector.
-- [ ] [`docs/guides/file-kinds.md`](../docs/guides/file-kinds.md)
+- [x] [`docs/guides/file-kinds.md`](../docs/guides/file-kinds.md)
       describes the new selector with one
       worked example.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.

@@ -312,7 +312,7 @@ func TestKindSetsRequiredStructureSchema(t *testing.T) {
 		},
 	}
 
-	effective := config.Effective(cfg, "plan/001_foo.md", nil)
+	effective := config.Effective(cfg, "plan/001_foo.md", nil, nil)
 	got := effective["required-structure"].Settings["schema"]
 	assert.Equal(t, "plan/proto.md", got)
 }

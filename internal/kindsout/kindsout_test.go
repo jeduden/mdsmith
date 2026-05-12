@@ -154,7 +154,7 @@ func makeFileResolution(t *testing.T) *config.FileResolution {
 			{Files: []string{"x.md"}, Kinds: []string{"short"}},
 		},
 	}
-	return config.ResolveFile(cfg, "x.md", nil)
+	return config.ResolveFile(cfg, "x.md", nil, nil)
 }
 
 func TestWriteFileResolutionText_Full(t *testing.T) {
@@ -163,7 +163,7 @@ func TestWriteFileResolutionText_Full(t *testing.T) {
 	require.NoError(t, WriteFileResolutionText(&buf, res))
 	out := buf.String()
 	assert.Contains(t, out, "file: x.md")
-	assert.Contains(t, out, "short (from kind-assignment[0])")
+	assert.Contains(t, out, "short (from kind-assignment[0]: glob x.md)")
 	assert.Contains(t, out, "line-length")
 	assert.Contains(t, out, "settings.max = 30")
 	assert.Contains(t, out, "(from kinds.short)")
@@ -173,7 +173,7 @@ func TestWriteFileResolutionText_NoKinds(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{"line-length": {Enabled: true}},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	var buf bytes.Buffer
 	require.NoError(t, WriteFileResolutionText(&buf, res))
 	assert.Contains(t, buf.String(), "(none)")
@@ -204,7 +204,7 @@ func TestWriteRuleResolutionText_FullAndNoOpLayers(t *testing.T) {
 			{Files: []string{"x.md"}, Kinds: []string{"short"}},
 		},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	rr := res.Rules["line-length"]
 	var buf bytes.Buffer
 	require.NoError(t, WriteRuleResolutionText(&buf, "x.md", rr))
@@ -230,7 +230,7 @@ func TestWriteRuleResolutionText_WriteErrorPropagates(t *testing.T) {
 			{Files: []string{"x.md"}, Kinds: []string{"k"}},
 		},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	rr := res.Rules["r"]
 	for after := 0; after < 8; after++ {
 		w := &failingWriter{err: errors.New("io"), after: after}
@@ -308,7 +308,7 @@ func TestRuleResolutionJSON_IncludesNoOpLayers(t *testing.T) {
 			{Files: []string{"x.md"}, Kinds: []string{"short"}},
 		},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	rr := res.Rules["line-length"]
 	out := RuleResolution("x.md", rr)
 	require.Len(t, out.Layers, 2)
@@ -367,7 +367,7 @@ func TestWriteFileResolutionText_NoneWriteError(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{"r": {Enabled: true}},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	w := &failingWriter{err: errors.New("io"), after: 2}
 	err := WriteFileResolutionText(w, res)
 	require.Error(t, err)
@@ -407,7 +407,7 @@ func TestWriteFileResolutionText_SanitizesKindName(t *testing.T) {
 			{Files: []string{"x.md"}, Kinds: []string{"evil\x1bkind"}},
 		},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	var buf bytes.Buffer
 	require.NoError(t, WriteFileResolutionText(&buf, res))
 	assert.NotContains(t, buf.String(), "\x1b")
@@ -422,7 +422,7 @@ func TestWriteRuleResolutionText_SanitizesFields(t *testing.T) {
 			"line\x07length": {Enabled: true, Settings: map[string]any{"max": 80}},
 		},
 	}
-	res := config.ResolveFile(cfg, "evil\x07file.md", nil)
+	res := config.ResolveFile(cfg, "evil\x07file.md", nil, nil)
 	rr := res.Rules["line\x07length"]
 	var buf bytes.Buffer
 	require.NoError(t, WriteRuleResolutionText(&buf, "evil\x07file.md", rr))
@@ -462,7 +462,7 @@ func TestWriteFileResolutionText_ShowsConventionLayer(t *testing.T) {
 			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
 		},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	var buf bytes.Buffer
 	require.NoError(t, WriteFileResolutionText(&buf, res))
 	out := buf.String()
@@ -483,7 +483,7 @@ func TestWriteRuleResolutionText_ShowsConventionLayer(t *testing.T) {
 			"line-length": {Enabled: true, Settings: map[string]any{"max": 80}},
 		},
 	}
-	res := config.ResolveFile(cfg, "x.md", nil)
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
 	rr := res.Rules["line-length"]
 	var buf bytes.Buffer
 	require.NoError(t, WriteRuleResolutionText(&buf, "x.md", rr))

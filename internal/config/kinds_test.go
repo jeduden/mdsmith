@@ -126,7 +126,7 @@ func TestResolveEffectiveKindsFrontMatterFirst(t *testing.T) {
 			{Files: []string{"*.md"}, Kinds: []string{"b", "c"}},
 		},
 	}
-	got := resolveEffectiveKinds(cfg, "file.md", []string{"a"})
+	got := resolveEffectiveKinds(cfg, "file.md", []string{"a"}, nil)
 	assert.Equal(t, []string{"a", "b", "c"}, got)
 }
 
@@ -141,7 +141,7 @@ func TestResolveEffectiveKindsDeduplicates(t *testing.T) {
 			{Files: []string{"*.md"}, Kinds: []string{"a", "b"}},
 		},
 	}
-	got := resolveEffectiveKinds(cfg, "file.md", []string{"a"})
+	got := resolveEffectiveKinds(cfg, "file.md", []string{"a"}, nil)
 	assert.Equal(t, []string{"a", "b"}, got)
 }
 
@@ -152,7 +152,7 @@ func TestResolveEffectiveKindsNoAssignmentMatch(t *testing.T) {
 			{Files: []string{"docs/*.md"}, Kinds: []string{"a"}},
 		},
 	}
-	got := resolveEffectiveKinds(cfg, "other/file.md", nil)
+	got := resolveEffectiveKinds(cfg, "other/file.md", nil, nil)
 	assert.Empty(t, got)
 }
 
@@ -172,7 +172,7 @@ func TestEffectiveKindOverridesTopLevelRule(t *testing.T) {
 			{Files: []string{"wide/*.md"}, Kinds: []string{"wide"}},
 		},
 	}
-	result := Effective(cfg, "wide/doc.md", nil)
+	result := Effective(cfg, "wide/doc.md", nil, nil)
 	assert.Equal(t, 200, result["line-length"].Settings["max"])
 }
 
@@ -198,7 +198,7 @@ func TestEffectiveGlobOverrideBeatsKind(t *testing.T) {
 			},
 		},
 	}
-	result := Effective(cfg, "wide/special.md", nil)
+	result := Effective(cfg, "wide/special.md", nil, nil)
 	assert.Equal(t, 120, result["line-length"].Settings["max"])
 }
 
@@ -218,7 +218,7 @@ func TestEffectiveTwoKindsMergeInListOrder(t *testing.T) {
 		},
 	}
 	// Front matter: kinds: [a, b] — b comes later and wins on line-length.
-	result := Effective(cfg, "doc.md", []string{"a", "b"})
+	result := Effective(cfg, "doc.md", []string{"a", "b"}, nil)
 	assert.True(t, result["line-length"].Enabled)
 	assert.Equal(t, 200, result["line-length"].Settings["max"])
 }
@@ -238,7 +238,7 @@ func TestEffectiveConflictLaterKindWins(t *testing.T) {
 		},
 	}
 	// kinds: [a, b] — b's config replaces a's entirely.
-	result := Effective(cfg, "doc.md", []string{"a", "b"})
+	result := Effective(cfg, "doc.md", []string{"a", "b"}, nil)
 	assert.Equal(t, 150, result["line-length"].Settings["max"])
 }
 
@@ -252,7 +252,7 @@ func TestEffectiveCategoriesWithKinds(t *testing.T) {
 			{Files: []string{"_partials/*.md"}, Kinds: []string{"fragment"}},
 		},
 	}
-	result := EffectiveCategories(cfg, "_partials/foo.md", nil)
+	result := EffectiveCategories(cfg, "_partials/foo.md", nil, nil)
 	assert.False(t, result["meta"])
 }
 
@@ -291,7 +291,7 @@ func TestEffectiveExplicitRulesIncludesKindRules(t *testing.T) {
 			{Files: []string{"wide/*.md"}, Kinds: []string{"wide"}},
 		},
 	}
-	result := EffectiveExplicitRules(cfg, "wide/doc.md", nil)
+	result := EffectiveExplicitRules(cfg, "wide/doc.md", nil, nil)
 	assert.True(t, result["no-hard-tabs"], "top-level explicit rule should be present")
 	assert.True(t, result["line-length"], "kind rule should be marked explicit")
 }
@@ -304,7 +304,7 @@ func TestEffectiveExplicitRulesFrontMatterKinds(t *testing.T) {
 			}},
 		},
 	}
-	result := EffectiveExplicitRules(cfg, "doc.md", []string{"plan"})
+	result := EffectiveExplicitRules(cfg, "doc.md", []string{"plan"}, nil)
 	assert.True(t, result["paragraph-readability"])
 }
 
@@ -323,7 +323,7 @@ func TestEffectiveIgnoresMissingKindBody(t *testing.T) {
 		},
 	}
 	// Inject a stale kind name via front-matter (bypasses LoadKinds validation).
-	result := Effective(cfg, "doc.md", []string{"nonexistent"})
+	result := Effective(cfg, "doc.md", []string{"nonexistent"}, nil)
 	assert.Equal(t, 80, result["line-length"].Settings["max"], "missing kind body is silently skipped")
 }
 
@@ -332,7 +332,7 @@ func TestEffectiveExplicitRulesIgnoresMissingKindBody(t *testing.T) {
 		ExplicitRules: map[string]bool{"line-length": true},
 		Kinds:         map[string]KindBody{},
 	}
-	result := EffectiveExplicitRules(cfg, "doc.md", []string{"nonexistent"})
+	result := EffectiveExplicitRules(cfg, "doc.md", []string{"nonexistent"}, nil)
 	assert.True(t, result["line-length"])
 	assert.False(t, result["nonexistent"])
 }
@@ -341,7 +341,7 @@ func TestEffectiveCategoriesIgnoresMissingKindBody(t *testing.T) {
 	cfg := &Config{
 		Kinds: map[string]KindBody{},
 	}
-	result := EffectiveCategories(cfg, "doc.md", []string{"nonexistent"})
+	result := EffectiveCategories(cfg, "doc.md", []string{"nonexistent"}, nil)
 	assert.True(t, result["heading"], "default category still enabled")
 }
 

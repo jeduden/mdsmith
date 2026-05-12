@@ -43,9 +43,13 @@ const (
 type KindAssignmentSource string
 
 // ResolvedKind names a kind in the effective list and how it was assigned.
+// Selector, when non-empty, describes the selectors that fired for a
+// kind-assignment match ("glob a,b AND fields-present x"). It is empty
+// for kinds declared via front matter.
 type ResolvedKind struct {
-	Name   string
-	Source KindAssignmentSource
+	Name     string
+	Source   KindAssignmentSource
+	Selector string
 }
 
 // LayerEntry is one applicable merge layer for a single rule. Source
@@ -110,9 +114,11 @@ type FileResolution struct {
 }
 
 // ResolveFile builds the full provenance picture for a single file.
-// fmKinds is the kinds: list parsed from the file's front matter.
-func ResolveFile(cfg *Config, filePath string, fmKinds []string) *FileResolution {
-	kinds := resolveKindsWithSources(cfg, filePath, fmKinds)
+// fmKinds is the kinds: list parsed from the file's front matter;
+// fmFields, when non-nil, is the parsed front matter and feeds the
+// kind-assignment `fields-present:` selector.
+func ResolveFile(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) *FileResolution {
+	kinds := resolveKindsWithSources(cfg, filePath, fmKinds, fmFields)
 	layers := buildLayers(cfg, filePath, kinds)
 
 	names := allRuleNames(layers)
@@ -340,25 +346,27 @@ func leafValue(rc RuleCfg, path string) (any, bool) {
 	return nil, false
 }
 
-func resolveKindsWithSources(cfg *Config, filePath string, fmKinds []string) []ResolvedKind {
+func resolveKindsWithSources(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []ResolvedKind {
 	seen := make(map[string]bool)
 	var result []ResolvedKind
-	add := func(name string, source KindAssignmentSource) {
+	add := func(name string, source KindAssignmentSource, selector string) {
 		if seen[name] {
 			return
 		}
 		seen[name] = true
-		result = append(result, ResolvedKind{Name: name, Source: source})
+		result = append(result, ResolvedKind{Name: name, Source: source, Selector: selector})
 	}
 	for _, k := range fmKinds {
-		add(k, "front-matter")
+		add(k, "front-matter", "")
 	}
 	for i, entry := range cfg.KindAssignment {
-		if matchesAny(entry.Patterns(), filePath) {
-			src := KindAssignmentSource(fmt.Sprintf("kind-assignment[%d]", i))
-			for _, k := range entry.Kinds {
-				add(k, src)
-			}
+		matched, selector := matchKindAssignmentEntry(entry, filePath, fmFields)
+		if !matched {
+			continue
+		}
+		src := KindAssignmentSource(fmt.Sprintf("kind-assignment[%d]", i))
+		for _, k := range entry.Kinds {
+			add(k, src, selector)
 		}
 	}
 	return result

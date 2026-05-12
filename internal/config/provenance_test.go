@@ -38,7 +38,7 @@ overrides:
 `
 	cfg := resolveFromYAML(t, yml)
 
-	res := ResolveFile(cfg, "plan/big.md", nil)
+	res := ResolveFile(cfg, "plan/big.md", nil, nil)
 	require.NotNil(t, res)
 
 	require.Len(t, res.Kinds, 1)
@@ -88,7 +88,7 @@ kinds:
         max: 120
 `
 	cfg := resolveFromYAML(t, yml)
-	res := ResolveFile(cfg, "doc.md", []string{"proto"})
+	res := ResolveFile(cfg, "doc.md", []string{"proto"}, nil)
 
 	require.Len(t, res.Kinds, 1)
 	assert.Equal(t, "proto", res.Kinds[0].Name)
@@ -116,7 +116,7 @@ kind-assignment:
     kinds: [proto]
 `
 	cfg := resolveFromYAML(t, yml)
-	res := ResolveFile(cfg, "doc.md", nil)
+	res := ResolveFile(cfg, "doc.md", nil, nil)
 
 	rr := res.Rules["line-length"]
 	require.Len(t, rr.Layers, 2, "user + kinds.proto")
@@ -138,7 +138,7 @@ overrides:
         max: 200
 `
 	cfg := resolveFromYAML(t, yml)
-	res := ResolveFile(cfg, "doc.md", nil)
+	res := ResolveFile(cfg, "doc.md", nil, nil)
 
 	rr := res.Rules["line-length"]
 	// Override does not match doc.md, so only the user layer is in
@@ -160,7 +160,7 @@ kind-assignment:
 `
 	cfg := resolveFromYAML(t, yml)
 	// front-matter declares plan first, then kind-assignment adds proto and (dup) plan.
-	res := ResolveFile(cfg, "doc.md", []string{"plan"})
+	res := ResolveFile(cfg, "doc.md", []string{"plan"}, nil)
 
 	require.Len(t, res.Kinds, 2)
 	assert.Equal(t, "plan", res.Kinds[0].Name)

@@ -23,7 +23,7 @@ func TestAttach_PopulatesExplanation(t *testing.T) {
 		Severity: lint.Error, Message: "too long",
 	}}
 
-	Attach(diags, cfg, "x.md", nil)
+	Attach(diags, cfg, "x.md", nil, nil)
 	require.NotNil(t, diags[0].Explanation)
 	assert.Equal(t, "line-length", diags[0].Explanation.Rule)
 
@@ -51,7 +51,7 @@ func TestAttach_SkipsDiagsForUnknownRule(t *testing.T) {
 		File: "x.md", Line: 1, Column: 1,
 		RuleID: "MDS999", RuleName: "phantom-rule",
 	}}
-	Attach(diags, cfg, "x.md", nil)
+	Attach(diags, cfg, "x.md", nil, nil)
 	assert.Nil(t, diags[0].Explanation)
 }
 
@@ -61,8 +61,8 @@ func TestAttach_EmptyDiagsIsNoOp(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{"line-length": {Enabled: true}},
 	}
-	Attach(nil, cfg, "x.md", nil)
-	Attach([]lint.Diagnostic{}, cfg, "x.md", nil)
+	Attach(nil, cfg, "x.md", nil, nil)
+	Attach([]lint.Diagnostic{}, cfg, "x.md", nil, nil)
 	// No panic, no allocation; nothing to assert beyond a successful return.
 }
 
@@ -83,7 +83,7 @@ func TestAttach_FrontMatterKindsApplied(t *testing.T) {
 		File: "x.md", Line: 1, Column: 1,
 		RuleID: "MDS001", RuleName: "line-length",
 	}}
-	Attach(diags, cfg, "x.md", []string{"short"})
+	Attach(diags, cfg, "x.md", []string{"short"}, nil)
 	require.NotNil(t, diags[0].Explanation)
 
 	var sawMax bool

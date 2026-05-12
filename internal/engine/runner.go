@@ -109,7 +109,7 @@ func (r *Runner) processFile(path string, res *Result) {
 		return r.cachedGitignore(gd)
 	}
 
-	fmKinds, err := r.parseFrontMatterKinds(path, f.FrontMatter)
+	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
 	if err != nil {
 		res.Errors = append(res.Errors, err)
 		return
@@ -117,13 +117,13 @@ func (r *Runner) processFile(path string, res *Result) {
 
 	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
 
-	effective := r.effectiveWithCategories(path, fmKinds)
+	effective := r.effectiveWithCategories(path, fmKinds, fmFields)
 	mdRules := r.markdownRules()
 	r.logRules(mdRules, effective)
 
 	diags, errs := CheckRules(f, mdRules, effective)
 	if r.Explain {
-		explain.Attach(diags, r.Config, path, fmKinds)
+		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
 	res.Diagnostics = append(res.Diagnostics, diags...)
 	res.Errors = append(res.Errors, errs...)
@@ -255,7 +255,7 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		}
 	}
 
-	fmKinds, err := r.parseFrontMatterKinds(path, f.FrontMatter)
+	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
 	if err != nil {
 		res.Errors = append(res.Errors, err)
 		return res
@@ -263,14 +263,14 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 
 	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
 
-	effective := r.effectiveWithCategories(path, fmKinds)
+	effective := r.effectiveWithCategories(path, fmKinds, fmFields)
 
 	mdRules := r.markdownRules()
 	r.logRules(mdRules, effective)
 
 	diags, errs := CheckRules(f, mdRules, effective)
 	if r.Explain {
-		explain.Attach(diags, r.Config, path, fmKinds)
+		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
 	res.Diagnostics = append(res.Diagnostics, diags...)
 	res.Errors = append(res.Errors, errs...)
@@ -310,10 +310,36 @@ func (r *Runner) parseFrontMatterKinds(path string, fm []byte) ([]string, error)
 	return kinds, nil
 }
 
+// parseFrontMatterFields parses a file's front-matter block into a
+// top-level map. It feeds the kind-assignment `fields-present:` selector.
+func (r *Runner) parseFrontMatterFields(path string, fm []byte) (map[string]any, error) {
+	fields, err := lint.ParseFrontMatterFields(fm)
+	if err != nil {
+		return nil, fmt.Errorf("parsing front matter in %q: %w", path, err)
+	}
+	return fields, nil
+}
+
+// parseFrontMatter is the shared kinds+fields parse used by both Run and
+// RunSource; pulling it out keeps each entry point under the funlen cap.
+func (r *Runner) parseFrontMatter(path string, fm []byte) ([]string, map[string]any, error) {
+	kinds, err := r.parseFrontMatterKinds(path, fm)
+	if err != nil {
+		return nil, nil, err
+	}
+	fields, err := r.parseFrontMatterFields(path, fm)
+	if err != nil {
+		return nil, nil, err
+	}
+	return kinds, fields, nil
+}
+
 // effectiveWithCategories computes the effective rule config for a file
 // path, applying category-based enable/disable on top of per-rule settings.
-func (r *Runner) effectiveWithCategories(path string, fmKinds []string) map[string]config.RuleCfg {
-	effective, categories, explicit := config.EffectiveAll(r.Config, path, fmKinds)
+func (r *Runner) effectiveWithCategories(
+	path string, fmKinds []string, fmFields map[string]any,
+) map[string]config.RuleCfg {
+	effective, categories, explicit := config.EffectiveAll(r.Config, path, fmKinds, fmFields)
 	return config.ApplyCategories(effective, categories, ruleCategoryLookup(r.Rules), explicit)
 }
 
@@ -381,7 +407,7 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 	if r.ConfigPath == "" {
 		return
 	}
-	effective := r.effectiveWithCategories(r.ConfigPath, nil)
+	effective := r.effectiveWithCategories(r.ConfigPath, nil, nil)
 	f, err := lint.NewFile(r.ConfigPath, []byte{})
 	if err != nil {
 		res.Errors = append(res.Errors, fmt.Errorf("creating config lint.File: %w", err))

@@ -122,3 +122,40 @@ func TestParseFrontMatterKinds(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFrontMatterFields(t *testing.T) {
+	t.Run("returns parsed mapping", func(t *testing.T) {
+		prefix, _ := StripFrontMatter([]byte("---\nstatus: open\nid: 7\n---\n# H\n"))
+		got, err := ParseFrontMatterFields(prefix)
+		require.NoError(t, err)
+		assert.Equal(t, "open", got["status"])
+		assert.Equal(t, 7, got["id"])
+	})
+
+	t.Run("null value preserved", func(t *testing.T) {
+		prefix, _ := StripFrontMatter([]byte("---\nstatus: null\n---\n"))
+		got, err := ParseFrontMatterFields(prefix)
+		require.NoError(t, err)
+		v, ok := got["status"]
+		require.True(t, ok, "key should be present")
+		assert.Nil(t, v, "null YAML value decodes to nil")
+	})
+
+	t.Run("no front matter returns nil", func(t *testing.T) {
+		got, err := ParseFrontMatterFields(nil)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("empty front matter returns nil", func(t *testing.T) {
+		prefix, _ := StripFrontMatter([]byte("---\n---\n# H\n"))
+		got, err := ParseFrontMatterFields(prefix)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("yaml aliases rejected", func(t *testing.T) {
+		_, err := ParseFrontMatterFields([]byte("---\nbase: &a x\nkey: *a\n---\n"))
+		assert.Error(t, err)
+	})
+}

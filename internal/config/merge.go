@@ -181,9 +181,10 @@ func copyKindAssignment(entries []KindAssignmentEntry) []KindAssignmentEntry {
 	result := make([]KindAssignmentEntry, len(entries))
 	for i, e := range entries {
 		result[i] = KindAssignmentEntry{
-			Glob:  copyStrings(e.Glob),
-			Files: copyStrings(e.Files),
-			Kinds: copyStrings(e.Kinds),
+			Glob:          copyStrings(e.Glob),
+			Files:         copyStrings(e.Files),
+			FieldsPresent: copyStrings(e.FieldsPresent),
+			Kinds:         copyStrings(e.Kinds),
 		}
 	}
 	return result
@@ -235,10 +236,14 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 // outside the config package (e.g. the LSP symbol index) that need
 // effective-kind resolution without re-implementing the merge rules.
 //
-// When cfg is nil there are no kind-assignment globs to apply, so
+// When cfg is nil there are no kind-assignment entries to apply, so
 // the result is just fmKinds with duplicates dropped — preserving
 // the dedup contract callers rely on.
-func EffectiveKinds(cfg *Config, filePath string, fmKinds []string) []string {
+//
+// fmFields, when non-nil, is the file's parsed front matter; it is
+// consumed by entries that set `fields-present:`. Pass nil when the
+// caller has no FM info — such entries simply won't match.
+func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
 	if cfg == nil {
 		seen := make(map[string]bool, len(fmKinds))
 		out := make([]string, 0, len(fmKinds))
@@ -251,14 +256,14 @@ func EffectiveKinds(cfg *Config, filePath string, fmKinds []string) []string {
 		}
 		return out
 	}
-	return resolveEffectiveKinds(cfg, filePath, fmKinds)
+	return resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields)
 }
 
 // resolveEffectiveKinds builds the ordered, deduplicated effective kind list
 // for a file. fmKinds are the kinds declared in the file's front matter;
 // they come first. kind-assignment matches are appended in config order.
 // Duplicate names are dropped after their first occurrence.
-func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string) []string {
+func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
 	seen := make(map[string]bool)
 	var result []string
 
@@ -273,7 +278,7 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string) []str
 		add(k)
 	}
 	for _, entry := range cfg.KindAssignment {
-		if matchesAny(entry.Patterns(), filePath) {
+		if matched, _ := matchKindAssignmentEntry(entry, filePath, fmFields); matched {
 			for _, k := range entry.Kinds {
 				add(k)
 			}
@@ -286,33 +291,33 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string) []str
 // It starts with the top-level rules, applies kinds in effective-list order
 // (fmKinds from front matter first, then kind-assignment matches), and
 // finally applies glob overrides. Later entries take precedence.
-func Effective(cfg *Config, filePath string, fmKinds []string) map[string]RuleCfg {
-	return effectiveRules(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds))
+func Effective(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) map[string]RuleCfg {
+	return effectiveRules(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields))
 }
 
 // EffectiveExplicitRules returns the set of rule names that were explicitly
 // configured for a given file path. It includes rules from the top-level
 // ExplicitRules, any rules set by matching kinds, and any rules set by
 // matching overrides.
-func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds []string) map[string]bool {
-	return effectiveExplicit(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds))
+func EffectiveExplicitRules(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) map[string]bool {
+	return effectiveExplicit(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields))
 }
 
 // EffectiveCategories returns the effective category settings for a given
 // file path. It starts with the top-level categories, applies kinds in
 // effective-list order, and then applies matching overrides. Categories not
 // explicitly set default to true (enabled).
-func EffectiveCategories(cfg *Config, filePath string, fmKinds []string) map[string]bool {
-	return effectiveCats(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds))
+func EffectiveCategories(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) map[string]bool {
+	return effectiveCats(cfg, filePath, resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields))
 }
 
 // EffectiveAll returns the effective rule config, category settings, and
 // explicit rule set for a file path while resolving effective kinds once and
 // reusing that result across all three computations.
 func EffectiveAll(
-	cfg *Config, filePath string, fmKinds []string,
+	cfg *Config, filePath string, fmKinds []string, fmFields map[string]any,
 ) (map[string]RuleCfg, map[string]bool, map[string]bool) {
-	kinds := resolveEffectiveKinds(cfg, filePath, fmKinds)
+	kinds := resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields)
 	return effectiveRules(cfg, filePath, kinds),
 		effectiveCats(cfg, filePath, kinds),
 		effectiveExplicit(cfg, filePath, kinds)

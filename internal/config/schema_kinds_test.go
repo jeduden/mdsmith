@@ -126,7 +126,7 @@ func TestEffectiveInjectsInlineSchema(t *testing.T) {
 			{Glob: []string{"docs/rfcs/*.md"}, Kinds: []string{"rfc"}},
 		},
 	}
-	effective := Effective(cfg, "docs/rfcs/foo.md", nil)
+	effective := Effective(cfg, "docs/rfcs/foo.md", nil, nil)
 	rs, ok := effective["required-structure"]
 	require.True(t, ok, "required-structure should be in effective config")
 	require.NotNil(t, rs.Settings)
@@ -159,7 +159,7 @@ func TestEffectiveClearsPriorSchemaWhenNewSourceArrives(t *testing.T) {
 			{Glob: []string{"*.md"}, Kinds: []string{"a", "b"}},
 		},
 	}
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	rs := effective["required-structure"]
 	assert.NotContains(t, rs.Settings, "schema",
 		"prior file-source must be cleared when a later kind installs inline")
@@ -264,7 +264,7 @@ func TestEmptyInlineSchemaDoesNotClearPriorState(t *testing.T) {
 			{Glob: []string{"*.md"}, Kinds: []string{"a", "b"}},
 		},
 	}
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	rs := effective["required-structure"]
 	assert.Equal(t, "schemas/a.md", rs.Settings["schema"],
 		"empty schema map must not clear prior file-source")
@@ -290,7 +290,7 @@ func TestInlineSchemaMarksRequiredStructureExplicit(t *testing.T) {
 			{Glob: []string{"*.md"}, Kinds: []string{"k"}},
 		},
 	}
-	explicit := EffectiveExplicitRules(cfg, "foo.md", nil)
+	explicit := EffectiveExplicitRules(cfg, "foo.md", nil, nil)
 	assert.True(t, explicit["required-structure"],
 		"an inline kind schema must mark required-structure as explicit")
 }
@@ -321,7 +321,7 @@ func TestBoolOnlyRequiredStructureRuleCfg(t *testing.T) {
 	}
 	require.NoError(t, ValidateKinds(cfg),
 		"bool-only RuleCfg must not crash schema-source validation")
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	assert.NotNil(t, effective["required-structure"],
 		"bool-only kind entry must still resolve")
 }
@@ -340,7 +340,7 @@ func TestClearSchemaState_NoRequiredStructureEntry(t *testing.T) {
 			{Glob: []string{"*.md"}, Kinds: []string{"k"}},
 		},
 	}
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	rs, ok := effective["required-structure"]
 	require.True(t, ok)
 	assert.Contains(t, rs.Settings, "inline-schema")
@@ -363,7 +363,7 @@ func TestClearSchemaState_NilSettings(t *testing.T) {
 			{Glob: []string{"*.md"}, Kinds: []string{"k"}},
 		},
 	}
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	rs := effective["required-structure"]
 	assert.Contains(t, rs.Settings, "inline-schema")
 }
@@ -394,7 +394,7 @@ func TestKindDeclaresSchemaRecognisesInlineSchemaSetting(t *testing.T) {
 			{Glob: []string{"*.md"}, Kinds: []string{"k"}},
 		},
 	}
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	rs := effective["required-structure"]
 	assert.NotContains(t, rs.Settings, "schema",
 		"a kind installing inline-schema via rules should clear the file path")
@@ -423,7 +423,7 @@ func TestEffectiveClearsPriorSchemaForOverrideInlineSchema(t *testing.T) {
 			}},
 		},
 	}
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	rs := effective["required-structure"]
 	assert.NotContains(t, rs.Settings, "schema",
 		"override installing inline-schema should clear prior file source")
@@ -451,7 +451,7 @@ func TestEffectiveClearsInlineWhenFileSourceArrives(t *testing.T) {
 			{Glob: []string{"*.md"}, Kinds: []string{"a", "b"}},
 		},
 	}
-	effective := Effective(cfg, "foo.md", nil)
+	effective := Effective(cfg, "foo.md", nil, nil)
 	rs := effective["required-structure"]
 	assert.NotContains(t, rs.Settings, "inline-schema",
 		"prior inline source must be cleared when a later kind installs file path")

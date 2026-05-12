@@ -202,7 +202,7 @@ func TestEffectiveTwoKindsContributeDifferentKeys(t *testing.T) {
 			}},
 		},
 	}
-	got := Effective(cfg, "doc.md", []string{"a", "b"})
+	got := Effective(cfg, "doc.md", []string{"a", "b"}, nil)
 	rule := got["first-line-heading"]
 	assert.Equal(t, 2, rule.Settings["level"],
 		"level from kind a should survive deep-merge with kind b")
@@ -224,7 +224,7 @@ func TestEffectiveOverridePreservesEarlierSiblings(t *testing.T) {
 			},
 		},
 	}
-	got := Effective(cfg, "docs/foo.md", nil)
+	got := Effective(cfg, "docs/foo.md", nil, nil)
 	rule := got["line-length"]
 	assert.Equal(t, 120, rule.Settings["max"], "override updates max")
 	assert.Equal(t, 4, rule.Settings["tabs"], "override does not erase sibling tabs")
@@ -255,7 +255,7 @@ func TestEffectivePlaceholdersAppendAcrossLayers(t *testing.T) {
 			},
 		},
 	}
-	got := Effective(cfg, "plan/97.md", []string{"plan"})
+	got := Effective(cfg, "plan/97.md", []string{"plan"}, nil)
 	rule := got["first-line-heading"]
 	assert.Equal(t,
 		[]any{"heading-question", "var-token", "cue-frontmatter"},
@@ -286,7 +286,7 @@ func TestEffectiveListReplaceRemainsTheDefault(t *testing.T) {
 			},
 		},
 	}
-	got := Effective(cfg, "plan/97.md", nil)
+	got := Effective(cfg, "plan/97.md", nil, nil)
 	rule := got["cross-file-reference-integrity"]
 	assert.Equal(t, []any{"plan/**"}, rule.Settings["include"],
 		"replace-mode list (default) should not concatenate")
@@ -305,7 +305,7 @@ func TestEffectiveBoolOnlyLayerPreservesInheritedSettings(t *testing.T) {
 			"back": {Rules: map[string]RuleCfg{"line-length": {Enabled: true}}},
 		},
 	}
-	got := Effective(cfg, "doc.md", []string{"off", "back"})
+	got := Effective(cfg, "doc.md", []string{"off", "back"}, nil)
 	rule := got["line-length"]
 	assert.True(t, rule.Enabled, "later kind re-enables")
 	assert.Equal(t, 80, rule.Settings["max"], "inherited settings survive bool-only layers")
@@ -325,7 +325,7 @@ func TestEffectiveKindAddsRuleNotInDefaults(t *testing.T) {
 			}},
 		},
 	}
-	got := Effective(cfg, "doc.md", []string{"plan"})
+	got := Effective(cfg, "doc.md", []string{"plan"}, nil)
 	assert.True(t, got["line-length"].Enabled)
 	assert.Equal(t, 80, got["line-length"].Settings["max"])
 }
@@ -346,7 +346,7 @@ func TestEffectiveFullyRestatedLayerStillWins(t *testing.T) {
 			},
 		},
 	}
-	got := Effective(cfg, "docs/foo.md", nil)
+	got := Effective(cfg, "docs/foo.md", nil, nil)
 	rule := got["line-length"]
 	assert.Equal(t, 120, rule.Settings["max"])
 	assert.Equal(t, 2, rule.Settings["tabs"])

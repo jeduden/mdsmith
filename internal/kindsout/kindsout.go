@@ -70,10 +70,13 @@ func RuleCfgValue(rc config.RuleCfg) any {
 }
 
 // ResolvedKindJSON names a kind in the effective list and how it was
-// assigned ("front-matter" or "kind-assignment[<i>]").
+// assigned ("front-matter" or "kind-assignment[<i>]"). Selector, when
+// non-empty, describes the selectors that fired on a kind-assignment
+// match ("glob a,b AND fields-present x").
 type ResolvedKindJSON struct {
-	Name   string `json:"name"`
-	Source string `json:"source"`
+	Name     string `json:"name"`
+	Source   string `json:"source"`
+	Selector string `json:"selector,omitempty"`
 }
 
 // LeafJSON is one effective leaf with its winning source and the chain
@@ -133,7 +136,7 @@ func FileResolution(res *config.FileResolution) FileResolutionJSON {
 	}
 	for _, k := range res.Kinds {
 		out.Kinds = append(out.Kinds, ResolvedKindJSON{
-			Name: k.Name, Source: string(k.Source),
+			Name: k.Name, Source: string(k.Source), Selector: k.Selector,
 		})
 	}
 	for name, rr := range res.Rules {
@@ -237,8 +240,12 @@ func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
 		}
 	} else {
 		for _, k := range res.Kinds {
+			src := sanitizeControl(string(k.Source))
+			if k.Selector != "" {
+				src = src + ": " + sanitizeControl(k.Selector)
+			}
 			if _, err := fmt.Fprintf(w, "  - %s (from %s)\n",
-				sanitizeControl(k.Name), sanitizeControl(string(k.Source))); err != nil {
+				sanitizeControl(k.Name), src); err != nil {
 				return err
 			}
 		}

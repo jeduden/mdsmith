@@ -16,11 +16,11 @@ import (
 // Diagnostics whose RuleName is not present in the file's effective
 // rule config are left untouched: the explain trailer is best-effort
 // and never invents provenance for rules that were never resolved.
-func Attach(diags []lint.Diagnostic, cfg *config.Config, path string, fmKinds []string) {
+func Attach(diags []lint.Diagnostic, cfg *config.Config, path string, fmKinds []string, fmFields map[string]any) {
 	if len(diags) == 0 {
 		return
 	}
-	res := config.ResolveFile(cfg, path, fmKinds)
+	res := config.ResolveFile(cfg, path, fmKinds, fmFields)
 	for i := range diags {
 		rr, ok := res.Rules[diags[i].RuleName]
 		if !ok {

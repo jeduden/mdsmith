@@ -94,7 +94,7 @@ func TestEffectiveRules_ConventionIsBaseLayerUnderUserRules(t *testing.T) {
 	}
 	require.NoError(t, applyConvention(cfg))
 
-	got := Effective(cfg, "doc.md", nil)
+	got := Effective(cfg, "doc.md", nil, nil)
 	rc, ok := got["no-inline-html"]
 	require.True(t, ok, "no-inline-html must be present")
 	assert.True(t, rc.Enabled)
@@ -107,7 +107,7 @@ func TestEffectiveRules_ConventionSurvivesWhenUserDoesNotMention(t *testing.T) {
 	cfg := &Config{Convention: "portable"}
 	require.NoError(t, applyConvention(cfg))
 
-	got := Effective(cfg, "doc.md", nil)
+	got := Effective(cfg, "doc.md", nil, nil)
 	rc, ok := got["horizontal-rule-style"]
 	require.True(t, ok, "horizontal-rule-style must be inherited from convention")
 	assert.True(t, rc.Enabled)
@@ -130,7 +130,7 @@ func TestEffectiveRules_UserSettingDeepMergesOverConvention(t *testing.T) {
 	}
 	require.NoError(t, applyConvention(cfg))
 
-	got := Effective(cfg, "doc.md", nil)
+	got := Effective(cfg, "doc.md", nil, nil)
 	rc := got["horizontal-rule-style"]
 	assert.Equal(t, 5, rc.Settings["length"], "user scalar wins")
 	assert.Equal(t, "dash", rc.Settings["style"], "preset sibling preserved")
@@ -141,7 +141,7 @@ func TestProvenance_ConventionLayerVisible(t *testing.T) {
 	cfg := &Config{Convention: "portable"}
 	require.NoError(t, applyConvention(cfg))
 
-	res := ResolveFile(cfg, "doc.md", nil)
+	res := ResolveFile(cfg, "doc.md", nil, nil)
 	rr, ok := res.Rules["horizontal-rule-style"]
 	require.True(t, ok, "rule must appear in resolution")
 	require.NotEmpty(t, rr.Layers)
@@ -178,7 +178,7 @@ func TestProvenance_UserLayerWinsOverConvention(t *testing.T) {
 	}
 	require.NoError(t, applyConvention(cfg))
 
-	res := ResolveFile(cfg, "doc.md", nil)
+	res := ResolveFile(cfg, "doc.md", nil, nil)
 	rr := res.Rules["horizontal-rule-style"]
 	leaf := rr.LeafByPath("settings.length")
 	require.NotNil(t, leaf)
@@ -206,7 +206,7 @@ func TestApplyConvention_DisablingMarkdownFlavorPreservesPresetForOtherRules(t *
 	}
 	cfg.Rules["markdown-flavor"] = RuleCfg{Enabled: false}
 
-	got := Effective(cfg, "doc.md", nil)
+	got := Effective(cfg, "doc.md", nil, nil)
 	rc := got["horizontal-rule-style"]
 	assert.True(t, rc.Enabled,
 		"convention-enabled rule survives MDS034 being disabled")
@@ -345,7 +345,7 @@ func TestConvention_EnablesOptInRuleEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	merged := Merge(Defaults(), loaded)
 
-	got := Effective(merged, "doc.md", nil)
+	got := Effective(merged, "doc.md", nil, nil)
 	mf, ok := got["markdown-flavor"]
 	require.True(t, ok, "markdown-flavor must be present after merge")
 	assert.True(t, mf.Enabled,
@@ -471,7 +471,7 @@ func TestApplyConvention_UserConvention_TopLevelRulesOverride(t *testing.T) {
 	}
 	require.NoError(t, applyConvention(cfg))
 
-	got := Effective(cfg, "doc.md", nil)
+	got := Effective(cfg, "doc.md", nil, nil)
 	es, ok := got["emphasis-style"]
 	require.True(t, ok)
 	assert.True(t, es.Enabled)
@@ -533,7 +533,7 @@ func TestProvenance_UserConventionLayerHasUserSuffix(t *testing.T) {
 	}
 	require.NoError(t, applyConvention(cfg))
 
-	res := ResolveFile(cfg, "doc.md", nil)
+	res := ResolveFile(cfg, "doc.md", nil, nil)
 	rr, ok := res.Rules["markdown-flavor"]
 	require.True(t, ok)
 

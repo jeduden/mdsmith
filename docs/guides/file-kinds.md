@@ -98,7 +98,9 @@ concatenated in this order:
    list).
 2. Matching entries in `kind-assignment:`, in the order
    they appear in the config; within an entry, kinds in
-   the order listed.
+   the order listed. An entry can select files by `glob:`
+   and/or `fields-present:` (front-matter keys with
+   non-null values).
 
 Duplicate names are dropped after their first occurrence.
 
@@ -169,6 +171,63 @@ In the example above, `plan/proto.md` matches both
 so its effective kind list is `[proto, plan]`. A regular
 plan file like `plan/96_kinds-adoption-and-docs.md` only
 matches `plan/*.md`, so it resolves to `[plan]`.
+
+### Field-presence assignment
+
+An entry can require that a file's front matter carries a
+configured set of keys, each with a non-null value. Pair
+this with `glob:` when a project identifies a file's role
+by its front-matter shape rather than (or in addition to)
+its location.
+
+```yaml
+kind-assignment:
+  - glob: ["docs/**"]
+    kinds: [doc]
+  - fields-present: [status, priority, assignee]
+    kinds: [task]
+  - glob: ["plan/*.md"]
+    fields-present: [id]
+    kinds: [plan]
+```
+
+Within a single entry, `glob:` and `fields-present:`
+combine with **AND** — every selector that is set must
+match. Across entries, matches union (OR), the same as
+for glob-only entries.
+
+A field is "present" when the key appears in front matter
+with a non-null value. A key set to YAML `null` (e.g.
+`status: null`) does **not** count: the user wrote the
+key but did not fill it.
+
+For the config above, a file at
+`anywhere/important.md` whose front matter is:
+
+```markdown
+---
+status: open
+priority: high
+assignee: alice
+---
+```
+
+resolves to `[task]` because the second entry's
+`fields-present:` selector is satisfied. A file at
+`plan/132_inline.md` with `id: 132` in its front matter
+resolves to `[plan]` — the third entry's `glob:` matches
+the path **and** its `fields-present:` finds a non-null
+`id`.
+
+`mdsmith kinds resolve <file>` names the matching entry
+index and the selectors that fired, so you can confirm
+which rule did the work:
+
+```text
+file: plan/132_inline.md
+effective kinds:
+  - plan (from kind-assignment[2]: glob plan/*.md AND fields-present id)
+```
 
 ## Merge order
 
@@ -249,7 +308,9 @@ against the merge rules above:
 
 1. Read the file's front matter for any `kinds:` field.
 2. Walk `kind-assignment:` top to bottom and collect
-   every entry whose `glob:` matches the file.
+   every entry whose selectors all match the file —
+   `glob:` against the path and `fields-present:`
+   against the file's front matter.
 3. Concatenate the two lists, dropping duplicates after
    first occurrence — that's the effective kind list.
 4. Apply built-in defaults, then the top-level `rules:`

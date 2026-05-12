@@ -33,7 +33,7 @@ func TestResolveFile_SkipsUndeclaredKindFromFrontMatter(t *testing.T) {
 		},
 		// no Kinds map: front-matter "ghost" cannot resolve to a body.
 	}
-	res := ResolveFile(cfg, "x.md", []string{"ghost"})
+	res := ResolveFile(cfg, "x.md", []string{"ghost"}, nil)
 	require.NotNil(t, res)
 	// ghost still appears in the kind list (resolveKindsWithSources adds it),
 	// but no kind layer is appended to the merge chain.
@@ -94,7 +94,7 @@ func TestBuildRuleResolution_BoolOnlyLayerPreservesInheritedSettings(t *testing.
 			{Files: []string{"x.md"}, Kinds: []string{"off"}},
 		},
 	}
-	res := ResolveFile(cfg, "x.md", nil)
+	res := ResolveFile(cfg, "x.md", nil, nil)
 	rr := res.Rules["line-length"]
 	require.NotNil(t, rr)
 	assert.False(t, rr.Final.Enabled, "kind layer must toggle Enabled off")
@@ -133,7 +133,7 @@ func TestBuildLeaves_ChainSkipsLayersMissingPath(t *testing.T) {
 			{Files: []string{"x.md"}, Kinds: []string{"size"}},
 		},
 	}
-	res := ResolveFile(cfg, "x.md", nil)
+	res := ResolveFile(cfg, "x.md", nil, nil)
 	rr := res.Rules["line-length"]
 	maxLeaf := rr.LeafByPath("settings.max")
 	require.NotNil(t, maxLeaf)

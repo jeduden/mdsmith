@@ -148,15 +148,22 @@ type KindBody struct {
 	PathPattern string             `yaml:"path-pattern,omitempty"`
 }
 
-// KindAssignmentEntry assigns one or more kinds to files matching glob
-// patterns. The glob syntax is the same as overrides: and ignore:.
+// KindAssignmentEntry assigns one or more kinds to files matching the
+// configured selectors. Two selectors are available: a glob set
+// (`glob:`) and a front-matter field-presence set (`fields-present:`).
+// Within a single entry the selectors combine with AND — every set
+// selector must match. Across entries the matches union (OR semantics).
 type KindAssignmentEntry struct {
 	// Glob is the canonical field for file patterns (doublestar syntax,
 	// supports **, brace expansion, and !-prefix exclusion).
 	Glob []string `yaml:"glob,omitempty"`
 	// Files is a deprecated alias for Glob. Use Glob in new configs.
 	Files []string `yaml:"files,omitempty"`
-	Kinds []string `yaml:"kinds"`
+	// FieldsPresent lists front-matter keys that must all be present
+	// with a non-null value for this entry to match. An empty list
+	// disables the selector — only glob is considered.
+	FieldsPresent []string `yaml:"fields-present,omitempty"`
+	Kinds         []string `yaml:"kinds"`
 }
 
 // Patterns returns the effective set of glob patterns for the entry.

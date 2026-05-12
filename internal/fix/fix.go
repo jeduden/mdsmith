@@ -150,12 +150,12 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 		return nil, nil, "", []error{fmt.Errorf("stat %q: %w", path, err)}
 	}
 
-	lf, dirFS, fmKinds, prepErr := f.prepareFile(path, source)
+	lf, dirFS, fmKinds, fmFields, prepErr := f.prepareFile(path, source)
 	if prepErr != nil {
 		return nil, nil, "", []error{prepErr}
 	}
 
-	effective := f.effectiveWithCategories(path, fmKinds)
+	effective := f.effectiveWithCategories(path, fmKinds, fmFields)
 
 	f.logRules(effective)
 
@@ -181,7 +181,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
 	if f.Explain {
-		explain.Attach(diags, f.Config, path, fmKinds)
+		explain.Attach(diags, f.Config, path, fmKinds, fmFields)
 	}
 	return beforeDiags, diags, modified, errs
 }
@@ -275,12 +275,13 @@ func (f *Fixer) logRules(effective map[string]config.RuleCfg) {
 }
 
 // prepareFile parses a lint.File from source, configures its FS/RootDir,
-// and resolves the file's front-matter kinds. Returns the file, its dirFS,
-// the validated kind list, and any error.
-func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []string, error) {
+// and resolves the file's front-matter kinds and full FM mapping. Returns
+// the file, its dirFS, the validated kind list, the FM mapping (for the
+// kind-assignment `fields-present:` selector), and any error.
+func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []string, map[string]any, error) {
 	lf, err := lint.NewFileFromSource(path, source, f.StripFrontMatter)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("parsing %q: %w", path, err)
+		return nil, nil, nil, nil, fmt.Errorf("parsing %q: %w", path, err)
 	}
 	lf.MaxInputBytes = f.MaxInputBytes
 	dir := filepath.Dir(path)
@@ -305,18 +306,24 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 	}
 	kinds, err := lint.ParseFrontMatterKinds(lf.FrontMatter)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
+		return nil, nil, nil, nil, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
 	}
 	if err := config.ValidateFrontMatterKinds(f.Config, path, kinds); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return lf, dirFS, kinds, nil
+	fields, err := lint.ParseFrontMatterFields(lf.FrontMatter)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("parsing front matter in %q: %w", path, err)
+	}
+	return lf, dirFS, kinds, fields, nil
 }
 
 // effectiveWithCategories computes the effective rule config for a file
 // path, applying category-based enable/disable on top of per-rule settings.
-func (f *Fixer) effectiveWithCategories(path string, fmKinds []string) map[string]config.RuleCfg {
-	effective, categories, explicit := config.EffectiveAll(f.Config, path, fmKinds)
+func (f *Fixer) effectiveWithCategories(
+	path string, fmKinds []string, fmFields map[string]any,
+) map[string]config.RuleCfg {
+	effective, categories, explicit := config.EffectiveAll(f.Config, path, fmKinds, fmFields)
 	m := make(map[string]string, len(f.Rules))
 	for _, rl := range f.Rules {
 		m[rl.Name()] = rl.Category()

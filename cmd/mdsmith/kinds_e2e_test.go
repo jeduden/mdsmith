@@ -206,7 +206,7 @@ func TestKinds_ResolveTextShowsPerLeafProvenance(t *testing.T) {
 	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "plan/9_big.md")
 	require.Equal(t, 0, code)
 	assert.Contains(t, stdout, "file: plan/9_big.md")
-	assert.Contains(t, stdout, "plan (from kind-assignment[0])")
+	assert.Contains(t, stdout, "plan (from kind-assignment[0]: glob")
 	assert.Contains(t, stdout, "max-file-length")
 	// Override applies to plan/9_big.md, so the winning source for max is overrides[0].
 	assert.Contains(t, stdout, "settings.max")
@@ -270,6 +270,51 @@ rules:
 	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
 	require.Equal(t, 0, code)
 	assert.Contains(t, stdout, "proto (from front-matter)")
+}
+
+func TestKinds_ResolveFromFieldsPresent(t *testing.T) {
+	cfg := `kinds:
+  task: {}
+kind-assignment:
+  - fields-present: [status, priority, assignee]
+    kinds: [task]
+`
+	doc := "---\nstatus: open\npriority: high\nassignee: alice\n---\n# T\n"
+	dir := kindsTestDir(t, cfg, map[string]string{"anywhere/doc.md": doc})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "anywhere/doc.md")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "task (from kind-assignment[0]: fields-present status,priority,assignee)")
+}
+
+func TestKinds_ResolveFromFieldsPresentMissingField(t *testing.T) {
+	cfg := `kinds:
+  task: {}
+kind-assignment:
+  - fields-present: [status, priority, assignee]
+    kinds: [task]
+`
+	// priority missing — entry should not match.
+	doc := "---\nstatus: open\nassignee: alice\n---\n# T\n"
+	dir := kindsTestDir(t, cfg, map[string]string{"anywhere/doc.md": doc})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "anywhere/doc.md")
+	require.Equal(t, 0, code)
+	assert.NotContains(t, stdout, "task (from kind-assignment")
+	assert.Contains(t, stdout, "effective kinds:\n  (none)")
+}
+
+func TestKinds_ResolveGlobAndFieldsPresent(t *testing.T) {
+	cfg := `kinds:
+  plan: {}
+kind-assignment:
+  - glob: ["plan/*.md"]
+    fields-present: [id]
+    kinds: [plan]
+`
+	doc := "---\nid: 132\n---\n# T\n"
+	dir := kindsTestDir(t, cfg, map[string]string{"plan/132_inline.md": doc})
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "plan/132_inline.md")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "plan (from kind-assignment[0]: glob plan/*.md AND fields-present id)")
 }
 
 func TestKinds_ResolveMissingFileArg(t *testing.T) {
