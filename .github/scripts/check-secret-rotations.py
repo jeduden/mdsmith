@@ -34,6 +34,20 @@ ISSUE_LABEL = "secret-rotation"
 ASSIGNEE = "jeduden"
 
 
+def _repo_url() -> str:
+    """Return the absolute GitHub URL of this repository.
+
+    GitHub Actions runners always populate GITHUB_SERVER_URL (e.g.
+    https://github.com) and GITHUB_REPOSITORY (e.g. owner/name).
+    Falling back to a hard-coded github.com URL keeps local runs
+    (e.g. via `gh workflow run --workflow=...`) working when the
+    envvars are absent.
+    """
+    server = os.environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
+    repo = os.environ.get("GITHUB_REPOSITORY", "jeduden/mdsmith")
+    return f"{server}/{repo}"
+
+
 def _front_matter(path: Path) -> dict:
     """Return the YAML front-matter block of a markdown file."""
     text = path.read_text(encoding="utf-8")
@@ -111,6 +125,10 @@ def _issue_body(entry: dict, status: str, days: int) -> str:
         headline = f"`{name}` is OVERDUE by {-days} days."
     else:
         headline = f"`{name}` is due in {days} days."
+    repo_url = _repo_url()
+    doc_anchor = name.lower().replace("_", "-")
+    doc_url = f"{repo_url}/blob/main/docs/development/secret-rotations.md#{doc_anchor}"
+    workflow_url = f"{repo_url}/blob/main/.github/workflows/secret-rotation-reminder.yml"
     return f"""\
 {headline}
 
@@ -123,8 +141,8 @@ def _issue_body(entry: dict, status: str, days: int) -> str:
 | Last rotated  | {last}                                           |
 | Period (days) | {period}                                         |
 
-The rotation procedure for `{name}` lives in
-[`docs/development/secret-rotations.md`](../blob/main/docs/development/secret-rotations.md#{name.lower().replace('_', '-')}).
+The rotation procedure for `{name}` lives at
+{doc_url}.
 
 After rotation:
 
@@ -132,8 +150,7 @@ After rotation:
    of `docs/development/secret-rotations.md`. Merge the change.
 2. Close this issue.
 
-This reminder is opened automatically by
-`.github/workflows/secret-rotation-reminder.yml`.
+This reminder is opened automatically by {workflow_url}.
 """
 
 
