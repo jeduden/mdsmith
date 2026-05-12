@@ -66,6 +66,53 @@ jobs:
           go-version-file: go.mod
       - run: go run ./cmd/mdsmith-release check
 
+  # Block any future PR from adding install-time lifecycle scripts to
+  # the published npm packages. The shai-hulud / TanStack worm class
+  # (npm supply-chain compromise, 2025-2026) propagates by inserting
+  # `preinstall` / `postinstall` hooks into otherwise innocuous
+  # packages so the hook runs on every `npm install`. mdsmith's npm
+  # shim (npm/mdsmith/bin/mdsmith.js) deliberately runs zero
+  # install-time code; this guard enforces the property in CI rather
+  # than relying on convention. The VS Code extension is published
+  # via `vsce package --no-dependencies` so it doesn't ship lifecycle
+  # hooks to end users, but the manifest is checked here too as
+  # defense in depth.
+  npm-lifecycle-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Reject lifecycle scripts in published manifests
+        run: |
+          # Hooks npm executes on `npm install` / `npm publish` —
+          # any of these would let a malicious package version
+          # (or a compromised upstream dep merged into a manifest)
+          # run code on every install.
+          banned='preinstall|install|postinstall|preuninstall|uninstall|postuninstall|preprepare|prepare|postprepare'
+          status=0
+          for manifest in npm/mdsmith/package.json editors/vscode/package.json; do
+            if [ ! -f "$manifest" ]; then
+              echo "missing $manifest" >&2
+              status=1
+              continue
+            fi
+            # jq parses the manifest and emits one `key=value` line per
+            # entry under .scripts. grep -E then matches the banned set
+            # exactly (anchored on key=), so a script named `test` or
+            # `build` is not mistaken for a banned hook.
+            hits=$(jq -r '.scripts // {} | to_entries[] | "\(.key)=\(.value)"' "$manifest" \
+              | grep -E "^($banned)=" || true)
+            if [ -n "$hits" ]; then
+              echo "$manifest declares forbidden lifecycle script(s):" >&2
+              echo "$hits" >&2
+              echo "If a hook is genuinely required, update docs/security/" >&2
+              echo "2026-05-12-supply-chain-hardening.md before allowlisting." >&2
+              status=1
+            fi
+          done
+          exit $status
+
   mdsmith:
     runs-on: ubuntu-latest
     steps:
@@ -117,7 +164,11 @@ jobs:
           no-cache: true
       - name: Install extension dependencies
         working-directory: editors/vscode
-        run: bun install --frozen-lockfile
+        # `--ignore-scripts` blocks postinstall / preinstall hooks from
+        # every dep in the resolved tree. See release.yml for rationale;
+        # the goal is to neutralize the install-time code execution
+        # path that the shai-hulud / TanStack-class worm relies on.
+        run: bun install --frozen-lockfile --ignore-scripts
       - name: TypeScript typecheck
         working-directory: editors/vscode
         # Bun's bundler/transpiler tolerates type errors, so `bun

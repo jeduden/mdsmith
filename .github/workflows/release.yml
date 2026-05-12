@@ -8,6 +8,16 @@ on:
 permissions:
   contents: read
 
+# A second tag push must not run while a publish is in flight: the npm
+# Trusted Publisher exchanges this workflow's OIDC token for a short-
+# lived publish credential, and overlapping runs would race to mint
+# tokens against the same registry record. `cancel-in-progress: false`
+# keeps the first run going (cancelling mid-publish would leave the
+# scoped platform packages out of sync with the root package).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
@@ -61,6 +71,13 @@ jobs:
 
   vscode:
     runs-on: ubuntu-latest
+    if: github.repository == 'jeduden/mdsmith'
+    # VSCE_PAT and OVSX_PAT are long-lived publisher tokens — the
+    # `release` environment gates them behind the same reviewer /
+    # wait-timer rules as the OIDC-publishing jobs, so a stolen
+    # GITHUB_TOKEN or a misconfigured workflow trigger cannot reach
+    # them outside an approved release run.
+    environment: release
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -88,7 +105,15 @@ jobs:
         run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
       - name: Install extension dependencies
         working-directory: editors/vscode
-        run: bun install --frozen-lockfile
+        # `--ignore-scripts` blocks postinstall / preinstall hooks from
+        # every dep in the resolved tree. The mdsmith extension's
+        # production deps (vscode-languageclient) and dev deps
+        # (@vscode/vsce, typescript, @types/*) are pure-JS and need
+        # no install-time hooks — disabling them shrinks the blast
+        # radius if a future lockfile update or registry compromise
+        # ships a malicious lifecycle script (the TanStack /
+        # shai-hulud worm class).
+        run: bun install --frozen-lockfile --ignore-scripts
       - name: Run extension unit tests
         working-directory: editors/vscode
         run: bun test
@@ -168,6 +193,24 @@ jobs:
   npm:
     needs: [build]
     runs-on: ubuntu-latest
+    # `if: github.repository == ...` blocks fork-cloned releases from
+    # ever reaching the publish steps. A tag push to a fork does not
+    # trigger the base repo's workflows today, but the guard documents
+    # the invariant and protects against the repo being turned into a
+    # template or vendored into another org.
+    if: github.repository == 'jeduden/mdsmith'
+    # The `release` environment provides a second axis for the npm
+    # Trusted Publisher to scope on (the OIDC token gains an
+    # `environment: release` claim) and lets the maintainer attach
+    # required-reviewers / wait-timer rules in
+    # https://github.com/jeduden/mdsmith/settings/environments. Pair
+    # this with the npm Trusted Publisher config at
+    # https://www.npmjs.com/package/<name>/access by scoping
+    # publishing to refs/tags/v* AND environment=release — the
+    # TanStack compromise (2026-05-11) abused trusted publishers
+    # whose scope was repo-only, letting an attacker mint publish
+    # tokens from any workflow run.
+    environment: release
     # `id-token: write` lets `npm publish --provenance` mint an OIDC
     # token so the npm registry stamps each tarball with verifiable
     # build metadata pointing at this exact workflow run.
@@ -247,6 +290,14 @@ jobs:
   pypi:
     needs: [build]
     runs-on: ubuntu-latest
+    if: github.repository == 'jeduden/mdsmith'
+    # Same `environment: release` scoping as the npm job — PyPI
+    # Trusted Publishing accepts an optional `environment` constraint
+    # at https://pypi.org → Manage Project → Publishing → Environment,
+    # which the maintainer should set to `release` so a workflow run
+    # outside this environment (or its required-reviewer gate) cannot
+    # mint a publish credential.
+    environment: release
     # `id-token: write` lets pypa/gh-action-pypi-publish use Trusted
     # Publishing (OIDC) so PyPI accepts each upload without a
     # long-lived API token. Configure the trusted publisher on
@@ -289,6 +340,12 @@ jobs:
   release:
     needs: [build, vscode]
     runs-on: ubuntu-latest
+    if: github.repository == 'jeduden/mdsmith'
+    # `release` environment scopes the OIDC token's `environment`
+    # claim and gates `contents: write` (which can rewrite the
+    # release page) behind any reviewer rules configured at
+    # https://github.com/jeduden/mdsmith/settings/environments.
+    environment: release
     # `id-token: write` mints the OIDC token that
     # `actions/attest-build-provenance` and `cosign sign-blob`
     # exchange for a short-lived Sigstore credential. No
