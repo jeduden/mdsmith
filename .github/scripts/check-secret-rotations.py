@@ -7,9 +7,13 @@ computes (today - last-rotated). If that exceeds period-days minus
 the reminder window (30 days), the script opens a single open issue
 per secret with a stable title so reruns are idempotent.
 
-The script does not close issues. After rotation the human edits the
-`last-rotated` date in the doc, merges the change, and closes the
-issue. The next scheduled run sees the new date and waits.
+The script does not close issues directly. The reminder issue
+body points the maintainer at the `Record Secret Rotation`
+workflow (`.github/workflows/record-secret-rotation.yml`), which
+opens a PR that updates `last-rotated` and includes `Closes #N`.
+Merging that PR records the rotation date AND closes this
+reminder in one step. The next scheduled run sees the new date
+and stays quiet until the next expiry window.
 
 Exit codes:
 - 0: ran cleanly (regardless of whether any issue was opened)
@@ -169,7 +173,7 @@ def _issue_body(entry: dict, status: str, days: int) -> str:
 | Last rotated  | {last}                                           |
 | Period (days) | {period}                                         |
 
-Rotation procedure (jump to the `{name}` section):
+Rotation procedure for the `{name}` section:
 {doc_url}
 
 After rotating the credential at the issuer, do not

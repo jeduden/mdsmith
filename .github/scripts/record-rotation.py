@@ -16,7 +16,8 @@ material — `entry_name` flows only as a lookup key for the
 rotations table.
 
 Exit codes:
-- 0: front matter updated
+- 0: success — front matter updated, or the date was already set
+  to the requested value (no-op)
 - 1: doc malformed, name not found, or date not valid ISO-8601
 """
 
