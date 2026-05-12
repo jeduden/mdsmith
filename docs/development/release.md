@@ -142,19 +142,18 @@ the first release.
 
 ## Long-Lived Publisher Tokens
 
-Two secrets used in the release pipeline are still
-long-lived PATs. The `release` environment gates them
-so a workflow run outside an approved release cannot
-read them.
+Two release-pipeline secrets are still long-lived
+PATs, gated by the `release` environment:
 
 | Secret     | Used by        | Scope                | Rotation |
 |------------|----------------|----------------------|----------|
 | `VSCE_PAT` | `vsce publish` | Marketplace > Manage | Annually |
 | `OVSX_PAT` | `ovsx publish` | Open VSX publisher   | Annually |
 
-Record each rotation date in `CLAUDE.md`.
-`MERGE_QUEUE_TOKEN`, used by `merge-queue.yml`
-outside the release path, stays a plain repo secret.
+[secret-rotations.md](secret-rotations.md) holds the
+procedure, dates, and `MERGE_QUEUE_TOKEN`. A
+scheduled workflow opens an issue 30 days before any
+tracked secret is due.
 
 ## Supply-Chain Hardening
 

@@ -1,14 +1,16 @@
 # Require owner review for files that control CI
 # behavior, execute as privileged scripts, or assert
 # the project's supply-chain / security posture.
-/.github/CODEOWNERS              @jeduden
-/.github/workflows/              @jeduden
-/demo.tape                       @jeduden
-/SECURITY.md                     @jeduden
-/docs/development/release.md     @jeduden
-/docs/security/                  @jeduden
+/.github/CODEOWNERS                       @jeduden
+/.github/workflows/                       @jeduden
+/.github/scripts/                         @jeduden
+/demo.tape                                @jeduden
+/SECURITY.md                              @jeduden
+/docs/development/release.md              @jeduden
+/docs/development/secret-rotations.md     @jeduden
+/docs/security/                           @jeduden
 # Every published manifest — npm-lifecycle-guard
 # checks these in CI, but CODEOWNERS adds a human
 # gate before any lifecycle-script change can merge.
-/npm/**/package.json             @jeduden
-/editors/**/package.json         @jeduden
+/npm/**/package.json                      @jeduden
+/editors/**/package.json                  @jeduden
