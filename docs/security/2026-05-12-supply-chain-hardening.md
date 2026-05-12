@@ -180,12 +180,18 @@ before the flag is relaxed for that step.
 ### 4. CI guard against future manifest tampering
 
 `ci.yml`'s new `npm-lifecycle-guard` job rejects any
-PR that adds `preinstall` / `install` / `postinstall`
-/ `prepare` / `uninstall` hooks to
+PR that adds an install-, uninstall-, prepare-, pack-,
+or publish-time lifecycle hook to
 `npm/mdsmith/package.json` or
-`editors/vscode/package.json`. The guard is
-intentionally noisy: changing it requires updating
-this security note.
+`editors/vscode/package.json`. The full banned set
+lives in the `banned=` line of
+`.github/workflows/ci.yml` (15 hooks at time of
+writing: `preinstall`, `install`, `postinstall`,
+`preuninstall`, `uninstall`, `postuninstall`,
+`preprepare`, `prepare`, `postprepare`, `prepublish`,
+`prepublishOnly`, `prepack`, `postpack`, `publish`,
+`postpublish`). The guard is intentionally noisy:
+changing it requires updating this security note.
 
 ## Residual Risk
 

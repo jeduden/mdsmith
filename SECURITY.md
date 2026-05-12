@@ -220,11 +220,11 @@ enough.
   hooks from dev dependencies are the install-time
   code-execution path the shai-hulud / TanStack worm
   class relies on.
-- **`npm-lifecycle-guard` CI job** in `ci.yml` that
-  fails any PR introducing `preinstall` /
-  `postinstall` / `install` / `prepare` lifecycle
-  scripts into `npm/mdsmith/package.json` or
-  `editors/vscode/package.json`.
+- **`npm-lifecycle-guard` CI job** rejects any PR
+  adding an install-, uninstall-, prepare-, pack-,
+  or publish-time lifecycle hook to the published
+  manifests. The `banned=` line in
+  `.github/workflows/ci.yml` is the canonical list.
 - **zizmor self-audit** of every workflow in CI,
   failing the job on any finding.
 - **No `pull_request_target`, no `workflow_run`, no
