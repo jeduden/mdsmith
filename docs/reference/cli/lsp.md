@@ -233,57 +233,20 @@ Completion inside fenced or indented code blocks returns an empty list.
 
 ### Rename
 
-`prepareRename` returns the rename range and a placeholder.
-The client pre-fills the popup with the placeholder. `null`
-skips the rename at positions that aren't renameable:
+`prepareRename` returns the text range for ATX heading text
+(without `#`s), setext heading text lines, `[label]: url`
+defs, the trailing `[…]` of a full reference, and the
+leading `[…]` of a shortcut or collapsed reference. The
+placeholder pre-fills the popup; other positions return
+`null`.
 
-| Cursor on…                                   | Range                           |
-|----------------------------------------------|---------------------------------|
-| ATX heading text run (excluding `#` markers) | text between markers            |
-| Setext heading text line                     | the full text line, trimmed     |
-| `[label]: url` def                           | label inside `[…]`              |
-| `[text][label]` full ref                     | label inside the trailing `[…]` |
-| Shortcut `[label]` use                       | label inside `[…]`              |
-| Collapsed `[label][]` (or trailing `[]`)     | label inside the leading `[…]`  |
-| Anywhere else                                | `null`                          |
-
-`rename` answers with one `WorkspaceEdit`. Heading rename
-rewrites the heading text. It also rewrites every workspace
-anchor link that pointed at the old slug. Both same-file
-`[t](#slug)` and cross-file `[t](./other.md#slug)` forms
-update. The pass mirrors `mdtext.CollectTOCItems`'
-disambiguator. A duplicate-name pair shifting `setup-1`
-back to `setup` emits matching follow-up edits.
-
-Link-reference rename rewrites the `[label]: url` def plus
-every full / shortcut / collapsed use in the same file.
-CommonMark scopes labels per-file, so the edit never spans
-files.
-
-#### Collision contract
-
-A rename fails with `InvalidParams` when:
-
-- The renamed heading's bare slug equals another heading's
-  bare slug in the same file *and* the rename would
-  introduce that duplication. A non-semantic edit that
-  preserves the heading's existing base slug
-  (`Setup` → `Setup!`) still passes inside an existing
-  duplicate-name group, since it doesn't add a new
-  collision.
-- The renamed link-ref label normalizes to another
-  `[label]: url` def in the same file.
-- The new heading text slugifies to the empty string.
-- The new link-ref label contains `[`, `]`, or a newline.
-
-The error's `data` field names the colliding symbol:
-
-```jsonc
-{ "code": -32602, "message": "...", "data": { "conflict": "Foo" } }
-```
-
-MDS027, MDS053, and MDS054 catch the same breakage on the
-next lint pass; the LSP error fires before any edit applies.
+Heading rename rewrites the heading and every workspace
+anchor link to its slug. Duplicate-name disambiguator shifts
+emit follow-up edits. Link-ref rename rewrites the
+`[label]: url` def plus every same-file use. `InvalidParams`
+fires on a new duplicate base slug, a colliding def, an
+empty slug, or a `[` / `]` / newline in a label. The
+error's `data.conflict` names the colliding symbol.
 
 ## Configuration discovery
 
