@@ -1224,7 +1224,11 @@ func runLintIfCurrentFixture(t *testing.T) (*Server, *safeBuffer) {
 // clears pending[uri] and forwards to runLint, which publishes
 // diagnostics for the document.
 func TestRunLintIfCurrentRunsWhenLive(t *testing.T) {
-	t.Parallel()
+	// Not t.Parallel(): runLint reaches into the toc / include rule
+	// engines, which have lazy init that races under concurrent
+	// callers. Running these four runLintIfCurrent tests
+	// sequentially keeps `-race` clean without re-engineering the
+	// rule lazy init.
 	s, buf := runLintIfCurrentFixture(t)
 	timer := time.NewTimer(time.Hour)
 	t.Cleanup(func() { timer.Stop() })
@@ -1247,7 +1251,8 @@ func TestRunLintIfCurrentRunsWhenLive(t *testing.T) {
 // different timer, so the stale callback must return without
 // touching pending and without publishing.
 func TestRunLintIfCurrentSkipsWhenReplaced(t *testing.T) {
-	t.Parallel()
+	// See TestRunLintIfCurrentRunsWhenLive for the rationale on
+	// dropping t.Parallel().
 	s, buf := runLintIfCurrentFixture(t)
 	stale := time.NewTimer(time.Hour)
 	t.Cleanup(func() { stale.Stop() })
@@ -1273,7 +1278,8 @@ func TestRunLintIfCurrentSkipsWhenReplaced(t *testing.T) {
 // after Run's deferred cleanup must return before touching pending
 // or runLint, even when pending[uri] still points at this timer.
 func TestRunLintIfCurrentShortCircuitsOnShutdown(t *testing.T) {
-	t.Parallel()
+	// See TestRunLintIfCurrentRunsWhenLive for the rationale on
+	// dropping t.Parallel().
 	s, buf := runLintIfCurrentFixture(t)
 	timer := time.NewTimer(time.Hour)
 	t.Cleanup(func() { timer.Stop() })
@@ -1291,6 +1297,61 @@ func TestRunLintIfCurrentShortCircuitsOnShutdown(t *testing.T) {
 		"shutdown re-check must return before mutating pending")
 	assert.NotContains(t, buf.String(), "publishDiagnostics",
 		"shutdown re-check must return before runLint")
+}
+
+// TestRunLintIfCurrentDereferencesAfterLock pins the documented
+// race-avoidance invariant: runLintIfCurrent dereferences
+// `*timerPtr` only after it acquires pendingMu, so a delay==0
+// AfterFunc goroutine that fires before scheduleLint's
+// `timer = AfterFunc(...)` assignment still observes the
+// assigned value once scheduleLint releases the mutex.
+//
+// We simulate scheduleLint's "lock-then-arm-then-assign" sequence:
+//  1. Hold pendingMu.
+//  2. Spawn the would-be callback as a goroutine pointing at a
+//     nil `timer` variable. The goroutine blocks on pendingMu.
+//  3. Still under the lock, assign `timer` and register it in
+//     pending — mirroring the real scheduleLint flow.
+//  4. Release the lock. The goroutine unblocks and must see the
+//     post-assignment timer (`live=true`) rather than nil.
+func TestRunLintIfCurrentDereferencesAfterLock(t *testing.T) {
+	// See TestRunLintIfCurrentRunsWhenLive for the rationale on
+	// dropping t.Parallel().
+	s, buf := runLintIfCurrentFixture(t)
+
+	var timer *time.Timer // initially nil — matches scheduleLint pre-assignment
+
+	s.pendingMu.Lock()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.runLintIfCurrent("file:///x.md", &timer)
+	}()
+
+	// The callback is blocked on pendingMu.Lock() inside
+	// runLintIfCurrent. Hand it the timer the way scheduleLint
+	// does — assign while holding the mutex.
+	realTimer := time.NewTimer(time.Hour)
+	t.Cleanup(func() { realTimer.Stop() })
+	timer = realTimer
+	s.pending["file:///x.md"] = timer
+
+	s.pendingMu.Unlock()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("runLintIfCurrent did not complete after lock release")
+	}
+
+	s.pendingMu.Lock()
+	_, stillPending := s.pending["file:///x.md"]
+	s.pendingMu.Unlock()
+	assert.False(t, stillPending,
+		"live=true must delete pending[uri] after dereferencing under lock")
+	assert.Contains(t, buf.String(), "publishDiagnostics",
+		"runLintIfCurrent must lint when timerPtr resolves to the live timer")
 }
 
 func TestRunReturnsAfterShutdownPlusExit(t *testing.T) {

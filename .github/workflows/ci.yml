@@ -102,6 +102,19 @@ jobs:
           #                preprepare, prepare, postprepare
           # Publish/pack-time: prepublish (legacy), prepublishOnly,
           #                prepack, postpack, publish, postpublish
+          #
+          # Note on `prepublish`: it is the deprecated pre-npm@4
+          # hybrid hook that historically ran on BOTH `npm install`
+          # (local installs) AND `npm publish`. Modern npm (>=7)
+          # only fires it on publish-from-source-checkout flows, but
+          # it still executes in older clients still in use across
+          # CI images. Since the threat model is install-time code
+          # execution, `prepublish` stays banned despite the
+          # potential for false positives in repos that use it for
+          # benign build steps. mdsmith's published packages do not
+          # declare any `prepublish` hook; new ones land in the doc
+          # at docs/security/2026-05-12-supply-chain-hardening.md
+          # before this list is relaxed.
           banned='preinstall|install|postinstall|preuninstall|uninstall|postuninstall|preprepare|prepare|postprepare|prepublish|prepublishOnly|prepack|postpack|publish|postpublish'
           status=0
           for manifest in npm/mdsmith/package.json editors/vscode/package.json; do
