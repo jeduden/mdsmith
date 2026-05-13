@@ -156,9 +156,10 @@ func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 			rules[k] = copyRuleCfg(v)
 		}
 		result[name] = KindBody{
-			Rules:      rules,
-			Categories: copyCategories(body.Categories),
-			Schema:     cloneSettings(body.Schema),
+			Rules:       rules,
+			Categories:  copyCategories(body.Categories),
+			Schema:      cloneSettings(body.Schema),
+			PathPattern: body.PathPattern,
 		}
 	}
 	return result
@@ -368,6 +369,9 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 		if len(body.Schema) > 0 {
 			applyInlineSchema(result, body.Schema)
 		}
+		if body.PathPattern != "" {
+			applyPathPattern(result, kindName, body.PathPattern)
+		}
 		for k, v := range body.Rules {
 			apply(k, v)
 		}
@@ -442,6 +446,27 @@ func clearSchemaState(result map[string]RuleCfg) {
 	result["required-structure"] = rs
 }
 
+// applyPathPattern appends a {kind, pattern} entry to the
+// `path-patterns` list setting on required-structure, creating the
+// rule entry if missing. Each kind in the file's effective kind list
+// that declares a `path-pattern:` contributes one entry, so the rule
+// can validate the workspace-relative path against every applicable
+// pattern and emit one diagnostic per failure.
+func applyPathPattern(result map[string]RuleCfg, kindName, pattern string) {
+	rs, ok := result["required-structure"]
+	if !ok {
+		rs = RuleCfg{Enabled: true}
+	}
+	if rs.Settings == nil {
+		rs.Settings = map[string]any{}
+	}
+	entry := map[string]any{"kind": kindName, "pattern": pattern}
+	existing, _ := rs.Settings["path-patterns"].([]any)
+	rs.Settings["path-patterns"] = append(existing, entry)
+	rs.Enabled = true
+	result["required-structure"] = rs
+}
+
 // applyInlineSchema installs an inline schema (a YAML map) as the
 // `inline-schema` setting on required-structure, creating the rule
 // entry if missing.
@@ -476,8 +501,9 @@ func effectiveExplicit(cfg *Config, filePath string, kinds []string) map[string]
 		// outside body.Rules. Without this, a `meta` category
 		// disable would silently wipe an inline-schema kind's
 		// effect — inconsistent with the file-source path that
-		// lives under body.Rules.
-		if len(body.Schema) > 0 {
+		// lives under body.Rules. The same reasoning applies to
+		// `path-pattern:`.
+		if len(body.Schema) > 0 || body.PathPattern != "" {
 			result["required-structure"] = true
 		}
 	}

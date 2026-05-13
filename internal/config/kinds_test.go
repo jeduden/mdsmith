@@ -372,6 +372,157 @@ func TestCopyKindsNilSettingsRemainNil(t *testing.T) {
 	assert.Nil(t, copied["plan"].Rules["no-hard-tabs"].Settings)
 }
 
+// --- path-pattern ---
+
+func TestKindsPathPatternParsesFromYAML(t *testing.T) {
+	yml := `
+kinds:
+  plan:
+    path-pattern: "plan/[0-9][0-9]*_*.md"
+  rfc:
+    path-pattern: "docs/rfc/RFC-[0-9][0-9][0-9][0-9].md"
+`
+	cfg := loadFromString(t, yml)
+	require.Contains(t, cfg.Kinds, "plan")
+	assert.Equal(t, "plan/[0-9][0-9]*_*.md", cfg.Kinds["plan"].PathPattern)
+	assert.Equal(t, "docs/rfc/RFC-[0-9][0-9][0-9][0-9].md",
+		cfg.Kinds["rfc"].PathPattern)
+}
+
+func TestEffectiveRules_PathPatternInstallsListSetting(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {PathPattern: "plan/[0-9]*_*.md"},
+		},
+		KindAssignment: []KindAssignmentEntry{
+			{Glob: []string{"plan/*.md"}, Kinds: []string{"plan"}},
+		},
+	}
+	eff, _, _ := EffectiveAll(cfg, "plan/01_x.md", nil)
+	rs, ok := eff["required-structure"]
+	require.True(t, ok, "required-structure rule should be present")
+	assert.True(t, rs.Enabled)
+	list, ok := rs.Settings["path-patterns"].([]any)
+	require.True(t, ok, "path-patterns should be a list")
+	require.Len(t, list, 1)
+	entry := list[0].(map[string]any)
+	assert.Equal(t, "plan", entry["kind"])
+	assert.Equal(t, "plan/[0-9]*_*.md", entry["pattern"])
+}
+
+func TestEffectiveRules_PathPatternAccumulatesAcrossKinds(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {PathPattern: "plan/*.md"},
+			"rfc":  {PathPattern: "docs/rfc/*.md"},
+		},
+	}
+	eff, _, _ := EffectiveAll(cfg, "anywhere.md", []string{"plan", "rfc"})
+	rs := eff["required-structure"]
+	list, _ := rs.Settings["path-patterns"].([]any)
+	require.Len(t, list, 2)
+	assert.Equal(t, "plan", list[0].(map[string]any)["kind"])
+	assert.Equal(t, "rfc", list[1].(map[string]any)["kind"])
+}
+
+func TestEffectiveRules_PathPatternAbsentLeavesRuleAlone(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {Rules: map[string]RuleCfg{"line-length": {Enabled: false}}},
+		},
+	}
+	eff, _, _ := EffectiveAll(cfg, "anywhere.md", []string{"plan"})
+	if rs, ok := eff["required-structure"]; ok {
+		_, hasList := rs.Settings["path-patterns"]
+		assert.False(t, hasList,
+			"path-patterns should be absent when no kind declares one")
+	}
+}
+
+// TestValidateKinds_RejectsInvalidPathPattern verifies that
+// ValidateKinds rejects a kind whose top-level `path-pattern:`
+// is not a valid doublestar glob. Without this, commands that
+// load config but do not run the required-structure rule
+// (e.g. `mdsmith kinds show`) would silently accept and display
+// a malformed pattern.
+func TestValidateKinds_RejectsInvalidPathPattern(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {PathPattern: "[unclosed"},
+		},
+	}
+	err := ValidateKinds(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "path-pattern")
+	assert.Contains(t, err.Error(), "plan")
+}
+
+func TestValidateKinds_AcceptsValidPathPattern(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {PathPattern: "plan/[0-9][0-9]*_*.md"},
+		},
+	}
+	assert.NoError(t, ValidateKinds(cfg))
+}
+
+// TestKindLayerRules_MergesPathPatternWithExistingRules verifies
+// that the provenance helper preserves a kind's existing body.Rules
+// settings while injecting the synthetic `path-patterns` entry on
+// top of them. Without this, a kind that both disables a rule and
+// declares a `path-pattern:` would have its `body.Rules` ignored in
+// `kinds resolve` / `--explain` output.
+func TestKindLayerRules_MergesPathPatternWithExistingRules(t *testing.T) {
+	body := KindBody{
+		PathPattern: "plan/*.md",
+		Rules: map[string]RuleCfg{
+			"line-length": {Enabled: false},
+			"required-structure": {Enabled: true,
+				Settings: map[string]any{"schema": "plan/proto.md"}},
+		},
+	}
+	out := kindLayerRules("plan", body)
+	require.Contains(t, out, "line-length")
+	assert.False(t, out["line-length"].Enabled)
+	rs := out["required-structure"]
+	assert.True(t, rs.Enabled)
+	assert.Equal(t, "plan/proto.md", rs.Settings["schema"],
+		"existing required-structure settings must be preserved")
+	list := rs.Settings["path-patterns"].([]any)
+	require.Len(t, list, 1)
+	assert.Equal(t, "plan", list[0].(map[string]any)["kind"])
+}
+
+// TestKindLayerRules_MirrorsInlineSchemaAndPathPattern verifies
+// that a kind declaring both `schema:` (an inline schema map) and
+// `path-pattern:` lands BOTH synthetic settings in the provenance
+// layer chain — without this, `kinds resolve` / `--explain` would
+// drop the inline-schema leaf even though effectiveRules applies
+// it.
+func TestKindLayerRules_MirrorsInlineSchemaAndPathPattern(t *testing.T) {
+	body := KindBody{
+		PathPattern: "plan/*.md",
+		Schema: map[string]any{
+			"sections": []any{
+				map[string]any{"heading": "Goal"},
+			},
+		},
+	}
+	out := kindLayerRules("plan", body)
+	rs := out["required-structure"]
+	assert.True(t, rs.Enabled)
+
+	schema, ok := rs.Settings["inline-schema"].(map[string]any)
+	require.True(t, ok, "inline-schema must be injected as a map")
+	assert.Contains(t, schema, "sections")
+
+	list, ok := rs.Settings["path-patterns"].([]any)
+	require.True(t, ok)
+	require.Len(t, list, 1)
+	assert.Equal(t, "plan/*.md",
+		list[0].(map[string]any)["pattern"])
+}
+
 // --- helpers ---
 
 func loadFromString(t *testing.T, yml string) *Config {

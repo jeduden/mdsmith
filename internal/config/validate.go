@@ -1,6 +1,11 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+
+	"github.com/bmatcuk/doublestar/v4"
+)
 
 // ValidateKinds returns an error if any kind named in a kind-assignment
 // entry is not declared in cfg.Kinds, or if any declared kind sets a
@@ -15,6 +20,9 @@ func ValidateKinds(cfg *Config) error {
 		if err := validateKindSchemaSources(name, body); err != nil {
 			return err
 		}
+		if err := validateKindPathPattern(name, body); err != nil {
+			return err
+		}
 	}
 	for i, entry := range cfg.KindAssignment {
 		for _, name := range entry.Kinds {
@@ -24,6 +32,27 @@ func ValidateKinds(cfg *Config) error {
 				)
 			}
 		}
+	}
+	return nil
+}
+
+// validateKindPathPattern rejects a kind whose top-level
+// `path-pattern:` is not a valid doublestar glob. Without this
+// check, commands that load config but do not run the
+// required-structure rule (e.g. `mdsmith kinds show`) would
+// silently accept and display a malformed pattern, and the
+// problem would only surface as a per-file rule-configuration
+// error at lint time. The matcher is shared with overrides:,
+// ignore:, and kind-assignment:; mirroring their syntax keeps
+// the user-facing config surface uniform.
+func validateKindPathPattern(name string, body KindBody) error {
+	if body.PathPattern == "" {
+		return nil
+	}
+	if !doublestar.ValidatePattern(filepath.ToSlash(body.PathPattern)) {
+		return fmt.Errorf(
+			"kind %q: path-pattern %q is not a valid doublestar glob",
+			name, body.PathPattern)
 	}
 	return nil
 }

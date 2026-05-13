@@ -12,6 +12,7 @@ import (
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -39,6 +40,16 @@ type Rule struct {
 	Schema       string         // path to schema file
 	InlineSchema *schema.Schema // parsed inline schema (when set)
 	Placeholders []string       // placeholder tokens to treat as opaque
+	PathPatterns []PathPattern  // kind-level path-pattern entries
+}
+
+// PathPattern records a kind's `path-pattern:` constraint: the kind
+// that declared it and the glob the workspace-relative path of every
+// file in the kind must match. Populated by the config merge layer
+// from KindBody.PathPattern.
+type PathPattern struct {
+	Kind    string
+	Pattern string
 }
 
 // ID implements rule.Rule.
@@ -92,6 +103,12 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				return fmt.Errorf("required-structure: %w", err)
 			}
 			r.Placeholders = toks
+		case "path-patterns":
+			pp, err := parsePathPatterns(v)
+			if err != nil {
+				return fmt.Errorf("required-structure: %w", err)
+			}
+			r.PathPatterns = pp
 		case "archetype", "archetype-roots":
 			return fmt.Errorf(
 				"required-structure: setting %q has been removed; "+
@@ -161,7 +178,58 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 	if key == "placeholders" {
 		return rule.MergeAppend
 	}
+	if key == "path-patterns" {
+		return rule.MergeAppend
+	}
 	return rule.MergeReplace
+}
+
+// parsePathPatterns reads the `path-patterns` rule setting: a list of
+// {kind, pattern} maps installed by the config merge layer from each
+// kind's `path-pattern:` field. The merge layer is the only documented
+// producer; the parser still validates shape so a hand-written rule
+// override fails loudly instead of silently dropping entries.
+func parsePathPatterns(v any) ([]PathPattern, error) {
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf(
+			"path-patterns must be a list of {kind, pattern} maps, got %T", v)
+	}
+	out := make([]PathPattern, 0, len(list))
+	for i, item := range list {
+		m, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf(
+				"path-patterns[%d] must be a map, got %T", i, item)
+		}
+		kindV, hasKind := m["kind"]
+		patV, hasPat := m["pattern"]
+		if !hasKind || !hasPat {
+			return nil, fmt.Errorf(
+				"path-patterns[%d] must set both `kind` and `pattern`", i)
+		}
+		kind, ok := kindV.(string)
+		if !ok || kind == "" {
+			return nil, fmt.Errorf(
+				"path-patterns[%d].kind must be a non-empty string, got %T", i, kindV)
+		}
+		pat, ok := patV.(string)
+		if !ok || pat == "" {
+			return nil, fmt.Errorf(
+				"path-patterns[%d].pattern must be a non-empty string, got %T", i, patV)
+		}
+		// Validate the pattern as a doublestar glob at config time
+		// so an unmatched bracket or other syntax error surfaces as
+		// a config error instead of an MDS020 diagnostic on every
+		// file assigned to the kind.
+		if !doublestar.ValidatePattern(filepath.ToSlash(pat)) {
+			return nil, fmt.Errorf(
+				"path-patterns[%d].pattern %q is not a valid doublestar glob",
+				i, pat)
+		}
+		out = append(out, PathPattern{Kind: kind, Pattern: pat})
+	}
+	return out, nil
 }
 
 // Check implements rule.Rule.
@@ -177,6 +245,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			diags = append(diags, d)
 		}
 	}
+
+	// Kind-level path-pattern constraints run independently of the
+	// schema source: a kind may declare `path-pattern:` without an
+	// attached schema, and a schema-bearing kind may add a pattern
+	// on top of a `<?require filename:?>` directive.
+	diags = append(diags, r.checkPathPatterns(f)...)
 
 	if r.hasInlineSchema() {
 		return append(diags, r.checkInlineSchema(f)...)
@@ -1247,6 +1321,58 @@ func isSchemaFile(docPath, schemaPath string) bool {
 // formatHeading returns a markdown-style heading string.
 func formatHeading(level int, text string) string {
 	return strings.Repeat("#", level) + " " + text
+}
+
+// checkPathPatterns validates the workspace-relative path of f
+// against every kind-level `path-pattern:` configured on the rule.
+// One diagnostic is emitted per failing pattern; a kind whose pattern
+// matches contributes no diagnostic. Matching uses the same doublestar
+// syntax as overrides:, ignore:, and kind-assignment:, anchored at the
+// workspace root.
+func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
+	if len(r.PathPatterns) == 0 {
+		return nil
+	}
+	rel := filepath.ToSlash(workspaceRelPath(f))
+	var diags []lint.Diagnostic
+	for _, pp := range r.PathPatterns {
+		// Match the full workspace-relative path with doublestar
+		// directly. Going through globpath.Match would also try the
+		// basename, which would let `path-pattern: README.md` pass
+		// for `docs/README.md` — defeating the documented root-
+		// anchored semantics.
+		ok, err := doublestar.Match(filepath.ToSlash(pp.Pattern), rel)
+		if err == nil && ok {
+			continue
+		}
+		diags = append(diags, makeDiag(f.Path, 1, fmt.Sprintf(
+			"filename: got %q, expected\n  glob %s\nschema: kinds[%s] / path-pattern",
+			rel, pp.Pattern, pp.Kind)))
+	}
+	return diags
+}
+
+// workspaceRelPath returns the file path relative to the workspace
+// root when RootDir is set, falling back to the file's own Path. The
+// returned path is slash-normalized so glob patterns written with
+// forward slashes match on every platform. Both RootDir and Path are
+// resolved through filepath.Abs first so the relative computation
+// works when the CLI was invoked with a relative `--config` path
+// (e.g. `--config sub/.mdsmith.yml` makes RootDir relative). The
+// `_ :=` discards mirror isSchemaFile's pattern above: filepath.Abs
+// only fails when os.Getwd fails, which the engine would already
+// have surfaced during file discovery.
+func workspaceRelPath(f *lint.File) string {
+	if f.RootDir == "" {
+		return filepath.ToSlash(f.Path)
+	}
+	absRoot, _ := filepath.Abs(f.RootDir)
+	absPath, _ := filepath.Abs(f.Path)
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return filepath.ToSlash(f.Path)
+	}
+	return filepath.ToSlash(rel)
 }
 
 // checkFilenamePattern checks that the document basename matches the

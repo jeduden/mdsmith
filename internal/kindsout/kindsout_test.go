@@ -89,6 +89,24 @@ func TestWriteBodyText_RendersYAMLBody(t *testing.T) {
 	assert.Contains(t, out, "max: 30")
 }
 
+func TestWriteBodyText_RendersPathPattern(t *testing.T) {
+	body := config.KindBody{
+		PathPattern: "plan/[0-9][0-9]*_*.md",
+	}
+	var buf bytes.Buffer
+	require.NoError(t, WriteBodyText(&buf, "plan", body))
+	out := buf.String()
+	assert.Contains(t, out, "plan:")
+	assert.Contains(t, out, "path-pattern: plan/[0-9][0-9]*_*.md")
+}
+
+func TestMakeBodyJSON_IncludesPathPattern(t *testing.T) {
+	body := config.KindBody{PathPattern: "plan/*.md"}
+	enc, err := json.Marshal(MakeBodyJSON("plan", body))
+	require.NoError(t, err)
+	assert.Contains(t, string(enc), `"path-pattern":"plan/*.md"`)
+}
+
 func TestWriteBodyText_EmptyBodyRendersPlaceholder(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, WriteBodyText(&buf, "ghost", config.KindBody{}))

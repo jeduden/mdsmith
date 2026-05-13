@@ -44,6 +44,51 @@ file of the kind.
 Referencing an undeclared kind name from front matter or
 `kind-assignment:` is a config error.
 
+### Validating the file path
+
+A kind can declare a `path-pattern:` glob that the
+workspace-relative path of every file in the kind must
+match. Use it to enforce filename conventions —
+plan-ID prefixes, RFC numbering, runbook slugs —
+without a custom CI script.
+
+```yaml
+kinds:
+  plan:
+    path-pattern: "plan/[0-9][0-9]*_*.md"
+    rules:
+      required-structure:
+        schema: plan/proto.md
+  rfc:
+    path-pattern: "docs/rfc/RFC-[0-9][0-9][0-9][0-9].md"
+```
+
+A file whose path does not match the kind's pattern
+produces an MDS020 diagnostic anchored to line 1 of the
+file. For `plan/early-draft.md` with the `plan` kind
+above, the diagnostic reads:
+
+```text
+filename: got "plan/early-draft.md", expected
+  glob plan/[0-9][0-9]*_*.md
+schema: kinds[plan] / path-pattern
+```
+
+The pattern uses the same doublestar syntax as
+`overrides:`, `ignore:`, and `kind-assignment:`
+(see [Glob patterns](../reference/globs.md)). Because
+glob syntax has no "exactly digits" character class,
+the pattern is an approximation: `[0-9][0-9]*` enforces a
+two-digit prefix plus any trailing characters, not strict
+integer-only. For tighter constraints, combine
+`path-pattern:` with a `<?require filename:?>` directive
+on the schema — both run, and each emits its own
+diagnostic when violated.
+
+`mdsmith kinds show <name>` prints `path-pattern:`
+alongside the kind's rule settings when it's set, so the
+constraint is auditable from one command.
+
 ## Assigning files to kinds
 
 A file's effective kind list is built from two sources,

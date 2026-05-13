@@ -1,7 +1,7 @@
 ---
 id: 140
 title: "Per-kind `path-pattern` for filename validation"
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: [147]
 summary: >-
@@ -169,22 +169,22 @@ command.
 
 ## Acceptance Criteria
 
-- [ ] A kind with `path-pattern:` validates
+- [x] A kind with `path-pattern:` validates
       the workspace-relative path of every
       file assigned to that kind.
-- [ ] A path mismatch produces an MDS020
+- [x] A path mismatch produces an MDS020
       diagnostic in the plan 147 shape with
       `field: filename`.
-- [ ] A kind with both `path-pattern:` and a
+- [x] A kind with both `path-pattern:` and a
       schema `<?require filename:?>` emits
       one diagnostic per failing constraint.
-- [ ] Kinds without `path-pattern:` retain
+- [x] Kinds without `path-pattern:` retain
       current behavior (regression test).
-- [ ] `mdsmith kinds show <name>` shows
+- [x] `mdsmith kinds show <name>` shows
       `path-pattern:` when set.
-- [ ] [`docs/guides/file-kinds.md`](../docs/guides/file-kinds.md)
+- [x] [`docs/guides/file-kinds.md`](../docs/guides/file-kinds.md)
       documents the new field with one worked
       example.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.

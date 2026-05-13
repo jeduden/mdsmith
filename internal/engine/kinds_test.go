@@ -8,6 +8,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	_ "github.com/jeduden/mdsmith/internal/rules/requiredstructure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -228,6 +229,69 @@ func TestRunSource_FrontMatterKinds_InvalidYAMLIsError(t *testing.T) {
 	result := runner.RunSource("doc.md", src)
 	require.Len(t, result.Errors, 1)
 	assert.Contains(t, result.Errors[0].Error(), "parsing front-matter kinds")
+}
+
+// TestKindPathPattern_MismatchEmitsMDS020 verifies that a kind with a
+// `path-pattern:` causes the required-structure rule to emit an MDS020
+// diagnostic for files whose workspace-relative path does not match
+// the glob.
+func TestKindPathPattern_MismatchEmitsMDS020(t *testing.T) {
+	dir := t.TempDir()
+	planFile := filepath.Join(dir, "plan", "early-draft.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(planFile), 0o755))
+	require.NoError(t, os.WriteFile(planFile, []byte("# Draft\n"), 0o644))
+
+	cfg := &config.Config{
+		Kinds: map[string]config.KindBody{
+			"plan": {PathPattern: "plan/[0-9][0-9]*_*.md"},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Files: []string{"**/plan/*.md"}, Kinds: []string{"plan"}},
+		},
+	}
+
+	runner := &Runner{
+		Config:  cfg,
+		Rules:   []rule.Rule{rule.ByName("required-structure")},
+		RootDir: dir,
+	}
+
+	result := runner.Run([]string{planFile})
+	require.Empty(t, result.Errors)
+	require.Len(t, result.Diagnostics, 1)
+	d := result.Diagnostics[0]
+	assert.Equal(t, "MDS020", d.RuleID)
+	assert.Contains(t, d.Message, `filename: got "plan/early-draft.md"`)
+	assert.Contains(t, d.Message, "kinds[plan] / path-pattern")
+}
+
+// TestKindPathPattern_MatchEmitsNoDiagnostic is the green half of the
+// previous test: a file whose path satisfies the kind's pattern produces
+// no MDS020 path-pattern diagnostic.
+func TestKindPathPattern_MatchEmitsNoDiagnostic(t *testing.T) {
+	dir := t.TempDir()
+	planFile := filepath.Join(dir, "plan", "140_x.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(planFile), 0o755))
+	require.NoError(t, os.WriteFile(planFile, []byte("# Plan\n"), 0o644))
+
+	cfg := &config.Config{
+		Kinds: map[string]config.KindBody{
+			"plan": {PathPattern: "plan/[0-9][0-9]*_*.md"},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Files: []string{"**/plan/*.md"}, Kinds: []string{"plan"}},
+		},
+	}
+
+	runner := &Runner{
+		Config:  cfg,
+		Rules:   []rule.Rule{rule.ByName("required-structure")},
+		RootDir: dir,
+	}
+
+	result := runner.Run([]string{planFile})
+	require.Empty(t, result.Errors)
+	assert.Empty(t, result.Diagnostics)
 }
 
 // TestKindSetsRequiredStructureSchema verifies that a kind setting

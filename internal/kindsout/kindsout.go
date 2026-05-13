@@ -20,9 +20,10 @@ import (
 // BodyJSON is the JSON form of a kind body, used by `kinds list` and
 // `kinds show`.
 type BodyJSON struct {
-	Name       string                 `json:"name"`
-	Rules      map[string]RuleCfgJSON `json:"rules"`
-	Categories map[string]bool        `json:"categories,omitempty"`
+	Name        string                 `json:"name"`
+	Rules       map[string]RuleCfgJSON `json:"rules"`
+	Categories  map[string]bool        `json:"categories,omitempty"`
+	PathPattern string                 `json:"path-pattern,omitempty"`
 }
 
 // RuleCfgJSON serializes a config.RuleCfg using its YAML union form:
@@ -43,9 +44,10 @@ func MakeBodyJSON(name string, body config.KindBody) BodyJSON {
 		rules[k] = RuleCfgJSON{v: RuleCfgValue(v)}
 	}
 	return BodyJSON{
-		Name:       name,
-		Rules:      rules,
-		Categories: body.Categories,
+		Name:        name,
+		Rules:       rules,
+		Categories:  body.Categories,
+		PathPattern: body.PathPattern,
 	}
 }
 
@@ -196,11 +198,13 @@ func WriteBodyText(w io.Writer, name string, body config.KindBody) error {
 		return err
 	}
 	wrap := struct {
-		Rules      map[string]config.RuleCfg `yaml:"rules,omitempty"`
-		Categories map[string]bool           `yaml:"categories,omitempty"`
+		Rules       map[string]config.RuleCfg `yaml:"rules,omitempty"`
+		Categories  map[string]bool           `yaml:"categories,omitempty"`
+		PathPattern string                    `yaml:"path-pattern,omitempty"`
 	}{
-		Rules:      body.Rules,
-		Categories: body.Categories,
+		Rules:       body.Rules,
+		Categories:  body.Categories,
+		PathPattern: body.PathPattern,
 	}
 	data, err := yamlutil.Marshal(wrap)
 	if err != nil {
