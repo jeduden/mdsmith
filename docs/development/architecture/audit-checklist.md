@@ -202,15 +202,26 @@ catalog stays current.
 
 ## Step 7: schedule
 
-For each blocker:
+Group blockers by the structural fix they
+need. One plan covers one fix, even if it
+resolves several audit entries; the plan
+lists each entry it closes out.
+
+For each group:
 
 - Create a new plan file under `plan/`
   using the next available numeric
   prefix. Title format:
-  `arch-fix-<short-slug>`. Reference the
-  audit entry in the plan's "Context"
-  section.
+  `arch-fix-<short-slug>`. Reference every
+  audit entry the plan closes in the
+  plan's "Context" section.
 - Set the plan `status` to `🔲`.
+- If the plan would exceed
+  `mdsmith check`'s `max-file-length`,
+  split it along the natural seams of the
+  fix (per-package, per-surface) and have
+  the split plans link to each other in
+  the "Context" section.
 
 For each tax and nice-to-have:
 

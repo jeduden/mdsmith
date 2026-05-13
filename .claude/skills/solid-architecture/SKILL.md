@@ -142,11 +142,14 @@ Workflow:
    severity (`blocker`, `tax`,
    `nice-to-have`), the violating files, and
    the principle violated.
-4. Do not fix in this run. For each blocker,
-   create a new plan file under `plan/` that
-   references the audit entry. For tax and
-   nice-to-have, leave entries in the audit
-   log.
+4. Do not fix in this run. Group blockers
+   that share the same structural fix into
+   one plan file under `plan/` referencing
+   the audit entries; only split into more
+   plans when a single one would exceed
+   `mdsmith check`'s `max-file-length`. For
+   tax and nice-to-have, leave entries in
+   the audit log.
 5. Update `audit-from:` to the current
    `origin/main` SHA.
 
