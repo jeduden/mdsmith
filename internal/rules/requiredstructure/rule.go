@@ -1320,23 +1320,16 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 // forward slashes match on every platform. Both RootDir and Path are
 // resolved through filepath.Abs first so the relative computation
 // works when the CLI was invoked with a relative `--config` path
-// (e.g. `--config sub/.mdsmith.yml` makes RootDir relative).
-//
-// filepath.Abs / filepath.Rel only fail when os.Getwd fails or the
-// two paths cannot be expressed relative to one another (different
-// volumes on Windows). Both are pre-conditions the engine has
-// already satisfied for every other rule before this point, so any
-// error here would already have blocked the lint at file discovery;
-// the fallback returns f.Path so the diagnostic still names a path.
+// (e.g. `--config sub/.mdsmith.yml` makes RootDir relative). The
+// `_ :=` discards mirror isSchemaFile's pattern above: filepath.Abs
+// only fails when os.Getwd fails, which the engine would already
+// have surfaced during file discovery.
 func workspaceRelPath(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)
 	}
-	absRoot, errRoot := filepath.Abs(f.RootDir)
-	absPath, errPath := filepath.Abs(f.Path)
-	if errRoot != nil || errPath != nil {
-		return filepath.ToSlash(f.Path)
-	}
+	absRoot, _ := filepath.Abs(f.RootDir)
+	absPath, _ := filepath.Abs(f.Path)
 	rel, err := filepath.Rel(absRoot, absPath)
 	if err != nil {
 		return filepath.ToSlash(f.Path)

@@ -1,7 +1,7 @@
 ---
 id: 140
 title: "Per-kind `path-pattern` for filename validation"
-status: "🔳"
+status: "✅"
 model: sonnet
 depends-on: [147]
 summary: >-
