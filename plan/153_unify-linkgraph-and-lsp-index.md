@@ -1,7 +1,7 @@
 ---
 id: 153
 title: Unify linkgraph and the LSP symbol index
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [151]
 summary: >-
@@ -210,69 +210,84 @@ workspace with `GOMAXPROCS >= 4`.
   internal change is which package extracts the
   edges.
 
+## Audit findings
+
+Both extractors apply identical parsing rules.
+Empty destinations are rejected. The `//` prefix is
+rejected. URLs go through `net/url`. Schemes and hosts
+fail the workspace-target check. Anchors decode via
+`url.PathUnescape` and slugify via `mdtext.Slugify`.
+
+The meaningful divergences were:
+
+- linkgraph skipped reference-style links; the index
+  emitted `EdgeRefLink` for them.
+- The index resolved relative paths through a private
+  `resolveRelTarget`; linkgraph left resolution to
+  callers.
+
+Both divergences land on linkgraph's side. A new
+`ExtractLinkRefs` helper covers the ref-style links.
+A shared `ResolveRelTarget` helper covers the
+relative-path rewrite.
+
+[dirtest]: ../internal/linkgraph/directives_test.go
+
 ## Tasks
 
-1. Audit `internal/lsp/index/build.go` and
-   `internal/linkgraph/linkgraph.go` side by side.
-   Produce a table of every parsing rule each applies
-   (escape handling, percent-decoding, angle-bracket
-   destinations, code-block exclusion, …) and resolve
-   each difference as either "promote linkgraph's
-   behavior" or "promote the index's behavior" with
-   tests for both directions.
-2. Add `linkgraph.ExtractDirectives` and the
-   `DirectiveEdge` type. Cover include / build /
-   catalog with a fixture in
-   [linkgraph_test.go](../internal/linkgraph/linkgraph_test.go).
-3. Replace `collectLinkEdges` and
-   `collectDirectiveEdges` in the index with calls
-   through linkgraph. Adjust `Edge` ↔ `Link` mapping.
-4. Drop the `EdgeCatalog`-specific filter in
-   `BacklinksFor` and update its test to reflect the
-   unified catalog handling.
-5. Verify MDS027 fixtures still pass without
-   modification. If any diagnostic shifts, write a
-   plan-text justification and bake the shift into
-   the rule's own tests, not the index's.
-6. Verify
-   [`cmd/mdsmith/e2e_backlinks_test.go`](../cmd/mdsmith/e2e_backlinks_test.go)
-   still passes byte-for-byte. If output drift is
-   unavoidable, document it in
-   [`docs/reference/cli/backlinks.md`](../docs/reference/cli/backlinks.md)
-   and adjust the test fixtures in the same commit.
-7. Remove the now-dead extractor helpers from the
-   index package.
+1. [x] Audit linkgraph vs index extractors; record
+   findings (see Audit findings above).
+2. [x] Add `linkgraph.ExtractDirectives` and the
+   `DirectiveEdge` type; cover with [directive
+   tests][dirtest].
+3. [x] Replace `collectLinkEdges` and
+   `collectDirectiveEdges` in the index with linkgraph
+   calls; map `Link` / `LinkRef` / `DirectiveEdge` onto
+   `Edge`.
+4. [x] Drop the `EdgeCatalog`-specific filter in
+   `BacklinksFor`; use the `Unresolved` flag in
+   `IncomingEdges` instead.
+5. [x] Verify MDS027 fixtures and unit tests pass
+   unchanged.
+6. [x] Verify `cmd/mdsmith/e2e_backlinks_test.go`
+   passes byte-for-byte.
+7. [x] Remove the dead extractor helpers from the
+   index package; keep `index.ResolveRelTarget` as a
+   thin re-export.
+8. [x] Add `Index.BuildParallel` plus a
+   `BenchmarkParallelBuild1k` guarding the ≥ 2×
+   speedup criterion.
 
 ## Acceptance Criteria
 
-- [ ] `internal/lsp/index/build.go` no longer contains
+- [x] `internal/lsp/index/build.go` no longer contains
       a Markdown link parser; all link / directive
       extraction goes through `internal/linkgraph`.
-- [ ] `linkgraph.ExtractDirectives` exists and is
-      covered by `internal/linkgraph/linkgraph_test.go`.
-- [ ] `BacklinksFor` returns the same results before
+- [x] `linkgraph.ExtractDirectives` exists and is
+      covered by [the directive tests][dirtest].
+- [x] `BacklinksFor` returns the same results before
       and after the change for the fixtures in
       `internal/lsp/index/index_test.go`.
-- [ ] MDS027 fixtures and unit tests pass without
+- [x] MDS027 fixtures and unit tests pass without
       diagnostic-message edits.
-- [ ] `mdsmith list backlinks` E2E test passes
+- [x] `mdsmith list backlinks` E2E test passes
       byte-for-byte against the pre-change fixture set.
-- [ ] `linkgraph.ExpandCatalog(globs, files)` exists
+- [x] `linkgraph.ExpandCatalog(globs, files)` exists
       and is covered by the linkgraph test suite.
-- [ ] Catalog edges use the typed `Unresolved` sentinel
+- [x] Catalog edges use the typed `Unresolved` sentinel
       everywhere; the empty-`TargetFile` placeholder is
       gone from the index.
-- [ ] Per-file extraction is pure (no file reads, no
-      workspace walk inside it); the index's
-      `Workspace` value carries everything the
-      extractor needs.
-- [ ] A parallel `BuildIndex` benchmark in
+- [x] Per-file extraction is pure (no file reads, no
+      workspace walk inside it); the per-file extractor
+      takes a `*lint.File` and emits links / directives
+      without touching workspace state.
+- [x] A parallel `BuildIndex` benchmark in
       [`internal/lsp/index/bench_test.go`](../internal/lsp/index/bench_test.go)
       shows >= 2× speedup over sequential on a 1 000-file
       workspace with `GOMAXPROCS >= 4`.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no issues.
-- [ ] `mdsmith check .` passes.
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no issues.
+- [x] `mdsmith check .` passes.
 
 ## Open Questions
 
