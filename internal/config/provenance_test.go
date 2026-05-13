@@ -184,7 +184,7 @@ kind-assignment:
     kinds: [plan]
 `
 	cfg := resolveFromYAML(t, yml)
-	res := ResolveFile(cfg, "plan/140_x.md", nil)
+	res := ResolveFile(cfg, "plan/140_x.md", nil, nil)
 
 	rr, ok := res.Rules["required-structure"]
 	require.True(t, ok,

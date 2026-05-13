@@ -398,7 +398,7 @@ func TestEffectiveRules_PathPatternInstallsListSetting(t *testing.T) {
 			{Glob: []string{"plan/*.md"}, Kinds: []string{"plan"}},
 		},
 	}
-	eff, _, _ := EffectiveAll(cfg, "plan/01_x.md", nil)
+	eff, _, _ := EffectiveAll(cfg, "plan/01_x.md", nil, nil)
 	rs, ok := eff["required-structure"]
 	require.True(t, ok, "required-structure rule should be present")
 	assert.True(t, rs.Enabled)
@@ -417,7 +417,7 @@ func TestEffectiveRules_PathPatternAccumulatesAcrossKinds(t *testing.T) {
 			"rfc":  {PathPattern: "docs/rfc/*.md"},
 		},
 	}
-	eff, _, _ := EffectiveAll(cfg, "anywhere.md", []string{"plan", "rfc"})
+	eff, _, _ := EffectiveAll(cfg, "anywhere.md", []string{"plan", "rfc"}, nil)
 	rs := eff["required-structure"]
 	list, _ := rs.Settings["path-patterns"].([]any)
 	require.Len(t, list, 2)
@@ -431,7 +431,7 @@ func TestEffectiveRules_PathPatternAbsentLeavesRuleAlone(t *testing.T) {
 			"plan": {Rules: map[string]RuleCfg{"line-length": {Enabled: false}}},
 		},
 	}
-	eff, _, _ := EffectiveAll(cfg, "anywhere.md", []string{"plan"})
+	eff, _, _ := EffectiveAll(cfg, "anywhere.md", []string{"plan"}, nil)
 	if rs, ok := eff["required-structure"]; ok {
 		_, hasList := rs.Settings["path-patterns"]
 		assert.False(t, hasList,
