@@ -209,14 +209,17 @@ func (r *Rule) checkInlineSchema(f *lint.File) []lint.Diagnostic {
 // Fix implements rule.FixableRule. The rule does not modify the
 // document body — it returns f.Source unchanged — but when the
 // inline schema declares an `index:` block, Fix emits the JSON
-// side-output next to the source file. `mdsmith check` skips this
-// path entirely, preserving check's read-only contract (plan 143).
+// side-output next to the source file. `mdsmith check` skips the
+// write, preserving check's read-only contract (plan 143).
+//
+// Fix swallows the WriteIndex error because Fix returns bytes, not
+// diagnostics. WriteIndex itself records any failure in the
+// package-level cache keyed by f.Path; the next Check reads that
+// cache and surfaces the underlying I/O error in place of the
+// generic "missing / out of date" message, so users are not
+// trapped in a fix loop without signal.
 func (r *Rule) Fix(f *lint.File) []byte {
 	if r.hasInlineSchema() && r.InlineSchema.Index != nil {
-		// Best-effort write: a failure here surfaces on the next
-		// Check via the missing-or-stale index; we deliberately do
-		// not turn the I/O error into a diagnostic from inside Fix
-		// because Fix returns bytes, not diagnostics.
 		_ = schema.WriteIndex(f, r.InlineSchema)
 	}
 	return f.Source

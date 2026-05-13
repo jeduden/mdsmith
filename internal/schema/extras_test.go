@@ -1,7 +1,9 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -993,6 +995,85 @@ func TestFrontmatterExpr_JSONForScalarsAndCollections(t *testing.T) {
 	_, err = frontmatterExpr(struct{}{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported")
+}
+
+func TestValidateOutputPath_RejectsDotAndEmptyCleaned(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", "must not be empty"},
+		{"   ", "must not be empty"},
+		{".", "source directory"},
+		{"./", "source directory"},
+		{"foo/", "must not end with a separator"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			err := validateOutputPath(tc.in)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestValidateIndex_NormalizesCRLFEndings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	// First, write the canonical index so we have a baseline.
+	require.NoError(t, WriteIndex(f, sch))
+
+	// Replace the on-disk file with a CRLF-converted copy of the
+	// same content. The validator must treat this as in-sync.
+	target := filepath.Join(dir, "out.json")
+	raw, err := os.ReadFile(target)
+	require.NoError(t, err)
+	crlf := bytes.ReplaceAll(raw, []byte("\n"), []byte("\r\n"))
+	require.NoError(t, os.WriteFile(target, crlf, 0o644))
+
+	diags := ValidateIndex(f, sch, makeDiagForTest)
+	assert.Empty(t, diags, "CRLF version of identical content should not be stale")
+}
+
+func TestValidateIndex_SurfacesCachedWriteError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	// Seed the cache as if a previous Fix failed.
+	recordIndexWriteError(f.Path, fmt.Errorf("permission denied"))
+	t.Cleanup(func() { recordIndexWriteError(f.Path, nil) })
+
+	diags := ValidateIndex(f, sch, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "write failed")
+	assert.Contains(t, diags[0].Message, "permission denied")
+}
+
+func TestWriteIndex_ClearsCacheOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte("# T\n"), 0o644))
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	// Seed a stale cache entry, then a successful write should clear it.
+	recordIndexWriteError(f.Path, fmt.Errorf("stale"))
+	require.NoError(t, WriteIndex(f, sch))
+	assert.Nil(t, lastIndexWriteError(f.Path))
 }
 
 func TestValidateIndex_AbsolutePathSurfaces(t *testing.T) {

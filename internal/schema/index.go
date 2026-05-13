@@ -1,17 +1,54 @@
 package schema
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/yuin/goldmark/ast"
 )
+
+// indexWriteErrors records the last WriteIndex failure per source
+// file path. When Fix swallows an I/O error from os.WriteFile (so
+// `mdsmith fix` does not crash on a permissions glitch or "is a
+// directory" misconfiguration), the next Check reads from this map
+// and surfaces the underlying error instead of repeating the
+// generic "missing/out of date" diagnostic — without it the user
+// would be trapped in a fix loop with no signal about why the file
+// is not being written. A successful WriteIndex clears the entry.
+var (
+	indexWriteMu  sync.Mutex
+	indexWriteErr = make(map[string]error)
+)
+
+// recordIndexWriteError stores err keyed by the source file path,
+// or clears the entry when err is nil. Exported wrappers should
+// resolve the path to its absolute form when possible so Check and
+// Fix call sites agree on the key.
+func recordIndexWriteError(path string, err error) {
+	indexWriteMu.Lock()
+	defer indexWriteMu.Unlock()
+	if err == nil {
+		delete(indexWriteErr, path)
+		return
+	}
+	indexWriteErr[path] = err
+}
+
+// lastIndexWriteError returns the last write error recorded for
+// path, or nil if none.
+func lastIndexWriteError(path string) error {
+	indexWriteMu.Lock()
+	defer indexWriteMu.Unlock()
+	return indexWriteErr[path]
+}
 
 // IndexHeading is one entry in the flat heading list emitted by the
 // "headings" include.
@@ -63,15 +100,35 @@ func BuildIndex(f *lint.File, sch *Schema) ([]byte, error) {
 // project. Parent directories are created on demand so a nested
 // `output:` path (e.g. `.mdsmith/index/runbook.json`) works on a
 // clean checkout.
+//
+// On error WriteIndex records the failure in the package-level
+// indexWriteErr cache keyed by f.Path so the next Check surfaces
+// the underlying I/O error instead of repeating the generic
+// "missing / out of date" message — otherwise a misconfiguration
+// (e.g. `output: "."` resolving to a directory) would trap users
+// in a fix loop with no signal about what is actually wrong.
+// A successful write clears the entry.
 func WriteIndex(f *lint.File, sch *Schema) error {
 	target, data, err := resolveIndexWrite(f, sch)
-	if err != nil || data == nil {
+	if err != nil {
+		recordIndexWriteError(f.Path, err)
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return fmt.Errorf("schema.index: create parent dir: %w", err)
+	if data == nil {
+		recordIndexWriteError(f.Path, nil)
+		return nil
 	}
-	return os.WriteFile(target, data, 0o644)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		err = fmt.Errorf("schema.index: create parent dir: %w", err)
+		recordIndexWriteError(f.Path, err)
+		return err
+	}
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		recordIndexWriteError(f.Path, err)
+		return err
+	}
+	recordIndexWriteError(f.Path, nil)
+	return nil
 }
 
 // resolveIndexWrite returns the absolute output path and the bytes
@@ -98,22 +155,42 @@ func resolveIndexWrite(f *lint.File, sch *Schema) (string, []byte, error) {
 
 // validateOutputPath rejects any output: value that would not be a
 // project-relative POSIX-style path. Checks: host-absolute (POSIX),
-// Windows-absolute (leading "\\", drive letter), and any ".."
-// segment. The drive-letter check is host-independent so the
-// rejection is consistent across OSes — filepath.IsAbs on a Linux
-// host considers `C:\foo` relative, which would slip past a naive
-// IsAbs guard.
+// Windows-absolute (leading "\\", drive letter), any ".." segment,
+// and paths that clean to "." (empty, ".", "./", trailing slash,
+// etc.) since those resolve to the source directory and would
+// cause WriteIndex to fail with "is a directory". The drive-letter
+// check is host-independent so the rejection is consistent across
+// OSes — filepath.IsAbs on a Linux host considers `C:\foo`
+// relative, which would slip past a naive IsAbs guard.
 func validateOutputPath(out string) error {
+	if strings.TrimSpace(out) == "" {
+		return fmt.Errorf("schema.index.output must not be empty")
+	}
 	if filepath.IsAbs(out) ||
 		strings.HasPrefix(out, `\`) ||
 		hasDriveLetterPrefix(out) {
 		return fmt.Errorf("schema.index.output %q must be relative", out)
 	}
-	for _, elem := range strings.Split(filepath.ToSlash(out), "/") {
+	slash := filepath.ToSlash(out)
+	for _, elem := range strings.Split(slash, "/") {
 		if elem == ".." {
 			return fmt.Errorf(
 				"schema.index.output %q must not contain \"..\" traversal", out)
 		}
+	}
+	// filepath.Clean reduces "./", "foo/.", "foo/", and trailing
+	// separators. A cleaned value of "." (or the empty string after
+	// trimming) means the user pointed output at the source
+	// directory, which is not a writable target.
+	cleaned := filepath.Clean(out)
+	if cleaned == "." || cleaned == "" {
+		return fmt.Errorf(
+			"schema.index.output %q must name a file, not the "+
+				"source directory", out)
+	}
+	if strings.HasSuffix(slash, "/") {
+		return fmt.Errorf(
+			"schema.index.output %q must not end with a separator", out)
 	}
 	return nil
 }
@@ -126,14 +203,18 @@ func hasDriveLetterPrefix(p string) bool {
 		((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z'))
 }
 
-// ValidateIndex compares the on-disk index file (if any) against the
-// bytes BuildIndex would emit. When the file is missing or its
-// content differs, a diagnostic asks the user to run
-// `mdsmith fix` so the artefact stays in sync. Read errors other
-// than "file does not exist" surface as a distinct diagnostic so
-// permission failures and non-file targets are not silently rolled
-// into the "missing" message. `mdsmith check` still respects the
-// read-only contract: it never touches the file.
+// ValidateIndex compares the on-disk index file (if any) against
+// the bytes BuildIndex would emit. When the file is missing or its
+// content differs, a diagnostic asks the user to run `mdsmith fix`
+// so the artefact stays in sync. Comparison normalises CRLF line
+// endings to LF so a Windows checkout with `core.autocrlf=true`
+// does not flag a semantically-identical file as stale. Read
+// errors other than "file does not exist" surface as a distinct
+// diagnostic. If the last Fix tried to write this index and
+// failed, the cached I/O error is reported in place of the generic
+// "missing / out of date" message so users can act on the real
+// cause instead of running fix again. `mdsmith check` still
+// respects the read-only contract: it never touches the file.
 func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic {
 	target, want, err := resolveIndexWrite(f, sch)
 	if err != nil {
@@ -142,6 +223,12 @@ func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic
 	}
 	if want == nil {
 		return nil
+	}
+	if writeErr := lastIndexWriteError(f.Path); writeErr != nil {
+		return []lint.Diagnostic{mkDiag(f.Path, 1,
+			fmt.Sprintf(
+				"index side-output %q write failed on the last `mdsmith fix`: %v",
+				sch.Index.Output, writeErr))}
 	}
 	got, readErr := os.ReadFile(target)
 	if readErr != nil {
@@ -156,13 +243,33 @@ func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic
 				"index side-output %q cannot be read: %v",
 				sch.Index.Output, readErr))}
 	}
-	if string(got) != string(want) {
+	if !indexContentEqual(got, want) {
 		return []lint.Diagnostic{mkDiag(f.Path, 1,
 			fmt.Sprintf(
 				"index side-output %q is out of date; run `mdsmith fix`",
 				sch.Index.Output))}
 	}
 	return nil
+}
+
+// indexContentEqual reports whether on-disk bytes a and freshly
+// generated bytes b match, ignoring line-ending differences. A
+// single trailing newline is also tolerated so a checkout that
+// stripped or doubled a final newline is not flagged as drift.
+func indexContentEqual(a, b []byte) bool {
+	return bytes.Equal(normalizeIndexBytes(a), normalizeIndexBytes(b))
+}
+
+func normalizeIndexBytes(b []byte) []byte {
+	// Strip CR characters so CRLF↔LF round-trips compare equal.
+	out := bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
+	out = bytes.ReplaceAll(out, []byte("\r"), []byte("\n"))
+	// Drop one trailing newline so the WriteFile-appended "\n" does
+	// not diff against an in-memory build that already ended in one.
+	if n := len(out); n > 0 && out[n-1] == '\n' {
+		out = out[:n-1]
+	}
+	return out
 }
 
 // buildFlatHeadings returns every heading in document order with its
