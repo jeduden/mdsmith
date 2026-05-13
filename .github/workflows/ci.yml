@@ -97,8 +97,9 @@ jobs:
         run: |
           # `set -euo pipefail` so a parse failure in jq (e.g. a
           # malformed package.json a malicious PR slips in) fails
-          # the step instead of being masked by the `|| true` on
-          # the grep below.
+          # the step rather than being silently swallowed. Without
+          # `set -e`, a non-zero jq exit on one manifest would not
+          # propagate out of the loop and `status` would stay 0.
           set -euo pipefail
           # Hooks npm executes on `npm install`, `npm pack`, or
           # `npm publish` — any of these would let a malicious
