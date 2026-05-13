@@ -20,13 +20,16 @@ re-running until edits settle. `mdsmith check` is the
 read-only CI sibling.
 
 **✏️ Live diagnostics wherever you write.**
-`mdsmith lsp` is one server. It powers the
-[VS Code extension][vsc-mp] (also on
-[Open VSX][vsc-ovsx] for Cursor, VSCodium, Theia, Gitpod),
-any LSP client (Neovim, Helix, JetBrains), and the
-[Claude Code plugin](docs/guides/install.md). Same
-diagnostics, quick-fixes, fix-on-save, and link navigation
-whether you edit in an IDE or with an agent.
+`mdsmith lsp` emits diagnostics, quick-fixes, and
+navigation (definition, references, symbol search,
+call-hierarchy). The [VS Code extension][vsc-mp] surfaces
+all of it with opt-in fix-on-save (also on
+[Open VSX][vsc-ovsx] for Cursor, VSCodium, Theia, and
+Gitpod); generic LSP clients (Neovim, Helix, JetBrains)
+expose what they support. The
+[Claude Code plugin](docs/guides/install.md) feeds
+diagnostics and navigation to the agent so it sees mdsmith
+inline while editing Markdown.
 
 **🔗 Cross-file integrity.**
 Built-in rules flag broken links and missing anchors
@@ -45,7 +48,9 @@ Cap [file](internal/rules/MDS022-max-file-length/README.md),
 and
 [token-budget](internal/rules/MDS028-token-budget/README.md)
 size; enforce
-[reading grade and sentence count](internal/rules/MDS023-paragraph-readability/README.md);
+[reading grade](internal/rules/MDS023-paragraph-readability/README.md)
+and
+[sentence count](internal/rules/MDS024-paragraph-structure/README.md);
 flag
 [verbatim copy-paste](internal/rules/MDS037-duplicated-content/README.md)
 across files.
