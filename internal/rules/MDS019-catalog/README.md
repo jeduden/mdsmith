@@ -28,8 +28,17 @@ otherwise.
 
 The `glob` accepts a single string or a YAML list of
 strings. It supports `*`, `?`, `[...]`, `**`, and `{a,b}`
-brace expansion. It does not allow absolute paths or `..`
-traversal.
+brace expansion.
+
+Absolute paths are rejected. `..` segments are allowed as
+long as the resolved pattern stays inside the project root;
+a pattern whose resolution leaves the root is rejected with
+`generated section directive glob escapes project root`. A
+`..` pattern without a configured project root is rejected
+with `generated section directive glob contains ".." but
+project root is not configured`. This mirrors how
+[`<?include?>`](../MDS021-include/README.md) resolves its
+`file` parameter.
 
 Single pattern:
 
@@ -182,12 +191,13 @@ glob: "data/*.md"
 | Empty `glob`   | `...has empty "glob"`        |
 | Absolute glob  | `...has absolute glob path`  |
 
-| Condition      | Message                   |
-|----------------|---------------------------|
-| Glob with `..` | `...".." path traversal`  |
-| Invalid glob   | `...invalid glob pattern` |
-| Empty sort     | `...empty "sort" value`   |
-| Invalid sort   | `...invalid sort value`   |
+| Condition         | Message                                                 |
+|-------------------|---------------------------------------------------------|
+| Glob escapes root | `...glob escapes project root`                          |
+| `..` without root | `...glob contains ".." but project root not configured` |
+| Invalid glob      | `...invalid glob pattern`                               |
+| Empty sort        | `...empty "sort" value`                                 |
+| Invalid sort      | `...invalid sort value`                                 |
 
 All messages above are prefixed with
 `generated section directive`. Column is always 1.
@@ -214,13 +224,15 @@ nested markers, YAML errors, template errors).
 | Binary file              | Included; no front matter |
 | Symlinks                 | Followed                  |
 
-| Scenario           | Behavior                       |
-|--------------------|--------------------------------|
-| Dotfiles           | Matched by `*`/`**`            |
-| Absolute/`..` glob | Diagnostic                     |
-| Brace expansion    | Supported                      |
-| Multi-glob list    | Union of matches, deduplicated |
-| Empty glob/sort    | Diagnostic                     |
+| Scenario          | Behavior                       |
+|-------------------|--------------------------------|
+| Dotfiles          | Matched by `*`/`**`            |
+| Absolute glob     | Diagnostic                     |
+| `..` inside root  | Resolved against project root  |
+| `..` escapes root | Diagnostic                     |
+| Brace expansion   | Supported                      |
+| Multi-glob list   | Union of matches, deduplicated |
+| Empty glob/sort   | Diagnostic                     |
 
 | Scenario             | Behavior         |
 |----------------------|------------------|

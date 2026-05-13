@@ -62,7 +62,7 @@ footer: |
 | 149 | 🔲     | opus   | [Section content schema for non-heading AST nodes](plan/149_section-content-schema.md)                                    |
 | 151 | ✅     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                               |
 | 152 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/152_claude-code-skills-agents-hooks.md)                      |
-| 153 | 🔲     | sonnet | [Catalog directive — accept `..` globs within project root](plan/153_catalog-dotdot-globs.md)                             |
+| 153 | ✅     | sonnet | [Catalog directive — accept `..` globs within project root](plan/153_catalog-dotdot-globs.md)                             |
 | 153 | 🔲     | opus   | [Unify linkgraph and the LSP symbol index](plan/153_unify-linkgraph-and-lsp-index.md)                                     |
 | 154 | 🔲     | sonnet | [arch-fix: extract cross-rule helpers](plan/154_arch-fix-rule-helper-extraction.md)                                       |
 | 155 | 🔲     | sonnet | [arch-fix: relocate convention types out of markdownflavor](plan/155_arch-fix-convention-config-ownership.md)             |

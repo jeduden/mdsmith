@@ -1226,11 +1226,11 @@ func TestCheck_GlobErrors(t *testing.T) {
 			wantMsg:   "absolute glob path",
 		},
 		{
-			name:      "glob with ..",
+			name:      "glob with .. without project root",
 			src:       "<?catalog\nglob: \"../*.md\"\n?>\n<?/catalog?>\n",
 			fs:        fstest.MapFS{},
 			wantCount: 1,
-			wantMsg:   `".." path traversal`,
+			wantMsg:   `glob contains ".." but project root is not configured`,
 		},
 		{
 			name:      "missing glob",
@@ -1603,27 +1603,6 @@ func TestParseRowTemplate_Valid(t *testing.T) {
 func TestParseRowTemplate_Invalid(t *testing.T) {
 	err := parseRowTemplate("{title")
 	require.Error(t, err, "expected error for invalid template")
-}
-
-func TestContainsDotDot(t *testing.T) {
-	tests := []struct {
-		pattern string
-		want    bool
-	}{
-		{"../foo", true},
-		{"foo/../bar", true},
-		{"foo/bar/..", true},
-		{"foo/bar", false},
-		{"foo..bar", false},
-		{"...", false},
-		{"..", true},
-	}
-	for _, tc := range tests {
-		t.Run(tc.pattern, func(t *testing.T) {
-			got := containsDotDot(tc.pattern)
-			assert.Equal(t, tc.want, got, "containsDotDot(%q) = %v, want %v", tc.pattern, got, tc.want)
-		})
-	}
 }
 
 func TestEnsureTrailingNewline(t *testing.T) {
@@ -2549,7 +2528,8 @@ glob:
 }
 
 func TestSpec_MultiGlobDotDot(t *testing.T) {
-	// A list containing ".." path traversal produces a diagnostic.
+	// A list containing ".." without project root configured produces
+	// a diagnostic.
 	src := `<?catalog
 glob:
   - "*.md"
@@ -2562,7 +2542,7 @@ glob:
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, `".." path traversal`)
+	expectDiagMsg(t, diags, `glob contains ".." but project root is not configured`)
 }
 
 func TestSpec_MultiGlobInvalidPattern(t *testing.T) {
@@ -2800,8 +2780,57 @@ glob:
 	expectDiagMsg(t, diags, "absolute glob path")
 }
 
+func TestCatalog_DotDotGlobStaysInsideRoot(t *testing.T) {
+	// A "../sibling/*.md" glob resolves to within the project root
+	// when RootFS is set, so matching succeeds and display paths use
+	// "../sibling/" prefixes relative to the catalog-owning file.
+	src := `<?catalog
+glob: "../sibling/*.md"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"sibling/api.md":   {Data: []byte("# API\n")},
+		"sibling/guide.md": {Data: []byte("# Guide\n")},
+		"home/index.md":    {Data: []byte("# Home\n")},
+	}
+	f := newTestFile(t, "home/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	diags := r.Check(f)
+	// Check reports drift between the empty body and the generated
+	// catalog rather than a path-traversal error.
+	for _, d := range diags {
+		assert.NotContains(t, d.Message, `".."`)
+		assert.NotContains(t, d.Message, "escapes project root")
+	}
+	result := string(r.Fix(f))
+	assert.Contains(t, result, "../sibling/api.md")
+	assert.Contains(t, result, "../sibling/guide.md")
+}
+
+func TestCatalog_DotDotGlobEscapesRoot(t *testing.T) {
+	// A glob whose resolved path leaves the project root is rejected
+	// with the new diagnostic message.
+	src := `<?catalog
+glob: "../../secret/*.md"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"home/index.md": {Data: []byte("# Home\n")},
+	}
+	f := newTestFile(t, "home/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "glob escapes project root")
+}
+
 func TestSpec_ExcludeDotDot(t *testing.T) {
-	// ".." path traversal in !-prefixed patterns produces a diagnostic.
+	// ".." in !-prefixed patterns without project root configured
+	// produces a diagnostic.
 	src := `<?catalog
 glob:
   - "*.md"
@@ -2814,7 +2843,7 @@ glob:
 	r := &Rule{}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
-	expectDiagMsg(t, diags, `".." path traversal`)
+	expectDiagMsg(t, diags, `glob contains ".." but project root is not configured`)
 }
 
 func TestSpec_ExcludeInvalidPattern(t *testing.T) {
@@ -3506,25 +3535,23 @@ func TestRule_Category(t *testing.T) {
 }
 
 // =====================================================================
-// Phase 4 coverage: resolveGitignore param variations
+// Phase 4 coverage: resolveGitignoreMatcher param variations
 // =====================================================================
 
-func TestResolveGitignore_DisabledByParam(t *testing.T) {
+func TestResolveGitignoreMatcher_DisabledByParam(t *testing.T) {
 	f := newTestFile(t, "index.md", "")
-	matcher, base := resolveGitignore(f, map[string]string{"gitignore": "false"})
+	matcher := resolveGitignoreMatcher(f, map[string]string{"gitignore": "false"})
 	assert.Nil(t, matcher)
-	assert.Equal(t, "", base)
 }
 
-func TestResolveGitignore_NoMatcherAvailable(t *testing.T) {
+func TestResolveGitignoreMatcher_NoMatcherAvailable(t *testing.T) {
 	f := newTestFile(t, "index.md", "")
 	// GitignoreFunc is nil → GetGitignore returns nil
-	matcher, base := resolveGitignore(f, map[string]string{})
+	matcher := resolveGitignoreMatcher(f, map[string]string{})
 	assert.Nil(t, matcher)
-	assert.Equal(t, "", base)
 }
 
-func TestResolveGitignore_WithMatcherAndSourceDir(t *testing.T) {
+func TestResolveGitignoreMatcher_WithMatcher(t *testing.T) {
 	dir := t.TempDir()
 	stub := &lint.GitignoreMatcher{}
 	f := &lint.File{
@@ -3534,11 +3561,8 @@ func TestResolveGitignore_WithMatcherAndSourceDir(t *testing.T) {
 			return stub
 		},
 	}
-	params := map[string]string{"source-dir": "docs"}
-	matcher, base := resolveGitignore(f, params)
+	matcher := resolveGitignoreMatcher(f, map[string]string{"source-dir": "docs"})
 	assert.Same(t, stub, matcher)
-	assert.NotEmpty(t, base)
-	assert.True(t, filepath.IsAbs(base))
 }
 
 // =====================================================================

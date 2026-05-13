@@ -11,11 +11,47 @@
 package globpath
 
 import (
+	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
+
+// ResolveAgainstRoot resolves p against baseDir (both slash-separated and
+// relative to a project root) and reports whether the cleaned result
+// escapes the project root via ".." segments.
+//
+// baseDir == "" or "." is interpreted as the project root. The returned
+// path is also slash-separated and relative to the project root; it is
+// "" for the root itself.
+//
+// Callers use this to check that "..": segments in a path stay within the
+// project root before resolving the path against a project-rooted fs.FS.
+func ResolveAgainstRoot(baseDir, p2 string) (resolved string, escapes bool) {
+	if baseDir == "" {
+		baseDir = "."
+	}
+	cleaned := path.Clean(path.Join(baseDir, p2))
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return cleaned, true
+	}
+	if cleaned == "." {
+		cleaned = ""
+	}
+	return cleaned, false
+}
+
+// ContainsDotDotSegment reports whether p contains a ".." path element
+// when split on "/". Filenames like "..foo" do not match.
+func ContainsDotDotSegment(p string) bool {
+	for _, elem := range strings.Split(p, "/") {
+		if elem == ".." {
+			return true
+		}
+	}
+	return false
+}
 
 // Match reports whether path matches pattern using the doublestar matcher.
 // It checks the raw path, the cleaned path, and the base name so that

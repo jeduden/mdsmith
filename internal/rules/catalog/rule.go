@@ -186,6 +186,10 @@ func splitGlobs(glob string) []string {
 // validateGlob validates the glob parameter and returns diagnostics on failure.
 // The glob value may be a single pattern or multiple newline-joined patterns
 // (from a YAML list). Patterns prefixed with "!" are exclusion patterns.
+//
+// Path-traversal escapes and missing-root errors for ".." patterns are
+// checked at generation time, where the project root is available; see
+// resolveGlobFS.
 func validateGlob(filePath string, line int, params map[string]string) []lint.Diagnostic {
 	glob, hasGlob := params["glob"]
 	if !hasGlob {
@@ -206,10 +210,6 @@ func validateGlob(filePath string, line int, params map[string]string) []lint.Di
 		if filepath.IsAbs(pattern) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				"generated section directive has absolute glob path")}
-		}
-		if containsDotDot(pattern) {
-			return []lint.Diagnostic{makeDiag(filePath, line,
-				`generated section directive has glob pattern with ".." path traversal`)}
 		}
 		if !doublestar.ValidatePattern(pattern) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
@@ -250,49 +250,170 @@ func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 	return nil
 }
 
-// splitIncludeExclude separates glob patterns into include and exclude lists.
-// Patterns prefixed with "!" are exclusion patterns (prefix is stripped).
-func splitIncludeExclude(glob string) (include, exclude []string) {
-	return globpath.SplitIncludeExclude(splitGlobs(glob))
+// globResolution describes how a catalog directive's glob is rooted.
+// It tells the caller which fs.FS to glob against, how to convert matched
+// paths back into display paths for the catalog-owning file, the resolved
+// include/exclude pattern lists, and where to anchor gitignore lookups.
+type globResolution struct {
+	fs            fs.FS
+	includes      []string
+	excludes      []string
+	gitignoreBase string // absolute directory matched paths are relative to; "" disables gitignore filtering
+	fileDir       string // catalog-owning file's directory, slash-separated, project-root-relative; "" means at root
+	rootRelative  bool   // when true, matches are root-relative and need filepath.Rel for display
+	diags         []lint.Diagnostic
 }
 
-// resolveGlobFS returns the filesystem to use for glob resolution and
-// a path prefix for display filenames. When source-dir is set (injected
-// by include expansion), globs resolve from that subdirectory of RootFS
-// and matched filenames are prefixed relative to the catalog-owning
-// file's directory so links work correctly.
-func resolveGlobFS(f *lint.File, params map[string]string) (globFS fs.FS, prefix string) {
+// displayPath converts a doublestar match into a path relative to the
+// catalog-owning file's directory.
+func (r globResolution) displayPath(match string) string {
+	if !r.rootRelative {
+		return match
+	}
+	base := r.fileDir
+	if base == "" {
+		base = "."
+	}
+	rel, err := filepath.Rel(base, match)
+	if err != nil {
+		return match
+	}
+	return filepath.ToSlash(rel)
+}
+
+// resolveGlobFS resolves the catalog directive's glob scope. When the
+// patterns contain ".." segments or when source-dir is set, globs resolve
+// against the project root via RootFS; otherwise the catalog-owning file's
+// own fs.FS is used. Patterns are rewritten to root-relative form when
+// switching to RootFS; an "escapes project root" diagnostic is returned
+// when any pattern would resolve outside the root.
+func resolveGlobFS(f *lint.File, params map[string]string, filePath string, line int) globResolution {
+	rawPatterns := splitGlobs(params["glob"])
+	includes, excludes := globpath.SplitIncludeExclude(rawPatterns)
 	sourceDir := params["source-dir"]
-	if sourceDir == "" || f.RootFS == nil {
-		return f.FS, ""
+	hasDotDot := dotDotInPatterns(rawPatterns)
+
+	if sourceDir == "" && !hasDotDot {
+		return localFSResolution(f, includes, excludes)
 	}
-
-	sourceDir = path.Clean(sourceDir)
-	fileDir := path.Clean(filepath.ToSlash(filepath.Dir(f.Path)))
-
-	// Compute prefix relative to the file's directory so display
-	// filenames produce correct links from the including file.
-	relPrefix, err := filepath.Rel(fileDir, sourceDir)
-	if err != nil {
-		return f.FS, ""
-	}
-	relPrefix = filepath.ToSlash(relPrefix)
-
-	if sourceDir == "." {
-		if relPrefix == "." {
-			return f.RootFS, ""
+	if f.RootFS == nil {
+		if hasDotDot {
+			return globResolution{diags: []lint.Diagnostic{makeDiag(
+				filePath, line,
+				`generated section directive glob contains ".." but project root is not configured`)}}
 		}
-		return f.RootFS, relPrefix
+		return localFSResolution(f, includes, excludes)
 	}
+	return resolveAgainstProjectRoot(f, sourceDir, includes, excludes, filePath, line)
+}
 
-	sub, err := fs.Sub(f.RootFS, sourceDir)
-	if err != nil {
-		return f.FS, ""
+// resolveAgainstProjectRoot rewrites include/exclude patterns relative
+// to the project root using RootFS. Falls back to the file's fs.FS when
+// the source-dir is invalid or filepath.Rel cannot resolve fileDir.
+func resolveAgainstProjectRoot(
+	f *lint.File, sourceDir string,
+	includes, excludes []string,
+	filePath string, line int,
+) globResolution {
+	fileDir := path.Clean(filepath.ToSlash(filepath.Dir(f.Path)))
+	if fileDir == "." {
+		fileDir = ""
 	}
-	if relPrefix == "." {
-		return sub, ""
+	baseRel, ok := resolveBaseRel(fileDir, sourceDir)
+	if !ok {
+		return localFSResolution(f, includes, excludes)
 	}
-	return sub, relPrefix
+	if fileDir != "" {
+		if _, err := filepath.Rel(fileDir, "."); err != nil {
+			return localFSResolution(f, includes, excludes)
+		}
+	}
+	resolvedIncludes, ok := resolvePatterns(baseRel, includes)
+	if !ok {
+		return escapeDiag(filePath, line)
+	}
+	resolvedExcludes, ok := resolvePatterns(baseRel, excludes)
+	if !ok {
+		return escapeDiag(filePath, line)
+	}
+	gitignoreBase := ""
+	if f.RootDir != "" {
+		if abs, err := filepath.Abs(f.RootDir); err == nil {
+			gitignoreBase = abs
+		}
+	}
+	return globResolution{
+		fs:            f.RootFS,
+		includes:      resolvedIncludes,
+		excludes:      resolvedExcludes,
+		gitignoreBase: gitignoreBase,
+		fileDir:       fileDir,
+		rootRelative:  true,
+	}
+}
+
+func escapeDiag(filePath string, line int) globResolution {
+	return globResolution{diags: []lint.Diagnostic{makeDiag(
+		filePath, line,
+		"generated section directive glob escapes project root")}}
+}
+
+// dotDotInPatterns reports whether any pattern contains a ".." segment.
+func dotDotInPatterns(patterns []string) bool {
+	for _, p := range patterns {
+		if globpath.ContainsDotDotSegment(strings.TrimPrefix(p, "!")) {
+			return true
+		}
+	}
+	return false
+}
+
+// localFSResolution builds the fast-path resolution that globs from the
+// catalog-owning file's own fs.FS. Used when no source-dir is set and the
+// patterns contain no ".." segments, or as a fallback when the project
+// root is not configured.
+func localFSResolution(f *lint.File, includes, excludes []string) globResolution {
+	base := ""
+	if abs, err := filepath.Abs(filepath.Dir(f.Path)); err == nil {
+		base = abs
+	}
+	return globResolution{
+		fs:            f.FS,
+		includes:      includes,
+		excludes:      excludes,
+		gitignoreBase: base,
+	}
+}
+
+// resolveBaseRel returns the project-root-relative directory glob patterns
+// resolve against. When sourceDir is set it overrides the file's own
+// directory; an absolute or escaping sourceDir signals failure (ok=false).
+func resolveBaseRel(fileDir, sourceDir string) (string, bool) {
+	if sourceDir == "" {
+		return fileDir, true
+	}
+	sd := path.Clean(sourceDir)
+	if sd == "." {
+		sd = ""
+	}
+	if strings.HasPrefix(sd, "..") || filepath.IsAbs(sd) {
+		return "", false
+	}
+	return sd, true
+}
+
+// resolvePatterns rewrites each pattern relative to baseRel; ok is false
+// when any pattern would resolve outside the project root.
+func resolvePatterns(baseRel string, patterns []string) ([]string, bool) {
+	resolved := make([]string, 0, len(patterns))
+	for _, p := range patterns {
+		r, escapes := globpath.ResolveAgainstRoot(baseRel, p)
+		if escapes {
+			return nil, false
+		}
+		resolved = append(resolved, r)
+	}
+	return resolved, true
 }
 
 // buildCatalogEntries resolves glob matches, reads front matter, and
@@ -305,8 +426,11 @@ func resolveGlobFS(f *lint.File, params map[string]string) (globFS fs.FS, prefix
 func buildCatalogEntries(
 	f *lint.File, params map[string]string, filePath string, line int,
 ) ([]fileEntry, []lint.Diagnostic) {
-	globFS, prefix := resolveGlobFS(f, params)
-	files := resolveGlobMatchesFrom(globFS, f, params)
+	res := resolveGlobFS(f, params, filePath, line)
+	if len(res.diags) > 0 {
+		return nil, res.diags
+	}
+	files := resolveGlobMatchesFrom(res, f, params)
 
 	sortKey, descending := parseSort(params)
 	_, hasRow := params["row"]
@@ -315,13 +439,10 @@ func buildCatalogEntries(
 	var diags []lint.Diagnostic
 	entries := make([]fileEntry, 0, len(files))
 	for _, p := range files {
-		displayPath := p
-		if prefix != "" {
-			displayPath = path.Join(prefix, p)
-		}
+		displayPath := res.displayPath(p)
 		fields := map[string]any{"filename": displayPath}
 		if needFM {
-			fm, err := readFrontMatter(globFS, p, f.MaxInputBytes)
+			fm, err := readFrontMatter(res.fs, p, f.MaxInputBytes)
 			if err != nil {
 				diags = append(diags, makeDiag(filePath, line,
 					fmt.Sprintf("cannot read front matter from %q: %v", displayPath, err)))
@@ -338,17 +459,20 @@ func buildCatalogEntries(
 	return entries, diags
 }
 
-// resolveGlobMatchesFrom expands include patterns using the given FS,
-// filters out exclude and gitignore matches, and returns deduplicated
-// file paths.
-func resolveGlobMatchesFrom(globFS fs.FS, f *lint.File, params map[string]string) []string {
-	includePatterns, excludePatterns := splitIncludeExclude(params["glob"])
-	matcher, base := resolveGitignore(f, params)
+// resolveGlobMatchesFrom expands include patterns using the resolved
+// fs.FS, filters out exclude and gitignore matches, and returns
+// deduplicated file paths.
+func resolveGlobMatchesFrom(res globResolution, f *lint.File, params map[string]string) []string {
+	matcher := resolveGitignoreMatcher(f, params)
+	base := res.gitignoreBase
+	if matcher == nil {
+		base = ""
+	}
 
 	seen := make(map[string]bool)
 	var files []string
-	for _, pattern := range includePatterns {
-		matches, err := doublestar.Glob(globFS, pattern)
+	for _, pattern := range res.includes {
+		matches, err := doublestar.Glob(res.fs, pattern)
 		if err != nil {
 			continue
 		}
@@ -356,14 +480,14 @@ func resolveGlobMatchesFrom(globFS fs.FS, f *lint.File, params map[string]string
 			if seen[m] {
 				continue
 			}
-			info, err := fs.Stat(globFS, m)
+			info, err := fs.Stat(res.fs, m)
 			if err != nil || info.IsDir() {
 				continue
 			}
-			if isExcluded(m, excludePatterns) {
+			if isExcluded(m, res.excludes) {
 				continue
 			}
-			if matcher != nil && isGitignored(matcher, base, m) {
+			if matcher != nil && base != "" && isGitignored(matcher, base, m) {
 				continue
 			}
 			seen[m] = true
@@ -373,28 +497,15 @@ func resolveGlobMatchesFrom(globFS fs.FS, f *lint.File, params map[string]string
 	return files
 }
 
-// resolveGitignore returns the gitignore matcher and base directory to use
-// for filtering, or (nil, "") if gitignore filtering is disabled.
-func resolveGitignore(f *lint.File, params map[string]string) (*lint.GitignoreMatcher, string) {
+// resolveGitignoreMatcher returns the gitignore matcher to use for
+// filtering, or nil when gitignore filtering is disabled or no matcher
+// is available. The absolute base directory matched paths are anchored
+// to is supplied separately by resolveGlobFS as part of globResolution.
+func resolveGitignoreMatcher(f *lint.File, params map[string]string) *lint.GitignoreMatcher {
 	if params["gitignore"] == "false" {
-		return nil, ""
+		return nil
 	}
-	matcher := f.GetGitignore()
-	if matcher == nil {
-		return nil, ""
-	}
-	baseDir := filepath.Dir(f.Path)
-	if sd := params["source-dir"]; sd != "" && f.RootDir != "" {
-		sd = path.Clean(sd)
-		if !filepath.IsAbs(sd) && !containsDotDot(sd) {
-			baseDir = filepath.Join(f.RootDir, sd)
-		}
-	}
-	base, err := filepath.Abs(baseDir)
-	if err != nil {
-		return nil, ""
-	}
-	return matcher, base
+	return f.GetGitignore()
 }
 
 // checkCatalogInjection warns when interpolated front-matter values contain
@@ -690,17 +801,6 @@ func isGitignored(matcher *lint.GitignoreMatcher, base, matchedPath string) bool
 	}
 
 	return matcher.IsIgnored(abs, false)
-}
-
-// containsDotDot checks if a glob pattern contains ".." path traversal.
-func containsDotDot(pattern string) bool {
-	parts := strings.Split(pattern, "/")
-	for _, p := range parts {
-		if p == ".." {
-			return true
-		}
-	}
-	return false
 }
 
 // parseRowTemplate validates a row template string containing {field}

@@ -102,3 +102,55 @@ func TestSplitIncludeExclude_Empty(t *testing.T) {
 	assert.Nil(t, inc)
 	assert.Nil(t, exc)
 }
+
+func TestResolveAgainstRoot_StaysInside(t *testing.T) {
+	resolved, escapes := globpath.ResolveAgainstRoot("a/b/c", "../../d/*.md")
+	assert.False(t, escapes)
+	assert.Equal(t, "a/d/*.md", resolved)
+}
+
+func TestResolveAgainstRoot_EmptyBase(t *testing.T) {
+	resolved, escapes := globpath.ResolveAgainstRoot("", "docs/*.md")
+	assert.False(t, escapes)
+	assert.Equal(t, "docs/*.md", resolved)
+}
+
+func TestResolveAgainstRoot_DotBase(t *testing.T) {
+	resolved, escapes := globpath.ResolveAgainstRoot(".", "docs/*.md")
+	assert.False(t, escapes)
+	assert.Equal(t, "docs/*.md", resolved)
+}
+
+func TestResolveAgainstRoot_ResolvesToRoot(t *testing.T) {
+	resolved, escapes := globpath.ResolveAgainstRoot("a", "..")
+	assert.False(t, escapes)
+	assert.Equal(t, "", resolved)
+}
+
+func TestResolveAgainstRoot_Escapes(t *testing.T) {
+	resolved, escapes := globpath.ResolveAgainstRoot("a", "../../x.md")
+	assert.True(t, escapes)
+	assert.Equal(t, "../x.md", resolved)
+}
+
+func TestResolveAgainstRoot_EscapesToDotDot(t *testing.T) {
+	resolved, escapes := globpath.ResolveAgainstRoot("", "..")
+	assert.True(t, escapes)
+	assert.Equal(t, "..", resolved)
+}
+
+func TestContainsDotDotSegment(t *testing.T) {
+	cases := map[string]bool{
+		"../foo":     true,
+		"foo/../bar": true,
+		"foo/bar/..": true,
+		"":           false,
+		"foo..bar":   false,
+		"...":        false,
+		"..":         true,
+		"foo/bar":    false,
+	}
+	for input, want := range cases {
+		assert.Equal(t, want, globpath.ContainsDotDotSegment(input), input)
+	}
+}

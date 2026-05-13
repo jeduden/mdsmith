@@ -277,9 +277,24 @@ func runGoodFolderFile(
 
 	f, err := lint.NewFile(fixtureFilePath(t, r, filePath), content)
 	require.NoError(t, err, "parsing %s: %v", filepath.Base(filePath), err)
-	f.FS = os.DirFS(filepath.Dir(filePath))
+	attachFixtureFS(f, filepath.Dir(filePath), r)
 	diags := checkAllRules(f, r)
 	reportUnexpectedDiags(t, filepath.Base(filePath), diags)
+}
+
+// attachFixtureFS scopes a fixture's lint.File to a directory on disk.
+// For rules that resolve cross-tree paths against a project root
+// (currently MDS019 catalog) it also pins RootFS to the same FS so the
+// rule can resolve "..": segments instead of erroring out. For all
+// other rules, RootFS is left nil to preserve their existing fixture
+// semantics — notably MDS020, whose schema reader switches resolution
+// strategy based on whether RootFS is set.
+func attachFixtureFS(f *lint.File, dir string, r rule.Rule) {
+	fsys := os.DirFS(dir)
+	f.FS = fsys
+	if r != nil && r.ID() == "MDS019" {
+		f.RootFS = fsys
+	}
 }
 
 // fixtureFilePath returns the value to use as f.Path when running a
@@ -308,7 +323,7 @@ func runBadFolderFile(
 
 	f, err := lint.NewFile(fixtureFilePath(t, r, filePath), content)
 	require.NoError(t, err, "parsing %s: %v", filepath.Base(filePath), err)
-	f.FS = os.DirFS(filepath.Dir(filePath))
+	attachFixtureFS(f, filepath.Dir(filePath), r)
 	diags := filterByRule(r.Check(f), ruleID)
 	assertExpectedDiags(t, expected, diags, filepath.Base(filePath))
 }
@@ -339,7 +354,7 @@ func runFixFolderFile(
 	fPath := fixtureFilePath(t, r, fixedPath)
 	f, err := lint.NewFile(fPath, badContent)
 	require.NoError(t, err, "parsing %s: %v", filepath.Base(fixedPath), err)
-	f.FS = os.DirFS(filepath.Dir(fixedPath))
+	attachFixtureFS(f, filepath.Dir(fixedPath), r)
 
 	got := fr.Fix(f)
 
@@ -358,7 +373,7 @@ func runFixFolderFile(
 	// Verify that the fixed output produces no diagnostics.
 	fixedFile, err := lint.NewFile(fPath, want)
 	require.NoError(t, err, "parsing fixed output: %v", err)
-	fixedFile.FS = os.DirFS(filepath.Dir(fixedPath))
+	attachFixtureFS(fixedFile, filepath.Dir(fixedPath), r)
 	diags := checkAllRules(fixedFile, r)
 	reportUnexpectedDiags(t, filepath.Base(fixedPath), diags)
 }
@@ -370,7 +385,7 @@ func runGoodSingleFile(t *testing.T, dir string, r rule.Rule) {
 	src := readFixture(t, filepath.Join(dir, "good.md"))
 	f, err := lint.NewFile("good.md", src)
 	require.NoError(t, err, "parsing good.md: %v", err)
-	f.FS = os.DirFS(dir)
+	attachFixtureFS(f, dir, r)
 	diags := checkAllRules(f, r)
 	reportUnexpectedDiags(t, "good.md", diags)
 }
@@ -383,7 +398,7 @@ func runBadSingleFile(
 	_, expected, src := parseFixtureFrontMatter(t, raw, true)
 	f, err := lint.NewFile("bad.md", src)
 	require.NoError(t, err, "parsing bad.md: %v", err)
-	f.FS = os.DirFS(dir)
+	attachFixtureFS(f, dir, r)
 	diags := filterByRule(r.Check(f), ruleID)
 	assertExpectedDiags(t, expected, diags, "bad.md")
 }
@@ -404,7 +419,7 @@ func runFixSingleFile(
 	_, _, content := parseFixtureFrontMatter(t, badSrc, false)
 	f, err := lint.NewFile("bad.md", content)
 	require.NoError(t, err, "parsing bad.md: %v", err)
-	f.FS = os.DirFS(dir)
+	attachFixtureFS(f, dir, r)
 
 	got := fr.Fix(f)
 	fixedPath := filepath.Join(dir, "fixed.md")
@@ -419,7 +434,7 @@ func runFixSingleFile(
 
 	fixedFile, err := lint.NewFile("fixed.md", want)
 	require.NoError(t, err, "parsing fixed.md: %v", err)
-	fixedFile.FS = os.DirFS(dir)
+	attachFixtureFS(fixedFile, dir, r)
 	diags := checkAllRules(fixedFile, r)
 	reportUnexpectedDiags(t, "fixed.md", diags)
 }

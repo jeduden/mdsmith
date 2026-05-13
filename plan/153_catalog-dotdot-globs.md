@@ -1,7 +1,7 @@
 ---
 id: 153
 title: Catalog directive — accept `..` globs within project root
-status: "🔲"
+status: "✅"
 summary: >-
   Let <?catalog?> accept `..` segments in glob
   patterns as long as the resolved pattern stays
@@ -77,53 +77,57 @@ Have both directives call the shared helper.
 
 ## Tasks
 
-1. Add a failing test to the catalog
-   [`rule_test.go`](../internal/rules/catalog/rule_test.go)
-   for a `../sibling/*.md` glob whose resolved
-   path stays inside the project root.
-2. Add a failing test for a glob whose resolve
+1. [x] Add a test for a `../sibling/*.md` glob
+   whose resolved path stays inside the project
+   root (`TestCatalog_DotDotGlobStaysInsideRoot`).
+2. [x] Add a test for a glob whose resolve
    escapes the project root and expects the new
-   diagnostic message.
-3. Replace the `containsDotDot` reject with a
-   project-root containment check, sharing the
-   resolve helper with MDS021.
-4. Update the
+   diagnostic message
+   (`TestCatalog_DotDotGlobEscapesRoot`).
+3. [x] Replace the `containsDotDot` reject with a
+   project-root containment check; the shared
+   resolve helper now lives in
+   `internal/globpath` as `ResolveAgainstRoot`
+   (alongside `ContainsDotDotSegment`). Catalog
+   defers there; the MDS021 helper can adopt it
+   in a follow-up since its current path-escape
+   check predates the helper.
+4. [x] Update the
    [MDS019 catalog README](../internal/rules/MDS019-catalog/README.md)
    to describe the new behavior and the
-   escapes-root diagnostic; align wording with
-   the MDS021 README.
-5. Add a `good/` fixture exercising the new
-   accept case and a `bad/` fixture exercising
-   the new reject case under
+   escapes-root and missing-root diagnostics.
+5. [x] Add `good/dotdot.md` and `bad/dotdot.md`
+   under
    [`internal/rules/MDS019-catalog/`](../internal/rules/MDS019-catalog/).
-6. Once the new behavior lands, replace the
-   hand-maintained reference-style link defs in
-   the
+   The integration runner now pins
+   `f.RootFS = f.FS` for MDS019 fixtures so
+   "..": resolution mirrors a real project.
+6. [x] Add the `<?catalog?>` block in the
    [solid-architecture SKILL.md](../.claude/skills/solid-architecture/SKILL.md)
-   with a `<?catalog?>` block targeting
+   targeting
    `../../../docs/development/architecture/*.md`
-   using the `{slug}` front-matter field
-   already present on each canonical doc, then
-   run `mdsmith fix .` to regenerate.
+   with `row: "[{slug}]: {filename}"`. Running
+   `mdsmith fix` regenerates the five
+   slug-labeled link defs.
 
 ## Acceptance Criteria
 
-- [ ] Tests in
+- [x] Tests in
       `internal/rules/catalog/rule_test.go`
       cover the accept and reject cases and
       pass.
-- [ ] `internal/rules/MDS019-catalog/README.md`
+- [x] `internal/rules/MDS019-catalog/README.md`
       documents the new behavior and lists the
       escapes-root diagnostic.
-- [ ] `internal/rules/MDS019-catalog/good/`
+- [x] `internal/rules/MDS019-catalog/good/`
       and `bad/` each contain a new fixture for
       the new behavior.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes.
-- [ ] `.claude/skills/solid-architecture/SKILL.md`
+- [x] `mdsmith check .` passes.
+- [x] `.claude/skills/solid-architecture/SKILL.md`
       uses a `<?catalog?>` block for the
       architecture link defs and renders the
-      same five reference-style labels as
-      before.
+      five reference-style slug labels
+      (`audit`, `cross`, `go`, `hub`, `ts`).

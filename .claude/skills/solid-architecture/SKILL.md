@@ -156,3 +156,25 @@ source.
   the doc section that justifies it.
   Vague "this would be cleaner"
   guidance is not actionable.
+
+## Architecture doc references
+
+The link definitions below resolve the
+slug labels used throughout this skill
+(e.g. `[hub]`, `[go]`, `[ts]`). The
+`<?catalog?>` directive regenerates the
+block from each canonical doc's `slug`
+front-matter field — never hand-edit
+the entries.
+
+<?catalog
+glob: "../../../docs/development/architecture/*.md"
+sort: slug
+row: "[{slug}]: {filename}"
+?>
+[audit]: ../../../docs/development/architecture/audit-checklist.md
+[cross]: ../../../docs/development/architecture/cross-system.md
+[go]: ../../../docs/development/architecture/go.md
+[hub]: ../../../docs/development/architecture/index.md
+[ts]: ../../../docs/development/architecture/typescript.md
+<?/catalog?>
