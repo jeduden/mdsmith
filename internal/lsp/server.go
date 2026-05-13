@@ -676,17 +676,13 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	})
 	s.pending[uri] = p
 	s.pendingMu.Unlock()
-	// scheduleLint is the sole construction site for *pendingLint
-	// and always assigns timer before s.pending[uri] = p. A
-	// `newPendingLint(timer)` constructor that enforces the
-	// invariant structurally would reintroduce the delay==0
-	// closure-capture race the current `&pendingLint{}`-then-
-	// assign-timer pattern fixes (the AfterFunc closure needs the
-	// pendingLint pointer to exist BEFORE AfterFunc returns the
-	// Timer it wants to store, so the construction order can't
-	// be: timer first, then constructor). The nil guard here is
-	// pure defense against a future caller that breaks the
-	// invariant; production paths never trigger it.
+	// Under pendingMu above, p is allocated, p.timer is assigned,
+	// and s.pending[uri] = p all happen atomically — no concurrent
+	// reader can observe a registered *pendingLint with a nil
+	// timer. The nil guard here is pure defense against a future
+	// caller that constructs a *pendingLint without going through
+	// scheduleLint and forgets to assign timer; production paths
+	// never trigger it.
 	if hadPrev && prev.timer != nil {
 		prev.timer.Stop()
 	}
