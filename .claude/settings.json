@@ -8,7 +8,6 @@
     }
   },
   "enabledPlugins": {
-    "mdsmith-lsp@mdsmith": true,
     "mdsmith-dev-lsp@mdsmith": true
   },
   "permissions": {

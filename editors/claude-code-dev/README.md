@@ -10,25 +10,25 @@ summary: >-
 # Claude Code dev plugin
 
 This directory ships the `mdsmith-dev-lsp`
-plugin. It is contributor-facing: it declares
-language servers for the languages used inside
-mdsmith itself, not the Markdown LSP that
-end users get from the published
-[`mdsmith-lsp` plugin](../claude-code/README.md).
+plugin. It is contributor-facing and
+self-contained: it declares the three
+language servers an agent needs while
+working on this repo.
 
-Project settings auto-enable both
-plugins. They come from the local
-marketplace. The `LSP` tool then sees
-these files in this repo:
+Project settings auto-enable the plugin
+from the local marketplace. The `LSP`
+tool then sees these files:
 
 - Go under `cmd/` and `internal/` via
   `gopls`.
-- TypeScript under `editors/vscode/`
-  via `typescript-language-server` over
-  `npx`.
-- Markdown via the sibling `mdsmith-lsp`
-  plugin, served by the `@mdsmith/cli`
-  npm package.
+- TypeScript under `editors/vscode/` via
+  `typescript-language-server` over `npx`.
+- Markdown across the whole repo via the
+  stable `@mdsmith/cli` LSP server, also
+  fetched through `npx` — same invocation
+  as the published `mdsmith-lsp` plugin so
+  the repo's own Markdown gets linted with
+  the released ruleset.
 
 See `.claude/settings.json` and
 `.claude-plugin/marketplace.json` for the
@@ -38,18 +38,24 @@ wiring.
 
 - `gopls` on `$PATH`. Install with
   `go install golang.org/x/tools/gopls@latest`.
-- A working `npx` (any recent Node.js). The
-  TypeScript LSP is fetched lazily on first
-  use; no global install needed.
+- A working `npx` (any recent Node.js).
+  The TypeScript LSP and `@mdsmith/cli` are
+  fetched lazily on first use; no global
+  install needed.
 
 ## Why a separate plugin
 
-The `mdsmith-lsp` plugin under
-`editors/claude-code/` ships for end
-users. They want Markdown intelligence.
+The published `mdsmith-lsp` plugin under
+`editors/claude-code/` ships only the
+Markdown LSP. End users want Markdown
+intelligence in their own projects.
 Bundling `gopls` and
 `typescript-language-server` into that
 plugin would spawn extra processes for
-every end user. Keeping the dev wiring
-in its own plugin scopes the contributor
-cost to contributors.
+every end user.
+
+This dev plugin keeps that cost on
+contributors. It still pulls the
+Markdown LSP from the stable npm
+release, so the repo's Markdown lints
+against the released ruleset.
