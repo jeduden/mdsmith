@@ -38,6 +38,21 @@ Read the hub before any architectural
 recommendation. The references below offer
 depth per language and per surface.
 
+## Prerequisites
+
+- Run each fenced code block as its own
+  Bash call. Do not chain with `&&`. Do not
+  prefix with an inline variable assignment
+  (`VAR=x cmd`) or wrap the leading token in
+  `$(...)`. The skill's `allowed-tools` list
+  matches on the command prefix, so the
+  allowed token (e.g. `git log`) must be the
+  first thing the shell sees.
+- Where a step needs a value from a prior
+  command (a SHA, a path), paste the literal
+  value into the next command rather than
+  storing it in a shell variable.
+
 ## Modes
 
 Pass the mode as the skill argument

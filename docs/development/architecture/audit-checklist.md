@@ -65,24 +65,36 @@ the user supplies a different baseline.
 
 ## Step 1: refresh the checkpoint
 
-Find the last audit SHA in the audit log's
-front matter (`audit-from:`). Diff against
-`origin/main`:
+Read the last audit SHA from the audit log's
+front matter (`audit-from:`). Call it
+`<from-sha>` below; paste the literal SHA
+into each command rather than capturing it
+into a shell variable (the allowed-tools
+allowlist matches on the command's leading
+token, so a `VAR=… cmd` prefix or `$(…)`
+capture would block the call).
+
+Fetch:
 
 ```bash
 git fetch origin main
 ```
 
+List the files touched since the checkpoint
+— replace `<from-sha>` with the actual SHA
+before running:
+
 ```bash
-git log --name-only --pretty=format: \
-  "$AUDIT_FROM..origin/main" | sort -u
+git log --name-only --pretty=format: <from-sha>..origin/main
 ```
 
-Capture the file list as `$TOUCHED`.
+Keep the file list in your notes as the
+"touched set" for the rest of this audit;
+do not assign it to a shell variable.
 
 ## Step 2: Go layering checks
 
-For each Go file in `$TOUCHED`:
+For each Go file in the touched set:
 
 - Does it import only from lower layers?
   Cross-check against the layering map in
@@ -108,8 +120,8 @@ For each Go file in `$TOUCHED`:
 
 ## Step 3: TypeScript layering checks
 
-For each `.ts` file in `$TOUCHED` under
-`editors/vscode/`:
+For each `.ts` file in the touched set
+under `editors/vscode/`:
 
 - Does a command import another command?
   Flag (DIP).
