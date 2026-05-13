@@ -817,13 +817,35 @@ func refDefColonOffset(row []byte) int {
 
 // refDefDestRange returns the byte range of the destination
 // URL portion of a ref-def line, given the offset just past
-// the `:`. Skips whitespace, then captures until the next
-// whitespace or end of line. Quoted titles after the URL
-// are excluded.
+// the `:`. Skips leading whitespace, then handles both forms:
+//
+//   - Angle-bracketed: `[label]: <url>`. The returned range
+//     covers the bytes *inside* the angle brackets, so a slug
+//     edit replaces only the fragment text and leaves `<` / `>`
+//     intact.
+//   - Bare: `[label]: url`. The range runs from the first
+//     non-whitespace byte to the next whitespace.
+//
+// Quoted titles after the URL are excluded either way.
 func refDefDestRange(row []byte, from int) (int, int) {
 	i := from
 	for i < len(row) && (row[i] == ' ' || row[i] == '\t') {
 		i++
+	}
+	if i < len(row) && row[i] == '<' {
+		open := i + 1
+		for j := open; j < len(row); j++ {
+			if row[j] == '\\' && j+1 < len(row) {
+				j++
+				continue
+			}
+			if row[j] == '>' {
+				return open, j
+			}
+		}
+		// Unterminated `<…` — fall through to the bare reader
+		// from the original `<` position so a malformed line
+		// doesn't masquerade as an angle-bracketed dest.
 	}
 	start := i
 	for i < len(row) && row[i] != ' ' && row[i] != '\t' {
@@ -1410,13 +1432,14 @@ func refUseEdit(
 	bodyIdx bodyLineIndex,
 ) (textEdit, bool) {
 	textStart, textEnd := linkTextBounds(l, body)
-	// Goldmark parsed a reference link, so the surrounding
-	// bytes always form valid brackets: text begins after `[`
-	// and ends at `]`; full refs follow with `[label]`. The
-	// false return path in labelBoundsInBody is unreachable
-	// for AST-derived inputs; treating it as a guarantee keeps
-	// refUseEdit from inheriting an uncoverable branch.
-	labelStart, labelEnd, _ := labelBoundsInBody(body, textStart, textEnd, l.Reference.Type)
+	labelStart, labelEnd, ok := labelBoundsInBody(body, textStart, textEnd, l.Reference.Type)
+	if !ok {
+		// Empty-text references (`[][id]`) and other shapes
+		// linkTextBounds can't anchor leave us without a way
+		// to locate the label in the source. Skip rather than
+		// emit a corrupt edit.
+		return textEdit{}, false
+	}
 	// labelStart/End are byte offsets in body, so the line
 	// lookups stay inside the source's line table by
 	// construction: lines is splitLines(source) which spans
@@ -1449,6 +1472,15 @@ func refUseEdit(
 // label still sits between intact byte offsets even when the
 // text spans newlines.
 func labelBoundsInBody(body []byte, textStart, textEnd int, refType ast.ReferenceLinkType) (int, int, bool) {
+	// Empty-text refs like `[][id]` or `![][id]` parse with no
+	// text segments, so linkTextBounds returns (-1, -1). The
+	// label still exists in the source but we can't locate it
+	// without the text bracket as an anchor — skip the use to
+	// avoid a body[-1] panic. The same trade-off lives in
+	// internal/rules/noreferencestyle.
+	if textStart < 0 || textEnd < 0 {
+		return 0, 0, false
+	}
 	if refType == ast.ReferenceLinkFull {
 		// `[text][label]`: the text closes at body[textEnd] with
 		// `]`, then `[` opens the label.

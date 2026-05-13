@@ -885,6 +885,94 @@ func TestAppendAnchorEditsForHeadingDropsUnresolvableEdge(t *testing.T) {
 	assert.Empty(t, changes)
 }
 
+// TestRenameLinkRefSkipsEmptyTextReference verifies that an
+// empty-text reference link `[][docs]` doesn't panic the
+// rename. linkTextBounds returns (-1, -1) for these — without
+// the labelBoundsInBody guard, indexing body[-1] would crash.
+// The use is silently skipped; the def + other uses still
+// rewrite cleanly.
+func TestRenameLinkRefSkipsEmptyTextReference(t *testing.T) {
+	t.Parallel()
+	src := "# T\n\nSee [][docs] and [other][docs].\n\n[docs]: https://x\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
+	uri := rootURI + "/a.md"
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	raw, errResp := h.request("textDocument/rename", renameParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 4, Character: 2},
+		NewName:      "manual",
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Contains(t, edit.Changes, uri)
+	require.NotEmpty(t, edit.Changes[uri])
+}
+
+// TestRenameHeadingRewritesAngleBracketRefDef covers
+// CommonMark's angle-bracketed reference-definition form:
+// `[setup]: <./a.md#setup>`. refDefDestRange returns the
+// bytes inside the angle brackets so the slug edit lands on
+// just the fragment text.
+func TestRenameHeadingRewritesAngleBracketRefDef(t *testing.T) {
+	t.Parallel()
+	srcA := "# Alpha\n\n## Setup\n\nbody\n"
+	srcB := "# Beta\n\n[setup]: <./a.md#setup>\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": srcA, "b.md": srcB})
+	uriA := rootURI + "/a.md"
+	uriB := rootURI + "/b.md"
+	for _, d := range []struct{ uri, src string }{{uriA, srcA}, {uriB, srcB}} {
+		h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+			TextDocument: textDocumentItem{URI: d.uri, LanguageID: "markdown", Version: 1, Text: d.src},
+		})
+		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
+	}
+	raw, errResp := h.request("textDocument/rename", renameParams{
+		TextDocument: textDocumentIdentifier{URI: uriA},
+		Position:     Position{Line: 2, Character: 4},
+		NewName:      "Configuration",
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Contains(t, edit.Changes, uriB)
+	require.Len(t, edit.Changes[uriB], 1)
+	assert.Equal(t, "configuration", edit.Changes[uriB][0].NewText)
+}
+
+// TestRefDefDestRangeAngleBracket exercises the new
+// angle-bracket arm of refDefDestRange plus its
+// fall-through on an unterminated `<…`.
+func TestRefDefDestRangeAngleBracket(t *testing.T) {
+	t.Parallel()
+	row := []byte(`[a]: <./b.md#sec>`)
+	start, end := refDefDestRange(row, 4)
+	assert.Equal(t, "./b.md#sec", string(row[start:end]))
+	// Unterminated angle: fall back to bare reader from the `<`.
+	row = []byte(`[a]: <./b.md#sec`)
+	start, end = refDefDestRange(row, 4)
+	assert.Equal(t, "<./b.md#sec", string(row[start:end]))
+	// Angle dest containing an escaped `\>` doesn't terminate
+	// the URL early.
+	row = []byte(`[a]: <./b.md\>x#sec>`)
+	start, end = refDefDestRange(row, 4)
+	assert.Equal(t, `./b.md\>x#sec`, string(row[start:end]))
+}
+
+// TestLabelBoundsInBodyEmptyText covers the negative-offset
+// guard added for empty-text references.
+func TestLabelBoundsInBodyEmptyText(t *testing.T) {
+	t.Parallel()
+	body := []byte(`[][docs]`)
+	_, _, ok := labelBoundsInBody(body, -1, -1, ast.ReferenceLinkFull)
+	assert.False(t, ok)
+	_, _, ok = labelBoundsInBody(body, -1, -1, ast.ReferenceLinkShortcut)
+	assert.False(t, ok)
+}
+
 // TestRenameHeadingRewritesRefDefDestinations verifies the
 // ref-def-destination companion pass. A `[setup]: ./a.md#setup`
 // def in b.md isn't recorded as an edge in the index (refs are
