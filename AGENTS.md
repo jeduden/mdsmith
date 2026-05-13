@@ -35,6 +35,7 @@ row: "- [{summary}]({filename})"
 - [How generated sections work — markers, directives, and fix behavior.](docs/background/concepts/generated-section.md)
 - [How the placeholder vocabulary lets rules treat template tokens as opaque rather than flagging them as content violations.](docs/background/concepts/placeholder-grammar.md)
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
+- [Running log of SOLID and clean-architecture findings on origin/main. The solid-architecture skill (audit mode) appends here; blockers are also filed as plans.](docs/development/architecture-audit.md)
 - [Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.](docs/development/architecture/audit-checklist.md)
 - [External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs with stricter compatibility rules than internal code.](docs/development/architecture/cross-system.md)
 - [Go-specific SOLID and clean architecture patterns for mdsmith's cmd/ and internal/ packages.](docs/development/architecture/go.md)
