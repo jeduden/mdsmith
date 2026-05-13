@@ -91,12 +91,14 @@ overrides:
           - urls
       blank-line-around-lists: false
   - glob: [".claude/skills/*/SKILL.md",
+            "editors/claude-code-audit/skills/*/SKILL.md",
             ".github/copilot-pr-fixup.md",
             ".github/AGENTS-PR-FIXUP.md"]
     rules:
       max-file-length:
         max: 600
-  - glob: [".claude/skills/*/SKILL.md"]
+  - glob: [".claude/skills/*/SKILL.md",
+            "editors/claude-code-audit/skills/*/SKILL.md"]
     rules:
       # required-structure.schema for SKILL.md files comes
       # from the `skill` kind; this override only carries
@@ -279,21 +281,80 @@ kinds:
       paragraph-readability: false
       paragraph-structure: false
   plan:
+    path-pattern: "plan/{proto.md,[0-9][0-9]*_*.md}"
     rules:
       required-structure:
         schema: plan/proto.md
   rule-readme:
+    path-pattern: "internal/rules/{proto.md,MDS[0-9]*-*/README.md}"
     rules:
       required-structure:
         schema: internal/rules/proto.md
   skill:
+    path-pattern: "{.claude/skills,editors/claude-code-audit/skills}/{proto.md,*/SKILL.md}"
     rules:
       required-structure:
         schema: .claude/skills/proto.md
   security-note:
+    path-pattern: "docs/security/{proto.md,[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.md}"
     rules:
       required-structure:
         schema: docs/security/proto.md
+  architecture-doc:
+    schema:
+      frontmatter:
+        title: 'string & != ""'
+        slug: 'string & != ""'
+        summary: 'string & != ""'
+      closed: false
+      sections:
+        - heading: null
+          required: false
+        - heading:
+            unlisted: true
+  cli-command:
+    schema:
+      frontmatter:
+        command: 'string & != ""'
+        summary: 'string & != ""'
+      closed: false
+      sections:
+        - heading: null
+          required: false
+        - heading:
+            unlisted: true
+  release-channel:
+    schema:
+      frontmatter:
+        title: 'string & != ""'
+        summary: 'string & != ""'
+        registry: 'string & != ""'
+        credential: 'string & != ""'
+        job: 'string & != ""'
+      closed: false
+      sections:
+        - heading: null
+          required: false
+        - heading:
+            unlisted: true
+  secret-rotation:
+    schema:
+      frontmatter:
+        title: 'string & != ""'
+        summary: 'string & != ""'
+        lastRotated: '=~ "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"'
+        periodDays: 'int & > 0'
+        provider: 'string & != ""'
+        issuerUrl: '=~ "^https?://"'
+        usedBy: 'string & != ""'
+        scope: 'string & != ""'
+        releaseEnvScoped: 'bool'
+      closed: false
+      sections:
+        - heading: null
+          required: false
+        - heading:
+            unlisted: true
   audit-log:
     schema:
       frontmatter:
@@ -332,9 +393,18 @@ kind-assignment:
     kinds: [plan]
   - glob: ["internal/rules/proto.md", "internal/rules/MDS*/README.md"]
     kinds: [rule-readme]
-  - glob: [".claude/skills/proto.md", ".claude/skills/*/SKILL.md"]
+  - glob: [".claude/skills/proto.md", ".claude/skills/*/SKILL.md",
+            "editors/claude-code-audit/skills/*/SKILL.md"]
     kinds: [skill]
   - glob: ["docs/security/*.md"]
     kinds: [security-note]
+  - glob: ["docs/development/secret-rotations/*.md"]
+    kinds: [secret-rotation]
+  - glob: ["docs/reference/cli/*.md"]
+    kinds: [cli-command]
+  - glob: ["docs/development/release-channels/*.md"]
+    kinds: [release-channel]
+  - glob: ["docs/development/architecture/*.md"]
+    kinds: [architecture-doc]
   - glob: ["docs/development/architecture-audit.md"]
     kinds: [audit-log]
