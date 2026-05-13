@@ -740,3 +740,52 @@ func TestCheckSecretRotationsDefaultsGHAndEnv(t *testing.T) {
 	assert.Empty(t, res.Opened)
 	assert.Empty(t, res.Skipped)
 }
+
+// TestParseFrontMatterRejectsInvalidYAML exercises the
+// yaml.Unmarshal error branch — the front matter fences are
+// present but the body is not valid YAML.
+func TestParseFrontMatterRejectsInvalidYAML(t *testing.T) {
+	_, err := ParseFrontMatter("---\n: : :\n---\n", "x.md")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not valid YAML")
+}
+
+// TestValidateRotationEntryRejectsNonStringLastRotated covers
+// the asString error branch on lastRotated when YAML decodes
+// the value as a non-string (e.g. an integer).
+func TestValidateRotationEntryRejectsNonStringLastRotated(t *testing.T) {
+	fm := map[string]any{
+		"title":       "X",
+		"lastRotated": 12345,
+		"periodDays":  30,
+		"provider":    "P",
+		"issuerUrl":   "u",
+		"usedBy":      "r",
+		"scope":       "s",
+	}
+	_, err := ValidateRotationEntry(fm, "x.md")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "lastRotated")
+	assert.Contains(t, err.Error(), "not a string")
+}
+
+// TestRecordRotationPropagatesWriteError covers the
+// os.WriteFile failure path of RecordRotation by making the
+// per-secret directory read-only after FindEntry succeeds.
+func TestRecordRotationPropagatesWriteError(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root; chmod 0o555 is bypassed")
+	}
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: V\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n---\n",
+	})
+	dir := filepath.Join(root, RotationsDirName)
+	// Make the file unwritable. Restore at the end so t.TempDir
+	// cleanup can delete it.
+	target := filepath.Join(dir, "v.md")
+	require.NoError(t, os.Chmod(target, 0o444))
+	t.Cleanup(func() { _ = os.Chmod(target, 0o644) })
+
+	_, err := RecordRotation(root, "V", "2026-05-12")
+	require.Error(t, err)
+}
