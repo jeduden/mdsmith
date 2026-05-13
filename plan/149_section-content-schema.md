@@ -1,7 +1,7 @@
 ---
 id: 149
 title: Section content schema for non-heading AST nodes
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [146]
 summary: >-
@@ -104,16 +104,22 @@ sections:
 
 | `kind:`      | Extra keys (all optional)                  | Matches                                       |
 |--------------|--------------------------------------------|-----------------------------------------------|
-| `code-block` | `lang:` (string or regex)                  | An `ast.FencedCodeBlock` whose info matches.  |
+| `code-block` | `lang:` (string; exact match today)        | An `ast.FencedCodeBlock` whose info matches.  |
 | `table`      | `columns: [str, ...]` (exact header names) | A GFM table whose first row equals `columns`. |
 | `list`       | `ordered: bool`, `min-items`, `max-items`  | An `ast.List` whose ordered flag matches.     |
 | `paragraph`  | (none today)                               | An `ast.Paragraph` not recognised as a table. |
 | `unlisted`   | (none)                                     | A positional slot — see below.                |
 
-Every entry accepts `required: true|false`
-(default `true`) and `closed: true|false`
-(default mirrors the parent scope's
-`closed:`).
+Every entry accepts `required: true|false`.
+The default is `true`. The parser rejects
+`required:` on `kind: unlisted` outright.
+
+The parent scope's `closed:` flag drives
+diagnostics for trailing or intervening
+unlisted nodes. A per-entry `closed:` field
+is not shipped. Entries name single AST
+blocks; there is no child content to be
+closed against.
 
 ### Wildcards and order
 
@@ -154,12 +160,18 @@ section's heading line.
 
 ## Tasks
 
-1. Define `internal/schema/Content` plus a
+1. Define `ContentEntry` plus a
    `Content []ContentEntry` field on `Scope`.
-   Each entry has `Kind`, `Required`,
-   `Closed`, and a `kind:`-specific struct
-   (CodeBlock, Table, List, Paragraph,
-   Unlisted).
+   Each entry carries `Kind`, `Required`, and
+   a small set of kind-specific fields
+   directly on the struct (`Lang`, `Columns`,
+   `Ordered`/`OrderedSet`, `MinItems`,
+   `MaxItems`) — the design uses a flat
+   discriminated record rather than five
+   nested kind-specific sub-structs because
+   the constraint sets are tiny and a flat
+   record keeps the parser, validator, and
+   describer one function per field.
 2. Inline parser: extend
    `parseInlineScopeEntry` to read a
    `content:` mapping value; reject unknown
@@ -193,38 +205,38 @@ section's heading line.
 
 ## Acceptance Criteria
 
-- [ ] A schema with `content: [{kind:
+- [x] A schema with `content: [{kind:
       code-block, lang: yaml}]` flags a
       matched section missing that block.
-- [ ] A schema with `content: [{kind:
+- [x] A schema with `content: [{kind:
       table, columns: [Setting, Default]}]`
       flags a section whose table has
       different column headers and passes
       one with matching headers.
-- [ ] A schema with `content: [{kind: list,
+- [x] A schema with `content: [{kind: list,
       ordered: true, min-items: 2}]` flags a
       section with a one-item ordered list.
-- [ ] `closed: true` on the parent scope
+- [x] `closed: true` on the parent scope
       flags an unlisted AST node inside the
       section.
-- [ ] `kind: unlisted` tolerates unknown
+- [x] `kind: unlisted` tolerates unknown
       nodes at that position even under
       `closed: true`.
-- [ ] Content out-of-order produces the new
+- [x] Content out-of-order produces the new
       "out of order" diagnostic naming
       expected vs actual kind.
-- [ ] An unknown `kind:` value at parse
+- [x] An unknown `kind:` value at parse
       time emits an error naming the scope.
-- [ ] `content:` is rejected on a wildcard
+- [x] `content:` is rejected on a wildcard
       slot and on a `heading: "?"` scope
       until a follow-up plan defines those
       semantics.
-- [ ] All existing MDS020 fixtures pass
+- [x] All existing MDS020 fixtures pass
       unchanged.
-- [ ] MDS020 README and
+- [x] MDS020 README and
       `docs/guides/schemas.md` document the
       `content:` shape with one worked
       example.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports
       no issues.

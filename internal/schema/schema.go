@@ -211,10 +211,66 @@ type Scope struct {
 	// scope). Threading the full merge through the engine is a
 	// tracked follow-up on plan 146; see docs/guides/schemas.md.
 	Rules map[string]map[string]any
+
+	// Content carries non-heading AST-node constraints inside the
+	// matched section: required code blocks, tables, lists, and
+	// paragraphs, in positional order. Plan 149 added this; entries
+	// follow the same out-of-order + unlisted-slot semantics the
+	// heading-tree validator uses.
+	Content []ContentEntry
+}
+
+// Content-entry kind discriminators. The on-disk YAML carries one of
+// these strings under `kind:`; the validator dispatches on the same
+// constant.
+const (
+	ContentKindCodeBlock = "code-block"
+	ContentKindTable     = "table"
+	ContentKindList      = "list"
+	ContentKindParagraph = "paragraph"
+	ContentKindUnlisted  = "unlisted"
+)
+
+// ContentEntry describes one positional non-heading AST node that
+// must appear inside a section's body. Each entry has a discriminator
+// (Kind) and a small set of kind-specific constraint fields. Fields
+// not relevant to the entry's kind are zero-valued.
+type ContentEntry struct {
+	// Kind names the AST shape this entry matches. One of
+	// `ContentKind*`. Reject unknown values at parse time.
+	Kind string
+
+	// Required reports whether a matching node must appear at this
+	// position. Defaults to true for literal entries; the parser
+	// rejects `required:` on `kind: unlisted` outright.
+	Required bool
+
+	// Lang constrains a `code-block` entry's info string. Empty means
+	// any language is accepted. Today the match is exact equality; a
+	// future plan can extend the field with a regex form.
+	Lang string
+
+	// Columns constrains a `table` entry's header row. Empty means any
+	// header is accepted. When set, the doc table's header row must
+	// equal Columns element-wise.
+	Columns []string
+
+	// Ordered, OrderedSet constrain a `list` entry's bullet style.
+	// OrderedSet reports whether the schema author set `ordered:`;
+	// when false, any bullet style passes.
+	Ordered    bool
+	OrderedSet bool
+
+	// MinItems and MaxItems bound the count of items in a `list`
+	// entry's match. Zero means unbounded.
+	MinItems int
+	MaxItems int
 }
 
 // IsEmpty reports whether s carries no constraints. Used by callers
 // (notably MDS020) to short-circuit when a kind declares no schema.
+// A schema that declares only `content:` somewhere in its scope tree
+// is not empty — anyScopeHasContent traverses Sections for it.
 func (s *Schema) IsEmpty() bool {
 	if s == nil {
 		return true

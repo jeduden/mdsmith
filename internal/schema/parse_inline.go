@@ -291,11 +291,15 @@ func validateScopeShape(sc Scope, m map[string]any, path string) error {
 	}
 	if sc.Wildcard {
 		return rejectKeys(m, path, "slot (`heading: {unlisted: true}`)",
-			"required", "aliases", "closed", "sections", "rules")
+			"required", "aliases", "closed", "sections", "rules", "content")
 	}
 	if sc.Preamble {
 		return rejectKeys(m, path, "preamble (`heading: null`)",
 			"aliases", "sections")
+	}
+	if strings.TrimSpace(sc.Heading) == "?" {
+		return rejectKeys(m, path,
+			"`?` wildcard heading", "content")
 	}
 	return nil
 }
@@ -356,6 +360,8 @@ func applyScopeFields(m map[string]any, sc *Scope, path string) error {
 			err = setScopeSections(sc, vv, path)
 		case "rules":
 			err = setScopeRules(sc, vv, path)
+		case "content":
+			err = setScopeContent(sc, vv, path)
 		default:
 			return fmt.Errorf("%s: unknown scope key %q", path, k)
 		}
@@ -667,6 +673,184 @@ func stringList(v any, path string) ([]string, error) {
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+// setScopeContent reads a `content:` list from a scope mapping into
+// sc.Content. Each entry must be a mapping; `kind:` is required.
+// Kind-specific fields (lang, columns, ordered, min-items, max-items)
+// are accepted only on the kind they apply to. Unknown kinds and
+// unknown keys are rejected so authoring mistakes surface as parser
+// errors rather than silent no-ops at validation time.
+func setScopeContent(sc *Scope, v any, path string) error {
+	list, ok := v.([]any)
+	if !ok {
+		return fmt.Errorf("%s.content must be a list, got %T", path, v)
+	}
+	entries := make([]ContentEntry, 0, len(list))
+	for i, item := range list {
+		entry, err := parseContentEntry(item, fmt.Sprintf("%s.content[%d]", path, i))
+		if err != nil {
+			return err
+		}
+		entries = append(entries, entry)
+	}
+	sc.Content = entries
+	return nil
+}
+
+// parseContentEntry decodes one content-list entry. The `kind:` key
+// drives validation; unknown kinds are rejected here so the validator
+// can dispatch by string equality without re-checking shape.
+func parseContentEntry(entry any, path string) (ContentEntry, error) {
+	m, ok := entry.(map[string]any)
+	if !ok {
+		return ContentEntry{}, fmt.Errorf(
+			"%s: content entry must be a mapping, got %T", path, entry)
+	}
+	kindV, ok := m["kind"]
+	if !ok {
+		return ContentEntry{}, fmt.Errorf(
+			"%s: content entry must set a `kind:` key (one of: "+
+				"code-block, table, list, paragraph, unlisted)", path)
+	}
+	kind, ok := kindV.(string)
+	if !ok {
+		return ContentEntry{}, fmt.Errorf(
+			"%s.kind must be a string, got %T", path, kindV)
+	}
+	if !validContentKind(kind) {
+		return ContentEntry{}, fmt.Errorf(
+			"%s.kind: unknown content kind %q (valid: "+
+				"code-block, table, list, paragraph, unlisted)", path, kind)
+	}
+	ce := ContentEntry{Kind: kind, Required: true}
+	if kind == ContentKindUnlisted {
+		ce.Required = false
+	}
+	if err := applyContentFields(m, &ce, path); err != nil {
+		return ContentEntry{}, err
+	}
+	if kind == ContentKindUnlisted {
+		if _, hasReq := m["required"]; hasReq {
+			return ContentEntry{}, fmt.Errorf(
+				"%s: `required:` is not allowed on a `kind: unlisted` "+
+					"content entry — slots are positional and never required",
+				path)
+		}
+	}
+	return ce, nil
+}
+
+func validContentKind(k string) bool {
+	switch k {
+	case ContentKindCodeBlock, ContentKindTable,
+		ContentKindList, ContentKindParagraph, ContentKindUnlisted:
+		return true
+	}
+	return false
+}
+
+// applyContentFields walks a content-entry mapping and applies every
+// non-`kind:` key. Keys that don't belong to the entry's kind raise an
+// error so a typo (or a mis-targeted constraint) surfaces at parse
+// time rather than as a silently-ignored field.
+func applyContentFields(m map[string]any, ce *ContentEntry, path string) error {
+	for k, vv := range m {
+		if k == "kind" {
+			continue
+		}
+		if err := applyContentField(k, vv, ce, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func applyContentField(k string, vv any, ce *ContentEntry, path string) error {
+	switch k {
+	case "required":
+		return setScopeBool(&ce.Required, vv, path, k)
+	case "lang":
+		return setContentLang(ce, vv, path)
+	case "columns":
+		return setContentColumns(ce, vv, path)
+	case "ordered":
+		return setContentOrdered(ce, vv, path)
+	case "min-items":
+		return setContentItemBound(&ce.MinItems, vv, path, k, ce.Kind)
+	case "max-items":
+		return setContentItemBound(&ce.MaxItems, vv, path, k, ce.Kind)
+	default:
+		return fmt.Errorf("%s: unknown content key %q", path, k)
+	}
+}
+
+func setContentLang(ce *ContentEntry, v any, path string) error {
+	if ce.Kind != ContentKindCodeBlock {
+		return fmt.Errorf(
+			"%s.lang: only valid on `kind: code-block`", path)
+	}
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("%s.lang must be a string, got %T", path, v)
+	}
+	ce.Lang = s
+	return nil
+}
+
+func setContentColumns(ce *ContentEntry, v any, path string) error {
+	if ce.Kind != ContentKindTable {
+		return fmt.Errorf(
+			"%s.columns: only valid on `kind: table`", path)
+	}
+	list, err := stringList(v, path+".columns")
+	if err != nil {
+		return err
+	}
+	ce.Columns = list
+	return nil
+}
+
+func setContentOrdered(ce *ContentEntry, v any, path string) error {
+	if ce.Kind != ContentKindList {
+		return fmt.Errorf(
+			"%s.ordered: only valid on `kind: list`", path)
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return fmt.Errorf("%s.ordered must be a boolean, got %T", path, v)
+	}
+	ce.Ordered = b
+	ce.OrderedSet = true
+	return nil
+}
+
+func setContentItemBound(dst *int, v any, path, key, kind string) error {
+	if kind != ContentKindList {
+		return fmt.Errorf(
+			"%s.%s: only valid on `kind: list`", path, key)
+	}
+	switch x := v.(type) {
+	case int:
+		if x < 0 {
+			return fmt.Errorf("%s.%s must be non-negative, got %d", path, key, x)
+		}
+		*dst = x
+	case int64:
+		if x < 0 {
+			return fmt.Errorf("%s.%s must be non-negative, got %d", path, key, x)
+		}
+		*dst = int(x)
+	case float64:
+		if x < 0 || x != float64(int(x)) {
+			return fmt.Errorf(
+				"%s.%s must be a non-negative integer, got %v", path, key, x)
+		}
+		*dst = int(x)
+	default:
+		return fmt.Errorf("%s.%s must be an integer, got %T", path, key, v)
+	}
+	return nil
 }
 
 func isCUEIdent(s string) bool {

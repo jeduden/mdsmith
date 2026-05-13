@@ -142,7 +142,10 @@ Section keys:
   Not allowed on preamble entries (the first heading
   terminates the preamble's range).
 - `closed:` — when `true`, unlisted headings inside
-  this scope produce a diagnostic. Default `false`.
+  this scope produce a diagnostic. The same flag
+  drives the `content:` walker — unlisted body
+  nodes outside an `unlisted` content slot also
+  flag under `closed: true`. Default `false`.
 - `rules:` — per-scope rule-config overrides. Each
   entry maps a rule name to a settings map that
   applies on top of the rule's defaults inside the
@@ -150,6 +153,13 @@ Section keys:
   ApplySettings call, not a config-style deep-merge —
   keys the override sets replace the defaults
   wholesale.
+- `content:` — positional list of non-heading
+  AST node constraints (code blocks, tables,
+  lists, paragraphs) the section must contain.
+  See
+  [the schemas guide](../../../docs/guides/schemas.md#section-content)
+  for the entry shape and the per-kind fields.
+  Rejected on slot or `?` wildcard scopes.
 
 A slot entry (`heading: {unlisted: true}`) absorbs
 zero or more unlisted sections at that position.
@@ -240,18 +250,8 @@ file without a schema reference.
 
 ## Config
 
-Enable with a schema for rule READMEs:
-
-```yaml
-overrides:
-  - glob: ["internal/rules/*/README.md"]
-    rules:
-      required-structure:
-        schema: internal/rules/proto.md
-```
-
-Apply a user-authored schema to all story files via a
-`kinds:` declaration:
+Apply a schema by declaring a kind or setting
+`schema:` on an override:
 
 ```yaml
 kinds:
@@ -263,16 +263,6 @@ kinds:
 kind-assignment:
   - glob: ["stories/**/*.md"]
     kinds: [story]
-```
-
-Or set the path inline on an override:
-
-```yaml
-overrides:
-  - glob: ["stories/**/*.md"]
-    rules:
-      required-structure:
-        schema: schemas/story.md
 ```
 
 Disable:
@@ -324,18 +314,23 @@ Describe the goal here.
 
 ## Diagnostics
 
-| Condition           | Message                                                                       |
-|---------------------|-------------------------------------------------------------------------------|
-| section missing     | missing required section "## Settings"                                        |
-| wrong level         | heading level mismatch for "Settings": expected h2, got h3                    |
-| extra section       | unexpected section "## Extra" (expected "## Settings")                        |
-| out of order        | section "## Tasks" out of order: expected after "## Goal"                     |
-| heading sync        | heading does not match frontmatter: expected "MDS001" (from id), got "MDS002" |
-| body sync           | body does not match frontmatter field "description": expected "..."           |
-| front matter schema | front matter does not satisfy schema CUE constraints: ...                     |
-| filename mismatch   | filename "foo.md" does not match required pattern "[0-9]*_*.md"               |
-| misplaced require   | <?require?> is only recognized in schema files; this directive has no effect  |
-| schema include loop | cyclic include: a.md -> b.md -> a.md                                          |
+| Condition            | Message                                                                       |
+|----------------------|-------------------------------------------------------------------------------|
+| section missing      | missing required section "## Settings"                                        |
+| wrong level          | heading level mismatch for "Settings": expected h2, got h3                    |
+| extra section        | unexpected section "## Extra" (expected "## Settings")                        |
+| out of order         | section "## Tasks" out of order: expected after "## Goal"                     |
+| heading sync         | heading does not match frontmatter: expected "MDS001" (from id), got "MDS002" |
+| body sync            | body does not match frontmatter field "description": expected "..."           |
+| front matter schema  | front matter does not satisfy schema CUE constraints: ...                     |
+| filename mismatch    | filename "foo.md" does not match required pattern "[0-9]*_*.md"               |
+| misplaced require    | <?require?> is only recognized in schema files; this directive has no effect  |
+| schema include loop  | cyclic include: a.md -> b.md -> a.md                                          |
+| content missing      | missing required content "code-block lang=yaml" inside ## Examples            |
+| content unexpected   | unexpected content "table" inside ## Examples (expected "paragraph")          |
+| content out of order | content "table" out of order: expected after "code-block lang=yaml"           |
+| code block lang      | code block language "json" does not match required "yaml"                     |
+| table columns        | table headers [Key Value] do not match required [Setting Default]             |
 
 ## Meta-Information
 

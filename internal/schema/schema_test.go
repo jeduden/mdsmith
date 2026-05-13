@@ -324,3 +324,315 @@ func TestValidate_Inline_FrontmatterCUE(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "front matter does not satisfy schema")
 }
+
+// ---- ParseInline (content:) ----
+
+func TestParseInline_ContentEntryParses(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{
+				map[string]any{"kind": "code-block", "lang": "yaml"},
+				map[string]any{"kind": "table",
+					"columns": []any{"Setting", "Default"}},
+				map[string]any{"kind": "list",
+					"ordered": true, "min-items": 2, "max-items": 5},
+				map[string]any{"kind": "paragraph"},
+				map[string]any{"kind": "unlisted"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	require.Len(t, sch.Sections, 1)
+	entries := sch.Sections[0].Content
+	require.Len(t, entries, 5)
+	assert.Equal(t, "code-block", entries[0].Kind)
+	assert.Equal(t, "yaml", entries[0].Lang)
+	assert.True(t, entries[0].Required)
+	assert.Equal(t, "table", entries[1].Kind)
+	assert.Equal(t, []string{"Setting", "Default"}, entries[1].Columns)
+	assert.Equal(t, "list", entries[2].Kind)
+	assert.True(t, entries[2].OrderedSet)
+	assert.True(t, entries[2].Ordered)
+	assert.Equal(t, 2, entries[2].MinItems)
+	assert.Equal(t, 5, entries[2].MaxItems)
+	assert.Equal(t, "paragraph", entries[3].Kind)
+	assert.Equal(t, "unlisted", entries[4].Kind)
+	assert.False(t, entries[4].Required)
+}
+
+func TestParseInline_ContentUnknownKind(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{map[string]any{"kind": "blockquote"}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown content kind")
+}
+
+func TestParseInline_ContentMisplacedField(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{map[string]any{
+				"kind": "paragraph", "lang": "yaml",
+			}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "only valid on `kind: code-block`")
+}
+
+func TestParseInline_ContentRequiredOnUnlistedRejected(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{map[string]any{
+				"kind": "unlisted", "required": true,
+			}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"`required:` is not allowed on a `kind: unlisted`")
+}
+
+func TestParseInline_ContentRejectedOnWildcard(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": map[string]any{"unlisted": true},
+			"content": []any{map[string]any{"kind": "paragraph"}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"not allowed on a slot")
+}
+
+func TestParseInline_ContentRejectedOnQuestionMarkHeading(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "?",
+			"content": []any{map[string]any{"kind": "paragraph"}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"not allowed on a `?` wildcard heading")
+}
+
+// ---- Validate (content:) ----
+
+func TestValidate_Content_MissingCodeBlock(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{
+				map[string]any{"kind": "code-block", "lang": "yaml"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Examples\n\nNo code block here.\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	require.Contains(t, diags[0].Message,
+		`missing required content "code-block lang=yaml" inside ## Examples`)
+}
+
+func TestValidate_Content_CodeBlockMatches(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{
+				map[string]any{"kind": "code-block", "lang": "yaml"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Examples\n\n```yaml\nfoo: bar\n```\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags)
+}
+
+func TestValidate_Content_CodeBlockWrongLang(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{
+				map[string]any{"kind": "code-block", "lang": "yaml"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Examples\n\n```json\n{}\n```\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		`code block language "json" does not match required "yaml"`)
+}
+
+func TestValidate_Content_TableColumnsMatch(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Settings",
+			"content": []any{
+				map[string]any{"kind": "table",
+					"columns": []any{"Setting", "Default"}},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Settings\n\n| Setting | Default |\n|---------|---------|\n| foo     | 1       |\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags)
+}
+
+func TestValidate_Content_TableColumnsMismatch(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Settings",
+			"content": []any{
+				map[string]any{"kind": "table",
+					"columns": []any{"Setting", "Default"}},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Settings\n\n| Key | Value |\n|-----|-------|\n| foo | 1     |\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		"table headers [Key Value] do not match required [Setting Default]")
+}
+
+func TestValidate_Content_ListMinItems(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Steps",
+			"content": []any{
+				map[string]any{"kind": "list",
+					"ordered": true, "min-items": 2},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Steps\n\n1. Only one\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		"list has 1 items, required at least 2")
+}
+
+func TestValidate_Content_ListOrderedMismatch(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Steps",
+			"content": []any{
+				map[string]any{"kind": "list", "ordered": true},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Steps\n\n- a\n- b\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		"list ordered=false does not match required ordered=true")
+}
+
+func TestValidate_Content_OutOfOrder(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{
+				map[string]any{"kind": "code-block", "lang": "yaml"},
+				map[string]any{"kind": "table"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Examples\n\n"+
+			"| A | B |\n|---|---|\n| x | y |\n\n"+
+			"```yaml\nfoo: bar\n```\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		`content "table" out of order: expected after "code-block lang=yaml"`)
+}
+
+func TestValidate_Content_ClosedFlagsUnlisted(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"closed":  true,
+			"content": []any{
+				map[string]any{"kind": "code-block"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Examples\n\n```\nx\n```\n\nExtra paragraph here.\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		`unexpected content "paragraph" inside ## Examples`)
+}
+
+func TestValidate_Content_UnlistedSlotTolerates(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"closed":  true,
+			"content": []any{
+				map[string]any{"kind": "code-block"},
+				map[string]any{"kind": "unlisted"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Examples\n\n```\nx\n```\n\nExtra trailing paragraph.\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags)
+}
+
+func TestValidate_Content_OpenScopeTolerates(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Examples",
+			"content": []any{
+				map[string]any{"kind": "code-block"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// Trailing paragraph is silently tolerated by the default open scope.
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Examples\n\n```\nx\n```\n\nTrailing.\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags)
+}

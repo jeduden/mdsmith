@@ -77,7 +77,7 @@ footer: |
 | 146 | ✅     | opus   | [Schema engine — sources, scope tree, per-scope rules](plan/146_inline-schema-in-kinds.md)                                |
 | 147 | 🔲     | opus   | [Actionable schema diagnostics for MDS020](plan/147_actionable-schema-diagnostics.md)                                     |
 | 148 | ✅     | sonnet | [Named field-type shortcuts for inline schemas](plan/148_named-field-type-shortcuts.md)                                   |
-| 149 | 🔲     | opus   | [Section content schema for non-heading AST nodes](plan/149_section-content-schema.md)                                    |
+| 149 | ✅     | opus   | [Section content schema for non-heading AST nodes](plan/149_section-content-schema.md)                                    |
 | 151 | ✅     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                               |
 | 152 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/152_claude-code-skills-agents-hooks.md)                      |
 | 153 | ✅     | sonnet | [Catalog directive — accept `..` globs within project root](plan/153_catalog-dotdot-globs.md)                             |

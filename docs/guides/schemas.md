@@ -136,6 +136,54 @@ required scope that lists `aliases: ["Indicators"]`
 matches both `## Symptoms` and `## Indicators` in a
 document.
 
+### Section content
+
+`sections:` constrains nested headings. To pin down
+what AST nodes must appear inside a section's body —
+a required YAML code block, a settings table with
+specific columns, an ordered list with a minimum item
+count — add a `content:` list alongside the scope's
+existing fields.
+
+```yaml
+sections:
+  - heading: "Examples"
+    closed: true
+    content:
+      - kind: code-block
+        lang: yaml
+      - kind: unlisted
+```
+
+Each entry sets `kind:` and a small set of optional
+kind-specific fields:
+
+- `kind: code-block` — `lang:` constrains the fenced
+  block's info string (exact match).
+- `kind: table` — `columns:` is the exact header row
+  the GFM table must carry.
+- `kind: list` — `ordered:` (`true` / `false`),
+  `min-items:`, `max-items:` bound the list's shape.
+- `kind: paragraph` — no extra keys.
+- `kind: unlisted` — a positional slot. Tolerates
+  any non-matching nodes at that position even under
+  `closed: true`.
+
+Entries match in declared order. A node that
+appears earlier than expected but matches a later
+listed entry is claimed out-of-order with a
+diagnostic — the same rule the heading-tree walker
+uses. Sub-shape mismatches (wrong code-block
+language, wrong table columns, list violating
+ordered/min/max) emit their own diagnostics but
+still consume the slot. Missing required entries
+anchor at the section's heading line.
+
+`content:` is not accepted on slot scopes
+(`heading: {unlisted: true}`) or on the `?`
+wildcard heading — the parser rejects those
+shapes today.
+
 ### Per-scope rule overrides
 
 Any scope may carry a `rules:` block. The override

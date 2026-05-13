@@ -109,6 +109,8 @@ func Validate(
 	_, sd := validateScopes(f, sch.Sections, sch.Closed, body, 0, rootLevel, mkDiag)
 	diags = append(diags, sd...)
 
+	diags = append(diags, ValidateContent(f, sch, mkDiag)...)
+
 	return diags
 }
 
