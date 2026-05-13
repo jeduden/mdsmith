@@ -158,4 +158,25 @@ func TestParseFrontMatterFields(t *testing.T) {
 		_, err := ParseFrontMatterFields([]byte("---\nbase: &a x\nkey: *a\n---\n"))
 		assert.Error(t, err)
 	})
+
+	t.Run("scalar payload rejected", func(t *testing.T) {
+		prefix, _ := StripFrontMatter([]byte("---\nfoo\n---\n"))
+		_, err := ParseFrontMatterFields(prefix)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mapping")
+	})
+
+	t.Run("sequence payload rejected", func(t *testing.T) {
+		prefix, _ := StripFrontMatter([]byte("---\n- a\n- b\n---\n"))
+		_, err := ParseFrontMatterFields(prefix)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "mapping")
+	})
+
+	t.Run("explicit null document returns nil", func(t *testing.T) {
+		prefix, _ := StripFrontMatter([]byte("---\nnull\n---\n"))
+		got, err := ParseFrontMatterFields(prefix)
+		require.NoError(t, err)
+		assert.Nil(t, got)
+	})
 }
