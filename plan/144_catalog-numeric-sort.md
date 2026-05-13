@@ -1,7 +1,7 @@
 ---
 id: 144
 title: Numeric sort for `<?catalog?>` directive
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: []
 summary: >-
@@ -133,23 +133,23 @@ except for the row order.
 
 ## Acceptance Criteria
 
-- [ ] `sort: numeric:id` orders entries by the
+- [x] `sort: numeric:id` orders entries by the
       integer value of the `id` field; mixed
       2-digit and 3-digit IDs interleave
       correctly (52 before 100, 100 before
       132).
-- [ ] `-numeric:id` reverses the order.
-- [ ] A non-parseable value with `numeric:`
+- [x] `-numeric:id` reverses the order.
+- [x] A non-parseable value with `numeric:`
       falls back to string compare; no error.
-- [ ] PLAN.md's catalog uses
+- [x] PLAN.md's catalog uses
       `sort: numeric:id` and renders 52 before
       100.
-- [ ] The
+- [x] The
       [generating content](../docs/guides/directives/generating-content.md)
       guide documents the mode with one
       example.
-- [ ] Existing `sort: id` behavior is
+- [x] Existing `sort: id` behavior is
       unchanged (regression test).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.

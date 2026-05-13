@@ -4,7 +4,7 @@
 glob:
   - "plan/*.md"
   - "!plan/proto.md"
-sort: id
+sort: numeric:id
 header: |
 
   | ID  | Status | Model | Title |
@@ -16,6 +16,24 @@ footer: |
 
 | ID  | Status | Model  | Title                                                                                                                     |
 |-----|--------|--------|---------------------------------------------------------------------------------------------------------------------------|
+| 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                |
+| 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                              |
+| 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                          |
+| 78  | ✅     |        | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                                   |
+| 83  | ✅     |        | [Security hardening batch](plan/83_security-hardening-batch.md)                                                           |
+| 84  | ✅     |        | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                                                |
+| 85  | ✅     |        | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md)                      |
+| 86  | ✅     |        | [Markdown flavor validation](plan/86_markdown-flavor-validation.md)                                                       |
+| 89  | ✅     |        | [TOC generator directive and MDS035 auto-fix](plan/89_toc-generator-directive.md)                                         |
+| 90  | ✅     |        | [Isolate corpus test git config from host signing](plan/90_corpus-test-git-config-isolation.md)                           |
+| 91  | ✅     |        | [MDS037 skips paragraphs inside generated sections](plan/91_mds037-skip-generated-sections.md)                            |
+| 92  | ✅     | sonnet | [File kinds — config schema, assignment, merge](plan/92_file-kinds.md)                                                    |
+| 93  | ✅     | sonnet | [Placeholder grammar — opt-in token vocabulary](plan/93_placeholder-grammar.md)                                           |
+| 94  | ✅     | sonnet | [Lint-once for `<?include?>` and `<?catalog?>` embeds](plan/94_lint-once-for-embeds.md)                                   |
+| 95  | ✅     | opus   | [Kind/rule resolution observability via `kinds` subcommand](plan/95_kind-rule-resolution-cli.md)                          |
+| 96  | ✅     | sonnet | [Adopt kinds in mdsmith repo and ship the docs](plan/96_kinds-adoption-and-docs.md)                                       |
+| 97  | ✅     | opus   | [Deep-merge for kinds and overrides](plan/97_deep-merge-config.md)                                                        |
+| 98  | ✅     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                                             |
 | 100 | ✅     | sonnet | [build config block and MDS040 recipe-safety rule](plan/100_build-config-and-mds040.md)                                   |
 | 101 | ✅     | sonnet | [build directive and MDS039 lint rule](plan/101_build-directive-mds039.md)                                                |
 | 102 | 🔲     | opus   | [Builder interface and mdsmith build subcommand](plan/102_build-subcommand.md)                                            |
@@ -54,7 +72,7 @@ footer: |
 | 140 | ✅     | sonnet | [Per-kind `path-pattern` for filename validation](plan/140_kind-path-pattern.md)                                          |
 | 142 | 🔲     | sonnet | [Content rules for prose constraints](plan/142_schema-content-constraints.md)                                             |
 | 143 | ✅     | sonnet | [Schema cross-references, acronyms, and index](plan/143_schema-cross-refs-acronyms-index.md)                              |
-| 144 | 🔲     | sonnet | [Numeric sort for `<?catalog?>` directive](plan/144_catalog-numeric-sort.md)                                              |
+| 144 | ✅     | sonnet | [Numeric sort for `<?catalog?>` directive](plan/144_catalog-numeric-sort.md)                                              |
 | 145 | 🔲     | opus   | [Publish mdsmith via asdf and mise registry submissions](plan/145_asdf-mise-registry-submissions.md)                      |
 | 146 | ✅     | opus   | [Schema engine — sources, scope tree, per-scope rules](plan/146_inline-schema-in-kinds.md)                                |
 | 147 | 🔲     | opus   | [Actionable schema diagnostics for MDS020](plan/147_actionable-schema-diagnostics.md)                                     |
@@ -66,22 +84,4 @@ footer: |
 | 153 | 🔲     | opus   | [Unify linkgraph and the LSP symbol index](plan/153_unify-linkgraph-and-lsp-index.md)                                     |
 | 154 | 🔲     | sonnet | [arch-fix: extract cross-rule helpers](plan/154_arch-fix-rule-helper-extraction.md)                                       |
 | 155 | 🔲     | sonnet | [arch-fix: relocate convention types out of markdownflavor](plan/155_arch-fix-convention-config-ownership.md)             |
-| 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                |
-| 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                              |
-| 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                          |
-| 78  | ✅     |        | [Query subcommand for front-matter filtering](plan/78_query-command.md)                                                   |
-| 83  | ✅     |        | [Security hardening batch](plan/83_security-hardening-batch.md)                                                           |
-| 84  | ✅     |        | [Symlink default-deny for file discovery](plan/84_symlink-default-deny.md)                                                |
-| 85  | ✅     |        | [Increase test coverage to 95% by extracting shared rule helpers](plan/85_coverage-to-95-percent.md)                      |
-| 86  | ✅     |        | [Markdown flavor validation](plan/86_markdown-flavor-validation.md)                                                       |
-| 89  | ✅     |        | [TOC generator directive and MDS035 auto-fix](plan/89_toc-generator-directive.md)                                         |
-| 90  | ✅     |        | [Isolate corpus test git config from host signing](plan/90_corpus-test-git-config-isolation.md)                           |
-| 91  | ✅     |        | [MDS037 skips paragraphs inside generated sections](plan/91_mds037-skip-generated-sections.md)                            |
-| 92  | ✅     | sonnet | [File kinds — config schema, assignment, merge](plan/92_file-kinds.md)                                                    |
-| 93  | ✅     | sonnet | [Placeholder grammar — opt-in token vocabulary](plan/93_placeholder-grammar.md)                                           |
-| 94  | ✅     | sonnet | [Lint-once for `<?include?>` and `<?catalog?>` embeds](plan/94_lint-once-for-embeds.md)                                   |
-| 95  | ✅     | opus   | [Kind/rule resolution observability via `kinds` subcommand](plan/95_kind-rule-resolution-cli.md)                          |
-| 96  | ✅     | sonnet | [Adopt kinds in mdsmith repo and ship the docs](plan/96_kinds-adoption-and-docs.md)                                       |
-| 97  | ✅     | opus   | [Deep-merge for kinds and overrides](plan/97_deep-merge-config.md)                                                        |
-| 98  | ✅     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                                             |
 <?/catalog?>

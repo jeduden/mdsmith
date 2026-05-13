@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -18,6 +19,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/rules/tableformat"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
+
+// numericSortPrefix marks a sort spec whose key value should be
+// parsed as an integer before comparison. The prefix follows any
+// leading "-" descending marker — `-numeric:id`, not `numeric:-id`.
+const numericSortPrefix = "numeric:"
 
 func init() {
 	rule.Register(&Rule{})
@@ -233,6 +239,7 @@ func validateSort(filePath string, line int, sortVal string) []lint.Diagnostic {
 			`generated section directive has empty "sort" value`)}
 	}
 	key := strings.TrimPrefix(sortVal, "-")
+	key = strings.TrimPrefix(key, numericSortPrefix)
 	if key == "" {
 		return []lint.Diagnostic{makeDiag(filePath, line,
 			fmt.Sprintf("generated section directive has invalid sort value %q", sortVal))}
@@ -308,7 +315,7 @@ func buildCatalogEntries(
 	globFS, prefix := resolveGlobFS(f, params)
 	files := resolveGlobMatchesFrom(globFS, f, params)
 
-	sortKey, descending := parseSort(params)
+	sortKey, descending, numeric := parseSort(params)
 	_, hasRow := params["row"]
 	needFM := hasRow || (sortKey != "path" && sortKey != "filename")
 
@@ -334,7 +341,7 @@ func buildCatalogEntries(
 		entries = append(entries, fileEntry{fields: fields})
 	}
 
-	sortEntries(entries, sortKey, descending)
+	sortEntries(entries, sortKey, descending, numeric)
 	return entries, diags
 }
 
@@ -484,26 +491,53 @@ func renderCatalogContent(
 	return renderTemplate(params, entries, cols)
 }
 
-// parseSort parses the sort value from params, returning the key and direction.
-func parseSort(params map[string]string) (key string, descending bool) {
+// parseSort parses the sort value from params, returning the key,
+// direction, and whether the value should be compared numerically.
+// The `numeric:` prefix opts into integer comparison and may follow
+// the descending `-` marker, e.g. `-numeric:id`.
+func parseSort(params map[string]string) (key string, descending, numeric bool) {
 	sortVal, ok := params["sort"]
 	if !ok || sortVal == "" {
-		return "path", false
+		return "path", false, false
 	}
 
 	if strings.HasPrefix(sortVal, "-") {
-		return sortVal[1:], true
+		descending = true
+		sortVal = sortVal[1:]
 	}
-	return sortVal, false
+	if strings.HasPrefix(sortVal, numericSortPrefix) {
+		numeric = true
+		sortVal = sortVal[len(numericSortPrefix):]
+	}
+	return sortVal, descending, numeric
 }
 
-// sortEntries sorts file entries by the given key.
-func sortEntries(entries []fileEntry, key string, descending bool) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		vi := sortValue(entries[i], key)
-		vj := sortValue(entries[j], key)
+// sortEntries sorts file entries by the given key. When numeric is
+// true and every entry's value parses as an int, entries are ordered
+// by the integer value; any parse failure falls back to string
+// compare for the whole sort so behavior stays predictable when one
+// entry's field is missing or malformed.
+func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
+	useInts := numeric && allParseAsInt(entries, key)
 
-		cmp := strings.Compare(strings.ToLower(vi), strings.ToLower(vj))
+	sort.SliceStable(entries, func(i, j int) bool {
+		var cmp int
+		if useInts {
+			// Re-parse from the current entry rather than a fixed
+			// index — SliceStable reorders the slice during sort.
+			ni, _ := parseSortInt(entries[i], key)
+			nj, _ := parseSortInt(entries[j], key)
+			switch {
+			case ni < nj:
+				cmp = -1
+			case ni > nj:
+				cmp = 1
+			}
+		} else {
+			vi := sortValue(entries[i], key)
+			vj := sortValue(entries[j], key)
+			cmp = strings.Compare(strings.ToLower(vi), strings.ToLower(vj))
+		}
 		if cmp == 0 {
 			// Tiebreaker: path ascending, case-insensitive.
 			pi := strings.ToLower(fieldinterp.Stringify(entries[i].fields["filename"]))
@@ -516,6 +550,24 @@ func sortEntries(entries []fileEntry, key string, descending bool) {
 		}
 		return cmp < 0
 	})
+}
+
+// allParseAsInt reports whether every entry's value for key parses
+// as an integer. Used to decide whether numeric mode applies before
+// sorting begins.
+func allParseAsInt(entries []fileEntry, key string) bool {
+	for _, e := range entries {
+		if _, err := parseSortInt(e, key); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// parseSortInt extracts the entry's sort key as a trimmed string
+// and parses it via strconv.Atoi.
+func parseSortInt(entry fileEntry, key string) (int, error) {
+	return strconv.Atoi(strings.TrimSpace(sortValue(entry, key)))
 }
 
 // sortValue returns the sort value for a file entry given a key.
