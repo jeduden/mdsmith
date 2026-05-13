@@ -135,7 +135,12 @@ async function findEntry(entryTitle: string): Promise<{ path: string; titles: st
 }
 
 async function main(argv: string[]): Promise<number> {
-  if (argv.length !== 4) {
+  // Bun.argv is `[runtime, script, ...userArgs]`; we need exactly
+  // two user args (title, date). Accept argv.length >= 4 rather
+  // than strict equality so wrapper invocations that append a
+  // trailing sentinel (`bun run -- ...`, future tooling, etc.)
+  // are tolerated; extras are ignored.
+  if (argv.length < 4) {
     process.stderr.write("usage: bun run record-rotation <ENTRY_TITLE> <YYYY-MM-DD>\n");
     return 1;
   }

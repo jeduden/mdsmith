@@ -677,11 +677,10 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	})
 	s.pending[uri] = p
 	s.pendingMu.Unlock()
-	// Defensive nil guard: scheduleLint and newPendingEntry both
-	// always initialize timer, but a future caller that builds a
-	// *pendingLint without setting timer would otherwise panic
-	// here on the nil-pointer dereference. Keep the guard to
-	// localize the contract.
+	// Defensive nil guard: scheduleLint above always initializes
+	// timer, so this branch is unreachable today. A future caller
+	// that built a *pendingLint without setting timer would
+	// otherwise panic here on the nil-pointer dereference.
 	if hadPrev && prev.timer != nil {
 		prev.timer.Stop()
 	}
