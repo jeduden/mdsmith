@@ -9,4 +9,8 @@ internal/rules/concisenessscoring/wasmclassifier/classifier.wasm
 e2e-cover/
 unit.cov
 merged.cov
+<<<<<<< HEAD
 .github/scripts/node_modules/
+=======
+.claude/worktrees/
+>>>>>>> f157a664 (Ignore .claude/worktrees/ agent isolation dirs)
