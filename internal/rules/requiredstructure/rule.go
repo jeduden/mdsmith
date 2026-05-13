@@ -12,8 +12,8 @@ import (
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
-	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -1301,10 +1301,16 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 	if len(r.PathPatterns) == 0 {
 		return nil
 	}
-	rel := workspaceRelPath(f)
+	rel := filepath.ToSlash(workspaceRelPath(f))
 	var diags []lint.Diagnostic
 	for _, pp := range r.PathPatterns {
-		if globpath.Match(pp.Pattern, rel) {
+		// Match the full workspace-relative path with doublestar
+		// directly. Going through globpath.Match would also try the
+		// basename, which would let `path-pattern: README.md` pass
+		// for `docs/README.md` — defeating the documented root-
+		// anchored semantics.
+		ok, err := doublestar.Match(filepath.ToSlash(pp.Pattern), rel)
+		if err == nil && ok {
 			continue
 		}
 		diags = append(diags, makeDiag(f.Path, 1, fmt.Sprintf(

@@ -793,27 +793,82 @@ func TestCheck_PathPattern_Mismatch(t *testing.T) {
 	assert.Equal(t, 1, diags[0].Line)
 }
 
-// TestCheck_PathPattern_RelativeRootDir verifies that a relative
-// f.RootDir (produced when the CLI is invoked with a relative
-// --config path like `--config sub/.mdsmith.yml`) still yields a
-// correct workspace-relative path for glob matching, instead of
-// failing filepath.Rel and falling back to f.Path.
-func TestCheck_PathPattern_RelativeRootDir(t *testing.T) {
-	root := t.TempDir()
-	abs := filepath.Join(root, "plan", "140_x.md")
-	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
-	require.NoError(t, os.WriteFile(abs, []byte("# x\n"), 0o644))
-	// Restore cwd after the test to keep parallel tests independent.
-	origCwd, err := os.Getwd()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.Chdir(origCwd) })
-	require.NoError(t, os.Chdir(root))
+// TestWorkspaceRelPath_RelativeRootDirResolvesViaAbs verifies that
+// workspaceRelPath handles a relative f.RootDir (produced when the
+// CLI is invoked with `--config sub/.mdsmith.yml`) by resolving
+// both sides through filepath.Abs first. Without this, filepath.Rel
+// would fail and the function would fall back to f.Path, producing
+// false MDS020 path-pattern mismatches. The test asserts the
+// returned relative path directly so it does not depend on the
+// process working directory.
+func TestWorkspaceRelPath_RelativeRootDirResolvesViaAbs(t *testing.T) {
+	cases := []struct {
+		name    string
+		rootDir string
+		path    string
+		want    string
+	}{
+		{
+			name:    "both relative",
+			rootDir: ".",
+			path:    "plan/140_x.md",
+			want:    "plan/140_x.md",
+		},
+		{
+			name:    "relative root, absolute file",
+			rootDir: ".",
+			path:    filepath.Join(mustAbs(t, "."), "plan", "140_x.md"),
+			want:    "plan/140_x.md",
+		},
+		{
+			name:    "empty root falls back to path",
+			rootDir: "",
+			path:    "plan/early-draft.md",
+			want:    "plan/early-draft.md",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &lint.File{Path: tc.path, RootDir: tc.rootDir}
+			assert.Equal(t, tc.want, workspaceRelPath(f))
+		})
+	}
+}
 
-	f, err := lint.NewFileFromSource(abs, []byte("# x\n"), true)
+// mustAbs is a tiny helper for tests that need a known-absolute
+// path without inlining error handling.
+func mustAbs(t *testing.T, p string) string {
+	t.Helper()
+	abs, err := filepath.Abs(p)
 	require.NoError(t, err)
-	f.RootDir = "." // intentionally relative
+	return abs
+}
+
+// TestCheck_PathPattern_RootAnchoredNotBasenameOnly verifies that
+// a root-anchored pattern like `README.md` is matched against the
+// full workspace-relative path, not its basename. Without this,
+// `docs/README.md` would pass `path-pattern: README.md`, defeating
+// the documented "workspace-relative path must match" semantics.
+func TestCheck_PathPattern_RootAnchoredNotBasenameOnly(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/README.md", "# Docs\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "plan", Pattern: "plan/[0-9][0-9]*_*.md"},
+		{Kind: "readme", Pattern: "README.md"},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	assert.Contains(t, diags[0].Message, `got "docs/README.md"`)
+}
+
+// TestCheck_PathPattern_DoublestarWildcardMatchesNested verifies
+// the doublestar-specific `**` wildcard works against the full
+// workspace-relative path so a pattern like `**/README.md` still
+// matches a nested file.
+func TestCheck_PathPattern_DoublestarWildcardMatchesNested(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/sub/README.md", "# Sub\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "readme", Pattern: "**/README.md"},
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
