@@ -933,3 +933,19 @@ func TestFindEntryPropagatesReadDirError(t *testing.T) {
 	_, err := FindEntry(filepath.Join(t.TempDir(), "missing"), "V")
 	require.Error(t, err)
 }
+
+func TestValidateRotationEntryRejectsNonStringTitle(t *testing.T) {
+	fm := map[string]any{
+		"title":       12345,
+		"lastRotated": "2026-05-12",
+		"periodDays":  30,
+		"provider":    "P",
+		"issuerUrl":   "u",
+		"usedBy":      "r",
+		"scope":       "s",
+	}
+	_, err := ValidateRotationEntry(fm, "x.md")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "title")
+	assert.Contains(t, err.Error(), "not a string")
+}

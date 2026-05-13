@@ -205,7 +205,11 @@ func ValidateRotationEntry(fm map[string]any, path string) (RotationEntry, error
 		return RotationEntry{}, &FrontMatterError{Path: path,
 			Msg: fmt.Sprintf("`periodDays` must be a positive integer (got %d)", period)}
 	}
-	title, _ := asString(fm["title"])
+	title, err := asString(fm["title"])
+	if err != nil {
+		return RotationEntry{}, &FrontMatterError{Path: path,
+			Msg: fmt.Sprintf("`title` is not a string (%v)", fm["title"])}
+	}
 	// `existingOpenIssue` builds a GitHub search expression by
 	// surrounding the issue title with double quotes; a literal
 	// `"` in the title would either truncate the search phrase
