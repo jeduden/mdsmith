@@ -1,5 +1,6 @@
 ---
 title: TypeScript architecture patterns
+slug: ts
 summary: >-
   SOLID and clean architecture patterns for
   the mdsmith VS Code extension at

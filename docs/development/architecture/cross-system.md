@@ -1,5 +1,6 @@
 ---
 title: Cross-system contracts
+slug: cross
 summary: >-
   External-surface contracts: LSP, CLI,
   .mdsmith.yml, generated markers, plugin

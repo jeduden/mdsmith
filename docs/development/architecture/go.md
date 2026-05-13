@@ -1,5 +1,6 @@
 ---
 title: Go architecture patterns
+slug: go
 summary: >-
   Go-specific SOLID and clean architecture
   patterns for mdsmith's cmd/ and internal/

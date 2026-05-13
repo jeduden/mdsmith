@@ -1,5 +1,6 @@
 ---
 title: Architecture audit checklist
+slug: audit
 summary: >-
   Checklist for sweeping origin/main for
   SOLID and boundary violations. Records

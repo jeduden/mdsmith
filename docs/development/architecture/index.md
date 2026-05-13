@@ -1,5 +1,6 @@
 ---
 title: Architecture principles
+slug: hub
 summary: >-
   SOLID and clean-architecture rules for
   mdsmith's Go core, TypeScript extension, and
