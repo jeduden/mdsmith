@@ -249,8 +249,11 @@ func runKindsPath(stdout io.Writer, args []string) int {
 
 // readFrontMatter reads a file and returns both the parsed kinds list and
 // the full front-matter mapping, the latter feeding the kind-assignment
-// `fields-present:` selector.
-func readFrontMatter(path string, maxBytes int64) ([]string, map[string]any, error) {
+// `fields-present:` selector. The full-mapping decode runs only when at
+// least one kind-assignment entry uses `fields-present:` — without that
+// gate, `kinds resolve` would fail on FM YAML errors that the
+// kinds-only fast path silently ignores.
+func readFrontMatter(cfg *config.Config, path string, maxBytes int64) ([]string, map[string]any, error) {
 	data, err := lint.ReadFileLimited(path, maxBytes)
 	if err != nil {
 		return nil, nil, err
@@ -259,6 +262,9 @@ func readFrontMatter(path string, maxBytes int64) ([]string, map[string]any, err
 	kinds, err := lint.ParseFrontMatterKinds(prefix)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !config.HasFieldsPresentSelector(cfg) {
+		return kinds, nil, nil
 	}
 	fields, err := lint.ParseFrontMatterFields(prefix)
 	if err != nil {
@@ -289,7 +295,7 @@ func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, in
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 			return nil, nil, 2
 		}
-		fmKinds, fmFields, err = readFrontMatter(path, maxBytes)
+		fmKinds, fmFields, err = readFrontMatter(cfg, path, maxBytes)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: reading %s: %v\n", path, err)
 			return nil, nil, 2

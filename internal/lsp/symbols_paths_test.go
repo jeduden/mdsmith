@@ -251,6 +251,26 @@ func TestEffectiveKindsForNoCfgNoFrontMatterKind(t *testing.T) {
 	assert.Nil(t, got)
 }
 
+func TestEffectiveKindsForFieldsPresentSelector(t *testing.T) {
+	t.Parallel()
+	// A config that uses fields-present: triggers the ParseFrontMatterFields
+	// branch in effectiveKindsFor; the front-matter mapping must satisfy
+	// the entry for the kind to land on the file.
+	cfg := &config.Config{
+		Kinds: map[string]config.KindBody{"task": {}},
+		KindAssignment: []config.KindAssignmentEntry{
+			{FieldsPresent: []string{"status", "priority"}, Kinds: []string{"task"}},
+		},
+	}
+	got := effectiveKindsFor(cfg, "a.md", []byte(
+		"---\nstatus: open\npriority: high\n---\n# A\n"))
+	assert.Contains(t, got, "task")
+
+	// A file missing one of the required fields should not get the kind.
+	got = effectiveKindsFor(cfg, "a.md", []byte("---\nstatus: open\n---\n# A\n"))
+	assert.NotContains(t, got, "task")
+}
+
 func TestEffectiveKindsForScalarKind(t *testing.T) {
 	t.Parallel()
 	tmp := t.TempDir()
