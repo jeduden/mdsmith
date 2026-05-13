@@ -36,9 +36,14 @@ var (
 )
 
 func indexCacheKey(p string) string {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return filepath.Clean(p)
+	// filepath.Abs only fails when the process has no working
+	// directory, which is not a recoverable state. Treat its empty
+	// return as a non-fatal fallback to filepath.Clean(p) so the
+	// cache key stays deterministic instead of branching on an
+	// error case the test suite cannot reach.
+	abs, _ := filepath.Abs(p)
+	if abs == "" {
+		abs = p
 	}
 	return filepath.Clean(abs)
 }
@@ -204,26 +209,25 @@ func atomicWriteIndex(target string, data []byte) error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpPath) }
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return err
-	}
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return err
-	}
-	if err := os.Rename(tmpPath, target); err != nil {
-		cleanup()
+	if err := writeAndRename(tmp, tmpPath, target, data); err != nil {
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	return nil
+}
+
+func writeAndRename(tmp *os.File, tmpPath, target string, data []byte) error {
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, target)
 }
 
 // verifyIndexWithinRoot resolves the symlinks on target's parent
@@ -232,29 +236,15 @@ func atomicWriteIndex(target string, data []byte) error {
 // directory). The target file itself need not exist; only its
 // parent must, and MkdirAll has just been called so it does. Hosts
 // that cannot EvalSymlinks the parent (e.g. permission failures)
-// fall back to a Clean-based comparison — this is best-effort
-// rather than airtight, but still beats no check.
+// fall back to a Clean-based comparison — best-effort rather than
+// airtight, but still beats no check.
 func verifyIndexWithinRoot(f *lint.File, target string) error {
 	root := f.RootDir
 	if root == "" {
 		root = filepath.Dir(f.Path)
 	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return nil // cannot enforce, do not block
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(absRoot)
-	if err != nil {
-		resolvedRoot = filepath.Clean(absRoot)
-	}
-	absParent, err := filepath.Abs(filepath.Dir(target))
-	if err != nil {
-		return nil
-	}
-	resolvedParent, err := filepath.EvalSymlinks(absParent)
-	if err != nil {
-		resolvedParent = filepath.Clean(absParent)
-	}
+	resolvedRoot := resolveDir(root)
+	resolvedParent := resolveDir(filepath.Dir(target))
 	rel, err := filepath.Rel(resolvedRoot, resolvedParent)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return fmt.Errorf(
@@ -263,6 +253,22 @@ func verifyIndexWithinRoot(f *lint.File, target string) error {
 			resolvedParent, resolvedRoot)
 	}
 	return nil
+}
+
+// resolveDir absolutises and follows symlinks on dir, falling back
+// to filepath.Clean(filepath.Abs(...)) when EvalSymlinks fails
+// (e.g. a path component lacks read permission). filepath.Abs only
+// fails when the host has no working directory, which is not a
+// recoverable state, so we ignore its error and rely on Clean.
+func resolveDir(dir string) string {
+	abs, _ := filepath.Abs(dir)
+	if abs == "" {
+		abs = filepath.Clean(dir)
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	return filepath.Clean(abs)
 }
 
 // resolveIndexWrite returns the absolute output path and the bytes

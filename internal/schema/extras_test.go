@@ -1030,6 +1030,59 @@ func TestValidateIndex_ClearsStaleCacheWhenIndexRemoved(t *testing.T) {
 	assert.Nil(t, lastIndexWriteError(f.Path))
 }
 
+func TestRejectSymlinkTarget_AcceptsRegularAndMissing(t *testing.T) {
+	dir := t.TempDir()
+	// Missing file: nil.
+	assert.NoError(t, rejectSymlinkTarget(filepath.Join(dir, "absent")))
+	// Regular file: nil.
+	regular := filepath.Join(dir, "regular")
+	require.NoError(t, os.WriteFile(regular, []byte("x"), 0o644))
+	assert.NoError(t, rejectSymlinkTarget(regular))
+	// Directory: not a symlink, accepted (WriteFile would then fail
+	// elsewhere; rejectSymlinkTarget only guards symlinks).
+	assert.NoError(t, rejectSymlinkTarget(dir))
+	// Symlink: rejected.
+	link := filepath.Join(dir, "link")
+	require.NoError(t, os.Symlink(regular, link))
+	err := rejectSymlinkTarget(link)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink")
+}
+
+func TestAtomicWriteIndex_FailsWhenDirAbsent(t *testing.T) {
+	// CreateTemp inside a non-existent dir surfaces as an error from
+	// atomicWriteIndex.
+	err := atomicWriteIndex("/no/such/dir/out.json", []byte("{}"))
+	require.Error(t, err)
+}
+
+func TestWriteIndex_SurfacesMkdirAllFailure(t *testing.T) {
+	// Put a regular file at the parent-dir path so MkdirAll fails
+	// with "not a directory". This exercises the MkdirAll error
+	// branch in WriteIndex and the cache write that surfaces it on
+	// the next Check.
+	root := t.TempDir()
+	clash := filepath.Join(root, "blocker")
+	require.NoError(t, os.WriteFile(clash, []byte("regular"), 0o644))
+	path := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte("# T\n"), 0o644))
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "blocker/out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	err = WriteIndex(f, sch)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create parent dir")
+
+	// And the next Check surfaces the cached error.
+	diags := ValidateIndex(f, sch, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "write failed")
+}
+
 func TestWriteIndex_RejectsSymlinkAtTarget(t *testing.T) {
 	// An in-root symlink at the target path is rejected before
 	// any bytes are written, so a hostile schema cannot use it to
