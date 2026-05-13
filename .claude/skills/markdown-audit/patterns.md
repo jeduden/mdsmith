@@ -3,7 +3,7 @@ title: Detection patterns
 summary: >-
   Detection heuristics, false positives, and fix
   recipes for each of the seven checks the
-  `markdown-organization-review` skill runs.
+  `markdown-audit` skill runs.
 ---
 # Detection patterns
 

@@ -18,8 +18,8 @@
       "description": "Go and TypeScript LSP servers for mdsmith contributors"
     },
     {
-      "name": "mdsmith-organization-review",
-      "source": "./editors/claude-code-organization-review",
+      "name": "mdsmith-audit",
+      "source": "./editors/claude-code-audit",
       "description": "Audit and fix Markdown file organization in an mdsmith repository"
     }
   ]

@@ -1,5 +1,5 @@
 ---
-name: markdown-organization-review
+name: markdown-audit
 description: >-
   Audit and fix the organization of Markdown files
   in an mdsmith repository. Catches structural
@@ -24,6 +24,7 @@ user-invocable: true
 argument-hint: "[audit | fix]"
 allowed-tools: >-
   Bash(mdsmith:*),
+  Bash(go run ./cmd/mdsmith:*),
   Bash(ls:*),
   Bash(find:*),
   Bash(grep:*),
@@ -31,12 +32,7 @@ allowed-tools: >-
   Bash(git rev-parse:*),
   Bash(test:*)
 ---
-# Markdown Organization Review
 
-<?include
-file: ../../../../.claude/skills/markdown-organization-review/SKILL.md
-strip-frontmatter: "true"
-?>
 mdsmith ships rules for **content** (line length,
 heading hygiene, readability) and rules for
 **structure** (kinds, schemas, catalogs,
@@ -239,14 +235,12 @@ line to the report: `applied → path`.
   Only add to `ignore:` when a *real* rule would
   otherwise fail.
 - This skill ships in two places. The project
-  copy at `.claude/skills/markdown-organization-
-  review/` is the canonical source and includes a
-  sibling `patterns.md` with deeper recipes; it
-  is used by mdsmith contributors on this repo.
-  The marketplace plugin
-  `mdsmith-organization-review` mirrors the SKILL
-  body via `<?include?>` so end users get the
-  same workflow without the optional reference.
-  Edit this file and run `mdsmith fix` to keep
-  the plugin copy in sync.
-<?/include?>
+  copy at `.claude/skills/markdown-audit/` is the
+  canonical source and includes a sibling
+  `patterns.md` with deeper recipes; it is used by
+  mdsmith contributors on this repo. The
+  marketplace plugin `mdsmith-audit` mirrors the
+  SKILL body via `<?include?>` so end users get
+  the same workflow without the optional
+  reference. Edit this file and run `mdsmith fix`
+  to keep the plugin copy in sync.

@@ -1,12 +1,11 @@
 ---
-title: mdsmith organization review
+title: mdsmith audit plugin
 summary: >-
   Marketplace plugin that ships the
-  `markdown-organization-review` skill for auditing
-  and fixing Markdown file layout in an mdsmith
-  repository.
+  `markdown-audit` skill for auditing and fixing
+  Markdown file layout in an mdsmith repository.
 ---
-# mdsmith organization review
+# mdsmith audit plugin
 
 A Claude Code skill that audits an mdsmith
 repository. The skill targets structural problems
@@ -22,7 +21,7 @@ duplicated sections. They cover kinds that lack a
 
 ```text
 /plugin marketplace add jeduden/mdsmith
-/plugin install mdsmith-organization-review@mdsmith
+/plugin install mdsmith-audit@mdsmith
 /reload-plugins
 ```
 
@@ -31,11 +30,11 @@ duplicated sections. They cover kinds that lack a
 Invoke from inside any mdsmith-aware repository.
 
 ```text
-/markdown-organization-review audit
+/markdown-audit audit
 ```
 
 ```text
-/markdown-organization-review fix
+/markdown-audit fix
 ```
 
 Audit mode is read-only. Fix mode proposes
@@ -44,5 +43,5 @@ patches and waits for confirmation on each one.
 ## What it catches
 
 See the skill's
-[`SKILL.md`](skills/markdown-organization-review/SKILL.md)
+[`SKILL.md`](skills/markdown-audit/SKILL.md)
 for the full check list and severity rubric.
