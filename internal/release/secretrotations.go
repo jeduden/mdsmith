@@ -523,14 +523,25 @@ func RecordRotation(repoRoot, entryTitle, date string) (changed bool, err error)
 	return true, nil
 }
 
+// GHRunner is the injection point for the `gh` CLI. Production
+// uses ExecGH (shells out to the `gh` binary on PATH); tests
+// pass a fake function that records invocations and returns
+// canned output. Returns the combined stdout/stderr bytes.
+type GHRunner func(args []string) ([]byte, error)
+
+// ExecGH is the default GHRunner: shells out to `gh` on PATH.
+func ExecGH(args []string) ([]byte, error) {
+	return exec.Command("gh", args...).Output() // #nosec G204 -- gh is fixed; args are workflow-internal
+}
+
 // CheckRotationsOptions configures CheckSecretRotations. Now is
-// the wall-clock time to compute due-state from; GHCommand is the
-// `gh` invocation (overridable for tests). Env is the environment
-// reader used to render issue bodies (GITHUB_SERVER_URL etc).
+// the wall-clock time to compute due-state from; GH is the gh
+// runner (overridable for tests). Env is the environment reader
+// used to render issue bodies (GITHUB_SERVER_URL etc).
 type CheckRotationsOptions struct {
-	Now       time.Time
-	GHCommand string
-	Env       Environ
+	Now time.Time
+	GH  GHRunner
+	Env Environ
 }
 
 // CheckSecretRotationsResult records the per-run outcome the
@@ -543,12 +554,13 @@ type CheckSecretRotationsResult struct {
 // CheckSecretRotations is the body of the scheduled reminder
 // workflow. Walks the per-secret docs, classifies each, and
 // opens or skips a labelled issue per entry. The `gh` CLI is
-// shelled out for the existing-issue lookup and the
-// create/label calls — same as the prior TS implementation, no
-// new go-github dependency.
+// shelled out via opts.GH for the existing-issue lookup and
+// the create/label calls — same as the prior TS implementation,
+// no new go-github dependency. Tests inject a fake GHRunner so
+// they never touch the real `gh` binary.
 func CheckSecretRotations(repoRoot string, opts CheckRotationsOptions) (CheckSecretRotationsResult, error) {
-	if opts.GHCommand == "" {
-		opts.GHCommand = "gh"
+	if opts.GH == nil {
+		opts.GH = ExecGH
 	}
 	if opts.Env == nil {
 		opts.Env = osEnviron{}
@@ -571,7 +583,7 @@ func CheckSecretRotations(repoRoot string, opts CheckRotationsOptions) (CheckSec
 			continue
 		}
 		title := fmt.Sprintf("Rotate %s (lastRotated %s)", r.Entry.Title, r.Entry.LastRotated)
-		num, err := existingOpenIssue(opts.GHCommand, title)
+		num, err := existingOpenIssue(opts.GH, title)
 		if err != nil {
 			return res, err
 		}
@@ -580,14 +592,14 @@ func CheckSecretRotations(repoRoot string, opts CheckRotationsOptions) (CheckSec
 			continue
 		}
 		if !labelEnsured {
-			if err := ensureLabel(opts.GHCommand); err != nil {
+			if err := ensureLabel(opts.GH); err != nil {
 				return res, err
 			}
 			labelEnsured = true
 		}
 		body := IssueBody(r.Entry, r.FileBasename, due, opts.Env)
 		assignee := opts.Env.Getenv("REMINDER_ASSIGNEE")
-		if err := createIssue(opts.GHCommand, title, body, IssueLabel, assignee); err != nil {
+		if err := createIssue(opts.GH, title, body, IssueLabel, assignee); err != nil {
 			return res, err
 		}
 		res.Opened = append(res.Opened, r.Entry.Title)
@@ -600,16 +612,16 @@ func CheckSecretRotations(repoRoot string, opts CheckRotationsOptions) (CheckSec
 // title contains the quoted phrase; the exact-string check
 // below catches GitHub search's tokenized/fuzzy behavior — only
 // a byte-for-byte title match is treated as an existing issue.
-func existingOpenIssue(ghCommand, title string) (int, error) {
+func existingOpenIssue(gh GHRunner, title string) (int, error) {
 	search := `in:title "` + strings.ReplaceAll(title, `"`, "") + `"`
-	out, err := exec.Command(ghCommand, // #nosec G204 -- ghCommand is fixed; title is workflow-internal
+	out, err := gh([]string{
 		"issue", "list",
 		"--state", "open",
 		"--label", IssueLabel,
 		"--search", search,
 		"--json", "number,title",
 		"--limit", "100",
-	).Output()
+	})
 	if err != nil {
 		return 0, fmt.Errorf("gh issue list: %w", err)
 	}
@@ -630,26 +642,24 @@ func existingOpenIssue(ghCommand, title string) (int, error) {
 	return 0, nil
 }
 
-func ensureLabel(ghCommand string) error {
-	cmd := exec.Command(ghCommand, // #nosec G204 -- ghCommand is fixed
+func ensureLabel(gh GHRunner) error {
+	if _, err := gh([]string{
 		"label", "create", IssueLabel,
 		"--force",
 		"--color", "C5DEF5",
 		"--description", "Long-lived secret is due (or overdue) for rotation",
-	)
-	if err := cmd.Run(); err != nil {
+	}); err != nil {
 		return fmt.Errorf("gh label create %s: %w", IssueLabel, err)
 	}
 	return nil
 }
 
-func createIssue(ghCommand, title, body, label, assignee string) error {
+func createIssue(gh GHRunner, title, body, label, assignee string) error {
 	args := []string{"issue", "create", "--title", title, "--body", body, "--label", label}
 	if assignee != "" {
 		args = append(args, "--assignee", assignee)
 	}
-	cmd := exec.Command(ghCommand, args...) // #nosec G204 -- ghCommand is fixed; inputs are workflow-controlled
-	if err := cmd.Run(); err != nil {
+	if _, err := gh(args); err != nil {
 		return fmt.Errorf("gh issue create: %w", err)
 	}
 	return nil

@@ -1,6 +1,7 @@
 package release
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -407,47 +408,70 @@ func TestLoadRotationsRejectsBadPeriodDays(t *testing.T) {
 	assert.Contains(t, err.Error(), "positive")
 }
 
-// CheckSecretRotations needs a fake `gh` binary so the test
-// doesn't shell out to the real one. The fake records its
-// invocations into a temp file so the test can assert on them.
+// recordingGH returns a GHRunner that records each invocation
+// into the provided slice and returns the queued output (or
+// empty bytes / nil error if the queue is empty for that call).
+// `responses` maps the first arg of the call (e.g. "issue") to
+// the canned stdout for that call.
+type recordingGH struct {
+	calls     [][]string
+	responses map[string][]byte
+	err       error
+}
+
+func (r *recordingGH) Run(args []string) ([]byte, error) {
+	r.calls = append(r.calls, args)
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.responses != nil && len(args) > 0 {
+		if out, ok := r.responses[args[0]]; ok {
+			return out, nil
+		}
+	}
+	return nil, nil
+}
+
+// CheckSecretRotations uses an injected GHRunner so tests
+// never touch the real `gh` binary or rely on the runner
+// filesystem letting a temp shell script execute.
 func TestCheckSecretRotationsCallsGhForDue(t *testing.T) {
 	root := fakeRotationsDir(t, map[string]string{
 		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
 			"provider: Azure\nissuerUrl: https://x\nusedBy: r\nscope: s\n---\n",
 	})
-
-	// Build a tiny fake `gh` that always returns empty JSON for
-	// `issue list` (so existingOpenIssue returns nil), exits 0
-	// otherwise, and appends every invocation to LOG_FILE.
-	logFile := filepath.Join(t.TempDir(), "gh.log")
-	fakeGh := filepath.Join(t.TempDir(), "fake-gh.sh")
-	script := "#!/bin/sh\n" +
-		"echo \"$@\" >> \"$LOG_FILE\"\n" +
-		"if [ \"$1\" = \"issue\" ] && [ \"$2\" = \"list\" ]; then\n" +
-		"  echo '[]'\n" +
-		"fi\n" +
-		"exit 0\n"
-	require.NoError(t, os.WriteFile(fakeGh, []byte(script), 0o755))
-	t.Setenv("LOG_FILE", logFile)
+	gh := &recordingGH{responses: map[string][]byte{"issue": []byte("[]")}}
 
 	// 60 days after lastRotated; periodDays=30, so the entry is
 	// overdue.
 	now := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
 	res, err := CheckSecretRotations(root, CheckRotationsOptions{
-		Now:       now,
-		GHCommand: fakeGh,
-		Env:       MapEnviron{},
+		Now: now,
+		GH:  gh.Run,
+		Env: MapEnviron{},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"VSCE_PAT"}, res.Opened)
 	assert.Empty(t, res.Skipped)
 
-	log, err := os.ReadFile(logFile)
-	require.NoError(t, err)
-	// Confirm both the search and the create happened.
-	assert.Contains(t, string(log), "issue list")
-	assert.Contains(t, string(log), "issue create")
-	assert.Contains(t, string(log), "label create")
+	// Confirm the search, label-create, and issue-create all happened.
+	var saw struct{ list, label, create bool }
+	for _, c := range gh.calls {
+		if len(c) < 2 {
+			continue
+		}
+		switch {
+		case c[0] == "issue" && c[1] == "list":
+			saw.list = true
+		case c[0] == "issue" && c[1] == "create":
+			saw.create = true
+		case c[0] == "label" && c[1] == "create":
+			saw.label = true
+		}
+	}
+	assert.True(t, saw.list, "issue list never called: %v", gh.calls)
+	assert.True(t, saw.create, "issue create never called: %v", gh.calls)
+	assert.True(t, saw.label, "label create never called: %v", gh.calls)
 }
 
 func TestAsStringTypes(t *testing.T) {
@@ -494,25 +518,21 @@ func TestIssueBodyDefaultsEnvWhenNil(t *testing.T) {
 	assert.Contains(t, body, "is due in 5 days")
 }
 
-// TestCheckSecretRotationsSkipsExistingIssue uses a fake `gh`
-// that returns one matching issue from `issue list`, exercising
-// the "skipped" branch of the main loop.
+// TestCheckSecretRotationsSkipsExistingIssue arranges the fake
+// GHRunner to return one matching issue from `issue list`,
+// exercising the "skipped" branch of the main loop.
 func TestCheckSecretRotationsSkipsExistingIssue(t *testing.T) {
 	root := fakeRotationsDir(t, map[string]string{
 		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
 			"provider: Azure\nissuerUrl: https://x\nusedBy: r\nscope: s\n---\n",
 	})
-	fakeGh := filepath.Join(t.TempDir(), "fake-gh.sh")
-	script := "#!/bin/sh\n" +
-		"if [ \"$1\" = \"issue\" ] && [ \"$2\" = \"list\" ]; then\n" +
-		"  printf '[{\"number\":99,\"title\":\"Rotate VSCE_PAT (lastRotated 2026-04-01)\"}]'\n" +
-		"fi\n" +
-		"exit 0\n"
-	require.NoError(t, os.WriteFile(fakeGh, []byte(script), 0o755))
+	gh := &recordingGH{responses: map[string][]byte{
+		"issue": []byte(`[{"number":99,"title":"Rotate VSCE_PAT (lastRotated 2026-04-01)"}]`),
+	}}
 
 	now := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
 	res, err := CheckSecretRotations(root, CheckRotationsOptions{
-		Now: now, GHCommand: fakeGh, Env: MapEnviron{},
+		Now: now, GH: gh.Run, Env: MapEnviron{},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, res.Opened)
@@ -527,38 +547,42 @@ func TestCheckSecretRotationsPassesAssignee(t *testing.T) {
 		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
 			"provider: Azure\nissuerUrl: https://x\nusedBy: r\nscope: s\n---\n",
 	})
-	logFile := filepath.Join(t.TempDir(), "gh.log")
-	fakeGh := filepath.Join(t.TempDir(), "fake-gh.sh")
-	script := "#!/bin/sh\necho \"$@\" >> \"$LOG_FILE\"\n" +
-		"if [ \"$1\" = \"issue\" ] && [ \"$2\" = \"list\" ]; then echo '[]'; fi\nexit 0\n"
-	require.NoError(t, os.WriteFile(fakeGh, []byte(script), 0o755))
-	t.Setenv("LOG_FILE", logFile)
+	gh := &recordingGH{responses: map[string][]byte{"issue": []byte("[]")}}
 
 	now := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
 	_, err := CheckSecretRotations(root, CheckRotationsOptions{
-		Now: now, GHCommand: fakeGh,
+		Now: now, GH: gh.Run,
 		Env: MapEnviron{"REMINDER_ASSIGNEE": "octocat"},
 	})
 	require.NoError(t, err)
-	log, err := os.ReadFile(logFile)
-	require.NoError(t, err)
-	assert.Contains(t, string(log), "--assignee octocat")
+	// Find the `issue create` call and confirm the --assignee
+	// flag is passed.
+	var foundAssignee bool
+	for _, c := range gh.calls {
+		if len(c) >= 2 && c[0] == "issue" && c[1] == "create" {
+			for i, a := range c {
+				if a == "--assignee" && i+1 < len(c) && c[i+1] == "octocat" {
+					foundAssignee = true
+				}
+			}
+		}
+	}
+	assert.True(t, foundAssignee, "issue create never carried --assignee octocat: %v", gh.calls)
 }
 
 // TestCheckSecretRotationsSurfacesGhFailure covers the
-// existingOpenIssue error branch when `gh issue list` exits
-// non-zero, plus the propagation through CheckSecretRotations.
+// existingOpenIssue error branch when `gh issue list` returns
+// an error, plus the propagation through CheckSecretRotations.
 func TestCheckSecretRotationsSurfacesGhFailure(t *testing.T) {
 	root := fakeRotationsDir(t, map[string]string{
 		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
 			"provider: Azure\nissuerUrl: https://x\nusedBy: r\nscope: s\n---\n",
 	})
-	fakeGh := filepath.Join(t.TempDir(), "fake-gh.sh")
-	require.NoError(t, os.WriteFile(fakeGh, []byte("#!/bin/sh\nexit 17\n"), 0o755))
+	gh := &recordingGH{err: errors.New("simulated gh failure")}
 
 	now := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
 	_, err := CheckSecretRotations(root, CheckRotationsOptions{
-		Now: now, GHCommand: fakeGh, Env: MapEnviron{},
+		Now: now, GH: gh.Run, Env: MapEnviron{},
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "gh issue list")
@@ -570,7 +594,7 @@ func TestCheckSecretRotationsRejectsMissingRotationsDir(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, RotationsDirName), 0o755))
 	_, err := CheckSecretRotations(root, CheckRotationsOptions{
-		Now: time.Now(), GHCommand: "echo", Env: MapEnviron{},
+		Now: time.Now(), GH: (&recordingGH{}).Run, Env: MapEnviron{},
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no per-secret files")
