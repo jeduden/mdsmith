@@ -122,7 +122,13 @@ jobs:
           # declare any `prepublish` hook; new ones land in the doc
           # at docs/security/2026-05-12-supply-chain-hardening.md
           # before this list is relaxed.
-          banned='preinstall|install|postinstall|preuninstall|uninstall|postuninstall|preprepare|prepare|postprepare|prepublish|prepublishOnly|prepack|postpack|publish|postpublish'
+          # The banned set is passed as a jq array. jq's `index($k)`
+          # below does exact-string matching against each script
+          # name, so a future hook with a regex metacharacter in
+          # its name (or a typo in the banned list) cannot
+          # silently shift semantics the way a grep alternation
+          # could.
+          banned_json='["preinstall","install","postinstall","preuninstall","uninstall","postuninstall","preprepare","prepare","postprepare","prepublish","prepublishOnly","prepack","postpack","publish","postpublish"]'
           status=0
           for manifest in npm/mdsmith/package.json editors/vscode/package.json; do
             if [ ! -f "$manifest" ]; then
@@ -130,23 +136,15 @@ jobs:
               status=1
               continue
             fi
-            # jq parses the manifest and emits one `key=value` line
-            # per entry under .scripts. We assign the output to its
-            # own variable so a jq parse failure aborts the step
-            # immediately (under pipefail) instead of being swallowed
-            # by the `|| true` on the grep that follows. grep -E
-            # matches the banned set anchored on `key=`, so a script
-            # named `test` or `build` is never mistaken for a hook.
-            # `|| true` keeps a clean (no-banned-hooks) manifest from
-            # tripping grep's exit-1-on-no-match.
-            # `.[]?` is the optional iterator — yields nothing on a
-            # missing or empty `.scripts`, which keeps the step a
-            # clean pass for manifests that legitimately declare no
-            # scripts. Without `?` an empty `to_entries[]` is still
-            # exit 0 in practice, but the optional form documents
-            # the intent.
-            entries=$(jq -r '.scripts // {} | to_entries | .[]? | "\(.key)=\(.value)"' "$manifest")
-            hits=$(printf '%s\n' "$entries" | grep -E "^($banned)=" || true)
+            # jq emits one `key=value` line per .scripts entry whose
+            # KEY is in the banned set. `.[]?` is the optional
+            # iterator: yields nothing on a missing/empty .scripts
+            # so manifests that legitimately declare no scripts
+            # pass cleanly. No grep / no regex — `IN($banned[])`
+            # is jq's literal set-membership test.
+            hits=$(jq -r --argjson banned "$banned_json" \
+              '.scripts // {} | to_entries | .[]? | select(.key | IN($banned[])) | "\(.key)=\(.value)"' \
+              "$manifest")
             if [ -n "$hits" ]; then
               echo "$manifest declares forbidden lifecycle script(s):" >&2
               echo "$hits" >&2

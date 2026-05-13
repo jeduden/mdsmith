@@ -677,11 +677,12 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	})
 	s.pending[uri] = p
 	s.pendingMu.Unlock()
-	// Defensive nil guard: scheduleLint above always initializes
-	// timer, so this branch is unreachable today. A future caller
-	// that built a *pendingLint without setting timer would
-	// otherwise panic here on the nil-pointer dereference.
-	if hadPrev && prev.timer != nil {
+	// pendingLint.timer is required: scheduleLint above is the
+	// sole construction site and always assigns it before the
+	// entry reaches s.pending. A future caller that built a
+	// *pendingLint without that invariant would panic here, which
+	// is the desired loud-failure behavior.
+	if hadPrev {
 		prev.timer.Stop()
 	}
 }
