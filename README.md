@@ -39,8 +39,8 @@ enforce per-file section schemas
 and keep Markdown in the right folders
 ([`MDS033`](internal/rules/MDS033-directory-structure/README.md)).
 Schemas can be inline on a
-[file kind](docs/guides/file-kinds.md) or shared via proto
-files.
+[file kind](docs/guides/file-kinds.md) or shared via
+`proto.md` files.
 
 **🤖 Guardrails for AI-generated docs.**
 Cap [file](internal/rules/MDS022-max-file-length/README.md),
