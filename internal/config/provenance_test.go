@@ -168,3 +168,35 @@ kind-assignment:
 	assert.Equal(t, "proto", res.Kinds[1].Name)
 	assert.Equal(t, KindAssignmentSource("kind-assignment[0]"), res.Kinds[1].Source)
 }
+
+// TestResolveFile_PathPatternAppearsInProvenance verifies that a
+// kind's top-level `path-pattern:` field — which the engine merges
+// into required-structure via a synthetic `path-patterns` setting —
+// shows up in `kinds resolve` / `--explain` provenance under its
+// kind layer, instead of being dropped by buildLayers.
+func TestResolveFile_PathPatternAppearsInProvenance(t *testing.T) {
+	yml := `
+kinds:
+  plan:
+    path-pattern: "plan/[0-9][0-9]*_*.md"
+kind-assignment:
+  - files: ["plan/*.md"]
+    kinds: [plan]
+`
+	cfg := resolveFromYAML(t, yml)
+	res := ResolveFile(cfg, "plan/140_x.md", nil)
+
+	rr, ok := res.Rules["required-structure"]
+	require.True(t, ok,
+		"required-structure must appear in rules when path-pattern is set")
+	leaf := rr.LeafByPath("settings.path-patterns")
+	require.NotNil(t, leaf,
+		"path-patterns leaf must be present in provenance")
+	assert.Equal(t, "kinds.plan", leaf.Source())
+	list, ok := leaf.Value.([]any)
+	require.True(t, ok)
+	require.Len(t, list, 1)
+	entry := list[0].(map[string]any)
+	assert.Equal(t, "plan", entry["kind"])
+	assert.Equal(t, "plan/[0-9][0-9]*_*.md", entry["pattern"])
+}

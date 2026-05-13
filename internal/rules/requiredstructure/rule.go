@@ -1317,16 +1317,23 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 // workspaceRelPath returns the file path relative to the workspace
 // root when RootDir is set, falling back to the file's own Path. The
 // returned path is slash-normalized so glob patterns written with
-// forward slashes match on every platform.
+// forward slashes match on every platform. Both RootDir and Path are
+// resolved through filepath.Abs first so the relative computation
+// works when the CLI was invoked with a relative `--config` path
+// (e.g. `--config sub/.mdsmith.yml` makes RootDir relative).
 func workspaceRelPath(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)
 	}
-	abs, err := filepath.Abs(f.Path)
+	absRoot, err := filepath.Abs(f.RootDir)
 	if err != nil {
 		return filepath.ToSlash(f.Path)
 	}
-	rel, err := filepath.Rel(f.RootDir, abs)
+	absPath, err := filepath.Abs(f.Path)
+	if err != nil {
+		return filepath.ToSlash(f.Path)
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
 	if err != nil {
 		return filepath.ToSlash(f.Path)
 	}

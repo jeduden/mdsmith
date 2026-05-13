@@ -793,6 +793,32 @@ func TestCheck_PathPattern_Mismatch(t *testing.T) {
 	assert.Equal(t, 1, diags[0].Line)
 }
 
+// TestCheck_PathPattern_RelativeRootDir verifies that a relative
+// f.RootDir (produced when the CLI is invoked with a relative
+// --config path like `--config sub/.mdsmith.yml`) still yields a
+// correct workspace-relative path for glob matching, instead of
+// failing filepath.Rel and falling back to f.Path.
+func TestCheck_PathPattern_RelativeRootDir(t *testing.T) {
+	root := t.TempDir()
+	abs := filepath.Join(root, "plan", "140_x.md")
+	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+	require.NoError(t, os.WriteFile(abs, []byte("# x\n"), 0o644))
+	// Restore cwd after the test to keep parallel tests independent.
+	origCwd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(origCwd) })
+	require.NoError(t, os.Chdir(root))
+
+	f, err := lint.NewFileFromSource(abs, []byte("# x\n"), true)
+	require.NoError(t, err)
+	f.RootDir = "." // intentionally relative
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "plan", Pattern: "plan/[0-9][0-9]*_*.md"},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
 func TestCheck_PathPattern_NoPatternsIsNoOp(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "anywhere/anything.md", "# Hi\n")
