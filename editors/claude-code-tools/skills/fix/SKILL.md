@@ -13,8 +13,13 @@ allowed-tools: >-
 argument-hint: "[path]"
 ---
 
-Run `mdsmith fix` on the workspace (or a passed
-path) and report the fix-of-total stats line.
+## Goal
+
+Apply every auto-fixable mdsmith rule to one path or
+the whole workspace. Leave the corrected text on
+disk. Report what was fixed, what still needs manual
+attention, and any runtime error that aborted the
+run.
 
 ## When to invoke
 
@@ -27,45 +32,49 @@ auto-fixable issues. The matching CLI reference is
 ### 1. Resolve the target path
 
 If the user passed a path argument, use it. Otherwise
-default to `.` (the workspace root).
+use `.` (the workspace root). Note the value as
+`$TARGET`. This step picks the file set the goal
+operates over.
 
-Note the value as `$TARGET`.
-
-### 2. Run mdsmith fix
+### 2. Run mdsmith fix to apply every fixable rule
 
 ```bash
 mdsmith fix -- "$TARGET"
 ```
 
-The `--` terminator stops `$TARGET` from being parsed
-as a flag if a filename starts with `-`.
+The `--` terminator keeps `$TARGET` parsed as a path
+even when its name starts with `-`.
 
-If the binary is not on `$PATH`, fall back to:
+When the binary is missing from `$PATH`, fall back to
+the npm-published variant:
 
 ```bash
 npx -y -p @mdsmith/cli mdsmith fix -- "$TARGET"
 ```
 
-### 3. Report results
+### 3. Report what was fixed and what remains
 
 `mdsmith fix` prints a `stats:` summary line that
 lists files checked, fixed, failures, and unfixed
-issues. Quote that line back to the user.
+issues. Quote that line back to the user so they
+see the win.
 
-Exit 1 means at least one file still has unfixable
-issues after the fix pass. Exit 2 means a runtime
-or configuration error (bad path, unreadable
-config, etc.) — the file may not have been touched
-at all. Surface stderr in both cases so the user
-sees the rule IDs and file locations, or the
-config error.
+On exit 1, at least one file still has an unfixable
+issue after the fix pass — surface stderr so the
+user sees the rule IDs and file locations to address
+by hand. On exit 2, treat the run as aborted by a
+runtime or configuration error (bad path, unreadable
+config, etc.) and surface stderr so the user sees
+the cause.
 
 ## Notes
 
-- Generated section bodies (between `<?directive ...?>`
-  and `<?/directive?>` markers) are regenerated, not
-  hand-edited — see [generated sections][gs].
-- `mdsmith fix` writes in place. Stage or stash
-  any unrelated work first if a clean diff matters.
+- Regenerate generated section bodies (between
+  `<?directive ...?>` and `<?/directive?>` markers)
+  by editing the directive parameters (or the source
+  file the directive references) and re-running
+  `mdsmith fix`. See [generated sections][gs].
+- `mdsmith fix` writes in place. Stage or stash any
+  unrelated work first when a clean diff matters.
 
 [gs]: ../../../../docs/background/concepts/generated-section.md

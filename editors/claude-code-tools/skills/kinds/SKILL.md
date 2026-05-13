@@ -5,7 +5,7 @@ description: >-
   rule config for a file by shelling out to
   `mdsmith kinds`. Use to answer "what rules apply to
   this Markdown file?" or to debug why a particular
-  rule did or did not fire.
+  rule fired or stayed silent.
 user-invocable: true
 allowed-tools: >-
   Bash(mdsmith kinds:*), Bash(mdsmith kinds --:*),
@@ -13,8 +13,13 @@ allowed-tools: >-
 argument-hint: "[path]"
 ---
 
-Show the kinds assigned to a file (or all files) and
-the merged rule config that results.
+## Goal
+
+Tell the user which kinds are assigned to a given
+Markdown file, or list every declared kind across the
+workspace. Surface the merged rule config with
+per-leaf provenance, so they can answer "what rules
+apply here?" and "where did this setting come from?".
 
 ## When to invoke
 
@@ -26,14 +31,14 @@ reference is
 
 ## Steps
 
-### 1. Pick the subcommand
+### 1. Pick the subcommand that fits the question
 
 If the user passed a path argument, run `kinds
-resolve` against that file. Note the value as
-`$TARGET` and use `kinds resolve`. Otherwise run
-`kinds list` to print every declared kind with its
-merged body, then ask the user which file they want
-to dig into.
+resolve` against that file and note the value as
+`$TARGET` — `resolve` answers "what applies to this
+file?". Otherwise run `kinds list` to enumerate every
+declared kind, then ask the user which file to dig
+into next.
 
 ### 2. Run mdsmith kinds
 
@@ -49,22 +54,22 @@ For the workspace-wide list:
 mdsmith kinds list
 ```
 
-If the binary is not on `$PATH`, prepend
+When the binary is missing from `$PATH`, prepend
 `npx -y -p @mdsmith/cli ` to either command.
 
-### 3. Read the output
+### 3. Surface the merged config to the user
 
 `kinds resolve` lists the file's effective kinds plus
 each rule key that differs from defaults, with
-per-leaf provenance. `kinds list` lists every
-declared kind. Surface the relevant block back to
-the user verbatim.
+per-leaf provenance. `kinds list` enumerates every
+declared kind. Quote the relevant block back to the
+user verbatim so they can read the provenance trail.
 
-`kinds` exits 0 on success and 2 on a runtime or
-configuration error (unknown kind, unreadable
-file, malformed `.mdsmith.yml`, etc.); it does
-not use exit 1. On exit 2 surface stderr so the
-user sees the parse or load error.
+`mdsmith kinds` exits 0 on success or exit 2 on a
+runtime/configuration error (unknown kind, unreadable
+file, malformed `.mdsmith.yml`, etc.). On exit 2,
+surface stderr so the user sees the parse or load
+error.
 
 ## Notes
 
