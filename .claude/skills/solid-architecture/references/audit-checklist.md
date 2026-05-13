@@ -226,8 +226,8 @@ code; the audit run is complete.
 ### Common skip cases
 
 - Files under `testdata/` and
-  `internal/rules/<id>/{good,bad}/` are
-  fixtures; their architecture is by
+  `internal/rules/MDS###-<rule-name>/{good,bad}/`
+  are fixtures; their architecture is by
   design.
 - Generated section bodies (between
   `<?directive?>` markers) are
