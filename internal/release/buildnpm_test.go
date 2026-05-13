@@ -145,7 +145,8 @@ func TestNpmChannelDocMatchesPlatformBuilds(t *testing.T) {
 
 	for _, line := range expected {
 		assert.Contains(t, string(body), line,
-			"npm.md is missing the canonical bullet %q — keep the doc in sync with npmPlatformBuilds or update both together",
+			"npm.md is missing the canonical bullet %q — "+
+				"keep the doc in sync with npmPlatformBuilds",
 			line)
 	}
 }

@@ -195,16 +195,24 @@ jobs:
       - run: go test -run=^$ -bench=. -benchtime=20x ./internal/lsp/...
 
   scripts:
-    # Tests + coverage for the bun-executed TypeScript under
-    # .github/scripts/ (secret-rotation reminder, record-rotation).
-    # These scripts run inside privileged workflows (issues:write,
-    # contents:write), so the pure-function logic that gates which
-    # issues open and which file lines get rewritten is exercised
-    # here in CI rather than only at workflow-dispatch time.
+    # Tests for the bun-executed TypeScript under .github/scripts/
+    # (secret-rotation reminder, record-rotation). These scripts run
+    # inside privileged workflows (issues:write, contents:write), so
+    # the pure-function logic that gates which issues open and which
+    # file lines get rewritten is exercised here in CI rather than
+    # only at workflow-dispatch time.
+    #
+    # This job intentionally does NOT request `id-token: write`. It
+    # runs on every PR including fork PRs (the test code is the
+    # diff under review), and granting an OIDC mint capability to
+    # a job that executes PR code would let a malicious diff exfil
+    # an OIDC token. The coverage upload happens in the
+    # `scripts-coverage-upload` job below, which is gated to
+    # same-repo events and is the only place `id-token: write` is
+    # held for this surface.
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -226,8 +234,41 @@ jobs:
         # `text` keeps the human-readable summary in the job log;
         # `lcov` writes coverage/lcov.info for the codecov upload.
         run: bun test --coverage --coverage-reporter=text --coverage-reporter=lcov
-      - name: Upload script coverage to Codecov
+      - name: Upload coverage artifact
+        # Same-repo gate: fork PRs do not need the upload artifact
+        # because the subsequent `scripts-coverage-upload` job is
+        # also gated to same-repo events; emitting the artifact in
+        # that case would just waste storage.
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scripts-coverage
+          path: .github/scripts/coverage/lcov.info
+          retention-days: 1
+          if-no-files-found: error
+
+  scripts-coverage-upload:
+    # Uploads the `scripts` job's lcov to Codecov under the
+    # `scripts` flag. Split from `scripts` so the test job can run
+    # on fork PRs with no OIDC mint capability. This job is gated
+    # to same-repo events: fork PRs cannot reach it because GitHub
+    # downgrades workflow permissions on cross-repo runs anyway,
+    # and the explicit `if:` documents the intent.
+    needs: scripts
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: scripts-coverage
+          path: .github/scripts/coverage
+      - name: Upload script coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
         with:
           use_oidc: true
