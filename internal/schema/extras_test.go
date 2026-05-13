@@ -1033,13 +1033,60 @@ func TestValidateOutputPath_RejectsBackslashes(t *testing.T) {
 func TestIndexCacheKey_NormalizesRelativeAndAbsolute(t *testing.T) {
 	dir := t.TempDir()
 	abs := filepath.Join(dir, "doc.md")
-	// Relative and absolute forms should map to the same cache key.
+	// Relative and absolute forms should map to the same cache key
+	// when RootDir is set to the source directory.
+	rel, err := lint.NewFile("doc.md", []byte("# T\n"))
+	require.NoError(t, err)
+	rel.RootDir = dir
+	absF, err := lint.NewFile(abs, []byte("# T\n"))
+	require.NoError(t, err)
+	assert.Equal(t, indexCacheKey(absF), indexCacheKey(rel))
+}
+
+func TestWriteIndex_AnchorsRelativePathOnRootDir(t *testing.T) {
+	// f.Path is workspace-relative (engine/LSP pattern). With
+	// f.RootDir set, the index must land next to the document on
+	// disk, not next to the process CWD.
+	root := t.TempDir()
+	docDir := filepath.Join(root, "sub")
+	require.NoError(t, os.MkdirAll(docDir, 0o755))
+	docPath := filepath.Join(docDir, "doc.md")
+	require.NoError(t, os.WriteFile(docPath, []byte("# T\n"), 0o644))
+
 	cwd, _ := os.Getwd()
 	defer func() { _ = os.Chdir(cwd) }()
-	require.NoError(t, os.Chdir(dir))
-	keyRel := indexCacheKey("doc.md")
-	keyAbs := indexCacheKey(abs)
-	assert.Equal(t, keyAbs, keyRel)
+	other := t.TempDir()
+	require.NoError(t, os.Chdir(other))
+
+	f, err := lint.NewFile("sub/doc.md", []byte("# T\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	require.NoError(t, WriteIndex(f, sch))
+	_, err = os.Stat(filepath.Join(docDir, "out.json"))
+	assert.NoError(t, err, "index must be written next to the document, not CWD")
+}
+
+func TestIndexCacheKey_AnchorsRelativePathOnRootDir(t *testing.T) {
+	// Without RootDir-anchoring, two calls with the same relative
+	// path but different CWDs would key different cache entries.
+	// With anchoring, the result is stable across CWD changes.
+	dir := t.TempDir()
+	cwd, _ := os.Getwd()
+	defer func() { _ = os.Chdir(cwd) }()
+
+	f, err := lint.NewFile("doc.md", []byte("# T\n"))
+	require.NoError(t, err)
+	f.RootDir = dir
+	want := indexCacheKey(f)
+
+	other := t.TempDir()
+	require.NoError(t, os.Chdir(other))
+	got := indexCacheKey(f)
+	assert.Equal(t, want, got, "RootDir anchoring keeps the key CWD-independent")
 }
 
 func TestValidateIndex_ClearsStaleCacheWhenIndexRemoved(t *testing.T) {
@@ -1048,13 +1095,13 @@ func TestValidateIndex_ClearsStaleCacheWhenIndexRemoved(t *testing.T) {
 	f, err := lint.NewFile(path, []byte("# T\n"))
 	require.NoError(t, err)
 	// Seed a stale entry that would otherwise leak.
-	recordIndexWriteError(f.Path, fmt.Errorf("stale"))
-	require.NotNil(t, lastIndexWriteError(f.Path))
+	recordIndexWriteError(f, fmt.Errorf("stale"))
+	require.NotNil(t, lastIndexWriteError(f))
 	// A schema without `index:` triggers want==nil; the validator
 	// should clear the entry.
 	diags := ValidateIndex(f, &Schema{Source: "test", RootLevel: 2}, makeDiagForTest)
 	assert.Empty(t, diags)
-	assert.Nil(t, lastIndexWriteError(f.Path))
+	assert.Nil(t, lastIndexWriteError(f))
 }
 
 func TestRejectSymlinkTarget_AcceptsRegularAndMissing(t *testing.T) {
@@ -1262,8 +1309,8 @@ func TestValidateIndex_SurfacesCachedWriteError(t *testing.T) {
 		Include: []string{IndexIncludeHeadingsFlat},
 	}}
 	// Seed the cache as if a previous Fix failed.
-	recordIndexWriteError(f.Path, fmt.Errorf("permission denied"))
-	t.Cleanup(func() { recordIndexWriteError(f.Path, nil) })
+	recordIndexWriteError(f, fmt.Errorf("permission denied"))
+	t.Cleanup(func() { recordIndexWriteError(f, nil) })
 
 	diags := ValidateIndex(f, sch, makeDiagForTest)
 	require.Len(t, diags, 1)
@@ -1282,9 +1329,9 @@ func TestWriteIndex_ClearsCacheOnSuccess(t *testing.T) {
 		Include: []string{IndexIncludeHeadingsFlat},
 	}}
 	// Seed a stale cache entry, then a successful write should clear it.
-	recordIndexWriteError(f.Path, fmt.Errorf("stale"))
+	recordIndexWriteError(f, fmt.Errorf("stale"))
 	require.NoError(t, WriteIndex(f, sch))
-	assert.Nil(t, lastIndexWriteError(f.Path))
+	assert.Nil(t, lastIndexWriteError(f))
 }
 
 func TestValidateIndex_AbsolutePathSurfaces(t *testing.T) {

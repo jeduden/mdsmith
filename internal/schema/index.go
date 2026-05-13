@@ -35,23 +35,28 @@ var (
 	indexWriteErr = make(map[string]error)
 )
 
-func indexCacheKey(p string) string {
-	// filepath.Abs only fails when the process has no working
-	// directory, which is not a recoverable state. Treat its empty
-	// return as a non-fatal fallback to filepath.Clean(p) so the
-	// cache key stays deterministic instead of branching on an
-	// error case the test suite cannot reach.
-	abs, _ := filepath.Abs(p)
+func indexCacheKey(f *lint.File) string {
+	// Anchor the key on f.RootDir + f.Path when RootDir is set
+	// (engine and LSP pass workspace-relative paths), otherwise
+	// fall back to filepath.Abs of the path as-is. filepath.Abs
+	// only fails when the process has no working directory, which
+	// is not a recoverable state; the empty fallback keeps the key
+	// deterministic instead of branching on an unreachable error.
+	src := f.Path
+	if f.RootDir != "" && !filepath.IsAbs(f.Path) {
+		src = filepath.Join(f.RootDir, f.Path)
+	}
+	abs, _ := filepath.Abs(src)
 	if abs == "" {
-		abs = p
+		abs = src
 	}
 	return filepath.Clean(abs)
 }
 
 // recordIndexWriteError stores err keyed by the source file path,
 // or clears the entry when err is nil.
-func recordIndexWriteError(p string, err error) {
-	key := indexCacheKey(p)
+func recordIndexWriteError(f *lint.File, err error) {
+	key := indexCacheKey(f)
 	indexWriteMu.Lock()
 	defer indexWriteMu.Unlock()
 	if err == nil {
@@ -61,10 +66,10 @@ func recordIndexWriteError(p string, err error) {
 	indexWriteErr[key] = err
 }
 
-// lastIndexWriteError returns the last write error recorded for
-// path, or nil if none.
-func lastIndexWriteError(p string) error {
-	key := indexCacheKey(p)
+// lastIndexWriteError returns the last write error recorded for f,
+// or nil if none.
+func lastIndexWriteError(f *lint.File) error {
+	key := indexCacheKey(f)
 	indexWriteMu.Lock()
 	defer indexWriteMu.Unlock()
 	return indexWriteErr[key]
@@ -145,31 +150,31 @@ func BuildIndex(f *lint.File, sch *Schema) ([]byte, error) {
 func WriteIndex(f *lint.File, sch *Schema) error {
 	target, data, err := resolveIndexWrite(f, sch)
 	if err != nil {
-		recordIndexWriteError(f.Path, err)
+		recordIndexWriteError(f, err)
 		return err
 	}
 	if data == nil {
-		recordIndexWriteError(f.Path, nil)
+		recordIndexWriteError(f, nil)
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		err = fmt.Errorf("schema.index: create parent dir: %w", err)
-		recordIndexWriteError(f.Path, err)
+		recordIndexWriteError(f, err)
 		return err
 	}
 	if err := verifyIndexWithinRoot(f, target); err != nil {
-		recordIndexWriteError(f.Path, err)
+		recordIndexWriteError(f, err)
 		return err
 	}
 	if err := rejectSymlinkTarget(target); err != nil {
-		recordIndexWriteError(f.Path, err)
+		recordIndexWriteError(f, err)
 		return err
 	}
 	if err := atomicWriteIndex(target, data); err != nil {
-		recordIndexWriteError(f.Path, err)
+		recordIndexWriteError(f, err)
 		return err
 	}
-	recordIndexWriteError(f.Path, nil)
+	recordIndexWriteError(f, nil)
 	return nil
 }
 
@@ -275,6 +280,16 @@ func resolveDir(dir string) string {
 // that would be written for this file. data is nil when the schema
 // declares no index. Path validation matches WriteIndex so both
 // call sites surface the same errors.
+//
+// The output path is resolved against the source file's on-disk
+// directory: when f.RootDir is set (the engine and LSP both pass
+// workspace-relative paths and an explicit RootDir), the source
+// directory is computed from filepath.Join(f.RootDir, f.Path) so
+// the index target lands next to the actual document instead of
+// next to wherever the process CWD happens to point. Without this
+// anchor, a workspace-relative f.Path would make every read/write
+// drift with the user's cwd and produce spurious "missing / out
+// of date" diagnostics.
 func resolveIndexWrite(f *lint.File, sch *Schema) (string, []byte, error) {
 	if sch == nil || sch.Index == nil {
 		return "", nil, nil
@@ -288,9 +303,21 @@ func resolveIndexWrite(f *lint.File, sch *Schema) (string, []byte, error) {
 		return "", nil, err
 	}
 	data = append(data, '\n')
-	dir := filepath.Dir(f.Path)
-	target := filepath.Clean(filepath.Join(dir, out))
+	target := filepath.Clean(filepath.Join(sourceDir(f), out))
 	return target, data, nil
+}
+
+// sourceDir returns the directory the index target should be
+// anchored to. When f.RootDir is set and f.Path is relative, we
+// join them so the directory tracks the document's real on-disk
+// location regardless of process CWD. An absolute f.Path or a
+// blank RootDir falls through to filepath.Dir(f.Path), preserving
+// the previous behavior for callers that don't supply RootDir.
+func sourceDir(f *lint.File) string {
+	if f.RootDir != "" && !filepath.IsAbs(f.Path) {
+		return filepath.Dir(filepath.Join(f.RootDir, f.Path))
+	}
+	return filepath.Dir(f.Path)
 }
 
 // validateOutputPath rejects any output: value that would not be a
@@ -374,10 +401,10 @@ func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic
 		// A schema that previously declared an index: but no longer
 		// does should not leave stale write-error entries lying
 		// around in a long-running process (notably the LSP server).
-		recordIndexWriteError(f.Path, nil)
+		recordIndexWriteError(f, nil)
 		return nil
 	}
-	if writeErr := lastIndexWriteError(f.Path); writeErr != nil {
+	if writeErr := lastIndexWriteError(f); writeErr != nil {
 		return []lint.Diagnostic{mkDiag(f.Path, 1,
 			fmt.Sprintf(
 				"index side-output %q write failed on the last `mdsmith fix`: %v",
