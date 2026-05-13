@@ -518,13 +518,22 @@ func (s *Server) handleDidClose(raw json.RawMessage) {
 	doc, _ := s.docs.get(uri)
 	s.docs.delete(uri)
 	// Cancel any armed debounce timer so a pending runLint cannot fire
-	// and re-publish diagnostics after we clear them below.
+	// and re-publish diagnostics after we clear them below. Collect the
+	// timer under the lock, delete the map entry, then call Stop OUTSIDE
+	// pendingMu — Stop hits the runtime timer heap and can block under
+	// load, and holding pendingMu across it would serialize concurrent
+	// scheduleLint callers. The local is named `pending` (not `p`) to
+	// avoid shadowing the function parameter holding the LSP params.
 	s.pendingMu.Lock()
-	if p, ok := s.pending[uri]; ok {
-		p.timer.Stop()
+	var pendingTimer *time.Timer
+	if pending, ok := s.pending[uri]; ok {
+		pendingTimer = pending.timer
 		delete(s.pending, uri)
 	}
 	s.pendingMu.Unlock()
+	if pendingTimer != nil {
+		pendingTimer.Stop()
+	}
 	// Refresh the index from on-disk content so the closed buffer's
 	// last-saved state replaces the editor-only edits we accumulated.
 	// When the file no longer exists on disk we silently skip — the
