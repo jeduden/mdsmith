@@ -30,7 +30,11 @@ const REPO_ROOT = resolve(import.meta.dir, "..", "..");
 const ROTATIONS_DIR = resolve(REPO_ROOT, "docs/development/secret-rotations");
 const REMINDER_WINDOW_DAYS = 30;
 const ISSUE_LABEL = "secret-rotation";
-const ASSIGNEE = "jeduden";
+// Derive the assignee from GITHUB_REPOSITORY_OWNER (auto-set by
+// GitHub Actions) so an org/owner change doesn't silently break
+// the workflow. Falls back to a sensible default for local runs
+// outside Actions.
+const ASSIGNEE = process.env.GITHUB_REPOSITORY_OWNER || "jeduden";
 
 interface RotationEntry {
   title: string;

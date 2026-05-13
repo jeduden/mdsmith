@@ -21,7 +21,8 @@ Settings on issuance:
 
 - **Organization:** the org that owns the `jeduden`
   Marketplace publisher namespace.
-- **Expiration:** 1 year (the maximum Azure allows).
+- **Expiration:** the maximum Azure allows (currently
+  1 year).
 - **Scopes:** Custom defined → **Marketplace →
   Manage**. Nothing else.
 
