@@ -319,9 +319,9 @@ kind-assignment:
 
 // When the file front matter cannot be decoded as a mapping AND the
 // config has a fields-present entry that could match this path, the
-// CLI surfaces the parse failure with "parsing front matter" context
-// — not the misleading "reading <path>" prefix the unwrapped error
-// would have produced.
+// CLI wraps the failure with "parsing front matter" context so users
+// see the parse failure category (not a bare yaml error) under the
+// caller's "reading <path>:" prefix.
 func TestKinds_ResolveFieldsPresentParseErrorContext(t *testing.T) {
 	cfg := `kinds:
   task: {}
