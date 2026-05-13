@@ -2,10 +2,8 @@ name: Setup Bun
 description: >-
   Install and pin the repo-wide bun version. The single source
   of truth for the bun version across every workflow that runs
-  TypeScript via bun (ci.yml, release.yml,
-  secret-rotation-reminder.yml, record-secret-rotation.yml).
-
-  Bumping bun = one edit here.
+  TypeScript via bun — currently ci.yml (vscode-extension job)
+  and release.yml (vscode job). Bumping bun = one edit here.
 
 runs:
   using: composite
