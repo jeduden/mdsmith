@@ -653,14 +653,13 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	if trigger != lintTriggerChange {
 		delay = 0
 	}
-	// Identity-checked replacement: see runLintIfCurrent below. `p`
+	// Identity-token allocation: see runLintIfCurrent below. `p`
 	// is allocated before AfterFunc starts the timer goroutine, so
-	// the closure captures a non-nil *pendingLint regardless of
-	// scheduler ordering. We assign p.timer AFTER AfterFunc returns
-	// because AfterFunc IS what produces the *Timer we want to store,
-	// but the callback never reads p.timer — it only compares its
-	// captured p against s.pending[uri], so no field-assignment race
-	// is observable from the callback path.
+	// the closure captures a stable, non-nil *pendingLint as its
+	// identity. The callback never reads `p.timer` — it only
+	// compares its captured `p` against `s.pending[uri]` — so the
+	// subsequent `p.timer = AfterFunc(...)` assignment is invisible
+	// to the callback path and cannot race the callback.
 	//
 	// The previous entry's timer.Stop() runs OUTSIDE pendingMu. Stop
 	// can be slow under load (heap operation on the runtime timer

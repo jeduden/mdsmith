@@ -44,6 +44,19 @@ interface RotationEntry {
 
 class SystemExit extends Error {}
 
+/** Validate that `s` is a real calendar date in YYYY-MM-DD form.
+ * Round-trips the parsed components so normalized invalid dates
+ * (e.g. `2026-02-31` parsing to March 3) are rejected. */
+function isIsoDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const parsed = new Date(`${s}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const year = String(parsed.getUTCFullYear()).padStart(4, "0");
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}` === s;
+}
+
 /** Compute today's date in UTC. The cron schedule is UTC, so the
  * computed due-state must match the workflow's wall clock. */
 function utcToday(): Date {
@@ -206,7 +219,7 @@ async function loadRotations(): Promise<{ entry: RotationEntry; fileBasename: st
     }
     const title = String(fm.title);
     const lastStr = String(fm.lastRotated);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastStr)) {
+    if (!isIsoDate(lastStr)) {
       throw new SystemExit(
         `${path}: \`lastRotated\` is not a valid ISO-8601 date (${JSON.stringify(lastStr)})`,
       );

@@ -104,7 +104,15 @@ function updateLastRotated(yamlBlock: string, date: string, path: string): strin
 function isIsoDate(s: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const parsed = new Date(`${s}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime());
+  if (Number.isNaN(parsed.getTime())) return false;
+  // Round-trip: `new Date("2026-02-31T00:00:00Z")` normalizes to
+  // March 3, so a regex-passing string can still be an invalid
+  // calendar date. Re-emit the parsed components in the same
+  // YYYY-MM-DD shape and demand a byte-for-byte match.
+  const year = String(parsed.getUTCFullYear()).padStart(4, "0");
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}` === s;
 }
 
 /** Find the per-secret file whose front-matter `title` matches
