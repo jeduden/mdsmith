@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
@@ -273,45 +273,56 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 		if k.Kind != yaml.ScalarNode || k.Value == "" {
 			continue
 		}
-		// yaml.v3 line numbers are 1-based within the parsed buffer;
-		// the stripped buffer drops the leading "---" line so add 1.
-		syms = append(syms, Symbol{
-			File:          filePath,
-			Kind:          SymbolFrontMatter,
-			Name:          k.Value,
-			StartLine:     k.Line + 1,
-			EndLine:       k.Line + 1,
-			SelectionLine: k.Line + 1,
-			SelectionCol:  k.Column,
-		})
+		syms = append(syms, frontMatterKeySymbol(filePath, k))
 		switch k.Value {
 		case "title":
 			if v.Kind == yaml.ScalarNode {
 				title = v.Value
 			}
 		case "kinds":
-			if v.Kind == yaml.SequenceNode {
-				for _, item := range v.Content {
-					if item.Kind != yaml.ScalarNode {
-						continue
-					}
-					// yaml.v3 sets Tag to "!!str" for explicit
-					// strings and "" for unresolved plain scalars
-					// (which the type resolver maps to string
-					// when the value doesn't look like a number /
-					// bool). Anything tagged !!int, !!bool,
-					// !!float, etc. is filtered out — the previous
-					// map[string]any path dropped them via type
-					// assertion.
-					if item.Tag != "" && item.Tag != "!!str" {
-						continue
-					}
-					kinds = append(kinds, item.Value)
-				}
-			}
+			kinds = append(kinds, frontMatterKindsList(v)...)
 		}
 	}
 	return syms, title, kinds
+}
+
+// frontMatterKeySymbol builds the SymbolFrontMatter entry for a YAML
+// mapping key node. yaml.v3 line numbers are 1-based within the
+// parsed buffer; the stripped buffer drops the leading "---" line
+// so add 1 to recover file-relative coordinates.
+func frontMatterKeySymbol(filePath string, k *yaml.Node) Symbol {
+	return Symbol{
+		File:          filePath,
+		Kind:          SymbolFrontMatter,
+		Name:          k.Value,
+		StartLine:     k.Line + 1,
+		EndLine:       k.Line + 1,
+		SelectionLine: k.Line + 1,
+		SelectionCol:  k.Column,
+	}
+}
+
+// frontMatterKindsList extracts string entries from a `kinds:` block
+// list value. yaml.v3 sets Tag to "!!str" for explicit strings and
+// "" for unresolved plain scalars (which the type resolver maps to
+// string when the value doesn't look like a number / bool). Anything
+// tagged !!int, !!bool, !!float, etc. is filtered out — matches the
+// previous map[string]any path that dropped them via type assertion.
+func frontMatterKindsList(v *yaml.Node) []string {
+	if v == nil || v.Kind != yaml.SequenceNode {
+		return nil
+	}
+	out := make([]string, 0, len(v.Content))
+	for _, item := range v.Content {
+		if item.Kind != yaml.ScalarNode {
+			continue
+		}
+		if item.Tag != "" && item.Tag != "!!str" {
+			continue
+		}
+		out = append(out, item.Value)
+	}
+	return out
 }
 
 // frontMatterSymbols extracts top-level YAML keys from the front

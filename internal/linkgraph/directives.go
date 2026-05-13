@@ -234,4 +234,3 @@ func lineOfOffset(source []byte, offset int) int {
 	}
 	return line
 }
-

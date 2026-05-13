@@ -317,19 +317,7 @@ func buildEntriesParallel(files []string, load func(path string) ([]byte, error)
 		workers = 1
 	}
 	if workers == 1 || len(files) <= 1 {
-		next := make(map[string]*FileEntry, len(files))
-		for _, p := range files {
-			path := NormalizePath(p)
-			if path == "" {
-				continue
-			}
-			data, err := load(path)
-			if err != nil || len(data) == 0 {
-				continue
-			}
-			next[path] = buildFileEntry(path, data)
-		}
-		return next
+		return buildEntriesChunk(files, load)
 	}
 	chunkSize := (len(files) + workers - 1) / workers
 	localMaps := make([]map[string]*FileEntry, workers)
@@ -346,28 +334,44 @@ func buildEntriesParallel(files []string, load func(path string) ([]byte, error)
 		wg.Add(1)
 		go func(idx int, chunk []string) {
 			defer wg.Done()
-			local := make(map[string]*FileEntry, len(chunk))
-			for _, p := range chunk {
-				path := NormalizePath(p)
-				if path == "" {
-					continue
-				}
-				data, err := load(path)
-				if err != nil || len(data) == 0 {
-					continue
-				}
-				local[path] = buildFileEntry(path, data)
-			}
-			localMaps[idx] = local
+			localMaps[idx] = buildEntriesChunk(chunk, load)
 		}(w, files[start:end])
 	}
 	wg.Wait()
+	return mergeFileEntryMaps(localMaps)
+}
+
+// buildEntriesChunk builds FileEntries for a contiguous slice of
+// files into a fresh map. Returns the map even when chunk is empty
+// so callers can append it unconditionally during the merge.
+func buildEntriesChunk(chunk []string, load func(path string) ([]byte, error)) map[string]*FileEntry {
+	out := make(map[string]*FileEntry, len(chunk))
+	for _, p := range chunk {
+		path := NormalizePath(p)
+		if path == "" {
+			continue
+		}
+		data, err := load(path)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		out[path] = buildFileEntry(path, data)
+	}
+	return out
+}
+
+// mergeFileEntryMaps concatenates per-worker maps into one. Workers
+// in buildEntriesParallel touch disjoint file paths so a key
+// collision indicates a bug — the loop overwrites silently to
+// preserve the "last worker wins" semantic that matched the previous
+// sequential path.
+func mergeFileEntryMaps(maps []map[string]*FileEntry) map[string]*FileEntry {
 	total := 0
-	for _, m := range localMaps {
+	for _, m := range maps {
 		total += len(m)
 	}
 	next := make(map[string]*FileEntry, total)
-	for _, m := range localMaps {
+	for _, m := range maps {
 		for k, v := range m {
 			next[k] = v
 		}
