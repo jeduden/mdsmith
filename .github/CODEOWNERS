@@ -1,12 +1,15 @@
 # Require owner review for files that control CI
-# behavior, execute as privileged scripts, or assert
-# the project's supply-chain / security posture.
+# behavior, execute as privileged release tooling, or
+# assert the project's supply-chain / security posture.
 /.github/CODEOWNERS                       @jeduden
 /.github/workflows/                       @jeduden
-/.github/scripts/                         @jeduden
+/.github/actions/                         @jeduden
+/cmd/mdsmith-release/                     @jeduden
+/internal/release/                        @jeduden
 /demo.tape                                @jeduden
 /SECURITY.md                              @jeduden
 /docs/development/release.md              @jeduden
+/docs/development/release-tooling.md      @jeduden
 /docs/development/secret-rotations.md     @jeduden
 /docs/security/                           @jeduden
 # Every published manifest — npm-lifecycle-guard

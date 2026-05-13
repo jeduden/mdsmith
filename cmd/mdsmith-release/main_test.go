@@ -329,3 +329,16 @@ func TestRunCheckSecretRotationsHappyPath(t *testing.T) {
 
 	assert.Equal(t, 0, run([]string{"check-secret-rotations"}))
 }
+
+// TestRunCheckSecretRotationsRejectsUnknownFlag covers the
+// pflag parse-error path. ContinueOnError + reportFlagParseErr
+// returns 2 with the message on stderr.
+func TestRunCheckSecretRotationsRejectsUnknownFlag(t *testing.T) {
+	assert.Equal(t, 2, run([]string{"check-secret-rotations", "--bogus"}))
+}
+
+// TestRunRecordRotationRejectsUnknownFlag covers the
+// reportFlagParseErr branch of runRecordRotation.
+func TestRunRecordRotationRejectsUnknownFlag(t *testing.T) {
+	assert.Equal(t, 2, run([]string{"record-rotation", "--bogus", "T", "2026-05-12"}))
+}

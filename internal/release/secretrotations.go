@@ -20,6 +20,7 @@ package release
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -526,12 +527,26 @@ func RecordRotation(repoRoot, entryTitle, date string) (changed bool, err error)
 // GHRunner is the injection point for the `gh` CLI. Production
 // uses ExecGH (shells out to the `gh` binary on PATH); tests
 // pass a fake function that records invocations and returns
-// canned output. Returns the combined stdout/stderr bytes.
+// canned output. Returns the stdout bytes; on a non-zero exit
+// the error wraps the gh stderr so workflow logs can diagnose
+// the failure.
 type GHRunner func(args []string) ([]byte, error)
 
 // ExecGH is the default GHRunner: shells out to `gh` on PATH.
+// On a non-zero exit, the returned error embeds the gh stderr
+// text so the workflow log shows what gh actually said rather
+// than the bare "exit status N" message.
 func ExecGH(args []string) ([]byte, error) {
-	return exec.Command("gh", args...).Output() // #nosec G204 -- gh is fixed; args are workflow-internal
+	cmd := exec.Command("gh", args...) // #nosec G204 -- gh is fixed; args are workflow-internal
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+			return out, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return out, err
+	}
+	return out, nil
 }
 
 // CheckRotationsOptions configures CheckSecretRotations. Now is

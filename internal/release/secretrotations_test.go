@@ -724,3 +724,19 @@ func TestExistingOpenIssueRejectsBadJSON(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parsing JSON")
 }
+
+func TestCheckSecretRotationsDefaultsGHAndEnv(t *testing.T) {
+	// All entries are "ok" so the loop never calls GH; this lets
+	// us hit the GH=nil → ExecGH default and Env=nil → osEnviron
+	// default branches without shelling out to a real `gh`.
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: V\nlastRotated: \"2026-05-12\"\nperiodDays: 4000\n" +
+			"provider: P\nissuerUrl: u\nusedBy: r\nscope: s\n---\n",
+	})
+	res, err := CheckSecretRotations(root, CheckRotationsOptions{
+		Now: time.Date(2026, 5, 13, 0, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	assert.Empty(t, res.Opened)
+	assert.Empty(t, res.Skipped)
+}
