@@ -15,9 +15,13 @@ and clean architecture.
 The Go linter lives in `cmd/` and `internal/`.
 The VS Code extension lives in
 `editors/vscode/`. The distribution shims
-live in `npm/` and `python/`. The Claude
-plugin manifest lives in
-`editors/claude-code/.claude-plugin/`; the
+live in `npm/` and `python/`. The published
+Claude plugin manifest lives in
+`editors/claude-code/.claude-plugin/`; a
+contributor-only manifest at
+`editors/claude-code-dev/.claude-plugin/`
+wires Go and TypeScript LSP servers for
+agents working on this repo; the
 marketplace listing lives at
 `.claude-plugin/marketplace.json`. Each layer
 depends on stable contracts. Drift is
