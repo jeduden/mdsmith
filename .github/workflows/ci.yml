@@ -228,7 +228,11 @@ jobs:
         working-directory: .github/scripts
         # `bun test` tolerates type errors; run tsc separately so
         # a TS regression fails CI before it ships in a workflow.
-        run: bunx tsc --noEmit
+        # `bunx --bun tsc` resolves the locally-installed
+        # typescript devDep (lockfile-pinned in package.json) so
+        # the typecheck version cannot drift via a fresh registry
+        # fetch on each run.
+        run: bunx --bun tsc --noEmit
       - name: Run script unit tests with coverage
         working-directory: .github/scripts
         # `text` keeps the human-readable summary in the job log;

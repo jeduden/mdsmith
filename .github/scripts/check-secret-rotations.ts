@@ -30,11 +30,17 @@ const REPO_ROOT = resolve(import.meta.dir, "..", "..");
 const ROTATIONS_DIR = resolve(REPO_ROOT, "docs/development/secret-rotations");
 const REMINDER_WINDOW_DAYS = 30;
 const ISSUE_LABEL = "secret-rotation";
-// Derive the assignee from GITHUB_REPOSITORY_OWNER (auto-set by
-// GitHub Actions) so an org/owner change doesn't silently break
-// the workflow. Falls back to a sensible default for local runs
-// outside Actions.
-const ASSIGNEE = process.env.GITHUB_REPOSITORY_OWNER || "jeduden";
+// Optional issue assignee. Read from REMINDER_ASSIGNEE so the
+// workflow can override it explicitly without hardcoding a name
+// in this file. The empty default skips the `--assignee` flag
+// entirely on `gh issue create`: assignment is best-effort
+// (newly-opened issues without an assignee are still visible to
+// the secret-rotation label subscribers), and an unassignable
+// value (e.g. an org login that GitHub rejects) would otherwise
+// fail the entire create call. The workflow sets
+// REMINDER_ASSIGNEE to `${{ github.repository_owner }}` by
+// default; setting it to the empty string disables assignment.
+const ASSIGNEE = process.env.REMINDER_ASSIGNEE ?? "";
 
 interface RotationEntry {
   title: string;
@@ -289,11 +295,23 @@ async function main(): Promise<number> {
     }
     await ensureLabel();
     const body = issueBody(entry, fileBasename, due);
-    await $`gh issue create \
-      --title ${title} \
-      --body ${body} \
-      --label ${ISSUE_LABEL} \
-      --assignee ${ASSIGNEE}`.quiet();
+    // Omit --assignee when ASSIGNEE is empty: passing an empty
+    // string would either error or assign nobody depending on
+    // gh version. Issue creation must succeed even when the
+    // workflow chooses not to assign anyone (e.g. the repo moved
+    // under an org login that GitHub rejects as an assignee).
+    if (ASSIGNEE) {
+      await $`gh issue create \
+        --title ${title} \
+        --body ${body} \
+        --label ${ISSUE_LABEL} \
+        --assignee ${ASSIGNEE}`.quiet();
+    } else {
+      await $`gh issue create \
+        --title ${title} \
+        --body ${body} \
+        --label ${ISSUE_LABEL}`.quiet();
+    }
     opened.push(entry.title);
   }
 
