@@ -8,13 +8,15 @@ summary: >-
 ---
 # Cross-system contracts
 
-The
-[solid-architecture skill][skill-cross]
-holds the general patterns. This page
-names mdsmith's actual surfaces and the
-versioning rules that apply.
+SOLID and clean-architecture rules for
+mdsmith's external surfaces. This page
+is the source of truth — it names the
+boundaries, the versioning rules, and
+the patterns audit watches for. The
+[solid-architecture skill][skill-md]
+reads it during design and audit modes.
 
-[skill-cross]: ../../../.claude/skills/solid-architecture/cross-system.md
+[skill-md]: ../../../.claude/skills/solid-architecture/SKILL.md
 
 ## The boundaries
 
@@ -40,7 +42,7 @@ deliberate and noted in the changelog so
 downstream consumers can keep up. Once we
 hit 1.0 a break is a SemVer-major event.
 
-## How mdsmith holds the line
+## Dependency inversion at the boundary (DIP)
 
 The Go binary is the source of truth.
 Every external surface adapts to it; the
@@ -81,6 +83,36 @@ shim and is unit-tested there. It is not
 allowed to reach into the binary's
 internals.
 
+## Interface segregation across surfaces (ISP)
+
+A consumer of one surface should not be
+forced to install another. The npm shim
+consumer should not need the LSP
+binary; the editor extension should not
+need the Claude plugin. Keep each
+surface narrow and self-contained;
+package-level optional dependencies
+should reflect that.
+
+When the binary gains a feature, ask
+which surface(s) need to expose it.
+Only the ones that benefit. Resist
+exposing new fields on every JSON
+envelope "in case someone wants them".
+
+## Liskov across distribution shims (LSP)
+
+Every shim — npm, PyPI, asdf, mise — is
+a substitute for invoking the `mdsmith`
+binary directly. Same exit codes, same
+stdout / stderr formats, same flag
+parsing.
+
+If a shim deviates (e.g. adds a flag
+the binary does not have), that is a
+Liskov violation. Push the flag down to
+the binary or drop it from the shim.
+
 ## Versioning rules (concrete)
 
 The rules below describe the post-1.0
@@ -112,7 +144,7 @@ the changelog.
   the declared servers, commands, and
   hooks as the visible interface.
 
-## Patterns audit has caught here
+## Common violations to flag
 
 These are the cross-system shapes the
 audit watches for:

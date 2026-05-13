@@ -8,16 +8,18 @@ summary: >-
 ---
 # TypeScript architecture patterns
 
-The
-[solid-architecture skill][skill-ts]
-holds the general TypeScript patterns;
-this page applies them to mdsmith's VS
-Code extension at `editors/vscode/`. The
-layout below is the target the extension
-is converging on. "Current state"
-callouts mark where the code differs.
+SOLID and clean-architecture rules for
+mdsmith's VS Code extension at
+`editors/vscode/`. This page is the
+source of truth — the
+[solid-architecture skill][skill-md]
+reads it during design and audit modes
+to check TypeScript changes. The layout
+below is the target the extension is
+converging on. "Current state" callouts
+mark where the code differs.
 
-[skill-ts]: ../../../.claude/skills/solid-architecture/typescript.md
+[skill-md]: ../../../.claude/skills/solid-architecture/SKILL.md
 
 ## Layout
 
@@ -52,7 +54,7 @@ That work should move to `wiring.ts` and
 `extension.ts` further — place it where
 the target shape expects it.
 
-## Modules answer one question
+## Single responsibility per module (SRP)
 
 Each `commands/<name>.ts` holds one
 command. Shared steps (subprocess spawn,
@@ -68,7 +70,7 @@ The natural split is three modules: one
 picks the args, one runs the call, one
 shows the result.
 
-## Adding a command (target shape)
+## Open/closed: adding a command (OCP)
 
 The target is that adding a command does
 not modify `extension.ts`:
@@ -98,7 +100,7 @@ Treat it as part of the contract;
 changing the id or arguments of a
 shipped command is a breaking change.
 
-## Commands are interchangeable (Liskov)
+## Liskov: commands are interchangeable (LSP)
 
 Every command takes the same wiring
 shape — a typed dependency object or
@@ -115,7 +117,7 @@ A command commits to one return shape.
 the caller should not need to know which
 kind it received.
 
-## `binary.ts` is a narrow interface
+## Interface segregation at `binary.ts` (ISP)
 
 `binary.ts` exposes a small interface
 for locating and invoking the `mdsmith`
@@ -130,7 +132,7 @@ Add a new function rather than widening
 an existing one. Consumers import only
 what they need.
 
-## Typed boundaries
+## Dependency inversion through typed boundaries (DIP)
 
 The extension talks to the Go core
 through three typed boundaries; we never
@@ -161,7 +163,7 @@ not the raw JSON. The boundary between
 strings and types should be exactly one
 function deep.
 
-## `extension.ts` is wiring only (target)
+## Clean wiring in `extension.ts` (target)
 
 Target shape:
 
@@ -201,7 +203,7 @@ violations list flags new additions to
   Do not import fixture data across
   command modules.
 
-## Patterns audit has caught here
+## Common violations to flag
 
 These are the mdsmith-specific shapes
 the audit flags:

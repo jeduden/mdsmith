@@ -22,178 +22,137 @@ allowed-tools: >-
   LSP
 ---
 
-# SOLID and clean architecture
+# SOLID and clean architecture workflow
 
-This skill enforces SOLID and clean
-architecture for Go and TypeScript code. It
-runs in three workflows — design, plan, and
-audit — and pulls language-level depth from
-the sibling reference files.
+The architecture content lives in the
+project's docs — typically under
+`docs/development/architecture/`. This
+skill is the workflow that uses those
+docs to keep the codebase consistent
+with them.
 
-Read [Go patterns][skill-go] and
-[TypeScript patterns][skill-ts] for the
-language-level rules. Read the
-[cross-system contracts][skill-cross] page
-for the patterns that govern external
-surfaces. Use the [audit checklist][skill-audit]
-to walk a branch in audit mode. If the
-project also ships architecture docs under
-`docs/development/architecture/` or similar,
-read those for the project's actual layering
-and named packages — they instantiate the
-patterns this skill describes.
+In every mode below, the docs are the
+source of truth. The skill reads them
+and applies the rules they describe; it
+does not carry its own copy of the
+principles or patterns.
 
 ## Prerequisites
 
 - Run each fenced code block as its own
-  Bash call. Do not chain with `&&`. Do not
-  prefix with an inline variable assignment
-  (`VAR=x cmd`) or wrap the leading token in
-  `$(...)`. The skill's `allowed-tools` list
-  matches on the command prefix, so the
-  allowed token (e.g. `git log`) must be the
-  first thing the shell sees.
+  Bash call. Do not chain with `&&`. Do
+  not prefix with an inline variable
+  assignment (`VAR=x cmd`) or wrap the
+  leading token in `$(...)`. The skill's
+  `allowed-tools` list matches on the
+  command prefix.
 - Where a step needs a value from a prior
-  command (a SHA, a path), paste the literal
-  value into the next command rather than
-  storing it in a shell variable.
+  command, paste the literal value into
+  the next command rather than storing
+  it in a shell variable.
 
 ## Modes
 
 Pass the mode as the skill argument
-(`/solid-architecture design`, `… plan`, or
-`… audit`). If no argument is supplied, infer
-from the conversation: editing a plan or RFC
-document → plan; writing new Go or TypeScript
-→ design; sweeping the main branch → audit.
+(`/solid-architecture design`, `… plan`,
+or `… audit`). If no argument is
+supplied, infer from the conversation:
+editing a plan or RFC document → plan;
+writing new Go or TypeScript → design;
+sweeping the main branch → audit.
 
 ### Design mode
 
-Use design mode for code-shape decisions:
+Use design mode when:
 
-- A new package or module.
-- Splitting an existing package whose
-  responsibilities have drifted.
-- A new feature added at a layer boundary.
-- A new external surface — LSP capability,
-  CLI subcommand, distribution shim, plugin
-  entry point.
+- Shaping a new package.
+- Splitting one whose responsibilities
+  have drifted.
+- Adding a feature at a layer boundary.
+- Wiring a new external surface.
 
 Workflow:
 
-1. Identify which layer the change lives in.
-   Cross-check against the project's layering
-   map (if it ships one) or against the
-   layering rules in [Go patterns][skill-go]
-   or [TypeScript patterns][skill-ts].
-2. List the interface(s) the change crosses
-   on a layer boundary. Confirm the
-   dependency direction matches.
-3. Walk the principle checklist in
-   [Go patterns][skill-go] or
-   [TypeScript patterns][skill-ts].
-4. Reject package or module names that mix
-   responsibilities (`util`, `common`,
-   `helpers`, `lib`, `misc`). Each package
-   name must answer one question.
-5. Write the failing test first (Red), then
-   the smallest passing implementation
-   (Green).
+1. Read the project's architecture hub
+   (commonly
+   `docs/development/architecture/index.md`)
+   for the layering map.
+2. Read the language-specific page —
+   `go.md` for Go code, `typescript.md`
+   for TypeScript code — to find the
+   patterns the change must respect.
+3. Identify which layer the change
+   lives in. Confirm the dependency
+   direction matches what the docs say.
+4. Walk the docs' SOLID checklist
+   (single responsibility, open/closed,
+   Liskov, interface segregation,
+   dependency inversion). Flag any
+   shape the docs reject.
+5. Write the failing test first (Red),
+   then the smallest passing
+   implementation (Green).
+
+If the docs are silent on the case
+you're designing, that's a gap. Surface
+it and propose the doc update before
+writing the code.
 
 ### Plan mode
 
-Use when generating or revising a multi-step
-plan, RFC, or task list. Plans lock in
-architectural decisions; getting the layer
-boundaries wrong here ripples into every
-commit that follows.
+Use when generating or revising a
+multi-step plan, RFC, or task list.
 
 Workflow:
 
-1. For each task in the plan, name the
-   package(s) or module(s) it touches and
-   the layer(s) it crosses.
-2. Mark any task that pushes a dependency
-   the wrong direction (e.g. a low-level
-   module importing a high-level one).
-3. If a plan introduces a new interface,
-   add a task for the test that locks the
-   contract.
-4. Annotate acceptance criteria with the
-   SOLID principle each verifies, when one
-   applies.
-5. After editing, run the project's plan
-   regeneration step (e.g. a catalog
-   refresh) so plan indices stay current.
+1. Read the project's architecture hub
+   and the language-specific pages
+   relevant to the plan's surface.
+2. For each task in the plan, name the
+   package(s) or module(s) it touches
+   and the layer(s) it crosses.
+3. Mark any task that pushes a
+   dependency in a direction the docs
+   forbid.
+4. If a plan introduces a new
+   interface, add a task for the test
+   that locks the contract.
+5. Annotate acceptance criteria with
+   the SOLID principle each verifies,
+   when one applies.
+6. After editing, run the project's
+   plan regeneration step (e.g. a
+   catalog refresh) so plan indices
+   stay current.
 
 ### Audit mode
 
-Use to sweep the main branch for accumulated
-violations. Suited to a recurring schedule
+Use to sweep the main branch for
+accumulated violations against what the
+docs say. Suited to a recurring schedule
 (e.g. via `/loop 1d /solid-architecture
 audit`).
 
-Workflow:
-
-1. Read the last audit checkpoint from the
-   project's architecture audit log (commonly
-   under `docs/development/`). If the log
-   does not exist, create it from the
-   [audit checklist][skill-audit] §"Initial
-   file" and start one month back; on a
-   younger repo fall back to the root commit.
-2. Diff that SHA against `origin/main` and
-   walk the [audit checklist][skill-audit]
-   over the touched files.
-3. Append findings to the audit log with
-   severity (`blocker`, `tax`,
-   `nice-to-have`), the violating files, and
-   the principle violated.
-4. Do not fix in this run. Group blockers
-   that share the same structural fix into
-   one plan file referencing the audit
-   entries; only split into more plans when
-   a single one would exceed the project's
-   max-file-length budget. For tax and
-   nice-to-have, leave entries in the audit
-   log.
-5. Update `audit-from:` to the current
-   `origin/main` SHA.
-
-## References
-
-The four sibling reference files live in
-this skill directory:
-
-- [Go patterns][skill-go] — SOLID applied to
-  Go interfaces, packages, and `cmd/` +
-  `internal/` layout.
-- [TypeScript patterns][skill-ts] — SOLID
-  for TypeScript modules and VS Code
-  extension shapes.
-- [Cross-system contracts][skill-cross] —
-  LSP, CLI flags, config schemas,
-  distribution shims, plugin manifests.
-- [Audit checklist][skill-audit] — generic
-  audit workflow, severity rubric, plan
-  grouping rules.
-
-[skill-go]: go.md
-[skill-ts]: typescript.md
-[skill-cross]: cross-system.md
-[skill-audit]: audit-checklist.md
+Follow the steps in
+[`audit-checklist.md`](audit-checklist.md)
+exactly. Every check there cites the
+project's architecture docs as the rule
+source.
 
 ## Notes
 
-- This skill never edits source code on its
-  own. In design and plan modes it advises
-  and rewrites prose; in audit mode it
-  appends to the project's audit log and
-  creates plan files for blockers.
-- The audit log is Markdown; respect the
-  project's lint rules (line-length budget,
-  readability caps) when adding entries.
-- When recommending a refactor, name the
-  principle being upheld and the layer being
-  protected. Vague "this would be cleaner"
+- This skill never edits source code on
+  its own. In design and plan modes it
+  advises and rewrites prose; in audit
+  mode it appends to the project's
+  audit log and creates plan files for
+  blockers.
+- When the docs and the code disagree,
+  one of them is wrong. Surface the
+  conflict explicitly; do not let the
+  skill silently treat the code as
+  authoritative.
+- When recommending a refactor, cite
+  the doc section that justifies it.
+  Vague "this would be cleaner"
   guidance is not actionable.

@@ -8,14 +8,16 @@ summary: >-
 ---
 # Go architecture patterns
 
-How the SOLID and clean-architecture
-patterns in the
-[solid-architecture skill](../../../.claude/skills/solid-architecture/go.md)
-apply to mdsmith's Go code. This page
-names the actual packages, shows the
-shapes we already use, and explains why.
+SOLID and clean-architecture rules for
+mdsmith's Go code. This page is the
+source of truth — it names the actual
+packages, shows the shapes we use, and
+explains why. The
+[solid-architecture skill](../../../.claude/skills/solid-architecture/SKILL.md)
+reads this page in design and audit
+modes to check Go changes against it.
 
-## How responsibility is split
+## Single responsibility per package (SRP)
 
 Each `internal/` package answers one
 question. The current production set:
@@ -49,7 +51,7 @@ exists to answer. A package named `util`
 fails that test — it answers "a grab bag",
 so unrelated code accumulates.
 
-## How new rules ship
+## Open/closed via plugin packages (OCP)
 
 The engine never changes when a rule is
 added. The contract:
@@ -81,7 +83,32 @@ new data, change the interface in
 the rule package. Do not widen the
 engine's API in `internal/engine`.
 
-## The actual `rule` interface set
+## Liskov substitution (LSP)
+
+Every `rule.Rule` implementation must
+work in every engine call site. Two
+recurring traps:
+
+1. A rule that only works for certain
+   `kind:` values. The selection lives
+   in config layering, not in the rule.
+   The rule sees what it is fed; if
+   it receives the wrong input, that is
+   an engine bug.
+2. A rule that panics on edge cases the
+   engine considers valid (empty
+   document, pathological nesting,
+   generated section markers). Return
+   an error or a no-op diagnostic
+   instead.
+
+A rule that cannot honor the contract
+for some inputs has a config problem,
+not a code problem. Filter those inputs
+out in config layering. Keep the rule
+unconditional.
+
+## Interface segregation (ISP)
 
 `internal/rule` exposes one base
 interface plus narrow capability
@@ -114,7 +141,7 @@ implementing extra interfaces. No rule is
 forced into a wide surface it does not
 need.
 
-## Dependency direction
+## Dependency inversion across layers (DIP)
 
 The compiler enforces it. The arrows that
 must hold:
@@ -140,7 +167,7 @@ it by inverting the dependency through an
 interface in `internal/rule` (or the
 appropriate ports package).
 
-## `cmd/mdsmith` is wiring only
+## Clean wiring in `cmd/mdsmith`
 
 The CLI entry does flag parsing,
 constructs the engine with its
@@ -193,7 +220,7 @@ handler in `cmd/mdsmith` longer than
   mock there is the smell of a too-wide
   contract.
 
-## Patterns audit has caught here
+## Common violations to flag
 
 These are mdsmith-specific instantiations
 of the general anti-patterns in the
