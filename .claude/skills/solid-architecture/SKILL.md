@@ -27,8 +27,7 @@ allowed-tools: >-
 
 # SOLID and clean architecture for mdsmith
 
-The canonical
-[architecture hub](../../../docs/development/architecture/index.md)
+The canonical [architecture hub][arch-hub]
 holds the principles, the layering map, and
 the anti-patterns. This skill wraps that
 hub with three workflows: design, plan, and
@@ -79,14 +78,13 @@ Workflow:
 
 1. Identify which layer the change lives in.
    Cross-check against the layering map in
-   the
-   [architecture hub](../../../docs/development/architecture/index.md).
+   the [architecture hub][arch-hub].
 2. List the interface(s) the change crosses
    on a layer boundary. Confirm the
    dependency direction matches.
 3. Walk the principle checklist in
-   [references/go.md](references/go.md) or
-   [references/typescript.md](references/typescript.md).
+   [Go patterns][arch-go] or
+   [TypeScript patterns][arch-ts].
 4. Reject package names that mix
    responsibilities (`util`, `common`,
    `helpers`, `lib`). Each package name must
@@ -133,13 +131,11 @@ Workflow:
 1. Read the last audit checkpoint from
    `docs/development/architecture-audit.md`
    front matter (`audit-from:`). If the file
-   does not exist, create it from
-   [references/audit-checklist.md](references/audit-checklist.md)
-   §"Initial file" and start from one month
-   back.
+   does not exist, create it from the
+   [audit checklist][arch-audit] §"Initial
+   file" and start from one month back.
 2. Diff that SHA against `origin/main` and
-   walk
-   [references/audit-checklist.md](references/audit-checklist.md)
+   walk the [audit checklist][arch-audit]
    over the touched files.
 3. Append findings to the audit log with
    severity (`blocker`, `tax`,
@@ -155,20 +151,25 @@ Workflow:
 
 ## References
 
-Each reference mirrors a canonical doc under
-`docs/development/architecture/`. Edit the
-underlying doc to change the content; run
-`mdsmith fix` to regenerate the mirror.
+The canonical architecture docs live under
+`docs/development/architecture/`:
 
-- [Architecture hub: principles, layering,
-  anti-patterns](../../../docs/development/architecture/index.md)
-- [Go: SOLID in cmd/ and internal/](references/go.md)
-- [TypeScript: SOLID in the VS Code
-  extension](references/typescript.md)
-- [Cross-system contracts (LSP, shims,
-  plugins, config)](references/cross-system.md)
-- [Audit checklist for sweeping
-  origin/main](references/audit-checklist.md)
+- [Architecture hub][arch-hub] —
+  principles, layering, anti-patterns.
+- [Go patterns][arch-go] — SOLID in `cmd/`
+  and `internal/`.
+- [TypeScript patterns][arch-ts] — SOLID in
+  the VS Code extension.
+- [Cross-system contracts][arch-cross] —
+  LSP, shims, plugins, config.
+- [Audit checklist][arch-audit] — sweeping
+  `origin/main`.
+
+[arch-hub]: ../../../docs/development/architecture/index.md
+[arch-go]: ../../../docs/development/architecture/go.md
+[arch-ts]: ../../../docs/development/architecture/typescript.md
+[arch-cross]: ../../../docs/development/architecture/cross-system.md
+[arch-audit]: ../../../docs/development/architecture/audit-checklist.md
 
 ## Notes
 
