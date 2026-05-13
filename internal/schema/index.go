@@ -50,13 +50,19 @@ func BuildIndex(f *lint.File, sch *Schema) ([]byte, error) {
 
 // WriteIndex writes the JSON index produced by BuildIndex next to
 // the source file. Output paths are resolved relative to the source
-// file's directory; absolute paths and parent-traversal segments are
+// file's directory; absolute paths (including Windows drive-letter
+// and leading-backslash forms) and parent-traversal segments are
 // rejected so a schema cannot trick fix into writing outside the
-// project.
+// project. Parent directories are created on demand so a nested
+// `output:` path (e.g. `.mdsmith/index/runbook.json`) works on a
+// clean checkout.
 func WriteIndex(f *lint.File, sch *Schema) error {
 	target, data, err := resolveIndexWrite(f, sch)
 	if err != nil || data == nil {
 		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("schema.index: create parent dir: %w", err)
 	}
 	return os.WriteFile(target, data, 0o644)
 }
@@ -70,14 +76,8 @@ func resolveIndexWrite(f *lint.File, sch *Schema) (string, []byte, error) {
 		return "", nil, nil
 	}
 	out := sch.Index.Output
-	if filepath.IsAbs(out) {
-		return "", nil, fmt.Errorf("schema.index.output %q must be relative", out)
-	}
-	for _, elem := range strings.Split(filepath.ToSlash(out), "/") {
-		if elem == ".." {
-			return "", nil, fmt.Errorf(
-				"schema.index.output %q must not contain \"..\" traversal", out)
-		}
+	if err := validateOutputPath(out); err != nil {
+		return "", nil, err
 	}
 	data, err := BuildIndex(f, sch)
 	if err != nil {
@@ -92,12 +92,43 @@ func resolveIndexWrite(f *lint.File, sch *Schema) (string, []byte, error) {
 	return target, data, nil
 }
 
+// validateOutputPath rejects any output: value that would not be a
+// project-relative POSIX-style path. Checks: host-absolute (POSIX),
+// Windows-absolute (leading "\\", drive letter), and any ".."
+// segment. The drive-letter check is host-independent so the
+// rejection is consistent across OSes — filepath.IsAbs on a Linux
+// host considers `C:\foo` relative, which would slip past a naive
+// IsAbs guard.
+func validateOutputPath(out string) error {
+	if filepath.IsAbs(out) ||
+		strings.HasPrefix(out, `\`) ||
+		hasDriveLetterPrefix(out) {
+		return fmt.Errorf("schema.index.output %q must be relative", out)
+	}
+	for _, elem := range strings.Split(filepath.ToSlash(out), "/") {
+		if elem == ".." {
+			return fmt.Errorf(
+				"schema.index.output %q must not contain \"..\" traversal", out)
+		}
+	}
+	return nil
+}
+
+// hasDriveLetterPrefix reports whether p begins with a Windows
+// drive letter (e.g. `C:` or `C:\`). Host-independent so the same
+// rejection fires on Linux CI as on a Windows developer machine.
+func hasDriveLetterPrefix(p string) bool {
+	return len(p) >= 2 && p[1] == ':' &&
+		((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z'))
+}
+
 // ValidateIndex compares the on-disk index file (if any) against the
-// bytes BuildIndex would emit. When they differ — or when the file
-// is missing — a single diagnostic asks the user to run
-// `mdsmith fix` so the artefact stays in sync. The diagnostic is
-// what triggers `mdsmith fix` to call the rule's Fix() pass, which
-// in turn writes the file. `mdsmith check` still respects the
+// bytes BuildIndex would emit. When the file is missing or its
+// content differs, a diagnostic asks the user to run
+// `mdsmith fix` so the artefact stays in sync. Read errors other
+// than "file does not exist" surface as a distinct diagnostic so
+// permission failures and non-file targets are not silently rolled
+// into the "missing" message. `mdsmith check` still respects the
 // read-only contract: it never touches the file.
 func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic {
 	target, want, err := resolveIndexWrite(f, sch)
@@ -110,10 +141,16 @@ func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic
 	}
 	got, readErr := os.ReadFile(target)
 	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return []lint.Diagnostic{mkDiag(f.Path, 1,
+				fmt.Sprintf(
+					"index side-output %q is missing; run `mdsmith fix`",
+					sch.Index.Output))}
+		}
 		return []lint.Diagnostic{mkDiag(f.Path, 1,
 			fmt.Sprintf(
-				"index side-output %q is missing; run `mdsmith fix`",
-				sch.Index.Output))}
+				"index side-output %q cannot be read: %v",
+				sch.Index.Output, readErr))}
 	}
 	if string(got) != string(want) {
 		return []lint.Diagnostic{mkDiag(f.Path, 1,
@@ -181,9 +218,12 @@ func buildStepMap(f *lint.File) map[string][]string {
 }
 
 // buildCrossRefGraph maps each cross-reference match found in the
-// document to its target slug. Unresolved references are still
-// emitted (target slug may be empty) so downstream tools see what
-// links exist regardless of validation outcome.
+// document to the slug derived from its `must-match:` template,
+// without consulting the document's heading slug set. Downstream
+// tools see the full reference graph regardless of whether
+// ValidateCrossReferences emitted an unresolved-reference
+// diagnostic for any individual entry — diagnostic emission is the
+// validator's job; the index is purely descriptive.
 func buildCrossRefGraph(f *lint.File, sch *Schema) map[string]string {
 	out := map[string]string{}
 	if len(sch.CrossReferences) == 0 {

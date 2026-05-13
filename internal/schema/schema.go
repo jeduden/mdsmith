@@ -79,8 +79,10 @@ type Schema struct {
 	Acronyms *AcronymRule
 
 	// Index, if non-nil, asks `mdsmith fix` to emit a JSON
-	// side-output describing the document. `mdsmith check` ignores
-	// it. See plan 143.
+	// side-output describing the document. `mdsmith check` reports
+	// staleness (missing or outdated file) as a diagnostic so the
+	// fixer is triggered, but never writes the file itself. See
+	// plan 143.
 	Index *IndexSpec
 }
 

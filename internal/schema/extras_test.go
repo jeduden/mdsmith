@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -171,6 +172,90 @@ func TestWriteIndex_RejectsAbsolutePath(t *testing.T) {
 	assert.Contains(t, err.Error(), "must be relative")
 }
 
+func TestWriteIndex_RejectsWindowsAbsolutePaths(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	f, err := lint.NewFile(path, []byte("# Title\n"))
+	require.NoError(t, err)
+
+	cases := []string{`C:\out.json`, `c:/out.json`, `\out.json`}
+	for _, out := range cases {
+		t.Run(out, func(t *testing.T) {
+			sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+				Output:  out,
+				Include: []string{IndexIncludeHeadingsFlat},
+			}}
+			err = WriteIndex(f, sch)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must be relative")
+		})
+	}
+}
+
+func TestWriteIndex_CreatesParentDir(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte("# Title\n"), 0o644))
+	f, err := lint.NewFile(path, []byte("# Title\n"))
+	require.NoError(t, err)
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  ".mdsmith/index/runbook.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	require.NoError(t, WriteIndex(f, sch))
+	data, err := os.ReadFile(filepath.Join(dir, ".mdsmith/index/runbook.json"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"slug": "title"`)
+}
+
+func TestValidateIndex_MissingReportsMissing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	f, err := lint.NewFile(path, []byte("# Title\n"))
+	require.NoError(t, err)
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "absent.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	diags := ValidateIndex(f, sch, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "missing")
+}
+
+func TestValidateIndex_StaleReportsOutOfDate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	f, err := lint.NewFile(path, []byte("# Title\n"))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "stale.json"), []byte("{}\n"), 0o644))
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "stale.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	diags := ValidateIndex(f, sch, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "out of date")
+}
+
+func TestValidateIndex_ReadErrorSurfacesDistinctMessage(t *testing.T) {
+	// A directory at the index path triggers a read error that is
+	// not os.IsNotExist; the validator should surface the read
+	// error verbatim instead of misreporting it as "missing".
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	f, err := lint.NewFile(path, []byte("# Title\n"))
+	require.NoError(t, err)
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "blocked.json"), 0o755))
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "blocked.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	diags := ValidateIndex(f, sch, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "cannot be read")
+}
+
 func TestWriteIndex_RejectsParentTraversal(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "doc.md")
@@ -223,6 +308,68 @@ func TestParseInline_IndexUnknownIncludeRejected(t *testing.T) {
 	}, "test")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bogus")
+}
+
+func TestIndex_WordCountsAndCrossRefGraphShape(t *testing.T) {
+	src := "# Title\n\nIntro paragraph here.\n\n## Step 1\n\nSee Step 2 for details.\n\n## Step 2\n\nMore text.\n"
+	f := newDocFile(t, "doc.md", src)
+	sch := &Schema{Source: "test", RootLevel: 2,
+		CrossReferences: []CrossRef{{
+			Pattern:   `\bStep (\d+)\b`,
+			MustMatch: "Step {n}",
+		}},
+		Index: &IndexSpec{
+			Output: "out.json",
+			Include: []string{
+				IndexIncludeWordCounts,
+				IndexIncludeCrossRefs,
+			},
+		},
+	}
+	data, err := BuildIndex(f, sch)
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(data, &got))
+
+	wc, ok := got[IndexIncludeWordCounts].(map[string]any)
+	require.True(t, ok, "word-counts must be an object")
+	// Title body is "Intro paragraph here." (3 words) — sub-section
+	// "Step 1" body should be its own count, not the parent's.
+	assert.EqualValues(t, 3, wc["title"])
+	assert.EqualValues(t, 5, wc["step-1"])
+	assert.EqualValues(t, 2, wc["step-2"])
+
+	graph, ok := got[IndexIncludeCrossRefs].(map[string]any)
+	require.True(t, ok, "cross-ref-graph must be an object")
+	assert.Equal(t, "step-2", graph["Step 2"])
+}
+
+func TestFillTemplate_NumericAndNamedCaptures(t *testing.T) {
+	re := regexp.MustCompile(`Step (?P<num>\d+)`)
+	match := re.FindStringSubmatch("Step 42")
+	got, err := fillTemplate("Step {1}", match, re.SubexpNames())
+	require.NoError(t, err)
+	assert.Equal(t, "Step 42", got)
+
+	got, err = fillTemplate("Step {num}", match, re.SubexpNames())
+	require.NoError(t, err)
+	assert.Equal(t, "Step 42", got)
+
+	_, err = fillTemplate("Step {9}", match, re.SubexpNames())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "out of range")
+
+	_, err = fillTemplate("Step {bogus}", match, re.SubexpNames())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown placeholder")
+
+	_, err = fillTemplate("Step {", match, re.SubexpNames())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unterminated")
+
+	_, err = fillTemplate("Step {}", match, re.SubexpNames())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty placeholder")
 }
 
 func TestParseInline_CrossRefMissingPatternRejected(t *testing.T) {
