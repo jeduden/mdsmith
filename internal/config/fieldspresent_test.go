@@ -144,25 +144,6 @@ func TestFieldsPresent_EmptyEntryNeverMatches(t *testing.T) {
 	assert.Empty(t, got)
 }
 
-// HasFieldsPresentSelector lets callers (engine, fix, lsp) skip the
-// extra FM-mapping decode when no entry uses the selector.
-func TestHasFieldsPresentSelector(t *testing.T) {
-	assert.False(t, HasFieldsPresentSelector(nil), "nil config")
-
-	assert.False(t, HasFieldsPresentSelector(&Config{
-		KindAssignment: []KindAssignmentEntry{
-			{Glob: []string{"plan/*.md"}, Kinds: []string{"plan"}},
-		},
-	}), "glob-only entries")
-
-	assert.True(t, HasFieldsPresentSelector(&Config{
-		KindAssignment: []KindAssignmentEntry{
-			{Glob: []string{"plan/*.md"}, Kinds: []string{"plan"}},
-			{FieldsPresent: []string{"status"}, Kinds: []string{"task"}},
-		},
-	}), "any entry with fields-present")
-}
-
 // NeedsFieldsForFile gates the FM-mapping decode per file path: it only
 // returns true when a fields-present entry could actually match this
 // file — an entry without a glob always could, an entry with a glob
