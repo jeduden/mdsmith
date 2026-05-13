@@ -157,13 +157,25 @@ heading-level: "absolute"
 Build and test reference for mdsmith contributors.
 See also:
 
+<?catalog
+source-dir: "docs/development"
+glob:
+  - "*.md"
+  - "*/index.md"
+  - "!index.md"
+sort: title
+row: "- [{title}](docs/development/{filename})"
+?>
+- [Architecture audit log](docs/development/architecture-audit.md)
 - [Architecture principles](docs/development/architecture/index.md)
-- [Coverage gate](docs/development/coverage.md)
-- [File placement](docs/development/file-placement.md)
-- [Merge queue](docs/development/merge-queue.md)
-- [PR fixup workflow](docs/development/pr-fixup-workflow.md)
-- [Release pipeline](docs/development/release.md)
-- [Secret rotations](docs/development/secret-rotations.md)
+- [Coverage Gate](docs/development/coverage.md)
+- [File Placement](docs/development/file-placement.md)
+- [Merge Queue](docs/development/merge-queue.md)
+- [PR Fixup Workflow](docs/development/pr-fixup-workflow.md)
+- [Release Pipeline](docs/development/release.md)
+- [Release Tooling Architecture](docs/development/release-tooling.md)
+- [Secret Rotations](docs/development/secret-rotations.md)
+<?/catalog?>
 
 ### Build & Test Commands
 

@@ -6,13 +6,24 @@ summary: Build commands, project layout, code style, test fixtures, coverage gat
 Build and test reference for mdsmith contributors.
 See also:
 
+<?catalog
+glob:
+  - "*.md"
+  - "*/index.md"
+  - "!index.md"
+sort: title
+row: "- [{title}]({filename})"
+?>
+- [Architecture audit log](architecture-audit.md)
 - [Architecture principles](architecture/index.md)
-- [Coverage gate](coverage.md)
-- [File placement](file-placement.md)
-- [Merge queue](merge-queue.md)
-- [PR fixup workflow](pr-fixup-workflow.md)
-- [Release pipeline](release.md)
-- [Secret rotations](secret-rotations.md)
+- [Coverage Gate](coverage.md)
+- [File Placement](file-placement.md)
+- [Merge Queue](merge-queue.md)
+- [PR Fixup Workflow](pr-fixup-workflow.md)
+- [Release Pipeline](release.md)
+- [Release Tooling Architecture](release-tooling.md)
+- [Secret Rotations](secret-rotations.md)
+<?/catalog?>
 
 ## Build & Test Commands
 
