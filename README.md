@@ -23,11 +23,11 @@ stabilize. `mdsmith check` is the read-only CI sibling.
 `mdsmith lsp` emits diagnostics, quick-fixes, and
 navigation (definition, references, symbol search, and a
 call-hierarchy over `<?include?>`/`<?catalog?>` and
-cross-file links).
+cross-file links) — consumed by any LSP-aware editor,
+including Neovim, Helix, and JetBrains.
 The [VS Code extension][vsc-mp] surfaces all of it with
 opt-in fix-on-save (also on [Open VSX][vsc-ovsx] for
-Cursor, VSCodium, Theia, and Gitpod). Generic LSP clients
-(Neovim, Helix, JetBrains) expose what they support. The
+Cursor, VSCodium, Theia, and Gitpod). The
 [Claude Code plugin](docs/guides/install.md#claude-code-plugin)
 feeds diagnostics and navigation to the agent so it sees
 mdsmith inline while editing Markdown.
