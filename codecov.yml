@@ -1,18 +1,20 @@
 coverage:
-  # Status gates are disabled while the rolling baseline on main
-  # absorbs the new `.github/scripts/` surface. Coverage still
-  # uploads under per-language flags so the UI (and the codecov
-  # comment on PRs) keeps reporting numbers — just without a
-  # blocking pass/fail check. `informational: true` would be the
-  # documented way to do this; we are explicitly setting each
-  # status to `false` instead because codecov has a long-standing
-  # bug where `informational: true` on `default` still posts a
-  # failure conclusion. Re-enable strict gates after a merge
-  # that establishes a baseline including the scripts files.
   status:
-    project: false
-    patch: false
-    changes: false
+    project:
+      default:
+        target: auto
+        threshold: 0%
+    patch:
+      default:
+        target: auto
+        threshold: 0%
+    # Per-file gate: fail the status check if any
+    # file's coverage decreased vs the base commit.
+    changes:
+      default:
+        enabled: true
+        target: auto
+        threshold: 0%
 
 # Coverage is uploaded with a flag per language so each report
 # only contains the files it actually measured. Without flags,
@@ -28,9 +30,6 @@ flag_management:
     - name: typescript
       paths:
         - "editors/vscode/src/**"
-    - name: scripts
-      paths:
-        - ".github/scripts/**"
 
 component_management:
   individual_components:
@@ -42,10 +41,6 @@ component_management:
       name: TypeScript
       paths:
         - "editors/vscode/src/**"
-    - component_id: scripts
-      name: CI Scripts
-      paths:
-        - ".github/scripts/**"
 
 comment:
   layout: "condensed_header, condensed_files, condensed_footer, components"

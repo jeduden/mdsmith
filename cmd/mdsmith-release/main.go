@@ -2,7 +2,8 @@
 // pipeline invokes. It is intentionally NOT part of the
 // user-facing `mdsmith` binary — its commands (stamp tracked
 // manifests, verify them, build npm sub-packages, build PyPI
-// wheels) are only useful inside the workflow.
+// wheels, secret-rotation reminder, record rotation) are only
+// useful inside the workflow.
 //
 // Usage:
 //
@@ -10,6 +11,8 @@
 //	mdsmith-release check
 //	mdsmith-release build-npm <artifacts-dir> <out-dir>
 //	mdsmith-release build-wheels <artifacts-dir> <out-dir>
+//	mdsmith-release check-secret-rotations
+//	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //
 // Each subcommand operates relative to the current working
 // directory, which is the repo root in CI.
@@ -20,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	flag "github.com/spf13/pflag"
 
@@ -33,6 +37,8 @@ Commands:
   check                           Verify tracked manifests are at the dev sentinel.
   build-npm <artifacts> <out>     Build npm platform sub-packages.
   build-wheels <artifacts> <out>  Build platform-tagged Python wheels.
+  check-secret-rotations          Open GitHub issues for secrets due for rotation.
+  record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
 `
 
 func main() {
@@ -62,6 +68,10 @@ func run(args []string) int {
 		return runBuildNpm(root, rest)
 	case "build-wheels":
 		return runBuildWheels(root, rest)
+	case "check-secret-rotations":
+		return runCheckSecretRotations(root, rest)
+	case "record-rotation":
+		return runRecordRotation(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2
@@ -170,6 +180,79 @@ func reportFlagParseErr(err error, stderr io.Writer, prefix string) int {
 	}
 	_, _ = fmt.Fprintf(stderr, "%s: %v\n", prefix, err)
 	return 2
+}
+
+func runCheckSecretRotations(root string, args []string) int {
+	fs := flag.NewFlagSet("check-secret-rotations", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release check-secret-rotations\n\n"+
+			"Walk docs/development/secret-rotations/, classify each\n"+
+			"secret by (today - lastRotated), and open a labelled\n"+
+			"GitHub issue for any secret within the reminder window\n"+
+			"or already overdue. Idempotent: never opens a duplicate.\n"+
+			"Requires `gh` on PATH with GH_TOKEN set. Reads\n"+
+			"REMINDER_ASSIGNEE from the environment; if empty, the\n"+
+			"--assignee flag is omitted entirely.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: check-secret-rotations"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+	res, err := release.CheckSecretRotations(root, release.CheckRotationsOptions{
+		Now: time.Now(),
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith-release: %v\n", err)
+		return 1
+	}
+	if len(res.Opened) > 0 {
+		fmt.Printf("opened secret-rotation reminders for: %v\n", res.Opened)
+	}
+	if len(res.Skipped) > 0 {
+		fmt.Printf("existing open reminders (skipped): %v\n", res.Skipped)
+	}
+	if len(res.Opened) == 0 && len(res.Skipped) == 0 {
+		fmt.Println("no secrets due for rotation")
+	}
+	return 0
+}
+
+func runRecordRotation(root string, args []string) int {
+	fs := flag.NewFlagSet("record-rotation", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>\n\n"+
+			"Update the `lastRotated` date for the per-secret file in\n"+
+			"docs/development/secret-rotations/ whose front matter\n"+
+			"`title` matches <ENTRY_TITLE>. Exit 0 with no rewrite if\n"+
+			"the date is already at the requested value.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: record-rotation"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 2 {
+		fs.Usage()
+		return 2
+	}
+	entryTitle := fs.Arg(0)
+	date := fs.Arg(1)
+	changed, err := release.RecordRotation(root, entryTitle, date)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith-release: %v\n", err)
+		return 1
+	}
+	if !changed {
+		fmt.Printf("%s lastRotated already at %s; no change\n", entryTitle, date)
+		return 0
+	}
+	fmt.Printf("updated %s lastRotated -> %s\n", entryTitle, date)
+	return 0
 }
 
 func reportError(err error) int {

@@ -4,41 +4,26 @@ summary: Codecov coverage gate and CI status checks.
 ---
 # Coverage Gate
 
-Codecov reports coverage on every PR. Three CI jobs
-upload reports: `test` (flag `go`),
-`vscode-extension` (flag `typescript`), and
-`scripts-coverage-upload` (flag `scripts`). Each
-flag scopes the report to the files it measured.
-
-## Status checks
-
-The `project`, `patch`, and `changes` status checks
-are currently disabled in `codecov.yml` (each set to
-`false`). Coverage numbers still post in the codecov
-PR comment. The codecov UI tracks the trend per flag
-and component.
-
-The gate is off because the main baseline does not
-yet include the `scripts` flag. The strict
-(`threshold: 0%`) project gate would otherwise tank
-on the commit that introduces the new flag even
-though net coverage rose. `informational: true` is
-the documented shim for this case but has a
-long-standing codecov bug on `default` blocks.
-
-Restore the strict gate after a main merge that
-covers the scripts files. Re-add the `default`
-block under each status with `target: auto` and
-`threshold: 0%`. Then the same three checks return:
+Codecov blocks PRs that decrease per-file statement
+coverage. Fork PRs skip the upload and are not gated.
+Three status checks run on same-repo PRs:
 
 - **project** — overall coverage must not drop below
   the base commit.
-- **patch** — changed lines must hit the project
-  baseline.
-- **changes** — no file may lose coverage vs base.
+- **patch** — changed lines must have coverage at
+  least equal to the project baseline.
+- **changes** — no individual file's coverage may
+  decrease vs the base commit.
 
-Fork PRs skip the upload and are not gated. Add
-tests for uncovered code before merging.
+If any check fails, Codecov posts a comment listing
+the affected files with baseline, current, and delta
+percentages. Fix regressions by adding tests for the
+uncovered code paths before merging.
+
+Configuration lives in `codecov.yml` at the repo
+root. Two CI jobs upload reports — `test` under flag
+`go` and `vscode-extension` under flag `typescript`.
+Each flag scopes the report to its language's files.
 
 ## Branch and function coverage
 
