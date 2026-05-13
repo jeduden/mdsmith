@@ -234,6 +234,16 @@ async function loadRotations(): Promise<{ entry: RotationEntry; fileBasename: st
         `${path}: \`periodDays\` is not an integer (${JSON.stringify(fm.periodDays)})`,
       );
     }
+    // A zero or negative period would compute a due date on or
+    // before lastRotated, so every run would treat the secret as
+    // overdue and the reminder workflow would never go quiet.
+    // Reject the value at load time with a clear pointer to the
+    // bad file rather than silently spamming issues.
+    if (periodDays <= 0) {
+      throw new SystemExit(
+        `${path}: \`periodDays\` must be a positive integer (got ${periodDays})`,
+      );
+    }
     entries.push({
       entry: {
         title,
