@@ -206,6 +206,16 @@ func ValidateRotationEntry(fm map[string]any, path string) (RotationEntry, error
 			Msg: fmt.Sprintf("`periodDays` must be a positive integer (got %d)", period)}
 	}
 	title, _ := asString(fm["title"])
+	// `existingOpenIssue` builds a GitHub search expression by
+	// surrounding the issue title with double quotes; a literal
+	// `"` in the title would either truncate the search phrase
+	// or shift it relative to the client-side exact-match check.
+	// Reject the value at load time rather than risk silent
+	// duplicate issues on every monthly reminder run.
+	if strings.Contains(title, `"`) {
+		return RotationEntry{}, &FrontMatterError{Path: path,
+			Msg: "`title` must not contain a double-quote character"}
+	}
 	provider, _ := asString(fm["provider"])
 	issuerURL, _ := asString(fm["issuerUrl"])
 	usedBy, _ := asString(fm["usedBy"])
@@ -257,10 +267,20 @@ type LoadedRotation struct {
 	FileBasename string
 }
 
+// Filesystem entry points are package-level vars so tests can
+// swap them for failing fakes that exercise the IO error
+// branches LoadRotations / FindEntry / RecordRotation guard. The
+// production binary uses the os.* implementations.
+var (
+	fsReadDir   = os.ReadDir
+	fsReadFile  = os.ReadFile
+	fsWriteFile = os.WriteFile
+)
+
 // LoadRotations walks rotationsDir, parses every *.md file, and
 // returns them sorted by title for deterministic iteration order.
 func LoadRotations(rotationsDir string) ([]LoadedRotation, error) {
-	entries, err := os.ReadDir(rotationsDir)
+	entries, err := fsReadDir(rotationsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +290,7 @@ func LoadRotations(rotationsDir string) ([]LoadedRotation, error) {
 			continue
 		}
 		path := filepath.Join(rotationsDir, de.Name())
-		body, err := os.ReadFile(path)
+		body, err := fsReadFile(path)
 		if err != nil {
 			return nil, err
 		}
@@ -443,7 +463,7 @@ type FindEntryResult struct {
 // rewrite of `lastRotated` cannot mutate the wrong file or
 // silently shadow an unrelated entry.
 func FindEntry(rotationsDir, entryTitle string) (FindEntryResult, error) {
-	entries, err := os.ReadDir(rotationsDir)
+	entries, err := fsReadDir(rotationsDir)
 	if err != nil {
 		return FindEntryResult{}, err
 	}
@@ -453,7 +473,7 @@ func FindEntry(rotationsDir, entryTitle string) (FindEntryResult, error) {
 			continue
 		}
 		path := filepath.Join(rotationsDir, de.Name())
-		body, err := os.ReadFile(path)
+		body, err := fsReadFile(path)
 		if err != nil {
 			return FindEntryResult{}, err
 		}
@@ -502,7 +522,7 @@ func RecordRotation(repoRoot, entryTitle, date string) (changed bool, err error)
 	if err != nil {
 		return false, err
 	}
-	body, err := os.ReadFile(found.Path)
+	body, err := fsReadFile(found.Path)
 	if err != nil {
 		return false, err
 	}
@@ -518,7 +538,7 @@ func RecordRotation(repoRoot, entryTitle, date string) (changed bool, err error)
 		return false, nil
 	}
 	newText := parts.Opening + updated + parts.ClosingPlusBody
-	if err := os.WriteFile(found.Path, []byte(newText), 0o644); err != nil {
+	if err := fsWriteFile(found.Path, []byte(newText), 0o644); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -628,7 +648,11 @@ func CheckSecretRotations(repoRoot string, opts CheckRotationsOptions) (CheckSec
 // below catches GitHub search's tokenized/fuzzy behavior — only
 // a byte-for-byte title match is treated as an existing issue.
 func existingOpenIssue(gh GHRunner, title string) (int, error) {
-	search := `in:title "` + strings.ReplaceAll(title, `"`, "") + `"`
+	// `validateRotationEntry` rejects titles containing `"`, so
+	// the literal-quote wrap below is safe to compose without
+	// escaping: the search expression below is the same string
+	// the client-side exact-match check uses.
+	search := `in:title "` + title + `"`
 	out, err := gh([]string{
 		"issue", "list",
 		"--state", "open",

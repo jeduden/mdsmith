@@ -789,3 +789,112 @@ func TestRecordRotationPropagatesWriteError(t *testing.T) {
 	_, err := RecordRotation(root, "V", "2026-05-12")
 	require.Error(t, err)
 }
+
+// withFakeOSFuncs lets a test swap the fs* function variables for
+// a single test and restore them automatically. Each non-nil
+// function in the fakes overrides; nil falls through to the
+// real os.* call so a test that only wants to fail one of the
+// three operations doesn't have to re-implement the others.
+type fakeOSFuncs struct {
+	readDir   func(string) ([]os.DirEntry, error)
+	readFile  func(string) ([]byte, error)
+	writeFile func(string, []byte, os.FileMode) error
+}
+
+func withFakeOSFuncs(t *testing.T, ff fakeOSFuncs) {
+	t.Helper()
+	prevRD, prevRF, prevWF := fsReadDir, fsReadFile, fsWriteFile
+	if ff.readDir != nil {
+		fsReadDir = ff.readDir
+	}
+	if ff.readFile != nil {
+		fsReadFile = ff.readFile
+	}
+	if ff.writeFile != nil {
+		fsWriteFile = ff.writeFile
+	}
+	t.Cleanup(func() {
+		fsReadDir, fsReadFile, fsWriteFile = prevRD, prevRF, prevWF
+	})
+}
+
+func TestLoadRotationsPropagatesReadFileError(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: V\nlastRotated: \"2026-05-12\"\nperiodDays: 30\n" +
+			"provider: P\nissuerUrl: u\nusedBy: r\nscope: s\n---\n",
+	})
+	withFakeOSFuncs(t, fakeOSFuncs{
+		readFile: func(string) ([]byte, error) { return nil, errors.New("read boom") },
+	})
+	_, err := LoadRotations(filepath.Join(root, RotationsDirName))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read boom")
+}
+
+func TestFindEntryPropagatesReadFileError(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: V\nlastRotated: \"2026-05-12\"\nperiodDays: 30\n---\n",
+	})
+	withFakeOSFuncs(t, fakeOSFuncs{
+		readFile: func(string) ([]byte, error) { return nil, errors.New("read boom") },
+	})
+	_, err := FindEntry(filepath.Join(root, RotationsDirName), "V")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read boom")
+}
+
+func TestRecordRotationPropagatesReadFileError(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: V\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
+			"provider: P\nissuerUrl: u\nusedBy: r\nscope: s\n---\n",
+	})
+	// FindEntry has to succeed first (real read), so swap only
+	// fsReadFile to fail after FindEntry has called it. Simplest:
+	// fail every call; FindEntry's read also errors and the test
+	// still hits a return path — but that's the FindEntry branch
+	// rather than RecordRotation's. Use a counter: succeed for
+	// the first N reads (FindEntry's), then fail.
+	var n int
+	withFakeOSFuncs(t, fakeOSFuncs{
+		readFile: func(p string) ([]byte, error) {
+			n++
+			if n == 1 {
+				return os.ReadFile(p) // let FindEntry through
+			}
+			return nil, errors.New("read boom")
+		},
+	})
+	_, err := RecordRotation(root, "V", "2026-05-12")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read boom")
+}
+
+func TestRecordRotationPropagatesWriteFileError(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: V\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
+			"provider: P\nissuerUrl: u\nusedBy: r\nscope: s\n---\n",
+	})
+	withFakeOSFuncs(t, fakeOSFuncs{
+		writeFile: func(string, []byte, os.FileMode) error {
+			return errors.New("write boom")
+		},
+	})
+	_, err := RecordRotation(root, "V", "2026-05-12")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "write boom")
+}
+
+func TestValidateRotationEntryRejectsQuoteInTitle(t *testing.T) {
+	fm := map[string]any{
+		"title":       `bad"title`,
+		"lastRotated": "2026-05-12",
+		"periodDays":  30,
+		"provider":    "P",
+		"issuerUrl":   "u",
+		"usedBy":      "r",
+		"scope":       "s",
+	}
+	_, err := ValidateRotationEntry(fm, "x.md")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "double-quote")
+}
