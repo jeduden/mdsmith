@@ -79,12 +79,14 @@ func ParseFrontMatterFields(fm []byte) (map[string]any, error) {
 	if err := yamlutil.UnmarshalSafe(body, &raw); err != nil {
 		return nil, err
 	}
-	if raw == nil {
+	switch v := raw.(type) {
+	case nil:
 		return nil, nil
-	}
-	parsed, ok := raw.(map[string]any)
-	if !ok {
+	case map[string]any:
+		return v, nil
+	case map[any]any:
+		return nil, fmt.Errorf("front matter mapping keys must be strings")
+	default:
 		return nil, fmt.Errorf("front matter must be a mapping, got %T", raw)
 	}
-	return parsed, nil
 }

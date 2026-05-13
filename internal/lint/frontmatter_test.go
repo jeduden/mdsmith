@@ -141,42 +141,41 @@ func TestParseFrontMatterFields(t *testing.T) {
 		assert.Nil(t, v, "null YAML value decodes to nil")
 	})
 
-	t.Run("no front matter returns nil", func(t *testing.T) {
-		got, err := ParseFrontMatterFields(nil)
-		require.NoError(t, err)
-		assert.Nil(t, got)
+	t.Run("nil-result inputs return nil,nil", func(t *testing.T) {
+		cases := map[string]string{
+			"no front matter":    "",
+			"empty front matter": "---\n---\n# H\n",
+			"explicit null":      "---\nnull\n---\n",
+		}
+		for name, src := range cases {
+			t.Run(name, func(t *testing.T) {
+				prefix, _ := StripFrontMatter([]byte(src))
+				got, err := ParseFrontMatterFields(prefix)
+				require.NoError(t, err)
+				assert.Nil(t, got)
+			})
+		}
 	})
 
-	t.Run("empty front matter returns nil", func(t *testing.T) {
-		prefix, _ := StripFrontMatter([]byte("---\n---\n# H\n"))
-		got, err := ParseFrontMatterFields(prefix)
-		require.NoError(t, err)
-		assert.Nil(t, got)
-	})
-
-	t.Run("yaml aliases rejected", func(t *testing.T) {
-		_, err := ParseFrontMatterFields([]byte("---\nbase: &a x\nkey: *a\n---\n"))
-		assert.Error(t, err)
-	})
-
-	t.Run("scalar payload rejected", func(t *testing.T) {
-		prefix, _ := StripFrontMatter([]byte("---\nfoo\n---\n"))
-		_, err := ParseFrontMatterFields(prefix)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "mapping")
-	})
-
-	t.Run("sequence payload rejected", func(t *testing.T) {
-		prefix, _ := StripFrontMatter([]byte("---\n- a\n- b\n---\n"))
-		_, err := ParseFrontMatterFields(prefix)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "mapping")
-	})
-
-	t.Run("explicit null document returns nil", func(t *testing.T) {
-		prefix, _ := StripFrontMatter([]byte("---\nnull\n---\n"))
-		got, err := ParseFrontMatterFields(prefix)
-		require.NoError(t, err)
-		assert.Nil(t, got)
+	t.Run("rejects invalid payloads", func(t *testing.T) {
+		cases := map[string]struct {
+			src     string
+			wantMsg string
+		}{
+			"yaml aliases":     {"---\nbase: &a x\nkey: *a\n---\n", ""},
+			"scalar payload":   {"---\nfoo\n---\n", "mapping"},
+			"sequence payload": {"---\n- a\n- b\n---\n", "mapping"},
+			"non-string keys":  {"---\n1: foo\n---\n", "keys must be strings"},
+		}
+		for name, tc := range cases {
+			t.Run(name, func(t *testing.T) {
+				prefix, _ := StripFrontMatter([]byte(tc.src))
+				_, err := ParseFrontMatterFields(prefix)
+				require.Error(t, err)
+				if tc.wantMsg != "" {
+					assert.Contains(t, err.Error(), tc.wantMsg)
+				}
+			})
+		}
 	})
 }
