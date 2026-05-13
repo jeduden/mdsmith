@@ -439,6 +439,33 @@ func TestEffectiveRules_PathPatternAbsentLeavesRuleAlone(t *testing.T) {
 	}
 }
 
+// TestValidateKinds_RejectsInvalidPathPattern verifies that
+// ValidateKinds rejects a kind whose top-level `path-pattern:`
+// is not a valid doublestar glob. Without this, commands that
+// load config but do not run the required-structure rule
+// (e.g. `mdsmith kinds show`) would silently accept and display
+// a malformed pattern.
+func TestValidateKinds_RejectsInvalidPathPattern(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {PathPattern: "[unclosed"},
+		},
+	}
+	err := ValidateKinds(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "path-pattern")
+	assert.Contains(t, err.Error(), "plan")
+}
+
+func TestValidateKinds_AcceptsValidPathPattern(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"plan": {PathPattern: "plan/[0-9][0-9]*_*.md"},
+		},
+	}
+	assert.NoError(t, ValidateKinds(cfg))
+}
+
 // TestKindLayerRules_MergesPathPatternWithExistingRules verifies
 // that the provenance helper preserves a kind's existing body.Rules
 // settings while injecting the synthetic `path-patterns` entry on
