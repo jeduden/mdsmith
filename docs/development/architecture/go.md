@@ -8,9 +8,9 @@ summary: >-
 # Go architecture patterns
 
 Go-specific guidance for mdsmith's Go code.
-The [architecture hub](index.md) covers the
-cross-cutting principles; this page covers
-how to apply each in Go.
+For cross-cutting principles see the
+[architecture hub](index.md).
+This page covers how to apply each in Go.
 
 ## Single responsibility per package
 
