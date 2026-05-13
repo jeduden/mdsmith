@@ -1204,7 +1204,12 @@ func TestScheduleLintTimerSkipsAfterShutdown(t *testing.T) {
 func runLintIfCurrentFixture(t *testing.T) (*Server, *safeBuffer) {
 	t.Helper()
 	buf := &safeBuffer{}
-	s := New(Options{Reader: nil, Writer: buf, Rules: rule.All(), Debounce: time.Hour})
+	// `bytes.NewReader(nil)` is an inert reader. The Run loop never
+	// starts in these tests, so the transport never reads, but other
+	// LSP unit tests in this file plumb a real reader and we follow
+	// the same convention so a future runLint that touches the
+	// transport cannot panic with a nil-reader dereference.
+	s := New(Options{Reader: bytes.NewReader(nil), Writer: buf, Rules: rule.All(), Debounce: time.Hour})
 	s.settingsMu.Lock()
 	s.settings.Run = runOnType
 	s.settingsMu.Unlock()

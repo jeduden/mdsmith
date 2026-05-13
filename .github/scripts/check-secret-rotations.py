@@ -215,8 +215,20 @@ def main() -> int:
                     f"rotation entry missing `{key}`: {entry!r}"
                 )
         name = entry["name"]
-        last_rotated = dt.date.fromisoformat(str(entry["last-rotated"]))
-        period_days = int(entry["period-days"])
+        try:
+            last_rotated = dt.date.fromisoformat(str(entry["last-rotated"]))
+        except ValueError as exc:
+            raise SystemExit(
+                f"rotation entry {name!r}: `last-rotated` is not a "
+                f"valid ISO-8601 date ({entry['last-rotated']!r}): {exc}"
+            ) from None
+        try:
+            period_days = int(entry["period-days"])
+        except (TypeError, ValueError) as exc:
+            raise SystemExit(
+                f"rotation entry {name!r}: `period-days` is not an "
+                f"integer ({entry['period-days']!r}): {exc}"
+            ) from None
         status, days = _due_state(today, last_rotated, period_days)
         if status == "ok":
             continue
