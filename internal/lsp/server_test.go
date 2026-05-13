@@ -1093,18 +1093,18 @@ func TestScheduleLintTimerRaceLeavesNewTimer(t *testing.T) {
 	// overwrites). The real concern is the pointer-equality guard;
 	// here we verify the new timer remains in the map after the
 	// replacement.
-	getTimer := func() *time.Timer {
+	getEntry := func() *pendingLint {
 		s.pendingMu.Lock()
 		defer s.pendingMu.Unlock()
 		return s.pending["file:///x.md"]
 	}
 	s.scheduleLint("file:///x.md", lintTriggerChange)
-	first := getTimer()
+	first := getEntry()
 	require.NotNil(t, first)
 	s.scheduleLint("file:///x.md", lintTriggerChange)
-	second := getTimer()
+	second := getEntry()
 	require.NotNil(t, second)
-	assert.NotSame(t, first, second, "replacement must produce a fresh timer")
+	assert.NotSame(t, first, second, "replacement must produce a fresh pending entry")
 	// stopPendingLints clears for cleanup.
 	s.stopPendingLints()
 }
@@ -1146,7 +1146,7 @@ func TestScheduleLintImmediateCancelsPendingDebounce(t *testing.T) {
 	s.scheduleLint("file:///x.md", lintTriggerChange)
 	s.pendingMu.Lock()
 	require.Len(t, s.pending, 1)
-	originalTimer := s.pending["file:///x.md"]
+	originalEntry := s.pending["file:///x.md"]
 	s.pendingMu.Unlock()
 	// An immediate trigger (e.g. didOpen) replaces the pending
 	// debounce timer with a zero-delay immediate timer instead of
@@ -1154,9 +1154,9 @@ func TestScheduleLintImmediateCancelsPendingDebounce(t *testing.T) {
 	// The original timer is Stop()'d.
 	s.scheduleLint("file:///x.md", lintTriggerOpen)
 	s.pendingMu.Lock()
-	require.Len(t, s.pending, 1, "immediate trigger should replace the pending debounce timer")
-	require.NotSame(t, originalTimer, s.pending["file:///x.md"],
-		"immediate trigger should install a new (zero-delay) timer, not reuse the debounce one")
+	require.Len(t, s.pending, 1, "immediate trigger should replace the pending debounce entry")
+	require.NotSame(t, originalEntry, s.pending["file:///x.md"],
+		"immediate trigger should install a new (zero-delay) entry, not reuse the debounce one")
 	s.pendingMu.Unlock()
 	// Wait briefly for the immediate timer to fire and clear
 	// itself, then assert the pending map is empty.
@@ -1219,24 +1219,33 @@ func runLintIfCurrentFixture(t *testing.T) (*Server, *safeBuffer) {
 	return s, buf
 }
 
+// newPendingEntry mints a fresh *pendingLint backed by a non-firing
+// timer. The 1-hour delay ensures the timer never fires on its own
+// during the test; t.Cleanup stops it at test end.
+func newPendingEntry(t *testing.T) *pendingLint {
+	t.Helper()
+	p := &pendingLint{timer: time.NewTimer(time.Hour)}
+	t.Cleanup(func() { p.timer.Stop() })
+	return p
+}
+
 // TestRunLintIfCurrentRunsWhenLive covers the happy path: the
-// timer passed in is still registered in pending, so the call
-// clears pending[uri] and forwards to runLint, which publishes
-// diagnostics for the document.
+// pendingLint passed in is still registered in pending, so the
+// call clears pending[uri] and forwards to runLint, which
+// publishes diagnostics for the document.
 func TestRunLintIfCurrentRunsWhenLive(t *testing.T) {
 	// Not t.Parallel(): runLint reaches into the toc / include rule
 	// engines, which have lazy init that races under concurrent
-	// callers. Running these four runLintIfCurrent tests
+	// callers. Running these three runLintIfCurrent tests
 	// sequentially keeps `-race` clean without re-engineering the
 	// rule lazy init.
 	s, buf := runLintIfCurrentFixture(t)
-	timer := time.NewTimer(time.Hour)
-	t.Cleanup(func() { timer.Stop() })
+	p := newPendingEntry(t)
 	s.pendingMu.Lock()
-	s.pending["file:///x.md"] = timer
+	s.pending["file:///x.md"] = p
 	s.pendingMu.Unlock()
 
-	s.runLintIfCurrent("file:///x.md", &timer)
+	s.runLintIfCurrent("file:///x.md", p)
 
 	s.pendingMu.Lock()
 	_, stillPending := s.pending["file:///x.md"]
@@ -1248,110 +1257,52 @@ func TestRunLintIfCurrentRunsWhenLive(t *testing.T) {
 
 // TestRunLintIfCurrentSkipsWhenReplaced covers the race-replaced
 // path: a newer scheduleLint has already swapped pending[uri] to a
-// different timer, so the stale callback must return without
+// different entry, so the stale callback must return without
 // touching pending and without publishing.
 func TestRunLintIfCurrentSkipsWhenReplaced(t *testing.T) {
 	// See TestRunLintIfCurrentRunsWhenLive for the rationale on
 	// dropping t.Parallel().
 	s, buf := runLintIfCurrentFixture(t)
-	stale := time.NewTimer(time.Hour)
-	t.Cleanup(func() { stale.Stop() })
-	current := time.NewTimer(time.Hour)
-	t.Cleanup(func() { current.Stop() })
+	stale := newPendingEntry(t)
+	current := newPendingEntry(t)
 	s.pendingMu.Lock()
 	s.pending["file:///x.md"] = current
 	s.pendingMu.Unlock()
 
-	s.runLintIfCurrent("file:///x.md", &stale)
+	s.runLintIfCurrent("file:///x.md", stale)
 
 	s.pendingMu.Lock()
 	got := s.pending["file:///x.md"]
 	s.pendingMu.Unlock()
 	assert.Same(t, current, got,
-		"stale-timer callback must not touch the new pending entry")
+		"stale callback must not touch the new pending entry")
 	assert.NotContains(t, buf.String(), "publishDiagnostics",
-		"stale-timer callback must not reach runLint")
+		"stale callback must not reach runLint")
 }
 
 // TestRunLintIfCurrentShortCircuitsOnShutdown covers the top-of-
 // callback shutdown re-check: a callback whose AfterFunc fires
 // after Run's deferred cleanup must return before touching pending
-// or runLint, even when pending[uri] still points at this timer.
+// or runLint, even when pending[uri] still points at this entry.
 func TestRunLintIfCurrentShortCircuitsOnShutdown(t *testing.T) {
 	// See TestRunLintIfCurrentRunsWhenLive for the rationale on
 	// dropping t.Parallel().
 	s, buf := runLintIfCurrentFixture(t)
-	timer := time.NewTimer(time.Hour)
-	t.Cleanup(func() { timer.Stop() })
+	p := newPendingEntry(t)
 	s.pendingMu.Lock()
-	s.pending["file:///x.md"] = timer
+	s.pending["file:///x.md"] = p
 	s.pendingMu.Unlock()
 
 	s.shutdown.Store(true)
-	s.runLintIfCurrent("file:///x.md", &timer)
+	s.runLintIfCurrent("file:///x.md", p)
 
 	s.pendingMu.Lock()
 	got := s.pending["file:///x.md"]
 	s.pendingMu.Unlock()
-	assert.Same(t, timer, got,
+	assert.Same(t, p, got,
 		"shutdown re-check must return before mutating pending")
 	assert.NotContains(t, buf.String(), "publishDiagnostics",
 		"shutdown re-check must return before runLint")
-}
-
-// TestRunLintIfCurrentDereferencesAfterLock pins the documented
-// race-avoidance invariant: runLintIfCurrent dereferences
-// `*timerPtr` only after it acquires pendingMu, so a delay==0
-// AfterFunc goroutine that fires before scheduleLint's
-// `timer = AfterFunc(...)` assignment still observes the
-// assigned value once scheduleLint releases the mutex.
-//
-// We simulate scheduleLint's "lock-then-arm-then-assign" sequence:
-//  1. Hold pendingMu.
-//  2. Spawn the would-be callback as a goroutine pointing at a
-//     nil `timer` variable. The goroutine blocks on pendingMu.
-//  3. Still under the lock, assign `timer` and register it in
-//     pending — mirroring the real scheduleLint flow.
-//  4. Release the lock. The goroutine unblocks and must see the
-//     post-assignment timer (`live=true`) rather than nil.
-func TestRunLintIfCurrentDereferencesAfterLock(t *testing.T) {
-	// See TestRunLintIfCurrentRunsWhenLive for the rationale on
-	// dropping t.Parallel().
-	s, buf := runLintIfCurrentFixture(t)
-
-	var timer *time.Timer // initially nil — matches scheduleLint pre-assignment
-
-	s.pendingMu.Lock()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		s.runLintIfCurrent("file:///x.md", &timer)
-	}()
-
-	// The callback is blocked on pendingMu.Lock() inside
-	// runLintIfCurrent. Hand it the timer the way scheduleLint
-	// does — assign while holding the mutex.
-	realTimer := time.NewTimer(time.Hour)
-	t.Cleanup(func() { realTimer.Stop() })
-	timer = realTimer
-	s.pending["file:///x.md"] = timer
-
-	s.pendingMu.Unlock()
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("runLintIfCurrent did not complete after lock release")
-	}
-
-	s.pendingMu.Lock()
-	_, stillPending := s.pending["file:///x.md"]
-	s.pendingMu.Unlock()
-	assert.False(t, stillPending,
-		"live=true must delete pending[uri] after dereferencing under lock")
-	assert.Contains(t, buf.String(), "publishDiagnostics",
-		"runLintIfCurrent must lint when timerPtr resolves to the live timer")
 }
 
 func TestRunReturnsAfterShutdownPlusExit(t *testing.T) {

@@ -82,6 +82,13 @@ jobs:
   # is checked here too as defense in depth.
   npm-lifecycle-guard:
     runs-on: ubuntu-latest
+    # Inherits workflow-level `permissions: contents: read`, but
+    # an explicit per-job block documents the minimum scope so a
+    # future workflow-level change cannot silently widen this
+    # job's privileges. The job only reads checked-out manifests
+    # and never calls the GitHub API.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
