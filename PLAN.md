@@ -62,6 +62,7 @@ footer: |
 | 149 | 🔲     | opus   | [Section content schema for non-heading AST nodes](plan/149_section-content-schema.md)                                    |
 | 151 | 🔲     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                               |
 | 152 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/152_claude-code-skills-agents-hooks.md)                      |
+| 153 | 🔲     | sonnet | [Catalog directive — accept `..` globs within project root](plan/153_catalog-dotdot-globs.md)                             |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                              |
 | 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                          |
