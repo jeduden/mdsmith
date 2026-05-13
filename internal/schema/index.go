@@ -23,31 +23,46 @@ import (
 // generic "missing/out of date" diagnostic — without it the user
 // would be trapped in a fix loop with no signal about why the file
 // is not being written. A successful WriteIndex clears the entry.
+//
+// Keys are normalised via filepath.Abs + filepath.Clean so a Check
+// call with a relative `f.Path` and a Fix call with the absolute
+// form agree on the same map entry. The fallback (when Abs fails,
+// e.g. process cwd is unreadable) is the cleaned input; pairing
+// that with the same fallback on the reader side keeps the
+// behaviour symmetric.
 var (
 	indexWriteMu  sync.Mutex
 	indexWriteErr = make(map[string]error)
 )
 
+func indexCacheKey(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(abs)
+}
+
 // recordIndexWriteError stores err keyed by the source file path,
-// or clears the entry when err is nil. Exported wrappers should
-// resolve the path to its absolute form when possible so Check and
-// Fix call sites agree on the key.
-func recordIndexWriteError(path string, err error) {
+// or clears the entry when err is nil.
+func recordIndexWriteError(p string, err error) {
+	key := indexCacheKey(p)
 	indexWriteMu.Lock()
 	defer indexWriteMu.Unlock()
 	if err == nil {
-		delete(indexWriteErr, path)
+		delete(indexWriteErr, key)
 		return
 	}
-	indexWriteErr[path] = err
+	indexWriteErr[key] = err
 }
 
 // lastIndexWriteError returns the last write error recorded for
 // path, or nil if none.
-func lastIndexWriteError(path string) error {
+func lastIndexWriteError(p string) error {
+	key := indexCacheKey(p)
 	indexWriteMu.Lock()
 	defer indexWriteMu.Unlock()
-	return indexWriteErr[path]
+	return indexWriteErr[key]
 }
 
 // IndexHeading is one entry in the flat heading list emitted by the
@@ -95,11 +110,17 @@ func BuildIndex(f *lint.File, sch *Schema) ([]byte, error) {
 // WriteIndex writes the JSON index produced by BuildIndex next to
 // the source file. Output paths are resolved relative to the source
 // file's directory; absolute paths (including Windows drive-letter
-// and leading-backslash forms) and parent-traversal segments are
-// rejected so a schema cannot trick fix into writing outside the
-// project. Parent directories are created on demand so a nested
-// `output:` path (e.g. `.mdsmith/index/runbook.json`) works on a
-// clean checkout.
+// and leading-backslash forms), parent-traversal segments, and
+// symlinks that escape the allowed root are rejected so a schema
+// cannot trick fix into writing outside the project. Parent
+// directories are created on demand so a nested `output:` path
+// (e.g. `.mdsmith/index/runbook.json`) works on a clean checkout.
+//
+// The allowed root is f.RootDir when set (the project root), and
+// the source file's directory otherwise. After mkdir we
+// EvalSymlinks the parent directory and verify it still resolves
+// inside that root, so a `sub` directory that turns out to be a
+// symlink to `/etc` is caught before any bytes are written.
 //
 // On error WriteIndex records the failure in the package-level
 // indexWriteErr cache keyed by f.Path so the next Check surfaces
@@ -123,11 +144,54 @@ func WriteIndex(f *lint.File, sch *Schema) error {
 		recordIndexWriteError(f.Path, err)
 		return err
 	}
+	if err := verifyIndexWithinRoot(f, target); err != nil {
+		recordIndexWriteError(f.Path, err)
+		return err
+	}
 	if err := os.WriteFile(target, data, 0o644); err != nil {
 		recordIndexWriteError(f.Path, err)
 		return err
 	}
 	recordIndexWriteError(f.Path, nil)
+	return nil
+}
+
+// verifyIndexWithinRoot resolves the symlinks on target's parent
+// directory and reports an error if the resolved path escapes the
+// allowed root (f.RootDir when set, otherwise the source file's
+// directory). The target file itself need not exist; only its
+// parent must, and MkdirAll has just been called so it does. Hosts
+// that cannot EvalSymlinks the parent (e.g. permission failures)
+// fall back to a Clean-based comparison — this is best-effort
+// rather than airtight, but still beats no check.
+func verifyIndexWithinRoot(f *lint.File, target string) error {
+	root := f.RootDir
+	if root == "" {
+		root = filepath.Dir(f.Path)
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil // cannot enforce, do not block
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		resolvedRoot = filepath.Clean(absRoot)
+	}
+	absParent, err := filepath.Abs(filepath.Dir(target))
+	if err != nil {
+		return nil
+	}
+	resolvedParent, err := filepath.EvalSymlinks(absParent)
+	if err != nil {
+		resolvedParent = filepath.Clean(absParent)
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolvedParent)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf(
+			"schema.index.output resolves to %q which is outside the "+
+				"allowed root %q (symlink escape rejected)",
+			resolvedParent, resolvedRoot)
+	}
 	return nil
 }
 
@@ -155,13 +219,15 @@ func resolveIndexWrite(f *lint.File, sch *Schema) (string, []byte, error) {
 
 // validateOutputPath rejects any output: value that would not be a
 // project-relative POSIX-style path. Checks: host-absolute (POSIX),
-// Windows-absolute (leading "\\", drive letter), any ".." segment,
-// and paths that clean to "." (empty, ".", "./", trailing slash,
-// etc.) since those resolve to the source directory and would
-// cause WriteIndex to fail with "is a directory". The drive-letter
-// check is host-independent so the rejection is consistent across
-// OSes — filepath.IsAbs on a Linux host considers `C:\foo`
-// relative, which would slip past a naive IsAbs guard.
+// Windows-absolute (leading "\\", drive letter), embedded
+// backslashes (which would otherwise become literal '\' characters
+// in the filename on non-Windows hosts), any ".." segment, and
+// paths that clean to "." (empty, ".", "./", trailing slash, etc.)
+// since those resolve to the source directory and would cause
+// WriteIndex to fail with "is a directory". The drive-letter check
+// is host-independent so the rejection is consistent across OSes —
+// filepath.IsAbs on a Linux host considers `C:\foo` relative,
+// which would slip past a naive IsAbs guard.
 func validateOutputPath(out string) error {
 	if strings.TrimSpace(out) == "" {
 		return fmt.Errorf("schema.index.output must not be empty")
@@ -170,6 +236,13 @@ func validateOutputPath(out string) error {
 		strings.HasPrefix(out, `\`) ||
 		hasDriveLetterPrefix(out) {
 		return fmt.Errorf("schema.index.output %q must be relative", out)
+	}
+	if strings.ContainsRune(out, '\\') {
+		return fmt.Errorf(
+			"schema.index.output %q must use POSIX-style \"/\" "+
+				"separators; backslashes are rejected so the same "+
+				"path resolves identically across operating systems",
+			out)
 	}
 	slash := filepath.ToSlash(out)
 	for _, elem := range strings.Split(slash, "/") {
@@ -222,6 +295,10 @@ func ValidateIndex(f *lint.File, sch *Schema, mkDiag MakeDiag) []lint.Diagnostic
 			fmt.Sprintf("index: %v", err))}
 	}
 	if want == nil {
+		// A schema that previously declared an index: but no longer
+		// does should not leave stale write-error entries lying
+		// around in a long-running process (notably the LSP server).
+		recordIndexWriteError(f.Path, nil)
 		return nil
 	}
 	if writeErr := lastIndexWriteError(f.Path); writeErr != nil {

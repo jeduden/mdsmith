@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -18,8 +19,14 @@ func init() {
 }
 
 // Rule checks and fixes <?toc?>...<?/toc?> generated sections.
+//
+// engineOnce serialises lazy engine init; the rule is a registered
+// singleton and the LSP server may call Check from concurrent
+// goroutines, where a plain check-then-set on the engine field
+// would race.
 type Rule struct {
-	engine *gensection.Engine
+	engineOnce sync.Once
+	engine     *gensection.Engine
 }
 
 // ID implements rule.Rule.
@@ -38,9 +45,9 @@ func (r *Rule) RuleID() string { return "MDS038" }
 func (r *Rule) RuleName() string { return "toc" }
 
 func (r *Rule) getEngine() *gensection.Engine {
-	if r.engine == nil {
+	r.engineOnce.Do(func() {
 		r.engine = gensection.NewEngine(r)
-	}
+	})
 	return r.engine
 }
 

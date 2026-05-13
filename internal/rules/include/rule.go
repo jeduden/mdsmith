@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -22,7 +23,16 @@ func init() {
 const maxIncludeDepth = 10
 
 // Rule checks that include sections contain the correct file content.
+//
+// visited / chain are per-Check state, but the rule is a registered
+// singleton so concurrent callers (notably the LSP server, which
+// schedules lint runs on a timer and may invoke Check from multiple
+// goroutines) would otherwise race on these fields. mu serialises
+// Check/Fix on a single Rule instance; the lock is held only for
+// the duration of one call so concurrent lints on different rules
+// remain unaffected.
 type Rule struct {
+	mu      sync.Mutex
 	engine  *gensection.Engine
 	visited map[string]bool // files in current include chain
 	chain   []string        // ordered chain for cycle diagnostics
@@ -55,6 +65,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f.FS == nil {
 		return nil
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	p := filepath.ToSlash(f.Path)
 	r.visited = map[string]bool{p: true}
 	r.chain = []string{p}
@@ -67,6 +79,8 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	if f.FS == nil {
 		return f.Source
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	p := filepath.ToSlash(f.Path)
 	r.visited = map[string]bool{p: true}
 	r.chain = []string{p}

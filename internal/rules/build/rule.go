@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -28,9 +29,14 @@ type recipeSchema struct {
 const defaultBodyTemplate = "[{output}]({output})"
 
 // Rule implements MDS039 (build).
+//
+// engineOnce serialises lazy engine init; the rule is a registered
+// singleton and concurrent LSP-side callers would otherwise race on
+// the engine field.
 type Rule struct {
-	engine  *gensection.Engine
-	recipes map[string]recipeSchema // user-declared recipes from config
+	engineOnce sync.Once
+	engine     *gensection.Engine
+	recipes    map[string]recipeSchema // user-declared recipes from config
 }
 
 // ID implements rule.Rule.
@@ -71,9 +77,9 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 }
 
 func (r *Rule) getEngine() *gensection.Engine {
-	if r.engine == nil {
+	r.engineOnce.Do(func() {
 		r.engine = gensection.NewEngine(r)
-	}
+	})
 	return r.engine
 }
 

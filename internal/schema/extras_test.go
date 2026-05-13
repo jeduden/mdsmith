@@ -997,6 +997,85 @@ func TestFrontmatterExpr_JSONForScalarsAndCollections(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported")
 }
 
+func TestValidateOutputPath_RejectsBackslashes(t *testing.T) {
+	err := validateOutputPath(`sub\out.json`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "POSIX-style")
+}
+
+func TestIndexCacheKey_NormalizesRelativeAndAbsolute(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "doc.md")
+	// Relative and absolute forms should map to the same cache key.
+	cwd, _ := os.Getwd()
+	defer func() { _ = os.Chdir(cwd) }()
+	require.NoError(t, os.Chdir(dir))
+	keyRel := indexCacheKey("doc.md")
+	keyAbs := indexCacheKey(abs)
+	assert.Equal(t, keyAbs, keyRel)
+}
+
+func TestValidateIndex_ClearsStaleCacheWhenIndexRemoved(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "doc.md")
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	// Seed a stale entry that would otherwise leak.
+	recordIndexWriteError(f.Path, fmt.Errorf("stale"))
+	require.NotNil(t, lastIndexWriteError(f.Path))
+	// A schema without `index:` triggers want==nil; the validator
+	// should clear the entry.
+	diags := ValidateIndex(f, &Schema{Source: "test", RootLevel: 2}, makeDiagForTest)
+	assert.Empty(t, diags)
+	assert.Nil(t, lastIndexWriteError(f.Path))
+}
+
+func TestWriteIndex_RejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	// Create a symlink inside the project that points to a directory
+	// outside it. A relative output path that resolves through this
+	// symlink should be rejected.
+	link := filepath.Join(root, "escape")
+	require.NoError(t, os.Symlink(outside, link))
+
+	path := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte("# T\n"), 0o644))
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "escape/out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	err = WriteIndex(f, sch)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "symlink escape")
+}
+
+func TestWriteIndex_AllowsNonEscapingSymlinks(t *testing.T) {
+	root := t.TempDir()
+	// A symlink to a sibling within the same root should NOT be
+	// rejected; verifyIndexWithinRoot only blocks escapes.
+	sibling := filepath.Join(root, "real-sub")
+	require.NoError(t, os.Mkdir(sibling, 0o755))
+	link := filepath.Join(root, "sub")
+	require.NoError(t, os.Symlink(sibling, link))
+
+	path := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(path, []byte("# T\n"), 0o644))
+	f, err := lint.NewFile(path, []byte("# T\n"))
+	require.NoError(t, err)
+	f.RootDir = root
+	sch := &Schema{Source: "test", RootLevel: 2, Index: &IndexSpec{
+		Output:  "sub/out.json",
+		Include: []string{IndexIncludeHeadingsFlat},
+	}}
+	require.NoError(t, WriteIndex(f, sch))
+	_, err = os.Stat(filepath.Join(sibling, "out.json"))
+	assert.NoError(t, err)
+}
+
 func TestValidateOutputPath_RejectsDotAndEmptyCleaned(t *testing.T) {
 	cases := []struct {
 		in   string

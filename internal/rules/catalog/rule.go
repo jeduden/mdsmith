@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
@@ -23,8 +24,15 @@ func init() {
 }
 
 // Rule checks that generated sections match their directive output.
+//
+// engineOnce serialises the lazy initialisation of engine: the rule
+// is a registered singleton and the LSP server may call Check from
+// multiple goroutines, so a plain check-then-set on the engine
+// field races. sync.Once gives both writers and readers a single
+// happens-before edge.
 type Rule struct {
-	engine *gensection.Engine
+	engineOnce sync.Once
+	engine     *gensection.Engine
 }
 
 // ID implements rule.Rule.
@@ -44,9 +52,9 @@ func (r *Rule) RuleName() string { return "catalog" }
 
 // getEngine lazily initializes and returns the gensection engine.
 func (r *Rule) getEngine() *gensection.Engine {
-	if r.engine == nil {
+	r.engineOnce.Do(func() {
 		r.engine = gensection.NewEngine(r)
-	}
+	})
 	return r.engine
 }
 
