@@ -493,6 +493,36 @@ func TestKindLayerRules_MergesPathPatternWithExistingRules(t *testing.T) {
 	assert.Equal(t, "plan", list[0].(map[string]any)["kind"])
 }
 
+// TestKindLayerRules_MirrorsInlineSchemaAndPathPattern verifies
+// that a kind declaring both `schema:` (an inline schema map) and
+// `path-pattern:` lands BOTH synthetic settings in the provenance
+// layer chain — without this, `kinds resolve` / `--explain` would
+// drop the inline-schema leaf even though effectiveRules applies
+// it.
+func TestKindLayerRules_MirrorsInlineSchemaAndPathPattern(t *testing.T) {
+	body := KindBody{
+		PathPattern: "plan/*.md",
+		Schema: map[string]any{
+			"sections": []any{
+				map[string]any{"heading": "Goal"},
+			},
+		},
+	}
+	out := kindLayerRules("plan", body)
+	rs := out["required-structure"]
+	assert.True(t, rs.Enabled)
+
+	schema, ok := rs.Settings["inline-schema"].(map[string]any)
+	require.True(t, ok, "inline-schema must be injected as a map")
+	assert.Contains(t, schema, "sections")
+
+	list, ok := rs.Settings["path-patterns"].([]any)
+	require.True(t, ok)
+	require.Len(t, list, 1)
+	assert.Equal(t, "plan/*.md",
+		list[0].(map[string]any)["pattern"])
+}
+
 // --- helpers ---
 
 func loadFromString(t *testing.T, yml string) *Config {

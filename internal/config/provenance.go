@@ -188,15 +188,16 @@ func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo
 // kindLayerRules returns the per-kind rules map seen by the
 // provenance layer chain, mirroring the synthetic injections
 // effectiveRules performs in merge.go. A kind body can configure
-// required-structure outside body.Rules — via the top-level
-// `path-pattern:` field on KindBody — and the engine's merge layer
-// translates that into a `path-patterns` setting on the rule. Without
-// mirroring the same injection here, `mdsmith kinds resolve` and
-// `--explain` output omit the winning source for the synthetic
-// setting and diverge from the rule config the engine actually
-// applied.
+// required-structure outside body.Rules via two top-level fields
+// on KindBody — `schema:` (an inline schema map) and
+// `path-pattern:` — and the engine's merge layer translates each
+// into a setting on the rule (`inline-schema` and `path-patterns`
+// respectively). Without mirroring those injections here,
+// `mdsmith kinds resolve` and `--explain` output drop the
+// winning source for either synthetic setting and diverge from
+// the rule config the engine actually applied.
 func kindLayerRules(kindName string, body KindBody) map[string]RuleCfg {
-	if body.PathPattern == "" {
+	if len(body.Schema) == 0 && body.PathPattern == "" {
 		return body.Rules
 	}
 	out := make(map[string]RuleCfg, len(body.Rules)+1)
@@ -210,9 +211,14 @@ func kindLayerRules(kindName string, body KindBody) map[string]RuleCfg {
 	} else {
 		rs.Settings = cloneSettings(rs.Settings)
 	}
-	entry := map[string]any{"kind": kindName, "pattern": body.PathPattern}
-	existing, _ := rs.Settings["path-patterns"].([]any)
-	rs.Settings["path-patterns"] = append(existing, entry)
+	if len(body.Schema) > 0 {
+		rs.Settings["inline-schema"] = cloneSettings(body.Schema)
+	}
+	if body.PathPattern != "" {
+		entry := map[string]any{"kind": kindName, "pattern": body.PathPattern}
+		existing, _ := rs.Settings["path-patterns"].([]any)
+		rs.Settings["path-patterns"] = append(existing, entry)
+	}
 	out["required-structure"] = rs
 	return out
 }
