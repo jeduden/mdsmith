@@ -61,9 +61,9 @@ On `mdsmith fix`, `<?toc?>` rebuilds a heading
 table-of-contents, `<?catalog?>` generates an
 index — list, table, or any row template — from the front
 matter of files matching a glob, and `<?include?>` splices
-in another file. `merge-driver install` registers a Git
-driver that auto-resolves merge conflicts inside those
-blocks.
+in another file. `mdsmith merge-driver install` registers
+a Git driver that auto-resolves merge conflicts inside
+those blocks.
 
 **📊 Gate releases on doc status.**
 `mdsmith list query 'status: "✅"' plan/` selects files by
