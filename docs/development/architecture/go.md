@@ -33,8 +33,13 @@ Examples from this repo:
   Markdown.
 - `internal/rule` — interfaces for rules
   and fixes.
-- `internal/rules/<id>-<name>/` — one rule
-  per package.
+- `internal/rules/<rule-name>/` — one Go
+  rule per package (e.g.
+  `internal/rules/linelength/`); docs and
+  fixtures sit alongside at
+  `internal/rules/MDS###-<rule-name>/`
+  (e.g.
+  `internal/rules/MDS001-line-length/`).
 
 A package named `util` or `helpers` is
 almost always a single-responsibility
@@ -53,19 +58,28 @@ added. The contract that enforces this:
 
 - `internal/rule` defines the interfaces
   (`rule.Rule`, `rule.Fixer`, …).
-- Each rule lives in
-  `internal/rules/<id>-<name>/`.
-- Rules register themselves via the central
-  registry — no `switch` in `engine` keyed
-  on rule ID.
+- Each rule has a Go package at
+  `internal/rules/<rule-name>/` and a
+  sibling docs+fixtures directory at
+  `internal/rules/MDS###-<rule-name>/`.
+- Rules register themselves via `init()`;
+  the blank-import barrel
+  `internal/rules/all/all.go` wires every
+  production rule into the registry. No
+  `switch` in `engine` is keyed on rule ID.
 
 When adding a new rule:
 
-1. Create `internal/rules/<id>-<name>/`.
+1. Create the Go package
+   `internal/rules/<rule-name>/` with
+   `rule.go` and `rule_test.go`.
 2. Implement `rule.Rule` (and `rule.Fixer`
    if the rule is fixable).
-3. Add `good/` and `bad/` fixtures.
-4. Add `rule_test.go` for unit tests.
+3. Add a blank-import line for the new
+   package in `internal/rules/all/all.go`.
+4. Create the docs+fixtures directory
+   `internal/rules/MDS###-<rule-name>/`
+   with `README.md`, `good/`, and `bad/`.
 5. The integration runner in
    `internal/integration/rules_test.go`
    discovers fixtures automatically.
@@ -147,7 +161,8 @@ dependency through an interface.
 
 When in doubt, draw the import graph: every
 arrow should point downward in the layering
-map (see the [architecture hub](index.md)).
+map. See the
+[architecture hub](index.md).
 
 ## Clean architecture in `cmd/mdsmith`
 
@@ -188,7 +203,8 @@ a domain package should not leak into
   (`xxx_test.go`).
 - Integration tests in
   `internal/integration/`.
-- Rule fixtures in `internal/rules/<id>/`:
+- Rule fixtures in
+  `internal/rules/MDS###-<rule-name>/`:
   `good/` (must lint clean) and `bad/`
   (excluded via `.mdsmith.yml`).
 - Use `testify/require` for preconditions

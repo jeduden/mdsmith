@@ -39,10 +39,17 @@ constraints in this codebase:
   not collapse them because a function feels
   shared.
 - **Open/closed**: new rules and fixes are
-  added by registering a new package under
-  `internal/rules/<id>-<name>/`, not by
-  editing the engine. New conventions extend
-  via deep-merge config layers, not new
+  added by creating a Go package under
+  `internal/rules/<rule-name>/` (e.g.
+  `internal/rules/linelength/`) and a
+  matching docs+fixtures directory at
+  `internal/rules/MDS###-<rule-name>/`
+  (e.g. `internal/rules/MDS001-line-length/`).
+  The blank-import barrel
+  `internal/rules/all/all.go` is the
+  central registry — no edits to the engine
+  are needed. New conventions extend via
+  deep-merge config layers, not new
   switches in `internal/engine`.
 - **Liskov substitution**: every `rule.Rule`
   implementation must work in every engine
@@ -84,10 +91,15 @@ cmd/mdsmith                (entry, wiring)
                    cross-deps among siblings)
 ```
 
-Plus the rule plugins:
+Plus the rule plugins. Each rule has a Go
+implementation package and a sibling
+docs+fixtures directory:
 
 ```text
-internal/rules/<id>-<name>/
+internal/rules/<rule-name>/         (Go pkg)
+internal/rules/MDS###-<rule-name>/  (docs +
+                                     good/,
+                                     bad/)
   └─> internal/rule (interfaces only)
   └─> internal/mdtext (parse helpers)
   ✗ MUST NOT import internal/engine

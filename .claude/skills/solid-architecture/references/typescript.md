@@ -20,20 +20,29 @@ heading-level: "absolute"
 ## TypeScript architecture patterns
 
 Guidance for the VS Code extension at
-`editors/vscode/`. The [architecture
-hub](index.md) covers the cross-cutting
-principles; this page covers how to apply
-each in TypeScript within the extension's
-bounds.
+`editors/vscode/`. See the
+[architecture hub](../../../../docs/development/architecture/index.md) for the
+cross-cutting principles; this page covers
+how to apply each in TypeScript within the
+extension's bounds.
+
+Where this page describes a layout or
+flow, treat it as the target state the
+extension is converging on, not always
+the current snapshot. Sections that
+describe the gap are called out
+explicitly.
 
 ### Layout
 
 The extension is intentionally small and
-should stay small:
+should stay small. The target shape:
 
 ```text
 editors/vscode/src/
-├── extension.ts        (entry; no logic)
+├── extension.ts        (thin entry;
+│                        delegates to
+│                        wiring.ts)
 ├── wiring.ts           (compose commands +
 │                        LSP client)
 ├── binary.ts           (locate mdsmith
@@ -50,6 +59,16 @@ editors/vscode/src/
 
 Tests live next to source as `*.test.ts`.
 
+**Current vs target**: today
+`extension.ts` also runs the LSP client.
+It watches the config file. It calls
+`vscode.commands.registerCommand` directly
+(see `registerPaletteCommands`). That
+work should move to `wiring.ts` and
+`commands/*`. Do not grow `extension.ts`
+further. Add new code where the target
+shape places it.
+
 ### Single responsibility per module
 
 Each `commands/<name>.ts` holds one command.
@@ -64,8 +83,8 @@ the call. One shows the result.
 
 ### Open/closed: adding a command
 
-Add a new command without touching
-`extension.ts`:
+Target: a new command should be added
+without modifying `extension.ts`. Steps:
 
 1. Create `commands/<name>.ts` exporting a
    registration function.
@@ -74,8 +93,14 @@ Add a new command without touching
 4. Add the matching entry to the
    `contributes.commands` section of
    `package.json`.
-5. Keep `extension.ts` at one line into
-   `wiring.ts`.
+
+**Current state**: commands register in
+`extension.ts` today. The helper is
+`registerPaletteCommands`. Add new
+entries there. Move that helper to
+`wiring.ts` later. Do not call
+`vscode.commands.registerCommand` from
+`activate`.
 
 The `contributes` section of `package.json`
 is the public surface for VS Code commands
@@ -146,17 +171,21 @@ deep.
 
 ### Clean architecture in extension.ts
 
-`extension.ts` is wiring only:
+Target: `extension.ts` should be wiring
+only:
 
 - Activate the extension.
 - Construct the wiring object.
 - Hand control to `wiring.ts`.
 
-`extension.ts` does not own state. It does
-not register commands directly. It does not
-construct LSP clients. If it does any of
-those, the wiring layer is bypassed and the
-contract loosens.
+Today `extension.ts` also owns the LSP
+client, a config-file watcher, and direct
+command registrations. Those concerns are
+scheduled to move into `wiring.ts` and
+dedicated command modules. When adding
+new code, do not extend the current
+pattern — place it where the target shape
+expects it.
 
 ### Testing patterns
 
