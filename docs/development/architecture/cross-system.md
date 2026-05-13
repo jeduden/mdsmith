@@ -17,19 +17,20 @@ release on their own schedule.
 
 ## The boundaries
 
-| Boundary                   | Owner in repo                                    | Consumers                        |
-|----------------------------|--------------------------------------------------|----------------------------------|
-| LSP wire protocol          | `internal/lsp`                                   | VS Code extension, other editors |
-| CLI flags + exit codes     | `cmd/mdsmith`                                    | shell scripts, CI, git hooks     |
-| `.mdsmith.yml` schema      | `internal/config`                                | every project using mdsmith      |
-| Generated section markers  | `internal/archetype/gensection`                  | every project's Markdown files   |
-| Claude plugin manifest     | `editors/claude-code/.claude-plugin/plugin.json` | Claude Code marketplace          |
-| Claude marketplace listing | `.claude-plugin/marketplace.json`                | Claude Code marketplace          |
-| Claude skill definitions   | `.claude/skills/*/SKILL.md`                      | Claude Code sessions             |
-| npm package shim           | `npm/mdsmith/`                                   | Node users                       |
-| PyPI wheel shim            | `python/`                                        | Python users                     |
-| asdf / mise plugin         | external repos                                   | language-tool users              |
-| VS Code `contributes`      | `editors/vscode/package.json`                    | the extension host               |
+| Boundary                              | Owner in repo                                        | Consumers                                  |
+|---------------------------------------|------------------------------------------------------|--------------------------------------------|
+| LSP wire protocol                     | `internal/lsp`                                       | VS Code extension, other editors           |
+| CLI flags + exit codes                | `cmd/mdsmith`                                        | shell scripts, CI, git hooks               |
+| `.mdsmith.yml` schema                 | `internal/config`                                    | every project using mdsmith                |
+| Generated section markers             | `internal/archetype/gensection`                      | every project's Markdown files             |
+| Claude plugin manifest (published)    | `editors/claude-code/.claude-plugin/plugin.json`     | end users via Claude Code marketplace      |
+| Claude plugin manifest (contributors) | `editors/claude-code-dev/.claude-plugin/plugin.json` | mdsmith contributors via local marketplace |
+| Claude marketplace listing            | `.claude-plugin/marketplace.json`                    | Claude Code marketplace                    |
+| Claude skill definitions              | `.claude/skills/*/SKILL.md`                          | Claude Code sessions                       |
+| npm package shim                      | `npm/mdsmith/`                                       | Node users                                 |
+| PyPI wheel shim                       | `python/`                                            | Python users                               |
+| asdf / mise plugin                    | external repos                                       | language-tool users                        |
+| VS Code `contributes`                 | `editors/vscode/package.json`                        | the extension host                         |
 
 A breaking change at any of these surfaces
 is a SemVer-major event. Treat them as
@@ -48,10 +49,16 @@ does not adapt to them.
 - **Shims (npm, PyPI)**: exec the binary
   with forwarded args. They never inspect
   Markdown or duplicate rule logic.
-- **Plugin manifest**
-  (`editors/claude-code/.claude-plugin/plugin.json`):
-  declares the LSP server invocation only.
-  Skills live separately under
+- **Plugin manifests**: the published
+  manifest at
+  `editors/claude-code/.claude-plugin/plugin.json`
+  declares the mdsmith LSP for end users.
+  The contributor manifest at
+  `editors/claude-code-dev/.claude-plugin/plugin.json`
+  declares `gopls` and
+  `typescript-language-server` so any agent
+  working in this repo gets code
+  intelligence. Skills live separately under
   `.claude/skills/*/SKILL.md`; the
   marketplace listing lives at
   `.claude-plugin/marketplace.json`. None of
