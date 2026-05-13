@@ -21,6 +21,7 @@ argument-hint: "[mode: design | plan | audit]"
 allowed-tools: >-
   Bash(git fetch:*), Bash(git log:*),
   Bash(git diff:*), Bash(git branch:*),
+  Bash(mdsmith:*),
   Bash(go run ./cmd/mdsmith:*)
 ---
 
