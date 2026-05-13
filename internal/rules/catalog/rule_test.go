@@ -3475,6 +3475,26 @@ source-dir: ".."
 	assert.Contains(t, result, "top.md")
 }
 
+func TestCatalog_SourceDirNestedTraversalIgnored(t *testing.T) {
+	// A source-dir whose cleaned value starts with "../" is treated as
+	// invalid traversal and resolveGlobFS falls back to f.FS — the
+	// "../foo" branch of resolveBaseRel that ".." alone doesn't hit.
+	src := `<?catalog
+glob: "*.md"
+source-dir: "../escape"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"top.md": {Data: []byte("# Top\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	result := string(r.Fix(f))
+	assert.Contains(t, result, "top.md")
+}
+
 // =====================================================================
 // buildCatalogEntries error diagnostics (file-size limit)
 // =====================================================================
