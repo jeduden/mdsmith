@@ -21,7 +21,10 @@ append an entry to the audit log with:
   contract", etc.).
 - Severity: `blocker`, `tax`, or
   `nice-to-have`.
-- Suggested fix (one sentence).
+- Suggested fix — a short sentence, or a
+  bullet list if a single sentence would
+  trip MDS023 / MDS024 readability checks
+  on the audit log.
 
 The audit log lives at
 `docs/development/architecture-audit.md`
@@ -45,7 +48,6 @@ summary: >-
   plans.
 audit-from: <commit SHA one month ago>
 ---
-
 # Architecture audit log
 
 This file is maintained by the
@@ -63,6 +65,17 @@ solid-architecture skill in audit mode.
 
 Pick a starting SHA one month back unless
 the user supplies a different baseline.
+
+If the one-month-back lookup returns empty
+on a young repo, fall back to the root
+commit:
+
+```bash
+git rev-list --max-parents=0 origin/main
+```
+
+The first SHA in that output is the
+baseline.
 
 ## Step 1: refresh the checkpoint
 
@@ -92,6 +105,12 @@ git log --name-only --pretty=format: <from-sha>..origin/main
 Keep the file list in your notes as the
 "touched set" for the rest of this audit;
 do not assign it to a shell variable.
+
+When auditing in a worktree, first verify
+the worktree has the architecture docs.
+Run `ls docs/development/architecture/`.
+Concurrent worktree creation can race;
+catch the mismatch before walking.
 
 ## Step 2: Go layering checks
 
@@ -198,8 +217,11 @@ For each severity, list bullets:
 
 Update the `audit-from:` field to the
 current `origin/main` SHA. Then run
-`mdsmith fix` on the audit log so any
-catalog stays current.
+`mdsmith fix .` from the workspace root.
+That refreshes the audit log's own catalog
+and the parent catalogs in CLAUDE.md,
+AGENTS.md, PLAN.md, and
+.github/copilot-instructions.md.
 
 ## Step 7: schedule
 
