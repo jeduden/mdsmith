@@ -35,7 +35,7 @@ row: "- [{summary}](../{filename})"
 - [Label-driven merge queue workflow using jeduden/merge-queue-action.](../docs/development/merge-queue.md)
 - [Rebase, CI monitoring, and review comment resolution.](../docs/development/pr-fixup-workflow.md)
 - [Per-platform mdsmith binaries plus the .vsix, the checksum file, and a Sigstore signature, attached to a tag-named release.](../docs/development/release-channels/github-releases.md)
-- [Scoped package `@mdsmith/cli` plus five platform- specific subpackages, published via OIDC Trusted Publishing.](../docs/development/release-channels/npm.md)
+- [Six packages total: root `@mdsmith/cli` plus one platform-specific subpackage per supported host. All six publish via OIDC Trusted Publishing.](../docs/development/release-channels/npm.md)
 - [The same `.vsix` republished to Open VSX so VSCodium, Cursor, Theia, and Gitpod can install it.](../docs/development/release-channels/open-vsx.md)
 - [One platform-tagged wheel per supported host, published via OIDC Trusted Publishing.](../docs/development/release-channels/pypi.md)
 - [The mdsmith VS Code extension `.vsix`, published via a long-lived Marketplace publisher PAT.](../docs/development/release-channels/visual-studio-marketplace.md)

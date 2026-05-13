@@ -76,14 +76,24 @@ def _update_last_rotated(yaml_block: str, entry_name: str, date: str) -> str:
 
     # Match the YAML block that begins with `- name: <SECRET_NAME>`
     # and rewrite the `last-rotated:` line directly under it.
+    # The middle pattern tolerates indented sibling keys AND blank
+    # lines (which YAML permits between mapping entries). A line
+    # starting at column 0 with `-` would end this list item, so
+    # the regex stops before consuming the next entry's `- name:`.
     # Captures:
-    #   group(1): the `- name: NAME\n` line + indented preamble
-    #   group(2): the value of last-rotated
+    #   group(1): the `- name: NAME\n` line + indented preamble +
+    #             the `last-rotated:` key
+    #   group(2): the current value of last-rotated
+    #
+    # The matcher does NOT handle `last-rotated:` appearing BEFORE
+    # `name:` within the same entry. Reordering would also break
+    # check-secret-rotations.py's identity-by-name lookup, so the
+    # entry-canonical-ordering invariant is enforced elsewhere.
     pattern = re.compile(
-        r"(- name:\s*" + re.escape(entry_name) + r"\b[^\n]*\n"  # name line
-        r"(?:[ \t]+[^\n]*\n)*?"                                  # other keys before last-rotated
-        r"[ \t]+last-rotated:\s*)"                               # last-rotated key
-        r'("?[^"\n]*"?)'                                         # current value (quoted or bare)
+        r"(- name:\s*" + re.escape(entry_name) + r"\b[^\n]*\n"   # name line
+        r"(?:[ \t]+[^\n]*\n|[ \t]*\n)*?"                          # indented sibling key OR blank line
+        r"[ \t]+last-rotated:\s*)"                                # last-rotated key
+        r'("?[^"\n]*"?)'                                          # current value (quoted or bare)
     )
     new_block, count = pattern.subn(rf'\g<1>"{date}"', yaml_block, count=1)
     if count == 0:

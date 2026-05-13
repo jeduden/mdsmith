@@ -1,17 +1,18 @@
 ---
 title: npm
 summary: >-
-  Scoped package `@mdsmith/cli` plus five platform-
-  specific subpackages, published via OIDC Trusted
-  Publishing.
+  Six packages total: root `@mdsmith/cli` plus one
+  platform-specific subpackage per supported host.
+  All six publish via OIDC Trusted Publishing.
 registry: registry.npmjs.org
 credential: OIDC Trusted Publishing
 job: npm
 ---
 # npm
 
-The npm channel publishes one root package and five
-platform-specific subpackages:
+The npm channel publishes six packages: the root
+and one platform-specific subpackage per supported
+host:
 
 - `@mdsmith/cli` — root, contains the shim
 - `@mdsmith/linux-x64`
