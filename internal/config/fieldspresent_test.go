@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Files satisfying every listed field with a non-null value get the
@@ -116,18 +117,17 @@ func TestFieldsPresent_ProvenanceCarriesSelector(t *testing.T) {
 		"status":   "open",
 		"assignee": "alice",
 	})
-	require := assert.New(t)
-	require.Len(res.Kinds, 2, "non-matching entry should not contribute a kind")
+	require.Len(t, res.Kinds, 2, "non-matching entry should not contribute a kind")
 
 	// First entry: fields-present only.
-	require.Equal("task", res.Kinds[0].Name)
-	require.Equal(KindAssignmentSource("kind-assignment[0]"), res.Kinds[0].Source)
-	require.Equal("fields-present status,assignee", res.Kinds[0].Selector)
+	assert.Equal(t, "task", res.Kinds[0].Name)
+	assert.Equal(t, KindAssignmentSource("kind-assignment[0]"), res.Kinds[0].Source)
+	assert.Equal(t, "fields-present status,assignee", res.Kinds[0].Selector)
 
 	// Third entry matched; second was skipped so the index jumps to 2.
-	require.Equal("plan", res.Kinds[1].Name)
-	require.Equal(KindAssignmentSource("kind-assignment[2]"), res.Kinds[1].Source)
-	require.Equal("glob plan/*.md AND fields-present id", res.Kinds[1].Selector)
+	assert.Equal(t, "plan", res.Kinds[1].Name)
+	assert.Equal(t, KindAssignmentSource("kind-assignment[2]"), res.Kinds[1].Source)
+	assert.Equal(t, "glob plan/*.md AND fields-present id", res.Kinds[1].Selector)
 }
 
 // An entry with neither selector set never matches — an unconditional

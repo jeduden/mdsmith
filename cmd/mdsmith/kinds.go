@@ -249,10 +249,13 @@ func runKindsPath(stdout io.Writer, args []string) int {
 
 // readFrontMatter reads a file and returns both the parsed kinds list and
 // the full front-matter mapping, the latter feeding the kind-assignment
-// `fields-present:` selector. The full-mapping decode runs only when at
-// least one kind-assignment entry uses `fields-present:` — without that
-// gate, `kinds resolve` would fail on FM YAML errors that the
-// kinds-only fast path silently ignores.
+// `fields-present:` selector. The full-mapping decode runs only when
+// `config.NeedsFieldsForFile(cfg, path)` returns true — i.e. when at
+// least one kind-assignment entry with `fields-present:` could match
+// this path (an entry without a glob, or one whose glob matches).
+// Files outside every fields-present scope keep the kinds-only fast
+// path's leniency for FM YAML errors that decode would otherwise
+// surface.
 func readFrontMatter(cfg *config.Config, path string, maxBytes int64) ([]string, map[string]any, error) {
 	data, err := lint.ReadFileLimited(path, maxBytes)
 	if err != nil {
