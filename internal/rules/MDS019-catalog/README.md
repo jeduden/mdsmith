@@ -182,8 +182,9 @@ wrap: markdown
 
 <?catalog
 glob: "data/*.md"
+row: "[{filename}](bad/{filename})"
 ?>
-- [alpha.md](bad/data/alpha.md)
+[data/alpha.md](bad/data/alpha.md)
 <?/catalog?>
 ```
 

@@ -1,0 +1,8 @@
+# Bad fixtures that mdsmith fix cannot auto-correct.
+# These are validation-only diagnostics — the directive
+# parameters or repo layout must be edited by hand.
+dotdot-output.md
+missing-output.md
+missing-required-param.md
+unknown-param.md
+unknown-recipe.md

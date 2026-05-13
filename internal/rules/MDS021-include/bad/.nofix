@@ -1,0 +1,6 @@
+# Bad fixtures that mdsmith fix cannot auto-correct.
+# One filename per line. Lines starting with '#' are comments.
+# Cycle detection emits a validation diagnostic; the fix path
+# cannot resolve the cycle without changing the directive
+# parameters by hand.
+cycle.md
