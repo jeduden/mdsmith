@@ -57,16 +57,16 @@ False positives:
 Severity: tax.
 
 Fix: use a `<?catalog?>` directive on the shared
-directory. Read the canonical pre/post pair from
-the rule's own example folders:
+directory. Read the canonical before/after pair
+from the rule's own pattern folders:
 
-- bad pattern: `internal/rules/MDS019-catalog/bad/`
-- good pattern: `internal/rules/MDS019-catalog/good/`
-- post-`fix` body: `internal/rules/MDS019-catalog/fixed/`
+- before (hand-maintained list): `internal/rules/MDS019-catalog/pattern/bad/`
+- after (catalog directive): `internal/rules/MDS019-catalog/pattern/good/`
 
 These folders are the single source of truth. The
-rule's README pulls from them. A directive-rule
-integration test fails when they go missing.
+rule's README `## Pattern` section pulls from
+them. A directive-rule integration test fails
+when they go missing.
 
 Run `mdsmith fix <file>` and confirm the same
 items reappear in the regenerated body.
@@ -143,14 +143,14 @@ False positives:
 Severity: tax.
 
 Fix: extract the shared body into one canonical
-file under `docs/`. Replace each copy with
-`<?include?>`. The canonical pre/post pair lives
-in the rule's own example folders — read them for
-the syntax:
+snippet. Replace each copy with `<?include?>`.
+Read the canonical before/after pair from the
+rule's own pattern folders:
 
-- bad pattern: `internal/rules/MDS021-include/bad/`
-- good pattern: `internal/rules/MDS021-include/good/`
-- post-`fix` body: `internal/rules/MDS021-include/fixed/`
+- before: `internal/rules/MDS021-include/pattern/bad/`
+  (section duplicated across two files)
+- after: `internal/rules/MDS021-include/pattern/good/`
+  (one snippet plus include directives)
 
 Use `heading-level: "absolute"` when the host file
 needs the included headings to nest under an

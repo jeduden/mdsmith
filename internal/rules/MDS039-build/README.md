@@ -139,6 +139,60 @@ content
 MDS039 reports:
 `build directive recipe "render": missing required parameter "source"`
 
+## Pattern
+
+The bad pattern is a hand-maintained snippet
+describing where a generated artifact lives. The
+good pattern is the same content produced by a
+`<?build?>` directive. The markdown-audit skill
+reads these folders as the canonical before/after
+pair.
+
+### Without the directive
+
+<?include
+file: pattern/bad/demo.md
+wrap: markdown
+?>
+
+````markdown
+# Demo
+
+The recorded demo lives at `demo.gif`. Re-record
+the GIF with:
+
+```sh
+vhs demo.tape
+```
+
+Embedded inline:
+
+![demo](pattern/bad/demo.gif)
+````
+
+<?/include?>
+
+### With the directive
+
+<?include
+file: pattern/good/demo.md
+wrap: markdown
+?>
+
+```markdown
+# Demo
+
+<?build
+recipe: vhs
+source: demo.tape
+output: demo.gif
+?>
+![demo](pattern/good/demo.gif)
+<?/build?>
+```
+
+<?/include?>
+
 ## Meta-Information
 
 - **ID**: MDS039

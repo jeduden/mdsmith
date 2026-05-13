@@ -120,18 +120,19 @@ fix recipe. When a sibling `patterns.md` is
 present (project install), read it once at the
 start for deeper heuristics and false positives.
 
-For checks that propose a `<?directive?>` fix
-(catalog, include), read the rule's example
-folders for the exact syntax. The canonical
-folders are:
+For each `<?directive?>` fix, read the rule's
+`pattern/bad/` and `pattern/good/` folders. They
+hold the canonical before/after pair:
 
-- `internal/rules/MDS019-catalog/{bad,good,fixed}/`
-- `internal/rules/MDS021-include/{bad,good,fixed}/`
+- `internal/rules/MDS019-catalog/pattern/{bad,good}/`
+- `internal/rules/MDS021-include/pattern/{bad,good}/`
+- `internal/rules/MDS038-toc/pattern/{bad,good}/`
+- `internal/rules/MDS039-build/pattern/{bad,good}/`
 
 Do not paraphrase directive syntax from memory.
-A directive-rule integration test enforces that
-each set of example folders is present and in
-sync with the rule.
+The integration test
+`TestDirectiveRulesHaveExamples` enforces that
+each pattern folder pair is present.
 
 Do not run `mdsmith check .` from this skill.
 That is the content-lint surface and runs

@@ -196,6 +196,82 @@ Outdated content
 | cyclic include        | cyclic include: a.md -> b.md -> a.md                               |
 | depth exceeded        | include depth exceeds maximum (10)                                 |
 
+## Pattern
+
+The bad pattern is a section duplicated across
+two files. The good pattern is one canonical
+source plus `<?include?>` references. The
+markdown-audit skill reads these folders as the
+canonical before/after pair.
+
+### Without the directive
+
+<?include
+file: pattern/bad/README.md
+wrap: markdown
+?>
+
+```markdown
+# Project
+
+## Build
+
+Run `make build` to compile the project. The
+binary lands in `dist/`.
+```
+
+<?/include?>
+
+<?include
+file: pattern/bad/INSTALL.md
+wrap: markdown
+?>
+
+```markdown
+# Install
+
+## Build
+
+Run `make build` to compile the project. The
+binary lands in `dist/`.
+```
+
+<?/include?>
+
+### With the directive
+
+<?include
+file: pattern/good/README.md
+wrap: markdown
+?>
+
+```markdown
+# Project
+
+## Build
+
+<?include
+file: snippets/build.md
+?>
+Run `make build` to compile the project. The
+binary lands in `dist/`.
+<?/include?>
+```
+
+<?/include?>
+
+<?include
+file: pattern/good/snippets/build.md
+wrap: markdown
+?>
+
+```markdown
+Run `make build` to compile the project. The
+binary lands in `dist/`.
+```
+
+<?/include?>
+
 ## Meta-Information
 
 - **ID**: MDS021

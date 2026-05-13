@@ -14,15 +14,21 @@ import (
 )
 
 // TestDirectiveRulesHaveExamples enforces that every rule providing a
-// generated-section directive (gensection.Directive) ships canonical
-// before/after example fixtures: a bad/ folder demonstrating the
-// violating pattern and a good/ folder demonstrating the corrected
-// pattern. When the rule is also fixable, a fixed/ folder must hold
-// the post-`mdsmith fix` body for every bad/ example.
+// generated-section directive (gensection.Directive) ships two kinds
+// of example folders:
 //
-// The markdown-audit skill and the rule README use these folders as
-// the single source of truth for "what does this directive look like
-// in practice"; missing examples leave both surfaces out of date.
+//   - bad/, good/, fixed/ (fixed only for FixableRule) — lint-test
+//     fixtures consumed by TestRuleFixtures. bad/ entries declare
+//     diagnostics; good/ entries must pass all default rules.
+//
+//   - pattern/bad/ and pattern/good/ — the user-authored anti-pattern
+//     and the same content rewritten with the directive. These are
+//     the canonical before/after pair surfaced by the markdown-audit
+//     skill and the rule README's ## Pattern section. They are not
+//     lint targets; .mdsmith.yml ignores them.
+//
+// Missing folders leave both surfaces out of date, so this test
+// fails loudly when any directive rule drops one.
 func TestDirectiveRulesHaveExamples(t *testing.T) {
 	for _, r := range rule.All() {
 		d, ok := r.(gensection.Directive)
@@ -39,12 +45,33 @@ func TestDirectiveRulesHaveExamples(t *testing.T) {
 				requireFixedMatchesBad(t, dir)
 			}
 
+			requirePatternDir(t, dir, "bad")
+			requirePatternDir(t, dir, "good")
+
 			// Cross-check the directive name resolves to a real rule.
 			assert.Equal(t, r.ID(), d.RuleID(),
 				"directive name %q reports rule ID %q but is registered as %q",
 				d.Name(), d.RuleID(), r.ID())
 		})
 	}
+}
+
+// requirePatternDir enforces that `pattern/<name>/` exists under the
+// rule dir and contains at least one .md file. The pattern/ folders
+// carry the user-authored anti-pattern (bad) and its directive-using
+// counterpart (good); both are referenced from the rule README's
+// ## Pattern section and the markdown-audit skill.
+func requirePatternDir(t *testing.T, ruleDir, name string) {
+	t.Helper()
+	sub := filepath.Join(ruleDir, "pattern", name)
+	require.Truef(t, isDir(sub),
+		"directive rule %s is missing pattern/%s/ examples (expected at %s)",
+		filepath.Base(ruleDir), name, sub)
+	files, err := filepath.Glob(filepath.Join(sub, "*.md"))
+	require.NoError(t, err)
+	require.NotEmptyf(t, files,
+		"directive rule %s has pattern/%s/ with no .md examples",
+		filepath.Base(ruleDir), name)
 }
 
 // ruleFixtureDir resolves the on-disk fixture directory for a rule ID by
