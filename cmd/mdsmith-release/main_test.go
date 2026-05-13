@@ -229,3 +229,71 @@ version = "0.0.0-dev"
 		require.NoError(t, os.WriteFile(full, []byte(body), 0o644))
 	}
 }
+
+// TestRunRecordRotationHappyPath dispatches through `run` with
+// a real per-secret file in a temp tree so the runRecordRotation
+// success-with-change branch is covered end-to-end.
+func TestRunRecordRotationHappyPath(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "development", "secret-rotations")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	body := "---\n" +
+		"title: VSCE_PAT\n" +
+		"lastRotated: \"2026-04-01\"\n" +
+		"periodDays: 335\n" +
+		"---\nbody\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "vsce-pat.md"), []byte(body), 0o644))
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	assert.Equal(t, 0, run([]string{"record-rotation", "VSCE_PAT", "2026-05-12"}))
+	// Re-run with the same date: returns 0 but logs the no-op
+	// path through runRecordRotation.
+	assert.Equal(t, 0, run([]string{"record-rotation", "VSCE_PAT", "2026-05-12"}))
+}
+
+// TestRunRecordRotationBadDate covers the err branch of
+// runRecordRotation: a calendar-invalid date trips IsISODate
+// inside release.RecordRotation and propagates back as exit 1.
+func TestRunRecordRotationBadDate(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "development", "secret-rotations")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	assert.Equal(t, 1, run([]string{"record-rotation", "ANY", "2026-02-31"}))
+}
+
+// TestRunRecordRotationRejectsBadArity covers the fs.NArg()
+// guard in runRecordRotation. The CLI prints usage and returns
+// 2 when the caller forgets the date arg.
+func TestRunRecordRotationRejectsBadArity(t *testing.T) {
+	assert.Equal(t, 2, run([]string{"record-rotation", "VSCE_PAT"}))
+}
+
+// TestRunCheckSecretRotationsRejectsBadArity covers the
+// fs.NArg() guard in runCheckSecretRotations.
+func TestRunCheckSecretRotationsRejectsBadArity(t *testing.T) {
+	assert.Equal(t, 2, run([]string{"check-secret-rotations", "extra-arg"}))
+}
+
+// TestRunCheckSecretRotationsErrorsOnMissingDir covers the err
+// branch of runCheckSecretRotations: with no secret-rotations
+// directory in cwd, LoadRotations returns an error and the
+// subcommand exits 1.
+func TestRunCheckSecretRotationsErrorsOnMissingDir(t *testing.T) {
+	root := t.TempDir()
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	require.NoError(t, os.Chdir(root))
+
+	assert.Equal(t, 1, run([]string{"check-secret-rotations"}))
+}

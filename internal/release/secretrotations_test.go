@@ -449,3 +449,177 @@ func TestCheckSecretRotationsCallsGhForDue(t *testing.T) {
 	assert.Contains(t, string(log), "issue create")
 	assert.Contains(t, string(log), "label create")
 }
+
+func TestAsStringTypes(t *testing.T) {
+	_, err := asString(42)
+	assert.Error(t, err)
+}
+
+func TestAsIntTypes(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   any
+		want    int
+		wantErr bool
+	}{
+		{"int", int(7), 7, false},
+		{"int64", int64(7), 7, false},
+		{"float64 whole", float64(7), 7, false},
+		{"float64 fractional", float64(7.5), 0, true},
+		{"string numeric", "7", 7, false},
+		{"string non-numeric", "soon", 0, true},
+		{"unsupported type", []int{1}, 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := asInt(tc.input)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestOSEnvironGetenv(t *testing.T) {
+	t.Setenv("MDSMITH_RELEASE_TEST_VAR", "value-from-env")
+	assert.Equal(t, "value-from-env", osEnviron{}.Getenv("MDSMITH_RELEASE_TEST_VAR"))
+}
+
+func TestIssueBodyDefaultsEnvWhenNil(t *testing.T) {
+	body := IssueBody(RotationEntry{Title: "X"}, "x.md",
+		DueResult{Status: DueDue, DaysUntilDue: 5}, nil)
+	assert.Contains(t, body, "is due in 5 days")
+}
+
+// TestCheckSecretRotationsSkipsExistingIssue uses a fake `gh`
+// that returns one matching issue from `issue list`, exercising
+// the "skipped" branch of the main loop.
+func TestCheckSecretRotationsSkipsExistingIssue(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
+			"provider: Azure\nissuerUrl: https://x\nusedBy: r\nscope: s\n---\n",
+	})
+	fakeGh := filepath.Join(t.TempDir(), "fake-gh.sh")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"issue\" ] && [ \"$2\" = \"list\" ]; then\n" +
+		"  printf '[{\"number\":99,\"title\":\"Rotate VSCE_PAT (lastRotated 2026-04-01)\"}]'\n" +
+		"fi\n" +
+		"exit 0\n"
+	require.NoError(t, os.WriteFile(fakeGh, []byte(script), 0o755))
+
+	now := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	res, err := CheckSecretRotations(root, CheckRotationsOptions{
+		Now: now, GHCommand: fakeGh, Env: MapEnviron{},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, res.Opened)
+	assert.Equal(t, []string{"VSCE_PAT"}, res.Skipped)
+}
+
+// TestCheckSecretRotationsPassesAssignee verifies that when
+// REMINDER_ASSIGNEE is set, the createIssue call gets an
+// --assignee flag.
+func TestCheckSecretRotationsPassesAssignee(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
+			"provider: Azure\nissuerUrl: https://x\nusedBy: r\nscope: s\n---\n",
+	})
+	logFile := filepath.Join(t.TempDir(), "gh.log")
+	fakeGh := filepath.Join(t.TempDir(), "fake-gh.sh")
+	script := "#!/bin/sh\necho \"$@\" >> \"$LOG_FILE\"\n" +
+		"if [ \"$1\" = \"issue\" ] && [ \"$2\" = \"list\" ]; then echo '[]'; fi\nexit 0\n"
+	require.NoError(t, os.WriteFile(fakeGh, []byte(script), 0o755))
+	t.Setenv("LOG_FILE", logFile)
+
+	now := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	_, err := CheckSecretRotations(root, CheckRotationsOptions{
+		Now: now, GHCommand: fakeGh,
+		Env: MapEnviron{"REMINDER_ASSIGNEE": "octocat"},
+	})
+	require.NoError(t, err)
+	log, err := os.ReadFile(logFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(log), "--assignee octocat")
+}
+
+// TestCheckSecretRotationsSurfacesGhFailure covers the
+// existingOpenIssue error branch when `gh issue list` exits
+// non-zero, plus the propagation through CheckSecretRotations.
+func TestCheckSecretRotationsSurfacesGhFailure(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n" +
+			"provider: Azure\nissuerUrl: https://x\nusedBy: r\nscope: s\n---\n",
+	})
+	fakeGh := filepath.Join(t.TempDir(), "fake-gh.sh")
+	require.NoError(t, os.WriteFile(fakeGh, []byte("#!/bin/sh\nexit 17\n"), 0o755))
+
+	now := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	_, err := CheckSecretRotations(root, CheckRotationsOptions{
+		Now: now, GHCommand: fakeGh, Env: MapEnviron{},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "gh issue list")
+}
+
+// TestCheckSecretRotationsRejectsMissingRotationsDir covers the
+// "no per-secret files found" branch.
+func TestCheckSecretRotationsRejectsMissingRotationsDir(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, RotationsDirName), 0o755))
+	_, err := CheckSecretRotations(root, CheckRotationsOptions{
+		Now: time.Now(), GHCommand: "echo", Env: MapEnviron{},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no per-secret files")
+}
+
+// TestRecordRotationUnknownTitle covers the FindEntry error
+// propagation back through RecordRotation.
+func TestRecordRotationUnknownTitle(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: VSCE_PAT\nlastRotated: \"2026-04-01\"\nperiodDays: 30\n---\n",
+	})
+	_, err := RecordRotation(root, "MISSING", "2026-05-12")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown title")
+}
+
+// TestRecordRotationRejectsMissingLastRotatedLine covers the
+// UpdateLastRotated failure path through RecordRotation when
+// the file lacks a `lastRotated:` line.
+func TestRecordRotationRejectsMissingLastRotatedLine(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: X\nperiodDays: 30\n---\nno lastRotated key\n",
+	})
+	_, err := RecordRotation(root, "X", "2026-05-12")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "could not locate `lastRotated:`")
+}
+
+// TestLoadRotationsHandlesMissingDir covers the os.ReadDir
+// error branch when the directory does not exist.
+func TestLoadRotationsHandlesMissingDir(t *testing.T) {
+	_, err := LoadRotations(filepath.Join(t.TempDir(), "missing"))
+	require.Error(t, err)
+}
+
+func TestFindEntryMissingTitleKey(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\nperiodDays: 30\n---\n",
+	})
+	_, err := FindEntry(filepath.Join(root, RotationsDirName), "X")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "`title` is missing")
+}
+
+func TestFindEntryNonStringTitle(t *testing.T) {
+	root := fakeRotationsDir(t, map[string]string{
+		"v.md": "---\ntitle: 42\nperiodDays: 30\n---\n",
+	})
+	_, err := FindEntry(filepath.Join(root, RotationsDirName), "42")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "`title` is not a string")
+}

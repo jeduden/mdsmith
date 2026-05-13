@@ -15,12 +15,12 @@ summary: >-
 Every tracked secret has its own file under
 [`secret-rotations/`](secret-rotations/) with the
 canonical `lastRotated` date in its front matter.
-[`.github/scripts/check-secret-rotations.ts`][script]
-globs that directory and the monthly
-[reminder workflow][reminder] runs it. The script
-opens a GitHub issue 30 days before any tracked
-secret is due, so a human is reminded without having
-to remember.
+The [`mdsmith-release check-secret-rotations`
+subcommand][script] globs that directory; the
+monthly [reminder workflow][reminder] runs it. The
+subcommand opens a GitHub issue 30 days before any
+tracked secret is due, so a human is reminded
+without having to remember.
 
 <?catalog
 glob: "secret-rotations/*.md"
@@ -83,5 +83,5 @@ merge records the date and closes the reminder. The
 next monthly reminder run sees the new date and
 stays quiet until the next window.
 
-[script]: ../../.github/scripts/check-secret-rotations.ts
+[script]: ../../internal/release/secretrotations.go
 [reminder]: ../../.github/workflows/secret-rotation-reminder.yml
