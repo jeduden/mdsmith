@@ -6,7 +6,7 @@
  * `docs/development/secret-rotations/`. The script globs that
  * directory, parses each file's YAML front matter, and computes
  * (today - lastRotated). If the elapsed time exceeds
- * `period-days` minus the reminder window (30 days), the script
+ * `periodDays` minus the reminder window (30 days), the script
  * opens a single labelled issue per file with a stable title so
  * reruns are idempotent.
  *

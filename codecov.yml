@@ -1,42 +1,45 @@
 coverage:
   status:
     project:
-      # The strict (threshold: 0%) gate applies only to the
-      # established flags. A new flag starts with no baseline so
-      # leaving it under `default` would flip project status red
-      # on the introduction commit even though net coverage rose.
+      # `default` is the strict (threshold: 0%) gate. Exclude
+      # `.github/scripts/**` via `paths` so the introduction of
+      # a new flag at lower coverage cannot tank this status —
+      # codecov's `flags:` filter on a project status does NOT
+      # remove the new flag's files from the project total, only
+      # `paths:` does.
       default:
         target: auto
         threshold: 0%
-        flags:
-          - go
-          - typescript
-      # The `scripts` flag is informational until a baseline
-      # accumulates on `main`. Flip `informational` off (or drop
-      # this stanza so `default` picks it up) once the rolling
-      # coverage stabilizes.
+        paths:
+          - "!.github/scripts/**"
+      # The `scripts` status is informational until a rolling
+      # baseline accumulates on `main`. Flip `informational` off
+      # to start enforcing once the baseline stabilizes.
       scripts:
-        flags:
-          - scripts
+        paths:
+          - ".github/scripts/**"
         informational: true
     patch:
       default:
         target: auto
         threshold: 0%
-        flags:
-          - go
-          - typescript
+        paths:
+          - "!.github/scripts/**"
       scripts:
-        flags:
-          - scripts
+        paths:
+          - ".github/scripts/**"
         informational: true
     # Per-file gate: fail the status check if any
-    # file's coverage decreased vs the base commit.
+    # file's coverage decreased vs the base commit. Scoped to
+    # the same surface as `default` so adding the scripts flag
+    # doesn't surface "decreased" on freshly-tracked files.
     changes:
       default:
         enabled: true
         target: auto
         threshold: 0%
+        paths:
+          - "!.github/scripts/**"
 
 # Coverage is uploaded with a flag per language so each report
 # only contains the files it actually measured. Without flags,

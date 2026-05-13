@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Update the `last-rotated` date for one secret in
+ * Update the `lastRotated` date for one secret in
  * `docs/development/secret-rotations/`. In place.
  *
  * Invoked from `.github/workflows/record-secret-rotation.yml`
