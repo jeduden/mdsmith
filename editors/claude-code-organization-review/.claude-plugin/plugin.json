@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "mdsmith-organization-review",
+  "description": "Audit and fix Markdown file organization in an mdsmith repository: hand-maintained indexes, similar files without a kind, missing .mdsmith.yml, duplicated sections, and missing path-pattern or proto.md schemas.",
+  "homepage": "https://github.com/jeduden/mdsmith",
+  "repository": "https://github.com/jeduden/mdsmith",
+  "license": "MIT",
+  "keywords": [
+    "markdown",
+    "mdsmith",
+    "audit",
+    "skill",
+    "organization"
+  ]
+}
