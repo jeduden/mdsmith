@@ -203,8 +203,17 @@ changing it requires updating this security note.
   is intentionally not env-scoped (the merge queue
   runs on every PR-merge cycle, not tag pushes) — its
   blast radius is branch-protection bypass on `main`.
-  Rotate all three annually (calendar reminders live
-  in `CLAUDE.md`).
+  The scheduled
+  `secret-rotation-reminder.yml` workflow opens a
+  labelled GitHub issue 30 days before each tracked
+  secret's `lastRotated + periodDays` due date, and
+  `record-secret-rotation.yml` is the corresponding
+  `workflow_dispatch` that records the rotation by
+  opening a PR. Per-secret files under
+  `docs/development/secret-rotations/` hold the
+  rotation procedure; see
+  [secret-rotations.md](../development/secret-rotations.md)
+  for the catalog and overall workflow.
 - **`codecov-action` with `id-token: write` runs on
   PRs from same-repo branches.** The OIDC token's
   audience is `codecov`, so it cannot be replayed

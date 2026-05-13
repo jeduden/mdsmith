@@ -75,14 +75,10 @@ claim combinations are allowed to publish.
 
 **npm Trusted Publisher** — configure at
 `https://www.npmjs.com/package/<name>/access` for
-every published package:
-
-- `@mdsmith/cli`
-- `@mdsmith/linux-x64`
-- `@mdsmith/linux-arm64`
-- `@mdsmith/darwin-x64`
-- `@mdsmith/darwin-arm64`
-- `@mdsmith/win32-x64`
+every package listed in
+[the npm channel doc](release-channels/npm.md).
+That page is the canonical list. This doc does
+not duplicate it.
 
 | Field       | Value                                                 |
 |-------------|-------------------------------------------------------|

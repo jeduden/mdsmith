@@ -50,11 +50,12 @@ instead). The installed binary is still called
 the command to a small Node.js shim.
 
 The shim declares `optionalDependencies` for one
-platform sub-package per supported host
-(`@mdsmith/linux-x64`, `@mdsmith/linux-arm64`,
-`@mdsmith/darwin-x64`, `@mdsmith/darwin-arm64`,
-`@mdsmith/win32-x64`); npm installs only the one
-that matches `process.platform` and `process.arch`.
+platform sub-package per supported host (the canonical
+list lives in [release-channels/npm.md][npm-channel]);
+npm installs only the one that matches
+`process.platform` and `process.arch`.
+
+[npm-channel]: ../development/release-channels/npm.md
 There is no `postinstall` hook, so `npm install`
 works in offline / air-gapped CI and on hosts that
 ban network calls during install.

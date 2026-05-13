@@ -118,6 +118,38 @@ func TestBuildNpmPlatformsFailsWhenRootManifestMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), "npm/mdsmith/package.json")
 }
 
+// TestNpmChannelDocMatchesPlatformBuilds is the consistency gate
+// for the npm package enumeration. `docs/development/release-
+// channels/npm.md` is documented as the canonical list (release.md
+// and docs/guides/install.md link to it instead of duplicating);
+// this test asserts the bullet list under that page stays in sync
+// with `npmPlatformBuilds` so doc drift fails CI instead of
+// surfacing as a publishing surprise.
+func TestNpmChannelDocMatchesPlatformBuilds(t *testing.T) {
+	// Walk up from this package to the repo root. The doc path is
+	// relative to that, not relative to internal/release.
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	require.NoError(t, err)
+	docPath := filepath.Join(repoRoot, "docs", "development", "release-channels", "npm.md")
+	body, err := os.ReadFile(docPath)
+	require.NoError(t, err)
+
+	// Build the expected bullet list: `@mdsmith/cli` first, then
+	// every NodeTarget in matrix order. Tabs/spaces of the doc are
+	// fixed (two-space hanging indent on continuation lines is not
+	// relevant for these single-line bullets).
+	expected := []string{"- `@mdsmith/cli` — root, contains the shim"}
+	for _, pb := range npmPlatformBuilds {
+		expected = append(expected, "- `@mdsmith/"+pb.NodeTarget+"`")
+	}
+
+	for _, line := range expected {
+		assert.Contains(t, string(body), line,
+			"npm.md is missing the canonical bullet %q — keep the doc in sync with npmPlatformBuilds or update both together",
+			line)
+	}
+}
+
 func TestBuildNpmPlatformsFailsWhenOutDirIsFile(t *testing.T) {
 	// outDir resolves to a regular file. os.MkdirAll on a path
 	// whose parent is a file fails; the per-platform mkdir inside

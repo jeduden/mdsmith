@@ -10,8 +10,14 @@ job: npm
 ---
 # npm
 
-The npm channel publishes the root and one
-platform-specific subpackage per supported host:
+The npm channel publishes the root plus one
+platform-specific subpackage per host. This page
+holds the canonical list. Other docs link here
+instead of duplicating it.
+
+The build side reads `npmPlatformBuilds` in
+`internal/release/buildnpm.go`. A Go test fails CI
+if the bullets below drift from that array.
 
 - `@mdsmith/cli` — root, contains the shim
 - `@mdsmith/linux-x64`
