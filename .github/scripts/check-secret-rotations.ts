@@ -5,14 +5,14 @@
  * Each tracked secret lives in its own file under
  * `docs/development/secret-rotations/`. The script globs that
  * directory, parses each file's YAML front matter, and computes
- * (today - last-rotated). If the elapsed time exceeds
+ * (today - lastRotated). If the elapsed time exceeds
  * `period-days` minus the reminder window (30 days), the script
  * opens a single labelled issue per file with a stable title so
  * reruns are idempotent.
  *
  * The script does not close issues directly. The reminder issue
  * body points the maintainer at the `Record Secret Rotation`
- * workflow, which opens a PR that updates `last-rotated` and
+ * workflow, which opens a PR that updates `lastRotated` and
  * includes `Closes #N`. Merging that PR records the rotation date
  * AND closes the reminder in one step. The next scheduled run
  * sees the new date and stays quiet until the next expiry window.
@@ -156,7 +156,7 @@ function issueBody(entry: RotationEntry, fileBasename: string, status: DueState,
     `| Issuer URL | <${entry.issuerUrl}> |`,
     `| Used by | ${entry.usedBy} |`,
     `| Scope | ${entry.scope} |`,
-    `| Last rotated | ${entry.lastRotated} |`,
+    `| lastRotated | ${entry.lastRotated} |`,
     `| Period (days) | ${entry.periodDays} |`,
     ``,
     `Rotation procedure:`,
@@ -168,7 +168,7 @@ function issueBody(entry: RotationEntry, fileBasename: string, status: DueState,
     `${recordUrl}`,
     ``,
     `Pick \`${entry.title}\` from the dropdown and click \`Run workflow\`.`,
-    `The workflow opens a PR that updates \`last-rotated\``,
+    `The workflow opens a PR that updates \`lastRotated\``,
     `and includes \`Closes #\` referencing this issue, so`,
     `the merge both records the rotation and closes this`,
     `reminder in one step.`,
@@ -240,7 +240,7 @@ async function main(): Promise<number> {
     const lastRotated = new Date(`${entry.lastRotated}T00:00:00Z`);
     const { status, days } = dueState(today, lastRotated, entry.periodDays);
     if (status === "ok") continue;
-    const title = `Rotate ${entry.title} (last rotated ${entry.lastRotated})`;
+    const title = `Rotate ${entry.title} (lastRotated ${entry.lastRotated})`;
     if (await existingOpenIssue(title) !== null) {
       skipped.push(entry.title);
       continue;
