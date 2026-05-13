@@ -73,13 +73,6 @@ matter;
 ranks files by any shared metric — both ready to pipe into
 a release script.
 
-**📖 Rule docs your agent can read.**
-`mdsmith help rule [name]` prints settings, examples, and
-diagnostics straight from the binary — no network. Drop
-the output into `.cursor/rules`, `AGENTS.md`, or
-`CLAUDE.md` and your agent knows the rules without an
-extra fetch.
-
 **🆚 How does it compare?** See:
 <?catalog
 glob:
