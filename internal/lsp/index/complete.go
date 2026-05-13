@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -140,7 +141,7 @@ func completionContextLinks(srcPath string, bodyLines [][]byte, bodyLine, col in
 		return CompletionContext{
 			Tag:        CompletionAnchorOtherFile,
 			Prefix:     m[2],
-			TargetFile: resolveRelTarget(srcPath, m[1]),
+			TargetFile: linkgraph.ResolveRelTarget(srcPath, m[1]),
 		}
 	}
 	if m := compAnchorCurrentFileRE.FindStringSubmatch(lineStr); m != nil {

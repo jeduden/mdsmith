@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/discovery"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/lsp/index"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -765,7 +766,7 @@ func (s *Server) directiveArgLocations(rel, target string) []location {
 	if target == "" {
 		return nil
 	}
-	tgt := index.ResolveRelTarget(rel, target)
+	tgt := linkgraph.ResolveRelTarget(rel, target)
 	if tgt == "" {
 		return nil
 	}
@@ -987,7 +988,7 @@ func (s *Server) handleReferences(msg *requestMessage) {
 		// behavior) hid the directive-to-directive references that
 		// users actually need when navigating include / build chains.
 		if res.DirectiveTargetFile != "" {
-			if tgt := index.ResolveRelTarget(rel, res.DirectiveTargetFile); tgt != "" {
+			if tgt := linkgraph.ResolveRelTarget(rel, res.DirectiveTargetFile); tgt != "" {
 				out = s.locationsForFileReferences(tgt, idx)
 			}
 		}
@@ -1160,7 +1161,7 @@ func (s *Server) handlePrepareCallHierarchy(msg *requestMessage) {
 		}
 	case index.TokenDirectiveArg:
 		if res.DirectiveTargetFile != "" {
-			tgt := index.ResolveRelTarget(rel, res.DirectiveTargetFile)
+			tgt := linkgraph.ResolveRelTarget(rel, res.DirectiveTargetFile)
 			if tgt == "" {
 				_ = s.t.writeResponse(msg.ID, []callHierarchyItem{})
 				return

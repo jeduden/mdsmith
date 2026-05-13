@@ -3,13 +3,11 @@ package index
 import (
 	"bytes"
 	"fmt"
-	"net/url"
-	"path"
 	"regexp"
 	"strings"
 
-	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
@@ -21,6 +19,17 @@ import (
 
 // buildFileEntry parses source under filePath (workspace-relative) and
 // extracts the symbol/edge tables for that file.
+//
+// Markdown link / directive parsing is delegated to the linkgraph
+// package so the LSP graph, MDS027, and `mdsmith list backlinks`
+// agree on what counts as a link, an anchor, and a directive target.
+// The symbol-table collectors (headings, link-ref defs, directive
+// outline entries) still live in this package because they're index-
+// specific.
+//
+// The function is pure given its inputs: no file reads, no workspace
+// traversal, no shared mutable state. Callers may invoke it
+// concurrently across files.
 func buildFileEntry(filePath string, source []byte) *FileEntry {
 	fe := &FileEntry{
 		Path:      NormalizePath(filePath),
@@ -41,10 +50,24 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 
 	// Parse the body with the same goldmark configuration the lint
 	// pipeline uses, so processing-instructions surface as our
-	// custom AST node.
+	// custom AST node. The parser context carries the reference
+	// definitions; collectLinkRefDefs reads from it directly.
 	ctx := parser.NewContext()
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(ctx))
 	lines := bytes.Split(body, []byte("\n"))
+
+	// Wrap the parsed body in a *lint.File so the linkgraph
+	// extractors (ExtractLinks / ExtractRefLinks / ExtractDirectives)
+	// can use their f.LineOfOffset / f.ColumnOfOffset helpers.
+	// LineOffset is set so callers that want file-relative coordinates
+	// (the symbol layer, which adds fmOffset back) stay consistent.
+	lf := &lint.File{
+		Path:       fe.Path,
+		Source:     body,
+		Lines:      lines,
+		AST:        root,
+		LineOffset: fmOffset,
+	}
 
 	// Headings drive the outline.
 	headingSyms := collectHeadings(fe.Path, root, body, lines, fmOffset, fe.LineCount)
@@ -57,8 +80,8 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 	fe.Symbols = append(fe.Symbols, collectDirectives(fe.Path, root, body, fmOffset)...)
 
 	// Edges: anchor / file / ref-style links plus directive targets.
-	fe.Outgoing = append(fe.Outgoing, collectLinkEdges(fe.Path, root, body, fmOffset)...)
-	fe.Outgoing = append(fe.Outgoing, collectDirectiveEdges(fe.Path, root, body, fmOffset)...)
+	fe.Outgoing = append(fe.Outgoing, collectLinkEdges(fe.Path, lf, fmOffset)...)
+	fe.Outgoing = append(fe.Outgoing, collectDirectiveEdges(fe.Path, lf, fmOffset)...)
 
 	return fe
 }
@@ -421,315 +444,112 @@ func piLineRange(pi *lint.ProcessingInstruction, source []byte, fmOffset int) (i
 	return startLine, endLine
 }
 
-// collectLinkEdges walks the AST for ast.Link nodes and emits one
-// Edge per parsed destination. Anchor-only links (`#fragment`) become
-// EdgeAnchorLink; reference-style links (`[text][label]`) become
-// EdgeRefLink; everything else becomes EdgeFileLink.
-func collectLinkEdges(filePath string, root ast.Node, source []byte, fmOffset int) []Edge {
+// collectLinkEdges emits one Edge per Markdown link in f. Inline
+// links produce EdgeAnchorLink (`[x](#sec)`) or EdgeFileLink
+// (`[x](./other.md)`); reference-style links (`[x][label]`) produce
+// EdgeRefLink. Extraction routes through linkgraph so MDS027, the
+// backlinks CLI, and this index walk the same parser.
+//
+// Absolute / escapes-the-root file targets are dropped (linkgraph's
+// ResolveRelTarget returns ""). Anchor slugs are normalised via
+// linkgraph.NormalizeAnchor so a percent-encoded `%2D` keys to the
+// same slot as the literal `-`.
+//
+// Lines and columns are file-relative (body line + fmOffset) so
+// downstream LSP locations don't need to adjust for front matter.
+func collectLinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 	var out []Edge
-	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		l, ok := n.(*ast.Link)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		// Reference-style link: emit one EdgeRefLink, target is in
-		// the same file under the matched label.
-		if l.Reference != nil {
-			refLabel := string(util.ToLinkReference(l.Reference.Value))
-			line, col := nodePosition(source, l)
-			out = append(out, Edge{
-				SourceFile:  filePath,
-				SourceLine:  line + fmOffset,
-				SourceCol:   col,
-				TargetLabel: refLabel,
-				Kind:        EdgeRefLink,
-			})
-			return ast.WalkContinue, nil
-		}
-
-		dest := string(l.Destination)
-		t, ok := parseLinkTarget(dest)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		line, col := nodePosition(source, l)
-		// parseLinkTarget guarantees t.LocalAnchor || t.Path != "":
-		// it returns false otherwise. So the LocalAnchor branch and
-		// the file-link branch together cover every parsed target.
-		if t.LocalAnchor {
+	for _, l := range linkgraph.ExtractLinks(f) {
+		anchor := linkgraph.NormalizeAnchor(l.Target.Anchor)
+		if l.Target.LocalAnchor {
 			out = append(out, Edge{
 				SourceFile:   filePath,
-				SourceLine:   line + fmOffset,
-				SourceCol:    col,
-				TargetAnchor: mdtext.Slugify(decodeAnchor(t.Anchor)),
+				SourceLine:   l.Line + fmOffset,
+				SourceCol:    l.Column,
+				TargetAnchor: anchor,
 				Kind:         EdgeAnchorLink,
 			})
-		} else {
-			tgt := resolveRelTarget(filePath, t.Path)
-			if tgt == "" {
-				// Absolute or escapes-the-root paths cannot point
-				// at anything inside the workspace. Emitting an
-				// edge with empty TargetFile would be ambiguous —
-				// IncomingEdges treats `""` as "same file as
-				// source", so the link would be misattributed as a
-				// self-reference. Drop it instead.
-				return ast.WalkContinue, nil
-			}
-			out = append(out, Edge{
-				SourceFile:   filePath,
-				SourceLine:   line + fmOffset,
-				SourceCol:    col,
-				TargetFile:   tgt,
-				TargetAnchor: mdtext.Slugify(decodeAnchor(t.Anchor)),
-				Kind:         EdgeFileLink,
-			})
+			continue
 		}
-		return ast.WalkContinue, nil
-	})
+		tgt := linkgraph.ResolveRelTarget(filePath, l.Target.Path)
+		if tgt == "" {
+			// Absolute or escapes-the-root paths cannot point at
+			// anything inside the workspace. Emitting an edge with
+			// empty TargetFile would be ambiguous — IncomingEdges
+			// treats `""` as "same file as source", so the link
+			// would be misattributed as a self-reference. Drop it.
+			continue
+		}
+		out = append(out, Edge{
+			SourceFile:   filePath,
+			SourceLine:   l.Line + fmOffset,
+			SourceCol:    l.Column,
+			TargetFile:   tgt,
+			TargetAnchor: anchor,
+			Kind:         EdgeFileLink,
+		})
+	}
+	for _, r := range linkgraph.ExtractRefLinks(f) {
+		out = append(out, Edge{
+			SourceFile:  filePath,
+			SourceLine:  r.Line + fmOffset,
+			SourceCol:   r.Column,
+			TargetLabel: r.Label,
+			Kind:        EdgeRefLink,
+		})
+	}
 	return out
-}
-
-// linkTarget mirrors the parsed shape of a link destination.
-type linkTarget struct {
-	Path        string
-	Anchor      string
-	LocalAnchor bool
-}
-
-func parseLinkTarget(dest string) (linkTarget, bool) {
-	dest = strings.TrimSpace(dest)
-	if dest == "" || strings.HasPrefix(dest, "//") {
-		return linkTarget{}, false
-	}
-	u, err := url.Parse(dest)
-	if err != nil {
-		return linkTarget{}, false
-	}
-	if u.Scheme != "" || u.Host != "" {
-		return linkTarget{}, false
-	}
-	// u.Opaque is non-empty only when there's a scheme; the scheme
-	// check above already rejects those cases, so we don't need to
-	// fold u.Opaque into u.Path here.
-	p := u.Path
-	if p == "" && u.Fragment != "" {
-		return linkTarget{Anchor: u.Fragment, LocalAnchor: true}, true
-	}
-	if p == "" {
-		return linkTarget{}, false
-	}
-	return linkTarget{Path: p, Anchor: u.Fragment}, true
-}
-
-func decodeAnchor(s string) string {
-	if d, err := url.PathUnescape(s); err == nil {
-		return d
-	}
-	return s
-}
-
-// ResolveRelTarget joins srcFile's directory with linkPath and
-// returns the workspace-relative result. Absolute paths and ones
-// that escape the workspace root after normalization return the
-// empty string — callers must treat "" as "no in-workspace target"
-// rather than as a valid path. Exported so the LSP server's
-// directive-arg navigation paths can apply the same escape rules
-// as the index's edge collector.
-func ResolveRelTarget(srcFile, linkPath string) string {
-	return resolveRelTarget(srcFile, linkPath)
-}
-
-// resolveRelTarget is the package-internal implementation of
-// ResolveRelTarget; see that function's doc. The function is
-// strict about its inputs:
-//
-//   - srcFile must already be workspace-relative (no leading `/`,
-//     no drive letter, no UNC `\\` prefix). Callers that hold
-//     absolute paths must run them through workspaceRelative
-//     first; otherwise a `../../etc/passwd`-style linkPath could
-//     escape via path.Join's absolute-path semantics.
-//   - linkPath has both `\` and `/` translated to `/` before
-//     joining so a Windows-authored `sub\x.md` resolves the same
-//     way on Linux. (filepath.ToSlash is OS-dependent and a no-op
-//     on POSIX hosts; the rest of the codebase translates
-//     explicitly via strings.ReplaceAll, see NormalizePath.)
-//   - Both `path.IsAbs` and the cleaned-path escape check fire as
-//     belt-and-suspenders: an absolute linkPath, an absolute
-//     srcFile, or any combination that produces an absolute
-//     cleaned path returns "".
-func resolveRelTarget(srcFile, linkPath string) string {
-	srcFile = strings.ReplaceAll(srcFile, `\`, `/`)
-	linkPath = strings.ReplaceAll(linkPath, `\`, `/`)
-	if path.IsAbs(srcFile) || path.IsAbs(linkPath) {
-		return ""
-	}
-	if isDriveOrUNC(srcFile) || isDriveOrUNC(linkPath) {
-		return ""
-	}
-	dir := path.Dir(srcFile)
-	cleaned := path.Clean(path.Join(dir, linkPath))
-	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return ""
-	}
-	if path.IsAbs(cleaned) {
-		return ""
-	}
-	return cleaned
-}
-
-// isDriveOrUNC reports whether p starts with a Windows drive
-// letter (e.g. `C:`) or a UNC prefix (`//server`). Callers use
-// this to refuse non-relative inputs even when running on POSIX
-// hosts, where filepath.IsAbs wouldn't flag them.
-func isDriveOrUNC(p string) bool {
-	if len(p) >= 2 && p[1] == ':' {
-		c := p[0]
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-			return true
-		}
-	}
-	return strings.HasPrefix(p, "//")
-}
-
-// nodePosition returns the 1-based source line and column of the
-// first text segment under n. Falls back to (1, 1) when no text is
-// found.
-func nodePosition(source []byte, n ast.Node) (int, int) {
-	off := -1
-	_ = ast.Walk(n, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if t, ok := cur.(*ast.Text); ok {
-			if off < 0 || t.Segment.Start < off {
-				off = t.Segment.Start
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-	if off < 0 {
-		return 1, 1
-	}
-	line := lineOfOffset(source, off)
-	lineStart := 0
-	for i := 0; i < off && i < len(source); i++ {
-		if source[i] == '\n' {
-			lineStart = i + 1
-		}
-	}
-	return line, off - lineStart + 1
 }
 
 // collectDirectiveEdges emits one Edge per `<?include?>`,
 // `<?catalog?>`, and `<?build?>` directive whose body specifies a
-// concrete target. Catalog edges aggregate to one entry per directive
-// (the design's "first pass" decision).
-func collectDirectiveEdges(filePath string, root ast.Node, source []byte, fmOffset int) []Edge {
+// usable target. Include and build edges carry a workspace-relative
+// TargetFile. Catalog edges are emitted with Unresolved=true and an
+// empty TargetFile — the glob list isn't expanded inside the
+// per-file extractor (see linkgraph.ExpandCatalog for callers that
+// need the concrete list), and IncomingEdges skips unresolved edges
+// so catalog hosts don't appear as phantom self-backlinks.
+//
+// Targets that are absolute or escape the workspace are dropped
+// silently; dedicated lint rules report those as diagnostics.
+func collectDirectiveEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 	var out []Edge
-	for n := root.FirstChild(); n != nil; n = n.NextSibling() {
-		pi, ok := n.(*lint.ProcessingInstruction)
-		if !ok {
-			continue
-		}
-		if strings.HasPrefix(pi.Name, "/") {
-			continue
-		}
-		startLine, _ := piLineRange(pi, source, fmOffset)
-		params, ok := parsePIParams(pi, source)
-		if !ok {
-			continue
-		}
-		// Empty resolveRelTarget means the target is absolute or
-		// escapes the workspace root. Recording it would surface as
-		// an empty TargetFile, which IncomingEdges treats as
-		// "same file as source" and would silently misattribute the
-		// reference back to the host file.
-		switch pi.Name {
-		case "include":
-			if file := strings.TrimSpace(params["file"]); file != "" {
-				if tgt := resolveRelTarget(filePath, file); tgt != "" {
-					out = append(out, Edge{
-						SourceFile: filePath,
-						SourceLine: startLine,
-						SourceCol:  1,
-						TargetFile: tgt,
-						Kind:       EdgeInclude,
-					})
-				}
+	for _, d := range linkgraph.ExtractDirectives(f) {
+		line := d.Line + fmOffset
+		switch d.Kind {
+		case linkgraph.DirectiveInclude:
+			tgt := linkgraph.ResolveRelTarget(filePath, d.Path)
+			if tgt == "" {
+				continue
 			}
-		case "build":
-			if src := strings.TrimSpace(params["source"]); src != "" {
-				if tgt := resolveRelTarget(filePath, src); tgt != "" {
-					out = append(out, Edge{
-						SourceFile: filePath,
-						SourceLine: startLine,
-						SourceCol:  1,
-						TargetFile: tgt,
-						Kind:       EdgeBuild,
-					})
-				}
-			}
-		case "catalog":
-			// Catalog targets are globs; the index records one
-			// edge with empty TargetFile so call-hierarchy can
-			// surface "this file uses a catalog" without exploding
-			// every match into a separate entry. callers that want
-			// expansion can resolve the glob themselves.
 			out = append(out, Edge{
 				SourceFile: filePath,
-				SourceLine: startLine,
-				SourceCol:  1,
+				SourceLine: line,
+				SourceCol:  d.Col,
+				TargetFile: tgt,
+				Kind:       EdgeInclude,
+			})
+		case linkgraph.DirectiveBuild:
+			tgt := linkgraph.ResolveRelTarget(filePath, d.Path)
+			if tgt == "" {
+				continue
+			}
+			out = append(out, Edge{
+				SourceFile: filePath,
+				SourceLine: line,
+				SourceCol:  d.Col,
+				TargetFile: tgt,
+				Kind:       EdgeBuild,
+			})
+		case linkgraph.DirectiveCatalog:
+			out = append(out, Edge{
+				SourceFile: filePath,
+				SourceLine: line,
+				SourceCol:  d.Col,
 				Kind:       EdgeCatalog,
+				Unresolved: true,
 			})
 		}
 	}
 	return out
-}
-
-// parsePIParams converts a PI block's YAML body into a flat string
-// map. Single-line PIs (no body) yield an empty map and ok=true.
-func parsePIParams(pi *lint.ProcessingInstruction, source []byte) (map[string]string, bool) {
-	body := extractPIBody(pi, source)
-	mp := MarkerPairLike{
-		StartLine: lineOfOffset(source, pi.Lines().At(0).Start),
-		YAMLBody:  body,
-	}
-	return parseYAMLBody(mp)
-}
-
-// MarkerPairLike mirrors gensection.MarkerPair without the dependency,
-// since we only use the YAMLBody field.
-type MarkerPairLike struct {
-	StartLine int
-	YAMLBody  string
-}
-
-func parseYAMLBody(mp MarkerPairLike) (map[string]string, bool) {
-	mpReal := gensection.MarkerPair{StartLine: mp.StartLine, YAMLBody: mp.YAMLBody}
-	rawMap, diags := gensection.ParseYAMLBody("", mpReal, "", "")
-	if len(diags) > 0 {
-		return nil, false
-	}
-	gensection.ExtractColumnsRaw(rawMap)
-	params, diags := gensection.ValidateStringParams("", mp.StartLine, rawMap, "", "")
-	if len(diags) > 0 {
-		return nil, false
-	}
-	return params, true
-}
-
-func extractPIBody(pi *lint.ProcessingInstruction, source []byte) string {
-	lines := pi.Lines()
-	if lines.Len() <= 1 {
-		return ""
-	}
-	var b strings.Builder
-	for i := 1; i < lines.Len(); i++ {
-		seg := lines.At(i)
-		b.Write(seg.Value(source))
-	}
-	return b.String()
 }

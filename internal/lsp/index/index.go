@@ -92,6 +92,12 @@ const (
 // Empty TargetFile means "same file as Source" (used for anchor and
 // reference-style links). Empty TargetAnchor means the reference
 // targets the file as a whole (e.g. `[text](./other.md)`).
+//
+// Unresolved is set on edges whose target shape is a glob pattern
+// (catalog directives) rather than a single file. Reverse-edge
+// queries (IncomingEdges / BacklinksFor) skip unresolved edges so
+// catalog directives don't surface as phantom self-backlinks the way
+// empty-TargetFile placeholders did before plan 153.
 type Edge struct {
 	SourceFile   string
 	SourceLine   int // 1-based
@@ -100,6 +106,7 @@ type Edge struct {
 	TargetAnchor string
 	TargetLabel  string
 	Kind         EdgeKind
+	Unresolved   bool
 }
 
 // FileEntry is one file's contribution to the index.
@@ -278,6 +285,13 @@ func (i *Index) Build(files []string, load func(path string) ([]byte, error)) {
 // given (file, anchor). When anchor is "" matches edges to the file
 // at large (no anchor specified by the caller).
 //
+// Unresolved edges (catalog directives whose glob hasn't been
+// expanded) are skipped — they don't yet point at a specific file,
+// so they can't satisfy a (file, anchor) match. Treating their
+// empty TargetFile as "same file" the way concrete same-file edges
+// are treated would misattribute them as phantom self-backlinks
+// (see plan 153 for the unification that introduced the flag).
+//
 // The returned slice is a fresh copy.
 func (i *Index) IncomingEdges(file, anchor string) []Edge {
 	if i == nil {
@@ -289,6 +303,9 @@ func (i *Index) IncomingEdges(file, anchor string) []Edge {
 	var out []Edge
 	for _, fe := range i.files {
 		for _, e := range fe.Outgoing {
+			if e.Unresolved {
+				continue
+			}
 			tFile := e.TargetFile
 			if tFile == "" {
 				tFile = fe.Path
@@ -311,12 +328,9 @@ func (i *Index) IncomingEdges(file, anchor string) []Edge {
 // question — IncomingEdges(file, anchor) answers the narrower
 // "what targets this specific heading".
 //
-// Catalog edges are filtered out: the index emits a single
-// EdgeCatalog with an empty TargetFile per `<?catalog?>` directive
-// so call-hierarchy can show "this file uses a catalog" without
-// expanding the glob, but those edges don't actually cite any
-// particular file. Without the filter they'd surface as phantom
-// self-backlinks on every file that hosts a catalog directive.
+// IncomingEdges already drops Unresolved edges (catalog directives
+// whose glob pattern hasn't been expanded) so they don't surface
+// here as phantom self-backlinks on every catalog host file.
 //
 // Same-file citations (EdgeAnchorLink, EdgeRefLink) stay in the
 // result so callers can filter on SourceFile when they want only
@@ -329,14 +343,7 @@ func (i *Index) BacklinksFor(file string) []Edge {
 	if i == nil {
 		return nil
 	}
-	raw := i.IncomingEdges(file, "")
-	edges := raw[:0]
-	for _, e := range raw {
-		if e.Kind == EdgeCatalog {
-			continue
-		}
-		edges = append(edges, e)
-	}
+	edges := i.IncomingEdges(file, "")
 	sort.Slice(edges, func(a, b int) bool {
 		if edges[a].SourceFile != edges[b].SourceFile {
 			return edges[a].SourceFile < edges[b].SourceFile

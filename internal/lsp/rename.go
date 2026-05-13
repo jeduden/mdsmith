@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/lsp/index"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -880,7 +881,7 @@ func refDefDestPointsAt(dest []byte, defFile, headingFile, oldSlug string) bool 
 	if t.localAnchor {
 		return index.NormalizePath(defFile) == headingFile
 	}
-	resolved := index.ResolveRelTarget(defFile, t.path)
+	resolved := linkgraph.ResolveRelTarget(defFile, t.path)
 	return resolved == headingFile
 }
 

@@ -115,76 +115,11 @@ func TestFrontMatterStringListBranches(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestParseLinkTargetMoreCases(t *testing.T) {
-	t.Parallel()
-	// Empty / `//` prefix → false.
-	_, ok := parseLinkTarget("")
-	assert.False(t, ok)
-	_, ok = parseLinkTarget("//host/path")
-	assert.False(t, ok)
-	// Scheme present → false.
-	_, ok = parseLinkTarget("https://example.com/x")
-	assert.False(t, ok)
-	// Malformed URL → false. `%` is a parse error in net/url.
-	_, ok = parseLinkTarget("%")
-	assert.False(t, ok)
-	// Opaque path (mailto:user@host parses with scheme, fails on scheme check).
-	_, ok = parseLinkTarget("mailto:x@y")
-	assert.False(t, ok)
-}
-
-func TestDecodeAnchorErrorPath(t *testing.T) {
-	t.Parallel()
-	// PathUnescape returns an error for a stray `%` not followed by hex.
-	// In that case decodeAnchor returns the raw input.
-	got := decodeAnchor("foo%zz")
-	assert.Equal(t, "foo%zz", got)
-}
-
-func TestResolveRelTargetVariants(t *testing.T) {
-	t.Parallel()
-	assert.Empty(t, resolveRelTarget("a.md", "/abs.md"))
-	assert.Equal(t, "b.md", resolveRelTarget("a.md", "b.md"))
-	// Going up from root file resolves to "" (escapes root).
-	assert.Empty(t, resolveRelTarget("a.md", "../up.md"))
-}
-
-func TestResolveRelTargetRejectsAbsoluteSrcFile(t *testing.T) {
-	t.Parallel()
-	// Absolute srcFile would let `../` escape via path.Join's
-	// abs-path semantics. The function rejects it instead.
-	assert.Empty(t, resolveRelTarget("/abs/a.md", "../../etc/passwd"))
-	assert.Empty(t, resolveRelTarget("/abs/a.md", "b.md"))
-	// Windows drive-letter form.
-	assert.Empty(t, resolveRelTarget(`C:/work/a.md`, "b.md"))
-	// UNC.
-	assert.Empty(t, resolveRelTarget(`//server/share/a.md`, "b.md"))
-}
-
-func TestResolveRelTargetTranslatesBackslashes(t *testing.T) {
-	t.Parallel()
-	// A Windows-authored link `sub\\x.md` from `docs/a.md`
-	// resolves to `docs/sub/x.md` regardless of host OS.
-	assert.Equal(t, "docs/sub/x.md", resolveRelTarget("docs/a.md", `sub\x.md`))
-}
-
-func TestResolveRelTargetRejectsAbsoluteCleaned(t *testing.T) {
-	t.Parallel()
-	// `srcFile` that's already escape-the-root via path.Clean
-	// would land outside the workspace; the absolute-cleaned
-	// guard catches it.
-	assert.Empty(t, resolveRelTarget("a/../../b.md", "x.md"))
-}
-
-func TestParseLinkTargetOpaqueMailto(t *testing.T) {
-	t.Parallel()
-	// `mailto:user@host` parses with scheme="mailto" → rejected on
-	// the scheme check. We need to construct a destination that
-	// parses with empty scheme but a non-empty Opaque to hit the
-	// `p == "" && u.Opaque != ""` branch. Such inputs are extremely
-	// rare in markdown; the branch is defensive.
-	t.Skip("opaque branch is defensive; reachable only with crafted URL.URL inputs")
-}
+// parseLinkTarget / decodeAnchor / resolveRelTarget moved to linkgraph
+// as part of plan 153. Their behaviour is covered by the linkgraph
+// package's own tests (TestParseTarget, TestDecodeAnchor,
+// TestResolveRelTarget). The index now routes every Markdown link
+// through linkgraph.
 
 func TestCollectLinkRefDefsDuplicateLabel(t *testing.T) {
 	t.Parallel()
@@ -204,30 +139,6 @@ func TestCollectLinkRefDefsDuplicateLabel(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, refs, "expected exactly one SymbolLinkRef for 'lab'")
-}
-
-func TestParseLinkTargetEmptyAfterTrim(t *testing.T) {
-	t.Parallel()
-	// All-whitespace destination → empty after trim → false.
-	_, ok := parseLinkTarget("   ")
-	assert.False(t, ok)
-	// Pure fragment without a path returns LocalAnchor.
-	tgt, ok := parseLinkTarget("#sec")
-	assert.True(t, ok)
-	assert.True(t, tgt.LocalAnchor)
-}
-
-func TestParseLinkTargetQueryOnly(t *testing.T) {
-	t.Parallel()
-	// `?query=x` parses with empty Path, empty Fragment → false.
-	_, ok := parseLinkTarget("?q=x")
-	assert.False(t, ok)
-}
-
-func TestResolveRelTargetExported(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "docs/b.md", ResolveRelTarget("docs/a.md", "b.md"))
-	assert.Empty(t, ResolveRelTarget("docs/a.md", "../../escape.md"))
 }
 
 func TestCollectLinkEdgesAnchorOnlyTakesAnchorBranch(t *testing.T) {
@@ -438,13 +349,6 @@ func TestExtractPIBodyEmpty(t *testing.T) {
 		}
 	}
 	assert.True(t, sawDirective)
-}
-
-func TestParseYAMLBodyError(t *testing.T) {
-	t.Parallel()
-	mp := MarkerPairLike{StartLine: 1, YAMLBody: "this: [unclosed"}
-	_, ok := parseYAMLBody(mp)
-	assert.False(t, ok)
 }
 
 func TestCollectDirectivesSkipsClosingMarker(t *testing.T) {
