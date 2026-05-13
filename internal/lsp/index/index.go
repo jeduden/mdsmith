@@ -16,6 +16,7 @@ package index
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -303,6 +304,49 @@ func (i *Index) IncomingEdges(file, anchor string) []Edge {
 		}
 	}
 	return out
+}
+
+// BacklinksFor returns every workspace edge whose target is file,
+// regardless of anchor. Use this for the "what cites this file?"
+// question — IncomingEdges(file, anchor) answers the narrower
+// "what targets this specific heading".
+//
+// Catalog edges are filtered out: the index emits a single
+// EdgeCatalog with an empty TargetFile per `<?catalog?>` directive
+// so call-hierarchy can show "this file uses a catalog" without
+// expanding the glob, but those edges don't actually cite any
+// particular file. Without the filter they'd surface as phantom
+// self-backlinks on every file that hosts a catalog directive.
+//
+// Same-file citations (EdgeAnchorLink, EdgeRefLink) stay in the
+// result so callers can filter on SourceFile when they want only
+// external citations. The returned slice is freshly allocated and
+// sorted by (SourceFile, SourceLine, SourceCol) so callers
+// presenting the result to a user — or asserting on it in a
+// test — see a stable order regardless of the underlying map
+// iteration.
+func (i *Index) BacklinksFor(file string) []Edge {
+	if i == nil {
+		return nil
+	}
+	raw := i.IncomingEdges(file, "")
+	edges := raw[:0]
+	for _, e := range raw {
+		if e.Kind == EdgeCatalog {
+			continue
+		}
+		edges = append(edges, e)
+	}
+	sort.Slice(edges, func(a, b int) bool {
+		if edges[a].SourceFile != edges[b].SourceFile {
+			return edges[a].SourceFile < edges[b].SourceFile
+		}
+		if edges[a].SourceLine != edges[b].SourceLine {
+			return edges[a].SourceLine < edges[b].SourceLine
+		}
+		return edges[a].SourceCol < edges[b].SourceCol
+	})
+	return edges
 }
 
 // OutgoingEdges returns the edges originating in file.

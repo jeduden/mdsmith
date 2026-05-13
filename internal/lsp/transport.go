@@ -128,6 +128,18 @@ func (t *transport) writeError(id json.RawMessage, code int, msg string) error {
 	})
 }
 
+// writeErrorWithData writes an error response carrying a structured
+// `data` payload. LSP clients show this in the error UI; rename
+// uses it to name the colliding heading or label so the user knows
+// which symbol blocked the rename.
+func (t *transport) writeErrorWithData(id json.RawMessage, code int, msg string, data any) error {
+	return t.writeJSON(responseMessage{
+		JSONRPC: "2.0",
+		ID:      id,
+		Error:   &responseError{Code: code, Message: msg, Data: data},
+	})
+}
+
 // writeNotification writes a server-to-client notification.
 func (t *transport) writeNotification(method string, params any) error {
 	return t.writeJSON(notificationMessage{JSONRPC: "2.0", Method: method, Params: params})

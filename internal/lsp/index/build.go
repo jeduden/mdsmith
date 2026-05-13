@@ -322,6 +322,15 @@ func frontMatterStringList(fm []byte, key string) ([]string, bool) {
 // a line. Cribbed from internal/rules/nounusedlinkdefinitions.
 var refDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$`)
 
+// RefDefRegexpMatches returns the same submatch indices
+// refDefRE.FindAllSubmatchIndex produces for body. Exported so the
+// LSP rename surface can iterate every reference definition without
+// duplicating the regex pattern (and without giving callers a way
+// to mutate the package-level pattern).
+func RefDefRegexpMatches(body []byte) [][]int {
+	return refDefRE.FindAllSubmatchIndex(body, -1)
+}
+
 // collectLinkRefDefs finds `[label]: url` lines in body. The CommonMark
 // reference definition map is stored in parser.Context (`ctx.References`)
 // — we use it to confirm a regex match really is a definition (not a

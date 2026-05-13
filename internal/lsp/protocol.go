@@ -105,6 +105,16 @@ type serverCapabilities struct {
 	WorkspaceSymbolProvider bool                    `json:"workspaceSymbolProvider,omitempty"`
 	CallHierarchyProvider   bool                    `json:"callHierarchyProvider,omitempty"`
 	CompletionProvider      *completionOptions      `json:"completionProvider,omitempty"`
+	RenameProvider          *renameOptions          `json:"renameProvider,omitempty"`
+}
+
+// renameOptions advertises textDocument/rename support. PrepareProvider
+// is true because the heading rename range excludes the leading `#`s
+// and any trailing closing `#`s — clients need the explicit range to
+// pre-fill the rename popup with just the heading text rather than the
+// raw line content.
+type renameOptions struct {
+	PrepareProvider bool `json:"prepareProvider,omitempty"`
 }
 
 // textDocumentSyncKind is the LSP enum for change notification mode.

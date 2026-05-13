@@ -160,3 +160,32 @@ type completionOptions struct {
 	TriggerCharacters []string `json:"triggerCharacters"`
 	ResolveProvider   bool     `json:"resolveProvider"`
 }
+
+// renameParams (LSP §3.18). Position is 0-based, Character counts
+// UTF-16 code units; NewName is the text the user typed into the
+// rename popup.
+type renameParams struct {
+	TextDocument textDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	NewName      string                 `json:"newName"`
+}
+
+// prepareRenameResult is the {range, placeholder} reply form for
+// textDocument/prepareRename (LSP §3.18). Returning the range alone
+// would be valid too, but the placeholder lets the client pre-fill
+// the rename popup with the symbol's current text — for headings
+// that means "Setup" rather than "## Setup", which is the whole
+// reason prepareRename exists in this server.
+type prepareRenameResult struct {
+	Range       Range  `json:"range"`
+	Placeholder string `json:"placeholder"`
+}
+
+// renameCollisionData is attached to the InvalidParams error data
+// when a rename is rejected because the new slug or label collides
+// with an existing heading or link-reference. The client surfaces
+// this in the error UI so the user understands why the rename
+// failed; without the colliding name the message would be opaque.
+type renameCollisionData struct {
+	Conflict string `json:"conflict"`
+}

@@ -38,6 +38,7 @@ uses stdio either way.
 | `workspaceSymbolProvider`         | Substring search across headings, link refs, front-matter `title:`, and kind names |
 | `callHierarchyProvider`           | File-level call graph over `<?include?>`, `<?catalog?>`, `<?build?>`, and links    |
 | `completionProvider`              | Heading anchors, link-ref labels, kind names, and directive file paths             |
+| `renameProvider`                  | Heading + link-reference label renames, with `prepareProvider: true`               |
 | `workspace/didChangeWatchedFiles` | Re-lint open buffers on `.mdsmith.yml` change; index refresh on Markdown changes   |
 
 `mdsmith.run` controls when the server actually re-lints:
@@ -229,6 +230,23 @@ Both `.md` and `.markdown` files appear as candidates.
 
 Image links (`![alt](#…`) do not trigger anchor completion.
 Completion inside fenced or indented code blocks returns an empty list.
+
+### Rename
+
+`prepareRename` returns the text range for ATX heading text
+(without `#`s), setext heading text lines, `[label]: url`
+defs, the trailing `[…]` of a full reference, and the
+leading `[…]` of a shortcut or collapsed reference. The
+placeholder pre-fills the popup; other positions return
+`null`.
+
+Heading rename rewrites the heading and every workspace
+anchor link to its slug. Duplicate-name disambiguator shifts
+emit follow-up edits. Link-ref rename rewrites the
+`[label]: url` def plus every same-file use. `InvalidParams`
+fires on a new duplicate base slug, a colliding def, an
+empty slug, or a `[` / `]` / newline in a label. The
+error's `data.conflict` names the colliding symbol.
 
 ## Configuration discovery
 

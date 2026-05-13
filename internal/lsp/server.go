@@ -354,6 +354,10 @@ func (s *Server) dispatchNavigation(msg *requestMessage) bool {
 		s.handleOutgoingCalls(msg)
 	case "textDocument/completion":
 		s.handleCompletion(msg)
+	case "textDocument/prepareRename":
+		s.handlePrepareRename(msg)
+	case "textDocument/rename":
+		s.handleRename(msg)
 	default:
 		return false
 	}
@@ -418,6 +422,7 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 				TriggerCharacters: []string{"#", "[", ":", "/", "\""},
 				ResolveProvider:   false,
 			},
+			RenameProvider: &renameOptions{PrepareProvider: true},
 		},
 		ServerInfo: serverInfo{Name: "mdsmith", Version: "lsp"},
 	}

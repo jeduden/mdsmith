@@ -1,7 +1,7 @@
 ---
 id: 151
 title: LSP rename for headings and link-reference labels
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Add `textDocument/prepareRename` and
@@ -236,33 +236,33 @@ the capability see the post-plan-134 server.
 
 ## Acceptance Criteria
 
-- [ ] `renameProvider.prepareProvider = true`
+- [x] `renameProvider.prepareProvider = true`
       appears in the `initialize` capabilities.
-- [ ] `prepareRename` on a heading returns the
+- [x] `prepareRename` on a heading returns the
       heading text range (excluding leading `#`s).
-- [ ] `prepareRename` on plain prose returns
+- [x] `prepareRename` on plain prose returns
       `null`.
-- [ ] `rename` on a heading rewrites the heading
+- [x] `rename` on a heading rewrites the heading
       text in the current file and every anchor
       link in the workspace pointing at the old
       slug.
-- [ ] `rename` triggers shift detection: when a
+- [x] `rename` triggers shift detection: when a
       duplicate-name disambiguator changes,
       affected anchors update too.
-- [ ] `rename` on a link-ref definition rewrites
+- [x] `rename` on a link-ref definition rewrites
       every `[text][label]` and shortcut `[label]`
       use in the same file.
-- [ ] A heading rename whose new slug collides
+- [x] A heading rename whose new slug collides
       with an existing heading in the same file
       fails with an LSP `InvalidParams` error
       naming the colliding heading.
-- [ ] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
+- [x] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
       documents `renameProvider` and the
       collision contract.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
 
 ## Open Questions
 
