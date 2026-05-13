@@ -5,7 +5,9 @@
   "description": "CI scripts run by .github/workflows/. Bun-executed TypeScript so the repo does not have to add Python as a second runtime language.",
   "type": "module",
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "check-secret-rotations": "bun run check-secret-rotations.ts",
+    "record-rotation": "bun run record-rotation.ts"
   },
   "dependencies": {
     "yaml": "2.6.1"

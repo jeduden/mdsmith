@@ -1,18 +1,17 @@
 ---
 title: npm
 summary: >-
-  Six packages total: root `@mdsmith/cli` plus one
-  platform-specific subpackage per supported host.
-  All six publish via OIDC Trusted Publishing.
+  Root `@mdsmith/cli` plus one platform-specific
+  subpackage per supported host, all published via
+  OIDC Trusted Publishing.
 registry: registry.npmjs.org
 credential: OIDC Trusted Publishing
 job: npm
 ---
 # npm
 
-The npm channel publishes six packages: the root
-and one platform-specific subpackage per supported
-host:
+The npm channel publishes the root and one
+platform-specific subpackage per supported host:
 
 - `@mdsmith/cli` — root, contains the shim
 - `@mdsmith/linux-x64`
@@ -38,4 +37,4 @@ with SLSA build attestations.
 Auth is OIDC Trusted Publishing. See the
 `OIDC Trusted Publishing` section in
 [`release.md`](../release.md) for the npmjs.com
-configuration each of the six packages needs.
+configuration each published package needs.

@@ -2,11 +2,12 @@
 /**
  * Open a GitHub issue when a long-lived secret is due for rotation.
  *
- * The source of truth is the `rotations:` table in the front matter
- * of `docs/development/secret-rotations.md`. For each entry the
- * script computes (today - last-rotated). If that exceeds
+ * Each tracked secret lives in its own file under
+ * `docs/development/secret-rotations/`. The script globs that
+ * directory, parses each file's YAML front matter, and computes
+ * (today - last-rotated). If the elapsed time exceeds
  * `period-days` minus the reminder window (30 days), the script
- * opens a single labelled issue per entry, with a stable title so
+ * opens a single labelled issue per file with a stable title so
  * reruns are idempotent.
  *
  * The script does not close issues directly. The reminder issue
@@ -21,29 +22,27 @@
  * - 1: doc missing / malformed / `gh` failure / unknown entry kind
  */
 
-import { $ } from "bun";
-import { resolve } from "node:path";
+import { $, Glob } from "bun";
+import { basename, resolve } from "node:path";
 import { parse as yamlParse } from "yaml";
 
 const REPO_ROOT = resolve(import.meta.dir, "..", "..");
-const ROTATION_DOC = resolve(REPO_ROOT, "docs/development/secret-rotations.md");
+const ROTATIONS_DIR = resolve(REPO_ROOT, "docs/development/secret-rotations");
 const REMINDER_WINDOW_DAYS = 30;
 const ISSUE_LABEL = "secret-rotation";
 const ASSIGNEE = "jeduden";
 
 interface RotationEntry {
-  name: string;
-  "last-rotated": string;
-  "period-days": number;
+  title: string;
+  lastRotated: string;
+  periodDays: number;
   provider: string;
-  "issuer-url": string;
-  "used-by": string;
+  issuerUrl: string;
+  usedBy: string;
   scope: string;
 }
 
-interface FrontMatter {
-  rotations?: unknown;
-}
+class SystemExit extends Error {}
 
 /** Compute today's date in UTC. The cron schedule is UTC, so the
  * computed due-state must match the workflow's wall clock. */
@@ -56,35 +55,35 @@ function utcToday(): Date {
   ));
 }
 
-/** Days between two UTC midnights. Truncates to integer. */
+/** Days between two UTC midnights, truncated to integer. */
 function daysBetween(later: Date, earlier: Date): number {
   const msPerDay = 24 * 60 * 60 * 1000;
   return Math.floor((later.getTime() - earlier.getTime()) / msPerDay);
 }
 
 /** Extract the YAML front matter block from a markdown file. */
-function frontMatter(text: string): FrontMatter {
+function parseFrontMatter(text: string, path: string): Record<string, unknown> {
   if (!text.startsWith("---\n")) {
-    throw new SystemExit(`${ROTATION_DOC}: no front matter (must start with '---\\n')`);
+    throw new SystemExit(`${path}: no front matter (must start with '---\\n')`);
   }
   const end = text.indexOf("\n---\n", 4);
   if (end === -1) {
-    throw new SystemExit(`${ROTATION_DOC}: unterminated front matter`);
+    throw new SystemExit(`${path}: unterminated front matter`);
   }
   const parsed = yamlParse(text.slice(4, end));
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new SystemExit(`${ROTATION_DOC}: front matter is not a mapping`);
+    throw new SystemExit(`${path}: front matter is not a mapping`);
   }
-  return parsed as FrontMatter;
+  return parsed as Record<string, unknown>;
 }
-
-class SystemExit extends Error {}
 
 type DueState = "ok" | "due" | "overdue";
 
 function dueState(today: Date, lastRotated: Date, periodDays: number): { status: DueState; days: number } {
   const dueOn = new Date(lastRotated);
   dueOn.setUTCDate(dueOn.getUTCDate() + periodDays);
+  // daysBetween(dueOn, today) is positive when dueOn is still in
+  // the future, zero on the due date, negative once past due.
   const days = daysBetween(dueOn, today);
   if (days < 0) return { status: "overdue", days };
   if (days <= REMINDER_WINDOW_DAYS) return { status: "due", days };
@@ -100,7 +99,6 @@ function repoUrl(): string {
 
 interface OpenIssue { number: number; title: string }
 
-/** Return the number of an open issue whose title exactly matches. */
 async function existingOpenIssue(title: string): Promise<number | null> {
   const out = await $`gh issue list \
     --state open \
@@ -114,7 +112,6 @@ async function existingOpenIssue(title: string): Promise<number | null> {
   return null;
 }
 
-/** Idempotently create the `secret-rotation` label. */
 let labelEnsured = false;
 async function ensureLabel(): Promise<void> {
   if (labelEnsured) return;
@@ -125,11 +122,11 @@ async function ensureLabel(): Promise<void> {
   labelEnsured = true;
 }
 
-function issueBody(entry: RotationEntry, status: DueState, days: number): string {
+function issueBody(entry: RotationEntry, fileBasename: string, status: DueState, days: number): string {
   const headline = status === "overdue"
-    ? `\`${entry.name}\` is OVERDUE by ${-days} days.`
-    : `\`${entry.name}\` is due in ${days} days.`;
-  const docUrl = `${repoUrl()}/blob/main/docs/development/secret-rotations.md`;
+    ? `\`${entry.title}\` is OVERDUE by ${-days} days.`
+    : `\`${entry.title}\` is due in ${days} days.`;
+  const fileUrl = `${repoUrl()}/blob/main/docs/development/secret-rotations/${fileBasename}`;
   const reminderUrl = `${repoUrl()}/blob/main/.github/workflows/secret-rotation-reminder.yml`;
   const recordUrl = `${repoUrl()}/actions/workflows/record-secret-rotation.yml`;
   return [
@@ -138,21 +135,21 @@ function issueBody(entry: RotationEntry, status: DueState, days: number): string
     `| Field         | Value                                            |`,
     `|---------------|--------------------------------------------------|`,
     `| Provider      | ${entry.provider}                                       |`,
-    `| Issuer URL    | <${entry["issuer-url"]}>                                   |`,
-    `| Used by       | ${entry["used-by"]}                                        |`,
+    `| Issuer URL    | <${entry.issuerUrl}>                                   |`,
+    `| Used by       | ${entry.usedBy}                                        |`,
     `| Scope         | ${entry.scope}                                          |`,
-    `| Last rotated  | ${entry["last-rotated"]}                                           |`,
-    `| Period (days) | ${entry["period-days"]}                                         |`,
+    `| Last rotated  | ${entry.lastRotated}                                           |`,
+    `| Period (days) | ${entry.periodDays}                                         |`,
     ``,
-    `Rotation procedure for the \`${entry.name}\` section:`,
-    `${docUrl}`,
+    `Rotation procedure:`,
+    `${fileUrl}`,
     ``,
     `After rotating the credential at the issuer, do not`,
     `hand-edit the front matter or close this issue.`,
     `Instead, run the **Record Secret Rotation** workflow:`,
     `${recordUrl}`,
     ``,
-    `Pick \`${entry.name}\` from the dropdown and click \`Run workflow\`.`,
+    `Pick \`${entry.title}\` from the dropdown and click \`Run workflow\`.`,
     `The workflow opens a PR that updates \`last-rotated\``,
     `and includes \`Closes #\` referencing this issue, so`,
     `the merge both records the rotation and closes this`,
@@ -163,71 +160,81 @@ function issueBody(entry: RotationEntry, status: DueState, days: number): string
   ].join("\n");
 }
 
-function isMapping(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/** Load every per-secret rotation file from ROTATIONS_DIR. */
+async function loadRotations(): Promise<{ entry: RotationEntry; fileBasename: string }[]> {
+  const glob = new Glob("*.md");
+  const required: (keyof RotationEntry)[] = [
+    "title", "lastRotated", "periodDays", "provider", "issuerUrl", "usedBy", "scope",
+  ];
+  const entries: { entry: RotationEntry; fileBasename: string }[] = [];
+  for await (const rel of glob.scan({ cwd: ROTATIONS_DIR })) {
+    const fileBasename = basename(rel);
+    const path = resolve(ROTATIONS_DIR, rel);
+    const text = await Bun.file(path).text();
+    const fm = parseFrontMatter(text, path);
+    for (const key of required) {
+      if (!(key in fm)) {
+        throw new SystemExit(`${path}: front matter missing \`${key}\``);
+      }
+    }
+    const title = String(fm.title);
+    const lastStr = String(fm.lastRotated);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastStr)) {
+      throw new SystemExit(
+        `${path}: \`lastRotated\` is not a valid ISO-8601 date (${JSON.stringify(lastStr)})`,
+      );
+    }
+    const periodDays = Number(fm.periodDays);
+    if (!Number.isInteger(periodDays)) {
+      throw new SystemExit(
+        `${path}: \`periodDays\` is not an integer (${JSON.stringify(fm.periodDays)})`,
+      );
+    }
+    entries.push({
+      entry: {
+        title,
+        lastRotated: lastStr,
+        periodDays,
+        provider: String(fm.provider),
+        issuerUrl: String(fm.issuerUrl),
+        usedBy: String(fm.usedBy),
+        scope: String(fm.scope),
+      },
+      fileBasename,
+    });
+  }
+  // Sort for deterministic iteration order regardless of FS ordering.
+  entries.sort((a, b) => a.entry.title.localeCompare(b.entry.title));
+  return entries;
 }
 
 async function main(): Promise<number> {
-  const text = await Bun.file(ROTATION_DOC).text();
-  const fm = frontMatter(text);
-  const rotations = fm.rotations;
-  if (!Array.isArray(rotations) || rotations.length === 0) {
-    throw new SystemExit(`${ROTATION_DOC}: front matter has no \`rotations:\` list`);
+  const rotations = await loadRotations();
+  if (rotations.length === 0) {
+    throw new SystemExit(`${ROTATIONS_DIR}: no per-secret files found`);
   }
 
   const today = utcToday();
   const opened: string[] = [];
   const skipped: string[] = [];
-  const required: (keyof RotationEntry)[] = [
-    "name", "last-rotated", "period-days", "provider", "issuer-url", "used-by", "scope",
-  ];
 
-  for (const raw of rotations) {
-    if (!isMapping(raw)) {
-      throw new SystemExit(`rotation entry is not a mapping: ${JSON.stringify(raw)}`);
-    }
-    for (const key of required) {
-      if (!(key in raw)) {
-        throw new SystemExit(
-          `rotation entry missing \`${key}\`: ${JSON.stringify(raw)}`,
-        );
-      }
-    }
-    const entry = raw as unknown as RotationEntry;
-    const name = entry.name;
-    const lastStr = String(entry["last-rotated"]);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastStr)) {
-      throw new SystemExit(
-        `rotation entry '${name}': \`last-rotated\` is not a valid ISO-8601 date (${JSON.stringify(lastStr)})`,
-      );
-    }
-    const lastRotated = new Date(`${lastStr}T00:00:00Z`);
-    if (Number.isNaN(lastRotated.getTime())) {
-      throw new SystemExit(
-        `rotation entry '${name}': \`last-rotated\` is not a valid ISO-8601 date (${JSON.stringify(lastStr)})`,
-      );
-    }
-    const periodDays = Number(entry["period-days"]);
-    if (!Number.isInteger(periodDays)) {
-      throw new SystemExit(
-        `rotation entry '${name}': \`period-days\` is not an integer (${JSON.stringify(entry["period-days"])})`,
-      );
-    }
-    const { status, days } = dueState(today, lastRotated, periodDays);
+  for (const { entry, fileBasename } of rotations) {
+    const lastRotated = new Date(`${entry.lastRotated}T00:00:00Z`);
+    const { status, days } = dueState(today, lastRotated, entry.periodDays);
     if (status === "ok") continue;
-    const title = `Rotate ${name} (last rotated ${lastStr})`;
+    const title = `Rotate ${entry.title} (last rotated ${entry.lastRotated})`;
     if (await existingOpenIssue(title) !== null) {
-      skipped.push(name);
+      skipped.push(entry.title);
       continue;
     }
     await ensureLabel();
-    const body = issueBody(entry, status, days);
+    const body = issueBody(entry, fileBasename, status, days);
     await $`gh issue create \
       --title ${title} \
       --body ${body} \
       --label ${ISSUE_LABEL} \
       --assignee ${ASSIGNEE}`.quiet();
-    opened.push(name);
+    opened.push(entry.title);
   }
 
   if (opened.length) {

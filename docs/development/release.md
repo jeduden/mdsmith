@@ -74,11 +74,15 @@ registry-side Trusted Publisher config decides which
 claim combinations are allowed to publish.
 
 **npm Trusted Publisher** — configure at
-`https://www.npmjs.com/package/<name>/access` for each
-of the six packages (`@mdsmith/cli`,
-`@mdsmith/linux-x64`, `@mdsmith/linux-arm64`,
-`@mdsmith/darwin-x64`, `@mdsmith/darwin-arm64`,
-`@mdsmith/win32-x64`):
+`https://www.npmjs.com/package/<name>/access` for
+every published package:
+
+- `@mdsmith/cli`
+- `@mdsmith/linux-x64`
+- `@mdsmith/linux-arm64`
+- `@mdsmith/darwin-x64`
+- `@mdsmith/darwin-arm64`
+- `@mdsmith/win32-x64`
 
 | Field       | Value                                                 |
 |-------------|-------------------------------------------------------|
@@ -145,18 +149,15 @@ the first release.
 
 ## Long-Lived Publisher Tokens
 
-Two release-pipeline secrets are still long-lived
-PATs, gated by the `release` environment:
-
-| Secret     | Used by        | Scope                | Rotation |
-|------------|----------------|----------------------|----------|
-| `VSCE_PAT` | `vsce publish` | Marketplace > Manage | Annually |
-| `OVSX_PAT` | `ovsx publish` | Open VSX publisher   | Annually |
-
-[secret-rotations.md](secret-rotations.md) holds the
-procedure, dates, and `MERGE_QUEUE_TOKEN`. A
-scheduled workflow opens an issue 30 days before any
-tracked secret is due.
+Long-lived publisher tokens (gated by the `release`
+environment when applicable, plain repo secret
+otherwise) are listed in
+[secret-rotations.md](secret-rotations.md). That
+page holds the rotation procedure plus a catalog
+over per-secret files in
+[`secret-rotations/`](secret-rotations/), one file
+per tracked secret. A scheduled workflow opens an
+issue 30 days before any tracked secret is due.
 
 ## Supply-Chain Hardening
 
@@ -229,9 +230,10 @@ place.
 1. [ ] Create the `release` environment at
    <https://github.com/jeduden/mdsmith/settings/environments>
    with the values in the table above.
-2. [ ] Add the npm Trusted Publisher for each of the
-   six packages with `environment=release` and
-   `ref=refs/tags/v*`.
+2. [ ] Add the npm Trusted Publisher to every
+   published package with `environment=release` and
+   `ref=refs/tags/v*` (see the npm Trusted Publisher
+   section above for the package list).
 3. [ ] Add the PyPI Trusted Publisher with the same
    environment scope.
 4. [ ] Enable `2fa-required` on every npm package.
