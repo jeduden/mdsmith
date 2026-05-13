@@ -677,12 +677,18 @@ func (s *Server) scheduleLint(uri string, trigger lintTrigger) {
 	})
 	s.pending[uri] = p
 	s.pendingMu.Unlock()
-	// pendingLint.timer is required: scheduleLint above is the
-	// sole construction site and always assigns it before the
-	// entry reaches s.pending. A future caller that built a
-	// *pendingLint without that invariant would panic here, which
-	// is the desired loud-failure behavior.
-	if hadPrev {
+	// scheduleLint is the sole construction site for *pendingLint
+	// and always assigns timer before s.pending[uri] = p. A
+	// `newPendingLint(timer)` constructor that enforces the
+	// invariant structurally would reintroduce the delay==0
+	// closure-capture race the current `&pendingLint{}`-then-
+	// assign-timer pattern fixes (the AfterFunc closure needs the
+	// pendingLint pointer to exist BEFORE AfterFunc returns the
+	// Timer it wants to store, so the construction order can't
+	// be: timer first, then constructor). The nil guard here is
+	// pure defense against a future caller that breaks the
+	// invariant; production paths never trigger it.
+	if hadPrev && prev.timer != nil {
 		prev.timer.Stop()
 	}
 }
