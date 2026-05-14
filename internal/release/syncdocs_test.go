@@ -95,6 +95,26 @@ func TestSyncDocs_EscapesHugoShortcodePatterns(t *testing.T) {
 	assert.Contains(t, string(got), `{{%/* note */%}}`)
 }
 
+// TestSyncDocs_DoesNotDoubleEscape pins a regression: source docs
+// that already contain Hugo's escape syntax (because the author
+// is documenting how to escape shortcodes verbatim) must not be
+// re-escaped on the second pass. Without this guard, the percent
+// form's [^}]* group would re-match the already-escaped body and
+// produce broken nested markers like `{{%/*/* … *//*%}}`.
+func TestSyncDocs_DoesNotDoubleEscape(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	body := "Escape angle: `{{</* readfile */>}}` and percent: `{{%/* note */%}}`.\n"
+	writeFile(t, filepath.Join(src, "x.md"), body)
+
+	require.NoError(t, SyncDocs(src, dst))
+
+	got, err := os.ReadFile(filepath.Join(dst, "x.md"))
+	require.NoError(t, err)
+	assert.Equal(t, body, string(got),
+		"already-escaped patterns must pass through untouched")
+}
+
 func TestSyncDocs_OverwritesExistingDestination(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()

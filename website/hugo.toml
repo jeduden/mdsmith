@@ -27,9 +27,6 @@ enableGitInfo = false
   [[module.mounts]]
     source = "data"
     target = "data"
-  [[module.mounts]]
-    source = "assets"
-    target = "assets"
 
 [markup]
   [markup.goldmark.renderer]

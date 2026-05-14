@@ -94,7 +94,7 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 // of reportFlagParseErr per subcommand. pflag prints the Usage
 // itself, so the dispatcher just needs to surface exit code 0.
 func TestSubcommandHelpExitsZero(t *testing.T) {
-	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels"} {
+	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels", "sync-docs"} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
 }
@@ -102,7 +102,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 // TestSubcommandRejectsUnknownFlag exercises the non-help, non-nil
 // branch of reportFlagParseErr.
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
-	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels"} {
+	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels", "sync-docs"} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
 }
@@ -195,6 +195,44 @@ func TestRunBuildWheelsReportsError(t *testing.T) {
 	// python-source check passes; missing artifacts trips the
 	// per-build stat check instead.
 	assert.Equal(t, 1, run([]string{"build-wheels", "missing-artifacts", "wheels"}))
+}
+
+// TestRunSyncDocsHappyPath dispatches through `run sync-docs` so
+// the subcommand wiring (FlagSet parse, NArg() validation,
+// reportError translation, default-toolkit handoff) gets
+// exercised end-to-end against a small staged docs tree.
+func TestRunSyncDocsHappyPath(t *testing.T) {
+	src := t.TempDir()
+	dst := filepath.Join(t.TempDir(), "out")
+	require.NoError(t, os.WriteFile(filepath.Join(src, "intro.md"), []byte("# intro\n"), 0o644))
+
+	assert.Equal(t, 0, run([]string{"sync-docs", src, dst}))
+
+	body, err := os.ReadFile(filepath.Join(dst, "intro.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# intro\n", string(body))
+}
+
+// TestRunSyncDocsBadArity covers the `fs.NArg() != 2` branch for
+// both under- and over-supply of positional args. Each case
+// exits with the usage-error code (2) without touching the FS.
+func TestRunSyncDocsBadArity(t *testing.T) {
+	for _, argv := range [][]string{
+		{"sync-docs"},
+		{"sync-docs", "only-one"},
+		{"sync-docs", "a", "b", "c"},
+	} {
+		assert.Equal(t, 2, run(argv), "%v", argv)
+	}
+}
+
+// TestRunSyncDocsReportsErrorAsExitOne covers the reportError
+// branch when the underlying release.SyncDocs call fails (here,
+// missing source dir).
+func TestRunSyncDocsReportsErrorAsExitOne(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "does-not-exist")
+	dst := t.TempDir()
+	assert.Equal(t, 1, run([]string{"sync-docs", src, dst}))
 }
 
 // writeFixture mirrors internal/release/version_test.go's

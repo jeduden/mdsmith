@@ -1,7 +1,10 @@
 package release
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -11,6 +14,9 @@ import (
 // `{{< name args >}}` so the rewritten output uses Hugo's documented
 // escape syntax `{{</* name args */>}}`, which renders the text
 // verbatim instead of resolving a shortcode that does not exist.
+// escapeHugoShortcodes skips matches whose body is already wrapped
+// in the `/* … */` escape markers so a second pass over an
+// already-escaped doc is a no-op.
 var hugoShortcodeAngle = regexp.MustCompile(`\{\{<([^}]*)>\}\}`)
 
 // hugoShortcodePercent matches the percent shortcode form
@@ -53,7 +59,10 @@ var syncableExt = map[string]struct{}{
 // dstDir is removed before the copy, so SyncDocs is idempotent.
 func (t *Toolkit) SyncDocs(srcDir, dstDir string) error {
 	if _, err := t.fs.Stat(srcDir); err != nil {
-		return fmt.Errorf("source not found: %s", srcDir)
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("source not found: %s", srcDir)
+		}
+		return fmt.Errorf("stat %s: %w", srcDir, err)
 	}
 	if err := t.fs.RemoveAll(dstDir); err != nil {
 		return err
@@ -129,10 +138,24 @@ func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
 }
 
 // escapeHugoShortcodes rewrites every shortcode-shaped pattern in
-// b to its Hugo escape form. The angle and percent forms have
-// distinct escape syntaxes; both are applied.
+// b to its Hugo escape form. Already-escaped patterns
+// (`{{</* … */>}}`, `{{%/* … */%}}`) are left untouched so a
+// second pass over the same content does not double-escape into
+// `{{</*/* … *//*>}}`.
 func escapeHugoShortcodes(b []byte) []byte {
-	b = hugoShortcodeAngle.ReplaceAll(b, []byte(`{{</*$1*/>}}`))
-	b = hugoShortcodePercent.ReplaceAll(b, []byte(`{{%/*$1*/%}}`))
+	b = hugoShortcodeAngle.ReplaceAllFunc(b, func(m []byte) []byte {
+		if bytes.HasPrefix(m, []byte("{{</*")) && bytes.HasSuffix(m, []byte("*/>}}")) {
+			return m
+		}
+		sub := hugoShortcodeAngle.FindSubmatch(m)
+		return append(append([]byte("{{</*"), sub[1]...), []byte("*/>}}")...)
+	})
+	b = hugoShortcodePercent.ReplaceAllFunc(b, func(m []byte) []byte {
+		if bytes.HasPrefix(m, []byte("{{%/*")) && bytes.HasSuffix(m, []byte("*/%}}")) {
+			return m
+		}
+		sub := hugoShortcodePercent.FindSubmatch(m)
+		return append(append([]byte("{{%/*"), sub[1]...), []byte("*/%}}")...)
+	})
 	return b
 }

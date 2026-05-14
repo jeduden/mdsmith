@@ -485,9 +485,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     env:
       # Pin the Hugo version used by the deploy. The same pin
-      # appears in website/scripts/sync-docs.sh and the local
-      # dev instructions in website/README.md; bump all three
-      # together so a local preview cannot drift from CI.
+      # appears in the local dev instructions in website/README.md;
+      # bump both together so a local preview cannot drift from
+      # CI. (website/scripts/sync-docs.sh does not install Hugo —
+      # it expects the binary already on PATH — so no pin lives
+      # there.)
       HUGO_VERSION: "0.161.1"
       # The release tag drives the version Hugo renders in
       # ``.Site.Params.version`` and the on-disk pin in

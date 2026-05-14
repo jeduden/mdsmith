@@ -46,14 +46,14 @@ if [[ ! -d "$src" ]]; then
 fi
 
 if (( run_fix )); then
-  echo "==> mdsmith fix $src"
+  echo "==> go run ./cmd/mdsmith fix $src"
   (cd "$repo" && go run ./cmd/mdsmith fix ./docs) || {
     echo "mdsmith fix failed" >&2
     exit 1
   }
 fi
 
-echo "==> mdsmith-release sync-docs $src -> $dst"
+echo "==> go run ./cmd/mdsmith-release sync-docs $src -> $dst"
 cd "$repo" && go run ./cmd/mdsmith-release sync-docs "$src" "$dst"
 
 echo "==> done"
