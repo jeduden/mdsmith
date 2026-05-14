@@ -17,7 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/query"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/internal/rules/tableformat"
+	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
@@ -123,7 +123,7 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	}
 
 	// Format tables to comply with MDS025 (table-format) settings.
-	content = tableformat.FormatString(content, tableFormatPad())
+	content = tablefmt.FormatString(content, tableFormatPad())
 
 	return content, nil
 }

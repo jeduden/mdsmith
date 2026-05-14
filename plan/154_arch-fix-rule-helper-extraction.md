@@ -1,7 +1,7 @@
 ---
 id: 154
 title: 'arch-fix: extract cross-rule helpers'
-status: "🔲"
+status: "✅"
 summary: >-
   Move shared fence-position and table-format
   helpers out of donor rule packages into
@@ -54,7 +54,7 @@ consumed by donor and consumer.
 
 ## Tasks
 
-1. Create `internal/rules/fencepos/`
+1. [x] Create `internal/rules/fencepos/`
    exporting `CharAt`, `OpenLine`,
    `OpenLineRange`, `CloseLine`, and
    `CloseLineRange`. Drop the `Fence`
@@ -62,54 +62,62 @@ consumed by donor and consumer.
    the noun. Move the implementations
    out of
    `internal/rules/fencedcodestyle/rule.go`.
-2. Update
+2. [x] Update
    `internal/rules/fencedcodestyle/rule.go`
    to import and consume `fencepos`.
    No exported helpers remain on the
    rule package.
-3. Update the four consumer rules
+3. [x] Update the four consumer rules
    (`fencedcodelanguage`,
    `orderedlistnumbering`,
    `unclosedcodeblock`,
    `blanklinearoundfencedcode`) to
    import `fencepos` instead of
    `fencedcodestyle`.
-4. Create `internal/rules/tablefmt/`
+4. [x] Create `internal/rules/tablefmt/`
    exporting `FormatString`. Move the
    implementation out of
    `internal/rules/tableformat/rule.go`.
-5. Update
+   The donor rule also consumes
+   `Violations` and `FormatLines` so
+   the table parsing/formatting
+   machinery lives in one place.
+5. [x] Update
    `internal/rules/tableformat/rule.go`
    and
    `internal/rules/catalog/rule.go`
    to import `tablefmt`.
-6. Add a grep-based regression test
-   under `internal/integration/`.
+6. [x] Add a grep-based regression test
+   under `internal/integration/`
+   (`TestRulesDoNotImportEachOther`
+   in `rule_boundaries_test.go`).
    Make it fail if any non-test file
    under `internal/rules/` imports
    another `internal/rules/<...>/`
    package. Allow only the documented
    helpers (`astutil`, `settings`,
    `fencepos`, `tablefmt`) and
-   same-rule sub-packages.
+   same-rule sub-packages. The
+   blank-import barrel `all/` is
+   exempt.
 
 ## Acceptance Criteria
 
-- [ ] `internal/rules/fencepos/` and
+- [x] `internal/rules/fencepos/` and
   `internal/rules/tablefmt/` exist.
   Their package comments name the
   single question each answers. (SRP)
-- [ ] The regression search reports
+- [x] The regression search reports
   only the allowed cross-package
   imports under `internal/rules/`.
   (DIP)
-- [ ] All tests pass:
+- [x] All tests pass:
   `go test ./...`.
-- [ ] `go tool golangci-lint run`
+- [x] `go tool golangci-lint run`
   reports no issues.
-- [ ] `mdsmith check .` passes after
+- [x] `mdsmith check .` passes after
   the refactor.
-- [ ] The audit entry for this
+- [x] The audit entry for this
   blocker moves to a "Resolved by
   plan/154" section in
   [the audit log](../docs/development/architecture-audit.md).

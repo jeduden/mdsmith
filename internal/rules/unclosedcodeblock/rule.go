@@ -5,7 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
+	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -39,7 +39,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		if !hasClosingFence(f, fcb) {
-			openLine := fencedcodestyle.FenceOpenLine(f, fcb)
+			openLine := fencepos.OpenLine(f, fcb)
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     openLine,
@@ -60,17 +60,17 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // hasClosingFence checks whether a fenced code block has a proper closing
 // fence line after its content.
 func hasClosingFence(f *lint.File, fcb *ast.FencedCodeBlock) bool {
-	openStart, openEnd := fencedcodestyle.FenceOpenLineRange(f.Source, fcb)
+	openStart, openEnd := fencepos.OpenLineRange(f.Source, fcb)
 	if openStart >= len(f.Source) {
 		return true
 	}
 
-	fenceChar := fencedcodestyle.FenceCharAt(f.Source, openStart)
+	fenceChar := fencepos.CharAt(f.Source, openStart)
 	if fenceChar == 0 {
 		return true
 	}
 
-	closeStart, closeEnd := fencedcodestyle.FenceCloseLineRange(f.Source, fcb, openEnd)
+	closeStart, closeEnd := fencepos.CloseLineRange(f.Source, fcb, openEnd)
 
 	// No closing line exists (at or past EOF).
 	if closeStart >= len(f.Source) {

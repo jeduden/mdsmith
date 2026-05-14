@@ -6,7 +6,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
+	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -39,8 +39,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			return ast.WalkContinue, nil
 		}
 
-		openStart, openEnd := fencedcodestyle.FenceOpenLineRange(f.Source, fcb)
-		closeStart, _ := fencedcodestyle.FenceCloseLineRange(f.Source, fcb, openEnd)
+		openStart, openEnd := fencepos.OpenLineRange(f.Source, fcb)
+		closeStart, _ := fencepos.CloseLineRange(f.Source, fcb, openEnd)
 
 		openLine := f.LineOfOffset(openStart)
 		closeLine := f.LineOfOffset(closeStart)
@@ -124,8 +124,8 @@ func collectFenceBlankLineInsertions(f *lint.File) (beforeSet, afterSet map[int]
 			return ast.WalkContinue, nil
 		}
 
-		openStart, openEnd := fencedcodestyle.FenceOpenLineRange(f.Source, fcb)
-		closeStart, _ := fencedcodestyle.FenceCloseLineRange(f.Source, fcb, openEnd)
+		openStart, openEnd := fencepos.OpenLineRange(f.Source, fcb)
+		closeStart, _ := fencepos.CloseLineRange(f.Source, fcb, openEnd)
 
 		openLine := f.LineOfOffset(openStart)
 		closeLine := f.LineOfOffset(closeStart)

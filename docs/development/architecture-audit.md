@@ -24,11 +24,12 @@ The touched set covered 1107 files. Of
 those, 425 were Go or TypeScript sources
 outside fixture and generated paths.
 
-### blockers
+### resolved by plan/154
 
-Rule packages import other rule packages.
+Rule packages imported other rule
+packages.
 
-Four rules import
+Four rules imported
 `internal/rules/fencedcodestyle` for
 fence-position helpers (`FenceCharAt`,
 `FenceOpenLine`, `FenceOpenLineRange`,
@@ -41,22 +42,40 @@ fence-position helpers (`FenceCharAt`,
 - `internal/rules/blanklinearoundfencedcode`
 
 A fifth rule (`internal/rules/catalog`)
-imports `internal/rules/tableformat` for
-`FormatString`.
+imported `internal/rules/tableformat`
+for `FormatString`.
 
-This violates DIP. The
-[architecture hub](architecture/index.md)
-states that a rule MUST NOT import
-another rule package.
+[plan/154](../../plan/154_arch-fix-rule-helper-extraction.md)
+lifted the helpers into two sibling
+packages:
 
-Severity: blocker.
+- `internal/rules/fencepos` exports
+  `CharAt`, `OpenLine`,
+  `OpenLineRange`, `CloseLine`, and
+  `CloseLineRange`.
+- `internal/rules/tablefmt` exports
+  `FormatString`. The donor also
+  needs `Violations` and
+  `FormatLines`; both are exported.
 
-Fix by lifting the helpers into sibling
-helper packages (e.g.
-`internal/rules/fencepos`,
-`internal/rules/tablefmt`) shared by
-donor and consumer rules. Scheduled by
-[plan/154](../../plan/154_arch-fix-rule-helper-extraction.md).
+Both donors (`fencedcodestyle`,
+`tableformat`) and the four consumers
+now depend on these helpers. No rule
+imports another rule.
+
+`TestRulesDoNotImportEachOther` in
+`internal/integration/` guards the new
+boundary. It parses every non-test
+`.go` file under `internal/rules/`. It
+fails if a file imports another
+`internal/rules/<...>` package other
+than the documented helpers
+(`astutil`, `settings`, `fencepos`,
+`tablefmt`). A sub-package of the
+file's own rule is also allowed. The
+blank-import barrel package
+`internal/rules/all/` is exempt by
+design.
 
 ### resolved by plan/155
 

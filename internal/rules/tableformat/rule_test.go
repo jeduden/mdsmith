@@ -12,131 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- Cell parsing tests ---
-
-func TestSplitRow_Basic(t *testing.T) {
-	cells := splitRow("| a | b | c |")
-	want := []string{"a", "b", "c"}
-	assertCells(t, want, cells)
-}
-
-func TestSplitRow_EscapedPipe(t *testing.T) {
-	cells := splitRow(`| a \| b | c |`)
-	want := []string{`a \| b`, "c"}
-	assertCells(t, want, cells)
-}
-
-func TestSplitRow_EmptyCells(t *testing.T) {
-	cells := splitRow("| | b | |")
-	want := []string{"", "b", ""}
-	assertCells(t, want, cells)
-}
-
-func TestSplitRow_InlineCode(t *testing.T) {
-	cells := splitRow("| `code` | normal |")
-	want := []string{"`code`", "normal"}
-	assertCells(t, want, cells)
-}
-
-func TestSplitRow_Link(t *testing.T) {
-	cells := splitRow("| [text](url) | normal |")
-	want := []string{"[text](url)", "normal"}
-	assertCells(t, want, cells)
-}
-
-func TestSplitRow_SingleColumn(t *testing.T) {
-	cells := splitRow("| only |")
-	want := []string{"only"}
-	assertCells(t, want, cells)
-}
-
-// --- Display width tests ---
-
-func TestDisplayWidth_ASCII(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{"hello", 5},
-		{"", 0},
-		{"abc", 3},
-	}
-	for _, tt := range tests {
-		got := displayWidth(tt.input)
-		assert.Equal(t, tt.want, got, "displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
-	}
-}
-
-func TestDisplayWidth_Multibyte(t *testing.T) {
-	got := displayWidth("café")
-	assert.Equal(t, 4, got, "displayWidth(café) = %d, want 4", got)
-}
-
-func TestDisplayWidth_Emoji(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{"✅", 2},
-		{"🔲", 2},
-		{"🔳", 2},
-		{"✅ done", 7},
-	}
-	for _, tt := range tests {
-		got := displayWidth(tt.input)
-		assert.Equal(t, tt.want, got, "displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
-	}
-}
-
-func TestDisplayWidth_Link(t *testing.T) {
-	got := displayWidth("[text](https://example.com)")
-	assert.Equal(t, 27, got, "displayWidth counts raw characters including URL")
-}
-
-func TestDisplayWidth_InlineCode(t *testing.T) {
-	got := displayWidth("`code`")
-	assert.Equal(t, 6, got, "displayWidth counts backticks")
-}
-
-func TestDisplayWidth_Bold(t *testing.T) {
-	got := displayWidth("**bold**")
-	assert.Equal(t, 8, got, "displayWidth counts asterisks")
-}
-
-func TestDisplayWidth_Italic(t *testing.T) {
-	got := displayWidth("*italic*")
-	assert.Equal(t, 8, got, "displayWidth counts asterisks")
-}
-
-func TestDisplayWidth_Image(t *testing.T) {
-	got := displayWidth("![alt text](image.png)")
-	assert.Equal(t, 22, got, "displayWidth counts raw characters including URL")
-}
-
-func TestDisplayWidth_Strikethrough(t *testing.T) {
-	got := displayWidth("~~deleted~~")
-	assert.Equal(t, 11, got, "displayWidth counts tildes")
-}
-
-func TestDisplayWidth_Mixed(t *testing.T) {
-	got := displayWidth("see [text](url) for details")
-	assert.Equal(t, 27, got, "displayWidth counts raw characters")
-}
-
-func TestDisplayWidth_CJK(t *testing.T) {
-	tests := []struct {
-		input string
-		want  int
-	}{
-		{"日本語", 6},  // 3 CJK chars × 2 columns each
-		{"a日b", 4},  // 1 + 2 + 1
-		{"中文测试", 8}, // 4 CJK chars × 2
-	}
-	for _, tt := range tests {
-		got := displayWidth(tt.input)
-		assert.Equal(t, tt.want, got, "displayWidth(%q) = %d, want %d", tt.input, got, tt.want)
-	}
-}
+// --- Display-width Fix regression tests ---
 
 func TestFix_LinksWithVaryingURLLengths(t *testing.T) {
 	// Regression test for #65: links with different URL lengths must
@@ -173,41 +49,6 @@ func TestFix_MixedEmojiAndLinks(t *testing.T) {
 		widths[runewidth.StringWidth(lines[i])] = true
 	}
 	assert.Len(t, widths, 1, "all rows should have same display width, got lines:\n%s", strings.Join(lines[:4], "\n"))
-}
-
-// --- Table detection tests ---
-
-func TestFindTables_Basic(t *testing.T) {
-	src := "| a | b |\n|---|---|\n| 1 | 2 |\n"
-	lines := splitLines(src)
-	tables := findTables(lines, nil)
-	require.Len(t, tables, 1, "expected 1 table, got %d", len(tables))
-	if tables[0].startLine != 1 {
-		t.Errorf("start line = %d, want 1", tables[0].startLine)
-	}
-	assert.Len(t, tables[0].rows, 3, "rows = %d, want 3", len(tables[0].rows))
-}
-
-func TestFindTables_NoTable(t *testing.T) {
-	src := "# Heading\n\nSome text.\n"
-	lines := splitLines(src)
-	tables := findTables(lines, nil)
-	assert.Len(t, tables, 0, "expected 0 tables, got %d", len(tables))
-}
-
-func TestFindTables_TwoTables(t *testing.T) {
-	src := "| a | b |\n|---|---|\n| 1 | 2 |\n\n| x | y |\n|---|---|\n| 3 | 4 |\n"
-	lines := splitLines(src)
-	tables := findTables(lines, nil)
-	require.Len(t, tables, 2, "expected 2 tables, got %d", len(tables))
-}
-
-func TestFindTables_SingleColumn(t *testing.T) {
-	src := "| a |\n|---|\n| 1 |\n"
-	lines := splitLines(src)
-	tables := findTables(lines, nil)
-	require.Len(t, tables, 1, "expected 1 table, got %d", len(tables))
-	assert.Len(t, tables[0].rows[0].cells, 1, "columns = %d, want 1", len(tables[0].rows[0].cells))
 }
 
 func TestCheck_TableInsideCodeBlock_NoDiagnostic(t *testing.T) {
@@ -461,67 +302,13 @@ func TestDefaultSettings(t *testing.T) {
 	assert.Equal(t, 1, pad, "default pad = %v, want 1", pad)
 }
 
-// --- Separator parsing tests ---
-
-func TestIsSeparatorRow(t *testing.T) {
-	tests := []struct {
-		cells []string
-		want  bool
-	}{
-		{[]string{"---", "---"}, true},
-		{[]string{":---", "---:"}, true},
-		{[]string{":---:"}, true},
-		{[]string{"abc", "---"}, false},
-		{[]string{""}, false},
-	}
-	for _, tt := range tests {
-		got := isSeparatorRow(tt.cells)
-		assert.Equal(t, tt.want, got, "isSeparatorRow(%v) = %v, want %v", tt.cells, got, tt.want)
-	}
-}
-
-func TestParseAlignments(t *testing.T) {
-	cells := []string{"---", ":---", "---:", ":---:"}
-	aligns := parseAlignments(cells)
-	want := []align{alignNone, alignLeft, alignRight, alignCenter}
-	require.Len(t, aligns, len(want), "len = %d, want %d", len(aligns), len(want))
-	for i := range want {
-		if aligns[i] != want[i] {
-			t.Errorf("align[%d] = %d, want %d", i, aligns[i], want[i])
-		}
-	}
-}
-
 // --- Helper functions ---
-
-func splitLines(s string) [][]byte {
-	parts := strings.Split(s, "\n")
-	// Remove trailing empty element from trailing newline.
-	if len(parts) > 0 && parts[len(parts)-1] == "" {
-		parts = parts[:len(parts)-1]
-	}
-	lines := make([][]byte, len(parts))
-	for i, p := range parts {
-		lines[i] = []byte(p)
-	}
-	return lines
-}
 
 func newTestFile(t *testing.T, src string) *lint.File {
 	t.Helper()
 	f, err := lint.NewFile("test.md", []byte(src))
 	require.NoError(t, err, "NewFile: %v", err)
 	return f
-}
-
-func assertCells(t *testing.T, want, got []string) {
-	t.Helper()
-	require.Len(t, got, len(want), "cells: got %d, want %d\n  got:  %v\n  want: %v", len(got), len(want), got, want)
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("cell[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
 }
 
 func TestCategory(t *testing.T) {

@@ -3,7 +3,7 @@ package fencedcodelanguage
 import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/internal/rules/fencedcodestyle"
+	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -48,7 +48,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		if !hasLanguage {
-			line := fencedcodestyle.FenceOpenLine(f, fcb)
+			line := fencepos.OpenLine(f, fcb)
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     line,
