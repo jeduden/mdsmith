@@ -74,6 +74,7 @@ rules:
       - "editors/**"
       - "npm/**"
       - "python/**"
+      - "website/**"
   catalog: true
   required-structure: true
   include: true
@@ -129,7 +130,7 @@ overrides:
     rules:
       table-readability:
         max-rows: 45
-  - glob: ["README.md"]
+  - glob: ["README.md", "website/README.md"]
     rules:
       line-length:
         max: 100
@@ -374,6 +375,39 @@ kinds:
           required: false
         - heading:
             unlisted: true
+  website-page:
+    # Hugo content pages under website/content/**. Most are
+    # template-driven (hero, feature grid, install tabs) with
+    # data in front-matter rather than markdown body — so the
+    # body-heading and increment rules step aside. The schema
+    # requires the same front-matter pair (title + summary)
+    # used by mdsmith's catalog rows so the same content can
+    # be indexed by either Hugo or `<?catalog?>`.
+    path-pattern: "website/content/**/*.md"
+    schema:
+      frontmatter:
+        title: 'string & != ""'
+        summary: 'string & != ""'
+      closed: false
+      sections:
+        - heading: null
+          required: false
+        - heading:
+            unlisted: true
+    rules:
+      first-line-heading: false
+      heading-increment: false
+      cross-file-reference-integrity: false
+      paragraph-readability: false
+      paragraph-structure: false
+      line-length:
+        max: 200
+        exclude:
+          - code-blocks
+          - tables
+          - urls
+      max-file-length:
+        max: 500
 
 # kind-assignment order matters: the proto kind applies
 # first so each proto.md also picks up its project kind,
@@ -430,3 +464,5 @@ kind-assignment:
     kinds: [architecture-doc]
   - glob: ["docs/development/architecture-audit.md"]
     kinds: [audit-log]
+  - glob: ["website/content/**/*.md"]
+    kinds: [website-page]
