@@ -30,18 +30,15 @@ it.
 ## Background
 
 Plan 160 introduces the `mdsmith-reviewer`
-agent. The agent is process-focused. It walks
-changed files and proposes which rule (or
-directive, or kind config) the author should
-**adopt** so a maintainability pattern stops
-drifting. Rules like `catalog` and `include`
-only validate already-declared directives —
-they don't detect a hand-maintained index or
-duplicated section. The reviewer surfaces those
-opportunities; the rule then keeps them clean
-after adoption. Patterns must live where the
-agent can query them at runtime, not in the
-skill body.
+agent. The agent walks changed files and
+proposes which rule, directive, or kind config
+to **adopt** so a pattern stops drifting.
+Rules like `catalog` and `include` only
+validate declared directives; they don't
+detect a hand-maintained index. The reviewer
+surfaces the opportunity before adoption.
+Patterns live where the agent queries them at
+runtime, not in the skill body.
 
 The natural home is the existing rule README at
 [`internal/rules/<id>-<name>/README.md`](../internal/rules/).
@@ -54,29 +51,30 @@ duplicated-content audit check binds to two
 rules. Detection and the recommended fix live
 in different places:
 
-- catalog → hand-maintained indexes; fix:
-  adopt `<?catalog?>`.
-- duplicated-content (MDS037) → repeated
-  paragraphs across files; fix: extract and
-  share via `<?include?>` or refactor.
-- include (MDS021) → near-duplicate sections
-  worth deduping; fix: adopt `<?include?>`.
-- required-structure → kind without a schema;
-  fix: declare `required-structure.schema`.
-- directory-structure → file-placement
-  violations; fix: tighten the
-  `directory-structure.allowed` list.
+- catalog — hand-maintained indexes; adopt
+  `<?catalog?>`.
+- duplicated-content (MDS037) — repeated
+  paragraphs; extract via `<?include?>` or
+  refactor.
+- include (MDS021) — near-duplicate sections
+  worth deduping; adopt `<?include?>`.
+- required-structure — kind without a schema;
+  declare it inline as `kinds.<name>.schema`
+  or via proto file at
+  `rules.required-structure.schema`.
+- directory-structure — file-placement
+  violations; move the file to an allowed
+  directory, or extend
+  `directory-structure.allowed` if the new
+  location is correct.
 
-MDS037 spots repeated text on its own. Include
-(MDS021) only validates declared directives, so
-its block frames the *adoption* opportunity.
-The catalog, required-structure, and
-directory-structure blocks work the same way.
-Three audit checks are config-level and have no
-rule: no `.mdsmith.yml`, similar files without
-a kind, kind without `path-pattern`. Those
-stay in `patterns.md` (non-goal: no new
-rules).
+MDS037 spots repeats on its own. The other
+four blocks frame *adoption* opportunities;
+those rules validate declared structures only.
+Three audit checks are config-level and stay
+in `patterns.md`: no `.mdsmith.yml`, similar
+files without a kind, kind without
+`path-pattern`. (Non-goal: no new rules.)
 
 ## Non-Goals
 
@@ -142,9 +140,9 @@ true`.
 
 Rules with no maintainability pattern set
 `maintainability: null` and are omitted from
-the CLI and LSP payloads
-below. The README body remains free-form prose;
-tooling reads the front matter only.
+the CLI and LSP payloads below. The README
+body remains free-form prose; tooling reads
+the front matter only.
 
 ### CLI exposure
 
@@ -161,10 +159,11 @@ For bulk-load by agents, add a new
 `rule`, `metrics`, `kinds`). It emits every
 rule's pattern in one shot.
 
-Default output is text. `-f json` produces a
-list of `{id, name, signal, fix}` records.
-`id` is the stable diagnostic code (e.g.
-`MDS001`; matches `Diagnostic.code`). `name`
+Default output is text. `-f json` produces
+records of `{id, name, signal, fix,
+for-diagnostic}`. `id` is the stable
+diagnostic code (e.g. `MDS001`; matches
+`Diagnostic.code`). `name`
 is the human-readable rule name (e.g.
 `line-length`).
 
@@ -227,9 +226,9 @@ automatically.
    to the existing body output. Add the new
    `patterns` help topic to
    [`cmd/mdsmith`](../cmd/mdsmith) emitting
-   `{id, name, signal, fix}` records (omitting
-   rules with `maintainability: null`); honour
-   `-f text|json`.
+   `{id, name, signal, fix, for-diagnostic}`
+   records (omitting `maintainability: null`
+   rules); honour `-f text|json`.
    Write failing tests first per CLAUDE.md.
 4. Add the `mdsmith/rulePatterns` LSP method
    and the `textDocument/hover` enrichment.
@@ -283,7 +282,8 @@ automatically.
       output includes each rule's `signal` and
       `fix` lines for non-null rules.
 - [ ] `mdsmith help patterns -f json` emits a
-      JSON array of `{id, name, signal, fix}`
+      JSON array of
+      `{id, name, signal, fix, for-diagnostic}`
       entries (with `id` matching diagnostic
       codes like `MDS001`), omitting
       rules with `maintainability: null`.
@@ -294,10 +294,11 @@ automatically.
 - [ ] `textDocument/hover` on a diagnostic
       from a rule whose maintainability block
       is flagged for-diagnostic appends the fix
-      sketch; hover on adoption-only rules
-      (catalog, include) and rules with
-      `maintainability: null` is unchanged.
-      Covered by a new hover test.
+      sketch; hover on the four adoption-only
+      rules (catalog, include,
+      required-structure, directory-structure)
+      and on `maintainability: null` rules is
+      unchanged. Covered by a new hover test.
 - [ ] [`docs/reference/cli/help.md`](../docs/reference/cli/help.md)
       and
       [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)

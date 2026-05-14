@@ -61,8 +61,7 @@ cover the three component types missing so far
 
 ### Repository layout
 
-Each new directory mirrors [the audit
-plugin][cc-audit].
+Each new directory mirrors [audit][cc-audit]:
 
 ```text
 editors/
@@ -138,21 +137,23 @@ pattern; bodies are command-specific (no
 
 ### `mdsmith-reviewer`
 
-One subagent in `agents/markdown-reviewer.md`,
-running a review process. Patterns load in
-bulk via `mdsmith help patterns -f json` or
-LSP `mdsmith/rulePatterns` (see [plan
-161][p161]). The agent walks changed files and
-proposes the rule, directive, or kind config
-to **adopt** so the pattern stops drifting —
-not a diagnostic the rule already catches
-(e.g. `catalog` validates declared directives,
-not hand-maintained indexes). Content nits
-stay with `mdsmith check`. Tools: Read, Grep,
-Bash (`mdsmith help`, `mdsmith check -f
-json`, `mdsmith kinds resolve`), GitHub MCP;
-no auto-fix (delegate to `/mdsmith-fix` or
-LSP `source.fixAll.mdsmith`).
+One subagent in `agents/markdown-reviewer.md`.
+Rule-backed patterns load in bulk via
+`mdsmith help patterns -f json` or LSP
+`mdsmith/rulePatterns` (see [plan 161][p161]).
+Config-level patterns load from the audit
+skill's [patterns.md][audit-patterns]. The
+agent proposes the rule, directive, or kind
+config to **adopt** so the pattern stops
+drifting — not a diagnostic the rule already
+catches (`catalog` validates declared
+directives, not hand-maintained indexes).
+Content nits stay with `mdsmith check`.
+Tools: Read, Grep, Bash (`mdsmith help`,
+`mdsmith check -f json`, `mdsmith kinds
+resolve`), GitHub MCP. No auto-fix.
+
+[audit-patterns]: ../.claude/skills/markdown-audit/patterns.md
 
 [p161]: ./161_rule-pattern-metadata.md
 
@@ -215,16 +216,14 @@ the standard `skills/`, `agents/`,
 
 ### Kind-assignment for plugin SKILL.md
 
-[`.mdsmith.yml`][mdsmith-yml] covers
+`.mdsmith.yml` names the audit path four
+times. Look in the `skill` kind, in
+`kind-assignment`, and in two SKILL
+`overrides:`. Swap each
 `editors/claude-code-audit/skills/*/SKILL.md`
-in four places. Generalize each
-`claude-code-audit` → `claude-code-*`:
-
-the `skill` kind's `path-pattern`,
-`kind-assignment`, and two SKILL `overrides:`
-(`max-file-length: 600`; heading-rule disables).
-
+glob for `editors/claude-code-*/skills/*/SKILL.md`.
 Surface the diff per [CLAUDE.md][claude-md].
+
 Existing plugins are unchanged; new ones show
 up in `/plugin marketplace update` without
 auto-installing.
