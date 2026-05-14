@@ -197,14 +197,15 @@ glob: "data/*.md"
 | Empty `glob`   | `...has empty "glob"`        |
 | Absolute glob  | `...has absolute glob path`  |
 
-| Condition          | Message                                                            |
-|--------------------|--------------------------------------------------------------------|
-| Glob escapes root  | `...glob escapes project root`                                     |
-| `..` without root  | `...glob contains ".." but project root is not configured`         |
-| `..` inside braces | `...has ".." inside brace expansion; rewrite as separate patterns` |
-| Invalid glob       | `...invalid glob pattern`                                          |
-| Empty sort         | `...empty "sort" value`                                            |
-| Invalid sort       | `...invalid sort value`                                            |
+| Condition          | Message                                                                  |
+|--------------------|--------------------------------------------------------------------------|
+| Glob escapes root  | `...glob escapes project root`                                           |
+| `..` without root  | `...glob contains ".." but project root is not configured`               |
+| File outside root  | `...catalog file is outside project root; ".." globs cannot be resolved` |
+| `..` inside braces | `...has ".." inside brace expansion; rewrite as separate patterns`       |
+| Invalid glob       | `...invalid glob pattern`                                                |
+| Empty sort         | `...empty "sort" value`                                                  |
+| Invalid sort       | `...invalid sort value`                                                  |
 
 All messages above are prefixed with
 `generated section directive`. Column is always 1.

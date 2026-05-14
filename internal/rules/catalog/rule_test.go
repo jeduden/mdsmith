@@ -2956,7 +2956,7 @@ glob: "../sibling/*.md"
 	r := &Rule{}
 	diags := r.Check(f)
 	require.NotEmpty(t, diags)
-	assert.Contains(t, diags[0].Message, `glob contains ".." but project root is not configured`)
+	assert.Contains(t, diags[0].Message, "catalog file is outside project root")
 }
 
 func TestCatalog_DotDotExcludeEscapesRoot(t *testing.T) {

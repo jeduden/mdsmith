@@ -318,11 +318,21 @@ func missingRootDiag(filePath string, line int) globResolution {
 		`generated section directive glob contains ".." but project root is not configured`)}}
 }
 
+// outsideRootDiag reports a ".." pattern in a file whose path cannot be
+// related to the configured project root (e.g. it lives on a different
+// volume, or above the configured RootDir). Distinct from
+// missingRootDiag so the user can tell which situation they're in.
+func outsideRootDiag(filePath string, line int) globResolution {
+	return globResolution{diags: []lint.Diagnostic{makeDiag(
+		filePath, line,
+		`generated section directive catalog file is outside project root; ".." globs cannot be resolved`)}}
+}
+
 // resolveAgainstProjectRoot rewrites include/exclude patterns relative
 // to the project root using RootFS. When the source-dir is invalid or
 // fileDir cannot be related to the project root, it falls back to the
 // file's fs.FS — except for ".." patterns, which still need a project
-// root and surface the missing-root diagnostic instead of silently
+// root and surface the outside-root diagnostic instead of silently
 // matching nothing on a fs.FS that rejects "..".
 func resolveAgainstProjectRoot(
 	f *lint.File, sourceDir string, hasDotDot bool,
@@ -332,7 +342,7 @@ func resolveAgainstProjectRoot(
 	fileDir, ok := projectRelFileDir(f)
 	if !ok {
 		if hasDotDot {
-			return missingRootDiag(filePath, line)
+			return outsideRootDiag(filePath, line)
 		}
 		return localFSResolution(f, includes, excludes)
 	}
@@ -381,10 +391,18 @@ func projectRelFileDir(f *lint.File) (string, bool) {
 	if f.RootDir == "" {
 		return "", false
 	}
-	// filepath.Abs and filepath.Rel only error for inputs we don't
-	// hand them here (Abs needs Getwd; Rel needs mismatched abs/rel).
-	rootAbs, _ := filepath.Abs(f.RootDir)
-	rel, _ := filepath.Rel(rootAbs, filepath.Dir(f.Path))
+	// filepath.Abs can fail if Getwd errors; filepath.Rel returns an
+	// error for paths on different volumes (Windows) or for mismatched
+	// abs/rel pairs. Treating those as "cannot relate to root" keeps
+	// the safety check honest instead of returning a bogus path.
+	rootAbs, err := filepath.Abs(f.RootDir)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(rootAbs, filepath.Dir(f.Path))
+	if err != nil {
+		return "", false
+	}
 	rel = filepath.ToSlash(rel)
 	if rel == "." {
 		return "", true
