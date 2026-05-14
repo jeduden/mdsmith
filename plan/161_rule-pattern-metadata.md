@@ -112,22 +112,22 @@ maintainability:
 ---
 ```
 
-CUE shape:
+Schema constraint goes in [proto.md][proto]
+and [directive-proto.md][dproto]. Each value
+is a quoted CUE expression. The constraint is
+one string:
 
-```cue
-maintainability: {
-  signal: string & != ""
-  fix:    string & != ""
-  "for-diagnostic"?: bool | *false
-} | null
+```yaml
+maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
 ```
 
 The field is required (no `?` suffix on
 `maintainability` itself). Both `signal` and
 `fix` are present and non-empty, or the whole
-block is the literal `null` for content-only
-rules. `mdsmith check` rejects absence and
-partial blocks at lint time.
+block is the literal `null` for rules with no
+maintainability pattern. `mdsmith check`
+rejects absence and partial blocks at lint
+time.
 
 `for-diagnostic: true` opts the entry into
 hover enrichment (see LSP section).
@@ -140,8 +140,9 @@ diagnostic *matches* the fix recipe — e.g.
 duplicated-content — set `for-diagnostic:
 true`.
 
-Content-only rules set `maintainability: null`
-and are omitted from the CLI and LSP payloads
+Rules with no maintainability pattern set
+`maintainability: null` and are omitted from
+the CLI and LSP payloads
 below. The README body remains free-form prose;
 tooling reads the front matter only.
 
@@ -227,7 +228,8 @@ automatically.
    `patterns` help topic to
    [`cmd/mdsmith`](../cmd/mdsmith) emitting
    `{id, name, signal, fix}` records (omitting
-   content-only rules); honour `-f text|json`.
+   rules with `maintainability: null`); honour
+   `-f text|json`.
    Write failing tests first per CLAUDE.md.
 4. Add the `mdsmith/rulePatterns` LSP method
    and the `textDocument/hover` enrichment.
@@ -271,8 +273,7 @@ automatically.
       `maintainability` block,
       `mdsmith help rule <name>` renders it as a
       "Maintainability pattern" section.
-- [ ] For a content-only rule
-      (`maintainability: null`),
+- [ ] For a rule with `maintainability: null`,
       `mdsmith help rule <name>` does not render
       a "Maintainability pattern" section
       (neither empty nor literal `null`).
@@ -285,8 +286,8 @@ automatically.
       JSON array of `{id, name, signal, fix}`
       entries (with `id` matching diagnostic
       codes like `MDS001`), omitting
-      content-only rules. Covered by a new unit
-      test.
+      rules with `maintainability: null`.
+      Covered by a new unit test.
 - [ ] `mdsmith/rulePatterns` returns the same
       payload over LSP. Covered by a new LSP
       end-to-end test.
@@ -294,9 +295,9 @@ automatically.
       from a rule whose maintainability block
       is flagged for-diagnostic appends the fix
       sketch; hover on adoption-only rules
-      (catalog, include) and content-only rules
-      is unchanged. Covered by a new hover
-      test.
+      (catalog, include) and rules with
+      `maintainability: null` is unchanged.
+      Covered by a new hover test.
 - [ ] [`docs/reference/cli/help.md`](../docs/reference/cli/help.md)
       and
       [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
