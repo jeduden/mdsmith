@@ -87,14 +87,16 @@ func (t *Toolkit) SyncDocs(srcDir, dstDir string) error {
 
 // checkSyncDocsPaths refuses src/dst combinations that would
 // wipe the source tree on the initial RemoveAll. Both paths are
-// resolved to absolute, cleaned form before the comparison so
-// relative inputs and trailing slashes still trip the guard.
+// resolved to absolute, cleaned form (via the absPath seam, so
+// tests can drive the unreachable Abs error branches) before the
+// comparison, so relative inputs and trailing slashes still trip
+// the guard.
 func checkSyncDocsPaths(srcDir, dstDir string) error {
-	src, err := filepath.Abs(srcDir)
+	src, err := absPath(srcDir)
 	if err != nil {
 		return fmt.Errorf("resolve src: %w", err)
 	}
-	dst, err := filepath.Abs(dstDir)
+	dst, err := absPath(dstDir)
 	if err != nil {
 		return fmt.Errorf("resolve dst: %w", err)
 	}
@@ -110,18 +112,14 @@ func checkSyncDocsPaths(srcDir, dstDir string) error {
 	return nil
 }
 
-// isUnder reports whether child sits below parent in the cleaned
-// path tree (not at parent itself). Both inputs must already be
-// absolute + cleaned.
+// isUnder reports whether child sits strictly below parent in
+// the cleaned absolute-path tree (so isUnder(p, p) is false).
+// Both inputs must already come from absPath, so neither has a
+// trailing separator — appending one before the prefix test
+// keeps `/tmp/foobar` from being treated as nested under
+// `/tmp/foo`.
 func isUnder(child, parent string) bool {
-	rel, err := filepath.Rel(parent, child)
-	if err != nil {
-		return false
-	}
-	if rel == "." || rel == "" {
-		return false
-	}
-	return !strings.HasPrefix(rel, "..") && rel != ".."
+	return strings.HasPrefix(child, parent+string(filepath.Separator))
 }
 
 // SyncDocs delegates to a default-OS Toolkit (see Stamp).

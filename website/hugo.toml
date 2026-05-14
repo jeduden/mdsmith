@@ -35,7 +35,12 @@ enableGitInfo = false
     startLevel = 2
     endLevel = 4
   [markup.highlight]
-    noClasses = false
+    # Emit inline styles rather than CSS classes — the site does
+    # not ship a Chroma stylesheet under static/css/, so the
+    # class-only form would render code blocks unstyled. Switch
+    # to noClasses = false (and vendor `chroma-<style>.css`) only
+    # when we want overridable token classes.
+    noClasses = true
     style = "github"
 
 [params]

@@ -172,6 +172,56 @@ func TestSyncDocs_RefusesSrcInsideDst(t *testing.T) {
 	require.NoError(t, readErr, "source must survive the rejected call")
 }
 
+// TestSyncDocs_StatNonNotExistWrapsError covers the
+// non-ErrNotExist branch of the Stat error handler. The
+// fakeFS-injected error is not fs.ErrNotExist, so SyncDocs must
+// surface it through %w rather than collapsing it to the
+// "source not found" message.
+func TestSyncDocs_StatNonNotExistWrapsError(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnStatCall = 1
+
+	err := NewWithFS(ff).SyncDocs(src, dst)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "stat ")
+	assert.NotContains(t, err.Error(), "source not found")
+}
+
+// TestSyncDocs_AbsResolveErrorBubblesUp covers the absPath()
+// error branches in checkSyncDocsPaths. filepath.Abs only fails
+// when os.Getwd does, which is unreachable from a test process —
+// the package-level absPath seam (shared with BuildWheels) lets
+// us drive both branches deterministically.
+func TestSyncDocs_AbsResolveErrorBubblesUp(t *testing.T) {
+	orig := absPath
+	t.Cleanup(func() { absPath = orig })
+
+	// Branch 1: src resolve fails.
+	absPath = func(string) (string, error) { return "", errInjected }
+	err := SyncDocs("any-src", "any-dst")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "resolve src")
+
+	// Branch 2: src succeeds, dst fails.
+	calls := 0
+	absPath = func(p string) (string, error) {
+		calls++
+		if calls == 2 {
+			return "", errInjected
+		}
+		return orig(p)
+	}
+	err = SyncDocs(t.TempDir(), "any-dst")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "resolve dst")
+}
+
 func TestSyncDocs_DestRemoveAllErrorPropagates(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "x.md"), "x\n")
