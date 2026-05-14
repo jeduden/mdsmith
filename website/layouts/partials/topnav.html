@@ -4,10 +4,18 @@
       <img src="{{ "img/logo-mark.svg" | relURL }}" width="22" height="22" alt="">
       mdsmith
     </a>
+    {{- /* Active-state prefixes pass through relURL so they
+           respect --baseURL. Direct comparisons against literal
+           "/docs" would never match when the site is served from
+           a subpath (e.g. <user>.github.io/<repo>/), because
+           .RelPermalink includes the subpath. */ -}}
+    {{- $docsPrefix := relURL "/docs/" -}}
+    {{- $refPrefix := relURL "/docs/reference/" -}}
+    {{- $cmpPrefix := relURL "/compare/" -}}
     <nav class="topnav-links">
-      <a class="topnav-link{{ if and (hasPrefix .RelPermalink "/docs") (not (hasPrefix .RelPermalink "/docs/reference")) }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
-      <a class="topnav-link{{ if hasPrefix .RelPermalink "/docs/reference" }} is-active{{ end }}" href="{{ "/docs/reference/" | relURL }}">Reference</a>
-      <a class="topnav-link{{ if hasPrefix .RelPermalink "/compare" }} is-active{{ end }}" href="{{ "/compare/" | relURL }}">Compare</a>
+      <a class="topnav-link{{ if and (hasPrefix .RelPermalink $docsPrefix) (not (hasPrefix .RelPermalink $refPrefix)) }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
+      <a class="topnav-link{{ if hasPrefix .RelPermalink $refPrefix }} is-active{{ end }}" href="{{ "/docs/reference/" | relURL }}">Reference</a>
+      <a class="topnav-link{{ if hasPrefix .RelPermalink $cmpPrefix }} is-active{{ end }}" href="{{ "/compare/" | relURL }}">Compare</a>
       <a class="topnav-link" href="{{ "/docs/guides/install/" | relURL }}">Install</a>
     </nav>
     <div class="topnav-right">

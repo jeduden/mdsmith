@@ -96,4 +96,7 @@ table below summarizes the overlap.
   </tbody>
 </table>
 
-The full breakdown — including each tool's design priorities and where they shine outside mdsmith's scope — is in the background note: [Markdown linters compared](/docs/background/markdown-linters/).
+The full breakdown is in the background note:
+[Markdown linters compared]({{< relref "/docs/background/markdown-linters" >}}).
+It covers each tool's design priorities and where they shine outside
+mdsmith's scope.
