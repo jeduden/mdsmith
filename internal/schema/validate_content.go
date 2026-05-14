@@ -74,13 +74,23 @@ func skipContentBelow(heads []DocHeading, rootLevel int) []DocHeading {
 	return out
 }
 
-// contentParserOnce builds the singleton GFM parser used by the
-// content validator. Reusing the parser avoids rebuilding the block-
-// parser chain on every file.
-var (
-	contentParserOnce sync.Once
-	contentParser     parser.Parser
-)
+// contentParserPool reuses GFM-enabled goldmark parsers across
+// ValidateContent calls. parser.Parser is only safe to reuse
+// sequentially within a single goroutine — the LSP server's lint
+// pipeline (and any future caller running passes in parallel)
+// can run multiple ValidateContent invocations concurrently, so
+// the pool hands each goroutine its own parser instance. Mirrors
+// internal/lsp/index/build.go's parserPool.
+var contentParserPool = sync.Pool{
+	New: func() any {
+		return goldmark.New(
+			goldmark.WithExtensions(extension.Table),
+			goldmark.WithParserOptions(
+				parser.WithBlockParsers(lint.PIBlockParserPrioritized()),
+			),
+		).Parser()
+	},
+}
 
 // parseWithTableExt re-parses source with a CommonMark + Table parser
 // so the content walker can recognise GFM tables as *extast.Table
@@ -90,16 +100,9 @@ var (
 // shape lint.NewParser produces — instead of HTML blocks that would
 // shadow surrounding content and confuse the walker's match loop.
 func parseWithTableExt(source []byte) ast.Node {
-	contentParserOnce.Do(func() {
-		gm := goldmark.New(
-			goldmark.WithExtensions(extension.Table),
-			goldmark.WithParserOptions(
-				parser.WithBlockParsers(lint.PIBlockParserPrioritized()),
-			),
-		)
-		contentParser = gm.Parser()
-	})
-	return contentParser.Parse(text.NewReader(source))
+	p := contentParserPool.Get().(parser.Parser)
+	defer contentParserPool.Put(p)
+	return p.Parse(text.NewReader(source))
 }
 
 // topLevelBlocks returns the document's top-level block children in

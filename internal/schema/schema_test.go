@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -1287,6 +1288,45 @@ func TestValidate_Content_FencedBlockNoInfoString(t *testing.T) {
 	diags := Validate(doc, sch, nil, false, makeDiagForTest)
 	assert.Empty(t, diags,
 		"a fenced block without info string must still be recognised inside the section")
+}
+
+// TestValidate_Content_ConcurrentSafety regresses a Copilot
+// review on PR #285: the content walker reuses a goldmark
+// parser.Parser from a pool, and parser.Parser is documented to
+// be safe only when reused sequentially per goroutine. Running
+// Validate across many goroutines under -race must not surface a
+// data race or panic.
+func TestValidate_Content_ConcurrentSafety(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Body",
+			"content": []any{
+				map[string]any{"kind": "code-block", "lang": "yaml"},
+				map[string]any{"kind": "paragraph"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	src := "# T\n\n## Body\n\n```yaml\nfoo: bar\n```\n\nA paragraph.\n"
+	const goroutines = 16
+	const iterations = 8
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				doc := newDocFile(t, "doc.md", src)
+				diags := Validate(doc, sch, nil, false, makeDiagForTest)
+				if len(diags) != 0 {
+					t.Errorf("unexpected diagnostics: %v", diagsMessages(diags))
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 // TestValidate_Content_NoLineZeroDiagnostics regresses the
