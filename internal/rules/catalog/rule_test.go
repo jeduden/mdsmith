@@ -2798,12 +2798,13 @@ glob: "../sibling/*.md"
 	f.RootFS = mapFS
 	r := &Rule{}
 	diags := r.Check(f)
-	// Check reports drift between the empty body and the generated
-	// catalog rather than a path-traversal error.
-	for _, d := range diags {
-		assert.NotContains(t, d.Message, `".."`)
-		assert.NotContains(t, d.Message, "escapes project root")
-	}
+	// The directive body is empty, so Check must emit the drift
+	// diagnostic — not the dotdot/root-escape diagnostics, which would
+	// signal the resolution wrongly rejected the pattern.
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "generated section is out of date")
+	assert.NotContains(t, diags[0].Message, `".."`)
+	assert.NotContains(t, diags[0].Message, "escapes project root")
 	result := string(r.Fix(f))
 	assert.Contains(t, result, "../sibling/api.md")
 	assert.Contains(t, result, "../sibling/guide.md")
