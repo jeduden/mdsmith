@@ -23,9 +23,11 @@ hit.
   under `internal/` answers one question.
   `internal/lint` answers "does this file
   violate a rule?"; `internal/fix` answers
-  "what edits make it stop violating?". They
-  read each other's outputs but never
-  collapse.
+  "what edits make it stop violating?";
+  `internal/linkgraph` answers "what's a
+  Markdown link and what does it point
+  at?". They read each other's outputs but
+  never collapse.
 - **Open/closed**: new rules and fixes are
   added by creating a Go package under
   `internal/rules/<rule-name>/` (e.g.
@@ -73,7 +75,8 @@ cmd/mdsmith              internal/lsp
         internal/engine      (orchestration)
               └─> internal/{rule, fix,
                             config, output,
-                            lint, discovery,
+                            lint, linkgraph,
+                            discovery,
                             schema, …}
                     └─> internal/{mdtext,
                                   globpath,

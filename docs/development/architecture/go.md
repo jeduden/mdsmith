@@ -31,6 +31,18 @@ question. The current production set:
   against a parsed file.
 - `internal/fix` — produce edits that
   make a file stop violating rules.
+- `internal/linkgraph` — the canonical
+  Markdown link / directive / reference
+  extractor. MDS027, the `mdsmith list
+  backlinks` CLI, and the LSP symbol
+  index (`internal/lsp/index`) all
+  consult it so anchor normalisation,
+  workspace-relative path resolution,
+  and catalog-glob handling stay
+  consistent across surfaces. The
+  per-file extractor is pure (no file
+  reads, no workspace walks) so callers
+  can fan it out across goroutines.
 - `internal/lsp` — speak the Language
   Server Protocol; consumes the engine.
 - `internal/mdtext` — parse and walk
