@@ -10,31 +10,32 @@ the website cannot drift out of sync with the binary.
 
 ## Layout
 
-| Path                           | Purpose                                                              |
-|--------------------------------|----------------------------------------------------------------------|
-| `hugo.toml`                    | Site config + module mounts; pulls `../docs` into `content/docs/`.   |
-| `content/_index.md`            | Homepage front matter and copy.                                      |
-| `content/compare.md`           | "vs other linters" page.                                             |
-| `content/docs/`                | **Mounted** from the repository's `docs/` tree — do not author here. |
-| `layouts/_default/baseof.html` | Page shell — `<head>`, top nav, footer.                              |
-| `layouts/index.html`           | Homepage template (hero · feature grid · install tabs · terminal).   |
-| `layouts/_default/single.html` | Docs page template (sidebar + prose).                                |
-| `layouts/_default/list.html`   | Section index template.                                              |
-| `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                     |
-| `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                    |
-| `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                       |
-| `static/css/`                  | `colors_and_type.css` (tokens) + `app.css` (component styles).       |
-| `static/fonts/`                | 0xProto Nerd Font TTF.                                               |
-| `static/img/`                  | Logo SVGs.                                                           |
-| `data/`                        | Reserved for generated data (rules catalog, etc.).                   |
+| Path                           | Purpose                                                            |
+|--------------------------------|--------------------------------------------------------------------|
+| `hugo.toml`                    | Site config + module mounts (does NOT mount `../docs` directly).   |
+| `content/_index.md`            | Homepage front matter and copy.                                    |
+| `content/compare.md`           | "vs other linters" page.                                           |
+| `content/docs/`                | **Synced** from `../docs/` by `scripts/sync-docs.sh` (gitignored). |
+| `layouts/_default/baseof.html` | Page shell — `<head>`, top nav, footer.                            |
+| `layouts/index.html`           | Homepage template (hero · feature grid · install tabs · terminal). |
+| `layouts/_default/single.html` | Docs page template (sidebar + prose).                              |
+| `layouts/_default/list.html`   | Section index template.                                            |
+| `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                   |
+| `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                  |
+| `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                     |
+| `static/css/`                  | `colors_and_type.css` (tokens) + `app.css` (component styles).     |
+| `static/fonts/`                | 0xProto Nerd Font TTF.                                             |
+| `static/img/`                  | Logo SVGs.                                                         |
+| `data/`                        | Reserved for generated data (rules catalog, etc.).                 |
 
 ## Develop
 
 Hugo (non-extended is fine — no SCSS or image processing):
 
 ```bash
-# install hugo
-go install github.com/gohugoio/hugo@latest
+# install hugo — pin matches HUGO_VERSION in the pages-deploy
+# workflow so local builds cannot drift from CI.
+go install github.com/gohugoio/hugo@v0.161.1
 
 # sync ../docs/ -> content/docs/ (mdsmith fix + snapshot
 # via the mdsmith-release sync-docs subcommand).
@@ -85,12 +86,6 @@ pair.
 Set the Pages source to **GitHub Actions** in repository
 settings.
 
-## Deployment
-
-Tag-driven GitHub Pages publish lives in the release workflow
-(see `docs/development/release.md`). The site version always
-matches the binary release on the tag.
-
 ## Design system origin
 
 The CSS in `static/css/` is the Claude Design export for the
@@ -99,8 +94,8 @@ project. See:
 - `static/css/colors_and_type.css` — tokens, base typography
 - `static/css/app.css` — component styles (class-based, no
   React or Tailwind required)
-- `static/img/logo-*.svg` — substitution logos; replace if
-  mdsmith adopts an official mark
+- `static/img/logo-*.svg` — hammer mark + `md`/`smith` wordmark
+  (lockup and inverse variants)
 
 The CSS classes (`.topnav`, `.hero`, `.feature-grid`,
 `.install`, `.term`, `.diag`, `.docs-grid`, `.chip`, `.pill`,

@@ -4,17 +4,20 @@ title = "mdsmith"
 enableRobotsTXT = true
 enableGitInfo = false
 
-# Treat the site directory and the sibling docs/ tree as content sources.
+# Treat the site directory as the content source. The sibling
+# docs/ tree lives in the repo root but is NOT mounted directly:
+# Hugo parses shortcodes before markdown, so literal {{< ... >}}
+# patterns in files like docs/background/markdown-linters.md
+# would break the build. Instead, scripts/sync-docs.sh (locally)
+# and the pages-deploy workflow (in CI) run
+# `mdsmith-release sync-docs` to snapshot docs/ into
+# content/docs/, escape the literal shortcode patterns, drop
+# proto.md schema templates, and rename index.md to _index.md.
+# content/docs/ is .gitignore'd.
 [module]
   [[module.mounts]]
     source = "content"
     target = "content"
-  # docs/ from the repo root is synced into content/docs/ by
-  # scripts/sync-docs.sh (Hugo shortcode patterns escaped, mdsmith
-  # directives expanded). The mount used to point straight at
-  # ../docs but Hugo parses shortcodes before markdown, so literal
-  # {{< ... >}} in docs/background/markdown-linters.md broke the
-  # build. content/docs/ is .gitignore'd.
   [[module.mounts]]
     source = "static"
     target = "static"
@@ -41,7 +44,13 @@ enableGitInfo = false
 [params]
   description = "A fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content."
   githubRepo = "jeduden/mdsmith"
-  version = "v0.x"
+  # `version` is tracked by mdsmith-release stamp (see
+  # internal/release/version.go — TrackedManifests). Between
+  # releases the value is the dev sentinel "0.0.0-dev"; the
+  # pages-deploy workflow rewrites it to the cleaned tag (no
+  # leading "v") before running `hugo --minify`. Templates that
+  # display this should prefix "v" in the rendered markup.
+  version = "0.0.0-dev"
 
 [outputs]
   home = ["HTML"]

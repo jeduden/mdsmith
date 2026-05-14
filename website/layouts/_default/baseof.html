@@ -8,7 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="{{ "img/logo-mark.svg" | relURL }}">
   <link rel="stylesheet" href="{{ "css/colors_and_type.css" | relURL }}">
   <link rel="stylesheet" href="{{ "css/app.css" | relURL }}">
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+  <script src="https://unpkg.com/lucide@1.16.0/dist/umd/lucide.min.js" defer></script>
 </head>
 <body>
   <div class="app">
@@ -42,11 +42,26 @@
       document.querySelectorAll("[data-tabs]").forEach(group => {
         const tabs = group.querySelectorAll("[data-tab]");
         const panels = group.querySelectorAll("[data-panel]");
-        tabs.forEach(tab => tab.addEventListener("click", () => {
-          const key = tab.getAttribute("data-tab");
-          tabs.forEach(t => t.classList.toggle("is-active", t === tab));
+        const activate = key => {
+          tabs.forEach(t => {
+            const on = t.getAttribute("data-tab") === key;
+            t.classList.toggle("is-active", on);
+            t.setAttribute("aria-selected", on ? "true" : "false");
+            t.setAttribute("tabindex", on ? "0" : "-1");
+          });
           panels.forEach(p => p.hidden = p.getAttribute("data-panel") !== key);
-        }));
+        };
+        tabs.forEach((tab, idx) => {
+          tab.addEventListener("click", () => activate(tab.getAttribute("data-tab")));
+          tab.addEventListener("keydown", e => {
+            if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+            e.preventDefault();
+            const dir = e.key === "ArrowRight" ? 1 : -1;
+            const next = tabs[(idx + dir + tabs.length) % tabs.length];
+            activate(next.getAttribute("data-tab"));
+            next.focus();
+          });
+        });
       });
     });
   </script>

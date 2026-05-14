@@ -1,5 +1,5 @@
 /* ===== mdsmith.dev — site-specific styles ===== */
-/* Extends ../../colors_and_type.css */
+/* Extends colors_and_type.css (same directory) */
 
 * { box-sizing: border-box; }
 

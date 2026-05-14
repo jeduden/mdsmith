@@ -5,7 +5,7 @@
         <i data-lucide="{{ .icon }}" width="18" height="18"></i>
       </span>
       <h3>{{ .title }}</h3>
-      <p>{{ .body | safeHTML }}</p>
+      <p>{{ .body | markdownify }}</p>
       {{ with .rules }}
         <div>
           {{ range . }}<span class="rule-chip">{{ . }}</span>{{ end }}

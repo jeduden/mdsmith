@@ -113,6 +113,98 @@ func TestSyncDocs_MissingSourceFails(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestSyncDocs_DestRemoveAllErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnRemoveAllCall = 1
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestSyncDocs_DestMkdirAllErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnMkdirAllCall = 1
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestSyncDocs_ReadDirErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnReadDirCall = 1
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestSyncDocs_ReadFileErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnReadFileCall = 1
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestSyncDocs_WriteFileErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnWriteFileCall = 1
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestSyncDocs_ChildMkdirErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "sub", "x.md"), "x\n")
+	ff := newFakeFS()
+	// MkdirAll #1 = SyncDocs's own dest mkdir. #2 = child subdir.
+	ff.failOnMkdirAllCall = 2
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestSyncDocs_RecursiveFailurePropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "a.md"), "x\n")
+	writeFile(t, filepath.Join(src, "sub", "b.md"), "y\n")
+	ff := newFakeFS()
+	// ReadFile #1 = a.md (succeeds). The recursive syncDocsDir
+	// call hits ReadFile #2 on sub/b.md, which fails. Covers the
+	// parent loop's "if err != nil { return ... }" arm after the
+	// recursive call.
+	ff.failOnReadFileCall = 2
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
+func TestSyncDocs_EmptySubdirRemoveAllErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "kept.md"), "x\n")
+	// `pruned/` contains only an excluded extension, so the
+	// recursive call ends with !wrote and tries RemoveAll on the
+	// freshly-created empty child. RemoveAll #1 = SyncDocs's
+	// initial dest wipe (passes); #2 = the empty-child cleanup
+	// (fails).
+	writeFile(t, filepath.Join(src, "pruned", "embed.go"), "package x\n")
+	ff := newFakeFS()
+	ff.failOnRemoveAllCall = 2
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))

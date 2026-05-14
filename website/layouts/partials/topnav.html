@@ -6,12 +6,12 @@
     </a>
     <nav class="topnav-links">
       <a class="topnav-link{{ if hasPrefix .RelPermalink "/docs" }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
-      <a class="topnav-link{{ if hasPrefix .RelPermalink "/rules" }} is-active{{ end }}" href="{{ "/docs/reference/" | relURL }}">Reference</a>
+      <a class="topnav-link{{ if hasPrefix .RelPermalink "/docs/reference" }} is-active{{ end }}" href="{{ "/docs/reference/" | relURL }}">Reference</a>
       <a class="topnav-link{{ if hasPrefix .RelPermalink "/compare" }} is-active{{ end }}" href="{{ "/compare/" | relURL }}">Compare</a>
       <a class="topnav-link" href="{{ "/docs/guides/install/" | relURL }}">Install</a>
     </nav>
     <div class="topnav-right">
-      <span class="topnav-version">{{ .Site.Params.version }}</span>
+      <span class="topnav-version">v{{ .Site.Params.version }}</span>
       <button class="topnav-kbd" type="button" aria-label="Open search">
         <span>⌘</span><span>K</span>
       </button>

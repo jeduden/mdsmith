@@ -224,6 +224,11 @@ func writeFixture(t *testing.T, root string) {
 name = "mdsmith"
 version = "0.0.0-dev"
 `,
+		"website/hugo.toml": `baseURL = "https://mdsmith.dev/"
+title = "mdsmith"
+[params]
+  version = "0.0.0-dev"
+`,
 	}
 	for rel, body := range files {
 		full := filepath.Join(root, rel)

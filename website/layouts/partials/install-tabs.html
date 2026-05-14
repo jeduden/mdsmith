@@ -1,11 +1,23 @@
 <div class="install" data-tabs>
-  <div class="install-tabs" role="tablist">
+  <div class="install-tabs" role="tablist" aria-label="Install commands by channel">
     {{ range $i, $t := site.Data.homepage.install }}
-      <button class="install-tab{{ if eq $i 0 }} is-active{{ end }}" type="button" data-tab="{{ $t.id }}">{{ $t.label }}</button>
+      <button class="install-tab{{ if eq $i 0 }} is-active{{ end }}"
+              type="button"
+              role="tab"
+              id="tab-install-{{ $t.id }}"
+              aria-controls="panel-install-{{ $t.id }}"
+              aria-selected="{{ if eq $i 0 }}true{{ else }}false{{ end }}"
+              tabindex="{{ if eq $i 0 }}0{{ else }}-1{{ end }}"
+              data-tab="{{ $t.id }}">{{ $t.label }}</button>
     {{ end }}
   </div>
   {{ range $i, $t := site.Data.homepage.install }}
-    <div class="install-body" data-panel="{{ $t.id }}"{{ if ne $i 0 }} hidden{{ end }}>
+    <div class="install-body"
+         role="tabpanel"
+         id="panel-install-{{ $t.id }}"
+         aria-labelledby="tab-install-{{ $t.id }}"
+         tabindex="0"
+         data-panel="{{ $t.id }}"{{ if ne $i 0 }} hidden{{ end }}>
       <div class="install-cmd">
         <span class="prompt">{{ default "$" $t.prompt }}</span>
         <span class="cmd">{{ $t.cmd }}</span>

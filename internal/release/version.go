@@ -79,6 +79,12 @@ func (t *Toolkit) TrackedManifests(root string) []Manifest {
 		}
 	}
 	out = append(out, Manifest{filepath.Join(root, "python", "pyproject.toml"), ManifestTOML, false})
+	// website/hugo.toml carries the version the deployed
+	// mdsmith.dev site renders in topnav and elsewhere. The
+	// pages-deploy workflow re-runs Stamp before `hugo --minify`
+	// so the site always reflects the release tag rather than
+	// the dev sentinel.
+	out = append(out, Manifest{filepath.Join(root, "website", "hugo.toml"), ManifestTOML, false})
 	return out
 }
 

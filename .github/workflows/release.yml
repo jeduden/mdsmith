@@ -484,10 +484,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     env:
-      # Pinned to match the Hugo release used to author the site;
-      # bump in lockstep with website/scripts/sync-docs.sh and the
-      # local dev instructions in website/README.md.
+      # Pin the Hugo version used by the deploy. The same pin
+      # appears in website/scripts/sync-docs.sh and the local
+      # dev instructions in website/README.md; bump all three
+      # together so a local preview cannot drift from CI.
       HUGO_VERSION: "0.161.1"
+      # The release tag drives the version Hugo renders in
+      # ``.Site.Params.version`` and the on-disk pin in
+      # website/hugo.toml. Stamp validates that the value has
+      # no leading "v" before rewriting, so strip it here.
+      VERSION: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -501,6 +507,11 @@ jobs:
         # checksum verification, so the binary is pinned by content
         # hash even though the version selector is a tag.
         run: go install github.com/gohugoio/hugo@v${HUGO_VERSION}
+      - name: Stamp release version into tracked manifests
+        # Rewrites the version field in every tracked manifest
+        # (incl. website/hugo.toml) from the dev sentinel to the
+        # cleaned tag, so the deployed site shows the release.
+        run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
       - name: Sync docs into Hugo content tree
         # Snapshot ./docs into ./website/content/docs, dropping
         # proto.md schema templates, renaming index.md to
@@ -515,10 +526,13 @@ jobs:
         working-directory: website
         env:
           HUGO_ENVIRONMENT: production
-        # Override baseURL so internal links resolve under the
-        # Pages-assigned origin (custom domain or
-        # *.github.io/<repo>/).
-        run: hugo --minify --baseURL "${{ steps.pages.outputs.base_url }}/"
+          # The base URL Pages assigns gets piped through a
+          # shell env var rather than substituted into the run
+          # script directly, so an attacker-controlled output
+          # cannot inject shell metacharacters (zizmor finding
+          # 36 — template-expansion vulnerability).
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: hugo --minify --baseURL "${BASE_URL}/"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: website/public

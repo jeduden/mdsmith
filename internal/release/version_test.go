@@ -51,6 +51,11 @@ func fixtureManifests(t *testing.T, root string) {
 name = "mdsmith"
 version = "0.0.0-dev"
 `)
+	write("website/hugo.toml", `baseURL = "https://mdsmith.dev/"
+title = "mdsmith"
+[params]
+  version = "0.0.0-dev"
+`)
 }
 
 func mustRead(t *testing.T, path string) string {
@@ -76,6 +81,7 @@ func TestStampRewritesEveryManifest(t *testing.T) {
 		{"npm/platforms/linux-x64/package.json", `"version": "1.2.3"`},
 		{"npm/platforms/darwin-arm64/package.json", `"version": "1.2.3"`},
 		{"python/pyproject.toml", `version = "1.2.3"`},
+		{"website/hugo.toml", `version = "1.2.3"`},
 	}
 	for _, c := range cases {
 		body := mustRead(t, filepath.Join(root, c.path))
@@ -94,6 +100,7 @@ func TestStampIsIdempotent(t *testing.T) {
 		"npm/mdsmith/package.json",
 		"npm/platforms/linux-x64/package.json",
 		"python/pyproject.toml",
+		"website/hugo.toml",
 	}
 	first := make(map[string]string, len(paths))
 	for _, p := range paths {
@@ -288,6 +295,7 @@ func TestTrackedManifestsListsPlatformSubpackages(t *testing.T) {
 		filepath.Join(root, "npm", "platforms", "linux-x64", "package.json"),
 		filepath.Join(root, "npm", "platforms", "win32-x64", "package.json"),
 		filepath.Join(root, "python", "pyproject.toml"),
+		filepath.Join(root, "website", "hugo.toml"),
 	}
 	gotPaths := make([]string, len(got))
 	for i, m := range got {
