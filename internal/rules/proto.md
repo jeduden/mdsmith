@@ -100,8 +100,11 @@ rules:
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
      Implementation, Category, Concept (if applicable).
      Default may include key settings: "enabled, max: 80".
-     Categories: code, heading, line, link, list, meta,
-     whitespace. Delete Concept bullet if not used. -->
+     Categories: accessibility, code, heading, line, link,
+     list, meta, prose, table, whitespace. Pick the
+     narrowest that fits; `meta` is the fallback for
+     directives and cross-file checks.
+     Delete Concept bullet if not used. -->
 
 ## ...
 

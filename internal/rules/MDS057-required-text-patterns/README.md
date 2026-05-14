@@ -104,4 +104,4 @@ This section is missing the required token.
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: prose

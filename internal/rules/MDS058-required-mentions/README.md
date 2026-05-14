@@ -95,4 +95,4 @@ Deploy to staging.
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: prose

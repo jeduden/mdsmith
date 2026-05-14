@@ -32,7 +32,7 @@ func (r *Rule) ID() string { return "MDS055" }
 func (r *Rule) Name() string { return "forbidden-paragraph-starts" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "prose" }
 
 // EnabledByDefault implements rule.Defaultable. MDS055 is opt-in;
 // teams enable it for prose rules ("avoid starting paragraphs with
