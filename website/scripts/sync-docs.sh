@@ -51,7 +51,7 @@ fi
 
 if (( run_fix )); then
   echo "==> go run ./cmd/mdsmith fix $src"
-  (cd "$repo" && go run ./cmd/mdsmith fix ./docs) || {
+  (cd "$repo" && go run ./cmd/mdsmith fix "$src") || {
     echo "mdsmith fix failed" >&2
     exit 1
   }
