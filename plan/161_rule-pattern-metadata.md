@@ -68,13 +68,17 @@ in different places:
   `directory-structure.allowed` if the new
   location is correct.
 
-MDS037 spots repeats on its own. The other
-four blocks frame *adoption* opportunities;
-those rules validate declared structures only.
-Three audit checks are config-level and stay
-in `patterns.md`: no `.mdsmith.yml`, similar
-files without a kind, kind without
-`path-pattern`. (Non-goal: no new rules.)
+MDS037 and MDS033 fire on the pattern
+directly. Their `fix` matches the diagnostic
+remedy. The other three (catalog, include,
+required-structure) only validate declared
+structures. Those blocks frame adoption
+opportunities the reviewer surfaces before
+the rule fires. Three audit checks are
+config-level and stay in `patterns.md`: no
+`.mdsmith.yml`, similar files without a kind,
+kind without `path-pattern`. (Non-goal: no
+new rules.)
 
 ## Non-Goals
 
@@ -110,10 +114,9 @@ maintainability:
 ---
 ```
 
-Schema constraint goes in [proto.md][proto]
-and [directive-proto.md][dproto]. Each value
-is a quoted CUE expression. The constraint is
-one string:
+Schema goes in [proto.md][proto] and
+[directive-proto.md][dproto] as a quoted CUE
+expression:
 
 ```yaml
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
@@ -128,21 +131,18 @@ rejects absence and partial blocks at lint
 time.
 
 `for-diagnostic: true` opts the entry into
-hover enrichment (see LSP section).
-Adoption-style fixes default to `false`. The
-catalog, include, required-structure, and
-directory-structure rules fire only after
-adoption. An "adopt X" sketch on those
-diagnostics would mislead. Rules whose
-diagnostic *matches* the fix recipe — e.g.
-duplicated-content — set `for-diagnostic:
-true`.
+hover enrichment. The default is `false` —
+catalog, include, and required-structure fire
+only after adoption. An "adopt X" sketch on
+their diagnostics misleads. The two rules
+that fire on the pattern directly set
+`for-diagnostic: true`. Those are
+duplicated-content and directory-structure.
 
-Rules with no maintainability pattern set
+Rules with no pattern set
 `maintainability: null` and are omitted from
-the CLI and LSP payloads below. The README
-body remains free-form prose; tooling reads
-the front matter only.
+CLI/LSP payloads below. README bodies stay
+free-form; tooling reads front matter only.
 
 ### CLI exposure
 
@@ -292,12 +292,12 @@ automatically.
       payload over LSP. Covered by a new LSP
       end-to-end test.
 - [ ] `textDocument/hover` on a diagnostic
-      from a rule whose maintainability block
-      is flagged for-diagnostic appends the fix
-      sketch; hover on the four adoption-only
-      rules (catalog, include,
-      required-structure, directory-structure)
-      and on `maintainability: null` rules is
+      from a `for-diagnostic: true` rule
+      (duplicated-content, directory-structure)
+      appends the fix sketch. Hover on the
+      three adoption-only rules (catalog,
+      include, required-structure) and on
+      `maintainability: null` rules is
       unchanged. Covered by a new hover test.
 - [ ] [`docs/reference/cli/help.md`](../docs/reference/cli/help.md)
       and
