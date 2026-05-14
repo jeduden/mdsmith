@@ -175,6 +175,28 @@ jobs:
       - run: go build -o mdsmith ./cmd/mdsmith
       - run: ./mdsmith check .
 
+  merge-driver-fixed-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install fixed mdsmith release used by merge-queue
+        env:
+          # Keep in lockstep with .github/workflows/merge-queue.yml.
+          MDSMITH_VERSION: v0.15.0
+          MDSMITH_SHA256: e91115916132c668620bb605bd162c05343aad26c3ed2c25e58c86a8506af191
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL "https://github.com/jeduden/mdsmith/releases/download/${MDSMITH_VERSION}/mdsmith-linux-amd64" \
+            -o "$HOME/.local/bin/mdsmith"
+          echo "${MDSMITH_SHA256}  $HOME/.local/bin/mdsmith" | sha256sum -c
+          chmod +x "$HOME/.local/bin/mdsmith"
+          "$HOME/.local/bin/mdsmith" merge-driver install
+          "$HOME/.local/bin/mdsmith" pre-merge-commit install
+      - name: Fail if fixed-version merge tooling rewrites tracked files
+        run: git --no-pager diff --exit-code
+
   demo:
     uses: ./.github/workflows/record-demo.yml
     with:
