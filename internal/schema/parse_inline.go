@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -738,6 +739,16 @@ func parseContentEntry(entry any, path string) (ContentEntry, error) {
 				path)
 		}
 	}
+	// A list entry that sets both min-items and max-items must
+	// declare a satisfiable range. Catching this at parse time
+	// converts a guaranteed-fail runtime diagnostic into a clear
+	// schema-config error naming the contradictory bounds.
+	if ce.MinItems > 0 && ce.MaxItems > 0 && ce.MinItems > ce.MaxItems {
+		return ContentEntry{}, fmt.Errorf(
+			"%s: min-items=%d is greater than max-items=%d — "+
+				"no list could ever satisfy this entry",
+			path, ce.MinItems, ce.MaxItems)
+	}
 	return ce, nil
 }
 
@@ -840,11 +851,19 @@ func setContentItemBound(dst *int, v any, path, key, kind string) error {
 		if x < 0 {
 			return fmt.Errorf("%s.%s must be non-negative, got %d", path, key, x)
 		}
+		if x > int64(math.MaxInt) {
+			return fmt.Errorf(
+				"%s.%s value %d exceeds int range on this platform", path, key, x)
+		}
 		*dst = int(x)
 	case float64:
-		if x < 0 || x != float64(int(x)) {
+		if x < 0 || x != float64(int64(x)) {
 			return fmt.Errorf(
 				"%s.%s must be a non-negative integer, got %v", path, key, x)
+		}
+		if x > float64(math.MaxInt) {
+			return fmt.Errorf(
+				"%s.%s value %v exceeds int range on this platform", path, key, x)
 		}
 		*dst = int(x)
 	default:

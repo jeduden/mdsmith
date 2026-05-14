@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -892,6 +893,60 @@ func TestParseInline_ContentItemBoundWrongType(t *testing.T) {
 	assert.Contains(t, err.Error(), "must be an integer")
 }
 
+func TestParseInline_ContentItemBoundMinExceedsMax(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Steps",
+			"content": []any{map[string]any{
+				"kind": "list", "min-items": 5, "max-items": 2,
+			}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(),
+		"min-items=5 is greater than max-items=2")
+}
+
+func TestParseInline_ContentItemBoundInt64Overflow(t *testing.T) {
+	// On 64-bit builds (the common case) int == int64 so the
+	// overflow guard's int64 branch is unreachable from valid YAML.
+	// Skip when int is already the same width as int64; the float
+	// path test below exercises the equivalent guard for that type.
+	maxInt := int64(math.MaxInt)
+	if maxInt == math.MaxInt64 {
+		t.Skip("int is 64-bit on this platform; overflow guard is unreachable")
+	}
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Steps",
+			"content": []any{map[string]any{
+				"kind": "list", "min-items": maxInt + 1,
+			}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds int range")
+}
+
+func TestParseInline_ContentItemBoundFloatOverflow(t *testing.T) {
+	_, err := ParseInline(map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Steps",
+			"content": []any{map[string]any{
+				"kind": "list", "max-items": float64(math.MaxInt64) * 2,
+			}},
+		}},
+	}, "kind x")
+	require.Error(t, err)
+	// Huge float values that aren't representable as int trip the
+	// "not an integer" path before the platform overflow check; the
+	// important thing is that the overflow does NOT silently wrap.
+	assert.True(t,
+		strings.Contains(err.Error(), "exceeds int range") ||
+			strings.Contains(err.Error(), "must be a non-negative integer"),
+		"want overflow or non-integer error, got %q", err.Error())
+}
+
 func TestParseInline_ContentItemBoundInt64Accepted(t *testing.T) {
 	sch, err := ParseInline(map[string]any{
 		"sections": []any{map[string]any{
@@ -1109,6 +1164,252 @@ var describeNodeCases = []describeNodeCase{
 		body: "Hello.\n\n- a\n- b\n",
 		want: `unexpected content "list ordered=false"`,
 	},
+}
+
+// TestValidate_Content_ScopeWithoutMatchingHeading covers the
+// matched<0 branch in walkContentScopes: a content-bearing scope
+// whose heading is absent from the doc is silently skipped by the
+// content walker (the missing-required-section diagnostic comes
+// from the heading-tree walker).
+func TestValidate_Content_ScopeWithoutMatchingHeading(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading":  "Missing",
+			"required": false,
+			"content": []any{
+				map[string]any{"kind": "code-block", "lang": "yaml"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// Doc has no `## Missing` heading at all.
+	doc := newDocFile(t, "doc.md", "# T\n\nNo H2 sections.\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	// Content validator emits nothing because the scope didn't match;
+	// the optional scope produces no missing-section message either.
+	assert.Empty(t, diags)
+}
+
+// TestValidate_Content_DescribeMissingTableAndParagraph covers
+// describeEntry's table-with-columns and paragraph branches by
+// surfacing them in missing-required diagnostics.
+func TestValidate_Content_DescribeMissingTableAndParagraph(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Body",
+			"content": []any{
+				map[string]any{"kind": "table",
+					"columns": []any{"A", "B"}},
+				map[string]any{"kind": "paragraph"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md", "# T\n\n## Body\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var sawTable, sawPara bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "table columns=[A B]") {
+			sawTable = true
+		}
+		if strings.Contains(d.Message, `"paragraph" inside`) {
+			sawPara = true
+		}
+	}
+	assert.True(t, sawTable,
+		"want describeEntry to render table columns")
+	assert.True(t, sawPara,
+		"want describeEntry to render paragraph")
+}
+
+// TestValidate_Content_ClosedScopeMidstreamUnexpected exercises the
+// matchEntry unexpected-content branch — a closed scope, intervening
+// node that matches neither the current entry nor any later listed
+// entry, no open slot. The walker advances past it with a diagnostic.
+func TestValidate_Content_ClosedScopeMidstreamUnexpected(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Body",
+			"closed":  true,
+			"content": []any{
+				map[string]any{"kind": "code-block"},
+				map[string]any{"kind": "code-block"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// Two code blocks bracket an unexpected paragraph; closed scope
+	// must flag the paragraph mid-sequence.
+	src := "# T\n\n## Body\n\n" +
+		"```\nx\n```\n\n" +
+		"An intruding paragraph between the two slots.\n\n" +
+		"```\ny\n```\n"
+	doc := newDocFile(t, "doc.md", src)
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var midstream bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, `unexpected content "paragraph"`) {
+			midstream = true
+		}
+	}
+	assert.True(t, midstream,
+		"closed scope must flag a non-matching node between two listed entries")
+}
+
+// TestValidate_Content_DescribeNodeFallback covers describeNode's
+// default branch: a top-level block node we don't enumerate (e.g.
+// a Blockquote) renders via n.Kind().String() rather than matching
+// one of the kind-specific cases.
+func TestValidate_Content_DescribeNodeFallback(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Body",
+			"closed":  true,
+			"content": []any{map[string]any{"kind": "paragraph"}},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// A blockquote at top level is neither a paragraph nor any of
+	// the recognised kinds; the closed scope must surface it as
+	// unexpected content via describeNode's fallback.
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Body\n\n> blockquoted line\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	var sawFallback bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, `unexpected content "Blockquote"`) ||
+			strings.Contains(d.Message, `unexpected content "Block"`) {
+			sawFallback = true
+		}
+	}
+	assert.True(t, sawFallback,
+		"unrecognised node kinds must surface through describeNode's fallback; got %v",
+		diagsMessages(diags))
+}
+
+// TestValidate_Content_FindLaterEntrySkipsClaimed covers
+// findLaterEntry's claimed-skip branch. With three required listed
+// entries and out-of-order doc arrivals, the first doc node claims
+// the second listed entry; a later findLaterEntry call must skip
+// that already-claimed slot when searching for the next match.
+func TestValidate_Content_FindLaterEntrySkipsClaimed(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Body",
+			"content": []any{
+				map[string]any{"kind": "code-block"},
+				map[string]any{"kind": "table"},
+				map[string]any{"kind": "list"},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// Doc: table, then list, then code-block. Walker on code-block
+	// (entry 0) sees the table — out-of-order claims entry 1; then
+	// sees the list — findLaterEntry(1, list) must skip the now-
+	// claimed entry 1 and find entry 2.
+	src := "# T\n\n## Body\n\n" +
+		"| A | B |\n|---|---|\n| x | y |\n\n" +
+		"- one\n- two\n\n" +
+		"```\nx\n```\n"
+	doc := newDocFile(t, "doc.md", src)
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	// Both table and list arrive out of order; both should be
+	// claimed without the code-block flagging as missing.
+	var ooCount int
+	var missing bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "out of order") {
+			ooCount++
+		}
+		if strings.Contains(d.Message, "missing required") {
+			missing = true
+		}
+	}
+	assert.Equal(t, 2, ooCount,
+		"both out-of-order nodes should produce a diagnostic")
+	assert.False(t, missing,
+		"code-block should be claimed at the end, not reported missing")
+}
+
+// TestValidate_Content_TableColumnsCountMismatch covers
+// stringSlicesEqual's length-difference branch. A doc table with
+// more columns than required fails the slice-equality check on
+// length before any element comparison runs.
+func TestValidate_Content_TableColumnsCountMismatch(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Settings",
+			"content": []any{
+				map[string]any{"kind": "table",
+					"columns": []any{"Setting", "Default"}},
+			},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md",
+		"# T\n\n## Settings\n\n"+
+			"| Setting | Default | Notes |\n"+
+			"|---------|---------|-------|\n"+
+			"| foo     | 1       | n/a   |\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		"do not match required")
+}
+
+// TestValidate_Content_MissingPlainTable covers describeEntry's
+// `table` branch with no `columns:` set — the empty-columns return
+// path that "table columns=[A B]" tests do not.
+func TestValidate_Content_MissingPlainTable(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Body",
+			"content": []any{map[string]any{"kind": "table"}},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	doc := newDocFile(t, "doc.md", "# T\n\n## Body\n\nNo table.\n")
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message,
+		`missing required content "table"`)
+}
+
+// TestValidate_Content_NestedHeadingsInsideSection covers
+// contentScopeEndLine's deeper-heading branch: nested headings
+// stay inside the section, a sibling at the matched level
+// terminates it.
+func TestValidate_Content_NestedHeadingsInsideSection(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{map[string]any{
+			"heading": "Body",
+			"sections": []any{map[string]any{
+				"heading": "Sub",
+				"content": []any{map[string]any{"kind": "code-block"}},
+			}},
+		}},
+	}
+	sch, err := ParseInline(raw, "kind x")
+	require.NoError(t, err)
+	// `## Body` contains `### Sub`, then another `## Trailing` at
+	// the matched level. The nested Sub scope's range should end
+	// before `## Trailing` even though the heading tree has multiple
+	// levels in between.
+	src := "# T\n\n" +
+		"## Body\n\n### Sub\n\n```\nx\n```\n\n" +
+		"## Trailing\n\nUnrelated.\n"
+	doc := newDocFile(t, "doc.md", src)
+	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	assert.Empty(t, diags,
+		"sub-section's code block must be claimed inside Body's range")
 }
 
 // TestValidate_Content_DescribeNodeKinds exercises describeNode for

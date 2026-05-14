@@ -630,7 +630,10 @@ func scopeLabel(sc Scope, level int) string {
 // describeEntry renders a content entry as the short string used in
 // diagnostic text — `"code-block lang=yaml"`, `"table columns=[…]"`,
 // `"list ordered=true min-items=2"`, etc. The format is stable so
-// docs and fixtures can pin against it.
+// docs and fixtures can pin against it. Only the four listed entry
+// kinds are rendered; `unlisted` entries never reach this function
+// because matchEntry and findLaterEntry skip them before any
+// diagnostic is formatted.
 func describeEntry(e ContentEntry) string {
 	switch e.Kind {
 	case ContentKindCodeBlock:
@@ -655,12 +658,8 @@ func describeEntry(e ContentEntry) string {
 			parts = append(parts, fmt.Sprintf("max-items=%d", e.MaxItems))
 		}
 		return strings.Join(parts, " ")
-	case ContentKindParagraph:
-		return "paragraph"
-	case ContentKindUnlisted:
-		return "unlisted"
 	}
-	return e.Kind
+	return "paragraph"
 }
 
 // describeNode renders an AST node as the short string used in
