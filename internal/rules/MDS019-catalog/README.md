@@ -151,44 +151,38 @@ rules:
 
 ### Good
 
-<?include
-file: good/default.md
-wrap: markdown
-?>
+The lint-test fixture lives at
+[good/default.md](good/default.md):
 
 ```markdown
 # Document Index
 
 <?catalog
 glob: "data/*.md"
-row: "[{filename}](good/{filename})"
+row: "[{filename}]({filename})"
 ?>
-[data/alpha.md](good/data/alpha.md)
-[data/beta.md](good/data/beta.md)
+[data/alpha.md](data/alpha.md)
+[data/beta.md](data/beta.md)
 <?/catalog?>
 ```
-
-<?/include?>
 
 ### Bad
 
-<?include
-file: bad/default.md
-wrap: markdown
-?>
+The lint-test fixture lives at
+[bad/default.md](bad/default.md). The body shows
+only one entry while the glob matches two, so the
+generated section is out of date:
 
 ```markdown
 # Document Index
 
 <?catalog
 glob: "data/*.md"
-row: "[{filename}](bad/{filename})"
+row: "[{filename}]({filename})"
 ?>
-[data/alpha.md](bad/data/alpha.md)
+[data/alpha.md](data/alpha.md)
 <?/catalog?>
 ```
-
-<?/include?>
 
 ## Diagnostics
 
