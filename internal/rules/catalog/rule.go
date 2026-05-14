@@ -348,7 +348,14 @@ func resolveAgainstProjectRoot(
 	}
 	baseRel, ok := resolveBaseRel(fileDir, sourceDir)
 	if !ok {
-		return localFSResolution(f, includes, excludes)
+		if hasDotDot {
+			// The pattern needs root-aware resolution for its ".."
+			// segments; an invalid source-dir is ignored so we still
+			// catch escapes-root and report them.
+			baseRel = fileDir
+		} else {
+			return localFSResolution(f, includes, excludes)
+		}
 	}
 	resolvedIncludes, ok := resolvePatterns(baseRel, includes)
 	if !ok {

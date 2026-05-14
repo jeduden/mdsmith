@@ -2906,6 +2906,29 @@ func TestDisplayPath_RelComputedFromRoot(t *testing.T) {
 	assert.Equal(t, "../../docs/api.md", res.displayPath("docs/api.md"))
 }
 
+func TestCatalog_DotDotGlobInvalidSourceDirStillResolvesRootAware(t *testing.T) {
+	// An invalid `source-dir` would normally fall back to the file's
+	// own fs.FS, but for ".." patterns that fallback can't resolve the
+	// segment at all. Instead, ignore the bad source-dir and continue
+	// root-aware resolution against the file's directory so the
+	// escapes-root diagnostic still fires when warranted.
+	src := `<?catalog
+glob: "../../escape/*.md"
+source-dir: "/abs/invalid"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"home/index.md": {Data: []byte("# Home\n")},
+	}
+	f := newTestFile(t, "home/index.md", src, mapFS)
+	f.RootFS = mapFS
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	expectDiagMsg(t, diags, "glob escapes project root")
+}
+
 func TestCatalog_DotDotInBracesRejected(t *testing.T) {
 	// `{..,sibling}/*.md` would expand to include "..", but path.Clean
 	// can't peek inside braces — so the validator rejects it up front
@@ -2993,9 +3016,9 @@ glob: "../sibling/*.md"
 
 func TestCatalog_DotDotGlobAbsoluteFilePathOutsideRoot(t *testing.T) {
 	// An absolute file path outside the configured RootDir cannot be
-	// related to the project root; resolution falls back to f.FS, and
-	// the dotdot pattern then errors out as "project root not
-	// configured" because that fallback path has no RootFS context.
+	// related to the project root, so the rule surfaces the dedicated
+	// "catalog file is outside project root" diagnostic for the
+	// dotdot pattern instead of silently matching nothing.
 	dir := t.TempDir()
 	otherDir := t.TempDir()
 	require.NoError(t, os.WriteFile(
