@@ -5,7 +5,7 @@
       mdsmith
     </a>
     <nav class="topnav-links">
-      <a class="topnav-link{{ if hasPrefix .RelPermalink "/docs" }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
+      <a class="topnav-link{{ if and (hasPrefix .RelPermalink "/docs") (not (hasPrefix .RelPermalink "/docs/reference")) }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
       <a class="topnav-link{{ if hasPrefix .RelPermalink "/docs/reference" }} is-active{{ end }}" href="{{ "/docs/reference/" | relURL }}">Reference</a>
       <a class="topnav-link{{ if hasPrefix .RelPermalink "/compare" }} is-active{{ end }}" href="{{ "/compare/" | relURL }}">Compare</a>
       <a class="topnav-link" href="{{ "/docs/guides/install/" | relURL }}">Install</a>

@@ -29,7 +29,11 @@ for arg in "$@"; do
   case "$arg" in
     --no-fix) run_fix=0 ;;
     -h|--help)
-      sed -n '2,22p' "$0" | sed 's/^# \?//'
+      # Reprint the top-of-file comment block as help text.
+      # Keep the upper bound aligned with the comment block's
+      # final line so the `--no-fix` usage example below the
+      # step list stays visible.
+      sed -n '2,23p' "$0" | sed 's/^# \?//'
       exit 0 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac

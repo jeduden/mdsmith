@@ -57,7 +57,18 @@ var syncableExt = map[string]struct{}{
 //     and {{%/* ... */%}}.
 //
 // dstDir is removed before the copy, so SyncDocs is idempotent.
+//
+// Returns an error without touching the filesystem if srcDir and
+// dstDir overlap (equal, dstDir under srcDir, or srcDir under
+// dstDir). The destination is wiped before the copy, so an
+// overlap would irrevocably delete the source tree before reading
+// it. The check compares absolute, cleaned paths so a caller
+// passing relative paths or trailing slashes still gets the
+// guard.
 func (t *Toolkit) SyncDocs(srcDir, dstDir string) error {
+	if err := checkSyncDocsPaths(srcDir, dstDir); err != nil {
+		return err
+	}
 	if _, err := t.fs.Stat(srcDir); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("source not found: %s", srcDir)
@@ -72,6 +83,45 @@ func (t *Toolkit) SyncDocs(srcDir, dstDir string) error {
 	}
 	_, err := t.syncDocsDir(srcDir, dstDir)
 	return err
+}
+
+// checkSyncDocsPaths refuses src/dst combinations that would
+// wipe the source tree on the initial RemoveAll. Both paths are
+// resolved to absolute, cleaned form before the comparison so
+// relative inputs and trailing slashes still trip the guard.
+func checkSyncDocsPaths(srcDir, dstDir string) error {
+	src, err := filepath.Abs(srcDir)
+	if err != nil {
+		return fmt.Errorf("resolve src: %w", err)
+	}
+	dst, err := filepath.Abs(dstDir)
+	if err != nil {
+		return fmt.Errorf("resolve dst: %w", err)
+	}
+	if src == dst {
+		return fmt.Errorf("src and dst point at the same path: %s", src)
+	}
+	if isUnder(dst, src) {
+		return fmt.Errorf("dst %s is inside src %s", dst, src)
+	}
+	if isUnder(src, dst) {
+		return fmt.Errorf("src %s is inside dst %s", src, dst)
+	}
+	return nil
+}
+
+// isUnder reports whether child sits below parent in the cleaned
+// path tree (not at parent itself). Both inputs must already be
+// absolute + cleaned.
+func isUnder(child, parent string) bool {
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	if rel == "." || rel == "" {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..") && rel != ".."
 }
 
 // SyncDocs delegates to a default-OS Toolkit (see Stamp).

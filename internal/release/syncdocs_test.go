@@ -133,6 +133,45 @@ func TestSyncDocs_MissingSourceFails(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestSyncDocs_RefusesSameSrcAndDst pins the safety check that
+// blocks SyncDocs from running when caller passes overlapping
+// paths. Without the guard, the leading RemoveAll(dstDir) would
+// wipe the very tree we're about to read from.
+func TestSyncDocs_RefusesSameSrcAndDst(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "x.md"), "x\n")
+	err := SyncDocs(dir, dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "same path")
+
+	// Source survived: the guard fired before the RemoveAll.
+	body, readErr := os.ReadFile(filepath.Join(dir, "x.md"))
+	require.NoError(t, readErr)
+	assert.Equal(t, "x\n", string(body))
+}
+
+func TestSyncDocs_RefusesDstInsideSrc(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	err := SyncDocs(src, filepath.Join(src, "out"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "inside")
+	_, readErr := os.Stat(filepath.Join(src, "x.md"))
+	require.NoError(t, readErr, "source must survive the rejected call")
+}
+
+func TestSyncDocs_RefusesSrcInsideDst(t *testing.T) {
+	dst := t.TempDir()
+	src := filepath.Join(dst, "inner")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	writeFile(t, filepath.Join(src, "x.md"), "x\n")
+	err := SyncDocs(src, dst)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "inside")
+	_, readErr := os.Stat(filepath.Join(src, "x.md"))
+	require.NoError(t, readErr, "source must survive the rejected call")
+}
+
 func TestSyncDocs_DestRemoveAllErrorPropagates(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "x.md"), "x\n")

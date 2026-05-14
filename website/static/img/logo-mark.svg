@@ -1,5 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="mdsmith mark — hammer">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-label="mdsmith mark — hash anvil with hammer">
   <title>mdsmith</title>
-  <path d="M6.5 8.5l13 13 2-2-13-13z"/>
-  <rect x="1.5" y="3" width="11" height="6" rx="1.2"/>
+  <g fill="#2A323D">
+    <path d="M4 24 L10 20 L74 20 L74 34 L4 34 Z"/>
+    <path d="M6 48 L74 48 L74 60 L70 64 L10 64 L6 60 Z"/>
+    <rect x="22" y="8" width="8" height="68"/>
+    <rect x="50" y="8" width="8" height="68"/>
+  </g>
+  <g transform="rotate(55 40 40)">
+    <path fill="#D9651D" stroke="#0F1419" stroke-width="2.5" stroke-linejoin="round"
+          d="M 28 13 L 52 13 L 58 18 L 58 25 L 52 30 L 45 30 L 45 64 Q 45 67 42 67 L 38 67 Q 35 67 35 64 L 35 30 L 28 30 L 22 25 L 22 18 Z"/>
+  </g>
 </svg>
