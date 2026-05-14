@@ -3,6 +3,7 @@ id: MDS019
 name: catalog
 status: ready
 description: Catalog content must reflect selected front matter fields from files matching its glob.
+nature: directive
 ---
 # MDS019: catalog
 
@@ -17,10 +18,11 @@ otherwise.
 
 ### Parameters
 
-| Parameter | Required | Default | Description        |
-|-----------|----------|---------|--------------------|
-| `glob`    | yes      | --      | Relative file glob |
-| `sort`    | no       | `path`  | Sort key           |
+| Parameter | Required | Default | Description                       |
+|-----------|----------|---------|-----------------------------------|
+| `glob`    | yes      | --      | Relative file glob                |
+| `sort`    | no       | `path`  | Sort key                          |
+| `where`   | no       | --      | CUE filter on parsed front matter |
 
 | Parameter | Required | Default | Description           |
 |-----------|----------|---------|-----------------------|
@@ -117,6 +119,29 @@ Built-in keys: `path` (default), `filename`. Any other
 key is looked up in front matter. Missing values sort as
 empty string. Sorting ignores case; ties break by path.
 
+### Filtering with `where`
+
+The `where` parameter accepts a CUE struct-literal body
+matched against each file's parsed front matter. The
+grammar is the same one
+[`mdsmith list query`](../../../docs/reference/cli/query.md)
+uses, so a working `mdsmith list query` expression drops
+in unchanged. Files whose front matter fails the
+expression are excluded before sort and render.
+
+```yaml
+where: 'nature: "directive"'
+```
+
+Failure modes:
+
+- Invalid CUE expression -> directive emits a diagnostic
+  on its opening line.
+- Front matter is missing the referenced field -> file
+  is excluded.
+- Field exists but its type does not match -> file is
+  excluded.
+
 ### Minimal mode
 
 Without `row`, `header`, or `footer`, the directive outputs
@@ -201,6 +226,7 @@ row: "[{filename}]({filename})"
 | Invalid glob       | `...invalid glob pattern`                                                |
 | Empty sort         | `...empty "sort" value`                                                  |
 | Invalid sort       | `...invalid sort value`                                                  |
+| Invalid `where`    | `...has invalid "where" expression`                                      |
 
 All messages above are prefixed with
 `generated section directive`. Column is always 1.

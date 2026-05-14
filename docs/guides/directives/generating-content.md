@@ -107,6 +107,34 @@ gitignore: "false"
 ?>
 ```
 
+### Filtering with `where`
+
+The `where` parameter narrows the matched set by a CUE
+expression
+evaluated against each file's parsed front matter. The
+expression grammar is the same one
+[`mdsmith list query`](../../reference/cli/query.md)
+accepts, so a CLI query expression drops in unchanged:
+
+```markdown
+<?catalog
+glob: "internal/rules/MDS*/README.md"
+where: 'nature: "directive"'
+row: "- [{name}]({filename})"
+?>
+<?/catalog?>
+```
+
+The filter runs after globbing and front matter
+parsing, but before sort and render. Failure modes:
+
+- An invalid CUE expression triggers an MDS019
+  diagnostic on the directive's opening line.
+- A file whose front matter is missing the referenced
+  field is excluded (no diagnostic).
+- A field whose value does not satisfy the constraint
+  (wrong type or wrong value) is excluded.
+
 ### Sorting
 
 Format: `[-][numeric:]KEY`. A `-` prefix means

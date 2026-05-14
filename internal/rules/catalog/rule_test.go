@@ -4108,3 +4108,163 @@ func TestCheckFieldCaseMismatches_NoFields(t *testing.T) {
 	diags := checkFieldCaseMismatches("index.md", 1, "| Title | Description |", nil)
 	assert.Nil(t, diags)
 }
+
+// =====================================================================
+// where: filter
+// =====================================================================
+
+func TestWhere_SelectsSubsetByEquality(t *testing.T) {
+	// where: keeps only files whose nature == "directive".
+	src := `<?catalog
+glob: "docs/*.md"
+where: 'nature: "directive"'
+row: "- [{title}]({filename})"
+?>
+- [Catalog](docs/catalog.md)
+- [Include](docs/include.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/catalog.md":  {Data: []byte("---\ntitle: Catalog\nnature: directive\n---\n# Catalog\n")},
+		"docs/include.md":  {Data: []byte("---\ntitle: Include\nnature: directive\n---\n# Include\n")},
+		"docs/headings.md": {Data: []byte("---\ntitle: Headings\nnature: content\n---\n# Headings\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestWhere_SelectsNothing(t *testing.T) {
+	// where: selects no files; with no `empty:` the body is blank.
+	src := `<?catalog
+glob: "docs/*.md"
+where: 'nature: "structural"'
+row: "- [{title}]({filename})"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\ntitle: A\nnature: directive\n---\n# A\n")},
+		"docs/b.md": {Data: []byte("---\ntitle: B\nnature: content\n---\n# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestWhere_MissingFieldExcludesFile(t *testing.T) {
+	// A file without the referenced field is dropped, matching list-query
+	// semantics: missing fields do not satisfy the expression.
+	src := `<?catalog
+glob: "docs/*.md"
+where: 'nature: "directive"'
+row: "- [{title}]({filename})"
+?>
+- [Has nature](docs/has.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/has.md":     {Data: []byte("---\ntitle: Has nature\nnature: directive\n---\n# A\n")},
+		"docs/missing.md": {Data: []byte("---\ntitle: Missing nature\n---\n# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestWhere_TypeMismatchExcludesFile(t *testing.T) {
+	// A file whose field is the wrong type is dropped, not an error.
+	src := `<?catalog
+glob: "docs/*.md"
+where: 'nature: "directive"'
+row: "- [{title}]({filename})"
+?>
+- [Right type](docs/right.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/right.md": {Data: []byte("---\ntitle: Right type\nnature: directive\n---\n# A\n")},
+		"docs/wrong.md": {Data: []byte("---\ntitle: Wrong type\nnature: 42\n---\n# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestWhere_InvalidExpressionEmitsDiag(t *testing.T) {
+	// An invalid CUE expression emits a diagnostic on the directive line.
+	src := `<?catalog
+glob: "docs/*.md"
+where: 'nature == "directive"'
+row: "- [{title}]({filename})"
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\ntitle: A\nnature: directive\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags, "expected at least one diagnostic")
+	// Find the where diagnostic — there may be other diagnostics depending
+	// on the rest of the directive state.
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, `invalid "where" expression`) {
+			found = true
+			assert.Equal(t, 1, d.Line)
+			break
+		}
+	}
+	assert.True(t, found, "expected diagnostic about invalid where expression; got %v", diags)
+}
+
+func TestWhere_EmptyValueKeepsAllFiles(t *testing.T) {
+	// An empty where: is equivalent to omitting it.
+	src := `<?catalog
+glob: "docs/*.md"
+where: ""
+row: "- [{title}]({filename})"
+?>
+- [A](docs/a.md)
+- [B](docs/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\ntitle: A\n---\n# A\n")},
+		"docs/b.md": {Data: []byte("---\ntitle: B\n---\n# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestWhere_ComposesWithSort(t *testing.T) {
+	// where: filters before sort. Files that pass the filter are then
+	// ordered by the sort key in the expected order.
+	src := `<?catalog
+glob: "docs/*.md"
+where: 'nature: "directive"'
+sort: title
+row: "- [{title}]({filename})"
+?>
+- [Alpha](docs/alpha.md)
+- [Beta](docs/beta.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/alpha.md": {Data: []byte("---\ntitle: Alpha\nnature: directive\n---\n# A\n")},
+		"docs/beta.md":  {Data: []byte("---\ntitle: Beta\nnature: directive\n---\n# B\n")},
+		"docs/gamma.md": {Data: []byte("---\ntitle: Gamma\nnature: content\n---\n# G\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}

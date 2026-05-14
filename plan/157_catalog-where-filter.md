@@ -1,7 +1,7 @@
 ---
 id: 157
 title: 'Catalog filter by front matter property'
-status: '🔲'
+status: '🔳'
 summary: >-
   Extend the catalog directive with a filter that
   selects matched files by a front matter property
@@ -98,13 +98,13 @@ directive so both surfaces stay consistent.
 
 ## Acceptance Criteria
 
-- [ ] `<?catalog?>` accepts a `where:` parameter
+- [x] `<?catalog?>` accepts a `where:` parameter
   with a CUE expression evaluated against each
   file's front matter.
-- [ ] A file whose front matter does not satisfy
+- [x] A file whose front matter does not satisfy
   the expression is excluded from the rendered
   body.
-- [ ] An invalid `where:` expression emits an
+- [x] An invalid `where:` expression emits an
   MDS019 diagnostic naming the offending token
   and line.
 - [ ] Every rule README carries a `nature` front
@@ -113,7 +113,7 @@ directive so both surfaces stay consistent.
   has a "Directive rules" section using
   `where: 'nature == "directive"'` that lists
   only the four directive rules.
-- [ ] The
+- [x] The
   [generating-content guide](../docs/guides/directives/generating-content.md)
   documents `where:` with a worked example.
 - [ ] All tests pass: `go test ./...`.

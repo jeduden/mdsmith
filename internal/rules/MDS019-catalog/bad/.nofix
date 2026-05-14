@@ -2,3 +2,4 @@
 # Validation-only diagnostics that need a config or
 # parameter edit by hand.
 dotdot.md
+where-invalid.md

@@ -15,6 +15,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/query"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/tableformat"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -178,6 +179,12 @@ func validateCatalogDirective(
 		if err := parseRowTemplate(params["row"]); err != nil {
 			diags = append(diags, makeDiag(filePath, line,
 				fmt.Sprintf("generated section has invalid template: %v", err)))
+		}
+	}
+	if whereExpr := strings.TrimSpace(params["where"]); whereExpr != "" {
+		if _, err := query.Compile(whereExpr); err != nil {
+			diags = append(diags, makeDiag(filePath, line,
+				fmt.Sprintf(`generated section directive has invalid "where" expression: %v`, err)))
 		}
 	}
 	return diags
@@ -561,15 +568,30 @@ func buildCatalogEntries(
 
 	sortKey, descending, numeric := parseSort(params)
 	_, hasRow := params["row"]
-	needFM := hasRow || (sortKey != "path" && sortKey != "filename")
+	whereExpr := strings.TrimSpace(params["where"])
+	needFM := hasRow || whereExpr != "" || (sortKey != "path" && sortKey != "filename")
+
+	var matcher *query.Matcher
+	if whereExpr != "" {
+		m, err := query.Compile(whereExpr)
+		if err != nil {
+			// Validate already reports this; skip filtering rather than
+			// silently drop every file when the expression is broken.
+			matcher = nil
+		} else {
+			matcher = m
+		}
+	}
 
 	var diags []lint.Diagnostic
 	entries := make([]fileEntry, 0, len(files))
 	for _, p := range files {
 		displayPath := res.displayPath(p)
 		fields := map[string]any{"filename": displayPath}
+		var fm map[string]any
 		if needFM {
-			fm, err := readFrontMatter(res.fs, p, f.MaxInputBytes)
+			var err error
+			fm, err = readFrontMatter(res.fs, p, f.MaxInputBytes)
 			if err != nil {
 				diags = append(diags, makeDiag(filePath, line,
 					fmt.Sprintf("cannot read front matter from %q: %v", displayPath, err)))
@@ -578,6 +600,9 @@ func buildCatalogEntries(
 			for k, v := range fm {
 				fields[k] = v
 			}
+		}
+		if matcher != nil && !matcher.Match(fm) {
+			continue
 		}
 		entries = append(entries, fileEntry{fields: fields})
 	}
