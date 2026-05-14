@@ -79,7 +79,6 @@ footer: |
 | 148 | ✅     | sonnet | [Named field-type shortcuts for inline schemas](plan/148_named-field-type-shortcuts.md)                                   |
 | 149 | ✅     | opus   | [Section content schema for non-heading AST nodes](plan/149_section-content-schema.md)                                    |
 | 151 | ✅     | opus   | [LSP rename for headings and link-reference labels](plan/151_lsp-rename.md)                                               |
-| 152 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/152_claude-code-skills-agents-hooks.md)                      |
 | 153 | ✅     | sonnet | [Catalog directive — accept `..` globs within project root](plan/153_catalog-dotdot-globs.md)                             |
 | 153 | ✅     | opus   | [Unify linkgraph and the LSP symbol index](plan/153_unify-linkgraph-and-lsp-index.md)                                     |
 | 154 | ✅     | sonnet | [arch-fix: extract cross-rule helpers](plan/154_arch-fix-rule-helper-extraction.md)                                       |
@@ -87,4 +86,6 @@ footer: |
 | 156 | 🔲     | opus   | [Composable required-structure schemas across multiple kinds](plan/156_kind-schema-composition.md)                        |
 | 156 | 🔲     | opus   | [Section schema — unify entry shape under `heading:` discriminator](plan/156_schema-entry-unification.md)                 |
 | 157 | 🔳     | sonnet | [Catalog filter by front matter property](plan/157_catalog-where-filter.md)                                               |
+| 160 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/160_claude-code-skills-agents-hooks.md)                      |
+| 161 | 🔲     | sonnet | [Expose rule maintainability patterns via CLI help and LSP](plan/161_rule-pattern-metadata.md)                            |
 <?/catalog?>
