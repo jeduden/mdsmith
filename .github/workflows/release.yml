@@ -464,3 +464,63 @@ jobs:
             exit 1
           fi
           echo "channel=${{ matrix.channel }}: $got"
+
+  pages-deploy:
+    # Publish mdsmith.dev from website/ on every tag push. The job
+    # is independent of the publish chain — the site is pure HTML
+    # from docs/**/*.md and the homepage data files, so a flaky
+    # registry publish should not block the docs deploy. The
+    # `github-pages` environment is GitHub's built-in protection
+    # boundary for Pages; the per-repo Pages settings choose
+    # GitHub Actions as the source.
+    name: Deploy mdsmith.dev to GitHub Pages
+    if: github.repository == 'jeduden/mdsmith'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      # Pinned to match the Hugo release used to author the site;
+      # bump in lockstep with website/scripts/sync-docs.sh and the
+      # local dev instructions in website/README.md.
+      HUGO_VERSION: "0.161.1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install Hugo
+        # `go install` resolves via the Go module proxy with sumdb
+        # checksum verification, so the binary is pinned by content
+        # hash even though the version selector is a tag.
+        run: go install github.com/gohugoio/hugo@v${HUGO_VERSION}
+      - name: Sync docs into Hugo content tree
+        # Snapshot ./docs into ./website/content/docs, dropping
+        # proto.md schema templates, renaming index.md to
+        # _index.md, pruning non-content files, and escaping
+        # literal Hugo shortcode patterns. See
+        # docs/development/release-tooling.md for why this lives
+        # in the release-tooling Go CLI rather than inline shell.
+        run: go run ./cmd/mdsmith-release sync-docs ./docs ./website/content/docs
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        id: pages
+      - name: Build site
+        working-directory: website
+        env:
+          HUGO_ENVIRONMENT: production
+        # Override baseURL so internal links resolve under the
+        # Pages-assigned origin (custom domain or
+        # *.github.io/<repo>/).
+        run: hugo --minify --baseURL "${{ steps.pages.outputs.base_url }}/"
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: website/public
+      - uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+        id: deployment

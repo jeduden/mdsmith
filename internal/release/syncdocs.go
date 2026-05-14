@@ -1,0 +1,138 @@
+package release
+
+import (
+	"fmt"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+// hugoShortcodeAngle matches Hugo's angle-bracket shortcode form
+// `{{< name args >}}` so the rewritten output uses Hugo's documented
+// escape syntax `{{</* name args */>}}`, which renders the text
+// verbatim instead of resolving a shortcode that does not exist.
+var hugoShortcodeAngle = regexp.MustCompile(`\{\{<([^}]*)>\}\}`)
+
+// hugoShortcodePercent matches the percent shortcode form
+// `{{% name args %}}` for the same escape treatment via the
+// `{{%/* ... */%}}` form.
+var hugoShortcodePercent = regexp.MustCompile(`\{\{%([^}]*)%\}\}`)
+
+// syncableExt is the allow-list of file extensions copied into the
+// Hugo content tree. Files outside this set (Go embed.go helpers,
+// build artifacts, etc.) live in docs/ as repo plumbing but have
+// no place in the rendered site.
+var syncableExt = map[string]struct{}{
+	".md":   {},
+	".svg":  {},
+	".png":  {},
+	".jpg":  {},
+	".jpeg": {},
+	".gif":  {},
+	".webp": {},
+}
+
+// SyncDocs snapshots srcDir into dstDir for a Hugo build. The
+// transforms reconcile two mismatches between mdsmith's docs/ tree
+// and Hugo's expectations:
+//
+//   - proto.md files are schema templates — their front matter
+//     holds CUE constraint strings, not real values — and would
+//     blow up Hugo's metadata parser. Dropped.
+//   - index.md is the docs/-tree convention for a directory
+//     overview; Hugo's matching convention is _index.md (the
+//     former turns the directory into a leaf bundle whose
+//     siblings become resources rather than pages). Renamed.
+//   - Non-markdown, non-image files (Go embeds, scripts) ride
+//     along in docs/ for repo reasons but never render. Skipped.
+//   - Literal {{< ... >}} and {{% ... %}} patterns inside
+//     documentation about Hugo would otherwise resolve as
+//     shortcodes during the build. Escaped to {{</* ... */>}}
+//     and {{%/* ... */%}}.
+//
+// dstDir is removed before the copy, so SyncDocs is idempotent.
+func (t *Toolkit) SyncDocs(srcDir, dstDir string) error {
+	if _, err := t.fs.Stat(srcDir); err != nil {
+		return fmt.Errorf("source not found: %s", srcDir)
+	}
+	if err := t.fs.RemoveAll(dstDir); err != nil {
+		return err
+	}
+	if err := t.fs.MkdirAll(dstDir, 0o755); err != nil {
+		return err
+	}
+	_, err := t.syncDocsDir(srcDir, dstDir)
+	return err
+}
+
+// SyncDocs delegates to a default-OS Toolkit (see Stamp).
+func SyncDocs(srcDir, dstDir string) error {
+	return New().SyncDocs(srcDir, dstDir)
+}
+
+// syncDocsDir copies one directory level and returns true if any
+// file ended up under dst. An empty dst is removed so the rendered
+// tree doesn't expose hollow directories from upstream pruning
+// (a docs/ subdir containing only a proto.md, say).
+func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
+	entries, err := t.fs.ReadDir(src)
+	if err != nil {
+		return false, err
+	}
+	wrote := false
+	for _, e := range entries {
+		srcPath := filepath.Join(src, e.Name())
+		if e.IsDir() {
+			childDst := filepath.Join(dst, e.Name())
+			if err := t.fs.MkdirAll(childDst, 0o755); err != nil {
+				return wrote, err
+			}
+			childWrote, err := t.syncDocsDir(srcPath, childDst)
+			if err != nil {
+				return wrote, err
+			}
+			if childWrote {
+				wrote = true
+			}
+			continue
+		}
+		name := e.Name()
+		if name == "proto.md" {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(name))
+		if _, ok := syncableExt[ext]; !ok {
+			continue
+		}
+		dstName := name
+		if name == "index.md" {
+			dstName = "_index.md"
+		}
+		data, err := t.fs.ReadFile(srcPath)
+		if err != nil {
+			return wrote, err
+		}
+		if ext == ".md" {
+			data = escapeHugoShortcodes(data)
+		}
+		if err := t.fs.WriteFile(filepath.Join(dst, dstName), data, 0o644); err != nil {
+			return wrote, err
+		}
+		wrote = true
+	}
+	if !wrote {
+		if err := t.fs.RemoveAll(dst); err != nil {
+			return wrote, err
+		}
+	}
+	return wrote, nil
+}
+
+// escapeHugoShortcodes rewrites every shortcode-shaped pattern in
+// b to its Hugo escape form. The angle and percent forms have
+// distinct escape syntaxes; both are applied.
+func escapeHugoShortcodes(b []byte) []byte {
+	b = hugoShortcodeAngle.ReplaceAll(b, []byte(`{{</*$1*/>}}`))
+	b = hugoShortcodePercent.ReplaceAll(b, []byte(`{{%/*$1*/%}}`))
+	return b
+}

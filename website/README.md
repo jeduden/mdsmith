@@ -36,9 +36,9 @@ Hugo (non-extended is fine — no SCSS or image processing):
 # install hugo
 go install github.com/gohugoio/hugo@latest
 
-# sync ../docs/ -> content/docs/ (mdsmith fix + escape Hugo
-# shortcodes + drop schema templates + promote index.md to
-# _index.md). content/docs/ is .gitignore'd.
+# sync ../docs/ -> content/docs/ (mdsmith fix + snapshot
+# via the mdsmith-release sync-docs subcommand).
+# content/docs/ is .gitignore'd.
 cd website && ./scripts/sync-docs.sh
 
 # build into public/
@@ -51,13 +51,39 @@ hugo server -D
 ## Source layout
 
 `docs/**/*.md` is the single source of truth. The website
-never owns docs content. `scripts/sync-docs.sh` snapshots
-it into `content/docs/`, applies the transforms Hugo needs
-(escape `{{< … >}}`, drop `proto.md` schema templates,
-rename `index.md` → `_index.md`, prune non-content files),
-and `mdsmith fix` materializes every `<?catalog?>` and
-`<?include?>` body before the copy happens. Pass
-`--no-fix` to skip the `mdsmith fix` step.
+never owns docs content. `scripts/sync-docs.sh` is a thin
+wrapper that runs `mdsmith fix` over `../docs/` and then
+delegates to `go run ./cmd/mdsmith-release sync-docs`. The
+release workflow calls the same subcommand on every tag
+push.
+
+The subcommand applies the four transforms Hugo needs.
+First, it snapshots `docs/` into `content/docs/`. Next,
+it drops `proto.md` schema templates whose front matter
+holds CUE expressions rather than real values. Then it
+renames `index.md` to `_index.md` (Hugo's section-page
+convention). Finally, it prunes non-markdown / non-image
+files and escapes literal Hugo shortcode patterns
+(`{{< … >}}` and `{{% … %}}`) so documentation about Hugo
+renders as text instead of being parsed.
+
+Pass `--no-fix` to skip the `mdsmith fix` step during
+local preview.
+
+## Deploy
+
+`pages-deploy` in `.github/workflows/release.yml` builds
+`website/` and publishes it to GitHub Pages on every `v*`
+tag push.
+
+The job installs Hugo via `go install` (sumdb verifies
+the binary). It runs `mdsmith-release sync-docs`, then
+`hugo --minify`. It hands the output to the
+`actions/upload-pages-artifact` and `actions/deploy-pages`
+pair.
+
+Set the Pages source to **GitHub Actions** in repository
+settings.
 
 ## Deployment
 
