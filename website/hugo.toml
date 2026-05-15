@@ -8,11 +8,11 @@ enableGitInfo = false
 # docs/ tree lives in the repo root but is NOT mounted directly:
 # Hugo parses shortcodes before markdown, so literal {{< ... >}}
 # patterns in files like docs/background/markdown-linters.md
-# would break the build. Instead, scripts/sync-docs.sh (locally)
-# and the pages-deploy workflow (in CI) run
-# `mdsmith-release sync-docs` to snapshot docs/ into
-# content/docs/, escape the literal shortcode patterns, drop
-# proto.md schema templates, and rename index.md to _index.md.
+# would break the build. Instead, `mdsmith-release
+# build-website` (run locally and by the pages-deploy workflow
+# in CI) snapshots docs/ into content/docs/, escaping the
+# literal shortcode patterns, dropping proto.md schema
+# templates, and renaming index.md to _index.md.
 # content/docs/ is .gitignore'd.
 [module]
   [[module.mounts]]

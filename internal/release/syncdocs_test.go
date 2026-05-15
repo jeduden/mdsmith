@@ -314,6 +314,42 @@ func TestSyncDocs_EmptySubdirRemoveAllErrorPropagates(t *testing.T) {
 	assert.ErrorIs(t, err, errInjected)
 }
 
+// TestIsUnder_HandlesFilesystemRoot is the regression for the
+// RemoveAll("/") hazard: the old HasPrefix(child, parent+sep)
+// test built "//" for a root parent, so isUnder("/a/b", "/")
+// wrongly returned false and checkSyncDocsPaths would let
+// SyncDocs wipe a root destination.
+func TestIsUnder_HandlesFilesystemRoot(t *testing.T) {
+	sep := string(filepath.Separator)
+	root := sep
+	assert.True(t, isUnder(sep+"repo"+sep+"docs", root),
+		"a path must be detected as under the filesystem root")
+	assert.True(t, isUnder(sep+"a"+sep+"b"+sep+"c", sep+"a"+sep+"b"))
+	assert.False(t, isUnder(sep+"a", sep+"a"), "isUnder(p, p) is false")
+	assert.False(t, isUnder(sep+"a", sep+"a"+sep+"b"),
+		"parent is not under its own child")
+	assert.False(t, isUnder(sep+"tmp"+sep+"foobar", sep+"tmp"+sep+"foo"),
+		"sibling sharing a name prefix is not nested")
+}
+
+func TestSyncDocs_SkipsSymlinks(t *testing.T) {
+	src := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "secret.md")
+	writeFile(t, outside, "# leaked\n")
+	writeFile(t, filepath.Join(src, "real.md"), "# real\n")
+	require.NoError(t, os.Symlink(outside, filepath.Join(src, "link.md")))
+	require.NoError(t, os.Symlink(t.TempDir(), filepath.Join(src, "linkdir")))
+	dst := filepath.Join(t.TempDir(), "out")
+
+	require.NoError(t, SyncDocs(src, dst))
+
+	assertFile(t, filepath.Join(dst, "real.md"), "# real\n")
+	_, err := os.Lstat(filepath.Join(dst, "link.md"))
+	assert.True(t, os.IsNotExist(err), "symlinked file must not be copied")
+	_, err = os.Lstat(filepath.Join(dst, "linkdir"))
+	assert.True(t, os.IsNotExist(err), "symlinked dir must not be copied")
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))

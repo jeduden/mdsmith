@@ -39,6 +39,8 @@ Commands:
   build-npm <artifacts> <out>     Build npm platform sub-packages.
   build-wheels <artifacts> <out>  Build platform-tagged Python wheels.
   sync-docs <src> <dst>           Snapshot docs/ into a Hugo content tree.
+  build-website [--no-fix] [src] [dst]
+                                  mdsmith fix (unless --no-fix) + sync-docs.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
 `
@@ -72,6 +74,8 @@ func run(args []string) int {
 		return runBuildWheels(root, rest)
 	case "sync-docs":
 		return runSyncDocs(root, rest)
+	case "build-website":
+		return runBuildWebsite(root, rest)
 	case "check-secret-rotations":
 		return runCheckSecretRotations(root, rest)
 	case "record-rotation":
@@ -191,6 +195,39 @@ func runSyncDocs(_ string, args []string) int {
 		return 2
 	}
 	return reportError(release.SyncDocs(fs.Arg(0), fs.Arg(1)))
+}
+
+func runBuildWebsite(_ string, args []string) int {
+	fs := flag.NewFlagSet("build-website", flag.ContinueOnError)
+	noFix := fs.Bool("no-fix", false,
+		"skip the `mdsmith fix` pass and only snapshot the source tree")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]\n\n"+
+			"Prepare the Hugo content tree in one step:\n"+
+			"  1. unless --no-fix, run `mdsmith fix <src-dir>` so every\n"+
+			"     <?catalog?>/<?include?> body is current\n"+
+			"  2. snapshot <src-dir> into <dst-dir> (see sync-docs)\n\n"+
+			"src-dir defaults to ./docs, dst-dir to\n"+
+			"./website/content/docs. Run from the repo root.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: build-website"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() > 2 {
+		fs.Usage()
+		return 2
+	}
+	src := "./docs"
+	dst := "./website/content/docs"
+	if fs.NArg() >= 1 {
+		src = fs.Arg(0)
+	}
+	if fs.NArg() == 2 {
+		dst = fs.Arg(1)
+	}
+	return reportError(release.BuildWebsite(src, dst, !*noFix))
 }
 
 // reportFlagParseErr mirrors the helper in cmd/mdsmith/main.go:

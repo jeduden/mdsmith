@@ -466,14 +466,17 @@ jobs:
           echo "channel=${{ matrix.channel }}: $got"
 
   pages-deploy:
-    # Publish mdsmith.dev from website/ on every tag push. The job
-    # is independent of the publish chain — the site is pure HTML
-    # from docs/**/*.md and the homepage data files, so a flaky
+    # Publish mdsmith.dev from website/ on every tag push. Gated
+    # on `build` so a tag that fails to compile/test never
+    # deploys docs, but deliberately NOT on the registry-publish
+    # jobs (npm/pypi/release): the site is pure HTML from
+    # docs/**/*.md and the homepage data files, so a flaky
     # registry publish should not block the docs deploy. The
     # `github-pages` environment is GitHub's built-in protection
     # boundary for Pages; the per-repo Pages settings choose
     # GitHub Actions as the source.
     name: Deploy mdsmith.dev to GitHub Pages
+    needs: [build]
     if: github.repository == 'jeduden/mdsmith'
     runs-on: ubuntu-latest
     permissions:
@@ -487,7 +490,7 @@ jobs:
       # Pin the Hugo version used by the deploy. The same pin
       # appears in the local dev instructions in website/README.md;
       # bump both together so a local preview cannot drift from
-      # CI. (website/scripts/sync-docs.sh does not install Hugo —
+      # CI. (mdsmith-release build-website does not install Hugo —
       # it expects the binary already on PATH — so no pin lives
       # there.)
       HUGO_VERSION: "0.161.1"
@@ -514,14 +517,16 @@ jobs:
         # (incl. website/hugo.toml) from the dev sentinel to the
         # cleaned tag, so the deployed site shows the release.
         run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
-      - name: Sync docs into Hugo content tree
+      - name: Build Hugo content tree from docs
         # Snapshot ./docs into ./website/content/docs, dropping
         # proto.md schema templates, renaming index.md to
         # _index.md, pruning non-content files, and escaping
-        # literal Hugo shortcode patterns. See
+        # literal Hugo shortcode patterns. --no-fix because docs/
+        # is already lint-clean on main (the check workflow gates
+        # that); CI must not mutate the tree. See
         # docs/development/release-tooling.md for why this lives
         # in the release-tooling Go CLI rather than inline shell.
-        run: go run ./cmd/mdsmith-release sync-docs ./docs ./website/content/docs
+        run: go run ./cmd/mdsmith-release build-website --no-fix ./docs ./website/content/docs
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         id: pages
       - name: Build site

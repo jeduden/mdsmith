@@ -53,7 +53,8 @@ setup step.
 | `check`                    | `ci.yml` version-guard         |
 | `build-npm <art> <out>`    | `release.yml` npm job          |
 | `build-wheels <art> <out>` | `release.yml` pypi job         |
-| `sync-docs <src> <dst>`    | `release.yml` pages-deploy job |
+| `sync-docs <src> <dst>`    | composed by `build-website`    |
+| `build-website [flags]`    | `release.yml` pages-deploy job |
 | `check-secret-rotations`   | `secret-rotation-reminder.yml` |
 | `record-rotation <t> <d>`  | `record-secret-rotation.yml`   |
 

@@ -116,12 +116,22 @@ func checkSyncDocsPaths(srcDir, dstDir string) error {
 
 // isUnder reports whether child sits strictly below parent in
 // the cleaned absolute-path tree (so isUnder(p, p) is false).
-// Both inputs must already come from absPath, so neither has a
-// trailing separator — appending one before the prefix test
-// keeps `/tmp/foobar` from being treated as nested under
-// `/tmp/foo`.
+// filepath.Rel handles filesystem roots correctly: a naive
+// `HasPrefix(child, parent+sep)` test breaks when parent is "/"
+// (or a Windows volume root) because parent+sep becomes "//",
+// which would let SyncDocs RemoveAll a root destination. Rel
+// also rejects sibling-prefix false positives (`/tmp/foobar`
+// is not under `/tmp/foo`) because the relative path then
+// starts with "..".
 func isUnder(child, parent string) bool {
-	return strings.HasPrefix(child, parent+string(filepath.Separator))
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	if rel == "." || rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // SyncDocs delegates to a default-OS Toolkit (see Stamp).
@@ -141,6 +151,14 @@ func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
 	wrote := false
 	for _, e := range entries {
 		srcPath := filepath.Join(src, e.Name())
+		if e.Type()&fs.ModeSymlink != 0 {
+			// Skip symlinks (including symlinked dirs, whose
+			// DirEntry.Type reports ModeSymlink and IsDir
+			// false). Following one would let a link inside
+			// docs/ copy arbitrary runner files into the
+			// published site.
+			continue
+		}
 		if e.IsDir() {
 			childDst := filepath.Join(dst, e.Name())
 			if err := t.fs.MkdirAll(childDst, 0o755); err != nil {

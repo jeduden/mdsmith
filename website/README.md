@@ -10,23 +10,23 @@ the website cannot drift out of sync with the binary.
 
 ## Layout
 
-| Path                           | Purpose                                                            |
-|--------------------------------|--------------------------------------------------------------------|
-| `hugo.toml`                    | Site config + module mounts (does NOT mount `../docs` directly).   |
-| `content/_index.md`            | Homepage front matter and copy.                                    |
-| `content/compare.md`           | "vs other linters" page.                                           |
-| `content/docs/`                | **Synced** from `../docs/` by `scripts/sync-docs.sh` (gitignored). |
-| `layouts/_default/baseof.html` | Page shell — `<head>`, top nav, footer.                            |
-| `layouts/index.html`           | Homepage template (hero · feature grid · install tabs · terminal). |
-| `layouts/_default/single.html` | Docs page template (sidebar + prose).                              |
-| `layouts/_default/list.html`   | Section index template.                                            |
-| `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                   |
-| `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                  |
-| `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                     |
-| `static/css/`                  | `colors_and_type.css` (tokens) + `app.css` (component styles).     |
-| `static/fonts/`                | 0xProto Nerd Font TTF.                                             |
-| `static/img/`                  | Logo SVGs.                                                         |
-| `data/`                        | Reserved for generated data (rules catalog, etc.).                 |
+| Path                           | Purpose                                                                     |
+|--------------------------------|-----------------------------------------------------------------------------|
+| `hugo.toml`                    | Site config + module mounts (does NOT mount `../docs` directly).            |
+| `content/_index.md`            | Homepage front matter and copy.                                             |
+| `content/compare.md`           | "vs other linters" page.                                                    |
+| `content/docs/`                | **Synced** from `../docs/` by `mdsmith-release build-website` (gitignored). |
+| `layouts/_default/baseof.html` | Page shell — `<head>`, top nav, footer.                                     |
+| `layouts/index.html`           | Homepage template (hero · feature grid · install tabs · terminal).          |
+| `layouts/_default/single.html` | Docs page template (sidebar + prose).                                       |
+| `layouts/_default/list.html`   | Section index template.                                                     |
+| `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                            |
+| `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                           |
+| `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                              |
+| `static/css/`                  | `colors_and_type.css` (tokens) + `app.css` (component styles).              |
+| `static/fonts/`                | 0xProto Nerd Font TTF.                                                      |
+| `static/img/`                  | Logo SVGs.                                                                  |
+| `data/`                        | Reserved for generated data (rules catalog, etc.).                          |
 
 ## Develop
 
@@ -37,26 +37,26 @@ Hugo (non-extended is fine — no SCSS or image processing):
 # workflow so local builds cannot drift from CI.
 go install github.com/gohugoio/hugo@v0.161.1
 
-# sync ../docs/ -> content/docs/ (mdsmith fix + snapshot
-# via the mdsmith-release sync-docs subcommand).
-# content/docs/ is .gitignore'd.
-cd website && ./scripts/sync-docs.sh
+# sync ../docs/ -> content/docs/ (mdsmith fix + snapshot).
+# Run from the repo root; content/docs/ is .gitignore'd.
+go run ./cmd/mdsmith-release build-website
 
 # build into public/
-hugo --minify
+cd website && hugo --minify
 
-# or serve with live reload (re-run sync-docs after editing docs/)
+# or serve with live reload (re-run build-website after
+# editing docs/; pass --no-fix to skip the mdsmith fix pass)
 hugo server -D
 ```
 
 ## Source layout
 
 `docs/**/*.md` is the single source of truth. The website
-never owns docs content. `scripts/sync-docs.sh` is a thin
-wrapper that runs `mdsmith fix` over `../docs/` and then
-delegates to `go run ./cmd/mdsmith-release sync-docs`. The
-release workflow calls the same subcommand on every tag
-push.
+never owns docs content. `mdsmith-release build-website`
+runs `mdsmith fix` over `../docs/` (skippable with
+`--no-fix`) and then snapshots it into `content/docs/` via
+the same `sync-docs` logic. The release workflow calls
+`build-website --no-fix` on every tag push.
 
 The subcommand applies the four transforms Hugo needs.
 First, it snapshots `docs/` into `content/docs/`. Next,
@@ -78,10 +78,10 @@ local preview.
 tag push.
 
 The job installs Hugo via `go install` (sumdb verifies
-the binary). It runs `mdsmith-release sync-docs`, then
-`hugo --minify`. It hands the output to the
-`actions/upload-pages-artifact` and `actions/deploy-pages`
-pair.
+the binary). It runs `mdsmith-release build-website
+--no-fix`, then `hugo --minify`. It hands the output to
+the `actions/upload-pages-artifact` and
+`actions/deploy-pages` pair.
 
 Set the Pages source to **GitHub Actions** in repository
 settings.
