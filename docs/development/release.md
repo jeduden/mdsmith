@@ -50,8 +50,13 @@ path. `release.yml` also listens to the repo's
 `create` event. That covers the GitHub UI path where
 a draft release creates a new `v*` tag. GitHub does
 not fire `release` workflows for draft creation. On
-`create` runs, the workflow job guards check
-`ref_type=tag` and `ref_name starts with v`.
+`create` runs, a preflight job checks
+`github.event.ref_type=tag`, `github.event.ref`
+starting with `v`, and the GitHub Releases API for
+an existing draft release on that tag. A normal
+`git push origin vX.Y.Z` still fires both `create`
+and `push`, but only the `push` run proceeds because
+the `create` preflight sees no draft release yet.
 
 `release.yml` still omits `workflow_dispatch`,
 `pull_request_target`, `workflow_run`, and
