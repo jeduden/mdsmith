@@ -6,6 +6,7 @@ description: >-
   Flags Markdown syntax that the declared target
   flavor does not render.
 nature: structure
+maintainability: null
 ---
 # MDS034: markdown-flavor
 

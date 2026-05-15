@@ -4,6 +4,10 @@ name: catalog
 status: ready
 description: Catalog content must reflect selected front matter fields from files matching its glob.
 nature: directive
+maintainability:
+  signal: a list of links to sibling files in the same directory
+  fix: adopt a `<?catalog?>` directive so the list stays in sync
+  for-diagnostic: false
 ---
 # MDS019: catalog
 

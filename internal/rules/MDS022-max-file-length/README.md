@@ -4,6 +4,7 @@ name: max-file-length
 status: ready
 description: File must not exceed maximum number of lines.
 nature: content
+maintainability: null
 ---
 # MDS022: max-file-length
 

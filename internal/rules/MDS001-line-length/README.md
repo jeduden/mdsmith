@@ -4,6 +4,7 @@ name: line-length
 status: ready
 description: Line exceeds maximum length.
 nature: content
+maintainability: null
 ---
 # MDS001: line-length
 

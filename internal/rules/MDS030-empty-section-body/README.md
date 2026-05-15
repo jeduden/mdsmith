@@ -4,6 +4,7 @@ name: empty-section-body
 status: ready
 description: Section headings must include meaningful body content.
 nature: content
+maintainability: null
 ---
 # MDS030: empty-section-body
 

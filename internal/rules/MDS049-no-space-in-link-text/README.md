@@ -4,6 +4,7 @@ name: no-space-in-link-text
 status: ready
 description: Link text and image alt text must not have leading or trailing whitespace inside the brackets.
 nature: style
+maintainability: null
 ---
 # MDS049: no-space-in-link-text
 

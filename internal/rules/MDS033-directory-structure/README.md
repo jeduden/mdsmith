@@ -4,6 +4,10 @@ name: directory-structure
 status: ready
 description: Markdown files must exist only in explicitly allowed directories.
 nature: structure
+maintainability:
+  signal: markdown files that live outside allowed directories
+  fix: move the file into an allowed directory or extend `directory-structure.allowed` when the new location is intentional
+  for-diagnostic: true
 ---
 # MDS033: directory-structure
 

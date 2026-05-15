@@ -4,6 +4,7 @@ name: heading-increment
 status: ready
 description: Heading levels should increment by one. No jumping from `#` to `###`.
 nature: structure
+maintainability: null
 ---
 # MDS003: heading-increment
 

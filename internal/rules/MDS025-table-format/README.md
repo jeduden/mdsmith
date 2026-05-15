@@ -4,6 +4,7 @@ name: table-format
 status: ready
 description: Tables must have consistent column widths and padding.
 nature: style
+maintainability: null
 ---
 # MDS025: table-format
 

@@ -4,6 +4,7 @@ name: blank-line-around-headings
 status: ready
 description: Headings must have a blank line before and after.
 nature: style
+maintainability: null
 ---
 # MDS013: blank-line-around-headings
 

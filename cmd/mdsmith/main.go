@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 
 	flag "github.com/spf13/pflag"
 
@@ -1037,6 +1039,7 @@ Topics:
   kinds                 Show concept page for file kinds
   kinds-cli             Summarize the 'kinds' subcommand surface
   placeholder-grammar   Show placeholder vocabulary reference
+  patterns              Show maintainability patterns across rules
 `
 
 // runHelp implements the "help" subcommand.
@@ -1057,10 +1060,51 @@ func runHelp(args []string) int {
 		return runHelpKindsCLI()
 	case "placeholder-grammar":
 		return runHelpConcept("placeholder-grammar")
+	case "patterns":
+		return runHelpPatterns(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith: help: unknown topic %q\n", args[0])
 		return 2
 	}
+}
+
+func runHelpPatterns(args []string) int {
+	format := "text"
+	if len(args) >= 2 && (args[0] == "-f" || args[0] == "--format") {
+		format = args[1]
+	}
+	rules, err := ruledocs.ListRules()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		return 2
+	}
+	type rec struct {
+		ID            string `json:"id"`
+		Name          string `json:"name"`
+		Signal        string `json:"signal"`
+		Fix           string `json:"fix"`
+		ForDiagnostic bool   `json:"for-diagnostic"`
+	}
+	items := make([]rec, 0)
+	for _, r := range rules {
+		if r.Maintainability == nil {
+			continue
+		}
+		items = append(items, rec{r.ID, r.Name, r.Maintainability.Signal, r.Maintainability.Fix, r.Maintainability.ForDiagnostic})
+	}
+	if format == "json" {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(items); err != nil {
+			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+			return 2
+		}
+		return 0
+	}
+	for _, it := range items {
+		fmt.Printf("%s %s\n  signal: %s\n  fix: %s\n  for-diagnostic: %t\n\n", it.ID, it.Name, it.Signal, it.Fix, it.ForDiagnostic)
+	}
+	return 0
 }
 
 const helpKindsText = `File Kinds
@@ -1192,10 +1236,27 @@ func listAllRules() int {
 }
 
 func showRule(query string) int {
-	content, err := ruledocs.LookupRule(query)
+	rules, err := ruledocs.ListRules()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
+	}
+	var chosen *ruledocs.RuleInfo
+	q := strings.ToUpper(query)
+	for i := range rules {
+		if strings.ToUpper(rules[i].ID) == q || rules[i].Name == query {
+			chosen = &rules[i]
+			break
+		}
+	}
+	if chosen == nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: unknown rule %q\n", query)
+		return 2
+	}
+	content := ruledocs.StripFrontMatter(chosen.Content)
+	if chosen.Maintainability != nil {
+		content += "\n\n## Maintainability pattern\n\n"
+		content += fmt.Sprintf("- Signal: %s\n- Fix: %s\n- For diagnostic: %t\n", chosen.Maintainability.Signal, chosen.Maintainability.Fix, chosen.Maintainability.ForDiagnostic)
 	}
 	fmt.Print(content)
 	return 0

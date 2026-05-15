@@ -4,6 +4,7 @@ name: single-h1
 status: ready
 description: At most one H1 heading is allowed per file.
 nature: structure
+maintainability: null
 ---
 # MDS051: single-h1
 

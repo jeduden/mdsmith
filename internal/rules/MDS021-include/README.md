@@ -4,6 +4,10 @@ name: include
 status: ready
 description: Include section content must match the referenced file.
 nature: directive
+maintainability:
+  signal: near-duplicate sections that drift across files
+  fix: adopt `<?include?>` so shared content has one source of truth
+  for-diagnostic: false
 ---
 # MDS021: include
 

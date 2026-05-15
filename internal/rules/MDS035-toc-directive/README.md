@@ -4,6 +4,7 @@ name: toc-directive
 status: ready
 description: Flag renderer-specific TOC directives that render as literal text on CommonMark and goldmark.
 nature: generator
+maintainability: null
 ---
 # MDS035: toc-directive
 

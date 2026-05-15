@@ -6,6 +6,7 @@ description: >-
   Validate `<?build?>` directive parameters and keep the section body
   in sync with the recipe's rendered `body-template`.
 nature: directive
+maintainability: null
 ---
 # MDS039: build
 

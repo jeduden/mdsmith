@@ -4,6 +4,10 @@ name: required-structure
 status: ready
 description: Document structure and front matter must match its schema.
 nature: structure
+maintainability:
+  signal: files of a kind that lack an explicit section schema
+  fix: declare `kinds.<name>.schema` inline or point `kinds.<name>.rules.required-structure.schema` at a proto file
+  for-diagnostic: false
 ---
 # MDS020: required-structure
 

@@ -4,6 +4,7 @@ name: no-trailing-spaces
 status: ready
 description: No trailing whitespace at the end of lines.
 nature: style
+maintainability: null
 ---
 # MDS006: no-trailing-spaces
 

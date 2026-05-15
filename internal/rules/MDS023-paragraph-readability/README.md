@@ -4,6 +4,7 @@ name: paragraph-readability
 status: ready
 description: Paragraph readability index must not exceed a threshold.
 nature: content
+maintainability: null
 ---
 # MDS023: paragraph-readability
 

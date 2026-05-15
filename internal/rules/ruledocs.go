@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed MDS*/README.md
@@ -14,11 +16,18 @@ var rulesFS embed.FS
 
 // RuleInfo holds metadata extracted from a rule README's front matter.
 type RuleInfo struct {
-	ID          string
-	Name        string
-	Status      string
-	Description string
-	Content     string
+	ID              string
+	Name            string
+	Status          string
+	Description     string
+	Content         string
+	Maintainability *Maintainability
+}
+
+type Maintainability struct {
+	Signal        string `yaml:"signal"`
+	Fix           string `yaml:"fix"`
+	ForDiagnostic bool   `yaml:"for-diagnostic"`
 }
 
 // ListRules returns all embedded rules sorted by ID.
@@ -87,11 +96,13 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 	}
 
 	var info RuleInfo
+	var front []string
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "---" {
 			break
 		}
+		front = append(front, line)
 		key, val, ok := parseYAMLLine(line)
 		if !ok {
 			continue
@@ -107,6 +118,11 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 			info.Description = val
 		}
 	}
+	var meta struct {
+		Maintainability *Maintainability `yaml:"maintainability"`
+	}
+	_ = yaml.Unmarshal([]byte(strings.Join(front, "\n")), &meta)
+	info.Maintainability = meta.Maintainability
 
 	if info.ID == "" {
 		return RuleInfo{}, fmt.Errorf("front matter missing id")

@@ -4,6 +4,7 @@ name: no-multiple-blanks
 status: ready
 description: No more than one consecutive blank line.
 nature: style
+maintainability: null
 ---
 # MDS008: no-multiple-blanks
 

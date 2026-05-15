@@ -4,6 +4,7 @@ name: table-readability
 status: ready
 description: Tables must stay within readability complexity limits.
 nature: content
+maintainability: null
 ---
 # MDS026: table-readability
 

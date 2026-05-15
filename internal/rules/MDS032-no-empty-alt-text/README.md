@@ -4,6 +4,7 @@ name: no-empty-alt-text
 status: ready
 description: Images must have non-empty alt text for accessibility.
 nature: structure
+maintainability: null
 ---
 # MDS032: no-empty-alt-text
 

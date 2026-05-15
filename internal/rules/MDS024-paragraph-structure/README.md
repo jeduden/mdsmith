@@ -4,6 +4,7 @@ name: paragraph-structure
 status: ready
 description: Paragraphs must not exceed sentence and word limits.
 nature: content
+maintainability: null
 ---
 # MDS024: paragraph-structure
 

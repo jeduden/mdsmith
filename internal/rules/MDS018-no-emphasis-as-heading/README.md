@@ -4,6 +4,7 @@ name: no-emphasis-as-heading
 status: ready
 description: Don't use bold or emphasis on a standalone line as a heading substitute.
 nature: content
+maintainability: null
 ---
 # MDS018: no-emphasis-as-heading
 

@@ -4,6 +4,7 @@ name: no-duplicate-headings
 status: ready
 description: No two headings should have the same text.
 nature: structure
+maintainability: null
 ---
 # MDS005: no-duplicate-headings
 

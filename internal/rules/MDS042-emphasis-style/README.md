@@ -7,6 +7,7 @@ description: >-
   and italic emphasis, and optionally forbids
   cross-delimiter nesting.
 nature: style
+maintainability: null
 ---
 # MDS042: emphasis-style
 

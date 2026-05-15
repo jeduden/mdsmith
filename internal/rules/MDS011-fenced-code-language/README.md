@@ -4,6 +4,7 @@ name: fenced-code-language
 status: ready
 description: Fenced code blocks must specify a language.
 nature: style
+maintainability: null
 ---
 # MDS011: fenced-code-language
 

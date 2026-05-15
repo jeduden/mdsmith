@@ -6,6 +6,7 @@ description: >-
   Validate each build.recipes command for shell-safety at lint
   time; the rule never executes any binary.
 nature: structure
+maintainability: null
 ---
 # MDS040: recipe-safety
 

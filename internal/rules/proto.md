@@ -4,6 +4,7 @@ name: 'string & != ""'
 status: '"ready" | "not-ready"'
 description: 'string & != ""'
 nature: '"directive" | "generator" | "content" | "style" | "structure"'
+maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
 ---
 # {id}: {name}
 

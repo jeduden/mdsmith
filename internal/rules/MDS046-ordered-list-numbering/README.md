@@ -4,6 +4,7 @@ name: ordered-list-numbering
 status: ready
 description: Ordered list items must be numbered in the configured style.
 nature: style
+maintainability: null
 ---
 # MDS046: ordered-list-numbering
 

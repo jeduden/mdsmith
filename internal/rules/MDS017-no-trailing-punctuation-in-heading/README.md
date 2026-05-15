@@ -4,6 +4,7 @@ name: no-trailing-punctuation-in-heading
 status: ready
 description: Headings should not end with punctuation.
 nature: content
+maintainability: null
 ---
 # MDS017: no-trailing-punctuation-in-heading
 

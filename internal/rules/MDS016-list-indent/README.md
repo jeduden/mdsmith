@@ -4,6 +4,7 @@ name: list-indent
 status: ready
 description: List items must use consistent indentation.
 nature: style
+maintainability: null
 ---
 # MDS016: list-indent
 

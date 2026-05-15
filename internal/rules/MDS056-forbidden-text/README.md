@@ -4,6 +4,7 @@ name: forbidden-text
 status: ready
 description: Paragraphs must not contain any configured substring.
 nature: content
+maintainability: null
 ---
 # MDS056: forbidden-text
 

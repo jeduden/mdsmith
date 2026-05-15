@@ -4,6 +4,7 @@ name: token-budget
 status: ready
 description: File must not exceed a token budget.
 nature: content
+maintainability: null
 ---
 # MDS028: token-budget
 

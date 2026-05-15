@@ -4,6 +4,7 @@ name: conciseness-scoring
 status: not-ready
 description: Paragraph conciseness score must not fall below a threshold.
 nature: content
+maintainability: null
 ---
 # MDS029: conciseness-scoring
 

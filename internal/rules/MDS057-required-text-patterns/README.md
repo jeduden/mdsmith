@@ -4,6 +4,7 @@ name: required-text-patterns
 status: ready
 description: Heading-bounded sections must match every configured regex.
 nature: content
+maintainability: null
 ---
 # MDS057: required-text-patterns
 

@@ -1,7 +1,7 @@
 ---
 id: 161
 title: Expose rule maintainability patterns via CLI help and LSP
-status: "🔲"
+status: "🔳"
 model: sonnet
 depends-on: []
 summary: >-
@@ -259,7 +259,7 @@ automatically.
 
 ## Acceptance Criteria
 
-- [ ] Every rule README declares a
+- [x] Every rule README declares a
       `maintainability` block (either
       `{signal, fix}` or `null`);
       `mdsmith check internal/rules/` passes
@@ -268,20 +268,20 @@ automatically.
 - [ ] Absence of the field, or a partial block
       (e.g. `signal` without `fix`), fails
       `mdsmith check` with a schema error.
-- [ ] For a rule with a non-null
+- [x] For a rule with a non-null
       `maintainability` block,
       `mdsmith help rule <name>` renders it as a
       "Maintainability pattern" section.
-- [ ] For a rule with `maintainability: null`,
+- [x] For a rule with `maintainability: null`,
       `mdsmith help rule <name>` does not render
       a "Maintainability pattern" section
       (neither empty nor literal `null`).
-- [ ] `mdsmith help patterns` (default text)
+- [x] `mdsmith help patterns` (default text)
       lists every rule's pattern in a readable
       form; covered by a new test asserting the
       output includes each rule's `signal` and
       `fix` lines for non-null rules.
-- [ ] `mdsmith help patterns -f json` emits a
+- [x] `mdsmith help patterns -f json` emits a
       JSON array of
       `{id, name, signal, fix, for-diagnostic}`
       entries (with `id` matching diagnostic
@@ -311,7 +311,7 @@ automatically.
       whichever install-time source the
       implementation chose) on a fixture repo.
 - [ ] `go test ./...` passes.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
 
 ## ...
 

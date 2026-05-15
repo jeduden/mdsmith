@@ -4,6 +4,7 @@ name: no-hard-tabs
 status: ready
 description: No tab characters. Use spaces instead.
 nature: style
+maintainability: null
 ---
 # MDS007: no-hard-tabs
 

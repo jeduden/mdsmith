@@ -4,6 +4,7 @@ name: blank-line-around-lists
 status: ready
 description: Lists must have a blank line before and after.
 nature: style
+maintainability: null
 ---
 # MDS014: blank-line-around-lists
 

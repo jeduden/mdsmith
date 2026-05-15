@@ -4,6 +4,7 @@ name: heading-style
 status: ready
 description: Heading style must be consistent.
 nature: style
+maintainability: null
 ---
 # MDS002: heading-style
 

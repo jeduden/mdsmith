@@ -4,6 +4,7 @@ name: no-space-in-code-spans
 status: ready
 description: Inline code spans with leading or trailing whitespace inside the backticks are almost always typos; flag them.
 nature: style
+maintainability: null
 ---
 # MDS052: no-space-in-code-spans
 

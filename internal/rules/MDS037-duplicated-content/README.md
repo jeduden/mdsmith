@@ -4,6 +4,10 @@ name: duplicated-content
 status: ready
 description: Paragraphs should not repeat verbatim across Markdown files.
 nature: content
+maintainability:
+  signal: repeated paragraphs or sections with the same content
+  fix: extract shared text with `<?include?>` or refactor so one canonical source remains
+  for-diagnostic: true
 ---
 # MDS037: duplicated-content
 

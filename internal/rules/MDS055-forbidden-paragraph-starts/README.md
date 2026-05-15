@@ -4,6 +4,7 @@ name: forbidden-paragraph-starts
 status: ready
 description: Paragraphs must not begin with any configured prefix.
 nature: content
+maintainability: null
 ---
 # MDS055: forbidden-paragraph-starts
 

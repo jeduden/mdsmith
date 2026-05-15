@@ -4,6 +4,7 @@ name: no-undefined-reference-labels
 status: ready
 description: Reference-style links and images must have a matching link reference definition in the same file.
 nature: structure
+maintainability: null
 ---
 # MDS054: no-undefined-reference-labels
 

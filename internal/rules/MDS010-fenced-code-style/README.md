@@ -4,6 +4,7 @@ name: fenced-code-style
 status: ready
 description: Fenced code blocks must use a consistent delimiter.
 nature: style
+maintainability: null
 ---
 # MDS010: fenced-code-style
 

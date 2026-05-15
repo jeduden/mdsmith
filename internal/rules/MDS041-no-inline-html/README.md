@@ -6,6 +6,7 @@ description: >-
   Raw HTML tags in Markdown are not allowed; use a
   Markdown construct or an mdsmith directive instead.
 nature: content
+maintainability: null
 ---
 # MDS041: no-inline-html
 

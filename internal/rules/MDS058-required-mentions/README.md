@@ -4,6 +4,7 @@ name: required-mentions
 status: ready
 description: Heading-bounded sections must contain every configured substring.
 nature: content
+maintainability: null
 ---
 # MDS058: required-mentions
 

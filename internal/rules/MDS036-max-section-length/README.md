@@ -4,6 +4,7 @@ name: max-section-length
 status: ready
 description: Section length must not exceed per-level, per-heading, word, or paragraph limits.
 nature: content
+maintainability: null
 ---
 # MDS036: max-section-length
 

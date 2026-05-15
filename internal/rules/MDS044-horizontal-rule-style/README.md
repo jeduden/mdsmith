@@ -6,6 +6,7 @@ description: >-
   Thematic breaks must use a consistent delimiter style, exact
   length, and blank-line spacing.
 nature: style
+maintainability: null
 ---
 # MDS044: horizontal-rule-style
 
