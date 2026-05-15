@@ -198,6 +198,52 @@ func TestPublishReleaseClientDoError(t *testing.T) {
 	require.ErrorIs(t, err, sentinel)
 }
 
+func TestPublishReleasePatchTransportError(t *testing.T) {
+	sentinel := errors.New("patch boom")
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPatch {
+			return nil, sentinel
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"id":5,"draft":true}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	err := PublishRelease(PublishReleaseOptions{
+		Repository: "jeduden/mdsmith",
+		Tag:        "v1.2.3",
+		Token:      "t",
+		APIBaseURL: "https://api.example.com",
+		Client:     client,
+	})
+	require.ErrorIs(t, err, sentinel)
+}
+
+type errBody struct{}
+
+func (errBody) Read([]byte) (int, error) { return 0, errors.New("read boom") }
+func (errBody) Close() error             { return nil }
+
+func TestPublishReleaseUnexpectedStatusBodyReadError(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Body:       errBody{},
+			Header:     make(http.Header),
+		}, nil
+	})}
+	err := PublishRelease(PublishReleaseOptions{
+		Repository: "jeduden/mdsmith",
+		Tag:        "v1.2.3",
+		Token:      "t",
+		APIBaseURL: "https://api.example.com",
+		Client:     client,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read boom")
+}
+
 func TestPublishReleaseInvalidJSONErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprint(w, `{not json`)
