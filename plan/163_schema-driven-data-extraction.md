@@ -51,8 +51,9 @@ the validated match and mirrors the hierarchy:
   the slugified heading (`goal`), reusing the existing
   anchor slugifier. Its value holds child scopes and
   content, recursively.
-- **Repeating scope** (`## {id}`, `repeats: true`) → an
-  array keyed by the slug of the heading's literal stem,
+- **Repeating scope** (`## {id}` with a `repeat: {min,
+  max}` cardinality) → an array keyed by the slug of the
+  heading's literal stem,
   or the placeholder name if the heading is only a
   placeholder. Each element is an object that **always
   retains every captured placeholder as a `name: value`
@@ -131,8 +132,9 @@ partial data.
    custom-binding plan overrides. Reuse the existing
    anchor slugifier. Unit-test literal, nested, preamble,
    and optional-omitted scopes.
-4. **Repeating scopes and placeholders.** Project
-   `repeats: true` scopes as arrays; each element retains
+4. **Repeating scopes and placeholders.** Project scopes
+   with a `repeat: {min, max}` cardinality as arrays; each
+   element retains
    every captured `{field}` as a `name: value` field,
    reusing
    [fieldinterp](../internal/fieldinterp/fieldinterp.go).
