@@ -160,9 +160,20 @@ func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read dir %s: %w", src, err)
 	}
+	// Collect regular-file names so a subdirectory `foo/` can
+	// detect a sibling `foo.md` overview page (the docs/-tree
+	// convention, e.g. reference/cli.md is the landing page for
+	// reference/cli/). When that sibling exists, synthesizing a
+	// section _index.md for the directory would collide with the
+	// overview page's URL, so it is skipped.
+	mdSiblings := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && e.Type()&fs.ModeSymlink == 0 {
+			mdSiblings[e.Name()] = struct{}{}
+		}
+	}
 	wrote := false
 	for _, e := range entries {
-		srcPath := filepath.Join(src, e.Name())
 		if e.Type()&fs.ModeSymlink != 0 {
 			// Skip symlinks (including symlinked dirs, whose
 			// DirEntry.Type reports ModeSymlink and IsDir
@@ -171,44 +182,19 @@ func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
 			// published site.
 			continue
 		}
+		srcPath := filepath.Join(src, e.Name())
+		var entryWrote bool
 		if e.IsDir() {
-			childDst := filepath.Join(dst, e.Name())
-			if err := t.fs.MkdirAll(childDst, 0o755); err != nil {
-				return wrote, fmt.Errorf("mkdir %s: %w", childDst, err)
-			}
-			childWrote, err := t.syncDocsDir(srcPath, childDst)
-			if err != nil {
-				return wrote, err
-			}
-			if childWrote {
-				wrote = true
-			}
-			continue
+			entryWrote, err = t.syncDocsSubdir(srcPath, dst, e.Name(), mdSiblings)
+		} else {
+			entryWrote, err = t.syncDocsFile(srcPath, dst, e.Name())
 		}
-		name := e.Name()
-		if name == "proto.md" {
-			continue
-		}
-		ext := strings.ToLower(filepath.Ext(name))
-		if _, ok := syncableExt[ext]; !ok {
-			continue
-		}
-		dstName := name
-		if name == "index.md" {
-			dstName = "_index.md"
-		}
-		data, err := t.fs.ReadFile(srcPath)
 		if err != nil {
-			return wrote, fmt.Errorf("read %s: %w", srcPath, err)
+			return wrote, err
 		}
-		if ext == ".md" {
-			data = transformMarkdown(data)
+		if entryWrote {
+			wrote = true
 		}
-		dstPath := filepath.Join(dst, dstName)
-		if err := t.fs.WriteFile(dstPath, data, 0o644); err != nil {
-			return wrote, fmt.Errorf("write %s: %w", dstPath, err)
-		}
-		wrote = true
 	}
 	if !wrote {
 		if err := t.fs.RemoveAll(dst); err != nil {
@@ -216,6 +202,109 @@ func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
 		}
 	}
 	return wrote, nil
+}
+
+// syncDocsSubdir recurses into one subdirectory, then
+// synthesizes a section _index.md when the subtree produced
+// content. It returns whether anything was written under dst.
+func (t *Toolkit) syncDocsSubdir(src, dst, name string, siblings map[string]struct{}) (bool, error) {
+	childDst := filepath.Join(dst, name)
+	if err := t.fs.MkdirAll(childDst, 0o755); err != nil {
+		return false, fmt.Errorf("mkdir %s: %w", childDst, err)
+	}
+	childWrote, err := t.syncDocsDir(src, childDst)
+	if err != nil {
+		return childWrote, err
+	}
+	if !childWrote {
+		return false, nil
+	}
+	if err := t.synthesizeSectionIndex(childDst, name, siblings); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+// syncDocsFile copies one regular file with the docs→Hugo
+// transforms applied. proto.md schema templates and
+// non-content extensions are skipped (returns false, nil);
+// index.md is renamed to _index.md. It returns whether a file
+// was written.
+func (t *Toolkit) syncDocsFile(src, dst, name string) (bool, error) {
+	if name == "proto.md" {
+		return false, nil
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+	if _, ok := syncableExt[ext]; !ok {
+		return false, nil
+	}
+	dstName := name
+	if name == "index.md" {
+		dstName = "_index.md"
+	}
+	data, err := t.fs.ReadFile(src)
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", src, err)
+	}
+	if ext == ".md" {
+		data = transformMarkdown(data)
+	}
+	dstPath := filepath.Join(dst, dstName)
+	if err := t.fs.WriteFile(dstPath, data, 0o644); err != nil {
+		return false, fmt.Errorf("write %s: %w", dstPath, err)
+	}
+	return true, nil
+}
+
+// synthesizeSectionIndex writes a minimal front-matter-only
+// _index.md into a synced subdirectory that has content but no
+// section landing page of its own. Without it Hugo renders no
+// page for the directory and the nav link 404s (the GitHub
+// Pages symptom for /docs/reference/, /docs/background/, …).
+//
+// It is a no-op when the directory already has an _index.md
+// (e.g. an index.md the sibling rename produced) or when the
+// parent holds a sibling `<name>.md` overview page: in the
+// docs/-tree convention `reference/cli.md` is the landing page
+// for `reference/cli/`, and a synthesized _index.md would
+// collide with that page's URL. The title is humanized from the
+// directory name so the breadcrumb, <title>, and sidebar read
+// cleanly instead of showing Hugo's filename guess.
+func (t *Toolkit) synthesizeSectionIndex(dir, name string, siblings map[string]struct{}) error {
+	if _, ok := siblings[name+".md"]; ok {
+		return nil
+	}
+	idxPath := filepath.Join(dir, "_index.md")
+	switch _, err := t.fs.Stat(idxPath); {
+	case err == nil:
+		return nil
+	case errors.Is(err, fs.ErrNotExist):
+	default:
+		return fmt.Errorf("stat %s: %w", idxPath, err)
+	}
+	title := strings.ReplaceAll(humanizeDirName(name), `"`, `\"`)
+	stub := []byte("---\ntitle: \"" + title + "\"\n---\n")
+	if err := t.fs.WriteFile(idxPath, stub, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", idxPath, err)
+	}
+	return nil
+}
+
+// humanizeDirName turns a directory base name into a section
+// title: hyphen/underscore-separated words, each capitalized
+// ("release-channels" → "Release Channels", "reference" →
+// "Reference").
+func humanizeDirName(name string) string {
+	parts := strings.FieldsFunc(name, func(r rune) bool {
+		return r == '-' || r == '_'
+	})
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return strings.Join(parts, " ")
 }
 
 // transformMarkdown applies the docs/-tree → Hugo content

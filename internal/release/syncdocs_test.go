@@ -48,6 +48,50 @@ func TestSyncDocs_RenamesIndexMdToUnderscoreIndex(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 }
 
+// TestSyncDocs_SynthesizesSectionIndex pins the fix for the
+// GitHub Pages 404: a docs subdirectory with content pages but
+// no index.md (e.g. docs/reference/, docs/background/) produced
+// no _index.md, so Hugo rendered no section landing page and
+// /docs/reference/ 404'd. SyncDocs now writes a minimal
+// _index.md (front matter only, title humanized from the
+// directory name) for any synced subdirectory that has content
+// but neither an index.md of its own nor a sibling `<name>.md`
+// overview page in the parent (the docs/-tree convention where
+// `reference/cli.md` is the overview for `reference/cli/`).
+func TestSyncDocs_SynthesizesSectionIndex(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+	// reference/ has pages but no index.md and no parent
+	// reference.md — must get a synthesized _index.md.
+	writeFile(t, filepath.Join(src, "reference", "conventions.md"), "# Conventions\n\nbody\n")
+	// reference/cli.md is the overview for reference/cli/, so the
+	// cli/ directory must NOT get a synthesized _index.md (it
+	// would collide with cli.md's URL).
+	writeFile(t, filepath.Join(src, "reference", "cli.md"), "# CLI\n\nbody\n")
+	writeFile(t, filepath.Join(src, "reference", "cli", "check.md"), "# check\n\nbody\n")
+	// release-channels/ exercises the humanizer.
+	writeFile(t, filepath.Join(src, "development", "release-channels", "npm.md"), "# npm\n\nbody\n")
+	// guides/index.md must survive untouched (no stub overwrite).
+	writeFile(t, filepath.Join(src, "guides", "index.md"), "---\ntitle: \"Guides\"\n---\nguides body\n")
+
+	require.NoError(t, SyncDocs(src, dst))
+
+	got, err := os.ReadFile(filepath.Join(dst, "reference", "_index.md"))
+	require.NoError(t, err, "reference/_index.md must be synthesized")
+	assert.Contains(t, string(got), `title: "Reference"`)
+
+	_, err = os.Stat(filepath.Join(dst, "reference", "cli", "_index.md"))
+	assert.True(t, os.IsNotExist(err),
+		"reference/cli/ has a sibling cli.md overview — no stub")
+
+	chans, err := os.ReadFile(filepath.Join(dst, "development", "release-channels", "_index.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(chans), `title: "Release Channels"`)
+
+	assertFile(t, filepath.Join(dst, "guides", "_index.md"),
+		"---\ntitle: \"Guides\"\n---\nguides body\n")
+}
+
 func TestSyncDocs_PrunesNonMarkdownNonImage(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()
