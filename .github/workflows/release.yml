@@ -12,14 +12,20 @@ permissions:
 env:
   VERSION: ${{ github.event_name == 'create' && github.event.ref || github.ref_name }}
 
-# Serialize every release run so two publish jobs cannot mint OIDC
-# tokens against the same registry at the same time. The group is
-# tag-agnostic — different tags pushed close together queue rather
-# than overlap. `cancel-in-progress: false` keeps the first run
-# going (cancelling mid-publish would leave the scoped platform
-# packages out of sync with the root package).
+# Serialize only release-intent runs so two publish jobs cannot mint
+# OIDC tokens against the same registry at the same time. Ordinary
+# branch-creation `create` events get a per-run group and never queue
+# behind a real release. `cancel-in-progress: false` keeps the first
+# release going (cancelling mid-publish would leave the scoped
+# platform packages out of sync with the root package).
 concurrency:
-  group: release
+  group: >-
+    ${{
+      (github.event_name != 'create' ||
+      (github.event.ref_type == 'tag' && startsWith(github.event.ref, 'v'))) &&
+      'release' ||
+      format('release-nonrelease-{0}-{1}', github.run_id, github.run_attempt)
+    }}
   cancel-in-progress: false
 
 jobs:
@@ -32,77 +38,15 @@ jobs:
       - name: Decide whether this trigger should publish
         id: decide
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          CREATE_REF_TYPE: ${{ github.event.ref_type }}
+          RELEASE_TAG: ${{ env.VERSION }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.event_name == 'create' && github.event.ref || github.ref_name }}
-          RELEASE_LOOKUP_RETRY_ATTEMPTS: "3"
-          RELEASE_LOOKUP_RETRY_DELAY_SECONDS: "2"
-        run: |
-          if [ "${{ github.event_name }}" != "create" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "create_release_is_draft=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "${{ github.event.ref_type }}" != "tag" ]; then
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "create_release_is_draft=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          case "${RELEASE_TAG}" in
-            v*) ;;
-            *)
-              echo "should_run=false" >> "$GITHUB_OUTPUT"
-              echo "create_release_is_draft=false" >> "$GITHUB_OUTPUT"
-              exit 0
-              ;;
-          esac
-
-          status=404
-          for attempt in $(seq 1 "${RELEASE_LOOKUP_RETRY_ATTEMPTS}"); do
-            status=$(
-              curl \
-                --silent \
-                --show-error \
-                --location \
-                --output /tmp/release.json \
-                --write-out '%{http_code}' \
-                -H "Accept: application/vnd.github+json" \
-                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
-            )
-            if [ "${status}" != "404" ] || \
-              [ "${attempt}" = "${RELEASE_LOOKUP_RETRY_ATTEMPTS}" ]; then
-              break
-            fi
-            sleep "${RELEASE_LOOKUP_RETRY_DELAY_SECONDS}"
-          done
-
-          case "${status}" in
-            200)
-              draft=$(jq -r '(.draft // false) | tostring' /tmp/release.json)
-              if [ "${draft}" = "true" ]; then
-                echo "should_run=true" >> "$GITHUB_OUTPUT"
-                echo "create_release_is_draft=true" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-
-              echo "should_run=false" >> "$GITHUB_OUTPUT"
-              echo "create_release_is_draft=false" >> "$GITHUB_OUTPUT"
-              exit 0
-              ;;
-            404)
-              echo "should_run=false" >> "$GITHUB_OUTPUT"
-              echo "create_release_is_draft=false" >> "$GITHUB_OUTPUT"
-              exit 0
-              ;;
-            *)
-              echo "failed to inspect release for ${RELEASE_TAG}; api status ${status}" >&2
-              cat /tmp/release.json >&2
-              exit 1
-              ;;
-          esac
+        # The runtime logic lives in mdsmith-release per
+        # docs/development/release-tooling.md. The step itself stays a
+        # fixed one-liner so no event payload is interpolated into an
+        # inline shell script (zizmor template-injection finding).
+        run: go run ./cmd/mdsmith-release check-release-trigger
 
   build:
     needs: [trigger-guard]

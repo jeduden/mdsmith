@@ -13,6 +13,7 @@
 //	mdsmith-release build-wheels <artifacts-dir> <out-dir>
 //	mdsmith-release sync-docs <src-dir> <dst-dir>
 //	mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]
+//	mdsmith-release check-release-trigger
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //
@@ -42,6 +43,7 @@ Commands:
   sync-docs <src> <dst>           Snapshot docs/ into a Hugo content tree.
   build-website [--no-fix] [src] [dst]
                                   mdsmith fix (unless --no-fix) + sync-docs.
+  check-release-trigger           Emit release trigger guard outputs.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
 `
@@ -77,6 +79,8 @@ func run(args []string) int {
 		return runSyncDocs(root, rest)
 	case "build-website":
 		return runBuildWebsite(root, rest)
+	case "check-release-trigger":
+		return runCheckReleaseTrigger(root, rest)
 	case "check-secret-rotations":
 		return runCheckSecretRotations(root, rest)
 	case "record-rotation":
