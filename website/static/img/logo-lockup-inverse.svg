@@ -10,8 +10,7 @@
     <path fill="#E58233" stroke="#FAF7F2" stroke-width="2.5" stroke-linejoin="round"
           d="M 28 13 L 52 13 L 58 18 L 58 25 L 52 30 L 45 30 L 45 64 Q 45 67 42 67 L 38 67 Q 35 67 35 64 L 35 30 L 28 30 L 22 25 L 22 18 Z"/>
   </g>
-  <g font-family="'IBM Plex Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="34" letter-spacing="-0.03em">
-    <text x="100" y="52" font-weight="700" fill="#FAF7F2">md</text>
-    <text x="143" y="52" font-weight="400" fill="#B4BBC4" letter-spacing="-0.01em" font-size="30">smith</text>
-  </g>
+  <text x="100" y="52" font-family="'IBM Plex Sans', system-ui, sans-serif" font-size="34" letter-spacing="-0.03em">
+    <tspan font-weight="700" fill="#FAF7F2">md</tspan><tspan dx="4" font-weight="400" font-size="30" fill="#B4BBC4">smith</tspan>
+  </text>
 </svg>
