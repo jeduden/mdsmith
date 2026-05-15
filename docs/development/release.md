@@ -64,11 +64,22 @@ the `create` preflight sees no draft release yet.
 `pull_request_target`, `workflow_run`, and
 `release`. Those triggers can mint OIDC tokens or
 reach the PATs from a non-tag context. The `release`
-event would also still miss draft creation. When
-the run started from `create`, the final GitHub
-Release upload keeps the release in draft state. A
-normal tag push keeps the current
-published-release behavior.
+event would also still miss draft creation.
+
+The `release` job always uploads every asset to a
+**draft** release first. It then publishes the
+release as a separate final step via
+`mdsmith-release publish-release`. Uploading to a
+published release is rejected once immutable
+releases are on. So the publish must be the last
+action.
+
+A normal tag push
+(`create_release_is_draft == 'false'`) auto-publishes
+the full draft. The result is an immutable release.
+A maintainer's UI-created draft
+(`create_release_is_draft == 'true'`) is left as a
+draft for manual review and publish.
 
 `concurrency: { group: release, cancel-in-progress: false }`
 still serializes real releases tag-agnostically.

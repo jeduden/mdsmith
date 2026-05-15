@@ -363,6 +363,13 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           merge-multiple: true
@@ -412,17 +419,34 @@ jobs:
           cosign sign-blob \
             --bundle checksums.txt.bundle \
             checksums.txt
-      - name: Create release
+      - name: Upload assets to draft release
+        # Always create/update the release as a draft so every asset
+        # uploads while the release is still mutable. With immutable
+        # releases enforced, uploading to an already-published
+        # release is rejected — the publish must be the final step.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
-          draft: ${{ needs.trigger-guard.outputs.create_release_is_draft == 'true' }}
+          draft: true
           generate_release_notes: true
           files: |
             mdsmith-*
             checksums.txt
             checksums.txt.bundle
+      - name: Publish release
+        # Path A (tag push): create_release_is_draft == 'false', so
+        # flip the fully-populated draft to published as the final
+        # atomic step — the result is an immutable release. Path B
+        # (maintainer's UI-created draft): create_release_is_draft ==
+        # 'true', so the release is left as a draft for manual
+        # review and publish. Runtime logic lives in mdsmith-release
+        # per docs/development/release-tooling.md.
+        if: needs.trigger-guard.outputs.create_release_is_draft == 'false'
+        env:
+          RELEASE_TAG: ${{ env.VERSION }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./cmd/mdsmith-release publish-release
 
   smoke-test:
     # Wait until every channel is on the new version before checking
@@ -501,9 +525,18 @@ jobs:
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
     steps:
+      # The mise channel resolves the binary off the public GitHub
+      # release (ubi backend). On the UI-draft path the release is
+      # left as a draft, so its assets are not publicly downloadable
+      # and mise cannot resolve them — skip mise there. npm/pip are
+      # registry-backed and unaffected by the GitHub release state.
       - name: Install
+        if: &smoke_channel_active >-
+          matrix.channel != 'mise' ||
+          needs.trigger-guard.outputs.create_release_is_draft == 'false'
         run: ${{ matrix.install }}
       - name: Verify version
+        if: *smoke_channel_active
         run: |
           got=$(${{ matrix.run }})
           want="mdsmith ${VERSION}"
