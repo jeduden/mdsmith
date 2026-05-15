@@ -501,10 +501,6 @@ func headingSpan(src []byte, h *ast.Heading) (int, int) {
 	return start, end
 }
 
-// mergeFMTitle returns the front-matter inner text with a
-// `title:` ensured. An existing title is kept untouched;
-// otherwise the promoted title is appended, or becomes the
-// sole key when the source carried no front matter.
 // escapeYAMLDoubleQuoted escapes a string for emission inside a
 // YAML double-quoted scalar. Backslash is escaped first so the
 // escapes added for the quote are not themselves re-escaped;
@@ -516,6 +512,10 @@ func escapeYAMLDoubleQuoted(s string) string {
 	return strings.ReplaceAll(s, `"`, `\"`)
 }
 
+// mergeFMTitle returns the front-matter inner text with a
+// `title:` ensured. An existing title is kept untouched;
+// otherwise the promoted title is appended, or becomes the
+// sole key when the source carried no front matter.
 func mergeFMTitle(fmBlock string, hasFM bool, title string) string {
 	if hasFM {
 		for _, ln := range strings.Split(fmBlock, "\n") {
