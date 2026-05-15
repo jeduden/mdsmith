@@ -94,12 +94,10 @@ func CheckReleaseTrigger(opts TriggerGuardOptions) (TriggerGuardResult, error) {
 				CreateReleaseIsDraft: draft,
 			}, nil
 		}
-		if attempt == attempts {
-			return TriggerGuardResult{}, nil
+		if attempt < attempts {
+			sleep(delay)
 		}
-		sleep(delay)
 	}
-
 	return TriggerGuardResult{}, nil
 }
 
