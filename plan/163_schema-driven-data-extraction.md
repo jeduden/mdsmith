@@ -5,10 +5,9 @@ status: "🔲"
 model: opus
 depends-on: [149, 156]
 summary: >-
-  Add a bind layer to schemas and an `extract`
-  subcommand that turns a kind-conformant Markdown
-  file into JSON/YAML/Lua/msgpack following the
-  schema.
+  Derive a default data tree from the hierarchical
+  schema and add an `extract` subcommand that emits a
+  kind-conformant file as JSON/YAML/Lua/msgpack.
 ---
 # Schema-driven data extraction (mdsmith extract)
 
@@ -17,72 +16,81 @@ summary: >-
 Let a kind's schema double as an extraction contract.
 Once `mdsmith check` confirms a file conforms, `mdsmith
 extract <kind> --format json|yaml|lua|msgpack <file>`
-emits a data tree. Its shape is exactly what the schema
-declares.
+emits a data tree. Its shape is derived from the schema
+hierarchy itself — no annotations required.
 
-## Why a new concept is needed
+## Why a default binding layer first
 
-Today the schema engine
-([internal/schema](../internal/schema)) validates
-*structure*: the heading tree, repeat cardinality,
-content-node kinds, and front-matter CUE constraints.
-But its [Scope](../internal/schema/schema.go) and
-`ContentEntry` nodes are **anonymous**. The matcher knows
-a `## {id}` heading must exist, yet not what key `id`
-becomes in output, and it never captures node bodies.
-Front matter is already YAML-typed and passes through
-unchanged. The gap is the document body.
+The schema is already a hierarchy: front matter, then a
+tree of scopes (sections), each with child scopes and
+content entries. That hierarchy *is* the data shape. So
+the first deliverable is a **default binding layer** that
+projects the schema tree into a data tree directly,
+mirroring its nesting. No new schema concept is needed
+for the common case.
 
-So this plan adds exactly one new schema concept — a
-**binding / projection layer** — plus a thin extractor
-that walks the existing validated match. No second
-parser, and no schema-to-type inference.
+Custom shaping is *not* in this plan. It is a separate
+follow-up — [plan 164](164_custom-binding-overrides.md) —
+and we keep it cheap by design: every key flows through
+one `keyFor(node)` seam (task 3), so the override plan is
+a focused change there plus parsing `bind:`. Until then,
+renaming or restructuring is the job of a downstream tool
+(`jq`, `yq`, a Lua script) over the standard-format
+output.
 
-## Sequencing
+## Default projection rules
 
-The schema engine is mid-rework. This plan must land
-after, and consume the outputs of, that work rather than
-the legacy single-source model.
-
-- **Plan 156 / PR #288 (schema composition).** A file can
-  resolve to multiple kinds whose schemas compose via
-  `schema.Compose()`. The extractor consumes the composed
-  `Schema`, never a single `Rule.Schema`. This forces a
-  new rule: `bind:` names must compose too. Identical
-  headings from different kinds merge their bound
-  children. Two kinds binding the same node to different
-  names is a schema error raised at compose time.
-- **Plan 149 (section-content schema).** Body extraction
-  rides on the `ContentEntry` model from the
-  content-schema work. This plan adds no content matcher
-  of its own and is blocked until that model is stable.
-- **Plan 147 / PR #284 (actionable schema diagnostics).**
-  If landed, bind validation and conformance failures
-  reuse the `SchemaDiagnostic` formatter.
-
-## The `bind:` concept
-
-`bind:` is an optional string key on any schema scope or
-content entry. It names the value that node contributes
-to the extracted tree. Unbound nodes are structural only
-and emit nothing, keeping output intentional.
-
-Mapping rules:
+The projection walks the composed schema in lockstep with
+the validated match and mirrors the hierarchy:
 
 - **Front matter** → top-level `frontmatter` object,
   passed through from the existing decode.
-- **Non-repeating scope, `bind: x`** → object `x` holding
-  its bound children.
-- **Repeating scope, `bind: xs`** (a `{placeholder}`
-  heading) → array `xs`. Each element is an object whose
-  fields are the captured placeholders plus bound
-  children.
-- **`code-block`, `bind: c`** → string `c` (raw body);
-  optional `parse: yaml|json` embeds the decoded value.
-- **`list`, `bind: items`** → array of item strings.
-- **`table` with `columns`, `bind: rows`** → array of row
-  objects keyed by column header.
-- **`paragraph`, `bind: t`** → its text.
+- **Literal-heading scope** (`## Goal`) → object keyed by
+  the slugified heading (`goal`), reusing the existing
+  anchor slugifier. Its value holds child scopes and
+  content, recursively.
+- **Repeating scope** (`## {id}`, `repeats: true`) → an
+  array keyed by the slug of the heading's literal stem
+  (or, if none, the placeholder name). Each element is an
+  object whose fields are the captured placeholders plus
+  the element's own child scopes and content.
+- **`code-block`** → string under `code` (raw body);
+  multiple blocks get `code`, `code-2`, …
+- **`list`** → array of item strings under `items`.
+- **`table` with `columns`** → array of row objects keyed
+  by column header, under `rows`.
+- **`paragraph`** → its text under `text`.
+
+Sibling key collisions (two `## Goal` headings, or a
+content default that shadows a child scope slug) are a
+schema error reported at extract time, pointing at the
+schema source. Empty/optional sections that did not match
+are omitted rather than emitted as null.
+
+## Sequencing
+
+The schema engine is mid-rework. This plan lands after,
+and consumes the outputs of, that work — not the legacy
+single-source model.
+
+- **[Plan 156 — kind-schema
+  composition](156_kind-schema-composition.md) / PR
+  #288.** (Disambiguation: two plan files share id 156;
+  this dependency is the composition one, not
+  `156_schema-entry-unification.md`.) A file can resolve
+  to multiple kinds whose schemas compose via
+  `schema.Compose()`. The extractor consumes the composed
+  `Schema`. Default keys derive from heading text, so
+  identical headings from two kinds merge to the same key
+  with no conflict; only genuinely divergent shapes
+  surface as a collision.
+- **Plan 149 (section-content schema).** Content
+  projection rides on the `ContentEntry` model from the
+  content-schema work. This plan adds no content matcher
+  of its own and is blocked until that model is stable.
+- **Plan 147 / PR #284 (actionable schema diagnostics).**
+  If landed, collision and conformance failures reuse the
+  `SchemaDiagnostic` formatter.
 
 Extraction is gated on a successful schema match. A
 non-conformant file makes `extract` report the same
@@ -91,48 +99,52 @@ partial data.
 
 ## Tasks
 
-1. **Parse `bind:` (red/green).** Add a `Bind string`
-   field to `Scope` and `ContentEntry` in
-   [schema.go](../internal/schema/schema.go); parse it in
-   [parse_inline.go](../internal/schema/parse_inline.go)
-   and [parse_file.go](../internal/schema/parse_file.go).
-   Unit-test round-trip and that an empty bind means
-   "structural only".
-2. **Validate `bind:` names.** Reject duplicate sibling
-   binds, and binds whose value is unreachable because a
-   parent is unbound. Surface via the `SchemaDiagnostic`
-   path (plan 147) if landed, else a plain parse error.
-3. **Compose `bind:` across kinds.** Extend
-   `schema.Compose()` (plan 156) so merged headings union
-   their bound children. Binding one composed node to two
-   different names is a compose-time error. Add
-   `compose_test.go` cases for union and conflict.
-4. **Extractor package.** Add `internal/extract` with
-   `Extract(f *lint.File, sch *schema.Schema, match …)
-   (any, []lint.Diagnostic)`. `sch` is the composed
-   schema. It consumes the existing schema-validation
-   walk (extend `schema.Validate` / the content matcher
-   to expose the scope→nodes match tree) rather than
-   re-matching.
-5. **Capture placeholder values.** When a repeating scope
-   matches a `{field}` heading pattern, record each
-   captured field into the element object, reusing
+1. **Expose the match tree.** Refactor `schema.Validate`
+   (and the content matcher) to also return a new
+   `*schema.MatchTree` in `internal/schema`: for each
+   `Scope` / `ContentEntry`, the matched AST nodes, their
+   source lines, and captured `{field}` values. `Validate`
+   keeps its diagnostic return; the tree is an added
+   result so MDS020 is unaffected. Unit-test the tree on
+   the existing schema fixtures.
+2. **Extractor skeleton (red/green).** Add
+   `internal/extract` with `Extract(f *lint.File, sch
+   *schema.Schema, m *schema.MatchTree) (any,
+   []lint.Diagnostic)`. `sch` is the composed schema; `m`
+   is the tree from task 1 — no re-matching.
+3. **Default scope projection.** Walk the scope tree and
+   build the nested object/array structure per the rules
+   above. Route every key through one `keyFor(node)`
+   function — the single seam a future custom-binding plan
+   overrides. Reuse the existing anchor slugifier. Unit-
+   test literal, nested, and optional-omitted scopes.
+4. **Repeating scopes and placeholders.** Project
+   `repeats: true` scopes as arrays; record each captured
+   `{field}` into the element object, reusing
    [fieldinterp](../internal/fieldinterp/fieldinterp.go).
-6. **Format encoders.** Add `internal/extract/encode`
+5. **Default content projection.** Project `code-block`,
+   `list`, `table`, and `paragraph` entries (plan 149)
+   with their default keys. Detect sibling key collisions
+   and emit a schema diagnostic.
+6. **Composition behavior.** Add `compose_test.go` /
+   extractor tests proving a file under two kinds yields a
+   merged tree, and that a real shape divergence is
+   reported as a collision, not silently dropped.
+7. **Format encoders.** Add `internal/extract/encode`
    with json (stdlib), yaml (existing dep), msgpack, and
    lua (table literal) encoders behind a `Format` enum.
-7. **`extract` subcommand.** Register `extract` in
+8. **`extract` subcommand.** Register `extract` in
    [main.go](../cmd/mdsmith/main.go); signature `mdsmith
    extract <kind> --format <fmt> <file>`. Reuse the
    config-load and kind-resolution helpers from
    [kinds.go](../cmd/mdsmith/kinds.go). Validate that
    `<kind>` is one of the file's resolved kinds. Run
    schema validation first and abort on failure.
-8. **Fixtures and integration test.** Add a kind with a
-   bound schema under `testdata/`, a conformant sample,
-   and golden outputs per format. Assert non-conformant
-   input exits non-zero with check diagnostics.
-9. **Docs.** Add a section under
+9. **Fixtures and integration test.** Add a kind with a
+   schema under `testdata/`, a conformant sample, and
+   golden outputs per format. Assert non-conformant input
+   exits non-zero with check diagnostics.
+10. **Docs.** Add a section under
    [schemas.md](../docs/guides/schemas.md) and a
    `docs/reference/cli/extract.md` page. Both are picked
    up by existing catalog directives. Run `mdsmith fix`
@@ -140,20 +152,19 @@ partial data.
 
 ## Acceptance Criteria
 
-- [ ] `bind:` parses on scopes and content entries from
-      inline and `proto.md` schemas. Duplicate and
-      unreachable binds are rejected with actionable
-      diagnostics.
 - [ ] `mdsmith extract <kind> --format json <file>` on a
-      conformant file emits a tree matching the bound
-      schema, with front matter under `frontmatter`.
-- [ ] A file resolving to multiple kinds composes its
-      binds; conflicting binds on one composed node are a
-      compose-time error.
-- [ ] Repeating sections become arrays. Placeholder
-      captures and bound children appear as element
-      fields. Code-block, list, table, and paragraph
-      binds extract as specified.
+      conformant file emits a tree whose nesting mirrors
+      the schema hierarchy, with front matter under
+      `frontmatter` — no schema annotations required.
+- [ ] Literal headings key by slug; repeating sections
+      become arrays; captured placeholders and child
+      scopes/content appear as element fields.
+- [ ] Code-block, list, table, and paragraph entries
+      project under their default keys; sibling key
+      collisions are reported as schema diagnostics.
+- [ ] A file resolving to multiple kinds yields a merged
+      tree; a genuine shape divergence is reported, not
+      silently dropped.
 - [ ] `yaml`, `lua`, and `msgpack` produce equivalent
       data; golden fixtures cover all four formats.
 - [ ] A non-conformant file makes `extract` exit non-zero
@@ -166,8 +177,12 @@ partial data.
 
 ## Open questions
 
-- Should `bind:` default to the slugified heading text,
-  or stay strictly opt-in? The plan assumes opt-in.
+- Repeating-scope array key: slug of the literal stem vs.
+  the placeholder name. Plan assumes literal stem, else
+  placeholder name.
+- Custom bindings (rename/restructure) ship in [plan
+  164](164_custom-binding-overrides.md), layered on the
+  `keyFor` seam; out of scope here.
 - Lua output: bare `return { … }` table to start, not a
   named module.
 - Exposing extraction over the LSP or a `query`-style

@@ -91,5 +91,6 @@ footer: |
 | 162 | 🔲     | sonnet | [Split the overloaded `meta` rule category](plan/162_rule-category-cleanup.md)                                            |
 | 163 | 🔲     |        | [Extract mdsmith Markdown parse/produce as a public Go library](plan/163_public-markdown-library.md)                      |
 | 163 | 🔲     | opus   | [Schema-driven data extraction (mdsmith extract)](plan/163_schema-driven-data-extraction.md)                              |
+| 164 | 🔲     | opus   | [Custom binding overrides for mdsmith extract](plan/164_custom-binding-overrides.md)                                      |
 | 164 | ✅     |        | [GitHub-UI-triggered releases and a split website deploy](plan/164_github-ui-releases-and-split-website.md)               |
 <?/catalog?>
