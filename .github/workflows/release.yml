@@ -33,7 +33,7 @@ jobs:
         id: decide
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ env.VERSION }}
+          RELEASE_TAG: ${{ github.event_name == 'create' && github.event.ref || github.ref_name }}
           RELEASE_LOOKUP_RETRY_ATTEMPTS: "3"
           RELEASE_LOOKUP_RETRY_DELAY_SECONDS: "2"
         run: |
@@ -81,9 +81,7 @@ jobs:
 
           case "${status}" in
             200)
-              draft=$(
-                python -c 'import json; print(str(json.load(open("/tmp/release.json", "r", encoding="utf-8")).get("draft", False)).lower())'
-              )
+              draft=$(jq -r '(.draft // false) | tostring' /tmp/release.json)
               if [ "${draft}" = "true" ]; then
                 echo "should_run=true" >> "$GITHUB_OUTPUT"
                 echo "create_release_is_draft=true" >> "$GITHUB_OUTPUT"
@@ -475,7 +473,7 @@ jobs:
     # publish, so the channel-specific install commands re-run if the
     # registry briefly returns the previous version.
     needs: [trigger-guard, npm, pypi, release]
-    if: *release_trigger_ok
+    if: needs.trigger-guard.outputs.should_run == 'true'
     strategy:
       fail-fast: false
       matrix:
