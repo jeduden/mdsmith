@@ -12,6 +12,7 @@
 //	mdsmith-release build-npm <artifacts-dir> <out-dir>
 //	mdsmith-release build-wheels <artifacts-dir> <out-dir>
 //	mdsmith-release sync-docs <src-dir> <dst-dir>
+//	mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //

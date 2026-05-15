@@ -44,7 +44,7 @@
 
 @font-face {
   font-family: "0xProto";
-  src: url("../fonts/0xProtoNerdFont-Regular.ttf") format("truetype");
+  src: url("../fonts/0xProtoNerdFont-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
