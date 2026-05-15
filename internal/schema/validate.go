@@ -134,9 +134,10 @@ func validateFrontmatterDiags(
 		return nil
 	}
 	ctx := cuecontext.New()
+	anchor := nonBodyDiagLine(f)
 	schemaVal := ctx.CompileString(expr)
 	if err := schemaVal.Err(); err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, 1,
+		return []lint.Diagnostic{mkDiag(f.Path, anchor,
 			compileFailureDiag(sch, "schema", "valid schema CUE", err).Format())}
 	}
 	if docFM == nil {
@@ -144,12 +145,12 @@ func validateFrontmatterDiags(
 	}
 	data, err := json.Marshal(docFM)
 	if err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, 1,
+		return []lint.Diagnostic{mkDiag(f.Path, anchor,
 			compileFailureDiag(sch, "front matter", "JSON-marshalable front matter", err).Format())}
 	}
 	dataVal := ctx.CompileBytes(data)
 	if err := dataVal.Err(); err != nil {
-		return []lint.Diagnostic{mkDiag(f.Path, 1,
+		return []lint.Diagnostic{mkDiag(f.Path, anchor,
 			compileFailureDiag(sch, "front matter", "valid front matter", err).Format())}
 	}
 	merged := schemaVal.Unify(dataVal)
@@ -159,7 +160,7 @@ func validateFrontmatterDiags(
 	}
 	cueErrs := errors.Errors(verr)
 	if len(cueErrs) == 0 {
-		return []lint.Diagnostic{mkDiag(f.Path, 1,
+		return []lint.Diagnostic{mkDiag(f.Path, anchor,
 			SchemaDiagnostic{
 				Field:     "front matter",
 				Actual:    fmt.Sprintf("%v", verr),
@@ -188,6 +189,38 @@ func validateFrontmatterDiags(
 	return out
 }
 
+// NonBodyDiagLine returns the body-coord line value that, after
+// lint.File.AdjustDiagnostics adds f.LineOffset, lands on the
+// absolute first line of the file (typically the opening `---`
+// fence of stripped front matter). It is the canonical anchor
+// for diagnostics that do not correspond to a specific body
+// line — schema-level compile failures, filename pattern
+// violations, and structure diagnostics for sections that are
+// missing entirely.
+//
+// The previous "anchor at line 1" pattern landed on the first
+// body line in front-matter-stripped mode, which
+// engine.filterGeneratedDiags could mistakenly drop if the
+// document body started with a generated section (e.g. a
+// leading <?catalog?> directive). Using `1 - LineOffset`
+// produces a non-positive body-coord that filterGeneratedDiags
+// cannot match against any generated line range, and the
+// engine's AdjustDiagnostics adds the offset back so the
+// surfaced diagnostic still anchors at the file's first line.
+//
+// When f.LineOffset == 0 (the non-stripped path, used by tests
+// via lint.NewFile) the return value is just 1, matching the
+// previous behaviour.
+func NonBodyDiagLine(f *lint.File) int {
+	return 1 - f.LineOffset
+}
+
+// nonBodyDiagLine is the package-internal alias used inside the
+// schema package; external callers reach for NonBodyDiagLine.
+func nonBodyDiagLine(f *lint.File) int {
+	return NonBodyDiagLine(f)
+}
+
 // fmDiagLine returns the line to anchor a front-matter diagnostic
 // at, expressed in the body-line coordinate system the engine
 // uses before lint.File.AdjustDiagnostics fires. When the doc's
@@ -205,12 +238,17 @@ func validateFrontmatterDiags(
 // for the contract). In unstripped mode (LineOffset == 0) the
 // returned value already equals the absolute file line.
 //
-// When no per-key line is known the function falls back to line
-// 1 — the conventional "start of file" anchor, which the engine
-// also shifts to the first body line.
+// When no per-key line is known the function falls back to
+// nonBodyDiagLine(f) — a non-positive body coordinate in
+// stripped mode that AdjustDiagnostics resolves to the first
+// absolute line of the file. The fallback used to be a flat
+// "1", which landed on the first body line in stripped mode
+// and could be silently dropped by filterGeneratedDiags when
+// the document body started with a generated section
+// (PR #284 Copilot review).
 func fmDiagLine(f *lint.File, path []string, keyLines map[string]int) int {
 	if len(path) == 0 || len(keyLines) == 0 {
-		return 1
+		return nonBodyDiagLine(f)
 	}
 	line, ok := keyLines[path[0]]
 	if !ok {
@@ -218,7 +256,7 @@ func fmDiagLine(f *lint.File, path []string, keyLines map[string]int) int {
 		// schema; the doc itself never does, so a miss here means
 		// the key was absent from the document (and therefore has
 		// no source line to point at).
-		return 1
+		return nonBodyDiagLine(f)
 	}
 	return line - f.LineOffset
 }
@@ -525,7 +563,11 @@ func validateScopes(
 		if found {
 			allowExtra = false
 		} else if !claimed[i] && sc.Required && !sc.Repeats {
-			diags = append(diags, mkDiag(f.Path, 1,
+			// Missing sections have no body line to point at;
+			// use the non-body anchor so filterGeneratedDiags
+			// can't drop the diagnostic if body line 1 sits
+			// inside a generated section.
+			diags = append(diags, mkDiag(f.Path, nonBodyDiagLine(f),
 				missingSectionDiag(formatHeading(expectedLevel, sc.Heading), sch).Format()))
 		}
 	}
@@ -1007,6 +1049,11 @@ func validateFilename(
 	if pattern == "" {
 		return nil
 	}
+	// Filename and path diagnostics describe the document as a
+	// whole, not a body line; use the non-body anchor so the
+	// engine's filterGeneratedDiags can't drop them when the
+	// document body starts with a generated section.
+	anchor := nonBodyDiagLine(f)
 	base := filepath.Base(f.Path)
 	matched, err := filepath.Match(pattern, base)
 	if err != nil {
@@ -1021,7 +1068,7 @@ func validateFilename(
 			Hint:      err.Error(),
 			SchemaRef: schemaRef(sch, ""),
 		}
-		return []lint.Diagnostic{mkDiag(f.Path, 1, d.Format())}
+		return []lint.Diagnostic{mkDiag(f.Path, anchor, d.Format())}
 	}
 	if !matched {
 		// `glob` makes the constraint syntax explicit: users
@@ -1036,7 +1083,7 @@ func validateFilename(
 			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
 			SchemaRef: schemaRef(sch, ""),
 		}
-		return []lint.Diagnostic{mkDiag(f.Path, 1, d.Format())}
+		return []lint.Diagnostic{mkDiag(f.Path, anchor, d.Format())}
 	}
 	return nil
 }

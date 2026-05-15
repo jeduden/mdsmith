@@ -179,6 +179,24 @@ func TestCompileFailureDiag_FieldsRoundTrip(t *testing.T) {
 	assert.Equal(t, "kind t", d.SchemaRef)
 }
 
+// TestNonBodyDiagLine_StrippedAndUnstripped exercises the
+// helper directly: a file built with FM stripping returns
+// a non-positive body coord (so filterGeneratedDiags can't
+// match it), and a file built without stripping returns 1
+// unchanged.
+func TestNonBodyDiagLine_StrippedAndUnstripped(t *testing.T) {
+	stripped, err := lint.NewFileFromSource("doc.md",
+		[]byte("---\nfoo: 1\n---\n# Body\n"), true)
+	require.NoError(t, err)
+	require.Greater(t, stripped.LineOffset, 0)
+	assert.LessOrEqual(t, NonBodyDiagLine(stripped), 0)
+
+	unstripped, err := lint.NewFile("doc.md", []byte("# Body\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 0, unstripped.LineOffset)
+	assert.Equal(t, 1, NonBodyDiagLine(unstripped))
+}
+
 // TestValidateFrontmatterDiags_JSONMarshalFailureCarriesRef
 // regresses the json.Marshal early-return path. A channel
 // value in docFM is non-marshalable, so the validator falls

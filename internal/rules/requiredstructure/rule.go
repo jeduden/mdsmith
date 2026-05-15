@@ -1030,7 +1030,11 @@ func missingSectionDiagLegacy(
 		Expected:  "section to be present",
 		SchemaRef: ref,
 	}
-	return makeDiag(f.Path, 1, d.Format())
+	// Missing sections have no body line to point at; use the
+	// non-body anchor so the engine's filterGeneratedDiags can't
+	// drop the diagnostic when body line 1 sits inside a
+	// generated section.
+	return makeDiag(f.Path, schema.NonBodyDiagLine(f), d.Format())
 }
 
 // buildSchemaRefForLegacy returns the schema reference string
@@ -1361,12 +1365,12 @@ func readDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {
 	}
 
 	if err := yamlutil.RejectYAMLAliases(yamlBytes); err != nil {
-		return nil, []lint.Diagnostic{makeDiag(f.Path, 1,
+		return nil, []lint.Diagnostic{makeDiag(f.Path, schema.NonBodyDiagLine(f),
 			fmt.Sprintf("front matter: %v", err))}
 	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
-		return nil, []lint.Diagnostic{makeDiag(f.Path, 1,
+		return nil, []lint.Diagnostic{makeDiag(f.Path, schema.NonBodyDiagLine(f),
 			fmt.Sprintf("front matter: invalid YAML: %v", err))}
 	}
 	return raw, nil
@@ -1456,7 +1460,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			Expected:  fmt.Sprintf("path matching glob %s", pp.Pattern),
 			SchemaRef: fmt.Sprintf("kinds[%s] / path-pattern", pp.Kind),
 		}
-		diags = append(diags, makeDiag(f.Path, 1, d.Format()))
+		diags = append(diags, makeDiag(f.Path, schema.NonBodyDiagLine(f), d.Format()))
 	}
 	return diags
 }
@@ -1493,6 +1497,11 @@ func checkFilenamePattern(
 	if pattern == "" {
 		return nil
 	}
+	// Filename diagnostics describe the document as a whole;
+	// use the non-body anchor so filterGeneratedDiags can't
+	// drop them when body line 1 sits inside a generated
+	// section.
+	anchor := schema.NonBodyDiagLine(f)
 	base := filepath.Base(f.Path)
 	matched, err := filepath.Match(pattern, base)
 	if err != nil {
@@ -1507,7 +1516,7 @@ func checkFilenamePattern(
 			Hint:      err.Error(),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}
-		return []lint.Diagnostic{makeDiag(f.Path, 1, d.Format())}
+		return []lint.Diagnostic{makeDiag(f.Path, anchor, d.Format())}
 	}
 	if !matched {
 		// `glob` keeps the wording aligned with schema.validateFilename
@@ -1518,7 +1527,7 @@ func checkFilenamePattern(
 			Expected:  fmt.Sprintf("filename matching glob %s", pattern),
 			SchemaRef: buildSchemaRefForLegacy(schemaSource),
 		}
-		return []lint.Diagnostic{makeDiag(f.Path, 1, d.Format())}
+		return []lint.Diagnostic{makeDiag(f.Path, anchor, d.Format())}
 	}
 	return nil
 }
