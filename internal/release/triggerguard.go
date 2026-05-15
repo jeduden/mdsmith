@@ -136,21 +136,25 @@ func lookupReleaseDraft(client *http.Client, apiBase, repository, tag, token str
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	if err != nil {
-		return false, false, err
-	}
-
 	switch resp.StatusCode {
 	case http.StatusOK:
+		// Stream-decode only the `draft` field straight from the
+		// response body. Reading into a fixed buffer first would
+		// truncate (and fail to parse) releases whose `body` is
+		// larger than the cap, even though we never need it.
 		var payload releaseLookupPayload
-		if err := json.Unmarshal(body, &payload); err != nil {
+		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 			return false, false, fmt.Errorf("parse %s: %w", u, err)
 		}
 		return true, payload.Draft, nil
 	case http.StatusNotFound:
 		return false, false, nil
 	default:
+		// Bound the error body: it is only recorded for diagnostics.
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		if err != nil {
+			return false, false, err
+		}
 		return false, false, &releaseLookupError{
 			URL:        u,
 			StatusCode: resp.StatusCode,

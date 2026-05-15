@@ -30,6 +30,12 @@ concurrency:
 
 jobs:
   trigger-guard:
+    # `on: create` also fires for branch creation. Skip the whole job
+    # (checkout + setup-go + go run) for create events that are not a
+    # v* tag; downstream jobs gate on should_run and skip in turn.
+    if: >-
+      github.event_name != 'create' ||
+      (github.event.ref_type == 'tag' && startsWith(github.event.ref, 'v'))
     runs-on: ubuntu-latest
     outputs:
       should_run: ${{ steps.decide.outputs.should_run }}

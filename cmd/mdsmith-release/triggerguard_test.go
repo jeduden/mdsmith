@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -60,17 +62,22 @@ func TestRunCheckReleaseTriggerReportsWriteError(t *testing.T) {
 }
 
 // TestWriteReleaseTriggerGuardOutputStdout covers the path=="" branch
-// (no GITHUB_OUTPUT set) which prints to stdout instead of opening
-// a file.
+// (no GITHUB_OUTPUT set) which writes to the supplied stdout writer,
+// asserting the exact formatted output.
 func TestWriteReleaseTriggerGuardOutputStdout(t *testing.T) {
-	err := writeReleaseTriggerGuardOutput("", release.TriggerGuardResult{ShouldRun: true})
+	var buf bytes.Buffer
+	err := writeReleaseTriggerGuardOutput(&buf, "", release.TriggerGuardResult{
+		ShouldRun:            true,
+		CreateReleaseIsDraft: true,
+	})
 	require.NoError(t, err)
+	assert.Equal(t, "should_run=true\ncreate_release_is_draft=true\n", buf.String())
 }
 
 // TestWriteReleaseTriggerGuardOutputOpenError covers the
 // os.OpenFile error branch.
 func TestWriteReleaseTriggerGuardOutputOpenError(t *testing.T) {
 	dir := t.TempDir()
-	err := writeReleaseTriggerGuardOutput(dir, release.TriggerGuardResult{})
+	err := writeReleaseTriggerGuardOutput(io.Discard, dir, release.TriggerGuardResult{})
 	require.Error(t, err)
 }

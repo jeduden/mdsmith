@@ -283,6 +283,30 @@ func TestCheckReleaseTriggerReadBodyError(t *testing.T) {
 	require.ErrorIs(t, err, sentinel)
 }
 
+// TestCheckReleaseTriggerErrorBodyReadError covers the
+// io.ReadAll error branch in the non-200 (diagnostic body)
+// path of lookupReleaseDraft.
+func TestCheckReleaseTriggerErrorBodyReadError(t *testing.T) {
+	sentinel := errors.New("read boom")
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusInternalServerError,
+			Body:       errReadCloser{err: sentinel},
+			Header:     make(http.Header),
+		}, nil
+	})}
+	_, err := CheckReleaseTrigger(TriggerGuardOptions{
+		EventName:  "create",
+		Repository: "jeduden/mdsmith",
+		RefType:    "tag",
+		RefName:    "v1.2.3",
+		Token:      "t",
+		APIBaseURL: "https://api.example.com",
+		Client:     client,
+	})
+	require.ErrorIs(t, err, sentinel)
+}
+
 // TestCheckReleaseTriggerInvalidJSONErrors covers the
 // json.Unmarshal error branch of lookupReleaseDraft.
 func TestCheckReleaseTriggerInvalidJSONErrors(t *testing.T) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	flag "github.com/spf13/pflag"
@@ -41,20 +42,20 @@ func runCheckReleaseTrigger(_ string, args []string) int {
 	if err != nil {
 		return reportError(err)
 	}
-	if err := writeReleaseTriggerGuardOutput(os.Getenv("GITHUB_OUTPUT"), res); err != nil {
+	if err := writeReleaseTriggerGuardOutput(os.Stdout, os.Getenv("GITHUB_OUTPUT"), res); err != nil {
 		return reportError(err)
 	}
 	return 0
 }
 
-func writeReleaseTriggerGuardOutput(path string, res release.TriggerGuardResult) error {
+func writeReleaseTriggerGuardOutput(stdout io.Writer, path string, res release.TriggerGuardResult) error {
 	lines := fmt.Sprintf(
 		"should_run=%t\ncreate_release_is_draft=%t\n",
 		res.ShouldRun,
 		res.CreateReleaseIsDraft,
 	)
 	if path == "" {
-		_, err := fmt.Print(lines)
+		_, err := io.WriteString(stdout, lines)
 		return err
 	}
 
