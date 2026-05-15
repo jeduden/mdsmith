@@ -39,10 +39,18 @@
           const text = btn.getAttribute("data-copy");
           try {
             await navigator.clipboard.writeText(text);
+            // Capture the label once and clear any pending
+            // restore so a rapid second click can't snapshot
+            // the transient "copied" text as the original.
+            if (btn.dataset.label === undefined) btn.dataset.label = btn.textContent;
+            if (btn._copyTimer) clearTimeout(btn._copyTimer);
             btn.classList.add("is-copied");
-            const original = btn.textContent;
             btn.textContent = "copied";
-            setTimeout(() => { btn.classList.remove("is-copied"); btn.textContent = original; }, 1400);
+            btn._copyTimer = setTimeout(() => {
+              btn.classList.remove("is-copied");
+              btn.textContent = btn.dataset.label;
+              btn._copyTimer = null;
+            }, 1400);
           } catch (e) { /* clipboard unavailable */ }
         });
       });

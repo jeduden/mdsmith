@@ -58,6 +58,7 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"build-npm with one arg", []string{"build-npm", "art"}},
 		{"build-wheels without args", []string{"build-wheels"}},
 		{"build-wheels with one arg", []string{"build-wheels", "art"}},
+		{"build-website with three positionals", []string{"build-website", "a", "b", "c"}},
 	}
 	for _, c := range cases {
 		assert.Equal(t, 2, run(c.args), c.name)
@@ -94,7 +95,7 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 // of reportFlagParseErr per subcommand. pflag prints the Usage
 // itself, so the dispatcher just needs to surface exit code 0.
 func TestSubcommandHelpExitsZero(t *testing.T) {
-	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels", "sync-docs"} {
+	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels", "sync-docs", "build-website"} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
 }
@@ -102,7 +103,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 // TestSubcommandRejectsUnknownFlag exercises the non-help, non-nil
 // branch of reportFlagParseErr.
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
-	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels", "sync-docs"} {
+	for _, sub := range []string{"stamp", "check", "build-npm", "build-wheels", "sync-docs", "build-website"} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
 }
@@ -177,6 +178,34 @@ func TestRunBuildNpmReportsError(t *testing.T) {
 
 	require.Equal(t, 0, run([]string{"stamp", "1.2.3"}))
 	assert.Equal(t, 1, run([]string{"build-npm", "missing-artifacts", "dist"}))
+}
+
+// TestRunBuildWebsiteEndToEnd dispatches through `run
+// build-website --no-fix` so the subcommand wiring (flag
+// parse, positional defaulting, reportError) is exercised
+// without shelling out to `go run ./cmd/mdsmith` (the fix
+// pass is skipped). It also confirms the explicit src/dst
+// positionals override the defaults.
+func TestRunBuildWebsiteEndToEnd(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "docs")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "top.md"), []byte("# top\n"), 0o644))
+	dst := filepath.Join(root, "out")
+
+	assert.Equal(t, 0, run([]string{"build-website", "--no-fix", src, dst}))
+	got, err := os.ReadFile(filepath.Join(dst, "top.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "# top\n", string(got))
+}
+
+// TestRunBuildWebsiteReportsError drives the reportError
+// non-nil branch: src==dst trips the SyncDocs overlap guard,
+// so runBuildWebsite must surface exit code 1.
+func TestRunBuildWebsiteReportsError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "x.md"), []byte("x\n"), 0o644))
+	assert.Equal(t, 1, run([]string{"build-website", "--no-fix", dir, dir}))
 }
 
 // TestRunBuildWheelsReportsError dispatches through run
