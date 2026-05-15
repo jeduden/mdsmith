@@ -500,8 +500,6 @@ jobs:
               mdsmith version
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
-    env:
-      VERSION: ${{ env.VERSION }}
     steps:
       - name: Install
         run: ${{ matrix.install }}
@@ -544,11 +542,6 @@ jobs:
       # it expects the binary already on PATH — so no pin lives
       # there.)
       HUGO_VERSION: "0.161.1"
-      # The release tag drives the version Hugo renders in
-      # ``.Site.Params.version`` and the on-disk pin in
-      # website/hugo.toml. Stamp validates that the value has
-      # no leading "v" before rewriting, so strip it here.
-      VERSION: ${{ env.VERSION }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
