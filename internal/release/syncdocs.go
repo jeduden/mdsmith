@@ -299,9 +299,6 @@ func humanizeDirName(name string) string {
 		return r == '-' || r == '_'
 	})
 	for i, p := range parts {
-		if p == "" {
-			continue
-		}
 		parts[i] = strings.ToUpper(p[:1]) + p[1:]
 	}
 	return strings.Join(parts, " ")

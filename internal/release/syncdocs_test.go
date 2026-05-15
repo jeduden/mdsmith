@@ -358,6 +358,39 @@ func TestSyncDocs_EmptySubdirRemoveAllErrorPropagates(t *testing.T) {
 	assert.ErrorIs(t, err, errInjected)
 }
 
+// TestSyncDocs_SynthesizeStatErrorPropagates covers the
+// non-ErrNotExist branch of synthesizeSectionIndex's _index.md
+// existence probe. Stat call #1 is SyncDocs's own srcDir stat;
+// the sub/ directory's content writes nothing else through
+// Stat until the synthesize probe, so failing Stat #2 is the
+// _index.md check, which must surface (not be collapsed to a
+// "skip — already exists" no-op).
+func TestSyncDocs_SynthesizeStatErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "sub", "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnStatCall = 2
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "stat ")
+}
+
+// TestSyncDocs_SynthesizeWriteErrorPropagates covers both the
+// stub-write failure inside synthesizeSectionIndex and the
+// `return true, err` arm in syncDocsSubdir that surfaces it.
+// WriteFile #1 is sub/x.md (succeeds); #2 is the synthesized
+// sub/_index.md, which fails.
+func TestSyncDocs_SynthesizeWriteErrorPropagates(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "sub", "x.md"), "x\n")
+	ff := newFakeFS()
+	ff.failOnWriteFileCall = 2
+	err := NewWithFS(ff).SyncDocs(src, t.TempDir())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+}
+
 // TestIsUnder_HandlesFilesystemRoot is the regression for the
 // RemoveAll("/") hazard: the old HasPrefix(child, parent+sep)
 // test built "//" for a root parent, so isUnder("/a/b", "/")
