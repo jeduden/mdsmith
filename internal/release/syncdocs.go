@@ -301,10 +301,18 @@ func headingSpan(src []byte, h *ast.Heading) (int, int) {
 	if nl := bytes.IndexByte(src[segStop:], '\n'); nl >= 0 {
 		end = segStop + nl + 1
 	}
-	// Setext H1 (text line then an "===" underline): the
-	// heading line does not start with '#', so the following
-	// underline line is part of the heading and must go too.
-	if src[start] != '#' && end < len(src) {
+	// goldmark emits the same Heading node for ATX and setext
+	// H1s. ATX permits up to 3 leading spaces before the '#'
+	// (CommonMark), so trim those before testing for the
+	// marker — otherwise an indented ATX heading is misread
+	// as setext and the following content line is deleted. A
+	// setext H1 has no '#' and an "====" underline on the
+	// next line that must also be removed.
+	i := start
+	for i < end && i-start < 3 && src[i] == ' ' {
+		i++
+	}
+	if (i >= end || src[i] != '#') && end < len(src) {
 		if nl := bytes.IndexByte(src[end:], '\n'); nl >= 0 {
 			end += nl + 1
 		} else {

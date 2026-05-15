@@ -411,6 +411,15 @@ func TestLiftDocTitle(t *testing.T) {
 			"---\nsummary: s\n---\nCLI Reference\n===",
 			"---\nsummary: s\ntitle: \"CLI Reference\"\n---\n",
 		},
+		{
+			// Regression: CommonMark allows up to 3 leading
+			// spaces before an ATX '#'. The indented heading
+			// must not be misread as setext (which would
+			// delete the following content line).
+			"indented ATX H1 keeps the next content line",
+			"---\nsummary: s\n---\n  # Title\nfirst paragraph\n",
+			"---\nsummary: s\ntitle: \"Title\"\n---\nfirst paragraph\n",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
