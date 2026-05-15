@@ -59,7 +59,6 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"build-wheels without args", []string{"build-wheels"}},
 		{"build-wheels with one arg", []string{"build-wheels", "art"}},
 		{"build-website with three positionals", []string{"build-website", "a", "b", "c"}},
-		{"check-release-trigger with extra arg", []string{"check-release-trigger", "extra"}},
 	}
 	for _, c := range cases {
 		assert.Equal(t, 2, run(c.args), c.name)
@@ -98,7 +97,7 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 func TestSubcommandHelpExitsZero(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
-		"sync-docs", "build-website", "check-release-trigger",
+		"sync-docs", "build-website",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
@@ -109,7 +108,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
-		"sync-docs", "build-website", "check-release-trigger",
+		"sync-docs", "build-website",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}

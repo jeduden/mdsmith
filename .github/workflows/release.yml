@@ -4,67 +4,24 @@ on:
   push:
     tags:
       - "v*"
-  create:
 
 permissions:
   contents: read
 
 env:
-  VERSION: ${{ github.event_name == 'create' && github.event.ref || github.ref_name }}
+  VERSION: ${{ github.ref_name }}
 
-# Serialize only release-intent runs so two publish jobs cannot mint
-# OIDC tokens against the same registry at the same time. Ordinary
-# branch-creation `create` events get a per-run group and never queue
-# behind a real release. `cancel-in-progress: false` keeps the first
-# release going (cancelling mid-publish would leave the scoped
-# platform packages out of sync with the root package).
+# Serialize release runs so two publish jobs cannot mint OIDC tokens
+# against the same registry at the same time. `cancel-in-progress:
+# false` keeps the first release going (cancelling mid-publish would
+# leave the scoped platform packages out of sync with the root
+# package).
 concurrency:
-  group: >-
-    ${{
-      (github.event_name != 'create' ||
-      (github.event.ref_type == 'tag' && startsWith(github.event.ref, 'v'))) &&
-      'release' ||
-      format('release-nonrelease-{0}-{1}', github.run_id, github.run_attempt)
-    }}
+  group: release
   cancel-in-progress: false
 
 jobs:
-  trigger-guard:
-    # `on: create` also fires for branch creation. Skip the whole job
-    # (checkout + setup-go + go run) for create events that are not a
-    # v* tag; downstream jobs gate on should_run and skip in turn.
-    if: >-
-      github.event_name != 'create' ||
-      (github.event.ref_type == 'tag' && startsWith(github.event.ref, 'v'))
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.decide.outputs.should_run }}
-      create_release_is_draft: ${{ steps.decide.outputs.create_release_is_draft }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Decide whether this trigger should publish
-        id: decide
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          CREATE_REF_TYPE: ${{ github.event.ref_type }}
-          RELEASE_TAG: ${{ env.VERSION }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # The runtime logic lives in mdsmith-release per
-        # docs/development/release-tooling.md. The step itself stays a
-        # fixed one-liner so no event payload is interpolated into an
-        # inline shell script (zizmor template-injection finding).
-        run: go run ./cmd/mdsmith-release check-release-trigger
-
   build:
-    needs: [trigger-guard]
-    if: &release_trigger_ok >-
-      needs.trigger-guard.outputs.should_run == 'true'
     strategy:
       matrix:
         include:
@@ -115,15 +72,13 @@ jobs:
           path: ${{ env.bin }}
 
   vscode:
-    needs: [trigger-guard]
     runs-on: ubuntu-latest
     # VSCE_PAT and OVSX_PAT are long-lived publisher tokens — see
     # docs/development/release.md for why the `release` environment
     # gates them and what reviewer rules the maintainer should set
     # on it.
     if: &release_repo_trigger_ok >-
-      github.repository == 'jeduden/mdsmith' &&
-      needs.trigger-guard.outputs.should_run == 'true'
+      github.repository == 'jeduden/mdsmith'
     environment: release
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -231,7 +186,7 @@ jobs:
           path: editors/vscode/mdsmith-*.vsix
 
   npm:
-    needs: [trigger-guard, build]
+    needs: [build]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the canonical description
     # of `if:`, `environment:`, OIDC Trusted Publishing scope, and
@@ -309,7 +264,7 @@ jobs:
         run: npm publish --access public --provenance
 
   pypi:
-    needs: [trigger-guard, build]
+    needs: [build]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the canonical PyPI Trusted
     # Publisher config (workflow + environment scope) and the
@@ -352,7 +307,7 @@ jobs:
           packages-dir: python/dist
 
   release:
-    needs: [trigger-guard, build, vscode]
+    needs: [build, vscode]
     runs-on: ubuntu-latest
     # See docs/development/release.md for the rationale on `if:`,
     # `environment:`, and the OIDC + attestations permission set.
@@ -420,10 +375,10 @@ jobs:
             --bundle checksums.txt.bundle \
             checksums.txt
       - name: Upload assets to draft release
-        # Always create/update the release as a draft so every asset
-        # uploads while the release is still mutable. With immutable
-        # releases enforced, uploading to an already-published
-        # release is rejected — the publish must be the final step.
+        # Create the release as a draft so every asset uploads while
+        # the release is still mutable. With immutable releases
+        # enforced, uploading to an already-published release is
+        # rejected — the publish must be the final step.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
@@ -435,14 +390,10 @@ jobs:
             checksums.txt
             checksums.txt.bundle
       - name: Publish release
-        # Path A (tag push): create_release_is_draft == 'false', so
-        # flip the fully-populated draft to published as the final
-        # atomic step — the result is an immutable release. Path B
-        # (maintainer's UI-created draft): create_release_is_draft ==
-        # 'true', so the release is left as a draft for manual
-        # review and publish. Runtime logic lives in mdsmith-release
-        # per docs/development/release-tooling.md.
-        if: needs.trigger-guard.outputs.create_release_is_draft == 'false'
+        # Flip the fully-populated draft to published as the final
+        # atomic step, yielding an immutable release. Runtime logic
+        # lives in mdsmith-release per
+        # docs/development/release-tooling.md.
         env:
           RELEASE_TAG: ${{ env.VERSION }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -453,8 +404,7 @@ jobs:
     # — the npm and PyPI registries can take ~60s to surface a fresh
     # publish, so the channel-specific install commands re-run if the
     # registry briefly returns the previous version.
-    needs: [trigger-guard, npm, pypi, release]
-    if: needs.trigger-guard.outputs.should_run == 'true'
+    needs: [npm, pypi, release]
     strategy:
       fail-fast: false
       matrix:
@@ -525,18 +475,9 @@ jobs:
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
     steps:
-      # The mise channel resolves the binary off the public GitHub
-      # release (ubi backend). On the UI-draft path the release is
-      # left as a draft, so its assets are not publicly downloadable
-      # and mise cannot resolve them — skip mise there. npm/pip are
-      # registry-backed and unaffected by the GitHub release state.
       - name: Install
-        if: &smoke_channel_active >-
-          matrix.channel != 'mise' ||
-          needs.trigger-guard.outputs.create_release_is_draft == 'false'
         run: ${{ matrix.install }}
       - name: Verify version
-        if: *smoke_channel_active
         run: |
           got=$(${{ matrix.run }})
           want="mdsmith ${VERSION}"
@@ -557,7 +498,7 @@ jobs:
     # boundary for Pages; the per-repo Pages settings choose
     # GitHub Actions as the source.
     name: Deploy mdsmith.dev to GitHub Pages
-    needs: [trigger-guard, build]
+    needs: [build]
     if: *release_repo_trigger_ok
     runs-on: ubuntu-latest
     permissions:

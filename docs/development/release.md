@@ -45,50 +45,39 @@ git tag v0.13.0
 git push origin v0.13.0
 ```
 
-A `v*` tag push still triggers the published-release
-path. `release.yml` also listens to the repo's
-`create` event. That covers the GitHub UI path where
-a draft release creates a new `v*` tag. GitHub does
-not fire `release` workflows for draft creation. On
-`create` runs, a preflight job checks
-`github.event.ref_type == 'tag'`, `github.event.ref`
-starting with `v`, and — via
-`mdsmith-release check-release-trigger` — the GitHub
-Releases API for an existing draft release on that
-tag. A normal
-`git push origin vX.Y.Z` still fires both `create`
-and `push`, but only the `push` run proceeds because
-the `create` preflight sees no draft release yet.
+Pushing a `v*` tag is the only release trigger.
+`release.yml` listens solely to `push` on `v*` tags.
+Creating a release through the GitHub UI does **not**
+work: a *draft* release never creates a git tag, so
+no `push` (or `create`) event fires, and GitHub fires
+no `release` event for draft creation. The maintainer
+must push the tag.
 
-`release.yml` still omits `workflow_dispatch`,
-`pull_request_target`, `workflow_run`, and
+`release.yml` omits `workflow_dispatch`,
+`pull_request_target`, `workflow_run`, `create`, and
 `release`. Those triggers can mint OIDC tokens or
-reach the PATs from a non-tag context. The `release`
-event would also still miss draft creation.
+reach the PATs from a non-tag context, and none of
+them fire reliably for the draft-first publish flow.
 
-The `release` job always uploads every asset to a
-**draft** release first. It then publishes the
-release as a separate final step via
-`mdsmith-release publish-release`. Uploading to a
-published release is rejected once immutable
-releases are on. So the publish must be the last
-action.
+The `release` job uploads every asset to a **draft**
+release first. It then publishes the draft as a
+separate final step via `mdsmith-release
+publish-release`. Uploading to a published release is
+rejected once immutable releases are on. So the
+publish must be the last action. The published result
+is an immutable release.
 
-A normal tag push
-(`create_release_is_draft == 'false'`) auto-publishes
-the full draft. The result is an immutable release.
-A maintainer's UI-created draft
-(`create_release_is_draft == 'true'`) is left as a
-draft for manual review and publish.
+GitHub writes the release notes. The
+`softprops/action-gh-release` step sets
+`generate_release_notes: true`. The notes list merged
+PRs and commits since the previous tag.
 
-`concurrency: { group: release, cancel-in-progress: false }`
-still serializes real releases tag-agnostically.
-Non-release `create` events get a per-run concurrency
-group, so they do not queue behind the release lock.
-
-The flag lets the in-flight publish finish. Cancelling
-mid-publish would desync the platform packages from
-the root.
+`concurrency: { group: release, cancel-in-progress:
+false }` serializes release runs. Two publish jobs
+never mint OIDC tokens against the same registry at
+once. The flag lets an in-flight publish finish.
+Cancelling mid-publish would desync the platform
+packages from the root.
 
 ## Job Topology
 

@@ -50,7 +50,6 @@ setup step.
 | Subcommand                 | Invoked by                     |
 |----------------------------|--------------------------------|
 | `stamp <version>`          | `release.yml` publishing jobs  |
-| `check-release-trigger`    | `release.yml` trigger-guard    |
 | `publish-release`          | `release.yml` release job      |
 | `check`                    | `ci.yml` version-guard         |
 | `build-npm <art> <out>`    | `release.yml` npm job          |
