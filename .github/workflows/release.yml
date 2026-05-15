@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build:
-    if: >-
+    if: &release_ref_ok >-
       github.event_name != 'create' ||
       (github.ref_type == 'tag' && startsWith(github.ref_name, 'v'))
     strategy:
@@ -79,7 +79,7 @@ jobs:
     # docs/development/release.md for why the `release` environment
     # gates them and what reviewer rules the maintainer should set
     # on it.
-    if: >-
+    if: &release_repo_ref_ok >-
       github.repository == 'jeduden/mdsmith' &&
       (github.event_name != 'create' ||
       (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))
@@ -197,10 +197,7 @@ jobs:
     # the operational checklist for npmjs.com / pypi.org / GitHub
     # environment configuration. Workflow comments here only record
     # the local intent of each setting.
-    if: >-
-      github.repository == 'jeduden/mdsmith' &&
-      (github.event_name != 'create' ||
-      (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))
+    if: *release_repo_ref_ok
     environment: release
     # `id-token: write` lets `npm publish --provenance` mint an OIDC
     # token so the npm registry stamps each tarball with verifiable
@@ -276,10 +273,7 @@ jobs:
     # See docs/development/release.md for the canonical PyPI Trusted
     # Publisher config (workflow + environment scope) and the
     # operational checklist.
-    if: >-
-      github.repository == 'jeduden/mdsmith' &&
-      (github.event_name != 'create' ||
-      (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))
+    if: *release_repo_ref_ok
     environment: release
     permissions:
       contents: read
@@ -321,10 +315,7 @@ jobs:
     runs-on: ubuntu-latest
     # See docs/development/release.md for the rationale on `if:`,
     # `environment:`, and the OIDC + attestations permission set.
-    if: >-
-      github.repository == 'jeduden/mdsmith' &&
-      (github.event_name != 'create' ||
-      (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))
+    if: *release_repo_ref_ok
     environment: release
     permissions:
       contents: write
@@ -494,10 +485,7 @@ jobs:
     # GitHub Actions as the source.
     name: Deploy mdsmith.dev to GitHub Pages
     needs: [build]
-    if: >-
-      github.repository == 'jeduden/mdsmith' &&
-      (github.event_name != 'create' ||
-      (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))
+    if: *release_repo_ref_ok
     runs-on: ubuntu-latest
     permissions:
       contents: read

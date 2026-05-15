@@ -55,7 +55,7 @@ not fire `release` workflows for draft creation. On
 
 `release.yml` still omits `workflow_dispatch`,
 `pull_request_target`, `workflow_run`, and
-`release`. Those triggers could mint OIDC tokens or
+`release`. Those triggers can mint OIDC tokens or
 reach the PATs from a non-tag context. The `release`
 event would also still miss draft creation. When
 the run started from `create`, the final GitHub
