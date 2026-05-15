@@ -62,11 +62,11 @@ var syncableExt = map[string]struct{}{
 //   - mdsmith docs carry the page title as the first body H1
 //     (Hugo themes expect front-matter title:, no body H1).
 //     The first H1 is promoted to front-matter title: and
-//     removed from the body (see liftDocTitle).
+//     removed from the body (see reconcileDocForHugo).
 //   - mdsmith <?name … ?> / <?/name?> directive markers are
 //     source syntax with no meaning to Hugo. Removed, while
 //     the same syntax inside code fences/spans (directive
-//     documentation) is preserved (see stripDirectiveMarkers).
+//     documentation) is preserved (see reconcileDocForHugo).
 //
 // dstDir is removed before the copy, so SyncDocs is idempotent.
 //
@@ -219,12 +219,13 @@ func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
 }
 
 // transformMarkdown applies the docs/-tree → Hugo content
-// reconciliations to one markdown file, in pipeline order:
-// lift the body H1 into a front-matter title, strip mdsmith
-// <?…?> directive markers, then escape literal shortcode
-// patterns so documentation about Hugo renders verbatim.
+// reconciliations to one markdown file: a single goldmark
+// parse drives both the body-H1 → front-matter title lift
+// and the <?…?> directive-marker strip (see
+// reconcileDocForHugo), then literal shortcode patterns are
+// escaped so documentation about Hugo renders verbatim.
 func transformMarkdown(b []byte) []byte {
-	return escapeHugoShortcodes(stripDirectiveMarkers(liftDocTitle(b)))
+	return escapeHugoShortcodes(reconcileDocForHugo(b))
 }
 
 // splitDocFrontMatter separates a leading "---\n…\n---\n" block
@@ -242,25 +243,52 @@ func splitDocFrontMatter(s string) (fm, body string, hasFM, ok bool) {
 	return after[:idx], after[idx+len("\n---\n"):], true, true
 }
 
-// stripDirectiveMarkers removes mdsmith directive markers
-// (`<?name … ?>` openers and `<?/name?>` closers) from the
-// synced body. goldmark parses these as CommonMark type-3
-// HTML blocks, so an AST walk targets exactly the real
-// markers: a `<?catalog?>` shown inside a fenced code block
-// is an ast.FencedCodeBlock and inline `<?catalog?>` is an
-// ast.CodeSpan — both structurally distinct, so directive
-// documentation renders verbatim. The marker text is mdsmith
-// source syntax with no meaning to Hugo and must not surface
-// on the published site; the generated body between a pair
-// is ordinary Markdown that renders on its own. Removing the
-// markers also clears the last raw-HTML out of synced
-// content, which is what lets hugo.toml keep
-// markup.goldmark.renderer.unsafe = false (raw HTML in a doc
-// then vanishes loudly instead of shipping unsanitized); the
-// strip is correct regardless of that setting. Only the
-// marker's own physical lines are removed (surrounding blank
-// lines stay, so block separation is preserved).
-func stripDirectiveMarkers(b []byte) []byte {
+// reconcileDocForHugo performs the two AST-driven docs→Hugo
+// reconciliations from a single goldmark parse of the body:
+//
+//   - Title lift. mdsmith docs carry the page title as the
+//     first body H1 (the first-line-heading rule enforces it)
+//     and keep only `summary` in front matter; Hugo themes
+//     expect front-matter `title:` and no body H1. Left
+//     unreconciled every synced page renders two H1s (the
+//     template's {{ .Title }} plus the body's) and pages with
+//     no explicit `title:` show Hugo's filename guess in the
+//     breadcrumb, <title>, and sidebar. When the first block
+//     is a non-empty level-1 heading its flattened text is
+//     promoted to front-matter `title:` (an existing title is
+//     kept; a file with no front matter gets one synthesized)
+//     and the heading's source span (plus one trailing blank
+//     line) is spliced out.
+//   - Directive-marker strip. mdsmith `<?name … ?>` openers
+//     and `<?/name?>` closers are source syntax with no
+//     meaning to Hugo and must not surface on the published
+//     site. goldmark parses real markers as CommonMark type-3
+//     HTML blocks, while the same syntax inside a fenced code
+//     block (ast.FencedCodeBlock) or inline (ast.CodeSpan) is
+//     structurally distinct, so directive documentation
+//     renders verbatim. Stripping the markers also clears the
+//     last raw HTML out of synced content, which is what lets
+//     hugo.toml keep markup.goldmark.renderer.unsafe = false
+//     (raw HTML in a doc then vanishes loudly instead of
+//     shipping unsanitized); the strip is correct regardless
+//     of that setting.
+//
+// One parse is sufficient and correct: the H1 is the first
+// (leaf) block and a type-3 HTML block opens on its own line
+// independent of any preceding block, so the marker set is
+// identical whether the body is read before or after the H1
+// splice, and front-matter title injection never touches the
+// parsed body. Both edits are therefore line-span deletions
+// taken from the same parse and applied in one pass — the
+// heading span precedes every marker span and the AST walk
+// yields markers in source order, so the combined list is
+// already ascending and non-overlapping. Only each
+// construct's own physical lines are removed (surrounding
+// blank lines stay, so block separation is preserved). A file
+// whose first block is not a liftable H1 and that carries no
+// markers — or whose front matter never closes — is returned
+// byte-for-byte unchanged.
+func reconcileDocForHugo(b []byte) []byte {
 	fmBlock, body, hasFM, ok := splitDocFrontMatter(string(b))
 	if !ok {
 		return b
@@ -270,6 +298,16 @@ func stripDirectiveMarkers(b []byte) []byte {
 
 	type span struct{ start, end int }
 	var spans []span
+
+	var title string
+	if h, isH := doc.FirstChild().(*ast.Heading); isH && h.Level == 1 && h.Lines().Len() > 0 {
+		if t := strings.TrimSpace(headingText(h, src)); t != "" {
+			title = t
+			s, e := headingSpan(src, h)
+			spans = append(spans, span{s, e})
+		}
+	}
+
 	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		hb, isHB := n.(*ast.HTMLBlock)
 		if !entering || !isHB || hb.HTMLBlockType != ast.HTMLBlockType3 || hb.Lines().Len() == 0 {
@@ -290,6 +328,7 @@ func stripDirectiveMarkers(b []byte) []byte {
 		spans = append(spans, span{start, end})
 		return ast.WalkContinue, nil
 	})
+
 	if len(spans) == 0 {
 		return b
 	}
@@ -301,10 +340,16 @@ func stripDirectiveMarkers(b []byte) []byte {
 		prev = sp.end
 	}
 	sb.Write(src[prev:])
-	if !hasFM {
-		return []byte(sb.String())
+	newBody := sb.String()
+
+	switch {
+	case title != "":
+		return []byte("---\n" + mergeFMTitle(fmBlock, hasFM, title) + "\n---\n" + newBody)
+	case hasFM:
+		return []byte("---\n" + fmBlock + "\n---\n" + newBody)
+	default:
+		return []byte(newBody)
 	}
-	return []byte("---\n" + fmBlock + "\n---\n" + sb.String())
 }
 
 // headingText flattens a heading node's inline children to
@@ -325,51 +370,6 @@ func headingText(n ast.Node, src []byte) string {
 		sb.WriteString(headingText(c, src))
 	}
 	return sb.String()
-}
-
-// liftDocTitle reconciles the two title conventions at the
-// sync boundary. mdsmith docs carry the page title as the
-// first body H1 (the first-line-heading rule enforces it)
-// and keep only `summary` in front matter; Hugo themes
-// expect the title in front-matter `title:` with no body
-// H1. Left unreconciled, every synced page renders two H1s
-// (the template's {{ .Title }} plus the body's) and pages
-// without an explicit `title:` show Hugo's filename guess
-// in the breadcrumb, <title>, and sidebar.
-//
-// The body is parsed with goldmark so the "first block is a
-// level-1 heading" test is a real CommonMark decision: a '#'
-// inside a fenced code block, an HTML comment ahead of the
-// heading, or a setext underline are all classified
-// correctly instead of by line-prefix guessing. When the
-// first block is an H1 its text is promoted to a
-// front-matter `title:` and the heading's source span (plus
-// one trailing blank line) is spliced out of the body. An
-// existing `title:` is left untouched; a file with no
-// front-matter block gets one synthesized (research/ scratch
-// notes carry a body H1 but no front matter, and would
-// otherwise render an empty template `{{ .Title }}` H1 above
-// the body's). Anything whose first block is not an H1 is
-// returned unchanged.
-func liftDocTitle(b []byte) []byte {
-	fmBlock, body, hasFM, ok := splitDocFrontMatter(string(b))
-	if !ok {
-		return b
-	}
-
-	src := []byte(body)
-	h, isH := goldmark.New().Parser().Parse(text.NewReader(src)).FirstChild().(*ast.Heading)
-	if !isH || h.Level != 1 || h.Lines().Len() == 0 {
-		return b
-	}
-	title := strings.TrimSpace(headingText(h, src))
-	if title == "" {
-		return b
-	}
-
-	delStart, delEnd := headingSpan(src, h)
-	newBody := string(src[:delStart]) + string(src[delEnd:])
-	return []byte("---\n" + mergeFMTitle(fmBlock, hasFM, title) + "\n---\n" + newBody)
 }
 
 // headingSpan returns the byte range in src covering the

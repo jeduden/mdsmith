@@ -367,7 +367,10 @@ func TestSyncDocs_SkipsSymlinks(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "symlinked dir must not be copied")
 }
 
-func TestLiftDocTitle(t *testing.T) {
+// TestReconcileDocForHugo_TitleLift exercises the title-lift
+// half of reconcileDocForHugo: a first-block H1 is promoted
+// to front-matter title: and spliced out of the body.
+func TestReconcileDocForHugo_TitleLift(t *testing.T) {
 	cases := []struct {
 		name, in, want string
 	}{
@@ -423,19 +426,20 @@ func TestLiftDocTitle(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.want, string(liftDocTitle([]byte(c.in))))
+			assert.Equal(t, c.want, string(reconcileDocForHugo([]byte(c.in))))
 		})
 	}
 }
 
-// TestLiftDocTitle_LeavesUnchanged pins the cases goldmark
-// classifies as "first block is not a liftable H1": prose-
-// first pages, level-2-first files, a '#' that is really
-// fenced-code content (the old line-prefix regex wrongly
-// lifted this), an empty ATX heading, a heading whose inline
-// content flattens to nothing, and a front-matter fence that
-// never closes.
-func TestLiftDocTitle_LeavesUnchanged(t *testing.T) {
+// TestReconcileDocForHugo_TitleNoOp pins the cases goldmark
+// classifies as "first block is not a liftable H1" (and that
+// carry no directive markers, so reconcileDocForHugo returns
+// the input byte-for-byte): prose-first pages, level-2-first
+// files, a '#' that is really fenced-code content (the old
+// line-prefix regex wrongly lifted this), an empty ATX
+// heading, a heading whose inline content flattens to
+// nothing, and a front-matter fence that never closes.
+func TestReconcileDocForHugo_TitleNoOp(t *testing.T) {
 	for _, in := range []string{
 		"---\ntitle: Development\nsummary: s\n---\nBuild reference, no body H1.\n",
 		"---\nsummary: s\n---\njust prose, no leading heading\n",
@@ -446,17 +450,18 @@ func TestLiftDocTitle_LeavesUnchanged(t *testing.T) {
 		"---\nsummary: s\n---\n# <!-- only an html comment, no text -->\n\nbody\n",
 		"---\nsummary: s\nno closing fence so leave the file alone\n",
 	} {
-		assert.Equal(t, in, string(liftDocTitle([]byte(in))), "must be unchanged: %q", in)
+		assert.Equal(t, in, string(reconcileDocForHugo([]byte(in))), "must be unchanged: %q", in)
 	}
 }
 
-// TestStripDirectiveMarkers proves the AST-based strip:
-// real top-level `<?…?>` markers (CommonMark type-3 HTML
-// blocks) are removed while the same syntax inside a fenced
-// code block or inline code is structurally distinct and
-// must survive verbatim — so directive *documentation*
-// still renders. ~~~ fences avoid backticks in Go strings.
-func TestStripDirectiveMarkers(t *testing.T) {
+// TestReconcileDocForHugo_StripMarkers proves the AST-based
+// strip half: real top-level `<?…?>` markers (CommonMark
+// type-3 HTML blocks) are removed while the same syntax
+// inside a fenced code block or inline code is structurally
+// distinct and must survive verbatim — so directive
+// *documentation* still renders. ~~~ fences avoid backticks
+// in Go strings.
+func TestReconcileDocForHugo_StripMarkers(t *testing.T) {
 	const fence = "~~~text\n<?catalog\nsort: path\n?>\n<?/catalog?>\n~~~\n"
 	cases := []struct{ name, in, want string }{
 		{
@@ -478,22 +483,22 @@ func TestStripDirectiveMarkers(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.want, string(stripDirectiveMarkers([]byte(c.in))))
+			assert.Equal(t, c.want, string(reconcileDocForHugo([]byte(c.in))))
 		})
 	}
 }
 
-// TestStripDirectiveMarkers_LeavesUnchanged: no real
-// markers (none, fence-only, or inline-only) and malformed
-// front matter all return the input byte-for-byte.
-func TestStripDirectiveMarkers_LeavesUnchanged(t *testing.T) {
+// TestReconcileDocForHugo_StripNoOp: with no liftable H1,
+// no real markers (none, fence-only, or inline-only) and
+// malformed front matter all return the input byte-for-byte.
+func TestReconcileDocForHugo_StripNoOp(t *testing.T) {
 	for _, in := range []string{
 		"---\ntitle: x\n---\njust prose, no markers\n",
 		"---\ns: 1\n---\n~~~\n<?toc?>\n<?/toc?>\n~~~\n",
 		"prose with inline `<?catalog?>` only, no block marker\n",
 		"---\ns: 1\nno closing fence so leave the file alone\n",
 	} {
-		assert.Equal(t, in, string(stripDirectiveMarkers([]byte(in))),
+		assert.Equal(t, in, string(reconcileDocForHugo([]byte(in))),
 			"must be unchanged: %q", in)
 	}
 }
