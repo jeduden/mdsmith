@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -299,7 +301,8 @@ func humanizeDirName(name string) string {
 		return r == '-' || r == '_'
 	})
 	for i, p := range parts {
-		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		r, sz := utf8.DecodeRuneInString(p)
+		parts[i] = string(unicode.ToUpper(r)) + p[sz:]
 	}
 	return strings.Join(parts, " ")
 }

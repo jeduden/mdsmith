@@ -302,7 +302,8 @@ main {
   color: var(--forge-400);
 }
 .install-row .install-cmd {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: 13.5px;
   white-space: nowrap;
@@ -775,6 +776,7 @@ a.docs-side-title:hover, a.docs-side-title.is-active { color: var(--accent); tex
   .hero-grid { grid-template-columns: 1fr; gap: 36px; }
   .hero h1 { font-size: 44px; }
   .feature-grid { grid-template-columns: 1fr; }
+  .docs-index { grid-template-columns: 1fr; }
   .docs-grid { grid-template-columns: 1fr; }
   .docs-side { position: static; max-height: none; }
   .footer-grid { grid-template-columns: 1fr 1fr; }

@@ -391,6 +391,17 @@ func TestSyncDocs_SynthesizeWriteErrorPropagates(t *testing.T) {
 	assert.ErrorIs(t, err, errInjected)
 }
 
+// TestHumanizeDirName pins rune-aware capitalization: a
+// multibyte leading rune must be upper-cased whole, not have
+// its first byte sliced (which would emit invalid UTF-8 into
+// the synthesized front-matter title).
+func TestHumanizeDirName(t *testing.T) {
+	assert.Equal(t, "Release Channels", humanizeDirName("release-channels"))
+	assert.Equal(t, "Reference", humanizeDirName("reference"))
+	assert.Equal(t, "Über Docs", humanizeDirName("über_docs"))
+	assert.Equal(t, "Éclair", humanizeDirName("éclair"))
+}
+
 // TestIsUnder_HandlesFilesystemRoot is the regression for the
 // RemoveAll("/") hazard: the old HasPrefix(child, parent+sep)
 // test built "//" for a root parent, so isUnder("/a/b", "/")
