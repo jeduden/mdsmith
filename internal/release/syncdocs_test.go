@@ -450,6 +450,54 @@ func TestLiftDocTitle_LeavesUnchanged(t *testing.T) {
 	}
 }
 
+// TestStripDirectiveMarkers proves the AST-based strip:
+// real top-level `<?…?>` markers (CommonMark type-3 HTML
+// blocks) are removed while the same syntax inside a fenced
+// code block or inline code is structurally distinct and
+// must survive verbatim — so directive *documentation*
+// still renders. ~~~ fences avoid backticks in Go strings.
+func TestStripDirectiveMarkers(t *testing.T) {
+	const fence = "~~~text\n<?catalog\nsort: path\n?>\n<?/catalog?>\n~~~\n"
+	cases := []struct{ name, in, want string }{
+		{
+			"opener+closer removed, generated body and fenced/inline examples kept",
+			"---\ntitle: \"X\"\n---\n" +
+				"Intro.\n\n" +
+				"<?catalog\nglob:\n  - \"docs/**/*.md\"\n?>\n" +
+				"- [A](a.md)\n- [B](b.md)\n<?/catalog?>\n\n" +
+				"More prose.\n\n" + fence + "\nInline `<?include?>` stays.\n",
+			"---\ntitle: \"X\"\n---\n" +
+				"Intro.\n\n- [A](a.md)\n- [B](b.md)\n\n" +
+				"More prose.\n\n" + fence + "\nInline `<?include?>` stays.\n",
+		},
+		{
+			"single-line <?toc?> with no front matter",
+			"intro\n\n<?toc?>\n\nend\n",
+			"intro\n\n\nend\n",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, string(stripDirectiveMarkers([]byte(c.in))))
+		})
+	}
+}
+
+// TestStripDirectiveMarkers_LeavesUnchanged: no real
+// markers (none, fence-only, or inline-only) and malformed
+// front matter all return the input byte-for-byte.
+func TestStripDirectiveMarkers_LeavesUnchanged(t *testing.T) {
+	for _, in := range []string{
+		"---\ntitle: x\n---\njust prose, no markers\n",
+		"---\ns: 1\n---\n~~~\n<?toc?>\n<?/toc?>\n~~~\n",
+		"prose with inline `<?catalog?>` only, no block marker\n",
+		"---\ns: 1\nno closing fence so leave the file alone\n",
+	} {
+		assert.Equal(t, in, string(stripDirectiveMarkers([]byte(in))),
+			"must be unchanged: %q", in)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))

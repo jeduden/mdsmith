@@ -215,7 +215,83 @@ func (t *Toolkit) syncDocsDir(src, dst string) (bool, error) {
 // into a front-matter title, then escape literal shortcode
 // patterns so documentation about Hugo renders verbatim.
 func transformMarkdown(b []byte) []byte {
-	return escapeHugoShortcodes(liftDocTitle(b))
+	return escapeHugoShortcodes(stripDirectiveMarkers(liftDocTitle(b)))
+}
+
+// splitDocFrontMatter separates a leading "---\n…\n---\n" block
+// from the body. ok is false when a block opens but never
+// closes (malformed — callers must leave the file untouched).
+func splitDocFrontMatter(s string) (fm, body string, hasFM, ok bool) {
+	if !strings.HasPrefix(s, "---\n") {
+		return "", s, false, true
+	}
+	after := s[len("---\n"):]
+	idx := strings.Index(after, "\n---\n")
+	if idx < 0 {
+		return "", s, false, false
+	}
+	return after[:idx], after[idx+len("\n---\n"):], true, true
+}
+
+// stripDirectiveMarkers removes mdsmith directive markers
+// (`<?name … ?>` openers and `<?/name?>` closers) from the
+// synced body. goldmark parses these as CommonMark type-3
+// HTML blocks, so an AST walk targets exactly the real
+// markers: a `<?catalog?>` shown inside a fenced code block
+// is an ast.FencedCodeBlock and inline `<?catalog?>` is an
+// ast.CodeSpan — both structurally distinct, so directive
+// documentation renders verbatim. Removing the markers lets
+// Hugo render with markup.goldmark.renderer.unsafe = false;
+// the marker text is mdsmith source syntax with no meaning
+// to Hugo, and the generated body between a pair is ordinary
+// Markdown that renders on its own. Only the marker's own
+// physical lines are removed (surrounding blank lines stay,
+// so block separation is preserved).
+func stripDirectiveMarkers(b []byte) []byte {
+	fmBlock, body, hasFM, ok := splitDocFrontMatter(string(b))
+	if !ok {
+		return b
+	}
+	src := []byte(body)
+	doc := goldmark.New().Parser().Parse(text.NewReader(src))
+
+	type span struct{ start, end int }
+	var spans []span
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		hb, isHB := n.(*ast.HTMLBlock)
+		if !entering || !isHB || hb.HTMLBlockType != ast.HTMLBlockType3 || hb.Lines().Len() == 0 {
+			return ast.WalkContinue, nil
+		}
+		// goldmark's raw-block line segments already include
+		// the trailing newline; a multi-line opener's "?>"
+		// terminator is the ClosureLine, not a Lines() entry.
+		// So the span end is the closure (multi-line) or the
+		// last/only content line (single-line) — no extra
+		// newline scan, which would eat a following blank.
+		segStart := hb.Lines().At(0).Start
+		end := hb.Lines().At(hb.Lines().Len() - 1).Stop
+		if hb.HasClosure() {
+			end = hb.ClosureLine.Stop
+		}
+		start := bytes.LastIndexByte(src[:segStart], '\n') + 1
+		spans = append(spans, span{start, end})
+		return ast.WalkContinue, nil
+	})
+	if len(spans) == 0 {
+		return b
+	}
+
+	var sb strings.Builder
+	prev := 0
+	for _, sp := range spans {
+		sb.Write(src[prev:sp.start])
+		prev = sp.end
+	}
+	sb.Write(src[prev:])
+	if !hasFM {
+		return []byte(sb.String())
+	}
+	return []byte("---\n" + fmBlock + "\n---\n" + sb.String())
 }
 
 // headingText flattens a heading node's inline children to
@@ -263,20 +339,14 @@ func headingText(n ast.Node, src []byte) string {
 // the body's). Anything whose first block is not an H1 is
 // returned unchanged.
 func liftDocTitle(b []byte) []byte {
-	s := string(b)
-	fmBlock, body, hasFM := "", s, false
-	if strings.HasPrefix(s, "---\n") {
-		after := s[len("---\n"):]
-		idx := strings.Index(after, "\n---\n")
-		if idx < 0 {
-			return b
-		}
-		fmBlock, body, hasFM = after[:idx], after[idx+len("\n---\n"):], true
+	fmBlock, body, hasFM, ok := splitDocFrontMatter(string(b))
+	if !ok {
+		return b
 	}
 
 	src := []byte(body)
-	h, ok := goldmark.New().Parser().Parse(text.NewReader(src)).FirstChild().(*ast.Heading)
-	if !ok || h.Level != 1 || h.Lines().Len() == 0 {
+	h, isH := goldmark.New().Parser().Parse(text.NewReader(src)).FirstChild().(*ast.Heading)
+	if !isH || h.Level != 1 || h.Lines().Len() == 0 {
 		return b
 	}
 	title := strings.TrimSpace(headingText(h, src))
