@@ -32,6 +32,42 @@ func TestSchemaDiagnostic_Format_AllFields(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
+// TestSchemaDiagnostic_Format_NoActual covers the branch
+// where Field and Expected are set but Actual is empty: the
+// rendered message uses ": expected ..." rather than the
+// "got X, expected Y" form, so absent-but-known constraints
+// (e.g. a wildcard-text scope) read cleanly.
+func TestSchemaDiagnostic_Format_NoActual(t *testing.T) {
+	d := SchemaDiagnostic{
+		Field:     "## Goal",
+		Expected:  "section to be present",
+		SchemaRef: "kind plan",
+	}
+	want := "## Goal: expected section to be present\nschema: kind plan"
+	assert.Equal(t, want, d.Format())
+}
+
+// TestSchemaDiagnostic_Format_FieldOnly covers the very
+// minimal render: just a field name with no actual,
+// expected, hint, or schema ref. The renderer should still
+// produce a non-empty string.
+func TestSchemaDiagnostic_Format_FieldOnly(t *testing.T) {
+	d := SchemaDiagnostic{Field: "field"}
+	assert.Equal(t, "field", d.Format())
+}
+
+// TestFormatActual_FallbackOnMarshalError exercises the
+// final fmt.Sprintf("%v", v) fallback. json.Marshal fails
+// on channels, functions, and complex values; the helper
+// degrades to the default formatter so the caller still
+// gets a printable string.
+func TestFormatActual_FallbackOnMarshalError(t *testing.T) {
+	// Channels can't be JSON-marshalled; the helper falls
+	// through to %v which produces a pointer-shaped string.
+	got := formatActual(make(chan int))
+	assert.NotEmpty(t, got)
+}
+
 // TestSchemaDiagnostic_Format_NoHint covers the no-hint branch:
 // when the extractor cannot suggest a fix, the message ends at the
 // expected line and goes straight to the schema reference.
