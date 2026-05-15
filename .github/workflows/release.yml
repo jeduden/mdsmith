@@ -33,6 +33,9 @@ jobs:
         id: decide
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ env.VERSION }}
+          RELEASE_LOOKUP_RETRY_ATTEMPTS: "3"
+          RELEASE_LOOKUP_RETRY_DELAY_SECONDS: "2"
         run: |
           if [ "${{ github.event_name }}" != "create" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
@@ -46,7 +49,7 @@ jobs:
             exit 0
           fi
 
-          case "${VERSION}" in
+          case "${RELEASE_TAG}" in
             v*) ;;
             *)
               echo "should_run=false" >> "$GITHUB_OUTPUT"
@@ -56,7 +59,7 @@ jobs:
           esac
 
           status=404
-          for attempt in 1 2 3; do
+          for attempt in $(seq 1 "${RELEASE_LOOKUP_RETRY_ATTEMPTS}"); do
             status=$(
               curl \
                 --silent \
@@ -67,12 +70,13 @@ jobs:
                 -H "Accept: application/vnd.github+json" \
                 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${VERSION}"
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
             )
-            if [ "${status}" != "404" ] || [ "${attempt}" = "3" ]; then
+            if [ "${status}" != "404" ] || \
+              [ "${attempt}" = "${RELEASE_LOOKUP_RETRY_ATTEMPTS}" ]; then
               break
             fi
-            sleep 2
+            sleep "${RELEASE_LOOKUP_RETRY_DELAY_SECONDS}"
           done
 
           case "${status}" in
@@ -96,7 +100,7 @@ jobs:
               exit 0
               ;;
             *)
-              echo "failed to inspect release for ${VERSION}; api status ${status}" >&2
+              echo "failed to inspect release for ${RELEASE_TAG}; api status ${status}" >&2
               cat /tmp/release.json >&2
               exit 1
               ;;
