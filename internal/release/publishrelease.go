@@ -188,11 +188,7 @@ type releaseLookupError struct {
 }
 
 func (e *releaseLookupError) Error() string {
-	op := e.Op
-	if op == "" {
-		op = "lookup"
-	}
-	msg := fmt.Sprintf("%s %s: unexpected GitHub API status %d", op, e.URL, e.StatusCode)
+	msg := fmt.Sprintf("%s %s: unexpected GitHub API status %d", e.Op, e.URL, e.StatusCode)
 	body := strings.TrimSpace(e.Body)
 	if body == "" {
 		return msg

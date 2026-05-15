@@ -184,6 +184,16 @@ func TestPatchReleaseDraftFalseRequestBuildError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestReleaseLookupErrorMessage(t *testing.T) {
+	// Empty body returns just the status line (the `body == ""`
+	// branch); a non-empty body appends it.
+	bare := &releaseLookupError{Op: "publish", URL: "u", StatusCode: 422}
+	assert.Equal(t, "publish u: unexpected GitHub API status 422", bare.Error())
+
+	withBody := &releaseLookupError{Op: "lookup", URL: "u", StatusCode: 500, Body: "  boom  "}
+	assert.Equal(t, "lookup u: unexpected GitHub API status 500: boom", withBody.Error())
+}
+
 func TestPublishReleaseUsesDefaultAPIBase(t *testing.T) {
 	var gotURL string
 	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

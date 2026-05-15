@@ -61,11 +61,11 @@ them fire reliably for the draft-first publish flow.
 
 The `release` job uploads every asset to a **draft**
 release first. It then publishes the draft as a
-separate final step via `mdsmith-release
-publish-release`. Uploading to a published release is
-rejected once immutable releases are on. So the
-publish must be the last action. The published result
-is an immutable release.
+separate final step. That step runs
+`mdsmith-release publish-release`. Uploading to a
+published release is rejected once immutable releases
+are on. So the publish must be the last action. The
+result is an immutable release.
 
 GitHub writes the release notes. The
 `softprops/action-gh-release` step sets
