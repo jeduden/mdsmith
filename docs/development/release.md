@@ -46,22 +46,21 @@ git push origin v0.13.0
 ```
 
 A `v*` tag push still triggers the published-release
-path, and `release.yml` also listens to the repo's
-`create` event so a draft release created in the
-GitHub UI can start the pipeline when that UI call
-creates a new `v*` tag. GitHub does not fire
-`release` workflows for draft creation, so the
-workflow job guards check `ref_type=tag` and
-`ref_name starts with v` on `create` runs instead.
+path. `release.yml` also listens to the repo's
+`create` event. That covers the GitHub UI path where
+a draft release creates a new `v*` tag. GitHub does
+not fire `release` workflows for draft creation. On
+`create` runs, the workflow job guards check
+`ref_type=tag` and `ref_name starts with v`.
 
 `release.yml` still omits `workflow_dispatch`,
 `pull_request_target`, `workflow_run`, and
 `release`. Those triggers could mint OIDC tokens or
-reach the PATs from a non-tag context, and the
-`release` event would still miss draft creation.
-When the run started from `create`, the final
-GitHub Release upload keeps the release in draft
-state; a normal tag push keeps the current
+reach the PATs from a non-tag context. The `release`
+event would also still miss draft creation. When
+the run started from `create`, the final GitHub
+Release upload keeps the release in draft state. A
+normal tag push keeps the current
 published-release behavior.
 
 `concurrency: { group: release, cancel-in-progress: false }`
