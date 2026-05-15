@@ -1,0 +1,20 @@
+<table class="tbl">
+  <thead>
+    {{- range .THead }}
+    <tr>
+      {{- range . }}
+      <th{{ with .Alignment }} style="text-align: {{ . }}"{{ end }}>{{ .Text | safeHTML }}</th>
+      {{- end }}
+    </tr>
+    {{- end }}
+  </thead>
+  <tbody>
+    {{- range .TBody }}
+    <tr>
+      {{- range . }}
+      <td{{ with .Alignment }} style="text-align: {{ . }}"{{ end }}>{{ .Text | safeHTML }}</td>
+      {{- end }}
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
