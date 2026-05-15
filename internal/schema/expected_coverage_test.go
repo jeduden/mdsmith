@@ -111,3 +111,12 @@ func TestRenderExpected_RegexUnquoteFailure(t *testing.T) {
 func TestRenderExpected_IntRangeUpperHalfOpen(t *testing.T) {
 	assert.Equal(t, "int <= 5", RenderExpected("int & <=5"))
 }
+
+// TestRenderIntRange_NoBoundsFallsThrough exercises the
+// final fallback inside (*intRangeBounds).render: an
+// `int & int` constraint has the int keyword twice but no
+// bounds on either side, so render returns ("", false) and
+// RenderExpected falls back to the raw expression.
+func TestRenderIntRange_NoBoundsFallsThrough(t *testing.T) {
+	assert.Equal(t, "int & int", RenderExpected("int & int"))
+}

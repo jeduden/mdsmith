@@ -272,6 +272,20 @@ func parseFMBlockKeyLines(fm []byte) map[string]int {
 // to render an "expected" string in user vocabulary, and pull
 // the actual value out of docFM so the message shows exactly
 // what the user wrote.
+//
+// Precision note: lookupConstraint and schemaRef both resolve
+// against path[0] (the top-level frontmatter key the schema's
+// Frontmatter map indexes by). For nested CUE errors — e.g.
+// `meta.owner` against a schema whose `meta:` value is itself
+// a struct constraint — Field still shows the full dotted
+// path so the reader can locate the failing leaf, but Expected
+// renders the parent constraint (the top-level CUE expression)
+// rather than the leaf. Today every shipped schema in
+// mdsmith uses single-segment frontmatter constraints, so
+// this asymmetry is hypothetical; option (a) from the PR #284
+// review (CUE LookupPath on ce.Path() for leaf-level
+// resolution) is the natural follow-up if nested frontmatter
+// constraints land later.
 func schemaDiagFromCUEError(
 	sch *Schema, docFM map[string]any, ce errors.Error,
 ) SchemaDiagnostic {

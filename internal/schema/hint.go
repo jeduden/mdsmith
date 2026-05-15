@@ -192,34 +192,26 @@ func levenshtein(a, b string) int {
 	}
 	ra := []rune(a)
 	rb := []rune(b)
-	// Belt-and-braces bound CodeQL can prove locally:
-	// tooLongForLevInput above already returns early for any
-	// over-cap input, but the static analyser cannot follow
-	// the bound through the helper, so it kept flagging the
-	// `len(rb)+1` allocation. The inline guard here pins the
-	// length to a constant CodeQL can see, mirroring the
-	// length-based fallback above without changing behaviour.
-	if len(ra) > maxLevInput || len(rb) > maxLevInput {
-		if len(ra) > len(rb) {
-			return len(ra)
-		}
-		return len(rb)
-	}
 	if len(ra) == 0 {
 		return len(rb)
 	}
 	if len(rb) == 0 {
 		return len(ra)
 	}
-	rows := len(rb) + 1
-	prev := make([]int, rows)
-	curr := make([]int, rows)
-	for j := 0; j < rows; j++ {
+	// CodeQL flagged the previous `make([]int, len(rb)+1)`
+	// allocation because the static analyser couldn't follow
+	// the maxLevInput bound through the tooLongForLevInput
+	// helper above. Use the compile-time constant size
+	// directly so the analyser sees a bounded allocation, and
+	// only iterate the columns inside the bound.
+	const rows = maxLevInput + 1
+	var prev, curr [rows]int
+	for j := 0; j <= len(rb); j++ {
 		prev[j] = j
 	}
 	for i := 1; i <= len(ra); i++ {
 		curr[0] = i
-		for j := 1; j < rows; j++ {
+		for j := 1; j <= len(rb); j++ {
 			cost := 1
 			if ra[i-1] == rb[j-1] {
 				cost = 0
