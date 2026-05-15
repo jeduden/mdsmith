@@ -93,4 +93,5 @@ footer: |
 | 163 | 🔲     | opus   | [Schema-driven data extraction (mdsmith extract)](plan/163_schema-driven-data-extraction.md)                              |
 | 164 | 🔲     | opus   | [Custom binding overrides for mdsmith extract](plan/164_custom-binding-overrides.md)                                      |
 | 164 | ✅     |        | [GitHub-UI-triggered releases and a split website deploy](plan/164_github-ui-releases-and-split-website.md)               |
+| 165 | 🔲     | opus   | [Portable Markdown export (mdsmith export)](plan/165_portable-markdown-export.md)                                         |
 <?/catalog?>
