@@ -89,4 +89,14 @@
     {{- $url = printf "%s/%s" (strings.TrimSuffix ".md" $path) $frag -}}
   {{- end -}}
 {{- end -}}
-<a href="{{ $url }}"{{ with .Title }} title="{{ . | safeHTML }}"{{ end }}>{{ .Text | safeHTML }}</a>
+{{- /* .Title is the Markdown link title — raw text that has
+       not been through Hugo's contextual escaper. Emitting it
+       with `safeHTML` would bypass the attribute escaper and
+       let a `"`/`>` in the title break out of the href's
+       sibling attribute. Letting Go's html/template see the
+       string in `attr="…"` context produces the right
+       per-context escaping. (.Text stays on safeHTML because
+       it already arrives as rendered HTML from Hugo — the
+       renderer applies any inline emphasis or code spans in
+       the link text before this hook fires.) */ -}}
+<a href="{{ $url }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>

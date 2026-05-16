@@ -156,16 +156,30 @@ jobs:
         # site full of 404s. Each grep is wrapped in its own
         # if-block so the failing case prints a clear message;
         # `set -euo pipefail` ensures the first failure aborts.
+        #
+        # The expected href prefix is derived from BASE_URL so
+        # this works equally on a root deploy (prefix empty,
+        # hrefs are `/docs/…/`) and a project-pages deploy
+        # (prefix `/<repo>`, hrefs are `/<repo>/docs/…/`). The
+        # render-link hook runs absolute paths through relURL,
+        # which prepends whatever prefix Hugo was built with.
         working-directory: website
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
         run: |
           set -euo pipefail
+
+          # Strip scheme + host and trailing slash to leave just
+          # the path portion. Root deploys collapse to "";
+          # project-pages deploys leave "/<repo>".
+          prefix="$(printf '%s' "$BASE_URL" | sed -E 's|^https?://[^/]+||; s|/$||')"
 
           # 1. A sibling `.md` link from a leaf-page source
           #    resolves to the target page's permalink, not a
           #    literal `.md` path under the source's URL.
-          if ! grep -q 'href=/docs/development/pr-fixup-workflow/' \
+          if ! grep -q "href=${prefix}/docs/development/pr-fixup-workflow/" \
               public/docs/development/merge-queue/index.html; then
-            echo "::error::render-link: sibling .md not resolved to permalink" >&2
+            echo "::error::render-link: sibling .md not resolved to permalink (prefix=${prefix})" >&2
             exit 1
           fi
 
@@ -173,14 +187,15 @@ jobs:
           #    `architecture/` drop resolves through GetPage to
           #    the section permalink rather than nesting under
           #    the leaf page (the source-vs-rendered-depth bug).
-          if ! grep -q 'href=/docs/development/architecture/' \
+          if ! grep -q "href=${prefix}/docs/development/architecture/" \
               public/docs/development/architecture-audit/index.html; then
-            echo "::error::render-link: index.md drop misresolved on leaf page" >&2
+            echo "::error::render-link: index.md drop misresolved on leaf page (prefix=${prefix})" >&2
             exit 1
           fi
 
           # 3. Cross-rule references survive as the published
-          #    rule-page URL, not the unpublished README.md.
+          #    rule-page URL, not the unpublished README.md. No
+          #    prefix needed — this asserts absence.
           if grep -rq 'href=[^"]*README\.md' public/docs/rules/; then
             echo "::error::render-link: README.md target leaked into a rule page" >&2
             exit 1
