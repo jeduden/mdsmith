@@ -2074,3 +2074,87 @@ id: 'int & >=1'
 	expectDiagMsg(t, diags, "id: got <missing>")
 	expectDiagMsg(t, diags, "expected int >= 1")
 }
+
+// TestIsLikelyArchetypeName_AllBranches gives the helper direct
+// coverage of every branch. Previously it was only exercised
+// indirectly through ApplySettings, so test churn elsewhere
+// silently dropped its coverage (the recurring codecov/changes
+// signal). A dedicated table keeps it pinned.
+func TestIsLikelyArchetypeName_AllBranches(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"empty string", "", false},
+		{"forward slash path", "schemas/story.md", false},
+		{"forward slash, no ext", "schemas/story", false},
+		{"backslash path", `schemas\story`, false},
+		{"has extension", "story.md", false},
+		{"dotfile-style extension", "story.proto.md", false},
+		{"bare name no ext no slash", "story", true},
+		{"bare name with dash", "rule-readme", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isLikelyArchetypeName(tc.in))
+		})
+	}
+}
+
+// TestExtractSchemaSourceFromSettings_AllBranches replaces the
+// removed rulesDeclareSchema's branch coverage. The schema-source
+// detection logic moved here during the SettingsTranslator
+// refactor; this table exercises every return path directly
+// instead of relying on TranslateLayerSettings call sites.
+func TestExtractSchemaSourceFromSettings_AllBranches(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      map[string]any
+		wantSrc any
+		wantKey bool
+	}{
+		{"no schema keys", map[string]any{"placeholders": []any{"x"}}, nil, false},
+		{"empty settings", map[string]any{}, nil, false},
+		{"schema non-empty string", map[string]any{"schema": "schemas/a.md"},
+			map[string]any{"file": "schemas/a.md"}, true},
+		{"schema empty string", map[string]any{"schema": ""}, nil, true},
+		{"schema wrong type", map[string]any{"schema": 42}, nil, true},
+		{"inline-schema non-empty map", map[string]any{"inline-schema": map[string]any{
+			"sections": []any{map[string]any{"heading": "X"}},
+		}}, map[string]any{"inline": map[string]any{
+			"sections": []any{map[string]any{"heading": "X"}},
+		}}, true},
+		{"inline-schema empty map",
+			map[string]any{"inline-schema": map[string]any{}}, nil, true},
+		{"inline-schema wrong type",
+			map[string]any{"inline-schema": "not-a-map"}, nil, true},
+		{"schema wins over inline (file first)", map[string]any{
+			"schema":        "a.md",
+			"inline-schema": map[string]any{"sections": []any{}},
+		}, map[string]any{"file": "a.md"}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			src, hadKey := extractSchemaSourceFromSettings(tc.in)
+			assert.Equal(t, tc.wantSrc, src)
+			assert.Equal(t, tc.wantKey, hadKey)
+		})
+	}
+}
+
+// TestExtractSchemaSourceFromSettings_InlineDeepCopied verifies the
+// extracted inline source does not alias the caller's nested maps,
+// so a later layer mutation cannot reach the captured schema.
+func TestExtractSchemaSourceFromSettings_InlineDeepCopied(t *testing.T) {
+	inline := map[string]any{"sections": []any{
+		map[string]any{"heading": "Goal"},
+	}}
+	src, _ := extractSchemaSourceFromSettings(
+		map[string]any{"inline-schema": inline})
+	got := src.(map[string]any)["inline"].(map[string]any)
+	inline["sections"].([]any)[0].(map[string]any)["heading"] = "MUT"
+	sec := got["sections"].([]any)[0].(map[string]any)
+	assert.Equal(t, "Goal", sec["heading"],
+		"extracted inline source must not alias the input map")
+}

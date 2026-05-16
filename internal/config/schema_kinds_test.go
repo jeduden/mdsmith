@@ -274,6 +274,54 @@ func TestEffectiveKinds_CfgDelegatesToResolver(t *testing.T) {
 	assert.Equal(t, []string{"plan"}, got)
 }
 
+// TestEffectiveKinds_AllBranches pins every branch of the public
+// helper with direct cases so its coverage no longer depends on
+// indirect call sites (the recurring codecov/changes signal).
+func TestEffectiveKinds_AllBranches(t *testing.T) {
+	t.Run("nil cfg, empty fmKinds -> empty", func(t *testing.T) {
+		got := EffectiveKinds(nil, "doc.md", nil, nil)
+		assert.Empty(t, got)
+	})
+	t.Run("nil cfg, no duplicates -> order preserved", func(t *testing.T) {
+		got := EffectiveKinds(nil, "doc.md", []string{"a", "b", "c"}, nil)
+		assert.Equal(t, []string{"a", "b", "c"}, got)
+	})
+	t.Run("nil cfg, duplicates -> deduped first-wins", func(t *testing.T) {
+		got := EffectiveKinds(nil, "doc.md",
+			[]string{"a", "b", "a", "c", "b"}, nil)
+		assert.Equal(t, []string{"a", "b", "c"}, got,
+			"seen-true branch must skip later duplicates")
+	})
+	t.Run("non-nil cfg delegates and merges fm + assignment", func(t *testing.T) {
+		cfg := &Config{
+			Kinds: map[string]KindBody{"plan": {}, "proto": {}},
+			KindAssignment: []KindAssignmentEntry{
+				{Glob: []string{"plan/*.md"}, Kinds: []string{"plan"}},
+			},
+		}
+		got := EffectiveKinds(cfg, "plan/foo.md",
+			[]string{"proto"}, nil)
+		// front-matter kinds first, then kind-assignment matches.
+		assert.Equal(t, []string{"proto", "plan"}, got)
+	})
+	t.Run("non-nil cfg, fields-present selector via fmFields", func(t *testing.T) {
+		cfg := &Config{
+			Kinds: map[string]KindBody{"rfc": {}},
+			KindAssignment: []KindAssignmentEntry{
+				{Glob: []string{"**/*.md"}, FieldsPresent: []string{"rfc-id"},
+					Kinds: []string{"rfc"}},
+			},
+		}
+		with := EffectiveKinds(cfg, "x.md", nil,
+			map[string]any{"rfc-id": "RFC-1"})
+		assert.Equal(t, []string{"rfc"}, with,
+			"fmFields must feed the fields-present selector")
+		without := EffectiveKinds(cfg, "x.md", nil, nil)
+		assert.Empty(t, without,
+			"no fmFields -> fields-present entry must not match")
+	})
+}
+
 // TestTranslateLayerSettings_NonStringSchemaKey covers a layer
 // whose `schema:` is a non-string value: the rule's translator
 // still strips the legacy key but adds no schema-sources entry.
