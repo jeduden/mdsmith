@@ -298,17 +298,21 @@ func stripDirectives(f *lint.File, directives []directiveStrip) []byte {
 
 // piLineRange returns the 1-based start and end source-line numbers
 // of a processing-instruction block (including the closing ?>).
+// Markerless PIs come in two shapes the goldmark PI parser can
+// produce: a single-line PI (`<?name?>`) where the closure is on the
+// opening line, and a multi-line PI where the closure sits on its
+// own line; the latter is the only shape that extends `end` past
+// `start`.
 func piLineRange(pi *lint.ProcessingInstruction, f *lint.File) (int, int) {
 	first := pi.Lines().At(0)
 	start := f.LineOfOffset(first.Start)
-	end := start
-	if pi.HasClosure() && pi.ClosureLine.Start != first.Start {
-		end = f.LineOfOffset(pi.ClosureLine.Start)
-	} else if pi.Lines().Len() > 1 {
-		last := pi.Lines().At(pi.Lines().Len() - 1)
-		end = f.LineOfOffset(last.Start)
+	if !pi.HasClosure() {
+		return start, start
 	}
-	return start, end
+	if pi.ClosureLine.Start == first.Start {
+		return start, start
+	}
+	return start, f.LineOfOffset(pi.ClosureLine.Start)
 }
 
 func overlapsAny(from, to int, set map[int]bool) bool {
@@ -349,7 +353,9 @@ func normalizeBlankLines(src []byte, codeBlockLines map[int]bool) []byte {
 		return src
 	}
 	rawLines := strings.Split(string(src), "\n")
-	if len(rawLines) > 0 && rawLines[len(rawLines)-1] == "" {
+	// strings.Split on a non-empty input always returns at least one
+	// element, so the guard reduces to a check on the final element.
+	if rawLines[len(rawLines)-1] == "" {
 		rawLines = rawLines[:len(rawLines)-1]
 	}
 

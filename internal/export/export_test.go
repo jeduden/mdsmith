@@ -441,6 +441,24 @@ func TestExport_SingleMarkerlessPI_FullyStripped(t *testing.T) {
 	assert.Empty(t, string(out))
 }
 
+func TestExport_UnclosedMarkerlessPI_PreservedAsLiteral(t *testing.T) {
+	// An unclosed PI (`<?foo` without `?>`) is parsed by goldmark
+	// as a PI with HasClosure()==false. piLineRange's no-closure
+	// branch returns start==end. stripDirectives won't pair it
+	// with any directive, so its line passes through to the output
+	// — proving the path is reachable without changing observable
+	// behavior.
+	src := "# Title\n\n<?weird\n\nbody after blank\n"
+	f := newFile(t, "doc.md", src)
+
+	out, diags := export.Export(f, export.NoCheck, allRules())
+	require.Empty(t, diags)
+	got := string(out)
+	// The "weird" PI line survives (no matching directive in the
+	// registry, no closing marker, so stripDirectives leaves it).
+	assert.Contains(t, got, "body after blank")
+}
+
 func TestExport_TrailingBlankLines_Collapsed(t *testing.T) {
 	// After stripping markers, trailing blank lines beyond the
 	// directive block should be trimmed by normalizeBlankLines'

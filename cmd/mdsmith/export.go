@@ -140,9 +140,11 @@ func prepareExportFile(
 ) (*lint.File, []rule.Rule, error) {
 	f, _ := lint.NewFileFromSource(path, source, frontMatterEnabled(cfg)) // never errors today
 	f.MaxInputBytes = maxBytes
-	f.FS = os.DirFS(filepath.Dir(path))
-	gitignoreDir := filepath.Dir(path)
-	if root := rootDirFromConfig(cfgPath); root != "" {
+	dir := filepath.Dir(path)
+	f.FS = os.DirFS(dir)
+	gitignoreDir := dir
+	root := rootDirFromConfig(cfgPath)
+	if root != "" {
 		f.SetRootDir(root)
 		gitignoreDir = root
 	}
@@ -221,7 +223,10 @@ func configuredEnabledRules(
 	var out []rule.Rule
 	for _, rl := range all {
 		cfg, ok := effective[rl.Name()]
-		if !ok || !cfg.Enabled {
+		if !ok {
+			continue
+		}
+		if !cfg.Enabled {
 			continue
 		}
 		configured, err := engine.ConfigureRule(rl, cfg)
