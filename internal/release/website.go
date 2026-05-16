@@ -232,9 +232,11 @@ var ruleDirName = regexp.MustCompile(`^MDS[0-9]`)
 // internal/ (other than the rule pages already handled in step 1),
 // and root-level files — become absolute GitHub URLs, /blob/ for
 // file targets and /tree/ for directory targets; (3) sibling
-// links to `index.md` get the `_index.md` rename SyncDocs applied
-// to the file itself, so MDS027 still resolves the target on the
-// synced filesystem.
+// links to `<path>/index.md` drop the `index.md` filename so the
+// target becomes the directory itself (`<path>/`). Hugo serves
+// `_index.md` (the rename SyncDocs applies) at that directory
+// URL, and MDS027 stats the directory as an existing path, so
+// the rendered link works and the lint still resolves.
 //
 // The whole pass runs under applyOutsideCode so a Markdown
 // example inside a fenced code block OR an inline code span
@@ -370,9 +372,12 @@ func applyOutsideFences(src []byte, fn func([]byte) []byte) []byte {
 }
 
 // inlineCodeSpan matches a single-backtick code span on one
-// line: `text`. Multi-backtick spans and multi-line spans are
-// not matched. The non-greedy body and the line-end guard keep
-// the regex from spanning adjacent code spans on the same line.
+// line: `text`. The body uses a negated character class that
+// excludes the backtick and newline, so the match cannot cross
+// either — that is what keeps the regex from spanning adjacent
+// code spans on the same line or running into a following line.
+// Multi-backtick spans (the doubled or tripled opener forms)
+// and multi-line spans are not matched.
 var inlineCodeSpan = regexp.MustCompile("`[^`\n]+`")
 
 // applyOutsideInlineCode calls fn on every maximal substring of

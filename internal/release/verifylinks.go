@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -82,6 +83,19 @@ func websiteLinkProbes(prefix string) []linkProbe {
 				hrefEq + q(prefix) + `/docs/development/architecture/`),
 		},
 		{
+			// The rewriter emits site-absolute `/docs/rules/<id>/`
+			// targets for every cross-rule and docs-to-rule link.
+			// The render-link hook routes those through relURL so
+			// the rendered href carries the baseURL's path prefix
+			// (empty for root deploys). Without this probe a
+			// regression in relURL would slip past the two probes
+			// above, which exercise only the GetPage branch.
+			name: "site-absolute /docs/rules/ href carries baseURL prefix",
+			path: "docs/reference/schema-types/index.html",
+			wantMatch: regexp.MustCompile(
+				hrefEq + q(prefix) + `/docs/rules/MDS020-required-structure/`),
+		},
+		{
 			name: "no README.md hrefs leaked into rule pages",
 			path: "docs/rules",
 			wantNoMatch: regexp.MustCompile(
@@ -154,8 +168,11 @@ func walkAndReject(target string, p linkProbe) error {
 // readHTMLFile reads an HTML file and wraps a missing-file
 // error with a clearer message so the probe failure points
 // at the rendered tree rather than a generic open error.
+// Reads through os.ReadFile directly — VerifyWebsiteLinks
+// runs only against a real Hugo output tree on disk, so
+// there is no Toolkit fs seam to thread through here.
 func readHTMLFile(path string) ([]byte, error) {
-	data, err := New().fs.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("rendered HTML not found: %s", path)
 	}

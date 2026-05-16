@@ -57,13 +57,21 @@
 {{- $absolute := strings.HasPrefix $url "/" -}}
 
 {{- if $absolute -}}
+  {{- /* Hugo's `relURL` returns absolute paths unchanged
+         even under a non-root --baseURL, so the rewriter's
+         site-absolute targets need a manual prefix from
+         `site.Home.RelPermalink` (which IS the baseURL
+         path with a trailing slash — `/` for root,
+         `/mdsmith/` for project-pages). Trim its trailing
+         slash so concatenation does not produce `//docs`. */ -}}
   {{- $parts := split $url "#" -}}
   {{- $path := index $parts 0 -}}
   {{- $frag := "" -}}
   {{- if gt (len $parts) 1 -}}
     {{- $frag = printf "#%s" (delimit (after 1 $parts) "#") -}}
   {{- end -}}
-  {{- $url = printf "%s%s" (relURL $path) $frag -}}
+  {{- $sitePrefix := strings.TrimSuffix "/" site.Home.RelPermalink -}}
+  {{- $url = printf "%s%s%s" $sitePrefix $path $frag -}}
 {{- else if not (or $external $anchorOnly) -}}
   {{- $parts := split $url "#" -}}
   {{- $path := index $parts 0 -}}

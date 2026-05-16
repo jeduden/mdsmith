@@ -21,6 +21,8 @@ func goodSite(t *testing.T, prefix string) string {
 		`<a href="`+prefix+`/docs/development/pr-fixup-workflow/">pr fixup</a>`)
 	writeFile(t, filepath.Join(root, "docs", "development", "architecture-audit", "index.html"),
 		`<a href="`+prefix+`/docs/development/architecture/">arch</a>`)
+	writeFile(t, filepath.Join(root, "docs", "reference", "schema-types", "index.html"),
+		`<a href="`+prefix+`/docs/rules/MDS020-required-structure/">rule</a>`)
 	writeFile(t, filepath.Join(root, "docs", "rules", "mds001", "index.html"),
 		`<a href="`+prefix+`/docs/rules/mds021/">sibling rule</a>`)
 	writeFile(t, filepath.Join(root, "index.html"), `<p>home</p>`)
@@ -48,6 +50,8 @@ func TestVerifyWebsiteLinks_AcceptsUnquotedHref(t *testing.T) {
 		`<a href=/docs/development/pr-fixup-workflow/>pr fixup</a>`)
 	writeFile(t, filepath.Join(root, "docs", "development", "architecture-audit", "index.html"),
 		`<a href=/docs/development/architecture/>arch</a>`)
+	writeFile(t, filepath.Join(root, "docs", "reference", "schema-types", "index.html"),
+		`<a href=/docs/rules/MDS020-required-structure/>rule</a>`)
 	writeFile(t, filepath.Join(root, "docs", "rules", "mds001", "index.html"),
 		`<a href=/docs/rules/mds021/>sibling</a>`)
 	require.NoError(t, VerifyWebsiteLinks(root, ""))
@@ -148,6 +152,8 @@ func TestVerifyWebsiteLinks_MissingRecursiveRootWraps(t *testing.T) {
 		`<a href="/docs/development/pr-fixup-workflow/">x</a>`)
 	writeFile(t, filepath.Join(root, "docs", "development", "architecture-audit", "index.html"),
 		`<a href="/docs/development/architecture/">x</a>`)
+	writeFile(t, filepath.Join(root, "docs", "reference", "schema-types", "index.html"),
+		`<a href="/docs/rules/MDS020-required-structure/">x</a>`)
 	// docs/rules is absent.
 	err := VerifyWebsiteLinks(root, "")
 	require.Error(t, err)
