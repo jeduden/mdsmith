@@ -111,7 +111,9 @@ func doExport(path string, flags exportFlags) int {
 
 	out, diags := export.Export(f, exportMode(flags), rules)
 	if len(diags) > 0 {
-		_ = formatDiagnostics(diags, "text", false)
+		if code := formatDiagnostics(diags, "text", false); code != 0 {
+			return code
+		}
 		return 1
 	}
 	if err := writeExportOutput(flags.output, out); err != nil {
