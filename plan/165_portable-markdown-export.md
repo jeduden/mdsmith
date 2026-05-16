@@ -85,15 +85,20 @@ modified.
 1. **Export core (red/green).** Add `internal/export`
    with `Export(f *lint.File, mode Mode) ([]byte,
    []lint.Diagnostic)` — mirroring plan 166's `Extract`
-   signature. It removes marker lines while keeping the
-   on-disk body bytes verbatim — no regeneration. A
-   non-empty diagnostic slice means refusal: bytes are
-   `nil` and the caller exits non-zero (a `nil` slice and
-   bytes is success). `Mode` is the staleness mode from
-   task 4. Reserve a hard `error` only for I/O failures,
-   not document-level problems. Unit-test marker removal,
-   body retention, include-body inlining, and the
-   no-directive no-op.
+   signature. It operates purely on the already-parsed
+   in-memory `*lint.File`, so it performs no I/O and
+   returns no `error`; file reads and `-o` writes are the
+   CLI layer's job (task 5) and surface as a real `error`
+   there. Contract: exactly one of the two return values
+   is populated. **Success** → the exported bytes (which
+   are never `nil`, since a directive-free file still
+   yields its own content) and a `nil` diagnostic slice.
+   **Refusal** (stale body in `Check` mode, or any
+   document-level problem) → `nil` bytes and a non-empty
+   diagnostic slice; the caller exits non-zero. `Mode` is
+   the staleness mode from task 4. Unit-test marker
+   removal, body retention, include-body inlining, and
+   the no-directive no-op.
 2. **Nested / literal-content markers.** Drive removal
    off the engine's own marker-pair detection —
    `gensection.FindMarkerPairs` in
