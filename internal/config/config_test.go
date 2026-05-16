@@ -1482,6 +1482,36 @@ func TestLoad_MetaCategoryOverrideEmitsDeprecationAndTranslates(t *testing.T) {
 	}
 }
 
+func TestLoad_MetaCategoryTrueDoesNotEnableOptInProseRules(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath,
+		[]byte("categories:\n  meta: true\n"), 0o644))
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+
+	// Deprecation still fires.
+	found := false
+	for _, d := range cfg.Deprecations {
+		if strings.Contains(d, "meta") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "meta: true should still emit a deprecation")
+
+	// Opt-in prose rules must NOT appear in cfg.Rules — inserting Enabled: true
+	// would activate them even though they were never default-enabled via meta.
+	for _, ruleName := range []string{
+		"conciseness-scoring", "duplicated-content",
+		"emphasis-style", "ambiguous-emphasis",
+	} {
+		_, present := cfg.Rules[ruleName]
+		assert.False(t, present, "opt-in prose rule %q must not be inserted when meta: true", ruleName)
+	}
+}
+
 func TestLoad_MetaCategoryMultipleOverridesEmitsDeprecationOnce(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, ".mdsmith.yml")

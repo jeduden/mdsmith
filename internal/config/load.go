@@ -283,19 +283,25 @@ func detectMetaCategoryDeprecations(cfg *Config) {
 		"by rule name if needed"
 	warned := false
 	if v, ok := translateMetaCategory(cfg.Categories); ok {
-		if cfg.Rules == nil {
-			cfg.Rules = make(map[string]RuleCfg)
+		// Only disable prose rules explicitly; enabling them (meta: true) must
+		// not opt in default-disabled rules that meta: true never activated.
+		if !v {
+			if cfg.Rules == nil {
+				cfg.Rules = make(map[string]RuleCfg)
+			}
+			applyMovedProseRules(cfg.Rules, false)
 		}
-		applyMovedProseRules(cfg.Rules, v)
 		cfg.Deprecations = append(cfg.Deprecations, msg)
 		warned = true
 	}
 	for name, kind := range cfg.Kinds {
 		if v, ok := translateMetaCategory(kind.Categories); ok {
-			if kind.Rules == nil {
-				kind.Rules = make(map[string]RuleCfg)
+			if !v {
+				if kind.Rules == nil {
+					kind.Rules = make(map[string]RuleCfg)
+				}
+				applyMovedProseRules(kind.Rules, false)
 			}
-			applyMovedProseRules(kind.Rules, v)
 			cfg.Kinds[name] = kind
 			if !warned {
 				cfg.Deprecations = append(cfg.Deprecations, msg)
@@ -305,10 +311,12 @@ func detectMetaCategoryDeprecations(cfg *Config) {
 	}
 	for i, o := range cfg.Overrides {
 		if v, ok := translateMetaCategory(o.Categories); ok {
-			if o.Rules == nil {
-				o.Rules = make(map[string]RuleCfg)
+			if !v {
+				if o.Rules == nil {
+					o.Rules = make(map[string]RuleCfg)
+				}
+				applyMovedProseRules(o.Rules, false)
 			}
-			applyMovedProseRules(o.Rules, v)
 			cfg.Overrides[i] = o
 			if !warned {
 				cfg.Deprecations = append(cfg.Deprecations, msg)
