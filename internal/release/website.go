@@ -115,17 +115,25 @@ const rulePageURLBase = "/docs/rules/"
 // explicitly. They live at the repo root with no enclosing
 // directory, so a `(?:\.\./)+` prefix is the only signal that
 // the link target is repo-relative rather than sibling.
+//
+// Each path uses `\S+` rather than `[^)]+`. A Markdown link
+// title (`[x](target "title")`) is whitespace-separated from
+// the target, so `\S+` stops before it and the regex's
+// trailing `\)` then fails to match — the titled link is
+// left alone rather than rewritten with the title text
+// glued into the GitHub URL. No source doc carries a titled
+// link today, but the pattern stays correct if one is added.
 var repoNonPublishedLink = regexp.MustCompile(
 	`\]\((?:\.\./)+(` +
-		`plan/[^)]+|` +
-		`cmd/[^)]+|` +
-		`editors/[^)]+|` +
-		`cue/[^)]+|` +
-		`npm/[^)]+|` +
-		`python/[^)]+|` +
-		`\.claude/[^)]+|` +
-		`\.github/[^)]+|` +
-		`internal/[^)]+|` +
+		`plan/\S+|` +
+		`cmd/\S+|` +
+		`editors/\S+|` +
+		`cue/\S+|` +
+		`npm/\S+|` +
+		`python/\S+|` +
+		`\.claude/\S+|` +
+		`\.github/\S+|` +
+		`internal/\S+|` +
 		`PLAN\.md|README\.md|LICENSE|SECURITY\.md|CLAUDE\.md|AGENTS\.md` +
 		`)\)`)
 
@@ -175,7 +183,12 @@ var indexMdLink = regexp.MustCompile(`\]\(((?:[^)/]+/)+)index\.md((?:#[^)]*)?)\)
 // republished on the site (no Hugo page for raw test data), so a
 // repo-relative link 404s. Rewrite to the rule's GitHub source
 // tree URL so the example file is still reachable.
-var ruleFixtureLink = regexp.MustCompile(`\]\(((?:bad|good|pattern)/[^)]*)\)`)
+//
+// `\S*` (not `[^)]*`) rejects whitespace inside the target so
+// a titled link `[x](good/default.md "title")` is left alone
+// rather than rewritten with the title text glued into the
+// GitHub URL.
+var ruleFixtureLink = regexp.MustCompile(`\]\(((?:bad|good|pattern)/\S*)\)`)
 
 // ruleSiblingNonMDSLink matches an inline link in a per-rule
 // README whose target is a single-`../`-prefixed sibling under
@@ -184,8 +197,10 @@ var ruleFixtureLink = regexp.MustCompile(`\]\(((?:bad|good|pattern)/[^)]*)\)`)
 // example. Sibling MDS rule pages (`../MDS021-include/`) ARE
 // published, so they are excluded by requiring the first
 // character after `../` to be lowercase or a dot (rule names
-// start with uppercase `M`).
-var ruleSiblingNonMDSLink = regexp.MustCompile(`\]\(\.\./([a-z._][^)]*)\)`)
+// start with uppercase `M`). The tail uses `\S*` rather than
+// `[^)]*` so a titled link is left alone instead of having
+// the title text consumed into the GitHub URL.
+var ruleSiblingNonMDSLink = regexp.MustCompile(`\]\(\.\./([a-z._]\S*)\)`)
 
 // ruleSourceTreeBase is the GitHub directory (tree) route for a
 // rule's source. Per-rule READMEs carry an

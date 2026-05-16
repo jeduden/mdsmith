@@ -107,6 +107,38 @@ func TestVerifyWebsiteLinks_FailsOnJavascriptScheme(t *testing.T) {
 	assert.Contains(t, err.Error(), "javascript:")
 }
 
+// TestVerifyWebsiteLinks_FailsOnMixedCaseJavascript pins
+// the case-insensitive scheme guard: URL schemes are
+// case-insensitive per RFC 3986, so `JavaScript:` is the
+// same dangerous scheme as `javascript:` and the probe
+// must reject it too.
+func TestVerifyWebsiteLinks_FailsOnMixedCaseJavascript(t *testing.T) {
+	root := goodSite(t, "")
+	writeFile(t, filepath.Join(root, "docs", "evil", "index.html"),
+		`<a href="JavaScript:alert(1)">click</a>`)
+	err := VerifyWebsiteLinks(root, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "javascript:")
+}
+
+// TestVerifyWebsiteLinks_FailsOnMissingSiteAbsolute exercises
+// walkAndRequireAny's no-match path: the good fixture has the
+// /docs/rules/MDSxxx/ link, but stripping the prefix
+// expectation means nothing matches under subpath baseURL.
+func TestVerifyWebsiteLinks_FailsOnMissingSiteAbsolute(t *testing.T) {
+	// Build a tree that has every required href except the
+	// site-absolute /docs/rules/MDSxxx/ form.
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "docs", "development", "merge-queue", "index.html"),
+		`<a href="/mdsmith/docs/development/pr-fixup-workflow/">x</a>`)
+	writeFile(t, filepath.Join(root, "docs", "development", "architecture-audit", "index.html"),
+		`<a href="/mdsmith/docs/development/architecture/">x</a>`)
+	// docs/ has no MDS-rule href under any subpath.
+	err := VerifyWebsiteLinks(root, "https://example.com/mdsmith/")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "/mdsmith/docs/rules/")
+}
+
 func TestVerifyWebsiteLinks_FailsOnDataScheme(t *testing.T) {
 	root := goodSite(t, "")
 	writeFile(t, filepath.Join(root, "docs", "evil", "index.html"),

@@ -52,9 +52,16 @@
 {{- $external := or
   (strings.HasPrefix $url "http://")
   (strings.HasPrefix $url "https://")
-  (strings.HasPrefix $url "mailto:") -}}
+  (strings.HasPrefix $url "mailto:")
+  (strings.HasPrefix $url "//") -}}
+{{- /* `//example.com/path` is a protocol-relative external URL,
+       not a site-absolute path. Treating it as $absolute would
+       prefix it with `site.Home.RelPermalink` and emit
+       `/mdsmith//example.com/path`, corrupting the link. The
+       protocol-relative check sits in $external so the value
+       passes through unchanged. */ -}}
 {{- $anchorOnly := strings.HasPrefix $url "#" -}}
-{{- $absolute := strings.HasPrefix $url "/" -}}
+{{- $absolute := and (strings.HasPrefix $url "/") (not $external) -}}
 
 {{- if $absolute -}}
   {{- /* Hugo's `relURL` returns absolute paths unchanged

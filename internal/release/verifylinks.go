@@ -48,17 +48,26 @@ func VerifyWebsiteLinks(htmlDir, baseURL string) error {
 	return nil
 }
 
-// linkProbe describes one rendered-HTML assertion. Either
-// wantMatch or wantNoMatch is set, never both; whichever is
-// non-nil drives the check at that path. recursive=true
-// scans every .html file under path; recursive=false reads
-// the single file at path.
+// linkProbe describes one rendered-HTML assertion. Exactly
+// one of wantMatch, wantNoMatch, or wantAnyMatch is set:
+//
+//   - wantMatch (non-recursive): the single file at path
+//     must contain a regex match.
+//   - wantNoMatch (recursive): no file under path may
+//     match — used for absence checks (no leaked README.md
+//     hrefs, no javascript: schemes, …).
+//   - wantAnyMatch (recursive): at least one file under
+//     path must match — used to assert a render-link
+//     behavior is reachable in the rendered output without
+//     tying the probe to one specific docs page that a
+//     legitimate edit could remove.
 type linkProbe struct {
-	name        string
-	path        string
-	wantMatch   *regexp.Regexp
-	wantNoMatch *regexp.Regexp
-	recursive   bool
+	name         string
+	path         string
+	wantMatch    *regexp.Regexp
+	wantNoMatch  *regexp.Regexp
+	wantAnyMatch *regexp.Regexp
+	recursive    bool
 }
 
 // websiteLinkProbes returns the probes that VerifyWebsiteLinks
@@ -85,15 +94,19 @@ func websiteLinkProbes(prefix string) []linkProbe {
 		{
 			// The rewriter emits site-absolute `/docs/rules/<id>/`
 			// targets for every cross-rule and docs-to-rule link.
-			// The render-link hook routes those through relURL so
-			// the rendered href carries the baseURL's path prefix
-			// (empty for root deploys). Without this probe a
-			// regression in relURL would slip past the two probes
-			// above, which exercise only the GetPage branch.
+			// The render-link hook manually prefixes those with
+			// site.Home.RelPermalink so the rendered href carries
+			// the baseURL's path component (empty on root
+			// deploys, `/<repo>` on project-pages). A recursive
+			// wantAnyMatch keeps the probe robust to legitimate
+			// docs edits — any rendered page that carries one
+			// such href satisfies the assertion, so removing a
+			// single content reference does not block the deploy.
 			name: "site-absolute /docs/rules/ href carries baseURL prefix",
-			path: "docs/reference/schema-types/index.html",
-			wantMatch: regexp.MustCompile(
-				hrefEq + q(prefix) + `/docs/rules/MDS020-required-structure/`),
+			path: "docs",
+			wantAnyMatch: regexp.MustCompile(
+				hrefEq + q(prefix) + `/docs/rules/MDS[0-9A-Za-z._-]+/`),
+			recursive: true,
 		},
 		{
 			name: "no README.md hrefs leaked into rule pages",
@@ -103,30 +116,37 @@ func websiteLinkProbes(prefix string) []linkProbe {
 			recursive: true,
 		},
 		{
+			// URL schemes are case-insensitive per RFC 3986 — a
+			// rendered `href="JavaScript:..."` is just as
+			// dangerous as the lowercase form. `(?i)` makes the
+			// regex case-fold so the probe catches both.
 			name:        "no javascript: hrefs reached rendered HTML",
 			path:        ".",
-			wantNoMatch: regexp.MustCompile(`href=(?:"javascript:|javascript:)`),
+			wantNoMatch: regexp.MustCompile(`(?i)href=(?:"javascript:|javascript:)`),
 			recursive:   true,
 		},
 		{
 			name:        "no data: hrefs reached rendered HTML",
 			path:        ".",
-			wantNoMatch: regexp.MustCompile(`href=(?:"data:|data:)`),
+			wantNoMatch: regexp.MustCompile(`(?i)href=(?:"data:|data:)`),
 			recursive:   true,
 		},
 	}
 }
 
 // runWebsiteLinkProbe evaluates one probe. Recursive probes
-// walk the subtree at p.path looking for any file that
-// matches p.wantNoMatch (every recursive probe today is an
-// absence check). Non-recursive probes read the single file
+// walk the subtree at p.path looking for either a forbidden
+// match (wantNoMatch) or at least one allowed match
+// (wantAnyMatch). Non-recursive probes read the single file
 // at p.path and require it to match p.wantMatch. Splitting
-// the two modes keeps each branch reachable from at least
-// one test.
+// the modes keeps each branch reachable from at least one
+// test.
 func runWebsiteLinkProbe(root string, p linkProbe) error {
 	target := filepath.Join(root, p.path)
 	if p.recursive {
+		if p.wantAnyMatch != nil {
+			return walkAndRequireAny(target, p)
+		}
 		return walkAndReject(target, p)
 	}
 	data, err := readHTMLFile(target)
@@ -163,6 +183,39 @@ func walkAndReject(target string, p linkProbe) error {
 		}
 		return nil
 	})
+}
+
+// walkAndRequireAny walks every .html file under target and
+// returns nil as soon as one matches p.wantAnyMatch. If no
+// file matches, returns a single error naming the regex and
+// the searched root. Walk errors propagate with the same
+// wrapping walkAndReject uses.
+func walkAndRequireAny(target string, p linkProbe) error {
+	var matched bool
+	walkErr := filepath.WalkDir(target, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("verify %q: walk %s: %w", p.name, path, err)
+		}
+		if matched || d.IsDir() || filepath.Ext(path) != ".html" {
+			return nil
+		}
+		data, readErr := readHTMLFile(path)
+		if readErr != nil {
+			return fmt.Errorf("verify %q: %w", p.name, readErr)
+		}
+		if p.wantAnyMatch.Match(data) {
+			matched = true
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return walkErr
+	}
+	if !matched {
+		return fmt.Errorf("verify %q: no file under %s matched %s",
+			p.name, target, p.wantAnyMatch)
+	}
+	return nil
 }
 
 // readHTMLFile reads an HTML file and wraps a missing-file
