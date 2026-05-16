@@ -228,23 +228,49 @@ func detectFilesKeyDeprecations(cfg *Config) {
 	}
 }
 
+// metaReplacements are the categories that replaced the old meta bucket.
+var metaReplacements = []string{"directive", "structural", "prose"}
+
+// translateMetaCategory expands a meta key in cats to its replacement
+// categories (only when the replacement is not already explicitly set),
+// then deletes the meta key. Returns true when a translation occurred.
+func translateMetaCategory(cats map[string]bool) bool {
+	v, ok := cats["meta"]
+	if !ok {
+		return false
+	}
+	for _, cat := range metaReplacements {
+		if _, set := cats[cat]; !set {
+			cats[cat] = v
+		}
+	}
+	delete(cats, "meta")
+	return true
+}
+
 func detectMetaCategoryDeprecations(cfg *Config) {
 	const msg = "category `meta` has been split into `directive`, `structural`, and `prose`; " +
 		"update your `categories:` block to use the new names"
-	if _, ok := cfg.Categories["meta"]; ok {
+	warned := false
+	if translateMetaCategory(cfg.Categories) {
 		cfg.Deprecations = append(cfg.Deprecations, msg)
-		return
+		warned = true
 	}
-	for _, kind := range cfg.Kinds {
-		if _, ok := kind.Categories["meta"]; ok {
-			cfg.Deprecations = append(cfg.Deprecations, msg)
-			return
+	for name, kind := range cfg.Kinds {
+		if translateMetaCategory(kind.Categories) {
+			cfg.Kinds[name] = kind
+			if !warned {
+				cfg.Deprecations = append(cfg.Deprecations, msg)
+				warned = true
+			}
 		}
 	}
-	for _, o := range cfg.Overrides {
-		if _, ok := o.Categories["meta"]; ok {
-			cfg.Deprecations = append(cfg.Deprecations, msg)
-			return
+	for i, o := range cfg.Overrides {
+		if translateMetaCategory(o.Categories) {
+			cfg.Overrides[i] = o
+			if !warned {
+				cfg.Deprecations = append(cfg.Deprecations, msg)
+			}
 		}
 	}
 }

@@ -1375,7 +1375,7 @@ func TestLoad_ArchetypesKeyEmitsDeprecation(t *testing.T) {
 	assert.True(t, found, "deprecation must mention 'archetypes'")
 }
 
-func TestLoad_MetaCategoryTopLevelEmitsDeprecation(t *testing.T) {
+func TestLoad_MetaCategoryTopLevelEmitsDeprecationAndTranslates(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, ".mdsmith.yml")
 	require.NoError(t, os.WriteFile(cfgPath,
@@ -1383,6 +1383,8 @@ func TestLoad_MetaCategoryTopLevelEmitsDeprecation(t *testing.T) {
 
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
+
+	// Deprecation warning emitted.
 	found := false
 	for _, d := range cfg.Deprecations {
 		if strings.Contains(d, "meta") {
@@ -1394,9 +1396,16 @@ func TestLoad_MetaCategoryTopLevelEmitsDeprecation(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "meta category key must emit a deprecation")
+
+	// Legacy value translated to replacement categories.
+	assert.False(t, cfg.Categories["directive"], "directive should be disabled after meta translation")
+	assert.False(t, cfg.Categories["structural"], "structural should be disabled after meta translation")
+	assert.False(t, cfg.Categories["prose"], "prose should be disabled after meta translation")
+	_, metaStillPresent := cfg.Categories["meta"]
+	assert.False(t, metaStillPresent, "meta key should be removed after translation")
 }
 
-func TestLoad_MetaCategoryKindEmitsDeprecation(t *testing.T) {
+func TestLoad_MetaCategoryKindEmitsDeprecationAndTranslates(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, ".mdsmith.yml")
 	require.NoError(t, os.WriteFile(cfgPath,
@@ -1404,6 +1413,7 @@ func TestLoad_MetaCategoryKindEmitsDeprecation(t *testing.T) {
 
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
+
 	found := false
 	for _, d := range cfg.Deprecations {
 		if strings.Contains(d, "meta") {
@@ -1412,9 +1422,16 @@ func TestLoad_MetaCategoryKindEmitsDeprecation(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "meta category key inside a kind must emit a deprecation")
+
+	kind := cfg.Kinds["docs"]
+	assert.False(t, kind.Categories["directive"])
+	assert.False(t, kind.Categories["structural"])
+	assert.False(t, kind.Categories["prose"])
+	_, metaStillPresent := kind.Categories["meta"]
+	assert.False(t, metaStillPresent)
 }
 
-func TestLoad_MetaCategoryOverrideEmitsDeprecation(t *testing.T) {
+func TestLoad_MetaCategoryOverrideEmitsDeprecationAndTranslates(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, ".mdsmith.yml")
 	require.NoError(t, os.WriteFile(cfgPath,
@@ -1422,6 +1439,7 @@ func TestLoad_MetaCategoryOverrideEmitsDeprecation(t *testing.T) {
 
 	cfg, err := Load(cfgPath)
 	require.NoError(t, err)
+
 	found := false
 	for _, d := range cfg.Deprecations {
 		if strings.Contains(d, "meta") {
@@ -1430,6 +1448,14 @@ func TestLoad_MetaCategoryOverrideEmitsDeprecation(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "meta category key inside an override must emit a deprecation")
+
+	require.Len(t, cfg.Overrides, 1)
+	cats := cfg.Overrides[0].Categories
+	assert.False(t, cats["directive"])
+	assert.False(t, cats["structural"])
+	assert.False(t, cats["prose"])
+	_, metaStillPresent := cats["meta"]
+	assert.False(t, metaStillPresent)
 }
 
 func TestMergeMaxInputSize_FromLoaded(t *testing.T) {
