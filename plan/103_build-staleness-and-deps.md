@@ -36,15 +36,13 @@ inputs did not change.
 ### Pattern borrowed from `cmd/go/internal/cache`
 
 Go's build cache hashes `(action description ‖
-input contents)` into an ActionID and keys
-results by it. mdsmith borrows the
-content-addressed input model but stores its
-cache as JSON (hundreds of targets, not
-millions) keyed by sorted `outputs` set, with
-the ActionID stored *inside* each entry (see
-"Cache file" below). Content hashing beats
-mtime: git checkouts and CI restores rarely
-preserve mtimes.
+input contents)` into an ActionID. mdsmith
+borrows the content-addressed input model but
+stores its cache as JSON (hundreds of targets,
+not millions) keyed by sorted `outputs` set,
+the ActionID *inside* each entry (see "Cache
+file" below). Content hashing beats mtime: git
+checkouts and CI restores rarely preserve it.
 
 ## Design
 
@@ -73,14 +71,16 @@ do not restate the recipe's own source file.
 ### ActionID
 
 The ActionID is sha256 over these fields,
-each prefixed with its byte length (8 bytes
-big-endian). Paths are project-root-
-relative. Symlinks are resolved first.
-Separators are normalized via
-`filepath.ToSlash`. Plan 115's `Target`
-carries the absolute `Root` separately. The
-ActionID is therefore stable across clones
-and platforms. Fields, in order:
+each prefixed with its 8-byte big-endian
+length. The hashed path is always the
+project-root-relative, slash-normalized
+form, so the ActionID stays stable across
+clones. Symlink resolution feeds the safety
+check only; it never alters that string.
+Inputs run `EvalSymlinks` for root-escape
+protection before hashing. Outputs resolve
+only the longest existing prefix (plan
+102). Fields, in order:
 
 ```text
 recipe.command

@@ -123,24 +123,23 @@ by:
    gets the staging path substituted for
    `{outputs}` and any output-path params.
 5. After post-condition checks (below),
-   mdsmith renames each staged file to its
-   final location. For each destination,
-   mdsmith first `Lstat`s the existing path:
-   if it is a symlink, the build fails
-   ("output path is a symlink; refuse to
-   replace"). Otherwise mdsmith uses
-   `os.Rename`, which atomically replaces
-   the destination on POSIX systems.
-   Multi-output rename is *not* transactionally
-   atomic across files: per-file rename is
-   atomic, but if rename N+1 fails after N
-   succeeded, mdsmith logs the partial state
-   ("rebuild left in inconsistent state;
-   re-run to recover"), removes the staging
-   dir, and exits with FAIL. The next
-   `mdsmith fix` reruns the recipe (the
-   ActionID still mismatches the cache
-   because no cache write happened).
+   mdsmith renames each staged file out. It
+   first `Lstat`s the destination: a symlink
+   fails the build ("output path is a
+   symlink; refuse to replace"). Otherwise
+   it does an atomic replace — POSIX
+   `rename(2)` via `os.Rename`, or on Windows
+   `MoveFileEx(MOVEFILE_REPLACE_EXISTING)`
+   (which Go's `os.Rename` already wraps),
+   atomic for same-volume files. Multi-output
+   rename is *not* transactionally atomic:
+   per-file replace is atomic, but if rename
+   N+1 fails after N succeeded, mdsmith logs
+   the partial state, removes the staging
+   dir, and exits FAIL. The next `mdsmith
+   fix` reruns the recipe (the ActionID
+   still mismatches; no cache write
+   happened).
 6. On any pre-rename failure, the staging
    dir is removed; no declared output is
    touched.
