@@ -333,6 +333,9 @@ kinds:
         - heading:
             regex: '.+'
             repeat: { min: 0 }
+    rules:
+      max-file-length:
+        max: 500
   cli-command:
     schema:
       frontmatter:

@@ -127,6 +127,18 @@ at the very edge. They are public APIs
 under stricter compatibility rules. See
 [cross-system contracts](cross-system.md).
 
+## Test pyramid
+
+Tests are part of the architecture.
+mdsmith follows a four-layer pyramid
+(unit, contract, integration, e2e)
+and every function — exported and
+unexported — ships with a dedicated
+unit test. The canonical home is
+[Test pyramid](tests.md); the
+language pages bind the rule to
+concrete file and symbol patterns.
+
 ## Anti-patterns we have actually hit
 
 These are the patterns mdsmith audits have
@@ -172,6 +184,21 @@ caught and the reasons we reject them:
   one rule** — move it to `internal/rule`
   or `internal/mdtext`. Engine grows
   unbounded otherwise.
+- **A new function landing without a
+  dedicated unit test.** Either the
+  function is too coupled to test in
+  isolation (push it down to a port
+  package so it can be tested) or the
+  test was forgotten (write it). The
+  audit flags uncovered functions as
+  test debt.
+- **An e2e test added where a unit
+  test would do the same work.** E2E
+  tests run the built binary; they
+  are far slower than unit tests.
+  Reserve them for full-binary
+  behaviour the unit layer cannot
+  reach.
 
 ## Sub-pages
 
@@ -185,12 +212,13 @@ header: |
   |------|-------------|
 row: "| [{title}]({filename}) | {summary} |"
 ?>
-| Page                                               | Description                                                                                                                                    |
-|----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|
-| [Architecture audit checklist](audit-checklist.md) | Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files. |
-| [Cross-system contracts](cross-system.md)          | External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.                       |
-| [Go architecture patterns](go.md)                  | Go-specific SOLID and clean architecture patterns for mdsmith's cmd/ and internal/ packages.                                                   |
-| [TypeScript architecture patterns](typescript.md)  | SOLID and clean architecture patterns for the mdsmith VS Code extension at editors/vscode/.                                                    |
+| Page                                               | Description                                                                                                                                                                           |
+|----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [Architecture audit checklist](audit-checklist.md) | Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.                                        |
+| [Cross-system contracts](cross-system.md)          | External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.                                                              |
+| [Go architecture patterns](go.md)                  | Go-specific SOLID and clean architecture patterns for mdsmith's cmd/ and internal/ packages.                                                                                          |
+| [Test pyramid](tests.md)                           | Four-layer test pyramid (unit, contract, integration, e2e) and the rule that every function ships with a dedicated unit test. Included from the Go and TypeScript architecture pages. |
+| [TypeScript architecture patterns](typescript.md)  | SOLID and clean architecture patterns for the mdsmith VS Code extension at editors/vscode/.                                                                                           |
 <?/catalog?>
 
 ## When to consult this hub

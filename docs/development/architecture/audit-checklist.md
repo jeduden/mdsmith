@@ -125,6 +125,56 @@ generic workflow:
 7. Tell the user what was found and
    what was scheduled.
 
+## Test audit bindings
+
+Architecture audits also check test
+coverage. The
+[Test pyramid](tests.md) doc is the
+source of truth; the language pages
+([Go](go.md), [TypeScript](typescript.md))
+include it and add file-pattern
+bindings. The mdsmith-specific knobs
+the audit needs are below.
+
+- **Unit-test location**: `xxx_test.go`
+  next to `xxx.go` for Go;
+  `xxx.test.ts` next to `xxx.ts` for
+  the VS Code extension.
+- **Function-coverage rule**: every
+  Go and TypeScript function — both
+  exported and unexported — has a
+  dedicated test by name (`TestFoo`
+  for Go `func Foo`; a
+  `describe("foo")` block with one
+  or more `it(…)` cases for TS
+  `foo`). Generated files
+  (`*_gen.go`, `*.d.ts`, `dist/`)
+  and trivial accessors with no
+  branch are exempt; see
+  [Test pyramid §"Exemptions"](tests.md#exemptions).
+- **Contract tests** for Go live
+  alongside the port-package they
+  pin. Examples:
+  `internal/integration/rule_boundaries_test.go`,
+  `internal/integration/directive_examples_test.go`.
+- **Integration test location**:
+  `internal/integration/` for Go.
+  TypeScript integration tests sit
+  next to the command module they
+  exercise.
+- **E2E test location**:
+  `cmd/mdsmith/e2e_*_test.go` for
+  Go; demo tapes under `demo/`. The
+  VS Code extension host runs are
+  e2e for the TypeScript side.
+- **Severity for missing unit
+  test**: `tax` by default;
+  `blocker` if the function is on a
+  public surface (a `rule.Rule`
+  method, an LSP capability handler,
+  a CLI subcommand entry, an
+  exported VS Code command).
+
 ## mdsmith-specific checks worth flagging
 
 These show up enough that they deserve
@@ -154,6 +204,27 @@ explicit mention here:
   `internal/engine` to test a rule** —
   push it to a fixture under the
   rule's `good/` or `bad/` directory.
+- **A Go function with no
+  `TestFunctionName` symbol in a
+  sibling `_test.go`** — test debt.
+  Severity per the rule above.
+- **A TypeScript function not
+  covered by a `describe` /
+  `it` block in a sibling
+  `*.test.ts`** — same rule for the
+  extension.
+- **A test under
+  `internal/integration/` that
+  exercises a single function** —
+  pyramid is inverted; push the
+  assertion down to a unit test in
+  the function's own package.
+- **An `e2e_*_test.go` added where
+  a unit or integration test would
+  suffice** — e2e tests build and
+  run the binary; reserve them for
+  behaviour that needs the full
+  process boundary.
 
 ## Common skip cases in this repo
 

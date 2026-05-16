@@ -40,6 +40,7 @@ row: "- [{summary}]({filename})"
 - [External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.](docs/development/architecture/cross-system.md)
 - [Go-specific SOLID and clean architecture patterns for mdsmith's cmd/ and internal/ packages.](docs/development/architecture/go.md)
 - [SOLID and clean-architecture rules for mdsmith's Go core, TypeScript extension, and cross-system surfaces. Canonical home for the solid-architecture skill.](docs/development/architecture/index.md)
+- [Four-layer test pyramid (unit, contract, integration, e2e) and the rule that every function ships with a dedicated unit test. Included from the Go and TypeScript architecture pages.](docs/development/architecture/tests.md)
 - [SOLID and clean architecture patterns for the mdsmith VS Code extension at editors/vscode/.](docs/development/architecture/typescript.md)
 - [Codecov coverage gate and CI status checks.](docs/development/coverage.md)
 - [Where to place Markdown files and documentation types.](docs/development/file-placement.md)

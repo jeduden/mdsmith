@@ -176,5 +176,6 @@ row: "[{slug}]: {filename}"
 [cross]: ../../../docs/development/architecture/cross-system.md
 [go]: ../../../docs/development/architecture/go.md
 [hub]: ../../../docs/development/architecture/index.md
+[tests]: ../../../docs/development/architecture/tests.md
 [ts]: ../../../docs/development/architecture/typescript.md
 <?/catalog?>
