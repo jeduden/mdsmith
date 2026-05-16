@@ -77,6 +77,33 @@ func TestLookupRule_Unknown(t *testing.T) {
 	assert.Contains(t, err.Error(), "unknown rule", "error = %q, want it to contain 'unknown rule'", err.Error())
 }
 
+func TestLookupRuleInfo_ByID(t *testing.T) {
+	info, err := LookupRuleInfo("MDS019")
+	require.NoError(t, err)
+	assert.Equal(t, "MDS019", info.ID)
+	assert.Equal(t, "catalog", info.Name)
+	require.NotNil(t, info.Maintainability)
+	assert.NotEmpty(t, info.Maintainability.Signal)
+}
+
+func TestLookupRuleInfo_ByName(t *testing.T) {
+	info, err := LookupRuleInfo("line-length")
+	require.NoError(t, err)
+	assert.Equal(t, "MDS001", info.ID)
+	assert.Nil(t, info.Maintainability)
+}
+
+func TestLookupRuleInfo_Unknown(t *testing.T) {
+	_, err := LookupRuleInfo("MDSXXX")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown rule")
+}
+
+func TestLookupRuleInfoFromFS_PropagatesReadDirError(t *testing.T) {
+	_, err := lookupRuleInfoFromFS(errFS{}, "anything")
+	require.Error(t, err)
+}
+
 func TestListRulesFromFS_SkipsBadFrontMatter(t *testing.T) {
 	fsys := fstest.MapFS{
 		"good/README.md": &fstest.MapFile{
@@ -282,6 +309,20 @@ func TestParseFrontMatter_FoldsBlockScalarDescription(t *testing.T) {
 	assert.Equal(t, "First line continued on a second line.", info.Description)
 	assert.NotContains(t, info.Description, "\n")
 	assert.NotContains(t, info.Description, ">-")
+}
+
+// TestParseFrontMatter_UnterminatedFrontMatter verifies that a front matter
+// block without a closing `---` line fails with a clear error instead of
+// silently treating the rest of the file as YAML.
+func TestParseFrontMatter_UnterminatedFrontMatter(t *testing.T) {
+	content := "---\n" +
+		"id: MDS999\n" +
+		"name: example\n" +
+		"status: ready\n" +
+		"# body without closing delimiter\n"
+	_, err := parseFrontMatter(content)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unterminated front matter")
 }
 
 // TestParseFrontMatter_RejectsYAMLAliases verifies that the safe-YAML wrapper

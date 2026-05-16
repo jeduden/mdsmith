@@ -734,6 +734,28 @@ func TestRunHelpPatterns_UnknownFormat_ExitsTwo(t *testing.T) {
 	assert.Contains(t, stderr, "jsno")
 }
 
+func TestRunHelpPatterns_FormatFlagWithoutValue_ExitsTwo(t *testing.T) {
+	var stderr string
+	captureStdout(func() {
+		stderr = captureStderr(func() {
+			code := runHelpPatterns([]string{"-f"})
+			assert.Equal(t, 2, code)
+		})
+	})
+	assert.Contains(t, stderr, "requires a value")
+}
+
+func TestRunHelpPatterns_UnexpectedArg_ExitsTwo(t *testing.T) {
+	var stderr string
+	captureStdout(func() {
+		stderr = captureStderr(func() {
+			code := runHelpPatterns([]string{"garbage"})
+			assert.Equal(t, 2, code)
+		})
+	})
+	assert.Contains(t, stderr, "unexpected argument")
+}
+
 func TestRunHelp_PatternsTopicDispatches(t *testing.T) {
 	out := captureStdout(func() {
 		code := runHelp([]string{"patterns", "-f", "json"})

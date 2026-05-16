@@ -142,13 +142,12 @@ func ruleHoverContent(d Diagnostic) string {
 // cachedRuleInfo returns the rule metadata for a given diagnostic code, or
 // (zero, false) when not found. Content is already stripped of front matter.
 // The first call loads all embedded rule READMEs; later calls are O(1) lookups.
+// rules.ListRules can only fail if the embedded FS itself is corrupt, in
+// which case the cache stays empty and every lookup returns false — the same
+// behavior as an unknown code.
 func cachedRuleInfo(code string) (rules.RuleInfo, bool) {
 	ruleInfoCache.Do(func() {
-		all, err := rules.ListRules()
-		if err != nil {
-			ruleInfoCache.infos = map[string]rules.RuleInfo{}
-			return
-		}
+		all, _ := rules.ListRules()
 		m := make(map[string]rules.RuleInfo, len(all))
 		for _, r := range all {
 			r.Content = rules.StripFrontMatter(r.Content)

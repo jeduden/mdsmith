@@ -46,6 +46,27 @@ func LookupRule(query string) (string, error) {
 	return lookupRuleFromFS(rulesFS, query)
 }
 
+// LookupRuleInfo finds a rule by ID (e.g. "MDS001") or name (e.g. "line-length")
+// and returns its full metadata, including the parsed maintainability block
+// and the raw README content (front matter not stripped).
+func LookupRuleInfo(query string) (RuleInfo, error) {
+	return lookupRuleInfoFromFS(rulesFS, query)
+}
+
+func lookupRuleInfoFromFS(fsys fs.FS, query string) (RuleInfo, error) {
+	rules, err := listRulesFromFS(fsys)
+	if err != nil {
+		return RuleInfo{}, err
+	}
+	q := strings.ToUpper(query)
+	for _, r := range rules {
+		if strings.ToUpper(r.ID) == q || r.Name == query {
+			return r, nil
+		}
+	}
+	return RuleInfo{}, fmt.Errorf("unknown rule %q", query)
+}
+
 func listRulesFromFS(fsys fs.FS) ([]RuleInfo, error) {
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
@@ -103,12 +124,20 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 	}
 
 	var front []string
+	terminated := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "---" {
+			terminated = true
 			break
 		}
 		front = append(front, line)
+	}
+	if err := scanner.Err(); err != nil {
+		return RuleInfo{}, fmt.Errorf("scanning front matter: %w", err)
+	}
+	if !terminated {
+		return RuleInfo{}, fmt.Errorf("unterminated front matter")
 	}
 	var meta struct {
 		ID              string           `yaml:"id"`
