@@ -18,11 +18,6 @@ Code, Neovim, Helix, JetBrains LSP plugin), not run
 interactively. It reads JSON-RPC frames on stdin and writes
 responses and notifications on stdout.
 
-`--stdio` is accepted as a no-op for compatibility with LSP
-clients (notably `vscode-languageclient`) that append the flag
-whenever the client selects stdio transport. The server always
-uses stdio either way.
-
 ## Capabilities advertised
 
 | Capability                        | Behavior                                                                           |
@@ -71,6 +66,11 @@ If neither pass finds a match, the server returns `null` (no hover).
 Each hover response includes a `range` field set to the matched span
 — the diagnostic range or the full directive block range — so clients
 can anchor the popup to the right span.
+
+`mdsmith/rulePatterns` returns rule maintainability metadata.
+
+Hover adds "Suggested remediation" only when
+`for-diagnostic: true`.
 
 ## Diagnostic mapping
 

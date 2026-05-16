@@ -22,6 +22,7 @@ mdsmith help <topic>
 | `kinds`               | Show concept page for file kinds         |
 | `kinds-cli`           | Summarize the `kinds` subcommand surface |
 | `placeholder-grammar` | Show placeholder vocabulary reference    |
+| `patterns`            | List maintainability patterns by rule    |
 
 `mdsmith help rule` with no argument lists every rule with
 its ID, name, status, and one-line description.
@@ -33,6 +34,8 @@ mdsmith help rule line-length
 mdsmith help rule MDS001
 mdsmith help metrics token-estimate
 mdsmith help kinds > AGENTS-context.md
+mdsmith help patterns
+mdsmith help patterns -f json
 ```
 
 ## Exit codes

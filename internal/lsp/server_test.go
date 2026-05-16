@@ -2794,6 +2794,30 @@ func TestHoverNoMatch(t *testing.T) {
 	assert.Equal(t, "null", string(resultRaw), "hover on plain prose must return null")
 }
 
+func TestRuleHoverContentAddsMaintainabilityFixWhenEnabled(t *testing.T) {
+	t.Parallel()
+	got := ruleHoverContent(Diagnostic{Code: "MDS033", Message: "outside allowed directories"})
+	assert.Contains(t, got, "Suggested remediation:")
+}
+
+func TestRulePatternsMethodReturnsNonNullPatterns(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	_, errResp := h.request("initialize", initializeParams{})
+	require.Nil(t, errResp)
+
+	raw, errResp := h.request("mdsmith/rulePatterns", map[string]any{})
+	require.Nil(t, errResp)
+	var out []map[string]any
+	require.NoError(t, json.Unmarshal(raw, &out))
+	require.NotEmpty(t, out)
+	for _, it := range out {
+		require.NotEmpty(t, it["id"])
+		require.NotEmpty(t, it["signal"])
+		require.NotEmpty(t, it["fix"])
+	}
+}
+
 func TestHoverUnknownDocument(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)

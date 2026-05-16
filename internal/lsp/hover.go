@@ -146,11 +146,29 @@ func (s *Server) handleHover(msg *requestMessage) {
 // message on its own line, a blank line, then the rule's help text.
 // Unknown rules get a brief fallback pointing at `mdsmith help rule`.
 func ruleHoverContent(d Diagnostic) string {
-	doc, ok := cachedRuleDoc(d.Code)
+	info, ok := cachedRuleInfo(d.Code)
 	if !ok {
 		return fmt.Sprintf("**%s** %s\n\nSee `mdsmith help rule %s` for details.", d.Code, d.Message, d.Code)
 	}
-	return fmt.Sprintf("**%s** %s\n\n%s", d.Code, d.Message, doc)
+	body := fmt.Sprintf("**%s** %s\n\n%s", d.Code, d.Message, rules.StripFrontMatter(info.Content))
+	if info.Maintainability != nil && info.Maintainability.ForDiagnostic {
+		body += fmt.Sprintf("\n\nSuggested remediation: %s", info.Maintainability.Fix)
+	}
+	return body
+}
+
+func cachedRuleInfo(code string) (rules.RuleInfo, bool) {
+	all, err := rules.ListRules()
+	if err != nil {
+		return rules.RuleInfo{}, false
+	}
+	q := strings.ToUpper(code)
+	for _, r := range all {
+		if strings.ToUpper(r.ID) == q {
+			return r, true
+		}
+	}
+	return rules.RuleInfo{}, false
 }
 
 // directiveHoverAt checks whether pos falls within a processing-instruction

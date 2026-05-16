@@ -660,6 +660,23 @@ func TestShowRule_UnknownRule_ExitsTwo(t *testing.T) {
 	})
 }
 
+func TestRunHelpPatterns_JSON(t *testing.T) {
+	out := captureStdout(func() {
+		code := runHelpPatterns([]string{"-f", "json"})
+		assert.Equal(t, 0, code)
+	})
+	assert.Contains(t, out, "\"id\"")
+	assert.Contains(t, out, "\"signal\"")
+}
+
+func TestShowRule_NullMaintainability_NoSection(t *testing.T) {
+	out := captureStdout(func() {
+		code := showRule("line-length")
+		assert.Equal(t, 0, code)
+	})
+	assert.NotContains(t, out, "Maintainability pattern")
+}
+
 // --- printDeprecations ---
 
 func TestPrintDeprecations_NilConfig_NoPanic(t *testing.T) {

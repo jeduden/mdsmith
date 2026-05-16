@@ -372,6 +372,8 @@ func (s *Server) dispatchWorkspace(ctx context.Context, msg *requestMessage) boo
 		s.handleDidChangeWatchedFiles(ctx, msg.Params)
 	case "workspace/didChangeConfiguration":
 		s.handleDidChangeConfiguration(ctx)
+	case "mdsmith/rulePatterns":
+		s.handleRulePatterns(msg)
 	default:
 		return false
 	}
