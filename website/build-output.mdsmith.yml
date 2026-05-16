@@ -8,11 +8,17 @@
 # rename) legitimately reshape files in ways that violate
 # the stylistic rules the source tree passes.
 #
-# This config keeps the integrity checks active and turns
-# off every style/structure rule whose source-shape
-# assumption no longer holds after sync. The remaining
-# active rules catch the one class of breakage the source
-# config cannot see: broken links in the rewritten output.
+# Scope of validation: this config catches every
+# **relative-path** broken link in the rewritten output —
+# sibling-relative refs left by the rewriter, missing
+# `_index.md` renames, links to docs/ pages that no longer
+# exist. It does NOT validate site-absolute targets
+# (`/docs/rules/<id>/`, `/docs/guides/<page>/`) because
+# MDS027 short-circuits on absolute paths. The rewriter
+# emits those targets with unit-test coverage
+# (internal/release/syncdocs_test.go: rule-link rewrites);
+# Hugo's build step is the second guard. A follow-up could
+# add a Hugo-aware link check for those URLs.
 #
 # Used from CI via `mdsmith check --config
 # website/build-output.mdsmith.yml --no-gitignore

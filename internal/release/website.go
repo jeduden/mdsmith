@@ -67,7 +67,9 @@ var repoRuleLink = regexp.MustCompile(`\]\((?:\.\./)+internal/rules/(MDS[0-9A-Za
 // so `^` anchors at each line start. Mirrors repoRuleLink — any
 // `../` depth, optional README.md suffix, optional anchor.
 // Example: [mds020]: ../../internal/rules/MDS020-required-structure/README.md
-var repoRuleRefDef = regexp.MustCompile(`(?m)^(\[[^\]]+\]: )(?:\.\./)+internal/rules/(MDS[0-9A-Za-z._-]+)/(?:README\.md)?(#\S+)?$`)
+var repoRuleRefDef = regexp.MustCompile(
+	`(?m)^(\[[^\]]+\]: )(?:\.\./)+internal/rules/` +
+		`(MDS[0-9A-Za-z._-]+)/(?:README\.md)?(#\S+)?$`)
 
 // rulePageURLBase is the site-absolute URL prefix every rule page
 // lives under. Hugo serves website/content/docs/rules/<dir>/index.md
@@ -171,9 +173,28 @@ var ruleSiblingNonMDSLink = regexp.MustCompile(`\]\(\.\./([a-z._][^)]*)\)`)
 // GitHub tree URL. `/tree/` (not `/blob/`) is the directory route.
 const ruleSourceTreeBase = "https://github.com/jeduden/mdsmith/tree/main/internal/rules/"
 
-// githubBlobBase is the GitHub blob (file) URL prefix for files in
-// the repository that are not published on the site (plan/, etc.).
-const githubBlobBase = "https://github.com/jeduden/mdsmith/blob/main/"
+// githubBlobBase / githubTreeBase are GitHub's file vs directory
+// URL prefixes. A repo-relative link whose target ends with `/`
+// must go to /tree/ (GitHub renders a directory listing there);
+// any other target — a `.md`, `.go`, an extension-less script —
+// must go to /blob/, which is the file route. Using the wrong
+// one is not just a stylistic difference: /tree/ on a file 404s
+// and /blob/ on a directory 404s, both silently.
+const (
+	githubBlobBase = "https://github.com/jeduden/mdsmith/blob/main/"
+	githubTreeBase = "https://github.com/jeduden/mdsmith/tree/main/"
+)
+
+// githubURLForPath returns the GitHub URL for a repo-relative
+// path, selecting /tree/ for directory targets (trailing slash)
+// and /blob/ for file targets. Centralized so every rewrite that
+// emits a GitHub URL picks the right route.
+func githubURLForPath(path []byte) string {
+	if bytes.HasSuffix(path, []byte("/")) {
+		return githubTreeBase + string(path)
+	}
+	return githubBlobBase + string(path)
+}
 
 // ruleDirName matches the MDS-prefixed directory names used for
 // per-rule subdirectories under internal/rules/. The prefix guard
@@ -187,29 +208,218 @@ var ruleDirName = regexp.MustCompile(`^MDS[0-9]`)
 // become /docs/rules/<dir>/<#anchor> site URLs; (2) links into any
 // other non-published repo path — plan/, cmd/, editors/, .claude/,
 // internal/ (other than the rule pages already handled in step 1),
-// and root-level files — become absolute GitHub blob URLs;
-// (3) sibling links to `index.md` get the `_index.md` rename
-// SyncDocs applied to the file itself, so MDS027 still resolves
-// the target on the synced filesystem.
+// and root-level files — become absolute GitHub URLs, /blob/ for
+// file targets and /tree/ for directory targets; (3) sibling
+// links to `index.md` get the `_index.md` rename SyncDocs applied
+// to the file itself, so MDS027 still resolves the target on the
+// synced filesystem.
 //
-// The ordering matters because the rule rewrite is the only one
-// that has a site-local target — the non-published rewrite would
-// otherwise consume `internal/rules/MDS…` and send it to GitHub.
+// The whole pass runs under applyOutsideCode so a Markdown
+// example inside a fenced code block OR an inline code span
+// (an MDS021 README demoing `[rules](../internal/rules/)`, or
+// a catalog-output snippet showing `[index.md](development/index.md)`
+// in a fenced block) is left verbatim — those examples are
+// documentation, not real link targets.
+//
+// Rule rewrites must precede the non-published rewrite: both
+// match `internal/rules/MDS…`, and only the first leaves the
+// link on-site rather than routing it to GitHub.
 //
 // Idempotent: already-rewritten paths (a leading `/docs/`,
-// `https://`, or `_index.md`) do not match any of the three
-// regexes, so a second pass is a no-op.
+// `https://`, or `_index.md`) do not match any regex, so a
+// second pass is a no-op.
 func rewriteRuleLinks(b []byte) []byte {
-	b = repoRuleLink.ReplaceAll(b, []byte("]("+rulePageURLBase+"$1/$2)"))
-	b = repoRuleRefDef.ReplaceAll(b, []byte("${1}"+rulePageURLBase+"$2/$3"))
-	b = repoNonPublishedLink.ReplaceAll(b, []byte("]("+githubBlobBase+"$1)"))
-	b = repoNonPublishedRefDef.ReplaceAll(b, []byte("${1}"+githubBlobBase+"$2"))
-	// `${1}` (braced form) is required: `$1_index.md` would parse
-	// as a variable named `1_index` to Go's regexp expander, so
-	// the captured directory prefix would silently vanish (and
-	// every link become `.md`).
-	b = indexMdLink.ReplaceAll(b, []byte("](${1}_index.md$2)"))
-	return b
+	return applyOutsideCode(b, func(seg []byte) []byte {
+		seg = repoRuleLink.ReplaceAll(seg, []byte("]("+rulePageURLBase+"$1/$2)"))
+		seg = repoRuleRefDef.ReplaceAll(seg, []byte("${1}"+rulePageURLBase+"$2/$3"))
+		seg = repoNonPublishedLink.ReplaceAllFunc(seg, rewriteNonPublishedInline)
+		seg = repoNonPublishedRefDef.ReplaceAllFunc(seg, rewriteNonPublishedRefDef)
+		// `${1}` (braced form) is required: `$1_index.md` would
+		// parse as a variable named `1_index` to Go's regexp
+		// expander, so the captured directory prefix would
+		// silently vanish (and every link become `.md`).
+		seg = indexMdLink.ReplaceAll(seg, []byte("](${1}_index.md$2)"))
+		return seg
+	})
+}
+
+// rewriteNonPublishedInline applies repoNonPublishedLink's
+// match, routing the captured path to /tree/ or /blob/ per
+// githubURLForPath. ReplaceAllFunc is used (rather than
+// ReplaceAll with a template) because the URL prefix depends on
+// the captured path's trailing slash — directory links must use
+// /tree/ on GitHub and file links must use /blob/, and a
+// template cannot branch on the capture.
+func rewriteNonPublishedInline(match []byte) []byte {
+	m := repoNonPublishedLink.FindSubmatch(match)
+	if len(m) < 2 {
+		return match
+	}
+	return []byte("](" + githubURLForPath(m[1]) + ")")
+}
+
+// rewriteNonPublishedRefDef is the reference-style sibling of
+// rewriteNonPublishedInline. The captured label prefix (m[1])
+// is preserved so the definition keeps its `[label]: ` form.
+func rewriteNonPublishedRefDef(match []byte) []byte {
+	m := repoNonPublishedRefDef.FindSubmatch(match)
+	if len(m) < 3 {
+		return match
+	}
+	return []byte(string(m[1]) + githubURLForPath(m[2]))
+}
+
+// applyOutsideCode calls fn on each maximal substring of src
+// that lies OUTSIDE Markdown code regions and passes code
+// regions through unchanged. Two constructs are skipped:
+//
+//   - Fenced code blocks: a line beginning (after up to three
+//     leading spaces, per CommonMark) with three or more
+//     backticks or tildes opens a fence, and the matching run
+//     on its own line closes it. The opener, body, and closer
+//     all pass through verbatim.
+//   - Inline code spans: a backtick-delimited region on a
+//     single line (`code`). Multi-backtick spans (the doubled
+//     or tripled forms) and multi-line spans fall through as
+//     plain text — they are rare in mdsmith's authored docs.
+//
+// Without these guards the link rewrites would corrupt
+// documentation examples that show what a directive PRODUCES:
+// MDS021 demoing `[rules](../internal/rules/)` inside an inline
+// code span; the generating-content guide demoing
+// `[i](development/index.md)` inside a fenced markdown block.
+// Indented code blocks and raw HTML blocks are not detected
+// because no observed corruption hits them; switching to a
+// goldmark-AST walk would handle those at the cost of more
+// complexity than the current bug surface justifies.
+func applyOutsideCode(src []byte, fn func([]byte) []byte) []byte {
+	return applyOutsideFences(src, func(seg []byte) []byte {
+		return applyOutsideInlineCode(seg, fn)
+	})
+}
+
+// applyOutsideFences is the fenced-block half of applyOutsideCode.
+// Exposed for the corner case where a caller has already
+// stripped inline code spans and only needs the fence guard.
+func applyOutsideFences(src []byte, fn func([]byte) []byte) []byte {
+	var out bytes.Buffer
+	var nonCode bytes.Buffer
+	flush := func() {
+		if nonCode.Len() == 0 {
+			return
+		}
+		out.Write(fn(nonCode.Bytes()))
+		nonCode.Reset()
+	}
+
+	inFence := false
+	var fenceChar byte
+	var fenceLen int
+
+	start := 0
+	for i := 0; i <= len(src); i++ {
+		if i < len(src) && src[i] != '\n' {
+			continue
+		}
+		line := src[start:i]
+		thisChar, thisLen := fenceMarker(line)
+		var transition bool
+		if !inFence {
+			if thisLen >= 3 {
+				inFence = true
+				fenceChar = thisChar
+				fenceLen = thisLen
+				transition = true
+			}
+		} else if thisChar == fenceChar && thisLen >= fenceLen && fenceLineEmptyAfter(line, thisLen) {
+			inFence = false
+			transition = true
+		}
+
+		dst := &nonCode
+		if inFence || transition {
+			flush()
+			dst = &out
+		}
+		dst.Write(line)
+		if i < len(src) {
+			dst.WriteByte('\n')
+		}
+		start = i + 1
+	}
+
+	flush()
+	return out.Bytes()
+}
+
+// inlineCodeSpan matches a single-backtick code span on one
+// line: `text`. Multi-backtick spans and multi-line spans are
+// not matched. The non-greedy body and the line-end guard keep
+// the regex from spanning adjacent code spans on the same line.
+var inlineCodeSpan = regexp.MustCompile("`[^`\n]+`")
+
+// applyOutsideInlineCode calls fn on every maximal substring of
+// b that lies outside an inline code span. The spans themselves
+// pass through verbatim. Used inside applyOutsideCode to gate a
+// regex rewrite from corrupting a code-spanned example like
+// MDS021's `[rules](../internal/rules/)` that documents the
+// include directive's output.
+func applyOutsideInlineCode(b []byte, fn func([]byte) []byte) []byte {
+	matches := inlineCodeSpan.FindAllIndex(b, -1)
+	if len(matches) == 0 {
+		return fn(b)
+	}
+	var out bytes.Buffer
+	last := 0
+	for _, m := range matches {
+		out.Write(fn(b[last:m[0]]))
+		out.Write(b[m[0]:m[1]])
+		last = m[1]
+	}
+	out.Write(fn(b[last:]))
+	return out.Bytes()
+}
+
+// fenceMarker reports the fence char (backtick or tilde) and
+// run length at the start of line after up to three leading
+// spaces, or (0, 0) if the line is not a fence candidate — i.e.
+// the first non-space char is not a backtick or tilde, or the
+// run length is less than three.
+func fenceMarker(line []byte) (byte, int) {
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+	if i >= len(line) {
+		return 0, 0
+	}
+	c := line[i]
+	if c != '`' && c != '~' {
+		return 0, 0
+	}
+	count := 0
+	for i+count < len(line) && line[i+count] == c {
+		count++
+	}
+	if count < 3 {
+		return 0, 0
+	}
+	return c, count
+}
+
+// fenceLineEmptyAfter reports whether the part of line that
+// follows the fence run (skipping up to three leading spaces
+// plus runLen marker chars) is blank. CommonMark allows an info
+// string after an opener but requires a closer to be followed
+// only by spaces — this guard keeps a code line that happens
+// to start with a backtick run inside a fence from prematurely
+// closing it.
+func fenceLineEmptyAfter(line []byte, runLen int) bool {
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+	return len(bytes.TrimSpace(line[i+runLen:])) == 0
 }
 
 // BuildWebsite prepares the Hugo content tree: optionally runs
@@ -309,7 +519,11 @@ func (t *Toolkit) syncRuleIndex(rulesDir, dstDir string) error {
 	data = transformMarkdown(data)
 	// Rewrite `MDS001-line-length/README.md` → `MDS001-line-length/`
 	// so links stay on-site rather than pointing at GitHub.
-	data = ruleReadmeLink.ReplaceAll(data, []byte("]($1/)"))
+	// Skip code regions so a documented `MDS…/README.md` example
+	// stays verbatim.
+	data = applyOutsideCode(data, func(seg []byte) []byte {
+		return ruleReadmeLink.ReplaceAll(seg, []byte("]($1/)"))
+	})
 	// Cascade the `rule` layout type to all child pages so Hugo
 	// picks up the per-rule template for category/status display.
 	data = injectFMField(data, "cascade:\n  type: rule")
@@ -365,54 +579,9 @@ func (t *Toolkit) syncRulePages(rulesDir, dstDir string) error {
 			}
 			return fmt.Errorf("read rule README %s: %w", readmeSrc, err)
 		}
-		data = transformMarkdown(data)
-		// Rewrite inline cross-rule links (`../MDS021-include/README.md` →
-		// `../MDS021-include/`) so they resolve to the sibling rule's
-		// published page rather than an unpublished README.md.
-		data = ruleReadmeLink.ReplaceAll(data, []byte("]($1/)"))
-		// Rewrite reference-style link definitions to sibling rule
-		// directories (e.g. `[mds027]: ../MDS027-.../README.md`) so the
-		// definition URL resolves to the published page, not a raw README.
-		data = ruleRefDefLink.ReplaceAll(data, []byte("$1/"))
-		// Rewrite inline links to the docs/ tree to site-absolute paths.
-		// Hugo serves each doc at /docs/path/ (no .md); the raw relative
-		// ../../../docs/path/file.md would resolve to a 404 on the site.
-		// An optional #anchor fragment is preserved after the trailing slash.
-		data = repoDocsLink.ReplaceAll(data, []byte("](/docs/$1/$2)"))
-		// Rewrite inline links to the plan/ tree (not published on the
-		// site) to absolute GitHub blob URLs.
-		data = repoPlanLink.ReplaceAll(data, []byte("]("+githubBlobBase+"plan/$1)"))
-		// Rewrite reference-style link definitions to plan/ files.
-		// ${1} (braced form) is required: Go's template engine would
-		// otherwise parse "$1https" as a single group name, leaving the
-		// expansion empty.
-		data = repoPlanRefDef.ReplaceAll(data, []byte("${1}"+githubBlobBase+"plan/$2"))
-		// Rewrite fixture references (`good/default.md`,
-		// `bad/x.md`, `pattern/good/`) to the rule's GitHub source
-		// tree URL. Fixtures live under the rule's source
-		// directory but are not republished on the site.
-		ruleSourceURL := ruleSourceTreeBase + e.Name() + "/"
-		data = ruleFixtureLink.ReplaceAll(data, []byte("]("+ruleSourceURL+"$1)"))
-		// Rewrite single-`../`-prefixed sibling references that
-		// are NOT MDS rule pages (a sibling Go package, the
-		// shared `proto.md`, etc.) to GitHub blob URLs under
-		// internal/rules/. The non-MDS guard in the regex
-		// preserves working cross-rule links like
-		// `../MDS021-include/`.
-		data = ruleSiblingNonMDSLink.ReplaceAll(data,
-			[]byte("]("+githubBlobBase+"internal/rules/$1)"))
-		// The `Implementation: [source](./)` meta line self-links the
-		// generated page on the site; repoint it at the rule's
-		// GitHub source directory.
-		data = bytes.ReplaceAll(data,
-			[]byte("[source](./)"),
-			[]byte("[source]("+ruleSourceURL+")"))
-		// Inject the repo-relative source path so the layout can
-		// render a "View source on GitHub" link without hard-coding
-		// the repo URL in the Go layer.
-		sourcePath := "internal/rules/" + e.Name() + "/"
-		data = injectFMField(data, "github_source: "+sourcePath)
-		ruleDst := filepath.Join(dstRulesDir, e.Name())
+		ruleName := e.Name()
+		data = transformRulePage(transformMarkdown(data), ruleName)
+		ruleDst := filepath.Join(dstRulesDir, ruleName)
 		if err := t.fs.MkdirAll(ruleDst, 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", ruleDst, err)
 		}
@@ -422,6 +591,68 @@ func (t *Toolkit) syncRulePages(rulesDir, dstDir string) error {
 		}
 	}
 	return nil
+}
+
+// transformRulePage applies all rule-page link rewrites to data,
+// which is a single rule README's content (already through
+// transformMarkdown). The pass runs under applyOutsideCode so
+// code regions in rule READMEs — MDS021 demoing
+// `[rules](../internal/rules/)` in an inline code span, MDS027
+// demoing `[guide](good/guide.md)` in a fenced block, etc. —
+// pass through as documentation text rather than being
+// rewritten alongside real link targets. It also rewrites the
+// `[source](./)` self-link and injects the `github_source`
+// front-matter field.
+func transformRulePage(data []byte, ruleName string) []byte {
+	ruleSourceFiles := githubBlobBase + "internal/rules/" + ruleName + "/"
+	ruleSourceDir := ruleSourceTreeBase + ruleName + "/"
+	data = applyOutsideCode(data, func(seg []byte) []byte {
+		seg = ruleReadmeLink.ReplaceAll(seg, []byte("]($1/)"))
+		seg = ruleRefDefLink.ReplaceAll(seg, []byte("$1/"))
+		seg = repoDocsLink.ReplaceAll(seg, []byte("](/docs/$1/$2)"))
+		seg = repoPlanLink.ReplaceAll(seg, []byte("]("+githubBlobBase+"plan/$1)"))
+		seg = repoPlanRefDef.ReplaceAll(seg, []byte("${1}"+githubBlobBase+"plan/$2"))
+		seg = rewriteRuleFixtures(seg, ruleSourceFiles, ruleSourceDir)
+		seg = ruleSiblingNonMDSLink.ReplaceAllFunc(seg, rewriteRuleSibling)
+		return seg
+	})
+	data = bytes.ReplaceAll(data,
+		[]byte("[source](./)"),
+		[]byte("[source]("+ruleSourceDir+")"))
+	return injectFMField(data, "github_source: internal/rules/"+ruleName+"/")
+}
+
+// rewriteRuleFixtures rewrites fixture references
+// (good/default.md, bad/x.md, pattern/good/) to the rule's
+// GitHub URL: /blob/ for file targets, /tree/ for directory
+// targets. Fixtures are not republished on the site, so a
+// repo-relative link 404s.
+func rewriteRuleFixtures(seg []byte, fileBase, dirBase string) []byte {
+	return ruleFixtureLink.ReplaceAllFunc(seg, func(match []byte) []byte {
+		m := ruleFixtureLink.FindSubmatch(match)
+		if len(m) < 2 {
+			return match
+		}
+		base := fileBase
+		if bytes.HasSuffix(m[1], []byte("/")) {
+			base = dirBase
+		}
+		return []byte("](" + base + string(m[1]) + ")")
+	})
+}
+
+// rewriteRuleSibling rewrites a single-`../`-prefixed sibling
+// reference that is NOT another MDS rule page (a sibling Go
+// package, the shared proto.md, …) to its GitHub URL under
+// internal/rules/. The non-MDS guard in ruleSiblingNonMDSLink
+// preserves cross-rule links like `../MDS021-include/`;
+// directory vs file route is decided by trailing slash.
+func rewriteRuleSibling(match []byte) []byte {
+	m := ruleSiblingNonMDSLink.FindSubmatch(match)
+	if len(m) < 2 {
+		return match
+	}
+	return []byte("](" + githubURLForPath([]byte("internal/rules/"+string(m[1]))) + ")")
 }
 
 // injectFMField inserts a YAML field block into a document's front

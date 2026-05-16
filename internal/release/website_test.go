@@ -46,7 +46,7 @@ Line exceeds maximum length.
 | ` + "`max`" + ` | int | 80 | Maximum line length |
 
 See also [MDS021](../MDS021-include/README.md) and [MDS027][mds027].
-Linkable sibling without README suffix: [MDS020 anchor](../../../internal/rules/MDS020-required-structure/README.md#index-side-output).
+Anchor link: [MDS020 anchor](../../../internal/rules/MDS020-required-structure/README.md#index-side-output).
 
 See the [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)
 and the [schemas guide](../../../docs/guides/schemas.md#section-content).
@@ -113,25 +113,36 @@ func TestBuildWebsite_PublishesRuleDirectory(t *testing.T) {
 	assert.Contains(t, body, "type: rule", "cascade must set layout type to rule")
 }
 
-func TestBuildWebsite_PublishesRulePages(t *testing.T) {
+// buildRulePageBody runs BuildWebsite over a single-rule
+// fixture and returns the synced rule page body so each of the
+// per-rewrite tests below can assert against it without
+// duplicating the setup.
+func buildRulePageBody(t *testing.T) string {
+	t.Helper()
 	parent := t.TempDir()
 	src := filepath.Join(parent, "docs")
 	dst := filepath.Join(t.TempDir(), "out")
 	writeFile(t, filepath.Join(src, "top.md"), "top body\n")
 	ruleIndexAt(t, parent)
 	ruleReadmeAt(t, parent, "MDS001-line-length")
-
 	require.NoError(t, NewWithDeps(osFS{}, &recordingRunner{}).BuildWebsite(src, dst, false))
-
 	got, err := os.ReadFile(filepath.Join(dst, "rules", "MDS001-line-length", "index.md"))
 	require.NoError(t, err, "per-rule page must be written at rules/<dir>/index.md")
-	body := string(got)
+	return string(got)
+}
+
+func TestBuildWebsite_PublishesRulePages_FrontMatter(t *testing.T) {
+	body := buildRulePageBody(t)
 	assert.Contains(t, body, `title: "MDS001: line-length"`,
 		"rule H1 must be lifted to front-matter title")
 	assert.Contains(t, body, "github_source: internal/rules/MDS001-line-length/",
 		"github_source field must be injected for source link")
 	assert.NotContains(t, body, "# MDS001: line-length",
 		"body H1 must be stripped after promotion")
+}
+
+func TestBuildWebsite_PublishesRulePages_SiblingLinks(t *testing.T) {
+	body := buildRulePageBody(t)
 	assert.Contains(t, body, "[MDS021](../MDS021-include/)",
 		"sibling rule links must drop the README.md target")
 	assert.NotContains(t, body, "../MDS021-include/README.md",
@@ -141,22 +152,20 @@ func TestBuildWebsite_PublishesRulePages(t *testing.T) {
 		"[source](./) self-link must be repointed at the GitHub tree URL")
 	assert.NotContains(t, body, "[source](./)",
 		"the on-site self-link must not survive")
-
-	// Reference-style link definition to a sibling rule.
 	assert.Contains(t, body, "[mds027]: ../MDS027-cross-file-reference-integrity/",
 		"reference-style rule link definitions must drop README.md")
 	assert.NotContains(t, body, "[mds027]: ../MDS027-cross-file-reference-integrity/README.md",
 		"raw reference def README.md target must not survive")
+}
 
-	// Inline links to the docs/ tree → site-absolute paths.
+func TestBuildWebsite_PublishesRulePages_DocsAndPlanLinks(t *testing.T) {
+	body := buildRulePageBody(t)
 	assert.Contains(t, body, "](/docs/background/concepts/placeholder-grammar/)",
 		"docs link must become site-absolute path (no .md extension)")
 	assert.Contains(t, body, "](/docs/guides/schemas/#section-content)",
 		"docs link with anchor must preserve the anchor after the trailing slash")
 	assert.NotContains(t, body, "../../../docs/",
 		"no repo-relative docs/ link may remain on the published page")
-
-	// Inline and reference-style links to plan/ → GitHub blob URLs.
 	assert.Contains(t, body,
 		"](https://github.com/jeduden/mdsmith/blob/main/plan/107_no-reference-style.md)",
 		"plan inline link must become a GitHub blob URL")
@@ -165,27 +174,22 @@ func TestBuildWebsite_PublishesRulePages(t *testing.T) {
 		"plan reference-style definition must become a GitHub blob URL")
 	assert.NotContains(t, body, "../../../plan/",
 		"no repo-relative plan/ link may remain on the published page")
+}
 
-	// Deep `internal/rules/MDS…/README.md#anchor` → site URL with
-	// anchor preserved. transformMarkdown handles this for any
-	// docs body (rewriteRuleLinks runs before the rule-specific
-	// transforms layered on top in syncRulePages).
+func TestBuildWebsite_PublishesRulePages_FixtureAndSibling(t *testing.T) {
+	body := buildRulePageBody(t)
+	// Deep MDS rule link with anchor → site URL with anchor preserved.
 	assert.Contains(t, body, "(/docs/rules/MDS020-required-structure/#index-side-output)",
 		"deep rule link must rewrite to site URL with anchor preserved")
-
-	// Rule fixture references (good/, bad/, pattern/) → rule's
-	// GitHub source tree URL: fixtures are not republished on
-	// the site, so a repo-relative link would 404.
+	// Fixture file links (good/, bad/) → rule's GitHub /blob/ URL.
 	assert.Contains(t, body,
-		"](https://github.com/jeduden/mdsmith/tree/main/internal/rules/MDS001-line-length/good/default.md)",
-		"good/ fixture link must become rule's GitHub tree URL")
+		"](https://github.com/jeduden/mdsmith/blob/main/internal/rules/MDS001-line-length/good/default.md)",
+		"good/ fixture file link must become rule's GitHub blob URL")
 	assert.Contains(t, body,
-		"](https://github.com/jeduden/mdsmith/tree/main/internal/rules/MDS001-line-length/bad/x.md)",
-		"bad/ fixture link must become rule's GitHub tree URL")
-
-	// Sibling non-MDS references (Go package, proto.md) →
-	// GitHub blob URL under internal/rules/. Cross-rule sibling
-	// links (../MDS021-include/) must NOT match this pattern.
+		"](https://github.com/jeduden/mdsmith/blob/main/internal/rules/MDS001-line-length/bad/x.md)",
+		"bad/ fixture file link must become rule's GitHub blob URL")
+	// Sibling non-MDS references (Go package, proto.md) → GitHub
+	// /blob/ URL; cross-rule (../MDS021-include/) must NOT match.
 	assert.Contains(t, body,
 		"](https://github.com/jeduden/mdsmith/blob/main/internal/rules/linelength/rule.go)",
 		"sibling Go package link must become a GitHub blob URL")
