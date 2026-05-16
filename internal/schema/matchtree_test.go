@@ -15,6 +15,27 @@ func mtFile(t *testing.T, body string) *lint.File {
 	return f
 }
 
+func TestHeadingCaptures_EdgeCases(t *testing.T) {
+	dh := DocHeading{Level: 2, Text: "Step 1", Line: 1}
+
+	ok, caps := headingCaptures(nil, dh, nil)
+	assert.False(t, ok)
+	assert.Nil(t, caps)
+
+	// Invalid regex → compile error → non-match.
+	ok, _ = headingCaptures(&Matcher{Regex: "("}, dh, nil)
+	assert.False(t, ok)
+
+	// Valid pattern, no submatch.
+	ok, _ = headingCaptures(&Matcher{Regex: "Other"}, dh, nil)
+	assert.False(t, ok)
+
+	// Literal match, no named groups → ok, nil map.
+	ok, caps = headingCaptures(&Matcher{Regex: "Step 1"}, dh, nil)
+	assert.True(t, ok)
+	assert.Nil(t, caps)
+}
+
 func TestHeadingStem_NilCases(t *testing.T) {
 	stem, fmvars, hasDigits := HeadingStem(nil)
 	assert.Equal(t, "", stem)
@@ -117,6 +138,37 @@ func TestBuildMatchTree_FmvarCapture(t *testing.T) {
 	mt := BuildMatchTree(mtFile(t, body), sch, map[string]any{"id": "RFC-0001"})
 	require.Len(t, mt.Root.Children, 1)
 	assert.Equal(t, "RFC-0001", mt.Root.Children[0].Captures["id"])
+}
+
+func TestBuildMatchTree_OptionalContentYieldsToRequired(t *testing.T) {
+	// Absent optional paragraph before a required code block must
+	// not consume the code block (exercises collectContent's
+	// later-entry yield and laterContentEntryMatches).
+	sc := Scope{
+		Heading: "Goal",
+		Matcher: &Matcher{Regex: "Goal"},
+		Content: []ContentEntry{
+			{Kind: ContentKindParagraph, Required: false},
+			{Kind: ContentKindCodeBlock, Required: true},
+		},
+	}
+	sch := &Schema{RootLevel: 2, Sections: []Scope{sc}}
+	mt := BuildMatchTree(mtFile(t, "## Goal\n\n```\nx\n```\n"), sch, nil)
+	require.Len(t, mt.Root.Children, 1)
+	got := mt.Root.Children[0].Content
+	require.Len(t, got, 1)
+	assert.Equal(t, ContentKindCodeBlock, got[0].Entry.Kind)
+}
+
+func TestLaterContentEntryMatches(t *testing.T) {
+	content := []ContentEntry{
+		{Kind: ContentKindUnlisted},
+		{Kind: ContentKindList},
+	}
+	f := mtFile(t, "- a\n")
+	lst := f.AST.FirstChild()
+	assert.True(t, laterContentEntryMatches(content, 0, lst))
+	assert.False(t, laterContentEntryMatches(content, 2, lst))
 }
 
 func TestBuildMatchTree_Content(t *testing.T) {
