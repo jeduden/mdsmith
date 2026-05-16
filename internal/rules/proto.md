@@ -14,7 +14,9 @@ category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" 
      Front matter is required. The catalog directive reads
      id, name, status, description, nature to generate the rules
      table and filtered listings. The `category:` field is validated
-     by mdsmith check against ValidCategories.
+     by mdsmith check against the literal CUE union in this file's
+     `category:` front matter, which is hand-kept in sync with
+     config.ValidCategories.
      Repeat the description verbatim. Use prescriptive voice,
      present tense: "Headings must ..." not "Checks that ...".
      The `nature` key labels the rule's kind. Exactly one of:
