@@ -41,7 +41,10 @@ func TestGateResultCode(t *testing.T) {
 	assert.Equal(t, 1, gateResultCode(&engine.Result{
 		Diagnostics: []lint.Diagnostic{{Message: "m"}},
 	}))
-	assert.Equal(t, 0, gateResultCode(&engine.Result{}))
+	// A clean pass requires the file to have actually been checked.
+	assert.Equal(t, 0, gateResultCode(&engine.Result{FilesChecked: 1}))
+	// An empty Result means the file was skipped (ignored): reject.
+	assert.Equal(t, 2, gateResultCode(&engine.Result{}))
 }
 
 func TestGateExtractCheck_ErrorsOnly(t *testing.T) {

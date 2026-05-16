@@ -206,6 +206,41 @@ func TestRunExtract_LoadFileFailurePropagates(t *testing.T) {
 
 var errBadRead = fmt.Errorf("injected read failure")
 
+func TestRunExtract_IgnoredFileRejected(t *testing.T) {
+	cfg := extractUnitCfg + "ignore:\n  - \"recipes/*.md\"\n"
+	extractUnitDir(t, cfg, map[string]string{
+		"recipes/cake.md": extractUnitDoc,
+	})
+	var code int
+	_ = captureStdout(func() {
+		code = runExtract([]string{"recipe", "recipes/cake.md"})
+	})
+	assert.Equal(t, 2, code)
+}
+
+func TestRunExtract_BadFrontMatterPropagates(t *testing.T) {
+	// Non-string mapping keys: the kinds-only front-matter parse
+	// the gate uses tolerates this, but extract's full decode
+	// rejects it, so runExtract must propagate the failure.
+	cfg := `kinds:
+  fm2:
+    schema:
+      sections:
+        - heading: "Goal"
+kind-assignment:
+  - glob: ["fm2/*.md"]
+    kinds: [fm2]
+`
+	extractUnitDir(t, cfg, map[string]string{
+		"fm2/a.md": "---\n1: a\n---\n# T\n\n## Goal\n\nbody\n",
+	})
+	var code int
+	_ = captureStdout(func() {
+		code = runExtract([]string{"fm2", "fm2/a.md"})
+	})
+	assert.Equal(t, 2, code)
+}
+
 func TestRunExtract_FlagParsing(t *testing.T) {
 	// Unknown flag → usage error exit 2.
 	assert.Equal(t, 2, runExtract([]string{"--nope"}))

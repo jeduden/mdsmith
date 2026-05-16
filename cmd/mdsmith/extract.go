@@ -185,10 +185,12 @@ func gateExtractCheck(
 }
 
 // gateResultCode maps a check Result to extract's exit code:
+// gateResultCode maps a check Result to extract's exit code:
 // engine errors with no diagnostics → 2 (same as a runtime
-// failure), any diagnostics → 1 (non-conformant), else 0. Split
-// out so all three arms are unit-testable without provoking the
-// engine into an errors-only state on already-resolved input.
+// failure), any diagnostics → 1 (non-conformant), a file that was
+// never checked (e.g. excluded by `ignore:`) → 2, else 0. Split
+// out so all arms are unit-testable without provoking the engine
+// into an errors-only state on already-resolved input.
 func gateResultCode(result *engine.Result) int {
 	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
 		printErrors(result.Errors)
@@ -197,6 +199,15 @@ func gateResultCode(result *engine.Result) int {
 	if len(result.Diagnostics) > 0 {
 		formatDiagnostics(result.Diagnostics, "text", false)
 		return 1
+	}
+	if result.FilesChecked == 0 {
+		// Runner.Run skips ignored files, returning an empty
+		// Result. Projecting then would emit data for a file
+		// MDS020 never validated, breaking the gated-on-a-match
+		// contract.
+		return extractErr(2,
+			"file was not checked (excluded by ignore patterns?); "+
+				"cannot extract without a schema match")
 	}
 	return 0
 }

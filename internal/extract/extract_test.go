@@ -136,6 +136,23 @@ func TestExtract_OptionalContentDoesNotEatRequired(t *testing.T) {
 	assert.NotContains(t, goal, "text")
 }
 
+// An empty column header is skipped by the duplicate-detection
+// scan (it never collides) and the cell falls back to col-N.
+func TestExtract_EmptyTableHeader(t *testing.T) {
+	sc := schema.Scope{
+		Heading: "Goal",
+		Matcher: &schema.Matcher{Regex: "Goal"},
+		Content: []schema.ContentEntry{{Kind: schema.ContentKindTable, Required: true}},
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	body := "## Goal\n\n| A |  |\n| - | - |\n| 1 | 2 |\n"
+	got, diags := run(t, body, sch, nil)
+	require.Empty(t, diags)
+	rows := got.(map[string]any)["goal"].(map[string]any)["rows"].([]any)
+	require.Len(t, rows, 1)
+	assert.Equal(t, map[string]any{"A": "1", "col-2": "2"}, rows[0])
+}
+
 // Duplicate table column headers collide as row-object keys; the
 // projector must report it rather than silently keep only the last
 // cell.
