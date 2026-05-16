@@ -1,6 +1,7 @@
 package release
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,11 +11,23 @@ import (
 )
 
 // ruleReadmeLink matches a Markdown link whose target is a rule
-// README relative path (`MDS001-line-length/README.md`) and
-// captures the rule directory name separately from the filename so
-// syncRuleIndex can rewrite the link to the local site page URL
-// (`MDS001-line-length/`).
-var ruleReadmeLink = regexp.MustCompile(`\]\((MDS[0-9A-Za-z._-]+)/README\.md\)`)
+// README relative path and captures the rule directory (with an
+// optional `../` prefix) separately from the `README.md` filename.
+// It covers both link forms in play: the bare
+// `MDS001-line-length/README.md` used by the rule index, and the
+// sibling `../MDS021-include/README.md` used between per-rule
+// READMEs. Rewriting drops `README.md` so the link resolves to the
+// published page directory (`MDS001-line-length/`,
+// `../MDS021-include/`) rather than an unpublished `README.md`.
+var ruleReadmeLink = regexp.MustCompile(`\]\(((?:\.\./)?MDS[0-9A-Za-z._-]+)/README\.md\)`)
+
+// ruleSourceTreeBase is the GitHub directory (tree) route for a
+// rule's source. Per-rule READMEs carry an
+// `Implementation: [source](./)` link that points at the rule's
+// own directory; on the published site `./` would self-link the
+// generated page, so syncRulePages rewrites it to the rule's
+// GitHub tree URL. `/tree/` (not `/blob/`) is the directory route.
+const ruleSourceTreeBase = "https://github.com/jeduden/mdsmith/tree/main/internal/rules/"
 
 // ruleDirName matches the MDS-prefixed directory names used for
 // per-rule subdirectories under internal/rules/. The prefix guard
@@ -176,6 +189,16 @@ func (t *Toolkit) syncRulePages(rulesDir, dstDir string) error {
 			return fmt.Errorf("read rule README %s: %w", readmeSrc, err)
 		}
 		data = transformMarkdown(data)
+		// Rewrite cross-rule links (`../MDS021-include/README.md` →
+		// `../MDS021-include/`) so they resolve to the sibling rule's
+		// published page rather than an unpublished README.md.
+		data = ruleReadmeLink.ReplaceAll(data, []byte("]($1/)"))
+		// The `Implementation: [source](./)` meta line self-links the
+		// generated page on the site; repoint it at the rule's
+		// GitHub source directory.
+		data = bytes.ReplaceAll(data,
+			[]byte("[source](./)"),
+			[]byte("[source]("+ruleSourceTreeBase+e.Name()+"/)"))
 		// Inject the repo-relative source path so the layout can
 		// render a "View source on GitHub" link without hard-coding
 		// the repo URL in the Go layer.

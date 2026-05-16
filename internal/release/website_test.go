@@ -44,6 +44,13 @@ Line exceeds maximum length.
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | ` + "`max`" + ` | int | 80 | Maximum line length |
+
+See also [MDS021](../MDS021-include/README.md).
+
+## Meta-Information
+
+- **Implementation**:
+  [source](./)
 `
 
 // ruleIndexAt writes the rule-directory fixture to
@@ -107,6 +114,15 @@ func TestBuildWebsite_PublishesRulePages(t *testing.T) {
 		"github_source field must be injected for source link")
 	assert.NotContains(t, body, "# MDS001: line-length",
 		"body H1 must be stripped after promotion")
+	assert.Contains(t, body, "[MDS021](../MDS021-include/)",
+		"sibling rule links must drop the README.md target")
+	assert.NotContains(t, body, "../MDS021-include/README.md",
+		"no unpublished README.md link target may remain")
+	assert.Contains(t, body,
+		"[source](https://github.com/jeduden/mdsmith/tree/main/internal/rules/MDS001-line-length/)",
+		"[source](./) self-link must be repointed at the GitHub tree URL")
+	assert.NotContains(t, body, "[source](./)",
+		"the on-site self-link must not survive")
 }
 
 func TestBuildWebsite_NoRuleDirectoryIsNotAnError(t *testing.T) {
@@ -119,6 +135,39 @@ func TestBuildWebsite_NoRuleDirectoryIsNotAnError(t *testing.T) {
 
 	_, err := os.Stat(filepath.Join(dst, "rules"))
 	assert.True(t, os.IsNotExist(err), "no rule index -> no Rules section, no error")
+}
+
+// TestBuildWebsite_RuleIndexErrorPropagates covers the
+// `if err := t.syncRuleIndex(...); err != nil { return err }`
+// branch in BuildWebsite: SyncDocs succeeds (the first WriteFile,
+// for top.md) and syncRuleIndex fails on its _index.md write (the
+// second WriteFile), so BuildWebsite must surface that error.
+func TestBuildWebsite_RuleIndexErrorPropagates(t *testing.T) {
+	parent := t.TempDir()
+	src := filepath.Join(parent, "docs")
+	dst := filepath.Join(t.TempDir(), "out")
+	writeFile(t, filepath.Join(src, "top.md"), "top body\n")
+	ruleIndexAt(t, parent)
+	ff := newFakeFS()
+	ff.failOnWriteFileCall = 2 // 1 = docs top.md, 2 = rules/_index.md
+
+	err := NewWithDeps(ff, &recordingRunner{}).BuildWebsite(src, dst, false)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "write rule index")
+}
+
+func TestSyncRulePages_ReadDirErrorWraps(t *testing.T) {
+	rulesDir := t.TempDir()
+	ff := newFakeFS()
+	ff.failOnReadDirCall = 1 // errInjected, not fs.ErrNotExist
+
+	err := NewWithFS(ff).syncRulePages(rulesDir, t.TempDir())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "read rule dir")
 }
 
 func TestSyncRulePages_SkipsNonMDSDirs(t *testing.T) {
