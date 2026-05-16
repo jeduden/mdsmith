@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/query"
+	ruledocs "github.com/jeduden/mdsmith/internal/rules"
 )
 
 // captureStderr temporarily redirects os.Stderr and returns the written content.
@@ -712,6 +713,32 @@ func TestRunHelpPatterns_TextDefault(t *testing.T) {
 	assert.Contains(t, out, "for-diagnostic:")
 }
 
+// TestRunHelpPatterns_TextIncludesAllNonNullRules covers the closed set of
+// rules expected to ship a non-null maintainability block and asserts that
+// a rule with `maintainability: null` (MDS001) is absent from the text
+// output. Adjust the expected set when adding new patterns.
+func TestRunHelpPatterns_TextIncludesAllNonNullRules(t *testing.T) {
+	out := captureStdout(func() {
+		code := runHelpPatterns(nil)
+		assert.Equal(t, 0, code)
+	})
+	expected := []string{
+		"MDS019", "catalog",
+		"MDS020", "required-structure",
+		"MDS021", "include",
+		"MDS033", "directory-structure",
+		"MDS037", "duplicated-content",
+	}
+	for _, want := range expected {
+		assert.Contains(t, out, want,
+			"text output must include %q for the maintainability catalog", want)
+	}
+	assert.NotContains(t, out, "MDS001",
+		"text output must omit MDS001 (maintainability: null)")
+	assert.NotContains(t, out, "line-length",
+		"text output must omit the line-length rule (maintainability: null)")
+}
+
 func TestRunHelpPatterns_TextIncludesKnownRule(t *testing.T) {
 	out := captureStdout(func() {
 		code := runHelpPatterns(nil)
@@ -766,6 +793,27 @@ func TestRunHelpPatterns_TrailingArg_ExitsTwo(t *testing.T) {
 	})
 	assert.Contains(t, stderr, "unexpected trailing argument")
 	assert.Contains(t, stderr, "extra")
+}
+
+// TestRunHelpPatterns_ListRulesError_ExitsTwo swaps the rule lister for a
+// fault injection so the otherwise-unreachable ListRules error path is
+// exercised — keeping behavior consistent with listAllRules, which also
+// surfaces the same error and exits 2.
+func TestRunHelpPatterns_ListRulesError_ExitsTwo(t *testing.T) {
+	prev := listRulesForHelp
+	listRulesForHelp = func() ([]ruledocs.RuleInfo, error) {
+		return nil, fmt.Errorf("forced list failure")
+	}
+	defer func() { listRulesForHelp = prev }()
+
+	var stderr string
+	captureStdout(func() {
+		stderr = captureStderr(func() {
+			code := runHelpPatterns(nil)
+			assert.Equal(t, 2, code)
+		})
+	})
+	assert.Contains(t, stderr, "forced list failure")
 }
 
 // TestRunHelpPatterns_JSON_WriteError_ExitsTwo verifies that a stdout write

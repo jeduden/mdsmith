@@ -1067,45 +1067,35 @@ func runHelp(args []string) int {
 	}
 }
 
+// listRulesForHelp is the ruledocs.ListRules dependency, indirected through
+// a package var so tests can substitute a fault-injecting lister and exercise
+// the error-handling branches in the help subcommands.
+var listRulesForHelp = ruledocs.ListRules
+
+type patternRec struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Signal        string `json:"signal"`
+	Fix           string `json:"fix"`
+	ForDiagnostic bool   `json:"for-diagnostic"`
+}
+
 func runHelpPatterns(args []string) int {
-	format := "text"
-	if len(args) > 0 {
-		if args[0] != "-f" && args[0] != "--format" {
-			fmt.Fprintf(os.Stderr, "mdsmith: help patterns: unexpected argument %q\n", args[0])
-			return 2
-		}
-		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "mdsmith: help patterns: %s requires a value (text or json)\n", args[0])
-			return 2
-		}
-		if len(args) > 2 {
-			fmt.Fprintf(os.Stderr, "mdsmith: help patterns: unexpected trailing argument %q\n", args[2])
-			return 2
-		}
-		format = args[1]
+	format, code, ok := parsePatternsFormat(args)
+	if !ok {
+		return code
 	}
-	switch format {
-	case "text", "json":
-	default:
-		fmt.Fprintf(os.Stderr, "mdsmith: help patterns: unknown format %q (valid: text, json)\n", format)
+	rules, err := listRulesForHelp()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
-	// ruledocs.ListRules reads an embedded FS, so its error is unreachable
-	// in a correctly built binary. Treat any failure as an empty rule list.
-	rules, _ := ruledocs.ListRules()
-	type rec struct {
-		ID            string `json:"id"`
-		Name          string `json:"name"`
-		Signal        string `json:"signal"`
-		Fix           string `json:"fix"`
-		ForDiagnostic bool   `json:"for-diagnostic"`
-	}
-	items := make([]rec, 0)
+	items := make([]patternRec, 0)
 	for _, r := range rules {
 		if r.Maintainability == nil {
 			continue
 		}
-		items = append(items, rec{
+		items = append(items, patternRec{
 			ID:            r.ID,
 			Name:          r.Name,
 			Signal:        r.Maintainability.Signal,
@@ -1127,6 +1117,33 @@ func runHelpPatterns(args []string) int {
 			it.ID, it.Name, it.Signal, it.Fix, it.ForDiagnostic)
 	}
 	return 0
+}
+
+// parsePatternsFormat extracts the --format value from runHelpPatterns args.
+// Returns (format, exitCode, ok); when ok is false the caller should return
+// exitCode immediately. Accepts: no args (text), `-f|--format <text|json>`.
+func parsePatternsFormat(args []string) (string, int, bool) {
+	if len(args) == 0 {
+		return "text", 0, true
+	}
+	if args[0] != "-f" && args[0] != "--format" {
+		fmt.Fprintf(os.Stderr, "mdsmith: help patterns: unexpected argument %q\n", args[0])
+		return "", 2, false
+	}
+	if len(args) < 2 {
+		fmt.Fprintf(os.Stderr, "mdsmith: help patterns: %s requires a value (text or json)\n", args[0])
+		return "", 2, false
+	}
+	if len(args) > 2 {
+		fmt.Fprintf(os.Stderr, "mdsmith: help patterns: unexpected trailing argument %q\n", args[2])
+		return "", 2, false
+	}
+	format := args[1]
+	if format != "text" && format != "json" {
+		fmt.Fprintf(os.Stderr, "mdsmith: help patterns: unknown format %q (valid: text, json)\n", format)
+		return "", 2, false
+	}
+	return format, 0, true
 }
 
 const helpKindsText = `File Kinds
