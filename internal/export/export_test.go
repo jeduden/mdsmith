@@ -276,3 +276,58 @@ func TestExport_NoDirectives_FullSource(t *testing.T) {
 	assert.Equal(t, src, string(out),
 		"export of a directive-free file should equal the input")
 }
+
+func TestExport_CheckMode_StaleBody_DiagnosticLine_IncludesFrontmatterOffset(t *testing.T) {
+	// Front matter occupies lines 1-3; the stale <?toc?> sits at
+	// file-relative line 6. The returned diagnostic must point at
+	// the file-relative line so the CLI prints a navigable location.
+	src := "---\nid: 1\n---\n# Hello\n\n<?toc?>\n\n- [Wrong](#wrong)\n\n<?/toc?>\n\n## Section\n\nbody\n"
+	f, err := lint.NewFileFromSource("doc.md", []byte(src), true)
+	require.NoError(t, err)
+
+	out, diags := export.Export(f, export.Check)
+	assert.Nil(t, out)
+	require.NotEmpty(t, diags)
+	assert.Equal(t, 6, diags[0].Line,
+		"diagnostic line should be file-relative (include the 3-line front matter)")
+}
+
+func TestExport_CheckMode_SuppressesDiagnosticsInsideGeneratedRange(t *testing.T) {
+	// An inner toc body inside an outer include's body is not the
+	// host file's responsibility: the host file's GeneratedRanges
+	// cover the include body, and any directive diagnostic anchored
+	// there must be suppressed (matching `mdsmith check`).
+	src := strings.Join([]string{
+		"# Title",
+		"",
+		"<?include",
+		"file: snippet.md",
+		"?>",
+		"<?toc?>",
+		"",
+		"- [Wrong](#wrong)",
+		"",
+		"<?/toc?>",
+		"<?/include?>",
+		"",
+	}, "\n")
+	f := newFile(t, "doc.md", src)
+	f.FS = fstest.MapFS{
+		"snippet.md": &fstest.MapFile{Data: []byte("snippet body\n")},
+	}
+	// Pretend the include body covers lines 6-10 (the lines that hold
+	// the stale inner <?toc?> ... <?/toc?> markers); the host file is
+	// not responsible for staleness within that range.
+	f.GeneratedRanges = []lint.LineRange{{From: 6, To: 10}}
+
+	out, diags := export.Export(f, export.Check)
+	// Outer include itself is stale (its body should be `snippet
+	// body\n`), so the export still refuses — but the diagnostic
+	// points at the include marker, not at the suppressed inner toc.
+	require.NotEmpty(t, diags)
+	assert.Nil(t, out)
+	for _, d := range diags {
+		assert.NotEqual(t, "toc", d.RuleName,
+			"diagnostics inside a GeneratedRange should be suppressed: %+v", d)
+	}
+}

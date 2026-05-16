@@ -7,6 +7,7 @@ import (
 
 	flag "github.com/spf13/pflag"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/export"
 	"github.com/jeduden/mdsmith/internal/lint"
 )
@@ -109,6 +110,10 @@ func doExport(path string, flags exportFlags) int {
 	if root := rootDirFromConfig(cfgPath); root != "" {
 		f.SetRootDir(root)
 	}
+	// Match the engine.Runner setup so staleness diagnostics
+	// inside an outer include/catalog body are suppressed: the
+	// host file is not responsible for those bytes.
+	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
 
 	out, diags := export.Export(f, exportMode(flags))
 	if len(diags) > 0 {

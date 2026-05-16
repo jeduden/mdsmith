@@ -154,16 +154,40 @@ func hydrate(parsed, orig *lint.File) {
 // invalid YAML, missing include file) cause a refusal while
 // non-blocking hints (catalog case-mismatch, injection warnings)
 // don't.
+//
+// Diagnostics whose line falls inside the host file's
+// GeneratedRanges (i.e. inside an outer include/catalog body) are
+// dropped: the host file is not responsible for content pulled in
+// by another directive, matching the suppression `engine.CheckRules`
+// applies on the regular check path.
+//
+// Returned diagnostics carry file-relative line numbers (front
+// matter included) so the CLI prints positions a user can navigate
+// to directly.
 func checkStaleness(f *lint.File, directives []directiveRule) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for _, d := range directives {
 		for _, rd := range d.rule.Check(f) {
-			if rd.Severity == lint.Error {
-				diags = append(diags, rd)
+			if rd.Severity != lint.Error {
+				continue
 			}
+			if inGeneratedRange(rd.Line, f.GeneratedRanges) {
+				continue
+			}
+			diags = append(diags, rd)
 		}
 	}
+	f.AdjustDiagnostics(diags)
 	return diags
+}
+
+func inGeneratedRange(line int, ranges []lint.LineRange) bool {
+	for _, r := range ranges {
+		if r.Contains(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // stripDirectives removes every line that the engine recognises as a
