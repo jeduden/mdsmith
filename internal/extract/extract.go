@@ -243,8 +243,16 @@ func (p *projector) collision(key, why string) {
 		SchemaRef: schema.FormatSchemaRef(p.sch, ""),
 	}
 	p.diags = append(p.diags, lint.Diagnostic{
-		File:     p.f.Path,
-		Line:     schema.NonBodyDiagLine(p.f),
+		File: p.f.Path,
+		// Extract returns its diagnostics straight to the CLI
+		// formatter without running them through
+		// lint.File.AdjustDiagnostics, so this must already be an
+		// absolute file line. schema.NonBodyDiagLine returns
+		// 1-LineOffset (meant for later adjustment) and would
+		// print a zero/negative line for front-matter-stripped
+		// files; line 1 is the correct fixed anchor for a
+		// whole-document projection error.
+		Line:     1,
 		RuleID:   "MDS020",
 		Severity: lint.Error,
 		Message:  d.Format(),

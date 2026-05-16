@@ -3,6 +3,7 @@ package extract
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +62,28 @@ func TestExtract_DuplicateNonRepeatingCollision(t *testing.T) {
 	_, diags := Extract(doc(t, "## Goal\n"), sch, mt)
 	require.NotEmpty(t, diags)
 	assert.Contains(t, diags[0].Message, "goal")
+}
+
+// Collision diagnostics go straight to the CLI without
+// AdjustDiagnostics, so their Line must be an absolute positive
+// value even for a front-matter-stripped file (LineOffset > 0).
+func TestExtract_CollisionDiagnosticLineIsPositive(t *testing.T) {
+	src := []byte("---\nid: x\n---\n## Goal\n")
+	f, err := lint.NewFileFromSource("doc.md", src, true)
+	require.NoError(t, err)
+	require.Positive(t, f.LineOffset)
+
+	sc := litScope("Goal")
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	mt := &schema.MatchTree{Root: &schema.ScopeMatch{
+		Children: []*schema.ScopeMatch{
+			{Scope: &sch.Sections[0], Heading: schema.DocHeading{Text: "Goal"}},
+			{Scope: &sch.Sections[0], Heading: schema.DocHeading{Text: "Goal"}},
+		},
+	}}
+	_, diags := Extract(f, sch, mt)
+	require.NotEmpty(t, diags)
+	assert.Equal(t, 1, diags[0].Line)
 }
 
 func TestSetKey_EmptyKeyIsCollision(t *testing.T) {
