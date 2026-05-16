@@ -105,4 +105,4 @@ one two three four five six
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: prose

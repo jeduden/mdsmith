@@ -200,7 +200,7 @@ func TestName(t *testing.T) {
 
 func TestCategory(t *testing.T) {
 	r := &Rule{}
-	if r.Category() != "meta" {
+	if r.Category() != "structural" {
 		t.Errorf(
 			"expected category meta, got %s", r.Category(),
 		)

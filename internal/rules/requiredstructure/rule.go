@@ -60,7 +60,7 @@ func (r *Rule) ID() string { return "MDS020" }
 func (r *Rule) Name() string { return "required-structure" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "structural" }
 
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {

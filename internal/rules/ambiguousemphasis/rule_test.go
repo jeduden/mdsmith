@@ -30,7 +30,7 @@ func TestMetaInformation(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "MDS047", r.ID())
 	assert.Equal(t, "ambiguous-emphasis", r.Name())
-	assert.Equal(t, "meta", r.Category())
+	assert.Equal(t, "prose", r.Category())
 	assert.False(t, r.EnabledByDefault())
 }
 

@@ -123,4 +123,4 @@ The following cases emit diagnostics but are
 - **Fixable**: yes (with exceptions; see Auto-fix)
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: prose

@@ -323,7 +323,7 @@ row: "- [{title}]({filename})"
 - **Fixable**: yes
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: directive
 - **Concept**:
   [generated-section](../../../docs/background/concepts/generated-section.md)
 - **Guide**:

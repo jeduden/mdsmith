@@ -30,7 +30,7 @@ func (r *Rule) ID() string { return "MDS041" }
 func (r *Rule) Name() string { return "no-inline-html" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "structural" }
 
 // EnabledByDefault implements rule.Defaultable. MDS041 is opt-in.
 func (r *Rule) EnabledByDefault() bool { return false }

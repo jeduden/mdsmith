@@ -101,10 +101,9 @@ rules:
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
      Implementation, Category, Concept (if applicable).
      Default may include key settings: "enabled, max: 80".
-     Categories: accessibility, code, heading, line, link,
-     list, meta, prose, table, whitespace. Pick the
-     narrowest that fits; `meta` is the fallback for
-     directives and cross-file checks.
+     Categories: accessibility, code, directive, heading, line,
+     link, list, prose, structural, table, whitespace. Pick
+     the narrowest that fits.
      Delete Concept bullet if not used. -->
 
 ## ...

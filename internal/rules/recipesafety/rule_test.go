@@ -32,7 +32,7 @@ func TestRule_Name(t *testing.T) {
 }
 
 func TestRule_Category(t *testing.T) {
-	assert.Equal(t, "meta", (&Rule{}).Category())
+	assert.Equal(t, "directive", (&Rule{}).Category())
 }
 
 func TestRule_IsConfigFileRule(t *testing.T) {

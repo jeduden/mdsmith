@@ -159,7 +159,7 @@ func TestName(t *testing.T) {
 
 func TestCategory(t *testing.T) {
 	r := &Rule{}
-	assert.Equal(t, "meta", r.Category(), "directory-structure belongs to the meta category")
+	assert.Equal(t, "structural", r.Category())
 }
 
 // TestSilenceConfigWarningForTesting covers the helper used by the

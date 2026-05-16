@@ -137,4 +137,4 @@ text on CommonMark and goldmark renderers.
 - **Fixable**: yes
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: directive

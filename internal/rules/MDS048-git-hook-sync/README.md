@@ -192,4 +192,4 @@ patterns and the canonical patterns the rule expected.
 - **Fixable**: partial (`.gitattributes` is auto-fixed;
   hook requires manual `mdsmith pre-merge-commit install`)
 - **Implementation**: [source](../githooksync/rule.go)
-- **Category**: meta
+- **Category**: structural

@@ -45,7 +45,7 @@ func (r *Rule) ID() string { return "MDS047" }
 func (r *Rule) Name() string { return "ambiguous-emphasis" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "prose" }
 
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return false }

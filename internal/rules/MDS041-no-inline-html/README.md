@@ -99,4 +99,4 @@ Press <kbd>Enter</kbd> to continue.
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: structural

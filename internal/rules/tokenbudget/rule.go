@@ -65,7 +65,7 @@ func (r *Rule) ID() string { return "MDS028" }
 func (r *Rule) Name() string { return "token-budget" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "prose" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {

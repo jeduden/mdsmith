@@ -162,7 +162,7 @@ func TestTripleUnderscore_DiagNoFix(t *testing.T) {
 // --- metadata ---------------------------------------------------------------
 
 func TestCategory(t *testing.T) {
-	assert.Equal(t, "meta", (&Rule{}).Category())
+	assert.Equal(t, "prose", (&Rule{}).Category())
 }
 
 // --- code span / fenced code (must not flag) --------------------------------

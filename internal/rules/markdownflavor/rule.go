@@ -33,7 +33,7 @@ func (r *Rule) ID() string { return "MDS034" }
 func (r *Rule) Name() string { return "markdown-flavor" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "structural" }
 
 // EnabledByDefault implements rule.Defaultable. MDS034 is opt-in.
 func (r *Rule) EnabledByDefault() bool { return false }

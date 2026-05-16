@@ -100,4 +100,4 @@ little concrete information to the paragraph.
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: prose

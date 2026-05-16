@@ -98,7 +98,7 @@ func TestRule_Name(t *testing.T) {
 
 func TestRule_Category(t *testing.T) {
 	r := &Rule{}
-	if r.Category() != "meta" {
+	if r.Category() != "structural" {
 		t.Errorf(
 			"expected Category meta, got %s", r.Category(),
 		)

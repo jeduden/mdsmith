@@ -1,7 +1,7 @@
 ---
 id: 162
 title: Split the overloaded `meta` rule category
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: [142]
 summary: >-
@@ -120,15 +120,15 @@ unchanged.
 
 ## Acceptance Criteria
 
-- [ ] No rule reports `Category() == "meta"`
+- [x] No rule reports `Category() == "meta"`
       (unless a follow-up rationale documents why
       it remains).
-- [ ] Each affected rule's README
+- [x] Each affected rule's README
       Meta-Information bullet matches the new
       value.
-- [ ] `internal/rules/proto.md`'s writer-hint
+- [x] `internal/rules/proto.md`'s writer-hint
       comment lists exactly the categories used
       in production code.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.

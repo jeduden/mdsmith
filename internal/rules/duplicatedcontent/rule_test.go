@@ -18,7 +18,7 @@ func TestRuleIdentity(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "MDS037", r.ID())
 	assert.Equal(t, "duplicated-content", r.Name())
-	assert.Equal(t, "meta", r.Category())
+	assert.Equal(t, "prose", r.Category())
 }
 
 func TestRuleRegistered(t *testing.T) {

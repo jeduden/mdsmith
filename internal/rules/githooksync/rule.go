@@ -83,7 +83,7 @@ func (r *Rule) ID() string { return "MDS048" }
 func (r *Rule) Name() string { return "git-hook-sync" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "structural" }
 
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return false }

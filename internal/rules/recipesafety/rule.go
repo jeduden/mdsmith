@@ -70,7 +70,7 @@ func (r *Rule) ID() string { return "MDS040" }
 func (r *Rule) Name() string { return "recipe-safety" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "directive" }
 
 // IsConfigFileRule implements rule.ConfigTarget.
 func (r *Rule) IsConfigFileRule() bool { return true }

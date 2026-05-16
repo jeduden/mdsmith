@@ -3939,7 +3939,7 @@ func TestBuildCatalogEntries_Normal_NoDiagnostics(t *testing.T) {
 
 func TestRule_Category(t *testing.T) {
 	r := &Rule{}
-	assert.Equal(t, "meta", r.Category())
+	assert.Equal(t, "directive", r.Category())
 }
 
 // =====================================================================

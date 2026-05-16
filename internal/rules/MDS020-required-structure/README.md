@@ -352,7 +352,7 @@ Other shapes get no hint.
 - **Implementation**: [source](./)
 - **Guide**:
   [directive guide](../../../docs/guides/directives/enforcing-structure.md)
-- **Category**: meta
+- **Category**: structural
 
 ## See also
 

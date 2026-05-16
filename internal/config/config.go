@@ -11,11 +11,12 @@ var ValidCategories = []string{
 	"heading",
 	"whitespace",
 	"code",
+	"directive",
 	"list",
 	"line",
 	"link",
-	"meta",
 	"prose",
+	"structural",
 	"table",
 }
 

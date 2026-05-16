@@ -53,7 +53,7 @@ func (r *Rule) ID() string { return "MDS037" }
 func (r *Rule) Name() string { return "duplicated-content" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "prose" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {

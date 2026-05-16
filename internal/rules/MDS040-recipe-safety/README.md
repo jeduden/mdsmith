@@ -122,4 +122,4 @@ placeholders "{a}{b}" — separate with a delimiter`
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: directive

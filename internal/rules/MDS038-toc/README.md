@@ -168,4 +168,4 @@ A reference section.
 - **Fixable**: yes
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: directive

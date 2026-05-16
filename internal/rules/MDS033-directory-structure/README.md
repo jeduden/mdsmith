@@ -93,4 +93,4 @@ This file is not in an allowed directory.
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: structural

@@ -14,7 +14,7 @@ func TestRuleIdentity(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "MDS034", r.ID())
 	assert.Equal(t, "markdown-flavor", r.Name())
-	assert.Equal(t, "meta", r.Category())
+	assert.Equal(t, "structural", r.Category())
 }
 
 func TestRuleIsConfigurableAndDefaultable(t *testing.T) {

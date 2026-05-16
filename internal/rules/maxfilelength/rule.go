@@ -24,7 +24,7 @@ func (r *Rule) ID() string { return "MDS022" }
 func (r *Rule) Name() string { return "max-file-length" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "structural" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {

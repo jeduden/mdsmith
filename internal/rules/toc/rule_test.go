@@ -24,7 +24,7 @@ func TestName(t *testing.T) {
 }
 
 func TestCategory(t *testing.T) {
-	assert.Equal(t, "meta", (&Rule{}).Category())
+	assert.Equal(t, "directive", (&Rule{}).Category())
 }
 
 func TestCheck_UpToDate(t *testing.T) {

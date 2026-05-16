@@ -193,4 +193,4 @@ output: demo.gif
 - **Fixable**: yes (body only)
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: directive

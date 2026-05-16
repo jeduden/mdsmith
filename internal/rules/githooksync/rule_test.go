@@ -380,7 +380,7 @@ func TestRule_Metadata(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "MDS048", r.ID())
 	assert.Equal(t, "git-hook-sync", r.Name())
-	assert.Equal(t, "meta", r.Category())
+	assert.Equal(t, "structural", r.Category())
 	assert.False(t, r.EnabledByDefault())
 	assert.Equal(t, map[string]any{}, r.DefaultSettings())
 }

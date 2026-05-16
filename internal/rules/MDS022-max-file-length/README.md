@@ -75,4 +75,4 @@ Extra line.
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: structural

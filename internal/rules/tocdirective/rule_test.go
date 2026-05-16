@@ -22,7 +22,7 @@ func TestName(t *testing.T) {
 
 func TestCategory(t *testing.T) {
 	r := &Rule{}
-	assert.Equal(t, "meta", r.Category())
+	assert.Equal(t, "directive", r.Category())
 }
 
 func TestEnabledByDefault_OptIn(t *testing.T) {

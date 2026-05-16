@@ -49,7 +49,7 @@ func (r *Rule) ID() string { return "MDS019" }
 func (r *Rule) Name() string { return "catalog" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "directive" }
 
 // RuleID implements gensection.Directive.
 func (r *Rule) RuleID() string { return "MDS019" }

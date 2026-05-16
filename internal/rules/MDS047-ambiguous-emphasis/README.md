@@ -212,4 +212,4 @@ __a__b__
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: prose

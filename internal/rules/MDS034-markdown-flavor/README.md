@@ -165,4 +165,4 @@ wrap: markdown
 - **Fixable**: partially (GitHub Alerts only)
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: structural

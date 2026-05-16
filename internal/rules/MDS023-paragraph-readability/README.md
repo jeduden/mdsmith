@@ -91,7 +91,7 @@ The implementation of concurrent distributed systems requires sophisticated unde
 - **Fixable**: no
 - **Implementation**:
   [source](./)
-- **Category**: meta
+- **Category**: prose
 
 ## See also
 

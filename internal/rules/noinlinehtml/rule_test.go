@@ -192,7 +192,7 @@ func TestMetadata(t *testing.T) {
 	r := &Rule{}
 	assert.Equal(t, "MDS041", r.ID())
 	assert.Equal(t, "no-inline-html", r.Name())
-	assert.Equal(t, "meta", r.Category())
+	assert.Equal(t, "structural", r.Category())
 }
 
 func TestCheck_NoHTML_NoDiag(t *testing.T) {

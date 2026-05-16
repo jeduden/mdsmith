@@ -31,7 +31,7 @@ func (r *Rule) ID() string { return "MDS024" }
 func (r *Rule) Name() string { return "paragraph-structure" }
 
 // Category implements rule.Rule.
-func (r *Rule) Category() string { return "meta" }
+func (r *Rule) Category() string { return "prose" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
