@@ -27,9 +27,9 @@ func TestDryRun_LeavesFileUnchanged(t *testing.T) {
 		},
 	}
 	fixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
-		DryRun:  true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
 	}
 
 	result := fixer.Fix([]string{mdFile})
