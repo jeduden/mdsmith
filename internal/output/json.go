@@ -10,7 +10,9 @@ import (
 // JSONFormatter outputs diagnostics as a JSON array.
 type JSONFormatter struct{}
 
-type jsonDiagnostic struct {
+// JSONRecord is the exported shape of a single diagnostic in JSON output.
+// It is used by both JSONFormatter and the dry-run JSON output.
+type JSONRecord struct {
 	File            string           `json:"file"`
 	Line            int              `json:"line"`
 	Column          int              `json:"column"`
@@ -20,26 +22,30 @@ type jsonDiagnostic struct {
 	Message         string           `json:"message"`
 	SourceLines     []string         `json:"source_lines,omitempty"`
 	SourceStartLine int              `json:"source_start_line,omitempty"`
-	Explanation     *jsonExplanation `json:"explanation,omitempty"`
+	Explanation     *JSONExplanation `json:"explanation,omitempty"`
 }
 
-type jsonExplanation struct {
+// JSONExplanation is the exported shape of a diagnostic explanation.
+type JSONExplanation struct {
 	Rule   string                `json:"rule"`
-	Leaves []jsonExplanationLeaf `json:"leaves"`
+	Leaves []JSONExplanationLeaf `json:"leaves"`
 }
 
-type jsonExplanationLeaf struct {
+// JSONExplanationLeaf is one leaf in a diagnostic explanation.
+type JSONExplanationLeaf struct {
 	Path   string `json:"path"`
 	Value  any    `json:"value"`
 	Source string `json:"source"`
 }
 
-// Format writes diagnostics as a pretty-printed JSON array.
-// An empty slice of diagnostics produces [].
-func (f *JSONFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error {
-	items := make([]jsonDiagnostic, 0, len(diagnostics))
+// DiagnosticsToJSON converts a slice of lint.Diagnostic to []JSONRecord.
+func DiagnosticsToJSON(diagnostics []lint.Diagnostic) []JSONRecord {
+	if len(diagnostics) == 0 {
+		return []JSONRecord{}
+	}
+	items := make([]JSONRecord, 0, len(diagnostics))
 	for _, d := range diagnostics {
-		items = append(items, jsonDiagnostic{
+		items = append(items, JSONRecord{
 			File:            d.File,
 			Line:            d.Line,
 			Column:          d.Column,
@@ -52,20 +58,27 @@ func (f *JSONFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 			Explanation:     explanationToJSON(d.Explanation),
 		})
 	}
+	return items
+}
+
+// Format writes diagnostics as a pretty-printed JSON array.
+// An empty slice of diagnostics produces [].
+func (f *JSONFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error {
+	items := DiagnosticsToJSON(diagnostics)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(items)
 }
 
-func explanationToJSON(e *lint.Explanation) *jsonExplanation {
+func explanationToJSON(e *lint.Explanation) *JSONExplanation {
 	if e == nil {
 		return nil
 	}
-	leaves := make([]jsonExplanationLeaf, 0, len(e.Leaves))
+	leaves := make([]JSONExplanationLeaf, 0, len(e.Leaves))
 	for _, l := range e.Leaves {
-		leaves = append(leaves, jsonExplanationLeaf{
+		leaves = append(leaves, JSONExplanationLeaf{
 			Path: l.Path, Value: l.Value, Source: l.Source,
 		})
 	}
-	return &jsonExplanation{Rule: e.Rule, Leaves: leaves}
+	return &JSONExplanation{Rule: e.Rule, Leaves: leaves}
 }

@@ -24,9 +24,9 @@ func TestFix_DryRun_WritesNothing(t *testing.T) {
 		},
 	}
 	fixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
-		DryRun:  true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
 	}
 
 	result := fixer.Fix([]string{mdFile})
@@ -52,9 +52,9 @@ func TestFix_DryRun_ReportsWouldFix(t *testing.T) {
 		},
 	}
 	fixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
-		DryRun:  true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
 	}
 
 	result := fixer.Fix([]string{mdFile})
@@ -79,9 +79,9 @@ func TestFix_DryRun_NoChanges_NoEntry(t *testing.T) {
 		},
 	}
 	fixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
-		DryRun:  true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
 	}
 
 	result := fixer.Fix([]string{mdFile})
@@ -104,9 +104,9 @@ func TestFix_DryRun_MultipleFiles(t *testing.T) {
 		},
 	}
 	fixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
-		DryRun:  true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
 	}
 
 	result := fixer.Fix([]string{file1, file2, file3})
@@ -151,9 +151,9 @@ func TestFix_DryRun_WouldFixCountMatchesRealRun(t *testing.T) {
 	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \nworld  \n"), 0o644))
 
 	dryFixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
-		DryRun:  true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
 	}
 	dryResult := dryFixer.Fix([]string{mdFile})
 	require.Empty(t, dryResult.Errors)
@@ -179,9 +179,9 @@ func TestFix_DryRun_ExitCodeMatchesRealRun_AllFixable(t *testing.T) {
 		},
 	}
 	fixer := &Fixer{
-		Config:  cfg,
-		Rules:   []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
-		DryRun:  true,
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
 	}
 
 	result := fixer.Fix([]string{mdFile})

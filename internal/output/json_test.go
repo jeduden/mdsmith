@@ -30,7 +30,7 @@ func TestJSONFormatter_ValidJSON(t *testing.T) {
 	require.NoError(t, err, "unexpected error: %v", err)
 
 	// Verify the output is valid JSON
-	var result []jsonDiagnostic
+	var result []JSONRecord
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &result), "output is not valid JSON: %s", buf.String())
 }
 
@@ -86,7 +86,7 @@ func TestJSONFormatter_EmptyDiagnostics(t *testing.T) {
 	output := buf.String()
 
 	// Verify it produces [] (not null)
-	var result []jsonDiagnostic
+	var result []JSONRecord
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &result), "output is not valid JSON: %s", output)
 	require.NotNil(t, result, "expected non-nil empty slice, got nil")
 	assert.Empty(t, result)
@@ -129,15 +129,15 @@ func TestJSONFormatter_MultipleDiagnostics(t *testing.T) {
 	assertJSONDiag(t, result[1], "docs/guide.md", "MDS002", "warning", "first-heading", 3)
 }
 
-func formatAndUnmarshal(t *testing.T, f *JSONFormatter, buf *bytes.Buffer, diags []lint.Diagnostic) []jsonDiagnostic {
+func formatAndUnmarshal(t *testing.T, f *JSONFormatter, buf *bytes.Buffer, diags []lint.Diagnostic) []JSONRecord {
 	t.Helper()
 	require.NoError(t, f.Format(buf, diags), "unexpected error")
-	var result []jsonDiagnostic
+	var result []JSONRecord
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &result), "output is not valid JSON")
 	return result
 }
 
-func assertJSONDiag(t *testing.T, got jsonDiagnostic, file, ruleID, severity, name string, line int) {
+func assertJSONDiag(t *testing.T, got JSONRecord, file, ruleID, severity, name string, line int) {
 	t.Helper()
 	assert.Equal(t, file, got.File, "file mismatch")
 	assert.Equal(t, line, got.Line, "line mismatch")
