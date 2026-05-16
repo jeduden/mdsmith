@@ -4,11 +4,10 @@ settings:
     closed: true
     sections:
       - heading: "Overview"
-        required: true
       - heading:
-          unlisted: true
+          regex: '.+'
+          repeat: { min: 0 }
       - heading: "References"
-        required: true
 ---
 # RFC
 

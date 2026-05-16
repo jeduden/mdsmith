@@ -274,9 +274,9 @@ func (r *Rule) checkInlineSchema(f *lint.File) []lint.Diagnostic {
 	diags = append(diags, fmDiags...)
 	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
 	diags = append(diags, schema.Validate(f, r.InlineSchema, docFMRaw, fmIsCUE, makeDiag)...)
-	diags = append(diags, r.applyScopeRules(f, r.InlineSchema)...)
+	diags = append(diags, r.applyScopeRules(f, r.InlineSchema, docFMRaw)...)
 	diags = append(diags, schema.ValidateCrossReferences(f, r.InlineSchema, makeDiag)...)
-	diags = append(diags, schema.ValidateAcronyms(f, r.InlineSchema, makeDiag)...)
+	diags = append(diags, schema.ValidateAcronyms(f, r.InlineSchema, docFMRaw, makeDiag)...)
 	diags = append(diags, schema.ValidateIndex(f, r.InlineSchema, makeDiag)...)
 	return diags
 }

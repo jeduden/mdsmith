@@ -103,40 +103,36 @@ same in-memory scope tree — and a kind may use only one.
 kinds:
   rfc:
     schema:
+      filename: "RFC-[0-9][0-9][0-9][0-9].md"
       frontmatter:
         id: '=~"^RFC-[0-9]{4}$"'
         status: '"draft" | "ratified" | "deprecated"'
         authors: '[...string] & len(authors) >= 1'
-      require:
-        filename: "RFC-[0-9][0-9][0-9][0-9].md"
       closed: true
       sections:
         - heading: null
-          required: false
         - heading: "Overview"
-          required: true
         - heading: "Decision"
-          required: true
           sections:
             - heading: "Outcome"
-              required: true
         - heading:
-            unlisted: true
+            regex: '.+'
+            repeat: { min: 0 }
         - heading: "References"
-          required: true
 ```
 
 Section keys:
 
-- `heading:` — string (literal), `null` (preamble), or
-  `{unlisted: true}` (positional slot). Level comes from
-  depth (root sections are H2).
-- `required:` — defaults to `true`. Preamble entries
-  typically set `required: false`.
-- `aliases:` — alternate heading texts. Not allowed
-  on preamble or slot entries (no name to alias).
+- `heading:` — discriminator. `null` for the preamble
+  (content before any heading; valid only as the
+  first entry), a string for an exact-match literal
+  (regex-escaped into the matcher), or a mapping
+  `{ regex, repeat?, sequential? }` for the full
+  form. The level for string headings comes from
+  depth in the tree (root sections are H2; nested
+  sections are H3, then H4, …).
 - `sections:` — nested sections one level deeper.
-  Not allowed on preamble entries (the first heading
+  Rejected on preamble entries (the first heading
   terminates the preamble's range).
 - `closed:` — when `true`, unlisted headings inside
   this scope produce a diagnostic. The same flag
@@ -156,17 +152,23 @@ Section keys:
   See
   [the schemas guide](../../../docs/guides/schemas.md#section-content)
   for the entry shape and the per-kind fields.
-  Rejected on slot or `?` wildcard scopes.
+  Rejected on slot scopes.
 
-A slot (`heading: {unlisted: true}`) absorbs zero or more
-unlisted sections at its position. Out-of-order detection
-still claims a heading whose text matches a later listed
-scope, so the slot only absorbs truly-unlisted sections.
-Slots reject `aliases:`, `sections:`, `rules:`, `closed:`,
-and `required:`. The preamble (`heading: null`) accepts
-`required:`, `closed:`, and `rules:` but rejects
-`aliases:` and `sections:`. H1 is owned by
-`first-line-heading`; inline schemas constrain H2 and below.
+The wildcard slot — `{ regex: '.+', repeat: { min: 0 } }` —
+absorbs zero or more unlisted sections at its position.
+Surrounding listed sections keep their order; out-of-order
+detection still claims a heading whose text matches a later
+listed scope. Slots reject `sections:`, `rules:`,
+`closed:`, and `content:`. The preamble (`heading: null`)
+accepts `closed:`, `rules:`, and `content:` for its line
+range but rejects `sections:`.
+
+See the
+[section-schema reference](../../../docs/reference/section-schema.md)
+for the full grammar — `regex:` body, `digits` /
+`fmvar(name)` helpers, and `repeat: { min, max }`. H1 is
+reserved for `first-line-heading`; inline schemas
+constrain H2 and below.
 
 ### Cross-references
 

@@ -30,7 +30,7 @@ var acronymToken = regexp.MustCompile(`\b[A-Z][A-Z0-9]{1,5}\b`)
 // of OIDC when the body that follows immediately spells out the
 // expansion.
 func ValidateAcronyms(
-	f *lint.File, sch *Schema, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	if sch == nil || sch.Acronyms == nil {
 		return nil
@@ -39,7 +39,7 @@ func ValidateAcronyms(
 	known := buildKnownSet(a.KnownSafe)
 
 	headingLines := documentHeadingLines(f)
-	ranges := acronymRanges(f, sch, a.Scope)
+	ranges := acronymRanges(f, sch, a.Scope, docFM)
 	var diags []lint.Diagnostic
 	for _, rng := range ranges {
 		diags = append(diags, checkAcronymsInRange(f, rng, known, headingLines, mkDiag)...)
@@ -77,14 +77,12 @@ type lineRange struct {
 
 // acronymRanges returns the line windows the acronym check should
 // scan. An empty scope list applies to the whole document.
-// Otherwise the schema scope tree is walked and each schema scope
-// claims the first matching document heading at its level; if the
-// document repeats a heading text under the same schema scope,
-// only the first occurrence is included today. This matches the
-// validator's claim semantics; widening to multi-match would
-// require schema repeats support (currently rejected by the
-// parser) and is tracked as a follow-up.
-func acronymRanges(f *lint.File, sch *Schema, scope []string) []lineRange {
+// Otherwise the schema scope tree is walked and one line range is
+// emitted per occurrence: a repeated scope (`repeat.max > 1` or
+// unbounded) contributes a range for each matched heading, so a
+// scope name like "Diagnosis" applied to two `## Diagnosis`
+// sections scans both bodies for first-use acronyms.
+func acronymRanges(f *lint.File, sch *Schema, scope []string, docFM map[string]any) []lineRange {
 	if len(scope) == 0 {
 		return []lineRange{{Start: 1, End: len(f.Lines) + 1}}
 	}
@@ -98,67 +96,65 @@ func acronymRanges(f *lint.File, sch *Schema, scope []string) []lineRange {
 	}
 
 	var out []lineRange
-	walkRanges(sch.Sections, body, rootLevel, 1, len(f.Lines)+1,
-		func(sc Scope, start, end int) {
-			// walkRanges already skips preamble and wildcard scopes,
-			// so any sc reaching here has a literal Heading text.
-			if matchSet[sc.Heading] {
+	walkRanges(sch.Sections, body, rootLevel, 1, len(f.Lines)+1, docFM,
+		func(sc Scope, headingText string, start, end int) {
+			// walkRanges already skips preamble and slot scopes, so
+			// any sc reaching here has a literal Matcher. Match the
+			// scope-name allowlist against (a) the actual matched
+			// heading text and (b) the schema label. The
+			// heading-text match keeps disjunctive regexes like
+			// `Symptoms|Indicators` aligned with intuitive
+			// `acronyms.scope: ["Indicators"]` config; plan 156
+			// dropped the scope-level `aliases:` field, so without
+			// (a) users would have to mirror the regex body
+			// verbatim. The `Matcher.Regex` branch is intentionally
+			// not checked separately — the parser sets
+			// `sc.Heading == sc.Matcher.Regex` for mapping-form
+			// entries, so (b) already covers it.
+			if matchSet[headingText] {
 				out = append(out, lineRange{Start: start, End: end})
 				return
 			}
-			for _, a := range sc.Aliases {
-				if matchSet[a] {
-					out = append(out, lineRange{Start: start, End: end})
-					return
-				}
+			if matchSet[sc.Heading] {
+				out = append(out, lineRange{Start: start, End: end})
+				return
 			}
 		})
 	return out
 }
 
-// walkRanges pairs each non-wildcard, non-preamble scope with the
-// line range covered by its first matching doc heading, recursing
-// into nested sections. It mirrors the validator's claim semantics
-// (text-equality matching, aliases honoured) but is simpler — no
-// out-of-order detection — because per-scope acronym detection
-// applies wherever a section appears.
+// walkRanges pairs each non-slot, non-preamble scope with the line
+// ranges covered by its matching doc headings, recursing into
+// nested sections. Repeated scopes contribute one range per
+// occurrence so per-scope checks fire on every matched section,
+// not just the first. The walker mirrors the structural
+// validator's claim semantics (regex matching) but is simpler —
+// no out-of-order detection.
 func walkRanges(
 	scopes []Scope, heads []DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	visit func(sc Scope, start, end int),
+	docFM map[string]any,
+	visit func(sc Scope, headingText string, start, end int),
 ) {
-	for _, sc := range scopes {
-		if sc.Wildcard || sc.Preamble {
+	claimed := make(map[int]bool, len(heads))
+	for i, sc := range scopes {
+		if sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
-		idx := findHead(sc, heads, expectedLevel, parentStart, parentEnd)
-		if idx < 0 {
-			continue
-		}
-		start := heads[idx].Line
-		end := nextSectionLine(heads, idx, heads[idx].Level, parentEnd)
-		visit(sc, start, end)
-		if len(sc.Sections) > 0 {
-			walkRanges(sc.Sections, heads, expectedLevel+1, start, end, visit)
+		// ScopeRunIndices applies the structural validator's
+		// run + yield semantics: contiguous matches only, with
+		// broad-and-after-min yielding to later named scopes.
+		for _, idx := range ScopeRunIndices(
+			scopes, i, heads, expectedLevel, parentStart, parentEnd, claimed, docFM) {
+			claimed[idx] = true
+			start := heads[idx].Line
+			end := nextSectionLine(heads, idx, heads[idx].Level, parentEnd)
+			visit(sc, heads[idx].Text, start, end)
+			if len(sc.Sections) > 0 {
+				walkRanges(sc.Sections, heads, expectedLevel+1, start, end, docFM, visit)
+			}
 		}
 	}
-}
-
-func findHead(
-	sc Scope, heads []DocHeading, expectedLevel, parentStart, parentEnd int,
-) int {
-	for i, h := range heads {
-		if h.Line < parentStart || h.Line >= parentEnd {
-			continue
-		}
-		if h.Level != expectedLevel {
-			continue
-		}
-		if scopeMatchesHeading(sc, h) {
-			return i
-		}
-	}
-	return -1
 }
 
 func nextSectionLine(heads []DocHeading, idx, level, parentEnd int) int {

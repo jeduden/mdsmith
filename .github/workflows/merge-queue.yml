@@ -36,6 +36,24 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/setup-mdsmith-pinned-version
+      # The pinned merge driver / pre-merge-commit hook installer
+      # reads .mdsmith.yml to derive merge-driver attribute globs;
+      # the merge driver's `run` step (invoked by git during a
+      # merge) does the same. v0.15.0 cannot parse plan 156's
+      # inline schema vocabulary, so the workflow swaps in
+      # .mdsmith.pinned.yml — a config restated in the pre-156
+      # shape — for the entire job lifetime. `update-index
+      # --skip-worktree` keeps the swap invisible to git so the
+      # later checkout/merge operations performed by
+      # merge-queue-action don't trip "local changes would be
+      # overwritten" or try to restore the new-shape config
+      # mid-merge. Remove this block once
+      # setup-mdsmith-pinned-version advances past v0.15.0 (and
+      # delete .mdsmith.pinned.yml).
+      - name: Use pinned-binary config for merge driver
+        run: |
+          cp .mdsmith.pinned.yml .mdsmith.yml
+          git update-index --skip-worktree .mdsmith.yml
       - name: Install mdsmith merge driver and pre-merge-commit hook
         run: |
           mdsmith merge-driver install

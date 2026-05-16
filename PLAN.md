@@ -84,7 +84,7 @@ footer: |
 | 154 | ✅     | sonnet | [arch-fix: extract cross-rule helpers](plan/154_arch-fix-rule-helper-extraction.md)                                       |
 | 155 | ✅     | sonnet | [arch-fix: relocate convention types out of markdownflavor](plan/155_arch-fix-convention-config-ownership.md)             |
 | 156 | 🔲     | opus   | [Composable required-structure schemas across multiple kinds](plan/156_kind-schema-composition.md)                        |
-| 156 | 🔲     | opus   | [Section schema — unify entry shape under `heading:` discriminator](plan/156_schema-entry-unification.md)                 |
+| 156 | ✅     | opus   | [Section schema — unify entry shape under `heading:` discriminator](plan/156_schema-entry-unification.md)                 |
 | 157 | 🔳     | sonnet | [Catalog filter by front matter property](plan/157_catalog-where-filter.md)                                               |
 | 160 | 🔲     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/160_claude-code-skills-agents-hooks.md)                      |
 | 161 | 🔲     | sonnet | [Expose rule maintainability patterns via CLI help and LSP](plan/161_rule-pattern-metadata.md)                            |

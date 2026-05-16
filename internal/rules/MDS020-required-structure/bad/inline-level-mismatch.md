@@ -3,10 +3,8 @@ settings:
   inline-schema:
     sections:
       - heading: "Diagnosis"
-        required: true
         sections:
           - heading: "Step"
-            required: true
 diagnostics:
   - line: 5
     column: 1

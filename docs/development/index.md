@@ -59,6 +59,12 @@ layout](https://go.dev/doc/modules/layout):
   punctuation
 - Prefer returning errors over panicking
 
+## Defensive Code
+
+Add a defensive branch only when you can drive it
+red/green. Write the failing test first. Then add
+the code that takes the branch.
+
 ## Test Fixtures
 
 Rule test fixtures live in

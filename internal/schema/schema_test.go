@@ -73,7 +73,8 @@ func TestParseFile_NoH1(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, sch.RootLevel)
 	require.Len(t, sch.Sections, 1)
-	assert.True(t, sch.Sections[0].Wildcard)
+	assert.True(t, isSlotMatcher(sch.Sections[0].Matcher),
+		"a `## ...` heading row desugars to a slot matcher")
 }
 
 func TestParseFile_FrontmatterCUE(t *testing.T) {
@@ -90,7 +91,7 @@ func TestParseFile_RequireFilename(t *testing.T) {
 		"<?require\nfilename: \"foo-*.md\"\n?>\n# ?\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "foo-*.md", sch.Require.Filename)
+	assert.Equal(t, "foo-*.md", sch.Filename)
 }
 
 // ---- ParseInline ----
@@ -109,36 +110,33 @@ func TestParseInline_FrontmatterAndSections(t *testing.T) {
 			"id":     `=~"^RFC-[0-9]{4}$"`,
 			"title?": `string`,
 		},
-		"require": map[string]any{
-			"filename": "RFC-[0-9][0-9][0-9][0-9].md",
-		},
-		"closed": true,
+		"filename": "RFC-[0-9][0-9][0-9][0-9].md",
+		"closed":   true,
 		"sections": []any{
+			map[string]any{"heading": "Overview"},
 			map[string]any{
-				"heading":  "Overview",
-				"required": true,
-			},
-			map[string]any{
-				"heading":  "Decision",
-				"required": true,
+				"heading":  map[string]any{"regex": "Decision|Resolution"},
 				"sections": []any{map[string]any{"heading": "Outcome"}},
-				"aliases":  []any{"Resolution"},
 			},
 			map[string]any{
-				"heading": map[string]any{"unlisted": true},
+				"heading": map[string]any{
+					"regex":  ".+",
+					"repeat": map[string]any{"min": 0},
+				},
 			},
 		},
 	}
 	sch, err := ParseInline(raw, "kind rfc")
 	require.NoError(t, err)
 	assert.True(t, sch.Closed)
-	assert.Equal(t, "RFC-[0-9][0-9][0-9][0-9].md", sch.Require.Filename)
+	assert.Equal(t, "RFC-[0-9][0-9][0-9][0-9].md", sch.Filename)
 	require.Len(t, sch.Sections, 3)
 	assert.Equal(t, "Overview", sch.Sections[0].Heading)
-	assert.Equal(t, []string{"Resolution"}, sch.Sections[1].Aliases)
+	require.NotNil(t, sch.Sections[1].Matcher)
+	assert.Equal(t, "Decision|Resolution", sch.Sections[1].Matcher.Regex)
 	require.Len(t, sch.Sections[1].Sections, 1)
 	assert.Equal(t, "Outcome", sch.Sections[1].Sections[0].Heading)
-	assert.True(t, sch.Sections[2].Wildcard)
+	assert.True(t, isSlotMatcher(sch.Sections[2].Matcher))
 
 	assert.Contains(t, sch.FrontmatterCUE(), `id: =~"^RFC-[0-9]{4}$"`)
 	assert.Contains(t, sch.FrontmatterCUE(), `title?: string`)
@@ -268,7 +266,10 @@ func TestValidate_Inline_WildcardSlotTolerates(t *testing.T) {
 		"closed": true,
 		"sections": []any{
 			map[string]any{"heading": "Overview"},
-			map[string]any{"heading": map[string]any{"unlisted": true}},
+			map[string]any{"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{"min": 0},
+			}},
 			map[string]any{"heading": "References"},
 		},
 	}
@@ -281,12 +282,12 @@ func TestValidate_Inline_WildcardSlotTolerates(t *testing.T) {
 		"wildcard slot should tolerate unlisted sections at that position")
 }
 
-func TestValidate_Inline_AliasMatches(t *testing.T) {
+func TestValidate_Inline_DisjunctionMatches(t *testing.T) {
+	// Aliases are gone; encode the disjunction in the regex.
 	raw := map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading": "Symptoms",
-				"aliases": []any{"Indicators"},
+				"heading": map[string]any{"regex": "Symptoms|Indicators"},
 			},
 		},
 	}
@@ -301,12 +302,10 @@ func TestValidate_Inline_NestedThreeLevels(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  "Diagnosis",
-				"required": true,
+				"heading": "Diagnosis",
 				"sections": []any{
 					map[string]any{
-						"heading":  "Step",
-						"required": true,
+						"heading": "Step",
 						"sections": []any{
 							map[string]any{"heading": "Check"},
 							map[string]any{"heading": "Expected"},
@@ -406,7 +405,7 @@ func TestParseInline_ContentRequiredOnUnlistedRejected(t *testing.T) {
 		"sections": []any{map[string]any{
 			"heading": "Examples",
 			"content": []any{map[string]any{
-				"kind": "unlisted", "required": true,
+				"kind": "unlisted", "required": true, // tests rejection
 			}},
 		}},
 	}, "kind x")
@@ -418,25 +417,16 @@ func TestParseInline_ContentRequiredOnUnlistedRejected(t *testing.T) {
 func TestParseInline_ContentRejectedOnWildcard(t *testing.T) {
 	_, err := ParseInline(map[string]any{
 		"sections": []any{map[string]any{
-			"heading": map[string]any{"unlisted": true},
+			"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{"min": 0},
+			},
 			"content": []any{map[string]any{"kind": "paragraph"}},
 		}},
 	}, "kind x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(),
 		"not allowed on a slot")
-}
-
-func TestParseInline_ContentRejectedOnQuestionMarkHeading(t *testing.T) {
-	_, err := ParseInline(map[string]any{
-		"sections": []any{map[string]any{
-			"heading": "?",
-			"content": []any{map[string]any{"kind": "paragraph"}},
-		}},
-	}, "kind x")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(),
-		"not allowed on a `?` wildcard heading")
 }
 
 // ---- Validate (content:) ----
@@ -1049,11 +1039,13 @@ func TestValidate_Content_NestedSectionRecurses(t *testing.T) {
 
 func TestValidate_Content_WildcardSiblingSkipped(t *testing.T) {
 	// A slot scope sibling to a content-bearing scope must be skipped
-	// by walkContentScopes without panicking — exercises the
-	// sc.Wildcard branch.
+	// by walkContentScopes without panicking.
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": map[string]any{"unlisted": true}},
+			map[string]any{"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{"min": 0},
+			}},
 			map[string]any{
 				"heading": "Body",
 				"content": []any{map[string]any{"kind": "paragraph"}},
@@ -1234,8 +1226,10 @@ var describeNodeCases = []describeNodeCase{
 func TestValidate_Content_ScopeWithoutMatchingHeading(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{map[string]any{
-			"heading":  "Missing",
-			"required": false,
+			"heading": map[string]any{
+				"regex":  "Missing",
+				"repeat": map[string]any{"min": 0, "max": 1},
+			},
 			"content": []any{
 				map[string]any{"kind": "code-block", "lang": "yaml"},
 			},
@@ -1696,8 +1690,7 @@ func TestValidate_Content_PreambleAtEndOfDocument(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  nil,
-				"required": true,
+				"heading": nil,
 				"content": []any{
 					map[string]any{"kind": "code-block", "lang": "yaml"},
 				},

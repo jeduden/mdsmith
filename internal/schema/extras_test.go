@@ -71,13 +71,13 @@ OIDC (OpenID Connect) is set up here.
 	sch := &Schema{Source: "test", RootLevel: 2,
 		Acronyms: &AcronymRule{},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	assert.Empty(t, diags, "heading line must not flag OIDC as first use")
 
 	// Scoped.
-	sch.Sections = []Scope{{Heading: "OIDC configuration", Required: true}}
+	sch.Sections = []Scope{literalScope("OIDC configuration")}
 	sch.Acronyms.Scope = []string{"OIDC configuration"}
-	diags = ValidateAcronyms(f, sch, makeDiagForTest)
+	diags = ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	assert.Empty(t, diags, "scoped pass also excludes the heading line")
 }
 
@@ -87,7 +87,7 @@ func TestAcronyms_FirstUseFlagged(t *testing.T) {
 	sch := &Schema{Source: "test", RootLevel: 2, Acronyms: &AcronymRule{
 		KnownSafe: []string{"API"},
 	}}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "OIDC")
 }
@@ -98,7 +98,7 @@ func TestAcronyms_KnownSafePasses(t *testing.T) {
 	sch := &Schema{Source: "test", RootLevel: 2, Acronyms: &AcronymRule{
 		KnownSafe: []string{"API", "HTTP"},
 	}}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	assert.Empty(t, diags)
 }
 
@@ -106,7 +106,7 @@ func TestAcronyms_ExpansionPasses(t *testing.T) {
 	src := "# Doc\n\nOIDC (OpenID Connect) is configured.\n"
 	f := newDocFile(t, "doc.md", src)
 	sch := &Schema{Source: "test", RootLevel: 2, Acronyms: &AcronymRule{}}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	assert.Empty(t, diags)
 }
 
@@ -126,12 +126,12 @@ OIDC outside scope — should not flag.
 		Source:    "test",
 		RootLevel: 2,
 		Sections: []Scope{
-			{Heading: "Check", Required: true},
-			{Heading: "Notes", Required: false},
+			literalScope("Check"),
+			optionalScope("Notes"),
 		},
 		Acronyms: &AcronymRule{Scope: []string{"Check"}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	require.Len(t, diags, 1, "exactly one diagnostic, inside Check")
 	assert.Contains(t, diags[0].Message, "OIDC")
 	assert.Equal(t, 5, diags[0].Line)
@@ -646,7 +646,7 @@ func TestAcronyms_AppliesWithEmptyScope(t *testing.T) {
 	sch := &Schema{Source: "test", RootLevel: 2,
 		Acronyms: &AcronymRule{Scope: []string{}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	require.Len(t, diags, 1, "empty scope applies document-wide")
 }
 
@@ -668,11 +668,11 @@ OIDC again, separate scope pass.
 		Source:    "test",
 		RootLevel: 2,
 		Sections: []Scope{
-			{Heading: "Check", Required: true},
+			literalScope("Check"),
 		},
 		Acronyms: &AcronymRule{Scope: []string{"Check"}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	// walker only matches one "Check" today (no repeats), so we
 	// just check that at least the first OIDC is flagged.
 	require.NotEmpty(t, diags)
@@ -694,12 +694,15 @@ OIDC also here.
 		Source:    "test",
 		RootLevel: 2,
 		Sections: []Scope{
-			{Heading: "Probe", Required: true, Aliases: []string{"Check"}},
-			{Heading: "Outside", Required: false},
+			{
+				Heading: "Probe|Check",
+				Matcher: &Matcher{Regex: "Probe|Check"},
+			},
+			optionalScope("Outside"),
 		},
-		Acronyms: &AcronymRule{Scope: []string{"Check"}},
+		Acronyms: &AcronymRule{Scope: []string{"Probe|Check"}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	require.Len(t, diags, 1)
 	assert.Equal(t, 5, diags[0].Line)
 }
@@ -759,13 +762,13 @@ OIDC needs an expansion.
 		Source:    "test",
 		RootLevel: 2,
 		Sections: []Scope{
-			{Preamble: true},
-			{Wildcard: true},
-			{Heading: "Check", Required: true},
+			preambleScope(),
+			slotScope(),
+			literalScope("Check"),
 		},
 		Acronyms: &AcronymRule{Scope: []string{"Check"}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	require.Len(t, diags, 1)
 }
 
@@ -785,15 +788,13 @@ OIDC inside nested scope.
 		Source:    "test",
 		RootLevel: 2,
 		Sections: []Scope{
-			{Heading: "Diagnosis", Required: true, Sections: []Scope{
-				{Heading: "Step", Required: true, Sections: []Scope{
-					{Heading: "Check", Required: true},
-				}},
-			}},
+			nested("Diagnosis",
+				nested("Step",
+					literalScope("Check"))),
 		},
 		Acronyms: &AcronymRule{Scope: []string{"Check"}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "OIDC")
 }
@@ -821,14 +822,12 @@ OIDC in second tree — but acronyms-scope is per-walker first-match.
 		Source:    "test",
 		RootLevel: 2,
 		Sections: []Scope{
-			{Heading: "Diagnosis", Required: true, Sections: []Scope{
-				{Heading: "Check", Required: true},
-			}},
-			{Heading: "Other", Required: false},
+			nested("Diagnosis", literalScope("Check")),
+			optionalScope("Other"),
 		},
 		Acronyms: &AcronymRule{Scope: []string{"Check"}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	require.Len(t, diags, 1)
 	assert.Equal(t, 7, diags[0].Line)
 }
@@ -901,11 +900,11 @@ func TestAcronyms_ScopeWithNoMatchingHeadingIsSilent(t *testing.T) {
 		Source:    "test",
 		RootLevel: 2,
 		Sections: []Scope{
-			{Heading: "Check", Required: true},
+			literalScope("Check"),
 		},
 		Acronyms: &AcronymRule{Scope: []string{"Check"}},
 	}
-	diags := ValidateAcronyms(f, sch, makeDiagForTest)
+	diags := ValidateAcronyms(f, sch, nil, makeDiagForTest)
 	assert.Empty(t, diags)
 }
 
@@ -918,9 +917,9 @@ func TestValidators_NoOpWhenSchemaAbsent(t *testing.T) {
 		&Schema{Source: "test", RootLevel: 2}, makeDiagForTest))
 
 	// ValidateAcronyms: same contract.
-	assert.Empty(t, ValidateAcronyms(f, nil, makeDiagForTest))
+	assert.Empty(t, ValidateAcronyms(f, nil, nil, makeDiagForTest))
 	assert.Empty(t, ValidateAcronyms(f,
-		&Schema{Source: "test", RootLevel: 2}, makeDiagForTest))
+		&Schema{Source: "test", RootLevel: 2}, nil, makeDiagForTest))
 
 	// ValidateIndex: nil schema and no-index schema return no diags.
 	assert.Empty(t, ValidateIndex(f, nil, makeDiagForTest))

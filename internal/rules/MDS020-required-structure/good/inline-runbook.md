@@ -2,23 +2,20 @@
 settings:
   inline-schema:
     sections:
-      - heading: "Symptoms"
-        required: true
-        aliases: ["Indicators"]
+      - heading:
+          regex: 'Symptoms|Indicators'
       - heading: "Diagnosis"
-        required: true
         sections:
           - heading: "Step"
-            required: true
             sections:
               - heading: "Check"
-                required: true
               - heading: "Expected"
-                required: true
-              - heading: "If different"
-                required: false
-      - heading: "References"
-        required: false
+              - heading:
+                  regex: 'If different'
+                  repeat: { min: 0, max: 1 }
+      - heading:
+          regex: 'References'
+          repeat: { min: 0, max: 1 }
 ---
 # Runbook
 

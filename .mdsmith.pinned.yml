@@ -1,3 +1,14 @@
+## .mdsmith.pinned.yml — config consumed by the pinned mdsmith
+## binary in the `mdsmith-fixed-version` CI gate and by the
+## merge-queue workflow's `mdsmith merge-driver install` step.
+## Plan 156 reshaped the inline schema vocabulary; v0.15.0
+## (the current pinned baseline) cannot parse the new form, so
+## this file restates each inline `kinds.<name>.schema:` block
+## in the pre-plan-156 shape (`required: false`, `unlisted: true`,
+## `require.filename:`). Everything outside the inline schemas
+## mirrors .mdsmith.yml verbatim — keep the two files in lockstep
+## when editing project-wide config, then delete this file once
+## setup-mdsmith-pinned-version advances past v0.15.0.
 front-matter: true
 
 rules:
@@ -328,9 +339,9 @@ kinds:
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
   cli-command:
     schema:
       frontmatter:
@@ -339,9 +350,9 @@ kinds:
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
   release-channel:
     schema:
       frontmatter:
@@ -350,19 +361,14 @@ kinds:
         registry: 'string & != ""'
         credential: 'string & != ""'
         job: 'string & != ""'
-        # channelurl + weight drive the homepage "Distributed
-        # via" strip (website/layouts/partials/logos-strip.html),
-        # which ranges these docs instead of a data file.
-        # Not `url`: Hugo treats a front-matter `url` as a page
-        # URL override and rejects an absolute http(s) value.
         channelurl: 'string & =~ "^https?://"'
         weight: 'int & >=1'
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
   secret-rotation:
     schema:
       frontmatter:
@@ -378,28 +384,24 @@ kinds:
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
   audit-log:
     schema:
       frontmatter:
         title: 'string & != ""'
         "summary?": 'string'
         audit-from: '=~"^[0-9a-f]{7,40}$"'
-      filename: "architecture-audit.md"
+      require:
+        filename: "architecture-audit.md"
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
   feature:
-    # Marketing feature pages under docs/features/. The homepage
-    # feature grid (website/layouts/partials/feature-grid.html)
-    # and the README <?include?> both depend on this front
-    # matter, so the schema makes a missing/typo'd field fail
-    # `mdsmith check` instead of silently breaking a card.
     schema:
       frontmatter:
         title: 'string & != ""'
@@ -411,13 +413,10 @@ kinds:
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
   feature-index:
-    # docs/features/index.md is the shared "Why mdsmith"
-    # overview, not a card: it carries only title + summary
-    # (no icon/weight), so it gets its own kind.
     schema:
       frontmatter:
         title: 'string & != ""'
@@ -425,9 +424,9 @@ kinds:
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
   website-page:
     # Hugo content pages under website/content/. Scoped to the
     # top level only (no **) so the kind covers hand-authored
@@ -447,19 +446,14 @@ kinds:
       frontmatter:
         title: 'string & != ""'
         summary: 'string & != ""'
-        # The homepage carries its hero copy and install
-        # quickstart in its own front matter (read by
-        # hero.html / install-list.html) instead of a
-        # separate data file. Open structs: Hugo templates
-        # consume the specific keys.
         "hero?": '{...}'
         "install?": '[...{...}]'
       closed: false
       sections:
         - heading: null
+          required: false
         - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+            unlisted: true
     rules:
       first-line-heading: false
       heading-increment: false

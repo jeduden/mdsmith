@@ -162,6 +162,11 @@ diagnostic.
 permissive subsections sets `closed: true` at
 the root and omits it on each child.
 
+> **Entry shape superseded by plan 156.** The
+> grammar below is historical; the current shape
+> lives in the
+> [section-schema reference](../docs/reference/section-schema.md).
+
 Every section-array entry sets `heading:`. The
 value is a string (literal heading text), `null`
 (the preamble — content before any heading),

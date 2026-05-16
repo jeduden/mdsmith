@@ -3,9 +3,7 @@ settings:
   inline-schema:
     sections:
       - heading: "Goal"
-        required: true
       - heading: "Tasks"
-        required: true
 ---
 # My Plan
 

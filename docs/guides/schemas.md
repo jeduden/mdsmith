@@ -15,13 +15,18 @@ they are the canonical place to lock down the shape
 of a recurring document type (plan, RFC, runbook,
 rule README).
 
-mdsmith reads schemas from two sources that share one
-in-memory representation:
+mdsmith reads schemas from two sources:
 
 - **Inline** — a `schema:` block on a kind body in
-  `.mdsmith.yml`.
+  `.mdsmith.yml`. Uses the new matcher engine
+  (`regex:`, `repeat:`, `\#(digits)`, `\#(fmvar(...))`).
 - **File** — a `proto.md` referenced by
-  `rules.required-structure.schema:`.
+  `rules.required-structure.schema:`. MDS020 still
+  validates this source through its legacy parser
+  today; the schema-package parser shipped with plan
+  156 lifts proto.md into the same matcher shape but
+  is exercised only by tests until the cutover
+  follow-up wires MDS020 through.
 
 A kind may use only one source; setting both is a
 config error.
@@ -37,24 +42,20 @@ templated body content.
 kinds:
   rfc:
     schema:
+      filename: "RFC-[0-9][0-9][0-9][0-9].md"
       frontmatter:
         id: '=~"^RFC-[0-9]{4}$"'
         status: '"draft" | "ratified" | "deprecated"'
         authors: '[...string] & len(authors) >= 1'
-      require:
-        filename: "RFC-[0-9][0-9][0-9][0-9].md"
       closed: true
       sections:
         - heading: null
-          required: false
         - heading: "Overview"
-          required: true
         - heading: "Decision"
-          required: true
         - heading:
-            unlisted: true
+            regex: '.+'
+            repeat: { min: 0 }
         - heading: "References"
-          required: true
 ```
 
 The `frontmatter:` mapping reuses CUE expressions per
@@ -68,40 +69,86 @@ the ISO regex; see
 [Schema field types](../reference/schema-types.md)
 for the registered names and how they are matched.
 
-`require.filename:` is a glob the document basename
-must match.
+`filename:` is a glob the document basename must
+match. It sits at the top of the schema block (no
+`require:` wrapper).
 
 `closed: true` makes the scope strict — unlisted
 headings produce a diagnostic. `closed: false` (the
 default) tolerates unlisted headings between listed
-sections.
+sections. `closed:` is only meaningful when the
+schema declares `sections:`; setting it on a
+frontmatter-only kind is a parse error.
 
-### The `heading:` field
+### The `heading:` discriminator
 
 Every section-array entry sets `heading:`. The value
 takes one of three shapes:
 
-- **string** — literal heading text. Example:
-  `heading: "Overview"`. The doc must have a heading
-  whose text equals that string (or an alias).
 - **`null`** — the preamble: content from line 1 up
   to the first heading. Only valid as the first entry
-  in a section list. Carries `required:` /
-  `closed:` / `rules:` for that range; cannot carry
-  `aliases:` or nested `sections:`.
-- **mapping** — typed match. Today only
-  `{unlisted: true}` is accepted, declaring a slot
-  that absorbs zero or more sections the schema did
-  not list by name. The slot is positional, but
-  out-of-order detection still claims a heading whose
-  text matches a later listed scope, so the slot only
-  absorbs truly-unlisted sections. Slots are
-  positional-only — they cannot carry `aliases:`,
-  `sections:`, `rules:`, `closed:`, or `required:`;
-  the parser rejects those keys. Future work can
-  extend the mapping form with shapes like
-  `{any: true}` (match any heading text) or
-  `{pattern: "..."}` (match a placeholder pattern).
+  in a section list. Carries `closed:` / `rules:` /
+  `content:` for that range; rejects `sections:`.
+- **string** — sugar for a literal match. The string
+  is regex-escaped and used as the matcher's pattern,
+  so `heading: "(WIP)"` matches a heading whose text
+  is exactly `(WIP)` with the parens taken literally.
+  Cardinality is one.
+- **mapping** — the full form:
+  `{ regex, repeat?, sequential? }`. `regex:` is
+  required; the body is a Go RE2 pattern that
+  accepts two interpolation references —
+  `\#(digits)` and `\#(fmvar(name))`. `repeat:`
+  bounds the run; `sequential:` (with `digits`)
+  asserts ordering. See the
+  [section-schema reference](../reference/section-schema.md)
+  for the full grammar.
+
+### The matcher mapping
+
+```yaml
+sections:
+  - heading:
+      regex: 'Step \#(digits)'
+      repeat: { min: 1, max: 5 }
+      sequential: true
+    sections: [...]
+    content: [...]
+  - heading:
+      regex: '\#(fmvar(id)): \#(fmvar(name))'
+  - heading:
+      regex: '.+'
+      repeat: { min: 0 }
+```
+
+`regex:` is whole-string anchored against the
+heading's rendered plain text (inline emphasis stripped,
+link wrappers unwrapped, code-span backticks dropped).
+Backslashes pass through to RE2; interpolation uses
+`\#(expr)`. Two helpers are in scope:
+
+- **`digits`** — expands to the named capture
+  `(?P<n>[0-9]+)`. One per pattern. With
+  `sequential: true` the validator asserts the
+  captured numbers are strictly increasing without
+  gaps.
+- **`fmvar(name)`** — looks up the document's
+  frontmatter field `name`, regex-escapes its value,
+  and substitutes it.
+
+`repeat:` bounds how many consecutive matching
+headings the matcher claims. Omitting `repeat:`
+means exactly one; `{ min: 0 }` is zero-or-more;
+`{ min: 0, max: 1 }` is optional; `{ min: 1 }` is
+one-or-more; bounded forms enforce both bounds.
+`repeat: { max: 0 }` and `repeat: { min > max }`
+each parse-error.
+
+The wildcard-slot shape — `regex: '.+'` with
+`repeat: { min: 0 }` — is positional: it absorbs
+zero or more unlisted sections at its slot. A
+heading whose text matches a later listed entry is
+claimed for that entry, not absorbed by the slot.
 
 ### Nested sections
 
@@ -112,29 +159,25 @@ expresses that as:
 
 ```yaml
 sections:
-  - heading: "Symptoms"
-    required: true
-    aliases: ["Indicators"]
+  - heading:
+      regex: 'Symptoms|Indicators'
   - heading: "Diagnosis"
-    required: true
     sections:
       - heading: "Step"
-        required: true
         sections:
           - heading: "Check"
-            required: true
           - heading: "Expected"
-            required: true
-          - heading: "If different"
-            required: false
-  - heading: "References"
-    required: false
+          - heading:
+              regex: 'If different'
+              repeat: { min: 0, max: 1 }
+  - heading:
+      regex: 'References'
+      repeat: { min: 0, max: 1 }
 ```
 
-`aliases:` lets a heading match alternate texts. A
-required scope that lists `aliases: ["Indicators"]`
-matches both `## Symptoms` and `## Indicators` in a
-document.
+A scope that accepts alternate heading texts encodes
+the disjunction in its regex: `regex: 'A|B'` matches
+a heading whose text is `A` or `B`.
 
 ### Section content
 
@@ -179,10 +222,10 @@ ordered/min/max) emit their own diagnostics but
 still consume the slot. Missing required entries
 anchor at the section's heading line.
 
-`content:` is not accepted on slot scopes
-(`heading: {unlisted: true}`) or on the `?`
-wildcard heading — the parser rejects those
-shapes today.
+`content:` is rejected on a slot scope (the
+wildcard-slot shape has no fixed identity to
+constrain). Set `content:` only on entries that
+match named sections.
 
 ### Per-scope rule overrides
 
@@ -197,7 +240,6 @@ document" without scattering glob overrides.
 ```yaml
 sections:
   - heading: "Decision"
-    required: true
     rules:
       paragraph-readability:
         max-index: 12.0
@@ -364,9 +406,20 @@ filename: "MDS*-*.md"
 The `# ?` (or `# {field}: {field}` form) acts as the
 title placeholder. `## ...` rows mark wildcard slots.
 Front-matter keys map directly to CUE expressions.
-`<?require?>` declares the filename pattern. See
-[enforcing document structure](directives/enforcing-structure.md)
-for the full file-based reference.
+`<?require?>` declares the filename pattern.
+
+MDS020's file-schema check still routes through
+its legacy parser today: `{field}` in a proto.md
+heading row matches a non-empty run rather than
+resolving the document's frontmatter value via
+`fmvar(...)`. The schema package parses proto.md
+into the new Matcher shape (used by tests), and a
+follow-up plan will wire MDS020 through that
+parser. Until then, treat `{field}` in proto.md
+heading rows as a wildcard placeholder, not as a
+frontmatter substitution. The
+[section-schema reference](../reference/section-schema.md#protomd-file-syntax)
+records the eventual mapping.
 
 ## Choosing a source
 
@@ -394,6 +447,8 @@ mismatch`, and `out of order` mean.
 
 ## See also
 
+- [Section schema reference](../reference/section-schema.md)
+  — the entry-shape grammar in full.
 - [File kinds](file-kinds.md) — how kinds attach
   schemas (and other rule config) to file groups.
 - [Enforcing document structure with schemas](directives/enforcing-structure.md)

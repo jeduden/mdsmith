@@ -182,7 +182,13 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-mdsmith-pinned-version
-      - run: mdsmith check .
+      # Plan 156 reshaped the inline schema vocabulary; the pinned
+      # baseline binary (v0.15.0) cannot parse the new form in
+      # .mdsmith.yml. .mdsmith.pinned.yml restates the inline
+      # schemas in the pre-156 shape so the pinned binary can lint
+      # the tree. Delete this -c flag (and .mdsmith.pinned.yml)
+      # once setup-mdsmith-pinned-version advances past v0.15.0.
+      - run: mdsmith check -c .mdsmith.pinned.yml .
 
   demo:
     uses: ./.github/workflows/record-demo.yml

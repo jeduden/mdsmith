@@ -150,7 +150,10 @@ func TestCheck_InlineSchema_WildcardSlot(t *testing.T) {
 		"closed": true,
 		"sections": []any{
 			map[string]any{"heading": "Overview"},
-			map[string]any{"heading": map[string]any{"unlisted": true}},
+			map[string]any{"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{"min": 0},
+			}},
 			map[string]any{"heading": "References"},
 		},
 	})}
@@ -167,15 +170,13 @@ func TestCheck_InlineSchema_NestedThreeLevels(t *testing.T) {
 	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  "Diagnosis",
-				"required": true,
+				"heading": "Diagnosis",
 				"sections": []any{
 					map[string]any{
-						"heading":  "Step",
-						"required": true,
+						"heading": "Step",
 						"sections": []any{
-							map[string]any{"heading": "Check", "required": true},
-							map[string]any{"heading": "Expected", "required": true},
+							map[string]any{"heading": "Check"},
+							map[string]any{"heading": "Expected"},
 						},
 					},
 				},
@@ -206,10 +207,9 @@ func TestCheck_InlineSchema_LevelMismatch(t *testing.T) {
 	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  "Diagnosis",
-				"required": true,
+				"heading": "Diagnosis",
 				"sections": []any{
-					map[string]any{"heading": "Step", "required": true},
+					map[string]any{"heading": "Step"},
 				},
 			},
 		},
@@ -229,25 +229,22 @@ func TestCheck_InlineSchema_LevelMismatch(t *testing.T) {
 	expectDiagMsg(t, our, "expected h3")
 }
 
-func TestCheck_InlineSchema_AliasMatches(t *testing.T) {
+func TestCheck_InlineSchema_DisjunctionMatches(t *testing.T) {
 	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading": "Symptoms",
-				"aliases": []any{"Indicators"},
+				"heading": map[string]any{"regex": "Symptoms|Indicators"},
 			},
 		},
 	})}
 	f := newTestFile(t, "doc.md", "# Runbook\n\n## Indicators\n\nx\n")
 	diags := r.Check(f)
-	assert.Empty(t, diags, "alias should match in place of primary heading")
+	assert.Empty(t, diags, "regex disjunction should match the alternate text")
 }
 
 func TestCheck_InlineSchema_FilenamePattern(t *testing.T) {
 	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
-		"require": map[string]any{
-			"filename": "RFC-[0-9][0-9][0-9][0-9].md",
-		},
+		"filename": "RFC-[0-9][0-9][0-9][0-9].md",
 	})}
 	f := newTestFile(t, "draft.md", "# Draft\n")
 	diags := r.Check(f)
@@ -352,6 +349,95 @@ func TestCheck_InlineSchema_ScopeRuleDoesNotLeakAcrossSiblings(t *testing.T) {
 		"strict override must not extend into the sibling H3 section")
 }
 
+// TestCheck_InlineSchema_RuleOverrideAppliesToEveryRepeatedOccurrence
+// verifies the per-scope rule override path through `Rule.Check`:
+// when a repeated scope (`repeat: { min: 1, max: N }`) carries a
+// `rules:` block, the override must apply inside every matched
+// section, not just the first occurrence. The plan156 acceptance
+// suite covers the structural walker via acronym ranges as a
+// proxy; this integration test exercises the MDS020 rule directly
+// so a regression in `runScopeRules` would surface.
+func TestCheck_InlineSchema_RuleOverrideAppliesToEveryRepeatedOccurrence(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading": map[string]any{
+					"regex":  "Strict",
+					"repeat": map[string]any{"min": 1, "max": 3},
+				},
+				"rules": map[string]any{
+					"line-length": map[string]any{
+						"max":     20,
+						"stern":   true,
+						"exclude": []any{},
+					},
+				},
+			},
+		},
+	})}
+	// Two Strict sections, each with a long line. The override
+	// must fire in both.
+	src := "# Doc\n\n" +
+		"## Strict\n\n" +
+		"First strict body line is well over twenty chars and should fire.\n\n" +
+		"## Strict\n\n" +
+		"Second strict body line is well over twenty chars and should fire.\n"
+	f := newTestFile(t, "doc.md", src)
+	diags := r.Check(f)
+	var lineLength int
+	for _, d := range diags {
+		if d.RuleID == "MDS001" {
+			lineLength++
+		}
+	}
+	assert.GreaterOrEqual(t, lineLength, 2,
+		"the rule override must fire inside every Strict occurrence")
+}
+
+// TestCheck_InlineSchema_BroadRepeatedScopeYieldsToLaterNamed
+// covers the per-scope rule walker's yield path: a broad
+// repeated matcher must hand a heading over to a later named
+// scope so the named scope's rule override fires on its own
+// section. Mirrors the structural validator's claimsLaterLiteral
+// behavior at the walker level.
+func TestCheck_InlineSchema_BroadRepeatedScopeYieldsToLaterNamed(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"sections": []any{
+			map[string]any{
+				"heading": map[string]any{
+					"regex":  ".+",
+					"repeat": map[string]any{"min": 1},
+				},
+			},
+			map[string]any{
+				"heading": "Strict",
+				"rules": map[string]any{
+					"line-length": map[string]any{
+						"max":     20,
+						"stern":   true,
+						"exclude": []any{},
+					},
+				},
+			},
+		},
+	})}
+	src := "# Doc\n\n" +
+		"## Body\n\nx\n\n" +
+		"## Strict\n\n" +
+		"This strict line is well over twenty chars and should fire.\n"
+	f := newTestFile(t, "doc.md", src)
+	diags := r.Check(f)
+	var lineLength []lint.Diagnostic
+	for _, d := range diags {
+		if d.RuleID == "MDS001" {
+			lineLength = append(lineLength, d)
+		}
+	}
+	require.NotEmpty(t, lineLength,
+		"broad repeated matcher must yield `## Strict` so the "+
+			"named scope's rule override fires inside its range")
+}
+
 // TestApplyScopeRules_NilSchemaShortCircuits covers the defensive
 // guard at the top of applyScopeRules so coverage reflects the
 // fact that nil schemas are handled.
@@ -387,7 +473,7 @@ func TestApplySettings_AllowsEmptySchemaWithInline(t *testing.T) {
 func TestApplyScopeRules_NilSchemaShortCircuits(t *testing.T) {
 	r := &Rule{}
 	f := newTestFile(t, "doc.md", "# T\n\n## Foo\n")
-	diags := r.applyScopeRules(f, nil)
+	diags := r.applyScopeRules(f, nil, nil)
 	assert.Empty(t, diags)
 }
 
@@ -434,8 +520,7 @@ func TestCheck_InlineSchema_PreambleRuleOverride(t *testing.T) {
 	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  nil,
-				"required": false,
+				"heading": nil,
 				"rules": map[string]any{
 					"line-length": map[string]any{
 						"max":     20,
@@ -560,15 +645,58 @@ func TestCheck_InlineSchema_ScopeRuleNonConfigurableEmptyOverride(t *testing.T) 
 	}
 }
 
+// TestCheck_InlineSchema_ScopeRulesUnderFmvarHeading regresses a
+// Copilot review finding: a per-scope rule override under a
+// `\#(fmvar(...))` heading must apply to the matching doc section.
+// The walker has to resolve the fmvar against the document's
+// frontmatter the same way the structural validator does.
+func TestCheck_InlineSchema_ScopeRulesUnderFmvarHeading(t *testing.T) {
+	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
+		"frontmatter": map[string]any{
+			"id": `string & != ""`,
+		},
+		"sections": []any{
+			map[string]any{
+				"heading": map[string]any{
+					"regex": `\#(fmvar(id))`,
+				},
+				"rules": map[string]any{
+					"line-length": map[string]any{
+						"max":     20,
+						"stern":   true,
+						"exclude": []any{},
+					},
+				},
+			},
+		},
+	})}
+	src := "---\nid: MDS001\n---\n# Runbook\n\n" +
+		"## MDS001\n\n" +
+		"This step body has a deliberately long line that exceeds twenty.\n"
+	f := newTestFile(t, "doc.md", src)
+	diags := r.Check(f)
+	var lineLength []lint.Diagnostic
+	for _, d := range diags {
+		if d.RuleID == "MDS001" {
+			lineLength = append(lineLength, d)
+		}
+	}
+	require.NotEmpty(t, lineLength,
+		"fmvar-resolved scope heading must claim its match so the rule override fires")
+}
+
 // TestCheck_InlineSchema_ScopeRulesUnderFieldHeading exercises
-// matchesScopeText against a placeholder-bearing heading — the
-// walker should still pair the scope with the matching doc heading
-// so its `rules:` block applies inside the right line range.
+// the per-scope walker's matching path for a `\#(digits)`
+// heading. The walker must still pair the scope with the
+// matching doc heading so its `rules:` block applies inside
+// the right line range.
 func TestCheck_InlineSchema_ScopeRulesUnderFieldHeading(t *testing.T) {
 	r := &Rule{InlineSchema: inlineSchema(t, map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading": "Step {n}",
+				"heading": map[string]any{
+					"regex": `Step \#(digits)`,
+				},
 				"rules": map[string]any{
 					"line-length": map[string]any{
 						"max":     20,

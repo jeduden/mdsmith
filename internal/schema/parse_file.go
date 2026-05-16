@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"strings"
 
+	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
@@ -30,6 +32,21 @@ type FileReader struct {
 // File-based schemas default to Closed=true at the root so the
 // historical heading-template behaviour (extras flagged) survives the
 // migration. Inline schemas opt back to open scopes per plan 146.
+//
+// Plan 156 maps the proto.md heading-row tokens to the new Matcher
+// shape: `## ?` → `{regex: '.+'}`, `## ...` → `{regex: '.+',
+// repeat: {min: 0}}`, `## Step {n}` → `{regex: 'Step \#(digits)'}`,
+// `## {id}` → `{regex: '\#(fmvar(id))'}`. The `<?require?>`
+// directive in proto.md bodies is unchanged.
+//
+// Note: MDS020's file-schema path (internal/rules/requiredstructure)
+// still routes through its legacy `parseSchema` / `parsedSchema`
+// pipeline, not this `ParseFile`. The new shape parses correctly
+// here and is exercised by the schema-package tests, but proto.md
+// authors won't benefit from the new Matcher / fmvar / digits
+// semantics until that path is migrated (a follow-up plan tracks
+// the cutover so the `{field}` heading/body sync feature survives
+// the move).
 func ParseFile(r *FileReader, path string) (*Schema, error) {
 	if r == nil {
 		r = &FileReader{}
@@ -65,18 +82,21 @@ func parseFileBytes(
 		return nil, err
 	}
 	if fp != "" {
-		sch.Require.Filename = fp
+		sch.Filename = fp
 	}
 
 	headings, fp2, err := collectFileHeadings(f, r, path, visited, chain)
 	if err != nil {
 		return nil, err
 	}
-	if sch.Require.Filename == "" && fp2 != "" {
-		sch.Require.Filename = fp2
+	if sch.Filename == "" && fp2 != "" {
+		sch.Filename = fp2
 	}
 
-	sch.Sections, sch.RootLevel = headingsToScopes(headings)
+	sch.Sections, sch.RootLevel, err = headingsToScopes(headings)
+	if err != nil {
+		return nil, err
+	}
 	return sch, nil
 }
 
@@ -340,8 +360,10 @@ func (r *FileReader) readPath(path string) ([]byte, error) {
 // the same level produce diagnostics unless a "..." wildcard slot
 // relaxes the position.
 //
-// The "..." text marks a wildcard scope at its position.
-func headingsToScopes(heads []FileHeading) ([]Scope, int) {
+// The "..." text marks a slot scope at its position; the helper
+// desugars it to the canonical wildcard matcher (`regex: '.+',
+// repeat: { min: 0 }`).
+func headingsToScopes(heads []FileHeading) ([]Scope, int, error) {
 	rootLevel := 0
 	for _, h := range heads {
 		if rootLevel == 0 || h.Level < rootLevel {
@@ -349,7 +371,7 @@ func headingsToScopes(heads []FileHeading) ([]Scope, int) {
 		}
 	}
 	if rootLevel == 0 {
-		return nil, 2
+		return nil, 2, nil
 	}
 
 	type frame struct {
@@ -370,7 +392,10 @@ func headingsToScopes(heads []FileHeading) ([]Scope, int) {
 			stack = stack[:len(stack)-1]
 		}
 		parent := stack[len(stack)-1]
-		sc := buildScopeFromHeading(h.Text)
+		sc, err := buildScopeFromHeading(h.Text)
+		if err != nil {
+			return nil, 0, err
+		}
 		parent.scopes = append(parent.scopes, sc)
 		stack = append(stack, &frame{level: h.Level})
 	}
@@ -380,14 +405,80 @@ func headingsToScopes(heads []FileHeading) ([]Scope, int) {
 		parent.scopes[len(parent.scopes)-1].Sections = top.scopes
 		stack = stack[:len(stack)-1]
 	}
-	return root.scopes, rootLevel
+	return root.scopes, rootLevel, nil
 }
 
-func buildScopeFromHeading(text string) Scope {
-	if strings.TrimSpace(text) == SectionWildcard {
-		return Scope{Wildcard: true}
+// buildScopeFromHeading translates a proto.md heading-row text into
+// a Scope, desugaring the four template tokens listed in the
+// section-schema reference.
+func buildScopeFromHeading(text string) (Scope, error) {
+	switch strings.TrimSpace(text) {
+	case SectionWildcard:
+		// `## ...` — any text, zero or more headings.
+		return Scope{
+			Heading: text,
+			Matcher: &Matcher{
+				Regex:  ".+",
+				Repeat: Repeat{Set: true, Min: 0, Max: 0},
+			},
+			Closed: true,
+		}, nil
+	case "?":
+		// `# ?` / `## ?` — any text, exactly one heading.
+		return Scope{
+			Heading: text,
+			Matcher: &Matcher{Regex: ".+"},
+			Closed:  true,
+		}, nil
 	}
-	return Scope{Heading: text, Required: true, Closed: true}
+	if fieldinterp.ContainsField(text) {
+		regex := protoTokenRegex(text)
+		if countDigitsHelpers(regex) > 1 {
+			return Scope{}, fmt.Errorf(
+				"heading %q: `{n}` may appear at most once "+
+					"(the matcher reads a single named `n` capture)",
+				text)
+		}
+		return Scope{
+			Heading: text,
+			Matcher: &Matcher{Regex: regex},
+			Closed:  true,
+		}, nil
+	}
+	return Scope{
+		Heading: text,
+		Matcher: &Matcher{Regex: regexp.QuoteMeta(text)},
+		Closed:  true,
+	}, nil
+}
+
+// protoTokenRegex desugars a heading-row text containing `{...}`
+// tokens into a `regex:` body using the section-schema's helpers:
+// `{n}` → `\#(digits)` (numeric capture) and `{field}` →
+// `\#(fmvar(field))` (frontmatter lookup). The function preserves
+// literal text in between via regexp.QuoteMeta so backslashes and
+// regex metacharacters survive the round-trip.
+func protoTokenRegex(text string) string {
+	parts := fieldinterp.SplitOnFields(text)
+	fields := fieldinterp.Fields(text)
+	if len(parts) == 0 {
+		return regexp.QuoteMeta(text)
+	}
+	var b strings.Builder
+	for i, part := range parts {
+		b.WriteString(regexp.QuoteMeta(part))
+		if i < len(fields) {
+			name := fields[i]
+			if name == "n" {
+				b.WriteString(`\#(digits)`)
+			} else {
+				b.WriteString(`\#(fmvar(`)
+				b.WriteString(name)
+				b.WriteString(`))`)
+			}
+		}
+	}
+	return b.String()
 }
 
 // headingText extracts the plain text content of a heading node.

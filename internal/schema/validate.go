@@ -5,15 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 	"cuelang.org/go/cue/errors"
-	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/yuin/goldmark/ast"
@@ -105,10 +102,10 @@ func Validate(
 	heads := ExtractDocHeadings(f)
 	body := skipBelow(heads, rootLevel)
 
-	_, sd := validateScopes(f, sch, sch.Sections, sch.Closed, body, 0, rootLevel, mkDiag)
+	_, sd := validateScopes(f, sch, sch.Sections, sch.Closed, body, 0, rootLevel, docFM, mkDiag)
 	diags = append(diags, sd...)
 
-	diags = append(diags, ValidateContent(f, sch, mkDiag)...)
+	diags = append(diags, ValidateContent(f, sch, docFM, mkDiag)...)
 
 	return diags
 }
@@ -527,54 +524,55 @@ func skipBelow(heads []DocHeading, rootLevel int) []DocHeading {
 //
 // closed controls handling of unlisted headings at this level: when
 // true, an unlisted heading flags a diagnostic; when false, it is
-// tolerated. A wildcard scope ("...") always tolerates unlisted
-// headings at its position.
+// tolerated. A slot scope (`regex: '.+', repeat: {min: 0}`) always
+// tolerates unlisted headings at its position.
 func validateScopes(
 	f *lint.File, sch *Schema, scopes []Scope, closed bool, docHeads []DocHeading,
-	docIdx int, expectedLevel int, mkDiag MakeDiag,
+	docIdx int, expectedLevel int, docFM map[string]any,
+	mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
 	var diags []lint.Diagnostic
-	requiredByText := buildRequiredByText(scopes)
 	claimed := make(map[int]bool)
+	claimCounts := make(map[int]int)
 	allowExtra := false
 
 	for i, sc := range scopes {
 		if sc.Preamble {
 			// The preamble has no heading to match. Its rules: are
 			// applied by the per-scope walker in MDS020 against the
-			// [parent-start, first-child-heading) line range. The
-			// validator itself only needs to mark the entry as
-			// processed; plan 149 adds content-shape checks.
+			// [parent-start, first-child-heading) line range.
 			claimed[i] = true
 			continue
 		}
-		if sc.Wildcard {
+		if isSlotMatcher(sc.Matcher) {
 			allowExtra = true
+			claimed[i] = true
 			continue
 		}
 		if claimed[i] {
 			continue
 		}
-		newIdx, scDiags, found := matchScope(
+		newIdx, scDiags, claimedThis := matchScope(
 			f, sch, scopes, i, expectedLevel, docHeads, docIdx,
-			requiredByText, claimed, allowExtra, closed, mkDiag)
+			claimed, claimCounts, allowExtra, closed, docFM, mkDiag)
 		diags = append(diags, scDiags...)
 		docIdx = newIdx
-		if found {
+		if claimedThis {
 			allowExtra = false
-		} else if !claimed[i] && sc.Required && !sc.Repeats {
+		} else if !claimed[i] && sc.Required() {
 			// Missing sections have no body line to point at;
 			// use the non-body anchor so filterGeneratedDiags
 			// can't drop the diagnostic if body line 1 sits
 			// inside a generated section.
 			diags = append(diags, mkDiag(f.Path, nonBodyDiagLine(f),
-				missingSectionDiag(formatHeading(expectedLevel, sc.Heading), sch).Format()))
+				missingSectionDiag(
+					formatHeading(expectedLevel, displayHeading(sc)), sch).Format()))
 		}
 	}
 
 	newIdx, leftoverDiags := handleLeftoverHeadings(
-		f, sch, scopes, claimed, docHeads, docIdx, expectedLevel,
-		closed, allowExtra, mkDiag)
+		f, sch, scopes, claimed, claimCounts, docHeads, docIdx, expectedLevel,
+		closed, allowExtra, docFM, mkDiag)
 	diags = append(diags, leftoverDiags...)
 	return newIdx, diags
 }
@@ -653,9 +651,9 @@ func levelMismatchSchemaDiag(text string, expectedLevel, actualLevel int, sch *S
 // closed: flagged as unexpected in closed scopes, silently
 // consumed in open ones.
 func handleLeftoverHeadings(
-	f *lint.File, sch *Schema, scopes []Scope, claimed map[int]bool,
+	f *lint.File, sch *Schema, scopes []Scope, claimed map[int]bool, claimCounts map[int]int,
 	docHeads []DocHeading, docIdx, expectedLevel int,
-	closed, allowExtra bool, mkDiag MakeDiag,
+	closed, allowExtra bool, docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
 	var diags []lint.Diagnostic
 	for docIdx < len(docHeads) {
@@ -667,11 +665,39 @@ func handleLeftoverHeadings(
 			docIdx++
 			continue
 		}
-		if idx := unclaimedListedScope(scopes, dh, claimed); idx >= 0 {
+		if idx := unclaimedListedScope(scopes, dh, claimed, docFM); idx >= 0 {
 			newIdx, claimDiags := claimLateScope(
-				f, sch, scopes, idx, expectedLevel, docHeads, docIdx, claimed, mkDiag)
+				f, sch, scopes, idx, expectedLevel, docHeads, docIdx,
+				claimed, claimCounts, docFM, mkDiag)
 			diags = append(diags, claimDiags...)
 			docIdx = newIdx
+			continue
+		}
+		// A heading that matches an already-claimed scope is an
+		// extra occurrence after the scope's run has closed. The
+		// trailing pass runs after every in-order matchScope has
+		// returned, so every claimed scope here is finalised:
+		// either the heading pushes the scope past its `max`
+		// ("exceeds allowed occurrences") or it appears outside
+		// the contiguous run ("out of order"). Both shapes are
+		// surfaced explicitly rather than letting an open schema
+		// absorb the heading silently.
+		if idx, exceeded := claimedScopeMatches(
+			scopes, dh, claimed, claimCounts, docFM); idx >= 0 {
+			sc := scopes[idx]
+			msg := fmt.Sprintf(
+				"section %q out of order: matcher runs must be "+
+					"contiguous with scope %q's earlier run",
+				formatHeading(dh.Level, dh.Text),
+				formatHeading(expectedLevel, displayHeading(sc)))
+			if exceeded {
+				msg = fmt.Sprintf(
+					"section %q exceeds scope %q's allowed occurrences",
+					formatHeading(dh.Level, dh.Text),
+					formatHeading(expectedLevel, displayHeading(sc)))
+			}
+			diags = append(diags, mkDiag(f.Path, dh.Line, msg))
+			docIdx++
 			continue
 		}
 		if !allowExtra && closed {
@@ -683,24 +709,76 @@ func handleLeftoverHeadings(
 	return docIdx, diags
 }
 
+// claimedScopeMatches reports the first already-claimed non-slot,
+// non-preamble scope whose matcher accepts dh, increments that
+// scope's claim count, and returns whether the new count pushes
+// the scope past its `max`. Returns (-1, false) when no claimed
+// scope matches.
+//
+// Callers decide the diagnostic wording: an `exceeded == true`
+// match is a max-exceeded extra ("exceeds allowed occurrences"),
+// while a within-max match is a non-contiguous extra ("out of
+// order: matcher runs must be contiguous") that the caller may
+// still need to suppress when it represents a contiguous
+// continuation of a run still being assembled (see
+// matchRun.handleNonMatch).
+//
+// Unbounded matchers (`max == 0`) never exceed; they return
+// `(idx, false)` so callers can still detect non-contiguity.
+func claimedScopeMatches(
+	scopes []Scope, dh DocHeading, claimed map[int]bool,
+	claimCounts map[int]int, docFM map[string]any,
+) (int, bool) {
+	for i, sc := range scopes {
+		if !claimed[i] {
+			continue
+		}
+		if sc.Preamble || isSlotMatcher(sc.Matcher) {
+			continue
+		}
+		if !scopeMatchesHeading(sc, dh, docFM) {
+			continue
+		}
+		_, max := sc.Matcher.Repeat.Bounds()
+		claimCounts[i]++
+		return i, max > 0 && claimCounts[i] > max
+	}
+	return -1, false
+}
+
 // claimLateScope marks a late-arriving listed scope as claimed,
 // emits its out-of-order diagnostic, and recurses into the scope's
 // nested children so missing-required-section diagnostics still
 // surface beneath a late parent.
+//
+// Known limitation: this path consumes one heading per call.
+// `repeat.max` exceeded by a subsequent same-text heading is
+// flagged separately by handleLeftoverHeadings via
+// claimedScopeMatches. A `repeat.min > 1` shortfall on a
+// late-claimed scope is structurally unreachable here — the
+// only paths that can leave a repeated scope unclaimed are
+// already covered by matchScope's finishRun (in-order) or
+// claimOutOfOrder's min check (out-of-order during iteration).
+// Sequential ordering is not enforced for recovery paths; the
+// in-order matchScope path is the canonical enforcement
+// surface.
 func claimLateScope(
 	f *lint.File, sch *Schema, scopes []Scope, idx, expectedLevel int,
-	docHeads []DocHeading, docIdx int, claimed map[int]bool,
-	mkDiag MakeDiag,
+	docHeads []DocHeading, docIdx int,
+	claimed map[int]bool, claimCounts map[int]int,
+	docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
+	sc := scopes[idx]
 	dh := docHeads[docIdx]
 	diags := []lint.Diagnostic{mkDiag(f.Path, dh.Line,
 		outOfOrderDiag(formatHeading(dh.Level, dh.Text), "", sch).Format())}
 	claimed[idx] = true
+	claimCounts[idx]++
 	docIdx++
-	if len(scopes[idx].Sections) > 0 {
+	if len(sc.Sections) > 0 {
 		newIdx, childDiags := validateScopes(
-			f, sch, scopes[idx].Sections, scopes[idx].Closed,
-			docHeads, docIdx, expectedLevel+1, mkDiag)
+			f, sch, sc.Sections, sc.Closed,
+			docHeads, docIdx, expectedLevel+1, docFM, mkDiag)
 		diags = append(diags, childDiags...)
 		docIdx = newIdx
 	}
@@ -708,122 +786,418 @@ func claimLateScope(
 }
 
 // unclaimedListedScope returns the index of the first unclaimed
-// non-wildcard scope whose text matches dh, or -1 when no listed
-// scope is a candidate.
+// non-slot, non-preamble scope whose matcher accepts dh, or -1
+// when no listed scope is a candidate.
 func unclaimedListedScope(
 	scopes []Scope, dh DocHeading, claimed map[int]bool,
+	docFM map[string]any,
 ) int {
 	for i, sc := range scopes {
-		if claimed[i] || sc.Wildcard {
+		if claimed[i] || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
-		if scopeMatchesHeading(sc, dh) {
+		if scopeMatchesHeading(sc, dh, docFM) {
 			return i
 		}
 	}
 	return -1
 }
 
-func buildRequiredByText(scopes []Scope) map[string][]int {
-	out := map[string][]int{}
-	for i, sc := range scopes {
-		if sc.Wildcard || sc.Preamble {
-			// Preambles have no heading text; wildcards by design.
-			continue
-		}
-		// Skip the "?" wildcard and placeholder patterns — neither
-		// can sit in a literal-text map; the findOutOfOrderIdx
-		// fallback handles them via scopeMatchesHeading.
-		if !indexableLiteral(sc.Heading) {
-			// no-op
-		} else {
-			out[sc.Heading] = append(out[sc.Heading], i)
-		}
-		for _, a := range sc.Aliases {
-			if !indexableLiteral(a) {
-				continue
-			}
-			out[a] = append(out[a], i)
-		}
-	}
-	return out
-}
-
-// indexableLiteral reports whether text is a fully-literal heading
-// that can be used as a map key. "?" and patterns containing
-// placeholders match many doc texts and cannot be pre-indexed; the
-// fallback scan handles those.
-func indexableLiteral(text string) bool {
-	if text == "?" {
-		return false
-	}
-	return !fieldinterp.ContainsField(text)
-}
-
-// matchScope advances docIdx looking for a heading matching the
-// scope at scopes[idx]. Intervening doc headings either belong to a
-// later listed scope (out-of-order), are unexpected (closed + no
-// wildcard), or are descended into as part of an earlier scope's
-// subtree. Returns the new docIdx, diagnostics, and whether the
-// scope was matched.
+// matchScope advances docIdx looking for a run of headings that
+// matches scopes[idx]'s matcher. Intervening doc headings either
+// belong to a later listed scope (out-of-order), are unexpected
+// (closed + no wildcard), or are descended into as part of an
+// earlier scope's subtree. Returns the new docIdx, diagnostics,
+// and whether the scope was claimed at least once.
 func matchScope(
 	f *lint.File, sch *Schema, scopes []Scope, idx, expectedLevel int,
 	docHeads []DocHeading, docIdx int,
-	requiredByText map[string][]int, claimed map[int]bool,
-	allowExtra, closed bool, mkDiag MakeDiag,
+	claimed map[int]bool, claimCounts map[int]int,
+	allowExtra, closed bool,
+	docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic, bool) {
-	sc := scopes[idx]
-	var diags []lint.Diagnostic
+	state := matchRun{
+		f: f, sch: sch, scopes: scopes, idx: idx, expectedLevel: expectedLevel,
+		claimed: claimed, claimCounts: claimCounts,
+		allowExtra: allowExtra, closed: closed,
+		docFM: docFM, mkDiag: mkDiag,
+	}
+	state.min, state.max = scopes[idx].Matcher.Repeat.Bounds()
 
+	for docIdx < len(docHeads) && (state.max == 0 || state.consumed < state.max) {
+		done, next, ok := state.step(docHeads, docIdx)
+		docIdx = next
+		if done {
+			state.finishRun()
+			return docIdx, state.diags, ok
+		}
+	}
+
+	state.finishRun()
+	// A run that hit its max while more matching headings remain
+	// must flag the extras. Without this loop, the trailing-leftover
+	// pass only flags them in closed schemas — silently accepting
+	// `repeat: { max: N }` violations under the default open scope.
+	docIdx = state.flagExtrasBeyondMax(docHeads, docIdx)
+	return docIdx, state.diags, state.consumed > 0
+}
+
+// finishRun emits the per-run diagnostics that depend on the
+// final consumed/digitsSeen state — `sequential:` ordering and
+// the "matched N times, required at least M" guard. Called from
+// every matchScope return path so a run that terminates on a
+// non-matching heading (not just EOF or max) still gets these
+// checks.
+func (s *matchRun) finishRun() {
+	sc := s.scopes[s.idx]
+	if sc.Matcher.Sequential && len(s.digitsSeen) > 0 {
+		if msg := sequentialDiagMessage(s.digitsSeen); msg != "" {
+			s.diags = append(s.diags, s.mkDiag(s.f.Path, 1, msg))
+		}
+	}
+	// A run that consumed fewer than min matches falls short of
+	// the matcher's cardinality contract. The outer loop's
+	// missing-required check only fires when `claimed[idx]` is
+	// false; a partially-claimed run needs its own diagnostic.
+	if s.consumed > 0 && s.consumed < s.min {
+		s.diags = append(s.diags, s.mkDiag(s.f.Path, 1,
+			fmt.Sprintf("section %q matched %d times, required at least %d",
+				formatHeading(s.expectedLevel, displayHeading(sc)),
+				s.consumed, s.min)))
+	}
+}
+
+// flagExtrasBeyondMax walks doc headings still ahead of docIdx at
+// the scope's expected level and emits a diagnostic for each one
+// that matches the current matcher and isn't claimable by a later
+// listed scope. The walk stops at the first heading that doesn't
+// match the matcher so the caller sees the next "real" boundary.
+// Returns the advanced docIdx (past any flagged extras).
+func (s *matchRun) flagExtrasBeyondMax(docHeads []DocHeading, docIdx int) int {
+	if s.max == 0 || s.consumed < s.max {
+		return docIdx
+	}
+	sc := s.scopes[s.idx]
 	for docIdx < len(docHeads) {
 		dh := docHeads[docIdx]
-		// Shallower than us belongs to an ancestor — unless the text
-		// still matches, in which case we claim it here with a
-		// level-mismatch diagnostic. Without this branch a wrong-level
-		// match would surface as both "missing required" (here) and
-		// "unexpected" (when the caller revisits it).
-		if dh.Level < expectedLevel {
-			if scopeMatchesHeading(sc, dh) {
-				return claimMatch(f, sch, sc, idx, expectedLevel, docHeads, docIdx, claimed, mkDiag, diags)
-			}
-			return docIdx, diags, false
+		// Shallower headings belong to a parent scope — let the
+		// outer walker decide. Deeper headings are body content of
+		// a section we've already claimed; skip them so a later
+		// same-level extra isn't hidden behind a nested heading.
+		if dh.Level < s.expectedLevel {
+			return docIdx
 		}
-		if scopeMatchesHeading(sc, dh) {
-			return claimMatch(f, sch, sc, idx, expectedLevel, docHeads, docIdx, claimed, mkDiag, diags)
-		}
-		if ooIdx := findOutOfOrderIdx(scopes, dh, requiredByText, claimed, idx+1); ooIdx >= 0 {
-			if !sc.Required {
-				// The current scope is optional — its absence is not
-				// a violation, so dh matching a later listed scope is
-				// not "out of order". Return without claiming so the
-				// outer loop advances to the matching scope, which
-				// will pair dh on its own iteration.
-				return docIdx, diags, false
-			}
-			newIdx, ooDiags := claimOutOfOrder(
-				f, sch, scopes, idx, ooIdx, expectedLevel, docHeads, docIdx, claimed, mkDiag)
-			diags = append(diags, ooDiags...)
-			docIdx = newIdx
-			continue
-		}
-		// dh did not match this scope or any later listed scope by
-		// text. Deeper than expected: orphan child of some unmatched
-		// parent — consume silently. Same level: treat as unexpected
-		// when closed and no wildcard has opened the door.
-		if dh.Level > expectedLevel {
+		if dh.Level > s.expectedLevel {
 			docIdx++
 			continue
 		}
-		if !allowExtra && closed {
-			diags = append(diags, mkDiag(f.Path, dh.Line,
-				unexpectedSectionDiag(
-					formatHeading(dh.Level, dh.Text),
-					formatHeading(expectedLevel, sc.Heading),
-					sch).Format()))
+		matched, _ := matchHeading(sc.Matcher, dh, s.docFM)
+		if !matched {
+			return docIdx
 		}
+		if claimsLaterLiteral(s.scopes, s.idx+1, dh, s.claimed, s.docFM) {
+			return docIdx
+		}
+		s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line,
+			fmt.Sprintf("section %q matched %d times, allowed at most %d",
+				formatHeading(dh.Level, dh.Text),
+				s.consumed+1, s.max)))
+		s.consumed++
 		docIdx++
 	}
-	return docIdx, diags, false
+	return docIdx
+}
+
+// matchRun threads the per-iteration state of matchScope through
+// helper methods so the top-level loop reads as a straight pipe of
+// "advance, claim, or break" decisions.
+type matchRun struct {
+	f             *lint.File
+	sch           *Schema
+	scopes        []Scope
+	idx           int
+	expectedLevel int
+	claimed       map[int]bool
+	claimCounts   map[int]int
+	allowExtra    bool
+	closed        bool
+	docFM         map[string]any
+	mkDiag        MakeDiag
+	min, max      int
+	consumed      int
+	digitsSeen    []string
+	diags         []lint.Diagnostic
+}
+
+// step processes one doc heading. Returns (done, newDocIdx, ok)
+// where done==true exits the outer loop early.
+func (s *matchRun) step(docHeads []DocHeading, docIdx int) (bool, int, bool) {
+	sc := s.scopes[s.idx]
+	dh := docHeads[docIdx]
+	if dh.Level < s.expectedLevel {
+		// Broad matchers (`.+`) match everything, including
+		// parent-level siblings. Claiming such a heading here
+		// would consume the parent walker's next sibling and
+		// flag it as a level mismatch even though it never
+		// belonged to this nested run. Restrict the
+		// shallower-heading recovery to non-broad matchers so
+		// only an authored wrong-level heading (e.g. an `## X`
+		// where the schema wanted `### X`) is salvaged.
+		if matched, captured := matchHeading(sc.Matcher, dh, s.docFM); matched &&
+			!isBroadMatcher(sc.Matcher) {
+			// A shallower-than-expected heading that still matches
+			// the matcher counts toward the run's consumed/digits
+			// state — claimMatch emits the level-mismatch
+			// diagnostic on its own. Returning done=false lets the
+			// outer loop continue scanning for additional matches.
+			return false, s.claimMatch(docHeads, docIdx, captured), false
+		}
+		return true, docIdx, s.consumed > 0
+	}
+	matched, captured := matchHeading(sc.Matcher, dh, s.docFM)
+	if matched {
+		// Yield to a later specific scope whenever the current
+		// matcher is broad (`.+`) — even before reaching its min.
+		// A broad matcher's job is to absorb leftovers; stealing
+		// a heading the user named separately would either flag
+		// that section as missing or hide its content/rules. The
+		// repeat.min shortfall surfaces in finishRun if the
+		// broad matcher couldn't collect enough leftovers. For
+		// non-broad matchers, only yield once min is satisfied,
+		// so a required specific scope still claims its first
+		// occurrence even when the heading text overlaps a later
+		// literal entry.
+		if (isBroadMatcher(sc.Matcher) || s.consumed >= s.min) &&
+			claimsLaterLiteral(s.scopes, s.idx+1, dh, s.claimed, s.docFM) {
+			return true, docIdx, s.consumed > 0
+		}
+		return false, s.claimMatch(docHeads, docIdx, captured), false
+	}
+	// A deeper-than-expected heading is part of an earlier claimed
+	// scope's body, not a sibling boundary — skip it so the run
+	// keeps scanning for the next same-level match.
+	if dh.Level > s.expectedLevel {
+		return false, docIdx + 1, false
+	}
+	if s.consumed > 0 {
+		// An active run is contiguous; the first same-level
+		// non-match closes it.
+		return true, docIdx, true
+	}
+	if s.consumed >= s.min {
+		// Optional matcher (min=0) hasn't started yet. Yield to a
+		// later scope when the heading would claim it — including
+		// a later broad matcher, since the broad matcher is the
+		// natural absorber for a heading the optional scope did
+		// not match. Without yielding to broad here, the broad
+		// scope would later report "missing required" because the
+		// optional scope already advanced past its heading.
+		if anyLaterScopeClaims(s.scopes, s.idx+1, dh, s.claimed, s.docFM) {
+			return true, docIdx, false
+		}
+		if !s.allowExtra && s.closed {
+			s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line,
+				unexpectedSectionDiag(
+					formatHeading(dh.Level, dh.Text),
+					formatHeading(s.expectedLevel, displayHeading(sc)),
+					s.sch).Format()))
+		}
+		return false, docIdx + 1, false
+	}
+	return s.handleNonMatch(docHeads, docIdx)
+}
+
+func (s *matchRun) claimMatch(docHeads []DocHeading, docIdx int, captured string) int {
+	sc := s.scopes[s.idx]
+	dh := docHeads[docIdx]
+	s.diags = append(s.diags, levelDiagIfNeeded(s.f, s.sch, dh, s.expectedLevel, s.mkDiag)...)
+	s.claimed[s.idx] = true
+	s.claimCounts[s.idx]++
+	if len(sc.Sections) > 0 {
+		newIdx, childDiags := validateScopes(
+			s.f, s.sch, sc.Sections, sc.Closed, docHeads, docIdx+1,
+			s.expectedLevel+1, s.docFM, s.mkDiag)
+		s.diags = append(s.diags, childDiags...)
+		docIdx = newIdx
+	} else {
+		docIdx++
+	}
+	s.consumed++
+	if captured != "" {
+		s.digitsSeen = append(s.digitsSeen, captured)
+	}
+	return docIdx
+}
+
+// handleNonMatch processes a heading that didn't match the current
+// matcher and that the run hasn't yet satisfied its `min` for. The
+// caller (step) has already filtered out deeper-than-expected
+// headings, so dh is always at the expected level here.
+func (s *matchRun) handleNonMatch(docHeads []DocHeading, docIdx int) (bool, int, bool) {
+	dh := docHeads[docIdx]
+	if ooIdx := findOutOfOrderIdx(s.scopes, dh, s.claimed, s.idx+1, s.docFM); ooIdx >= 0 {
+		newIdx, ooDiags := claimOutOfOrder(
+			s.f, s.sch, s.scopes, s.idx, ooIdx, s.expectedLevel, docHeads, docIdx,
+			s.claimed, s.claimCounts, s.docFM, s.mkDiag)
+		s.diags = append(s.diags, ooDiags...)
+		return false, newIdx, false
+	}
+	// A heading that matches an already-claimed scope falls into
+	// one of three buckets:
+	//   1. Contiguous continuation of a run still being assembled
+	//      in this very iteration (e.g. [A, B] with doc [B, B, A]
+	//      where claimOutOfOrder opened B's run; the second B
+	//      belongs to that same run). idx >= s.idx and the new
+	//      count is within max — silently absorb.
+	//   2. Past `max`: emit "exceeds allowed occurrences".
+	//   3. Non-contiguous extra: the scope's run was closed by an
+	//      earlier scope iteration (idx < s.idx) and the new
+	//      heading is within max. Emit "out of order: matcher
+	//      runs must be contiguous" so the user sees the ordering
+	//      violation even in an open schema.
+	if idx, exceeded := claimedScopeMatches(
+		s.scopes, dh, s.claimed, s.claimCounts, s.docFM); idx >= 0 {
+		if !exceeded && idx >= s.idx {
+			// Contiguous continuation of a run still being
+			// assembled. Recurse into the scope's children so
+			// nested required sections still surface for every
+			// occurrence of the run, matching claimMatch's
+			// in-order behavior — otherwise a repeated scope
+			// with required children would only validate the
+			// first occurrence's subtree.
+			contSc := s.scopes[idx]
+			if len(contSc.Sections) > 0 {
+				newIdx, childDiags := validateScopes(
+					s.f, s.sch, contSc.Sections, contSc.Closed,
+					docHeads, docIdx+1, s.expectedLevel+1,
+					s.docFM, s.mkDiag)
+				s.diags = append(s.diags, childDiags...)
+				return false, newIdx, false
+			}
+			return false, docIdx + 1, false
+		}
+		sc := s.scopes[idx]
+		msg := fmt.Sprintf(
+			"section %q out of order: matcher runs must be "+
+				"contiguous with scope %q's earlier run",
+			formatHeading(dh.Level, dh.Text),
+			formatHeading(s.expectedLevel, displayHeading(sc)))
+		if exceeded {
+			msg = fmt.Sprintf(
+				"section %q exceeds scope %q's allowed occurrences",
+				formatHeading(dh.Level, dh.Text),
+				formatHeading(s.expectedLevel, displayHeading(sc)))
+		}
+		s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line, msg))
+		return false, docIdx + 1, false
+	}
+	if !s.allowExtra && s.closed {
+		sc := s.scopes[s.idx]
+		s.diags = append(s.diags, s.mkDiag(s.f.Path, dh.Line,
+			unexpectedSectionDiag(
+				formatHeading(dh.Level, dh.Text),
+				formatHeading(s.expectedLevel, displayHeading(sc)),
+				s.sch).Format()))
+	}
+	return false, docIdx + 1, false
+}
+
+// laterScopeMatches reports whether dh matches any later scope in
+// the same parent window that is more specific than a broad
+// matcher. Used by the per-scope walkers (rules, content,
+// acronyms) so a broad repeated matcher does not consume a
+// heading that a later named scope would claim. The walker
+// version does not need a scope-index `claimed` map because each
+// walker iterates scopes in declared order and acts immediately.
+func laterScopeMatches(
+	scopes []Scope, startIdx int, dh DocHeading,
+	docFM map[string]any,
+) bool {
+	for i := startIdx; i < len(scopes); i++ {
+		sc := scopes[i]
+		if sc.Preamble ||
+			isSlotMatcher(sc.Matcher) || isBroadMatcher(sc.Matcher) {
+			continue
+		}
+		if scopeMatchesHeading(sc, dh, docFM) {
+			return true
+		}
+	}
+	return false
+}
+
+// anyLaterScopeClaims reports whether dh matches any unclaimed
+// non-slot, non-preamble later scope — including broad
+// matchers. Used by the unmatched-optional yield path so an
+// optional scope that doesn't match the current heading still
+// yields to a broad matcher waiting to absorb leftovers
+// (e.g. an `A optional` + `.+ min=1` pair against a `## Body`
+// heading). Differs from `claimsLaterLiteral` only in that it
+// keeps broad matchers in the search.
+func anyLaterScopeClaims(
+	scopes []Scope, startIdx int, dh DocHeading,
+	claimed map[int]bool, docFM map[string]any,
+) bool {
+	for i := startIdx; i < len(scopes); i++ {
+		sc := scopes[i]
+		if claimed[i] || sc.Preamble || isSlotMatcher(sc.Matcher) {
+			continue
+		}
+		if scopeMatchesHeading(sc, dh, docFM) {
+			return true
+		}
+	}
+	return false
+}
+
+// claimsLaterLiteral reports whether dh matches any unclaimed
+// later scope that is more specific than a broad/slot matcher.
+// Used so a slot or repeat-run does not absorb a heading the
+// user named separately further down the list. Optional scopes
+// participate (a `regex: 'A'` with `repeat: { min: 0, max: 1 }`
+// still wants the heading), but later scopes with a broad `.+`
+// regex are skipped — yielding to them would let a generic
+// catch-all steal a heading from a specific predecessor.
+func claimsLaterLiteral(
+	scopes []Scope, startIdx int, dh DocHeading,
+	claimed map[int]bool, docFM map[string]any,
+) bool {
+	for i := startIdx; i < len(scopes); i++ {
+		sc := scopes[i]
+		if claimed[i] || sc.Preamble ||
+			isSlotMatcher(sc.Matcher) || isBroadMatcher(sc.Matcher) {
+			continue
+		}
+		if scopeMatchesHeading(sc, dh, docFM) {
+			return true
+		}
+	}
+	return false
+}
+
+// sequentialDiagMessage scans captured digit strings for ordering
+// violations: each number must be strictly greater than its
+// predecessor, no gaps allowed.
+func sequentialDiagMessage(captured []string) string {
+	prev := -1
+	for _, s := range captured {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return fmt.Sprintf(
+				"sequential captures must be integers; got %q", s)
+		}
+		if prev < 0 {
+			prev = n
+			continue
+		}
+		if n != prev+1 {
+			return fmt.Sprintf(
+				"sequential numbering out of order: expected %d, got %d",
+				prev+1, n)
+		}
+		prev = n
+	}
+	return ""
 }
 
 func levelDiagIfNeeded(
@@ -836,35 +1210,14 @@ func levelDiagIfNeeded(
 		levelMismatchSchemaDiag(dh.Text, expectedLevel, dh.Level, sch).Format())}
 }
 
-// claimMatch marks scopes[idx] as matched against docHeads[docIdx],
-// appending the level-mismatch diagnostic when applicable and
-// recursing into the scope's child sections. Returns the advanced
-// docIdx, combined diagnostics, and true.
-func claimMatch(
-	f *lint.File, sch *Schema, sc Scope, idx, expectedLevel int,
-	docHeads []DocHeading, docIdx int, claimed map[int]bool,
-	mkDiag MakeDiag, prior []lint.Diagnostic,
-) (int, []lint.Diagnostic, bool) {
-	diags := append(prior, levelDiagIfNeeded(f, sch, docHeads[docIdx], expectedLevel, mkDiag)...)
-	claimed[idx] = true
-	docIdx++
-	if len(sc.Sections) > 0 {
-		newIdx, childDiags := validateScopes(
-			f, sch, sc.Sections, sc.Closed, docHeads, docIdx,
-			expectedLevel+1, mkDiag)
-		diags = append(diags, childDiags...)
-		docIdx = newIdx
-	}
-	return docIdx, diags, true
-}
-
 // claimOutOfOrder records that docHeads[docIdx] matches scopes[ooIdx]
 // (a later listed scope), emits the out-of-order diagnostic, and
 // recurses into the matched scope's child sections.
 func claimOutOfOrder(
 	f *lint.File, sch *Schema, scopes []Scope, idx, ooIdx, expectedLevel int,
-	docHeads []DocHeading, docIdx int, claimed map[int]bool,
-	mkDiag MakeDiag,
+	docHeads []DocHeading, docIdx int,
+	claimed map[int]bool, claimCounts map[int]int,
+	docFM map[string]any, mkDiag MakeDiag,
 ) (int, []lint.Diagnostic) {
 	sc := scopes[idx]
 	ooSc := scopes[ooIdx]
@@ -872,163 +1225,253 @@ func claimOutOfOrder(
 	diags := []lint.Diagnostic{mkDiag(f.Path, dh.Line,
 		outOfOrderDiag(
 			formatHeading(dh.Level, dh.Text),
-			formatHeading(expectedLevel, sc.Heading),
+			formatHeading(expectedLevel, displayHeading(sc)),
 			sch).Format())}
 	diags = append(diags, levelDiagIfNeeded(f, sch, dh, expectedLevel, mkDiag)...)
+	// Count the contiguous run of same-level headings starting at
+	// docIdx that match ooSc. The recovery path still claims only
+	// the leading occurrence (so child recursion has a single
+	// anchor), but counting the full run avoids reporting a false
+	// `repeat.min` shortfall when the document does contain enough
+	// occurrences — they are simply in the wrong position, which
+	// the out-of-order diagnostic already calls out.
+	runLen := countMatchingRun(ooSc, docHeads, docIdx, expectedLevel, docFM)
+	if ooSc.Matcher != nil && runLen < ooSc.Matcher.Repeat.Min {
+		diags = append(diags, mkDiag(f.Path, dh.Line,
+			fmt.Sprintf(
+				"section %q matched %d times, required at least %d",
+				formatHeading(expectedLevel, displayHeading(ooSc)),
+				runLen, ooSc.Matcher.Repeat.Min)))
+	}
+	if ooSc.Matcher != nil && ooSc.Matcher.Sequential {
+		diags = append(diags, mkDiag(f.Path, dh.Line,
+			fmt.Sprintf(
+				"section %q sequential ordering is not enforced "+
+					"on out-of-order claims; move the scope to its "+
+					"natural position for sequential checks",
+				formatHeading(expectedLevel, displayHeading(ooSc)))))
+	}
 	claimed[ooIdx] = true
+	claimCounts[ooIdx]++
 	docIdx++
 	if len(ooSc.Sections) > 0 {
 		newIdx, childDiags := validateScopes(
 			f, sch, ooSc.Sections, ooSc.Closed, docHeads, docIdx,
-			expectedLevel+1, mkDiag)
+			expectedLevel+1, docFM, mkDiag)
 		diags = append(diags, childDiags...)
 		docIdx = newIdx
 	}
 	return docIdx, diags
 }
 
-func nextUnclaimed(cands []int, claimed map[int]bool, minIdx int) int {
-	for _, i := range cands {
-		if i >= minIdx && !claimed[i] {
-			return i
+// countMatchingRun returns the number of contiguous same-level
+// headings starting at docIdx that match sc's matcher. Deeper
+// headings (level > expectedLevel) are skipped as body content of
+// an already-matched section, mirroring matchScope's run
+// semantics. The walk stops at the first same-level non-match or
+// the first shallower-than-expected heading.
+func countMatchingRun(
+	sc Scope, docHeads []DocHeading, docIdx, expectedLevel int,
+	docFM map[string]any,
+) int {
+	run := 0
+	for i := docIdx; i < len(docHeads); i++ {
+		dh := docHeads[i]
+		if dh.Level < expectedLevel {
+			return run
 		}
+		if dh.Level > expectedLevel {
+			continue
+		}
+		if matched, _ := matchHeading(sc.Matcher, dh, docFM); matched {
+			run++
+			continue
+		}
+		return run
 	}
-	return -1
+	return run
 }
 
 // findOutOfOrderIdx returns the first unclaimed scope at index >=
-// minIdx that matches dh, scanning placeholder-bearing scopes too.
-// requiredByText keys only fully-literal heading/alias text; a
-// scope with placeholder interpolation in either its Heading or
-// any of its Aliases falls through to the scopeMatchesHeading
-// scan, so out-of-order detection still picks it up.
+// minIdx that matches dh.
 func findOutOfOrderIdx(
 	scopes []Scope, dh DocHeading,
-	requiredByText map[string][]int, claimed map[int]bool, minIdx int,
+	claimed map[int]bool, minIdx int, docFM map[string]any,
 ) int {
-	if i := nextUnclaimed(requiredByText[dh.Text], claimed, minIdx); i >= 0 {
-		return i
-	}
 	for i := minIdx; i < len(scopes); i++ {
 		sc := scopes[i]
-		if claimed[i] || sc.Wildcard {
+		if claimed[i] || sc.Preamble || isSlotMatcher(sc.Matcher) {
 			continue
 		}
-		if !scopeNeedsMatchScan(sc) {
-			// Fully-literal scopes are already indexed in
-			// requiredByText; nothing the fallback can find.
-			continue
-		}
-		if scopeMatchesHeading(sc, dh) {
+		if scopeMatchesHeading(sc, dh, docFM) {
 			return i
 		}
 	}
 	return -1
 }
 
-// scopeNeedsMatchScan reports whether scopeMatchesHeading must be
-// invoked to decide if a scope claims a heading. Fully-literal
-// scopes are pre-indexed in requiredByText and don't need the
-// fallback; scopes with placeholder interpolation in either
-// Heading or Aliases do — and so does the "?" wildcard, which
-// matches any text but can't appear in a literal-text map.
-func scopeNeedsMatchScan(sc Scope) bool {
-	if sc.Heading == "?" || fieldinterp.ContainsField(sc.Heading) {
-		return true
-	}
-	for _, a := range sc.Aliases {
-		if a == "?" || fieldinterp.ContainsField(a) {
-			return true
-		}
-	}
-	return false
-}
-
-// MatchesHeading reports whether sc matches the heading text in dh.
-// Exported so callers outside the validator (notably the per-scope
-// rule walker in internal/rules/requiredstructure) reuse the same
-// matching semantics — anchored regex for field-interpolated
-// patterns, exact text otherwise, plus aliases and the "?"
-// wildcard.
-func MatchesHeading(sc Scope, dh DocHeading) bool {
-	return scopeMatchesHeading(sc, dh)
-}
-
-func scopeMatchesHeading(sc Scope, dh DocHeading) bool {
-	if sc.Wildcard || sc.Preamble {
-		// Wildcards never match a specific heading directly; the
-		// preamble has no heading text to compare against.
-		return false
-	}
-	if sc.Heading == "?" {
-		return true
-	}
-	if matchesText(sc.Heading, dh.Text) {
-		return true
-	}
-	for _, a := range sc.Aliases {
-		if matchesText(a, dh.Text) {
-			return true
-		}
-	}
-	return false
-}
-
-// patternRegexCache memoises compiled regexes for field-interpolated
-// heading patterns. Recompiling per-call would be O(scopes ×
-// headings) on every validation pass; caching by pattern string
-// keeps the hot loop allocation-free after warm-up.
+// ScopeRunIndices returns the doc-heading indices that
+// scopes[currentIdx] would claim inside the
+// [parentStart, parentEnd) window, following the same
+// contiguous-run semantics matchScope uses: scan forward from
+// the first match for additional same-level matches, but stop at
+// the first same-level heading that does not match (deeper
+// headings inside the matched section are skipped silently).
 //
-// Stored values are *regexp.Regexp. A compile error is signalled
-// by storing the patternCompileFailed sentinel — a dedicated
-// non-nil pointer that the loader distinguishes from a successful
-// entry by identity, avoiding the typed-nil-interface trap that
-// would make `v == nil` silently fail.
-var patternRegexCache sync.Map
-
-// patternCompileFailed is the sentinel value stored in
-// patternRegexCache when regexp.Compile failed. A separate value
-// (instead of a typed-nil *regexp.Regexp) lets the loader
-// distinguish "never tried" from "tried and failed" via a regular
-// type assertion.
-var patternCompileFailed = &regexp.Regexp{}
-
-func matchesText(pattern, text string) bool {
-	if !fieldinterp.ContainsField(pattern) {
-		return pattern == text
-	}
-	re := patternRegex(pattern)
-	if re == nil {
-		return false
-	}
-	return re.MatchString(text)
-}
-
-func patternRegex(pattern string) *regexp.Regexp {
-	if v, ok := patternRegexCache.Load(pattern); ok {
-		re, ok := v.(*regexp.Regexp)
-		if !ok || re == patternCompileFailed {
-			return nil
-		}
-		return re
-	}
-	parts := fieldinterp.SplitOnFields(pattern)
-	var b strings.Builder
-	b.WriteString("^")
-	for i, p := range parts {
-		b.WriteString(regexp.QuoteMeta(p))
-		if i < len(parts)-1 {
-			b.WriteString(".+")
-		}
-	}
-	b.WriteString("$")
-	re, err := regexp.Compile(b.String())
-	if err != nil {
-		patternRegexCache.Store(pattern, patternCompileFailed)
+// The helper also mirrors matchScope's yield rules so per-scope
+// walkers stay in step with structural validation:
+//   - A broad matcher (`regex: '.+'`) yields to any later named
+//     scope whose matcher would claim the heading.
+//   - A non-broad matcher yields to a later named scope only
+//     after its `repeat.min` has been satisfied.
+//
+// When no in-level match is found the helper falls back to the
+// first wrong-level match in the window. Used by the per-scope
+// walkers (acronyms, content, rules) so they only visit
+// occurrences the structural validator would also have claimed
+// as part of the same run.
+func ScopeRunIndices(
+	scopes []Scope, currentIdx int, heads []DocHeading,
+	expectedLevel, parentStart, parentEnd int,
+	claimed map[int]bool, docFM map[string]any,
+) []int {
+	sc := scopes[currentIdx]
+	if sc.Matcher == nil {
 		return nil
 	}
-	patternRegexCache.Store(pattern, re)
-	return re
+	out := scanScopeRunAtLevel(
+		scopes, currentIdx, heads, expectedLevel, parentStart, parentEnd,
+		claimed, docFM)
+	if len(out) > 0 {
+		return out
+	}
+	// No in-level match — fall back to the first wrong-level
+	// match. Wrong-level matches never form a run (the heading
+	// already deviates from the schema's level expectation).
+	if idx := firstWrongLevelMatch(
+		sc, heads, expectedLevel, parentStart, parentEnd, claimed, docFM); idx >= 0 {
+		return []int{idx}
+	}
+	return nil
+}
+
+// scanScopeRunAtLevel scans heads in source order for contiguous
+// matches of scopes[currentIdx] at expectedLevel. The run ends
+// when its bounds are exhausted, when a same-level non-match
+// closes the run, or when a heading would be claimed by a more
+// specific later scope (broad matchers yield from the start;
+// non-broad yield only after `repeat.min` is satisfied).
+func scanScopeRunAtLevel(
+	scopes []Scope, currentIdx int, heads []DocHeading,
+	expectedLevel, parentStart, parentEnd int,
+	claimed map[int]bool, docFM map[string]any,
+) []int {
+	sc := scopes[currentIdx]
+	min, max := sc.Matcher.Repeat.Bounds()
+	isBroad := isBroadMatcher(sc.Matcher)
+	var out []int
+	started := false
+	for i, h := range heads {
+		if claimed[i] {
+			continue
+		}
+		if h.Line < parentStart || h.Line >= parentEnd {
+			continue
+		}
+		if h.Level != expectedLevel {
+			if h.Level < expectedLevel && started {
+				break
+			}
+			continue
+		}
+		if scopeMatchesHeading(sc, h, docFM) {
+			if (isBroad || len(out) >= min) &&
+				laterScopeMatches(scopes, currentIdx+1, h, docFM) {
+				break
+			}
+			out = append(out, i)
+			started = true
+			if max == 1 || (max > 0 && len(out) >= max) {
+				break
+			}
+			continue
+		}
+		if started {
+			break
+		}
+	}
+	return out
+}
+
+// firstWrongLevelMatch returns the index of the first heading in
+// the window that matches sc at any level other than
+// expectedLevel, or -1 when none exists. The walker uses this
+// fallback so a section authored at the wrong heading depth still
+// gets its per-scope checks applied. Broad matchers (`.+`) are
+// skipped — they would otherwise pair the slot with any sibling
+// in the parent window, making per-scope rule/content/acronym
+// checks fire against the wrong section.
+func firstWrongLevelMatch(
+	sc Scope, heads []DocHeading,
+	expectedLevel, parentStart, parentEnd int,
+	claimed map[int]bool, docFM map[string]any,
+) int {
+	if isBroadMatcher(sc.Matcher) {
+		return -1
+	}
+	for i, h := range heads {
+		if claimed[i] {
+			continue
+		}
+		if h.Line < parentStart || h.Line >= parentEnd {
+			continue
+		}
+		if h.Level == expectedLevel {
+			continue
+		}
+		if scopeMatchesHeading(sc, h, docFM) {
+			return i
+		}
+	}
+	return -1
+}
+
+// MatchesHeading reports whether sc matches dh's heading text.
+// Exported so callers outside the validator (notably the per-scope
+// rule walker in internal/rules/requiredstructure) reuse the same
+// matching semantics. fm is the document's parsed front matter and
+// must be supplied so `\#(fmvar(...))` patterns resolve correctly;
+// pass nil only when the schema is known to use literal-only
+// matchers.
+func MatchesHeading(sc Scope, dh DocHeading, fm map[string]any) bool {
+	return scopeMatchesHeading(sc, dh, fm)
+}
+
+func scopeMatchesHeading(sc Scope, dh DocHeading, fm map[string]any) bool {
+	if sc.Preamble || sc.Matcher == nil {
+		return false
+	}
+	if isSlotMatcher(sc.Matcher) {
+		// Slots are positional placeholders, not identity claimants;
+		// callers that want to know whether a heading falls inside
+		// a slot use the walker's logic instead.
+		return false
+	}
+	matched, _ := matchHeading(sc.Matcher, dh, fm)
+	return matched
+}
+
+// displayHeading renders a scope's label for diagnostics. The bare
+// heading text is preferred when it survives parsing; otherwise
+// the matcher's regex body stands in.
+func displayHeading(sc Scope) string {
+	if sc.Heading != "" {
+		return sc.Heading
+	}
+	if sc.Matcher != nil {
+		return sc.Matcher.Regex
+	}
+	return ""
 }
 
 func formatHeading(level int, text string) string {
@@ -1045,7 +1488,7 @@ func formatHeading(level int, text string) string {
 func validateFilename(
 	f *lint.File, sch *Schema, mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	pattern := sch.Require.Filename
+	pattern := sch.Filename
 	if pattern == "" {
 		return nil
 	}

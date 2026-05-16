@@ -15,43 +15,10 @@ import (
 
 // ---- ParseInline edge cases ----
 
-// TestParseInline_RejectsRepeatingPatternKeys covers the parse-
-// time rejection of `repeats`, `sequential`, `min`, and `max` —
-// the validator does not enforce them yet, so accepting them would
-// give users a false sense of constraint.
-func TestParseInline_RejectsRepeatingPatternKeys(t *testing.T) {
-	cases := []struct {
-		name string
-		key  string
-		val  any
-	}{
-		{"repeats", "repeats", true},
-		{"sequential", "sequential", true},
-		{"min", "min", 1},
-		{"max", "max", 3},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			raw := map[string]any{
-				"sections": []any{
-					map[string]any{
-						"heading": "Step",
-						tc.key:    tc.val,
-					},
-				},
-			}
-			_, err := ParseInline(raw, "kind x")
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "repeating-pattern keys")
-			assert.Contains(t, err.Error(), "not enforced")
-		})
-	}
-}
-
 func TestParseInline_RejectsMissingHeadingKey(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"required": true},
+			map[string]any{"closed": true},
 		},
 	}
 	_, err := ParseInline(raw, "kind x")
@@ -62,12 +29,12 @@ func TestParseInline_RejectsMissingHeadingKey(t *testing.T) {
 func TestParseInline_RejectsBlankHeading(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": "   ", "required": true},
+			map[string]any{"heading": "   "},
 		},
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "non-empty heading")
+	assert.Contains(t, err.Error(), "empty string")
 }
 
 func TestParseInline_AcceptsScopeRulesMapping(t *testing.T) {
@@ -140,29 +107,23 @@ func TestParseInline_RejectsBadFrontmatterType(t *testing.T) {
 	assert.Contains(t, err.Error(), "frontmatter must be a mapping")
 }
 
-func TestParseInline_RejectsBadRequireType(t *testing.T) {
-	raw := map[string]any{"require": "not-a-map"}
+func TestParseInline_RejectsLegacyRequireKey(t *testing.T) {
+	// Plan 156 removed the `require:` wrapper; the parser rejects
+	// the key with a migration-pointing diagnostic.
+	raw := map[string]any{
+		"require": map[string]any{"filename": "RFC-*.md"},
+	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "require must be a mapping")
+	assert.Contains(t, err.Error(), "`require:` removed")
+	assert.Contains(t, err.Error(), "filename:")
 }
 
-func TestParseInline_RejectsBadRequireFilename(t *testing.T) {
-	raw := map[string]any{
-		"require": map[string]any{"filename": 42},
-	}
+func TestParseInline_RejectsBadFilenameType(t *testing.T) {
+	raw := map[string]any{"filename": 42}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "filename must be a string")
-}
-
-func TestParseInline_RejectsUnknownRequireKey(t *testing.T) {
-	raw := map[string]any{
-		"require": map[string]any{"unknown": "v"},
-	}
-	_, err := ParseInline(raw, "kind x")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown schema.require key")
 }
 
 func TestParseInline_RejectsBadClosedType(t *testing.T) {
@@ -181,37 +142,59 @@ func TestParseInline_RejectsBadHeadingType(t *testing.T) {
 	assert.Contains(t, err.Error(), "heading must be a string")
 }
 
-func TestParseInline_RejectsBadRequiredType(t *testing.T) {
+func TestParseInline_RejectsLegacyRequiredKey(t *testing.T) {
+	// Plan 156 removed `required:`; the rejection diagnostic
+	// points at the `repeat:` replacement.
 	raw := map[string]any{
 		"sections": []any{map[string]any{
-			"heading": "X", "required": "yes",
+			"heading": "X", "required": false,
 		}},
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "required must be a boolean")
+	assert.Contains(t, err.Error(), "`required:` removed")
+	assert.Contains(t, err.Error(), "repeat:")
 }
 
-func TestParseInline_RejectsBadAliasesType(t *testing.T) {
+func TestParseInline_RejectsLegacyAliasesKey(t *testing.T) {
+	// Plan 156 removed `aliases:`; encode disjunction in the regex.
 	raw := map[string]any{
 		"sections": []any{map[string]any{
-			"heading": "X", "aliases": "not-a-list",
+			"heading": "X", "aliases": []any{"Y"},
 		}},
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "aliases must be a list")
+	assert.Contains(t, err.Error(), "`aliases:` removed")
+	assert.Contains(t, err.Error(), "regex:")
 }
 
-func TestParseInline_RejectsBadAliasItemType(t *testing.T) {
-	raw := map[string]any{
-		"sections": []any{map[string]any{
-			"heading": "X", "aliases": []any{42},
-		}},
+func TestParseInline_RejectsLegacyRepeatingPatternKeys(t *testing.T) {
+	// Plan 156 removed the scope-level `repeats:` / `sequential:`
+	// / `min:` / `max:` keys; each one carries its own pointer
+	// at the replacement.
+	cases := []struct {
+		key string
+		val any
+	}{
+		{"repeats", true},
+		{"sequential", true},
+		{"min", 1},
+		{"max", 5},
 	}
-	_, err := ParseInline(raw, "kind x")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "aliases[0] must be a string")
+	for _, tc := range cases {
+		t.Run(tc.key, func(t *testing.T) {
+			raw := map[string]any{
+				"sections": []any{map[string]any{
+					"heading": "X", tc.key: tc.val,
+				}},
+			}
+			_, err := ParseInline(raw, "kind x")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.key)
+			assert.Contains(t, err.Error(), "removed; see plan 156")
+		})
+	}
 }
 
 func TestParseInline_RejectsBadRulesType(t *testing.T) {
@@ -346,7 +329,7 @@ func TestParseFile_RequireSingleLine(t *testing.T) {
 		"<?require filename: \"plan-*.md\" ?>\n\n# ?\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "plan-*.md", sch.Require.Filename)
+	assert.Equal(t, "plan-*.md", sch.Filename)
 }
 
 func TestParseFile_RequireMalformedYAML(t *testing.T) {
@@ -383,7 +366,7 @@ func TestParseFile_IncludeFragmentWithFilename(t *testing.T) {
 		"# ?\n\n<?include\nfile: frag.md\n?>\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "frag-*.md", sch.Require.Filename,
+	assert.Equal(t, "frag-*.md", sch.Filename,
 		"fragment's filename pattern should win when host has none")
 }
 
@@ -400,7 +383,7 @@ func TestParseFile_HostFilenameBeatsIncludeFilename(t *testing.T) {
 		"<?require\nfilename: \"plan-*.md\"\n?>\n\n# ?\n\n<?include\nfile: frag.md\n?>\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
-	assert.Equal(t, "plan-*.md", sch.Require.Filename)
+	assert.Equal(t, "plan-*.md", sch.Filename)
 }
 
 func TestParseFile_HeadingWithCodeSpan(t *testing.T) {
@@ -445,7 +428,7 @@ func TestSchema_IsEmpty(t *testing.T) {
 	assert.True(t, (*Schema)(nil).IsEmpty())
 	assert.True(t, (&Schema{}).IsEmpty())
 	assert.False(t, (&Schema{Sections: []Scope{{Heading: "X"}}}).IsEmpty())
-	assert.False(t, (&Schema{Require: Require{Filename: "*.md"}}).IsEmpty())
+	assert.False(t, (&Schema{Filename: "*.md"}).IsEmpty())
 	assert.False(t, (&Schema{Frontmatter: map[string]string{"id": "string"}}).IsEmpty())
 }
 
@@ -497,15 +480,18 @@ func TestValidateFrontmatterSyntax_RejectsInvalidCUE(t *testing.T) {
 
 func TestValidate_FieldInterpolatedHeadingMatches(t *testing.T) {
 	// `# {id}: {name}` against `# MDS001: line-length` should match
-	// via the regex path inside matchesText.
+	// once the document's front matter supplies the field values
+	// the fmvar() helper resolves against.
 	dir := t.TempDir()
 	p := writeFile(t, dir, "proto.md", "# {id}: {name}\n")
 	sch, err := ParseFile(&FileReader{}, p)
 	require.NoError(t, err)
 	doc := newDocFile(t, "doc.md", "# MDS001: line-length\n")
-	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	diags := Validate(doc, sch,
+		map[string]any{"id": "MDS001", "name": "line-length"},
+		false, makeDiagForTest)
 	assert.Empty(t, diags,
-		"field-interpolated H1 pattern should match a concrete title")
+		"field-interpolated H1 pattern should match the concrete title")
 }
 
 func TestValidate_FieldInterpolatedHeadingMismatch(t *testing.T) {
@@ -559,25 +545,36 @@ func TestParseInline_FrontmatterEmptyString(t *testing.T) {
 
 func TestMatchesHeading_Exported(t *testing.T) {
 	// Exported wrapper used by the per-scope-rule walker.
-	sc := Scope{Heading: "Goal"}
-	assert.True(t, MatchesHeading(sc, DocHeading{Text: "Goal", Level: 2}))
-	assert.False(t, MatchesHeading(sc, DocHeading{Text: "Other", Level: 2}))
-	// Wildcard scopes never match a specific heading.
-	assert.False(t, MatchesHeading(Scope{Wildcard: true}, DocHeading{Text: "Anything"}))
-	// "?" matches any text.
-	assert.True(t, MatchesHeading(Scope{Heading: "?"}, DocHeading{Text: "Anything"}))
-	// Aliases match.
-	sc2 := Scope{Heading: "Symptoms", Aliases: []string{"Indicators"}}
-	assert.True(t, MatchesHeading(sc2, DocHeading{Text: "Indicators"}))
+	sc := literalScope("Goal")
+	assert.True(t, MatchesHeading(sc, DocHeading{Text: "Goal", Level: 2}, nil))
+	assert.False(t, MatchesHeading(sc, DocHeading{Text: "Other", Level: 2}, nil))
+	// Slot scopes never match a specific heading.
+	assert.False(t, MatchesHeading(slotScope(), DocHeading{Text: "Anything"}, nil))
+	// A `.+` matcher (one-or-more wildcard) matches any text.
+	wild := Scope{Heading: ".+", Matcher: &Matcher{Regex: ".+"}}
+	assert.True(t, MatchesHeading(wild, DocHeading{Text: "Anything"}, nil))
+	// Disjunction inside the regex replaces the old aliases field.
+	sc2 := Scope{Heading: "Symptoms|Indicators",
+		Matcher: &Matcher{Regex: "Symptoms|Indicators"}}
+	assert.True(t, MatchesHeading(sc2, DocHeading{Text: "Indicators"}, nil))
+	// fmvar() patterns now resolve against the supplied frontmatter
+	// when the caller passes it in.
+	sc3 := Scope{Heading: "fmvar",
+		Matcher: &Matcher{Regex: `\#(fmvar(id))`}}
+	assert.True(t, MatchesHeading(sc3, DocHeading{Text: "X-42"},
+		map[string]any{"id": "X-42"}))
+	assert.False(t, MatchesHeading(sc3, DocHeading{Text: "X-42"}, nil),
+		"fmvar with nil FM must not match a non-empty heading text")
 }
 
-func TestPatternRegexCache_ReusesCompiled(t *testing.T) {
+func TestMatcherCache_ReusesCompiled(t *testing.T) {
 	// Two calls with the same pattern must hit the cache the second
 	// time. Cover both the cache-miss and cache-hit branches.
-	pattern := "Step {n}"
-	first := patternRegex(pattern)
-	require.NotNil(t, first)
-	second := patternRegex(pattern)
+	m := &Matcher{Regex: `Step \#(digits)`}
+	first, err := cachedMatcher(m, nil)
+	require.NoError(t, err)
+	second, err := cachedMatcher(m, nil)
+	require.NoError(t, err)
 	assert.Same(t, first, second,
 		"second call must return the cached compiled regex")
 }
@@ -646,8 +643,7 @@ func TestValidate_ShallowLevelMismatchClaimedByText(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  "Diagnosis",
-				"required": true,
+				"heading": "Diagnosis",
 				"sections": []any{
 					map[string]any{"heading": "Step"},
 				},
@@ -695,7 +691,7 @@ func TestValidate_InvalidFilenamePattern(t *testing.T) {
 	// A pattern that filepath.Match rejects (e.g., unmatched
 	// bracket) surfaces as a diagnostic at the document level.
 	raw := map[string]any{
-		"require": map[string]any{"filename": "[unterminated"},
+		"filename": "[unterminated",
 	}
 	sch, err := ParseInline(raw, "kind x")
 	require.NoError(t, err)
@@ -857,11 +853,9 @@ func TestIsCUEIdent_EmptyAndDigitFirst(t *testing.T) {
 	assert.True(t, isCUEIdent("foo123"))
 }
 
-// TestValidate_OutOfOrderHonoursPlaceholderHeadings regresses
-// the fallback that lets out-of-order detection see scopes whose
-// heading carries a placeholder. requiredByText keys only literal
-// scopes; the field-interpolated scope is found via
-// scopeMatchesHeading instead.
+// TestValidate_OutOfOrderHonoursPlaceholderHeadings: out-of-order
+// detection sees scopes whose matcher uses fmvar() interpolation
+// once the document supplies the fields.
 func TestValidate_OutOfOrderHonoursPlaceholderHeadings(t *testing.T) {
 	dir := t.TempDir()
 	// File-based schema with two scopes: literal "Goal" and
@@ -872,7 +866,9 @@ func TestValidate_OutOfOrderHonoursPlaceholderHeadings(t *testing.T) {
 	require.NoError(t, err)
 	doc := newDocFile(t, "doc.md",
 		"# T\n\n## MDS001: line-length\n\nx\n\n## Goal\n\ny\n")
-	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	diags := Validate(doc, sch,
+		map[string]any{"id": "MDS001", "name": "line-length"},
+		false, makeDiagForTest)
 	var oo bool
 	var missing bool
 	for _, d := range diags {
@@ -899,15 +895,17 @@ func TestValidate_OutOfOrderHonoursPlaceholderHeadings(t *testing.T) {
 func TestValidate_LateListedScopeRecursesIntoChildren(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": "A", "required": true},
+			map[string]any{"heading": "A"},
 			map[string]any{
-				"heading":  "B",
-				"required": false,
+				"heading": map[string]any{
+					"regex":  "B",
+					"repeat": map[string]any{"min": 0, "max": 1},
+				},
 				"sections": []any{
-					map[string]any{"heading": "B-child", "required": true},
+					map[string]any{"heading": "B-child"},
 				},
 			},
-			map[string]any{"heading": "C", "required": true},
+			map[string]any{"heading": "C"},
 		},
 	}
 	sch, err := ParseInline(raw, "kind x")
@@ -932,10 +930,10 @@ func TestValidate_LateListedScopeRecursesIntoChildren(t *testing.T) {
 }
 
 // TestParseInline_RejectsWildcardAsHeadingText regresses a
-// confusing-input case: a mapping-form scope with `heading: "..."`
-// would silently be treated as a literal section named "...".
-// Reject it at parse time so the only inline path to a slot is
-// `heading: {unlisted: true}` (the mapping form).
+// confusing-input case: a bare-string `heading: "..."` would
+// silently be treated as a literal section named "...". Reject it
+// at parse time so the only path to a slot is the mapping form
+// (`heading: { regex: '.+', repeat: { min: 0 } }`).
 func TestParseInline_RejectsWildcardAsHeadingText(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
@@ -945,22 +943,7 @@ func TestParseInline_RejectsWildcardAsHeadingText(t *testing.T) {
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `"..."`)
-	assert.Contains(t, err.Error(), "heading: {unlisted: true}")
-}
-
-func TestParseInline_RejectsWildcardAsAlias(t *testing.T) {
-	raw := map[string]any{
-		"sections": []any{
-			map[string]any{
-				"heading": "Overview",
-				"aliases": []any{"..."},
-			},
-		},
-	}
-	_, err := ParseInline(raw, "kind x")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(),
-		`alias "..."`)
+	assert.Contains(t, err.Error(), "regex: '.+'")
 }
 
 // ---- Unified heading: grammar (string / null / mapping) ----
@@ -974,13 +957,15 @@ func TestParseInline_HeadingString(t *testing.T) {
 	require.Len(t, sch.Sections, 1)
 	assert.Equal(t, "Goal", sch.Sections[0].Heading)
 	assert.False(t, sch.Sections[0].Preamble)
-	assert.False(t, sch.Sections[0].Wildcard)
+	require.NotNil(t, sch.Sections[0].Matcher)
+	assert.Equal(t, "Goal", sch.Sections[0].Matcher.Regex,
+		"bare-string sugar populates Matcher.Regex with the literal text")
 }
 
 func TestParseInline_HeadingNullIsPreamble(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": nil, "required": false},
+			map[string]any{"heading": nil},
 			map[string]any{"heading": "Goal"},
 		},
 	}
@@ -991,17 +976,22 @@ func TestParseInline_HeadingNullIsPreamble(t *testing.T) {
 	assert.Equal(t, "Goal", sch.Sections[1].Heading)
 }
 
-func TestParseInline_HeadingMappingUnlisted(t *testing.T) {
+func TestParseInline_HeadingMappingSlot(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
 			map[string]any{"heading": "Overview"},
-			map[string]any{"heading": map[string]any{"unlisted": true}},
+			map[string]any{"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{"min": 0},
+			}},
 		},
 	}
 	sch, err := ParseInline(raw, "kind x")
 	require.NoError(t, err)
 	require.Len(t, sch.Sections, 2)
-	assert.True(t, sch.Sections[1].Wildcard)
+	require.NotNil(t, sch.Sections[1].Matcher)
+	assert.True(t, isSlotMatcher(sch.Sections[1].Matcher),
+		"the mapping form `.+` plus `repeat: {min: 0}` desugars to a slot")
 }
 
 func TestParseInline_RejectsPreambleAfterFirst(t *testing.T) {
@@ -1014,17 +1004,6 @@ func TestParseInline_RejectsPreambleAfterFirst(t *testing.T) {
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must be the first entry")
-}
-
-func TestParseInline_RejectsAliasesOnPreamble(t *testing.T) {
-	raw := map[string]any{
-		"sections": []any{
-			map[string]any{"heading": nil, "aliases": []any{"Intro"}},
-		},
-	}
-	_, err := ParseInline(raw, "kind x")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "`aliases:` is not allowed")
 }
 
 func TestParseInline_RejectsSectionsOnPreamble(t *testing.T) {
@@ -1042,25 +1021,10 @@ func TestParseInline_RejectsSectionsOnPreamble(t *testing.T) {
 	assert.Contains(t, err.Error(), "sections")
 }
 
-func TestParseInline_RejectsAliasesOnSlot(t *testing.T) {
-	raw := map[string]any{
-		"sections": []any{
-			map[string]any{
-				"heading": map[string]any{"unlisted": true},
-				"aliases": []any{"Anything"},
-			},
-		},
-	}
-	_, err := ParseInline(raw, "kind x")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "`aliases:` is not allowed")
-}
-
-// TestParseInline_RejectsSlotForbiddenKeys regresses the round-3
-// review: a slot's `sections:` / `rules:` / `closed:` / `required:`
-// fields used to parse silently because validateScopes skips
-// wildcard scopes. Reject them by key presence at parse time so
-// authors see the misconfiguration immediately.
+// TestParseInline_RejectsSlotForbiddenKeys: a slot's `sections:` /
+// `rules:` / `closed:` / `content:` fields are not honoured by the
+// validator. Reject them at parse time so authors see the
+// misconfiguration immediately.
 func TestParseInline_RejectsSlotForbiddenKeys(t *testing.T) {
 	cases := []struct {
 		key string
@@ -1071,15 +1035,18 @@ func TestParseInline_RejectsSlotForbiddenKeys(t *testing.T) {
 			"paragraph-readability": map[string]any{"max-index": 12.0},
 		}},
 		{"closed", true},
-		{"required", false},
+		{"content", []any{map[string]any{"kind": "paragraph"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.key, func(t *testing.T) {
 			raw := map[string]any{
 				"sections": []any{
 					map[string]any{
-						"heading": map[string]any{"unlisted": true},
-						tc.key:    tc.val,
+						"heading": map[string]any{
+							"regex":  ".+",
+							"repeat": map[string]any{"min": 0},
+						},
+						tc.key: tc.val,
 					},
 				},
 			}
@@ -1091,36 +1058,6 @@ func TestParseInline_RejectsSlotForbiddenKeys(t *testing.T) {
 	}
 }
 
-func TestParseInline_SlotClearsRequiredDefault(t *testing.T) {
-	// Slots inherit the parseInlineScopeEntry default Required=true,
-	// but the heading mapping flips it back to false so the
-	// in-memory shape matches the file-based parser.
-	raw := map[string]any{
-		"sections": []any{
-			map[string]any{"heading": map[string]any{"unlisted": true}},
-		},
-	}
-	sch, err := ParseInline(raw, "kind x")
-	require.NoError(t, err)
-	require.Len(t, sch.Sections, 1)
-	assert.False(t, sch.Sections[0].Required,
-		"slot scopes must report Required=false")
-}
-
-func TestParseInline_PreambleClearsRequiredDefault(t *testing.T) {
-	raw := map[string]any{
-		"sections": []any{
-			map[string]any{"heading": nil},
-			map[string]any{"heading": "Goal"},
-		},
-	}
-	sch, err := ParseInline(raw, "kind x")
-	require.NoError(t, err)
-	require.Len(t, sch.Sections, 2)
-	assert.False(t, sch.Sections[0].Required,
-		"preamble scopes must report Required=false")
-}
-
 func TestParseInline_RejectsEmptyHeadingMapping(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{map[string]any{"heading": map[string]any{}}},
@@ -1128,6 +1065,31 @@ func TestParseInline_RejectsEmptyHeadingMapping(t *testing.T) {
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "empty mapping")
+}
+
+func TestParseInline_RejectsMappingMissingRegex(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": map[string]any{
+				"repeat": map[string]any{"min": 1},
+			}},
+		},
+	}
+	_, err := ParseInline(raw, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "`regex:` is required")
+}
+
+func TestParseInline_RejectsLegacyUnlistedKey(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": map[string]any{"unlisted": true}},
+		},
+	}
+	_, err := ParseInline(raw, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "`heading.unlisted:` removed")
+	assert.Contains(t, err.Error(), "regex: '.+'")
 }
 
 func TestParseInline_RejectsUnknownHeadingKind(t *testing.T) {
@@ -1138,29 +1100,89 @@ func TestParseInline_RejectsUnknownHeadingKind(t *testing.T) {
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown heading-kind key")
+	assert.Contains(t, err.Error(), "unknown heading-mapping key")
 }
 
-func TestParseInline_RejectsUnlistedFalse(t *testing.T) {
+func TestParseInline_RejectsEmptyRepeatMapping(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": map[string]any{"unlisted": false}},
+			map[string]any{"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{},
+			}},
 		},
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be `true`")
+	assert.Contains(t, err.Error(), "empty mapping")
 }
 
-func TestParseInline_RejectsUnlistedNonBool(t *testing.T) {
+func TestParseInline_RejectsMaxZero(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": map[string]any{"unlisted": "yes"}},
+			map[string]any{"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{"max": 0},
+			}},
 		},
 	}
 	_, err := ParseInline(raw, "kind x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be a boolean")
+	assert.Contains(t, err.Error(), "max:")
+	assert.Contains(t, err.Error(), "greater than 0")
+}
+
+func TestParseInline_RejectsMinGreaterThanMax(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": map[string]any{
+				"regex":  ".+",
+				"repeat": map[string]any{"min": 5, "max": 2},
+			}},
+		},
+	}
+	_, err := ParseInline(raw, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "min=5 is greater than max=2")
+}
+
+func TestParseInline_RejectsSequentialWithoutDigits(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": map[string]any{
+				"regex":      "Step",
+				"sequential": true,
+			}},
+		},
+	}
+	_, err := ParseInline(raw, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sequential")
+	assert.Contains(t, err.Error(), "digits")
+}
+
+func TestParseInline_RejectsInvalidRegex(t *testing.T) {
+	raw := map[string]any{
+		"sections": []any{
+			map[string]any{"heading": map[string]any{
+				"regex": "[unterminated",
+			}},
+		},
+	}
+	_, err := ParseInline(raw, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "regex")
+}
+
+func TestParseInline_RejectsClosedOnFrontmatterOnly(t *testing.T) {
+	raw := map[string]any{
+		"frontmatter": map[string]any{"id": "string"},
+		"closed":      true,
+	}
+	_, err := ParseInline(raw, "kind x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema.closed")
+	assert.Contains(t, err.Error(), "sections")
 }
 
 // TestHeadingLine_FallbackTo1 covers the empty-Lines path of
@@ -1177,20 +1199,19 @@ func TestHeadingLine_FallbackTo1(t *testing.T) {
 }
 
 // TestValidate_WildcardHeadingParticipatesInOutOfOrder regresses
-// the "?" wildcard fallback: a later listed scope whose Heading is
-// "?" must still be claimable via out-of-order detection, because
-// "?" can't appear in the literal-text map but scopeMatchesHeading
-// treats it as matching any heading.
+// the `.+` mapping fallback: a later listed scope whose Matcher
+// accepts any text must still be claimable via out-of-order
+// detection.
 func TestValidate_WildcardHeadingParticipatesInOutOfOrder(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": "A", "required": true},
-			map[string]any{"heading": "?", "required": true},
+			map[string]any{"heading": "A"},
+			map[string]any{"heading": map[string]any{"regex": ".+"}},
 		},
 	}
 	sch, err := ParseInline(raw, "kind x")
 	require.NoError(t, err)
-	// Doc: B first (matches the "?" wildcard), then A.
+	// Doc: B first (matches the `.+` mapping), then A.
 	doc := newDocFile(t, "doc.md",
 		"# T\n\n## B\n\nx\n\n## A\n\ny\n")
 	diags := Validate(doc, sch, nil, false, makeDiagForTest)
@@ -1201,26 +1222,29 @@ func TestValidate_WildcardHeadingParticipatesInOutOfOrder(t *testing.T) {
 			oo = true
 		}
 		assert.NotContains(t, d.Message, "expected section to be present",
-			"the ? wildcard must claim B via out-of-order, not stay missing")
+			"the `.+` mapping must claim B via out-of-order, not stay missing")
 		assert.NotContains(t, d.Message, "<present>",
-			"B should not surface as unexpected when ? can claim it")
+			"B should not surface as unexpected when `.+` can claim it")
 	}
 	assert.True(t, oo,
-		"`?` wildcard heading must participate in out-of-order detection")
+		"a `.+` matcher must participate in out-of-order detection")
 }
 
-// TestValidate_PlaceholderAliasParticipatesInOutOfOrder regresses
-// the buildRequiredByText + findOutOfOrderIdx fix: a scope with a
-// literal heading and a placeholder alias must still be detected
-// as a later listed match via the fallback scan.
-func TestValidate_PlaceholderAliasParticipatesInOutOfOrder(t *testing.T) {
+// TestValidate_PlaceholderRegexParticipatesInOutOfOrder verifies
+// out-of-order detection works for a scope whose regex uses
+// fmvar() interpolation.
+func TestValidate_PlaceholderRegexParticipatesInOutOfOrder(t *testing.T) {
 	raw := map[string]any{
+		"frontmatter": map[string]any{
+			"user": `string & != ""`,
+			"role": `string & != ""`,
+		},
 		"sections": []any{
-			map[string]any{"heading": "A", "required": true},
+			map[string]any{"heading": "A"},
 			map[string]any{
-				"heading":  "Profile",
-				"required": true,
-				"aliases":  []any{"{user}: {role}"},
+				"heading": map[string]any{
+					"regex": `\#(fmvar(user)): \#(fmvar(role))`,
+				},
 			},
 		},
 	}
@@ -1228,7 +1252,9 @@ func TestValidate_PlaceholderAliasParticipatesInOutOfOrder(t *testing.T) {
 	require.NoError(t, err)
 	doc := newDocFile(t, "doc.md",
 		"# T\n\n## alice: admin\n\nx\n\n## A\n\ny\n")
-	diags := Validate(doc, sch, nil, false, makeDiagForTest)
+	diags := Validate(doc, sch,
+		map[string]any{"user": "alice", "role": "admin"},
+		false, makeDiagForTest)
 	var oo bool
 	for _, d := range diags {
 		if strings.Contains(d.Message, `## alice: admin: got <out of order>`) &&
@@ -1236,10 +1262,10 @@ func TestValidate_PlaceholderAliasParticipatesInOutOfOrder(t *testing.T) {
 			oo = true
 		}
 		assert.NotContains(t, d.Message, "expected section to be present",
-			"placeholder alias must claim the heading, not leave Profile missing")
+			"fmvar regex must claim the heading, not leave the scope missing")
 	}
 	assert.True(t, oo,
-		"placeholder alias must participate in out-of-order detection")
+		"fmvar regex must participate in out-of-order detection")
 }
 
 // TestParseFile_DefaultMaxBytesCapped regresses the FileReader
@@ -1267,8 +1293,8 @@ func TestParseFile_DefaultMaxBytesCapped(t *testing.T) {
 func TestValidate_StrayShallowerHeadingDoesNotTerminate(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": "Overview", "required": true},
-			map[string]any{"heading": "Decision", "required": true},
+			map[string]any{"heading": "Overview"},
+			map[string]any{"heading": "Decision"},
 		},
 	}
 	sch, err := ParseInline(raw, "kind rfc")
@@ -1290,9 +1316,12 @@ func TestValidate_StrayShallowerHeadingDoesNotTerminate(t *testing.T) {
 func TestValidate_OpenScopeFlagsLateListedScope(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": "A", "required": true},
-			map[string]any{"heading": "B", "required": false},
-			map[string]any{"heading": "C", "required": true},
+			map[string]any{"heading": "A"},
+			map[string]any{"heading": map[string]any{
+				"regex":  "B",
+				"repeat": map[string]any{"min": 0, "max": 1},
+			}},
+			map[string]any{"heading": "C"},
 		},
 	}
 	sch, err := ParseInline(raw, "kind x")
@@ -1320,8 +1349,14 @@ func TestValidate_OpenScopeFlagsLateListedScope(t *testing.T) {
 func TestValidate_OptionalScopeNotOutOfOrder(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": "A", "required": false},
-			map[string]any{"heading": "B", "required": false},
+			map[string]any{"heading": map[string]any{
+				"regex":  "A",
+				"repeat": map[string]any{"min": 0, "max": 1},
+			}},
+			map[string]any{"heading": map[string]any{
+				"regex":  "B",
+				"repeat": map[string]any{"min": 0, "max": 1},
+			}},
 		},
 	}
 	sch, err := ParseInline(raw, "kind x")
@@ -1340,8 +1375,8 @@ func TestValidate_OptionalScopeNotOutOfOrder(t *testing.T) {
 func TestValidate_RequiredScopeStillFlagsOutOfOrder(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
-			map[string]any{"heading": "A", "required": true},
-			map[string]any{"heading": "B", "required": true},
+			map[string]any{"heading": "A"},
+			map[string]any{"heading": "B"},
 		},
 	}
 	sch, err := ParseInline(raw, "kind x")
@@ -1392,15 +1427,13 @@ func TestValidate_ShallowNonMatchEndsScopeList(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  "Parent",
-				"required": true,
+				"heading": "Parent",
 				"sections": []any{
 					map[string]any{"heading": "Child"},
 				},
 			},
 			map[string]any{
-				"heading":  "Sibling",
-				"required": true,
+				"heading": "Sibling",
 			},
 		},
 	}
@@ -1442,13 +1475,12 @@ func TestValidate_DeeperHeadingConsumedAsOrphan(t *testing.T) {
 
 func TestParseInline_ScopeLevelClosed(t *testing.T) {
 	// `closed:` on a scope (not the root) — covers the
-	// applyScopeFields "closed" branch at parse_inline.go:228.
+	// applyScopeFields "closed" branch.
 	raw := map[string]any{
 		"sections": []any{
 			map[string]any{
-				"heading":  "Parent",
-				"required": true,
-				"closed":   true,
+				"heading": "Parent",
+				"closed":  true,
 				"sections": []any{
 					map[string]any{"heading": "Child"},
 				},
@@ -1477,20 +1509,10 @@ func TestSetScopeSections_RejectsNonList(t *testing.T) {
 	assert.Contains(t, err.Error(), "sections must be a list")
 }
 
-func TestPatternRegex_SentinelCacheHit(t *testing.T) {
-	// First call caches the compile-failed sentinel for a
-	// compile-failing pattern; the second call hits the sentinel
-	// branch and returns nil.
-	pattern := "{x} bad ( pattern"
-	patternRegexCache.Store(pattern, patternCompileFailed)
-	got := patternRegex(pattern)
-	assert.Nil(t, got, "cache-hit on sentinel should return nil")
-}
-
 func TestValidate_FilenameMatchesPattern(t *testing.T) {
 	// The "matched" return branch of validateFilename.
 	raw := map[string]any{
-		"require": map[string]any{"filename": "doc.md"},
+		"filename": "doc.md",
 	}
 	sch, err := ParseInline(raw, "kind x")
 	require.NoError(t, err)
@@ -1499,14 +1521,14 @@ func TestValidate_FilenameMatchesPattern(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
-func TestPatternRegex_SentinelOnCompileError(t *testing.T) {
-	// Stuff the compile-failed sentinel into the cache and ensure
-	// matchesText handles the nil return without panicking. Using
-	// a unique pattern avoids contention with other tests.
-	pattern := "{n} (broken ["
-	patternRegexCache.Store(pattern, patternCompileFailed)
-	assert.False(t, matchesText(pattern, "anything"),
-		"matchesText should return false when the cache stores the failed sentinel")
+func TestCompileMatcher_RejectsInvalidRegex(t *testing.T) {
+	// Patterns that don't compile as RE2 surface as compileMatcher
+	// errors; the validator falls back to "no match" so a malformed
+	// pattern still produces a missing-required diagnostic rather
+	// than panicking.
+	m := &Matcher{Regex: "[unterminated"}
+	_, err := compileMatcher(m, nil)
+	require.Error(t, err)
 }
 
 // ---- Validate frontmatter CUE-placeholder skip ----

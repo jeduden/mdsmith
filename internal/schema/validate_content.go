@@ -21,12 +21,16 @@ import (
 // the matched section's body. Diagnostics surface alongside the
 // heading-tree results emitted by Validate.
 //
+// docFM is the document's parsed front matter; it threads through
+// to the per-scope walker so `\#(fmvar(...))` matchers resolve when
+// pairing a scope with its heading.
+//
 // The function does its own document parse with the table extension
 // enabled — lint.NewFile's parser is CommonMark-only, so GFM tables
 // would otherwise appear as paragraphs. The parse is skipped when
 // the schema declares no content entries anywhere.
 func ValidateContent(
-	f *lint.File, sch *Schema, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	if sch == nil || !anyScopeHasContent(sch.Sections) {
 		return nil
@@ -40,7 +44,7 @@ func ValidateContent(
 	claimed := make(map[int]bool)
 	walkContentScopes(
 		f, sch.Sections, heads, rootLevel, 1, len(f.Lines)+1,
-		claimed, blocks, mkDiag, &diags,
+		claimed, blocks, docFM, mkDiag, &diags,
 	)
 	return diags
 }
@@ -217,10 +221,10 @@ func walkContentScopes(
 	f *lint.File, scopes []Scope, heads []DocHeading,
 	expectedLevel, parentStart, parentEnd int,
 	claimed map[int]bool, blocks []contentBlock,
-	mkDiag MakeDiag, diags *[]lint.Diagnostic,
+	docFM map[string]any, mkDiag MakeDiag, diags *[]lint.Diagnostic,
 ) {
-	for _, sc := range scopes {
-		if sc.Wildcard {
+	for i, sc := range scopes {
+		if isSlotMatcher(sc.Matcher) {
 			continue
 		}
 		if sc.Preamble {
@@ -234,19 +238,21 @@ func walkContentScopes(
 			runContent(f, sc, parentStart, expectedLevel, parentStart, end, blocks, mkDiag, diags)
 			continue
 		}
-		matched := findContentMatchingHead(sc, heads, expectedLevel, parentStart, parentEnd, claimed)
-		if matched < 0 {
-			continue
-		}
-		claimed[matched] = true
-		dh := heads[matched]
-		end := contentScopeEndLine(heads, matched, dh.Level, parentEnd)
-		runContent(f, sc, dh.Line, dh.Level, dh.Line+1, end, blocks, mkDiag, diags)
-		if len(sc.Sections) > 0 {
-			walkContentScopes(
-				f, sc.Sections, heads, expectedLevel+1, dh.Line, end,
-				claimed, blocks, mkDiag, diags,
-			)
+		// ScopeRunIndices applies the structural validator's
+		// run + yield semantics: contiguous matches only, with
+		// broad-and-after-min yielding to later named scopes.
+		for _, matched := range ScopeRunIndices(
+			scopes, i, heads, expectedLevel, parentStart, parentEnd, claimed, docFM) {
+			dh := heads[matched]
+			claimed[matched] = true
+			end := contentScopeEndLine(heads, matched, dh.Level, parentEnd)
+			runContent(f, sc, dh.Line, dh.Level, dh.Line+1, end, blocks, mkDiag, diags)
+			if len(sc.Sections) > 0 {
+				walkContentScopes(
+					f, sc.Sections, heads, expectedLevel+1, dh.Line, end,
+					claimed, blocks, docFM, mkDiag, diags,
+				)
+			}
 		}
 	}
 }
@@ -283,44 +289,6 @@ func blocksInRange(blocks []contentBlock, startLine, endLine int) []contentBlock
 		out = append(out, b)
 	}
 	return out
-}
-
-// findContentMatchingHead picks the earliest unclaimed heading at the
-// expected level whose text matches sc, restricted to the parent
-// window. Falls back to a heading at any in-window level so a level-
-// mismatched section still pairs (the heading walker emits the
-// level-mismatch diagnostic separately).
-func findContentMatchingHead(
-	sc Scope, heads []DocHeading,
-	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool,
-) int {
-	if idx := scanContentHeads(sc, heads, parentStart, parentEnd, claimed, expectedLevel); idx >= 0 {
-		return idx
-	}
-	return scanContentHeads(sc, heads, parentStart, parentEnd, claimed, -1)
-}
-
-func scanContentHeads(
-	sc Scope, heads []DocHeading,
-	parentStart, parentEnd int, claimed map[int]bool,
-	requireLevel int,
-) int {
-	for j, dh := range heads {
-		if claimed[j] {
-			continue
-		}
-		if dh.Line < parentStart || dh.Line >= parentEnd {
-			continue
-		}
-		if requireLevel >= 0 && dh.Level != requireLevel {
-			continue
-		}
-		if MatchesHeading(sc, dh) {
-			return j
-		}
-	}
-	return -1
 }
 
 // contentScopeEndLine returns the exclusive end-line of a section

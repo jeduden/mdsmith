@@ -94,7 +94,7 @@ row: "- [{summary}](../{filename})"
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](../docs/reference/conventions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](../docs/reference/globs.md)
 - [Named field-type shortcuts for inline schema frontmatter values — the registered names, the canonical CUE each one resolves to, and example usage.](../docs/reference/schema-types.md)
-- [Section-schema reference: the entry-shape vocabulary used in inline `kinds.<name>.schema:` blocks and `proto.md` files. Covers the `heading:` discriminator, the `regex:` matcher (a CUE expression with `digits` and `fmvar` helpers), the `repeat: {min, max}` cardinality field, and the matching algorithm.](../docs/reference/section-schema.md)
+- [Section-schema reference for inline `kinds.<name>.schema:` blocks. Covers the `heading:` discriminator, the `regex:` matcher (a Go RE2 body with `\#(digits)` and `\#(fmvar(...))` helpers), the `repeat: {min, max}` cardinality field, and the matching algorithm. `proto.md` files are parsed into the same shape by the schema package, but MDS020's file-schema check still uses its legacy parser; see the proto.md section below for what is and is not migrated.](../docs/reference/section-schema.md)
 <?/catalog?>
 
 ### Development Workflow
@@ -223,6 +223,12 @@ layout](https://go.dev/doc/modules/layout):
 - Error messages should be lowercase, no trailing
   punctuation
 - Prefer returning errors over panicking
+
+#### Defensive Code
+
+Add a defensive branch only when you can drive it
+red/green. Write the failing test first. Then add
+the code that takes the branch.
 
 #### Test Fixtures
 

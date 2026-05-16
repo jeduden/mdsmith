@@ -1,24 +1,18 @@
 ---
 summary: >-
-  Section-schema reference: the entry-shape
-  vocabulary used in inline `kinds.<name>.schema:`
-  blocks and `proto.md` files. Covers the
+  Section-schema reference for inline
+  `kinds.<name>.schema:` blocks. Covers the
   `heading:` discriminator, the `regex:` matcher
-  (a CUE expression with `digits` and `fmvar`
-  helpers), the `repeat: {min, max}` cardinality
-  field, and the matching algorithm.
+  (a Go RE2 body with `\#(digits)` and
+  `\#(fmvar(...))` helpers), the
+  `repeat: {min, max}` cardinality field, and the
+  matching algorithm. `proto.md` files are
+  parsed into the same shape by the schema
+  package, but MDS020's file-schema check still
+  uses its legacy parser; see the proto.md
+  section below for what is and is not migrated.
 ---
 # Section schema
-
-> **Status: upcoming.** This page documents the
-> shape defined by
-> [plan 156](../../plan/156_schema-entry-unification.md).
-> It is not yet implemented. The current parser
-> accepts the older shape documented in the
-> [schema guide](../guides/schemas.md). When plan
-> 156 lands, this notice is removed and the guide
-> is rewritten to drop every reference to the old
-> shape.
 
 A **section schema** describes the heading
 structure mdsmith expects in a document. It
@@ -118,20 +112,19 @@ value is a mapping.
 
 ## The regex matcher
 
-`regex:` is a CUE expression evaluating to a
-string. The string is compiled as Go RE2.
-
-The YAML value is the body of a CUE
-raw-interpolation string. mdsmith wraps it in
-`#"..."#` before evaluating. Two consequences:
+`regex:` is a Go RE2 pattern body. mdsmith
+recognizes two interpolation references in the
+pattern surface — borrowed from CUE's
+raw-interpolation syntax (`\#(expr)`) — but it
+does not actually evaluate the body as CUE. Two
+consequences:
 
 - **Backslash is literal.** Write `\d`, `\w`,
   `\.`, `\(` directly — no doubling. Plain
   RE2 patterns work as-is.
-- **Interpolation is `\#(expr)`.** Inside the
-  string, `\#(x)` evaluates `x` in the CUE
-  scope (frontmatter fields plus mdsmith
-  helpers) and substitutes the result.
+- **Interpolation is `\#(expr)`.** Only the two
+  helpers below are accepted; any other `expr`
+  parse-errors with "unknown helper".
 
 **Anchoring.** Whole-string. `regex: 'Overview'`
 matches a heading whose text is exactly
@@ -262,13 +255,24 @@ schema:
 
 ## `proto.md` file syntax
 
+> **Migration status.** MDS020's file-schema
+> check still uses the legacy `parseSchema`
+> pipeline today: `## ?` and `## ...` already
+> behave as wildcards, and `{field}` in a
+> heading row matches a non-empty run rather
+> than resolving the frontmatter value via
+> `fmvar(...)`. The mapping below is what the
+> schema package parses. Tests exercise it so a
+> follow-up cutover plan can wire MDS020
+> through without docs churn. Until then,
+> proto.md authors should treat `{field}` as a
+> wildcard, not a frontmatter substitution.
+
 Proto.md files use a literal-template surface
 distinct from the inline `regex:` form. Heading
 rows in the body act as the schema's
 `sections:` list. `{n}` and `{field}` survive
-here as template placeholders; they desugar to
-the same matcher the inline form produces with
-`digits` and `fmvar`.
+here as template placeholders.
 
 | Row syntax        | Equivalent inline entry                        |
 |-------------------|------------------------------------------------|
@@ -294,7 +298,6 @@ the replacement.
 
 | Old shape                          | New shape                                            |
 |------------------------------------|------------------------------------------------------|
-| `aliases: [A, B]`                  | `regex: 'A\|B'`                                      |
 | `required: true`                   | default (omit `repeat:`)                             |
 | `required: false`                  | `repeat: { min: 0, max: 1 }`                         |
 | `heading: { unlisted: true }`      | `heading: { regex: '.+', repeat: { min: 0 } }`       |
@@ -302,3 +305,9 @@ the replacement.
 | Scope-level `min:` / `max:`        | `repeat: { min, max }`                               |
 | `require: { filename: "..." }`     | top-level `filename: "..."`                          |
 | `closed:` on frontmatter-only kind | dropped (no `sections:` → strictness has no meaning) |
+
+`aliases: [A, B]` migrates to a regex
+disjunction. Write `regex: 'A|B'`. The pipe is a
+plain RE2 alternation, not an escape. (Kept out
+of the table because Markdown swallows `\|`
+inside code spans inconsistently.)

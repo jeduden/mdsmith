@@ -19,7 +19,9 @@ import (
 // effective config. The fixture for this feature (same prose in two
 // sections, one with a stricter override) is met by this baseline;
 // the full file→scope merge is a follow-up.
-func (r *Rule) applyScopeRules(f *lint.File, sch *schema.Schema) []lint.Diagnostic {
+func (r *Rule) applyScopeRules(
+	f *lint.File, sch *schema.Schema, docFM map[string]any,
+) []lint.Diagnostic {
 	if sch == nil {
 		return nil
 	}
@@ -28,7 +30,7 @@ func (r *Rule) applyScopeRules(f *lint.File, sch *schema.Schema) []lint.Diagnost
 	body := skipBelow(heads, rootLevel)
 	var diags []lint.Diagnostic
 	claimed := make(map[int]bool, len(body))
-	walkScopes(sch.Sections, body, rootLevel, 1, len(f.Lines)+1, claimed,
+	walkScopes(sch.Sections, body, rootLevel, 1, len(f.Lines)+1, claimed, docFM,
 		func(sc schema.Scope, startLine, endLine int) {
 			if len(sc.Rules) == 0 {
 				return
@@ -68,10 +70,10 @@ func skipBelow(heads []schema.DocHeading, rootLevel int) []schema.DocHeading {
 func walkScopes(
 	scopes []schema.Scope, heads []schema.DocHeading,
 	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool,
+	claimed map[int]bool, docFM map[string]any,
 	visit func(sc schema.Scope, startLine, endLine int),
 ) {
-	for _, sc := range scopes {
+	for i, sc := range scopes {
 		if sc.Preamble {
 			// Preamble range: [parentStart, first heading at this
 			// level in the window). Empty if the very first doc
@@ -82,73 +84,30 @@ func walkScopes(
 			visit(sc, parentStart, end)
 			continue
 		}
-		if sc.Wildcard {
+		if isSlotScope(sc) {
 			continue
 		}
-		matched := findMatchingHead(sc, heads, expectedLevel, parentStart, parentEnd, claimed)
-		if matched < 0 {
-			continue
-		}
-		claimed[matched] = true
-		dh := heads[matched]
-		// The section's end boundary follows the doc heading's real
-		// level, not the schema's expectedLevel. When the two
-		// differ (level-mismatch fallback), basing the end on
-		// expectedLevel would let sibling sections at the doc's
-		// level leak into the scope (deeper doc level) or truncate
-		// the section short (shallower doc level).
-		end := scopeEndLine(heads, matched, dh.Level, parentEnd)
-		visit(sc, dh.Line, end)
-		if len(sc.Sections) > 0 {
-			walkScopes(sc.Sections, heads,
-				expectedLevel+1, dh.Line, end, claimed, visit)
+		// schema.ScopeRunIndices applies the structural validator's
+		// run + yield semantics: contiguous matches only, with
+		// broad-and-after-min yielding to later named scopes.
+		for _, matched := range schema.ScopeRunIndices(
+			scopes, i, heads, expectedLevel, parentStart, parentEnd, claimed, docFM) {
+			dh := heads[matched]
+			claimed[matched] = true
+			// The section's end boundary follows the doc heading's
+			// real level, not the schema's expectedLevel. When the
+			// two differ (level-mismatch fallback), basing the end
+			// on expectedLevel would let sibling sections at the
+			// doc's level leak into the scope (deeper doc level)
+			// or truncate the section short (shallower doc level).
+			end := scopeEndLine(heads, matched, dh.Level, parentEnd)
+			visit(sc, dh.Line, end)
+			if len(sc.Sections) > 0 {
+				walkScopes(sc.Sections, heads,
+					expectedLevel+1, dh.Line, end, claimed, docFM, visit)
+			}
 		}
 	}
-}
-
-// findMatchingHead returns the earliest unclaimed heading index in
-// heads whose level matches expectedLevel and whose text matches
-// sc, restricted to the [parentStart, parentEnd) line window. When
-// no in-window heading at the expected level matches, it falls back
-// to an in-window heading at any level — the same level-mismatch
-// case the validator's matchScope claims. The fallback stays inside
-// the parent window so the walker never pairs a scope with a
-// heading the validator could not have claimed.
-func findMatchingHead(
-	sc schema.Scope, heads []schema.DocHeading,
-	expectedLevel, parentStart, parentEnd int,
-	claimed map[int]bool,
-) int {
-	if idx := scanHeads(sc, heads, parentStart, parentEnd, claimed, expectedLevel); idx >= 0 {
-		return idx
-	}
-	return scanHeads(sc, heads, parentStart, parentEnd, claimed, -1)
-}
-
-// scanHeads returns the first unclaimed heading in heads whose line
-// is in [parentStart, parentEnd) and whose level equals
-// requireLevel (or any level when requireLevel < 0), and whose text
-// matches sc.
-func scanHeads(
-	sc schema.Scope, heads []schema.DocHeading,
-	parentStart, parentEnd int, claimed map[int]bool,
-	requireLevel int,
-) int {
-	for j, dh := range heads {
-		if claimed[j] {
-			continue
-		}
-		if dh.Line < parentStart || dh.Line >= parentEnd {
-			continue
-		}
-		if requireLevel >= 0 && dh.Level != requireLevel {
-			continue
-		}
-		if schema.MatchesHeading(sc, dh) {
-			return j
-		}
-	}
-	return -1
 }
 
 // scopeEndLine returns the exclusive end-line of the section
@@ -188,6 +147,24 @@ func firstHeadingLine(
 		}
 	}
 	return parentEnd
+}
+
+// isSlotScope reports whether sc is the wildcard-slot shape (plan
+// 156: `regex: '.+', repeat: { min: 0 }`). The per-scope walker
+// skips slots because they have no fixed identity to attach rule
+// overrides to.
+func isSlotScope(sc schema.Scope) bool {
+	m := sc.Matcher
+	if m == nil {
+		return false
+	}
+	if m.Regex != ".+" {
+		return false
+	}
+	if !m.Repeat.Set || m.Repeat.Min != 0 || m.Repeat.Max != 0 {
+		return false
+	}
+	return true
 }
 
 // runScopeRules executes each rule named in sc.Rules and returns

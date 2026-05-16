@@ -15,15 +15,18 @@
 // tree, emitting diagnostics through the lint.Diagnostic shape.
 //
 // See plan/146_inline-schema-in-kinds.md for the design context.
+// Plan 156 collapses each section entry to one discriminator
+// (`heading:` — null, string, or mapping) with a single matcher
+// (`regex:`) and a cardinality field (`repeat: {min, max}`); see
+// docs/reference/section-schema.md for the full grammar.
 package schema
 
 // SectionWildcard is the literal text the file-based parser
 // recognises in a proto.md heading row (`## ...`) as a positional
-// slot — the on-disk surface for what the inline grammar spells
-// `heading: {unlisted: true}`. The inline parser rejects this
-// string when it appears as `heading:` or `aliases:` text;
-// authors must use the mapping form. The constant lives here so
-// the two parsers agree on the same on-disk token.
+// slot — a heading run that matches any text zero or more times.
+// The inline parser rejects this string when it appears as
+// `heading:` text; authors must use the mapping form
+// (`heading: { regex: '.+', repeat: { min: 0 } }`).
 const SectionWildcard = "..."
 
 // Schema is the parsed representation of a single document schema.
@@ -45,9 +48,11 @@ type Schema struct {
 	// preserved).
 	FrontmatterLines map[string]int
 
-	// Require carries constraints that apply to the document as a
-	// whole (filename pattern, etc.).
-	Require Require
+	// Filename is a glob the document basename must match. Empty
+	// means no filename constraint. Authors set it as a top-level
+	// `filename:` key on the schema (plan 156 dropped the
+	// `require.filename:` nesting).
+	Filename string
 
 	// Sections holds the top-level section list at RootLevel; each
 	// Scope may itself nest further sections one heading level
@@ -136,80 +141,52 @@ const (
 	IndexIncludeHeadingsFlat = "headings"
 )
 
-// Require captures the schema-level constraints that apply to the
-// document as a whole.
-type Require struct {
-	// Filename is a glob the document basename must match. Empty
-	// means no filename constraint.
-	Filename string
-}
-
 // Scope binds an AST subtree (a section) to a set of constraints and
 // per-rule config overrides. The root scope's children are the
 // top-level (H2) section list; their children are H3, and so on.
 // Levels come from depth in the tree.
+//
+// Plan 156 collapses the section-entry vocabulary to three
+// orthogonal axes:
+//
+//   - Discriminator — `heading:` value (`null`, string, or mapping).
+//   - Matcher — `regex:` inside the mapping form.
+//   - Cardinality — `repeat: { min, max }` inside the mapping form.
+//
+// The legacy `aliases:`, `required:`, scope-level
+// `repeats:`/`sequential:`/`min:`/`max:`, and `{unlisted: true}`
+// shapes are gone; the parser rejects them with a "removed; see
+// plan 156" diagnostic naming the replacement.
 type Scope struct {
-	// Heading is the heading text to match. No "#" markers; the
-	// level comes from depth in the tree. The single-character
-	// "?" matches any text. Headings (and aliases) containing
-	// `{field}` interpolation are matched as anchored regex
-	// patterns, with each placeholder consuming one or more
-	// characters of the doc heading text. Empty when Wildcard is
-	// true.
+	// Heading is the diagnostic-friendly label for this scope —
+	// the bare-string literal for the sugar form, the regex body
+	// for the mapping form, or empty for the preamble. The
+	// validator does not match on this field; Matcher drives all
+	// heading claims.
 	Heading string
 
-	// Required reports whether a matching heading must appear in
-	// the document. Literal scopes default to true. Slot scopes
-	// (`heading: {unlisted: true}`) always parse to Required=false
-	// because the parser rejects an explicit `required:` key on
-	// them. Preamble scopes (`heading: null`) default to false but
-	// accept an explicit `required:` value; the inline validator
-	// does not yet act on it (a future plan that adds preamble-
-	// content checks will).
-	Required bool
-
-	// Aliases lists alternate heading texts that match this scope.
-	// An empty list means only Heading matches.
-	Aliases []string
+	// Matcher, when non-nil, describes how this scope claims one or
+	// more headings. Preamble scopes leave Matcher nil because they
+	// have no heading text to compare against — their range is
+	// `[parent-start, first-child-heading)`.
+	Matcher *Matcher
 
 	// Sections is the recursive list of nested sections (one level
 	// deeper in the document tree).
 	Sections []Scope
 
-	// Repeats reports whether Heading is a pattern (with placeholder
-	// tokens) that may match zero or more sections.
-	Repeats bool
-
-	// Sequential, on a repeating scope, asserts no gaps and no
-	// duplicates in the {n} placeholder values.
-	Sequential bool
-
-	// Min and Max bound the match count of a repeating scope. Zero
-	// means unbounded.
-	Min int
-	Max int
-
-	// Closed reports whether this scope is strict: when true,
-	// unlisted child headings produce a diagnostic; when false, they
-	// are tolerated between listed sub-sections.
-	Closed bool
-
-	// Wildcard reports whether this scope is a slot that matches
-	// zero or more sections the schema did not list by name. Authors
-	// write it inline as `heading: {unlisted: true}` (or as a `## ...`
-	// row in a file-based proto.md). Out-of-order detection still
-	// claims a heading whose text matches a later listed scope, so
-	// the slot only absorbs truly-unlisted sections.
-	Wildcard bool
-
 	// Preamble reports whether this scope describes the implicit
 	// section before any heading — the document's lead-in content.
 	// Authors write it inline as `heading: null`. A preamble scope
 	// has no heading text to match; its range is [parent-start,
-	// first-child-heading). Plan 146 limits the preamble to
-	// carrying `rules:` overrides for that range; `content:` (plan
-	// 149) extends it to AST-node constraints.
+	// first-child-heading). Only valid as the first entry of its
+	// section list.
 	Preamble bool
+
+	// Closed reports whether this scope is strict: when true,
+	// unlisted child headings produce a diagnostic; when false,
+	// they are tolerated between listed sub-sections.
+	Closed bool
 
 	// Rules carries per-scope rule-config overrides. Each entry maps
 	// a rule name to a settings map. The MDS020 walker re-runs each
@@ -228,6 +205,79 @@ type Scope struct {
 	// follow the same out-of-order + unlisted-slot semantics the
 	// heading-tree validator uses.
 	Content []ContentEntry
+}
+
+// Matcher describes how a Scope claims one or more consecutive
+// headings. Authors set it inline as the mapping form
+// (`heading: { regex, repeat?, sequential? }`); the bare-string
+// sugar (`heading: "Overview"`) and the proto.md heading-row
+// tokens (`## ?`, `## ...`, `## Step {n}`, `## {id}`) desugar to
+// the same shape.
+type Matcher struct {
+	// Regex is the body of a CUE raw-interpolation string
+	// (`#"..."#`). The validator compiles it as Go RE2 after
+	// substituting the two helpers in scope: `digits` (the literal
+	// string `(?P<n>[0-9]+)`) and `fmvar(name)` (the front-matter
+	// field `name`, regex-escaped). Backslash passes through to RE2
+	// without doubling; interpolation uses `\#(expr)` inside the
+	// pattern.
+	Regex string
+
+	// Repeat bounds how many consecutive matching headings this
+	// matcher claims. The zero value (Repeat{Set: false}) means
+	// "exactly one"; see Repeat.Bounds for the canonical (min, max)
+	// pair the validator consumes.
+	Repeat Repeat
+
+	// Sequential, with a `digits` named capture in Regex, asserts
+	// the captured `n` values are strictly increasing without gaps.
+	// Without a `digits` capture in the pattern the parser rejects
+	// `sequential: true`.
+	Sequential bool
+}
+
+// Repeat bounds the cardinality of a Matcher's heading run.
+type Repeat struct {
+	// Set reports whether the `repeat:` key was present in the YAML
+	// mapping. When false, Bounds() returns (1, 1) — the matcher
+	// claims exactly one heading. When true, an omitted `min:`
+	// defaults to 0 and an omitted `max:` to unbounded (Max == 0).
+	Set bool
+
+	// Min is the minimum match count. Ignored when Set is false.
+	Min int
+
+	// Max is the maximum match count, with 0 meaning unbounded.
+	// Ignored when Set is false. The parser rejects `repeat: {
+	// max: 0 }` so Max == 0 unambiguously signals "unbounded".
+	Max int
+}
+
+// Bounds returns the canonical (min, max) pair the validator
+// consumes. Max == 0 in the returned pair means unbounded. A
+// matcher with Set=false claims exactly one heading.
+func (r Repeat) Bounds() (int, int) {
+	if !r.Set {
+		return 1, 1
+	}
+	return r.Min, r.Max
+}
+
+// Optional reports whether the matcher's run can be empty
+// (min == 0). The validator treats Optional matchers as
+// non-required: a missing match does not flag a diagnostic.
+func (r Repeat) Optional() bool {
+	min, _ := r.Bounds()
+	return min == 0
+}
+
+// Required reports whether the scope claims at least one heading
+// (Repeat.Min >= 1). Preamble scopes are never Required.
+func (sc Scope) Required() bool {
+	if sc.Preamble || sc.Matcher == nil {
+		return false
+	}
+	return !sc.Matcher.Repeat.Optional()
 }
 
 // Content-entry kind discriminators. The on-disk YAML carries one of
@@ -286,7 +336,7 @@ func (s *Schema) IsEmpty() bool {
 		return true
 	}
 	return len(s.Frontmatter) == 0 &&
-		s.Require.Filename == "" &&
+		s.Filename == "" &&
 		len(s.Sections) == 0 &&
 		len(s.CrossReferences) == 0 &&
 		s.Acronyms == nil &&

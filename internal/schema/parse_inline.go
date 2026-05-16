@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,14 @@ import (
 // Inline schemas default to open scopes (Closed: false) per plan 146.
 // The validator's open-scope semantics still enforce required sections
 // and listed-section ordering; only unlisted headings are tolerated.
+//
+// Plan 156 collapses the section-entry vocabulary: each entry sets
+// exactly one `heading:` key (null, string, or mapping) and the
+// mapping carries `regex:`, `repeat:`, and `sequential:`. The
+// `aliases:`, `required:`, scope-level `repeats:`/`sequential:`/
+// `min:`/`max:`, `{unlisted: true}` mapping, and schema-level
+// `require:` shapes are gone; the parser rejects them with a
+// "removed; see plan 156" diagnostic naming the replacement.
 func ParseInline(raw map[string]any, source string) (*Schema, error) {
 	if raw == nil {
 		return &Schema{Source: source, RootLevel: 2}, nil
@@ -30,7 +39,11 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 	if err := parseInlineFrontmatter(raw, sch); err != nil {
 		return nil, err
 	}
-	if err := parseInlineRequire(raw, sch); err != nil {
+	if err := rejectRemovedTopKey(raw, "require",
+		"`require:` removed; see plan 156 (use top-level `filename:`)"); err != nil {
+		return nil, err
+	}
+	if err := parseInlineFilename(raw, sch); err != nil {
 		return nil, err
 	}
 	if err := parseInlineRootClosed(raw, sch); err != nil {
@@ -49,6 +62,19 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 		return nil, err
 	}
 
+	// schema-level `closed:` only makes sense when the schema also
+	// declares a non-empty `sections:` list — strictness has no
+	// scope to apply to when the kind only constrains front matter
+	// / filename, and `Schema.IsEmpty` ignores `Closed`, so an
+	// empty-sections closed schema would be skipped by Validate
+	// entirely. Plan 156 surfaces the mismatch at parse time.
+	if _, hasClosed := raw["closed"]; hasClosed && len(sch.Sections) == 0 {
+		return nil, fmt.Errorf(
+			"schema.closed: only valid on schemas that declare " +
+				"a non-empty `sections:` list — drop the key on a " +
+				"frontmatter-only kind or add at least one section")
+	}
+
 	if err := rejectUnknownTopKeys(raw); err != nil {
 		return nil, err
 	}
@@ -58,7 +84,7 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 
 var inlineTopKeys = map[string]bool{
 	"frontmatter":      true,
-	"require":          true,
+	"filename":         true,
 	"closed":           true,
 	"sections":         true,
 	"cross-references": true,
@@ -78,6 +104,13 @@ func rejectUnknownTopKeys(raw map[string]any) error {
 		if !inlineTopKeys[k] {
 			return fmt.Errorf("unknown schema key %q", k)
 		}
+	}
+	return nil
+}
+
+func rejectRemovedTopKey(raw map[string]any, key, msg string) error {
+	if _, ok := raw[key]; ok {
+		return fmt.Errorf("schema.%s: %s", key, msg)
 	}
 	return nil
 }
@@ -130,10 +163,11 @@ func frontmatterExpr(v any) (string, error) {
 		}
 		return expr, nil
 	case bool, int, int64, float64, nil:
-		b, err := json.Marshal(x)
-		if err != nil {
-			return "", err
-		}
+		// json.Marshal cannot fail on these primitive types, so
+		// the error from the marshal call is intentionally
+		// discarded — keeping the err check would land on a
+		// permanently unreachable branch.
+		b, _ := json.Marshal(x)
 		return string(b), nil
 	case []any, map[string]any:
 		b, err := json.Marshal(x)
@@ -146,28 +180,16 @@ func frontmatterExpr(v any) (string, error) {
 	}
 }
 
-func parseInlineRequire(raw map[string]any, sch *Schema) error {
-	v, ok := raw["require"]
+func parseInlineFilename(raw map[string]any, sch *Schema) error {
+	v, ok := raw["filename"]
 	if !ok {
 		return nil
 	}
-	m, ok := v.(map[string]any)
+	s, ok := v.(string)
 	if !ok {
-		return fmt.Errorf("schema.require must be a mapping, got %T", v)
+		return fmt.Errorf("schema.filename must be a string, got %T", v)
 	}
-	for k, vv := range m {
-		switch k {
-		case "filename":
-			s, ok := vv.(string)
-			if !ok {
-				return fmt.Errorf(
-					"schema.require.filename must be a string, got %T", vv)
-			}
-			sch.Require.Filename = s
-		default:
-			return fmt.Errorf("unknown schema.require key %q", k)
-		}
-	}
+	sch.Filename = s
 	return nil
 }
 
@@ -219,49 +241,65 @@ func parseInlineScopeList(list []any, path string) ([]Scope, error) {
 	return scopes, nil
 }
 
+// removedScopeKeys lists the per-entry keys plan 156 removed. The
+// parser rejects each one by presence with a "removed; see plan 156"
+// diagnostic naming the replacement so authors migrating from the
+// old shape see the fix inline rather than the validator silently
+// dropping the constraint.
+// removedScopeKeyOrder pins the iteration order of
+// removedScopeKeys. The map alone would be enough to surface a
+// diagnostic, but Go randomises map iteration on every range —
+// so a legacy entry that still carries two removed keys would
+// report a different one on each run. The order chosen here
+// matches the plan-156 changelog so users read the entries in
+// the same sequence the migration table presents them.
+var removedScopeKeyOrder = []string{
+	"required", "aliases", "repeats", "sequential", "min", "max",
+}
+
+var removedScopeKeys = map[string]string{
+	"required": "`required:` removed; see plan 156 " +
+		"(use `repeat: { min: 0, max: 1 }` for optional, or omit for required)",
+	"aliases": "`aliases:` removed; see plan 156 " +
+		"(encode disjunction in `regex:`, e.g. `regex: 'A|B'`)",
+	"repeats": "scope-level `repeats:` removed; see plan 156 " +
+		"(use `heading.repeat: { min: 1 }`)",
+	"sequential": "scope-level `sequential:` removed; see plan 156 " +
+		"(set `sequential:` inside the `heading:` mapping)",
+	"min": "scope-level `min:` removed; see plan 156 " +
+		"(use `heading.repeat.min`)",
+	"max": "scope-level `max:` removed; see plan 156 " +
+		"(use `heading.repeat.max`)",
+}
+
 func parseInlineScopeEntry(entry any, path string) (Scope, error) {
 	m, ok := entry.(map[string]any)
 	if !ok {
 		return Scope{}, fmt.Errorf(
 			"%s: scope must be a mapping, got %T", path, entry)
 	}
-	if k, found := firstRepeatingPatternKey(m); found {
-		return Scope{}, fmt.Errorf(
-			"%s: scope sets %q, but the repeating-pattern keys "+
-				"(`repeats`, `sequential`, `min`, `max`) are parsed "+
-				"into the Scope struct yet not enforced by any "+
-				"validator today; remove them until a future plan "+
-				"lifts the rejection so the schema does not appear "+
-				"to constrain counts it ignores",
-			path, k)
+	// Walk a fixed key order so the first surfaced migration
+	// diagnostic stays deterministic when an entry carries more
+	// than one removed key — Go's map iteration is randomised
+	// per range, which would otherwise swap which key gets
+	// reported run-to-run.
+	for _, k := range removedScopeKeyOrder {
+		if _, present := m[k]; present {
+			return Scope{}, fmt.Errorf("%s: %s", path, removedScopeKeys[k])
+		}
 	}
 	if _, hasHeading := m["heading"]; !hasHeading {
 		return Scope{}, fmt.Errorf(
 			"%s: scope must set a `heading:` key — use a string "+
 				"(literal heading text), `null` (preamble), or "+
-				"`{unlisted: true}` (slot)", path)
+				"a mapping `{ regex, repeat?, sequential? }`", path)
 	}
-	sc := Scope{Required: true}
+	sc := Scope{}
 	if err := applyScopeFields(m, &sc, path); err != nil {
 		return Scope{}, err
 	}
 	if err := validateScopeShape(sc, m, path); err != nil {
 		return Scope{}, err
-	}
-	// Required defaults to true for literal scopes (matches the
-	// file-based parser). Preamble and slot scopes have no heading
-	// to require — both parsers should produce Required=false for
-	// them. Slots reject `required:` outright; preambles accept
-	// it. Apply the default deterministically here, after fields
-	// have settled, so map-iteration order in applyScopeFields
-	// cannot leave Required at the parseInlineScopeEntry default
-	// for non-literal scopes.
-	if sc.Wildcard {
-		sc.Required = false
-	} else if sc.Preamble {
-		if _, explicit := m["required"]; !explicit {
-			sc.Required = false
-		}
 	}
 	return sc, nil
 }
@@ -271,52 +309,61 @@ func parseInlineScopeEntry(entry any, path string) (Scope, error) {
 // and field values) and at the raw map (so a forbidden key is
 // caught by its presence, not its post-parsed value).
 func validateScopeShape(sc Scope, m map[string]any, path string) error {
-	if !sc.Wildcard && !sc.Preamble && strings.TrimSpace(sc.Heading) == "" {
-		return fmt.Errorf(
-			"%s: literal scope must set a non-empty heading", path)
-	}
-	if strings.TrimSpace(sc.Heading) == SectionWildcard {
-		return fmt.Errorf(
-			"%s: `heading: \"%s\"` is not a valid heading text — "+
-				"use `heading: {unlisted: true}` to declare a slot",
-			path, SectionWildcard)
-	}
-	for _, a := range sc.Aliases {
-		if strings.TrimSpace(a) == SectionWildcard {
-			return fmt.Errorf(
-				"%s: alias %q is not a valid alias text — "+
-					"declare a separate `heading: {unlisted: true}` "+
-					"entry if you need a slot at that position",
-				path, SectionWildcard)
-		}
-	}
-	if sc.Wildcard {
-		return rejectKeys(m, path, "slot (`heading: {unlisted: true}`)",
-			"required", "aliases", "closed", "sections", "rules", "content")
-	}
 	if sc.Preamble {
 		return rejectKeys(m, path, "preamble (`heading: null`)",
-			"aliases", "sections")
+			"sections")
 	}
-	if strings.TrimSpace(sc.Heading) == "?" {
-		return rejectKeys(m, path,
-			"`?` wildcard heading", "content")
+	// After applyScopeFields succeeds, either Preamble is true
+	// (handled above) or Matcher is set by setScopeHeading; a
+	// missing `heading:` key is rejected upstream by
+	// parseInlineScopeEntry. There is no reachable path where
+	// sc.Matcher is nil here, so no defensive nil-check fires.
+	// A regex of '.+' is the wildcard-slot shape; rule overrides,
+	// nested sections, and per-section content do not make sense
+	// there because the slot has no fixed identity. Plan 156
+	// makes that explicit.
+	if isSlotMatcher(sc.Matcher) {
+		return rejectKeys(m, path, "slot (`regex: '.+', repeat: { min: 0 }`)",
+			"sections", "rules", "content", "closed")
 	}
 	return nil
+}
+
+// isSlotMatcher reports whether m is the canonical wildcard-slot
+// shape: a `.+` regex with `repeat: { min: 0 }` (unbounded max).
+// The shape collapses what the old grammar spelled
+// `heading: { unlisted: true }`.
+func isSlotMatcher(m *Matcher) bool {
+	if m == nil {
+		return false
+	}
+	if m.Regex != ".+" {
+		return false
+	}
+	if !m.Repeat.Set || m.Repeat.Min != 0 || m.Repeat.Max != 0 {
+		return false
+	}
+	return true
+}
+
+// isBroadMatcher reports whether m's regex matches "anything" —
+// the `.+` body, regardless of repeat bounds. Used by the
+// yield-to-later helpers so a broad scope never claims a heading
+// that a more-specific later scope would have matched. Slot
+// matchers are a subset of broad matchers.
+func isBroadMatcher(m *Matcher) bool {
+	return m != nil && m.Regex == ".+"
 }
 
 // rejectKeys errors if any forbidden key is present in m. The
 // shape label and key list go into the error so the user sees
 // which field is incompatible and why. Forbidden keys are checked
-// by presence (zero-value or false still rejects), matching the
-// repeating-pattern rejection's contract.
+// by presence (zero-value or false still rejects).
 func rejectKeys(m map[string]any, path, shape string, keys ...string) error {
 	for _, k := range keys {
 		if _, ok := m[k]; ok {
 			return fmt.Errorf(
 				"%s: `%s:` is not allowed on a %s scope — "+
-					"the validator would ignore it, so the "+
-					"parser surfaces it as a config error; "+
 					"remove the key",
 				path, k, shape)
 		}
@@ -324,37 +371,15 @@ func rejectKeys(m map[string]any, path, shape string, keys ...string) error {
 	return nil
 }
 
-// firstRepeatingPatternKey returns the first repeating-pattern key
-// present in m (in a stable order), so the parse rejection fires
-// based on key PRESENCE rather than the post-parsed value. Schemas
-// that explicitly write `repeats: false` or `min: 0` are still
-// rejected — the key being there at all signals an intent the
-// validator does not yet honour.
-func firstRepeatingPatternKey(m map[string]any) (string, bool) {
-	for _, k := range []string{"repeats", "sequential", "min", "max"} {
-		if _, ok := m[k]; ok {
-			return k, true
-		}
-	}
-	return "", false
-}
-
-// applyScopeFields walks the scope mapping and populates sc. The
-// repeating-pattern keys (repeats, sequential, min, max) are
-// intentionally absent here: parseInlineScopeEntry rejects them
-// upfront via firstRepeatingPatternKey, so this loop never sees
-// them. A future plan that ships repeating-pattern enforcement
-// will lift the rejection and restore the cases.
+// applyScopeFields walks the scope mapping and populates sc. Each
+// supported per-entry key has its own setter; unknown keys
+// parse-error.
 func applyScopeFields(m map[string]any, sc *Scope, path string) error {
 	for k, vv := range m {
 		var err error
 		switch k {
 		case "heading":
 			err = setScopeHeading(sc, vv, path)
-		case "required":
-			err = setScopeBool(&sc.Required, vv, path, k)
-		case "aliases":
-			err = setScopeAliases(sc, vv, path)
 		case "closed":
 			err = setScopeBool(&sc.Closed, vv, path, k)
 		case "sections":
@@ -375,18 +400,15 @@ func applyScopeFields(m map[string]any, sc *Scope, path string) error {
 
 // setScopeHeading reads the unified `heading:` field. The value is
 // a string (literal text — the common case), `null` (preamble:
-// content before the first heading), or a mapping that types a
-// non-literal match. Only `{unlisted: true}` is accepted in the
-// mapping form today; future work can extend it with shapes such
-// as `{any: true}` and `{pattern: "..."}`.
+// content before the first heading), or a mapping that types the
+// match (`{ regex, repeat?, sequential? }`).
 func setScopeHeading(sc *Scope, v any, path string) error {
 	switch x := v.(type) {
 	case nil:
 		sc.Preamble = true
 		return nil
 	case string:
-		sc.Heading = x
-		return nil
+		return setBareStringHeading(sc, x, path)
 	case map[string]any:
 		return applyHeadingMapping(sc, x, path)
 	default:
@@ -396,31 +418,196 @@ func setScopeHeading(sc *Scope, v any, path string) error {
 	}
 }
 
+func setBareStringHeading(sc *Scope, s, path string) error {
+	if strings.TrimSpace(s) == "" {
+		return fmt.Errorf(
+			"%s.heading: empty string — use `null` for a preamble", path)
+	}
+	if strings.TrimSpace(s) == SectionWildcard {
+		return fmt.Errorf(
+			"%s.heading: %q is not a valid heading text — "+
+				"use `heading: { regex: '.+', repeat: { min: 0 } }` for a slot",
+			path, SectionWildcard)
+	}
+	sc.Heading = s
+	sc.Matcher = &Matcher{Regex: regexp.QuoteMeta(s)}
+	return nil
+}
+
+// removedHeadingKeys lists the heading-mapping keys plan 156
+// dropped. The parser rejects each one by presence so authors see
+// the migration path inline.
+var removedHeadingKeys = map[string]string{
+	"unlisted": "`heading.unlisted:` removed; see plan 156 (use `regex: '.+', repeat: { min: 0 }`)",
+}
+
 func applyHeadingMapping(sc *Scope, m map[string]any, path string) error {
 	if len(m) == 0 {
 		return fmt.Errorf(
-			"%s.heading: empty mapping — use `{unlisted: true}` for a slot",
+			"%s.heading: empty mapping — use `{ regex: '.+', repeat: { min: 0 } }` for a slot",
 			path)
 	}
+	for k, msg := range removedHeadingKeys {
+		if _, present := m[k]; present {
+			return fmt.Errorf("%s.heading: %s", path, msg)
+		}
+	}
+	matcher := &Matcher{}
 	for k, v := range m {
+		var err error
 		switch k {
-		case "unlisted":
-			b, ok := v.(bool)
-			if !ok {
-				return fmt.Errorf(
-					"%s.heading.unlisted must be a boolean, got %T", path, v)
-			}
-			if !b {
-				return fmt.Errorf(
-					"%s.heading.unlisted must be `true` "+
-						"(set the value or omit the entry)", path)
-			}
-			sc.Wildcard = true
+		case "regex":
+			err = setMatcherRegex(matcher, v, path)
+		case "repeat":
+			err = setMatcherRepeat(matcher, v, path)
+		case "sequential":
+			err = setScopeBool(&matcher.Sequential, v, path+".heading", k)
 		default:
 			return fmt.Errorf(
-				"%s.heading.%s: unknown heading-kind key (today only "+
-					"`unlisted: true` is accepted)", path, k)
+				"%s.heading.%s: unknown heading-mapping key", path, k)
 		}
+		if err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(matcher.Regex) == "" {
+		return fmt.Errorf(
+			"%s.heading: `regex:` is required when `heading:` is a mapping",
+			path)
+	}
+	if n := countDigitsHelpers(matcher.Regex); n > 1 {
+		return fmt.Errorf(
+			"%s.heading.regex: `\\#(digits)` may appear at most once "+
+				"(the matcher reads a single named `n` capture)",
+			path)
+	}
+	// The `n` named-capture group is reserved by the `digits` helper.
+	// Parse the regex source to find actual named captures rather
+	// than substring-matching `(?P<n>` — the literal text can also
+	// appear inside a character class or as `\(\?P<n>` escape
+	// sequence that does not introduce a real capture group.
+	if hasNamedCapture(matcher.Regex, "n") {
+		return fmt.Errorf(
+			"%s.heading.regex: the `n` named capture is reserved by "+
+				"`\\#(digits)`; rename the user capture or remove the "+
+				"`(?P<n>...)` group",
+			path)
+	}
+	if matcher.Sequential && !patternHasDigits(matcher.Regex) {
+		return fmt.Errorf(
+			"%s.heading.sequential: requires a `\\#(digits)` capture in `regex:`",
+			path)
+	}
+	sc.Heading = matcher.Regex
+	sc.Matcher = matcher
+	return nil
+}
+
+func setMatcherRegex(m *Matcher, v any, path string) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("%s.heading.regex must be a string, got %T", path, v)
+	}
+	if strings.TrimSpace(s) == "" {
+		return fmt.Errorf("%s.heading.regex: empty pattern", path)
+	}
+	// Compile the resolved pattern (with helpers substituted by a
+	// dummy frontmatter) to surface invalid RE2 syntax at parse
+	// time. The validator re-resolves the pattern per-document so
+	// `fmvar(name)` picks up the real value. Unsupported helpers
+	// and unterminated `\#(` references fail here instead of
+	// degrading into a missing-section diagnostic at runtime.
+	probe, err := resolvePatternForCheck(s)
+	if err != nil {
+		return fmt.Errorf("%s.heading.regex: %v", path, err)
+	}
+	if _, err := regexp.Compile("^(?:" + probe + ")$"); err != nil {
+		return fmt.Errorf("%s.heading.regex: %v", path, err)
+	}
+	m.Regex = s
+	return nil
+}
+
+func setMatcherRepeat(m *Matcher, v any, path string) error {
+	rm, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("%s.heading.repeat must be a mapping, got %T", path, v)
+	}
+	if len(rm) == 0 {
+		return fmt.Errorf(
+			"%s.heading.repeat: empty mapping — set `min:`, `max:`, or both",
+			path)
+	}
+	r := Repeat{Set: true}
+	var minSet, maxSet bool
+	for k, vv := range rm {
+		switch k {
+		case "min":
+			minSet = true
+			if err := readIntBound(&r.Min, vv, path+".heading.repeat", k); err != nil {
+				return err
+			}
+		case "max":
+			maxSet = true
+			if err := readIntBound(&r.Max, vv, path+".heading.repeat", k); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf(
+				"%s.heading.repeat.%s: unknown key (valid: min, max)", path, k)
+		}
+	}
+	if maxSet && r.Max == 0 {
+		return fmt.Errorf(
+			"%s.heading.repeat.max: must be greater than 0 (0 is unbounded; "+
+				"omit `max:` instead)", path)
+	}
+	if minSet && maxSet && r.Min > r.Max {
+		return fmt.Errorf(
+			"%s.heading.repeat: min=%d is greater than max=%d",
+			path, r.Min, r.Max)
+	}
+	m.Repeat = r
+	return nil
+}
+
+// readIntBound parses a non-negative integer from v. YAML decoders
+// can deliver ints as int, int64, or float64; the helper handles
+// all three with the same overflow / non-integer guards used for
+// content list bounds.
+func readIntBound(dst *int, v any, path, key string) error {
+	switch x := v.(type) {
+	case int:
+		if x < 0 {
+			return fmt.Errorf("%s.%s must be non-negative, got %d", path, key, x)
+		}
+		*dst = x
+	case int64:
+		if x < 0 {
+			return fmt.Errorf("%s.%s must be non-negative, got %d", path, key, x)
+		}
+		*dst = int(x)
+	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return fmt.Errorf(
+				"%s.%s must be a finite integer, got %v", path, key, x)
+		}
+		if x < 0 {
+			return fmt.Errorf(
+				"%s.%s must be non-negative, got %v", path, key, x)
+		}
+		if math.Trunc(x) != x {
+			return fmt.Errorf(
+				"%s.%s must be a non-negative integer, got %v", path, key, x)
+		}
+		if x > float64(math.MaxInt) {
+			return fmt.Errorf(
+				"%s.%s value %v exceeds int range on this platform",
+				path, key, x)
+		}
+		*dst = int(x)
+	default:
+		return fmt.Errorf("%s.%s must be an integer, got %T", path, key, v)
 	}
 	return nil
 }
@@ -431,23 +618,6 @@ func setScopeBool(dst *bool, v any, path, key string) error {
 		return fmt.Errorf("%s.%s must be a boolean, got %T", path, key, v)
 	}
 	*dst = b
-	return nil
-}
-
-func setScopeAliases(sc *Scope, v any, path string) error {
-	list, ok := v.([]any)
-	if !ok {
-		return fmt.Errorf("%s.aliases must be a list, got %T", path, v)
-	}
-	sc.Aliases = make([]string, 0, len(list))
-	for j, a := range list {
-		as, ok := a.(string)
-		if !ok {
-			return fmt.Errorf(
-				"%s.aliases[%d] must be a string, got %T", path, j, a)
-		}
-		sc.Aliases = append(sc.Aliases, as)
-	}
 	return nil
 }
 
@@ -841,46 +1011,7 @@ func setContentItemBound(dst *int, v any, path, key, kind string) error {
 		return fmt.Errorf(
 			"%s.%s: only valid on `kind: list`", path, key)
 	}
-	switch x := v.(type) {
-	case int:
-		if x < 0 {
-			return fmt.Errorf("%s.%s must be non-negative, got %d", path, key, x)
-		}
-		*dst = x
-	case int64:
-		if x < 0 {
-			return fmt.Errorf("%s.%s must be non-negative, got %d", path, key, x)
-		}
-		if x > int64(math.MaxInt) {
-			return fmt.Errorf(
-				"%s.%s value %d exceeds int range on this platform", path, key, x)
-		}
-		*dst = int(x)
-	case float64:
-		if math.IsNaN(x) || math.IsInf(x, 0) {
-			return fmt.Errorf(
-				"%s.%s must be a finite integer, got %v", path, key, x)
-		}
-		if x < 0 {
-			return fmt.Errorf(
-				"%s.%s must be non-negative, got %v", path, key, x)
-		}
-		// Reject non-integers before any int conversion. math.Trunc
-		// stays in the float domain, so a huge or fractional value
-		// never reaches the implementation-defined float->int cast.
-		if math.Trunc(x) != x {
-			return fmt.Errorf(
-				"%s.%s must be a non-negative integer, got %v", path, key, x)
-		}
-		if x > float64(math.MaxInt) {
-			return fmt.Errorf(
-				"%s.%s value %v exceeds int range on this platform", path, key, x)
-		}
-		*dst = int(x)
-	default:
-		return fmt.Errorf("%s.%s must be an integer, got %T", path, key, v)
-	}
-	return nil
+	return readIntBound(dst, v, path, key)
 }
 
 func isCUEIdent(s string) bool {

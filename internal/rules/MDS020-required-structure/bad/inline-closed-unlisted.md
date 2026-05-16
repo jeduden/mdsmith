@@ -4,9 +4,7 @@ settings:
     closed: true
     sections:
       - heading: "Overview"
-        required: true
       - heading: "Decision"
-        required: true
 diagnostics:
   - line: 7
     column: 1

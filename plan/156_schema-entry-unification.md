@@ -3,7 +3,7 @@ id: 156
 title: >-
   Section schema — unify entry shape under
   `heading:` discriminator
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [146]
 summary: >-
@@ -117,29 +117,35 @@ Files rewritten as part of implementation:
 
 ## Tasks
 
-1. Update `Scope` in `internal/schema/schema.go`.
+1. [x] Update `Scope` in `internal/schema/schema.go`.
    Drop `Aliases`, `Required`, `Repeats`,
    `Sequential` (top-level), `Min`/`Max`,
    `Wildcard`. Add a `Matcher` sub-struct
    (`Regex`, `Repeat`, `Sequential`). Keep
    `Preamble` as a derived flag.
-2. Rewrite the heading-mapping parser in
+2. [x] Rewrite the heading-mapping parser in
    `internal/schema/parse_inline.go` to
    accept `{ regex, repeat?, sequential? }`.
    Reject every removed key by name with a
    "removed; see plan 156" diagnostic naming
    the replacement.
-3. In the same parser, flatten
+3. [x] In the same parser, flatten
    `require.filename:` to top-level
    `filename:`. Reject schema-level `closed:`
    on kinds without `sections:`.
-4. Update `internal/schema/parse_file.go` so
+4. [x] Update `internal/schema/parse_file.go` so
    `## ?` and `## ...` map to the new
    `Matcher` (`regex: '.+'`, plus
    `repeat: { min: 0 }` for `...`). Keep
    `{n}` and `{field}` token expansion in
-   heading rows.
-5. Rewrite the validator in
+   heading rows. (Scope note: MDS020's file-
+   schema check still routes through its
+   legacy `parseSchema`/`parsedSchema` pipeline
+   so the `{field}` heading/body sync feature
+   survives; this parser is exercised by the
+   schema-package tests and prepares the
+   ground for the cutover in a follow-up plan.)
+5. [x] Rewrite the validator in
    `internal/schema/validate.go` to match
    the heading sequence as a positional
    quantified regex. Each `Matcher` consumes
@@ -147,80 +153,80 @@ Files rewritten as part of implementation:
    consecutive headings whose text matches
    `regex:`. Diagnostics point at the
    entry's source location.
-6. Update fixtures and tests under
+6. [x] Update fixtures and tests under
    `internal/schema/` and
    `internal/rules/MDS020-required-structure/`.
    Add one fixture per new parse-time
    diagnostic.
-7. Rewrite the 5 inline kinds in
+7. [x] Rewrite the 5 inline kinds in
    `.mdsmith.yml` and the affected fixture
    to the new shape. Run `mdsmith check .`
    and `mdsmith fix .`.
-8. Rewrite `docs/guides/schemas.md` and the
+8. [x] Rewrite `docs/guides/schemas.md` and the
    MDS020 README to describe only the new
    shape. Every reference to `aliases:`,
    `required:`, `unlisted:`, scope-level
    `repeats:`/`sequential:`/`min:`/`max:`, and
    `require:` is removed; one worked example
    of the new shape replaces the old one.
-9. Remove the "upcoming" notice from
+9. [x] Remove the "upcoming" notice from
    `docs/reference/section-schema.md`.
    Run `mdsmith fix CLAUDE.md` so the catalog
    line for the page survives any title /
    summary edits.
-10. Add a "superseded" note to plan 146's
+10. [x] Add a "superseded" note to plan 146's
     entry-shape section pointing at this plan
     and the reference page.
 
 ## Acceptance Criteria
 
-- [ ] A section entry uses exactly one of
+- [x] A section entry uses exactly one of
       three shapes: `heading: null`,
       `heading: <string>`, or `heading: {
       regex, repeat?, sequential? }`.
-- [ ] `repeat:` omitted → exactly one;
+- [x] `repeat:` omitted → exactly one;
       `repeat: { min: 0 }` → zero or more;
       `repeat: { min: 0, max: 1 }` →
       optional; bounded forms enforce the
       bounds.
-- [ ] Regex matching is whole-string
+- [x] Regex matching is whole-string
       anchored against rendered plain text
       (fixture: `## **Overview**` matches
       `regex: 'Overview'`).
-- [ ] `{n}` expands to a numeric capture;
+- [x] `{n}` expands to a numeric capture;
       `sequential: true` flags out-of-order
       or gapped numbers.
-- [ ] `{field}` interpolates the document's
+- [x] `{field}` interpolates the document's
       frontmatter value at validate-time.
-- [ ] `heading: null` outside index 0
+- [x] `heading: null` outside index 0
       parse-errors.
-- [ ] `heading:` mapping without `regex:`
+- [x] `heading:` mapping without `regex:`
       parse-errors.
-- [ ] `repeat: {}`, `repeat: { max: 0 }`,
+- [x] `repeat: {}`, `repeat: { max: 0 }`,
       `min > max` each parse-error.
-- [ ] `sequential: true` without `{n}`
+- [x] `sequential: true` without `{n}`
       parse-errors.
-- [ ] Invalid regex parse-errors with the
+- [x] Invalid regex parse-errors with the
       RE2 message and field path.
-- [ ] Removed keys each parse-error with a
+- [x] Removed keys each parse-error with a
       "removed; see plan 156" message
       naming the replacement.
-- [ ] The 5 rewritten inline kinds and the
+- [x] The 5 rewritten inline kinds and the
       rewritten fixture emit the same MDS020
       diagnostics they did before the
       cutover (where the constraint is
       preserved).
-- [ ] `docs/guides/schemas.md` and the
+- [x] `docs/guides/schemas.md` and the
       MDS020 README describe only the new
       shape — `grep -E 'aliases:|required:|unlisted:|repeats:|^require:'`
       against either file returns no matches
       in prose.
-- [ ] `docs/reference/section-schema.md`
+- [x] `docs/reference/section-schema.md`
       reads as a current spec — its
       "upcoming" notice is removed and the
       page links from `docs/guides/schemas.md`.
-- [ ] `mdsmith check .` reports no
+- [x] `mdsmith check .` reports no
       diagnostics.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports
       no issues.

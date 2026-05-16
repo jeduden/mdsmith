@@ -3,9 +3,9 @@ settings:
   inline-schema:
     sections:
       - heading: "Check"
-        required: true
-      - heading: "Notes"
-        required: false
+      - heading:
+          regex: 'Notes'
+          repeat: { min: 0, max: 1 }
     acronyms:
       scope: ["Check"]
       known-safe: [API]
