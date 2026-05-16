@@ -328,12 +328,24 @@ packaged-artifact tests.
   `func Foo` is `TestFoo`. For a
   method `func (r *Receiver) Foo`,
   the dedicated test is
-  `TestReceiver_Foo` (see e.g.
+  `TestReceiver_Foo`. Sub-behaviours
+  may live as subtests via
+  `t.Run("case", …)` under that
+  parent (see
+  `internal/lint/frontmatter_test.go`'s
+  `TestParseFrontMatterFields`) or
+  as additional top-level functions
+  named `TestReceiver_Foo_Variant`
+  (see
   `internal/archetype/gensection/`
   `engine_test.go`'s
   `TestEngine_Check_*` family).
-  Sub-behaviours go in subtests via
-  `t.Run("case", …)`.
+  Either form satisfies the
+  "dedicated test by name" rule;
+  pick subtests when behaviours
+  share setup, separate top-level
+  tests when each variant stands
+  alone.
 - **Contract tests** in this repo:
   `internal/integration/rule_boundaries_test.go`
   pins the rule import graph;

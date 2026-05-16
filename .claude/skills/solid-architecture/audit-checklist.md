@@ -134,7 +134,7 @@ every function ships with a
 dedicated unit test.
 
 For every production function in the
-touched set — skip `_test.go`,
+touched set — skip `*_test.go`,
 `*.test.ts`, and test-only helper
 files; the audit does not ask for
 "tests for tests":
@@ -148,14 +148,24 @@ files; the audit does not ask for
   `describe("name")` containing
   `test(…)` cases from `bun:test`
   for TS).
-- If the function is exempt
-  (generated file marker present,
-  or trivial accessor), confirm
-  the one-line exemption comment
-  is present on trivial accessors
-  (generated files need no
-  per-function comment — the
-  file-level marker is enough).
+- If the function lives in a
+  generated file (`*_gen.go`,
+  `*.d.ts`, anything emitted under
+  `dist/`, or any file beginning
+  with a `// Code generated…`
+  header), the file-level marker
+  is enough — do not flag and do
+  not require a per-function
+  exemption comment.
+- If the function is a trivial
+  accessor with no branch (a
+  one-line getter or
+  `String()`-style format method),
+  confirm a one-line exemption
+  comment is present so the audit
+  can distinguish "no test by
+  design" from "no test,
+  forgotten".
 - If a test exists but lives one
   layer too high (an integration
   test that drives a single

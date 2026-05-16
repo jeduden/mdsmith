@@ -218,8 +218,10 @@ explicit mention here:
   sibling `_test.go`** — test debt.
   Severity per the rule above.
 - **A TypeScript function not
-  covered by a `describe` /
-  `it` block in a sibling
+  covered by a `describe("name",
+  () => { test(…) })` block (with
+  `describe`/`test` imported from
+  `bun:test`) in a sibling
   `*.test.ts`** — same rule for the
   extension.
 - **A test under
