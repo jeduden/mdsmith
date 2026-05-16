@@ -29,8 +29,14 @@
 # The rewriter emits each rewritten URL form with unit-test
 # coverage (internal/release/syncdocs_test.go,
 # website_test.go); Hugo's build step is the second guard.
-# A follow-up could add a Hugo-aware end-to-end link check
-# for the gaps above.
+# A render-link hook
+# (website/layouts/_default/_markup/render-link.html) strips
+# the `.md` (and `_index.md`/`index.md`) suffix from every
+# relative href so the synced markdown stays
+# filesystem-valid for this check while the rendered HTML
+# uses Hugo's extensionless directory URLs. A follow-up
+# could add a Hugo-aware end-to-end link check for the
+# absolute-target gap above.
 #
 # Used from CI via `mdsmith check --config
 # website/build-output.mdsmith.yml --no-gitignore

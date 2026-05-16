@@ -1,0 +1,46 @@
+{{- /* Render-link hook: rewrite repo-relative `.md` hrefs to
+       Hugo's extensionless directory URLs.
+
+       Source docs link sibling pages with the .md suffix
+       (`[CLI](../reference/cli.md)`) because the markdown
+       must also be valid on the local filesystem so MDS027
+       can resolve it. Hugo, on the other hand, serves
+       `reference/cli.md` at `/docs/reference/cli/` — no
+       extension, trailing slash. Without this hook the
+       rendered `<a href="reference/cli.md">` would 404 on
+       the live site.
+
+       The hook passes external URLs (http(s)/mailto),
+       fragment-only links, and site-absolute paths through
+       unchanged — those are already in the right form. For
+       any other target the fragment is split off, a
+       trailing `/index.md` or `/_index.md` collapses to the
+       directory URL, and a trailing `.md` becomes `/`. The
+       fragment is reattached after the transform. */ -}}
+
+{{- $url := .Destination -}}
+{{- $external := or
+  (strings.HasPrefix $url "http://")
+  (strings.HasPrefix $url "https://")
+  (strings.HasPrefix $url "mailto:") -}}
+{{- $anchorOnly := strings.HasPrefix $url "#" -}}
+{{- $absolute := strings.HasPrefix $url "/" -}}
+{{- if not (or $external $anchorOnly $absolute) -}}
+  {{- $parts := split $url "#" -}}
+  {{- $path := index $parts 0 -}}
+  {{- $frag := "" -}}
+  {{- if gt (len $parts) 1 -}}
+    {{- $frag = printf "#%s" (delimit (after 1 $parts) "#") -}}
+  {{- end -}}
+  {{- if strings.HasSuffix $path "/index.md" -}}
+    {{- $path = strings.TrimSuffix "index.md" $path -}}
+  {{- else if strings.HasSuffix $path "/_index.md" -}}
+    {{- $path = strings.TrimSuffix "_index.md" $path -}}
+  {{- else if or (eq $path "index.md") (eq $path "_index.md") -}}
+    {{- $path = "./" -}}
+  {{- else if strings.HasSuffix $path ".md" -}}
+    {{- $path = printf "%s/" (strings.TrimSuffix ".md" $path) -}}
+  {{- end -}}
+  {{- $url = printf "%s%s" $path $frag -}}
+{{- end -}}
+<a href="{{ $url | safeURL }}"{{ with .Title }} title="{{ . | safeHTML }}"{{ end }}>{{ .Text | safeHTML }}</a>
