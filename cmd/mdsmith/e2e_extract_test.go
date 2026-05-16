@@ -68,7 +68,8 @@ Bake a cake.
 
 func expectedRecipeTree() map[string]any {
 	return map[string]any{
-		"goal": map[string]any{},
+		"frontmatter": map[string]any{},
+		"goal":        map[string]any{},
 		"steps": map[string]any{
 			"step": []any{
 				map[string]any{"n": "1"},

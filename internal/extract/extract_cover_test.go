@@ -71,9 +71,11 @@ func TestSetKey_EmptyKeyIsCollision(t *testing.T) {
 	assert.Empty(t, obj)
 }
 
-func TestExtract_NilFrontmatterNoKey(t *testing.T) {
+func TestExtract_NilFrontmatterEmptyObject(t *testing.T) {
 	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{litScope("Goal")}}
 	got, diags := run(t, "## Goal\n\nx\n", sch, nil)
 	assert.Empty(t, diags)
-	assert.NotContains(t, got.(map[string]any), "frontmatter")
+	// The root always carries a `frontmatter` object, empty when
+	// the document has no front matter.
+	assert.Equal(t, map[string]any{}, got.(map[string]any)["frontmatter"])
 }

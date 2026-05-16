@@ -63,8 +63,15 @@ func MergeCoverage(inputs []string, output string) error {
 	for _, b := range meta {
 		blocks = append(blocks, b)
 	}
+	// startKey orders by file then start line; the full key breaks
+	// ties so blocks that share a file:line (multiple statements on
+	// one source line) emit in a deterministic order rather than
+	// inheriting Go's randomized map iteration.
 	sort.Slice(blocks, func(i, j int) bool {
-		return blocks[i].startKey < blocks[j].startKey
+		if blocks[i].startKey != blocks[j].startKey {
+			return blocks[i].startKey < blocks[j].startKey
+		}
+		return blocks[i].key < blocks[j].key
 	})
 
 	var b strings.Builder
@@ -156,12 +163,17 @@ func covStartKey(key string) string {
 	}
 	file := key[:colon]
 	rest := key[colon+1:]
+	// A well-formed record's coordinates are `startLine.startCol,…`.
+	// Bail out (returning the raw key as its own sort value) on any
+	// shape that lacks the dot or comma rather than slicing with a
+	// -1 index and panicking — covStartKey runs on CI-supplied
+	// profiles and must degrade, not crash, on a malformed line.
+	dot := strings.IndexByte(rest, '.')
 	comma := strings.IndexByte(rest, ',')
-	if comma < 0 {
+	if dot < 0 || comma < 0 || dot > comma {
 		return key
 	}
-	startLine := rest[:strings.IndexByte(rest, '.')]
-	n, err := strconv.Atoi(startLine)
+	n, err := strconv.Atoi(rest[:dot])
 	if err != nil {
 		return key
 	}

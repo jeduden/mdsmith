@@ -32,8 +32,14 @@ func Extract(
 ) (any, []lint.Diagnostic) {
 	p := &projector{f: f, sch: sch}
 	root := map[string]any{}
-	if len(m.Frontmatter) > 0 {
-		root["frontmatter"] = m.Frontmatter
+	// The root always carries a `frontmatter` object beside the
+	// projected sections (an empty object when the document has no
+	// front matter) so the emitted shape is stable across
+	// otherwise-equivalent files, per the documented contract.
+	if fm := m.Frontmatter; len(fm) > 0 {
+		root["frontmatter"] = fm
+	} else {
+		root["frontmatter"] = map[string]any{}
 	}
 	p.projectChildren(m.Root.Children, root)
 	if len(p.diags) > 0 {

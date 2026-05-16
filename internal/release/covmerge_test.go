@@ -82,6 +82,20 @@ func TestCovStartKey(t *testing.T) {
 	assert.Equal(t, "x.go:12", covStartKey("x.go:12")) // no comma
 	assert.Equal(t, "x.go:a.1,2.2 1",
 		covStartKey("x.go:a.1,2.2 1")) // non-numeric start line
+	// Comma but no dot must not panic on a -1 slice index.
+	assert.Equal(t, "x.go:12,13 1", covStartKey("x.go:12,13 1"))
+	// Dot after the comma is also rejected (degenerate coords).
+	assert.Equal(t, "x.go:12,1.3 1", covStartKey("x.go:12,1.3 1"))
+}
+
+// A malformed record with a comma but no dot reaches covStartKey
+// via MergeCoverage; it must degrade rather than crash the CI tool.
+func TestMergeCoverage_MalformedCoordsNoPanic(t *testing.T) {
+	dir := t.TempDir()
+	p := writeProfile(t, dir, "p.cov",
+		"mode: atomic\nx.go:12,13 1 1\n")
+	require.NoError(t,
+		MergeCoverage([]string{p}, filepath.Join(dir, "m.cov")))
 }
 
 func TestMergeCoverage_BlankLinesAndOddKeys(t *testing.T) {
