@@ -1,7 +1,7 @@
 ---
 id: 166
 title: Schema-driven data extraction (mdsmith extract)
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [149]
 summary: >-
@@ -181,35 +181,35 @@ partial data.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith extract <kind> --format json <file>` on a
+- [x] `mdsmith extract <kind> --format json <file>` on a
       conformant file emits a tree whose nesting mirrors
       the schema hierarchy — no schema annotations
       required.
-- [ ] The root holds a `frontmatter` object and the
+- [x] The root holds a `frontmatter` object and the
       projected sections beside it at the same level.
-- [ ] Literal headings key by slug; repeating sections
+- [x] Literal headings key by slug; repeating sections
       become arrays; each element retains every captured
       placeholder as a `name: value` field plus its child
       scopes/content.
-- [ ] A `heading: null` no-heading section's content
+- [x] A `heading: null` no-heading section's content
       projects into its enclosing object (no `preamble`
       wrapper key); wildcard and unlisted/closed headings
       are skipped.
-- [ ] Code-block, list, table, and paragraph entries
+- [x] Code-block, list, table, and paragraph entries
       project under their default keys; sibling key
       collisions are reported as schema diagnostics.
-- [ ] A file resolving to multiple kinds yields a merged
+- [x] A file resolving to multiple kinds yields a merged
       tree; a genuine shape divergence is reported, not
       silently dropped.
-- [ ] `json`, `yaml`, and `msgpack` produce equivalent
+- [x] `json`, `yaml`, and `msgpack` produce equivalent
       data; golden fixtures cover all three formats.
-- [ ] A non-conformant file makes `extract` exit non-zero
+- [x] A non-conformant file makes `extract` exit non-zero
       and print the same diagnostics as `mdsmith check`.
-- [ ] An unknown kind, or a kind not assigned to the
+- [x] An unknown kind, or a kind not assigned to the
       file, exits non-zero with a clear message.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes
 
 ## Decisions
 

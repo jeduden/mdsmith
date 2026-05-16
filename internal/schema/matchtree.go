@@ -1,10 +1,54 @@
 package schema
 
 import (
+	"regexp"
+	"strings"
+
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/yuin/goldmark/ast"
 )
+
+// regexEscape matches a backslash escaping an ASCII punctuation
+// byte — the only escapes regexp.QuoteMeta emits. Reversing it
+// recovers the literal heading stem from a desugared matcher.
+var regexEscape = regexp.MustCompile(`\\([^0-9A-Za-z_])`)
+
+// HeadingStem splits a scope's matcher regex into its literal stem
+// (the heading text with `\#(digits)` / `\#(fmvar(name))`
+// interpolations removed and regexp escaping reversed) plus the
+// `fmvar` field names and whether a `digits` capture is present.
+// It works uniformly for proto-sugar scopes and hand-written
+// inline `regex:` bodies, so the projector's key seam does not
+// need to know which parser produced the scope.
+func HeadingStem(sc *Scope) (stem string, fmvars []string, hasDigits bool) {
+	if sc == nil || sc.Matcher == nil {
+		if sc != nil {
+			return sc.Heading, nil, false
+		}
+		return "", nil, false
+	}
+	pat := sc.Matcher.Regex
+	var lit strings.Builder
+	cursor := 0
+	_ = scanInterps(pat, func(expr string, start, end int) error {
+		lit.WriteString(pat[cursor:start])
+		expr = strings.TrimSpace(expr)
+		if expr == "digits" {
+			hasDigits = true
+		} else if name, ok := parseFmvarCall(expr); ok {
+			fmvars = append(fmvars, name)
+		}
+		cursor = end
+		return nil
+	})
+	lit.WriteString(pat[cursor:])
+	s := lit.String()
+	s = strings.TrimPrefix(s, "^")
+	s = strings.TrimSuffix(s, "$")
+	s = regexEscape.ReplaceAllString(s, "$1")
+	return strings.TrimSpace(s), fmvars, hasDigits
+}
 
 // MatchTree is the projection-ready record of how a document's AST
 // satisfied a composed Schema. It is produced after a successful
@@ -139,10 +183,8 @@ func buildScopeMatches(
 // — both the placeholder name and its bound value survive.
 func scopeCaptures(sc *Scope, dh DocHeading, docFM map[string]any) map[string]string {
 	_, caps := headingCaptures(sc.Matcher, dh, docFM)
-	for _, name := range fieldinterp.Fields(sc.Heading) {
-		if name == "n" {
-			continue
-		}
+	_, fmvars, _ := HeadingStem(sc)
+	for _, name := range fmvars {
 		if caps != nil {
 			if _, ok := caps[name]; ok {
 				continue

@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/schema"
@@ -49,24 +48,21 @@ type projector struct {
 	diags []lint.Diagnostic
 }
 
-// keyFor is the single key-naming seam. The default binding derives
-// every key from the heading text: a literal heading slugifies
+// keyFor is the single key-naming seam — the one function a future
+// custom-binding plan (plan 167) overrides. The default binding
+// derives every key from the heading: a literal heading slugifies
 // whole; a placeholder-bearing heading slugifies its literal stem,
-// falling back to the first placeholder name when the heading is
+// falling back to the first `fmvar` field name when the heading is
 // only a placeholder (`## {id}`).
 func keyFor(sc *schema.Scope) string {
-	h := sc.Heading
-	if !fieldinterp.ContainsField(h) {
-		return mdtext.Slugify(h)
-	}
-	stem := strings.TrimSpace(strings.Join(fieldinterp.SplitOnFields(h), " "))
+	stem, fmvars, _ := schema.HeadingStem(sc)
 	if s := mdtext.Slugify(stem); s != "" {
 		return s
 	}
-	if fields := fieldinterp.Fields(h); len(fields) > 0 {
-		return fields[0]
+	if len(fmvars) > 0 {
+		return fmvars[0]
 	}
-	return mdtext.Slugify(h)
+	return mdtext.Slugify(sc.Heading)
 }
 
 // isRepeating reports whether a scope projects as an array. A

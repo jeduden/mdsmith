@@ -88,6 +88,7 @@ row: "- [{summary}]({filename})"
 - [List workspace links that point at a file.](docs/reference/cli/backlinks.md)
 - [Lint Markdown files for style issues.](docs/reference/cli/check.md)
 - [Write a portable, directive-free copy of a Markdown file.](docs/reference/cli/export.md)
+- [Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.](docs/reference/cli/extract.md)
 - [Auto-fix lint issues in Markdown files in place.](docs/reference/cli/fix.md)
 - [Show built-in documentation for rules, metrics, and concept pages.](docs/reference/cli/help.md)
 - [Generate a default `.mdsmith.yml` config in the current directory.](docs/reference/cli/init.md)

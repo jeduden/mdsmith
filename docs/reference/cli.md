@@ -22,6 +22,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 |-----------------------------------------------|--------------------------------------------------------------------------------------|
 | [`check`](cli/check.md)                       | Lint Markdown files for style issues.                                                |
 | [`export`](cli/export.md)                     | Write a portable, directive-free copy of a Markdown file.                            |
+| [`extract`](cli/extract.md)                   | Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.             |
 | [`fix`](cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
 | [`help`](cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
 | [`init`](cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
