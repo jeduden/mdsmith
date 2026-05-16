@@ -94,4 +94,5 @@ footer: |
 | 165 | 🔲     | opus   | [Portable Markdown export (mdsmith export)](plan/165_portable-markdown-export.md)                                         |
 | 166 | 🔲     | opus   | [Schema-driven data extraction (mdsmith extract)](plan/166_schema-driven-data-extraction.md)                              |
 | 167 | 🔲     | opus   | [Custom binding overrides for mdsmith extract](plan/167_custom-binding-overrides.md)                                      |
+| 168 | 🔲     | sonnet | [Obsidian Flavored Markdown support](plan/168_obsidian-markdown-support.md)                                               |
 <?/catalog?>
