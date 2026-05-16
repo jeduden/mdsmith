@@ -13,10 +13,11 @@ on:
     paths:
       - "docs/**"
       - "website/**"
-      # build-website also publishes the rule directory
-      # (internal/rules/index.md) as the /docs/rules/ section, so a
-      # change to that file must redeploy the site too.
+      # build-website also publishes the rule directory index and
+      # each rule's README as per-rule pages, so changes to any of
+      # those files must redeploy the site too.
       - "internal/rules/index.md"
+      - "internal/rules/MDS*/**"
       - ".github/workflows/pages.yml"
   workflow_call:
     inputs:
