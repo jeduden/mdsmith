@@ -1,7 +1,7 @@
 ---
 id: 165
 title: Portable Markdown export (mdsmith export)
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: []
 summary: >-
@@ -151,29 +151,29 @@ modified.
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith export <file>` removes every line the
+- [x] `mdsmith export <file>` removes every line the
       engine recognizes as a real directive start/end
       marker, keeps generated bodies, and inlines
       `<?include?>` content. Marker-like text treated as
       literal content is left in place.
-- [ ] The source file is never modified in any mode.
-- [ ] Default mode: a stale directive body makes
+- [x] The source file is never modified in any mode.
+- [x] Default mode: a stale directive body makes
       `export` exit non-zero with a diagnostic naming the
       directive and writes no output.
-- [ ] `--fix` regenerates stale bodies in memory before
+- [x] `--fix` regenerates stale bodies in memory before
       stripping; `--no-check` exports on-disk bytes as-is;
       passing both is a usage error.
-- [ ] Nested same-type literal-content markers are
+- [x] Nested same-type literal-content markers are
       preserved.
-- [ ] Output is idempotent and (when fresh) passes
+- [x] Output is idempotent and (when fresh) passes
       `mdsmith check`.
-- [ ] `-o <path>` writes to a file; stdout is the
+- [x] `-o <path>` writes to a file; stdout is the
       default.
-- [ ] A parse error or missing file exits non-zero with
+- [x] A parse error or missing file exits non-zero with
       a clear message.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes
 
 ## Decisions
 

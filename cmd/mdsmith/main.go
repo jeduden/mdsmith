@@ -42,6 +42,7 @@ const usageText = `Usage: mdsmith <command> [flags] [files...]
 Commands:
   check             Lint Markdown files (default when given file arguments)
   fix               Auto-fix lint issues in place
+  export            Write a portable, directive-free copy of a Markdown file
   list              Walk the workspace and emit matches (files or link records)
   help              Show help for rules and topics
   metrics           Show and rank shared Markdown metrics
@@ -88,6 +89,8 @@ func run() int {
 		return runCheck(os.Args[2:])
 	case "fix":
 		return runFix(os.Args[2:])
+	case "export":
+		return runExport(os.Args[2:])
 	case "list":
 		return runList(os.Args[2:])
 	case "help":
