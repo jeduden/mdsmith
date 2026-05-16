@@ -11,10 +11,12 @@
     {{- $docsPrefix := relURL "/docs/" -}}
     {{- $guidesPrefix := relURL "/docs/guides/" -}}
     {{- $refPrefix := relURL "/docs/reference/" -}}
+    {{- $rulesPrefix := relURL "/docs/rules/" -}}
     <nav class="topnav-links">
-      <a class="topnav-link{{ if and (hasPrefix .RelPermalink $docsPrefix) (not (hasPrefix .RelPermalink $guidesPrefix)) (not (hasPrefix .RelPermalink $refPrefix)) }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
+      <a class="topnav-link{{ if and (hasPrefix .RelPermalink $docsPrefix) (not (hasPrefix .RelPermalink $guidesPrefix)) (not (hasPrefix .RelPermalink $refPrefix)) (not (hasPrefix .RelPermalink $rulesPrefix)) }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
       <a class="topnav-link{{ if hasPrefix .RelPermalink $guidesPrefix }} is-active{{ end }}" href="{{ "/docs/guides/" | relURL }}">Guides</a>
       <a class="topnav-link{{ if hasPrefix .RelPermalink $refPrefix }} is-active{{ end }}" href="{{ "/docs/reference/" | relURL }}">Reference</a>
+      <a class="topnav-link{{ if hasPrefix .RelPermalink $rulesPrefix }} is-active{{ end }}" href="{{ "/docs/rules/" | relURL }}">Rules</a>
     </nav>
     <div class="topnav-right">
       <a class="topnav-version" href="https://github.com/{{ .Site.Params.githubRepo }}/releases" rel="noopener" title="Release notes on GitHub">v{{ .Site.Params.version }}</a>

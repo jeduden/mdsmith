@@ -80,6 +80,42 @@ the difference:
 Pass `--no-fix` to skip the `mdsmith fix` step during
 local preview.
 
+After the docs snapshot, `build-website` also publishes
+the rule directory. `../internal/rules/index.md` is a
+sibling of `docs/`, not inside it, so `sync-docs` never
+sees it. The build copies it to
+`content/docs/rules/_index.md` with the same H1-lift and
+directive-strip transforms. It then rewrites each
+`MDSxxx-name/README.md` link to its absolute GitHub URL.
+The per-rule READMEs are not snapshotted into the Hugo
+tree, so a relative link would 404. The result is a
+browsable **Rules** section in the top nav and docs
+sidebar.
+
+## Shared feature copy
+
+Feature copy is **not** authored in `data/homepage.yaml`.
+It lives once, as Markdown, in `../docs/features/`:
+
+- `index.md` is the shared "Why mdsmith" overview. The
+  repository `README.md` splices it in with `<?include?>`,
+  and the website renders the same file as the
+  `/docs/features/` landing page — so the README and the
+  site cannot drift.
+- One page per feature (`auto-fix.md`, `performance.md`,
+  `quality.md`, …) carries a short `summary:` plus an
+  `icon:`, `weight:`, optional `rules:`, and a fuller
+  body. `feature-grid.html` builds the homepage cards
+  from these pages; each card links to the full page,
+  which has room for the longer write-up the README
+  cannot fit.
+
+Requirement: every feature (or feature category) has a
+page here, including non-CLI capabilities such as
+performance and the quality badges. The README and the
+website must reuse the same Markdown; the website may
+present more, never different, content.
+
 ## Deploy
 
 `pages-deploy` in `.github/workflows/release.yml` builds

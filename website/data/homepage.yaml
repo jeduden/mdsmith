@@ -7,53 +7,10 @@ hero:
     Fast checks for style, readability, structure, and cross-file integrity.
     Auto-fix what fixes cleanly. Editor-grade diagnostics on every save.
 
-features:
-  - icon: wrench
-    title: "Auto-fix Markdown formatting"
-    link: "/docs/reference/cli/fix/"
-    body: >-
-      `mdsmith fix` rewrites whitespace, headings, code fences,
-      bare URLs, list indentation, and table alignment in place, looping up to
-      10 passes and stopping when edits stabilize.
-      `mdsmith check` is the read-only CI sibling.
-  - icon: edit-3
-    title: "Live diagnostics wherever you write"
-    link: "/docs/guides/editors/vscode/"
-    body: >-
-      `mdsmith lsp` emits diagnostics, quick-fixes, and navigation —
-      definition, references, symbol search, and a call-hierarchy over
-      `<?include?>`, `<?catalog?>`, and cross-file links —
-      consumed by any LSP-aware editor.
-  - icon: link
-    title: "Cross-file integrity"
-    link: "/docs/guides/directives/enforcing-structure/"
-    body: >-
-      Built-in rules flag broken links and missing anchors, enforce per-file
-      section schemas, and keep Markdown in the right folders. Schemas can be
-      inline on a file kind or shared via `proto.md` files.
-    rules: ["MDS027", "MDS020", "MDS033"]
-  - icon: bot
-    title: "Guardrails for AI-generated docs"
-    link: "/docs/guides/metrics-tradeoffs/"
-    body: >-
-      Cap file, section, and token-budget size; enforce reading grade and
-      sentence count; flag verbatim copy-paste across files.
-    rules: ["MDS022", "MDS028", "MDS037"]
-  - icon: list-checks
-    title: "Self-maintaining sections"
-    link: "/docs/guides/directives/generating-content/"
-    body: >-
-      On `mdsmith fix`, `<?toc?>` rebuilds a heading
-      TOC, `<?catalog?>` generates an index from front matter,
-      and `<?include?>` splices in another file. A Git merge
-      driver auto-resolves conflicts inside those blocks.
-  - icon: gauge
-    title: "Gate releases on doc status"
-    link: "/docs/reference/cli/query/"
-    body: >-
-      `mdsmith list query 'status: "✅"' plan/` selects files by a
-      CUE expression on front matter; `mdsmith metrics rank` ranks
-      files by any shared metric — both ready to pipe into a release script.
+# Feature cards are no longer listed here. They are driven by the
+# shared Markdown in docs/features/ (synced to /docs/features/ by
+# `mdsmith-release build-website`); the README includes the same
+# source. See website/layouts/partials/feature-grid.html.
 
 install:
   - id: go
