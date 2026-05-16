@@ -228,36 +228,74 @@ func detectFilesKeyDeprecations(cfg *Config) {
 	}
 }
 
-// metaReplacements are the categories that replaced the old meta bucket.
-var metaReplacements = []string{"directive", "structural", "prose"}
+// metaNewCategories are the entirely-new categories that replaced the old
+// meta bucket. Both were empty before this migration, so setting them does
+// not affect any pre-existing rules.
+var metaNewCategories = []string{"directive", "structural"}
 
-// translateMetaCategory expands a meta key in cats to its replacement
-// categories (only when the replacement is not already explicitly set),
-// then deletes the meta key. Returns true when a translation occurred.
-func translateMetaCategory(cats map[string]bool) bool {
-	v, ok := cats["meta"]
-	if !ok {
-		return false
+// metaMovedProseRules lists the rule names that migrated from meta to prose.
+// Because prose already contained other rules, these are disabled per-rule
+// rather than via categories: {prose: false}, which would also disable rules
+// that were never in meta.
+var metaMovedProseRules = []string{
+	"paragraph-readability",
+	"paragraph-structure",
+	"token-budget",
+	"conciseness-scoring",
+	"duplicated-content",
+	"emphasis-style",
+	"ambiguous-emphasis",
+}
+
+// translateMetaCategory rewrites a meta key into its replacement categories
+// and returns the meta value (true = enabled, false = disabled). Returns
+// (false, false) when meta was not present.
+func translateMetaCategory(cats map[string]bool) (v bool, found bool) {
+	v, found = cats["meta"]
+	if !found {
+		return false, false
 	}
-	for _, cat := range metaReplacements {
+	for _, cat := range metaNewCategories {
 		if _, set := cats[cat]; !set {
 			cats[cat] = v
 		}
 	}
 	delete(cats, "meta")
-	return true
+	return v, true
+}
+
+// applyMovedProseRules sets per-rule entries for rules that left meta for
+// prose. It only writes entries that are not already explicitly configured.
+// rules must be non-nil.
+func applyMovedProseRules(rules map[string]RuleCfg, enabled bool) {
+	for _, name := range metaMovedProseRules {
+		if _, set := rules[name]; !set {
+			rules[name] = RuleCfg{Enabled: enabled}
+		}
+	}
 }
 
 func detectMetaCategoryDeprecations(cfg *Config) {
 	const msg = "category `meta` has been split into `directive`, `structural`, and `prose`; " +
-		"update your `categories:` block to use the new names"
+		"update your `categories:` block to use the new names, and disable moved prose " +
+		"rules (paragraph-readability, paragraph-structure, token-budget, " +
+		"conciseness-scoring, duplicated-content, emphasis-style, ambiguous-emphasis) " +
+		"by rule name if needed"
 	warned := false
-	if translateMetaCategory(cfg.Categories) {
+	if v, ok := translateMetaCategory(cfg.Categories); ok {
+		if cfg.Rules == nil {
+			cfg.Rules = make(map[string]RuleCfg)
+		}
+		applyMovedProseRules(cfg.Rules, v)
 		cfg.Deprecations = append(cfg.Deprecations, msg)
 		warned = true
 	}
 	for name, kind := range cfg.Kinds {
-		if translateMetaCategory(kind.Categories) {
+		if v, ok := translateMetaCategory(kind.Categories); ok {
+			if kind.Rules == nil {
+				kind.Rules = make(map[string]RuleCfg)
+			}
+			applyMovedProseRules(kind.Rules, v)
 			cfg.Kinds[name] = kind
 			if !warned {
 				cfg.Deprecations = append(cfg.Deprecations, msg)
@@ -266,7 +304,11 @@ func detectMetaCategoryDeprecations(cfg *Config) {
 		}
 	}
 	for i, o := range cfg.Overrides {
-		if translateMetaCategory(o.Categories) {
+		if v, ok := translateMetaCategory(o.Categories); ok {
+			if o.Rules == nil {
+				o.Rules = make(map[string]RuleCfg)
+			}
+			applyMovedProseRules(o.Rules, v)
 			cfg.Overrides[i] = o
 			if !warned {
 				cfg.Deprecations = append(cfg.Deprecations, msg)

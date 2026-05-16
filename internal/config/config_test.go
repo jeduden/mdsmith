@@ -1397,12 +1397,22 @@ func TestLoad_MetaCategoryTopLevelEmitsDeprecationAndTranslates(t *testing.T) {
 	}
 	assert.True(t, found, "meta category key must emit a deprecation")
 
-	// Legacy value translated to replacement categories.
+	// New categories set; prose category left intact (has pre-existing rules).
 	assert.False(t, cfg.Categories["directive"], "directive should be disabled after meta translation")
 	assert.False(t, cfg.Categories["structural"], "structural should be disabled after meta translation")
-	assert.False(t, cfg.Categories["prose"], "prose should be disabled after meta translation")
+	_, proseCatSet := cfg.Categories["prose"]
+	assert.False(t, proseCatSet, "prose category must not be set — it has pre-existing rules")
 	_, metaStillPresent := cfg.Categories["meta"]
 	assert.False(t, metaStillPresent, "meta key should be removed after translation")
+	// Moved prose rules disabled per-name.
+	for _, ruleName := range []string{
+		"paragraph-readability", "paragraph-structure", "token-budget",
+		"conciseness-scoring", "duplicated-content", "emphasis-style", "ambiguous-emphasis",
+	} {
+		rc, ok := cfg.Rules[ruleName]
+		assert.True(t, ok, "moved prose rule %q should be in cfg.Rules after meta translation", ruleName)
+		assert.False(t, rc.Enabled, "moved prose rule %q should be disabled", ruleName)
+	}
 }
 
 func TestLoad_MetaCategoryKindEmitsDeprecationAndTranslates(t *testing.T) {
@@ -1426,9 +1436,16 @@ func TestLoad_MetaCategoryKindEmitsDeprecationAndTranslates(t *testing.T) {
 	kind := cfg.Kinds["docs"]
 	assert.False(t, kind.Categories["directive"])
 	assert.False(t, kind.Categories["structural"])
-	assert.False(t, kind.Categories["prose"])
+	_, proseCatSet := kind.Categories["prose"]
+	assert.False(t, proseCatSet, "prose category must not be set on kind")
 	_, metaStillPresent := kind.Categories["meta"]
 	assert.False(t, metaStillPresent)
+	// Moved prose rules disabled per-name in kind rules.
+	for _, ruleName := range []string{"paragraph-readability", "token-budget", "emphasis-style"} {
+		rc, ok := kind.Rules[ruleName]
+		assert.True(t, ok, "moved prose rule %q should be in kind Rules", ruleName)
+		assert.False(t, rc.Enabled, "moved prose rule %q should be disabled in kind", ruleName)
+	}
 }
 
 func TestLoad_MetaCategoryOverrideEmitsDeprecationAndTranslates(t *testing.T) {
@@ -1453,9 +1470,16 @@ func TestLoad_MetaCategoryOverrideEmitsDeprecationAndTranslates(t *testing.T) {
 	cats := cfg.Overrides[0].Categories
 	assert.False(t, cats["directive"])
 	assert.False(t, cats["structural"])
-	assert.False(t, cats["prose"])
+	_, proseCatSet := cats["prose"]
+	assert.False(t, proseCatSet, "prose category must not be set on override")
 	_, metaStillPresent := cats["meta"]
 	assert.False(t, metaStillPresent)
+	// Moved prose rules disabled per-name in override rules.
+	for _, ruleName := range []string{"paragraph-readability", "token-budget", "emphasis-style"} {
+		rc, ok := cfg.Overrides[0].Rules[ruleName]
+		assert.True(t, ok, "moved prose rule %q should be in override Rules", ruleName)
+		assert.False(t, rc.Enabled, "moved prose rule %q should be disabled in override", ruleName)
+	}
 }
 
 func TestLoad_MetaCategoryMultipleOverridesEmitsDeprecationOnce(t *testing.T) {
