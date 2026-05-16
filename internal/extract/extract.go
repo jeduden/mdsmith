@@ -219,8 +219,11 @@ func (p *projector) tableRows(n ast.Node) []any {
 		}
 		row := map[string]any{}
 		for k, cell := range cells {
+			// A GFM parser trims every body row to the header's
+			// column count, so len(cells) <= len(cols) always and
+			// cols[k] is in range here.
 			name := fmt.Sprintf("col-%d", k+1)
-			if k < len(cols) && cols[k] != "" {
+			if cols[k] != "" {
 				name = cols[k]
 			}
 			row[name] = cell

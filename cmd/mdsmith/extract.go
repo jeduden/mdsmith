@@ -184,21 +184,23 @@ func gateExtractCheck(
 	return gateResultCode(extractGateRun(runner, path))
 }
 
-// gateResultCode maps a check Result to extract's exit code:
-// gateResultCode maps a check Result to extract's exit code:
-// engine errors with no diagnostics → 2 (same as a runtime
-// failure), any diagnostics → 1 (non-conformant), a file that was
-// never checked (e.g. excluded by `ignore:`) → 2, else 0. Split
-// out so all arms are unit-testable without provoking the engine
-// into an errors-only state on already-resolved input.
+// gateResultCode maps a check Result to extract's exit code,
+// mirroring `mdsmith check`: errors print first (never dropped,
+// even alongside diagnostics), any diagnostics → 1 (non-conformant),
+// errors without diagnostics → 2, a file that was never checked
+// (e.g. excluded by `ignore:`) → 2, else 0. Split out so every arm
+// is unit-testable without provoking the engine into an
+// errors-only state on already-resolved input.
 func gateResultCode(result *engine.Result) int {
-	if len(result.Errors) > 0 && len(result.Diagnostics) == 0 {
+	if len(result.Errors) > 0 {
 		printErrors(result.Errors)
-		return 2
 	}
 	if len(result.Diagnostics) > 0 {
 		formatDiagnostics(result.Diagnostics, "text", false)
 		return 1
+	}
+	if len(result.Errors) > 0 {
+		return 2
 	}
 	if result.FilesChecked == 0 {
 		// Runner.Run skips ignored files, returning an empty

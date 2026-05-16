@@ -24,9 +24,10 @@ func runMergeCoverage(_ string, args []string) int {
 				"so summing is required for a correct patch number.\n")
 	}
 	if err := fs.Parse(args); err != nil {
-		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: merge-coverage"); code >= 0 {
-			return code
-		}
+		// reportFlagParseErr only returns a negative sentinel for a
+		// nil error; inside this `err != nil` block it is always
+		// 0 (help) or 2, so return it directly.
+		return reportFlagParseErr(err, os.Stderr, "mdsmith-release: merge-coverage")
 	}
 	if out == "" || fs.NArg() == 0 {
 		fs.Usage()

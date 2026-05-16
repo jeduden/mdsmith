@@ -35,11 +35,20 @@ func TestEmit(t *testing.T) {
 }
 
 func TestGateResultCode(t *testing.T) {
+	// Errors only → 2.
 	assert.Equal(t, 2, gateResultCode(&engine.Result{
-		Errors: []error{errors.New("x")},
+		FilesChecked: 1, Errors: []error{errors.New("x")},
 	}))
+	// Diagnostics only → 1.
 	assert.Equal(t, 1, gateResultCode(&engine.Result{
-		Diagnostics: []lint.Diagnostic{{Message: "m"}},
+		FilesChecked: 1, Diagnostics: []lint.Diagnostic{{Message: "m"}},
+	}))
+	// Errors AND diagnostics → 1, but errors are still printed
+	// (not dropped).
+	assert.Equal(t, 1, gateResultCode(&engine.Result{
+		FilesChecked: 1,
+		Errors:       []error{errors.New("cfg boom")},
+		Diagnostics:  []lint.Diagnostic{{Message: "m"}},
 	}))
 	// A clean pass requires the file to have actually been checked.
 	assert.Equal(t, 0, gateResultCode(&engine.Result{FilesChecked: 1}))

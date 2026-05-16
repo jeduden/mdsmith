@@ -63,15 +63,8 @@ func MergeCoverage(inputs []string, output string) error {
 	for _, b := range meta {
 		blocks = append(blocks, b)
 	}
-	// startKey orders by file then start line; the full key breaks
-	// ties so blocks that share a file:line (multiple statements on
-	// one source line) emit in a deterministic order rather than
-	// inheriting Go's randomized map iteration.
 	sort.Slice(blocks, func(i, j int) bool {
-		if blocks[i].startKey != blocks[j].startKey {
-			return blocks[i].startKey < blocks[j].startKey
-		}
-		return blocks[i].key < blocks[j].key
+		return lessBlock(blocks[i], blocks[j])
 	})
 
 	var b strings.Builder
@@ -151,6 +144,18 @@ func parseCovLine(line string) (key string, hits int, err error) {
 		return "", 0, fmt.Errorf("malformed coverage line %q", line)
 	}
 	return key, hits, nil
+}
+
+// lessBlock orders blocks by startKey (file then start line) and
+// breaks ties with the full record key, so blocks sharing a
+// file:line (multiple statements on one source line) emit in a
+// deterministic order rather than inheriting Go's randomized map
+// iteration.
+func lessBlock(a, b covBlock) bool {
+	if a.startKey != b.startKey {
+		return a.startKey < b.startKey
+	}
+	return a.key < b.key
 }
 
 // covStartKey returns a left-padded "file:line" sort key so the

@@ -51,6 +51,45 @@ func TestMergeCoverage_SetModeOrs(t *testing.T) {
 	assert.Contains(t, string(got), "x.go:1.1,2.2 1 1")
 }
 
+// Two blocks that share a file:line sort by their full key, not by
+// Go map iteration order.
+func TestMergeCoverage_StableTieBreak(t *testing.T) {
+	dir := t.TempDir()
+	p := writeProfile(t, dir, "p.cov",
+		"mode: atomic\nx.go:1.5,1.9 1 1\nx.go:1.1,1.4 1 1\n")
+	out := filepath.Join(dir, "m.cov")
+	require.NoError(t, MergeCoverage([]string{p}, out))
+	got, _ := os.ReadFile(out)
+	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
+	// mode line, then the two blocks ordered by full key.
+	assert.Equal(t, "x.go:1.1,1.4 1 1", lines[1])
+	assert.Equal(t, "x.go:1.5,1.9 1 1", lines[2])
+}
+
+func TestLessBlock(t *testing.T) {
+	a := covBlock{key: "x.go:1.1,1.4 1", startKey: "x.go:000000001"}
+	b := covBlock{key: "x.go:1.5,1.9 1", startKey: "x.go:000000001"}
+	c := covBlock{key: "y", startKey: "y:000000002"}
+	// startKey differs.
+	assert.True(t, lessBlock(a, c))
+	assert.False(t, lessBlock(c, a))
+	// startKey equal → key tiebreaker, both directions.
+	assert.True(t, lessBlock(a, b))
+	assert.False(t, lessBlock(b, a))
+}
+
+// In set mode, a repeated zero-hit key takes the "already seen"
+// path the second time.
+func TestMergeCoverage_SetModeRepeatedZero(t *testing.T) {
+	dir := t.TempDir()
+	p := writeProfile(t, dir, "p.cov",
+		"mode: set\nx.go:1.1,2.2 1 0\nx.go:1.1,2.2 1 0\n")
+	out := filepath.Join(dir, "m.cov")
+	require.NoError(t, MergeCoverage([]string{p}, out))
+	got, _ := os.ReadFile(out)
+	assert.Contains(t, string(got), "x.go:1.1,2.2 1 0")
+}
+
 func TestMergeCoverage_ModeMismatch(t *testing.T) {
 	dir := t.TempDir()
 	a := writeProfile(t, dir, "a.cov", "mode: set\nx.go:1.1,2.2 1 1\n")
@@ -84,6 +123,8 @@ func TestCovStartKey(t *testing.T) {
 		covStartKey("x.go:a.1,2.2 1")) // non-numeric start line
 	// Comma but no dot must not panic on a -1 slice index.
 	assert.Equal(t, "x.go:12,13 1", covStartKey("x.go:12,13 1"))
+	// Dot but no comma is also rejected (comma < 0 branch).
+	assert.Equal(t, "x.go:1.2 1", covStartKey("x.go:1.2 1"))
 	// Dot after the comma is also rejected (degenerate coords).
 	assert.Equal(t, "x.go:12,1.3 1", covStartKey("x.go:12,1.3 1"))
 }

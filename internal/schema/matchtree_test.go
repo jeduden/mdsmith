@@ -36,6 +36,89 @@ func TestHeadingCaptures_EdgeCases(t *testing.T) {
 	assert.Nil(t, caps)
 }
 
+func TestHeadingStem_UnknownHelperSkipped(t *testing.T) {
+	// `\#(bogus)` is neither `digits` nor an fmvar call, so the
+	// parseFmvarCall branch is taken with ok == false.
+	stem, fmvars, hasDigits := HeadingStem(&Scope{
+		Heading: "x", Matcher: &Matcher{Regex: `\#(bogus)`},
+	})
+	assert.Equal(t, "", stem)
+	assert.Nil(t, fmvars)
+	assert.False(t, hasDigits)
+}
+
+func TestHeadingCaptures_NamedUnnamedAndMulti(t *testing.T) {
+	dh := DocHeading{Level: 2, Text: "ab", Line: 1}
+
+	// Two named groups: out is nil then non-nil across iterations.
+	ok, caps := headingCaptures(&Matcher{Regex: `(?P<x>.)(?P<y>.)`}, dh, nil)
+	assert.True(t, ok)
+	assert.Equal(t, map[string]string{"x": "a", "y": "b"}, caps)
+
+	// An unnamed group yields a "" SubexpName that is skipped.
+	ok, caps = headingCaptures(&Matcher{Regex: `(.)(?P<z>.)`}, dh, nil)
+	assert.True(t, ok)
+	assert.Equal(t, map[string]string{"z": "b"}, caps)
+}
+
+func TestBuildMatchTree_BroadMatcherSkipped(t *testing.T) {
+	// A broad `.+` matcher that is not a slot (no repeat) is still
+	// skipped by the projection.
+	sch := &Schema{RootLevel: 2, Sections: []Scope{
+		{Heading: "any", Matcher: &Matcher{Regex: ".+"}},
+		literalScope("Goal"),
+	}}
+	mt := BuildMatchTree(mtFile(t, "## Whatever\n\n## Goal\n"), sch, nil)
+	require.Len(t, mt.Root.Children, 1)
+	assert.Equal(t, "Goal", mt.Root.Children[0].Heading.Text)
+}
+
+func TestScopeCaptures_RegexAndFmvarMerge(t *testing.T) {
+	dh := DocHeading{Level: 2, Text: "Step 1 RFC", Line: 1}
+	sc := &Scope{
+		Heading: "Step {n} {id}",
+		Matcher: &Matcher{Regex: `Step \#(digits) \#(fmvar(id))`},
+	}
+	caps := scopeCaptures(sc, dh, map[string]any{"id": "RFC"})
+	assert.Equal(t, "1", caps["n"])    // from the regex capture
+	assert.Equal(t, "RFC", caps["id"]) // merged in with caps != nil
+}
+
+func TestCollectContent_ExhaustsNodes(t *testing.T) {
+	// A required code-block with only a paragraph present: the
+	// inner loop runs until nodeIdx reaches len(nodes).
+	sc := Scope{
+		Heading: "Goal",
+		Matcher: &Matcher{Regex: "Goal"},
+		Content: []ContentEntry{{Kind: ContentKindCodeBlock, Required: true}},
+	}
+	sch := &Schema{RootLevel: 2, Sections: []Scope{sc}}
+	mt := BuildMatchTree(mtFile(t, "## Goal\n\njust prose\n"), sch, nil)
+	require.Len(t, mt.Root.Children, 1)
+	assert.Empty(t, mt.Root.Children[0].Content)
+}
+
+func TestCollectContent_LaterEntryNonMatch(t *testing.T) {
+	// entry0=paragraph absent; the only later entry (list) does
+	// not match the leading code block, so laterContentEntryMatches
+	// evaluates nodeMatchesKind to false before yielding.
+	sc := Scope{
+		Heading: "Goal",
+		Matcher: &Matcher{Regex: "Goal"},
+		Content: []ContentEntry{
+			{Kind: ContentKindParagraph, Required: false},
+			{Kind: ContentKindList, Required: true},
+		},
+	}
+	sch := &Schema{RootLevel: 2, Sections: []Scope{sc}}
+	body := "## Goal\n\n```\nx\n```\n\n- a\n"
+	mt := BuildMatchTree(mtFile(t, body), sch, nil)
+	require.Len(t, mt.Root.Children, 1)
+	got := mt.Root.Children[0].Content
+	require.Len(t, got, 1)
+	assert.Equal(t, ContentKindList, got[0].Entry.Kind)
+}
+
 func TestHeadingStem_NilCases(t *testing.T) {
 	stem, fmvars, hasDigits := HeadingStem(nil)
 	assert.Equal(t, "", stem)

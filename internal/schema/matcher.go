@@ -460,8 +460,10 @@ func headingCaptures(m *Matcher, dh DocHeading, fm map[string]any) (bool, map[st
 		return false, nil
 	}
 	var out map[string]string
+	// SubexpNames and FindStringSubmatch are both NumSubexp()+1
+	// long, so an index from one always indexes the other.
 	for i, name := range cm.re.SubexpNames() {
-		if i == 0 || name == "" || i >= len(sub) {
+		if i == 0 || name == "" {
 			continue
 		}
 		if out == nil {

@@ -86,6 +86,30 @@ func TestExtract_CollisionDiagnosticLineIsPositive(t *testing.T) {
 	assert.Equal(t, 1, diags[0].Line)
 }
 
+func TestIsRepeating(t *testing.T) {
+	assert.False(t, isRepeating(nil))
+	assert.False(t, isRepeating(&schema.Scope{}))
+	assert.False(t, isRepeating(&schema.Scope{Matcher: &schema.Matcher{}}))
+	assert.True(t, isRepeating(&schema.Scope{
+		Matcher: &schema.Matcher{Repeat: schema.Repeat{Set: true}},
+	}))
+}
+
+// A ContentMatch whose kind is none of the four projected shapes
+// (defensive: collectContent never emits one) must be ignored
+// without panicking — this drives the switch's no-match arm.
+func TestProjectContent_UnknownKindIgnored(t *testing.T) {
+	f := doc(t, "para\n")
+	para := f.AST.FirstChild()
+	p := &projector{f: f}
+	obj := map[string]any{}
+	p.projectContent([]schema.ContentMatch{
+		{Entry: &schema.ContentEntry{Kind: "bogus"}, Node: para, Line: 1},
+	}, obj)
+	assert.Empty(t, obj)
+	assert.Empty(t, p.diags)
+}
+
 func TestSetKey_EmptyKeyIsCollision(t *testing.T) {
 	p := &projector{f: doc(t, "x\n"), sch: &schema.Schema{}}
 	obj := map[string]any{}
