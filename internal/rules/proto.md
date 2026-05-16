@@ -101,9 +101,11 @@ rules:
 - **Category**: {category}
 
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
-     Implementation, Category, Concept (if applicable).
+     Implementation, Category, and optionally Concept.
      Default may include key settings: "enabled, max: 80".
      Category must match the `category:` front-matter field and one
      of the values in ValidCategories. Pick the narrowest that fits;
      drop any category not in this list.
-     Delete Concept bullet if not used. -->
+     Add a Concept bullet when the rule has a dedicated concept page:
+       - **Concept**: [NAME](../../../docs/background/concepts/NAME.md)
+     Omit the Concept bullet when no concept page applies. -->

@@ -418,10 +418,12 @@ Heading rows are wildcards, not substitutions.
 MDS020 resolves the placeholder against the
 document's front matter and flags any mismatch.
 `mdsmith fix` rewrites stale body lines to the
-current front-matter value. The rule-readme
-`Meta-Information` body uses this to keep `ID`,
-`Name`, `Status`, and `Category` bullets in sync
-with front matter.
+current front-matter value for files that match a
+**single file-based schema source**. Composed or
+multi-source schemas do not get Fix body rewrites.
+The rule-readme `Meta-Information` body uses this
+to keep `ID`, `Name`, `Status`, and `Category`
+bullets in sync with front matter.
 
 The
 [section-schema reference](../reference/section-schema.md#protomd-file-syntax)

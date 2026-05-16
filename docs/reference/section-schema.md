@@ -255,18 +255,16 @@ schema:
 
 ## `proto.md` file syntax
 
-> **Heading rows vs body lines.** In proto.md
-> heading rows, `{field}` matches a non-empty
-> run (wildcard) — it is not resolved against
-> the document's frontmatter. The mapping below
-> shows the equivalent inline entry for each
-> row syntax.
+> **Heading rows vs body lines.** In heading
+> rows, `{field}` is a wildcard — not resolved
+> against front matter. The table below shows
+> the equivalent inline entry for each row.
 >
 > In **body lines**, `{field}` is fully wired:
-> MDS020 resolves the placeholder against the
-> document's front matter and flags any mismatch.
-> `mdsmith fix` rewrites stale body lines to the
-> current front-matter value.
+> MDS020 checks each placeholder against front
+> matter and `mdsmith fix` rewrites stale lines
+> for a **single file-based schema source**.
+> Composed schemas skip the Fix body rewrite.
 
 Proto.md files use a literal-template surface
 distinct from the inline `regex:` form. Heading

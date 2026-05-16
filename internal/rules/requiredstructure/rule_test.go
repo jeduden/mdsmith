@@ -2114,6 +2114,90 @@ func TestFix_BodySync_LeavesCorrectLine(t *testing.T) {
 	assert.Equal(t, string(f.Source), string(result))
 }
 
+// TestFix_BodySync_SkipsCorrectAndFixesStale verifies that Fix skips a
+// correct template-matching line and continues scanning to patch the
+// subsequent stale duplicate. (Regresses the early-break fix from
+// Copilot review comment on PR #315.)
+func TestFix_BodySync_SkipsCorrectAndFixesStale(t *testing.T) {
+	schemaPath := writeSchema(t,
+		"# ?\n\n## Meta-Information\n\n- **Category**: {category}\n")
+	r := &Rule{Schema: schemaPath}
+	// Two bullets that match the template: the first is already correct,
+	// the second is stale. Fix must patch the second one.
+	f := newTestFile(t, "doc.md",
+		"---\ncategory: structural\n---\n# My Rule\n\n## Meta-Information\n\n"+
+			"- **Category**: structural\n- **Category**: WRONG\n")
+	result := r.Fix(f)
+	assert.Equal(t, 2, strings.Count(string(result), "- **Category**: structural"),
+		"both bullets should equal the front-matter value after fix")
+}
+
+// TestFix_BodySync_NoFrontMatter verifies that Fix is a no-op when the
+// document has no front matter (empty docFMRaw path).
+func TestFix_BodySync_NoFrontMatter(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## Meta-Information\n\n- **Category**: {category}\n")
+	r := &Rule{Schema: schemaPath}
+	src := "# My Rule\n\n## Meta-Information\n\n- **Category**: WRONG\n"
+	f := newTestFile(t, "doc.md", src)
+	result := r.Fix(f)
+	assert.Equal(t, string(f.Source), string(result))
+}
+
+// TestFix_BodySync_NonBodySyncPoint verifies that a sync point that is
+// NOT in the body (InBody == false, heading sync) does not cause Fix to
+// rewrite any line.
+func TestFix_BodySync_NonBodySyncPoint(t *testing.T) {
+	// Schema has only a heading sync ({id} in the title), no body sync.
+	schemaPath := writeSchema(t, "# {id}: {name}\n")
+	r := &Rule{Schema: schemaPath}
+	src := "---\nid: MDS001\nname: line-length\n---\n# MDS001: line-length\n"
+	f := newTestFile(t, "doc.md", src)
+	result := r.Fix(f)
+	assert.Equal(t, string(f.Source), string(result))
+}
+
+// TestFix_BodySync_MissingField verifies that Fix skips a body sync
+// point whose field is absent from the document's front matter.
+func TestFix_BodySync_MissingField(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## Meta-Information\n\n- **Category**: {category}\n")
+	r := &Rule{Schema: schemaPath}
+	// front matter has no "category" key
+	src := "---\nid: MDS001\n---\n# My Rule\n\n## Meta-Information\n\n- **Category**: WRONG\n"
+	f := newTestFile(t, "doc.md", src)
+	result := r.Fix(f)
+	assert.Equal(t, string(f.Source), string(result))
+}
+
+// TestFix_BodySync_NoMatchingLine verifies that Fix returns f.Source
+// unchanged when the heading is present but no body line matches the
+// field template pattern (e.g., the bullet is formatted differently).
+func TestFix_BodySync_NoMatchingLine(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## Meta-Information\n\n- **Category**: {category}\n")
+	r := &Rule{Schema: schemaPath}
+	// Body has a line that does NOT match "- **Category**: .+"
+	src := "---\ncategory: structural\n---\n# My Rule\n\n## Meta-Information\n\nSomething else entirely.\n"
+	f := newTestFile(t, "doc.md", src)
+	result := r.Fix(f)
+	assert.Equal(t, string(f.Source), string(result))
+}
+
+// TestFix_BodySync_MultiSource verifies that Fix does not rewrite body
+// lines when the rule is configured with multiple schema sources
+// (composed schemas skip the Fix body rewrite path).
+func TestFix_BodySync_MultiSource(t *testing.T) {
+	schemaPath := writeSchema(t, "# ?\n\n## Meta-Information\n\n- **Category**: {category}\n")
+	schemaPath2 := writeSchema(t, "# ?\n")
+	r := &Rule{Sources: []SchemaSource{
+		{File: schemaPath},
+		{File: schemaPath2},
+	}}
+	f := newTestFile(t, "doc.md",
+		"---\ncategory: structural\n---\n# My Rule\n\n## Meta-Information\n\n- **Category**: WRONG\n")
+	result := r.Fix(f)
+	// Multi-source: Fix should NOT rewrite the stale line.
+	assert.Equal(t, string(f.Source), string(result))
+}
+
 // TestIsLikelyArchetypeName_AllBranches gives the helper direct
 // coverage of every branch. Previously it was only exercised
 // indirectly through ApplySettings, so test churn elsewhere

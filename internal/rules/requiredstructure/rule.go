@@ -700,7 +700,7 @@ func resolveBodySyncLine(
 	for i := startLine - 1; i < endLine && i < len(work); i++ {
 		trimmed := strings.TrimSpace(string(work[i]))
 		if trimmed == expected {
-			return patchedLine{}, false // already correct
+			continue // already correct; keep scanning for stale duplicates
 		}
 		if re.MatchString(trimmed) {
 			orig := string(work[i])
