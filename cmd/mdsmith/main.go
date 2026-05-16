@@ -1090,7 +1090,13 @@ func runHelpPatterns(args []string) int {
 		if r.Maintainability == nil {
 			continue
 		}
-		items = append(items, rec{r.ID, r.Name, r.Maintainability.Signal, r.Maintainability.Fix, r.Maintainability.ForDiagnostic})
+		items = append(items, rec{
+			ID:            r.ID,
+			Name:          r.Name,
+			Signal:        r.Maintainability.Signal,
+			Fix:           r.Maintainability.Fix,
+			ForDiagnostic: r.Maintainability.ForDiagnostic,
+		})
 	}
 	if format == "json" {
 		enc := json.NewEncoder(os.Stdout)
@@ -1102,7 +1108,8 @@ func runHelpPatterns(args []string) int {
 		return 0
 	}
 	for _, it := range items {
-		fmt.Printf("%s %s\n  signal: %s\n  fix: %s\n  for-diagnostic: %t\n\n", it.ID, it.Name, it.Signal, it.Fix, it.ForDiagnostic)
+		fmt.Printf("%s %s\n  signal: %s\n  fix: %s\n  for-diagnostic: %t\n\n",
+			it.ID, it.Name, it.Signal, it.Fix, it.ForDiagnostic)
 	}
 	return 0
 }
@@ -1254,9 +1261,10 @@ func showRule(query string) int {
 		return 2
 	}
 	content := ruledocs.StripFrontMatter(chosen.Content)
-	if chosen.Maintainability != nil {
+	if m := chosen.Maintainability; m != nil {
 		content += "\n\n## Maintainability pattern\n\n"
-		content += fmt.Sprintf("- Signal: %s\n- Fix: %s\n- For diagnostic: %t\n", chosen.Maintainability.Signal, chosen.Maintainability.Fix, chosen.Maintainability.ForDiagnostic)
+		content += fmt.Sprintf("- Signal: %s\n- Fix: %s\n- For diagnostic: %t\n",
+			m.Signal, m.Fix, m.ForDiagnostic)
 	}
 	fmt.Print(content)
 	return 0

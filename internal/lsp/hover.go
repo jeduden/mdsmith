@@ -26,30 +26,12 @@ var directiveToDocFile = map[string]string{
 	"require":             "enforcing-structure.md",
 }
 
-// ruleDocCache holds pre-loaded rule documentation, built once on first use.
-var ruleDocCache struct {
+// ruleInfoCache holds pre-loaded rule metadata, built once on first use.
+// Content is pre-stripped of front matter so hover does not redo the work
+// per request.
+var ruleInfoCache struct {
 	sync.Once
-	docs map[string]string // uppercase rule ID → front-matter-stripped content
-}
-
-// cachedRuleDoc returns the stripped documentation for the rule with the given
-// code, or ("", false) when not found. The first call loads all embedded rule
-// READMEs; subsequent calls are O(1) map lookups.
-func cachedRuleDoc(code string) (string, bool) {
-	ruleDocCache.Do(func() {
-		all, err := rules.ListRules()
-		if err != nil {
-			ruleDocCache.docs = map[string]string{}
-			return
-		}
-		m := make(map[string]string, len(all))
-		for _, r := range all {
-			m[strings.ToUpper(r.ID)] = rules.StripFrontMatter(r.Content)
-		}
-		ruleDocCache.docs = m
-	})
-	doc, ok := ruleDocCache.docs[strings.ToUpper(code)]
-	return doc, ok
+	infos map[string]rules.RuleInfo // uppercase rule ID → RuleInfo with stripped Content
 }
 
 // directiveDocCache holds parsed directive doc content, loaded once.
@@ -150,25 +132,32 @@ func ruleHoverContent(d Diagnostic) string {
 	if !ok {
 		return fmt.Sprintf("**%s** %s\n\nSee `mdsmith help rule %s` for details.", d.Code, d.Message, d.Code)
 	}
-	body := fmt.Sprintf("**%s** %s\n\n%s", d.Code, d.Message, rules.StripFrontMatter(info.Content))
+	body := fmt.Sprintf("**%s** %s\n\n%s", d.Code, d.Message, info.Content)
 	if info.Maintainability != nil && info.Maintainability.ForDiagnostic {
 		body += fmt.Sprintf("\n\nSuggested remediation: %s", info.Maintainability.Fix)
 	}
 	return body
 }
 
+// cachedRuleInfo returns the rule metadata for a given diagnostic code, or
+// (zero, false) when not found. Content is already stripped of front matter.
+// The first call loads all embedded rule READMEs; later calls are O(1) lookups.
 func cachedRuleInfo(code string) (rules.RuleInfo, bool) {
-	all, err := rules.ListRules()
-	if err != nil {
-		return rules.RuleInfo{}, false
-	}
-	q := strings.ToUpper(code)
-	for _, r := range all {
-		if strings.ToUpper(r.ID) == q {
-			return r, true
+	ruleInfoCache.Do(func() {
+		all, err := rules.ListRules()
+		if err != nil {
+			ruleInfoCache.infos = map[string]rules.RuleInfo{}
+			return
 		}
-	}
-	return rules.RuleInfo{}, false
+		m := make(map[string]rules.RuleInfo, len(all))
+		for _, r := range all {
+			r.Content = rules.StripFrontMatter(r.Content)
+			m[strings.ToUpper(r.ID)] = r
+		}
+		ruleInfoCache.infos = m
+	})
+	info, ok := ruleInfoCache.infos[strings.ToUpper(code)]
+	return info, ok
 }
 
 // directiveHoverAt checks whether pos falls within a processing-instruction

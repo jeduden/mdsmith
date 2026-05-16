@@ -25,7 +25,13 @@ func (s *Server) handleRulePatterns(msg *requestMessage) {
 		if r.Maintainability == nil {
 			continue
 		}
-		out = append(out, rulePattern{r.ID, r.Name, r.Maintainability.Signal, r.Maintainability.Fix, r.Maintainability.ForDiagnostic})
+		out = append(out, rulePattern{
+			ID:            r.ID,
+			Name:          r.Name,
+			Signal:        r.Maintainability.Signal,
+			Fix:           r.Maintainability.Fix,
+			ForDiagnostic: r.Maintainability.ForDiagnostic,
+		})
 	}
 	_ = s.t.writeResponse(msg.ID, out)
 }

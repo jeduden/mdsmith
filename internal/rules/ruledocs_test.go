@@ -230,3 +230,52 @@ func TestStripFrontMatterExported(t *testing.T) {
 	assert.NotContains(t, result, "id: MDS001")
 	assert.Contains(t, result, "# Body")
 }
+
+func TestParseFrontMatter_MaintainabilityBlock(t *testing.T) {
+	content := "---\n" +
+		"id: MDS999\n" +
+		"name: example\n" +
+		"status: ready\n" +
+		"description: Example.\n" +
+		"maintainability:\n" +
+		"  signal: a list of links\n" +
+		"  fix: adopt the directive\n" +
+		"  for-diagnostic: true\n" +
+		"---\n# Body\n"
+	info, err := parseFrontMatter(content)
+	require.NoError(t, err)
+	require.NotNil(t, info.Maintainability)
+	assert.Equal(t, "a list of links", info.Maintainability.Signal)
+	assert.Equal(t, "adopt the directive", info.Maintainability.Fix)
+	assert.True(t, info.Maintainability.ForDiagnostic)
+}
+
+func TestParseFrontMatter_NullMaintainability(t *testing.T) {
+	content := "---\n" +
+		"id: MDS999\n" +
+		"name: example\n" +
+		"status: ready\n" +
+		"description: Example.\n" +
+		"maintainability: null\n" +
+		"---\n# Body\n"
+	info, err := parseFrontMatter(content)
+	require.NoError(t, err)
+	assert.Nil(t, info.Maintainability,
+		"explicit null must result in a nil Maintainability pointer")
+}
+
+// TestParseFrontMatter_RejectsYAMLAliases verifies that the safe-YAML wrapper
+// rejects anchor/alias usage in rule README front matter rather than silently
+// expanding aliases.
+func TestParseFrontMatter_RejectsYAMLAliases(t *testing.T) {
+	content := "---\n" +
+		"id: MDS999\n" +
+		"name: example\n" +
+		"status: ready\n" +
+		"description: &x Example.\n" +
+		"alias: *x\n" +
+		"---\n# Body\n"
+	_, err := parseFrontMatter(content)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "anchors/aliases")
+}

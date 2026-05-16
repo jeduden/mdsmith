@@ -2800,6 +2800,22 @@ func TestRuleHoverContentAddsMaintainabilityFixWhenEnabled(t *testing.T) {
 	assert.Contains(t, got, "Suggested remediation:")
 }
 
+// For adoption-only rules (catalog, include, required-structure) the
+// maintainability fix advertises a directive the user has not yet adopted,
+// so it must not appear on a diagnostic hover. for-diagnostic defaults to
+// false for those rules.
+func TestRuleHoverContentOmitsAdoptionFixForCatalog(t *testing.T) {
+	t.Parallel()
+	got := ruleHoverContent(Diagnostic{Code: "MDS019", Message: "catalog body drifted"})
+	assert.NotContains(t, got, "Suggested remediation:")
+}
+
+func TestRuleHoverContentOmitsRemediationForNullMaintainability(t *testing.T) {
+	t.Parallel()
+	got := ruleHoverContent(Diagnostic{Code: "MDS001", Message: "line too long"})
+	assert.NotContains(t, got, "Suggested remediation:")
+}
+
 func TestRulePatternsMethodReturnsNonNullPatterns(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -2811,11 +2827,18 @@ func TestRulePatternsMethodReturnsNonNullPatterns(t *testing.T) {
 	var out []map[string]any
 	require.NoError(t, json.Unmarshal(raw, &out))
 	require.NotEmpty(t, out)
+	sawMDS019 := false
 	for _, it := range out {
 		require.NotEmpty(t, it["id"])
 		require.NotEmpty(t, it["signal"])
 		require.NotEmpty(t, it["fix"])
+		// line-length is maintainability: null and must be excluded.
+		assert.NotEqual(t, "MDS001", it["id"])
+		if it["id"] == "MDS019" {
+			sawMDS019 = true
+		}
 	}
+	assert.True(t, sawMDS019, "expected MDS019 (catalog) in the rulePatterns payload")
 }
 
 func TestHoverUnknownDocument(t *testing.T) {

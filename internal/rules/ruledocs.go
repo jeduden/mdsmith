@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 //go:embed MDS*/README.md
@@ -24,6 +24,11 @@ type RuleInfo struct {
 	Maintainability *Maintainability
 }
 
+// Maintainability captures a rule's adoption pattern: the structural shape a
+// reviewer looks for (Signal) and the fix that turns it into the rule's
+// declared form (Fix). ForDiagnostic gates whether the fix is appropriate
+// to surface on an active diagnostic hover (true) or only as an adoption
+// suggestion before the rule fires (false).
 type Maintainability struct {
 	Signal        string `yaml:"signal"`
 	Fix           string `yaml:"fix"`
@@ -121,7 +126,9 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 	var meta struct {
 		Maintainability *Maintainability `yaml:"maintainability"`
 	}
-	_ = yaml.Unmarshal([]byte(strings.Join(front, "\n")), &meta)
+	if err := yamlutil.UnmarshalSafe([]byte(strings.Join(front, "\n")), &meta); err != nil {
+		return RuleInfo{}, fmt.Errorf("parsing front matter: %w", err)
+	}
 	info.Maintainability = meta.Maintainability
 
 	if info.ID == "" {

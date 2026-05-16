@@ -265,7 +265,7 @@ automatically.
       `mdsmith check internal/rules/` passes
       via the `rule-readme` and
       `directive-rule-readme` kinds.
-- [ ] Absence of the field, or a partial block
+- [x] Absence of the field, or a partial block
       (e.g. `signal` without `fix`), fails
       `mdsmith check` with a schema error.
 - [x] For a rule with a non-null
@@ -288,10 +288,10 @@ automatically.
       codes like `MDS001`), omitting
       rules with `maintainability: null`.
       Covered by a new unit test.
-- [ ] `mdsmith/rulePatterns` returns the same
+- [x] `mdsmith/rulePatterns` returns the same
       payload over LSP. Covered by a new LSP
       end-to-end test.
-- [ ] `textDocument/hover` on a diagnostic
+- [x] `textDocument/hover` on a diagnostic
       from a `for-diagnostic: true` rule
       (duplicated-content, directory-structure)
       appends the fix sketch. Hover on the
@@ -299,7 +299,7 @@ automatically.
       include, required-structure) and on
       `maintainability: null` rules is
       unchanged. Covered by a new hover test.
-- [ ] [`docs/reference/cli/help.md`](../docs/reference/cli/help.md)
+- [x] [`docs/reference/cli/help.md`](../docs/reference/cli/help.md)
       and
       [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
       document the new topic and LSP method.
@@ -307,10 +307,10 @@ automatically.
       and the installed `mdsmith-audit` plugin
       surface all five rule-backed patterns
       (from `mdsmith help patterns`) plus the
-      three trimmed config-level checks (from
-      whichever install-time source the
-      implementation chose) on a fixture repo.
-- [ ] `go test ./...` passes.
+      three trimmed config-level checks. Deferred
+      to a follow-up; this PR ships the data
+      source the skill consumes.
+- [x] `go test ./...` passes.
 - [x] `mdsmith check .` passes.
 
 ## ...
