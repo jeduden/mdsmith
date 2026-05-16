@@ -21,6 +21,7 @@ glob:
   - "docs/**/*.md"
   - "!docs/research/**"
   - "!docs/security/**"
+  - "!**/proto.md"
 sort: path
 header: ""
 row: "- [{summary}](../{filename})"

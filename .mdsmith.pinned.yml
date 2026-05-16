@@ -357,21 +357,10 @@ kinds:
         - heading:
             unlisted: true
   release-channel:
-    schema:
-      frontmatter:
-        title: 'string & != ""'
-        summary: 'string & != ""'
-        registry: 'string & != ""'
-        credential: 'string & != ""'
-        job: 'string & != ""'
-        channelurl: 'string & =~ "^https?://"'
-        weight: 'int & >=1'
-      closed: false
-      sections:
-        - heading: null
-          required: false
-        - heading:
-            unlisted: true
+    path-pattern: "docs/development/release-channels/{proto.md,*.md}"
+    rules:
+      required-structure:
+        schema: docs/development/release-channels/proto.md
   secret-rotation:
     schema:
       frontmatter:

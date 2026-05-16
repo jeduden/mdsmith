@@ -348,26 +348,10 @@ kinds:
             regex: '.+'
             repeat: { min: 0 }
   release-channel:
-    schema:
-      frontmatter:
-        title: 'string & != ""'
-        summary: 'string & != ""'
-        registry: 'string & != ""'
-        credential: 'string & != ""'
-        job: 'string & != ""'
-        # channelurl + weight drive the homepage "Distributed
-        # via" strip (website/layouts/partials/logos-strip.html),
-        # which ranges these docs instead of a data file.
-        # Not `url`: Hugo treats a front-matter `url` as a page
-        # URL override and rejects an absolute http(s) value.
-        channelurl: 'string & =~ "^https?://"'
-        weight: 'int & >=1'
-      closed: false
-      sections:
-        - heading: null
-        - heading:
-            regex: '.+'
-            repeat: { min: 0 }
+    path-pattern: "docs/development/release-channels/{proto.md,*.md}"
+    rules:
+      required-structure:
+        schema: docs/development/release-channels/proto.md
   secret-rotation:
     schema:
       frontmatter:

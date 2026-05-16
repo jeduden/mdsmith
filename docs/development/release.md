@@ -21,7 +21,7 @@ Each channel has its own file under
 `mdsmith fix`.
 
 <?catalog
-glob: "release-channels/*.md"
+glob: ["release-channels/*.md", "!release-channels/proto.md"]
 sort: title
 header: |
   | Channel | Release page | Credential |
