@@ -9,7 +9,6 @@
 <div class="feature-grid">
   {{- with $features }}
     {{ range .Pages.ByWeight }}
-      {{ $p := . }}
       <a class="feature-card" href="{{ .RelPermalink }}">
         <span class="icon" aria-hidden="true">
           <i data-lucide="{{ .Params.icon | default "check" }}" width="18" height="18"></i>
@@ -17,13 +16,11 @@
         <h3>{{ .Title }}</h3>
         {{/* Inline render so the summary's inline markup
              (code spans, links) does not nest a block <p>
-             inside this wrapping <p>. Guarded so a page with
-             no/blank summary degrades instead of failing the
-             whole homepage build (the `feature` kind also
-             requires summary, so this is defense in depth). */}}
-        {{ with .Params.summary }}
-          <p>{{ $p.RenderString (dict "display" "inline") . }}</p>
-        {{ end }}
+             inside this wrapping <p>. summary is required by
+             the `feature` kind's schema, so `mdsmith check`
+             fails on an incomplete page before it can ship —
+             no template-side guard needed. */}}
+        <p>{{ .RenderString (dict "display" "inline") .Params.summary }}</p>
         {{ with .Params.rules }}
           <div class="feature-rules">
             {{ range . }}<span class="rule-chip">{{ . }}</span>{{ end }}

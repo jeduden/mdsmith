@@ -55,3 +55,38 @@ The build, Go Report Card, and coverage badges at the top of the
 README report live project health. mdsmith lints its own docs
 with the rules it ships, and a coverage gate blocks merges that
 drop below the line.
+
+**[File kinds and schemas](file-kinds-schemas.md).**
+Tag each file with a kind, then validate its headings and front
+matter against a schema declared inline on the kind or shared via
+a `proto.md` template. A whole directory obeys one contract.
+
+**[Conventions and flavors](markdown-conventions.md).**
+Pin a convention to get a curated rule preset and a target
+renderer flavor in one switch. `MDS034` flags syntax the flavor
+will not render. A placeholder vocabulary spares template tokens.
+
+**[Build artifacts in sync](build-artifacts.md).**
+`<?build?>` declares an artifact and a recipe. `mdsmith fix`
+keeps the section body in sync with the recipe output. `MDS040`
+shell-safety-checks the recipe without running it.
+
+**[Git-native, conflict-free](git-native.md).**
+A merge driver auto-resolves conflicts inside generated blocks.
+A pre-merge-commit hook re-runs `mdsmith fix` and re-stages the
+result, so generated content never blocks a merge.
+
+**[Config you can explain](config-transparency.md).**
+Config layers deep-merge rule by rule: defaults, convention,
+kinds, then overrides. `--explain` and `mdsmith kinds resolve`
+show which layer set each effective value.
+
+**[Editors and agents](editor-agent-integration.md).**
+A bundled VS Code extension and Claude Code plugins drive the
+same `mdsmith lsp` server, so diagnostics, fix-on-save, and
+navigation reach your editor and your coding agent unchanged.
+
+**[Installs everywhere](install-everywhere.md).**
+One version-stamped Go binary ships through go install, npm,
+pip, uvx, mise, asdf, and GitHub Releases. No postinstall
+network call, so locked-down CI installs offline.
