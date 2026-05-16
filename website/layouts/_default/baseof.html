@@ -34,6 +34,14 @@
         document.addEventListener("scroll", onScroll, { passive: true });
         onScroll();
       }
+      const sideToggle = document.querySelector(".docs-side-toggle");
+      const sideNav = document.getElementById("docs-nav");
+      if (sideToggle && sideNav) {
+        sideToggle.addEventListener("click", () => {
+          const open = sideNav.classList.toggle("is-open");
+          sideToggle.setAttribute("aria-expanded", open ? "true" : "false");
+        });
+      }
       document.querySelectorAll("[data-copy]").forEach(btn => {
         btn.addEventListener("click", async () => {
           const text = btn.getAttribute("data-copy");

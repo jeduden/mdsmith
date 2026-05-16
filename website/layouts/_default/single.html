@@ -18,7 +18,7 @@
       <div class="docs-prose">
         <h1>{{ .Title }}</h1>
         {{ with .Params.summary }}<p class="lead">{{ . }}</p>{{ end }}
-        {{ .Content }}
+        {{ partial "link-rules.html" . }}
       </div>
     </article>
   </div>

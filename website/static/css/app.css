@@ -463,6 +463,11 @@ main {
   max-height: calc(100vh - 100px);
   overflow-y: auto;
 }
+/* The collapse toggle is a mobile-only affordance: on desktop
+   the sidebar is always shown, so the button stays hidden and
+   the nav renders unconditionally. */
+.docs-side-toggle { display: none; }
+.docs-side-nav { display: block; }
 .docs-side-group { margin-bottom: 22px; }
 .docs-side-title {
   font-family: var(--font-mono);
@@ -821,6 +826,17 @@ a.docs-side-title:hover, a.docs-side-title.is-active { color: var(--accent); tex
 .chip.cat-accessibility { background: #DDF0E5; border-color: #2A8E5A; color: #1f5e3e; }
 .chip.cat-line       { background: var(--steel-50);  border-color: var(--steel-300); color: var(--steel-700); }
 
+/* Auto-linked rule references (render-codespan hook). Keep the
+   code-span look; add a subtle accent + underline so it reads
+   as a link without losing the monospace token styling. */
+a.rule-ref { text-decoration: none; }
+a.rule-ref code {
+  color: var(--accent);
+  border-color: var(--forge-200);
+  cursor: pointer;
+}
+a.rule-ref:hover code { text-decoration: underline; }
+
 /* ========== UTIL ========== */
 .muted { color: var(--fg-muted); }
 .subtle { color: var(--fg-subtle); }
@@ -831,8 +847,38 @@ a.docs-side-title:hover, a.docs-side-title.is-active { color: var(--accent); tex
   .hero h1 { font-size: 44px; }
   .feature-grid { grid-template-columns: 1fr; }
   .docs-index { grid-template-columns: 1fr; }
-  .docs-grid { grid-template-columns: 1fr; }
-  .docs-side { position: static; max-height: none; }
+  .docs-grid { grid-template-columns: 1fr; gap: 20px; }
+  /* Standard mobile pattern: the long docs nav collapses
+     behind a disclosure so page content sits directly under
+     the breadcrumb instead of below the entire tree. The
+     aside shrinks to just the toggle until expanded. */
+  .docs-side {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .docs-side-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+    background: var(--steel-50);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .docs-side-toggle i { transition: transform 0.15s ease; }
+  .docs-side-toggle[aria-expanded="true"] i { transform: rotate(180deg); }
+  .docs-side-nav { display: none; padding: 14px 0 4px; }
+  .docs-side-nav.is-open { display: block; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .pg { grid-template-columns: 1fr; height: auto; }
   .pg-pane + .pg-pane { border-left: 0; border-top: 1px solid var(--border); }

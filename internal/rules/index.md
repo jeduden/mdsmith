@@ -1,5 +1,6 @@
 ---
 title: Rule Directory
+weight: 40
 summary: >-
   Complete list of all mdsmith rules with category, status, and
   description, generated from rule READMEs.

@@ -1,4 +1,5 @@
 ---
+weight: 10
 summary: CLI commands, flags, exit codes, and output format.
 ---
 # CLI Reference

@@ -1,5 +1,6 @@
 ---
 title: Development
+weight: 60
 summary: Build commands, project layout, code style, test fixtures, coverage gate, and merge conflicts.
 ---
 

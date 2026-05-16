@@ -1,5 +1,6 @@
 ---
 title: Schemas
+weight: 30
 summary: >-
   Declare a document-structure schema inline on a kind
   or in a proto.md file, validate headings and front

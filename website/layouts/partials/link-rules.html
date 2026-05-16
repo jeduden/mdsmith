@@ -1,0 +1,28 @@
+{{- /* Structurally auto-link rule mentions. Any inline-code
+       token that is exactly a rule id (`MDS027`) or the
+       id-with-name page-directory form
+       (`MDS027-cross-file-reference-integrity`) is rewritten
+       to a link to that rule's page. Authors write nothing
+       special — putting a rule code in a code span is enough —
+       so the link cannot drift and no wiki-link syntax has to
+       be remembered.
+
+       Hugo has no inline-code render hook, so this runs as a
+       post-process over the already-rendered `.Content`
+       instead. Only `<code>…</code>` spans match, so rule
+       codes in prose, headings, links, or tables are left
+       alone (the user asked for backticked mentions only).
+       Rule-shaped tokens with no published page (a docs tree
+       built without internal/rules/index.md → empty map) are
+       left as plain code. A rule page does not self-link. */ -}}
+{{- $content := .Content -}}
+{{- $self := .RelPermalink -}}
+{{- $rules := partialCached "rule-index.html" . -}}
+{{- range $id, $url := $rules -}}
+  {{- if ne $url $self -}}
+    {{- $re := printf `<code>(%s(?:-[a-z0-9-]+)?)</code>` $id -}}
+    {{- $repl := printf `<a class="rule-ref" href="%s"><code>$1</code></a>` $url -}}
+    {{- $content = replaceRE $re $repl $content -}}
+  {{- end -}}
+{{- end -}}
+{{- $content | safeHTML -}}
