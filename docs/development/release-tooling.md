@@ -47,17 +47,17 @@ setup step.
 
 ## Subcommands
 
-| Subcommand                 | Invoked by                     |
-|----------------------------|--------------------------------|
-| `stamp <version>`          | `release.yml` publishing jobs  |
-| `publish-release`          | `release.yml` release job      |
-| `check`                    | `ci.yml` version-guard         |
-| `build-npm <art> <out>`    | `release.yml` npm job          |
-| `build-wheels <art> <out>` | `release.yml` pypi job         |
-| `sync-docs <src> <dst>`    | composed by `build-website`    |
-| `build-website [flags]`    | `release.yml` pages-deploy job |
-| `check-secret-rotations`   | `secret-rotation-reminder.yml` |
-| `record-rotation <t> <d>`  | `record-secret-rotation.yml`   |
+| Subcommand                 | Invoked by                                 |
+|----------------------------|--------------------------------------------|
+| `stamp <version>`          | `release.yml` publishing jobs; `pages.yml` |
+| `publish-release`          | `release.yml` release job                  |
+| `check`                    | `ci.yml` version-guard                     |
+| `build-npm <art> <out>`    | `release.yml` npm job                      |
+| `build-wheels <art> <out>` | `release.yml` pypi job                     |
+| `sync-docs <src> <dst>`    | composed by `build-website`                |
+| `build-website [flags]`    | `pages.yml` deploy job                     |
+| `check-secret-rotations`   | `secret-rotation-reminder.yml`             |
+| `record-rotation <t> <d>`  | `record-secret-rotation.yml`               |
 
 Each subcommand lives under `cmd/mdsmith-release/`.
 It delegates to a function in `internal/release/`.

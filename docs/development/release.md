@@ -1,11 +1,12 @@
 ---
 title: Release Pipeline
 summary: >-
-  How tag pushes publish mdsmith to npm, PyPI, the
-  Visual Studio Marketplace, Open VSX, and GitHub
-  Releases — the workflow structure, the OIDC trusted
-  publishers it relies on, the `release` environment
-  that gates every publishing job, and the
+  How a maintainer-dispatched workflow run publishes
+  mdsmith to npm, PyPI, the Visual Studio Marketplace,
+  Open VSX, and GitHub Releases — the workflow
+  structure, the OIDC trusted publishers it relies on,
+  the `release` environment that gates every publishing
+  job, the separate website deploy, and the
   supply-chain hardening features baked into the
   pipeline.
 ---
@@ -38,26 +39,28 @@ row: "| [{title}]({filename}) | {credential} |"
 
 ## Triggering a Release
 
-A maintainer tags the commit and pushes:
+A maintainer opens the **Release** workflow in the
+Actions tab, clicks **Run workflow**, enters the
+version (e.g. `v0.13.0`), and confirms. The run pauses
+on the `release` environment's required-reviewer gate;
+one approval releases every channel.
 
-```bash
-git tag v0.13.0
-git push origin v0.13.0
-```
+`release.yml` triggers solely on `workflow_dispatch`
+with a required `version` input. It does not trigger
+on `push`, tags, the `release` event,
+`pull_request_target`, or `workflow_run`. The Releases
+UI cannot drive the pipeline directly. A draft release
+never creates a tag. The pipeline also owns the
+release object (draft → upload → publish), so an
+externally created release would collide.
 
-Pushing a `v*` tag is the only release trigger.
-`release.yml` listens solely to `push` on `v*` tags.
-Creating a release through the GitHub UI does **not**
-work: a *draft* release never creates a git tag, so
-no `push` (or `create`) event fires, and GitHub fires
-no `release` event for draft creation. The maintainer
-must push the tag.
-
-`release.yml` omits `workflow_dispatch`,
-`pull_request_target`, `workflow_run`, `create`, and
-`release`. Those triggers can mint OIDC tokens or
-reach the PATs from a non-tag context, and none of
-them fire reliably for the draft-first publish flow.
+The `release` job creates the tag itself: `tag_name` and
+`target_commitish` on the `action-gh-release` step
+point it at the dispatched commit (the branch chosen
+in the form, normally `main`). A `preflight` job
+validates the `version` input first. It is read
+through an env var, never interpolated into a shell.
+So a typo fails fast and nothing publishes.
 
 The `release` job uploads every asset to a **draft**
 release first. It then publishes the draft as a
@@ -89,20 +92,29 @@ job that holds a credential is also gated by
 `if: github.repository == 'jeduden/mdsmith'` and
 runs in the `release` GitHub environment.
 
-`pages-deploy` builds [mdsmith.dev](https://mdsmith.dev/)
-from `website/` and deploys it to GitHub Pages. The job
-runs independently of the publish chain, so a flaky
-registry publish does not block the docs deploy. It
-sits in the `github-pages` environment, GitHub's
-built-in Pages protection boundary, not the `release`
-environment. It gates on the `build` job, so a tag that
-fails to compile never deploys docs.
+The website deploy is a **separate workflow**,
+`.github/workflows/pages.yml`. It builds
+[mdsmith.dev](https://mdsmith.dev/) from `website/`
+and deploys it to GitHub Pages. It runs on every push
+to `main` that touches `docs/**` or `website/**`, so a
+docs change ships the site with no tool release and no
+`release`-environment approval. A tool release also
+ships the site: `release.yml`'s `pages` job calls
+`pages.yml` (passing the release version) and gates on
+`build`, so a release whose binaries do not compile
+never deploys docs. The publish is asymmetric — a tool
+release implies a website deploy, but a website deploy
+does not imply a tool release. `pages.yml` sits in the
+`github-pages` environment, GitHub's built-in Pages
+protection boundary, not the `release` environment.
 
-The build step calls `mdsmith-release build-website
+`pages.yml` calls `mdsmith-release build-website
 --no-fix ./docs ./website/content/docs`. That snapshots
 the source-of-truth `docs/` tree into the Hugo content
 tree. `--no-fix` is used because `docs/` is already
-lint-clean on main; CI must not mutate it.
+lint-clean on main; CI must not mutate it. It resolves
+the version to stamp from the caller input (a tool
+release) or the latest `v*` tag (a docs-only push).
 
 ## OIDC Trusted Publishing
 
@@ -119,12 +131,19 @@ every package listed in
 That page is the canonical list. This doc does
 not duplicate it.
 
-| Field       | Value                                                 |
-|-------------|-------------------------------------------------------|
-| Repository  | `jeduden/mdsmith`                                     |
-| Workflow    | `release.yml`                                         |
-| Environment | `release`                                             |
-| Ref         | `refs/tags/v*` (the most specific pattern npm allows) |
+| Field       | Value             |
+|-------------|-------------------|
+| Repository  | `jeduden/mdsmith` |
+| Workflow    | `release.yml`     |
+| Environment | `release`         |
+| Ref         | `refs/heads/main` |
+
+The run is dispatched from a branch, not a tag, so
+the OIDC `ref` claim is `refs/heads/main` (the
+Run-workflow source), not `refs/tags/v*`. The primary
+pin is `environment=release` plus the required
+reviewer; the `ref` row narrows it to the release
+branch.
 
 Packages that do not exist yet are configured as
 [pending publishers](https://docs.npmjs.com/trusted-publishers)
@@ -170,11 +189,11 @@ and PyPI Trusted Publisher configs above.
 Configure the environment at
 <https://github.com/jeduden/mdsmith/settings/environments>:
 
-| Setting                      | Value                           |
-|------------------------------|---------------------------------|
-| Required reviewers           | jeduden                         |
-| Wait timer                   | 5 minutes (cancellation window) |
-| Deployment branches and tags | Selected — protected tags: `v*` |
+| Setting                      | Value                               |
+|------------------------------|-------------------------------------|
+| Required reviewers           | jeduden                             |
+| Wait timer                   | 5 minutes (cancellation window)     |
+| Deployment branches and tags | Selected — protected branch: `main` |
 
 Without these protections the `environment` claim is
 purely decorative. The Trusted Publishers reject any
@@ -211,7 +230,7 @@ enough.
 - **Sigstore keyless signatures** (cosign 3.x with
   `--bundle`) on `checksums.txt`. The signing
   certificate's subject is the `release.yml` workflow
-  on this repository at the tag that triggered it.
+  on this repository for the dispatched run.
 - **`release` GitHub environment** gating every
   publishing job behind required-reviewer rules.
 - **`if: github.repository == 'jeduden/mdsmith'`** on
@@ -267,8 +286,8 @@ place.
    with the values in the table above.
 2. [ ] Add the npm Trusted Publisher to every
    published package with `environment=release` and
-   `ref=refs/tags/v*` (see the npm Trusted Publisher
-   section above for the package list).
+   `ref=refs/heads/main` (see the npm Trusted
+   Publisher section above for the package list).
 3. [ ] Add the PyPI Trusted Publisher with the same
    environment scope.
 4. [ ] Enable `2fa-required` on every npm package.
@@ -277,8 +296,9 @@ place.
 6. [ ] Enable branch protection on `main` requiring
    CODEOWNERS review for the paths in
    `.github/CODEOWNERS`.
-7. [ ] Enable required signed tags for `v*` so an
-   unsigned tag cannot trigger a release.
+7. [ ] Keep the `release` environment's required
+   reviewer set: it is the only release gate, since
+   the workflow (not a maintainer) creates the tag.
 
 ## Verifying a Released Artifact
 
