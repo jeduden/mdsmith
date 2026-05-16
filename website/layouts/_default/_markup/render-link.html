@@ -1,0 +1,117 @@
+{{- /* Render-link hook: rewrite repo-relative hrefs to
+       Hugo's resolved page URLs, and adjust site-absolute
+       hrefs to honour the configured baseURL.
+
+       Source docs link sibling pages by relative path
+       (`[CLI](../reference/cli.md)`) so the markdown stays
+       filesystem-valid for MDS027. The site's URL layout
+       is one level deeper than the source: a markdown file
+       at `docs/guides/foo.md` renders at
+       `/docs/guides/foo/`. A relative href resolved from
+       that rendered URL therefore lands one directory
+       below where the source intended — for example
+       `../reference/globs.md` from `docs/guides/file-kinds.md`
+       would resolve to `/docs/guides/reference/globs/`
+       instead of `/docs/reference/globs/`. Stripping `.md`
+       alone does not fix that mismatch.
+
+       Hugo's `.Page.GetPage` resolves a source-relative
+       path to a Page and returns its absolute
+       `.RelPermalink`, which already accounts for the
+       deeper rendering URL. We try GetPage first for any
+       relative target. If it succeeds (typically every
+       link into another docs page, including section
+       indexes), we use the page's permalink and append any
+       fragment. GetPage misses fall back to a path-only
+       fix-up (strip a trailing `.md`, collapse
+       `index.md`/`_index.md` to the directory) so a stray
+       non-Page target (e.g. a resource file) still
+       renders sensibly.
+
+       For site-absolute hrefs (the rewriter emits
+       `/docs/rules/<id>/` for cross-rule and docs-to-rule
+       references), we run them through `relURL` so a
+       deploy with a non-root `--baseURL`
+       (e.g. https://example.com/mdsmith/) gets the
+       configured prefix. Without this, Pages served from a
+       subpath would 404 on every rewritten link.
+       Fragments pass through unchanged. External URLs
+       (http(s), mailto) and fragment-only links bypass
+       both branches — they are already in the right form
+       or page-local.
+
+       `safeURL` would mark the URL as pre-sanitized and
+       skip Go html/template's built-in escaping, which
+       would let a `javascript:` or `data:` href in the
+       source markdown pass straight through. Without it,
+       Go neutralizes unknown schemes (rewriting them to
+       `#ZgotmplZ`) while still preserving legitimate path
+       characters in clean URLs — the right default. */ -}}
+
+{{- $url := .Destination -}}
+{{- $external := or
+  (strings.HasPrefix $url "http://")
+  (strings.HasPrefix $url "https://")
+  (strings.HasPrefix $url "mailto:")
+  (strings.HasPrefix $url "//") -}}
+{{- /* `//example.com/path` is a protocol-relative external URL,
+       not a site-absolute path. Treating it as $absolute would
+       prefix it with `site.Home.RelPermalink` and emit
+       `/mdsmith//example.com/path`, corrupting the link. The
+       protocol-relative check sits in $external so the value
+       passes through unchanged. */ -}}
+{{- $anchorOnly := strings.HasPrefix $url "#" -}}
+{{- $absolute := and (strings.HasPrefix $url "/") (not $external) -}}
+
+{{- if $absolute -}}
+  {{- /* Hugo's `relURL` returns absolute paths unchanged
+         even under a non-root --baseURL, so the rewriter's
+         site-absolute targets need a manual prefix from
+         `site.Home.RelPermalink` (which IS the baseURL
+         path with a trailing slash — `/` for root,
+         `/mdsmith/` for project-pages). Trim its trailing
+         slash so concatenation does not produce `//docs`. */ -}}
+  {{- $parts := split $url "#" -}}
+  {{- $path := index $parts 0 -}}
+  {{- $frag := "" -}}
+  {{- if gt (len $parts) 1 -}}
+    {{- $frag = printf "#%s" (delimit (after 1 $parts) "#") -}}
+  {{- end -}}
+  {{- $sitePrefix := strings.TrimSuffix "/" site.Home.RelPermalink -}}
+  {{- $url = printf "%s%s%s" $sitePrefix $path $frag -}}
+{{- else if not (or $external $anchorOnly) -}}
+  {{- $parts := split $url "#" -}}
+  {{- $path := index $parts 0 -}}
+  {{- $frag := "" -}}
+  {{- if gt (len $parts) 1 -}}
+    {{- $frag = printf "#%s" (delimit (after 1 $parts) "#") -}}
+  {{- end -}}
+
+  {{- $resolved := "" -}}
+  {{- with .Page.GetPage $path -}}
+    {{- $resolved = .RelPermalink -}}
+  {{- end -}}
+
+  {{- if $resolved -}}
+    {{- $url = printf "%s%s" $resolved $frag -}}
+  {{- else if strings.HasSuffix $path "/index.md" -}}
+    {{- $url = printf "%s%s" (strings.TrimSuffix "index.md" $path) $frag -}}
+  {{- else if strings.HasSuffix $path "/_index.md" -}}
+    {{- $url = printf "%s%s" (strings.TrimSuffix "_index.md" $path) $frag -}}
+  {{- else if or (eq $path "index.md") (eq $path "_index.md") -}}
+    {{- $url = printf "./%s" $frag -}}
+  {{- else if strings.HasSuffix $path ".md" -}}
+    {{- $url = printf "%s/%s" (strings.TrimSuffix ".md" $path) $frag -}}
+  {{- end -}}
+{{- end -}}
+{{- /* .Title is the Markdown link title — raw text that has
+       not been through Hugo's contextual escaper. Emitting it
+       with `safeHTML` would bypass the attribute escaper and
+       let a `"`/`>` in the title break out of the href's
+       sibling attribute. Letting Go's html/template see the
+       string in `attr="…"` context produces the right
+       per-context escaping. (.Text stays on safeHTML because
+       it already arrives as rendered HTML from Hugo — the
+       renderer applies any inline emphasis or code spans in
+       the link text before this hook fires.) */ -}}
+<a href="{{ $url }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>

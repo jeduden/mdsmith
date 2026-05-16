@@ -20,36 +20,40 @@
         {{ with .Params.summary }}<p class="lead">{{ . }}</p>{{ end }}
         {{ .Content }}
 
-        {{- /* Section index: list child subsections as grouped
-               cards (each with its pages) plus any direct pages.
-               Replaces the old flat <ul> that ignored
-               subsections, which is why /docs/ looked
-               unstructured and Background never showed. */ -}}
-        {{ with .Sections.ByWeight }}
-          <div class="docs-index">
-            {{ range . }}
-              <section class="docs-index-group">
-                <h2><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
-                {{ with .Params.summary }}<p class="docs-index-summary">{{ . }}</p>{{ end }}
-                <ul class="docs-index-list">
-                  {{ range .Pages.ByWeight }}
-                    <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ with .Params.summary }} <span class="docs-index-desc">— {{ . }}</span>{{ end }}</li>
-                  {{ end }}
-                  {{ range .Sections.ByWeight }}
-                    <li><a href="{{ .RelPermalink }}">{{ .Title }}</a> <span class="docs-index-desc">— more pages</span></li>
-                  {{ end }}
-                </ul>
-              </section>
-            {{ end }}
-          </div>
-        {{ end }}
+        {{- /* Auto-rendered section index: only emitted when the
+               page body is empty (e.g. a synthesized stub
+               _index.md). Pages whose source carries its own
+               listing — a `<?catalog?>` table or hand-written
+               links — already render that listing inside
+               .Content above, so adding section cards or a flat
+               <ul> below would duplicate it. */ -}}
+        {{ if not .Content }}
+          {{ with .Sections.ByWeight }}
+            <div class="docs-index">
+              {{ range . }}
+                <section class="docs-index-group">
+                  <h2><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
+                  {{ with .Params.summary }}<p class="docs-index-summary">{{ . }}</p>{{ end }}
+                  <ul class="docs-index-list">
+                    {{ range .Pages.ByWeight }}
+                      <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ with .Params.summary }} <span class="docs-index-desc">— {{ . }}</span>{{ end }}</li>
+                    {{ end }}
+                    {{ range .Sections.ByWeight }}
+                      <li><a href="{{ .RelPermalink }}">{{ .Title }}</a> <span class="docs-index-desc">— more pages</span></li>
+                    {{ end }}
+                  </ul>
+                </section>
+              {{ end }}
+            </div>
+          {{ end }}
 
-        {{ with .Pages.ByWeight }}
-          <ul class="docs-index-list docs-index-flat">
-            {{ range . }}
-              <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ with .Params.summary }} <span class="docs-index-desc">— {{ . }}</span>{{ end }}</li>
-            {{ end }}
-          </ul>
+          {{ with .Pages.ByWeight }}
+            <ul class="docs-index-list docs-index-flat">
+              {{ range . }}
+                <li><a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ with .Params.summary }} <span class="docs-index-desc">— {{ . }}</span>{{ end }}</li>
+              {{ end }}
+            </ul>
+          {{ end }}
         {{ end }}
       </div>
     </article>

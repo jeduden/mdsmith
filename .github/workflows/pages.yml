@@ -18,6 +18,15 @@ on:
       # those files must redeploy the site too.
       - "internal/rules/index.md"
       - "internal/rules/MDS*/**"
+      # The link-rewrite and sync logic that generates the
+      # site lives under cmd/mdsmith-release and
+      # internal/release. A regression in those packages
+      # would corrupt the published tree silently if the
+      # workflow only ran on docs/website edits, so trigger
+      # the deploy (which runs the synced-tree lint) on any
+      # change to the generator too.
+      - "cmd/mdsmith-release/**"
+      - "internal/release/**"
       - ".github/workflows/pages.yml"
   workflow_call:
     inputs:
@@ -109,6 +118,19 @@ jobs:
         # docs/development/release-tooling.md for why this lives
         # in the release-tooling Go CLI rather than inline shell.
         run: go run ./cmd/mdsmith-release build-website --no-fix ./docs ./website/content/docs
+      - name: Lint built docs tree for broken links
+        # Run mdsmith over the synced tree with its own config
+        # (style/structure rules off, link integrity on) so any
+        # post-sync broken link or missing target fails CI before
+        # we publish. --no-gitignore is needed because
+        # website/content/docs/ is .gitignore'd. See
+        # website/build-output.mdsmith.yml for the rule set and
+        # the rationale for each disabled rule.
+        run: |
+          go run ./cmd/mdsmith check \
+            --config ./website/build-output.mdsmith.yml \
+            --no-gitignore \
+            ./website/content/docs
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         id: pages
       - name: Build site
@@ -122,6 +144,45 @@ jobs:
           # template-expansion vulnerability).
           BASE_URL: ${{ steps.pages.outputs.base_url }}
         run: hugo --minify --baseURL "${BASE_URL}/"
+      - name: Verify render-link hook output
+        # The render-link hook
+        # (website/layouts/_default/_markup/render-link.html) does
+        # the source-relative → permalink resolution, baseURL
+        # prefixing, and scheme sanitization. None of that is
+        # visible to the synced-tree mdsmith check (it operates
+        # on the markdown filesystem, pre-render). Probe the
+        # rendered HTML for representative cases via a Go
+        # subcommand so a regression breaks CI here rather than
+        # silently shipping a site full of 404s. The probes
+        # (and their regexes that tolerate both quoted and
+        # minified href forms) live in
+        # internal/release/verifylinks.go with unit-test
+        # coverage rather than as inline YAML shell, per the
+        # convention in docs/development/release-tooling.md.
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          go run ./cmd/mdsmith-release verify-website-links \
+            --dir ./website/public --base-url "$BASE_URL"
+      - name: Verify baseURL prefix on absolute hrefs
+        # The rewriter emits site-absolute `/docs/...` URLs into
+        # the synced markdown. The render-link hook runs them
+        # through relURL so a non-root --baseURL deploy
+        # (Pages served from a subpath) gets the configured
+        # prefix. Build a second copy with a fake subpath
+        # baseURL and re-run the same Go probe against it; the
+        # subcommand uses the supplied baseURL's path component
+        # as the expected prefix. The build output goes to a
+        # throwaway destination so it does not displace the
+        # real artifact.
+        working-directory: website
+        run: |
+          hugo --minify --baseURL "https://example.com/mdsmith/" \
+            --destination /tmp/baseurl-probe
+          cd ..
+          go run ./cmd/mdsmith-release verify-website-links \
+            --dir /tmp/baseurl-probe \
+            --base-url "https://example.com/mdsmith/"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: website/public

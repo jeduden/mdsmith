@@ -1,0 +1,98 @@
+# Lint config for the Hugo content tree under
+# website/content/docs/, produced by `mdsmith-release
+# build-website`. That tree is gitignored and regenerated
+# on every build, so it carries its own config rather than
+# inheriting the strict project config at the repo root —
+# sync transforms (H1 → front-matter title lift, directive-
+# marker strip, link rewrites, `index.md` → `_index.md`
+# rename) legitimately reshape files in ways that violate
+# the stylistic rules the source tree passes.
+#
+# Scope of validation: MDS027 only walks the goldmark AST
+# Link nodes that linkgraph.ExtractLinks exposes, so this
+# config catches broken **inline** Markdown link targets in
+# the rewritten output — e.g. a docs page that kept a
+# relative `.md` reference the rewriter missed, or an
+# `index.md` rename that points at a directory the sync did
+# not produce. Four classes of breakage are NOT covered:
+#
+# - Image targets (`![alt](target)`): linkgraph walks only
+#   *ast.Link, not *ast.Image.
+# - Reference-style links (`[label]: target`): linkgraph
+#   skips them so the per-link walk never sees them.
+# - Code-block contents: a `[…](…)`-shaped sequence inside
+#   a fenced or inline span parses as code text, not a
+#   Link node.
+# - Site-absolute targets (`/docs/rules/<id>/`,
+#   `/docs/<page>/`): MDS027 short-circuits absolute paths.
+#
+# The rewriter emits each rewritten URL form with unit-test
+# coverage (internal/release/syncdocs_test.go,
+# website_test.go); Hugo's build step is the second guard.
+# A render-link hook
+# (website/layouts/_default/_markup/render-link.html) strips
+# the `.md` (and `_index.md`/`index.md`) suffix from every
+# relative href so the synced markdown stays
+# filesystem-valid for this check while the rendered HTML
+# uses Hugo's extensionless directory URLs. A follow-up
+# could add a Hugo-aware end-to-end link check for the
+# absolute-target gap above.
+#
+# Used from CI via `mdsmith check --config
+# website/build-output.mdsmith.yml --no-gitignore
+# website/content/docs/`.
+
+front-matter: true
+
+rules:
+  # Cross-file integrity: this is the entire point of
+  # running the lint over the synced tree. strict: true so
+  # non-Markdown link targets (image files, scripts, …)
+  # are also checked.
+  cross-file-reference-integrity:
+    strict: true
+
+  # Disabled — sync transforms break the rule's assumptions
+  # rather than producing real diagnostics:
+  #
+  # - first-line-heading / heading-increment: the source
+  #   H1 is lifted to front-matter `title:` by
+  #   reconcileDocForHugo, so the body's first heading is
+  #   level 2. Synthesized stub _index.md files have only
+  #   front matter and no body heading at all, which both
+  #   rules flag.
+  # - no-multiple-blanks: stripping <?include?> /
+  #   <?catalog?> markers can leave adjacent blank lines
+  #   that no longer separate a marker from its body.
+  # - single-trailing-newline: front-matter: true strips
+  #   the YAML block before rules see the body. A
+  #   synthesized stub _index.md has only front matter, so
+  #   the post-strip body is empty and MDS009 reports an
+  #   empty file. The source stub itself is well-formed.
+  # - line-length / max-file-length / paragraph-structure /
+  #   paragraph-readability / token-budget / table-format /
+  #   table-readability: catalog and include outputs in
+  #   the synced tree can have row widths, paragraph
+  #   shapes, and section lengths the source-side limits
+  #   were not tuned for.
+  # - no-emphasis-as-heading: catalog-generated bold table
+  #   labels and feature-card headers can trip the
+  #   emphasis-as-heading detector on the rendered output.
+  # - required-structure: schemas target the
+  #   docs/-tree shape (paths, filenames, front matter);
+  #   the synced tree has different paths
+  #   (website/content/docs/...) and different filenames
+  #   (_index.md), so every schema mismatches.
+  first-line-heading: false
+  heading-increment: false
+  no-multiple-blanks: false
+  single-trailing-newline: false
+  line-length: false
+  max-file-length: false
+  paragraph-structure: false
+  paragraph-readability: false
+  table-format: false
+  table-readability: false
+  required-structure: false
+  no-emphasis-as-heading: false
+  token-budget: false

@@ -608,6 +608,205 @@ func TestReconcileDocForHugo_StripNoOp(t *testing.T) {
 	}
 }
 
+// ghBlob / ghTree / rulesBase short-name the URL prefixes that
+// would otherwise blow past the golangci-lint `lll` (line-length)
+// cap in every expected-output literal below. Tests append the
+// rest of the path inline.
+const (
+	ghBlob    = "https://github.com/jeduden/mdsmith/blob/main/"
+	ghTree    = "https://github.com/jeduden/mdsmith/tree/main/"
+	rulesBase = "/docs/rules/"
+)
+
+// transformCase pairs an input markdown body with the expected
+// transformMarkdown output so every test below can share the
+// same runTransformCases driver.
+type transformCase struct {
+	name string
+	in   string
+	want string
+}
+
+func runTransformCases(t *testing.T, cases []transformCase) {
+	t.Helper()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, string(transformMarkdown([]byte(tc.in))))
+		})
+	}
+}
+
+// TestTransformMarkdown_RewritesRuleLinks: docs that link into
+// internal/rules/ (any `../` depth, with or without README.md,
+// inline or reference-style) must come out pointing at the
+// published /docs/rules/<dir>/ URL. The same link works on
+// GitHub because the source tree still has internal/rules/, but
+// that directory is not published on the site — without the
+// rewrite the link 404s.
+func TestTransformMarkdown_RewritesRuleLinks(t *testing.T) {
+	runTransformCases(t, []transformCase{
+		{
+			name: "deep inline no readme",
+			in:   "See [x](../../../../internal/rules/MDS019-catalog/).\n",
+			want: "See [x](" + rulesBase + "MDS019-catalog/).\n",
+		},
+		{
+			name: "shallow inline with readme",
+			in:   "See [x](../../internal/rules/MDS020-required-structure/README.md).\n",
+			want: "See [x](" + rulesBase + "MDS020-required-structure/).\n",
+		},
+		{
+			name: "reference-style def with readme",
+			in:   "[mds]: ../../../internal/rules/MDS027-cross-file-reference-integrity/README.md\n",
+			want: "[mds]: " + rulesBase + "MDS027-cross-file-reference-integrity/\n",
+		},
+		{
+			name: "reference-style def no readme",
+			in:   "[mds]: ../../../../internal/rules/MDS019-catalog/\n",
+			want: "[mds]: " + rulesBase + "MDS019-catalog/\n",
+		},
+		{
+			name: "already-rewritten path is unchanged",
+			in:   "See [x](" + rulesBase + "MDS019-catalog/).\n",
+			want: "See [x](" + rulesBase + "MDS019-catalog/).\n",
+		},
+		{
+			name: "deep rule link preserves anchor",
+			in:   "See [x](../../../internal/rules/MDS020-required-structure/README.md#out).\n",
+			want: "See [x](" + rulesBase + "MDS020-required-structure/#out).\n",
+		},
+	})
+}
+
+// TestTransformMarkdown_RewritesNonPublishedLinks: every
+// repo-relative link to a path outside the published trees
+// (plan/, cmd/, internal/ non-rules, .claude/, root files)
+// must rewrite to a GitHub URL. The /blob/ vs /tree/ route is
+// decided by trailing slash: files go to /blob/, directories to
+// /tree/. The reference-style sibling shares the rewrite logic.
+func TestTransformMarkdown_RewritesNonPublishedLinks(t *testing.T) {
+	runTransformCases(t, []transformCase{
+		{
+			name: "plan link → GitHub blob",
+			in:   "See [x](../../plan/154_arch.md).\n",
+			want: "See [x](" + ghBlob + "plan/154_arch.md).\n",
+		},
+		{
+			name: "internal Go source → GitHub blob",
+			in:   "See [x](../../internal/config/convention.go).\n",
+			want: "See [x](" + ghBlob + "internal/config/convention.go).\n",
+		},
+		{
+			name: "claude skill → GitHub blob",
+			in:   "See [x](../../../.claude/skills/foo/SKILL.md).\n",
+			want: "See [x](" + ghBlob + ".claude/skills/foo/SKILL.md).\n",
+		},
+		{
+			name: "repo root PLAN.md → GitHub blob",
+			in:   "See [x](../../PLAN.md).\n",
+			want: "See [x](" + ghBlob + "PLAN.md).\n",
+		},
+		{
+			name: "internal directory → GitHub tree",
+			in:   "See [x](../../internal/lint/).\n",
+			want: "See [x](" + ghTree + "internal/lint/).\n",
+		},
+		{
+			name: "reference-style def → GitHub blob",
+			in:   "[plan]: ../../plan/154_arch.md\n",
+			want: "[plan]: " + ghBlob + "plan/154_arch.md\n",
+		},
+		{
+			name: "reference-style def directory → GitHub tree",
+			in:   "[lint]: ../../internal/lint/\n",
+			want: "[lint]: " + ghTree + "internal/lint/\n",
+		},
+	})
+}
+
+// TestTransformMarkdown_DropsIndexMdFilename: Hugo serves a
+// section's _index.md at the directory URL (no filename), so a
+// relative `<path>/index.md` link in a docs body must be
+// rewritten to `<path>/` to render correctly on the site. The
+// anchor passes through; a bare `index.md` with no parent
+// directory is left alone because the resulting empty target
+// would be ambiguous.
+func TestTransformMarkdown_DropsIndexMdFilename(t *testing.T) {
+	runTransformCases(t, []transformCase{
+		{
+			name: "sibling index.md becomes section URL",
+			in:   "See [x](architecture/index.md).\n",
+			want: "See [x](architecture/).\n",
+		},
+		{
+			name: "sibling index.md with anchor",
+			in:   "See [x](architecture/index.md#section).\n",
+			want: "See [x](architecture/#section).\n",
+		},
+		{
+			name: "bare index.md with no parent dir is unchanged",
+			in:   "See [x](index.md).\n",
+			want: "See [x](index.md).\n",
+		},
+	})
+}
+
+// TestTransformMarkdown_SkipsFencedExamples: fenced code blocks
+// contain Markdown examples (rule READMEs demoing what a
+// directive rewrites, catalog-output snippets in the directive
+// guide) whose link patterns are documentation, not real
+// targets. transformMarkdown's rewrites must leave those lines
+// verbatim or the published docs misrepresent the tool.
+func TestTransformMarkdown_SkipsFencedExamples(t *testing.T) {
+	runTransformCases(t, []transformCase{
+		{
+			name: "backtick fence preserves rule-link example",
+			in:   "```markdown\nSee [r](../../internal/rules/MDS019-catalog/).\n```\n",
+			want: "```markdown\nSee [r](../../internal/rules/MDS019-catalog/).\n```\n",
+		},
+		{
+			name: "backtick fence preserves index.md example",
+			in:   "```markdown\n- [i](development/index.md)\n```\n",
+			want: "```markdown\n- [i](development/index.md)\n```\n",
+		},
+		{
+			name: "tilde fence preserves plan example",
+			in:   "~~~markdown\nSee [p](../../plan/x.md).\n~~~\n",
+			want: "~~~markdown\nSee [p](../../plan/x.md).\n~~~\n",
+		},
+		{
+			name: "fence followed by real link still rewrites the real link",
+			in:   "```markdown\n[r](../../plan/x.md)\n```\n\nSee [p](../../plan/y.md).\n",
+			want: "```markdown\n[r](../../plan/x.md)\n```\n\nSee [p](" + ghBlob + "plan/y.md).\n",
+		},
+		{
+			name: "inline code span preserves rule-link example",
+			in:   "Sample: `[r](../../internal/rules/MDS019-catalog/)` is doc.\n",
+			want: "Sample: `[r](../../internal/rules/MDS019-catalog/)` is doc.\n",
+		},
+		{
+			name: "inline code span and real link on same line",
+			in:   "Doc `[p](../../plan/x.md)` real [p](../../plan/y.md).\n",
+			want: "Doc `[p](../../plan/x.md)` real [p](" + ghBlob + "plan/y.md).\n",
+		},
+		{
+			name: "single backtick run is not a fence — rewrite continues",
+			in:   "Prose with one `tick` and [p](../../plan/y.md).\n",
+			want: "Prose with one `tick` and [p](" + ghBlob + "plan/y.md).\n",
+		},
+		{
+			name: "line starting with one backtick does not open a fence",
+			in:   "`code line`\n\n[p](../../plan/y.md)\n",
+			want: "`code line`\n\n[p](" + ghBlob + "plan/y.md)\n",
+		},
+		{
+			name: "closing fence with leading spaces still ends fence",
+			in:   "```markdown\n[r](../../plan/a.md)\n   ```\n\nReal [p](../../plan/b.md).\n",
+			want: "```markdown\n[r](../../plan/a.md)\n   ```\n\nReal [p](" + ghBlob + "plan/b.md).\n",
+		},
+	})
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))

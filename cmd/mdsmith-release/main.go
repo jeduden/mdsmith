@@ -13,6 +13,7 @@
 //	mdsmith-release build-wheels <artifacts-dir> <out-dir>
 //	mdsmith-release sync-docs <src-dir> <dst-dir>
 //	mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]
+//	mdsmith-release verify-website-links --dir <html-dir> [--base-url <url>]
 //	mdsmith-release publish-release
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
@@ -43,6 +44,8 @@ Commands:
   sync-docs <src> <dst>           Snapshot docs/ into a Hugo content tree.
   build-website [--no-fix] [src] [dst]
                                   mdsmith fix (unless --no-fix) + sync-docs.
+  verify-website-links --dir <dir> [--base-url <url>]
+                                  Probe rendered HTML for render-link regressions.
   publish-release                 Flip the tag's draft release to published.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
@@ -79,6 +82,8 @@ func run(args []string) int {
 		return runSyncDocs(root, rest)
 	case "build-website":
 		return runBuildWebsite(root, rest)
+	case "verify-website-links":
+		return runVerifyWebsiteLinks(root, rest)
 	case "publish-release":
 		return runPublishRelease(root, rest)
 	case "check-secret-rotations":
@@ -237,6 +242,35 @@ func runBuildWebsite(_ string, args []string) int {
 		dst = fs.Arg(1)
 	}
 	return reportError(release.BuildWebsite(src, dst, !*noFix))
+}
+
+func runVerifyWebsiteLinks(_ string, args []string) int {
+	fs := flag.NewFlagSet("verify-website-links", flag.ContinueOnError)
+	dir := fs.String("dir", "",
+		"path to the Hugo output directory (usually website/public)")
+	baseURL := fs.String("base-url", "",
+		"baseURL Hugo was built with — its path component is the expected prefix on site-absolute hrefs")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr,
+			"Usage: mdsmith-release verify-website-links --dir <dir> [--base-url <url>]\n\n"+
+				"Probe the rendered HTML in <dir> for the rewrites the\n"+
+				"render-link hook is responsible for: sibling `.md` →\n"+
+				"page permalink, `index.md` drop → section URL, no\n"+
+				"unpublished `README.md` hrefs in rule pages,\n"+
+				"javascript:/data: hrefs neutralized, and the configured\n"+
+				"baseURL prefix on site-absolute hrefs. Exits non-zero on\n"+
+				"the first failed probe.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: verify-website-links"); code >= 0 {
+			return code
+		}
+	}
+	if *dir == "" {
+		fs.Usage()
+		return 2
+	}
+	return reportError(release.VerifyWebsiteLinks(*dir, *baseURL))
 }
 
 // reportFlagParseErr mirrors the helper in cmd/mdsmith/main.go:
