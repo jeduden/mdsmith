@@ -721,6 +721,16 @@ func TestTransformMarkdown_RewritesNonPublishedLinks(t *testing.T) {
 			in:   "[lint]: ../../internal/lint/\n",
 			want: "[lint]: " + ghTree + "internal/lint/\n",
 		},
+		{
+			name: "website layout file → GitHub blob",
+			in:   "See [x](../../../website/layouts/_default/_markup/render-link.html).\n",
+			want: "See [x](" + ghBlob + "website/layouts/_default/_markup/render-link.html).\n",
+		},
+		{
+			name: "website reference-style def → GitHub blob",
+			in:   "[hook]: ../../../website/layouts/_default/_markup/render-link.html\n",
+			want: "[hook]: " + ghBlob + "website/layouts/_default/_markup/render-link.html\n",
+		},
 	})
 }
 

@@ -131,6 +131,7 @@ var repoNonPublishedLink = regexp.MustCompile(
 		`cue/\S+|` +
 		`npm/\S+|` +
 		`python/\S+|` +
+		`website/\S+|` +
 		`\.claude/\S+|` +
 		`\.github/\S+|` +
 		`internal/\S+|` +
@@ -150,6 +151,7 @@ var repoNonPublishedRefDef = regexp.MustCompile(
 		`cue/\S+|` +
 		`npm/\S+|` +
 		`python/\S+|` +
+		`website/\S+|` +
 		`\.claude/\S+|` +
 		`\.github/\S+|` +
 		`internal/\S+|` +
