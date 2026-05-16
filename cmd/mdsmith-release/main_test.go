@@ -97,7 +97,7 @@ func TestReportFlagParseErrNilReturnsContinue(t *testing.T) {
 func TestSubcommandHelpExitsZero(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
-		"sync-docs", "build-website",
+		"sync-docs", "build-website", "verify-website-links",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
@@ -108,7 +108,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
-		"sync-docs", "build-website",
+		"sync-docs", "build-website", "verify-website-links",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
@@ -203,6 +203,45 @@ func TestRunBuildWebsiteEndToEnd(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dst, "top.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "top body\n", string(got))
+}
+
+// TestRunVerifyWebsiteLinksHappyPath dispatches through
+// `run verify-website-links --dir <dir>` against a
+// minimal Hugo-output fixture so the subcommand wiring
+// (required-flag check, baseURL default, reportError) is
+// exercised end-to-end.
+func TestRunVerifyWebsiteLinksHappyPath(t *testing.T) {
+	root := t.TempDir()
+	mq := filepath.Join(root, "docs", "development", "merge-queue", "index.html")
+	aa := filepath.Join(root, "docs", "development", "architecture-audit", "index.html")
+	rule := filepath.Join(root, "docs", "rules", "mds001", "index.html")
+	for _, dir := range []string{filepath.Dir(mq), filepath.Dir(aa), filepath.Dir(rule)} {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+	}
+	require.NoError(t, os.WriteFile(mq,
+		[]byte(`<a href="/docs/development/pr-fixup-workflow/">x</a>`), 0o644))
+	require.NoError(t, os.WriteFile(aa,
+		[]byte(`<a href="/docs/development/architecture/">x</a>`), 0o644))
+	require.NoError(t, os.WriteFile(rule,
+		[]byte(`<a href="/docs/rules/mds021/">x</a>`), 0o644))
+
+	assert.Equal(t, 0, run([]string{"verify-website-links", "--dir", root}))
+}
+
+// TestRunVerifyWebsiteLinksMissingDir drives the
+// required-flag branch: omitting --dir prints usage and
+// returns exit code 2 without touching the filesystem.
+func TestRunVerifyWebsiteLinksMissingDir(t *testing.T) {
+	assert.Equal(t, 2, run([]string{"verify-website-links"}))
+}
+
+// TestRunVerifyWebsiteLinksReportsError drives the
+// reportError non-nil branch: pointing at an empty
+// directory makes the first probe fail with
+// "rendered HTML not found", so runVerifyWebsiteLinks
+// must surface exit code 1.
+func TestRunVerifyWebsiteLinksReportsError(t *testing.T) {
+	assert.Equal(t, 1, run([]string{"verify-website-links", "--dir", t.TempDir()}))
 }
 
 // TestRunBuildWebsiteReportsError drives the reportError

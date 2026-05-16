@@ -127,6 +127,33 @@ func TestVerifyWebsiteLinks_MissingTargetFileWraps(t *testing.T) {
 	assert.Contains(t, err.Error(), "rendered HTML not found")
 }
 
+// TestVerifyWebsiteLinks_InvalidBaseURLWraps drives the
+// pathPrefixFromBaseURL error path. A URL with an unparsable
+// scheme returns an error before the probes run.
+func TestVerifyWebsiteLinks_InvalidBaseURLWraps(t *testing.T) {
+	err := VerifyWebsiteLinks(t.TempDir(), "://invalid")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse base url")
+}
+
+// TestVerifyWebsiteLinks_MissingRecursiveRootWraps drives
+// the WalkDir-callback error branch in walkAndReject: the
+// recursive probe root (docs/rules) does not exist, so
+// WalkDir calls the callback with a stat error.
+func TestVerifyWebsiteLinks_MissingRecursiveRootWraps(t *testing.T) {
+	root := t.TempDir()
+	// Materialize only the non-recursive probe targets so we
+	// reach the recursive `no README.md leak` probe.
+	writeFile(t, filepath.Join(root, "docs", "development", "merge-queue", "index.html"),
+		`<a href="/docs/development/pr-fixup-workflow/">x</a>`)
+	writeFile(t, filepath.Join(root, "docs", "development", "architecture-audit", "index.html"),
+		`<a href="/docs/development/architecture/">x</a>`)
+	// docs/rules is absent.
+	err := VerifyWebsiteLinks(root, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "walk")
+}
+
 func TestPathPrefixFromBaseURL(t *testing.T) {
 	cases := []struct {
 		name string

@@ -103,41 +103,45 @@ func websiteLinkProbes(prefix string) []linkProbe {
 	}
 }
 
-// runWebsiteLinkProbe evaluates one probe. For
-// non-recursive probes it reads a single file. For
-// recursive probes it walks the subtree and either reports
-// the first file matching wantNoMatch or aggregates all
-// files; wantMatch is not used with recursive=true today.
+// runWebsiteLinkProbe evaluates one probe. Recursive probes
+// walk the subtree at p.path looking for any file that
+// matches p.wantNoMatch (every recursive probe today is an
+// absence check). Non-recursive probes read the single file
+// at p.path and require it to match p.wantMatch. Splitting
+// the two modes keeps each branch reachable from at least
+// one test.
 func runWebsiteLinkProbe(root string, p linkProbe) error {
 	target := filepath.Join(root, p.path)
-	if !p.recursive {
-		data, err := readHTMLFile(target)
-		if err != nil {
-			return fmt.Errorf("verify %q: %w", p.name, err)
-		}
-		if p.wantMatch != nil && !p.wantMatch.Match(data) {
-			return fmt.Errorf("verify %q: no match for %s in %s",
-				p.name, p.wantMatch, target)
-		}
-		if p.wantNoMatch != nil && p.wantNoMatch.Match(data) {
-			return fmt.Errorf("verify %q: unwanted match for %s in %s",
-				p.name, p.wantNoMatch, target)
-		}
-		return nil
+	if p.recursive {
+		return walkAndReject(target, p)
 	}
-	if p.wantNoMatch == nil {
-		return fmt.Errorf("verify %q: recursive probe needs wantNoMatch", p.name)
+	data, err := readHTMLFile(target)
+	if err != nil {
+		return fmt.Errorf("verify %q: %w", p.name, err)
 	}
-	return filepath.WalkDir(target, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	if !p.wantMatch.Match(data) {
+		return fmt.Errorf("verify %q: no match for %s in %s",
+			p.name, p.wantMatch, target)
+	}
+	return nil
+}
+
+// walkAndReject walks every .html file under target and
+// returns an error on the first match of p.wantNoMatch. The
+// WalkDir-supplied err is propagated so a broken symlink or
+// a missing target root surfaces with the same wrapping
+// readHTMLFile would produce on a single-file probe.
+func walkAndReject(target string, p linkProbe) error {
+	return filepath.WalkDir(target, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("verify %q: walk %s: %w", p.name, path, walkErr)
 		}
 		if d.IsDir() || filepath.Ext(path) != ".html" {
 			return nil
 		}
 		data, err := readHTMLFile(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("verify %q: %w", p.name, err)
 		}
 		if p.wantNoMatch.Match(data) {
 			return fmt.Errorf("verify %q: unwanted match for %s in %s",
@@ -147,20 +151,15 @@ func runWebsiteLinkProbe(root string, p linkProbe) error {
 	})
 }
 
-// readHTMLFile reads an HTML file via the package's fs seam
-// for symmetry with the other release subcommands.
-// filepath.WalkDir bypasses the seam, so this routes through
-// it consistently for unit-test injection points.
+// readHTMLFile reads an HTML file and wraps a missing-file
+// error with a clearer message so the probe failure points
+// at the rendered tree rather than a generic open error.
 func readHTMLFile(path string) ([]byte, error) {
-	t := New()
-	data, err := t.fs.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("rendered HTML not found: %s", path)
-		}
-		return nil, fmt.Errorf("read %s: %w", path, err)
+	data, err := New().fs.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("rendered HTML not found: %s", path)
 	}
-	return data, nil
+	return data, err
 }
 
 // pathPrefixFromBaseURL returns the URL path component of
