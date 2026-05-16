@@ -60,6 +60,14 @@ func TestScopeCaptures_FmvarResolution(t *testing.T) {
 	assert.Equal(t, "RFC-7", caps["id"])
 }
 
+// An fmvar with an unparseable CUE path is skipped rather than
+// captured (scopeCaptures' len(path) == 0 guard).
+func TestScopeCaptures_InvalidFmvarPath(t *testing.T) {
+	dh := DocHeading{Level: 2, Text: "X", Line: 1}
+	sc := &Scope{Heading: "{}", Matcher: &Matcher{Regex: `\#(fmvar())`}}
+	assert.Nil(t, scopeCaptures(sc, dh, map[string]any{"": "v"}))
+}
+
 func TestBuildMatchTree_NilAndEmptySchema(t *testing.T) {
 	f := mtFile(t, "## Goal\n")
 	assert.NotNil(t, BuildMatchTree(f, nil, nil).Root)

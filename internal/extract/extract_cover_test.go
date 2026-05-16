@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
 )
 
@@ -24,6 +25,42 @@ func TestKeyFor_FallbackToHeadingSlug(t *testing.T) {
 	// heading label.
 	sc := &schema.Scope{Heading: "Weird Name", Matcher: &schema.Matcher{Regex: ""}}
 	assert.Equal(t, "weird-name", keyFor(sc))
+}
+
+// A repeating scope whose heading is only an fmvar placeholder
+// keys by the placeholder name (keyFor's fmvar fallback).
+func TestKeyFor_FmvarFallback(t *testing.T) {
+	rep := schema.Scope{
+		Heading: "{id}",
+		Matcher: &schema.Matcher{
+			Regex:  `\#(fmvar(id))`,
+			Repeat: schema.Repeat{Set: true, Min: 1},
+		},
+	}
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{rep}}
+	got, diags := run(t, "## RFC-1\n\nbody\n", sch, map[string]any{"id": "RFC-1"})
+	require.Empty(t, diags)
+	arr := got.(map[string]any)["id"].([]any)
+	require.Len(t, arr, 1)
+	assert.Equal(t, "RFC-1", arr[0].(map[string]any)["id"])
+}
+
+// Two matches of a non-repeating scope collide on the same key
+// (projectChildren's len(group) > 1 branch). The match tree's
+// in-order matcher claims only one occurrence, so this is driven
+// with a hand-built tree.
+func TestExtract_DuplicateNonRepeatingCollision(t *testing.T) {
+	sc := litScope("Goal")
+	sch := &schema.Schema{RootLevel: 2, Sections: []schema.Scope{sc}}
+	mt := &schema.MatchTree{Root: &schema.ScopeMatch{
+		Children: []*schema.ScopeMatch{
+			{Scope: &sch.Sections[0], Heading: schema.DocHeading{Text: "Goal"}},
+			{Scope: &sch.Sections[0], Heading: schema.DocHeading{Text: "Goal"}},
+		},
+	}}
+	_, diags := Extract(doc(t, "## Goal\n"), sch, mt)
+	require.NotEmpty(t, diags)
+	assert.Contains(t, diags[0].Message, "goal")
 }
 
 func TestSetKey_EmptyKeyIsCollision(t *testing.T) {
