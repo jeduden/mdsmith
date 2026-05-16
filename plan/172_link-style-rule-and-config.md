@@ -9,7 +9,7 @@ summary: >-
   from a per-kind declared relative/absolute,
   extension, and inline/reference policy, and finish
   the shared `links:` parser including the
-  external-skip list issue #47's rule reuses.
+  external-skip list that issue #47's rule reuses.
 ---
 # Link-style rule and shared links config
 

@@ -9,7 +9,7 @@ summary: >-
   absolute paths against a configured site root, and
   cover reference-style links, gated by a shared
   `links:` config block. Add a subpath-baseURL
-  regression test for the website rewriter.
+  regression test for the Hugo render-link hook.
 ---
 # MDS027 link-integrity hardening
 
