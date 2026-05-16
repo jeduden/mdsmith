@@ -21,22 +21,22 @@ model: opus
 
 ## Goal
 
-Make the build pass safe to run on an
-untrusted repo. Plan 115 wires the recipe
-through `os/exec`. Plan 117 adds the
-defenses that prevent a hostile recipe (or
-a hostile config) from escaping its
-declared inputs/outputs, leaking child
-processes, or writing where it should not.
+Make the build pass safe on an untrusted
+repo. Plan 115 wires the recipe through
+`os/exec`. Plan 117 adds the defenses that
+stop a hostile recipe or config from
+escaping its declared inputs/outputs,
+leaking child processes, or writing where
+it should not.
 
 ## Context
 
 The threat model treats both `.mdsmith.yml`
 and `<?build?>` directives as untrusted.
-Plan 115's wiring works against trusted
-input. This plan closes the gap so cloning
-a strange repo and running `mdsmith fix`
-does not detonate.
+Plan 115's wiring assumes trusted input;
+this plan closes the gap so cloning a
+strange repo and running `mdsmith fix` does
+not detonate.
 
 ## Design
 
@@ -75,12 +75,13 @@ they are presumed sandboxed.
 
 Each recipe is invoked with:
 
-- `Cmd.Env` set to a minimal allowlist:
-  `PATH=<from build.exec.path>` (default:
-  `/usr/bin:/bin` on Unix, system defaults
-  on Windows), `HOME`, `LANG`, `LC_ALL`,
-  plus any name in
-  `build.exec.env-pass-through`.
+- `Cmd.Env` is exactly `PATH` plus the
+  `build.exec.env-pass-through` names.
+  `PATH` is `build.exec.path` (default
+  `/usr/bin:/bin` on Unix). `env-pass-through`
+  is the single inheritance mechanism;
+  default `[HOME, LANG, LC_ALL]`. Nothing
+  else from the parent environment leaks in.
 - `Cmd.Dir` set to the per-recipe staging
   dir (see "Atomic write hardening" below).
 - A new process group via `Setpgid` on
@@ -165,18 +166,12 @@ issue 14543 lesson):
   or modified file outside declared
   `outputs:` is a build failure.
 
-The undeclared-write check has two known
-limits:
-
-- It only covers the parent dirs of declared
-  outputs (full-tree scans would be too
-  expensive for large repos). A recipe that
-  writes into an unrelated subtree is missed.
-- Hashing happens once before and once after
-  per file. Symlinks in the snapshot are
-  recorded via `Lstat` metadata plus
-  `os.Readlink` for the link target; mdsmith
-  never follows them.
+Two known limits. It only covers the parent
+dirs of declared outputs; full-tree scans
+are too expensive, so writes into an
+unrelated subtree are missed. Symlinks are
+snapshotted via `Lstat` metadata plus
+`os.Readlink`, never followed.
 
 PATH allowlisting and `Cmd.Dir` are for
 build determinism, not filesystem
@@ -190,13 +185,18 @@ confinement needs a sandbox.
 ```yaml
 build:
   exec:
-    path: "/usr/bin:/bin"
-    env-pass-through: [HOME, LANG, LC_ALL]
+    path: "/usr/bin:/bin:/opt/pandoc/bin"
+    env-pass-through: [HOME, LANG, LC_ALL, SOURCE_DATE_EPOCH]
 ```
 
-Both keys are optional. Defaults are listed
-above. MDS040 validates that no
-pass-through name is empty or contains `=`.
+Both keys are optional. Setting
+`env-pass-through` *replaces* the default
+`[HOME, LANG, LC_ALL]` (no append), so
+re-list the defaults you still want; the
+example adds `SOURCE_DATE_EPOCH` for
+reproducible builds. MDS040 validates that
+no pass-through name is empty or contains
+`=`.
 
 ## Tasks
 

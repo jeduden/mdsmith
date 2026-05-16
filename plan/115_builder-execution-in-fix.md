@@ -150,7 +150,11 @@ lint-fix flags.
    117 adds the hardening.
 3. Remove `build.base-url` from
    `internal/config/build.go` and its
-   tests. Drop docs that reference it.
+   tests. Add an explicit top-level-key
+   scan that errors if `build.base-url`
+   is still present (non-strict YAML would
+   otherwise ignore it silently). Drop
+   docs that reference it.
 4. Wire the build pass into `mdsmith fix`
    in `cmd/mdsmith/`. Add the five flags
    above. Print per-target summary;
@@ -201,9 +205,15 @@ lint-fix flags.
 - [ ] `mdsmith fix` exits non-zero on any
       recipe failure with per-target
       `OK | FAIL` summary
-- [ ] `build.base-url` is removed; a config
-      still setting it errors with "unknown
-      field"
+- [ ] `build.base-url` is removed. Config
+      loading uses non-strict YAML
+      (`yamlutil.UnmarshalSafe`), so the
+      struct field's absence alone is
+      silent. An explicit top-level-key
+      scan detects a lingering
+      `build.base-url` and errors with
+      "build.base-url was removed in plan
+      115; delete it"
 - [ ] No built-in recipes ship; an unknown
       `recipe:` is a lint error (MDS039)
 - [ ] All tests pass: `go test ./...`

@@ -39,9 +39,8 @@ drive this plan:
 - Failure messages without argv, cwd, exit
   code, and log path are useless.
 - Stale-cache surprises drive `make clean`
-  unless mdsmith can explain freshness.
-- Non-deterministic recipes silently defeat
-  caching.
+  without a freshness explanation.
+- Non-deterministic recipes defeat caching.
 - Parallel builds collide on undeclared
   shared state.
 
@@ -92,19 +91,25 @@ prints:
 ```text
 FAIL book.html (recipe: pandoc)
   source:   chapters/intro.md:12 <?build?>
-  argv:     pandoc chapters/intro.md -o /…/book.html
+  argv:     pandoc /proj/chapters/intro.md -o /…/book-x7y2/book.html
   cwd:      /…/.mdsmith/build-staging/book-x7y2/
   exit:     1
   duration: 2.3s
   log:      .mdsmith/build-logs/sha256-abc.log
   --- last 20 lines of stderr ---
-  pandoc: cannot open chapters/intro.md
+  pandoc: cannot open /proj/chapters/intro.md
   …
 ```
 
+`Cmd.Dir` is the staging dir (plan 117), so
+`{inputs}` and `{outputs}` expand to
+*absolute* paths (project-rooted source,
+staging output). The `source:` line keeps
+the relative form for readability.
+
 Six fields, then up to 20 lines from the
-in-memory tail. The full log is one
-filesystem path away.
+in-memory tail. The full log is one path
+away.
 
 ### Hung-recipe diagnostic
 
@@ -125,16 +130,14 @@ recipe was doing before it was killed.
 
 ### `--build-explain TARGET`
 
-Prints the ActionID inputs for one
-target in hash-order. Fields shown:
-`recipe.command`, sorted params, sorted
-inputs (path + content sha), sorted
-outputs, `cache.version`, the resulting
-ActionID, and the cache verdict.
-
-`TARGET` matches by the first declared
-output path. The flag answers "why is
-this fresh?" without diving into JSON.
+Prints the ActionID inputs for one target
+in hash-order: `recipe.command`, sorted
+params, sorted inputs (path + content sha),
+sorted outputs, `cache.version`, the
+resulting ActionID, and the cache verdict.
+`TARGET` matches by first declared output
+path. Answers "why is this fresh?" without
+diving into JSON.
 
 ### `--build-verify`
 
@@ -156,17 +159,12 @@ not by the default `fix` flow.
 ### `--build-jobs N`
 
 Run up to N recipes concurrently. Default
-is 1 (serial). The safety contract that
-makes `N>1` work:
-
-- Plan 117's per-recipe staging dir
-  guarantees writes go to disjoint
-  locations during execution.
-- Plan 117's output post-conditions
-  catch any recipe that violates its
-  declared `outputs:` boundary.
-- The cache write happens in a single
-  pass after all recipes finish.
+is 1 (serial). `N>1` is safe because plan
+117's per-recipe staging dir keeps writes
+disjoint, its output post-conditions catch
+any `outputs:` boundary violation, and the
+cache write happens in one pass after all
+recipes finish.
 
 Plan 103 rejects any overlap in declared
 `outputs:` paths at target-graph load,
@@ -265,9 +263,9 @@ output (future, behind `--build-format json`).
     independent targets; output is
     interleaved-but-line-coherent.
   - Two directives with overlapping
-    `outputs:` are rejected at config
-    load (plan 103) regardless of
-    `--build-jobs`.
+    `outputs:` are rejected at
+    target-graph load (plan 103)
+    regardless of `--build-jobs`.
   - Hung recipe printout includes the
     last 20 lines of each stream
     before the SIGTERM.
