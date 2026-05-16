@@ -3,6 +3,7 @@ id: MDS022
 name: max-file-length
 status: ready
 description: File must not exceed maximum number of lines.
+category: structural
 nature: content
 maintainability: null
 ---

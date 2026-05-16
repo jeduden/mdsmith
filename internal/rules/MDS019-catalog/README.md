@@ -3,6 +3,7 @@ id: MDS019
 name: catalog
 status: ready
 description: Catalog content must reflect selected front matter fields from files matching its glob.
+category: directive
 nature: directive
 maintainability:
   signal: a list of links to sibling files in the same directory

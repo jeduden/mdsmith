@@ -3,6 +3,7 @@ id: MDS055
 name: forbidden-paragraph-starts
 status: ready
 description: Paragraphs must not begin with any configured prefix.
+category: prose
 nature: content
 maintainability: null
 ---

@@ -5,6 +5,7 @@ status: '"ready" | "not-ready"'
 description: 'string & != ""'
 nature: '"directive" | "generator" | "content" | "style" | "structure"'
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
+category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" | "list" | "prose" | "structural" | "table" | "whitespace"'
 ---
 # {id}: {name}
 
@@ -12,7 +13,8 @@ maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"
      delete sections and comments that don't apply.
      Front matter is required. The catalog directive reads
      id, name, status, description, nature to generate the rules
-     table and filtered listings.
+     table and filtered listings. The `category:` field is validated
+     by mdsmith check against ValidCategories.
      Repeat the description verbatim. Use prescriptive voice,
      present tense: "Headings must ..." not "Checks that ...".
      The `nature` key labels the rule's kind. Exactly one of:
@@ -101,9 +103,9 @@ rules:
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
      Implementation, Category, Concept (if applicable).
      Default may include key settings: "enabled, max: 80".
-     Categories: accessibility, code, directive, heading, line,
-     link, list, prose, structural, table, whitespace. Pick
-     the narrowest that fits; drop any category not in this list.
+     Category must match the `category:` front-matter field and one
+     of the values in ValidCategories. Pick the narrowest that fits;
+     drop any category not in this list.
      Delete Concept bullet if not used. -->
 
 ## ...

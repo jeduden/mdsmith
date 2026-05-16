@@ -3,6 +3,7 @@ id: MDS032
 name: no-empty-alt-text
 status: ready
 description: Images must have non-empty alt text for accessibility.
+category: accessibility
 nature: structure
 maintainability: null
 ---

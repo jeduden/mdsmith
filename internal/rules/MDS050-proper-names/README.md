@@ -3,6 +3,7 @@ id: MDS050
 name: proper-names
 status: ready
 description: Configured proper names (e.g. JavaScript, GitHub) must appear with their canonical casing.
+category: prose
 nature: content
 maintainability: null
 ---

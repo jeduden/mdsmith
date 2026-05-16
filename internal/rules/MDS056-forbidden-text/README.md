@@ -3,6 +3,7 @@ id: MDS056
 name: forbidden-text
 status: ready
 description: Paragraphs must not contain any configured substring.
+category: prose
 nature: content
 maintainability: null
 ---

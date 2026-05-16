@@ -3,6 +3,7 @@ id: MDS057
 name: required-text-patterns
 status: ready
 description: Heading-bounded sections must match every configured regex.
+category: prose
 nature: content
 maintainability: null
 ---

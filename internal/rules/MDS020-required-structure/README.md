@@ -3,6 +3,7 @@ id: MDS020
 name: required-structure
 status: ready
 description: Document structure and front matter must match its schema.
+category: structural
 nature: structure
 maintainability:
   signal: files of a kind that lack an explicit section schema

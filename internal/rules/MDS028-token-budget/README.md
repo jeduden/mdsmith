@@ -3,6 +3,7 @@ id: MDS028
 name: token-budget
 status: ready
 description: File must not exceed a token budget.
+category: prose
 nature: content
 maintainability: null
 ---

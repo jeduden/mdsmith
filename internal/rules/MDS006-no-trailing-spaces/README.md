@@ -3,6 +3,7 @@ id: MDS006
 name: no-trailing-spaces
 status: ready
 description: No trailing whitespace at the end of lines.
+category: whitespace
 nature: style
 maintainability: null
 ---

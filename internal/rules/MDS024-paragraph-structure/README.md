@@ -3,6 +3,7 @@ id: MDS024
 name: paragraph-structure
 status: ready
 description: Paragraphs must not exceed sentence and word limits.
+category: prose
 nature: content
 maintainability: null
 ---

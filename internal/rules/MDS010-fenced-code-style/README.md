@@ -3,6 +3,7 @@ id: MDS010
 name: fenced-code-style
 status: ready
 description: Fenced code blocks must use a consistent delimiter.
+category: code
 nature: style
 maintainability: null
 ---

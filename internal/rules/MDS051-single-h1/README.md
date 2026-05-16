@@ -3,6 +3,7 @@ id: MDS051
 name: single-h1
 status: ready
 description: At most one H1 heading is allowed per file.
+category: heading
 nature: structure
 maintainability: null
 ---

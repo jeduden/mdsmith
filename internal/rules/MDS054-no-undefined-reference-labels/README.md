@@ -3,6 +3,7 @@ id: MDS054
 name: no-undefined-reference-labels
 status: ready
 description: Reference-style links and images must have a matching link reference definition in the same file.
+category: link
 nature: structure
 maintainability: null
 ---

@@ -3,6 +3,7 @@ id: MDS045
 name: list-marker-style
 status: ready
 description: Unordered list items must use the configured bullet marker character.
+category: list
 nature: style
 maintainability: null
 ---

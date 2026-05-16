@@ -5,6 +5,7 @@ status: ready
 description: >-
   Every `[label]: url` definition must be consumed by at least one
   reference-style link or image; duplicate labels are flagged.
+category: link
 nature: structure
 maintainability: null
 ---

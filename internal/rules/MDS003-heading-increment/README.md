@@ -3,6 +3,7 @@ id: MDS003
 name: heading-increment
 status: ready
 description: Heading levels should increment by one. No jumping from `#` to `###`.
+category: heading
 nature: structure
 maintainability: null
 ---

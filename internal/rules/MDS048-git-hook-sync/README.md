@@ -3,6 +3,7 @@ id: MDS048
 name: git-hook-sync
 status: ready
 description: Git artifacts must match the canonical glob-based template derived from .mdsmith.yml.
+category: structural
 nature: structure
 maintainability: null
 ---

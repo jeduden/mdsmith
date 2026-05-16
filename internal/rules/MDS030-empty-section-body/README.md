@@ -3,6 +3,7 @@ id: MDS030
 name: empty-section-body
 status: ready
 description: Section headings must include meaningful body content.
+category: heading
 nature: content
 maintainability: null
 ---

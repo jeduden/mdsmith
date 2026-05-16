@@ -5,6 +5,7 @@ status: ready
 description: >-
   Thematic breaks must use a consistent delimiter style, exact
   length, and blank-line spacing.
+category: whitespace
 nature: style
 maintainability: null
 ---

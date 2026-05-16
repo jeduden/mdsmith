@@ -3,6 +3,7 @@ id: MDS004
 name: first-line-heading
 status: ready
 description: First line of the file should be a heading.
+category: heading
 nature: structure
 maintainability: null
 ---

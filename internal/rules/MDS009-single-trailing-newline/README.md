@@ -3,6 +3,7 @@ id: MDS009
 name: single-trailing-newline
 status: ready
 description: File must end with exactly one newline character.
+category: whitespace
 nature: style
 maintainability: null
 ---

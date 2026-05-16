@@ -3,6 +3,7 @@ id: MDS029
 name: conciseness-scoring
 status: not-ready
 description: Paragraph conciseness score must not fall below a threshold.
+category: prose
 nature: content
 maintainability: null
 ---

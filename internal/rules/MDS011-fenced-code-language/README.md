@@ -3,6 +3,7 @@ id: MDS011
 name: fenced-code-language
 status: ready
 description: Fenced code blocks must specify a language.
+category: code
 nature: style
 maintainability: null
 ---

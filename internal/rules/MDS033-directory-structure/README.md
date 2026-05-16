@@ -3,6 +3,7 @@ id: MDS033
 name: directory-structure
 status: ready
 description: Markdown files must exist only in explicitly allowed directories.
+category: structural
 nature: structure
 maintainability:
   signal: markdown files that live outside allowed directories

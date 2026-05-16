@@ -3,6 +3,7 @@ id: MDS031
 name: unclosed-code-block
 status: ready
 description: Fenced code blocks must have a closing fence delimiter.
+category: code
 nature: structure
 maintainability: null
 ---

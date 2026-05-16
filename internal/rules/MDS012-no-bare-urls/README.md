@@ -3,6 +3,7 @@ id: MDS012
 name: no-bare-urls
 status: ready
 description: URLs must be wrapped in angle brackets or as a link, not left bare.
+category: link
 nature: content
 maintainability: null
 ---

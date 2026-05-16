@@ -3,6 +3,7 @@ id: MDS014
 name: blank-line-around-lists
 status: ready
 description: Lists must have a blank line before and after.
+category: list
 nature: style
 maintainability: null
 ---

@@ -3,6 +3,7 @@ id: MDS046
 name: ordered-list-numbering
 status: ready
 description: Ordered list items must be numbered in the configured style.
+category: list
 nature: style
 maintainability: null
 ---

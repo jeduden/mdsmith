@@ -5,6 +5,7 @@ status: ready
 description: >-
   Raw HTML tags in Markdown are not allowed; use a
   Markdown construct or an mdsmith directive instead.
+category: structural
 nature: content
 maintainability: null
 ---

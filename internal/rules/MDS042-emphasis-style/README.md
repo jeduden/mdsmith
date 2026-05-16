@@ -6,6 +6,7 @@ description: >-
   Enforces a single delimiter character for bold
   and italic emphasis, and optionally forbids
   cross-delimiter nesting.
+category: prose
 nature: style
 maintainability: null
 ---

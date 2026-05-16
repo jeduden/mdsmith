@@ -5,6 +5,7 @@ status: ready
 description: >-
   Flags Markdown syntax that the declared target
   flavor does not render.
+category: structural
 nature: structure
 maintainability: null
 ---

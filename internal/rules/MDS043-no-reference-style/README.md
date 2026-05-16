@@ -3,6 +3,7 @@ id: MDS043
 name: no-reference-style
 status: ready
 description: Reference-style links and footnotes require global definition resolution; flag them in favor of inline links.
+category: link
 nature: style
 maintainability: null
 ---
