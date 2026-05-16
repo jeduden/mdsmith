@@ -138,6 +138,43 @@ func TestE2E_Extract_UnknownKind(t *testing.T) {
 	assert.Contains(t, stderr, "unknown kind")
 }
 
+func TestE2E_Extract_BadFormat(t *testing.T) {
+	dir := kindsTestDir(t, extractCfg, map[string]string{
+		"recipes/cake.md": conformantRecipe,
+	})
+	_, stderr, code := runBinaryInDir(t, dir, "",
+		"extract", "recipe", "recipes/cake.md", "--format", "lua")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "unknown format")
+}
+
+func TestE2E_Extract_MissingArgs(t *testing.T) {
+	dir := kindsTestDir(t, extractCfg, map[string]string{
+		"recipes/cake.md": conformantRecipe,
+	})
+	_, stderr, code := runBinaryInDir(t, dir, "", "extract", "recipe")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "requires <kind> and <file>")
+}
+
+func TestE2E_Extract_KindWithoutSchema(t *testing.T) {
+	cfg := `kinds:
+  bare:
+    rules:
+      paragraph-readability: false
+kind-assignment:
+  - glob: ["notes/*.md"]
+    kinds: [bare]
+`
+	dir := kindsTestDir(t, cfg, map[string]string{
+		"notes/a.md": "# Title\n\n## Section\n\nbody\n",
+	})
+	_, stderr, code := runBinaryInDir(t, dir, "",
+		"extract", "bare", "notes/a.md")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "no schema")
+}
+
 func TestE2E_Extract_KindNotAssigned(t *testing.T) {
 	dir := kindsTestDir(t, extractCfg, map[string]string{
 		"notes.md": "## Goal\n\nx\n",

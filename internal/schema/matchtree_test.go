@@ -15,6 +15,36 @@ func mtFile(t *testing.T, body string) *lint.File {
 	return f
 }
 
+func TestHeadingStem_NilCases(t *testing.T) {
+	stem, fmvars, hasDigits := HeadingStem(nil)
+	assert.Equal(t, "", stem)
+	assert.Nil(t, fmvars)
+	assert.False(t, hasDigits)
+
+	// Nil matcher (preamble) falls back to the heading label.
+	stem, _, _ = HeadingStem(&Scope{Heading: "Lead"})
+	assert.Equal(t, "Lead", stem)
+}
+
+func TestScopeCaptures_FmvarResolution(t *testing.T) {
+	dh := DocHeading{Level: 2, Text: "RFC-7", Line: 1}
+
+	// Unresolvable fmvar (field absent) is skipped, leaving no
+	// capture rather than a bogus one.
+	sc := &Scope{Heading: "{id}", Matcher: &Matcher{Regex: `\#(fmvar(id))`}}
+	assert.Nil(t, scopeCaptures(sc, dh, nil))
+
+	// Resolvable fmvar is captured by field name.
+	caps := scopeCaptures(sc, dh, map[string]any{"id": "RFC-7"})
+	assert.Equal(t, "RFC-7", caps["id"])
+}
+
+func TestBuildMatchTree_NilAndEmptySchema(t *testing.T) {
+	f := mtFile(t, "## Goal\n")
+	assert.NotNil(t, BuildMatchTree(f, nil, nil).Root)
+	assert.NotNil(t, BuildMatchTree(f, &Schema{}, nil).Root)
+}
+
 func TestBuildMatchTree_LiteralAndNested(t *testing.T) {
 	body := "## Goal\n\nthe goal\n\n## Steps\n\n### First\n\ndo it\n"
 	sch := &Schema{
