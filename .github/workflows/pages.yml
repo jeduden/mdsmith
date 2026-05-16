@@ -13,6 +13,10 @@ on:
     paths:
       - "docs/**"
       - "website/**"
+      # build-website also publishes the rule directory
+      # (internal/rules/index.md) as the /docs/rules/ section, so a
+      # change to that file must redeploy the site too.
+      - "internal/rules/index.md"
       - ".github/workflows/pages.yml"
   workflow_call:
     inputs:

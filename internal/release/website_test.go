@@ -69,14 +69,57 @@ func TestBuildWebsite_NoRuleDirectoryIsNotAnError(t *testing.T) {
 }
 
 func TestSyncRuleIndex_ReadErrorWraps(t *testing.T) {
+	parent := t.TempDir()
+	ruleIndexAt(t, parent) // ReadDir finds a real (non-symlink) index.md
 	ff := newFakeFS()
 	ff.failOnReadFileCall = 1 // errInjected, not fs.ErrNotExist
 
-	err := NewWithFS(ff).syncRuleIndex(t.TempDir(), t.TempDir())
+	err := NewWithFS(ff).syncRuleIndex(filepath.Join(parent, "internal", "rules"), t.TempDir())
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errInjected)
 	assert.Contains(t, err.Error(), "read rule index")
+}
+
+func TestSyncRuleIndex_ReadDirErrorWraps(t *testing.T) {
+	parent := t.TempDir()
+	ruleIndexAt(t, parent)
+	ff := newFakeFS()
+	ff.failOnReadDirCall = 1 // not fs.ErrNotExist
+
+	err := NewWithFS(ff).syncRuleIndex(filepath.Join(parent, "internal", "rules"), t.TempDir())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "read rule dir")
+}
+
+func TestSyncRuleIndex_SymlinkIndexSkipped(t *testing.T) {
+	parent := t.TempDir()
+	rulesDir := filepath.Join(parent, "internal", "rules")
+	require.NoError(t, os.MkdirAll(rulesDir, 0o755))
+	// A symlink planted at index.md must not be followed: the
+	// link target's bytes would otherwise be published into the
+	// Hugo tree.
+	secret := filepath.Join(parent, "secret.md")
+	writeFile(t, secret, "PRIVATE RUNNER FILE\n")
+	require.NoError(t, os.Symlink(secret, filepath.Join(rulesDir, "index.md")))
+	dst := filepath.Join(t.TempDir(), "out")
+
+	require.NoError(t, NewWithFS(osFS{}).syncRuleIndex(rulesDir, dst))
+
+	_, err := os.Stat(filepath.Join(dst, "rules"))
+	assert.True(t, os.IsNotExist(err), "symlinked index.md -> no Rules section")
+}
+
+func TestSyncRuleIndex_NoIndexFileIsNoop(t *testing.T) {
+	rulesDir := t.TempDir() // exists, but holds no index.md
+	dst := filepath.Join(t.TempDir(), "out")
+
+	require.NoError(t, NewWithFS(osFS{}).syncRuleIndex(rulesDir, dst))
+
+	_, err := os.Stat(filepath.Join(dst, "rules"))
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestSyncRuleIndex_MkdirErrorWraps(t *testing.T) {

@@ -122,6 +122,16 @@ present more, never different, content.
 `website/` and publishes it to GitHub Pages on every `v*`
 tag push.
 
+A push to `main` also deploys, via the path filter in
+`.github/workflows/pages.yml`. That filter watches
+`docs/**`, `website/**`, the workflow itself, and
+`internal/rules/index.md`. The rule index is on the
+list because `build-website` publishes it as the
+`/docs/rules/` section. Editing a rule README and
+running `mdsmith fix` regenerates the tracked
+`internal/rules/index.md` catalog. That regenerated
+file is the change that triggers the deploy.
+
 The job installs Hugo via `go install` (sumdb verifies
 the binary). It runs `mdsmith-release build-website
 --no-fix`, then `hugo --minify`. It hands the output to

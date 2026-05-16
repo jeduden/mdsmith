@@ -67,7 +67,35 @@ func (t *Toolkit) BuildWebsite(srcDir, dstDir string, runFix bool) error {
 // A missing rule index is not an error: callers that point
 // BuildWebsite at a docs tree with no sibling internal/rules/
 // (every BuildWebsite unit test, say) simply get no Rules section.
+//
+// index.md is located via ReadDir and skipped if it is a symlink,
+// mirroring SyncDocs' symlink handling: following a link planted
+// at internal/rules/index.md would let build-website publish an
+// arbitrary runner file into the Hugo tree. A symlinked (or
+// absent) index.md is treated the same as no rule index.
 func (t *Toolkit) syncRuleIndex(rulesDir, dstDir string) error {
+	entries, err := t.fs.ReadDir(rulesDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read rule dir %s: %w", rulesDir, err)
+	}
+	var found bool
+	for _, e := range entries {
+		if e.Name() != "index.md" {
+			continue
+		}
+		// Skip a symlinked index.md (DirEntry.Type reports
+		// ModeSymlink for a link regardless of its target).
+		if e.Type()&fs.ModeSymlink == 0 {
+			found = true
+		}
+		break
+	}
+	if !found {
+		return nil
+	}
 	src := filepath.Join(rulesDir, "index.md")
 	data, err := t.fs.ReadFile(src)
 	if err != nil {
