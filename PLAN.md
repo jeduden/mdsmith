@@ -90,4 +90,5 @@ footer: |
 | 161 | 🔲     | sonnet | [Expose rule maintainability patterns via CLI help and LSP](plan/161_rule-pattern-metadata.md)                            |
 | 162 | 🔲     | sonnet | [Split the overloaded `meta` rule category](plan/162_rule-category-cleanup.md)                                            |
 | 163 | 🔲     |        | [Extract mdsmith Markdown parse/produce as a public Go library](plan/163_public-markdown-library.md)                      |
+| 164 | ✅     |        | [GitHub-UI-triggered releases and a split website deploy](plan/164_github-ui-releases-and-split-website.md)               |
 <?/catalog?>

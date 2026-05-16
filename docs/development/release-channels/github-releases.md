@@ -28,6 +28,13 @@ other channel being unavailable. It is also the
 source mise's `ubi` backend reads to install
 mdsmith without a registry plugin.
 
+The release is triggered from the Actions
+"Run workflow" UI, not a pushed tag; the `release`
+job creates the tag itself (`tag_name` +
+`target_commitish`) at the dispatched commit as part
+of the draft release. See [`release.md`](../release.md)
+for the trigger rationale.
+
 The `release` job in `release.yml` uses the
 workflow's default `GITHUB_TOKEN` for the
 `softprops/action-gh-release` upload. It mints a
