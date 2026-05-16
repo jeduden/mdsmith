@@ -102,8 +102,10 @@ sourced from Markdown so a copy edit lands in one place:
   `install-list.html`.
 - **"Distributed via" strip** — the release-channel docs
   `../docs/development/release-channels/*.md`. Each
-  carries a canonical `url:` and an ordering `weight:`;
-  `logos-strip.html` ranges the synced section.
+  carries a canonical `channelurl:` and an ordering
+  `weight:`; `logos-strip.html` ranges the synced
+  section. (`channelurl`, not `url`: Hugo treats a
+  front-matter `url` as a page-URL override.)
 - **Feature cards** — the shared Markdown described
   below.
 

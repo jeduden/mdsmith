@@ -5,8 +5,8 @@
       {{- /* Sourced from the release-channel docs
              (docs/development/release-channels/*.md), synced to
              /docs/development/release-channels/. Each carries a
-             canonical `url` and an ordering `weight` in front
-             matter — no separate data file. */ -}}
+             canonical `channelurl` and an ordering `weight` in
+             front matter — no separate data file. */ -}}
       {{ with site.GetPage "/docs/development/release-channels" }}
         {{ range .Pages.ByWeight }}
           {{ $c := . }}
