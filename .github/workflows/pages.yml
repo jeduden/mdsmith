@@ -36,8 +36,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  mdsmith-check:
+    uses: ./.github/workflows/mdsmith-check.yml
+
   deploy:
     name: Deploy mdsmith.dev to GitHub Pages
+    needs: mdsmith-check
     # Guard fork clones: only the canonical repo deploys the site.
     if: github.repository == 'jeduden/mdsmith'
     runs-on: ubuntu-latest
