@@ -880,8 +880,13 @@ a.rule-ref:hover code { text-decoration: underline; }
     cursor: pointer;
   }
   html.js .docs-side-toggle { display: flex; }
-  .docs-side-toggle i { transition: transform 0.15s ease; }
-  .docs-side-toggle[aria-expanded="true"] i { transform: rotate(180deg); }
+  /* Lucide's createIcons() swaps the <i data-lucide> for an
+     inline <svg>, so target both: the <i> covers the brief
+     pre-script paint, the <svg> the rendered state. */
+  .docs-side-toggle i,
+  .docs-side-toggle svg { transition: transform 0.15s ease; }
+  .docs-side-toggle[aria-expanded="true"] i,
+  .docs-side-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
   .docs-side-nav { display: block; padding: 14px 0 4px; }
   html.js .docs-side-nav { display: none; }
   html.js .docs-side-nav.is-open { display: block; }

@@ -3,13 +3,19 @@
 {{- /* Explicit narrative order for the docs groups: the
        sidebar reads as a user journey (why → how → look up →
        rule catalog → mental model → contribute) rather than
-       Hugo's default title sort. Section weights set in each
-       _index.md front matter would do this too, but the
-       feature-index kind schema is closed and rejects a
-       `weight` key, so the order lives here. Any section not
-       named in $order is appended afterwards by weight, so a
-       new docs section still renders without a template
-       change. */ -}}
+       Hugo's default title sort. Per-section weights in each
+       _index.md front matter would do this too, but
+       docs/features/index.md is the feature-index kind, whose
+       schema declares a frontmatter struct of only title +
+       summary. mdsmith validates that struct as closed
+       regardless of the schema-level `closed: false` (which
+       governs the section list, not front matter), so a
+       `weight` key fails MDS020 (verified: "weight: ...
+       not declared in schema"). Rather than widen .mdsmith.yml
+       (needs maintainer consent), the order lives here. Any
+       section not named in $order is appended afterwards by
+       weight, so a new docs section still renders without a
+       template change. */ -}}
 {{ $order := slice "features" "guides" "reference" "rules" "background" "development" }}
 <button class="docs-side-toggle" type="button" aria-expanded="false" aria-controls="docs-nav">
   <span class="docs-side-toggle-label">Documentation</span>
