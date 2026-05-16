@@ -605,3 +605,131 @@ func TestCompose_ContentConcatenatesOnMerge(t *testing.T) {
 	assert.Equal(t, ContentKindCodeBlock, out.Sections[0].Content[0].Kind)
 	assert.Equal(t, ContentKindTable, out.Sections[0].Content[1].Kind)
 }
+
+// TestMergeMatcher_BNil covers the `b == nil` arm: a same-heading
+// scope whose Matcher is nil in the later input keeps the earlier
+// input's matcher.
+func TestMergeMatcher_BNil(t *testing.T) {
+	a := &Matcher{Regex: "Meta"}
+	got := mergeMatcher(a, nil)
+	require.NotNil(t, got)
+	assert.Equal(t, "Meta", got.Regex)
+	assert.NotSame(t, a, got, "result must be a clone, not the input pointer")
+}
+
+// TestMergeMatcher_ANil covers the symmetric `a == nil` arm.
+func TestMergeMatcher_ANil(t *testing.T) {
+	b := &Matcher{Regex: "Meta"}
+	got := mergeMatcher(nil, b)
+	require.NotNil(t, got)
+	assert.Equal(t, "Meta", got.Regex)
+	assert.NotSame(t, b, got)
+}
+
+// TestMergeMatcher_WiderMaxAndRepeatSet covers two branches: the
+// `bMax > max` widening (b's bounded max is larger than a's) and
+// the non-(1,1) `else` that sets an explicit Repeat. a allows
+// 1..2, b allows 1..5 -> merged is 1..5.
+func TestMergeMatcher_WiderMaxAndRepeatSet(t *testing.T) {
+	a := &Matcher{Regex: "Step", Repeat: Repeat{Set: true, Min: 1, Max: 2}}
+	b := &Matcher{Regex: "Step", Repeat: Repeat{Set: true, Min: 1, Max: 5}}
+	got := mergeMatcher(a, b)
+	require.NotNil(t, got)
+	gotMin, gotMax := got.Repeat.Bounds()
+	assert.Equal(t, 1, gotMin)
+	assert.Equal(t, 5, gotMax, "the wider max must win")
+	assert.True(t, got.Repeat.Set, "non-(1,1) bounds must set Repeat explicitly")
+}
+
+// TestMergeMatcher_RequiredWinsOverOptional covers the min-widening
+// branch plus the explicit-Repeat else: an optional run (min 0)
+// merged with a required single (1,1) yields a required matcher.
+func TestMergeMatcher_RequiredWinsOverOptional(t *testing.T) {
+	optional := &Matcher{Regex: "Meta", Repeat: Repeat{Set: true, Min: 0, Max: 1}}
+	required := &Matcher{Regex: "Meta"} // exactly one
+	got := mergeMatcher(optional, required)
+	require.NotNil(t, got)
+	gotMin, _ := got.Repeat.Bounds()
+	assert.Equal(t, 1, gotMin, "required (min 1) must win over optional (min 0)")
+}
+
+// TestCloneContent_CopiesColumns covers the `e.Columns != nil`
+// deep-copy branch: a table ContentEntry's Columns slice must be
+// cloned, not aliased, when two same-heading scopes merge.
+func TestCloneContent_CopiesColumns(t *testing.T) {
+	cols := []string{"Name", "Type"}
+	a := &Schema{Sections: []Scope{{
+		Heading: "Schema", Matcher: &Matcher{Regex: "Schema"},
+		Content: []ContentEntry{{Kind: ContentKindTable, Columns: cols}},
+	}}}
+	b := &Schema{Sections: []Scope{{
+		Heading: "Schema", Matcher: &Matcher{Regex: "Schema"},
+	}}}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	require.Len(t, out.Sections, 1)
+	require.Len(t, out.Sections[0].Content, 1)
+	got := out.Sections[0].Content[0].Columns
+	require.Equal(t, []string{"Name", "Type"}, got)
+	cols[0] = "MUTATED"
+	assert.Equal(t, "Name", out.Sections[0].Content[0].Columns[0],
+		"cloneContent must deep-copy Columns, not alias the input slice")
+}
+
+// TestMergeMatcher_SequentialOredAndUnbounded covers the
+// `a.Sequential || b.Sequential` true arms and the unbounded-max
+// path (aMax/bMax == 0): merging an unbounded sequential run with
+// an unbounded plain run keeps Sequential and stays unbounded.
+func TestMergeMatcher_SequentialOredAndUnbounded(t *testing.T) {
+	a := &Matcher{
+		Regex:      "Step",
+		Repeat:     Repeat{Set: true, Min: 1, Max: 0}, // 1..unbounded
+		Sequential: true,
+	}
+	b := &Matcher{
+		Regex:  "Step",
+		Repeat: Repeat{Set: true, Min: 1, Max: 0},
+	}
+	got := mergeMatcher(a, b)
+	require.NotNil(t, got)
+	assert.True(t, got.Sequential, "Sequential must OR across inputs")
+	gotMin, gotMax := got.Repeat.Bounds()
+	assert.Equal(t, 1, gotMin)
+	assert.Equal(t, 0, gotMax, "unbounded max stays unbounded")
+}
+
+// TestMergeMatcher_SequentialFromBOnly covers the right operand of
+// the `||` (a.Sequential false, b.Sequential true).
+func TestMergeMatcher_SequentialFromBOnly(t *testing.T) {
+	a := &Matcher{Regex: "Step", Repeat: Repeat{Set: true, Min: 1, Max: 0}}
+	b := &Matcher{Regex: "Step", Repeat: Repeat{Set: true, Min: 1, Max: 0}, Sequential: true}
+	got := mergeMatcher(a, b)
+	require.NotNil(t, got)
+	assert.True(t, got.Sequential)
+}
+
+// TestMergeMatcher_OptionalBothSides covers the `min == 1` false
+// branch: two optional (min 0) runs merge to an optional run, so
+// the explicit-Repeat else fires with min 0.
+func TestMergeMatcher_OptionalBothSides(t *testing.T) {
+	a := &Matcher{Regex: "Notes", Repeat: Repeat{Set: true, Min: 0, Max: 1}}
+	b := &Matcher{Regex: "Notes", Repeat: Repeat{Set: true, Min: 0, Max: 1}}
+	got := mergeMatcher(a, b)
+	require.NotNil(t, got)
+	gotMin, _ := got.Repeat.Bounds()
+	assert.Equal(t, 0, gotMin, "two optional runs stay optional")
+	assert.True(t, got.Repeat.Optional())
+}
+
+// TestMergeMatcher_BoundedAThenUnboundedB covers the `bMax != 0`
+// false arm: a is bounded (max 3), b is unbounded (max 0). Either
+// side unbounded makes the merged run unbounded.
+func TestMergeMatcher_BoundedAThenUnboundedB(t *testing.T) {
+	a := &Matcher{Regex: "Step", Repeat: Repeat{Set: true, Min: 1, Max: 3}}
+	b := &Matcher{Regex: "Step", Repeat: Repeat{Set: true, Min: 1, Max: 0}}
+	got := mergeMatcher(a, b)
+	require.NotNil(t, got)
+	_, gotMax := got.Repeat.Bounds()
+	assert.Equal(t, 0, gotMax,
+		"a bounded max merged with an unbounded one yields unbounded")
+}
