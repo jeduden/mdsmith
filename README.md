@@ -116,6 +116,15 @@ row: "- [{summary}]({filename})"
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
 <?/catalog?>
 
+**🔗 Link handling internals.** See:
+<?catalog
+glob:
+  - "docs/research/links/README.md"
+row: "- [{summary}]({filename})"
+?>
+- [Audit of every link surface in mdsmith — the link-aware rules, the linkgraph package, the website rewriter, and the Hugo render-link hook — with a corpus census, a catalogued gap list, a decision per gap, and a sketched shared `links:` config block. Follow-up plans 171–173 cite this doc instead of relitigating the trade-offs.](docs/research/links/README.md)
+<?/catalog?>
+
 ## 📦 Installation
 
 CLI:
