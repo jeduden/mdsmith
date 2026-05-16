@@ -833,5 +833,5 @@ func TestCheck_NoFS(t *testing.T) {
 
 func TestCategory(t *testing.T) {
 	r := &Rule{}
-	assert.NotEmpty(t, r.Category())
+	assert.Equal(t, "directive", r.Category())
 }

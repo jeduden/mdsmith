@@ -59,6 +59,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	detectFilesKeyDeprecations(&cfg)
+	detectMetaCategoryDeprecations(&cfg)
 
 	if err := ValidateKinds(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
@@ -223,6 +224,27 @@ func detectFilesKeyDeprecations(cfg *Config) {
 			cfg.Deprecations = append(cfg.Deprecations,
 				fmt.Sprintf("kind-assignment[%d]: `files:` is deprecated; "+
 					"rename it to `glob:` — see docs/reference/globs.md", i))
+		}
+	}
+}
+
+func detectMetaCategoryDeprecations(cfg *Config) {
+	const msg = "category `meta` has been split into `directive`, `structural`, and `prose`; " +
+		"update your `categories:` block to use the new names"
+	if _, ok := cfg.Categories["meta"]; ok {
+		cfg.Deprecations = append(cfg.Deprecations, msg)
+		return
+	}
+	for _, kind := range cfg.Kinds {
+		if _, ok := kind.Categories["meta"]; ok {
+			cfg.Deprecations = append(cfg.Deprecations, msg)
+			return
+		}
+	}
+	for _, o := range cfg.Overrides {
+		if _, ok := o.Categories["meta"]; ok {
+			cfg.Deprecations = append(cfg.Deprecations, msg)
+			return
 		}
 	}
 }
