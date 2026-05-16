@@ -12,6 +12,8 @@ weight: 1
 ---
 # npm
 
+Release page: <https://www.npmjs.com/package/@mdsmith/cli>
+
 The npm channel publishes the root plus one
 platform-specific subpackage per host. This page
 holds the canonical list. Other docs link here

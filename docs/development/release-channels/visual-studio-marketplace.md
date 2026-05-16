@@ -11,6 +11,9 @@ weight: 3
 ---
 # Visual Studio Marketplace
 
+Release page:
+<https://marketplace.visualstudio.com/items?itemName=jeduden.mdsmith>
+
 The Marketplace channel publishes the mdsmith VS
 Code extension to
 [marketplace.visualstudio.com](https://marketplace.visualstudio.com).

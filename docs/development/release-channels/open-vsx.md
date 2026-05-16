@@ -12,6 +12,8 @@ weight: 4
 ---
 # Open VSX
 
+Release page: <https://open-vsx.org/extension/jeduden/mdsmith>
+
 Open VSX is the registry VSCodium, Cursor, Theia,
 and Gitpod query. Publishing the same `.vsix` to
 both Marketplace and Open VSX lets every IDE in

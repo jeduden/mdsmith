@@ -11,6 +11,8 @@ weight: 2
 ---
 # PyPI
 
+Release page: <https://pypi.org/project/mdsmith/>
+
 The PyPI channel publishes one wheel per supported
 host. Platform tags:
 

@@ -24,17 +24,17 @@ Each channel has its own file under
 glob: "release-channels/*.md"
 sort: title
 header: |
-  | Channel | Credential |
-  |---------|------------|
-row: "| [{title}]({filename}) | {credential} |"
+  | Channel | Release page | Credential |
+  |---------|--------------|------------|
+row: "| [{title}]({filename}) | <{channelurl}> | {credential} |"
 ?>
-| Channel                                                                    | Credential              |
-|----------------------------------------------------------------------------|-------------------------|
-| [GitHub Releases](release-channels/github-releases.md)                     | GITHUB_TOKEN + OIDC     |
-| [npm](release-channels/npm.md)                                             | OIDC Trusted Publishing |
-| [Open VSX](release-channels/open-vsx.md)                                   | OVSX_PAT                |
-| [PyPI](release-channels/pypi.md)                                           | OIDC Trusted Publishing |
-| [Visual Studio Marketplace](release-channels/visual-studio-marketplace.md) | VSCE_PAT                |
+| Channel                                                                    | Release page                                                          | Credential              |
+|----------------------------------------------------------------------------|-----------------------------------------------------------------------|-------------------------|
+| [GitHub Releases](release-channels/github-releases.md)                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
+| [npm](release-channels/npm.md)                                             | <https://www.npmjs.com/package/@mdsmith/cli>                          | OIDC Trusted Publishing |
+| [Open VSX](release-channels/open-vsx.md)                                   | <https://open-vsx.org/extension/jeduden/mdsmith>                      | OVSX_PAT                |
+| [PyPI](release-channels/pypi.md)                                           | <https://pypi.org/project/mdsmith/>                                   | OIDC Trusted Publishing |
+| [Visual Studio Marketplace](release-channels/visual-studio-marketplace.md) | <https://marketplace.visualstudio.com/items?itemName=jeduden.mdsmith> | VSCE_PAT                |
 <?/catalog?>
 
 ## Triggering a Release

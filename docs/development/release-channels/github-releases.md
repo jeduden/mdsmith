@@ -12,6 +12,8 @@ weight: 5
 ---
 # GitHub Releases
 
+Release page: <https://github.com/jeduden/mdsmith/releases>
+
 The GitHub Releases channel attaches every artifact
 the build matrix produced to a release named after
 the tag:
