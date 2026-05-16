@@ -131,19 +131,18 @@ every package listed in
 That page is the canonical list. This doc does
 not duplicate it.
 
-| Field       | Value             |
-|-------------|-------------------|
-| Repository  | `jeduden/mdsmith` |
-| Workflow    | `release.yml`     |
-| Environment | `release`         |
-| Ref         | `refs/heads/main` |
+| Field       | Value                          |
+|-------------|--------------------------------|
+| Repository  | `jeduden/mdsmith`              |
+| Workflow    | `release.yml`                  |
+| Environment | `release`                      |
+| Ref         | `refs/heads/<selected-branch>` |
 
-The run is dispatched from a branch, not a tag, so
-the OIDC `ref` claim is `refs/heads/main` (the
-Run-workflow source), not `refs/tags/v*`. The primary
-pin is `environment=release` plus the required
-reviewer; the `ref` row narrows it to the release
-branch.
+The OIDC `ref` claim follows the selected branch —
+normally `refs/heads/main`. The `release` environment
+restricts deploys to `main`. Publishing jobs cannot
+acquire credentials from another branch. Set the
+Trusted Publisher `ref` row to match.
 
 Packages that do not exist yet are configured as
 [pending publishers](https://docs.npmjs.com/trusted-publishers)

@@ -3,8 +3,9 @@ name: Release
 # Triggered from the Actions "Run workflow" UI. A pushed tag is no
 # longer the trigger: the GitHub Releases UI cannot drive the
 # draft-first immutable publish flow (a draft release never creates a
-# tag, so no push event fires), and workflow_dispatch keeps the run
-# behind the `release` environment's single required-reviewer gate.
+# tag, so no push event fires). Publishing jobs (npm, pypi, vscode,
+# release) declare `environment: release` and are gated behind its
+# required-reviewer rule; preflight and build run without that gate.
 # The `release` job creates the tag itself. See
 # docs/development/release.md.
 on:
