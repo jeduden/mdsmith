@@ -21,6 +21,14 @@ import (
 // published page directory (`MDS001-line-length/`,
 // `../MDS021-include/#section`) rather than an unpublished
 // `README.md`.
+//
+// Markdown link titles (`[x](url "title")`) are not matched —
+// no source doc in the repo uses them, and the rewriter is
+// regex-based rather than AST-aware. The same scope decision
+// applies to every other link-rewrite pattern in this file
+// (repoRuleLink, repoNonPublishedLink, indexMdLink, …). If a
+// titled link is ever added to docs, that one link will keep
+// its source target post-sync and the regex will need to grow.
 var ruleReadmeLink = regexp.MustCompile(
 	`\]\(((?:\.\./)?MDS[0-9A-Za-z._-]+)/README\.md(#[^)]*)?\)`)
 

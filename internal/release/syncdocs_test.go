@@ -609,9 +609,9 @@ func TestReconcileDocForHugo_StripNoOp(t *testing.T) {
 }
 
 // ghBlob / ghTree / rulesBase short-name the URL prefixes that
-// would otherwise blow past the lll line-length cap in every
-// expected-output literal below. Tests append the rest of the
-// path inline.
+// would otherwise blow past the golangci-lint `lll` (line-length)
+// cap in every expected-output literal below. Tests append the
+// rest of the path inline.
 const (
 	ghBlob    = "https://github.com/jeduden/mdsmith/blob/main/"
 	ghTree    = "https://github.com/jeduden/mdsmith/tree/main/"
