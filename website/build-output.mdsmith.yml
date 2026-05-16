@@ -9,14 +9,15 @@
 # the stylistic rules the source tree passes.
 #
 # Scope of validation: MDS027 only walks the goldmark AST
-# Link nodes that the parser actually produces, so this
-# config catches broken **inline** Markdown links and image
-# targets in the rewritten output — e.g. a docs page that
-# kept a relative `.md` reference the rewriter missed, or a
-# rewritten `_index.md`/`index.md` rename that points at a
-# directory the sync did not produce. Three classes of
-# breakage are NOT covered:
+# Link nodes that linkgraph.ExtractLinks exposes, so this
+# config catches broken **inline** Markdown link targets in
+# the rewritten output — e.g. a docs page that kept a
+# relative `.md` reference the rewriter missed, or an
+# `index.md` rename that points at a directory the sync did
+# not produce. Four classes of breakage are NOT covered:
 #
+# - Image targets (`![alt](target)`): linkgraph walks only
+#   *ast.Link, not *ast.Image.
 # - Reference-style links (`[label]: target`): linkgraph
 #   skips them so the per-link walk never sees them.
 # - Code-block contents: a `[…](…)`-shaped sequence inside

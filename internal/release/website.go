@@ -12,22 +12,28 @@ import (
 
 // ruleReadmeLink matches a Markdown link whose target is a rule
 // README relative path and captures the rule directory (with an
-// optional `../` prefix) separately from the `README.md` filename.
-// It covers both link forms in play: the bare
-// `MDS001-line-length/README.md` used by the rule index, and the
-// sibling `../MDS021-include/README.md` used between per-rule
-// READMEs. Rewriting drops `README.md` so the link resolves to the
+// optional `../` prefix) separately from the `README.md` filename
+// and an optional `#anchor` fragment. It covers both link forms
+// in play: the bare `MDS001-line-length/README.md` used by the
+// rule index, and the sibling `../MDS021-include/README.md` used
+// between per-rule READMEs. Rewriting drops `README.md` and
+// keeps the captured anchor so the link resolves to the
 // published page directory (`MDS001-line-length/`,
-// `../MDS021-include/`) rather than an unpublished `README.md`.
-var ruleReadmeLink = regexp.MustCompile(`\]\(((?:\.\./)?MDS[0-9A-Za-z._-]+)/README\.md\)`)
+// `../MDS021-include/#section`) rather than an unpublished
+// `README.md`.
+var ruleReadmeLink = regexp.MustCompile(
+	`\]\(((?:\.\./)?MDS[0-9A-Za-z._-]+)/README\.md(#[^)]*)?\)`)
 
 // ruleRefDefLink matches a Markdown reference-style link definition
 // whose target is a rule README path (with an optional `../`
-// prefix). The multiline flag makes `^` match at each line start.
-// Example: [mds027]: ../MDS027-cross-file-reference-integrity/README.md
-// Rewriting drops `/README.md` and adds a trailing slash so the
-// reference resolves to the published rule page directory.
-var ruleRefDefLink = regexp.MustCompile(`(?m)^(\[[^\]]+\]: (?:\.\./)?(MDS[0-9A-Za-z._-]+))/README\.md`)
+// prefix and an optional `#anchor` fragment). The multiline flag
+// makes `^` match at each line start.
+// Example: [mds027]: ../MDS027-cross-file-reference-integrity/README.md#index
+// Rewriting drops `/README.md`, adds a trailing slash, and keeps
+// the anchor so the reference resolves to the published rule
+// page directory.
+var ruleRefDefLink = regexp.MustCompile(
+	`(?m)^(\[[^\]]+\]: (?:\.\./)?(MDS[0-9A-Za-z._-]+))/README\.md(#\S+)?`)
 
 // repoDocsLink matches an inline link from a rule README into the
 // docs/ tree (`../../../docs/path/file.md`). The docs tree IS
@@ -520,7 +526,7 @@ func (t *Toolkit) syncRuleIndex(rulesDir, dstDir string) error {
 	// Skip code regions so a documented `MDS…/README.md` example
 	// stays verbatim.
 	data = applyOutsideCode(data, func(seg []byte) []byte {
-		return ruleReadmeLink.ReplaceAll(seg, []byte("]($1/)"))
+		return ruleReadmeLink.ReplaceAll(seg, []byte("]($1/$2)"))
 	})
 	// Cascade the `rule` layout type to all child pages so Hugo
 	// picks up the per-rule template for category/status display.
@@ -605,8 +611,8 @@ func transformRulePage(data []byte, ruleName string) []byte {
 	ruleSourceFiles := githubBlobBase + "internal/rules/" + ruleName + "/"
 	ruleSourceDir := ruleSourceTreeBase + ruleName + "/"
 	data = applyOutsideCode(data, func(seg []byte) []byte {
-		seg = ruleReadmeLink.ReplaceAll(seg, []byte("]($1/)"))
-		seg = ruleRefDefLink.ReplaceAll(seg, []byte("$1/"))
+		seg = ruleReadmeLink.ReplaceAll(seg, []byte("]($1/$2)"))
+		seg = ruleRefDefLink.ReplaceAll(seg, []byte("$1/$3"))
 		seg = repoDocsLink.ReplaceAll(seg, []byte("](/docs/$1/$2)"))
 		seg = repoPlanLink.ReplaceAll(seg, []byte("]("+githubBlobBase+"plan/$1)"))
 		seg = repoPlanRefDef.ReplaceAll(seg, []byte("${1}"+githubBlobBase+"plan/$2"))

@@ -308,19 +308,28 @@ func humanizeDirName(name string) string {
 }
 
 // transformMarkdown applies the docs/-tree → Hugo content
-// reconciliations to one markdown file: a single goldmark
-// parse drives both the body-H1 → front-matter title lift
-// and the <?…?> directive-marker strip (see
-// reconcileDocForHugo), then literal shortcode patterns are
-// escaped so documentation about Hugo renders verbatim,
-// and finally any repo-relative `internal/rules/MDS…/[README.md]`
-// link is rewritten to its published `/docs/rules/MDS…/` URL.
-// The rule-link rewrite runs at this layer rather than in
-// website.go's rule-specific syncs because plain docs (e.g.
-// docs/background/concepts/generated-section.md) link into
-// internal/rules/ too; without the rewrite those links resolve
-// to a non-existent path on the site even though they work on
-// GitHub.
+// reconciliations to one markdown file in three layered passes:
+//
+//   - reconcileDocForHugo: one goldmark parse lifts the first
+//     body H1 to front-matter title and strips <?…?> directive
+//     markers.
+//   - escapeHugoShortcodes: literal `{{< … >}}` / `{{% … %}}`
+//     patterns are rewritten to their Hugo escape forms so
+//     documentation about Hugo renders verbatim.
+//   - rewriteRuleLinks: every repo-relative Markdown link is
+//     routed for the published site — `internal/rules/MDS…/`
+//     becomes `/docs/rules/MDS…/`, every other non-published
+//     path (plan/, internal/ Go packages, .claude/, root files,
+//     …) becomes a GitHub blob/tree URL, and a sibling
+//     `<path>/index.md` reference drops to `<path>/` so Hugo's
+//     section URL resolves. All three rewrites run under
+//     applyOutsideCode so documented examples inside fenced or
+//     inline code spans pass through verbatim.
+//
+// rewriteRuleLinks runs here (not only in website.go's
+// rule-specific syncs) because plain docs link into the same
+// non-published trees; without the rewrite their targets resolve
+// on GitHub but 404 on the site.
 func transformMarkdown(b []byte) []byte {
 	return rewriteRuleLinks(escapeHugoShortcodes(reconcileDocForHugo(b)))
 }

@@ -46,6 +46,7 @@ Line exceeds maximum length.
 | ` + "`max`" + ` | int | 80 | Maximum line length |
 
 See also [MDS021](../MDS021-include/README.md) and [MDS027][mds027].
+Sibling rule with anchor: [MDS021 anchor](../MDS021-include/README.md#syntax).
 Anchor link: [MDS020 anchor](../../../internal/rules/MDS020-required-structure/README.md#index-side-output).
 
 See the [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)
@@ -146,6 +147,8 @@ func TestBuildWebsite_PublishesRulePages_SiblingLinks(t *testing.T) {
 	body := buildRulePageBody(t)
 	assert.Contains(t, body, "[MDS021](../MDS021-include/)",
 		"sibling rule links must drop the README.md target")
+	assert.Contains(t, body, "[MDS021 anchor](../MDS021-include/#syntax)",
+		"sibling rule links with anchors must drop README.md and keep the anchor")
 	assert.NotContains(t, body, "../MDS021-include/README.md",
 		"no unpublished README.md link target may remain")
 	assert.Contains(t, body,
