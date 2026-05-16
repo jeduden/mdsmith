@@ -1,8 +1,10 @@
 package rules
 
 import (
+	"bufio"
 	"fmt"
 	"io/fs"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -309,6 +311,17 @@ func TestParseFrontMatter_FoldsBlockScalarDescription(t *testing.T) {
 	assert.Equal(t, "First line continued on a second line.", info.Description)
 	assert.NotContains(t, info.Description, "\n")
 	assert.NotContains(t, info.Description, ">-")
+}
+
+// TestParseFrontMatter_ScannerError verifies that bufio.Scanner errors (here
+// triggered by a single line exceeding the default 64 KiB buffer) propagate
+// as a clear "scanning front matter" error rather than being swallowed.
+func TestParseFrontMatter_ScannerError(t *testing.T) {
+	longLine := strings.Repeat("a", bufio.MaxScanTokenSize+1)
+	content := "---\n" + longLine + "\n---\n# body\n"
+	_, err := parseFrontMatter(content)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "scanning front matter")
 }
 
 // TestParseFrontMatter_UnterminatedFrontMatter verifies that a front matter
