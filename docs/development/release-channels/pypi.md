@@ -6,6 +6,8 @@ summary: >-
 registry: pypi.org
 credential: OIDC Trusted Publishing
 job: pypi
+channelurl: https://pypi.org/project/mdsmith/
+weight: 2
 ---
 # PyPI
 

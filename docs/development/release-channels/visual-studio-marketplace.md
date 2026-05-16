@@ -6,6 +6,8 @@ summary: >-
 registry: marketplace.visualstudio.com
 credential: VSCE_PAT
 job: vscode
+channelurl: https://marketplace.visualstudio.com/items?itemName=jeduden.mdsmith
+weight: 3
 ---
 # Visual Studio Marketplace
 

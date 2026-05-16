@@ -7,6 +7,8 @@ summary: >-
 registry: github.com/jeduden/mdsmith/releases
 credential: GITHUB_TOKEN + OIDC
 job: release
+channelurl: https://github.com/jeduden/mdsmith/releases
+weight: 5
 ---
 # GitHub Releases
 

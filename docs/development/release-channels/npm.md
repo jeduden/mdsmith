@@ -7,6 +7,8 @@ summary: >-
 registry: registry.npmjs.org
 credential: OIDC Trusted Publishing
 job: npm
+channelurl: https://www.npmjs.com/package/@mdsmith/cli
+weight: 1
 ---
 # npm
 

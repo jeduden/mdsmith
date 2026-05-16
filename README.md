@@ -4,6 +4,10 @@
 [![Quality][grc-badge]][grc-link]
 [![Coverage][cov-badge]][cov-link]
 
+Live build, code-quality, and coverage signals —
+[Quality you can verify](docs/features/quality.md) explains what
+each one gates.
+
 A fast, auto-fixing Markdown linter and formatter for docs, READMEs,
 and AI-generated content. Checks style, readability, structure, and
 cross-file integrity. Written in Go.
@@ -11,67 +15,97 @@ cross-file integrity. Written in Go.
 <!-- Rendered by .github/workflows/demo.yml on push to main; published to the assets branch -->
 ![mdsmith demo](https://raw.githubusercontent.com/jeduden/mdsmith/assets/assets/demo.gif)
 
-## ✨ Why mdsmith
+<?include
+file: docs/features/index.md
+strip-frontmatter: "true"
+heading-level: "absolute"
+?>
+## Why mdsmith
 
-**🔧 Auto-fix Markdown formatting.**
-`mdsmith fix` rewrites whitespace, headings, code fences,
-bare URLs, list indentation, and table alignment in place,
-re-running up to 10 passes and stopping early once edits
-stabilize. `mdsmith check` is the read-only CI sibling.
+mdsmith is one rule engine behind every surface: the CLI, the LSP
+server, the VS Code extension, and the Claude Code plugin all run
+the same checks. This page is the shared overview. The README
+includes it; the website renders it and links each card to a
+fuller page.
 
-**✏️ Live diagnostics wherever you write.**
-`mdsmith lsp` emits diagnostics, quick-fixes, and
-navigation (definition, references, symbol search, and a
-call-hierarchy over `<?include?>`/`<?catalog?>` and
-cross-file links) — consumed by any LSP-aware editor,
-including Neovim, Helix, and JetBrains.
-The [VS Code extension][vsc-mp] surfaces all of it with
-opt-in fix-on-save (also on [Open VSX][vsc-ovsx] for
-Cursor, VSCodium, Theia, and Gitpod). The
-[Claude Code plugin](docs/guides/install.md#claude-code-plugin)
-feeds diagnostics and navigation to the agent so it sees
-mdsmith inline while editing Markdown.
+**[Auto-fix Markdown formatting](docs/features/auto-fix.md).**
+`mdsmith fix` rewrites whitespace, headings, code fences, bare
+URLs, list indentation, and table alignment in place. It loops
+until edits stabilize. `mdsmith check` is the read-only CI
+sibling.
 
-**🔗 Cross-file integrity.**
-Built-in rules flag broken links and missing anchors
-([`MDS027`](internal/rules/MDS027-cross-file-reference-integrity/README.md)),
-enforce per-file section schemas
-([`MDS020`](internal/rules/MDS020-required-structure/README.md)),
-and keep Markdown in the right folders
-([`MDS033`](internal/rules/MDS033-directory-structure/README.md)).
-Schemas can be inline on a
-[file kind](docs/guides/file-kinds.md) or shared via
-`proto.md` files.
+**[Live diagnostics wherever you write](docs/features/live-diagnostics.md).**
+`mdsmith lsp` emits diagnostics, quick-fixes, and navigation. Any
+LSP-aware editor can consume it. The VS Code extension and the
+Claude Code plugin surface the same data.
 
-**🤖 Guardrails for AI-generated docs.**
-Cap [file](internal/rules/MDS022-max-file-length/README.md),
-[section](internal/rules/MDS036-max-section-length/README.md),
-and
-[token-budget](internal/rules/MDS028-token-budget/README.md)
-size; enforce
-[reading grade](internal/rules/MDS023-paragraph-readability/README.md)
-and
-[sentence count](internal/rules/MDS024-paragraph-structure/README.md);
-flag
-[verbatim copy-paste](internal/rules/MDS037-duplicated-content/README.md)
-across files.
+**[Cross-file integrity](docs/features/cross-file-integrity.md).**
+Built-in rules flag broken links and missing anchors, enforce
+per-file section schemas, and keep Markdown in the right folders.
+Schemas can be inline on a file kind or shared via `proto.md`
+files.
 
-**📋 Self-maintaining sections.**
-On `mdsmith fix`, `<?toc?>` rebuilds a heading
-table-of-contents, `<?catalog?>` generates an
-index — list, table, or any row template — from the front
-matter of files matching a glob, and `<?include?>` splices
-in another file. `mdsmith merge-driver install` registers
-a Git driver that auto-resolves merge conflicts inside
-those blocks.
+**[Guardrails for AI-generated docs](docs/features/ai-guardrails.md).**
+Cap file, section, and token-budget size. Enforce reading grade
+and sentence count. Flag verbatim copy-paste across files.
 
-**📊 Gate releases on doc status.**
-`mdsmith list query 'status: "✅"' plan/` selects files by
-a [CUE expression](docs/reference/cli/query.md) on front
-matter;
-`mdsmith metrics rank --by token-estimate --top 10 docs/`
-ranks files by any shared metric — both ready to pipe into
-a release script.
+**[Self-maintaining sections](docs/features/self-maintaining-sections.md).**
+On `mdsmith fix`, `<?toc?>` rebuilds a heading TOC, `<?catalog?>`
+generates an index from front matter, and `<?include?>` splices
+in another file. A Git merge driver resolves conflicts in those
+blocks.
+
+**[Gate releases on doc status](docs/features/release-gating.md).**
+`mdsmith list query` selects files by a CUE expression on front
+matter. `mdsmith metrics rank` ranks files by any shared metric.
+Both pipe straight into a release script.
+
+**[Fast on every run](docs/features/performance.md).**
+A single static Go binary with no runtime to boot. The workspace
+walk runs in parallel and embeds are linted once, so CI and
+editor feedback stay instant.
+
+**[Quality you can verify](docs/features/quality.md).**
+The build, Go Report Card, and coverage badges at the top of the
+README report live project health. mdsmith lints its own docs
+with the rules it ships, and a coverage gate blocks merges that
+drop below the line.
+
+**[File kinds and schemas](docs/features/file-kinds-schemas.md).**
+Tag each file with a kind, then validate its headings and front
+matter against a schema declared inline on the kind or shared via
+a `proto.md` template. A whole directory obeys one contract.
+
+**[Conventions and flavors](docs/features/markdown-conventions.md).**
+Pin a convention to get a curated rule preset and a target
+renderer flavor in one switch. `MDS034` flags syntax the flavor
+will not render. A placeholder vocabulary spares template tokens.
+
+**[Build artifacts in sync](docs/features/build-artifacts.md).**
+`<?build?>` declares an artifact and a recipe. `mdsmith fix`
+keeps the section body in sync with the recipe output. `MDS040`
+shell-safety-checks the recipe without running it.
+
+**[Git-native, conflict-free](docs/features/git-native.md).**
+A merge driver auto-resolves conflicts inside generated blocks.
+A pre-merge-commit hook re-runs `mdsmith fix` and re-stages the
+result, so generated content never blocks a merge.
+
+**[Config you can explain](docs/features/config-transparency.md).**
+Config layers deep-merge rule by rule: defaults, convention,
+kinds, then overrides. `--explain` and `mdsmith kinds resolve`
+show which layer set each effective value.
+
+**[Editors and agents](docs/features/editor-agent-integration.md).**
+A bundled VS Code extension and Claude Code plugins drive the
+same `mdsmith lsp` server, so diagnostics, fix-on-save, and
+navigation reach your editor and your coding agent unchanged.
+
+**[Installs everywhere](docs/features/install-everywhere.md).**
+One version-stamped Go binary ships through go install, npm,
+pip, uvx, mise, asdf, and GitHub Releases. No postinstall
+network call, so locked-down CI installs offline.
+<?/include?>
 
 **🆚 How does it compare?** See:
 <?catalog
@@ -218,5 +252,3 @@ mdsmith upgrades become an explicit, reviewable change. Run
 [grc-link]: https://goreportcard.com/report/github.com/jeduden/mdsmith
 [cov-badge]: https://codecov.io/gh/jeduden/mdsmith/branch/main/graph/badge.svg
 [cov-link]: https://codecov.io/gh/jeduden/mdsmith/branch/main
-[vsc-mp]: https://marketplace.visualstudio.com/items?itemName=jeduden.mdsmith
-[vsc-ovsx]: https://open-vsx.org/extension/jeduden/mdsmith

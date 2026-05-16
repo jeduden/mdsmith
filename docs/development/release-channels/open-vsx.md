@@ -7,6 +7,8 @@ summary: >-
 registry: open-vsx.org
 credential: OVSX_PAT
 job: vscode
+channelurl: https://open-vsx.org/extension/jeduden/mdsmith
+weight: 4
 ---
 # Open VSX
 

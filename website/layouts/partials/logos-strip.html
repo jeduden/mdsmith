@@ -2,8 +2,18 @@
   <div class="container">
     <div class="logos-strip">
       <span class="logos-label">Distributed via</span>
-      {{ range site.Data.homepage.channels }}
-        <a class="logos-item" href="{{ .url }}" rel="noopener">{{ .name }}</a>
+      {{- /* Sourced from the release-channel docs
+             (docs/development/release-channels/*.md), synced to
+             /docs/development/release-channels/. Each carries a
+             canonical `channelurl` and an ordering `weight` in
+             front matter — no separate data file. */ -}}
+      {{ with site.GetPage "/docs/development/release-channels" }}
+        {{ range .Pages.ByWeight }}
+          {{ $c := . }}
+          {{ with .Params.channelurl }}
+            <a class="logos-item" href="{{ . }}" rel="noopener">{{ $c.Title }}</a>
+          {{ end }}
+        {{ end }}
       {{ end }}
     </div>
   </div>
