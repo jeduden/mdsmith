@@ -134,16 +134,19 @@ var repoNonPublishedRefDef = regexp.MustCompile(
 		`PLAN\.md|README\.md|LICENSE|SECURITY\.md|CLAUDE\.md|AGENTS\.md` +
 		`)`)
 
-// indexMdLink matches a sibling-style inline link whose target
-// is `index.md` (the docs/-tree convention for a directory
-// overview). syncDocsFile renames every `index.md` to
-// `_index.md` when copying into the Hugo tree, so a link that
-// kept the source name resolves to nothing on the synced
-// filesystem (and MDS027 flags it). Rewrite `index.md` in the
-// link target to `_index.md` to follow the rename. Group 1
-// captures the path prefix (e.g. `architecture/`); group 2
-// captures an optional `#anchor` fragment.
-var indexMdLink = regexp.MustCompile(`\]\(((?:[^)/]+/)*)index\.md((?:#[^)]*)?)\)`)
+// indexMdLink matches an inline link whose target ends in
+// `<path>/index.md` (the docs/-tree convention for a directory
+// overview). Hugo serves a section's `_index.md` at the
+// directory URL (`/section/`) with no filename suffix — it does
+// not publish `_index.md` (or `index.md`) as a URL — so the
+// rewrite drops the filename entirely and resolves to
+// `<path>/`. The synced filesystem still has `_index.md` at
+// that directory thanks to SyncDocs' rename, so directory
+// targets continue to resolve in MDS027's filesystem check too.
+// Group 1 captures the path prefix (required: a bare
+// `index.md` link with no parent directory is ambiguous and
+// left alone); group 2 captures an optional `#anchor`.
+var indexMdLink = regexp.MustCompile(`\]\(((?:[^)/]+/)+)index\.md((?:#[^)]*)?)\)`)
 
 // ruleFixtureLink matches an inline link in a per-rule README
 // whose target is a fixture path under the rule's own directory:
@@ -234,11 +237,12 @@ func rewriteRuleLinks(b []byte) []byte {
 		seg = repoRuleRefDef.ReplaceAll(seg, []byte("${1}"+rulePageURLBase+"$2/$3"))
 		seg = repoNonPublishedLink.ReplaceAllFunc(seg, rewriteNonPublishedInline)
 		seg = repoNonPublishedRefDef.ReplaceAllFunc(seg, rewriteNonPublishedRefDef)
-		// `${1}` (braced form) is required: `$1_index.md` would
-		// parse as a variable named `1_index` to Go's regexp
-		// expander, so the captured directory prefix would
-		// silently vanish (and every link become `.md`).
-		seg = indexMdLink.ReplaceAll(seg, []byte("](${1}_index.md$2)"))
+		// Drop the `index.md` filename — Hugo serves the
+		// directory's _index.md at `/<path>/`, not at
+		// `/<path>/_index.md` or `/<path>/index.md`. Keeping
+		// either filename in the markdown produces a 404 on
+		// the live site.
+		seg = indexMdLink.ReplaceAll(seg, []byte("](${1}$2)"))
 		return seg
 	})
 }

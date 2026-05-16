@@ -40,18 +40,26 @@ rules:
   # - first-line-heading / heading-increment: the source
   #   H1 is lifted to front-matter `title:` by
   #   reconcileDocForHugo, so the body's first heading is
-  #   level 2 (or there is no body heading at all on a
-  #   stub _index.md).
+  #   level 2. Synthesized stub _index.md files have only
+  #   front matter and no body heading at all, which both
+  #   rules flag.
   # - no-multiple-blanks: stripping <?include?> /
   #   <?catalog?> markers can leave adjacent blank lines
   #   that no longer separate a marker from its body.
-  # - single-trailing-newline: synthesizeSectionIndex
-  #   writes a minimal stub without a final newline.
+  # - single-trailing-newline: front-matter: true strips
+  #   the YAML block before rules see the body. A
+  #   synthesized stub _index.md has only front matter, so
+  #   the post-strip body is empty and MDS009 reports an
+  #   empty file. The source stub itself is well-formed.
   # - line-length / max-file-length / paragraph-structure /
-  #   table-format / table-readability: catalog and
-  #   include outputs in the synced tree can have row
-  #   widths and paragraph shapes the source-side limits
+  #   paragraph-readability / token-budget / table-format /
+  #   table-readability: catalog and include outputs in
+  #   the synced tree can have row widths, paragraph
+  #   shapes, and section lengths the source-side limits
   #   were not tuned for.
+  # - no-emphasis-as-heading: catalog-generated bold table
+  #   labels and feature-card headers can trip the
+  #   emphasis-as-heading detector on the rendered output.
   # - required-structure: schemas target the
   #   docs/-tree shape (paths, filenames, front matter);
   #   the synced tree has different paths

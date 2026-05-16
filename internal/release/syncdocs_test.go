@@ -724,21 +724,29 @@ func TestTransformMarkdown_RewritesNonPublishedLinks(t *testing.T) {
 	})
 }
 
-// TestTransformMarkdown_RenamesIndexMd: a relative link that
-// keeps the docs/-tree convention `index.md` filename must be
-// rewritten to `_index.md` to match SyncDocs' rename, so MDS027
-// resolves the synced target. Anchor is preserved.
-func TestTransformMarkdown_RenamesIndexMd(t *testing.T) {
+// TestTransformMarkdown_DropsIndexMdFilename: Hugo serves a
+// section's _index.md at the directory URL (no filename), so a
+// relative `<path>/index.md` link in a docs body must be
+// rewritten to `<path>/` to render correctly on the site. The
+// anchor passes through; a bare `index.md` with no parent
+// directory is left alone because the resulting empty target
+// would be ambiguous.
+func TestTransformMarkdown_DropsIndexMdFilename(t *testing.T) {
 	runTransformCases(t, []transformCase{
 		{
-			name: "sibling index.md renamed",
+			name: "sibling index.md becomes section URL",
 			in:   "See [x](architecture/index.md).\n",
-			want: "See [x](architecture/_index.md).\n",
+			want: "See [x](architecture/).\n",
 		},
 		{
 			name: "sibling index.md with anchor",
 			in:   "See [x](architecture/index.md#section).\n",
-			want: "See [x](architecture/_index.md#section).\n",
+			want: "See [x](architecture/#section).\n",
+		},
+		{
+			name: "bare index.md with no parent dir is unchanged",
+			in:   "See [x](index.md).\n",
+			want: "See [x](index.md).\n",
 		},
 	})
 }

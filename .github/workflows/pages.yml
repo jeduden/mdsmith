@@ -18,6 +18,15 @@ on:
       # those files must redeploy the site too.
       - "internal/rules/index.md"
       - "internal/rules/MDS*/**"
+      # The link-rewrite and sync logic that generates the
+      # site lives under cmd/mdsmith-release and
+      # internal/release. A regression in those packages
+      # would corrupt the published tree silently if the
+      # workflow only ran on docs/website edits, so trigger
+      # the deploy (which runs the synced-tree lint) on any
+      # change to the generator too.
+      - "cmd/mdsmith-release/**"
+      - "internal/release/**"
       - ".github/workflows/pages.yml"
   workflow_call:
     inputs:
