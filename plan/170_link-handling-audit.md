@@ -1,7 +1,7 @@
 ---
 id: 170
 title: Audit link handling across mdsmith and the website
-status: 🔲
+status: ✅
 summary: >-
   Survey every place mdsmith touches Markdown links — the
   linter (MDS027 and friends), the website rewriter, the
@@ -143,18 +143,18 @@ of these mid-implementation in another PR.
 
 ## Acceptance Criteria
 
-- [ ] `docs/research/links/README.md` exists, passes
+- [x] `docs/research/links/README.md` exists, passes
       `mdsmith check`, and is in the homepage catalog.
-- [ ] Every gap surfaced by PR #309 review is
+- [x] Every gap surfaced by PR #309 review is
       catalogued with a target surface and a decision.
-- [ ] Inventory of link rules and link-aware code is
+- [x] Inventory of link rules and link-aware code is
       complete (one entry per file).
-- [ ] Corpus audit lists per-form counts for inline
+- [x] Corpus audit lists per-form counts for inline
       vs ref-style, relative vs absolute, with vs
       without `.md`, with vs without fragment.
-- [ ] A shared `links:` config sketch is in the doc
+- [x] A shared `links:` config sketch is in the doc
       (design only — no parser changes here).
-- [ ] At least one follow-up plan file is filed per
+- [x] At least one follow-up plan file is filed per
       "act on this" decision.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no issues.
