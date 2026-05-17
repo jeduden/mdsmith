@@ -3,7 +3,8 @@ title: "Fast on every run"
 summary: >-
   A single static Go binary, no runtime to start. The workspace walk
   runs in parallel, embeds are linted once, and `check` is built for
-  the hot path — a full check of this repo completes in under 300 ms.
+  the hot path — roughly 3x faster than Node markdownlint, with a CI
+  gate against regression.
 icon: zap
 link: "/docs/reference/cli/check/"
 weight: 7
@@ -25,10 +26,16 @@ a large doc set does not re-scan the same prose repeatedly.
 the LSP server and the fixer. Editor feedback, `git commit` hooks,
 and CI all run the same optimised core — no per-surface overhead.
 
-A full check of this repository — 70-plus Markdown files, the full
-rule suite, cross-file link resolution — completes in under 300 ms
-on commodity hardware. Sub-second on the first run and every run
-after it.
+Concretely: a small working set is near-instant. An 18-file
+`docs/features` check is ~50 ms. A full check of this
+repository — ~720 tracked Markdown files, full rule suite,
+cross-file link resolution — is ~1.4 s on commodity hardware.
+That still beats a Node markdownlint over the same files by
+roughly 3x. A CI gate (`check-bench`, modelled on the LSP
+latency gate) fails the build if a 300-file synthetic check
+regresses past its budget. The cross-tool numbers and method
+are in the
+[benchmark research doc](../research/benchmarks/README.md).
 
 See the [`check`](../reference/cli/check.md) reference for flags
 and exit codes.

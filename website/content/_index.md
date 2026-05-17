@@ -8,7 +8,7 @@ hero:
   headline_post: ", smithed."
   lead: >-
     Fast checks for style, readability, structure, and cross-file integrity.
-    One static Go binary — 2-3x faster than Node markdownlint in our run.
+    One static Go binary, no runtime — faster than Node markdownlint.
     Auto-fix what fixes cleanly. Editor-grade diagnostics on every save.
 install:
   - id: go
