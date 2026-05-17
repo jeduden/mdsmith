@@ -4,10 +4,6 @@
 [![Quality][grc-badge]][grc-link]
 [![Coverage][cov-badge]][cov-link]
 
-Live build, code-quality, and coverage signals —
-[Quality you can verify](docs/features/quality.md) explains what
-each one gates.
-
 A fast, auto-fixing Markdown linter and formatter for docs, READMEs,
 and AI-generated content. Checks style, readability, structure, and
 cross-file integrity. One static Go binary.
