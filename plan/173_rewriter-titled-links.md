@@ -1,7 +1,7 @@
 ---
 id: 173
 title: Website rewriter tolerates titled links
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: [170]
 summary: >-
@@ -44,10 +44,10 @@ but the gap is real and cheap to close.
 
 ## Acceptance Criteria
 
-- [ ] A titled inline link is rewritten with its title
+- [x] A titled inline link is rewritten with its title
   preserved.
-- [ ] A titled reference definition is rewritten with
+- [x] A titled reference definition is rewritten with
   its title preserved.
-- [ ] Code spans and fences are still untouched.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] Code spans and fences are still untouched.
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no issues.

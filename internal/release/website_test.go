@@ -499,3 +499,113 @@ func TestBuildWebsite_SyncErrorNotDoubleWrapped(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(err.Error(), "sync "),
 		"the sync prefix must appear exactly once")
 }
+
+const titledReadmeFixture = `---
+id: MDS099
+name: test-titled
+status: ready
+description: Test titled links.
+category: test
+nature: content
+maintainability: null
+---
+# MDS099: test-titled
+
+Docs: [guide](../../../docs/guides/schemas.md "Schema Guide").
+Plan: [plan](../../../plan/107.md "Plan 107").
+Sibling rule: [rule](../MDS021-include/README.md "Rule").
+Docs with anchor: [guide](../../../docs/guides/schemas.md#top "Schema Guide").
+Fixture: [good](good/default.md "Good example").
+Sibling pkg: [pkg](../linelength/rule.go "Source").
+Rule index: [index](../../../internal/rules/MDS001-line-length/ "MDS001").
+
+## Meta-Information
+
+- **Implementation**: [source](./)
+`
+
+// buildTitledRulePageBody runs BuildWebsite over the titledReadmeFixture
+// and returns the published rule page body for the titled-link tests.
+func buildTitledRulePageBody(t *testing.T) string {
+	t.Helper()
+	parent := t.TempDir()
+	src := filepath.Join(parent, "docs")
+	dst := filepath.Join(t.TempDir(), "out")
+	writeFile(t, filepath.Join(src, "top.md"), "top body\n")
+	ruleIndexAt(t, parent)
+	writeFile(t,
+		filepath.Join(parent, "internal", "rules", "MDS099-test-titled", "README.md"),
+		titledReadmeFixture)
+	require.NoError(t, NewWithDeps(osFS{}, &recordingRunner{}).BuildWebsite(src, dst, false))
+	got, err := os.ReadFile(filepath.Join(dst, "rules", "MDS099-test-titled", "index.md"))
+	require.NoError(t, err, "per-rule page must be written")
+	return string(got)
+}
+
+// TestTitledLinks_DocsAndPlanLinks verifies that titled docs and plan
+// inline links in a rule README are rewritten with their titles preserved.
+func TestTitledLinks_DocsAndPlanLinks(t *testing.T) {
+	body := buildTitledRulePageBody(t)
+
+	assert.Contains(t, body, `(/docs/guides/schemas/ "Schema Guide")`,
+		"titled docs link must be rewritten with title preserved")
+	assert.NotContains(t, body, "../../../docs/guides/schemas.md",
+		"repo-relative docs path must not survive")
+	assert.Contains(t, body, `(/docs/guides/schemas/#top "Schema Guide")`,
+		"titled docs link with anchor must preserve anchor and title")
+	assert.Contains(t, body, `(../MDS021-include/ "Rule")`,
+		"titled sibling rule link must drop README.md with title preserved")
+	assert.NotContains(t, body, "MDS021-include/README.md",
+		"README.md suffix must not survive in sibling rule link")
+	assert.Contains(t, body,
+		`(https://github.com/jeduden/mdsmith/blob/main/plan/107.md "Plan 107")`,
+		"titled plan link must be rewritten with title preserved")
+	assert.NotContains(t, body, "../../../plan/107.md",
+		"repo-relative plan path must not survive")
+}
+
+// TestTitledLinks_FixtureAndSiblingLinks verifies that titled fixture and
+// sibling non-MDS links, and titled rule-index links, are rewritten with
+// their titles preserved.
+func TestTitledLinks_FixtureAndSiblingLinks(t *testing.T) {
+	body := buildTitledRulePageBody(t)
+
+	assert.Contains(t, body,
+		`(https://github.com/jeduden/mdsmith/blob/main/internal/rules/`+
+			`MDS099-test-titled/good/default.md "Good example")`,
+		"titled fixture link must be rewritten with title preserved")
+	assert.NotContains(t, body, `](good/default.md`,
+		"repo-relative fixture path must not survive as the raw target")
+	assert.Contains(t, body,
+		`(https://github.com/jeduden/mdsmith/blob/main/internal/rules/linelength/rule.go "Source")`,
+		"titled sibling non-MDS link must be rewritten with title preserved")
+	assert.NotContains(t, body, `../linelength/rule.go "Source"`,
+		"repo-relative sibling non-MDS path must not survive")
+	assert.Contains(t, body, `(/docs/rules/MDS001-line-length/ "MDS001")`,
+		"titled deep rule link must be rewritten with title preserved")
+	assert.NotContains(t, body, `internal/rules/MDS001-line-length/ "MDS001"`,
+		"repo-relative rule link must not survive")
+}
+
+// TestTitledLinks_DocsPage verifies that titled links in docs pages (not rule
+// READMEs) going through rewriteRuleLinks are rewritten with title preserved.
+func TestTitledLinks_DocsPage(t *testing.T) {
+	input := []byte(`See [rule](../../internal/rules/MDS001-line-length/ "MDS001") inline.
+See [rule readme](../../internal/rules/MDS001-line-length/README.md "MDS001") inline.
+See [non-pub](../../cmd/tool.go "CLI tool") inline.
+`)
+
+	got := rewriteRuleLinks(input)
+	result := string(got)
+
+	assert.Contains(t, result, `(/docs/rules/MDS001-line-length/ "MDS001")`,
+		"titled rule link must be rewritten with title preserved")
+	assert.NotContains(t, result, `internal/rules/MDS001-line-length/ "MDS001"`,
+		"repo-relative rule path must not survive")
+	assert.Contains(t, result, `(/docs/rules/MDS001-line-length/ "MDS001")`,
+		"titled rule README link must be rewritten with title preserved")
+	assert.Contains(t, result, `(https://github.com/jeduden/mdsmith/blob/main/cmd/tool.go "CLI tool")`,
+		"titled non-published link must be rewritten with title preserved")
+	assert.NotContains(t, result, `../../cmd/tool.go`,
+		"repo-relative non-published path must not survive")
+}

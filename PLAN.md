@@ -99,5 +99,5 @@ footer: |
 | 170 | ✅     | opus   | [Audit link handling across mdsmith and the website](plan/170_link-handling-audit.md)                                     |
 | 171 | 🔲     | opus   | [MDS027 link-integrity hardening](plan/171_mds027-link-integrity-hardening.md)                                            |
 | 172 | 🔲     | opus   | [Link-style rule and shared links config](plan/172_link-style-rule-and-config.md)                                         |
-| 173 | 🔲     | sonnet | [Website rewriter tolerates titled links](plan/173_rewriter-titled-links.md)                                              |
+| 173 | ✅     | sonnet | [Website rewriter tolerates titled links](plan/173_rewriter-titled-links.md)                                              |
 <?/catalog?>
