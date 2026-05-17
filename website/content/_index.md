@@ -8,6 +8,7 @@ hero:
   headline_post: ", smithed."
   lead: >-
     Fast checks for style, readability, structure, and cross-file integrity.
+    One static Go binary — a full check of this repo runs in under 300 ms.
     Auto-fix what fixes cleanly. Editor-grade diagnostics on every save.
 install:
   - id: go
@@ -40,3 +41,5 @@ mdsmith is a Markdown linter and formatter written in Go. It checks style,
 readability, structure, and cross-file integrity, and auto-fixes what fixes
 cleanly. The same engine drives the CLI, the LSP server, the VS Code
 extension, and the Claude Code plugin — every surface sees the same rules.
+Where markdownlint-compatible linters stop at per-file style, mdsmith
+adds the cross-file graph, generated sections, and readability budgets.

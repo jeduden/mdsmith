@@ -58,6 +58,67 @@ Part of the [unified][]/[remark][] AST pipeline ecosystem.
 - Deep composability with unified plugins
 - ~8.8k stars (remark parent project)
 
+### [rumdl][]
+
+Rust binary, zero runtime deps. ~1.1k stars. Positions itself
+as "a modern Markdown linter and formatter, built for speed
+with Rust" — an explicit, ruff-inspired drop-in replacement
+for markdownlint.
+
+- 71 lint rules, each mapped to a markdownlint ID
+  ([MD001][md001]-style); also reads existing markdownlint
+  JSON/YAML config, so a repo can switch with no rule rewrite
+- Autofix via `rumdl check --fix` plus a `rumdl fmt` formatter
+- Config: TOML (`.rumdl.toml`, or `[tool.rumdl]` in
+  `pyproject.toml`); parent-dir discovery like ESLint/Git
+- LSP server plus VS Code/Cursor/Windsurf and JetBrains
+  extensions
+- Flavor switches for GFM, MkDocs, MDX, and Quarto
+- Install: cargo, pip, npm, Homebrew, Nix, mise, winget,
+  binary download
+- Benchmarked on the Rust Book repo (478 files, Oct 2025);
+  see [Benchmarks](#benchmarks)
+
+### [mado][]
+
+Rust binary. Tagline: "A fast Markdown linter written in
+Rust. Compatible with CommonMark and GitHub Flavored Markdown
+(GFM)." Speed-first: the README leads with a benchmark, not a
+feature list.
+
+- ~41 rules mapped to markdownlint IDs (MD001-MD047 with
+  gaps); each rule is tagged stable, unstable, or unsupported
+- Check-only: no autofix, no `fix` mode, no LSP as of 2026-05
+- Config: TOML (`mado.toml` / `.mado.toml`) with a published
+  JSON Schema; per-platform global config path
+- Install: Homebrew, Nix, pacman, Scoop, WinGet, prebuilt
+  binaries
+- Ships a GitHub Actions integration
+- Headline claim: "≈49-60x faster than existing linters";
+  numbers in [Benchmarks](#benchmarks)
+
+### [panache][]
+
+Rust binary. Not a markdownlint clone — its own rule IDs and
+a different target. Tagline: "A language server, formatter,
+and linter for Markdown, Quarto, and R Markdown, built in
+Rust with a lossless CST parser and support for external
+formatters and linters on code blocks."
+
+- Three tools in one: `panache lint`, `panache format`, and
+  a full LSP (diagnostics, code actions, symbols, folding)
+- Lossless CST parser keeps Pandoc/Quarto syntax (fenced
+  divs, attribute spans) instead of flattening it — the
+  stated edge over Prettier and mdformat on `.qmd`/`.Rmd`
+- Delegates embedded code blocks to external formatters and
+  linters rather than reimplementing them
+- Config: TOML (`panache.toml` / `.panache.toml`)
+- Install: cargo, prebuilt binaries, AUR, Nix, PyPI
+  (uv/pipx), npm, VS Code extension
+- Ships reproducible hyperfine benchmarks against Prettier,
+  Pandoc, rumdl, mdformat, mado, and markdownlint; see
+  [Benchmarks](#benchmarks)
+
 ### [Prettier][]
 
 Node.js. Opinionated formatter, not a linter. ~51.7k
@@ -337,6 +398,51 @@ proper names ([MDS050][mds050]), single H1
 definitions ([MDS053][mds053]) are already
 implemented.
 
+### Rust Markdown linters (rumdl, mado, panache)
+
+Three Rust tools sit next to mdsmith. [rumdl][] and [mado][]
+are markdownlint-compatible: they adopt markdownlint's
+`MDxxx` rule IDs as a drop-in surface. [panache][] is not —
+it keeps its own IDs and targets Pandoc/Quarto/R Markdown.
+mdsmith also keeps its own `MDSxxx` IDs and adds a
+cross-file, generated-content, and readability layer none
+of the three carry.
+
+For the rule-by-rule structural mapping, the
+[markdownlint column](#structural-linting) doubles as the
+rumdl/mado column: both reuse the same `MDxxx` semantics.
+rumdl implements ~71 of those IDs; mado implements ~41.
+Neither adds rules outside the markdownlint set. panache
+does not map to that table — its checks target Quarto and
+R Markdown constructs the others flatten away.
+
+| Aspect                  | mdsmith      | rumdl                | mado                 | panache      |
+|-------------------------|--------------|----------------------|----------------------|--------------|
+| Language                | Go           | Rust                 | Rust                 | Rust         |
+| Rule IDs                | own `MDSxxx` | markdownlint `MDxxx` | markdownlint `MDxxx` | own          |
+| Rule count              | 30+          | 71                   | ~41                  | unenumerated |
+| Autofix / format        | `fix`        | `--fix`, `fmt`       | no                   | `format`     |
+| LSP / editor            | yes (LSP)    | yes (LSP)            | no                   | yes (LSP)    |
+| Config format           | YAML         | TOML                 | TOML                 | TOML         |
+| Reuse markdownlint cfg  | no           | yes                  | no                   | no           |
+| Cross-file integrity    | yes          | no                   | no                   | no           |
+| Generated sections      | yes          | no                   | no                   | no           |
+| Readability/token rules | yes          | no                   | no                   | no           |
+| Front-matter schema     | yes          | no                   | no                   | no           |
+| Quarto / R Markdown     | no           | Quarto flavor        | no                   | yes (CST)    |
+
+**Presentation notes (what to learn).** All three READMEs
+win on focus. mado opens with one sentence and a benchmark
+table — no feature wall before the proof. rumdl leads with
+a single positioning line ("built for speed with Rust"),
+names its inspiration (ruff), and states the drop-in promise
+up front. panache leads with one precise sentence that names
+its three jobs and its one technical edge (the lossless CST).
+mdsmith's own README front matter applies the same lesson:
+one crisp line, one verifiable number (sub-300 ms
+self-check), and an explicit "not just a markdownlint clone"
+framing before the feature list.
+
 ### Prose and Readability
 
 | Capability        | mdsmith                         | Vale                                  | LLM |
@@ -443,6 +549,57 @@ dependencies. Node.js tools require a runtime but benefit
 from the npm ecosystem. LLM-based linting requires network
 access and is non-deterministic.
 
+## Benchmarks
+
+Each tool lists its own speed numbers. The runs use
+different file sets and different hardware. So treat each
+one as that project's own claim, not a shared race. The
+point is the scale. A native binary checks a big repo in
+well under a second. Node and Ruby markdownlint take whole
+seconds.
+
+**mado** publishes the one apples-to-apples set, run with
+hyperfine on a 2021 M1 Max over the GitLab docs (~1,500
+files):
+
+| Tool                        | Runtime | Relative  |
+|-----------------------------|---------|-----------|
+| mado (Rust)                 | 0.129 s | 1x        |
+| markdownlint-cli (Node.js)  | 6.381 s | ~49x mado |
+| markdownlint (Ruby)         | 6.609 s | ~51x mado |
+| markdownlint-cli2 (Node.js) | 7.817 s | ~61x mado |
+
+mado summarizes this as "≈49-60x faster than existing
+linters".
+
+**rumdl** benchmarks on the Rust Book repository (478
+Markdown files, October 2025) and reports being
+significantly faster than the Node markdownlint family,
+with an on-disk cache that makes repeat runs faster still.
+It does not publish a single multiplier.
+
+**panache** ships its own hyperfine benchmarks. Caches are
+off, so the numbers are worst case. It races Prettier,
+Pandoc, rumdl, mdformat, mado, and markdownlint. The runs
+split three ways: one file at a time, a whole repo, and a
+Quarto-only set. The harness is public. It gives no single
+headline number.
+
+**mdsmith** does not race markdownlint. Its own yardstick
+is the self-check. The full rule set plus cross-file link
+checks run over this 70-file repo. That finishes in under
+300 ms on plain hardware (see [performance][perf]). It is
+the same scale as the Rust tools. And it does more per
+file: the cross-file graph, generated sections, and
+readability metrics.
+
+The honest read: pick the tool that fits the job. For fast
+markdownlint rules, rumdl and mado are built for that. For
+fast Quarto or R Markdown, panache is the fit. mdsmith does
+a bit more work per file. In return you get
+the cross-file and generated-content features the other
+three do not have.
+
 ## When to Use What
 
 **mdsmith** fits best when you need readability limits,
@@ -467,6 +624,21 @@ rather than replacing them.
 
 **textlint** works well for polyglot text linting (especially
 Japanese) and teams wanting ESLint-style modularity.
+
+**rumdl** is the pick when you want markdownlint's exact
+rules and config. You get them as one fast Rust binary,
+with autofix and an LSP. It is a drop-in speed upgrade for
+a Node markdownlint setup.
+
+**mado** fits a check-only CI gate. It just needs
+markdownlint rules run as fast as it can. There is no
+autofix, LSP, or front-matter support, and the gate does
+not need them.
+
+**panache** is the right choice for Quarto and R Markdown.
+Its lossless CST keeps the Pandoc syntax that Prettier and
+mdformat flatten. It bundles the formatter, linter, and LSP
+for those formats.
 
 **LLM as linter** is best for subjective quality checks:
 conciseness, clarity, tone. Use it in PR review workflows
@@ -802,9 +974,14 @@ you need a stable rule set while these land.
 <!-- mdbase links -->
 [mdbase]: https://mdbase.dev/
 [mdbase-deep-dive]: ../research/mdbase-vs-mdsmith/README.md
+<!-- rust markdown linter links -->
+[rumdl]: https://github.com/rvben/rumdl
+[mado]: https://github.com/akiomik/mado
+[panache]: https://panache.bz/
 <!-- mdsmith plan + security + reference links -->
 [mdsmith-sec]: ../security/2026-04-05-adversarial-markdown.md
 [conventions]: ../reference/conventions.md
+[perf]: ../features/performance.md
 [plan78]: ../../plan/78_query-command.md
 [plan83]: ../../plan/83_security-hardening-batch.md
 [plan84]: ../../plan/84_symlink-default-deny.md
