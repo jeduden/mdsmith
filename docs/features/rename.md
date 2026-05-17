@@ -37,7 +37,26 @@ that collides with another definition fails the same way.
 Text that slugifies to nothing, or that contains a newline
 or a stray bracket, is rejected before any edit applies.
 
-Today this is the LSP `rename` capability: any LSP-aware
-editor, and the Claude Code agent, can drive it. See the
+Any LSP-aware editor, and the Claude Code agent, can
+drive this over the wire. See the
 [LSP reference](../reference/cli/lsp.md) for the
 prepare-range table and the collision-error contract.
+
+## From the command line
+
+The same rename engine has a CLI surface, so a script or
+an agent with no editor reaches it too:
+
+```bash
+mdsmith rename docs/guide.md --heading "Old Title" "New Title"
+mdsmith rename docs/guide.md --link-ref oldlabel newlabel
+```
+
+`--heading` matches the heading's current visible text;
+`--link-ref` matches the label. The command rewrites
+every dependent edit in place and prints a per-file
+summary (`--format text|json`). A collision, an empty or
+bracket-bearing name, or a missing target exits non-zero
+and names the conflict, exactly like the editor path. See
+the [`mdsmith rename` reference](../reference/cli/rename.md)
+for flags, output, and exit codes.

@@ -1,7 +1,7 @@
 ---
 id: 174
 title: Expose rename and dependency-graph as CLI subcommands and feature docs
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: [131, 151, 153]
 summary: >-
@@ -134,24 +134,40 @@ over discovered files and queries `OutgoingEdges` /
    supersession to the audit log. (`cross-system.md`
    boundaries/versioning deferred to task 8 with the CLI
    surface.)
-4. [ ] TDD `internal/rename` core. **In progress —**
-   **done:** the
-   link-reference engine plus the shared body/offset
-   helpers are lifted out of `internal/lsp/rename.go` into
+4. [x] TDD `internal/rename` core. The link-reference
+   engine and the heading engine are both lifted into
    `internal/rename` (neutral `Edit`/`Position`/`Range`,
    typed `ErrEmptyLabel` / `InvalidLabelRuneError` /
-   `LabelConflictError`), behavior-tested at **100%**
-   statement coverage, building and linting clean.
-   **Remaining:** the heading engine (`computeSlugRemap`,
-   `assignSlugs`, anchor/ref-def-dest edits) still lives in
-   `internal/lsp/rename.go` because the heading and
-   link-ref paths share helpers now in `internal/rename`;
-   moving it is the next slice of this task.
-5. [ ] Refactor `internal/lsp/rename.go` to delegate to
-   `internal/rename`; delete duplicated computation. Plans
-   151/131 + `cmd/mdsmith/lsp_rename_test.go` stay green.
-6. [ ] TDD `cmd/mdsmith/rename.go` (unit + e2e), register in
-   `main.go` dispatch + `usageText`.
+   `LabelConflictError` / `InvalidHeadingRuneError` /
+   `ErrEmptyHeadingSlug` / `HeadingCollisionError`). The
+   heading path takes a `Workspace` seam (incoming anchor
+   edges, file list, path→bytes) so LSP can back it with
+   the warm index + buffers and the CLI with a transient
+   index + disk. Behavior-tested at **100%** statement
+   coverage with a real index-backed workspace (no mocks);
+   every production function has a dedicated unit test.
+5. [x] Refactor `internal/lsp/rename.go` to delegate to
+   `internal/rename`; duplicated computation deleted.
+   `handleRename` resolves the cursor and calls
+   `rename.Heading` / `rename.LinkRef`; a thin adapter maps
+   the neutral `Edit` set to `workspaceEdit` and the typed
+   errors to `InvalidParams` + `renameCollisionData`. The
+   editor-only prepare-range / cursor-disambiguation code
+   stays; `isValidRefDefLine` now calls
+   `rename.ValidRefDefBodyLines`. Plans 151/131 +
+   `cmd/mdsmith/lsp_rename_test.go` stay green byte-for-byte.
+6. [x] TDD `cmd/mdsmith/rename.go` (unit + e2e), registered
+   in `main.go` dispatch + `usageText`. Name-based:
+   `--heading <old> <new>` resolves the heading line via
+   `rename.FindHeadingLine`; `--link-ref` normalizes the
+   label via `rename.NormalizeLabel`. A `cliRenameWorkspace`
+   backs the engine's `Workspace` over a transient
+   `internal/index` + disk reads. Edits are spliced back by
+   converting each UTF-16 range to bytes. Exit 0 rewritten,
+   1 no match, 2 conflict/error. `rename.go` is 100%
+   covered (unit) with an e2e suite for the process
+   boundary; the `run` dispatch was split into `dispatch`
+   to stay under the statement limit.
 7. [x] TDD `cmd/mdsmith/deps.go` (unit + e2e); register
    in `main.go`. The LSP call-hierarchy and `deps` both
    consult `internal/index` for the edge graph, so the
@@ -163,9 +179,10 @@ over discovered files and queries `OutgoingEdges` /
    `cross-system.md` left as-is: the CLI-surface row
    already covers subcommands generically, and "adding a
    flag/command is minor" is stated there.
-9. [ ] Final gate + flip status to ✅; push. **Remaining
-   before ✅: tasks 4–6 (the `internal/rename` core, the
-   LSP delegation, and the `mdsmith rename` CLI).**
+9. [x] Final gate + flip status to ✅; push. All slices
+   landed: the `internal/rename` core, the LSP delegation,
+   and the `mdsmith rename` CLI. `go test ./...`,
+   `golangci-lint`, and `mdsmith check .` all clean.
 
 ## Acceptance Criteria
 
@@ -173,25 +190,25 @@ over discovered files and queries `OutgoingEdges` /
       `internal/lsp/index`; `grep -r internal/lsp/index`
       finds nothing (SRP / DIP — package answers one
       question, CLI no longer reaches the editor layer).
-- [ ] `internal/rename` returns plain edits and typed errors,
+- [x] `internal/rename` returns plain edits and typed errors,
       imports neither `internal/lsp` nor any LSP wire type
       (DIP — surfaces depend on the core).
-- [ ] `internal/lsp/rename.go` contains no slug / edit
+- [x] `internal/lsp/rename.go` contains no slug / edit
       computation; it delegates to `internal/rename` (no
       duplicated logic across surfaces — `cross-system.md`).
 - [x] Plans 131/151 LSP test suites and
       `cmd/mdsmith/lsp_rename_test.go` pass unchanged
       (Liskov — the relocation is behavior-preserving; the
       delegation refactor in task 5 must keep them green).
-- [ ] `mdsmith rename f.md --heading "A" "B"` rewrites the
+- [x] `mdsmith rename f.md --heading "A" "B"` rewrites the
       heading and every workspace anchor link; `--link-ref`
       rewrites def + uses; collisions exit 2 naming the
       conflict.
 - [x] `mdsmith deps f.md` and `--incoming` emit the
       dependency edges in text and json.
-- [ ] CLI rename + deps contracts locked by e2e tests in
-      `cmd/mdsmith/` (cross-system contract test). deps
-      done (`e2e_deps_test.go`); rename pending task 6.
+- [x] CLI rename + deps contracts locked by e2e tests in
+      `cmd/mdsmith/` (cross-system contract test):
+      `e2e_deps_test.go` and `e2e_rename_test.go`.
 - [x] Every new production function has a dedicated unit
       test (`TestFoo` / `TestReceiver_Foo`). Holds for the
       shipped `deps` code; re-verify when the rename core
@@ -212,94 +229,22 @@ over discovered files and queries `OutgoingEdges` /
   Easy to rename before the contract test locks if a
   reviewer prefers otherwise.
 
-## Remaining work
+## Outcome
 
-Task 4's first slice landed:
-[internal/rename](../internal/rename/rename.go) holds
-the link-reference engine and the shared body/offset
-helpers, 100% covered. Three slices remain, each its
-own green commit.
+All three slices landed as their own green
+commits:
 
-### Slice A — move the heading engine
-
-Lift the heading half of
-[internal/lsp/rename.go](../internal/lsp/rename.go)
-into [internal/rename](../internal/rename/rename.go).
-
-- slug map: `computeSlugRemap`, `walkAllHeadings`,
-  `assignSlugs`, `slugRemapPairs`, `headingTextEdit`
-- anchor edits: `anchorEditForEdge`,
-  `anchorFragmentBytes`, `destBounds`, `indexOfHash`,
-  `fragmentEnd`, `fragmentMatchesSlug`,
-  `isBackslashEscaped`
-- ref-def destinations: `refDefDestEditForMatch`,
-  `refDefColonOffset`, `refDefDestRange`,
-  `refDefDestPointsAt`, `refDefParseTarget`
-- ordering: `stableSortEdits`
-- guards to add: reject a control rune, an empty
-  slug, and a slug that collides with another heading
-
-`Workspace` seam the heading path needs:
-
-- list the incoming anchor edges for a `(file, slug)`
-- resolve a workspace path to its bytes
-- LSP backs it with the warm index + open buffers;
-  CLI with a transient index + disk reads
-
-API: `rename.Heading(ws, file, line, newName)` →
-per-file `Edit` set, or `CollisionError` naming the
-clash. Behavior tests: same-file anchors, cross-file
-anchors, disambiguator shift, each guard. 100%
-coverage, no mocks.
-
-### Slice B — LSP delegates to the core
-
-- `handleRename` resolves the cursor (unchanged), then
-  calls `rename.Heading` / `rename.LinkRef`
-- map the `Edit` set → `workspaceEdit`; map typed
-  errors → `InvalidParams` + `renameCollisionData`
-- delete the now-duplicated engine from the LSP
-  package
-- keep the prepare-range / cursor-disambiguation code
-  (editor-only); `isValidRefDefLine` calls
-  `rename.ValidRefDefBodyLines`
-- regression gate, byte-for-byte: the plan-131/151
-  suites in [internal/lsp](../internal/lsp/) plus
-  [cmd/mdsmith/lsp_rename_test.go](../cmd/mdsmith/lsp_rename_test.go)
-- the neutral `Edit` is line + UTF-16 char, the same
-  shape as the LSP `textEdit`, so the adapter is a
-  field copy — the wire output cannot drift
-
-### Slice C — the `mdsmith rename` CLI
-
-Add `cmd/mdsmith/rename.go`, name-based:
-
-```bash
-mdsmith rename <file> --heading "Old" "New"
-mdsmith rename <file> --link-ref oldlabel newlabel
-```
-
-- `--heading` finds the heading line whose text is
-  `Old`; `--link-ref` normalizes `oldlabel`
-- build a `Workspace` over a transient
-  `internal/index` + disk, mirroring
-  [cmd/mdsmith/deps.go](../cmd/mdsmith/deps.go)
-- apply each `Edit`: per line, convert the UTF-16
-  range back to bytes, then splice
-- register `rename` in
-  [cmd/mdsmith/main.go](../cmd/mdsmith/main.go)
-  dispatch + usage text
-- exit codes: `0` rewritten, `1` no match, `2` error
-  or conflict
-- unit + e2e tests, 100% coverage
-
-Then the task-8 follow-ups:
-
-- add a CLI section to
-  [docs/features/rename.md](../docs/features/rename.md)
-- add a `docs/reference/cli/rename.md` page
-- run `mdsmith fix .` to regenerate the catalogs
-- flip this plan's status to ✅
+- `internal/rename` holds the link-reference
+  engine ([rename.go](../internal/rename/rename.go))
+  and the heading engine
+  ([heading.go](../internal/rename/heading.go)),
+  both 100% covered behind a `Workspace` seam.
+- `internal/lsp/rename.go` is a thin adapter; the
+  duplicated engine is gone and the plan-131/151
+  suites stay green byte-for-byte.
+- [cmd/mdsmith/rename.go](../cmd/mdsmith/rename.go)
+  is the name-based CLI, 100% unit-covered with an
+  e2e suite, plus feature and reference docs.
 
 ## ...
 

@@ -32,6 +32,7 @@ row: "- [{summary}]({filename})"
 - [List and rank shared Markdown metrics (file length, token estimate, readability, …).](cli/metrics.md)
 - [Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.](cli/pre-merge-commit.md)
 - [Select Markdown files by a CUE expression on front matter.](cli/query.md)
+- [Rename a heading or link-reference label and rewrite every dependent edit.](cli/rename.md)
 - [Print the mdsmith build version and exit.](cli/version.md)
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](conventions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](globs.md)

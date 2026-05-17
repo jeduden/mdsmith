@@ -36,6 +36,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 | [`merge-driver`](cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
 | [`metrics`](cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
 | [`pre-merge-commit`](cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
+| [`rename`](cli/rename.md)                     | Rename a heading or link-reference label and rewrite every dependent edit.           |
 | [`version`](cli/version.md)                   | Print the mdsmith build version and exit.                                            |
 <?/catalog?>
 
