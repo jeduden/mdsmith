@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -434,7 +435,6 @@ func TestLineIndex(t *testing.T) {
 	f := &File{Source: []byte("a\nbb\n\n")}
 	got := f.lineIndex()
 	assert.Equal(t, []int{1, 4, 5}, got, "newline offsets")
-	assert.True(t, f.newlineOffsetsOK, "build flag set")
 
 	again := f.lineIndex()
 	require.NotEmpty(t, got)
@@ -444,7 +444,29 @@ func TestLineIndex(t *testing.T) {
 
 	empty := &File{Source: nil}
 	assert.Empty(t, empty.lineIndex(), "no newlines in empty source")
-	assert.True(t, empty.newlineOffsetsOK)
+}
+
+func TestLineIndex_ConcurrentFirstCall(t *testing.T) {
+	// sync.Once must make the lazy build race-free even when the
+	// first calls land on different goroutines. Run under -race.
+	f := &File{Source: []byte("x\ny\nz\nw\n")}
+	const n = 16
+	var wg sync.WaitGroup
+	results := make([][]int, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i] = f.lineIndex()
+		}(i)
+	}
+	wg.Wait()
+	for i := 0; i < n; i++ {
+		assert.Equal(t, []int{1, 3, 5, 7}, results[i], "goroutine %d", i)
+		if i > 0 && &results[i][0] != &results[0][0] {
+			t.Fatal("concurrent callers saw different backing slices")
+		}
+	}
 }
 
 func TestLineOfOffset_Basic(t *testing.T) {

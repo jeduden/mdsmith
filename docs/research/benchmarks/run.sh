@@ -27,9 +27,12 @@ PANACHE_VER="v2.46.0"
 # --- tools -----------------------------------------------------------------
 [ -x "$BIN/mdsmith" ] || ( cd "$REPO_ROOT" && go build -o "$BIN/mdsmith" ./cmd/mdsmith )
 
-[ -x "$BIN/hyperfine" ] || curl -sSL \
-  "https://github.com/sharkdp/hyperfine/releases/download/$HYPERFINE_VER/hyperfine-$HYPERFINE_VER-x86_64-unknown-linux-musl.tar.gz" \
-  | tar xz -C "$WORK" && cp "$WORK"/hyperfine-*/hyperfine "$BIN/" 2>/dev/null || true
+if [ ! -x "$BIN/hyperfine" ]; then
+  curl -sSL \
+    "https://github.com/sharkdp/hyperfine/releases/download/$HYPERFINE_VER/hyperfine-$HYPERFINE_VER-x86_64-unknown-linux-musl.tar.gz" \
+    | tar xz -C "$WORK"
+  cp "$WORK"/hyperfine-*/hyperfine "$BIN/"
+fi
 
 [ -x "$BIN/mado" ] || curl -sSL \
   "https://github.com/akiomik/mado/releases/download/$MADO_VER/mado-Linux-gnu-x86_64.tar.gz" \

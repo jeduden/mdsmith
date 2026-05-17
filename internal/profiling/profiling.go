@@ -22,6 +22,12 @@ import (
 // always non-nil and must be called once before process exit; it
 // finalizes whatever was started. When neither var is set, Start
 // is a no-op and stop does nothing.
+//
+// Wire it as `defer profiling.Start()()` from the normal return
+// path. A code path that calls os.Exit directly bypasses the
+// deferred stop and leaves the profile truncated or empty —
+// acceptable for a dev aid, but the reason profiles are only
+// reliable for the standard return path.
 func Start() (stop func()) {
 	return start(
 		os.Getenv("MDSMITH_CPUPROFILE"),

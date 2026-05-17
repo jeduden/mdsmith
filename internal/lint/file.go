@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"sort"
+	"sync"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -38,9 +39,10 @@ type File struct {
 	// GitignoreFunc is a lazy factory for the gitignore matcher.
 	// It is called at most once (on first access via GetGitignore)
 	// and the result is cached. Rules that do not call GetGitignore
-	// never trigger matcher construction.
+	// never trigger matcher construction. sync.Once keeps the lazy
+	// build race-free if a *File is shared across goroutines.
 	GitignoreFunc func() *GitignoreMatcher
-	gitignoreOnce bool
+	gitignoreOnce sync.Once
 	gitignoreVal  *GitignoreMatcher
 
 	// GeneratedRanges records the content line ranges of generated
@@ -54,10 +56,11 @@ type File struct {
 	// rescans Source from byte 0 on every call, which made it ~24%
 	// of total `mdsmith check` CPU (plan 175 profiling). Built
 	// lazily because File is also constructed as a struct literal,
-	// not only via NewFile. One goroutine owns a File during a lint
-	// pass, matching the existing GetGitignore lazy-once pattern.
-	newlineOffsets   []int
-	newlineOffsetsOK bool
+	// not only via NewFile. sync.Once makes the lazy build safe
+	// even if a *File is read from multiple goroutines (e.g. the
+	// LSP serving concurrent requests for one document).
+	newlineOffsets     []int
+	newlineOffsetsOnce sync.Once
 }
 
 // SetRootDir configures the project root directory and its fs.FS together.
@@ -69,13 +72,11 @@ func (f *File) SetRootDir(dir string) {
 // GetGitignore returns the gitignore matcher for this file, creating it
 // lazily on first call. Returns nil if no GitignoreFunc was configured.
 func (f *File) GetGitignore() *GitignoreMatcher {
-	if f.gitignoreOnce {
-		return f.gitignoreVal
-	}
-	f.gitignoreOnce = true
-	if f.GitignoreFunc != nil {
-		f.gitignoreVal = f.GitignoreFunc()
-	}
+	f.gitignoreOnce.Do(func() {
+		if f.GitignoreFunc != nil {
+			f.gitignoreVal = f.GitignoreFunc()
+		}
+	})
 	return f.gitignoreVal
 }
 
@@ -163,8 +164,7 @@ func (f *File) FullSource(body []byte) []byte {
 // lineIndex returns the cached offsets of every '\n' in Source,
 // building it once on first use.
 func (f *File) lineIndex() []int {
-	if !f.newlineOffsetsOK {
-		f.newlineOffsetsOK = true
+	f.newlineOffsetsOnce.Do(func() {
 		var nl []int
 		for i := 0; i < len(f.Source); i++ {
 			if f.Source[i] == '\n' {
@@ -172,7 +172,7 @@ func (f *File) lineIndex() []int {
 			}
 		}
 		f.newlineOffsets = nl
-	}
+	})
 	return f.newlineOffsets
 }
 
