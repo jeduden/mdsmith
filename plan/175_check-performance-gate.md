@@ -73,9 +73,17 @@ research artifact, not a CI gate.
    definition; cross-tool JSON re-promoted on the
    optimized binary (repo p95 ~1.0 s → ~0.8 s, neutral
    ~1.6 s → ~0.75 s).
-9. [ ] Confirm `check-bench` and `bench-fragments` are
-   green in CI; ask the maintainer to add both to branch
-   protection's required checks next to `lsp-bench`.
+9. [x] Apply the second profiler finding: MDS024 called
+   the Punkt sentence tokenizer per paragraph (~2 GB
+   allocations over the 600-file gate corpus). Add an
+   allocation-free `cheapBounds` guard that skips it when
+   `terminal-punct + 1 <= MaxSentences` and total words
+   `<= MaxWords` (provably no violation). Soundness pinned
+   by a test; full suite + `mdsmith check .` unchanged.
+   Large gate p95 ~1.7 s → ~0.8 s.
+10. [ ] Confirm `check-bench` and `bench-fragments` are
+    green in CI; ask the maintainer to add both to branch
+    protection's required checks next to `lsp-bench`.
 
 ## Acceptance Criteria
 

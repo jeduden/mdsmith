@@ -62,21 +62,21 @@ better; `vs mado` is the median ratio to the fastest tool):
 | Tool              | Median  | Min     | vs mado |
 |-------------------|---------|---------|---------|
 | mado              | 43 ms   | 42 ms   | 1.0x    |
-| rumdl             | 170 ms  | 164 ms  | 3.9x    |
-| panache           | 230 ms  | 221 ms  | 5.3x    |
-| mdsmith           | 822 ms  | 807 ms  | 19x     |
-| markdownlint-cli2 | 3422 ms | 3385 ms | 79x     |
+| rumdl             | 166 ms  | 150 ms  | 3.8x    |
+| panache           | 220 ms  | 212 ms  | 5.1x    |
+| mdsmith           | 759 ms  | 736 ms  | 18x     |
+| markdownlint-cli2 | 3455 ms | 3303 ms | 80x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
 |-------------------|---------|---------|---------|
-| mado              | 46 ms   | 45 ms   | 1.0x    |
-| rumdl             | 147 ms  | 140 ms  | 3.2x    |
-| panache           | 321 ms  | 313 ms  | 7.0x    |
-| mdsmith           | 754 ms  | 742 ms  | 17x     |
-| markdownlint-cli2 | 3275 ms | 3172 ms | 72x     |
+| mado              | 45 ms   | 44 ms   | 1.0x    |
+| rumdl             | 147 ms  | 139 ms  | 3.3x    |
+| panache           | 332 ms  | 322 ms  | 7.4x    |
+| mdsmith           | 708 ms  | 678 ms  | 16x     |
+| markdownlint-cli2 | 3443 ms | 3130 ms | 77x     |
 <?/include?>
 
 ## Reading the result
@@ -100,18 +100,22 @@ Node markdownlint reference and ~17-19x slower than a
 minimal Rust markdownlint clone — because it is not a
 markdownlint clone.
 
-**The gate caught a real regression-shaped bug.** The first
-run of this benchmark had mdsmith at ~1.0 s on the repo
-corpus but ~1.6 s on the *smaller* 234-file neutral corpus
-— slower on fewer files. That inversion is the signature of
-superlinear cost. `profile.sh` traced it to
-`lint.(*File).LineOfOffset` rescanning each file from byte 0
-on every call (~24% of total check CPU, worst on long Rust
-Book prose). Plan 175 replaced it with a cached newline
-index + binary search. Neutral dropped to ~0.75 s, the two
-corpora are now comparable, and the tiered gate baselines
-fell with it. This is the gate → profiler → fix loop
-working as intended; the numbers above are post-fix.
+**The gate + profiler loop caught two real bugs.** The
+first run had mdsmith at ~1.0 s on the repo corpus but
+~1.6 s on the *smaller* 234-file neutral corpus — slower on
+fewer files, the signature of superlinear cost. `profile.sh`
+traced it to `lint.(*File).LineOfOffset` rescanning each
+file from byte 0 on every call (~24% of check CPU, worst on
+long Rust Book prose); plan 175 replaced it with a cached
+newline index + binary search. The next profile showed the
+Punkt sentence tokenizer (`neurosnap/sentences`, behind
+MDS024) allocating ~2 GB across the 600-file gate corpus;
+plan 175 added an allocation-free guard that skips it when a
+paragraph provably cannot violate either limit. Repo fell
+~1.0 s → ~0.76 s, neutral ~1.6 s → ~0.71 s, and the Large
+gate baseline ~2.3 s → ~0.8 s. The numbers above are after
+both fixes. This is the gate → profiler → fix loop working
+as intended.
 
 Pick mado or rumdl for raw markdownlint-rule throughput;
 pick mdsmith when the cross-file graph, readability budgets,
@@ -145,11 +149,11 @@ Three gates, all in CI:
   `BenchmarkCheckCorpus{Small,Large}` in
   `internal/engine/bench_test.go` lint a 60-file and a
   600-file synthetic workspace with the full rule set.
-  Small (2 s budget, baseline ~0.18 s) catches per-file
-  overhead; Large (12 s budget, baseline ~1.7 s) catches
+  Small (2 s budget, baseline ~0.09 s) catches per-file
+  overhead; Large (12 s budget, baseline ~0.8 s) catches
   superlinear scaling. CI job `check-bench`, modelled on
-  `lsp-bench`. Baselines reflect the plan-175 `LineOfOffset`
-  line-index fix (~24% of check CPU removed).
+  `lsp-bench`. Baselines reflect the two plan-175 fixes
+  (LineOfOffset line-index; MDS024 tokenizer skip).
 - **Doc-number drift** — CI job `bench-fragments`
   regenerates the fragments from the committed
   `data/*.json` via `gen_fragments.py`, re-runs

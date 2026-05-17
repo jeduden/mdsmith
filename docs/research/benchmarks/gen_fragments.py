@@ -64,7 +64,8 @@ def main() -> None:
 
     ms = repo.get("mdsmith", (0, 0))[0]
     ml = repo.get("markdownlint-cli2", (0, 0))[0]
-    mult = round(ml / ms) if ms else 0
+    # Floor, not round: the headline must never overstate the win.
+    mult = int(ml / ms) if ms else 0
     head = (GEN +
             "One static Go binary checks 523 Markdown files in "
             f"about\n{ms / 1000:.1f} s. That is roughly {mult}x "

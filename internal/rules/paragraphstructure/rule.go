@@ -3,6 +3,7 @@ package paragraphstructure
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -36,27 +37,61 @@ func (r *Rule) Category() string { return "prose" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
 		para, ok := n.(*ast.Paragraph)
-		if !ok {
+		if !ok || astutil.IsTable(para, f) {
 			return ast.WalkContinue, nil
 		}
-		if astutil.IsTable(para, f) {
-			return ast.WalkContinue, nil
-		}
+		diags = append(diags, r.checkParagraph(para, f)...)
+		return ast.WalkContinue, nil
+	})
+	return diags
+}
 
-		text := mdtext.ExtractPlainText(para, f.Source)
-		if len(r.Placeholders) > 0 {
-			text = placeholders.MaskBodyTokens(text, r.Placeholders)
-		}
-		sentences := mdtext.SplitSentences(text)
-		line := astutil.ParagraphLine(para, f)
+// checkParagraph evaluates one paragraph against the sentence-count
+// and per-sentence word limits.
+func (r *Rule) checkParagraph(para *ast.Paragraph, f *lint.File) []lint.Diagnostic {
+	text := mdtext.ExtractPlainText(para, f.Source)
+	if len(r.Placeholders) > 0 {
+		text = placeholders.MaskBodyTokens(text, r.Placeholders)
+	}
+	// Fast path: skip the Punkt tokenizer when this paragraph
+	// provably cannot violate either limit. Punkt places a boundary
+	// only at '.'/'!'/'?' and yields >=1 sentence, so
+	// (terminal-punct + 1) is an upper bound on its sentence count;
+	// and every sentence's word count is <= the whole paragraph's.
+	// mdtext.SplitSentences dominated allocations (~2 GB over a
+	// 600-file corpus, plan 175 profiling); most real paragraphs
+	// clear this guard with zero allocation.
+	if sentUB, words := cheapBounds(text); sentUB <= r.MaxSentences && words <= r.MaxWords {
+		return nil
+	}
 
-		if len(sentences) > r.MaxSentences {
+	sentences := mdtext.SplitSentences(text)
+	line := astutil.ParagraphLine(para, f)
+	var diags []lint.Diagnostic
+
+	if len(sentences) > r.MaxSentences {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message: fmt.Sprintf(
+				"paragraph has too many sentences (%d > %d)",
+				len(sentences), r.MaxSentences,
+			),
+		})
+	}
+
+	for _, sent := range sentences {
+		wc := mdtext.CountWords(sent)
+		if wc > r.MaxWords {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     line,
@@ -65,34 +100,36 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 				RuleName: r.Name(),
 				Severity: lint.Warning,
 				Message: fmt.Sprintf(
-					"paragraph has too many sentences (%d > %d)",
-					len(sentences), r.MaxSentences,
+					"sentence too long (%d > %d words): %s",
+					wc, r.MaxWords, sentencePreview(sent, 10),
 				),
 			})
 		}
-
-		for _, sent := range sentences {
-			wc := mdtext.CountWords(sent)
-			if wc > r.MaxWords {
-				diags = append(diags, lint.Diagnostic{
-					File:     f.Path,
-					Line:     line,
-					Column:   1,
-					RuleID:   r.ID(),
-					RuleName: r.Name(),
-					Severity: lint.Warning,
-					Message: fmt.Sprintf(
-						"sentence too long (%d > %d words): %s",
-						wc, r.MaxWords, sentencePreview(sent, 10),
-					),
-				})
-			}
-		}
-
-		return ast.WalkContinue, nil
-	})
-
+	}
 	return diags
+}
+
+// cheapBounds returns, in one allocation-free pass, an upper bound
+// on the Punkt sentence count (terminal-punct + 1) and the exact
+// word count (whitespace-delimited, matching strings.Fields). Both
+// are conservative for the rule's checks: Punkt never splits without
+// '.'/'!'/'?' and always yields >=1 sentence, and no single sentence
+// has more words than the whole paragraph.
+func cheapBounds(s string) (sentUB, words int) {
+	punct := 0
+	inWord := false
+	for _, r := range s {
+		if r == '.' || r == '!' || r == '?' {
+			punct++
+		}
+		if unicode.IsSpace(r) {
+			inWord = false
+		} else if !inWord {
+			inWord = true
+			words++
+		}
+	}
+	return punct + 1, words
 }
 
 // sentencePreview returns a quoted preview of the sentence, truncated

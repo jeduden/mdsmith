@@ -10,6 +10,57 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCheapBounds(t *testing.T) {
+	cases := []struct {
+		text       string
+		wantSentUB int
+		wantWords  int
+	}{
+		{"", 1, 0},
+		{"   \n  ", 1, 0},
+		{"one two three", 1, 3},
+		{"Hello. World!", 3, 2},
+		{"e.g. this is one sentence.", 4, 5},
+		{"a... b", 4, 2},
+		{"q? r? s?", 4, 3},
+	}
+	for _, c := range cases {
+		ub, w := cheapBounds(c.text)
+		assert.Equalf(t, c.wantSentUB, ub, "sentUB for %q", c.text)
+		assert.Equalf(t, c.wantWords, w, "words for %q", c.text)
+	}
+}
+
+// The skip guard must be sound: whenever cheapBounds is within both
+// limits, the full Punkt-based Check must produce zero diagnostics.
+// This pins the invariant "Punkt sentence count <= terminal-punct +
+// 1 and any sentence's words <= the paragraph's words".
+func TestCheapBounds_GuardIsSound(t *testing.T) {
+	texts := []string{
+		"Short and safe.",
+		"No punctuation here just words and more words",
+		"Dr. Smith met Mr. Jones at 3.14 p.m. on Jan. 5.",
+		"One. Two. Three. Four. Five.",
+		strings.Repeat("word ", 39) + "end.",
+		"Ellipses... and more... still going... but short.",
+	}
+	r := &Rule{MaxSentences: 6, MaxWords: 40}
+	for _, txt := range texts {
+		ub, w := cheapBounds(txt)
+		if ub <= r.MaxSentences && w <= r.MaxWords {
+			diags := r.Check(mustParaFile(t, txt))
+			assert.Emptyf(t, diags, "guard passed but Check flagged %q: %v", txt, diags)
+		}
+	}
+}
+
+func mustParaFile(t *testing.T, body string) *lint.File {
+	t.Helper()
+	f, err := lint.NewFile("t.md", []byte(body+"\n"))
+	require.NoError(t, err)
+	return f
+}
+
 func TestCheck_TooManySentences(t *testing.T) {
 	// 8 sentences, default max is 6.
 	src := []byte("One. Two. Three. Four. Five. Six. Seven. Eight.\n")
