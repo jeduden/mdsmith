@@ -123,6 +123,26 @@ func TestCheck_EmptyAllowed_ClonedRuleWarnsOnce(t *testing.T) {
 	assert.Empty(t, diags2, "second clone should not repeat the warning")
 }
 
+// TestCheck_EmptyAllowed_WarningAnchoredToRootDir pins the config
+// warning to the per-run RootDir, not the file that happened to
+// trigger the sync.Once. Under the parallel runner any worker can win
+// that race; anchoring to a run-constant keeps the emitted diagnostic
+// (and therefore the sorted output) deterministic.
+func TestCheck_EmptyAllowed_WarningAnchoredToRootDir(t *testing.T) {
+	resetConfigWarned()
+	r := newRule(t, []string{})
+	f, err := lint.NewFile("docs/deep/guide.md", []byte("# T\n"))
+	require.NoError(t, err)
+	f.SetRootDir("/project/root")
+
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "expected the config warning")
+	assert.Contains(t, diags[0].Message, "no \"allowed\" patterns configured")
+	assert.Equal(t, "/project/root", diags[0].File,
+		"warning must anchor to RootDir, not the triggering file path")
+	assert.NotEqual(t, "docs/deep/guide.md", diags[0].File)
+}
+
 func TestCheck_MultiplePatterns(t *testing.T) {
 	r := newRule(t, []string{"docs/**", "plan/**", "."})
 	tests := []struct {

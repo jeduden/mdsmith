@@ -63,12 +63,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// When configured but no allowed patterns provided, emit a config
 	// warning once per process. sync.Once survives the per-file cloning
 	// that the engine performs (CloneRule creates a fresh struct but
-	// the package-level configWarned is shared).
+	// the package-level configWarned is shared). Anchor it to RootDir,
+	// a per-run constant: under the parallel runner any worker can win
+	// the Once, so keying the diagnostic to the triggering file would
+	// make the sorted output nondeterministic across runs.
 	if len(r.Allowed) == 0 {
 		var diags []lint.Diagnostic
 		configWarned.Do(func() {
 			diags = []lint.Diagnostic{{
-				File:     f.Path,
+				File:     f.RootDir,
 				Line:     1,
 				Column:   1,
 				RuleID:   r.ID(),

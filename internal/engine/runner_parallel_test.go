@@ -1,16 +1,19 @@
 package engine_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	"github.com/jeduden/mdsmith/internal/lint"
+	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -134,6 +137,61 @@ func TestRunner_ParallelStatefulRuleIsolated(t *testing.T) {
 		assert.Equal(t, d.File, d.Message,
 			"stateful rule leaked state across goroutines")
 	}
+}
+
+// TestRunner_ParallelVerboseLogIsOrdered checks that a parallel run
+// with an enabled logger emits each file's verbose block in input
+// order with no cross-file interleaving — the buffered-then-merged
+// path makes -v output deterministic despite the worker scheduling.
+// Run under -race it also covers the enabled-logger concurrent path.
+func TestRunner_ParallelVerboseLogIsOrdered(t *testing.T) {
+	_, paths := writeCorpus(t, 24)
+	var buf bytes.Buffer
+	runner := &engine.Runner{
+		Config:           config.Defaults(),
+		Rules:            rule.All(),
+		StripFrontMatter: true,
+		RootDir:          filepath.Dir(paths[0]),
+		Concurrency:      8,
+		Logger:           &vlog.Logger{Enabled: true, W: &buf},
+	}
+
+	res := runner.Run(paths)
+	require.Equal(t, len(paths), res.FilesChecked)
+
+	// The sequence of "file:" lines must exactly match input order.
+	var gotFiles []string
+	for _, ln := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if rest, ok := strings.CutPrefix(ln, "file: "); ok {
+			gotFiles = append(gotFiles, rest)
+		}
+	}
+	require.Equal(t, paths, gotFiles,
+		"verbose file: lines must appear in input order, no interleaving")
+
+	// And every rule line must sit inside its own file's block: between
+	// two consecutive file: markers there are only that file's lines.
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	curFileIdx := -1
+	for _, ln := range lines {
+		if rest, ok := strings.CutPrefix(ln, "file: "); ok {
+			idx := indexOf(paths, rest)
+			require.Equal(t, curFileIdx+1, idx, "file blocks out of order at %q", ln)
+			curFileIdx = idx
+			continue
+		}
+		assert.True(t, strings.HasPrefix(ln, "rule: "),
+			"unexpected verbose line %q", ln)
+	}
+}
+
+func indexOf(ss []string, s string) int {
+	for i, v := range ss {
+		if v == s {
+			return i
+		}
+	}
+	return -1
 }
 
 // TestRunner_ParallelGitignoreCacheNoRace hammers the shared

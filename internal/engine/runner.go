@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"fmt"
 	"io/fs"
 	"math"
@@ -73,10 +74,13 @@ type Runner struct {
 
 // fileOutcome is one file's contribution to a run. Workers fill a
 // pre-sized slice of these by index, so the merge is order-stable and
-// needs no lock on the shared Result.
+// needs no lock on the shared Result. log holds the file's verbose
+// lines (empty unless the logger is enabled); Run flushes them in
+// input order so -v output is deterministic regardless of scheduling.
 type fileOutcome struct {
 	diags []lint.Diagnostic
 	errs  []error
+	log   []byte
 }
 
 // Result holds the output of a lint run.
@@ -103,7 +107,11 @@ func (r *Runner) Run(paths []string) *Result {
 	work := r.filterIgnored(paths)
 	res.FilesChecked = len(work)
 
+	sink := r.log()
 	for _, o := range r.runFiles(work) {
+		if len(o.log) > 0 && sink.W != nil {
+			_, _ = sink.W.Write(o.log)
+		}
 		res.Diagnostics = append(res.Diagnostics, o.diags...)
 		res.Errors = append(res.Errors, o.errs...)
 	}
@@ -198,8 +206,18 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // set (the worker's private clones) and returns its diagnostics and
 // errors. It touches no shared Runner state except the mutex-guarded
 // gitignore cache.
-func (r *Runner) lintFile(path string, rules []rule.Rule) fileOutcome {
-	r.log().Printf("file: %s", path)
+func (r *Runner) lintFile(path string, rules []rule.Rule) (out fileOutcome) {
+	// When verbose, log into a per-file buffer instead of the shared
+	// logger; Run flushes these in input order so concurrent workers
+	// don't interleave -v output. The named return + defer attaches
+	// the buffer no matter which early return fires.
+	flog := r.log()
+	if flog.Enabled {
+		var buf bytes.Buffer
+		flog = &vlog.Logger{Enabled: true, W: &buf}
+		defer func() { out.log = bytes.Clone(buf.Bytes()) }()
+	}
+	flog.Printf("file: %s", path)
 
 	source, err := lint.ReadFileLimited(path, r.MaxInputBytes)
 	if err != nil {
@@ -232,7 +250,7 @@ func (r *Runner) lintFile(path string, rules []rule.Rule) fileOutcome {
 
 	effective := r.effectiveWithCategories(path, fmKinds, fmFields)
 	mdRules := markdownRulesFrom(rules, r.ConfigPath)
-	r.logRules(mdRules, effective)
+	logRulesTo(flog, mdRules, effective)
 
 	diags, errs := checkRules(f, mdRules, effective, r.SkipSourceContext)
 	if r.Explain {
@@ -503,7 +521,13 @@ func (r *Runner) log() *vlog.Logger {
 
 // logRules logs each enabled rule in the effective config from the provided slice.
 func (r *Runner) logRules(rules []rule.Rule, effective map[string]config.RuleCfg) {
-	l := r.log()
+	logRulesTo(r.log(), rules, effective)
+}
+
+// logRulesTo logs each enabled rule to l. Split from logRules so the
+// per-file buffered logger in lintFile can reuse the same formatting
+// without going through the shared Runner logger.
+func logRulesTo(l *vlog.Logger, rules []rule.Rule, effective map[string]config.RuleCfg) {
 	if !l.Enabled {
 		return
 	}
