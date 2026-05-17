@@ -6,7 +6,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/config"
@@ -51,9 +54,29 @@ type Runner struct {
 	// ignores this field and continues to derive FS from filepath.Dir
 	// per file.
 	SourceFS fs.FS
+	// Concurrency controls how many files Run lints in parallel.
+	// Zero or negative means "use runtime.GOMAXPROCS"; 1 forces the
+	// sequential path; n>1 uses n workers. The worker count is
+	// clamped to the file count. Output is merged in input order and
+	// then sorted, so the value never changes observable results —
+	// it only trades CPU for wall time. RunSource (single in-memory
+	// file) ignores this field.
+	Concurrency int
 	// gitignoreCache caches GitignoreMatchers by directory to avoid
-	// re-walking the filesystem for each file.
+	// re-walking the filesystem for each file. gitignoreMu guards it
+	// because Run lints files on multiple goroutines and the
+	// GitignoreFunc closure each file carries reaches back into the
+	// shared cache lazily during rule execution.
 	gitignoreCache map[string]*lint.GitignoreMatcher
+	gitignoreMu    sync.Mutex
+}
+
+// fileOutcome is one file's contribution to a run. Workers fill a
+// pre-sized slice of these by index, so the merge is order-stable and
+// needs no lock on the shared Result.
+type fileOutcome struct {
+	diags []lint.Diagnostic
+	errs  []error
 }
 
 // Result holds the output of a lint run.
@@ -65,7 +88,10 @@ type Result struct {
 }
 
 // Run lints the files at the given paths and returns a Result containing
-// all diagnostics (sorted by file, line, column, message) and any errors encountered.
+// all diagnostics (sorted by file, line, column, message) and any errors
+// encountered. Files are linted concurrently (see Runner.Concurrency);
+// per-file results are merged in input order before dedupe and sort, so
+// the output is identical to a sequential run regardless of scheduling.
 func (r *Runner) Run(paths []string) *Result {
 	res := &Result{}
 
@@ -74,12 +100,12 @@ func (r *Runner) Run(paths []string) *Result {
 	// the project config rather than individual Markdown files.
 	r.runConfigTargetRules(res)
 
-	for _, path := range paths {
-		if config.IsIgnored(r.Config.Ignore, path) {
-			continue
-		}
-		res.FilesChecked++
-		r.processFile(path, res)
+	work := r.filterIgnored(paths)
+	res.FilesChecked = len(work)
+
+	for _, o := range r.runFiles(work) {
+		res.Diagnostics = append(res.Diagnostics, o.diags...)
+		res.Errors = append(res.Errors, o.errs...)
 	}
 
 	res.Diagnostics = DedupeDiagnostics(res.Diagnostics)
@@ -87,20 +113,102 @@ func (r *Runner) Run(paths []string) *Result {
 	return res
 }
 
-// processFile reads, parses, and checks a single file, appending results to res.
-func (r *Runner) processFile(path string, res *Result) {
+// filterIgnored drops paths matched by the config ignore list, keeping
+// input order.
+func (r *Runner) filterIgnored(paths []string) []string {
+	work := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if config.IsIgnored(r.Config.Ignore, path) {
+			continue
+		}
+		work = append(work, path)
+	}
+	return work
+}
+
+// ResolveWorkers maps the Runner.Concurrency knob to an actual worker
+// count for a run over n files. concurrency <= 0 means "use
+// runtime.GOMAXPROCS"; a positive value is taken literally. The result
+// is clamped to n (never more workers than files) and is 0 when there
+// is nothing to do.
+func ResolveWorkers(concurrency, n int) int {
+	if n <= 0 {
+		return 0
+	}
+	w := concurrency
+	if w <= 0 {
+		w = runtime.GOMAXPROCS(0)
+	}
+	if w > n {
+		w = n
+	}
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// runFiles lints work into a pre-sized, index-addressed slice. With one
+// worker it stays on the calling goroutine. With more, each worker
+// clones the rule set once (so rules carrying per-Check state — include's
+// visited/chain, the directive engines — never touch another
+// goroutine's instance) and pulls file indices off an atomic counter
+// for even load balancing. No worker writes a slot another reads, so
+// the result needs no lock.
+func (r *Runner) runFiles(work []string) []fileOutcome {
+	outcomes := make([]fileOutcome, len(work))
+	workers := ResolveWorkers(r.Concurrency, len(work))
+	if workers <= 1 {
+		for i, path := range work {
+			outcomes[i] = r.lintFile(path, r.Rules)
+		}
+		return outcomes
+	}
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rules := cloneRules(r.Rules)
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(work) {
+					return
+				}
+				outcomes[i] = r.lintFile(work[i], rules)
+			}
+		}()
+	}
+	wg.Wait()
+	return outcomes
+}
+
+// cloneRules returns an independent copy of rules for one worker so
+// concurrent Check calls never share a rule instance's mutable state.
+func cloneRules(rules []rule.Rule) []rule.Rule {
+	out := make([]rule.Rule, len(rules))
+	for i, rl := range rules {
+		out[i] = rule.CloneInstance(rl)
+	}
+	return out
+}
+
+// lintFile reads, parses, and checks a single file with the given rule
+// set (the worker's private clones) and returns its diagnostics and
+// errors. It touches no shared Runner state except the mutex-guarded
+// gitignore cache.
+func (r *Runner) lintFile(path string, rules []rule.Rule) fileOutcome {
 	r.log().Printf("file: %s", path)
 
 	source, err := lint.ReadFileLimited(path, r.MaxInputBytes)
 	if err != nil {
-		res.Errors = append(res.Errors, fmt.Errorf("reading %q: %w", path, err))
-		return
+		return fileOutcome{errs: []error{fmt.Errorf("reading %q: %w", path, err)}}
 	}
 
 	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
 	if err != nil {
-		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
-		return
+		return fileOutcome{errs: []error{fmt.Errorf("parsing %q: %w", path, err)}}
 	}
 	f.MaxInputBytes = r.MaxInputBytes
 	dir := filepath.Dir(path)
@@ -117,22 +225,20 @@ func (r *Runner) processFile(path string, res *Result) {
 
 	fmKinds, fmFields, err := r.parseFrontMatter(path, f.FrontMatter)
 	if err != nil {
-		res.Errors = append(res.Errors, err)
-		return
+		return fileOutcome{errs: []error{err}}
 	}
 
 	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
 
 	effective := r.effectiveWithCategories(path, fmKinds, fmFields)
-	mdRules := r.markdownRules()
+	mdRules := markdownRulesFrom(rules, r.ConfigPath)
 	r.logRules(mdRules, effective)
 
 	diags, errs := checkRules(f, mdRules, effective, r.SkipSourceContext)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
-	res.Diagnostics = append(res.Diagnostics, diags...)
-	res.Errors = append(res.Errors, errs...)
+	return fileOutcome{diags: diags, errs: errs}
 }
 
 // DedupeDiagnostics returns a new slice with duplicate (file, line,
@@ -290,11 +396,19 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 // have already run once (via runConfigTargetRules) and their Check method
 // returns nil for any non-config path anyway.
 func (r *Runner) markdownRules() []rule.Rule {
-	if r.ConfigPath == "" {
-		return r.Rules
+	return markdownRulesFrom(r.Rules, r.ConfigPath)
+}
+
+// markdownRulesFrom filters config-target rules out of rules when a
+// config path is set (they ran once via runConfigTargetRules and their
+// Check returns nil for non-config paths anyway). It operates on the
+// passed slice so each worker filters its own clones.
+func markdownRulesFrom(rules []rule.Rule, configPath string) []rule.Rule {
+	if configPath == "" {
+		return rules
 	}
-	filtered := make([]rule.Rule, 0, len(r.Rules))
-	for _, rl := range r.Rules {
+	filtered := make([]rule.Rule, 0, len(rules))
+	for _, rl := range rules {
 		if ct, ok := rl.(rule.ConfigTarget); ok && ct.IsConfigFileRule() {
 			continue
 		}
@@ -361,6 +475,8 @@ func (r *Runner) effectiveWithCategories(
 // The cache key is normalized to an absolute path so equivalent paths
 // (e.g. "sub" vs "./sub") share the same entry.
 func (r *Runner) cachedGitignore(dir string) *lint.GitignoreMatcher {
+	r.gitignoreMu.Lock()
+	defer r.gitignoreMu.Unlock()
 	if r.gitignoreCache == nil {
 		r.gitignoreCache = make(map[string]*lint.GitignoreMatcher)
 	}
