@@ -271,6 +271,7 @@ overrides:
       required-structure: false
 
 ignore:
+  - ".git/**"
   - "demo/**"
   - "internal/rules/*/bad/**"
   - "internal/rules/*/bad.md"
