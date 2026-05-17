@@ -817,6 +817,62 @@ func TestTransformMarkdown_SkipsFencedExamples(t *testing.T) {
 	})
 }
 
+// TestRewriteSiblingNonPublished: a relative link to a
+// same-directory or subdirectory file whose extension is not
+// synced into the Hugo tree (a `.sh` script, a `.yml` config,
+// `.json` data) must rewrite to a GitHub blob URL anchored at
+// the doc's repo-relative directory. Markdown and image links
+// (synced), site-absolute targets, external URLs, pure
+// anchors, and `../`-prefixed paths (handled by the
+// non-published rewrite) are left untouched.
+func TestRewriteSiblingNonPublished(t *testing.T) {
+	const rd = "docs/research/benchmarks"
+	blob := ghBlob + rd + "/"
+	cases := []struct{ name, in, want string }{
+		{"same-dir script", "[`r`](run.sh)\n", "[`r`](" + blob + "run.sh)\n"},
+		{"yml config", "[c](bench.mdsmith.yml)\n", "[c](" + blob + "bench.mdsmith.yml)\n"},
+		{"subdir data", "[j](data/r.json)\n", "[j](" + blob + "data/r.json)\n"},
+		{"anchor kept", "[x](run.sh#L3)\n", "[x](" + blob + "run.sh#L3)\n"},
+		{"markdown untouched", "[f](res.md)\n", "[f](res.md)\n"},
+		{"image untouched", "![d](d.svg)\n", "![d](d.svg)\n"},
+		{"pure anchor untouched", "[r](#sec)\n", "[r](#sec)\n"},
+		{"external url untouched", "[c](https://x.io/run.sh)\n", "[c](https://x.io/run.sh)\n"},
+		{"site-absolute untouched", "[a](/docs/rules/MDS027/)\n", "[a](/docs/rules/MDS027/)\n"},
+		{"parent-relative untouched", "[p](../b/run.sh)\n", "[p](../b/run.sh)\n"},
+		{"code span untouched", "use `[x](run.sh)` lit\n", "use `[x](run.sh)` lit\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want,
+				string(rewriteSiblingNonPublished([]byte(tc.in), rd)))
+		})
+	}
+}
+
+// TestSyncDocs_RewritesSiblingNonPublishedLinks pins the
+// benchmarks-README fix end to end: research docs link to
+// sibling `run.sh` / `bench-parity.mdsmith.yml` plumbing that
+// SyncDocs prunes, so the synced page must point those links at
+// GitHub instead of a dead relative path that MDS027 flags.
+func TestSyncDocs_RewritesSiblingNonPublishedLinks(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "docs")
+	dst := t.TempDir()
+	writeFile(t, filepath.Join(src, "research", "benchmarks", "README.md"),
+		"# Bench\n\nRun [`run.sh`](run.sh) with "+
+			"[cfg](bench-parity.mdsmith.yml).\n")
+
+	require.NoError(t, SyncDocs(src, dst))
+
+	got, err := os.ReadFile(
+		filepath.Join(dst, "research", "benchmarks", "README.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(got),
+		"["+"`run.sh`"+"]("+ghBlob+"docs/research/benchmarks/run.sh)")
+	assert.Contains(t, string(got),
+		"[cfg]("+ghBlob+"docs/research/benchmarks/bench-parity.mdsmith.yml)")
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
