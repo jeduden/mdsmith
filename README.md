@@ -9,10 +9,9 @@ Live build, code-quality, and coverage signals —
 each one gates.
 
 A fast, auto-fixing Markdown linter and formatter for docs, READMEs,
-and AI-generated content. One static Go binary, no runtime — a full
-check of this repo runs in under 300 ms. Beyond style and structure,
-it adds cross-file integrity, generated sections, and readability
-budgets that markdownlint-compatible linters skip.
+and AI-generated content. Checks style, readability, structure, and
+cross-file integrity. One static Go binary — 2-3x faster than Node
+markdownlint in our [benchmark](docs/research/benchmarks/README.md).
 
 <!-- Rendered by .github/workflows/demo.yml on push to main; published to the assets branch -->
 ![mdsmith demo](https://raw.githubusercontent.com/jeduden/mdsmith/assets/assets/demo.gif)

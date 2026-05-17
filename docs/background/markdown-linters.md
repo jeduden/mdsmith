@@ -551,54 +551,50 @@ access and is non-deterministic.
 
 ## Benchmarks
 
-Each tool lists its own speed numbers. The runs use
-different file sets and different hardware. So treat each
-one as that project's own claim, not a shared race. The
-point is the scale. A native binary checks a big repo in
-well under a second. Node and Ruby markdownlint take whole
-seconds.
+We ran our own benchmark instead of re-quoting each
+project's README. The driver is hyperfine. Each tool runs
+its default check over the same files, with caches off. Two
+corpora are used: mdsmith's own docs, and neutral
+third-party prose (the Rust Book plus the Rust Reference).
+Full method and a script are in the [benchmark doc][bench].
 
-**mado** publishes the one apples-to-apples set, run with
-hyperfine on a 2021 M1 Max over the GitLab docs (~1,500
-files):
+Median wall time, lower is better. The repo corpus is 523
+Markdown files:
 
-| Tool                        | Runtime | Relative  |
-|-----------------------------|---------|-----------|
-| mado (Rust)                 | 0.129 s | 1x        |
-| markdownlint-cli (Node.js)  | 6.381 s | ~49x mado |
-| markdownlint (Ruby)         | 6.609 s | ~51x mado |
-| markdownlint-cli2 (Node.js) | 7.817 s | ~61x mado |
+| Tool              | Median  | vs mado |
+|-------------------|---------|---------|
+| mado              | 45 ms   | 1.0x    |
+| rumdl             | 164 ms  | 3.6x    |
+| panache           | 226 ms  | 5.0x    |
+| mdsmith           | 1004 ms | 22x     |
+| markdownlint-cli2 | 3342 ms | 74x     |
 
-mado summarizes this as "≈49-60x faster than existing
-linters".
+The neutral corpus is 234 files of longer prose:
 
-**rumdl** benchmarks on the Rust Book repository (478
-Markdown files, October 2025) and reports being
-significantly faster than the Node markdownlint family,
-with an on-disk cache that makes repeat runs faster still.
-It does not publish a single multiplier.
+| Tool              | Median  | vs mado |
+|-------------------|---------|---------|
+| mado              | 46 ms   | 1.0x    |
+| rumdl             | 147 ms  | 3.2x    |
+| panache           | 315 ms  | 6.8x    |
+| mdsmith           | 1597 ms | 34x     |
+| markdownlint-cli2 | 3333 ms | 72x     |
 
-**panache** ships its own hyperfine benchmarks. Caches are
-off, so the numbers are worst case. It races Prettier,
-Pandoc, rumdl, mdformat, mado, and markdownlint. The runs
-split three ways: one file at a time, a whole repo, and a
-Quarto-only set. The harness is public. It gives no single
-headline number.
+Two facts, both honest. First, every native binary beats
+the Node baseline by a wide margin — mdsmith is about 3x
+faster than markdownlint-cli2. Second, mdsmith is the
+slowest native tool here, and that is by design. mado,
+rumdl, and panache are per-file linters; mado is a
+check-only port of ~41 rules. mdsmith does more on every
+run: it walks the cross-file link graph, scores
+readability, and validates generated sections.
 
-**mdsmith** does not race markdownlint. Its own yardstick
-is the self-check. The full rule set plus cross-file link
-checks run over this 70-file repo. That finishes in under
-300 ms on plain hardware (see [performance][perf]). It is
-the same scale as the Rust tools. And it does more per
-file: the cross-file graph, generated sections, and
-readability metrics.
-
-The honest read: pick the tool that fits the job. For fast
-markdownlint rules, rumdl and mado are built for that. For
-fast Quarto or R Markdown, panache is the fit. mdsmith does
-a bit more work per file. In return you get
-the cross-file and generated-content features the other
-three do not have.
+So the honest read is a fit question, not a race. For raw
+markdownlint-rule throughput, pick mado or rumdl. For fast
+Quarto or R Markdown, pick panache. Pick mdsmith when the
+cross-file graph, readability budgets, and self-maintaining
+sections are the point. The earlier "same order of magnitude
+as the Rust tools" wording was too kind and has been
+dropped.
 
 ## When to Use What
 
@@ -981,7 +977,7 @@ you need a stable rule set while these land.
 <!-- mdsmith plan + security + reference links -->
 [mdsmith-sec]: ../security/2026-04-05-adversarial-markdown.md
 [conventions]: ../reference/conventions.md
-[perf]: ../features/performance.md
+[bench]: ../research/benchmarks/README.md
 [plan78]: ../../plan/78_query-command.md
 [plan83]: ../../plan/83_security-hardening-batch.md
 [plan84]: ../../plan/84_symlink-default-deny.md
