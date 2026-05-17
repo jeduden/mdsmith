@@ -1,7 +1,7 @@
 ---
 id: 137
 title: "`mdsmith fix --dry-run`"
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   Add `--dry-run` to `mdsmith fix` so agents and CI
