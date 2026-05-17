@@ -1026,3 +1026,181 @@ func TestFix_MaxPassesBoundary(t *testing.T) {
 	const maxPasses = 10
 	assert.Equal(t, string(initial)+strings.Repeat("X", maxPasses), string(got))
 }
+
+// --- dry-run tests ---
+
+func TestFix_DryRun_WritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	original := []byte("# Hello  \nworld  \n")
+	require.NoError(t, os.WriteFile(mdFile, original, 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors, "unexpected errors: %v", result.Errors)
+	assert.Empty(t, result.Modified, "dry-run must not modify any files")
+
+	got, err := os.ReadFile(mdFile)
+	require.NoError(t, err)
+	assert.Equal(t, original, got, "dry-run must leave file byte-identical")
+}
+
+func TestFix_DryRun_ReportsWouldFix(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \nworld  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors)
+	assert.Equal(t, 2, result.WouldFix, "expected would-fix count to equal pre-fix fixable violations")
+}
+
+func TestFix_DryRun_PerRuleCount(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	// Two trailing-space lines and one tab line.
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \nworld  \nfoo\tbar\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+			"mock-tabs":     {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules: []rule.Rule{
+			&mockFixableRule{id: "MDS100", name: "mock-trailing"},
+			&mockFixableRuleB{id: "MDS200", name: "mock-tabs"},
+		},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors)
+	assert.Equal(t, 3, result.WouldFix)
+
+	require.Len(t, result.FileResults, 1)
+	fr := result.FileResults[0]
+	assert.Equal(t, mdFile, fr.Path)
+	assert.Equal(t, 3, fr.WouldFix)
+	assert.Equal(t, 2, fr.WouldFixByRule["MDS100"])
+	assert.Equal(t, 1, fr.WouldFixByRule["MDS200"])
+}
+
+func TestFix_DryRun_ExitCodeMatchesRealRun(t *testing.T) {
+	// A file with both fixable (trailing spaces) and non-fixable issues.
+	// The exit code should reflect unfixable diagnostics remaining (exit 1),
+	// same as a real run would return.
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing":   {Enabled: true},
+			"mock-nonfixable": {Enabled: true},
+		},
+	}
+	fixerDry := &Fixer{
+		Config: cfg,
+		Rules: []rule.Rule{
+			&mockFixableRule{id: "MDS100", name: "mock-trailing"},
+			&mockNonFixableRule{id: "MDS999", name: "mock-nonfixable"},
+		},
+		DryRun: true,
+	}
+	fixerReal := &Fixer{
+		Config: cfg,
+		Rules: []rule.Rule{
+			&mockFixableRule{id: "MDS100", name: "mock-trailing"},
+			&mockNonFixableRule{id: "MDS999", name: "mock-nonfixable"},
+		},
+	}
+
+	dir2 := t.TempDir()
+	mdFile2 := filepath.Join(dir2, "test.md")
+	require.NoError(t, os.WriteFile(mdFile2, []byte("# Hello  \n"), 0o644))
+
+	dryResult := fixerDry.Fix([]string{mdFile})
+	realResult := fixerReal.Fix([]string{mdFile2})
+
+	dryHasUnfixed := len(dryResult.Diagnostics) > 0
+	realHasUnfixed := len(realResult.Diagnostics) > 0
+	assert.Equal(t, realHasUnfixed, dryHasUnfixed, "dry-run exit condition must match real run")
+}
+
+func TestFix_DryRun_CleanFile_NoWouldFix(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "clean.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Clean\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors)
+	assert.Equal(t, 0, result.WouldFix)
+	assert.Empty(t, result.FileResults)
+}
+
+func TestFix_DryRun_MultipleFiles(t *testing.T) {
+	dir := t.TempDir()
+	file1 := filepath.Join(dir, "a.md")
+	file2 := filepath.Join(dir, "b.md")
+	orig1 := []byte("# A  \n")
+	orig2 := []byte("# B  \n")
+	require.NoError(t, os.WriteFile(file1, orig1, 0o644))
+	require.NoError(t, os.WriteFile(file2, orig2, 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{file1, file2})
+	require.Empty(t, result.Errors)
+	assert.Empty(t, result.Modified, "dry-run must not modify files")
+	assert.Equal(t, 2, result.WouldFix)
+	assert.Len(t, result.FileResults, 2)
+
+	got1, _ := os.ReadFile(file1)
+	got2, _ := os.ReadFile(file2)
+	assert.Equal(t, orig1, got1, "file1 must be unchanged")
+	assert.Equal(t, orig2, got2, "file2 must be unchanged")
+}

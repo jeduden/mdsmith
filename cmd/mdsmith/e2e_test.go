@@ -533,6 +533,91 @@ func TestE2E_Fix_PrintsStatsWithUnfixedFailures(t *testing.T) {
 		"expected failures >= unfixed, got failures=%d unfixed=%d", failures, unfixed)
 }
 
+// --- Fix --dry-run tests ---
+
+func TestE2E_Fix_DryRun_WritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	original := "# Title\n\nHello   \n"
+	path := writeFixture(t, dir, "fixme.md", original)
+
+	_, _, exitCode := runBinaryInDir(t, dir, "", "fix", "--dry-run", "--no-color", "fixme.md")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d", exitCode)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, original, string(got), "dry-run must not modify the file")
+}
+
+func TestE2E_Fix_DryRun_PrintsWouldFixLine(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "fixme.md", "# Title\n\nHello   \nworld   \n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "fix", "--dry-run", "--no-color", "fixme.md")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d", exitCode)
+	assert.Contains(t, stderr, "would fix", "expected 'would fix' in dry-run output, got: %s", stderr)
+}
+
+func TestE2E_Fix_DryRun_SummaryHasWouldFix(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "fixme.md", "# Title\n\nHello   \n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "fix", "--dry-run", "--no-color", "fixme.md")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d", exitCode)
+	assert.Contains(t, stderr, "would-fix=", "expected 'would-fix=' in summary, got: %s", stderr)
+	assert.Contains(t, stderr, "fixed=0", "expected 'fixed=0' in dry-run summary, got: %s", stderr)
+}
+
+func TestE2E_Fix_DryRun_ExitCodeMatchesRealRun(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	// File with both fixable (trailing spaces) and non-fixable issues (bad heading punctuation).
+	writeFixture(t, dir, "fixme.md", "# Title!\n\nHello   \n")
+
+	// Dry-run on the same content.
+	_, _, dryCode := runBinaryInDir(t, dir, "", "fix", "--dry-run", "--no-color", "fixme.md")
+
+	// Real run on a copy in a fresh dir.
+	dir2 := t.TempDir()
+	isolateDir(t, dir2)
+	writeFixture(t, dir2, "fixme.md", "# Title!\n\nHello   \n")
+	_, _, realCode := runBinaryInDir(t, dir2, "", "fix", "--no-color", "fixme.md")
+
+	assert.Equal(t, realCode, dryCode,
+		"dry-run exit code %d must match real-run exit code %d", dryCode, realCode)
+}
+
+func TestE2E_Fix_DryRun_JSONFormat(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "fixme.md", "# Title\n\nHello   \n")
+
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "fix", "--dry-run", "--format", "json", "fixme.md")
+	assert.Equal(t, 0, exitCode, "expected exit code 0, got %d", exitCode)
+
+	// Parse the JSON output — should be an array of per-file records.
+	var records []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &records),
+		"stdout should be valid JSON, got: %s", stdout)
+
+	// At least one record for fixme.md.
+	found := false
+	for _, rec := range records {
+		path, _ := rec["path"].(string)
+		if strings.HasSuffix(path, "fixme.md") {
+			found = true
+			wf, ok := rec["would_fix"].(float64)
+			assert.True(t, ok, "expected numeric would_fix field, got %T", rec["would_fix"])
+			assert.Greater(t, int(wf), 0, "expected would_fix > 0")
+			_, hasRules := rec["rules"]
+			assert.True(t, hasRules, "expected rules field in JSON record")
+		}
+	}
+	assert.True(t, found, "expected a record for fixme.md in JSON output, got: %s", stdout)
+}
+
 // --- Init subcommand tests ---
 
 func TestE2E_Init_CreatesConfig(t *testing.T) {

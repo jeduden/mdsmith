@@ -33,6 +33,10 @@ type Fixer struct {
 	// remaining diagnostic so output formatters can render an
 	// explanation trailer.
 	Explain bool
+	// DryRun, when true, builds the fixed buffer as normal but skips
+	// the write step. The Result carries would-fix counts instead of
+	// Modified paths.
+	DryRun bool
 	// SourceFS, when non-nil, overrides the per-file dirFS that
 	// prepareFile would otherwise derive from filepath.Dir(path).
 	// Used by Source / SourceWithRules so callers can pass a
@@ -76,6 +80,16 @@ func (f *Fixer) cachedGitignore(dir string) *lint.GitignoreMatcher {
 	return m
 }
 
+// FileResult holds per-file dry-run information.
+type FileResult struct {
+	// Path is the file path.
+	Path string
+	// WouldFix is the number of fixable violations on this file.
+	WouldFix int
+	// WouldFixByRule maps rule ID to its fixable violation count.
+	WouldFixByRule map[string]int
+}
+
 // Result holds the outcome of a fix run.
 type Result struct {
 	// FilesChecked is the number of files processed (after ignore filtering).
@@ -89,6 +103,12 @@ type Result struct {
 	Modified []string
 	// Errors contains any errors encountered during the fix process.
 	Errors []error
+	// WouldFix is the total number of violations that would have been fixed
+	// in a dry run. Always zero on a real run.
+	WouldFix int
+	// FileResults holds per-file dry-run data. Only populated when DryRun is
+	// true and the file has at least one fixable violation.
+	FileResults []FileResult
 }
 
 // Fix applies auto-fixes to the files at the given paths and returns a Result
@@ -109,11 +129,15 @@ func (f *Fixer) Fix(paths []string) *Result {
 		}
 		res.FilesChecked++
 		f.log().Printf("file: %s", path)
-		beforeDiags, remainingDiags, modified, errs := f.fixFile(path)
+		beforeDiags, remainingDiags, modified, fileRes, errs := f.fixFile(path)
 		allBefore = append(allBefore, beforeDiags...)
 		res.Diagnostics = append(res.Diagnostics, remainingDiags...)
 		if modified != "" {
 			res.Modified = append(res.Modified, modified)
+		}
+		if fileRes != nil {
+			res.FileResults = append(res.FileResults, *fileRes)
+			res.WouldFix += fileRes.WouldFix
 		}
 		res.Errors = append(res.Errors, errs...)
 	}
@@ -134,29 +158,51 @@ func (f *Fixer) Fix(paths []string) *Result {
 	return res
 }
 
+// wouldFixResult counts, per rule ID, how many beforeDiags come from fixable
+// rules. Returns nil when no fixable diagnostics exist.
+func wouldFixResult(path string, fixable []rule.FixableRule, beforeDiags []lint.Diagnostic) *FileResult {
+	fixableIDs := make(map[string]struct{}, len(fixable))
+	for _, fr := range fixable {
+		fixableIDs[fr.ID()] = struct{}{}
+	}
+	byRule := make(map[string]int)
+	for _, d := range beforeDiags {
+		if _, ok := fixableIDs[d.RuleID]; ok {
+			byRule[d.RuleID]++
+		}
+	}
+	total := 0
+	for _, n := range byRule {
+		total += n
+	}
+	if total == 0 {
+		return nil
+	}
+	return &FileResult{Path: path, WouldFix: total, WouldFixByRule: byRule}
+}
+
 // fixFile applies auto-fixes to a single file and returns diagnostics before
-// fixing, remaining diagnostics after fixing, the path if modified, and any
-// errors encountered.
-func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, string, []error) {
+// fixing, remaining diagnostics after fixing, the path if modified, a per-file
+// dry-run result (nil on a real run), and any errors encountered.
+func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, string, *FileResult, []error) {
 	var errs []error
 
 	source, err := lint.ReadFileLimited(path, f.MaxInputBytes)
 	if err != nil {
-		return nil, nil, "", []error{fmt.Errorf("reading %q: %w", path, err)}
+		return nil, nil, "", nil, []error{fmt.Errorf("reading %q: %w", path, err)}
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, nil, "", []error{fmt.Errorf("stat %q: %w", path, err)}
+		return nil, nil, "", nil, []error{fmt.Errorf("stat %q: %w", path, err)}
 	}
 
 	lf, dirFS, fmKinds, fmFields, prepErr := f.prepareFile(path, source)
 	if prepErr != nil {
-		return nil, nil, "", []error{prepErr}
+		return nil, nil, "", nil, []error{prepErr}
 	}
 
 	effective := f.effectiveWithCategories(path, fmKinds, fmFields)
-
 	f.logRules(effective)
 
 	fixable, settingsErrs := f.fixableRules(effective)
@@ -166,24 +212,27 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 
 	current := f.applyFixPasses(path, lf.Source, fixable, lf, dirFS, &errs)
 
+	finalFile := buildPostFixFile(path, current, lf, dirFS)
+	diags, postCheckErrs := engine.CheckRules(finalFile, f.Rules, effective)
+	errs = append(errs, postCheckErrs...)
+	if f.Explain {
+		explain.Attach(diags, f.Config, path, fmKinds, fmFields)
+	}
+
+	if f.DryRun {
+		return beforeDiags, diags, "", wouldFixResult(path, fixable, beforeDiags), errs
+	}
+
 	var modified string
 	if !bytes.Equal(lf.Source, current) {
 		out := lf.FullSource(current)
 		if err := atomicWriteFile(path, out, info.Mode()); err != nil {
 			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
-			return beforeDiags, beforeDiags, "", errs
+			return beforeDiags, beforeDiags, "", nil, errs
 		}
 		modified = path
 	}
-
-	finalFile := buildPostFixFile(path, current, lf, dirFS)
-
-	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
-	errs = append(errs, checkErrs...)
-	if f.Explain {
-		explain.Attach(diags, f.Config, path, fmKinds, fmFields)
-	}
-	return beforeDiags, diags, modified, errs
+	return beforeDiags, diags, modified, nil, errs
 }
 
 // hydrateLintFile copies onto a freshly-parsed *lint.File the parse-

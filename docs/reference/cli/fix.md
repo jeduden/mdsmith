@@ -22,6 +22,7 @@ files are discovered from `.mdsmith.yml` `files:` patterns.
 |---------------------|---------|----------------------------------------|
 | `-c`, `--config`    | auto    | Override config path (auto-discovers)  |
 | `-f`, `--format`    | `text`  | `text` or `json`                       |
+| `--dry-run`         | false   | Preview fixes; write nothing to disk   |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)   |
 | `--no-color`        | false   | Plain output                           |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
@@ -39,6 +40,39 @@ files are discovered from `.mdsmith.yml` `files:` patterns.
 mdsmith fix README.md            # fix a single file
 mdsmith fix docs/                # fix a tree
 mdsmith fix --explain plan/      # show provenance for unfixed leftovers
+mdsmith fix --dry-run docs/      # preview what fix would change
+```
+
+## Dry run
+
+`--dry-run` runs the full fix pipeline but skips the write step. The
+exit code is identical to what a real run would return, so CI can gate
+on `--dry-run` without modifying the worktree.
+
+Per-file output (one line per file with at least one fixable violation):
+
+```text
+docs/api.md: would fix 3 violations (MDS001 ×2, MDS006)
+```
+
+The trailing summary gains a `would-fix=N` field; `fixed=` is always
+`0` on a dry run:
+
+```text
+stats: checked=12 fixed=0 failures=0 unfixed=4 would-fix=8
+```
+
+With `--format json`, the output is a JSON array of per-file records:
+
+```json
+[
+  {
+    "path": "docs/api.md",
+    "would_fix": 3,
+    "rules": ["MDS001", "MDS006"],
+    "diagnostics": []
+  }
+]
 ```
 
 ## Pre-commit
