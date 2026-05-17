@@ -351,52 +351,14 @@ Weaknesses:
 
 ### Structural Linting
 
-| Capability          | mdsmith                        | markdownlint                             | remark-lint                                       |
-|---------------------|--------------------------------|------------------------------------------|---------------------------------------------------|
-| Heading hierarchy   | [MDS003][mds003]               | [MD001][md001]                           | [heading-increment][rl-hi]                        |
-| First-line heading  | [MDS004][mds004]               | [MD041][md041]                           | [first-heading-level][rl-fhl]                     |
-| Duplicate headings  | [MDS005][mds005]               | [MD024][md024]                           | [no-duplicate-headings][rl-ndh]                   |
-| Blank line spacing  | [MDS013][mds013]-[015][mds015] | [MD022][md022],[025][md025],[031][md031] | plugins                                           |
-| List indentation    | [MDS016][mds016]               | [MD007][md007]                           | [list-item-indent][rl-lii]                        |
-| Code fence style    | [MDS010][mds010]               | [MD048][md048]                           | [fenced-code-flag][rl-fcf]                        |
-| Code block language | [MDS011][mds011]               | [MD040][md040]                           | [fenced-code-flag][rl-fcf]                        |
-| Bare URLs           | [MDS012][mds012]               | [MD034][md034]                           | [no-literal-urls][rl-nlu]                         |
-| Line length         | [MDS001][mds001]               | [MD013][md013]                           | [maximum-line-length][rl-mll]                     |
-| Trailing spaces     | [MDS006][mds006]               | [MD009][md009]                           | [hard-break-spaces][rl-hbs]                       |
-| Inline HTML         | planned ([plan 105][plan105])  | [MD033][md033]                           | [no-html][rl-nh]                                  |
-| Image alt text      | [MDS032][mds032]               | [MD045][md045]                           | [no-empty-image-alt-text][rl-neiat] (third-party) |
-| OL numbering        | [MDS046][mds046]               | [MD029][md029]                           | [ordered-list-marker-style][rl-olms]              |
-| UL marker style     | planned ([plan 109][plan109])  | [MD004][md004]                           | [unordered-list-marker-style][rl-ulms]            |
-| Emphasis style      | planned ([plan 106][plan106])  | [MD049][md049], [MD050][md050]           | [emphasis-marker][rl-em]                          |
-| HR style            | planned ([plan 108][plan108])  | [MD035][md035]                           | [rule-style][rl-rs]                               |
-| Ambiguous emphasis  | planned ([plan 111][plan111])  | [MD037][md037]                           | no                                                |
-| Space in code       | [MDS052][mds052]               | [MD038][md038]                           | no                                                |
-| Space in links      | [MDS049][mds049]               | [MD039][md039]                           | no                                                |
-| Proper names        | [MDS050][mds050]               | [MD044][md044]                           | no                                                |
-| Required headings   | [MDS020][mds020] (via schema)  | [MD043][md043]                           | no                                                |
-| Single H1           | [MDS051][mds051]               | [MD025][md025]                           | no                                                |
-| Link fragments      | [MDS027][mds027] (cross-file)  | [MD051][md051]                           | no                                                |
-| Forbid ref-style    | [MDS043][mds043]               | no                                       | no                                                |
-| Undefined ref label | planned ([plan 128][plan128])  | [MD052][md052]                           | no                                                |
-| Unused/dup ref def  | [MDS053][mds053]               | [MD053][md053]                           | no                                                |
-
-All three cover core structural rules. markdownlint has
-the broadest rule set. Plans cover inline HTML
-([plan 105][plan105]), UL marker style
-([plan 109][plan109]), emphasis style
-([plan 106][plan106]), and HR style
-([plan 108][plan108]). More plans cover ambiguous emphasis
-([plan 111][plan111]) and undefined reference labels
-([plan 128][plan128]).
-Image alt text ([MDS032][mds032]), OL numbering
-([MDS046][mds046]), no-space-in-code-spans
-([MDS052][mds052], [plan 124][plan124]),
-no-space-in-link-text ([MDS049][mds049]),
-proper names ([MDS050][mds050]), single H1
-([MDS051][mds051]), no-reference-style
-([MDS043][mds043]), and unused link reference
-definitions ([MDS053][mds053]) are already
-implemented.
+All three cover the core structural rules; markdownlint has
+the broadest set. The full rule-by-rule mapping lives in the
+[markdownlint coverage matrix][mdcov]: every markdownlint
+`MDxxx`, the mdsmith rule that covers it or the plan that
+schedules it, and the mdsmith-only rules. As of 2026-05
+mdsmith implements 34 of 52 active markdownlint rules (1
+partial); the other 17 are scheduled in plans 172 and
+176-182.
 
 ### Rust Markdown linters (rumdl, mado, panache)
 
@@ -408,12 +370,12 @@ mdsmith also keeps its own `MDSxxx` IDs and adds a
 cross-file, generated-content, and readability layer none
 of the three carry.
 
-For the rule-by-rule structural mapping, the
-[markdownlint column](#structural-linting) doubles as the
-rumdl/mado column: both reuse the same `MDxxx` semantics.
-rumdl implements ~71 of those IDs; mado implements ~41.
-Neither adds rules outside the markdownlint set. panache
-does not map to that table — its checks target Quarto and
+In the [coverage matrix][mdcov] the markdownlint column
+doubles as the rumdl/mado column: both reuse the same
+`MDxxx` semantics. rumdl implements ~71 of those IDs; mado
+implements ~41. Neither adds rules outside the markdownlint
+set. panache does not map to that matrix — its checks
+target Quarto and
 R Markdown constructs the others flatten away.
 
 | Aspect                  | mdsmith      | rumdl                | mado                 | panache      |
@@ -829,12 +791,12 @@ items most relevant to this comparison are:
   lifecycle hooks. This will close part of the gap
   with Hugo: deriving artifacts from Markdown sources
   without leaving the linter.
-- **Closing rule gaps with markdownlint** — plans
-  [105][plan105] (no-inline-html / MD033),
-  [106][plan106] (emphasis style / MD049, MD050),
-  [108][plan108] (horizontal rule style / MD035),
-  [109][plan109] (list marker style / MD004), and
-  [111][plan111] (ambiguous emphasis / MD037).
+- **Closing rule gaps with markdownlint** — plans 176-182
+  schedule the 17 still-unmapped rules (heading, blockquote
+  and list whitespace; reversed/empty links; descriptive
+  link text; table structure; code-block style), and
+  [plan 172](../../plan/172_link-style-rule-and-config.md)
+  covers MD054. The [coverage matrix][mdcov] tracks each.
 - **User-defined Markdown conventions**
   ([plan 113][plan113]) — let teams package their own
   rule presets the way the built-in conventions
@@ -852,16 +814,6 @@ you need a stable rule set while these land.
 
 <!-- mdsmith rule links -->
 [mds001]: ../../internal/rules/MDS001-line-length/README.md
-[mds003]: ../../internal/rules/MDS003-heading-increment/README.md
-[mds004]: ../../internal/rules/MDS004-first-line-heading/README.md
-[mds005]: ../../internal/rules/MDS005-no-duplicate-headings/README.md
-[mds006]: ../../internal/rules/MDS006-no-trailing-spaces/README.md
-[mds010]: ../../internal/rules/MDS010-fenced-code-style/README.md
-[mds011]: ../../internal/rules/MDS011-fenced-code-language/README.md
-[mds012]: ../../internal/rules/MDS012-no-bare-urls/README.md
-[mds013]: ../../internal/rules/MDS013-blank-line-around-headings/README.md
-[mds015]: ../../internal/rules/MDS015-blank-line-around-fenced-code/README.md
-[mds016]: ../../internal/rules/MDS016-list-indent/README.md
 [mds019]: ../../internal/rules/MDS019-catalog/README.md
 [mds020]: ../../internal/rules/MDS020-required-structure/README.md
 [mds021]: ../../internal/rules/MDS021-include/README.md
@@ -872,16 +824,8 @@ you need a stable rule set while these land.
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds030]: ../../internal/rules/MDS030-empty-section-body/README.md
-[mds032]: ../../internal/rules/MDS032-no-empty-alt-text/README.md
-[mds043]: ../../internal/rules/MDS043-no-reference-style/README.md
 [mds035]: ../../internal/rules/MDS035-toc-directive/README.md
 [mds038]: ../../internal/rules/MDS038-toc/README.md
-[mds046]: ../../internal/rules/MDS046-ordered-list-numbering/README.md
-[mds049]: ../../internal/rules/MDS049-no-space-in-link-text/README.md
-[mds050]: ../../internal/rules/MDS050-proper-names/README.md
-[mds051]: ../../internal/rules/MDS051-single-h1/README.md
-[mds052]: ../../internal/rules/MDS052-no-space-in-code-spans/README.md
-[mds053]: ../../internal/rules/MDS053-no-unused-link-definitions/README.md
 <!-- markdownlint links -->
 [markdownlint]: https://github.com/DavidAnson/markdownlint
 [markdownlint-cli2]: https://github.com/DavidAnson/markdownlint-cli2
@@ -889,51 +833,11 @@ you need a stable rule set while these land.
 [mdl-vscode]: https://marketplace.visualstudio.com/items?itemName=DavidAnson.vscode-markdownlint
 [mdl-action]: https://github.com/DavidAnson/markdownlint-cli2-action
 [md001]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md
-[md004]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md004.md
-[md007]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md007.md
-[md009]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md009.md
-[md013]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md
-[md022]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md022.md
-[md024]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md024.md
-[md025]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md
-[md029]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md029.md
-[md031]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md031.md
-[md033]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md033.md
-[md034]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md034.md
-[md035]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md035.md
-[md037]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md037.md
-[md038]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md
-[md039]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md039.md
-[md040]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md040.md
-[md041]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md041.md
-[md043]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md043.md
-[md044]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md044.md
-[md045]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md045.md
-[md048]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md048.md
-[md049]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md049.md
-[md050]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md050.md
-[md051]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md051.md
-[md052]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md052.md
-[md053]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md
 [md058]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md058.md
 <!-- remark-lint links -->
 [remark-lint]: https://github.com/remarkjs/remark-lint
 [remark]: https://github.com/remarkjs/remark
 [unified]: https://github.com/unifiedjs/unified
-[rl-hi]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-heading-increment
-[rl-fhl]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-first-heading-level
-[rl-ndh]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-no-duplicate-headings
-[rl-lii]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-list-item-indent
-[rl-fcf]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-fenced-code-flag
-[rl-nlu]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-no-literal-urls
-[rl-mll]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-maximum-line-length
-[rl-hbs]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-hard-break-spaces
-[rl-nh]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-no-html
-[rl-neiat]: https://github.com/salesforce/remark-lint-no-empty-image-alt-text
-[rl-olms]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-ordered-list-marker-style
-[rl-ulms]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-unordered-list-marker-style
-[rl-em]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-emphasis-marker
-[rl-rs]: https://github.com/remarkjs/remark-lint/tree/main/packages/remark-lint-rule-style
 [rl-vl]: https://github.com/remarkjs/remark-validate-links
 [rl-fm]: https://github.com/remarkjs/remark-frontmatter
 <!-- include / preprocessor tool links -->
@@ -984,6 +888,7 @@ you need a stable rule set while these land.
 [mdsmith-sec]: ../security/2026-04-05-adversarial-markdown.md
 [conventions]: ../reference/conventions.md
 [bench]: ../research/benchmarks/README.md
+[mdcov]: ../research/markdownlint-coverage/README.md
 [plan78]: ../../plan/78_query-command.md
 [plan83]: ../../plan/83_security-hardening-batch.md
 [plan84]: ../../plan/84_symlink-default-deny.md
@@ -992,12 +897,5 @@ you need a stable rule set while these land.
 [plan102]: ../../plan/102_build-subcommand.md
 [plan103]: ../../plan/103_build-staleness-and-deps.md
 [plan104]: ../../plan/104_build-lifecycle-hooks.md
-[plan105]: ../../plan/105_no-inline-html.md
-[plan106]: ../../plan/106_emphasis-style.md
-[plan108]: ../../plan/108_horizontal-rule-style.md
-[plan109]: ../../plan/109_list-marker-style.md
-[plan111]: ../../plan/111_ambiguous-emphasis.md
 [plan113]: ../../plan/113_user-defined-profiles.md
 [plan120]: ../../plan/120_glob-unification.md
-[plan124]: ../../plan/124_no-space-in-code-spans.md
-[plan128]: ../../plan/128_no-undefined-reference-labels.md

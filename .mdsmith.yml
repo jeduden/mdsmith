@@ -175,7 +175,7 @@ overrides:
       line-length:
         stern: true
       max-file-length:
-        max: 1000
+        max: 3000
       token-budget:
         max: 12000
         mode: heuristic
