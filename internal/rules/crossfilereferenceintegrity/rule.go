@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -252,7 +251,7 @@ func anchorsForFile(target targetFile, cache map[string]map[string]bool) (map[st
 func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile, bool) {
 	maxBytes := f.MaxInputBytes
 	if path, ok := resolveTargetOSPath(f.Path, linkPath); ok {
-		if _, err := os.Stat(path); err == nil {
+		if cachedStatExists(path) {
 			// Reject links that resolve outside the project root,
 			// evaluating symlinks to prevent bypass via symlinked dirs.
 			if resolvedRoot != "" && !isWithinRoot(resolvedRoot, path) {
@@ -289,8 +288,8 @@ func resolveAbsRoot(rootDir string) string {
 	if rootDir == "" {
 		return ""
 	}
-	realRoot, err := filepath.EvalSymlinks(rootDir)
-	if err != nil {
+	realRoot, ok := cachedEvalSymlinks(rootDir)
+	if !ok {
 		realRoot = rootDir
 	}
 	abs, err := filepath.Abs(realRoot)
@@ -307,8 +306,8 @@ func isWithinRoot(resolvedRoot, target string) bool {
 	if err != nil {
 		return false
 	}
-	realTarget, err := filepath.EvalSymlinks(absTarget)
-	if err != nil {
+	realTarget, ok := cachedEvalSymlinks(absTarget)
+	if !ok {
 		// Symlink resolution failed (e.g. dangling link); fall back to
 		// the cleaned absolute path so the root comparison still works.
 		realTarget = filepath.Clean(absTarget)
