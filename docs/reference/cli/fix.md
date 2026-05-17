@@ -22,6 +22,7 @@ files are discovered from `.mdsmith.yml` `files:` patterns.
 |---------------------|---------|----------------------------------------|
 | `-c`, `--config`    | auto    | Override config path (auto-discovers)  |
 | `-f`, `--format`    | `text`  | `text` or `json`                       |
+| `--dry-run`         | false   | Preview fixes without writing to disk  |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)   |
 | `--no-color`        | false   | Plain output                           |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
@@ -39,7 +40,38 @@ files are discovered from `.mdsmith.yml` `files:` patterns.
 mdsmith fix README.md            # fix a single file
 mdsmith fix docs/                # fix a tree
 mdsmith fix --explain plan/      # show provenance for unfixed leftovers
+mdsmith fix --dry-run docs/      # preview what would change without writing
 ```
+
+### Dry-run output
+
+`--dry-run` builds the fixed content but skips all writes. One line per
+changed file is emitted to stderr:
+
+```text
+docs/api.md: would fix 3 violations (MDS001 ×2, MDS006)
+docs/index.md: would fix 1 violation (MDS006)
+stats: checked=12 fixed=0 failures=0 unfixed=4 would-fix=4
+```
+
+- `fixed=0` — nothing was written to disk.
+- `would-fix=N` — violations a real run would have auto-fixed.
+
+With `--format json`, one record per file is written to stdout:
+
+```json
+[
+  {
+    "path": "docs/api.md",
+    "would_fix": 3,
+    "rules": ["MDS001", "MDS006"],
+    "diagnostics": []
+  }
+]
+```
+
+The exit code matches what a real `fix` run would return. Use `--dry-run` as
+a CI gate on "this tree is fixable".
 
 ## Pre-commit
 

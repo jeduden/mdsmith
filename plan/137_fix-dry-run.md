@@ -1,7 +1,7 @@
 ---
 id: 137
 title: "`mdsmith fix --dry-run`"
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   Add `--dry-run` to `mdsmith fix` so agents and CI
@@ -143,24 +143,24 @@ unchanged. The new line in the summary
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith fix --dry-run` writes nothing to
+- [x] `mdsmith fix --dry-run` writes nothing to
       disk (regression test asserts every
       candidate file is byte-identical after
       the run).
-- [ ] The per-file output names each rule that
+- [x] The per-file output names each rule that
       would fire and how many times.
-- [ ] The summary line includes
+- [x] The summary line includes
       `would-fix=N`. The existing
       `checked=` / `fixed=` / `failures=` /
       `unfixed=` fields are present on the
       same line; `fixed=` reads `0` since
       nothing was written.
-- [ ] `--format json` exposes `would_fix` and
+- [x] `--format json` exposes `would_fix` and
       `rules` per file.
-- [ ] Exit code matches the real-run exit code
+- [x] Exit code matches the real-run exit code
       on identical input.
-- [ ] [`docs/reference/cli/fix.md`](../docs/reference/cli/fix.md)
+- [x] [`docs/reference/cli/fix.md`](../docs/reference/cli/fix.md)
       documents the flag with an example.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.
