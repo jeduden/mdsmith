@@ -134,19 +134,18 @@ over discovered files and queries `OutgoingEdges` /
    supersession to the audit log. (`cross-system.md`
    boundaries/versioning deferred to task 8 with the CLI
    surface.)
-4. [ ] TDD `internal/rename` core. **In progress —**
-   **done:** the
-   link-reference engine plus the shared body/offset
-   helpers are lifted out of `internal/lsp/rename.go` into
+4. [x] TDD `internal/rename` core. The link-reference
+   engine and the heading engine are both lifted into
    `internal/rename` (neutral `Edit`/`Position`/`Range`,
    typed `ErrEmptyLabel` / `InvalidLabelRuneError` /
-   `LabelConflictError`), behavior-tested at **100%**
-   statement coverage, building and linting clean.
-   **Remaining:** the heading engine (`computeSlugRemap`,
-   `assignSlugs`, anchor/ref-def-dest edits) still lives in
-   `internal/lsp/rename.go` because the heading and
-   link-ref paths share helpers now in `internal/rename`;
-   moving it is the next slice of this task.
+   `LabelConflictError` / `InvalidHeadingRuneError` /
+   `ErrEmptyHeadingSlug` / `HeadingCollisionError`). The
+   heading path takes a `Workspace` seam (incoming anchor
+   edges, file list, path→bytes) so LSP can back it with
+   the warm index + buffers and the CLI with a transient
+   index + disk. Behavior-tested at **100%** statement
+   coverage with a real index-backed workspace (no mocks);
+   every production function has a dedicated unit test.
 5. [ ] Refactor `internal/lsp/rename.go` to delegate to
    `internal/rename`; delete duplicated computation. Plans
    151/131 + `cmd/mdsmith/lsp_rename_test.go` stay green.
@@ -173,7 +172,7 @@ over discovered files and queries `OutgoingEdges` /
       `internal/lsp/index`; `grep -r internal/lsp/index`
       finds nothing (SRP / DIP — package answers one
       question, CLI no longer reaches the editor layer).
-- [ ] `internal/rename` returns plain edits and typed errors,
+- [x] `internal/rename` returns plain edits and typed errors,
       imports neither `internal/lsp` nor any LSP wire type
       (DIP — surfaces depend on the core).
 - [ ] `internal/lsp/rename.go` contains no slug / edit
@@ -214,43 +213,30 @@ over discovered files and queries `OutgoingEdges` /
 
 ## Remaining work
 
-Task 4's first slice landed:
+Task 4 is complete:
 [internal/rename](../internal/rename/rename.go) holds
-the link-reference engine and the shared body/offset
-helpers, 100% covered. Three slices remain, each its
-own green commit.
+the link-reference engine and
+[heading.go](../internal/rename/heading.go) the
+heading engine, both 100% covered. Two slices remain,
+each its own green commit.
 
-### Slice A — move the heading engine
+### Slice A — move the heading engine (done)
 
-Lift the heading half of
+The heading half of
 [internal/lsp/rename.go](../internal/lsp/rename.go)
-into [internal/rename](../internal/rename/rename.go).
+moved into
+[internal/rename/heading.go](../internal/rename/heading.go).
+It covers the slug map, the anchor edits, the
+ref-def edits, and the stable sort. A `Workspace`
+seam feeds it the incoming edges, the file list, and
+a path→bytes resolver. `rename.Heading` returns a
+per-key `Edit` set. An unsafe rename returns a typed
+error instead.
 
-- slug map: `computeSlugRemap`, `walkAllHeadings`,
-  `assignSlugs`, `slugRemapPairs`, `headingTextEdit`
-- anchor edits: `anchorEditForEdge`,
-  `anchorFragmentBytes`, `destBounds`, `indexOfHash`,
-  `fragmentEnd`, `fragmentMatchesSlug`,
-  `isBackslashEscaped`
-- ref-def destinations: `refDefDestEditForMatch`,
-  `refDefColonOffset`, `refDefDestRange`,
-  `refDefDestPointsAt`, `refDefParseTarget`
-- ordering: `stableSortEdits`
-- guards to add: reject a control rune, an empty
-  slug, and a slug that collides with another heading
-
-`Workspace` seam the heading path needs:
-
-- list the incoming anchor edges for a `(file, slug)`
-- resolve a workspace path to its bytes
-- LSP backs it with the warm index + open buffers;
-  CLI with a transient index + disk reads
-
-API: `rename.Heading(ws, file, line, newName)` →
-per-file `Edit` set, or `CollisionError` naming the
-clash. Behavior tests: same-file anchors, cross-file
-anchors, disambiguator shift, each guard. 100%
-coverage, no mocks.
+The LSP package still carries its own copy. Slice B
+deletes that copy. Behavior tests cover same-file
+anchors, cross-file anchors, the disambiguator
+shift, and each guard at 100%, no mocks.
 
 ### Slice B — LSP delegates to the core
 
