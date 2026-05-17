@@ -36,7 +36,7 @@ footer: |
 | 98  | ✅     | sonnet | [Replace `archetypes` with `kinds`](plan/98_replace-archetypes-with-kinds.md)                                             |
 | 100 | ✅     | sonnet | [build config block and MDS040 recipe-safety rule](plan/100_build-config-and-mds040.md)                                   |
 | 101 | ✅     | sonnet | [build directive and MDS039 lint rule](plan/101_build-directive-mds039.md)                                                |
-| 102 | 🔲     | opus   | [Builder interface and mdsmith build subcommand](plan/102_build-subcommand.md)                                            |
+| 102 | 🔲     | opus   | [Multi-output `<?build?>` directive](plan/102_build-subcommand.md)                                                        |
 | 103 | 🔲     | opus   | [Build target staleness and dependency tracking](plan/103_build-staleness-and-deps.md)                                    |
 | 104 | 🔲     | sonnet | [Build lifecycle hooks (before/after)](plan/104_build-lifecycle-hooks.md)                                                 |
 | 105 | ✅     | sonnet | [No inline HTML rule](plan/105_no-inline-html.md)                                                                         |
@@ -49,6 +49,9 @@ footer: |
 | 112 | ✅     | opus   | [Markdown convention bundles for MDS034](plan/112_flavor-profiles.md)                                                     |
 | 113 | ✅     | sonnet | [User-defined Markdown conventions](plan/113_user-defined-profiles.md)                                                    |
 | 114 | ✅     | sonnet | [MDS034 message clarity and flavor-vs-rule docs](plan/114_mds034-message-and-flavor-vs-rule-docs.md)                      |
+| 115 | 🔲     | opus   | [Builder execution wired into `mdsmith fix`](plan/115_builder-execution-in-fix.md)                                        |
+| 116 | 🔲     | opus   | [Build execution UX (stdout/stderr, debug, parallel)](plan/116_build-execution-ux.md)                                     |
+| 117 | 🔲     | opus   | [Build execution hardening](plan/117_build-execution-hardening.md)                                                        |
 | 120 | ✅     | sonnet | [Unify glob matcher and field naming across mdsmith](plan/120_glob-unification.md)                                        |
 | 121 | ✅     | opus   | [Expose mdsmith to VS Code via Language Server Protocol](plan/121_vscode-integration.md)                                  |
 | 121 | ✅     | sonnet | [Review and centralize YAML handling](plan/121_yaml-handling-review.md)                                                   |
