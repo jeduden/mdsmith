@@ -21,6 +21,7 @@ row: "- [{summary}]({filename})"
 - [How "flavor" (a property of the renderer), "rule" (a single check), "convention" (a project-wide bundle), and "kind" (a per-file role tag) differ in mdsmith, the cases where they overlap, and how the four concepts compose.](docs/background/concepts/flavor-rule-convention-kind.md)
 - [How generated sections work — markers, directives, and fix behavior.](docs/background/concepts/generated-section.md)
 - [How the placeholder vocabulary lets rules treat template tokens as opaque rather than flagging them as content violations.](docs/background/concepts/placeholder-grammar.md)
+- [The mental model behind mdsmith — how flavor, rule, convention, and kind relate, how generated sections work, the placeholder grammar, and how it compares to other Markdown linters.](docs/background/index.md)
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
 - [Running log of SOLID and clean-architecture findings on origin/main. The solid-architecture skill (audit mode) appends here; blockers are also filed as plans.](docs/development/architecture-audit.md)
 - [Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.](docs/development/architecture/audit-checklist.md)
@@ -89,6 +90,7 @@ row: "- [{summary}]({filename})"
 - [Print the mdsmith build version and exit.](docs/reference/cli/version.md)
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](docs/reference/conventions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](docs/reference/globs.md)
+- [Look up exact CLI commands, config glob and schema syntax, the built-in conventions, and the section-schema grammar.](docs/reference/index.md)
 - [Named field-type shortcuts for inline schema frontmatter values — the registered names, the canonical CUE each one resolves to, and example usage.](docs/reference/schema-types.md)
 - [Section-schema reference for inline `kinds.<name>.schema:` blocks. Covers the `heading:` discriminator, the `regex:` matcher (a Go RE2 body with `\#(digits)` and `\#(fmvar(...))` helpers), the `repeat: {min, max}` cardinality field, and the matching algorithm. `proto.md` files are parsed into the same shape by the schema package, but MDS020's file-schema check still uses its legacy parser; see the proto.md section below for what is and is not migrated.](docs/reference/section-schema.md)
 <?/catalog?>

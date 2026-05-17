@@ -32,7 +32,7 @@
         </div>
         <h1>{{ .Title }}</h1>
         {{ with .Params.description }}<p class="lead">{{ . }}</p>{{ end }}
-        {{ .Content }}
+        {{ partial "link-rules.html" . }}
         {{ with .Params.github_source }}
           <div class="rule-source-link">
             <a href="https://github.com/{{ $.Site.Params.githubRepo }}/tree/main/{{ . }}" rel="noopener">

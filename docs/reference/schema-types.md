@@ -1,4 +1,5 @@
 ---
+weight: 40
 summary: >-
   Named field-type shortcuts for inline schema
   frontmatter values — the registered names, the

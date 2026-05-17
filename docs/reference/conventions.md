@@ -1,4 +1,5 @@
 ---
+weight: 20
 summary: >-
   Built-in Markdown conventions, the rule presets
   each one applies, and how user config layers on

@@ -1,4 +1,5 @@
 ---
+weight: 30
 summary: >-
   Glob pattern syntax across mdsmith config, directives,
   and CLI argument expansion, with the supported
