@@ -45,6 +45,7 @@ Commands:
   export            Write a portable, directive-free copy of a Markdown file
   extract           Emit a kind-conformant file as a JSON/YAML/msgpack data tree
   list              Walk the workspace and emit matches (files or link records)
+  deps              Show a file's dependency-graph edges (includes, links, …)
   help              Show help for rules and topics
   metrics           Show and rank shared Markdown metrics
   merge-driver      Git merge driver for regenerable sections
@@ -88,6 +89,8 @@ func run() int {
 		return runExtract(os.Args[2:])
 	case "list":
 		return runList(os.Args[2:])
+	case "deps":
+		return runDeps(os.Args[2:])
 	case "help":
 		return runHelp(os.Args[2:])
 	case "metrics":
