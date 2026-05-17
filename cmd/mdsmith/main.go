@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
+	"strings"
 
 	flag "github.com/spf13/pflag"
 
@@ -192,8 +194,8 @@ func runCheck(args []string) int {
 func runFix(args []string) int {
 	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
 	var (
-		configPath, format, maxInputSize                              string
-		noColor, quiet, verbose, noGitignore, followSymlinks, explain bool
+		configPath, format, maxInputSize                                      string
+		noColor, quiet, verbose, noGitignore, followSymlinks, explain, dryRun bool
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -207,6 +209,7 @@ func runFix(args []string) int {
 			"=false forces skip over any config opt-in")
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 	fs.BoolVar(&explain, "explain", false, "Attach per-leaf rule provenance to each remaining diagnostic")
+	fs.BoolVar(&dryRun, "dry-run", false, "Preview fixes without writing to disk")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith fix [flags] [files...]\n\n"+
@@ -245,11 +248,11 @@ func runFix(args []string) int {
 	}
 
 	if len(fileArgs) > 0 {
-		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain)
+		return fixFiles(fileArgs, configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain, dryRun)
 	}
 
 	// No file args: discover files from config.
-	return fixDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain)
+	return fixDiscovered(configPath, format, noColor, quiet, verbose, walk, maxInputSize, explain, dryRun)
 }
 
 // runQuery implements the "query" subcommand: select files by CUE
@@ -479,10 +482,24 @@ type runStats struct {
 	Fixed    int
 	Failures int
 	Unfixed  int
+	WouldFix int
+	IsDryRun bool
 }
 
 func printRunStats(format string, quiet bool, stats runStats) {
 	if quiet || format == "json" {
+		return
+	}
+	if stats.IsDryRun {
+		fmt.Fprintf(
+			os.Stderr,
+			"stats: checked=%d fixed=%d failures=%d unfixed=%d would-fix=%d\n",
+			stats.Checked,
+			0,
+			stats.Failures,
+			stats.Unfixed,
+			stats.WouldFix,
+		)
 		return
 	}
 	fmt.Fprintf(
@@ -493,6 +510,80 @@ func printRunStats(format string, quiet bool, stats runStats) {
 		stats.Failures,
 		stats.Unfixed,
 	)
+}
+
+// dryRunJSONRecord is the JSON record emitted per file under --dry-run --format json.
+type dryRunJSONRecord struct {
+	Path        string            `json:"path"`
+	WouldFix    int               `json:"would_fix"`
+	Rules       []string          `json:"rules"`
+	Diagnostics []lint.Diagnostic `json:"diagnostics"`
+}
+
+// printDryRunPerFile emits per-file dry-run output. For text format it writes
+// one line per file that has fixes, to stderr. For json format it writes a
+// JSON array of records to stdout.
+func printDryRunPerFile(fixResult *fixpkg.Result, format string, quiet bool) {
+	if format == "json" {
+		records := make([]dryRunJSONRecord, 0, len(fixResult.WouldFixFiles))
+		for _, fw := range fixResult.WouldFixFiles {
+			rules := sortedRuleIDs(fw.ByRule)
+			diags := fw.Diagnostics
+			if diags == nil {
+				diags = []lint.Diagnostic{}
+			}
+			records = append(records, dryRunJSONRecord{
+				Path:        fw.Path,
+				WouldFix:    fw.Count,
+				Rules:       rules,
+				Diagnostics: diags,
+			})
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(records)
+		return
+	}
+
+	if quiet {
+		return
+	}
+
+	for _, fw := range fixResult.WouldFixFiles {
+		parts := make([]string, 0, len(fw.ByRule))
+		rules := sortedRuleIDs(fw.ByRule)
+		for _, id := range rules {
+			count := fw.ByRule[id]
+			if count == 1 {
+				parts = append(parts, id)
+			} else {
+				parts = append(parts, fmt.Sprintf("%s ×%d", id, count))
+			}
+		}
+		total := fw.Count
+		fmt.Fprintf(os.Stderr, "%s: would fix %d violation%s (%s)\n",
+			fw.Path,
+			total,
+			pluralS(total),
+			strings.Join(parts, ", "),
+		)
+	}
+}
+
+func sortedRuleIDs(byRule map[string]int) []string {
+	ids := make([]string, 0, len(byRule))
+	for id := range byRule {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // checkFiles lints the given file paths and returns the appropriate exit code.
@@ -547,7 +638,7 @@ func checkFiles(
 func fixFiles(
 	fileArgs []string, configPath, format string,
 	noColor, quiet, verbose bool, walk walkCLI,
-	maxInputSize string, explain bool,
+	maxInputSize string, explain bool, dryRun bool,
 ) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, configPath, verbose, walk, maxInputSize,
@@ -564,9 +655,14 @@ func fixFiles(
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
 		Explain:          explain,
+		DryRun:           dryRun,
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
+
+	if dryRun {
+		printDryRunPerFile(fixResult, format, quiet)
+	}
 
 	if !quiet && len(fixResult.Diagnostics) > 0 {
 		if code := formatDiagnostics(fixResult.Diagnostics, format, noColor); code != 0 {
@@ -578,6 +674,8 @@ func fixFiles(
 		Fixed:    len(fixResult.Modified),
 		Failures: fixResult.Failures,
 		Unfixed:  len(fixResult.Diagnostics),
+		WouldFix: fixResult.WouldFix,
+		IsDryRun: dryRun,
 	})
 	logger.Printf("checked %d files, %d issues found", fixResult.FilesChecked, len(fixResult.Diagnostics))
 
@@ -816,7 +914,7 @@ func checkDiscovered(
 func fixDiscovered(
 	configPath, format string,
 	noColor, quiet, verbose bool, walk walkCLI,
-	maxInputSize string, explain bool,
+	maxInputSize string, explain bool, dryRun bool,
 ) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(configPath, verbose, walk)
 	if code >= 0 {
@@ -837,9 +935,14 @@ func fixDiscovered(
 		RootDir:          rootDirFromConfig(cfgPath),
 		MaxInputBytes:    maxBytes,
 		Explain:          explain,
+		DryRun:           dryRun,
 	}
 	fixResult := fixer.Fix(files)
 	printErrors(fixResult.Errors)
+
+	if dryRun {
+		printDryRunPerFile(fixResult, format, quiet)
+	}
 
 	if !quiet && len(fixResult.Diagnostics) > 0 {
 		if code := formatDiagnostics(fixResult.Diagnostics, format, noColor); code != 0 {
@@ -851,6 +954,8 @@ func fixDiscovered(
 		Fixed:    len(fixResult.Modified),
 		Failures: fixResult.Failures,
 		Unfixed:  len(fixResult.Diagnostics),
+		WouldFix: fixResult.WouldFix,
+		IsDryRun: dryRun,
 	})
 	logger.Printf("checked %d files, %d issues found", fixResult.FilesChecked, len(fixResult.Diagnostics))
 
