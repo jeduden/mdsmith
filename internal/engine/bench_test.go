@@ -18,28 +18,34 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/all"
 )
 
-// checkCorpusFiles and checkCorpusLines size the synthetic workspace
-// the performance gate lints. They are deliberately fixed so the
-// budget is meaningful across runs.
-const (
-	checkCorpusFiles = 300
-	checkCorpusLines = 150
-)
+// checkCorpusLines fixes the per-file size so a budget is
+// comparable across runs; only the file count varies by tier.
+const checkCorpusLines = 150
 
-// BenchmarkCheckCorpus is the `mdsmith check` performance gate,
-// modelled on internal/lsp/bench_test.go. It lints a 300-file
-// synthetic workspace with the full production rule set and fails
-// when p95 wall time exceeds the budget. The budget is generous
-// (CI runners are shared and slow); it catches order-of-magnitude
-// regressions, not micro-noise. p95 is also reported as a metric
-// so trends stay visible in the job log.
+// The `mdsmith check` performance gate is tiered, mirroring
+// internal/lsp/bench_test.go's 1k/5k split. Two budgets catch two
+// different regressions:
 //
-// Local baseline (4-core dev box, 2026-05): p95 ~1.2 s. The 6 s
-// budget is ~5x headroom — it trips on an order-of-magnitude
-// regression (an accidental O(n^2), a per-file network call),
-// not on shared-runner jitter.
-func BenchmarkCheckCorpus(b *testing.B) {
-	benchCheck(b, checkCorpusFiles, checkCorpusLines, 6*time.Second)
+//   - Small (60 files) — per-file fixed overhead. A regression in
+//     startup, config resolution, or rule registration shows here
+//     even though the absolute time is tiny.
+//   - Large (600 files) — scaling. A superlinear regression (an
+//     accidental O(n^2) over the workspace, a per-file rescan)
+//     barely moves Small but blows Large past its budget.
+//
+// Budgets are generous (~4-5x the local baseline) so shared CI
+// jitter does not flake them; they trip on order-of-magnitude
+// regressions, not micro-noise. p95 and per-file cost are reported
+// as metrics so trends stay visible in the job log.
+//
+// Local baseline (4-core dev box, 2026-05): Small p95 ~0.25 s,
+// Large p95 ~2.3 s.
+func BenchmarkCheckCorpusSmall(b *testing.B) {
+	benchCheck(b, 60, checkCorpusLines, 2*time.Second)
+}
+
+func BenchmarkCheckCorpusLarge(b *testing.B) {
+	benchCheck(b, 600, checkCorpusLines, 12*time.Second)
 }
 
 func benchCheck(b *testing.B, files, lines int, budget time.Duration) {
@@ -52,7 +58,7 @@ func benchCheck(b *testing.B, files, lines int, budget time.Duration) {
 	paths := make([]string, 0, files)
 	for i := 0; i < files; i++ {
 		p := filepath.Join(dir, fmt.Sprintf("doc%03d.md", i))
-		if err := os.WriteFile(p, []byte(buildCorpusDoc(i, lines)), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(buildCorpusDoc(i, lines, files)), 0o644); err != nil {
 			b.Fatalf("write corpus file: %v", err)
 		}
 		paths = append(paths, p)
@@ -108,7 +114,7 @@ func percentileDur(samples []time.Duration, q float64) time.Duration {
 // Markdown file: headings, prose, a fenced code block, a link, and
 // a table, so the lint pass touches a representative rule spread
 // rather than a trivial one-line file.
-func buildCorpusDoc(idx, lines int) string {
+func buildCorpusDoc(idx, lines, total int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Document %d\n\n", idx)
 	for i := 0; i < lines; i++ {
@@ -118,7 +124,7 @@ func buildCorpusDoc(idx, lines int) string {
 		case i%17 == 0:
 			b.WriteString("```go\nfunc f() int { return 0 }\n```\n\n")
 		case i%11 == 0:
-			fmt.Fprintf(&b, "See [the next doc](doc%03d.md) for details.\n\n", (idx+1)%checkCorpusFiles)
+			fmt.Fprintf(&b, "See [the next doc](doc%03d.md) for details.\n\n", (idx+1)%total)
 		default:
 			b.WriteString("This is a synthetic sentence used to exercise " +
 				"the prose and structure rules under benchmark.\n\n")

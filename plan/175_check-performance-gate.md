@@ -42,16 +42,16 @@ research artifact, not a CI gate.
 ## Tasks
 
 1. [x] Create this plan.
-2. [x] Add `BenchmarkCheckCorpus` in
-   `internal/engine/bench_test.go`: 300-file synthetic
-   workspace, full production rule set, p95 vs an absolute
-   6 s budget, `b.ReportMetric` for p95 and per-file cost.
+2. [x] Add tiered `BenchmarkCheckCorpus{Small,Large}` in
+   `internal/engine/bench_test.go` (60 / 600 files, full
+   rule set, p95 vs 2 s / 12 s, `b.ReportMetric`).
 3. [x] Add the `check-bench` CI job in
    [`ci.yml`](../.github/workflows/ci.yml), mirroring
    `lsp-bench`.
-4. [x] Make `run.sh` the source of the cross-tool numbers;
-   emit `results.fragment.md` and `headline.fragment.md`
-   under `docs/research/benchmarks/`.
+4. [x] Make `run.sh` promote fresh hyperfine JSON into
+   `docs/research/benchmarks/data/` and call the shared
+   `gen_fragments.py`; commit the JSON as the source of
+   truth.
 5. [x] Replace hand-typed tables/numbers with `<?include?>`
    of those fragments in the
    [benchmark doc](../docs/research/benchmarks/README.md),
@@ -59,22 +59,33 @@ research artifact, not a CI gate.
    and the [README](../README.md); drop the stale figure
    from the [performance feature](../docs/features/performance.md)
    and the website hero.
-6. [ ] Confirm `check-bench` is green in CI and ask the
-   maintainer to add it to required status checks next to
-   `lsp-bench`.
+6. [x] Add the `bench-fragments` drift gate: regenerate
+   from committed JSON, `mdsmith fix`, `git diff
+   --exit-code`.
+7. [x] Add the env-gated profiler
+   (`internal/profiling`, called from `cmd/mdsmith`) and
+   `profile.sh` so a tripped gate can be traced to a
+   function, not just detected.
+8. [ ] Confirm `check-bench` and `bench-fragments` are
+   green in CI; ask the maintainer to add both to branch
+   protection's required checks next to `lsp-bench`.
 
 ## Acceptance Criteria
 
-- [x] `BenchmarkCheckCorpus` fails (non-zero) when p95
-      exceeds the budget and passes within it on a normal
-      run (observable: `b.Fatalf` path exercised by a
+- [x] The tiered benchmarks fail (non-zero) when p95
+      exceeds the budget and pass within it on a normal run
+      (observable: `b.Fatalf` path exercised by a
       deliberately tiny budget locally).
 - [x] No performance number in `README.md`,
       `docs/background/markdown-linters.md`, or
       `docs/research/benchmarks/README.md` is hand-typed;
-      each is an `<?include?>` of a `run.sh`-generated
-      fragment.
+      each is an `<?include?>` of a generated fragment, and
+      `bench-fragments` fails on a hand-edited fragment.
+- [x] `internal/profiling` writes a non-empty CPU and heap
+      profile when the env vars are set and is a no-op
+      otherwise; the CLI command line is unchanged.
 - [x] `mdsmith check .` passes (generated sections in sync).
-- [ ] CI `check-bench` job passes on this branch.
+- [ ] CI `check-bench` and `bench-fragments` pass on this
+      branch.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues

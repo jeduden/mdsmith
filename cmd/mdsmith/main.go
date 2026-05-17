@@ -20,6 +20,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/output"
+	"github.com/jeduden/mdsmith/internal/profiling"
 	"github.com/jeduden/mdsmith/internal/query"
 	"github.com/jeduden/mdsmith/internal/rule"
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
@@ -70,6 +71,11 @@ func run() int {
 	if os.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(512 * 1024 * 1024)
 	}
+
+	// Env-gated profiler (no CLI flag): when MDSMITH_CPUPROFILE /
+	// MDSMITH_MEMPROFILE are set, profile the real end-to-end path
+	// so a tripped performance gate can be traced to a function.
+	defer profiling.Start()()
 
 	// No arguments or a global help flag: print usage and exit 0.
 	if len(os.Args) < 2 || os.Args[1] == "--help" || os.Args[1] == "-h" {

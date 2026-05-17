@@ -210,9 +210,37 @@ jobs:
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
-      # Plan 175: enforce the `mdsmith check` p95 budget
-      # (6 s for a 300-file synthetic corpus, full rule set).
+      # Plan 175: tiered `mdsmith check` p95 budgets — Small
+      # (60 files / 2 s, per-file overhead) and Large (600 files
+      # / 12 s, superlinear scaling), full production rule set.
       - run: go test -run=^$ -bench=. -benchtime=20x ./internal/engine/...
+
+  bench-fragments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      # Plan 175: doc-number drift gate. Regenerate the benchmark
+      # fragments from the committed JSON and re-run `mdsmith fix`;
+      # any diff means a fragment was hand-edited or a number went
+      # stale. The cross-tool table can only change via run.sh
+      # promoting fresh JSON into docs/research/benchmarks/data/.
+      - run: |
+          python3 docs/research/benchmarks/gen_fragments.py \
+            docs/research/benchmarks/data docs/research/benchmarks
+          go run ./cmd/mdsmith fix \
+            docs/research/benchmarks/results.fragment.md \
+            docs/research/benchmarks/headline.fragment.md
+          go run ./cmd/mdsmith fix .
+          git diff --exit-code -- \
+            docs/research/benchmarks/results.fragment.md \
+            docs/research/benchmarks/headline.fragment.md \
+            README.md docs/background/markdown-linters.md \
+            docs/research/benchmarks/README.md
 
   vscode-extension:
     runs-on: ubuntu-latest
