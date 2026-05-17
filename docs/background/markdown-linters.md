@@ -570,11 +570,11 @@ better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
 |-------------------|---------|---------|---------|
-| mado              | 45 ms   | 44 ms   | 1.0x    |
-| rumdl             | 164 ms  | 153 ms  | 3.6x    |
-| panache           | 226 ms  | 216 ms  | 5.0x    |
-| mdsmith           | 1004 ms | 988 ms  | 22x     |
-| markdownlint-cli2 | 3342 ms | 3304 ms | 74x     |
+| mado              | 43 ms   | 42 ms   | 1.0x    |
+| rumdl             | 170 ms  | 164 ms  | 3.9x    |
+| panache           | 230 ms  | 221 ms  | 5.3x    |
+| mdsmith           | 822 ms  | 807 ms  | 19x     |
+| markdownlint-cli2 | 3422 ms | 3385 ms | 79x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
@@ -582,14 +582,14 @@ longer third-party prose):
 | Tool              | Median  | Min     | vs mado |
 |-------------------|---------|---------|---------|
 | mado              | 46 ms   | 45 ms   | 1.0x    |
-| rumdl             | 147 ms  | 142 ms  | 3.2x    |
-| panache           | 315 ms  | 311 ms  | 6.8x    |
-| mdsmith           | 1597 ms | 1563 ms | 34x     |
-| markdownlint-cli2 | 3333 ms | 3079 ms | 72x     |
+| rumdl             | 147 ms  | 140 ms  | 3.2x    |
+| panache           | 321 ms  | 313 ms  | 7.0x    |
+| mdsmith           | 754 ms  | 742 ms  | 17x     |
+| markdownlint-cli2 | 3275 ms | 3172 ms | 72x     |
 <?/include?>
 
 Two facts, both honest. Every native binary beats the Node
-baseline by a wide margin — mdsmith is about 3x faster than
+baseline by a wide margin — mdsmith is about 4x faster than
 markdownlint-cli2. But mdsmith is the slowest native tool
 here, by design. mado, rumdl, and panache are per-file
 linters; mado is a check-only port of ~41 rules. mdsmith

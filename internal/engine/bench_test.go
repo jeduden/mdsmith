@@ -33,13 +33,14 @@ const checkCorpusLines = 150
 //     accidental O(n^2) over the workspace, a per-file rescan)
 //     barely moves Small but blows Large past its budget.
 //
-// Budgets are generous (~4-5x the local baseline) so shared CI
+// Budgets are generous (~7-10x the local baseline) so shared CI
 // jitter does not flake them; they trip on order-of-magnitude
 // regressions, not micro-noise. p95 and per-file cost are reported
 // as metrics so trends stay visible in the job log.
 //
-// Local baseline (4-core dev box, 2026-05): Small p95 ~0.25 s,
-// Large p95 ~2.3 s.
+// Local baseline (4-core dev box, 2026-05, after the plan-175
+// LineOfOffset line-index fix): Small p95 ~0.18 s, Large p95
+// ~1.7 s.
 func BenchmarkCheckCorpusSmall(b *testing.B) {
 	benchCheck(b, 60, checkCorpusLines, 2*time.Second)
 }

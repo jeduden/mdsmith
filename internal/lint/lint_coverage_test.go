@@ -438,6 +438,51 @@ func TestLineOfOffset_Basic(t *testing.T) {
 	assert.Equal(t, 3, f.LineOfOffset(12))
 }
 
+// lineOfOffsetOracle is the original O(n) definition. The optimized
+// LineOfOffset must agree with it for every offset, including the
+// out-of-range and at-newline boundaries.
+func lineOfOffsetOracle(src []byte, offset int) int {
+	line := 1
+	for i := 0; i < offset && i < len(src); i++ {
+		if src[i] == '\n' {
+			line++
+		}
+	}
+	return line
+}
+
+func TestLineOfOffset_MatchesOracle(t *testing.T) {
+	sources := [][]byte{
+		nil,
+		[]byte(""),
+		[]byte("\n"),
+		[]byte("no newline"),
+		[]byte("a\nb\nc"),
+		[]byte("line1\nline2\nline3\n"),
+		[]byte("\n\n\nx\n\n"),
+		[]byte("héllo\nwörld\n€\n"), // multibyte: offsets are byte-based
+	}
+	for _, src := range sources {
+		f := &File{Source: src}
+		// Cover every byte boundary plus out-of-range on both ends.
+		for off := -3; off <= len(src)+3; off++ {
+			assert.Equalf(t, lineOfOffsetOracle(src, off), f.LineOfOffset(off),
+				"src=%q offset=%d", src, off)
+		}
+	}
+}
+
+func TestLineOfOffset_StableAcrossRepeatedCalls(t *testing.T) {
+	// The line index is built lazily and cached; a second call must
+	// return the same answer as the first.
+	f := &File{Source: []byte("a\nbb\nccc\n\nd")}
+	for _, off := range []int{0, 1, 2, 5, 9, 10, 11, 99} {
+		first := f.LineOfOffset(off)
+		assert.Equal(t, first, f.LineOfOffset(off), "offset %d", off)
+		assert.Equal(t, lineOfOffsetOracle(f.Source, off), first, "offset %d", off)
+	}
+}
+
 // --- PIBlockParser edge cases ---
 
 func TestPIBlockParser_CanInterruptParagraph(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io/fs"
 	"os"
+	"sort"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -47,6 +48,16 @@ type File struct {
 	// line falls within these ranges are suppressed when linting the
 	// host file — the source file is responsible for those bytes.
 	GeneratedRanges []LineRange
+
+	// newlineOffsets caches the byte offset of every '\n' in Source,
+	// built once on first LineOfOffset call. Without it LineOfOffset
+	// rescans Source from byte 0 on every call, which made it ~24%
+	// of total `mdsmith check` CPU (plan 175 profiling). Built
+	// lazily because File is also constructed as a struct literal,
+	// not only via NewFile. One goroutine owns a File during a lint
+	// pass, matching the existing GetGitignore lazy-once pattern.
+	newlineOffsets   []int
+	newlineOffsetsOK bool
 }
 
 // SetRootDir configures the project root directory and its fs.FS together.
@@ -149,15 +160,30 @@ func (f *File) FullSource(body []byte) []byte {
 	return out
 }
 
-// LineOfOffset converts a byte offset in Source to a 1-based line number.
-func (f *File) LineOfOffset(offset int) int {
-	line := 1
-	for i := 0; i < offset && i < len(f.Source); i++ {
-		if f.Source[i] == '\n' {
-			line++
+// lineIndex returns the cached offsets of every '\n' in Source,
+// building it once on first use.
+func (f *File) lineIndex() []int {
+	if !f.newlineOffsetsOK {
+		f.newlineOffsetsOK = true
+		var nl []int
+		for i := 0; i < len(f.Source); i++ {
+			if f.Source[i] == '\n' {
+				nl = append(nl, i)
+			}
 		}
+		f.newlineOffsets = nl
 	}
-	return line
+	return f.newlineOffsets
+}
+
+// LineOfOffset converts a byte offset in Source to a 1-based line
+// number. The line is 1 plus the number of newlines that occur
+// strictly before offset (a newline exactly at offset starts the
+// next line, so it does not count) — identical to a linear scan,
+// but O(log n) via binary search over the cached newline index.
+func (f *File) LineOfOffset(offset int) int {
+	nl := f.lineIndex()
+	return 1 + sort.Search(len(nl), func(i int) bool { return nl[i] >= offset })
 }
 
 // ColumnOfOffset converts a byte offset in Source to a 1-based column

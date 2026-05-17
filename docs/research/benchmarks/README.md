@@ -61,11 +61,11 @@ better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
 |-------------------|---------|---------|---------|
-| mado              | 45 ms   | 44 ms   | 1.0x    |
-| rumdl             | 164 ms  | 153 ms  | 3.6x    |
-| panache           | 226 ms  | 216 ms  | 5.0x    |
-| mdsmith           | 1004 ms | 988 ms  | 22x     |
-| markdownlint-cli2 | 3342 ms | 3304 ms | 74x     |
+| mado              | 43 ms   | 42 ms   | 1.0x    |
+| rumdl             | 170 ms  | 164 ms  | 3.9x    |
+| panache           | 230 ms  | 221 ms  | 5.3x    |
+| mdsmith           | 822 ms  | 807 ms  | 19x     |
+| markdownlint-cli2 | 3422 ms | 3385 ms | 79x     |
 
 **Neutral corpus — 234 files** (Rust Book + Rust Reference,
 longer third-party prose):
@@ -73,10 +73,10 @@ longer third-party prose):
 | Tool              | Median  | Min     | vs mado |
 |-------------------|---------|---------|---------|
 | mado              | 46 ms   | 45 ms   | 1.0x    |
-| rumdl             | 147 ms  | 142 ms  | 3.2x    |
-| panache           | 315 ms  | 311 ms  | 6.8x    |
-| mdsmith           | 1597 ms | 1563 ms | 34x     |
-| markdownlint-cli2 | 3333 ms | 3079 ms | 72x     |
+| rumdl             | 147 ms  | 140 ms  | 3.2x    |
+| panache           | 321 ms  | 313 ms  | 7.0x    |
+| mdsmith           | 754 ms  | 742 ms  | 17x     |
+| markdownlint-cli2 | 3275 ms | 3172 ms | 72x     |
 <?/include?>
 
 ## Reading the result
@@ -84,8 +84,8 @@ longer third-party prose):
 Two facts stand out, and both are honest.
 
 **Every native binary crushes the Node baseline.** mdsmith
-checks the 523-file repo corpus in ~1.0 s; markdownlint-cli2
-takes ~3.3 s. mado, rumdl, and panache are faster still. If
+checks the 523-file repo corpus in ~0.8 s; markdownlint-cli2
+takes ~3.4 s. mado, rumdl, and panache are faster still. If
 the alternative is a Node markdownlint, any of these is a
 large speed win.
 
@@ -95,20 +95,27 @@ panache are per-file linters too. mdsmith does strictly more
 on every run: it resolves the cross-file link and anchor
 graph across the whole workspace, scores paragraph
 readability and structure, estimates token budgets, and
-validates generated sections. That work does not get cheaper
-by adding files, which is why mdsmith is slower on the
-234-file neutral corpus (long Rust Book prose) than on the
-523-file repo corpus (short doc files).
+validates generated sections. It is ~4x faster than the
+Node markdownlint reference and ~17-19x slower than a
+minimal Rust markdownlint clone — because it is not a
+markdownlint clone.
 
-So the earlier "same order of magnitude as the Rust tools"
-framing was too kind. The accurate statement: mdsmith is
-~3x faster than the Node markdownlint reference and ~20-34x
-slower than a minimal Rust markdownlint clone, because it is
-not a markdownlint clone — it ships a cross-file and
-generated-content layer the others do not have. Pick mado or
-rumdl for raw markdownlint-rule throughput; pick mdsmith when
-the cross-file graph, readability budgets, and self-
-maintaining sections are the point.
+**The gate caught a real regression-shaped bug.** The first
+run of this benchmark had mdsmith at ~1.0 s on the repo
+corpus but ~1.6 s on the *smaller* 234-file neutral corpus
+— slower on fewer files. That inversion is the signature of
+superlinear cost. `profile.sh` traced it to
+`lint.(*File).LineOfOffset` rescanning each file from byte 0
+on every call (~24% of total check CPU, worst on long Rust
+Book prose). Plan 175 replaced it with a cached newline
+index + binary search. Neutral dropped to ~0.75 s, the two
+corpora are now comparable, and the tiered gate baselines
+fell with it. This is the gate → profiler → fix loop
+working as intended; the numbers above are post-fix.
+
+Pick mado or rumdl for raw markdownlint-rule throughput;
+pick mdsmith when the cross-file graph, readability budgets,
+and self-maintaining sections are the point.
 
 ### Fairness note on panache
 
@@ -126,7 +133,7 @@ job as the others", not "panache at its best".
 An earlier performance page cited a sub-300 ms full check
 "of 70-plus Markdown files". That was a narrow scope. The
 repo now tracks ~720 Markdown files; `mdsmith check .` over
-the whole tree is ~1.4 s here, and an 18-file
+the whole tree is ~1.3 s here, and an 18-file
 `docs/features` subset is ~50 ms. The page has been
 re-scoped, and a CI gate now guards the real number.
 
@@ -138,10 +145,11 @@ Three gates, all in CI:
   `BenchmarkCheckCorpus{Small,Large}` in
   `internal/engine/bench_test.go` lint a 60-file and a
   600-file synthetic workspace with the full rule set.
-  Small (2 s budget, baseline ~0.25 s) catches per-file
-  overhead; Large (12 s budget, baseline ~2.3 s) catches
+  Small (2 s budget, baseline ~0.18 s) catches per-file
+  overhead; Large (12 s budget, baseline ~1.7 s) catches
   superlinear scaling. CI job `check-bench`, modelled on
-  `lsp-bench`.
+  `lsp-bench`. Baselines reflect the plan-175 `LineOfOffset`
+  line-index fix (~24% of check CPU removed).
 - **Doc-number drift** — CI job `bench-fragments`
   regenerates the fragments from the committed
   `data/*.json` via `gen_fragments.py`, re-runs

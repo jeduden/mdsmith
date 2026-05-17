@@ -66,7 +66,14 @@ research artifact, not a CI gate.
    (`internal/profiling`, called from `cmd/mdsmith`) and
    `profile.sh` so a tripped gate can be traced to a
    function, not just detected.
-8. [ ] Confirm `check-bench` and `bench-fragments` are
+8. [x] Apply the first profiler finding: replace
+   `lint.(*File).LineOfOffset`'s per-call linear rescan
+   (~24% of check CPU) with a cached newline index +
+   binary search. Equivalence-tested against the original
+   definition; cross-tool JSON re-promoted on the
+   optimized binary (repo p95 ~1.0 s → ~0.8 s, neutral
+   ~1.6 s → ~0.75 s).
+9. [ ] Confirm `check-bench` and `bench-fragments` are
    green in CI; ask the maintainer to add both to branch
    protection's required checks next to `lsp-bench`.
 
