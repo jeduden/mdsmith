@@ -189,7 +189,7 @@ func TestE2E_Fix_DryRun_WouldFixCountMatchesRealFixCount(t *testing.T) {
 		writeFixture(t, dir, "test.md", content)
 
 		_, realStderr, _ := runBinaryInDir(t, dir, "", "fix", "--no-color", "test.md")
-		_, realFixed, _, _, _ := parseStats(t, realStderr)
+		_, realFixed, _, _ := parseStats(t, realStderr)
 		assert.Equal(t, 1, realFixed, "real run should fix the file")
 	})
 }
