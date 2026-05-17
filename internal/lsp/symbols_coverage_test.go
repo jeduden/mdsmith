@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jeduden/mdsmith/internal/lsp/index"
+	"github.com/jeduden/mdsmith/internal/index"
 )
 
 // These tests fill out coverage on the LSP navigation handlers'

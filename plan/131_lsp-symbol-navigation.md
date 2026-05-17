@@ -83,7 +83,7 @@ and `(file, label)` for link refs.
 
 ### Workspace index
 
-A new package `internal/lsp/index` holds the
+A new package `internal/index` holds the
 symbol graph. It stores headings, link-reference
 defs, front-matter top-level keys, directives, and
 both directions of the reference edges (link
@@ -135,7 +135,7 @@ Both share one `resolveTarget(uri, position)` core.
 | `kind:` value in front matter  | kind block in `.mdsmith.yml` | every file with that kind  |
 | Heading line                   | the heading                  | every link target matching |
 
-A small helper `internal/lsp/index/locate.go` maps
+A small helper `internal/index/locate.go` maps
 a position to an AST node and a token tag (heading,
 anchorLink, fileLink, refUse, refDef, directiveArg,
 frontMatterKey, frontMatterValue). One unit test
@@ -198,7 +198,7 @@ Ranges follow the UTF-16 column convention plan
 helper extends unchanged. Budgets: cold build
 under 1 s on 1 000 files, incremental update under
 20 ms per `didChange`. A new
-`internal/lsp/index/bench_test.go` measures both
+`internal/index/bench_test.go` measures both
 on synthetic 100 / 1 000 / 10 000-file workspaces;
 the plan 121 benchmark CI step picks it up.
 
@@ -210,7 +210,7 @@ that ignores them sees the post-plan-121 server.
 
 ## Tasks
 
-1. Add `internal/lsp/index` with the symbol graph
+1. Add `internal/index` with the symbol graph
    types and `Build` / `Update` / `Remove` entry
    points. Cover heading collection, link-ref defs,
    front-matter keys, and directive parsing in unit
@@ -219,7 +219,7 @@ that ignores them sees the post-plan-121 server.
    anchor links, file links, `<?include?>`,
    `<?catalog?>`, `<?build?>`. Reuse
    [`lint/pi_parser.go`](../internal/lint/pi_parser.go).
-3. Add `internal/lsp/index/locate.go` mapping a
+3. Add `internal/index/locate.go` mapping a
    document URI plus position to an AST node and
    token tag. One test per tag.
 4. Wire the index into the server. Build lazily on

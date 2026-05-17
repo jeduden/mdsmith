@@ -279,28 +279,25 @@ jobs:
           E2E_COVERDIR="$GITHUB_WORKSPACE/e2e-cover" go test -covermode=atomic -coverprofile=unit.cov ./...
       - name: Merge coverage profiles
         run: |
-          head -1 unit.cov > merged.cov
-          # Include all unit-test coverage; cmd/mdsmith functions exercised
-          # only via the subprocess binary will have count 0 here but will
-          # be supplemented by the e2e profile below.
-          tail -n +2 unit.cov >> merged.cov
           e2e_profile="$GITHUB_WORKSPACE/e2e-cover/e2e_coverage.txt"
           if [ ! -f "$e2e_profile" ]; then
             echo "e2e_coverage.txt not found — cmd/mdsmith coverage will be missing" >&2
             exit 1
           fi
-          unit_mode_line=$(head -1 unit.cov)
-          e2e_mode_line=$(head -1 "$e2e_profile")
-          if [ "$unit_mode_line" != "$e2e_mode_line" ]; then
-            echo "Coverage mode mismatch: unit='$unit_mode_line' e2e='$e2e_mode_line'" >&2
-            exit 1
-          fi
-          e2e_lines=$(tail -n +2 "$e2e_profile" | grep -c 'cmd/mdsmith/' || true)
+          e2e_lines=$(grep -c 'cmd/mdsmith/' "$e2e_profile" || true)
           if [ "$e2e_lines" -eq 0 ]; then
             echo "e2e profile contains no cmd/mdsmith/ coverage lines" >&2
             exit 1
           fi
-          tail -n +2 "$e2e_profile" | grep 'cmd/mdsmith/' >> merged.cov
+          # Sum per-block hit counts across the per-package unit
+          # profile and the e2e subprocess-binary profile. A plain
+          # concatenation left duplicate cmd/mdsmith blocks and
+          # Codecov took the last (often zero) one, so in-process
+          # coverage of cmd/mdsmith was clobbered by the e2e
+          # profile's zeros. merge-coverage also validates the mode
+          # lines agree.
+          go run ./cmd/mdsmith-release merge-coverage \
+            -o merged.cov unit.cov "$e2e_profile"
       - name: Coverage summary
         run: |
           total=$(go tool cover -func=merged.cov | tail -1)

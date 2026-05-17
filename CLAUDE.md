@@ -21,6 +21,7 @@ row: "- [{summary}]({filename})"
 - [How "flavor" (a property of the renderer), "rule" (a single check), "convention" (a project-wide bundle), and "kind" (a per-file role tag) differ in mdsmith, the cases where they overlap, and how the four concepts compose.](docs/background/concepts/flavor-rule-convention-kind.md)
 - [How generated sections work — markers, directives, and fix behavior.](docs/background/concepts/generated-section.md)
 - [How the placeholder vocabulary lets rules treat template tokens as opaque rather than flagging them as content violations.](docs/background/concepts/placeholder-grammar.md)
+- [The mental model behind mdsmith — how flavor, rule, convention, and kind relate, how generated sections work, the placeholder grammar, and how it compares to other Markdown linters.](docs/background/index.md)
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
 - [Running log of SOLID and clean-architecture findings on origin/main. The solid-architecture skill (audit mode) appends here; blockers are also filed as plans.](docs/development/architecture-audit.md)
 - [Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.](docs/development/architecture/audit-checklist.md)
@@ -50,6 +51,7 @@ row: "- [{summary}]({filename})"
 - [The `<?build?>` directive declares an artifact and a recipe. `mdsmith fix` keeps the section body in sync with the recipe output; `MDS040` shell-safety-checks the recipe without running it.](docs/features/build-artifacts.md)
 - [Config layers deep-merge rule by rule: defaults, convention, kinds, then overrides. `--explain` and `mdsmith kinds resolve` show which layer set each effective value, per leaf.](docs/features/config-transparency.md)
 - [Built-in rules flag broken links and missing anchors, enforce per-file section schemas, and keep Markdown in the right folders. Schemas can be inline on a file kind or shared via `proto.md` files.](docs/features/cross-file-integrity.md)
+- [`mdsmith deps` lists what a file pulls in — includes, catalogs, build sources, and links — or, with `--incoming`, every file that points at it. The LSP call-hierarchy walks the same graph in your editor.](docs/features/dependency-graph.md)
 - [A bundled VS Code extension and Claude Code plugins drive the same `mdsmith lsp` server, so diagnostics, fix-on-save, and navigation reach your editor and your coding agent unchanged.](docs/features/editor-agent-integration.md)
 - [Tag each file with a `kind`, then validate its headings and front matter against a schema declared inline on the kind or shared via a `proto.md` template — so a whole directory obeys one contract.](docs/features/file-kinds-schemas.md)
 - [A Git merge driver auto-resolves conflicts inside generated blocks, and a pre-merge-commit hook re-runs `mdsmith fix` and re-stages the result, so generated content never blocks a merge.](docs/features/git-native.md)
@@ -60,6 +62,7 @@ row: "- [{summary}]({filename})"
 - [A single static Go binary, no runtime to start. The workspace walk runs in parallel, embeds are linted once, and `check` is built for the hot path — a full check of this repo completes in under 300 ms.](docs/features/performance.md)
 - [CI badge, Go Report Card grade, and Codecov coverage badge report live project health. mdsmith lints its own docs with the rules it ships, and a coverage gate blocks any merge that drops below the line.](docs/features/quality.md)
 - [`mdsmith list query 'status: "✅"' plan/` selects files by a CUE expression on front matter; `mdsmith metrics rank` ranks files by any shared metric — both ready to pipe into a release script.](docs/features/release-gating.md)
+- [Rename a heading and every workspace anchor link that points at it is rewritten in one atomic edit. Link-reference labels rename with their uses. A colliding slug fails loudly instead of silently breaking cross-file links.](docs/features/rename.md)
 - [On `mdsmith fix`, `<?toc?>` rebuilds a heading TOC, `<?catalog?>` generates an index from front matter, and `<?include?>` splices in another file. A Git merge driver auto-resolves conflicts inside those blocks.](docs/features/self-maintaining-sections.md)
 - [How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure user-declared recipes.](docs/guides/directives/build.md)
 - [How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.](docs/guides/directives/enforcing-structure.md)
@@ -74,7 +77,9 @@ row: "- [{summary}]({filename})"
 - [CLI commands, flags, exit codes, and output format.](docs/reference/cli.md)
 - [List workspace links that point at a file.](docs/reference/cli/backlinks.md)
 - [Lint Markdown files for style issues.](docs/reference/cli/check.md)
+- [List a file's dependency-graph edges (includes, links, catalogs, builds).](docs/reference/cli/deps.md)
 - [Write a portable, directive-free copy of a Markdown file.](docs/reference/cli/export.md)
+- [Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.](docs/reference/cli/extract.md)
 - [Auto-fix lint issues in Markdown files in place.](docs/reference/cli/fix.md)
 - [Show built-in documentation for rules, metrics, and concept pages.](docs/reference/cli/help.md)
 - [Generate a default `.mdsmith.yml` config in the current directory.](docs/reference/cli/init.md)
@@ -85,32 +90,31 @@ row: "- [{summary}]({filename})"
 - [List and rank shared Markdown metrics (file length, token estimate, readability, …).](docs/reference/cli/metrics.md)
 - [Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.](docs/reference/cli/pre-merge-commit.md)
 - [Select Markdown files by a CUE expression on front matter.](docs/reference/cli/query.md)
+- [Rename a heading or link-reference label and rewrite every dependent edit.](docs/reference/cli/rename.md)
 - [Print the mdsmith build version and exit.](docs/reference/cli/version.md)
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](docs/reference/conventions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](docs/reference/globs.md)
+- [Look up exact CLI commands, config glob and schema syntax, the built-in conventions, and the section-schema grammar.](docs/reference/index.md)
 - [Named field-type shortcuts for inline schema frontmatter values — the registered names, the canonical CUE each one resolves to, and example usage.](docs/reference/schema-types.md)
 - [Section-schema reference for inline `kinds.<name>.schema:` blocks. Covers the `heading:` discriminator, the `regex:` matcher (a Go RE2 body with `\#(digits)` and `\#(fmvar(...))` helpers), the `repeat: {min, max}` cardinality field, and the matching algorithm. `proto.md` files are parsed into the same shape by the schema package, but MDS020's file-schema check still uses its legacy parser; see the proto.md section below for what is and is not migrated.](docs/reference/section-schema.md)
 <?/catalog?>
 
 ## Development Workflow
 
-- Any change follows Red / Green TDD: write a failing
-  test (red), make it pass (green), commit
+- Any change follows Red/Green TDD: failing test, then pass, then commit
 - Keep commits small and focused on one change
 - Run `mdsmith check .` before committing to ensure all
   markdown files pass linting
-- Never modify `.mdsmith.yml` (linter configuration)
-  without explicit user consent — this includes rule
-  settings, overrides, ignore patterns, and file-length
-  limits
+- Never modify `.mdsmith.yml` (linter configuration) without
+  explicit user consent — this includes rule settings,
+  overrides, ignore patterns, and file-length limits
 
 ## PR Workflow
 
-Use the `/pr-fixup`, `/gh-resolve-threads`, and
-`/merge-queue` skills for PR work — they cover
-rebases, CI monitoring, thread resolution, and merge
-enqueuing. After every push, request a Copilot
-re-review (the skills do this automatically).
+Use the `/pr-fixup`, `/gh-resolve-threads`, and `/merge-queue`
+skills for PR work — they cover rebases, CI monitoring, thread
+resolution, and merge enqueuing. After every push, request a
+Copilot re-review (the skills do this automatically).
 
 ## Plan Maintenance
 
@@ -148,11 +152,10 @@ GIF. When editing it:
 
 ## Writing Guidelines
 
-When writing descriptions, state the concrete constraint:
-what specific data must satisfy what condition. Name the
-inputs (front matter fields, glob pattern, heading level)
-not just the mechanism. Avoid vague verbs (match, sync,
-reflect) without saying what is checked against what.
+When writing descriptions, state what specific data must satisfy
+what condition. Name the inputs (front matter fields, glob pattern,
+heading level), not just the mechanism. Avoid vague verbs (match,
+sync, reflect) without saying what is checked against what.
 
 ## Development Reference
 

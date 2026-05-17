@@ -34,8 +34,8 @@ question. The current production set:
 - `internal/linkgraph` — the canonical
   Markdown link / directive / reference
   extractor. MDS027, the `mdsmith list
-  backlinks` CLI, and the LSP symbol
-  index (`internal/lsp/index`) all
+  backlinks` CLI, and the workspace
+  symbol index (`internal/index`) all
   consult it so anchor normalisation,
   workspace-relative path resolution,
   and catalog-glob handling stay
@@ -43,6 +43,12 @@ question. The current production set:
   per-file extractor is pure (no file
   reads, no workspace walks) so callers
   can fan it out across goroutines.
+- `internal/index` — the workspace
+  symbol / edge graph (headings,
+  link-ref defs, directives,
+  front-matter keys, reverse edges);
+  queried by the LSP, schema, and the
+  rename / deps surfaces.
 - `internal/lsp` — speak the Language
   Server Protocol; consumes the engine.
 - `internal/mdtext` — parse and walk
@@ -162,6 +168,11 @@ must hold:
 - `internal/lsp` may import
   `internal/engine` and its support
   packages.
+- `internal/index` is a peer support
+  package both entry points may import;
+  it must never import `internal/lsp`
+  (plan 174 moved it out of
+  `internal/lsp/index`).
 - `internal/engine` may import
   `internal/rule`, never
   `internal/rules/...`.
@@ -169,7 +180,8 @@ must hold:
   `internal/rule`, `internal/mdtext`, and
   shared helpers; never `internal/engine`.
 - The reverse (`engine` → `lsp`,
-  `rule` → `engine`) is forbidden.
+  `rule` → `engine`, `index` → `lsp`)
+  is forbidden.
 
 A circular-import error from `go build`
 is usually the first sign of an inversion
@@ -446,18 +458,9 @@ checklist can pattern-match.
   rename until it answers a question.
 - **A Go function with no matching
   test symbol in a sibling
-  `*_test.go`** — `TestFoo` for a
-  package function `func Foo`,
-  `TestReceiver_Foo` (or
-  `TestReceiver_Foo_Variant`) for a
-  method on `Receiver`. Test debt.
-  Severity `tax` by default,
-  `blocker` if the function is on a
-  public surface (a `rule.Rule`
-  method, an LSP capability handler,
-  a CLI subcommand entry). Generated
-  files and trivial getters are
-  exempt; see §"Tests / Exemptions".
+  `*_test.go`.** Test debt; naming,
+  severity, and exemptions per the
+  Tests section above.
 - **A test under
   `internal/integration/` that
   exercises a single function.**

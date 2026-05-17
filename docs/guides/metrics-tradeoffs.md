@@ -1,5 +1,6 @@
 ---
 title: Choosing Readability, Conciseness, and Token Budget Metrics
+weight: 40
 summary: Trade-offs and threshold guidance for readability, structure, length, and token budgets.
 ---
 # Choosing Readability, Conciseness, and Token Budget Metrics

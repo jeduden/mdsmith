@@ -17,6 +17,7 @@
 //	mdsmith-release publish-release
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
+//	mdsmith-release merge-coverage -o <out> <profile>...
 //
 // Each subcommand operates relative to the current working
 // directory, which is the repo root in CI.
@@ -49,6 +50,7 @@ Commands:
   publish-release                 Flip the tag's draft release to published.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
+  merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
 `
 
 func main() {
@@ -90,6 +92,8 @@ func run(args []string) int {
 		return runCheckSecretRotations(root, rest)
 	case "record-rotation":
 		return runRecordRotation(root, rest)
+	case "merge-coverage":
+		return runMergeCoverage(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2

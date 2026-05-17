@@ -76,7 +76,7 @@ from the index. No second-stage lookup is needed.
 ### Trigger contexts
 
 A new helper in
-[`internal/lsp/index/locate.go`](../internal/lsp/index/locate.go)
+[`internal/index/locate.go`](../internal/index/locate.go)
 returns a completion-context tag and the prefix
 under the cursor. One handler per tag:
 
@@ -172,9 +172,9 @@ at completion time.
 ### Position and performance
 
 Completion shares the symbol index plan 131 builds
-(`internal/lsp/index`). Cold completion is bounded
+(`internal/index`). Cold completion is bounded
 by index lookup time; the bench in
-[`internal/lsp/index/bench_test.go`](../internal/lsp/index/bench_test.go)
+[`internal/index/bench_test.go`](../internal/index/bench_test.go)
 already establishes a cold-build budget of 1 s and
 a per-`didChange` update budget under 20 ms on a
 1 000-file synthetic corpus. Completion adds a
@@ -192,7 +192,7 @@ server.
 ## Tasks
 
 1. Extend
-   [`internal/lsp/index/locate.go`](../internal/lsp/index/locate.go)
+   [`internal/index/locate.go`](../internal/index/locate.go)
    with a `completionContext(uri, pos)` helper
    returning `(tag, prefix, replaceRange)`. Cover
    each tag in the table with a unit test.

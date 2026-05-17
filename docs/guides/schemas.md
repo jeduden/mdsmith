@@ -1,5 +1,6 @@
 ---
 title: Schemas
+weight: 30
 summary: >-
   Declare a document-structure schema inline on a kind
   or in a proto.md file, validate headings and front
@@ -538,6 +539,28 @@ The directive READMEs put `Pattern` after
 `Meta-Information` precisely so the composed ordering
 (`rule-readme` first, `directive-rule-readme` appended)
 matches the document layout.
+
+## Extracting data
+
+A schema doubles as an extraction contract. Once
+`mdsmith check` confirms a file conforms,
+
+```bash
+mdsmith extract <kind> --format json|yaml|msgpack <file>
+```
+
+emits a data tree whose nesting mirrors the schema
+hierarchy — no annotations required. The root carries a
+`frontmatter` object plus the projected sections beside
+it; literal headings key by slug, repeating sections
+become arrays whose elements retain every captured
+placeholder, a `heading: null` section's content hoists
+into its enclosing object, and `code-block` / `list` /
+`table` / `paragraph` content entries project under
+`code` / `items` / `rows` / `text`. Wildcard slots and
+unlisted headings are skipped. See
+[`mdsmith extract`](../reference/cli/extract.md) for the
+full projection rules and exit codes.
 
 ## Diagnostics
 

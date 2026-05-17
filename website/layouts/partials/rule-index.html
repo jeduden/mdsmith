@@ -1,0 +1,26 @@
+{{- /* Build a once-cached map of every linkable rule token
+       -> published rule page permalink. Two keys per rule:
+       the bare id (`MDS001`) and the exact page-directory
+       form (`MDS001-line-length`, id + `-` + name). Only
+       these exact tokens are linked, so a typo'd suffix like
+       `MDS001-lenght` is left as plain code instead of
+       silently linking to the wrong rule — keeping the
+       "cannot drift" guarantee.
+
+       The map is empty when a docs tree is built without
+       internal/rules/index.md (no /docs/rules/ section): the
+       caller then renders the code span unchanged. */ -}}
+{{- $m := dict -}}
+{{- with site.GetPage "/docs/rules" -}}
+  {{- range .Pages -}}
+    {{- $id := .Params.id -}}
+    {{- $name := .Params.name -}}
+    {{- if $id -}}
+      {{- $m = merge $m (dict $id .RelPermalink) -}}
+      {{- if $name -}}
+        {{- $m = merge $m (dict (printf "%s-%s" $id $name) .RelPermalink) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- return $m -}}

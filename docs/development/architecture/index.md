@@ -76,6 +76,7 @@ cmd/mdsmith              internal/lsp
               └─> internal/{rule, fix,
                             config, output,
                             lint, linkgraph,
+                            index,
                             discovery,
                             schema, …}
                     └─> internal/{mdtext,

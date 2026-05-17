@@ -1,4 +1,5 @@
 ---
+weight: 10
 summary: CLI commands, flags, exit codes, and output format.
 ---
 # CLI Reference
@@ -21,7 +22,9 @@ row: "| [`{command}`]({filename}) | {summary} |"
 | Command                                       | Description                                                                          |
 |-----------------------------------------------|--------------------------------------------------------------------------------------|
 | [`check`](cli/check.md)                       | Lint Markdown files for style issues.                                                |
+| [`deps`](cli/deps.md)                         | List a file's dependency-graph edges (includes, links, catalogs, builds).            |
 | [`export`](cli/export.md)                     | Write a portable, directive-free copy of a Markdown file.                            |
+| [`extract`](cli/extract.md)                   | Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.             |
 | [`fix`](cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
 | [`help`](cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
 | [`init`](cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
@@ -33,6 +36,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 | [`merge-driver`](cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
 | [`metrics`](cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
 | [`pre-merge-commit`](cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
+| [`rename`](cli/rename.md)                     | Rename a heading or link-reference label and rewrite every dependent edit.           |
 | [`version`](cli/version.md)                   | Print the mdsmith build version and exit.                                            |
 <?/catalog?>
 

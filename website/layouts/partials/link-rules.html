@@ -1,0 +1,47 @@
+{{- /* Structurally auto-link rule mentions. Any inline-code
+       token that is exactly a rule id (`MDS027`) or the
+       id-with-name page-directory form
+       (`MDS027-cross-file-reference-integrity`) is rewritten
+       to a link to that rule's page. Authors write nothing
+       special — putting a rule code in a code span is enough —
+       so the link cannot drift and no wiki-link syntax has to
+       be remembered.
+
+       Hugo has no inline-code render hook, so this runs as a
+       post-process over the already-rendered `.Content`. The
+       needle is the literal `<code>TOKEN</code>` string, so:
+       - Only code spans are touched. A rule code in plain
+         prose, a heading's plain text, or a link's href is
+         NOT a `<code>` span and is left alone.
+       - A rule code in a `<code>` span IS linked wherever the
+         span sits — body paragraph, list item, table cell, or
+         a heading written as `# `+"`MDS027`". That is the
+         intended behaviour: the span is the opt-in marker.
+       - It assumes docs never wrap a bare rule code in a link
+         label (`[`+"`MDS027`"+`](url)`); none do, and putting
+         one there would nest <a> tags. Match exactly against
+         the rule-index keys (bare id and exact page slug) so a
+         typo'd suffix like `MDS001-lenght` is left as plain
+         code instead of pointing at the wrong rule.
+
+       Tokens with no published page (a docs tree built
+       without internal/rules/index.md → empty map) are left
+       as plain code. A rule page does not self-link.
+
+       `replace` (literal) not `replaceRE`: the needle is a
+       fixed string, so a regex would be wasted work per page
+       and would mis-handle a rule name with a regex
+       metacharacter. `partialCached … site` keys the rule map
+       once site-wide — the partial only reads `site.GetPage`,
+       never the passed context. */ -}}
+{{- $content := .Content -}}
+{{- $self := .RelPermalink -}}
+{{- $rules := partialCached "rule-index.html" site -}}
+{{- range $token, $url := $rules -}}
+  {{- if ne $url $self -}}
+    {{- $needle := printf `<code>%s</code>` $token -}}
+    {{- $repl := printf `<a class="rule-ref" href="%s"><code>%s</code></a>` $url $token -}}
+    {{- $content = replace $content $needle $repl -}}
+  {{- end -}}
+{{- end -}}
+{{- $content | safeHTML -}}

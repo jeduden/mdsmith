@@ -1,5 +1,6 @@
 ---
 title: Guides
+weight: 20
 summary: >-
   User guides for mdsmith directives, structure
   enforcement, and migration.

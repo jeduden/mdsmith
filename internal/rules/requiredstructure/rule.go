@@ -765,6 +765,15 @@ func (r *Rule) composedSchemaForFix(f *lint.File) (*schema.Schema, error) {
 	return schema.Compose(parsed...)
 }
 
+// ComposedSchema parses and composes every schema source the rule
+// resolved for f and returns the composed schema, or nil when the
+// rule has no schema source. Exposed for the `extract` subcommand,
+// which projects the same composed schema MDS020 validates against;
+// it reuses composedSchemaForFix so the two paths cannot drift.
+func (r *Rule) ComposedSchema(f *lint.File) (*schema.Schema, error) {
+	return r.composedSchemaForFix(f)
+}
+
 // checkSingleFileSchema retains the legacy proto.md heading-template
 // validation path. It supports {field} sync points in headings and
 // body content; these features are tied to the source body of the

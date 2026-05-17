@@ -194,7 +194,7 @@ Rename reuses the index from plan 131. Cost:
   slug recompute, plus O(workspace anchor links
   to this file) for the edge walk. The 1 000-file
   benchmark in
-  [`internal/lsp/index/bench_test.go`](../internal/lsp/index/bench_test.go)
+  [`internal/index/bench_test.go`](../internal/index/bench_test.go)
   upper-bounds this at well under 100 ms.
 - `rename` (link-ref): O(uses in current file)
   only.
@@ -209,7 +209,7 @@ the capability see the post-plan-134 server.
 1. Add `prepareRename` to the server
    ([`internal/lsp/server.go`](../internal/lsp/server.go))
    dispatching on the position-tag from
-   [`internal/lsp/index/locate.go`](../internal/lsp/index/locate.go).
+   [`internal/index/locate.go`](../internal/index/locate.go).
    Return null for unsupported positions.
 2. Implement heading rename. Use
    `mdtext.CollectTOCItems` for slug recomputation.

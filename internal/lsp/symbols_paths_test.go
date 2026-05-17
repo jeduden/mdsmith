@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/lsp/index"
+	"github.com/jeduden/mdsmith/internal/index"
 )
 
 // These tests exercise the per-handler error and edge paths that

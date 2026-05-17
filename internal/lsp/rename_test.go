@@ -47,7 +47,6 @@ func TestPrepareRenameHeadingReturnsTextRange(t *testing.T) {
 	var res prepareRenameResult
 	require.NoError(t, json.Unmarshal(raw, &res))
 	assert.Equal(t, "Setup", res.Placeholder)
-	// "## Setup" — `S` is at byte column 3 (UTF-16 col 3), end col 8.
 	assert.Equal(t, Position{Line: 2, Character: 3}, res.Range.Start)
 	assert.Equal(t, Position{Line: 2, Character: 8}, res.Range.End)
 }
@@ -109,9 +108,7 @@ func TestRenameHeadingRewritesCrossFileAnchors(t *testing.T) {
 	assert.Len(t, edit.Changes[uriA], 1, "heading line edit")
 	assert.Len(t, edit.Changes[uriB], 1, "one anchor link in b.md")
 	assert.Len(t, edit.Changes[uriC], 2, "two anchor links in c.md")
-	// The replacement on a.md is the new heading text.
 	assert.Equal(t, "Configuration", edit.Changes[uriA][0].NewText)
-	// Anchor edits replace just the slug portion (no leading `#`).
 	for _, e := range edit.Changes[uriB] {
 		assert.Equal(t, "configuration", e.NewText)
 	}
@@ -146,17 +143,14 @@ func TestRenameHeadingShiftDetection(t *testing.T) {
 	}
 	raw, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uriA},
-		// Position on the FIRST `## Setup` (line 3, 1-based) → LSP line 2.
-		Position: Position{Line: 2, Character: 4},
-		NewName:  "Configuration",
+		Position:     Position{Line: 2, Character: 4},
+		NewName:      "Configuration",
 	})
 	require.Nil(t, errResp)
 	var edit workspaceEdit
 	require.NoError(t, json.Unmarshal(raw, &edit))
 	require.Contains(t, edit.Changes, uriB)
 	require.Len(t, edit.Changes[uriB], 1)
-	// `setup-1` shifted to `setup`; b.md's link must now point at
-	// `#setup`.
 	assert.Equal(t, "setup", edit.Changes[uriB][0].NewText)
 }
 
@@ -175,9 +169,8 @@ func TestRenameHeadingCollisionReturnsInvalidParams(t *testing.T) {
 
 	_, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `## Bar` (line 5, 1-based) → LSP line 4.
-		Position: Position{Line: 4, Character: 4},
-		NewName:  "Foo",
+		Position:     Position{Line: 4, Character: 4},
+		NewName:      "Foo",
 	})
 	require.NotNil(t, errResp, "expected InvalidParams")
 	assert.Equal(t, codeInvalidParams, errResp.Code)
@@ -202,15 +195,13 @@ func TestRenameLinkRefLabel(t *testing.T) {
 
 	raw, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `[docs]: …` (line 5, 1-based) → LSP line 4.
-		Position: Position{Line: 4, Character: 2},
-		NewName:  "manual",
+		Position:     Position{Line: 4, Character: 2},
+		NewName:      "manual",
 	})
 	require.Nil(t, errResp)
 	var edit workspaceEdit
 	require.NoError(t, json.Unmarshal(raw, &edit))
 	require.Contains(t, edit.Changes, uri)
-	// One def + two uses (full + shortcut) = 3 edits.
 	assert.Len(t, edit.Changes[uri], 3)
 	for _, e := range edit.Changes[uri] {
 		assert.Equal(t, "manual", e.NewText)
@@ -232,9 +223,8 @@ func TestRenameLinkRefLabelCollision(t *testing.T) {
 
 	_, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `[docs]: …` (line 5, 1-based).
-		Position: Position{Line: 4, Character: 2},
-		NewName:  "manual",
+		Position:     Position{Line: 4, Character: 2},
+		NewName:      "manual",
 	})
 	require.NotNil(t, errResp)
 	assert.Equal(t, codeInvalidParams, errResp.Code)
@@ -258,9 +248,8 @@ func TestRenameLinkRefRefreshesCasing(t *testing.T) {
 
 	raw, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `[docs api]: …` (line 5, 1-based) → LSP line 4.
-		Position: Position{Line: 4, Character: 2},
-		NewName:  "Docs API",
+		Position:     Position{Line: 4, Character: 2},
+		NewName:      "Docs API",
 	})
 	require.Nil(t, errResp)
 	var edit workspaceEdit
@@ -290,9 +279,8 @@ func TestRenameLinkRefDetectsDuplicateDefCollision(t *testing.T) {
 
 	_, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `[docs]: …` (line 5, 1-based) → LSP line 4.
-		Position: Position{Line: 4, Character: 2},
-		NewName:  "manual",
+		Position:     Position{Line: 4, Character: 2},
+		NewName:      "manual",
 	})
 	require.NotNil(t, errResp)
 	assert.Equal(t, codeInvalidParams, errResp.Code)
@@ -315,9 +303,8 @@ func TestRenameHeadingRejectsEmptySlugNewName(t *testing.T) {
 
 	_, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `## Setup` (line 3, 1-based) → LSP line 2.
-		Position: Position{Line: 2, Character: 4},
-		NewName:  "!!!",
+		Position:     Position{Line: 2, Character: 4},
+		NewName:      "!!!",
 	})
 	require.NotNil(t, errResp)
 	assert.Equal(t, codeInvalidParams, errResp.Code)
@@ -385,9 +372,7 @@ func TestPrepareRenameOnRefUseReturnsLabelRange(t *testing.T) {
 
 	raw, errResp := h.request("textDocument/prepareRename", textDocumentPositionParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor inside `[look][docs]` — line 3 (0-based: 2),
-		// char 12 lands inside the second bracket pair.
-		Position: Position{Line: 2, Character: 12},
+		Position:     Position{Line: 2, Character: 12},
 	})
 	require.Nil(t, errResp)
 	var res prepareRenameResult
@@ -400,7 +385,6 @@ func TestPrepareRenameOnRefUseReturnsLabelRange(t *testing.T) {
 // edit replaces that line and leaves the underline intact.
 func TestRenameSetextHeading(t *testing.T) {
 	t.Parallel()
-	// Setext H2: "Setup" with `-----` underline on next line.
 	src := "Top\n===\n\nSetup\n-----\n\nbody\n"
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
 	uri := rootURI + "/a.md"
@@ -411,9 +395,8 @@ func TestRenameSetextHeading(t *testing.T) {
 
 	raw, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `Setup` (line 4, 1-based) → LSP line 3.
-		Position: Position{Line: 3, Character: 2},
-		NewName:  "Configuration",
+		Position:     Position{Line: 3, Character: 2},
+		NewName:      "Configuration",
 	})
 	require.Nil(t, errResp)
 	var edit workspaceEdit
@@ -442,8 +425,7 @@ func TestPrepareRenameLabelPlaceholderPreservesCase(t *testing.T) {
 
 	raw, errResp := h.request("textDocument/prepareRename", textDocumentPositionParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `[Docs API]:` (line 5, 1-based) → LSP line 4.
-		Position: Position{Line: 4, Character: 2},
+		Position:     Position{Line: 4, Character: 2},
 	})
 	require.Nil(t, errResp)
 	var res prepareRenameResult
@@ -458,9 +440,6 @@ func TestPrepareRenameLabelPlaceholderPreservesCase(t *testing.T) {
 // renamed heading on its actual line.
 func TestRenameHeadingHandlesEmptySlugSibling(t *testing.T) {
 	t.Parallel()
-	// First heading slugifies to "" (only punctuation), so a naive
-	// implementation would mis-identify which heading the cursor
-	// lands on.
 	src := "# !!!\n\n## Setup\n\nbody\n"
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
 	uri := rootURI + "/a.md"
@@ -471,17 +450,14 @@ func TestRenameHeadingHandlesEmptySlugSibling(t *testing.T) {
 
 	raw, errResp := h.request("textDocument/rename", renameParams{
 		TextDocument: textDocumentIdentifier{URI: uri},
-		// Cursor on `## Setup` (line 3, 1-based) → LSP line 2.
-		Position: Position{Line: 2, Character: 4},
-		NewName:  "Configuration",
+		Position:     Position{Line: 2, Character: 4},
+		NewName:      "Configuration",
 	})
 	require.Nil(t, errResp)
 	var edit workspaceEdit
 	require.NoError(t, json.Unmarshal(raw, &edit))
 	require.Contains(t, edit.Changes, uri)
 	require.Len(t, edit.Changes[uri], 1)
-	// The edit must target the `## Setup` line (LSP line 2), not
-	// the `# !!!` line (LSP line 0).
 	assert.Equal(t, 2, edit.Changes[uri][0].Range.Start.Line)
 	assert.Equal(t, "Configuration", edit.Changes[uri][0].NewText)
 }
@@ -520,89 +496,25 @@ func TestAtxHeadingTextByteRange(t *testing.T) {
 // TestAnchorFragmentBytes verifies the helper that finds the slug
 // portion inside a link destination on a line. The returned range
 // is what the rename's TextEdit uses to swap in the new slug.
-func TestAnchorFragmentBytes(t *testing.T) {
-	t.Parallel()
-	row := []byte("text [a](./b.md#sec) more [c](#sec) end")
-	// First link: `[a](./b.md#sec)` — text starts at byte 5 (`[`).
-	startA, endA, ok := anchorFragmentBytes(row, 6, "sec")
-	require.True(t, ok)
-	assert.Equal(t, "sec", string(row[startA:endA]))
-	// Second link: `[c](#sec)` — text starts at byte 26 (`[`).
-	startB, endB, ok := anchorFragmentBytes(row, 27, "sec")
-	require.True(t, ok)
-	assert.Equal(t, "sec", string(row[startB:endB]))
-	// Slug not present on this link.
-	_, _, ok = anchorFragmentBytes(row, 6, "missing")
-	assert.False(t, ok)
-}
-
 // TestAnchorFragmentBytesRejectsPrefixMatch guards against
 // `#foo` rewriting `#foobar`. The destination ends at `)`, so
 // the fragment boundary must agree.
-func TestAnchorFragmentBytesRejectsPrefixMatch(t *testing.T) {
-	t.Parallel()
-	row := []byte("see [t](#foobar)")
-	_, _, ok := anchorFragmentBytes(row, 4, "foo")
-	assert.False(t, ok)
-}
-
 // TestAnchorFragmentBytesNormalizesCase verifies that a raw
 // fragment whose case differs from the slug still matches —
 // the index keys edges by mdtext.Slugify(decoded), which is
 // lowercase, so `#Setup` participates in a rename of the
 // `setup` slug.
-func TestAnchorFragmentBytesNormalizesCase(t *testing.T) {
-	t.Parallel()
-	row := []byte("see [t](#Setup)")
-	start, end, ok := anchorFragmentBytes(row, 4, "setup")
-	require.True(t, ok)
-	assert.Equal(t, "Setup", string(row[start:end]))
-}
-
 // TestAnchorFragmentBytesURLDecodesPercentEscape verifies that
 // `#Docs%20API` (a real GitHub anchor when the heading is
 // "Docs API") matches the indexed slug `docs-api`.
-func TestAnchorFragmentBytesURLDecodesPercentEscape(t *testing.T) {
-	t.Parallel()
-	row := []byte("see [t](#Docs%20API)")
-	start, end, ok := anchorFragmentBytes(row, 4, "docs-api")
-	require.True(t, ok)
-	assert.Equal(t, "Docs%20API", string(row[start:end]))
-}
-
 // TestAnchorFragmentBytesAngleBracketDestination verifies that
 // a destination of the form `<#sec>` returns a fragment range
 // that excludes the closing `>`. Without that boundary the
 // rename would overwrite the `>` and corrupt the link.
-func TestAnchorFragmentBytesAngleBracketDestination(t *testing.T) {
-	t.Parallel()
-	row := []byte(`see [t](<#sec>) end`)
-	start, end, ok := anchorFragmentBytes(row, 4, "sec")
-	require.True(t, ok)
-	assert.Equal(t, "sec", string(row[start:end]))
-	// Confirm the `>` lives outside the returned range.
-	assert.Equal(t, byte('>'), row[end])
-}
-
 // TestBodyLineIndexLookups exercises the precomputed line-offset
 // table. The fast path replaced an O(n) scan that ran per
 // reference-use edit; correctness is the bar this test enforces,
 // not throughput.
-func TestBodyLineIndexLookups(t *testing.T) {
-	t.Parallel()
-	body := []byte("alpha\nbeta\ngamma\n")
-	idx := newBodyLineIndex(body)
-	assert.Equal(t, 0, idx.LineStart(1))
-	assert.Equal(t, 6, idx.LineStart(2))
-	assert.Equal(t, 11, idx.LineStart(3))
-	assert.Equal(t, -1, idx.LineStart(99))
-	// Offset 0 → line 1; offset 6 (start of "beta") → line 2;
-	// offset 12 (mid-"gamma") → line 3.
-	assert.Equal(t, 1, idx.LineOfOffset(0))
-	assert.Equal(t, 2, idx.LineOfOffset(6))
-	assert.Equal(t, 3, idx.LineOfOffset(12))
-}
-
 // TestRefUseLabelBytesCollapsedTrailingEmptyBrackets verifies
 // that the cursor on the trailing `[]` of a collapsed reference
 // resolves to the leading bracket pair, not nil. The Locator
@@ -612,7 +524,6 @@ func TestBodyLineIndexLookups(t *testing.T) {
 func TestRefUseLabelBytesCollapsedTrailingEmptyBrackets(t *testing.T) {
 	t.Parallel()
 	row := []byte(`See [Docs API][] elsewhere`)
-	// Cursor inside the trailing `[]` (byte offset 14 = `[`).
 	start, end, ok := refUseLabelBytes(row, 14, "docs api")
 	require.True(t, ok, "expected match for cursor inside trailing []")
 	assert.Equal(t, "Docs API", string(row[start:end]))

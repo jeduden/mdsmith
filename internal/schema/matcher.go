@@ -441,6 +441,39 @@ func fmFingerprint(pattern string, fm map[string]any) string {
 	return b.String()
 }
 
+// headingCaptures reports whether dh.Text matches m's pattern and,
+// when it does, returns every non-empty named capture group keyed
+// by its group name. The schema parser only ever names the `n`
+// digits group, so today the map carries at most that one key;
+// returning the full SubexpNames map keeps the seam open for
+// future named placeholders without another matcher change.
+func headingCaptures(m *Matcher, dh DocHeading, fm map[string]any) (bool, map[string]string) {
+	if m == nil {
+		return false, nil
+	}
+	cm, err := cachedMatcher(m, fm)
+	if err != nil {
+		return false, nil
+	}
+	sub := cm.re.FindStringSubmatch(dh.Text)
+	if sub == nil {
+		return false, nil
+	}
+	var out map[string]string
+	// SubexpNames and FindStringSubmatch are both NumSubexp()+1
+	// long, so an index from one always indexes the other.
+	for i, name := range cm.re.SubexpNames() {
+		if i == 0 || name == "" {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, 1)
+		}
+		out[name] = sub[i]
+	}
+	return true, out
+}
+
 // matchHeading reports whether dh.Text matches m's pattern, and if
 // so returns the captured `digits` value (when present) as the
 // second return.

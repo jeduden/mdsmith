@@ -92,7 +92,7 @@ footer: |
 | 163 | 🔲     |        | [Extract mdsmith Markdown parse/produce as a public Go library](plan/163_public-markdown-library.md)                      |
 | 164 | ✅     |        | [GitHub-UI-triggered releases and a split website deploy](plan/164_github-ui-releases-and-split-website.md)               |
 | 165 | ✅     | opus   | [Portable Markdown export (mdsmith export)](plan/165_portable-markdown-export.md)                                         |
-| 166 | 🔲     | opus   | [Schema-driven data extraction (mdsmith extract)](plan/166_schema-driven-data-extraction.md)                              |
+| 166 | ✅     | opus   | [Schema-driven data extraction (mdsmith extract)](plan/166_schema-driven-data-extraction.md)                              |
 | 167 | 🔲     | opus   | [Custom binding overrides for mdsmith extract](plan/167_custom-binding-overrides.md)                                      |
 | 168 | 🔲     | sonnet | [Obsidian Flavored Markdown support](plan/168_obsidian-markdown-support.md)                                               |
 | 169 | ✅     | opus   | [Enforce terminal Meta-Information and render it from frontmatter](plan/169_rule-readme-meta-information-sync.md)         |
@@ -100,4 +100,5 @@ footer: |
 | 171 | 🔲     | opus   | [MDS027 link-integrity hardening](plan/171_mds027-link-integrity-hardening.md)                                            |
 | 172 | 🔲     | opus   | [Link-style rule and shared links config](plan/172_link-style-rule-and-config.md)                                         |
 | 173 | 🔲     | sonnet | [Website rewriter tolerates titled links](plan/173_rewriter-titled-links.md)                                              |
+| 174 | ✅     | opus   | [Expose rename and dependency-graph as CLI subcommands and feature docs](plan/174_expose-rename-and-deps-cli.md)          |
 <?/catalog?>

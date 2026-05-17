@@ -252,3 +252,26 @@ Worth a one-sentence package comment
 explaining why it is separate so
 future readers do not read it as a
 separate rule package.
+
+## Decision 2026-05-17 (plan/174)
+
+### plan/153 non-goal superseded
+
+Plan 153 kept the workspace symbol
+index at `internal/lsp/index`. Its
+stated non-goal: "only link/edge
+extraction is in scope." Plan 174
+supersedes that. The package is now
+`internal/index`, a peer support
+package.
+
+The move is a pure `git mv`; no logic
+changed. Two forces drove it.
+`internal/schema` already imported the
+index from outside `internal/lsp`. The
+new `mdsmith rename` and `mdsmith deps`
+surfaces need it too, and the layering
+map forbids `cmd/mdsmith` →
+`internal/lsp`. A peer package removes
+the conflict. `internal/index` must
+never import `internal/lsp`.

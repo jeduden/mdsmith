@@ -6,7 +6,7 @@ model: opus
 depends-on: [151]
 summary: >-
   Pick one canonical link-extraction layer between
-  internal/linkgraph and internal/lsp/index, then route
+  internal/linkgraph and internal/index, then route
   every caller through it. MDS027, the
   `mdsmith list backlinks` CLI, and the LSP rename /
   navigation / call-hierarchy surface today walk
@@ -35,12 +35,12 @@ The repo currently maintains two extractors:
   138) call it. Each invocation re-walks the workspace
   and re-parses every file.
 
-- [`lsp/index`](../internal/lsp/index/index.go) builds a
+- [`lsp/index`](../internal/index/index.go) builds a
   workspace graph. The LSP keeps it warm. It stores
   outgoing edges and symbol tables per file. The
   reverse-edge surface (`IncomingEdges`, `BacklinksFor`)
   reads from those edges. The extractor itself sits in
-  [`build.go`](../internal/lsp/index/build.go).
+  [`build.go`](../internal/index/build.go).
   `collectLinkEdges` and `collectDirectiveEdges` walk the
   same source bytes linkgraph would, but under a different
   `EdgeKind` set: `EdgeAnchorLink`, `EdgeFileLink`,
@@ -56,7 +56,7 @@ The duplication is real:
   means "same file" for anchor / ref links and
   "placeholder for a `<?catalog?>` directive" for
   catalog edges, which forced
-  [`BacklinksFor`](../internal/lsp/index/index.go)
+  [`BacklinksFor`](../internal/index/index.go)
   to special-case `EdgeCatalog` after plan 151
   surfaced phantom self-backlinks.
 - Path resolution rules drift:
@@ -69,7 +69,7 @@ The duplication is real:
 
 - Replacing the LSP server's *symbol* index — headings,
   link-ref defs, directives, and front-matter keys all
-  stay in `internal/lsp/index`. Only the link/edge
+  stay in `internal/index`. Only the link/edge
   extraction is in scope.
 - Changing MDS027's diagnostic shape or message text
   (regressions there are user-visible).
@@ -163,7 +163,7 @@ path:
    only contention is the final map insert.
 
 Benchmarks land in
-[`internal/lsp/index/bench_test.go`](../internal/lsp/index/bench_test.go).
+[`internal/index/bench_test.go`](../internal/index/bench_test.go).
 The acceptance criteria includes a parallel-build
 benchmark showing >= 2× speedup on a 1 000-file
 workspace with `GOMAXPROCS >= 4`.
@@ -173,7 +173,7 @@ workspace with `GOMAXPROCS >= 4`.
 1. Move the index's `parseLinkTarget`, `decodeAnchor`,
    and `resolveRelTarget` helpers into linkgraph. Or
    replace them with the existing linkgraph equivalents.
-   Drop the duplicates from `internal/lsp/index/build.go`.
+   Drop the duplicates from `internal/index/build.go`.
 2. Have `collectLinkEdges` call `linkgraph.ExtractLinks(f)`
    and map the result to `Edge` records. The LSP index
    and MDS027 now walk the same bytes through the same
@@ -212,7 +212,7 @@ workspace with `GOMAXPROCS >= 4`.
 
 ## Tasks
 
-1. [x] Audit `internal/lsp/index/build.go` and
+1. [x] Audit `internal/index/build.go` and
    `internal/linkgraph/linkgraph.go`. The two parsers
    agreed on every URL-input shape; the deltas were
    anchor slug timing (kept linkgraph's deferred
@@ -234,11 +234,11 @@ workspace with `GOMAXPROCS >= 4`.
 6. [x] Verify the backlinks E2E test passes
    byte-for-byte.
 7. [x] Remove the dead extractor helpers from
-   `internal/lsp/index/build.go`.
+   `internal/index/build.go`.
 
 ## Acceptance Criteria
 
-- [x] `internal/lsp/index/build.go` no longer contains
+- [x] `internal/index/build.go` no longer contains
       a Markdown link parser; all link / directive
       extraction goes through `internal/linkgraph`.
 - [x] `linkgraph.ExtractDirectives` exists and is
@@ -246,7 +246,7 @@ workspace with `GOMAXPROCS >= 4`.
       `internal/linkgraph/directives_test.go`).
 - [x] `BacklinksFor` returns the same results before
       and after the change for the fixtures in
-      [`internal/lsp/index/index_test.go`](../internal/lsp/index/index_test.go).
+      [`internal/index/index_test.go`](../internal/index/index_test.go).
 - [x] MDS027 fixtures and unit tests pass without
       diagnostic-message edits.
 - [x] `mdsmith list backlinks` E2E test passes
@@ -261,7 +261,7 @@ workspace with `GOMAXPROCS >= 4`.
       takes a `*lint.File` plus the host path and
       returns deterministic outputs.
 - [x] A parallel `BuildIndex` benchmark in
-      [`internal/lsp/index/bench_test.go`](../internal/lsp/index/bench_test.go)
+      [`internal/index/bench_test.go`](../internal/index/bench_test.go)
       shows the parallel speedup over sequential on a
       1 000-file workspace with `GOMAXPROCS >= 4`. Two
       benchmarks (`BenchmarkSerialBuild1k`,

@@ -1,5 +1,6 @@
 ---
 title: Installation
+weight: 10
 summary: >-
   Every channel that ships the mdsmith binary, the VS
   Code extension, or the Claude Code plugin — npm,

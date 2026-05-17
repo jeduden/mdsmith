@@ -43,7 +43,10 @@ Commands:
   check             Lint Markdown files (default when given file arguments)
   fix               Auto-fix lint issues in place
   export            Write a portable, directive-free copy of a Markdown file
+  extract           Emit a kind-conformant file as a JSON/YAML/msgpack data tree
   list              Walk the workspace and emit matches (files or link records)
+  deps              Show a file's dependency-graph edges (includes, links, …)
+  rename            Rename a heading or link-ref label and rewrite dependents
   help              Show help for rules and topics
   metrics           Show and rank shared Markdown metrics
   merge-driver      Git merge driver for regenerable sections
@@ -68,45 +71,48 @@ func run() int {
 		debug.SetMemoryLimit(512 * 1024 * 1024)
 	}
 
-	// Handle no arguments: print usage, exit 0.
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usageText)
-		return 0
-	}
-
-	// Handle global flags before subcommand dispatch.
-	first := os.Args[1]
-
-	switch first {
-	case "--help", "-h":
+	// No arguments or a global help flag: print usage and exit 0.
+	if len(os.Args) < 2 || os.Args[1] == "--help" || os.Args[1] == "-h" {
 		fmt.Fprint(os.Stderr, usageText)
 		return 0
 	}
 
 	// Dispatch to subcommand.
+	return dispatch(os.Args[1], os.Args[2:])
+}
+
+// dispatch routes a subcommand name to its handler. Split out of run
+// so run stays under the statement-count limit as commands are added.
+func dispatch(first string, args []string) int {
 	switch first {
 	case "check":
-		return runCheck(os.Args[2:])
+		return runCheck(args)
 	case "fix":
-		return runFix(os.Args[2:])
+		return runFix(args)
 	case "export":
-		return runExport(os.Args[2:])
+		return runExport(args)
+	case "extract":
+		return runExtract(args)
 	case "list":
-		return runList(os.Args[2:])
+		return runList(args)
+	case "deps":
+		return runDeps(args)
+	case "rename":
+		return runRename(args)
 	case "help":
-		return runHelp(os.Args[2:])
+		return runHelp(args)
 	case "metrics":
-		return runMetrics(os.Args[2:])
+		return runMetrics(args)
 	case "merge-driver":
-		return runMergeDriver(os.Args[2:])
+		return runMergeDriver(args)
 	case "pre-merge-commit":
-		return runPreMergeCommit(os.Args[2:])
+		return runPreMergeCommit(args)
 	case "kinds":
-		return runKinds(os.Args[2:])
+		return runKinds(args)
 	case "init":
-		return runInit(os.Args[2:])
+		return runInit(args)
 	case "lsp":
-		return runLSP(os.Args[2:])
+		return runLSP(args)
 	case "version":
 		printVersion()
 		return 0

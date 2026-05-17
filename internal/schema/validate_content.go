@@ -84,7 +84,7 @@ func skipContentBelow(heads []DocHeading, rootLevel int) []DocHeading {
 // pipeline (and any future caller running passes in parallel)
 // can run multiple ValidateContent invocations concurrently, so
 // the pool hands each goroutine its own parser instance. Mirrors
-// internal/lsp/index/build.go's parserPool.
+// internal/index/build.go's parserPool.
 var contentParserPool = sync.Pool{
 	New: func() any {
 		return goldmark.New(

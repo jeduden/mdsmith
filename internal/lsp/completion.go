@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jeduden/mdsmith/internal/lsp/index"
+	"github.com/jeduden/mdsmith/internal/index"
 )
 
 // handleCompletion handles textDocument/completion requests. It locates the

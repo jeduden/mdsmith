@@ -39,6 +39,16 @@ sibling.
 LSP-aware editor can consume it. The VS Code extension and the
 Claude Code plugin surface the same data.
 
+**[Rename without breaking links](docs/features/rename.md).**
+Rename a heading and every workspace anchor link to it is
+rewritten in one atomic edit. Link-ref labels rename with their
+uses. A colliding slug fails loudly instead of breaking links.
+
+**[See the dependency graph](docs/features/dependency-graph.md).**
+`mdsmith deps` lists what a file pulls in, or what depends on it.
+The LSP call-hierarchy walks the same `<?include?>`, `<?catalog?>`,
+`<?build?>`, and link graph in your editor.
+
 **[Cross-file integrity](docs/features/cross-file-integrity.md).**
 Built-in rules flag broken links and missing anchors, enforce
 per-file section schemas, and keep Markdown in the right folders.
@@ -180,7 +190,9 @@ row: "| [`{command}`]({filename}) | {summary} |"
 | Command                                                      | Description                                                                          |
 |--------------------------------------------------------------|--------------------------------------------------------------------------------------|
 | [`check`](docs/reference/cli/check.md)                       | Lint Markdown files for style issues.                                                |
+| [`deps`](docs/reference/cli/deps.md)                         | List a file's dependency-graph edges (includes, links, catalogs, builds).            |
 | [`export`](docs/reference/cli/export.md)                     | Write a portable, directive-free copy of a Markdown file.                            |
+| [`extract`](docs/reference/cli/extract.md)                   | Emit a schema-conformant Markdown file as a JSON/YAML/msgpack data tree.             |
 | [`fix`](docs/reference/cli/fix.md)                           | Auto-fix lint issues in Markdown files in place.                                     |
 | [`help`](docs/reference/cli/help.md)                         | Show built-in documentation for rules, metrics, and concept pages.                   |
 | [`init`](docs/reference/cli/init.md)                         | Generate a default `.mdsmith.yml` config in the current directory.                   |
@@ -192,6 +204,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 | [`merge-driver`](docs/reference/cli/merge-driver.md)         | Git merge driver that resolves conflicts inside generated sections.                  |
 | [`metrics`](docs/reference/cli/metrics.md)                   | List and rank shared Markdown metrics (file length, token estimate, readability, …). |
 | [`pre-merge-commit`](docs/reference/cli/pre-merge-commit.md) | Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.      |
+| [`rename`](docs/reference/cli/rename.md)                     | Rename a heading or link-reference label and rewrite every dependent edit.           |
 | [`version`](docs/reference/cli/version.md)                   | Print the mdsmith build version and exit.                                            |
 <?/catalog?>
 

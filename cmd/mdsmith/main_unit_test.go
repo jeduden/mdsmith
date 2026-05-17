@@ -898,3 +898,14 @@ func TestPrintDeprecations_EmitsEachMessageAndClears(t *testing.T) {
 	stderr2 := captureStderr(func() { printDeprecations(cfg) })
 	assert.Empty(t, stderr2, "second call on the same cfg emits nothing")
 }
+
+// TestDispatch covers the subcommand router's terminal arms: the
+// in-process "version" command and the unknown-command fallback. The
+// run* delegations are exercised through each command's own e2e
+// suite, which drives the real binary through dispatch.
+func TestDispatch(t *testing.T) {
+	assert.Equal(t, 0, dispatch("version", nil))
+	var code int
+	_ = captureStderr(func() { code = dispatch("totally-unknown", nil) })
+	assert.Equal(t, 2, code)
+}

@@ -1,5 +1,6 @@
 ---
 title: File Kinds
+weight: 20
 summary: >-
   How to declare file kinds, assign files to them, and read
   the merged rule config that results.

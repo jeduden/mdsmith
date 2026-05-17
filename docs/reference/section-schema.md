@@ -1,4 +1,5 @@
 ---
+weight: 50
 summary: >-
   Section-schema reference for inline
   `kinds.<name>.schema:` blocks. Covers the

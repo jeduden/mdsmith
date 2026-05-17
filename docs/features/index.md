@@ -24,6 +24,16 @@ sibling.
 LSP-aware editor can consume it. The VS Code extension and the
 Claude Code plugin surface the same data.
 
+**[Rename without breaking links](rename.md).**
+Rename a heading and every workspace anchor link to it is
+rewritten in one atomic edit. Link-ref labels rename with their
+uses. A colliding slug fails loudly instead of breaking links.
+
+**[See the dependency graph](dependency-graph.md).**
+`mdsmith deps` lists what a file pulls in, or what depends on it.
+The LSP call-hierarchy walks the same `<?include?>`, `<?catalog?>`,
+`<?build?>`, and link graph in your editor.
+
 **[Cross-file integrity](cross-file-integrity.md).**
 Built-in rules flag broken links and missing anchors, enforce
 per-file section schemas, and keep Markdown in the right folders.

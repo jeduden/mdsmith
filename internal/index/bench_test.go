@@ -38,7 +38,7 @@ func BenchmarkColdBuild1k(b *testing.B) {
 // plan 153's >= 2x design target lives in BenchmarkSerialBuild1k vs
 // BenchmarkParallelBuild1k; run with:
 //
-//	go test -bench='Build1k$' -count=5 ./internal/lsp/index/
+//	go test -bench='Build1k$' -count=5 ./internal/index/
 //
 // to reproduce the 2x figure on an unloaded 4-core host.
 //
@@ -110,7 +110,7 @@ func TestParallelBuildSpeedup(t *testing.T) {
 // quantify the speedup directly. Run via:
 //
 //	go test -bench='Build1k$' -count=5 -benchmem \
-//	  ./internal/lsp/index/
+//	  ./internal/index/
 //
 // On a 4-core x86_64 host this benchmark currently lands around
 // 65 ms; BenchmarkParallelBuild1k lands around 30 ms — the design

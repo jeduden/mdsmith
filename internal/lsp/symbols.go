@@ -12,9 +12,9 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/discovery"
+	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/lsp/index"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
@@ -143,7 +143,7 @@ func frontMatterScalarKind(fm []byte) (string, bool) {
 // stripFrontMatterDelimiters removes the leading `---\n` and
 // trailing `---\n` (or `---`) from a front-matter prefix as
 // returned by lint.StripFrontMatter. Mirrors the helper inside
-// internal/lsp/index, kept private to avoid leaking the index's
+// internal/index, kept private to avoid leaking the index's
 // internal naming.
 func stripFrontMatterDelimiters(fm []byte) []byte {
 	body := fm
