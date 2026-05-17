@@ -137,3 +137,39 @@ func buildCorpusDoc(idx, lines, total int) string {
 	}
 	return b.String()
 }
+
+// BenchmarkCheckCorpusLargeAlwaysDedupe is a control variant that forces the
+// unconditional DedupeDiagnostics path for comparison against the skip-when-
+// safe path in BenchmarkCheckCorpusLarge. Only run manually to measure the
+// allocation delta from plan 183; not part of the standing CI gate.
+func BenchmarkCheckCorpusLargeAlwaysDedupe(b *testing.B) {
+	if !testing.Verbose() {
+		b.Skip("control benchmark: run with -v to measure vs BenchmarkCheckCorpusLarge")
+	}
+	b.Helper()
+	const files, lines = 600, 150
+	dir := b.TempDir()
+	paths := make([]string, 0, files)
+	for i := 0; i < files; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("doc%03d.md", i))
+		if err := os.WriteFile(p, []byte(buildCorpusDoc(i, lines, files)), 0o644); err != nil {
+			b.Fatalf("write corpus file: %v", err)
+		}
+		paths = append(paths, p)
+	}
+	cfg := config.Defaults()
+	newRunner := func() *engine.Runner {
+		return &engine.Runner{
+			Config: cfg, Rules: rule.All(),
+			StripFrontMatter: true, RootDir: dir,
+			SkipSourceContext: true,
+		}
+	}
+	_ = newRunner().Run(paths)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res := newRunner().Run(paths)
+		// Force the allocation that the skip path avoids.
+		_ = engine.DedupeDiagnostics(res.Diagnostics)
+	}
+}

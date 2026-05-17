@@ -76,3 +76,21 @@ type SettingsTranslator interface {
 type ConfigTarget interface {
 	IsConfigFileRule() bool
 }
+
+// RepoScoped is implemented by rules whose diagnostics are anchored to
+// a repository artifact rather than the linted host file. A rule is
+// repo-scoped when its (File, Line, Column, RuleID, Message) diagnostic
+// tuple is independent of the host file path — so two host files can
+// emit the same tuple and DedupeDiagnostics collapses it.
+//
+// ConfigTarget rules are never repo-scoped: they run once via
+// runConfigTargetRules rather than once per markdown file, so per-file
+// duplicate tuples cannot occur.
+//
+// The engine uses this marker to skip the DedupeDiagnostics map+slice
+// allocation when no enabled markdown rule is repo-scoped. Without the
+// marker a blunt skip would silently drop diagnostics when repo-scoped
+// rules are enabled.
+type RepoScoped interface {
+	RepoScopedDiagnostics() bool
+}

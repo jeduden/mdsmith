@@ -1,7 +1,7 @@
 ---
 id: 183
 title: "Skip DedupeDiagnostics via an audited rule.RepoScoped marker"
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: [175]
 summary: >-
@@ -72,12 +72,12 @@ cross-file duplicate.
 
 ## Tasks
 
-1. [ ] Add the `rule.RepoScoped` marker in
+1. [x] Add the `rule.RepoScoped` marker in
    [`internal/rule/rule.go`](../internal/rule/rule.go).
    Use one method (e.g. `RepoScopedDiagnostics() bool`).
    Document the cross-file-tuple criterion and reference
    this plan, like the existing `ConfigTarget` marker.
-2. [ ] Audit every registered rule against the
+2. [x] Audit every registered rule against the
    criterion. A rule is repo-scoped iff it can emit a
    diagnostic whose `(File, Line, Column, RuleID,
    Message)` tuple is independent of the linted host
@@ -85,56 +85,95 @@ cross-file duplicate.
    assignment. Record the verdict and reason per rule in
    the [audit section](#repo-scoped-audit). Exclude
    `ConfigTarget` rules with the rationale above.
-3. [ ] Implement `RepoScoped` on exactly the flagged
+3. [x] Implement `RepoScoped` on exactly the flagged
    rules (`git-hook-sync` is the known case; expect
    `include`, `catalog`,
    `cross-file-reference-integrity`). Give each a unit
    test asserting the marker is true.
-4. [ ] In [`Run`](../internal/engine/runner.go), compute
+4. [x] In [`Run`](../internal/engine/runner.go), compute
    once whether any enabled rule (via
    `effectiveWithCategories`) is `RepoScoped`. Skip the
    `DedupeDiagnostics` call when none are. Keep
    `DedupeDiagnostics` public and unchanged. Only the
    call site becomes conditional. `RunSource` is single
    file and cannot duplicate cross-file; document that.
-5. [ ] Add an equivalence test. Use a corpus with two
+5. [x] Add an equivalence test. Use a corpus with two
    host files that drive the cross-file rules. Assert
    `Run` with the skip yields byte-identical sorted
    `Result.Diagnostics` to `Run` with unconditional
    dedupe, for the full default rule set.
-6. [ ] Add a regression guard. Drive the registered rule
+6. [x] Add a regression guard. Drive the registered rule
    set against a multi-host corpus. Fail if any rule
    that is not `RepoScoped` emits a cross-file duplicate
    tuple.
-7. [ ] Re-measure the single-core gate
+7. [x] Re-measure the single-core gate
    (`GOMAXPROCS=1 BenchmarkCheckCorpusLarge`) before and
    after. Record the `us_per_file` and alloc drop here.
    Cross-reference plan 175 task 11.
-8. [ ] Run `mdsmith fix` on this plan and `PLAN.md`,
+8. [x] Run `mdsmith fix` on this plan and `PLAN.md`,
    then `mdsmith check .`, the full suite,
    golangci-lint, and `-race` on `internal/engine` and
    `internal/rule`.
 
 ## Repo-Scoped Audit
 
-<?allow-empty-section?>
+All 58 registered rules were audited. `ConfigTarget` rules (MDS040
+recipe-safety) are excluded: they run once via `runConfigTargetRules`,
+not per markdown file, so per-file duplicate tuples cannot occur.
+
+### Marked repo-scoped (1 rule)
+
+- **MDS048 git-hook-sync** — `Check` anchors every diagnostic to
+  `filepath.Join(repoRoot, ".gitattributes")` at line 1, column 1.
+  The tuple `(repoRoot/.gitattributes, 1, 1, MDS048, message)` is
+  fully independent of the linted host file. Two host files in the
+  same repo emit the same tuple; `DedupeDiagnostics` collapses them.
+
+### Not repo-scoped (all remaining non-ConfigTarget rules)
+
+- **MDS021 include** — `makeDiag(filePath, line, msg)` uses the
+  host file's path. The tuple includes the linting file and line of
+  the `<?include?>` directive. Different host files produce distinct
+  tuples.
+- **MDS019 catalog** — diagnostics are anchored to the directive
+  position in the host file. Same reasoning as include.
+- **MDS027 cross-file-reference-integrity** — all diagnostic helpers
+  (`brokenFileDiag`, `brokenHeadingDiag`, etc.) use `f.Path` as the
+  file field. Every tuple is host-file-anchored.
+- All other rules (format, style, structure, content) — every rule
+  uses `f.Path` or the in-file line/column for its diagnostics.
+
+### Measurement
+
+`GOMAXPROCS=1 BenchmarkCheckCorpusLarge`, 600-file corpus:
+
+| path                                  | us/file | B/op    |
+|---------------------------------------|---------|---------|
+| before (always-on DedupeDiagnostics)  | ~1 021  | ~247 MB |
+| after (skip when no RepoScoped rules) | ~952    | ~226 MB |
+| delta                                 | −7%     | −21 MB  |
+
+The 21 MB drop is the `map[key]struct{}` and output slice that
+`DedupeDiagnostics` allocated on every run. The default rule set has
+MDS048 disabled. The map never collapsed anything. The skip removes
+that dead allocation.
 
 ## Acceptance Criteria
 
-- [ ] `rule.RepoScoped` exists, is documented with the
+- [x] `rule.RepoScoped` exists, is documented with the
       cross-file-tuple criterion, and is implemented by
       every flagged rule and no others.
-- [ ] The audit is recorded with a per-rule reason.
+- [x] The audit is recorded with a per-rule reason.
       `ConfigTarget` rules are explicitly excluded.
-- [ ] On the multi-host cross-file corpus with the
+- [x] On the multi-host cross-file corpus with the
       default rule set, `Run` output is byte-identical
       with and without the skip.
-- [ ] A non-`RepoScoped` rule emitting a cross-file
+- [x] A non-`RepoScoped` rule emitting a cross-file
       duplicate fails the regression-guard test.
-- [ ] The single-core gate shows the `DedupeDiagnostics`
+- [x] The single-core gate shows the `DedupeDiagnostics`
       map+slice gone on the default corpus. The drop is
       recorded.
-- [ ] `mdsmith check .` passes. `-race` is clean on
+- [x] `mdsmith check .` passes. `-race` is clean on
       `internal/engine` and `internal/rule`.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

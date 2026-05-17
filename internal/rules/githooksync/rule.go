@@ -450,6 +450,15 @@ func (r *Rule) resolveRepoRoot(dir string) (string, error) {
 	return root, err
 }
 
+// RepoScopedDiagnostics implements rule.RepoScoped. git-hook-sync
+// anchors every diagnostic to the repository .gitattributes path,
+// independent of the host file being linted, so the same
+// (File, Line, Column, RuleID, Message) tuple recurs for every
+// markdown file in the repo. DedupeDiagnostics collapses these
+// duplicates; this marker lets the engine skip that allocation when
+// git-hook-sync is disabled.
+func (r *Rule) RepoScopedDiagnostics() bool { return true }
+
 // ApplySettings implements rule.Configurable. The rule has no runtime
 // settings, so this only rejects unknown keys when a user supplies a
 // mapping. The rule executes regardless of whether ApplySettings is
@@ -470,4 +479,5 @@ var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
 	_ rule.FixableRule  = (*Rule)(nil)
+	_ rule.RepoScoped   = (*Rule)(nil)
 )

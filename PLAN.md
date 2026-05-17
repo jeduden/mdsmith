@@ -109,6 +109,6 @@ footer: |
 | 180 | 🔲     | sonnet | [Descriptive link text rule](plan/180_descriptive-link-text.md)                                                                         |
 | 181 | 🔲     | opus   | [Table structure rules](plan/181_table-structure.md)                                                                                    |
 | 182 | 🔲     | sonnet | [Code block convention rules](plan/182_code-block-conventions.md)                                                                       |
-| 183 | 🔲     | sonnet | [Skip DedupeDiagnostics via an audited rule.RepoScoped marker](plan/183_dedupe-diagnostics-repo-scoped-skip.md)                         |
+| 183 | ✅     | sonnet | [Skip DedupeDiagnostics via an audited rule.RepoScoped marker](plan/183_dedupe-diagnostics-repo-scoped-skip.md)                         |
 | 184 | 🔳     | opus   | [Automate the cross-tool benchmark on merge to main and publish numbers to the assets branch](plan/184_release-benchmark-automation.md) |
 <?/catalog?>

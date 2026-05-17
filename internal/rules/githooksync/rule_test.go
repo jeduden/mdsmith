@@ -827,3 +827,9 @@ func TestRule_Fix_InvalidatesDriftCache(t *testing.T) {
 	driftMu.Unlock()
 	assert.False(t, stillPopulated, "Fix must invalidate the drift cache")
 }
+
+func TestRule_RepoScopedDiagnostics(t *testing.T) {
+	assert.True(t, (&Rule{}).RepoScopedDiagnostics(),
+		"git-hook-sync must declare itself repo-scoped: its diagnostics "+
+			"are anchored to .gitattributes, not the linted host file")
+}

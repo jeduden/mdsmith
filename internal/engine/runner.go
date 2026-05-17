@@ -116,7 +116,17 @@ func (r *Runner) Run(paths []string) *Result {
 		res.Errors = append(res.Errors, o.errs...)
 	}
 
-	res.Diagnostics = DedupeDiagnostics(res.Diagnostics)
+	// DedupeDiagnostics is only needed when a repo-scoped rule is
+	// enabled. Repo-scoped rules (e.g. git-hook-sync / MDS048) anchor
+	// their diagnostic to a repository artifact rather than the linted
+	// file, so the same tuple can recur across files. When no such rule
+	// is enabled, every diagnostic tuple is anchored to its linted file
+	// and cannot collide, so the map+slice allocation is pure waste.
+	// RunSource (single in-memory file) is exempt: duplicates cannot
+	// arise from a single-file lint.
+	if r.anyRepoScopedEnabled() {
+		res.Diagnostics = DedupeDiagnostics(res.Diagnostics)
+	}
 	sortDiagnostics(res.Diagnostics)
 	return res
 }
@@ -580,6 +590,36 @@ func (r *Runner) runConfigTargetRules(res *Result) {
 		diags := configured.Check(f)
 		res.Diagnostics = append(res.Diagnostics, diags...)
 	}
+}
+
+// anyRepoScopedEnabled reports whether any markdown rule (excluding
+// ConfigTarget rules) implements rule.RepoScoped and is enabled in the
+// global effective configuration. Run uses this once to decide whether
+// DedupeDiagnostics is needed: when no enabled rule is repo-scoped,
+// every diagnostic tuple is anchored to its linted file and cross-file
+// duplicates cannot occur, so the map+slice allocation is skipped.
+//
+// The effective config is queried with an empty path and nil front-matter
+// so kind-specific overrides do not influence the result. A repo-scoped
+// rule enabled only for a specific kind is conservatively treated as
+// potentially enabled (it is still surfaced by its global config entry).
+//
+// RunSource is a single in-memory file and is exempt from this check:
+// a single-file lint cannot produce cross-file duplicates.
+func (r *Runner) anyRepoScopedEnabled() bool {
+	mdRules := markdownRulesFrom(r.Rules, r.ConfigPath)
+	effective := r.effectiveWithCategories("", nil, nil)
+	for _, rl := range mdRules {
+		rs, ok := rl.(rule.RepoScoped)
+		if !ok || !rs.RepoScopedDiagnostics() {
+			continue
+		}
+		cfg, ok := effective[rl.Name()]
+		if ok && cfg.Enabled {
+			return true
+		}
+	}
+	return false
 }
 
 // sortDiagnostics sorts diagnostics by file, line, column, then message.
