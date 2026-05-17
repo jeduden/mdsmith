@@ -103,6 +103,29 @@ func TestCloneInstance_NonConfigurable_IndependentCopy(t *testing.T) {
 	assert.Equal(t, "stub", clone.Name())
 }
 
+// valueRule satisfies Rule with value receivers, so an interface
+// holding it is not a pointer — exercising CloneInstance's value-type
+// branch (the interface already carries a copy).
+type valueRule struct {
+	id   string
+	name string
+}
+
+func (r valueRule) ID() string                           { return r.id }
+func (r valueRule) Name() string                         { return r.name }
+func (r valueRule) Category() string                     { return "test" }
+func (r valueRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
+
+func TestCloneInstance_ValueType_ReturnsCopy(t *testing.T) {
+	var original Rule = valueRule{id: "MDS900", name: "value-rule"}
+
+	clone := CloneInstance(original)
+
+	require.IsType(t, valueRule{}, clone)
+	assert.Equal(t, "MDS900", clone.ID())
+	assert.Equal(t, "value-rule", clone.Name())
+}
+
 func TestCloneRule_ApplySettingsOnClone(t *testing.T) {
 	original := &configurableStub{id: "MDS001", name: "test", Max: 80, Style: "default"}
 
