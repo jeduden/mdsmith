@@ -7,6 +7,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCollectCodeBlockLines_CachedPerFile pins the memoization added in
+// plan 175: a dozen rules call this per file, so it must walk the AST
+// once and hand every caller the same map instance.
+func TestCollectCodeBlockLines_CachedPerFile(t *testing.T) {
+	f, err := NewFile("t.md", []byte("text\n\n```go\nx := 1\n```\n\nmore\n"))
+	require.NoError(t, err)
+
+	first := CollectCodeBlockLines(f)
+	second := CollectCodeBlockLines(f)
+
+	require.NotEmpty(t, first, "fenced block lines must be detected")
+	assertSameMap(t, first, second)
+}
+
+// TestCollectPIBlockLines_CachedPerFile mirrors the code-block case for
+// the processing-instruction line set.
+func TestCollectPIBlockLines_CachedPerFile(t *testing.T) {
+	f, err := NewFile("t.md", []byte("# H\n\n<?toc?>\n<?/toc?>\n\nbody\n"))
+	require.NoError(t, err)
+
+	first := CollectPIBlockLines(f)
+	second := CollectPIBlockLines(f)
+
+	assertSameMap(t, first, second)
+}
+
+// assertSameMap asserts the two maps are the identical backing map,
+// which proves the walk ran once and the result was cached rather than
+// recomputed (a fresh map each call would have a different address).
+func assertSameMap(t *testing.T, a, b map[int]bool) {
+	t.Helper()
+	a[-1] = true
+	assert.True(t, b[-1], "second call must return the cached map, not a fresh walk")
+	delete(a, -1)
+}
+
 func TestCollectPIBlockLines_MultiLine(t *testing.T) {
 	// Lines:
 	// 1: # Heading

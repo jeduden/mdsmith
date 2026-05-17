@@ -13,8 +13,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
@@ -53,7 +51,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		shortcut = shortcutHeuristic
 	}
 
-	defs := collectReferenceDefs(f.Source)
+	defs := collectReferenceDefs(f)
 	codeLines := lint.CollectCodeBlockLines(f)
 	codeSpans := collectCodeSpanRanges(f)
 	piLines := lint.CollectPIBlockLines(f)
@@ -72,13 +70,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// collectReferenceDefs re-parses source with the lint parser and returns
-// the set of normalized labels for which a link reference definition exists.
-func collectReferenceDefs(source []byte) map[string]bool {
-	ctx := parser.NewContext()
-	lint.NewParser().Parse(text.NewReader(source), parser.WithContext(ctx))
-	defs := make(map[string]bool, len(ctx.References()))
-	for _, ref := range ctx.References() {
+// collectReferenceDefs returns the set of normalized labels for which a
+// link reference definition exists, reading the definitions goldmark
+// already collected during the file's single parse (see
+// lint.File.LinkReferences) rather than re-parsing the source.
+func collectReferenceDefs(f *lint.File) map[string]bool {
+	refs := f.LinkReferences()
+	defs := make(map[string]bool, len(refs))
+	for _, ref := range refs {
 		defs[normalizeLabel(ref.Label())] = true
 	}
 	return defs

@@ -2,10 +2,18 @@ package lint
 
 import "github.com/yuin/goldmark/ast"
 
-// CollectPIBlockLines walks the AST and returns a set of 1-based line numbers
-// that belong to processing-instruction blocks, including the opening <?...
-// line and the closing ?> line.
+// CollectPIBlockLines returns a set of 1-based line numbers that belong
+// to processing-instruction blocks, including the opening <?... line and
+// the closing ?> line. The walk is computed once per File and cached;
+// the returned map is shared read-only and must not be mutated.
 func CollectPIBlockLines(f *File) map[int]bool {
+	f.piBlockLinesOnce.Do(func() {
+		f.piBlockLines = collectPIBlockLines(f)
+	})
+	return f.piBlockLines
+}
+
+func collectPIBlockLines(f *File) map[int]bool {
 	lines := map[int]bool{}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -27,10 +35,18 @@ func CollectPIBlockLines(f *File) map[int]bool {
 	return lines
 }
 
-// CollectCodeBlockLines walks the AST and returns a set of 1-based line
-// numbers that belong to fenced code blocks (including fence lines) or
-// indented code blocks.
+// CollectCodeBlockLines returns a set of 1-based line numbers that
+// belong to fenced code blocks (including fence lines) or indented code
+// blocks. The walk is computed once per File and cached; the returned
+// map is shared read-only and must not be mutated.
 func CollectCodeBlockLines(f *File) map[int]bool {
+	f.codeBlockLinesOnce.Do(func() {
+		f.codeBlockLines = collectCodeBlockLines(f)
+	})
+	return f.codeBlockLines
+}
+
+func collectCodeBlockLines(f *File) map[int]bool {
 	lines := map[int]bool{}
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {

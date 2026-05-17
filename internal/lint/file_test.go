@@ -9,6 +9,47 @@ import (
 	"github.com/yuin/goldmark/ast"
 )
 
+// TestLinkReferences_FromNewFileParse pins that LinkReferences reads the
+// definitions goldmark already collected during NewFile's parse, so
+// MDS053/MDS054 do not re-parse the document.
+func TestLinkReferences_FromNewFileParse(t *testing.T) {
+	src := []byte("See [a] and [b].\n\n[a]: https://example.com/a\n[B]: https://example.com/b\n")
+	f, err := NewFile("t.md", src)
+	require.NoError(t, err)
+
+	refs := f.LinkReferences()
+	require.Len(t, refs, 2)
+
+	// Label() casing is goldmark's business; the rules normalize via
+	// util.ToLinkReference. Assert presence case-insensitively so this
+	// test pins "both defs were captured from the single parse", not
+	// goldmark's internal label form.
+	labels := map[string]bool{}
+	for _, r := range refs {
+		labels[strings.ToLower(strings.TrimSpace(string(r.Label())))] = true
+	}
+	assert.True(t, labels["a"], "definition [a] must be captured")
+	assert.True(t, labels["b"], "definition [B] must be captured")
+
+	// Second call returns the cached slice, not a fresh parse.
+	again := f.LinkReferences()
+	require.Len(t, again, 2)
+	assert.Equal(t, refs[0].Label(), again[0].Label())
+}
+
+// TestLinkReferences_StructLiteralFallback covers a File built without
+// NewFile: there is no captured parse context, so the first call must
+// parse Source once on demand and still find the definitions.
+func TestLinkReferences_StructLiteralFallback(t *testing.T) {
+	f := &File{
+		Path:   "t.md",
+		Source: []byte("Use [x].\n\n[x]: https://example.com/x\n"),
+	}
+	refs := f.LinkReferences()
+	require.Len(t, refs, 1)
+	assert.Equal(t, "x", string(refs[0].Label()))
+}
+
 func TestNewFile_EmptyContent(t *testing.T) {
 	f, err := NewFile("test.md", []byte(""))
 	require.NoError(t, err)

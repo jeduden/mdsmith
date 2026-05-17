@@ -61,7 +61,38 @@ type File struct {
 	// LSP serving concurrent requests for one document).
 	newlineOffsets     []int
 	newlineOffsetsOnce sync.Once
+
+	// codeBlockLines / piBlockLines cache the line-set walks behind
+	// CollectCodeBlockLines / CollectPIBlockLines. Both are pure
+	// functions of the immutable f.AST, yet up to a dozen default
+	// rules each called them independently — ~20 redundant full AST
+	// walks per file over the 600-file check gate (plan 175
+	// profiling). The cached map is shared read-only with every
+	// caller; no caller mutates it. sync.Once keeps the lazy build
+	// race-free across the LSP's concurrent readers, matching
+	// newlineOffsets above.
+	codeBlockLines     map[int]bool
+	codeBlockLinesOnce sync.Once
+	piBlockLines       map[int]bool
+	piBlockLinesOnce   sync.Once
+
+	// parseCtx is the goldmark parser.Context produced by the one
+	// parse NewFile already runs. It is the source for LinkReferences
+	// so MDS053/MDS054 no longer each re-parse the whole document
+	// just to read its link reference definitions — the single
+	// largest hot spot on the 600-file check gate (~10% CPU, plan
+	// 175 profiling). nil when the File was built as a struct literal
+	// rather than via NewFile; LinkReferences then parses once on
+	// demand. Released once linkRefs is materialized.
+	parseCtx     parser.Context
+	linkRefs     []Reference
+	linkRefsOnce sync.Once
 }
+
+// Reference is a link reference definition discovered during the parse,
+// re-exported from goldmark so callers of LinkReferences need not import
+// the parser package.
+type Reference = parser.Reference
 
 // SetRootDir configures the project root directory and its fs.FS together.
 func (f *File) SetRootDir(dir string) {
@@ -101,19 +132,64 @@ func NewParser() parser.Parser {
 	)
 }
 
+// parserPool reuses goldmark parsers across NewFile / LinkReferences
+// calls. lint.NewParser() rebuilds a substantial config (default block,
+// inline, and paragraph parsers plus the PI block parser) every call;
+// constructing one per file was ~5% of all allocations over the
+// 600-file check gate (plan 175 profiling). A sync.Pool is the proven
+// house pattern (mirrors internal/index/build.go's parserPool, already
+// safe under its parallel Build): each goroutine Gets its own instance
+// and Puts it back, so there is no shared mutable parser even though
+// NewFile is called from many goroutines at once (parallel check, the
+// LSP serving concurrent documents). goldmark Parse keeps all per-parse
+// state in the per-call parser.Context.
+var parserPool = sync.Pool{
+	New: func() any { return NewParser() },
+}
+
+// parseWithPooledParser parses source with a pooled parser and the
+// given context, returning the document root. The parser is borrowed
+// for the duration of the Parse call only and returned immediately, so
+// concurrent callers each hold a distinct instance.
+func parseWithPooledParser(source []byte, ctx parser.Context) ast.Node {
+	p := parserPool.Get().(parser.Parser)
+	defer parserPool.Put(p)
+	return p.Parse(text.NewReader(source), parser.WithContext(ctx))
+}
+
 // NewFile parses source as Markdown and returns a File.
 func NewFile(path string, source []byte) (*File, error) {
-	reader := text.NewReader(source)
-	node := NewParser().Parse(reader)
+	pc := parser.NewContext()
+	node := parseWithPooledParser(source, pc)
 
 	lines := bytes.Split(source, []byte("\n"))
 
 	return &File{
-		Path:   path,
-		Source: source,
-		Lines:  lines,
-		AST:    node,
+		Path:     path,
+		Source:   source,
+		Lines:    lines,
+		AST:      node,
+		parseCtx: pc,
 	}, nil
+}
+
+// LinkReferences returns the link reference definitions goldmark found
+// in this document. It is computed once and cached. On the normal path
+// it reads the context from the parse NewFile already performed (no
+// extra parse); a File built as a struct literal has no such context,
+// so the first call parses Source once. The returned slice is shared
+// read-only.
+func (f *File) LinkReferences() []Reference {
+	f.linkRefsOnce.Do(func() {
+		ctx := f.parseCtx
+		if ctx == nil {
+			ctx = parser.NewContext()
+			parseWithPooledParser(f.Source, ctx)
+		}
+		f.linkRefs = ctx.References()
+		f.parseCtx = nil // context no longer needed; let it GC
+	})
+	return f.linkRefs
 }
 
 // NewFileFromSource creates a File from raw source bytes. When

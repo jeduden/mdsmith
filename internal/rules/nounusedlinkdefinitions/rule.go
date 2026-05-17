@@ -12,8 +12,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
@@ -215,13 +213,12 @@ var refDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$`)
 // duplicate definition.
 func collectDefinitions(f *lint.File) []referenceDefinition {
 	source := f.Source
-	ctx := parser.NewContext()
-	lint.NewParser().Parse(text.NewReader(source), parser.WithContext(ctx))
 
 	// wanted holds normalized labels that goldmark found as valid definitions
-	// (first-wins, non-code-block, non-PI-block).
+	// (first-wins, non-code-block, non-PI-block), read from the file's
+	// single parse rather than a second re-parse.
 	wanted := map[string]bool{}
-	for _, ref := range ctx.References() {
+	for _, ref := range f.LinkReferences() {
 		wanted[string(ref.Label())] = true
 	}
 	if len(wanted) == 0 {
