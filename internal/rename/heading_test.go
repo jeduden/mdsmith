@@ -208,6 +208,21 @@ func TestHeading_RefDefInCodeBlockNotRewritten(t *testing.T) {
 
 // --- direct helper coverage for branches Heading can't easily drive --
 
+func TestFindHeadingLine(t *testing.T) {
+	src := []byte("---\ntitle: x\n---\n# Intro\n\n## Setup\n")
+	line, ok := FindHeadingLine(src, "Setup")
+	require.True(t, ok)
+	assert.Equal(t, 6, line) // 3 front-matter lines + body line 3
+
+	_, ok = FindHeadingLine(src, "Missing")
+	assert.False(t, ok)
+}
+
+func TestNormalizeLabel(t *testing.T) {
+	assert.Equal(t, "docs api", NormalizeLabel("Docs  API"))
+	assert.Equal(t, "x", NormalizeLabel("X"))
+}
+
 func TestFirstControlRune(t *testing.T) {
 	assert.Equal(t, '\r', firstControlRune("a\rb"))
 	assert.Equal(t, rune(0), firstControlRune("clean"))

@@ -119,6 +119,31 @@ func Heading(
 	return changes, nil
 }
 
+// FindHeadingLine returns the 1-based source line of the first
+// heading whose visible text equals headingText, or ok=false when no
+// heading matches. The CLI uses it to turn `--heading "Old"` into the
+// line coordinate the rename engine expects; it parses the same way
+// the engine does so the line it finds is the line Heading rewrites.
+func FindHeadingLine(source []byte, headingText string) (int, bool) {
+	body, fmOffset := bodyAndFMOffset(source)
+	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	for _, h := range walkAllHeadings(root, body) {
+		if h.text == headingText {
+			return h.bodyLine + fmOffset, true
+		}
+	}
+	return 0, false
+}
+
+// NormalizeLabel collapses a link-reference label to its canonical
+// matching form (lowercased, whitespace-collapsed), the same
+// normalization LinkRef expects its oldLabel argument in. The CLI
+// normalizes `--link-ref oldlabel` through this before calling
+// LinkRef.
+func NormalizeLabel(s string) string {
+	return normalizedLabel([]byte(s))
+}
+
 // firstControlRune returns the first newline / carriage return in s,
 // or 0 when s is a single line. Heading text and link-ref labels are
 // single-line surfaces; a control rune would rewrite them into
