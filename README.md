@@ -15,13 +15,9 @@ file: docs/research/benchmarks/headline.fragment.md
 docs/research/benchmarks/data/*.json — do not edit by hand. Re-run
 the harness (run.sh) and `mdsmith fix` to refresh. -->
 One static Go binary checks 523 Markdown files in about
-0.2 s. That is roughly 10x faster than Node markdownlint.
-It does more per file than the Rust linters; closing the rest of
-that gap is active work.
+0.2 s. That is roughly 9x faster than Node markdownlint.
 <?/include?>
-
-Numbers above come from a reproducible
-[benchmark](docs/research/benchmarks/README.md), not hand-typed copy.
+[Benchmark](docs/research/benchmarks/README.md).
 
 <!-- Rendered by .github/workflows/demo.yml on push to main; published to the assets branch -->
 ![mdsmith demo](https://raw.githubusercontent.com/jeduden/mdsmith/assets/assets/demo.gif)
