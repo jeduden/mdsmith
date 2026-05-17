@@ -102,17 +102,23 @@ research artifact, not a CI gate.
     memoized per `File` (was ~20 redundant AST walks per
     file); (d) per-diagnostic source-context strings are
     skipped when the caller discards them (the gate, machine
-    output). Measured single-core `BenchmarkCheckCorpusLarge`
-    (`GOMAXPROCS=1`, 12x): 1677 → 1109 us/file, p95 1006 →
-    665 ms (−34%). All caches `sync.Once`- or
-    `sync.Pool`-guarded so the multi-goroutine check / LSP
-    path stays race-clean. Remaining candidates:
-    `crossfilereferenceintegrity` stat/symlink memo,
-    `strings.Fields` allocation-free word count, and a
-    `rule.RepoScoped`-marked `DedupeDiagnostics` skip
-    (deferred: catalog/include/MDS027 also emit cross-file
-    duplicates, so a safe skip needs an audited marker, not
-    a quick guard).
+    output). Two further wins from the parallelism effort's
+    single-core notes also landed: (e)
+    `crossfilereferenceintegrity` memoizes its per-link
+    `os.Stat` / `filepath.EvalSymlinks` in package-level
+    `sync.Map`s (Syscall6 was ~5.7% flat); (f)
+    `mdtext.CountWords` counts in an allocation-free rune
+    scan instead of `len(strings.Fields(...))` (~0.48 GB).
+    Measured single-core `BenchmarkCheckCorpusLarge`
+    (`GOMAXPROCS=1`, 12x): 1677 → 1046 us/file, p95 1006 →
+    627 ms (−38% cumulative). All caches `sync.Once`-,
+    `sync.Pool`- or `sync.Map`-guarded so the multi-goroutine
+    check / LSP path stays race-clean (verified under
+    `-race`). One candidate is deliberately deferred: a
+    `rule.RepoScoped`-marked `DedupeDiagnostics` skip —
+    catalog/include/MDS027 also emit cross-file duplicates,
+    so a safe skip needs an audited marker, not a quick
+    guard.
 
 ## Acceptance Criteria
 
