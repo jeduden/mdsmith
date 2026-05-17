@@ -1,4 +1,6 @@
 /mdsmith
+*.test
+*.prof
 eval/corpus/config.local.yml
 coverage.out
 cover.out
