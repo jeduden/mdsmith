@@ -459,26 +459,37 @@ func writeSeparatorRow(line *strings.Builder, aligns []align, colWidths []int, n
 	for j := 0; j < numCols; j++ {
 		colWidth := colWidths[j]
 		if cfg.SeparatorSpaced {
+			dashCount := colWidth
+			switch aligns[j] {
+			case alignLeft, alignRight:
+				dashCount--
+			case alignCenter:
+				dashCount -= 2
+			}
+			if dashCount < 3 {
+				dashCount = 3
+			}
+
 			switch aligns[j] {
 			case alignLeft:
 				line.WriteString(pad)
 				line.WriteByte(':')
-				line.WriteString(strings.Repeat("-", colWidth-1))
+				line.WriteString(strings.Repeat("-", dashCount))
 				line.WriteString(pad)
 			case alignRight:
 				line.WriteString(pad)
-				line.WriteString(strings.Repeat("-", colWidth-1))
+				line.WriteString(strings.Repeat("-", dashCount))
 				line.WriteByte(':')
 				line.WriteString(pad)
 			case alignCenter:
 				line.WriteString(pad)
 				line.WriteByte(':')
-				line.WriteString(strings.Repeat("-", colWidth-2))
+				line.WriteString(strings.Repeat("-", dashCount))
 				line.WriteByte(':')
 				line.WriteString(pad)
 			default:
 				line.WriteString(pad)
-				line.WriteString(strings.Repeat("-", colWidth))
+				line.WriteString(strings.Repeat("-", dashCount))
 				line.WriteString(pad)
 			}
 		} else {
