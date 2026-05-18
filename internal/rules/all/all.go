@@ -18,9 +18,9 @@ package all
 import (
 	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"           // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"   // registers rule
-	_ "github.com/jeduden/mdsmith/internal/rules/blockquotewhitespace"        // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"     // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"        // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/blockquotewhitespace"        // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/build"                       // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/catalog"                     // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/concisenessscoring"          // registers rule

@@ -3,6 +3,9 @@ package blockquotewhitespace
 import (
 	"testing"
 
+	goldmarkast "github.com/yuin/goldmark/ast"
+	goldmarktext "github.com/yuin/goldmark/text"
+
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +64,16 @@ func TestCheck_MD027_NestedBlockquote(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Equal(t, 1, diags[0].Line)
 	assert.Equal(t, 3, diags[0].Column) // ">  " starts at byte index 2, column 3
+}
+
+func TestCheck_MD027_ContentArrow_NoFlag(t *testing.T) {
+	// A > inside blockquote content (not the marker) must not be flagged.
+	src := []byte("> text >  more\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	assert.Empty(t, diags)
 }
 
 func TestCheck_MD027_SkipsFencedCodeBlock(t *testing.T) {
@@ -182,6 +195,52 @@ func TestFix_MD028_NoAutoFix(t *testing.T) {
 	got := r.Fix(f)
 	// Fix only touches MD027; MD028 content is preserved.
 	assert.Equal(t, string(src), string(got))
+}
+
+// --- Helper function coverage ---
+
+func TestNodeFirstLine_EmptyNode(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte(""))
+	require.NoError(t, err)
+	// A node with no lines and no children returns 0.
+	n := goldmarkast.NewParagraph()
+	assert.Equal(t, 0, nodeFirstLine(f, n))
+}
+
+func TestNodeLastLine_EmptyNode(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte(""))
+	require.NoError(t, err)
+	// A node with no lines and no children returns 0.
+	n := goldmarkast.NewParagraph()
+	assert.Equal(t, 0, nodeLastLine(f, n))
+}
+
+func TestNodeLastLine_ZeroStopSegment(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("text\n"))
+	require.NoError(t, err)
+	// When the last segment has Stop=0 the fallback uses Start.
+	n := goldmarkast.NewParagraph()
+	n.Lines().Append(goldmarktext.NewSegment(0, 0))
+	got := nodeLastLine(f, n)
+	assert.Equal(t, 1, got)
+}
+
+func TestCheck_MD028_EmptyFirstBlockquote_NoFlag(t *testing.T) {
+	// A bare > with no content produces an empty blockquote; nodeLastLine
+	// returns 0 so the guard fires and nothing is flagged.
+	src := []byte(">\n\n> second\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	assert.Empty(t, diags)
+}
+
+func TestIsBlankLine_OutOfBounds(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("> text\n"))
+	require.NoError(t, err)
+	assert.False(t, isBlankLine(f, 0))   // idx = -1, before start
+	assert.False(t, isBlankLine(f, 100)) // idx beyond end of file
 }
 
 // --- Meta ---

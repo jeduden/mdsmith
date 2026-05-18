@@ -23,10 +23,14 @@ func init() {
 type Rule struct{}
 
 var (
-	// reBlockquoteLine matches lines that begin with an optional blockquote
-	// prefix so the MD027 check skips > inside code spans or list text.
-	reBlockquoteLine = regexp.MustCompile(`^\s{0,3}(?:>\s*)*>`)
-	reMultiSpace     = regexp.MustCompile(`> {2,}`)
+	// reBlockquotePrefix extracts the leading chain of > markers and their
+	// trailing spaces from the start of a line (up to 3 spaces indent,
+	// then zero or more >-and-spaces groups). Only this prefix is checked
+	// for MD027, so a > that appears inside the blockquote's content (e.g.
+	// `> text >  more`) is never treated as a marker.
+	reBlockquotePrefix = regexp.MustCompile(`^\s{0,3}(?:>\s*)*`)
+	// reMultiSpace matches a > followed by two or more spaces.
+	reMultiSpace = regexp.MustCompile(`> {2,}`)
 )
 
 // ID implements rule.Rule.
@@ -43,18 +47,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	codeLines := lint.CollectCodeBlockLines(f)
 
-	// MD027: flag blockquote lines that have > followed by 2+ spaces.
-	// Restrict to lines that start with the blockquote marker pattern so
-	// that > inside code spans or list text is not flagged.
+	// MD027: flag blockquote lines where the last > in the marker prefix is
+	// followed by two or more spaces. Only the leading prefix is scanned, so
+	// a > that appears in the actual content of the blockquote is not flagged.
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if codeLines[lineNum] {
 			continue
 		}
-		if !reBlockquoteLine.Match(line) {
-			continue
-		}
-		if loc := reMultiSpace.FindIndex(line); loc != nil {
+		prefix := reBlockquotePrefix.Find(line)
+		if loc := reMultiSpace.FindIndex(prefix); loc != nil {
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     lineNum,
@@ -111,18 +113,24 @@ func (r *Rule) checkBlankBetween(f *lint.File) []lint.Diagnostic {
 }
 
 // Fix implements rule.FixableRule. Collapses multiple spaces after > to one
-// space on every non-code-block line. MD028 violations are not auto-fixed
-// because the intent (one quote vs two) is ambiguous.
+// space on every non-code-block blockquote line. MD028 violations are not
+// auto-fixed because the intent (one quote vs two) is ambiguous.
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
 	lines := make([]string, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if codeLines[lineNum] || !reBlockquoteLine.Match(line) {
+		if codeLines[lineNum] {
 			lines[i] = string(line)
 			continue
 		}
-		lines[i] = string(reMultiSpace.ReplaceAll(line, []byte("> ")))
+		prefix := reBlockquotePrefix.Find(line)
+		if !reMultiSpace.Match(prefix) {
+			lines[i] = string(line)
+			continue
+		}
+		fixedPrefix := reMultiSpace.ReplaceAll(prefix, []byte("> "))
+		lines[i] = string(fixedPrefix) + string(line[len(prefix):])
 	}
 	return []byte(strings.Join(lines, "\n"))
 }
@@ -130,9 +138,6 @@ func (r *Rule) Fix(f *lint.File) []byte {
 // nodeFirstLine returns the 1-based source line of n's first content byte.
 // For container nodes (e.g. Blockquote) it recurses into children.
 func nodeFirstLine(f *lint.File, n ast.Node) int {
-	if t, ok := n.(*ast.Text); ok {
-		return f.LineOfOffset(t.Segment.Start)
-	}
 	if n.Lines().Len() > 0 {
 		return f.LineOfOffset(n.Lines().At(0).Start)
 	}
@@ -147,14 +152,11 @@ func nodeFirstLine(f *lint.File, n ast.Node) int {
 // nodeLastLine returns the 1-based source line of n's last content byte.
 // For container nodes it recurses into children in reverse order.
 func nodeLastLine(f *lint.File, n ast.Node) int {
-	if t, ok := n.(*ast.Text); ok {
-		if t.Segment.Stop > 0 {
-			return f.LineOfOffset(t.Segment.Stop - 1)
-		}
-		return f.LineOfOffset(t.Segment.Start)
-	}
 	if n.Lines().Len() > 0 {
 		last := n.Lines().At(n.Lines().Len() - 1)
+		if last.Stop > 0 {
+			return f.LineOfOffset(last.Stop - 1)
+		}
 		return f.LineOfOffset(last.Start)
 	}
 	for c := n.LastChild(); c != nil; c = c.PreviousSibling() {
