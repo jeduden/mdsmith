@@ -141,24 +141,19 @@ func collectText(b *strings.Builder, n ast.Node, source []byte) {
 	}
 }
 
-// linkLine returns the 1-based source line number for the link.
+// linkLine returns the 1-based source line of the first text node inside
+// the link, falling back to 1 if none exists.
 func linkLine(link *ast.Link, f *lint.File) int {
-	if line := firstTextLine(link, f); line > 0 {
-		return line
-	}
-	return 1
-}
-
-func firstTextLine(n ast.Node, f *lint.File) int {
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		if t, ok := c.(*ast.Text); ok {
-			return f.LineOfOffset(t.Segment.Start)
+	line := 1
+	_ = ast.Walk(link, func(n ast.Node, _ bool) (ast.WalkStatus, error) {
+		t, ok := n.(*ast.Text)
+		if !ok {
+			return ast.WalkContinue, nil
 		}
-		if line := firstTextLine(c, f); line > 0 {
-			return line
-		}
-	}
-	return 0
+		line = f.LineOfOffset(t.Segment.Start)
+		return ast.WalkStop, nil
+	})
+	return line
 }
 
 var (
