@@ -212,21 +212,21 @@ func TestRunBuildWebsiteEndToEnd(t *testing.T) {
 // exercised end-to-end.
 func TestRunVerifyWebsiteLinksHappyPath(t *testing.T) {
 	root := t.TempDir()
-	mq := filepath.Join(root, "docs", "development", "merge-queue", "index.html")
-	aa := filepath.Join(root, "docs", "development", "architecture-audit", "index.html")
-	st := filepath.Join(root, "docs", "reference", "schema-types", "index.html")
-	rule := filepath.Join(root, "docs", "rules", "mds001", "index.html")
+	mq := filepath.Join(root, "development", "merge-queue", "index.html")
+	aa := filepath.Join(root, "development", "architecture-audit", "index.html")
+	st := filepath.Join(root, "reference", "schema-types", "index.html")
+	rule := filepath.Join(root, "rules", "mds001", "index.html")
 	for _, dir := range []string{filepath.Dir(mq), filepath.Dir(aa), filepath.Dir(st), filepath.Dir(rule)} {
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 	require.NoError(t, os.WriteFile(mq,
-		[]byte(`<a href="/docs/development/pr-fixup-workflow/">x</a>`), 0o644))
+		[]byte(`<a href="/development/pr-fixup-workflow/">x</a>`), 0o644))
 	require.NoError(t, os.WriteFile(aa,
-		[]byte(`<a href="/docs/development/architecture/">x</a>`), 0o644))
+		[]byte(`<a href="/development/architecture/">x</a>`), 0o644))
 	require.NoError(t, os.WriteFile(st,
-		[]byte(`<a href="/docs/rules/MDS020-required-structure/">x</a>`), 0o644))
+		[]byte(`<a href="/rules/MDS020-required-structure/">x</a>`), 0o644))
 	require.NoError(t, os.WriteFile(rule,
-		[]byte(`<a href="/docs/rules/mds021/">x</a>`), 0o644))
+		[]byte(`<a href="/rules/mds021/">x</a>`), 0o644))
 
 	assert.Equal(t, 0, run([]string{"verify-website-links", "--dir", root}))
 }

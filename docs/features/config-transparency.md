@@ -5,7 +5,7 @@ summary: >-
   kinds, then overrides. `--explain` and `mdsmith kinds resolve`
   show which layer set each effective value, per leaf.
 icon: git-compare
-link: "/docs/reference/cli/kinds/"
+link: "/reference/cli/kinds/"
 weight: 13
 ---
 # Config you can explain

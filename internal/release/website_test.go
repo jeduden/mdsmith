@@ -37,7 +37,7 @@ func TestRenderLinkHook_SubpathBaseURL(t *testing.T) {
 		"site-absolute branch must derive prefix from site.Home.RelPermalink")
 	// The trailing slash of RelPermalink must be stripped before
 	// concatenation so root deploys get "/" not "//" and sub-path
-	// deploys get "/mdsmith/docs/…" not "/mdsmith//docs/…".
+	// deploys get "/mdsmith/rules/…" not "/mdsmith//rules/…".
 	assert.Contains(t, hook, `strings.TrimSuffix "/" site.Home.RelPermalink`,
 		"trailing slash of site.Home.RelPermalink must be stripped before concatenation")
 }
@@ -196,9 +196,9 @@ func TestBuildWebsite_PublishesRulePages_SiblingLinks(t *testing.T) {
 
 func TestBuildWebsite_PublishesRulePages_DocsAndPlanLinks(t *testing.T) {
 	body := buildRulePageBody(t)
-	assert.Contains(t, body, "](/docs/background/concepts/placeholder-grammar/)",
+	assert.Contains(t, body, "](/background/concepts/placeholder-grammar/)",
 		"docs link must become site-absolute path (no .md extension)")
-	assert.Contains(t, body, "](/docs/guides/schemas/#section-content)",
+	assert.Contains(t, body, "](/guides/schemas/#section-content)",
 		"docs link with anchor must preserve the anchor after the trailing slash")
 	assert.NotContains(t, body, "../../../docs/",
 		"no repo-relative docs/ link may remain on the published page")
@@ -215,7 +215,7 @@ func TestBuildWebsite_PublishesRulePages_DocsAndPlanLinks(t *testing.T) {
 func TestBuildWebsite_PublishesRulePages_FixtureAndSibling(t *testing.T) {
 	body := buildRulePageBody(t)
 	// Deep MDS rule link with anchor → site URL with anchor preserved.
-	assert.Contains(t, body, "(/docs/rules/MDS020-required-structure/#index-side-output)",
+	assert.Contains(t, body, "(/rules/MDS020-required-structure/#index-side-output)",
 		"deep rule link must rewrite to site URL with anchor preserved")
 	// Fixture file links (good/, bad/) → rule's GitHub /blob/ URL.
 	assert.Contains(t, body,

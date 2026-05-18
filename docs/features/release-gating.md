@@ -5,7 +5,7 @@ summary: >-
   expression on front matter; `mdsmith metrics rank` ranks files by
   any shared metric — both ready to pipe into a release script.
 icon: gauge
-link: "/docs/reference/cli/query/"
+link: "/reference/cli/query/"
 weight: 6
 ---
 # Gate releases on doc status

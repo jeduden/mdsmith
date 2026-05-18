@@ -5,7 +5,7 @@ summary: >-
   renderer flavor in one switch. `MDS034` flags syntax the flavor
   will not render; a placeholder vocabulary spares template tokens.
 icon: book-type
-link: "/docs/reference/conventions/"
+link: "/reference/conventions/"
 rules: ["MDS034"]
 weight: 10
 ---

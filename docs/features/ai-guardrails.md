@@ -4,7 +4,7 @@ summary: >-
   Cap file, section, and token-budget size; enforce reading grade and
   sentence count; flag verbatim copy-paste across files.
 icon: bot
-link: "/docs/guides/metrics-tradeoffs/"
+link: "/guides/metrics-tradeoffs/"
 rules: ["MDS022", "MDS028", "MDS037"]
 weight: 4
 ---
@@ -19,7 +19,7 @@ token-budget (`MDS028`) length. Prose rules enforce a reading
 grade (`MDS023`) and a sentence count (`MDS024`). `MDS037` flags
 verbatim copy-paste across files, so a generator cannot pad the
 corpus by repeating itself. The
-[rule directory](/docs/rules/)
+[rule directory](/rules/)
 has the full reference for each.
 
 See the [metrics trade-offs guide](../guides/metrics-tradeoffs.md)

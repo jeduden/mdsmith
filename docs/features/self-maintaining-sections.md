@@ -6,7 +6,7 @@ summary: >-
   another file. A Git merge driver auto-resolves conflicts inside
   those blocks.
 icon: list-checks
-link: "/docs/guides/directives/generating-content/"
+link: "/guides/directives/generating-content/"
 weight: 5
 ---
 # Self-maintaining sections

@@ -23,8 +23,8 @@
 # - Code-block contents: a `[…](…)`-shaped sequence inside
 #   a fenced or inline span parses as code text, not a
 #   Link node.
-# - Site-absolute targets (`/docs/rules/<id>/`,
-#   `/docs/<page>/`): MDS027 short-circuits absolute paths.
+# - Site-absolute targets (`/rules/<id>/`,
+#   `/<page>/`): MDS027 short-circuits absolute paths.
 #
 # The rewriter emits each rewritten URL form with unit-test
 # coverage (internal/release/syncdocs_test.go,

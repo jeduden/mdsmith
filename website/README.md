@@ -117,7 +117,7 @@ Feature copy lives once, as Markdown, in
 - `index.md` is the shared "Why mdsmith" overview. The
   repository `README.md` splices it in with `<?include?>`,
   and the website renders the same file as the
-  `/docs/features/` landing page — so the README and the
+  `/features/` landing page — so the README and the
   site cannot drift.
 - One page per feature (`auto-fix.md`, `performance.md`,
   `quality.md`, …) carries a short `summary:` plus an
@@ -144,7 +144,7 @@ A push to `main` also deploys, via the path filter in
 `docs/**`, `website/**`, the workflow itself, and
 `internal/rules/index.md`. The rule index is on the
 list because `build-website` publishes it as the
-`/docs/rules/` section. Editing a rule README and
+`/rules/` section. Editing a rule README and
 running `mdsmith fix` regenerates the tracked
 `internal/rules/index.md` catalog. That regenerated
 file is the change that triggers the deploy.

@@ -3,11 +3,11 @@
     <div class="logos-strip">
       <span class="logos-label">Distributed via</span>
       {{- /* Sourced from the release-channel docs
-             (docs/development/release-channels/*.md), synced to
-             /docs/development/release-channels/. Each carries a
-             canonical `channelurl` and an ordering `weight` in
+             (docs/development/release-channels/*.md), synced and
+             served at /development/release-channels/. Each carries
+             a canonical `channelurl` and an ordering `weight` in
              front matter — no separate data file. */ -}}
-      {{ with site.GetPage "/docs/development/release-channels" }}
+      {{ with site.GetPage "/development/release-channels" }}
         {{ range .Pages.ByWeight }}
           {{ $c := . }}
           {{ with .Params.channelurl }}

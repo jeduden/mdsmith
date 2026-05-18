@@ -5,7 +5,7 @@ summary: >-
   `mdsmith lsp` server, so diagnostics, fix-on-save, and navigation
   reach your editor and your coding agent unchanged.
 icon: plug
-link: "/docs/guides/editors/vscode/"
+link: "/guides/editors/vscode/"
 weight: 14
 ---
 # Editors and agents

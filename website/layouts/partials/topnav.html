@@ -5,26 +5,27 @@
     </a>
     {{- /* Active-state prefixes pass through relURL so they
            respect --baseURL. Direct comparisons against literal
-           "/docs" would never match when the site is served from
-           a subpath (e.g. <user>.github.io/<repo>/), because
-           .RelPermalink includes the subpath. */ -}}
-    {{- $docsPrefix := relURL "/docs/" -}}
-    {{- $guidesPrefix := relURL "/docs/guides/" -}}
-    {{- $refPrefix := relURL "/docs/reference/" -}}
-    {{- $rulesPrefix := relURL "/docs/rules/" -}}
+           "/guides" would never match when the site is served
+           from a subpath (e.g. <user>.github.io/<repo>/), because
+           .RelPermalink includes the subpath. The synced docs
+           tree is mounted at the site root, so there is no
+           "/docs" landing page or nav entry — the only index is
+           the homepage. */ -}}
+    {{- $guidesPrefix := relURL "/guides/" -}}
+    {{- $refPrefix := relURL "/reference/" -}}
+    {{- $rulesPrefix := relURL "/rules/" -}}
     <nav class="topnav-links">
-      <a class="topnav-link{{ if and (hasPrefix .RelPermalink $docsPrefix) (not (hasPrefix .RelPermalink $guidesPrefix)) (not (hasPrefix .RelPermalink $refPrefix)) (not (hasPrefix .RelPermalink $rulesPrefix)) }} is-active{{ end }}" href="{{ "/docs/" | relURL }}">Docs</a>
-      <a class="topnav-link{{ if hasPrefix .RelPermalink $guidesPrefix }} is-active{{ end }}" href="{{ "/docs/guides/" | relURL }}">Guides</a>
-      <a class="topnav-link{{ if hasPrefix .RelPermalink $refPrefix }} is-active{{ end }}" href="{{ "/docs/reference/" | relURL }}">Reference</a>
+      <a class="topnav-link{{ if hasPrefix .RelPermalink $guidesPrefix }} is-active{{ end }}" href="{{ "/guides/" | relURL }}">Guides</a>
+      <a class="topnav-link{{ if hasPrefix .RelPermalink $refPrefix }} is-active{{ end }}" href="{{ "/reference/" | relURL }}">Reference</a>
       {{- /* Only show Rules when the section exists: a docs
              tree with no internal/rules/index.md publishes no
-             /docs/rules/, so an unconditional link would 404. */ -}}
-      {{ if site.GetPage "/docs/rules" }}
-      <a class="topnav-link{{ if hasPrefix .RelPermalink $rulesPrefix }} is-active{{ end }}" href="{{ "/docs/rules/" | relURL }}">Rules</a>
+             /rules/, so an unconditional link would 404. */ -}}
+      {{ if site.GetPage "/rules" }}
+      <a class="topnav-link{{ if hasPrefix .RelPermalink $rulesPrefix }} is-active{{ end }}" href="{{ "/rules/" | relURL }}">Rules</a>
       {{ end }}
     </nav>
     <div class="topnav-right">
-      <a class="topnav-version" href="https://github.com/{{ .Site.Params.githubRepo }}/releases" rel="noopener" title="Release notes on GitHub">v{{ .Site.Params.version }}</a>
+      <a class="topnav-version" href="{{ "/guides/install/" | relURL }}" title="Install mdsmith">v{{ .Site.Params.version }}</a>
       <a class="topnav-gh" href="https://github.com/{{ .Site.Params.githubRepo }}" rel="noopener" aria-label="mdsmith on GitHub">
         {{ partial "github-mark.html" (dict "size" 15) }}
         GitHub

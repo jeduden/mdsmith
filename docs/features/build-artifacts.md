@@ -5,7 +5,7 @@ summary: >-
   `mdsmith fix` keeps the section body in sync with the recipe
   output; `MDS040` shell-safety-checks the recipe without running it.
 icon: blocks
-link: "/docs/guides/directives/build/"
+link: "/guides/directives/build/"
 rules: ["MDS039", "MDS040"]
 weight: 11
 ---

@@ -615,7 +615,7 @@ func TestReconcileDocForHugo_StripNoOp(t *testing.T) {
 const (
 	ghBlob    = "https://github.com/jeduden/mdsmith/blob/main/"
 	ghTree    = "https://github.com/jeduden/mdsmith/tree/main/"
-	rulesBase = "/docs/rules/"
+	rulesBase = "/rules/"
 )
 
 // transformCase pairs an input markdown body with the expected
@@ -837,7 +837,7 @@ func TestRewriteSiblingNonPublished(t *testing.T) {
 		{"image untouched", "![d](d.svg)\n", "![d](d.svg)\n"},
 		{"pure anchor untouched", "[r](#sec)\n", "[r](#sec)\n"},
 		{"external url untouched", "[c](https://x.io/run.sh)\n", "[c](https://x.io/run.sh)\n"},
-		{"site-absolute untouched", "[a](/docs/rules/MDS027/)\n", "[a](/docs/rules/MDS027/)\n"},
+		{"site-absolute untouched", "[a](/rules/MDS027/)\n", "[a](/rules/MDS027/)\n"},
 		{"parent-relative untouched", "[p](../b/run.sh)\n", "[p](../b/run.sh)\n"},
 		{"code span untouched", "use `[x](run.sh)` lit\n", "use `[x](run.sh)` lit\n"},
 	}

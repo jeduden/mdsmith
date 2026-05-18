@@ -123,7 +123,7 @@ rule would duplicate `ParseTarget`. Plan 171.
 
 ### G2 — MDS027 short-circuits absolute paths
 
-`[x](/docs/rules/MDS027/)` returns early because
+`[x](/rules/MDS027/)` returns early because
 `ParseTarget` rejects a non-empty path that looks
 rooted. Today: silent pass. Should: resolve against a
 configured site root and verify the page exists.

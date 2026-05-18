@@ -5,7 +5,7 @@ summary: >-
   per-file section schemas, and keep Markdown in the right folders.
   Schemas can be inline on a file kind or shared via `proto.md` files.
 icon: link
-link: "/docs/guides/directives/enforcing-structure/"
+link: "/guides/directives/enforcing-structure/"
 rules: ["MDS027", "MDS020", "MDS033"]
 weight: 3
 ---
@@ -19,7 +19,7 @@ resolves links and anchors across the whole workspace.
 enforces a per-file section schema: required headings,
 front-matter fields, and ordering. `MDS033` keeps each Markdown
 file in an allowed folder. The
-[rule directory](/docs/rules/)
+[rule directory](/rules/)
 has the full reference for each.
 
 A schema can be declared inline on a [file

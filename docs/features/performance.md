@@ -6,7 +6,7 @@ summary: >-
   the hot path — roughly 4x faster than Node markdownlint, with a CI
   gate against regression.
 icon: zap
-link: "/docs/reference/cli/check/"
+link: "/reference/cli/check/"
 weight: 7
 ---
 # Fast on every run

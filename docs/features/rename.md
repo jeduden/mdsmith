@@ -7,7 +7,7 @@ summary: >-
   breaking cross-file links.
 icon: replace
 weight: 17
-link: "/docs/reference/cli/lsp/"
+link: "/reference/cli/lsp/"
 ---
 # Rename without breaking links
 

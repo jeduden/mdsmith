@@ -5,7 +5,7 @@ summary: >-
   blocks, and a pre-merge-commit hook re-runs `mdsmith fix` and
   re-stages the result, so generated content never blocks a merge.
 icon: git-merge
-link: "/docs/reference/cli/merge-driver/"
+link: "/reference/cli/merge-driver/"
 weight: 12
 ---
 # Git-native, conflict-free

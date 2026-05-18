@@ -6,7 +6,7 @@ summary: >-
   `<?include?>`, `<?catalog?>`, and cross-file links — consumed by any
   LSP-aware editor.
 icon: edit-3
-link: "/docs/guides/editors/vscode/"
+link: "/guides/editors/vscode/"
 weight: 2
 ---
 # Live diagnostics wherever you write

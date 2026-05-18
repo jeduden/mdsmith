@@ -45,8 +45,9 @@ var ruleRefDefLink = regexp.MustCompile(
 
 // repoDocsLink matches an inline link from a rule README into the
 // docs/ tree (`../../../docs/path/file.md`). The docs tree IS
-// published on the site (under /docs/), but Hugo serves each page
-// at `/docs/path/file/` (no `.md`), so the raw relative path
+// published on the site (the synced content/docs/ tree is mounted
+// at the site root), but Hugo serves each page at `/path/file/`
+// (no `docs` segment, no `.md`), so the raw relative path
 // resolves to a 404. Group 1 captures the path without `.md`;
 // group 2 captures an optional `#anchor` fragment.
 var repoDocsLink = regexp.MustCompile(`\]\(\.\./\.\./\.\./docs/([^)#]*)\.md([^)]*)\)`)
@@ -87,9 +88,11 @@ var repoRuleRefDef = regexp.MustCompile(
 
 // rulePageURLBase is the site-absolute URL prefix every rule page
 // lives under. Hugo serves website/content/docs/rules/<dir>/index.md
-// at /docs/rules/<dir>/, so repo-relative `internal/rules/<dir>/`
-// links from any docs page must rewrite to this prefix to resolve.
-const rulePageURLBase = "/docs/rules/"
+// at /rules/<dir>/ (content/docs/ is mounted at the site root, so
+// there is no `docs` URL segment), so repo-relative
+// `internal/rules/<dir>/` links from any docs page must rewrite to
+// this prefix to resolve.
+const rulePageURLBase = "/rules/"
 
 // repoNonPublishedLink matches an inline link whose target is a
 // repo-relative path that the website does NOT publish — every
@@ -244,7 +247,7 @@ var ruleDirName = regexp.MustCompile(`^MDS[0-9]`)
 // rewriteRuleLinks rewrites every repo-relative link in a synced
 // markdown body so it resolves on the published site. The three
 // classes are applied in order: (1) links into internal/rules/MDS…/
-// become /docs/rules/<dir>/<#anchor> site URLs; (2) links into any
+// become /rules/<dir>/<#anchor> site URLs; (2) links into any
 // other non-published repo path — plan/, cmd/, editors/, website/,
 // .claude/, internal/ (other than the rule pages already handled
 // in step 1), and root-level files — become absolute GitHub URLs,
@@ -266,7 +269,7 @@ var ruleDirName = regexp.MustCompile(`^MDS[0-9]`)
 // match `internal/rules/MDS…`, and only the first leaves the
 // link on-site rather than routing it to GitHub.
 //
-// Idempotent: already-rewritten paths (a leading `/docs/`,
+// Idempotent: already-rewritten paths (a leading `/rules/`,
 // `https://`, or `_index.md`) do not match any regex, so a
 // second pass is a no-op.
 func rewriteRuleLinks(b []byte) []byte {
@@ -648,7 +651,7 @@ func transformRulePage(data []byte, ruleName string) []byte {
 	data = applyOutsideCode(data, func(seg []byte) []byte {
 		seg = ruleReadmeLink.ReplaceAll(seg, []byte("]($1/$2)"))
 		seg = ruleRefDefLink.ReplaceAll(seg, []byte("$1/$3"))
-		seg = repoDocsLink.ReplaceAll(seg, []byte("](/docs/$1/$2)"))
+		seg = repoDocsLink.ReplaceAll(seg, []byte("](/$1/$2)"))
 		seg = repoPlanLink.ReplaceAll(seg, []byte("]("+githubBlobBase+"plan/$1)"))
 		seg = repoPlanRefDef.ReplaceAll(seg, []byte("${1}"+githubBlobBase+"plan/$2"))
 		seg = rewriteRuleFixtures(seg, ruleSourceFiles, ruleSourceDir)

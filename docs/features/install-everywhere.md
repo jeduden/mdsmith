@@ -5,7 +5,7 @@ summary: >-
   uvx, mise, asdf, and GitHub Releases — with no postinstall network
   call, so locked-down CI installs offline.
 icon: package
-link: "/docs/guides/install/"
+link: "/guides/install/"
 weight: 15
 ---
 # Installs everywhere

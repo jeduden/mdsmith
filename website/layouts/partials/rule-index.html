@@ -8,10 +8,10 @@
        "cannot drift" guarantee.
 
        The map is empty when a docs tree is built without
-       internal/rules/index.md (no /docs/rules/ section): the
+       internal/rules/index.md (no /rules/ section): the
        caller then renders the code span unchanged. */ -}}
 {{- $m := dict -}}
-{{- with site.GetPage "/docs/rules" -}}
+{{- with site.GetPage "/rules" -}}
   {{- range .Pages -}}
     {{- $id := .Params.id -}}
     {{- $name := .Params.name -}}

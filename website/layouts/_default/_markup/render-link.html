@@ -5,15 +5,15 @@
        Source docs link sibling pages by relative path
        (`[CLI](../reference/cli.md)`) so the markdown stays
        filesystem-valid for MDS027. The site's URL layout
-       is one level deeper than the source: a markdown file
-       at `docs/guides/foo.md` renders at
-       `/docs/guides/foo/`. A relative href resolved from
-       that rendered URL therefore lands one directory
-       below where the source intended — for example
-       `../reference/globs.md` from `docs/guides/file-kinds.md`
-       would resolve to `/docs/guides/reference/globs/`
-       instead of `/docs/reference/globs/`. Stripping `.md`
-       alone does not fix that mismatch.
+       differs from the source path: a markdown file at
+       `docs/guides/foo.md` renders at `/guides/foo/`. A
+       relative href resolved from that rendered URL
+       therefore lands one directory below where the source
+       intended — for example `../reference/globs.md` from
+       `docs/guides/file-kinds.md` would resolve to
+       `/guides/reference/globs/` instead of
+       `/reference/globs/`. Stripping `.md` alone does not
+       fix that mismatch.
 
        Hugo's `.Page.GetPage` resolves a source-relative
        path to a Page and returns its absolute
@@ -29,7 +29,7 @@
        renders sensibly.
 
        For site-absolute hrefs (the rewriter emits
-       `/docs/rules/<id>/` for cross-rule and docs-to-rule
+       `/rules/<id>/` for cross-rule and docs-to-rule
        references), we run them through `relURL` so a
        deploy with a non-root `--baseURL`
        (e.g. https://example.com/mdsmith/) gets the
@@ -70,7 +70,7 @@
          `site.Home.RelPermalink` (which IS the baseURL
          path with a trailing slash — `/` for root,
          `/mdsmith/` for project-pages). Trim its trailing
-         slash so concatenation does not produce `//docs`. */ -}}
+         slash so concatenation does not produce `//rules`. */ -}}
   {{- $parts := split $url "#" -}}
   {{- $path := index $parts 0 -}}
   {{- $frag := "" -}}

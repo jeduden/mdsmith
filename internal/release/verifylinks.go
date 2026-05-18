@@ -81,20 +81,22 @@ func websiteLinkProbes(prefix string) []linkProbe {
 	return []linkProbe{
 		{
 			name: "sibling .md resolves to target permalink",
-			path: "docs/development/merge-queue/index.html",
+			path: "development/merge-queue/index.html",
 			wantMatch: regexp.MustCompile(
-				hrefEq + q(prefix) + `/docs/development/pr-fixup-workflow/`),
+				hrefEq + q(prefix) + `/development/pr-fixup-workflow/`),
 		},
 		{
 			name: "index.md drop resolves to section URL on leaf page",
-			path: "docs/development/architecture-audit/index.html",
+			path: "development/architecture-audit/index.html",
 			wantMatch: regexp.MustCompile(
-				hrefEq + q(prefix) + `/docs/development/architecture/`),
+				hrefEq + q(prefix) + `/development/architecture/`),
 		},
 		{
-			// The rewriter emits site-absolute `/docs/rules/<id>/`
-			// targets for every cross-rule and docs-to-rule link.
-			// The render-link hook manually prefixes those with
+			// The rewriter emits site-absolute `/rules/<id>/`
+			// targets for every cross-rule and docs-to-rule link
+			// (the synced docs tree is mounted at the site root,
+			// so there is no `/docs` segment). The render-link
+			// hook manually prefixes those with
 			// site.Home.RelPermalink so the rendered href carries
 			// the baseURL's path component (empty on root
 			// deploys, `/<repo>` on project-pages). A recursive
@@ -102,15 +104,15 @@ func websiteLinkProbes(prefix string) []linkProbe {
 			// docs edits — any rendered page that carries one
 			// such href satisfies the assertion, so removing a
 			// single content reference does not block the deploy.
-			name: "site-absolute /docs/rules/ href carries baseURL prefix",
-			path: "docs",
+			name: "site-absolute /rules/ href carries baseURL prefix",
+			path: ".",
 			wantAnyMatch: regexp.MustCompile(
-				hrefEq + q(prefix) + `/docs/rules/MDS[0-9A-Za-z._-]+/`),
+				hrefEq + q(prefix) + `/rules/MDS[0-9A-Za-z._-]+/`),
 			recursive: true,
 		},
 		{
 			name: "no README.md hrefs leaked into rule pages",
-			path: "docs/rules",
+			path: "rules",
 			wantNoMatch: regexp.MustCompile(
 				`href=(?:"[^"]*README\.md|[^ ">]*README\.md)`),
 			recursive: true,
@@ -234,7 +236,7 @@ func readHTMLFile(path string) ([]byte, error) {
 
 // pathPrefixFromBaseURL returns the URL path component of
 // baseURL, with a trailing slash trimmed so the caller can
-// concatenate `/docs/...` without producing `//docs/...`.
+// concatenate `/rules/...` without producing `//rules/...`.
 // An empty baseURL or a root-deploy baseURL
 // (`https://example.com/`) yields "". A project-pages
 // baseURL (`https://example.com/repo/`) yields `/repo`.

@@ -69,7 +69,7 @@ var siblingLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 // extension is outside syncableExt are rewritten. Five classes
 // are deliberately left untouched: synced `.md`/image targets
 // (still valid relative links), site-absolute targets
-// (`/docs/...`), external URLs (`scheme://`), pure `#anchor`
+// (`/rules/...`), external URLs (`scheme://`), pure `#anchor`
 // fragments, and `../`-prefixed paths (those are the
 // non-published rewrite's job — repoNonPublishedLink — and
 // double-handling them here would route the same link twice).
@@ -333,7 +333,7 @@ func (t *Toolkit) syncDocsFile(src, dst, name, repoDir string) (bool, error) {
 // _index.md into a synced subdirectory that has content but no
 // section landing page of its own. Without it Hugo renders no
 // page for the directory and the nav link 404s (the GitHub
-// Pages symptom for /docs/reference/, /docs/background/, …).
+// Pages symptom for /reference/, /background/, …).
 //
 // It is a no-op when the directory already has an _index.md
 // (e.g. an index.md the sibling rename produced) or when the
@@ -389,7 +389,7 @@ func humanizeDirName(name string) string {
 //     documentation about Hugo renders verbatim.
 //   - rewriteRuleLinks: every repo-relative Markdown link is
 //     routed for the published site — `internal/rules/MDS…/`
-//     becomes `/docs/rules/MDS…/`, every other non-published
+//     becomes `/rules/MDS…/`, every other non-published
 //     path (plan/, internal/ Go packages, .claude/, root files,
 //     …) becomes a GitHub blob/tree URL, and a sibling
 //     `<path>/index.md` reference drops to `<path>/` so Hugo's

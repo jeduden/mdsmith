@@ -14,9 +14,23 @@ enableGitInfo = false
 # literal shortcode patterns, dropping proto.md schema
 # templates, and renaming index.md to _index.md.
 # content/docs/ is .gitignore'd.
+#
+# The synced tree lives on disk under content/docs/ (so the
+# .mdsmith.yml / build-output.mdsmith.yml lint globs that
+# target website/content/docs/** keep matching), but it is
+# mounted at the content root rather than under a `docs`
+# segment: every doc page is served at `/<section>/...`, not
+# `/docs/<section>/...`. The only index is the homepage
+# (content/_index.md, served at `/`). The first mount excludes
+# `docs/**` so content/docs/ is not also exposed under `/docs/`;
+# the second mount re-roots it.
 [module]
   [[module.mounts]]
     source = "content"
+    target = "content"
+    excludeFiles = "docs/**"
+  [[module.mounts]]
+    source = "content/docs"
     target = "content"
   [[module.mounts]]
     source = "static"

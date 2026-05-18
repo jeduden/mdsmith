@@ -6,7 +6,7 @@ summary: >-
   ships, and a coverage gate blocks any merge that drops below the
   line.
 icon: shield-check
-link: "/docs/development/coverage/"
+link: "/development/coverage/"
 weight: 8
 ---
 # Quality you can verify

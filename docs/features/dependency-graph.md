@@ -7,7 +7,7 @@ summary: >-
   editor.
 icon: network
 weight: 16
-link: "/docs/reference/cli/deps/"
+link: "/reference/cli/deps/"
 ---
 # See the dependency graph
 

@@ -1,11 +1,11 @@
 {{- /* Feature cards are driven by the shared Markdown in
-       docs/features/ (synced to /docs/features/ by
+       docs/features/ (synced and served at /features/ by
        `mdsmith-release build-website`). The repository README
        includes the same source via <?include?>, so the card
        copy and the README cannot drift. The card links to the
        full feature page, which carries the longer write-up the
        site's layout has room for. */ -}}
-{{- $features := site.GetPage "/docs/features" -}}
+{{- $features := site.GetPage "/features" -}}
 <div class="feature-grid">
   {{- with $features }}
     {{ range .Pages.ByWeight }}
