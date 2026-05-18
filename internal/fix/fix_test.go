@@ -998,6 +998,121 @@ func (r *mockNonConvergingRule) Fix(f *lint.File) []byte {
 
 var _ rule.FixableRule = (*mockNonConvergingRule)(nil)
 
+func TestFix_DryRun_DoesNotWriteToDisk(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	original := []byte("# Hello  \nworld  \n")
+	require.NoError(t, os.WriteFile(mdFile, original, 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors, "unexpected errors: %v", result.Errors)
+
+	got, err := os.ReadFile(mdFile)
+	require.NoError(t, err)
+	assert.Equal(t, string(original), string(got), "file must be unchanged in dry-run mode")
+}
+
+func TestFix_DryRun_ReportsSameCountAsRealRun(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \nworld  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+
+	dryFixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+	dryResult := dryFixer.Fix([]string{mdFile})
+	require.Empty(t, dryResult.Errors)
+
+	// Now run the real fix to count actual violations fixed.
+	realFixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+	}
+	realResult := realFixer.Fix([]string{mdFile})
+	require.Empty(t, realResult.Errors)
+
+	assert.Equal(t, realResult.Failures, dryResult.WouldFix,
+		"dry-run WouldFix must equal the real run's Failures count")
+	assert.Equal(t, 0, len(dryResult.Modified), "dry-run must not record any modified files")
+}
+
+func TestFix_DryRun_PerRuleCounts(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	// Two trailing-space violations.
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \nworld  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors)
+	require.Len(t, result.WouldFixFiles, 1)
+
+	wff := result.WouldFixFiles[0]
+	assert.Equal(t, mdFile, wff.Path)
+	assert.Equal(t, 2, wff.Count)
+	assert.Equal(t, map[string]int{"MDS100": 2}, wff.Rules)
+}
+
+func TestFix_DryRun_ExitCodeMatchesRealRun(t *testing.T) {
+	// A file with a non-fixable violation: both real and dry-run should
+	// leave a remaining diagnostic, giving exit code 1 for both.
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing":   {Enabled: true},
+			"mock-nonfixable": {Enabled: true},
+		},
+	}
+	rules := []rule.Rule{
+		&mockFixableRule{id: "MDS100", name: "mock-trailing"},
+		&mockNonFixableRule{id: "MDS999", name: "mock-nonfixable"},
+	}
+
+	dryFixer := &Fixer{Config: cfg, Rules: rules, DryRun: true}
+	dryResult := dryFixer.Fix([]string{mdFile})
+	require.Empty(t, dryResult.Errors)
+
+	realFixer := &Fixer{Config: cfg, Rules: rules}
+	realResult := realFixer.Fix([]string{mdFile})
+	require.Empty(t, realResult.Errors)
+
+	// Both should have remaining diagnostics (non-fixable rule still fires).
+	assert.Greater(t, len(dryResult.Diagnostics), 0, "dry-run should have remaining diagnostics")
+	assert.Greater(t, len(realResult.Diagnostics), 0, "real run should have remaining diagnostics")
+}
+
 func TestFix_MaxPassesBoundary(t *testing.T) {
 	// A rule whose Fix always appends "X", so content never converges.
 	// applyFixPasses must exit after exactly maxPasses (10) iterations.

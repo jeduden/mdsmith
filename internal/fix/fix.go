@@ -33,6 +33,11 @@ type Fixer struct {
 	// remaining diagnostic so output formatters can render an
 	// explanation trailer.
 	Explain bool
+	// DryRun, when true, skips writing fixed content to disk. The Result
+	// still reports which violations would have been fixed and per-rule
+	// counts via WouldFix and WouldFixFiles.
+	DryRun bool
+
 	// SourceFS, when non-nil, overrides the per-file dirFS that
 	// prepareFile would otherwise derive from filepath.Dir(path).
 	// Used by Source / SourceWithRules so callers can pass a
@@ -76,6 +81,16 @@ func (f *Fixer) cachedGitignore(dir string) *lint.GitignoreMatcher {
 	return m
 }
 
+// WouldFixFile records the dry-run preview for a single file.
+type WouldFixFile struct {
+	// Path is the file path.
+	Path string
+	// Count is the total number of violations that would be fixed.
+	Count int
+	// Rules maps rule ID to the number of violations that rule would fix.
+	Rules map[string]int
+}
+
 // Result holds the outcome of a fix run.
 type Result struct {
 	// FilesChecked is the number of files processed (after ignore filtering).
@@ -89,6 +104,10 @@ type Result struct {
 	Modified []string
 	// Errors contains any errors encountered during the fix process.
 	Errors []error
+	// WouldFix is the total number of violations that would be fixed (dry-run only).
+	WouldFix int
+	// WouldFixFiles holds per-file dry-run preview records (dry-run only).
+	WouldFixFiles []WouldFixFile
 }
 
 // Fix applies auto-fixes to the files at the given paths and returns a Result
@@ -116,6 +135,12 @@ func (f *Fixer) Fix(paths []string) *Result {
 			res.Modified = append(res.Modified, modified)
 		}
 		res.Errors = append(res.Errors, errs...)
+
+		if f.DryRun && len(beforeDiags) > 0 {
+			wff := wouldFixFileFromDiags(path, beforeDiags)
+			res.WouldFix += wff.Count
+			res.WouldFixFiles = append(res.WouldFixFiles, wff)
+		}
 	}
 	res.Failures = len(engine.DedupeDiagnostics(allBefore))
 
@@ -132,6 +157,16 @@ func (f *Fixer) Fix(paths []string) *Result {
 	})
 
 	return res
+}
+
+// wouldFixFileFromDiags builds a WouldFixFile from the pre-fix diagnostics
+// for a single file.
+func wouldFixFileFromDiags(path string, diags []lint.Diagnostic) WouldFixFile {
+	rules := make(map[string]int)
+	for _, d := range diags {
+		rules[d.RuleID]++
+	}
+	return WouldFixFile{Path: path, Count: len(diags), Rules: rules}
 }
 
 // fixFile applies auto-fixes to a single file and returns diagnostics before
@@ -167,7 +202,7 @@ func (f *Fixer) fixFile(path string) ([]lint.Diagnostic, []lint.Diagnostic, stri
 	current := f.applyFixPasses(path, lf.Source, fixable, lf, dirFS, &errs)
 
 	var modified string
-	if !bytes.Equal(lf.Source, current) {
+	if !bytes.Equal(lf.Source, current) && !f.DryRun {
 		out := lf.FullSource(current)
 		if err := atomicWriteFile(path, out, info.Mode()); err != nil {
 			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
