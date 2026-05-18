@@ -51,9 +51,14 @@ question. The current production set:
   rename / deps surfaces.
 - `internal/lsp` — speak the Language
   Server Protocol; consumes the engine.
-- `internal/mdtext` — parse and walk
-  Markdown; the only place that knows
-  goldmark.
+- `pkg/markdown` — the one goldmark
+  parser config and the byte-exact
+  producer. Public; see
+  [Public Markdown Library](../markdown-library.md).
+- `internal/mdtext` — walk an
+  already-parsed AST (slugging, TOC,
+  plain-text). `pkg/markdown` produces
+  the node it walks.
 - `internal/rule` — interfaces for rules
   and fixes (the ports package).
 - `internal/rules/<rule-name>/` — one Go

@@ -91,7 +91,21 @@ cmd/mdsmith              internal/lsp
                          not — e.g.
                          placeholders →
                          fieldinterp)
+                    └─> pkg/markdown
+                        (the one goldmark
+                         parse/produce
+                         surface; public,
+                         imports no
+                         internal/ package)
 ```
+
+`pkg/markdown` sits at the bottom: the
+parse path. `internal/lint` and
+`internal/release` depend on it; it
+depends on nothing in the tree. It is
+also a public cross-system surface — see
+[cross-system contracts](cross-system.md)
+and [Public Markdown Library](../markdown-library.md).
 
 Plus the rule plugins. Each rule has a Go
 implementation package and a sibling
@@ -157,10 +171,12 @@ caught and the reasons we reject them:
   release cycles that should stay
   independent.
 - **A Go or TypeScript command that
-  parses Markdown inline** instead of
-  delegating to `internal/mdtext`. That
-  pulls the parser semantics out of one
-  place and into many.
+  parses Markdown inline** (a local
+  `goldmark.New()`) instead of delegating
+  to `pkg/markdown`. That pulls the
+  parser config out of one place and into
+  many — exactly the drift plan 163
+  removed from `internal/release`.
 - **A distribution shim (`npm/`,
   `python/`) that reimplements binary
   logic** instead of exec'ing it. Shims

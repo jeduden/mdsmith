@@ -41,6 +41,7 @@ row: "- [{summary}](../{filename})"
 - [Codecov coverage gate and CI status checks.](../docs/development/coverage.md)
 - [Where to place Markdown files and documentation types.](../docs/development/file-placement.md)
 - [Build commands, project layout, code style, test fixtures, coverage gate, and merge conflicts.](../docs/development/index.md)
+- [The pkg/markdown public package: parse, produce, and its compatibility policy.](../docs/development/markdown-library.md)
 - [Label-driven merge queue workflow using jeduden/merge-queue-action.](../docs/development/merge-queue.md)
 - [Rebase, CI monitoring, and review comment resolution.](../docs/development/pr-fixup-workflow.md)
 - [Per-platform mdsmith binaries plus the .vsix, the checksum file, and a Sigstore signature, attached to a tag-named release.](../docs/development/release-channels/github-releases.md)
@@ -111,8 +112,7 @@ row: "- [{summary}](../{filename})"
 
 - Any change follows Red/Green TDD: failing test, then pass, then commit
 - Keep commits small and focused on one change
-- Run `mdsmith check .` before committing to ensure all
-  markdown files pass linting
+- Run `mdsmith check .` before committing; all markdown must pass
 - Never modify `.mdsmith.yml` (linter configuration) without
   explicit user consent — this includes rule settings,
   overrides, ignore patterns, and file-length limits
@@ -128,8 +128,7 @@ Copilot re-review (the skills do this automatically).
 
 When implementing work tracked by `plan/`:
 
-- Update the plan file **as part of the
-  implementation**, not as a follow-up
+- Update the plan file **as part of implementation**, not a follow-up
 - Check off each task and acceptance criterion as it
   is completed or verified
 - Move front-matter `status` from `🔲` to `🔳` on
@@ -191,6 +190,7 @@ row: "- [{title}](../docs/development/{filename})"
 - [File Placement](../docs/development/file-placement.md)
 - [Merge Queue](../docs/development/merge-queue.md)
 - [PR Fixup Workflow](../docs/development/pr-fixup-workflow.md)
+- [Public Markdown Library](../docs/development/markdown-library.md)
 - [Release Pipeline](../docs/development/release.md)
 - [Release Tooling Architecture](../docs/development/release-tooling.md)
 - [Secret Rotations](../docs/development/secret-rotations.md)

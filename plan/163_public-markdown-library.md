@@ -1,7 +1,7 @@
 ---
 id: 163
 title: 'Extract mdsmith Markdown parse/produce as a public Go library'
-status: "🔳"
+status: "✅"
 summary: >-
   Expose mdsmith's Markdown parsing and a
   canonical producer as a stable public Go
@@ -61,10 +61,10 @@ Behavior does not change.
 
 ## Tasks
 
-1. Design the public API: a parse entry
-   that returns the goldmark AST plus
-   front matter, and a producer entry that
-   surgically edits source spans (the
+1. [x] Design the public API: a parse
+   entry that returns the goldmark AST
+   plus front matter, and a producer entry
+   that surgically edits source spans (the
    model sync-docs already relies on).
    Decide the package path
    (`pkg/markdown` vs a top-level module).
@@ -82,39 +82,39 @@ Behavior does not change.
    type aliases and forwards so the single
    goldmark config lives only in
    `pkg/markdown`.
-2. Untangle the parser config from
+2. [x] Untangle the parser config from
    [internal/lint](../internal/lint) so
    parsing has no rule/config/diagnostic
    dependency.
-3. Build the producer: a documented,
+3. [x] Build the producer: a documented,
    tested surgical-splice + render path
    that does not fight `mdsmith fix`
    output.
-4. Migrate
+4. [x] Migrate
    [internal/release](../internal/release)
    off its local goldmark config onto the
    public package; assert identical
    sync-docs output.
-5. Migrate the linter core to the same
+5. [x] Migrate the linter core to the same
    package so there is a single parser
    config in the tree.
-6. Add API docs and a semver policy entry
-   under
+6. [x] Add API docs and a semver policy
+   entry under
    [docs/development](../docs/development).
 
 ## Acceptance Criteria
 
-- [ ] A public package exposes parse +
+- [x] A public package exposes parse +
   produce with a documented, stable API.
-- [ ] No public parse path imports the
+- [x] No public parse path imports the
   linter core
   ([internal/lint](../internal/lint)).
-- [ ] sync-docs and the linter both
+- [x] sync-docs and the linter both
   consume the public package; only one
   goldmark config remains in the tree.
-- [ ] sync-docs output is byte-identical
+- [x] sync-docs output is byte-identical
   before and after the migration.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports
   no issues.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.

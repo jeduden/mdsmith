@@ -21,6 +21,7 @@ row: "- [{title}]({filename})"
 - [File Placement](file-placement.md)
 - [Merge Queue](merge-queue.md)
 - [PR Fixup Workflow](pr-fixup-workflow.md)
+- [Public Markdown Library](markdown-library.md)
 - [Release Pipeline](release.md)
 - [Release Tooling Architecture](release-tooling.md)
 - [Secret Rotations](secret-rotations.md)
