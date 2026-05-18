@@ -5,7 +5,7 @@
     "name": "Jan-Eric Duden",
     "url": "https://github.com/jeduden"
   },
-  "description": "Markdown linter for Claude Code via LSP",
+  "description": "Markdown linter for Claude Code — LSP diagnostics, slash-command skills, a Markdown reviewer subagent, and a post-edit autofix hook",
   "plugins": [
     {
       "name": "mdsmith-lsp",
@@ -21,6 +21,21 @@
       "name": "mdsmith-audit",
       "source": "./editors/claude-code-audit",
       "description": "Audit and fix Markdown file organization in an mdsmith repository"
+    },
+    {
+      "name": "mdsmith-skills",
+      "source": "./editors/claude-code-skills",
+      "description": "Slash-command skills for mdsmith fix, kinds, and check"
+    },
+    {
+      "name": "mdsmith-reviewer",
+      "source": "./editors/claude-code-reviewer",
+      "description": "Subagent that reviews Markdown PRs and drafts"
+    },
+    {
+      "name": "mdsmith-autofix",
+      "source": "./editors/claude-code-autofix",
+      "description": "Post-edit hook that runs mdsmith fix on .md files"
     }
   ]
 }

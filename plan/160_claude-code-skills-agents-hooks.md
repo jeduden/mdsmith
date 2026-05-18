@@ -1,7 +1,7 @@
 ---
 id: 160
 title: Claude Code plugin extensions — skills, agents, hooks
-status: "🔲"
+status: "🔳"
 model: sonnet
 depends-on: [161]
 summary: >-
@@ -301,9 +301,9 @@ without auto-installing.
       new manifest; `mdsmith kinds resolve`
       reports `skill` for audit and
       `mdsmith-skills` SKILL.md files.
-- [ ] The [install guide][install-guide]
+- [x] The [install guide][install-guide]
       documents all six plugins.
-- [ ] `go test ./...` and `mdsmith check .`
+- [x] `go test ./...` and `mdsmith check .`
       pass.
 
 ## Open Questions

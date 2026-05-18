@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(jq -re '.tool_input.file_path // empty') || { echo 'hook: jq missing or no file_path' >&2; exit 1; }; case \"$FILE\" in *.md|*.markdown) mdsmith fix -- \"${FILE#\"$PWD/\"}\" || true;; esac"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -92,14 +92,14 @@ overrides:
           - urls
       blank-line-around-lists: false
   - glob: [".claude/skills/*/SKILL.md",
-            "editors/claude-code-audit/skills/*/SKILL.md",
+            "editors/claude-code-*/skills/*/SKILL.md",
             ".github/copilot-pr-fixup.md",
             ".github/AGENTS-PR-FIXUP.md"]
     rules:
       max-file-length:
         max: 600
   - glob: [".claude/skills/*/SKILL.md",
-            "editors/claude-code-audit/skills/*/SKILL.md"]
+            "editors/claude-code-*/skills/*/SKILL.md"]
     rules:
       # required-structure.schema for SKILL.md files comes
       # from the `skill` kind; this override only carries
@@ -317,7 +317,7 @@ kinds:
       required-structure:
         schema: internal/rules/directive-proto.md
   skill:
-    path-pattern: "{.claude/skills,editors/claude-code-audit/skills}/{proto.md,*/SKILL.md}"
+    path-pattern: "{.claude/skills,editors/claude-code-*/skills}/{proto.md,*/SKILL.md}"
     rules:
       required-structure:
         schema: .claude/skills/proto.md
@@ -510,7 +510,7 @@ kind-assignment:
            "internal/rules/MDS039-build/README.md"]
     kinds: [directive-rule-readme]
   - glob: [".claude/skills/proto.md", ".claude/skills/*/SKILL.md",
-            "editors/claude-code-audit/skills/*/SKILL.md"]
+            "editors/claude-code-*/skills/*/SKILL.md"]
     kinds: [skill]
   # Each docs/**-targeting assignment also matches the synced
   # website/content/docs/** parallel path so an explicit lint

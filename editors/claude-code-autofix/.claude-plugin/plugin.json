@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "mdsmith-autofix",
+  "description": "Post-edit hook that runs mdsmith fix on .md files after Edit, Write, or MultiEdit tool calls.",
+  "homepage": "https://github.com/jeduden/mdsmith",
+  "repository": "https://github.com/jeduden/mdsmith",
+  "license": "MIT",
+  "keywords": [
+    "markdown",
+    "hook",
+    "autofix"
+  ]
+}

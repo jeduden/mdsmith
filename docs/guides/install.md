@@ -207,37 +207,117 @@ See [VS Code Integration](editors/vscode.md) for the
 configuration surface (`mdsmith.path`, `mdsmith.run`,
 `mdsmith.fixOnSave`, `mdsmith.trace.server`).
 
-## Claude Code plugin
+## Claude Code plugins
 
-The Claude Code plugin runs
-`npx -y -p @mdsmith/cli mdsmith lsp`. The agent
-receives Markdown diagnostics inline after every
-edit. It also gains definition, references,
-symbol search, and call-hierarchy queries across
-the docs. Register the marketplace and install
-the plugin:
+The mdsmith marketplace ships six plugins.
+Register once, then install whichever you need:
 
 ```text
 /plugin marketplace add jeduden/mdsmith
+```
+
+### mdsmith-lsp
+
+Inline diagnostics, quick-fixes, and navigation
+(definition, references, symbol search,
+call-hierarchy) via `mdsmith lsp`. Required by
+most users.
+
+```text
 /plugin install mdsmith-lsp@mdsmith
 /reload-plugins
 ```
 
-`npx` is bundled with npm, which standard Node.js
-installers ship and Claude Code already requires.
-First launch downloads `@mdsmith/cli` and the
-platform binary subpackage from npm; later launches
-reuse the npm cache. No global `mdsmith` install is
-needed. To pin a version, edit the plugin
-manifest's `args` to read `@mdsmith/cli@<ver>` in
-place of `@mdsmith/cli`.
+The plugin runs `npx -y -p @mdsmith/cli mdsmith
+lsp`. `npx` is bundled with npm, which standard
+Node.js installers ship and Claude Code already
+requires. First launch downloads `@mdsmith/cli`
+and the platform binary from npm; later launches
+reuse the cache. No global `mdsmith` install
+needed. To pin a version, edit the manifest
+`args` to `@mdsmith/cli@<ver>`.
 
-If the `/plugin` Errors tab shows `Executable not
-found in $PATH`, `npx` is missing from the shell
-`$PATH` Claude Code sees. Install Node 18 or later
-(20 LTS recommended) — the standard installer
-bundles npm and npx — then run `/reload-plugins`.
+If the `/plugin` Errors tab shows `Executable
+not found in $PATH`, `npx` is missing. Install
+Node 18 or later (20 LTS recommended) and run
+`/reload-plugins`.
 
 See the
 [Claude Code editor README](../../editors/claude-code/README.md)
-for the install commands and troubleshooting steps.
+for troubleshooting steps.
+
+### mdsmith-skills
+
+Three slash-command skills:
+`/mdsmith-fix [path]`, `/mdsmith-kinds [...]`,
+and `/mdsmith-check [path]`. Useful without the
+LSP plugin, or to run a targeted fix from the
+command palette.
+
+```text
+/plugin install mdsmith-skills@mdsmith
+/reload-plugins
+```
+
+Requires `mdsmith` on the `$PATH` Claude Code
+sees (or the mdsmith source tree under
+`./cmd/mdsmith`).
+
+### mdsmith-reviewer
+
+A `markdown-reviewer` subagent that reviews
+Markdown PRs and drafts for structural drift.
+Loads rule-backed patterns from `mdsmith help
+patterns` at review time and checks three
+config-level patterns from a sibling
+`patterns.md`. Proposes config or directive
+snippets; no auto-fix.
+
+```text
+/plugin install mdsmith-reviewer@mdsmith
+/reload-plugins
+```
+
+Requires `mdsmith` on the `$PATH`.
+
+### mdsmith-autofix
+
+A `PostToolUse` hook that runs `mdsmith fix`
+on every `.md` file Claude Code edits. Keeps
+generated sections, whitespace, and table
+alignment in sync automatically.
+
+```text
+/plugin install mdsmith-autofix@mdsmith
+/reload-plugins
+```
+
+Requires `mdsmith` and `jq` on the `$PATH`.
+This plugin is opt-in: if you prefer to run
+`/mdsmith-fix` manually, skip it.
+
+### mdsmith-audit
+
+The `markdown-audit` skill. Audits an mdsmith
+repository for structural problems the built-in
+rules cannot see: hand-maintained indexes,
+similar files without a kind, missing
+`.mdsmith.yml`, and kinds without a
+`path-pattern`.
+
+```text
+/plugin install mdsmith-audit@mdsmith
+/reload-plugins
+```
+
+### mdsmith-dev-lsp
+
+Go and TypeScript LSP servers for mdsmith
+contributors. Installs `gopls` and the
+TypeScript language server alongside
+`mdsmith lsp` for development.
+
+```text
+/plugin install mdsmith-dev-lsp@mdsmith
+/reload-plugins
+```

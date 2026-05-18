@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "mdsmith-reviewer",
+  "description": "Subagent that reviews Markdown PRs and drafts — checks rule-backed patterns via mdsmith help and surfaces three config-level checks from patterns.md.",
+  "homepage": "https://github.com/jeduden/mdsmith",
+  "repository": "https://github.com/jeduden/mdsmith",
+  "license": "MIT",
+  "keywords": [
+    "markdown",
+    "review",
+    "agent"
+  ]
+}
