@@ -111,6 +111,11 @@ func TestApplySettingsBannedWrongType(t *testing.T) {
 	assert.ErrorContains(t, err, "list of strings")
 }
 
+func TestEnabledByDefault(t *testing.T) {
+	r := &Rule{}
+	assert.False(t, r.EnabledByDefault(), "MDS063 must be opt-in")
+}
+
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	s := r.DefaultSettings()
