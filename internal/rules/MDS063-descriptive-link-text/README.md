@@ -14,8 +14,10 @@ maintainability: null
 Link text must be descriptive. Non-descriptive phrases like "click here",
 "here", "link", and "more" fail screen readers and link-list navigation.
 
-The comparison is case- and whitespace-insensitive. Links whose text is a
-single inline code span (an API symbol) are exempt.
+The comparison is case- and whitespace-insensitive. Two link patterns are
+exempt: links whose sole content is a single inline code span (an API
+symbol), and links whose sole content is an image (a linked logo or badge
+where the image itself carries the meaning).
 
 ## Config
 
