@@ -108,6 +108,25 @@ jobs:
         # resolved version, so the deployed site shows it.
         if: env.SITE_VERSION != ''
         run: go run ./cmd/mdsmith-release stamp "$SITE_VERSION"
+      - name: Pull published demo + benchmark numbers
+        # The demo GIF and the cross-tool benchmark numbers are
+        # regenerated post-merge and pushed to the orphan assets
+        # branch (.github/workflows/{demo,benchmark}.yml), never
+        # committed. Pull them in so the deployed site serves the
+        # current GIF as a first-party asset and bakes the live
+        # benchmark table into the comparison page. The committed
+        # fragment snapshot is the fallback while the assets
+        # branch has not published numbers yet; the
+        # `bench-fragments` gate (a separate workflow) still
+        # validates that committed snapshot. The scoped
+        # `mdsmith fix` refreshes only the one page's <?include?>
+        # body from the freshly pulled fragment — the intended,
+        # minimal exception to build-website's --no-fix. See
+        # docs/development/release-tooling.md for why the pull is
+        # a Go subcommand rather than inline shell.
+        run: |
+          go run ./cmd/mdsmith-release pull-site-assets
+          go run ./cmd/mdsmith fix docs/background/markdown-linters.md
       - name: Build Hugo content tree from docs
         # Snapshot ./docs into ./website/content/docs, dropping
         # proto.md schema templates, renaming index.md to

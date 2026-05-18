@@ -18,6 +18,8 @@
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
+//	mdsmith-release bench [workdir]
+//	mdsmith-release pull-site-assets
 //
 // Each subcommand operates relative to the current working
 // directory, which is the repo root in CI.
@@ -51,6 +53,8 @@ Commands:
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
+  bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
+  pull-site-assets                Fetch the published demo GIF + benchmark numbers for the site build.
 `
 
 func main() {
@@ -68,6 +72,13 @@ func run(args []string) int {
 		return 1
 	}
 	cmd, rest := args[0], args[1:]
+	return dispatch(cmd, root, rest)
+}
+
+// dispatch routes one subcommand to its runner. Split out of run
+// so each is a short, single-purpose function (run owns argv/cwd
+// preconditions; dispatch owns the command table).
+func dispatch(cmd, root string, rest []string) int {
 	switch cmd {
 	case "-h", "--help", "help":
 		fmt.Print(usageText)
@@ -94,6 +105,10 @@ func run(args []string) int {
 		return runRecordRotation(root, rest)
 	case "merge-coverage":
 		return runMergeCoverage(root, rest)
+	case "bench":
+		return runBench(root, rest)
+	case "pull-site-assets":
+		return runPullSiteAssets(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2
@@ -376,6 +391,59 @@ func runRecordRotation(root string, args []string) int {
 	}
 	fmt.Printf("updated %s lastRotated -> %s\n", entryTitle, date)
 	return 0
+}
+
+func runBench(root string, args []string) int {
+	fs := flag.NewFlagSet("bench", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release bench [workdir]\n\n"+
+			"Run the pinned, integrity-verified cross-tool Markdown\n"+
+			"linter benchmark from the repo root: build mdsmith,\n"+
+			"fetch + SHA-256-verify hyperfine/mado/panache/rumdl,\n"+
+			"`npm ci` markdownlint-cli2 from the committed lockfile,\n"+
+			"build the repo + neutral corpora, drive hyperfine,\n"+
+			"promote the JSON into "+"docs/research/benchmarks/data/,\n"+
+			"and regenerate the doc fragments via gen_fragments.py.\n"+
+			"workdir caches built/fetched binaries and the corpora\n"+
+			"(default "+"/tmp/mdsmith-bench); CI passes a fresh path.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: bench"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() > 1 {
+		fs.Usage()
+		return 2
+	}
+	workdir := ""
+	if fs.NArg() == 1 {
+		workdir = fs.Arg(0)
+	}
+	return reportError(release.Bench(root, workdir))
+}
+
+func runPullSiteAssets(root string, args []string) int {
+	fs := flag.NewFlagSet("pull-site-assets", flag.ContinueOnError)
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release pull-site-assets\n\n"+
+			"Fetch the published demo GIF and cross-tool benchmark\n"+
+			"numbers from the orphan `assets` branch into the working\n"+
+			"tree before the Hugo build. The demo GIF is required;\n"+
+			"the benchmark fragments fall back to the committed\n"+
+			"in-repo snapshot when the assets branch has not yet\n"+
+			"published them. Run from the repo root.\n")
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: pull-site-assets"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+	return reportError(release.PullSiteAssets(root))
 }
 
 func reportError(err error) int {

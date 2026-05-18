@@ -8,7 +8,13 @@ summary: >-
 # Markdown linter benchmark
 
 Our own benchmark run, not a re-quote of each project's README.
-Reproduce it with [`run.sh`](run.sh).
+Reproduce it with [`run.sh`](run.sh), a thin wrapper over
+`mdsmith-release bench`. The same harness runs automatically on
+every merge to `main` and publishes the refreshed numbers to the
+orphan `assets` branch; the website reads them at build time
+(the demo.gif pattern). The committed `data/*.json` snapshot in
+this directory stays the `bench-fragments` gate's source of
+truth and is what the tables below render from in-repo.
 
 ## Method
 
@@ -29,6 +35,13 @@ Reproduce it with [`run.sh`](run.sh).
   (it does more per file); `mdsmith-parity` vs them is the
   closest like-for-like, with one residual asymmetry noted
   in [Reading the result](#reading-the-result).
+- Integrity: every comparison binary is fetched at a pinned
+  version and verified by SHA-256 before it runs.
+  hyperfine, mado, panache, and rumdl come from pinned
+  GitHub release tarballs (rumdl moved off an unpinned
+  `uv tool install`); markdownlint-cli2 installs via
+  `npm ci` from the committed lockfile in `npm/`. A
+  tampered or silently-rebuilt download fails the run loud.
 
 ### Corpora
 

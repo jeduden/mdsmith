@@ -31,9 +31,15 @@ jobs:
           path: /tmp/demo
       - name: Push GIF to assets branch
         run: |
-          # Create or update the orphan assets branch with only
-          # the demo GIF. This avoids pushing to main entirely —
-          # no branch protection bypass needed.
+          # Update ONLY assets/demo.gif on the shared orphan
+          # assets branch. benchmark.yml manages
+          # assets/benchmarks/ on the same branch, so neither
+          # workflow may wipe the whole tree (the old
+          # `git rm -rf . && git clean -fdx` did, and would
+          # delete the other's subtree on every run). Each
+          # touches only its own subtree and pushes only when
+          # that subtree changed. Pushing to the assets branch
+          # avoids main entirely — no branch protection bypass.
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -41,12 +47,10 @@ jobs:
           if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
             git fetch origin assets
             git checkout assets
-            git rm -rf --ignore-unmatch .
-            git clean -fdx
           else
+            # First ever publish: unborn branch, no siblings yet.
             git checkout --orphan assets
-            git rm -rf --ignore-unmatch .
-            git clean -fdx
+            git rm -r --cached . >/dev/null 2>&1 || true
           fi
 
           mkdir -p assets

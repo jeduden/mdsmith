@@ -59,6 +59,8 @@ setup step.
 | `check-secret-rotations`    | `secret-rotation-reminder.yml`             |
 | `record-rotation <t> <d>`   | `record-secret-rotation.yml`               |
 | `merge-coverage -o <o> <p>` | `ci.yml` test job                          |
+| `bench [workdir]`           | `benchmark.yml` record job; `run.sh`       |
+| `pull-site-assets`          | `pages.yml` deploy job                     |
 
 Each subcommand lives under `cmd/mdsmith-release/`.
 It delegates to a function in `internal/release/`.

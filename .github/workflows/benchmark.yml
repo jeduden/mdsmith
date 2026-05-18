@@ -1,0 +1,119 @@
+name: Cross-tool benchmark
+
+# Re-measure the mdsmith-vs-Rust benchmark on every merge to
+# main and publish the refreshed numbers to the orphan `assets`
+# branch (the demo.gif pattern). Record-only: it never gates a
+# merge or a release. The website pulls these numbers at
+# build time; the in-repo committed snapshot stays the
+# `bench-fragments` CI gate's source of truth and is unaffected
+# by this workflow.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    # Skip if the push was made by the CI bot. The publish job
+    # pushes to the assets branch (never main), so this is parity
+    # with demo.yml rather than loop-prevention.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      artifact_name: benchmark-numbers
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          # markdownlint-cli2 installs via `npm ci` from the
+          # committed docs/research/benchmarks/npm/ lockfile.
+          node-version: "24"
+      - name: Run the pinned cross-tool benchmark
+        # Builds mdsmith, fetches + SHA-256-verifies
+        # hyperfine/mado/panache/rumdl, `npm ci`s
+        # markdownlint-cli2, builds the corpora, drives
+        # hyperfine, promotes the JSON into
+        # docs/research/benchmarks/data/, and regenerates the
+        # fragments via gen_fragments.py. Single source of truth
+        # with the local run.sh hand-refresh.
+        run: go run ./cmd/mdsmith-release bench /tmp/mdsmith-bench
+      - name: Normalize fragments to the gate's canonical form
+        # `mdsmith fix` normalizes the gen_fragments.py tables to
+        # the exact form the `bench-fragments` gate regenerates,
+        # so the published fragment is byte-identical to what the
+        # in-repo snapshot would become from the same JSON.
+        run: |
+          go run ./cmd/mdsmith fix \
+            docs/research/benchmarks/results.fragment.md \
+            docs/research/benchmarks/headline.fragment.md
+      - name: Stage publishable numbers
+        run: |
+          mkdir -p artifacts/benchmarks/data
+          cp docs/research/benchmarks/results.fragment.md \
+             docs/research/benchmarks/headline.fragment.md \
+             artifacts/benchmarks/
+          cp docs/research/benchmarks/data/*.json artifacts/benchmarks/data/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: benchmark-numbers
+          path: artifacts/benchmarks
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: record
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Credentials intentionally persisted — needed for git push.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.record.outputs.artifact_name }}
+          path: /tmp/bench
+      - name: Publish numbers to the assets branch
+        run: |
+          # Update ONLY assets/benchmarks/ on the shared orphan
+          # assets branch. demo.yml manages assets/demo.gif on the
+          # same branch, so neither workflow may wipe the whole
+          # tree — each touches only its own subtree and commits
+          # only when its subtree changed.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
+            git fetch origin assets
+            git checkout assets
+          else
+            # First ever publish: unborn branch, no siblings yet.
+            git checkout --orphan assets
+            git rm -r --cached . >/dev/null 2>&1 || true
+          fi
+
+          # Replace only the benchmarks subtree. assets/demo.gif
+          # (if present) is left exactly as demo.yml wrote it.
+          rm -rf assets/benchmarks
+          mkdir -p assets/benchmarks
+          cp -R /tmp/bench/. assets/benchmarks/
+
+          git add assets/benchmarks
+          if git diff --staged --quiet; then
+            echo "benchmark numbers unchanged — nothing to push"
+          else
+            git commit -m "chore: refresh cross-tool benchmark numbers"
+            git push -u origin assets
+          fi

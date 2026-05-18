@@ -13,3 +13,6 @@ unit.cov
 merged.cov
 .github/scripts/node_modules/
 .claude/worktrees/
+# Pulled from the orphan assets branch at site-build time by
+# mdsmith-release pull-site-assets; never committed.
+website/static/img/demo.gif

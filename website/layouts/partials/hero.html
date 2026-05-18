@@ -47,11 +47,13 @@
           </div>
           {{- /* The GIF is recorded from demo.tape and published
                  to the orphan `assets` branch by demo.yml on push
-                 to main (same source the README embeds). It is not
-                 part of the Hugo build, so it loads from the raw
-                 GitHub URL rather than a local static asset. */ -}}
+                 to main. The pages-deploy workflow pulls it into
+                 website/static/img/ at build time (mdsmith-release
+                 pull-site-assets), so it ships as a first-party
+                 site asset instead of a runtime
+                 raw.githubusercontent hotlink. */ -}}
           <img class="hero-demo-img"
-               src="https://raw.githubusercontent.com/{{ $.Site.Params.githubRepo }}/assets/assets/demo.gif"
+               src="{{ "img/demo.gif" | relURL }}"
                width="960" height="540" loading="lazy"
                alt="Terminal recording: mdsmith check flags issues, then mdsmith fix auto-resolves them.">
         </figure>

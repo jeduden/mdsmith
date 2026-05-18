@@ -1,0 +1,10 @@
+{
+  "name": "mdsmith-benchmark-markdownlint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned markdownlint-cli2 for the mdsmith cross-tool benchmark (npm ci from this lockfile keeps the comparison reproducible).",
+  "license": "MIT",
+  "dependencies": {
+    "markdownlint-cli2": "0.22.1"
+  }
+}

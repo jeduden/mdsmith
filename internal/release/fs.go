@@ -1,9 +1,13 @@
 package release
 
 import (
+	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
+	"time"
 )
 
 // FS is the small filesystem surface the release toolkit uses.
@@ -85,26 +89,77 @@ func (osRunner) RunCommand(dir, name string, args ...string) error {
 	return cmd.Run()
 }
 
-// Toolkit owns a configured FS and Runner and exposes the release
-// helpers (Stamp, Check, BuildNpmPlatforms, BuildWheels) as
-// methods. `New()` returns a Toolkit backed by the real OS for
-// both; tests can use `NewWithFS(fakeFS)` or `NewWithDeps` to
-// drive error paths that the OS does not expose.
+// HTTPGetter is the one-call HTTP surface the release toolkit
+// uses to fetch pinned benchmark tool tarballs and the published
+// benchmark numbers / demo GIF from the orphan `assets` branch.
+// Production uses osHTTPGetter (net/http); tests inject a fake so
+// the assets-pull and download-integrity branches run without a
+// network.
+type HTTPGetter interface {
+	// Get fetches url and returns the HTTP status code and the
+	// fully-read body. A transport-level failure (DNS, refused,
+	// timeout) returns a non-nil error with status 0; an HTTP
+	// error response (404, 500, …) returns the status and the
+	// body with a nil error, so callers decide per-asset whether
+	// a miss is fatal or a keep-the-committed-copy fallback.
+	Get(url string) (status int, body []byte, err error)
+}
+
+// osHTTPGetter is the production HTTPGetter. The client carries a
+// generous timeout: the benchmark tool tarballs are a few MB and
+// CI runners are occasionally slow, but an unbounded wait would
+// hang a stuck publish/deploy indefinitely.
+type osHTTPGetter struct{}
+
+func (osHTTPGetter) Get(url string) (int, []byte, error) {
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Get(url) //nolint:gosec // CI-only fetch of a constant-derived URL
+	if err != nil {
+		return 0, nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("read body: %w", err)
+	}
+	return resp.StatusCode, body, nil
+}
+
+// Toolkit owns a configured FS, Runner, and HTTPGetter and exposes
+// the release helpers (Stamp, Check, BuildNpmPlatforms,
+// BuildWheels, Bench, PullSiteAssets) as methods. `New()` returns
+// a Toolkit backed by the real OS for all three; tests can use
+// `NewWithFS(fakeFS)`, `NewWithDeps`, or `NewWithHTTP` to drive
+// error paths that the OS does not expose.
 type Toolkit struct {
 	fs     FS
 	runner Runner
+	http   HTTPGetter
 }
 
-// New returns a Toolkit backed by the real OS filesystem and
-// command runner.
-func New() *Toolkit { return &Toolkit{fs: osFS{}, runner: osRunner{}} }
+// New returns a Toolkit backed by the real OS filesystem, command
+// runner, and HTTP client.
+func New() *Toolkit {
+	return &Toolkit{fs: osFS{}, runner: osRunner{}, http: osHTTPGetter{}}
+}
 
 // NewWithFS returns a Toolkit with a custom FS and the OS-backed
-// Runner. Convenience helper for tests that only need IO faults.
-func NewWithFS(fsys FS) *Toolkit { return &Toolkit{fs: fsys, runner: osRunner{}} }
+// Runner/HTTPGetter. Convenience helper for tests that only need
+// IO faults.
+func NewWithFS(fsys FS) *Toolkit {
+	return &Toolkit{fs: fsys, runner: osRunner{}, http: osHTTPGetter{}}
+}
 
-// NewWithDeps returns a Toolkit with custom FS and Runner. Used
-// by tests that exercise both IO and command-execution faults.
+// NewWithDeps returns a Toolkit with custom FS and Runner and the
+// OS-backed HTTPGetter. Used by tests that exercise both IO and
+// command-execution faults.
 func NewWithDeps(fsys FS, runner Runner) *Toolkit {
-	return &Toolkit{fs: fsys, runner: runner}
+	return &Toolkit{fs: fsys, runner: runner, http: osHTTPGetter{}}
+}
+
+// NewWithHTTP returns a Toolkit with a custom FS and HTTPGetter and
+// the OS-backed Runner. Used by the PullSiteAssets tests to drive
+// the build-time assets fetch without a network.
+func NewWithHTTP(fsys FS, getter HTTPGetter) *Toolkit {
+	return &Toolkit{fs: fsys, runner: osRunner{}, http: getter}
 }
