@@ -469,7 +469,6 @@ func writeSeparatorRow(line *strings.Builder, aligns []align, colWidths []int, n
 			minColWidth := 3 + markerCount
 			if colWidth < minColWidth {
 				colWidth = minColWidth
-				colWidths[j] = colWidth
 			}
 			dashCount := colWidth - markerCount
 
