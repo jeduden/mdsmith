@@ -981,6 +981,38 @@ func TestCheck_ValidateRefStyle_ExistingTarget(t *testing.T) {
 }
 
 // =====================================================================
+// Edge-case coverage: normalized empty path and site-root slash-only
+// =====================================================================
+
+// TestCheck_DotLinkPathNormalizesEmpty ensures that a link whose target
+// normalizes to "" (e.g. "[text](.)") is silently ignored rather than
+// flagged as a broken link.
+func TestCheck_DotLinkPathNormalizesEmpty(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	// "." normalizes to "." → normalizeLinkPath returns ""
+	writeFile(t, sourcePath, "# Doc\n\nSee [here](.).\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 0, "link whose path normalizes to empty must be silently ignored")
+}
+
+// TestCheck_SiteRootSlashOnlyLinkIgnored ensures that an absolute link
+// consisting only of "/" is silently ignored when site-root is set,
+// because stripping the leading "/" leaves an empty rel path.
+func TestCheck_SiteRootSlashOnlyLinkIgnored(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [root](/).\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{SiteRoot: dir}}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "site-absolute link consisting of only '/' must be silently ignored")
+}
+
+// =====================================================================
 // ApplySettings: links sub-block
 // =====================================================================
 
