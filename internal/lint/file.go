@@ -9,7 +9,8 @@ import (
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
+
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 // File holds a parsed Markdown document and its source.
@@ -111,56 +112,22 @@ func (f *File) GetGitignore() *GitignoreMatcher {
 	return f.gitignoreVal
 }
 
-// NewParser returns a goldmark parser configured identically to the one
-// used by NewFile. Rules that need to re-inspect a document (for example,
-// to consult the link reference definition map) should use this so that
-// processing-instruction blocks and other mdsmith-specific parsing
-// decisions stay consistent with the original lint parse.
+// NewParser returns mdsmith's canonical goldmark parser, forwarded
+// from pkg/markdown. Rules that need to re-inspect a document (for
+// example, to consult the link reference definition map) should use
+// this so that processing-instruction blocks and other
+// mdsmith-specific parsing decisions stay consistent with the
+// original lint parse.
 func NewParser() parser.Parser {
-	return parser.NewParser(
-		parser.WithBlockParsers(
-			append(parser.DefaultBlockParsers(),
-				PIBlockParserPrioritized(),
-			)...,
-		),
-		parser.WithInlineParsers(
-			parser.DefaultInlineParsers()...,
-		),
-		parser.WithParagraphTransformers(
-			parser.DefaultParagraphTransformers()...,
-		),
-	)
+	return markdown.NewParser()
 }
 
-// parserPool reuses goldmark parsers across NewFile / LinkReferences
-// calls. lint.NewParser() rebuilds a substantial config (default block,
-// inline, and paragraph parsers plus the PI block parser) every call;
-// constructing one per file was ~5% of all allocations over the
-// 600-file check gate (plan 175 profiling). A sync.Pool is the proven
-// house pattern (mirrors internal/index/build.go's parserPool, already
-// safe under its parallel Build): each goroutine Gets its own instance
-// and Puts it back, so there is no shared mutable parser even though
-// NewFile is called from many goroutines at once (parallel check, the
-// LSP serving concurrent documents). goldmark Parse keeps all per-parse
-// state in the per-call parser.Context.
-var parserPool = sync.Pool{
-	New: func() any { return NewParser() },
-}
-
-// parseWithPooledParser parses source with a pooled parser and the
-// given context, returning the document root. The parser is borrowed
-// for the duration of the Parse call only and returned immediately, so
-// concurrent callers each hold a distinct instance.
-func parseWithPooledParser(source []byte, ctx parser.Context) ast.Node {
-	p := parserPool.Get().(parser.Parser)
-	defer parserPool.Put(p)
-	return p.Parse(text.NewReader(source), parser.WithContext(ctx))
-}
-
-// NewFile parses source as Markdown and returns a File.
+// NewFile parses source as Markdown and returns a File. The parse
+// itself is delegated to pkg/markdown's pooled canonical parser, so a
+// single goldmark configuration backs every parse path.
 func NewFile(path string, source []byte) (*File, error) {
 	pc := parser.NewContext()
-	node := parseWithPooledParser(source, pc)
+	node := markdown.ParseContext(source, pc)
 
 	lines := bytes.Split(source, []byte("\n"))
 
@@ -184,7 +151,7 @@ func (f *File) LinkReferences() []Reference {
 		ctx := f.parseCtx
 		if ctx == nil {
 			ctx = parser.NewContext()
-			parseWithPooledParser(f.Source, ctx)
+			markdown.ParseContext(f.Source, ctx)
 		}
 		f.linkRefs = ctx.References()
 		f.parseCtx = nil // context no longer needed; let it GC

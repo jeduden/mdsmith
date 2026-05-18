@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
 )
 
 // --- GetGitignore tests ---
@@ -306,43 +305,10 @@ func TestMatchDoublestar_NoMatch(t *testing.T) {
 	assert.False(t, matchDoublestar("docs/**/*.md", "src/file.md"))
 }
 
-// --- Kind tests ---
-
-func TestKind_ProcessingInstruction(t *testing.T) {
-	pi := &ProcessingInstruction{Name: "test"}
-	assert.Equal(t, KindProcessingInstruction, pi.Kind())
-}
-
-// --- Dump tests ---
-
-func TestDump_ProcessingInstruction(t *testing.T) {
-	pi := &ProcessingInstruction{Name: "catalog"}
-	// Dump should not panic.
-	pi.Dump([]byte("<?catalog?>"), 0)
-}
-
-// --- Close (pi_parser) tests ---
-
-func TestClose_PIBlockParser(t *testing.T) {
-	p := NewPIBlockParser()
-	// Close is a no-op; should not panic.
-	pi := &ProcessingInstruction{Name: "test"}
-	p.Close(pi, nil, nil)
-}
-
-// --- IsRaw tests ---
-
-func TestIsRaw_ProcessingInstruction(t *testing.T) {
-	pi := &ProcessingInstruction{Name: "test"}
-	assert.True(t, pi.IsRaw())
-}
-
-// --- HasClosure tests ---
-
-func TestHasClosure_NoClosureLine(t *testing.T) {
-	pi := &ProcessingInstruction{Name: "test"}
-	assert.False(t, pi.HasClosure())
-}
+// PI node and parser unit tests live with the canonical
+// implementation in pkg/markdown (TestKind_ProcessingInstruction,
+// TestIsRaw_ProcessingInstruction, TestPIBlockParser_*, …). The
+// lint-level integration smoke is TestNewFile_MultiPIs below.
 
 // --- parseGitignoreFile tests ---
 
@@ -522,40 +488,9 @@ func TestLineOfOffset_StableAcrossRepeatedCalls(t *testing.T) {
 	}
 }
 
-// --- PIBlockParser edge cases ---
-
-func TestPIBlockParser_CanInterruptParagraph(t *testing.T) {
-	p := NewPIBlockParser()
-	assert.True(t, p.CanInterruptParagraph())
-}
-
-func TestPIBlockParser_CanAcceptIndentedLine(t *testing.T) {
-	p := NewPIBlockParser()
-	assert.False(t, p.CanAcceptIndentedLine())
-}
-
-func TestPIBlockParser_Trigger(t *testing.T) {
-	p := NewPIBlockParser()
-	assert.Equal(t, []byte{'<'}, p.Trigger())
-}
-
-// --- extractPINameBytes tests ---
-
-func TestExtractPINameBytes_Basic(t *testing.T) {
-	assert.Equal(t, "foo", string(extractPINameBytes([]byte("foo?>"))))
-}
-
-func TestExtractPINameBytes_WithSpace(t *testing.T) {
-	assert.Equal(t, "catalog", string(extractPINameBytes([]byte("catalog key=val"))))
-}
-
-func TestExtractPINameBytes_SlashName(t *testing.T) {
-	assert.Equal(t, "/include", string(extractPINameBytes([]byte("/include?>"))))
-}
-
-func TestExtractPINameBytes_EmptyAfterPI(t *testing.T) {
-	assert.Equal(t, "", string(extractPINameBytes([]byte("?>"))))
-}
+// PIBlockParser edge cases and extractPINameBytes unit tests live
+// with the canonical implementation in pkg/markdown
+// (TestPIBlockParser_*, TestExtractPINameBytes).
 
 // --- Additional walk coverage ---
 
@@ -670,25 +605,10 @@ func TestMatchRule_OutsideBase(t *testing.T) {
 
 // --- Walk with PI nodes ---
 
-func TestPI_Kind_EqualsRegisteredKind(t *testing.T) {
-	pi := &ProcessingInstruction{Name: "test"}
-	assert.Equal(t, KindProcessingInstruction, pi.Kind())
-	assert.NotEqual(t, ast.KindDocument, pi.Kind())
-}
-
-func TestPI_Dump_WithSource(t *testing.T) {
-	// Dump should not panic with actual source.
-	src := []byte("<?catalog\nglob: docs\n?>")
-	pi := &ProcessingInstruction{Name: "catalog"}
-	pi.Dump(src, 1)
-}
-
-func TestPI_Dump_EmptySource(t *testing.T) {
-	pi := &ProcessingInstruction{Name: "test"}
-	pi.Dump([]byte{}, 0)
-}
-
-// Verify formatSnippet called from AST walk with multiple levels
+// TestNewFile_MultiPIs is the lint-level integration smoke that
+// lint.NewFile (delegating to pkg/markdown's pooled parser) still
+// yields ProcessingInstruction nodes. The PI node/parser unit tests
+// proper live in pkg/markdown.
 func TestNewFile_MultiPIs(t *testing.T) {
 	src := "<?foo?>\n\n<?bar\nbaz\n?>\n"
 	f, err := NewFile("test.md", []byte(src))
