@@ -622,9 +622,9 @@ func TestFormatStringWithConfig_SpacedSeparator_AlignmentStyles(t *testing.T) {
 		sep  string
 		want string
 	}{
-		"left":   {sep: "|:---|", want: "| :-- |"},
-		"right":  {sep: "|---:|", want: "| --: |"},
-		"center": {sep: "|:---:|", want: "| :-: |"},
+		"left":   {sep: "|:---|", want: "| :--- |"},
+		"right":  {sep: "|---:|", want: "| ---: |"},
+		"center": {sep: "|:---:|", want: "| :---: |"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
