@@ -28,6 +28,41 @@ type RefLink struct {
 	Label string
 }
 
+// ExtractRefLinkTargets walks f.AST and returns every reference-style
+// link whose definition has been resolved by the parser, as Link values
+// with the resolved destination ready for the same file-existence
+// resolver that ExtractLinks feeds. Images are not included — those
+// come from ExtractImages. Lines are body-relative — same convention
+// as Link.
+func ExtractRefLinkTargets(f *lint.File) []Link {
+	if f == nil || f.AST == nil {
+		return nil
+	}
+	var out []Link
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		l, ok := n.(*ast.Link)
+		if !ok || l.Reference == nil {
+			return ast.WalkContinue, nil
+		}
+		target, ok := ParseTarget(string(l.Destination))
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		line, col := linkPosition(f, l)
+		out = append(out, Link{
+			Line:   line,
+			Column: col,
+			Text:   linkText(l, f.Source),
+			Target: target,
+		})
+		return ast.WalkContinue, nil
+	})
+	return out
+}
+
 // ExtractRefLinks walks f.AST and returns every reference-style link
 // in document order. Inline links (`[text](url)`) are intentionally
 // excluded — those come from ExtractLinks.

@@ -10,6 +10,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestRenderLinkHook_SubpathBaseURL is a regression test for the
+// site-absolute href prefix fix from PR #309. A deploy with a
+// non-root baseURL (e.g. https://example.com/mdsmith/) must
+// prefix every site-absolute href with the configured path
+// prefix. This test asserts the render-link hook derives that
+// prefix from site.Home.RelPermalink — which Hugo sets to
+// "/mdsmith/" for a sub-path deploy — rather than hardcoding
+// "/". Without this, site-absolute hrefs (those starting with
+// "/") resolve against the server root, not the sub-path.
+func TestRenderLinkHook_SubpathBaseURL(t *testing.T) {
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	require.NoError(t, err)
+	hookPath := filepath.Join(
+		repoRoot,
+		"website", "layouts", "_default", "_markup", "render-link.html",
+	)
+	data, err := os.ReadFile(hookPath)
+	require.NoError(t, err, "render-link.html must exist at %s", hookPath)
+
+	hook := string(data)
+	// The hook must use site.Home.RelPermalink to build the prefix
+	// for the $absolute branch — hardcoding "/" would break a
+	// sub-path deploy.
+	assert.Contains(t, hook, "site.Home.RelPermalink",
+		"site-absolute branch must derive prefix from site.Home.RelPermalink")
+	// The trailing slash of RelPermalink must be stripped before
+	// concatenation so root deploys get "/" not "//" and sub-path
+	// deploys get "/mdsmith/docs/…" not "/mdsmith//docs/…".
+	assert.Contains(t, hook, `strings.TrimSuffix "/" site.Home.RelPermalink`,
+		"trailing slash of site.Home.RelPermalink must be stripped before concatenation")
+}
+
 const ruleIndexFixture = `---
 title: Rule Directory
 summary: >-

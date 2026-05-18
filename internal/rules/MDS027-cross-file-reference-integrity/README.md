@@ -23,8 +23,24 @@ Links to local files and heading anchors must resolve.
 Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
 
 With `strict: false`, only Markdown targets (`.md`, `.markdown`)
-are checked. External links (`http:`, `https:`, `mailto:`) are
-always ignored.
+are checked (except images — see `links.validate-images`).
+External links (`http:`, `https:`, `mailto:`) are always ignored.
+
+### links block
+
+| Setting                          | Type   | Default | Description                                                                            |
+|----------------------------------|--------|---------|----------------------------------------------------------------------------------------|
+| `links.validate-images`          | bool   | `true`  | Check `*ast.Image` targets (e.g. `![alt](img.png)`) regardless of `strict` mode.       |
+| `links.validate-reference-style` | bool   | `true`  | Check reference-style link targets (e.g. `[text][label]` / `[label]: url`).            |
+| `links.site-root`                | string | `""`    | When set, resolve absolute paths (e.g. `/docs/rules/`) against this directory on disk. |
+
+When `links.validate-images` is on, image targets are checked even
+when `strict: false` — an image `![](missing.png)` is flagged as a
+broken target regardless of extension. Set to `false` to restore the
+pre-hardening behavior where images were silently skipped.
+
+When `links.site-root` is unset, absolute-path links (`/foo/bar`)
+are silently skipped (the behavior before this setting was added).
 
 ## Config
 
@@ -36,6 +52,10 @@ rules:
     exclude:
       - "docs/generated/**"
     strict: false
+    links:
+      site-root: ""
+      validate-images: true
+      validate-reference-style: true
 ```
 
 Disable:
@@ -131,7 +151,9 @@ See [guide](bad/ref/guide.md#missing-section).
 - **ID**: MDS027
 - **Name**: `cross-file-reference-integrity`
 - **Status**: ready
-- **Default**: enabled, include: [], exclude: [], strict: false
+- **Default**: enabled, include: [], exclude: [], strict: false,
+  links.validate-images: true, links.validate-reference-style: true,
+  links.site-root: ""
 - **Fixable**: no
 - **Implementation**:
   [source](./)

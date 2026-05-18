@@ -824,3 +824,239 @@ func TestSettingMergeMode_CrossFileReferenceIntegrity(t *testing.T) {
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("include"))
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
+
+// =====================================================================
+// G1: validate-images
+// =====================================================================
+
+func TestCheck_ValidateImages_FlagsMissingTarget(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n![diagram](missing.png)\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{ValidateImages: true}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "missing image target must be flagged")
+	require.Contains(t, diags[0].Message, "missing.png")
+}
+
+func TestCheck_ValidateImages_SilentWhenOff(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n![diagram](missing.png)\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{ValidateImages: false}}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "image target must be silent when validate-images is off")
+}
+
+func TestCheck_ValidateImages_ExistingTarget(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "logo.png"), "fake png")
+	writeFile(t, sourcePath, "# Doc\n\n![logo](logo.png)\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{ValidateImages: true}}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "existing image target must produce no diagnostic")
+}
+
+func TestCheck_ValidateImages_ReferenceStyle(t *testing.T) {
+	// Reference-style image whose target file is missing.
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n![alt][img]\n\n[img]: missing.png\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{ValidateImages: true}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "broken reference-style image must be flagged")
+	require.Contains(t, diags[0].Message, "missing.png")
+}
+
+// TestCheck_ValidateImages_BypassesStrictMode verifies that
+// validate-images checks image targets regardless of strict mode —
+// images are intentional assets unlike arbitrary non-markdown links.
+func TestCheck_ValidateImages_BypassesStrictMode(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n![logo](missing.png)\n")
+
+	f := newLintFile(t, sourcePath)
+	// strict=false but validate-images=true: image must still be checked.
+	r := &Rule{Strict: false, Links: LinksConfig{ValidateImages: true}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "validate-images must check .png even with strict=false")
+}
+
+// =====================================================================
+// G2: site-root for absolute paths
+// =====================================================================
+
+func TestCheck_SiteRoot_ResolvesExistingDir(t *testing.T) {
+	siteRoot := t.TempDir()
+	// Create the target directory that the absolute link points to.
+	targetDir := filepath.Join(siteRoot, "docs", "rules", "MDS027")
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
+
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [rule](/docs/rules/MDS027/).\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{SiteRoot: siteRoot}}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "absolute link resolving to existing dir must produce no diagnostic")
+}
+
+func TestCheck_SiteRoot_FlagsMissingDir(t *testing.T) {
+	siteRoot := t.TempDir()
+	// Do NOT create the target directory.
+
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [rule](/docs/rules/missing/).\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{SiteRoot: siteRoot}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "absolute link to nonexistent path must be flagged")
+	require.Contains(t, diags[0].Message, "/docs/rules/missing/")
+}
+
+func TestCheck_SiteRoot_UnsetPreservesShortCircuit(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [root](/docs/rules/MDS027/).\n")
+
+	f := newLintFile(t, sourcePath)
+	// No site-root configured: absolute paths are silently skipped.
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "absolute path without site-root must be silently skipped")
+}
+
+// =====================================================================
+// G3: validate-reference-style
+// =====================================================================
+
+func TestCheck_ValidateRefStyle_FlagsBrokenDef(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	// Definition points to a file that does not exist.
+	writeFile(t, sourcePath, "# Doc\n\n[a]: ./missing.md\n\nSee [a].\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{ValidateReferenceStyle: true}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "broken reference-style target must be flagged")
+	require.Contains(t, diags[0].Message, "missing.md")
+}
+
+func TestCheck_ValidateRefStyle_SilentWhenOff(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n[a]: ./missing.md\n\nSee [a].\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{ValidateReferenceStyle: false}}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "reference-style target must be silent when validate-reference-style is off")
+}
+
+func TestCheck_ValidateRefStyle_ExistingTarget(t *testing.T) {
+	dir := t.TempDir()
+	targetPath := filepath.Join(dir, "guide.md")
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, targetPath, "# Guide\n")
+	writeFile(t, sourcePath, "# Doc\n\n[guide]: guide.md\n\nSee [guide].\n")
+
+	f := newLintFile(t, sourcePath)
+	r := &Rule{Links: LinksConfig{ValidateReferenceStyle: true}}
+	diags := r.Check(f)
+	require.Len(t, diags, 0, "valid reference-style target must produce no diagnostic")
+}
+
+// =====================================================================
+// ApplySettings: links sub-block
+// =====================================================================
+
+func TestApplySettings_Links_ValidValues(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{
+			"site-root":                "/srv/site",
+			"validate-images":          false,
+			"validate-reference-style": false,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "/srv/site", r.Links.SiteRoot)
+	require.False(t, r.Links.ValidateImages)
+	require.False(t, r.Links.ValidateReferenceStyle)
+}
+
+func TestApplySettings_Links_DefaultsViaApply(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(r.DefaultSettings())
+	require.NoError(t, err)
+	require.Equal(t, "", r.Links.SiteRoot)
+	require.True(t, r.Links.ValidateImages)
+	require.True(t, r.Links.ValidateReferenceStyle)
+}
+
+func TestApplySettings_Links_InvalidType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{"links": "not-a-map"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "links must be a map")
+}
+
+func TestApplySettings_Links_InvalidSiteRootType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"site-root": 42},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "links.site-root")
+}
+
+func TestApplySettings_Links_InvalidValidateImagesType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"validate-images": "yes"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "links.validate-images")
+}
+
+func TestApplySettings_Links_InvalidValidateRefStyleType(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"validate-reference-style": 1},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "links.validate-reference-style")
+}
+
+func TestApplySettings_Links_UnknownKey(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{"unknown-key": true},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown links setting")
+}
+
+func TestDefaultSettings_Links(t *testing.T) {
+	r := &Rule{}
+	ds := r.DefaultSettings()
+	links, ok := ds["links"].(map[string]any)
+	require.True(t, ok, "DefaultSettings must include a links map")
+	require.Equal(t, "", links["site-root"])
+	require.Equal(t, true, links["validate-images"])
+	require.Equal(t, true, links["validate-reference-style"])
+}

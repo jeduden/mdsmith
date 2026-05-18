@@ -19,6 +19,15 @@ func init() {
 	rule.Register(&Rule{})
 }
 
+// LinksConfig holds the per-file link-validation knobs exposed via the
+// links: sub-block. Mirrors the shared links: config block described in
+// docs/research/links/README.md.
+type LinksConfig struct {
+	SiteRoot               string // resolved against site root for absolute paths
+	ValidateImages         bool   // check *ast.Image targets (default on)
+	ValidateReferenceStyle bool   // check reference-style link targets (default on)
+}
+
 // Rule checks Markdown links for missing target files and missing heading
 // anchors in linked Markdown files.
 type Rule struct {
@@ -26,6 +35,7 @@ type Rule struct {
 	Exclude      []string
 	Strict       bool
 	Placeholders []string // placeholder tokens to treat as opaque
+	Links        LinksConfig
 }
 
 // ID implements rule.Rule.
@@ -53,18 +63,36 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 	// Precompute the resolved absolute root once for all link checks.
 	resolvedRoot := resolveAbsRoot(f.RootDir)
+	resolvedSiteRoot := resolveAbsRoot(r.Links.SiteRoot)
 
 	var diags []lint.Diagnostic
 	for _, link := range linkgraph.ExtractLinks(f) {
 		diags = append(diags, r.checkLink(
-			f,
-			link,
-			r.Include,
-			r.Exclude,
-			selfAnchors,
-			resolvedRoot,
+			f, link, false,
+			r.Include, r.Exclude,
+			selfAnchors, resolvedRoot, resolvedSiteRoot,
 			anchorCache,
 		)...)
+	}
+	if r.Links.ValidateImages {
+		for _, link := range linkgraph.ExtractImages(f) {
+			diags = append(diags, r.checkLink(
+				f, link, true,
+				r.Include, r.Exclude,
+				selfAnchors, resolvedRoot, resolvedSiteRoot,
+				anchorCache,
+			)...)
+		}
+	}
+	if r.Links.ValidateReferenceStyle {
+		for _, link := range linkgraph.ExtractRefLinkTargets(f) {
+			diags = append(diags, r.checkLink(
+				f, link, false,
+				r.Include, r.Exclude,
+				selfAnchors, resolvedRoot, resolvedSiteRoot,
+				anchorCache,
+			)...)
+		}
 	}
 
 	return diags
@@ -73,10 +101,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 func (r *Rule) checkLink(
 	f *lint.File,
 	link linkgraph.Link,
+	isImage bool,
 	includePatterns []string,
 	excludePatterns []string,
 	selfAnchors map[string]bool,
 	resolvedRoot string,
+	resolvedSiteRoot string,
 	anchorCache map[string]map[string]bool,
 ) []lint.Diagnostic {
 	target := link.Target
@@ -92,11 +122,18 @@ func (r *Rule) checkLink(
 	}
 
 	linkPath := normalizeLinkPath(target.Path)
-	if linkPath == "" || filepath.IsAbs(linkPath) {
+	if linkPath == "" {
 		return nil
 	}
 
-	if !r.Strict && !isMarkdownPath(linkPath) {
+	if filepath.IsAbs(linkPath) {
+		if resolvedSiteRoot == "" {
+			return nil
+		}
+		return r.checkSiteAbsoluteLink(f, link, linkPath, resolvedSiteRoot)
+	}
+
+	if !isImage && !r.Strict && !isMarkdownPath(linkPath) {
 		return nil
 	}
 
@@ -104,9 +141,22 @@ func (r *Rule) checkLink(
 		return nil
 	}
 
+	return r.checkRelativeTarget(f, line, col, target, linkPath, resolvedRoot, anchorCache)
+}
+
+// checkRelativeTarget verifies a relative link path exists and, for
+// Markdown targets with an anchor, that the anchor resolves to a heading.
+func (r *Rule) checkRelativeTarget(
+	f *lint.File,
+	line, col int,
+	target linkgraph.Target,
+	linkPath string,
+	resolvedRoot string,
+	anchorCache map[string]map[string]bool,
+) []lint.Diagnostic {
 	targetFile, ok := resolveTargetFile(f, linkPath, resolvedRoot)
 	if !ok {
-		// If the link escapes the project root, silently skip it.
+		// Silently skip links that escape the project root.
 		if resolvedRoot != "" && linkEscapesRoot(f, linkPath, resolvedRoot) {
 			return nil
 		}
@@ -134,6 +184,31 @@ func checkLocalAnchor(
 		return nil
 	}
 	return []lint.Diagnostic{brokenHeadingDiag(path, line, col, r, target.Raw)}
+}
+
+// checkSiteAbsoluteLink resolves an absolute-path link (e.g.
+// /docs/rules/MDS027/) against the configured site root and checks
+// whether the resulting on-disk path exists. Anchor checking is
+// skipped for site-absolute paths: the target is a rendered page
+// directory, not a Markdown source file.
+func (r *Rule) checkSiteAbsoluteLink(
+	f *lint.File,
+	link linkgraph.Link,
+	absPath string,
+	resolvedSiteRoot string,
+) []lint.Diagnostic {
+	// Strip the leading path separator and re-express as a
+	// platform-native relative path before joining with siteRoot.
+	rel := strings.TrimPrefix(filepath.ToSlash(absPath), "/")
+	rel = filepath.FromSlash(rel)
+	if rel == "" {
+		return nil
+	}
+	target := filepath.Join(resolvedSiteRoot, rel)
+	if cachedStatExists(target) {
+		return nil
+	}
+	return []lint.Diagnostic{brokenFileDiag(f.Path, link.Line, link.Column, r, link.Target.Raw)}
 }
 
 // ApplySettings implements rule.Configurable.
@@ -179,6 +254,17 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 				return fmt.Errorf("cross-file-reference-integrity: %w", err)
 			}
 			r.Placeholders = toks
+		case "links":
+			linksMap, ok := v.(map[string]any)
+			if !ok {
+				return fmt.Errorf(
+					"cross-file-reference-integrity: links must be a map, got %T",
+					v,
+				)
+			}
+			if err := r.applyLinksSettings(linksMap); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf(
 				"cross-file-reference-integrity: unknown setting %q",
@@ -187,6 +273,46 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 		}
 	}
 	return r.validateGlobSettings()
+}
+
+func (r *Rule) applyLinksSettings(m map[string]any) error {
+	for k, v := range m {
+		switch k {
+		case "site-root":
+			s, ok := v.(string)
+			if !ok {
+				return fmt.Errorf(
+					"cross-file-reference-integrity: links.site-root must be a string, got %T",
+					v,
+				)
+			}
+			r.Links.SiteRoot = s
+		case "validate-images":
+			b, ok := v.(bool)
+			if !ok {
+				return fmt.Errorf(
+					"cross-file-reference-integrity: links.validate-images must be a bool, got %T",
+					v,
+				)
+			}
+			r.Links.ValidateImages = b
+		case "validate-reference-style":
+			b, ok := v.(bool)
+			if !ok {
+				return fmt.Errorf(
+					"cross-file-reference-integrity: links.validate-reference-style must be a bool, got %T",
+					v,
+				)
+			}
+			r.Links.ValidateReferenceStyle = b
+		default:
+			return fmt.Errorf(
+				"cross-file-reference-integrity: unknown links setting %q",
+				k,
+			)
+		}
+	}
+	return nil
 }
 
 func (r *Rule) validateGlobSettings() error {
@@ -212,6 +338,11 @@ func (r *Rule) DefaultSettings() map[string]any {
 		"exclude":      []string{},
 		"strict":       false,
 		"placeholders": []string{},
+		"links": map[string]any{
+			"site-root":                "",
+			"validate-images":          true,
+			"validate-reference-style": true,
+		},
 	}
 }
 

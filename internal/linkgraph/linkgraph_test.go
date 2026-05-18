@@ -199,3 +199,84 @@ func TestExtractLinks_LinkWithNoTextChildren(t *testing.T) {
 	assert.Equal(t, 1, links[0].Line, "no-text link → linkPosition falls back to (1, 1)")
 	assert.Equal(t, 1, links[0].Column)
 }
+
+// =====================================================================
+// ExtractImages tests
+// =====================================================================
+
+func TestExtractImages_Basic(t *testing.T) {
+	f := newFile(t, "# Doc\n\n![diagram](diagram.png)\n")
+	imgs := ExtractImages(f)
+	require.Len(t, imgs, 1)
+	assert.Equal(t, "diagram", imgs[0].Text)
+	assert.Equal(t, "diagram.png", imgs[0].Target.Path)
+	assert.Equal(t, 3, imgs[0].Line)
+	assert.Greater(t, imgs[0].Column, 0)
+}
+
+func TestExtractImages_SkipsExternal(t *testing.T) {
+	f := newFile(t, "# Doc\n\n![logo](https://example.com/logo.png)\n")
+	imgs := ExtractImages(f)
+	assert.Empty(t, imgs, "external image URLs must be skipped")
+}
+
+func TestExtractImages_IncludesReferenceStyle(t *testing.T) {
+	src := "# Doc\n\n![alt][img]\n\n[img]: diagram.png\n"
+	f := newFile(t, src)
+	imgs := ExtractImages(f)
+	require.Len(t, imgs, 1, "reference-style images must be included")
+	assert.Equal(t, "diagram.png", imgs[0].Target.Path)
+}
+
+func TestExtractImages_NilFile(t *testing.T) {
+	assert.Nil(t, ExtractImages(nil))
+}
+
+func TestExtractImages_EmptyAlt(t *testing.T) {
+	f := newFile(t, "# Doc\n\n![](logo.png)\n")
+	imgs := ExtractImages(f)
+	require.Len(t, imgs, 1)
+	// Empty alt: no text children, linkPosition falls back to (1,1).
+	assert.Equal(t, "logo.png", imgs[0].Target.Path)
+}
+
+// =====================================================================
+// ExtractRefLinkTargets tests
+// =====================================================================
+
+func TestExtractRefLinkTargets_Basic(t *testing.T) {
+	src := "# Doc\n\nSee [guide][ref].\n\n[ref]: guide.md\n"
+	f := newFile(t, src)
+	links := ExtractRefLinkTargets(f)
+	require.Len(t, links, 1)
+	assert.Equal(t, "guide", links[0].Text)
+	assert.Equal(t, "guide.md", links[0].Target.Path)
+}
+
+func TestExtractRefLinkTargets_SkipsInlineLinks(t *testing.T) {
+	src := "# Doc\n\nSee [inline](guide.md).\n"
+	f := newFile(t, src)
+	links := ExtractRefLinkTargets(f)
+	assert.Empty(t, links, "inline links must not be returned")
+}
+
+func TestExtractRefLinkTargets_SkipsExternalDest(t *testing.T) {
+	src := "# Doc\n\nSee [ext][ref].\n\n[ref]: https://example.com\n"
+	f := newFile(t, src)
+	links := ExtractRefLinkTargets(f)
+	assert.Empty(t, links, "external reference targets must be skipped")
+}
+
+func TestExtractRefLinkTargets_NilFile(t *testing.T) {
+	assert.Nil(t, ExtractRefLinkTargets(nil))
+}
+
+func TestExtractRefLinkTargets_UndefinedRefNotReturned(t *testing.T) {
+	// [undefined] has no matching definition; goldmark does not
+	// create an *ast.Link node for it, so ExtractRefLinkTargets
+	// must return nothing.
+	src := "# Doc\n\nSee [text][undefined].\n"
+	f := newFile(t, src)
+	links := ExtractRefLinkTargets(f)
+	assert.Empty(t, links, "undefined reference must produce no Link")
+}

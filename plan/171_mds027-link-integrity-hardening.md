@@ -1,7 +1,7 @@
 ---
 id: 171
 title: MDS027 link-integrity hardening
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [170]
 summary: >-
@@ -62,13 +62,13 @@ by a shared `links:` block.
 
 ## Acceptance Criteria
 
-- [ ] A broken `![](x.png)` is flagged by MDS027 with
+- [x] A broken `![](x.png)` is flagged by MDS027 with
   `validate-images` on and silent when off.
-- [ ] A broken reference-style target is flagged with
+- [x] A broken reference-style target is flagged with
   `validate-reference-style` on.
-- [ ] An absolute target resolves against `site-root`
+- [x] An absolute target resolves against `site-root`
   when set and short-circuits when unset.
-- [ ] A subpath-baseURL regression test asserts the
+- [x] A subpath-baseURL regression test asserts the
   render-link prefix.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no issues.

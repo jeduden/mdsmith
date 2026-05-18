@@ -129,6 +129,40 @@ func ExtractLinks(f *lint.File) []Link {
 	return out
 }
 
+// ExtractImages walks f.AST and returns every Markdown image in
+// document order. Both inline (Reference == nil) and reference-style
+// (Reference != nil) images are included when their destination can
+// be parsed as a local target. Lines are body-relative — same
+// convention as Link.
+func ExtractImages(f *lint.File) []Link {
+	if f == nil || f.AST == nil {
+		return nil
+	}
+	var out []Link
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		img, ok := n.(*ast.Image)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		target, ok := ParseTarget(string(img.Destination))
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		line, col := linkPosition(f, img)
+		out = append(out, Link{
+			Line:   line,
+			Column: col,
+			Text:   mdtext.ExtractPlainText(img, f.Source),
+			Target: target,
+		})
+		return ast.WalkContinue, nil
+	})
+	return out
+}
+
 // CollectAnchors returns the set of heading anchors defined in f, with
 // GitHub-compatible disambiguation suffixes (-1, -2, …) when slugs
 // would otherwise collide. Uniqueness is enforced against the running
