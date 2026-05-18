@@ -9,7 +9,7 @@ import (
 	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 func TestParserCachesSingleInstance(t *testing.T) {
@@ -54,9 +54,10 @@ func TestParserDetectsDefinitionList(t *testing.T) {
 }
 
 // TestParserRecognisesPIBlocks guards that the dual parser uses the
-// same processing-instruction block parser as lint.NewFile so table
-// / list markup embedded inside a <?include ... ?> block is not
-// detected as real document markup by MDS034.
+// same processing-instruction block parser as pkg/markdown's
+// canonical parser so table / list markup embedded inside a
+// <?include ... ?> block is not detected as real document markup by
+// MDS034.
 func TestParserRecognisesPIBlocks(t *testing.T) {
 	src := []byte("<?include\nfile: x.md\n?>\n")
 	doc := parseSource(t, src)
@@ -65,7 +66,7 @@ func TestParserRecognisesPIBlocks(t *testing.T) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		if n.Kind() == lint.KindProcessingInstruction {
+		if n.Kind() == markdown.KindProcessingInstruction {
 			found = true
 			return ast.WalkStop, nil
 		}

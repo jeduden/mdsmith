@@ -7,8 +7,8 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/markdownflavor/ext"
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 var (
@@ -26,11 +26,12 @@ var (
 // detected on the main CommonMark parse (see detectBareURLs).
 //
 // To keep MDS034 aligned with the rest of mdsmith, the dual parser
-// also registers lint.PIBlockParserPrioritized so a
+// also registers markdown.PIBlockParserPrioritized so a
 // <?include ... ?> block is treated as a processing-instruction
-// node here — just as lint.NewFile does — rather than as an HTML
-// block. Without this, a table fixture embedded inside a PI block
-// would be flagged by MDS034 but invisible to every other rule.
+// node here — just as the canonical pkg/markdown parser does —
+// rather than as an HTML block. Without this, a table fixture
+// embedded inside a PI block would be flagged by MDS034 but
+// invisible to every other rule.
 //
 // Linkify is intentionally not enabled: bare-URL autolinks are
 // detected separately in detectBareURLs by scanning Text nodes from
@@ -58,7 +59,7 @@ func Parser() goldmark.Markdown {
 			goldmark.WithParserOptions(
 				parser.WithAttribute(),
 				parser.WithBlockParsers(
-					lint.PIBlockParserPrioritized(),
+					markdown.PIBlockParserPrioritized(),
 				),
 			),
 		)
