@@ -5,7 +5,7 @@ settings:
 diagnostics:
   - line: 5
     column: 1
-    message: "list marker followed by 1 spaces; expected 2"
+    message: "list marker followed by 1 space; expected 2"
 ---
 # Multi-paragraph item wrong space
 

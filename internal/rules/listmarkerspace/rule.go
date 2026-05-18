@@ -74,8 +74,8 @@ func (r *Rule) checkList(f *lint.File, list *ast.List) []lint.Diagnostic {
 			RuleName: r.Name(),
 			Severity: lint.Warning,
 			Message: fmt.Sprintf(
-				"list marker followed by %d spaces; expected %d",
-				got, want,
+				"list marker followed by %d %s; expected %d",
+				got, pluralSpace(got), want,
 			),
 		})
 	}
@@ -183,7 +183,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 				continue
 			}
 			markerEnd, got := parseMarkerAndSpaces(f.Lines[line-1])
-			if markerEnd == 0 || got == want {
+			if markerEnd == 0 || got == want || multi {
 				continue
 			}
 			editMap[line] = want
@@ -259,6 +259,13 @@ func (r *Rule) DefaultSettings() map[string]any {
 		"ol-single": 1,
 		"ol-multi":  1,
 	}
+}
+
+func pluralSpace(n int) string {
+	if n == 1 {
+		return "space"
+	}
+	return "spaces"
 }
 
 var (

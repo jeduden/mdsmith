@@ -153,14 +153,17 @@ func TestFix_OrderedTwoSpacesToOne(t *testing.T) {
 	assert.Equal(t, want, string(got))
 }
 
-func TestFix_MultiItemGetsMultiSpaces(t *testing.T) {
+func TestFix_MultiItemSkipped(t *testing.T) {
+	// Multi-paragraph items are skipped by Fix to avoid misaligning continuation
+	// lines whose indentation depends on the marker-space count. Only single items
+	// are rewritten.
 	src := []byte("- First paragraph\n\n  Second paragraph\n\n- Single item\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 	r := &Rule{ULSingle: 1, ULMulti: 2, OLSingle: 1, OLMulti: 1}
 	got := r.Fix(f)
-	want := "-  First paragraph\n\n  Second paragraph\n\n- Single item\n"
-	assert.Equal(t, want, string(got))
+	// Multi item unchanged; single item already correct.
+	assert.Equal(t, string(src), string(got))
 }
 
 func TestFix_NoChangeNeeded(t *testing.T) {
@@ -286,10 +289,76 @@ func TestParseMarkerAndSpaces_Ordered(t *testing.T) {
 }
 
 func TestParseMarkerAndSpaces_NoMarker(t *testing.T) {
-	cases := []string{"  text", "# heading", ""}
+	cases := []string{"  text", "# heading", "", "123x"}
 	for _, line := range cases {
 		me, sp := parseMarkerAndSpaces([]byte(line))
 		assert.Equal(t, 0, me, "line=%q", line)
 		assert.Equal(t, 0, sp, "line=%q", line)
 	}
+}
+
+func TestParseMarkerAndSpaces_TabIndent(t *testing.T) {
+	// Tab before the marker is treated as whitespace to skip.
+	me, sp := parseMarkerAndSpaces([]byte("\t- item"))
+	assert.Equal(t, 2, me)
+	assert.Equal(t, 1, sp)
+}
+
+func TestCheck_OrderedMultiItem_UsesOLMulti(t *testing.T) {
+	// Ordered multi-paragraph item: OLMulti=2, got=1 → diagnostic.
+	src := []byte("1. First paragraph\n\n   Second paragraph\n\n2. Single item\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{ULSingle: 1, ULMulti: 1, OLSingle: 1, OLMulti: 2}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "only the multi ordered item is flagged")
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Contains(t, diags[0].Message, "expected 2")
+}
+
+func TestAdjustSpaces_NoMarkerLine(t *testing.T) {
+	// adjustSpaces returns the line unchanged when it has no list marker.
+	line := []byte("plain text")
+	got := adjustSpaces(line, 2)
+	assert.Equal(t, line, got)
+}
+
+func TestCheck_LooseList_FallbackPath(t *testing.T) {
+	// A loose list (blank lines between items) exercises the firstLineOfListItem
+	// fallback that walks child nodes when li.Lines().Len() == 0.
+	src := []byte("-  item one\n\n-  item two\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{ULSingle: 1, ULMulti: 1, OLSingle: 1, OLMulti: 1}
+	diags := r.Check(f)
+	require.Len(t, diags, 2)
+	assert.Equal(t, 1, diags[0].Line)
+	assert.Equal(t, 3, diags[1].Line)
+}
+
+func TestPluralSpace(t *testing.T) {
+	assert.Equal(t, "space", pluralSpace(1))
+	assert.Equal(t, "spaces", pluralSpace(0))
+	assert.Equal(t, "spaces", pluralSpace(2))
+	assert.Equal(t, "spaces", pluralSpace(3))
+}
+
+func TestCheck_MessageGrammar(t *testing.T) {
+	// "1 space" singular, "2 spaces" plural.
+	src := []byte("-  item\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{ULSingle: 1, ULMulti: 1, OLSingle: 1, OLMulti: 1}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "2 spaces")
+
+	src2 := []byte("- item\n")
+	f2, err := lint.NewFile("test.md", src2)
+	require.NoError(t, err)
+	r2 := &Rule{ULSingle: 2, ULMulti: 2, OLSingle: 1, OLMulti: 1}
+	diags2 := r2.Check(f2)
+	require.Len(t, diags2, 1)
+	assert.Contains(t, diags2[0].Message, "1 space")
+	assert.NotContains(t, diags2[0].Message, "1 spaces")
 }
