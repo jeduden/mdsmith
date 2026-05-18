@@ -554,9 +554,11 @@ jobs:
   # the new version. Gated on `release` so the site is deployed
   # only after the release has been frozen — the draft is published
   # and immutable — so mdsmith.dev never advertises a version whose
-  # GitHub release does not yet exist. `release` does not depend on
-  # the npm/pypi registry-publish jobs, so a flaky registry publish
-  # still cannot block the docs deploy.
+  # GitHub release does not yet exist. `release` transitively
+  # depends on `npm` (release -> vscode -> npm), so a failed npm
+  # publish also blocks this deploy. That is intentional: with no
+  # frozen release there is no version to ship the site for. `pypi`
+  # is not in the release chain, so a PyPI outage does not block it.
   pages:
     needs: [release]
     if: *release_repo_trigger_ok

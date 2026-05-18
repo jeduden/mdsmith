@@ -65,8 +65,14 @@ jobs:
   deploy:
     name: Deploy mdsmith.dev to GitHub Pages
     needs: mdsmith-check
-    # Guard fork clones: only the canonical repo deploys the site.
-    if: github.repository == 'jeduden/mdsmith'
+    # Guard fork clones and stray refs: only the canonical repo
+    # deploys, and only from `main`. workflow_dispatch lets a
+    # maintainer select any branch in the Run-workflow UI; without
+    # the ref check a manual run from a feature branch would publish
+    # that branch's content to production. push is already main-only
+    # and the release-driven workflow_call runs from `main` (the
+    # `release` environment restricts release dispatches to it).
+    if: github.repository == 'jeduden/mdsmith' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
