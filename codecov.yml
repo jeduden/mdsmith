@@ -8,15 +8,28 @@ coverage:
         # mean). patch stays at 0%, so undertested new
         # code still fails.
         threshold: 0.2%
+        # Fork PRs skip the Codecov upload (see ci.yml's
+        # upload steps gated on head.repo.full_name).
+        # Without these, the required status check would
+        # never post on a fork PR and branch protection
+        # would block the merge. `success` posts a passing
+        # status when no report arrives or no base report
+        # exists — same-repo PRs still gate on real numbers.
+        if_no_uploads: success
+        if_not_found: success
     patch:
       default:
         target: auto
         threshold: 0%
+        if_no_uploads: success
+        if_not_found: success
     # Per-file gate: fail the status check if any
     # file's coverage decreased vs the base commit.
     changes:
       default:
         enabled: true
+        if_no_uploads: success
+        if_not_found: success
 
 # Coverage is uploaded with a flag per language so each report
 # only contains the files it actually measured. Without flags,
