@@ -356,9 +356,9 @@ the broadest set. The full rule-by-rule mapping lives in the
 [markdownlint coverage matrix][mdcov]: every markdownlint
 `MDxxx`, the mdsmith rule that covers it or the plan that
 schedules it, and the mdsmith-only rules. As of 2026-05
-mdsmith implements 35 of 52 active markdownlint rules (1
-partial); the other 16 are scheduled in plans 172 and
-176-182.
+mdsmith implements 38 of 52 active markdownlint rules (37
+fully, 1 partial); the other 14 are scheduled in plans 172,
+176, 178-179, and 181-182.
 
 ### Rust Markdown linters (rumdl, mado, panache)
 

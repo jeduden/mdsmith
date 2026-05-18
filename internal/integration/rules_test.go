@@ -18,6 +18,7 @@ import (
 
 	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"
+	_ "github.com/jeduden/mdsmith/internal/rules/blockquotewhitespace"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"
 	_ "github.com/jeduden/mdsmith/internal/rules/build"

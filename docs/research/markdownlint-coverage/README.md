@@ -20,8 +20,8 @@ Status legend:
 
 Deprecated markdownlint numbers (MD002, MD006, MD008,
 MD015-MD017) are omitted. As of 2026-05 mdsmith implements
-**36 of the 52** active markdownlint rules (1 partial); the
-remaining **15** are scheduled in plans 172, 176-179, and 181-182.
+**38 of the 52** active markdownlint rules (**37** fully, **1** partially); the
+remaining **13** are scheduled in plans 172, 176, 179, and 181-182.
 
 ## Headings
 
@@ -55,15 +55,15 @@ remaining **15** are scheduled in plans 172, 176-179, and 181-182.
 
 ## Whitespace, blank lines, tabs
 
-| markdownlint             | Checks          | mdsmith | Status      |
-|--------------------------|-----------------|---------|-------------|
-| MD009 no-trailing-spaces | line ends       | MDS006  | ✅          |
-| MD010 no-hard-tabs       | tab chars       | MDS007  | ✅          |
-| MD012 no-multiple-blanks | repeated blanks | MDS008  | ✅          |
-| MD013 line-length        | max width       | MDS001  | ✅          |
-| MD047 file-ends-newline  | trailing `\n`   | MDS009  | ✅          |
-| MD027 multiple-space-bq  | `>  text`       | —       | 🔲 plan 177 |
-| MD028 blank-line-bq      | gap in quote    | —       | 🔲 plan 177 |
+| markdownlint             | Checks          | mdsmith | Status |
+|--------------------------|-----------------|---------|--------|
+| MD009 no-trailing-spaces | line ends       | MDS006  | ✅     |
+| MD010 no-hard-tabs       | tab chars       | MDS007  | ✅     |
+| MD012 no-multiple-blanks | repeated blanks | MDS008  | ✅     |
+| MD013 line-length        | max width       | MDS001  | ✅     |
+| MD047 file-ends-newline  | trailing `\n`   | MDS009  | ✅     |
+| MD027 multiple-space-bq  | `>  text`       | MDS059  | ✅     |
+| MD028 blank-line-bq      | gap in quote    | MDS059  | ✅     |
 
 ## Code blocks and code spans
 
