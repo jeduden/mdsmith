@@ -1,7 +1,7 @@
 ---
 id: 163
 title: 'Extract mdsmith Markdown parse/produce as a public Go library'
-status: "🔲"
+status: "🔳"
 summary: >-
   Expose mdsmith's Markdown parsing and a
   canonical producer as a stable public Go
@@ -68,6 +68,20 @@ Behavior does not change.
    model sync-docs already relies on).
    Decide the package path
    (`pkg/markdown` vs a top-level module).
+   Decided: `pkg/markdown` inside the
+   existing module
+   (`github.com/jeduden/mdsmith/pkg/markdown`).
+   Surface: `Parse(source) *Document`
+   (front matter + body + AST),
+   `Splice(body, []Edit) []byte` (the
+   edit-based producer), `ParseContext`
+   /`NewParser`/`StripFrontMatter`
+   /`CountLines`, and the
+   `ProcessingInstruction` node primitive.
+   `internal/lint` re-exports these via
+   type aliases and forwards so the single
+   goldmark config lives only in
+   `pkg/markdown`.
 2. Untangle the parser config from
    [internal/lint](../internal/lint) so
    parsing has no rule/config/diagnostic
