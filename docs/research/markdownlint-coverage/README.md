@@ -20,8 +20,8 @@ Status legend:
 
 Deprecated markdownlint numbers (MD002, MD006, MD008,
 MD015-MD017) are omitted. As of 2026-05 mdsmith implements
-**35 of the 52** active markdownlint rules (1 partial); the
-remaining **16** are scheduled in plans 172 and 176-182.
+**36 of the 52** active markdownlint rules (1 partial); the
+remaining **15** are scheduled in plans 172, 176-179, and 181-182.
 
 ## Headings
 
@@ -88,7 +88,7 @@ remaining **16** are scheduled in plans 172 and 176-182.
 | MD052 reference-defined   | ref label set    | MDS054  | ✅          |
 | MD053 reference-needed    | unused defs      | MDS053  | ✅          |
 | MD054 link-image-style    | inline vs ref    | —       | 🔲 plan 172 |
-| MD059 descriptive-link    | "click here"     | —       | 🔲 plan 180 |
+| MD059 descriptive-link    | "click here"     | MDS063  | ✅          |
 
 ## Inline, emphasis, HTML
 

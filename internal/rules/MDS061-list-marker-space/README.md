@@ -28,6 +28,12 @@ child (a blank-line-separated continuation paragraph, a nested
 list, or a code block inside the item). Single items have one
 block child.
 
+`ul-multi` and `ol-multi` are checked but **not auto-fixed**.
+Adjusting the marker gap on a multi-paragraph item requires
+re-indenting every continuation line by the same delta; doing so
+correctly across all block child types is left to the author.
+Single-paragraph items are fixed automatically.
+
 ## Config
 
 Enable with default settings (one space everywhere):
@@ -135,7 +141,7 @@ Ordered list with two spaces after each marker.
 - **Name**: `list-marker-space`
 - **Status**: ready
 - **Default**: enabled
-- **Fixable**: yes
+- **Fixable**: single-paragraph items only
 - **Implementation**:
   [source](./)
 - **Category**: list

@@ -336,20 +336,25 @@ func TestCheck_LooseList_FallbackPath(t *testing.T) {
 	assert.Equal(t, 3, diags[1].Line)
 }
 
-func TestBlockFirstLine_Recursion(t *testing.T) {
-	// An item whose only child is a *ast.List (lines=0) exercises
-	// blockFirstLine's recursive child-walk (the for-loop body).
+func TestCheck_ParagraphlessOuterItemSkipped(t *testing.T) {
+	// A "paragraphless" outer item (-\n  - inner) has a *ast.List as its
+	// only child (lines=0). firstLineOfListItem skips children with no
+	// source lines, so the outer item returns 0 and is not checked.
+	// The inner item is checked normally and produces no diagnostic when
+	// spacing is correct.
 	src := []byte("-\n  - nested item\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
 	r := &Rule{ULSingle: 1, ULMulti: 1, OLSingle: 1, OLMulti: 1}
-	_ = r.Check(f)
+	diags := r.Check(f)
+	// Inner item has 1 space (want 1) → no diagnostic.
+	assert.Empty(t, diags)
 }
 
 func TestCheck_NoLineItems(t *testing.T) {
-	// "- \n" → ListItem with no children → firstLineOfListItem returns 0.
-	// "- \n  ---\n" → ThematicBreak child (lines=0, no children) →
-	// blockFirstLine returns 0 → firstLineOfListItem returns 0.
+	// "- \n" → no children → firstLineOfListItem returns 0 directly.
+	// "- \n  ---\n" → ThematicBreak child (lines=0) is skipped →
+	// firstLineOfListItem returns 0.
 	// Both exercise the line<=0 bounds check in checkList and Fix.
 	for _, raw := range []string{"- \n", "- \n  ---\n"} {
 		f, err := lint.NewFile("test.md", []byte(raw))

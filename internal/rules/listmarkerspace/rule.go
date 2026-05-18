@@ -138,22 +138,14 @@ func parseMarkerAndSpaces(line []byte) (markerEnd int, spaceCount int) {
 	return markerEnd, spaceCount
 }
 
+// firstLineOfListItem returns the source line number of the first
+// text-bearing direct child of the list item. Items whose first child
+// carries no source lines (e.g. a paragraphless outer item that contains
+// only a nested sub-list) return 0 and are skipped by the caller.
 func firstLineOfListItem(f *lint.File, li *ast.ListItem) int {
 	for c := li.FirstChild(); c != nil; c = c.NextSibling() {
-		if line := blockFirstLine(f, c); line > 0 {
-			return line
-		}
-	}
-	return 0
-}
-
-func blockFirstLine(f *lint.File, n ast.Node) int {
-	if n.Lines().Len() > 0 {
-		return f.LineOfOffset(n.Lines().At(0).Start)
-	}
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		if l := blockFirstLine(f, c); l > 0 {
-			return l
+		if c.Lines().Len() > 0 {
+			return f.LineOfOffset(c.Lines().At(0).Start)
 		}
 	}
 	return 0
