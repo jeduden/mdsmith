@@ -34,6 +34,7 @@ Remove the three private copies in
   - `NonNegativeUTF16RuneLen(r rune) int`
   - `UTF16FromByteOffset(line []byte, byteOff int) int`
   - `UTF16ToByteOffset(line []byte, target int) int`
+
    Add unit tests for each in
    `internal/mdtext/utf16_test.go`.
 
