@@ -20,6 +20,15 @@ func init() {
 // "click here", "here", "link", or "more".
 type Rule struct {
 	Banned []string
+
+	// bannedSet is the lookup form of Banned. Built lazily on first
+	// CheckNode call to keep the cost off per-node hot paths under the
+	// multiplexed AST walk (was rebuilt per link node, which on
+	// link-heavy docs was an allocation per node). The rule clone is
+	// per-Check on the configured path and per-worker on the
+	// defaults-only path; in both cases Banned is immutable for the
+	// lifetime of this clone, so the cache stays correct.
+	bannedSet map[string]bool
 }
 
 // ID implements rule.Rule.
@@ -83,19 +92,15 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 
-	// Banned-set construction is cheap, but doing it per node is wasteful
-	// when there are many links. The set is per-rule-config (Banned),
-	// so memoise on r.banned only when r.Banned hasn't changed. For
-	// simplicity and correctness — and because rule clones are per
-	// Check (so a fresh slice maps to a fresh check pass) — just build
-	// it inline per call. The work is bounded by len(Banned) ~ <10.
-	bannedSet := make(map[string]bool, len(r.Banned))
-	for _, b := range r.Banned {
-		bannedSet[normalizeText(b)] = true
+	if r.bannedSet == nil {
+		r.bannedSet = make(map[string]bool, len(r.Banned))
+		for _, b := range r.Banned {
+			r.bannedSet[normalizeText(b)] = true
+		}
 	}
 
 	text := collectLinkText(link, f.Source)
-	if !bannedSet[normalizeText(text)] {
+	if !r.bannedSet[normalizeText(text)] {
 		return nil
 	}
 	line := linkLine(link, f)

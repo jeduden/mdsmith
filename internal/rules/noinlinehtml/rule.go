@@ -21,6 +21,11 @@ func init() {
 type Rule struct {
 	Allow         []string
 	AllowComments bool
+
+	// allowSetCache memoizes allowSet() for the lifetime of one
+	// rule-clone (one Check on one File, in practice). Built only when
+	// an HTML node is actually visited — most documents have none.
+	allowSetCache map[string]bool
 }
 
 // ID implements rule.Rule.
@@ -79,7 +84,10 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if !entering {
 		return nil
 	}
-	allowed := r.allowSet()
+	// Build the allow-set lazily and only when we actually see an HTML
+	// node. Most documents have many AST nodes and very few HTML ones,
+	// so computing it unconditionally allocated a map per visit under
+	// the multiplexed walk.
 	switch node := n.(type) {
 	case *ast.HTMLBlock:
 		seg := node.Lines().At(0)
@@ -88,13 +96,13 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		if i := bytes.IndexByte(raw, '<'); i >= 0 {
 			offset += i
 		}
-		if d, ok := r.checkRaw(f, allowed, raw, offset); ok {
+		if d, ok := r.checkRaw(f, r.cachedAllowSet(), raw, offset); ok {
 			return []lint.Diagnostic{d}
 		}
 	case *ast.RawHTML:
 		seg := node.Segments.At(0)
 		raw := rawHTMLBytes(node, f.Source)
-		if d, ok := r.checkRaw(f, allowed, raw, seg.Start); ok {
+		if d, ok := r.checkRaw(f, r.cachedAllowSet(), raw, seg.Start); ok {
 			return []lint.Diagnostic{d}
 		}
 	}
@@ -130,6 +138,15 @@ func (r *Rule) allowSet() map[string]bool {
 		m[strings.ToLower(t)] = true
 	}
 	return m
+}
+
+// cachedAllowSet returns the lazily-built lookup form of r.Allow.
+// Builds it on first call within this rule-clone's lifetime.
+func (r *Rule) cachedAllowSet() map[string]bool {
+	if r.allowSetCache == nil {
+		r.allowSetCache = r.allowSet()
+	}
+	return r.allowSetCache
 }
 
 func (r *Rule) diag(f *lint.File, offset int, display string) lint.Diagnostic {

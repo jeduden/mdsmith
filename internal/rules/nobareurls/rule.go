@@ -63,12 +63,9 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		line := f.LineOfOffset(offset)
 		// Compute column: find the start of this line.
 		lineStart := 0
-		count := 1
 		for i := 0; i < offset && i < len(f.Source); i++ {
 			if f.Source[i] == '\n' {
 				lineStart = i + 1
-				count++
-				_ = count
 			}
 		}
 		col := offset - lineStart + 1

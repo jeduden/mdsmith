@@ -86,3 +86,20 @@ func TestWalkNodes_EqualsManualWalk(t *testing.T) {
 
 	assert.Equal(t, manual, viaHelper)
 }
+
+// TestWalkNodes_NilFileAndNilAST pins the defensive nil guard:
+// unit-test stubs that construct `&lint.File{}` literals must not
+// crash WalkNodes. The engine path never produces such files (NewFile
+// always parses to a Document node), but rule tests build literals to
+// exercise short-circuits and would panic without the guard.
+func TestWalkNodes_NilFileAndNilAST(t *testing.T) {
+	stub := &nodeCheckerStub{}
+
+	// nil *lint.File — should return nil, not panic.
+	assert.Nil(t, WalkNodes(stub, nil))
+	assert.Empty(t, stub.visits, "no nodes visited when file is nil")
+
+	// non-nil File with nil AST — same.
+	assert.Nil(t, WalkNodes(stub, &lint.File{Path: "t.md"}))
+	assert.Empty(t, stub.visits, "no nodes visited when AST is nil")
+}

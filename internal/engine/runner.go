@@ -200,8 +200,9 @@ func resolveIntraFileWorkersFor(setting, gomaxproc, fileWorkers int) int {
 }
 
 // resolveIntraFileWorkers reads GOMAXPROCS once and forwards to the
-// pure helper. Callers should use this; the bare helper is exported
-// only for the test that pins the formula.
+// pure helper. Callers should use this; the bare helper is pulled out
+// as a pure function so a table-driven test can pin the formula
+// without faking the runtime.
 func resolveIntraFileWorkers(setting, fileWorkers int) int {
 	return resolveIntraFileWorkersFor(setting, runtime.GOMAXPROCS(0), fileWorkers)
 }
