@@ -77,6 +77,27 @@ func TestCheck_MD027_ContentArrow_NoFlag(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+func TestCheck_MD027_DeepListItemBlockquote(t *testing.T) {
+	// Blockquote inside a nested list item can have 4+ spaces of indent in the
+	// raw source; the prefix regex must capture the > at that depth.
+	src := []byte("- outer\n  - inner\n    >  text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 3, diags[0].Line)
+}
+
+func TestFix_MD027_DeepListItemBlockquote(t *testing.T) {
+	src := []byte("- outer\n  - inner\n    >  text\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	got := r.Fix(f)
+	assert.Equal(t, "- outer\n  - inner\n    > text\n", string(got))
+}
+
 func TestCheck_MD027_SkipsFencedCodeBlock(t *testing.T) {
 	src := []byte("```\n>  not flagged inside code\n```\n")
 	f, err := lint.NewFile("test.md", src)

@@ -791,10 +791,10 @@ items most relevant to this comparison are:
   lifecycle hooks. This will close part of the gap
   with Hugo: deriving artifacts from Markdown sources
   without leaving the linter.
-- **Closing rule gaps with markdownlint** — plans 176-179
-  and 181-182 schedule the 16 still-unmapped rules (heading,
-  blockquote and list whitespace; reversed/empty links; table
-  structure; code-block style), and
+- **Closing rule gaps with markdownlint** — plans 176, 178-179,
+  and 181-182 schedule the 13 still-unmapped rules (heading,
+  list whitespace; reversed/empty links; table structure;
+  code-block style), and
   [plan 172](../../plan/172_link-style-rule-and-config.md)
   covers MD054. MDS063 (`descriptive-link-text`) now covers
   MD059. The [coverage matrix][mdcov] tracks each.
