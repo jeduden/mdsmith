@@ -92,15 +92,8 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 
-	if r.bannedSet == nil {
-		r.bannedSet = make(map[string]bool, len(r.Banned))
-		for _, b := range r.Banned {
-			r.bannedSet[normalizeText(b)] = true
-		}
-	}
-
 	text := collectLinkText(link, f.Source)
-	if !r.bannedSet[normalizeText(text)] {
+	if !r.cachedBannedSet()[normalizeText(text)] {
 		return nil
 	}
 	line := linkLine(link, f)
@@ -113,6 +106,19 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		Severity: lint.Warning,
 		Message:  fmt.Sprintf("link text %q is not descriptive", text),
 	}}
+}
+
+// cachedBannedSet returns the lazily-built lookup form of r.Banned.
+// Built on first call within this rule-clone's lifetime so the
+// shared-walk hot path stops paying the construction cost per link.
+func (r *Rule) cachedBannedSet() map[string]bool {
+	if r.bannedSet == nil {
+		r.bannedSet = make(map[string]bool, len(r.Banned))
+		for _, b := range r.Banned {
+			r.bannedSet[normalizeText(b)] = true
+		}
+	}
+	return r.bannedSet
 }
 
 // normalizeText trims, lowercases, and collapses internal whitespace.

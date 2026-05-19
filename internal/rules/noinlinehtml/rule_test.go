@@ -1,6 +1,7 @@
 package noinlinehtml
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -219,4 +220,32 @@ func TestApplySettings_AllowCommentsBadType(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"allow-comments": "yes"})
 	require.Error(t, err)
+}
+
+// TestCachedAllowSet pins the lazy memoization contract: the first
+// call builds the lookup map from r.Allow, subsequent calls return the
+// SAME map (reference identity, not equal-but-distinct copies).
+// Without this contract the shared-walk hot path would allocate a new
+// map per AST node visited.
+func TestCachedAllowSet(t *testing.T) {
+	r := &Rule{Allow: []string{"Span", "div", "STRONG"}}
+
+	first := r.cachedAllowSet()
+	require.Equal(t, map[string]bool{"span": true, "div": true, "strong": true}, first,
+		"lookup keys must be lowercase normalisations of r.Allow")
+
+	// Maps are reference types; reflect.ValueOf.Pointer is the
+	// canonical way to compare the underlying map headers.
+	second := r.cachedAllowSet()
+	assert.Equal(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(second).Pointer(),
+		"subsequent calls must return the same cached map")
+
+	// An empty Allow yields a non-nil empty map, so a nil check is
+	// usable as the "not yet built" sentinel.
+	empty := &Rule{}
+	got := empty.cachedAllowSet()
+	require.NotNil(t, got, "empty Allow must still return a non-nil map")
+	assert.Empty(t, got)
 }

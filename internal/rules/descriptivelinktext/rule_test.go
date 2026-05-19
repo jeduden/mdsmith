@@ -1,6 +1,7 @@
 package descriptivelinktext
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -134,4 +135,34 @@ func TestSoftLineBreakInLinkText(t *testing.T) {
 	diags := check(t, "# T\n\n[click\nhere](x)\n")
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "not descriptive")
+}
+
+// TestCachedBannedSet pins the lazy memoization contract: the first
+// call builds the lookup map from r.Banned, subsequent calls return
+// the SAME map (reference identity, not equal-but-distinct copies).
+// Without this contract the shared-walk hot path would rebuild the
+// map per link node visited.
+func TestCachedBannedSet(t *testing.T) {
+	r := &Rule{Banned: []string{"Click Here", "MORE"}}
+
+	first := r.cachedBannedSet()
+	require.Equal(t, map[string]bool{"click here": true, "more": true}, first,
+		"lookup keys must be the normalised form of r.Banned")
+
+	// Maps are reference types; reflect.ValueOf.Pointer is the
+	// canonical way to compare the underlying map headers.
+	second := r.cachedBannedSet()
+	assert.Equal(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(second).Pointer(),
+		"subsequent calls must return the same cached map")
+
+	// An empty Banned yields a non-nil empty map; CheckNode short-
+	// circuits on len(r.Banned)==0 before calling cachedBannedSet, so
+	// this branch is purely defensive — pin it so a future refactor
+	// cannot regress it to nil.
+	empty := &Rule{}
+	got := empty.cachedBannedSet()
+	require.NotNil(t, got)
+	assert.Empty(t, got)
 }
