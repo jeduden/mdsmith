@@ -25,6 +25,16 @@ func fix(t *testing.T, style, src string) string {
 	return string(r.Fix(f))
 }
 
+func TestMD058CRLFBlankLine(t *testing.T) {
+	// A CRLF file must get a CRLF blank line inserted, not a bare
+	// LF, so `mdsmith fix` does not introduce mixed line endings.
+	src := "# T\r\nText.\r\n| A | B |\r\n| - | - |\r\nMore.\r\n"
+	got := fix(t, StyleConsistent, src)
+	want := "# T\r\nText.\r\n\r\n| A | B |\r\n| - | - |\r\n\r\nMore.\r\n"
+	assert.Equal(t, want, got)
+	assert.NotContains(t, got, "\r\n\n", "no bare-LF blank line")
+}
+
 func TestIdentity(t *testing.T) {
 	r := &Rule{Style: StyleConsistent}
 	assert.Equal(t, "MDS060", r.ID())

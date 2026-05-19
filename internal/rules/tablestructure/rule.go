@@ -191,15 +191,23 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		}
 	}
 
+	// Match the file's newline style so a CRLF document does not
+	// gain a bare-LF blank line (mixed endings); lines are joined
+	// with "\n", so a CRLF blank line is a lone "\r".
+	blank := ""
+	if bytes.Contains(f.Source, []byte("\r\n")) {
+		blank = "\r"
+	}
+
 	var out []string
 	for i, l := range lines {
 		lineNum := i + 1
 		if blankBefore[lineNum] {
-			out = append(out, "")
+			out = append(out, blank)
 		}
 		out = append(out, l)
 		if blankAfter[lineNum] {
-			out = append(out, "")
+			out = append(out, blank)
 		}
 	}
 	return []byte(strings.Join(out, "\n"))
