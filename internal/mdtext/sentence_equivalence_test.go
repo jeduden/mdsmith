@@ -73,22 +73,23 @@ var equivalenceCorpus = []string{
 	"No terminal punctuation here just a long clause that runs on",
 }
 
-// firstDivergence returns the index and detail of the first corpus
+// firstDivergence returns a human-readable detail of the first corpus
 // sample where candidate's segmentation differs from Punkt's, or
 // ok==true when the candidate is byte-for-byte equivalent across the
-// whole corpus. This is the reusable gate any future faster
+// whole corpus. The detail embeds the corpus index, so callers do not
+// need it separately. This is the reusable gate any future faster
 // candidate must pass (ok==true) to be adoptable.
-func firstDivergence(candidate func(string) []string) (idx int, detail string, ok bool) {
+func firstDivergence(candidate func(string) []string) (detail string, ok bool) {
 	for i, sample := range equivalenceCorpus {
 		want := mdtext.SplitSentences(sample)
 		got := candidate(sample)
 		if !slicesEqual(want, got) {
-			return i, fmt.Sprintf(
+			return fmt.Sprintf(
 				"corpus[%d]=%q\n  Punkt:     %#v\n  candidate: %#v",
 				i, sample, want, got), false
 		}
 	}
-	return 0, "", true
+	return "", true
 }
 
 func slicesEqual(a, b []string) bool {
@@ -109,11 +110,10 @@ func assertSegmenterEquivalent(
 	t *testing.T, name string, candidate func(string) []string,
 ) {
 	t.Helper()
-	idx, detail, ok := firstDivergence(candidate)
+	detail, ok := firstDivergence(candidate)
 	require.Truef(t, ok,
 		"%s must be byte-for-byte equivalent to Punkt; diverged at %s",
 		name, detail)
-	_ = idx
 }
 
 // TestSplitSentences_IsItsOwnReference sanity-checks the harness:
@@ -168,7 +168,7 @@ func TestNaiveSplit_IsNotPunktEquivalent(t *testing.T) {
 
 	// And it fails the reusable gate, so it cannot be adopted: the
 	// harness must reject any non-Punkt-equivalent candidate.
-	_, detail, ok := firstDivergence(naiveSplit)
+	detail, ok := firstDivergence(naiveSplit)
 	assert.Falsef(t, ok,
 		"the equivalence harness must reject naiveSplit, but it passed")
 	t.Logf("recorded negative — naiveSplit diverges from Punkt at %s", detail)

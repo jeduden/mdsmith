@@ -50,7 +50,7 @@ is trivially safe there. Only the LSP path needs the hook.
 
 ## Tasks
 
-1. [ ] Create this plan.
+1. [x] Create this plan.
 2. [ ] Add a run-scoped cache type (path -> parsed front matter,
    path -> resolved include adjacency) owned by the engine
    `Runner` and threaded to rules via a context value or a field
