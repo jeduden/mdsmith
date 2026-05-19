@@ -68,7 +68,7 @@ func (r *Rule) checkLine(path string, lineNum int, line []byte) []lint.Diagnosti
 	if after[0] != ' ' {
 		diags = append(diags, r.diag(path, lineNum, leading+level+1, "missing space after # in heading"))
 	} else if leadingSpaces(after) > 1 {
-		diags = append(diags, r.diag(path, lineNum, leading+level+2, "multiple spaces after # in heading"))
+		diags = append(diags, r.diag(path, lineNum, leading+level+2, "multiple spaces or tabs after # in heading"))
 	}
 
 	diags = append(diags, r.checkClosingATX(path, lineNum, leading, level, after)...)

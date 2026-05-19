@@ -67,9 +67,23 @@ func TestCheck_MissingSpace_Level2(t *testing.T) {
 func TestCheck_MultipleSpaces(t *testing.T) {
 	diags := check(t, "# Title\n\n#  Heading\n")
 	require.Len(t, diags, 1)
-	assert.Equal(t, "multiple spaces after # in heading", diags[0].Message)
+	assert.Equal(t, "multiple spaces or tabs after # in heading", diags[0].Message)
 	assert.Equal(t, 3, diags[0].Line)
 	assert.Equal(t, 3, diags[0].Column)
+}
+
+func TestCheck_SpaceThenTab(t *testing.T) {
+	// "# \tHeading": first char is space so MD018 doesn't fire, but
+	// leadingSpaces counts the tab too → fires "multiple spaces or tabs".
+	diags := check(t, "# Title\n\n# \tHeading\n")
+	require.Len(t, diags, 1)
+	assert.Equal(t, "multiple spaces or tabs after # in heading", diags[0].Message)
+	assert.Equal(t, 3, diags[0].Line)
+	assert.Equal(t, 3, diags[0].Column)
+}
+
+func TestFix_SpaceThenTab(t *testing.T) {
+	assert.Equal(t, "# Title\n\n# Heading\n", fix(t, "# Title\n\n# \tHeading\n"))
 }
 
 // --- Check: MD023 indented heading ---
