@@ -25,37 +25,39 @@ func (r *Rule) Name() string { return "unclosed-code-block" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "code" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-block logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		fcb, ok := n.(*ast.FencedCodeBlock)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		if !hasClosingFence(f, fcb) {
-			openLine := fencepos.OpenLine(f, fcb)
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     openLine,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Error,
-				Message:  "unclosed fenced code block",
-			})
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+	return rule.WalkNodes(r, f)
 }
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	fcb, ok := n.(*ast.FencedCodeBlock)
+	if !ok {
+		return nil
+	}
+	if hasClosingFence(f, fcb) {
+		return nil
+	}
+	openLine := fencepos.OpenLine(f, fcb)
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     openLine,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Error,
+		Message:  "unclosed fenced code block",
+	}}
+}
+
+var _ rule.NodeChecker = (*Rule)(nil)
 
 // hasClosingFence checks whether a fenced code block has a proper closing
 // fence line after its content.

@@ -42,56 +42,60 @@ const (
 // when both sides have one and the content is not all spaces). Inspecting
 // the post-trim segment avoids false positives on spans like “ `  x ` “
 // where only one leading space remains visible after CommonMark strips one
-// from each side.
+// from each side. The per-span logic is pure and stateless, so it is
+// expressed as CheckNode and the engine can fold this rule into one
+// shared AST walk; a direct call still works via rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		cs, ok := n.(*ast.CodeSpan)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		first, last, ok2 := spanBounds(cs)
-		if !ok2 || last == first {
-			return ast.WalkContinue, nil
-		}
-		seg := f.Source[first:last]
-		if !isASCIIWhitespace(seg[0]) && !isASCIIWhitespace(seg[len(seg)-1]) {
-			return ast.WalkContinue, nil
-		}
-		btStart := openingBacktickOffset(cs, f.Source)
-		line := f.LineOfOffset(btStart)
-		if inGeneratedSection(f, line) {
-			return ast.WalkContinue, nil
-		}
-		col := f.ColumnOfOffset(btStart)
+	return rule.WalkNodes(r, f)
+}
 
-		if isASCIIWhitespace(seg[0]) {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   col,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  msgLeading,
-			})
-		}
-		if isASCIIWhitespace(seg[len(seg)-1]) {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   col,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  msgTrailing,
-			})
-		}
-		return ast.WalkContinue, nil
-	})
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	cs, ok := n.(*ast.CodeSpan)
+	if !ok {
+		return nil
+	}
+	first, last, ok2 := spanBounds(cs)
+	if !ok2 || last == first {
+		return nil
+	}
+	seg := f.Source[first:last]
+	if !isASCIIWhitespace(seg[0]) && !isASCIIWhitespace(seg[len(seg)-1]) {
+		return nil
+	}
+	btStart := openingBacktickOffset(cs, f.Source)
+	line := f.LineOfOffset(btStart)
+	if inGeneratedSection(f, line) {
+		return nil
+	}
+	col := f.ColumnOfOffset(btStart)
+
+	var diags []lint.Diagnostic
+	if isASCIIWhitespace(seg[0]) {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     line,
+			Column:   col,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  msgLeading,
+		})
+	}
+	if isASCIIWhitespace(seg[len(seg)-1]) {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     line,
+			Column:   col,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  msgTrailing,
+		})
+	}
 	return diags
 }
 
@@ -239,4 +243,5 @@ func isASCIIWhitespace(b byte) bool {
 var (
 	_ rule.FixableRule = (*Rule)(nil)
 	_ rule.Defaultable = (*Rule)(nil)
+	_ rule.NodeChecker = (*Rule)(nil)
 )
