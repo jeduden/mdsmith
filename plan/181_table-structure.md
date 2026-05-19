@@ -46,6 +46,11 @@ duplicating MDS025's formatting pass.
   extension AST and the MDS025 `tablefmt` parser both require
   edge pipes on every row, so they cannot see the borderless
   and mixed-pipe tables MD055 must flag.
+- Row prefix detection mirrors MDS025's `tablefmt`: a `>`
+  blockquote-marker chain (or list indentation) shared by
+  every row. Blockquoted and indented tables are linted; the
+  MD058 blank line inside a blockquote is the bare `>` marker,
+  not an empty line.
 - MD055: config `style` ∈ `consistent | leading_and_trailing
   | no_leading_or_trailing`; `consistent` infers from the
   header row. Autofix adds or strips edge pipes.

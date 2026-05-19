@@ -28,9 +28,11 @@ Three checks on GFM pipe tables, complementing MDS025
   blank line before and after it. Auto-fixed by inserting the
   blank line.
 
-Tables inside fenced code blocks, processing-instruction
-blocks, and generated `<?include?>` / `<?catalog?>` bodies are
-left alone.
+Blockquoted (`> | ... |`) and list-indented tables are
+checked too; the shared `>`/indent prefix is recognized the
+same way MDS025 recognizes it. Tables inside fenced code
+blocks, processing-instruction blocks, and generated
+`<?include?>` / `<?catalog?>` bodies are left alone.
 
 ## Settings
 
@@ -119,6 +121,27 @@ Key | Value
 --- | -----
 a | one
 b | two
+```
+
+<?/include?>
+
+### Good -- blockquote
+
+<?include
+file: good/blockquote.md
+wrap: markdown
+?>
+
+```markdown
+# Blockquote table
+
+> Quoted intro.
+>
+> | Key | Value |
+> |-----|-------|
+> | a   | one   |
+>
+> Quoted outro.
 ```
 
 <?/include?>

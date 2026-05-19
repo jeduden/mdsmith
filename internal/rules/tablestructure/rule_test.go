@@ -227,3 +227,169 @@ func TestLoopStabilityWithMDS025(t *testing.T) {
 	assert.Contains(t, current, "|\n\nMore text.",
 		"expected a blank line after the table, got %q", current)
 }
+
+// --- blockquote tables ---
+
+func TestBlockquoteTableClean(t *testing.T) {
+	src := "# T\n\n> Intro.\n>\n> | A | B |\n> | - | - |\n> | 1 | 2 |\n>\n> Outro.\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+func TestBlockquoteMD058FlaggedAndFixed(t *testing.T) {
+	src := "# T\n\n> Intro.\n> | A | B |\n> | - | - |\n> Outro.\n"
+	diags := check(t, StyleConsistent, src)
+	require.Len(t, diags, 2)
+	assert.Equal(t, 4, diags[0].Line)
+	assert.Equal(t, "missing blank line before table", diags[0].Message)
+	assert.Equal(t, 5, diags[1].Line)
+	assert.Equal(t, "missing blank line after table", diags[1].Message)
+
+	got := fix(t, StyleConsistent, src)
+	want := "# T\n\n> Intro.\n>\n> | A | B |\n> | - | - |\n>\n> Outro.\n"
+	assert.Equal(t, want, got)
+	assert.Empty(t, check(t, StyleConsistent, got))
+}
+
+func TestBlockquoteMixedPipesFixed(t *testing.T) {
+	// Borderless header inside a blockquote; consistent expects no
+	// edge pipes, so the bordered row is normalized.
+	src := "# T\n\n> A | B\n> - | -\n> | 1 | 2 |\n"
+	diags := check(t, StyleConsistent, src)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 5, diags[0].Line)
+
+	got := fix(t, StyleConsistent, src)
+	assert.Equal(t, "# T\n\n> A | B\n> - | -\n> 1 | 2\n", got)
+}
+
+func TestNestedBlockquoteTable(t *testing.T) {
+	src := "# T\n\n> > | A | B |\n> > | - | - |\n> > | 1 | 2 |\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+func TestBlockquoteCRLFBlankInsertion(t *testing.T) {
+	src := "# T\r\n\r\n> Intro.\r\n> | A | B |\r\n> | - | - |\r\n"
+	got := fix(t, StyleConsistent, src)
+	assert.Contains(t, got, "> Intro.\r\n>\r\n> | A | B |")
+	assert.NotContains(t, got, "\r\n\n")
+}
+
+func TestBlockquoteNoSpaceNotDetected(t *testing.T) {
+	// `>|` (no space after the marker) is not treated as a blockquote
+	// table, matching tablefmt; nothing is flagged.
+	src := "# T\n\n>| A | B |\n>| - | - |\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+// --- pipe-style describeStyle branches ---
+
+func TestConsistentLeadingPipeOnly(t *testing.T) {
+	// Header has a leading pipe but no trailing pipe; consistent
+	// holds the data row to "leading pipe only".
+	src := "# T\n\n| A | B\n| - | -\n| 1 | 2 |\n"
+	diags := check(t, StyleConsistent, src)
+	require.Len(t, diags, 1)
+	assert.Equal(t, 5, diags[0].Line)
+	assert.Equal(t,
+		"table pipe style; expected leading pipe only", diags[0].Message)
+}
+
+func TestConsistentTrailingPipeOnly(t *testing.T) {
+	src := "# T\n\nA | B |\n- | - |\n| 1 | 2 |\n"
+	diags := check(t, StyleConsistent, src)
+	require.Len(t, diags, 1)
+	assert.Equal(t,
+		"table pipe style; expected trailing pipe only", diags[0].Message)
+}
+
+// --- cell-count edge cases ---
+
+func TestCountCellsDegenerate(t *testing.T) {
+	assert.Equal(t, 0, countCells(""))
+	assert.Equal(t, 0, countCells("|"))
+	assert.Equal(t, 1, countCells("|  |"))
+	assert.Equal(t, 2, countCells("a | b"))
+}
+
+func TestEscapedPipeIsOneCell(t *testing.T) {
+	// `a \| b` is a single cell; the escaped pipe must not split it.
+	src := "# T\n\n| A      | B |\n| ------ | - |\n| a \\| b | c |\n"
+	assert.Empty(t, check(t, StyleConsistent, src),
+		"escaped pipe must not be counted as a column separator")
+}
+
+func TestSeparatorOnlyRowNotHeader(t *testing.T) {
+	// Two separator-looking lines: the first cannot be a header.
+	src := "# T\n\n| - | - |\n| - | - |\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+func TestHeadingLineNotTableHeader(t *testing.T) {
+	src := "# Title | x\n| - | - |\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+// --- skip: PI and generated ranges ---
+
+func TestSkipsProcessingInstruction(t *testing.T) {
+	src := "# T\n\n<?toc\nmin-level: 2\n?>\n<?/toc?>\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+func TestSkipsGeneratedRange(t *testing.T) {
+	src := "# T\n\nText.\n| A | B |\n| - | - |\nMore.\n"
+	f, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	f.GeneratedRanges = []lint.LineRange{{From: 3, To: 6}}
+	r := &Rule{Style: StyleConsistent}
+	assert.Empty(t, r.Check(f), "tables inside a generated range are skipped")
+}
+
+func TestFixNoTablesReturnsCopy(t *testing.T) {
+	src := "# T\n\nNo tables here.\n"
+	assert.Equal(t, src, fix(t, StyleConsistent, src))
+}
+
+func TestBlankLineForAndIsBlankAround(t *testing.T) {
+	assert.Equal(t, "", blankLineFor("  "))
+	assert.Equal(t, ">", blankLineFor("> "))
+	assert.Equal(t, "> >", blankLineFor("> > "))
+	assert.True(t, isBlankAround([]byte("   "), ""))
+	assert.True(t, isBlankAround([]byte("> >"), "> "))
+	assert.False(t, isBlankAround([]byte("> text"), "> "))
+	assert.False(t, isBlankAround([]byte("text"), ""))
+}
+
+func TestCRLFMixedPipesNormalized(t *testing.T) {
+	// Edge normalization on a CRLF file must keep the carriage return.
+	src := "# T\r\n\r\nA | B\r\n- | -\r\n| 1 | 2 |\r\n"
+	got := fix(t, StyleConsistent, src)
+	assert.Equal(t, "# T\r\n\r\nA | B\r\n- | -\r\n1 | 2\r\n", got)
+}
+
+func TestSameLinePipeAndColumnDiagnostics(t *testing.T) {
+	// Row 5 is bordered (pipe-style mismatch under consistent) and
+	// has three cells (column-count mismatch): two diagnostics share
+	// the line, exercising the stable sort.
+	src := "# T\n\nA | B\n- | -\n| 1 | 2 | 3 |\n"
+	diags := check(t, StyleConsistent, src)
+	require.Len(t, diags, 2)
+	assert.Equal(t, 5, diags[0].Line)
+	assert.Equal(t, 5, diags[1].Line)
+	msgs := []string{diags[0].Message, diags[1].Message}
+	assert.Contains(t, msgs, "table pipe style; expected no leading or trailing pipes")
+	assert.Contains(t, msgs, "table column count; expected 2, got 3")
+}
+
+func TestIsSeparatorContentDegenerate(t *testing.T) {
+	assert.False(t, isSeparatorContent("|"))
+	assert.False(t, isSeparatorContent("- | x"))
+	assert.True(t, isSeparatorContent(":-: | ---"))
+}
+
+func TestDetectPrefixIndentedBlockquote(t *testing.T) {
+	assert.Equal(t, "  > ", detectPrefix([]byte("  > | a |")))
+	assert.Equal(t, ">", detectPrefix([]byte(">")))
+	assert.Equal(t, "\t", detectPrefix([]byte("\t| a |")))
+	assert.Equal(t, "", detectPrefix([]byte("| a |")))
+}
