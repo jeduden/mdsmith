@@ -365,23 +365,38 @@ func TestParseFrontMatter_MarkdownlintBlock(t *testing.T) {
 	assert.True(t, info.Markdownlint[1].Partial)
 }
 
-// TestParseFrontMatter_NullMarkdownlint verifies that an explicit `null` for
-// markdownlint (or its absence) yields a nil slice rather than an error.
+// TestParseFrontMatter_NullMarkdownlint verifies that an explicit `null`
+// for markdownlint, or omitting the key entirely, both yield a nil slice
+// rather than an error. Front matter that already conformed to the older
+// schema (no `markdownlint:` key at all) must keep parsing cleanly.
 func TestParseFrontMatter_NullMarkdownlint(t *testing.T) {
-	content := "---\n" +
-		"id: MDS999\n" +
-		"name: example\n" +
-		"status: ready\n" +
-		"description: Example.\n" +
-		"markdownlint: null\n" +
-		"---\n# Body\n"
-	info, err := parseFrontMatter(content)
-	require.NoError(t, err)
-	assert.Nil(t, info.Markdownlint)
+	cases := map[string]string{
+		"explicit-null": "---\n" +
+			"id: MDS999\n" +
+			"name: example\n" +
+			"status: ready\n" +
+			"description: Example.\n" +
+			"markdownlint: null\n" +
+			"---\n# Body\n",
+		"key-absent": "---\n" +
+			"id: MDS999\n" +
+			"name: example\n" +
+			"status: ready\n" +
+			"description: Example.\n" +
+			"---\n# Body\n",
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			info, err := parseFrontMatter(content)
+			require.NoError(t, err)
+			assert.Nil(t, info.Markdownlint)
+		})
+	}
 }
 
-// MarkdownlintURL returns the canonical doc URL for a markdownlint rule ID
-// (e.g. "MD013" -> "https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md").
+// TestMarkdownlintRule_URL verifies that MarkdownlintRule.URL builds the
+// canonical doc URL by lowercasing the rule ID and appending it to the
+// markdownlint doc path.
 func TestMarkdownlintRule_URL(t *testing.T) {
 	r := MarkdownlintRule{ID: "MD013", Name: "line-length"}
 	assert.Equal(t,
