@@ -147,6 +147,17 @@ func TestCheck_SkipsIndentedCode(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+func TestCheck_SkipsPIBlock(t *testing.T) {
+	src := "# Title\n\n<?foo\n#Heading\n?>\n"
+	diags := check(t, src)
+	assert.Empty(t, diags)
+}
+
+func TestFix_PreservesPIBlock(t *testing.T) {
+	src := "# Title\n\n<?foo\n#Heading\n?>\n"
+	assert.Equal(t, src, fix(t, src))
+}
+
 // --- Check: 7+ hashes not flagged ---
 
 func TestCheck_TooManyHashes(t *testing.T) {
@@ -203,6 +214,14 @@ func TestFix_EmptyHeading(t *testing.T) {
 func TestFix_ClosingHashesAllHashes(t *testing.T) {
 	// "## ##" has all-hash content that is the closing suffix: fix to "##"
 	assert.Equal(t, "# Title\n\n##\n", fix(t, "# Title\n\n## ##\n"))
+}
+
+func TestFix_PreservesCRLFOnRewrittenLines(t *testing.T) {
+	// On a CRLF file, a rewritten line must keep its \r so the result is uniformly
+	// CRLF rather than mixed LF/CRLF.
+	src := "# Title\r\n\r\n#Heading\r\n"
+	got := fix(t, src)
+	assert.Equal(t, "# Title\r\n\r\n# Heading\r\n", got)
 }
 
 // --- ID/Name/Category ---

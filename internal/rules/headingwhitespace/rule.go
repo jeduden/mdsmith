@@ -155,12 +155,19 @@ func normalizeLine(line []byte) string {
 		return string(line)
 	}
 
+	// Preserve a trailing \r so CRLF files don't get mixed line endings when
+	// only some lines are rewritten.
+	cr := ""
+	if len(line) > 0 && line[len(line)-1] == '\r' {
+		cr = "\r"
+	}
+
 	prefix := strings.Repeat("#", level)
 	content := extractContent(string(rest[level:]))
 	if content == "" {
-		return prefix
+		return prefix + cr
 	}
-	return prefix + " " + content
+	return prefix + " " + content + cr
 }
 
 // extractContent strips leading/trailing whitespace and any closing ATX suffix
