@@ -8,6 +8,9 @@ description: >-
 category: structural
 nature: content
 maintainability: null
+markdownlint:
+  - id: MD033
+    name: no-inline-html
 ---
 # MDS041: no-inline-html
 
@@ -101,3 +104,6 @@ Press <kbd>Enter</kbd> to continue.
 - **Implementation**:
   [source](./)
 - **Category**: structural
+- **Markdownlint**: [MD033][mdl-md033] (no-inline-html)
+
+[mdl-md033]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md033.md

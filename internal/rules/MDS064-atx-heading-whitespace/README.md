@@ -6,6 +6,18 @@ description: ATX heading whitespace and indentation.
 category: heading
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD018
+    name: no-missing-space-atx
+  - id: MD019
+    name: no-multiple-space-atx
+  - id: MD020
+    name: no-missing-space-closed-atx
+    partial: true
+  - id: MD021
+    name: no-multiple-space-closed-atx
+  - id: MD023
+    name: heading-start-left
 ---
 # MDS064: atx-heading-whitespace
 
@@ -94,3 +106,15 @@ Tab after opening `#`:
 - **Fixable**: yes
 - **Implementation**: [source](./)
 - **Category**: heading
+- **Markdownlint**:
+  - [MD018][mdl-md018] (no-missing-space-atx)
+  - [MD019][mdl-md019] (no-multiple-space-atx)
+  - [MD020][mdl-md020] (no-missing-space-closed-atx) (partial)
+  - [MD021][mdl-md021] (no-multiple-space-closed-atx)
+  - [MD023][mdl-md023] (heading-start-left)
+
+[mdl-md018]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md018.md
+[mdl-md019]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md019.md
+[mdl-md020]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md020.md
+[mdl-md021]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md021.md
+[mdl-md023]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md023.md

@@ -6,6 +6,9 @@ description: No trailing whitespace at the end of lines.
 category: whitespace
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD009
+    name: no-trailing-spaces
 ---
 # MDS006: no-trailing-spaces
 
@@ -73,3 +76,6 @@ code block with language tag
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
+- **Markdownlint**: [MD009][mdl-md009] (no-trailing-spaces)
+
+[mdl-md009]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md009.md

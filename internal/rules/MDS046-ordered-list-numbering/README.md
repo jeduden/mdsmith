@@ -6,6 +6,9 @@ description: Ordered list items must be numbered in the configured style.
 category: list
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD029
+    name: ol-prefix
 ---
 # MDS046: ordered-list-numbering
 
@@ -154,3 +157,6 @@ that the start fix already covers.
 - **Implementation**:
   [source](./)
 - **Category**: list
+- **Markdownlint**: [MD029][mdl-md029] (ol-prefix)
+
+[mdl-md029]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md029.md

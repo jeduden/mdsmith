@@ -6,6 +6,9 @@ description: No more than one consecutive blank line.
 category: whitespace
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD012
+    name: no-multiple-blanks
 ---
 # MDS008: no-multiple-blanks
 
@@ -77,3 +80,6 @@ more code with blank lines above
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
+- **Markdownlint**: [MD012][mdl-md012] (no-multiple-blanks)
+
+[mdl-md012]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md012.md

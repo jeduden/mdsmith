@@ -6,6 +6,9 @@ description: Reference-style links and images must have a matching link referenc
 category: link
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD052
+    name: reference-links-images
 ---
 # MDS054: no-undefined-reference-labels
 
@@ -175,3 +178,6 @@ against `[bar]: url`.
 - **Fixable**: no
 - **Implementation**: [source](./)
 - **Category**: link
+- **Markdownlint**: [MD052][mdl-md052] (reference-links-images)
+
+[mdl-md052]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md052.md

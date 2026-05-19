@@ -8,6 +8,9 @@ description: >-
 category: link
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD053
+    name: link-image-reference-definitions
 ---
 # MDS053: no-unused-link-definitions
 
@@ -133,3 +136,6 @@ Ignored labels are never removed.
 - **Fixable**: yes
 - **Implementation**: [source](./)
 - **Category**: link
+- **Markdownlint**: [MD053][mdl-md053] (link-image-reference-definitions)
+
+[mdl-md053]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md

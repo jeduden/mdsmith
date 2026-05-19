@@ -6,6 +6,9 @@ description: Lists must have a blank line before and after.
 category: list
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD032
+    name: blanks-around-lists
 ---
 # MDS014: blank-line-around-lists
 
@@ -81,3 +84,6 @@ Content here.
 - **Implementation**:
   [source](./)
 - **Category**: list
+- **Markdownlint**: [MD032][mdl-md032] (blanks-around-lists)
+
+[mdl-md032]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md032.md

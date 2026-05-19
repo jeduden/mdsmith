@@ -6,6 +6,7 @@ description: Git artifacts must match the canonical glob-based template derived 
 category: structural
 nature: structure
 maintainability: null
+markdownlint: null
 ---
 # MDS048: git-hook-sync
 

@@ -6,6 +6,7 @@ description: Tables must have consistent column widths and padding.
 category: table
 nature: style
 maintainability: null
+markdownlint: null
 ---
 # MDS025: table-format
 

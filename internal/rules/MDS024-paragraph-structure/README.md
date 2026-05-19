@@ -6,6 +6,7 @@ description: Paragraphs must not exceed sentence and word limits.
 category: prose
 nature: content
 maintainability: null
+markdownlint: null
 ---
 # MDS024: paragraph-structure
 

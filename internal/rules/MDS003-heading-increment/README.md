@@ -6,6 +6,9 @@ description: Heading levels should increment by one. No jumping from `#` to `###
 category: heading
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD001
+    name: heading-increment
 ---
 # MDS003: heading-increment
 
@@ -83,3 +86,6 @@ Body text.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+- **Markdownlint**: [MD001][mdl-md001] (heading-increment)
+
+[mdl-md001]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md

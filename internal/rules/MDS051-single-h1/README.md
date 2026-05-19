@@ -6,6 +6,9 @@ description: At most one H1 heading is allowed per file.
 category: heading
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD025
+    name: single-h1
 ---
 # MDS051: single-h1
 
@@ -100,3 +103,6 @@ title: My Doc
 - **Fixable**: yes — extra H1s are demoted to H2; front-matter conflicts are not auto-fixed
 - **Implementation**: [source](./)
 - **Category**: heading
+- **Markdownlint**: [MD025][mdl-md025] (single-h1)
+
+[mdl-md025]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md

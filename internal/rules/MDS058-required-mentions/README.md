@@ -6,6 +6,7 @@ description: Heading-bounded sections must contain every configured substring.
 category: prose
 nature: content
 maintainability: null
+markdownlint: null
 ---
 # MDS058: required-mentions
 

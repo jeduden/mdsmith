@@ -5,6 +5,7 @@ status: '"ready" | "not-ready"'
 description: 'string & != ""'
 nature: '"directive"'
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
+markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false}] | null'
 category: '"directive"'
 ---
 # {id}: {name}

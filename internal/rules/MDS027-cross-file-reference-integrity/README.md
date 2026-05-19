@@ -6,6 +6,9 @@ description: Links to local files and heading anchors must resolve.
 category: link
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD051
+    name: link-fragments
 ---
 # MDS027: cross-file-reference-integrity
 
@@ -158,3 +161,6 @@ See [guide](bad/ref/guide.md#missing-section).
 - **Implementation**:
   [source](./)
 - **Category**: link
+- **Markdownlint**: [MD051][mdl-md051] (link-fragments)
+
+[mdl-md051]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md051.md

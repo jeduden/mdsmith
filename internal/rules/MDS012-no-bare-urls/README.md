@@ -6,6 +6,9 @@ description: URLs must be wrapped in angle brackets or as a link, not left bare.
 category: link
 nature: content
 maintainability: null
+markdownlint:
+  - id: MD034
+    name: no-bare-urls
 ---
 # MDS012: no-bare-urls
 
@@ -69,3 +72,6 @@ Visit [example](https://example.com) for more.
 - **Implementation**:
   [source](./)
 - **Category**: link
+- **Markdownlint**: [MD034][mdl-md034] (no-bare-urls)
+
+[mdl-md034]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md034.md

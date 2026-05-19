@@ -6,6 +6,9 @@ description: Fenced code blocks must use a consistent delimiter.
 category: code
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD048
+    name: code-fence-style
 ---
 # MDS010: fenced-code-style
 
@@ -122,3 +125,6 @@ fmt.Println("hello")
 - **Implementation**:
   [source](./)
 - **Category**: code
+- **Markdownlint**: [MD048][mdl-md048] (code-fence-style)
+
+[mdl-md048]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md048.md

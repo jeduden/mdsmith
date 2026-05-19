@@ -6,6 +6,9 @@ description: Configured proper names (e.g. JavaScript, GitHub) must appear with 
 category: prose
 nature: content
 maintainability: null
+markdownlint:
+  - id: MD044
+    name: proper-names
 ---
 # MDS050: proper-names
 
@@ -188,3 +191,6 @@ diagnostic is emitted.
 - **Implementation**:
   [source](./)
 - **Category**: prose
+- **Markdownlint**: [MD044][mdl-md044] (proper-names)
+
+[mdl-md044]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md044.md

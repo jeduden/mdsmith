@@ -6,6 +6,9 @@ description: Images must have non-empty alt text for accessibility.
 category: accessibility
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD045
+    name: no-alt-text
 ---
 # MDS032: no-empty-alt-text
 
@@ -69,3 +72,6 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: accessibility
+- **Markdownlint**: [MD045][mdl-md045] (no-alt-text)
+
+[mdl-md045]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md045.md

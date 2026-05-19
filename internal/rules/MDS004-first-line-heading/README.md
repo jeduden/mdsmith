@@ -6,6 +6,9 @@ description: First line of the file should be a heading.
 category: heading
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD041
+    name: first-line-h1
 ---
 # MDS004: first-line-heading
 
@@ -116,3 +119,6 @@ Some content here.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+- **Markdownlint**: [MD041][mdl-md041] (first-line-h1)
+
+[mdl-md041]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md041.md

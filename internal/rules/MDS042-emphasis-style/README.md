@@ -9,6 +9,11 @@ description: >-
 category: prose
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD049
+    name: emphasis-style
+  - id: MD050
+    name: strong-style
 ---
 # MDS042: emphasis-style
 
@@ -125,3 +130,9 @@ The following cases emit diagnostics but are
 - **Implementation**:
   [source](./)
 - **Category**: prose
+- **Markdownlint**:
+  - [MD049][mdl-md049] (emphasis-style)
+  - [MD050][mdl-md050] (strong-style)
+
+[mdl-md049]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md049.md
+[mdl-md050]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md050.md

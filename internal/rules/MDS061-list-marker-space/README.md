@@ -8,6 +8,9 @@ description: >-
 nature: style
 category: list
 maintainability: null
+markdownlint:
+  - id: MD030
+    name: list-marker-space
 ---
 # MDS061: list-marker-space
 
@@ -145,3 +148,6 @@ Ordered list with two spaces after each marker.
 - **Implementation**:
   [source](./)
 - **Category**: list
+- **Markdownlint**: [MD030][mdl-md030] (list-marker-space)
+
+[mdl-md030]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md030.md

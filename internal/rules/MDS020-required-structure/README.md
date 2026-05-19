@@ -9,11 +9,13 @@ maintainability:
   signal: files of a kind that lack an explicit section schema
   fix: declare `kinds.<name>.schema` inline or point `kinds.<name>.rules.required-structure.schema` at a proto file
   for-diagnostic: false
+markdownlint:
+  - id: MD043
+    name: required-headings
 ---
 # MDS020: required-structure
 
-Document structure and front matter must match its
-schema.
+Document structure and front matter must match its schema.
 
 ## Settings
 
@@ -31,9 +33,8 @@ still warns on misplaced `<?require?>` directives. Use
 overrides or `kinds:` to apply schemas to specific file
 groups.
 
-A kind may declare its schema in either form. The
-config loader rejects a kind that sets both — see
-[file kinds](../../../docs/guides/file-kinds.md).
+A kind may declare its schema in either form. The config loader
+rejects a kind that sets both — see [file kinds](../../../docs/guides/file-kinds.md).
 
 Schema front matter may embed a CUE schema that
 validates document front matter. The rule-readme
@@ -359,3 +360,6 @@ Other shapes get no hint.
 - **Guide**:
   [directive guide](../../../docs/guides/directives/enforcing-structure.md)
 - **Category**: structural
+- **Markdownlint**: [MD043][mdl-md043] (required-headings)
+
+[mdl-md043]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md043.md

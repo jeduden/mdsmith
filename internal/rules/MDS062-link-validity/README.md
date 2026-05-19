@@ -9,6 +9,11 @@ description: >-
 nature: structure
 category: link
 maintainability: null
+markdownlint:
+  - id: MD011
+    name: no-reversed-links
+  - id: MD042
+    name: no-empty-links
 ---
 # MDS062: link-validity
 
@@ -152,3 +157,9 @@ The reversed form `(text)[url]` is shown as code, not as a link.
 - **Implementation**:
   [source](../linkvalidity/)
 - **Category**: link
+- **Markdownlint**:
+  - [MD011][mdl-md011] (no-reversed-links)
+  - [MD042][mdl-md042] (no-empty-links)
+
+[mdl-md011]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md011.md
+[mdl-md042]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md042.md

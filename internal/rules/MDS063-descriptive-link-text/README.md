@@ -8,6 +8,9 @@ description: >-
 category: prose
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD059
+    name: descriptive-link-text
 ---
 # MDS063: descriptive-link-text
 
@@ -90,3 +93,6 @@ See [`SomeAPI`](https://example.com/api) for details.
 - **Implementation**:
   [source](../descriptivelinktext/)
 - **Category**: prose
+- **Markdownlint**: [MD059][mdl-md059] (descriptive-link-text)
+
+[mdl-md059]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md059.md

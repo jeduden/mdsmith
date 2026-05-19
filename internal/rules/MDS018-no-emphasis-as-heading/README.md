@@ -6,6 +6,9 @@ description: Don't use bold or emphasis on a standalone line as a heading substi
 category: heading
 nature: content
 maintainability: null
+markdownlint:
+  - id: MD036
+    name: no-emphasis-as-heading
 ---
 # MDS018: no-emphasis-as-heading
 
@@ -81,3 +84,6 @@ This is a normal paragraph.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+- **Markdownlint**: [MD036][mdl-md036] (no-emphasis-as-heading)
+
+[mdl-md036]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md036.md

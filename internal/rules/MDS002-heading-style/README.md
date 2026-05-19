@@ -6,6 +6,9 @@ description: Heading style must be consistent.
 category: heading
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD003
+    name: heading-style
 ---
 # MDS002: heading-style
 
@@ -150,3 +153,6 @@ Body text.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+- **Markdownlint**: [MD003][mdl-md003] (heading-style)
+
+[mdl-md003]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md003.md

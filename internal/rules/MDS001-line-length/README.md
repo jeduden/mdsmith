@@ -6,6 +6,9 @@ description: Line exceeds maximum length.
 category: line
 nature: content
 maintainability: null
+markdownlint:
+  - id: MD013
+    name: line-length
 ---
 # MDS001: line-length
 
@@ -251,3 +254,6 @@ This line inside a code block is over 80 characters but within the code-block-ma
 - **Implementation**:
   [source](./)
 - **Category**: line
+- **Markdownlint**: [MD013][mdl-md013] (line-length)
+
+[mdl-md013]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md

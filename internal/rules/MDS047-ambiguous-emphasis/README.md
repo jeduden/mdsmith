@@ -6,6 +6,9 @@ description: Forbid emphasis sequences whose meaning a human cannot predict at a
 category: prose
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD037
+    name: no-space-in-emphasis
 ---
 # MDS047: ambiguous-emphasis
 
@@ -214,3 +217,6 @@ __a__b__
 - **Implementation**:
   [source](./)
 - **Category**: prose
+- **Markdownlint**: [MD037][mdl-md037] (no-space-in-emphasis)
+
+[mdl-md037]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md037.md

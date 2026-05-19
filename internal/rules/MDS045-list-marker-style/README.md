@@ -6,6 +6,9 @@ description: Unordered list items must use the configured bullet marker characte
 category: list
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD004
+    name: ul-style
 ---
 # MDS045: list-marker-style
 
@@ -145,3 +148,6 @@ Outer uses dash (correct), inner should use asterisk but uses dash.
 - **Implementation**:
   [source](./)
 - **Category**: list
+- **Markdownlint**: [MD004][mdl-md004] (ul-style)
+
+[mdl-md004]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md004.md

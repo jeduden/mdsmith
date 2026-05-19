@@ -8,6 +8,7 @@ description: >-
 category: structural
 nature: structure
 maintainability: null
+markdownlint: null
 ---
 # MDS034: markdown-flavor
 

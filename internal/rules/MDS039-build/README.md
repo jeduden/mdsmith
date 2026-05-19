@@ -8,6 +8,7 @@ description: >-
 category: directive
 nature: directive
 maintainability: null
+markdownlint: null
 ---
 # MDS039: build
 

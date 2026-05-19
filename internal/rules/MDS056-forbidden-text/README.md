@@ -6,6 +6,7 @@ description: Paragraphs must not contain any configured substring.
 category: prose
 nature: content
 maintainability: null
+markdownlint: null
 ---
 # MDS056: forbidden-text
 

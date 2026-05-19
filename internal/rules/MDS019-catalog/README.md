@@ -9,6 +9,7 @@ maintainability:
   signal: a list of links to sibling files in the same directory
   fix: adopt a `<?catalog?>` directive so the list stays in sync
   for-diagnostic: false
+markdownlint: null
 ---
 # MDS019: catalog
 

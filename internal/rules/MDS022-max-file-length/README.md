@@ -6,6 +6,7 @@ description: File must not exceed maximum number of lines.
 category: structural
 nature: content
 maintainability: null
+markdownlint: null
 ---
 # MDS022: max-file-length
 

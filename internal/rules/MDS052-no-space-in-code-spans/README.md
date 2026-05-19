@@ -6,6 +6,9 @@ description: Inline code spans with leading or trailing whitespace inside the ba
 category: whitespace
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD038
+    name: no-space-in-code
 ---
 # MDS052: no-space-in-code-spans
 
@@ -129,3 +132,6 @@ Use `foo bar` for multi-word.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
+- **Markdownlint**: [MD038][mdl-md038] (no-space-in-code)
+
+[mdl-md038]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md

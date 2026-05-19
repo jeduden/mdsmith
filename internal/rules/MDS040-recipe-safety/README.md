@@ -8,6 +8,7 @@ description: >-
 category: directive
 nature: structure
 maintainability: null
+markdownlint: null
 ---
 # MDS040: recipe-safety
 

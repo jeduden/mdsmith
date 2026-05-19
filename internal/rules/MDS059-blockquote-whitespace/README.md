@@ -8,6 +8,11 @@ description: >-
 category: whitespace
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD027
+    name: no-multiple-space-blockquote
+  - id: MD028
+    name: no-blanks-blockquote
 ---
 # MDS059: blockquote-whitespace
 
@@ -118,3 +123,9 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
+- **Markdownlint**:
+  - [MD027][mdl-md027] (no-multiple-space-blockquote)
+  - [MD028][mdl-md028] (no-blanks-blockquote)
+
+[mdl-md027]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md027.md
+[mdl-md028]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md028.md

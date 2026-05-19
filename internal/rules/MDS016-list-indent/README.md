@@ -6,6 +6,12 @@ description: List items must use consistent indentation.
 category: list
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD005
+    name: list-indent
+    partial: true
+  - id: MD007
+    name: ul-indent
 ---
 # MDS016: list-indent
 
@@ -118,3 +124,9 @@ wrap: markdown
 - **Implementation**:
   [source](./)
 - **Category**: list
+- **Markdownlint**:
+  - [MD005][mdl-md005] (list-indent) (partial)
+  - [MD007][mdl-md007] (ul-indent)
+
+[mdl-md005]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md005.md
+[mdl-md007]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md007.md

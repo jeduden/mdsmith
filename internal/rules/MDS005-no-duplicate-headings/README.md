@@ -6,6 +6,9 @@ description: No two headings should have the same text.
 category: heading
 nature: structure
 maintainability: null
+markdownlint:
+  - id: MD024
+    name: no-duplicate-heading
 ---
 # MDS005: no-duplicate-headings
 
@@ -77,3 +80,6 @@ Body two.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+- **Markdownlint**: [MD024][mdl-md024] (no-duplicate-heading)
+
+[mdl-md024]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md024.md

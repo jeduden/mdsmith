@@ -6,6 +6,9 @@ description: Headings should not end with punctuation.
 category: heading
 nature: content
 maintainability: null
+markdownlint:
+  - id: MD026
+    name: no-trailing-punctuation
 ---
 # MDS017: no-trailing-punctuation-in-heading
 
@@ -73,3 +76,6 @@ Body text.
 - **Implementation**:
   [source](./)
 - **Category**: heading
+- **Markdownlint**: [MD026][mdl-md026] (no-trailing-punctuation)
+
+[mdl-md026]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md026.md

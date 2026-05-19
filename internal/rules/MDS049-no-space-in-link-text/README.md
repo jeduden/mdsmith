@@ -6,6 +6,9 @@ description: Link text and image alt text must not have leading or trailing whit
 category: link
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD039
+    name: no-space-in-links
 ---
 # MDS049: no-space-in-link-text
 
@@ -84,3 +87,6 @@ Visit [example](https://example.com) for more.
 - **Implementation**:
   [source](./)
 - **Category**: link
+- **Markdownlint**: [MD039][mdl-md039] (no-space-in-links)
+
+[mdl-md039]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md039.md

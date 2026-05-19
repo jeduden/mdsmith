@@ -6,6 +6,9 @@ description: Fenced code blocks must specify a language.
 category: code
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD040
+    name: fenced-code-language
 ---
 # MDS011: fenced-code-language
 
@@ -73,3 +76,6 @@ fmt.Println("hello")
 - **Implementation**:
   [source](./)
 - **Category**: code
+- **Markdownlint**: [MD040][mdl-md040] (fenced-code-language)
+
+[mdl-md040]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md040.md

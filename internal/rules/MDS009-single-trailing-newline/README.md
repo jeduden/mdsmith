@@ -6,6 +6,9 @@ description: File must end with exactly one newline character.
 category: whitespace
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD047
+    name: single-trailing-newline
 ---
 # MDS009: single-trailing-newline
 
@@ -77,3 +80,6 @@ is what the rule detects.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
+- **Markdownlint**: [MD047][mdl-md047] (single-trailing-newline)
+
+[mdl-md047]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md047.md

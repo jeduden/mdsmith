@@ -6,6 +6,7 @@ description: Paragraphs must not begin with any configured prefix.
 category: prose
 nature: content
 maintainability: null
+markdownlint: null
 ---
 # MDS055: forbidden-paragraph-starts
 

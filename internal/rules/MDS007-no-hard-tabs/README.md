@@ -6,6 +6,9 @@ description: No tab characters. Use spaces instead.
 category: whitespace
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD010
+    name: no-hard-tabs
 ---
 # MDS007: no-hard-tabs
 
@@ -74,3 +77,6 @@ No tabs here.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
+- **Markdownlint**: [MD010][mdl-md010] (no-hard-tabs)
+
+[mdl-md010]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md010.md

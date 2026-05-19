@@ -8,6 +8,9 @@ description: >-
 category: whitespace
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD035
+    name: hr-style
 ---
 # MDS044: horizontal-rule-style
 
@@ -210,3 +213,6 @@ blank lines above and below.
 - **Implementation**:
   [source](./)
 - **Category**: whitespace
+- **Markdownlint**: [MD035][mdl-md035] (hr-style)
+
+[mdl-md035]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md035.md

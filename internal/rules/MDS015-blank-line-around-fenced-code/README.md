@@ -6,6 +6,9 @@ description: Fenced code blocks must have a blank line before and after.
 category: code
 nature: style
 maintainability: null
+markdownlint:
+  - id: MD031
+    name: blanks-around-fences
 ---
 # MDS015: blank-line-around-fenced-code
 
@@ -83,3 +86,6 @@ Content here.
 - **Implementation**:
   [source](./)
 - **Category**: code
+- **Markdownlint**: [MD031][mdl-md031] (blanks-around-fences)
+
+[mdl-md031]: https://github.com/DavidAnson/markdownlint/blob/main/doc/md031.md

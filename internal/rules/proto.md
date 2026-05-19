@@ -5,6 +5,7 @@ status: '"ready" | "not-ready"'
 description: 'string & != ""'
 nature: '"directive" | "generator" | "content" | "style" | "structure"'
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
+markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false}] | null'
 category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" | "list" | "prose" | "structural" | "table" | "whitespace"'
 ---
 # {id}: {name}
@@ -17,6 +18,11 @@ category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" 
      by mdsmith check against the literal CUE union in this file's
      `category:` front matter, which is hand-kept in sync with
      config.ValidCategories.
+     The `markdownlint:` key lists every active markdownlint rule
+     the mdsmith rule covers. Each entry has `id:` and `name:`;
+     `partial: true` marks an incomplete cover. Source of truth is
+     docs/research/markdownlint-coverage/README.md. Set
+     `markdownlint: null` for mdsmith-only rules.
      Repeat the description verbatim. Use prescriptive voice,
      present tense: "Headings must ..." not "Checks that ...".
      The `nature` key labels the rule's kind. Exactly one of:
@@ -99,13 +105,22 @@ rules:
 - **Implementation**:
   [source](./)
 - **Category**: {category}
+- **Markdownlint**: [MDxxx][mdl-mdxxx] (name)
+
+[mdl-mdxxx]: https://github.com/DavidAnson/markdownlint/blob/main/doc/mdxxx.md
 
 <!-- Bullets in this order: ID, Name, Status, Default, Fixable,
-     Implementation, Category, and optionally Concept.
+     Implementation, Category, Markdownlint, and optionally Concept.
      Default may include key settings: "enabled, max: 80".
      Category must match the `category:` front-matter field and one
      of the values in ValidCategories. Pick the narrowest that fits;
      drop any category not in this list.
+     The Markdownlint bullet mirrors the `markdownlint:` front-matter
+     list. One entry per markdownlint rule the mdsmith rule covers,
+     joined with commas; "(partial)" suffixes a partial cover. The
+     matching link-reference definition follows the bullet block.
+     Omit the Markdownlint bullet (and the link refs) for mdsmith-only
+     rules with `markdownlint: null` in front matter.
      Add a Concept bullet when the rule has a dedicated concept page:
        - **Concept**: [NAME](../../../docs/background/concepts/NAME.md)
      Omit the Concept bullet when no concept page applies. -->
