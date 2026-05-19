@@ -139,105 +139,121 @@ func (h hiddenNodeChecker) Name() string                         { return h.nc.N
 func (h hiddenNodeChecker) Category() string                     { return h.nc.Category() }
 func (h hiddenNodeChecker) Check(f *lint.File) []lint.Diagnostic { return h.nc.Check(f) }
 
+// migratedRules lists every plan-189 NodeChecker rule by its
+// registered Name(). The byte-identity table-test below resolves
+// each one through the production registry, so adding a new
+// migration only requires appending a name here.
+var migratedRules = []struct {
+	id, name string
+}{
+	{"MDS002", "heading-style"},
+	{"MDS010", "fenced-code-style"},
+	{"MDS011", "fenced-code-language"},
+	{"MDS012", "no-bare-urls"},
+	{"MDS013", "blank-line-around-headings"},
+	{"MDS014", "blank-line-around-lists"},
+	{"MDS015", "blank-line-around-fenced-code"},
+	{"MDS016", "list-indent"},
+	{"MDS017", "no-trailing-punctuation-in-heading"},
+	{"MDS018", "no-emphasis-as-heading"},
+	{"MDS031", "unclosed-code-block"},
+	{"MDS032", "no-empty-alt-text"},
+	{"MDS035", "toc-directive"},
+	{"MDS041", "no-inline-html"},
+	{"MDS042", "emphasis-style"},
+	{"MDS044", "horizontal-rule-style"},
+	{"MDS045", "list-marker-style"},
+	{"MDS046", "ordered-list-numbering"},
+	{"MDS049", "no-space-in-link-text"},
+	{"MDS052", "no-space-in-code-spans"},
+	{"MDS055", "forbidden-paragraph-starts"},
+	{"MDS056", "forbidden-text"},
+	{"MDS061", "list-marker-space"},
+	{"MDS063", "descriptive-link-text"},
+}
+
+// migratedRuleEquivalenceCorpus is the representative document used
+// to exercise every migrated rule. It includes headings of varying
+// styles, both list flavours, fenced code blocks (with and without
+// languages), an HR, images, an HTML block, a code span with
+// surrounding whitespace, and a `[TOC]` line so the post-migration
+// rules each see at least one match.
+var migratedRuleEquivalenceCorpus = []byte(strings.Join([]string{
+	"# A heading",
+	"",
+	"## A sub-heading",
+	"",
+	"Some paragraph with a link to <https://example.com> and **bold**.",
+	"A bare URL: https://bare.example.com appears here.",
+	"",
+	"- item 1",
+	"- item 2",
+	"",
+	"1. one",
+	"2. two",
+	"",
+	"```",
+	"unlanguaged code",
+	"```",
+	"",
+	"```go",
+	"func main() {}",
+	"```",
+	"",
+	"---",
+	"",
+	"![](image.png)",
+	"![alt](img.png)",
+	"",
+	"[click here](https://x.example.com)",
+	"",
+	"<div>html</div>",
+	"",
+	"A code span with `  spaces  ` inside.",
+	"",
+	"A heading with trailing period.",
+	"",
+	"#### A jumped heading",
+	"",
+	"[TOC]",
+	"",
+}, "\n"))
+
+// assertMigratedRuleEquivalent runs one migrated rule against the
+// corpus twice — once with its NodeChecker capability hidden and
+// once exposed — and asserts byte-identity of the two diagnostic
+// slices.
+func assertMigratedRuleEquivalent(t *testing.T, name string) {
+	t.Helper()
+	rl := newRuleByName(t, name)
+	nc, ok := rl.(rule.NodeChecker)
+	require.True(t, ok, "%s expected to implement NodeChecker", rl.Name())
+
+	eff := map[string]config.RuleCfg{rl.Name(): {Enabled: true}}
+
+	f1, err := lint.NewFile("doc.md", migratedRuleEquivalenceCorpus)
+	require.NoError(t, err)
+	f2, err := lint.NewFile("doc.md", migratedRuleEquivalenceCorpus)
+	require.NoError(t, err)
+
+	seq, errs1 := checkRules(f1, []rule.Rule{hiddenNodeChecker{nc}}, eff, true)
+	mux, errs2 := checkRules(f2, []rule.Rule{rl}, eff, true)
+
+	require.Empty(t, errs1)
+	require.Empty(t, errs2)
+	assert.Equal(t, seq, mux,
+		"%s: multiplexed output must equal sequential", rl.Name())
+}
+
 // TestCheckRules_MigratedRulesEqualSequential pins that every
 // migrated NodeChecker in the production rule set produces a
 // byte-identical diagnostic slice whether routed through the
 // multiplexed walk or the legacy per-rule path. Each rule is tested
 // in isolation so a failure points at exactly one rule.
 func TestCheckRules_MigratedRulesEqualSequential(t *testing.T) {
-	src := []byte(strings.Join([]string{
-		"# A heading",
-		"",
-		"## A sub-heading",
-		"",
-		"Some paragraph with a link to <https://example.com> and **bold**.",
-		"A bare URL: https://bare.example.com appears here.",
-		"",
-		"- item 1",
-		"- item 2",
-		"",
-		"1. one",
-		"2. two",
-		"",
-		"```",
-		"unlanguaged code",
-		"```",
-		"",
-		"```go",
-		"func main() {}",
-		"```",
-		"",
-		"---",
-		"",
-		"![](image.png)",
-		"![alt](img.png)",
-		"",
-		"[click here](https://x.example.com)",
-		"",
-		"<div>html</div>",
-		"",
-		"A code span with `  spaces  ` inside.",
-		"",
-		"A heading with trailing period.",
-		"",
-		"#### A jumped heading",
-		"",
-		"[TOC]",
-		"",
-	}, "\n"))
-
-	cases := []struct {
-		name  string
-		rules []rule.Rule
-	}{
-		{"MDS002", []rule.Rule{newRuleByName(t, "heading-style")}},
-		{"MDS010", []rule.Rule{newRuleByName(t, "fenced-code-style")}},
-		{"MDS011", []rule.Rule{newRuleByName(t, "fenced-code-language")}},
-		{"MDS012", []rule.Rule{newRuleByName(t, "no-bare-urls")}},
-		{"MDS013", []rule.Rule{newRuleByName(t, "blank-line-around-headings")}},
-		{"MDS014", []rule.Rule{newRuleByName(t, "blank-line-around-lists")}},
-		{"MDS015", []rule.Rule{newRuleByName(t, "blank-line-around-fenced-code")}},
-		{"MDS016", []rule.Rule{newRuleByName(t, "list-indent")}},
-		{"MDS017", []rule.Rule{newRuleByName(t, "no-trailing-punctuation-in-heading")}},
-		{"MDS018", []rule.Rule{newRuleByName(t, "no-emphasis-as-heading")}},
-		{"MDS031", []rule.Rule{newRuleByName(t, "unclosed-code-block")}},
-		{"MDS032", []rule.Rule{newRuleByName(t, "no-empty-alt-text")}},
-		{"MDS035", []rule.Rule{newRuleByName(t, "toc-directive")}},
-		{"MDS041", []rule.Rule{newRuleByName(t, "no-inline-html")}},
-		{"MDS042", []rule.Rule{newRuleByName(t, "emphasis-style")}},
-		{"MDS044", []rule.Rule{newRuleByName(t, "horizontal-rule-style")}},
-		{"MDS045", []rule.Rule{newRuleByName(t, "list-marker-style")}},
-		{"MDS046", []rule.Rule{newRuleByName(t, "ordered-list-numbering")}},
-		{"MDS049", []rule.Rule{newRuleByName(t, "no-space-in-link-text")}},
-		{"MDS052", []rule.Rule{newRuleByName(t, "no-space-in-code-spans")}},
-		{"MDS055", []rule.Rule{newRuleByName(t, "forbidden-paragraph-starts")}},
-		{"MDS056", []rule.Rule{newRuleByName(t, "forbidden-text")}},
-		{"MDS061", []rule.Rule{newRuleByName(t, "list-marker-space")}},
-		{"MDS063", []rule.Rule{newRuleByName(t, "descriptive-link-text")}},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			rl := tc.rules[0]
-			nc, ok := rl.(rule.NodeChecker)
-			require.True(t, ok, "%s expected to implement NodeChecker", rl.Name())
-
-			eff := map[string]config.RuleCfg{
-				rl.Name(): {Enabled: true},
-			}
-
-			f1, err := lint.NewFile("doc.md", src)
-			require.NoError(t, err)
-			f2, err := lint.NewFile("doc.md", src)
-			require.NoError(t, err)
-
-			seq, errs1 := checkRules(f1, []rule.Rule{hiddenNodeChecker{nc}}, eff, true)
-			mux, errs2 := checkRules(f2, []rule.Rule{rl}, eff, true)
-
-			require.Empty(t, errs1)
-			require.Empty(t, errs2)
-			assert.Equal(t, seq, mux,
-				"%s: multiplexed output must equal sequential", rl.Name())
+	for _, tc := range migratedRules {
+		t.Run(tc.id, func(t *testing.T) {
+			assertMigratedRuleEquivalent(t, tc.name)
 		})
 	}
 }
