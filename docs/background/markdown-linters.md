@@ -796,7 +796,7 @@ items most relevant to this comparison are:
   covers MD054, and plans 176, 178-179, and 181-182 schedule the
   remaining 13 (heading whitespace; list marker spacing;
   reversed/empty links; table structure; code-block style).
-  MDS063 (`descriptive-link-text`) now covers MD059.
+  MDS063 (`descriptive-link-text`) now covers markdownlint MD059.
   The [coverage matrix][mdcov] tracks each.
 - **User-defined Markdown conventions**
   ([plan 113][plan113]) — let teams package their own

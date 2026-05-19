@@ -92,6 +92,11 @@ func (r *Rule) checkBlankBetween(f *lint.File) []lint.Diagnostic {
 		}
 		first := nodeFirstLine(f, nextBq)
 		if first == 0 {
+			// nextBq is an empty blockquote with no source segments; derive its
+			// line via a source scan rather than silently skipping the violation.
+			first = emptyBQLine(f, nextBq)
+		}
+		if first == 0 {
 			return ast.WalkContinue, nil
 		}
 		// Scan backwards through blank lines immediately before nextBq.
@@ -148,6 +153,79 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		}
 	}
 	return []byte(strings.Join(lines, "\n"))
+}
+
+// emptyBQLine finds the source line of n, an empty AST blockquote node with
+// no source segments. It walks back through preceding siblings to find one with
+// a known position, then steps forward one blank-gap per empty preceding
+// sibling. Falls back to the parent's position (or line 1) when no positioned
+// sibling exists.
+func emptyBQLine(f *lint.File, n ast.Node) int {
+	steps := 0
+	for cur := n.PreviousSibling(); cur != nil; cur = cur.PreviousSibling() {
+		if first := nodeFirstLine(f, cur); first > 0 {
+			line := first
+			for i := 0; i <= steps; i++ {
+				line = firstBQLineAfterGap(f, line)
+				if line == 0 {
+					return 0
+				}
+			}
+			return line
+		}
+		steps++
+	}
+	// No positioned sibling found; start from the parent's first line.
+	base := 1
+	if p := n.Parent(); p != nil {
+		if pFirst := nodeFirstLine(f, p); pFirst > 0 {
+			base = pFirst
+		}
+	}
+	line := firstBQLineFrom(f, base)
+	for i := 0; i < steps; i++ {
+		line = firstBQLineAfterGap(f, line)
+		if line == 0 {
+			return 0
+		}
+	}
+	return line
+}
+
+// firstBQLineFrom scans forward from fromLine and returns the first 1-based
+// line number whose leading prefix contains a > marker.
+func firstBQLineFrom(f *lint.File, fromLine int) int {
+	for i := fromLine; i <= len(f.Lines); i++ {
+		if hasBQMarker(f.Lines[i-1]) {
+			return i
+		}
+	}
+	return 0
+}
+
+// firstBQLineAfterGap scans from fromLine past non-blank lines, then past
+// blank lines, and returns the line number of the next blockquote marker line.
+// Returns 0 if no such line exists or the content after the gap is not a
+// blockquote.
+func firstBQLineAfterGap(f *lint.File, fromLine int) int {
+	scan := fromLine
+	for scan <= len(f.Lines) && !isBlankLine(f, scan) {
+		scan++
+	}
+	if scan > len(f.Lines) {
+		return 0
+	}
+	for scan <= len(f.Lines) && isBlankLine(f, scan) {
+		scan++
+	}
+	if scan > len(f.Lines) || !hasBQMarker(f.Lines[scan-1]) {
+		return 0
+	}
+	return scan
+}
+
+func hasBQMarker(line []byte) bool {
+	return bytes.ContainsRune(reBlockquotePrefix.Find(line), '>')
 }
 
 // nodeFirstLine returns the 1-based source line of n's first content byte.

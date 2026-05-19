@@ -357,13 +357,14 @@ func TestRule_checkBlankBetween_NonBlankGap(t *testing.T) {
 
 func TestRule_checkBlankBetween_NoSegments(t *testing.T) {
 	// Synthetic: nextBq has no children with segments, so nodeFirstLine
-	// returns 0. The first==0 guard fires and no diagnostic is emitted.
+	// returns 0. The emptyBQLine fallback locates bq2 at line 3 via the
+	// source scan, so the blank-line gap is still flagged.
 	src := []byte("> bq1\n\n> bq2\n")
 	bq1Para := goldmarkast.NewParagraph()
 	bq1Para.Lines().Append(goldmarktext.NewSegment(2, 6)) // line 1
 	bq1 := goldmarkast.NewBlockquote()
 	bq1.AppendChild(bq1, bq1Para)
-	// bq2 has no children, so nodeFirstLine returns 0.
+	// bq2 has no children, so nodeFirstLine returns 0; fallback kicks in.
 	bq2 := goldmarkast.NewBlockquote()
 	doc := goldmarkast.NewDocument()
 	doc.AppendChild(doc, bq1)
@@ -374,7 +375,31 @@ func TestRule_checkBlankBetween_NoSegments(t *testing.T) {
 		Lines:  bytes.Split(src, []byte("\n")),
 		AST:    doc,
 	}
-	assert.Empty(t, (&Rule{}).checkBlankBetween(f))
+	diags := (&Rule{}).checkBlankBetween(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "blank line between blockquotes", diags[0].Message)
+}
+
+func TestCheck_MD028_EmptySecondBlockquote(t *testing.T) {
+	// Non-empty first blockquote, empty second blockquote: the blank line
+	// between them must still be flagged even though nodeFirstLine(nextBq)==0.
+	src := []byte("> text\n\n>\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	diags := (&Rule{}).checkBlankBetween(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "blank line between blockquotes", diags[0].Message)
+}
+
+func TestCheck_MD028_BothEmptyBlockquotes(t *testing.T) {
+	// Both blockquotes are empty (bare >); the blank line between them must
+	// be flagged even though nodeFirstLine returns 0 for both.
+	src := []byte(">\n\n>\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	diags := (&Rule{}).checkBlankBetween(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "blank line between blockquotes", diags[0].Message)
 }
 
 func TestRule_checkBlankBetween_NextBqAtLineOne(t *testing.T) {
