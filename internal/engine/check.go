@@ -60,12 +60,12 @@ func checkRules(
 // ruleSlot is one rule's diagnostic bucket. NodeCheckers append to
 // it from the shared walk; non-NodeCheckers fill it once via Check.
 // Slots are kept in rules order so the final concatenation reproduces
-// the sequential output exactly.
+// the sequential output exactly. Configure-failed rules never get a
+// slot — they short-circuit in classifyRules with an entry in errs.
 type ruleSlot struct {
-	nc       rule.NodeChecker
-	check    rule.Rule // non-nil for non-NodeChecker slots
-	diags    []lint.Diagnostic
-	configed bool // skip filled if false (configure-failed entry)
+	nc    rule.NodeChecker
+	check rule.Rule // non-nil for non-NodeChecker slots
+	diags []lint.Diagnostic
 }
 
 // checkRulesWithIntraFile is the core implementation that accepts an
@@ -135,12 +135,12 @@ func classifyRules(
 			continue
 		}
 		if nc, ok := checkRule.(rule.NodeChecker); ok {
-			s := &ruleSlot{nc: nc, configed: true}
+			s := &ruleSlot{nc: nc}
 			slots = append(slots, s)
 			nodeCheckers = append(nodeCheckers, s)
 			continue
 		}
-		slots = append(slots, &ruleSlot{check: checkRule, configed: true})
+		slots = append(slots, &ruleSlot{check: checkRule})
 	}
 	return slots, nodeCheckers, errs
 }
