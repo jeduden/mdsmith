@@ -58,10 +58,11 @@ func (r *Rule) checkLine(path string, lineNum int, line []byte) []lint.Diagnosti
 
 	after := rest[level:]
 
-	// A '#' run immediately followed by a digit is an issue/PR reference
-	// (#22, #288) embedded in prose, not a malformed ATX heading. Skip it
-	// to avoid false positives on soft-wrapped list-item continuations.
-	if len(after) > 0 && after[0] >= '0' && after[0] <= '9' {
+	// A '#' run immediately followed by a digit on an indented line is almost
+	// certainly an issue/PR reference (#22, #288) in a soft-wrapped list-item
+	// continuation, not a malformed ATX heading. At column 1 the same pattern
+	// (#1Heading, ##22Title) IS a missing-space defect and is flagged normally.
+	if leading > 0 && len(after) > 0 && after[0] >= '0' && after[0] <= '9' {
 		return nil
 	}
 

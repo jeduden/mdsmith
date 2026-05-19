@@ -123,20 +123,25 @@ func TestCheck_ContentEndingWithHash(t *testing.T) {
 // --- Check: issue/PR references (#22, #288) are not treated as headings ---
 
 func TestCheck_IssueReference(t *testing.T) {
-	// "#22 text" — # followed by digit is an issue/PR reference, not a heading.
+	// Indented "#22 text" is a list-continuation issue reference, not a heading.
 	diags := check(t, "# Title\n\n  #22 \"Mandatory headings\"\n")
-	assert.Empty(t, diags)
-}
-
-func TestCheck_IssueReferenceAtColumn1(t *testing.T) {
-	// Even at column 1, #22 is not treated as a heading.
-	diags := check(t, "# Title\n\n#288.** Some text\n")
 	assert.Empty(t, diags)
 }
 
 func TestFix_IssueReferenceUnchanged(t *testing.T) {
 	src := "# Title\n\n  #22 \"Mandatory headings\"\n"
 	assert.Equal(t, src, fix(t, src))
+}
+
+func TestCheck_DigitAtColumn1IsFlagged(t *testing.T) {
+	// "#1Heading" at column 1 is a malformed heading (MD018), not an issue ref.
+	diags := check(t, "# Title\n\n#1Heading\n")
+	require.Len(t, diags, 1)
+	assert.Equal(t, "missing space after # in heading", diags[0].Message)
+}
+
+func TestFix_DigitAtColumn1(t *testing.T) {
+	assert.Equal(t, "# Title\n\n# 1Heading\n", fix(t, "# Title\n\n#1Heading\n"))
 }
 
 // --- Check: tab after # is flagged (normalise to single space) ---
