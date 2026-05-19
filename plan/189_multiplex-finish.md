@@ -1,7 +1,7 @@
 ---
 id: 189
 title: Finish the multiplex migration for pure per-node rules
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: [187]
 summary: >-
