@@ -98,6 +98,17 @@ func TestFixImagesDisabled_LeavesImageAltUntouched(t *testing.T) {
 	assert.Equal(t, src, result, "Fix must leave image alt untouched when CheckImages=false")
 }
 
+// TestEmptyLinkText_NoDiagnostic pins the `len(inner) == 0`
+// short-circuit in diagsForSpan: a link with empty brackets
+// `[](url)` has zero inner bytes, so neither leading- nor
+// trailing-space checks make sense — return without flagging.
+// MDS049 leaves empty link text to MDS063 (descriptive-link-text)
+// since "empty" is a content concern, not a whitespace concern.
+func TestEmptyLinkText_NoDiagnostic(t *testing.T) {
+	diags := check(t, "# T\n\n[](https://example.com)\n", true)
+	assert.Empty(t, diags, "empty link text must not trigger a leading/trailing-space diagnostic")
+}
+
 func TestNewlineInLinkTextNotFlagged(t *testing.T) {
 	// Newline between words inside brackets must not be flagged.
 	diags := check(t, "# T\n\n[long text that\nwraps](url)\n", true)
