@@ -17,6 +17,7 @@ import (
 	"go.abhg.dev/goldmark/frontmatter"
 
 	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"
+	_ "github.com/jeduden/mdsmith/internal/rules/atxheadingwhitespace"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"
@@ -38,7 +39,6 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/githooksync"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingincrement"
 	_ "github.com/jeduden/mdsmith/internal/rules/headingstyle"
-	_ "github.com/jeduden/mdsmith/internal/rules/atxheadingwhitespace"
 	_ "github.com/jeduden/mdsmith/internal/rules/horizontalrulestyle"
 	_ "github.com/jeduden/mdsmith/internal/rules/include"
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"
