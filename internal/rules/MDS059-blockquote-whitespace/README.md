@@ -3,7 +3,7 @@ id: MDS059
 name: blockquote-whitespace
 status: ready
 description: >-
-  Blockquote markers must be followed by one space,
+  Blockquote markers must not be followed by multiple spaces,
   and adjacent blockquote blocks must not be separated by blank lines.
 category: whitespace
 nature: style
@@ -11,7 +11,7 @@ maintainability: null
 ---
 # MDS059: blockquote-whitespace
 
-Blockquote markers must be followed by one space, and adjacent
+Blockquote markers must not be followed by multiple spaces, and adjacent
 blockquote blocks must not be separated by blank lines.
 
 Two defects are flagged:

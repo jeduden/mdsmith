@@ -24,11 +24,12 @@ type Rule struct{}
 
 var (
 	// reBlockquotePrefix extracts the leading chain of > markers and their
-	// trailing spaces from the start of a line (up to 3 spaces indent,
-	// then zero or more >-and-spaces groups). Only this prefix is checked
-	// for MD027, so a > that appears inside the blockquote's content (e.g.
+	// trailing whitespace from the start of a line. Per CommonMark, the
+	// optional indent before the first > is 0–3 literal spaces ([ ]{0,3});
+	// each > may be followed by a space or tab ([ \t]*). Only this prefix
+	// is checked for MD027, so a > inside the blockquote's content (e.g.
 	// `> text >  more`) is never treated as a marker.
-	reBlockquotePrefix = regexp.MustCompile(`^\s{0,3}(?:>\s*)*`)
+	reBlockquotePrefix = regexp.MustCompile(`^[ ]{0,3}(?:>[ \t]*)*`)
 	// reMultiSpace matches a > followed by two or more spaces.
 	reMultiSpace = regexp.MustCompile(`> {2,}`)
 )
