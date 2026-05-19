@@ -59,48 +59,55 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-link logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
 	if len(r.Banned) == 0 {
 		return nil
 	}
+	link, ok := n.(*ast.Link)
+	if !ok {
+		return nil
+	}
+	if isOnlyImageChild(link) || isOnlyCodeSpanChild(link) {
+		return nil
+	}
 
+	// Banned-set construction is cheap, but doing it per node is wasteful
+	// when there are many links. The set is per-rule-config (Banned),
+	// so memoise on r.banned only when r.Banned hasn't changed. For
+	// simplicity and correctness — and because rule clones are per
+	// Check (so a fresh slice maps to a fresh check pass) — just build
+	// it inline per call. The work is bounded by len(Banned) ~ <10.
 	bannedSet := make(map[string]bool, len(r.Banned))
 	for _, b := range r.Banned {
 		bannedSet[normalizeText(b)] = true
 	}
 
-	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		link, ok := n.(*ast.Link)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		if isOnlyImageChild(link) || isOnlyCodeSpanChild(link) {
-			return ast.WalkContinue, nil
-		}
-
-		text := collectLinkText(link, f.Source)
-		if bannedSet[normalizeText(text)] {
-			line := linkLine(link, f)
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  fmt.Sprintf("link text %q is not descriptive", text),
-			})
-		}
-
-		return ast.WalkContinue, nil
-	})
-	return diags
+	text := collectLinkText(link, f.Source)
+	if !bannedSet[normalizeText(text)] {
+		return nil
+	}
+	line := linkLine(link, f)
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  fmt.Sprintf("link text %q is not descriptive", text),
+	}}
 }
 
 // normalizeText trims, lowercases, and collapses internal whitespace.
@@ -159,4 +166,5 @@ func linkLine(link *ast.Link, f *lint.File) int {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )

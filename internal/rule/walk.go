@@ -28,7 +28,13 @@ type NodeChecker interface {
 // NodeChecker's standalone Check delegates here so direct callers
 // (the LSP, unit tests) get behaviour identical to the engine's
 // multiplexed dispatch, which feeds CheckNode the same node stream.
+// Files with a nil AST short-circuit to no diagnostics; the engine
+// never produces such files, but unit tests construct
+// `&lint.File{}` literals to exercise rule guards.
 func WalkNodes(r NodeChecker, f *lint.File) []lint.Diagnostic {
+	if f == nil || f.AST == nil {
+		return nil
+	}
 	var diags []lint.Diagnostic
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		diags = append(diags, r.CheckNode(n, entering, f)...)

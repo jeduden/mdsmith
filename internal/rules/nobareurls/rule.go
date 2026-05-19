@@ -28,59 +28,65 @@ func (r *Rule) Name() string { return "no-bare-urls" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "link" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-text-node logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	textNode, ok := n.(*ast.Text)
+	if !ok {
+		return nil
+	}
+	// Skip text nodes inside links.
+	if isInsideNonBareContext(n) {
+		return nil
+	}
+
+	seg := textNode.Segment
+	content := seg.Value(f.Source)
+	matches := urlPattern.FindAllIndex(content, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
 	var diags []lint.Diagnostic
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		textNode, ok := n.(*ast.Text)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		// Skip text nodes inside links.
-		if isInsideNonBareContext(n) {
-			return ast.WalkContinue, nil
-		}
-
-		seg := textNode.Segment
-		content := seg.Value(f.Source)
-		matches := urlPattern.FindAllIndex(content, -1)
-		for _, m := range matches {
-			offset := seg.Start + m[0]
-			line := f.LineOfOffset(offset)
-			// Compute column: find the start of this line.
-			lineStart := 0
-			count := 1
-			for i := 0; i < offset && i < len(f.Source); i++ {
-				if f.Source[i] == '\n' {
-					lineStart = i + 1
-					count++
-					_ = count
-				}
+	for _, m := range matches {
+		offset := seg.Start + m[0]
+		line := f.LineOfOffset(offset)
+		// Compute column: find the start of this line.
+		lineStart := 0
+		count := 1
+		for i := 0; i < offset && i < len(f.Source); i++ {
+			if f.Source[i] == '\n' {
+				lineStart = i + 1
+				count++
+				_ = count
 			}
-			col := offset - lineStart + 1
-
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   col,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  "bare URL found; use angle brackets or a link",
-			})
 		}
+		col := offset - lineStart + 1
 
-		return ast.WalkContinue, nil
-	})
-
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     line,
+			Column:   col,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  "bare URL found; use angle brackets or a link",
+		})
+	}
 	return diags
 }
+
+var _ rule.NodeChecker = (*Rule)(nil)
 
 // isInsideNonBareContext checks if a node is a descendant of an ast.Link,
 // ast.AutoLink, or ast.CodeSpan (where URLs should not be flagged).

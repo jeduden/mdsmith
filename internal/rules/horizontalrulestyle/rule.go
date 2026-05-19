@@ -38,24 +38,25 @@ func (r *Rule) Category() string { return "whitespace" }
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-thematic-break logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	return rule.WalkNodes(r, f)
+}
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		tb, ok := n.(*ast.ThematicBreak)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		line := thematicBreakLine(tb, f)
-		diags = append(diags, r.checkHR(f, line)...)
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	tb, ok := n.(*ast.ThematicBreak)
+	if !ok {
+		return nil
+	}
+	line := thematicBreakLine(tb, f)
+	return r.checkHR(f, line)
 }
 
 func (r *Rule) checkHR(f *lint.File, line int) []lint.Diagnostic {
@@ -349,3 +350,4 @@ func (r *Rule) DefaultSettings() map[string]any {
 var _ rule.FixableRule = (*Rule)(nil)
 var _ rule.Configurable = (*Rule)(nil)
 var _ rule.Defaultable = (*Rule)(nil)
+var _ rule.NodeChecker = (*Rule)(nil)

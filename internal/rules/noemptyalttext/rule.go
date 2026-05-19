@@ -24,38 +24,40 @@ func (r *Rule) Name() string { return "no-empty-alt-text" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "accessibility" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-image logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		img, ok := n.(*ast.Image)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		alt := imageAltText(img, f)
-		if strings.TrimSpace(alt) == "" {
-			line := imageLine(img, f)
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  "image has empty alt text",
-			})
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+	return rule.WalkNodes(r, f)
 }
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	img, ok := n.(*ast.Image)
+	if !ok {
+		return nil
+	}
+	alt := imageAltText(img, f)
+	if strings.TrimSpace(alt) != "" {
+		return nil
+	}
+	line := imageLine(img, f)
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  "image has empty alt text",
+	}}
+}
+
+var _ rule.NodeChecker = (*Rule)(nil)
 
 func imageAltText(img *ast.Image, f *lint.File) string {
 	var b strings.Builder

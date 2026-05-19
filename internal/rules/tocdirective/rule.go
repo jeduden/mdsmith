@@ -56,50 +56,76 @@ func (r *Rule) Category() string { return "directive" }
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-paragraph logic is pure and
+// stateless once the `hasTOCRef` lookup is shared via File.Memo; the
+// engine can fold this rule into one shared AST walk and a direct
+// call still works via rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f == nil || f.AST == nil {
 		return nil
 	}
+	return rule.WalkNodes(r, f)
+}
 
-	hasTOCRef := hasTOCLinkReference(f.Source)
+// memoKey scopes the once-per-File hasTOCLinkReference cache. The
+// File.Memo store is per-Check (so the value is recomputed for each
+// new file) and rule-namespaced (so it can never collide with another
+// rule's key).
+const memoKey = "mds035:hasTOCLinkReference"
 
-	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		para, ok := n.(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		lines := para.Lines()
-		for i := 0; i < lines.Len(); i++ {
-			seg := lines.At(i)
-			lineText := strings.TrimRight(
-				string(seg.Value(f.Source)), "\r\n",
-			)
-			v, matched := matchVariant(lineText)
-			if !matched {
-				continue
-			}
-			if v.isLinkRefCandidate && hasTOCRef {
-				continue
-			}
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     f.LineOfOffset(seg.Start),
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  buildMessage(v.token),
-			})
-		}
-		return ast.WalkContinue, nil
+// hasTOCRefMemoized returns the once-per-File hasTOCLinkReference
+// result. The lookup walks the document with goldmark's parser and is
+// not cheap enough to repeat for every paragraph node, so it is
+// memoised on f.
+func hasTOCRefMemoized(f *lint.File) bool {
+	v := f.Memo(memoKey, func() any {
+		return hasTOCLinkReference(f.Source)
 	})
+	got, _ := v.(bool)
+	return got
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	if f == nil || f.AST == nil {
+		return nil
+	}
+	para, ok := n.(*ast.Paragraph)
+	if !ok {
+		return nil
+	}
+	hasTOCRef := hasTOCRefMemoized(f)
+	var diags []lint.Diagnostic
+	lines := para.Lines()
+	for i := 0; i < lines.Len(); i++ {
+		seg := lines.At(i)
+		lineText := strings.TrimRight(
+			string(seg.Value(f.Source)), "\r\n",
+		)
+		v, matched := matchVariant(lineText)
+		if !matched {
+			continue
+		}
+		if v.isLinkRefCandidate && hasTOCRef {
+			continue
+		}
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     f.LineOfOffset(seg.Start),
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  buildMessage(v.token),
+		})
+	}
 	return diags
 }
+
+var _ rule.NodeChecker = (*Rule)(nil)
 
 func matchVariant(line string) (tocVariant, bool) {
 	for _, v := range variants {

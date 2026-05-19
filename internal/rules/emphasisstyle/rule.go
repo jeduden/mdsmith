@@ -50,24 +50,27 @@ func (r *Rule) wantChar(level int) byte {
 	return 0
 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-emphasis logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
 	if r.Bold == "" && r.Italic == "" && !r.ForbidMixedNesting {
 		return nil
 	}
-	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		em, ok := n.(*ast.Emphasis)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		diags = append(diags, r.checkEmphasis(em, f)...)
-		return ast.WalkContinue, nil
-	})
-	return diags
+	em, ok := n.(*ast.Emphasis)
+	if !ok {
+		return nil
+	}
+	return r.checkEmphasis(em, f)
 }
 
 func (r *Rule) checkEmphasis(em *ast.Emphasis, f *lint.File) []lint.Diagnostic {
@@ -373,4 +376,5 @@ var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
 	_ rule.FixableRule  = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )

@@ -66,40 +66,39 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	return nil
 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-HTML-node logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
 	allowed := r.allowSet()
-	var diags []lint.Diagnostic
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+	switch node := n.(type) {
+	case *ast.HTMLBlock:
+		seg := node.Lines().At(0)
+		raw := seg.Value(f.Source)
+		offset := seg.Start
+		if i := bytes.IndexByte(raw, '<'); i >= 0 {
+			offset += i
 		}
-
-		switch node := n.(type) {
-		case *ast.HTMLBlock:
-			seg := node.Lines().At(0)
-			raw := seg.Value(f.Source)
-			offset := seg.Start
-			if i := bytes.IndexByte(raw, '<'); i >= 0 {
-				offset += i
-			}
-			if d, ok := r.checkRaw(f, allowed, raw, offset); ok {
-				diags = append(diags, d)
-			}
-
-		case *ast.RawHTML:
-			seg := node.Segments.At(0)
-			raw := rawHTMLBytes(node, f.Source)
-			if d, ok := r.checkRaw(f, allowed, raw, seg.Start); ok {
-				diags = append(diags, d)
-			}
+		if d, ok := r.checkRaw(f, allowed, raw, offset); ok {
+			return []lint.Diagnostic{d}
 		}
-
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+	case *ast.RawHTML:
+		seg := node.Segments.At(0)
+		raw := rawHTMLBytes(node, f.Source)
+		if d, ok := r.checkRaw(f, allowed, raw, seg.Start); ok {
+			return []lint.Diagnostic{d}
+		}
+	}
+	return nil
 }
 
 // checkRaw inspects raw HTML bytes and returns a diagnostic if the HTML
@@ -196,4 +195,5 @@ func rawHTMLBytes(n *ast.RawHTML, source []byte) []byte {
 var (
 	_ rule.Defaultable  = (*Rule)(nil)
 	_ rule.Configurable = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )
