@@ -6,6 +6,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/yuin/goldmark/ast"
 )
 
 // ConfigureRule clones a rule and applies settings from cfg if the rule
@@ -53,6 +54,22 @@ func checkRules(
 	var diags []lint.Diagnostic
 	var errs []error
 
+	// Each enabled rule contributes one contiguous diagnostic group,
+	// kept in rules order. Rules implementing rule.NodeChecker have
+	// their group filled by a single shared ast.Walk instead of each
+	// re-walking the whole tree (goldmark walkHelper was ~44%
+	// cumulative). Because every group is still placed in rules order
+	// and a NodeChecker's bucket is fed the identical pre-order node
+	// stream its own Check (rule.WalkNodes) would use, the combined
+	// slice is byte-identical to running every rule's Check
+	// sequentially — order-independent consumers see no change.
+	type ruleSlot struct {
+		nc    rule.NodeChecker
+		diags []lint.Diagnostic
+	}
+	var slots []*ruleSlot
+	var nodeCheckers []*ruleSlot
+
 	for _, rl := range rules {
 		cfg, ok := effective[rl.Name()]
 		if !ok || !cfg.Enabled {
@@ -65,8 +82,26 @@ func checkRules(
 			continue
 		}
 
-		d := checkRule.Check(f)
-		diags = append(diags, d...)
+		if nc, ok := checkRule.(rule.NodeChecker); ok {
+			s := &ruleSlot{nc: nc}
+			slots = append(slots, s)
+			nodeCheckers = append(nodeCheckers, s)
+			continue
+		}
+		slots = append(slots, &ruleSlot{diags: checkRule.Check(f)})
+	}
+
+	if len(nodeCheckers) > 0 {
+		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			for _, s := range nodeCheckers {
+				s.diags = append(s.diags, s.nc.CheckNode(n, entering, f)...)
+			}
+			return ast.WalkContinue, nil
+		})
+	}
+
+	for _, s := range slots {
+		diags = append(diags, s.diags...)
 	}
 
 	diags = filterGeneratedDiags(diags, f.GeneratedRanges)

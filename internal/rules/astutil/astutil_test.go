@@ -416,3 +416,33 @@ func TestSectionBody_EmptyWhenNoParagraphsInRange(t *testing.T) {
 	paras := []SectionParagraph{{Line: 100, Text: "out"}}
 	assert.Equal(t, "", SectionBody(paras, 1, 10))
 }
+
+// TestCollectSectionParagraphs_MemoizedPerFile pins that the
+// AST-walking, ExtractPlainText-running collector runs once per File
+// and serves a cached result thereafter. On prose-heavy corpora
+// (the neutral Rust Book benchmark) the two hot default rules —
+// MDS024 paragraph-structure and paragraph-readability — both walk
+// every paragraph and extract its plain text; sharing one memoized
+// walk removes the duplicate. Reference identity of the returned
+// slice proves a later call did not re-walk.
+func TestCollectSectionParagraphs_MemoizedPerFile(t *testing.T) {
+	src := []byte("# H\n\nFirst paragraph here.\n\nSecond paragraph too.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+
+	p1 := CollectSectionParagraphs(f)
+	p2 := CollectSectionParagraphs(f)
+
+	require.Len(t, p1, 2)
+	require.Len(t, p2, 2)
+	assert.Same(t, &p1[0], &p2[0],
+		"repeated calls must return the cached slice, not a fresh walk")
+
+	// A different File computes independently (the memo is per-File,
+	// discarded with it — no cross-file or cross-run staleness).
+	f2, err := lint.NewFile("other.md", []byte("Different.\n"))
+	require.NoError(t, err)
+	o := CollectSectionParagraphs(f2)
+	require.Len(t, o, 1)
+	assert.Equal(t, "Different.", o[0].Text)
+}

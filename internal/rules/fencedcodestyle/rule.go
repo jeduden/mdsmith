@@ -28,47 +28,46 @@ func (r *Rule) Name() string { return "fenced-code-style" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "code" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-block logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	return rule.WalkNodes(r, f)
+}
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		fcb, ok := n.(*ast.FencedCodeBlock)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	fcb, ok := n.(*ast.FencedCodeBlock)
+	if !ok {
+		return nil
+	}
 
-		openStart, _ := fencepos.OpenLineRange(f.Source, fcb)
-		if openStart >= len(f.Source) {
-			return ast.WalkContinue, nil
-		}
+	openStart, _ := fencepos.OpenLineRange(f.Source, fcb)
+	if openStart >= len(f.Source) {
+		return nil
+	}
 
-		fenceChar := fencepos.CharAt(f.Source, openStart)
-		if fenceChar == 0 {
-			return ast.WalkContinue, nil
-		}
+	fenceChar := fencepos.CharAt(f.Source, openStart)
+	if fenceChar == 0 {
+		return nil
+	}
 
-		wantChar := r.wantChar()
-		if fenceChar != wantChar {
-			line := f.LineOfOffset(openStart)
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  "fenced code block should use " + r.Style + " style",
-			})
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+	if fenceChar != r.wantChar() {
+		return []lint.Diagnostic{{
+			File:     f.Path,
+			Line:     f.LineOfOffset(openStart),
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  "fenced code block should use " + r.Style + " style",
+		}}
+	}
+	return nil
 }
 
 // Fix implements rule.FixableRule.
@@ -181,3 +180,4 @@ func (r *Rule) DefaultSettings() map[string]any {
 }
 
 var _ rule.Configurable = (*Rule)(nil)
+var _ rule.NodeChecker = (*Rule)(nil)

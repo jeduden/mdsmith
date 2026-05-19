@@ -10,7 +10,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
-	"github.com/yuin/goldmark/ast"
 )
 
 func init() {
@@ -50,46 +49,33 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		index = ARI
 	}
 
-	_ = ast.Walk(
-		f.AST,
-		func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			if !entering {
-				return ast.WalkContinue, nil
-			}
-			para, ok := n.(*ast.Paragraph)
-			if !ok {
-				return ast.WalkContinue, nil
-			}
-			if astutil.IsTable(para, f) {
-				return ast.WalkContinue, nil
-			}
+	// Iterate the per-File memoized non-table paragraph collection so
+	// the AST walk and per-paragraph ExtractPlainText are shared with
+	// MDS024 instead of re-run here — the two are the hot default
+	// rules on prose-heavy input.
+	for _, p := range astutil.CollectSectionParagraphs(f) {
+		text := p.Text
+		if len(r.Placeholders) > 0 {
+			text = placeholders.MaskBodyTokens(text, r.Placeholders)
+		}
+		words := mdtext.CountWords(text)
+		if words < minWords {
+			continue
+		}
 
-			text := mdtext.ExtractPlainText(para, f.Source)
-			if len(r.Placeholders) > 0 {
-				text = placeholders.MaskBodyTokens(text, r.Placeholders)
-			}
-			words := mdtext.CountWords(text)
-			if words < minWords {
-				return ast.WalkContinue, nil
-			}
-
-			score := index(text)
-			if score > maxIndex {
-				line := astutil.ParagraphLine(para, f)
-				diags = append(diags, lint.Diagnostic{
-					File:     f.Path,
-					Line:     line,
-					Column:   1,
-					RuleID:   r.ID(),
-					RuleName: r.Name(),
-					Severity: lint.Warning,
-					Message:  readabilityMessage(score, maxIndex, words, text),
-				})
-			}
-
-			return ast.WalkContinue, nil
-		},
-	)
+		score := index(text)
+		if score > maxIndex {
+			diags = append(diags, lint.Diagnostic{
+				File:     f.Path,
+				Line:     p.Line,
+				Column:   1,
+				RuleID:   r.ID(),
+				RuleName: r.Name(),
+				Severity: lint.Warning,
+				Message:  readabilityMessage(score, maxIndex, words, text),
+			})
+		}
+	}
 
 	return diags
 }

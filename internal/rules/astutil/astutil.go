@@ -56,25 +56,37 @@ func CollectSectionHeadings(f *lint.File) []SectionHeading {
 // tables as paragraphs when the table extension is absent; those are
 // filtered so cell text does not pollute section bodies.
 func CollectSectionParagraphs(f *lint.File) []SectionParagraph {
-	var out []SectionParagraph
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
+	// Memoized per File: this walks the whole AST and runs
+	// ExtractPlainText on every paragraph. On prose-heavy input the
+	// two hot default rules (MDS024 paragraph-structure and
+	// paragraph-readability) plus the required-* rules each called
+	// it, so the walk and per-paragraph extraction ran several times
+	// per file. The result is a pure function of the immutable AST
+	// and Source; the memo lives on the per-Check File, so nothing
+	// is cached across files or runs — the same scope and staleness
+	// guarantees as the per-File code-block-line cache. Callers
+	// treat the slice as read-only.
+	return f.Memo("astutil.sectionParagraphs", func() any {
+		var out []SectionParagraph
+		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering {
+				return ast.WalkContinue, nil
+			}
+			p, ok := n.(*ast.Paragraph)
+			if !ok {
+				return ast.WalkContinue, nil
+			}
+			if IsTable(p, f) {
+				return ast.WalkContinue, nil
+			}
+			out = append(out, SectionParagraph{
+				Line: ParagraphLine(p, f),
+				Text: mdtext.ExtractPlainText(p, f.Source),
+			})
 			return ast.WalkContinue, nil
-		}
-		p, ok := n.(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		if IsTable(p, f) {
-			return ast.WalkContinue, nil
-		}
-		out = append(out, SectionParagraph{
-			Line: ParagraphLine(p, f),
-			Text: mdtext.ExtractPlainText(p, f.Source),
 		})
-		return ast.WalkContinue, nil
-	})
-	return out
+		return out
+	}).([]SectionParagraph)
 }
 
 // SectionEnd returns the exclusive end line of the section starting

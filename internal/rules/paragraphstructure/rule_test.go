@@ -6,47 +6,42 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yuin/goldmark/ast"
 )
 
-func firstParagraph(t *testing.T, body string) (*ast.Paragraph, *lint.File) {
+// firstParagraph parses body and returns the first non-table
+// paragraph's extracted text, 1-based line, and path — exactly what
+// the shared collector now feeds checkParagraph in production.
+func firstParagraph(t *testing.T, body string) (text string, line int, path string) {
 	t.Helper()
 	f, err := lint.NewFile("t.md", []byte(body+"\n"))
 	require.NoError(t, err)
-	var p *ast.Paragraph
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering && p == nil {
-			if pp, ok := n.(*ast.Paragraph); ok {
-				p = pp
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-	require.NotNil(t, p, "no paragraph parsed from %q", body)
-	return p, f
+	paras := astutil.CollectSectionParagraphs(f)
+	require.NotEmpty(t, paras, "no paragraph parsed from %q", body)
+	return paras[0].Text, paras[0].Line, f.Path
 }
 
 func TestRule_checkParagraph(t *testing.T) {
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 
 	t.Run("guard short-circuits clean paragraph", func(t *testing.T) {
-		p, f := firstParagraph(t, "Short and safe.")
-		assert.Nil(t, r.checkParagraph(p, f))
+		text, line, path := firstParagraph(t, "Short and safe.")
+		assert.Nil(t, r.checkParagraph(text, line, path))
 	})
 
 	t.Run("too many sentences", func(t *testing.T) {
-		p, f := firstParagraph(t,
+		text, line, path := firstParagraph(t,
 			"One. Two. Three. Four. Five. Six. Seven. Eight.")
-		d := r.checkParagraph(p, f)
+		d := r.checkParagraph(text, line, path)
 		require.Len(t, d, 1)
 		assert.Contains(t, d[0].Message, "too many sentences")
 	})
 
 	t.Run("sentence too long", func(t *testing.T) {
-		p, f := firstParagraph(t, strings.Repeat("word ", 45)+".")
-		d := r.checkParagraph(p, f)
+		text, line, path := firstParagraph(t, strings.Repeat("word ", 45)+".")
+		d := r.checkParagraph(text, line, path)
 		require.Len(t, d, 1)
 		assert.Contains(t, d[0].Message, "sentence too long")
 	})

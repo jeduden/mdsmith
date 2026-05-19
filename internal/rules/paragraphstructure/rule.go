@@ -10,7 +10,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
-	"github.com/yuin/goldmark/ast"
 )
 
 func init() {
@@ -36,24 +35,22 @@ func (r *Rule) Category() string { return "prose" }
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		para, ok := n.(*ast.Paragraph)
-		if !ok || astutil.IsTable(para, f) {
-			return ast.WalkContinue, nil
-		}
-		diags = append(diags, r.checkParagraph(para, f)...)
-		return ast.WalkContinue, nil
-	})
+	// Iterate the per-File memoized non-table paragraph collection so
+	// the AST walk and per-paragraph ExtractPlainText are shared with
+	// the other prose rules instead of re-run here (the two hot
+	// default rules on prose-heavy input).
+	for _, p := range astutil.CollectSectionParagraphs(f) {
+		diags = append(diags, r.checkParagraph(p.Text, p.Line, f.Path)...)
+	}
 	return diags
 }
 
 // checkParagraph evaluates one paragraph against the sentence-count
-// and per-sentence word limits.
-func (r *Rule) checkParagraph(para *ast.Paragraph, f *lint.File) []lint.Diagnostic {
-	text := mdtext.ExtractPlainText(para, f.Source)
+// and per-sentence word limits. text is the raw extracted plain
+// text; line is its 1-based source line; both come from the shared
+// collector. Placeholder masking stays per-rule so the shared text
+// is not coupled to one rule's config.
+func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Diagnostic {
 	if len(r.Placeholders) > 0 {
 		text = placeholders.MaskBodyTokens(text, r.Placeholders)
 	}
@@ -70,12 +67,11 @@ func (r *Rule) checkParagraph(para *ast.Paragraph, f *lint.File) []lint.Diagnost
 	}
 
 	sentences := mdtext.SplitSentences(text)
-	line := astutil.ParagraphLine(para, f)
 	var diags []lint.Diagnostic
 
 	if len(sentences) > r.MaxSentences {
 		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
+			File:     filePath,
 			Line:     line,
 			Column:   1,
 			RuleID:   r.ID(),
@@ -92,7 +88,7 @@ func (r *Rule) checkParagraph(para *ast.Paragraph, f *lint.File) []lint.Diagnost
 		wc := mdtext.CountWords(sent)
 		if wc > r.MaxWords {
 			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
+				File:     filePath,
 				Line:     line,
 				Column:   1,
 				RuleID:   r.ID(),

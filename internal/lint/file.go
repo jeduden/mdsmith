@@ -88,6 +88,38 @@ type File struct {
 	parseCtx     parser.Context
 	linkRefs     []Reference
 	linkRefsOnce sync.Once
+
+	// scratch backs Memo: per-Check rule memoization. A *File is
+	// built fresh for each Check and discarded after, so values
+	// cached here never outlive a single Check — no cross-file or
+	// cross-run staleness, the same scope as the cross-file rule's
+	// per-Check cache. sync.Map keeps it safe for the concurrent
+	// readers the LSP may run against one document.
+	scratch sync.Map
+}
+
+// memoEntry guards a single Memo key so build runs exactly once even
+// when several rule passes (or concurrent LSP readers) race for the
+// same key.
+type memoEntry struct {
+	once sync.Once
+	val  any
+}
+
+// Memo returns the value for key, computing it once via build on the
+// first request within this File's lifetime and serving the cached
+// value thereafter. It exists so a rule whose passes would otherwise
+// recompute the same expensive per-Check derivation can share one
+// result: the catalog directive's resolved entries, for example, are
+// otherwise rebuilt by the generate, injection, and case-mismatch
+// passes — three globs and front-matter reads of every matched file
+// per directive. The File is discarded after each Check, so nothing
+// is cached across files or runs.
+func (f *File) Memo(key string, build func() any) any {
+	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
+	e := ei.(*memoEntry)
+	e.once.Do(func() { e.val = build() })
+	return e.val
 }
 
 // Reference is a link reference definition discovered during the parse,

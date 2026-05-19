@@ -104,7 +104,7 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	// Read errors (e.g. "file too large") are fatal for generation:
 	// a partially-rendered catalog would silently hide missing rows,
 	// which is worse than failing loudly with a clear diagnostic.
-	entries, entryDiags := buildCatalogEntries(f, params, filePath, line)
+	entries, entryDiags := cachedCatalogEntries(f, params, filePath, line)
 	if len(entryDiags) > 0 {
 		return "", entryDiags
 	}
@@ -550,13 +550,43 @@ func resolvePatterns(baseRel string, patterns []string) ([]string, bool) {
 	return resolved, true
 }
 
+// catalogEntries holds one buildCatalogEntries result so f.Memo can
+// cache the (entries, diags) pair behind a single key.
+type catalogEntries struct {
+	entries []fileEntry
+	diags   []lint.Diagnostic
+}
+
+// cachedCatalogEntries returns buildCatalogEntries' result, computed
+// once per directive per Check. A directive is identified by its file
+// and start line, which the generate, injection, and case-mismatch
+// passes all pass identically for the same marker pair, so without
+// this memo every matched file's glob + front-matter read ran three
+// times per directive. The result is read-only for every caller
+// (entries are already sorted by buildCatalogEntries). The memo lives
+// on the per-Check *lint.File, so nothing is cached across files or
+// runs.
+func cachedCatalogEntries(
+	f *lint.File, params map[string]string, filePath string, line int,
+) ([]fileEntry, []lint.Diagnostic) {
+	key := fmt.Sprintf("catalog.entries:%s#%d", filePath, line)
+	v := f.Memo(key, func() any {
+		e, d := buildCatalogEntries(f, params, filePath, line)
+		return catalogEntries{entries: e, diags: d}
+	})
+	r := v.(catalogEntries)
+	return r.entries, r.diags
+}
+
 // buildCatalogEntries resolves glob matches, reads front matter, and
 // returns sorted file entries for the catalog directive. Read errors
 // (notably "file too large") are returned as diagnostics attached to
 // the directive's file+line. Callers in the Generate path treat any
 // returned diagnostic as fatal to avoid producing an incomplete catalog;
 // check-only callers (checkInjection, checkCaseMismatches) discard the
-// diagnostics because Generate already surfaces them.
+// diagnostics because Generate already surfaces them. Callers reached
+// during Check go through cachedCatalogEntries so the three passes do
+// not each rebuild the same directive's entries.
 func buildCatalogEntries(
 	f *lint.File, params map[string]string, filePath string, line int,
 ) ([]fileEntry, []lint.Diagnostic) {
@@ -591,7 +621,7 @@ func buildCatalogEntries(
 		var fm map[string]any
 		if needFM {
 			var err error
-			fm, err = readFrontMatter(res.fs, p, f.MaxInputBytes)
+			fm, err = cachedFrontMatter(f, res.fs, p, f.MaxInputBytes)
 			if err != nil {
 				diags = append(diags, makeDiag(filePath, line,
 					fmt.Sprintf("cannot read front matter from %q: %v", displayPath, err)))
@@ -727,7 +757,7 @@ func (r *Rule) checkInjection(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		// Ignore entry diagnostics here; Generate surfaces them.
-		entries, _ := buildCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
+		entries, _ := cachedCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
 		diags = append(diags, checkCatalogInjection(f.Path, mp.StartLine, entries)...)
 	}
 	return diags
@@ -846,12 +876,41 @@ func sortValue(entry fileEntry, key string) string {
 	}
 }
 
+// frontMatterResult holds one readFrontMatter result so f.Memo can
+// cache the (map, error) pair behind a single key.
+type frontMatterResult struct {
+	fm  map[string]any
+	err error
+}
+
+// cachedFrontMatter returns readFrontMatter's result, computed once
+// per matched path per Check. Several catalog directives in one file
+// can glob overlapping sets — CLAUDE.md carries three over docs/** —
+// and each directive's entry build otherwise re-read and re-parsed the
+// same matched file's YAML. The result is a pure function of the
+// matched file's bytes; the memo lives on the per-Check *lint.File, so
+// nothing is cached across files or runs. Keyed by path, matching the
+// include-cycle adjacency memo's resolution assumption (all catalog
+// globs in one host file resolve against that file's tree).
+func cachedFrontMatter(
+	f *lint.File, fsys fs.FS, path string, maxBytes int64,
+) (map[string]any, error) {
+	v := f.Memo("catalog.fm:"+path, func() any {
+		fm, err := readFrontMatter(fsys, path, maxBytes)
+		return frontMatterResult{fm: fm, err: err}
+	})
+	r := v.(frontMatterResult)
+	return r.fm, r.err
+}
+
 // readFrontMatter reads a file's YAML front matter and returns it as
 // a map preserving nested structure for CUE path resolution.
 // Returns (nil, nil) if no front matter is found or content is
 // malformed. Returns (nil, err) when the file itself cannot be read —
 // notably when it exceeds the configured max-input-size — so callers
 // can surface the failure instead of treating it as "no front matter".
+// Reached during Check via cachedFrontMatter so directives that glob
+// overlapping sets do not each re-read the same matched file.
 func readFrontMatter(fsys fs.FS, path string, maxBytes int64) (map[string]any, error) {
 	data, err := lint.ReadFSFileLimited(fsys, path, maxBytes)
 	if err != nil {
@@ -896,7 +955,7 @@ func checkCatalogIncludeCycle(
 	catalogFile := filepath.Base(filePath)
 	for _, entry := range entries {
 		matchedPath := fieldinterp.Stringify(entry.fields["filename"])
-		if fileIncludesTarget(f.FS, matchedPath, catalogFile, f.MaxInputBytes) {
+		if fileIncludesTarget(f, f.FS, matchedPath, catalogFile, f.MaxInputBytes) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				fmt.Sprintf(
 					"catalog includes %q which includes %q via <?include?>, creating a cycle",
@@ -908,46 +967,70 @@ func checkCatalogIncludeCycle(
 
 // fileIncludesTarget checks whether the file at filePath contains
 // include directives that (directly or indirectly) reference the
-// target file. Uses a visited set to avoid infinite recursion.
+// target file. Uses a visited set to avoid infinite recursion. cf is
+// the file being checked; it carries the per-Check memo the include
+// adjacency is cached on.
 func fileIncludesTarget(
-	fsys fs.FS, filePath, target string, maxBytes int64,
+	cf *lint.File, fsys fs.FS, filePath, target string, maxBytes int64,
 ) bool {
 	visited := map[string]bool{filePath: true}
-	return scanIncludesForTarget(fsys, filePath, target, visited, 0, maxBytes)
+	return scanIncludesForTarget(cf, fsys, filePath, target, visited, 0, maxBytes)
 }
 
 // maxIncludeDepth mirrors the include rule's depth limit for consistency.
 const maxIncludeDepth = 10
 
+// includeTargetsOf returns the resolved paths every <?include?> in
+// filePath points at. Reading and fully parsing filePath is the
+// include-cycle scan's only expensive step, so the result is memoized
+// per Check on cf: a file carrying several catalog directives over an
+// overlapping glob (CLAUDE.md has three on docs/**) otherwise re-read
+// and re-parsed every matched file once per directive. The adjacency
+// is a pure function of the matched file's bytes — independent of the
+// cycle target and the DFS visited set — so it is safe to share across
+// every directive and recursion within one Check.
+func includeTargetsOf(
+	cf *lint.File, fsys fs.FS, filePath string, maxBytes int64,
+) []string {
+	v := cf.Memo("catalog.includes:"+filePath, func() any {
+		data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
+		if err != nil {
+			return []string(nil)
+		}
+		_, content := lint.StripFrontMatter(data)
+		pf, err := lint.NewFile(filePath, content)
+		if err != nil {
+			return []string(nil)
+		}
+		pairs, _ := gensection.FindMarkerPairs(
+			pf, "include", "MDS021", "include")
+		var targets []string
+		for _, mp := range pairs {
+			dir, diags := gensection.ParseDirective(
+				filePath, mp, "MDS021", "include")
+			if dir == nil || len(diags) > 0 {
+				continue
+			}
+			file := dir.Params["file"]
+			if file == "" {
+				continue
+			}
+			targets = append(targets,
+				path.Clean(path.Join(path.Dir(filePath), file)))
+		}
+		return targets
+	})
+	return v.([]string)
+}
+
 func scanIncludesForTarget(
-	fsys fs.FS, filePath, target string,
+	cf *lint.File, fsys fs.FS, filePath, target string,
 	visited map[string]bool, depth int, maxBytes int64,
 ) bool {
 	if depth > maxIncludeDepth {
 		return false
 	}
-	data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
-	if err != nil {
-		return false
-	}
-	_, content := lint.StripFrontMatter(data)
-	f, err := lint.NewFile(filePath, content)
-	if err != nil {
-		return false
-	}
-	pairs, _ := gensection.FindMarkerPairs(
-		f, "include", "MDS021", "include")
-	for _, mp := range pairs {
-		dir, diags := gensection.ParseDirective(
-			filePath, mp, "MDS021", "include")
-		if dir == nil || len(diags) > 0 {
-			continue
-		}
-		file := dir.Params["file"]
-		if file == "" {
-			continue
-		}
-		resolved := path.Clean(path.Join(path.Dir(filePath), file))
+	for _, resolved := range includeTargetsOf(cf, fsys, filePath, maxBytes) {
 		if resolved == target {
 			return true
 		}
@@ -955,7 +1038,7 @@ func scanIncludesForTarget(
 			continue
 		}
 		visited[resolved] = true
-		found := scanIncludesForTarget(fsys, resolved, target, visited, depth+1, maxBytes)
+		found := scanIncludesForTarget(cf, fsys, resolved, target, visited, depth+1, maxBytes)
 		delete(visited, resolved)
 		if found {
 			return true
@@ -1040,7 +1123,7 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		// Ignore entry diagnostics here; Generate surfaces them.
-		entries, _ := buildCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
+		entries, _ := cachedCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
 		diags = append(diags, checkFieldCaseMismatches(f.Path, mp.StartLine, row, entries)...)
 	}
 	return diags

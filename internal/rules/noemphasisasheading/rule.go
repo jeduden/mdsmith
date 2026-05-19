@@ -32,56 +32,49 @@ func (r *Rule) Name() string { return "no-emphasis-as-heading" }
 func (r *Rule) Category() string { return "heading" }
 
 // Check implements rule.Rule.
+// Check implements rule.Rule. The per-paragraph logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	return rule.WalkNodes(r, f)
+}
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		para, ok := n.(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	para, ok := n.(*ast.Paragraph)
+	if !ok {
+		return nil
+	}
 
-		// Check if the paragraph has exactly one child that is emphasis or strong
-		firstChild := para.FirstChild()
-		if firstChild == nil {
-			return ast.WalkContinue, nil
-		}
+	// The paragraph must have exactly one child, and it must be
+	// emphasis (a lone *emphasised line* masquerading as a heading).
+	firstChild := para.FirstChild()
+	if firstChild == nil || firstChild.NextSibling() != nil {
+		return nil
+	}
+	if _, isEmphasis := firstChild.(*ast.Emphasis); !isEmphasis {
+		return nil
+	}
 
-		// Must be the only child
-		if firstChild.NextSibling() != nil {
-			return ast.WalkContinue, nil
-		}
+	// If the emphasis text contains a configured placeholder token,
+	// treat it as opaque and suppress the diagnostic.
+	if emphasisContainsPlaceholder(firstChild, f.Source, r.Placeholders) {
+		return nil
+	}
 
-		// Check if it's emphasis or strong emphasis
-		_, isEmphasis := firstChild.(*ast.Emphasis)
-		if !isEmphasis {
-			return ast.WalkContinue, nil
-		}
-
-		// If the emphasis text contains a configured placeholder token,
-		// treat it as opaque and suppress the diagnostic.
-		if emphasisContainsPlaceholder(firstChild, f.Source, r.Placeholders) {
-			return ast.WalkContinue, nil
-		}
-
-		line := astutil.ParagraphLine(para, f)
-		diags = append(diags, lint.Diagnostic{
-			File:     f.Path,
-			Line:     line,
-			Column:   1,
-			RuleID:   r.ID(),
-			RuleName: r.Name(),
-			Severity: lint.Warning,
-			Message:  "emphasis used instead of a heading",
-		})
-
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     astutil.ParagraphLine(para, f),
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  "emphasis used instead of a heading",
+	}}
 }
 
 func emphasisContainsPlaceholder(n ast.Node, src []byte, toks []string) bool {
@@ -144,4 +137,5 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.ListMerger   = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )
