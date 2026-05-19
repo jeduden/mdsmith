@@ -226,7 +226,9 @@ func normalizeEdges(line, prefix string, wantLead, wantTrail bool) string {
 	}
 	trimmed := strings.TrimSpace(rest)
 	trimmed = strings.TrimPrefix(trimmed, "|")
-	trimmed = strings.TrimSuffix(trimmed, "|")
+	if endsWithUnescapedPipe(trimmed) {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
 	trimmed = strings.TrimSpace(trimmed)
 
 	var b strings.Builder
@@ -426,10 +428,24 @@ func continuesTable(line []byte, prefix string) bool {
 	return strings.Contains(rowContent(line, prefix), "|")
 }
 
+// endsWithUnescapedPipe reports whether s ends with a real edge pipe
+// rather than an escaped literal `\|`. A trailing `|` is an edge only
+// when an even number (including zero) of backslashes precede it.
+func endsWithUnescapedPipe(s string) bool {
+	if !strings.HasSuffix(s, "|") {
+		return false
+	}
+	bs := 0
+	for i := len(s) - 2; i >= 0 && s[i] == '\\'; i-- {
+		bs++
+	}
+	return bs%2 == 0
+}
+
 func parseRow(line []byte, lineNum int, prefix string) tableRow {
 	c := rowContent(line, prefix)
 	lead := strings.HasPrefix(c, "|")
-	trail := len(c) > 0 && strings.HasSuffix(c, "|")
+	trail := endsWithUnescapedPipe(c)
 	return tableRow{
 		lineNum:  lineNum,
 		leading:  lead,
@@ -444,7 +460,9 @@ func parseRow(line []byte, lineNum int, prefix string) tableRow {
 func logicalCells(content string) []string {
 	t := strings.TrimSpace(content)
 	t = strings.TrimPrefix(t, "|")
-	t = strings.TrimSuffix(t, "|")
+	if endsWithUnescapedPipe(t) {
+		t = t[:len(t)-1]
+	}
 	return splitCells(t)
 }
 

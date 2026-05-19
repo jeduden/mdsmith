@@ -393,3 +393,62 @@ func TestDetectPrefixIndentedBlockquote(t *testing.T) {
 	assert.Equal(t, "\t", detectPrefix([]byte("\t| a |")))
 	assert.Equal(t, "", detectPrefix([]byte("| a |")))
 }
+
+func TestTrailingEscapedPipeIsNotEdge(t *testing.T) {
+	// The final `\|` is a literal pipe in the last cell, not a
+	// trailing edge pipe: no false MD055/MD056, two cells.
+	src := "# T\n\nA | B\n- | -\na | b \\|\n"
+	assert.Empty(t, check(t, StyleConsistent, src),
+		"escaped trailing pipe must not be read as a table edge")
+}
+
+func TestFixPreservesEscapedTrailingPipe(t *testing.T) {
+	// Adding edges must keep the literal `\|`, not strip it.
+	src := "# T\n\nA | B\n- | -\na | b \\|\n"
+	got := fix(t, StyleLeadingAndTrailing, src)
+	want := "# T\n\n| A | B |\n| - | - |\n| a | b \\| |\n"
+	assert.Equal(t, want, got)
+	assert.Empty(t, check(t, StyleLeadingAndTrailing, got))
+}
+
+func TestEndsWithUnescapedPipe(t *testing.T) {
+	assert.True(t, endsWithUnescapedPipe("a|"))
+	assert.False(t, endsWithUnescapedPipe("a\\|"))
+	assert.True(t, endsWithUnescapedPipe("a\\\\|"))
+	assert.False(t, endsWithUnescapedPipe("a"))
+	assert.False(t, endsWithUnescapedPipe(""))
+}
+
+// TestNoLeadingOrTrailingStableWithMDS025 backs the README claim that
+// no_leading_or_trailing does not oscillate with MDS025: once MDS060
+// strips the edge pipes, MDS025 (which formats only bordered tables)
+// stops touching the table, so the loop converges.
+func TestNoLeadingOrTrailingStableWithMDS025(t *testing.T) {
+	src := "# T\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
+	tf := &tableformat.Rule{Pad: 1}
+	ts := &Rule{Style: StyleNoLeadingOrTrailing}
+
+	current := src
+	const maxPasses = 10
+	passes := 0
+	for ; passes < maxPasses; passes++ {
+		before := current
+		for _, fr := range []interface {
+			Check(*lint.File) []lint.Diagnostic
+			Fix(*lint.File) []byte
+		}{tf, ts} {
+			f, err := lint.NewFile("t.md", []byte(current))
+			require.NoError(t, err)
+			if len(fr.Check(f)) == 0 {
+				continue
+			}
+			current = string(fr.Fix(f))
+		}
+		if before == current {
+			break
+		}
+	}
+	require.Less(t, passes, maxPasses, "did not converge: %q", current)
+	assert.Empty(t, check(t, StyleNoLeadingOrTrailing, current))
+	assert.NotContains(t, current, "|\n", "table should be borderless")
+}

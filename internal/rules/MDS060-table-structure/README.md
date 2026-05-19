@@ -50,10 +50,12 @@ blocks, processing-instruction blocks, and generated
   on every row.
 
 Keep the default `consistent` when MDS025 (table-format) is
-on. MDS025 always emits leading and trailing pipes. A fixed
-bordered table then already satisfies `consistent`, so one
-`mdsmith fix` run converges. Pinning `no_leading_or_trailing`
-with MDS025 on makes the two rules disagree every pass.
+on. MDS025 emits leading and trailing pipes. A fixed bordered
+table then satisfies `consistent`, so one `mdsmith fix` run
+converges. `no_leading_or_trailing` is also stable. MDS060
+strips the edge pipes. MDS025 formats only bordered tables,
+so it then ignores that table. The tradeoff is a loss of
+MDS025 column alignment, not oscillation.
 
 ## Config
 
