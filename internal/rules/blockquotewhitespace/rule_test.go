@@ -131,6 +131,19 @@ func TestCheck_MD028_InternalBlankViaMarker_Clean(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+func TestCheck_MD028_EmptyFirstBlockquote(t *testing.T) {
+	// A bare > (empty first blockquote) followed by a blank line and a second
+	// blockquote must be flagged. The backwards-scan approach handles this
+	// because it only needs nodeFirstLine of the second blockquote.
+	src := []byte(">\n\n> second\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "blank line between blockquotes", diags[0].Message)
+}
+
 func TestCheck_MD028_EmptyFile_Clean(t *testing.T) {
 	src := []byte("")
 	f, err := lint.NewFile("test.md", src)
@@ -237,30 +250,6 @@ func TestNodeFirstLine(t *testing.T) {
 	})
 }
 
-func TestNodeLastLine(t *testing.T) {
-	f, err := lint.NewFile("test.md", []byte("line1\nline2\n"))
-	require.NoError(t, err)
-	t.Run("no_lines_no_children_returns_zero", func(t *testing.T) {
-		assert.Equal(t, 0, nodeLastLine(f, goldmarkast.NewParagraph()))
-	})
-	t.Run("stop_positive_returns_correct_line", func(t *testing.T) {
-		n := goldmarkast.NewParagraph()
-		n.Lines().Append(goldmarktext.NewSegment(0, 6)) // "line1\n" → stop-1=5 → line 1
-		assert.Equal(t, 1, nodeLastLine(f, n))
-	})
-	t.Run("stop_zero_uses_start", func(t *testing.T) {
-		n := goldmarkast.NewParagraph()
-		n.Lines().Append(goldmarktext.NewSegment(0, 0)) // stop=0 → falls back to start=0 → line 1
-		assert.Equal(t, 1, nodeLastLine(f, n))
-	})
-	t.Run("recurse_into_children", func(t *testing.T) {
-		child := goldmarkast.NewParagraph()
-		child.Lines().Append(goldmarktext.NewSegment(6, 12)) // "line2\n" → stop-1=11 → line 2
-		parent := goldmarkast.NewBlockquote()
-		parent.AppendChild(parent, child)
-		assert.Equal(t, 2, nodeLastLine(f, parent))
-	})
-}
 
 func TestRule_checkBlankBetween(t *testing.T) {
 	r := &Rule{}
@@ -276,8 +265,8 @@ func TestRule_checkBlankBetween(t *testing.T) {
 
 	t.Run("non_blank_gap_not_flagged", func(t *testing.T) {
 		// Synthetic AST: two adjacent sibling blockquotes with a non-blank line
-		// between their goldmark-reported positions. Exercises the early-return
-		// inside the gap loop when isBlankLine returns false.
+		// between their goldmark-reported positions. Exercises the scanLine>=first-1
+		// guard when the line immediately before nextBq is non-blank.
 		//
 		// Source layout (bytes):
 		//   Line 1 "> bq1\n"   bytes  0-5   (stop=6)
@@ -316,12 +305,57 @@ func TestRule_checkBlankBetween(t *testing.T) {
 		assert.Empty(t, r.checkBlankBetween(f))
 	})
 
-	t.Run("empty_first_blockquote_guard_fires", func(t *testing.T) {
-		// A bare > produces a blockquote whose nodeLastLine returns 0;
-		// the guard in checkBlankBetween fires and nothing is flagged.
+	t.Run("empty_first_blockquote_flagged", func(t *testing.T) {
+		// A bare > produces an empty first blockquote; nodeLastLine would return 0
+		// for it, but the backwards-scan only needs nodeFirstLine(nextBq).
 		src := []byte(">\n\n> second\n")
 		f, err := lint.NewFile("test.md", src)
 		require.NoError(t, err)
+		diags := r.checkBlankBetween(f)
+		require.Len(t, diags, 1)
+		assert.Equal(t, "blank line between blockquotes", diags[0].Message)
+	})
+
+	t.Run("next_blockquote_no_source_segments_skipped", func(t *testing.T) {
+		// Synthetic: nextBq has no children with segments, so nodeFirstLine
+		// returns 0. The first==0 guard fires and no diagnostic is emitted.
+		src := []byte("> bq1\n\n> bq2\n")
+		bq1Para := goldmarkast.NewParagraph()
+		bq1Para.Lines().Append(goldmarktext.NewSegment(2, 6)) // line 1
+		bq1 := goldmarkast.NewBlockquote()
+		bq1.AppendChild(bq1, bq1Para)
+		// bq2 has no children, so nodeFirstLine returns 0.
+		bq2 := goldmarkast.NewBlockquote()
+		doc := goldmarkast.NewDocument()
+		doc.AppendChild(doc, bq1)
+		doc.AppendChild(doc, bq2)
+		f := &lint.File{
+			Path:   "test.md",
+			Source: src,
+			Lines:  bytes.Split(src, []byte("\n")),
+			AST:    doc,
+		}
+		assert.Empty(t, r.checkBlankBetween(f))
+	})
+
+	t.Run("next_blockquote_at_line_one_skipped", func(t *testing.T) {
+		// Synthetic: nextBq starts at line 1, so first-1==0 and the scanLine<=0
+		// guard fires. Nothing before line 1 can be a blank gap.
+		src := []byte("> bq\n")
+		bq1 := goldmarkast.NewBlockquote()
+		bq2Para := goldmarkast.NewParagraph()
+		bq2Para.Lines().Append(goldmarktext.NewSegment(0, 4)) // start=0 → line 1
+		bq2 := goldmarkast.NewBlockquote()
+		bq2.AppendChild(bq2, bq2Para)
+		doc := goldmarkast.NewDocument()
+		doc.AppendChild(doc, bq1)
+		doc.AppendChild(doc, bq2)
+		f := &lint.File{
+			Path:   "test.md",
+			Source: src,
+			Lines:  bytes.Split(src, []byte("\n")),
+			AST:    doc,
+		}
 		assert.Empty(t, r.checkBlankBetween(f))
 	})
 }

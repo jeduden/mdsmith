@@ -89,19 +89,25 @@ func (r *Rule) checkBlankBetween(f *lint.File) []lint.Diagnostic {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		last := nodeLastLine(f, bq)
 		first := nodeFirstLine(f, nextBq)
-		if last <= 0 || first <= 0 || first <= last+1 {
+		if first == 0 {
 			return ast.WalkContinue, nil
 		}
-		for gap := last + 1; gap < first; gap++ {
-			if !isBlankLine(f, gap) {
-				return ast.WalkContinue, nil
-			}
+		// Scan backwards through blank lines immediately before nextBq.
+		// Adjacent sibling blockquotes separated only by blank lines trigger
+		// MD028. A non-blank line in the gap means no all-blank gap exists.
+		// This approach works even when the first blockquote is empty (no
+		// source segments), which would cause nodeLastLine to return 0.
+		scanLine := first - 1
+		for scanLine > 0 && isBlankLine(f, scanLine) {
+			scanLine--
+		}
+		if scanLine <= 0 || scanLine >= first-1 {
+			return ast.WalkContinue, nil
 		}
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
-			Line:     last + 1,
+			Line:     scanLine + 1,
 			Column:   1,
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
@@ -150,23 +156,6 @@ func nodeFirstLine(f *lint.File, n ast.Node) int {
 	return 0
 }
 
-// nodeLastLine returns the 1-based source line of n's last content byte.
-// For container nodes it recurses into children in reverse order.
-func nodeLastLine(f *lint.File, n ast.Node) int {
-	if n.Lines().Len() > 0 {
-		last := n.Lines().At(n.Lines().Len() - 1)
-		if last.Stop > 0 {
-			return f.LineOfOffset(last.Stop - 1)
-		}
-		return f.LineOfOffset(last.Start)
-	}
-	for c := n.LastChild(); c != nil; c = c.PreviousSibling() {
-		if line := nodeLastLine(f, c); line > 0 {
-			return line
-		}
-	}
-	return 0
-}
 
 func isBlankLine(f *lint.File, lineNum int) bool {
 	idx := lineNum - 1
