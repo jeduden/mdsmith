@@ -46,23 +46,24 @@ func (r *Rule) Category() string { return "list" }
 // users pick a project convention and turn the rule on.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-list logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	return rule.WalkNodes(r, f)
+}
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		list, ok := n.(*ast.List)
-		if !ok || !list.IsOrdered() {
-			return ast.WalkContinue, nil
-		}
-		diags = append(diags, r.checkList(f, list)...)
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	list, ok := n.(*ast.List)
+	if !ok || !list.IsOrdered() {
+		return nil
+	}
+	return r.checkList(f, list)
 }
 
 // checkList emits diagnostics for one ordered list. Nested ordered
@@ -441,4 +442,5 @@ var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.FixableRule  = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )
