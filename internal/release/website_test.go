@@ -531,3 +531,87 @@ func TestBuildWebsite_SyncErrorNotDoubleWrapped(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(err.Error(), "sync "),
 		"the sync prefix must appear exactly once")
 }
+
+// --- G6: titled-link rewrite (plan/173) -------------------------
+//
+// Every inline rewrite regex used to stop the path capture at the
+// first whitespace and then require a literal `)`, so a Markdown
+// link title (`[x](../y.md "t")`) made the close fail and the
+// titled link shipped verbatim as a dead repo-relative path. The
+// `$`-anchored rule reference-def had the same gap. These tests
+// pin the fix: the path is rewritten and the title re-emitted.
+
+func TestRewriteRuleLinks_TitledNonPublishedInline(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`See [x](../../plan/107_no-reference-style.md "Plan 107").` + "\n")))
+	assert.Contains(t, got,
+		`[x](https://github.com/jeduden/mdsmith/blob/main/plan/107_no-reference-style.md "Plan 107")`,
+		"titled non-published inline link must be rewritten with its title preserved")
+	assert.NotContains(t, got, "../../plan/",
+		"no repo-relative path may survive the rewrite")
+}
+
+func TestRewriteRuleLinks_TitledNonPublishedRefDef(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`[p]: ../../plan/107_no-reference-style.md "Plan 107"` + "\n")))
+	assert.Contains(t, got,
+		`[p]: https://github.com/jeduden/mdsmith/blob/main/plan/107_no-reference-style.md "Plan 107"`,
+		"titled non-published reference definition must be rewritten with its title preserved")
+}
+
+func TestRewriteRuleLinks_TitledRuleInlineAndRefDef(t *testing.T) {
+	in := "Deep: [MDS020](../../../internal/rules/" +
+		"MDS020-required-structure/README.md \"Req\").\n\n" +
+		"[r]: ../../internal/rules/MDS020-required-structure/README.md \"Req\"\n"
+	got := string(rewriteRuleLinks([]byte(in)))
+	assert.Contains(t, got, `[MDS020](/rules/mds020-required-structure/ "Req")`,
+		"titled deep rule link must rewrite to the site URL with its title kept")
+	assert.Contains(t, got, `[r]: /rules/mds020-required-structure/ "Req"`,
+		"titled rule reference-def (the $-anchored regex) must keep its title")
+	assert.NotContains(t, got, "internal/rules/MDS020",
+		"no repo-relative rule path may survive the rewrite")
+}
+
+func TestRewriteRuleLinks_TitledIndexMdLink(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`See [d](development/index.md "Dev").` + "\n")))
+	assert.Contains(t, got, `[d](development/ "Dev")`,
+		"titled index.md link must drop the filename and keep its title")
+}
+
+func TestTransformRulePage_TitledReadmeFixtureAndSibling(t *testing.T) {
+	in := "Sibling: [MDS021](../MDS021-include/README.md \"Inc\").\n" +
+		"Fixture: [good](good/default.md \"Good\").\n" +
+		"Pkg: [pkg](../linelength/rule.go \"Pkg\").\n"
+	got := string(transformRulePage([]byte(in), "MDS001-line-length"))
+	assert.Contains(t, got, `[MDS021](../MDS021-include/ "Inc")`,
+		"titled sibling-rule README link must drop README.md and keep its title")
+	assert.Contains(t, got,
+		`[good](https://github.com/jeduden/mdsmith/blob/main/internal/rules/`+
+			`MDS001-line-length/good/default.md "Good")`,
+		"titled fixture link must become the GitHub blob URL with its title kept")
+	assert.Contains(t, got,
+		`[pkg](https://github.com/jeduden/mdsmith/blob/main/internal/rules/`+
+			`linelength/rule.go "Pkg")`,
+		"titled sibling non-MDS link must become the GitHub blob URL with its title kept")
+	assert.NotContains(t, got, "README.md",
+		"no unpublished README.md target may survive")
+}
+
+func TestRewriteRuleLinks_TitledLinkInCodeUntouched(t *testing.T) {
+	in := "Inline `[x](../../plan/a.md \"t\")` span.\n\n" +
+		"```md\n[y](../../plan/b.md \"t\")\n```\n"
+	got := string(rewriteRuleLinks([]byte(in)))
+	assert.Contains(t, got, "`[x](../../plan/a.md \"t\")`",
+		"a titled link inside an inline code span must stay verbatim")
+	assert.Contains(t, got, "[y](../../plan/b.md \"t\")",
+		"a titled link inside a fenced block must stay verbatim")
+}
+
+func TestRewriteRuleLinks_UntitledStillRewrites(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`See [x](../../plan/107_no-reference-style.md).` + "\n")))
+	assert.Contains(t, got,
+		`[x](https://github.com/jeduden/mdsmith/blob/main/plan/107_no-reference-style.md)`,
+		"an untitled link must still rewrite exactly as before")
+}
