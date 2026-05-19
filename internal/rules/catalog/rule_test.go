@@ -3983,7 +3983,7 @@ func TestScanIncludesForTarget_MaxDepthExceeded(t *testing.T) {
 		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
 	}
 	visited := map[string]bool{}
-	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, maxIncludeDepth+1, 1000)
+	result := scanIncludesForTarget(&lint.File{}, fsys, "a.md", "target.md", visited, maxIncludeDepth+1, 1000)
 	assert.False(t, result)
 }
 
@@ -3991,7 +3991,7 @@ func TestScanIncludesForTarget_FileReadError(t *testing.T) {
 	// File does not exist in FS → read error → returns false.
 	fsys := fstest.MapFS{}
 	visited := map[string]bool{}
-	result := scanIncludesForTarget(fsys, "nonexistent.md", "target.md", visited, 0, 1000)
+	result := scanIncludesForTarget(&lint.File{}, fsys, "nonexistent.md", "target.md", visited, 0, 1000)
 	assert.False(t, result)
 }
 
@@ -4001,7 +4001,7 @@ func TestScanIncludesForTarget_NoIncludes(t *testing.T) {
 		"a.md": &fstest.MapFile{Data: []byte("# A\n\nNo includes here.\n")},
 	}
 	visited := map[string]bool{}
-	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, 0, 1000)
+	result := scanIncludesForTarget(&lint.File{}, fsys, "a.md", "target.md", visited, 0, 1000)
 	assert.False(t, result)
 }
 
@@ -4013,7 +4013,7 @@ func TestScanIncludesForTarget_DirectMatch(t *testing.T) {
 		},
 	}
 	visited := map[string]bool{"a.md": true}
-	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, 0, 1000)
+	result := scanIncludesForTarget(&lint.File{}, fsys, "a.md", "target.md", visited, 0, 1000)
 	assert.True(t, result)
 }
 
@@ -4026,7 +4026,7 @@ func TestScanIncludesForTarget_VisitedCycleSkipped(t *testing.T) {
 	}
 	// Mark b.md as already visited to prevent recursion.
 	visited := map[string]bool{"a.md": true, "b.md": true}
-	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, 0, 1000)
+	result := scanIncludesForTarget(&lint.File{}, fsys, "a.md", "target.md", visited, 0, 1000)
 	assert.False(t, result)
 }
 
@@ -4076,7 +4076,7 @@ func TestScanIncludesForTarget_IndirectMatch(t *testing.T) {
 		},
 	}
 	visited := map[string]bool{"a.md": true}
-	result := scanIncludesForTarget(fsys, "a.md", "target.md", visited, 0, 1000)
+	result := scanIncludesForTarget(&lint.File{}, fsys, "a.md", "target.md", visited, 0, 1000)
 	assert.True(t, result)
 }
 
