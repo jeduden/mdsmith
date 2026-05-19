@@ -639,8 +639,9 @@ func runTransformCases(t *testing.T, cases []transformCase) {
 // TestTransformMarkdown_RewritesRuleLinks: docs that link into
 // internal/rules/ (any `../` depth, with or without README.md,
 // inline or reference-style) must come out pointing at the
-// published /docs/rules/<dir>/ URL. The same link works on
-// GitHub because the source tree still has internal/rules/, but
+// published /rules/<dir>/ URL, with <dir> lowercased to match
+// Hugo's case-folded page URL. The same link works on GitHub
+// because the source tree still has internal/rules/MDS…/, but
 // that directory is not published on the site — without the
 // rewrite the link 404s.
 func TestTransformMarkdown_RewritesRuleLinks(t *testing.T) {
@@ -648,32 +649,32 @@ func TestTransformMarkdown_RewritesRuleLinks(t *testing.T) {
 		{
 			name: "deep inline no readme",
 			in:   "See [x](../../../../internal/rules/MDS019-catalog/).\n",
-			want: "See [x](" + rulesBase + "MDS019-catalog/).\n",
+			want: "See [x](" + rulesBase + "mds019-catalog/).\n",
 		},
 		{
 			name: "shallow inline with readme",
 			in:   "See [x](../../internal/rules/MDS020-required-structure/README.md).\n",
-			want: "See [x](" + rulesBase + "MDS020-required-structure/).\n",
+			want: "See [x](" + rulesBase + "mds020-required-structure/).\n",
 		},
 		{
 			name: "reference-style def with readme",
 			in:   "[mds]: ../../../internal/rules/MDS027-cross-file-reference-integrity/README.md\n",
-			want: "[mds]: " + rulesBase + "MDS027-cross-file-reference-integrity/\n",
+			want: "[mds]: " + rulesBase + "mds027-cross-file-reference-integrity/\n",
 		},
 		{
 			name: "reference-style def no readme",
 			in:   "[mds]: ../../../../internal/rules/MDS019-catalog/\n",
-			want: "[mds]: " + rulesBase + "MDS019-catalog/\n",
+			want: "[mds]: " + rulesBase + "mds019-catalog/\n",
 		},
 		{
 			name: "already-rewritten path is unchanged",
-			in:   "See [x](" + rulesBase + "MDS019-catalog/).\n",
-			want: "See [x](" + rulesBase + "MDS019-catalog/).\n",
+			in:   "See [x](" + rulesBase + "mds019-catalog/).\n",
+			want: "See [x](" + rulesBase + "mds019-catalog/).\n",
 		},
 		{
 			name: "deep rule link preserves anchor",
 			in:   "See [x](../../../internal/rules/MDS020-required-structure/README.md#out).\n",
-			want: "See [x](" + rulesBase + "MDS020-required-structure/#out).\n",
+			want: "See [x](" + rulesBase + "mds020-required-structure/#out).\n",
 		},
 	})
 }

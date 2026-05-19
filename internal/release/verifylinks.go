@@ -99,7 +99,11 @@ func websiteLinkProbes(prefix string) []linkProbe {
 			// hook manually prefixes those with
 			// site.Home.RelPermalink so the rendered href carries
 			// the baseURL's path component (empty on root
-			// deploys, `/<repo>` on project-pages). A recursive
+			// deploys, `/<repo>` on project-pages). The id is
+			// lowercased to match Hugo's case-folded page URL
+			// (the source dir is MDS…; the served page is mds…),
+			// so the probe asserts the lowercased form — an
+			// uppercase regression would fail it. A recursive
 			// wantAnyMatch keeps the probe robust to legitimate
 			// docs edits — any rendered page that carries one
 			// such href satisfies the assertion, so removing a
@@ -107,7 +111,7 @@ func websiteLinkProbes(prefix string) []linkProbe {
 			name: "site-absolute /rules/ href carries baseURL prefix",
 			path: ".",
 			wantAnyMatch: regexp.MustCompile(
-				hrefEq + q(prefix) + `/rules/MDS[0-9A-Za-z._-]+/`),
+				hrefEq + q(prefix) + `/rules/mds[0-9a-z._-]+/`),
 			recursive: true,
 		},
 		{

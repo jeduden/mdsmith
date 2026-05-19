@@ -215,8 +215,8 @@ func TestBuildWebsite_PublishesRulePages_DocsAndPlanLinks(t *testing.T) {
 func TestBuildWebsite_PublishesRulePages_FixtureAndSibling(t *testing.T) {
 	body := buildRulePageBody(t)
 	// Deep MDS rule link with anchor → site URL with anchor preserved.
-	assert.Contains(t, body, "(/rules/MDS020-required-structure/#index-side-output)",
-		"deep rule link must rewrite to site URL with anchor preserved")
+	assert.Contains(t, body, "(/rules/mds020-required-structure/#index-side-output)",
+		"deep rule link must rewrite to lowercased site URL with anchor preserved")
 	// Fixture file links (good/, bad/) → rule's GitHub /blob/ URL.
 	assert.Contains(t, body,
 		"](https://github.com/jeduden/mdsmith/blob/main/internal/rules/MDS001-line-length/good/default.md)",

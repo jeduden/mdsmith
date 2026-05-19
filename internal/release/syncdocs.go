@@ -68,8 +68,10 @@ var siblingLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 // Only same-directory and descendant relative targets whose
 // extension is outside syncableExt are rewritten. Five classes
 // are deliberately left untouched: synced `.md`/image targets
-// (still valid relative links), site-absolute targets
-// (`/rules/...`), external URLs (`scheme://`), pure `#anchor`
+// (still valid relative links), any site-absolute target
+// (a leading `/` — `/rules/…`, `/guides/…`, …; the guard is
+// `HasPrefix(target, "/")`, not a `/rules/` check), external
+// URLs (`scheme://`), pure `#anchor`
 // fragments, and `../`-prefixed paths (those are the
 // non-published rewrite's job — repoNonPublishedLink — and
 // double-handling them here would route the same link twice).

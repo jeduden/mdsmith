@@ -224,7 +224,7 @@ func TestRunVerifyWebsiteLinksHappyPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(aa,
 		[]byte(`<a href="/development/architecture/">x</a>`), 0o644))
 	require.NoError(t, os.WriteFile(st,
-		[]byte(`<a href="/rules/MDS020-required-structure/">x</a>`), 0o644))
+		[]byte(`<a href="/rules/mds020-required-structure/">x</a>`), 0o644))
 	require.NoError(t, os.WriteFile(rule,
 		[]byte(`<a href="/rules/mds021/">x</a>`), 0o644))
 

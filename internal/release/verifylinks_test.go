@@ -24,7 +24,7 @@ func goodSite(t *testing.T, prefix string) string {
 	writeFile(t, filepath.Join(root, "development", "architecture-audit", "index.html"),
 		`<a href="`+prefix+`/development/architecture/">arch</a>`)
 	writeFile(t, filepath.Join(root, "reference", "schema-types", "index.html"),
-		`<a href="`+prefix+`/rules/MDS020-required-structure/">rule</a>`)
+		`<a href="`+prefix+`/rules/mds020-required-structure/">rule</a>`)
 	writeFile(t, filepath.Join(root, "rules", "mds001", "index.html"),
 		`<a href="`+prefix+`/rules/mds021/">sibling rule</a>`)
 	writeFile(t, filepath.Join(root, "index.html"), `<p>home</p>`)
@@ -53,7 +53,7 @@ func TestVerifyWebsiteLinks_AcceptsUnquotedHref(t *testing.T) {
 	writeFile(t, filepath.Join(root, "development", "architecture-audit", "index.html"),
 		`<a href=/development/architecture/>arch</a>`)
 	writeFile(t, filepath.Join(root, "reference", "schema-types", "index.html"),
-		`<a href=/rules/MDS020-required-structure/>rule</a>`)
+		`<a href=/rules/mds020-required-structure/>rule</a>`)
 	writeFile(t, filepath.Join(root, "rules", "mds001", "index.html"),
 		`<a href=/rules/mds021/>sibling</a>`)
 	require.NoError(t, VerifyWebsiteLinks(root, ""))
@@ -125,11 +125,11 @@ func TestVerifyWebsiteLinks_FailsOnMixedCaseJavascript(t *testing.T) {
 
 // TestVerifyWebsiteLinks_FailsOnMissingSiteAbsolute exercises
 // walkAndRequireAny's no-match path: the good fixture has the
-// /rules/MDSxxx/ link, but stripping the prefix expectation
+// /rules/mdsxxx/ link, but stripping the prefix expectation
 // means nothing matches under subpath baseURL.
 func TestVerifyWebsiteLinks_FailsOnMissingSiteAbsolute(t *testing.T) {
 	// Build a tree that has every required href except the
-	// site-absolute /rules/MDSxxx/ form.
+	// site-absolute /rules/mdsxxx/ form.
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "development", "merge-queue", "index.html"),
 		`<a href="/mdsmith/development/pr-fixup-workflow/">x</a>`)
@@ -188,7 +188,7 @@ func TestVerifyWebsiteLinks_MissingRecursiveRootWraps(t *testing.T) {
 	writeFile(t, filepath.Join(root, "development", "architecture-audit", "index.html"),
 		`<a href="/development/architecture/">x</a>`)
 	writeFile(t, filepath.Join(root, "reference", "schema-types", "index.html"),
-		`<a href="/rules/MDS020-required-structure/">x</a>`)
+		`<a href="/rules/mds020-required-structure/">x</a>`)
 	// rules/ is absent.
 	err := VerifyWebsiteLinks(root, "")
 	require.Error(t, err)
