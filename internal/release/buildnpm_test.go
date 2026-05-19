@@ -41,6 +41,7 @@ func assertPlatformPackage(t *testing.T, out, dir, bin, expectedOS, expectedCPU,
 	var pkg struct {
 		Name       string   `json:"name"`
 		Version    string   `json:"version"`
+		Homepage   string   `json:"homepage"`
 		OS         []string `json:"os"`
 		CPU        []string `json:"cpu"`
 		Files      []string `json:"files"`
@@ -52,6 +53,10 @@ func assertPlatformPackage(t *testing.T, out, dir, bin, expectedOS, expectedCPU,
 	require.NoError(t, json.Unmarshal(body, &pkg), "decode %s", manifest)
 	assert.Equal(t, "@mdsmith/"+dir, pkg.Name, "%s name", manifest)
 	assert.Equal(t, expectedVer, pkg.Version, "%s version", manifest)
+	// Published metadata points users at the project site; the
+	// repository field (asserted below) stays GitHub for npm
+	// provenance and bug reports.
+	assert.Equal(t, "https://mdsmith.dev", pkg.Homepage, "%s homepage", manifest)
 	assert.Equal(t, []string{expectedOS}, pkg.OS, "%s os", manifest)
 	assert.Equal(t, []string{expectedCPU}, pkg.CPU, "%s cpu", manifest)
 	// repository.url uses the `git+https://…/repo.git` shape so
