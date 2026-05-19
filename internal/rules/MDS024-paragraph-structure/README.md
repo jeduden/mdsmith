@@ -62,7 +62,7 @@ real over-long sentence.
 The guard runs one allocation-free pass over the paragraph.
 It computes two bounds.
 
-- `sentenceUB = (count of `.`/`!`/`?`) + 1` — an upper
+- ``sentenceUB = (count of `.`/`!`/`?`) + 1`` — an upper
   bound on Punkt's sentence count. Punkt only places
   boundaries at `.`/`!`/`?` and always yields at least one
   sentence. The bound is sound.

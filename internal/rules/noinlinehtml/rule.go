@@ -27,9 +27,13 @@ type Rule struct {
 	Allow         []string
 	AllowComments bool
 
-	// allowSetCache memoizes allowSet() for the lifetime of one
-	// rule-clone (one Check on one File, in practice). Built only when
-	// an HTML node is actually visited — most documents have none.
+	// allowSetCache memoizes allowSet() for the lifetime of this
+	// rule instance. The instance is per-Check when ConfigureRule
+	// clones (cfg.Settings non-nil for a Configurable rule), and
+	// per-worker otherwise (defaults-only path reuses the runner's
+	// worker clone across files). Either way Allow is immutable for
+	// the cache's lifetime — ApplySettings drops the cache when it
+	// rewrites Allow — so the memoised map stays correct.
 	allowSetCache map[string]bool
 }
 
