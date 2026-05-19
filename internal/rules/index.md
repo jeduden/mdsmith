@@ -81,6 +81,7 @@ row: "| [{id}]({filename}) | `{name}` | {category} | {status} | {description} |"
 | [MDS059](MDS059-blockquote-whitespace/README.md)              | `blockquote-whitespace`              | whitespace    | ready     | Blockquote markers must not be followed by multiple spaces, and adjacent blockquote blocks must not be separated by blank lines.                   |
 | [MDS061](MDS061-list-marker-space/README.md)                  | `list-marker-space`                  | list          | ready     | Each list marker must be followed by the configured number of spaces.                                                                              |
 | [MDS063](MDS063-descriptive-link-text/README.md)              | `descriptive-link-text`              | prose         | ready     | Link text must be descriptive. Non-descriptive phrases like "click here", "here", "link", and "more" fail screen readers and link-list navigation. |
+| [MDS064](MDS064-atx-heading-whitespace/README.md)             | `atx-heading-whitespace`             | heading       | ready     | ATX heading whitespace and indentation.                                                                                                            |
 <?/catalog?>
 
 ## Directive rules

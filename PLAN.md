@@ -102,7 +102,7 @@ footer: |
 | 173 | 🔲     | sonnet | [Website rewriter tolerates titled links](plan/173_rewriter-titled-links.md)                                                            |
 | 174 | ✅     | opus   | [Expose rename and dependency-graph as CLI subcommands and feature docs](plan/174_expose-rename-and-deps-cli.md)                        |
 | 175 | 🔳     | opus   | [CI performance gate for mdsmith check, modelled on the LSP latency gate](plan/175_check-performance-gate.md)                           |
-| 176 | 🔲     | sonnet | [ATX heading whitespace and indentation rule](plan/176_atx-heading-whitespace.md)                                                       |
+| 176 | ✅     | sonnet | [ATX heading whitespace and indentation rule](plan/176_atx-heading-whitespace.md)                                                       |
 | 177 | ✅     | sonnet | [Blockquote whitespace rule](plan/177_blockquote-whitespace.md)                                                                         |
 | 178 | ✅     | sonnet | [List marker space rule](plan/178_list-marker-space.md)                                                                                 |
 | 179 | 🔲     | opus   | [Reversed and empty link rule](plan/179_link-validity.md)                                                                               |

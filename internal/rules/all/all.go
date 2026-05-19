@@ -17,6 +17,7 @@ package all
 // already says. Keep the comments terse.
 import (
 	_ "github.com/jeduden/mdsmith/internal/rules/ambiguousemphasis"           // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/atxheadingwhitespace"        // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundfencedcode"   // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundheadings"     // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"        // registers rule

@@ -236,8 +236,10 @@ func (p *lspPipe) awaitDiagnostics(t *testing.T, uri string, deadline time.Time)
 
 func (p *lspPipe) shutdown(t *testing.T) {
 	t.Helper()
-	resp := p.request("shutdown", 99, nil)
-	require.Equal(t, float64(99), resp["id"])
+	// Use requestPickResult so post-rename publishDiagnostics
+	// notifications interleaved before the response don't stall
+	// the drain loop and consume the shutdown reply instead.
+	p.requestPickResult(t, "shutdown", 99, nil)
 	p.notify("exit", nil)
 	// Wait for the subprocess to actually exit before the test
 	// function returns. The CommandContext's `defer cancel()`

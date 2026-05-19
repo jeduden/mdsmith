@@ -20,27 +20,27 @@ Status legend:
 
 Deprecated markdownlint numbers (MD002, MD006, MD008,
 MD015-MD017) are omitted. As of 2026-05 mdsmith implements
-**39 of the 52** active markdownlint rules (**38** fully, **1** partially); the
-remaining **13** are scheduled in plans 172, 176, 179, and 181-182.
+**44 of the 52** active markdownlint rules (**42** fully, **2** partially); the
+remaining **8** are scheduled in plans 172, 179, and 181-182.
 
 ## Headings
 
-| markdownlint                   | Checks              | mdsmith | Status      |
-|--------------------------------|---------------------|---------|-------------|
-| MD001 heading-increment        | one level at a time | MDS003  | ✅          |
-| MD003 heading-style            | atx vs setext       | MDS002  | ✅          |
-| MD018 no-missing-space-atx     | `#Heading`          | —       | 🔲 plan 176 |
-| MD019 no-multiple-space-atx    | `#  Heading`        | —       | 🔲 plan 176 |
-| MD020 no-missing-space-closed  | `#Heading#`         | —       | 🔲 plan 176 |
-| MD021 no-multiple-space-closed | `# H  #`            | —       | 🔲 plan 176 |
-| MD022 blanks-around-headings   | blank lines         | MDS013  | ✅          |
-| MD023 heading-start-left       | no indent           | —       | 🔲 plan 176 |
-| MD024 no-duplicate-heading     | unique text         | MDS005  | ✅          |
-| MD025 single-title             | one H1              | MDS051  | ✅          |
-| MD026 trailing-punctuation     | heading end         | MDS017  | ✅          |
-| MD036 emphasis-as-heading      | bold as head        | MDS018  | ✅          |
-| MD041 first-line-heading       | file starts H1      | MDS004  | ✅          |
-| MD043 required-headings        | fixed structure     | MDS020  | ✅ schema   |
+| markdownlint                   | Checks              | mdsmith | Status    |
+|--------------------------------|---------------------|---------|-----------|
+| MD001 heading-increment        | one level at a time | MDS003  | ✅        |
+| MD003 heading-style            | atx vs setext       | MDS002  | ✅        |
+| MD018 no-missing-space-atx     | `#Heading`          | MDS064  | ✅        |
+| MD019 no-multiple-space-atx    | `#  Heading`        | MDS064  | ✅        |
+| MD020 no-missing-space-closed  | `#Heading#`         | MDS064  | partial   |
+| MD021 no-multiple-space-closed | `# H  #`            | MDS064  | ✅        |
+| MD022 blanks-around-headings   | blank lines         | MDS013  | ✅        |
+| MD023 heading-start-left       | no indent           | MDS064  | ✅        |
+| MD024 no-duplicate-heading     | unique text         | MDS005  | ✅        |
+| MD025 single-title             | one H1              | MDS051  | ✅        |
+| MD026 trailing-punctuation     | heading end         | MDS017  | ✅        |
+| MD036 emphasis-as-heading      | bold as head        | MDS018  | ✅        |
+| MD041 first-line-heading       | file starts H1      | MDS004  | ✅        |
+| MD043 required-headings        | fixed structure     | MDS020  | ✅ schema |
 
 ## Lists
 

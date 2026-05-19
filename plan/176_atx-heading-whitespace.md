@@ -1,14 +1,14 @@
 ---
 id: 176
 title: ATX heading whitespace and indentation rule
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: []
 summary: >-
-  New rule MDS060 (provisional) covering the markdownlint
-  ATX-heading whitespace family — MD018, MD019, MD020,
-  MD021 — plus MD023 heading-start-left. Autofix
-  normalizes the spacing and dedents the heading.
+  New rule MDS064 covering the markdownlint ATX-heading
+  whitespace family — MD018, MD019, MD020 (partial), MD021
+  — plus MD023 heading-start-left. Autofix normalizes
+  the spacing and dedents the heading.
 ---
 # ATX heading whitespace and indentation rule
 
@@ -38,7 +38,7 @@ the heading's source position, not only the AST node.
 
 ## Design
 
-- Rule ID: MDS060 (provisional), category `style`,
+- Rule ID: MDS064, category `style`,
   default-enabled (these are unambiguous defects).
 - For every line whose first non-space byte is `#`,
   classify the opening run, the optional closing run, and
@@ -56,7 +56,7 @@ the heading's source position, not only the AST node.
 2. Implement line-level detection for the five defects.
 3. Implement the autofix and loop-stability test.
 4. Fixture tests under the provisional
-   `internal/rules/MDS060-*` directory: one bad file per
+   `internal/rules/MDS064-atx-heading-whitespace/` directory: one bad file per
    defect plus a clean good file.
 5. Rule README from the MDS012 template; regenerate the
    docs catalog and rule index.
@@ -66,13 +66,18 @@ the heading's source position, not only the AST node.
 
 ## Acceptance Criteria
 
-- [ ] `#Heading` emits a missing-space diagnostic and
+- [x] `#Heading` emits a missing-space diagnostic and
       fixes to `# Heading`.
-- [ ] `#  Heading` fixes to `# Heading`.
-- [ ] `# Heading #` extra-space and `#Heading#` cases are
-      detected and normalized.
-- [ ] An indented heading is flagged and dedented.
-- [ ] Code blocks and directive bodies are never flagged.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] `#  Heading` fixes to `# Heading`.
+- [x] `# Heading #` (closing ATX marker preceded by whitespace) is flagged
+      and fixed to `# Heading`.
+- [x] `# Heading  #` (multiple spaces before closing marker) is flagged and
+      fixed to `# Heading`.
+- [x] `#Heading#`: MD018 fires (missing space after opening `#`); fixes to
+      `# Heading#`. Per CommonMark a trailing `#` without preceding whitespace
+      is content, not a closing marker, so MD020 is partial for this case.
+- [x] An indented heading is flagged and dedented.
+- [x] Code blocks and directive bodies are never flagged.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes
