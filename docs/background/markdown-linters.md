@@ -791,13 +791,13 @@ items most relevant to this comparison are:
   lifecycle hooks. This will close part of the gap
   with Hugo: deriving artifacts from Markdown sources
   without leaving the linter.
-- **Closing rule gaps with markdownlint** — plans 176, 178-179,
-  and 181-182 schedule the 13 still-unmapped rules (heading,
-  list whitespace; reversed/empty links; table structure;
-  code-block style), and
-  [plan 172](../../plan/172_link-style-rule-and-config.md)
-  covers MD054. MDS063 (`descriptive-link-text`) now covers
-  MD059. The [coverage matrix][mdcov] tracks each.
+- **Closing rule gaps with markdownlint** — 14 rules remain
+  unimplemented: [plan 172](../../plan/172_link-style-rule-and-config.md)
+  covers MD054, and plans 176, 178-179, and 181-182 schedule the
+  remaining 13 (heading whitespace; list marker spacing;
+  reversed/empty links; table structure; code-block style).
+  MDS063 (`descriptive-link-text`) now covers MD059.
+  The [coverage matrix][mdcov] tracks each.
 - **User-defined Markdown conventions**
   ([plan 113][plan113]) — let teams package their own
   rule presets the way the built-in conventions

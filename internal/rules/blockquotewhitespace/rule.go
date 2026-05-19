@@ -157,7 +157,6 @@ func nodeFirstLine(f *lint.File, n ast.Node) int {
 	return 0
 }
 
-
 func isBlankLine(f *lint.File, lineNum int) bool {
 	idx := lineNum - 1
 	if idx < 0 || idx >= len(f.Lines) {
