@@ -338,6 +338,57 @@ func TestParseFrontMatter_UnterminatedFrontMatter(t *testing.T) {
 	assert.Contains(t, err.Error(), "unterminated front matter")
 }
 
+// TestParseFrontMatter_MarkdownlintBlock verifies that a list of markdownlint
+// equivalents in front matter is parsed into the Markdownlint field, including
+// the optional `partial` flag.
+func TestParseFrontMatter_MarkdownlintBlock(t *testing.T) {
+	content := "---\n" +
+		"id: MDS999\n" +
+		"name: example\n" +
+		"status: ready\n" +
+		"description: Example.\n" +
+		"markdownlint:\n" +
+		"  - id: MD013\n" +
+		"    name: line-length\n" +
+		"  - id: MD020\n" +
+		"    name: no-missing-space-closed-atx\n" +
+		"    partial: true\n" +
+		"---\n# Body\n"
+	info, err := parseFrontMatter(content)
+	require.NoError(t, err)
+	require.Len(t, info.Markdownlint, 2)
+	assert.Equal(t, "MD013", info.Markdownlint[0].ID)
+	assert.Equal(t, "line-length", info.Markdownlint[0].Name)
+	assert.False(t, info.Markdownlint[0].Partial)
+	assert.Equal(t, "MD020", info.Markdownlint[1].ID)
+	assert.Equal(t, "no-missing-space-closed-atx", info.Markdownlint[1].Name)
+	assert.True(t, info.Markdownlint[1].Partial)
+}
+
+// TestParseFrontMatter_NullMarkdownlint verifies that an explicit `null` for
+// markdownlint (or its absence) yields a nil slice rather than an error.
+func TestParseFrontMatter_NullMarkdownlint(t *testing.T) {
+	content := "---\n" +
+		"id: MDS999\n" +
+		"name: example\n" +
+		"status: ready\n" +
+		"description: Example.\n" +
+		"markdownlint: null\n" +
+		"---\n# Body\n"
+	info, err := parseFrontMatter(content)
+	require.NoError(t, err)
+	assert.Nil(t, info.Markdownlint)
+}
+
+// MarkdownlintURL returns the canonical doc URL for a markdownlint rule ID
+// (e.g. "MD013" -> "https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md").
+func TestMarkdownlintRule_URL(t *testing.T) {
+	r := MarkdownlintRule{ID: "MD013", Name: "line-length"}
+	assert.Equal(t,
+		"https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md",
+		r.URL())
+}
+
 // TestParseFrontMatter_RejectsYAMLAliases verifies that the safe-YAML wrapper
 // rejects anchor/alias usage in rule README front matter rather than silently
 // expanding aliases.

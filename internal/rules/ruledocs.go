@@ -22,6 +22,25 @@ type RuleInfo struct {
 	Description     string
 	Content         string
 	Maintainability *Maintainability
+	Markdownlint    []MarkdownlintRule
+}
+
+// MarkdownlintRule names a markdownlint rule that the mdsmith rule covers.
+// Partial is true when the mdsmith rule implements only part of the
+// corresponding markdownlint check; the coverage matrix at
+// docs/research/markdownlint-coverage/README.md is the source of truth.
+type MarkdownlintRule struct {
+	ID      string `yaml:"id"`
+	Name    string `yaml:"name"`
+	Partial bool   `yaml:"partial"`
+}
+
+// URL returns the canonical markdownlint documentation URL for this rule.
+// Markdownlint hosts per-rule docs at a stable per-ID path keyed on the
+// lowercase ID, so the URL is derivable from ID alone.
+func (r MarkdownlintRule) URL() string {
+	return "https://github.com/DavidAnson/markdownlint/blob/main/doc/" +
+		strings.ToLower(r.ID) + ".md"
 }
 
 // Maintainability captures a rule's adoption pattern: the structural shape a
@@ -140,11 +159,12 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 		return RuleInfo{}, fmt.Errorf("unterminated front matter")
 	}
 	var meta struct {
-		ID              string           `yaml:"id"`
-		Name            string           `yaml:"name"`
-		Status          string           `yaml:"status"`
-		Description     string           `yaml:"description"`
-		Maintainability *Maintainability `yaml:"maintainability"`
+		ID              string             `yaml:"id"`
+		Name            string             `yaml:"name"`
+		Status          string             `yaml:"status"`
+		Description     string             `yaml:"description"`
+		Maintainability *Maintainability   `yaml:"maintainability"`
+		Markdownlint    []MarkdownlintRule `yaml:"markdownlint"`
 	}
 	if err := yamlutil.UnmarshalSafe([]byte(strings.Join(front, "\n")), &meta); err != nil {
 		return RuleInfo{}, fmt.Errorf("parsing front matter: %w", err)
@@ -155,6 +175,7 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 		Status:          meta.Status,
 		Description:     collapseWhitespace(meta.Description),
 		Maintainability: meta.Maintainability,
+		Markdownlint:    meta.Markdownlint,
 	}
 
 	if info.ID == "" {
