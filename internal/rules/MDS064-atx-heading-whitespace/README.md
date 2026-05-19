@@ -11,9 +11,11 @@ maintainability: null
 
 ATX heading whitespace and indentation.
 
-Flags malformed ATX headings. Checks that the opening hashes are followed
-by exactly one space (not a tab, not two spaces), that the heading starts
-at column 1, and that no closing hash sequence appears after the content.
+Flags malformed ATX headings. When the heading has content, checks that the
+opening hashes are followed by exactly one space (not a tab, not two spaces);
+empty headings (`##` with nothing after the hashes) are valid. Also checks
+that the heading starts at column 1, and that no closing hash sequence appears
+after the content.
 A trailing `#` run is only treated as a closing marker when preceded by
 whitespace; a `#` with no preceding space is kept as content.
 
