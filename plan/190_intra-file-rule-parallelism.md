@@ -1,7 +1,7 @@
 ---
 id: 190
 title: Intra-file rule parallelism for non-NodeChecker rules
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: [187, 189]
 summary: >-
@@ -63,9 +63,26 @@ Concurrency model:
        atomic concurrency counter inside a stub rule.
 5. [x] Run `go test -race ./internal/engine/...` to confirm
        race-cleanness.
-6. [x] Extend `BenchmarkCheckCorpusSmall`/`Large` numbers or add a
-       small-file-count variant that exercises the intra-file path
-       (few files, many cores). Record before/after in the plan.
+6. [x] Add `BenchmarkCheckCorpusFewFiles` plus a control variant
+       `BenchmarkCheckCorpusFewFilesNoIntraFile`. Record numbers
+       below.
+
+## Benchmark deltas
+
+Measured on the 4-vCPU sandbox; intra-file cap auto vs cap=1, same
+workload, 50 samples each:
+
+- `BenchmarkCheckCorpusFewFiles`: p95 ~3 ms with intra-file auto.
+- `BenchmarkCheckCorpusFewFilesNoIntraFile`: p95 ~5 ms with cap=1.
+- Standing budgets unchanged: `BenchmarkCheckCorpusSmall` p95 ~29
+  ms (budget 2 s); `BenchmarkCheckCorpusLarge` p95 ~187 ms (budget
+  12 s).
+
+The small/large numbers are flat because the file-level pool
+already saturates the four cores there. The few-files variant
+exercises the path this plan targets — the intra-file pool reclaims
+the cores left idle when the outer pool has nothing to do — and
+shows a ~40% latency drop.
 
 ## Acceptance Criteria
 
