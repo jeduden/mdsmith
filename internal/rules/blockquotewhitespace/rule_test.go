@@ -1,6 +1,7 @@
 package blockquotewhitespace
 
 import (
+	"bytes"
 	"testing"
 
 	goldmarkast "github.com/yuin/goldmark/ast"
@@ -197,50 +198,132 @@ func TestFix_MD028_NoAutoFix(t *testing.T) {
 	assert.Equal(t, string(src), string(got))
 }
 
-// --- Helper function coverage ---
+// --- Helper function tests ---
 
-func TestNodeFirstLine_EmptyNode(t *testing.T) {
-	f, err := lint.NewFile("test.md", []byte(""))
+func TestIsBlankLine(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("> text\n\n> more\n"))
 	require.NoError(t, err)
-	// A node with no lines and no children returns 0.
-	n := goldmarkast.NewParagraph()
-	assert.Equal(t, 0, nodeFirstLine(f, n))
+	t.Run("blank_line_returns_true", func(t *testing.T) {
+		assert.True(t, isBlankLine(f, 2))
+	})
+	t.Run("non_blank_line_returns_false", func(t *testing.T) {
+		assert.False(t, isBlankLine(f, 1))
+	})
+	t.Run("linenum_zero_returns_false", func(t *testing.T) {
+		assert.False(t, isBlankLine(f, 0)) // idx = -1
+	})
+	t.Run("linenum_past_end_returns_false", func(t *testing.T) {
+		assert.False(t, isBlankLine(f, 100))
+	})
 }
 
-func TestNodeLastLine_EmptyNode(t *testing.T) {
-	f, err := lint.NewFile("test.md", []byte(""))
+func TestNodeFirstLine(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("line1\nline2\n"))
 	require.NoError(t, err)
-	// A node with no lines and no children returns 0.
-	n := goldmarkast.NewParagraph()
-	assert.Equal(t, 0, nodeLastLine(f, n))
+	t.Run("no_lines_no_children_returns_zero", func(t *testing.T) {
+		assert.Equal(t, 0, nodeFirstLine(f, goldmarkast.NewParagraph()))
+	})
+	t.Run("has_lines_returns_first_line", func(t *testing.T) {
+		n := goldmarkast.NewParagraph()
+		n.Lines().Append(goldmarktext.NewSegment(6, 12)) // "line2\n" → start=6 → line 2
+		assert.Equal(t, 2, nodeFirstLine(f, n))
+	})
+	t.Run("recurse_into_children", func(t *testing.T) {
+		child := goldmarkast.NewParagraph()
+		child.Lines().Append(goldmarktext.NewSegment(0, 6)) // "line1\n" → start=0 → line 1
+		parent := goldmarkast.NewBlockquote()
+		parent.AppendChild(parent, child)
+		assert.Equal(t, 1, nodeFirstLine(f, parent))
+	})
 }
 
-func TestNodeLastLine_ZeroStopSegment(t *testing.T) {
-	f, err := lint.NewFile("test.md", []byte("text\n"))
+func TestNodeLastLine(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("line1\nline2\n"))
 	require.NoError(t, err)
-	// When the last segment has Stop=0 the fallback uses Start.
-	n := goldmarkast.NewParagraph()
-	n.Lines().Append(goldmarktext.NewSegment(0, 0))
-	got := nodeLastLine(f, n)
-	assert.Equal(t, 1, got)
+	t.Run("no_lines_no_children_returns_zero", func(t *testing.T) {
+		assert.Equal(t, 0, nodeLastLine(f, goldmarkast.NewParagraph()))
+	})
+	t.Run("stop_positive_returns_correct_line", func(t *testing.T) {
+		n := goldmarkast.NewParagraph()
+		n.Lines().Append(goldmarktext.NewSegment(0, 6)) // "line1\n" → stop-1=5 → line 1
+		assert.Equal(t, 1, nodeLastLine(f, n))
+	})
+	t.Run("stop_zero_uses_start", func(t *testing.T) {
+		n := goldmarkast.NewParagraph()
+		n.Lines().Append(goldmarktext.NewSegment(0, 0)) // stop=0 → falls back to start=0 → line 1
+		assert.Equal(t, 1, nodeLastLine(f, n))
+	})
+	t.Run("recurse_into_children", func(t *testing.T) {
+		child := goldmarkast.NewParagraph()
+		child.Lines().Append(goldmarktext.NewSegment(6, 12)) // "line2\n" → stop-1=11 → line 2
+		parent := goldmarkast.NewBlockquote()
+		parent.AppendChild(parent, child)
+		assert.Equal(t, 2, nodeLastLine(f, parent))
+	})
 }
 
-func TestCheck_MD028_EmptyFirstBlockquote_NoFlag(t *testing.T) {
-	// A bare > with no content produces an empty blockquote; nodeLastLine
-	// returns 0 so the guard fires and nothing is flagged.
-	src := []byte(">\n\n> second\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
+func TestRule_checkBlankBetween(t *testing.T) {
 	r := &Rule{}
-	diags := r.Check(f)
-	assert.Empty(t, diags)
-}
 
-func TestIsBlankLine_OutOfBounds(t *testing.T) {
-	f, err := lint.NewFile("test.md", []byte("> text\n"))
-	require.NoError(t, err)
-	assert.False(t, isBlankLine(f, 0))   // idx = -1, before start
-	assert.False(t, isBlankLine(f, 100)) // idx beyond end of file
+	t.Run("blank_gap_flagged", func(t *testing.T) {
+		src := []byte("# Title\n\n> first\n\n> second\n")
+		f, err := lint.NewFile("test.md", src)
+		require.NoError(t, err)
+		diags := r.checkBlankBetween(f)
+		require.Len(t, diags, 1)
+		assert.Equal(t, "blank line between blockquotes", diags[0].Message)
+	})
+
+	t.Run("non_blank_gap_not_flagged", func(t *testing.T) {
+		// Synthetic AST: two adjacent sibling blockquotes with a non-blank line
+		// between their goldmark-reported positions. Exercises the early-return
+		// inside the gap loop when isBlankLine returns false.
+		//
+		// Source layout (bytes):
+		//   Line 1 "> bq1\n"   bytes  0-5   (stop=6)
+		//   Line 2 "non-blank\n" bytes 6-15
+		//   Line 3 "> bq2\n"   bytes 16-21  (start=18 after "> ")
+		src := []byte("> bq1\nnon-blank\n> bq2\n")
+
+		bq1Para := goldmarkast.NewParagraph()
+		bq1Para.Lines().Append(goldmarktext.NewSegment(2, 6)) // stop-1=5 → line 1
+		bq1 := goldmarkast.NewBlockquote()
+		bq1.AppendChild(bq1, bq1Para)
+
+		bq2Para := goldmarkast.NewParagraph()
+		bq2Para.Lines().Append(goldmarktext.NewSegment(18, 22)) // start=18 → line 3
+		bq2 := goldmarkast.NewBlockquote()
+		bq2.AppendChild(bq2, bq2Para)
+
+		doc := goldmarkast.NewDocument()
+		doc.AppendChild(doc, bq1)
+		doc.AppendChild(doc, bq2)
+
+		f := &lint.File{
+			Path:   "test.md",
+			Source: src,
+			Lines:  bytes.Split(src, []byte("\n")),
+			AST:    doc,
+		}
+		diags := r.checkBlankBetween(f)
+		assert.Empty(t, diags)
+	})
+
+	t.Run("no_adjacent_blockquotes_no_diags", func(t *testing.T) {
+		src := []byte("> only one\n")
+		f, err := lint.NewFile("test.md", src)
+		require.NoError(t, err)
+		assert.Empty(t, r.checkBlankBetween(f))
+	})
+
+	t.Run("empty_first_blockquote_guard_fires", func(t *testing.T) {
+		// A bare > produces a blockquote whose nodeLastLine returns 0;
+		// the guard in checkBlankBetween fires and nothing is flagged.
+		src := []byte(">\n\n> second\n")
+		f, err := lint.NewFile("test.md", src)
+		require.NoError(t, err)
+		assert.Empty(t, r.checkBlankBetween(f))
+	})
 }
 
 // --- Meta ---
