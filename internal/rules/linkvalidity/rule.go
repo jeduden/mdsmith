@@ -119,11 +119,6 @@ func hasVisibleContent(link *ast.Link, source []byte) bool {
 				found = true
 				return ast.WalkStop, nil
 			}
-		case *ast.String:
-			if len(bytes.TrimSpace(t.Value)) > 0 {
-				found = true
-				return ast.WalkStop, nil
-			}
 		}
 		return ast.WalkContinue, nil
 	})
@@ -161,9 +156,12 @@ func firstTextLine(n ast.Node, f *lint.File) int {
 	return 0
 }
 
+// isInlineNode reports whether n is an inline node, whose Lines() would
+// panic. nodeLine skips these while walking ancestors for a block with a
+// source position.
 func isInlineNode(n ast.Node) bool {
 	switch n.(type) {
-	case *ast.Text, *ast.String, *ast.CodeSpan, *ast.Emphasis,
+	case *ast.Text, *ast.CodeSpan, *ast.Emphasis,
 		*ast.Link, *ast.Image, *ast.AutoLink, *ast.RawHTML:
 		return true
 	}
@@ -312,15 +310,13 @@ func collectCodeSpanRanges(f *lint.File) []byteRange {
 		}
 		first, last := -1, -1
 		for c := cs.FirstChild(); c != nil; c = c.NextSibling() {
-			t, ok := c.(*ast.Text)
-			if !ok {
-				continue
-			}
-			if first == -1 || t.Segment.Start < first {
-				first = t.Segment.Start
-			}
-			if t.Segment.Stop > last {
-				last = t.Segment.Stop
+			if t, ok := c.(*ast.Text); ok {
+				if first == -1 || t.Segment.Start < first {
+					first = t.Segment.Start
+				}
+				if t.Segment.Stop > last {
+					last = t.Segment.Stop
+				}
 			}
 		}
 		if first >= 0 && last > first {
