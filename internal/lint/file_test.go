@@ -2,6 +2,8 @@ package lint
 
 import (
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -207,4 +209,58 @@ func TestNewFileFromSource_EmptySource(t *testing.T) {
 
 	assert.Equal(t, 0, f.LineOffset)
 	assert.Nil(t, f.FrontMatter)
+}
+
+// TestFile_Memo pins the per-Check memo: build runs once per key, the
+// cached value is served on every later call, and distinct keys are
+// independent. This is the primitive the catalog rule uses so its
+// generate / injection / case-mismatch passes stop recomputing the
+// same directive's resolved entries three times per Check.
+func TestFile_Memo(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return 42
+	}
+
+	require.Equal(t, 42, f.Memo("k", build))
+	require.Equal(t, 42, f.Memo("k", build))
+	require.Equal(t, 42, f.Memo("k", build))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"build must run exactly once per key")
+
+	var otherCalls int32
+	require.Equal(t, "v2", f.Memo("k2", func() any {
+		atomic.AddInt32(&otherCalls, 1)
+		return "v2"
+	}))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&otherCalls))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"a distinct key must not re-run the first key's build")
+}
+
+// TestFile_Memo_ConcurrentSingleBuild pins that build runs exactly
+// once even under the concurrent readers the LSP can run against a
+// single document.
+func TestFile_Memo_ConcurrentSingleBuild(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	var calls int32
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v := f.Memo("shared", func() any {
+				atomic.AddInt32(&calls, 1)
+				return "once"
+			})
+			assert.Equal(t, "once", v)
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"build must run exactly once under concurrent access")
 }

@@ -104,7 +104,7 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	// Read errors (e.g. "file too large") are fatal for generation:
 	// a partially-rendered catalog would silently hide missing rows,
 	// which is worse than failing loudly with a clear diagnostic.
-	entries, entryDiags := buildCatalogEntries(f, params, filePath, line)
+	entries, entryDiags := cachedCatalogEntries(f, params, filePath, line)
 	if len(entryDiags) > 0 {
 		return "", entryDiags
 	}
@@ -550,13 +550,43 @@ func resolvePatterns(baseRel string, patterns []string) ([]string, bool) {
 	return resolved, true
 }
 
+// catalogEntries holds one buildCatalogEntries result so f.Memo can
+// cache the (entries, diags) pair behind a single key.
+type catalogEntries struct {
+	entries []fileEntry
+	diags   []lint.Diagnostic
+}
+
+// cachedCatalogEntries returns buildCatalogEntries' result, computed
+// once per directive per Check. A directive is identified by its file
+// and start line, which the generate, injection, and case-mismatch
+// passes all pass identically for the same marker pair, so without
+// this memo every matched file's glob + front-matter read ran three
+// times per directive. The result is read-only for every caller
+// (entries are already sorted by buildCatalogEntries). The memo lives
+// on the per-Check *lint.File, so nothing is cached across files or
+// runs.
+func cachedCatalogEntries(
+	f *lint.File, params map[string]string, filePath string, line int,
+) ([]fileEntry, []lint.Diagnostic) {
+	key := fmt.Sprintf("catalog.entries:%s#%d", filePath, line)
+	v := f.Memo(key, func() any {
+		e, d := buildCatalogEntries(f, params, filePath, line)
+		return catalogEntries{entries: e, diags: d}
+	})
+	r := v.(catalogEntries)
+	return r.entries, r.diags
+}
+
 // buildCatalogEntries resolves glob matches, reads front matter, and
 // returns sorted file entries for the catalog directive. Read errors
 // (notably "file too large") are returned as diagnostics attached to
 // the directive's file+line. Callers in the Generate path treat any
 // returned diagnostic as fatal to avoid producing an incomplete catalog;
 // check-only callers (checkInjection, checkCaseMismatches) discard the
-// diagnostics because Generate already surfaces them.
+// diagnostics because Generate already surfaces them. Callers reached
+// during Check go through cachedCatalogEntries so the three passes do
+// not each rebuild the same directive's entries.
 func buildCatalogEntries(
 	f *lint.File, params map[string]string, filePath string, line int,
 ) ([]fileEntry, []lint.Diagnostic) {
@@ -727,7 +757,7 @@ func (r *Rule) checkInjection(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		// Ignore entry diagnostics here; Generate surfaces them.
-		entries, _ := buildCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
+		entries, _ := cachedCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
 		diags = append(diags, checkCatalogInjection(f.Path, mp.StartLine, entries)...)
 	}
 	return diags
@@ -1040,7 +1070,7 @@ func (r *Rule) checkCaseMismatches(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		// Ignore entry diagnostics here; Generate surfaces them.
-		entries, _ := buildCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
+		entries, _ := cachedCatalogEntries(f, dir.Params, f.Path, mp.StartLine)
 		diags = append(diags, checkFieldCaseMismatches(f.Path, mp.StartLine, row, entries)...)
 	}
 	return diags
