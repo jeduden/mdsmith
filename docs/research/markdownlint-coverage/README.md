@@ -20,8 +20,8 @@ Status legend:
 
 Deprecated markdownlint numbers (MD002, MD006, MD008,
 MD015-MD017) are omitted. As of 2026-05 mdsmith implements
-**46 of the 52** active markdownlint rules (**44** fully, **2** partially); the
-remaining **6** are scheduled in plans 172 and 181-182.
+**49 of the 52** active markdownlint rules (**47** fully, **2** partially); the
+remaining **3** are scheduled in plans 172 and 182.
 
 ## Headings
 
@@ -104,11 +104,11 @@ remaining **6** are scheduled in plans 172 and 181-182.
 
 ## Tables
 
-| markdownlint               | Checks      | mdsmith | Status      |
-|----------------------------|-------------|---------|-------------|
-| MD055 table-pipe-style     | edge pipes  | —       | 🔲 plan 181 |
-| MD056 table-column-count   | equal cells | —       | 🔲 plan 181 |
-| MD058 blanks-around-tables | blank lines | —       | 🔲 plan 181 |
+| markdownlint               | Checks      | mdsmith | Status |
+|----------------------------|-------------|---------|--------|
+| MD055 table-pipe-style     | edge pipes  | MDS060  | ✅     |
+| MD056 table-column-count   | equal cells | MDS060  | ✅     |
+| MD058 blanks-around-tables | blank lines | MDS060  | ✅     |
 
 ## mdsmith-only rules (no markdownlint analog)
 

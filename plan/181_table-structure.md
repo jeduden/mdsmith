@@ -1,7 +1,7 @@
 ---
 id: 181
 title: Table structure rules
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: []
 summary: >-
@@ -36,13 +36,19 @@ duplicating MDS025's formatting pass.
 
 ## Design
 
-- Rule ID: MDS064 (provisional), category `style`,
-  default-enabled.
-- Operate on goldmark GFM table nodes
-  (`*east.Table` from the extension AST) and the raw rows.
+- Rule ID: MDS060, category `table`, nature `style`,
+  default-enabled. (MDS064, the provisional id in the
+  original plan, shipped first as atx-heading-whitespace;
+  MDS060 was the lowest free, unreserved id. The rule-readme
+  schema makes `style` a `nature`, not a `category`.)
+- Line-based GFM table detection (header + delimiter + body
+  rows; edge pipes optional), not `*east.Table`. The
+  extension AST and the MDS025 `tablefmt` parser both require
+  edge pipes on every row, so they cannot see the borderless
+  and mixed-pipe tables MD055 must flag.
 - MD055: config `style` ∈ `consistent | leading_and_trailing
   | no_leading_or_trailing`; `consistent` infers from the
-  first row. Autofix adds or strips edge pipes.
+  header row. Autofix adds or strips edge pipes.
 - MD056: flag any row whose cell count differs from the
   header; no autofix (a missing cell's content is unknown).
 - MD058: flag a missing blank line on either side; autofix
@@ -53,27 +59,27 @@ duplicating MDS025's formatting pass.
 
 ## Tasks
 
-1. Scaffold `internal/rules/tablestructure/`.
-2. Implement MD055, MD056, MD058 detection.
-3. Implement autofix for MD055 and MD058; verify
+1. [x] Scaffold `internal/rules/tablestructure/`.
+2. [x] Implement MD055, MD056, MD058 detection.
+3. [x] Implement autofix for MD055 and MD058; verify
    `mdsmith fix` is loop-stable with MDS025 enabled.
-4. Implement `rule.Configurable` for the MD055 `style`.
-5. Fixture tests under the provisional
-   `internal/rules/MDS064-*` directory.
-6. Rule README; regenerate the docs catalog and index.
-7. Add the MD055 / MD056 / MD058 rows to the
+4. [x] Implement `rule.Configurable` for the MD055 `style`.
+5. [x] Fixture tests under the
+   `internal/rules/MDS060-table-structure` directory.
+6. [x] Rule README; regenerate the docs catalog and index.
+7. [x] Add the MD055 / MD056 / MD058 rows to the
    [linter comparison](../docs/background/markdown-linters.md).
 
 ## Acceptance Criteria
 
-- [ ] A row with a missing cell is flagged (MD056), not
+- [x] A row with a missing cell is flagged (MD056), not
       auto-rewritten.
-- [ ] Mixed leading/trailing pipes are flagged and
+- [x] Mixed leading/trailing pipes are flagged and
       normalized to the configured style.
-- [ ] A table flush against a paragraph is flagged and a
+- [x] A table flush against a paragraph is flagged and a
       blank line is inserted.
-- [ ] `mdsmith fix` with MDS025 also enabled converges in
+- [x] `mdsmith fix` with MDS025 also enabled converges in
       one run (no oscillation).
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes
