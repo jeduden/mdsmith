@@ -180,13 +180,13 @@ type revMatch struct {
 }
 
 func (r *Rule) checkReversed(f *lint.File) []lint.Diagnostic {
-	skip := r.skipLines(f)
+	skip := r.skipPredicate(f)
 	csRanges := collectCodeSpanRanges(f)
 	lineStarts := computeLineStarts(f.Source)
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
 		ln := i + 1
-		if skip[ln] {
+		if skip(ln) {
 			continue
 		}
 		masked := maskLine(line, lineStarts[i], csRanges)
@@ -209,12 +209,12 @@ func (r *Rule) checkReversed(f *lint.File) []lint.Diagnostic {
 // to [text](url); empty links/images have no safe target and are left
 // untouched.
 func (r *Rule) Fix(f *lint.File) []byte {
-	skip := r.skipLines(f)
+	skip := r.skipPredicate(f)
 	csRanges := collectCodeSpanRanges(f)
 	lineStarts := computeLineStarts(f.Source)
 	out := make([][]byte, len(f.Lines))
 	for i, line := range f.Lines {
-		if skip[i+1] {
+		if skip(i + 1) {
 			out[i] = line
 			continue
 		}
@@ -272,23 +272,28 @@ func reversedInLine(orig, masked []byte) []revMatch {
 	return out
 }
 
-// skipLines returns the 1-based line numbers the reversed scan must not
-// inspect: fenced/indented code blocks, processing-instruction marker
-// lines, and include/catalog generated bodies.
-func (r *Rule) skipLines(f *lint.File) map[int]bool {
-	skip := map[int]bool{}
-	for ln := range lint.CollectCodeBlockLines(f) {
-		skip[ln] = true
-	}
-	for ln := range lint.CollectPIBlockLines(f) {
-		skip[ln] = true
-	}
-	for _, gr := range f.GeneratedRanges {
-		for ln := gr.From; ln <= gr.To; ln++ {
-			skip[ln] = true
+// skipPredicate returns a test for whether a 1-based line must not be
+// scanned for the reversed pattern: it falls inside a fenced/indented
+// code block, a processing-instruction marker, or an include/catalog
+// generated body. The code-block and PI line sets are already built and
+// cached on f, so they are consulted directly; generated ranges are few
+// per file, so they are tested by containment rather than expanded into
+// a per-line map (which would be O(section lines) on every call).
+func (r *Rule) skipPredicate(f *lint.File) func(int) bool {
+	codeLines := lint.CollectCodeBlockLines(f)
+	piLines := lint.CollectPIBlockLines(f)
+	ranges := f.GeneratedRanges
+	return func(ln int) bool {
+		if codeLines[ln] || piLines[ln] {
+			return true
 		}
+		for _, gr := range ranges {
+			if gr.Contains(ln) {
+				return true
+			}
+		}
+		return false
 	}
-	return skip
 }
 
 type byteRange struct{ start, end int } // absolute, half-open
