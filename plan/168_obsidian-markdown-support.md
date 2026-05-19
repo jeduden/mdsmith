@@ -5,7 +5,7 @@ status: "🔲"
 summary: >-
   Add an `obsidian` convention that validates wikilinks
   (`[[Page]]`) via extended MDS027 settings, checks callout
-  types via new rule MDS059, and tolerates Dataview inline
+  types via new rule MDS067, and tolerates Dataview inline
   fields without surfacing false-positive diagnostics.
 model: sonnet
 ---
@@ -133,7 +133,7 @@ The existing `placeholders` setting applies to wikilink
 targets the same way it applies to standard link
 destinations.
 
-### 3. New rule MDS059: `callout-type`
+### 3. New rule MDS067: `callout-type`
 
 New package `internal/rules/callouttype/`.
 
@@ -227,8 +227,8 @@ comparison table rows for wikilinks and callouts change from
 3. Scaffold `internal/rules/callouttype/` with `rule.go`
    and `rule_test.go`. Implement `Check()`, `ApplySettings`,
    `DefaultSettings`, and `EnabledByDefault`. Register as
-   MDS059 in category `structure`. Add fixtures in
-   `internal/rules/MDS059-callout-type/`: `good/` covers
+   MDS067 in category `structure`. Add fixtures in
+   `internal/rules/MDS067-callout-type/`: `good/` covers
    standard types and `allow-unknown: true`; `bad/` covers
    unknown type flagging.
 4. Add `obsidian` convention entry in
@@ -256,14 +256,14 @@ comparison table rows for wikilinks and callouts change from
 - [ ] `wikilinks: false` (default) emits no wikilink
       diagnostics.
 - [ ] `> [!note]` (and all 13 base types + aliases)
-      emits no diagnostic from MDS059 with default settings.
+      emits no diagnostic from MDS067 with default settings.
 - [ ] `> [!REVIEW]` (unknown type) emits one diagnostic
       naming the type and listing valid options.
 - [ ] `> [!custom]` with `allow: [custom]` emits no
       diagnostic.
 - [ ] `> [!anything]` with `allow-unknown: true` emits no
       diagnostic.
-- [ ] MDS059 is disabled by default.
+- [ ] MDS067 is disabled by default.
 - [ ] `convention: obsidian` activates both rules with no
       other config.
 - [ ] `mdsmith list backlinks docs/page.md` lists files

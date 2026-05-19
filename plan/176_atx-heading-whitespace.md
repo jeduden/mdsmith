@@ -5,7 +5,7 @@ status: "🔲"
 model: sonnet
 depends-on: []
 summary: >-
-  New rule MDS059 (provisional) covering the markdownlint
+  New rule MDS060 (provisional) covering the markdownlint
   ATX-heading whitespace family — MD018, MD019, MD020,
   MD021 — plus MD023 heading-start-left. Autofix
   normalizes the spacing and dedents the heading.
@@ -38,7 +38,7 @@ the heading's source position, not only the AST node.
 
 ## Design
 
-- Rule ID: MDS059 (provisional), category `style`,
+- Rule ID: MDS060 (provisional), category `style`,
   default-enabled (these are unambiguous defects).
 - For every line whose first non-space byte is `#`,
   classify the opening run, the optional closing run, and
@@ -56,7 +56,7 @@ the heading's source position, not only the AST node.
 2. Implement line-level detection for the five defects.
 3. Implement the autofix and loop-stability test.
 4. Fixture tests under the provisional
-   `internal/rules/MDS059-*` directory: one bad file per
+   `internal/rules/MDS060-*` directory: one bad file per
    defect plus a clean good file.
 5. Rule README from the MDS012 template; regenerate the
    docs catalog and rule index.

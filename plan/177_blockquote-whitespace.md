@@ -1,14 +1,14 @@
 ---
 id: 177
 title: Blockquote whitespace rule
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: []
 summary: >-
-  New rule MDS060 (provisional) covering markdownlint
-  MD027 (multiple spaces after the blockquote marker) and
-  MD028 (blank line between two blockquotes). Autofix
-  collapses the spaces; MD028 is flag-only.
+  New rule MDS059 covering markdownlint MD027 (multiple
+  spaces after the blockquote marker) and MD028 (blank line
+  between two blockquotes). Autofix collapses the spaces;
+  MD028 is flag-only.
 ---
 # Blockquote whitespace rule
 
@@ -33,8 +33,7 @@ two sibling blockquote nodes.
 
 ## Design
 
-- Rule ID: MDS060 (provisional), category `style`,
-  default-enabled.
+- Rule ID: MDS059, category `whitespace`, default-enabled.
 - MD027: for each blockquote line, flag a marker followed
   by two or more spaces; autofix collapses to one space.
 - MD028: when two `*ast.Blockquote` siblings are separated
@@ -48,19 +47,18 @@ two sibling blockquote nodes.
 1. Scaffold `internal/rules/blockquotewhitespace/`.
 2. Implement the MD027 per-line check and its autofix.
 3. Implement the MD028 sibling-gap check (flag only).
-4. Fixture tests under the provisional
-   `internal/rules/MDS060-*` directory.
+4. Fixture tests under `internal/rules/MDS059-*`.
 5. Rule README; regenerate the docs catalog and index.
 6. Add the MD027 / MD028 rows to the
    [linter comparison](../docs/background/markdown-linters.md).
 
 ## Acceptance Criteria
 
-- [ ] `>  quoted` is flagged and fixed to `> quoted`.
-- [ ] `> a` / blank / `> b` emits one MD028-style
+- [x] `>  quoted` is flagged and fixed to `> quoted`.
+- [x] `> a` / blank / `> b` emits one MD028-style
       diagnostic and is not auto-rewritten.
-- [ ] A single blockquote with internal blank lines
+- [x] A single blockquote with internal blank lines
       inside one `>` run is not flagged.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes
