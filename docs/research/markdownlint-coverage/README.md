@@ -20,8 +20,8 @@ Status legend:
 
 Deprecated markdownlint numbers (MD002, MD006, MD008,
 MD015-MD017) are omitted. As of 2026-05 mdsmith implements
-**44 of the 52** active markdownlint rules (**42** fully, **2** partially); the
-remaining **8** are scheduled in plans 172, 179, and 181-182.
+**46 of the 52** active markdownlint rules (**44** fully, **2** partially); the
+remaining **6** are scheduled in plans 172 and 181-182.
 
 ## Headings
 
@@ -80,10 +80,10 @@ remaining **8** are scheduled in plans 172, 179, and 181-182.
 
 | markdownlint              | Checks           | mdsmith | Status      |
 |---------------------------|------------------|---------|-------------|
-| MD011 no-reversed-links   | `(t)[u]`         | —       | 🔲 plan 179 |
+| MD011 no-reversed-links   | `(t)[u]`         | MDS062  | ✅          |
 | MD034 no-bare-urls        | raw URL          | MDS012  | ✅          |
 | MD039 spaces-in-link-text | `[ t ]`          | MDS049  | ✅          |
-| MD042 no-empty-links      | empty target     | —       | 🔲 plan 179 |
+| MD042 no-empty-links      | empty target     | MDS062  | ✅          |
 | MD051 link-fragments      | `#anchor` exists | MDS027  | ✅ x-file   |
 | MD052 reference-defined   | ref label set    | MDS054  | ✅          |
 | MD053 reference-needed    | unused defs      | MDS053  | ✅          |

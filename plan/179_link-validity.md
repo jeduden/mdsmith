@@ -1,7 +1,7 @@
 ---
 id: 179
 title: Reversed and empty link rule
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: []
 summary: >-
@@ -35,8 +35,10 @@ spans and autolinks.
 
 ## Design
 
-- Rule ID: MDS062 (provisional), category `correctness`,
-  default-enabled.
+- Rule ID: MDS062, name `link-validity`. Built under
+  category `link` (the schema has no `correctness`
+  category; `link` matches MDS027/MDS053/MDS054) and
+  `nature: structure`. Default-enabled.
 - MD042: walk `*ast.Link` / `*ast.Image`; flag an empty or
   whitespace-only destination, or empty visible text.
   Fragment-only (`#x`) and `<>` empty-destination per
@@ -47,28 +49,28 @@ spans and autolinks.
 
 ## Tasks
 
-1. Scaffold `internal/rules/linkvalidity/`.
-2. Implement the MD042 AST check.
-3. Implement the MD011 text-scan check with the
+1. ✅ Scaffold `internal/rules/linkvalidity/`.
+2. ✅ Implement the MD042 AST check.
+3. ✅ Implement the MD011 text-scan check with the
    skip-context list and its autofix.
-4. Fixture tests under the provisional
-   `internal/rules/MDS062-*` directory: reversed link,
-   empty target, empty text, code-span false positive,
-   autolink, directive.
-5. Rule README; regenerate the docs catalog and index.
-6. Add the MD011 / MD042 rows to the
+4. ✅ Fixture tests under the
+   `internal/rules/MDS062-link-validity` directory:
+   reversed link, empty target, empty text, code-span
+   false positive, autolink, directive.
+5. ✅ Rule README; regenerate the docs catalog and index.
+6. ✅ Add the MD011 / MD042 rows to the
    [linter comparison](../docs/background/markdown-linters.md).
 
 ## Acceptance Criteria
 
-- [ ] `(text)[url]` is flagged and fixed to
+- [x] `(text)[url]` is flagged and fixed to
       `[text](url)`.
-- [ ] `[text]()` and `[](url)` are flagged with no
+- [x] `[text]()` and `[](url)` are flagged with no
       autofix.
-- [ ] A reversed pattern inside a code span or fenced
+- [x] A reversed pattern inside a code span or fenced
       block is not flagged.
-- [ ] A normal `[text](url)` and a `<https://x>`
+- [x] A normal `[text](url)` and a `<https://x>`
       autolink are clean.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes
