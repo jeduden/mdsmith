@@ -116,4 +116,6 @@ footer: |
 | 186 | 🔲     | opus   | [Run-scoped read cache for catalog cross-host redundancy](plan/186_catalog-run-scoped-readcache.md)                                     |
 | 187 | ✅     | opus   | [Neutral-corpus engine lever — shared AST walk and Punkt cost](plan/187_neutral-corpus-engine-lever.md)                                 |
 | 188 | 🔲     | opus   | [Regex-over-source rules — inventory and AST-resident replacements](plan/188_regex-vs-ast-inventory.md)                                 |
+| 189 | 🔳     | opus   | [Finish the multiplex migration for pure per-node rules](plan/189_multiplex-finish.md)                                                  |
+| 190 | 🔳     | opus   | [Intra-file rule parallelism for non-NodeChecker rules](plan/190_intra-file-rule-parallelism.md)                                        |
 <?/catalog?>
