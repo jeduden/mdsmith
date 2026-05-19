@@ -10,17 +10,19 @@ runs `mdsmith fix` on the whole buffer.
 ## Prerequisites
 
 - VS Code 1.85 or later.
-- **The `mdsmith` binary** — the extension includes a bundled binary
-  for the host platform (typically Linux from CI builds). If you're on
-  the same platform as the build host, no separate install is required.
+- **No separate `mdsmith` install** — the `.vsix` bundles a binary
+  for every supported platform (Linux, macOS, and Windows on x64 and
+  arm64) and selects yours at startup. It does this by re-using the
+  `@mdsmith/cli` npm package's own resolver, so the extension and
+  `npx @mdsmith/cli` always agree on which binary runs.
 
-  For other platforms or if the bundled binary is unavailable, install
-  `mdsmith` manually:
-  - `npm install -g @mdsmith/cli`
-  - `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`
-  - Download from the
-    [releases page](https://github.com/jeduden/mdsmith/releases)
-  - Then optionally configure `mdsmith.path` to point to the binary.
+  Override only if you want a specific build: set `mdsmith.path` to an
+  absolute path (e.g. from
+  `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`,
+  `npm install -g @mdsmith/cli`, or the
+  [releases page](https://github.com/jeduden/mdsmith/releases)). The
+  extension falls back to resolving `mdsmith` on `PATH` only if your
+  platform was not bundled.
 
 ## Install
 
@@ -30,13 +32,13 @@ code --install-extension mdsmith-<version>.vsix
 
 ## Settings
 
-| Setting                | Default     | Purpose                                                                                                                                                                 |
-|------------------------|-------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `mdsmith.path`         | `"mdsmith"` | Binary path; defaults to bundled binary in dist/bin/. Falls back to PATH resolution if bundled binary unavailable. Set absolute path if needed (e.g. `/go/bin/mdsmith`) |
-| `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                                                               |
-| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                                                                                              |
-| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                                                                                   |
-| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity                                                                                                                                                     |
+| Setting                | Default     | Purpose                                                                                                                                                                        |
+|------------------------|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `mdsmith.path`         | `"mdsmith"` | Binary path; default runs the bundled per-platform binary. Set an absolute path to override; falls back to PATH only if your platform was not bundled (e.g. `/go/bin/mdsmith`) |
+| `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                                                                      |
+| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                                                                                                     |
+| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                                                                                          |
+| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity                                                                                                                                                            |
 
 See the
 [full guide](https://github.com/jeduden/mdsmith/blob/main/docs/guides/editors/vscode.md)

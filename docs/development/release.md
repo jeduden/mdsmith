@@ -84,11 +84,12 @@ packages from the root.
 
 ## Job Topology
 
-`build` feeds binaries to `npm`, `pypi`, and
-`release`. `vscode` chains off `npm` (the `.vsix`
-bundles the just-published binary). `release` runs
-`smoke-test` against the fresh `npm`, `pypi`, and
-`mise` channels. Every credential-bearing job is
+`build` feeds binaries to `npm`, `pypi`, `vscode`,
+and `release`. `vscode` chains off `build` (it runs
+`mdsmith-release build-npm` on the artifacts so the
+`.vsix` bundles a binary for every platform).
+`release` runs `smoke-test` against the fresh `npm`,
+`pypi`, and `mise` channels. Every credential-bearing job is
 gated by `if: github.repository == 'jeduden/mdsmith'`
 and runs in the `release` GitHub environment.
 

@@ -72,7 +72,7 @@ func (t *Toolkit) buildOneNpmPlatform(rootDir, artifactsDir, outDir, version str
   "version": "%s",
   "description": "Prebuilt mdsmith binary for %s %s.",
   "license": "MIT",
-  "homepage": "https://github.com/jeduden/mdsmith",
+  "homepage": "https://mdsmith.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jeduden/mdsmith.git"

@@ -3,7 +3,7 @@
   "version": "0.0.0-dev",
   "description": "Fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content.",
   "license": "MIT",
-  "homepage": "https://github.com/jeduden/mdsmith",
+  "homepage": "https://mdsmith.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jeduden/mdsmith.git"

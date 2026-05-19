@@ -68,6 +68,19 @@ describe("buildServerOptions", () => {
     const opts = buildServerOptions("mdsmith", TransportKindStdio) as RunDebug;
     expect(opts.run.options).toBeUndefined();
   });
+
+  test("refuses an empty or whitespace command instead of spawning command:\"\"", () => {
+    // Defense in depth for the reported crash: vscode-languageclient
+    // rejects { command: "" } with the opaque "Unsupported server
+    // configuration" error. resolveBinary already guarantees a
+    // non-empty command, so no caller should reach here — but if one
+    // does, fail loudly with an actionable message.
+    for (const bad of ["", "   ", "\t\n"]) {
+      expect(() => buildServerOptions(bad, TransportKindStdio)).toThrow(
+        /mdsmith\.path/,
+      );
+    }
+  });
 });
 
 describe("buildClientOptions", () => {

@@ -29,7 +29,7 @@ classifiers = [
 mdsmith = "mdsmith.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/jeduden/mdsmith"
+Homepage = "https://mdsmith.dev"
 Source = "https://github.com/jeduden/mdsmith"
 Issues = "https://github.com/jeduden/mdsmith/issues"
 

@@ -2,11 +2,28 @@
 // Bundles src/extension.ts into dist/extension.js as a single CJS
 // file consumed by VS Code, marking `vscode` as external because
 // the host supplies it at runtime.
-// Also copies platform binaries from @mdsmith/* packages into dist/bin/
-// when available. Note: npm platform packages have os/cpu constraints,
-// so only the host platform binary will be bundled.
+//
+// Also stages the @mdsmith/cli distribution into dist/cli/ so the
+// .vsix carries a binary for every supported platform and the
+// extension can pick the right one at runtime by re-using the npm
+// package's own resolver (see src/binary.ts):
+//
+//   dist/cli/mdsmith.js                        (npm/mdsmith/bin/mdsmith.js)
+//   dist/cli/@mdsmith/<target>/bin/mdsmith[.exe]
+//
+// Binary source, in order: $MDSMITH_VSIX_PLATFORM_DIR (the release
+// workflow points this at `mdsmith-release build-npm` output, which
+// holds all five), else node_modules/@mdsmith/<target> (a local
+// `bun install`, which by npm os/cpu rules only fetches the host
+// one). Missing platforms are skipped — at runtime the extension
+// falls back to PATH for any host that was not staged.
 
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
 
 const args = Bun.argv.slice(2);
@@ -25,49 +42,97 @@ if (existsSync(repoLicense)) {
   copyFileSync(repoLicense, stagedLicense);
 }
 
-// Copy platform binaries from @mdsmith/* packages into dist/bin/
-// when available. Note: The @mdsmith/* platform packages have os/cpu
-// constraints, so npm only installs the package matching the build
-// host's platform. This means only the host platform binary will be
-// bundled (typically linux-x64 in CI). Other platforms fall back to
-// PATH resolution.
-function copyPlatformBinaries() {
-  const distBin = join(import.meta.dir, "dist", "bin");
-  mkdirSync(distBin, { recursive: true });
+// Targets must stay in lock-step with npm/mdsmith/bin/mdsmith.js's
+// PLATFORM_PACKAGES and internal/release/buildnpm.go's matrix; the
+// drift guard in src/binary.test.ts fails CI if they diverge.
+const PLATFORM_TARGETS = [
+  { target: "linux-x64", exe: "mdsmith" },
+  { target: "linux-arm64", exe: "mdsmith" },
+  { target: "darwin-x64", exe: "mdsmith" },
+  { target: "darwin-arm64", exe: "mdsmith" },
+  { target: "win32-x64", exe: "mdsmith.exe" },
+];
 
-  // Platform packages that @mdsmith/cli declares as optionalDependencies.
-  // Only the host platform package will actually be installed due to
-  // os/cpu constraints.
-  const platforms = [
-    { pkg: "@mdsmith/linux-x64", binary: "mdsmith" },
-    { pkg: "@mdsmith/linux-arm64", binary: "mdsmith" },
-    { pkg: "@mdsmith/darwin-x64", binary: "mdsmith" },
-    { pkg: "@mdsmith/darwin-arm64", binary: "mdsmith" },
-    { pkg: "@mdsmith/win32-x64", binary: "mdsmith.exe" },
-  ];
+// stageCli copies the canonical @mdsmith/cli shim and every available
+// platform binary into dist/cli/, mirroring the npm package's
+// node_modules layout so src/binary.ts can drive the shim's own
+// resolver against it.
+function stageCli() {
+  const cliDir = join(import.meta.dir, "dist", "cli");
+  // `vsce package` re-invokes this script through the
+  // `vscode:prepublish` hook, and that re-run does not inherit the
+  // explicit build's MDSMITH_VSIX_PLATFORM_DIR. So staging is
+  // non-destructive: we (re)copy the shim and only overwrite a
+  // platform binary when a fresh source exists. A binary already
+  // staged by the preceding explicit build is left intact rather
+  // than wiped, so the .vsix keeps every platform. Only the legacy
+  // flat dist/bin/ layout is actively removed.
+  rmSync(join(import.meta.dir, "dist", "bin"), {
+    recursive: true,
+    force: true,
+  });
+  mkdirSync(cliDir, { recursive: true });
 
-  let copied = 0;
-  for (const { pkg, binary } of platforms) {
-    const srcBin = join(import.meta.dir, "node_modules", pkg, "bin", binary);
-    if (existsSync(srcBin)) {
-      const destBin = join(distBin, `${pkg.replace("@mdsmith/", "")}-${binary}`);
-      copyFileSync(srcBin, destBin);
-      copied++;
-    }
+  const shimSrc = join(
+    import.meta.dir,
+    "..",
+    "..",
+    "npm",
+    "mdsmith",
+    "bin",
+    "mdsmith.js",
+  );
+  if (!existsSync(shimSrc)) {
+    // The shim is the resolver the extension re-uses; without it
+    // there is no bundled-binary path at all.
+    throw new Error(`missing @mdsmith/cli shim: ${shimSrc}`);
+  }
+  copyFileSync(shimSrc, join(cliDir, "mdsmith.js"));
+
+  // Prefer an explicit stage dir (release: `mdsmith-release
+  // build-npm` output, all five present). Fall back to a local
+  // node_modules install (host platform only).
+  const stageDir = process.env.MDSMITH_VSIX_PLATFORM_DIR;
+  const nodeModules = join(import.meta.dir, "node_modules", "@mdsmith");
+
+  for (const { target, exe } of PLATFORM_TARGETS) {
+    const src = stageDir
+      ? join(stageDir, target, "bin", exe)
+      : join(nodeModules, target, "bin", exe);
+    if (!existsSync(src)) continue;
+    const destDir = join(cliDir, "@mdsmith", target, "bin");
+    mkdirSync(destDir, { recursive: true });
+    copyFileSync(src, join(destDir, exe));
   }
 
-  if (copied > 0) {
-    console.log(`copied ${copied} platform binary/binaries → dist/bin/`);
+  // Report on what the .vsix will actually ship — i.e. what is
+  // present in dist/cli/ now — not just what this invocation copied.
+  // The prepublish re-run copies nothing yet leaves the explicit
+  // build's binaries in place; the summary must reflect that.
+  const present = PLATFORM_TARGETS.filter(({ target, exe }) =>
+    existsSync(join(cliDir, "@mdsmith", target, "bin", exe)),
+  ).map(({ target }) => target);
+
+  if (present.length === PLATFORM_TARGETS.length) {
+    console.log(`staged @mdsmith/cli + ${present.length} platform binaries → dist/cli/`);
+  } else if (present.length > 0) {
+    console.warn(
+      `warning: staged only ${present.length}/${PLATFORM_TARGETS.length} ` +
+        `platform binaries (${present.join(", ")}). The .vsix will fall ` +
+        "back to PATH on the missing platforms. Set " +
+        "MDSMITH_VSIX_PLATFORM_DIR to a full build-npm output for an " +
+        "all-platform .vsix.",
+    );
   } else {
     console.warn(
-      "warning: no platform binaries found in node_modules/@mdsmith/; " +
-      "extension will fall back to PATH resolution. Run `bun install` " +
-      "to bundle binaries."
+      "warning: no platform binaries found; the extension will fall " +
+        "back to PATH resolution everywhere. Run `bun install` or set " +
+        "MDSMITH_VSIX_PLATFORM_DIR.",
     );
   }
 }
 
-copyPlatformBinaries();
+stageCli();
 
 const config: Parameters<typeof Bun.build>[0] = {
   entrypoints: ["src/extension.ts"],

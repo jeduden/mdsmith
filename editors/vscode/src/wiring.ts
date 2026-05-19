@@ -26,6 +26,19 @@ export function buildServerOptions(
   transport: TransportKind,
   cwd?: string
 ): ServerOptions {
+  const command = (binary ?? "").trim();
+  if (!command) {
+    // vscode-languageclient rejects { command: "" } with the opaque
+    // "Unsupported server configuration" error. resolveBinary already
+    // guarantees a non-empty command (empty / whitespace mdsmith.path
+    // falls back to the bundled binary or "mdsmith" on PATH), so this
+    // is unreachable in normal flow — but fail loudly and actionably
+    // rather than handing the LanguageClient an empty launch.
+    throw new Error(
+      'mdsmith: empty binary path. Set "mdsmith.path" to the mdsmith ' +
+        "binary or reinstall the extension."
+    );
+  }
   // Anchor the spawned server at the workspace root when one is
   // available. mdsmith's lint pipeline now passes
   // workspace-relative paths into the engine (so config globs
@@ -35,8 +48,8 @@ export function buildServerOptions(
   // to be running from, which drifts from CLI behavior.
   const options = cwd ? { cwd } : undefined;
   return {
-    run: { command: binary, args: ["lsp"], transport, options },
-    debug: { command: binary, args: ["lsp"], transport, options }
+    run: { command, args: ["lsp"], transport, options },
+    debug: { command, args: ["lsp"], transport, options }
   };
 }
 

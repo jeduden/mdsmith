@@ -21,11 +21,17 @@ gets the same behavior by pointing at `mdsmith lsp`.
 
 ## Prerequisites
 
-- `mdsmith` binary on `$PATH`, or a path you supply
-  to `mdsmith.path` in VS Code settings. Build with
-  `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`
-  or download from the
-  [GitHub releases page](https://github.com/jeduden/mdsmith/releases).
+- No separate `mdsmith` install. The `.vsix` bundles a
+  binary for every supported platform (Linux, macOS,
+  Windows on x64 and arm64) and selects yours at
+  startup by re-using the `@mdsmith/cli` npm package's
+  own resolver, so the editor and `npx @mdsmith/cli`
+  always run the same binary. Override only to pin a
+  specific build: set `mdsmith.path` to an absolute
+  path (from
+  `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`,
+  `npm install -g @mdsmith/cli`, or the
+  [GitHub releases page](https://github.com/jeduden/mdsmith/releases)).
 - VS Code 1.85 or later.
 - A `.mdsmith.yml` reachable from the workspace root
   by walking up to the nearest `.git` directory. The
@@ -62,13 +68,13 @@ The extension contributes the following settings.
 Project-level overrides go in `.vscode/settings.json`;
 global preferences go in your user settings.
 
-| Setting                | Default     | Purpose                                                                     |
-|------------------------|-------------|-----------------------------------------------------------------------------|
-| `mdsmith.path`         | `"mdsmith"` | Binary path; resolved against the extension-host PATH (see Troubleshooting) |
-| `mdsmith.config`       | `""`        | Override `-c` config path (absolute or workspace)                           |
-| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                  |
-| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                       |
-| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity: `off`, `messages`, `verbose`                           |
+| Setting                | Default     | Purpose                                                                                           |
+|------------------------|-------------|---------------------------------------------------------------------------------------------------|
+| `mdsmith.path`         | `"mdsmith"` | Default runs the bundled per-platform binary; an absolute path overrides it (see Troubleshooting) |
+| `mdsmith.config`       | `""`        | Override `-c` config path (absolute or workspace)                                                 |
+| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                        |
+| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                             |
+| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity: `off`, `messages`, `verbose`                                                 |
 
 `mdsmith.path` is read by the extension to spawn the
 server. The remaining settings are pulled by the
@@ -255,15 +261,20 @@ trace by setting `mdsmith.trace.server` to
 `messages`; the trace appears in the Output panel
 under "mdsmith".
 
-**`spawn mdsmith ENOENT`.** `which mdsmith` works in
-the terminal but the extension still fails to spawn.
-VS Code's extension host is a non-interactive Node
-process that inherits the container/login-shell
-PATH. It does NOT source `~/.bashrc` or `~/.zshrc`,
-so `PATH` entries added there (a Go install often
-puts the binary in `/go/bin` or `~/go/bin`) are
-invisible to the extension. Either:
+**`spawn mdsmith ENOENT`.** Only reachable when the
+extension falls back to `PATH` — i.e. you set
+`mdsmith.path` to a bare name, or your platform was
+not bundled. `which mdsmith` works in the terminal
+but the extension still fails to spawn: VS Code's
+extension host is a non-interactive Node process that
+inherits the container/login-shell PATH. It does NOT
+source `~/.bashrc` or `~/.zshrc`, so `PATH` entries
+added there (a Go install often puts the binary in
+`/go/bin` or `~/go/bin`) are invisible to the
+extension. Either:
 
+- Clear `mdsmith.path` (empty or `"mdsmith"`) so the
+  extension uses the binary bundled in the `.vsix`; or
 - Set `mdsmith.path` to the absolute path
   (`/go/bin/mdsmith`, `~/go/bin/mdsmith`, …); or
 - Symlink the binary into a directory that is on the
@@ -271,12 +282,20 @@ invisible to the extension. Either:
   `sudo ln -sf "$(which mdsmith)" /usr/local/bin/mdsmith`,
   then `Developer: Reload Window`.
 
-**"Download mdsmith" error.** The extension cannot
-find the binary. Either install it as above or set
-`mdsmith.path` explicitly. The extension does not
-bundle the binary because the Go executable is
-platform-specific and a single `.vsix` should not
-ship six binaries.
+An empty `mdsmith.path` is safe: it resolves to the
+bundled binary rather than crashing the language
+client with the old `Unsupported server configuration
+{ command: "" }` error.
+
+**"Download mdsmith" error.** The `.vsix` ships a
+binary for every supported platform, so this only
+appears if your OS/arch is unsupported, the bundled
+binary was stripped from the package, or a custom
+`mdsmith.path` is wrong. Fix `mdsmith.path`, or
+install `mdsmith` via `npm install -g @mdsmith/cli`,
+`go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`,
+or the
+[releases page](https://github.com/jeduden/mdsmith/releases).
 
 **"mdsmith server crashed too many times in a row."**
 The extension's restart limiter (25 close events in

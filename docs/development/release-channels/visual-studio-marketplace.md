@@ -17,11 +17,13 @@ Release page:
 The Marketplace channel publishes the mdsmith VS
 Code extension to
 [marketplace.visualstudio.com](https://marketplace.visualstudio.com).
-The published artifact is a `.vsix` produced by
-`@vscode/vsce package --no-dependencies`. The flag
-strips dev dependencies from the bundle. The client
-receives the compiled extension and the host
-platform's mdsmith binary, nothing more.
+The published artifact is a `.vsix` from
+`@vscode/vsce package --no-dependencies`. That flag
+strips dev dependencies. The client receives the
+compiled extension. Under `dist/cli/` it also gets
+the `@mdsmith/cli` shim and a prebuilt binary for
+every supported platform. The extension picks the
+right one at startup, re-using that shim's resolver.
 
 Auth uses `VSCE_PAT`, a long-lived Azure DevOps
 personal access token scoped to `Marketplace >
@@ -40,10 +42,11 @@ same `.vsix` Open VSX and the GitHub release
 attach. All three artifacts have identical SHA-256
 sums.
 
-The job depends on the `npm` job: the `.vsix`
-bundles the host-platform binary by running
-`bun install` against `@mdsmith/cli` at the release
-version, so the npm platform packages must publish
-first. See the [release pipeline
-doc](../release.md#job-topology) for the full
-dependency chain.
+The job depends on the `build` job, not `npm`. It
+downloads the release binary artifacts and runs
+`mdsmith-release build-npm` — the same generator the
+npm channel uses — to stage all platform binaries,
+which `build.ts` bundles under `dist/cli/`. So the
+`.vsix` no longer waits on the npm publish. See the
+[release pipeline doc](../release.md#job-topology)
+for the full dependency chain.

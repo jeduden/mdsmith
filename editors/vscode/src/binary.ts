@@ -1,67 +1,112 @@
-// Binary resolution logic for the mdsmith extension.
-// The extension bundles platform binaries from npm packages into dist/bin/
-// during the build step when available. Due to npm os/cpu constraints on
-// the @mdsmith/* packages, only the host platform binary is bundled (typically
-// linux-x64 in CI). This module resolves the bundled binary when present,
-// falling back to PATH for other platforms or when bundling failed.
+// Binary resolution for the mdsmith extension.
+//
+// The .vsix bundles a prebuilt mdsmith binary for every supported
+// platform under dist/cli/, laid out exactly like the @mdsmith/cli
+// npm package's node_modules tree:
+//
+//   dist/cli/mdsmith.js                       (the @mdsmith/cli shim)
+//   dist/cli/@mdsmith/<target>/bin/mdsmith[.exe]
+//
+// Rather than re-implement which-binary-for-which-host, we load that
+// bundled shim and call its exported resolveBinary() — the same code
+// `npx @mdsmith/cli` execs. One source of truth for the platform
+// matrix means the extension and the npm package cannot drift.
+//
+// build.ts copies npm/mdsmith/bin/mdsmith.js verbatim and stages all
+// five platform binaries; see editors/vscode/build.ts.
 
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-// resolveBinary returns the path to the mdsmith binary. When the
-// configured path is the bare string "mdsmith", it first checks for
-// a bundled binary in dist/bin/ (copied there by build.ts from the
-// @mdsmith/* npm packages). Platform-specific binaries are named like
-// "linux-x64-mdsmith", "win32-x64-mdsmith.exe", etc. If the bundled
-// binary exists, return its absolute path. Otherwise return the
-// configured path unchanged so the LanguageClient resolves it against
-// PATH (fallback for dev builds, non-host platforms, or when optional
-// deps failed to install).
+// CliShim is the structural subset of npm/mdsmith/bin/mdsmith.js this
+// module consumes. resolveBinary(platform, arch, resolve) maps the
+// host to its @mdsmith/<target> package, then hands the package-
+// relative path to `resolve`, which returns an absolute path or
+// throws (npm's require.resolve, or our bundled-tree lookup).
+export interface CliShim {
+  resolveBinary(
+    platform: string,
+    arch: string,
+    resolve: (id: string) => string,
+  ): string;
+}
+
+// ResolveDeps are seams for tests; production uses the node defaults.
+export interface ResolveDeps {
+  platform?: string;
+  arch?: string;
+  fileExists?: (p: string) => boolean;
+  loadShim?: (shimPath: string) => CliShim;
+  makeExecutable?: (p: string) => void;
+}
+
+function loadShimFromDisk(shimPath: string): CliShim {
+  // Indirect through a variable so the bundler treats this as a
+  // runtime require of a file on disk (dist/cli/mdsmith.js) instead
+  // of trying to inline a module that does not exist at bundle time.
+  const req = require as unknown as (id: string) => unknown;
+  return req(shimPath) as CliShim;
+}
+
+function chmodExecutable(p: string): void {
+  try {
+    chmodSync(p, 0o755);
+  } catch {
+    // win32 has no +x bit and a read-only extension dir is fine —
+    // the binary is already executable in both cases.
+  }
+}
+
+// resolveBinary returns the command the LanguageClient should spawn.
 //
-// Platform bundling limitation: The @mdsmith/* platform packages have
-// os/cpu constraints, so npm only installs the package matching the
-// build host. This means only one platform binary is bundled per .vsix
-// (typically linux-x64 from CI). Other platforms fall back to PATH and
-// require manual mdsmith installation.
+// A user-supplied mdsmith.path (anything other than the bare default
+// "mdsmith", once trimmed) is honored verbatim. Empty string,
+// whitespace, and the default all mean "use the bundled binary": we
+// ask the shared shim for this host's binary and return its absolute
+// path. If the shim is absent (dev build), this platform was not
+// staged, or the host is unsupported, we fall back to the bare
+// "mdsmith" so the LanguageClient resolves it against PATH.
 //
-// The extensionPath should be the vscode.ExtensionContext.extensionPath
-// (the directory containing package.json and dist/).
-//
-// The optional platform, arch, and fileExists parameters are for testing;
-// in production they default to process.platform, process.arch, and fs.existsSync.
+// The return value is never empty — an empty command crashes
+// vscode-languageclient with the opaque "Unsupported server
+// configuration { command: \"\" }" error.
 export function resolveBinary(
   configuredPath: string,
   extensionPath: string,
-  platform: string = process.platform,
-  arch: string = process.arch,
-  fileExists: (path: string) => boolean = existsSync
+  deps: ResolveDeps = {},
 ): string {
-  // If the user specified a custom path (not the bare "mdsmith"),
-  // honor it exactly — they know what they want.
-  if (configuredPath !== "mdsmith") {
-    return configuredPath;
+  const platform = deps.platform ?? process.platform;
+  const arch = deps.arch ?? process.arch;
+  const fileExists = deps.fileExists ?? existsSync;
+  const loadShim = deps.loadShim ?? loadShimFromDisk;
+  const makeExecutable = deps.makeExecutable ?? chmodExecutable;
+
+  const trimmed = (configuredPath ?? "").trim();
+  if (trimmed && trimmed !== "mdsmith") {
+    return trimmed;
   }
 
-  // The user left the default "mdsmith". Check for bundled binaries
-  // in dist/bin/. The build script copies them there with names like
-  // "linux-x64-mdsmith", "win32-x64-mdsmith.exe".
-
-  // Map Node's process.platform and process.arch to our package names
-  const platformArch = `${platform}-${arch}`;
-  const binaryName = platform === "win32" ? "mdsmith.exe" : "mdsmith";
-  const bundledBinary = join(
-    extensionPath,
-    "dist",
-    "bin",
-    `${platformArch}-${binaryName}`
-  );
-
-  if (fileExists(bundledBinary)) {
-    return bundledBinary;
+  const cliDir = join(extensionPath, "dist", "cli");
+  const shimPath = join(cliDir, "mdsmith.js");
+  if (fileExists(shimPath)) {
+    try {
+      const shim = loadShim(shimPath);
+      const bundled = shim.resolveBinary(platform, arch, (id) => {
+        const p = join(cliDir, id);
+        if (!fileExists(p)) {
+          // Mirror require.resolve's miss so the shim raises its
+          // typed MDSMITH_PLATFORM_PACKAGE_MISSING rather than
+          // handing back a path that is not there.
+          throw new Error(`mdsmith: bundled binary not found: ${p}`);
+        }
+        return p;
+      });
+      makeExecutable(bundled);
+      return bundled;
+    } catch {
+      // Unsupported host, missing platform, or a corrupt shim —
+      // fall through to PATH resolution below.
+    }
   }
-
-  // The bundled binary does not exist (build step didn't run, or
-  // optional dependencies weren't installed). Fall back to the bare
-  // "mdsmith" string so the LanguageClient resolves it against PATH.
-  return configuredPath;
+  return "mdsmith";
 }

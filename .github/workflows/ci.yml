@@ -305,6 +305,34 @@ jobs:
           name: mdsmith-vscode-extension
           path: editors/vscode/mdsmith.vsix
 
+  vscode-e2e:
+    # Proves the @mdsmith/cli package and the VS Code extension work
+    # together: build.ts stages the canonical shim + a slot for every
+    # platform, `vsce package` ships them all, and the bundled shim
+    # resolves and runs this host's real binary — including the
+    # regression where an empty mdsmith.path crashed the LSP client
+    # with command:"". Heavy (real go build + vsce), so it is its own
+    # job and gated behind MDSMITH_VSIX_E2E.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - name: Install extension dependencies
+        working-directory: editors/vscode
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Build the .vsix and run the cross-platform e2e
+        working-directory: editors/vscode
+        env:
+          MDSMITH_VSIX_E2E: "1"
+        run: bun test ./src/e2e/vsix.e2e.ts
+
   test:
     runs-on: ubuntu-latest
     permissions:

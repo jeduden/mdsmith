@@ -106,16 +106,23 @@ jobs:
           path: ${{ env.bin }}
 
   vscode:
-    # `needs: [npm]` is load-bearing, not just for ordering. The
-    # extension's `bun install` step fetches `@mdsmith/cli@<version>`
-    # so build.ts can copy the host-platform binary out of
-    # node_modules/@mdsmith/<plat>/bin/ into dist/bin/ for the
-    # bundled .vsix. That version of @mdsmith/cli does not exist
-    # on npm until the npm job has published it; without this
-    # dependency the install silently no-ops the optionalDep and
-    # the .vsix ships without a binary.
-    needs: [npm]
+    # `needs: [build]` for the binaries: the .vsix bundles a binary
+    # for *every* supported platform (build.ts → dist/cli/), so the
+    # extension picks the right one at runtime by re-using the
+    # @mdsmith/cli resolver. The five binaries come straight from the
+    # `build` job's release artifacts via `mdsmith-release build-npm`
+    # — the same generator the `npm` job uses — so this job no longer
+    # waits on (or couples to) the npm publish.
+    needs: [build]
     runs-on: ubuntu-latest
+    # MDSMITH_VSIX_PLATFORM_DIR points build.ts at the full
+    # build-npm output. It is set at job scope so the run that
+    # `vsce package` triggers through the `vscode:prepublish` hook
+    # re-stages all five binaries too (build.ts staging is also
+    # non-destructive, so a missing env would keep — not wipe — the
+    # explicit build's binaries; the env makes it deterministic).
+    env:
+      MDSMITH_VSIX_PLATFORM_DIR: ${{ github.workspace }}/npm/dist
     # VSCE_PAT and OVSX_PAT are long-lived publisher tokens — see
     # docs/development/release.md for why the `release` environment
     # gates them and what reviewer rules the maintainer should set
@@ -139,12 +146,22 @@ jobs:
       - name: Stamp tracked manifests with the tag
         env:
           VERSION: ${{ env.VERSION }}
-        # Stamp rewrites both the `version` field and the
-        # @mdsmith/cli optionalDependency pin in
-        # editors/vscode/package.json, so the install step below
-        # fetches the freshly-published binary instead of chasing
-        # the 0.0.0-dev sentinel.
+        # Stamp rewrites the `version` field in
+        # editors/vscode/package.json (the .vsix version) and the
+        # one in npm/mdsmith/package.json that build-npm stamps
+        # into each generated platform manifest.
         run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Build platform packages
+        # Reuse the npm generator so the .vsix carries the exact
+        # same per-platform binaries the npm channel ships. Output
+        # lands in npm/dist/<target>/bin/, which
+        # MDSMITH_VSIX_PLATFORM_DIR points build.ts at.
+        run: go run ./cmd/mdsmith-release build-npm artifacts npm/dist
       - name: Install extension dependencies
         working-directory: editors/vscode
         # `--ignore-scripts` blocks postinstall / preinstall hooks from
