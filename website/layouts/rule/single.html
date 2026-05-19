@@ -31,7 +31,11 @@
           {{ end }}
         </div>
         <h1>{{ .Title }}</h1>
-        {{ with .Params.description }}<p class="lead">{{ . }}</p>{{ end }}
+        {{/* `.Params.description` is not rendered here: each rule
+             README's body opens with the same description sentence
+             (proto.md requires it for the CLI `help rule` view),
+             so emitting it from front matter would duplicate the
+             first body paragraph on the page. */}}
         {{ partial "link-rules.html" . }}
         {{ with .Params.github_source }}
           <div class="rule-source-link">
