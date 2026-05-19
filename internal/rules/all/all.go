@@ -75,6 +75,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/singletrailingnewline"       // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/tableformat"                 // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/tablereadability"            // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/tablestructure"              // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/toc"                         // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/tocdirective"                // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/tokenbudget"                 // registers rule
