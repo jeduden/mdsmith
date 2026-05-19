@@ -135,11 +135,11 @@ func (r *Rule) checkColumnCount(f *lint.File, t tableBlock) []lint.Diagnostic {
 
 func (r *Rule) checkSurroundingBlanks(f *lint.File, t tableBlock) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	if before := t.start() - 1; before >= 1 && !isBlank(f.Lines[before-1]) {
+	if before := t.start() - 1; before >= 1 && !isBlankAround(f.Lines[before-1], t.prefix) {
 		diags = append(diags, r.diag(f, t.start(), 1,
 			"missing blank line before table"))
 	}
-	if after := t.end() + 1; after <= len(f.Lines) && !isBlank(f.Lines[after-1]) {
+	if after := t.end() + 1; after <= len(f.Lines) && !isBlankAround(f.Lines[after-1], t.prefix) {
 		diags = append(diags, r.diag(f, t.end(), 1,
 			"missing blank line after table"))
 	}
@@ -173,8 +173,16 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		lines[i] = string(l)
 	}
 
-	blankBefore := map[int]bool{}
-	blankAfter := map[int]bool{}
+	// Match the file's newline style so a CRLF document does not
+	// gain a bare-LF blank line (mixed endings); lines are joined
+	// with "\n", so a CRLF blank line ends in a lone "\r".
+	cr := ""
+	if bytes.Contains(f.Source, []byte("\r\n")) {
+		cr = "\r"
+	}
+
+	blankBefore := map[int]string{}
+	blankAfter := map[int]string{}
 	for _, t := range tables {
 		wantLead, wantTrail := r.expectedStyle(t)
 		for _, row := range t.rows {
@@ -183,31 +191,24 @@ func (r *Rule) Fix(f *lint.File) []byte {
 				lines[idx] = normalizeEdges(lines[idx], t.prefix, wantLead, wantTrail)
 			}
 		}
-		if before := t.start() - 1; before >= 1 && !isBlank(f.Lines[before-1]) {
-			blankBefore[t.start()] = true
+		blank := blankLineFor(t.prefix) + cr
+		if before := t.start() - 1; before >= 1 && !isBlankAround(f.Lines[before-1], t.prefix) {
+			blankBefore[t.start()] = blank
 		}
-		if after := t.end() + 1; after <= len(f.Lines) && !isBlank(f.Lines[after-1]) {
-			blankAfter[t.end()] = true
+		if after := t.end() + 1; after <= len(f.Lines) && !isBlankAround(f.Lines[after-1], t.prefix) {
+			blankAfter[t.end()] = blank
 		}
-	}
-
-	// Match the file's newline style so a CRLF document does not
-	// gain a bare-LF blank line (mixed endings); lines are joined
-	// with "\n", so a CRLF blank line is a lone "\r".
-	blank := ""
-	if bytes.Contains(f.Source, []byte("\r\n")) {
-		blank = "\r"
 	}
 
 	var out []string
 	for i, l := range lines {
 		lineNum := i + 1
-		if blankBefore[lineNum] {
-			out = append(out, blank)
+		if b, ok := blankBefore[lineNum]; ok {
+			out = append(out, b)
 		}
 		out = append(out, l)
-		if blankAfter[lineNum] {
-			out = append(out, blank)
+		if b, ok := blankAfter[lineNum]; ok {
+			out = append(out, b)
 		}
 	}
 	return []byte(strings.Join(out, "\n"))
@@ -303,25 +304,81 @@ func findTables(lines [][]byte, skip func(int) bool) []tableBlock {
 	return tables
 }
 
-// sharedPrefix returns the leading-whitespace prefix common to the
-// header and separator lines, and whether they share one. Blockquote
-// (`>`) tables are out of scope: a non-whitespace prefix yields ok =
-// false so the candidate is skipped rather than mis-parsed.
+// sharedPrefix returns the row prefix common to the header and
+// separator lines, and whether they share one. A table's rows must
+// all carry the same prefix (blockquote markers and/or indentation).
 func sharedPrefix(header, sep []byte) (string, bool) {
-	hp := leadingWhitespace(header)
-	sp := leadingWhitespace(sep)
+	hp := detectPrefix(header)
+	sp := detectPrefix(sep)
 	if hp != sp {
 		return "", false
 	}
 	return hp, true
 }
 
-func leadingWhitespace(line []byte) string {
-	n := 0
-	for n < len(line) && (line[n] == ' ' || line[n] == '\t') {
-		n++
+// detectPrefix returns the blockquote/indentation prefix of a line:
+// a chain of `>` markers (each optionally followed by one space, with
+// optional indentation before each), mirroring MDS025's tablefmt so
+// the two rules agree on blockquoted tables. When no blockquote marker
+// is present it falls back to the run of leading whitespace, which
+// covers list-indented and borderless tables.
+func detectPrefix(line []byte) string {
+	s := string(line)
+	var b strings.Builder
+	rem := s
+	for {
+		trimmed := strings.TrimLeft(rem, " ")
+		indent := rem[:len(rem)-len(trimmed)]
+		switch {
+		case strings.HasPrefix(trimmed, "> "):
+			b.WriteString(indent)
+			b.WriteString("> ")
+			rem = trimmed[2:]
+		case strings.HasPrefix(trimmed, ">") && (len(trimmed) == 1 || trimmed[1] == '>'):
+			b.WriteString(indent)
+			b.WriteString(">")
+			rem = trimmed[1:]
+		default:
+			if b.Len() > 0 {
+				return b.String()
+			}
+			n := 0
+			for n < len(line) && (line[n] == ' ' || line[n] == '\t') {
+				n++
+			}
+			return string(line[:n])
+		}
 	}
-	return string(line[:n])
+}
+
+// blankLineFor returns the text of an inserted MD058 blank line for a
+// table with the given prefix. Inside a blockquote the separating line
+// is the bare marker chain (e.g. `>`), not an empty line, so the
+// blockquote is not broken.
+func blankLineFor(prefix string) string {
+	if strings.Contains(prefix, ">") {
+		return strings.TrimRight(prefix, " \t")
+	}
+	return ""
+}
+
+// isBlankAround reports whether line counts as the blank line bounding
+// a table with the given prefix: a wholly empty line, or — for a
+// blockquoted table — a line that is only blockquote markers.
+func isBlankAround(line []byte, prefix string) bool {
+	t := bytes.TrimSpace(line)
+	if len(t) == 0 {
+		return true
+	}
+	if strings.Contains(prefix, ">") {
+		for _, c := range t {
+			if c != '>' && c != ' ' && c != '\t' {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // rowContent strips the prefix and trailing whitespace/CR, returning
@@ -361,9 +418,9 @@ func isSeparatorContent(c string) bool {
 }
 
 // continuesTable reports whether line is a body row for a table with
-// the given prefix: same whitespace prefix, non-blank, contains a pipe.
+// the given prefix: same prefix, non-blank, contains a pipe.
 func continuesTable(line []byte, prefix string) bool {
-	if isBlank(line) || leadingWhitespace(line) != prefix {
+	if isBlank(line) || detectPrefix(line) != prefix {
 		return false
 	}
 	return strings.Contains(rowContent(line, prefix), "|")
