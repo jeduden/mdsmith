@@ -24,7 +24,44 @@ Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
 
 Markdown tables and code blocks are skipped.
 
+## Performance
+
+MDS024 is **opt-in**. It is the single most expensive default
+rule. The diagnostic needs exact sentence boundaries. The
+per-sentence word count and the over-long sentence preview both
+require them. mdsmith uses the trained Punkt sentence segmenter
+(`github.com/neurosnap/sentences`). On prose-heavy input Punkt is
+roughly 20% of mdsmith's wall time. The cost is the trained
+model's regex execution. The hot function is
+`english.MultiPunctWordAnnotation.tokenAnnotation`. It runs
+`reAbbr` and the token-type matchers with backtracking. The pass
+fires on every period-ending token.
+
+The cheap upper-bound guard in [the rule source](./) skips Punkt
+for paragraphs that provably cannot violate either limit. Short
+paragraphs cost zero. The 20% is paid by paragraphs past the
+guard. On prose-heavy input that is most of them.
+
+No faster Go segmenter matches Punkt. See [plan 187][p187]
+for the recorded negative. The harness at
+[`sentence_equivalence_test.go`][harness] gates any future
+candidate.
+
+[p187]: ../../../plan/187_neutral-corpus-engine-lever.md
+[harness]: ../../mdtext/sentence_equivalence_test.go
+
+Enable when you want the diagnostic. Skip when you don't.
+
 ## Config
+
+Enable with default thresholds:
+
+```yaml
+rules:
+  paragraph-structure: true
+```
+
+Enable with custom thresholds:
 
 ```yaml
 rules:
@@ -33,7 +70,7 @@ rules:
     max-words-per-sentence: 40
 ```
 
-Disable:
+Explicitly disable (matches the default):
 
 ```yaml
 rules:
@@ -89,7 +126,8 @@ Dogs bark. Cats meow. Birds sing. Fish swim. Frogs croak. Snakes hiss. Bees buzz
 - **ID**: MDS024
 - **Name**: `paragraph-structure`
 - **Status**: ready
-- **Default**: enabled, max-sentences: 6, max-words-per-sentence: 40
+- **Default**: disabled (opt-in; see Performance above).
+  When enabled: max-sentences: 6, max-words-per-sentence: 40
 - **Fixable**: no
 - **Implementation**:
   [source](./)

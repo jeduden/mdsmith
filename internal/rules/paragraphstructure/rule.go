@@ -32,6 +32,22 @@ func (r *Rule) Name() string { return "paragraph-structure" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "prose" }
 
+// EnabledByDefault implements rule.Defaultable. MDS024 is opt-in
+// because exact sentence counting and per-sentence word counting
+// require the trained Punkt segmenter
+// (github.com/neurosnap/sentences), which the neutral CPU profile
+// recorded in [plan 187](../../../plan/187_neutral-corpus-engine-lever.md)
+// attributes ~20% of mdsmith's wall time to on prose-heavy input.
+// Punkt's cost is the trained model's regex execution
+// (english.MultiPunctWordAnnotation.tokenAnnotation runs reAbbr
+// and the token-type matchers with backtracking on every period-
+// ending token), and there is no Punkt-equivalent faster pure-Go
+// segmenter — [plan 187](../../../plan/187_neutral-corpus-engine-lever.md)
+// records the negative with a reusable equivalence harness. Users
+// who want the diagnostic enable it explicitly; the default check
+// path stops paying the ~20%.
+func (r *Rule) EnabledByDefault() bool { return false }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -195,4 +211,5 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.ListMerger   = (*Rule)(nil)
+	_ rule.Defaultable  = (*Rule)(nil)
 )
