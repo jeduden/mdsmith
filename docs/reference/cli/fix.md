@@ -83,7 +83,17 @@ or diagnostic counts would change:
 ```
 
 The `diagnostics` array carries the same per-diagnostic
-fields `check --format json` returns.
+fields `check --format json` returns. Like every other
+lint output, the JSON goes to **stderr**; the stats
+summary line follows on stderr too.
+
+Some rules fix by writing a sibling file rather than
+the markdown itself. MDS048 `git-hook-sync` is the
+example today: it regenerates `.gitattributes`. On
+`--dry-run` these rules return early to honor the
+no-disk-writes contract. The diff-based preview will
+not list them under `would-fix`, even though a real
+run would clear the underlying drift.
 
 ## Pre-commit
 

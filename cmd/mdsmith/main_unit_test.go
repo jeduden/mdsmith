@@ -499,14 +499,19 @@ func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
 	}
 	var code int
 	var stdout string
-	captureStderr(func() {
+	stderr := captureStderr(func() {
 		stdout = captureStdout(func() {
 			code = reportFixResult(opts, result, &vlog.Logger{})
 		})
 	})
 	assert.Equal(t, 0, code)
+	assert.NotContains(t, stdout, "[", "dry-run JSON must go to stderr, not stdout")
+
+	// Strip the trailing stats line so the rest is parseable JSON.
+	jsonEnd := strings.LastIndex(stderr, "]")
+	require.GreaterOrEqual(t, jsonEnd, 0, "stderr must contain JSON payload; got: %s", stderr)
 	var records []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(stdout), &records))
+	require.NoError(t, json.Unmarshal([]byte(stderr[:jsonEnd+1]), &records))
 	require.Len(t, records, 1)
 	assert.Equal(t, "f.md", records[0]["path"])
 }
@@ -521,13 +526,14 @@ func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
 	}
 	var code int
 	var stdout string
-	captureStderr(func() {
+	stderr := captureStderr(func() {
 		stdout = captureStdout(func() {
 			code = reportFixResult(opts, result, &vlog.Logger{})
 		})
 	})
 	assert.Equal(t, 0, code)
 	assert.Empty(t, stdout)
+	assert.NotContains(t, stderr, "{", "--quiet must suppress dry-run JSON on stderr too")
 }
 
 func TestReportFixResult_DiagnosticsReturnsCode1(t *testing.T) {
@@ -568,7 +574,8 @@ func TestReportFixResultTo_DryRunJSONWriteErrorReturns2(t *testing.T) {
 	}
 	var code int
 	captureStderr(func() {
-		code = reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{}, io.Discard)
+		// Dry-run JSON goes to stderr; route the error writer there.
+		code = reportFixResultTo(opts, result, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
 	})
 	assert.Equal(t, 2, code)
 }

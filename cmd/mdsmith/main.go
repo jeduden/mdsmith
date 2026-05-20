@@ -614,7 +614,9 @@ func diagsToJSONDiags(diags []lint.Diagnostic) []jsonDiag {
 // writeDryRunJSON emits the per-file dry-run JSON payload on w as a
 // JSON array of dryRunJSONFile records. Records are emitted for every
 // file in WouldFixFiles plus any file that has remaining diagnostics
-// not already covered. Returns a non-zero exit code on write error.
+// not already covered. Callers route w to stderr to match the
+// existing lint-output contract documented in
+// docs/reference/cli.md. Returns a non-zero exit code on write error.
 func writeDryRunJSON(w io.Writer, fixResult *fixpkg.Result) int {
 	diagsByFile := make(map[string][]lint.Diagnostic)
 	for _, d := range fixResult.Diagnostics {
@@ -1062,7 +1064,9 @@ func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.L
 	printErrors(fixResult.Errors)
 
 	if opts.dryRun && opts.format == "json" && !opts.quiet {
-		if code := writeDryRunJSON(stdoutW, fixResult); code != 0 {
+		// Match `check --format json` and `fix --format json`: lint
+		// output goes to stderr (see docs/reference/cli.md "Output").
+		if code := writeDryRunJSON(stderrW, fixResult); code != 0 {
 			return code
 		}
 	} else {

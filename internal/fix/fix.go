@@ -341,14 +341,16 @@ func countByRule(diags []lint.Diagnostic) map[string]int {
 // hydrateLintFile copies onto a freshly-parsed *lint.File the parse-
 // time and resolution context that the engine.Runner sets per-file
 // (see runner.go ~line 90-108): FS, RootFS/RootDir, FrontMatter,
-// LineOffset, StripFrontMatter, MaxInputBytes, GitignoreFunc, and
-// GeneratedRanges (recomputed for the parsed bytes). Used by both
+// LineOffset, StripFrontMatter, MaxInputBytes, DryRun, GitignoreFunc,
+// and GeneratedRanges (recomputed for the parsed bytes). Used by both
 // the post-fix CheckRules call and the parsedFile inside each
 // applyFixPasses iteration so rules see the same File regardless of
 // which Fixer phase invokes them. Without this, fixable rules like
 // catalog (consults GetGitignore for glob filtering) and include
 // (consults MaxInputBytes for secondary reads) silently produce
-// different post-fix bytes than `mdsmith check` would have validated.
+// different post-fix bytes than `mdsmith check` would have validated,
+// and side-effect-only fixers (e.g. MDS048 checking DryRun) would see
+// DryRun=false on re-parsed files and ignore the contract.
 func hydrateLintFile(parsed *lint.File, lf *lint.File, dirFS fs.FS) {
 	parsed.FS = dirFS
 	parsed.RootFS = lf.RootFS
@@ -357,6 +359,7 @@ func hydrateLintFile(parsed *lint.File, lf *lint.File, dirFS fs.FS) {
 	parsed.LineOffset = lf.LineOffset
 	parsed.StripFrontMatter = lf.StripFrontMatter
 	parsed.MaxInputBytes = lf.MaxInputBytes
+	parsed.DryRun = lf.DryRun
 	parsed.GitignoreFunc = lf.GitignoreFunc
 	parsed.GeneratedRanges = gensection.FindAllGeneratedRanges(parsed)
 }

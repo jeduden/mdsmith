@@ -625,13 +625,18 @@ func TestE2E_Fix_DryRun_JSON_PerFileRecords(t *testing.T) {
 	isolateDir(t, dir)
 	writeFixture(t, dir, "dirty.md", "# Title\n\nHello   \nworld  \n")
 
-	stdout, _, exitCode := runBinaryInDir(t, dir, "",
+	stdout, stderr, exitCode := runBinaryInDir(t, dir, "",
 		"fix", "--dry-run", "--format", "json", "dirty.md")
 	require.Equal(t, 0, exitCode, "expected exit code 0")
+	assert.Empty(t, stdout, "dry-run JSON must go to stderr, not stdout")
 
+	// stderr is the JSON payload followed by the stats summary line.
+	jsonEnd := strings.LastIndex(stderr, "]")
+	require.GreaterOrEqual(t, jsonEnd, 0,
+		"stderr must contain JSON payload; got: %s", stderr)
 	var records []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(stdout), &records),
-		"json output must parse; got: %s", stdout)
+	require.NoError(t, json.Unmarshal([]byte(stderr[:jsonEnd+1]), &records),
+		"json output must parse; got: %s", stderr)
 	require.Len(t, records, 1)
 
 	rec := records[0]
