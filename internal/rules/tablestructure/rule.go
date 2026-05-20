@@ -400,10 +400,30 @@ func isHeader(line []byte, prefix string) bool {
 	if c == "" || !containsUnescapedPipe(c) {
 		return false
 	}
-	if strings.HasPrefix(strings.TrimSpace(c), "#") {
-		return false // ATX heading, not a table header
+	if isATXHeading(c) {
+		return false
 	}
 	return !isSeparatorContent(c)
+}
+
+// isATXHeading reports whether s has the shape of a CommonMark ATX
+// heading: one to six `#` characters followed by a space, tab, or
+// end-of-line. A bare `#` at the start (e.g. `#1 | x`) is not a
+// heading and must not exclude a candidate from table parsing.
+func isATXHeading(s string) bool {
+	s = strings.TrimSpace(s)
+	n := 0
+	for n < len(s) && n < 6 && s[n] == '#' {
+		n++
+	}
+	if n == 0 {
+		return false
+	}
+	if n == len(s) {
+		return true // bare hashes, empty heading
+	}
+	c := s[n]
+	return c == ' ' || c == '\t'
 }
 
 // containsUnescapedPipe reports whether s contains a `|` that is a
@@ -463,8 +483,13 @@ func endsWithUnescapedPipe(s string) bool {
 
 func parseRow(line []byte, lineNum int, prefix string) tableRow {
 	c := rowContent(line, prefix)
-	lead := strings.HasPrefix(c, "|")
-	trail := endsWithUnescapedPipe(c)
+	// Extra whitespace between the prefix and the first cell — common
+	// inside list items and blockquotes with double-space indent —
+	// must not hide a real edge pipe; logicalCells already trims, so
+	// edge detection mirrors it.
+	t := strings.TrimSpace(c)
+	lead := strings.HasPrefix(t, "|")
+	trail := endsWithUnescapedPipe(t)
 	return tableRow{
 		lineNum:  lineNum,
 		leading:  lead,
