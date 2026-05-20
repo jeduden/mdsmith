@@ -117,6 +117,7 @@ footer: |
 | 188 | 🔲     | opus   | [Regex-over-source rules — inventory and AST-resident replacements](plan/188_regex-vs-ast-inventory.md)                                 |
 | 189 | ✅     | opus   | [Finish the multiplex migration for pure per-node rules](plan/189_multiplex-finish.md)                                                  |
 | 190 | ✅     | opus   | [Intra-file rule parallelism for non-NodeChecker rules](plan/190_intra-file-rule-parallelism.md)                                        |
-| 191 | 🔲     | opus   | [Hand-rolled DFA for Punkt's `reAbbr` to skip regex backtracking](plan/191_punkt-reabbr-dfa.md)                                         |
+| 191 | ✅     | opus   | [Hand-rolled DFA for Punkt's `reAbbr` to skip regex backtracking](plan/191_punkt-reabbr-dfa.md)                                         |
 | 192 | ✅     | opus   | [Run-scoped read cache for catalog cross-host redundancy](plan/192_catalog-run-scoped-readcache.md)                                     |
+| 193 | 🔲     | opus   | [Rework MDS024 to fit the per-rule allocation budget (≤ 10 allocs/op)](plan/193_mds024-allocation-budget.md)                            |
 <?/catalog?>

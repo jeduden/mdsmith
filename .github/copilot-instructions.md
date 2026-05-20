@@ -210,25 +210,23 @@ Requires Go 1.24+.
 
 #### Project Layout
 
-Follow the [standard Go project
-layout](https://go.dev/doc/modules/layout):
+Follows the [standard Go project layout][stdlayout]:
 
-- `cmd/mdsmith/` — main application entry point
-- `internal/` — private packages not importable by
-  other modules
-- `internal/rules/` — rule documentation
-  (`internal/rules/<id>-<name>/README.md`)
-- `testdata/` — test fixtures (markdown files for
-  testing rules)
+- `cmd/mdsmith/` — main entry point.
+- `internal/` — private packages.
+- `internal/rules/<id>-<name>/` — rule code, README,
+  and good/bad fixtures.
+- `testdata/` — shared markdown fixtures.
+
+[stdlayout]: https://go.dev/doc/modules/layout
 
 #### Code Style
 
-- Follow standard Go conventions (gofmt, goimports)
-- Use golangci-lint for linting
-- Keep functions small and focused
-- Error messages should be lowercase, no trailing
-  punctuation
-- Prefer returning errors over panicking
+- Follow standard Go conventions (gofmt, goimports).
+- Use golangci-lint for linting.
+- Keep functions small and focused.
+- Error messages: lowercase, no trailing punctuation.
+- Prefer returning errors over panicking.
 
 #### Defensive Code
 
@@ -236,75 +234,72 @@ Add a defensive branch only when you can drive it
 red/green. Write the failing test first. Then add
 the code that takes the branch.
 
+#### Allocation Budget
+
+**A rule's `Check` allocates ≤ 10 times per call on
+representative input.** Most rules allocate 0–6;
+verify with `b.ReportAllocs()`. MDS024 and MDS029 are the standing exceptions.
+
+- Walk `f.Lines` / `f.AST` directly.
+- Prefer `bytes.X` / `IndexByte` over `regexp` for
+  fixed searches.
+- Compile every `regexp.Regexp` at package scope.
+- Pre-size slices with `make([]X, 0, n)`.
+- Reuse loop-local buffers via `buf = buf[:0]`.
+- Return `nil`, not an empty slice, on no diagnostics.
+
 #### Test Fixtures
 
 Rule test fixtures live in
-`internal/rules/<id>-<name>/`. Each rule has `good/` and
-`bad/` examples (or `good.md` / `bad.md`).
+`internal/rules/<id>-<name>/`. Each rule has `good/`
+and `bad/` examples (or `good.md` / `bad.md`).
 
 Good fixtures must pass **all default-enabled rules**
-plus the rule under test. Default-disabled (opt-in)
-rules are skipped for other rules' fixtures: a
-good fixture for MDS001 is not required to also
-satisfy MDS043, since MDS043 is opt-in and would not
-fire in a default project. When a good fixture uses
-non-default settings (e.g. setext headings, tilde
-fences), add a matching override in `.mdsmith.yml`
-so that `mdsmith check .` also passes.
+plus the rule under test. Opt-in rules are skipped:
+a good MDS001 fixture need not also satisfy MDS043.
+When a good fixture uses non-default settings,
+override them in `.mdsmith.yml` so `mdsmith check .`
+also passes. Bad fixtures are excluded via the
+`ignore:` section.
 
-Bad fixtures are excluded via the `ignore:` section in
-`.mdsmith.yml`.
-
-When adding or changing a rule feature, add both:
+When adding or changing a rule, add both:
 
 1. **Unit tests** in `rule_test.go` (inline markdown,
-   fast red/green cycle). Use `require` from testify
-   for preconditions that abort the test and `assert`
-   for checks that continue. Use `Same`/`NotSame` for
+   fast red/green). Use `require` for preconditions
+   and `assert` for checks; `Same`/`NotSame` for
    pointer identity.
-2. **Fixture tests** under `internal/rules/<id>-<name>/`
-   (`good/` and `bad/` markdown files with YAML
-   frontmatter specifying expected diagnostics). These
-   are discovered automatically by the integration test
-   runner in `internal/integration/rules_test.go`.
+2. **Fixture tests** under
+   `internal/rules/<id>-<name>/` with YAML frontmatter
+   specifying expected diagnostics. Discovered
+   automatically by
+   `internal/integration/rules_test.go`.
 
 #### Config Merge Semantics
 
 Layered config (defaults → kinds → overrides) is
 **deep-merged** rule by rule:
 
-- Maps merge key by key; sibling settings set in earlier
-  layers survive when a later layer touches only one key.
-- Scalars at a leaf are replaced wholesale by the later
-  layer.
-- List-typed settings replace by default. A rule opts a
-  particular list setting into `append` by implementing
-  `rule.ListMerger.SettingMergeMode(key)` and returning
-  `rule.MergeAppend`. The placeholder vocabulary
-  (`placeholders:`) is the canonical append-mode setting.
+- Maps merge key by key; siblings set in earlier
+  layers survive partial overrides.
+- Scalar leaves are replaced wholesale.
+- List settings replace by default. Opt into
+  `append` by implementing
+  `rule.ListMerger.SettingMergeMode(key)`. The
+  placeholder vocabulary is the canonical example.
 - A bool-only layer (`rule-name: false`) toggles
   `enabled` without erasing inherited settings.
 
-When adding a new list-typed setting, decide whether
-it should `append` or `replace`. Document the choice
-next to its `ApplySettings` handler.
+New list-typed settings must document the choice
+next to their `ApplySettings` handler.
 
 #### Generated Sections
 
 Content between `<?directive ... ?>` and
-`<?/directive?>` markers is auto-generated. Do not
-edit the body by hand — edit the directive parameters
-or the source file it references, then run
-`mdsmith fix <file>` to regenerate.
-
-After merge conflicts in generated sections, run
-`mdsmith fix <file>` to regenerate. The
-`merge-driver` command automates this:
-
-```bash
-mdsmith merge-driver install [files...]
-```
-
-Run `mdsmith merge-driver install` once per clone.
+`<?/directive?>` markers is auto-generated. Edit
+directive parameters or the source file, then run
+`mdsmith fix <file>` — never the body by hand. Run
+`mdsmith merge-driver install [files...]` once per
+clone so generated-section conflicts resolve
+automatically.
 <?/include?>
 <?/include?>
