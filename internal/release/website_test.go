@@ -3,6 +3,7 @@ package release
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -648,4 +649,149 @@ func TestTransformRulePage_AnchoredTitledReadmeLink(t *testing.T) {
 		"anchored+titled sibling README link must keep both #fragment and title")
 	assert.NotContains(t, got, "README.md",
 		"no unpublished README.md target may survive")
+}
+
+// --- non-MDS relative-link rewrite ------------------------------
+//
+// MDS024's README references its rule_test.go sibling as a
+// reference-style def (`[guard-test]: ../paragraphstructure/rule_test.go`)
+// and its mdtext cousin as a 2-up def
+// (`[harness]: ../../mdtext/sentence_equivalence_test.go`). Both
+// shipped verbatim into the synced rule page and were flagged
+// MDS027 by the deploy's mdsmith check pass. The four tests
+// below pin the rewrite for the four shapes — inline vs ref-def,
+// 1-up sibling vs 2-up cousin — that a rule README can author
+// when pointing at unpublished Go sources or test files.
+
+func TestTransformRulePage_SiblingNonMDSRefDef(t *testing.T) {
+	in := "[guard-test]: ../paragraphstructure/rule_test.go\n"
+	got := string(transformRulePage([]byte(in), "MDS024-paragraph-structure"))
+	assert.Contains(t, got,
+		"[guard-test]: https://github.com/jeduden/mdsmith/blob/main/"+
+			"internal/rules/paragraphstructure/rule_test.go",
+		"reference-style 1-up sibling non-MDS link must become a GitHub blob URL")
+	assert.NotContains(t, got, "../paragraphstructure/",
+		"no repo-relative sibling path may survive")
+}
+
+func TestTransformRulePage_CousinNonMDSInline(t *testing.T) {
+	in := "See [harness](../../mdtext/sentence_equivalence_test.go).\n"
+	got := string(transformRulePage([]byte(in), "MDS024-paragraph-structure"))
+	assert.Contains(t, got,
+		"[harness](https://github.com/jeduden/mdsmith/blob/main/"+
+			"internal/mdtext/sentence_equivalence_test.go)",
+		"inline 2-up cousin non-MDS link must become a GitHub blob URL")
+	assert.NotContains(t, got, "../../mdtext/",
+		"no repo-relative cousin path may survive")
+}
+
+func TestTransformRulePage_CousinNonMDSRefDef(t *testing.T) {
+	in := "[harness]: ../../mdtext/sentence_equivalence_test.go\n"
+	got := string(transformRulePage([]byte(in), "MDS024-paragraph-structure"))
+	assert.Contains(t, got,
+		"[harness]: https://github.com/jeduden/mdsmith/blob/main/"+
+			"internal/mdtext/sentence_equivalence_test.go",
+		"reference-style 2-up cousin non-MDS link must become a GitHub blob URL")
+	assert.NotContains(t, got, "../../mdtext/",
+		"no repo-relative cousin path may survive")
+}
+
+func TestTransformRulePage_TitledRelativeNonMDSKeepsTitle(t *testing.T) {
+	in := "Inline: [g](../../mdtext/x.go \"H\").\n" +
+		"[r]: ../../mdtext/x.go \"H\"\n" +
+		"[s]: ../paragraphstructure/rule_test.go \"G\"\n"
+	got := string(transformRulePage([]byte(in), "MDS024-paragraph-structure"))
+	assert.Contains(t, got,
+		`[g](https://github.com/jeduden/mdsmith/blob/main/internal/mdtext/x.go "H")`,
+		"titled 2-up cousin inline must keep its title")
+	assert.Contains(t, got,
+		`[r]: https://github.com/jeduden/mdsmith/blob/main/internal/mdtext/x.go "H"`,
+		"titled 2-up cousin ref-def must keep its title")
+	assert.Contains(t, got,
+		`[s]: https://github.com/jeduden/mdsmith/blob/main/internal/rules/`+
+			`paragraphstructure/rule_test.go "G"`,
+		"titled 1-up sibling ref-def must keep its title")
+}
+
+// TestRewriteRuleRelative_Depth3PlusDeclined pins that
+// depth-3+ relative non-MDS links are NOT rewritten by the
+// rule-page rewriter. The earlier rewriteRuleLinks pass owns
+// every repo-rooted path it can name (plan/, cmd/, internal/,
+// docs/, plan/, root files, …); a path outside that
+// alternative list (e.g. `../../../demo/foo.go`) reaches
+// rewriteRuleRelativeInline at depth 3 and must stay as
+// authored, because depth 3 from internal/rules/<rule>/ is the
+// repo root and the per-rule rewriter cannot guess a prefix
+// that would produce a correct GitHub URL. A visible relative
+// link the synced-tree lint will flag is the safe outcome —
+// silently mapping three-up to a fabricated internal/<x> URL
+// would be worse.
+func TestRewriteRuleRelative_Depth3PlusDeclined(t *testing.T) {
+	in := "Inline: [d](../../../demo/foo.go).\n[r]: ../../../demo/foo.go\n"
+	got := string(transformRulePage([]byte(in), "MDS001-line-length"))
+	assert.Contains(t, got, "[d](../../../demo/foo.go)",
+		"depth-3+ inline link must remain unchanged")
+	assert.Contains(t, got, "[r]: ../../../demo/foo.go",
+		"depth-3+ ref-def must remain unchanged")
+}
+
+// TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks is the
+// repo-wide regression for the deploy failure: every rule
+// README that links at a `(?:\.\./)+<non-MDS>` repo path must
+// have that path rewritten before it lands on the published
+// site, since the synced rule pages live at
+// website/content/docs/rules/MDS…/ and unrewritten relative
+// targets resolve to nothing under that tree.
+//
+// The check walks the actual internal/rules/MDS…/README.md
+// files, runs transformMarkdown then transformRulePage (the
+// same composition syncRulePages uses), and scans each rule's
+// transformed body — outside code regions — for any leftover
+// inline `\]\((?:\.\./)+[a-z._]` or reference-style
+// `^\[…\]:\s+(?:\.\./)+[a-z._]` pattern. The `(?:\.\./)+`
+// matches any depth (1 sibling, 2 cousin, 3+ repo-rooted)
+// and the lead-in–only match catches a titled link too — the
+// production regex's `\S*` would stop at the space before
+// a `"title"` and the closing `\)` would never reach, leaving
+// a titled leftover invisible to a path-anchored scan. The
+// lowercase first-char excludes legitimate `../MDSyyy/`
+// cross-rule site references that survive untouched.
+func TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks(t *testing.T) {
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	require.NoError(t, err)
+	rulesDir := filepath.Join(repoRoot, "internal", "rules")
+	entries, err := os.ReadDir(rulesDir)
+	require.NoError(t, err)
+
+	leftoverInline := regexp.MustCompile(`\]\((?:\.\./)+[a-z._][^)\n]*\)?`)
+	leftoverRefDef := regexp.MustCompile(`(?m)^\[[^\]]+\]:\s+(?:\.\./)+[a-z._][^\n]*`)
+
+	for _, e := range entries {
+		if !e.IsDir() || !ruleDirName.MatchString(e.Name()) {
+			continue
+		}
+		ruleName := e.Name()
+		t.Run(ruleName, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(rulesDir, ruleName, "README.md"))
+			if os.IsNotExist(err) {
+				t.Skip("rule has no README.md")
+			}
+			require.NoError(t, err)
+			transformed := transformRulePage(transformMarkdown(data), ruleName)
+			var inlineHit, refDefHit string
+			applyOutsideCode(transformed, func(seg []byte) []byte {
+				if loc := leftoverInline.FindIndex(seg); loc != nil && inlineHit == "" {
+					inlineHit = string(seg[loc[0]:loc[1]])
+				}
+				if loc := leftoverRefDef.FindIndex(seg); loc != nil && refDefHit == "" {
+					refDefHit = string(seg[loc[0]:loc[1]])
+				}
+				return seg
+			})
+			assert.Empty(t, inlineHit,
+				"inline non-MDS relative link survived rule-page transforms")
+			assert.Empty(t, refDefHit,
+				"ref-def non-MDS relative link survived rule-page transforms")
+		})
+	}
 }
