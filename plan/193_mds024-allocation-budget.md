@@ -1,7 +1,7 @@
 ---
 id: 193
 title: Rework MDS024 to fit the per-rule allocation budget (≤ 10 allocs/op)
-status: "🔲"
+status: "🔳"
 model: opus
 depends-on: [191]
 summary: >-
@@ -113,7 +113,7 @@ abbr-heavy fixture:
 
 ## Tasks
 
-1. [ ] Add `BenchmarkRule_MDS024` in
+1. [x] Add `BenchmarkRule_MDS024` in
    [`internal/rules/paragraphstructure/`](../internal/rules/paragraphstructure/)
    that constructs a `lint.File` over the abbr-heavy fixture
    and runs `(*Rule).Check` once per iteration with

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/internal/testcorpus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -186,47 +187,22 @@ func BenchmarkSplitSentences(b *testing.B) {
 	}
 }
 
-// abbrHeavyCorpus is the abbreviation-heavy slice that exercises the
-// reAbbr-driven path inside MultiPunctWordAnnotation. Every paragraph
-// is built around period-rich tokens — initials, honorifics, dotted
-// abbreviations, decimals, version numbers — exactly the input shape
-// where the regex's backtracking loop is hottest. Compared with the
-// full equivalence corpus, this is a 5–10x denser dose of the hot
-// frame, so an optimization on that frame is visible here without
-// being diluted by ordinary prose. See plan 191 task 1.
-var abbrHeavyCorpus = []string{
-	"Dr. Smith met Mr. Jones at 3.14 p.m. on Jan. 5. " +
-		"Mrs. Lee then arrived at 4.30 p.m. with Ms. Park.",
-	"The U.S. and U.K. signed it at 10.30 a.m. " +
-		"The E.U. and U.S.S.R. did not at 11.45 a.m.",
-	"J. R. R. Tolkien wrote it. C. S. Lewis read it. " +
-		"T. S. Eliot reviewed it. W. B. Yeats praised it.",
-	"Use e.g. this short form, i.e. the abbreviated one, " +
-		"vs. the long form, etc. See sec. 1.2.3 of the doc.",
-	"At No. 1026.253.553, the F.B.I. arrived at 7.15 a.m. " +
-		"The C.I.A. and N.S.A. followed at 8.30 a.m.",
-	"Version 1.2.3 dropped Mr. Smith's API at v. 2.0. " +
-		"See appendix A.1.2 vs. appendix B.3.4 for details.",
-	"He worked for the U.S. govt. from Jan. 1990 to Dec. 2005. " +
-		"She worked for the U.K. govt. from Feb. 1995 to Nov. 2010.",
-	"Prof. Adams cited Smith et al., 2020, p. 14, sec. 2.3. " +
-		"Dr. Brown cited Jones et al., 2021, p. 22, sec. 4.5.",
-}
-
 // BenchmarkSplitSentences_Subset measures Punkt's wall time on
 // abbreviation-heavy prose. The MultiPunctWordAnnotation third
-// pass fires once per period-ending token; this corpus is the
-// densest such input. Under the default build it exercises
+// pass fires once per period-ending token; testcorpus.AbbrHeavy is
+// the densest such input. Under the default build it exercises
 // matchAbbrPattern inside fastMultiPunctWordAnnotation; under
 // `-tags mdtext_punkt_upstream` it exercises reAbbr inside
 // english.MultiPunctWordAnnotation. The plan 191 acceptance bar
 // is a ≥10% improvement of the default build over the upstream
 // build here. The full BenchmarkSplitSentences number remains
 // the equivalence-corpus baseline; this one isolates the lever.
+// The corpus is shared with paragraph-structure's BenchmarkRule_MDS024
+// (plan 193 task 1) so both gates measure the same bytes.
 func BenchmarkSplitSentences_Subset(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		for _, s := range abbrHeavyCorpus {
+		for _, s := range testcorpus.AbbrHeavy {
 			_ = mdtext.SplitSentences(s)
 		}
 	}
