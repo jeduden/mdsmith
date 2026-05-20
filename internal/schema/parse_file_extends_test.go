@@ -2,6 +2,7 @@ package schema
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -179,6 +180,28 @@ func TestParseFile_ExtendsMissingParentReturnsError(t *testing.T) {
 	_, err := ParseFile(&FileReader{}, p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "extends parent")
+}
+
+// TestParseFile_ExtendsDepthLimitTrips exercises the
+// maxIncludeDepth guard in resolveExtendsParent: a deep chain
+// surfaces a clear error rather than recursing without bound.
+func TestParseFile_ExtendsDepthLimitTrips(t *testing.T) {
+	dir := t.TempDir()
+	// Build a chain longer than maxIncludeDepth (10).
+	for i := 0; i < 12; i++ {
+		var body string
+		if i == 11 {
+			body = "---\nid: 'string'\n---\n# ?\n"
+		} else {
+			body = fmt.Sprintf("---\nextends: level_%02d.md\n---\n# ?\n", i+1)
+		}
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, fmt.Sprintf("level_%02d.md", i)),
+			[]byte(body), 0o644))
+	}
+	_, err := ParseFile(&FileReader{}, filepath.Join(dir, "level_00.md"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "depth")
 }
 
 // TestParseFile_ExtendsMultiHopChain walks more than one level of
