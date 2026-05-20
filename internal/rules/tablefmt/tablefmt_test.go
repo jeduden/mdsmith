@@ -241,7 +241,11 @@ func TestSeparatorAlignments_ReturnsFirstSeparatorRowAlignments(t *testing.T) {
 	rows := []row{
 		{cells: []string{"H", "H", "H"}, isSeparator: false},
 		{cells: []string{":---", ":---:", "---:"}, isSeparator: true, alignments: want},
-		{cells: []string{":---", "---", "---"}, isSeparator: true, alignments: []align{alignLeft, alignNone, alignNone}},
+		{
+			cells:       []string{":---", "---", "---"},
+			isSeparator: true,
+			alignments:  []align{alignLeft, alignNone, alignNone},
+		},
 	}
 	assert.Equal(t, want, separatorAlignments(rows),
 		"first separator row's alignments win")
