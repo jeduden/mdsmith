@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 func TestCheck_ProperBlankLines_NoViolation(t *testing.T) {
@@ -127,4 +129,65 @@ func TestFix_HeadingInsideCodeBlock_NoCorruption(t *testing.T) {
 	if string(result) != string(src) {
 		t.Errorf("fix corrupted code block content:\nexpected: %q\ngot:      %q", string(src), string(result))
 	}
+}
+
+// synthCodeAndHeadingFile builds a *lint.File whose AST has a
+// FencedCodeBlock covering one source-line range AND a Heading
+// whose Lines() segment falls inside that same range. Goldmark's
+// parser will never produce this from real Markdown — headings
+// and code blocks are mutually exclusive at the parse-line level
+// — but the defensive `if codeLines[line] { return nil }` guard
+// in CheckNode and collectHeadingBlankLineInsertions exists for
+// AST shapes built directly (this test, or any future parser
+// behaviour change). Drive both branches red/green here.
+func synthCodeAndHeadingFile(t *testing.T) *lint.File {
+	t.Helper()
+	// Source layout (offsets):
+	//   "```\n"        offsets [ 0,  4) line 1
+	//   "code\n"       offsets [ 4,  9) line 2
+	//   "```\n"        offsets [ 9, 13) line 3
+	src := []byte("```\ncode\n```\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+
+	doc := ast.NewDocument()
+	fenced := ast.NewFencedCodeBlock(nil)
+	fenced.Lines().Append(text.NewSegment(4, 8)) // "code" on line 2
+	doc.AppendChild(doc, fenced)
+
+	// Synthetic heading whose segment starts at offset 4 — line 2
+	// — which lint.CollectCodeBlockLines will also report.
+	heading := ast.NewHeading(1)
+	heading.Lines().Append(text.NewSegment(4, 8))
+	doc.AppendChild(doc, heading)
+
+	f.AST = doc
+	return f
+}
+
+// TestCheckNode_HeadingInCodeBlockRegion pins the `if
+// codeLines[line] { return nil }` guard in CheckNode (rule.go
+// line ~54).
+func TestCheckNode_HeadingInCodeBlockRegion(t *testing.T) {
+	f := synthCodeAndHeadingFile(t)
+	var heading *ast.Heading
+	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
+		if h, ok := c.(*ast.Heading); ok {
+			heading = h
+			break
+		}
+	}
+	require.NotNil(t, heading)
+	diags := (&Rule{}).CheckNode(heading, true, f)
+	assert.Nil(t, diags, "heading whose line falls inside a code-block region must be skipped")
+}
+
+// TestFix_HeadingInCodeBlockRegion pins the parallel guard
+// inside collectHeadingBlankLineInsertions (rule.go line ~153):
+// Fix must not insert blank lines around a synthetic heading
+// whose line collides with a code block.
+func TestFix_HeadingInCodeBlockRegion(t *testing.T) {
+	f := synthCodeAndHeadingFile(t)
+	got := (&Rule{}).Fix(f)
+	assert.Equal(t, f.Source, got, "Fix must not touch a heading whose line is inside a code-block region")
 }

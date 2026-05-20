@@ -109,6 +109,21 @@ func TestEmptyLinkText_NoDiagnostic(t *testing.T) {
 	assert.Empty(t, diags, "empty link text must not trigger a leading/trailing-space diagnostic")
 }
 
+// TestDiagsForSpan_EmptyInner pins diagsForSpan's empty-inner
+// branch at the helper level. spanForNode usually rejects empty
+// spans earlier via bracketSpan, but the helper is also reached
+// from the Fix path through collectSpans; pin the contract that
+// an empty span never emits a whitespace diagnostic regardless of
+// which caller constructed it.
+func TestDiagsForSpan_EmptyInner(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("[](u)\n"))
+	require.NoError(t, err)
+	// [ at 0, ] at 1, inner = source[1:1] = "".
+	s := span{open: 0, close: 1, img: false}
+	diags := diagsForSpan(s, f, "MDS049", "no-space-in-link-text")
+	assert.Nil(t, diags, "empty inner span must not flag whitespace")
+}
+
 func TestNewlineInLinkTextNotFlagged(t *testing.T) {
 	// Newline between words inside brackets must not be flagged.
 	diags := check(t, "# T\n\n[long text that\nwraps](url)\n", true)

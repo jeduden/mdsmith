@@ -5,7 +5,10 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 func TestCheck_CorrectIndent2Spaces(t *testing.T) {
@@ -156,4 +159,72 @@ func TestCategory(t *testing.T) {
 	if r.Category() == "" {
 		t.Error("expected non-empty category")
 	}
+}
+
+// TestFirstLineOfListItem_LinesPath pins the
+// `li.Lines().Len() > 0` branch. Goldmark's parser does not
+// populate Lines() on ListItem nodes in normal source — content
+// lives in child Paragraph nodes — but the helper handles the
+// case in case future goldmark versions or programmatic AST
+// construction set Lines() directly. Construct the segment
+// manually and pin that the helper returns the line for that
+// segment's start offset.
+func TestFirstLineOfListItem_LinesPath(t *testing.T) {
+	src := []byte("alpha\nbeta\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+	li := ast.NewListItem(0)
+	li.Lines().Append(text.NewSegment(6, 10)) // "beta" starts at offset 6 (line 2)
+	assert.Equal(t, 2, firstLineOfListItem(f, li))
+}
+
+// TestFirstLineOfListItem_Empty_ReturnsZero pins the final
+// `return 0` defensive branch: a ListItem with no Lines() and
+// no children that yield a positive line falls through to zero.
+// Goldmark won't produce this in normal source, but the helper
+// must not crash on a directly-constructed empty ListItem (the
+// CheckNode bounds guard relies on this contract).
+func TestFirstLineOfListItem_Empty_ReturnsZero(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("\n"))
+	require.NoError(t, err)
+	li := ast.NewListItem(0)
+	assert.Equal(t, 0, firstLineOfListItem(f, li))
+}
+
+// TestCheckNode_EmptyNestedListItem_GuardSkips pins CheckNode's
+// `line < 1 || line > len(f.Lines)` bounds check: a nested empty
+// ListItem has nestingLevel > 0 (passes the early return) but
+// firstLineOfListItem returns 0, so the bounds check fires and
+// CheckNode returns nil instead of indexing f.Lines[-1].
+func TestCheckNode_EmptyNestedListItem_GuardSkips(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("\n"))
+	require.NoError(t, err)
+	parent := ast.NewListItem(0)
+	nested := ast.NewListItem(0)
+	parent.AppendChild(parent, nested)
+	r := &Rule{Spaces: 2}
+	diags := r.CheckNode(nested, true, f)
+	assert.Nil(t, diags, "empty nested ListItem must hit the bounds guard, not panic")
+}
+
+// TestFix_EmptyNestedListItem_NoAdjustment pins
+// collectIndentAdjustments's parallel bounds check (rule.go
+// line ~230). Use the same empty-nested-ListItem shape as the
+// CheckNode test; Fix must return the source unchanged.
+func TestFix_EmptyNestedListItem_NoAdjustment(t *testing.T) {
+	src := []byte("\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+	doc := ast.NewDocument()
+	outer := ast.NewList('-')
+	outerItem := ast.NewListItem(0)
+	innerList := ast.NewList('-')
+	innerItem := ast.NewListItem(0) // empty; firstLineOfListItem returns 0
+	innerList.AppendChild(innerList, innerItem)
+	outerItem.AppendChild(outerItem, innerList)
+	outer.AppendChild(outer, outerItem)
+	doc.AppendChild(doc, outer)
+	f.AST = doc
+	got := (&Rule{Spaces: 2}).Fix(f)
+	assert.Equal(t, src, got, "empty nested ListItem must hit the Fix bounds guard")
 }
