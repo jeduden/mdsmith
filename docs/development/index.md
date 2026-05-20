@@ -72,7 +72,7 @@ the code that takes the branch.
 
 **A rule's `Check` allocates ≤ 10 times per call on
 representative input.** Most rules allocate 0–6;
-verify with `b.ReportAllocs()`. MDS024 and MDS029 are the standing exceptions.
+verify with `b.ReportAllocs()`.
 
 - Walk `f.Lines` / `f.AST` directly.
 - Prefer `bytes.X` / `IndexByte` over `regexp` for
