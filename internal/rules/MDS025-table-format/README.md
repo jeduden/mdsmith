@@ -14,10 +14,24 @@ Tables must have consistent column widths and padding.
 
 ## Settings
 
-| Setting           | Type   | Default    | Description                                                                                       |
-|-------------------|--------|------------|---------------------------------------------------------------------------------------------------|
-| `pad`             | int    | `1`        | spaces on each side of cell content                                                               |
-| `separator-style` | string | `"spaced"` | `"spaced"` writes `\| --- \|` (the GFM-spec form); `"compact"` writes the dense `\|---\|` variant |
+| Setting           | Type   | Default    | Description                                                  |
+|-------------------|--------|------------|--------------------------------------------------------------|
+| `pad`             | int    | `1`        | spaces on each side of cell content                          |
+| `separator-style` | string | `"spaced"` | separator row layout (see examples below): spaced or compact |
+
+Separator row examples:
+
+- `spaced` (the GFM-spec form):
+
+  ```text
+  | --- |
+  ```
+
+- `compact` (dense form):
+
+  ```text
+  |---|
+  ```
 
 ## Config
 
