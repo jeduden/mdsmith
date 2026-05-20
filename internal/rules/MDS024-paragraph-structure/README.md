@@ -106,9 +106,30 @@ cumulative of the segmenter's CPU.
 No pure-Go Punkt-equivalent faster segmenter exists. The
 negative is recorded in
 [`sentence_equivalence_test.go`][harness]. The harness
-gates any future candidate. A focused optimization
-target — replacing `reAbbr` with a hand-rolled DFA scanner
-— is tracked in [plan 191][p191].
+gates any future candidate.
+
+A focused optimization swaps in a hand-rolled DFA at
+[`internal/mdtext/abbr.go`](../../mdtext/abbr.go).
+A custom `MultiPunctWordAnnotation` installs it; see
+[`internal/mdtext/fastpunct.go`](../../mdtext/fastpunct.go).
+
+The DFA returns the same boolean as
+`reAbbr.FindAllString(tok, 1) != nil`. Equivalence is
+gated by a 59k-string exhaustive sweep. The harness also
+runs the abbreviation-heavy corpus, the upstream
+golden-rules cases, and the upstream `english/main_test.go`
+cases.
+
+The fast path is the default. Build with
+`-tags mdtext_punkt_upstream` to fall back to the upstream
+`english.NewSentenceTokenizer` for A/B verification.
+
+Measured on a 4-vCPU sandbox, the swap drops
+`BenchmarkSplitSentences` from ~190 to ~158 µs/op (16.8%).
+The abbreviation-heavy `BenchmarkSplitSentences_Subset`
+drops from ~263 to ~231 µs/op (12.2%). See
+[plan 191][p191] for the profile and the equivalence-test
+wiring.
 
 The cheap-bounds guard bounds the cost. Only paragraphs
 that *provably might* violate pay. Documentation,

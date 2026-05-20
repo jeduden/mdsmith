@@ -7,7 +7,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/neurosnap/sentences/english"
 	"github.com/yuin/goldmark/ast"
 
 	sentlib "github.com/neurosnap/sentences"
@@ -209,9 +208,13 @@ var (
 	initOnce  sync.Once
 )
 
+// initTokenizer constructs the package's lazy singleton. The actual
+// builder is supplied by the build-tagged files fastpunct_init.go
+// (default) or upstreampunct.go (tag mdtext_punkt_upstream) — the
+// only behavioural difference is which MultiPunctWordAnnotation is
+// installed in the third-pass abbreviation classifier. See plan 191.
 func initTokenizer() {
-	t, _ := english.NewSentenceTokenizer(nil)
-	tokenizer = t
+	tokenizer = buildTokenizer()
 }
 
 // SplitSentences splits text into individual sentences using a
