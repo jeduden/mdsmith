@@ -5,9 +5,45 @@ package mdtext
 import (
 	"testing"
 
+	"github.com/neurosnap/sentences/data"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMustLoadTraining drives the three branches of mustLoadTraining
+// red/green so the helper's defensive panics satisfy CLAUDE.md's
+// "drive it red/green" rule.
+func TestMustLoadTraining(t *testing.T) {
+	t.Run("happy path returns non-nil storage", func(t *testing.T) {
+		storage := mustLoadTraining(data.MustAsset("data/english.json"))
+		require.NotNil(t, storage)
+		assert.NotNil(t, storage.AbbrevTypes)
+	})
+
+	t.Run("malformed JSON panics with descriptive message", func(t *testing.T) {
+		var got any
+		func() {
+			defer func() { got = recover() }()
+			mustLoadTraining([]byte("not json"))
+		}()
+		require.NotNil(t, got,
+			"mustLoadTraining must panic on malformed bytes, not "+
+				"silently return a half-built tokenizer")
+		msg, ok := got.(string)
+		require.Truef(t, ok, "panic value should be a string, got %T", got)
+		assert.Contains(t, msg,
+			"mdtext: failed to load Punkt training data:",
+			"panic message should name the loader so the cause is "+
+				"obvious without a stack walk")
+	})
+
+	t.Run("empty input panics", func(t *testing.T) {
+		assert.Panics(t,
+			func() { mustLoadTraining(nil) },
+			"nil/empty input must not silently return a half-built "+
+				"tokenizer")
+	})
+}
 
 // Plan 191 / test-pyramid: dedicated unit test for buildTokenizer.
 // The test pins the success-path contract — every component the

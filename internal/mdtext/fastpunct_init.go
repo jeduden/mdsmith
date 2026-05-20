@@ -17,18 +17,8 @@ import (
 // runs matchAbbrPattern in place of `reAbbr.FindAllString`. See
 // `english/main.go:NewSentenceTokenizer` for the upstream original
 // and plan 191 for the rationale.
-//
-// `data.MustAsset` and the `LoadTraining` check below panic if the
-// bundled English Punkt data is missing or malformed. Both are
-// build-time invariants — the asset ships embedded in the binary
-// — but a descriptive panic at init beats a nil dereference deep
-// in tokenAnnotation when the asset is ever rebuilt incorrectly.
 func buildTokenizer() *sentlib.DefaultSentenceTokenizer {
-	raw := data.MustAsset("data/english.json")
-	training, err := sentlib.LoadTraining(raw)
-	if err != nil || training == nil {
-		panic("mdtext: failed to load embedded english.json Punkt training data: " + errString(err))
-	}
+	training := mustLoadTraining(data.MustAsset("data/english.json"))
 
 	// Supervised abbreviations applied by english.NewSentenceTokenizer.
 	for _, abbr := range []string{"sgt", "gov", "no"} {
@@ -64,13 +54,17 @@ func buildTokenizer() *sentlib.DefaultSentenceTokenizer {
 	}
 }
 
-// errString renders an error as a non-empty string for the panic
-// message. A non-nil err yields its Error() text; a nil err (which
-// can pair with a nil training value when LoadTraining returns
-// (nil, nil)) renders as "training is nil".
-func errString(err error) string {
-	if err == nil {
-		return "training is nil"
+// mustLoadTraining parses raw Punkt training JSON and panics with a
+// descriptive message on malformed input or nil result. Extracted
+// from buildTokenizer so the failure branch can be driven red/green
+// with malformed bytes — see TestMustLoadTraining_PanicsOn*.
+func mustLoadTraining(raw []byte) *sentlib.Storage {
+	training, err := sentlib.LoadTraining(raw)
+	if err != nil {
+		panic("mdtext: failed to load Punkt training data: " + err.Error())
 	}
-	return err.Error()
+	if training == nil {
+		panic("mdtext: Punkt training data is nil")
+	}
+	return training
 }
