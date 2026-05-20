@@ -3,23 +3,40 @@
 package mdtext
 
 import (
+	"strings"
+
 	sentlib "github.com/neurosnap/sentences"
 	"github.com/neurosnap/sentences/english"
 )
 
-// buildTokenizer returns the upstream `english.NewSentenceTokenizer`
-// path, with no override of the abbreviation classifier. This is the
-// A/B verification path for plan 191: build with
-// `-tags mdtext_punkt_upstream` to fall back to the upstream code and
-// confirm that the fast-path output matches.
+// upstreamTok is the upstream-build singleton — the unmodified
+// english.NewSentenceTokenizer(nil) pipeline. This file is selected
+// only when -tags mdtext_punkt_upstream is set, which exists so a
+// developer can A/B-compare segmentation under the upstream code path
+// without touching the fork. The equivalence harness in
+// sentence_equivalence_test.go runs under both builds.
 //
 // The upstream constructor's data-load error is swallowed to
 // preserve the original `t, _ := english.NewSentenceTokenizer(nil)`
-// shape this file is meant to verify against. The default build
-// (fastpunct_init.go) panics via mustLoadTraining instead — the
-// two paths differ on error handling, but the verification this
-// file backs is segmentation behaviour on valid input.
-func buildTokenizer() *sentlib.DefaultSentenceTokenizer {
-	t, _ := english.NewSentenceTokenizer(nil)
-	return t
+// shape this file is meant to verify against.
+var upstreamTok *sentlib.DefaultSentenceTokenizer
+
+func initTokenizer() {
+	upstreamTok, _ = english.NewSentenceTokenizer(nil)
+}
+
+// splitSentences is the upstream-build segmentation implementation.
+// Same trim-and-filter behaviour as the default build's
+// splitSentences so the SplitSentences contract is identical across
+// both tags.
+func splitSentences(text string) []string {
+	sents := upstreamTok.Tokenize(text)
+	result := make([]string, 0, len(sents))
+	for _, s := range sents {
+		t := strings.TrimSpace(s.Text)
+		if t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }

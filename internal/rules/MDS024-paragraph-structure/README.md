@@ -79,12 +79,26 @@ to neutral words and never trip the cheap path.
 
 ## Performance
 
-MDS024 is **opt-in** by default — and is the most expensive
-rule mdsmith ships once you enable it. Most short and
-lightly-punctuated paragraphs clear the cheap-bounds guard
-at zero allocations and contribute zero segmenter cost. Long
-prose paragraphs that the guard cannot rule out pay full
-Punkt segmentation, which is the price of an exact diagnostic.
+MDS024 is **opt-in** by default. Short and
+lightly-punctuated paragraphs clear the cheap-bounds
+guard at zero allocations. Long paragraphs that the
+guard cannot rule out pay full Punkt segmentation.
+
+The segmenter is a fork of upstream Punkt vendored
+under [`internal/punkt/`](../../punkt/). The fork is
+byte-identical to upstream over the equivalence
+corpus, but allocation-clean per call. A warm Check
+call against an abbr-heavy paragraph runs at ≤ 10
+allocs/op — pinned by `BenchmarkRule_MDS024` and
+matching the per-rule budget in
+[CLAUDE.md](../../../CLAUDE.md). The `-tags
+mdtext_punkt_upstream` build keeps the original
+pipeline around for A/B comparison.
+
+Plan
+[193](../../../plan/193_mds024-allocation-budget.md)
+records the rework and the measured before/after
+numbers.
 
 Enable when you want exact prose-structure diagnostics.
 Skip when you don't.
