@@ -1092,3 +1092,147 @@ func TestDefaultSettings_Links(t *testing.T) {
 	require.Equal(t, true, links["validate-images"])
 	require.Equal(t, true, links["validate-reference-style"])
 }
+
+func TestDefaultSettings_Wikilinks(t *testing.T) {
+	ds := (&Rule{}).DefaultSettings()
+	require.Equal(t, false, ds["wikilinks"])
+	require.Equal(t, "obsidian", ds["wikilink-style"])
+}
+
+func TestCheck_Wikilinks_DisabledByDefault(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Missing]].\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Empty(t, diags, "wikilinks must not be flagged when wikilinks=false")
+}
+
+func TestCheck_Wikilinks_UnresolvedTarget(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Missing Page]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "Missing Page")
+	require.Contains(t, diags[0].Message, "not found in workspace")
+}
+
+func TestCheck_Wikilinks_ResolvedTarget(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "present.md"), "# Present\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Present]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "wikilinks to existing files must not be flagged")
+}
+
+func TestCheck_Wikilinks_BrokenAnchor(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "notes.md"), "# Notes\n\n## Current Heading\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Notes#Old Heading]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "Old Heading")
+	require.Contains(t, diags[0].Message, "notes.md")
+}
+
+func TestCheck_Wikilinks_ResolvedAnchor(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "notes.md"), "# Notes\n\n## Existing\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Notes#Existing]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "matching wikilink anchors must not be flagged")
+}
+
+func TestCheck_Wikilinks_AliasIgnoredForResolution(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "page.md"), "# Page\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Page|Alias]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "alias must not affect resolution of the target stem")
+}
+
+func TestCheck_Wikilinks_EmbedAnyFileType(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "image.png"), []byte("\x89PNG\r\n"), 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nLook ![[image.png]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "embed must resolve any extension")
+}
+
+func TestCheck_Wikilinks_PlaceholderSuppresses(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[{topic}]] for context.\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{
+		Wikilinks:    true,
+		Placeholders: []string{"var-token"},
+	}
+	diags := r.Check(f)
+	require.Empty(t, diags, "placeholder targets must be skipped")
+}
+
+func TestCheck_Wikilinks_CodeBlockSkipped(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n```\n[[Missing]]\n```\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "wikilinks inside fenced code must not be flagged")
+}
+
+func TestApplySettings_Wikilinks(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"wikilinks": true}))
+	require.True(t, r.Wikilinks)
+
+	err := r.ApplySettings(map[string]any{"wikilinks": "yes"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "wikilinks must be a bool")
+}
+
+func TestApplySettings_WikilinkStyle(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"wikilink-style": "obsidian"}))
+	require.Equal(t, "obsidian", r.WikilinkStyle)
+
+	err := r.ApplySettings(map[string]any{"wikilink-style": "foam"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not supported")
+}
+
+func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
+	t.Helper()
+	f := newLintFile(t, path)
+	f.RootDir = root
+	f.RootFS = os.DirFS(root)
+	return f
+}

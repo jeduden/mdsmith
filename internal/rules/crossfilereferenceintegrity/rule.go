@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,11 +32,13 @@ type LinksConfig struct {
 // Rule checks Markdown links for missing target files and missing heading
 // anchors in linked Markdown files.
 type Rule struct {
-	Include      []string
-	Exclude      []string
-	Strict       bool
-	Placeholders []string // placeholder tokens to treat as opaque
-	Links        LinksConfig
+	Include       []string
+	Exclude       []string
+	Strict        bool
+	Placeholders  []string // placeholder tokens to treat as opaque
+	Wikilinks     bool     // when true, validate Obsidian-style [[...]] targets
+	WikilinkStyle string   // resolution style; only "obsidian" ships today
+	Links         LinksConfig
 }
 
 // ID implements rule.Rule.
@@ -94,8 +97,176 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			)...)
 		}
 	}
+	if r.Wikilinks {
+		diags = append(diags, r.checkWikilinks(f, anchorCache)...)
+	}
 
 	return diags
+}
+
+// checkWikilinks resolves every Obsidian-style wikilink against the
+// project root and emits one diagnostic per unresolved target or
+// missing heading anchor. Wikilink targets pass through the same
+// placeholder filter the standard link check uses.
+func (r *Rule) checkWikilinks(
+	f *lint.File,
+	anchorCache map[string]map[string]bool,
+) []lint.Diagnostic {
+	root := f.RootFS
+	if root == nil && f.RootDir != "" {
+		root = os.DirFS(f.RootDir)
+	}
+	if root == nil {
+		root = f.FS
+	}
+	if root == nil {
+		return nil
+	}
+
+	srcRel := workspaceRelativeSource(f)
+
+	var diags []lint.Diagnostic
+	for _, wl := range linkgraph.ExtractWikiLinks(f) {
+		raw := wikilinkRaw(wl)
+		if placeholders.ContainsBodyToken(wl.Target, r.Placeholders) ||
+			placeholders.ContainsBodyToken(raw, r.Placeholders) {
+			continue
+		}
+		resolved, ok := linkgraph.ResolveWikiLink(root, srcRel, wl.Target)
+		if !ok {
+			diags = append(diags, wikilinkBrokenTargetDiag(f.Path, wl, r))
+			continue
+		}
+		if wl.Anchor == "" || !isMarkdownPath(resolved) {
+			continue
+		}
+		anchors, err := wikilinkAnchorsForTarget(f, root, resolved, anchorCache)
+		if err != nil {
+			diags = append(diags, wikilinkUnreadableTargetDiag(f.Path, wl, resolved, err, r))
+			continue
+		}
+		if anchors[linkgraph.NormalizeAnchor(wl.Anchor)] {
+			continue
+		}
+		diags = append(diags, wikilinkBrokenAnchorDiag(f.Path, wl, resolved, r))
+	}
+	return diags
+}
+
+// wikilinkAnchorsForTarget memoizes anchor lookup per workspace-relative
+// target path so two wikilinks pointing at the same file share one parse.
+func wikilinkAnchorsForTarget(
+	f *lint.File,
+	root fs.FS,
+	resolved string,
+	cache map[string]map[string]bool,
+) (map[string]bool, error) {
+	key := "wikilink:" + resolved
+	if anchors, ok := cache[key]; ok {
+		return anchors, nil
+	}
+	data, err := lint.ReadFSFileLimited(root, resolved, f.MaxInputBytes)
+	if err != nil {
+		return nil, err
+	}
+	target, _ := lint.NewFileFromSource(resolved, data, true) //nolint:errcheck
+	anchors := linkgraph.CollectAnchors(target)
+	cache[key] = anchors
+	return anchors, nil
+}
+
+// workspaceRelativeSource returns f.Path expressed relative to its
+// project root, using forward slashes. When the path cannot be made
+// relative (e.g. a struct-literal test File without RootDir) it
+// returns the original path with separators normalised.
+func workspaceRelativeSource(f *lint.File) string {
+	if f.RootDir == "" {
+		return filepath.ToSlash(f.Path)
+	}
+	abs, err := filepath.Abs(f.Path)
+	if err != nil {
+		return filepath.ToSlash(f.Path)
+	}
+	absRoot, err := filepath.Abs(f.RootDir)
+	if err != nil {
+		return filepath.ToSlash(f.Path)
+	}
+	rel, err := filepath.Rel(absRoot, abs)
+	if err != nil {
+		return filepath.ToSlash(f.Path)
+	}
+	return filepath.ToSlash(rel)
+}
+
+// wikilinkRaw renders wl back to its source form so placeholders that
+// look at the full bracket span (e.g. matching a `{var}` token in the
+// alias) can fire the same way they would for a Markdown link's raw
+// target.
+func wikilinkRaw(wl linkgraph.WikiLink) string {
+	var sb strings.Builder
+	if wl.Embed {
+		sb.WriteByte('!')
+	}
+	sb.WriteString("[[")
+	sb.WriteString(wl.Target)
+	if wl.Anchor != "" {
+		sb.WriteByte('#')
+		sb.WriteString(wl.Anchor)
+	}
+	if wl.Alias != "" {
+		sb.WriteByte('|')
+		sb.WriteString(wl.Alias)
+	}
+	sb.WriteString("]]")
+	return sb.String()
+}
+
+func wikilinkBrokenTargetDiag(
+	path string, wl linkgraph.WikiLink, r *Rule,
+) lint.Diagnostic {
+	return lint.Diagnostic{
+		File:     path,
+		Line:     wl.Line,
+		Column:   wl.Column,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  fmt.Sprintf("wikilink target %q not found in workspace", wl.Target),
+	}
+}
+
+func wikilinkBrokenAnchorDiag(
+	path string, wl linkgraph.WikiLink, resolved string, r *Rule,
+) lint.Diagnostic {
+	return lint.Diagnostic{
+		File:     path,
+		Line:     wl.Line,
+		Column:   wl.Column,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message: fmt.Sprintf(
+			"wikilink %q: anchor %q not found in %s",
+			wikilinkRaw(wl), wl.Anchor, resolved,
+		),
+	}
+}
+
+func wikilinkUnreadableTargetDiag(
+	path string, wl linkgraph.WikiLink, resolved string, err error, r *Rule,
+) lint.Diagnostic {
+	return lint.Diagnostic{
+		File:     path,
+		Line:     wl.Line,
+		Column:   wl.Column,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message: fmt.Sprintf(
+			"cannot read wikilink target %q (%s): %v",
+			wl.Target, resolved, err,
+		),
+	}
 }
 
 func (r *Rule) checkLink(
@@ -214,65 +385,97 @@ func (r *Rule) checkSiteAbsoluteLink(
 // ApplySettings implements rule.Configurable.
 func (r *Rule) ApplySettings(settings map[string]any) error {
 	for k, v := range settings {
-		switch k {
-		case "include":
-			list, ok := toStringSlice(v)
-			if !ok {
-				return fmt.Errorf(
-					"cross-file-reference-integrity: include must be a list of strings, got %T",
-					v,
-				)
-			}
-			r.Include = list
-		case "exclude":
-			list, ok := toStringSlice(v)
-			if !ok {
-				return fmt.Errorf(
-					"cross-file-reference-integrity: exclude must be a list of strings, got %T",
-					v,
-				)
-			}
-			r.Exclude = list
-		case "strict":
-			b, ok := v.(bool)
-			if !ok {
-				return fmt.Errorf(
-					"cross-file-reference-integrity: strict must be a bool, got %T",
-					v,
-				)
-			}
-			r.Strict = b
-		case "placeholders":
-			toks, ok := toStringSlice(v)
-			if !ok {
-				return fmt.Errorf(
-					"cross-file-reference-integrity: placeholders must be a list of strings, got %T",
-					v,
-				)
-			}
-			if err := placeholders.Validate(toks); err != nil {
-				return fmt.Errorf("cross-file-reference-integrity: %w", err)
-			}
-			r.Placeholders = toks
-		case "links":
-			linksMap, ok := v.(map[string]any)
-			if !ok {
-				return fmt.Errorf(
-					"cross-file-reference-integrity: links must be a map, got %T",
-					v,
-				)
-			}
-			if err := r.applyLinksSettings(linksMap); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf(
-				"cross-file-reference-integrity: unknown setting %q",
-				k,
-			)
+		if err := r.applyOneSetting(k, v); err != nil {
+			return err
 		}
 	}
 	return r.validateGlobSettings()
+}
+
+func (r *Rule) applyOneSetting(key string, v any) error {
+	switch key {
+	case "include":
+		return r.applyListSetting(&r.Include, "include", v)
+	case "exclude":
+		return r.applyListSetting(&r.Exclude, "exclude", v)
+	case "strict":
+		b, ok := v.(bool)
+		if !ok {
+			return fmt.Errorf(
+				"cross-file-reference-integrity: strict must be a bool, got %T",
+				v,
+			)
+		}
+		r.Strict = b
+		return nil
+	case "placeholders":
+		toks, ok := toStringSlice(v)
+		if !ok {
+			return fmt.Errorf(
+				"cross-file-reference-integrity: placeholders must be a list of strings, got %T",
+				v,
+			)
+		}
+		if err := placeholders.Validate(toks); err != nil {
+			return fmt.Errorf("cross-file-reference-integrity: %w", err)
+		}
+		r.Placeholders = toks
+		return nil
+	case "links":
+		linksMap, ok := v.(map[string]any)
+		if !ok {
+			return fmt.Errorf(
+				"cross-file-reference-integrity: links must be a map, got %T",
+				v,
+			)
+		}
+		return r.applyLinksSettings(linksMap)
+	case "wikilinks", "wikilink-style":
+		return r.applyWikilinkSetting(key, v)
+	}
+	return fmt.Errorf("cross-file-reference-integrity: unknown setting %q", key)
+}
+
+func (r *Rule) applyListSetting(target *[]string, name string, v any) error {
+	list, ok := toStringSlice(v)
+	if !ok {
+		return fmt.Errorf(
+			"cross-file-reference-integrity: %s must be a list of strings, got %T",
+			name, v,
+		)
+	}
+	*target = list
+	return nil
+}
+
+func (r *Rule) applyWikilinkSetting(key string, v any) error {
+	switch key {
+	case "wikilinks":
+		b, ok := v.(bool)
+		if !ok {
+			return fmt.Errorf(
+				"cross-file-reference-integrity: wikilinks must be a bool, got %T",
+				v,
+			)
+		}
+		r.Wikilinks = b
+	case "wikilink-style":
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf(
+				"cross-file-reference-integrity: wikilink-style must be a string, got %T",
+				v,
+			)
+		}
+		if s != "" && s != "obsidian" {
+			return fmt.Errorf(
+				"cross-file-reference-integrity: wikilink-style %q not supported; only \"obsidian\" ships today",
+				s,
+			)
+		}
+		r.WikilinkStyle = s
+	}
+	return nil
 }
 
 func (r *Rule) applyLinksSettings(m map[string]any) error {
@@ -334,10 +537,12 @@ func (r *Rule) validateGlobSettings() error {
 // DefaultSettings implements rule.Configurable.
 func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
-		"include":      []string{},
-		"exclude":      []string{},
-		"strict":       false,
-		"placeholders": []string{},
+		"include":        []string{},
+		"exclude":        []string{},
+		"strict":         false,
+		"placeholders":   []string{},
+		"wikilinks":      false,
+		"wikilink-style": "obsidian",
 		"links": map[string]any{
 			"site-root":                "",
 			"validate-images":          true,

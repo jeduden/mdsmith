@@ -330,3 +330,53 @@ func TestEmitBacklinks_JSONWriteError(t *testing.T) {
 	code := emitBacklinks(failingWriter{}, []backlinkRecord{{Source: "a.md", Line: 1}}, "json", 0)
 	assert.Equal(t, 2, code)
 }
+
+func TestCollectBacklinks_Wikilinks(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "page.md"), []byte("# Page\n\n## Section\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "other.md"),
+		[]byte("# Other\n\nSee [[page]] and [[page|alias]].\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "anchored.md"),
+		[]byte("# Anchored\n\n[[page#Section]]\n"), 0o644))
+	files := []string{
+		filepath.Join(root, "anchored.md"),
+		filepath.Join(root, "other.md"),
+		filepath.Join(root, "page.md"),
+	}
+
+	t.Run("matches both wikilink shapes", func(t *testing.T) {
+		got, errs := collectBacklinks(files, root, "page.md", "", nil, nil, 0, true)
+		require.Empty(t, errs)
+		// Expect three wikilink hits — two on other.md, one on anchored.md.
+		require.Len(t, got, 3)
+		for _, r := range got {
+			assert.Equal(t, "wikilink", r.Kind, "all wikilink hits must carry kind=wikilink")
+		}
+	})
+
+	t.Run("anchor scoping", func(t *testing.T) {
+		got, errs := collectBacklinks(files, root, "page.md", "section", nil, nil, 0, true)
+		require.Empty(t, errs)
+		require.Len(t, got, 1)
+		assert.Equal(t, "anchored.md", got[0].Source)
+		assert.Equal(t, "wikilink", got[0].Kind)
+		assert.Equal(t, "page#Section", got[0].Target)
+	})
+}
+
+func TestFormatBacklinkTextLine_Wikilink(t *testing.T) {
+	bare := backlinkRecord{
+		Source: "from.md", Line: 4, Text: "page", Target: "page", Kind: "wikilink",
+	}
+	assert.Equal(t, "from.md:4: [[page]]", formatBacklinkTextLine(bare))
+
+	alias := backlinkRecord{
+		Source: "from.md", Line: 4, Text: "Display", Target: "page", Kind: "wikilink",
+	}
+	assert.Equal(t, "from.md:4: [[page|Display]]", formatBacklinkTextLine(alias))
+
+	std := backlinkRecord{
+		Source: "from.md", Line: 1, Text: "ref", Target: "x.md", Kind: "link",
+	}
+	assert.Equal(t, "from.md:1: [ref](x.md)", formatBacklinkTextLine(std))
+}

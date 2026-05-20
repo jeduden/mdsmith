@@ -39,8 +39,8 @@ config key, sibling to `rules:`, `kinds:`, and
 `overrides:`. Setting an unknown name is a config
 error at load time.
 
-Built-in values: `portable`, `github`, `plain`. The
-key is optional; omit it for no convention.
+Built-in values: `portable`, `github`, `obsidian`,
+`plain`. The key is optional; omit it for no convention.
 
 You may also set `flavor:` inside `markdown-flavor`
 alongside `convention:`. If both are set, they must
@@ -82,6 +82,24 @@ rules stay off.
 | `no-inline-html`    | `allow: [details, summary]`            |
 | `emphasis-style`    | `bold: asterisk`, `italic: underscore` |
 | `list-marker-style` | `style: dash`                          |
+
+### `obsidian`
+
+Markdown written in an Obsidian vault. Selects
+`flavor: gfm` and turns on the Obsidian-specific
+validations — MDS027 resolves `[[Page]]` wikilink
+targets workspace-wide, and MDS067 checks every
+`[!type]` callout against the Obsidian type set.
+
+| Rule                             | Setting                                       |
+|----------------------------------|-----------------------------------------------|
+| `markdown-flavor`                | `flavor: gfm`                                 |
+| `cross-file-reference-integrity` | `wikilinks: true`, `wikilink-style: obsidian` |
+| `callout-type`                   | enabled (12 base Obsidian types and aliases)  |
+
+Standard style rules stay at their defaults so an
+Obsidian vault behaves like a GFM project unless the
+team layers more rules on top.
 
 ### `plain`
 

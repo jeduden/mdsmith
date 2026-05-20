@@ -1,7 +1,7 @@
 ---
 id: 168
 title: Obsidian Flavored Markdown support
-status: "🔲"
+status: "✅"
 summary: >-
   Add an `obsidian` convention that validates wikilinks
   (`[[Page]]`) via extended MDS027 settings, checks callout
@@ -242,35 +242,36 @@ comparison table rows for wikilinks and callouts change from
 
 ## Acceptance Criteria
 
-- [ ] `[[Missing]]` with `wikilinks: true` emits one
+- [x] `[[Missing]]` with `wikilinks: true` emits one
       diagnostic naming the unresolved target.
-- [ ] `[[Present]]` where `present.md` exists emits no
+- [x] `[[Present]]` where `present.md` exists emits no
       diagnostic.
-- [ ] `[[Notes#Old Heading]]` with a missing anchor emits
+- [x] `[[Notes#Old Heading]]` with a missing anchor emits
       one anchor-not-found diagnostic.
-- [ ] `[[Page|Alias]]` resolves `Page`, not `Alias`.
-- [ ] `![[image.png]]` resolves as an embed (any file type).
-- [ ] Wikilinks inside fenced code, code spans, and PI
+- [x] `[[Page|Alias]]` resolves `Page`, not `Alias`.
+- [x] `![[image.png]]` resolves as an embed (any file type).
+- [x] Wikilinks inside fenced code, code spans, and PI
       blocks are never flagged.
-- [ ] A wikilink target in `placeholders` is never flagged.
-- [ ] `wikilinks: false` (default) emits no wikilink
+- [x] A wikilink target in `placeholders` is never flagged.
+- [x] `wikilinks: false` (default) emits no wikilink
       diagnostics.
-- [ ] `> [!note]` (and all 13 base types + aliases)
-      emits no diagnostic from MDS067 with default settings.
-- [ ] `> [!REVIEW]` (unknown type) emits one diagnostic
+- [x] `> [!note]` (and all 12 base types + aliases listed
+      in this plan) emits no diagnostic from MDS067 with
+      default settings.
+- [x] `> [!REVIEW]` (unknown type) emits one diagnostic
       naming the type and listing valid options.
-- [ ] `> [!custom]` with `allow: [custom]` emits no
+- [x] `> [!custom]` with `allow: [custom]` emits no
       diagnostic.
-- [ ] `> [!anything]` with `allow-unknown: true` emits no
+- [x] `> [!anything]` with `allow-unknown: true` emits no
       diagnostic.
-- [ ] MDS067 is disabled by default.
-- [ ] `convention: obsidian` activates both rules with no
+- [x] MDS067 is disabled by default.
+- [x] `convention: obsidian` activates both rules with no
       other config.
-- [ ] `mdsmith list backlinks docs/page.md` lists files
+- [x] `mdsmith list backlinks docs/page.md` lists files
       with `[[page]]` wikilinks pointing at `page.md`.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes on the repo.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes on the repo.
 
 ## Non-Goals
 

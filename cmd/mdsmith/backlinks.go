@@ -20,11 +20,16 @@ import (
 )
 
 // backlinkRecord is one incoming link to the queried target.
+//
+// Kind distinguishes a standard Markdown link ("link") from an
+// Obsidian-style wikilink ("wikilink"). JSON consumers can filter
+// on this field; the text formatter renders both shapes inline.
 type backlinkRecord struct {
 	Source string `json:"source"`
 	Line   int    `json:"line"`
 	Text   string `json:"text"`
 	Target string `json:"target"`
+	Kind   string `json:"kind"`
 }
 
 // backlinksOptions bundles the parsed CLI flags for `backlinks`.
@@ -243,7 +248,7 @@ func collectBacklinks(
 			continue
 		}
 		rs, err := extractBacklinksFromSource(
-			src, srcRel, wantTarget, wantAnchorSlug,
+			src, srcRel, rootDir, wantTarget, wantAnchorSlug,
 			maxBytes, stripFrontMatter,
 		)
 		if err != nil {
@@ -266,7 +271,7 @@ func collectBacklinks(
 // that resolve to wantTarget. wantAnchorSlug is the already-slugified
 // anchor query, or "" to match any anchor.
 func extractBacklinksFromSource(
-	src, srcRel, wantTarget, wantAnchorSlug string,
+	src, srcRel, rootDir, wantTarget, wantAnchorSlug string,
 	maxBytes int64, stripFrontMatter bool,
 ) ([]backlinkRecord, error) {
 	data, err := lint.ReadFileLimited(src, maxBytes)
@@ -280,6 +285,14 @@ func extractBacklinksFromSource(
 	f, err := lint.NewFileFromSource(src, data, stripFrontMatter)
 	if err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", srcRel, err)
+	}
+	// Wikilink resolution needs the workspace root: ResolveWikiLink
+	// walks the fs.FS to find candidates. Standard Markdown link
+	// resolution operates on the source-relative path and never reads
+	// f.RootFS, so this is a wikilink-only requirement.
+	if rootDir != "" {
+		f.RootDir = rootDir
+		f.RootFS = os.DirFS(rootDir)
 	}
 	var out []backlinkRecord
 	for _, link := range linkgraph.ExtractLinks(f) {
@@ -305,9 +318,64 @@ func extractBacklinksFromSource(
 			Line:   link.Line + f.LineOffset,
 			Text:   link.Text,
 			Target: t.Raw,
+			Kind:   "link",
 		})
 	}
+	out = appendWikilinkBacklinks(out, f, srcRel, wantTarget, wantAnchorSlug)
 	return out, nil
+}
+
+// appendWikilinkBacklinks scans f for Obsidian-style wikilinks whose
+// resolved workspace-relative target matches wantTarget. Resolution
+// uses the same shortest-path algorithm MDS027 applies, sandboxed to
+// the file's root. Wikilinks are extracted unconditionally — the
+// scan is cheap and the user querying backlinks already opted in by
+// running the command.
+func appendWikilinkBacklinks(
+	out []backlinkRecord,
+	f *lint.File,
+	srcRel, wantTarget, wantAnchorSlug string,
+) []backlinkRecord {
+	wikilinks := linkgraph.ExtractWikiLinks(f)
+	if len(wikilinks) == 0 {
+		return out
+	}
+	root := f.RootFS
+	if root == nil {
+		return out
+	}
+	for _, wl := range wikilinks {
+		resolved, ok := linkgraph.ResolveWikiLink(root, srcRel, wl.Target)
+		if !ok || resolved != wantTarget {
+			continue
+		}
+		if wantAnchorSlug != "" && linkgraph.NormalizeAnchor(wl.Anchor) != wantAnchorSlug {
+			continue
+		}
+		text := wl.Alias
+		if text == "" {
+			text = wl.Target
+		}
+		out = append(out, backlinkRecord{
+			Source: srcRel,
+			Line:   wl.Line + f.LineOffset,
+			Text:   text,
+			Target: wikilinkTargetString(wl),
+			Kind:   "wikilink",
+		})
+	}
+	return out
+}
+
+// wikilinkTargetString renders just the target+anchor of wl as it
+// appeared in the source — the destination half a Markdown link's
+// Target field would carry. Alias and embed prefix are dropped so
+// the field reflects "where does this point", not "how does it look".
+func wikilinkTargetString(wl linkgraph.WikiLink) string {
+	if wl.Anchor == "" {
+		return wl.Target
+	}
+	return wl.Target + "#" + wl.Anchor
 }
 
 // workspaceRelativePath returns p relative to rootDir using forward
@@ -396,6 +464,22 @@ func sourceMatches(src string, includePatterns []string) bool {
 	return false
 }
 
+// formatBacklinkTextLine renders one record for the human text
+// format. Standard links use the `[text](target)` shape; wikilinks
+// use the source-form `[[target]]` (or `[[target|alias]]`,
+// `![[target]]` for embeds) so a user scanning output can see at a
+// glance which records came from each link kind.
+func formatBacklinkTextLine(r backlinkRecord) string {
+	if r.Kind == "wikilink" {
+		alias := ""
+		if r.Text != "" && r.Text != r.Target {
+			alias = "|" + r.Text
+		}
+		return fmt.Sprintf("%s:%d: [[%s%s]]", r.Source, r.Line, r.Target, alias)
+	}
+	return fmt.Sprintf("%s:%d: [%s](%s)", r.Source, r.Line, r.Text, r.Target)
+}
+
 // emitBacklinks writes records to w using format. limit caps the
 // output; 0 means no cap. Exit code: 0 when records were emitted,
 // 1 when none were found, 2 on write error.
@@ -419,7 +503,8 @@ func emitBacklinks(w io.Writer, records []backlinkRecord, format string, limit i
 		}
 	case "text", "":
 		for _, r := range records {
-			if _, err := fmt.Fprintf(w, "%s:%d: [%s](%s)\n", r.Source, r.Line, r.Text, r.Target); err != nil {
+			line := formatBacklinkTextLine(r)
+			if _, err := fmt.Fprintln(w, line); err != nil {
 				fmt.Fprintf(os.Stderr, "mdsmith: writing output: %v\n", err)
 				return 2
 			}
