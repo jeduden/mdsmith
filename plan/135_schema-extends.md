@@ -1,7 +1,7 @@
 ---
 id: 135
 title: Schema inheritance via `extends`
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: [146, 147]
 summary: >-
@@ -213,24 +213,24 @@ both layer names without grepping.
 
 ## Acceptance Criteria
 
-- [ ] An inline kind with `extends:` inherits
+- [x] An inline kind with `extends:` inherits
       its parent's `frontmatter:` keys; the
       child can override individual keys.
-- [ ] A file schema with `extends: <path>`
+- [x] A file schema with `extends: <path>`
       inherits identically.
-- [ ] A child's `structure:` wholly replaces
+- [x] A child's `structure:` wholly replaces
       the parent's `structure:` (regression
       test asserts the parent's headings are
       absent from the effective schema).
-- [ ] A cycle in `extends:` (single or
+- [x] A cycle in `extends:` (single or
       multi-hop) produces an error naming the
       cycle path.
-- [ ] A child whose CUE expression cannot unify
+- [x] A child whose CUE expression cannot unify
       with its parent's produces a diagnostic
       naming both layers (depends on plan 147).
-- [ ] `mdsmith kinds show <name>` prints the
+- [x] `mdsmith kinds show <name>` prints the
       inheritance chain and per-field
       provenance.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.

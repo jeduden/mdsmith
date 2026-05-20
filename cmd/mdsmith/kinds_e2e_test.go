@@ -145,6 +145,57 @@ func TestKinds_ShowUnknownExits2(t *testing.T) {
 	assert.Contains(t, stderr, "unknown kind")
 }
 
+const extendsKindsCfg = `kinds:
+  rfc-base:
+    schema:
+      frontmatter:
+        id: '=~"^RFC-[0-9]{4}$"'
+        authors: '[...string] & len(authors) >= 1'
+  rfc-ratified:
+    extends: rfc-base
+    schema:
+      frontmatter:
+        status: '"ratified"'
+`
+
+// TestKinds_ShowRendersExtendsAndProvenance is the plan-135
+// acceptance check at the CLI surface: a kind with `extends:`
+// prints the parent line, the chain, and per-field provenance.
+func TestKinds_ShowRendersExtendsAndProvenance(t *testing.T) {
+	dir := kindsTestDir(t, extendsKindsCfg, nil)
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "show", "rfc-ratified")
+	require.Equal(t, 0, code)
+	assert.Contains(t, stdout, "extends: rfc-base")
+	assert.Contains(t, stdout, "effective-frontmatter:")
+	assert.Contains(t, stdout, "from rfc-base")
+	assert.Contains(t, stdout, "from rfc-ratified")
+}
+
+// TestKinds_ShowJSONExposesExtendsMetadata pins the JSON wire
+// shape: extends + chain + per-leaf provenance are present.
+func TestKinds_ShowJSONExposesExtendsMetadata(t *testing.T) {
+	dir := kindsTestDir(t, extendsKindsCfg, nil)
+	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "show", "rfc-ratified", "--json")
+	require.Equal(t, 0, code)
+	var out struct {
+		Extends              string   `json:"extends"`
+		ExtendsChain         []string `json:"extends-chain"`
+		EffectiveFrontmatter []struct {
+			Key    string `json:"key"`
+			Source string `json:"source"`
+		} `json:"effective-frontmatter"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &out))
+	assert.Equal(t, "rfc-base", out.Extends)
+	assert.Equal(t, []string{"rfc-ratified", "rfc-base"}, out.ExtendsChain)
+	sources := map[string]string{}
+	for _, leaf := range out.EffectiveFrontmatter {
+		sources[leaf.Key] = leaf.Source
+	}
+	assert.Equal(t, "rfc-base", sources["id"])
+	assert.Equal(t, "rfc-ratified", sources["status"])
+}
+
 func TestKinds_ShowMissingNameExits2(t *testing.T) {
 	dir := kindsTestDir(t, sampleKindsCfg, nil)
 	_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "show")

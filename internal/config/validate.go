@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
@@ -12,15 +14,41 @@ import (
 // schema both inline (KindBody.Schema) and via the legacy
 // rules.required-structure.schema: path. Front-matter kinds are
 // validated at lint time via ValidateFrontMatterKinds (see engine).
+// It also rejects an `extends:` chain that references an undeclared
+// kind or forms a cycle (plan 135).
 func ValidateKinds(cfg *Config) error {
 	if len(cfg.Kinds) == 0 && len(cfg.KindAssignment) == 0 {
 		return nil
 	}
-	for name, body := range cfg.Kinds {
+	names := make([]string, 0, len(cfg.Kinds))
+	for name := range cfg.Kinds {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		body := cfg.Kinds[name]
 		if err := validateKindSchemaSources(name, body); err != nil {
 			return err
 		}
 		if err := validateKindPathPattern(name, body); err != nil {
+			return err
+		}
+		if err := validateKindExtends(cfg.Kinds, name); err != nil {
+			return err
+		}
+	}
+	// Walk extends chains a second time, now that every chain is
+	// known to be well-formed, to catch unsatisfiable frontmatter
+	// expressions (e.g. parent says `int`, child says `string`).
+	// Running the resolver here surfaces those at config-load time
+	// rather than as a per-file MDS020 diagnostic later, so users
+	// see the conflict immediately on `mdsmith check`.
+	for _, name := range names {
+		body := cfg.Kinds[name]
+		if body.Extends == "" {
+			continue
+		}
+		if _, err := ResolveKindInlineSchema(cfg.Kinds, name); err != nil {
 			return err
 		}
 	}
@@ -32,6 +60,37 @@ func ValidateKinds(cfg *Config) error {
 				)
 			}
 		}
+	}
+	return nil
+}
+
+// validateKindExtends walks a kind's `extends:` chain, rejecting an
+// undeclared parent and any cycle (single- or multi-hop) by naming
+// the cycle path. The check runs per kind so a cycle reported for
+// `a` does not silently re-fire for `b` and `c` on the same cycle —
+// each kind sees its own canonical entry point. The kind iteration
+// order in ValidateKinds is sorted, so the diagnostic stays
+// deterministic across runs.
+func validateKindExtends(kinds map[string]KindBody, name string) error {
+	visited := map[string]bool{}
+	chain := []string{}
+	current := name
+	for current != "" {
+		if visited[current] {
+			chain = append(chain, current)
+			return fmt.Errorf(
+				"kind %q: extends cycle detected: %s",
+				name, strings.Join(chain, " -> "))
+		}
+		visited[current] = true
+		chain = append(chain, current)
+		body, ok := kinds[current]
+		if !ok {
+			return fmt.Errorf(
+				"kind %q: extends references undeclared kind %q",
+				name, current)
+		}
+		current = body.Extends
 	}
 	return nil
 }

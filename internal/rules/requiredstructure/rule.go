@@ -1056,7 +1056,12 @@ func parseSchemaFrontMatter(prefix []byte) (schemaConfig, error) {
 	// from yaml.Node are off by 1 relative to the schema source.
 	node, nodeErr := yamlutil.UnmarshalNodeSafe(yamlBytes)
 	if nodeErr == nil {
-		cfg.FrontmatterLines = yamlutil.TopLevelMappingLines(&node, 1)
+		lines := yamlutil.TopLevelMappingLines(&node, 1)
+		// `extends:` is a schema directive (plan 135); strip it from
+		// the per-key source-line map so MDS020 never tries to point
+		// at the reserved key for a frontmatter validation error.
+		delete(lines, "extends")
+		cfg.FrontmatterLines = lines
 	}
 	return cfg, nil
 }
@@ -1113,6 +1118,11 @@ func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, error) {
 	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
 		return "", nil, fmt.Errorf("parsing schema frontmatter: %w", err)
 	}
+	// `extends:` is a reserved schema-engine directive (plan 135),
+	// not a document-frontmatter constraint. Strip it before the
+	// CUE expression is built so the legacy body-sync path does not
+	// require documents to carry the literal `extends:` value.
+	delete(raw, "extends")
 	if len(raw) == 0 {
 		return "", nil, nil
 	}

@@ -377,7 +377,7 @@ func TestKindLayerRules_InlineSchemaWithoutPathPattern(t *testing.T) {
 		},
 		// PathPattern intentionally empty.
 	}
-	out := kindLayerRules("k", body)
+	out := kindLayerRules("k", body, nil)
 	rs := out["required-structure"]
 	assert.True(t, rs.Enabled)
 	assert.NotContains(t, rs.Settings, "path-patterns",
