@@ -214,12 +214,15 @@ var abbrHeavyCorpus = []string{
 }
 
 // BenchmarkSplitSentences_Subset measures Punkt's wall time on
-// abbreviation-heavy prose where reAbbr fires constantly inside
-// english.MultiPunctWordAnnotation.tokenAnnotation. This is the
-// subset where the hand-rolled DFA replacement should show its full
-// effect — the plan 191 acceptance bar is ≥10% improvement here.
-// The full BenchmarkSplitSentences number remains the equivalence-
-// corpus baseline; this one isolates the optimization's lever.
+// abbreviation-heavy prose. The MultiPunctWordAnnotation third
+// pass fires once per period-ending token; this corpus is the
+// densest such input. Under the default build it exercises
+// matchAbbrPattern inside fastMultiPunctWordAnnotation; under
+// `-tags mdtext_punkt_upstream` it exercises reAbbr inside
+// english.MultiPunctWordAnnotation. The plan 191 acceptance bar
+// is a ≥10% improvement of the default build over the upstream
+// build here. The full BenchmarkSplitSentences number remains
+// the equivalence-corpus baseline; this one isolates the lever.
 func BenchmarkSplitSentences_Subset(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

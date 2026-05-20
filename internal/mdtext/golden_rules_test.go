@@ -7,20 +7,22 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Plan 191 task 5: cross-check the fast-path Punkt build
-// (mdtext.SplitSentences with the FastMultiPunctWordAnnotation
-// installed) against the same golden-rules corpus that upstream
-// neurosnap/sentences pins in english/golden_rules_test.go. If the
-// hand-rolled DFA drifts from reAbbr on any of these, the byte-for-
-// byte segmentation also drifts and the assertion fires.
+// Segmentation regression test: mdtext.SplitSentences must produce
+// the same sentences as upstream Punkt over the canonical
+// golden-rules corpus. The file carries no build tag, so it gates
+// both builds — default (fastMultiPunctWordAnnotation) and
+// `-tags mdtext_punkt_upstream` (upstream
+// english.MultiPunctWordAnnotation). If either implementation
+// drifts from the corpus, the assertion fires.
 //
 // The cases are copied verbatim from
-// github.com/neurosnap/sentences@v1.1.2/english/golden_rules_test.go;
-// the "rule #" name preserves upstream's label so a divergence is
-// traceable to the source. Upstream tests raw `*Sentence.Text` (with
-// leading whitespace); mdsmith's `SplitSentences` trims, so the
-// expected slices here are trimmed too. The pre-trim equivalence is
-// gated separately by TestSplitSentences_IsItsOwnReference.
+// github.com/neurosnap/sentences@v1.1.2/english/golden_rules_test.go
+// (plan 191 task 5). The "rule #" name preserves upstream's label
+// so a divergence is traceable to the source. Upstream tests raw
+// `*Sentence.Text` (with leading whitespace); mdsmith's
+// `SplitSentences` trims, so the expected slices here are trimmed
+// too. The pre-trim equivalence is gated separately by
+// TestSplitSentences_IsItsOwnReference.
 
 type sentenceCase struct {
 	name string
