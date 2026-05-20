@@ -20,15 +20,15 @@ import (
 // fastMultiPunctWordAnnotation is the swap-in for
 // english.MultiPunctWordAnnotation. Upstream embeds *Storage,
 // TokenParser, TokenGrouper, and Ortho, and its `Annotate` method
-// loops over token pairs calling `tokenAnnotation`. The only line
-// that changes here is the abbreviation match: we call
-// matchAbbrPattern(tok) where upstream calls
-// `len(reAbbr.FindAllString(tok, 1)) == 0`. Every other branch and
-// every other helper (IsListNumber, IsCoordinatePartOne,
-// HasUnreliableEndChars, IsInitial, Ortho.Heuristic, FirstUpper,
-// SentStarters, TypeNoSentPeriod) is the *exact* upstream helper,
-// reached through the embedded interfaces — so no other branch can
-// drift from upstream by construction.
+// loops over token pairs calling `tokenAnnotation`. tokenAnnotation
+// here carries two deltas from upstream — the regex-vs-DFA swap on
+// the abbreviation match, and the elision of upstream's unreachable
+// IsInitial guard. Both are documented on tokenAnnotation itself.
+// Every other branch and every other helper (IsListNumber,
+// IsCoordinatePartOne, HasUnreliableEndChars, Ortho.Heuristic,
+// FirstUpper, SentStarters, TypeNoSentPeriod) is the exact upstream
+// helper, reached through the embedded interfaces — so no other
+// branch can drift from upstream by construction.
 //
 // upstreamWord retains the English WordTokenizer for one purpose
 // only: HasUnreliableEndChars. The upstream `english.WordTokenizer`
@@ -55,17 +55,24 @@ func (a *fastMultiPunctWordAnnotation) Annotate(tokens []*sentences.Token) []*se
 }
 
 // tokenAnnotation mirrors
-// english.MultiPunctWordAnnotation.tokenAnnotation, line for line.
-// The ONE change is the abbreviation-match branch: upstream calls
+// english.MultiPunctWordAnnotation.tokenAnnotation with two
+// deltas from upstream:
 //
-//	len(reAbbr.FindAllString(tokOne.Tok, 1)) == 0
+//  1. The abbreviation-match branch swaps
+//     `len(reAbbr.FindAllString(tokOne.Tok, 1)) == 0` for
+//     `!matchAbbrPattern(tokOne.Tok)` — the equivalent boolean
+//     form, proved by abbr_test.go's TestMatchAbbrPattern_* suite.
+//  2. Upstream's `if a.IsInitial(tokOne) { return }` guard after
+//     the abbr-match branch is elided. It is unreachable in the
+//     current upstream (see the long comment above the body
+//     below), and the project's defensive-code rule forbids
+//     untestable branches. The equivalence harness catches any
+//     drift if upstream ever weakens the preceding gate.
 //
-// which is true iff the regex does NOT match. We call
-//
-//	!matchAbbrPattern(tokOne.Tok)
-//
-// which is the equivalent boolean form against the same regex
-// (proved by abbr_test.go's TestMatchAbbrPattern_* suite).
+// Every other branch and every other helper (IsListNumber,
+// IsCoordinatePartOne, HasUnreliableEndChars, Ortho.Heuristic,
+// FirstUpper, SentStarters, TypeNoSentPeriod) is the exact
+// upstream helper reached through the embedded interfaces.
 func (a *fastMultiPunctWordAnnotation) tokenAnnotation(tokOne, tokTwo *sentences.Token) {
 	if a.IsListNumber(tokOne) || a.IsCoordinatePartOne(tokOne) {
 		tokOne.SentBreak = false

@@ -95,16 +95,18 @@ func TestMatchAbbrPattern_EquivalentToRegex(t *testing.T) {
 	}
 }
 
-// TestMatchAbbrPattern_FuzzyAgainstRegex generates short randomized
-// strings over the structural alphabet that exercises every transition
-// of the DFA: word characters (letters / digits / underscore), the
-// dot, plus a few non-word disruptors (space, hyphen, NUL). Every
-// generated string is checked against the regex oracle. If the DFA
-// diverges on any one, the test fails with both answers and the
-// input.
+// TestMatchAbbrPattern_FuzzyAgainstRegex exhaustively enumerates
+// every length-5 string over a structural alphabet that exercises
+// every transition of the DFA: word characters (letters / digits /
+// underscore), the dot, plus a few non-word disruptors (space,
+// hyphen, NUL). Every string is checked against the regex oracle.
+// If the DFA diverges on any one, the test fails with both answers
+// and the input.
 //
-// This is the "property-style table" the plan's Risk section calls
-// for. It is deterministic (seeded) so a failure reproduces.
+// "Fuzzy" in the test name refers to the property-style coverage
+// the plan's Risk section calls for; the enumeration itself is
+// deterministic (not RNG-driven), so a failure reproduces
+// trivially.
 func TestMatchAbbrPattern_FuzzyAgainstRegex(t *testing.T) {
 	alphabet := []rune{'a', 'b', 'Z', '0', '9', '_', '.', '-', ' ', '\x00'}
 	// 5-rune strings × 10^5 = 100_000 — exhaustive enough to land every

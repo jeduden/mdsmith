@@ -115,10 +115,10 @@ A custom `MultiPunctWordAnnotation` installs it; see
 
 The DFA returns the same boolean as
 `reAbbr.FindAllString(tok, 1) != nil`. Equivalence is
-gated by a 59k-string exhaustive sweep. The harness also
-runs the abbreviation-heavy corpus, the upstream
-golden-rules cases, and the upstream `english/main_test.go`
-cases.
+gated by a 100k-string (10^5, alphabet of 10 runes ×
+length 5) exhaustive sweep. The harness also runs the
+abbreviation-heavy corpus, the upstream golden-rules
+cases, and the upstream `english/main_test.go` cases.
 
 The fast path is the default. Build with
 `-tags mdtext_punkt_upstream` to fall back to the upstream
