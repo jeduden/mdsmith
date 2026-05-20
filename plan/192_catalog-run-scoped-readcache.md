@@ -1,7 +1,7 @@
 ---
 id: 192
 title: Run-scoped read cache for catalog cross-host redundancy
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: []
 summary: >-
@@ -50,34 +50,64 @@ is trivially safe there. Only the LSP path needs the hook.
 
 ## Tasks
 
-1. [ ] Add a run-scoped cache type (path -> parsed front matter,
+1. [x] Add a run-scoped cache type (path -> parsed front matter,
    path -> resolved include adjacency) owned by the engine
    `Runner` and threaded to rules via a context value or a field
    on `*lint.File` that points at the shared cache (not a package
    global — testability and LSP isolation).
-2. [ ] Route `cachedFrontMatter` and `includeTargetsOf` through
+   `lint.RunCache` in `internal/lint/runcache.go`; the engine
+   `Runner.RunCache` field threads it to each `*lint.File`.
+2. [x] Route `cachedFrontMatter` and `includeTargetsOf` through
    the run cache when present, falling back to the per-Check memo
    when absent (struct-literal `*lint.File` in unit tests).
-3. [ ] Add an `Invalidate(path)` seam; call it from the LSP
+   The catalog rule now keys by absolute path; the include-cycle
+   scan has an absolute-path variant (`scanIncludesForTargetAbs`)
+   that uses the run cache; struct-literal Files keep the legacy
+   per-Check path.
+3. [x] Add an `Invalidate(path)` seam; call it from the LSP
    document-sync path so an edited file's cached read is dropped.
    Unit-test that a second Check after Invalidate re-reads.
-4. [ ] Benchmark the repo corpus before/after with the existing
+   `Server.invalidateCachedRead` fires on `didChange`, `didSave`,
+   and `didChangeWatchedFiles`;
+   `TestRunCache_InvalidateForcesReread` and
+   `TestRunCache_InvalidateForcesRebuild` pin the seam.
+4. [x] Benchmark the repo corpus before/after with the existing
    interleaved-median harness; record the delta here. Confirm the
    neutral corpus (no directives) is unchanged and
    `BenchmarkCheckCorpus{Small,Large}` stays within budget.
-5. [ ] Confirm `mdsmith check .` and the full suite stay green;
+   Interleaved median of 7 `mdsmith check .` runs on the actual
+   repo (4-core dev box, 331 files): baseline **462 ms** ->
+   with run cache **440 ms** (~5% faster, ~22 ms saved on top of
+   the prior per-Check memo's 140 ms catalog cost). Neutral
+   corpus is unchanged (no directives -> cache is dormant);
+   `BenchmarkCheckCorpus{Small,Large}` p95 stays well within
+   budget (Small ~28 ms / 2 s budget; Large ~197 ms / 12 s).
+5. [x] Confirm `mdsmith check .` and the full suite stay green;
    verify race-cleanliness under `-race` (the cache is read by the
    parallel worker pool and the LSP's concurrent readers).
+   `go test ./... -race` green; `go run ./cmd/mdsmith check .`
+   green; `go tool golangci-lint run` clean.
 
 ## Acceptance Criteria
 
-- [ ] A target file globbed by N host-file catalogs is read and
+- [x] A target file globbed by N host-file catalogs is read and
       parsed once per `mdsmith check` run, not N times (pinned by
       a counting-FS test over a multi-host fixture).
-- [ ] The LSP re-reads a target after it is edited (pinned by an
+      `TestRunCache_CrossHostCatalogReadsTargetOnce` Checks two
+      host files that share one wrapped FS plus one `RunCache`;
+      the counter records exactly 2 reads per shared target
+      (front matter + include-cycle scan), the same as a single
+      Check, instead of doubling to 4 across two hosts. The
+      regression check (disabling `f.RunCache = cache`) produces
+      Observed=4, which the assertion rejects.
+- [x] The LSP re-reads a target after it is edited (pinned by an
       Invalidate test); no stale catalog body is served.
-- [ ] Repo-corpus wall time improves and the repo-vs-neutral gap
+      `TestRunCache_InvalidateForcesReread` invalidates one of
+      two cached targets and confirms only that target's counter
+      bumps on the next Check; the un-invalidated sibling stays
+      at its baseline.
+- [x] Repo-corpus wall time improves and the repo-vs-neutral gap
       narrows further; neutral is unchanged; the check gate stays
-      within budget.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+      within budget. See task 4 above.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

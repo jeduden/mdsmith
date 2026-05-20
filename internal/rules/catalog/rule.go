@@ -621,7 +621,8 @@ func buildCatalogEntries(
 		var fm map[string]any
 		if needFM {
 			var err error
-			fm, err = cachedFrontMatter(f, res.fs, p, f.MaxInputBytes)
+			absPath, _ := absMatchedPath(res, p)
+			fm, err = cachedFrontMatter(f, res.fs, p, absPath, f.MaxInputBytes)
 			if err != nil {
 				diags = append(diags, makeDiag(filePath, line,
 					fmt.Sprintf("cannot read front matter from %q: %v", displayPath, err)))
@@ -884,23 +885,41 @@ type frontMatterResult struct {
 }
 
 // cachedFrontMatter returns readFrontMatter's result, computed once
-// per matched path per Check. Several catalog directives in one file
-// can glob overlapping sets — CLAUDE.md carries three over docs/** —
-// and each directive's entry build otherwise re-read and re-parsed the
-// same matched file's YAML. The result is a pure function of the
-// matched file's bytes; the memo lives on the per-Check *lint.File, so
-// nothing is cached across files or runs. Keyed by path, matching the
-// include-cycle adjacency memo's resolution assumption (all catalog
-// globs in one host file resolve against that file's tree).
+// per matched path per Check, and once per absPath per Run when
+// f.RunCache is wired (a target globbed by N host catalogs is then
+// read once total, not N times). Several catalog directives in one
+// file can also glob overlapping sets — CLAUDE.md carries three over
+// docs/** — so the per-Check memo collapses those too. absPath is the
+// absolute filesystem path of the matched file; an empty value (e.g.
+// no absolute base could be computed) drops back to the per-Check
+// memo so struct-literal unit tests still hit the fast path.
 func cachedFrontMatter(
-	f *lint.File, fsys fs.FS, path string, maxBytes int64,
+	f *lint.File, fsys fs.FS, path, absPath string, maxBytes int64,
 ) (map[string]any, error) {
-	v := f.Memo("catalog.fm:"+path, func() any {
+	build := func() any {
 		fm, err := readFrontMatter(fsys, path, maxBytes)
 		return frontMatterResult{fm: fm, err: err}
-	})
+	}
+	var v any
+	if f.RunCache != nil && absPath != "" {
+		v = f.RunCache.FrontMatter(absPath, build)
+	} else {
+		v = f.Memo("catalog.fm:"+path, build)
+	}
 	r := v.(frontMatterResult)
 	return r.fm, r.err
+}
+
+// absMatchedPath returns the absolute filesystem path of a doublestar
+// match m, using the absolute base resolveGlobFS already computed for
+// gitignore anchoring. Returns ("", false) when no base is available
+// (no RootDir and a non-absolute file path) — the run-scoped cache
+// then sits out for that match and the per-Check memo handles it.
+func absMatchedPath(res globResolution, m string) (string, bool) {
+	if res.gitignoreBase == "" {
+		return "", false
+	}
+	return filepath.Clean(filepath.Join(res.gitignoreBase, m)), true
 }
 
 // readFrontMatter reads a file's YAML front matter and returns it as
@@ -942,6 +961,12 @@ func readFrontMatter(fsys fs.FS, path string, maxBytes int64) (map[string]any, e
 // checkCatalogIncludeCycle checks whether any file matched by the catalog
 // glob has an include chain that leads back to the catalog-owning file.
 // If so, the catalog body would recursively contain itself.
+//
+// When f.RunCache is set and the host file's directory can be
+// absolutized, the scan switches to an absolute-path traversal that
+// shares the include adjacency cache across host files; otherwise the
+// legacy fsys-relative scan handles struct-literal unit tests and
+// callers that supply only a relative file path with no RootDir.
 func checkCatalogIncludeCycle(
 	f *lint.File, filePath string, line int,
 	entries []fileEntry,
@@ -953,9 +978,11 @@ func checkCatalogIncludeCycle(
 	// catalog file's directory). filePath may be repo-relative, so
 	// normalize the catalog owner to the same FS-relative form.
 	catalogFile := filepath.Base(filePath)
+	hostAbsDir, useAbs := hostAbsDir(f)
+	useAbs = useAbs && f.RunCache != nil
 	for _, entry := range entries {
 		matchedPath := fieldinterp.Stringify(entry.fields["filename"])
-		if fileIncludesTarget(f, f.FS, matchedPath, catalogFile, f.MaxInputBytes) {
+		if matchedIncludesCatalog(f, hostAbsDir, useAbs, matchedPath, catalogFile) {
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				fmt.Sprintf(
 					"catalog includes %q which includes %q via <?include?>, creating a cycle",
@@ -963,6 +990,36 @@ func checkCatalogIncludeCycle(
 		}
 	}
 	return nil
+}
+
+// matchedIncludesCatalog routes the cycle scan to the absolute-path
+// variant when the run cache is in play, falling back to the
+// fsys-relative legacy scan otherwise. Pulled out of
+// checkCatalogIncludeCycle so each branch reads as one line.
+func matchedIncludesCatalog(
+	f *lint.File, hostAbsDir string, useAbs bool,
+	matchedPath, catalogFile string,
+) bool {
+	if useAbs {
+		absMatched := filepath.Clean(filepath.Join(hostAbsDir, matchedPath))
+		absTarget := filepath.Clean(filepath.Join(hostAbsDir, catalogFile))
+		return fileIncludesTargetAbs(f, f.FS, hostAbsDir,
+			absMatched, absTarget, f.MaxInputBytes)
+	}
+	return fileIncludesTarget(f, f.FS, matchedPath, catalogFile, f.MaxInputBytes)
+}
+
+// hostAbsDir returns f.FS's absolute filesystem root — the directory
+// every fsys-relative path in this Check resolves against. Used to
+// translate matched paths into the run cache's absolute keys. The
+// returned base is filepath.Clean'd. Returns ("", false) when
+// filepath.Abs fails (typically only if the cwd has been deleted).
+func hostAbsDir(f *lint.File) (string, bool) {
+	abs, err := filepath.Abs(filepath.Dir(f.Path))
+	if err != nil {
+		return "", false
+	}
+	return filepath.Clean(abs), true
 }
 
 // fileIncludesTarget checks whether the file at filePath contains
@@ -977,6 +1034,22 @@ func fileIncludesTarget(
 	return scanIncludesForTarget(cf, fsys, filePath, target, visited, 0, maxBytes)
 }
 
+// fileIncludesTargetAbs is the absolute-path variant. Used when
+// cf.RunCache is set: the cache key is absolute so two host files
+// that reach the same target via different f.FS-relative paths share
+// one read. fsys is still f.FS (the host's directory FS) — read
+// arguments are derived by stripping hostAbsDir from the absolute
+// path. hostAbsDir is the absolute path filepath.Dir(cf.Path) cleans
+// to; both absFilePath and absTarget live under it.
+func fileIncludesTargetAbs(
+	cf *lint.File, fsys fs.FS, hostAbsDir, absFilePath, absTarget string,
+	maxBytes int64,
+) bool {
+	visited := map[string]bool{absFilePath: true}
+	return scanIncludesForTargetAbs(cf, fsys, hostAbsDir,
+		absFilePath, absTarget, visited, 0, maxBytes)
+}
+
 // maxIncludeDepth mirrors the include rule's depth limit for consistency.
 const maxIncludeDepth = 10
 
@@ -989,38 +1062,92 @@ const maxIncludeDepth = 10
 // is a pure function of the matched file's bytes — independent of the
 // cycle target and the DFS visited set — so it is safe to share across
 // every directive and recursion within one Check.
+//
+// The legacy fsys-relative form. The run-cache-aware path uses
+// includeTargetsOfAbs so its values stay position-independent and
+// shareable across host files.
 func includeTargetsOf(
 	cf *lint.File, fsys fs.FS, filePath string, maxBytes int64,
 ) []string {
 	v := cf.Memo("catalog.includes:"+filePath, func() any {
-		data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
-		if err != nil {
-			return []string(nil)
-		}
-		_, content := lint.StripFrontMatter(data)
-		pf, err := lint.NewFile(filePath, content)
-		if err != nil {
-			return []string(nil)
-		}
-		pairs, _ := gensection.FindMarkerPairs(
-			pf, "include", "MDS021", "include")
-		var targets []string
-		for _, mp := range pairs {
-			dir, diags := gensection.ParseDirective(
-				filePath, mp, "MDS021", "include")
-			if dir == nil || len(diags) > 0 {
-				continue
-			}
-			file := dir.Params["file"]
-			if file == "" {
-				continue
-			}
-			targets = append(targets,
-				path.Clean(path.Join(path.Dir(filePath), file)))
-		}
-		return targets
+		return scanIncludeTargets(fsys, filePath, maxBytes)
 	})
 	return v.([]string)
+}
+
+// scanIncludeTargets reads filePath via fsys, parses its <?include?>
+// directives, and returns each directive target as an fsys-relative
+// path. Pulled out of includeTargetsOf so the absolute-path variant
+// can reuse the same parse without duplicating the read logic.
+func scanIncludeTargets(fsys fs.FS, filePath string, maxBytes int64) []string {
+	data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
+	if err != nil {
+		return nil
+	}
+	_, content := lint.StripFrontMatter(data)
+	pf, err := lint.NewFile(filePath, content)
+	if err != nil {
+		return nil
+	}
+	pairs, _ := gensection.FindMarkerPairs(
+		pf, "include", "MDS021", "include")
+	var targets []string
+	for _, mp := range pairs {
+		dir, diags := gensection.ParseDirective(
+			filePath, mp, "MDS021", "include")
+		if dir == nil || len(diags) > 0 {
+			continue
+		}
+		file := dir.Params["file"]
+		if file == "" {
+			continue
+		}
+		targets = append(targets,
+			path.Clean(path.Join(path.Dir(filePath), file)))
+	}
+	return targets
+}
+
+// includeTargetsOfAbs returns the absolute filesystem paths every
+// <?include?> in the file at absFilePath resolves to. Cached on
+// cf.RunCache (keyed by absFilePath) so two host files whose
+// catalogs both glob the file share one read. fsys is the host file's
+// f.FS; hostAbsDir is its absolute root.
+func includeTargetsOfAbs(
+	cf *lint.File, fsys fs.FS, hostAbsDir, absFilePath string, maxBytes int64,
+) []string {
+	return cf.RunCache.Includes(absFilePath, func() []string {
+		fsRel, ok := relToHost(hostAbsDir, absFilePath)
+		if !ok {
+			return nil
+		}
+		rels := scanIncludeTargets(fsys, fsRel, maxBytes)
+		if len(rels) == 0 {
+			return nil
+		}
+		abs := make([]string, 0, len(rels))
+		for _, r := range rels {
+			abs = append(abs, filepath.Clean(filepath.Join(hostAbsDir, r)))
+		}
+		return abs
+	})
+}
+
+// relToHost converts an absolute path into the form fsys.Open expects:
+// a forward-slash path relative to hostAbsDir. Returns ("", false)
+// when absPath escapes hostAbsDir (e.g. an include reaches above the
+// host file's directory, which the host's os.DirFS would reject
+// anyway).
+func relToHost(hostAbsDir, absPath string) (string, bool) {
+	rel, err := filepath.Rel(hostAbsDir, absPath)
+	if err != nil {
+		return "", false
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return rel, true
 }
 
 func scanIncludesForTarget(
@@ -1040,6 +1167,36 @@ func scanIncludesForTarget(
 		visited[resolved] = true
 		found := scanIncludesForTarget(cf, fsys, resolved, target, visited, depth+1, maxBytes)
 		delete(visited, resolved)
+		if found {
+			return true
+		}
+	}
+	return false
+}
+
+// scanIncludesForTargetAbs is the absolute-path variant of
+// scanIncludesForTarget. All paths in the recursion (filePath,
+// target, visited) are absolute filesystem paths; the include
+// adjacency comes from includeTargetsOfAbs, which the run cache
+// shares across host files.
+func scanIncludesForTargetAbs(
+	cf *lint.File, fsys fs.FS, hostAbsDir, absFilePath, absTarget string,
+	visited map[string]bool, depth int, maxBytes int64,
+) bool {
+	if depth > maxIncludeDepth {
+		return false
+	}
+	for _, absResolved := range includeTargetsOfAbs(cf, fsys, hostAbsDir, absFilePath, maxBytes) {
+		if absResolved == absTarget {
+			return true
+		}
+		if visited[absResolved] {
+			continue
+		}
+		visited[absResolved] = true
+		found := scanIncludesForTargetAbs(cf, fsys, hostAbsDir,
+			absResolved, absTarget, visited, depth+1, maxBytes)
+		delete(visited, absResolved)
 		if found {
 			return true
 		}

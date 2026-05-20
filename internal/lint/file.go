@@ -96,6 +96,14 @@ type File struct {
 	// per-Check cache. sync.Map keeps it safe for the concurrent
 	// readers the LSP may run against one document.
 	scratch sync.Map
+
+	// RunCache is the engine-owned read cache shared by every File
+	// processed in one engine.Run pass. Catalog and include rules
+	// consult it before falling back to per-Check Memo so a target
+	// globbed by N host-file catalogs is read once per run, not N
+	// times. nil for struct-literal Files in unit tests; the
+	// catalog rule then takes the per-Check fallback path.
+	RunCache *RunCache
 }
 
 // memoEntry guards a single Memo key so build runs exactly once even

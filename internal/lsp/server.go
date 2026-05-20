@@ -70,6 +70,15 @@ type Server struct {
 	shutdown         atomic.Bool // we are tearing down (any cause)
 	shutdownReceived atomic.Bool // client sent a `shutdown` request
 	exitRequested    atomic.Bool // client sent an `exit` notification
+
+	// runCache is the engine read cache shared across every runLint
+	// call so two host buffers that catalog over the same docs/**
+	// tree do not each re-read the matched targets from disk on
+	// every keystroke. didChange, didSave, and didChangeWatchedFiles
+	// call its Invalidate seam so an edited file's cached read is
+	// dropped — the next runLint that reaches that path re-reads
+	// from disk.
+	runCache *lint.RunCache
 }
 
 // userSettings mirrors the subset of `mdsmith.*` VS Code keys the
@@ -148,6 +157,7 @@ func New(opts Options) *Server {
 		pending:        make(map[string]*pendingLint),
 		pendingResp:    make(map[string]chan rpcResponse),
 		diags:          make(map[string][]Diagnostic),
+		runCache:       lint.NewRunCache(),
 	}
 }
 
@@ -499,6 +509,7 @@ func (s *Server) handleDidChange(ctx context.Context, raw json.RawMessage) {
 	doc.version = p.TextDocument.Version
 	s.docs.set(p.TextDocument.URI, doc)
 	s.indexUpdate(doc.path, doc.text)
+	s.invalidateCachedRead(doc.path)
 	s.scheduleLint(p.TextDocument.URI, lintTriggerChange)
 }
 
@@ -512,6 +523,9 @@ func (s *Server) handleDidSave(ctx context.Context, raw json.RawMessage) {
 	}
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
+	}
+	if doc, ok := s.docs.get(p.TextDocument.URI); ok {
+		s.invalidateCachedRead(doc.path)
 	}
 	s.scheduleLint(p.TextDocument.URI, lintTriggerSave)
 }
@@ -591,6 +605,11 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	}
 	openPaths := s.openDocPaths()
 	for _, path := range mdChanges {
+		// External edits land on disk and are the run cache's primary
+		// staleness trigger — drop the entry whether or not we own
+		// the buffer, because the file the catalog rule would read
+		// next has changed underneath us.
+		s.invalidateCachedRead(path)
 		// Skip files the editor currently has open as a buffer — the
 		// watcher event would otherwise overwrite the live edits with
 		// the stale on-disk content, and symbol navigation would
@@ -601,6 +620,17 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		}
 		s.indexReloadFromDisk(path)
 	}
+}
+
+// invalidateCachedRead drops the run cache's entry for path so the
+// next runLint that crosses it re-reads from disk. path is the
+// document's absolute filesystem path, which matches the absolute
+// key the catalog rule computes when populating the cache.
+func (s *Server) invalidateCachedRead(path string) {
+	if s.runCache == nil || path == "" {
+		return
+	}
+	s.runCache.Invalidate(path)
 }
 
 // openDocPaths returns the set of filesystem paths currently held as
@@ -838,6 +868,12 @@ func (s *Server) runLint(uri string) {
 		// linting silently skips those rules even when a config is
 		// loaded.
 		ConfigPath: configPath,
+		// Share the server-wide read cache across every runLint so
+		// the catalog rule does not re-read each docs/** target on
+		// every keystroke. didChange / didSave / didChangeWatchedFiles
+		// call s.runCache.Invalidate so an edited file's cached read
+		// is dropped before the next pass.
+		RunCache: s.runCache,
 	}
 	res := r.RunSource(relPath, doc.text)
 	// engine.RunSource is CPU-bound and can run for hundreds of

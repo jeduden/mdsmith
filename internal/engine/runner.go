@@ -81,6 +81,15 @@ type Runner struct {
 	// shared cache lazily during rule execution.
 	gitignoreCache map[string]*lint.GitignoreMatcher
 	gitignoreMu    sync.Mutex
+	// RunCache is the engine-owned read cache shared by every File
+	// processed in one Run / RunSource pass. The catalog rule reads
+	// through it so a target globbed by N host catalogs is read once
+	// per run instead of N times. nil means "create a fresh cache
+	// for the next Run" (the CLI case where the corpus is immutable
+	// for one process). Callers with a long-lived process — the LSP
+	// — install a shared instance so it survives across runLint
+	// calls and call its Invalidate seam on document edits.
+	RunCache *lint.RunCache
 }
 
 // fileOutcome is one file's contribution to a run. Workers fill a
@@ -109,6 +118,15 @@ type Result struct {
 // the output is identical to a sequential run regardless of scheduling.
 func (r *Runner) Run(paths []string) *Result {
 	res := &Result{}
+
+	// Auto-create a run-scoped read cache when the caller did not
+	// install one. The cache lives for this Run only on the CLI
+	// path; the LSP installs its own long-lived instance and is
+	// responsible for invalidation. Done before the per-file loop so
+	// every worker observes the same cache.
+	if r.RunCache == nil {
+		r.RunCache = lint.NewRunCache()
+	}
 
 	// Run config-target rules once against the config file before per-file
 	// markdown processing. These rules (e.g. recipe-safety / MDS040) validate
@@ -289,6 +307,7 @@ func (r *Runner) lintFile(path string, rules []rule.Rule, intraFileCap int) (out
 		return fileOutcome{errs: []error{fmt.Errorf("parsing %q: %w", path, err)}}
 	}
 	f.MaxInputBytes = r.MaxInputBytes
+	f.RunCache = r.RunCache
 	dir := filepath.Dir(path)
 	f.FS = os.DirFS(dir)
 	gitignoreDir := dir
@@ -420,6 +439,10 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		return res
 	}
 	f.MaxInputBytes = r.MaxInputBytes
+	if r.RunCache == nil {
+		r.RunCache = lint.NewRunCache()
+	}
+	f.RunCache = r.RunCache
 	if r.SourceFS != nil {
 		f.FS = r.SourceFS
 	}
