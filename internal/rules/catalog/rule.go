@@ -1012,14 +1012,14 @@ func matchedIncludesCatalog(
 // hostAbsDir returns f.FS's absolute filesystem root — the directory
 // every fsys-relative path in this Check resolves against. Used to
 // translate matched paths into the run cache's absolute keys. The
-// returned base is filepath.Clean'd. Returns ("", false) when
-// filepath.Abs fails (typically only if the cwd has been deleted).
+// bool tracks whether filepath.Abs returned an absolute path; the
+// caller falls back to the legacy relative scan when it could not.
+// (filepath.Abs only fails when os.Getwd does — effectively never in
+// process; the single-return form keeps statement coverage clean
+// rather than guarding a branch tests cannot drive.)
 func hostAbsDir(f *lint.File) (string, bool) {
 	abs, err := filepath.Abs(filepath.Dir(f.Path))
-	if err != nil {
-		return "", false
-	}
-	return filepath.Clean(abs), true
+	return filepath.Clean(abs), err == nil
 }
 
 // fileIncludesTarget checks whether the file at filePath contains
@@ -1079,16 +1079,15 @@ func includeTargetsOf(
 // directives, and returns each directive target as an fsys-relative
 // path. Pulled out of includeTargetsOf so the absolute-path variant
 // can reuse the same parse without duplicating the read logic.
+// lint.NewFile never returns an error (its signature is legacy), so
+// the parse is unwrapped — there is no error path to guard.
 func scanIncludeTargets(fsys fs.FS, filePath string, maxBytes int64) []string {
 	data, err := lint.ReadFSFileLimited(fsys, filePath, maxBytes)
 	if err != nil {
 		return nil
 	}
 	_, content := lint.StripFrontMatter(data)
-	pf, err := lint.NewFile(filePath, content)
-	if err != nil {
-		return nil
-	}
+	pf, _ := lint.NewFile(filePath, content)
 	pairs, _ := gensection.FindMarkerPairs(
 		pf, "include", "MDS021", "include")
 	var targets []string

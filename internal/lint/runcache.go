@@ -46,9 +46,10 @@ func (c *RunCache) FrontMatter(absPath string, build func() any) any {
 // f.FS roots differ can still share the cached adjacency.
 func (c *RunCache) Includes(absPath string, build func() []string) []string {
 	v := load(&c.includes, absPath, func() any { return build() })
-	if v == nil {
-		return nil
-	}
+	// v always carries dynamic type []string (the wrapper closure
+	// converts build's typed nil to a typed-nil any), so v == nil
+	// cannot fire — the assertion succeeds for nil and non-nil
+	// slices alike.
 	return v.([]string)
 }
 
