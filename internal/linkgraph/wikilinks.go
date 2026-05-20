@@ -172,11 +172,15 @@ func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
 	if target == "" {
 		return "", false
 	}
-	if strings.Contains(target, "..") {
+	cleaned := path.Clean(path.Clean(filepath.ToSlash(target)))
+	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
 		return "", false
 	}
-	cleaned := path.Clean(target)
-	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
+	// path.Clean reduces "../x" to "../x", "../../x" to "../../x", and
+	// "a/../b" to "b" — so the only escape forms left after Clean are a
+	// leading ".." segment or the bare "..". A name like "v1..v2" never
+	// produces either; this rejects only real parent-directory traversal.
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", false
 	}
 

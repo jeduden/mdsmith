@@ -108,49 +108,119 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // project root and emits one diagnostic per unresolved target or
 // missing heading anchor. Wikilink targets pass through the same
 // placeholder filter the standard link check uses.
+//
+// Resolution is cached per (style, target) within one Check: two
+// wikilinks pointing at the same page share a single fs walk, so
+// runtime stays linear in distinct targets rather than total
+// wikilinks.
 func (r *Rule) checkWikilinks(
 	f *lint.File,
 	anchorCache map[string]map[string]bool,
 ) []lint.Diagnostic {
-	root := f.RootFS
-	if root == nil && f.RootDir != "" {
-		root = os.DirFS(f.RootDir)
-	}
-	if root == nil {
-		root = f.FS
-	}
+	root := wikilinkRoot(f)
 	if root == nil {
 		return nil
 	}
-
-	srcRel := workspaceRelativeSource(f)
+	resolver := newWikilinkResolver(root, workspaceRelativeSource(f), r.effectiveWikilinkStyle())
 
 	var diags []lint.Diagnostic
 	for _, wl := range linkgraph.ExtractWikiLinks(f) {
-		raw := wikilinkRaw(wl)
-		if placeholders.ContainsBodyToken(wl.Target, r.Placeholders) ||
-			placeholders.ContainsBodyToken(raw, r.Placeholders) {
+		if r.wikilinkSuppressed(wl) {
 			continue
 		}
-		resolved, ok := linkgraph.ResolveWikiLink(root, srcRel, wl.Target)
+		resolved, ok := resolver.resolve(wl.Target)
 		if !ok {
 			diags = append(diags, wikilinkBrokenTargetDiag(f.Path, wl, r))
 			continue
 		}
-		if wl.Anchor == "" || !isMarkdownPath(resolved) {
-			continue
-		}
-		anchors, err := wikilinkAnchorsForTarget(f, root, resolved, anchorCache)
-		if err != nil {
-			diags = append(diags, wikilinkUnreadableTargetDiag(f.Path, wl, resolved, err, r))
-			continue
-		}
-		if anchors[linkgraph.NormalizeAnchor(wl.Anchor)] {
-			continue
-		}
-		diags = append(diags, wikilinkBrokenAnchorDiag(f.Path, wl, resolved, r))
+		diags = append(diags, r.checkWikilinkAnchor(f, wl, resolved, root, anchorCache)...)
 	}
 	return diags
+}
+
+func (r *Rule) checkWikilinkAnchor(
+	f *lint.File,
+	wl linkgraph.WikiLink,
+	resolved string,
+	root fs.FS,
+	anchorCache map[string]map[string]bool,
+) []lint.Diagnostic {
+	if wl.Anchor == "" || !isMarkdownPath(resolved) {
+		return nil
+	}
+	anchors, err := wikilinkAnchorsForTarget(f, root, resolved, anchorCache)
+	if err != nil {
+		return []lint.Diagnostic{wikilinkUnreadableTargetDiag(f.Path, wl, resolved, err, r)}
+	}
+	if anchors[linkgraph.NormalizeAnchor(wl.Anchor)] {
+		return nil
+	}
+	return []lint.Diagnostic{wikilinkBrokenAnchorDiag(f.Path, wl, resolved, r)}
+}
+
+func (r *Rule) wikilinkSuppressed(wl linkgraph.WikiLink) bool {
+	if len(r.Placeholders) == 0 {
+		return false
+	}
+	return placeholders.ContainsBodyToken(wl.Target, r.Placeholders) ||
+		placeholders.ContainsBodyToken(wikilinkRaw(wl), r.Placeholders)
+}
+
+func (r *Rule) effectiveWikilinkStyle() string {
+	if r.WikilinkStyle == "" {
+		return "obsidian"
+	}
+	return r.WikilinkStyle
+}
+
+func wikilinkRoot(f *lint.File) fs.FS {
+	if f.RootFS != nil {
+		return f.RootFS
+	}
+	if f.RootDir != "" {
+		return os.DirFS(f.RootDir)
+	}
+	return f.FS
+}
+
+// wikilinkResolver caches workspace-walk results so a doc with many
+// references to the same target does a single fs walk per target.
+type wikilinkResolver struct {
+	root   fs.FS
+	from   string
+	style  string
+	memory map[string]wikilinkResolveResult
+}
+
+type wikilinkResolveResult struct {
+	path string
+	ok   bool
+}
+
+func newWikilinkResolver(root fs.FS, from, style string) *wikilinkResolver {
+	return &wikilinkResolver{
+		root:   root,
+		from:   from,
+		style:  style,
+		memory: map[string]wikilinkResolveResult{},
+	}
+}
+
+func (rv *wikilinkResolver) resolve(target string) (string, bool) {
+	if cached, ok := rv.memory[target]; ok {
+		return cached.path, cached.ok
+	}
+	var out wikilinkResolveResult
+	switch rv.style {
+	case "obsidian":
+		out.path, out.ok = linkgraph.ResolveWikiLink(rv.root, rv.from, target)
+	default:
+		// Settings parsing already rejects unsupported values; this
+		// branch is a defensive no-op so a manually-constructed Rule
+		// with a non-empty unknown style cannot silently fall back.
+	}
+	rv.memory[target] = out
+	return out.path, out.ok
 }
 
 // wikilinkAnchorsForTarget memoizes anchor lookup per workspace-relative

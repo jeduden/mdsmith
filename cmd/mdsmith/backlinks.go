@@ -24,12 +24,21 @@ import (
 // Kind distinguishes a standard Markdown link ("link") from an
 // Obsidian-style wikilink ("wikilink"). JSON consumers can filter
 // on this field; the text formatter renders both shapes inline.
+//
+// Alias and Embed are only meaningful when Kind == "wikilink":
+//   - Alias is the `|alias` half of `[[Page|alias]]`, empty when
+//     the source had no alias. omitempty keeps standard-link
+//     records' JSON shape unchanged.
+//   - Embed is true when the source used `![[...]]` rather than
+//     `[[...]]`.
 type backlinkRecord struct {
 	Source string `json:"source"`
 	Line   int    `json:"line"`
 	Text   string `json:"text"`
 	Target string `json:"target"`
 	Kind   string `json:"kind"`
+	Alias  string `json:"alias,omitempty"`
+	Embed  bool   `json:"embed,omitempty"`
 }
 
 // backlinksOptions bundles the parsed CLI flags for `backlinks`.
@@ -330,7 +339,9 @@ func extractBacklinksFromSource(
 // uses the same shortest-path algorithm MDS027 applies, sandboxed to
 // the file's root. Wikilinks are extracted unconditionally — the
 // scan is cheap and the user querying backlinks already opted in by
-// running the command.
+// running the command. Resolution results are cached per (target)
+// across one file's wikilinks so a doc with N references to the same
+// page does N=1 fs walks.
 func appendWikilinkBacklinks(
 	out []backlinkRecord,
 	f *lint.File,
@@ -344,9 +355,18 @@ func appendWikilinkBacklinks(
 	if root == nil {
 		return out
 	}
+	type resolveResult struct {
+		path string
+		ok   bool
+	}
+	cache := map[string]resolveResult{}
 	for _, wl := range wikilinks {
-		resolved, ok := linkgraph.ResolveWikiLink(root, srcRel, wl.Target)
-		if !ok || resolved != wantTarget {
+		r, cached := cache[wl.Target]
+		if !cached {
+			r.path, r.ok = linkgraph.ResolveWikiLink(root, srcRel, wl.Target)
+			cache[wl.Target] = r
+		}
+		if !r.ok || r.path != wantTarget {
 			continue
 		}
 		if wantAnchorSlug != "" && linkgraph.NormalizeAnchor(wl.Anchor) != wantAnchorSlug {
@@ -362,6 +382,8 @@ func appendWikilinkBacklinks(
 			Text:   text,
 			Target: wikilinkTargetString(wl),
 			Kind:   "wikilink",
+			Alias:  wl.Alias,
+			Embed:  wl.Embed,
 		})
 	}
 	return out
@@ -468,14 +490,21 @@ func sourceMatches(src string, includePatterns []string) bool {
 // format. Standard links use the `[text](target)` shape; wikilinks
 // use the source-form `[[target]]` (or `[[target|alias]]`,
 // `![[target]]` for embeds) so a user scanning output can see at a
-// glance which records came from each link kind.
+// glance which records came from each link kind. The alias half is
+// emitted only when the source itself carried one — the heuristic
+// "Text != Target means alias" would misclassify `[[page#Section]]`
+// because Target ("page#Section") differs from Text ("page").
 func formatBacklinkTextLine(r backlinkRecord) string {
 	if r.Kind == "wikilink" {
-		alias := ""
-		if r.Text != "" && r.Text != r.Target {
-			alias = "|" + r.Text
+		prefix := ""
+		if r.Embed {
+			prefix = "!"
 		}
-		return fmt.Sprintf("%s:%d: [[%s%s]]", r.Source, r.Line, r.Target, alias)
+		alias := ""
+		if r.Alias != "" {
+			alias = "|" + r.Alias
+		}
+		return fmt.Sprintf("%s:%d: %s[[%s%s]]", r.Source, r.Line, prefix, r.Target, alias)
 	}
 	return fmt.Sprintf("%s:%d: [%s](%s)", r.Source, r.Line, r.Text, r.Target)
 }

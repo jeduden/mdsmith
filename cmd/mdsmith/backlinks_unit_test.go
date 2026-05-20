@@ -371,9 +371,24 @@ func TestFormatBacklinkTextLine_Wikilink(t *testing.T) {
 	assert.Equal(t, "from.md:4: [[page]]", formatBacklinkTextLine(bare))
 
 	alias := backlinkRecord{
-		Source: "from.md", Line: 4, Text: "Display", Target: "page", Kind: "wikilink",
+		Source: "from.md", Line: 4, Text: "Display", Target: "page",
+		Kind: "wikilink", Alias: "Display",
 	}
 	assert.Equal(t, "from.md:4: [[page|Display]]", formatBacklinkTextLine(alias))
+
+	anchorNoAlias := backlinkRecord{
+		Source: "from.md", Line: 4, Text: "page",
+		Target: "page#Section", Kind: "wikilink",
+	}
+	// Anchor-only refs must not be rewritten as `|page` aliases; the
+	// alias half is empty so the format emits only the target.
+	assert.Equal(t, "from.md:4: [[page#Section]]", formatBacklinkTextLine(anchorNoAlias))
+
+	embed := backlinkRecord{
+		Source: "from.md", Line: 4, Text: "img.png",
+		Target: "img.png", Kind: "wikilink", Embed: true,
+	}
+	assert.Equal(t, "from.md:4: ![[img.png]]", formatBacklinkTextLine(embed))
 
 	std := backlinkRecord{
 		Source: "from.md", Line: 1, Text: "ref", Target: "x.md", Kind: "link",
