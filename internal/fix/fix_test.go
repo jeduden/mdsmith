@@ -1175,6 +1175,45 @@ func TestComputeWouldFix_SortsRulesByID(t *testing.T) {
 	assert.Equal(t, "MDS010", wf.Rules[1].RuleID)
 }
 
+func TestComputeWouldFixAggregated_DedupesByDiagnosticFile(t *testing.T) {
+	// Simulate a repo-scoped rule (e.g. MDS048) that fires once per
+	// linted markdown file but anchors its diagnostic to a shared
+	// repo artifact (.gitattributes). After dedupe, the WouldFix
+	// entry is keyed by the diagnostic's File, and the count is not
+	// inflated by the number of host markdown files.
+	hostA := "a.md"
+	hostB := "b.md"
+	target := ".gitattributes"
+	allBefore := []lint.Diagnostic{
+		{File: target, Line: 1, Column: 1, RuleID: "MDS048", RuleName: "git-hook-sync", Message: "drift"},
+		{File: target, Line: 1, Column: 1, RuleID: "MDS048", RuleName: "git-hook-sync", Message: "drift"},
+	}
+	allAfter := []lint.Diagnostic{} // fixed across the run
+	bytesChangedByPath := map[string]bool{hostA: true, hostB: false}
+
+	files, total := computeWouldFixAggregated(allBefore, allAfter, bytesChangedByPath)
+	require.Equal(t, 1, total, "deduped MDS048 must contribute exactly 1 to WouldFix")
+
+	// Files are sorted by path. .gitattributes < a.md alphabetically.
+	require.Len(t, files, 2)
+	assert.Equal(t, target, files[0].Path)
+	assert.Equal(t, 1, files[0].Count)
+	require.Len(t, files[0].Rules, 1)
+	assert.Equal(t, "MDS048", files[0].Rules[0].RuleID)
+
+	// a.md gets a "would update generated content" entry (Count=0, Rules empty).
+	assert.Equal(t, hostA, files[1].Path)
+	assert.Equal(t, 0, files[1].Count)
+	assert.Empty(t, files[1].Rules)
+}
+
+func TestComputeWouldFixAggregated_NoChanges(t *testing.T) {
+	// No before/after diff and no bytesChanged anywhere → no entries.
+	files, total := computeWouldFixAggregated(nil, nil, nil)
+	assert.Equal(t, 0, total)
+	assert.Empty(t, files)
+}
+
 func TestFix_DryRun_OmitsFilesWithNoFixes(t *testing.T) {
 	dir := t.TempDir()
 	cleanFile := filepath.Join(dir, "clean.md")

@@ -513,6 +513,35 @@ func TestRule_Fix_RegeneratesGitattributes(t *testing.T) {
 	assert.Equal(t, canonicalManagedBlock(), string(content))
 }
 
+func TestRule_Fix_DryRunSkipsGitattributesWrite(t *testing.T) {
+	dir := t.TempDir()
+	initRepoWithDriver(t, dir)
+
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Test\n"), 0o644))
+
+	attrPath := filepath.Join(dir, ".gitattributes")
+	initial := "# BEGIN mdsmith merge-driver\nold.md merge=mdsmith\n# END mdsmith merge-driver\n"
+	require.NoError(t, os.WriteFile(attrPath, []byte(initial), 0o644))
+
+	r := &Rule{}
+	f := &lint.File{
+		FS:            os.DirFS(dir),
+		Path:          mdFile,
+		Source:        []byte("# Test\n"),
+		MaxInputBytes: 10000,
+		DryRun:        true,
+	}
+
+	assert.Equal(t, f.Source, r.Fix(f),
+		"Fix returns the markdown source unchanged in dry-run too")
+
+	content, err := os.ReadFile(attrPath)
+	require.NoError(t, err)
+	assert.Equal(t, initial, string(content),
+		".gitattributes must be untouched during dry-run")
+}
+
 func TestRule_Fix_EncodesConfigIgnoreAsExcludes(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithDriver(t, dir)

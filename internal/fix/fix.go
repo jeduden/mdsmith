@@ -134,28 +134,33 @@ type RuleFixCount struct {
 func (f *Fixer) Fix(paths []string) *Result {
 	res := &Result{}
 
-	// Aggregate `before` diagnostics across files so the Failures
-	// count can be deduped after the loop. Repo-level rules
-	// (notably MDS048 git-hook-sync) anchor a single warning to a
-	// repository artifact for every linted file in the repo, so
-	// raw len(beforeDiags) summed per file would inflate Failures
-	// to N when only one underlying issue exists.
-	var allBefore []lint.Diagnostic
+	// Aggregate `before` and `after` diagnostics across files so the
+	// Failures count and (on dry-run) the WouldFix accounting can be
+	// deduped after the loop. Repo-level rules (notably MDS048
+	// git-hook-sync) anchor a single warning to a repository
+	// artifact for every linted file in the repo; raw per-file
+	// sums would inflate Failures and WouldFix to N when only one
+	// underlying issue exists.
+	var allBefore, allAfter []lint.Diagnostic
+	var bytesChangedByPath map[string]bool
+	if f.DryRun {
+		bytesChangedByPath = make(map[string]bool)
+	}
 	for _, path := range paths {
 		if config.IsIgnored(f.Config.Ignore, path) {
 			continue
 		}
 		res.FilesChecked++
 		f.log().Printf("file: %s", path)
-		beforeDiags, remainingDiags, modified, wouldFix, errs := f.fixFile(path)
+		beforeDiags, remainingDiags, modified, bytesChanged, errs := f.fixFile(path)
 		allBefore = append(allBefore, beforeDiags...)
+		allAfter = append(allAfter, remainingDiags...)
 		res.Diagnostics = append(res.Diagnostics, remainingDiags...)
 		if modified != "" {
 			res.Modified = append(res.Modified, modified)
 		}
-		if wouldFix != nil {
-			res.WouldFixFiles = append(res.WouldFixFiles, *wouldFix)
-			res.WouldFix += wouldFix.Count
+		if f.DryRun && bytesChanged {
+			bytesChangedByPath[path] = true
 		}
 		res.Errors = append(res.Errors, errs...)
 	}
@@ -173,30 +178,36 @@ func (f *Fixer) Fix(paths []string) *Result {
 		return di.Column < dj.Column
 	})
 
+	if f.DryRun {
+		res.WouldFixFiles, res.WouldFix = computeWouldFixAggregated(
+			allBefore, allAfter, bytesChangedByPath,
+		)
+	}
+
 	return res
 }
 
 // fixFile applies auto-fixes to a single file and returns diagnostics before
-// fixing, remaining diagnostics after fixing, the path if modified, an
-// optional dry-run preview, and any errors encountered.
+// fixing, remaining diagnostics after fixing, the path if modified, whether
+// the in-memory bytes changed (true even on dry-run), and any errors.
 func (f *Fixer) fixFile(path string) (
-	[]lint.Diagnostic, []lint.Diagnostic, string, *WouldFixFile, []error,
+	[]lint.Diagnostic, []lint.Diagnostic, string, bool, []error,
 ) {
 	var errs []error
 
 	source, err := lint.ReadFileLimited(path, f.MaxInputBytes)
 	if err != nil {
-		return nil, nil, "", nil, []error{fmt.Errorf("reading %q: %w", path, err)}
+		return nil, nil, "", false, []error{fmt.Errorf("reading %q: %w", path, err)}
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, nil, "", nil, []error{fmt.Errorf("stat %q: %w", path, err)}
+		return nil, nil, "", false, []error{fmt.Errorf("stat %q: %w", path, err)}
 	}
 
 	lf, dirFS, fmKinds, fmFields, prepErr := f.prepareFile(path, source)
 	if prepErr != nil {
-		return nil, nil, "", nil, []error{prepErr}
+		return nil, nil, "", false, []error{prepErr}
 	}
 
 	effective := f.effectiveWithCategories(path, fmKinds, fmFields)
@@ -216,7 +227,7 @@ func (f *Fixer) fixFile(path string) (
 		out := lf.FullSource(current)
 		if err := writeFile(path, out, info.Mode()); err != nil {
 			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
-			return beforeDiags, beforeDiags, "", nil, errs
+			return beforeDiags, beforeDiags, "", bytesChanged, errs
 		}
 		modified = path
 	}
@@ -228,11 +239,64 @@ func (f *Fixer) fixFile(path string) (
 	if f.Explain {
 		explain.Attach(diags, f.Config, path, fmKinds, fmFields)
 	}
-	var wouldFix *WouldFixFile
-	if f.DryRun {
-		wouldFix = computeWouldFix(path, beforeDiags, diags, bytesChanged)
+	return beforeDiags, diags, modified, bytesChanged, errs
+}
+
+// computeWouldFixAggregated dedupes pre-fix and post-fix diagnostics
+// across the whole run, groups them by diagnostic.File, and emits one
+// preview entry per affected file. Files in bytesChangedByPath (host
+// markdown files whose bytes would change without any diagnostic-count
+// decrease, e.g. directive regeneration) also receive a preview entry
+// so dry-run still surfaces them. Dedupe keeps repo-scoped rules
+// (notably MDS048 anchoring to .gitattributes) from inflating the
+// WouldFix total by the number of files in the repo.
+func computeWouldFixAggregated(
+	allBefore, allAfter []lint.Diagnostic,
+	bytesChangedByPath map[string]bool,
+) ([]WouldFixFile, int) {
+	beforeByFile := groupDiagsByFile(engine.DedupeDiagnostics(allBefore))
+	afterByFile := groupDiagsByFile(engine.DedupeDiagnostics(allAfter))
+
+	files := make(map[string]struct{}, len(beforeByFile)+len(bytesChangedByPath))
+	for path := range beforeByFile {
+		files[path] = struct{}{}
 	}
-	return beforeDiags, diags, modified, wouldFix, errs
+	for path := range afterByFile {
+		files[path] = struct{}{}
+	}
+	for path := range bytesChangedByPath {
+		files[path] = struct{}{}
+	}
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	result := make([]WouldFixFile, 0, len(paths))
+	total := 0
+	for _, p := range paths {
+		wf := computeWouldFix(p, beforeByFile[p], afterByFile[p], bytesChangedByPath[p])
+		if wf == nil {
+			continue
+		}
+		result = append(result, *wf)
+		total += wf.Count
+	}
+	return result, total
+}
+
+// groupDiagsByFile buckets diagnostics by their File field so per-file
+// fix counts can be computed from the deduped global diagnostic set.
+func groupDiagsByFile(diags []lint.Diagnostic) map[string][]lint.Diagnostic {
+	if len(diags) == 0 {
+		return nil
+	}
+	out := make(map[string][]lint.Diagnostic)
+	for _, d := range diags {
+		out[d.File] = append(out[d.File], d)
+	}
+	return out
 }
 
 // computeWouldFix diffs pre-fix and post-fix diagnostics by RuleID
@@ -372,6 +436,7 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 		return nil, nil, nil, nil, fmt.Errorf("parsing %q: %w", path, err)
 	}
 	lf.MaxInputBytes = f.MaxInputBytes
+	lf.DryRun = f.DryRun
 	dir := filepath.Dir(path)
 	var dirFS fs.FS
 	if f.SourceFS != nil {

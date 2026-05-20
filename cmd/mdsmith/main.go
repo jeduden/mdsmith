@@ -505,9 +505,10 @@ func runInit(args []string) int {
 // bytes would change without any diagnostic count decreasing get a
 // "would update generated content" line so a dry-run still surfaces
 // directive regeneration. No-op when the preview is empty. Write
-// errors on the destination are ignored — the diagnostic output
-// path swallows them too, and a half-written preview is not worth
-// halting the run for.
+// errors on the destination are intentionally ignored: the preview
+// is supplemental context, not the primary signal (exit code and
+// diagnostic output drive CI), and a half-written preview is not
+// worth halting the run for.
 func printDryRunPreview(w io.Writer, fixResult *fixpkg.Result) {
 	for _, wf := range fixResult.WouldFixFiles {
 		if wf.Count == 0 {

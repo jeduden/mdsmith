@@ -332,6 +332,13 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
+	// A dry-run must not touch .gitattributes or the git index.
+	// The diagnostic still fires from Check so the would-fix
+	// preview counts this rule, but the side effect is skipped.
+	if f.DryRun {
+		return f.Source
+	}
+
 	repoRoot, err := r.resolveRepoRoot(filepath.Dir(f.Path))
 	if err != nil {
 		return f.Source
