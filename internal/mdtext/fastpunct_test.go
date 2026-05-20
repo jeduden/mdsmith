@@ -115,9 +115,8 @@ type tokenAnnotationCase struct {
 }
 
 // tokenAnnotationCases enumerates every reachable branch of
-// fastMultiPunctWordAnnotation.tokenAnnotation, plus a pinned case
-// for the deliberately-mirrored unreachable IsInitial guard. Held
-// at package scope so the parent test stays under funlen.
+// fastMultiPunctWordAnnotation.tokenAnnotation. Held at package
+// scope so the parent test stays under funlen.
 var tokenAnnotationCases = []tokenAnnotationCase{
 	{
 		name:          "list_number_clears_sentbreak",
