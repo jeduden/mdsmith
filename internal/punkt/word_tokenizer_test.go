@@ -264,3 +264,60 @@ func TestTokenize_WhitespaceOnlyEmitsSingleToken(t *testing.T) {
 	assert.Equal(t, "   \n\t  ", toks[0].Tok)
 	assert.Equal(t, len("   \n\t  "), toks[0].Position)
 }
+
+func TestTokenizeInto_EmptyText(t *testing.T) {
+	// TokenizeInto is exported, so an external caller could pass an
+	// empty string. The early-return branch keeps the per-rune loop
+	// from running against zero bytes.
+	dst := make([]Token, 0, 4)
+	got := TokenizeInto(dst, "", false)
+	assert.Empty(t, got, "empty text must produce no tokens")
+}
+
+// TestTokenize_TrailingMultiByteRuneMatchesUpstream pins the
+// matched behaviour between fork and upstream for an input that
+// ends in a multi-byte rune without trailing whitespace. The
+// per-byte `i == textLength-1` end-of-input check in upstream's
+// loop misses the start byte of the final multi-byte rune, so the
+// last word is not emitted into the token slice. The fork
+// inherits that quirk verbatim to preserve byte-equivalence; the
+// downstream sentence emitter's trailing-fallback (text[lastBreak:])
+// still includes the tail bytes in the final Sentence, so the
+// user-visible output is unaffected.
+func TestTokenize_TrailingMultiByteRuneMatchesUpstream(t *testing.T) {
+	for _, text := range []string{
+		"Hello 世",
+		"abc 世界",
+		"line one\nworld 世",
+	} {
+		got := Tokenize(text, false)
+		want := upstreamTokens(text)
+		require.Equalf(t, len(want), len(got),
+			"trailing-multi-byte token count mismatch on %q", text)
+		for i := range got {
+			assert.Equalf(t, want[i].Tok, got[i].Tok,
+				"trailing-multi-byte token[%d].Tok mismatch on %q", i, text)
+		}
+	}
+}
+
+func TestUpdateLineFlags_DoubleNewlineMarksParaStart(t *testing.T) {
+	// Drives the `if c.lineStart { c.paragraphStart = true }` branch.
+	// Upstream's logic only flips paragraphStart when a '\n' is seen
+	// while lineStart is already true — which happens when a previous
+	// '\n' fired without an intervening token emit (i.e. consecutive
+	// blank-line newlines). Three '\n' in a row do it: the first
+	// emits the prior token and resets flags; the second sets
+	// lineStart=true (empty emit, no reset); the third sees
+	// lineStart=true and promotes to paragraphStart=true.
+	// Cross-checked against upstream by upstreamTokens.
+	const text = "A.\n\n\nB."
+	got := Tokenize(text, false)
+	want := upstreamTokens(text)
+	require.Equal(t, want, got,
+		"fork's ParaStart promotion must match upstream byte-for-byte")
+	require.Len(t, got, 2)
+	assert.Equal(t, "B.", got[1].Tok)
+	assert.True(t, got[1].ParaStart,
+		"the token after two blank lines must have ParaStart=true")
+}

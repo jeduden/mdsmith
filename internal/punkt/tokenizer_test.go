@@ -185,3 +185,57 @@ func TestTokenize_LongInputDoesNotPanic(t *testing.T) {
 	got := tk.Tokenize(b.String())
 	require.NotEmpty(t, got, "long input must produce sentences")
 }
+
+func TestLoadEnglishStorage_HappyPath(t *testing.T) {
+	// Drives loadEnglishStorage with valid JSON. The three supervised
+	// abbreviations must end up in AbbrevTypes.
+	raw := []byte(`{
+        "AbbrevTypes": {"dr": 1},
+        "Collocations": {},
+        "SentStarters": {},
+        "OrthoContext": {}
+    }`)
+	s := loadEnglishStorage(raw)
+	require.NotNil(t, s)
+	for _, abbr := range []string{"sgt", "gov", "no", "dr"} {
+		assert.Truef(t, s.AbbrevTypes.Has(abbr),
+			"AbbrevTypes must contain %q after loadEnglishStorage", abbr)
+	}
+}
+
+func TestLoadEnglishStorage_PanicsOnMalformed(t *testing.T) {
+	// Drives the error branch in loadEnglishStorage red/green.
+	// Production NewEnglish would surface this same panic if the
+	// bundled asset ever became corrupt.
+	defer func() {
+		got := recover()
+		require.NotNil(t, got,
+			"loadEnglishStorage must panic on malformed input")
+		msg, ok := got.(string)
+		require.Truef(t, ok, "panic value must be a string, got %T", got)
+		assert.Contains(t, msg,
+			"punkt: failed to load English training data:",
+			"panic message must name the loader so the cause is "+
+				"obvious without a stack walk")
+	}()
+	_ = loadEnglishStorage([]byte("not json"))
+}
+
+// TestTokenize_TrailingMultiByteSentenceIncludesTail proves that the
+// matched word-tokenizer quirk (see
+// TestTokenize_TrailingMultiByteRuneMatchesUpstream in
+// word_tokenizer_test.go) does not affect user-visible Sentence
+// output: the sentence emitter's trailing-fallback covers the bytes
+// the word tokenizer would otherwise drop.
+func TestTokenize_TrailingMultiByteSentenceIncludesTail(t *testing.T) {
+	tk := NewEnglish()
+	const text = "Hello 世"
+	sents := tk.Tokenize(text)
+	require.Len(t, sents, 1,
+		"input must produce one sentence even though the word "+
+			"tokenizer drops the trailing multi-byte token")
+	assert.Equal(t, text, sents[0].Text,
+		"the Sentence.Text must include the trailing multi-byte rune "+
+			"because the sentence emitter's `text[lastBreak:]` fallback "+
+			"covers any tail not marked by a SentBreak token")
+}

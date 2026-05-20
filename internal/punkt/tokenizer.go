@@ -31,14 +31,23 @@ type Tokenizer struct {
 // (sgt, gov, no), and assembles the three annotators TypeBased,
 // TokenBased, MultiPunct.
 func NewEnglish() *Tokenizer {
-	storage, err := LoadTraining(data.MustAsset("data/english.json"))
+	return New(loadEnglishStorage(data.MustAsset("data/english.json")))
+}
+
+// loadEnglishStorage parses raw English Punkt training data into a
+// Storage and applies the three supervised abbreviations upstream
+// adds (sgt, gov, no). Extracted from NewEnglish so the failure
+// branch can be driven red/green with malformed bytes — see
+// TestLoadEnglishStorage_PanicsOnMalformed.
+func loadEnglishStorage(raw []byte) *Storage {
+	storage, err := LoadTraining(raw)
 	if err != nil {
 		panic("punkt: failed to load English training data: " + err.Error())
 	}
 	for _, abbr := range []string{"sgt", "gov", "no"} {
 		storage.AbbrevTypes.Add(abbr)
 	}
-	return New(storage)
+	return storage
 }
 
 // New constructs a Tokenizer over an arbitrary Storage. Used by
@@ -79,11 +88,11 @@ func (t *Tokenizer) Tokenize(text string) []Sentence {
 		t.pool.Put(st)
 	}()
 
-	// 1. Tokenize text into st.tokens, then build st.ptrs.
+	// 1. Tokenize text into st.tokens, then build st.ptrs. Tokenize
+	// already short-circuited the empty-text case above, and
+	// TokenizeInto's fallback emits at least one token for any
+	// non-empty input, so st.tokens is guaranteed non-empty here.
 	st.tokens = TokenizeInto(st.tokens, text, false)
-	if len(st.tokens) == 0 {
-		return nil
-	}
 	if cap(st.ptrs) < len(st.tokens) {
 		st.ptrs = make([]*Token, 0, len(st.tokens))
 	}

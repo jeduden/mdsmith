@@ -137,17 +137,16 @@ func TokenizeInto(dst []Token, text string, onlyPeriodContext bool) []Token {
 // lowercase-only.
 func typeOf(tok string, buf []byte) []byte {
 	buf = buf[:0]
-	// Step 1: lowercase + numeric replace, into buf.
-	numStart, numEnd, ok := numericTail(tok)
+	// Step 1: lowercase + numeric replace, into buf. numericTail
+	// returns end == len(tok) on every hit (the regex's `\.?$` is
+	// part of the matched span), so the optional-trailing-byte
+	// copy upstream's regex would need is implicit here.
+	numStart, _, ok := numericTail(tok)
 	if !ok {
 		buf = appendStringsToLower(buf, tok)
 	} else {
 		buf = appendStringsToLower(buf, tok[:numStart])
 		buf = append(buf, "##number##"...)
-		if numEnd < len(tok) {
-			// Upstream `.?$` — at most one byte after the digit run.
-			buf = append(buf, tok[numEnd:]...)
-		}
 	}
 	// Step 2: upstream's "if len(typ) == 1 return typ" — single-byte
 	// result is returned as-is, so a lone comma survives.
@@ -222,13 +221,13 @@ func numericTail(tok string) (start, end int, ok bool) {
 	// `[\d,\.-]*` runs on the rest. If the leftmost byte of the run
 	// we walked is not a digit, slide j rightward to the first digit.
 	// Subsequent bytes between [j, firstDigit) become prefix candidates,
-	// not core.
+	// not core. The "no digit reachable" case cannot happen here:
+	// hasDigit was set true earlier exactly because the loop saw a
+	// digit somewhere in [j, trim), so this inner scan is guaranteed
+	// to terminate on a digit before hitting trim.
 	core := j
 	for core < trim && (tok[core] < '0' || tok[core] > '9') {
 		core++
-	}
-	if core >= trim {
-		return 0, 0, false
 	}
 	// Now [core, trim) starts with a digit. Drop one byte at a time
 	// from the LEFT of the core — but only as long as the resulting

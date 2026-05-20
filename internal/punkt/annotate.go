@@ -36,16 +36,30 @@ type state struct {
 	sents []Sentence
 }
 
+// reset prepares the state for return to the sync.Pool. Slices are
+// truncated to length 0 but their backing arrays may still hold
+// references into the previous input (Token.Tok and Sentence.Text
+// are substring slices of the input passed to Tokenize). Zeroing
+// the used range of each backing array drops those references, so
+// the previous input can be GC'd as soon as the caller is done with
+// it — otherwise sync.Pool retention would keep large input
+// buffers alive across Tokenize calls. The ptrs slice carries only
+// *Token pointers into s.tokens, so clearing tokens covers it.
 func (s *state) reset() {
 	for i := range s.tokens {
-		s.tokens[i].reset()
+		s.tokens[i] = Token{}
 	}
 	s.tokens = s.tokens[:0]
+	clear(s.ptrs)
 	s.ptrs = s.ptrs[:0]
+	clear(s.pairs)
 	s.pairs = s.pairs[:0]
 	s.typeBufA = s.typeBufA[:0]
 	s.typeBufB = s.typeBufB[:0]
 	s.colKeyBuf = s.colKeyBuf[:0]
+	for i := range s.sents {
+		s.sents[i] = Sentence{}
+	}
 	s.sents = s.sents[:0]
 }
 

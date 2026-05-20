@@ -216,17 +216,11 @@ func TestHasSentEndChars(t *testing.T) {
 	}
 }
 
-func TestToken_StringerAndReset(t *testing.T) {
+func TestToken_String(t *testing.T) {
 	tok := Token{Tok: "abc.", Position: 5, SentBreak: true, Abbr: true}
 	s := tok.String()
 	assert.Contains(t, s, `"abc."`)
 	assert.Contains(t, s, "SentBreak: true")
 	assert.Contains(t, s, "Abbr: true")
 	assert.Contains(t, s, "Position: 5")
-
-	tok.reset()
-	assert.False(t, tok.SentBreak)
-	assert.False(t, tok.Abbr)
-	assert.False(t, tok.LineStart)
-	assert.False(t, tok.ParaStart)
 }

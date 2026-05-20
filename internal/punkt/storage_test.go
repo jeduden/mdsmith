@@ -26,7 +26,6 @@ func TestNewStorage(t *testing.T) {
 	assert.NotNil(t, s.Collocations)
 	assert.NotNil(t, s.SentStarters)
 	assert.NotNil(t, s.OrthoContext)
-	assert.NotNil(t, s.CollocationIndex)
 }
 
 func TestLoadTraining_Happy(t *testing.T) {
@@ -43,31 +42,26 @@ func TestLoadTraining_Happy(t *testing.T) {
 	assert.True(t, s.SentStarters.Has("however"))
 	assert.Equal(t, 64, s.OrthoContext["the"])
 
-	t.Run("collocation index keyed by the [2]string pair", func(t *testing.T) {
-		assert.True(t, s.HasCollocation("u.s", "supreme"),
-			"trained pair must lookup positive")
-		assert.True(t, s.HasCollocation("p", "m"))
-		assert.False(t, s.HasCollocation("supreme", "u.s"),
+	t.Run("collocations keyed by the upstream comma-joined string", func(t *testing.T) {
+		// The runtime path in tokenAnnotation builds the same
+		// `typ + "," + nextTyp` key and looks it up via
+		// Collocations[string(buf)]. The Storage test pins the
+		// data shape that path depends on.
+		assert.True(t, s.Collocations.Has("u.s,supreme"),
+			"trained pair must look up positive")
+		assert.True(t, s.Collocations.Has("p,m"))
+		assert.False(t, s.Collocations.Has("supreme,u.s"),
 			"order matters — reversed key must miss")
-		assert.False(t, s.HasCollocation("missing", "key"),
+		assert.False(t, s.Collocations.Has("missing,key"),
 			"unknown pair must miss")
 	})
 
-	t.Run("zero-valued collocation skipped during index build", func(t *testing.T) {
-		// "skip": 0 in the JSON is present in the SetString but
-		// rebuildCollocationIndex drops it because SetString.Has is false.
-		assert.False(t, s.HasCollocation("skip", ""),
-			"zero-valued entries must not be indexed")
-	})
-
-	t.Run("malformed collocation key (no comma) skipped", func(t *testing.T) {
-		// Build a fresh storage with a bad key to drive the
-		// `IndexByte < 0` branch red/green.
-		s2 := NewStorage()
-		s2.Collocations["badkey"] = 1
-		s2.rebuildCollocationIndex()
-		assert.Empty(t, s2.CollocationIndex,
-			"a collocation key without a comma cannot be indexed")
+	t.Run("zero-valued collocation reported as absent", func(t *testing.T) {
+		// "skip": 0 in the JSON is present in the SetString map but
+		// SetString.Has returns false, which is what the runtime
+		// `s.Collocations[k] != 0` check relies on.
+		assert.False(t, s.Collocations.Has("skip"),
+			"zero-valued entries must not count as set members")
 	})
 }
 

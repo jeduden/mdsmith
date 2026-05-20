@@ -1,8 +1,8 @@
 package punkt
 
 import (
-	"bytes"
 	"fmt"
+	"strings"
 )
 
 // Token is a tokenized word annotated by the Punkt pipeline. The
@@ -27,17 +27,6 @@ func (t *Token) String() string {
 		"<Token Tok: %q, SentBreak: %t, Abbr: %t, Position: %d>",
 		t.Tok, t.SentBreak, t.Abbr, t.Position,
 	)
-}
-
-// reset zeroes the mutable fields of a pooled Token so the next
-// caller sees a clean slate. Tok and Position are overwritten by the
-// next NewToken-style assignment, so they need not be reset
-// explicitly; the bool flags are the ones the pipeline reads.
-func (t *Token) reset() {
-	t.SentBreak = false
-	t.ParaStart = false
-	t.LineStart = false
-	t.Abbr = false
 }
 
 // HasPeriodFinal reports whether tok ends with a period.
@@ -209,7 +198,7 @@ func hasSentEndChars(tok string) bool {
 		}
 	}
 	for _, p := range sentEndParens {
-		if bytes.Contains([]byte(tok), []byte(p)) {
+		if strings.Contains(tok, p) {
 			return true
 		}
 	}

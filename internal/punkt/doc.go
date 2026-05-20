@@ -20,9 +20,12 @@
 //   - WordTokenizer.Type is a one-pass byte scan into a reusable
 //     buffer instead of `reNumeric.ReplaceAllString` +
 //     `strings.ToLower` + `strings.Replace`.
-//   - Collocation lookups index Storage.CollocationIndex (a
-//     map[[2]string]struct{} built at load time) instead of
-//     `strings.Join` followed by a SetString lookup.
+//   - Collocation lookups rebuild the upstream `typ + "," + nextTyp`
+//     key into a reusable byte buffer and hit
+//     `Collocations[string(buf)]` — relying on the compiler's
+//     `m[string(b)]` elision so the lookup itself does not
+//     allocate, instead of `strings.Join` followed by a SetString
+//     lookup.
 //   - TokenGrouper reuses a buffer across passes; one
 //     allocation per Tokenize call instead of three.
 //   - TypeBasedAnnotation's hyphenation check is a
@@ -36,7 +39,10 @@
 //
 // Upstream commit: github.com/neurosnap/sentences@v1.1.2
 // (https://github.com/neurosnap/sentences/tree/v1.1.2).
-// License: MIT (see vendor LICENSE.md in the upstream module).
+// License: MIT — see the UPSTREAM_LICENSE file in this package for
+// the verbatim upstream copyright and permissions notice. (The file
+// has no extension so mdsmith's content rules do not lint the
+// verbatim license text.)
 //
 // CJK punctuation, multilingual loaders, and IsNonPunct are not
 // vendored. Re-adding any of them must run the equivalence harness;

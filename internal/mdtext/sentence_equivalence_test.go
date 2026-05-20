@@ -188,17 +188,20 @@ func BenchmarkSplitSentences(b *testing.B) {
 }
 
 // BenchmarkSplitSentences_Subset measures Punkt's wall time on
-// abbreviation-heavy prose. The MultiPunctWordAnnotation third
-// pass fires once per period-ending token; testcorpus.AbbrHeavy is
-// the densest such input. Under the default build it exercises
-// matchAbbrPattern inside fastMultiPunctWordAnnotation; under
-// `-tags mdtext_punkt_upstream` it exercises reAbbr inside
+// abbreviation-heavy prose. The third-pass multi-punct annotator
+// fires once per period-ending token; testcorpus.AbbrHeavy is the
+// densest such input. Under the default build it exercises
+// internal/punkt's multiPunctAnnotation (plan 193's vendored fork,
+// which uses the MatchAbbrPattern DFA inherited from plan 191);
+// under `-tags mdtext_punkt_upstream` it exercises reAbbr inside
 // english.MultiPunctWordAnnotation. The plan 191 acceptance bar
 // is a ≥10% improvement of the default build over the upstream
-// build here. The full BenchmarkSplitSentences number remains
-// the equivalence-corpus baseline; this one isolates the lever.
-// The corpus is shared with paragraph-structure's BenchmarkRule_MDS024
-// (plan 193 task 1) so both gates measure the same bytes.
+// build here, plus the plan 193 allocation reduction; both are
+// recorded in plan 193's Results section. The full
+// BenchmarkSplitSentences number remains the equivalence-corpus
+// baseline; this one isolates the lever. The corpus is shared
+// with paragraph-structure's BenchmarkRule_MDS024 (plan 193
+// task 1) so both gates measure the same bytes.
 func BenchmarkSplitSentences_Subset(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
