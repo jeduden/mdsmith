@@ -3904,7 +3904,7 @@ func TestBuildCatalogEntries_SizeLimit_EmitsDiagnostic(t *testing.T) {
 		"row":  "- [{title}](big.md)",
 	}
 
-	entries, diags := buildCatalogEntries(f, params, "index.md", 1)
+	entries, _, diags := buildCatalogEntries(f, params, "index.md", 1)
 	assert.Empty(t, entries, "entry skipped due to read failure")
 	require.Len(t, diags, 1, "expected one diagnostic")
 	assert.Contains(t, diags[0].Message, "cannot read front matter")
@@ -3927,7 +3927,7 @@ func TestBuildCatalogEntries_Normal_NoDiagnostics(t *testing.T) {
 		"row":  "- [{title}](a.md)",
 	}
 
-	entries, diags := buildCatalogEntries(f, params, "index.md", 1)
+	entries, _, diags := buildCatalogEntries(f, params, "index.md", 1)
 	assert.Len(t, entries, 1, "entry should be kept")
 	assert.Empty(t, diags)
 	assert.Equal(t, "A", entries[0].fields["title"])
@@ -4060,7 +4060,7 @@ func TestGenerate_EntryDiagsError(t *testing.T) {
 // checkCatalogIncludeCycle: f.FS == nil → return nil
 func TestCheckCatalogIncludeCycle_NoFS(t *testing.T) {
 	f := &lint.File{Path: "index.md", FS: nil}
-	diags := checkCatalogIncludeCycle(f, "index.md", 1, nil)
+	diags := checkCatalogIncludeCycle(f, "index.md", 1, nil, globResolution{})
 	assert.Nil(t, diags)
 }
 

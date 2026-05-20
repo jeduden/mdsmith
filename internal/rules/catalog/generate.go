@@ -9,8 +9,14 @@ import (
 )
 
 // fileEntry holds the template fields for a single matched file.
+// matchPath is the doublestar match path relative to the resolving
+// globResolution's fs.FS root — kept alongside the display-form
+// fields["filename"] so the include-cycle scan can open the file
+// through the same fs the glob walked, even when displayPath
+// rewrote the visible path to a "../..." host-relative form.
 type fileEntry struct {
-	fields map[string]any
+	fields    map[string]any
+	matchPath string
 }
 
 // renderTemplate renders header + row-per-file + footer. Each section is

@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -302,4 +303,225 @@ func TestScanIncludesForTargetAbs_IndirectMatch(t *testing.T) {
 		filepath.Join(tmp, "target.md"),
 		visited, 0, 1024)
 	assert.True(t, got)
+}
+
+// TestScanFrameFor_LocalUsesHostFS pins that a local-FS-resolved
+// catalog keeps the legacy frame: f.FS, base-filename target,
+// hostAbsDir. This is the behavior every struct-literal test in
+// memo_test.go and rule_test.go depends on.
+func TestScanFrameFor_LocalUsesHostFS(t *testing.T) {
+	fsys := fstest.MapFS{}
+	f := &lint.File{Path: "/tmp/repo/host.md", FS: fsys}
+	res := globResolution{rootRelative: false, fs: fsys}
+	scanFS, target, abs, ok := scanFrameFor(f, res, f.Path)
+	assert.True(t, ok)
+	assert.Equal(t, fsys, scanFS, "local-FS catalog must scan through f.FS")
+	assert.Equal(t, "host.md", target,
+		"local-FS catalog target is the host file's basename")
+	assert.Equal(t, "/tmp/repo", abs,
+		"abs base is the host file's directory for local-FS scans")
+}
+
+// TestScanFrameFor_RootRelativeUsesRootFS pins the fix: a
+// rootRelative catalog frames its scan against res.fs (f.RootFS),
+// with a root-relative target path derived from res.fileDir. This
+// is what lets the cycle scan see across directories.
+func TestScanFrameFor_RootRelativeUsesRootFS(t *testing.T) {
+	rootFS := fstest.MapFS{}
+	f := &lint.File{Path: "/repo/sub/host.md", RootDir: "/repo"}
+	res := globResolution{
+		rootRelative: true,
+		fs:           rootFS,
+		fileDir:      "sub",
+	}
+	scanFS, target, abs, ok := scanFrameFor(f, res, f.Path)
+	assert.True(t, ok)
+	assert.Equal(t, rootFS, scanFS,
+		"rootRelative catalog must scan through res.fs (f.RootFS), "+
+			"not the host's os.DirFS")
+	assert.Equal(t, "sub/host.md", target,
+		"rootRelative target must be root-relative; otherwise an "+
+			"include reaching back via \"../sub/host.md\" wouldn't "+
+			"match a basename-only target")
+	assert.Equal(t, "/repo", abs,
+		"abs base for rootRelative scans is f.RootDir")
+}
+
+// TestScanFrameFor_RootRelativeAtRoot pins the host-at-root case:
+// fileDir is empty, so the target stays the bare basename.
+func TestScanFrameFor_RootRelativeAtRoot(t *testing.T) {
+	rootFS := fstest.MapFS{}
+	f := &lint.File{Path: "/repo/host.md", RootDir: "/repo"}
+	res := globResolution{rootRelative: true, fs: rootFS, fileDir: ""}
+	scanFS, target, _, ok := scanFrameFor(f, res, f.Path)
+	assert.True(t, ok)
+	assert.Equal(t, rootFS, scanFS)
+	assert.Equal(t, "host.md", target,
+		"host at root with fileDir=\"\" must produce a bare-basename "+
+			"target, not \"/host.md\"")
+}
+
+// TestScanFrameFor_RootRelativeNoFSReturnsNil pins the safety
+// branch: rootRelative without a resolved fs (an internally
+// inconsistent globResolution) returns nil so the caller skips
+// the scan rather than dereferencing res.fs.
+func TestScanFrameFor_RootRelativeNoFSReturnsNil(t *testing.T) {
+	f := &lint.File{Path: "/repo/host.md", RootDir: "/repo"}
+	res := globResolution{rootRelative: true, fs: nil}
+	scanFS, _, _, ok := scanFrameFor(f, res, f.Path)
+	assert.Nil(t, scanFS)
+	assert.False(t, ok)
+}
+
+// TestRootAbsDir_Set pins the success path.
+func TestRootAbsDir_Set(t *testing.T) {
+	abs, ok := rootAbsDir(&lint.File{RootDir: "/repo"})
+	assert.True(t, ok)
+	assert.Equal(t, "/repo", abs)
+}
+
+// TestRootAbsDir_EmptyReturnsFalse pins the empty-RootDir branch:
+// when no project root is configured the cache cannot key
+// consistently across hosts, so the helper opts out and the
+// caller falls back to the legacy fsys-relative scan.
+func TestRootAbsDir_EmptyReturnsFalse(t *testing.T) {
+	_, ok := rootAbsDir(&lint.File{RootDir: ""})
+	assert.False(t, ok)
+}
+
+// TestCheckCatalogIncludeCycle_RootRelativeDetectsCrossDirCycle pins
+// the headline behavior change with a host file at root: a catalog
+// resolves through f.RootFS via source-dir, lib/cycle.md
+// back-includes ../host.md, and the scan reports the cycle. Note
+// the *legacy* scan also catches this specific case (f.FS happens
+// to equal f.RootFS when the host is at the project root) — the
+// stronger regression test is in
+// TestCheckCatalogIncludeCycle_RootRelativeFromSubdirHost below.
+func TestCheckCatalogIncludeCycle_RootRelativeDetectsCrossDirCycle(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "lib"), 0o755))
+	hostSrc := "<?catalog\n" +
+		"source-dir: \"lib\"\n" +
+		"glob: \"*.md\"\n" +
+		"?>\n" +
+		"<?/catalog?>\n"
+	cycleSrc := "<?include\nfile: \"../host.md\"\n?>\nbody\n<?/include?>\n"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "host.md"),
+		[]byte(hostSrc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "lib", "cycle.md"),
+		[]byte(cycleSrc), 0o644))
+
+	hostPath := filepath.Join(root, "host.md")
+	src, err := os.ReadFile(hostPath)
+	require.NoError(t, err)
+	f, err := lint.NewFile(hostPath, src)
+	require.NoError(t, err)
+	f.FS = os.DirFS(root)
+	f.SetRootDir(root)
+
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags,
+		"lib/cycle.md back-includes ../host.md; the cycle scan must "+
+			"detect this. Without the fix the scan uses f.FS = "+
+			"os.DirFS(root) and tries to open the displayPath form "+
+			"\"lib/cycle.md\", which actually works here — but for a "+
+			"host file in a subdirectory the displayPath would be "+
+			"\"../lib/cycle.md\" and os.DirFS rejects it. The fix "+
+			"makes both cases route through f.RootFS with the "+
+			"un-displayed root-relative path.")
+	found := false
+	for _, d := range diags {
+		if d.RuleID == "MDS019" {
+			found = true
+			assert.Contains(t, d.Message, "cycle",
+				"diagnostic must explain the cycle")
+			break
+		}
+	}
+	assert.True(t, found, "expected an MDS019 cycle diagnostic")
+}
+
+// TestCheckCatalogIncludeCycle_RootRelativeFromSubdirHost pins the
+// case the legacy scan literally cannot detect: the host file lives
+// in a subdirectory and its catalog reaches a sibling tree via
+// "..". With the old scan, matchedPath was the displayPath form
+// "../shared/cycle.md", which os.DirFS(f's directory) rejects on
+// open. The fix scans through f.RootFS with root-relative
+// "shared/cycle.md", so the back-include into sub/host.md is found.
+func TestCheckCatalogIncludeCycle_RootRelativeFromSubdirHost(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "sub"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "shared"), 0o755))
+	hostSrc := "<?catalog\n" +
+		"glob: \"../shared/*.md\"\n" +
+		"?>\n" +
+		"<?/catalog?>\n"
+	cycleSrc := "<?include\nfile: \"../sub/host.md\"\n?>\nbody\n<?/include?>\n"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sub", "host.md"),
+		[]byte(hostSrc), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "shared", "cycle.md"),
+		[]byte(cycleSrc), 0o644))
+
+	hostPath := filepath.Join(root, "sub", "host.md")
+	src, err := os.ReadFile(hostPath)
+	require.NoError(t, err)
+	f, err := lint.NewFile(hostPath, src)
+	require.NoError(t, err)
+	f.FS = os.DirFS(filepath.Join(root, "sub"))
+	f.SetRootDir(root)
+
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags,
+		"shared/cycle.md back-includes ../sub/host.md; the cycle "+
+			"scan must walk through f.RootFS to see it. The legacy "+
+			"scan tried displayPath \"../shared/cycle.md\" against "+
+			"f.FS=os.DirFS(sub) which rejects the leading \"..\" — "+
+			"a silent miss the fix closes.")
+	for _, d := range diags {
+		if d.RuleID == "MDS019" {
+			assert.Contains(t, d.Message, "cycle")
+			return
+		}
+	}
+	t.Fatalf("expected an MDS019 cycle diagnostic, got %v", diags)
+}
+
+// TestCheckCatalogIncludeCycle_NilScanFSReturnsNil pins the safety
+// branch: when scanFrameFor returns a nil scanFS (rootRelative
+// resolution without a resolved res.fs), checkCatalogIncludeCycle
+// must short-circuit instead of opening through a nil filesystem.
+func TestCheckCatalogIncludeCycle_NilScanFSReturnsNil(t *testing.T) {
+	f := &lint.File{
+		Path:    "/repo/host.md",
+		RootDir: "/repo",
+		FS:      fstest.MapFS{}, // non-nil so the outer guard doesn't fire
+	}
+	res := globResolution{rootRelative: true, fs: nil}
+	diags := checkCatalogIncludeCycle(f, "/repo/host.md", 1,
+		[]fileEntry{{fields: map[string]any{"filename": "x.md"}}}, res)
+	assert.Nil(t, diags,
+		"rootRelative resolution with no fs must short-circuit; "+
+			"the scan has no filesystem to walk")
+}
+
+// TestCheckCatalogIncludeCycle_EntryWithoutMatchPath pins the
+// legacy-fileEntry fallback: an entry constructed without matchPath
+// (the way every struct-literal test in rule_test.go builds them)
+// must still report cycles, by falling back to the display-form
+// filename for the scan.
+func TestCheckCatalogIncludeCycle_EntryWithoutMatchPath(t *testing.T) {
+	body := "<?include\nfile: host.md\n?>\nbody\n<?/include?>\n"
+	fsys := fstest.MapFS{
+		"cycle.md": &fstest.MapFile{Data: []byte(body)},
+	}
+	f := &lint.File{Path: "host.md", FS: fsys}
+	// matchPath intentionally empty so the fallback path runs.
+	entries := []fileEntry{{fields: map[string]any{"filename": "cycle.md"}}}
+	diags := checkCatalogIncludeCycle(f, "host.md", 1, entries, globResolution{})
+	require.Len(t, diags, 1,
+		"entry with no matchPath must fall back to fields[\"filename\"] "+
+			"so legacy struct-literal callers still see the cycle")
+	assert.Contains(t, diags[0].Message, "cycle")
 }
