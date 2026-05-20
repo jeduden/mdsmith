@@ -123,23 +123,29 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 	}
 
 	// Format tables to comply with MDS025 (table-format) settings.
-	content = tablefmt.FormatString(content, tableFormatPad())
+	content = tablefmt.FormatStringWithConfig(content, tableFormatConfig())
 
 	return content, nil
 }
 
-// tableFormatPad returns the pad setting from the MDS025 (table-format)
-// rule, defaulting to 1 if not found.
-func tableFormatPad() int {
+// tableFormatConfig reads the active MDS025 (table-format) settings.
+// Falls back to the default Config (pad=1, spaced separator) when the
+// rule is not registered or does not expose the expected accessors.
+func tableFormatConfig() tablefmt.Config {
+	cfg := tablefmt.Config{Pad: 1}
 	r := rule.ByID("MDS025")
 	if r == nil {
-		return 1
+		return cfg
 	}
-	type padder interface{ GetPad() int }
-	if p, ok := r.(padder); ok {
-		return p.GetPad()
+	if p, ok := r.(interface{ GetPad() int }); ok {
+		cfg.Pad = p.GetPad()
 	}
-	return 1
+	if s, ok := r.(interface {
+		GetSeparatorStyle() tablefmt.SeparatorStyle
+	}); ok {
+		cfg.SeparatorStyle = s.GetSeparatorStyle()
+	}
+	return cfg
 }
 
 // validateCatalogDirective validates parameters specific to the catalog directive.

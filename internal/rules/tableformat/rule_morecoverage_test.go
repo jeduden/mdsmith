@@ -28,7 +28,7 @@ func TestFix_NoTables_ReturnsUnchangedBytes(t *testing.T) {
 
 func TestFix_AlreadyFormattedTable_ReturnsUnchangedBytes(t *testing.T) {
 	// Table is already properly formatted — Fix returns bytes equal to the source.
-	src := "| a   | b      |\n|-----|--------|\n| foo | barbaz |\n"
+	src := "| a   | b      |\n| --- | ------ |\n| foo | barbaz |\n"
 	r := &Rule{Pad: 1}
 	f := newTestFile(t, src)
 	result := r.Fix(f)

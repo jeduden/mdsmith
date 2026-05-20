@@ -7,6 +7,7 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -73,7 +74,7 @@ func TestCheck_TableInsideCodeBlock_NoDiagnostic(t *testing.T) {
 
 func TestCheck_FormattedTable_NoDiagnostics(t *testing.T) {
 	src := "| Name   | Description               |\n" +
-		"|--------|---------------------------|\n" +
+		"| ------ | ------------------------- |\n" +
 		"| foo    | A short one               |\n" +
 		"| barbaz | A longer description here |\n"
 	r := &Rule{Pad: 1}
@@ -117,8 +118,8 @@ func TestCheck_DiagnosticShowsFirstDifferingRow(t *testing.T) {
 	// The first differing row is the separator (row 2).
 	assert.Contains(t, diags[0].Message, "row 2",
 		"message should reference the first differing row")
-	assert.Contains(t, diags[0].Message, "|------|------|",
-		"message should show expected separator")
+	assert.Contains(t, diags[0].Message, "| ---- | ---- |",
+		"message should show expected spaced-style separator")
 }
 
 func TestCheck_ShortSeparator_Flagged(t *testing.T) {
@@ -139,7 +140,7 @@ func TestFix_BasicAlignment(t *testing.T) {
 		"| foo | A short one |\n" +
 		"| barbaz | A longer description here |\n"
 	want := "| Name   | Description               |\n" +
-		"|--------|---------------------------|\n" +
+		"| ------ | ------------------------- |\n" +
 		"| foo    | A short one               |\n" +
 		"| barbaz | A longer description here |\n"
 	r := &Rule{Pad: 1}
@@ -156,14 +157,14 @@ func TestFix_AlignmentIndicators(t *testing.T) {
 	f := newTestFile(t, src)
 	got := string(r.Fix(f))
 
-	// Verify alignment indicators are preserved.
+	// Verify alignment indicators are preserved at the spaced positions.
 	lines := strings.Split(got, "\n")
 	sep := lines[1]
 	assert.Contains(t, sep, ":", "alignment indicators not preserved in separator: %q", sep)
-	// Left alignment: |:---
-	assert.Contains(t, sep, "|:", "left alignment not preserved: %q", sep)
-	// Right alignment: ---:|
-	assert.Contains(t, sep, ":|", "right alignment not preserved: %q", sep)
+	// Left alignment: | :--- (colon flush with content)
+	assert.Contains(t, sep, "| :", "left alignment not preserved: %q", sep)
+	// Right alignment: ---: | (colon flush with content)
+	assert.Contains(t, sep, ": |", "right alignment not preserved: %q", sep)
 }
 
 func TestFix_PreservesContentOutsideTable(t *testing.T) {
@@ -300,6 +301,65 @@ func TestDefaultSettings(t *testing.T) {
 	pad, ok := defaults["pad"]
 	require.True(t, ok, "missing pad in defaults")
 	assert.Equal(t, 1, pad, "default pad = %v, want 1", pad)
+	style, ok := defaults["separator-style"]
+	require.True(t, ok, "missing separator-style in defaults")
+	assert.Equal(t, "spaced", style, "default separator-style = %v, want spaced", style)
+}
+
+// --- separator-style tests ---
+
+func TestApplySettings_SeparatorStyle(t *testing.T) {
+	cases := map[string]struct {
+		value     any
+		wantErr   bool
+		wantStyle tablefmt.SeparatorStyle
+	}{
+		"compact":    {value: "compact", wantStyle: tablefmt.SeparatorCompact},
+		"spaced":     {value: "spaced", wantStyle: tablefmt.SeparatorSpaced},
+		"invalid":    {value: "wide", wantErr: true},
+		"wrong type": {value: 42, wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{Pad: 1}
+			err := r.ApplySettings(map[string]any{"separator-style": tc.value})
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantStyle, r.SeparatorStyle)
+		})
+	}
+}
+
+func TestCheck_CompactStyle_FlagsSpacedSeparator(t *testing.T) {
+	src := "| Name | Value |\n" +
+		"| ---- | ----- |\n" +
+		"| foo  | bar   |\n"
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorCompact}
+	f := newTestFile(t, src)
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "spaced separator must be flagged under compact style")
+	assert.Contains(t, diags[0].Message, "|------|-------|",
+		"expected compact separator to be the suggested fix; got: %s", diags[0].Message)
+}
+
+func TestFix_CompactStyle_RewritesSpacedToCompact(t *testing.T) {
+	src := "| Name | Value |\n" +
+		"| ---- | ----- |\n" +
+		"| foo  | bar   |\n"
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorCompact}
+	f := newTestFile(t, src)
+	fixed := string(r.Fix(f))
+	assert.Contains(t, fixed, "|------|-------|",
+		"Fix must rewrite spaced separator to compact; got:\n%s", fixed)
+}
+
+func TestGetSeparatorStyle(t *testing.T) {
+	assert.Equal(t, tablefmt.SeparatorSpaced, (&Rule{}).GetSeparatorStyle())
+	r := &Rule{SeparatorStyle: tablefmt.SeparatorCompact}
+	assert.Equal(t, tablefmt.SeparatorCompact, r.GetSeparatorStyle())
 }
 
 // --- Helper functions ---

@@ -35,7 +35,7 @@ Trailing notes are absorbed by the `unlisted` slot.
 ## Settings
 
 | Setting | Default |
-|---------|---------|
+| ------- | ------- |
 | timeout | 30s     |
 
 ## Steps

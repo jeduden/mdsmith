@@ -10,7 +10,7 @@ Text with ~~old~~ markup and a task list:
 - [ ] todo
 
 | a   | b   |
-|-----|-----|
+| --- | --- |
 | 1   | 2   |
 
 Footnote reference.[^1]

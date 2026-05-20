@@ -5,7 +5,7 @@ settings:
 # Heading {#top}
 
 | a   | b   |
-|-----|-----|
+| --- | --- |
 | 1   | 2   |
 
 Footnote reference.[^1]
