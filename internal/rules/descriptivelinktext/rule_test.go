@@ -1,6 +1,7 @@
 package descriptivelinktext
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -134,4 +135,46 @@ func TestSoftLineBreakInLinkText(t *testing.T) {
 	diags := check(t, "# T\n\n[click\nhere](x)\n")
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "not descriptive")
+}
+
+// TestCachedBannedSet pins the per-Check memoization contract:
+// subsequent calls on the same *lint.File return the same cached
+// map (reference identity); a fresh *lint.File builds a separate
+// map. Memoising via File.Memo keeps the cache off the shared
+// rule instance (the LSP path reuses rule.All() across goroutines),
+// so this also functions as a regression guard against the
+// previous race-prone rule-level cache.
+func TestCachedBannedSet(t *testing.T) {
+	r := &Rule{Banned: []string{"Click Here", "MORE"}}
+	f, err := lint.NewFile("t.md", []byte("# t\n"))
+	require.NoError(t, err)
+
+	first := r.cachedBannedSet(f)
+	require.Equal(t, map[string]bool{"click here": true, "more": true}, first,
+		"lookup keys must be the normalised form of r.Banned")
+
+	second := r.cachedBannedSet(f)
+	assert.Equal(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(second).Pointer(),
+		"subsequent calls on the same File must return the same cached map")
+
+	g, err := lint.NewFile("t.md", []byte("# t\n"))
+	require.NoError(t, err)
+	third := r.cachedBannedSet(g)
+	assert.NotEqual(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(third).Pointer(),
+		"a fresh File must build a separate cached map (memo is per-Check, not shared on the rule)")
+
+	// An empty Banned yields a non-nil empty map; CheckNode short-
+	// circuits on len(r.Banned)==0 before calling cachedBannedSet, so
+	// this branch is purely defensive — pin it so a future refactor
+	// cannot regress it to nil.
+	empty := &Rule{}
+	h, err := lint.NewFile("t.md", []byte("# t\n"))
+	require.NoError(t, err)
+	got := empty.cachedBannedSet(h)
+	require.NotNil(t, got)
+	assert.Empty(t, got)
 }

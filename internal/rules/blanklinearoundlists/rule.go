@@ -24,44 +24,46 @@ func (r *Rule) Name() string { return "blank-line-around-lists" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "list" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-list logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	list, ok := n.(*ast.List)
+	if !ok {
+		return nil
+	}
+	if _, isListItem := list.Parent().(*ast.ListItem); isListItem {
+		return nil
+	}
+
+	listStartLine := lineOfNode(f, list)
+	listEndLine := lastLineOfNode(f, list)
+
 	codeLines := lint.CollectCodeBlockLines(f)
+	if codeLines[listStartLine] || codeLines[listEndLine] {
+		return nil
+	}
 
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		list, ok := n.(*ast.List)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		if _, isListItem := list.Parent().(*ast.ListItem); isListItem {
-			return ast.WalkContinue, nil
-		}
-
-		listStartLine := lineOfNode(f, list)
-		listEndLine := lastLineOfNode(f, list)
-
-		if codeLines[listStartLine] || codeLines[listEndLine] {
-			return ast.WalkContinue, nil
-		}
-
-		if d, ok := r.checkAdjacentBlank(f, listStartLine, -1, "list should be preceded by a blank line"); ok {
-			diags = append(diags, d)
-		}
-		if d, ok := r.checkAdjacentBlank(f, listEndLine, +1, "list should be followed by a blank line"); ok {
-			diags = append(diags, d)
-		}
-
-		return ast.WalkContinue, nil
-	})
-
+	var diags []lint.Diagnostic
+	if d, ok := r.checkAdjacentBlank(f, listStartLine, -1, "list should be preceded by a blank line"); ok {
+		diags = append(diags, d)
+	}
+	if d, ok := r.checkAdjacentBlank(f, listEndLine, +1, "list should be followed by a blank line"); ok {
+		diags = append(diags, d)
+	}
 	return diags
 }
+
+var _ rule.NodeChecker = (*Rule)(nil)
 
 // checkAdjacentBlank checks whether the line adjacent to targetLine (offset -1 for before,
 // +1 for after) is non-blank and returns a diagnostic if so.

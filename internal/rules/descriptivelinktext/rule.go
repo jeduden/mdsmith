@@ -18,6 +18,14 @@ func init() {
 
 // Rule flags links whose visible text is a non-descriptive phrase such as
 // "click here", "here", "link", or "more".
+//
+// The lookup form of Banned is memoised on the per-Check *lint.File
+// via File.Memo (see cachedBannedSet) rather than on the rule
+// instance. Rule instances are shared across concurrent LSP calls
+// (cmd/mdsmith/lsp.go reuses rule.All(), and ConfigureRule does
+// not clone when cfg.Settings is nil), so any mutable state on the
+// rule itself would race; *lint.File is created fresh per Check
+// and File.Memo is sync.Map + sync.Once protected.
 type Rule struct {
 	Banned []string
 }
@@ -59,48 +67,61 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-link logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
 	if len(r.Banned) == 0 {
 		return nil
 	}
-
-	bannedSet := make(map[string]bool, len(r.Banned))
-	for _, b := range r.Banned {
-		bannedSet[normalizeText(b)] = true
+	link, ok := n.(*ast.Link)
+	if !ok {
+		return nil
+	}
+	if isOnlyImageChild(link) || isOnlyCodeSpanChild(link) {
+		return nil
 	}
 
-	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		link, ok := n.(*ast.Link)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
+	text := collectLinkText(link, f.Source)
+	if !r.cachedBannedSet(f)[normalizeText(text)] {
+		return nil
+	}
+	line := linkLine(link, f)
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  fmt.Sprintf("link text %q is not descriptive", text),
+	}}
+}
 
-		if isOnlyImageChild(link) || isOnlyCodeSpanChild(link) {
-			return ast.WalkContinue, nil
+// cachedBannedSet returns the lookup form of r.Banned, memoised on
+// the per-Check *lint.File. File.Memo is sync.Map + sync.Once
+// protected so the build runs at most once per File even under
+// the LSP's concurrent reader pattern, where the same rule
+// instance is shared across goroutines (config defaults set
+// cfg.Settings=nil, which makes ConfigureRule a no-op).
+func (r *Rule) cachedBannedSet(f *lint.File) map[string]bool {
+	v := f.Memo("MDS063.bannedSet", func() any {
+		m := make(map[string]bool, len(r.Banned))
+		for _, b := range r.Banned {
+			m[normalizeText(b)] = true
 		}
-
-		text := collectLinkText(link, f.Source)
-		if bannedSet[normalizeText(text)] {
-			line := linkLine(link, f)
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  fmt.Sprintf("link text %q is not descriptive", text),
-			})
-		}
-
-		return ast.WalkContinue, nil
+		return m
 	})
-	return diags
+	return v.(map[string]bool)
 }
 
 // normalizeText trims, lowercases, and collapses internal whitespace.
@@ -159,4 +180,5 @@ func linkLine(link *ast.Link, f *lint.File) int {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )

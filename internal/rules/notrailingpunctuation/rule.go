@@ -30,45 +30,48 @@ func (r *Rule) Category() string { return "heading" }
 // at the end of a heading.
 const flaggedPunctuation = ".,;:!"
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-heading logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		heading, ok := n.(*ast.Heading)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		text := astutil.HeadingText(heading, f.Source)
-		text = strings.TrimSpace(text)
-		if len(text) == 0 {
-			return ast.WalkContinue, nil
-		}
-		if text == "..." {
-			// Reserved wildcard marker for required-structure prototypes.
-			return ast.WalkContinue, nil
-		}
-
-		lastChar := text[len(text)-1]
-		if strings.ContainsRune(flaggedPunctuation, rune(lastChar)) {
-			line := astutil.HeadingLine(heading, f)
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  fmt.Sprintf("heading should not end with punctuation %q", string(lastChar)),
-			})
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+	return rule.WalkNodes(r, f)
 }
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	heading, ok := n.(*ast.Heading)
+	if !ok {
+		return nil
+	}
+
+	text := astutil.HeadingText(heading, f.Source)
+	text = strings.TrimSpace(text)
+	if len(text) == 0 {
+		return nil
+	}
+	if text == "..." {
+		// Reserved wildcard marker for required-structure prototypes.
+		return nil
+	}
+
+	lastChar := text[len(text)-1]
+	if strings.ContainsRune(flaggedPunctuation, rune(lastChar)) {
+		line := astutil.HeadingLine(heading, f)
+		return []lint.Diagnostic{{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message:  fmt.Sprintf("heading should not end with punctuation %q", string(lastChar)),
+		}}
+	}
+	return nil
+}
+
+var _ rule.NodeChecker = (*Rule)(nil)

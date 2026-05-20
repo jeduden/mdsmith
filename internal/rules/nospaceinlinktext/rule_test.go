@@ -86,6 +86,44 @@ func TestCheckImagesDisabled(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+// TestFixImagesDisabled_LeavesImageAltUntouched pins the
+// CheckImages=false branch on the Fix path (collectSpans): images
+// must be skipped so their alt text is not stripped of intentional
+// padding. The Check path is already covered by
+// TestCheckImagesDisabled; this exercises the same predicate in
+// the collectSpans loop used by Fix.
+func TestFixImagesDisabled_LeavesImageAltUntouched(t *testing.T) {
+	src := "# T\n\n![ alt ](img.png)\n"
+	result := fix(t, src, false)
+	assert.Equal(t, src, result, "Fix must leave image alt untouched when CheckImages=false")
+}
+
+// TestEmptyLinkText_NoDiagnostic pins the `len(inner) == 0`
+// short-circuit in diagsForSpan: a link with empty brackets
+// `[](url)` has zero inner bytes, so neither leading- nor
+// trailing-space checks make sense — return without flagging.
+// MDS049 leaves empty link text to MDS063 (descriptive-link-text)
+// since "empty" is a content concern, not a whitespace concern.
+func TestEmptyLinkText_NoDiagnostic(t *testing.T) {
+	diags := check(t, "# T\n\n[](https://example.com)\n", true)
+	assert.Empty(t, diags, "empty link text must not trigger a leading/trailing-space diagnostic")
+}
+
+// TestDiagsForSpan_EmptyInner pins diagsForSpan's empty-inner
+// branch at the helper level. spanForNode usually rejects empty
+// spans earlier via bracketSpan, but the helper is also reached
+// from the Fix path through collectSpans; pin the contract that
+// an empty span never emits a whitespace diagnostic regardless of
+// which caller constructed it.
+func TestDiagsForSpan_EmptyInner(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("[](u)\n"))
+	require.NoError(t, err)
+	// [ at 0, ] at 1, inner = source[1:1] = "".
+	s := span{open: 0, close: 1, img: false}
+	diags := diagsForSpan(s, f, "MDS049", "no-space-in-link-text")
+	assert.Nil(t, diags, "empty inner span must not flag whitespace")
+}
+
 func TestNewlineInLinkTextNotFlagged(t *testing.T) {
 	// Newline between words inside brackets must not be flagged.
 	diags := check(t, "# T\n\n[long text that\nwraps](url)\n", true)

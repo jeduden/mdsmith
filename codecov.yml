@@ -1,3 +1,16 @@
+codecov:
+  notify:
+    # Wait for every CI workflow to finish before posting status
+    # checks. Without this, the per-file `codecov/changes` gate
+    # fires immediately when ANY coverage upload arrives — but
+    # the test job in ci.yml uploads its coverage report well
+    # after the codecov bot has already evaluated whatever was
+    # in its cache, so codecov/changes can report stale per-file
+    # numbers (and fail) on commits whose fresh coverage actually
+    # improves the gate. wait_for_ci removes the race by holding
+    # the status post until all uploads are in.
+    wait_for_ci: true
+
 coverage:
   status:
     project:

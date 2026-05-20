@@ -38,46 +38,51 @@ func (r *Rule) Category() string { return "prose" }
 // EnabledByDefault implements rule.Defaultable.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-paragraph logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
 	if f.AST == nil || len(r.Contains) == 0 {
 		return nil
 	}
+	para, ok := n.(*ast.Paragraph)
+	if !ok {
+		return nil
+	}
+	if astutil.IsTable(para, f) {
+		return nil
+	}
+	text := mdtext.ExtractPlainText(para, f.Source)
+	line := astutil.ParagraphLine(para, f)
 	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+	for _, sub := range r.Contains {
+		if sub == "" {
+			continue
 		}
-		para, ok := n.(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
+		if !strings.Contains(text, sub) {
+			continue
 		}
-		if astutil.IsTable(para, f) {
-			return ast.WalkContinue, nil
-		}
-		text := mdtext.ExtractPlainText(para, f.Source)
-		line := astutil.ParagraphLine(para, f)
-		for _, sub := range r.Contains {
-			if sub == "" {
-				continue
-			}
-			if !strings.Contains(text, sub) {
-				continue
-			}
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message: fmt.Sprintf(
-					"paragraph contains forbidden text %q", sub,
-				),
-			})
-		}
-		return ast.WalkContinue, nil
-	})
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     line,
+			Column:   1,
+			RuleID:   r.ID(),
+			RuleName: r.Name(),
+			Severity: lint.Warning,
+			Message: fmt.Sprintf(
+				"paragraph contains forbidden text %q", sub,
+			),
+		})
+	}
 	return diags
 }
 
@@ -113,4 +118,5 @@ func (r *Rule) DefaultSettings() map[string]any {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )

@@ -29,52 +29,49 @@ func (r *Rule) Name() string { return "list-indent" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "list" }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-list-item logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	var diags []lint.Diagnostic
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	listItem, ok := n.(*ast.ListItem)
+	if !ok {
+		return nil
+	}
 	spaces := r.Spaces
 	if spaces <= 0 {
 		spaces = 2
 	}
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		listItem, ok := n.(*ast.ListItem)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-
-		level := nestingLevel(listItem)
-		if level == 0 {
-			return ast.WalkContinue, nil
-		}
-
-		expectedIndent := level * spaces
-		line := firstLineOfListItem(f, listItem)
-		if line < 1 || line > len(f.Lines) {
-			return ast.WalkContinue, nil
-		}
-
-		actualIndent := countLeadingSpaces(f.Lines[line-1])
-		if actualIndent != expectedIndent {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     line,
-				Column:   1,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  "list indent should be " + itoa(expectedIndent) + " spaces, found " + itoa(actualIndent),
-			})
-		}
-
-		return ast.WalkContinue, nil
-	})
-
-	return diags
+	level := nestingLevel(listItem)
+	if level == 0 {
+		return nil
+	}
+	expectedIndent := level * spaces
+	line := firstLineOfListItem(f, listItem)
+	if line < 1 || line > len(f.Lines) {
+		return nil
+	}
+	actualIndent := countLeadingSpaces(f.Lines[line-1])
+	if actualIndent == expectedIndent {
+		return nil
+	}
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  "list indent should be " + itoa(expectedIndent) + " spaces, found " + itoa(actualIndent),
+	}}
 }
 
 // nestingLevel returns the nesting depth of a ListItem. A top-level list item
@@ -282,3 +279,4 @@ func toIntSetting(v any) (int, bool) {
 }
 
 var _ rule.Configurable = (*Rule)(nil)
+var _ rule.NodeChecker = (*Rule)(nil)

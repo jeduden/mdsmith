@@ -63,6 +63,17 @@ type Runner struct {
 	// it only trades CPU for wall time. RunSource (single in-memory
 	// file) ignores this field.
 	Concurrency int
+	// IntraFileConcurrency caps how many non-NodeChecker rules run
+	// concurrently inside one file's checkRules call. The default
+	// (0 = auto) computes `max(1, GOMAXPROCS / fileWorkers)` so the
+	// inner pool fills whichever cores the outer file-level pool
+	// leaves idle: 1 when the file pool saturates cores (mdsmith
+	// check on many files), N when the file pool is small (a 5-file
+	// PR check on a 16-core host, mdsmith lsp single-file). A
+	// caller-set 1 forces serial dispatch; n>1 is taken as the
+	// explicit cap. RunSource uses GOMAXPROCS directly because the
+	// file-level pool does not run for single-file in-memory paths.
+	IntraFileConcurrency int
 	// gitignoreCache caches GitignoreMatchers by directory to avoid
 	// re-walking the filesystem for each file. gitignoreMu guards it
 	// because Run lints files on multiple goroutines and the
@@ -163,6 +174,39 @@ func ResolveWorkers(concurrency, n int) int {
 	return w
 }
 
+// resolveIntraFileWorkersFor maps the IntraFileConcurrency knob and
+// the live file-worker count to an effective concurrency cap for
+// non-NodeChecker rules inside one file. The auto path
+// (`setting <= 0`) computes `max(1, gomaxproc / max(1, fileWorkers))`
+// so the inner pool fills whichever cores the outer pool leaves
+// idle. Pulled out as a pure function so the table-test can pin the
+// formula without spinning up a Runner.
+func resolveIntraFileWorkersFor(setting, gomaxproc, fileWorkers int) int {
+	if setting == 1 {
+		return 1
+	}
+	if setting > 1 {
+		return setting
+	}
+	denom := fileWorkers
+	if denom <= 0 {
+		denom = 1
+	}
+	n := gomaxproc / denom
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// resolveIntraFileWorkers reads GOMAXPROCS once and forwards to the
+// pure helper. Callers should use this; the bare helper is pulled out
+// as a pure function so a table-driven test can pin the formula
+// without faking the runtime.
+func resolveIntraFileWorkers(setting, fileWorkers int) int {
+	return resolveIntraFileWorkersFor(setting, runtime.GOMAXPROCS(0), fileWorkers)
+}
+
 // runFiles lints work into a pre-sized, index-addressed slice. With one
 // worker it stays on the calling goroutine. With more, each worker
 // clones the rule set once (so rules carrying per-Check state — include's
@@ -170,12 +214,19 @@ func ResolveWorkers(concurrency, n int) int {
 // goroutine's instance) and pulls file indices off an atomic counter
 // for even load balancing. No worker writes a slot another reads, so
 // the result needs no lock.
+//
+// The per-file intra-file concurrency cap (see
+// Runner.IntraFileConcurrency) is resolved once here against the
+// outer worker count: when the file pool already saturates cores the
+// inner cap is 1 (no oversubscription); when only a handful of files
+// are linted, the inner cap grows to fill the gap.
 func (r *Runner) runFiles(work []string) []fileOutcome {
 	outcomes := make([]fileOutcome, len(work))
 	workers := ResolveWorkers(r.Concurrency, len(work))
+	intraCap := resolveIntraFileWorkers(r.IntraFileConcurrency, workers)
 	if workers <= 1 {
 		for i, path := range work {
-			outcomes[i] = r.lintFile(path, r.Rules)
+			outcomes[i] = r.lintFile(path, r.Rules, intraCap)
 		}
 		return outcomes
 	}
@@ -191,7 +242,7 @@ func (r *Runner) runFiles(work []string) []fileOutcome {
 				if i >= len(work) {
 					return
 				}
-				outcomes[i] = r.lintFile(work[i], rules)
+				outcomes[i] = r.lintFile(work[i], rules, intraCap)
 			}
 		}()
 	}
@@ -212,8 +263,10 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // lintFile reads, parses, and checks a single file with the given rule
 // set (the worker's private clones) and returns its diagnostics and
 // errors. It touches no shared Runner state except the mutex-guarded
-// gitignore cache.
-func (r *Runner) lintFile(path string, rules []rule.Rule) (out fileOutcome) {
+// gitignore cache. intraFileCap controls how many non-NodeChecker
+// rules run concurrently for this one file — see runFiles for how
+// the cap is computed from Runner.IntraFileConcurrency.
+func (r *Runner) lintFile(path string, rules []rule.Rule, intraFileCap int) (out fileOutcome) {
 	// When verbose, log into a per-file buffer instead of the shared
 	// logger; Run flushes these in input order so concurrent workers
 	// don't interleave -v output. The named return + defer attaches
@@ -259,7 +312,7 @@ func (r *Runner) lintFile(path string, rules []rule.Rule) (out fileOutcome) {
 	mdRules := markdownRulesFrom(rules, r.ConfigPath)
 	logRulesTo(flog, mdRules, effective)
 
-	diags, errs := checkRules(f, mdRules, effective, r.SkipSourceContext)
+	diags, errs := checkRulesWithIntraFile(f, mdRules, effective, r.SkipSourceContext, intraFileCap)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
@@ -398,22 +451,36 @@ func (r *Runner) RunSource(path string, source []byte) *Result {
 		return res
 	}
 
+	r.runSourceCheckRules(res, f, path, fmKinds, fmFields)
+	sortDiagnostics(res.Diagnostics)
+	return res
+}
+
+// runSourceCheckRules wraps the post-parse check pipeline for
+// RunSource: resolve the intra-file concurrency cap, run the rule
+// set, attach explanation provenance, and append diagnostics to res.
+// Split out so RunSource itself stays under the funlen cap.
+func (r *Runner) runSourceCheckRules(
+	res *Result, f *lint.File, path string,
+	fmKinds []string, fmFields map[string]any,
+) {
 	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
-
 	effective := r.effectiveWithCategories(path, fmKinds, fmFields)
-
 	mdRules := r.markdownRules()
 	r.logRules(mdRules, effective)
 
-	diags, errs := checkRules(f, mdRules, effective, r.SkipSourceContext)
+	// RunSource has no file-level pool to compete with, so the
+	// intra-file cap defaults to GOMAXPROCS (auto = pass 0 file
+	// workers, formula picks the full host). The explicit
+	// IntraFileConcurrency knob still overrides — set 1 to keep
+	// the LSP single-threaded for predictability.
+	intraFileCap := resolveIntraFileWorkers(r.IntraFileConcurrency, 0)
+	diags, errs := checkRulesWithIntraFile(f, mdRules, effective, r.SkipSourceContext, intraFileCap)
 	if r.Explain {
 		explain.Attach(diags, r.Config, path, fmKinds, fmFields)
 	}
 	res.Diagnostics = append(res.Diagnostics, diags...)
 	res.Errors = append(res.Errors, errs...)
-
-	sortDiagnostics(res.Diagnostics)
-	return res
 }
 
 // markdownRules returns the subset of rules to run against individual Markdown

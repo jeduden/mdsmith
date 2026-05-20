@@ -32,6 +32,27 @@ func (r *Rule) Name() string { return "paragraph-structure" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "prose" }
 
+// EnabledByDefault implements rule.Defaultable. MDS024 is opt-in
+// because exact sentence counting and per-sentence word counting
+// require the trained Punkt segmenter
+// (github.com/neurosnap/sentences), which the neutral CPU profile
+// recorded in plan 187 attributes ~20% of mdsmith's wall time on
+// prose-heavy input. Punkt's cost is the trained model's regex
+// execution (english.MultiPunctWordAnnotation.tokenAnnotation
+// runs reAbbr and the token-type matchers with backtracking on
+// every period-ending token), and no pure-Go Punkt-equivalent
+// faster segmenter exists — plan 187 records the negative with a
+// reusable equivalence harness. Users who want the diagnostic
+// enable it explicitly; the default check path stops paying the
+// ~20%.
+//
+// NOTE: This is a behaviour change. Before this rule implemented
+// rule.Defaultable, MDS024 ran on every default check. Existing
+// .mdsmith.yml configs that did not pin paragraph-structure will
+// no longer emit prose-structure diagnostics until they opt in
+// via `rules: { paragraph-structure: true }`.
+func (r *Rule) EnabledByDefault() bool { return false }
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
@@ -195,4 +216,5 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.ListMerger   = (*Rule)(nil)
+	_ rule.Defaultable  = (*Rule)(nil)
 )

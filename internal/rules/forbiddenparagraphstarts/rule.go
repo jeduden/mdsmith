@@ -39,47 +39,50 @@ func (r *Rule) Category() string { return "prose" }
 // 'We'") or for per-section overrides through a schema.
 func (r *Rule) EnabledByDefault() bool { return false }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-paragraph logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
 	if f.AST == nil || len(r.Starts) == 0 {
 		return nil
 	}
-	var diags []lint.Diagnostic
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+	para, ok := n.(*ast.Paragraph)
+	if !ok {
+		return nil
+	}
+	if astutil.IsTable(para, f) {
+		return nil
+	}
+	text := strings.TrimLeft(mdtext.ExtractPlainText(para, f.Source), " \t")
+	for _, prefix := range r.Starts {
+		if prefix == "" {
+			continue
 		}
-		para, ok := n.(*ast.Paragraph)
-		if !ok {
-			return ast.WalkContinue, nil
+		if strings.HasPrefix(text, prefix) {
+			return []lint.Diagnostic{{
+				File:     f.Path,
+				Line:     astutil.ParagraphLine(para, f),
+				Column:   1,
+				RuleID:   r.ID(),
+				RuleName: r.Name(),
+				Severity: lint.Warning,
+				Message: fmt.Sprintf(
+					"paragraph starts with forbidden prefix %q",
+					prefix,
+				),
+			}}
 		}
-		if astutil.IsTable(para, f) {
-			return ast.WalkContinue, nil
-		}
-		text := strings.TrimLeft(mdtext.ExtractPlainText(para, f.Source), " \t")
-		for _, prefix := range r.Starts {
-			if prefix == "" {
-				continue
-			}
-			if strings.HasPrefix(text, prefix) {
-				diags = append(diags, lint.Diagnostic{
-					File:     f.Path,
-					Line:     astutil.ParagraphLine(para, f),
-					Column:   1,
-					RuleID:   r.ID(),
-					RuleName: r.Name(),
-					Severity: lint.Warning,
-					Message: fmt.Sprintf(
-						"paragraph starts with forbidden prefix %q",
-						prefix,
-					),
-				})
-				break
-			}
-		}
-		return ast.WalkContinue, nil
-	})
-	return diags
+	}
+	return nil
 }
 
 // ApplySettings implements rule.Configurable.
@@ -114,4 +117,5 @@ func (r *Rule) DefaultSettings() map[string]any {
 var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )

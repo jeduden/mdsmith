@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,6 +30,18 @@ func TestCheck_NoSpaces_NoDiagnostic(t *testing.T) {
 	f := newFile(t, "Use `x` here.\n")
 	diags := (&Rule{}).Check(f)
 	assert.Empty(t, diags)
+}
+
+// TestCheck_EmptyCodeSpan_NoDiagnostic pins the empty-span guard:
+// goldmark accepts paired backticks with nothing between them as an
+// (empty) CodeSpan. The rule's span-bounds helper returns
+// last==first for these; CheckNode must short-circuit rather than
+// index into a zero-length slice. This pins the branch at
+// rule.go: `!ok2 || last == first`.
+func TestCheck_EmptyCodeSpan_NoDiagnostic(t *testing.T) {
+	f := newFile(t, "Use `` here.\n")
+	diags := (&Rule{}).Check(f)
+	assert.Empty(t, diags, "empty code span must produce no diagnostic")
 }
 
 func TestCheck_BalancedSingleSpace_NoDiagnostic(t *testing.T) {
@@ -287,4 +300,79 @@ func TestFix_SkipsGeneratedRange(t *testing.T) {
 	f := newFileWithGeneratedRanges(t, src, []lint.LineRange{{From: 3, To: 3}})
 	got := string((&Rule{}).Fix(f))
 	assert.Equal(t, src, got)
+}
+
+// TestCheckNode_EmptyCodeSpan_NoDiagnostic pins the spanBounds
+// empty-span short-circuit in CheckNode. Goldmark's parser does
+// not produce a CodeSpan with no Text children in normal source,
+// but the guard exists to defend against future parser behaviour
+// and direct AST construction. Build the empty CodeSpan
+// programmatically and pin that CheckNode returns nil.
+func TestCheckNode_EmptyCodeSpan_NoDiagnostic(t *testing.T) {
+	f := newFile(t, "`x`\n")
+	cs := ast.NewCodeSpan() // no Text children -> spanBounds returns ok=false
+	diags := (&Rule{}).CheckNode(cs, true, f)
+	assert.Nil(t, diags, "an empty CodeSpan must not emit a diagnostic")
+}
+
+// TestFix_EmptyCodeSpan_NoChange pins the parallel guard inside
+// the Fix-path walk (rule.go's `if !ok2 || last == first { return
+// ast.WalkContinue }`). Inject an empty CodeSpan into the AST so
+// the walk visits it; Fix must return the source unchanged.
+func TestFix_EmptyCodeSpan_NoChange(t *testing.T) {
+	src := []byte("`x`\n")
+	f := newFile(t, string(src))
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	p.AppendChild(p, ast.NewCodeSpan()) // empty
+	doc.AppendChild(doc, p)
+	f.AST = doc
+	got := (&Rule{}).Fix(f)
+	assert.Equal(t, src, got, "an empty CodeSpan must not trigger a Fix rewrite")
+}
+
+// TestFix_WhitespaceOnlyCodeSpan_NoChange pins the
+// `len(trimmed) == 0` branch in Fix: when a code span contains
+// only spaces, bytes.Trim drops everything, and Fix returns
+// without modifying the source. Three spaces avoid CommonMark's
+// single-space trim (which only fires when content is non-empty
+// after the strip), so goldmark exposes all three to spanBounds.
+func TestFix_WhitespaceOnlyCodeSpan_NoChange(t *testing.T) {
+	src := "Use `   ` here.\n"
+	f := newFile(t, src)
+	got := string((&Rule{}).Fix(f))
+	assert.Equal(t, src, got, "whitespace-only span must not be rewritten")
+}
+
+// TestFix_TrimmedEqualsRaw_NoChange pins the
+// `bytes.Equal(trimmed, raw)` branch in Fix: when bytes.Trim
+// removes the outer whitespace and the surviving content has
+// backticks at one or both ends, Fix re-wraps it with one space
+// per side so CommonMark's trim renders it correctly. If the
+// re-wrapped form happens to equal the raw bytes, no rewrite is
+// needed — return without modifying. Goldmark's parser does not
+// expose a span shaped like this from real Markdown (the
+// CommonMark trim normalises it earlier); construct the CodeSpan
+// directly so the branch is exercised. Source layout:
+//
+//	X `x` Y          // offsets 0..6
+//	  ^^^^^          // span text at [1, 6)
+//
+// Recover does not extend (source[0]=='X', not '`'), so
+// raw == seg == " `x` "; trim → "`x`"; append spaces →
+// " `x` " == raw; branch fires.
+func TestFix_TrimmedEqualsRaw_NoChange(t *testing.T) {
+	src := []byte("X `x` Y\n")
+	f := newFile(t, string(src))
+
+	cs := ast.NewCodeSpan()
+	cs.AppendChild(cs, ast.NewTextSegment(text.NewSegment(1, 6)))
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	p.AppendChild(p, cs)
+	doc.AppendChild(doc, p)
+	f.AST = doc
+
+	got := (&Rule{}).Fix(f)
+	assert.Equal(t, src, got, "trimmed==raw must skip the rewrite")
 }

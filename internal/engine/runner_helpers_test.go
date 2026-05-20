@@ -126,7 +126,7 @@ func TestRunFiles_SequentialMatchesParallel(t *testing.T) {
 
 func TestLintFile_ReadErrorReturnsErrs(t *testing.T) {
 	r := &Runner{Config: &config.Config{}}
-	out := r.lintFile(filepath.Join(t.TempDir(), "missing.md"), nil)
+	out := r.lintFile(filepath.Join(t.TempDir(), "missing.md"), nil, 1)
 	assert.Empty(t, out.diags)
 	require.Len(t, out.errs, 1)
 	assert.Contains(t, out.errs[0].Error(), "reading")
@@ -140,7 +140,7 @@ func TestLintFile_HappyReturnsDiags(t *testing.T) {
 		Config: &config.Config{Rules: map[string]config.RuleCfg{"mock-rule": {Enabled: true}}},
 		Rules:  []rule.Rule{&mockRule{id: "MDS999", name: "mock-rule"}},
 	}
-	out := r.lintFile(p, r.Rules)
+	out := r.lintFile(p, r.Rules, 1)
 	require.Len(t, out.diags, 1)
 	assert.Empty(t, out.errs)
 	assert.Equal(t, p, out.diags[0].File)

@@ -241,3 +241,21 @@ func TestFix_CodeBlocks_Untouched(t *testing.T) {
 	// But not replaced with <?toc?>.
 	assert.NotContains(t, fixed, "<?toc?>")
 }
+
+// TestHasTOCLinkReference covers the helper's three branches.
+// The empty-source short-circuit avoids spinning up a fresh parser
+// for a no-op case (hot when CheckNode is called on every node of
+// a small document); without an explicit test the branch shows up
+// as uncovered patch coverage.
+func TestHasTOCLinkReference(t *testing.T) {
+	t.Run("empty source returns false without parsing", func(t *testing.T) {
+		assert.False(t, hasTOCLinkReference(nil))
+		assert.False(t, hasTOCLinkReference([]byte{}))
+	})
+	t.Run("source with TOC reference returns true", func(t *testing.T) {
+		assert.True(t, hasTOCLinkReference([]byte("[TOC]: #\n")))
+	})
+	t.Run("source without TOC reference returns false", func(t *testing.T) {
+		assert.False(t, hasTOCLinkReference([]byte("# Title\n\nbody\n")))
+	})
+}

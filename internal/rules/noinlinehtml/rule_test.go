@@ -1,9 +1,11 @@
 package noinlinehtml
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -219,4 +221,58 @@ func TestApplySettings_AllowCommentsBadType(t *testing.T) {
 	r := &Rule{}
 	err := r.ApplySettings(map[string]any{"allow-comments": "yes"})
 	require.Error(t, err)
+}
+
+// TestCachedAllowSet pins the per-Check memoization contract:
+// subsequent calls on the same *lint.File return the same cached
+// map (reference identity); a fresh *lint.File builds a separate
+// map. Memoising via File.Memo keeps the cache off the shared
+// rule instance (the LSP path reuses rule.All() across goroutines),
+// so this also functions as a regression guard against the
+// previous race-prone rule-level cache.
+func TestCachedAllowSet(t *testing.T) {
+	r := &Rule{Allow: []string{"Span", "div", "STRONG"}}
+	f, err := lint.NewFile("t.md", []byte("# t\n"))
+	require.NoError(t, err)
+
+	first := r.cachedAllowSet(f)
+	require.Equal(t, map[string]bool{"span": true, "div": true, "strong": true}, first,
+		"lookup keys must be lowercase normalisations of r.Allow")
+
+	second := r.cachedAllowSet(f)
+	assert.Equal(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(second).Pointer(),
+		"subsequent calls on the same File must return the same cached map")
+
+	g, err := lint.NewFile("t.md", []byte("# t\n"))
+	require.NoError(t, err)
+	third := r.cachedAllowSet(g)
+	assert.NotEqual(t,
+		reflect.ValueOf(first).Pointer(),
+		reflect.ValueOf(third).Pointer(),
+		"a fresh File must build a separate cached map (memo is per-Check, not shared on the rule)")
+
+	// An empty Allow yields a non-nil empty map.
+	empty := &Rule{}
+	h, err := lint.NewFile("t.md", []byte("# t\n"))
+	require.NoError(t, err)
+	got := empty.cachedAllowSet(h)
+	require.NotNil(t, got, "empty Allow must still return a non-nil map")
+	assert.Empty(t, got)
+}
+
+// TestRegisteredDefault_AllowCommentsTrue pins that the
+// init()-registered rule instance carries AllowComments=true so
+// that enabling the rule via the bare boolean form
+// (`no-inline-html: true`) matches DefaultSettings's documented
+// allow-comments default. ConfigureRule short-circuits when
+// cfg.Settings is nil, so the registered instance is what runs.
+func TestRegisteredDefault_AllowCommentsTrue(t *testing.T) {
+	r := rule.ByID("MDS041")
+	require.NotNil(t, r, "MDS041 must be registered")
+	hr, ok := r.(*Rule)
+	require.True(t, ok)
+	assert.True(t, hr.AllowComments,
+		"registered MDS041 must have AllowComments=true to match DefaultSettings")
 }

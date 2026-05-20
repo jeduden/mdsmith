@@ -49,6 +49,75 @@ func BenchmarkCheckCorpusLarge(b *testing.B) {
 	benchCheck(b, 600, checkCorpusLines, 12*time.Second)
 }
 
+// BenchmarkCheckCorpusFewFiles exercises the small-file-count path
+// that the intra-file rule parallelism (plan 190) is designed for:
+// a 5-file batch leaves most cores idle for the file-level pool, so
+// the inner pool fills the gap. The budget is generous because the
+// per-file cost dominates (~5 files = 5x the per-file fixed overhead
+// of Small, no scaling beyond that). Not part of the standing
+// budget gate.
+func BenchmarkCheckCorpusFewFiles(b *testing.B) {
+	benchCheck(b, 5, checkCorpusLines, 1*time.Second)
+}
+
+// BenchmarkCheckCorpusFewFilesNoIntraFile is the control variant for
+// the few-files benchmark with intra-file parallelism disabled. Run
+// alongside BenchmarkCheckCorpusFewFiles to measure how much the
+// inner pool saves when the outer pool already has worker headroom.
+// Manual benchmark only; not part of the standing CI gate.
+func BenchmarkCheckCorpusFewFilesNoIntraFile(b *testing.B) {
+	benchCheckCapped(b, 5, checkCorpusLines, 1*time.Second, 1)
+}
+
+func benchCheckCapped(b *testing.B, files, lines int, budget time.Duration, intraCap int) {
+	b.Helper()
+	if testing.Short() {
+		b.Skip("benchmark skipped in -short mode")
+	}
+
+	dir := b.TempDir()
+	paths := make([]string, 0, files)
+	for i := 0; i < files; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("doc%03d.md", i))
+		if err := os.WriteFile(p, []byte(buildCorpusDoc(i, lines, files)), 0o644); err != nil {
+			b.Fatalf("write corpus file: %v", err)
+		}
+		paths = append(paths, p)
+	}
+
+	cfg := config.Defaults()
+	newRunner := func() *engine.Runner {
+		return &engine.Runner{
+			Config:               cfg,
+			Rules:                rule.All(),
+			StripFrontMatter:     true,
+			RootDir:              dir,
+			SkipSourceContext:    true,
+			IntraFileConcurrency: intraCap,
+		}
+	}
+	_ = newRunner().Run(paths)
+
+	samples := make([]time.Duration, 0, b.N)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		start := time.Now()
+		_ = newRunner().Run(paths)
+		samples = append(samples, time.Since(start))
+	}
+	b.StopTimer()
+
+	if len(samples) == 0 {
+		b.Skip("no samples — benchmark needs more iterations")
+	}
+	p95 := percentileDur(samples, 0.95)
+	b.ReportMetric(float64(p95.Milliseconds()), "p95_ms")
+	b.ReportMetric(float64(p95.Microseconds())/float64(files), "us_per_file")
+	if p95 > budget {
+		b.Fatalf("check p95 %v exceeds budget %v for %d-file corpus (cap=%d)", p95, budget, files, intraCap)
+	}
+}
+
 func benchCheck(b *testing.B, files, lines int, budget time.Duration) {
 	b.Helper()
 	if testing.Short() {

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -44,53 +45,55 @@ func CheckRules(f *lint.File, rules []rule.Rule, effective map[string]config.Rul
 // and []string windows were the single largest object count on the
 // check gate (~315 MB / 3.8M objects, plan 175 profiling) and are
 // unused when the caller never renders SourceLines (the benchmark, and
-// machine output that omits them).
+// machine output that omits them). Defaults intra-file concurrency to
+// 1 (serial); callers that already resolved the cap use
+// checkRulesWithIntraFile directly.
 func checkRules(
 	f *lint.File,
 	rules []rule.Rule,
 	effective map[string]config.RuleCfg,
 	skipSourceContext bool,
 ) ([]lint.Diagnostic, []error) {
-	var diags []lint.Diagnostic
-	var errs []error
+	return checkRulesWithIntraFile(f, rules, effective, skipSourceContext, 1)
+}
 
-	// Each enabled rule contributes one contiguous diagnostic group,
-	// kept in rules order. Rules implementing rule.NodeChecker have
-	// their group filled by a single shared ast.Walk instead of each
-	// re-walking the whole tree (goldmark walkHelper was ~44%
-	// cumulative). Because every group is still placed in rules order
-	// and a NodeChecker's bucket is fed the identical pre-order node
-	// stream its own Check (rule.WalkNodes) would use, the combined
-	// slice is byte-identical to running every rule's Check
-	// sequentially — order-independent consumers see no change.
-	type ruleSlot struct {
-		nc    rule.NodeChecker
-		diags []lint.Diagnostic
-	}
-	var slots []*ruleSlot
-	var nodeCheckers []*ruleSlot
+// ruleSlot is one rule's diagnostic bucket. NodeCheckers append to
+// it from the shared walk; non-NodeCheckers fill it once via Check.
+// Slots are kept in rules order so the final concatenation reproduces
+// the sequential output exactly. Configure-failed rules never get a
+// slot — they short-circuit in classifyRules with an entry in errs.
+type ruleSlot struct {
+	nc    rule.NodeChecker
+	check rule.Rule // non-nil for non-NodeChecker slots
+	diags []lint.Diagnostic
+}
 
-	for _, rl := range rules {
-		cfg, ok := effective[rl.Name()]
-		if !ok || !cfg.Enabled {
-			continue
-		}
+// checkRulesWithIntraFile is the core implementation that accepts an
+// explicit intra-file concurrency cap. The lintFile path resolves the
+// cap once per Run (via resolveIntraFileWorkers) and passes it in here
+// so the per-file workers do not each query GOMAXPROCS.
+func checkRulesWithIntraFile(
+	f *lint.File,
+	rules []rule.Rule,
+	effective map[string]config.RuleCfg,
+	skipSourceContext bool,
+	intraFileCap int,
+) ([]lint.Diagnostic, []error) {
+	slots, nodeCheckers, errs := classifyRules(rules, effective)
 
-		checkRule, err := ConfigureRule(rl, cfg)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
+	// Run non-NodeChecker rules. With cap=1 the loop stays serial and
+	// matches the legacy code path byte-for-byte. With cap>1, slots
+	// run concurrently into their own buckets; rules order is
+	// preserved because the concatenation step reads `slots` in
+	// index order at the end.
+	runNonNodeCheckers(f, slots, intraFileCap)
 
-		if nc, ok := checkRule.(rule.NodeChecker); ok {
-			s := &ruleSlot{nc: nc}
-			slots = append(slots, s)
-			nodeCheckers = append(nodeCheckers, s)
-			continue
-		}
-		slots = append(slots, &ruleSlot{diags: checkRule.Check(f)})
-	}
-
+	// The shared walk runs after the goroutine workers join, so its
+	// node visitor and the rules running inside it never race for
+	// any per-rule state. NodeCheckers stay internally serial: one
+	// goroutine, one walk, one rule per node — fast enough that
+	// splitting per rule would lose the cache locality the multiplex
+	// just won.
 	if len(nodeCheckers) > 0 {
 		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			for _, s := range nodeCheckers {
@@ -100,6 +103,7 @@ func checkRules(
 		})
 	}
 
+	var diags []lint.Diagnostic
 	for _, s := range slots {
 		diags = append(diags, s.diags...)
 	}
@@ -110,6 +114,71 @@ func checkRules(
 		populateSourceContext(f, diags, 2)
 	}
 	return diags, errs
+}
+
+// classifyRules walks the rules list once, configures each enabled
+// rule via ConfigureRule (which clones and applies settings only
+// when cfg.Settings is non-nil and the rule is Configurable —
+// otherwise the worker's existing clone is reused as-is), and splits
+// the result into per-rule slots. The slots slice keeps every
+// enabled rule in input order (so the final concatenation is
+// deterministic); the nodeCheckers slice is the subset whose group
+// will be filled by the shared walk.
+func classifyRules(
+	rules []rule.Rule, effective map[string]config.RuleCfg,
+) (slots []*ruleSlot, nodeCheckers []*ruleSlot, errs []error) {
+	for _, rl := range rules {
+		cfg, ok := effective[rl.Name()]
+		if !ok || !cfg.Enabled {
+			continue
+		}
+		checkRule, err := ConfigureRule(rl, cfg)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if nc, ok := checkRule.(rule.NodeChecker); ok {
+			s := &ruleSlot{nc: nc}
+			slots = append(slots, s)
+			nodeCheckers = append(nodeCheckers, s)
+			continue
+		}
+		slots = append(slots, &ruleSlot{check: checkRule})
+	}
+	return slots, nodeCheckers, errs
+}
+
+// runNonNodeCheckers fills the non-NodeChecker slots' diags fields.
+// With cap<=1, runs serially (matches pre-plan-190 behaviour). With
+// cap>1, runs slots concurrently bounded by a semaphore so no more
+// than cap rule.Check calls execute at the same time. Each goroutine
+// writes only to its own slot, so the result needs no lock — slots
+// are concatenated in rules order after the workers join.
+func runNonNodeCheckers(f *lint.File, slots []*ruleSlot, intraFileCap int) {
+	if intraFileCap <= 1 {
+		for _, s := range slots {
+			if s.check == nil {
+				continue
+			}
+			s.diags = s.check.Check(f)
+		}
+		return
+	}
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, intraFileCap)
+	for _, s := range slots {
+		if s.check == nil {
+			continue
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(slot *ruleSlot) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			slot.diags = slot.check.Check(f)
+		}(s)
+	}
+	wg.Wait()
 }
 
 // filterGeneratedDiags removes diagnostics whose line falls within any

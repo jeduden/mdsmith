@@ -354,3 +354,15 @@ func TestSettingMergeMode_ParagraphStructure(t *testing.T) {
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("max-sentences"))
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
+
+// TestEnabledByDefault pins MDS024 as opt-in. Punkt-based exact
+// sentence counting and per-sentence word counting cost ~20% of
+// mdsmith's wall time on prose-heavy input (plan 187 profile); the
+// rule's value is the precise diagnostic, so users who want it
+// enable it explicitly rather than every default check paying the
+// segmenter cost.
+func TestEnabledByDefault(t *testing.T) {
+	r := &Rule{}
+	assert.False(t, r.EnabledByDefault(),
+		"MDS024 must be opt-in — see EnabledByDefault godoc for cost rationale")
+}

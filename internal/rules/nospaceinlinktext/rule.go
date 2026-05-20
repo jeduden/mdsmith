@@ -271,43 +271,91 @@ func (r *Rule) collectSpans(f *lint.File) []span {
 	return spans
 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. The per-link/image logic is pure and
+// stateless, so it is expressed as CheckNode and the engine can fold
+// this rule into one shared AST walk; a direct call still works via
+// rule.WalkNodes.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	s, ok := r.spanForNode(n, f)
+	if !ok {
+		return nil
+	}
+	return diagsForSpan(s, f, r.ID(), r.Name())
+}
+
+// spanForNode returns the bracket span for a Link or Image node, or
+// false if the node should be skipped (not a Link/Image, images
+// disabled, undetectable bracket position, or located in a generated
+// section).
+func (r *Rule) spanForNode(n ast.Node, f *lint.File) (span, bool) {
+	switch n.(type) {
+	case *ast.Link, *ast.Image:
+	default:
+		return span{}, false
+	}
+	img := isImage(n)
+	if img && !r.CheckImages {
+		return span{}, false
+	}
+	open, close := bracketSpan(n, f.Source)
+	if open == -1 {
+		return span{}, false
+	}
+	line := f.LineOfOffset(open)
+	for _, gr := range f.GeneratedRanges {
+		if gr.Contains(line) {
+			return span{}, false
+		}
+	}
+	return span{open: open, close: close, img: img}, true
+}
+
+// diagsForSpan returns the leading/trailing-whitespace diagnostics
+// for a single bracket span. Returns nil when neither end is flagged.
+func diagsForSpan(s span, f *lint.File, ruleID, ruleName string) []lint.Diagnostic {
+	inner := f.Source[s.open+1 : s.close]
+	if s.img && len(bytes.TrimSpace(inner)) == 0 {
+		return nil // whitespace-only image alt; leave to MDS032
+	}
+	if len(inner) == 0 {
+		return nil
+	}
+	role := "link text"
+	if s.img {
+		role = "image alt text"
+	}
+	first := inner[0]
+	last := inner[len(inner)-1]
 	var diags []lint.Diagnostic
-	for _, s := range r.collectSpans(f) {
-		inner := f.Source[s.open+1 : s.close]
-		if s.img && len(bytes.TrimSpace(inner)) == 0 {
-			continue // whitespace-only image alt; leave to MDS032 (no-empty-alt-text)
-		}
-		role := "link text"
-		if s.img {
-			role = "image alt text"
-		}
-		first := inner[0]
-		last := inner[len(inner)-1]
-		// Only flag space/tab, not newlines.
-		if first == ' ' || first == '\t' {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     f.LineOfOffset(s.open + 1),
-				Column:   f.ColumnOfOffset(s.open + 1),
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  role + " has leading whitespace",
-			})
-		}
-		if last == ' ' || last == '\t' {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     f.LineOfOffset(s.close - 1),
-				Column:   f.ColumnOfOffset(s.close - 1),
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  role + " has trailing whitespace",
-			})
-		}
+	if first == ' ' || first == '\t' {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     f.LineOfOffset(s.open + 1),
+			Column:   f.ColumnOfOffset(s.open + 1),
+			RuleID:   ruleID,
+			RuleName: ruleName,
+			Severity: lint.Warning,
+			Message:  role + " has leading whitespace",
+		})
+	}
+	if last == ' ' || last == '\t' {
+		diags = append(diags, lint.Diagnostic{
+			File:     f.Path,
+			Line:     f.LineOfOffset(s.close - 1),
+			Column:   f.ColumnOfOffset(s.close - 1),
+			RuleID:   ruleID,
+			RuleName: ruleName,
+			Severity: lint.Warning,
+			Message:  role + " has trailing whitespace",
+		})
 	}
 	return diags
 }
@@ -361,4 +409,5 @@ var (
 	_ rule.Configurable = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
 	_ rule.FixableRule  = (*Rule)(nil)
+	_ rule.NodeChecker  = (*Rule)(nil)
 )
