@@ -172,7 +172,7 @@ var unreliableEnders = [...]string{
 
 func hasUnreliableEndChars(tok string) bool {
 	for _, e := range unreliableEnders {
-		if hasSuffix(tok, e) {
+		if strings.HasSuffix(tok, e) {
 			return true
 		}
 	}
@@ -197,7 +197,7 @@ var sentEndParens = [...]string{
 
 func hasSentEndChars(tok string) bool {
 	for _, e := range sentEnders {
-		if hasSuffix(tok, e) {
+		if strings.HasSuffix(tok, e) {
 			return true
 		}
 	}
@@ -207,11 +207,4 @@ func hasSentEndChars(tok string) bool {
 		}
 	}
 	return false
-}
-
-// hasSuffix is a small wrapper over strings.HasSuffix kept here so
-// callers do not pull strings into this file (the broader allocation
-// audit prefers explicit byte ops). Inlines trivially.
-func hasSuffix(s, suffix string) bool {
-	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }

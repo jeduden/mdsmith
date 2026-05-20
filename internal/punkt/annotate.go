@@ -105,7 +105,7 @@ func typeAnnotation(s *Storage, token *Token) {
 		token.SentBreak = true
 		return
 	}
-	if !HasPeriodFinal(token.Tok) || hasSuffix(token.Tok, "..") {
+	if !HasPeriodFinal(token.Tok) || strings.HasSuffix(token.Tok, "..") {
 		return
 	}
 
@@ -276,7 +276,7 @@ func multiPunctAnnotation(s *Storage, ortho *OrthoContext, tokOne, tokTwo *Token
 		return
 	}
 
-	if hasSuffix(tokOne.Tok, ".") && tokTwo.Tok == "." {
+	if strings.HasSuffix(tokOne.Tok, ".") && tokTwo.Tok == "." {
 		tokOne.SentBreak = false
 		return
 	}
