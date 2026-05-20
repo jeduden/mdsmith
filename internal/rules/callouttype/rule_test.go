@@ -135,3 +135,23 @@ func TestSettingMergeMode(t *testing.T) {
 	r := &Rule{}
 	assert.NotEqual(t, r.SettingMergeMode("allow"), r.SettingMergeMode("allow-unknown"))
 }
+
+func TestCheck_BlockquoteWithoutParagraph(t *testing.T) {
+	// A blockquote whose first child is a list, code block, or another
+	// blockquote (not a paragraph) cannot carry a callout marker. The
+	// rule must skip it without panicking on the type assertion.
+	f := newFile(t, "> - item 1\n> - item 2\n")
+	diags := (&Rule{}).Check(f)
+	assert.Empty(t, diags)
+}
+
+func TestUnknownTypeDiag_AllowListExtras(t *testing.T) {
+	// When the rule has user-configured types in Allow, the diagnostic
+	// message lists them after the built-in vocabulary so the user
+	// sees both sets when they triage a violation.
+	f := newFile(t, "> [!REVIEW]\n> body\n")
+	r := &Rule{Allow: []string{"decision", "custom"}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "(plus custom, decision)")
+}

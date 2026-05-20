@@ -1238,6 +1238,107 @@ func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
 	return f
 }
 
+func TestWikilinkRaw_Variants(t *testing.T) {
+	cases := map[string]struct {
+		wl   linkgraph.WikiLink
+		want string
+	}{
+		"bare":         {linkgraph.WikiLink{Target: "Page"}, "[[Page]]"},
+		"anchor":       {linkgraph.WikiLink{Target: "Page", Anchor: "Sec"}, "[[Page#Sec]]"},
+		"alias":        {linkgraph.WikiLink{Target: "Page", Alias: "X"}, "[[Page|X]]"},
+		"embed":        {linkgraph.WikiLink{Target: "img.png", Embed: true}, "![[img.png]]"},
+		"anchor+alias": {linkgraph.WikiLink{Target: "Page", Anchor: "S", Alias: "X"}, "[[Page#S|X]]"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, wikilinkRaw(tc.wl))
+		})
+	}
+}
+
+func TestEffectiveWikilinkStyle(t *testing.T) {
+	assert.Equal(t, "obsidian", (&Rule{}).effectiveWikilinkStyle())
+	assert.Equal(t, "obsidian", (&Rule{WikilinkStyle: "obsidian"}).effectiveWikilinkStyle())
+	// Set non-default via direct field write — ApplySettings rejects
+	// unknown values, but the helper must still mirror whatever is
+	// configured.
+	assert.Equal(t, "custom", (&Rule{WikilinkStyle: "custom"}).effectiveWikilinkStyle())
+}
+
+func TestWikilinkRoot_Fallbacks(t *testing.T) {
+	dir := t.TempDir()
+	f := &lint.File{}
+	assert.Nil(t, wikilinkRoot(f))
+
+	f.RootDir = dir
+	require.NotNil(t, wikilinkRoot(f))
+
+	mfs := os.DirFS(dir)
+	f.RootFS = mfs
+	assert.Equal(t, fs.FS(mfs), wikilinkRoot(f))
+
+	f.RootFS = nil
+	f.RootDir = ""
+	f.FS = mfs
+	assert.Equal(t, fs.FS(mfs), wikilinkRoot(f))
+}
+
+func TestCheck_Wikilinks_RootMissing(t *testing.T) {
+	// f.FS is nil → the rule short-circuits before calling
+	// checkWikilinks; verify the top-level Check has the early return.
+	f := &lint.File{Source: []byte("[[X]]\n")}
+	diags := (&Rule{Wikilinks: true}).Check(f)
+	assert.Nil(t, diags)
+}
+
+func TestResolver_UnknownStyleNoop(t *testing.T) {
+	// A Rule constructed with an unknown style bypasses ApplySettings'
+	// validation. The resolver must treat it as "no resolution" rather
+	// than silently falling back to the Obsidian algorithm.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "page.md"), []byte{}, 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n[[page]]\n")
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true, WikilinkStyle: "foam-not-supported"}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "not found in workspace")
+}
+
+func TestCheck_Wikilinks_UnreadableTarget(t *testing.T) {
+	// MaxInputBytes set to a value below the target file's size makes
+	// the anchor read fail; the rule must surface a unreadable-target
+	// diagnostic rather than crash.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.md"),
+		[]byte("# Notes\n\n## A\n## B\n## C\n"), 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n[[Notes#A]]\n")
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	f.MaxInputBytes = 5
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "cannot read wikilink target")
+}
+
+func TestWikilinkAnchorsForTarget_CacheHit(t *testing.T) {
+	cache := map[string]map[string]bool{
+		"wikilink:notes.md": {"x": true},
+	}
+	f := &lint.File{}
+	got, err := wikilinkAnchorsForTarget(f, nil, "notes.md", cache)
+	require.NoError(t, err)
+	assert.True(t, got["x"])
+}
+
+func TestWorkspaceRelativeSource_NoRootDir(t *testing.T) {
+	f := &lint.File{Path: "/abs/path/doc.md"}
+	got := workspaceRelativeSource(f)
+	assert.Equal(t, "/abs/path/doc.md", got)
+}
+
 func TestCheck_Wikilinks_ResolutionCachedPerTarget(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "page.md"), []byte("# P\n"), 0o644))

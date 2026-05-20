@@ -11,6 +11,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestExtractWikiLinks_NilFileReturnsNil(t *testing.T) {
+	assert.Nil(t, ExtractWikiLinks(nil))
+}
+
+func TestExtractWikiLinks_EmptySource(t *testing.T) {
+	f := newFile(t, "")
+	assert.Nil(t, ExtractWikiLinks(f))
+}
+
+func TestResolveWikiLink_WhitespaceTarget(t *testing.T) {
+	mfs := fstest.MapFS{"page.md": &fstest.MapFile{Data: []byte{}}}
+	_, ok := ResolveWikiLink(mfs, "from.md", "   ")
+	assert.False(t, ok)
+}
+
 func TestExtractWikiLinks_BarePage(t *testing.T) {
 	f := newFile(t, "# Doc\n\nSee [[Page]] for context.\n")
 	got := ExtractWikiLinks(f)

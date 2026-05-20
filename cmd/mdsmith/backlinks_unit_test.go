@@ -364,6 +364,33 @@ func TestCollectBacklinks_Wikilinks(t *testing.T) {
 	})
 }
 
+func TestAppendWikilinkBacklinks_NoRootFS(t *testing.T) {
+	// extractBacklinksFromSource leaves f.RootFS nil whenever
+	// rootDir == "" — appendWikilinkBacklinks then has no workspace
+	// to walk and must return the input slice untouched.
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src.md"),
+		[]byte("# S\n\n[[page]]\n"), 0o644))
+	files := []string{filepath.Join(root, "src.md")}
+	got, errs := collectBacklinks(files, "", "page.md", "", nil, nil, 0, true)
+	require.Empty(t, errs)
+	assert.Empty(t, got)
+}
+
+func TestAppendWikilinkBacklinks_UnrelatedTargetSkipped(t *testing.T) {
+	// A wikilink that resolves to a different file than wantTarget
+	// exercises the `r.path != wantTarget` continue branch.
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "other.md"),
+		[]byte("# Other\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src.md"),
+		[]byte("# S\n\n[[other]]\n"), 0o644))
+	files := []string{filepath.Join(root, "src.md")}
+	got, errs := collectBacklinks(files, root, "page.md", "", nil, nil, 0, true)
+	require.Empty(t, errs)
+	assert.Empty(t, got)
+}
+
 func TestFormatBacklinkTextLine_Wikilink(t *testing.T) {
 	bare := backlinkRecord{
 		Source: "from.md", Line: 4, Text: "page", Target: "page", Kind: "wikilink",
