@@ -14,9 +14,10 @@ Tables must have consistent column widths and padding.
 
 ## Settings
 
-| Setting | Type | Default | Description                         |
-| ------- | ---- | ------- | ----------------------------------- |
-| `pad`   | int  | `1`     | spaces on each side of cell content |
+| Setting           | Type   | Default    | Description                                                                                       |
+| ----------------- | ------ | ---------- | ------------------------------------------------------------------------------------------------- |
+| `pad`             | int    | `1`        | spaces on each side of cell content                                                               |
+| `separator-style` | string | `"spaced"` | `"spaced"` writes `\| --- \|` (the GFM-spec form); `"compact"` writes the dense `\|---\|` variant |
 
 ## Config
 
@@ -24,6 +25,15 @@ Tables must have consistent column widths and padding.
 rules:
   table-format:
     pad: 1
+    separator-style: spaced
+```
+
+Opt into the dense legacy form:
+
+```yaml
+rules:
+  table-format:
+    separator-style: compact
 ```
 
 Disable:

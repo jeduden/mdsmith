@@ -164,3 +164,35 @@ func TestSettingMergeMode_NoEmphasisAsHeading(t *testing.T) {
 	assert.Equal(t, rule.MergeAppend, r.SettingMergeMode("placeholders"))
 	assert.Equal(t, rule.MergeReplace, r.SettingMergeMode("unknown"))
 }
+
+// --- Issue #320: emphasis inside a table cell is intentional inline styling ---
+
+func TestCheck_EmphasisInsideTable_NotFlagged(t *testing.T) {
+	// Bold text in a table cell — typically a row-label stub — is
+	// intentional inline styling. MDS018 must defer to the table-format
+	// rule rather than treat the cell as a stray heading.
+	src := []byte("# Status\n\n" +
+		"| Stub      | Value |\n" +
+		"| --------- | ----- |\n" +
+		"| **Bold**  | 1     |\n" +
+		"| **Other** | 2     |\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Empty(t, diags, "emphasis in a table cell must not be flagged")
+}
+
+func TestCheck_TableShapedSingleEmphasisLine_NotFlagged(t *testing.T) {
+	// A standalone "table-shaped" line (`|*x*|`) is parsed by the
+	// default goldmark configuration as text-emphasis-text — three
+	// children — which already escapes the lone-emphasis check. The
+	// explicit IsTable guard documents the intent and stays defensive
+	// against future GFM table parsing.
+	src := []byte("# Heading\n\n|**Solo**|\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Empty(t, diags, "table-shaped emphasis line must not be flagged")
+}

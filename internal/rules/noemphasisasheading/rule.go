@@ -50,6 +50,14 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 
+	// Pipe-tables are row layouts; emphasis inside a cell is intentional
+	// inline styling (a row-label stub, a bold flag column), not a
+	// heading substitute. Defer to the table-format rule and skip this
+	// paragraph. Issue #320.
+	if astutil.IsTable(para, f) {
+		return nil
+	}
+
 	// The paragraph must have exactly one child, and it must be
 	// emphasis (a lone *emphasised line* masquerading as a heading).
 	firstChild := para.FirstChild()
