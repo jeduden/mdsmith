@@ -200,6 +200,91 @@ func TestMakeBodyJSON_NilKindsMapOmitsExtendsMetadata(t *testing.T) {
 	assert.Empty(t, out.EffectiveFrontmatter, "provenance requires the kinds map")
 }
 
+// extendsKindsForTest builds the canonical two-kind map used by
+// the writer-error tests so each test isn't a long inline literal.
+func extendsKindsForTest() map[string]config.KindBody {
+	return map[string]config.KindBody{
+		"base": {Schema: map[string]any{"frontmatter": map[string]any{
+			"id": "string",
+		}}},
+		"child": {Extends: "base", Schema: map[string]any{
+			"frontmatter": map[string]any{"status": `"ratified"`},
+		}},
+	}
+}
+
+// TestWriteBodyText_ExtendsHeaderWriteError exercises the
+// writer-error branch on the `extends:` line: the second write
+// fails after the header line printed, so the error must surface
+// without crashing.
+func TestWriteBodyText_ExtendsHeaderWriteError(t *testing.T) {
+	w := &failingWriter{err: errors.New("disk full"), after: 1}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "disk full")
+}
+
+// TestWriteBodyText_ExtendsChainWriteError trips the failure on
+// the `extends-chain` line specifically. The chain prints only
+// when its length exceeds one.
+func TestWriteBodyText_ExtendsChainWriteError(t *testing.T) {
+	w := &failingWriter{err: errors.New("disk full"), after: 2}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "disk full")
+}
+
+// TestWriteBodyText_EffectiveFrontmatterHeaderWriteError trips
+// the failure on the `effective-frontmatter:` label line.
+func TestWriteBodyText_EffectiveFrontmatterHeaderWriteError(t *testing.T) {
+	// after = 4 lets the kind header, extends line, extends-chain
+	// line, and body YAML through; the next write — the
+	// `effective-frontmatter:` label — must trigger the error.
+	w := &failingWriter{err: errors.New("disk full"), after: 4}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+}
+
+// TestWriteBodyText_EffectiveFrontmatterLeafWriteError trips the
+// failure on a leaf line under `effective-frontmatter:`.
+func TestWriteBodyText_EffectiveFrontmatterLeafWriteError(t *testing.T) {
+	w := &failingWriter{err: errors.New("disk full"), after: 5}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+}
+
+// TestEffectiveFrontmatterLeaves_ResolverErrorReturnsNil covers
+// the err-branch in effectiveFrontmatterLeaves: a malformed kinds
+// map (cycle) makes ResolveKindInlineSchema return an error, and
+// the renderer treats that as "no leaves to report".
+func TestEffectiveFrontmatterLeaves_ResolverErrorReturnsNil(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"a": {Extends: "b", Schema: map[string]any{"frontmatter": map[string]any{
+			"x": "string",
+		}}},
+		"b": {Extends: "a", Schema: map[string]any{"frontmatter": map[string]any{
+			"y": "string",
+		}}},
+	}
+	out := effectiveFrontmatterLeaves(kinds, "a")
+	assert.Nil(t, out)
+}
+
+// TestEffectiveFrontmatterLeaves_NoFrontmatterReturnsNil covers
+// the empty-frontmatter branch: a resolved schema without any
+// frontmatter keys contributes nothing to the audit list.
+func TestEffectiveFrontmatterLeaves_NoFrontmatterReturnsNil(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"a": {Schema: map[string]any{"filename": "x.md"}},
+	}
+	out := effectiveFrontmatterLeaves(kinds, "a")
+	assert.Nil(t, out)
+}
+
 func TestWriteBodyText_EmptyBodyRendersPlaceholder(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, WriteBodyText(&buf, "ghost", config.KindBody{}, nil))

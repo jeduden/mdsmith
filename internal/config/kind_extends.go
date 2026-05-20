@@ -15,17 +15,18 @@ import (
 // defensively when it spots them so callers never silently see a
 // truncated chain.
 //
+// Merge is structural only. Frontmatter constraints from both
+// layers are joined with CUE `&`, but the result is not CUE-eval'd
+// — call ValidateKindInlineSchema (or rely on ValidateKinds, which
+// runs it at load time) to detect unsatisfiable conjunctions like
+// `int & string`. Splitting the two passes lets effectiveRules
+// call this resolver per file without re-running the CUE checker.
+//
 // Returns nil when the kind has no inline schema (KindBody.Schema is
 // empty) and no parent declares one either. Returns the kind's own
 // schema unchanged when no `extends:` is set, so the existing
 // single-kind merge path stays byte-equivalent for non-inheriting
 // kinds.
-//
-// Conflicts in the unified frontmatter (a child whose CUE expression
-// cannot unify with the parent's) surface as an
-// extendsChainConflictError naming the offending child's kind, the
-// parent's kind, and both expressions. The caller (config validate
-// or merge) wraps it with the source location.
 func ResolveKindInlineSchema(
 	kinds map[string]KindBody, name string,
 ) (map[string]any, error) {
@@ -40,18 +41,43 @@ func ResolveKindInlineSchema(
 		return chain[0].raw, nil
 	}
 	merged := chain[0].raw
-	parentName := chain[0].kind
 	for _, c := range chain[1:] {
 		next, err := schema.MergeRawMap(merged, c.raw)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"kind %q (extends %s): %w",
-				c.kind, parentName, err)
+			// MergeRawMap is structural-only after plan-135 split and
+			// returns errors only on programmer mistakes (impossible
+			// from a validated chain). Surface them defensively.
+			return nil, fmt.Errorf("kind %q: %w", c.kind, err)
 		}
 		merged = next
-		parentName = c.kind
 	}
 	return merged, nil
+}
+
+// ValidateKindInlineSchema resolves the extends chain for the named
+// kind and CUE-checks the merged frontmatter expressions, returning
+// an error if any unified expression is unsatisfiable. The error
+// names the conflicting key and both layer expressions. Wrapped
+// with the kind name and parent context so the diagnostic carries
+// the full extends-chain trail (plan 135 / plan 147 shape).
+//
+// Returns nil when the kind has no extends chain (validation is a
+// no-op for non-inheriting kinds) and when every unified
+// expression compiles cleanly.
+func ValidateKindInlineSchema(
+	kinds map[string]KindBody, name string,
+) error {
+	resolved, err := ResolveKindInlineSchema(kinds, name)
+	if err != nil {
+		return err
+	}
+	if resolved == nil {
+		return nil
+	}
+	if err := schema.ValidateExtendedFrontmatter(resolved); err != nil {
+		return fmt.Errorf("kind %q: %w", name, err)
+	}
+	return nil
 }
 
 // schemaChainEntry pairs a kind name with the raw inline schema it

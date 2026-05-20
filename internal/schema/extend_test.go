@@ -313,8 +313,12 @@ func TestMergeRawMap_NilParentReturnsCloneOfChild(t *testing.T) {
 	child := map[string]any{"filename": "x.md"}
 	out, err := MergeRawMap(nil, child)
 	require.NoError(t, err)
-	require.NotSame(t, &child, &out)
 	assert.Equal(t, "x.md", out["filename"])
+	// Map values are references; verify out doesn't alias child by
+	// mutating out and confirming child is unchanged.
+	out["new-key"] = "new"
+	assert.NotContains(t, child, "new-key",
+		"out must be a fresh map, not an alias of child")
 }
 
 func TestMergeRawMap_NilChildReturnsCloneOfParent(t *testing.T) {
@@ -322,6 +326,9 @@ func TestMergeRawMap_NilChildReturnsCloneOfParent(t *testing.T) {
 	out, err := MergeRawMap(parent, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "x.md", out["filename"])
+	out["new-key"] = "new"
+	assert.NotContains(t, parent, "new-key",
+		"out must be a fresh map, not an alias of parent")
 }
 
 func TestMergeRawMap_FrontmatterChildAddsKey(t *testing.T) {
@@ -350,14 +357,70 @@ func TestMergeRawMap_FrontmatterSharedKeyUnifies(t *testing.T) {
 	assert.Contains(t, expr, "ratified")
 }
 
-func TestMergeRawMap_FrontmatterConflictReturnsError(t *testing.T) {
+// TestMergeRawMap_FrontmatterConflictMergesWithoutError covers the
+// post-refactor contract (review feedback on PR #365): MergeRawMap
+// is now purely structural — it joins the two CUE expressions with
+// `&` but does not evaluate the result. Use
+// ValidateExtendedFrontmatter to detect unsatisfiable expressions
+// at load time; the per-file merge path skips that step for
+// performance once ValidateKinds has already run.
+func TestMergeRawMap_FrontmatterConflictMergesWithoutError(t *testing.T) {
 	parent := map[string]any{"frontmatter": map[string]any{"x": "int"}}
 	child := map[string]any{"frontmatter": map[string]any{"x": "string"}}
-	_, err := MergeRawMap(parent, child)
+	out, err := MergeRawMap(parent, child)
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	assert.Contains(t, fm["x"], "&", "shared key joins via CUE conjunction")
+}
+
+func TestValidateExtendedFrontmatter_RejectsUnsatisfiable(t *testing.T) {
+	merged := map[string]any{"frontmatter": map[string]any{
+		"x": "(int) & (string)",
+	}}
+	err := ValidateExtendedFrontmatter(merged)
 	require.Error(t, err)
 	var keyErr *UnsatisfiableKeyError
 	require.True(t, errors.As(err, &keyErr))
 	assert.Equal(t, "x", keyErr.Key)
+	assert.Equal(t, "int", keyErr.Parent)
+	assert.Equal(t, "string", keyErr.Child)
+}
+
+func TestValidateExtendedFrontmatter_AcceptsSatisfiable(t *testing.T) {
+	merged := map[string]any{"frontmatter": map[string]any{
+		"x": `("open" | "closed") & ("open")`,
+	}}
+	assert.NoError(t, ValidateExtendedFrontmatter(merged))
+}
+
+func TestValidateExtendedFrontmatter_NoFrontmatterKeyReturnsNil(t *testing.T) {
+	merged := map[string]any{"filename": "x.md"}
+	assert.NoError(t, ValidateExtendedFrontmatter(merged))
+}
+
+func TestValidateExtendedFrontmatter_SkipsNonStringValue(t *testing.T) {
+	merged := map[string]any{"frontmatter": map[string]any{
+		"n": 42,
+	}}
+	assert.NoError(t, ValidateExtendedFrontmatter(merged))
+}
+
+func TestSplitUnifiedExpr_VerbatimReturnsSingleExpr(t *testing.T) {
+	parent, child := splitUnifiedExpr(`"ratified"`)
+	assert.Equal(t, `"ratified"`, parent)
+	assert.Empty(t, child)
+}
+
+func TestSplitUnifiedExpr_UnifiedReturnsBothSides(t *testing.T) {
+	parent, child := splitUnifiedExpr(`(int) & (string)`)
+	assert.Equal(t, "int", parent)
+	assert.Equal(t, "string", child)
+}
+
+func TestSplitUnifiedExpr_MalformedFallsBackToFullExpression(t *testing.T) {
+	parent, child := splitUnifiedExpr(`(missing close`)
+	assert.Equal(t, "(missing close", parent)
+	assert.Empty(t, child)
 }
 
 func TestMergeRawMap_SectionsChildReplaces(t *testing.T) {
@@ -439,4 +502,38 @@ func TestCheckUnifiable_AcceptsUnifiable(t *testing.T) {
 
 func TestCheckUnifiable_RejectsBottom(t *testing.T) {
 	assert.Error(t, checkUnifiable(`int & string`))
+}
+
+// TestCheckUnifiable_RejectsCompileError covers the syntax-error
+// branch: CompileString returns a value whose Err() is non-nil
+// when the expression doesn't parse.
+func TestCheckUnifiable_RejectsCompileError(t *testing.T) {
+	assert.Error(t, checkUnifiable(`((`))
+}
+
+// TestMergeRawMap_FrontmatterChildHasNoFrontmatterKey covers the
+// `!childOK` branch: parent declares frontmatter but child has no
+// frontmatter key, so the merged map keeps the parent's keys
+// without iterating any child entries.
+func TestMergeRawMap_FrontmatterChildHasNoFrontmatterKey(t *testing.T) {
+	parent := map[string]any{"frontmatter": map[string]any{"a": "string"}}
+	child := map[string]any{"filename": "x.md"}
+	out, err := MergeRawMap(parent, child)
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	assert.Equal(t, "string", fm["a"])
+}
+
+// TestMergeRawMap_FrontmatterNonStringExprChildWins covers the
+// `!parentExprOK || !childExprOK` branch: when a frontmatter value
+// is not a string (e.g. a YAML number that round-tripped to int),
+// the unifier cannot synthesise a CUE `&` expression and falls
+// back to child-wins for that key.
+func TestMergeRawMap_FrontmatterNonStringExprChildWins(t *testing.T) {
+	parent := map[string]any{"frontmatter": map[string]any{"x": 42}}
+	child := map[string]any{"frontmatter": map[string]any{"x": "string"}}
+	out, err := MergeRawMap(parent, child)
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	assert.Equal(t, "string", fm["x"], "non-string parent falls back to child-wins")
 }

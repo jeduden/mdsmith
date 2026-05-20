@@ -150,7 +150,7 @@ const extendsKindsCfg = `kinds:
     schema:
       frontmatter:
         id: '=~"^RFC-[0-9]{4}$"'
-        authors: '[...string] & len(authors) >= 1'
+        authors: '[...string]'
   rfc-ratified:
     extends: rfc-base
     schema:
@@ -163,8 +163,8 @@ const extendsKindsCfg = `kinds:
 // prints the parent line, the chain, and per-field provenance.
 func TestKinds_ShowRendersExtendsAndProvenance(t *testing.T) {
 	dir := kindsTestDir(t, extendsKindsCfg, nil)
-	stdout, _, code := runBinaryInDir(t, dir, "", "kinds", "show", "rfc-ratified")
-	require.Equal(t, 0, code)
+	stdout, stderr, code := runBinaryInDir(t, dir, "", "kinds", "show", "rfc-ratified")
+	require.Equal(t, 0, code, "stderr=%s stdout=%s", stderr, stdout)
 	assert.Contains(t, stdout, "extends: rfc-base")
 	assert.Contains(t, stdout, "effective-frontmatter:")
 	assert.Contains(t, stdout, "from rfc-base")

@@ -40,15 +40,18 @@ func ValidateKinds(cfg *Config) error {
 	// Walk extends chains a second time, now that every chain is
 	// known to be well-formed, to catch unsatisfiable frontmatter
 	// expressions (e.g. parent says `int`, child says `string`).
-	// Running the resolver here surfaces those at config-load time
-	// rather than as a per-file MDS020 diagnostic later, so users
-	// see the conflict immediately on `mdsmith check`.
+	// Running ValidateKindInlineSchema here surfaces those at
+	// config-load time rather than as a per-file MDS020 diagnostic
+	// later, so users see the conflict immediately on `mdsmith
+	// check`. The per-file merge path calls ResolveKindInlineSchema
+	// without re-running the CUE check, since we know the chain is
+	// already valid by the time effectiveRules runs.
 	for _, name := range names {
 		body := cfg.Kinds[name]
 		if body.Extends == "" {
 			continue
 		}
-		if _, err := ResolveKindInlineSchema(cfg.Kinds, name); err != nil {
+		if err := ValidateKindInlineSchema(cfg.Kinds, name); err != nil {
 			return err
 		}
 	}

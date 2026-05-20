@@ -156,6 +156,20 @@ func TestParseFile_ExtendsRejectsNonStringValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "extends")
 }
 
+// TestParseFile_ExtendsRejectsWhitespaceOnly catches the common
+// `extends: " "` typo: an empty-after-trim value would otherwise
+// be silently treated as "no extends", masking a configuration
+// mistake.
+func TestParseFile_ExtendsRejectsWhitespaceOnly(t *testing.T) {
+	dir := t.TempDir()
+	p := writeFile(t, dir, "child.md",
+		"---\nextends: \"   \"\n---\n# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "extends")
+	assert.Contains(t, err.Error(), "non-empty")
+}
+
 // TestParseFile_ExtendsMissingParentReturnsError covers the file
 // I/O failure path: a typoed parent name surfaces as a clear error.
 func TestParseFile_ExtendsMissingParentReturnsError(t *testing.T) {

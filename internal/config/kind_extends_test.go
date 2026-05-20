@@ -87,11 +87,12 @@ func TestResolveKindInlineSchema_FrontmatterUnifies(t *testing.T) {
 	assert.Contains(t, fm["status"], "&")
 }
 
-// TestResolveKindInlineSchema_FrontmatterConflictNamesKinds covers
-// the conflict diagnostic: an unsatisfiable frontmatter expression
-// surfaces wrapped with the child and parent kind names so the
-// rendered diagnostic can point at the chain.
-func TestResolveKindInlineSchema_FrontmatterConflictNamesKinds(t *testing.T) {
+// TestResolveKindInlineSchema_MergesConflictExpressionsWithoutError
+// covers the post-refactor contract: ResolveKindInlineSchema is
+// structural-only — it merges the two expressions with `&` but
+// does not CUE-validate the result. Use ValidateKindInlineSchema
+// (or ValidateKinds at load time) to surface the conflict.
+func TestResolveKindInlineSchema_MergesConflictExpressionsWithoutError(t *testing.T) {
 	kinds := map[string]KindBody{
 		"base": {Schema: map[string]any{"frontmatter": map[string]any{
 			"status": `"open" | "closed"`,
@@ -103,13 +104,73 @@ func TestResolveKindInlineSchema_FrontmatterConflictNamesKinds(t *testing.T) {
 			}},
 		},
 	}
-	_, err := ResolveKindInlineSchema(kinds, "child")
+	out, err := ResolveKindInlineSchema(kinds, "child")
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	assert.Contains(t, fm["status"], "&",
+		"merged expression keeps the conflict for the load-time validator")
+}
+
+// TestValidateKindInlineSchema_NamesKindOnConflict pins the
+// load-time validator: an unsatisfiable child surfaces as an
+// UnsatisfiableKeyError wrapped with the child kind name.
+func TestValidateKindInlineSchema_NamesKindOnConflict(t *testing.T) {
+	kinds := map[string]KindBody{
+		"base": {Schema: map[string]any{"frontmatter": map[string]any{
+			"status": `"open" | "closed"`,
+		}}},
+		"child": {
+			Extends: "base",
+			Schema: map[string]any{"frontmatter": map[string]any{
+				"status": `int`,
+			}},
+		},
+	}
+	err := ValidateKindInlineSchema(kinds, "child")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "child")
-	assert.Contains(t, err.Error(), "base")
 	var keyErr *schema.UnsatisfiableKeyError
 	require.True(t, errors.As(err, &keyErr))
 	assert.Equal(t, "status", keyErr.Key)
+}
+
+// TestValidateKindInlineSchema_NoErrorWhenChainIsCompatible
+// confirms the validator passes a refinement (child narrowing
+// parent's disjunction).
+func TestValidateKindInlineSchema_NoErrorWhenChainIsCompatible(t *testing.T) {
+	kinds := map[string]KindBody{
+		"base": {Schema: map[string]any{"frontmatter": map[string]any{
+			"status": `"open" | "closed"`,
+		}}},
+		"child": {
+			Extends: "base",
+			Schema: map[string]any{"frontmatter": map[string]any{
+				"status": `"open"`,
+			}},
+		},
+	}
+	assert.NoError(t, ValidateKindInlineSchema(kinds, "child"))
+}
+
+// TestValidateKindInlineSchema_NoExtendsReturnsNil covers the
+// fast-path: a kind without `extends:` has no merge to validate.
+func TestValidateKindInlineSchema_NoExtendsReturnsNil(t *testing.T) {
+	kinds := map[string]KindBody{
+		"a": {Schema: map[string]any{"frontmatter": map[string]any{"x": "string"}}},
+	}
+	assert.NoError(t, ValidateKindInlineSchema(kinds, "a"))
+}
+
+// TestValidateKindInlineSchema_PropagatesCycleError verifies the
+// validator surfaces structural errors from the resolver.
+func TestValidateKindInlineSchema_PropagatesCycleError(t *testing.T) {
+	kinds := map[string]KindBody{
+		"a": {Extends: "b", Schema: map[string]any{"filename": "a.md"}},
+		"b": {Extends: "a", Schema: map[string]any{"filename": "b.md"}},
+	}
+	err := ValidateKindInlineSchema(kinds, "a")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cycle")
 }
 
 // TestResolveKindInlineSchema_ParentOnlySchema covers the path
@@ -286,6 +347,38 @@ func TestResolveLayerInlineSchema_DefensiveFallbackOnResolverError(t *testing.T)
 	}
 	out := resolveLayerInlineSchema("a", kinds["a"], kinds)
 	assert.Equal(t, "a.md", out["filename"])
+}
+
+// TestKindExtendsChain_UnknownIntermediateBreaksChain covers the
+// defensive branch in KindExtendsChain that stops when a parent
+// name is not declared in `kinds`. The chain returned still
+// contains the unknown name so callers see the dangling pointer in
+// the audit trail rather than an empty result.
+func TestKindExtendsChain_UnknownIntermediateBreaksChain(t *testing.T) {
+	kinds := map[string]KindBody{
+		"a": {Extends: "missing"},
+	}
+	chain := KindExtendsChain(kinds, "a")
+	assert.Equal(t, []string{"a", "missing"}, chain)
+}
+
+// TestValidateKinds_RejectsExtendsFrontmatterConflict covers the
+// second pass in ValidateKinds: a well-formed extends chain whose
+// frontmatter cannot unify surfaces at config load.
+func TestValidateKinds_RejectsExtendsFrontmatterConflict(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"base": {Schema: map[string]any{
+				"frontmatter": map[string]any{"x": "int"},
+			}},
+			"child": {Extends: "base", Schema: map[string]any{
+				"frontmatter": map[string]any{"x": "string"},
+			}},
+		},
+	}
+	err := ValidateKinds(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "child")
 }
 
 // TestEffectiveRules_ExtendsResolvedInSchemaSources is the

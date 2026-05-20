@@ -239,7 +239,9 @@ func parseFileFrontmatter(prefix []byte, sch *Schema) (string, error) {
 // extractExtendsKey pulls the reserved `extends:` value out of the
 // raw frontmatter map and returns it as a non-empty string. The key
 // is removed from raw so the caller's loop emits no Frontmatter
-// entry for it. A non-string value is rejected with a clear error.
+// entry for it. A non-string value is rejected with a clear error,
+// as is a whitespace-only string — both are typos that would
+// otherwise be silently skipped by the parent-resolution path.
 func extractExtendsKey(raw map[string]any) (string, error) {
 	v, ok := raw["extends"]
 	if !ok {
@@ -253,7 +255,12 @@ func extractExtendsKey(raw map[string]any) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("schema frontmatter `extends:` must be a string, got %T", v)
 	}
-	return strings.TrimSpace(s), nil
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return "", fmt.Errorf(
+			"schema frontmatter `extends:` must be a non-empty path; got %q", s)
+	}
+	return trimmed, nil
 }
 
 // stripDelimiters returns the YAML body between a front-matter

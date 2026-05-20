@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -12,10 +13,15 @@ import (
 // schema maps. The child refines the parent: frontmatter keys
 // declared by both unify via CUE `&`; sections in the child wholly
 // replace the parent's sections; filename, closed, cross-references,
-// acronyms, and index follow the same child-wins-when-set rule. A
-// frontmatter key whose child expression cannot unify with the
-// parent's surfaces as an UnsatisfiableKeyError so the caller can
-// wrap it with the extends-chain context.
+// acronyms, and index follow the same child-wins-when-set rule.
+//
+// Merge is purely structural — the function builds the `(parent) &
+// (child)` CUE expression for shared keys without compiling or
+// evaluating it. Use ValidateExtendedFrontmatter on the result when
+// load-time conflict detection is needed (parent says `int`, child
+// says `string`). Separating merge from validation lets the
+// per-file merge path skip CUE eval once ValidateKinds has already
+// run at config load.
 //
 // Both inputs must be the inline-shape map produced by the YAML
 // loader; mutated copies are returned so the caller may further
@@ -32,9 +38,7 @@ func MergeRawMap(parent, child map[string]any) (map[string]any, error) {
 		return cloneRawMap(parent), nil
 	}
 	out := cloneRawMap(parent)
-	if err := mergeRawFrontmatter(out, parent, child); err != nil {
-		return nil, err
-	}
+	mergeRawFrontmatter(out, parent, child)
 	for _, key := range []string{
 		"sections", "filename", "closed",
 		"cross-references", "acronyms", "index",
@@ -47,23 +51,29 @@ func MergeRawMap(parent, child map[string]any) (map[string]any, error) {
 }
 
 // mergeRawFrontmatter merges parent's and child's frontmatter maps
-// in place on out. Shared keys unify with `&`; if the unified
-// expression reduces to bottom the function returns an
-// UnsatisfiableKeyError naming the unresolved key. Keys present in
-// one side only flow through verbatim.
-func mergeRawFrontmatter(out, parent, child map[string]any) error {
+// in place on out. Shared keys are joined with a CUE `&`
+// conjunction without evaluating the result — callers that need
+// load-time conflict detection run ValidateExtendedFrontmatter on
+// the merged map. Keys present in one side only flow through
+// verbatim.
+func mergeRawFrontmatter(out, parent, child map[string]any) {
 	childFM, childOK := child["frontmatter"].(map[string]any)
 	parentFM, parentOK := parent["frontmatter"].(map[string]any)
 	if !childOK && !parentOK {
-		return nil
+		return
 	}
-	merged := make(map[string]any, len(parentFM)+len(childFM))
+	// No pre-sized capacity: CodeQL flags `len(a)+len(b)` as a
+	// possible integer overflow when the inputs come from external
+	// data, and frontmatter maps are tiny in practice so growing
+	// from zero is fine. The same pattern is used in compose.go's
+	// composeFrontmatter for the same reason.
+	merged := map[string]any{}
 	for k, v := range parentFM {
 		merged[k] = v
 	}
 	if !childOK {
 		out["frontmatter"] = merged
-		return nil
+		return
 	}
 	for k, childV := range childFM {
 		parentV, hadParent := parentFM[k]
@@ -77,19 +87,103 @@ func mergeRawFrontmatter(out, parent, child map[string]any) error {
 			merged[k] = childV
 			continue
 		}
-		unified := "(" + parentExpr + ") & (" + childExpr + ")"
-		if err := checkUnifiable(unified); err != nil {
+		merged[k] = "(" + parentExpr + ") & (" + childExpr + ")"
+	}
+	out["frontmatter"] = merged
+}
+
+// ValidateExtendedFrontmatter CUE-checks the merged frontmatter,
+// returning an UnsatisfiableKeyError naming the first key whose
+// constraint cannot be satisfied. The check runs against the full
+// frontmatter struct so a unified expression that legitimately
+// references a sibling field resolves correctly — the same way the
+// per-file validator builds and evaluates frontmatter CUE.
+//
+// Plan 135 surfaces these conflicts at config-load time so users
+// see them on `mdsmith check` rather than as a per-file MDS020
+// diagnostic.
+func ValidateExtendedFrontmatter(raw map[string]any) error {
+	fm, ok := raw["frontmatter"].(map[string]any)
+	if !ok || len(fm) == 0 {
+		return nil
+	}
+	sch := &Schema{Frontmatter: make(map[string]string, len(fm))}
+	for k, v := range fm {
+		if expr, ok := v.(string); ok {
+			sch.Frontmatter[k] = expr
+		}
+	}
+	if len(sch.Frontmatter) == 0 {
+		return nil
+	}
+	if err := checkUnifiable(sch.FrontmatterCUE()); err == nil {
+		return nil
+	}
+	// Walk the keys in sorted order so the offender is named
+	// deterministically. Each single-key compile resolves
+	// cross-field references against just that key — sufficient
+	// for the conflict shapes plan 135 cares about (a unified
+	// expression like `(int) & (string)` fails on its own struct,
+	// no other keys involved).
+	keys := make([]string, 0, len(sch.Frontmatter))
+	for k := range sch.Frontmatter {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		single := &Schema{Frontmatter: map[string]string{k: sch.Frontmatter[k]}}
+		if err := checkUnifiable(single.FrontmatterCUE()); err != nil {
+			parent, child := splitUnifiedExpr(sch.Frontmatter[k])
 			return &UnsatisfiableKeyError{
 				Key:    stripOptionalSuffix(k),
-				Parent: parentExpr,
-				Child:  childExpr,
+				Parent: parent,
+				Child:  child,
 				Cause:  err,
 			}
 		}
-		merged[k] = unified
 	}
-	out["frontmatter"] = merged
-	return nil
+	// Whole-struct compile failed but no individual key did — a
+	// cross-key contradiction. The wrapper at the call site
+	// (ValidateKindInlineSchema) renders this with the kind name
+	// so users still see where to look.
+	return fmt.Errorf("schema does not compile")
+}
+
+// splitUnifiedExpr undoes the `(parent) & (child)` form
+// mergeRawFrontmatter builds, returning the two component
+// expressions for diagnostic display. A verbatim expression (no
+// unification) returns (expr, "") so the diagnostic still names
+// the failing constraint.
+func splitUnifiedExpr(expr string) (parent, child string) {
+	if !strings.HasPrefix(expr, "(") {
+		return expr, ""
+	}
+	depth := 0
+	for i := 0; i < len(expr); i++ {
+		switch expr[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && i+4 < len(expr) && expr[i+1:i+5] == ") & " {
+				// shouldn't happen — but defensively fall through.
+				continue
+			}
+			if depth == 0 {
+				// Expect `) & (` next; otherwise this isn't a
+				// unified expression we produced.
+				if i+4 >= len(expr) || expr[i+1:i+5] != " & (" {
+					return expr, ""
+				}
+				rest := expr[i+5:]
+				if !strings.HasSuffix(rest, ")") {
+					return expr, ""
+				}
+				return expr[1:i], rest[:len(rest)-1]
+			}
+		}
+	}
+	return expr, ""
 }
 
 // cloneRawMap returns a shallow copy of m. The inline schema parser
@@ -189,8 +283,11 @@ func extendFrontmatter(out, parent, child *Schema) error {
 	if len(parent.Frontmatter) == 0 && len(child.Frontmatter) == 0 {
 		return nil
 	}
-	out.Frontmatter = make(map[string]string,
-		len(parent.Frontmatter)+len(child.Frontmatter))
+	// Allocate without a size hint: CodeQL flags `len(a)+len(b)`
+	// as a possible overflow when both sides are untrusted; the
+	// maps are tiny in practice (a handful of frontmatter keys),
+	// so the grow-from-zero cost is negligible.
+	out.Frontmatter = map[string]string{}
 	out.FrontmatterLines = mergeFrontmatterLines(
 		parent.FrontmatterLines, child.FrontmatterLines)
 
@@ -225,7 +322,9 @@ func mergeFrontmatterLines(parent, child map[string]int) map[string]int {
 	if len(parent) == 0 && len(child) == 0 {
 		return nil
 	}
-	out := make(map[string]int, len(parent)+len(child))
+	// Same overflow concern as extendFrontmatter — skip the size
+	// hint; the per-key line maps are tiny in practice.
+	out := map[string]int{}
 	for k, v := range parent {
 		out[k] = v
 	}

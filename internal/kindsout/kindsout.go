@@ -57,7 +57,11 @@ func (r RuleCfgJSON) MarshalJSON() ([]byte, error) {
 // the project's `kinds` map so callers that have it can populate
 // the inheritance chain and per-frontmatter-field provenance; a nil
 // map yields the kind's own body without inheritance metadata,
-// matching the pre-extends shape.
+// matching the pre-extends shape. The audit fields
+// (`ExtendsChain`, `EffectiveFrontmatter`) populate only when the
+// kind itself declares `extends:` — for non-inheriting kinds the
+// JSON shape is the pre-plan-135 form, so audit tooling can detect
+// inheritance by checking for the new fields.
 func MakeBodyJSON(name string, body config.KindBody, kinds map[string]config.KindBody) BodyJSON {
 	rules := make(map[string]RuleCfgJSON, len(body.Rules))
 	for k, v := range body.Rules {
@@ -70,12 +74,10 @@ func MakeBodyJSON(name string, body config.KindBody, kinds map[string]config.Kin
 		PathPattern: body.PathPattern,
 		Extends:     body.Extends,
 	}
-	if kinds == nil {
+	if kinds == nil || body.Extends == "" {
 		return out
 	}
-	if body.Extends != "" {
-		out.ExtendsChain = config.KindExtendsChain(kinds, name)
-	}
+	out.ExtendsChain = config.KindExtendsChain(kinds, name)
 	if leaves := effectiveFrontmatterLeaves(kinds, name); len(leaves) > 0 {
 		out.EffectiveFrontmatter = leaves
 	}
@@ -327,7 +329,11 @@ func WriteBodyText(
 			}
 		}
 	}
-	if kinds != nil {
+	// effective-frontmatter is the extends audit surface — only
+	// surface it when the kind itself declares an extends parent.
+	// A non-inheriting kind's frontmatter is already visible via
+	// its own `schema:` block.
+	if kinds != nil && body.Extends != "" {
 		if err := writeEffectiveFrontmatter(w, kinds, name); err != nil {
 			return err
 		}
