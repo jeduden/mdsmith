@@ -246,7 +246,7 @@ kinds:
     schema:
       frontmatter:
         id: '=~"^RFC-[0-9]{4}$"'
-        authors: '[...string] & len(authors) >= 1'
+        authors: '[...string]'
         created: date
 
   rfc-ratified:
@@ -329,12 +329,17 @@ rfc-ratified:
   extends-chain: rfc-ratified -> rfc-base
   rules: …
   effective-frontmatter:
-    authors: [...string] & len(authors) >= 1   # from rfc-base
-    created: types.#date                       # from rfc-base
-    id: =~"^RFC-[0-9]{4}$"                     # from rfc-base
-    ratified-on: types.#date                   # from rfc-ratified
-    status: ("…" ) & ("\"ratified\"")          # from rfc-ratified
+    authors: [...string]                                   # from rfc-base
+    created: =~"^\d{4}-\d{2}-\d{2}$"                       # from rfc-base
+    id: =~"^RFC-[0-9]{4}$"                                 # from rfc-base
+    ratified-on: =~"^\d{4}-\d{2}-\d{2}$"                   # from rfc-ratified
+    status: "ratified"                                     # from rfc-ratified
 ```
+
+Bare-name shortcuts (`date`, `nonEmpty`, …) expand to their
+canonical CUE in the printed output, so the audit shows the
+constraint as the validator sees it rather than the shortcut
+spelling.
 
 Add `--json` for the structured form.
 

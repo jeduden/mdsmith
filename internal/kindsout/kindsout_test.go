@@ -285,6 +285,48 @@ func TestEffectiveFrontmatterLeaves_NoFrontmatterReturnsNil(t *testing.T) {
 	assert.Nil(t, out)
 }
 
+// TestWriteExtendsHeader_NilKindsReturnsAfterExtendsLine covers
+// the unit-level branch where the kinds map is nil: the header
+// still writes the `extends:` line but skips the chain.
+func TestWriteExtendsHeader_NilKindsReturnsAfterExtendsLine(t *testing.T) {
+	var buf bytes.Buffer
+	body := config.KindBody{Extends: "base"}
+	require.NoError(t, writeExtendsHeader(&buf, "child", body, nil))
+	out := buf.String()
+	assert.Contains(t, out, "extends: base")
+	assert.NotContains(t, out, "extends-chain")
+}
+
+// TestWriteEffectiveFrontmatter_EmptyLeavesNoOutput exercises
+// the early return when no leaves resolve: the function returns
+// nil without writing anything.
+func TestWriteEffectiveFrontmatter_EmptyLeavesNoOutput(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"a": {Schema: map[string]any{"filename": "x.md"}},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, writeEffectiveFrontmatter(&buf, kinds, "a"))
+	assert.Empty(t, buf.String())
+}
+
+// TestWriteEffectiveFrontmatter_LabelWriteError fails before any
+// leaf line is written.
+func TestWriteEffectiveFrontmatter_LabelWriteError(t *testing.T) {
+	kinds := extendsKindsForTest()
+	w := &failingWriter{err: errors.New("disk full"), after: 0}
+	err := writeEffectiveFrontmatter(w, kinds, "child")
+	require.Error(t, err)
+}
+
+// TestWriteEffectiveFrontmatter_LeafLineWriteError fails on the
+// first leaf line after the label printed successfully.
+func TestWriteEffectiveFrontmatter_LeafLineWriteError(t *testing.T) {
+	kinds := extendsKindsForTest()
+	w := &failingWriter{err: errors.New("disk full"), after: 1}
+	err := writeEffectiveFrontmatter(w, kinds, "child")
+	require.Error(t, err)
+}
+
 func TestWriteBodyText_EmptyBodyRendersPlaceholder(t *testing.T) {
 	var buf bytes.Buffer
 	require.NoError(t, WriteBodyText(&buf, "ghost", config.KindBody{}, nil))

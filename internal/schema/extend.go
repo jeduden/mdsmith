@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
 )
 
@@ -31,14 +30,19 @@ func MergeRawMap(parent, child map[string]any) (map[string]any, error) {
 	if parent == nil && child == nil {
 		return nil, nil
 	}
-	if len(parent) == 0 {
-		return cloneRawMap(child), nil
-	}
-	if len(child) == 0 {
-		return cloneRawMap(parent), nil
-	}
+	// Even single-input merges run through the frontmatter
+	// normaliser so a shortcut like `date` becomes its canonical
+	// CUE expression in the output. Without that, a child kind
+	// that inherits an inline schema unchanged would still leave
+	// bare shortcut names in the resolved view.
 	out := cloneRawMap(parent)
+	if out == nil {
+		out = map[string]any{}
+	}
 	mergeRawFrontmatter(out, parent, child)
+	// `out` already carries parent's non-frontmatter keys via
+	// cloneRawMap, so the per-key loop just lets the child
+	// override them where it declares its own value.
 	for _, key := range []string{
 		"sections", "filename", "closed",
 		"cross-references", "acronyms", "index",
@@ -51,11 +55,15 @@ func MergeRawMap(parent, child map[string]any) (map[string]any, error) {
 }
 
 // mergeRawFrontmatter merges parent's and child's frontmatter maps
-// in place on out. Shared keys are joined with a CUE `&`
-// conjunction without evaluating the result — callers that need
-// load-time conflict detection run ValidateExtendedFrontmatter on
-// the merged map. Keys present in one side only flow through
-// verbatim.
+// in place on out. Each value is normalised via the same
+// frontmatterExpr pipeline ParseInline uses, so bare-name
+// shortcuts (`date`, `nonEmpty`, …) are expanded to their
+// canonical CUE before composition — otherwise a unified
+// expression like `(date) & (…)` would carry an unresolved
+// identifier into the validator and fail to compile. Shared keys
+// are joined with a CUE `&` conjunction without evaluating the
+// result; callers that need load-time conflict detection run
+// ValidateExtendedFrontmatter on the merged map.
 func mergeRawFrontmatter(out, parent, child map[string]any) {
 	childFM, childOK := child["frontmatter"].(map[string]any)
 	parentFM, parentOK := parent["frontmatter"].(map[string]any)
@@ -69,35 +77,56 @@ func mergeRawFrontmatter(out, parent, child map[string]any) {
 	// composeFrontmatter for the same reason.
 	merged := map[string]any{}
 	for k, v := range parentFM {
-		merged[k] = v
+		merged[k] = normaliseFrontmatterValue(v)
 	}
 	if !childOK {
 		out["frontmatter"] = merged
 		return
 	}
-	for k, childV := range childFM {
-		parentV, hadParent := parentFM[k]
+	for k, rawChildV := range childFM {
+		childExpr := normaliseFrontmatterValue(rawChildV)
+		existing, hadParent := merged[k]
 		if !hadParent {
-			merged[k] = childV
+			merged[k] = childExpr
 			continue
 		}
-		parentExpr, parentExprOK := parentV.(string)
-		childExpr, childExprOK := childV.(string)
-		if !parentExprOK || !childExprOK || parentExpr == childExpr {
-			merged[k] = childV
+		parentExpr, parentOK := existing.(string)
+		childStr, childIsStr := childExpr.(string)
+		if !parentOK || !childIsStr || parentExpr == childStr {
+			merged[k] = childExpr
 			continue
 		}
-		merged[k] = "(" + parentExpr + ") & (" + childExpr + ")"
+		merged[k] = "(" + parentExpr + ") & (" + childStr + ")"
 	}
 	out["frontmatter"] = merged
 }
 
+// normaliseFrontmatterValue mirrors the per-value canonicalisation
+// ParseInline applies — bare-name shortcuts expand to their CUE
+// expression, scalars JSON-encode, and raw CUE strings pass
+// through verbatim. A value frontmatterExpr cannot resolve (an
+// unknown shortcut, an unsupported type) flows through unchanged
+// so the downstream ParseInline call surfaces the same error
+// signal the user would have seen without the extends merge.
+func normaliseFrontmatterValue(v any) any {
+	expr, err := frontmatterExpr(v)
+	if err != nil {
+		return v
+	}
+	return expr
+}
+
 // ValidateExtendedFrontmatter CUE-checks the merged frontmatter,
 // returning an UnsatisfiableKeyError naming the first key whose
-// constraint cannot be satisfied. The check runs against the full
-// frontmatter struct so a unified expression that legitimately
-// references a sibling field resolves correctly — the same way the
-// per-file validator builds and evaluates frontmatter CUE.
+// constraint cannot be satisfied. Each value is normalised through
+// the same frontmatterExpr pipeline ParseInline uses, so a raw map
+// that still carries bare-name shortcuts (`date`, `nonEmpty`) is
+// validated against the same canonical CUE the parser would
+// produce. Each key compiles in isolation so a unified expression
+// like `(int) & (string)` surfaces on its owning key — sibling
+// references inside an expression resolve against the same key,
+// which is the only cross-field shape plan-135 frontmatter
+// expressions need.
 //
 // Plan 135 surfaces these conflicts at config-load time so users
 // see them on `mdsmith check` rather than as a per-file MDS020
@@ -107,33 +136,23 @@ func ValidateExtendedFrontmatter(raw map[string]any) error {
 	if !ok || len(fm) == 0 {
 		return nil
 	}
-	sch := &Schema{Frontmatter: make(map[string]string, len(fm))}
-	for k, v := range fm {
-		if expr, ok := v.(string); ok {
-			sch.Frontmatter[k] = expr
-		}
-	}
-	if len(sch.Frontmatter) == 0 {
-		return nil
-	}
-	if err := checkUnifiable(sch.FrontmatterCUE()); err == nil {
-		return nil
-	}
-	// Walk the keys in sorted order so the offender is named
-	// deterministically. Each single-key compile resolves
-	// cross-field references against just that key — sufficient
-	// for the conflict shapes plan 135 cares about (a unified
-	// expression like `(int) & (string)` fails on its own struct,
-	// no other keys involved).
-	keys := make([]string, 0, len(sch.Frontmatter))
-	for k := range sch.Frontmatter {
+	keys := make([]string, 0, len(fm))
+	for k := range fm {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		single := &Schema{Frontmatter: map[string]string{k: sch.Frontmatter[k]}}
+		expr, err := frontmatterExpr(fm[k])
+		if err != nil {
+			return &UnsatisfiableKeyError{
+				Key:    stripOptionalSuffix(k),
+				Parent: fmt.Sprintf("%v", fm[k]),
+				Cause:  err,
+			}
+		}
+		single := &Schema{Frontmatter: map[string]string{k: expr}}
 		if err := checkUnifiable(single.FrontmatterCUE()); err != nil {
-			parent, child := splitUnifiedExpr(sch.Frontmatter[k])
+			parent, child := splitUnifiedExpr(expr)
 			return &UnsatisfiableKeyError{
 				Key:    stripOptionalSuffix(k),
 				Parent: parent,
@@ -142,11 +161,7 @@ func ValidateExtendedFrontmatter(raw map[string]any) error {
 			}
 		}
 	}
-	// Whole-struct compile failed but no individual key did — a
-	// cross-key contradiction. The wrapper at the call site
-	// (ValidateKindInlineSchema) renders this with the kind name
-	// so users still see where to look.
-	return fmt.Errorf("schema does not compile")
+	return nil
 }
 
 // splitUnifiedExpr undoes the `(parent) & (child)` form
@@ -155,7 +170,7 @@ func ValidateExtendedFrontmatter(raw map[string]any) error {
 // unification) returns (expr, "") so the diagnostic still names
 // the failing constraint.
 func splitUnifiedExpr(expr string) (parent, child string) {
-	if !strings.HasPrefix(expr, "(") {
+	if !strings.HasPrefix(expr, "(") || !strings.HasSuffix(expr, ")") {
 		return expr, ""
 	}
 	depth := 0
@@ -165,22 +180,16 @@ func splitUnifiedExpr(expr string) (parent, child string) {
 			depth++
 		case ')':
 			depth--
-			if depth == 0 && i+4 < len(expr) && expr[i+1:i+5] == ") & " {
-				// shouldn't happen — but defensively fall through.
+			if depth != 0 {
 				continue
 			}
-			if depth == 0 {
-				// Expect `) & (` next; otherwise this isn't a
-				// unified expression we produced.
-				if i+4 >= len(expr) || expr[i+1:i+5] != " & (" {
-					return expr, ""
-				}
-				rest := expr[i+5:]
-				if !strings.HasSuffix(rest, ")") {
-					return expr, ""
-				}
-				return expr[1:i], rest[:len(rest)-1]
+			// The opening paren's match is at i. Expect the
+			// separator `) & (` to follow; if not, the expression
+			// isn't the unified shape this function produced.
+			if i+5 > len(expr) || expr[i:i+5] != ") & (" {
+				return expr, ""
 			}
+			return expr[1:i], expr[i+5 : len(expr)-1]
 		}
 	}
 	return expr, ""
@@ -417,24 +426,12 @@ func (e *UnsatisfiableKeyError) Unwrap() error { return e.Cause }
 
 // checkUnifiable reports whether a CUE expression can be reduced
 // without contradiction. It compiles the expression in a fresh CUE
-// context; a bottom result (CUE's "no value satisfies" outcome) is
-// returned as an error so the caller can surface the conflict at
-// schema-extend time rather than later at validation time.
-//
-// The check is intentionally limited to syntactic / type
-// contradictions: a parent of `int` unified with a child of
-// `string` reduces to bottom and is rejected here. Constraint-level
-// conflicts that require concrete inputs (`>5 & <3`) reduce to
-// bottom only when a document supplies the value, and surface
-// through the existing front-matter validator on each linted file.
+// context; the compiled value's Err() is non-nil whenever the
+// expression reduces to bottom (CUE's "no value satisfies"
+// outcome), so a simple Err()-check covers every conflict shape
+// the plan cares about — `int & string`, conflicting bounds,
+// closed-struct violations, unresolved references.
 func checkUnifiable(expr string) error {
-	ctx := cuecontext.New()
-	v := ctx.CompileString(expr)
-	if err := v.Err(); err != nil {
-		return err
-	}
-	if err := v.Validate(cue.Concrete(false)); err != nil {
-		return err
-	}
-	return nil
+	v := cuecontext.New().CompileString(expr)
+	return v.Err()
 }

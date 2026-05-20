@@ -423,6 +423,35 @@ func TestSplitUnifiedExpr_MalformedFallsBackToFullExpression(t *testing.T) {
 	assert.Empty(t, child)
 }
 
+// TestSplitUnifiedExpr_NestedParensSkipInnerCloses verifies the
+// depth-tracking branch: nested parens inside the parent side
+// should not be mistaken for the outer match.
+func TestSplitUnifiedExpr_NestedParensSkipInnerCloses(t *testing.T) {
+	parent, child := splitUnifiedExpr(`((a)) & (b)`)
+	assert.Equal(t, "(a)", parent)
+	assert.Equal(t, "b", child)
+}
+
+// TestSplitUnifiedExpr_SeparatorAbsentFallsBack covers the
+// "matched the opening paren but the separator isn't `) & (`"
+// branch: a single parenthesised expression like `(int)` is not
+// the unified shape we produced.
+func TestSplitUnifiedExpr_SeparatorAbsentFallsBack(t *testing.T) {
+	parent, child := splitUnifiedExpr(`(int)`)
+	assert.Equal(t, "(int)", parent)
+	assert.Empty(t, child)
+}
+
+// TestSplitUnifiedExpr_UnbalancedNeverClosesFallsBack exercises
+// the end-of-loop fallback when depth never returns to zero — an
+// unbalanced expression where the prefix `(` count exceeds the
+// suffix `)` count.
+func TestSplitUnifiedExpr_UnbalancedNeverClosesFallsBack(t *testing.T) {
+	parent, child := splitUnifiedExpr(`(((())`)
+	assert.Equal(t, "(((())", parent)
+	assert.Empty(t, child)
+}
+
 func TestMergeRawMap_SectionsChildReplaces(t *testing.T) {
 	parent := map[string]any{"sections": []any{
 		map[string]any{"heading": "A"},
@@ -524,16 +553,124 @@ func TestMergeRawMap_FrontmatterChildHasNoFrontmatterKey(t *testing.T) {
 	assert.Equal(t, "string", fm["a"])
 }
 
-// TestMergeRawMap_FrontmatterNonStringExprChildWins covers the
-// `!parentExprOK || !childExprOK` branch: when a frontmatter value
-// is not a string (e.g. a YAML number that round-tripped to int),
-// the unifier cannot synthesise a CUE `&` expression and falls
-// back to child-wins for that key.
-func TestMergeRawMap_FrontmatterNonStringExprChildWins(t *testing.T) {
+// TestMergeRawMap_FrontmatterNonStringParentNormalises covers the
+// path where a non-string parent value (a YAML number) is
+// normalised through frontmatterExpr to its CUE literal form
+// before unifying with the child.
+func TestMergeRawMap_FrontmatterNonStringParentNormalises(t *testing.T) {
 	parent := map[string]any{"frontmatter": map[string]any{"x": 42}}
 	child := map[string]any{"frontmatter": map[string]any{"x": "string"}}
 	out, err := MergeRawMap(parent, child)
 	require.NoError(t, err)
 	fm := out["frontmatter"].(map[string]any)
-	assert.Equal(t, "string", fm["x"], "non-string parent falls back to child-wins")
+	merged, ok := fm["x"].(string)
+	require.True(t, ok)
+	assert.Contains(t, merged, "42")
+	assert.Contains(t, merged, "string")
+	assert.Contains(t, merged, "&")
+}
+
+// TestMergeRawMap_FrontmatterIdenticalExprStaysVerbatim covers
+// the redundant-conjunction guard: when parent and child carry
+// the same expression for a key, the merge keeps the verbatim
+// form rather than building `(x) & (x)`.
+func TestMergeRawMap_FrontmatterIdenticalExprStaysVerbatim(t *testing.T) {
+	parent := map[string]any{"frontmatter": map[string]any{"x": `"open"`}}
+	child := map[string]any{"frontmatter": map[string]any{"x": `"open"`}}
+	out, err := MergeRawMap(parent, child)
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	assert.Equal(t, `"open"`, fm["x"], "identical expressions don't wrap in `&`")
+}
+
+// TestMergeRawMap_FrontmatterShortcutsExpandBeforeUnify covers
+// review feedback on PR #365: bare-name frontmatter shortcuts
+// (`date`, `nonEmpty`, …) must be expanded to their canonical CUE
+// before being wrapped in `(parent) & (child)`, otherwise the
+// unified expression carries an unresolved identifier into the
+// validator.
+func TestMergeRawMap_FrontmatterShortcutsExpandBeforeUnify(t *testing.T) {
+	parent := map[string]any{"frontmatter": map[string]any{"d": "date"}}
+	child := map[string]any{"frontmatter": map[string]any{"d": "nonEmpty"}}
+	out, err := MergeRawMap(parent, child)
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	merged, ok := fm["d"].(string)
+	require.True(t, ok)
+	assert.NotContains(t, merged, "date", "bare shortcut must be expanded")
+	assert.NotContains(t, merged, "nonEmpty", "bare shortcut must be expanded")
+	assert.Contains(t, merged, "&")
+}
+
+// TestMergeRawMap_FrontmatterShortcutChildOnlyExpands covers the
+// non-conflicting path: a child key that uses a shortcut survives
+// the merge as the expanded CUE expression, not as the bare name.
+func TestMergeRawMap_FrontmatterShortcutChildOnlyExpands(t *testing.T) {
+	parent := map[string]any{}
+	child := map[string]any{"frontmatter": map[string]any{"d": "date"}}
+	out, err := MergeRawMap(parent, child)
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	expr, ok := fm["d"].(string)
+	require.True(t, ok)
+	assert.Contains(t, expr, "=~", "shortcut expands even without inheritance")
+}
+
+// TestMergeRawMap_FrontmatterParentShortcutExpands ensures the
+// parent-only path normalises too — a kind that inherits its
+// frontmatter from a parent declaring `date` ends up with the
+// canonical CUE form.
+func TestMergeRawMap_FrontmatterParentShortcutExpands(t *testing.T) {
+	parent := map[string]any{"frontmatter": map[string]any{"d": "date"}}
+	child := map[string]any{"frontmatter": map[string]any{"x": "string"}}
+	out, err := MergeRawMap(parent, child)
+	require.NoError(t, err)
+	fm := out["frontmatter"].(map[string]any)
+	expr, ok := fm["d"].(string)
+	require.True(t, ok)
+	assert.Contains(t, expr, "=~", "parent shortcut expands in merge output")
+}
+
+// TestNormaliseFrontmatterValue_ResolvesShortcut covers the bare-
+// name expansion path of the normaliser.
+func TestNormaliseFrontmatterValue_ResolvesShortcut(t *testing.T) {
+	out := normaliseFrontmatterValue("date")
+	assert.NotEqual(t, "date", out)
+	assert.Contains(t, out, "=~")
+}
+
+// TestNormaliseFrontmatterValue_PreservesRawCUE confirms raw CUE
+// strings pass through unchanged.
+func TestNormaliseFrontmatterValue_PreservesRawCUE(t *testing.T) {
+	out := normaliseFrontmatterValue(`"ratified"`)
+	assert.Equal(t, `"ratified"`, out)
+}
+
+// TestNormaliseFrontmatterValue_FallsBackOnError covers the
+// unknown-shortcut path: the value passes through unchanged so a
+// downstream parse surfaces the same error the user would have
+// seen without the merge step.
+func TestNormaliseFrontmatterValue_FallsBackOnError(t *testing.T) {
+	out := normaliseFrontmatterValue("unknown-shortcut")
+	assert.Equal(t, "unknown-shortcut", out)
+}
+
+// TestValidateExtendedFrontmatter_AcceptsShortcut covers a
+// shortcut-bearing merged map: validation expands `date` like
+// ParseInline would and accepts the resulting CUE.
+func TestValidateExtendedFrontmatter_AcceptsShortcut(t *testing.T) {
+	merged := map[string]any{"frontmatter": map[string]any{"d": "date"}}
+	assert.NoError(t, ValidateExtendedFrontmatter(merged))
+}
+
+// TestValidateExtendedFrontmatter_RejectsUnknownShortcut covers
+// the error path of frontmatterExpr inside the validator: an
+// unknown bare name surfaces with the key named.
+func TestValidateExtendedFrontmatter_RejectsUnknownShortcut(t *testing.T) {
+	merged := map[string]any{"frontmatter": map[string]any{"d": "not-a-shortcut"}}
+	err := ValidateExtendedFrontmatter(merged)
+	require.Error(t, err)
+	var keyErr *UnsatisfiableKeyError
+	require.True(t, errors.As(err, &keyErr))
+	assert.Equal(t, "d", keyErr.Key)
 }

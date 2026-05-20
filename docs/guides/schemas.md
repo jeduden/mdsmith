@@ -47,7 +47,7 @@ kinds:
       frontmatter:
         id: '=~"^RFC-[0-9]{4}$"'
         status: '"draft" | "ratified" | "deprecated"'
-        authors: '[...string] & len(authors) >= 1'
+        authors: '[...string]'
       closed: true
       sections:
         - heading: null
