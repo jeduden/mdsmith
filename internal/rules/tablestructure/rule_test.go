@@ -452,3 +452,36 @@ func TestNoLeadingOrTrailingStableWithMDS025(t *testing.T) {
 	assert.Empty(t, check(t, StyleNoLeadingOrTrailing, current))
 	assert.NotContains(t, current, "|\n", "table should be borderless")
 }
+
+func TestContainsUnescapedPipe(t *testing.T) {
+	assert.True(t, containsUnescapedPipe("a|b"))
+	assert.False(t, containsUnescapedPipe("a\\|b"))
+	assert.True(t, containsUnescapedPipe("a\\\\|b"))
+	assert.True(t, containsUnescapedPipe("a\\|b|c"))
+	assert.False(t, containsUnescapedPipe("plain text"))
+}
+
+func TestSplitCellsBackslashParity(t *testing.T) {
+	// `\\|` is "escaped backslash" followed by an unescaped pipe
+	// delimiter — two cells, not one.
+	assert.Equal(t, []string{"\\\\", ""}, splitCells("\\\\|"))
+	// `\\\|` is "escaped backslash" then "escaped pipe" — one cell.
+	assert.Equal(t, []string{"\\\\\\|"}, splitCells("\\\\\\|"))
+}
+
+func TestEscapedPipeOnlyParagraphNotHeader(t *testing.T) {
+	// "A \| B" contains only an escaped pipe; even when followed by a
+	// delimiter-looking row, it is not a table header.
+	src := "# T\n\nA \\| B\n--- | ---\n1 | 2\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+func TestEscapedPipeParagraphAfterTableEndsIt(t *testing.T) {
+	// A paragraph whose only pipe is escaped must not be absorbed as
+	// a body row; MD058 must still flag the missing blank after.
+	src := "# T\n\n| A | B |\n| - | - |\n| 1 | 2 |\nText \\| more.\n"
+	diags := check(t, StyleConsistent, src)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "missing blank line after table", diags[0].Message)
+	assert.Equal(t, 5, diags[0].Line)
+}

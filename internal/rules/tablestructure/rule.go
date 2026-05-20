@@ -392,18 +392,36 @@ func rowContent(line []byte, prefix string) string {
 
 func isSeparator(line []byte, prefix string) bool {
 	c := rowContent(line, prefix)
-	return strings.Contains(c, "|") && isSeparatorContent(c)
+	return containsUnescapedPipe(c) && isSeparatorContent(c)
 }
 
 func isHeader(line []byte, prefix string) bool {
 	c := rowContent(line, prefix)
-	if c == "" || !strings.Contains(c, "|") {
+	if c == "" || !containsUnescapedPipe(c) {
 		return false
 	}
 	if strings.HasPrefix(strings.TrimSpace(c), "#") {
 		return false // ATX heading, not a table header
 	}
 	return !isSeparatorContent(c)
+}
+
+// containsUnescapedPipe reports whether s contains a `|` that is a
+// real delimiter — that is, not escaped by a preceding `\` (with
+// backslash parity respected so `\\|` counts as unescaped).
+func containsUnescapedPipe(s string) bool {
+	escape := false
+	for i := 0; i < len(s); i++ {
+		switch {
+		case escape:
+			escape = false
+		case s[i] == '\\':
+			escape = true
+		case s[i] == '|':
+			return true
+		}
+	}
+	return false
 }
 
 func isSeparatorContent(c string) bool {
@@ -420,12 +438,13 @@ func isSeparatorContent(c string) bool {
 }
 
 // continuesTable reports whether line is a body row for a table with
-// the given prefix: same prefix, non-blank, contains a pipe.
+// the given prefix: same prefix, non-blank, and contains at least one
+// unescaped pipe (paragraphs whose only pipe is `\|` end the table).
 func continuesTable(line []byte, prefix string) bool {
 	if isBlank(line) || detectPrefix(line) != prefix {
 		return false
 	}
-	return strings.Contains(rowContent(line, prefix), "|")
+	return containsUnescapedPipe(rowContent(line, prefix))
 }
 
 // endsWithUnescapedPipe reports whether s ends with a real edge pipe
@@ -479,22 +498,28 @@ func countCells(content string) int {
 	return len(cells)
 }
 
-// splitCells splits a row body on unescaped pipes, preserving `\|`.
+// splitCells splits a row body on unescaped pipes, honoring backslash
+// parity: `\|` is a literal pipe, `\\|` is an escaped backslash
+// followed by a real delimiter, and so on.
 func splitCells(s string) []string {
 	var cells []string
 	var cur strings.Builder
+	escape := false
 	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) && s[i+1] == '|' {
-			cur.WriteString(`\|`)
-			i++
-			continue
-		}
-		if s[i] == '|' {
+		c := s[i]
+		switch {
+		case escape:
+			cur.WriteByte(c)
+			escape = false
+		case c == '\\':
+			cur.WriteByte(c)
+			escape = true
+		case c == '|':
 			cells = append(cells, cur.String())
 			cur.Reset()
-			continue
+		default:
+			cur.WriteByte(c)
 		}
-		cur.WriteByte(s[i])
 	}
 	cells = append(cells, cur.String())
 	return cells
