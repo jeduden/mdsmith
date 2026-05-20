@@ -50,23 +50,22 @@ is trivially safe there. Only the LSP path needs the hook.
 
 ## Tasks
 
-1. [x] Create this plan.
-2. [ ] Add a run-scoped cache type (path -> parsed front matter,
+1. [ ] Add a run-scoped cache type (path -> parsed front matter,
    path -> resolved include adjacency) owned by the engine
    `Runner` and threaded to rules via a context value or a field
    on `*lint.File` that points at the shared cache (not a package
    global — testability and LSP isolation).
-3. [ ] Route `cachedFrontMatter` and `includeTargetsOf` through
+2. [ ] Route `cachedFrontMatter` and `includeTargetsOf` through
    the run cache when present, falling back to the per-Check memo
    when absent (struct-literal `*lint.File` in unit tests).
-4. [ ] Add an `Invalidate(path)` seam; call it from the LSP
+3. [ ] Add an `Invalidate(path)` seam; call it from the LSP
    document-sync path so an edited file's cached read is dropped.
    Unit-test that a second Check after Invalidate re-reads.
-5. [ ] Benchmark the repo corpus before/after with the existing
+4. [ ] Benchmark the repo corpus before/after with the existing
    interleaved-median harness; record the delta here. Confirm the
    neutral corpus (no directives) is unchanged and
    `BenchmarkCheckCorpus{Small,Large}` stays within budget.
-6. [ ] Confirm `mdsmith check .` and the full suite stay green;
+5. [ ] Confirm `mdsmith check .` and the full suite stay green;
    verify race-cleanliness under `-race` (the cache is read by the
    parallel worker pool and the LSP's concurrent readers).
 

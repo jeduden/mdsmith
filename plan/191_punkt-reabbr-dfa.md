@@ -82,12 +82,11 @@ mdsmith builds its own tokenizer with three annotators:
 
 ## Tasks
 
-1. [ ] Create this plan.
-2. [ ] Add a `BenchmarkSplitSentences_Subset` that isolates the
+1. [ ] Add a `BenchmarkSplitSentences_Subset` that isolates the
    hot pattern (a corpus of abbreviation-heavy short paragraphs)
    so the optimization's effect is visible without being diluted
    by the rest of the equivalence corpus.
-3. [ ] Implement `matchAbbrPattern(tok string) bool` in a new
+2. [ ] Implement `matchAbbrPattern(tok string) bool` in a new
    `internal/mdtext/abbr.go`. The function must return
    `true` if and only if `reAbbr.FindAllString(tok, 1)` would
    return a non-empty slice on the same input. Write the failing
@@ -95,7 +94,7 @@ mdsmith builds its own tokenizer with three annotators:
    `p.m.`, `J.R.R.`, `a.b.c.`, `e.g.`) and inputs it does not
    (`Mr.`, `hello.`, `3.14`, `a..b`, `.`, empty string), with the
    reference being `reAbbr.FindAllString(tok, 1)` itself.
-4. [ ] Build a `FastMultiPunctWordAnnotation` (in
+3. [ ] Build a `FastMultiPunctWordAnnotation` (in
    `internal/mdtext/fastpunct.go`) that mirrors upstream
    `english.MultiPunctWordAnnotation` line-for-line except the
    `reAbbr.FindAllString(tokOne.Tok, 1)` call is replaced by
@@ -103,19 +102,19 @@ mdsmith builds its own tokenizer with three annotators:
    `*Storage`, `PunctStrings`, `TokenExistential`, `TokenParser`,
    `TokenGrouper`, and `Ortho` fields the upstream type uses, so
    no further behavioural drift is possible.
-5. [ ] Switch `initTokenizer` in
+4. [ ] Switch `initTokenizer` in
    [`internal/mdtext/mdtext.go`](../internal/mdtext/mdtext.go) to
    construct the tokenizer manually with annotators
    `[TypeBasedAnnotation, TokenBasedAnnotation,
    FastMultiPunctWordAnnotation]`. Keep the previous
    `english.NewSentenceTokenizer(nil)` path behind a build tag
    `mdtext_punkt_upstream` for A/B verification.
-6. [ ] Run the existing [`TestSplitSentences_IsItsOwnReference`][bench]
+5. [ ] Run the existing [`TestSplitSentences_IsItsOwnReference`][bench]
    and the `english/main_test.go` golden-rules corpus through
    the fast path. Both must be byte-for-byte identical to the
    upstream output. If either drifts, the hand-rolled matcher
    is wrong — fix it.
-7. [ ] Profile and record the new
+6. [ ] Profile and record the new
    `BenchmarkSplitSentences` and `BenchmarkSplitSentences_Subset`
    numbers in this plan's `## Results` section. Confirm
    `BenchmarkCheckCorpus{Small,Large}` stay within budget
@@ -123,7 +122,7 @@ mdsmith builds its own tokenizer with three annotators:
    abbreviation-heavy `BenchmarkSplitSentences_Subset` drops by
    at least 10% — if it does not, the lever was smaller than the
    profile suggested and the change is rejected.
-8. [ ] If the change ships, document the fast-path annotator in
+7. [ ] If the change ships, document the fast-path annotator in
    the MDS024 README under "How it works" so the optimization is
    visible to anyone reading the rule docs.
 
