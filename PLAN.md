@@ -119,4 +119,11 @@ footer: |
 | 190 | ✅     | opus   | [Intra-file rule parallelism for non-NodeChecker rules](plan/190_intra-file-rule-parallelism.md)                                        |
 | 191 | 🔲     | opus   | [Hand-rolled DFA for Punkt's `reAbbr` to skip regex backtracking](plan/191_punkt-reabbr-dfa.md)                                         |
 | 192 | 🔲     | opus   | [Run-scoped read cache for catalog cross-host redundancy](plan/192_catalog-run-scoped-readcache.md)                                     |
+| 193 | 🔲     |        | [Move docs/ embed out of internal/lsp/hover.go](plan/193_arch-fix-hover-embed.md)                                                       |
+| 194 | 🔲     |        | [Rename internal/testutil to internal/testsymlink](plan/194_arch-fix-testutil-rename.md)                                                |
+| 195 | 🔲     |        | [Split cmd/mdsmith/main.go into per-subcommand files](plan/195_arch-fix-main-split.md)                                                  |
+| 196 | 🔲     |        | [Split internal/lsp/server.go and symbols.go](plan/196_arch-fix-lsp-server-split.md)                                                    |
+| 197 | 🔲     |        | [Fix internal/fix importing internal/engine](plan/197_arch-fix-fix-engine-inversion.md)                                                 |
+| 198 | 🔲     |        | [Move extension.ts concerns to wiring.ts](plan/198_arch-fix-extension-ts-srp.md)                                                        |
+| 199 | 🔲     |        | [Document cue/ in architecture layering map](plan/199_arch-fix-cue-types-docs.md)                                                       |
 <?/catalog?>

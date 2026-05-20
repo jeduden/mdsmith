@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: b5a6d72302b6a258f4acdb812464d1990388420d
+audit-from: 41e61a5e08279bb37230cdb2e7ae33119b26077a
 ---
 # Architecture audit log
 
@@ -253,26 +253,6 @@ explaining why it is separate so
 future readers do not read it as a
 separate rule package.
 
-## Audit 2026-05-17 (range: 7464d273..b5a6d72)
-
-Covered: `internal/rename`, `internal/index`
-(relocated), `mdsmith deps`, `mdsmith export`.
-
-### 2026-05-17 tax
-
-`nonNegativeUTF16RuneLen` privately copied in
-three packages:
-
-- `internal/lsp/diagnostics.go:156`
-- `internal/rename/rename.go:532`
-- `cmd/mdsmith/rename.go:380`
-
-Fix: export `NonNegativeUTF16RuneLen` (plus
-`UTF16FromByteOffset` and `UTF16ToByteOffset`)
-from `internal/mdtext`. Remove the three private
-copies. See
-[plan/186](../../plan/186_arch-fix-utf16-centralize.md).
-
 ## Decision 2026-05-17 (plan/174)
 
 ### plan/153 non-goal superseded
@@ -295,3 +275,27 @@ map forbids `cmd/mdsmith` →
 `internal/lsp`. A peer package removes
 the conflict. `internal/index` must
 never import `internal/lsp`.
+
+## Audit 2026-05-19 (range: 7464d273..41e61a5)
+
+131 Go files. Plans 154, 155, 174 green.
+
+### tax (2026-05-19)
+
+- `server.go` (1 536) and `symbols.go` (1 385)
+  exceed 1 000 lines — [plan/196][196].
+- Five items from 2026-05-13 now scheduled:
+  [hover][193], [testutil][194], [main.go][195],
+  [fix→engine][197], [extension.ts][198].
+
+[193]: ../../plan/193_arch-fix-hover-embed.md
+[194]: ../../plan/194_arch-fix-testutil-rename.md
+[195]: ../../plan/195_arch-fix-main-split.md
+[196]: ../../plan/196_arch-fix-lsp-server-split.md
+[197]: ../../plan/197_arch-fix-fix-engine-inversion.md
+[198]: ../../plan/198_arch-fix-extension-ts-srp.md
+[199]: ../../plan/199_arch-fix-cue-types-docs.md
+
+### nice-to-have (2026-05-19)
+
+`cue/types` not in layering map — [plan/199][199].
