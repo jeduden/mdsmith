@@ -292,12 +292,13 @@ func TestStagePythonTree_CopiesLicense(t *testing.T) {
 		"staged LICENSE must be byte-identical to the source")
 }
 
-// TestStagePythonTree_MissingLicenseIsOK matches buildnpm's
-// permissive behaviour: a repo without a root LICENSE still produces
-// a stage (the LICENSE copy is best-effort). The test guards against
-// a regression that would make stagePythonTree fail when the file is
-// absent.
-func TestStagePythonTree_MissingLicenseIsOK(t *testing.T) {
+// TestStagePythonTree_FailsOnMissingLicense pins the hard
+// requirement: pyproject.toml declares license-files = ["LICENSE"]
+// and hatchling would fail the build downstream anyway. Failing
+// loudly here produces a clearer error than the hatchling
+// complaint and prevents mis-staging from silently shipping a wheel
+// without the required MIT notice.
+func TestStagePythonTree_FailsOnMissingLicense(t *testing.T) {
 	root := t.TempDir()
 	src := filepath.Join(root, "python")
 	require.NoError(t, os.MkdirAll(src, 0o755))
@@ -306,14 +307,11 @@ func TestStagePythonTree_MissingLicenseIsOK(t *testing.T) {
 	asset := filepath.Join(root, "fake-binary")
 	require.NoError(t, os.WriteFile(asset, []byte("\x7fELF"), 0o755))
 
-	stage, err := New().stagePythonTree(src, asset, "mdsmith")
-	require.NoError(t, err,
-		"stagePythonTree must not fail when the repo has no root LICENSE")
-	t.Cleanup(func() { _ = os.RemoveAll(stage) })
-
-	_, err = os.Stat(filepath.Join(stage, "LICENSE"))
-	assert.Truef(t, os.IsNotExist(err),
-		"no source LICENSE means no staged LICENSE; got err=%v", err)
+	_, err := New().stagePythonTree(src, asset, "mdsmith")
+	require.Error(t, err,
+		"stagePythonTree must fail loudly when the repo has no root LICENSE")
+	assert.Contains(t, err.Error(), "LICENSE",
+		"the error must name LICENSE so the cause is obvious")
 }
 
 // TestBuildWheelsLayout calls BuildWheels directly and asserts
@@ -333,6 +331,12 @@ func TestBuildWheelsLayout(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
 	stagePython(t, root)
+	// stagePythonTree requires a root LICENSE — pyproject.toml's
+	// license-files setting expects it and hatchling would fail
+	// the build otherwise. The body just has to be readable; the
+	// wheel-content assertions below check the staged copy lands.
+	require.NoError(t, os.WriteFile(filepath.Join(root, "LICENSE"),
+		[]byte("MIT — test fixture\n"), 0o644))
 	require.NoError(t, Stamp(root, ver))
 
 	artifacts := filepath.Join(root, "artifacts")

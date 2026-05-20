@@ -267,9 +267,9 @@ var numberSentinelBytes = []byte("##number##")
 
 // multiPunctAnnotation is the third-pass annotator (upstream
 // english.MultiPunctWordAnnotation.tokenAnnotation), the
-// abbreviation-aware classifier the fastpunct.go fork already runs.
-// The fork's matchAbbrPattern is preserved (re-exported below as
-// MatchAbbrPattern) so plan 191's DFA stays the abbreviation gate.
+// abbreviation-aware classifier. The hand-rolled DFA from plan 191
+// lives at internal/punkt/abbr.go as MatchAbbrPattern and stays the
+// abbreviation gate here.
 func multiPunctAnnotation(s *Storage, ortho *OrthoContext, tokOne, tokTwo *Token, st *state) {
 	if isListNumber(tokOne.Tok) || isCoordinatePartOne(tokOne.Tok) {
 		tokOne.SentBreak = false
@@ -289,7 +289,15 @@ func multiPunctAnnotation(s *Storage, ortho *OrthoContext, tokOne, tokTwo *Token
 	}
 
 	// Upstream's `if a.IsInitial(tokOne) { return }` guard is dead
-	// here (see fastpunct.go for the dead-code analysis); elided.
+	// here and elided: reInitial only matches `^[A-Za-z]\.$`, i.e.
+	// a single ASCII letter followed by a period. Every such token
+	// fails the preceding gate — MatchAbbrPattern needs at least
+	// two `\w\.` pairs to fire, tokOne != "." obviously, the two-
+	// byte initial does not match hasUnreliableEndChars's quote/
+	// paren suffix set, and isCoordinateSecondPart needs three
+	// periods. So the guard cannot be reached; the equivalence
+	// harness in internal/mdtext/sentence_equivalence_test.go
+	// fails on the next run if upstream ever weakens the gate.
 
 	tokOne.Abbr = true
 	tokOne.SentBreak = false
