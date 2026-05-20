@@ -249,8 +249,8 @@ representative input.** Most rules allocate 0–6;
 verify with `b.ReportAllocs()`.
 
 - Walk `f.Lines` / `f.AST` directly.
-- Prefer `bytes.X` / `IndexByte` over `regexp` for
-  fixed searches.
+- Prefer `bytes.IndexByte` / `bytes.Contains` over
+  `regexp` for fixed searches.
 - Compile every `regexp.Regexp` at package scope.
 - Pre-size slices with `make([]X, 0, n)`.
 - Reuse loop-local buffers via `buf = buf[:0]`.
