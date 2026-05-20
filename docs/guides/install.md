@@ -11,6 +11,27 @@ summary: >-
 ---
 # Installation
 
+## Quick start (CLI only)
+
+For a minimal setup, install the binary and run it. No
+config file, no kinds or schemas, no LSP, no editor
+plugin required:
+
+```bash
+go install github.com/jeduden/mdsmith/cmd/mdsmith@latest
+mdsmith fix README.md
+mdsmith check .
+```
+
+That works on a single-file README repo as well as on a
+600-file docs monorepo. `.mdsmith.yml` is optional — the
+built-in defaults apply when no config is present. The
+rest of this guide covers the other channels, the
+editor extensions, and the supply-chain verification
+steps for regulated deployments.
+
+## Channels
+
 Each `vX.Y.Z` git tag ships the same Go binary through
 several channels. `mdsmith version` reports the same
 value on every channel because the version is stamped
@@ -178,6 +199,23 @@ GitHub OIDC identity, so a forged binary or rewritten
 checksums file fails verification unless the attacker
 also controls `release.yml` on `jeduden/mdsmith`.
 
+### CycloneDX SBOM
+
+Every release also publishes a CycloneDX SBOM of the
+Go module the binaries were built from. The file is
+named `mdsmith-sbom.cdx.json`. The SHA-256 hash is
+in `checksums.txt` (it matches the `mdsmith-*` glob),
+so the same cosign signature transitively covers it.
+
+```bash
+curl -L -o mdsmith-sbom.cdx.json "$base/mdsmith-sbom.cdx.json"
+sha256sum -c <(grep mdsmith-sbom.cdx.json checksums.txt)
+```
+
+Feed the SBOM into your dependency-scanner of choice
+(`grype`, `osv-scanner`, your SCA platform) for a
+component-and-license inventory of the binary.
+
 This path is also the documented fallback if any of
 the package channels above is unavailable on a given
 day.
@@ -208,6 +246,13 @@ configuration surface (`mdsmith.path`, `mdsmith.run`,
 `mdsmith.fixOnSave`, `mdsmith.trace.server`).
 
 ## Claude Code plugins
+
+The Claude Code plugin is an optional editor surface.
+mdsmith itself never calls an LLM or any external
+service at runtime; the plugin only spawns `mdsmith
+lsp` as a local subprocess. See the
+[telemetry policy](../reference/telemetry.md) for the
+full statement.
 
 The mdsmith marketplace ships six plugins.
 Register once, then install whichever you need:

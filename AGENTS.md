@@ -61,7 +61,6 @@ row: "- [{summary}]({filename})"
 - [GitHub fine-grained PAT for the merge-queue action. Plain repo secret — not gated by an environment.](docs/development/secret-rotations/merge-queue-token.md)
 - [Open VSX publisher token. Drives the `ovsx publish` step.](docs/development/secret-rotations/ovsx-pat.md)
 - [Visual Studio Marketplace publisher PAT issued by Azure DevOps. Drives the `vsce publish` step.](docs/development/secret-rotations/vsce-pat.md)
-- [Cap file, section, and token-budget size; enforce reading grade and sentence count; flag verbatim copy-paste across files.](docs/features/ai-guardrails.md)
 - [`mdsmith fix` rewrites whitespace, headings, code fences, bare URLs, list indentation, and table alignment in place, looping up to 10 passes and stopping when edits stabilize. `mdsmith check` is the read-only CI sibling.](docs/features/auto-fix.md)
 - [The `<?build?>` directive declares an artifact and a recipe. `mdsmith fix` keeps the section body in sync with the recipe output; `MDS040` shell-safety-checks the recipe without running it.](docs/features/build-artifacts.md)
 - [Config layers deep-merge rule by rule: defaults, convention, kinds, then overrides. `--explain` and `mdsmith kinds resolve` show which layer set each effective value, per leaf.](docs/features/config-transparency.md)
@@ -79,15 +78,20 @@ row: "- [{summary}]({filename})"
 - [`mdsmith list query 'status: "✅"' plan/` selects files by a CUE expression on front matter; `mdsmith metrics rank` ranks files by any shared metric — both ready to pipe into a release script.](docs/features/release-gating.md)
 - [Rename a heading and every workspace anchor link that points at it is rewritten in one atomic edit. Link-reference labels rename with their uses. A colliding slug fails loudly instead of silently breaking cross-file links.](docs/features/rename.md)
 - [On `mdsmith fix`, `<?toc?>` rebuilds a heading TOC, `<?catalog?>` generates an index from front matter, and `<?include?>` splices in another file. A Git merge driver auto-resolves conflicts inside those blocks.](docs/features/self-maintaining-sections.md)
+- [Cap file, section, and token-budget size; enforce reading grade and sentence count; flag verbatim copy-paste across files.](docs/features/size-and-readability.md)
+- [Prettier owns whitespace and line wrapping; mdsmith owns lint, generated sections, and cross-file checks. Run both in a single pre-commit hook with the order Prettier last.](docs/guides/coexist-with-prettier.md)
+- [Vale owns brand voice and prose style; remark owns Markdown AST transformations; mdsmith owns formatting, cross-file integrity, and generated sections. They sit side by side in CI without overlap.](docs/guides/coexist-with-vale-and-remark.md)
 - [How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure user-declared recipes.](docs/guides/directives/build.md)
 - [How to use schemas, require, and allow-empty-section to validate headings, front matter, and filenames.](docs/guides/directives/enforcing-structure.md)
 - [How to use catalog and include directives to generate and embed content in Markdown files.](docs/guides/directives/generating-content.md)
 - [Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.](docs/guides/directives/hugo-migration.md)
+- [Wire `mdsmith lsp` into Neovim's built-in LSP client so diagnostics, code actions, and navigation work inline with no extra plugin.](docs/guides/editors/neovim.md)
 - [Install the mdsmith VS Code extension, configure how it spawns `mdsmith lsp`, and read diagnostics inline as you edit Markdown files.](docs/guides/editors/vscode.md)
 - [How to declare file kinds, assign files to them, and read the merged rule config that results.](docs/guides/file-kinds.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](docs/guides/index.md)
 - [Every channel that ships the mdsmith binary, the VS Code extension, or the Claude Code plugin — npm, PyPI, asdf, mise, the GitHub release, the Visual Studio Marketplace plus Open VSX, and the in-repository Claude Code marketplace — and which channel to pick for which workflow.](docs/guides/install.md)
 - [Trade-offs and threshold guidance for readability, structure, length, and token budgets.](docs/guides/metrics-tradeoffs.md)
+- [Move a project from markdownlint-cli or markdownlint-cli2 to mdsmith — the rule mapping, the config rewrite, and the markdownlint rules mdsmith does not implement yet.](docs/guides/migrate-from-markdownlint.md)
 - [Declare a document-structure schema inline on a kind or in a proto.md file, validate headings and front matter, and tighten rule config per section.](docs/guides/schemas.md)
 - [CLI commands, flags, exit codes, and output format.](docs/reference/cli.md)
 - [List workspace links that point at a file.](docs/reference/cli/backlinks.md)
@@ -112,6 +116,7 @@ row: "- [{summary}]({filename})"
 - [Look up exact CLI commands, config glob and schema syntax, the built-in conventions, and the section-schema grammar.](docs/reference/index.md)
 - [Named field-type shortcuts for inline schema frontmatter values — the registered names, the canonical CUE each one resolves to, and example usage.](docs/reference/schema-types.md)
 - [Section-schema reference for inline `kinds.<name>.schema:` blocks. Covers the `heading:` discriminator, the `regex:` matcher (a Go RE2 body with `\#(digits)` and `\#(fmvar(...))` helpers), the `repeat: {min, max}` cardinality field, and the matching algorithm. `proto.md` files are parsed into the same shape by the schema package, but MDS020's file-schema check still uses its legacy parser; see the proto.md section below for what is and is not migrated.](docs/reference/section-schema.md)
+- [mdsmith collects no telemetry, no usage analytics, no error reports, and no identifiers. The CLI and the LSP server make no outbound network calls at runtime.](docs/reference/telemetry.md)
 <?/catalog?>
 
 ## Development Workflow
@@ -146,22 +151,13 @@ When implementing work tracked by `plan/`:
 
 ## Terminal Demo (`demo.tape`)
 
-`demo.tape` is the VHS tape that records the demo
-GIF. When editing it:
+`demo.tape` records the demo GIF. Editing notes:
 
-- Use backtick-delimited strings for embedded quotes:
-  `` Type `cmd 'status: "✅"'` ``. Do NOT use `\"`
-  inside double-quoted Type strings — VHS crashes
-- A hidden `set +e` runs at start, so don't append
-  `; true` to commands
-- `demo/sample.md` is in the `.mdsmith.yml` ignore
-  list; hidden setup copies it to a temp dir for
-  check/fix steps
-- Keep Sleep durations short (1–2 s) for fast CI
-  renders
-- Use only fixable rules in `demo/sample.md` (trailing
-  spaces, long lines, bare URLs) so the fix→check
-  flow works
+- Backtick-delimited strings for embedded quotes: `` Type `cmd 'status: "✅"'` ``. `\"` inside double-quoted Type strings crashes VHS
+- A hidden `set +e` runs at start, so don't append `; true` to commands
+- `demo/sample.md` is in the `.mdsmith.yml` ignore list; hidden setup copies it to a temp dir for check/fix
+- Keep Sleep durations short (1–2 s) for fast CI renders
+- Use only fixable rules in `demo/sample.md` (trailing spaces, long lines, bare URLs) so the fix→check flow works
 
 ## Writing Guidelines
 

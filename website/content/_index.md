@@ -1,6 +1,6 @@
 ---
 title: "mdsmith"
-summary: "A fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content. Checks style, readability, structure, and cross-file integrity. Written in Go."
+summary: "A fast, auto-fixing Markdown linter and formatter. Checks style, readability, structure, and cross-file integrity. Written in Go, MIT-licensed, no telemetry."
 hero:
   eyebrow: "Auto-fixing Markdown linter & formatter · Go"
   headline_pre: "Mark"
@@ -8,8 +8,9 @@ hero:
   headline_post: ", smithed."
   lead: >-
     Fast checks for style, readability, structure, and cross-file integrity.
-    One static Go binary, no runtime — faster than Node markdownlint.
-    Auto-fix what fixes cleanly. Editor-grade diagnostics on every save.
+    One static Go binary, no runtime — [roughly 4× faster than Node
+    markdownlint on a 700-file corpus](features/performance/). Auto-fix
+    what fixes cleanly. Editor-grade diagnostics on every save.
 install:
   - id: go
     label: "go"
@@ -31,6 +32,11 @@ install:
     prompt: "$"
     cmd: "code --install-extension"
     args: "jeduden.mdsmith"
+  - id: neovim
+    label: "neovim"
+    prompt: "$"
+    cmd: "mdsmith lsp"
+    args: ""
   - id: claude
     label: "claude code"
     prompt: "/"
@@ -39,7 +45,8 @@ install:
 ---
 mdsmith is a Markdown linter and formatter written in Go. It checks style,
 readability, structure, and cross-file integrity, and auto-fixes what fixes
-cleanly. The same engine drives the CLI, the LSP server, the VS Code
-extension, and the Claude Code plugin — every surface sees the same rules.
-Where markdownlint-compatible linters stop at per-file style, mdsmith
-adds the cross-file graph, generated sections, and readability budgets.
+cleanly. Where markdownlint-compatible linters stop at per-file style,
+mdsmith adds the cross-file graph, generated sections, and readability
+budgets. One rule engine powers the CLI, the LSP server, and the VS Code
+extension — Neovim and other LSP-aware editors plug in through the same
+server, and a Claude Code plugin is available for users of that editor.

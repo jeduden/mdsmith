@@ -6,7 +6,7 @@ summary: >-
   points at it. The LSP call-hierarchy walks the same graph in your
   editor.
 icon: network
-weight: 16
+weight: 5
 link: "/reference/cli/deps/"
 ---
 # See the dependency graph
