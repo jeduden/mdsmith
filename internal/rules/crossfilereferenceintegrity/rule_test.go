@@ -2,6 +2,7 @@ package crossfilereferenceintegrity
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1235,4 +1236,45 @@ func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
 	f.RootDir = root
 	f.RootFS = os.DirFS(root)
 	return f
+}
+
+func TestCheck_Wikilinks_ResolutionCachedPerTarget(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "page.md"), []byte("# P\n"), 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n[[page]] [[page]] [[page]] [[page]] [[page]]\n")
+
+	counting := &walkCountingFS{inner: os.DirFS(dir)}
+
+	f := newLintFile(t, sourcePath)
+	f.RootDir = dir
+	f.RootFS = counting
+
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags)
+	// One workspace walk does an Open(".") for Stat and again for the
+	// recursion entry — two opens per walk. Five identical wikilinks
+	// without caching would walk five times (10 opens); with the cache
+	// they collapse to one walk (≤ 2 opens). Bound by the no-cache
+	// floor to prove the cache is consulted.
+	require.LessOrEqual(t, counting.rootOpens, 2,
+		"resolver must memoize per target; got %d Open(\".\") calls", counting.rootOpens)
+}
+
+// walkCountingFS wraps an fs.FS and tallies Open(".") calls — the
+// entry point fs.WalkDir uses for the root. Each ResolveWikiLink call
+// triggers exactly two such opens (one for Stat, one for the walk).
+// The test below uses this to prove the per-target cache reduces N
+// repeated wikilinks down to a single walk.
+type walkCountingFS struct {
+	inner     fs.FS
+	rootOpens int
+}
+
+func (w *walkCountingFS) Open(name string) (fs.File, error) {
+	if name == "." {
+		w.rootOpens++
+	}
+	return w.inner.Open(name)
 }

@@ -231,7 +231,7 @@ The wikilink check resolves `[[Page]]` against every
 workspace file by stem. Matching is case-insensitive
 with a shortest-path tie-break.
 
-The callout check accepts the 13 base Obsidian types
+The callout check accepts the 12 base Obsidian types
 and their aliases out of the box. Dataview inline
 fields (`key:: value`) are still not front matter.
 The `require`/`schema` directives do not read them.

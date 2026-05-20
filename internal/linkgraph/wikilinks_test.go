@@ -167,6 +167,29 @@ func TestResolveWikiLink_RejectsRootEscape(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestResolveWikiLink_AcceptsDoubleDotInName(t *testing.T) {
+	// A bare ".." in the middle of a stem must not be confused with a
+	// parent-dir traversal. The wikilink writes the full filename
+	// (`v1..v2.md`) so path.Ext can identify ".md" as the extension and
+	// the search falls into stem mode against the matching file.
+	mfs := fstest.MapFS{
+		"v1..v2.md": &fstest.MapFile{Data: []byte{}},
+	}
+	got, ok := ResolveWikiLink(mfs, "from.md", "v1..v2.md")
+	require.True(t, ok)
+	assert.Equal(t, "v1..v2.md", got)
+}
+
+func TestResolveWikiLink_RejectsCollapsedTraversal(t *testing.T) {
+	// path.Clean reduces "a/../../etc" to "../etc" — the check must
+	// catch traversal hidden behind a leading legitimate segment.
+	mfs := fstest.MapFS{
+		"notes.md": &fstest.MapFile{Data: []byte{}},
+	}
+	_, ok := ResolveWikiLink(mfs, "from.md", "a/../../etc/passwd")
+	assert.False(t, ok)
+}
+
 func TestResolveWikiLink_RejectsAbsolutePath(t *testing.T) {
 	mfs := fstest.MapFS{
 		"notes.md": &fstest.MapFile{Data: []byte{}},
