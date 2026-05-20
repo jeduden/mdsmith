@@ -21,22 +21,27 @@ import (
 
 // backlinkRecord is one incoming link to the queried target.
 //
-// Kind distinguishes a standard Markdown link ("link") from an
-// Obsidian-style wikilink ("wikilink"). JSON consumers can filter
-// on this field; the text formatter renders both shapes inline.
+// Kind is set to "wikilink" only when the record came from an
+// Obsidian-style `[[Page]]` link; for ordinary Markdown links Kind
+// stays empty and is omitted from JSON, so the historical
+// {source, line, text, target} shape every existing consumer reads
+// is preserved unchanged.
 //
 // Alias and Embed are only meaningful when Kind == "wikilink":
 //   - Alias is the `|alias` half of `[[Page|alias]]`, empty when
-//     the source had no alias. omitempty keeps standard-link
-//     records' JSON shape unchanged.
+//     the source had no alias.
 //   - Embed is true when the source used `![[...]]` rather than
 //     `[[...]]`.
+//
+// All three of Kind, Alias, and Embed are omitempty so a JSON
+// document of standard-link records is byte-for-byte the same as
+// before the wikilink fields were added.
 type backlinkRecord struct {
 	Source string `json:"source"`
 	Line   int    `json:"line"`
 	Text   string `json:"text"`
 	Target string `json:"target"`
-	Kind   string `json:"kind"`
+	Kind   string `json:"kind,omitempty"`
 	Alias  string `json:"alias,omitempty"`
 	Embed  bool   `json:"embed,omitempty"`
 }
@@ -327,7 +332,6 @@ func extractBacklinksFromSource(
 			Line:   link.Line + f.LineOffset,
 			Text:   link.Text,
 			Target: t.Raw,
-			Kind:   "link",
 		})
 	}
 	out = appendWikilinkBacklinks(out, f, srcRel, wantTarget, wantAnchorSlug)

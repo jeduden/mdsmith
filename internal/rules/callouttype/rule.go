@@ -46,8 +46,10 @@ func (r *Rule) EnabledByDefault() bool { return false }
 
 // builtInTypes lists every base Obsidian callout type and its
 // aliases. Lowercased; lookup uses strings.ToLower on the captured
-// token. Keep alphabetised so the diagnostic's "valid types" list
-// has a stable order across runs.
+// token. Keep this map in sync with Obsidian's published
+// vocabulary; the diagnostic message orders names via
+// validTypeOrder below, so map iteration order does not affect
+// output stability.
 var builtInTypes = map[string]bool{
 	"note":      true,
 	"abstract":  true,

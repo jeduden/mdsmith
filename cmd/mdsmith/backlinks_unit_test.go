@@ -418,7 +418,7 @@ func TestFormatBacklinkTextLine_Wikilink(t *testing.T) {
 	assert.Equal(t, "from.md:4: ![[img.png]]", formatBacklinkTextLine(embed))
 
 	std := backlinkRecord{
-		Source: "from.md", Line: 1, Text: "ref", Target: "x.md", Kind: "link",
+		Source: "from.md", Line: 1, Text: "ref", Target: "x.md",
 	}
 	assert.Equal(t, "from.md:1: [ref](x.md)", formatBacklinkTextLine(std))
 }
