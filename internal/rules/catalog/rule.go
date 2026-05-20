@@ -506,8 +506,18 @@ func dotDotInPatterns(patterns []string) bool {
 // catalog-owning file's own fs.FS. Used when no source-dir is set and the
 // patterns contain no ".." segments, or as a fallback when the project
 // root is not configured.
+//
+// gitignoreBase is left empty when absBaseDir cannot derive an absolute
+// path. A relative "" or "." base would otherwise leak into
+// absMatchedPath as a non-absolute cache key, breaking the LSP
+// invalidation contract (which keys by absolute doc.path). Empty base
+// opts the resolution out of both run-cache use and gitignore
+// anchoring, matching the legacy pre-cache behavior.
 func localFSResolution(f *lint.File, includes, excludes []string) globResolution {
-	base, _ := absBaseDir(f)
+	base := ""
+	if abs, ok := absBaseDir(f); ok {
+		base = abs
+	}
 	return globResolution{
 		fs:            f.FS,
 		includes:      includes,
@@ -1116,11 +1126,14 @@ func fileIncludesTarget(
 
 // fileIncludesTargetAbs is the absolute-path variant. Used when
 // cf.RunCache is set: the cache key is absolute so two host files
-// that reach the same target via different f.FS-relative paths share
-// one read. fsys is still f.FS (the host's directory FS) — read
-// arguments are derived by stripping hostAbsDir from the absolute
-// path. hostAbsDir is the absolute path filepath.Dir(cf.Path) cleans
-// to; both absFilePath and absTarget live under it.
+// that reach the same target via different fs-relative paths share
+// one read. fsys is the scan frame chosen by scanFrameFor — f.FS
+// (the host's directory FS) for local-FS-resolved catalogs, or
+// res.fs (f.RootFS, the project root) for rootRelative catalogs
+// resolved via source-dir or ".." patterns. hostAbsDir is the
+// absolute path the fs.FS is anchored at and the directory both
+// absFilePath and absTarget live under; read arguments are derived
+// by stripping it from the absolute path.
 func fileIncludesTargetAbs(
 	cf *lint.File, fsys fs.FS, hostAbsDir, absFilePath, absTarget string,
 	maxBytes int64,
