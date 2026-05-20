@@ -9,6 +9,13 @@ description: >-
 nature: style
 category: table
 maintainability: null
+markdownlint:
+  - id: MD055
+    name: table-pipe-style
+  - id: MD056
+    name: table-column-count
+  - id: MD058
+    name: blanks-around-tables
 ---
 # MDS060: table-structure
 
