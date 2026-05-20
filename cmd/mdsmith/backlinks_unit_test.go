@@ -361,6 +361,11 @@ func TestCollectBacklinks_Wikilinks(t *testing.T) {
 		assert.Equal(t, "anchored.md", got[0].Source)
 		assert.Equal(t, "wikilink", got[0].Kind)
 		assert.Equal(t, "page#Section", got[0].Target)
+		// `text` is the visible link text — for anchor-only wikilinks
+		// the full target-as-written, not the bare stem. Setting
+		// Text=wl.Target alone would drop the `#Section` half and
+		// break JSON round-tripping.
+		assert.Equal(t, "page#Section", got[0].Text)
 	})
 }
 

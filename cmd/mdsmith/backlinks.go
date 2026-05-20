@@ -376,9 +376,15 @@ func appendWikilinkBacklinks(
 		if wantAnchorSlug != "" && linkgraph.NormalizeAnchor(wl.Anchor) != wantAnchorSlug {
 			continue
 		}
+		// Visible text mirrors what a reader would see: the alias
+		// when one is present; otherwise the target-as-written
+		// (target + "#anchor" if the source carried a fragment).
+		// Using wl.Target alone would drop the anchor portion from
+		// the JSON `text` field for `[[page#Section]]` and break
+		// downstream round-tripping.
 		text := wl.Alias
 		if text == "" {
-			text = wl.Target
+			text = wikilinkTargetString(wl)
 		}
 		out = append(out, backlinkRecord{
 			Source: srcRel,
