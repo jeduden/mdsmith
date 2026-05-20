@@ -401,7 +401,8 @@ func formatTable(tbl table, cfg Config) table {
 
 	numCols := len(tbl.rows[0].cells)
 	normalizedRows := normalizeRows(tbl.rows, numCols)
-	colWidths := computeColWidths(normalizedRows, numCols)
+	aligns := separatorAlignments(normalizedRows)
+	colWidths := computeColWidths(normalizedRows, numCols, aligns, cfg)
 	padding := strings.Repeat(" ", cfg.Pad)
 
 	var formattedLines [][]byte
@@ -427,6 +428,17 @@ func formatTable(tbl table, cfg Config) table {
 	}
 }
 
+// separatorAlignments returns the per-column alignment list taken
+// from the first separator row, or nil if the table has none.
+func separatorAlignments(rows []row) []align {
+	for _, r := range rows {
+		if r.isSeparator {
+			return r.alignments
+		}
+	}
+	return nil
+}
+
 // normalizeRows ensures all rows have exactly numCols cells.
 func normalizeRows(rows []row, numCols int) []row {
 	out := make([]row, len(rows))
@@ -442,9 +454,13 @@ func normalizeRows(rows []row, numCols int) []row {
 	return out
 }
 
-// computeColWidths returns the max display width per column, with a
-// minimum of 3 (to fit separator dashes).
-func computeColWidths(rows []row, numCols int) []int {
+// computeColWidths returns the max display width per column. Each
+// column is widened to fit a separator with at least three hyphens for
+// its alignment — :--- / ---: / :---: — which is the cross-flavor floor
+// (markdown-it, pandoc, and others reject :--, --:, :-:). Without
+// aligns the table is treated as alignNone and the floor is three
+// hyphens per cell.
+func computeColWidths(rows []row, numCols int, aligns []align, cfg Config) []int {
 	widths := make([]int, numCols)
 	for _, r := range rows {
 		if r.isSeparator {
@@ -457,11 +473,44 @@ func computeColWidths(rows []row, numCols int) []int {
 		}
 	}
 	for j := range widths {
-		if widths[j] < 3 {
-			widths[j] = 3
+		a := alignNone
+		if j < len(aligns) {
+			a = aligns[j]
+		}
+		if m := minSeparatorWidth(a, cfg); widths[j] < m {
+			widths[j] = m
 		}
 	}
 	return widths
+}
+
+// minSeparatorWidth returns the smallest colWidth that lets
+// writeSeparatorRow render the cell with at least three hyphens for
+// the given alignment under cfg.
+//
+// Spaced style writes exactly colWidth characters of separator content
+// per cell. Compact style writes colWidth + 2*cfg.Pad characters,
+// because pad spaces are absorbed into the dash run. The result is
+// also clamped to 3 — the original min — so previously-compact tables
+// keep their column widths.
+func minSeparatorWidth(a align, cfg Config) int {
+	const dashesNeeded = 3
+	var cellChars int
+	switch a {
+	case alignLeft, alignRight:
+		cellChars = dashesNeeded + 1
+	case alignCenter:
+		cellChars = dashesNeeded + 2
+	default:
+		cellChars = dashesNeeded
+	}
+	if cfg.SeparatorStyle == SeparatorCompact {
+		cellChars -= 2 * cfg.Pad
+	}
+	if cellChars < 3 {
+		cellChars = 3
+	}
+	return cellChars
 }
 
 // writeSeparatorRow writes the separator row dashes into line.

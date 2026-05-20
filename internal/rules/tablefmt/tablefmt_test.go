@@ -536,6 +536,57 @@ func TestFormatStringWithConfig_SpacedAlignment(t *testing.T) {
 	}
 }
 
+// TestFormatStringWithConfig_SpacedAlignment_NarrowColumn_Min3Dashes
+// pins the cross-flavor minimum: every separator cell must contain at
+// least three hyphens regardless of column width, so the output parses
+// as a table under strict GFM flavors (markdown-it, pandoc) that reject
+// `:--`, `:-:`, and `--:`.
+func TestFormatStringWithConfig_SpacedAlignment_NarrowColumn_Min3Dashes(t *testing.T) {
+	cases := map[string]struct {
+		sep     string
+		wantSep string
+		wantRow string
+	}{
+		"none":   {sep: "|---|", wantSep: "| --- |", wantRow: "| a   |"},
+		"left":   {sep: "|:---|", wantSep: "| :--- |", wantRow: "| a    |"},
+		"right":  {sep: "|---:|", wantSep: "| ---: |", wantRow: "| a    |"},
+		"center": {sep: "|:---:|", wantSep: "| :---: |", wantRow: "| a     |"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := "| h |\n" + tc.sep + "\n| a |\n"
+			out := FormatStringWithConfig(src, Config{Pad: 1})
+			assert.Contains(t, out, tc.wantSep,
+				"spaced %s separator needs 3 dashes; got:\n%s", name, out)
+			assert.Contains(t, out, tc.wantRow,
+				"data row must align to widened column; got:\n%s", name+":\n"+out)
+		})
+	}
+}
+
+// TestFormatStringWithConfig_CompactAlignment_NarrowColumn_Min3Dashes
+// is the compact-mode counterpart: with pad=0 the cell content equals
+// colWidth, so the same minimum-dash rule must widen the column.
+func TestFormatStringWithConfig_CompactAlignment_NarrowColumn_Min3Dashes(t *testing.T) {
+	cases := map[string]struct {
+		sep     string
+		wantSep string
+	}{
+		"none":   {sep: "|---|", wantSep: "|---|"},
+		"left":   {sep: "|:---|", wantSep: "|:---|"},
+		"right":  {sep: "|---:|", wantSep: "|---:|"},
+		"center": {sep: "|:---:|", wantSep: "|:---:|"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := "|h|\n" + tc.sep + "\n|a|\n"
+			out := FormatStringWithConfig(src, Config{Pad: 0, SeparatorStyle: SeparatorCompact})
+			assert.Contains(t, out, tc.wantSep,
+				"compact %s separator needs 3 dashes; got:\n%s", name, out)
+		})
+	}
+}
+
 // --- Regression: table-shaped text inside a skipped code block is left alone ---
 
 func TestFormatLines_TableInsideSkippedCodeBlock_NotRewritten(t *testing.T) {
