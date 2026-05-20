@@ -33,7 +33,7 @@ code --install-extension mdsmith-<version>.vsix
 ## Settings
 
 | Setting                | Default     | Purpose                                                                                                                                                                        |
-|------------------------|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `mdsmith.path`         | `"mdsmith"` | Binary path; default runs the bundled per-platform binary. Set an absolute path to override; falls back to PATH only if your platform was not bundled (e.g. `/go/bin/mdsmith`) |
 | `mdsmith.config`       | `""`        | Override `-c` config path                                                                                                                                                      |
 | `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                                                                                                     |

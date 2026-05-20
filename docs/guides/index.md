@@ -14,11 +14,11 @@ glob:
 sort: title
 header: |
   | Guide | Description |
-  |-------|-------------|
+  | ----- | ----------- |
 row: "| [{title}]({filename}) | {summary} |"
 ?>
 | Guide                                                                               | Description                                                                                                                                                                                                                                                                           |
-|-------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Build directive](directives/build.md)                                              | How to use the build directive to declare artifact outputs, keep generated bodies in sync, and configure user-declared recipes.                                                                                                                                                       |
 | [Choosing Readability, Conciseness, and Token Budget Metrics](metrics-tradeoffs.md) | Trade-offs and threshold guidance for readability, structure, length, and token budgets.                                                                                                                                                                                              |
 | [Coming from Hugo](directives/hugo-migration.md)                                    | Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.                                                                                                                                                                                           |

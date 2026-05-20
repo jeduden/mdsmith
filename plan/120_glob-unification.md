@@ -25,7 +25,7 @@ Today three independent glob systems coexist, summarized
 in [docs/reference/globs.md](../docs/reference/globs.md):
 
 | Surface                                                   | Matcher                | Field name | `!`-exclusion          |
-|-----------------------------------------------------------|------------------------|------------|------------------------|
+| --------------------------------------------------------- | ---------------------- | ---------- | ---------------------- |
 | `ignore:` / `overrides:.files` / `kind-assignment:.files` | `gobwas/glob`          | `files:`   | yes (added in plan 96) |
 | `<?catalog?>`                                             | `doublestar`           | `glob:`    | yes                    |
 | CLI argument expansion                                    | stdlib `filepath.Glob` | positional | no                     |

@@ -17,7 +17,7 @@ Links to local files and heading anchors must resolve.
 ## Settings
 
 | Setting        | Type | Default | Description                                                                                                                |
-|----------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| -------------- | ---- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `include`      | list | `[]`    | glob patterns to include                                                                                                   |
 | `exclude`      | list | `[]`    | glob patterns to skip                                                                                                      |
 | `strict`       | bool | `false` | check non-Markdown file links                                                                                              |
@@ -32,7 +32,7 @@ External links (`http:`, `https:`, `mailto:`) are always ignored.
 ### links block
 
 | Setting                          | Type   | Default | Description                                                                            |
-|----------------------------------|--------|---------|----------------------------------------------------------------------------------------|
+| -------------------------------- | ------ | ------- | -------------------------------------------------------------------------------------- |
 | `links.validate-images`          | bool   | `true`  | Check `*ast.Image` targets (e.g. `![alt](img.png)`) regardless of `strict` mode.       |
 | `links.validate-reference-style` | bool   | `true`  | Check reference-style link targets (e.g. `[text][label]` / `[label]: url`).            |
 | `links.site-root`                | string | `""`    | When set, resolve absolute paths (e.g. `/docs/rules/`) against this directory on disk. |
@@ -141,7 +141,7 @@ See [guide](bad/ref/guide.md#missing-section).
 ## Diagnostics
 
 | Condition       | Message                                                          |
-|-----------------|------------------------------------------------------------------|
+| --------------- | ---------------------------------------------------------------- |
 | missing file    | broken link target "x.md" not found                              |
 | missing heading | broken link target "x.md#section" has no matching heading anchor |
 

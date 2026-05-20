@@ -16,7 +16,7 @@ mdsmith help <topic>
 ## Topics
 
 | Topic                 | Description                              |
-|-----------------------|------------------------------------------|
+| --------------------- | ---------------------------------------- |
 | `rule [id\|name]`     | Show rule documentation                  |
 | `metrics [id\|name]`  | Show metric documentation                |
 | `kinds`               | Show concept page for file kinds         |
@@ -41,6 +41,6 @@ mdsmith help patterns -f json
 ## Exit codes
 
 | Code | Meaning                      |
-|------|------------------------------|
+| ---- | ---------------------------- |
 | 0    | Topic printed                |
 | 2    | Unknown topic / lookup error |

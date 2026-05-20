@@ -183,7 +183,7 @@ Hugo and mdsmith differ on **where** generated content
 lives:
 
 | Aspect              | Hugo                           | mdsmith                          |
-|---------------------|--------------------------------|----------------------------------|
+| ------------------- | ------------------------------ | -------------------------------- |
 | Generated output    | Separate `public/` HTML tree   | In-place inside the source `.md` |
 | Source readability  | Templates obscure final body   | Source always renders as-is      |
 | Validation          | None (build succeeds or fails) | Diagnostics + autofix            |
@@ -215,7 +215,7 @@ the same `.md` files.
   like any other source; CI can run mdsmith over the vault
 
 | Aspect             | Obsidian                          | mdsmith                              |
-|--------------------|-----------------------------------|--------------------------------------|
+| ------------------ | --------------------------------- | ------------------------------------ |
 | Purpose            | Note-taking editor                | Linter / fixer                       |
 | Linting            | Community plugin only             | Built-in, CI-ready                   |
 | Wikilinks          | Native (`[[Page]]`)               | Treated as text; no validation       |
@@ -261,7 +261,7 @@ See the [migration log](./auth-migration-log.md).
 What each tool **does** with the same bytes:
 
 | Layer                                     | mdsmith                                                 | mdbase                                                    |
-|-------------------------------------------|---------------------------------------------------------|-----------------------------------------------------------|
+| ----------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- |
 | YAML front matter                         | reads it; can validate shape via CUE schema             | reads it; validates against `_types/task.md`              |
 | Body content (prose, headings)            | lints line length, headings, prose, links               | not in scope                                              |
 | Cross-file link                           | flags broken `auth-migration-log.md` (MDS027)           | flags broken link (L4) and rewrites it on rename (L5)     |
@@ -379,7 +379,7 @@ target Quarto and
 R Markdown constructs the others flatten away.
 
 | Aspect                  | mdsmith      | rumdl                | mado                 | panache      |
-|-------------------------|--------------|----------------------|----------------------|--------------|
+| ----------------------- | ------------ | -------------------- | -------------------- | ------------ |
 | Language                | Go           | Rust                 | Rust                 | Rust         |
 | Rule IDs                | own `MDSxxx` | markdownlint `MDxxx` | markdownlint `MDxxx` | own          |
 | Rule count              | 30+          | 71                   | ~41                  | unenumerated |
@@ -408,7 +408,7 @@ framing before the feature list.
 ### Prose and Readability
 
 | Capability        | mdsmith                         | Vale                                  | LLM |
-|-------------------|---------------------------------|---------------------------------------|-----|
+| ----------------- | ------------------------------- | ------------------------------------- | --- |
 | Readability grade | [MDS023][mds023] (ARI)          | [metric][vale-metric] ext             | yes |
 | Sentence limits   | [MDS024][mds024]                | [occurrence][vale-occurrence] ext     | yes |
 | Word choice       | no                              | [substitution][vale-substitution] ext | yes |
@@ -427,7 +427,7 @@ lack determinism.
 ### Formatting and Fixing
 
 | Capability         | mdsmith               | Prettier                 | markdownlint |
-|--------------------|-----------------------|--------------------------|--------------|
+| ------------------ | --------------------- | ------------------------ | ------------ |
 | Autofix CLI        | `fix`                 | `--write`                | `--fix`      |
 | Table alignment    | [MDS025][mds025]      | yes                      | no           |
 | Prose wrapping     | no                    | [`proseWrap`][prosewrap] | no           |
@@ -449,7 +449,7 @@ markdownlint fixes structural violations.
 ### Cross-File and Project Features
 
 | Capability           | mdsmith              | markdownlint | remark-lint                     |
-|----------------------|----------------------|--------------|---------------------------------|
+| -------------------- | -------------------- | ------------ | ------------------------------- |
 | Link integrity       | [MDS027][mds027]     | no           | [remark-validate-links][rl-vl]  |
 | Include sections     | [MDS021][mds021]     | no           | no                              |
 | Catalog generation   | [MDS019][mds019]     | no           | no                              |
@@ -494,7 +494,7 @@ nested heading list.
 ### Runtime and Integration
 
 | Property       | mdsmith    | markdownlint   | remark-lint  | Prettier     | Vale       | textlint     | LLM         |
-|----------------|------------|----------------|--------------|--------------|------------|--------------|-------------|
+| -------------- | ---------- | -------------- | ------------ | ------------ | ---------- | ------------ | ----------- |
 | Language       | Go         | Node.js        | Node.js      | Node.js      | Go         | Node.js      | API         |
 | Runtime deps   | none       | Node 20+       | Node 16+     | Node 16+     | none       | Node 20+     | network     |
 | Install        | binary     | npm            | npm          | npm          | binary     | npm          | varies      |
@@ -532,7 +532,7 @@ tools (see `bench-parity.mdsmith.yml`).
 better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
-|-------------------|---------|---------|---------|
+| ----------------- | ------- | ------- | ------- |
 | mdsmith-parity    | 38 ms   | 35 ms   | 1.0x    |
 | mado              | 40 ms   | 38 ms   | 1.0x    |
 | panache           | 78 ms   | 73 ms   | 2.0x    |
@@ -544,7 +544,7 @@ better; `vs mado` is the median ratio to the fastest tool):
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
-|-------------------|---------|---------|---------|
+| ----------------- | ------- | ------- | ------- |
 | mado              | 38 ms   | 35 ms   | 1.0x    |
 | mdsmith-parity    | 73 ms   | 71 ms   | 1.9x    |
 | rumdl             | 73 ms   | 68 ms   | 1.9x    |
@@ -687,7 +687,7 @@ preprocessors: they transform source files at build time,
 producing a separate output file.
 
 | Tool                  | Language | Include syntax          | Stars |
-|-----------------------|----------|-------------------------|-------|
+| --------------------- | -------- | ----------------------- | ----- |
 | [markdown-include][]  | Python   | `{!filename!}`          | ~100  |
 | [MarkdownPP][]        | Python   | `!INCLUDE "file.md"`    | ~350  |
 | [Markedpp][]          | Node.js  | `!include(file.md)`     | ~50   |
@@ -749,7 +749,7 @@ schemas. Findings were addressed in
 current posture:
 
 | Hardening                          | mdsmith                | markdownlint    | remark-lint      | Prettier         | Vale      |
-|------------------------------------|------------------------|-----------------|------------------|------------------|-----------|
+| ---------------------------------- | ---------------------- | --------------- | ---------------- | ---------------- | --------- |
 | File-size cap on input             | yes                    | no              | no               | no               | no        |
 | YAML billion-laughs guard          | yes (alias rejection)  | n/a (no FM)     | parser-dependent | parser-dependent | n/a       |
 | ANSI escape sanitization           | yes                    | no              | no               | n/a              | no        |

@@ -12,7 +12,7 @@ This guide compares existing mdsmith rules that touch readability and length wit
 ## What the current rules measure
 
 | Rule                                                                                          | Measures                                                                     | Default                                          | What it misses                                                  |
-|-----------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|--------------------------------------------------|-----------------------------------------------------------------|
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------- |
 | [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) `paragraph-readability` | Complexity using ARI (characters per word, words per sentence)               | `max-index: 14.0`, `min-words: 20`               | Wordiness and filler; short but dense paragraphs can be skipped |
 | [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) `paragraph-structure`     | Shape and length of paragraphs (sentences per paragraph, words per sentence) | `max-sentences: 6`, `max-words-per-sentence: 40` | Verbosity that fits within limits; dense but short prose        |
 | [MDS022](../../internal/rules/MDS022-max-file-length/README.md) `max-file-length`             | Lines per file                                                               | `max: 300`                                       | Token load and dense paragraphs                                 |
@@ -56,7 +56,7 @@ Basically, we just want to make sure the plan is pretty clear to everyone. It is
 Notes: ARI values use mdsmith's current formula. [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) skips paragraphs under `min-words`. [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) flags when sentences or words exceed limits. Conciseness scores below are illustrative heuristics, not an implemented rule. Token budget awareness is file-level; see the token budget examples right after this table.
 
 | Example | Words | Sentences | ARI  | MDS023 result        | MDS024 result          | Conciseness score (illustrative) |
-|---------|------:|----------:|-----:|----------------------|------------------------|----------------------------------|
+| ------- | ----: | --------: | ---: | -------------------- | ---------------------- | -------------------------------- |
 | A       | 40    | 1         | 16.6 | Fail (16.6 > 14.0)   | Pass                   | 36.2                             |
 | B       | 13    | 1         | 20.2 | Skipped (< 20 words) | Pass                   | 84.6                             |
 | C       | 36    | 1         | 22.1 | Fail (22.1 > 14.0)   | Pass                   | 63.9                             |
@@ -73,7 +73,7 @@ These examples assume a `tokens-per-word` of `1.33` and a budget of `2,000 token
 ## Trade-offs by metric
 
 | Metric                                                                                                                                | Strengths                                                    | Risks                                                                        |
-|---------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|------------------------------------------------------------------------------|
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | Readability ([MDS023](../../internal/rules/MDS023-paragraph-readability/README.md))                                                   | Encourages simple, broadly accessible prose                  | Penalizes technical terms; misses wordiness; can skip short dense paragraphs |
 | Structure ([MDS024](../../internal/rules/MDS024-paragraph-structure/README.md))                                                       | Enforces consistent paragraph shape with low false positives | Does not address filler or redundancy                                        |
 | Length ([MDS022](../../internal/rules/MDS022-max-file-length/README.md), [MDS001](../../internal/rules/MDS001-line-length/README.md)) | Prevents runaway size and formatting drift                   | Poor proxy for token load or verbosity                                       |

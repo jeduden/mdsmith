@@ -19,7 +19,7 @@ files are discovered from `.mdsmith.yml` `files:` patterns.
 ## Flags
 
 | Flag                | Default | Description                            |
-|---------------------|---------|----------------------------------------|
+| ------------------- | ------- | -------------------------------------- |
 | `-c`, `--config`    | auto    | Override config path (auto-discovers)  |
 | `-f`, `--format`    | `text`  | `text` or `json`                       |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)   |
@@ -56,7 +56,7 @@ pre-commit:
 ## Exit codes
 
 | Code | Meaning                        |
-|------|--------------------------------|
+| ---- | ------------------------------ |
 | 0    | No remaining issues            |
 | 1    | Issues remain after fixing     |
 | 2    | Runtime or configuration error |

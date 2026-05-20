@@ -63,7 +63,7 @@ modules was net-negative.
 LSP capabilities the server advertises:
 
 | Capability                        | Behavior                                         |
-|-----------------------------------|--------------------------------------------------|
+| --------------------------------- | ------------------------------------------------ |
 | `textDocumentSync = Full`         | Re-lint on every change; debounced               |
 | `publishDiagnostics`              | One push after each lint                         |
 | `codeActionProvider`              | Per-diagnostic quick fixes (see below)           |
@@ -74,7 +74,7 @@ The server maps mdsmith JSON diagnostics to LSP
 `Diagnostic`:
 
 | mdsmith field    | LSP field                                         |
-|------------------|---------------------------------------------------|
+| ---------------- | ------------------------------------------------- |
 | `rule` + `name`  | `code` = rule (e.g. `MDS001`); `source = mdsmith` |
 | `message`        | `message`                                         |
 | `severity`       | `severity` (error → 1, warning → 2)               |
@@ -124,7 +124,7 @@ to `mdsmith lsp` over stdio.
 Settings the extension contributes:
 
 | Setting                | Default     | Purpose                               |
-|------------------------|-------------|---------------------------------------|
+| ---------------------- | ----------- | ------------------------------------- |
 | `mdsmith.path`         | `"mdsmith"` | Binary path; resolved against `$PATH` |
 | `mdsmith.config`       | `""`        | Override `-c` config path             |
 | `mdsmith.run`          | `"onSave"`  | `onType`, `onSave`, or `off`          |

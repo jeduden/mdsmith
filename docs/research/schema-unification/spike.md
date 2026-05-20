@@ -494,7 +494,7 @@ How many distinct things must a reader learn
 to write a complete schema (FM + body)?
 
 | Direction       | Languages | Doc pages | Diagnostic styles | Existing user familiarity |
-|-----------------|-----------|-----------|-------------------|---------------------------|
+| --------------- | --------- | --------- | ----------------- | ------------------------- |
 | A — CUE only    | 1         | 1         | 1                 | low                       |
 | B — YAML only   | 1         | 1         | 1                 | high                      |
 | C — JSON Schema | 1 (+wrap) | 1         | 1                 | high                      |

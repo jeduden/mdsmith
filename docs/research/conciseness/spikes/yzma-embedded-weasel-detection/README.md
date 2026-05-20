@@ -56,7 +56,7 @@ Result: deterministic behavior was confirmed for this setup.
 Representative warm-run metrics from the spike harness:
 
 | Metric             | Value           |
-|--------------------|-----------------|
+| ------------------ | --------------- |
 | Model load startup | 199.61 ms       |
 | Requests           | 18              |
 | Avg latency        | 51.67 ms        |
@@ -76,7 +76,7 @@ Notes:
 Two runs were captured to reduce outlier risk.
 
 | Metric          | Run A           | Run B           |
-|-----------------|-----------------|-----------------|
+| --------------- | --------------- | --------------- |
 | Startup healthy | 981.92 ms       | 703.89 ms       |
 | Requests        | 18              | 18              |
 | Avg latency     | 58.63 ms        | 70.38 ms        |

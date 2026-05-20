@@ -16,7 +16,7 @@ mdsmith metrics <command> [flags] [files...]
 ## Subcommands
 
 | Subcommand | Description                            |
-|------------|----------------------------------------|
+| ---------- | -------------------------------------- |
 | `list`     | List available metrics in the registry |
 | `rank`     | Rank files by selected metrics         |
 
@@ -27,7 +27,7 @@ mdsmith metrics list [flags]
 ```
 
 | Flag             | Default | Description                |
-|------------------|---------|----------------------------|
+| ---------------- | ------- | -------------------------- |
 | `-f`, `--format` | `text`  | `text` or `json`           |
 | `--scope`        | `file`  | Metric scope (only `file`) |
 
@@ -38,7 +38,7 @@ mdsmith metrics rank [flags] [files...]
 ```
 
 | Flag                | Default | Description                           |
-|---------------------|---------|---------------------------------------|
+| ------------------- | ------- | ------------------------------------- |
 | `-c`, `--config`    | auto    | Override config path                  |
 | `-f`, `--format`    | `text`  | `text` or `json`                      |
 | `--metrics`         | —       | Comma-separated metric IDs to compute |
@@ -68,6 +68,6 @@ mdsmith metrics rank --metrics bytes,sentences --by sentences plan/
 ## Exit codes
 
 | Code | Meaning                |
-|------|------------------------|
+| ---- | ---------------------- |
 | 0    | Output produced        |
 | 2    | Runtime / config error |

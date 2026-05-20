@@ -11,7 +11,7 @@ the website cannot drift out of sync with the binary.
 ## Layout
 
 | Path                           | Purpose                                                                     |
-|--------------------------------|-----------------------------------------------------------------------------|
+| ------------------------------ | --------------------------------------------------------------------------- |
 | `hugo.toml`                    | Site config + module mounts (does NOT mount `../docs` directly).            |
 | `content/_index.md`            | Homepage front matter and copy.                                             |
 | `content/docs/`                | **Synced** from `../docs/` by `mdsmith-release build-website` (gitignored). |

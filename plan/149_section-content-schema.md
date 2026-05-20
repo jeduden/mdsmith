@@ -103,7 +103,7 @@ sections:
 ### Entry kinds
 
 | `kind:`      | Extra keys (all optional)                  | Matches                                       |
-|--------------|--------------------------------------------|-----------------------------------------------|
+| ------------ | ------------------------------------------ | --------------------------------------------- |
 | `code-block` | `lang:` (string; exact match today)        | An `ast.FencedCodeBlock` whose info matches.  |
 | `table`      | `columns: [str, ...]` (exact header names) | A GFM table whose first row equals `columns`. |
 | `list`       | `ordered: bool`, `min-items`, `max-items`  | An `ast.List` whose ordered flag matches.     |

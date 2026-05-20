@@ -25,5 +25,5 @@ mdsmith version
 ## Exit codes
 
 | Code | Meaning |
-|------|---------|
+| ---- | ------- |
 | 0    | Printed |

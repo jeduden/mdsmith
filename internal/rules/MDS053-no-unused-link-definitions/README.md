@@ -27,7 +27,7 @@ The second copy is invisible noise.
 ## Settings
 
 | Setting          | Type | Default | Description                                                                                                                   |
-|------------------|------|---------|-------------------------------------------------------------------------------------------------------------------------------|
+| ---------------- | ---- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `ignored-labels` | list | `[]`    | Normalized labels that are never flagged as unused or duplicate. Replace-mode: a later config layer replaces the entire list. |
 
 ## Config
@@ -104,7 +104,7 @@ See [foo].
 ## Diagnostics
 
 | Condition            | Message                                                                |
-|----------------------|------------------------------------------------------------------------|
+| -------------------- | ---------------------------------------------------------------------- |
 | unused definition    | `unused link reference definition "label"`                             |
 | duplicate definition | `duplicate link reference definition "label"; first defined on line N` |
 

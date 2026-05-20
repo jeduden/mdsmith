@@ -149,7 +149,7 @@ They do not enforce:
 - Formatting rules (handled by other rules)
 
 | Behavior                         | Schema file        | Normal file          |
-|----------------------------------|--------------------|----------------------|
+| -------------------------------- | ------------------ | -------------------- |
 | `<?require?>` recognized         | yes                | no (warning emitted) |
 | `<?allow-empty-section?>` effect | local to that file | local to that file   |
 | `<?include?>` behavior           | splices headings   | embeds content       |

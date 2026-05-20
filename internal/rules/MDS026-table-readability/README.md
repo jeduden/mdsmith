@@ -18,7 +18,7 @@ Table complexity needs table-specific metrics.
 ## Settings
 
 | Setting                  | Type  | Default | Description                                                      |
-|--------------------------|-------|---------|------------------------------------------------------------------|
+| ------------------------ | ----- | ------- | ---------------------------------------------------------------- |
 | `max-columns`            | int   | `8`     | Maximum columns per table                                        |
 | `max-rows`               | int   | `30`    | Maximum data rows per table                                      |
 | `max-words-per-cell`     | int   | `30`    | Maximum words allowed in a single cell                           |
@@ -55,7 +55,7 @@ wrap: markdown
 # Readable Table
 
 | Metric     | Value  |
-|------------|--------|
+| ---------- | ------ |
 | Latency    | <200ms |
 | Error rate | <1%    |
 ```

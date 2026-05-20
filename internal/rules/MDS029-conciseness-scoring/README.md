@@ -15,7 +15,7 @@ Paragraph conciseness score must not fall below a threshold.
 ## Settings
 
 | Setting     | Type   | Default | Description                       |
-|-------------|--------|---------|-----------------------------------|
+| ----------- | ------ | ------- | --------------------------------- |
 | `min-score` | number | `0.20`  | Minimum allowed conciseness score |
 | `min-words` | int    | `20`    | Skip paragraphs shorter than this |
 
@@ -90,7 +90,7 @@ little concrete information to the paragraph.
 ## Diagnostics
 
 | Condition             | Message                                                                                                           |
-|-----------------------|-------------------------------------------------------------------------------------------------------------------|
+| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | score below threshold | `conciseness score too low (0.08 < 0.20); target >= 0.20; reduce verbose cues (e.g., "basically", "in order to")` |
 
 ## Meta-Information

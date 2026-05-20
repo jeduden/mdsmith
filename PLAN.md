@@ -8,14 +8,14 @@ sort: numeric:id
 header: |
 
   | ID  | Status | Model | Title |
-  |-----|--------|-------|-------|
+  | --- | ------ | ----- | ----- |
 row: "| {id} | {status} | {model} | [{title}]({filename}) |"
 footer: |
 
 ?>
 
 | ID  | Status | Model  | Title                                                                                                                                   |
-|-----|--------|--------|-----------------------------------------------------------------------------------------------------------------------------------------|
+| --- | ------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | 52  | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                              |
 | 61  | ✅     |        | [Required Structure Rule Hardening](plan/61_required-structure-hardening.md)                                                            |
 | 65  | ✅     |        | [Spike WASM-Embedded Weasel Inference](plan/65_spike-wasm-embedded-inference.md)                                                        |

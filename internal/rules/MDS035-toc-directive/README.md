@@ -20,7 +20,7 @@ Four directive variants appear in the wild,
 each expanded by a different renderer:
 
 | Token       | Expanded by                            |
-|-------------|----------------------------------------|
+| ----------- | -------------------------------------- |
 | `[TOC]`     | Python-Markdown, MultiMarkdown, Pandoc |
 | `[[_TOC_]]` | GitLab Flavored Markdown, Azure DevOps |
 | `[[toc]]`   | markdown-it-toc-done-right, VitePress  |

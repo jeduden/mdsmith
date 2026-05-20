@@ -187,7 +187,7 @@ both must be ≥ 0.
 ### Defaults
 
 | `repeat:`            | Meaning           |
-|----------------------|-------------------|
+| -------------------- | ----------------- |
 | absent               | exactly one       |
 | `{ min: 0 }`         | zero or more      |
 | `{ min: 1 }`         | one or more       |
@@ -274,7 +274,7 @@ rows in the body act as the schema's
 here as template placeholders.
 
 | Row syntax        | Equivalent inline entry                        |
-|-------------------|------------------------------------------------|
+| ----------------- | ---------------------------------------------- |
 | `## Literal text` | `heading: "Literal text"`                      |
 | `## ?`            | `heading: { regex: '.+' }`                     |
 | `## ...`          | `heading: { regex: '.+', repeat: { min: 0 } }` |
@@ -296,7 +296,7 @@ a "removed; see plan 156" diagnostic naming
 the replacement.
 
 | Old shape                          | New shape                                            |
-|------------------------------------|------------------------------------------------------|
+| ---------------------------------- | ---------------------------------------------------- |
 | `required: true`                   | default (omit `repeat:`)                             |
 | `required: false`                  | `repeat: { min: 0, max: 1 }`                         |
 | `heading: { unlisted: true }`      | `heading: { regex: '.+', repeat: { min: 0 } }`       |

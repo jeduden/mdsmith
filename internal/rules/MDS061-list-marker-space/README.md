@@ -20,7 +20,7 @@ of spaces.
 ## Settings
 
 | Setting     | Type | Default | Description                                 |
-|-------------|------|---------|---------------------------------------------|
+| ----------- | ---- | ------- | ------------------------------------------- |
 | `ul-single` | int  | `1`     | Spaces after unordered marker, single items |
 | `ul-multi`  | int  | `1`     | Spaces after unordered marker, multi items  |
 | `ol-single` | int  | `1`     | Spaces after ordered marker, single items   |

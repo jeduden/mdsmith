@@ -16,7 +16,7 @@ mdsmith list <subcommand> [flags] [args]
 ## Subcommands
 
 | Subcommand                  | Description                                                  |
-|-----------------------------|--------------------------------------------------------------|
+| --------------------------- | ------------------------------------------------------------ |
 | [`query`](query.md)         | Select files by a CUE expression on front matter.            |
 | [`backlinks`](backlinks.md) | List incoming links that point at a target file (or anchor). |
 

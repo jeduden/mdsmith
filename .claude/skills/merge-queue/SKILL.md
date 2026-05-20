@@ -148,7 +148,7 @@ gh pr edit "$PR" --add-label queue
 The action moves the PR through three labels:
 
 | Label          | Meaning                           |
-|----------------|-----------------------------------|
+| -------------- | --------------------------------- |
 | `queue`        | PR is waiting to be picked up     |
 | `queue:active` | PR is in the current batch        |
 | `queue:failed` | CI failed or merge conflict found |

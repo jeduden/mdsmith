@@ -16,7 +16,7 @@ do they actually bite?
 ## Use-case index
 
 | #   | Scenario                                   | Best fit       |
-|-----|--------------------------------------------|----------------|
+| --- | ------------------------------------------ | -------------- |
 | U-1 | Open-source repo: docs/ tree               | mdsmith        |
 | U-2 | Personal Obsidian vault (PKB)              | mdbase         |
 | U-3 | RFC / spec tracker with status fields      | mdsmith (lean) |
@@ -432,7 +432,7 @@ layout that runs both cleanly.
 ## Pattern across the seven cases
 
 | #   | Prose / structure load | Typed-record load | Rename / backlink load | Best fit       |
-|-----|------------------------|-------------------|------------------------|----------------|
+| --- | ---------------------- | ----------------- | ---------------------- | -------------- |
 | U-1 | high                   | low               | low                    | mdsmith        |
 | U-2 | low                    | medium            | high                   | mdbase         |
 | U-3 | high                   | medium            | low                    | mdsmith (lean) |

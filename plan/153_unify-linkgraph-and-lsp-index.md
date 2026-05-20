@@ -121,7 +121,7 @@ file. The extractor needs to decide what shape an
 unresolved glob takes. Three options:
 
 | Option                              | Perf                                              | Features                                            | Correctness                                                      |
-|-------------------------------------|---------------------------------------------------|-----------------------------------------------------|------------------------------------------------------------------|
+| ----------------------------------- | ------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
 | (1) Expand globs inside extractor   | O(globs × files); needs file list at extract time | Catalog targets show up everywhere automatically    | Snapshot-only; stale after file add/delete                       |
 | (2) Typed `Unresolved` sentinel     | O(1); no cross-file work                          | Callers expand on demand via `linkgraph.Expand`     | Honest "we don't know targets yet"; same expansion everywhere    |
 | (3) Empty `TargetFile` (status quo) | O(1)                                              | Same as (2) but ambiguous with "same-file" semantic | Forced plan 151 to special-case the empty form in `BacklinksFor` |

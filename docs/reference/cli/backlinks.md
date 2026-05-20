@@ -21,7 +21,7 @@ entries (`../foo.md`) are rejected with exit code 2.
 ## Flags
 
 | Flag                | Default | Description                                         |
-|---------------------|---------|-----------------------------------------------------|
+| ------------------- | ------- | --------------------------------------------------- |
 | `-c`, `--config`    | auto    | Override config path                                |
 | `-f`, `--format`    | `text`  | Output format: `text` or `json`                     |
 | `--include GLOB`    | none    | Restrict sources to paths matching glob; repeatable |
@@ -109,7 +109,7 @@ the result set once the matching parser support lands.
 ## Exit codes
 
 | Code | Meaning               |
-|------|-----------------------|
+| ---- | --------------------- |
 | 0    | At least one match    |
 | 1    | No matches, no errors |
 | 2    | Runtime/parse error   |

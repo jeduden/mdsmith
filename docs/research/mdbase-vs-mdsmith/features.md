@@ -17,7 +17,7 @@ to mdbase's six tiers in spec section 14.
 ## 1. Distribution and runtime
 
 | Aspect       | mdsmith                               | mdbase                                                               |
-|--------------|---------------------------------------|----------------------------------------------------------------------|
+| ------------ | ------------------------------------- | -------------------------------------------------------------------- |
 | Artifact     | One Go binary (`mdsmith`)             | Spec + reference impl (`mdbase`, TS) + CLI + Rust LSP                |
 | Install      | `go install` or download release      | `npm install`, or build LSP via `cargo build --release`              |
 | Runtime      | None (static binary)                  | Node 22+ for TS impl and CLI; standalone for LSP                     |
@@ -77,7 +77,7 @@ Single config file at the collection root. Required:
 (spec §4):
 
 | Field                | Default                           | Purpose                                |
-|----------------------|-----------------------------------|----------------------------------------|
+| -------------------- | --------------------------------- | -------------------------------------- |
 | `name`               | —                                 | Human-readable label                   |
 | `description`        | —                                 | Free-form purpose                      |
 | `extensions`         | `[]`                              | Extra Markdown extensions beyond `.md` |
@@ -99,7 +99,7 @@ Single config file at the collection root. Required:
 ### Where they overlap
 
 | Concern                | mdsmith equivalent             | mdbase equivalent           |
-|------------------------|--------------------------------|-----------------------------|
+| ---------------------- | ------------------------------ | --------------------------- |
 | Project root marker    | `.mdsmith.yml` (optional)      | `mdbase.yaml` (required)    |
 | Ignore patterns        | `ignore:` glob list            | `exclude:` glob list        |
 | Per-path overrides     | `overrides: [{glob, rules}]`   | per-type `path_glob`        |
@@ -223,7 +223,7 @@ the user-facing concept that ties files to a typed
 schema. Both can carry a Markdown schema file.
 
 | Aspect                    | mdsmith kinds                                                            | mdbase types                                 |
-|---------------------------|--------------------------------------------------------------------------|----------------------------------------------|
+| ------------------------- | ------------------------------------------------------------------------ | -------------------------------------------- |
 | User-facing concept       | `kind` (per-file role)                                                   | `type` (per-file shape)                      |
 | Kind/type definition      | `kinds:` map in `.mdsmith.yml`                                           | Markdown file in `_types/`                   |
 | Schema file format        | Markdown `proto.md` (CUE in FM, headings in body)                        | Markdown in `_types/` (DSL in FM, body docs) |
@@ -281,7 +281,7 @@ of their constraints (most restrictive wins; conflicts
 become errors).
 
 | Mechanism             | mdsmith       | mdbase                 |
-|-----------------------|---------------|------------------------|
+| --------------------- | ------------- | ---------------------- |
 | Front-matter declare  | yes           | yes (highest priority) |
 | Glob                  | yes           | yes                    |
 | Field presence        | no            | yes                    |
@@ -370,7 +370,7 @@ The differences sit in scope and ownership:
 Spec §7 defines a fixed taxonomy:
 
 | Type     | Constraints                                         |
-|----------|-----------------------------------------------------|
+| -------- | --------------------------------------------------- |
 | string   | `min_length`, `max_length`, regex `pattern`         |
 | integer  | `min`, `max`                                        |
 | number   | `min`, `max` (IEEE 754)                             |
@@ -392,7 +392,7 @@ not applied when a field is present-but-null.
 **Comparison.** Side-by-side breakdown:
 
 | Concern                 | mdsmith (CUE)                                    | mdbase (DSL)                                    |
-|-------------------------|--------------------------------------------------|-------------------------------------------------|
+| ----------------------- | ------------------------------------------------ | ----------------------------------------------- |
 | Schema file format      | `proto.md` (CUE in FM, heading template in body) | `_types/<name>.md` (DSL in FM, docs in body)    |
 | Validation language     | CUE in front matter                              | Inline YAML in type front matter                |
 | Type discoverability    | Read the `proto.md` referenced by a kind         | Read `_types/*.md`                              |
@@ -437,7 +437,7 @@ Three global validation modes, set in `mdbase.yaml`
 (spec §9):
 
 | Mode    | Behavior                                     |
-|---------|----------------------------------------------|
+| ------- | -------------------------------------------- |
 | `off`   | No validation; tools accept anything         |
 | `warn`  | Reports issues; operations succeed (default) |
 | `error` | Reports issues and aborts the operation      |
@@ -458,7 +458,7 @@ Validation covers six checks:
 **Side by side.** In summary:
 
 | Concern               | mdsmith                    | mdbase                                  |
-|-----------------------|----------------------------|-----------------------------------------|
+| --------------------- | -------------------------- | --------------------------------------- |
 | Severity granularity  | Per rule                   | Three global modes (off/warn/error)     |
 | Strict unknown fields | Per CUE schema             | Global `default_strict`                 |
 | Output format         | `text` or `json`; LSP wire | Code + path + field + line/column       |
@@ -476,7 +476,7 @@ better aligned with CRUD operations that need a clear
 ## 7. Front-matter handling
 
 | Aspect                        | mdsmith                                    | mdbase                                                  |
-|-------------------------------|--------------------------------------------|---------------------------------------------------------|
+| ----------------------------- | ------------------------------------------ | ------------------------------------------------------- |
 | Format                        | YAML only (`---` fences)                   | YAML only (`---` fences)                                |
 | Parser                        | `gopkg.in/yaml.v3` via `internal/yamlutil` | implementation-defined; spec mandates YAML 1.2 subset   |
 | TOML / JSON FM                | not parsed                                 | not in spec                                             |
@@ -565,7 +565,7 @@ Operators and methods (spec §11):
 **Side by side.** In summary:
 
 | Capability        | mdsmith               | mdbase                              |
-|-------------------|-----------------------|-------------------------------------|
+| ----------------- | --------------------- | ----------------------------------- |
 | Filter by FM      | yes (CUE unification) | yes (expression `where:`)           |
 | Sort              | no                    | yes (`order_by`)                    |
 | Pagination        | no                    | yes (`limit`/`offset`)              |
@@ -833,7 +833,7 @@ incomplete chains.
 **Side by side.** In summary:
 
 | Capability                      | mdsmith              | mdbase                     |
-|---------------------------------|----------------------|----------------------------|
+| ------------------------------- | -------------------- | -------------------------- |
 | Markdown link existence check   | yes                  | yes (L4)                   |
 | Same-file anchor check          | yes (#heading)       | yes                        |
 | Cross-file heading anchor check | yes                  | yes                        |
@@ -872,7 +872,7 @@ file-by-file. A rename can succeed while individual
 reference updates fail (reported per-file).
 
 | Capability              | mdsmith | mdbase               |
-|-------------------------|---------|----------------------|
+| ----------------------- | ------- | -------------------- |
 | Detect broken link      | yes     | yes                  |
 | Auto-rewrite incoming   | no      | yes (L5)             |
 | Link-style preservation | n/a     | yes                  |
@@ -894,7 +894,7 @@ notion of file-creation operations at all.
 mdbase L1 defines a full CRUD surface (spec §12):
 
 | Operation | Behavior                                                                                                                 |
-|-----------|--------------------------------------------------------------------------------------------------------------------------|
+| --------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Create    | New file with type inference, defaults, and generated values; validates before write; atomic                             |
 | Read      | Loads file, parses front matter and body, resolves types, returns metadata + effective FM                                |
 | Update    | Merges new field values; recalculates types; applies generated strategies (e.g. `now_on_write`); validates merged result |
@@ -908,7 +908,7 @@ sequences, and timestamps — useful for files created
 programmatically.
 
 | Capability             | mdsmith                         | mdbase                         |
-|------------------------|---------------------------------|--------------------------------|
+| ---------------------- | ------------------------------- | ------------------------------ |
 | Create file            | no                              | yes (L1)                       |
 | Read with effective FM | indirect (via lint)             | yes (L1)                       |
 | Update field           | no (only fix-driven body edits) | yes (L1)                       |
@@ -930,7 +930,7 @@ all using the form
 `<?name [params]?>...body...<?/name?>`:
 
 | Directive     | Rule             | Generates                                                 |
-|---------------|------------------|-----------------------------------------------------------|
+| ------------- | ---------------- | --------------------------------------------------------- |
 | `<?catalog?>` | [MDS019][mds019] | Table of files matching a glob, with FM fields as columns |
 | `<?include?>` | [MDS021][mds021] | Inline content from another Markdown file                 |
 | `<?toc?>`     | [MDS038][mds038] | Nested heading list with GitHub anchors                   |
@@ -973,7 +973,7 @@ relies on a static-site generator or a separate tool
 **Side by side.** In summary:
 
 | Capability         | mdsmith                    | mdbase |
-|--------------------|----------------------------|--------|
+| ------------------ | -------------------------- | ------ |
 | Directive syntax   | `<?name?>...<?/name?>`     | none   |
 | Catalog (FM table) | yes                        | no     |
 | Include            | yes                        | no     |
@@ -995,7 +995,7 @@ mdbase has none — it does not lint prose at all.
 ### Prose & readability (mdsmith only)
 
 | Rule   | Concern                                                     |
-|--------|-------------------------------------------------------------|
+| ------ | ----------------------------------------------------------- |
 | MDS023 | Paragraph readability (ARI grade index)                     |
 | MDS024 | Paragraph structure (max sentences, max words per sentence) |
 | MDS028 | Token budget (LLM-context-window aware)                     |
@@ -1005,7 +1005,7 @@ mdbase has none — it does not lint prose at all.
 ### Structure (mdsmith only)
 
 | Rule       | Concern                                                |
-|------------|--------------------------------------------------------|
+| ---------- | ------------------------------------------------------ |
 | MDS001     | Line length (default 80, exclude code/tables/urls)     |
 | MDS002–005 | Heading style, increment, first line, no duplicates    |
 | MDS006–009 | Whitespace (trailing spaces, hard tabs, blank lines)   |
@@ -1028,7 +1028,7 @@ mdbase has none — it does not lint prose at all.
 ### Cross-file & generation (mdsmith only)
 
 | Rule   | Concern                                             |
-|--------|-----------------------------------------------------|
+| ------ | --------------------------------------------------- |
 | MDS019 | Catalog directive                                   |
 | MDS020 | Required structure (CUE schema validation)          |
 | MDS021 | Include directive                                   |
@@ -1049,7 +1049,7 @@ mdsmith ships three built-in conventions
 (`internal/rules/markdownflavor/conventions.go`):
 
 | Convention | Markdown flavor | Notable presets                                            |
-|------------|-----------------|------------------------------------------------------------|
+| ---------- | --------------- | ---------------------------------------------------------- |
 | portable   | CommonMark      | no inline HTML; emphasis bold=`*` italic=`_`; HR=`---`     |
 | github     | GFM             | inline HTML allow [details, summary]; emphasis as portable |
 | plain      | CommonMark      | minimal: only the strictest baseline                       |
@@ -1070,7 +1070,7 @@ are not bundles, just toggles.
 ## 15. Cache, watch, daemon
 
 | Concern          | mdsmith                  | mdbase                                         |
-|------------------|--------------------------|------------------------------------------------|
+| ---------------- | ------------------------ | ---------------------------------------------- |
 | Persistent cache | none                     | optional SQLite at `.mdbase/index.sqlite` (L6) |
 | Cache rebuild    | n/a                      | `mdbase cache rebuild`                         |
 | Staleness check  | n/a                      | mtime + content hash                           |
@@ -1141,7 +1141,7 @@ command names.)
 **Side by side.** In summary:
 
 | Capability           | mdsmith                    | mdbase (TS CLI)              |
-|----------------------|----------------------------|------------------------------|
+| -------------------- | -------------------------- | ---------------------------- |
 | Lint                 | `check`                    | (out of scope, per spec)     |
 | Autofix              | `fix`                      | n/a                          |
 | Schema validate      | `check` (MDS020)           | `validate`                   |
@@ -1239,7 +1239,7 @@ mdsmith after plans 122 + 131 land, and
 mdbase-lsp today.
 
 | LSP feature              | mdsmith today | mdsmith planned | mdbase-lsp       |
-|--------------------------|---------------|-----------------|------------------|
+| ------------------------ | ------------- | --------------- | ---------------- |
 | `publishDiagnostics`     | yes           | yes             | yes              |
 | `codeAction` (quick fix) | yes           | yes             | n/a (no autofix) |
 | `codeAction` (fix all)   | yes           | yes             | n/a              |
@@ -1311,7 +1311,7 @@ Output format is implementation-defined; reference
 impls produce JSON.
 
 | Format         | mdsmith  | mdbase reference impl |
-|----------------|----------|-----------------------|
+| -------------- | -------- | --------------------- |
 | Text (TTY)     | yes      | yes                   |
 | JSON           | yes      | yes                   |
 | LSP wire       | yes      | yes (`mdbase-lsp`)    |
@@ -1332,7 +1332,7 @@ contributes upstream.
 Six conformance levels (spec §14):
 
 | Level | Name       | Adds                                                   |
-|-------|------------|--------------------------------------------------------|
+| ----- | ---------- | ------------------------------------------------------ |
 | 1     | Core       | Config, frontmatter, types, validation, CRUD           |
 | 2     | Matching   | Path globs, field presence, multi-type                 |
 | 3     | Querying   | Filter, sort, limit, expressions, body search          |
@@ -1355,7 +1355,7 @@ support and grow upward; users know what to expect.
 **Comparison.** Side-by-side breakdown:
 
 | Aspect                 | mdsmith            | mdbase                              |
-|------------------------|--------------------|-------------------------------------|
+| ---------------------- | ------------------ | ----------------------------------- |
 | Spec / impl separation | no (single tool)   | yes (spec-first)                    |
 | Extension model        | upstream PRs       | new conforming impl                 |
 | Versioning             | semver of binary   | spec version + impl semver          |
@@ -1404,7 +1404,7 @@ particular brings a Node module graph as supply-chain
 surface.
 
 | Hardening            | mdsmith           | mdbase spec    | mdbase TS impl |
-|----------------------|-------------------|----------------|----------------|
+| -------------------- | ----------------- | -------------- | -------------- |
 | Single binary        | yes               | n/a            | no (npm tree)  |
 | Offline              | yes               | mandated       | yes            |
 | YAML alias rejection | yes               | unspecified    | impl-defined   |
@@ -1423,7 +1423,7 @@ explicitly.
 ## 21. Determinism and idempotence
 
 | Property                         | mdsmith           | mdbase                         |
-|----------------------------------|-------------------|--------------------------------|
+| -------------------------------- | ----------------- | ------------------------------ |
 | Same input → same output         | yes               | yes                            |
 | Order-independent                | yes (stable sort) | yes (deterministic resolution) |
 | Repeated `fix` converges         | yes (multi-pass)  | n/a (no fix layer)             |
@@ -1438,7 +1438,7 @@ the conformance test cases.
 ## 22. Comparison summary
 
 | Domain                  | Owner        |
-|-------------------------|--------------|
+| ----------------------- | ------------ |
 | Prose readability       | mdsmith only |
 | Heading and list rules  | mdsmith only |
 | Whitespace fixing       | mdsmith only |

@@ -20,7 +20,7 @@ summary: >-
 ## Critical Findings Summary
 
 | #   | Finding                                          | Severity    | Attack Vector                               | File(s)                                                                                                          |
-|-----|--------------------------------------------------|-------------|---------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| --- | ------------------------------------------------ | ----------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | 1   | No file-size limit — OOM via large input         | High        | Any `.md` arg or stdin                      | `internal/engine/runner.go:52`, `internal/fix/fix.go:84`, `cmd/mdsmith/main.go:577`                              |
 | 2   | YAML billion-laughs via anchor expansion         | Medium-High | Front matter in any scanned `.md`           | `internal/config/load.go:22`, `internal/archetype/gensection/parse.go:189`, `internal/rules/catalog/rule.go:415` |
 | 3   | ANSI escape injection in terminal output         | Medium      | Heading/source content in any `.md`         | `internal/output/text.go:23,78`                                                                                  |
@@ -250,7 +250,7 @@ The fix pipeline: `ReadFile` → process → `WriteFile` to the same path. No lo
 ## Non-Findings (Defenses That Work)
 
 | Area                               | Status                                                                                   |
-|------------------------------------|------------------------------------------------------------------------------------------|
+| ---------------------------------- | ---------------------------------------------------------------------------------------- |
 | **Command injection**              | No `os/exec` calls use directive parameters. All exec uses hardcoded subcommands.        |
 | **Go template injection**          | No `text/template` or `html/template` usage. Custom `{field}` interpolation only.        |
 | **ReDoS**                          | Go's `regexp` uses RE2 (linear time). Not exploitable.                                   |
@@ -587,7 +587,7 @@ coverage to catalog reads.
 ## Implementation Priority (Revised)
 
 | Priority | Mitigation                                          | Complexity               | Impact                                |
-|----------|-----------------------------------------------------|--------------------------|---------------------------------------|
+| -------- | --------------------------------------------------- | ------------------------ | ------------------------------------- |
 | 1        | **M1** — `readFileLimited` helper across all sites  | Low (~30 LOC)            | Eliminates OOM from large files       |
 | 2        | **M2** — Pre-scan for YAML `&`/`*` before unmarshal | Low (~10 LOC per site)   | Eliminates billion-laughs             |
 | 3        | **M9** — Atomic write in fix mode                   | Low (~20 LOC)            | Eliminates TOCTOU + partial writes    |
@@ -618,7 +618,7 @@ security concerns found in mdsmith.
 ### Comparison Matrix
 
 | #   | Exploit                                | mdsmith    | Prettier                  | markdownlint              | Vale                         | remark-lint                                 | textlint                      |
-|-----|----------------------------------------|------------|---------------------------|---------------------------|------------------------------|---------------------------------------------|-------------------------------|
+| --- | -------------------------------------- | ---------- | ------------------------- | ------------------------- | ---------------------------- | ------------------------------------------- | ----------------------------- |
 | 1   | **OOM (no file-size limit)**           | Vuln       | Vuln                      | Vuln                      | Vuln                         | Vuln (documented advisory)                  | Vuln                          |
 | 2   | **YAML billion-laughs**                | Vuln       | Mitigated (`eemeli/yaml`) | N/A (no YAML parse)       | Mitigated (`yaml.v2` v2.4.0) | Mitigated (`eemeli/yaml` maxAliasCount:100) | Vuln (`js-yaml` v4, no limit) |
 | 3   | **ANSI escape injection**              | Vuln       | Vuln                      | Vuln                      | Vuln                         | Vuln                                        | Vuln                          |
@@ -696,7 +696,7 @@ If all 10 revised mitigations (M1–M10) are implemented, mdsmith would
 have the strongest security posture among the tools compared:
 
 | Defense                 | mdsmith (post-fix)    | Best current peer       |
-|-------------------------|-----------------------|-------------------------|
+| ----------------------- | --------------------- | ----------------------- |
 | File-size limit         | M1: `readFileLimited` | remark: advisory only   |
 | YAML alias bomb         | M2: pre-scan `&`/`*`  | remark: `maxAliasCount` |
 | Terminal sanitization   | M3: `strings.Map`     | None                    |

@@ -116,7 +116,7 @@ Use `foo bar` for multi-word.
 ## Diagnostics
 
 | Message                             | Meaning                                                                                      |
-|-------------------------------------|----------------------------------------------------------------------------------------------|
+| ----------------------------------- | -------------------------------------------------------------------------------------------- |
 | `code span has leading whitespace`  | Whitespace is visible at the start of the span after CommonMark's single-space normalisation |
 | `code span has trailing whitespace` | Whitespace is visible at the end of the span after CommonMark's single-space normalisation   |
 

@@ -16,11 +16,11 @@ glob:
 sort: command
 header: |
   | Command | Description |
-  |---------|-------------|
+  | ------- | ----------- |
 row: "| [`{command}`]({filename}) | {summary} |"
 ?>
 | Command                                       | Description                                                                          |
-|-----------------------------------------------|--------------------------------------------------------------------------------------|
+| --------------------------------------------- | ------------------------------------------------------------------------------------ |
 | [`check`](cli/check.md)                       | Lint Markdown files for style issues.                                                |
 | [`deps`](cli/deps.md)                         | List a file's dependency-graph edges (includes, links, catalogs, builds).            |
 | [`export`](cli/export.md)                     | Write a portable, directive-free copy of a Markdown file.                            |
@@ -55,7 +55,7 @@ With no file arguments:
 ## Global flags
 
 | Flag     | Short | Description |
-|----------|-------|-------------|
+| -------- | ----- | ----------- |
 | `--help` | `-h`  | Show help   |
 
 Use `--` to separate flags from filenames starting with `-`.
@@ -119,7 +119,7 @@ to see the full chain on a single rule.
 ## Exit codes
 
 | Code | Meaning                        |
-|------|--------------------------------|
+| ---- | ------------------------------ |
 | 0    | No lint issues found           |
 | 1    | Lint issues found              |
 | 2    | Runtime or configuration error |

@@ -27,11 +27,11 @@ glob: "secret-rotations/*.md"
 sort: title
 header: |
   | Secret | Provider | Last rotated | Period (days) |
-  |--------|----------|--------------|---------------|
+  | ------ | -------- | ------------ | ------------- |
 row: "| [{title}]({filename}) | {provider} | {lastRotated} | {periodDays} |"
 ?>
 | Secret                                                     | Provider     | Last rotated | Period (days) |
-|------------------------------------------------------------|--------------|--------------|---------------|
+| ---------------------------------------------------------- | ------------ | ------------ | ------------- |
 | [MERGE_QUEUE_TOKEN](secret-rotations/merge-queue-token.md) | GitHub       | 2026-05-12   | 335           |
 | [OVSX_PAT](secret-rotations/ovsx-pat.md)                   | Open VSX     | 2026-05-12   | 335           |
 | [VSCE_PAT](secret-rotations/vsce-pat.md)                   | Azure DevOps | 2026-05-12   | 335           |

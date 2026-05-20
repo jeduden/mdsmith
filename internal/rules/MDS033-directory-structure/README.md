@@ -18,7 +18,7 @@ Markdown files must exist only in explicitly allowed directories.
 ## Settings
 
 | Key     | Type | Description                           |
-|---------|------|---------------------------------------|
+| ------- | ---- | ------------------------------------- |
 | allowed | list | Glob patterns for allowed directories |
 
 Patterns are matched against the full file path using

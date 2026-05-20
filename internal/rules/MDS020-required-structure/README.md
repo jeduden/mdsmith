@@ -20,7 +20,7 @@ Document structure and front matter must match its schema.
 ## Settings
 
 | Setting         | Type   | Default | Description                                                                                                                |
-|-----------------|--------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| --------------- | ------ | ------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `schema`        | string | `""`    | Path to a schema file (a `proto.md`)                                                                                       |
 | `inline-schema` | map    | (unset) | Inline schema injected by `kinds.<name>.schema:`; not usually written by hand on a rule. DefaultSettings does not list it. |
 | `placeholders`  | list   | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
@@ -50,7 +50,7 @@ Use `<?require?>` in the schema body to declare
 constraints on files validated against this schema:
 
 | Field      | Type   | Description                           |
-|------------|--------|---------------------------------------|
+| ---------- | ------ | ------------------------------------- |
 | `filename` | string | Glob the document basename must match |
 
 ```markdown
@@ -312,7 +312,7 @@ The trailing `schema: <ref>` line points at the source; for
 proto.md schemas it includes the constraint's line number.
 
 | Condition            | Message                                                               |
-|----------------------|-----------------------------------------------------------------------|
+| -------------------- | --------------------------------------------------------------------- |
 | section missing      | `## Settings: got <missing>, expected section to be present`          |
 | wrong level          | `Settings: got h3, expected h2`                                       |
 | extra section        | `## Extra: got <present>, expected not declared in schema`            |
@@ -332,7 +332,7 @@ proto.md schemas it includes the constraint's line number.
 CUE constraints render in user vocabulary:
 
 | CUE shape            | Rendered as                      |
-|----------------------|----------------------------------|
+| -------------------- | -------------------------------- |
 | `"a" \| "b" \| "c"`  | `one of: "a", "b", "c"`          |
 | `=~"^FOO-[0-9]{4}$"` | `string matching ^FOO-[0-9]{4}$` |
 | `int & >=1 & <=5`    | `int between 1 and 5`            |

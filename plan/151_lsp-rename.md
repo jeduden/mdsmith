@@ -93,7 +93,7 @@ Returns the rename range for the symbol under the
 cursor:
 
 | Cursor on…                    | Range returned                                    |
-|-------------------------------|---------------------------------------------------|
+| ----------------------------- | ------------------------------------------------- |
 | Heading text                  | The text run between leading and trailing markers |
 | `[label]: url` definition     | The label text inside `[…]`                       |
 | `[text][label]` reference use | The label text inside `[…][label]`                |

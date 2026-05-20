@@ -148,7 +148,7 @@ not per markdown file, so per-file duplicate tuples cannot occur.
 `GOMAXPROCS=1 BenchmarkCheckCorpusLarge`, 600-file corpus:
 
 | path                                  | us/file | B/op    |
-|---------------------------------------|---------|---------|
+| ------------------------------------- | ------- | ------- |
 | before (always-on DedupeDiagnostics)  | ~1 021  | ~247 MB |
 | after (skip when no RepoScoped rules) | ~952    | ~226 MB |
 | delta                                 | −7%     | −21 MB  |

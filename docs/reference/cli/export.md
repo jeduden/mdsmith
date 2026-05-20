@@ -20,7 +20,7 @@ modified in any mode.
 ## Flags
 
 | Flag               | Default | Description                                                  |
-|--------------------|---------|--------------------------------------------------------------|
+| ------------------ | ------- | ------------------------------------------------------------ |
 | `-c`, `--config`   | auto    | Override config path (auto-discovers)                        |
 | `-o`, `--output`   | stdout  | Write output to `<path>` instead of stdout                   |
 | `--max-input-size` | `2MB`   | Max file size (e.g. `2MB`, `0`=none)                         |
@@ -38,7 +38,7 @@ only after verifying each directive body equals what the
 engine would generate.
 
 | Mode         | Behavior                                                                        |
-|--------------|---------------------------------------------------------------------------------|
+| ------------ | ------------------------------------------------------------------------------- |
 | (default)    | Refuse on any stale body; exit non-zero with a diagnostic naming the directive. |
 | `--fix`      | Regenerate stale bodies in memory, then strip markers.                          |
 | `--no-check` | Skip the check; emit on-disk bytes verbatim.                                    |
@@ -80,7 +80,7 @@ mdsmith export --no-check README.md > README.snapshot.md
 ## Exit codes
 
 | Code | Meaning                                                                                        |
-|------|------------------------------------------------------------------------------------------------|
+| ---- | ---------------------------------------------------------------------------------------------- |
 | 0    | Export succeeded                                                                               |
 | 1    | Refused: a directive body was stale in default mode                                            |
 | 2    | Runtime or configuration error (missing file, conflict between `--fix` and `--no-check`, etc.) |

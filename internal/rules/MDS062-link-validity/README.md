@@ -141,7 +141,7 @@ The reversed form `(text)[url]` is shown as code, not as a link.
 ## Diagnostics
 
 | Condition               | Message                                                 |
-|-------------------------|---------------------------------------------------------|
+| ----------------------- | ------------------------------------------------------- |
 | reversed `(text)[url]`  | `reversed link: use [text](url) instead of (text)[url]` |
 | empty link destination  | `empty link destination`                                |
 | empty link text         | `empty link text`                                       |

@@ -226,11 +226,11 @@ glob:
 sort: title
 header: |
   | Page | Description |
-  |------|-------------|
+  | ---- | ----------- |
 row: "| [{title}]({filename}) | {summary} |"
 ?>
 | Page                                               | Description                                                                                                                                                                           |
-|----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Architecture audit checklist](audit-checklist.md) | Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.                                        |
 | [Cross-system contracts](cross-system.md)          | External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.                                                              |
 | [Go architecture patterns](go.md)                  | Go-specific SOLID and clean architecture patterns for mdsmith's cmd/ and internal/ packages.                                                                                          |

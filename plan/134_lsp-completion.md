@@ -81,7 +81,7 @@ returns a completion-context tag and the prefix
 under the cursor. One handler per tag:
 
 | Cursor on…                      | Items returned                  | `kind`       |
-|---------------------------------|---------------------------------|--------------|
+| ------------------------------- | ------------------------------- | ------------ |
 | `[text](#…` (no path)           | Headings in current file        | `Reference`  |
 | `[text](./other.md#…`           | Headings in `other.md`          | `Reference`  |
 | `[text][…`                      | Link-ref labels in current file | `Reference`  |
