@@ -72,6 +72,17 @@ func TestExtractWikiLinks_SkipsCodeSpan(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestExtractWikiLinks_EmptyCodeSpan(t *testing.T) {
+	// Empty backticks (`` `` ``) parse as a CodeSpan with no Text
+	// children — codeSpanTextBounds returns first<0 and the range
+	// is dropped from the span list, so the extractor must not
+	// panic and must still find the wikilink that follows.
+	f := newFile(t, "A `` `` literal, then [[Page]].\n")
+	got := ExtractWikiLinks(f)
+	require.Len(t, got, 1)
+	assert.Equal(t, "Page", got[0].Target)
+}
+
 func TestExtractWikiLinks_SkipsFencedCode(t *testing.T) {
 	src := "```\n[[InFence]]\n```\n"
 	f := newFile(t, src)
@@ -223,6 +234,48 @@ func TestResolveWikiLink_NilFS(t *testing.T) {
 	_, ok := ResolveWikiLink(nil, "from.md", "page")
 	assert.False(t, ok)
 }
+
+func TestResolveWikiLink_WalkDirCallbackError(t *testing.T) {
+	// fs.WalkDir invokes the callback with err != nil when ReadDir
+	// on a child directory fails. ResolveWikiLink must swallow the
+	// error and keep walking the rest of the tree. erroringFS
+	// rejects ReadDir("broken") while serving every other path
+	// normally; resolution finds page.md in the sibling subtree.
+	mfs := &erroringFS{
+		inner: fstest.MapFS{
+			"broken":        &fstest.MapFile{Mode: fs.ModeDir},
+			"other/page.md": &fstest.MapFile{Data: []byte{}},
+		},
+		failDir: "broken",
+	}
+	got, ok := ResolveWikiLink(mfs, "from.md", "page")
+	require.True(t, ok)
+	assert.Equal(t, "other/page.md", got)
+}
+
+// erroringFS rejects ReadDir on a specific subdirectory while
+// serving Open and other paths normally. fs.WalkDir then invokes
+// its callback with err != nil for the rejected directory — the
+// exact branch ResolveWikiLink swallows.
+type erroringFS struct {
+	inner   fs.FS
+	failDir string
+}
+
+func (e *erroringFS) Open(name string) (fs.File, error) {
+	return e.inner.Open(name)
+}
+
+func (e *erroringFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name == e.failDir {
+		return nil, &fsErr{name: name}
+	}
+	return fs.ReadDir(e.inner, name)
+}
+
+type fsErr struct{ name string }
+
+func (e *fsErr) Error() string { return "synthetic read failure on " + e.name }
 
 func TestResolveWikiLink_OnDiskFS(t *testing.T) {
 	dir := t.TempDir()

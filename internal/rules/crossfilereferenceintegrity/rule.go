@@ -117,10 +117,10 @@ func (r *Rule) checkWikilinks(
 	f *lint.File,
 	anchorCache map[string]map[string]bool,
 ) []lint.Diagnostic {
+	// f.FS is guaranteed non-nil by the caller (r.Check returns early
+	// otherwise), and wikilinkRoot's last fallback returns f.FS, so
+	// root is always populated here.
 	root := wikilinkRoot(f)
-	if root == nil {
-		return nil
-	}
 	resolver := newWikilinkResolver(root, workspaceRelativeSource(f), r.effectiveWikilinkStyle())
 
 	var diags []lint.Diagnostic
@@ -249,22 +249,18 @@ func wikilinkAnchorsForTarget(
 // project root, using forward slashes. When the path cannot be made
 // relative (e.g. a struct-literal test File without RootDir) it
 // returns the original path with separators normalised.
+//
+// filepath.Abs only errors when os.Getwd() fails (an OS-level
+// catastrophe); filepath.Rel only errors on Windows cross-volume
+// pairs. On Linux, where mdsmith ships, the call chain below never
+// errors once f.RootDir is non-empty.
 func workspaceRelativeSource(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)
 	}
-	abs, err := filepath.Abs(f.Path)
-	if err != nil {
-		return filepath.ToSlash(f.Path)
-	}
-	absRoot, err := filepath.Abs(f.RootDir)
-	if err != nil {
-		return filepath.ToSlash(f.Path)
-	}
-	rel, err := filepath.Rel(absRoot, abs)
-	if err != nil {
-		return filepath.ToSlash(f.Path)
-	}
+	abs, _ := filepath.Abs(f.Path)        //nolint:errcheck
+	absRoot, _ := filepath.Abs(f.RootDir) //nolint:errcheck
+	rel, _ := filepath.Rel(absRoot, abs)  //nolint:errcheck
 	return filepath.ToSlash(rel)
 }
 

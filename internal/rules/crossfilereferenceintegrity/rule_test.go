@@ -1228,6 +1228,13 @@ func TestApplySettings_WikilinkStyle(t *testing.T) {
 	err := r.ApplySettings(map[string]any{"wikilink-style": "foam"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not supported")
+
+	// Non-string types are rejected before the value check runs;
+	// reaching the "must be a string" branch keeps the error
+	// taxonomy honest.
+	err = r.ApplySettings(map[string]any{"wikilink-style": 123})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be a string")
 }
 
 func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
