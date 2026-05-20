@@ -15,6 +15,7 @@
 //	mdsmith-release build-website [--no-fix] [src-dir] [dst-dir]
 //	mdsmith-release verify-website-links --dir <html-dir> [--base-url <url>]
 //	mdsmith-release publish-release
+//	mdsmith-release sbom <out-path>
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
@@ -50,6 +51,7 @@ Commands:
   verify-website-links --dir <dir> [--base-url <url>]
                                   Probe rendered HTML for render-link regressions.
   publish-release                 Flip the tag's draft release to published.
+  sbom <out-path>                 Emit a CycloneDX SBOM of the Go module to <out-path>.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
@@ -99,6 +101,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runVerifyWebsiteLinks(root, rest)
 	case "publish-release":
 		return runPublishRelease(root, rest)
+	case "sbom":
+		return runSBOM(root, rest)
 	case "check-secret-rotations":
 		return runCheckSecretRotations(root, rest)
 	case "record-rotation":

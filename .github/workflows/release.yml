@@ -401,15 +401,15 @@ jobs:
           merge-multiple: true
       - name: Generate CycloneDX SBOM
         # CycloneDX SBOM of the Go module that produced the release
-        # binaries. Generated from the source tree at the dispatched
-        # commit, so the SBOM matches the build provenance attested
-        # above. Named with the `mdsmith-` prefix so the checksum
-        # step below picks it up automatically and the cosign
-        # signature covers it transitively. Verify with:
+        # binaries. Runtime logic lives in mdsmith-release per
+        # docs/development/release-tooling.md: the tool version is
+        # pinned in internal/release/sbom.go, error handling and the
+        # exec pipeline have unit tests. Output is named with the
+        # `mdsmith-` prefix so the checksum step below picks it up
+        # automatically and the cosign signature covers it
+        # transitively. Verify with:
         #   sha256sum -c <(grep mdsmith-sbom.cdx.json checksums.txt)
-        run: |
-          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.9.0
-          cyclonedx-gomod mod -licenses -json -output mdsmith-sbom.cdx.json
+        run: go run ./cmd/mdsmith-release sbom mdsmith-sbom.cdx.json
       - name: Create checksums
         run: sha256sum mdsmith-* > checksums.txt
       - name: Generate SLSA build provenance

@@ -33,7 +33,7 @@ Network access only happens when the user installs the binary:
 - `npm install -g @mdsmith/cli` downloads the npm tarball and the
   matching platform sub-package.
 - `pip install mdsmith` downloads the wheel from PyPI.
-- The VS Code Marketplace or Open VSX download the `.vsix`.
+- The VS Code Marketplace or Open VSX downloads the `.vsix`.
 
 None of these channels run a `postinstall` script that calls home.
 After install, the binary is a static Go executable; running it

@@ -8,7 +8,7 @@
           {{ .eyebrow }}
         </div>
         <h1>{{ .headline_pre }}<em>{{ .headline_em }}</em>{{ .headline_post }}</h1>
-        <p class="hero-lead">{{ .lead | markdownify }}</p>
+        <div class="hero-lead">{{ .lead | markdownify }}</div>
         <div class="hero-cta">
           <a class="btn btn-primary btn-lg" href="{{ "/guides/install/" | relURL }}">
             <i data-lucide="download" width="16" height="16" aria-hidden="true"></i>
