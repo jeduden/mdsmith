@@ -253,6 +253,14 @@ explaining why it is separate so
 future readers do not read it as a
 separate rule package.
 
+## Audit 2026-05-17 (range: 7464d273..b5a6d72)
+
+Covered `internal/rename`, `internal/index`,
+`mdsmith deps`, `mdsmith export`. Tax:
+`nonNegativeUTF16RuneLen` copied privately in
+three packages; export from `internal/mdtext` —
+[plan/186](../../plan/186_arch-fix-utf16-centralize.md).
+
 ## Decision 2026-05-17 (plan/174)
 
 ### plan/153 non-goal superseded
