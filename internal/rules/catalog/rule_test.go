@@ -25,6 +25,15 @@ func newTestFile(t *testing.T, path, source string, fs ...fstest.MapFS) *lint.Fi
 	return f
 }
 
+// newDefaultRule returns a Rule pre-configured with the same defaults
+// the init() call seeds onto the registered singleton (Pad: 1,
+// SeparatorSpaced). Tests that need to format generated tables go
+// through this so a freshly constructed rule does not silently fall
+// back to Pad=0.
+func newDefaultRule() *Rule {
+	return &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced}
+}
+
 // expectDiags asserts the number of diagnostics and returns them.
 func expectDiags(t *testing.T, diags []lint.Diagnostic, count int) {
 	t.Helper()
@@ -139,20 +148,16 @@ row: "| [{title}]({filename}) | {description} |"
 		"docs/guide.md": {Data: []byte("---\ntitle: Getting Started\ndescription: How to get started\n---\n# Guide\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := newDefaultRule()
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
 
-func TestRendering_TableHonorsPublishedCompactStyle(t *testing.T) {
-	// When MDS025 (table-format) publishes a compact-separator config,
-	// catalog must generate its table with the same canonical so the
-	// MDS019/MDS025 fix loop converges instead of bouncing the body
-	// back and forth.
-	tablefmt.ResetPublishedConfig()
-	tablefmt.Publish(tablefmt.Config{Pad: 1, SeparatorStyle: tablefmt.SeparatorCompact})
-	t.Cleanup(tablefmt.ResetPublishedConfig)
-
+func TestRendering_CompactSeparatorStyle(t *testing.T) {
+	// `separator-style: compact` makes catalog emit `|---|---|` rather
+	// than the spaced default `| --- | --- |`. The body below is what
+	// the catalog must produce after Fix; Check passes when the file
+	// already matches.
 	src := `<?catalog
 glob: "docs/*.md"
 header: |
@@ -171,18 +176,14 @@ row: "| [{title}]({filename}) | {description} |"
 		"docs/guide.md": {Data: []byte("---\ntitle: Getting Started\ndescription: How to get started\n---\n# Guide\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorCompact}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
 
-func TestRendering_TableHonorsPublishedSpacedStyle(t *testing.T) {
-	// Round-trip the spaced case: republish spaced, then verify a body
-	// already in spaced form passes Check.
-	tablefmt.ResetPublishedConfig()
-	tablefmt.Publish(tablefmt.Config{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced})
-	t.Cleanup(tablefmt.ResetPublishedConfig)
-
+func TestRendering_SpacedSeparatorStyle(t *testing.T) {
+	// Round-trip the spaced default: a body whose separator is spaced
+	// passes Check on a rule configured for spaced.
 	src := `<?catalog
 glob: "docs/*.md"
 header: |
@@ -201,9 +202,55 @@ row: "| [{title}]({filename}) | {description} |"
 		"docs/guide.md": {Data: []byte("---\ntitle: Getting Started\ndescription: How to get started\n---\n# Guide\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
+}
+
+func TestApplySettings_SeparatorStyle(t *testing.T) {
+	cases := map[string]struct {
+		value     any
+		wantErr   bool
+		wantStyle tablefmt.SeparatorStyle
+	}{
+		"spaced":     {value: "spaced", wantStyle: tablefmt.SeparatorSpaced},
+		"compact":    {value: "compact", wantStyle: tablefmt.SeparatorCompact},
+		"invalid":    {value: "wide", wantErr: true},
+		"wrong type": {value: 42, wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{Pad: 1}
+			err := r.ApplySettings(map[string]any{"separator-style": tc.value})
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantStyle, r.SeparatorStyle)
+		})
+	}
+}
+
+func TestApplySettings_Pad(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"pad": 2}))
+	assert.Equal(t, 2, r.Pad)
+
+	require.Error(t, r.ApplySettings(map[string]any{"pad": -1}))
+	require.Error(t, r.ApplySettings(map[string]any{"pad": "two"}))
+}
+
+func TestApplySettings_UnknownKey(t *testing.T) {
+	r := &Rule{}
+	require.Error(t, r.ApplySettings(map[string]any{"unknown": true}))
+}
+
+func TestDefaultSettings_IncludesSeparatorStyle(t *testing.T) {
+	r := &Rule{}
+	d := r.DefaultSettings()
+	assert.Equal(t, 1, d["pad"])
+	assert.Equal(t, "spaced", d["separator-style"])
 }
 
 func TestRendering_MultilineRowPipe(t *testing.T) {
@@ -327,7 +374,7 @@ footer: |
 		"a.md": {Data: []byte("---\ntitle: API\ndescription: docs\n---\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := newDefaultRule()
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
@@ -2272,7 +2319,7 @@ Some trailing text.
 			"---\ntitle: First Heading\ndescription: Checks headings\n---\n# Rule\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := newDefaultRule()
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }

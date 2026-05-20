@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync/atomic"
 
 	"github.com/mattn/go-runewidth"
 )
@@ -47,37 +46,6 @@ const (
 	// kept for users who prefer a denser rendering.
 	SeparatorCompact
 )
-
-// publishedConfig stores the latest table-format settings published by
-// the MDS025 rule (table-format) so sibling rules — chiefly MDS019
-// (catalog), which formats the tables it generates — see the same pad
-// and separator style the user configured, rather than the rule
-// singleton's init defaults. tableformat.ApplySettings calls Publish;
-// catalog reads via PublishedConfig. Tests reset between cases through
-// ResetPublishedConfig.
-var publishedConfig atomic.Pointer[Config]
-
-// Publish stores the table-format Config to be consumed by sibling
-// rules. Safe for concurrent reads.
-func Publish(cfg Config) {
-	c := cfg
-	publishedConfig.Store(&c)
-}
-
-// PublishedConfig returns the most recently Published Config, or the
-// package's spaced/pad=1 default when nothing has been published.
-func PublishedConfig() Config {
-	if p := publishedConfig.Load(); p != nil {
-		return *p
-	}
-	return Config{Pad: 1}
-}
-
-// ResetPublishedConfig clears any Published Config. Intended for tests
-// that want a clean slate before exercising the publish/consume path.
-func ResetPublishedConfig() {
-	publishedConfig.Store(nil)
-}
 
 // FormatString formats all markdown tables in s with the given padding
 // and returns the result. Padding less than 0 falls back to 1 (one space

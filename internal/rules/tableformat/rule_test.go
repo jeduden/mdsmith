@@ -362,23 +362,6 @@ func TestGetSeparatorStyle(t *testing.T) {
 	assert.Equal(t, tablefmt.SeparatorCompact, r.GetSeparatorStyle())
 }
 
-func TestApplySettings_PublishesConfigForSiblingRules(t *testing.T) {
-	// ApplySettings must mirror the configured Pad and SeparatorStyle to
-	// tablefmt.PublishedConfig so MDS019 (catalog) renders generated
-	// tables with the same canonical the user just configured. Without
-	// this hand-off MDS025 fixes a body the catalog rule immediately
-	// flags as out-of-date.
-	tablefmt.ResetPublishedConfig()
-	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced}
-	require.NoError(t, r.ApplySettings(map[string]any{
-		"pad":             2,
-		"separator-style": "compact",
-	}))
-	got := tablefmt.PublishedConfig()
-	assert.Equal(t, 2, got.Pad)
-	assert.Equal(t, tablefmt.SeparatorCompact, got.SeparatorStyle)
-}
-
 // --- Helper functions ---
 
 func newTestFile(t *testing.T, src string) *lint.File {

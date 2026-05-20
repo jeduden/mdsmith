@@ -683,39 +683,6 @@ func TestWriteSeparatorRow_CompactAlignmentIndicators(t *testing.T) {
 		"expected compact separator preserves all three alignment markers; got:\n%s", out)
 }
 
-// --- Publish / PublishedConfig ---
-
-func TestPublishedConfig_FallbackWithoutPublish(t *testing.T) {
-	ResetPublishedConfig()
-	got := PublishedConfig()
-	assert.Equal(t, 1, got.Pad)
-	assert.Equal(t, SeparatorSpaced, got.SeparatorStyle)
-}
-
-func TestPublish_OverwritesPriorValue(t *testing.T) {
-	ResetPublishedConfig()
-	Publish(Config{Pad: 2, SeparatorStyle: SeparatorCompact})
-	got := PublishedConfig()
-	assert.Equal(t, 2, got.Pad)
-	assert.Equal(t, SeparatorCompact, got.SeparatorStyle)
-	Publish(Config{Pad: 0, SeparatorStyle: SeparatorSpaced})
-	got = PublishedConfig()
-	assert.Equal(t, 0, got.Pad)
-	assert.Equal(t, SeparatorSpaced, got.SeparatorStyle)
-}
-
-func TestPublish_CopyOnStore(t *testing.T) {
-	// Publish must store an independent copy so a caller mutating the
-	// argument after Publish does not retroactively change what
-	// PublishedConfig hands back to sibling rules.
-	ResetPublishedConfig()
-	cfg := Config{Pad: 1, SeparatorStyle: SeparatorCompact}
-	Publish(cfg)
-	cfg.SeparatorStyle = SeparatorSpaced
-	got := PublishedConfig()
-	assert.Equal(t, SeparatorCompact, got.SeparatorStyle)
-}
-
 // --- Helper functions ---
 
 func splitLines(s string) [][]byte {

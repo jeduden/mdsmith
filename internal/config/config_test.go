@@ -761,7 +761,6 @@ func TestDumpDefaults_NonConfigurableRulesHaveNoSettings(t *testing.T) {
 		"blank-line-around-lists",
 		"blank-line-around-fenced-code",
 		"no-trailing-punctuation-in-heading",
-		"catalog",
 	}
 
 	for _, name := range nonConfigurableRules {

@@ -36,14 +36,6 @@ func (r *Rule) GetPad() int { return r.Pad }
 func (r *Rule) GetSeparatorStyle() tablefmt.SeparatorStyle { return r.SeparatorStyle }
 
 // ApplySettings implements rule.Configurable.
-//
-// After mutating the receiver, ApplySettings publishes the effective
-// Config to tablefmt so sibling rules — MDS019 (catalog) formats its
-// generated tables and looks the active config up there — render with
-// the user's settings rather than the singleton's init defaults. The
-// engine clones MDS025 before applying user settings, so without the
-// publish step catalog and table-format would disagree on the active
-// separator style under any non-default config.
 func (r *Rule) ApplySettings(s map[string]any) error {
 	for k, v := range s {
 		switch k {
@@ -66,7 +58,6 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 			return fmt.Errorf("table-format: unknown setting %q", k)
 		}
 	}
-	tablefmt.Publish(r.config())
 	return nil
 }
 
