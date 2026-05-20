@@ -310,7 +310,12 @@ func extendFrontmatter(out, parent, child *Schema) error {
 			continue
 		}
 		unified := "(" + parentExpr + ") & (" + expr + ")"
-		if err := checkUnifiable(unified); err != nil {
+		// Compile in struct context (`close({ <k>: <unified> })`)
+		// so an expression that legitimately references the field
+		// by name — e.g. a constraint like `len(<k>) > 0` — sees
+		// the same scope ParseInline gives it.
+		single := &Schema{Frontmatter: map[string]string{k: unified}}
+		if err := checkUnifiable(single.FrontmatterCUE()); err != nil {
 			return &UnsatisfiableKeyError{
 				Key:    stripOptionalSuffix(k),
 				Parent: parentExpr,

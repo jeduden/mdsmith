@@ -82,6 +82,26 @@ func TestExtend_FrontmatterIdenticalExprStaysVerbatim(t *testing.T) {
 	assert.Equal(t, expr, out.Frontmatter["title"])
 }
 
+// TestExtend_FrontmatterAcceptsSelfReferencingConstraint covers
+// the regression Copilot flagged on PR #365: a CUE constraint
+// that references its own field name (e.g. `>=0` chained off a
+// numeric field, or `len(_)`-style helpers in the struct
+// scope) must compile through extendFrontmatter without false
+// rejection. The check runs in `close({ <key>: <unified> })`
+// context, the same scope ParseInline uses, so self-references
+// resolve.
+func TestExtend_FrontmatterAcceptsSelfReferencingConstraint(t *testing.T) {
+	parent := &Schema{Frontmatter: map[string]string{
+		"count": `int`,
+	}}
+	child := &Schema{Frontmatter: map[string]string{
+		"count": `>=0`,
+	}}
+	out, err := Extend(parent, child)
+	require.NoError(t, err)
+	assert.Contains(t, out.Frontmatter["count"], "&")
+}
+
 // TestExtend_FrontmatterUnsatisfiableConflict is the conflict path:
 // a child whose CUE expression cannot unify with the parent's
 // surfaces an UnsatisfiableKeyError naming both expressions.

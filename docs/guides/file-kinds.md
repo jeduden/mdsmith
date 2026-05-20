@@ -313,8 +313,10 @@ status: '"ratified"'
 
 The path is resolved relative to the schema file (the same rule
 `<?include?>` follows). Absolute paths and `..` traversal are
-rejected. Cycles in either form — inline or file — are detected
-at config load with the full cycle path.
+rejected. Inline-kind `extends:` cycles surface at config load;
+file-schema cycles surface when MDS020 first parses the schema
+during `check` or `fix`. Both forms name the full cycle path in
+the diagnostic.
 
 ### Auditing the chain
 
