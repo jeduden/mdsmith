@@ -21,8 +21,7 @@ import (
 // so a divergence is traceable to the source. Upstream tests raw
 // `*Sentence.Text` (with leading whitespace); mdsmith's
 // `SplitSentences` trims, so the expected slices here are trimmed
-// too. The pre-trim equivalence is gated separately by
-// TestSplitSentences_IsItsOwnReference.
+// to match.
 
 type sentenceCase struct {
 	name string
