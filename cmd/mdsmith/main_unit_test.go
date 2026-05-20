@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
+	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/query"
 	ruledocs "github.com/jeduden/mdsmith/internal/rules"
 )
@@ -379,6 +380,186 @@ func TestWriteDryRunJSON_EmptyResultEmitsEmptyArray(t *testing.T) {
 	code := writeDryRunJSON(&buf, &fixpkg.Result{})
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "[]\n", buf.String())
+}
+
+// alwaysErrorWriter rejects all writes, used to drive error paths.
+type alwaysErrorWriter struct{}
+
+func (w *alwaysErrorWriter) Write(_ []byte) (int, error) {
+	return 0, fmt.Errorf("write failed")
+}
+
+func TestWriteDryRunJSON_WriteErrorReturns2(t *testing.T) {
+	var code int
+	captureStderr(func() {
+		code = writeDryRunJSON(&alwaysErrorWriter{}, &fixpkg.Result{
+			WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
+		})
+	})
+	assert.Equal(t, 2, code)
+}
+
+func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
+	var buf bytes.Buffer
+	code := writeDryRunJSON(&buf, &fixpkg.Result{
+		WouldFixFiles: []fixpkg.WouldFixFile{
+			{Path: "a.md", Count: 1, Rules: []fixpkg.RuleFixCount{{RuleID: "MDS001", Count: 1}}},
+		},
+		Diagnostics: []lint.Diagnostic{
+			{
+				File: "a.md", Line: 5, Column: 1,
+				RuleID: "MDS017", RuleName: "no-trailing-punct",
+				Severity: lint.Warning, Message: "trailing punct",
+				SourceLines:     []string{"## Heading."},
+				SourceStartLine: 5,
+				Explanation: &lint.Explanation{
+					Rule: "MDS017",
+					Leaves: []lint.ExplanationLeaf{
+						{Path: "rules.no-trailing-punct.enabled", Value: true, Source: "default"},
+					},
+				},
+			},
+		},
+	})
+	require.Equal(t, 0, code)
+
+	var records []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &records))
+	require.Len(t, records, 1)
+	diags, ok := records[0]["diagnostics"].([]any)
+	require.True(t, ok)
+	require.Len(t, diags, 1)
+	d := diags[0].(map[string]any)
+	srcLines, ok := d["source_lines"].([]any)
+	require.True(t, ok, "source_lines must be present")
+	assert.Equal(t, []any{"## Heading."}, srcLines)
+	assert.EqualValues(t, 5, d["source_start_line"])
+	exp, ok := d["explanation"].(map[string]any)
+	require.True(t, ok, "explanation must be present")
+	assert.Equal(t, "MDS017", exp["rule"])
+}
+
+// --- reportFixResult ---
+
+func TestReportFixResult_DryRunTextPreview(t *testing.T) {
+	opts := fixCLIOpts{dryRun: true, format: "text"}
+	result := &fixpkg.Result{
+		FilesChecked: 2,
+		Failures:     1,
+		WouldFix:     1,
+		WouldFixFiles: []fixpkg.WouldFixFile{
+			{Path: "f.md", Count: 1, Rules: []fixpkg.RuleFixCount{{RuleID: "MDS001", Count: 1}}},
+		},
+	}
+	var code int
+	stderr := captureStderr(func() {
+		code = reportFixResult(opts, result, &vlog.Logger{})
+	})
+	assert.Equal(t, 0, code)
+	assert.Contains(t, stderr, "f.md: would fix 1 violation")
+	assert.Contains(t, stderr, "would-fix=1")
+}
+
+func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
+	opts := fixCLIOpts{dryRun: true, format: "json"}
+	result := &fixpkg.Result{
+		FilesChecked: 1,
+		WouldFix:     1,
+		WouldFixFiles: []fixpkg.WouldFixFile{
+			{Path: "f.md", Count: 1, Rules: []fixpkg.RuleFixCount{{RuleID: "MDS001", Count: 1}}},
+		},
+	}
+	var code int
+	var stdout string
+	captureStderr(func() {
+		stdout = captureStdout(func() {
+			code = reportFixResult(opts, result, &vlog.Logger{})
+		})
+	})
+	assert.Equal(t, 0, code)
+	var records []map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &records))
+	require.Len(t, records, 1)
+	assert.Equal(t, "f.md", records[0]["path"])
+}
+
+func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
+	opts := fixCLIOpts{dryRun: true, format: "json", quiet: true}
+	result := &fixpkg.Result{
+		WouldFix: 1,
+		WouldFixFiles: []fixpkg.WouldFixFile{
+			{Path: "f.md", Count: 1},
+		},
+	}
+	var code int
+	var stdout string
+	captureStderr(func() {
+		stdout = captureStdout(func() {
+			code = reportFixResult(opts, result, &vlog.Logger{})
+		})
+	})
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout)
+}
+
+func TestReportFixResult_DiagnosticsReturnsCode1(t *testing.T) {
+	opts := fixCLIOpts{format: "text"}
+	result := &fixpkg.Result{
+		FilesChecked: 1,
+		Failures:     1,
+		Diagnostics: []lint.Diagnostic{
+			{File: "f.md", Line: 1, Column: 1, RuleID: "MDS001",
+				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
+		},
+	}
+	var code int
+	captureStderr(func() {
+		code = reportFixResult(opts, result, &vlog.Logger{})
+	})
+	assert.Equal(t, 1, code)
+}
+
+func TestReportFixResult_ErrorsOnlyReturnsCode2(t *testing.T) {
+	opts := fixCLIOpts{format: "text"}
+	result := &fixpkg.Result{
+		FilesChecked: 1,
+		Errors:       []error{fmt.Errorf("disk error")},
+	}
+	var code int
+	stderr := captureStderr(func() {
+		code = reportFixResult(opts, result, &vlog.Logger{})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "disk error")
+}
+
+func TestReportFixResultTo_DryRunJSONWriteErrorReturns2(t *testing.T) {
+	opts := fixCLIOpts{dryRun: true, format: "json"}
+	result := &fixpkg.Result{
+		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
+	}
+	var code int
+	captureStderr(func() {
+		code = reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{}, io.Discard)
+	})
+	assert.Equal(t, 2, code)
+}
+
+func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
+	opts := fixCLIOpts{format: "text"}
+	result := &fixpkg.Result{
+		FilesChecked: 1,
+		Failures:     1,
+		Diagnostics: []lint.Diagnostic{
+			{File: "f.md", Line: 1, Column: 1, RuleID: "MDS001",
+				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
+		},
+	}
+	var code int
+	captureStderr(func() {
+		code = reportFixResultTo(opts, result, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
+	})
+	assert.Equal(t, 2, code)
 }
 
 // --- printErrors ---

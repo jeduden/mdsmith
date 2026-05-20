@@ -2,6 +2,7 @@ package fix
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1128,6 +1129,50 @@ func TestFix_DryRun_MatchesRealFixCount(t *testing.T) {
 	dryContent, err := os.ReadFile(dryFile)
 	require.NoError(t, err)
 	assert.Equal(t, content, dryContent, "dry-run must leave bytes identical")
+}
+
+func TestFix_WriteErrorPopulatesErrors(t *testing.T) {
+	// Inject a write failure via the package-level hook so the test
+	// works regardless of OS permissions (e.g. when running as root).
+	origWrite := writeFile
+	writeFile = func(_ string, _ []byte, _ os.FileMode) error {
+		return fmt.Errorf("injected write error")
+	}
+	defer func() { writeFile = origWrite }()
+
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "fixable.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Len(t, result.Errors, 1, "expected exactly one write error")
+	assert.Contains(t, result.Errors[0].Error(), "injected write error")
+}
+
+func TestComputeWouldFix_SortsRulesByID(t *testing.T) {
+	// Two rules fire; rules must come back sorted by ID regardless of map iteration
+	// order, which exercises the sort.Slice less function.
+	before := []lint.Diagnostic{
+		{File: "f.md", RuleID: "MDS010", RuleName: "rule-b"},
+		{File: "f.md", RuleID: "MDS001", RuleName: "rule-a"},
+	}
+	after := []lint.Diagnostic{} // both fixed
+	wf := computeWouldFix("f.md", before, after, true)
+	require.NotNil(t, wf)
+	assert.Equal(t, 2, wf.Count)
+	require.Len(t, wf.Rules, 2)
+	assert.Equal(t, "MDS001", wf.Rules[0].RuleID, "rules must be sorted ascending by ID")
+	assert.Equal(t, "MDS010", wf.Rules[1].RuleID)
 }
 
 func TestFix_DryRun_OmitsFilesWithNoFixes(t *testing.T) {

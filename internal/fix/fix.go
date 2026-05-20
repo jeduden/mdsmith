@@ -214,7 +214,7 @@ func (f *Fixer) fixFile(path string) (
 	var modified string
 	if bytesChanged && !f.DryRun {
 		out := lf.FullSource(current)
-		if err := atomicWriteFile(path, out, info.Mode()); err != nil {
+		if err := writeFile(path, out, info.Mode()); err != nil {
 			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
 			return beforeDiags, beforeDiags, "", nil, errs
 		}
@@ -434,6 +434,10 @@ func (f *Fixer) effectiveWithCategories(
 	}
 	return config.ApplyCategories(effective, categories, func(name string) string { return m[name] }, explicit)
 }
+
+// writeFile is the package-level write hook. Tests can swap it out to
+// inject a write error without needing a real read-only filesystem.
+var writeFile = atomicWriteFile
 
 // atomicWriteFile writes data to path using a temp-file-then-rename strategy
 // to reduce the risk of partial writes on crash. Directory fsync is omitted

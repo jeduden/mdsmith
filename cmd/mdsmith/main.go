@@ -550,15 +550,34 @@ type dryRunJSONFile struct {
 }
 
 // jsonDiag mirrors the diagnostic shape JSONFormatter writes today
-// so dry-run JSON records carry the same per-diagnostic fields.
+// so dry-run JSON records carry the same per-diagnostic fields,
+// including the optional source-context and explanation trailers.
 type jsonDiag struct {
-	File     string `json:"file"`
-	Line     int    `json:"line"`
-	Column   int    `json:"column"`
-	Rule     string `json:"rule"`
-	Name     string `json:"name"`
-	Severity string `json:"severity"`
-	Message  string `json:"message"`
+	File            string       `json:"file"`
+	Line            int          `json:"line"`
+	Column          int          `json:"column"`
+	Rule            string       `json:"rule"`
+	Name            string       `json:"name"`
+	Severity        string       `json:"severity"`
+	Message         string       `json:"message"`
+	SourceLines     []string     `json:"source_lines,omitempty"`
+	SourceStartLine int          `json:"source_start_line,omitempty"`
+	Explanation     *jsonDiagExp `json:"explanation,omitempty"`
+}
+
+// jsonDiagExp is the explanation trailer shape, matching
+// output.jsonExplanation so dry-run JSON is schema-compatible with
+// check --format json.
+type jsonDiagExp struct {
+	Rule   string         `json:"rule"`
+	Leaves []jsonDiagLeaf `json:"leaves"`
+}
+
+// jsonDiagLeaf is one leaf entry inside a jsonDiagExp.
+type jsonDiagLeaf struct {
+	Path   string `json:"path"`
+	Value  any    `json:"value"`
+	Source string `json:"source"`
 }
 
 // writeDryRunJSON emits the per-file dry-run JSON payload on w as a
@@ -579,14 +598,25 @@ func writeDryRunJSON(w io.Writer, fixResult *fixpkg.Result) int {
 		diags := diagsByFile[wf.Path]
 		jsonDiags := make([]jsonDiag, 0, len(diags))
 		for _, d := range diags {
+			var exp *jsonDiagExp
+			if d.Explanation != nil {
+				leaves := make([]jsonDiagLeaf, 0, len(d.Explanation.Leaves))
+				for _, l := range d.Explanation.Leaves {
+					leaves = append(leaves, jsonDiagLeaf{Path: l.Path, Value: l.Value, Source: l.Source})
+				}
+				exp = &jsonDiagExp{Rule: d.Explanation.Rule, Leaves: leaves}
+			}
 			jsonDiags = append(jsonDiags, jsonDiag{
-				File:     d.File,
-				Line:     d.Line,
-				Column:   d.Column,
-				Rule:     d.RuleID,
-				Name:     d.RuleName,
-				Severity: string(d.Severity),
-				Message:  d.Message,
+				File:            d.File,
+				Line:            d.Line,
+				Column:          d.Column,
+				Rule:            d.RuleID,
+				Name:            d.RuleName,
+				Severity:        string(d.Severity),
+				Message:         d.Message,
+				SourceLines:     d.SourceLines,
+				SourceStartLine: d.SourceStartLine,
+				Explanation:     exp,
 			})
 		}
 		records = append(records, dryRunJSONFile{
@@ -998,18 +1028,24 @@ func fixDiscovered(opts fixCLIOpts) int {
 // code. Shared by fixFiles and fixDiscovered so the dry-run preview,
 // stats summary, and exit-code logic stay in one place.
 func reportFixResult(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger) int {
+	return reportFixResultTo(opts, fixResult, logger, os.Stdout, os.Stderr)
+}
+
+// reportFixResultTo is the injectable form of reportFixResult. Tests
+// pass alternate writers to exercise the write-error branches.
+func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, stdoutW, stderrW io.Writer) int {
 	printErrors(fixResult.Errors)
 
-	if opts.dryRun && opts.format == "json" {
-		if code := writeDryRunJSON(os.Stdout, fixResult); code != 0 {
+	if opts.dryRun && opts.format == "json" && !opts.quiet {
+		if code := writeDryRunJSON(stdoutW, fixResult); code != 0 {
 			return code
 		}
 	} else {
 		if opts.dryRun && !opts.quiet {
-			printDryRunPreview(os.Stderr, fixResult)
+			printDryRunPreview(stderrW, fixResult)
 		}
 		if !opts.quiet && len(fixResult.Diagnostics) > 0 {
-			if code := formatDiagnostics(fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
+			if code := formatDiagnosticsTo(stderrW, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
 				return code
 			}
 		}
