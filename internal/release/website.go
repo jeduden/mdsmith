@@ -220,19 +220,43 @@ var indexMdLink = regexp.MustCompile(
 var ruleFixtureLink = regexp.MustCompile(
 	`\]\(((?:bad|good|pattern)/\S*)` + linkTitleTail + `\)`)
 
-// ruleSiblingNonMDSLink matches an inline link in a per-rule
-// README whose target is a single-`../`-prefixed sibling under
-// internal/rules/ that is NOT another rule's page — the rule's
-// Go package directory or the shared `proto.md` schema, for
-// example. Sibling MDS rule pages (`../MDS021-include/`) ARE
-// published, so they are excluded by requiring the first
-// character after `../` to be lowercase or a dot (rule names
-// start with uppercase `M`). The path uses `\S*` so it stops at
-// the whitespace before an optional Markdown link title; the
-// trailing linkTitleTail (group 2) then consumes that title and
-// rewriteRuleSibling re-emits it after the GitHub URL (gap G6).
-var ruleSiblingNonMDSLink = regexp.MustCompile(
-	`\]\(\.\./([a-z._]\S*)` + linkTitleTail + `\)`)
+// ruleRelativeNonMDSLink matches an inline link in a per-rule
+// README whose target is a `(?:\.\./)+<non-MDS>` reference into
+// a repo location outside the rule's own directory. The path's
+// first character (the one after the final `../`) is restricted
+// to lowercase or a dot so MDS-prefixed cross-rule references
+// (`../MDS021-include/…`) — which ruleReadmeLink already routes
+// to the site URL — are excluded.
+//
+// Two depths are common in the source:
+//   - depth 1 (`../<x>`): a sibling Go package (../linelength/rule.go),
+//     the shared proto.md (../proto.md), or a sibling test file
+//     (../paragraphstructure/rule_test.go).
+//   - depth 2 (`../../<x>`): a cousin internal/ subdirectory
+//     (../../mdtext/sentence_equivalence_test.go).
+//
+// Depth-3+ references are repo-rooted (../../../docs/,
+// ../../../plan/, ../../../internal/, …) and have already been
+// rewritten by rewriteRuleLinks (repoDocsLink, repoPlanLink,
+// repoNonPublishedLink) by the time transformRulePage applies
+// this regex; rewriteRuleRelativeInline declines depths outside
+// 1–2 so it cannot fight those rewrites.
+//
+// The path uses `\S*` so it stops at the whitespace before an
+// optional Markdown link title; the trailing linkTitleTail (the
+// final captured group) then consumes that title and
+// rewriteRuleRelativeInline re-emits it after the GitHub URL.
+var ruleRelativeNonMDSLink = regexp.MustCompile(
+	`\]\(((?:\.\./)+)([a-z._]\S*)` + linkTitleTail + `\)`)
+
+// ruleRelativeNonMDSRefDef is the reference-style sibling of
+// ruleRelativeNonMDSLink. Multiline flag so `^` and `$` anchor at
+// each line start/end. The leading capture is the `[label]: `
+// prefix, then the `(?:\.\./)+` depth, the non-MDS path, and the
+// optional linkTitleTail — re-emitted by rewriteRuleRelativeRefDef
+// so a titled definition keeps its title.
+var ruleRelativeNonMDSRefDef = regexp.MustCompile(
+	`(?m)^(\[[^\]]+\]: )((?:\.\./)+)([a-z._]\S*)` + linkTitleTail + `$`)
 
 // ruleSourceTreeBase is the GitHub directory (tree) route for a
 // rule's source. Per-rule READMEs carry an
@@ -717,7 +741,8 @@ func transformRulePage(data []byte, ruleName string) []byte {
 		seg = repoPlanLink.ReplaceAll(seg, []byte("]("+githubBlobBase+"plan/$1)"))
 		seg = repoPlanRefDef.ReplaceAll(seg, []byte("${1}"+githubBlobBase+"plan/$2"))
 		seg = rewriteRuleFixtures(seg, ruleSourceFiles, ruleSourceDir)
-		seg = ruleSiblingNonMDSLink.ReplaceAllFunc(seg, rewriteRuleSibling)
+		seg = ruleRelativeNonMDSLink.ReplaceAllFunc(seg, rewriteRuleRelativeInline)
+		seg = ruleRelativeNonMDSRefDef.ReplaceAllFunc(seg, rewriteRuleRelativeRefDef)
 		return seg
 	})
 	data = bytes.ReplaceAll(data,
@@ -742,18 +767,59 @@ func rewriteRuleFixtures(seg []byte, fileBase, dirBase string) []byte {
 	})
 }
 
-// rewriteRuleSibling rewrites a single-`../`-prefixed sibling
-// reference that is NOT another MDS rule page (a sibling Go
-// package, the shared proto.md, …) to its GitHub URL under
-// internal/rules/. The non-MDS guard in ruleSiblingNonMDSLink
-// preserves cross-rule links like `../MDS021-include/`;
-// directory vs file route is decided by trailing slash. m[2] is
-// the optional link title, re-emitted so a titled link keeps it.
-func rewriteRuleSibling(match []byte) []byte {
-	m := ruleSiblingNonMDSLink.FindSubmatch(match)
+// rewriteRuleRelativeInline rewrites a `(?:\.\./)+<non-MDS>`
+// inline link from a rule README to its GitHub URL. Depth maps
+// to the repo-rooted prefix that the `../` walk lands on from
+// internal/rules/<rule>/ (1 → internal/rules/, 2 → internal/).
+// Higher depths are declined — those are repo-rooted links that
+// the earlier rewriteRuleLinks pass already handled, and matching
+// them here would either double-rewrite a URL the earlier pass
+// emitted or wrongly map a `../../../<x>` repo-root reference
+// into an internal/-rooted GitHub URL. The trailing linkTitleTail
+// (m[3]) is re-emitted so a titled link keeps its title.
+func rewriteRuleRelativeInline(match []byte) []byte {
+	m := ruleRelativeNonMDSLink.FindSubmatch(match)
+	prefix, ok := repoPrefixForRuleRelativeDepth(m[1])
+	if !ok {
+		return match
+	}
 	return []byte("](" +
-		githubURLForPath([]byte("internal/rules/"+string(m[1]))) +
-		string(m[2]) + ")")
+		githubURLForPath([]byte(prefix+string(m[2]))) +
+		string(m[3]) + ")")
+}
+
+// rewriteRuleRelativeRefDef is the reference-style sibling of
+// rewriteRuleRelativeInline. m[1] is the `[label]: ` prefix, m[2]
+// the `(?:\.\./)+` depth capture, m[3] the non-MDS path, and m[4]
+// the optional title re-emitted so the definition keeps it.
+func rewriteRuleRelativeRefDef(match []byte) []byte {
+	m := ruleRelativeNonMDSRefDef.FindSubmatch(match)
+	prefix, ok := repoPrefixForRuleRelativeDepth(m[2])
+	if !ok {
+		return match
+	}
+	return []byte(string(m[1]) +
+		githubURLForPath([]byte(prefix+string(m[3]))) +
+		string(m[4]))
+}
+
+// repoPrefixForRuleRelativeDepth maps a `(?:\.\./)+` capture to
+// the repo-rooted directory it lands on when walked up from
+// internal/rules/<rule>/. The two-level structure makes only
+// depths 1 and 2 well-defined within this rewriter; depth 3+
+// reaches the repo root and is the territory of the earlier
+// rewriters (repoDocsLink, repoPlanLink, repoNonPublishedLink).
+// Returns ok=false outside that range so the caller can leave the
+// match untouched.
+func repoPrefixForRuleRelativeDepth(dotdot []byte) (string, bool) {
+	switch bytes.Count(dotdot, []byte("../")) {
+	case 1:
+		return "internal/rules/", true
+	case 2:
+		return "internal/", true
+	default:
+		return "", false
+	}
 }
 
 // injectFMField inserts a YAML field block into a document's front
