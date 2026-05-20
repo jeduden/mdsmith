@@ -34,8 +34,8 @@ install:
     args: "jeduden.mdsmith"
   - id: neovim
     label: "neovim"
-    prompt: ":"
-    cmd: "lua vim.lsp.start({cmd={'mdsmith','lsp'}})"
+    prompt: "$"
+    cmd: "mdsmith lsp"
     args: ""
   - id: claude
     label: "claude code"
