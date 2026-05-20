@@ -79,7 +79,7 @@ func TestMatchAbbrPattern_EquivalentToRegex(t *testing.T) {
 		"a..b", "a...b", "...a.", ".a.b.",
 		"a1.b2.", "x9.", "9.x.",
 		"_.a.", "a._.", "_._.", // underscore counts as \w
-		"中.文.", // CJK runes are \w in Go
+		"中.文.", // CJK runes are not \w in Go (\w is ASCII-only)
 		"ABC", "abc", "Abc.",
 		"a.b..", "a.b.c..",
 		"\n", " ", "\t", "a\n.b.",
@@ -106,8 +106,8 @@ func TestMatchAbbrPattern_EquivalentToRegex(t *testing.T) {
 // This is the "property-style table" the plan's Risk section calls
 // for. It is deterministic (seeded) so a failure reproduces.
 func TestMatchAbbrPattern_FuzzyAgainstRegex(t *testing.T) {
-	alphabet := []rune{'a', 'b', 'Z', '0', '9', '_', '.', '-', ' '}
-	// 5-rune strings × 9^5 = 59049 — exhaustive enough to land every
+	alphabet := []rune{'a', 'b', 'Z', '0', '9', '_', '.', '-', ' ', '\x00'}
+	// 5-rune strings × 10^5 = 100_000 — exhaustive enough to land every
 	// short-string transition, cheap enough to run in unit-test time.
 	const n = 5
 	indices := make([]int, n)

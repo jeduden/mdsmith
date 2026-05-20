@@ -1,12 +1,12 @@
-// Package mdtext's "fast Punkt" annotator: a drop-in for
+//go:build !mdtext_punkt_upstream
+
+// fastpunct.go provides a drop-in for
 // english.MultiPunctWordAnnotation that swaps the
 // `reAbbr.FindAllString(...)` regex for matchAbbrPattern's
 // hand-rolled DFA. Plan 191 owns the rationale and the equivalence
 // guarantee — every other line in this file mirrors upstream's
 // `english/main.go` tokenAnnotation function in v1.1.2, deliberately,
 // so the only behavioural difference is the regex → DFA swap.
-
-//go:build !mdtext_punkt_upstream
 
 package mdtext
 
