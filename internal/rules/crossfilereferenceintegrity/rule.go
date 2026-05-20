@@ -250,10 +250,12 @@ func wikilinkAnchorsForTarget(
 // relative (e.g. a struct-literal test File without RootDir) it
 // returns the original path with separators normalised.
 //
-// filepath.Abs only errors when os.Getwd() fails (an OS-level
-// catastrophe); filepath.Rel only errors on Windows cross-volume
-// pairs. On Linux, where mdsmith ships, the call chain below never
-// errors once f.RootDir is non-empty.
+// filepath.Abs only errors when os.Getwd() fails; filepath.Rel only
+// errors when the two paths cannot share a base (cross-volume on
+// Windows, otherwise impossible here because both arguments are
+// made absolute first). Real workspaces under one RootDir do not
+// hit either branch; the discarded errors degrade gracefully to a
+// best-effort path on the rare cases that do.
 func workspaceRelativeSource(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)

@@ -172,6 +172,12 @@ func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
 	if target == "" {
 		return "", false
 	}
+	// Reject Windows-style absolute forms (drive-letter, UNC) before
+	// path.Clean — those would otherwise pass the POSIX guards below
+	// and be searched as workspace-relative names on POSIX hosts.
+	if isDriveOrUNC(target) {
+		return "", false
+	}
 	cleaned := path.Clean(path.Clean(filepath.ToSlash(target)))
 	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
 		return "", false

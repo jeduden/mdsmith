@@ -224,6 +224,24 @@ func TestResolveWikiLink_RejectsAbsolutePath(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestResolveWikiLink_RejectsWindowsAbsoluteForms(t *testing.T) {
+	// On POSIX hosts a Windows drive-letter or UNC path would
+	// otherwise pass the leading-slash check and be searched as a
+	// workspace-relative stem. The drive/UNC guard matches the one
+	// linkgraph.ResolveRelTarget uses for the same reason.
+	mfs := fstest.MapFS{
+		"system.md": &fstest.MapFile{Data: []byte{}},
+	}
+	for _, target := range []string{
+		"C:/Windows/system.md",
+		"c:/Windows/system.md",
+		"//host/share/system.md",
+	} {
+		_, ok := ResolveWikiLink(mfs, "from.md", target)
+		assert.Falsef(t, ok, "Windows-absolute %q must be rejected", target)
+	}
+}
+
 func TestResolveWikiLink_EmptyTarget(t *testing.T) {
 	mfs := fstest.MapFS{}
 	_, ok := ResolveWikiLink(mfs, "from.md", "")
