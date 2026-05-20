@@ -713,6 +713,28 @@ func TestTransformRulePage_TitledRelativeNonMDSKeepsTitle(t *testing.T) {
 		"titled 1-up sibling ref-def must keep its title")
 }
 
+// TestRewriteRuleRelative_Depth3PlusDeclined pins that
+// depth-3+ relative non-MDS links are NOT rewritten by the
+// rule-page rewriter. The earlier rewriteRuleLinks pass owns
+// every repo-rooted path it can name (plan/, cmd/, internal/,
+// docs/, plan/, root files, …); a path outside that
+// alternative list (e.g. `../../../demo/foo.go`) reaches
+// rewriteRuleRelativeInline at depth 3 and must stay as
+// authored, because depth 3 from internal/rules/<rule>/ is the
+// repo root and the per-rule rewriter cannot guess a prefix
+// that would produce a correct GitHub URL. A visible relative
+// link the synced-tree lint will flag is the safe outcome —
+// silently mapping three-up to a fabricated internal/<x> URL
+// would be worse.
+func TestRewriteRuleRelative_Depth3PlusDeclined(t *testing.T) {
+	in := "Inline: [d](../../../demo/foo.go).\n[r]: ../../../demo/foo.go\n"
+	got := string(transformRulePage([]byte(in), "MDS001-line-length"))
+	assert.Contains(t, got, "[d](../../../demo/foo.go)",
+		"depth-3+ inline link must remain unchanged")
+	assert.Contains(t, got, "[r]: ../../../demo/foo.go",
+		"depth-3+ ref-def must remain unchanged")
+}
+
 // TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks is the
 // repo-wide regression for the deploy failure: every rule
 // README that links at a `(?:\.\./)+<non-MDS>` repo path must
@@ -725,8 +747,14 @@ func TestTransformRulePage_TitledRelativeNonMDSKeepsTitle(t *testing.T) {
 // files, runs transformMarkdown then transformRulePage (the
 // same composition syncRulePages uses), and scans each rule's
 // transformed body — outside code regions — for any leftover
-// `\]\(\.\./[a-z._]` or `^\[…\]:\s+\.\./[a-z._]` pattern.
-// Lowercase first-char excludes the legitimate `../MDSyyy/`
+// inline `\]\((?:\.\./)+[a-z._]` or reference-style
+// `^\[…\]:\s+(?:\.\./)+[a-z._]` pattern. The `(?:\.\./)+`
+// matches any depth (1 sibling, 2 cousin, 3+ repo-rooted)
+// and the lead-in–only match catches a titled link too — the
+// production regex's `\S*` would stop at the space before
+// a `"title"` and the closing `\)` would never reach, leaving
+// a titled leftover invisible to a path-anchored scan. The
+// lowercase first-char excludes legitimate `../MDSyyy/`
 // cross-rule site references that survive untouched.
 func TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks(t *testing.T) {
 	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
@@ -735,8 +763,8 @@ func TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks(t *testing.T) {
 	entries, err := os.ReadDir(rulesDir)
 	require.NoError(t, err)
 
-	leftoverInline := regexp.MustCompile(`\]\(\.\./[a-z._]\S*\)`)
-	leftoverRefDef := regexp.MustCompile(`(?m)^\[[^\]]+\]:\s+\.\./[a-z._]\S+`)
+	leftoverInline := regexp.MustCompile(`\]\((?:\.\./)+[a-z._][^)\n]*\)?`)
+	leftoverRefDef := regexp.MustCompile(`(?m)^\[[^\]]+\]:\s+(?:\.\./)+[a-z._][^\n]*`)
 
 	for _, e := range entries {
 		if !e.IsDir() || !ruleDirName.MatchString(e.Name()) {
