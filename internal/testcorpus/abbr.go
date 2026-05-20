@@ -50,14 +50,16 @@ func AbbrHeavyParagraph() string {
 
 // joinWithSpace concatenates the elements of items with a single
 // space separator. Returns "" for nil/empty input. Allocation-clean
-// (single backing array sized exactly to the joined length).
+// (single backing array sized exactly to the joined length —
+// sum(len(s) for s in items) bytes for the content plus len(items)-1
+// for the single-space separators).
 func joinWithSpace(items []string) string {
 	if len(items) == 0 {
 		return ""
 	}
-	n := 0
+	n := len(items) - 1
 	for _, s := range items {
-		n += len(s) + 1
+		n += len(s)
 	}
 	out := make([]byte, 0, n)
 	for i, s := range items {

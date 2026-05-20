@@ -29,8 +29,9 @@
 //   - TokenGrouper reuses a buffer across passes; one
 //     allocation per Tokenize call instead of three.
 //   - TypeBasedAnnotation's hyphenation check is a
-//     bytes.IndexByte-driven scan over the suffix, replacing
-//     strings.Split.
+//     strings.LastIndexByte scan over the token (avoiding the
+//     `[]byte(tok)` conversion bytes.LastIndexByte would force),
+//     replacing strings.Split.
 //   - The hot per-call buffers (tokens, ptrs, pairs, type-builder
 //     bytes) come from a sync.Pool so a sequence of Tokenize calls
 //     amortizes their allocations to ~0.

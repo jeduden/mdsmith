@@ -97,8 +97,9 @@ func group(st *state, tokens []*Token) [][2]*Token {
 //	tokLastHyphEl := string(tokNoPeriodHypen[len(tokNoPeriodHypen)-1])
 //
 // The only consumer is `tokLastHyphEl`, the tail after the last `-`.
-// This fork uses bytes.IndexByte to find the same suffix without
-// allocating the intermediate `[]string`.
+// This fork uses strings.LastIndexByte to find the same suffix
+// without allocating the intermediate `[]string` (and without the
+// `[]byte(tok)` copy bytes.LastIndexByte would force).
 func typeAnnotation(s *Storage, token *Token) {
 	if hasSentEndChars(token.Tok) {
 		token.SentBreak = true
@@ -173,15 +174,13 @@ func isAllASCIILower(s string) bool {
 //
 //   - Collocation lookup assembles the `typ + "," + nextTyp` key into
 //     a reusable byte buffer instead of running strings.Join, then
-//     uses the compiler's `m[string(b)]` map-key elision so the
-//     lookup itself does not allocate.
+//     hits Storage.Collocations directly. The compiler's
+//     `m[string(b)]` map-key elision keeps the lookup itself
+//     allocation-free.
 //   - Type strings come from typeNoPeriod/typeNoSentPeriod into the
 //     pooled typeBufA / typeBufB so each Type call does not
 //     allocate. Map lookups against the byte buffers use
 //     `m[string(buf)]` to benefit from the same elision.
-//   - The collocation index map (Storage.CollocationIndex) is kept
-//     in sync with Storage.Collocations and used only for tests; the
-//     hot path goes through Storage.Collocations directly.
 func tokenAnnotation(s *Storage, ortho *OrthoContext, tokOne, tokTwo *Token, st *state) {
 	if tokTwo == nil {
 		return
