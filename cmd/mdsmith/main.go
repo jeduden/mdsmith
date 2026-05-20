@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 
 	flag "github.com/spf13/pflag"
@@ -541,7 +542,7 @@ func formatWouldFixSummary(wf fixpkg.WouldFixFile) string {
 
 // dryRunJSONFile is the per-file JSON shape produced by
 // `mdsmith fix --dry-run --format json`. One record per file
-// whose bytes or diagnostic counts would change.
+// with fixable violations or remaining unfixable diagnostics.
 type dryRunJSONFile struct {
 	Path        string     `json:"path"`
 	WouldFix    int        `json:"would_fix"`
@@ -580,50 +581,73 @@ type jsonDiagLeaf struct {
 	Source string `json:"source"`
 }
 
+// diagsToJSONDiags converts lint diagnostics to the JSON shape used by
+// dry-run output.
+func diagsToJSONDiags(diags []lint.Diagnostic) []jsonDiag {
+	jsonDiags := make([]jsonDiag, 0, len(diags))
+	for _, d := range diags {
+		var exp *jsonDiagExp
+		if d.Explanation != nil {
+			leaves := make([]jsonDiagLeaf, 0, len(d.Explanation.Leaves))
+			for _, l := range d.Explanation.Leaves {
+				leaves = append(leaves, jsonDiagLeaf{Path: l.Path, Value: l.Value, Source: l.Source})
+			}
+			exp = &jsonDiagExp{Rule: d.Explanation.Rule, Leaves: leaves}
+		}
+		jsonDiags = append(jsonDiags, jsonDiag{
+			File:            d.File,
+			Line:            d.Line,
+			Column:          d.Column,
+			Rule:            d.RuleID,
+			Name:            d.RuleName,
+			Severity:        string(d.Severity),
+			Message:         d.Message,
+			SourceLines:     d.SourceLines,
+			SourceStartLine: d.SourceStartLine,
+			Explanation:     exp,
+		})
+	}
+	return jsonDiags
+}
+
 // writeDryRunJSON emits the per-file dry-run JSON payload on w as a
-// JSON array of dryRunJSONFile records. Files in WouldFixFiles drive
-// the record list; per-file remaining diagnostics come from
-// fixResult.Diagnostics. Returns a non-zero exit code on write error.
+// JSON array of dryRunJSONFile records. Records are emitted for every
+// file in WouldFixFiles plus any file that has remaining diagnostics
+// not already covered. Returns a non-zero exit code on write error.
 func writeDryRunJSON(w io.Writer, fixResult *fixpkg.Result) int {
 	diagsByFile := make(map[string][]lint.Diagnostic)
 	for _, d := range fixResult.Diagnostics {
 		diagsByFile[d.File] = append(diagsByFile[d.File], d)
 	}
+	seen := make(map[string]struct{}, len(fixResult.WouldFixFiles))
 	records := make([]dryRunJSONFile, 0, len(fixResult.WouldFixFiles))
 	for _, wf := range fixResult.WouldFixFiles {
+		seen[wf.Path] = struct{}{}
 		rules := make([]string, 0, len(wf.Rules))
 		for _, r := range wf.Rules {
 			rules = append(rules, r.RuleID)
-		}
-		diags := diagsByFile[wf.Path]
-		jsonDiags := make([]jsonDiag, 0, len(diags))
-		for _, d := range diags {
-			var exp *jsonDiagExp
-			if d.Explanation != nil {
-				leaves := make([]jsonDiagLeaf, 0, len(d.Explanation.Leaves))
-				for _, l := range d.Explanation.Leaves {
-					leaves = append(leaves, jsonDiagLeaf{Path: l.Path, Value: l.Value, Source: l.Source})
-				}
-				exp = &jsonDiagExp{Rule: d.Explanation.Rule, Leaves: leaves}
-			}
-			jsonDiags = append(jsonDiags, jsonDiag{
-				File:            d.File,
-				Line:            d.Line,
-				Column:          d.Column,
-				Rule:            d.RuleID,
-				Name:            d.RuleName,
-				Severity:        string(d.Severity),
-				Message:         d.Message,
-				SourceLines:     d.SourceLines,
-				SourceStartLine: d.SourceStartLine,
-				Explanation:     exp,
-			})
 		}
 		records = append(records, dryRunJSONFile{
 			Path:        wf.Path,
 			WouldFix:    wf.Count,
 			Rules:       rules,
-			Diagnostics: jsonDiags,
+			Diagnostics: diagsToJSONDiags(diagsByFile[wf.Path]),
+		})
+	}
+	// Include files with only unfixable diagnostics (not in WouldFixFiles).
+	unfixable := make([]string, 0, len(diagsByFile))
+	for path := range diagsByFile {
+		if _, ok := seen[path]; !ok {
+			unfixable = append(unfixable, path)
+		}
+	}
+	sort.Strings(unfixable)
+	for _, path := range unfixable {
+		records = append(records, dryRunJSONFile{
+			Path:        path,
+			WouldFix:    0,
+			Rules:       []string{},
+			Diagnostics: diagsToJSONDiags(diagsByFile[path]),
 		})
 	}
 	enc := json.NewEncoder(w)

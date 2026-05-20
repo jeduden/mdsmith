@@ -439,6 +439,34 @@ func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
 	assert.Equal(t, "MDS017", exp["rule"])
 }
 
+func TestWriteDryRunJSON_IncludesUnfixableDiagFiles(t *testing.T) {
+	var buf bytes.Buffer
+	code := writeDryRunJSON(&buf, &fixpkg.Result{
+		WouldFixFiles: []fixpkg.WouldFixFile{},
+		Diagnostics: []lint.Diagnostic{
+			{File: "b.md", Line: 3, Column: 1, RuleID: "MDS099",
+				RuleName: "unfixable-rule", Severity: lint.Error, Message: "unfixable"},
+		},
+	})
+	assert.Equal(t, 0, code)
+
+	var records []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &records),
+		"output must be valid JSON; got: %s", buf.String())
+	require.Len(t, records, 1, "unfixable-diag file must appear in output")
+
+	rec := records[0]
+	assert.Equal(t, "b.md", rec["path"])
+	assert.EqualValues(t, 0, rec["would_fix"])
+	assert.Equal(t, []any{}, rec["rules"])
+
+	diags, ok := rec["diagnostics"].([]any)
+	require.True(t, ok, "diagnostics must be a JSON array")
+	require.Len(t, diags, 1)
+	diag := diags[0].(map[string]any)
+	assert.Equal(t, "MDS099", diag["rule"])
+}
+
 // --- reportFixResult ---
 
 func TestReportFixResult_DryRunTextPreview(t *testing.T) {
