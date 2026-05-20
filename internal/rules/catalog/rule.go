@@ -1039,7 +1039,7 @@ func checkCatalogIncludeCycle(
 			return []lint.Diagnostic{makeDiag(filePath, line,
 				fmt.Sprintf(
 					"catalog includes %q which includes %q via <?include?>, creating a cycle",
-					displayPath, filepath.Base(filePath)))}
+					displayPath, catalogFile))}
 		}
 	}
 	return nil

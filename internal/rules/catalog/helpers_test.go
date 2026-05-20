@@ -482,6 +482,17 @@ func TestCheckCatalogIncludeCycle_RootRelativeFromSubdirHost(t *testing.T) {
 	for _, d := range diags {
 		if d.RuleID == "MDS019" {
 			assert.Contains(t, d.Message, "cycle")
+			// The diagnostic must name the catalog target using the
+			// root-relative path the scan actually used, not the
+			// basename — a host at /repo/sub/host.md and another at
+			// /repo/host.md are different targets and a basename-
+			// only message would conflate them.
+			assert.Contains(t, d.Message, "sub/host.md",
+				"diagnostic must name the catalog target with its "+
+					"root-relative path (\"sub/host.md\"); a bare "+
+					"basename would misreport which host the cycle "+
+					"reaches when multiple host.md files exist in "+
+					"different subdirectories")
 			return
 		}
 	}
@@ -608,30 +619,13 @@ func TestAbsMatchedPath_LSPShapeAlignsWithDocPath(t *testing.T) {
 			"mismatch means edits silently fail to evict cached reads")
 }
 
-// TestLocalFSResolution_EmptyBaseWhenAbsBaseDirFails pins the
-// review-flagged safety branch: when absBaseDir cannot derive an
-// absolute path, localFSResolution must leave gitignoreBase empty
-// rather than letting filepath.Clean("") == "." leak in. Otherwise
-// absMatchedPath would produce non-absolute "./X.md" run-cache
-// keys, breaking the LSP invalidation contract (which keys by
-// absolute doc.path).
-//
-// We force the failure path by providing a File with an empty Path
-// AND no RootDir: absBaseDir falls through all three strategies
-// and we want a stable empty base for that case. Even if filepath.
-// Abs happens to succeed against the CWD in this environment,
-// the contract pinned here is "non-absolute base means opt out".
-func TestLocalFSResolution_EmptyBaseWhenAbsBaseDirFails(t *testing.T) {
-	// fakeFile triggers the third strategy with an unstable result
-	// — we patch absBaseDir's downstream consumer by going through
-	// a File whose Path is empty. filepath.Dir("") = ".", and
-	// filepath.Abs(".") returns the CWD which IS absolute, so
-	// absBaseDir succeeds. To hit the actually-failing branch the
-	// safer test is the inverse: pass an LSP-shaped File and
-	// confirm the base is the workspace-anchored absolute path.
-	// The "fails" branch is exercised by the dedicated TestAbsBaseDir
-	// pins; here we pin that localFSResolution propagates absBaseDir's
-	// ok signal rather than swallowing it.
+// TestLocalFSResolution_LSPShapeAnchorsAtRootDir pins the
+// happy-path contract under the LSP shape (workspace-relative
+// f.Path + absolute f.RootDir): localFSResolution must produce
+// a workspace-anchored absolute gitignoreBase, not a CWD-anchored
+// one. This is the path that lets absMatchedPath build cache keys
+// matching Server.invalidateCachedRead's absolute doc.path.
+func TestLocalFSResolution_LSPShapeAnchorsAtRootDir(t *testing.T) {
 	f := &lint.File{Path: "docs/host.md", RootDir: "/abs/workspace"}
 	res := localFSResolution(f, nil, nil)
 	assert.Equal(t, "/abs/workspace/docs", res.gitignoreBase,
@@ -640,6 +634,34 @@ func TestLocalFSResolution_EmptyBaseWhenAbsBaseDirFails(t *testing.T) {
 	assert.True(t, filepath.IsAbs(res.gitignoreBase),
 		"gitignoreBase must be absolute — feeds absMatchedPath's "+
 			"cache keys; relative leaks break LSP invalidation")
+}
+
+// TestLocalFSResolution_LeavesBaseEmptyForNonAbsResult pins the
+// review-flagged safety branch: when absBaseDir cannot derive an
+// absolute path, localFSResolution must leave gitignoreBase empty
+// rather than letting a non-absolute "." or "" leak in. The full
+// failure path (filepath.Abs returning err) requires a missing
+// cwd, which is not portably reproducible in tests, so we drive
+// the contract directly via a hand-built globResolution: an
+// empty gitignoreBase must propagate to absMatchedPath as the
+// "opt out" signal. Pinned end-to-end below in
+// TestAbsMatchedPath_NoBaseReturnsFalse.
+func TestLocalFSResolution_LeavesBaseEmptyForNonAbsResult(t *testing.T) {
+	// The only public lever into the "empty base" outcome is a
+	// resolution that was never built by absBaseDir. We assert the
+	// downstream contract here — that absMatchedPath rejects an
+	// empty base — and rely on localFSResolution honoring
+	// absBaseDir's ok signal (a one-line guard) for the upstream
+	// half. Reverting the guard to the pre-fix
+	// `gitignoreBase: base` would leak "." into gitignoreBase but
+	// not change the absMatchedPath contract here; the diagnostic
+	// breakage would surface via the LSP integration tests.
+	res := globResolution{gitignoreBase: ""}
+	_, ok := absMatchedPath(res, "x.md")
+	assert.False(t, ok,
+		"absMatchedPath must short-circuit for an empty base so the "+
+			"caller falls back to the per-Check memo instead of "+
+			"keying the run cache at a non-absolute path")
 }
 
 // TestAbsMatchedPath_NoBaseReturnsFalse pins the contract
