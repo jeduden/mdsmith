@@ -485,3 +485,27 @@ func TestEscapedPipeParagraphAfterTableEndsIt(t *testing.T) {
 	assert.Equal(t, "missing blank line after table", diags[0].Message)
 	assert.Equal(t, 5, diags[0].Line)
 }
+
+func TestHashStartingCellNotMistakenForHeading(t *testing.T) {
+	// `#1` (hash directly followed by a non-space) is not an ATX
+	// heading — it's a valid first cell, so the table must still
+	// be detected and clean.
+	src := "# T\n\n#1 | Title\n--- | -----\nA | B\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+func TestIsATXHeading(t *testing.T) {
+	assert.True(t, isATXHeading("# Title"))
+	assert.True(t, isATXHeading("###### Six"))
+	assert.True(t, isATXHeading("##")) // empty heading
+	assert.False(t, isATXHeading("#1 | Title"))
+	assert.False(t, isATXHeading("####### Seven")) // >6 hashes
+	assert.False(t, isATXHeading("text"))
+}
+
+func TestParseRowIgnoresPostPrefixIndent(t *testing.T) {
+	// Extra spaces after the blockquote marker should not break
+	// leading-pipe detection: the table is valid and clean.
+	src := "# T\n\n> Intro.\n>\n>  | A | B |\n>  | - | - |\n>  | 1 | 2 |\n>\n> Outro.\n"
+	assert.Empty(t, check(t, StyleConsistent, src))
+}
