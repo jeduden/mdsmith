@@ -79,12 +79,12 @@ to neutral words and never trip the cheap path.
 
 ## Performance
 
-MDS024 is **opt-in** by default — it is the most expensive
-default rule when enabled. Most short and lightly-punctuated
-paragraphs clear the cheap-bounds guard at zero allocations
-and contribute zero segmenter cost. Long prose paragraphs
-that the guard cannot rule out pay full Punkt segmentation,
-which is the price of an exact diagnostic.
+MDS024 is **opt-in** by default — and is the most expensive
+rule mdsmith ships once you enable it. Most short and
+lightly-punctuated paragraphs clear the cheap-bounds guard
+at zero allocations and contribute zero segmenter cost. Long
+prose paragraphs that the guard cannot rule out pay full
+Punkt segmentation, which is the price of an exact diagnostic.
 
 Enable when you want exact prose-structure diagnostics.
 Skip when you don't.

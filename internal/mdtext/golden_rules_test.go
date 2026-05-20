@@ -142,7 +142,7 @@ func TestSplitSentences_GoldenRules(t *testing.T) {
 			got := mdtext.SplitSentences(tc.text)
 			assert.Equalf(t, tc.want, got,
 				"upstream golden rule %q must segment identically "+
-					"under the fast path",
+					"to upstream Punkt",
 				tc.name)
 		})
 	}
@@ -208,7 +208,7 @@ func TestSplitSentences_EnglishMainCases(t *testing.T) {
 			got := mdtext.SplitSentences(tc.text)
 			assert.Equalf(t, tc.want, got,
 				"upstream main_test case %q must segment identically "+
-					"under the fast path",
+					"to upstream Punkt",
 				tc.name)
 		})
 	}
