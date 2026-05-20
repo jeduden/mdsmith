@@ -30,10 +30,9 @@ MDS024 has two execution paths. A constant-time
 **cheap-bounds guard** runs first. It proves a paragraph
 cannot violate either limit. If the proof succeeds, the rule
 returns. If not, the **exact path** runs the trained Punkt
-sentence segmenter. The two paths share one invariant. The
-guard skips Punkt only when the exact path would emit zero
-diagnostics. The combined behavior is fast-or-exact, never
-approximate.
+sentence segmenter. The guard skips the segmenter only when
+the exact path would emit zero diagnostics. The combined
+behavior is fast-or-exact, never approximate.
 
 ### Exact diagnostics
 
@@ -42,108 +41,53 @@ When the rule fires, every number in the message is exact.
 The sentence count comes from the trained Punkt segmenter
 ([`github.com/neurosnap/sentences`][punkt]). It classifies
 every `.`/`!`/`?` against abbreviation, decimal, ellipsis,
-and initial heuristics. It is not a regex-based count. The
+and initial heuristics — not a regex-based count. The
 per-sentence word count is the exact word count of the
-Punkt-segmented sentence. It is not the paragraph total.
-The over-long-sentence preview is a slice of the actual
-Punkt-segmented sentence. It is not a guess.
+Punkt-segmented sentence (not the paragraph total). The
+over-long-sentence preview is a slice of the actual
+Punkt-segmented sentence (not a guess).
 
 A paragraph like "Dr. Smith met Mr. Jones at 3.14 p.m. on
 Jan. 5." is one sentence, not seven. Naive splitters
-disagree. Punkt is right. The rule reports what Punkt says.
-So `paragraph has too many sentences (8 > 6)` means eight,
-and `sentence too long (45 > 40 words): "..."` quotes the
-real over-long sentence.
+disagree. Punkt is right. So `paragraph has too many
+sentences (8 > 6)` means eight, and `sentence too long
+(45 > 40 words): "..."` quotes the real over-long sentence.
 
 [punkt]: https://github.com/neurosnap/sentences
 
 ### Cheap-bounds guard
 
-The guard runs one allocation-free pass over the paragraph.
-It computes two bounds.
+The guard runs one allocation-free pass over the paragraph
+and computes two bounds.
 
 - ``sentenceUB = (count of `.`/`!`/`?`) + 1`` — an upper
   bound on Punkt's sentence count. Punkt only places
   boundaries at `.`/`!`/`?` and always yields at least one
-  sentence. The bound is sound.
+  sentence.
 - `paragraphWords` — the exact whitespace-delimited word
   count for the whole paragraph. No single sentence has
-  more words than the paragraph. The total is an upper
-  bound on every sentence.
+  more words than the paragraph.
 
-When both bounds are within the limits, Punkt cannot
-fire. The rule returns early.
-[`TestCheapBounds_GuardIsSound`][guard-test] pins this
-invariant.
-
-Short paragraphs, single-sentence paragraphs, and
-lightly-punctuated paragraphs all clear the guard with
-zero allocations. They contribute zero Punkt cost.
+When both bounds are within the limits, the segmenter
+cannot fire, so the rule returns early. Short paragraphs
+and lightly-punctuated paragraphs clear the guard at zero
+allocations.
 
 Placeholder masking runs before the guard. Configured
-placeholder tokens (`{body}`, `{var-token}`, etc.)
-collapse to neutral words. They never trip the cheap
-path.
-
-[guard-test]: ../paragraphstructure/rule_test.go
+placeholder tokens (`{body}`, `{var-token}`, etc.) collapse
+to neutral words and never trip the cheap path.
 
 ## Performance
 
-MDS024 is **opt-in** by default. It is the most expensive
-default rule when enabled. The exactness it guarantees
-comes from real segmentation work. The cheap path avoids
-that work. It cannot replace it.
-
-Most paragraphs in prose-heavy input fail the cheap-bounds
-guard. There Punkt is roughly 20% of mdsmith's wall time
-([plan 187][p187] records the CPU profile). The hot frame
-is `english.MultiPunctWordAnnotation.tokenAnnotation`. It
-runs `reAbbr` and the token-type matchers with
-backtracking on every period-ending token.
-`regexp.(*Regexp).tryBacktrack` alone is 13% flat / 24%
-cumulative of the segmenter's CPU.
-
-No pure-Go Punkt-equivalent faster segmenter exists. The
-negative is recorded in
-[`sentence_equivalence_test.go`][harness]. The harness
-gates any future candidate.
-
-A focused optimization swaps in a hand-rolled DFA at
-[`internal/mdtext/abbr.go`](../../mdtext/abbr.go).
-A custom `MultiPunctWordAnnotation` installs it; see
-[`internal/mdtext/fastpunct.go`](../../mdtext/fastpunct.go).
-
-The DFA returns the same boolean as
-`reAbbr.FindAllString(tok, 1) != nil`. Equivalence is
-gated by a 100k-string (10^5, alphabet of 10 runes ×
-length 5) exhaustive sweep. The harness also runs the
-abbreviation-heavy corpus, the upstream golden-rules
-cases, and the upstream `english/main_test.go` cases.
-
-The fast path is the default. Build with
-`-tags mdtext_punkt_upstream` to fall back to the upstream
-`english.NewSentenceTokenizer` for A/B verification.
-
-Measured on a 4-vCPU sandbox, the swap drops
-`BenchmarkSplitSentences` from ~190 to ~158 µs/op (16.8%).
-The abbreviation-heavy `BenchmarkSplitSentences_Subset`
-drops from ~263 to ~231 µs/op (12.2%). See
-[plan 191][p191] for the profile and the equivalence-test
-wiring.
-
-The cheap-bounds guard bounds the cost. Only paragraphs
-that *provably might* violate pay. Documentation,
-code-heavy READMEs, and short-paragraph prose pay close
-to zero. Long prose paragraphs that already trip the
-limits pay full segmentation. That is what produces the
-exact diagnostic the rule promises.
+MDS024 is **opt-in** by default — it is the most expensive
+default rule when enabled. Most short and lightly-punctuated
+paragraphs clear the cheap-bounds guard at zero allocations
+and contribute zero segmenter cost. Long prose paragraphs
+that the guard cannot rule out pay full Punkt segmentation,
+which is the price of an exact diagnostic.
 
 Enable when you want exact prose-structure diagnostics.
 Skip when you don't.
-
-[p187]: ../../../plan/187_neutral-corpus-engine-lever.md
-[p191]: ../../../plan/191_punkt-reabbr-dfa.md
-[harness]: ../../mdtext/sentence_equivalence_test.go
 
 ## Config
 
