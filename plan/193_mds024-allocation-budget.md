@@ -171,9 +171,10 @@ abbr-heavy fixture:
    one allocation amortized across calls.
 8. [ ] Replace `strings.Split(tokNoPeriod, "-")` in
    `typeAnnotation` with a `bytes.IndexByte`-driven scan for
-   the last hyphenated segment. The current code only uses the
-   tail element (`tokNoPeriodHypen[len(tokNoPeriodHypen)-1]`),
-   so the full split is wasted work.
+   the last hyphenated segment. The current code only uses
+   the tail element (`tokNoPeriodHypen[len(tokNoPeriodHypen)-1]`
+   — upstream identifier, missing 'h'), so the full split is
+   wasted work.
 9. [ ] Audit `paragraphstructure.Rule.Check` itself for
    allocation. The per-paragraph text extraction in
    [`internal/mdtext`](../internal/mdtext) builds a

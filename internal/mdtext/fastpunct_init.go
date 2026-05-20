@@ -18,17 +18,17 @@ import (
 // `english/main.go:NewSentenceTokenizer` for the upstream original
 // and plan 191 for the rationale.
 //
-// `data.MustAsset` panics if the bundled English Punkt data is
-// missing — an invariant we trust at build time and which cannot
-// be driven red/green from a test. `sentlib.LoadTraining` returns
-// (nil, err) only on malformed JSON; the bundled file is fixed at
-// build time, so any error here is also a build-time invariant
-// violation. Swallowing it with `_` matches upstream's
-// `t, _ := english.NewSentenceTokenizer(nil)` swallow: training
-// stays nil, downstream panics on first use — same failure mode.
+// `data.MustAsset` and the `LoadTraining` check below panic if the
+// bundled English Punkt data is missing or malformed. Both are
+// build-time invariants — the asset ships embedded in the binary
+// — but a descriptive panic at init beats a nil dereference deep
+// in tokenAnnotation when the asset is ever rebuilt incorrectly.
 func buildTokenizer() *sentlib.DefaultSentenceTokenizer {
 	raw := data.MustAsset("data/english.json")
-	training, _ := sentlib.LoadTraining(raw)
+	training, err := sentlib.LoadTraining(raw)
+	if err != nil || training == nil {
+		panic("mdtext: failed to load embedded english.json Punkt training data: " + errString(err))
+	}
 
 	// Supervised abbreviations applied by english.NewSentenceTokenizer.
 	for _, abbr := range []string{"sgt", "gov", "no"} {
@@ -62,4 +62,15 @@ func buildTokenizer() *sentlib.DefaultSentenceTokenizer {
 		WordTokenizer: word,
 		Annotations:   annotations,
 	}
+}
+
+// errString renders an error as a non-empty string for the panic
+// message. A non-nil err yields its Error() text; a nil err (which
+// can pair with a nil training value when LoadTraining returns
+// (nil, nil)) renders as "training is nil".
+func errString(err error) string {
+	if err == nil {
+		return "training is nil"
+	}
+	return err.Error()
 }
