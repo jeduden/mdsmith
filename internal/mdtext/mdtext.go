@@ -221,12 +221,34 @@ var initTokenizerOnce = sync.OnceFunc(initTokenizer)
 // Punkt sentence tokenizer. Handles abbreviations, decimals, and
 // ellipses. The actual segmentation is delegated to splitSentences
 // (defined by the active build tag).
+//
+// The returned slice is freshly allocated. Hot callers that want
+// to pool the destination should use SplitSentencesInto instead.
 func SplitSentences(text string) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
 	initTokenizerOnce()
-	return splitSentences(text)
+	return splitSentencesInto(nil, text)
+}
+
+// SplitSentencesInto is the pool-friendly variant of SplitSentences:
+// it appends the segmented sentences (trimmed, non-empty) to dst and
+// returns the extended slice. The intended pattern is
+//
+//	bufPtr := sentBufPool.Get().(*[]string)
+//	*bufPtr = mdtext.SplitSentencesInto((*bufPtr)[:0], text)
+//	defer sentBufPool.Put(bufPtr)
+//
+// so the per-call `make([]string, 0, n)` plain SplitSentences pays
+// is amortized across a sync.Pool. MDS024's hot path uses this form
+// to stay within the per-rule allocation budget on cold-File runs.
+func SplitSentencesInto(dst []string, text string) []string {
+	if strings.TrimSpace(text) == "" {
+		return dst
+	}
+	initTokenizerOnce()
+	return splitSentencesInto(dst, text)
 }
 
 // CountCharacters counts letters and digits in text

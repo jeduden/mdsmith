@@ -29,18 +29,23 @@ func initTokenizer() {
 	forkTokenizer = punkt.NewEnglish()
 }
 
-// splitSentences is the default-build segmentation implementation.
-// It runs the fork tokenizer, trims each Sentence.Text, and drops
-// empty results so the contract of mdtext.SplitSentences (returns a
-// non-empty []string with TrimSpace'd entries) is preserved.
-func splitSentences(text string) []string {
+// splitSentencesInto is the default-build segmentation
+// implementation. It runs the fork tokenizer, trims each
+// Sentence.Text, and drops empty results so the contract of
+// mdtext.SplitSentences (returns a non-empty []string with
+// TrimSpace'd entries) is preserved. dst is appended to so callers
+// can pool it across calls — SplitSentences passes nil and
+// SplitSentencesInto forwards the caller's dst.
+func splitSentencesInto(dst []string, text string) []string {
 	sents := forkTokenizer.Tokenize(text)
-	result := make([]string, 0, len(sents))
+	if dst == nil {
+		dst = make([]string, 0, len(sents))
+	}
 	for _, s := range sents {
 		t := strings.TrimSpace(s.Text)
 		if t != "" {
-			result = append(result, t)
+			dst = append(dst, t)
 		}
 	}
-	return result
+	return dst
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -12,6 +13,20 @@ import (
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
 )
+
+// sentBufPool reuses the []string destination handed to
+// mdtext.SplitSentencesInto so the per-Check `make([]string, 0, n)`
+// the bare SplitSentences call would force is amortized across
+// Check invocations. Each pooled slice grows once to fit its
+// largest paragraph; subsequent reuses hit zero allocations for the
+// slice. Storing *[]string (not []string) lets Put/Get round-trip
+// the slice header without boxing it into the pool's any.
+var sentBufPool = sync.Pool{
+	New: func() any {
+		s := make([]string, 0, 16)
+		return &s
+	},
+}
 
 func init() {
 	rule.Register(&Rule{MaxSentences: 6, MaxWords: 40})
@@ -88,7 +103,14 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 		return nil
 	}
 
-	sentences := mdtext.SplitSentences(text)
+	// Pool the segmenter's result slice: bare mdtext.SplitSentences
+	// would `make([]string, 0, n)` on every Check, costing 1 alloc
+	// per call on the budget gate. The pool amortizes it. The slice
+	// must not escape this function — every call reaches the Put
+	// below before returning.
+	bufPtr := sentBufPool.Get().(*[]string)
+	*bufPtr = mdtext.SplitSentencesInto((*bufPtr)[:0], text)
+	sentences := *bufPtr
 	var diags []lint.Diagnostic
 
 	if len(sentences) > r.MaxSentences {
@@ -127,6 +149,11 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 			})
 		}
 	}
+	// Return the sentence buffer to the pool. The slice header at
+	// *bufPtr is the one SplitSentencesInto extended; storing it
+	// back keeps the grown capacity for the next caller.
+	*bufPtr = sentences[:0]
+	sentBufPool.Put(bufPtr)
 	return diags
 }
 

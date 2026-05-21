@@ -18,22 +18,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// allocBudgetMDS024 is the CLAUDE.md ≤ 10 ceiling: "A rule's Check
-// allocates ≤ 10 times per call on representative input." The
-// measurement is cold-File minus parse — a fresh lint.File per
-// iteration with NewFile's allocations subtracted out. That counts
-// the rule's own work plus any per-File memos it triggers
-// (astutil.CollectSectionParagraphs, ExtractPlainText) without the
-// engine's parse cost, matching what a single paragraph-aware rule
-// contributes per file in production.
+// allocBudgetMDS024 sits strictly below the CLAUDE.md ≤ 10 ceiling
+// ("A rule's Check allocates ≤ 10 times per call on representative
+// input"). The measurement is cold-File minus parse — a fresh
+// lint.File per iteration with NewFile's allocations subtracted out.
+// That counts the rule's own work plus any per-File memos it
+// triggers (astutil.CollectSectionParagraphs, ExtractPlainText)
+// without the engine's parse cost, matching what a single
+// paragraph-aware rule contributes per file in production.
 //
 // "Representative input" is one abbreviation-heavy paragraph from
 // testcorpus.AbbrHeavy. That fires the rule's diagnostic emission
 // and exercises the segmenter's hot frame, while staying the size
 // of a real Markdown paragraph (not the artificially long join of
 // the whole corpus). Measured baseline after the internal/punkt
-// rework: 10 allocs/op — at the budget ceiling.
-const allocBudgetMDS024 = 10
+// rework and the per-rule sync.Pool for the segmenter result
+// slice: 9 allocs/op.
+const allocBudgetMDS024 = 9
 
 // checkAllocsPerOp returns the rule's per-file cost on body when
 // no other rule has touched the file yet — fresh lint.File on

@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -108,10 +109,19 @@ type File struct {
 
 // memoEntry guards a single Memo key so build runs exactly once even
 // when several rule passes (or concurrent LSP readers) race for the
-// same key.
+// same key. atomic.Bool + mutex is used instead of sync.Once because
+// once.Do takes a function value as a parameter — the closure
+// `func() { e.val = build() }` Memo would pass captures `e` and
+// `build`, both escape-tracking pointers, so it allocates per call.
+// On hot per-File memos (astutil.CollectSectionParagraphs feeds
+// every paragraph-aware rule), that single closure escape is the
+// dominant per-Check allocation the MDS024 budget gate sees. The
+// atomic flag is a double-checked-lock pattern: cheap atomic load
+// on the warm path, mutex-guarded build on the cold path.
 type memoEntry struct {
-	once sync.Once
 	val  any
+	done atomic.Bool
+	mu   sync.Mutex
 }
 
 // Memo returns the value for key, computing it once via build on the
@@ -123,10 +133,42 @@ type memoEntry struct {
 // passes — three globs and front-matter reads of every matched file
 // per directive. The File is discarded after each Check, so nothing
 // is cached across files or runs.
+//
+// build is invoked directly (no wrapping closure) so the call adds
+// no per-Memo-call allocation beyond the cold-path memoEntry itself.
 func (f *File) Memo(key string, build func() any) any {
 	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
 	e := ei.(*memoEntry)
-	e.once.Do(func() { e.val = build() })
+	if e.done.Load() {
+		return e.val
+	}
+	e.mu.Lock()
+	if !e.done.Load() {
+		e.val = build()
+		e.done.Store(true)
+	}
+	e.mu.Unlock()
+	return e.val
+}
+
+// MemoFile is the *File-passing variant of Memo: build receives this
+// File as an argument instead of capturing it in a closure. Callers
+// whose build needs nothing beyond File data can pass a package-
+// level function value, which avoids the per-call closure allocation
+// the plain `Memo` form forces on every invocation. The hot
+// astutil.CollectSectionParagraphs path is the canonical user.
+func (f *File) MemoFile(key string, build func(*File) any) any {
+	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
+	e := ei.(*memoEntry)
+	if e.done.Load() {
+		return e.val
+	}
+	e.mu.Lock()
+	if !e.done.Load() {
+		e.val = build(f)
+		e.done.Store(true)
+	}
+	e.mu.Unlock()
 	return e.val
 }
 

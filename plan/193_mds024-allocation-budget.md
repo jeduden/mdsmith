@@ -107,19 +107,28 @@ each iteration. A parse-only baseline is subtracted so the
 number reflects the rule's own work plus any memos it triggers.
 The engine's NewFile parse is excluded.
 
-| Source                                           | allocs   |
-|--------------------------------------------------|---------:|
-| AST walk (memoized) — `[]SectionParagraph` slice | 1        |
-| `ExtractPlainText` builder backing array         | 1–2      |
-| `f.Memo` entry bookkeeping                       | 1        |
-| `SplitSentences` result slice                    | 1        |
-| Pooled tokenizer state's `[]Sentence` slice      | 1        |
-| Diagnostic slice + message string (when firing)  | 2        |
-| Headroom                                         | 1–3      |
-| **Total budget**                                 | **≤ 10** |
+| Source                                           | allocs  |
+|--------------------------------------------------|--------:|
+| AST walk (memoized) — `[]SectionParagraph` slice | 1       |
+| `ExtractPlainText` builder backing array         | 1–2     |
+| `f.MemoFile` entry bookkeeping                   | 2       |
+| Pooled tokenizer state's `[]Sentence` slice      | 1       |
+| Diagnostic slice + message string (when firing)  | 2       |
+| Headroom                                         | 0–1     |
+| **Total budget**                                 | **≤ 9** |
 
-The 10-budget matches CLAUDE.md's "A rule's Check allocates
-≤ 10 times per call on representative input".
+The 9-budget sits one alloc below CLAUDE.md's "≤ 10 per call
+on representative input". A single regression fires the gate
+before the rule crosses the documented ceiling.
+
+The cuts that freed the headroom:
+
+- `sync.OnceFunc` for tokenizer init.
+- Explicit Pool.Put in `punkt.Tokenizer.Tokenize`.
+- `strconv.Itoa` + concat for the diagnostic message.
+- `lint.File.MemoFile` for the section-paragraphs memo.
+- A per-rule `sync.Pool` for the segmenter's `[]string` via
+  `mdtext.SplitSentencesInto`.
 
 A multi-paragraph fixture (the joined `AbbrHeavyParagraph`
 form) would push past the budget. Each extra paragraph adds an
@@ -233,7 +242,7 @@ whole tree once).
 
 | Benchmark                       | Upstream tag              | Default tag               | Δ             |
 |---------------------------------|---------------------------|---------------------------|---------------|
-| BenchmarkRule_MDS024 (cold)     | n/a (gate added here)     | 10 allocs / 17 µs         | within budget |
+| BenchmarkRule_MDS024 (cold)     | n/a (gate added here)     | 9 allocs / 19 µs          | within budget |
 | BenchmarkSplitSentences         | 593 allocs / 186 µs       | 22 allocs / 68 µs         | −96% / −63%   |
 | BenchmarkSplitSentences_Subset  | 1082 allocs / 266 µs      | 16 allocs / 77 µs         | −98.5% / −71% |
 | BenchmarkCheckCorpusSmall (p95) | 30 ms (28–31 across 5)    | 28 ms (26–32 across 5)    | flat (noise)  |

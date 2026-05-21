@@ -25,18 +25,21 @@ func initTokenizer() {
 	upstreamTok, _ = english.NewSentenceTokenizer(nil)
 }
 
-// splitSentences is the upstream-build segmentation implementation.
-// Same trim-and-filter behaviour as the default build's
-// splitSentences so the SplitSentences contract is identical across
-// both tags.
-func splitSentences(text string) []string {
+// splitSentencesInto is the upstream-build segmentation
+// implementation. Same trim-and-filter behaviour and dst-pooling
+// contract as the default build's splitSentencesInto so the
+// SplitSentences and SplitSentencesInto entry points produce
+// identical output across both tags.
+func splitSentencesInto(dst []string, text string) []string {
 	sents := upstreamTok.Tokenize(text)
-	result := make([]string, 0, len(sents))
+	if dst == nil {
+		dst = make([]string, 0, len(sents))
+	}
 	for _, s := range sents {
 		t := strings.TrimSpace(s.Text)
 		if t != "" {
-			result = append(result, t)
+			dst = append(dst, t)
 		}
 	}
-	return result
+	return dst
 }
