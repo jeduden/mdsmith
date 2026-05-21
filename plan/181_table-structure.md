@@ -5,10 +5,10 @@ status: "✅"
 model: opus
 depends-on: []
 summary: >-
-  New rule MDS064 (provisional) covering markdownlint
-  MD055 (table pipe style), MD056 (table column count),
-  and MD058 (blank lines around tables). MD056 is a
-  correctness check; MD055 and MD058 are autofixable.
+  Fold the GFM well-formedness checks — MD055 table pipe
+  style, MD056 column count, MD058 surrounding blank lines —
+  into MDS025 (table-format) so one rule owns table parsing,
+  structure, and alignment.
 ---
 # Table structure rules
 
@@ -29,62 +29,83 @@ closes the MD055 / MD056 / MD058 gap from the
 - MD058 blanks-around-tables: a table needs a blank line
   before and after it.
 
-MDS025 (table-format) already reformats cell padding and
-alignment, but it does not gate pipe style, column count,
-or surrounding blanks. This rule adds those checks without
-duplicating MDS025's formatting pass.
+MDS025 (`table-format`) already owned the prettier-style
+alignment pass. Folding the structure checks into the same
+rule means users see one `table-format` setting block. A
+`mdsmith fix` run is inherently single-pass: there is no
+second rule to oscillate against.
 
 ## Design
 
-- Rule ID: MDS060, category `table`, nature `style`,
-  default-enabled. (MDS064, the provisional id in the
-  original plan, shipped first as atx-heading-whitespace;
-  MDS060 was the lowest free, unreserved id. The rule-readme
-  schema makes `style` a `nature`, not a `category`.)
-- Line-based GFM table detection (header + delimiter + body
-  rows; edge pipes optional), not `*east.Table`. The
-  extension AST and the MDS025 `tablefmt` parser both require
-  edge pipes on every row, so they cannot see the borderless
-  and mixed-pipe tables MD055 must flag.
-- Row prefix detection mirrors MDS025's `tablefmt`: a `>`
-  blockquote-marker chain (or list indentation) shared by
-  every row. Blockquoted and indented tables are linted; the
-  MD058 blank line inside a blockquote is the bare `>` marker,
-  not an empty line.
-- MD055: config `style` ∈ `consistent | leading_and_trailing
-  | no_leading_or_trailing`; `consistent` infers from the
-  header row. Autofix adds or strips edge pipes.
+- Rule ID: MDS025 (`table-format`), category `table`, nature
+  `style`, default-enabled.
+- Two code paths inside one rule:
+  - The line-based GFM table parser in
+    `internal/rules/tableformat/structure.go` handles header
+    + delimiter + body rows with edge pipes optional. It
+    powers the MD055/056/058 checks and the structural fix
+    (edge normalisation, blank-line insertion).
+  - The existing `tablefmt` package continues to own the
+    prettier-style alignment of bordered tables and is run
+    after the structure fix on the same Fix call so column
+    widths re-pad in one pass.
+- Row prefix detection: a `>` blockquote-marker chain (or
+  list indentation) shared by every row. Blockquoted and
+  indented tables are linted; the MD058 blank line inside a
+  blockquote is the bare `>` marker, not an empty line.
+- Skip set: both passes ignore fenced/indented code,
+  processing-instruction blocks, and generated-section
+  bodies. `formatSkipLines` builds the union for the
+  alignment pass so it matches the structure pass.
+- `style` setting ∈ `consistent | leading_and_trailing |
+  no_leading_or_trailing`; `consistent` infers from each
+  table's header row. Default: `consistent`. Autofix adds
+  or strips edge pipes.
 - MD056: flag any row whose cell count differs from the
-  header; no autofix (a missing cell's content is unknown).
+  header; the structure pass never auto-rewrites. The
+  alignment pass, however, pads short rows with empty cells
+  while reformatting widths, so a fixed file is structurally
+  clean even when the original missed a cell.
 - MD058: flag a missing blank line on either side; autofix
   inserts it.
-- Coordinate with MDS025 so a single `mdsmith fix` pass
-  converges (run column/blank normalization before MDS025
-  re-pads).
 
 ## Tasks
 
-1. [x] Scaffold `internal/rules/tablestructure/`.
-2. [x] Implement MD055, MD056, MD058 detection.
-3. [x] Implement autofix for MD055 and MD058; verify
-   `mdsmith fix` is loop-stable with MDS025 enabled.
-4. [x] Implement `rule.Configurable` for the MD055 `style`.
-5. [x] Fixture tests under the
-   `internal/rules/MDS060-table-structure` directory.
-6. [x] Rule README; regenerate the docs catalog and index.
-7. [x] Add the MD055 / MD056 / MD058 rows to the
-   [linter comparison](../docs/background/markdown-linters.md).
+1. [x] Port the GFM parser and MD055/056/058 logic into
+   `internal/rules/tableformat/structure.go`.
+2. [x] Extend `tableformat.Rule` with a `style` setting and
+   chain the structure fix before the alignment fix on the
+   same Fix call.
+3. [x] Bring the alignment pass's skip set to parity with
+   the structure pass (PI blocks + generated ranges, not
+   just code blocks).
+4. [x] Migrate the structure fixtures into
+   `internal/rules/MDS025-table-format/{good,bad,fixed}/`
+   with merged-rule diagnostic lists.
+5. [x] Update `internal/rules/MDS025-table-format/README.md`
+   for the merged scope (style setting, MD055/056/058 in
+   markdownlint frontmatter, structural examples and edge
+   cases).
+6. [x] Update `docs/research/markdownlint-coverage/README.md`
+   and `docs/background/markdown-linters.md` to point at
+   MDS025 for MD055/056/058.
+7. [x] Delete the standalone `tablestructure` package and
+   the `MDS060-table-structure` fixture directory; drop the
+   import in `internal/rules/all/all.go` and the integration
+   test.
+8. [x] Regenerate `internal/rules/index.md` via `mdsmith
+   fix`.
 
 ## Acceptance Criteria
 
-- [x] A row with a missing cell is flagged (MD056), not
-      auto-rewritten.
+- [x] A row with a missing cell is flagged (MD056); the
+      structure pass leaves it alone, the alignment pass
+      pads it.
 - [x] Mixed leading/trailing pipes are flagged and
-      normalized to the configured style.
+      normalised to the configured style.
 - [x] A table flush against a paragraph is flagged and a
       blank line is inserted.
-- [x] `mdsmith fix` with MDS025 also enabled converges in
-      one run (no oscillation).
+- [x] `mdsmith fix` converges in one run.
 - [x] All tests pass: `go test ./...`
-- [x] `go tool golangci-lint run` reports no issues
-- [x] `mdsmith check .` passes
+- [x] `go tool golangci-lint run` reports no issues.
+- [x] `mdsmith check .` passes.

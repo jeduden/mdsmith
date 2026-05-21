@@ -7,10 +7,10 @@ diagnostics:
     column: 1
     message: "missing blank line after table"
 ---
-# Blockquote no blanks
+# No blanks
 
-> Quoted intro.
-> | Key | Value |
-> |-----|-------|
-> | a   | one   |
-> Quoted outro.
+Paragraph before.
+| Key | Value |
+| --- | ----- |
+| a   | one   |
+Paragraph after.

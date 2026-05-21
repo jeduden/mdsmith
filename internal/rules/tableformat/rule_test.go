@@ -296,14 +296,11 @@ func TestApplySettings_UnknownSetting(t *testing.T) {
 }
 
 func TestDefaultSettings(t *testing.T) {
-	r := &Rule{Pad: 1}
+	r := &Rule{Pad: 1, Style: StyleConsistent}
 	defaults := r.DefaultSettings()
-	pad, ok := defaults["pad"]
-	require.True(t, ok, "missing pad in defaults")
-	assert.Equal(t, 1, pad, "default pad = %v, want 1", pad)
-	style, ok := defaults["separator-style"]
-	require.True(t, ok, "missing separator-style in defaults")
-	assert.Equal(t, "spaced", style, "default separator-style = %v, want spaced", style)
+	assert.Equal(t, 1, defaults["pad"], "default pad")
+	assert.Equal(t, "spaced", defaults["separator-style"], "default separator-style")
+	assert.Equal(t, StyleConsistent, defaults["style"], "default style")
 }
 
 // --- separator-style tests ---

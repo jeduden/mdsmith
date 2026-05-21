@@ -37,7 +37,12 @@ const allocBudgetCeiling = 10
 // first run. Mid-fix rules (MDS025, MDS026) carry the post-partial
 // number; full-fix rules are absent.
 var allocBudgetGrandfathered = map[string]int{
-	"MDS025": 50,  // table-format
+	// MDS025 absorbed the GFM structure checks (MD055/056/058) when
+	// plan 181 folded MDS060 into it; the structure pass parses every
+	// row a second time alongside tablefmt's alignment scan. Reducing
+	// this to the ≤ 10 ceiling needs the single-table-walk refactor
+	// scheduled as a follow-up to plan 181.
+	"MDS025": 110, // table-format
 	"MDS026": 18,  // table-readability
 	"MDS027": 25,  // cross-file-reference-integrity
 	"MDS029": 398, // conciseness-scoring

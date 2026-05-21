@@ -1,15 +1,16 @@
-// Package tablestructure implements MDS060, which gates GFM table
-// well-formedness without reformatting cell padding (that is MDS025's
-// job). It covers three markdownlint rules:
+package tableformat
+
+// This file folds the structural table checks — MD055 table-pipe-style,
+// MD056 table-column-count, MD058 blanks-around-tables — into the same
+// rule that formats tables, so a single MDS025 owns table parsing,
+// structure, and alignment without a per-pass disagreement.
 //
-//   - MD055 table-pipe-style: every row's leading/trailing pipe
-//     presence must match the configured style. Autofixed.
-//   - MD056 table-column-count: every row must have the same cell
-//     count as the header. Flagged only — a missing cell's content
-//     is unknown, so it is never auto-rewritten.
-//   - MD058 blanks-around-tables: a table needs a blank line before
-//     and after it. Autofixed by inserting the blank line.
-package tablestructure
+// The format pass (rule.go via tablefmt) still only detects bordered
+// tables: it cannot reformat borderless cells without inventing a
+// column width. The structure pass below uses a GFM-aware parser
+// (header + delimiter + body rows; edge pipes optional, blockquote and
+// list-indent prefixes recognised) so MD055/056/058 still apply to
+// borderless, mixed-pipe, blockquoted, and indented tables.
 
 import (
 	"bytes"
@@ -19,14 +20,9 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-func init() {
-	rule.Register(&Rule{Style: StyleConsistent})
-}
-
-// Pipe-style values for the MD055 `style` setting.
+// Pipe-style values for the `style` setting (MD055).
 const (
 	// StyleConsistent infers the required edge-pipe shape from the
 	// table's header row and holds every other row to it.
@@ -38,22 +34,6 @@ const (
 	// every row.
 	StyleNoLeadingOrTrailing = "no_leading_or_trailing"
 )
-
-// Rule checks GFM table pipe style, column count, and surrounding
-// blank lines.
-type Rule struct {
-	// Style is the MD055 pipe style: one of the Style* constants.
-	Style string
-}
-
-// ID implements rule.Rule.
-func (r *Rule) ID() string { return "MDS060" }
-
-// Name implements rule.Rule.
-func (r *Rule) Name() string { return "table-structure" }
-
-// Category implements rule.Rule.
-func (r *Rule) Category() string { return "table" }
 
 // sepCellRe matches one delimiter-row cell (e.g. `---`, `:--`, `:-:`).
 var sepCellRe = regexp.MustCompile(`^:?-+:?$`)
@@ -68,22 +48,24 @@ type tableRow struct {
 
 // tableBlock is a contiguous detected GFM table.
 type tableBlock struct {
-	prefix string // shared leading-whitespace prefix
+	prefix string // shared blockquote/indentation prefix
 	rows   []tableRow
 }
 
 func (t tableBlock) start() int { return t.rows[0].lineNum }
 func (t tableBlock) end() int   { return t.rows[len(t.rows)-1].lineNum }
 
-// Check implements rule.Rule.
-func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	skip := r.skipFunc(f)
-	tables := findTables(f.Lines, skip)
+// structureDiagnostics returns MD055/MD056/MD058 diagnostics for f
+// using the given style. Diagnostics carry the supplied ruleID and
+// ruleName so the merged rule emits them under MDS025.
+func structureDiagnostics(f *lint.File, style, ruleID, ruleName string) []lint.Diagnostic {
+	skip := structureSkipFunc(f)
+	tables := findStructureTables(f.Lines, skip)
 	var diags []lint.Diagnostic
 	for _, t := range tables {
-		diags = append(diags, r.checkPipeStyle(f, t)...)
-		diags = append(diags, r.checkColumnCount(f, t)...)
-		diags = append(diags, r.checkSurroundingBlanks(f, t)...)
+		diags = append(diags, checkPipeStyle(f, t, style, ruleID, ruleName)...)
+		diags = append(diags, checkColumnCount(f, t, ruleID, ruleName)...)
+		diags = append(diags, checkSurroundingBlanks(f, t, ruleID, ruleName)...)
 	}
 	sort.SliceStable(diags, func(i, j int) bool {
 		if diags[i].Line != diags[j].Line {
@@ -94,76 +76,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// expectedStyle returns the required (leading, trailing) edge-pipe
-// presence for table t under the configured style.
-func (r *Rule) expectedStyle(t tableBlock) (bool, bool) {
-	switch r.Style {
-	case StyleLeadingAndTrailing:
-		return true, true
-	case StyleNoLeadingOrTrailing:
-		return false, false
-	default: // StyleConsistent: infer from the header row.
-		return t.rows[0].leading, t.rows[0].trailing
-	}
-}
-
-func (r *Rule) checkPipeStyle(f *lint.File, t tableBlock) []lint.Diagnostic {
-	wantLead, wantTrail := r.expectedStyle(t)
-	var diags []lint.Diagnostic
-	for _, row := range t.rows {
-		if row.leading == wantLead && row.trailing == wantTrail {
-			continue
-		}
-		diags = append(diags, r.diag(f, row.lineNum, 1,
-			"table pipe style; expected "+describeStyle(wantLead, wantTrail)))
-	}
-	return diags
-}
-
-func (r *Rule) checkColumnCount(f *lint.File, t tableBlock) []lint.Diagnostic {
-	want := t.rows[0].cells
-	var diags []lint.Diagnostic
-	for _, row := range t.rows[1:] {
-		if row.cells == want {
-			continue
-		}
-		diags = append(diags, r.diag(f, row.lineNum, 1,
-			fmt.Sprintf("table column count; expected %d, got %d", want, row.cells)))
-	}
-	return diags
-}
-
-func (r *Rule) checkSurroundingBlanks(f *lint.File, t tableBlock) []lint.Diagnostic {
-	var diags []lint.Diagnostic
-	if before := t.start() - 1; before >= 1 && !isBlankAround(f.Lines[before-1], t.prefix) {
-		diags = append(diags, r.diag(f, t.start(), 1,
-			"missing blank line before table"))
-	}
-	if after := t.end() + 1; after <= len(f.Lines) && !isBlankAround(f.Lines[after-1], t.prefix) {
-		diags = append(diags, r.diag(f, t.end(), 1,
-			"missing blank line after table"))
-	}
-	return diags
-}
-
-func (r *Rule) diag(f *lint.File, line, col int, msg string) lint.Diagnostic {
-	return lint.Diagnostic{
-		File:     f.Path,
-		Line:     line,
-		Column:   col,
-		RuleID:   r.ID(),
-		RuleName: r.Name(),
-		Severity: lint.Warning,
-		Message:  msg,
-	}
-}
-
-// Fix implements rule.FixableRule. It normalizes edge pipes (MD055) and
-// inserts missing blank lines around tables (MD058). Column-count
-// violations (MD056) are never auto-rewritten.
-func (r *Rule) Fix(f *lint.File) []byte {
-	skip := r.skipFunc(f)
-	tables := findTables(f.Lines, skip)
+// applyStructureFix rewrites f.Source: edge normalization for MD055
+// and blank-line insertion for MD058. MD056 column count is never
+// auto-rewritten (a missing cell's content is unknown). Callers run
+// this before tablefmt's alignment pass so the format pass sees the
+// structurally-normalised bytes.
+func applyStructureFix(f *lint.File, style string) []byte {
+	skip := structureSkipFunc(f)
+	tables := findStructureTables(f.Lines, skip)
 	if len(tables) == 0 {
 		return append([]byte(nil), f.Source...)
 	}
@@ -173,9 +93,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		lines[i] = string(l)
 	}
 
-	// Match the file's newline style so a CRLF document does not
-	// gain a bare-LF blank line (mixed endings); lines are joined
-	// with "\n", so a CRLF blank line ends in a lone "\r".
+	// Match the file's newline style so a CRLF document does not gain
+	// a bare-LF blank line (mixed endings); lines are joined with
+	// "\n", so a CRLF blank line ends in a lone "\r".
 	cr := ""
 	if bytes.Contains(f.Source, []byte("\r\n")) {
 		cr = "\r"
@@ -184,7 +104,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	blankBefore := map[int]string{}
 	blankAfter := map[int]string{}
 	for _, t := range tables {
-		wantLead, wantTrail := r.expectedStyle(t)
+		wantLead, wantTrail := expectedStyle(style, t)
 		for _, row := range t.rows {
 			if row.leading != wantLead || row.trailing != wantTrail {
 				idx := row.lineNum - 1
@@ -214,9 +134,73 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	return []byte(strings.Join(out, "\n"))
 }
 
+// expectedStyle returns the required (leading, trailing) edge-pipe
+// presence for table t under the configured style.
+func expectedStyle(style string, t tableBlock) (lead, trail bool) {
+	switch style {
+	case StyleLeadingAndTrailing:
+		return true, true
+	case StyleNoLeadingOrTrailing:
+		return false, false
+	default: // StyleConsistent: infer from the header row.
+		return t.rows[0].leading, t.rows[0].trailing
+	}
+}
+
+func checkPipeStyle(f *lint.File, t tableBlock, style, ruleID, ruleName string) []lint.Diagnostic {
+	wantLead, wantTrail := expectedStyle(style, t)
+	var diags []lint.Diagnostic
+	for _, row := range t.rows {
+		if row.leading == wantLead && row.trailing == wantTrail {
+			continue
+		}
+		diags = append(diags, structureDiag(f, row.lineNum, 1, ruleID, ruleName,
+			"table pipe style; expected "+describeStyle(wantLead, wantTrail)))
+	}
+	return diags
+}
+
+func checkColumnCount(f *lint.File, t tableBlock, ruleID, ruleName string) []lint.Diagnostic {
+	want := t.rows[0].cells
+	var diags []lint.Diagnostic
+	for _, row := range t.rows[1:] {
+		if row.cells == want {
+			continue
+		}
+		diags = append(diags, structureDiag(f, row.lineNum, 1, ruleID, ruleName,
+			fmt.Sprintf("table column count; expected %d, got %d", want, row.cells)))
+	}
+	return diags
+}
+
+func checkSurroundingBlanks(f *lint.File, t tableBlock, ruleID, ruleName string) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	if before := t.start() - 1; before >= 1 && !isBlankAround(f.Lines[before-1], t.prefix) {
+		diags = append(diags, structureDiag(f, t.start(), 1, ruleID, ruleName,
+			"missing blank line before table"))
+	}
+	if after := t.end() + 1; after <= len(f.Lines) && !isBlankAround(f.Lines[after-1], t.prefix) {
+		diags = append(diags, structureDiag(f, t.end(), 1, ruleID, ruleName,
+			"missing blank line after table"))
+	}
+	return diags
+}
+
+func structureDiag(f *lint.File, line, col int, ruleID, ruleName, msg string) lint.Diagnostic {
+	return lint.Diagnostic{
+		File:     f.Path,
+		Line:     line,
+		Column:   col,
+		RuleID:   ruleID,
+		RuleName: ruleName,
+		Severity: lint.Warning,
+		Message:  msg,
+	}
+}
+
 // normalizeEdges rewrites one table row so its leading/trailing pipe
-// presence matches want, preserving the whitespace prefix, the inner
-// cell text, and a trailing carriage return.
+// presence matches want, preserving the prefix, the inner cell text,
+// and a trailing carriage return.
 func normalizeEdges(line, prefix string, wantLead, wantTrail bool) string {
 	rest := strings.TrimPrefix(line, prefix)
 	cr := ""
@@ -244,11 +228,11 @@ func normalizeEdges(line, prefix string, wantLead, wantTrail bool) string {
 	return b.String()
 }
 
-// skipFunc returns a predicate reporting whether a 1-based line should
-// be ignored: fenced/indented code, processing-instruction blocks, and
-// the bodies of include/catalog generated sections (the source file
-// owns those bytes, so MDS060 must not flag or rewrite them).
-func (r *Rule) skipFunc(f *lint.File) func(int) bool {
+// structureSkipFunc returns a predicate reporting whether a 1-based
+// line should be ignored by the structure pass: fenced/indented code,
+// processing-instruction blocks, and the bodies of include/catalog
+// generated sections (the source file owns those bytes).
+func structureSkipFunc(f *lint.File) func(int) bool {
 	code := lint.CollectCodeBlockLines(f)
 	pi := lint.CollectPIBlockLines(f)
 	gen := f.GeneratedRanges
@@ -265,13 +249,14 @@ func (r *Rule) skipFunc(f *lint.File) func(int) bool {
 	}
 }
 
-// findTables scans lines for GFM pipe tables. A table is a delimiter
-// row (cells of dashes with optional colons, at least one pipe) with a
-// non-blank, pipe-bearing header line directly above it, followed by
-// zero or more body rows. All rows share one leading-whitespace prefix;
-// the table ends at a blank line, a skipped line, EOF, or a line that
-// does not continue the table.
-func findTables(lines [][]byte, skip func(int) bool) []tableBlock {
+// findStructureTables scans lines for GFM pipe tables. A table is a
+// delimiter row (cells of dashes with optional colons, at least one
+// unescaped pipe) with a non-blank, pipe-bearing header line directly
+// above it, followed by zero or more body rows. All rows share one
+// prefix (blockquote markers and/or leading whitespace); the table
+// ends at a blank line, a skipped line, EOF, or a line that does not
+// continue the table.
+func findStructureTables(lines [][]byte, skip func(int) bool) []tableBlock {
 	var tables []tableBlock
 	i := 1 // separator can be at the earliest on line 2 (header above)
 	for i < len(lines) {
@@ -310,21 +295,22 @@ func findTables(lines [][]byte, skip func(int) bool) []tableBlock {
 // separator lines, and whether they share one. A table's rows must
 // all carry the same prefix (blockquote markers and/or indentation).
 func sharedPrefix(header, sep []byte) (string, bool) {
-	hp := detectPrefix(header)
-	sp := detectPrefix(sep)
+	hp := structureDetectPrefix(header)
+	sp := structureDetectPrefix(sep)
 	if hp != sp {
 		return "", false
 	}
 	return hp, true
 }
 
-// detectPrefix returns the blockquote/indentation prefix of a line:
-// a chain of `>` markers (each optionally followed by one space, with
-// optional indentation before each), mirroring MDS025's tablefmt so
-// the two rules agree on blockquoted tables. When no blockquote marker
-// is present it falls back to the run of leading whitespace, which
-// covers list-indented and borderless tables.
-func detectPrefix(line []byte) string {
+// structureDetectPrefix returns the blockquote/indentation prefix of
+// a line: a chain of `>` markers (each optionally followed by one
+// space, with optional indentation before each), mirroring tablefmt
+// so the format and structure passes agree on blockquoted tables.
+// When no blockquote marker is present it falls back to the run of
+// leading whitespace, which covers list-indented and borderless
+// tables.
+func structureDetectPrefix(line []byte) string {
 	s := string(line)
 	var b strings.Builder
 	rem := s
@@ -354,9 +340,9 @@ func detectPrefix(line []byte) string {
 }
 
 // blankLineFor returns the text of an inserted MD058 blank line for a
-// table with the given prefix. Inside a blockquote the separating line
-// is the bare marker chain (e.g. `>`), not an empty line, so the
-// blockquote is not broken.
+// table with the given prefix. Inside a blockquote the separating
+// line is the bare marker chain (e.g. `>`), not an empty line, so
+// the blockquote is not broken.
 func blankLineFor(prefix string) string {
 	if strings.Contains(prefix, ">") {
 		return strings.TrimRight(prefix, " \t")
@@ -364,9 +350,10 @@ func blankLineFor(prefix string) string {
 	return ""
 }
 
-// isBlankAround reports whether line counts as the blank line bounding
-// a table with the given prefix: a wholly empty line, or — for a
-// blockquoted table — a line that is only blockquote markers.
+// isBlankAround reports whether line counts as the blank line
+// bounding a table with the given prefix: a wholly empty line, or
+// — for a blockquoted table — a line that is only blockquote
+// markers.
 func isBlankAround(line []byte, prefix string) bool {
 	t := bytes.TrimSpace(line)
 	if len(t) == 0 {
@@ -461,7 +448,7 @@ func isSeparatorContent(c string) bool {
 // the given prefix: same prefix, non-blank, and contains at least one
 // unescaped pipe (paragraphs whose only pipe is `\|` end the table).
 func continuesTable(line []byte, prefix string) bool {
-	if isBlank(line) || detectPrefix(line) != prefix {
+	if isBlank(line) || structureDetectPrefix(line) != prefix {
 		return false
 	}
 	return containsUnescapedPipe(rowContent(line, prefix))
@@ -567,39 +554,3 @@ func describeStyle(lead, trail bool) string {
 		return "no leading or trailing pipes"
 	}
 }
-
-// ApplySettings implements rule.Configurable.
-func (r *Rule) ApplySettings(settings map[string]any) error {
-	for k, v := range settings {
-		switch k {
-		case "style":
-			s, ok := v.(string)
-			if !ok {
-				return fmt.Errorf("table-structure: style must be a string, got %T", v)
-			}
-			switch s {
-			case StyleConsistent, StyleLeadingAndTrailing, StyleNoLeadingOrTrailing:
-				r.Style = s
-			default:
-				return fmt.Errorf(
-					"table-structure: invalid style %q (valid: %s, %s, %s)",
-					s, StyleConsistent, StyleLeadingAndTrailing, StyleNoLeadingOrTrailing)
-			}
-		default:
-			return fmt.Errorf("table-structure: unknown setting %q", k)
-		}
-	}
-	return nil
-}
-
-// DefaultSettings implements rule.Configurable.
-func (r *Rule) DefaultSettings() map[string]any {
-	return map[string]any{
-		"style": StyleConsistent,
-	}
-}
-
-var (
-	_ rule.FixableRule  = (*Rule)(nil)
-	_ rule.Configurable = (*Rule)(nil)
-)

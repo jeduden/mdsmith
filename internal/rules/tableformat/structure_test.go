@@ -1,28 +1,31 @@
-package tablestructure
+package tableformat
 
 import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/rules/tableformat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// check exercises the structure pass alone so existing MD055/056/058
+// assertions stay focused, free of the alignment diagnostics the
+// merged Rule.Check would also emit.
 func check(t *testing.T, style, src string) []lint.Diagnostic {
 	t.Helper()
 	f, err := lint.NewFile("test.md", []byte(src))
 	require.NoError(t, err)
-	r := &Rule{Style: style}
-	return r.Check(f)
+	return structureDiagnostics(f, style, "MDS025", "table-format")
 }
 
+// fix exercises the structure pass alone. The integrated structure +
+// alignment pipeline is tested by TestIntegratedFixConverges and the
+// fixture tests under internal/rules/MDS025-table-format/.
 func fix(t *testing.T, style, src string) string {
 	t.Helper()
 	f, err := lint.NewFile("test.md", []byte(src))
 	require.NoError(t, err)
-	r := &Rule{Style: style}
-	return string(r.Fix(f))
+	return string(applyStructureFix(f, style))
 }
 
 func TestMD058CRLFBlankLine(t *testing.T) {
@@ -37,8 +40,8 @@ func TestMD058CRLFBlankLine(t *testing.T) {
 
 func TestIdentity(t *testing.T) {
 	r := &Rule{Style: StyleConsistent}
-	assert.Equal(t, "MDS060", r.ID())
-	assert.Equal(t, "table-structure", r.Name())
+	assert.Equal(t, "MDS025", r.ID())
+	assert.Equal(t, "table-format", r.Name())
 	assert.Equal(t, "table", r.Category())
 }
 
@@ -158,74 +161,42 @@ func TestSetextHeadingNotTable(t *testing.T) {
 	assert.Empty(t, check(t, StyleConsistent, src))
 }
 
-func TestApplySettings(t *testing.T) {
-	r := &Rule{Style: StyleConsistent}
+func TestApplySettings_Style(t *testing.T) {
+	r := &Rule{Pad: 1, Style: StyleConsistent}
 	require.NoError(t, r.ApplySettings(map[string]any{"style": StyleLeadingAndTrailing}))
 	assert.Equal(t, StyleLeadingAndTrailing, r.Style)
 
 	require.Error(t, r.ApplySettings(map[string]any{"style": "bogus"}))
 	require.Error(t, r.ApplySettings(map[string]any{"style": 7}))
-	require.Error(t, r.ApplySettings(map[string]any{"unknown": "x"}))
 }
 
-func TestDefaultSettings(t *testing.T) {
-	r := &Rule{Style: StyleConsistent}
-	assert.Equal(t, map[string]any{"style": StyleConsistent}, r.DefaultSettings())
-}
-
-// TestLoopStabilityWithMDS025 reproduces the fix engine's per-pass
-// order (rules sorted by ID, so MDS025 runs before MDS060) and asserts
-// the combined fix converges within the engine's 10-pass budget and
-// holds steady afterward.
-func TestLoopStabilityWithMDS025(t *testing.T) {
+// TestIntegratedFixConverges runs the merged rule against a table
+// that needs both structural normalisation (a missing surrounding
+// blank line) and alignment (col widths) and asserts a single Fix
+// pass produces output Check accepts.
+func TestIntegratedFixConverges(t *testing.T) {
 	src := "# T\nText.\n| A | B |\n| - | - |\n| 1 | 2 |\nMore text.\n"
-	tf := &tableformat.Rule{Pad: 1}
-	ts := &Rule{Style: StyleConsistent}
+	r := &Rule{Pad: 1, Style: StyleConsistent}
 
-	current := src
-	const maxPasses = 10
-	passes := 0
-	for ; passes < maxPasses; passes++ {
-		before := current
-		for _, fr := range []interface {
-			Check(*lint.File) []lint.Diagnostic
-			Fix(*lint.File) []byte
-		}{tf, ts} {
-			f, err := lint.NewFile("t.md", []byte(current))
-			require.NoError(t, err)
-			if len(fr.Check(f)) == 0 {
-				continue
-			}
-			current = string(fr.Fix(f))
-		}
-		if before == current {
-			break
-		}
-	}
-	require.Less(t, passes, maxPasses, "fix did not converge: %q", current)
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	first := string(r.Fix(f))
 
-	// Idempotent: another full pass changes nothing.
-	stable := current
-	for _, fr := range []interface {
-		Check(*lint.File) []lint.Diagnostic
-		Fix(*lint.File) []byte
-	}{tf, ts} {
-		f, err := lint.NewFile("t.md", []byte(stable))
-		require.NoError(t, err)
-		if len(fr.Check(f)) == 0 {
-			continue
-		}
-		stable = string(fr.Fix(f))
-	}
-	assert.Equal(t, current, stable, "converged output is not stable")
+	// Idempotent: a second Fix on the result changes nothing.
+	f2, err := lint.NewFile("t.md", []byte(first))
+	require.NoError(t, err)
+	second := string(r.Fix(f2))
+	assert.Equal(t, first, second, "Fix is not idempotent")
 
-	// The converged form satisfies MDS060: consistent edge pipes and
-	// a blank line on each side of the table (MDS025 owns padding).
-	assert.Empty(t, check(t, StyleConsistent, current))
-	assert.Contains(t, current, "Text.\n\n|",
-		"expected a blank line before the table, got %q", current)
-	assert.Contains(t, current, "|\n\nMore text.",
-		"expected a blank line after the table, got %q", current)
+	// Check on the converged output is clean.
+	f3, err := lint.NewFile("t.md", []byte(first))
+	require.NoError(t, err)
+	assert.Empty(t, r.Check(f3))
+
+	assert.Contains(t, first, "Text.\n\n|",
+		"expected a blank line before the table, got %q", first)
+	assert.Contains(t, first, "|\n\nMore text.",
+		"expected a blank line after the table, got %q", first)
 }
 
 // --- blockquote tables ---
@@ -388,10 +359,10 @@ func TestIsSeparatorContentDegenerate(t *testing.T) {
 }
 
 func TestDetectPrefixIndentedBlockquote(t *testing.T) {
-	assert.Equal(t, "  > ", detectPrefix([]byte("  > | a |")))
-	assert.Equal(t, ">", detectPrefix([]byte(">")))
-	assert.Equal(t, "\t", detectPrefix([]byte("\t| a |")))
-	assert.Equal(t, "", detectPrefix([]byte("| a |")))
+	assert.Equal(t, "  > ", structureDetectPrefix([]byte("  > | a |")))
+	assert.Equal(t, ">", structureDetectPrefix([]byte(">")))
+	assert.Equal(t, "\t", structureDetectPrefix([]byte("\t| a |")))
+	assert.Equal(t, "", structureDetectPrefix([]byte("| a |")))
 }
 
 func TestTrailingEscapedPipeIsNotEdge(t *testing.T) {
@@ -419,38 +390,27 @@ func TestEndsWithUnescapedPipe(t *testing.T) {
 	assert.False(t, endsWithUnescapedPipe(""))
 }
 
-// TestNoLeadingOrTrailingStableWithMDS025 backs the README claim that
-// no_leading_or_trailing does not oscillate with MDS025: once MDS060
-// strips the edge pipes, MDS025 (which formats only bordered tables)
-// stops touching the table, so the loop converges.
-func TestNoLeadingOrTrailingStableWithMDS025(t *testing.T) {
+// TestNoLeadingOrTrailingStable backs the README claim that
+// no_leading_or_trailing converges: the structure pass strips edge
+// pipes and the alignment pass (which only formats bordered tables)
+// then stops touching the borderless result.
+func TestNoLeadingOrTrailingStable(t *testing.T) {
 	src := "# T\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
-	tf := &tableformat.Rule{Pad: 1}
-	ts := &Rule{Style: StyleNoLeadingOrTrailing}
+	r := &Rule{Pad: 1, Style: StyleNoLeadingOrTrailing}
 
-	current := src
-	const maxPasses = 10
-	passes := 0
-	for ; passes < maxPasses; passes++ {
-		before := current
-		for _, fr := range []interface {
-			Check(*lint.File) []lint.Diagnostic
-			Fix(*lint.File) []byte
-		}{tf, ts} {
-			f, err := lint.NewFile("t.md", []byte(current))
-			require.NoError(t, err)
-			if len(fr.Check(f)) == 0 {
-				continue
-			}
-			current = string(fr.Fix(f))
-		}
-		if before == current {
-			break
-		}
-	}
-	require.Less(t, passes, maxPasses, "did not converge: %q", current)
-	assert.Empty(t, check(t, StyleNoLeadingOrTrailing, current))
-	assert.NotContains(t, current, "|\n", "table should be borderless")
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	first := string(r.Fix(f))
+
+	f2, err := lint.NewFile("t.md", []byte(first))
+	require.NoError(t, err)
+	second := string(r.Fix(f2))
+	assert.Equal(t, first, second, "Fix is not idempotent")
+
+	f3, err := lint.NewFile("t.md", []byte(first))
+	require.NoError(t, err)
+	assert.Empty(t, r.Check(f3))
+	assert.NotContains(t, first, "|\n", "table should be borderless")
 }
 
 func TestContainsUnescapedPipe(t *testing.T) {

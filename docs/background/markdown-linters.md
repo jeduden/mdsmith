@@ -800,8 +800,8 @@ items most relevant to this comparison are:
 - **Closing rule gaps with markdownlint** — 3 rules remain
   unimplemented: [plan 172](../../plan/172_link-style-rule-and-config.md)
   covers MD054, and plan 182 schedules the remaining 2
-  (code-block style). MDS060 (`table-structure`) now covers
-  markdownlint MD055, MD056, and MD058; MDS062
+  (code-block style). MDS025 (`table-format`) now covers
+  markdownlint MD055, MD056, and MD058 (MD056 flag-only); MDS062
   (`link-validity`) covers MD011 and MD042; MDS064
   (`atx-heading-whitespace`) covers MD018-MD021 and MD023;
   MDS063 (`descriptive-link-text`) covers MD059. The

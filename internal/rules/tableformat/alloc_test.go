@@ -17,7 +17,7 @@ import (
 // authoritative baseline per rule.
 const (
 	allocBudgetMDS025              = 10
-	allocBudgetGrandfatheredMDS025 = 50
+	allocBudgetGrandfatheredMDS025 = 110
 )
 
 const allocBudgetFixture = "# Document title\n" +

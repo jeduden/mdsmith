@@ -1,3 +1,8 @@
+// Package tableformat implements MDS025, the single table rule.
+// It owns table parsing, the three structural checks (MD055
+// table-pipe-style, MD056 table-column-count, MD058
+// blanks-around-tables), and the prettier-style alignment pass that
+// gives the rule its name.
 package tableformat
 
 import (
@@ -11,14 +16,20 @@ import (
 )
 
 func init() {
-	rule.Register(&Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced})
+	rule.Register(&Rule{
+		Pad:            1,
+		SeparatorStyle: tablefmt.SeparatorSpaced,
+		Style:          StyleConsistent,
+	})
 }
 
-// Rule checks that markdown tables are formatted with consistent
-// column widths, cell padding, and a chosen separator style.
+// Rule gates table well-formedness: edge-pipe style (MD055), column
+// count vs the header (MD056), surrounding blank lines (MD058), and
+// the column-alignment / padding pass that gives the rule its name.
 type Rule struct {
-	Pad            int // spaces on each side of cell content
+	Pad            int    // spaces on each side of cell content
 	SeparatorStyle tablefmt.SeparatorStyle
+	Style          string // edge-pipe style: one of the Style* constants
 }
 
 // ID implements rule.Rule.
@@ -55,6 +66,19 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 				return err
 			}
 			r.SeparatorStyle = style
+		case "style":
+			str, ok := v.(string)
+			if !ok {
+				return fmt.Errorf("table-format: style must be a string, got %T", v)
+			}
+			switch str {
+			case StyleConsistent, StyleLeadingAndTrailing, StyleNoLeadingOrTrailing:
+				r.Style = str
+			default:
+				return fmt.Errorf(
+					"table-format: invalid style %q (valid: %s, %s, %s)",
+					str, StyleConsistent, StyleLeadingAndTrailing, StyleNoLeadingOrTrailing)
+			}
 		default:
 			return fmt.Errorf("table-format: unknown setting %q", k)
 		}
@@ -67,10 +91,13 @@ func (r *Rule) DefaultSettings() map[string]any {
 	return map[string]any{
 		"pad":             1,
 		"separator-style": "spaced",
+		"style":           StyleConsistent,
 	}
 }
 
-// Check implements rule.Rule.
+// Check implements rule.Rule. It emits both the structural diagnostics
+// (MD055/056/058) and the alignment diagnostics produced by the
+// prettier-style format pass.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Early-exit: a GFM table requires `|` somewhere in the source.
 	// Skipping the AST-walk for code lines and the per-line table
@@ -79,9 +106,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if bytes.IndexByte(f.Source, '|') < 0 {
 		return nil
 	}
-	codeLines := lint.CollectCodeBlockLines(f)
+	skipLines := formatSkipLines(f)
 	var diags []lint.Diagnostic
-	for _, v := range tablefmt.Violations(f.Lines, codeLines, r.config()) {
+	for _, v := range tablefmt.Violations(f.Lines, skipLines, r.config()) {
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     v.StartLine,
@@ -92,18 +119,58 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			Message:  v.Message,
 		})
 	}
+	diags = append(diags, structureDiagnostics(f, r.style(), r.ID(), r.Name())...)
 	return diags
 }
 
-// Fix implements rule.FixableRule.
+// Fix implements rule.FixableRule. The structure pass runs first
+// (edge normalization for MD055, blank-line insertion for MD058) so
+// the alignment pass then sees the structurally-normalized bytes and
+// canonicalizes the remaining bordered tables.
 func (r *Rule) Fix(f *lint.File) []byte {
-	codeLines := lint.CollectCodeBlockLines(f)
-	return tablefmt.FormatLines(f.Source, f.Lines, codeLines, r.config())
+	intermediate := applyStructureFix(f, r.style())
+	parsed, _ := lint.NewFile(f.Path, intermediate) // NewFile never errors today
+	parsed.GeneratedRanges = f.GeneratedRanges
+	skipLines := formatSkipLines(parsed)
+	return tablefmt.FormatLines(parsed.Source, parsed.Lines, skipLines, r.config())
 }
 
 func (r *Rule) config() tablefmt.Config {
 	return tablefmt.Config{Pad: r.Pad, SeparatorStyle: r.SeparatorStyle}
 }
 
-var _ rule.FixableRule = (*Rule)(nil)
-var _ rule.Configurable = (*Rule)(nil)
+// formatSkipLines returns the line numbers the alignment pass must
+// ignore: fenced/indented code, processing-instruction blocks, and
+// generated-section bodies. The returned map is freshly allocated —
+// `lint.Collect*BlockLines` returns a shared, read-only cache that
+// must not be mutated.
+func formatSkipLines(f *lint.File) map[int]bool {
+	skip := map[int]bool{}
+	for n := range lint.CollectCodeBlockLines(f) {
+		skip[n] = true
+	}
+	for n := range lint.CollectPIBlockLines(f) {
+		skip[n] = true
+	}
+	for _, gr := range f.GeneratedRanges {
+		for n := gr.From; n <= gr.To; n++ {
+			skip[n] = true
+		}
+	}
+	return skip
+}
+
+// style returns the configured pipe style, defaulting to consistent
+// so a Rule literal without an explicit Style (legacy callers and
+// tests) keeps working.
+func (r *Rule) style() string {
+	if r.Style == "" {
+		return StyleConsistent
+	}
+	return r.Style
+}
+
+var (
+	_ rule.FixableRule  = (*Rule)(nil)
+	_ rule.Configurable = (*Rule)(nil)
+)
