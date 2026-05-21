@@ -165,7 +165,9 @@ func (r *Rule) unknownTypeDiag(path string, line, col int, token string) lint.Di
 		extra = " (plus " + strings.Join(extras, ", ") + ")"
 	}
 	msg := fmt.Sprintf(
-		"unknown callout type %q; valid types: %s%s (or configure allow-unknown: true)",
+		"unknown callout type %q; valid base types: %s%s "+
+			"(aliases such as summary, tldr, todo also resolve; "+
+			"or configure allow-unknown: true)",
 		token, valid, extra,
 	)
 	return lint.Diagnostic{

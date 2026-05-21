@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 func TestExtractWikiLinks_NilFileReturnsNil(t *testing.T) {
@@ -18,6 +20,17 @@ func TestExtractWikiLinks_NilFileReturnsNil(t *testing.T) {
 func TestExtractWikiLinks_EmptySource(t *testing.T) {
 	f := newFile(t, "")
 	assert.Nil(t, ExtractWikiLinks(f))
+}
+
+func TestExtractWikiLinks_NilASTReturnsNilNoPanic(t *testing.T) {
+	// lint.File explicitly supports the struct-literal construction
+	// path where AST is never populated. The extractor walks the
+	// AST via CollectCodeBlockLines / CollectPIBlockLines, so it
+	// must short-circuit instead of panicking on a nil tree.
+	f := &lint.File{Source: []byte("[[Page]]\n")}
+	assert.NotPanics(t, func() {
+		assert.Nil(t, ExtractWikiLinks(f))
+	})
 }
 
 func TestResolveWikiLink_WhitespaceTarget(t *testing.T) {
@@ -214,6 +227,19 @@ func TestResolveWikiLink_RejectsCollapsedTraversal(t *testing.T) {
 	}
 	_, ok := ResolveWikiLink(mfs, "from.md", "a/../../etc/passwd")
 	assert.False(t, ok)
+}
+
+func TestResolveWikiLink_NormalizesBackslashSegments(t *testing.T) {
+	// A Windows-authored wikilink like `[[sub\page]]` arrives on
+	// Linux CI as the literal string "sub\page" — filepath.ToSlash
+	// is a no-op on POSIX. The resolver must collapse backslashes
+	// to slashes itself so cross-host vaults still resolve.
+	mfs := fstest.MapFS{
+		"sub/page.md": &fstest.MapFile{Data: []byte{}},
+	}
+	got, ok := ResolveWikiLink(mfs, "from.md", `sub\page`)
+	require.True(t, ok)
+	assert.Equal(t, "sub/page.md", got)
 }
 
 func TestResolveWikiLink_RejectsAbsolutePath(t *testing.T) {

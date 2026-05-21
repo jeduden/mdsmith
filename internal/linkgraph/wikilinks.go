@@ -3,7 +3,6 @@ package linkgraph
 import (
 	"io/fs"
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -45,9 +44,12 @@ var wikilinkRE = regexp.MustCompile(
 // `<?...?>` processing-instruction blocks are skipped — the same
 // guards MDS054 applies to its bracket scanner.
 //
-// Lines are body-relative (post front-matter strip).
+// Lines are body-relative (post front-matter strip). Returns nil
+// for files without a parsed AST (struct-literal *lint.File
+// instances): the code-block / code-span guards below walk the
+// tree, so a missing AST would otherwise panic.
 func ExtractWikiLinks(f *lint.File) []WikiLink {
-	if f == nil || len(f.Source) == 0 {
+	if f == nil || len(f.Source) == 0 || f.AST == nil {
 		return nil
 	}
 	codeLines := lint.CollectCodeBlockLines(f)
@@ -178,7 +180,13 @@ func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
 	if isDriveOrUNC(target) {
 		return "", false
 	}
-	cleaned := path.Clean(path.Clean(filepath.ToSlash(target)))
+	// Normalize backslashes manually: filepath.ToSlash is OS-dependent
+	// (no-op on POSIX), so a Windows-authored `[[sub\page]]` would
+	// otherwise stay as a single literal segment on Linux CI and
+	// never resolve. Match the strings.ReplaceAll pattern
+	// ResolveRelTarget uses for the same reason.
+	target = strings.ReplaceAll(target, `\`, `/`)
+	cleaned := path.Clean(target)
 	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
 		return "", false
 	}
@@ -236,7 +244,10 @@ func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
 // `[[Notes.md]]`). stemMode false means "match by exact filename"
 // — the typed-extension case (`![[diagram.png]]`).
 func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool) {
-	target = filepath.ToSlash(target)
+	// Match the host-independent normalisation ResolveWikiLink uses
+	// up front so a Windows-authored `[[sub\page]]` reaches this
+	// helper as `sub/page`.
+	target = strings.ReplaceAll(target, `\`, `/`)
 	base := path.Base(target)
 	ext := strings.ToLower(path.Ext(base))
 	switch ext {
