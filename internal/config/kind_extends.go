@@ -37,10 +37,14 @@ func ResolveKindInlineSchema(
 	if len(chain) == 0 {
 		return nil, nil
 	}
-	if len(chain) == 1 {
-		return chain[0].raw, nil
-	}
-	merged := chain[0].raw
+	// Run every chain — even a single-layer one — through
+	// MergeRawMap so the frontmatter normaliser is applied
+	// uniformly (bare-name shortcuts expand, scalar values
+	// JSON-encode). Without this, a kind whose extends parent has
+	// no inline schema would round-trip its own raw map unchanged,
+	// and `kinds show` / JSON provenance would render shortcut
+	// names instead of the canonical CUE form they document.
+	merged := schema.MergeRawMap(nil, chain[0].raw)
 	for _, c := range chain[1:] {
 		merged = schema.MergeRawMap(merged, c.raw)
 	}

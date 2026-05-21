@@ -118,6 +118,23 @@ func normaliseFrontmatterValue(v any) any {
 	return expr
 }
 
+// NormaliseFrontmatterValue applies the same canonicalisation
+// extends merging uses — bare-name shortcuts to canonical CUE,
+// scalars to JSON, raw strings verbatim — and returns the result
+// as a string. Unsupported types (anything frontmatterExpr cannot
+// resolve) fall back to a `%v`-formatted display so callers like
+// `mdsmith kinds show` can render a value rather than an empty
+// string.
+func NormaliseFrontmatterValue(v any) string {
+	if expr, err := frontmatterExpr(v); err == nil {
+		return expr
+	}
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
+}
+
 // ValidateExtendedFrontmatter CUE-checks the merged frontmatter,
 // returning an UnsatisfiableKeyError naming the first key whose
 // constraint cannot be satisfied. Each value is normalised through

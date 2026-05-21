@@ -19,15 +19,23 @@ func TestResolveKindInlineSchema_NoSchemaReturnsNil(t *testing.T) {
 	assert.Nil(t, out)
 }
 
-// TestResolveKindInlineSchema_NoExtendsReturnsOwnSchema verifies
-// the non-inheriting path stays byte-equivalent: the kind's own
-// `Schema` is passed through without copying.
-func TestResolveKindInlineSchema_NoExtendsReturnsOwnSchema(t *testing.T) {
-	body := KindBody{Schema: map[string]any{"filename": "x.md"}}
+// TestResolveKindInlineSchema_NoExtendsNormalisesShortcuts pins
+// the post-review behaviour: every chain (even a single-layer
+// one) runs through MergeRawMap so bare-name shortcuts expand.
+// Without this, `kinds show` would render `date` for a
+// shortcut-bearing schema instead of the canonical CUE regex.
+func TestResolveKindInlineSchema_NoExtendsNormalisesShortcuts(t *testing.T) {
+	body := KindBody{Schema: map[string]any{"frontmatter": map[string]any{
+		"d": "date",
+	}}}
 	kinds := map[string]KindBody{"plan": body}
 	out, err := ResolveKindInlineSchema(kinds, "plan")
 	require.NoError(t, err)
-	assert.Equal(t, "x.md", out["filename"])
+	fm := out["frontmatter"].(map[string]any)
+	expr, ok := fm["d"].(string)
+	require.True(t, ok)
+	assert.Contains(t, expr, "=~",
+		"single-layer schema should still pass through the normaliser")
 }
 
 // TestResolveKindInlineSchema_ParentChildMerge is the headline

@@ -779,6 +779,30 @@ func TestSchemaDataDeclaresExtends_NoExtendsReturnsFalse(t *testing.T) {
 		[]byte("---\nid: 'string'\n---\n# ?\n")))
 }
 
+// TestSchemaDataDeclaresExtends_NullValueReturnsFalse matches
+// schema.ParseFile's "no extends" treatment for `extends:` with a
+// null/empty body. Without this, the dispatcher would re-route
+// such schemas through the compose path and change diagnostics.
+func TestSchemaDataDeclaresExtends_NullValueReturnsFalse(t *testing.T) {
+	assert.False(t, schemaDataDeclaresExtends(
+		[]byte("---\nextends:\n---\n# ?\n")))
+}
+
+// TestSchemaDataDeclaresExtends_WhitespaceValueReturnsFalse pins
+// the trimmed-empty check.
+func TestSchemaDataDeclaresExtends_WhitespaceValueReturnsFalse(t *testing.T) {
+	assert.False(t, schemaDataDeclaresExtends(
+		[]byte("---\nextends: \"   \"\n---\n# ?\n")))
+}
+
+// TestSchemaDataDeclaresExtends_NonStringValueReturnsFalse covers
+// the type-assertion branch: a non-string value (number/list)
+// isn't an extends declaration we understand.
+func TestSchemaDataDeclaresExtends_NonStringValueReturnsFalse(t *testing.T) {
+	assert.False(t, schemaDataDeclaresExtends(
+		[]byte("---\nextends: 42\n---\n# ?\n")))
+}
+
 // TestSchemaDataDeclaresExtends_NoFrontmatterReturnsFalse covers
 // the `prefix == nil` branch: a schema file with no front matter
 // has no `extends:` to report.

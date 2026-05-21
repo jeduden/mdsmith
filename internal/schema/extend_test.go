@@ -642,6 +642,41 @@ func TestNormaliseFrontmatterValue_ResolvesShortcut(t *testing.T) {
 	assert.Contains(t, out, "=~")
 }
 
+// TestPublicNormaliseFrontmatterValue_ResolvesShortcut covers the
+// exported coerce helper used by kindsout — bare-name shortcuts
+// expand the same way the internal helper does.
+func TestPublicNormaliseFrontmatterValue_ResolvesShortcut(t *testing.T) {
+	out := NormaliseFrontmatterValue("date")
+	assert.Contains(t, out, "=~")
+}
+
+// TestPublicNormaliseFrontmatterValue_ScalarsEncode confirms a
+// non-string scalar (a YAML number, bool) renders as its JSON
+// encoding rather than falling through to the empty-string
+// fallback the caller previously emitted.
+func TestPublicNormaliseFrontmatterValue_ScalarsEncode(t *testing.T) {
+	assert.Equal(t, "42", NormaliseFrontmatterValue(42))
+	assert.Equal(t, "true", NormaliseFrontmatterValue(true))
+}
+
+// TestPublicNormaliseFrontmatterValue_UnsupportedFallsBackToSprintf
+// covers the final fallback: a value frontmatterExpr cannot
+// resolve still gets a printable form so audit output never
+// carries an empty `value` for a present constraint.
+func TestPublicNormaliseFrontmatterValue_UnsupportedFallsBackToSprintf(t *testing.T) {
+	type custom struct{ X int }
+	out := NormaliseFrontmatterValue(custom{X: 7})
+	assert.Contains(t, out, "7")
+}
+
+// TestPublicNormaliseFrontmatterValue_StringFallback verifies that
+// a string that frontmatterExpr rejects (an unknown bare name)
+// still renders verbatim rather than as an empty placeholder.
+func TestPublicNormaliseFrontmatterValue_StringFallback(t *testing.T) {
+	assert.Equal(t, "unknown-shortcut",
+		NormaliseFrontmatterValue("unknown-shortcut"))
+}
+
 // TestNormaliseFrontmatterValue_PreservesRawCUE confirms raw CUE
 // strings pass through unchanged.
 func TestNormaliseFrontmatterValue_PreservesRawCUE(t *testing.T) {

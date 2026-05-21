@@ -567,10 +567,13 @@ func (r *Rule) dispatchSingleFileSchema(
 }
 
 // schemaDataDeclaresExtends reports whether the raw schema bytes
-// carry a reserved `extends:` key in their YAML front matter. A
-// parse failure or missing front matter returns false — the legacy
-// path then surfaces those errors via parseSchema with its
-// existing diagnostic shape.
+// carry a reserved `extends:` key with a non-empty string value in
+// their YAML front matter. An `extends:` with null/empty value
+// matches `schema.ParseFile`'s "no extends" treatment and stays on
+// the legacy path so behaviour and diagnostics line up. A parse
+// failure or missing front matter returns false — the legacy
+// parser then surfaces those errors with its existing diagnostic
+// shape.
 func schemaDataDeclaresExtends(data []byte) bool {
 	prefix, _ := lint.StripFrontMatter(data)
 	if prefix == nil {
@@ -581,8 +584,15 @@ func schemaDataDeclaresExtends(data []byte) bool {
 	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
 		return false
 	}
-	_, ok := raw["extends"]
-	return ok
+	v, ok := raw["extends"]
+	if !ok {
+		return false
+	}
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(s) != ""
 }
 
 // effectiveSources returns the rule's sources list, falling back to

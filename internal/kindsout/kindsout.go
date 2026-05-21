@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
@@ -111,10 +112,15 @@ func effectiveFrontmatterLeaves(
 	sort.Strings(keys)
 	out := make([]FrontmatterLeafJSON, 0, len(keys))
 	for _, k := range keys {
-		expr, _ := fm[k].(string)
+		// Coerce non-string values (a raw YAML number, an
+		// unrecognised shortcut name) to their canonical CUE form
+		// so the audit output never carries an empty `value`. The
+		// resolver already normalises strings; this catches the
+		// fallback cases where MergeRawMap left a raw value
+		// because frontmatterExpr could not resolve it.
 		out = append(out, FrontmatterLeafJSON{
 			Key:    k,
-			Value:  expr,
+			Value:  schema.NormaliseFrontmatterValue(fm[k]),
 			Source: owners[k],
 		})
 	}
