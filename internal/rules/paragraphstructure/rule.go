@@ -115,12 +115,17 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 
 	if len(sentences) > r.MaxSentences {
 		// Hand-built string instead of fmt.Sprintf: Sprintf builds
-		// the format-string scratch buffer and boxes its args before
-		// formatting (~3 allocs per call). Plain string-concatenation
-		// lowers to a single runtime.concatstrings call — one
-		// allocation for the result. strconv.Itoa adds its own
-		// per-call string for the digit bytes, but the savings over
-		// Sprintf still net a one-alloc message build per fire.
+		// a format-string scratch buffer and boxes each arg into
+		// `any` before formatting (~3 allocs per call). The
+		// concat + strconv.Itoa form below is 1–3 allocs depending
+		// on the int values — Itoa caches the decimal form for
+		// values 0–99 (returns a substring of strconv's precomputed
+		// `smallsString` table, no alloc), and larger values
+		// allocate one string each. The runtime.concatstrings
+		// lowering of the `+` chain produces one final string. For
+		// MDS024's typical inputs (max-sentences ~6, counted ~7–30)
+		// both Itoa calls hit the cache, so the message build
+		// costs one allocation; for larger paragraphs it grows.
 		diags = append(diags, lint.Diagnostic{
 			File:     filePath,
 			Line:     line,
@@ -151,11 +156,17 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 			})
 		}
 	}
-	// Return the sentence buffer to the pool. Clear first so the
-	// string headers don't keep the previous paragraph's text
-	// reachable through the pooled slice — sync.Pool would
-	// otherwise pin large input buffers in memory across Check
-	// calls until the next caller overwrote them.
+	// Return the sentence buffer to the pool. Clear first.
+	// `sentences[:0]` shrinks len to zero but leaves cap (and the
+	// backing array) untouched — the GC scans the slice's full
+	// allocated size, not just its current len, so string headers
+	// at indices ≥ len still pin their referent text alive through
+	// the pool's reachable holder. Without the clear, a 10 KB
+	// paragraph's text would stay in memory until the pool's
+	// next-cycle sweep evicts the entry. Verified: putting
+	// `["MARK"]` then `[:0]` then Put, immediately reading
+	// `pool.Get()[:cap]` still returns `["MARK"]` at index 0.
+	// See plan 193 follow-up.
 	clear(sentences)
 	*bufPtr = sentences[:0]
 	sentBufPool.Put(bufPtr)

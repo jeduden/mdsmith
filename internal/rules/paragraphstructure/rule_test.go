@@ -2,6 +2,7 @@ package paragraphstructure
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -107,6 +108,58 @@ func TestCheapBounds_GuardIsSound(t *testing.T) {
 			assert.Emptyf(t, diags, "guard passed but Check flagged %q: %v", txt, diags)
 		}
 	}
+}
+
+// TestSentBufPool_ClearReleasesStringReferences pins the contract
+// behind the `clear(sentences)` line in checkParagraph: a
+// `sync.Pool`-stored slice retains its backing array indefinitely,
+// and the GC scans the array across its full capacity (not just up
+// to len). Truncating with `[:0]` therefore leaves prior string
+// elements reachable through the pool until they are overwritten or
+// the pool entry is evicted by a GC sweep. `clear()` zeros every
+// slot so the pool only holds nil string headers.
+//
+// The test demonstrates both halves: without clear, a prior string
+// survives the truncate-and-Put round-trip; with clear, it is gone.
+// A regression that drops the clear() in checkParagraph would
+// silently re-introduce the retention.
+func TestSentBufPool_ClearReleasesStringReferences(t *testing.T) {
+	var p sync.Pool
+	p.New = func() any {
+		s := make([]string, 0, 4)
+		return &s
+	}
+
+	t.Run("without clear: prior string survives [:0]+Put", func(t *testing.T) {
+		ptr := p.Get().(*[]string)
+		*ptr = append(*ptr, "pinned-MARKER-1234")
+		*ptr = (*ptr)[:0] // truncate without clear
+		p.Put(ptr)
+
+		next := p.Get().(*[]string)
+		require.GreaterOrEqual(t, cap(*next), 4)
+		underlying := (*next)[:cap(*next)]
+		assert.Equal(t, "pinned-MARKER-1234", underlying[0],
+			"truncated slice keeps the prior string at index 0 — "+
+				"the GC sees it through the pool's holder")
+		// Restore the pool to clean state for the next subtest.
+		clear(underlying)
+	})
+
+	t.Run("with clear: prior string is gone", func(t *testing.T) {
+		ptr := p.Get().(*[]string)
+		*ptr = append(*ptr, "would-be-pinned-MARKER")
+		clear(*ptr)
+		*ptr = (*ptr)[:0]
+		p.Put(ptr)
+
+		next := p.Get().(*[]string)
+		require.GreaterOrEqual(t, cap(*next), 4)
+		underlying := (*next)[:cap(*next)]
+		assert.Equal(t, "", underlying[0],
+			"clear() zeroes the slot — the prior string can no "+
+				"longer keep its referent alive through the pool")
+	})
 }
 
 // TestCheapBounds_FullWidthExclamQuestionNotSentBreaks pins the

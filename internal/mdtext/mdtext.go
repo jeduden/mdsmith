@@ -201,13 +201,15 @@ func CountSentences(text string) int {
 	return count
 }
 
-// initTokenizerOnce wraps initTokenizer in sync.OnceFunc so calling
-// it returns the same nil-cost wrapper on every SplitSentences
-// invocation. A bare `sync.Once.Do(initTokenizer)` allocates one
-// function value per call (the Go escape analysis can't avoid the
-// closure boxing for the Do parameter), which the alloc-budget gate
-// on MDS024 picks up. OnceFunc constructs the wrapper once at
-// package init.
+// initTokenizerOnce wraps initTokenizer in sync.OnceFunc — a
+// stylistic preference over `var initOnce sync.Once` /
+// `initOnce.Do(initTokenizer)` at each call site, not a perf win:
+// passing a package-level function value to sync.Once.Do is
+// allocation-free per call (only closures and method values force
+// the function-value boxing the budget gate would see). OnceFunc
+// constructs the wrapper once at package init; the call site
+// becomes `initTokenizerOnce()` which reads cleaner than the
+// explicit Once-and-Do pair.
 //
 // The actual singleton is owned by the build-tagged file that
 // provides splitSentences — fastpunct_init.go (default) builds a
