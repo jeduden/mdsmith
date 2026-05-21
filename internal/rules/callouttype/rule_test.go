@@ -59,6 +59,11 @@ func TestCheck_UnknownType(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "REVIEW")
 	assert.Contains(t, diags[0].Message, "note")
 	assert.Contains(t, diags[0].Message, "allow-unknown")
+	// The wording must call out base-type vs alias so a user
+	// reading the message does not assume "summary" or "tldr" are
+	// rejected just because they aren't in the printed list.
+	assert.Contains(t, diags[0].Message, "valid base types")
+	assert.Contains(t, diags[0].Message, "aliases")
 }
 
 func TestCheck_AllowList(t *testing.T) {
