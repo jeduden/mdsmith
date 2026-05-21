@@ -133,7 +133,7 @@ rules:
 ### Good
 
 <?include
-file: good.md
+file: good/english.md
 wrap: markdown
 ?>
 
@@ -146,11 +146,38 @@ A gentle breeze swept through the valley.
 
 <?/include?>
 
+<?include
+file: good/chinese.md
+wrap: markdown
+?>
+
+```markdown
+# Well Structured Chinese Document
+
+太阳升起。鸟儿开始歌唱。一阵微风吹过山谷。
+```
+
+<?/include?>
+
+<?include
+file: good/japanese.md
+wrap: markdown
+?>
+
+```markdown
+# Well Structured Japanese Document
+
+太陽が昇る。鳥が歌い始める。風が谷を吹き抜ける。
+```
+
+<?/include?>
+
 ### Bad
 
 <?include
-file: bad.md
+file: bad/english.md
 wrap: markdown
+strip-frontmatter: "true"
 ?>
 
 ```markdown
@@ -160,6 +187,25 @@ Dogs bark. Cats meow. Birds sing. Fish swim. Frogs croak. Snakes hiss. Bees buzz
 ```
 
 <?/include?>
+
+<?include
+file: bad/chinese.md
+wrap: markdown
+strip-frontmatter: "true"
+?>
+
+```markdown
+# Overly Long Chinese Paragraph
+
+今天天气很好。鸟儿在歌唱。微风轻拂。阳光明媚。空气清新。花朵盛开。山谷宁静。
+```
+
+<?/include?>
+
+The segmenter treats `。`, `！`, and `？` (full-width Chinese /
+Japanese terminal punctuation) as sentence boundaries, so the
+rule fires on CJK paragraphs the same way it does on English
+prose. Mixed CJK / ASCII paragraphs work too.
 
 ## Diagnostics
 

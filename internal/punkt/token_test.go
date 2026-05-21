@@ -170,6 +170,17 @@ func TestHasPeriodFinal(t *testing.T) {
 		"a.":   true,
 		"...":  true,
 		"abc.": true,
+		// CJK full-width period (U+3002, 3 bytes in UTF-8) — must
+		// match upstream's HasPeriodFinal, which accepts it.
+		"中文。": true,
+		"。":   true,
+		// Other CJK runes (no terminal period) — must NOT match.
+		"中文": false,
+		"中":  false,
+		// `？` and `！` are sentence enders but not HasPeriodFinal
+		// (that helper checks specifically for the period variants).
+		"abc？": false,
+		"abc！": false,
 	}
 	for tok, want := range cases {
 		assert.Equalf(t, want, HasPeriodFinal(tok),

@@ -55,6 +55,15 @@ var equivalenceCorpus = []string{
 	"See section 1.2.3 for details. The API is stable. Version 2.0 " +
 		"dropped the old path. Migrate before then.",
 	"No terminal punctuation here just a long clause that runs on",
+	// CJK paragraphs — exercise the upstream-equivalent
+	// IsCjkPunct boundary path and the CJK-aware HasPeriodFinal /
+	// hasSentencePunct helpers. A user with Chinese/Japanese
+	// Markdown enabling MDS024 must see the same sentence
+	// segmentation under the fork as under upstream.
+	"中文一句。中文两句。",
+	"こんにちは。さようなら。",
+	"中文。English mixed. More text.",
+	"问题？解决方案。继续！",
 }
 
 func TestTokenize_Empty(t *testing.T) {
@@ -119,6 +128,38 @@ func TestTokenize_AbbreviationsMatchUpstream(t *testing.T) {
 		for j := range got {
 			assert.Equalf(t, want[j].Text, got[j].Text,
 				"sample %d sentence %d Text", i, j)
+		}
+	}
+}
+
+// TestTokenize_CjkParagraphsMatchUpstream pins the fork's
+// sentence-level output against upstream on CJK input — different
+// guarantee from TestTokenize_CjkPunctuationSplitsTokens (which
+// checks only word-token shape). MDS024 consumes Sentence.Text, so
+// the gate here is what end users actually see when MDS024 is
+// enabled against a non-English Markdown corpus.
+func TestTokenize_CjkParagraphsMatchUpstream(t *testing.T) {
+	tk := NewEnglish()
+	corpus := []string{
+		"中文一句。中文两句。中文三句。",
+		"こんにちは。世界。さようなら。",
+		"中文。English mixed in. 更多中文。",
+		"问题？回答。继续！结束。",
+		// A long-ish multi-sentence CJK paragraph that MDS024
+		// might trip on if segmentation were broken.
+		"产品发布前需要测试。文档需要校对。配置需要审查。最后发布。",
+	}
+	for i, sample := range corpus {
+		got := tk.Tokenize(sample)
+		want := upstreamSentences(t, sample)
+		if !assert.Equalf(t, len(want), len(got),
+			"CJK sample %d count mismatch — got %d (%v), want %d (%v)",
+			i, len(got), got, len(want), want) {
+			continue
+		}
+		for j := range got {
+			assert.Equalf(t, want[j].Text, got[j].Text,
+				"CJK sample %d sentence %d Text", i, j)
 		}
 	}
 }

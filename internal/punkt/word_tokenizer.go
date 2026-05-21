@@ -7,22 +7,39 @@ import (
 )
 
 // punctSentenceEnders is the set of single-character end punctuation
-// PunctStrings.HasSentencePunct tests for. Upstream loops over a fixed
-// rune string `.!?。！？`; the fork strips the CJK variants per
-// doc.go, leaving the ASCII trio.
-const punctSentenceEnders = ".!?"
+// PunctStrings.HasSentencePunct tests for. Mirrors upstream's
+// `.!?。！？` byte-for-byte — the CJK trio (full-width period,
+// exclamation, question) participates in the same getNextWord
+// gating that ASCII enders do.
+const punctSentenceEnders = ".!?。！？"
 
 // hasSentencePunct reports whether s contains any sentence-ending
-// punctuation. Replaces the upstream double-loop over rune pairs.
+// punctuation. strings.ContainsAny is rune-aware, so the CJK runes
+// in punctSentenceEnders match correctly against multi-byte
+// occurrences in s.
 func hasSentencePunct(s string) bool {
 	return strings.ContainsAny(s, punctSentenceEnders)
 }
 
+// IsCjkPunct reports whether r is one of the four CJK terminal
+// punctuation marks upstream's tokenizer treats as a word
+// boundary: full-width period, semicolon, exclamation, question.
+// Mirrors upstream sentences.IsCjkPunct verbatim. Used inside
+// TokenizeInto so a string like "中文。English" splits the same way
+// upstream does (`中文。` becomes one token, then `English`).
+func IsCjkPunct(r rune) bool {
+	switch r {
+	case '。', '；', '！', '？':
+		return true
+	}
+	return false
+}
+
 // Tokenize splits text into Tokens annotated with line- and
 // paragraph-start markers. Mirrors upstream
-// DefaultWordTokenizer.Tokenize byte-for-byte except for the CJK
-// punctuation branch (dropped per doc.go) and the per-token allocation
-// of regex pointers (gone — Token has no such field).
+// DefaultWordTokenizer.Tokenize byte-for-byte (including the CJK
+// punctuation branch) except for the per-token allocation of regex
+// pointers (gone — Token has no such field).
 //
 // The tokens slice is allocated fresh on every call. Callers that
 // want to pool the result pass in a preallocated slice via
@@ -91,15 +108,16 @@ func (c *tokenizerCursor) emitTok(
 // DefaultSentenceTokenizer so the same slice is reused across calls.
 //
 // Behaviour matches upstream DefaultWordTokenizer.Tokenize: split on
-// unicode.IsSpace, mark paragraph starts after a blank line, mark
-// line starts after a single newline. With onlyPeriodContext = false
-// the tokenizer emits every word; with true it emits only words near
-// a sentence-ending punctuation character. If this call emits zero
-// new tokens (whitespace-only text, or onlyPeriodContext filtering
-// every word), the upstream fallback fires and a single token equal
-// to the whole input is appended — checked against the call's
-// original len(dst), not zero, so the fallback also fires when the
-// caller passes an already-populated dst.
+// unicode.IsSpace OR IsCjkPunct (so `中文。English` produces `中文。`
+// followed by `English`), mark paragraph starts after a blank line,
+// mark line starts after a single newline. With onlyPeriodContext =
+// false the tokenizer emits every word; with true it emits only words
+// near a sentence-ending punctuation character. If this call emits
+// zero new tokens (whitespace-only text, or onlyPeriodContext
+// filtering every word), the upstream fallback fires and a single
+// token equal to the whole input is appended — checked against the
+// call's original len(dst), not zero, so the fallback also fires
+// when the caller passes an already-populated dst.
 func TokenizeInto(dst []Token, text string, onlyPeriodContext bool) []Token {
 	textLength := len(text)
 	if textLength == 0 {
@@ -108,12 +126,18 @@ func TokenizeInto(dst []Token, text string, onlyPeriodContext bool) []Token {
 	orig := len(dst)
 	c := tokenizerCursor{}
 	for i, char := range text {
-		if !unicode.IsSpace(char) && i != textLength-1 {
+		if !unicode.IsSpace(char) && !IsCjkPunct(char) && i != textLength-1 {
 			continue
 		}
 		c.updateLineFlags(char)
+		// CJK punctuation is part of the preceding token (like a
+		// trailing `.` for `Mr.`), so extend cursor past it so the
+		// emitted word includes the punct. Upstream does the same
+		// `i += len(string(char))` adjustment.
 		cursor := i
-		if i == textLength-1 {
+		if IsCjkPunct(char) {
+			cursor = i + utf8.RuneLen(char)
+		} else if i == textLength-1 {
 			cursor = textLength
 		}
 		dst = c.emitTok(dst, text, cursor, onlyPeriodContext)

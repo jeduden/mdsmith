@@ -72,6 +72,15 @@ var equivalenceCorpus = []string{
 		"dropped the old path. Migrate before then.",
 	"",
 	"No terminal punctuation here just a long clause that runs on",
+	// CJK paragraphs: ensure the fork stays byte-identical to
+	// upstream on Chinese/Japanese text. internal/punkt restored
+	// upstream's IsCjkPunct word-tokenizer split + CJK-aware
+	// HasPeriodFinal so a user enabling MDS024 against a non-English
+	// Markdown file sees the same segmentation regardless of which
+	// build tag selected the implementation.
+	"中文一句。中文两句。中文三句。",
+	"こんにちは。世界。さようなら。",
+	"中文。English mixed in. 更多中文。",
 }
 
 // firstDivergence returns a human-readable detail of the first corpus

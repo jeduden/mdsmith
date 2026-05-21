@@ -2,9 +2,10 @@
 // Punkt sentence tokenizer from neurosnap/sentences v1.1.2
 // (https://github.com/neurosnap/sentences). It vendors only what
 // MDS024 needs — Storage, Token, WordTokenizer, TokenGrouper,
-// OrthoContext, DefaultSentenceTokenizer, and the English supervised
-// abbreviations — and drops CJK punctuation, the non-English language
-// data, and IsNonPunct (no call site in upstream's English pipeline,
+// OrthoContext, DefaultSentenceTokenizer, the English supervised
+// abbreviations, and the CJK terminal-punctuation handling the
+// upstream word tokenizer ships — and drops the non-English language
+// data and IsNonPunct (no call site in upstream's English pipeline,
 // per plan 187).
 //
 // The fork is segmentation-equivalent to upstream over the
@@ -45,7 +46,11 @@
 // has no extension so mdsmith's content rules do not lint the
 // verbatim license text.)
 //
-// CJK punctuation, multilingual loaders, and IsNonPunct are not
-// vendored. Re-adding any of them must run the equivalence harness;
-// upstream's CJK code paths have never been exercised by mdsmith.
+// Multilingual loaders and IsNonPunct are not vendored. The English
+// pipeline never calls IsNonPunct (plan 187 records the negative)
+// and the non-English language data is unrelated to mdsmith's
+// English Markdown corpus. CJK terminal punctuation IS supported
+// in the word tokenizer so non-ASCII paragraphs flowing through
+// MDS024 segment the same way upstream does — exercised by the
+// equivalence harness's CJK paragraphs.
 package punkt

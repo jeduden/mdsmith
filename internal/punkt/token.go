@@ -30,11 +30,13 @@ func (t *Token) String() string {
 	)
 }
 
-// HasPeriodFinal reports whether tok ends with a period.
-// Upstream also accepts the CJK period (`。`), which the fork drops
-// per the equivalence corpus restriction documented in doc.go.
+// HasPeriodFinal reports whether tok ends with an ASCII period or
+// the CJK full-width period `。`. Mirrors upstream's
+// DefaultWordTokenizer.HasPeriodFinal byte-for-byte (the period
+// classification governs whether the multi-punct annotator
+// considers a token at all, so the CJK acceptance must survive).
 func HasPeriodFinal(tok string) bool {
-	return len(tok) > 0 && tok[len(tok)-1] == '.'
+	return strings.HasSuffix(tok, ".") || strings.HasSuffix(tok, "。")
 }
 
 // isAlphaToken reports whether tok matches the upstream

@@ -129,13 +129,21 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 // on the Punkt sentence count (terminal-punct + 1) and the exact
 // word count (whitespace-delimited, matching strings.Fields). Both
 // are conservative for the rule's checks: Punkt never splits without
-// '.'/'!'/'?' and always yields >=1 sentence, and no single sentence
-// has more words than the whole paragraph.
+// a terminal-punct rune and always yields >=1 sentence, and no
+// single sentence has more words than the whole paragraph.
+//
+// The terminal-punct set mirrors the segmenter's segmentation
+// boundaries: ASCII `.!?` and the CJK full-width variants `。！？`
+// the internal/punkt word tokenizer treats as word boundaries.
+// Counting only ASCII would let a long Chinese/Japanese paragraph
+// clear the guard (sentUB=1) and skip the segmenter, hiding both
+// the "too many sentences" and "sentence too long" diagnostics.
 func cheapBounds(s string) (sentUB, words int) {
 	punct := 0
 	inWord := false
 	for _, r := range s {
-		if r == '.' || r == '!' || r == '?' {
+		switch r {
+		case '.', '!', '?', '。', '！', '？':
 			punct++
 		}
 		if mdtext.IsSpace(r) {

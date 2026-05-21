@@ -140,9 +140,14 @@ func TestHasSentencePunct(t *testing.T) {
 		"a.":    true,
 		"a?":    true,
 		"a!":    true,
-		"abc。":  false, // CJK punctuation dropped per doc.go
-		"abc？":  false,
-		"abc！":  false,
+		// CJK enders are part of punctSentenceEnders so
+		// strings.ContainsAny detects them rune-wise.
+		"abc。": true,
+		"abc？": true,
+		"abc！": true,
+		// Non-terminal CJK runes do not match (no overlap with the
+		// punctSentenceEnders rune set).
+		"abc中": false,
 	}
 	for s, want := range cases {
 		assert.Equalf(t, want, hasSentencePunct(s),
@@ -315,6 +320,49 @@ func TestTokenize_TrailingMultiByteRuneMatchesUpstream(t *testing.T) {
 		for i := range got {
 			assert.Equalf(t, want[i].Tok, got[i].Tok,
 				"trailing-multi-byte token[%d].Tok mismatch on %q", i, text)
+		}
+	}
+}
+
+// TestIsCjkPunct enumerates every rune the upstream IsCjkPunct
+// treats specially, plus a few representative non-CJK runes, and
+// pins the four-rune set: 。 ； ！ ？. Adding or removing a rune
+// from this list would diverge from upstream's word-tokenizer split
+// behaviour, so the gate is explicit.
+func TestIsCjkPunct(t *testing.T) {
+	for _, r := range []rune{'。', '；', '！', '？'} {
+		assert.Truef(t, IsCjkPunct(r),
+			"IsCjkPunct(%q) must be true — these four CJK runes are "+
+				"word boundaries upstream", r)
+	}
+	for _, r := range []rune{'.', '!', '?', 'a', 'Z', '0', '中', '文', ',', ' '} {
+		assert.Falsef(t, IsCjkPunct(r),
+			"IsCjkPunct(%q) must be false — only the CJK terminal "+
+				"trio plus the full-width semicolon participate", r)
+	}
+}
+
+// TestTokenize_CjkPunctuationSplitsTokens pins the CJK
+// split-as-boundary behaviour. Cross-checked against upstream so
+// drift here fails fast.
+func TestTokenize_CjkPunctuationSplitsTokens(t *testing.T) {
+	for _, text := range []string{
+		"中文。English",
+		"こんにちは。さようなら。",
+		"中文！更多。",
+		"abc 中文。end",
+		"problem？solution。",
+	} {
+		got := Tokenize(text, false)
+		want := upstreamTokens(text)
+		require.Equalf(t, len(want), len(got),
+			"CJK split token count mismatch on %q: want %v, got %v",
+			text, want, got)
+		for i := range got {
+			assert.Equalf(t, want[i].Tok, got[i].Tok,
+				"CJK token[%d].Tok mismatch on %q", i, text)
+			assert.Equalf(t, want[i].Position, got[i].Position,
+				"CJK token[%d].Position mismatch on %q", i, text)
 		}
 	}
 }
