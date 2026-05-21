@@ -1,7 +1,7 @@
 ---
 id: 137
 title: "`mdsmith fix --dry-run`"
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Add `--dry-run` to `mdsmith fix` so agents and CI
@@ -115,23 +115,23 @@ unchanged. The new line in the summary
 
 ## Tasks
 
-1. Add `--dry-run` to the `fix` subcommand flag
+1. [x] Add `--dry-run` to the `fix` subcommand flag
    set in
    [`runFix` in `cmd/mdsmith/main.go`](../cmd/mdsmith/main.go).
-2. Gate the write step in the fix pipeline:
+2. [x] Gate the write step in the fix pipeline:
    build the fixed buffer as today, but on
    `--dry-run` skip the write and record the
    would-fix count per rule.
-3. Update the per-file output formatter to emit
+3. [x] Update the per-file output formatter to emit
    "would fix N violations" lines and the
    trailing `would-fix=N` summary stat.
-4. Extend the JSON output struct with
+4. [x] Extend the JSON output struct with
    `would_fix` and `rules` fields when
    `--dry-run` is set.
-5. Document the flag in
+5. [x] Document the flag in
    [`docs/reference/cli/fix.md`](../docs/reference/cli/fix.md)
    with one worked example.
-6. Tests:
+6. [x] Tests:
 
   - dry-run reports the same fix count a real
     run would apply (regression compares both),
@@ -143,24 +143,24 @@ unchanged. The new line in the summary
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith fix --dry-run` writes nothing to
+- [x] `mdsmith fix --dry-run` writes nothing to
       disk (regression test asserts every
       candidate file is byte-identical after
       the run).
-- [ ] The per-file output names each rule that
+- [x] The per-file output names each rule that
       would fire and how many times.
-- [ ] The summary line includes
+- [x] The summary line includes
       `would-fix=N`. The existing
       `checked=` / `fixed=` / `failures=` /
       `unfixed=` fields are present on the
       same line; `fixed=` reads `0` since
       nothing was written.
-- [ ] `--format json` exposes `would_fix` and
+- [x] `--format json` exposes `would_fix` and
       `rules` per file.
-- [ ] Exit code matches the real-run exit code
+- [x] Exit code matches the real-run exit code
       on identical input.
-- [ ] [`docs/reference/cli/fix.md`](../docs/reference/cli/fix.md)
+- [x] [`docs/reference/cli/fix.md`](../docs/reference/cli/fix.md)
       documents the flag with an example.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no
       issues.

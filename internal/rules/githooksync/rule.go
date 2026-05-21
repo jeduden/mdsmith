@@ -332,6 +332,17 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
+	// A dry-run must not touch .gitattributes or the git index.
+	// Trade-off: skipping the write means the post-fix Check still
+	// observes drift, so the diff-based would-fix preview will not
+	// count this rule even though a real run would fix it. A
+	// dedicated "would-fix" hook for side-effect-only fixers could
+	// close that gap; for now the contract (no disk/index writes)
+	// takes precedence over the preview count.
+	if f.DryRun {
+		return f.Source
+	}
+
 	repoRoot, err := r.resolveRepoRoot(filepath.Dir(f.Path))
 	if err != nil {
 		return f.Source

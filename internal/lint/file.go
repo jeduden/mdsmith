@@ -32,6 +32,13 @@ type File struct {
 	// same coordinate system as the current file.
 	StripFrontMatter bool
 
+	// DryRun, when true, signals that the surrounding fix run must
+	// not touch the filesystem or the git index. Fixable rules whose
+	// Fix method has side effects beyond returning the new file
+	// bytes (e.g. writing a sibling repo file, staging via git)
+	// must check this flag and skip the side effect.
+	DryRun bool
+
 	// MaxInputBytes is the maximum file size in bytes that rules
 	// should enforce when reading secondary files (includes, schemas,
 	// cross-references). Zero or negative means unlimited.
