@@ -2,9 +2,11 @@ package paragraphstructure
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
@@ -60,6 +62,16 @@ func TestCheapBounds(t *testing.T) {
 		{"e.g. this is one sentence.", 4, 5},
 		{"a... b", 4, 2},
 		{"q? r? s?", 4, 3},
+		// CJK full-width period 。 counts toward sentUB — it IS
+		// a SentBreak (via HasPeriodFinal). The CJK enders run
+		// together with no whitespace, so word count is 1.
+		{"一。二。三。", 4, 1},
+		// Full-width ！ and ？ are NOT sentence breaks in the
+		// English pipeline (HasSentEndChars is ASCII-only). The
+		// guard counts only the single 。, not the ！ / ？.
+		{"问题？回答。继续！", 2, 1},
+		// Mixed ASCII + CJK: ASCII `.` and `!` both count, plus 。.
+		{"Hello. 中文。 World!", 4, 3},
 	}
 	for _, c := range cases {
 		ub, w := cheapBounds(c.text)
@@ -80,6 +92,13 @@ func TestCheapBounds_GuardIsSound(t *testing.T) {
 		"One. Two. Three. Four. Five.",
 		strings.Repeat("word ", 39) + "end.",
 		"Ellipses... and more... still going... but short.",
+		// Full-width ！ and ？ are NOT sentence breaks in the
+		// English pipeline, so a paragraph that uses only them
+		// between clauses segments as ONE sentence. The guard
+		// must NOT count them as terminal punctuation — counting
+		// would still be sound (UB stays an upper bound) but the
+		// tighter bound below pins the actual segmenter behaviour.
+		"问题？回答！继续？",
 	}
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	for _, txt := range texts {
@@ -88,6 +107,79 @@ func TestCheapBounds_GuardIsSound(t *testing.T) {
 			diags := r.Check(mustParaFile(t, txt))
 			assert.Emptyf(t, diags, "guard passed but Check flagged %q: %v", txt, diags)
 		}
+	}
+}
+
+// TestSentBufPool_ClearReleasesStringReferences pins the contract
+// behind the `clear(sentences)` line in checkParagraph: a
+// `sync.Pool`-stored slice retains its backing array indefinitely,
+// and the GC scans the array across its full capacity (not just up
+// to len). Truncating with `[:0]` therefore leaves prior string
+// elements reachable through the pool until they are overwritten or
+// the pool entry is evicted by a GC sweep. `clear()` zeros every
+// slot so the pool only holds nil string headers.
+//
+// The test demonstrates both halves: without clear, a prior string
+// survives the truncate-and-Put round-trip; with clear, it is gone.
+// A regression that drops the clear() in checkParagraph would
+// silently re-introduce the retention.
+func TestSentBufPool_ClearReleasesStringReferences(t *testing.T) {
+	var p sync.Pool
+	p.New = func() any {
+		s := make([]string, 0, 4)
+		return &s
+	}
+
+	t.Run("without clear: prior string survives [:0]+Put", func(t *testing.T) {
+		ptr := p.Get().(*[]string)
+		*ptr = append(*ptr, "pinned-MARKER-1234")
+		*ptr = (*ptr)[:0] // truncate without clear
+		p.Put(ptr)
+
+		next := p.Get().(*[]string)
+		require.GreaterOrEqual(t, cap(*next), 4)
+		underlying := (*next)[:cap(*next)]
+		assert.Equal(t, "pinned-MARKER-1234", underlying[0],
+			"truncated slice keeps the prior string at index 0 — "+
+				"the GC sees it through the pool's holder")
+		// Restore the pool to clean state for the next subtest.
+		clear(underlying)
+	})
+
+	t.Run("with clear: prior string is gone", func(t *testing.T) {
+		ptr := p.Get().(*[]string)
+		*ptr = append(*ptr, "would-be-pinned-MARKER")
+		clear(*ptr)
+		*ptr = (*ptr)[:0]
+		p.Put(ptr)
+
+		next := p.Get().(*[]string)
+		require.GreaterOrEqual(t, cap(*next), 4)
+		underlying := (*next)[:cap(*next)]
+		assert.Equal(t, "", underlying[0],
+			"clear() zeroes the slot — the prior string can no "+
+				"longer keep its referent alive through the pool")
+	})
+}
+
+// TestCheapBounds_FullWidthExclamQuestionNotSentBreaks pins the
+// invariant cheapBounds relies on: in the English Punkt pipeline
+// (the only one mdtext.SplitSentences runs), full-width ！ and ？
+// are word boundaries but NOT sentence boundaries. The cheapBounds
+// rune set excludes them on this basis; the test would have failed
+// red against an implementation that emitted SentBreak for either
+// rune, prompting a fix to keep the set aligned.
+func TestCheapBounds_FullWidthExclamQuestionNotSentBreaks(t *testing.T) {
+	for _, text := range []string{
+		"中文！更多",
+		"中文？更多",
+		"问题？回答！继续？",
+	} {
+		got := mdtext.SplitSentences(text)
+		require.Lenf(t, got, 1,
+			"text %q must segment as ONE sentence in the English "+
+				"pipeline because ！ / ？ are not sentence-break "+
+				"runes; got %v", text, got)
 	}
 }
 

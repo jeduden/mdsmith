@@ -330,6 +330,16 @@ jobs:
           for pkg in npm/dist/*; do
             (cd "$pkg" && npm publish --access public --provenance)
           done
+      - name: Stage LICENSE for root package
+        # The root @mdsmith/cli package directory has no checked-in
+        # LICENSE because the canonical one lives at repo root. npm
+        # auto-includes a top-level LICENSE in the published tarball,
+        # but only if it sits next to package.json at publish time —
+        # so copy it in before `npm publish`. The root LICENSE also
+        # carries the vendored neurosnap/sentences MIT notice for
+        # internal/punkt/, which is what makes this step legally
+        # required for the npm channel.
+        run: cp LICENSE npm/mdsmith/LICENSE
       - name: Publish root package
         working-directory: npm/mdsmith
         run: npm publish --access public --provenance

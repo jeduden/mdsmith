@@ -119,6 +119,6 @@ footer: |
 | 190 | ✅     | opus   | [Intra-file rule parallelism for non-NodeChecker rules](plan/190_intra-file-rule-parallelism.md)                                        |
 | 191 | ✅     | opus   | [Hand-rolled DFA for Punkt's `reAbbr` to skip regex backtracking](plan/191_punkt-reabbr-dfa.md)                                         |
 | 192 | ✅     | opus   | [Run-scoped read cache for catalog cross-host redundancy](plan/192_catalog-run-scoped-readcache.md)                                     |
-| 193 | 🔲     | opus   | [Rework MDS024 to fit the per-rule allocation budget (≤ 10 allocs/op)](plan/193_mds024-allocation-budget.md)                            |
+| 193 | ✅     | opus   | [Rework MDS024 to fit the per-rule allocation budget (≤ 10 allocs/op)](plan/193_mds024-allocation-budget.md)                            |
 | 194 | ✅     | opus   | [Frontpage persona audit — reduce AI-first framing, surface non-AI path](plan/194_frontpage-persona-audit.md)                           |
 <?/catalog?>

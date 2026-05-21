@@ -79,12 +79,26 @@ to neutral words and never trip the cheap path.
 
 ## Performance
 
-MDS024 is **opt-in** by default — and is the most expensive
-rule mdsmith ships once you enable it. Most short and
-lightly-punctuated paragraphs clear the cheap-bounds guard
-at zero allocations and contribute zero segmenter cost. Long
-prose paragraphs that the guard cannot rule out pay full
-Punkt segmentation, which is the price of an exact diagnostic.
+MDS024 is **opt-in** by default. Short and
+lightly-punctuated paragraphs clear the cheap-bounds
+guard at zero allocations. Long paragraphs that the
+guard cannot rule out pay full Punkt segmentation.
+
+The segmenter is a fork of upstream Punkt vendored
+under [`internal/punkt/`](../../punkt/). The fork is
+byte-identical to upstream over the equivalence
+corpus, but allocation-clean per call. A warm Check
+call against an abbr-heavy paragraph runs at ≤ 10
+allocs/op — pinned by `BenchmarkRule_MDS024` and
+matching the per-rule budget in
+[CLAUDE.md](../../../CLAUDE.md). The `-tags
+mdtext_punkt_upstream` build keeps the original
+pipeline around for A/B comparison.
+
+Plan
+[193](../../../plan/193_mds024-allocation-budget.md)
+records the rework and the measured before/after
+numbers.
 
 Enable when you want exact prose-structure diagnostics.
 Skip when you don't.
@@ -119,7 +133,7 @@ rules:
 ### Good
 
 <?include
-file: good.md
+file: good/english.md
 wrap: markdown
 ?>
 
@@ -132,11 +146,38 @@ A gentle breeze swept through the valley.
 
 <?/include?>
 
+<?include
+file: good/chinese.md
+wrap: markdown
+?>
+
+```markdown
+# Well Structured Chinese Document
+
+太阳升起。鸟儿开始歌唱。一阵微风吹过山谷。
+```
+
+<?/include?>
+
+<?include
+file: good/japanese.md
+wrap: markdown
+?>
+
+```markdown
+# Well Structured Japanese Document
+
+太陽が昇る。鳥が歌い始める。風が谷を吹き抜ける。
+```
+
+<?/include?>
+
 ### Bad
 
 <?include
-file: bad.md
+file: bad/english.md
 wrap: markdown
+strip-frontmatter: "true"
 ?>
 
 ```markdown
@@ -146,6 +187,31 @@ Dogs bark. Cats meow. Birds sing. Fish swim. Frogs croak. Snakes hiss. Bees buzz
 ```
 
 <?/include?>
+
+<?include
+file: bad/chinese.md
+wrap: markdown
+strip-frontmatter: "true"
+?>
+
+```markdown
+# Overly Long Chinese Paragraph
+
+今天天气很好。鸟儿在歌唱。微风轻拂。阳光明媚。空气清新。花朵盛开。山谷宁静。
+```
+
+<?/include?>
+
+The segmenter treats the full-width Chinese / Japanese period
+`。` as a sentence boundary the same way it does ASCII `.`, so
+the rule fires on CJK paragraphs that end every sentence with
+`。`. Mixed CJK / ASCII paragraphs work too.
+
+Full-width `！` and `？` are word boundaries in the trained
+English pipeline (the vendored Punkt fork inherits that), but
+they do not flag a sentence break on their own — match
+upstream behaviour. Author CJK paragraphs with `。` between
+sentences for the rule to count them correctly.
 
 ## Diagnostics
 

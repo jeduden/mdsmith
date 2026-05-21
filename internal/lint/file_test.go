@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -263,4 +264,154 @@ func TestFile_Memo_ConcurrentSingleBuild(t *testing.T) {
 	wg.Wait()
 	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
 		"build must run exactly once under concurrent access")
+}
+
+// TestFile_MemoFile pins the same contract Memo has — build runs
+// exactly once per key, every later call returns the cached value
+// (the warm-path `return e.val` early-out), and distinct keys are
+// independent — for the *File-passing variant. MemoFile exists so
+// callers can register a package-level builder instead of a closure
+// that captures the File; the *File argument is what makes that
+// possible. The build also asserts it received the same *File the
+// caller passed.
+func TestFile_MemoFile(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	var calls int32
+	var receivedFile *File
+	build := func(arg *File) any {
+		atomic.AddInt32(&calls, 1)
+		receivedFile = arg
+		return 42
+	}
+
+	require.Equal(t, 42, f.MemoFile("k", build),
+		"first call must compute and return the value")
+	require.Equal(t, 42, f.MemoFile("k", build),
+		"second call must hit the e.done.Load() warm-path return")
+	require.Equal(t, 42, f.MemoFile("k", build),
+		"third call must also serve the cached value")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"build must run exactly once per key under MemoFile")
+	assert.Same(t, f, receivedFile,
+		"build must receive the same *File the caller passed")
+
+	var otherCalls int32
+	require.Equal(t, "v2", f.MemoFile("k2", func(arg *File) any {
+		atomic.AddInt32(&otherCalls, 1)
+		return "v2"
+	}))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&otherCalls))
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"a distinct key must not re-run the first key's build")
+}
+
+// TestFile_MemoFile_ConcurrentSingleBuild pins that build runs
+// exactly once even under concurrent readers — the mutex-guarded
+// inner check after the atomic.Bool fast-path is what enforces
+// "run-once" between two goroutines that both find done=false on
+// first read. Drives both paths of the double-checked-lock pattern.
+func TestFile_MemoFile_ConcurrentSingleBuild(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	var calls int32
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v := f.MemoFile("shared", func(arg *File) any {
+				atomic.AddInt32(&calls, 1)
+				return "once"
+			})
+			assert.Equal(t, "once", v)
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"build must run exactly once under concurrent MemoFile access")
+}
+
+// TestFile_MemoFile_IndependentFromMemo pins that the MemoFile and
+// Memo entry-points share the same scratch map — registering a key
+// under one is visible under the other. Without this, the per-key
+// dedup wouldn't compose when a future caller mixes the two forms.
+func TestFile_MemoFile_IndependentFromMemo(t *testing.T) {
+	f := &File{Path: "t.md"}
+	f.Memo("shared", func() any { return "via-Memo" })
+	// MemoFile under the same key must hit the cached entry the
+	// first call populated (the build below must not run).
+	var memoFileCalls int32
+	got := f.MemoFile("shared", func(_ *File) any {
+		atomic.AddInt32(&memoFileCalls, 1)
+		return "via-MemoFile"
+	})
+	assert.Equal(t, "via-Memo", got,
+		"MemoFile must return the value the prior Memo call cached")
+	assert.Equal(t, int32(0), atomic.LoadInt32(&memoFileCalls),
+		"the MemoFile build must not run when Memo populated the key")
+}
+
+// TestFile_Memo_PanicReleasesMutex pins that a panicking build does
+// not leave the per-entry mutex locked. Without `defer e.mu.Unlock()`
+// inside Memo, a panic inside the build would deadlock every later
+// Memo call on the same File (including under -race, where the
+// mutex order is checked). The recover here simulates a caller
+// that catches the panic; the subsequent Memo call must complete
+// within a short deadline rather than block forever.
+func TestFile_Memo_PanicReleasesMutex(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	func() {
+		defer func() { _ = recover() }()
+		f.Memo("panicky", func() any {
+			panic("boom")
+		})
+	}()
+
+	// If the mutex stayed locked, a second Memo call on the same
+	// key would block forever. Run it in a goroutine with a hard
+	// deadline so the test fails fast on a regression.
+	done := make(chan any, 1)
+	go func() {
+		done <- f.Memo("panicky", func() any { return "recovered" })
+	}()
+	select {
+	case got := <-done:
+		// sync.Once-style semantics: the first build marked the
+		// key done before propagating the panic, so subsequent
+		// calls serve the zero-value cached result without re-
+		// running the build. Either behaviour is acceptable as
+		// long as the call returns; the test pins "no deadlock".
+		t.Logf("Memo after panic returned %#v", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Memo deadlocked after a panicking build — " +
+			"the per-entry mutex was not released")
+	}
+}
+
+// TestFile_MemoFile_PanicReleasesMutex is the MemoFile counterpart
+// of TestFile_Memo_PanicReleasesMutex — the same defer-Unlock
+// guarantee must hold for the *File-passing variant.
+func TestFile_MemoFile_PanicReleasesMutex(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	func() {
+		defer func() { _ = recover() }()
+		f.MemoFile("panicky", func(*File) any {
+			panic("boom")
+		})
+	}()
+
+	done := make(chan any, 1)
+	go func() {
+		done <- f.MemoFile("panicky", func(*File) any { return "recovered" })
+	}()
+	select {
+	case got := <-done:
+		t.Logf("MemoFile after panic returned %#v", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("MemoFile deadlocked after a panicking build — " +
+			"the per-entry mutex was not released")
+	}
 }

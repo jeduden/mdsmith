@@ -259,6 +259,61 @@ func TestCopyDirCopiesNestedTree(t *testing.T) {
 	}
 }
 
+// TestStagePythonTree_CopiesLicense pins the wheel-LICENSE shipping
+// contract added for the internal/punkt/ vendored MIT notice. The
+// root LICENSE must land at <stage>/LICENSE so hatchling's
+// `license-files = ["LICENSE"]` setting picks it up and writes it
+// into the wheel's `.dist-info/`. Without this copy, the wheel
+// would ship without the third-party MIT attribution the root
+// LICENSE carries — a license-compliance gap.
+func TestStagePythonTree_CopiesLicense(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "python")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"), []byte("[project]\nname=\"x\"\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(src, "mdsmith"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "mdsmith", "__init__.py"), []byte(""), 0o644))
+
+	const wantLicense = "MIT — vendored notice\n"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "LICENSE"), []byte(wantLicense), 0o644))
+
+	asset := filepath.Join(root, "fake-binary")
+	require.NoError(t, os.WriteFile(asset, []byte("\x7fELF"), 0o755))
+
+	stage, err := New().stagePythonTree(src, asset, "mdsmith")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(stage) })
+
+	got, err := os.ReadFile(filepath.Join(stage, "LICENSE"))
+	require.NoError(t, err,
+		"stagePythonTree must copy <root>/LICENSE to <stage>/LICENSE "+
+			"so hatchling's license-files setting can ship it in the wheel")
+	assert.Equal(t, wantLicense, string(got),
+		"staged LICENSE must be byte-identical to the source")
+}
+
+// TestStagePythonTree_FailsOnMissingLicense pins the hard
+// requirement: pyproject.toml declares license-files = ["LICENSE"]
+// and hatchling would fail the build downstream anyway. Failing
+// loudly here produces a clearer error than the hatchling
+// complaint and prevents mis-staging from silently shipping a wheel
+// without the required MIT notice.
+func TestStagePythonTree_FailsOnMissingLicense(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "python")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"), []byte("[project]\nname=\"x\"\n"), 0o644))
+
+	asset := filepath.Join(root, "fake-binary")
+	require.NoError(t, os.WriteFile(asset, []byte("\x7fELF"), 0o755))
+
+	_, err := New().stagePythonTree(src, asset, "mdsmith")
+	require.Error(t, err,
+		"stagePythonTree must fail loudly when the repo has no root LICENSE")
+	assert.Contains(t, err.Error(), "LICENSE",
+		"the error must name LICENSE so the cause is obvious")
+}
+
 // TestBuildWheelsLayout calls BuildWheels directly and asserts
 // (a) one wheel per platform tag, (b) the dist-info/WHEEL metadata
 // inside each wheel claims the matching platform tag instead of
@@ -276,6 +331,12 @@ func TestBuildWheelsLayout(t *testing.T) {
 	root := t.TempDir()
 	fixtureManifests(t, root)
 	stagePython(t, root)
+	// stagePythonTree requires a root LICENSE — pyproject.toml's
+	// license-files setting expects it and hatchling would fail
+	// the build otherwise. The body just has to be readable; the
+	// wheel-content assertions below check the staged copy lands.
+	require.NoError(t, os.WriteFile(filepath.Join(root, "LICENSE"),
+		[]byte("MIT — test fixture\n"), 0o644))
 	require.NoError(t, Stamp(root, ver))
 
 	artifacts := filepath.Join(root, "artifacts")

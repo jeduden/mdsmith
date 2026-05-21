@@ -320,9 +320,7 @@ func TestStagePythonTreeFailsOnCopyDir(t *testing.T) {
 }
 
 func TestStagePythonTreeFailsOnBinDirMkdir(t *testing.T) {
-	src := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
-		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	_, src := stagePythonSrc(t)
 	ff := newFakeFS()
 	// MkdirAll calls: copyDir's mkdir for the staged tree (1),
 	// stagePythonTree's mkdir for mdsmith/_bin (2).
@@ -428,18 +426,17 @@ func TestReadJSONVersionRejectsManifestWithoutVersion(t *testing.T) {
 }
 
 func TestStagePythonTreeFailsOnCopyAsset(t *testing.T) {
-	// The asset's copyFile uses a ReadFile (the asset) followed
-	// by a WriteFile (under mdsmith/_bin/). copyDir for the
-	// staged tree consumes ReadFile #1 (and writes once, since
-	// the src has only pyproject.toml). Asset ReadFile is the
-	// 2nd ReadFile call.
-	src := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
-		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	// stagePythonTree's ReadFile order:
+	//   #1 — copyDir reads pyproject.toml (the only src entry).
+	//   #2 — root LICENSE (now required; stagePythonSrc writes one
+	//        so this call succeeds).
+	//   #3 — the binary asset; failure must propagate.
+	// The injected fault targets ReadFile #3.
+	_, src := stagePythonSrc(t)
 	asset := filepath.Join(t.TempDir(), "asset")
 	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
 	ff := newFakeFS()
-	ff.failOnReadFileCall = 2
+	ff.failOnReadFileCall = 3
 
 	stage, err := NewWithFS(ff).stagePythonTree(src, asset, "mdsmith")
 	if err == nil {
@@ -447,6 +444,52 @@ func TestStagePythonTreeFailsOnCopyAsset(t *testing.T) {
 	}
 	require.Error(t, err)
 	assert.ErrorIs(t, err, errInjected)
+}
+
+// TestStagePythonTreeFailsOnLicenseReadIOError pins the LICENSE
+// ReadFile error path: any failure must propagate. fakeFS injects
+// errInjected on the targeted call regardless of whether the
+// underlying file exists, so this test exercises the "I/O error"
+// shape.
+func TestStagePythonTreeFailsOnLicenseReadIOError(t *testing.T) {
+	_, src := stagePythonSrc(t)
+	asset := filepath.Join(t.TempDir(), "asset")
+	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
+	ff := newFakeFS()
+	ff.failOnReadFileCall = 2 // the LICENSE ReadFile
+
+	stage, err := NewWithFS(ff).stagePythonTree(src, asset, "mdsmith")
+	if err == nil {
+		_ = os.RemoveAll(stage)
+	}
+	require.Error(t, err,
+		"LICENSE read errors must propagate")
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "LICENSE",
+		"the wrapping must name LICENSE so the cause is obvious")
+}
+
+// TestStagePythonTreeFailsOnLicenseWriteError pins the stage-LICENSE
+// WriteFile branch: a write error must propagate with context that
+// names LICENSE.
+func TestStagePythonTreeFailsOnLicenseWriteError(t *testing.T) {
+	_, src := stagePythonSrc(t)
+	asset := filepath.Join(t.TempDir(), "asset")
+	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
+	ff := newFakeFS()
+	// WriteFile call order: #1 = copyDir's pyproject.toml; #2 =
+	// staged LICENSE; #3 = the staged binary asset. Inject on #2 so
+	// stagePythonTree's LICENSE write path is the failing one.
+	ff.failOnWriteFileCall = 2
+
+	stage, err := NewWithFS(ff).stagePythonTree(src, asset, "mdsmith")
+	if err == nil {
+		_ = os.RemoveAll(stage)
+	}
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errInjected)
+	assert.Contains(t, err.Error(), "LICENSE",
+		"the wrapping must name LICENSE so the cause is obvious")
 }
 
 // readErrFS overrides only ReadFile to return a non-NotExist
@@ -665,9 +708,7 @@ func TestBuildWheelsPassesAbsoluteOutdirToPython(t *testing.T) {
 // dir flow all the way to PyPI publish-time, where the
 // pypi-publish action fails with "no distribution packages".
 func TestBuildOneWheelFailsWhenPythonProducesNoWheel(t *testing.T) {
-	src := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
-		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	_, src := stagePythonSrc(t)
 	asset := filepath.Join(t.TempDir(), "asset")
 	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
 	out := t.TempDir()
@@ -690,9 +731,7 @@ func TestBuildOneWheelFailsWhenPythonProducesNoWheel(t *testing.T) {
 // the empty-wheel guard wouldn't fire, and retagWheels +
 // moveWheels would relabel and ship the stale artifact.
 func TestBuildOneWheelWipesStaleStaging(t *testing.T) {
-	src := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
-		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	_, src := stagePythonSrc(t)
 	asset := filepath.Join(t.TempDir(), "asset")
 	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
 	out := t.TempDir()
@@ -720,9 +759,7 @@ func TestBuildOneWheelWipesStaleStaging(t *testing.T) {
 func TestBuildOneWheelPropagatesPythonFailure(t *testing.T) {
 	// Stage a real source tree so stagePythonTree succeeds, then
 	// fail on the first runner call (python -m build).
-	src := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
-		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	_, src := stagePythonSrc(t)
 	asset := filepath.Join(t.TempDir(), "asset")
 	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
 	out := t.TempDir()
@@ -771,9 +808,7 @@ func (r *wheelStagingRunner) RunCommand(dir, name string, args ...string) error 
 // pre-staging the staging dir — that's the runner's job now.
 func stageBuildOneWheelInputs(t *testing.T) (string, string, string, wheelBuild) {
 	t.Helper()
-	src := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
-		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	_, src := stagePythonSrc(t)
 	asset := filepath.Join(t.TempDir(), "asset")
 	require.NoError(t, os.WriteFile(asset, []byte("bin"), 0o755))
 	out := t.TempDir()
@@ -781,6 +816,23 @@ func stageBuildOneWheelInputs(t *testing.T) (string, string, string, wheelBuild)
 	return src, filepath.Dir(asset), out, wheelBuild{
 		Asset: filepath.Base(asset), PlatTag: wb.PlatTag, Exe: wb.Exe,
 	}
+}
+
+// stagePythonSrc lays out a minimal but realistic tree for
+// stagePythonTree: <root>/LICENSE and <root>/python/pyproject.toml.
+// The python directory is the `src` stagePythonTree expects, and
+// stagePythonTree reads LICENSE from filepath.Dir(src). Returns
+// (root, src) — both absolute paths.
+func stagePythonSrc(t *testing.T) (root, src string) {
+	t.Helper()
+	root = t.TempDir()
+	src = filepath.Join(root, "python")
+	require.NoError(t, os.MkdirAll(src, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(src, "pyproject.toml"),
+		[]byte("[project]\nname=\"x\"\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "LICENSE"),
+		[]byte("MIT — test fixture\n"), 0o644))
+	return root, src
 }
 
 func TestBuildOneWheelPropagatesRetagFailure(t *testing.T) {

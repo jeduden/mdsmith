@@ -200,6 +200,58 @@ func TestSplitSentences_WhitespaceOnly(t *testing.T) {
 	require.Empty(t, got)
 }
 
+// TestSplitSentencesInto covers both branches of the pool-friendly
+// variant: the empty / whitespace-only short-circuit (returns dst
+// unchanged so callers can keep a pooled []string) and the normal
+// path (delegates to splitSentencesInto, which appends trimmed
+// sentences). The branches were uncovered when SplitSentencesInto
+// was added — see PR #367 review feedback.
+
+func TestSplitSentencesInto_EmptyReturnsDstUnchanged(t *testing.T) {
+	// Caller passes a pooled slice with prior capacity. The
+	// short-circuit on whitespace-only input must NOT modify it
+	// (no allocation, no truncation).
+	dst := make([]string, 0, 4)
+	got := mdtext.SplitSentencesInto(dst, "")
+	require.Empty(t, got, "empty input must produce no sentences")
+	require.Equal(t, 4, cap(got),
+		"empty input must return the caller's slice unchanged "+
+			"so the pool keeps its grown capacity")
+}
+
+func TestSplitSentencesInto_WhitespaceOnlyReturnsDstUnchanged(t *testing.T) {
+	dst := make([]string, 0, 4)
+	got := mdtext.SplitSentencesInto(dst, "   \n\t  ")
+	require.Empty(t, got)
+	require.Equal(t, 4, cap(got),
+		"whitespace-only input must also return dst unchanged")
+}
+
+func TestSplitSentencesInto_AppendsToProvidedSlice(t *testing.T) {
+	dst := make([]string, 0, 8)
+	got := mdtext.SplitSentencesInto(dst, "Hello world. How are you?")
+	require.Len(t, got, 2,
+		"normal input must segment via the trained pipeline")
+	assert.Equal(t, "Hello world.", got[0])
+	assert.Equal(t, "How are you?", got[1])
+}
+
+func TestSplitSentencesInto_ReusesDstCapacity(t *testing.T) {
+	// First call grows dst to fit two sentences. A second call into
+	// the same backing array (after the caller reset len to 0)
+	// must reuse the capacity instead of growing again.
+	var dst []string
+	dst = mdtext.SplitSentencesInto(dst, "First sentence. Second sentence.")
+	require.Len(t, dst, 2)
+	c0 := cap(dst)
+
+	dst = mdtext.SplitSentencesInto(dst[:0], "One. Two.")
+	require.Len(t, dst, 2)
+	assert.GreaterOrEqual(t, cap(dst), c0,
+		"second call must reuse (or grow from) the existing capacity, "+
+			"not allocate a brand new backing array")
+}
+
 // --- CountCharacters tests ---
 
 func TestCountCharacters_Simple(t *testing.T) {

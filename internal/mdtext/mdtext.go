@@ -8,8 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark/ast"
-
-	sentlib "github.com/neurosnap/sentences"
 )
 
 // Slugify converts heading text to a GitHub-compatible URL anchor slug.
@@ -203,41 +201,56 @@ func CountSentences(text string) int {
 	return count
 }
 
-var (
-	tokenizer *sentlib.DefaultSentenceTokenizer
-	initOnce  sync.Once
-)
-
-// initTokenizer constructs the package's lazy singleton. The actual
-// builder is supplied by the build-tagged files fastpunct_init.go
-// (default) or upstreampunct.go (tag mdtext_punkt_upstream). The
-// two paths differ on (1) which MultiPunctWordAnnotation is
-// installed in the third-pass abbreviation classifier — the
-// optimization of plan 191 — and (2) error handling on a corrupt
-// training asset (default panics via mustLoadTraining; upstream
-// matches the original swallow). Segmentation behaviour on valid
-// input is identical and gated by sentence_equivalence_test.go.
-func initTokenizer() {
-	tokenizer = buildTokenizer()
-}
+// initTokenizerOnce wraps initTokenizer in sync.OnceFunc — a
+// stylistic preference over `var initOnce sync.Once` /
+// `initOnce.Do(initTokenizer)` at each call site, not a perf win:
+// passing a package-level function value to sync.Once.Do is
+// allocation-free per call (only closures and method values force
+// the function-value boxing the budget gate would see). OnceFunc
+// constructs the wrapper once at package init; the call site
+// becomes `initTokenizerOnce()` which reads cleaner than the
+// explicit Once-and-Do pair.
+//
+// The actual singleton is owned by the build-tagged file that
+// provides splitSentences — fastpunct_init.go (default) builds a
+// *punkt.Tokenizer; upstreampunct.go (tag mdtext_punkt_upstream)
+// builds the upstream english.NewSentenceTokenizer pipeline. Both
+// paths produce byte-identical segmentation, gated by
+// sentence_equivalence_test.go.
+var initTokenizerOnce = sync.OnceFunc(initTokenizer)
 
 // SplitSentences splits text into individual sentences using a
-// Punkt sentence tokenizer. Handles abbreviations, decimals,
-// and ellipses.
+// Punkt sentence tokenizer. Handles abbreviations, decimals, and
+// ellipses. The actual segmentation is delegated to splitSentences
+// (defined by the active build tag).
+//
+// The returned slice is freshly allocated. Hot callers that want
+// to pool the destination should use SplitSentencesInto instead.
 func SplitSentences(text string) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-	initOnce.Do(initTokenizer)
-	sents := tokenizer.Tokenize(text)
-	result := make([]string, 0, len(sents))
-	for _, s := range sents {
-		t := strings.TrimSpace(s.Text)
-		if t != "" {
-			result = append(result, t)
-		}
+	initTokenizerOnce()
+	return splitSentencesInto(nil, text)
+}
+
+// SplitSentencesInto is the pool-friendly variant of SplitSentences:
+// it appends the segmented sentences (trimmed, non-empty) to dst and
+// returns the extended slice. The intended pattern is
+//
+//	bufPtr := sentBufPool.Get().(*[]string)
+//	*bufPtr = mdtext.SplitSentencesInto((*bufPtr)[:0], text)
+//	defer sentBufPool.Put(bufPtr)
+//
+// so the per-call `make([]string, 0, n)` plain SplitSentences pays
+// is amortized across a sync.Pool. MDS024's hot path uses this form
+// to stay within the per-rule allocation budget on cold-File runs.
+func SplitSentencesInto(dst []string, text string) []string {
+	if strings.TrimSpace(text) == "" {
+		return dst
 	}
-	return result
+	initTokenizerOnce()
+	return splitSentencesInto(dst, text)
 }
 
 // CountCharacters counts letters and digits in text
