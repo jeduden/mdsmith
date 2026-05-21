@@ -60,6 +60,14 @@ func TestCheapBounds(t *testing.T) {
 		{"e.g. this is one sentence.", 4, 5},
 		{"a... b", 4, 2},
 		{"q? r? s?", 4, 3},
+		// CJK terminal punctuation must count toward sentUB so the
+		// guard cannot let a CJK paragraph skip the segmenter. The
+		// CJK enders run together with no whitespace, so word count
+		// is 1 (the whole CJK string with no IsSpace runes inside).
+		{"一。二。三。", 4, 1},
+		{"问题？回答。继续！", 4, 1},
+		// Mixed ASCII + CJK: the helper counts both sets.
+		{"Hello. 中文。 World!", 4, 3},
 	}
 	for _, c := range cases {
 		ub, w := cheapBounds(c.text)

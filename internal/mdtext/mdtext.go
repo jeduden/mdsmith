@@ -8,8 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark/ast"
-
-	sentlib "github.com/neurosnap/sentences"
 )
 
 // Slugify converts heading text to a GitHub-compatible URL anchor slug.
@@ -203,41 +201,25 @@ func CountSentences(text string) int {
 	return count
 }
 
-var (
-	tokenizer *sentlib.DefaultSentenceTokenizer
-	initOnce  sync.Once
-)
-
-// initTokenizer constructs the package's lazy singleton. The actual
-// builder is supplied by the build-tagged files fastpunct_init.go
-// (default) or upstreampunct.go (tag mdtext_punkt_upstream). The
-// two paths differ on (1) which MultiPunctWordAnnotation is
-// installed in the third-pass abbreviation classifier — the
-// optimization of plan 191 — and (2) error handling on a corrupt
-// training asset (default panics via mustLoadTraining; upstream
-// matches the original swallow). Segmentation behaviour on valid
-// input is identical and gated by sentence_equivalence_test.go.
-func initTokenizer() {
-	tokenizer = buildTokenizer()
-}
+// initOnce guards the lazy construction of the Punkt tokenizer.
+// The actual singleton is owned by the build-tagged file that
+// provides splitSentences — fastpunct_init.go (default) builds a
+// *punkt.Tokenizer; upstreampunct.go (tag mdtext_punkt_upstream)
+// builds the upstream english.NewSentenceTokenizer pipeline. Both
+// paths produce byte-identical segmentation, gated by
+// sentence_equivalence_test.go.
+var initOnce sync.Once
 
 // SplitSentences splits text into individual sentences using a
-// Punkt sentence tokenizer. Handles abbreviations, decimals,
-// and ellipses.
+// Punkt sentence tokenizer. Handles abbreviations, decimals, and
+// ellipses. The actual segmentation is delegated to splitSentences
+// (defined by the active build tag).
 func SplitSentences(text string) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
 	initOnce.Do(initTokenizer)
-	sents := tokenizer.Tokenize(text)
-	result := make([]string, 0, len(sents))
-	for _, s := range sents {
-		t := strings.TrimSpace(s.Text)
-		if t != "" {
-			result = append(result, t)
-		}
-	}
-	return result
+	return splitSentences(text)
 }
 
 // CountCharacters counts letters and digits in text

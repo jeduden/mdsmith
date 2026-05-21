@@ -3,68 +3,44 @@
 package mdtext
 
 import (
-	sentlib "github.com/neurosnap/sentences"
-	"github.com/neurosnap/sentences/data"
-	"github.com/neurosnap/sentences/english"
+	"strings"
+
+	"github.com/jeduden/mdsmith/internal/punkt"
 )
 
-// buildTokenizer assembles the same DefaultSentenceTokenizer that
-// `english.NewSentenceTokenizer(nil)` would build — the same trained
-// English data, the same word tokenizer, the same supervised
-// abbreviations — but replaces the third-pass
-// MultiPunctWordAnnotation with fastMultiPunctWordAnnotation. The
-// only call-site difference is that the abbreviation classifier
-// runs matchAbbrPattern in place of `reAbbr.FindAllString`. See
-// `english/main.go:NewSentenceTokenizer` for the upstream original
-// and plan 191 for the rationale.
-func buildTokenizer() *sentlib.DefaultSentenceTokenizer {
-	training := mustLoadTraining(data.MustAsset("data/english.json"))
+// forkTokenizer is the default-build singleton — a pooled,
+// allocation-clean reimplementation of trained Punkt vendored in
+// internal/punkt/. Plan 193 owns the rationale: the upstream pipeline
+// allocates ~135 times per Tokenize call (six per-token regex
+// pointers, per-pass grouper buffer, strings.Join for collocations,
+// etc.); the fork's pooled state amortizes the whole thing to a
+// handful of allocations per call.
+//
+// Construction happens once via initTokenizer (in mdtext.go) under
+// initOnce. Subsequent SplitSentences calls reuse this singleton; the
+// per-call state buffers live in a sync.Pool inside punkt.Tokenizer
+// so concurrent callers do not contend.
+var forkTokenizer *punkt.Tokenizer
 
-	// Supervised abbreviations applied by english.NewSentenceTokenizer.
-	for _, abbr := range []string{"sgt", "gov", "no"} {
-		training.AbbrevTypes.Add(abbr)
-	}
-
-	lang := sentlib.NewPunctStrings()
-	word := english.NewWordTokenizer(lang)
-
-	annotations := sentlib.NewAnnotations(training, lang, word)
-
-	ortho := &sentlib.OrthoContext{
-		Storage:      training,
-		PunctStrings: lang,
-		TokenType:    word,
-		TokenFirst:   word,
-	}
-
-	fastMulti := &fastMultiPunctWordAnnotation{
-		Storage:      training,
-		TokenParser:  word,
-		TokenGrouper: &sentlib.DefaultTokenGrouper{},
-		Ortho:        ortho,
-		upstreamWord: word,
-	}
-	annotations = append(annotations, fastMulti)
-
-	return &sentlib.DefaultSentenceTokenizer{
-		Storage:       training,
-		PunctStrings:  lang,
-		WordTokenizer: word,
-		Annotations:   annotations,
-	}
+// initTokenizer assembles the default-build tokenizer. The upstream
+// build tag (mdtext_punkt_upstream) provides its own initTokenizer in
+// upstreampunct.go.
+func initTokenizer() {
+	forkTokenizer = punkt.NewEnglish()
 }
 
-// mustLoadTraining parses raw Punkt training JSON and panics with a
-// descriptive message on malformed input or nil result. Extracted
-// from buildTokenizer so the failure branch can be driven red/green
-// with malformed bytes — see TestMustLoadTraining_PanicsOn*.
-func mustLoadTraining(raw []byte) *sentlib.Storage {
-	training, err := sentlib.LoadTraining(raw)
-	if err != nil {
-		panic("mdtext: failed to load Punkt training data: " + err.Error())
+// splitSentences is the default-build segmentation implementation.
+// It runs the fork tokenizer, trims each Sentence.Text, and drops
+// empty results so the contract of mdtext.SplitSentences (returns a
+// non-empty []string with TrimSpace'd entries) is preserved.
+func splitSentences(text string) []string {
+	sents := forkTokenizer.Tokenize(text)
+	result := make([]string, 0, len(sents))
+	for _, s := range sents {
+		t := strings.TrimSpace(s.Text)
+		if t != "" {
+			result = append(result, t)
+		}
 	}
-	if training == nil {
-		panic("mdtext: Punkt training data is nil")
-	}
-	return training
+	return result
 }

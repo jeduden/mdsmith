@@ -59,6 +59,12 @@ title = "mdsmith"
 [params]
   version = "0.0.0-dev"
 `)
+	// stagePythonTree requires a root LICENSE for hatchling's
+	// `license-files = ["LICENSE"]` setting. The real repo carries
+	// one; the fixture mirrors that so wheel-side fault tests don't
+	// trip stagePythonTree's hard-failure branch when they meant to
+	// exercise some other step.
+	write("LICENSE", "MIT — test fixture\n")
 }
 
 func mustRead(t *testing.T, path string) string {
