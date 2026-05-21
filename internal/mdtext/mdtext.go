@@ -201,14 +201,21 @@ func CountSentences(text string) int {
 	return count
 }
 
-// initOnce guards the lazy construction of the Punkt tokenizer.
+// initTokenizerOnce wraps initTokenizer in sync.OnceFunc so calling
+// it returns the same nil-cost wrapper on every SplitSentences
+// invocation. A bare `sync.Once.Do(initTokenizer)` allocates one
+// function value per call (the Go escape analysis can't avoid the
+// closure boxing for the Do parameter), which the alloc-budget gate
+// on MDS024 picks up. OnceFunc constructs the wrapper once at
+// package init.
+//
 // The actual singleton is owned by the build-tagged file that
 // provides splitSentences — fastpunct_init.go (default) builds a
 // *punkt.Tokenizer; upstreampunct.go (tag mdtext_punkt_upstream)
 // builds the upstream english.NewSentenceTokenizer pipeline. Both
 // paths produce byte-identical segmentation, gated by
 // sentence_equivalence_test.go.
-var initOnce sync.Once
+var initTokenizerOnce = sync.OnceFunc(initTokenizer)
 
 // SplitSentences splits text into individual sentences using a
 // Punkt sentence tokenizer. Handles abbreviations, decimals, and
@@ -218,7 +225,7 @@ func SplitSentences(text string) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-	initOnce.Do(initTokenizer)
+	initTokenizerOnce()
 	return splitSentences(text)
 }
 

@@ -2,6 +2,7 @@ package paragraphstructure
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -91,6 +92,11 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 	var diags []lint.Diagnostic
 
 	if len(sentences) > r.MaxSentences {
+		// Hand-built string instead of fmt.Sprintf: Sprintf cost ~3
+		// allocs per call (format string + result + boxed args);
+		// strconv.Itoa returns from a cache for small ints (no
+		// alloc) and Go's string-concat lowers to a single result
+		// allocation.
 		diags = append(diags, lint.Diagnostic{
 			File:     filePath,
 			Line:     line,
@@ -98,10 +104,9 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message: fmt.Sprintf(
-				"paragraph has too many sentences (%d > %d)",
-				len(sentences), r.MaxSentences,
-			),
+			Message: "paragraph has too many sentences (" +
+				strconv.Itoa(len(sentences)) + " > " +
+				strconv.Itoa(r.MaxSentences) + ")",
 		})
 	}
 
@@ -115,10 +120,10 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 				RuleID:   r.ID(),
 				RuleName: r.Name(),
 				Severity: lint.Warning,
-				Message: fmt.Sprintf(
-					"sentence too long (%d > %d words): %s",
-					wc, r.MaxWords, sentencePreview(sent, 10),
-				),
+				Message: "sentence too long (" +
+					strconv.Itoa(wc) + " > " +
+					strconv.Itoa(r.MaxWords) + " words): " +
+					sentencePreview(sent, 10),
 			})
 		}
 	}

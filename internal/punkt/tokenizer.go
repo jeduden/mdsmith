@@ -83,10 +83,12 @@ func (t *Tokenizer) Tokenize(text string) []Sentence {
 		return nil
 	}
 	st := t.pool.Get().(*state)
-	defer func() {
-		st.reset()
-		t.pool.Put(st)
-	}()
+	// Explicit cleanup at the bottom of the function instead of
+	// `defer func() { ... }()` — the deferred closure escapes to
+	// the heap (1 alloc/op) and the alloc-budget gate on MDS024
+	// picks it up. There's no panic recovery needed here, and the
+	// happy-path is the only path that returns, so a plain
+	// reset+Put at the end is equivalent.
 
 	// 1. Tokenize text into st.tokens, then build st.ptrs. Tokenize
 	// already short-circuited the empty-text case above, and
@@ -144,5 +146,7 @@ func (t *Tokenizer) Tokenize(text string) []Sentence {
 	// the returned slice must not alias st.sents.
 	out := make([]Sentence, len(st.sents))
 	copy(out, st.sents)
+	st.reset()
+	t.pool.Put(st)
 	return out
 }

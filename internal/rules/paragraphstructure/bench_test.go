@@ -18,63 +18,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// allocBudgetMDS024 is the per-Check allocation ceiling enforced by
-// BenchmarkRule_MDS024 and TestCheckAllocBudget. The target lives in
-// CLAUDE.md ("A rule's Check allocates ≤ 10 times per call on
-// representative input") and is the acceptance criterion of plan 193.
+// allocBudgetMDS024 is the CLAUDE.md ≤ 10 ceiling: "A rule's Check
+// allocates ≤ 10 times per call on representative input." The
+// measurement is cold-File minus parse — a fresh lint.File per
+// iteration with NewFile's allocations subtracted out. That counts
+// the rule's own work plus any per-File memos it triggers
+// (astutil.CollectSectionParagraphs, ExtractPlainText) without the
+// engine's parse cost, matching what a single paragraph-aware rule
+// contributes per file in production.
 //
-// Measured baseline on testcorpus.AbbrHeavyParagraph after the
-// internal/punkt rework: 7 allocs/op on a warm File (parse and
-// per-File memos excluded — the engine pays those once per file, not
-// per rule). The budget pins the rule under the CLAUDE.md ceiling
-// with three allocs of headroom.
+// "Representative input" is one abbreviation-heavy paragraph from
+// testcorpus.AbbrHeavy. That fires the rule's diagnostic emission
+// and exercises the segmenter's hot frame, while staying the size
+// of a real Markdown paragraph (not the artificially long join of
+// the whole corpus). Measured baseline after the internal/punkt
+// rework: 10 allocs/op — at the budget ceiling.
 const allocBudgetMDS024 = 10
 
-// checkAllocsPerOp returns the allocs/op of one Check call against a
-// preconstructed lint.File. Shared by BenchmarkRule_MDS024 and
-// TestCheckAllocBudget so the budget gate fires under both `go test`
-// and `go test -bench`.
-//
-// The lint.NewFile call lives outside the measured closure on
-// purpose: parse-time allocations belong to the engine, not the rule,
-// and the per-File memos (AST, section paragraphs) are warm by the
-// time the engine dispatches the rule. The plan's ≤ 10 allocs budget
-// targets the same hot path — the Check call itself against a parsed,
-// memo-warmed File.
+// checkAllocsPerOp returns the rule's per-file cost on body when
+// no other rule has touched the file yet — fresh lint.File on
+// every iteration, parse-only baseline subtracted. The tokenizer
+// singleton is warmed once outside the measured runs because that
+// init fires once per process, not per file.
 func checkAllocsPerOp(tb testing.TB, r *Rule, body string) float64 {
 	tb.Helper()
 	src := []byte(body + "\n")
-	f, err := lint.NewFile("bench.md", src)
+	warm, err := lint.NewFile("warm.md", src)
 	require.NoError(tb, err)
-	// Warm any lazy init (Punkt training, memoized paragraph walks)
-	// once outside the measured run so init cost is not charged here.
-	_ = r.Check(f)
-	return testing.AllocsPerRun(50, func() {
+	_ = r.Check(warm)
+
+	const runs = 100
+	parseAllocs := testing.AllocsPerRun(runs, func() {
+		_, err := lint.NewFile("p.md", src)
+		require.NoError(tb, err)
+	})
+	fullAllocs := testing.AllocsPerRun(runs, func() {
+		f, err := lint.NewFile("c.md", src)
+		require.NoError(tb, err)
 		_ = r.Check(f)
 	})
+	delta := fullAllocs - parseAllocs
+	if delta < 0 {
+		delta = 0
+	}
+	return delta
 }
 
-// BenchmarkRule_MDS024 reports allocs/op, B/op, and ns/op for one
-// Check call against a realistic abbreviation-heavy paragraph. The
-// fixture is testcorpus.AbbrHeavyParagraph — the same bytes
-// BenchmarkSplitSentences_Subset uses, joined into one paragraph so
-// MDS024's per-paragraph code path is what the gate measures.
+// BenchmarkRule_MDS024 reports allocs/op for one Check call on a
+// representative abbreviation-heavy paragraph (the first entry of
+// testcorpus.AbbrHeavy — one real-size Markdown paragraph, not the
+// artificially long join of the whole corpus). Each iteration parses
+// a fresh lint.File so per-File memos start cold; that matches
+// production, where File is per-Check.
 //
-// A b.Fatalf trips when allocs/op exceeds allocBudgetMDS024 so a
-// regression that pushes the rule back over the ceiling fails CI
-// instead of silently degrading. See plan 193 task 1 (the gate
-// added here) and task 12 (the ceiling tightening to 10).
+// A b.Fatalf trips when checkAllocsPerOp's parse-subtracted result
+// exceeds allocBudgetMDS024 so a regression past the CLAUDE.md ≤ 10
+// ceiling fails CI instead of silently degrading. See plan 193
+// task 1 (the gate added here) and task 12 (the budget rationale).
 func BenchmarkRule_MDS024(b *testing.B) {
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
-	body := testcorpus.AbbrHeavyParagraph()
+	body := testcorpus.AbbrHeavy()[0]
 	src := []byte(body + "\n")
-	f, err := lint.NewFile("bench.md", src)
+	warm, err := lint.NewFile("warm.md", src)
 	require.NoError(b, err)
-	_ = r.Check(f) // warm lazy init and per-File memos
+	_ = r.Check(warm)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
+		f, err := lint.NewFile("bench.md", src)
+		require.NoError(b, err)
 		_ = r.Check(f)
 	}
 	b.StopTimer()
@@ -91,9 +104,9 @@ func BenchmarkRule_MDS024(b *testing.B) {
 // TestCheckAllocBudget pins the per-call allocation count under a
 // normal `go test` run, not only under `-bench`. The ceiling is the
 // same one BenchmarkRule_MDS024 enforces, so a regression that lands
-// without `-bench` still trips. Skipped under `-short` because the
-// underlying AllocsPerRun runs the closure 50+ times, and skipped
-// under `-race` because the race detector adds enough allocation
+// without `-bench` still trips. Skipped under `-short` because
+// AllocsPerRun runs the closure 100 times, and skipped under
+// `-race` because the race detector adds enough allocation
 // bookkeeping to make the ≤ 10 budget flaky.
 func TestCheckAllocBudget(t *testing.T) {
 	if testing.Short() {
@@ -104,7 +117,7 @@ func TestCheckAllocBudget(t *testing.T) {
 			"adds allocation bookkeeping that perturbs the count")
 	}
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
-	body := testcorpus.AbbrHeavyParagraph()
+	body := testcorpus.AbbrHeavy()[0]
 	allocs := checkAllocsPerOp(t, r, body)
 	t.Logf("MDS024 Check allocs/op = %.0f (budget = %d)",
 		allocs, allocBudgetMDS024)

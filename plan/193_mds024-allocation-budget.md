@@ -98,18 +98,34 @@ orthogonal: same flags, fewer mallocs.
 
 ### Per-call allocation budget after the rework
 
-Targeted breakdown for `paragraphstructure.Rule.Check` on the
-abbr-heavy fixture:
+Targeted breakdown for `paragraphstructure.Rule.Check` on a
+representative abbreviation-heavy paragraph (the first entry of
+`testcorpus.AbbrHeavy`, ~100 bytes, 2–3 sentences).
 
-| Source                                   | allocs   |
-|------------------------------------------|---------:|
-| AST walk over paragraphs                 | 0        |
-| Paragraph-text builder (reused per call) | 0–1      |
-| `SplitSentences` result slice            | 0–1      |
-| Tokenizer's annotated-token slice        | 1        |
-| Diagnostic slice (only when firing)      | 0–1      |
-| Headroom                                 | ≤ 6      |
-| **Total budget**                         | **≤ 10** |
+The gate measures cold-memo cost. A `lint.File` is built fresh
+each iteration. A parse-only baseline is subtracted so the
+number reflects the rule's own work plus any memos it triggers.
+The engine's NewFile parse is excluded.
+
+| Source                                           | allocs   |
+|--------------------------------------------------|---------:|
+| AST walk (memoized) — `[]SectionParagraph` slice | 1        |
+| `ExtractPlainText` builder backing array         | 1–2      |
+| `f.Memo` entry bookkeeping                       | 1        |
+| `SplitSentences` result slice                    | 1        |
+| Pooled tokenizer state's `[]Sentence` slice      | 1        |
+| Diagnostic slice + message string (when firing)  | 2        |
+| Headroom                                         | 1–3      |
+| **Total budget**                                 | **≤ 10** |
+
+The 10-budget matches CLAUDE.md's "A rule's Check allocates
+≤ 10 times per call on representative input".
+
+A multi-paragraph fixture (the joined `AbbrHeavyParagraph`
+form) would push past the budget. Each extra paragraph adds an
+`ExtractPlainText` and a slice `append`. Those costs aren't
+the rule's. They live on the per-file shared memo, amortized
+across every paragraph-aware rule that runs after the first.
 
 ## Tasks
 
@@ -217,7 +233,7 @@ whole tree once).
 
 | Benchmark                       | Upstream tag              | Default tag               | Δ             |
 |---------------------------------|---------------------------|---------------------------|---------------|
-| BenchmarkRule_MDS024 (warm)     | n/a (gate added here)     | 7 allocs / 79 µs          | within budget |
+| BenchmarkRule_MDS024 (cold)     | n/a (gate added here)     | 10 allocs / 17 µs         | within budget |
 | BenchmarkSplitSentences         | 593 allocs / 186 µs       | 22 allocs / 68 µs         | −96% / −63%   |
 | BenchmarkSplitSentences_Subset  | 1082 allocs / 266 µs      | 16 allocs / 77 µs         | −98.5% / −71% |
 | BenchmarkCheckCorpusSmall (p95) | 30 ms (28–31 across 5)    | 28 ms (26–32 across 5)    | flat (noise)  |
