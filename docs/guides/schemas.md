@@ -47,7 +47,7 @@ kinds:
       frontmatter:
         id: '=~"^RFC-[0-9]{4}$"'
         status: '"draft" | "ratified" | "deprecated"'
-        authors: '[...string] & len(authors) >= 1'
+        authors: '[...string] & [_, ...string]'
       closed: true
       sections:
         - heading: null
@@ -444,6 +444,28 @@ records the heading-row wildcard mapping.
 A project can mix sources across kinds — some kinds use
 inline schemas, others use `proto.md` — but a single
 kind must pick one.
+
+## Schema inheritance with `extends`
+
+A kind can build on another kind's schema by setting
+`extends: <parent-name>` next to its `schema:` block.
+Frontmatter constraints unify under CUE refinement: a
+child that re-declares a parent key joins both with `&`,
+so the effective constraint is the intersection. A
+child's `sections:` list wholly replaces the parent's,
+so heading templates compose by sequence rather than by
+constraint. Filename and other document-wide blocks
+inherit when the child does not set them.
+
+A `proto.md` file schema declares the same relationship
+via an `extends: <path>` key in its front matter; the
+path is resolved relative to the schema file with the
+same `..`-traversal and absolute-path guards used by
+`<?include?>`.
+
+See [Schema inheritance with `extends`](file-kinds.md#schema-inheritance-with-extends)
+for the worked RFC example, conflict semantics, and the
+`mdsmith kinds show` audit surface.
 
 ## Composition across kinds
 

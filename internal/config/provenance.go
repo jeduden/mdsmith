@@ -183,7 +183,7 @@ func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo
 		}
 		layers = append(layers, layerInfo{
 			Source: "kinds." + k.Name,
-			Rules:  kindLayerRules(k.Name, body),
+			Rules:  kindLayerRules(k.Name, body, cfg.Kinds),
 		})
 	}
 	for i, o := range cfg.Overrides {
@@ -209,8 +209,17 @@ func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo
 // `schema-sources` ahead of the deep-merge. Without these mirrored
 // translations, `mdsmith kinds resolve` and `--explain` output
 // diverges from the rule config the engine actually applied.
-func kindLayerRules(kindName string, body KindBody) map[string]RuleCfg {
-	if len(body.Schema) == 0 && body.PathPattern == "" {
+//
+// When the kind declares `extends:` (plan 135), the inline schema
+// pushed to `schema-sources` is the chain-merged form rather than
+// the kind's own block in isolation. The kinds map argument lets
+// the resolver walk the chain; nil indicates "no chain context" and
+// falls back to `body.Schema` directly (used by unit tests).
+func kindLayerRules(
+	kindName string, body KindBody, kinds map[string]KindBody,
+) map[string]RuleCfg {
+	inlineSchema := resolveLayerInlineSchema(kindName, body, kinds)
+	if len(inlineSchema) == 0 && body.PathPattern == "" {
 		return translateLayerRules(body.Rules)
 	}
 	out := make(map[string]RuleCfg, len(body.Rules)+1)
@@ -224,8 +233,8 @@ func kindLayerRules(kindName string, body KindBody) map[string]RuleCfg {
 	} else {
 		rs.Settings = cloneSettings(rs.Settings)
 	}
-	if len(body.Schema) > 0 {
-		entry := map[string]any{"inline": cloneSettings(body.Schema)}
+	if len(inlineSchema) > 0 {
+		entry := map[string]any{"inline": cloneSettings(inlineSchema)}
 		existing, _ := rs.Settings["schema-sources"].([]any)
 		rs.Settings["schema-sources"] = append(existing, entry)
 	}
@@ -236,6 +245,24 @@ func kindLayerRules(kindName string, body KindBody) map[string]RuleCfg {
 	}
 	out["required-structure"] = rs
 	return out
+}
+
+// resolveLayerInlineSchema picks the inline schema map the provenance
+// layer should attribute to one kind. It mirrors merge.go's
+// resolvedInlineSchema but tolerates a nil kinds map so the
+// table-driven unit tests for kindLayerRules don't have to
+// construct a synthetic chain.
+func resolveLayerInlineSchema(
+	kindName string, body KindBody, kinds map[string]KindBody,
+) map[string]any {
+	if body.Extends == "" || kinds == nil {
+		return body.Schema
+	}
+	resolved, err := ResolveKindInlineSchema(kinds, kindName)
+	if err != nil {
+		return body.Schema
+	}
+	return resolved
 }
 
 // translateLayerRules applies each rule's rule.SettingsTranslator

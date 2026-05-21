@@ -466,6 +466,127 @@ func TestValidateKinds_AcceptsValidPathPattern(t *testing.T) {
 	assert.NoError(t, ValidateKinds(cfg))
 }
 
+// TestKindsExtendsParsesFromYAML pins the new top-level `extends:`
+// key under a kind body. Without explicit coverage a typo in the
+// YAML tag would silently drop the field on load.
+func TestKindsExtendsParsesFromYAML(t *testing.T) {
+	yml := `
+kinds:
+  rfc-base:
+    schema:
+      frontmatter:
+        id: '=~"^RFC-[0-9]{4}$"'
+  rfc-ratified:
+    extends: rfc-base
+    schema:
+      frontmatter:
+        status: '"ratified"'
+`
+	cfg := loadFromString(t, yml)
+	require.Contains(t, cfg.Kinds, "rfc-base")
+	require.Contains(t, cfg.Kinds, "rfc-ratified")
+	assert.Empty(t, cfg.Kinds["rfc-base"].Extends)
+	assert.Equal(t, "rfc-base", cfg.Kinds["rfc-ratified"].Extends)
+}
+
+// TestValidateKindExtends_AcceptsRootKind covers the trivial path:
+// a kind without `extends:` is always valid.
+func TestValidateKindExtends_AcceptsRootKind(t *testing.T) {
+	kinds := map[string]KindBody{"a": {}}
+	assert.NoError(t, validateKindExtends(kinds, "a"))
+}
+
+// TestValidateKindExtends_AcceptsValidChain checks a multi-step
+// chain that terminates at a root kind.
+func TestValidateKindExtends_AcceptsValidChain(t *testing.T) {
+	kinds := map[string]KindBody{
+		"a": {Extends: "b"},
+		"b": {Extends: "c"},
+		"c": {},
+	}
+	assert.NoError(t, validateKindExtends(kinds, "a"))
+}
+
+// TestValidateKindExtends_RejectsUnknownParent verifies the parent
+// lookup; a typo in `extends:` must surface at load time.
+func TestValidateKindExtends_RejectsUnknownParent(t *testing.T) {
+	kinds := map[string]KindBody{"a": {Extends: "missing"}}
+	err := validateKindExtends(kinds, "a")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "undeclared kind")
+}
+
+// TestValidateKindExtends_RejectsCycle covers cycle detection in
+// the helper in isolation; the public-API test goes through
+// ValidateKinds.
+func TestValidateKindExtends_RejectsCycle(t *testing.T) {
+	kinds := map[string]KindBody{
+		"a": {Extends: "b"},
+		"b": {Extends: "a"},
+	}
+	err := validateKindExtends(kinds, "a")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cycle")
+}
+
+// TestValidateKinds_AcceptsExtendsChain covers the happy path for
+// schema inheritance (plan 135): a child that names a declared
+// parent passes validation.
+func TestValidateKinds_AcceptsExtendsChain(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"rfc-base":     {},
+			"rfc-ratified": {Extends: "rfc-base"},
+		},
+	}
+	assert.NoError(t, ValidateKinds(cfg))
+}
+
+// TestValidateKinds_RejectsExtendsUndeclaredParent verifies that
+// `extends:` referencing an unknown kind surfaces as a load-time
+// error rather than silently producing an empty parent at merge time.
+func TestValidateKinds_RejectsExtendsUndeclaredParent(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"rfc-ratified": {Extends: "missing-base"},
+		},
+	}
+	err := ValidateKinds(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "undeclared kind")
+	assert.Contains(t, err.Error(), "missing-base")
+}
+
+// TestValidateKinds_RejectsSelfExtends catches the simplest cycle
+// (a → a) so the validator surfaces it at config load.
+func TestValidateKinds_RejectsSelfExtends(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"a": {Extends: "a"},
+		},
+	}
+	err := ValidateKinds(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cycle")
+	assert.Contains(t, err.Error(), "a -> a")
+}
+
+// TestValidateKinds_RejectsMultiHopExtendsCycle is the multi-hop
+// variant: a → b → c → a must surface the full path.
+func TestValidateKinds_RejectsMultiHopExtendsCycle(t *testing.T) {
+	cfg := &Config{
+		Kinds: map[string]KindBody{
+			"a": {Extends: "b"},
+			"b": {Extends: "c"},
+			"c": {Extends: "a"},
+		},
+	}
+	err := ValidateKinds(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cycle")
+	assert.Contains(t, err.Error(), " -> ")
+}
+
 // TestKindLayerRules_MergesPathPatternWithExistingRules verifies
 // that the provenance helper preserves a kind's existing body.Rules
 // settings while injecting the synthetic `path-patterns` entry on
@@ -483,7 +604,7 @@ func TestKindLayerRules_MergesPathPatternWithExistingRules(t *testing.T) {
 				Settings: map[string]any{"schema": "plan/proto.md"}},
 		},
 	}
-	out := kindLayerRules("plan", body)
+	out := kindLayerRules("plan", body, nil)
 	require.Contains(t, out, "line-length")
 	assert.False(t, out["line-length"].Enabled)
 	rs := out["required-structure"]
@@ -513,7 +634,7 @@ func TestKindLayerRules_MirrorsInlineSchemaAndPathPattern(t *testing.T) {
 			},
 		},
 	}
-	out := kindLayerRules("plan", body)
+	out := kindLayerRules("plan", body, nil)
 	rs := out["required-structure"]
 	assert.True(t, rs.Enabled)
 
@@ -548,7 +669,7 @@ func TestKindLayerRules_TranslatesBodyRulesSchema(t *testing.T) {
 			},
 		},
 	}
-	out := kindLayerRules("plan", body)
+	out := kindLayerRules("plan", body, nil)
 	rs := out["required-structure"]
 	sources, ok := rs.Settings["schema-sources"].([]any)
 	require.True(t, ok)
@@ -572,7 +693,7 @@ func TestKindLayerRules_NoTranslationNeededReturnsSameMap(t *testing.T) {
 			},
 		},
 	}
-	out := kindLayerRules("plan", body)
+	out := kindLayerRules("plan", body, nil)
 	// The function returns body.Rules directly in this path because
 	// neither body.Schema nor body.PathPattern is set, and the
 	// required-structure entry has no schema source to translate.
@@ -599,7 +720,7 @@ func TestKindLayerRules_BodyRulesInlineSchemaTranslated(t *testing.T) {
 			},
 		},
 	}
-	out := kindLayerRules("plan", body)
+	out := kindLayerRules("plan", body, nil)
 	rs := out["required-structure"]
 	sources, ok := rs.Settings["schema-sources"].([]any)
 	require.True(t, ok)

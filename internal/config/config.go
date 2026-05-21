@@ -148,6 +148,13 @@ type KindBody struct {
 	Categories  map[string]bool    `yaml:"categories"`
 	Schema      map[string]any     `yaml:"schema,omitempty"`
 	PathPattern string             `yaml:"path-pattern,omitempty"`
+	// Extends, when set, names another kind whose `schema:` this
+	// kind inherits from. Frontmatter constraints unify under CUE
+	// (the child's expression for a shared key joins the parent's
+	// via `&`); sections in the child wholly replace the parent's
+	// sections. A cycle in the extends chain (single- or multi-hop)
+	// is reported by ValidateKinds. See plan 135.
+	Extends string `yaml:"extends,omitempty"`
 }
 
 // KindAssignmentEntry assigns one or more kinds to files matching the

@@ -68,7 +68,8 @@ func parseFileBytes(
 
 	sch := &Schema{Source: path, Closed: true}
 
-	if err := parseFileFrontmatter(prefix, sch); err != nil {
+	extendsPath, err := parseFileFrontmatter(prefix, sch)
+	if err != nil {
 		return nil, err
 	}
 
@@ -97,7 +98,87 @@ func parseFileBytes(
 	if err != nil {
 		return nil, err
 	}
+
+	if extendsPath != "" {
+		parent, err := resolveExtendsParent(r, path, extendsPath, visited, chain)
+		if err != nil {
+			return nil, err
+		}
+		extended, err := Extend(parent, sch)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"schema %q extends %q: %w", path, extendsPath, err)
+		}
+		extended.Source = path
+		return extended, nil
+	}
 	return sch, nil
+}
+
+// resolveExtendsParent loads the proto.md schema that `path`'s
+// `extends:` front-matter key points at. The path is resolved
+// relative to the schema file (the same way `<?include?>` paths
+// are), with the same safety checks: absolute paths and `..`
+// traversal are rejected so a schema can only reach files inside
+// the workspace. Cycles are detected by re-using the include-path
+// visited set — a schema chain `a -> b -> a` is the same kind of
+// failure as a self-including markdown file.
+func resolveExtendsParent(
+	r *FileReader, schemaPath, parentPath string,
+	visited map[string]bool, chain []string,
+) (*Schema, error) {
+	resolved, err := resolveExtendsPath(schemaPath, parentPath)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"schema %q: invalid extends path %q: %w",
+			schemaPath, parentPath, err)
+	}
+	if len(chain) > maxIncludeDepth {
+		return nil, fmt.Errorf(
+			"schema extends depth exceeds maximum (%d)", maxIncludeDepth)
+	}
+	if visited[resolved] {
+		cycle := append([]string(nil), chain...)
+		cycle = append(cycle, resolved)
+		return nil, fmt.Errorf(
+			"extends cycle: %s", strings.Join(cycle, " -> "))
+	}
+	data, err := r.readPath(resolved)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"cannot read extends parent %q: %w", resolved, err)
+	}
+	visited[resolved] = true
+	nextChain := append([]string(nil), chain...)
+	nextChain = append(nextChain, resolved)
+	parent, err := parseFileBytes(r, resolved, data, visited, nextChain)
+	delete(visited, resolved)
+	if err != nil {
+		return nil, err
+	}
+	return parent, nil
+}
+
+// resolveExtendsPath shares the path-safety contract with
+// `<?include?>`: the parent reference must be relative to the
+// schema file, must not be absolute, and must not contain `..`
+// traversal. The function returns the cleaned project-relative
+// path on success.
+func resolveExtendsPath(schemaPath, parentPath string) (string, error) {
+	if parentPath == "" {
+		return "", fmt.Errorf("empty extends path")
+	}
+	if filepath.IsAbs(parentPath) {
+		return "", fmt.Errorf("absolute extends path %q", parentPath)
+	}
+	for _, elem := range strings.Split(filepath.ToSlash(parentPath), "/") {
+		if elem == ".." {
+			return "", fmt.Errorf(
+				"extends path %q contains \"..\" traversal", parentPath)
+		}
+	}
+	dir := filepath.Dir(schemaPath)
+	return filepath.Clean(filepath.Join(dir, parentPath)), nil
 }
 
 // FileHeading is a heading collected from a schema markdown file.
@@ -106,28 +187,40 @@ type FileHeading struct {
 	Text  string
 }
 
-func parseFileFrontmatter(prefix []byte, sch *Schema) error {
+// parseFileFrontmatter reads the schema's YAML front matter into
+// sch and returns the value of the reserved `extends:` key (the
+// path to a parent schema, or empty when no parent is declared).
+// The `extends:` key is consumed here so it never lands in
+// sch.Frontmatter — proto.md keeps the same `<key>: <CUE>` shape
+// for the actual frontmatter constraints.
+func parseFileFrontmatter(prefix []byte, sch *Schema) (string, error) {
 	if prefix == nil {
-		return nil
+		return "", nil
 	}
 	body := stripDelimiters(prefix)
 	if len(body) == 0 {
-		return nil
+		return "", nil
 	}
 	var raw map[string]any
 	if err := yamlutil.UnmarshalSafe(body, &raw); err != nil {
-		return fmt.Errorf("parsing schema frontmatter: %w", err)
+		return "", fmt.Errorf("parsing schema frontmatter: %w", err)
 	}
 	if len(raw) == 0 {
-		return nil
+		return "", nil
 	}
-	sch.Frontmatter = make(map[string]string, len(raw))
-	for k, v := range raw {
-		expr, err := frontmatterExpr(v)
-		if err != nil {
-			return fmt.Errorf("schema frontmatter %q: %w", k, err)
+	extendsPath, err := extractExtendsKey(raw)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) > 0 {
+		sch.Frontmatter = make(map[string]string, len(raw))
+		for k, v := range raw {
+			expr, err := frontmatterExpr(v)
+			if err != nil {
+				return "", fmt.Errorf("schema frontmatter %q: %w", k, err)
+			}
+			sch.Frontmatter[k] = expr
 		}
-		sch.Frontmatter[k] = expr
 	}
 	// Capture per-key source lines so MDS020 diagnostics can point
 	// the reader at the exact constraint. yaml.Node line numbers
@@ -136,9 +229,38 @@ func parseFileFrontmatter(prefix []byte, sch *Schema) error {
 	// fence), so we add 1 to translate into file-relative lines.
 	node, err := yamlutil.UnmarshalNodeSafe(body)
 	if err == nil {
-		sch.FrontmatterLines = yamlutil.TopLevelMappingLines(&node, 1)
+		lines := yamlutil.TopLevelMappingLines(&node, 1)
+		delete(lines, "extends")
+		sch.FrontmatterLines = lines
 	}
-	return nil
+	return extendsPath, nil
+}
+
+// extractExtendsKey pulls the reserved `extends:` value out of the
+// raw frontmatter map and returns it as a non-empty string. The key
+// is removed from raw so the caller's loop emits no Frontmatter
+// entry for it. A non-string value is rejected with a clear error,
+// as is a whitespace-only string — both are typos that would
+// otherwise be silently skipped by the parent-resolution path.
+func extractExtendsKey(raw map[string]any) (string, error) {
+	v, ok := raw["extends"]
+	if !ok {
+		return "", nil
+	}
+	delete(raw, "extends")
+	if v == nil {
+		return "", nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("schema frontmatter `extends:` must be a string, got %T", v)
+	}
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return "", fmt.Errorf(
+			"schema frontmatter `extends:` must be a non-empty path; got %q", s)
+	}
+	return trimmed, nil
 }
 
 // stripDelimiters returns the YAML body between a front-matter
