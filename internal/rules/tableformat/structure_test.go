@@ -1,8 +1,10 @@
 package tableformat
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -319,6 +321,48 @@ func TestSkipsGeneratedRange(t *testing.T) {
 func TestFixNoTablesReturnsCopy(t *testing.T) {
 	src := "# T\n\nNo tables here.\n"
 	assert.Equal(t, src, fix(t, StyleConsistent, src))
+}
+
+// TestFix_RecomputesGeneratedRangesAfterStructureInsert backs the
+// invariant that the alignment pass skips the generated body at its
+// post-fix line numbers. A non-blank-separated table triggers two
+// MD058 insertions, which shift every line below by two; if Fix
+// copied the pre-fix GeneratedRanges instead of recomputing them,
+// the now-shifted body table would slip past the skip set and
+// tablefmt would reformat content that lives inside `<?include?>`.
+func TestFix_RecomputesGeneratedRangesAfterStructureInsert(t *testing.T) {
+	src := strings.Join([]string{
+		"# T",
+		"Para.",
+		"| A | B |",
+		"| - | - |",
+		"| 1 | 2 |",
+		"Para.",
+		"<?include",
+		"file: foo.md",
+		"?>",
+		"pad",
+		"pad",
+		"| xxxx | y    |",
+		"|------|------|",
+		"<?/include?>",
+		"",
+	}, "\n")
+
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+	require.NotEmpty(t, f.GeneratedRanges, "fixture must contain a generated section")
+
+	r := &Rule{Pad: 1, Style: StyleConsistent}
+	got := string(r.Fix(f))
+
+	// The body inside `<?include?>` must be byte-for-byte preserved:
+	// pad lines and the deliberately non-canonical bordered table.
+	assert.Contains(t, got, "?>\npad\npad\n| xxxx | y    |\n|------|------|\n<?/include?>",
+		"alignment pass must skip the shifted generated body; "+
+			"if Fix copies pre-fix GeneratedRanges instead of recomputing them, "+
+			"tablefmt rewrites the body table here")
 }
 
 func TestBlankLineForAndIsBlankAround(t *testing.T) {

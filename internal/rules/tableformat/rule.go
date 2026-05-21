@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
@@ -126,11 +127,15 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // Fix implements rule.FixableRule. The structure pass runs first
 // (edge normalization for MD055, blank-line insertion for MD058) so
 // the alignment pass then sees the structurally-normalized bytes and
-// canonicalizes the remaining bordered tables.
+// canonicalizes the remaining bordered tables. GeneratedRanges are
+// recomputed on the reparsed buffer: a blank line inserted before a
+// downstream generated section shifts that section's line numbers,
+// so copying the pre-fix ranges would point the alignment pass's
+// skip set at the wrong lines.
 func (r *Rule) Fix(f *lint.File) []byte {
 	intermediate := applyStructureFix(f, r.style())
 	parsed, _ := lint.NewFile(f.Path, intermediate) // NewFile never errors today
-	parsed.GeneratedRanges = f.GeneratedRanges
+	parsed.GeneratedRanges = gensection.FindAllGeneratedRanges(parsed)
 	skipLines := formatSkipLines(parsed)
 	return tablefmt.FormatLines(parsed.Source, parsed.Lines, skipLines, r.config())
 }

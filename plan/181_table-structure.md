@@ -31,8 +31,10 @@ closes the MD055 / MD056 / MD058 gap from the
 
 MDS025 (`table-format`) already owned the prettier-style
 alignment pass. Folding the structure checks into the same
-rule means users see one `table-format` setting block. A
-`mdsmith fix` run is inherently single-pass: there is no
+rule gives users one `table-format` setting block. One
+`Rule.Fix` call now runs structure normalisation and
+alignment on the same buffer. The fix engine still loops
+fixable rules to stability. MDS025 itself, however, has no
 second rule to oscillate against.
 
 ## Design
