@@ -1,12 +1,22 @@
 // Package punkt is a forked, allocation-clean subset of the trained
 // Punkt sentence tokenizer from neurosnap/sentences v1.1.2
 // (https://github.com/neurosnap/sentences). It vendors only what
-// MDS024 needs — Storage, Token, WordTokenizer, TokenGrouper,
-// OrthoContext, DefaultSentenceTokenizer, the English supervised
-// abbreviations, and the CJK terminal-punctuation handling the
-// upstream word tokenizer ships — and drops the non-English language
-// data and IsNonPunct (no call site in upstream's English pipeline,
-// per plan 187).
+// MDS024 needs: Storage, Token, WordTokenizer, TokenGrouper,
+// OrthoContext, DefaultSentenceTokenizer, and the English
+// supervised abbreviations. The non-English language data and
+// IsNonPunct (no call site in upstream's English pipeline, per
+// plan 187) are not vendored.
+//
+// CJK terminal punctuation is supported at the same level upstream's
+// English pipeline supports it: full-width `。 ； ！ ？` are word
+// boundaries (`IsCjkPunct`, used inside `TokenizeInto`), and the
+// full-width period `。` flags a sentence break via
+// `HasPeriodFinal` the same way ASCII `.` does. Full-width `！` and
+// `？` do NOT flag sentence breaks on their own — the English
+// pipeline's `HasSentEndChars` set covers only ASCII `!`/`?` plus
+// their quote/paren variants, matching upstream. Author CJK
+// paragraphs with `。` between sentences for the segmenter to
+// produce one Sentence per `。`.
 //
 // The fork is segmentation-equivalent to upstream over the
 // equivalence corpus in internal/mdtext/sentence_equivalence_test.go

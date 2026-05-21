@@ -202,10 +202,16 @@ strip-frontmatter: "true"
 
 <?/include?>
 
-The segmenter treats `。`, `！`, and `？` (full-width Chinese /
-Japanese terminal punctuation) as sentence boundaries, so the
-rule fires on CJK paragraphs the same way it does on English
-prose. Mixed CJK / ASCII paragraphs work too.
+The segmenter treats the full-width Chinese / Japanese period
+`。` as a sentence boundary the same way it does ASCII `.`, so
+the rule fires on CJK paragraphs that end every sentence with
+`。`. Mixed CJK / ASCII paragraphs work too.
+
+Full-width `！` and `？` are word boundaries in the trained
+English pipeline (the vendored Punkt fork inherits that), but
+they do not flag a sentence break on their own — match
+upstream behaviour. Author CJK paragraphs with `。` between
+sentences for the rule to count them correctly.
 
 ## Diagnostics
 

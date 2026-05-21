@@ -114,11 +114,13 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 	var diags []lint.Diagnostic
 
 	if len(sentences) > r.MaxSentences {
-		// Hand-built string instead of fmt.Sprintf: Sprintf cost ~3
-		// allocs per call (format string + result + boxed args);
-		// strconv.Itoa returns from a cache for small ints (no
-		// alloc) and Go's string-concat lowers to a single result
-		// allocation.
+		// Hand-built string instead of fmt.Sprintf: Sprintf builds
+		// the format-string scratch buffer and boxes its args before
+		// formatting (~3 allocs per call). Plain string-concatenation
+		// lowers to a single runtime.concatstrings call — one
+		// allocation for the result. strconv.Itoa adds its own
+		// per-call string for the digit bytes, but the savings over
+		// Sprintf still net a one-alloc message build per fire.
 		diags = append(diags, lint.Diagnostic{
 			File:     filePath,
 			Line:     line,
@@ -149,9 +151,12 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 			})
 		}
 	}
-	// Return the sentence buffer to the pool. The slice header at
-	// *bufPtr is the one SplitSentencesInto extended; storing it
-	// back keeps the grown capacity for the next caller.
+	// Return the sentence buffer to the pool. Clear first so the
+	// string headers don't keep the previous paragraph's text
+	// reachable through the pooled slice — sync.Pool would
+	// otherwise pin large input buffers in memory across Check
+	// calls until the next caller overwrote them.
+	clear(sentences)
 	*bufPtr = sentences[:0]
 	sentBufPool.Put(bufPtr)
 	return diags
