@@ -630,12 +630,11 @@ func TestE2E_Fix_DryRun_JSON_PerFileRecords(t *testing.T) {
 	require.Equal(t, 0, exitCode, "expected exit code 0")
 	assert.Empty(t, stdout, "dry-run JSON must go to stderr, not stdout")
 
-	// stderr is the JSON payload followed by the stats summary line.
-	jsonEnd := strings.LastIndex(stderr, "]")
-	require.GreaterOrEqual(t, jsonEnd, 0,
-		"stderr must contain JSON payload; got: %s", stderr)
+	// In JSON mode stats are suppressed, so stderr is just the
+	// encoded array. Trim is defensive against future trailing
+	// output.
 	var records []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(stderr[:jsonEnd+1]), &records),
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &records),
 		"json output must parse; got: %s", stderr)
 	require.Len(t, records, 1)
 

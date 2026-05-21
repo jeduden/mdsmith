@@ -84,8 +84,10 @@ or diagnostic counts would change:
 
 The `diagnostics` array carries the same per-diagnostic
 fields `check --format json` returns. Like every other
-lint output, the JSON goes to **stderr**; the stats
-summary line follows on stderr too.
+lint output, the JSON goes to **stderr**. The text-mode
+`stats:` summary is suppressed in JSON mode; the
+machine-readable counts live inside each record's
+`would_fix` field.
 
 Some rules fix by writing a sibling file rather than
 the markdown itself. MDS048 `git-hook-sync` is the

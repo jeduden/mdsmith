@@ -507,11 +507,9 @@ func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.NotContains(t, stdout, "[", "dry-run JSON must go to stderr, not stdout")
 
-	// Strip the trailing stats line so the rest is parseable JSON.
-	jsonEnd := strings.LastIndex(stderr, "]")
-	require.GreaterOrEqual(t, jsonEnd, 0, "stderr must contain JSON payload; got: %s", stderr)
+	// Stats are suppressed in JSON mode; stderr is just the array.
 	var records []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(stderr[:jsonEnd+1]), &records))
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(stderr)), &records))
 	require.Len(t, records, 1)
 	assert.Equal(t, "f.md", records[0]["path"])
 }

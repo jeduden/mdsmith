@@ -543,7 +543,9 @@ func formatWouldFixSummary(wf fixpkg.WouldFixFile) string {
 
 // dryRunJSONFile is the per-file JSON shape produced by
 // `mdsmith fix --dry-run --format json`. One record per file
-// with fixable violations or remaining unfixable diagnostics.
+// whose bytes or diagnostic counts would change — fixable
+// violations, remaining unfixable diagnostics, or
+// generated-section regeneration (would_fix=0, rules=[]).
 type dryRunJSONFile struct {
 	Path        string     `json:"path"`
 	WouldFix    int        `json:"would_fix"`
