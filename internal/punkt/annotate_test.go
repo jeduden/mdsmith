@@ -72,6 +72,48 @@ func TestTypeAnnotation_HyphenatedAbbrev(t *testing.T) {
 			"AbbrevTypes set")
 }
 
+// TestTypeAnnotation_CjkPeriodStrippingDropsFullRune pins the
+// rune-correct period stripping. Upstream uses
+// `token.Tok[:len(chars)-1]` which slices by rune-count interpreted
+// as a BYTE offset — for "中文。" (3 runes, 9 bytes) it produces the
+// first 2 bytes, an invalid UTF-8 prefix of 中. A byte-only strip
+// (`token.Tok[:len(token.Tok)-1]`) is similarly wrong: it keeps two
+// bytes of the CJK period 。 (also invalid UTF-8). The correct
+// behaviour drops one full rune via utf8.DecodeLastRuneInString.
+//
+// Drive the contract red/green: seed AbbrevTypes with the
+// stripped form "中文" and verify the lookup hits (Abbr=true,
+// SentBreak=false). With the byte-strip both bugs above produce
+// invalid UTF-8 that AbbrevTypes never contains, so the rule
+// would mark the token as a sentence break instead.
+func TestTypeAnnotation_CjkPeriodStrippingDropsFullRune(t *testing.T) {
+	s := NewStorage()
+	s.AbbrevTypes.Add("中文")
+	tok := &Token{Tok: "中文。"}
+	typeAnnotation(s, tok)
+	assert.True(t, tok.Abbr,
+		"a CJK token ending in 。 with the stripped form in "+
+			"AbbrevTypes must classify as Abbr — proves the rune-"+
+			"aware period strip works")
+	assert.False(t, tok.SentBreak,
+		"a recognised CJK abbreviation must not be flagged as a "+
+			"sentence break")
+}
+
+// TestTypeAnnotation_AsciiPeriodStrippingUnchanged is the regression
+// counterpart: the rune-aware strip must also still work for ASCII
+// `.`-ending tokens (the most common case). Drops one rune of size
+// 1, identical to the previous byte-strip behaviour.
+func TestTypeAnnotation_AsciiPeriodStrippingUnchanged(t *testing.T) {
+	s := NewStorage()
+	s.AbbrevTypes.Add("dr")
+	tok := &Token{Tok: "Dr."}
+	typeAnnotation(s, tok)
+	assert.True(t, tok.Abbr,
+		"the ASCII case must still match after the rune-aware "+
+			"strip — `Dr.` → strip 1 byte → lowercase → `dr`")
+}
+
 func TestTypeAnnotation_UppercaseTokenLowercasesForAbbrevLookup(t *testing.T) {
 	// hasAbbrLowered's non-ASCII / uppercase branch.
 	s := NewStorage()

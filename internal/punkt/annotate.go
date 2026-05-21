@@ -3,6 +3,7 @@ package punkt
 import (
 	"bytes"
 	"strings"
+	"unicode/utf8"
 )
 
 // state is the per-Tokenize-call working memory pooled by
@@ -109,12 +110,17 @@ func typeAnnotation(s *Storage, token *Token) {
 		return
 	}
 
-	// `tokNoPeriod := strings.ToLower(token.Tok[:len(chars)-1])`
-	// upstream first computes []rune(token.Tok) and slices to
-	// len(chars)-1 — i.e. drops the final period (which is one byte).
-	// The byte form is `token.Tok[:len(token.Tok)-1]` then
-	// strings.ToLower.
-	tok := token.Tok[:len(token.Tok)-1]
+	// Drop the trailing period rune. Upstream uses
+	// `token.Tok[:len(chars)-1]` (chars is `[]rune(token.Tok)`),
+	// which slices by rune-count interpreted as a BYTE offset —
+	// correct only when every rune up to the last is single-byte.
+	// utf8.DecodeLastRuneInString returns the size of the final
+	// rune so the slice drops one full rune for both ASCII '.'
+	// (1 byte) and the CJK full-width period 。 (3 bytes), without
+	// upstream's pathology of producing invalid UTF-8 on either a
+	// non-ASCII prefix or a CJK trailing period.
+	_, sz := utf8.DecodeLastRuneInString(token.Tok)
+	tok := token.Tok[:len(token.Tok)-sz]
 
 	// Find the last "-" segment of tok. If present, the tail after
 	// the last `-` is what the abbrev check sees in addition to the

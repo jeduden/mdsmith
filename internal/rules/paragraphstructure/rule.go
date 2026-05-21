@@ -169,18 +169,24 @@ func (r *Rule) checkParagraph(text string, line int, filePath string) []lint.Dia
 // a terminal-punct rune and always yields >=1 sentence, and no
 // single sentence has more words than the whole paragraph.
 //
-// The terminal-punct set mirrors the segmenter's segmentation
-// boundaries: ASCII `.!?` and the CJK full-width variants `。！？`
-// the internal/punkt word tokenizer treats as word boundaries.
-// Counting only ASCII would let a long Chinese/Japanese paragraph
-// clear the guard (sentUB=1) and skip the segmenter, hiding both
-// the "too many sentences" and "sentence too long" diagnostics.
+// The terminal-punct set covers every rune the English Punkt
+// pipeline (and internal/punkt's vendored fork) actually flags as a
+// sentence break: ASCII `.!?` via HasSentEndChars + HasPeriodFinal,
+// and CJK `。` via HasPeriodFinal's full-width branch. The CJK
+// `！` and `？` runes are word boundaries (IsCjkPunct) but not
+// sentence boundaries — the English pipeline's hasSentEndChars set
+// is ASCII-only — so a paragraph that uses only `！`/`？` between
+// sentences segments as ONE sentence upstream. Counting `！`/`？`
+// here would let the guard fail to short-circuit safe input, not
+// cause a false positive — but it would also be misleading; the
+// set is kept aligned with actual SentBreak boundaries so the
+// guard stays a tight upper bound.
 func cheapBounds(s string) (sentUB, words int) {
 	punct := 0
 	inWord := false
 	for _, r := range s {
 		switch r {
-		case '.', '!', '?', '。', '！', '？':
+		case '.', '!', '?', '。':
 			punct++
 		}
 		if mdtext.IsSpace(r) {

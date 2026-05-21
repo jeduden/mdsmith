@@ -17,9 +17,10 @@ import (
 // handful of allocations per call.
 //
 // Construction happens once via initTokenizer (in mdtext.go) under
-// initOnce. Subsequent SplitSentences calls reuse this singleton; the
-// per-call state buffers live in a sync.Pool inside punkt.Tokenizer
-// so concurrent callers do not contend.
+// sync.OnceFunc (the package-level `initTokenizerOnce` wrapper).
+// Subsequent SplitSentences calls reuse this singleton; the per-call
+// state buffers live in a sync.Pool inside punkt.Tokenizer so
+// concurrent callers do not contend.
 var forkTokenizer *punkt.Tokenizer
 
 // initTokenizer assembles the default-build tokenizer. The upstream
