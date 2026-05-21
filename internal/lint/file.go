@@ -136,6 +136,13 @@ type memoEntry struct {
 //
 // build is invoked directly (no wrapping closure) so the call adds
 // no per-Memo-call allocation beyond the cold-path memoEntry itself.
+//
+// Panic safety mirrors sync.Once: if build panics, the entry is
+// still marked done (via the deferred Store) and the mutex is
+// released (via the deferred Unlock), so the panic propagates
+// without leaving the per-File memo in a deadlocked state.
+// Subsequent calls on the same key serve the zero-value cached
+// result instead of re-running build, matching upstream sync.Once.
 func (f *File) Memo(key string, build func() any) any {
 	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
 	e := ei.(*memoEntry)
@@ -143,11 +150,11 @@ func (f *File) Memo(key string, build func() any) any {
 		return e.val
 	}
 	e.mu.Lock()
+	defer e.mu.Unlock()
 	if !e.done.Load() {
+		defer e.done.Store(true)
 		e.val = build()
-		e.done.Store(true)
 	}
-	e.mu.Unlock()
 	return e.val
 }
 
@@ -157,6 +164,10 @@ func (f *File) Memo(key string, build func() any) any {
 // level function value, which avoids the per-call closure allocation
 // the plain `Memo` form forces on every invocation. The hot
 // astutil.CollectSectionParagraphs path is the canonical user.
+//
+// Panic safety matches Memo's contract: defer Unlock + defer
+// done.Store(true) keep the per-entry mutex from leaking a lock and
+// match sync.Once's "panic still marks done" semantics.
 func (f *File) MemoFile(key string, build func(*File) any) any {
 	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
 	e := ei.(*memoEntry)
@@ -164,11 +175,11 @@ func (f *File) MemoFile(key string, build func(*File) any) any {
 		return e.val
 	}
 	e.mu.Lock()
+	defer e.mu.Unlock()
 	if !e.done.Load() {
+		defer e.done.Store(true)
 		e.val = build(f)
-		e.done.Store(true)
 	}
-	e.mu.Unlock()
 	return e.val
 }
 

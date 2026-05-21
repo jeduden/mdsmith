@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -349,4 +350,68 @@ func TestFile_MemoFile_IndependentFromMemo(t *testing.T) {
 		"MemoFile must return the value the prior Memo call cached")
 	assert.Equal(t, int32(0), atomic.LoadInt32(&memoFileCalls),
 		"the MemoFile build must not run when Memo populated the key")
+}
+
+// TestFile_Memo_PanicReleasesMutex pins that a panicking build does
+// not leave the per-entry mutex locked. Without `defer e.mu.Unlock()`
+// inside Memo, a panic inside the build would deadlock every later
+// Memo call on the same File (including under -race, where the
+// mutex order is checked). The recover here simulates a caller
+// that catches the panic; the subsequent Memo call must complete
+// within a short deadline rather than block forever.
+func TestFile_Memo_PanicReleasesMutex(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	func() {
+		defer func() { _ = recover() }()
+		f.Memo("panicky", func() any {
+			panic("boom")
+		})
+	}()
+
+	// If the mutex stayed locked, a second Memo call on the same
+	// key would block forever. Run it in a goroutine with a hard
+	// deadline so the test fails fast on a regression.
+	done := make(chan any, 1)
+	go func() {
+		done <- f.Memo("panicky", func() any { return "recovered" })
+	}()
+	select {
+	case got := <-done:
+		// sync.Once-style semantics: the first build marked the
+		// key done before propagating the panic, so subsequent
+		// calls serve the zero-value cached result without re-
+		// running the build. Either behaviour is acceptable as
+		// long as the call returns; the test pins "no deadlock".
+		t.Logf("Memo after panic returned %#v", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Memo deadlocked after a panicking build — " +
+			"the per-entry mutex was not released")
+	}
+}
+
+// TestFile_MemoFile_PanicReleasesMutex is the MemoFile counterpart
+// of TestFile_Memo_PanicReleasesMutex — the same defer-Unlock
+// guarantee must hold for the *File-passing variant.
+func TestFile_MemoFile_PanicReleasesMutex(t *testing.T) {
+	f := &File{Path: "t.md"}
+
+	func() {
+		defer func() { _ = recover() }()
+		f.MemoFile("panicky", func(*File) any {
+			panic("boom")
+		})
+	}()
+
+	done := make(chan any, 1)
+	go func() {
+		done <- f.MemoFile("panicky", func(*File) any { return "recovered" })
+	}()
+	select {
+	case got := <-done:
+		t.Logf("MemoFile after panic returned %#v", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("MemoFile deadlocked after a panicking build — " +
+			"the per-entry mutex was not released")
+	}
 }
