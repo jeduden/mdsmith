@@ -44,13 +44,10 @@ var allocBudgetGrandfathered = map[string]int{
 	// scheduled as a follow-up to plan 181.
 	"MDS025": 110, // table-format
 	"MDS026": 18,  // table-readability
-	"MDS027": 25,  // cross-file-reference-integrity
 	"MDS029": 398, // conciseness-scoring
 	"MDS035": 201, // toc-directive
-	"MDS036": 12,  // max-section-length
-	"MDS053": 16,  // no-unused-link-definitions
-	"MDS054": 21,  // no-undefined-reference-labels
-	"MDS063": 17,  // descriptive-link-text
+	"MDS053": 11,  // no-unused-link-definitions (was 16; plan 195 task 6 partial)
+	"MDS054": 13,  // no-undefined-reference-labels (was 21; plan 195 task 7 partial)
 	// Baselines tightened to the post-perf-chunk numbers so a
 	// regression from today's state fails CI without waiting for
 	// the per-rule alloc budget to be missed by a wide margin.

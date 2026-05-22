@@ -67,6 +67,20 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if f.AST == nil {
 		return nil
 	}
+	// Whole-rule fast path: every limit knob is zero/empty so no
+	// heading can produce a diagnostic. Skipping the AST walks for
+	// headings and paragraphs is the difference between MDS036 paying
+	// ~12 allocs per Check on a typical file (alloc-budget gate
+	// baseline) and 0 — the rule is opt-in, so the configured
+	// no-knobs state is the production default.
+	if r.Max <= 0 &&
+		r.MaxWords <= 0 &&
+		r.MinWords <= 0 &&
+		r.MaxParagraphs <= 0 &&
+		len(r.PerLevel) == 0 &&
+		len(r.PerHeading) == 0 {
+		return nil
+	}
 	headings := collectHeadings(f)
 	if len(headings) == 0 {
 		return nil
@@ -77,7 +91,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		totalLines--
 	}
 
-	paragraphs := collectParagraphs(f)
+	// Only build the paragraph index when at least one paragraph-aware
+	// knob is set. checkWordAndParagraphLimits early-returns on the
+	// same condition, so collectParagraphs would just feed an unused
+	// argument otherwise.
+	var paragraphs []paragraph
+	if r.MaxWords > 0 || r.MinWords > 0 || r.MaxParagraphs > 0 {
+		paragraphs = collectParagraphs(f)
+	}
 
 	var diags []lint.Diagnostic
 	for i, h := range headings {

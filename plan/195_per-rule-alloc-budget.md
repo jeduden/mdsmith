@@ -132,40 +132,84 @@ reference it.
    the per-long-line `urlOnlyRe.MatchString` with
    isURLOnlyLine, and built the diagnostic message via
    strconv.Itoa + concat instead of fmt.Sprintf.
-5. [ ] Fix MDS027 cross-file-reference-integrity:
-   memoize `linkgraph.CollectAnchors(self)` and
-   `linkgraph.ExtractLinks(f)` on the `lint.File` so the
-   per-Check rebuild does not pay the AST walk again
-   when MDS053/MDS054 already triggered it; drop the
-   per-link `anchorCache` map literal when the file has
-   no link targets to check.
-6. [ ] Fix MDS053 no-unused-link-definitions to ≤ 10
-   allocs. The fixture's `[ref]:` defines a label;
-   plan 188's inventory flags the per-file regex
-   over `f.Source` as the hot allocator.
-7. [ ] Fix MDS054 no-undefined-reference-labels to ≤ 10
-   allocs. Same regex-over-source pattern as MDS053;
-   the inventory entry pairs them.
-8. [ ] Fix MDS062 link-validity to ≤ 10 allocs. Profile
-   notes `computeLineStarts` as a hot helper — move it
-   to a per-File memo so successive link checks share
-   one line-index instead of rebuilding it per link.
-9. [ ] Fix MDS063 descriptive-link-text to ≤ 10 allocs.
-10. [ ] Fix MDS023 paragraph-readability to ≤ 10 allocs.
-    The rule already consumes the memoized
-    `astutil.CollectSectionParagraphs`; the residual
-    allocation is in `mdtext.CountWords` and the
-    diagnostic message build. Pool the word counter's
-    state or skip the count when below the minimum-word
-    floor.
-11. [ ] Fix MDS024 paragraph-structure on the
-    representative fixture to ≤ 10 allocs. Its own
-    abbr-heavy fixture lands at 9; the representative
-    fixture adds a heading, a code fence, a list, and a
-    table, all of which create extra paragraphs that
-    inflate the cold-File cost. Tighten the shared
-    walk's per-non-prose-block skip.
-12. [ ] Fix MDS036 max-section-length to ≤ 10 allocs.
+5. [x] Fix MDS027 cross-file-reference-integrity (25 →
+   7). Defers `linkgraph.CollectAnchors(self)` and
+   the per-Check `anchorCache` map until the first
+   link that actually needs them (the gate fixture's
+   one cross-file `[other](other.md)` link has no
+   anchor, so both stay nil). Splits
+   `checkRelativeTarget` into a cheap `targetExists`
+   path that skips the heap-escaping read closure
+   in `resolveTargetFile` when the link is not a
+   Markdown target with an anchor. Adds
+   `cachedAbs` to `fscache.go` so the per-Check
+   `resolveAbsRoot` calls become a sync.Map hit
+   after the first cold call.
+6. [🔳] Partial fix for MDS053 no-unused-link-definitions
+   (16 → 11). Replaces the
+   `regexp.FindAllSubmatchIndex` per-file scan with
+   an inline byte scanner (-3 allocs), drops the
+   `wanted` map literal in favour of a linear scan
+   over `f.LinkReferences()` (-1), lazy-builds the
+   `seen` map only when `len(defs) > 1` (-1),
+   stores the label as `[]byte` aliased into
+   `f.Source` so `referenceDefinition` collection
+   adds no per-def string copy (-1), and unwinds
+   `collectUsedLabels`'s `ast.Walk` closure into a
+   recursive descent (-1). Remaining headroom hinges
+   on `parser.parseContext.References` (goldmark
+   internal) packing into a fresh interface slice on
+   every call; addressed in a follow-up plan.
+7. [🔳] Partial fix for MDS054 no-undefined-reference-labels
+   (21 → 13). Replaces `fullRefRE`, `collapsedRefRE`,
+   `shortcutRE`, and `refDefStartRE` with byte
+   scanners (shared `nextBracket` helper) and lifts
+   `collectCodeSpanRanges` off `ast.Walk` onto a
+   recursive descent. Lifting the lint package's
+   `Once`-based memos (newlineOffsets, codeBlockLines,
+   piBlockLines, linkRefs) to the closure-less
+   `atomic.Bool` + mutex pattern (mirroring the
+   `memoEntry` shape) drops the closure boxes those
+   first-time-lazy builds previously paid for every
+   rule whose Check trips them. Remaining headroom
+   sits in `defs := make(map[string]bool, len(refs))`
+   and the per-defs map insert path; addressed in a
+   follow-up plan alongside MDS053.
+8. [x] Fix MDS062 link-validity to ≤ 10 allocs. The
+   plan 195 engine-bench chunk inlined
+   `LineOfOffset`'s binary search and the
+   message-string cache; on the current gate fixture
+   MDS062 lands at 6 allocs.
+9. [x] Fix MDS063 descriptive-link-text to ≤ 10 allocs.
+   The per-File `MDS063.bannedSet` memo paid a
+   ~13-alloc build (4 normalised banned phrases plus
+   map setup) every Check; lifting the cache onto
+   the Rule instance behind an `atomic.Pointer[map]`
+
+  + `sync.Mutex` double-checked-lock collapses the
+   build to once per configured rule. ApplySettings
+   invalidates the pointer so a reconfigured Banned
+   list rebuilds on the next read. Current alloc
+   count: 4.
+
+10. [x] Fix MDS023 paragraph-readability to ≤ 10 allocs.
+    The plan-195 engine-bench chunk (LineOfOffset
+    inlined binary search, message-string cache, slot
+    value semantics) dropped MDS023 to 10/Check on the
+    gate fixture.
+11. [x] Fix MDS024 paragraph-structure on the
+    representative fixture to ≤ 10 allocs. Same chunk
+    as MDS023 dropped it to 10/Check.
+12. [x] Fix MDS036 max-section-length to ≤ 10 allocs.
+    The configured-no-knobs path (every limit zero,
+    no per-level / per-heading override) now returns
+    nil before walking the AST for headings or
+    paragraphs. The opt-in default ships with every
+    knob zero, so the alloc-budget gate's reading is
+    0 allocs/Check. The paragraph index also only
+    builds when at least one paragraph-aware limit is
+    set, so the line-only configuration skips the
+    paragraph walk.
 13. [ ] Fix MDS029 conciseness-scoring to ≤ 10 allocs.
 14. [ ] Fix MDS035 toc-directive to ≤ 10 allocs.
 15. [ ] Close the MDS020 schema-parse parity gap. Add a

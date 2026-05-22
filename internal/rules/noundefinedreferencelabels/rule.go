@@ -5,7 +5,6 @@ package noundefinedreferencelabels
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 	"unicode"
 
@@ -56,15 +55,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	codeSpans := collectCodeSpanRanges(f)
 	piLines := lint.CollectPIBlockLines(f)
 
-	excluded := func(line int) bool {
-		return codeLines[line] || piLines[line]
-	}
-
 	var diags []lint.Diagnostic
-	diags = append(diags, r.scanFullRefs(f, defs, codeSpans, excluded)...)
-	diags = append(diags, r.scanCollapsedRefs(f, defs, codeSpans, excluded)...)
+	diags = append(diags, r.scanFullRefs(f, defs, codeSpans, codeLines, piLines)...)
+	diags = append(diags, r.scanCollapsedRefs(f, defs, codeSpans, codeLines, piLines)...)
 	if shortcut != shortcutCollapsedOnly {
-		diags = append(diags, r.scanShortcutRefs(f, defs, codeSpans, excluded, shortcut)...)
+		diags = append(diags, r.scanShortcutRefs(f, defs, codeSpans, codeLines, piLines, shortcut)...)
 	}
 
 	return diags
@@ -93,36 +88,42 @@ func normalizeLabel(raw []byte) string {
 type byteRange struct{ start, end int }
 
 // collectCodeSpanRanges returns byte ranges of inline code spans.
-// Code spans are inline nodes; their content is accessed via child Text nodes.
+// Code spans are inline nodes; their content is accessed via child
+// Text nodes. The walk uses a recursive helper rather than
+// ast.Walk so the per-Check closure box ast.Walk would otherwise
+// allocate is shed — plan 195 task 7.
 func collectCodeSpanRanges(f *lint.File) []byteRange {
 	var out []byteRange
-	source := f.Source
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		_, ok := n.(*ast.CodeSpan)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
-		// Collect the start of the first and end of the last Text child.
-		first, last := codeSpanTextBounds(n)
-		if first < 0 {
-			return ast.WalkContinue, nil
-		}
-		// Extend outward to include the surrounding backticks.
-		start := first
-		for start > 0 && source[start-1] == '`' {
-			start--
-		}
-		end := last
-		for end < len(source) && source[end] == '`' {
-			end++
-		}
-		out = append(out, byteRange{start, end})
-		return ast.WalkContinue, nil
-	})
+	collectCodeSpanRangesInto(f.AST, f.Source, &out)
 	return out
+}
+
+// collectCodeSpanRangesInto descends node n and appends the byte
+// range of every *ast.CodeSpan to out, extending each range
+// outward to include the surrounding backticks (the regex-based
+// scanners later in this file want the full literal span).
+// Recursive descent keeps the helper closure-free.
+func collectCodeSpanRangesInto(n ast.Node, source []byte, out *[]byteRange) {
+	if n == nil {
+		return
+	}
+	if _, ok := n.(*ast.CodeSpan); ok {
+		first, last := codeSpanTextBounds(n)
+		if first >= 0 {
+			start := first
+			for start > 0 && source[start-1] == '`' {
+				start--
+			}
+			end := last
+			for end < len(source) && source[end] == '`' {
+				end++
+			}
+			*out = append(*out, byteRange{start, end})
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		collectCodeSpanRangesInto(c, source, out)
+	}
 }
 
 func codeSpanTextBounds(n ast.Node) (first, last int) {
@@ -161,168 +162,255 @@ func isEscapedBracket(source []byte, pos int) bool {
 	return n%2 == 1
 }
 
-// fullRefRE matches [text][label] — full reference link/image.
-// Group 1: text, Group 2: label (non-empty).
-// Does not match [^...] (footnotes) via the label check below.
-var fullRefRE = regexp.MustCompile(`\[([^\[\]\n]*)\]\[([^\[\]\n]+)\]`)
+// nextBracket finds the next `[X]` occurrence starting at or after pos.
+// Returns:
+//   - open: index of the `[`
+//   - contentStart: index right after `[`
+//   - contentEnd: index of the `]`
+//   - closeAfter: index right after `]`
+//   - ok: true on success, false at EOF
+//
+// The label content cannot contain a nested `[`, `]`, or newline —
+// matches the regex character class `[^\[\]\n]*` the previous form
+// used. Used to replace fullRefRE, collapsedRefRE, and shortcutRE
+// with byte-level scanning so the rule no longer pays the per-call
+// regex result-slice + per-match `[]int` allocations — plan 195
+// task 7. Empty contents (`[]`) return contentStart == contentEnd;
+// the caller decides whether that is valid for the pattern.
+func nextBracket(source []byte, pos int) (open, contentStart, contentEnd, closeAfter int, ok bool) {
+	for pos < len(source) {
+		if source[pos] != '[' {
+			pos++
+			continue
+		}
+		open = pos
+		contentStart = pos + 1
+		i := contentStart
+		for i < len(source) && source[i] != ']' && source[i] != '[' && source[i] != '\n' {
+			i++
+		}
+		if i < len(source) && source[i] == ']' {
+			return open, contentStart, i, i + 1, true
+		}
+		// `[` opened but did not close on this line (or nested `[`);
+		// advance past the orphan `[` and keep scanning.
+		pos++
+	}
+	return 0, 0, 0, 0, false
+}
 
-// collapsedRefRE matches [label][] — collapsed reference.
-// Group 1: label (the text, which becomes the label).
-var collapsedRefRE = regexp.MustCompile(`\[([^\[\]\n]+)\]\[\]`)
-
+// scanFullRefs walks source for `[text][label]` patterns. The byte
+// scanner replaces fullRefRE, which on the gate fixture allocated
+// ~2 objects (the regex result slice and a per-match `[]int`).
+// Mirrors the original semantics: skip footnote-style `[^…][…]`,
+// skip empty labels (the regex's `[^\[\]\n]+` required ≥ 1 char in
+// the label, but allowed an empty text), and skip lines that are
+// excluded or code-spanned or escape-prefixed.
 func (r *Rule) scanFullRefs(
 	f *lint.File,
 	defs map[string]bool,
 	spans []byteRange,
-	excluded func(int) bool,
+	codeLines, piLines map[int]bool,
 ) []lint.Diagnostic {
 	source := f.Source
 	var diags []lint.Diagnostic
-	for _, m := range fullRefRE.FindAllSubmatchIndex(source, -1) {
-		start := m[0]
-		line := f.LineOfOffset(start)
-		if excluded(line) || inCodeSpan(spans, start) || isEscapedBracket(source, start) {
+	pos := 0
+	for {
+		open1, cs1, ce1, ca1, ok := nextBracket(source, pos)
+		if !ok {
+			break
+		}
+		// Must be immediately followed by another `[…]` — no
+		// intervening characters per the regex `\]\[`.
+		if ca1 >= len(source) || source[ca1] != '[' {
+			pos = ca1
 			continue
 		}
-		// The label comes from group 2 (the second bracket pair).
-		label := source[m[4]:m[5]]
-		// Skip footnote-like [^...][...]: text starting with '^' is a footnote reference.
-		if len(source[m[2]:m[3]]) > 0 && source[m[2]] == '^' {
+		open2, cs2, ce2, ca2, ok2 := nextBracket(source, ca1)
+		if !ok2 || open2 != ca1 {
+			pos = ca1
+			continue
+		}
+		// Label must be non-empty (regex `[^\[\]\n]+`).
+		if cs2 == ce2 {
+			pos = ca2
+			continue
+		}
+		line := f.LineOfOffset(open1)
+		if codeLines[line] || piLines[line] ||
+			inCodeSpan(spans, open1) || isEscapedBracket(source, open1) {
+			pos = ca2
+			continue
+		}
+		// Skip footnote-like [^...][...].
+		if ce1 > cs1 && source[cs1] == '^' {
+			pos = ca2
+			continue
+		}
+		label := source[cs2:ce2]
+		if placeholders.ContainsBodyToken(string(label), r.Placeholders) {
+			pos = ca2
 			continue
 		}
 		normalized := normalizeLabel(label)
-		if placeholders.ContainsBodyToken(string(label), r.Placeholders) {
-			continue
-		}
 		if !defs[normalized] {
-			col := f.ColumnOfOffset(start)
-			// Adjust start for image prefix '!'
-			if start > 0 && source[start-1] == '!' {
-				col = f.ColumnOfOffset(start - 1)
+			col := f.ColumnOfOffset(open1)
+			if open1 > 0 && source[open1-1] == '!' {
+				col = f.ColumnOfOffset(open1 - 1)
 			}
 			diags = append(diags, r.diag(f.Path, line, col,
 				fmt.Sprintf("reference label %q has no matching link reference definition", string(label))))
 		}
+		pos = ca2
 	}
 	return diags
 }
 
+// scanCollapsedRefs walks source for `[label][]` patterns.
+// Replaces collapsedRefRE. Same alloc-pruning motivation as
+// scanFullRefs.
 func (r *Rule) scanCollapsedRefs(
 	f *lint.File,
 	defs map[string]bool,
 	spans []byteRange,
-	excluded func(int) bool,
+	codeLines, piLines map[int]bool,
 ) []lint.Diagnostic {
 	source := f.Source
 	var diags []lint.Diagnostic
-	for _, m := range collapsedRefRE.FindAllSubmatchIndex(source, -1) {
-		start := m[0]
-		line := f.LineOfOffset(start)
-		if excluded(line) || inCodeSpan(spans, start) || isEscapedBracket(source, start) {
+	pos := 0
+	for {
+		open, cs, ce, ca, ok := nextBracket(source, pos)
+		if !ok {
+			break
+		}
+		// Label must be non-empty (regex `[^\[\]\n]+`).
+		if cs == ce {
+			pos = ca
 			continue
 		}
-		text := source[m[2]:m[3]]
-		// Skip footnotes
-		if len(text) > 0 && text[0] == '^' {
+		// Must be immediately followed by `[]`.
+		if ca+1 >= len(source) || source[ca] != '[' || source[ca+1] != ']' {
+			pos = ca
+			continue
+		}
+		line := f.LineOfOffset(open)
+		if codeLines[line] || piLines[line] ||
+			inCodeSpan(spans, open) || isEscapedBracket(source, open) {
+			pos = ca + 2
+			continue
+		}
+		text := source[cs:ce]
+		if text[0] == '^' {
+			pos = ca + 2
+			continue
+		}
+		if placeholders.ContainsBodyToken(string(text), r.Placeholders) {
+			pos = ca + 2
 			continue
 		}
 		normalized := normalizeLabel(text)
-		if placeholders.ContainsBodyToken(string(text), r.Placeholders) {
-			continue
-		}
 		if !defs[normalized] {
-			col := f.ColumnOfOffset(start)
-			if start > 0 && source[start-1] == '!' {
-				col = f.ColumnOfOffset(start - 1)
+			col := f.ColumnOfOffset(open)
+			if open > 0 && source[open-1] == '!' {
+				col = f.ColumnOfOffset(open - 1)
 			}
 			diags = append(diags, r.diag(f.Path, line, col,
 				fmt.Sprintf("reference label %q has no matching link reference definition", string(text))))
 		}
+		pos = ca + 2
 	}
 	return diags
 }
 
-// shortcutRE matches [label] forms. The caller filters out cases that are
-// followed by '[' or '(' (full/collapsed refs and inline links), lines that
-// are reference definitions, and — for image shortcuts — checks for '!' prefix.
-var shortcutRE = regexp.MustCompile(`\[([^\[\]\n^][^\[\]\n]*)\]`)
-
-// refDefStartRE detects a reference definition at a given line start.
-var refDefStartRE = regexp.MustCompile(`^[ ]{0,3}\[`)
-
+// scanShortcutRefs walks source for `[label]` patterns whose context
+// is neither a full nor collapsed reference. Replaces shortcutRE.
+// The caller's filter set is unchanged: not on an excluded line,
+// not in a code span, not escaped, not on a reference-definition
+// line, and (under heuristic shortcutMode) only when the label
+// looks plausibly like a reference target.
 func (r *Rule) scanShortcutRefs(
 	f *lint.File,
 	defs map[string]bool,
 	spans []byteRange,
-	excluded func(int) bool,
+	codeLines, piLines map[int]bool,
 	shortcutMode string,
 ) []lint.Diagnostic {
 	source := f.Source
-	// Build set of definition line start offsets to skip.
+	// Build the set of definition-line numbers via a byte scan; the
+	// previous regex-driven helper allocated the regex result plus a
+	// per-line `string` for the destination-presence check on every
+	// candidate line.
 	defLines := collectRefDefLines(source)
 
 	var diags []lint.Diagnostic
-	for _, m := range shortcutRE.FindAllSubmatchIndex(source, -1) {
-		start := m[0]
-		end := m[1]
-		line := f.LineOfOffset(start)
-
-		if excluded(line) || inCodeSpan(spans, start) || isEscapedBracket(source, start) {
+	pos := 0
+	for {
+		open, cs, ce, ca, ok := nextBracket(source, pos)
+		if !ok {
+			break
+		}
+		// Reproduce the shortcutRE label class: non-empty, first char
+		// not `^`/`[`/`]`/`\n` (the bracket scanner already excludes
+		// `[`/`]`/`\n` inside the label, so only the `^` check is
+		// new here).
+		if cs == ce || source[cs] == '^' {
+			pos = ca
 			continue
 		}
-		// Skip if followed by '[' (full/collapsed ref) or '(' (inline link).
-		// Reference definition lines are excluded separately via defLines.
-		if end < len(source) {
-			next := source[end]
+		// Skip if followed by `[` (full/collapsed ref) or `(` (inline link).
+		if ca < len(source) {
+			next := source[ca]
 			if next == '[' || next == '(' {
+				pos = ca
 				continue
 			}
 		}
-		// Skip if this is a reference definition line.
+		line := f.LineOfOffset(open)
+		if codeLines[line] || piLines[line] ||
+			inCodeSpan(spans, open) || isEscapedBracket(source, open) {
+			pos = ca
+			continue
+		}
 		if defLines[line] {
+			pos = ca
 			continue
 		}
-		label := source[m[2]:m[3]]
-		normalized := normalizeLabel(label)
+		label := source[cs:ce]
 		if placeholders.ContainsBodyToken(string(label), r.Placeholders) {
+			pos = ca
 			continue
 		}
-		// Detect image shortcut ![label]: the '!' immediately precedes '['.
-		isImage := start > 0 && source[start-1] == '!'
-		// Under heuristic mode, only flag if the label looks like a reference
-		// target — but always flag image shortcuts since '!' makes intent clear.
+		isImage := open > 0 && source[open-1] == '!'
 		if !isImage && shortcutMode == shortcutHeuristic && !looksLikeRefTarget(string(label)) {
+			pos = ca
 			continue
 		}
+		normalized := normalizeLabel(label)
 		if !defs[normalized] {
-			col := f.ColumnOfOffset(start)
+			col := f.ColumnOfOffset(open)
 			if isImage {
-				col = f.ColumnOfOffset(start - 1)
+				col = f.ColumnOfOffset(open - 1)
 			}
 			diags = append(diags, r.diag(f.Path, line, col,
 				fmt.Sprintf("reference label %q has no matching link reference definition", string(label))))
 		}
+		pos = ca
 	}
 	return diags
 }
 
-// collectRefDefLines returns the set of 1-based line numbers that contain
-// a reference definition `[label]: dest`.
+// collectRefDefLines returns the set of 1-based line numbers that
+// contain a reference definition `[label]: dest`. The byte-level
+// scan replaces the per-line refDefStartRE.Match call (the regex
+// dispatch was small but non-zero on the alloc-budget path).
 func collectRefDefLines(source []byte) map[int]bool {
 	lines := make(map[int]bool)
 	lineNum := 1
 	start := 0
 	for i := 0; i <= len(source); i++ {
 		if i == len(source) || source[i] == '\n' {
-			line := source[start:i]
-			if refDefStartRE.Match(line) {
-				// Check if it has `: ` after the closing `]`
-				if idx := indexByte(line, ']'); idx >= 0 {
-					rest := strings.TrimLeft(string(line[idx+1:]), " \t")
-					if strings.HasPrefix(rest, ":") {
-						lines[lineNum] = true
-					}
-				}
+			if refDefLineStarts(source, start, i) {
+				lines[lineNum] = true
 			}
 			lineNum++
 			start = i + 1
@@ -331,13 +419,35 @@ func collectRefDefLines(source []byte) map[int]bool {
 	return lines
 }
 
-func indexByte(b []byte, c byte) int {
-	for i, v := range b {
-		if v == c {
-			return i
-		}
+// refDefLineStarts reports whether source[lineStart:lineEnd] looks
+// like a CommonMark reference definition: 0-3 leading spaces, then
+// `[`, then any non-`]` content, then `]:`. The destination is not
+// validated here because the caller only needs to know whether the
+// line LOOKS like a refdef for the purpose of suppressing the
+// shortcut-ref scan; an over-greedy match would only suppress a
+// non-existent diag.
+func refDefLineStarts(source []byte, lineStart, lineEnd int) bool {
+	j := lineStart
+	spaces := 0
+	for j < lineEnd && source[j] == ' ' && spaces < 3 {
+		j++
+		spaces++
 	}
-	return -1
+	if j >= lineEnd || source[j] != '[' {
+		return false
+	}
+	for j < lineEnd && source[j] != ']' {
+		j++
+	}
+	if j >= lineEnd {
+		return false
+	}
+	// Already on `]`; require `:` after, possibly with whitespace.
+	j++
+	for j < lineEnd && (source[j] == ' ' || source[j] == '\t') {
+		j++
+	}
+	return j < lineEnd && source[j] == ':'
 }
 
 // looksLikeRefTarget reports whether label looks like a reference target

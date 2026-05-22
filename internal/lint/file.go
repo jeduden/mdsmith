@@ -64,11 +64,18 @@ type File struct {
 	// rescans Source from byte 0 on every call, which made it ~24%
 	// of total `mdsmith check` CPU (plan 175 profiling). Built
 	// lazily because File is also constructed as a struct literal,
-	// not only via NewFile. sync.Once makes the lazy build safe
-	// even if a *File is read from multiple goroutines (e.g. the
-	// LSP serving concurrent requests for one document).
+	// not only via NewFile. The atomic.Bool + mutex pair (instead of
+	// sync.Once) avoids the per-call closure allocation the
+	// `once.Do(func(){...})` form forces — that closure box was the
+	// single largest non-parse allocator on the plan-195 alloc-budget
+	// gate, because every rule that calls f.LineOfOffset on a fresh
+	// File pays for it. The semantics still match sync.Once: build
+	// runs at most once, concurrent callers serialise on the mutex,
+	// a panic inside build leaves `done` set so subsequent calls
+	// observe the (zero-valued) cached result rather than retrying.
 	newlineOffsets     []int
-	newlineOffsetsOnce sync.Once
+	newlineOffsetsDone atomic.Bool
+	newlineOffsetsMu   sync.Mutex
 
 	// codeBlockLines / piBlockLines cache the line-set walks behind
 	// CollectCodeBlockLines / CollectPIBlockLines. Both are pure
@@ -76,13 +83,14 @@ type File struct {
 	// rules each called them independently — ~20 redundant full AST
 	// walks per file over the 600-file check gate (plan 175
 	// profiling). The cached map is shared read-only with every
-	// caller; no caller mutates it. sync.Once keeps the lazy build
-	// race-free across the LSP's concurrent readers, matching
-	// newlineOffsets above.
+	// caller; no caller mutates it. atomic.Bool + mutex matches
+	// newlineOffsets above for the same closure-box reason.
 	codeBlockLines     map[int]bool
-	codeBlockLinesOnce sync.Once
+	codeBlockLinesDone atomic.Bool
+	codeBlockLinesMu   sync.Mutex
 	piBlockLines       map[int]bool
-	piBlockLinesOnce   sync.Once
+	piBlockLinesDone   atomic.Bool
+	piBlockLinesMu     sync.Mutex
 
 	// parseCtx is the goldmark parser.Context produced by the one
 	// parse NewFile already runs. It is the source for LinkReferences
@@ -94,7 +102,8 @@ type File struct {
 	// demand. Released once linkRefs is materialized.
 	parseCtx     parser.Context
 	linkRefs     []Reference
-	linkRefsOnce sync.Once
+	linkRefsDone atomic.Bool
+	linkRefsMu   sync.Mutex
 
 	// scratch backs Memo: per-Check rule memoization. A *File is
 	// built fresh for each Check and discarded after, so values
@@ -254,8 +263,20 @@ func NewFile(path string, source []byte) (*File, error) {
 // extra parse); a File built as a struct literal has no such context,
 // so the first call parses Source once. The returned slice is shared
 // read-only.
+//
+// Memoised via the double-checked atomic.Bool + mutex pair rather
+// than sync.Once so the build path does not heap-allocate the
+// `func(){...}` once.Do would otherwise force — see the
+// newlineOffsets field comment for why this pattern is preferred
+// on the alloc-budget hot path.
 func (f *File) LinkReferences() []Reference {
-	f.linkRefsOnce.Do(func() {
+	if f.linkRefsDone.Load() {
+		return f.linkRefs
+	}
+	f.linkRefsMu.Lock()
+	defer f.linkRefsMu.Unlock()
+	if !f.linkRefsDone.Load() {
+		defer f.linkRefsDone.Store(true)
 		ctx := f.parseCtx
 		if ctx == nil {
 			ctx = parser.NewContext()
@@ -263,7 +284,7 @@ func (f *File) LinkReferences() []Reference {
 		}
 		f.linkRefs = ctx.References()
 		f.parseCtx = nil // context no longer needed; let it GC
-	})
+	}
 	return f.linkRefs
 }
 
@@ -317,9 +338,17 @@ func (f *File) FullSource(body []byte) []byte {
 // `bytes.Count(f.Source, "\n")` lets the loop append into a
 // right-sized backing slice instead of geometrically growing from
 // cap 0, which on a 150-line synthetic doc pays ~8 grow allocations
-// per file before the slice settles.
+// per file before the slice settles. The atomic.Bool + mutex memo
+// avoids the closure box once.Do would otherwise force (see the
+// newlineOffsets field comment).
 func (f *File) lineIndex() []int {
-	f.newlineOffsetsOnce.Do(func() {
+	if f.newlineOffsetsDone.Load() {
+		return f.newlineOffsets
+	}
+	f.newlineOffsetsMu.Lock()
+	defer f.newlineOffsetsMu.Unlock()
+	if !f.newlineOffsetsDone.Load() {
+		defer f.newlineOffsetsDone.Store(true)
 		nl := make([]int, 0, bytes.Count(f.Source, lineIndexNewline))
 		for i := 0; i < len(f.Source); i++ {
 			if f.Source[i] == '\n' {
@@ -327,7 +356,7 @@ func (f *File) lineIndex() []int {
 			}
 		}
 		f.newlineOffsets = nl
-	})
+	}
 	return f.newlineOffsets
 }
 
