@@ -1,7 +1,7 @@
 ---
 id: 182
 title: Code block convention rules
-status: "🔲"
+status: "✅"
 model: sonnet
 depends-on: []
 summary: >-
@@ -50,26 +50,34 @@ MD014 inspects the lines of a code block.
 
 ## Tasks
 
-1. Scaffold `internal/rules/codeblockstyle/` (MDS065).
-2. Scaffold `internal/rules/commandsshowoutput/` (MDS066).
-3. Implement detection and autofix for each.
-4. `rule.Configurable` for MDS065 `style`.
-5. Fixture tests under the provisional
+1. [x] Scaffold `internal/rules/codeblockstyle/` (MDS065).
+2. [x] Scaffold `internal/rules/commandsshowoutput/` (MDS066).
+3. [x] Implement detection and autofix for each.
+4. [x] `rule.Configurable` for MDS065 `style`.
+5. [x] Fixture tests under the provisional
    `internal/rules/MDS065-*` and `MDS066-*` directories.
-6. Rule READMEs; regenerate the docs catalog and index.
-7. Add the MD046 / MD014 rows to the
-   [linter comparison](../docs/background/markdown-linters.md).
+6. [x] Rule READMEs; regenerate the docs catalog and index.
+7. [x] Add the MD046 / MD014 rows to the
+   [linter comparison](../docs/background/markdown-linters.md)
+   and the markdownlint coverage matrix.
+
+## Notes
+
+- MDS065 autofix tags converted blocks `text` (rather than
+  emitting an empty info string) so the result satisfies
+  MDS011 (fenced-code-language). Users are expected to
+  refine the tag.
 
 ## Acceptance Criteria
 
-- [ ] An indented code block is flagged under
+- [x] An indented code block is flagged under
       `style: fenced` and converted to a fenced block.
-- [ ] A `consistent` setting infers from the first block
+- [x] A `consistent` setting infers from the first block
       and flags later deviations.
-- [ ] A `$ cmd`-only block is flagged and the `$ ` is
+- [x] A `$ cmd`-only block is flagged and the `$ ` is
       stripped by autofix.
-- [ ] A block that mixes commands and output is not
+- [x] A block that mixes commands and output is not
       flagged.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes

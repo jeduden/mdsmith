@@ -1,0 +1,174 @@
+// Package commandsshowoutput implements MDS066 commands-show-output:
+// when every non-blank line of a fenced code block starts with "$ ",
+// the block shows commands with no output and the prompt should be
+// dropped so the snippet is copy-paste-friendly. Mirrors markdownlint
+// MD014.
+package commandsshowoutput
+
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/fencepos"
+	"github.com/yuin/goldmark/ast"
+)
+
+func init() {
+	rule.Register(&Rule{})
+}
+
+// Rule flags fenced code blocks whose every non-blank line is a
+// shell prompt with no shown output.
+type Rule struct{}
+
+// ID implements rule.Rule.
+func (r *Rule) ID() string { return "MDS066" }
+
+// Name implements rule.Rule.
+func (r *Rule) Name() string { return "commands-show-output" }
+
+// Category implements rule.Rule.
+func (r *Rule) Category() string { return "code" }
+
+// Check implements rule.Rule. The per-block logic is pure and stateless,
+// so it is expressed as CheckNode and the engine can fold this rule into
+// one shared AST walk; a direct call still works via rule.WalkNodes.
+func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	return rule.WalkNodes(r, f)
+}
+
+// CheckNode implements rule.NodeChecker.
+func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnostic {
+	if !entering {
+		return nil
+	}
+	fcb, ok := n.(*ast.FencedCodeBlock)
+	if !ok {
+		return nil
+	}
+	line := fencepos.OpenLine(f, fcb)
+	if line == 0 {
+		return nil
+	}
+	if inGeneratedRange(f, line) {
+		return nil
+	}
+	if !allLinesArePrompts(f, fcb) {
+		return nil
+	}
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     line,
+		Column:   1,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  "commands shown with $ prefix but no output",
+	}}
+}
+
+// Fix implements rule.FixableRule. Each offending block has every "$ "
+// prefix stripped from its non-blank content lines.
+func (r *Rule) Fix(f *lint.File) []byte {
+	if f == nil || f.AST == nil {
+		return f.Source
+	}
+
+	rewriteLines := map[int]string{}
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		fcb, ok := n.(*ast.FencedCodeBlock)
+		if !ok {
+			return ast.WalkContinue, nil
+		}
+		line := fencepos.OpenLine(f, fcb)
+		if line == 0 || inGeneratedRange(f, line) {
+			return ast.WalkContinue, nil
+		}
+		if !allLinesArePrompts(f, fcb) {
+			return ast.WalkContinue, nil
+		}
+		segs := fcb.Lines()
+		for i := 0; i < segs.Len(); i++ {
+			seg := segs.At(i)
+			ln := f.LineOfOffset(seg.Start)
+			if ln <= 0 || ln > len(f.Lines) {
+				continue
+			}
+			rewriteLines[ln] = stripPrompt(f.Lines[ln-1])
+		}
+		return ast.WalkContinue, nil
+	})
+
+	if len(rewriteLines) == 0 {
+		return f.Source
+	}
+
+	var buf bytes.Buffer
+	buf.Grow(len(f.Source))
+	for i, raw := range f.Lines {
+		if rewritten, ok := rewriteLines[i+1]; ok {
+			buf.WriteString(rewritten)
+		} else {
+			buf.Write(raw)
+		}
+		if i < len(f.Lines)-1 {
+			buf.WriteByte('\n')
+		}
+	}
+	return buf.Bytes()
+}
+
+// allLinesArePrompts reports whether every non-blank content line of
+// fcb starts with "$ ", and at least one such prompt line exists.
+func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
+	segs := fcb.Lines()
+	if segs.Len() == 0 {
+		return false
+	}
+	hasPrompt := false
+	for i := 0; i < segs.Len(); i++ {
+		ln := f.LineOfOffset(segs.At(i).Start)
+		if ln <= 0 || ln > len(f.Lines) {
+			continue
+		}
+		line := f.Lines[ln-1]
+		stripped := bytes.TrimRight(line, " \t\r")
+		if len(stripped) == 0 {
+			continue
+		}
+		if !bytes.HasPrefix(stripped, []byte("$ ")) {
+			return false
+		}
+		hasPrompt = true
+	}
+	return hasPrompt
+}
+
+// stripPrompt removes the leading "$ " from a non-blank content line.
+// Blank lines pass through unchanged.
+func stripPrompt(line []byte) string {
+	stripped := bytes.TrimRight(line, " \t\r")
+	if len(stripped) == 0 {
+		return string(line)
+	}
+	if !bytes.HasPrefix(stripped, []byte("$ ")) {
+		return string(line)
+	}
+	return string(line[2:])
+}
+
+func inGeneratedRange(f *lint.File, line int) bool {
+	for _, gr := range f.GeneratedRanges {
+		if gr.Contains(line) {
+			return true
+		}
+	}
+	return false
+}
+
+var _ rule.FixableRule = (*Rule)(nil)
+var _ rule.NodeChecker = (*Rule)(nil)
