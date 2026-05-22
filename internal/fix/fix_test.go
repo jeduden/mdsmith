@@ -2,6 +2,7 @@ package fix
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -91,6 +92,35 @@ func (r *mockNonFixableRule) Check(f *lint.File) []lint.Diagnostic {
 		},
 	}
 }
+
+// mockSideEffectRule simulates MDS048: Check always returns a
+// drift diagnostic, Fix returns f.Source unchanged (no markdown
+// bytes change), and PredictDryRunFix returns the Check set so
+// the dry-run engine subtracts it from remaining diagnostics —
+// exit-code parity with a real run.
+type mockSideEffectRule struct {
+	id   string
+	name string
+}
+
+func (r *mockSideEffectRule) ID() string       { return r.id }
+func (r *mockSideEffectRule) Name() string     { return r.name }
+func (r *mockSideEffectRule) Category() string { return "test" }
+func (r *mockSideEffectRule) Check(f *lint.File) []lint.Diagnostic {
+	return []lint.Diagnostic{{
+		File: f.Path, Line: 1, Column: 1,
+		RuleID: r.id, RuleName: r.name,
+		Severity: lint.Warning,
+		Message:  "side-effect drift",
+	}}
+}
+func (r *mockSideEffectRule) Fix(f *lint.File) []byte                         { return f.Source }
+func (r *mockSideEffectRule) PredictDryRunFix(f *lint.File) []lint.Diagnostic { return r.Check(f) }
+
+var (
+	_ rule.FixableRule     = (*mockSideEffectRule)(nil)
+	_ rule.DryRunPredictor = (*mockSideEffectRule)(nil)
+)
 
 // mockFixableRuleB replaces tabs with spaces (second fixable rule for ordering tests).
 type mockFixableRuleB struct {
@@ -1025,4 +1055,245 @@ func TestFix_MaxPassesBoundary(t *testing.T) {
 	// After 10 passes each appending "X", the file should end with 10 X's.
 	const maxPasses = 10
 	assert.Equal(t, string(initial)+strings.Repeat("X", maxPasses), string(got))
+}
+
+// --- dry-run ---
+
+func TestFix_DryRun_LeavesFileUntouched(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	original := []byte("# Hello  \nworld  \n")
+	require.NoError(t, os.WriteFile(mdFile, original, 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors, "unexpected errors: %v", result.Errors)
+
+	// File on disk is byte-identical.
+	got, err := os.ReadFile(mdFile)
+	require.NoError(t, err)
+	assert.Equal(t, original, got, "dry-run must not modify the file")
+
+	// Nothing in Modified: nothing was written.
+	assert.Empty(t, result.Modified, "dry-run must not populate Modified")
+}
+
+func TestFix_DryRun_ReportsWouldFixCounts(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "test.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \nworld  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Empty(t, result.Errors, "unexpected errors: %v", result.Errors)
+
+	// Two trailing-spaces violations on two lines.
+	assert.Equal(t, 2, result.WouldFix, "expected 2 would-fix violations")
+	require.Len(t, result.WouldFixFiles, 1)
+	wf := result.WouldFixFiles[0]
+	assert.Equal(t, mdFile, wf.Path)
+	assert.Equal(t, 2, wf.Count)
+	require.Len(t, wf.Rules, 1)
+	assert.Equal(t, "MDS100", wf.Rules[0].RuleID)
+	assert.Equal(t, 2, wf.Rules[0].Count)
+}
+
+func TestFix_DryRun_MatchesRealFixCount(t *testing.T) {
+	// dry-run reports the same fix count a real run would apply.
+	dir := t.TempDir()
+	dryFile := filepath.Join(dir, "dry.md")
+	wetFile := filepath.Join(dir, "wet.md")
+	content := []byte("# Hello  \nworld  \nthird line  \n")
+	require.NoError(t, os.WriteFile(dryFile, content, 0o644))
+	require.NoError(t, os.WriteFile(wetFile, content, 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+
+	dryFixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+	dryResult := dryFixer.Fix([]string{dryFile})
+
+	wetFixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+	}
+	wetResult := wetFixer.Fix([]string{wetFile})
+
+	assert.Equal(t, wetResult.Failures, dryResult.Failures,
+		"failure counts must match between dry-run and real run")
+	assert.Equal(t, wetResult.Failures, dryResult.WouldFix,
+		"would-fix count must equal the real-run pre-fix violation count")
+
+	// Real run modified the file; dry run did not.
+	require.Len(t, wetResult.Modified, 1)
+	require.Empty(t, dryResult.Modified)
+
+	dryContent, err := os.ReadFile(dryFile)
+	require.NoError(t, err)
+	assert.Equal(t, content, dryContent, "dry-run must leave bytes identical")
+}
+
+func TestFix_WriteErrorPopulatesErrors(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "fixable.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	// Inject the write failure on this Fixer so the test stays
+	// isolated when other tests in the package run in parallel.
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		WriteFile: func(_ string, _ []byte, _ os.FileMode) error {
+			return fmt.Errorf("injected write error")
+		},
+	}
+
+	result := fixer.Fix([]string{mdFile})
+	require.Len(t, result.Errors, 1, "expected exactly one write error")
+	assert.Contains(t, result.Errors[0].Error(), "injected write error")
+}
+
+func TestComputeWouldFix_SortsRulesByID(t *testing.T) {
+	// Two rules fire; rules must come back sorted by ID regardless of map iteration
+	// order, which exercises the sort.Slice less function.
+	before := []lint.Diagnostic{
+		{File: "f.md", RuleID: "MDS010", RuleName: "rule-b"},
+		{File: "f.md", RuleID: "MDS001", RuleName: "rule-a"},
+	}
+	after := []lint.Diagnostic{} // both fixed
+	wf := computeWouldFix("f.md", before, after, true)
+	require.NotNil(t, wf)
+	assert.Equal(t, 2, wf.Count)
+	require.Len(t, wf.Rules, 2)
+	assert.Equal(t, "MDS001", wf.Rules[0].RuleID, "rules must be sorted ascending by ID")
+	assert.Equal(t, "MDS010", wf.Rules[1].RuleID)
+}
+
+func TestFix_DryRun_PredictedDiagnosticsSubtracted(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "f.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hi\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"side-effect": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockSideEffectRule{id: "MDS900", name: "side-effect"}},
+		DryRun: true,
+	}
+	result := fixer.Fix([]string{mdFile})
+
+	assert.Empty(t, result.Diagnostics,
+		"DryRunPredictor diagnostics must be subtracted from remaining set")
+	assert.Equal(t, 1, result.WouldFix,
+		"diff after subtraction must count the predicted fix")
+}
+
+func TestSubtractPredictedDryRunFixes_NoPredictorIsNoop(t *testing.T) {
+	t.Parallel()
+	// Non-DryRunPredictor fixable rule: subtract leaves diags untouched.
+	diags := []lint.Diagnostic{
+		{File: "f.md", Line: 1, Column: 1, RuleID: "MDS001", Message: "x"},
+	}
+	fixable := []rule.FixableRule{&mockFixableRule{id: "MDS001", name: "trim"}}
+	got := subtractPredictedDryRunFixes(diags, fixable, &lint.File{Path: "f.md"})
+	assert.Equal(t, diags, got)
+}
+
+func TestComputeWouldFixAggregated_DedupesByDiagnosticFile(t *testing.T) {
+	// Simulate a repo-scoped rule (e.g. MDS048) that fires once per
+	// linted markdown file but anchors its diagnostic to a shared
+	// repo artifact (.gitattributes). After dedupe, the WouldFix
+	// entry is keyed by the diagnostic's File, and the count is not
+	// inflated by the number of host markdown files.
+	hostA := "a.md"
+	hostB := "b.md"
+	target := ".gitattributes"
+	allBefore := []lint.Diagnostic{
+		{File: target, Line: 1, Column: 1, RuleID: "MDS048", RuleName: "git-hook-sync", Message: "drift"},
+		{File: target, Line: 1, Column: 1, RuleID: "MDS048", RuleName: "git-hook-sync", Message: "drift"},
+	}
+	allAfter := []lint.Diagnostic{} // fixed across the run
+	bytesChangedByPath := map[string]bool{hostA: true, hostB: false}
+
+	files, total := computeWouldFixAggregated(allBefore, allAfter, bytesChangedByPath)
+	require.Equal(t, 1, total, "deduped MDS048 must contribute exactly 1 to WouldFix")
+
+	// Files are sorted by path. .gitattributes < a.md alphabetically.
+	require.Len(t, files, 2)
+	assert.Equal(t, target, files[0].Path)
+	assert.Equal(t, 1, files[0].Count)
+	require.Len(t, files[0].Rules, 1)
+	assert.Equal(t, "MDS048", files[0].Rules[0].RuleID)
+
+	// a.md gets a "would update generated content" entry (Count=0, Rules empty).
+	assert.Equal(t, hostA, files[1].Path)
+	assert.Equal(t, 0, files[1].Count)
+	assert.Empty(t, files[1].Rules)
+}
+
+func TestComputeWouldFixAggregated_NoChanges(t *testing.T) {
+	// No before/after diff and no bytesChanged anywhere → no entries.
+	files, total := computeWouldFixAggregated(nil, nil, nil)
+	assert.Equal(t, 0, total)
+	assert.Empty(t, files)
+}
+
+func TestFix_DryRun_OmitsFilesWithNoFixes(t *testing.T) {
+	dir := t.TempDir()
+	cleanFile := filepath.Join(dir, "clean.md")
+	require.NoError(t, os.WriteFile(cleanFile, []byte("# Clean\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"mock-trailing": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		DryRun: true,
+	}
+
+	result := fixer.Fix([]string{cleanFile})
+	require.Empty(t, result.Errors)
+	assert.Equal(t, 0, result.WouldFix)
+	assert.Empty(t, result.WouldFixFiles, "clean files must not appear in WouldFixFiles")
 }

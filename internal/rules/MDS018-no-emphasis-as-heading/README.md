@@ -70,6 +70,28 @@ This is a normal paragraph.
 
 <?/include?>
 
+### Good -- bold inside a table cell
+
+Emphasis inside a pipe-table cell is intentional inline styling (a
+row-label stub, a bold flag column) rather than a heading substitute.
+MDS018 defers to the table-format rule and leaves these alone.
+
+<?include
+file: good/in-table-cell.md
+wrap: markdown
+?>
+
+```markdown
+# Table With Bold Stub
+
+| Stub      | Value |
+| --------- | ----- |
+| **Alpha** | 1     |
+| **Beta**  | 2     |
+```
+
+<?/include?>
+
 ## See also
 
 - [Placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)

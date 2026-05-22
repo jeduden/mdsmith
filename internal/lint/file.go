@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"io/fs"
 	"os"
-	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -31,6 +31,13 @@ type File struct {
 	// numbers in cross-file diagnostics are computed against the
 	// same coordinate system as the current file.
 	StripFrontMatter bool
+
+	// DryRun, when true, signals that the surrounding fix run must
+	// not touch the filesystem or the git index. Fixable rules whose
+	// Fix method has side effects beyond returning the new file
+	// bytes (e.g. writing a sibling repo file, staging via git)
+	// must check this flag and skip the side effect.
+	DryRun bool
 
 	// MaxInputBytes is the maximum file size in bytes that rules
 	// should enforce when reading secondary files (includes, schemas,
@@ -108,10 +115,19 @@ type File struct {
 
 // memoEntry guards a single Memo key so build runs exactly once even
 // when several rule passes (or concurrent LSP readers) race for the
-// same key.
+// same key. atomic.Bool + mutex is used instead of sync.Once because
+// once.Do takes a function value as a parameter — the closure
+// `func() { e.val = build() }` Memo would pass captures `e` and
+// `build`, both escape-tracking pointers, so it allocates per call.
+// On hot per-File memos (astutil.CollectSectionParagraphs feeds
+// every paragraph-aware rule), that single closure escape is the
+// dominant per-Check allocation the MDS024 budget gate sees. The
+// atomic flag is a double-checked-lock pattern: cheap atomic load
+// on the warm path, mutex-guarded build on the cold path.
 type memoEntry struct {
-	once sync.Once
 	val  any
+	done atomic.Bool
+	mu   sync.Mutex
 }
 
 // Memo returns the value for key, computing it once via build on the
@@ -123,10 +139,53 @@ type memoEntry struct {
 // passes — three globs and front-matter reads of every matched file
 // per directive. The File is discarded after each Check, so nothing
 // is cached across files or runs.
+//
+// build is invoked directly (no wrapping closure) so the call adds
+// no per-Memo-call allocation beyond the cold-path memoEntry itself.
+//
+// Panic safety mirrors sync.Once: if build panics, the entry is
+// still marked done (via the deferred Store) and the mutex is
+// released (via the deferred Unlock), so the panic propagates
+// without leaving the per-File memo in a deadlocked state.
+// Subsequent calls on the same key serve the zero-value cached
+// result instead of re-running build, matching upstream sync.Once.
 func (f *File) Memo(key string, build func() any) any {
 	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
 	e := ei.(*memoEntry)
-	e.once.Do(func() { e.val = build() })
+	if e.done.Load() {
+		return e.val
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.done.Load() {
+		defer e.done.Store(true)
+		e.val = build()
+	}
+	return e.val
+}
+
+// MemoFile is the *File-passing variant of Memo: build receives this
+// File as an argument instead of capturing it in a closure. Callers
+// whose build needs nothing beyond File data can pass a package-
+// level function value, which avoids the per-call closure allocation
+// the plain `Memo` form forces on every invocation. The hot
+// astutil.CollectSectionParagraphs path is the canonical user.
+//
+// Panic safety matches Memo's contract: defer Unlock + defer
+// done.Store(true) keep the per-entry mutex from leaking a lock and
+// match sync.Once's "panic still marks done" semantics.
+func (f *File) MemoFile(key string, build func(*File) any) any {
+	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
+	e := ei.(*memoEntry)
+	if e.done.Load() {
+		return e.val
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.done.Load() {
+		defer e.done.Store(true)
+		e.val = build(f)
+	}
 	return e.val
 }
 
@@ -245,10 +304,14 @@ func (f *File) FullSource(body []byte) []byte {
 }
 
 // lineIndex returns the cached offsets of every '\n' in Source,
-// building it once on first use.
+// building it once on first use. The size hint
+// `bytes.Count(f.Source, "\n")` lets the loop append into a
+// right-sized backing slice instead of geometrically growing from
+// cap 0, which on a 150-line synthetic doc pays ~8 grow allocations
+// per file before the slice settles.
 func (f *File) lineIndex() []int {
 	f.newlineOffsetsOnce.Do(func() {
-		var nl []int
+		nl := make([]int, 0, bytes.Count(f.Source, lineIndexNewline))
 		for i := 0; i < len(f.Source); i++ {
 			if f.Source[i] == '\n' {
 				nl = append(nl, i)
@@ -259,14 +322,30 @@ func (f *File) lineIndex() []int {
 	return f.newlineOffsets
 }
 
+var lineIndexNewline = []byte{'\n'}
+
 // LineOfOffset converts a byte offset in Source to a 1-based line
 // number. The line is 1 plus the number of newlines that occur
 // strictly before offset (a newline exactly at offset starts the
 // next line, so it does not count) — identical to a linear scan,
 // but O(log n) via binary search over the cached newline index.
+// The search is inlined (sort.Search would force the comparison
+// callback to capture `nl` and `offset` and escape to the heap;
+// engine-bench profiling attributed ~64 k allocations per
+// 10-iteration run to that closure box before plan 195 inlined
+// the binary search here).
 func (f *File) LineOfOffset(offset int) int {
 	nl := f.lineIndex()
-	return 1 + sort.Search(len(nl), func(i int) bool { return nl[i] >= offset })
+	lo, hi := 0, len(nl)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if nl[mid] >= offset {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	return 1 + lo
 }
 
 // ColumnOfOffset converts a byte offset in Source to a 1-based column

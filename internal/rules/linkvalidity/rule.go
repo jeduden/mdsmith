@@ -359,10 +359,14 @@ func maskLine(line []byte, lineStart int, ranges []byteRange) []byte {
 	return out
 }
 
-// computeLineStarts returns s where s[i] is the 0-based offset in src of
-// the first byte of line i+1; len(s) equals bytes.Split(src,"\n") length.
+// computeLineStarts returns s where s[i] is the 0-based offset in src
+// of the first byte of line i+1; len(s) equals bytes.Split(src,"\n")
+// length. The initial cap of `bytes.Count(src, "\n") + 1` lets the
+// loop append into the right-sized backing without geometric grows,
+// which the engine-bench profile flagged as ~8 grow-allocs per call
+// for the cap-0 starting slice.
 func computeLineStarts(src []byte) []int {
-	starts := []int{0}
+	starts := make([]int, 1, bytes.Count(src, newline)+1)
 	for i, b := range src {
 		if b == '\n' {
 			starts = append(starts, i+1)
@@ -370,5 +374,7 @@ func computeLineStarts(src []byte) []int {
 	}
 	return starts
 }
+
+var newline = []byte{'\n'}
 
 var _ rule.FixableRule = (*Rule)(nil)

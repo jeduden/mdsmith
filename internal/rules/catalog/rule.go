@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/query"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
@@ -27,7 +28,7 @@ import (
 const numericSortPrefix = "numeric:"
 
 func init() {
-	rule.Register(&Rule{})
+	rule.Register(&Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced})
 }
 
 // Rule checks that generated sections match their directive output.
@@ -37,9 +38,20 @@ func init() {
 // multiple goroutines, so a plain check-then-set on the engine
 // field races. sync.Once gives both writers and readers a single
 // happens-before edge.
+//
+// Pad and SeparatorStyle mirror MDS025 (table-format)'s knobs and
+// govern only the tables this rule emits inside `<?catalog?>` bodies.
+// Catalog carries its own copies — rather than reading MDS025's
+// configured state — because the lint engine clones rules and applies
+// settings per file in parallel; a process-global view of MDS025
+// would race across workers. Set both rules to the same style when
+// you want host-file tables and catalog-generated tables to share a
+// canonical.
 type Rule struct {
-	engineOnce sync.Once
-	engine     *gensection.Engine
+	engineOnce     sync.Once
+	engine         *gensection.Engine
+	Pad            int
+	SeparatorStyle tablefmt.SeparatorStyle
 }
 
 // ID implements rule.Rule.
@@ -122,24 +134,49 @@ func (r *Rule) Generate(f *lint.File, filePath string, line int,
 			fmt.Sprintf("generated section template execution failed: %v", err))}
 	}
 
-	// Format tables to comply with MDS025 (table-format) settings.
-	content = tablefmt.FormatString(content, tableFormatPad())
+	// Format tables this rule generates using its own pad / separator
+	// settings; see Rule's doc comment for why catalog carries its own
+	// table-format knobs instead of consulting MDS025.
+	content = tablefmt.FormatStringWithConfig(content, tablefmt.Config{
+		Pad:            r.Pad,
+		SeparatorStyle: r.SeparatorStyle,
+	})
 
 	return content, nil
 }
 
-// tableFormatPad returns the pad setting from the MDS025 (table-format)
-// rule, defaulting to 1 if not found.
-func tableFormatPad() int {
-	r := rule.ByID("MDS025")
-	if r == nil {
-		return 1
+// ApplySettings implements rule.Configurable.
+func (r *Rule) ApplySettings(s map[string]any) error {
+	for k, v := range s {
+		switch k {
+		case "pad":
+			n, ok := settings.ToInt(v)
+			if !ok {
+				return fmt.Errorf("catalog: pad must be an integer, got %T", v)
+			}
+			if n < 0 {
+				return fmt.Errorf("catalog: pad must be non-negative, got %d", n)
+			}
+			r.Pad = n
+		case "separator-style":
+			style, err := tablefmt.ParseSeparatorStyle(v, "catalog")
+			if err != nil {
+				return err
+			}
+			r.SeparatorStyle = style
+		default:
+			return fmt.Errorf("catalog: unknown setting %q", k)
+		}
 	}
-	type padder interface{ GetPad() int }
-	if p, ok := r.(padder); ok {
-		return p.GetPad()
+	return nil
+}
+
+// DefaultSettings implements rule.Configurable.
+func (r *Rule) DefaultSettings() map[string]any {
+	return map[string]any{
+		"pad":             1,
+		"separator-style": "spaced",
 	}
-	return 1
 }
 
 // validateCatalogDirective validates parameters specific to the catalog directive.

@@ -7,7 +7,7 @@ settings:
 Text with ~~old~~ markup.
 
 | a   | b   |
-|-----|-----|
+| --- | --- |
 | 1   | 2   |
 
 Footnote reference.[^1]

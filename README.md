@@ -34,10 +34,16 @@ heading-level: "absolute"
 ## Why mdsmith
 
 mdsmith is one rule engine behind every surface: the CLI, the LSP
-server, the VS Code extension, and the Claude Code plugin all run
-the same checks. This page is the shared overview. The README
-includes it; the website renders it and links each card to a
-fuller page.
+server, and the VS Code extension all run the same checks. Neovim
+and other LSP-aware editors plug in through the same server; a
+Claude Code plugin is available for users of that editor. This
+page is the shared overview. The README includes it; the website
+renders it and links each card to a fuller page.
+
+### Core (every repo)
+
+These features pay off on a single README and scale up to a docs
+monorepo.
 
 **[Auto-fix Markdown formatting](docs/features/auto-fix.md).**
 `mdsmith fix` rewrites whitespace, headings, code fences, bare
@@ -66,9 +72,16 @@ per-file section schemas, and keep Markdown in the right folders.
 Schemas can be inline on a file kind or shared via `proto.md`
 files.
 
-**[Guardrails for AI-generated docs](docs/features/ai-guardrails.md).**
+### Scale (large docs sites)
+
+These features show up when the repo grows past a handful of
+files: includes, catalogs, dependency graphs, release gates, and
+size budgets.
+
+**[Size and readability limits](docs/features/size-and-readability.md).**
 Cap file, section, and token-budget size. Enforce reading grade
-and sentence count. Flag verbatim copy-paste across files.
+and sentence count. Flag verbatim copy-paste across files. Three
+rules ship on by default; two are opt-in.
 
 **[Self-maintaining sections](docs/features/self-maintaining-sections.md).**
 On `mdsmith fix`, `<?toc?>` rebuilds a heading TOC, `<?catalog?>`

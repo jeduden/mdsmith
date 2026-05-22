@@ -8,6 +8,13 @@ version = "0.0.0-dev"
 description = "Fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content."
 readme = "README.md"
 license = "MIT"
+# PEP 639 / hatchling: ship the root LICENSE inside the wheel so the
+# MIT notice (with its embedded third-party attribution for
+# internal/punkt/, vendored from neurosnap/sentences) reaches PyPI
+# consumers. The release tooling stages /LICENSE next to this
+# pyproject.toml before invoking `python -m build` — see
+# internal/release/buildwheels.go's stagePythonTree.
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 keywords = ["markdown", "linter", "formatter", "mdsmith", "docs"]
 classifiers = [

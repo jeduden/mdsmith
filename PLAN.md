@@ -66,7 +66,7 @@ footer: |
 | 134 | ✅     | sonnet | [LSP completion for anchors, refs, kinds, and directive args](plan/134_lsp-completion.md)                                               |
 | 135 | ✅     | sonnet | [Schema inheritance via `extends`](plan/135_schema-extends.md)                                                                          |
 | 136 | 🔲     | sonnet | [Field deprecation flag in schemas](plan/136_field-deprecation-flag.md)                                                                 |
-| 137 | 🔲     | sonnet | [`mdsmith fix --dry-run`](plan/137_fix-dry-run.md)                                                                                      |
+| 137 | ✅     | sonnet | [`mdsmith fix --dry-run`](plan/137_fix-dry-run.md)                                                                                      |
 | 138 | ✅     | sonnet | [`mdsmith list backlinks` subcommand](plan/138_backlinks-subcommand.md)                                                                 |
 | 139 | ✅     | sonnet | [Field-presence kind assignment](plan/139_field-presence-kind-assignment.md)                                                            |
 | 140 | ✅     | sonnet | [Per-kind `path-pattern` for filename validation](plan/140_kind-path-pattern.md)                                                        |
@@ -119,5 +119,9 @@ footer: |
 | 190 | ✅     | opus   | [Intra-file rule parallelism for non-NodeChecker rules](plan/190_intra-file-rule-parallelism.md)                                        |
 | 191 | ✅     | opus   | [Hand-rolled DFA for Punkt's `reAbbr` to skip regex backtracking](plan/191_punkt-reabbr-dfa.md)                                         |
 | 192 | ✅     | opus   | [Run-scoped read cache for catalog cross-host redundancy](plan/192_catalog-run-scoped-readcache.md)                                     |
-| 193 | 🔲     | opus   | [Rework MDS024 to fit the per-rule allocation budget (≤ 10 allocs/op)](plan/193_mds024-allocation-budget.md)                            |
+| 193 | ✅     | opus   | [Rework MDS024 to fit the per-rule allocation budget (≤ 10 allocs/op)](plan/193_mds024-allocation-budget.md)                            |
+| 194 | ✅     | opus   | [Frontpage persona audit — reduce AI-first framing, surface non-AI path](plan/194_frontpage-persona-audit.md)                           |
+| 195 | 🔳     | opus   | [Enforce the ≤ 10 allocs/op per-rule budget across every registered rule](plan/195_per-rule-alloc-budget.md)                            |
+| 196 | 🔲     | opus   | [Lazy SectionParagraph text — defer ExtractPlainText until a caller asks](plan/196_lazy-section-paragraph-text.md)                      |
+| 197 | 🔲     | opus   | [PoC — review goldmark's allocation architecture, then pool the best lever](plan/197_fork-goldmark-for-allocs.md)                       |
 <?/catalog?>

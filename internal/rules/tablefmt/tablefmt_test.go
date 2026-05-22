@@ -222,6 +222,89 @@ func TestParseAlignments(t *testing.T) {
 	}
 }
 
+// --- ParseSeparatorStyle coverage ---
+
+func TestParseSeparatorStyle_Spaced(t *testing.T) {
+	got, err := ParseSeparatorStyle("spaced", "any-rule")
+	require.NoError(t, err)
+	assert.Equal(t, SeparatorSpaced, got)
+}
+
+func TestParseSeparatorStyle_Compact(t *testing.T) {
+	got, err := ParseSeparatorStyle("compact", "any-rule")
+	require.NoError(t, err)
+	assert.Equal(t, SeparatorCompact, got)
+}
+
+func TestParseSeparatorStyle_UnknownString_ErrorMentionsRuleAndValue(t *testing.T) {
+	_, err := ParseSeparatorStyle("wide", "catalog")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "catalog:")
+	assert.Contains(t, err.Error(), "\"wide\"")
+}
+
+func TestParseSeparatorStyle_NonString_ErrorMentionsTypeAndRule(t *testing.T) {
+	_, err := ParseSeparatorStyle(42, "table-format")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "table-format:")
+	assert.Contains(t, err.Error(), "must be a string")
+	assert.Contains(t, err.Error(), "int")
+}
+
+// --- separatorAlignments coverage ---
+
+func TestSeparatorAlignments_NoSeparatorReturnsNil(t *testing.T) {
+	// formatTable's guard requires a parsed separator row, but the
+	// helper is defensively coded to handle inputs without one. Pin
+	// the nil result so the call site (computeColWidths) keeps its
+	// len(aligns) check honest.
+	rows := []row{
+		{cells: []string{"a"}, isSeparator: false},
+		{cells: []string{"b"}, isSeparator: false},
+	}
+	assert.Nil(t, separatorAlignments(rows))
+}
+
+func TestSeparatorAlignments_ReturnsFirstSeparatorRowAlignments(t *testing.T) {
+	want := []align{alignLeft, alignCenter, alignRight}
+	rows := []row{
+		{cells: []string{"H", "H", "H"}, isSeparator: false},
+		{cells: []string{":---", ":---:", "---:"}, isSeparator: true, alignments: want},
+		{
+			cells:       []string{":---", "---", "---"},
+			isSeparator: true,
+			alignments:  []align{alignLeft, alignNone, alignNone},
+		},
+	}
+	assert.Equal(t, want, separatorAlignments(rows),
+		"first separator row's alignments win")
+}
+
+// --- computeColWidths nil-aligns coverage ---
+
+func TestComputeColWidths_NilAlignsFallsBackToAlignNone(t *testing.T) {
+	// With aligns == nil every column should be treated as alignNone,
+	// so the floor is 3 (the alignment-agnostic minimum) regardless of
+	// cell content width.
+	rows := []row{
+		{cells: []string{"a", "bb"}, isSeparator: false},
+	}
+	widths := computeColWidths(rows, 2, nil, Config{Pad: 1})
+	assert.Equal(t, []int{3, 3}, widths)
+}
+
+func TestComputeColWidths_AlignsShorterThanNumCols_PadsWithAlignNone(t *testing.T) {
+	// A separator with fewer cells than the widest data row leaves the
+	// trailing columns without an explicit alignment; they default to
+	// alignNone (floor 3) instead of indexing past len(aligns).
+	rows := []row{
+		{cells: []string{"a", "b", "c"}, isSeparator: false},
+	}
+	widths := computeColWidths(rows, 3, []align{alignCenter}, Config{Pad: 1})
+	assert.Equal(t, []int{5, 3, 3}, widths,
+		"col 0 widened to 5 by center alignment; cols 1-2 fall back to alignNone")
+}
+
 // --- detectPrefix coverage ---
 
 func TestDetectPrefix_NoPrefix(t *testing.T) {
@@ -342,7 +425,7 @@ func TestFormatTable_LessThanTwoRows(t *testing.T) {
 		rawLines:  [][]byte{[]byte("| a | b |")},
 		rows:      []row{{cells: []string{"a", "b"}}},
 	}
-	result := formatTable(tbl, 1)
+	result := formatTable(tbl, Config{Pad: 1})
 	assert.Equal(t, tbl.rawLines, result.rawLines)
 }
 
@@ -425,7 +508,7 @@ func TestFormatString_NoTable(t *testing.T) {
 }
 
 func TestFormatString_AlreadyFormatted(t *testing.T) {
-	src := "| a   | b      |\n|-----|--------|\n| foo | barbaz |\n"
+	src := "| a   | b      |\n| --- | ------ |\n| foo | barbaz |\n"
 	result := FormatString(src, 1)
 	assert.Equal(t, src, result)
 }
@@ -438,9 +521,12 @@ func TestFormatString_MultipleTables(t *testing.T) {
 }
 
 func TestFormatString_Pad0(t *testing.T) {
+	// pad=0 collapses padding on both data and separator rows; spaced
+	// and compact separators converge on the same all-dash form.
 	src := "| a | b |\n|---|---|\n| 1 | 2 |\n"
 	result := FormatString(src, 0)
 	assert.Contains(t, result, "|a  |b  |")
+	assert.Contains(t, result, "|---|---|")
 }
 
 func TestFormatString_Blockquote(t *testing.T) {
@@ -470,6 +556,120 @@ func TestFormatString_IdenticalTablesBothRewritten(t *testing.T) {
 	assert.Equal(t, 2, canonical, "both header rows must be reformatted; got:\n%s", out)
 }
 
+// --- Spaced (default) vs compact separator styles ---
+
+func TestFormatString_DefaultSpacedSeparator(t *testing.T) {
+	// The user's bug report: padded separator must be accepted by the
+	// default Config, and Fix must produce the same form.
+	src := "| Field | Details |\n" +
+		"| ----- | ------- |\n" +
+		"| abc   | abc     |\n"
+	got := FormatString(src, 1)
+	assert.Equal(t, src, got, "spaced-style table must be returned unchanged; got:\n%s", got)
+}
+
+func TestFormatStringWithConfig_CompactSeparator(t *testing.T) {
+	// Opt-in compact style packs dashes flush against the pipes.
+	src := "| Field | Details |\n" +
+		"| ----- | ------- |\n" +
+		"| abc   | abc     |\n"
+	got := FormatStringWithConfig(src, Config{Pad: 1, SeparatorStyle: SeparatorCompact})
+	assert.Contains(t, got, "|-------|---------|",
+		"compact-style separator should drop the padding; got:\n%s", got)
+}
+
+func TestViolations_CompactStyle_FlagsSpacedTable(t *testing.T) {
+	// A spaced separator should be flagged when the user opts into
+	// compact style.
+	src := "| Name   | Value |\n" +
+		"| ------ | ----- |\n" +
+		"| foo    | bar   |\n"
+	got := Violations(splitLines(src), nil, Config{Pad: 1, SeparatorStyle: SeparatorCompact})
+	require.Len(t, got, 1, "spaced separator must be a violation under compact style")
+	assert.Contains(t, got[0].Message, "table is not formatted")
+}
+
+func TestViolations_SpacedStyle_FlagsCompactTable(t *testing.T) {
+	src := "| Name   | Value |\n" +
+		"|--------|-------|\n" +
+		"| foo    | bar   |\n"
+	got := Violations(splitLines(src), nil, Config{Pad: 1})
+	require.Len(t, got, 1, "compact separator must be a violation under spaced (default) style")
+	assert.Contains(t, got[0].Message, "table is not formatted")
+}
+
+func TestFormatStringWithConfig_SpacedAlignment(t *testing.T) {
+	// Header "Header" widens the column to 6 so each alignment arm has
+	// room for the colon plus three dashes.
+	cases := map[string]struct {
+		sep  string
+		want string
+	}{
+		"left":   {sep: "|:---|", want: "| :----- |"},
+		"right":  {sep: "|---:|", want: "| -----: |"},
+		"center": {sep: "|:---:|", want: "| :----: |"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := "| Header |\n" + tc.sep + "\n| a |\n"
+			out := FormatStringWithConfig(src, Config{Pad: 1})
+			assert.Contains(t, out, tc.want,
+				"spaced %s-aligned separator; got:\n%s", name, out)
+		})
+	}
+}
+
+// TestFormatStringWithConfig_SpacedAlignment_NarrowColumn_Min3Dashes
+// pins the cross-flavor minimum: every separator cell must contain at
+// least three hyphens regardless of column width, so the output parses
+// as a table under strict GFM flavors (markdown-it, pandoc) that reject
+// `:--`, `:-:`, and `--:`.
+func TestFormatStringWithConfig_SpacedAlignment_NarrowColumn_Min3Dashes(t *testing.T) {
+	cases := map[string]struct {
+		sep     string
+		wantSep string
+		wantRow string
+	}{
+		"none":   {sep: "|---|", wantSep: "| --- |", wantRow: "| a   |"},
+		"left":   {sep: "|:---|", wantSep: "| :--- |", wantRow: "| a    |"},
+		"right":  {sep: "|---:|", wantSep: "| ---: |", wantRow: "| a    |"},
+		"center": {sep: "|:---:|", wantSep: "| :---: |", wantRow: "| a     |"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := "| h |\n" + tc.sep + "\n| a |\n"
+			out := FormatStringWithConfig(src, Config{Pad: 1})
+			assert.Contains(t, out, tc.wantSep,
+				"spaced %s separator needs 3 dashes; got:\n%s", name, out)
+			assert.Contains(t, out, tc.wantRow,
+				"data row must align to widened column; got:\n%s", name+":\n"+out)
+		})
+	}
+}
+
+// TestFormatStringWithConfig_CompactAlignment_NarrowColumn_Min3Dashes
+// is the compact-mode counterpart: with pad=0 the cell content equals
+// colWidth, so the same minimum-dash rule must widen the column.
+func TestFormatStringWithConfig_CompactAlignment_NarrowColumn_Min3Dashes(t *testing.T) {
+	cases := map[string]struct {
+		sep     string
+		wantSep string
+	}{
+		"none":   {sep: "|---|", wantSep: "|---|"},
+		"left":   {sep: "|:---|", wantSep: "|:---|"},
+		"right":  {sep: "|---:|", wantSep: "|---:|"},
+		"center": {sep: "|:---:|", wantSep: "|:---:|"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := "|h|\n" + tc.sep + "\n|a|\n"
+			out := FormatStringWithConfig(src, Config{Pad: 0, SeparatorStyle: SeparatorCompact})
+			assert.Contains(t, out, tc.wantSep,
+				"compact %s separator needs 3 dashes; got:\n%s", name, out)
+		})
+	}
+}
+
 // --- Regression: table-shaped text inside a skipped code block is left alone ---
 
 func TestFormatLines_TableInsideSkippedCodeBlock_NotRewritten(t *testing.T) {
@@ -490,7 +690,7 @@ func TestFormatLines_TableInsideSkippedCodeBlock_NotRewritten(t *testing.T) {
 	lines := splitLines(string(src))
 	codeLines := map[int]bool{2: true, 3: true, 4: true}
 
-	out := FormatLines(src, lines, codeLines, 1)
+	out := FormatLines(src, lines, codeLines, Config{Pad: 1})
 	outStr := string(out)
 
 	// Inside the fence: the original mis-formatted rows must survive.
@@ -505,11 +705,11 @@ func TestFormatLines_TableInsideSkippedCodeBlock_NotRewritten(t *testing.T) {
 
 func TestViolations_FormattedTable_None(t *testing.T) {
 	src := "| Name   | Description               |\n" +
-		"|--------|---------------------------|\n" +
+		"| ------ | ------------------------- |\n" +
 		"| foo    | A short one               |\n" +
 		"| barbaz | A longer description here |\n"
 	lines := splitLines(src)
-	got := Violations(lines, nil, 1)
+	got := Violations(lines, nil, Config{Pad: 1})
 	assert.Empty(t, got)
 }
 
@@ -519,7 +719,7 @@ func TestViolations_MisalignedTable_One(t *testing.T) {
 		"| foo | A short one |\n" +
 		"| barbaz | A longer description here |\n"
 	lines := splitLines(src)
-	got := Violations(lines, nil, 1)
+	got := Violations(lines, nil, Config{Pad: 1})
 	require.Len(t, got, 1)
 	assert.Equal(t, 1, got[0].StartLine)
 	assert.Contains(t, got[0].Message, "table is not formatted")
@@ -528,7 +728,7 @@ func TestViolations_MisalignedTable_One(t *testing.T) {
 func TestViolations_NegativePadDefaultsTo1(t *testing.T) {
 	src := "| a | b |\n|---|---|\n| 1 | 2 |\n"
 	lines := splitLines(src)
-	got := Violations(lines, nil, -1)
+	got := Violations(lines, nil, Config{Pad: -1})
 	assert.NotEmpty(t, got, "negative pad should default to 1 and produce violations")
 }
 
@@ -537,7 +737,7 @@ func TestViolations_NegativePadDefaultsTo1(t *testing.T) {
 func TestFormatLines_NoTables_ReturnsCopyOfSource(t *testing.T) {
 	src := []byte("# Heading\n\nSome text.\n")
 	lines := splitLines(string(src))
-	result := FormatLines(src, lines, nil, 1)
+	result := FormatLines(src, lines, nil, Config{Pad: 1})
 	assert.Equal(t, src, result)
 	// Result must be a copy, not the same slice header.
 	if len(src) > 0 {
@@ -549,7 +749,7 @@ func TestFormatLines_NoTables_ReturnsCopyOfSource(t *testing.T) {
 func TestFormatLines_RewritesTables(t *testing.T) {
 	src := []byte("| a | b |\n|---|---|\n| foo | barbaz |\n")
 	lines := splitLines(string(src))
-	result := FormatLines(src, lines, nil, 1)
+	result := FormatLines(src, lines, nil, Config{Pad: 1})
 	assert.Contains(t, string(result), "| a   | b      |")
 }
 
@@ -559,14 +759,14 @@ func TestFormatLines_AlreadyFormattedTableAmongOthers(t *testing.T) {
 	// and then the first (hitting the tableEqual `continue` branch).
 	src := []byte("" +
 		"| a   | b   |\n" +
-		"|-----|-----|\n" +
+		"| --- | --- |\n" +
 		"| foo | bar |\n" +
 		"\n" +
 		"| x | y |\n" +
 		"|---|---|\n" +
 		"| 1 | 2 |\n")
 	lines := splitLines(string(src))
-	result := FormatLines(src, lines, nil, 1)
+	result := FormatLines(src, lines, nil, Config{Pad: 1})
 	// First (canonical) table is preserved byte-for-byte.
 	assert.Contains(t, string(result), "| a   | b   |")
 	assert.Contains(t, string(result), "| foo | bar |")
@@ -577,7 +777,7 @@ func TestFormatLines_AlreadyFormattedTableAmongOthers(t *testing.T) {
 func TestFormatLines_NegativePadDefaultsTo1(t *testing.T) {
 	src := []byte("| a | b |\n|---|---|\n| 1 | 2 |\n")
 	lines := splitLines(string(src))
-	result := FormatLines(src, lines, nil, -1)
+	result := FormatLines(src, lines, nil, Config{Pad: -1})
 	assert.Contains(t, string(result), "| a   | b   |")
 }
 
@@ -602,8 +802,18 @@ func TestWriteSeparatorRow_AlignmentIndicators(t *testing.T) {
 		"|:---|:---:|---:|\n" +
 		"| a | b | c |\n"
 	out := FormatString(src, 1)
-	assert.Contains(t, out, "|:-----|:------:|------:|",
+	assert.Contains(t, out, "| :--- | :----: | ----: |",
 		"expected separator preserves all three alignment markers; got:\n%s", out)
+}
+
+func TestWriteSeparatorRow_CompactAlignmentIndicators(t *testing.T) {
+	// SeparatorCompact places alignment colons flush against the pipes.
+	src := "| Left | Center | Right |\n" +
+		"|:---|:---:|---:|\n" +
+		"| a | b | c |\n"
+	out := FormatStringWithConfig(src, Config{Pad: 1, SeparatorStyle: SeparatorCompact})
+	assert.Contains(t, out, "|:-----|:------:|------:|",
+		"expected compact separator preserves all three alignment markers; got:\n%s", out)
 }
 
 // --- Helper functions ---

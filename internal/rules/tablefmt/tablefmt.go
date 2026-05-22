@@ -20,29 +20,83 @@ type Violation struct {
 	Message   string // diagnostic message including the first differing row
 }
 
+// Config controls how tables are formatted.
+//
+// Pad is the number of spaces on each side of cell content. Values
+// below 0 fall back to 1.
+//
+// SeparatorStyle picks how the separator row is rendered: SeparatorSpaced
+// writes `| --- | --- |` (the form spelled out by the GFM specification
+// example), SeparatorCompact writes `|---|---|`. The zero value is
+// SeparatorSpaced so a caller that builds a Config{Pad: 1} without
+// touching the style field gets the spec-leaning default.
+type Config struct {
+	Pad            int
+	SeparatorStyle SeparatorStyle
+}
+
+// SeparatorStyle selects the rendering of the separator row.
+type SeparatorStyle int
+
+const (
+	// SeparatorSpaced writes `| --- | --- |`. Zero value so the
+	// default-constructed Config picks this layout.
+	SeparatorSpaced SeparatorStyle = iota
+	// SeparatorCompact writes `|---|---|`. Dashes fill the cell area
+	// with no whitespace around them.
+	SeparatorCompact
+)
+
+// ParseSeparatorStyle converts a config value (typically a YAML scalar)
+// to a SeparatorStyle, returning a rule-scoped error if v is not one
+// of the supported string forms. ruleName is the rule's config key
+// (e.g. "table-format", "catalog") and prefixes the error so multiple
+// rules can share this helper without losing diagnostic context.
+func ParseSeparatorStyle(v any, ruleName string) (SeparatorStyle, error) {
+	s, ok := v.(string)
+	if !ok {
+		return 0, fmt.Errorf("%s: separator-style must be a string, got %T", ruleName, v)
+	}
+	switch s {
+	case "spaced":
+		return SeparatorSpaced, nil
+	case "compact":
+		return SeparatorCompact, nil
+	default:
+		return 0, fmt.Errorf("%s: separator-style must be %q or %q, got %q", ruleName, "spaced", "compact", s)
+	}
+}
+
 // FormatString formats all markdown tables in s with the given padding
 // and returns the result. Padding less than 0 falls back to 1 (one space
-// of padding on each side of cell content).
+// of padding on each side of cell content). Uses the default spaced
+// separator style; callers that need to choose a style call
+// FormatStringWithConfig instead.
 func FormatString(s string, pad int) string {
+	return FormatStringWithConfig(s, Config{Pad: pad})
+}
+
+// FormatStringWithConfig formats all markdown tables in s with cfg.
+func FormatStringWithConfig(s string, cfg Config) string {
 	source := []byte(s)
 	lines := bytes.Split(source, []byte("\n"))
 	tables := findTables(lines, nil)
 	if len(tables) == 0 {
 		return s
 	}
-	return string(rebuildWithFormattedTables(lines, tables, normalizePad(pad)))
+	return string(rebuildWithFormattedTables(lines, tables, normalizeConfig(cfg)))
 }
 
 // Violations returns the formatting violations found in lines. codeLines
 // maps 1-based line numbers known to sit inside a fenced or indented
 // code block; those lines are skipped.
-func Violations(lines [][]byte, codeLines map[int]bool, pad int) []Violation {
+func Violations(lines [][]byte, codeLines map[int]bool, cfg Config) []Violation {
 	tables := findTables(lines, codeLines)
-	pad = normalizePad(pad)
+	cfg = normalizeConfig(cfg)
 
 	var out []Violation
 	for _, tbl := range tables {
-		formatted := formatTable(tbl, pad)
+		formatted := formatTable(tbl, cfg)
 		if tableEqual(tbl, formatted) {
 			continue
 		}
@@ -57,14 +111,14 @@ func Violations(lines [][]byte, codeLines map[int]bool, pad int) []Violation {
 // FormatLines rewrites every table found in source with canonical
 // formatting, preserving everything else. lines must be the result of
 // splitting source on newlines (i.e. f.Lines from internal/lint).
-func FormatLines(source []byte, lines [][]byte, codeLines map[int]bool, pad int) []byte {
+func FormatLines(source []byte, lines [][]byte, codeLines map[int]bool, cfg Config) []byte {
 	tables := findTables(lines, codeLines)
 	if len(tables) == 0 {
 		out := make([]byte, len(source))
 		copy(out, source)
 		return out
 	}
-	return rebuildWithFormattedTables(lines, tables, normalizePad(pad))
+	return rebuildWithFormattedTables(lines, tables, normalizeConfig(cfg))
 }
 
 // rebuildWithFormattedTables returns the source bytes implied by lines,
@@ -74,12 +128,12 @@ func FormatLines(source []byte, lines [][]byte, codeLines map[int]bool, pad int)
 // in the file — including table-shaped text inside skipped code blocks
 // — do not get rewritten in place of the parsed target. formatTable
 // preserves row count, so each replacement is one-line-per-line.
-func rebuildWithFormattedTables(lines [][]byte, tables []table, pad int) []byte {
+func rebuildWithFormattedTables(lines [][]byte, tables []table, cfg Config) []byte {
 	work := make([][]byte, len(lines))
 	copy(work, lines)
 
 	for _, tbl := range tables {
-		formatted := formatTable(tbl, pad)
+		formatted := formatTable(tbl, cfg)
 		if tableEqual(tbl, formatted) {
 			continue
 		}
@@ -92,11 +146,11 @@ func rebuildWithFormattedTables(lines [][]byte, tables []table, pad int) []byte 
 	return bytes.Join(work, []byte("\n"))
 }
 
-func normalizePad(pad int) int {
-	if pad < 0 {
-		return 1
+func normalizeConfig(cfg Config) Config {
+	if cfg.Pad < 0 {
+		cfg.Pad = 1
 	}
-	return pad
+	return cfg
 }
 
 // table represents a parsed markdown table with its source location.
@@ -128,13 +182,22 @@ const (
 var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 
 // findTables scans file lines for contiguous table blocks, skipping
-// lines inside fenced or indented code blocks.
+// lines inside fenced or indented code blocks. The byte-check
+// shortcut (`bytes.IndexByte(line, '|') < 0`) avoids a tryParseTable
+// call — and the `string(line)` allocation that detectPrefix would
+// otherwise pay — on every non-pipe line. On real corpora most
+// lines have no `|`, so the per-Check overhead drops to the cost of
+// scanning the lines that could plausibly start a table.
 func findTables(lines [][]byte, codeLines map[int]bool) []table {
 	var tables []table
 	i := 0
 	for i < len(lines) {
 		lineNum := i + 1 // 1-based
 		if codeLines[lineNum] {
+			i++
+			continue
+		}
+		if bytes.IndexByte(lines[i], '|') < 0 {
 			i++
 			continue
 		}
@@ -360,15 +423,16 @@ func displayWidth(s string) int {
 }
 
 // formatTable produces a formatted version of a table with aligned columns.
-func formatTable(tbl table, pad int) table {
+func formatTable(tbl table, cfg Config) table {
 	if len(tbl.rows) < 2 {
 		return tbl
 	}
 
 	numCols := len(tbl.rows[0].cells)
 	normalizedRows := normalizeRows(tbl.rows, numCols)
-	colWidths := computeColWidths(normalizedRows, numCols)
-	padding := strings.Repeat(" ", pad)
+	aligns := separatorAlignments(normalizedRows)
+	colWidths := computeColWidths(normalizedRows, numCols, aligns, cfg)
+	padding := strings.Repeat(" ", cfg.Pad)
 
 	var formattedLines [][]byte
 	var formattedRows []row
@@ -377,7 +441,7 @@ func formatTable(tbl table, pad int) table {
 		line.WriteString(tbl.prefix)
 		line.WriteByte('|')
 		if r.isSeparator {
-			writeSeparatorRow(&line, r.alignments, colWidths, numCols, pad)
+			writeSeparatorRow(&line, r.alignments, colWidths, numCols, cfg)
 		} else {
 			writeDataRow(&line, r, colWidths, numCols, padding)
 		}
@@ -391,6 +455,17 @@ func formatTable(tbl table, pad int) table {
 		prefix:    tbl.prefix,
 		rows:      formattedRows,
 	}
+}
+
+// separatorAlignments returns the per-column alignment list taken
+// from the first separator row, or nil if the table has none.
+func separatorAlignments(rows []row) []align {
+	for _, r := range rows {
+		if r.isSeparator {
+			return r.alignments
+		}
+	}
+	return nil
 }
 
 // normalizeRows ensures all rows have exactly numCols cells.
@@ -408,9 +483,13 @@ func normalizeRows(rows []row, numCols int) []row {
 	return out
 }
 
-// computeColWidths returns the max display width per column, with a
-// minimum of 3 (to fit separator dashes).
-func computeColWidths(rows []row, numCols int) []int {
+// computeColWidths returns the max display width per column. Each
+// column is widened to fit a separator with at least three hyphens for
+// its alignment — :--- / ---: / :---: — which is the cross-flavor floor
+// (markdown-it, pandoc, and others reject :--, --:, :-:). Without
+// aligns the table is treated as alignNone and the floor is three
+// hyphens per cell.
+func computeColWidths(rows []row, numCols int, aligns []align, cfg Config) []int {
 	widths := make([]int, numCols)
 	for _, r := range rows {
 		if r.isSeparator {
@@ -423,36 +502,110 @@ func computeColWidths(rows []row, numCols int) []int {
 		}
 	}
 	for j := range widths {
-		if widths[j] < 3 {
-			widths[j] = 3
+		a := alignNone
+		if j < len(aligns) {
+			a = aligns[j]
+		}
+		if m := minSeparatorWidth(a, cfg); widths[j] < m {
+			widths[j] = m
 		}
 	}
 	return widths
 }
 
+// minSeparatorWidth returns the smallest colWidth that lets
+// writeSeparatorRow render the cell with at least three hyphens for
+// the given alignment under cfg.
+//
+// Spaced style writes exactly colWidth characters of separator content
+// per cell. Compact style writes colWidth + 2*cfg.Pad characters,
+// because pad spaces are absorbed into the dash run. The result is
+// also clamped to 3 — the original min — so previously-compact tables
+// keep their column widths.
+func minSeparatorWidth(a align, cfg Config) int {
+	const dashesNeeded = 3
+	var cellChars int
+	switch a {
+	case alignLeft, alignRight:
+		cellChars = dashesNeeded + 1
+	case alignCenter:
+		cellChars = dashesNeeded + 2
+	default:
+		cellChars = dashesNeeded
+	}
+	if cfg.SeparatorStyle == SeparatorCompact {
+		cellChars -= 2 * cfg.Pad
+	}
+	if cellChars < 3 {
+		cellChars = 3
+	}
+	return cellChars
+}
+
 // writeSeparatorRow writes the separator row dashes into line.
-func writeSeparatorRow(line *strings.Builder, aligns []align, colWidths []int, numCols, pad int) {
-	// Extend alignments to match column count.
+//
+// SeparatorSpaced (default): `| --- | --- |`, with `pad` spaces between
+// the pipe and the dashes/colons on each side. Cells in the alignment
+// arms still place the colon at the edge of the content area:
+// `| :--- | ---: | :---: |`.
+//
+// SeparatorCompact: `|---|---|` — dashes fill the cell area, alignment
+// colons sit flush against the pipes.
+func writeSeparatorRow(line *strings.Builder, aligns []align, colWidths []int, numCols int, cfg Config) {
 	for len(aligns) < numCols {
 		aligns = append(aligns, alignNone)
 	}
+	padding := strings.Repeat(" ", cfg.Pad)
 	for j := 0; j < numCols; j++ {
-		totalWidth := colWidths[j] + pad*2
-		switch aligns[j] {
-		case alignLeft:
-			line.WriteByte(':')
-			line.WriteString(strings.Repeat("-", totalWidth-1))
-		case alignRight:
-			line.WriteString(strings.Repeat("-", totalWidth-1))
-			line.WriteByte(':')
-		case alignCenter:
-			line.WriteByte(':')
-			line.WriteString(strings.Repeat("-", totalWidth-2))
-			line.WriteByte(':')
+		switch cfg.SeparatorStyle {
+		case SeparatorCompact:
+			writeCompactSeparatorCell(line, aligns[j], colWidths[j], cfg.Pad)
 		default:
-			line.WriteString(strings.Repeat("-", totalWidth))
+			writeSpacedSeparatorCell(line, aligns[j], colWidths[j], padding)
 		}
 		line.WriteByte('|')
+	}
+}
+
+// writeSpacedSeparatorCell renders a cell whose dashes are wrapped in
+// `padding` spaces, leaving room for an alignment colon at each edge of
+// the dash run.
+func writeSpacedSeparatorCell(line *strings.Builder, a align, colWidth int, padding string) {
+	line.WriteString(padding)
+	switch a {
+	case alignLeft:
+		line.WriteByte(':')
+		line.WriteString(strings.Repeat("-", colWidth-1))
+	case alignRight:
+		line.WriteString(strings.Repeat("-", colWidth-1))
+		line.WriteByte(':')
+	case alignCenter:
+		line.WriteByte(':')
+		line.WriteString(strings.Repeat("-", colWidth-2))
+		line.WriteByte(':')
+	default:
+		line.WriteString(strings.Repeat("-", colWidth))
+	}
+	line.WriteString(padding)
+}
+
+// writeCompactSeparatorCell renders a cell whose dashes fill the entire
+// cell width (pad spaces are absorbed into the dash run).
+func writeCompactSeparatorCell(line *strings.Builder, a align, colWidth, pad int) {
+	totalWidth := colWidth + pad*2
+	switch a {
+	case alignLeft:
+		line.WriteByte(':')
+		line.WriteString(strings.Repeat("-", totalWidth-1))
+	case alignRight:
+		line.WriteString(strings.Repeat("-", totalWidth-1))
+		line.WriteByte(':')
+	case alignCenter:
+		line.WriteByte(':')
+		line.WriteString(strings.Repeat("-", totalWidth-2))
+		line.WriteByte(':')
+	default:
+		line.WriteString(strings.Repeat("-", totalWidth))
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,15 @@ func newTestFile(t *testing.T, path, source string, fs ...fstest.MapFS) *lint.Fi
 		f.FS = fs[0]
 	}
 	return f
+}
+
+// newDefaultRule returns a Rule pre-configured with the same defaults
+// the init() call seeds onto the registered singleton (Pad: 1,
+// SeparatorSpaced). Tests that need to format generated tables go
+// through this so a freshly constructed rule does not silently fall
+// back to Pad=0.
+func newDefaultRule() *Rule {
+	return &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced}
 }
 
 // expectDiags asserts the number of diagnostics and returns them.
@@ -128,6 +138,34 @@ header: |
 row: "| [{title}]({filename}) | {description} |"
 ?>
 | Title                            | Description        |
+| -------------------------------- | ------------------ |
+| [API Reference](docs/api.md)     | Complete API docs  |
+| [Getting Started](docs/guide.md) | How to get started |
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md":   {Data: []byte("---\ntitle: API Reference\ndescription: Complete API docs\n---\n# API\n")},
+		"docs/guide.md": {Data: []byte("---\ntitle: Getting Started\ndescription: How to get started\n---\n# Guide\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := newDefaultRule()
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestRendering_CompactSeparatorStyle(t *testing.T) {
+	// `separator-style: compact` makes catalog emit `|---|---|` rather
+	// than the spaced default `| --- | --- |`. The body below is what
+	// the catalog must produce after Fix; Check passes when the file
+	// already matches.
+	src := `<?catalog
+glob: "docs/*.md"
+header: |
+  | Title | Description |
+  |-------|-------------|
+row: "| [{title}]({filename}) | {description} |"
+?>
+| Title                            | Description        |
 |----------------------------------|--------------------|
 | [API Reference](docs/api.md)     | Complete API docs  |
 | [Getting Started](docs/guide.md) | How to get started |
@@ -138,9 +176,81 @@ row: "| [{title}]({filename}) | {description} |"
 		"docs/guide.md": {Data: []byte("---\ntitle: Getting Started\ndescription: How to get started\n---\n# Guide\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorCompact}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
+}
+
+func TestRendering_SpacedSeparatorStyle(t *testing.T) {
+	// Round-trip the spaced default: a body whose separator is spaced
+	// passes Check on a rule configured for spaced.
+	src := `<?catalog
+glob: "docs/*.md"
+header: |
+  | Title | Description |
+  | ----- | ----------- |
+row: "| [{title}]({filename}) | {description} |"
+?>
+| Title                            | Description        |
+| -------------------------------- | ------------------ |
+| [API Reference](docs/api.md)     | Complete API docs  |
+| [Getting Started](docs/guide.md) | How to get started |
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/api.md":   {Data: []byte("---\ntitle: API Reference\ndescription: Complete API docs\n---\n# API\n")},
+		"docs/guide.md": {Data: []byte("---\ntitle: Getting Started\ndescription: How to get started\n---\n# Guide\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced}
+	diags := r.Check(f)
+	expectDiags(t, diags, 0)
+}
+
+func TestApplySettings_SeparatorStyle(t *testing.T) {
+	cases := map[string]struct {
+		value     any
+		wantErr   bool
+		wantStyle tablefmt.SeparatorStyle
+	}{
+		"spaced":     {value: "spaced", wantStyle: tablefmt.SeparatorSpaced},
+		"compact":    {value: "compact", wantStyle: tablefmt.SeparatorCompact},
+		"invalid":    {value: "wide", wantErr: true},
+		"wrong type": {value: 42, wantErr: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := &Rule{Pad: 1}
+			err := r.ApplySettings(map[string]any{"separator-style": tc.value})
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantStyle, r.SeparatorStyle)
+		})
+	}
+}
+
+func TestApplySettings_Pad(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"pad": 2}))
+	assert.Equal(t, 2, r.Pad)
+
+	require.Error(t, r.ApplySettings(map[string]any{"pad": -1}))
+	require.Error(t, r.ApplySettings(map[string]any{"pad": "two"}))
+}
+
+func TestApplySettings_UnknownKey(t *testing.T) {
+	r := &Rule{}
+	require.Error(t, r.ApplySettings(map[string]any{"unknown": true}))
+}
+
+func TestDefaultSettings_IncludesSeparatorStyle(t *testing.T) {
+	r := &Rule{}
+	d := r.DefaultSettings()
+	assert.Equal(t, 1, d["pad"])
+	assert.Equal(t, "spaced", d["separator-style"])
 }
 
 func TestRendering_MultilineRowPipe(t *testing.T) {
@@ -254,7 +364,7 @@ footer: |
   ---
 ?>
 | Title       | Description |
-|-------------|-------------|
+| ----------- | ----------- |
 | [API](a.md) | docs        |
 
 ---
@@ -264,7 +374,7 @@ footer: |
 		"a.md": {Data: []byte("---\ntitle: API\ndescription: docs\n---\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := newDefaultRule()
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }
@@ -2195,7 +2305,7 @@ row: "| [{title}]({filename}) | {description} |"
 empty: No rules defined yet.
 ?>
 | Rule                                   | Description        |
-|----------------------------------------|--------------------|
+| -------------------------------------- | ------------------ |
 | [First Heading](rules/tm001/README.md) | Checks headings    |
 | [Line Length](rules/tm002/README.md)   | Checks line length |
 <?/catalog?>
@@ -2209,7 +2319,7 @@ Some trailing text.
 			"---\ntitle: First Heading\ndescription: Checks headings\n---\n# Rule\n")},
 	}
 	f := newTestFile(t, "index.md", src, mapFS)
-	r := &Rule{}
+	r := newDefaultRule()
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
 }

@@ -1,6 +1,7 @@
 package mdtext
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -8,8 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark/ast"
-
-	sentlib "github.com/neurosnap/sentences"
 )
 
 // Slugify converts heading text to a GitHub-compatible URL anchor slug.
@@ -88,16 +87,58 @@ func CollectTOCItems(root ast.Node, source []byte) []TOCItem {
 	return items
 }
 
+// extractTextBufPool reuses bytes.Buffer backing across
+// ExtractPlainText calls. strings.Builder cannot be pooled because
+// its Reset() nils the backing slice (the unsafe.String trick in
+// String() ties the result string to the backing memory), so each
+// reset-then-write call has to allocate again. bytes.Buffer's
+// Reset() preserves the backing slice and zeroes its length, so
+// subsequent appends reuse the memory. We pay one alloc for the
+// resulting string (buf.String() makes the safe copy) and nothing
+// for the buffer itself after the first call into a goroutine.
+//
+// The pool returns buffers up to extractTextMaxPooledCap bytes.
+// Past that, the buffer is discarded — a single large document
+// (e.g. ExtractPlainText on a whole `f.AST` from
+// internal/metrics/document.go) would otherwise inflate the
+// pool's steady-state footprint forever, which matters most for
+// the LSP's long-running process.
+var extractTextBufPool = sync.Pool{
+	New: func() any {
+		b := &bytes.Buffer{}
+		b.Grow(128)
+		return b
+	},
+}
+
+// extractTextMaxPooledCap bounds the pool slot's per-buffer
+// capacity. A buffer that grew past this size is discarded on
+// release rather than returned to the pool. 64 KiB covers the
+// large headings and paragraphs the bench actually produces (the
+// 600-file synthetic corpus tops out around 1 KiB per call)
+// without retaining multi-MiB outliers from one-off
+// whole-document extracts.
+const extractTextMaxPooledCap = 64 * 1024
+
 // ExtractPlainText extracts readable text from a goldmark AST node,
 // stripping markdown syntax. Keeps: text content, link display text,
 // emphasis inner text, image alt text, code span text.
 func ExtractPlainText(node ast.Node, source []byte) string {
-	var buf strings.Builder
-	extractText(&buf, node, source)
+	buf := extractTextBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer func() {
+		if buf.Cap() <= extractTextMaxPooledCap {
+			extractTextBufPool.Put(buf)
+		}
+		// Else: drop the buffer so the pool does not retain a
+		// large backing array indefinitely (Copilot review on
+		// PR #368 flagged the LSP long-process risk).
+	}()
+	extractText(buf, node, source)
 	return buf.String()
 }
 
-func extractText(buf *strings.Builder, node ast.Node, source []byte) {
+func extractText(buf *bytes.Buffer, node ast.Node, source []byte) {
 	// For text nodes, write the content.
 	if t, ok := node.(*ast.Text); ok {
 		buf.Write(t.Segment.Value(source))
@@ -203,41 +244,56 @@ func CountSentences(text string) int {
 	return count
 }
 
-var (
-	tokenizer *sentlib.DefaultSentenceTokenizer
-	initOnce  sync.Once
-)
-
-// initTokenizer constructs the package's lazy singleton. The actual
-// builder is supplied by the build-tagged files fastpunct_init.go
-// (default) or upstreampunct.go (tag mdtext_punkt_upstream). The
-// two paths differ on (1) which MultiPunctWordAnnotation is
-// installed in the third-pass abbreviation classifier — the
-// optimization of plan 191 — and (2) error handling on a corrupt
-// training asset (default panics via mustLoadTraining; upstream
-// matches the original swallow). Segmentation behaviour on valid
-// input is identical and gated by sentence_equivalence_test.go.
-func initTokenizer() {
-	tokenizer = buildTokenizer()
-}
+// initTokenizerOnce wraps initTokenizer in sync.OnceFunc — a
+// stylistic preference over `var initOnce sync.Once` /
+// `initOnce.Do(initTokenizer)` at each call site, not a perf win:
+// passing a package-level function value to sync.Once.Do is
+// allocation-free per call (only closures and method values force
+// the function-value boxing the budget gate would see). OnceFunc
+// constructs the wrapper once at package init; the call site
+// becomes `initTokenizerOnce()` which reads cleaner than the
+// explicit Once-and-Do pair.
+//
+// The actual singleton is owned by the build-tagged file that
+// provides splitSentences — fastpunct_init.go (default) builds a
+// *punkt.Tokenizer; upstreampunct.go (tag mdtext_punkt_upstream)
+// builds the upstream english.NewSentenceTokenizer pipeline. Both
+// paths produce byte-identical segmentation, gated by
+// sentence_equivalence_test.go.
+var initTokenizerOnce = sync.OnceFunc(initTokenizer)
 
 // SplitSentences splits text into individual sentences using a
-// Punkt sentence tokenizer. Handles abbreviations, decimals,
-// and ellipses.
+// Punkt sentence tokenizer. Handles abbreviations, decimals, and
+// ellipses. The actual segmentation is delegated to splitSentences
+// (defined by the active build tag).
+//
+// The returned slice is freshly allocated. Hot callers that want
+// to pool the destination should use SplitSentencesInto instead.
 func SplitSentences(text string) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-	initOnce.Do(initTokenizer)
-	sents := tokenizer.Tokenize(text)
-	result := make([]string, 0, len(sents))
-	for _, s := range sents {
-		t := strings.TrimSpace(s.Text)
-		if t != "" {
-			result = append(result, t)
-		}
+	initTokenizerOnce()
+	return splitSentencesInto(nil, text)
+}
+
+// SplitSentencesInto is the pool-friendly variant of SplitSentences:
+// it appends the segmented sentences (trimmed, non-empty) to dst and
+// returns the extended slice. The intended pattern is
+//
+//	bufPtr := sentBufPool.Get().(*[]string)
+//	*bufPtr = mdtext.SplitSentencesInto((*bufPtr)[:0], text)
+//	defer sentBufPool.Put(bufPtr)
+//
+// so the per-call `make([]string, 0, n)` plain SplitSentences pays
+// is amortized across a sync.Pool. MDS024's hot path uses this form
+// to stay within the per-rule allocation budget on cold-File runs.
+func SplitSentencesInto(dst []string, text string) []string {
+	if strings.TrimSpace(text) == "" {
+		return dst
 	}
-	return result
+	initTokenizerOnce()
+	return splitSentencesInto(dst, text)
 }
 
 // CountCharacters counts letters and digits in text

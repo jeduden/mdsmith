@@ -14,9 +14,24 @@ Tables must have consistent column widths and padding.
 
 ## Settings
 
-| Setting | Type | Default | Description                         |
-|---------|------|---------|-------------------------------------|
-| `pad`   | int  | `1`     | spaces on each side of cell content |
+| Setting           | Type   | Default    | Description                                                  |
+|-------------------|--------|------------|--------------------------------------------------------------|
+| `pad`             | int    | `1`        | spaces on each side of cell content                          |
+| `separator-style` | string | `"spaced"` | separator row layout (see examples below): spaced or compact |
+
+Separator row examples:
+
+- `spaced` (the GFM-spec form):
+
+  ```text
+  | --- |
+  ```
+
+- `compact` (dense form):
+
+  ```text
+  |---|
+  ```
 
 ## Config
 
@@ -24,6 +39,15 @@ Tables must have consistent column widths and padding.
 rules:
   table-format:
     pad: 1
+    separator-style: spaced
+```
+
+Opt into the dense compact form:
+
+```yaml
+rules:
+  table-format:
+    separator-style: compact
 ```
 
 Disable:
@@ -46,7 +70,7 @@ wrap: markdown
 # Formatted Table
 
 | Name   | Description               |
-|--------|---------------------------|
+| ------ | ------------------------- |
 | foo    | A short one               |
 | barbaz | A longer description here |
 ```
@@ -64,7 +88,7 @@ wrap: markdown
 # Aligned Table
 
 | Left | Center | Right |
-|:-----|:------:|------:|
+| :--- | :----: | ----: |
 | aaa  | bbb    | ccc   |
 ```
 
@@ -81,9 +105,32 @@ wrap: markdown
 # Single Column
 
 | Item   |
-|--------|
+| ------ |
 | first  |
 | second |
+```
+
+<?/include?>
+
+### Good -- compact (opt-in)
+
+With `separator-style: compact` the same column widths apply; only the
+separator row collapses its padding spaces. The fixture below carries
+the setting in front matter so the integration tests exercise the
+compact path.
+
+<?include
+file: good/compact.md
+wrap: markdown
+?>
+
+```markdown
+# Formatted Compact Table
+
+| Name   | Description               |
+|--------|---------------------------|
+| foo    | A short one               |
+| barbaz | A longer description here |
 ```
 
 <?/include?>

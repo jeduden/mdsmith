@@ -35,6 +35,16 @@ rules:
     max: 300
   table-format:
     pad: 1
+    # Pinned mdsmith only writes the compact separator; keep the
+    # repo on compact until a release that defaults to spaced is
+    # pinned, then drop this override.
+    separator-style: compact
+  catalog:
+    pad: 1
+    # Mirror table-format so the tables catalog generates inside
+    # `<?catalog?>` bodies match the rest of the repo. Drop both
+    # overrides together when moving to spaced.
+    separator-style: compact
   table-readability:
     max-column-width-ratio: 60
     max-columns: 8
@@ -75,7 +85,6 @@ rules:
       - "npm/**"
       - "python/**"
       - "website/**"
-  catalog: true
   required-structure: true
   include: true
   unclosed-code-block: true

@@ -1,9 +1,13 @@
 package linelength
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -38,12 +42,6 @@ func (r *Rule) Name() string { return "line-length" }
 
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "line" }
-
-// urlOnlyRe matches a line whose trimmed content is a single URL.
-var urlOnlyRe = regexp.MustCompile(`^https?://\S+$`)
-
-// tableLineRe matches a line whose trimmed content starts with a pipe.
-var tableLineRe = regexp.MustCompile(`^\s*\|`)
 
 // isExcluded returns true if the given category is in the Exclude list.
 func (r *Rule) isExcluded(category string) bool {
@@ -151,7 +149,13 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-// lineCategories holds pre-computed line classification maps.
+// lineCategories holds the line-set lookups Check needs to decide
+// per-line max and per-line skip. Each map is nil when the active
+// settings do not need it — reads from a nil map return false, which
+// is exactly the "line is not in this category" answer the rest of
+// the rule wants, so the absent-by-default state costs no allocation
+// and no per-line branch. Pre-creating empty maps to "look uniform"
+// added three wasted allocations per Check before plan 195.
 type lineCategories struct {
 	code    map[int]bool
 	table   map[int]bool
@@ -159,11 +163,7 @@ type lineCategories struct {
 }
 
 func (r *Rule) buildCategories(f *lint.File) lineCategories {
-	lc := lineCategories{
-		code:    map[int]bool{},
-		table:   map[int]bool{},
-		heading: map[int]bool{},
-	}
+	var lc lineCategories
 	if r.isExcluded("code-blocks") || r.CodeBlockMax != nil {
 		lc.code = lint.CollectCodeBlockLines(f)
 	}
@@ -195,7 +195,7 @@ func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) boo
 	if r.isExcluded("tables") && lc.table[lineNum] {
 		return true
 	}
-	if r.isExcluded("urls") && urlOnlyRe.MatchString(strings.TrimSpace(string(line))) {
+	if r.isExcluded("urls") && isURLOnlyLine(line) {
 		return true
 	}
 	if r.Stern && !hasSpacePastLimit(line, limit) {
@@ -203,6 +203,65 @@ func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) boo
 	}
 	return false
 }
+
+// isURLOnlyLine reports whether line, after trimming whitespace,
+// is a single http(s) URL with no internal ASCII whitespace. It
+// mirrors urlOnlyRe's intent (`^https?://\S+$` applied to
+// TrimSpace input) but reads bytes directly so the per-long-line
+// check does not need `string(line)` or a regex `MatchString`.
+//
+// The edge trim uses `bytes.TrimSpace` (allocation-free, sub-slice
+// return) so the Unicode whitespace characters Go's `unicode.IsSpace`
+// recognises — space, tab, newline, NBSP (U+00A0), and the rest of
+// the Unicode whitespace block — are stripped exactly as
+// `strings.TrimSpace(string(line))` would. Non-whitespace
+// formatting characters such as zero-width joiner (U+200D) are
+// not trimmed by either form.
+//
+// The internal-whitespace check stays ASCII-only — that matches
+// Go's `regexp.\S` semantics for the original urlOnlyRe, where
+// `\S` is the complement of the ASCII whitespace class
+// `[\t\n\f\r ]`. A URL line whose body contains Unicode-only
+// whitespace (e.g. an inner NBSP) is therefore treated as
+// URL-only here, exactly as the regex treated it. This is
+// behaviour-preserving against the old shape.
+func isURLOnlyLine(line []byte) bool {
+	line = bytes.TrimSpace(line)
+	switch {
+	case bytes.HasPrefix(line, urlPrefixHTTPS):
+		line = line[len(urlPrefixHTTPS):]
+	case bytes.HasPrefix(line, urlPrefixHTTP):
+		line = line[len(urlPrefixHTTP):]
+	default:
+		return false
+	}
+	if len(line) == 0 {
+		return false
+	}
+	for _, b := range line {
+		if isASCIISpace(b) {
+			return false
+		}
+	}
+	return true
+}
+
+// isASCIISpace covers the ASCII whitespace bytes that interrupt a
+// URL's `\S+` body in the original regex. Edge trimming uses
+// bytes.TrimSpace (Unicode-aware) so this helper only fires on
+// the inner-byte scan.
+func isASCIISpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r':
+		return true
+	}
+	return false
+}
+
+var (
+	urlPrefixHTTP  = []byte("http://")
+	urlPrefixHTTPS = []byte("https://")
+)
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
@@ -238,12 +297,68 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  fmt.Sprintf("line too long (%d > %d)", runeLen, limit),
+			Message:  lineTooLongMessage(runeLen, limit),
 		})
 	}
 
 	return diags
 }
+
+// lineTooLongMessage returns the diagnostic message for a line of
+// runeLen runes that exceeds limit. The synthetic engine bench
+// produces ~60k diagnostics per iteration, all sharing the same
+// (runeLen, limit) pair — pre-plan-195 each diagnostic paid a
+// string concat + (when runeLen > 99) a strconv.Itoa allocation,
+// totalling >1M alloc objects per 10-iteration run for this
+// single line. The sync.Map keyed by (runeLen, limit) collapses
+// repeats: real-world corpora rarely emit thousands of identical
+// pairs, but when they do (e.g. a long boilerplate line repeated
+// across files) the cache saves the allocation.
+//
+// The cache is bounded at lineTooLongCacheMaxEntries so a
+// long-running process (the LSP server) does not accumulate one
+// entry per distinct (runeLen, limit) pair seen over its
+// lifetime. Past the cap, every call rebuilds the string and
+// pays the original allocation — the worst-case cost is one
+// string concat plus a map.Load, which matches the pre-plan-195
+// shape and stays well below the per-rule alloc gate even when
+// the cache is saturated.
+func lineTooLongMessage(runeLen, limit int) string {
+	key := lineTooLongKey{runeLen: runeLen, limit: limit}
+	if v, ok := lineTooLongCache.Load(key); ok {
+		return v.(string)
+	}
+	msg := "line too long (" + strconv.Itoa(runeLen) +
+		" > " + strconv.Itoa(limit) + ")"
+	if lineTooLongCacheCount.Load() < lineTooLongCacheMaxEntries {
+		if _, loaded := lineTooLongCache.LoadOrStore(key, msg); !loaded {
+			lineTooLongCacheCount.Add(1)
+		}
+	}
+	return msg
+}
+
+// lineTooLongKey keys the message cache. A struct value with two
+// int fields is comparable, so the sync.Map uses fast key equality
+// without a string-build per lookup.
+type lineTooLongKey struct {
+	runeLen int
+	limit   int
+}
+
+// lineTooLongCacheMaxEntries bounds the cache so a long-running
+// process (the LSP server) cannot accumulate one entry per
+// distinct (runeLen, limit) pair forever. 256 entries × ~24 bytes
+// per string = ~6 KiB sustained, which covers the typical
+// production spread (a handful of common limits — 80, 100, 120 —
+// crossed with runeLens in the 80-200 range) without unbounded
+// growth on pathological input.
+const lineTooLongCacheMaxEntries = 256
+
+var (
+	lineTooLongCache      sync.Map
+	lineTooLongCacheCount atomic.Int32
+)
 
 // hasSpacePastLimit returns true if line contains a space at or beyond
 // the given limit column (0-indexed rune position).
@@ -260,15 +375,38 @@ func hasSpacePastLimit(line []byte, limit int) bool {
 	return false
 }
 
-// collectTableLines returns a set of 1-based line numbers that are table rows.
+// collectTableLines returns a set of 1-based line numbers that are
+// table rows. The scan replaces a per-line `tableLineRe.Match`
+// (`^\s*\|`) with a tight byte loop; the regexp engine's internal
+// buffer rentals were the dominant per-Check allocator for this
+// helper before plan 195.
 func collectTableLines(f *lint.File) map[int]bool {
 	lines := map[int]bool{}
 	for i, line := range f.Lines {
-		if tableLineRe.Match(line) {
+		if isTableLineStart(line) {
 			lines[i+1] = true
 		}
 	}
 	return lines
+}
+
+// isTableLineStart reports whether line opens with optional spaces
+// or tabs followed by `|`. It is the allocation-free equivalent of
+// `^\s*\|` for the subset of whitespace that mark a table-row leader
+// in CommonMark; non-ASCII leading whitespace is not part of the
+// CommonMark table grammar so the byte-level test is exact.
+func isTableLineStart(line []byte) bool {
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case ' ', '\t':
+			continue
+		case '|':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // setextUnderlineRe matches a Setext heading underline (one or more = or -).

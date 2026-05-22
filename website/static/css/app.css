@@ -163,6 +163,13 @@ main {
   max-width: 540px;
   margin: 0 0 28px;
 }
+/* Hero lead body is rendered through Hugo's `markdownify`,
+   which wraps the text in <p>. Without these resets, the
+   global `p, .p { margin: 0 0 var(--space-4); }` from
+   colors_and_type.css would stack on top of .hero-lead's
+   own bottom margin. */
+.hero-lead p { margin: 0; }
+.hero-lead p:not(:last-child) { margin-bottom: 12px; }
 .hero-cta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .hero-badges {
   display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
