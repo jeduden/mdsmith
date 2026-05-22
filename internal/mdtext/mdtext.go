@@ -220,6 +220,91 @@ func CountWords(text string) int {
 	return n
 }
 
+// CountWordsInNode returns the word count of [ExtractPlainText](node,
+// source) without materialising the joined string. A word is a maximal
+// run of non-space runes (space being [IsSpace]); the boundary between
+// adjacent text segments only counts as a word break if [ExtractPlainText]
+// would have emitted whitespace there — i.e., it carries the inWord state
+// across segments so back-to-back writes coalesce. CountWordsInNode
+// must agree with CountWords(ExtractPlainText(node, source)) byte for
+// byte; an equivalence harness in the rule package pins this on every
+// fixture paragraph.
+//
+// Used by paragraph-readability's minWords gate: most synthetic-corpus
+// paragraphs fall below the gate and the materialised ExtractPlainText
+// string is wasted. CountWordsInNode skips the allocation entirely.
+func CountWordsInNode(node ast.Node, source []byte) int {
+	var wc wordCounter
+	countWordsInNode(&wc, node, source)
+	return wc.n
+}
+
+// wordCounter accumulates a word count across multiple byte segments
+// while preserving the inWord state at segment boundaries — mirroring
+// the way [ExtractPlainText] would have concatenated those segments
+// before [CountWords] tallied the joined string.
+type wordCounter struct {
+	n      int
+	inWord bool
+}
+
+// writeBytes folds b into the running count, decoding UTF-8 runes
+// one at a time. Equivalent to feeding b through [CountWords] except
+// that the inWord state is shared with later writeBytes / writeSpace
+// calls so two adjacent calls do not introduce a spurious word break.
+func (wc *wordCounter) writeBytes(b []byte) {
+	for len(b) > 0 {
+		r, size := utf8.DecodeRune(b)
+		if IsSpace(r) {
+			wc.inWord = false
+		} else if !wc.inWord {
+			wc.inWord = true
+			wc.n++
+		}
+		b = b[size:]
+	}
+}
+
+// writeSpace marks a word boundary without writing any rune —
+// matches ExtractPlainText's `buf.WriteByte(' ')` for Text nodes with
+// SoftLineBreak / HardLineBreak set.
+func (wc *wordCounter) writeSpace() { wc.inWord = false }
+
+// countWordsInNode mirrors [extractText]'s dispatch shape so the two
+// stay equivalent under [CountWords]. Any change to the cases below
+// must also update extractText (and vice versa); the equivalence
+// harness in internal/rules/paragraphreadability/ catches drift.
+func countWordsInNode(wc *wordCounter, node ast.Node, source []byte) {
+	if t, ok := node.(*ast.Text); ok {
+		wc.writeBytes(t.Segment.Value(source))
+		if t.SoftLineBreak() || t.HardLineBreak() {
+			wc.writeSpace()
+		}
+		return
+	}
+	if s, ok := node.(*ast.String); ok {
+		wc.writeBytes(s.Value)
+		return
+	}
+	if _, ok := node.(*ast.CodeSpan); ok {
+		for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+			if t, ok := c.(*ast.Text); ok {
+				wc.writeBytes(t.Segment.Value(source))
+			}
+		}
+		return
+	}
+	if _, ok := node.(*ast.Image); ok {
+		for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+			countWordsInNode(wc, c, source)
+		}
+		return
+	}
+	for c := node.FirstChild(); c != nil; c = c.NextSibling() {
+		countWordsInNode(wc, c, source)
+	}
+}
+
 // CountSentences counts sentences by splitting on sentence-ending
 // punctuation (., !, ?) followed by whitespace or end of text.
 // Returns at least 1 for non-empty text.

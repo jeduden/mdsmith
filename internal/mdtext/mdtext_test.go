@@ -97,6 +97,85 @@ func TestExtractPlainText_AstString(t *testing.T) {
 	assert.Equal(t, "hello world", mdtext.ExtractPlainText(para, nil))
 }
 
+// --- CountWordsInNode tests ---
+
+// TestCountWordsInNode pins the AST-walking word counter to its
+// definition: CountWords(ExtractPlainText(node, source)) for every
+// case the extractText switch handles. The cases below mirror the
+// TestExtractPlainText_* set so a change to one switch arm fails
+// here too. The equivalence harness in the paragraphreadability
+// package widens this to every fixture paragraph; the cases below
+// are the per-arm unit gate.
+func TestCountWordsInNode(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want int
+	}{
+		{name: "plain Text", src: "Hello world.\n", want: 2},
+		{name: "Link display text", src: "Click [here](https://example.com) now.\n", want: 3},
+		{name: "Emphasis", src: "This is *important* text.\n", want: 4},
+		{name: "Strong", src: "This is **bold** text.\n", want: 4},
+		{name: "CodeSpan keeps its content as one word",
+			src: "Use `fmt.Println` to print.\n", want: 4},
+		{name: "Image alt text", src: "See ![alt text](image.png) here.\n", want: 4},
+		{name: "nested emphasis inside link",
+			src: "Click [**bold link**](https://example.com) now.\n", want: 4},
+		{name: "SoftLineBreak counts as space",
+			src: "Hello\nworld.\n", want: 2},
+		{name: "HardLineBreak counts as space",
+			src: "Hello  \nworld.\n", want: 2},
+		{name: "Heading is walked like any other parent",
+			src: "# Hello world\n", want: 2},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root, src := parseDoc(t, c.src)
+			got := mdtext.CountWordsInNode(root, src)
+			require.Equal(t, c.want, got,
+				"CountWordsInNode disagrees with the documented count")
+			// Tied to the existing chain so future drift between the
+			// AST walker and ExtractPlainText is caught at the test
+			// boundary rather than the integration harness.
+			want := mdtext.CountWords(mdtext.ExtractPlainText(root, src))
+			assert.Equal(t, want, got,
+				"CountWordsInNode must equal CountWords(ExtractPlainText(...))")
+		})
+	}
+}
+
+// TestCountWordsInNode_AstString covers the *ast.String branch, which
+// the parser never emits on its own. Mirrors TestExtractPlainText_AstString
+// — a node tree built by hand rather than parsed, so an extension that
+// rewrites a Text into an ast.String still counts toward the word
+// total.
+func TestCountWordsInNode_AstString(t *testing.T) {
+	para := ast.NewParagraph()
+	para.AppendChild(para, ast.NewString([]byte("hello world")))
+	assert.Equal(t, 2, mdtext.CountWordsInNode(para, nil))
+}
+
+// TestCountWordsInNode_CoalescesAdjacentSegments pins the
+// boundary-state invariant: two adjacent child writes whose joined
+// run has no whitespace must count as ONE word, not two. The case
+// `"foo` + `bar"` (Text("foo") immediately followed by Text("bar")
+// with no SoftLineBreak between them) is exactly what code spans
+// and emphasis produce, and what CountWords would tally on the
+// joined "foobar".
+func TestCountWordsInNode_CoalescesAdjacentSegments(t *testing.T) {
+	src := []byte("foobar")
+	para := ast.NewParagraph()
+	t1 := ast.NewText()
+	t1.Segment = text.NewSegment(0, 3) // "foo"
+	t2 := ast.NewText()
+	t2.Segment = text.NewSegment(3, 6) // "bar"
+	para.AppendChild(para, t1)
+	para.AppendChild(para, t2)
+	// Mirror behavior: extractText writes "foo" then "bar" — one word
+	// after concatenation. CountWordsInNode must produce the same.
+	require.Equal(t, 1, mdtext.CountWordsInNode(para, src))
+}
+
 // --- CountWords tests ---
 
 func TestCountWords_Simple(t *testing.T) {

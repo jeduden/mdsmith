@@ -1,7 +1,7 @@
 ---
 id: 196
 title: Lazy SectionParagraph text — defer ExtractPlainText until a caller asks
-status: "🔲"
+status: "🔳"
 model: opus
 depends-on: [195]
 summary: >-
@@ -130,12 +130,12 @@ Per-rule wiring:
 
 ## Tasks
 
-1. [ ] Add `mdtext.CountWordsInNode`. Cover with a
+1. [x] Add `mdtext.CountWordsInNode`. Cover with a
    table-driven test that pins each case the
    `extractText` switch handles (Text, String,
    CodeSpan, Image, Link, Heading, nested emphasis,
    SoftLineBreak, HardLineBreak).
-2. [ ] Add an equivalence harness that runs every
+2. [x] Add an equivalence harness that runs every
    paragraph in `internal/rules/MDS023-paragraph-readability/good/`
    and `bad/` through both `CountWords(ExtractPlainText(...))`
    and `CountWordsInNode(...)`; the two counts must
