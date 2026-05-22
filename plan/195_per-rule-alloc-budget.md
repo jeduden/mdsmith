@@ -105,8 +105,12 @@ reference it.
    (the parametric per-rule gate) plus the
    `race_off_test.go` / `race_on_test.go` build-tag pair
    that lets the gate skip cleanly under `-race`.
-2. [🔳] Partial fix for MDS026 table-readability (37 → 23
-   on the gate fixture). Lands the early-exit pair
+2. [🔳] Partial fix for MDS026 table-readability (37 →
+   23 on the initial gate fixture; further engine-bench
+   cuts in the same PR brought the current grandfather
+   baseline to 18 — see
+   `internal/integration/alloc_budget_test.go` for the
+   authoritative number). Lands the early-exit pair
    (no-pipe-in-source, no-pipe-on-line) and the
    byte-scanner detectPrefix + splitRow. Remaining
    ≥10-alloc budget needs the cells-as-byte-offsets
@@ -114,10 +118,13 @@ reference it.
    `cellRanges []int` rather than `[]string`); deferred
    so the cell-storage move and the rule-coverage_test
    updates land together.
-3. [🔳] Partial fix for MDS025 table-format (63 → 55).
-   Lands the same early-exit pair through the
-   tableformat rule and `tablefmt.findTables`. Same
-   `cells []string` refactor blocks the rest.
+3. [🔳] Partial fix for MDS025 table-format (63 → 55 on
+   the initial gate fixture; current grandfather
+   baseline 50 — see
+   `internal/integration/alloc_budget_test.go`). Lands
+   the same early-exit pair through the tableformat
+   rule and `tablefmt.findTables`. Same `cells []string`
+   refactor blocks the rest.
 4. [x] Fix MDS001 line-length (19 → ≤ 10). Dropped the
    three empty `map[int]bool{}` literals in
    buildCategories, replaced the per-line

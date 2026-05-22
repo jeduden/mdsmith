@@ -205,20 +205,26 @@ func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) boo
 }
 
 // isURLOnlyLine reports whether line, after trimming whitespace,
-// is a single http(s) URL with no internal whitespace. It mirrors
-// urlOnlyRe's intent (`^https?://\S+$` applied to TrimSpace input)
-// but reads bytes directly so the per-long-line check does not need
-// `string(line)` or a regex `MatchString`.
+// is a single http(s) URL with no internal ASCII whitespace. It
+// mirrors urlOnlyRe's intent (`^https?://\S+$` applied to
+// TrimSpace input) but reads bytes directly so the per-long-line
+// check does not need `string(line)` or a regex `MatchString`.
 //
 // The edge trim uses `bytes.TrimSpace` (allocation-free, sub-slice
-// return) so Unicode whitespace at the edges — NBSP, zero-width
-// joiner, etc. — is stripped exactly as `strings.TrimSpace(string(line))`
-// would. The internal-whitespace check stays ASCII-only because a
-// URL with internal Unicode whitespace would be malformed by every
-// browser; the regex's `\S` rejected those anyway via its UTF-8
-// byte-pair handling. Documented behaviour change: a URL line
-// containing internal Unicode whitespace that goldmark's auto-link
-// detection would reject is also rejected here.
+// return) so the Unicode whitespace characters Go's `unicode.IsSpace`
+// recognises — space, tab, newline, NBSP (U+00A0), and the rest of
+// the Unicode whitespace block — are stripped exactly as
+// `strings.TrimSpace(string(line))` would. Non-whitespace
+// formatting characters such as zero-width joiner (U+200D) are
+// not trimmed by either form.
+//
+// The internal-whitespace check stays ASCII-only — that matches
+// Go's `regexp.\S` semantics for the original urlOnlyRe, where
+// `\S` is the complement of the ASCII whitespace class
+// `[\t\n\f\r ]`. A URL line whose body contains Unicode-only
+// whitespace (e.g. an inner NBSP) is therefore treated as
+// URL-only here, exactly as the regex treated it. This is
+// behaviour-preserving against the old shape.
 func isURLOnlyLine(line []byte) bool {
 	line = bytes.TrimSpace(line)
 	switch {

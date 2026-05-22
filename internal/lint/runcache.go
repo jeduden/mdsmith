@@ -18,7 +18,7 @@ import "sync"
 type RunCache struct {
 	frontMatter sync.Map // string (absPath) -> *runCacheEntry
 	includes    sync.Map // string (absPath) -> *runCacheEntry
-	anchors     sync.Map // string (absPath) -> *runCacheEntry
+	anchors     sync.Map // string (absPath) -> *anchorEntry
 }
 
 // runCacheEntry guards a single cache slot so build runs exactly once
