@@ -35,7 +35,11 @@ Conditions 1, 3, and 4 are auto-fixed by `mdsmith fix`. Condition 2
 (MD056) is flagged but never auto-rewritten on its own: a missing
 cell's intended content is unknown. The alignment pass does pad
 short rows with empty cells while it normalises widths, so a fixed
-file is structurally clean even when the original missed a cell.
+*bordered* table is structurally clean even when the original
+missed a cell. A borderless table is not formatted by the
+alignment pass — tablefmt requires edge pipes on every row. MD056
+therefore keeps firing on a borderless short row after fix; add
+the edge pipes or fill the cell to resolve it.
 
 ## Settings
 

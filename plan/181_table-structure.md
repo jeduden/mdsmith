@@ -65,9 +65,12 @@ second rule to oscillate against.
   or strips edge pipes.
 - MD056: flag any row whose cell count differs from the
   header; the structure pass never auto-rewrites. The
-  alignment pass, however, pads short rows with empty cells
-  while reformatting widths, so a fixed file is structurally
-  clean even when the original missed a cell.
+  alignment pass pads short rows with empty cells while
+  reformatting widths, so a fixed *bordered* table is
+  structurally clean even when the original missed a cell.
+  A borderless table is not formatted by the alignment pass
+  (tablefmt requires edge pipes), so MD056 keeps firing on a
+  borderless short row after fix.
 - MD058: flag a missing blank line on either side; autofix
   inserts it.
 
