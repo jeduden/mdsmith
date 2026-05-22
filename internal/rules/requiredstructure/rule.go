@@ -567,13 +567,17 @@ func (r *Rule) dispatchSingleFileSchema(
 }
 
 // schemaDataDeclaresExtends reports whether the raw schema bytes
-// carry a reserved `extends:` key with a non-empty string value in
-// their YAML front matter. An `extends:` with null/empty value
-// matches `schema.ParseFile`'s "no extends" treatment and stays on
-// the legacy path so behaviour and diagnostics line up. A parse
-// failure or missing front matter returns false — the legacy
-// parser then surfaces those errors with its existing diagnostic
-// shape.
+// carry a reserved `extends:` key in their YAML front matter. The
+// modern `schema.ParseFile` pipeline rejects malformed `extends:`
+// values (non-string, empty/whitespace string) with clear errors;
+// routing here on any present-and-non-null `extends:` lets those
+// errors surface to the user instead of being silently swallowed
+// by the legacy parser. An explicit YAML `null` matches the
+// no-extends case so legacy diagnostics line up.
+//
+// A parse failure or missing front matter returns false — the
+// legacy parser then surfaces those errors with its existing
+// diagnostic shape.
 func schemaDataDeclaresExtends(data []byte) bool {
 	prefix, _ := lint.StripFrontMatter(data)
 	if prefix == nil {
@@ -588,11 +592,12 @@ func schemaDataDeclaresExtends(data []byte) bool {
 	if !ok {
 		return false
 	}
-	s, ok := v.(string)
-	if !ok {
-		return false
-	}
-	return strings.TrimSpace(s) != ""
+	// Explicit YAML `null` matches schema.ParseFile's no-extends
+	// treatment; stay on the legacy path so diagnostics align.
+	// Every other value (non-empty string, malformed string,
+	// non-string type) routes to the compose path so the modern
+	// parser can surface its specific error.
+	return v != nil
 }
 
 // effectiveSources returns the rule's sources list, falling back to

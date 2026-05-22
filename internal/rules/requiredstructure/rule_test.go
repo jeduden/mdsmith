@@ -781,26 +781,49 @@ func TestSchemaDataDeclaresExtends_NoExtendsReturnsFalse(t *testing.T) {
 
 // TestSchemaDataDeclaresExtends_NullValueReturnsFalse matches
 // schema.ParseFile's "no extends" treatment for `extends:` with a
-// null/empty body. Without this, the dispatcher would re-route
-// such schemas through the compose path and change diagnostics.
+// null body. The legacy single-file parser handles this case
+// equivalently, so staying on the legacy path keeps diagnostics
+// aligned.
 func TestSchemaDataDeclaresExtends_NullValueReturnsFalse(t *testing.T) {
 	assert.False(t, schemaDataDeclaresExtends(
 		[]byte("---\nextends:\n---\n# ?\n")))
 }
 
-// TestSchemaDataDeclaresExtends_WhitespaceValueReturnsFalse pins
-// the trimmed-empty check.
-func TestSchemaDataDeclaresExtends_WhitespaceValueReturnsFalse(t *testing.T) {
-	assert.False(t, schemaDataDeclaresExtends(
+// TestSchemaDataDeclaresExtends_WhitespaceValueRoutesToCompose
+// covers the malformed-but-present case: schema.ParseFile rejects
+// whitespace-only extends with a clear error, so the dispatcher
+// must route there instead of silently dropping the key via the
+// legacy parser.
+func TestSchemaDataDeclaresExtends_WhitespaceValueRoutesToCompose(t *testing.T) {
+	assert.True(t, schemaDataDeclaresExtends(
 		[]byte("---\nextends: \"   \"\n---\n# ?\n")))
 }
 
-// TestSchemaDataDeclaresExtends_NonStringValueReturnsFalse covers
-// the type-assertion branch: a non-string value (number/list)
-// isn't an extends declaration we understand.
-func TestSchemaDataDeclaresExtends_NonStringValueReturnsFalse(t *testing.T) {
-	assert.False(t, schemaDataDeclaresExtends(
+// TestSchemaDataDeclaresExtends_NonStringValueRoutesToCompose
+// catches typos like `extends: 42` — schema.ParseFile rejects
+// these explicitly. Routing through the compose path surfaces
+// that error to the user.
+func TestSchemaDataDeclaresExtends_NonStringValueRoutesToCompose(t *testing.T) {
+	assert.True(t, schemaDataDeclaresExtends(
 		[]byte("---\nextends: 42\n---\n# ?\n")))
+}
+
+// TestCheck_MalformedExtendsSurfacesDiagnostic ensures the
+// dispatch+compose path actually reports the error rather than
+// swallowing it. Without this, a typoed `extends:` value would
+// silently produce no parent schema.
+func TestCheck_MalformedExtendsSurfacesDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "child.md"),
+		[]byte("---\nextends: 42\n---\n"), 0o644))
+	f := newRootedFile(t, root, "doc.md", "# Doc\n")
+	r := &Rule{
+		Schema:  "child.md",
+		Sources: []SchemaSource{{File: "child.md"}},
+	}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags,
+		"malformed `extends:` must surface a diagnostic, not be silently dropped")
 }
 
 // TestSchemaDataDeclaresExtends_NoFrontmatterReturnsFalse covers
