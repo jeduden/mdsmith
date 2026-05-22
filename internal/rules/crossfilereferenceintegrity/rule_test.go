@@ -1199,6 +1199,26 @@ func TestCheck_Wikilinks_PlaceholderSuppresses(t *testing.T) {
 	require.Empty(t, diags, "placeholder targets must be skipped")
 }
 
+func TestCheck_Wikilinks_PlaceholderInAliasDoesNotSuppress(t *testing.T) {
+	// MDS027's placeholder filter applies to link destinations, not
+	// link text. A wikilink whose alias contains a placeholder must
+	// still resolve the underlying target — a missing target stays
+	// a diagnostic. Mirrors the standard-link behaviour where only
+	// the URL half is checked for placeholder tokens.
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[MissingPage|{topic}]] alias.\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{
+		Wikilinks:    true,
+		Placeholders: []string{"var-token"},
+	}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "alias-only placeholder must not mask a missing target")
+	require.Contains(t, diags[0].Message, "MissingPage")
+}
+
 func TestCheck_Wikilinks_CodeBlockSkipped(t *testing.T) {
 	dir := t.TempDir()
 	sourcePath := filepath.Join(dir, "doc.md")

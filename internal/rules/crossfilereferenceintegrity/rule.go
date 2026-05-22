@@ -162,8 +162,15 @@ func (r *Rule) wikilinkSuppressed(wl linkgraph.WikiLink) bool {
 	if len(r.Placeholders) == 0 {
 		return false
 	}
-	return placeholders.ContainsBodyToken(wl.Target, r.Placeholders) ||
-		placeholders.ContainsBodyToken(wikilinkRaw(wl), r.Placeholders)
+	// MDS027's placeholder filter only applies to link destinations,
+	// not link text. For a wikilink the destination is target plus
+	// optional "#anchor"; the alias is display text and must not be
+	// scanned for placeholder tokens.
+	dest := wl.Target
+	if wl.Anchor != "" {
+		dest += "#" + wl.Anchor
+	}
+	return placeholders.ContainsBodyToken(dest, r.Placeholders)
 }
 
 func (r *Rule) effectiveWikilinkStyle() string {
