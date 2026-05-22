@@ -24,8 +24,8 @@ A GFM table must satisfy four conditions:
 
 1. Every row's leading/trailing pipe presence matches the configured
    `style` (the markdownlint MD055 check).
-2. Every body row has the same logical cell count as the header
-   (MD056).
+2. Every non-header row, including the delimiter row, has the same
+   logical cell count as the header (MD056).
 3. The table has a blank line before and after (MD058).
 4. Each bordered table has aligned column widths and consistent
    padding (the prettier-style alignment pass that gave the rule its
