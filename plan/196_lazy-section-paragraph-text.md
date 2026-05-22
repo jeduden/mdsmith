@@ -183,10 +183,16 @@ Per-rule wiring:
     stays under the ≤ 10 ceiling).
 11. [x] Run `go test ./...`, `go test -race ./...`,
     `go tool golangci-lint run`, `mdsmith check .`.
-    `TestSentBufPool_ClearReleasesStringReferences`
-    is flaky under `-race` on main (pre-existing,
-    verified by `git stash`); skip it or run without
-    `-race` to confirm green.
+    Non-race suite passes in full. Under `-race`,
+    `paragraphstructure.TestSentBufPool_ClearReleasesStringReferences`
+    flakes — verified pre-existing by `git stash`-ing
+    the plan-196 diff and re-running; the same test
+    still failed on the unmodified base. Plan-196
+    touched packages (mdtext, astutil,
+    paragraphreadability, paragraphstructure,
+    requiredtextpatterns, requiredmentions) pass
+    `-race` cleanly when that one test is skipped
+    via `-run` exclusion.
 
 ## Risk
 
@@ -232,8 +238,14 @@ error rather than a silent semantics drift.
       pre-plan-196 baseline of 10 was a "just barely"
       pass). Measured 8 allocs/op.
 - [x] `mdsmith check .` passes.
-- [x] `go test ./...` and `go test -race ./...` pass.
-      (One pre-existing `-race` flake on
+- [x] `go test ./...` passes in full.
+- [x] `go test -race ./...` passes for every test
+      this plan touched (mdtext, astutil,
+      paragraphreadability, paragraphstructure,
+      requiredtextpatterns, requiredmentions).
       `paragraphstructure.TestSentBufPool_ClearReleasesStringReferences`
-      exists on main, unrelated to this plan.)
+      flakes under `-race` on main (verified
+      pre-existing by an A/B with `git stash`; see
+      task 11 note above); the flake is unrelated
+      to this plan and is left as-is.
 - [x] `go tool golangci-lint run` reports no issues.
