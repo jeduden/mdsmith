@@ -570,11 +570,7 @@ func TestReportFixResultTo_DryRunJSONWriteErrorReturns2(t *testing.T) {
 	result := &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 	}
-	var code int
-	captureStderr(func() {
-		// Dry-run JSON goes to stderr; route the error writer there.
-		code = reportFixResultTo(opts, result, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
-	})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
 	assert.Equal(t, 2, code)
 }
 
@@ -588,10 +584,7 @@ func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
 				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
 		},
 	}
-	var code int
-	captureStderr(func() {
-		code = reportFixResultTo(opts, result, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
-	})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
 	assert.Equal(t, 2, code)
 }
 

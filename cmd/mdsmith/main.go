@@ -688,8 +688,16 @@ func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int
 
 // printErrors writes runtime errors to stderr.
 func printErrors(errs []error) {
+	printErrorsTo(os.Stderr, errs)
+}
+
+// printErrorsTo writes runtime errors to the supplied writer.
+// Write errors are intentionally swallowed; the run itself has
+// already produced its diagnostic content and a partial stderr
+// notice is not worth stopping the process for.
+func printErrorsTo(w io.Writer, errs []error) {
 	for _, e := range errs {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", e)
+		_, _ = fmt.Fprintf(w, "mdsmith: %v\n", e)
 	}
 }
 
@@ -708,12 +716,18 @@ type runStats struct {
 }
 
 func printRunStats(format string, quiet bool, stats runStats) {
+	printRunStatsTo(os.Stderr, format, quiet, stats)
+}
+
+// printRunStatsTo writes the stats line to the supplied writer.
+func printRunStatsTo(w io.Writer, format string, quiet bool, stats runStats) {
 	if quiet || format == "json" {
 		return
 	}
 	if stats.DryRun {
-		fmt.Fprintf(
-			os.Stderr,
+		// Write errors swallowed: see printErrorsTo rationale.
+		_, _ = fmt.Fprintf(
+			w,
 			"stats: checked=%d fixed=%d failures=%d unfixed=%d would-fix=%d\n",
 			stats.Checked,
 			stats.Fixed,
@@ -723,8 +737,8 @@ func printRunStats(format string, quiet bool, stats runStats) {
 		)
 		return
 	}
-	fmt.Fprintf(
-		os.Stderr,
+	_, _ = fmt.Fprintf(
+		w,
 		"stats: checked=%d fixed=%d failures=%d unfixed=%d\n",
 		stats.Checked,
 		stats.Fixed,
@@ -1057,13 +1071,14 @@ func fixDiscovered(opts fixCLIOpts) int {
 // code. Shared by fixFiles and fixDiscovered so the dry-run preview,
 // stats summary, and exit-code logic stay in one place.
 func reportFixResult(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger) int {
-	return reportFixResultTo(opts, fixResult, logger, os.Stdout, os.Stderr)
+	return reportFixResultTo(opts, fixResult, logger, os.Stderr)
 }
 
 // reportFixResultTo is the injectable form of reportFixResult. Tests
-// pass alternate writers to exercise the write-error branches.
-func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, stdoutW, stderrW io.Writer) int {
-	printErrors(fixResult.Errors)
+// pass an alternate stderr writer to exercise the write-error
+// branches without leaking to the real stderr.
+func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, stderrW io.Writer) int {
+	printErrorsTo(stderrW, fixResult.Errors)
 
 	if opts.dryRun && opts.format == "json" && !opts.quiet {
 		// Match `check --format json` and `fix --format json`: lint
@@ -1082,7 +1097,7 @@ func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.L
 		}
 	}
 
-	printRunStats(opts.format, opts.quiet, runStats{
+	printRunStatsTo(stderrW, opts.format, opts.quiet, runStats{
 		Checked:  fixResult.FilesChecked,
 		Fixed:    len(fixResult.Modified),
 		Failures: fixResult.Failures,

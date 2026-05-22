@@ -49,6 +49,12 @@ type Fixer struct {
 	// absolute path.
 	SourceFS fs.FS
 
+	// WriteFile, when non-nil, replaces atomicWriteFile for the
+	// final on-disk write step. Tests inject an error-returning
+	// function to exercise write-failure branches without OS-level
+	// read-only tricks. Production callers leave it nil.
+	WriteFile func(path string, data []byte, perm os.FileMode) error
+
 	// gitignoreCache caches GitignoreMatchers by directory so the
 	// matcher tree is walked once per directory across a fix run,
 	// matching the engine.Runner cache contract that catalog and
@@ -225,7 +231,11 @@ func (f *Fixer) fixFile(path string) (
 	var modified string
 	if bytesChanged && !f.DryRun {
 		out := lf.FullSource(current)
-		if err := writeFile(path, out, info.Mode()); err != nil {
+		writeFn := f.WriteFile
+		if writeFn == nil {
+			writeFn = atomicWriteFile
+		}
+		if err := writeFn(path, out, info.Mode()); err != nil {
 			errs = append(errs, fmt.Errorf("writing %q: %w", path, err))
 			return beforeDiags, beforeDiags, "", bytesChanged, errs
 		}
@@ -236,10 +246,62 @@ func (f *Fixer) fixFile(path string) (
 
 	diags, checkErrs := engine.CheckRules(finalFile, f.Rules, effective)
 	errs = append(errs, checkErrs...)
+	if f.DryRun {
+		diags = subtractPredictedDryRunFixes(diags, fixable, finalFile)
+	}
 	if f.Explain {
 		explain.Attach(diags, f.Config, path, fmKinds, fmFields)
 	}
 	return beforeDiags, diags, modified, bytesChanged, errs
+}
+
+// subtractPredictedDryRunFixes removes from diags every diagnostic
+// that a DryRunPredictor among fixable would have cleared in a
+// real run. This restores dry-run exit-code parity with a real
+// `mdsmith fix` for side-effect-only fixers (e.g. MDS048
+// git-hook-sync) whose Fix returns the markdown source unchanged
+// but mutates a sibling file. Without this subtraction, the
+// post-fix Check would still report the drift and the dry-run
+// would exit non-zero where a real run would exit 0.
+func subtractPredictedDryRunFixes(
+	diags []lint.Diagnostic, fixable []rule.FixableRule, finalFile *lint.File,
+) []lint.Diagnostic {
+	predicted := make(map[diagKey]struct{})
+	for _, fr := range fixable {
+		p, ok := fr.(rule.DryRunPredictor)
+		if !ok {
+			continue
+		}
+		for _, d := range p.PredictDryRunFix(finalFile) {
+			predicted[keyOf(d)] = struct{}{}
+		}
+	}
+	if len(predicted) == 0 {
+		return diags
+	}
+	out := diags[:0]
+	for _, d := range diags {
+		if _, hit := predicted[keyOf(d)]; hit {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// diagKey is the dedupe identity of a diagnostic, matching
+// engine.DedupeDiagnostics' tuple so subtraction is consistent
+// with how repo-scoped diagnostics are merged elsewhere.
+type diagKey struct {
+	File    string
+	Line    int
+	Column  int
+	RuleID  string
+	Message string
+}
+
+func keyOf(d lint.Diagnostic) diagKey {
+	return diagKey{File: d.File, Line: d.Line, Column: d.Column, RuleID: d.RuleID, Message: d.Message}
 }
 
 // computeWouldFixAggregated dedupes pre-fix and post-fix diagnostics
@@ -502,10 +564,6 @@ func (f *Fixer) effectiveWithCategories(
 	}
 	return config.ApplyCategories(effective, categories, func(name string) string { return m[name] }, explicit)
 }
-
-// writeFile is the package-level write hook. Tests can swap it out to
-// inject a write error without needing a real read-only filesystem.
-var writeFile = atomicWriteFile
 
 // atomicWriteFile writes data to path using a temp-file-then-rename strategy
 // to reduce the risk of partial writes on crash. Directory fsync is omitted

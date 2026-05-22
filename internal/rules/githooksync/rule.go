@@ -333,12 +333,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 
 	// A dry-run must not touch .gitattributes or the git index.
-	// Trade-off: skipping the write means the post-fix Check still
-	// observes drift, so the diff-based would-fix preview will not
-	// count this rule even though a real run would fix it. A
-	// dedicated "would-fix" hook for side-effect-only fixers could
-	// close that gap; for now the contract (no disk/index writes)
-	// takes precedence over the preview count.
+	// The fix engine instead asks PredictDryRunFix below for the
+	// diagnostics a real run would have cleared, so the dry-run
+	// exit code still matches a real run.
 	if f.DryRun {
 		return f.Source
 	}
@@ -402,6 +399,16 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	// Return original file content unchanged (the fix is in
 	// .gitattributes, not in the markdown file being linted).
 	return f.Source
+}
+
+// PredictDryRunFix implements rule.DryRunPredictor. A real-run Fix
+// would write .gitattributes and stage it, clearing every drift and
+// stale-staging diagnostic Check currently reports. Re-running Check
+// on the same file returns exactly that set, so the fix engine can
+// subtract those diagnostics from the dry-run remaining set without
+// performing the underlying side effect.
+func (r *Rule) PredictDryRunFix(f *lint.File) []lint.Diagnostic {
+	return r.Check(f)
 }
 
 // stage attempts to stage .gitattributes and records the outcome in
@@ -487,8 +494,9 @@ func (r *Rule) DefaultSettings() map[string]any {
 }
 
 var (
-	_ rule.Configurable = (*Rule)(nil)
-	_ rule.Defaultable  = (*Rule)(nil)
-	_ rule.FixableRule  = (*Rule)(nil)
-	_ rule.RepoScoped   = (*Rule)(nil)
+	_ rule.Configurable    = (*Rule)(nil)
+	_ rule.Defaultable     = (*Rule)(nil)
+	_ rule.FixableRule     = (*Rule)(nil)
+	_ rule.DryRunPredictor = (*Rule)(nil)
+	_ rule.RepoScoped      = (*Rule)(nil)
 )

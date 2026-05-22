@@ -93,6 +93,35 @@ func (r *mockNonFixableRule) Check(f *lint.File) []lint.Diagnostic {
 	}
 }
 
+// mockSideEffectRule simulates MDS048: Check always returns a
+// drift diagnostic, Fix returns f.Source unchanged (no markdown
+// bytes change), and PredictDryRunFix returns the Check set so
+// the dry-run engine subtracts it from remaining diagnostics —
+// exit-code parity with a real run.
+type mockSideEffectRule struct {
+	id   string
+	name string
+}
+
+func (r *mockSideEffectRule) ID() string       { return r.id }
+func (r *mockSideEffectRule) Name() string     { return r.name }
+func (r *mockSideEffectRule) Category() string { return "test" }
+func (r *mockSideEffectRule) Check(f *lint.File) []lint.Diagnostic {
+	return []lint.Diagnostic{{
+		File: f.Path, Line: 1, Column: 1,
+		RuleID: r.id, RuleName: r.name,
+		Severity: lint.Warning,
+		Message:  "side-effect drift",
+	}}
+}
+func (r *mockSideEffectRule) Fix(f *lint.File) []byte                         { return f.Source }
+func (r *mockSideEffectRule) PredictDryRunFix(f *lint.File) []lint.Diagnostic { return r.Check(f) }
+
+var (
+	_ rule.FixableRule     = (*mockSideEffectRule)(nil)
+	_ rule.DryRunPredictor = (*mockSideEffectRule)(nil)
+)
+
 // mockFixableRuleB replaces tabs with spaces (second fixable rule for ordering tests).
 type mockFixableRuleB struct {
 	id   string
@@ -1132,14 +1161,7 @@ func TestFix_DryRun_MatchesRealFixCount(t *testing.T) {
 }
 
 func TestFix_WriteErrorPopulatesErrors(t *testing.T) {
-	// Inject a write failure via the package-level hook so the test
-	// works regardless of OS permissions (e.g. when running as root).
-	origWrite := writeFile
-	writeFile = func(_ string, _ []byte, _ os.FileMode) error {
-		return fmt.Errorf("injected write error")
-	}
-	defer func() { writeFile = origWrite }()
-
+	t.Parallel()
 	dir := t.TempDir()
 	mdFile := filepath.Join(dir, "fixable.md")
 	require.NoError(t, os.WriteFile(mdFile, []byte("# Hello  \n"), 0o644))
@@ -1149,9 +1171,14 @@ func TestFix_WriteErrorPopulatesErrors(t *testing.T) {
 			"mock-trailing": {Enabled: true},
 		},
 	}
+	// Inject the write failure on this Fixer so the test stays
+	// isolated when other tests in the package run in parallel.
 	fixer := &Fixer{
 		Config: cfg,
 		Rules:  []rule.Rule{&mockFixableRule{id: "MDS100", name: "mock-trailing"}},
+		WriteFile: func(_ string, _ []byte, _ os.FileMode) error {
+			return fmt.Errorf("injected write error")
+		},
 	}
 
 	result := fixer.Fix([]string{mdFile})
@@ -1173,6 +1200,41 @@ func TestComputeWouldFix_SortsRulesByID(t *testing.T) {
 	require.Len(t, wf.Rules, 2)
 	assert.Equal(t, "MDS001", wf.Rules[0].RuleID, "rules must be sorted ascending by ID")
 	assert.Equal(t, "MDS010", wf.Rules[1].RuleID)
+}
+
+func TestFix_DryRun_PredictedDiagnosticsSubtracted(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "f.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte("# Hi\n"), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"side-effect": {Enabled: true},
+		},
+	}
+	fixer := &Fixer{
+		Config: cfg,
+		Rules:  []rule.Rule{&mockSideEffectRule{id: "MDS900", name: "side-effect"}},
+		DryRun: true,
+	}
+	result := fixer.Fix([]string{mdFile})
+
+	assert.Empty(t, result.Diagnostics,
+		"DryRunPredictor diagnostics must be subtracted from remaining set")
+	assert.Equal(t, 1, result.WouldFix,
+		"diff after subtraction must count the predicted fix")
+}
+
+func TestSubtractPredictedDryRunFixes_NoPredictorIsNoop(t *testing.T) {
+	t.Parallel()
+	// Non-DryRunPredictor fixable rule: subtract leaves diags untouched.
+	diags := []lint.Diagnostic{
+		{File: "f.md", Line: 1, Column: 1, RuleID: "MDS001", Message: "x"},
+	}
+	fixable := []rule.FixableRule{&mockFixableRule{id: "MDS001", name: "trim"}}
+	got := subtractPredictedDryRunFixes(diags, fixable, &lint.File{Path: "f.md"})
+	assert.Equal(t, diags, got)
 }
 
 func TestComputeWouldFixAggregated_DedupesByDiagnosticFile(t *testing.T) {

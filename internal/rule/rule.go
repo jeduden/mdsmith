@@ -16,6 +16,19 @@ type FixableRule interface {
 	Fix(f *lint.File) []byte
 }
 
+// DryRunPredictor is implemented by FixableRules whose Fix performs
+// side effects (e.g. writing a sibling file, staging a git index
+// entry) rather than rewriting the markdown source itself. During
+// `mdsmith fix --dry-run`, Fix returns the markdown unchanged to
+// honor the no-disk-writes contract, but the post-fix Check would
+// still observe the unfixed drift. PredictDryRunFix lets the rule
+// declare which diagnostics a real Fix would have cleared so the
+// fix engine subtracts them from the remaining-diagnostic set,
+// keeping the dry-run exit code matching a real run.
+type DryRunPredictor interface {
+	PredictDryRunFix(f *lint.File) []lint.Diagnostic
+}
+
 // Configurable is implemented by rules that have user-tunable settings.
 type Configurable interface {
 	ApplySettings(settings map[string]any) error
