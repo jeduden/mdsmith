@@ -120,7 +120,7 @@ func effectiveFrontmatterLeaves(
 		// because frontmatterExpr could not resolve it.
 		out = append(out, FrontmatterLeafJSON{
 			Key:    k,
-			Value:  schema.NormaliseFrontmatterValue(fm[k]),
+			Value:  schema.NormalizeFrontmatterValue(fm[k]),
 			Source: owners[k],
 		})
 	}

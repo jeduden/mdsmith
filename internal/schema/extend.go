@@ -101,14 +101,14 @@ func mergeRawFrontmatter(out, parent, child map[string]any) {
 	// composeFrontmatter for the same reason.
 	merged := map[string]any{}
 	for k, v := range parentFM {
-		merged[k] = normaliseFrontmatterValue(v)
+		merged[k] = normalizeFrontmatterValue(v)
 	}
 	if !childOK {
 		out["frontmatter"] = merged
 		return
 	}
 	for k, rawChildV := range childFM {
-		childExpr := normaliseFrontmatterValue(rawChildV)
+		childExpr := normalizeFrontmatterValue(rawChildV)
 		existing, hadParent := merged[k]
 		if !hadParent {
 			merged[k] = childExpr
@@ -125,14 +125,14 @@ func mergeRawFrontmatter(out, parent, child map[string]any) {
 	out["frontmatter"] = merged
 }
 
-// normaliseFrontmatterValue mirrors the per-value canonicalisation
+// normalizeFrontmatterValue mirrors the per-value canonicalisation
 // ParseInline applies — bare-name shortcuts expand to their CUE
 // expression, scalars JSON-encode, and raw CUE strings pass
 // through verbatim. A value frontmatterExpr cannot resolve (an
 // unknown shortcut, an unsupported type) flows through unchanged
 // so the downstream ParseInline call surfaces the same error
 // signal the user would have seen without the extends merge.
-func normaliseFrontmatterValue(v any) any {
+func normalizeFrontmatterValue(v any) any {
 	expr, err := frontmatterExpr(v)
 	if err != nil {
 		return v
@@ -140,14 +140,14 @@ func normaliseFrontmatterValue(v any) any {
 	return expr
 }
 
-// NormaliseFrontmatterValue applies the same canonicalisation
+// NormalizeFrontmatterValue applies the same canonicalisation
 // extends merging uses — bare-name shortcuts to canonical CUE,
 // scalars to JSON, raw strings verbatim — and returns the result
 // as a string. Unsupported types (anything frontmatterExpr cannot
 // resolve) fall back to a `%v`-formatted display so callers like
 // `mdsmith kinds show` can render a value rather than an empty
 // string.
-func NormaliseFrontmatterValue(v any) string {
+func NormalizeFrontmatterValue(v any) string {
 	if expr, err := frontmatterExpr(v); err == nil {
 		return expr
 	}

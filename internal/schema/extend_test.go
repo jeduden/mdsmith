@@ -683,62 +683,62 @@ func TestMergeRawMap_FrontmatterParentShortcutExpands(t *testing.T) {
 	assert.Contains(t, expr, "=~", "parent shortcut expands in merge output")
 }
 
-// TestNormaliseFrontmatterValue_ResolvesShortcut covers the bare-
+// TestNormalizeFrontmatterValue_ResolvesShortcut covers the bare-
 // name expansion path of the normaliser.
-func TestNormaliseFrontmatterValue_ResolvesShortcut(t *testing.T) {
-	out := normaliseFrontmatterValue("date")
+func TestNormalizeFrontmatterValue_ResolvesShortcut(t *testing.T) {
+	out := normalizeFrontmatterValue("date")
 	assert.NotEqual(t, "date", out)
 	assert.Contains(t, out, "=~")
 }
 
-// TestPublicNormaliseFrontmatterValue_ResolvesShortcut covers the
+// TestPublicNormalizeFrontmatterValue_ResolvesShortcut covers the
 // exported coerce helper used by kindsout — bare-name shortcuts
 // expand the same way the internal helper does.
-func TestPublicNormaliseFrontmatterValue_ResolvesShortcut(t *testing.T) {
-	out := NormaliseFrontmatterValue("date")
+func TestPublicNormalizeFrontmatterValue_ResolvesShortcut(t *testing.T) {
+	out := NormalizeFrontmatterValue("date")
 	assert.Contains(t, out, "=~")
 }
 
-// TestPublicNormaliseFrontmatterValue_ScalarsEncode confirms a
+// TestPublicNormalizeFrontmatterValue_ScalarsEncode confirms a
 // non-string scalar (a YAML number, bool) renders as its JSON
 // encoding rather than falling through to the empty-string
 // fallback the caller previously emitted.
-func TestPublicNormaliseFrontmatterValue_ScalarsEncode(t *testing.T) {
-	assert.Equal(t, "42", NormaliseFrontmatterValue(42))
-	assert.Equal(t, "true", NormaliseFrontmatterValue(true))
+func TestPublicNormalizeFrontmatterValue_ScalarsEncode(t *testing.T) {
+	assert.Equal(t, "42", NormalizeFrontmatterValue(42))
+	assert.Equal(t, "true", NormalizeFrontmatterValue(true))
 }
 
-// TestPublicNormaliseFrontmatterValue_UnsupportedFallsBackToSprintf
+// TestPublicNormalizeFrontmatterValue_UnsupportedFallsBackToSprintf
 // covers the final fallback: a value frontmatterExpr cannot
 // resolve still gets a printable form so audit output never
 // carries an empty `value` for a present constraint.
-func TestPublicNormaliseFrontmatterValue_UnsupportedFallsBackToSprintf(t *testing.T) {
+func TestPublicNormalizeFrontmatterValue_UnsupportedFallsBackToSprintf(t *testing.T) {
 	type custom struct{ X int }
-	out := NormaliseFrontmatterValue(custom{X: 7})
+	out := NormalizeFrontmatterValue(custom{X: 7})
 	assert.Contains(t, out, "7")
 }
 
-// TestPublicNormaliseFrontmatterValue_StringFallback verifies that
+// TestPublicNormalizeFrontmatterValue_StringFallback verifies that
 // a string that frontmatterExpr rejects (an unknown bare name)
 // still renders verbatim rather than as an empty placeholder.
-func TestPublicNormaliseFrontmatterValue_StringFallback(t *testing.T) {
+func TestPublicNormalizeFrontmatterValue_StringFallback(t *testing.T) {
 	assert.Equal(t, "unknown-shortcut",
-		NormaliseFrontmatterValue("unknown-shortcut"))
+		NormalizeFrontmatterValue("unknown-shortcut"))
 }
 
-// TestNormaliseFrontmatterValue_PreservesRawCUE confirms raw CUE
+// TestNormalizeFrontmatterValue_PreservesRawCUE confirms raw CUE
 // strings pass through unchanged.
-func TestNormaliseFrontmatterValue_PreservesRawCUE(t *testing.T) {
-	out := normaliseFrontmatterValue(`"ratified"`)
+func TestNormalizeFrontmatterValue_PreservesRawCUE(t *testing.T) {
+	out := normalizeFrontmatterValue(`"ratified"`)
 	assert.Equal(t, `"ratified"`, out)
 }
 
-// TestNormaliseFrontmatterValue_FallsBackOnError covers the
+// TestNormalizeFrontmatterValue_FallsBackOnError covers the
 // unknown-shortcut path: the value passes through unchanged so a
 // downstream parse surfaces the same error the user would have
 // seen without the merge step.
-func TestNormaliseFrontmatterValue_FallsBackOnError(t *testing.T) {
-	out := normaliseFrontmatterValue("unknown-shortcut")
+func TestNormalizeFrontmatterValue_FallsBackOnError(t *testing.T) {
+	out := normalizeFrontmatterValue("unknown-shortcut")
 	assert.Equal(t, "unknown-shortcut", out)
 }
 
