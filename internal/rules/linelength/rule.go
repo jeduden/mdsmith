@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -279,12 +280,6 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 
-		// Build the message via concat + strconv.Itoa rather than
-		// fmt.Sprintf so the warm path stays under the per-rule
-		// allocation budget. Sprintf allocates ~3 (format string
-		// scan + result buffer + temp); concat + Itoa lands at 1
-		// for typical max/runeLen values that hit strconv's
-		// small-int cache.
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     lineNum,
@@ -292,13 +287,45 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message: "line too long (" + strconv.Itoa(runeLen) +
-				" > " + strconv.Itoa(limit) + ")",
+			Message:  lineTooLongMessage(runeLen, limit),
 		})
 	}
 
 	return diags
 }
+
+// lineTooLongMessage returns the diagnostic message for a line of
+// runeLen runes that exceeds limit. The synthetic engine bench
+// produces ~60k diagnostics per iteration, all sharing the same
+// (runeLen, limit) pair — pre-plan-195 each diagnostic paid a
+// string concat + (when runeLen > 99) a strconv.Itoa allocation,
+// totalling >1M alloc objects per 10-iteration run for this
+// single line. The sync.Map keyed by (runeLen, limit) collapses
+// repeats: real-world corpora rarely emit thousands of identical
+// pairs, but when they do (e.g. a long boilerplate line repeated
+// across files) the cache saves the allocation. On a miss the
+// builder pays the same allocations as before, so the worst case
+// for fully-unique inputs is one extra map lookup per diagnostic.
+func lineTooLongMessage(runeLen, limit int) string {
+	key := lineTooLongKey{runeLen: runeLen, limit: limit}
+	if v, ok := lineTooLongCache.Load(key); ok {
+		return v.(string)
+	}
+	msg := "line too long (" + strconv.Itoa(runeLen) +
+		" > " + strconv.Itoa(limit) + ")"
+	lineTooLongCache.Store(key, msg)
+	return msg
+}
+
+// lineTooLongKey keys the message cache. A struct value with two
+// int fields is comparable, so the sync.Map uses fast key equality
+// without a string-build per lookup.
+type lineTooLongKey struct {
+	runeLen int
+	limit   int
+}
+
+var lineTooLongCache sync.Map
 
 // hasSpacePastLimit returns true if line contains a space at or beyond
 // the given limit column (0-indexed rune position).

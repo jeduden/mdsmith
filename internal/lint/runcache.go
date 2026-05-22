@@ -18,6 +18,7 @@ import "sync"
 type RunCache struct {
 	frontMatter sync.Map // string (absPath) -> *runCacheEntry
 	includes    sync.Map // string (absPath) -> *runCacheEntry
+	anchors     sync.Map // string (absPath) -> *runCacheEntry
 }
 
 // runCacheEntry guards a single cache slot so build runs exactly once
@@ -53,12 +54,54 @@ func (c *RunCache) Includes(absPath string, build func() []string) []string {
 	return v.([]string)
 }
 
-// Invalidate drops the front-matter and include entries for absPath.
-// The LSP calls this from didChange / didSave / didChangeWatchedFiles
-// so the next Check that crosses absPath re-reads from disk.
+// Anchors returns the cached anchor set for absPath, computing it
+// at most once via build. The build callback returns an error
+// alongside the anchor set; on error, nothing is cached and the
+// next call retries (matches the per-Check anchorCache map's
+// previous behaviour, where a read failure produced a diagnostic
+// on the host file but did not poison the cache for siblings).
+//
+// Callers reach this slot via the cross-file-reference rule's
+// per-target lookup; on link-heavy corpora it collapses the
+// per-host-file goldmark parse + AST walk to one walk per (Run,
+// target).
+func (c *RunCache) Anchors(absPath string, build func() (map[string]bool, error)) (map[string]bool, error) {
+	ei, _ := c.anchors.LoadOrStore(absPath, &anchorEntry{})
+	e := ei.(*anchorEntry)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.done {
+		return e.anchors, nil
+	}
+	anchors, err := build()
+	if err != nil {
+		// Do not flip the done flag on a read error — the next
+		// caller retries. A successful build is recorded once.
+		return nil, err
+	}
+	e.anchors = anchors
+	e.done = true
+	return anchors, nil
+}
+
+// anchorEntry guards a single absPath's anchor slot. The mutex
+// serialises concurrent peekers; once.Do was not enough because
+// the build path returns an error and a successful build must
+// be cacheable while a failed one stays retryable.
+type anchorEntry struct {
+	mu      sync.Mutex
+	done    bool
+	anchors map[string]bool
+}
+
+// Invalidate drops the front-matter, include, and anchor entries
+// for absPath. The LSP calls this from didChange / didSave /
+// didChangeWatchedFiles so the next Check that crosses absPath
+// re-reads from disk.
 func (c *RunCache) Invalidate(absPath string) {
 	c.frontMatter.Delete(absPath)
 	c.includes.Delete(absPath)
+	c.anchors.Delete(absPath)
 }
 
 // load is the shared LoadOrStore + sync.Once primitive for both maps.

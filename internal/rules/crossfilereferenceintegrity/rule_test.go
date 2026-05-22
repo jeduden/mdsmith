@@ -620,7 +620,7 @@ func TestAnchorsForFile_CacheHit(t *testing.T) {
 		},
 	}
 
-	result, err := anchorsForFile(tf, cache)
+	result, err := anchorsForFile(nil, tf, cache)
 	require.NoError(t, err)
 	require.True(t, result["intro"], "cache hit must return the pre-populated anchors")
 }
@@ -636,7 +636,7 @@ func TestAnchorsForFile_ReadError(t *testing.T) {
 		},
 	}
 
-	_, err := anchorsForFile(tf, cache)
+	_, err := anchorsForFile(nil, tf, cache)
 	require.Error(t, err)
 	require.Equal(t, readErr, err)
 }

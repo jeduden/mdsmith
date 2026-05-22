@@ -167,7 +167,7 @@ func (r *Rule) checkRelativeTarget(
 		return nil
 	}
 
-	targetAnchors, err := anchorsForFile(targetFile, anchorCache)
+	targetAnchors, err := anchorsForFile(f, targetFile, anchorCache)
 	if err != nil {
 		return []lint.Diagnostic{unreadableTargetDiag(f.Path, line, col, r, target.Raw, err)}
 	}
@@ -359,22 +359,67 @@ type targetFile struct {
 	read     func() ([]byte, error)
 }
 
-func anchorsForFile(target targetFile, cache map[string]map[string]bool) (map[string]bool, error) {
+func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[string]bool) (map[string]bool, error) {
 	if anchors, ok := cache[target.cacheKey]; ok {
 		return anchors, nil
 	}
 
+	// Engine-shared cache: the target file's anchor set is a function
+	// of the file's bytes alone, so memoizing on the engine.Runner's
+	// RunCache collapses the per-host-file walk to one walk per
+	// (Run, target). On link-heavy real corpora (e.g. plan files all
+	// linking to PLAN.md) this collapses N parses to one.
+	//
+	// Read errors stay outside the cache: the cache stores `nil` for
+	// "build returned no anchors" and the read is retried on the next
+	// host file. That matches the previous per-Check cache's
+	// semantics, where an unreadable target produced a diagnostic on
+	// the host but did not poison the cache for siblings.
+	var anchors map[string]bool
+	var err error
+	if host != nil && host.RunCache != nil {
+		// The build closure escapes to heap (the RunCache stores it
+		// behind a sync.Mutex slot), but it captures only `target`
+		// (a small value) — buildAnchorsForTarget receives it by
+		// value, so no err pointer leaks into the closure box.
+		builder := anchorBuilder{target: target}
+		anchors, err = host.RunCache.Anchors(target.cacheKey, builder.build)
+	} else {
+		anchors, err = buildAnchorsForTarget(target)
+	}
+	if err != nil {
+		return nil, err
+	}
+	cache[target.cacheKey] = anchors
+	return anchors, nil
+}
+
+// anchorBuilder pairs a targetFile with a method-value `build` so
+// RunCache.Anchors receives a function that does not capture an
+// `err` variable in a closure box. Method values on a small value
+// receiver are stack-allocatable when the receiver lifetime is
+// known; the call site (anchorsForFile) keeps the receiver on the
+// stack for the duration of the RunCache call.
+type anchorBuilder struct {
+	target targetFile
+}
+
+func (b anchorBuilder) build() (map[string]bool, error) {
+	return buildAnchorsForTarget(b.target)
+}
+
+// buildAnchorsForTarget reads the target file's bytes, parses it,
+// and collects the heading anchor set. Extracted so anchorsForFile
+// can call it without going through the build closure that would
+// otherwise capture `err` and escape to the heap.
+func buildAnchorsForTarget(target targetFile) (map[string]bool, error) {
 	data, err := target.read()
 	if err != nil {
 		return nil, err
 	}
-
 	// lint.NewFile never errors; goldmark always produces an AST.
 	file, _ := lint.NewFileFromSource(target.cacheKey, data, true) //nolint:errcheck
-
-	anchors := linkgraph.CollectAnchors(file)
-	cache[target.cacheKey] = anchors
-	return anchors, nil
+	return linkgraph.CollectAnchors(file), nil
 }
 
 func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile, bool) {
