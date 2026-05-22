@@ -1,6 +1,7 @@
 package mdtext
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -86,16 +87,35 @@ func CollectTOCItems(root ast.Node, source []byte) []TOCItem {
 	return items
 }
 
+// extractTextBufPool reuses bytes.Buffer backing across
+// ExtractPlainText calls. strings.Builder cannot be pooled because
+// its Reset() nils the backing slice (the unsafe.String trick in
+// String() ties the result string to the backing memory), so each
+// reset-then-write call has to allocate again. bytes.Buffer's
+// Reset() preserves the backing slice and zeroes its length, so
+// subsequent appends reuse the memory. We pay one alloc for the
+// resulting string (string(buf.Bytes()) makes the safe copy) and
+// nothing for the buffer itself after the first call into a goroutine.
+var extractTextBufPool = sync.Pool{
+	New: func() any {
+		b := &bytes.Buffer{}
+		b.Grow(128)
+		return b
+	},
+}
+
 // ExtractPlainText extracts readable text from a goldmark AST node,
 // stripping markdown syntax. Keeps: text content, link display text,
 // emphasis inner text, image alt text, code span text.
 func ExtractPlainText(node ast.Node, source []byte) string {
-	var buf strings.Builder
-	extractText(&buf, node, source)
+	buf := extractTextBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer extractTextBufPool.Put(buf)
+	extractText(buf, node, source)
 	return buf.String()
 }
 
-func extractText(buf *strings.Builder, node ast.Node, source []byte) {
+func extractText(buf *bytes.Buffer, node ast.Node, source []byte) {
 	// For text nodes, write the content.
 	if t, ok := node.(*ast.Text); ok {
 		buf.Write(t.Segment.Value(source))

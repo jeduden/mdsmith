@@ -127,6 +127,11 @@ func checkRulesWithIntraFile(
 func classifyRules(
 	rules []rule.Rule, effective map[string]config.RuleCfg,
 ) (slots []*ruleSlot, nodeCheckers []*ruleSlot, errs []error) {
+	// Pre-size at the registered-rule count. In production all but a
+	// handful of rules are enabled by default, so this allocates one
+	// backing slice per slot kind instead of geometrically growing
+	// from cap-0 through six doublings as the loop enables rules.
+	slots = make([]*ruleSlot, 0, len(rules))
 	for _, rl := range rules {
 		cfg, ok := effective[rl.Name()]
 		if !ok || !cfg.Enabled {
@@ -140,6 +145,9 @@ func classifyRules(
 		if nc, ok := checkRule.(rule.NodeChecker); ok {
 			s := &ruleSlot{nc: nc}
 			slots = append(slots, s)
+			if nodeCheckers == nil {
+				nodeCheckers = make([]*ruleSlot, 0, len(rules)/2)
+			}
 			nodeCheckers = append(nodeCheckers, s)
 			continue
 		}
