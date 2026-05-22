@@ -164,7 +164,11 @@ type WikilinkIndex struct {
 
 // NewWikilinkIndex walks root once and returns a lookup table that
 // future ResolveWikiLink-style queries can serve from memory.
-// Returns nil when root is nil.
+// Returns nil when root is nil or the workspace walk itself fails
+// (e.g. Open(".") on root returns an error). A nil return lets the
+// caller fall back to per-call walks via ResolveWikiLink rather
+// than serving an empty index that would silently report every
+// target as "not found".
 func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 	if root == nil {
 		return nil
@@ -173,8 +177,20 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 		stems: map[string][]string{},
 		names: map[string][]string{},
 	}
-	_ = fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	if err := fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Root-level read failures (e.g. ReadDir(".") returns an
+			// error) mean the index would otherwise be silently empty.
+			// Propagate so NewWikilinkIndex can return nil and the
+			// resolver falls back to per-call walks. Sub-tree failures
+			// stay local — one rejected directory should not poison
+			// resolution against unrelated sibling subtrees.
+			if p == "." {
+				return err
+			}
+			return nil
+		}
+		if d.IsDir() {
 			return nil
 		}
 		base := path.Base(p)
@@ -186,7 +202,9 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 			idx.stems[lcStem] = append(idx.stems[lcStem], p)
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil
+	}
 	for k, v := range idx.stems {
 		sortByDepthThenName(v)
 		idx.stems[k] = v

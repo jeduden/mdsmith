@@ -302,23 +302,30 @@ func wikilinkAnchorsForTarget(
 }
 
 // workspaceRelativeSource returns f.Path expressed relative to its
-// project root, using forward slashes. When the path cannot be made
-// relative (e.g. a struct-literal test File without RootDir) it
-// returns the original path with separators normalised.
+// project root, using forward slashes. The LSP and the CLI hand the
+// rule different shapes of f.Path — the CLI walks files by their
+// absolute path, the LSP threads the workspace-relative form — so
+// the helper has to anchor a relative f.Path to RootDir before
+// re-relativising, or filepath.Abs would land it under the process
+// cwd instead.
 //
-// filepath.Abs only errors when os.Getwd() fails; filepath.Rel only
-// errors when the two paths cannot share a base (cross-volume on
-// Windows, otherwise impossible here because both arguments are
-// made absolute first). Real workspaces under one RootDir do not
-// hit either branch; the discarded errors degrade gracefully to a
-// best-effort path on the rare cases that do.
+// When the path cannot be made relative (a struct-literal test
+// File without RootDir, or a cross-volume pair on Windows) it
+// returns the original path with separators normalised.
 func workspaceRelativeSource(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)
 	}
-	abs, _ := filepath.Abs(f.Path)        //nolint:errcheck
+	sourcePath := f.Path
+	if !filepath.IsAbs(sourcePath) {
+		sourcePath = filepath.Join(f.RootDir, sourcePath)
+	}
+	abs, _ := filepath.Abs(sourcePath)    //nolint:errcheck
 	absRoot, _ := filepath.Abs(f.RootDir) //nolint:errcheck
-	rel, _ := filepath.Rel(absRoot, abs)  //nolint:errcheck
+	rel, err := filepath.Rel(absRoot, abs)
+	if err != nil {
+		return filepath.ToSlash(f.Path)
+	}
 	return filepath.ToSlash(rel)
 }
 

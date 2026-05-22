@@ -576,6 +576,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		return
 	}
 	configChanged := false
+	treeChanged := false
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {
 		path := uriToPath(c.URI)
@@ -591,6 +592,13 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		// the index.
 		if isMarkdownExt(path) {
 			mdChanges = append(mdChanges, path)
+			// Per LSP spec: 1=Created, 2=Changed, 3=Deleted. A
+			// rename is reported as a Deleted+Created pair. The
+			// workspace-wide wikilink index keys off the file set,
+			// so any create or delete invalidates it.
+			if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
+				treeChanged = true
+			}
 		}
 	}
 	if configChanged {
@@ -602,6 +610,14 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			s.scheduleLint(uri, lintTriggerConfig)
 		}
 		return
+	}
+	if treeChanged && s.runCache != nil {
+		// File create / delete / rename changes the candidate set
+		// the WikilinkIndex keys off, so the next Check must rebuild
+		// the index from scratch — otherwise MDS027 would resolve
+		// `[[NewPage]]` against the pre-create set and report it
+		// missing (or keep resolving `[[OldName]]` after a delete).
+		s.runCache.InvalidateWikilinks()
 	}
 	openPaths := s.openDocPaths()
 	for _, path := range mdChanges {

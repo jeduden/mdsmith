@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,6 +39,48 @@ func TestExtractWikiLinks_NilASTReturnsNilNoPanic(t *testing.T) {
 func TestNewWikilinkIndex_NilRoot(t *testing.T) {
 	assert.Nil(t, NewWikilinkIndex(nil))
 }
+
+func TestNewWikilinkIndex_RootWalkErrorReturnsNil(t *testing.T) {
+	// When fs.WalkDir cannot read the root (e.g. ReadDir(".")
+	// fails), NewWikilinkIndex returns nil so the resolver can
+	// fall back to per-call walks instead of an empty index that
+	// would silently report every target as "not found".
+	root := &rootFailFS{}
+	assert.Nil(t, NewWikilinkIndex(root))
+}
+
+// rootFailFS rejects the root ReadDir but accepts every other
+// call. fs.WalkDir starts with Stat(".") which goes through
+// Open(".") on the fallback path, then calls ReadDirFile on the
+// returned file. Returning a Stat-only file forces WalkDir to
+// fall back to ReadDir(".") on the fsys, which we reject.
+type rootFailFS struct{}
+
+func (rootFailFS) Open(name string) (fs.File, error) {
+	if name == "." {
+		return &rootStubDir{}, nil
+	}
+	return nil, fs.ErrNotExist
+}
+
+func (rootFailFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return nil, fs.ErrPermission
+}
+
+type rootStubDir struct{}
+
+func (rootStubDir) Stat() (fs.FileInfo, error) { return rootStubInfo{}, nil }
+func (rootStubDir) Read([]byte) (int, error)   { return 0, fs.ErrInvalid }
+func (rootStubDir) Close() error               { return nil }
+
+type rootStubInfo struct{}
+
+func (rootStubInfo) Name() string       { return "." }
+func (rootStubInfo) Size() int64        { return 0 }
+func (rootStubInfo) Mode() fs.FileMode  { return fs.ModeDir }
+func (rootStubInfo) ModTime() time.Time { return time.Time{} }
+func (rootStubInfo) IsDir() bool        { return true }
+func (rootStubInfo) Sys() any           { return nil }
 
 func TestWikilinkIndex_ResolveSemantics(t *testing.T) {
 	// One index should serve every shape ResolveWikiLink supports:

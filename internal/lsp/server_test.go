@@ -2433,6 +2433,60 @@ func TestHandleDidChangeWatchedFilesInvalidJSON(t *testing.T) {
 	s.handleDidChangeWatchedFiles(context.Background(), json.RawMessage("oops"))
 }
 
+func TestHandleDidChangeWatchedFiles_InvalidatesWikilinkIndex(t *testing.T) {
+	t.Parallel()
+	// A markdown file create/delete reported via the workspace
+	// watcher must clear the wikilink index — otherwise the next
+	// MDS027 Check would resolve `[[NewPage]]` against the
+	// pre-create candidate set and emit a false-positive
+	// not-found diagnostic.
+	cases := []struct {
+		name       string
+		changeType int
+		want       bool
+	}{
+		{"create invalidates", fileChangeCreated, true},
+		{"delete invalidates", fileChangeDeleted, true},
+		{"changed does not invalidate", fileChangeChanged, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+			rc := lint.NewRunCache()
+			s.runCache = rc
+			// Seed the cache so we can detect whether the handler
+			// cleared it.
+			var built int
+			rc.Wikilinks("/root", func() any {
+				built++
+				return "v1"
+			})
+			require.Equal(t, 1, built)
+
+			body, err := json.Marshal(didChangeWatchedFilesParams{
+				Changes: []fileEvent{
+					{URI: "file:///tmp/new.md", Type: tc.changeType},
+				},
+			})
+			require.NoError(t, err)
+			s.handleDidChangeWatchedFiles(context.Background(), body)
+
+			rc.Wikilinks("/root", func() any {
+				built++
+				return "v2"
+			})
+			if tc.want {
+				assert.Equal(t, 2, built,
+					"wikilink cache must rebuild after %s", tc.name)
+			} else {
+				assert.Equal(t, 1, built,
+					"%s must not invalidate the wikilink cache", tc.name)
+			}
+		})
+	}
+}
+
 func TestDocumentStoreGetMissing(t *testing.T) {
 	t.Parallel()
 	s := newDocumentStore()

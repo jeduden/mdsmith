@@ -1444,6 +1444,34 @@ func TestWorkspaceRelativeSource_NoRootDir(t *testing.T) {
 	assert.Equal(t, "/abs/path/doc.md", got)
 }
 
+func TestWorkspaceRelativeSource_RelativePathAnchoredToRoot(t *testing.T) {
+	// The LSP passes workspace-relative f.Path values (e.g.
+	// "docs/notes.md"). Without explicit anchoring, filepath.Abs
+	// would join against the process cwd — producing a path
+	// outside RootDir that filepath.Rel would either reject or
+	// turn into "../../<cwd>/docs/notes.md". The helper anchors
+	// to RootDir first so the returned value is always the
+	// expected workspace-relative form.
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	f := &lint.File{Path: "docs/notes.md", RootDir: dir}
+	got := workspaceRelativeSource(f)
+	assert.Equal(t, "docs/notes.md", got)
+}
+
+func TestWorkspaceRelativeSource_AbsolutePathUnderRoot(t *testing.T) {
+	// CLI callers pass absolute paths. Those must collapse to
+	// the workspace-relative form too.
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	f := &lint.File{
+		Path:    filepath.Join(dir, "docs", "notes.md"),
+		RootDir: dir,
+	}
+	got := workspaceRelativeSource(f)
+	assert.Equal(t, "docs/notes.md", got)
+}
+
 func TestCheck_Wikilinks_ResolutionCachedPerTarget(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "page.md"), []byte("# P\n"), 0o644))
