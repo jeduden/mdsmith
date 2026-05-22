@@ -22,6 +22,7 @@ var equivalenceCases = []struct {
 	name string
 	src  string
 }{
+	// Happy paths.
 	{"bare", "[foo]: /url\n\n[foo]\n"},
 	{"titled-double", "[a]: /u \"title\"\n\n[a]\n"},
 	{"titled-single", "[a]: /u 'title'\n\n[a]\n"},
@@ -31,6 +32,25 @@ var equivalenceCases = []struct {
 	{"indented-3", "   [a]: /url\n\n[a]\n"},
 	{"no-def", "just prose, no link references at all.\n"},
 	{"def-then-text", "[a]: /url\nlonger paragraph below\n\n[a]\n"},
+	{"label-multiline", "[lo\nng]: /url\n\n[lo ng]\n"},
+	{"title-on-next-line", "[a]: /url\n  \"the title\"\n\n[a]\n"},
+	{"title-multiline", "[a]: /url \"line one\nline two\"\n\n[a]\n"},
+	{"dest-parens-balanced", "[a]: foo(x)bar\n\n[a]\n"},
+	{"dest-escape", "[a]: foo\\)bar\n\n[a]\n"},
+	{"angle-escape", "[a]: <foo\\>bar>\n\n[a]\n"},
+	// Negative paths — these should NOT produce a reference.
+	// Equivalence with upstream is the only thing the test enforces.
+	{"indent-4", "    [a]: /url\n\n[a]\n"},
+	{"no-opener", "a]: /url\n\nstuff\n"},
+	{"unclosed-label", "[unclosed: /url\nmore\n"},
+	{"blank-label", "[]: /url\n\nstuff\n"},
+	{"no-colon", "[label] /url\n\nstuff\n"},
+	{"no-dest", "[label]:\n\nstuff\n"},
+	{"trailing-on-line", "[a]: /url extra\n\n[a]\n"},
+	{"title-glued", "[a]: /url\"title\"\n\n[a]\n"},
+	{"unclosed-title", "[a]: /url \"unclosed\nstuff\n"},
+	{"trailing-after-title", "[a]: /url \"title\" trailing\n\n[a]\n"},
+	{"unclosed-angle", "[a]: <foo\nstuff\n"},
 }
 
 func TestTransformer_EquivalentToUpstream(t *testing.T) {
@@ -73,6 +93,24 @@ func TestTransformer_Reset(t *testing.T) {
 	root := p.Parse(text.NewReader([]byte("[b]: /other\n\n[b]\n")), parser.WithContext(parser.NewContext()))
 	if root == nil {
 		t.Fatal("post-Reset Parse returned nil")
+	}
+}
+
+func TestReference_String(t *testing.T) {
+	// The astReference.String() method is reachable via the
+	// parser.Reference interface stored on the parse context.
+	src := []byte("[label]: /url \"the title\"\n\n[label]\n")
+	p := newForkParser()
+	ctx := parser.NewContext()
+	p.Parse(text.NewReader(src), parser.WithContext(ctx))
+	ref, ok := ctx.Reference("label")
+	if !ok {
+		t.Fatal("reference not found")
+	}
+	got := ref.String()
+	want := `Reference{Label:label, Destination:/url, Title:the title}`
+	if got != want {
+		t.Errorf("ref.String() = %q, want %q", got, want)
 	}
 }
 
