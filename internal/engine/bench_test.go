@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -33,20 +34,44 @@ const checkCorpusLines = 150
 //     accidental O(n^2) over the workspace, a per-file rescan)
 //     barely moves Small but blows Large past its budget.
 //
-// Budgets are generous (~15-20x the local baseline) so shared CI
-// jitter does not flake them; they trip on order-of-magnitude
-// regressions, not micro-noise. p95 and per-file cost are reported
-// as metrics so trends stay visible in the job log.
+// Each tier carries TWO hard budgets, both enforced as
+// `b.Fatalf` on every run:
 //
-// Local baseline (4-core dev box, 2026-05, after the plan-175
-// LineOfOffset line-index and MDS024 tokenizer-skip fixes):
-// Small p95 ~0.09 s, Large p95 ~0.8 s.
+//   - p95 wall time, sized at ~3-5x the local baseline so CI
+//     jitter does not flake but a real perf regression does.
+//   - Median allocs/op, sized at ~15-20% headroom over the
+//     current measured count. Allocations are CPU-independent,
+//     so a tight alloc gate catches algorithmic regressions
+//     (extra parse-per-file, lost memoization) the wall-time
+//     budget would have to budge for.
+//
+// Both numbers report as metrics (`p95_ms`, `allocs_per_op`,
+// `us_per_file`) so trends stay visible in the job log.
+//
+// Local baseline (4-core dev box, 2026-05-22, after the plan-195
+// per-rule alloc fixes and the engine-bench perf chunk):
+// Small p95 ~33 ms / ~75 k allocs/op,
+// Large p95 ~251 ms / ~737 k allocs/op.
 func BenchmarkCheckCorpusSmall(b *testing.B) {
-	benchCheck(b, 60, checkCorpusLines, 2*time.Second)
+	benchCheck(b, 60, checkCorpusLines, checkBudget{
+		Time:   250 * time.Millisecond,
+		Allocs: 90_000,
+	})
 }
 
 func BenchmarkCheckCorpusLarge(b *testing.B) {
-	benchCheck(b, 600, checkCorpusLines, 12*time.Second)
+	benchCheck(b, 600, checkCorpusLines, checkBudget{
+		Time:   2 * time.Second,
+		Allocs: 850_000,
+	})
+}
+
+// checkBudget pairs the two hard gates BenchmarkCheckCorpus* enforce:
+// p95 wall time and median allocs/op. Bundled so a future tier
+// addition cannot forget either limit.
+type checkBudget struct {
+	Time   time.Duration
+	Allocs uint64
 }
 
 // BenchmarkCheckCorpusFewFiles exercises the small-file-count path
@@ -57,7 +82,10 @@ func BenchmarkCheckCorpusLarge(b *testing.B) {
 // of Small, no scaling beyond that). Not part of the standing
 // budget gate.
 func BenchmarkCheckCorpusFewFiles(b *testing.B) {
-	benchCheck(b, 5, checkCorpusLines, 1*time.Second)
+	benchCheck(b, 5, checkCorpusLines, checkBudget{
+		Time:   1 * time.Second,
+		Allocs: 10_000,
+	})
 }
 
 // BenchmarkCheckCorpusFewFilesNoIntraFile is the control variant for
@@ -118,7 +146,7 @@ func benchCheckCapped(b *testing.B, files, lines int, budget time.Duration, intr
 	}
 }
 
-func benchCheck(b *testing.B, files, lines int, budget time.Duration) {
+func benchCheck(b *testing.B, files, lines int, budget checkBudget) {
 	b.Helper()
 	if testing.Short() {
 		b.Skip("benchmark skipped in -short mode")
@@ -152,11 +180,16 @@ func benchCheck(b *testing.B, files, lines int, budget time.Duration) {
 	_ = newRunner().Run(paths)
 
 	samples := make([]time.Duration, 0, b.N)
+	allocSamples := make([]uint64, 0, b.N)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		var ms1, ms2 runtime.MemStats
+		runtime.ReadMemStats(&ms1)
 		start := time.Now()
 		_ = newRunner().Run(paths)
 		samples = append(samples, time.Since(start))
+		runtime.ReadMemStats(&ms2)
+		allocSamples = append(allocSamples, ms2.Mallocs-ms1.Mallocs)
 	}
 	b.StopTimer()
 
@@ -164,15 +197,37 @@ func benchCheck(b *testing.B, files, lines int, budget time.Duration) {
 		b.Skip("no samples — benchmark needs more iterations")
 	}
 	p95 := percentileDur(samples, 0.95)
+	medianAllocs := percentileUint64(allocSamples, 0.5)
 	b.ReportMetric(float64(p95.Milliseconds()), "p95_ms")
 	b.ReportMetric(float64(p95.Microseconds())/float64(files), "us_per_file")
-	if p95 > budget {
-		b.Fatalf("check p95 %v exceeds budget %v for %d-file corpus", p95, budget, files)
+	b.ReportMetric(float64(medianAllocs), "allocs_per_op")
+	if p95 > budget.Time {
+		b.Fatalf("check p95 %v exceeds time budget %v for %d-file corpus",
+			p95, budget.Time, files)
+	}
+	if medianAllocs > budget.Allocs {
+		b.Fatalf("check median allocs %d exceeds alloc budget %d for "+
+			"%d-file corpus — algorithmic regression suspected (lost "+
+			"memoization, extra parse per file, missing early-exit)",
+			medianAllocs, budget.Allocs, files)
 	}
 }
 
 func percentileDur(samples []time.Duration, q float64) time.Duration {
 	cp := append([]time.Duration(nil), samples...)
+	sort.Slice(cp, func(i, j int) bool { return cp[i] < cp[j] })
+	idx := int(float64(len(cp)-1) * q)
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(cp) {
+		idx = len(cp) - 1
+	}
+	return cp[idx]
+}
+
+func percentileUint64(samples []uint64, q float64) uint64 {
+	cp := append([]uint64(nil), samples...)
 	sort.Slice(cp, func(i, j int) bool { return cp[i] < cp[j] })
 	idx := int(float64(len(cp)-1) * q)
 	if idx < 0 {
