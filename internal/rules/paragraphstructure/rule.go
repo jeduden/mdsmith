@@ -73,9 +73,13 @@ func (r *Rule) EnabledByDefault() bool { return false }
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	// Iterate the per-File memoized non-table paragraph collection so
-	// the AST walk and per-paragraph ExtractPlainText are shared with
-	// the other prose rules instead of re-run here (the two hot
-	// default rules on prose-heavy input).
+	// the AST walk is shared with the other paragraph-walking rules
+	// (MDS023 paragraph-readability, MDS057 required-text-patterns,
+	// MDS058 required-mentions) instead of being re-run here. Plan 196
+	// made the per-paragraph text lazy, so the walk no longer carries
+	// the ExtractPlainText cost; MDS024 still materialises the text
+	// per paragraph via ExtractText because every paragraph reaches
+	// the segmenter.
 	for _, p := range astutil.CollectSectionParagraphs(f) {
 		diags = append(diags, r.checkParagraph(p.ExtractText(f.Source), p.Line, f.Path)...)
 	}

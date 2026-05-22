@@ -56,10 +56,11 @@ func TestCountWordsInNode_EquivalentToCountWordsExtractPlainText(t *testing.T) {
 	}
 }
 
-// readFixtureFile reads the markdown body, stripping any YAML front
-// matter the fixture format carries (bad.md fixtures encode the
-// expected diagnostics in front matter; the body below the closing
-// `---` is the actual prose under test).
+// readFixtureFile reads the fixture verbatim, including any YAML
+// front matter (bad.md fixtures encode expected diagnostics in front
+// matter). The equivalence harness walks the parsed AST and compares
+// per-paragraph counts; front matter parses into the same AST shape
+// for both chains, so leaving it in does not skew the comparison.
 func readFixtureFile(t *testing.T, path string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -67,11 +68,12 @@ func readFixtureFile(t *testing.T, path string) []byte {
 	return data
 }
 
-// collectParagraphNodes returns every paragraph node in the document,
-// in source order — the same set the rule's CollectSectionParagraphs
-// walk would yield (table-paragraphs are simply included here since
-// the harness measures CountWordsInNode equivalence, not the table
-// filter MDS023 inherits from astutil).
+// collectParagraphNodes returns every paragraph node in the document
+// in source order. Unlike astutil.CollectSectionParagraphs, this walk
+// does NOT apply the table-paragraph filter — the harness measures
+// CountWordsInNode equivalence per paragraph, so widening the input
+// to include the (rare) table-shaped paragraphs strengthens the
+// gate without changing what is being tested.
 func collectParagraphNodes(root ast.Node) []*ast.Paragraph {
 	var out []*ast.Paragraph
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
