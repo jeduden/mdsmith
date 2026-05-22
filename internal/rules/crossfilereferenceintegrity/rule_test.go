@@ -2,6 +2,7 @@ package crossfilereferenceintegrity
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1091,4 +1092,423 @@ func TestDefaultSettings_Links(t *testing.T) {
 	require.Equal(t, "", links["site-root"])
 	require.Equal(t, true, links["validate-images"])
 	require.Equal(t, true, links["validate-reference-style"])
+}
+
+func TestDefaultSettings_Wikilinks(t *testing.T) {
+	ds := (&Rule{}).DefaultSettings()
+	require.Equal(t, false, ds["wikilinks"])
+	require.Equal(t, "obsidian", ds["wikilink-style"])
+}
+
+func TestCheck_Wikilinks_DisabledByDefault(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Missing]].\n")
+
+	f := newLintFile(t, sourcePath)
+	diags := (&Rule{}).Check(f)
+	require.Empty(t, diags, "wikilinks must not be flagged when wikilinks=false")
+}
+
+func TestCheck_Wikilinks_UnresolvedTarget(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Missing Page]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "Missing Page")
+	require.Contains(t, diags[0].Message, "not found in workspace")
+}
+
+func TestCheck_Wikilinks_ResolvedTarget(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "present.md"), "# Present\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Present]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "wikilinks to existing files must not be flagged")
+}
+
+func TestCheck_Wikilinks_BrokenAnchor(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "notes.md"), "# Notes\n\n## Current Heading\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Notes#Old Heading]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "Old Heading")
+	require.Contains(t, diags[0].Message, "notes.md")
+}
+
+func TestCheck_Wikilinks_ResolvedAnchor(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "notes.md"), "# Notes\n\n## Existing\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Notes#Existing]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "matching wikilink anchors must not be flagged")
+}
+
+func TestCheck_Wikilinks_AliasIgnoredForResolution(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, filepath.Join(dir, "page.md"), "# Page\n")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Page|Alias]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "alias must not affect resolution of the target stem")
+}
+
+func TestCheck_Wikilinks_EmbedAnyFileType(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "image.png"), []byte("\x89PNG\r\n"), 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nLook ![[image.png]].\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "embed must resolve any extension")
+}
+
+func TestCheck_Wikilinks_PlaceholderAppliesToAnchor(t *testing.T) {
+	// wikilinkSuppressed builds "target#anchor" before testing the
+	// placeholder set, so a placeholder hit in the anchor must
+	// suppress the diagnostic the same way a hit in the target
+	// would. Covers the `wl.Anchor != ""` branch of the helper.
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Page#{topic}]] there.\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true, Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "placeholder anchor must suppress the diagnostic")
+}
+
+func TestCheck_Wikilinks_RunCacheSharedIndex(t *testing.T) {
+	// f.RunCache makes wikilinkIndexForRoot build a shared
+	// WikilinkIndex; the resolver then takes the index branch
+	// instead of per-call fs.WalkDir. Asserting "two Check calls
+	// on different host files emit the same diagnostic" exercises
+	// wikilinkIndexForRoot, wikilinkCacheKey, and the index path
+	// in the resolver.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "present.md"), []byte("# P\n"), 0o644))
+	docA := filepath.Join(dir, "a.md")
+	docB := filepath.Join(dir, "b.md")
+	writeFile(t, docA, "# A\n\n[[present]] [[missing]]\n")
+	writeFile(t, docB, "# B\n\n[[present]] [[missing]]\n")
+
+	cache := lint.NewRunCache()
+	r := &Rule{Wikilinks: true}
+
+	for _, p := range []string{docA, docB} {
+		f := newLintFileWithRoot(t, p, dir)
+		f.RunCache = cache
+		diags := r.Check(f)
+		require.Len(t, diags, 1, "missing wikilink must surface once per host file")
+		require.Contains(t, diags[0].Message, "missing")
+	}
+}
+
+func TestWikilinkIndexForRoot_EmptyKeyReturnsNil(t *testing.T) {
+	// A file with RootFS set but RootDir empty hits the
+	// wikilinkCacheKey == "" branch and short-circuits without
+	// touching the RunCache. The resolver then falls back to the
+	// per-Check walk.
+	dir := t.TempDir()
+	f := &lint.File{
+		RootFS:   os.DirFS(dir),
+		RunCache: lint.NewRunCache(),
+	}
+	got := wikilinkIndexForRoot(f, f.RootFS)
+	assert.Nil(t, got)
+}
+
+func TestWikilinkIndexForRoot_NilRunCacheReturnsNil(t *testing.T) {
+	dir := t.TempDir()
+	f := &lint.File{RootDir: dir, RootFS: os.DirFS(dir)}
+	assert.Nil(t, wikilinkIndexForRoot(f, f.RootFS),
+		"no RunCache → no per-run index")
+}
+
+func TestWikilinkIndexForRoot_NilRootReturnsNil(t *testing.T) {
+	f := &lint.File{RootDir: "/tmp/x", RunCache: lint.NewRunCache()}
+	assert.Nil(t, wikilinkIndexForRoot(f, nil),
+		"nil root → no per-run index")
+}
+
+func TestWikilinkCacheKey_FallbackOnUnknownDir(t *testing.T) {
+	// filepath.Abs only errors when os.Getwd fails — unreachable in
+	// the test harness — so this asserts the empty-RootDir branch
+	// and the happy path. The error fallback stays defensive code.
+	assert.Equal(t, "", wikilinkCacheKey(&lint.File{}))
+	dir := t.TempDir()
+	got := wikilinkCacheKey(&lint.File{RootDir: dir})
+	assert.NotEmpty(t, got, "RootDir must produce a non-empty cache key")
+}
+
+func TestCheck_Wikilinks_PlaceholderSuppresses(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[{topic}]] for context.\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{
+		Wikilinks:    true,
+		Placeholders: []string{"var-token"},
+	}
+	diags := r.Check(f)
+	require.Empty(t, diags, "placeholder targets must be skipped")
+}
+
+func TestCheck_Wikilinks_PlaceholderInAliasDoesNotSuppress(t *testing.T) {
+	// MDS027's placeholder filter applies to link destinations, not
+	// link text. A wikilink whose alias contains a placeholder must
+	// still resolve the underlying target — a missing target stays
+	// a diagnostic. Mirrors the standard-link behaviour where only
+	// the URL half is checked for placeholder tokens.
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[MissingPage|{topic}]] alias.\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{
+		Wikilinks:    true,
+		Placeholders: []string{"var-token"},
+	}
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "alias-only placeholder must not mask a missing target")
+	require.Contains(t, diags[0].Message, "MissingPage")
+}
+
+func TestCheck_Wikilinks_CodeBlockSkipped(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n```\n[[Missing]]\n```\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags, "wikilinks inside fenced code must not be flagged")
+}
+
+func TestApplySettings_Wikilinks(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"wikilinks": true}))
+	require.True(t, r.Wikilinks)
+
+	err := r.ApplySettings(map[string]any{"wikilinks": "yes"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "wikilinks must be a bool")
+}
+
+func TestApplySettings_WikilinkStyle(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{"wikilink-style": "obsidian"}))
+	require.Equal(t, "obsidian", r.WikilinkStyle)
+
+	err := r.ApplySettings(map[string]any{"wikilink-style": "foam"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not supported")
+
+	// Non-string types are rejected before the value check runs;
+	// reaching the "must be a string" branch keeps the error
+	// taxonomy honest.
+	err = r.ApplySettings(map[string]any{"wikilink-style": 123})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be a string")
+}
+
+func newLintFileWithRoot(t *testing.T, path, root string) *lint.File {
+	t.Helper()
+	f := newLintFile(t, path)
+	f.RootDir = root
+	f.RootFS = os.DirFS(root)
+	return f
+}
+
+func TestWikilinkRaw_Variants(t *testing.T) {
+	cases := map[string]struct {
+		wl   linkgraph.WikiLink
+		want string
+	}{
+		"bare":         {linkgraph.WikiLink{Target: "Page"}, "[[Page]]"},
+		"anchor":       {linkgraph.WikiLink{Target: "Page", Anchor: "Sec"}, "[[Page#Sec]]"},
+		"alias":        {linkgraph.WikiLink{Target: "Page", Alias: "X"}, "[[Page|X]]"},
+		"embed":        {linkgraph.WikiLink{Target: "img.png", Embed: true}, "![[img.png]]"},
+		"anchor+alias": {linkgraph.WikiLink{Target: "Page", Anchor: "S", Alias: "X"}, "[[Page#S|X]]"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, wikilinkRaw(tc.wl))
+		})
+	}
+}
+
+func TestEffectiveWikilinkStyle(t *testing.T) {
+	assert.Equal(t, "obsidian", (&Rule{}).effectiveWikilinkStyle())
+	assert.Equal(t, "obsidian", (&Rule{WikilinkStyle: "obsidian"}).effectiveWikilinkStyle())
+	// Set non-default via direct field write — ApplySettings rejects
+	// unknown values, but the helper must still mirror whatever is
+	// configured.
+	assert.Equal(t, "custom", (&Rule{WikilinkStyle: "custom"}).effectiveWikilinkStyle())
+}
+
+func TestWikilinkRoot_Fallbacks(t *testing.T) {
+	dir := t.TempDir()
+	f := &lint.File{}
+	assert.Nil(t, wikilinkRoot(f))
+
+	f.RootDir = dir
+	require.NotNil(t, wikilinkRoot(f))
+
+	mfs := os.DirFS(dir)
+	f.RootFS = mfs
+	assert.Equal(t, fs.FS(mfs), wikilinkRoot(f))
+
+	f.RootFS = nil
+	f.RootDir = ""
+	f.FS = mfs
+	assert.Equal(t, fs.FS(mfs), wikilinkRoot(f))
+}
+
+func TestCheck_Wikilinks_RootMissing(t *testing.T) {
+	// f.FS is nil → the rule short-circuits before calling
+	// checkWikilinks; verify the top-level Check has the early return.
+	f := &lint.File{Source: []byte("[[X]]\n")}
+	diags := (&Rule{Wikilinks: true}).Check(f)
+	assert.Nil(t, diags)
+}
+
+func TestResolver_UnknownStyleNoop(t *testing.T) {
+	// A Rule constructed with an unknown style bypasses ApplySettings'
+	// validation. The resolver must treat it as "no resolution" rather
+	// than silently falling back to the Obsidian algorithm.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "page.md"), []byte{}, 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n[[page]]\n")
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true, WikilinkStyle: "foam-not-supported"}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "not found in workspace")
+}
+
+func TestCheck_Wikilinks_UnreadableTarget(t *testing.T) {
+	// MaxInputBytes set to a value below the target file's size makes
+	// the anchor read fail; the rule must surface an unreadable-target
+	// diagnostic rather than crash.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.md"),
+		[]byte("# Notes\n\n## A\n## B\n## C\n"), 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n[[Notes#A]]\n")
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	f.MaxInputBytes = 5
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "cannot read wikilink target")
+}
+
+func TestWikilinkAnchorsForTarget_CacheHit(t *testing.T) {
+	cache := map[string]map[string]bool{
+		"wikilink:notes.md": {"x": true},
+	}
+	f := &lint.File{}
+	got, err := wikilinkAnchorsForTarget(f, nil, "notes.md", cache)
+	require.NoError(t, err)
+	assert.True(t, got["x"])
+}
+
+func TestWorkspaceRelativeSource_NoRootDir(t *testing.T) {
+	f := &lint.File{Path: "/abs/path/doc.md"}
+	got := workspaceRelativeSource(f)
+	assert.Equal(t, "/abs/path/doc.md", got)
+}
+
+func TestWorkspaceRelativeSource_RelativePathAnchoredToRoot(t *testing.T) {
+	// The LSP passes workspace-relative f.Path values (e.g.
+	// "docs/notes.md"). Without explicit anchoring, filepath.Abs
+	// would join against the process cwd — producing a path
+	// outside RootDir that filepath.Rel would either reject or
+	// turn into "../../<cwd>/docs/notes.md". The helper anchors
+	// to RootDir first so the returned value is always the
+	// expected workspace-relative form.
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	f := &lint.File{Path: "docs/notes.md", RootDir: dir}
+	got := workspaceRelativeSource(f)
+	assert.Equal(t, "docs/notes.md", got)
+}
+
+func TestWorkspaceRelativeSource_AbsolutePathUnderRoot(t *testing.T) {
+	// CLI callers pass absolute paths. Those must collapse to
+	// the workspace-relative form too.
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	f := &lint.File{
+		Path:    filepath.Join(dir, "docs", "notes.md"),
+		RootDir: dir,
+	}
+	got := workspaceRelativeSource(f)
+	assert.Equal(t, "docs/notes.md", got)
+}
+
+func TestCheck_Wikilinks_ResolutionCachedPerTarget(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "page.md"), []byte("# P\n"), 0o644))
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\n[[page]] [[page]] [[page]] [[page]] [[page]]\n")
+
+	counting := &walkCountingFS{inner: os.DirFS(dir)}
+
+	f := newLintFile(t, sourcePath)
+	f.RootDir = dir
+	f.RootFS = counting
+
+	r := &Rule{Wikilinks: true}
+	diags := r.Check(f)
+	require.Empty(t, diags)
+	// One workspace walk does an Open(".") for Stat and again for the
+	// recursion entry — two opens per walk. Five identical wikilinks
+	// without caching would walk five times (10 opens); with the cache
+	// they collapse to one walk (≤ 2 opens). Bound by the no-cache
+	// floor to prove the cache is consulted.
+	require.LessOrEqual(t, counting.rootOpens, 2,
+		"resolver must memoize per target; got %d Open(\".\") calls", counting.rootOpens)
+}
+
+// walkCountingFS wraps an fs.FS and tallies Open(".") calls — the
+// entry point fs.WalkDir uses for the root. Each ResolveWikiLink call
+// triggers exactly two such opens (one for Stat, one for the walk).
+// The test below uses this to prove the per-target cache reduces N
+// repeated wikilinks down to a single walk.
+type walkCountingFS struct {
+	inner     fs.FS
+	rootOpens int
+}
+
+func (w *walkCountingFS) Open(name string) (fs.File, error) {
+	if name == "." {
+		w.rootOpens++
+	}
+	return w.inner.Open(name)
 }

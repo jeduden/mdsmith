@@ -16,12 +16,14 @@ Links to local files and heading anchors must resolve.
 
 ## Settings
 
-| Setting        | Type | Default | Description                                                                                                                |
-|----------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
-| `include`      | list | `[]`    | glob patterns to include                                                                                                   |
-| `exclude`      | list | `[]`    | glob patterns to skip                                                                                                      |
-| `strict`       | bool | `false` | check non-Markdown file links                                                                                              |
-| `placeholders` | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
+| Setting          | Type   | Default      | Description                                                                                                                  |
+|------------------|--------|--------------|------------------------------------------------------------------------------------------------------------------------------|
+| `include`        | list   | `[]`         | glob patterns to include                                                                                                     |
+| `exclude`        | list   | `[]`         | glob patterns to skip                                                                                                        |
+| `strict`         | bool   | `false`      | check non-Markdown file links                                                                                                |
+| `placeholders`   | list   | `[]`         | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md)   |
+| `wikilinks`      | bool   | `false`      | Validate Obsidian-style `[[Page]]`, `[[Page#anchor]]`, `[[Page\|alias]]`, and `![[file.png]]` targets against the workspace. |
+| `wikilink-style` | string | `"obsidian"` | Resolution style for wikilinks. Only `obsidian` ships today; other values are rejected at config load.                       |
 
 Useful tokens: `var-token`, `heading-question`, `placeholder-section`.
 
@@ -44,6 +46,29 @@ pre-hardening behavior where images were silently skipped.
 
 When `links.site-root` is unset, absolute-path links (`/foo/bar`)
 are silently skipped (the behavior before this setting was added).
+
+### Wikilinks
+
+`wikilinks: true` resolves every Obsidian-style wikilink
+in the source against the workspace root.
+
+Resolution is by file stem (case-insensitive) for
+`.md`/`.markdown` targets. Other extensions match by
+exact filename. The shortest matching path wins; ties
+break alphabetically.
+
+Unresolved targets, missing heading anchors, and
+unreadable targets each emit one diagnostic.
+
+Wikilinks inside fenced code blocks, code spans, and
+`<?...?>` directive markers are never flagged. The
+`placeholders` filter applies to wikilink targets the
+same way it applies to standard Markdown link
+destinations.
+
+The `obsidian` convention turns this on with
+`wikilink-style: obsidian` in one switch — see the
+[conventions reference](../../../docs/reference/conventions.md).
 
 ## Config
 

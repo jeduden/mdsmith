@@ -60,6 +60,24 @@ func TestLookup_Unknown(t *testing.T) {
 	assert.Contains(t, err.Error(), "github")
 	assert.Contains(t, err.Error(), "plain")
 	assert.Contains(t, err.Error(), "portable")
+	assert.Contains(t, err.Error(), "obsidian")
+}
+
+func TestLookup_Obsidian(t *testing.T) {
+	c, err := Lookup("obsidian", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "obsidian", c.Name)
+	assert.Equal(t, FlavorGFM, c.Flavor)
+
+	xref, ok := c.Rules["cross-file-reference-integrity"]
+	require.True(t, ok)
+	assert.True(t, xref.Enabled)
+	assert.Equal(t, true, xref.Settings["wikilinks"])
+	assert.Equal(t, "obsidian", xref.Settings["wikilink-style"])
+
+	co, ok := c.Rules["callout-type"]
+	require.True(t, ok)
+	assert.True(t, co.Enabled)
 }
 
 func TestCloneValue_TypedSlices(t *testing.T) {
@@ -181,5 +199,5 @@ func TestNamesSorted(t *testing.T) {
 	names := Names()
 	assert.True(t, sort.StringsAreSorted(names),
 		"Names should return a sorted slice; got %v", names)
-	assert.ElementsMatch(t, []string{"github", "plain", "portable"}, names)
+	assert.ElementsMatch(t, []string{"github", "obsidian", "plain", "portable"}, names)
 }

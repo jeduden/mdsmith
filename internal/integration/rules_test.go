@@ -23,6 +23,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/blanklinearoundlists"
 	_ "github.com/jeduden/mdsmith/internal/rules/blockquotewhitespace"
 	_ "github.com/jeduden/mdsmith/internal/rules/build"
+	_ "github.com/jeduden/mdsmith/internal/rules/callouttype"
 	_ "github.com/jeduden/mdsmith/internal/rules/catalog"
 	_ "github.com/jeduden/mdsmith/internal/rules/concisenessscoring"
 	_ "github.com/jeduden/mdsmith/internal/rules/crossfilereferenceintegrity"

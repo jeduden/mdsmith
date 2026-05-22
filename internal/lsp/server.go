@@ -576,12 +576,24 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		return
 	}
 	configChanged := false
+	treeChanged := false
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {
 		path := uriToPath(c.URI)
 		if strings.HasSuffix(path, ".mdsmith.yml") {
 			configChanged = true
 			continue
+		}
+		// The wikilink index indexes every file under the workspace
+		// — not just markdown — because embeds like `![[image.png]]`
+		// resolve to any extension. A create or delete of any
+		// non-config file therefore changes the candidate set; the
+		// flag is set before the markdown filter so an image add or
+		// a rename to a binary asset still rebuilds the index.
+		// Per LSP spec: 1=Created, 2=Changed, 3=Deleted. A rename
+		// is reported as a Deleted+Created pair.
+		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
+			treeChanged = true
 		}
 		// Use isMarkdownExt for case-insensitive extension match
 		// — the rest of the navigation surface (docTextOrFile,
@@ -602,6 +614,14 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			s.scheduleLint(uri, lintTriggerConfig)
 		}
 		return
+	}
+	if treeChanged && s.runCache != nil {
+		// File create / delete / rename changes the candidate set
+		// the WikilinkIndex keys off, so the next Check must rebuild
+		// the index from scratch — otherwise MDS027 would resolve
+		// `[[NewPage]]` against the pre-create set and report it
+		// missing (or keep resolving `[[OldName]]` after a delete).
+		s.runCache.InvalidateWikilinks()
 	}
 	openPaths := s.openDocPaths()
 	for _, path := range mdChanges {

@@ -83,6 +83,7 @@ row: "| [{id}]({filename}) | `{name}` | {category} | {status} | {description} |"
 | [MDS062](MDS062-link-validity/README.md)                      | `link-validity`                      | link          | ready     | Links must not use the reversed `(text)[url]` form, and every link or image must have a non-empty destination; a link must also have visible text. |
 | [MDS063](MDS063-descriptive-link-text/README.md)              | `descriptive-link-text`              | prose         | ready     | Link text must be descriptive. Non-descriptive phrases like "click here", "here", "link", and "more" fail screen readers and link-list navigation. |
 | [MDS064](MDS064-atx-heading-whitespace/README.md)             | `atx-heading-whitespace`             | heading       | ready     | ATX heading whitespace and indentation.                                                                                                            |
+| [MDS067](MDS067-callout-type/README.md)                       | `callout-type`                       | structural    | ready     | Validate Obsidian callout types against an allowed set.                                                                                            |
 <?/catalog?>
 
 ## Directive rules

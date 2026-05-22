@@ -218,17 +218,23 @@ the same `.md` files.
 |--------------------|-----------------------------------|--------------------------------------|
 | Purpose            | Note-taking editor                | Linter / fixer                       |
 | Linting            | Community plugin only             | Built-in, CI-ready                   |
-| Wikilinks          | Native (`[[Page]]`)               | Treated as text; no validation       |
-| Callouts           | Native (`> [!note]`)              | Treated as blockquotes               |
+| Wikilinks          | Native (`[[Page]]`)               | Validated by [MDS027][mds027]        |
+| Callouts           | Native (`> [!note]`)              | Validated by [MDS067][mds067]        |
 | Front matter       | YAML or Dataview inline (`key::`) | YAML only (inline not recognized)    |
 | Agent friendliness | Editor-centric, manual saves      | Direct file access, no editor needed |
 
-mdsmith can lint the Markdown subset that Obsidian and
-standard parsers share. Wikilinks and callouts pass
-through without errors (they look like valid Markdown
-to CommonMark parsers). Dataview inline fields are not
-front matter and will not be read by mdsmith's
-`require`/`schema` directives.
+Pin `convention: obsidian` (see the
+[conventions reference][conventions]) to enable both
+checks with one config line.
+
+The wikilink check resolves `[[Page]]` against every
+workspace file by stem. Matching is case-insensitive
+with a shortest-path tie-break.
+
+The callout check accepts the 12 base Obsidian types
+and their aliases out of the box. Dataview inline
+fields (`key:: value`) are still not front matter.
+The `require`/`schema` directives do not read them.
 
 ### [mdbase][]
 
@@ -823,6 +829,7 @@ you need a stable rule set while these land.
 [mds024]: ../../internal/rules/MDS024-paragraph-structure/README.md
 [mds025]: ../../internal/rules/MDS025-table-format/README.md
 [mds027]: ../../internal/rules/MDS027-cross-file-reference-integrity/README.md
+[mds067]: ../../internal/rules/MDS067-callout-type/README.md
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds030]: ../../internal/rules/MDS030-empty-section-body/README.md

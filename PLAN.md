@@ -94,7 +94,7 @@ footer: |
 | 165 | ✅     | opus   | [Portable Markdown export (mdsmith export)](plan/165_portable-markdown-export.md)                                                       |
 | 166 | ✅     | opus   | [Schema-driven data extraction (mdsmith extract)](plan/166_schema-driven-data-extraction.md)                                            |
 | 167 | 🔲     | opus   | [Custom binding overrides for mdsmith extract](plan/167_custom-binding-overrides.md)                                                    |
-| 168 | 🔲     | sonnet | [Obsidian Flavored Markdown support](plan/168_obsidian-markdown-support.md)                                                             |
+| 168 | ✅     | sonnet | [Obsidian Flavored Markdown support](plan/168_obsidian-markdown-support.md)                                                             |
 | 169 | ✅     | opus   | [Enforce terminal Meta-Information and render it from frontmatter](plan/169_rule-readme-meta-information-sync.md)                       |
 | 170 | ✅     | opus   | [Audit link handling across mdsmith and the website](plan/170_link-handling-audit.md)                                                   |
 | 171 | ✅     | opus   | [MDS027 link-integrity hardening](plan/171_mds027-link-integrity-hardening.md)                                                          |

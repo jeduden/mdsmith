@@ -1,0 +1,414 @@
+package linkgraph
+
+import (
+	"io/fs"
+	"path"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/yuin/goldmark/ast"
+
+	"github.com/jeduden/mdsmith/internal/lint"
+)
+
+// WikiLink is one parsed Obsidian-style wikilink occurrence.
+//
+// Target is the destination filename or stem (without alias or
+// anchor). Anchor and Alias are the optional fragment and display
+// label. Embed reports whether the source used `![[...]]` rather
+// than `[[...]]`.
+//
+// Line and Column are body-relative — same convention as Link.
+type WikiLink struct {
+	Target string
+	Anchor string
+	Alias  string
+	Embed  bool
+	Line   int
+	Column int
+}
+
+// wikilinkRE matches Obsidian-style wikilinks.
+// Group 1: leading "!" (embed marker)
+// Group 2: target stem or filename (no anchor or alias)
+// Group 3: optional anchor (text after "#")
+// Group 4: optional alias (text after "|")
+var wikilinkRE = regexp.MustCompile(
+	`(!?)\[\[([^\[\]\n|#]+)(?:#([^\[\]\n|]+))?(?:\|([^\[\]\n]+))?\]\]`,
+)
+
+// ExtractWikiLinks scans f.Source for Obsidian-style wikilinks
+// (`[[Page]]`, `[[Page#anchor]]`, `[[Page|alias]]`, `![[file.png]]`).
+// Matches inside fenced/indented code blocks, code spans, and
+// `<?...?>` processing-instruction blocks are skipped — the same
+// guards MDS054 applies to its bracket scanner.
+//
+// Lines are body-relative (post front-matter strip). Returns nil
+// for files without a parsed AST (struct-literal *lint.File
+// instances): the code-block / code-span guards below walk the
+// tree, so a missing AST would otherwise panic.
+func ExtractWikiLinks(f *lint.File) []WikiLink {
+	if f == nil || len(f.Source) == 0 || f.AST == nil {
+		return nil
+	}
+	codeLines := lint.CollectCodeBlockLines(f)
+	piLines := lint.CollectPIBlockLines(f)
+	codeSpans := collectCodeSpanRanges(f)
+
+	source := f.Source
+	var out []WikiLink
+	for _, m := range wikilinkRE.FindAllSubmatchIndex(source, -1) {
+		start := m[0]
+		line := f.LineOfOffset(start)
+		if codeLines[line] || piLines[line] {
+			continue
+		}
+		if inCodeSpan(codeSpans, start) {
+			continue
+		}
+		embed := m[3] > m[2]
+		bracketStart := m[0]
+		if embed {
+			bracketStart++
+		}
+		col := f.ColumnOfOffset(bracketStart)
+		wl := WikiLink{
+			Target: strings.TrimSpace(string(source[m[4]:m[5]])),
+			Embed:  embed,
+			Line:   line,
+			Column: col,
+		}
+		if m[6] >= 0 {
+			wl.Anchor = strings.TrimSpace(string(source[m[6]:m[7]]))
+		}
+		if m[8] >= 0 {
+			wl.Alias = strings.TrimSpace(string(source[m[8]:m[9]]))
+		}
+		out = append(out, wl)
+	}
+	return out
+}
+
+// byteRange is a half-open [start, end) byte range.
+type byteRange struct{ start, end int }
+
+func collectCodeSpanRanges(f *lint.File) []byteRange {
+	var out []byteRange
+	source := f.Source
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if _, ok := n.(*ast.CodeSpan); !ok {
+			return ast.WalkContinue, nil
+		}
+		first, last := codeSpanTextBounds(n)
+		if first < 0 {
+			return ast.WalkContinue, nil
+		}
+		start := first
+		for start > 0 && source[start-1] == '`' {
+			start--
+		}
+		end := last
+		for end < len(source) && source[end] == '`' {
+			end++
+		}
+		out = append(out, byteRange{start, end})
+		return ast.WalkContinue, nil
+	})
+	return out
+}
+
+func codeSpanTextBounds(n ast.Node) (first, last int) {
+	first = -1
+	last = -1
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		t, ok := c.(*ast.Text)
+		if !ok {
+			continue
+		}
+		if first < 0 {
+			first = t.Segment.Start
+		}
+		last = t.Segment.Stop
+	}
+	return first, last
+}
+
+func inCodeSpan(spans []byteRange, offset int) bool {
+	for _, r := range spans {
+		if offset >= r.start && offset < r.end {
+			return true
+		}
+	}
+	return false
+}
+
+// WikilinkIndexFor returns a *WikilinkIndex for root, memoized on
+// cache under rootKey when cache is non-nil. With cache=nil the
+// helper falls through to a direct NewWikilinkIndex call —
+// callers without a long-lived cache (one-shot CLI commands)
+// still share the same API.
+//
+// This is the canonical entry point both MDS027 and
+// `mdsmith list backlinks` route through; rewriting it once
+// keeps the workspace walk semantics in one place.
+func WikilinkIndexFor(cache *lint.RunCache, rootKey string, root fs.FS) *WikilinkIndex {
+	if cache == nil || rootKey == "" {
+		return NewWikilinkIndex(root)
+	}
+	v := cache.Wikilinks(rootKey, func() any {
+		return NewWikilinkIndex(root)
+	})
+	idx, _ := v.(*WikilinkIndex)
+	return idx
+}
+
+// WikilinkIndex is a pre-built directory of every file under one
+// workspace root, keyed for the two lookup shapes ResolveWikiLink
+// uses: stem (.md/.markdown filename minus extension) and exact
+// filename. Each key holds the matching paths in shortest-then-
+// alphabetical order, the same order ResolveWikiLink would
+// otherwise sort on every call.
+//
+// Build the index once per (run, root) — e.g. via
+// `lint.RunCache.Wikilinks` — and call Resolve for each wikilink
+// target. Lookups are then O(stems + matches) instead of O(files
+// in workspace) per target.
+type WikilinkIndex struct {
+	stems map[string][]string // lowercased stem → sorted .md paths
+	names map[string][]string // lowercased filename → sorted any-ext paths
+}
+
+// NewWikilinkIndex walks root once and returns a lookup table that
+// future ResolveWikiLink-style queries can serve from memory.
+// Returns nil when root is nil or the workspace walk itself fails
+// (e.g. Open(".") on root returns an error). A nil return lets the
+// caller fall back to per-call walks via ResolveWikiLink rather
+// than serving an empty index that would silently report every
+// target as "not found".
+func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
+	if root == nil {
+		return nil
+	}
+	idx := &WikilinkIndex{
+		stems: map[string][]string{},
+		names: map[string][]string{},
+	}
+	if err := fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Root-level read failures (e.g. ReadDir(".") returns an
+			// error) mean the index would otherwise be silently empty.
+			// Propagate so NewWikilinkIndex can return nil and the
+			// resolver falls back to per-call walks. Sub-tree failures
+			// stay local — one rejected directory should not poison
+			// resolution against unrelated sibling subtrees.
+			if p == "." {
+				return err
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return skipHeavyDirs(p)
+		}
+		base := path.Base(p)
+		lcName := strings.ToLower(base)
+		idx.names[lcName] = append(idx.names[lcName], p)
+		if isMarkdownName(base) {
+			stem := strings.TrimSuffix(base, path.Ext(base))
+			lcStem := strings.ToLower(stem)
+			idx.stems[lcStem] = append(idx.stems[lcStem], p)
+		}
+		return nil
+	}); err != nil {
+		return nil
+	}
+	for k, v := range idx.stems {
+		sortByDepthThenName(v)
+		idx.stems[k] = v
+	}
+	for k, v := range idx.names {
+		sortByDepthThenName(v)
+		idx.names[k] = v
+	}
+	return idx
+}
+
+// Resolve answers the same question as ResolveWikiLink but serves
+// it from the prebuilt index — no filesystem walk per call.
+func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
+	if idx == nil || target == "" {
+		return "", false
+	}
+	target = strings.TrimSpace(target)
+	if target == "" || isDriveOrUNC(target) {
+		return "", false
+	}
+	target = strings.ReplaceAll(target, `\`, `/`)
+	cleaned := path.Clean(target)
+	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
+		return "", false
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+	wantName, wantStem, stemMode := wikilinkSearchKey(target)
+	if stemMode {
+		if matches, ok := idx.stems[strings.ToLower(wantStem)]; ok && len(matches) > 0 {
+			return matches[0], true
+		}
+		return "", false
+	}
+	if matches, ok := idx.names[strings.ToLower(wantName)]; ok && len(matches) > 0 {
+		return matches[0], true
+	}
+	return "", false
+}
+
+// skipHeavyDirs returns fs.SkipDir for known-heavy subtrees that
+// never carry wikilink targets users want resolved (`.git`,
+// `node_modules`). Used as a fs.WalkDirFunc verdict for directory
+// entries — file entries pass through unchanged. Mirrors the
+// pattern walkDirDecision uses in duplicatedcontent so the same
+// names stay pruned across every rule that walks the workspace.
+func skipHeavyDirs(p string) error {
+	if p == "." {
+		return nil
+	}
+	switch path.Base(p) {
+	case ".git", "node_modules":
+		return fs.SkipDir
+	}
+	return nil
+}
+
+func sortByDepthThenName(paths []string) {
+	sort.Slice(paths, func(i, j int) bool {
+		di := strings.Count(paths[i], "/")
+		dj := strings.Count(paths[j], "/")
+		if di != dj {
+			return di < dj
+		}
+		return paths[i] < paths[j]
+	})
+}
+
+// ResolveWikiLink resolves an Obsidian-style wikilink target against
+// root, returning the workspace-relative path of the resolved file.
+//
+// Resolution rules:
+//
+//   - When target has no extension or ends in `.md`/`.markdown`, the
+//     search matches files whose stem (filename minus extension)
+//     equals target, case-insensitive. The target itself is also
+//     considered a stem when it lacks an extension.
+//   - When target has any other extension (an embed like `image.png`),
+//     the search matches files by exact filename, case-insensitive.
+//   - Ties are broken by the shortest path (fewest separators); then
+//     alphabetically. Two matches at the same depth never both win.
+//   - The walk is sandboxed to root: paths that would escape via `..`
+//     are rejected before the walk starts.
+//
+// from is the workspace-relative path of the source file. It is
+// reserved for future per-directory resolution preference; today it
+// only blocks empty targets the same way `ParseTarget` does for
+// regular links.
+func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
+	if root == nil || target == "" {
+		return "", false
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", false
+	}
+	// Reject Windows-style absolute forms (drive-letter, UNC) before
+	// path.Clean — those would otherwise pass the POSIX guards below
+	// and be searched as workspace-relative names on POSIX hosts.
+	if isDriveOrUNC(target) {
+		return "", false
+	}
+	// Normalize backslashes manually: filepath.ToSlash is OS-dependent
+	// (no-op on POSIX), so a Windows-authored `[[sub\page]]` would
+	// otherwise stay as a single literal segment on Linux CI and
+	// never resolve. Match the strings.ReplaceAll pattern
+	// ResolveRelTarget uses for the same reason.
+	target = strings.ReplaceAll(target, `\`, `/`)
+	cleaned := path.Clean(target)
+	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
+		return "", false
+	}
+	// path.Clean reduces "../x" to "../x", "../../x" to "../../x", and
+	// "a/../b" to "b" — so the only escape forms left after Clean are a
+	// leading ".." segment or the bare "..". A name like "v1..v2" never
+	// produces either; this rejects only real parent-directory traversal.
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+
+	wantName, wantStem, stemMode := wikilinkSearchKey(target)
+	_ = from
+
+	var matches []string
+	walkErr := fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return skipHeavyDirs(p)
+		}
+		base := path.Base(p)
+		if stemMode {
+			stem := strings.TrimSuffix(base, path.Ext(base))
+			if strings.EqualFold(stem, wantStem) && isMarkdownName(base) {
+				matches = append(matches, p)
+			}
+			return nil
+		}
+		if strings.EqualFold(base, wantName) {
+			matches = append(matches, p)
+		}
+		return nil
+	})
+	if walkErr != nil || len(matches) == 0 {
+		return "", false
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		di := strings.Count(matches[i], "/")
+		dj := strings.Count(matches[j], "/")
+		if di != dj {
+			return di < dj
+		}
+		return matches[i] < matches[j]
+	})
+	return matches[0], true
+}
+
+// wikilinkSearchKey splits target into the lookup parameters
+// ResolveWikiLink walks the FS with.
+//
+// stemMode true means "match by filename stem against .md/.markdown
+// files only" — the bare-page case (`[[Notes]]` or
+// `[[Notes.md]]`). stemMode false means "match by exact filename"
+// — the typed-extension case (`![[diagram.png]]`).
+func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool) {
+	// Match the host-independent normalisation ResolveWikiLink uses
+	// up front so a Windows-authored `[[sub\page]]` reaches this
+	// helper as `sub/page`.
+	target = strings.ReplaceAll(target, `\`, `/`)
+	base := path.Base(target)
+	ext := strings.ToLower(path.Ext(base))
+	switch ext {
+	case "", ".md", ".markdown":
+		stem := strings.TrimSuffix(base, path.Ext(base))
+		return "", stem, true
+	default:
+		return base, "", false
+	}
+}
+
+func isMarkdownName(name string) bool {
+	ext := strings.ToLower(path.Ext(name))
+	return ext == ".md" || ext == ".markdown"
+}

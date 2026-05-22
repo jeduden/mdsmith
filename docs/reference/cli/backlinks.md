@@ -71,11 +71,31 @@ then line, so `--limit` paginates deterministically.
     "line": 8,
     "text": "api",
     "target": "../docs/api.md"
+  },
+  {
+    "source": "vault/notes.md",
+    "line": 3,
+    "text": "API reference",
+    "target": "api",
+    "kind": "wikilink",
+    "alias": "API reference"
   }
 ]
 ```
 
-Keys are stable. Empty results emit `[]`, not `null`.
+Four base keys are always present. They are `source`,
+`line`, `text`, and `target`. Three more appear only
+on Obsidian-style wikilink records:
+
+| Key     | Type   | Set when                                            |
+|---------|--------|-----------------------------------------------------|
+| `kind`  | string | `"wikilink"`; standard links omit the key entirely. |
+| `alias` | string | Source carried a `\|alias` half; otherwise omitted. |
+| `embed` | bool   | `true` for `![[…]]` embeds; otherwise omitted.      |
+
+Existing consumers that read only the four base keys
+see the same shape as before. Empty results emit
+`[]`, not `null`.
 
 ## Examples
 
@@ -100,11 +120,18 @@ mdsmith list backlinks --include "plan/**" --limit 10 docs/api.md
 ## Scope
 
 The command resolves the same direct Markdown links
-MDS027 sees. The graph covers `[text](path)` and
-`[text](path#anchor)`. Reference-style links
-(`[text][label]`), wiki-style links (`[[page]]`), and
-external URLs are out of scope. They would only join
-the result set once the matching parser support lands.
+MDS027 sees: `[text](path)` and `[text](path#anchor)`.
+
+It also resolves Obsidian-style wikilinks
+(`[[page]]`, `[[page#anchor]]`, `[[page|alias]]`,
+`![[file.png]]`) by walking the workspace for a
+shortest-path match. The wikilink rows carry
+`"kind": "wikilink"` in JSON output. Text output
+renders them as `[[target]]` (or `[[target|alias]]`,
+`![[target]]`).
+
+Reference-style links (`[text][label]`) and external
+URLs are still out of scope.
 
 ## Exit codes
 

@@ -268,6 +268,14 @@ type fileEvent struct {
 	Type int    `json:"type"`
 }
 
+// LSP FileChangeType enum values (spec §
+// workspace.didChangeWatchedFiles). Used as fileEvent.Type.
+const (
+	fileChangeCreated = 1
+	fileChangeChanged = 2
+	fileChangeDeleted = 3
+)
+
 type configurationParams struct {
 	Items []configurationItem `json:"items"`
 }

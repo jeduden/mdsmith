@@ -113,6 +113,24 @@ var conventions = map[string]Convention{
 			},
 		},
 	},
+	"obsidian": {
+		Name:   "obsidian",
+		Flavor: FlavorGFM,
+		Rules: map[string]RulePreset{
+			"markdown-flavor": {
+				Enabled:  true,
+				Settings: map[string]any{"flavor": "gfm"},
+			},
+			"cross-file-reference-integrity": {
+				Enabled: true,
+				Settings: map[string]any{
+					"wikilinks":      true,
+					"wikilink-style": "obsidian",
+				},
+			},
+			"callout-type": {Enabled: true},
+		},
+	},
 	"plain": {
 		Name:   "plain",
 		Flavor: FlavorCommonMark,
