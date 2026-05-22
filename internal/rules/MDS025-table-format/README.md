@@ -272,7 +272,7 @@ wrap: markdown
 # Missing cell
 
 | Key | Value |
-|-----|-------|
+| --- | ----- |
 | a   | one   |
 | b   |
 ```
@@ -291,7 +291,7 @@ wrap: markdown
 
 Paragraph before.
 | Key | Value |
-|-----|-------|
+| --- | ----- |
 | a   | one   |
 Paragraph after.
 ```

@@ -28,7 +28,7 @@ func init() {
 // count vs the header (MD056), surrounding blank lines (MD058), and
 // the column-alignment / padding pass that gives the rule its name.
 type Rule struct {
-	Pad            int    // spaces on each side of cell content
+	Pad            int // spaces on each side of cell content
 	SeparatorStyle tablefmt.SeparatorStyle
 	Style          string // edge-pipe style: one of the Style* constants
 }
