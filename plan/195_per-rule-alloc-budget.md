@@ -105,19 +105,26 @@ reference it.
    (the parametric per-rule gate) plus the
    `race_off_test.go` / `race_on_test.go` build-tag pair
    that lets the gate skip cleanly under `-race`.
-2. [ ] Fix MDS026 table-readability to ≤ 10 allocs.
-   Profile: `findTables` allocates `string(line)` per
-   line plus `detectPrefix`'s `strings.Builder` for every
-   line, even when the file has no `|`. Add an early
-   exit on `bytes.IndexByte(f.Source, '|') < 0` and
-   switch `detectPrefix` to a byte scanner.
-3. [ ] Fix MDS025 table-format the same way (early exit
-   on no `|`, byte-scanner prefix detection).
-4. [ ] Fix MDS001 line-length: only allocate the
-   category maps the active settings actually need (the
-   default `Exclude` list does not include `heading`),
-   and avoid the regex per-line `urlOnlyRe.MatchString`
-   call when `urls` is excluded.
+2. [🔳] Partial fix for MDS026 table-readability (37 → 23
+   on the gate fixture). Lands the early-exit pair
+   (no-pipe-in-source, no-pipe-on-line) and the
+   byte-scanner detectPrefix + splitRow. Remaining
+   ≥10-alloc budget needs the cells-as-byte-offsets
+   refactor (tableRow stores `source []byte` +
+   `cellRanges []int` rather than `[]string`); deferred
+   so the cell-storage move and the rule-coverage_test
+   updates land together.
+3. [🔳] Partial fix for MDS025 table-format (63 → 55).
+   Lands the same early-exit pair through the
+   tableformat rule and `tablefmt.findTables`. Same
+   `cells []string` refactor blocks the rest.
+4. [x] Fix MDS001 line-length (19 → ≤ 10). Dropped the
+   three empty `map[int]bool{}` literals in
+   buildCategories, replaced the per-line
+   `tableLineRe.Match` with isTableLineStart, replaced
+   the per-long-line `urlOnlyRe.MatchString` with
+   isURLOnlyLine, and built the diagnostic message via
+   strconv.Itoa + concat instead of fmt.Sprintf.
 5. [ ] Fix MDS027 cross-file-reference-integrity:
    memoize `linkgraph.CollectAnchors(self)` and
    `linkgraph.ExtractLinks(f)` on the `lint.File` so the

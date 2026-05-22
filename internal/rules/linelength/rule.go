@@ -41,12 +41,6 @@ func (r *Rule) Name() string { return "line-length" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "line" }
 
-// urlOnlyRe matches a line whose trimmed content is a single URL.
-var urlOnlyRe = regexp.MustCompile(`^https?://\S+$`)
-
-// tableLineRe matches a line whose trimmed content starts with a pipe.
-var tableLineRe = regexp.MustCompile(`^\s*\|`)
-
 // isExcluded returns true if the given category is in the Exclude list.
 func (r *Rule) isExcluded(category string) bool {
 	for _, e := range r.Exclude {
