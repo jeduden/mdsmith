@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io/fs"
 	"os"
-	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -298,10 +297,14 @@ func (f *File) FullSource(body []byte) []byte {
 }
 
 // lineIndex returns the cached offsets of every '\n' in Source,
-// building it once on first use.
+// building it once on first use. The size hint
+// `bytes.Count(f.Source, "\n")` lets the loop append into a
+// right-sized backing slice instead of geometrically growing from
+// cap 0, which on a 150-line synthetic doc pays ~8 grow allocations
+// per file before the slice settles.
 func (f *File) lineIndex() []int {
 	f.newlineOffsetsOnce.Do(func() {
-		var nl []int
+		nl := make([]int, 0, bytes.Count(f.Source, lineIndexNewline))
 		for i := 0; i < len(f.Source); i++ {
 			if f.Source[i] == '\n' {
 				nl = append(nl, i)
@@ -312,14 +315,30 @@ func (f *File) lineIndex() []int {
 	return f.newlineOffsets
 }
 
+var lineIndexNewline = []byte{'\n'}
+
 // LineOfOffset converts a byte offset in Source to a 1-based line
 // number. The line is 1 plus the number of newlines that occur
 // strictly before offset (a newline exactly at offset starts the
 // next line, so it does not count) — identical to a linear scan,
 // but O(log n) via binary search over the cached newline index.
+// The search is inlined (sort.Search would force the comparison
+// callback to capture `nl` and `offset` and escape to the heap;
+// engine-bench profiling attributed ~64 k allocations per
+// 10-iteration run to that closure box before plan 195 inlined
+// the binary search here).
 func (f *File) LineOfOffset(offset int) int {
 	nl := f.lineIndex()
-	return 1 + sort.Search(len(nl), func(i int) bool { return nl[i] >= offset })
+	lo, hi := 0, len(nl)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if nl[mid] >= offset {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	return 1 + lo
 }
 
 // ColumnOfOffset converts a byte offset in Source to a 1-based column

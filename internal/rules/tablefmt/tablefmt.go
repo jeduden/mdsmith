@@ -182,13 +182,22 @@ const (
 var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 
 // findTables scans file lines for contiguous table blocks, skipping
-// lines inside fenced or indented code blocks.
+// lines inside fenced or indented code blocks. The byte-check
+// shortcut (`bytes.IndexByte(line, '|') < 0`) avoids a tryParseTable
+// call — and the `string(line)` allocation that detectPrefix would
+// otherwise pay — on every non-pipe line. On real corpora most
+// lines have no `|`, so the per-Check overhead drops to the cost of
+// scanning the lines that could plausibly start a table.
 func findTables(lines [][]byte, codeLines map[int]bool) []table {
 	var tables []table
 	i := 0
 	for i < len(lines) {
 		lineNum := i + 1 // 1-based
 		if codeLines[lineNum] {
+			i++
+			continue
+		}
+		if bytes.IndexByte(lines[i], '|') < 0 {
 			i++
 			continue
 		}

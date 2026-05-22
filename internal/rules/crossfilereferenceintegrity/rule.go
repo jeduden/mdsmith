@@ -167,7 +167,7 @@ func (r *Rule) checkRelativeTarget(
 		return nil
 	}
 
-	targetAnchors, err := anchorsForFile(targetFile, anchorCache)
+	targetAnchors, err := anchorsForFile(f, targetFile, anchorCache)
 	if err != nil {
 		return []lint.Diagnostic{unreadableTargetDiag(f.Path, line, col, r, target.Raw, err)}
 	}
@@ -355,26 +355,88 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 }
 
 type targetFile struct {
+	// cacheKey is the per-Check cache key (the `cache` map in
+	// anchorsForFile). Prefixed with "os:" or "fs:" so OS and FS
+	// resolutions of the same path do not collide within one
+	// Check call.
 	cacheKey string
-	read     func() ([]byte, error)
+	// runCacheKey is the engine-wide RunCache.Anchors key — an
+	// absolute on-disk path. Left empty for FS-only resolutions
+	// (in-memory FSes do not have a stable on-disk anchor that
+	// the LSP's Invalidate(absPath) would call with). An empty
+	// runCacheKey signals "skip the RunCache slot, use the
+	// per-Check cache only".
+	runCacheKey string
+	read        func() ([]byte, error)
 }
 
-func anchorsForFile(target targetFile, cache map[string]map[string]bool) (map[string]bool, error) {
+func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[string]bool) (map[string]bool, error) {
 	if anchors, ok := cache[target.cacheKey]; ok {
 		return anchors, nil
 	}
 
+	// Engine-shared cache: the target file's anchor set is a function
+	// of the file's bytes alone, so memoizing on the engine.Runner's
+	// RunCache collapses the per-host-file walk to one walk per
+	// (Run, target). On link-heavy real corpora (e.g. plan files all
+	// linking to PLAN.md) this collapses N parses to one.
+	//
+	// Read errors stay outside the cache: the cache stores `nil` for
+	// "build returned no anchors" and the read is retried on the next
+	// host file. That matches the previous per-Check cache's
+	// semantics, where an unreadable target produced a diagnostic on
+	// the host but did not poison the cache for siblings.
+	var anchors map[string]bool
+	var err error
+	if host != nil && host.RunCache != nil && target.runCacheKey != "" {
+		// The build closure escapes to heap (the RunCache stores it
+		// behind a sync.Mutex slot), but it captures only `target`
+		// (a small value) — buildAnchorsForTarget receives it by
+		// value, so no err pointer leaks into the closure box.
+		//
+		// The key is the on-disk absolute path so RunCache.Invalidate
+		// (called by the LSP on document edits) hits the same slot
+		// and the next cross-file check re-reads from disk.
+		builder := anchorBuilder{target: target}
+		anchors, err = host.RunCache.Anchors(target.runCacheKey, builder.build)
+	} else {
+		// In-memory FS or no RunCache (struct-literal File in tests):
+		// fall back to the per-Check cache only.
+		anchors, err = buildAnchorsForTarget(target)
+	}
+	if err != nil {
+		return nil, err
+	}
+	cache[target.cacheKey] = anchors
+	return anchors, nil
+}
+
+// anchorBuilder pairs a targetFile with a method-value `build` so
+// RunCache.Anchors receives a function that does not capture an
+// `err` variable in a closure box. Method values on a small value
+// receiver are stack-allocatable when the receiver lifetime is
+// known; the call site (anchorsForFile) keeps the receiver on the
+// stack for the duration of the RunCache call.
+type anchorBuilder struct {
+	target targetFile
+}
+
+func (b anchorBuilder) build() (map[string]bool, error) {
+	return buildAnchorsForTarget(b.target)
+}
+
+// buildAnchorsForTarget reads the target file's bytes, parses it,
+// and collects the heading anchor set. Extracted so anchorsForFile
+// can call it without going through the build closure that would
+// otherwise capture `err` and escape to the heap.
+func buildAnchorsForTarget(target targetFile) (map[string]bool, error) {
 	data, err := target.read()
 	if err != nil {
 		return nil, err
 	}
-
 	// lint.NewFile never errors; goldmark always produces an AST.
 	file, _ := lint.NewFileFromSource(target.cacheKey, data, true) //nolint:errcheck
-
-	anchors := linkgraph.CollectAnchors(file)
-	cache[target.cacheKey] = anchors
-	return anchors, nil
+	return linkgraph.CollectAnchors(file), nil
 }
 
 func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile, bool) {
@@ -387,7 +449,8 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 				return targetFile{}, false
 			}
 			return targetFile{
-				cacheKey: "os:" + path,
+				cacheKey:    "os:" + path,
+				runCacheKey: path,
 				read: func() ([]byte, error) {
 					return lint.ReadFileLimited(path, maxBytes)
 				},

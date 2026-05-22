@@ -126,7 +126,17 @@ func checkRulesWithIntraFile(
 // will be filled by the shared walk.
 func classifyRules(
 	rules []rule.Rule, effective map[string]config.RuleCfg,
-) (slots []*ruleSlot, nodeCheckers []*ruleSlot, errs []error) {
+) (slots []ruleSlot, nodeCheckers []*ruleSlot, errs []error) {
+	// Pre-size at the registered-rule count. In production all but a
+	// handful of rules are enabled by default. Allocating slots as a
+	// value slice (rather than a slice of `*ruleSlot`) collapses the
+	// 50+ per-file pointer allocations the previous shape paid into
+	// one backing-array allocation. nodeCheckers stays a pointer
+	// slice but references entries by `&slots[i]`, which is stable
+	// because the slots cap was pre-set to len(rules) — no append
+	// grows the backing, so the index-derived pointers do not
+	// dangle.
+	slots = make([]ruleSlot, 0, len(rules))
 	for _, rl := range rules {
 		cfg, ok := effective[rl.Name()]
 		if !ok || !cfg.Enabled {
@@ -138,12 +148,18 @@ func classifyRules(
 			continue
 		}
 		if nc, ok := checkRule.(rule.NodeChecker); ok {
-			s := &ruleSlot{nc: nc}
-			slots = append(slots, s)
-			nodeCheckers = append(nodeCheckers, s)
+			slots = append(slots, ruleSlot{nc: nc})
 			continue
 		}
-		slots = append(slots, &ruleSlot{check: checkRule})
+		slots = append(slots, ruleSlot{check: checkRule})
+	}
+	for i := range slots {
+		if slots[i].nc != nil {
+			if nodeCheckers == nil {
+				nodeCheckers = make([]*ruleSlot, 0, len(slots)/2+1)
+			}
+			nodeCheckers = append(nodeCheckers, &slots[i])
+		}
 	}
 	return slots, nodeCheckers, errs
 }
@@ -154,20 +170,23 @@ func classifyRules(
 // than cap rule.Check calls execute at the same time. Each goroutine
 // writes only to its own slot, so the result needs no lock — slots
 // are concatenated in rules order after the workers join.
-func runNonNodeCheckers(f *lint.File, slots []*ruleSlot, intraFileCap int) {
+//
+// The slots backing was pre-sized in classifyRules so `&slots[i]`
+// is stable for the lifetime of this call.
+func runNonNodeCheckers(f *lint.File, slots []ruleSlot, intraFileCap int) {
 	if intraFileCap <= 1 {
-		for _, s := range slots {
-			if s.check == nil {
+		for i := range slots {
+			if slots[i].check == nil {
 				continue
 			}
-			s.diags = s.check.Check(f)
+			slots[i].diags = slots[i].check.Check(f)
 		}
 		return
 	}
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, intraFileCap)
-	for _, s := range slots {
-		if s.check == nil {
+	for i := range slots {
+		if slots[i].check == nil {
 			continue
 		}
 		wg.Add(1)
@@ -176,7 +195,7 @@ func runNonNodeCheckers(f *lint.File, slots []*ruleSlot, intraFileCap int) {
 			defer wg.Done()
 			defer func() { <-sem }()
 			slot.diags = slot.check.Check(f)
-		}(s)
+		}(&slots[i])
 	}
 	wg.Wait()
 }

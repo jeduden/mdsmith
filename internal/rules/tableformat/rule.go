@@ -1,6 +1,7 @@
 package tableformat
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -71,6 +72,13 @@ func (r *Rule) DefaultSettings() map[string]any {
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	// Early-exit: a GFM table requires `|` somewhere in the source.
+	// Skipping the AST-walk for code lines and the per-line table
+	// detection on files without a pipe byte avoids the rule's
+	// dominant per-Check allocator on table-free corpora.
+	if bytes.IndexByte(f.Source, '|') < 0 {
+		return nil
+	}
 	codeLines := lint.CollectCodeBlockLines(f)
 	var diags []lint.Diagnostic
 	for _, v := range tablefmt.Violations(f.Lines, codeLines, r.config()) {

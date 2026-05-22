@@ -167,7 +167,7 @@ func TestCheck_SkipsTablesInCodeBlock(t *testing.T) {
 }
 
 func TestSplitRow_PreservesEscapedPipes(t *testing.T) {
-	cells := splitRow(`| a \| b | c |`)
+	cells := splitRow([]byte(`| a \| b | c |`))
 	require.Len(t, cells, 2, "expected 2 cells, got %d", len(cells))
 	if cells[0] != `a \| b` {
 		t.Fatalf("first cell = %q, want %q", cells[0], `a \| b`)
