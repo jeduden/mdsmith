@@ -433,6 +433,13 @@ func stagingError(repoRoot string) error {
 	return stagingErrors[repoRoot]
 }
 
+// gitRepoRoot is the package-level seam tests use to drive the
+// double-check branch deterministically. Production calls
+// githooks.GitRepoRoot; the test in rule_test.go swaps in a
+// blocking stub so it can populate the cache mid-flight and force
+// the second cache check to fire.
+var gitRepoRoot = githooks.GitRepoRoot
+
 // resolveRepoRoot wraps githooks.GitRepoRoot with a per-directory
 // cache so the per-file diagnostic flow does not respawn
 // `git rev-parse --show-toplevel` for every linted file in the same
@@ -454,7 +461,7 @@ func (r *Rule) resolveRepoRoot(dir string) (string, error) {
 	}
 	repoRootMu.Unlock()
 
-	root, err := githooks.GitRepoRoot(dir)
+	root, err := gitRepoRoot(dir)
 
 	repoRootMu.Lock()
 	defer repoRootMu.Unlock()

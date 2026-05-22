@@ -70,7 +70,9 @@ func parseFileBytes(
 
 	extendsPath, err := parseFileFrontmatter(prefix, sch)
 	if err != nil {
-		return nil, err
+		// Annotate with the schema path so recursive extends chains
+		// surface the offending layer rather than the entry point.
+		return nil, fmt.Errorf("schema %q: %w", path, err)
 	}
 
 	f, err := lint.NewFile(path, body)

@@ -66,9 +66,31 @@ func MergeRawMap(parent, child map[string]any) map[string]any {
 // are joined with a CUE `&` conjunction without evaluating the
 // result; callers that need load-time conflict detection run
 // ValidateExtendedFrontmatter on the merged map.
+//
+// A `frontmatter` key that's present but isn't a mapping (the user
+// wrote `frontmatter: "oops"` or a list) flows through verbatim
+// rather than being silently dropped — ParseInline's
+// `schema.frontmatter must be a mapping` diagnostic stays reachable
+// downstream. Child malformed shape wins over parent so the
+// closest declaration's error surfaces.
 func mergeRawFrontmatter(out, parent, child map[string]any) {
-	childFM, childOK := child["frontmatter"].(map[string]any)
-	parentFM, parentOK := parent["frontmatter"].(map[string]any)
+	childRaw, childHas := child["frontmatter"]
+	parentRaw, parentHas := parent["frontmatter"]
+	childFM, childOK := childRaw.(map[string]any)
+	parentFM, parentOK := parentRaw.(map[string]any)
+
+	// Preserve a present-but-malformed frontmatter value so
+	// ParseInline can surface its specific shape error. Child wins
+	// when both are present — the closer-to-the-user declaration
+	// drives the diagnostic.
+	switch {
+	case childHas && !childOK:
+		out["frontmatter"] = childRaw
+		return
+	case parentHas && !parentOK && !childHas:
+		out["frontmatter"] = parentRaw
+		return
+	}
 	if !childOK && !parentOK {
 		return
 	}

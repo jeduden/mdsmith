@@ -145,6 +145,20 @@ func TestParseFile_ExtendsRejectsTraversal(t *testing.T) {
 	assert.Contains(t, err.Error(), `".."`)
 }
 
+// TestParseFile_ErrorNamesSchemaPath pins the diagnostic shape:
+// when parseFileFrontmatter fails (e.g. on an invalid `extends:`),
+// the error names the schema file path so a recursive chain
+// surfaces the offending layer rather than the entry-point.
+func TestParseFile_ErrorNamesSchemaPath(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "child.md"),
+		[]byte("---\nextends: 42\n---\n# ?\n"), 0o644))
+	_, err := ParseFile(&FileReader{}, filepath.Join(dir, "child.md"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "child.md",
+		"error must name the schema path so recursive chains stay traceable")
+}
+
 // TestParseFile_ExtendsRejectsNonStringValue ensures a typoed YAML
 // shape (number, mapping) is rejected with a clear error rather
 // than silently dropped.

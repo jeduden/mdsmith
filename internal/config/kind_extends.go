@@ -23,10 +23,13 @@ import (
 // call this resolver per file without re-running the CUE checker.
 //
 // Returns nil when the kind has no inline schema (KindBody.Schema is
-// empty) and no parent declares one either. Returns the kind's own
-// schema unchanged when no `extends:` is set, so the existing
-// single-kind merge path stays byte-equivalent for non-inheriting
-// kinds.
+// empty) and no parent declares one either. Otherwise the resolver
+// always routes through schema.MergeRawMap — including single-layer
+// chains — so the frontmatter normaliser runs uniformly (bare-name
+// shortcuts expand to canonical CUE, scalars JSON-encode). Callers
+// receive the normalised view, not the verbatim user input, so the
+// audit surfaces (`kinds show`, JSON provenance) render the same CUE
+// the schema engine would compile.
 func ResolveKindInlineSchema(
 	kinds map[string]KindBody, name string,
 ) (map[string]any, error) {

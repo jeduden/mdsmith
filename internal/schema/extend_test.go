@@ -33,13 +33,13 @@ func TestExtend_NilChildReturnsParent(t *testing.T) {
 func TestExtend_FrontmatterInherits(t *testing.T) {
 	parent := &Schema{Frontmatter: map[string]string{
 		"id":      `=~"^RFC-[0-9]{4}$"`,
-		"authors": `[...string] & len(authors) >= 1`,
+		"authors": `[...string] & [_, ...string]`,
 	}}
 	child := &Schema{}
 	out, err := Extend(parent, child)
 	require.NoError(t, err)
 	assert.Equal(t, `=~"^RFC-[0-9]{4}$"`, out.Frontmatter["id"])
-	assert.Equal(t, `[...string] & len(authors) >= 1`, out.Frontmatter["authors"])
+	assert.Equal(t, `[...string] & [_, ...string]`, out.Frontmatter["authors"])
 }
 
 // TestExtend_FrontmatterChildAdds verifies that child-only keys
@@ -575,6 +575,32 @@ func TestMergeRawMap_FrontmatterNonStringParentNormalises(t *testing.T) {
 	assert.Contains(t, merged, "42")
 	assert.Contains(t, merged, "string")
 	assert.Contains(t, merged, "&")
+}
+
+// TestMergeRawMap_PreservesMalformedChildFrontmatter pins the
+// review-feedback fix on PR #365: a present-but-not-a-mapping
+// `frontmatter:` value (`frontmatter: "oops"`) flows through
+// verbatim instead of being silently dropped. ParseInline then
+// emits its specific "schema.frontmatter must be a mapping"
+// diagnostic on the merged map.
+func TestMergeRawMap_PreservesMalformedChildFrontmatter(t *testing.T) {
+	parent := map[string]any{"frontmatter": map[string]any{"id": "string"}}
+	child := map[string]any{"frontmatter": "oops"}
+	out := MergeRawMap(parent, child)
+	assert.Equal(t, "oops", out["frontmatter"],
+		"child's malformed shape wins so ParseInline can flag it")
+}
+
+// TestMergeRawMap_PreservesMalformedParentFrontmatter covers the
+// parent-only path: when only the parent carries a malformed
+// frontmatter, the merge surfaces it so downstream parsing fails
+// loudly rather than silently dropping the parent's constraints.
+func TestMergeRawMap_PreservesMalformedParentFrontmatter(t *testing.T) {
+	parent := map[string]any{"frontmatter": "oops"}
+	child := map[string]any{"filename": "x.md"}
+	out := MergeRawMap(parent, child)
+	assert.Equal(t, "oops", out["frontmatter"],
+		"parent's malformed shape stays visible to the parser")
 }
 
 // TestMergeRawMap_FrontmatterIdenticalExprStaysVerbatim covers
