@@ -163,10 +163,10 @@ func ValidateExtendedFrontmatter(raw map[string]any) error {
 	for _, k := range keys {
 		expr, err := frontmatterExpr(fm[k])
 		if err != nil {
-			return &UnsatisfiableKeyError{
-				Key:    stripOptionalSuffix(k),
-				Parent: fmt.Sprintf("%v", fm[k]),
-				Cause:  err,
+			return &InvalidFrontmatterError{
+				Key:   stripOptionalSuffix(k),
+				Value: fmt.Sprintf("%v", fm[k]),
+				Cause: err,
 			}
 		}
 		single := &Schema{Frontmatter: map[string]string{k: expr}}
@@ -447,6 +447,27 @@ func (e *UnsatisfiableKeyError) Error() string {
 // Unwrap exposes the underlying CUE error so callers can introspect
 // it when needed.
 func (e *UnsatisfiableKeyError) Unwrap() error { return e.Cause }
+
+// InvalidFrontmatterError reports a frontmatter value the parser
+// could not turn into a CUE expression — an unknown shortcut
+// name, an unsupported value type. Unlike UnsatisfiableKeyError
+// this is not a parent/child unification conflict; the value
+// alone is invalid, so the diagnostic stays focused on the key
+// rather than implying an inheritance mismatch.
+type InvalidFrontmatterError struct {
+	Key   string
+	Value string
+	Cause error
+}
+
+// Error implements error.
+func (e *InvalidFrontmatterError) Error() string {
+	return fmt.Sprintf("frontmatter key %q (%s): %v",
+		e.Key, e.Value, e.Cause)
+}
+
+// Unwrap exposes the underlying parse error.
+func (e *InvalidFrontmatterError) Unwrap() error { return e.Cause }
 
 // checkUnifiable reports whether a CUE expression can be reduced
 // without contradiction. It compiles the expression in a fresh CUE

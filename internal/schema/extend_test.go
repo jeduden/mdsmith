@@ -703,12 +703,28 @@ func TestValidateExtendedFrontmatter_AcceptsShortcut(t *testing.T) {
 
 // TestValidateExtendedFrontmatter_RejectsUnknownShortcut covers
 // the error path of frontmatterExpr inside the validator: an
-// unknown bare name surfaces with the key named.
+// unknown bare name surfaces as an InvalidFrontmatterError naming
+// the key — not an UnsatisfiableKeyError, which is reserved for
+// genuine parent/child unification conflicts.
 func TestValidateExtendedFrontmatter_RejectsUnknownShortcut(t *testing.T) {
 	merged := map[string]any{"frontmatter": map[string]any{"d": "not-a-shortcut"}}
 	err := ValidateExtendedFrontmatter(merged)
 	require.Error(t, err)
-	var keyErr *UnsatisfiableKeyError
-	require.True(t, errors.As(err, &keyErr))
+	var keyErr *InvalidFrontmatterError
+	require.True(t, errors.As(err, &keyErr),
+		"unknown shortcut should surface as InvalidFrontmatterError, not a unification conflict")
 	assert.Equal(t, "d", keyErr.Key)
+	// Diagnostic must not imply a parent/child mismatch.
+	assert.NotContains(t, err.Error(), "unify with parent")
+}
+
+func TestInvalidFrontmatterError_Error(t *testing.T) {
+	cause := errors.New("unknown shortcut \"foo\"")
+	err := &InvalidFrontmatterError{Key: "d", Value: "foo", Cause: cause}
+	msg := err.Error()
+	assert.Contains(t, msg, "d")
+	assert.Contains(t, msg, "foo")
+	assert.NotContains(t, msg, "parent")
+	assert.NotContains(t, msg, "child")
+	assert.ErrorIs(t, err, cause)
 }
