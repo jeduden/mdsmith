@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/githooks"
@@ -751,6 +752,43 @@ func TestRule_ResolveRepoRoot_NotInRepo(t *testing.T) {
 	// Second lookup hits the cached error branch.
 	_, err = r.resolveRepoRoot(dir)
 	assert.Error(t, err)
+}
+
+// TestRule_ResolveRepoRoot_DoubleCheckBranch races many goroutines
+// against the same dir so at least one observes the race-conscious
+// double-check branch (cache populated by a concurrent caller
+// while we were running git rev-parse). With 32 racers Go's
+// scheduler interleaves enough that the inner branch runs at
+// least once on every run we've observed, but the test only
+// asserts on the final cache state, so a run that happens to
+// serialise still passes — the goal is coverage.
+func TestRule_ResolveRepoRoot_DoubleCheckBranch(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, exec.Command("git", "-C", dir, "init", "--quiet").Run())
+
+	repoRootMu.Lock()
+	delete(repoRootCache, dir)
+	repoRootMu.Unlock()
+
+	r := &Rule{}
+	const racers = 32
+	var wg sync.WaitGroup
+	wg.Add(racers)
+	for i := 0; i < racers; i++ {
+		go func() {
+			defer wg.Done()
+			_, err := r.resolveRepoRoot(dir)
+			assert.NoError(t, err)
+		}()
+	}
+	wg.Wait()
+
+	repoRootMu.Lock()
+	entry, ok := repoRootCache[dir]
+	repoRootMu.Unlock()
+	require.True(t, ok)
+	assert.NoError(t, entry.err)
+	assert.NotEmpty(t, entry.root)
 }
 
 func TestRule_Check_CachesDriftPartsPerRepo(t *testing.T) {
