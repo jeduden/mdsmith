@@ -23,6 +23,15 @@ func TestCheck_EarlyExitOnNoPipe_AllocsZero(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
+	if raceEnabled {
+		// The race detector's allocation bookkeeping perturbs
+		// AllocsPerRun counts; a strict delta == 0 assertion
+		// flakes under `go test -race ./...`. The optimisation
+		// is for production builds, so skipping race builds
+		// keeps the gate stable. Same pattern as the
+		// alloc-budget tests in this package.
+		t.Skip("alloc gate skipped under -race")
+	}
 	src := []byte("# Title\n\nProse without tables.\n")
 	r := &Rule{}
 	const runs = 100
@@ -36,6 +45,13 @@ func TestCheck_EarlyExitOnNoPipe_AllocsZero(t *testing.T) {
 		_ = r.Check(f)
 	})
 	delta := full - parse
+	if delta < 0 {
+		// Clamp small negative deltas to 0 — AllocsPerRun
+		// averages across `runs` iterations and can report a
+		// slightly-negative delta when the parse and check
+		// passes are measured against different GC states.
+		delta = 0
+	}
 	require.Zero(t, delta,
 		"Check on a no-pipe file should hit the bytes.IndexByte "+
 			"early-exit and add 0 allocs over the parse baseline; "+

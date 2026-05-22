@@ -94,8 +94,15 @@ func CollectTOCItems(root ast.Node, source []byte) []TOCItem {
 // reset-then-write call has to allocate again. bytes.Buffer's
 // Reset() preserves the backing slice and zeroes its length, so
 // subsequent appends reuse the memory. We pay one alloc for the
-// resulting string (string(buf.Bytes()) makes the safe copy) and
-// nothing for the buffer itself after the first call into a goroutine.
+// resulting string (buf.String() makes the safe copy) and nothing
+// for the buffer itself after the first call into a goroutine.
+//
+// The pool returns buffers up to extractTextMaxPooledCap bytes.
+// Past that, the buffer is discarded — a single large document
+// (e.g. ExtractPlainText on a whole `f.AST` from
+// internal/metrics/document.go) would otherwise inflate the
+// pool's steady-state footprint forever, which matters most for
+// the LSP's long-running process.
 var extractTextBufPool = sync.Pool{
 	New: func() any {
 		b := &bytes.Buffer{}
@@ -104,13 +111,29 @@ var extractTextBufPool = sync.Pool{
 	},
 }
 
+// extractTextMaxPooledCap bounds the pool slot's per-buffer
+// capacity. A buffer that grew past this size is discarded on
+// release rather than returned to the pool. 64 KiB covers the
+// large headings and paragraphs the bench actually produces (the
+// 600-file synthetic corpus tops out around 1 KiB per call)
+// without retaining multi-MiB outliers from one-off
+// whole-document extracts.
+const extractTextMaxPooledCap = 64 * 1024
+
 // ExtractPlainText extracts readable text from a goldmark AST node,
 // stripping markdown syntax. Keeps: text content, link display text,
 // emphasis inner text, image alt text, code span text.
 func ExtractPlainText(node ast.Node, source []byte) string {
 	buf := extractTextBufPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	defer extractTextBufPool.Put(buf)
+	defer func() {
+		if buf.Cap() <= extractTextMaxPooledCap {
+			extractTextBufPool.Put(buf)
+		}
+		// Else: drop the buffer so the pool does not retain a
+		// large backing array indefinitely (Copilot review on
+		// PR #368 flagged the LSP long-process risk).
+	}()
 	extractText(buf, node, source)
 	return buf.String()
 }

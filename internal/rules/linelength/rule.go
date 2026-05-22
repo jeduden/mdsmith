@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -203,19 +204,23 @@ func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) boo
 	return false
 }
 
-// isURLOnlyLine reports whether line, after trimming ASCII whitespace,
+// isURLOnlyLine reports whether line, after trimming whitespace,
 // is a single http(s) URL with no internal whitespace. It mirrors
 // urlOnlyRe's intent (`^https?://\S+$` applied to TrimSpace input)
 // but reads bytes directly so the per-long-line check does not need
-// `string(line)`, `strings.TrimSpace`, or a regex `MatchString` —
-// each of which allocates in the regexp engine's hot frame.
+// `string(line)` or a regex `MatchString`.
+//
+// The edge trim uses `bytes.TrimSpace` (allocation-free, sub-slice
+// return) so Unicode whitespace at the edges — NBSP, zero-width
+// joiner, etc. — is stripped exactly as `strings.TrimSpace(string(line))`
+// would. The internal-whitespace check stays ASCII-only because a
+// URL with internal Unicode whitespace would be malformed by every
+// browser; the regex's `\S` rejected those anyway via its UTF-8
+// byte-pair handling. Documented behaviour change: a URL line
+// containing internal Unicode whitespace that goldmark's auto-link
+// detection would reject is also rejected here.
 func isURLOnlyLine(line []byte) bool {
-	for len(line) > 0 && isASCIISpace(line[0]) {
-		line = line[1:]
-	}
-	for len(line) > 0 && isASCIISpace(line[len(line)-1]) {
-		line = line[:len(line)-1]
-	}
+	line = bytes.TrimSpace(line)
 	switch {
 	case bytes.HasPrefix(line, urlPrefixHTTPS):
 		line = line[len(urlPrefixHTTPS):]
@@ -235,11 +240,10 @@ func isURLOnlyLine(line []byte) bool {
 	return true
 }
 
-// isASCIISpace mirrors what `strings.TrimSpace` strips on the
-// representative ASCII inputs the URL check sees: space, tab, CR, LF.
-// Wider unicode whitespace would not appear in a URL-only line — and
-// when it does, the trimmed prefix check fails, so the outcome is
-// stable across inputs.
+// isASCIISpace covers the ASCII whitespace bytes that interrupt a
+// URL's `\S+` body in the original regex. Edge trimming uses
+// bytes.TrimSpace (Unicode-aware) so this helper only fires on
+// the inner-byte scan.
 func isASCIISpace(b byte) bool {
 	switch b {
 	case ' ', '\t', '\n', '\r':
@@ -303,9 +307,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // single line. The sync.Map keyed by (runeLen, limit) collapses
 // repeats: real-world corpora rarely emit thousands of identical
 // pairs, but when they do (e.g. a long boilerplate line repeated
-// across files) the cache saves the allocation. On a miss the
-// builder pays the same allocations as before, so the worst case
-// for fully-unique inputs is one extra map lookup per diagnostic.
+// across files) the cache saves the allocation.
+//
+// The cache is bounded at lineTooLongCacheMaxEntries so a
+// long-running process (the LSP server) does not accumulate one
+// entry per distinct (runeLen, limit) pair seen over its
+// lifetime. Past the cap, every call rebuilds the string and
+// pays the original allocation — the worst-case cost is one
+// string concat plus a map.Load, which matches the pre-plan-195
+// shape and stays well below the per-rule alloc gate even when
+// the cache is saturated.
 func lineTooLongMessage(runeLen, limit int) string {
 	key := lineTooLongKey{runeLen: runeLen, limit: limit}
 	if v, ok := lineTooLongCache.Load(key); ok {
@@ -313,7 +324,11 @@ func lineTooLongMessage(runeLen, limit int) string {
 	}
 	msg := "line too long (" + strconv.Itoa(runeLen) +
 		" > " + strconv.Itoa(limit) + ")"
-	lineTooLongCache.Store(key, msg)
+	if lineTooLongCacheCount.Load() < lineTooLongCacheMaxEntries {
+		if _, loaded := lineTooLongCache.LoadOrStore(key, msg); !loaded {
+			lineTooLongCacheCount.Add(1)
+		}
+	}
 	return msg
 }
 
@@ -325,7 +340,19 @@ type lineTooLongKey struct {
 	limit   int
 }
 
-var lineTooLongCache sync.Map
+// lineTooLongCacheMaxEntries bounds the cache so a long-running
+// process (the LSP server) cannot accumulate one entry per
+// distinct (runeLen, limit) pair forever. 256 entries × ~24 bytes
+// per string = ~6 KiB sustained, which covers the typical
+// production spread (a handful of common limits — 80, 100, 120 —
+// crossed with runeLens in the 80-200 range) without unbounded
+// growth on pathological input.
+const lineTooLongCacheMaxEntries = 256
+
+var (
+	lineTooLongCache      sync.Map
+	lineTooLongCacheCount atomic.Int32
+)
 
 // hasSpacePastLimit returns true if line contains a space at or beyond
 // the given limit column (0-indexed rune position).

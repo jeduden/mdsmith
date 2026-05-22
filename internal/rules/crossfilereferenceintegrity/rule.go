@@ -355,8 +355,19 @@ func (r *Rule) SettingMergeMode(key string) rule.MergeMode {
 }
 
 type targetFile struct {
+	// cacheKey is the per-Check cache key (the `cache` map in
+	// anchorsForFile). Prefixed with "os:" or "fs:" so OS and FS
+	// resolutions of the same path do not collide within one
+	// Check call.
 	cacheKey string
-	read     func() ([]byte, error)
+	// runCacheKey is the engine-wide RunCache.Anchors key — an
+	// absolute on-disk path. Left empty for FS-only resolutions
+	// (in-memory FSes do not have a stable on-disk anchor that
+	// the LSP's Invalidate(absPath) would call with). An empty
+	// runCacheKey signals "skip the RunCache slot, use the
+	// per-Check cache only".
+	runCacheKey string
+	read        func() ([]byte, error)
 }
 
 func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[string]bool) (map[string]bool, error) {
@@ -377,14 +388,20 @@ func anchorsForFile(host *lint.File, target targetFile, cache map[string]map[str
 	// the host but did not poison the cache for siblings.
 	var anchors map[string]bool
 	var err error
-	if host != nil && host.RunCache != nil {
+	if host != nil && host.RunCache != nil && target.runCacheKey != "" {
 		// The build closure escapes to heap (the RunCache stores it
 		// behind a sync.Mutex slot), but it captures only `target`
 		// (a small value) — buildAnchorsForTarget receives it by
 		// value, so no err pointer leaks into the closure box.
+		//
+		// The key is the on-disk absolute path so RunCache.Invalidate
+		// (called by the LSP on document edits) hits the same slot
+		// and the next cross-file check re-reads from disk.
 		builder := anchorBuilder{target: target}
-		anchors, err = host.RunCache.Anchors(target.cacheKey, builder.build)
+		anchors, err = host.RunCache.Anchors(target.runCacheKey, builder.build)
 	} else {
+		// In-memory FS or no RunCache (struct-literal File in tests):
+		// fall back to the per-Check cache only.
 		anchors, err = buildAnchorsForTarget(target)
 	}
 	if err != nil {
@@ -432,7 +449,8 @@ func resolveTargetFile(f *lint.File, linkPath, resolvedRoot string) (targetFile,
 				return targetFile{}, false
 			}
 			return targetFile{
-				cacheKey: "os:" + path,
+				cacheKey:    "os:" + path,
+				runCacheKey: path,
 				read: func() ([]byte, error) {
 					return lint.ReadFileLimited(path, maxBytes)
 				},

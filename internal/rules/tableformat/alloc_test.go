@@ -12,9 +12,12 @@ import (
 // plan 195 task 3) lands. The integration gate grandfathers the
 // in-progress baseline; the unit-test budget below tracks today's
 // number so a regression fails CI even before the refactor lands.
+// Kept in lockstep with allocBudgetGrandfathered["MDS025"] in
+// internal/integration/alloc_budget_test.go — a single
+// authoritative baseline per rule.
 const (
 	allocBudgetMDS025              = 10
-	allocBudgetGrandfatheredMDS025 = 55
+	allocBudgetGrandfatheredMDS025 = 50
 )
 
 const allocBudgetFixture = "# Document title\n" +

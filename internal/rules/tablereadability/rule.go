@@ -384,16 +384,25 @@ var (
 	blockquoteOnly  = []byte(">")
 )
 
-// detectPrefix returns the GFM-extension blockquote prefix that
-// nests this line's table (e.g. `> ` or `> > `). For a non-nested
-// table line it returns "" without allocating; for a nested table
-// it returns the prefix as a string so stripPrefix can match by
-// equality. The hot path is the non-nested case, so the fast
-// shortcut (no `>` byte at start ⇒ return "") avoids the byte-
-// scanner loop entirely. Pre-plan 195 the helper allocated
-// `string(line)` plus a strings.Builder per call on every line in
-// the file; the byte-scanner replacement allocates only when a
-// blockquote prefix is actually present.
+// detectPrefix returns the prefix that nests this line's table —
+// blockquote (`> ` or `> > `), bare leading indentation (`  `
+// before a `|`), or empty string for unindented non-blockquote
+// lines. The unindented non-blockquote case is the hot path and
+// allocates 0: the fast shortcut at the top returns "" before
+// the byte-scanner loop runs. Other cases allocate one string
+// per call:
+//
+//   - Blockquote-nested lines allocate from `prefix []byte`
+//     accumulated across iterations.
+//   - Indented non-blockquote lines (e.g. `  | a | b |`) allocate
+//     for the leading-indentation prefix returned via
+//     `string(candidate)`.
+//
+// Pre-plan-195 the helper allocated `string(line)` plus a
+// strings.Builder per call on every line. The byte-scanner
+// replacement keeps the unindented non-blockquote case
+// allocation-free; indented and nested table lines still
+// allocate one prefix string each.
 func detectPrefix(line []byte) string {
 	// Skip leading ASCII space. The original code used `strings.TrimLeft`
 	// for the space-prefix shape; ASCII space matches GFM's blockquote

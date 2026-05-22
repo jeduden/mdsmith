@@ -200,7 +200,19 @@ func TestPerRuleAllocBudget(t *testing.T) {
 // in one table so a benchmark run lists every rule's headroom at a
 // glance. Useful for spotting "close to the budget" rules that did
 // not yet trip the gate but should be on the watchlist.
+//
+// Per-iteration work is constant (it rebuilds the entire table) and
+// does not scale with b.N — so the standard Go bench harness, which
+// dials b.N up to stabilise ns/op, would re-run the whole table
+// many times and report meaningless ns/op. Run it explicitly with
+// `-benchtime=1x` (the b.N == 1 case below) so the harness only
+// invokes it once. Without the flag the function skips with a
+// clear message instead of pretending to benchmark.
 func BenchmarkPerRuleAllocBudget(b *testing.B) {
+	if b.N != 1 {
+		b.Skip("BenchmarkPerRuleAllocBudget is a per-rule allocation report, " +
+			"not a microbenchmark; run with `-benchtime=1x` so it executes once")
+	}
 	rules := rule.All()
 	sort.Slice(rules, func(i, j int) bool { return rules[i].ID() < rules[j].ID() })
 	type row struct {

@@ -14,10 +14,13 @@ import (
 // in-progress baseline so CI stays green while the rest of the
 // refactor is scheduled; this unit-test budget tracks the final
 // target. allocBudgetGrandfatheredMDS026 is the present-day
-// baseline the gate refuses to regress past.
+// baseline the gate refuses to regress past. Kept in lockstep
+// with allocBudgetGrandfathered["MDS026"] in
+// internal/integration/alloc_budget_test.go — a single
+// authoritative baseline per rule.
 const (
 	allocBudgetMDS026              = 10
-	allocBudgetGrandfatheredMDS026 = 23
+	allocBudgetGrandfatheredMDS026 = 18
 )
 
 // allocBudgetFixture mirrors the integration gate at
