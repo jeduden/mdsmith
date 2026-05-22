@@ -49,20 +49,27 @@ const checkCorpusLines = 150
 // `us_per_file`) so trends stay visible in the job log.
 //
 // Local baseline (4-core dev box, 2026-05-22, after the plan-195
-// per-rule alloc fixes and the engine-bench perf chunk):
-// Small p95 ~33 ms / ~75 k allocs/op,
-// Large p95 ~251 ms / ~737 k allocs/op.
+// per-rule alloc fixes and the engine-bench allocator chunks):
+//
+//   - Small p95 ~29 ms / ~65 k allocs/op
+//   - Large p95 ~186 ms / ~634 k allocs/op
+//
+// Budgets sit at ~3-4x the alloc baseline and ~6-8x the time
+// baseline so CI jitter cannot flake them, but a real regression
+// (an extra parse per file, a lost memoization slot, a closure
+// re-escaped to the heap) crosses the alloc ceiling on the first
+// run.
 func BenchmarkCheckCorpusSmall(b *testing.B) {
 	benchCheck(b, 60, checkCorpusLines, checkBudget{
 		Time:   250 * time.Millisecond,
-		Allocs: 90_000,
+		Allocs: 80_000,
 	})
 }
 
 func BenchmarkCheckCorpusLarge(b *testing.B) {
 	benchCheck(b, 600, checkCorpusLines, checkBudget{
 		Time:   2 * time.Second,
-		Allocs: 850_000,
+		Allocs: 760_000,
 	})
 }
 

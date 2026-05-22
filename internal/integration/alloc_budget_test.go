@@ -37,18 +37,22 @@ const allocBudgetCeiling = 10
 // first run. Mid-fix rules (MDS025, MDS026) carry the post-partial
 // number; full-fix rules are absent.
 var allocBudgetGrandfathered = map[string]int{
-	"MDS023": 19,  // paragraph-readability
-	"MDS024": 19,  // paragraph-structure (representative fixture)
-	"MDS025": 55,  // table-format (partial fix lands 63 → 55)
-	"MDS026": 23,  // table-readability (partial fix lands 37 → 23)
-	"MDS027": 30,  // cross-file-reference-integrity
-	"MDS029": 402, // conciseness-scoring
+	"MDS025": 50,  // table-format
+	"MDS026": 18,  // table-readability
+	"MDS027": 25,  // cross-file-reference-integrity
+	"MDS029": 398, // conciseness-scoring
 	"MDS035": 201, // toc-directive
-	"MDS036": 21,  // max-section-length
-	"MDS053": 21,  // no-unused-link-definitions
-	"MDS054": 26,  // no-undefined-reference-labels
-	"MDS062": 15,  // link-validity
+	"MDS036": 12,  // max-section-length
+	"MDS053": 16,  // no-unused-link-definitions
+	"MDS054": 21,  // no-undefined-reference-labels
 	"MDS063": 17,  // descriptive-link-text
+	// Baselines tightened to the post-perf-chunk numbers so a
+	// regression from today's state fails CI without waiting for
+	// the per-rule alloc budget to be missed by a wide margin.
+	// MDS023, MDS024, MDS062 dropped under the ≤ 10 ceiling after
+	// the engine-bench allocator chunk (LineOfOffset inlined binary
+	// search, message-string cache, slot value semantics). Removed
+	// from the grandfather list per the gate's self-removal rule.
 }
 
 // allocBudgetFixture is the representative Markdown body every rule
