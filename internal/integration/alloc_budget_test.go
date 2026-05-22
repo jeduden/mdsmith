@@ -31,7 +31,7 @@ const allocBudgetCeiling = 10
 // New entries MUST be accompanied by a plan 195 task entry; removing
 // an entry requires the rule's gate-budget unit test (e.g.
 // internal/rules/<pkg>/alloc_test.go) to pass at the ≤
-// allocBudgetCeiling target. The slice shrinks as fixes land.
+// allocBudgetCeiling target. The map shrinks as fixes land.
 //
 // Recorded baselines on the integration fixture as of the gate's
 // first run. Mid-fix rules (MDS025, MDS026) carry the post-partial
@@ -157,18 +157,22 @@ func TestPerRuleAllocBudget(t *testing.T) {
 		r := r
 		t.Run(r.ID()+"_"+r.Name(), func(t *testing.T) {
 			allocs := allocsForRule(t, r)
-			budget := allocBudgetCeiling
+			budget := float64(allocBudgetCeiling)
 			if g, ok := allocBudgetGrandfathered[r.ID()]; ok {
-				budget = g
+				budget = float64(g)
 			}
-			if int(allocs) > budget {
-				if budget == allocBudgetCeiling {
-					t.Fatalf("%s (%s) Check allocates %.0f/op, ceiling = %d "+
+			// testing.AllocsPerRun returns a float64 average across
+			// many iterations; a fractional value like 10.9 must trip
+			// a budget of 10, not silently round down (Copilot review
+			// PR #368). Compare the float directly.
+			if allocs > budget {
+				if budget == float64(allocBudgetCeiling) {
+					t.Fatalf("%s (%s) Check allocates %.1f/op, ceiling = %d "+
 						"(CLAUDE.md ≤ 10 per call on representative input)",
 						r.ID(), r.Name(), allocs, allocBudgetCeiling)
 				}
-				t.Fatalf("%s (%s) Check allocates %.0f/op, grandfathered "+
-					"budget = %d. The grandfather list at the top of this "+
+				t.Fatalf("%s (%s) Check allocates %.1f/op, grandfathered "+
+					"budget = %.0f. The grandfather list at the top of this "+
 					"file pins the rule's plan-195 baseline so regressions "+
 					"past it fail CI even before the rule is fully under "+
 					"the ≤ %d ceiling. Either fix the regression or, if "+
@@ -179,8 +183,8 @@ func TestPerRuleAllocBudget(t *testing.T) {
 			// When a grandfathered rule comes in under the ceiling, the
 			// grandfather row is stale; surface it so the next contributor
 			// removes it.
-			if _, ok := allocBudgetGrandfathered[r.ID()]; ok && int(allocs) <= allocBudgetCeiling {
-				t.Fatalf("%s (%s) now allocates %.0f/op (≤ %d ceiling) — "+
+			if _, ok := allocBudgetGrandfathered[r.ID()]; ok && allocs <= float64(allocBudgetCeiling) {
+				t.Fatalf("%s (%s) now allocates %.1f/op (≤ %d ceiling) — "+
 					"remove the grandfather entry in allocBudgetGrandfathered.",
 					r.ID(), r.Name(), allocs, allocBudgetCeiling)
 			}

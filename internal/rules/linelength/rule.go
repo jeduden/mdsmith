@@ -147,7 +147,6 @@ func (r *Rule) DefaultSettings() map[string]any {
 	}
 }
 
-// lineCategories holds pre-computed line classification maps.
 // lineCategories holds the line-set lookups Check needs to decide
 // per-line max and per-line skip. Each map is nil when the active
 // settings do not need it — reads from a nil map return false, which

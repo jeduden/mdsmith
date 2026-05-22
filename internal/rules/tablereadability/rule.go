@@ -447,8 +447,9 @@ func detectPrefix(line []byte) string {
 		default:
 			// Reaching the default branch means we already consumed at
 			// least one blockquote segment in a prior iteration (the
-			// outer guard required `line[0] == '>'`, and both inner
-			// cases write to prefix), so prefix is non-empty here.
+			// outer guard required `line[start] == '>'` after skipping
+			// leading ASCII spaces, and both inner cases write to
+			// prefix), so prefix is non-empty here.
 			return string(prefix)
 		}
 	}
