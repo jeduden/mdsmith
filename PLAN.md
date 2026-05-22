@@ -122,4 +122,6 @@ footer: |
 | 193 | ✅     | opus   | [Rework MDS024 to fit the per-rule allocation budget (≤ 10 allocs/op)](plan/193_mds024-allocation-budget.md)                            |
 | 194 | ✅     | opus   | [Frontpage persona audit — reduce AI-first framing, surface non-AI path](plan/194_frontpage-persona-audit.md)                           |
 | 195 | 🔳     | opus   | [Enforce the ≤ 10 allocs/op per-rule budget across every registered rule](plan/195_per-rule-alloc-budget.md)                            |
+| 196 | 🔲     | opus   | [Lazy SectionParagraph text — defer ExtractPlainText until a caller asks](plan/196_lazy-section-paragraph-text.md)                      |
+| 197 | 🔲     | opus   | [Fork goldmark — cut the per-parse allocator hot spots](plan/197_fork-goldmark-for-allocs.md)                                           |
 <?/catalog?>
