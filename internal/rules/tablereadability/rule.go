@@ -48,6 +48,15 @@ func (r *Rule) Category() string { return "table" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	// Cheap early-exit: any GFM table row contains `|`. Skipping
+	// files with no pipe byte avoids the AST-walk for code lines
+	// and the per-line prefix-detection pass, which together are
+	// the rule's dominant per-Check allocator on table-free files
+	// (the common case in most repos).
+	if bytes.IndexByte(f.Source, '|') < 0 {
+		return nil
+	}
+
 	maxColumns := positiveIntOrDefault(r.MaxColumns, defaultMaxColumns)
 	maxRows := positiveIntOrDefault(r.MaxRows, defaultMaxRows)
 	maxWordsPerCell := positiveIntOrDefault(r.MaxWordsPerCell, defaultMaxWordsPerCell)
@@ -205,6 +214,16 @@ func findTables(lines [][]byte, codeLines map[int]bool) []table {
 			continue
 		}
 
+		// Lines that cannot contain a `|` cannot start a table; the
+		// guard avoids a per-line detectPrefix allocation. detectPrefix
+		// returns "" for non-pipe lines anyway, but only after a
+		// `string(line)` conversion that was the dominant per-Check
+		// allocator on file-with-no-tables corpora before plan 195.
+		if bytes.IndexByte(lines[i], '|') < 0 {
+			i++
+			continue
+		}
+
 		tbl, end := tryParseTable(lines, i, codeLines)
 		if tbl == nil {
 			i++
@@ -235,13 +254,13 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, i
 	if !isTableRow(separator) {
 		return nil, start
 	}
-	sepCells := splitRow(string(separator))
+	sepCells := splitRow(separator)
 	if !isSeparatorRow(sepCells) {
 		return nil, start
 	}
 
 	rows := []tableRow{
-		{line: start + 1, cells: splitRow(string(header))},
+		{line: start + 1, cells: splitRow(header)},
 		{line: start + 2, cells: sepCells, isSeparator: true},
 	}
 
@@ -254,7 +273,7 @@ func tryParseTable(lines [][]byte, start int, codeLines map[int]bool) (*table, i
 		if !isTableRow(content) {
 			break
 		}
-		rows = append(rows, tableRow{line: end + 1, cells: splitRow(string(content))})
+		rows = append(rows, tableRow{line: end + 1, cells: splitRow(content)})
 		end++
 	}
 
@@ -360,37 +379,84 @@ func (t table) columnWidthRatio() float64 {
 	return maxAverage / minAverage
 }
 
-func detectPrefix(line []byte) string {
-	s := string(line)
+var (
+	blockquoteSpace = []byte("> ")
+	blockquoteOnly  = []byte(">")
+)
 
-	var prefix strings.Builder
-	remaining := s
+// detectPrefix returns the GFM-extension blockquote prefix that
+// nests this line's table (e.g. `> ` or `> > `). For a non-nested
+// table line it returns "" without allocating; for a nested table
+// it returns the prefix as a string so stripPrefix can match by
+// equality. The hot path is the non-nested case, so the fast
+// shortcut (no `>` byte at start ⇒ return "") avoids the byte-
+// scanner loop entirely. Pre-plan 195 the helper allocated
+// `string(line)` plus a strings.Builder per call on every line in
+// the file; the byte-scanner replacement allocates only when a
+// blockquote prefix is actually present.
+func detectPrefix(line []byte) string {
+	// Skip leading ASCII space. The original code used `strings.TrimLeft`
+	// for the space-prefix shape; ASCII space matches GFM's blockquote
+	// indent grammar without the Unicode TrimLeft cost.
+	start := 0
+	for start < len(line) && line[start] == ' ' {
+		start++
+	}
+	if start >= len(line) || line[start] != '>' {
+		// Non-blockquote line. The original code's fallback returned
+		// the leading-spaces prefix only when followed by `|`; this is
+		// the dominant case for table rows in unnested context, so
+		// preserving that string allocation costs one alloc per
+		// matched table line — paid only when we then proceed to
+		// parse the table.
+		idx := bytes.IndexByte(line, '|')
+		if idx <= 0 {
+			return ""
+		}
+		candidate := line[:idx]
+		if len(bytes.TrimSpace(candidate)) > 0 {
+			return ""
+		}
+		return string(candidate)
+	}
+
+	// Nested-blockquote path. Walk through `> ` (or bare `>` followed
+	// by `>`) segments. The accumulated prefix is rare in real docs;
+	// allocating only here keeps the non-nested hot path free of any
+	// per-call allocation.
+	var prefix []byte
+	remaining := line
 	for {
-		trimmed := strings.TrimLeft(remaining, " ")
-		indent := remaining[:len(remaining)-len(trimmed)]
+		s := 0
+		for s < len(remaining) && remaining[s] == ' ' {
+			s++
+		}
+		indent := remaining[:s]
+		trimmed := remaining[s:]
 
 		switch {
-		case strings.HasPrefix(trimmed, "> "):
-			prefix.WriteString(indent)
-			prefix.WriteString("> ")
+		case bytes.HasPrefix(trimmed, blockquoteSpace):
+			prefix = append(prefix, indent...)
+			prefix = append(prefix, blockquoteSpace...)
 			remaining = trimmed[2:]
-		case strings.HasPrefix(trimmed, ">") && (len(trimmed) == 1 || trimmed[1] == '>'):
-			prefix.WriteString(indent)
-			prefix.WriteString(">")
+		case bytes.HasPrefix(trimmed, blockquoteOnly) &&
+			(len(trimmed) == 1 || trimmed[1] == '>'):
+			prefix = append(prefix, indent...)
+			prefix = append(prefix, '>')
 			remaining = trimmed[1:]
 		default:
-			if prefix.Len() > 0 {
-				return prefix.String()
+			if len(prefix) > 0 {
+				return string(prefix)
 			}
-			idx := strings.Index(s, "|")
+			idx := bytes.IndexByte(line, '|')
 			if idx <= 0 {
 				return ""
 			}
-			candidate := s[:idx]
-			if strings.TrimSpace(candidate) == "" {
-				return candidate
+			candidate := line[:idx]
+			if len(bytes.TrimSpace(candidate)) > 0 {
+				return ""
 			}
-			return ""
+			return string(candidate)
 		}
 	}
 }
@@ -414,9 +480,22 @@ func isTableRow(content []byte) bool {
 	return trimmed[0] == '|' && trimmed[len(trimmed)-1] == '|'
 }
 
-func splitRow(row string) []string {
-	row = strings.TrimSpace(row)
-
+// splitRow splits a row's interior (after outer-pipe strip and
+// whitespace trim) into per-cell strings. The byte-based form
+// replaces the original `strings.Builder`-driven path so that:
+//
+//   - the input avoids one `string(...)` conversion per row;
+//   - the result slice is sized exactly from the unescaped `|`
+//     count, eliminating per-row capacity grows;
+//   - each cell allocates exactly one string (`string(...)` on a
+//     bytes.TrimSpace sub-slice), rather than one Builder.String()
+//     plus a separate strings.TrimSpace.
+//
+// `\|` is the GFM escape for a literal pipe inside a cell; the
+// scanner preserves the backslash in the cell text so consumers
+// see the input as the user wrote it.
+func splitRow(row []byte) []string {
+	row = bytes.TrimSpace(row)
 	if len(row) > 0 && row[0] == '|' {
 		row = row[1:]
 	}
@@ -424,22 +503,30 @@ func splitRow(row string) []string {
 		row = row[:len(row)-1]
 	}
 
-	var cells []string
-	var current strings.Builder
+	// Pre-size cells: count unescaped `|` separators + 1.
+	cellCount := 1
 	for i := 0; i < len(row); i++ {
 		if row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
-			current.WriteString(`\|`)
 			i++
 			continue
 		}
 		if row[i] == '|' {
-			cells = append(cells, strings.TrimSpace(current.String()))
-			current.Reset()
+			cellCount++
+		}
+	}
+	cells := make([]string, 0, cellCount)
+
+	start := 0
+	for i := 0; i <= len(row); i++ {
+		if i < len(row) && row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
+			i++
 			continue
 		}
-		current.WriteByte(row[i])
+		if i == len(row) || row[i] == '|' {
+			cells = append(cells, string(bytes.TrimSpace(row[start:i])))
+			start = i + 1
+		}
 	}
-	cells = append(cells, strings.TrimSpace(current.String()))
 	return cells
 }
 
