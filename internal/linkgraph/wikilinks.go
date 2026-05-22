@@ -211,7 +211,7 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 			return nil
 		}
 		if d.IsDir() {
-			return nil
+			return skipHeavyDirs(p)
 		}
 		base := path.Base(p)
 		lcName := strings.ToLower(base)
@@ -265,6 +265,23 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 		return matches[0], true
 	}
 	return "", false
+}
+
+// skipHeavyDirs returns fs.SkipDir for known-heavy subtrees that
+// never carry wikilink targets users want resolved (`.git`,
+// `node_modules`). Used as a fs.WalkDirFunc verdict for directory
+// entries — file entries pass through unchanged. Mirrors the
+// pattern walkDirDecision uses in duplicatedcontent so the same
+// names stay pruned across every rule that walks the workspace.
+func skipHeavyDirs(p string) error {
+	if p == "." {
+		return nil
+	}
+	switch path.Base(p) {
+	case ".git", "node_modules":
+		return fs.SkipDir
+	}
+	return nil
 }
 
 func sortByDepthThenName(paths []string) {
@@ -339,7 +356,7 @@ func ResolveWikiLink(root fs.FS, from, target string) (string, bool) {
 			return nil
 		}
 		if d.IsDir() {
-			return nil
+			return skipHeavyDirs(p)
 		}
 		base := path.Base(p)
 		if stemMode {

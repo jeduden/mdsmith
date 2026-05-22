@@ -67,6 +67,48 @@ func linkgraphWikilinkIndexFor(cache *lint.RunCache, key string, root fs.FS) *Wi
 	return WikilinkIndexFor(cache, key, root)
 }
 
+func TestSkipHeavyDirs(t *testing.T) {
+	assert.Nil(t, skipHeavyDirs("."))
+	assert.Nil(t, skipHeavyDirs("docs"))
+	assert.Nil(t, skipHeavyDirs("plan/sub"))
+	assert.Equal(t, fs.SkipDir, skipHeavyDirs(".git"))
+	assert.Equal(t, fs.SkipDir, skipHeavyDirs("vendor/dep/node_modules"))
+	assert.Equal(t, fs.SkipDir, skipHeavyDirs("sub/.git"))
+}
+
+func TestNewWikilinkIndex_PrunesHeavyDirs(t *testing.T) {
+	// A wikilink target that lives under .git/ or node_modules/
+	// must not show up in the index — both directories carry no
+	// content users intend to wikilink against, and skipping them
+	// keeps the workspace walk bounded on real repos.
+	mfs := fstest.MapFS{
+		"page.md":                                &fstest.MapFile{Data: []byte{}},
+		".git/HEAD":                              &fstest.MapFile{Data: []byte{}},
+		".git/sub/page.md":                       &fstest.MapFile{Data: []byte{}},
+		"node_modules/lib/page.md":               &fstest.MapFile{Data: []byte{}},
+		"vendor/dep/node_modules/inside/page.md": &fstest.MapFile{Data: []byte{}},
+	}
+	idx := NewWikilinkIndex(mfs)
+	require.NotNil(t, idx)
+	got, ok := idx.Resolve("page")
+	require.True(t, ok)
+	assert.Equal(t, "page.md", got,
+		"only the top-level page.md should survive pruning")
+}
+
+func TestResolveWikiLink_PrunesHeavyDirs(t *testing.T) {
+	// The fallback per-call walk must apply the same pruning so
+	// a vault without a cached index does not pay for walking
+	// node_modules.
+	mfs := fstest.MapFS{
+		"page.md":                  &fstest.MapFile{Data: []byte{}},
+		"node_modules/lib/page.md": &fstest.MapFile{Data: []byte{}},
+	}
+	got, ok := ResolveWikiLink(mfs, "from.md", "page")
+	require.True(t, ok)
+	assert.Equal(t, "page.md", got)
+}
+
 func TestNewWikilinkIndex_NilRoot(t *testing.T) {
 	assert.Nil(t, NewWikilinkIndex(nil))
 }
