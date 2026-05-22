@@ -121,7 +121,10 @@ func (r *Rule) checkWikilinks(
 	// otherwise), and wikilinkRoot's last fallback returns f.FS, so
 	// root is always populated here.
 	root := wikilinkRoot(f)
-	resolver := newWikilinkResolver(root, workspaceRelativeSource(f), r.effectiveWikilinkStyle())
+	resolver := newWikilinkResolver(
+		root, workspaceRelativeSource(f), r.effectiveWikilinkStyle(),
+		wikilinkIndexForRoot(f, root),
+	)
 
 	var diags []lint.Diagnostic
 	for _, wl := range linkgraph.ExtractWikiLinks(f) {
@@ -180,6 +183,41 @@ func (r *Rule) effectiveWikilinkStyle() string {
 	return r.WikilinkStyle
 }
 
+// wikilinkIndexForRoot returns a *linkgraph.WikilinkIndex cached on
+// f.RunCache, keyed by the workspace's absolute root directory. The
+// index is built lazily by the first Check that needs it and shared
+// by every later host file in the same run. Returns nil when no
+// RunCache is installed (struct-literal Files in unit tests) so the
+// resolver falls back to the per-Check fs walk.
+func wikilinkIndexForRoot(f *lint.File, root fs.FS) *linkgraph.WikilinkIndex {
+	if f.RunCache == nil || root == nil {
+		return nil
+	}
+	key := wikilinkCacheKey(f)
+	if key == "" {
+		return nil
+	}
+	v := f.RunCache.Wikilinks(key, func() any {
+		return linkgraph.NewWikilinkIndex(root)
+	})
+	idx, _ := v.(*linkgraph.WikilinkIndex)
+	return idx
+}
+
+// wikilinkCacheKey returns the per-root cache key for the wikilink
+// index. RootDir's absolute form is preferred so two host files at
+// different relative paths under the same root share one index.
+func wikilinkCacheKey(f *lint.File) string {
+	if f.RootDir == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(f.RootDir)
+	if err != nil {
+		return f.RootDir
+	}
+	return abs
+}
+
 func wikilinkRoot(f *lint.File) fs.FS {
 	if f.RootFS != nil {
 		return f.RootFS
@@ -192,10 +230,15 @@ func wikilinkRoot(f *lint.File) fs.FS {
 
 // wikilinkResolver caches workspace-walk results so a doc with many
 // references to the same target does a single fs walk per target.
+// When a per-run WikilinkIndex is available (built once and shared
+// via f.RunCache), the resolver serves every lookup from that
+// index — turning N files × M targets × workspace-walk into one
+// walk per workspace.
 type wikilinkResolver struct {
 	root   fs.FS
 	from   string
 	style  string
+	index  *linkgraph.WikilinkIndex
 	memory map[string]wikilinkResolveResult
 }
 
@@ -204,11 +247,12 @@ type wikilinkResolveResult struct {
 	ok   bool
 }
 
-func newWikilinkResolver(root fs.FS, from, style string) *wikilinkResolver {
+func newWikilinkResolver(root fs.FS, from, style string, index *linkgraph.WikilinkIndex) *wikilinkResolver {
 	return &wikilinkResolver{
 		root:   root,
 		from:   from,
 		style:  style,
+		index:  index,
 		memory: map[string]wikilinkResolveResult{},
 	}
 }
@@ -220,7 +264,11 @@ func (rv *wikilinkResolver) resolve(target string) (string, bool) {
 	var out wikilinkResolveResult
 	switch rv.style {
 	case "obsidian":
-		out.path, out.ok = linkgraph.ResolveWikiLink(rv.root, rv.from, target)
+		if rv.index != nil {
+			out.path, out.ok = rv.index.Resolve(target)
+		} else {
+			out.path, out.ok = linkgraph.ResolveWikiLink(rv.root, rv.from, target)
+		}
 	default:
 		// Settings parsing already rejects unsupported values; this
 		// branch is a defensive no-op so a manually-constructed Rule
@@ -273,10 +321,11 @@ func workspaceRelativeSource(f *lint.File) string {
 	return filepath.ToSlash(rel)
 }
 
-// wikilinkRaw renders wl back to its source form so placeholders that
-// look at the full bracket span (e.g. matching a `{var}` token in the
-// alias) can fire the same way they would for a Markdown link's raw
-// target.
+// wikilinkRaw renders wl back to its source form for diagnostic
+// messages — broken-anchor diagnostics quote the full bracket span
+// (target + #anchor + |alias) so the user can grep the source for
+// the exact token. Placeholder suppression does NOT call this; see
+// wikilinkSuppressed for the destination-only check.
 func wikilinkRaw(wl linkgraph.WikiLink) string {
 	var sb strings.Builder
 	if wl.Embed {

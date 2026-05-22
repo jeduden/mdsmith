@@ -99,6 +99,9 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if r.AllowUnknown {
 		return nil
 	}
+	if f == nil || f.AST == nil {
+		return nil
+	}
 	allowed := r.effectiveAllowSet()
 	var diags []lint.Diagnostic
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {

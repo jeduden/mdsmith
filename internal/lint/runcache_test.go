@@ -236,3 +236,52 @@ func TestRunCache_AnchorsConcurrentSingleBuild(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
 		"Anchors build must run exactly once under concurrent access")
 }
+
+func TestRunCache_WikilinksBuildsOnce(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "index-instance"
+	}
+	for i := 0; i < 4; i++ {
+		got := c.Wikilinks("/root/a", build)
+		require.Equal(t, "index-instance", got)
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"Wikilinks must build exactly once per root key")
+}
+
+func TestRunCache_WikilinksConcurrent(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "idx"
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = c.Wikilinks("/root/a", build)
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"concurrent callers must share one build")
+}
+
+func TestRunCache_InvalidateWikilinks(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "v"
+	}
+	_ = c.Wikilinks("/root/a", build)
+	c.InvalidateWikilinks()
+	_ = c.Wikilinks("/root/a", build)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
+		"InvalidateWikilinks must let the next call rebuild")
+}

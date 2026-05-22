@@ -1335,7 +1335,7 @@ func TestResolver_UnknownStyleNoop(t *testing.T) {
 
 func TestCheck_Wikilinks_UnreadableTarget(t *testing.T) {
 	// MaxInputBytes set to a value below the target file's size makes
-	// the anchor read fail; the rule must surface a unreadable-target
+	// the anchor read fail; the rule must surface an unreadable-target
 	// diagnostic rather than crash.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.md"),

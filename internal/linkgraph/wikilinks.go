@@ -146,6 +146,100 @@ func inCodeSpan(spans []byteRange, offset int) bool {
 	return false
 }
 
+// WikilinkIndex is a pre-built directory of every file under one
+// workspace root, keyed for the two lookup shapes ResolveWikiLink
+// uses: stem (.md/.markdown filename minus extension) and exact
+// filename. Each key holds the matching paths in shortest-then-
+// alphabetical order, the same order ResolveWikiLink would
+// otherwise sort on every call.
+//
+// Build the index once per (run, root) — e.g. via
+// `lint.RunCache.Wikilinks` — and call Resolve for each wikilink
+// target. Lookups are then O(stems + matches) instead of O(files
+// in workspace) per target.
+type WikilinkIndex struct {
+	stems map[string][]string // lowercased stem → sorted .md paths
+	names map[string][]string // lowercased filename → sorted any-ext paths
+}
+
+// NewWikilinkIndex walks root once and returns a lookup table that
+// future ResolveWikiLink-style queries can serve from memory.
+// Returns nil when root is nil.
+func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
+	if root == nil {
+		return nil
+	}
+	idx := &WikilinkIndex{
+		stems: map[string][]string{},
+		names: map[string][]string{},
+	}
+	_ = fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		base := path.Base(p)
+		lcName := strings.ToLower(base)
+		idx.names[lcName] = append(idx.names[lcName], p)
+		if isMarkdownName(base) {
+			stem := strings.TrimSuffix(base, path.Ext(base))
+			lcStem := strings.ToLower(stem)
+			idx.stems[lcStem] = append(idx.stems[lcStem], p)
+		}
+		return nil
+	})
+	for k, v := range idx.stems {
+		sortByDepthThenName(v)
+		idx.stems[k] = v
+	}
+	for k, v := range idx.names {
+		sortByDepthThenName(v)
+		idx.names[k] = v
+	}
+	return idx
+}
+
+// Resolve answers the same question as ResolveWikiLink but serves
+// it from the prebuilt index — no filesystem walk per call.
+func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
+	if idx == nil || target == "" {
+		return "", false
+	}
+	target = strings.TrimSpace(target)
+	if target == "" || isDriveOrUNC(target) {
+		return "", false
+	}
+	target = strings.ReplaceAll(target, `\`, `/`)
+	cleaned := path.Clean(target)
+	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
+		return "", false
+	}
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+	wantName, wantStem, stemMode := wikilinkSearchKey(target)
+	if stemMode {
+		if matches, ok := idx.stems[strings.ToLower(wantStem)]; ok && len(matches) > 0 {
+			return matches[0], true
+		}
+		return "", false
+	}
+	if matches, ok := idx.names[strings.ToLower(wantName)]; ok && len(matches) > 0 {
+		return matches[0], true
+	}
+	return "", false
+}
+
+func sortByDepthThenName(paths []string) {
+	sort.Slice(paths, func(i, j int) bool {
+		di := strings.Count(paths[i], "/")
+		dj := strings.Count(paths[j], "/")
+		if di != dj {
+			return di < dj
+		}
+		return paths[i] < paths[j]
+	})
+}
+
 // ResolveWikiLink resolves an Obsidian-style wikilink target against
 // root, returning the workspace-relative path of the resolved file.
 //

@@ -141,6 +141,16 @@ func TestSettingMergeMode(t *testing.T) {
 	assert.NotEqual(t, r.SettingMergeMode("allow"), r.SettingMergeMode("allow-unknown"))
 }
 
+func TestCheck_NilFileAndNilASTReturnNil(t *testing.T) {
+	// lint.File explicitly supports the struct-literal construction
+	// path where AST is never populated. Rule.Check walks f.AST, so
+	// it must short-circuit instead of panicking on a nil tree —
+	// and gracefully accept a nil *lint.File the same way.
+	r := &Rule{}
+	assert.NotPanics(t, func() { assert.Nil(t, r.Check(nil)) })
+	assert.NotPanics(t, func() { assert.Nil(t, r.Check(&lint.File{})) })
+}
+
 func TestCheck_BlockquoteWithoutParagraph(t *testing.T) {
 	// A blockquote whose first child is a list, code block, or another
 	// blockquote (not a paragraph) cannot carry a callout marker. The

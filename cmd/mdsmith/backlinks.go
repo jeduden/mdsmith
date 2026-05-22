@@ -250,6 +250,17 @@ func collectBacklinks(
 		wantAnchorSlug = linkgraph.NormalizeAnchor(wantAnchor)
 	}
 
+	// Build the workspace wikilink index once per collectBacklinks
+	// call so a corpus with N source files × M distinct wikilink
+	// targets does one fs.WalkDir instead of N×M. Skipped when
+	// rootDir is empty (e.g. unit-test calls with files in the
+	// current directory) — extractBacklinksFromSource then falls
+	// back to per-call walks via ResolveWikiLink.
+	var index *linkgraph.WikilinkIndex
+	if rootDir != "" {
+		index = linkgraph.NewWikilinkIndex(os.DirFS(rootDir))
+	}
+
 	var records []backlinkRecord
 	var errs []error
 	for _, src := range files {
@@ -263,7 +274,7 @@ func collectBacklinks(
 		}
 		rs, err := extractBacklinksFromSource(
 			src, srcRel, rootDir, wantTarget, wantAnchorSlug,
-			maxBytes, stripFrontMatter,
+			maxBytes, stripFrontMatter, index,
 		)
 		if err != nil {
 			errs = append(errs, err)
@@ -287,6 +298,7 @@ func collectBacklinks(
 func extractBacklinksFromSource(
 	src, srcRel, rootDir, wantTarget, wantAnchorSlug string,
 	maxBytes int64, stripFrontMatter bool,
+	index *linkgraph.WikilinkIndex,
 ) ([]backlinkRecord, error) {
 	data, err := lint.ReadFileLimited(src, maxBytes)
 	if err != nil {
@@ -334,7 +346,7 @@ func extractBacklinksFromSource(
 			Target: t.Raw,
 		})
 	}
-	out = appendWikilinkBacklinks(out, f, srcRel, wantTarget, wantAnchorSlug)
+	out = appendWikilinkBacklinks(out, f, srcRel, wantTarget, wantAnchorSlug, index)
 	return out, nil
 }
 
@@ -343,20 +355,23 @@ func extractBacklinksFromSource(
 // uses the same shortest-path algorithm MDS027 applies, sandboxed to
 // the file's root. Wikilinks are extracted unconditionally — the
 // scan is cheap and the user querying backlinks already opted in by
-// running the command. Resolution results are cached per (target)
-// across one file's wikilinks so a doc with N references to the same
-// page does N=1 fs walks.
+// running the command.
+//
+// When a prebuilt index is supplied, every wikilink resolves via
+// O(1) map lookups; otherwise resolution falls back to per-call
+// fs.WalkDir, memoized per target within this file.
 func appendWikilinkBacklinks(
 	out []backlinkRecord,
 	f *lint.File,
 	srcRel, wantTarget, wantAnchorSlug string,
+	index *linkgraph.WikilinkIndex,
 ) []backlinkRecord {
 	wikilinks := linkgraph.ExtractWikiLinks(f)
 	if len(wikilinks) == 0 {
 		return out
 	}
 	root := f.RootFS
-	if root == nil {
+	if root == nil && index == nil {
 		return out
 	}
 	type resolveResult struct {
@@ -367,7 +382,11 @@ func appendWikilinkBacklinks(
 	for _, wl := range wikilinks {
 		r, cached := cache[wl.Target]
 		if !cached {
-			r.path, r.ok = linkgraph.ResolveWikiLink(root, srcRel, wl.Target)
+			if index != nil {
+				r.path, r.ok = index.Resolve(wl.Target)
+			} else {
+				r.path, r.ok = linkgraph.ResolveWikiLink(root, srcRel, wl.Target)
+			}
 			cache[wl.Target] = r
 		}
 		if !r.ok || r.path != wantTarget {

@@ -33,6 +33,57 @@ func TestExtractWikiLinks_NilASTReturnsNilNoPanic(t *testing.T) {
 	})
 }
 
+func TestNewWikilinkIndex_NilRoot(t *testing.T) {
+	assert.Nil(t, NewWikilinkIndex(nil))
+}
+
+func TestWikilinkIndex_ResolveSemantics(t *testing.T) {
+	// One index should serve every shape ResolveWikiLink supports:
+	// stem (.md), embed (any extension), case-insensitive match,
+	// shortest-path tie-break, traversal rejection, drive-letter
+	// rejection, backslash normalisation.
+	mfs := fstest.MapFS{
+		"notes.md":          &fstest.MapFile{Data: []byte{}},
+		"deep/sub/notes.md": &fstest.MapFile{Data: []byte{}},
+		"assets/img.png":    &fstest.MapFile{Data: []byte{}},
+		"sub/page.md":       &fstest.MapFile{Data: []byte{}},
+	}
+	idx := NewWikilinkIndex(mfs)
+	require.NotNil(t, idx)
+
+	cases := []struct {
+		name   string
+		target string
+		want   string
+		wantOK bool
+	}{
+		{"stem case-insensitive", "Notes", "notes.md", true},
+		{"shortest path", "notes", "notes.md", true},
+		{"embed exact name", "img.png", "assets/img.png", true},
+		{"backslash normalised", `sub\page`, "sub/page.md", true},
+		{"missing", "absent", "", false},
+		{"traversal rejected", "../etc/passwd", "", false},
+		{"drive rejected", "C:/Windows/notes.md", "", false},
+		{"UNC rejected", "//host/share/notes.md", "", false},
+		{"absolute rejected", "/notes.md", "", false},
+		{"empty rejected", "", "", false},
+		{"nil index", "notes", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			target := idx
+			if tc.name == "nil index" {
+				target = nil
+			}
+			got, ok := target.Resolve(tc.target)
+			assert.Equal(t, tc.wantOK, ok)
+			if ok {
+				assert.Equal(t, tc.want, got)
+			}
+		})
+	}
+}
+
 func TestResolveWikiLink_WhitespaceTarget(t *testing.T) {
 	mfs := fstest.MapFS{"page.md": &fstest.MapFile{Data: []byte{}}}
 	_, ok := ResolveWikiLink(mfs, "from.md", "   ")

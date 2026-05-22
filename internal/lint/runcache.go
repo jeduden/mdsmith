@@ -19,6 +19,7 @@ type RunCache struct {
 	frontMatter sync.Map // string (absPath) -> *runCacheEntry
 	includes    sync.Map // string (absPath) -> *runCacheEntry
 	anchors     sync.Map // string (absPath) -> *anchorEntry
+	wikilinks   sync.Map // string (root key) -> *runCacheEntry
 }
 
 // runCacheEntry guards a single cache slot so build runs exactly once
@@ -94,14 +95,41 @@ type anchorEntry struct {
 	anchors map[string]bool
 }
 
+// Wikilinks returns build's result keyed by rootKey, computed at
+// most once per rootKey in this cache's lifetime. Concurrent
+// callers with the same key block on the same once and observe
+// the same value.
+//
+// The value carries dynamic type any — MDS027 and `mdsmith list
+// backlinks` install a *linkgraph.WikilinkIndex so a workspace
+// walked for one host file serves every other file in the run.
+func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
+	return load(&c.wikilinks, rootKey, build)
+}
+
 // Invalidate drops the front-matter, include, and anchor entries
 // for absPath. The LSP calls this from didChange / didSave /
 // didChangeWatchedFiles so the next Check that crosses absPath
 // re-reads from disk.
+//
+// Wikilink indices are NOT invalidated per absPath because a file
+// rename or creation could change the resolution of any wikilink in
+// the workspace; the LSP must InvalidateWikilinks (or build a
+// fresh RunCache) when the filesystem layout changes.
 func (c *RunCache) Invalidate(absPath string) {
 	c.frontMatter.Delete(absPath)
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
+}
+
+// InvalidateWikilinks clears every cached wikilink index. The LSP
+// calls this when the workspace tree changes (file create/delete/
+// rename) so the next resolution walks afresh.
+func (c *RunCache) InvalidateWikilinks() {
+	c.wikilinks.Range(func(k, _ any) bool {
+		c.wikilinks.Delete(k)
+		return true
+	})
 }
 
 // load is the shared LoadOrStore + sync.Once primitive for both maps.
