@@ -6,6 +6,9 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
+
+	"github.com/jeduden/mdsmith/internal/goldmark/linkrefparagraph"
 )
 
 // NewParser returns mdsmith's canonical goldmark parser: the default
@@ -27,7 +30,11 @@ func NewParser() parser.Parser {
 			parser.DefaultInlineParsers()...,
 		),
 		parser.WithParagraphTransformers(
-			parser.DefaultParagraphTransformers()...,
+			// Replace goldmark's singleton LinkReferenceParagraphTransformer
+			// with a per-parser instance that owns a reusable BlockReader
+			// (plan 197). The priority value matches goldmark's default
+			// (100, see parser.DefaultParagraphTransformers).
+			util.Prioritized(linkrefparagraph.New(), 100),
 		),
 	)
 }
