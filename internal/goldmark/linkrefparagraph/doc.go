@@ -11,11 +11,12 @@
 // shared blockReader for every block via Reset, so the type itself is
 // reuse-safe; the link-ref transformer is the lone holdout.
 //
-// The fork keeps a *text.BlockReader on the transformer struct.
-// Transform re-Resets it for every paragraph. The transformer is
-// no longer a global singleton — each parser instance gets its own
-// transformer via NewTransformer(), which is goroutine-safe under
-// mdsmith's parserPool (one parser per goroutine).
+// The fork keeps a text.BlockReader (interface value) on the
+// Transformer struct. Transform re-Resets it for every paragraph.
+// The transformer is no longer a global singleton — each parser
+// instance gets its own Transformer via New(). Concurrency is
+// delegated to the parent sync.Pool, which gives each Get caller
+// exclusive access to one parser-with-transformer pair until Put.
 //
 // Source: github.com/yuin/goldmark@v1.8.2/parser/link_ref.go,
 // parser/link.go (parseLinkDestination, linkFindClosureOptions),

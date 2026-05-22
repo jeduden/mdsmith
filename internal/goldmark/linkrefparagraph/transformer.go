@@ -7,11 +7,12 @@ import (
 )
 
 // Transformer is the link-reference paragraph transformer. Unlike
-// goldmark's singleton, each instance owns a reusable *text.BlockReader
-// that is Reset for every paragraph instead of freshly allocated. The
-// transformer is NOT safe for concurrent use; mdsmith's parserPool
-// (pkg/markdown/parser.go) hands one parser-instance-with-transformer
-// per goroutine, so concurrency is delegated to that pool.
+// goldmark's singleton, each instance owns a reusable
+// text.BlockReader (interface value, backed by a single
+// *blockReader under the hood) that is Reset for every paragraph
+// instead of freshly allocated. The transformer is NOT safe for
+// concurrent use; the pool consumer in pkg/markdown gives each Get
+// caller exclusive access to one Transformer until the matching Put.
 //
 // On every Transform call:
 //   - First call (or first call with a new source []byte): allocate
@@ -31,6 +32,17 @@ type Transformer struct {
 // instance, not as a global singleton.
 func New() *Transformer {
 	return &Transformer{}
+}
+
+// Reset drops the references to the most recently parsed document's
+// source bytes and BlockReader. Callers that pool the parent parser
+// must invoke Reset before returning the parser to the pool, so a
+// large document does not stay pinned in memory by the idle pool
+// slot. After Reset the next Transform call rebuilds the BlockReader
+// from scratch — identical to the first-time path.
+func (t *Transformer) Reset() {
+	t.block = nil
+	t.source = nil
 }
 
 // Transform is the paragraph-transformer entry point. It mirrors the
