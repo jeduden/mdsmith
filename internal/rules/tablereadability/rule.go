@@ -445,18 +445,11 @@ func detectPrefix(line []byte) string {
 			prefix = append(prefix, '>')
 			remaining = trimmed[1:]
 		default:
-			if len(prefix) > 0 {
-				return string(prefix)
-			}
-			idx := bytes.IndexByte(line, '|')
-			if idx <= 0 {
-				return ""
-			}
-			candidate := line[:idx]
-			if len(bytes.TrimSpace(candidate)) > 0 {
-				return ""
-			}
-			return string(candidate)
+			// Reaching the default branch means we already consumed at
+			// least one blockquote segment in a prior iteration (the
+			// outer guard required `line[0] == '>'`, and both inner
+			// cases write to prefix), so prefix is non-empty here.
+			return string(prefix)
 		}
 	}
 }
