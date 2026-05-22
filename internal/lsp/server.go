@@ -584,6 +584,17 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			configChanged = true
 			continue
 		}
+		// The wikilink index indexes every file under the workspace
+		// — not just markdown — because embeds like `![[image.png]]`
+		// resolve to any extension. A create or delete of any
+		// non-config file therefore changes the candidate set; the
+		// flag is set before the markdown filter so an image add or
+		// a rename to a binary asset still rebuilds the index.
+		// Per LSP spec: 1=Created, 2=Changed, 3=Deleted. A rename
+		// is reported as a Deleted+Created pair.
+		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
+			treeChanged = true
+		}
 		// Use isMarkdownExt for case-insensitive extension match
 		// — the rest of the navigation surface (docTextOrFile,
 		// indexReloadFromDisk) treats `.MD` / `.Markdown` as
@@ -592,13 +603,6 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		// the index.
 		if isMarkdownExt(path) {
 			mdChanges = append(mdChanges, path)
-			// Per LSP spec: 1=Created, 2=Changed, 3=Deleted. A
-			// rename is reported as a Deleted+Created pair. The
-			// workspace-wide wikilink index keys off the file set,
-			// so any create or delete invalidates it.
-			if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
-				treeChanged = true
-			}
 		}
 	}
 	if configChanged {

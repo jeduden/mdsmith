@@ -2442,12 +2442,20 @@ func TestHandleDidChangeWatchedFiles_InvalidatesWikilinkIndex(t *testing.T) {
 	// not-found diagnostic.
 	cases := []struct {
 		name       string
+		uri        string
 		changeType int
 		want       bool
 	}{
-		{"create invalidates", fileChangeCreated, true},
-		{"delete invalidates", fileChangeDeleted, true},
-		{"changed does not invalidate", fileChangeChanged, false},
+		{"markdown create invalidates", "file:///tmp/new.md", fileChangeCreated, true},
+		{"markdown delete invalidates", "file:///tmp/new.md", fileChangeDeleted, true},
+		{"markdown changed does not invalidate", "file:///tmp/new.md", fileChangeChanged, false},
+		// Non-markdown create/delete must also invalidate: embeds
+		// like `![[image.png]]` resolve against any extension via
+		// the WikilinkIndex.names map, so a binary asset rename
+		// shifts the candidate set just as a markdown rename does.
+		{"image create invalidates", "file:///tmp/diagram.png", fileChangeCreated, true},
+		{"image delete invalidates", "file:///tmp/diagram.png", fileChangeDeleted, true},
+		{"image changed does not invalidate", "file:///tmp/diagram.png", fileChangeChanged, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2465,9 +2473,7 @@ func TestHandleDidChangeWatchedFiles_InvalidatesWikilinkIndex(t *testing.T) {
 			require.Equal(t, 1, built)
 
 			body, err := json.Marshal(didChangeWatchedFilesParams{
-				Changes: []fileEvent{
-					{URI: "file:///tmp/new.md", Type: tc.changeType},
-				},
+				Changes: []fileEvent{{URI: tc.uri, Type: tc.changeType}},
 			})
 			require.NoError(t, err)
 			s.handleDidChangeWatchedFiles(context.Background(), body)
