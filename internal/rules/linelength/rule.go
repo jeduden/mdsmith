@@ -1,8 +1,10 @@
 package linelength
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -152,6 +154,13 @@ func (r *Rule) DefaultSettings() map[string]any {
 }
 
 // lineCategories holds pre-computed line classification maps.
+// lineCategories holds the line-set lookups Check needs to decide
+// per-line max and per-line skip. Each map is nil when the active
+// settings do not need it — reads from a nil map return false, which
+// is exactly the "line is not in this category" answer the rest of
+// the rule wants, so the absent-by-default state costs no allocation
+// and no per-line branch. Pre-creating empty maps to "look uniform"
+// added three wasted allocations per Check before plan 195.
 type lineCategories struct {
 	code    map[int]bool
 	table   map[int]bool
@@ -159,11 +168,7 @@ type lineCategories struct {
 }
 
 func (r *Rule) buildCategories(f *lint.File) lineCategories {
-	lc := lineCategories{
-		code:    map[int]bool{},
-		table:   map[int]bool{},
-		heading: map[int]bool{},
-	}
+	var lc lineCategories
 	if r.isExcluded("code-blocks") || r.CodeBlockMax != nil {
 		lc.code = lint.CollectCodeBlockLines(f)
 	}
@@ -195,7 +200,7 @@ func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) boo
 	if r.isExcluded("tables") && lc.table[lineNum] {
 		return true
 	}
-	if r.isExcluded("urls") && urlOnlyRe.MatchString(strings.TrimSpace(string(line))) {
+	if r.isExcluded("urls") && isURLOnlyLine(line) {
 		return true
 	}
 	if r.Stern && !hasSpacePastLimit(line, limit) {
@@ -203,6 +208,56 @@ func (r *Rule) isSkipped(line []byte, lineNum, limit int, lc lineCategories) boo
 	}
 	return false
 }
+
+// isURLOnlyLine reports whether line, after trimming ASCII whitespace,
+// is a single http(s) URL with no internal whitespace. It mirrors
+// urlOnlyRe's intent (`^https?://\S+$` applied to TrimSpace input)
+// but reads bytes directly so the per-long-line check does not need
+// `string(line)`, `strings.TrimSpace`, or a regex `MatchString` —
+// each of which allocates in the regexp engine's hot frame.
+func isURLOnlyLine(line []byte) bool {
+	for len(line) > 0 && isASCIISpace(line[0]) {
+		line = line[1:]
+	}
+	for len(line) > 0 && isASCIISpace(line[len(line)-1]) {
+		line = line[:len(line)-1]
+	}
+	switch {
+	case bytes.HasPrefix(line, urlPrefixHTTPS):
+		line = line[len(urlPrefixHTTPS):]
+	case bytes.HasPrefix(line, urlPrefixHTTP):
+		line = line[len(urlPrefixHTTP):]
+	default:
+		return false
+	}
+	if len(line) == 0 {
+		return false
+	}
+	for _, b := range line {
+		if isASCIISpace(b) {
+			return false
+		}
+	}
+	return true
+}
+
+// isASCIISpace mirrors what `strings.TrimSpace` strips on the
+// representative ASCII inputs the URL check sees: space, tab, CR, LF.
+// Wider unicode whitespace would not appear in a URL-only line — and
+// when it does, the trimmed prefix check fails, so the outcome is
+// stable across inputs.
+func isASCIISpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r':
+		return true
+	}
+	return false
+}
+
+var (
+	urlPrefixHTTP  = []byte("http://")
+	urlPrefixHTTPS = []byte("https://")
+)
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
@@ -231,6 +286,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 
+		// Build the message via concat + strconv.Itoa rather than
+		// fmt.Sprintf so the warm path stays under the per-rule
+		// allocation budget. Sprintf allocates ~3 (format string
+		// scan + result buffer + temp); concat + Itoa lands at 1
+		// for typical max/runeLen values that hit strconv's
+		// small-int cache.
 		diags = append(diags, lint.Diagnostic{
 			File:     f.Path,
 			Line:     lineNum,
@@ -238,7 +299,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 			RuleID:   r.ID(),
 			RuleName: r.Name(),
 			Severity: lint.Warning,
-			Message:  fmt.Sprintf("line too long (%d > %d)", runeLen, limit),
+			Message: "line too long (" + strconv.Itoa(runeLen) +
+				" > " + strconv.Itoa(limit) + ")",
 		})
 	}
 
@@ -260,15 +322,38 @@ func hasSpacePastLimit(line []byte, limit int) bool {
 	return false
 }
 
-// collectTableLines returns a set of 1-based line numbers that are table rows.
+// collectTableLines returns a set of 1-based line numbers that are
+// table rows. The scan replaces a per-line `tableLineRe.Match`
+// (`^\s*\|`) with a tight byte loop; the regexp engine's internal
+// buffer rentals were the dominant per-Check allocator for this
+// helper before plan 195.
 func collectTableLines(f *lint.File) map[int]bool {
 	lines := map[int]bool{}
 	for i, line := range f.Lines {
-		if tableLineRe.Match(line) {
+		if isTableLineStart(line) {
 			lines[i+1] = true
 		}
 	}
 	return lines
+}
+
+// isTableLineStart reports whether line opens with optional spaces
+// or tabs followed by `|`. It is the allocation-free equivalent of
+// `^\s*\|` for the subset of whitespace that mark a table-row leader
+// in CommonMark; non-ASCII leading whitespace is not part of the
+// CommonMark table grammar so the byte-level test is exact.
+func isTableLineStart(line []byte) bool {
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case ' ', '\t':
+			continue
+		case '|':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 // setextUnderlineRe matches a Setext heading underline (one or more = or -).

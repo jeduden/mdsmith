@@ -22,23 +22,23 @@ import (
 const allocBudgetCeiling = 10
 
 // allocBudgetFixture is the representative Markdown body every rule
-// is measured against. It mirrors the engine bench's buildCorpusDoc
-// — heading, prose, fenced code, link — and adds a small table, an
-// emphasis run, a list, a reference link, and a heading-2 so the
-// table, list-style, link-graph, structural, and heading-walk rules
-// each have something to exercise. The body stays paragraph-sized
-// (real-Markdown representative, not an artificially long join) to
-// match what one Check call sees in production.
+// is measured against. It exercises a typical mix of features —
+// heading, prose paragraph, fenced code, inline link, reference
+// link, list, table, link-reference definition — so each rule's
+// categorisation and walk paths fire. The body is compliant: every
+// line stays under 80 chars and no rule's default-settings emit a
+// diagnostic. The gate measures each rule's BASE per-Check cost —
+// the work the rule pays just to scan a representative file — and
+// not per-violation overhead, which legitimately scales with the
+// number of diagnostics a rule produces.
 const allocBudgetFixture = "# Document title\n" +
 	"\n" +
-	"This is a representative sentence used to exercise the prose, " +
-	"heading, and structural rules under the alloc budget gate. " +
-	"It is intentionally one paragraph long.\n" +
+	"A short prose paragraph for the readability and structural\n" +
+	"rules to scan. It stays one paragraph long.\n" +
 	"\n" +
 	"## Section\n" +
 	"\n" +
-	"See [the other doc](other.md) for details, " +
-	"and [a label][ref] for a reference link.\n" +
+	"See [other](other.md) and [label][ref] for examples.\n" +
 	"\n" +
 	"```go\nfunc f() int { return 0 }\n```\n" +
 	"\n" +
