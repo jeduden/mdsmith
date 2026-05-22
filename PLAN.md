@@ -123,5 +123,5 @@ footer: |
 | 194 | ✅     | opus   | [Frontpage persona audit — reduce AI-first framing, surface non-AI path](plan/194_frontpage-persona-audit.md)                           |
 | 195 | 🔳     | opus   | [Enforce the ≤ 10 allocs/op per-rule budget across every registered rule](plan/195_per-rule-alloc-budget.md)                            |
 | 196 | 🔲     | opus   | [Lazy SectionParagraph text — defer ExtractPlainText until a caller asks](plan/196_lazy-section-paragraph-text.md)                      |
-| 197 | 🔲     | opus   | [PoC — pool one goldmark allocator and measure the savings](plan/197_fork-goldmark-for-allocs.md)                                       |
+| 197 | 🔲     | opus   | [PoC — review goldmark's allocation architecture, then pool the best lever](plan/197_fork-goldmark-for-allocs.md)                       |
 <?/catalog?>
