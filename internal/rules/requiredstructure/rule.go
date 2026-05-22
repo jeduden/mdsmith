@@ -524,18 +524,80 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// heading- and body-sync features (`# {id}: {name}`, body lines
 	// under Meta-Information). Composition is irrelevant when only
 	// one source is configured.
+	//
+	// Exception: when the file source declares `extends:`, route
+	// through the multi-source compose path so plan-135 inheritance
+	// applies. The legacy parser does not implement extends; without
+	// this re-route the parent's constraints would silently drop.
+	// Body-sync still runs through the per-source bodySyncDiagnostics
+	// helper inside checkComposedSources, so the child's `{field}`
+	// template features survive the switch.
 	if len(sources) == 1 {
 		src := sources[0]
 		if src.Inline != nil {
 			return append(diags, r.checkSingleInlineSchema(f, src.Inline)...)
 		}
 		if src.File != "" {
-			return append(diags, r.checkSingleFileSchema(f, src.File)...)
+			return append(diags, r.dispatchSingleFileSchema(f, src.File, sources)...)
 		}
 		return diags
 	}
 
 	return append(diags, r.checkComposedSources(f, sources)...)
+}
+
+// dispatchSingleFileSchema loads the schema once, peeks at the
+// front matter for the reserved `extends:` key, and routes to the
+// legacy single-file path or the compose path accordingly. Loading
+// here avoids the double read the previous helper introduced: the
+// legacy path reuses the bytes via checkSingleFileSchemaFromData,
+// and the compose path re-loads through schema.ParseFile only when
+// extends actually applies.
+func (r *Rule) dispatchSingleFileSchema(
+	f *lint.File, schemaPath string, sources []SchemaSource,
+) []lint.Diagnostic {
+	data, schPath, err := r.loadSchemaAt(f, schemaPath)
+	if err != nil {
+		return []lint.Diagnostic{r.diag(f.Path, 1, err.Error())}
+	}
+	if schemaDataDeclaresExtends(data) {
+		return r.checkComposedSources(f, sources)
+	}
+	return r.checkSingleFileSchemaFromData(f, schemaPath, data, schPath)
+}
+
+// schemaDataDeclaresExtends reports whether the raw schema bytes
+// carry a reserved `extends:` key in their YAML front matter. The
+// modern `schema.ParseFile` pipeline rejects malformed `extends:`
+// values (non-string, empty/whitespace string) with clear errors;
+// routing here on any present-and-non-null `extends:` lets those
+// errors surface to the user instead of being silently swallowed
+// by the legacy parser. An explicit YAML `null` matches the
+// no-extends case so legacy diagnostics line up.
+//
+// A parse failure or missing front matter returns false — the
+// legacy parser then surfaces those errors with its existing
+// diagnostic shape.
+func schemaDataDeclaresExtends(data []byte) bool {
+	prefix, _ := lint.StripFrontMatter(data)
+	if prefix == nil {
+		return false
+	}
+	yamlBytes := extractYAML(prefix)
+	var raw map[string]any
+	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
+		return false
+	}
+	v, ok := raw["extends"]
+	if !ok {
+		return false
+	}
+	// Explicit YAML `null` matches schema.ParseFile's no-extends
+	// treatment; stay on the legacy path so diagnostics align.
+	// Every other value (non-empty string, malformed string,
+	// non-string type) routes to the compose path so the modern
+	// parser can surface its specific error.
+	return v != nil
 }
 
 // effectiveSources returns the rule's sources list, falling back to
@@ -774,18 +836,14 @@ func (r *Rule) ComposedSchema(f *lint.File) (*schema.Schema, error) {
 	return r.composedSchemaForFix(f)
 }
 
-// checkSingleFileSchema retains the legacy proto.md heading-template
-// validation path. It supports {field} sync points in headings and
-// body content; these features are tied to the source body of the
-// schema markdown and have no inline counterpart.
-func (r *Rule) checkSingleFileSchema(f *lint.File, schemaPath string) []lint.Diagnostic {
+// checkSingleFileSchemaFromData runs the legacy validation with a
+// pre-loaded schema buffer. The Check dispatch reads the schema
+// once and routes the bytes here when extends is not declared, so
+// the common single-source path avoids a second read.
+func (r *Rule) checkSingleFileSchemaFromData(
+	f *lint.File, schemaPath string, schData []byte, schPath string,
+) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-
-	schData, schPath, err := r.loadSchemaAt(f, schemaPath)
-	if err != nil {
-		return append(diags, r.diag(f.Path, 1, err.Error()))
-	}
-
 	sch, err := parseSchema(schData, schPath, f.MaxInputBytes)
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1,
@@ -1056,7 +1114,12 @@ func parseSchemaFrontMatter(prefix []byte) (schemaConfig, error) {
 	// from yaml.Node are off by 1 relative to the schema source.
 	node, nodeErr := yamlutil.UnmarshalNodeSafe(yamlBytes)
 	if nodeErr == nil {
-		cfg.FrontmatterLines = yamlutil.TopLevelMappingLines(&node, 1)
+		lines := yamlutil.TopLevelMappingLines(&node, 1)
+		// `extends:` is a schema directive (plan 135); strip it from
+		// the per-key source-line map so MDS020 never tries to point
+		// at the reserved key for a frontmatter validation error.
+		delete(lines, "extends")
+		cfg.FrontmatterLines = lines
 	}
 	return cfg, nil
 }
@@ -1113,6 +1176,11 @@ func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, error) {
 	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
 		return "", nil, fmt.Errorf("parsing schema frontmatter: %w", err)
 	}
+	// `extends:` is a reserved schema-engine directive (plan 135),
+	// not a document-frontmatter constraint. Strip it before the
+	// CUE expression is built so the legacy body-sync path does not
+	// require documents to carry the literal `extends:` value.
+	delete(raw, "extends")
 	if len(raw) == 0 {
 		return "", nil, nil
 	}

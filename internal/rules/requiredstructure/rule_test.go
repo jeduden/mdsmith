@@ -763,6 +763,121 @@ func newRootedFile(t *testing.T, root, path, source string) *lint.File {
 	return f
 }
 
+// TestSchemaDataDeclaresExtends_DetectsExtends pins the happy
+// path: a proto.md with `extends:` in front matter triggers the
+// dispatch's compose-path re-route.
+func TestSchemaDataDeclaresExtends_DetectsExtends(t *testing.T) {
+	assert.True(t, schemaDataDeclaresExtends(
+		[]byte("---\nextends: base.md\n---\n# ?\n")))
+}
+
+// TestSchemaDataDeclaresExtends_NoExtendsReturnsFalse covers the
+// common case: a schema without inheritance stays on the legacy
+// single-file path.
+func TestSchemaDataDeclaresExtends_NoExtendsReturnsFalse(t *testing.T) {
+	assert.False(t, schemaDataDeclaresExtends(
+		[]byte("---\nid: 'string'\n---\n# ?\n")))
+}
+
+// TestSchemaDataDeclaresExtends_NullValueReturnsFalse matches
+// schema.ParseFile's "no extends" treatment for `extends:` with a
+// null body. The legacy single-file parser handles this case
+// equivalently, so staying on the legacy path keeps diagnostics
+// aligned.
+func TestSchemaDataDeclaresExtends_NullValueReturnsFalse(t *testing.T) {
+	assert.False(t, schemaDataDeclaresExtends(
+		[]byte("---\nextends:\n---\n# ?\n")))
+}
+
+// TestSchemaDataDeclaresExtends_WhitespaceValueRoutesToCompose
+// covers the malformed-but-present case: schema.ParseFile rejects
+// whitespace-only extends with a clear error, so the dispatcher
+// must route there instead of silently dropping the key via the
+// legacy parser.
+func TestSchemaDataDeclaresExtends_WhitespaceValueRoutesToCompose(t *testing.T) {
+	assert.True(t, schemaDataDeclaresExtends(
+		[]byte("---\nextends: \"   \"\n---\n# ?\n")))
+}
+
+// TestSchemaDataDeclaresExtends_NonStringValueRoutesToCompose
+// catches typos like `extends: 42` — schema.ParseFile rejects
+// these explicitly. Routing through the compose path surfaces
+// that error to the user.
+func TestSchemaDataDeclaresExtends_NonStringValueRoutesToCompose(t *testing.T) {
+	assert.True(t, schemaDataDeclaresExtends(
+		[]byte("---\nextends: 42\n---\n# ?\n")))
+}
+
+// TestCheck_MalformedExtendsSurfacesDiagnostic ensures the
+// dispatch+compose path actually reports the error rather than
+// swallowing it. Without this, a typoed `extends:` value would
+// silently produce no parent schema.
+func TestCheck_MalformedExtendsSurfacesDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "child.md"),
+		[]byte("---\nextends: 42\n---\n"), 0o644))
+	f := newRootedFile(t, root, "doc.md", "# Doc\n")
+	r := &Rule{
+		Schema:  "child.md",
+		Sources: []SchemaSource{{File: "child.md"}},
+	}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags,
+		"malformed `extends:` must surface a diagnostic, not be silently dropped")
+}
+
+// TestSchemaDataDeclaresExtends_NoFrontmatterReturnsFalse covers
+// the `prefix == nil` branch: a schema file with no front matter
+// has no `extends:` to report.
+func TestSchemaDataDeclaresExtends_NoFrontmatterReturnsFalse(t *testing.T) {
+	assert.False(t, schemaDataDeclaresExtends([]byte("# ?\n")))
+}
+
+// TestSchemaDataDeclaresExtends_InvalidYAMLReturnsFalse covers
+// the YAML-decode error branch: a malformed front matter still
+// returns `false` so the legacy parser surfaces the syntax error
+// with its richer diagnostic.
+func TestSchemaDataDeclaresExtends_InvalidYAMLReturnsFalse(t *testing.T) {
+	assert.False(t, schemaDataDeclaresExtends(
+		[]byte("---\n: bad: yaml:\n---\n# ?\n")))
+}
+
+// TestDispatchSingleFileSchema_MissingFileReportsDiagnostic covers
+// the loadSchemaAt error path: a missing schema file surfaces as a
+// single MDS020 diagnostic anchored at line 1 of the document.
+func TestDispatchSingleFileSchema_MissingFileReportsDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "doc.md", "# Doc\n")
+	r := &Rule{}
+	diags := r.dispatchSingleFileSchema(f, "nonexistent.md",
+		[]SchemaSource{{File: "nonexistent.md"}})
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "schema")
+}
+
+// TestCheck_FileSchemaWithExtendsRoutesThroughCompose pins the
+// PR-365 review fix (Copilot comment on rule.go:1064): a single
+// file source whose proto.md declares `extends:` must go through
+// the modern compose path so plan-135 inheritance applies. Without
+// this re-route the legacy parser would silently drop the parent's
+// frontmatter constraints.
+func TestCheck_FileSchemaWithExtendsRoutesThroughCompose(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "base.md"),
+		[]byte("---\nid: '=~\"^A-[0-9]+$\"'\n---\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "child.md"),
+		[]byte("---\nextends: base.md\n---\n"), 0o644))
+	f := newRootedFile(t, root, "doc.md",
+		"---\nid: \"WRONG\"\n---\n# Doc\n")
+	r := &Rule{
+		Schema:  "child.md",
+		Sources: []SchemaSource{{File: "child.md"}},
+	}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags,
+		"document violating the parent's `id` regex should flag a diagnostic via the inherited constraint")
+}
+
 func TestCheck_PathPattern_Match(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "plan/140_my-plan.md", "# My Plan\n")

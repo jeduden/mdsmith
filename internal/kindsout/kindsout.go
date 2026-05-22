@@ -12,18 +12,35 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 // --- JSON shapes ---
 
 // BodyJSON is the JSON form of a kind body, used by `kinds list` and
-// `kinds show`.
+// `kinds show`. When the kind declares `extends:`, the JSON carries
+// the inheritance chain (child-first) and the resolved
+// per-frontmatter-field provenance so audit tools can see which
+// layer contributed each constraint without reading every schema.
 type BodyJSON struct {
-	Name        string                 `json:"name"`
-	Rules       map[string]RuleCfgJSON `json:"rules"`
-	Categories  map[string]bool        `json:"categories,omitempty"`
-	PathPattern string                 `json:"path-pattern,omitempty"`
+	Name                 string                 `json:"name"`
+	Rules                map[string]RuleCfgJSON `json:"rules"`
+	Categories           map[string]bool        `json:"categories,omitempty"`
+	PathPattern          string                 `json:"path-pattern,omitempty"`
+	Extends              string                 `json:"extends,omitempty"`
+	ExtendsChain         []string               `json:"extends-chain,omitempty"`
+	EffectiveFrontmatter []FrontmatterLeafJSON  `json:"effective-frontmatter,omitempty"`
+}
+
+// FrontmatterLeafJSON describes one effective frontmatter key after
+// the extends chain has been resolved: the key, the unified CUE
+// expression, and the kind that contributed it (the bottom-most
+// kind in the chain that declared this key).
+type FrontmatterLeafJSON struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Source string `json:"source"`
 }
 
 // RuleCfgJSON serializes a config.RuleCfg using its YAML union form:
@@ -37,18 +54,101 @@ func (r RuleCfgJSON) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.v)
 }
 
-// MakeBodyJSON renders a KindBody as a JSON-friendly value.
-func MakeBodyJSON(name string, body config.KindBody) BodyJSON {
+// MakeBodyJSON renders a KindBody as a JSON-friendly value. Pass
+// the project's `kinds` map so callers that have it can populate
+// the inheritance chain and per-frontmatter-field provenance; a nil
+// map yields the kind's own body without inheritance metadata,
+// matching the pre-extends shape. The audit fields
+// (`ExtendsChain`, `EffectiveFrontmatter`) populate only when the
+// kind itself declares `extends:` — for non-inheriting kinds the
+// JSON shape is the pre-plan-135 form, so audit tooling can detect
+// inheritance by checking for the new fields.
+func MakeBodyJSON(name string, body config.KindBody, kinds map[string]config.KindBody) BodyJSON {
 	rules := make(map[string]RuleCfgJSON, len(body.Rules))
 	for k, v := range body.Rules {
 		rules[k] = RuleCfgJSON{v: RuleCfgValue(v)}
 	}
-	return BodyJSON{
+	out := BodyJSON{
 		Name:        name,
 		Rules:       rules,
 		Categories:  body.Categories,
 		PathPattern: body.PathPattern,
+		Extends:     body.Extends,
 	}
+	if kinds == nil || body.Extends == "" {
+		return out
+	}
+	out.ExtendsChain = config.KindExtendsChain(kinds, name)
+	if leaves := effectiveFrontmatterLeaves(kinds, name); len(leaves) > 0 {
+		out.EffectiveFrontmatter = leaves
+	}
+	return out
+}
+
+// effectiveFrontmatterLeaves resolves the inline schema for `name`
+// across its extends chain and projects each frontmatter key into
+// a provenance leaf naming the contributing kind. A key whose
+// expression is the unified form (`(parent) & (child)`) is
+// attributed to the child — that is the layer the diagnostic should
+// point at when the value is rejected — and the chain entries that
+// contributed the parent constraint are still available via the
+// catalog of `kinds show` runs along the chain.
+func effectiveFrontmatterLeaves(
+	kinds map[string]config.KindBody, name string,
+) []FrontmatterLeafJSON {
+	resolved, err := config.ResolveKindInlineSchema(kinds, name)
+	if err != nil || resolved == nil {
+		return nil
+	}
+	fm, _ := resolved["frontmatter"].(map[string]any)
+	if len(fm) == 0 {
+		return nil
+	}
+	owners := frontmatterKeyOwners(kinds, name)
+	keys := make([]string, 0, len(fm))
+	for k := range fm {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]FrontmatterLeafJSON, 0, len(keys))
+	for _, k := range keys {
+		// Coerce non-string values (a raw YAML number, an
+		// unrecognised shortcut name) to their canonical CUE form
+		// so the audit output never carries an empty `value`. The
+		// resolver already normalises strings; this catches the
+		// fallback cases where MergeRawMap left a raw value
+		// because frontmatterExpr could not resolve it.
+		out = append(out, FrontmatterLeafJSON{
+			Key:    k,
+			Value:  schema.NormalizeFrontmatterValue(fm[k]),
+			Source: owners[k],
+		})
+	}
+	return out
+}
+
+// frontmatterKeyOwners walks the extends chain from root to child
+// and records the last kind that declared each frontmatter key.
+// Last-writer-wins matches the "child overrides parent" intent: an
+// effective constraint that survived through `&` unification is
+// surfaced as the child's leaf (the child is the layer the user
+// edits to relax or tighten the constraint), while a key declared
+// only by a parent is attributed to that parent.
+func frontmatterKeyOwners(
+	kinds map[string]config.KindBody, name string,
+) map[string]string {
+	chain := config.KindExtendsChain(kinds, name)
+	owners := map[string]string{}
+	// Walk root → child so the child's declaration wins.
+	for i := len(chain) - 1; i >= 0; i-- {
+		k := chain[i]
+		body := kinds[k]
+		fm, _ := body.Schema["frontmatter"].(map[string]any)
+		for key := range fm {
+			owners[key] = k
+		}
+	}
+	return owners
 }
 
 // RuleCfgValue returns the JSON-friendly value of a RuleCfg, matching
@@ -194,10 +294,19 @@ func WriteJSON(w io.Writer, v any) error {
 
 // --- Text rendering ---
 
-// WriteBodyText prints a kind body as YAML, wrapped with a header line
-// naming the kind.
-func WriteBodyText(w io.Writer, name string, body config.KindBody) error {
+// WriteBodyText prints a kind body as YAML, wrapped with a header
+// line naming the kind. When the optional kinds map is supplied and
+// the kind declares `extends:`, the output is preceded by the
+// inheritance chain and followed by the resolved effective
+// frontmatter with per-field provenance — the audit surface plan
+// 135 calls for.
+func WriteBodyText(
+	w io.Writer, name string, body config.KindBody, kinds map[string]config.KindBody,
+) error {
 	if _, err := fmt.Fprintf(w, "%s:\n", sanitizeControl(name)); err != nil {
+		return err
+	}
+	if err := writeExtendsHeader(w, name, body, kinds); err != nil {
 		return err
 	}
 	wrap := struct {
@@ -213,12 +322,78 @@ func WriteBodyText(w io.Writer, name string, body config.KindBody) error {
 	if err != nil {
 		return err
 	}
-	if len(data) == 0 || strings.TrimSpace(string(data)) == "{}" {
-		_, err := fmt.Fprintln(w, "  (empty)")
+	rendered := strings.TrimRight(string(data), "\n")
+	bodyEmpty := len(data) == 0 || strings.TrimSpace(string(data)) == "{}"
+	if bodyEmpty && body.Extends == "" {
+		if _, err := fmt.Fprintln(w, "  (empty)"); err != nil {
+			return err
+		}
+	} else if !bodyEmpty {
+		for _, line := range strings.Split(rendered, "\n") {
+			if _, err := fmt.Fprintf(w, "  %s\n", line); err != nil {
+				return err
+			}
+		}
+	}
+	// effective-frontmatter is the extends audit surface — only
+	// surface it when the kind itself declares an extends parent.
+	// A non-inheriting kind's frontmatter is already visible via
+	// its own `schema:` block.
+	if kinds != nil && body.Extends != "" {
+		if err := writeEffectiveFrontmatter(w, kinds, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeExtendsHeader renders the inheritance chain and the parent
+// name as the leading lines of `kinds show`. The chain is rendered
+// child-first; a kind with no parent omits both lines so non-
+// inheriting output is unchanged.
+func writeExtendsHeader(
+	w io.Writer, name string, body config.KindBody, kinds map[string]config.KindBody,
+) error {
+	if body.Extends == "" {
+		return nil
+	}
+	if _, err := fmt.Fprintf(w, "  extends: %s\n",
+		sanitizeControl(body.Extends)); err != nil {
 		return err
 	}
-	for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
-		if _, err := fmt.Fprintf(w, "  %s\n", line); err != nil {
+	if kinds == nil {
+		return nil
+	}
+	chain := config.KindExtendsChain(kinds, name)
+	if len(chain) > 1 {
+		if _, err := fmt.Fprintf(w, "  extends-chain: %s\n",
+			sanitizeControl(strings.Join(chain, " -> "))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeEffectiveFrontmatter prints the resolved frontmatter for the
+// extends chain, one line per key with the contributing kind in a
+// trailing comment so the reader sees the layer without re-reading
+// every schema. A kind without an inline schema or without
+// frontmatter prints nothing.
+func writeEffectiveFrontmatter(
+	w io.Writer, kinds map[string]config.KindBody, name string,
+) error {
+	leaves := effectiveFrontmatterLeaves(kinds, name)
+	if len(leaves) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "  effective-frontmatter:"); err != nil {
+		return err
+	}
+	for _, leaf := range leaves {
+		if _, err := fmt.Fprintf(w, "    %s: %s  # from %s\n",
+			sanitizeControl(leaf.Key),
+			sanitizeControl(leaf.Value),
+			sanitizeControl(leaf.Source)); err != nil {
 			return err
 		}
 	}

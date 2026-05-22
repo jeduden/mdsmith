@@ -162,6 +162,7 @@ func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 			Categories:  copyCategories(body.Categories),
 			Schema:      cloneSettings(body.Schema),
 			PathPattern: body.PathPattern,
+			Extends:     body.Extends,
 		}
 	}
 	return result
@@ -374,8 +375,8 @@ func effectiveRules(cfg *Config, filePath string, kinds []string) map[string]Rul
 		if !ok {
 			continue
 		}
-		if len(body.Schema) > 0 {
-			applyInlineSchemaSource(result, body.Schema)
+		if resolved := resolvedInlineSchema(cfg.Kinds, kindName, body); len(resolved) > 0 {
+			applyInlineSchemaSource(result, resolved)
 		}
 		if body.PathPattern != "" {
 			applyPathPattern(result, kindName, body.PathPattern)
@@ -441,6 +442,30 @@ func applyPathPattern(result map[string]RuleCfg, kindName, pattern string) {
 	rs.Settings["path-patterns"] = append(existing, entry)
 	rs.Enabled = true
 	result["required-structure"] = rs
+}
+
+// resolvedInlineSchema returns the inline schema map that should be
+// pushed into `schema-sources` for one kind. When the kind has no
+// `extends:`, the result is the kind's own body.Schema (or nil if
+// it doesn't declare one). When `extends:` is set, the resolver
+// walks the chain and merges parent+child via plan-135 semantics.
+// ValidateKinds is the authoritative gate for conflicts and cycles;
+// a resolver error here means the kinds map was mutated after
+// validation. The fallback in that case is the kind's own schema —
+// the chain is broken so we surface no parent constraints, but the
+// child's own declaration still applies so the rule keeps validating
+// what the user asked for.
+func resolvedInlineSchema(
+	kinds map[string]KindBody, kindName string, body KindBody,
+) map[string]any {
+	if body.Extends == "" {
+		return body.Schema
+	}
+	resolved, err := ResolveKindInlineSchema(kinds, kindName)
+	if err != nil {
+		return body.Schema
+	}
+	return resolved
 }
 
 // applyInlineSchemaSource appends a KindBody.Schema (inline schema

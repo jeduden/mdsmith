@@ -230,6 +230,121 @@ effective kinds:
   - plan (from kind-assignment[2]: glob plan/*.md AND fields-present id)
 ```
 
+## Schema inheritance with `extends`
+
+A kind can build on another kind's schema via the `extends:` key.
+Inheritance is single-parent — a child names exactly one parent —
+and the engine combines them under CUE refinement: the child's
+constraints unify with the parent's, so any value the child
+accepts must also satisfy the parent. This keeps a base schema
+authoritative while letting child variants add or narrow
+constraints.
+
+```yaml
+kinds:
+  rfc-base:
+    schema:
+      frontmatter:
+        id: '=~"^RFC-[0-9]{4}$"'
+        authors: '[...string] & [_, ...string]'
+        created: date
+
+  rfc-ratified:
+    extends: rfc-base
+    schema:
+      frontmatter:
+        ratified-on: date
+        status: '"ratified"'
+
+  rfc-draft:
+    extends: rfc-base
+    schema:
+      frontmatter:
+        status: '"draft" | "in-review"'
+```
+
+`rfc-ratified` inherits `id`, `authors`, and `created` from
+`rfc-base`, adds `ratified-on`, and locks `status` to a single
+literal. `rfc-draft` inherits the same base and declares its own
+`status` disjunction. A file resolving to `rfc-ratified` must
+satisfy every constraint from both layers; a child that
+re-declares a parent key joins them via CUE `&`, so a narrowing
+expression refines the parent and an incompatible one is
+rejected at config load.
+
+### Conflict semantics
+
+`frontmatter:` keys unify under CUE's standard rules:
+
+| Parent expression    | Child expression | Effective                              |
+|----------------------|------------------|----------------------------------------|
+| `"open" \| "closed"` | `"open"`         | `"open"` (refinement; OK)              |
+| `"open" \| "closed"` | `"ratified"`     | conflict — no value satisfies          |
+| `int`                | `string`         | conflict — no overlap                  |
+| `string & !=""`      | `=~"^[A-Z]"`     | non-empty string starting with capital |
+
+A conflict surfaces at config load with both layer names. A
+narrowing child is the supported pattern: keep one base kind and
+let variants tighten the constraint.
+
+### Sections replace
+
+`sections:` does **not** unify — heading templates compose by
+sequence, not by constraint, so a child that declares its own
+`sections:` list wholly replaces the parent's. To extend a
+parent's template, copy the parent's lines and add to them. A
+child that declares no `sections:` inherits the parent's tree
+verbatim.
+
+### File-based schemas
+
+A `proto.md` file declares its parent in front matter:
+
+```markdown
+---
+extends: rfc-base.proto.md
+ratified-on: date
+status: '"ratified"'
+---
+# {id}
+
+## Decision
+```
+
+The path is resolved relative to the schema file (the same rule
+`<?include?>` follows). Absolute paths and `..` traversal are
+rejected. Inline-kind `extends:` cycles surface at config load;
+file-schema cycles surface when MDS020 first parses the schema
+during `check` or `fix`. Both forms name the full cycle path in
+the diagnostic.
+
+### Auditing the chain
+
+`mdsmith kinds show <name>` prints the parent line and the
+resolved frontmatter with per-field provenance, so you can see
+which layer contributed each constraint without re-reading every
+schema:
+
+```text
+rfc-ratified:
+  extends: rfc-base
+  extends-chain: rfc-ratified -> rfc-base
+  rules: …
+  effective-frontmatter:
+    authors: [...string] & [_, ...string]                  # from rfc-base
+    created: =~"^\d{4}-\d{2}-\d{2}$"                       # from rfc-base
+    id: =~"^RFC-[0-9]{4}$"                                 # from rfc-base
+    ratified-on: =~"^\d{4}-\d{2}-\d{2}$"                   # from rfc-ratified
+    status: "ratified"                                     # from rfc-ratified
+```
+
+Bare-name shortcuts (`date`, `nonEmpty`, …) expand to their
+canonical CUE in the printed output, so the audit shows the
+constraint as the validator sees it rather than the shortcut
+spelling.
+
+Add `--json` for the structured form.
+
 ## Merge order
 
 Rule settings come from four layers, applied in this

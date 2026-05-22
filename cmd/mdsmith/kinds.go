@@ -107,7 +107,7 @@ func runKindsList(stdout io.Writer, args []string) int {
 			Kinds []kindsout.BodyJSON `json:"kinds"`
 		}{Kinds: make([]kindsout.BodyJSON, 0, len(names))}
 		for _, name := range names {
-			out.Kinds = append(out.Kinds, kindsout.MakeBodyJSON(name, cfg.Kinds[name]))
+			out.Kinds = append(out.Kinds, kindsout.MakeBodyJSON(name, cfg.Kinds[name], cfg.Kinds))
 		}
 		return writeJSON(stdout, out)
 	}
@@ -122,7 +122,7 @@ func runKindsList(stdout io.Writer, args []string) int {
 				return printErr(err)
 			}
 		}
-		if err := kindsout.WriteBodyText(stdout, name, cfg.Kinds[name]); err != nil {
+		if err := kindsout.WriteBodyText(stdout, name, cfg.Kinds[name], cfg.Kinds); err != nil {
 			return printErr(err)
 		}
 	}
@@ -160,10 +160,10 @@ func runKindsShow(stdout io.Writer, args []string) int {
 	}
 
 	if asJSON {
-		return writeJSON(stdout, kindsout.MakeBodyJSON(name, body))
+		return writeJSON(stdout, kindsout.MakeBodyJSON(name, body, cfg.Kinds))
 	}
 
-	if err := kindsout.WriteBodyText(stdout, name, body); err != nil {
+	if err := kindsout.WriteBodyText(stdout, name, body, cfg.Kinds); err != nil {
 		return printErr(err)
 	}
 	return 0

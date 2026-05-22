@@ -64,7 +64,7 @@ func TestMakeBodyJSON_PreservesShape(t *testing.T) {
 		},
 		Categories: map[string]bool{"meta": true},
 	}
-	out := MakeBodyJSON("plan", body)
+	out := MakeBodyJSON("plan", body, nil)
 	assert.Equal(t, "plan", out.Name)
 	require.Contains(t, out.Rules, "line-length")
 	require.Contains(t, out.Rules, "paragraph-readability")
@@ -82,7 +82,7 @@ func TestWriteBodyText_RendersYAMLBody(t *testing.T) {
 		},
 	}
 	var buf bytes.Buffer
-	require.NoError(t, WriteBodyText(&buf, "plan", body))
+	require.NoError(t, WriteBodyText(&buf, "plan", body, nil))
 	out := buf.String()
 	assert.Contains(t, out, "plan:")
 	assert.Contains(t, out, "rules:")
@@ -94,7 +94,7 @@ func TestWriteBodyText_RendersPathPattern(t *testing.T) {
 		PathPattern: "plan/[0-9][0-9]*_*.md",
 	}
 	var buf bytes.Buffer
-	require.NoError(t, WriteBodyText(&buf, "plan", body))
+	require.NoError(t, WriteBodyText(&buf, "plan", body, nil))
 	out := buf.String()
 	assert.Contains(t, out, "plan:")
 	assert.Contains(t, out, "path-pattern: plan/[0-9][0-9]*_*.md")
@@ -102,14 +102,234 @@ func TestWriteBodyText_RendersPathPattern(t *testing.T) {
 
 func TestMakeBodyJSON_IncludesPathPattern(t *testing.T) {
 	body := config.KindBody{PathPattern: "plan/*.md"}
-	enc, err := json.Marshal(MakeBodyJSON("plan", body))
+	enc, err := json.Marshal(MakeBodyJSON("plan", body, nil))
 	require.NoError(t, err)
 	assert.Contains(t, string(enc), `"path-pattern":"plan/*.md"`)
 }
 
+// TestWriteBodyText_RendersExtendsChain verifies plan-135 surface:
+// `kinds show` prints the parent and the resolved chain so the
+// inheritance is auditable without re-reading every schema.
+func TestWriteBodyText_RendersExtendsChain(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"rfc-base": {Schema: map[string]any{"frontmatter": map[string]any{
+			"id": `=~"^RFC-[0-9]{4}$"`,
+		}}},
+		"rfc-ratified": {
+			Extends: "rfc-base",
+			Schema: map[string]any{"frontmatter": map[string]any{
+				"status": `"ratified"`,
+			}},
+		},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, WriteBodyText(&buf, "rfc-ratified", kinds["rfc-ratified"], kinds))
+	out := buf.String()
+	assert.Contains(t, out, "rfc-ratified:")
+	assert.Contains(t, out, "extends: rfc-base")
+	assert.Contains(t, out, "effective-frontmatter:")
+	assert.Contains(t, out, "id:")
+	assert.Contains(t, out, "from rfc-base")
+	assert.Contains(t, out, "status:")
+	assert.Contains(t, out, "from rfc-ratified")
+}
+
+// TestWriteBodyText_RendersExtendsChainMultiHop checks the chain
+// line for deeper inheritance: the audit trail shows every layer
+// in child-first order.
+func TestWriteBodyText_RendersExtendsChainMultiHop(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"a": {Schema: map[string]any{"frontmatter": map[string]any{"a": "string"}}},
+		"b": {Extends: "a"},
+		"c": {Extends: "b"},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, WriteBodyText(&buf, "c", kinds["c"], kinds))
+	out := buf.String()
+	assert.Contains(t, out, "extends: b")
+	assert.Contains(t, out, "extends-chain: c -> b -> a")
+}
+
+// TestWriteBodyText_NoExtendsOmitsHeader confirms backwards
+// compatibility: a kind without extends does not gain the extends
+// header lines.
+func TestWriteBodyText_NoExtendsOmitsHeader(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"plan": {Schema: map[string]any{"filename": "plan-*.md"}},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, WriteBodyText(&buf, "plan", kinds["plan"], kinds))
+	out := buf.String()
+	assert.NotContains(t, out, "extends:")
+	assert.NotContains(t, out, "extends-chain")
+}
+
+// TestMakeBodyJSON_PopulatesExtendsAndProvenance pins the JSON
+// shape: extends + chain + per-leaf provenance.
+func TestMakeBodyJSON_PopulatesExtendsAndProvenance(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"rfc-base": {Schema: map[string]any{"frontmatter": map[string]any{
+			"id": `=~"^RFC-[0-9]{4}$"`,
+		}}},
+		"rfc-ratified": {
+			Extends: "rfc-base",
+			Schema: map[string]any{"frontmatter": map[string]any{
+				"status": `"ratified"`,
+			}},
+		},
+	}
+	out := MakeBodyJSON("rfc-ratified", kinds["rfc-ratified"], kinds)
+	assert.Equal(t, "rfc-base", out.Extends)
+	assert.Equal(t, []string{"rfc-ratified", "rfc-base"}, out.ExtendsChain)
+	require.Len(t, out.EffectiveFrontmatter, 2)
+	leafBySrc := map[string]FrontmatterLeafJSON{}
+	for _, leaf := range out.EffectiveFrontmatter {
+		leafBySrc[leaf.Source] = leaf
+	}
+	assert.Equal(t, "id", leafBySrc["rfc-base"].Key)
+	assert.Equal(t, "status", leafBySrc["rfc-ratified"].Key)
+}
+
+// TestMakeBodyJSON_NilKindsMapOmitsExtendsMetadata covers the
+// fallback for callers that don't have the full kinds map.
+func TestMakeBodyJSON_NilKindsMapOmitsExtendsMetadata(t *testing.T) {
+	body := config.KindBody{Extends: "base"}
+	out := MakeBodyJSON("child", body, nil)
+	assert.Equal(t, "base", out.Extends, "the kind's own extends field is preserved")
+	assert.Empty(t, out.ExtendsChain, "chain requires the kinds map")
+	assert.Empty(t, out.EffectiveFrontmatter, "provenance requires the kinds map")
+}
+
+// extendsKindsForTest builds the canonical two-kind map used by
+// the writer-error tests so each test isn't a long inline literal.
+func extendsKindsForTest() map[string]config.KindBody {
+	return map[string]config.KindBody{
+		"base": {Schema: map[string]any{"frontmatter": map[string]any{
+			"id": "string",
+		}}},
+		"child": {Extends: "base", Schema: map[string]any{
+			"frontmatter": map[string]any{"status": `"ratified"`},
+		}},
+	}
+}
+
+// TestWriteBodyText_ExtendsHeaderWriteError exercises the
+// writer-error branch on the `extends:` line: the second write
+// fails after the header line printed, so the error must surface
+// without crashing.
+func TestWriteBodyText_ExtendsHeaderWriteError(t *testing.T) {
+	w := &failingWriter{err: errors.New("disk full"), after: 1}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "disk full")
+}
+
+// TestWriteBodyText_ExtendsChainWriteError trips the failure on
+// the `extends-chain` line specifically. The chain prints only
+// when its length exceeds one.
+func TestWriteBodyText_ExtendsChainWriteError(t *testing.T) {
+	w := &failingWriter{err: errors.New("disk full"), after: 2}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "disk full")
+}
+
+// TestWriteBodyText_EffectiveFrontmatterHeaderWriteError trips
+// the failure on the `effective-frontmatter:` label line.
+func TestWriteBodyText_EffectiveFrontmatterHeaderWriteError(t *testing.T) {
+	// after = 4 lets the kind header, extends line, extends-chain
+	// line, and body YAML through; the next write — the
+	// `effective-frontmatter:` label — must trigger the error.
+	w := &failingWriter{err: errors.New("disk full"), after: 4}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+}
+
+// TestWriteBodyText_EffectiveFrontmatterLeafWriteError trips the
+// failure on a leaf line under `effective-frontmatter:`.
+func TestWriteBodyText_EffectiveFrontmatterLeafWriteError(t *testing.T) {
+	w := &failingWriter{err: errors.New("disk full"), after: 5}
+	kinds := extendsKindsForTest()
+	err := WriteBodyText(w, "child", kinds["child"], kinds)
+	require.Error(t, err)
+}
+
+// TestEffectiveFrontmatterLeaves_ResolverErrorReturnsNil covers
+// the err-branch in effectiveFrontmatterLeaves: a malformed kinds
+// map (cycle) makes ResolveKindInlineSchema return an error, and
+// the renderer treats that as "no leaves to report".
+func TestEffectiveFrontmatterLeaves_ResolverErrorReturnsNil(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"a": {Extends: "b", Schema: map[string]any{"frontmatter": map[string]any{
+			"x": "string",
+		}}},
+		"b": {Extends: "a", Schema: map[string]any{"frontmatter": map[string]any{
+			"y": "string",
+		}}},
+	}
+	out := effectiveFrontmatterLeaves(kinds, "a")
+	assert.Nil(t, out)
+}
+
+// TestEffectiveFrontmatterLeaves_NoFrontmatterReturnsNil covers
+// the empty-frontmatter branch: a resolved schema without any
+// frontmatter keys contributes nothing to the audit list.
+func TestEffectiveFrontmatterLeaves_NoFrontmatterReturnsNil(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"a": {Schema: map[string]any{"filename": "x.md"}},
+	}
+	out := effectiveFrontmatterLeaves(kinds, "a")
+	assert.Nil(t, out)
+}
+
+// TestWriteExtendsHeader_NilKindsReturnsAfterExtendsLine covers
+// the unit-level branch where the kinds map is nil: the header
+// still writes the `extends:` line but skips the chain.
+func TestWriteExtendsHeader_NilKindsReturnsAfterExtendsLine(t *testing.T) {
+	var buf bytes.Buffer
+	body := config.KindBody{Extends: "base"}
+	require.NoError(t, writeExtendsHeader(&buf, "child", body, nil))
+	out := buf.String()
+	assert.Contains(t, out, "extends: base")
+	assert.NotContains(t, out, "extends-chain")
+}
+
+// TestWriteEffectiveFrontmatter_EmptyLeavesNoOutput exercises
+// the early return when no leaves resolve: the function returns
+// nil without writing anything.
+func TestWriteEffectiveFrontmatter_EmptyLeavesNoOutput(t *testing.T) {
+	kinds := map[string]config.KindBody{
+		"a": {Schema: map[string]any{"filename": "x.md"}},
+	}
+	var buf bytes.Buffer
+	require.NoError(t, writeEffectiveFrontmatter(&buf, kinds, "a"))
+	assert.Empty(t, buf.String())
+}
+
+// TestWriteEffectiveFrontmatter_LabelWriteError fails before any
+// leaf line is written.
+func TestWriteEffectiveFrontmatter_LabelWriteError(t *testing.T) {
+	kinds := extendsKindsForTest()
+	w := &failingWriter{err: errors.New("disk full"), after: 0}
+	err := writeEffectiveFrontmatter(w, kinds, "child")
+	require.Error(t, err)
+}
+
+// TestWriteEffectiveFrontmatter_LeafLineWriteError fails on the
+// first leaf line after the label printed successfully.
+func TestWriteEffectiveFrontmatter_LeafLineWriteError(t *testing.T) {
+	kinds := extendsKindsForTest()
+	w := &failingWriter{err: errors.New("disk full"), after: 1}
+	err := writeEffectiveFrontmatter(w, kinds, "child")
+	require.Error(t, err)
+}
+
 func TestWriteBodyText_EmptyBodyRendersPlaceholder(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, WriteBodyText(&buf, "ghost", config.KindBody{}))
+	require.NoError(t, WriteBodyText(&buf, "ghost", config.KindBody{}, nil))
 	out := buf.String()
 	assert.Contains(t, out, "ghost:")
 	assert.Contains(t, out, "(empty)")
@@ -117,7 +337,7 @@ func TestWriteBodyText_EmptyBodyRendersPlaceholder(t *testing.T) {
 
 func TestWriteBodyText_HeaderWriteError(t *testing.T) {
 	w := &failingWriter{err: errors.New("disk full"), after: 0}
-	err := WriteBodyText(w, "plan", config.KindBody{})
+	err := WriteBodyText(w, "plan", config.KindBody{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "disk full")
 }
@@ -127,13 +347,13 @@ func TestWriteBodyText_BodyWriteError(t *testing.T) {
 	body := config.KindBody{
 		Rules: map[string]config.RuleCfg{"x": {Enabled: true}},
 	}
-	err := WriteBodyText(w, "plan", body)
+	err := WriteBodyText(w, "plan", body, nil)
 	require.Error(t, err)
 }
 
 func TestWriteBodyText_EmptyPlaceholderWriteError(t *testing.T) {
 	w := &failingWriter{err: errors.New("nope"), after: 1}
-	err := WriteBodyText(w, "ghost", config.KindBody{})
+	err := WriteBodyText(w, "ghost", config.KindBody{}, nil)
 	require.Error(t, err)
 }
 
@@ -355,7 +575,7 @@ func TestWriteBodyText_YAMLMarshalError(t *testing.T) {
 			},
 		},
 	}
-	err := WriteBodyText(&buf, "k", body)
+	err := WriteBodyText(&buf, "k", body, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "synthetic marshal error")
 }
@@ -386,7 +606,7 @@ func TestSanitizeControl_StripsCtrls(t *testing.T) {
 // name are stripped from the header line.
 func TestWriteBodyText_SanitizesKindName(t *testing.T) {
 	var buf bytes.Buffer
-	require.NoError(t, WriteBodyText(&buf, "evil\nkind", config.KindBody{}))
+	require.NoError(t, WriteBodyText(&buf, "evil\nkind", config.KindBody{}, nil))
 	assert.NotContains(t, buf.String(), "\n\n") // no extra blank line from injected newline
 	assert.Contains(t, buf.String(), "evilkind:")
 }
@@ -442,8 +662,8 @@ func TestWriteBodyText_DeterministicOutput(t *testing.T) {
 		},
 	}
 	var first, second bytes.Buffer
-	require.NoError(t, WriteBodyText(&first, "plan", body))
-	require.NoError(t, WriteBodyText(&second, "plan", body))
+	require.NoError(t, WriteBodyText(&first, "plan", body, nil))
+	require.NoError(t, WriteBodyText(&second, "plan", body, nil))
 	assert.Equal(t, first.String(), second.String())
 	// All three names appear.
 	for _, name := range []string{"a", "b", "c"} {

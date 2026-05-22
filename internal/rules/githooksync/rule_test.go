@@ -782,6 +782,61 @@ func TestRule_ResolveRepoRoot_NotInRepo(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestRule_ResolveRepoRoot_DoubleCheckBranch deterministically
+// drives the race-conscious branch in resolveRepoRoot: the goroutine
+// that started the git lookup re-acquires the lock and finds the
+// cache already populated by a concurrent caller. A package-level
+// `gitRepoRoot` seam lets the test block the lookup mid-flight,
+// populate the cache from the main goroutine, then release — so the
+// inner branch is guaranteed to run regardless of scheduler
+// behaviour (no probability or GOMAXPROCS dependence).
+func TestRule_ResolveRepoRoot_DoubleCheckBranch(t *testing.T) {
+	dir := t.TempDir()
+
+	repoRootMu.Lock()
+	delete(repoRootCache, dir)
+	repoRootMu.Unlock()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	orig := gitRepoRoot
+	t.Cleanup(func() { gitRepoRoot = orig })
+	gitRepoRoot = func(d string) (string, error) {
+		close(started)
+		<-release
+		return "/late/winner", nil
+	}
+
+	r := &Rule{}
+	done := make(chan struct {
+		root string
+		err  error
+	}, 1)
+	go func() {
+		root, err := r.resolveRepoRoot(dir)
+		done <- struct {
+			root string
+			err  error
+		}{root, err}
+	}()
+
+	<-started
+	// The goroutine has missed the cache and is blocked inside the
+	// stub. Populate the cache as if a concurrent caller raced
+	// ahead, then release the stub so the goroutine re-acquires
+	// the lock and observes the populated entry.
+	repoRootMu.Lock()
+	repoRootCache[dir] = repoRootEntry{root: "/early/winner", err: nil}
+	repoRootMu.Unlock()
+	close(release)
+
+	result := <-done
+	require.NoError(t, result.err)
+	assert.Equal(t, "/early/winner", result.root,
+		"the goroutine that returned later must honour the cache the "+
+			"early winner populated — the double-check branch.")
+}
+
 func TestRule_Check_CachesDriftPartsPerRepo(t *testing.T) {
 	// Drift inspection is expensive (git config subprocess, hook
 	// read, .mdsmith.yml parse). The rule caches the result per
