@@ -42,16 +42,17 @@ func MergeRawMap(parent, child map[string]any) map[string]any {
 		out = map[string]any{}
 	}
 	mergeRawFrontmatter(out, parent, child)
-	// `out` already carries parent's non-frontmatter keys via
-	// cloneRawMap, so the per-key loop just lets the child
-	// override them where it declares its own value.
-	for _, key := range []string{
-		"sections", "filename", "closed",
-		"cross-references", "acronyms", "index",
-	} {
-		if v, ok := child[key]; ok {
-			out[key] = v
+	// Overlay every other child key — including ones MergeRawMap
+	// has no special semantics for — so ParseInline still gets to
+	// flag a typoed/unknown top-level key with its
+	// `unknown schema key` diagnostic. Without this, a misspelled
+	// `sectiosn:` would be silently dropped in the single-layer
+	// normalisation path.
+	for key, v := range child {
+		if key == "frontmatter" {
+			continue
 		}
+		out[key] = v
 	}
 	return out
 }

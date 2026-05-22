@@ -600,6 +600,19 @@ func TestMergeRawMap_FrontmatterNonStringParentNormalises(t *testing.T) {
 	assert.Contains(t, merged, "&")
 }
 
+// TestMergeRawMap_PreservesUnknownChildKey ensures a typoed or
+// otherwise unrecognised top-level key on the child schema
+// survives the merge. ParseInline catches the typo with its
+// `unknown schema key` diagnostic; dropping it here would silence
+// the user's misconfiguration.
+func TestMergeRawMap_PreservesUnknownChildKey(t *testing.T) {
+	parent := map[string]any{"frontmatter": map[string]any{"id": "string"}}
+	child := map[string]any{"sectiosn": []any{}} // typo: sectiosn (missing n)
+	out := MergeRawMap(parent, child)
+	assert.Contains(t, out, "sectiosn",
+		"unknown child key must survive so ParseInline can flag it")
+}
+
 // TestMergeRawMap_PreservesMalformedChildFrontmatter pins the
 // review-feedback fix on PR #365: a present-but-not-a-mapping
 // `frontmatter:` value (`frontmatter: "oops"`) flows through
