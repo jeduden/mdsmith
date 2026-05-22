@@ -78,6 +78,16 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		text := mdtext.ExtractPlainText(para, f.Source)
+		// Cheap word count gates the classifier work: paragraphs
+		// below MinWords cannot trigger a diagnostic regardless of
+		// their score, and the classifier's regex-driven cue
+		// detection is the dominant alloc-budget cost when it
+		// fires (~400 allocs/paragraph on the alloc-budget gate
+		// fixture). mdtext.CountWords is a zero-alloc byte scan.
+		// Plan 195 task 13.
+		if mdtext.CountWords(text) < r.MinWords {
+			return ast.WalkContinue, nil
+		}
 		result := scorer.Score(text)
 		if result.WordCount < r.MinWords || result.Conciseness >= r.MinScore {
 			return ast.WalkContinue, nil

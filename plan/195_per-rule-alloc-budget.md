@@ -210,8 +210,23 @@ reference it.
     builds when at least one paragraph-aware limit is
     set, so the line-only configuration skips the
     paragraph walk.
-13. [ ] Fix MDS029 conciseness-scoring to ≤ 10 allocs.
-14. [ ] Fix MDS035 toc-directive to ≤ 10 allocs.
+13. [x] Fix MDS029 conciseness-scoring to ≤ 10 allocs.
+    The classifier's regex-driven phrase/cue extraction
+    paid ~400 allocs every Check it ran. Gating the
+    classifier call behind a cheap `mdtext.CountWords`
+    short-circuit (zero-alloc byte scan) so paragraphs
+    below `MinWords` never enter the classifier drops
+    MDS029 to 2 allocs on the gate fixture's single
+    sub-MinWords paragraph.
+14. [x] Fix MDS035 toc-directive to ≤ 10 allocs.
+    The rule's `hasTOCLinkReference` helper re-parsed
+    the entire source with `lint.NewParser()` on every
+    fresh File to consult goldmark's link-reference
+    table; the per-File memo wrapper hid the cost but
+    each new File still paid for one full parse (~200
+    allocs). Switching to `f.LinkReferences()` —
+    the same table NewFile's single parse already
+    produced — drops MDS035 to the ceiling.
 15. [ ] Close the MDS020 schema-parse parity gap. Add a
     `RunCache.ParsedSchema(absPath, build)` slot that
     parses each schema file once per `engine.Run`, and

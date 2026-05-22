@@ -130,7 +130,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 	}
 	if r.Wikilinks {
-		diags = append(diags, r.checkWikilinks(f, anchorCache)...)
+		diags = append(diags, r.checkWikilinks(f, ctx.ensureAnchorCache())...)
 	}
 
 	return diags
