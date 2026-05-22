@@ -104,11 +104,11 @@ remaining **3** are scheduled in plans 172 and 182.
 
 ## Tables
 
-| markdownlint               | Checks      | mdsmith | Status |
-|----------------------------|-------------|---------|--------|
-| MD055 table-pipe-style     | edge pipes  | MDS025  | ✅     |
-| MD056 table-column-count   | equal cells | MDS025  | ⚠️      |
-| MD058 blanks-around-tables | blank lines | MDS025  | ✅     |
+| markdownlint               | Checks      | mdsmith | Status  |
+|----------------------------|-------------|---------|---------|
+| MD055 table-pipe-style     | edge pipes  | MDS025  | ✅      |
+| MD056 table-column-count   | equal cells | MDS025  | partial |
+| MD058 blanks-around-tables | blank lines | MDS025  | ✅      |
 
 ## mdsmith-only rules (no markdownlint analog)
 
