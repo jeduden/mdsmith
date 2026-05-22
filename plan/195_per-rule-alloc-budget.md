@@ -238,7 +238,7 @@ reference it.
     `BenchmarkParityGap` (one-off, removed before
     merge) to confirm the default-vs-parity gap closes
     on the engine corpus.
-17. [ ] Update [docs/development/index.md][budget] to
+17. [x] Update [docs/development/index.md][budget] to
     point at the new gate as the enforcement point.
 
 ## Results
