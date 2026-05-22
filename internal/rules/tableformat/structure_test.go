@@ -512,6 +512,18 @@ func TestHashStartingCellNotMistakenForHeading(t *testing.T) {
 	assert.Empty(t, check(t, StyleConsistent, src))
 }
 
+// TestBarePipeNotHeader gates the no-empty-cells invariant: a line
+// that's only a `|` (no cell content) must not be accepted as a
+// table header, even if the following line looks like a delimiter.
+// tablefmt also refuses to detect this as a table, so accepting it
+// in the structure pass would split MD055/056/058 from the
+// alignment pass and surface phantom diagnostics on unrelated prose.
+func TestBarePipeNotHeader(t *testing.T) {
+	src := "# T\n\n|\n---|---\n| 1 | 2 |\n"
+	assert.Empty(t, check(t, StyleConsistent, src),
+		"a single `|` line is not a valid header")
+}
+
 func TestIsATXHeading(t *testing.T) {
 	assert.True(t, isATXHeading("# Title"))
 	assert.True(t, isATXHeading("###### Six"))

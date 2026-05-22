@@ -397,6 +397,14 @@ func isHeader(line []byte, prefix string) bool {
 	if isATXHeading(c) {
 		return false
 	}
+	// A header without at least one logical cell ("|", "||", and
+	// similar) is not a valid table row. tablefmt also refuses to
+	// detect such lines, and accepting them would surface phantom
+	// MD055/MD056 diagnostics on prose that happens to sit above a
+	// delimiter-shaped line.
+	if countCells(c) == 0 {
+		return false
+	}
 	return !isSeparatorContent(c)
 }
 
