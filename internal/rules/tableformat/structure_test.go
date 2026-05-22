@@ -6,6 +6,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -427,9 +428,13 @@ func TestFixPreservesEscapedTrailingPipe(t *testing.T) {
 }
 
 func TestEndsWithUnescapedPipe(t *testing.T) {
+	// Tablefmt-aligned escape semantics: a trailing `|` is an edge
+	// unless preceded by exactly one `\`. CommonMark's parity rule
+	// (where `\\|` would be a literal `\` + unescaped pipe) is NOT
+	// honored here so the structure pass agrees with tablefmt.
 	assert.True(t, endsWithUnescapedPipe("a|"))
 	assert.False(t, endsWithUnescapedPipe("a\\|"))
-	assert.True(t, endsWithUnescapedPipe("a\\\\|"))
+	assert.False(t, endsWithUnescapedPipe("a\\\\|"))
 	assert.False(t, endsWithUnescapedPipe("a"))
 	assert.False(t, endsWithUnescapedPipe(""))
 }
@@ -458,19 +463,28 @@ func TestNoLeadingOrTrailingStable(t *testing.T) {
 }
 
 func TestContainsUnescapedPipe(t *testing.T) {
+	// Tablefmt-aligned: `\|` is the only escape; `\\|` reads as a
+	// literal backslash followed by an escaped pipe, so no unescaped
+	// pipe is reported.
 	assert.True(t, containsUnescapedPipe("a|b"))
 	assert.False(t, containsUnescapedPipe("a\\|b"))
-	assert.True(t, containsUnescapedPipe("a\\\\|b"))
+	assert.False(t, containsUnescapedPipe("a\\\\|b"))
 	assert.True(t, containsUnescapedPipe("a\\|b|c"))
 	assert.False(t, containsUnescapedPipe("plain text"))
 }
 
-func TestSplitCellsBackslashParity(t *testing.T) {
-	// `\\|` is "escaped backslash" followed by an unescaped pipe
-	// delimiter — two cells, not one.
-	assert.Equal(t, []string{"\\\\", ""}, splitCells("\\\\|"))
-	// `\\\|` is "escaped backslash" then "escaped pipe" — one cell.
+func TestSplitCells_EscapedPipe(t *testing.T) {
+	// GFM (per tablefmt) treats `\|` as an escaped-pipe literal in a
+	// cell. The structure pass uses the same rule so the two passes
+	// agree on cell counts and edge detection for inputs containing
+	// `\|` or `\\|`. CommonMark's full backslash grammar (where `\\`
+	// would be a literal `\` so `\\|` becomes literal-backslash +
+	// unescaped-pipe-delimiter) is intentionally NOT honored inside
+	// table cells, matching tablefmt and GitHub's renderer.
+	assert.Equal(t, []string{"\\|"}, splitCells("\\|"))
+	assert.Equal(t, []string{"\\\\|"}, splitCells("\\\\|"))
 	assert.Equal(t, []string{"\\\\\\|"}, splitCells("\\\\\\|"))
+	assert.Equal(t, []string{"a ", " b"}, splitCells("a | b"))
 }
 
 func TestEscapedPipeOnlyParagraphNotHeader(t *testing.T) {
@@ -512,4 +526,71 @@ func TestParseRowIgnoresPostPrefixIndent(t *testing.T) {
 	// leading-pipe detection: the table is valid and clean.
 	src := "# T\n\n> Intro.\n>\n>  | A | B |\n>  | - | - |\n>  | 1 | 2 |\n>\n> Outro.\n"
 	assert.Empty(t, check(t, StyleConsistent, src))
+}
+
+// TestMD058_NoDoubleBlankBetweenAdjacentTables gates the dedupe
+// invariant: when a non-blank line separates two tables with
+// different prefixes, MD058 wants to insert blankAfter for table 1
+// AND blankBefore for table 2 at the same gap. Inserting both
+// produces two consecutive blank lines, which then trips MDS008.
+func TestMD058_NoDoubleBlankBetweenAdjacentTables(t *testing.T) {
+	// Two tables with different prefixes share a separating non-blank
+	// line (the second table's indentation breaks the first's prefix
+	// run). The fix must insert exactly one blank between them.
+	src := "| A | B |\n| - | - |\n  | C | D |\n  | - | - |\n"
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced, Style: StyleConsistent}
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	got := string(r.Fix(f))
+	assert.NotContains(t, got, "\n\n\n",
+		"Fix must dedupe blankAfter[table1.end]+blankBefore[table2.start] "+
+			"into one insertion; got:\n%s", got)
+}
+
+// TestCheck_DiagnosticsSortedAcrossPasses gates the cross-pass sort
+// invariant: a file with a misaligned table followed by a structural
+// MD058 violation must emit diagnostics in source order, not in
+// per-pass order.
+func TestCheck_DiagnosticsSortedAcrossPasses(t *testing.T) {
+	// Table A at lines 3-4 is bordered but misaligned (format diag).
+	// Para at line 6 sits flush against table B at line 7 (structure
+	// MD058 diag, "missing blank line before table"). The format diag
+	// is anchored at the FIRST table's start (line 3); the structure
+	// diag is anchored at the SECOND table's start (line 7). They
+	// must come out in source order.
+	src := "# T\n\n" +
+		"| A | B |\n" +
+		"|---|---|\n" +
+		"\n" +
+		"Para.\n" +
+		"| C | D |\n" +
+		"| - | - |\n"
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced, Style: StyleConsistent}
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	diags := r.Check(f)
+	require.GreaterOrEqual(t, len(diags), 2)
+	for i := 1; i < len(diags); i++ {
+		assert.LessOrEqualf(t, diags[i-1].Line, diags[i].Line,
+			"diags must be sorted by line; got diag %d line %d, diag %d line %d",
+			i-1, diags[i-1].Line, i, diags[i].Line)
+	}
+}
+
+// TestFix_CRLF_RoundTrips_TableLines guards against tablefmt
+// silently stripping `\r` from rewritten table lines on CRLF inputs.
+// The structure pass preserves CRLF; the alignment pass must too,
+// or `mdsmith fix` introduces mixed line endings.
+func TestFix_CRLF_RoundTrips_TableLines(t *testing.T) {
+	// A CRLF table that needs reformatting (col widths < 3 are padded
+	// up to the 3-char minimum) so tablefmt's writer actually runs on
+	// each row. The post-fix output must keep CRLF on every line.
+	src := "# T\r\n\r\n| A | B |\r\n| - | - |\r\n| 1 | 2 |\r\n"
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced, Style: StyleConsistent}
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	got := string(r.Fix(f))
+	assert.Contains(t, got, "| A   | B   |\r\n",
+		"reformatted table row must keep CRLF; got:\n%q", got)
+	assert.NotContains(t, got, "|\n", "no bare-LF line endings after a pipe row")
 }

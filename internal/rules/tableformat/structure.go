@@ -124,7 +124,14 @@ func applyStructureFix(f *lint.File, style string) []byte {
 	for i, l := range lines {
 		lineNum := i + 1
 		if b, ok := blankBefore[lineNum]; ok {
-			out = append(out, b)
+			// Two adjacent tables (different prefixes, separated by a
+			// non-blank line that one of them ends on) can each ask for
+			// a blank at the same gap: table1 schedules blankAfter at
+			// line K, table2 schedules blankBefore at line K+1. Emit
+			// only one or the pair surfaces as MDS008 no-multiple-blanks.
+			if _, dup := blankAfter[lineNum-1]; !dup {
+				out = append(out, b)
+			}
 		}
 		out = append(out, l)
 		if b, ok := blankAfter[lineNum]; ok {
@@ -414,17 +421,19 @@ func isATXHeading(s string) bool {
 }
 
 // containsUnescapedPipe reports whether s contains a `|` that is a
-// real delimiter — that is, not escaped by a preceding `\` (with
-// backslash parity respected so `\\|` counts as unescaped).
+// real cell delimiter. A `\|` pair is treated as one escaped-pipe
+// literal — matching tablefmt's GFM escape rule. CommonMark's full
+// backslash grammar (where `\\|` would be a literal `\` followed by
+// an unescaped pipe) is intentionally NOT honored: GitHub's renderer
+// doesn't, and the structure pass must agree with tablefmt or the
+// two disagree on cell counts for inputs containing `\\|`.
 func containsUnescapedPipe(s string) bool {
-	escape := false
 	for i := 0; i < len(s); i++ {
-		switch {
-		case escape:
-			escape = false
-		case s[i] == '\\':
-			escape = true
-		case s[i] == '|':
+		if s[i] == '\\' && i+1 < len(s) && s[i+1] == '|' {
+			i++ // skip the escaped pipe
+			continue
+		}
+		if s[i] == '|' {
 			return true
 		}
 	}
@@ -455,17 +464,14 @@ func continuesTable(line []byte, prefix string) bool {
 }
 
 // endsWithUnescapedPipe reports whether s ends with a real edge pipe
-// rather than an escaped literal `\|`. A trailing `|` is an edge only
-// when an even number (including zero) of backslashes precede it.
+// rather than an escaped literal `\|`. A trailing `|` is an edge
+// unless it is preceded by exactly one `\` — matching tablefmt's
+// GFM escape semantics so the two passes agree.
 func endsWithUnescapedPipe(s string) bool {
 	if !strings.HasSuffix(s, "|") {
 		return false
 	}
-	bs := 0
-	for i := len(s) - 2; i >= 0 && s[i] == '\\'; i-- {
-		bs++
-	}
-	return bs%2 == 0
+	return len(s) < 2 || s[len(s)-2] != '\\'
 }
 
 func parseRow(line []byte, lineNum int, prefix string) tableRow {
@@ -510,22 +516,22 @@ func countCells(content string) int {
 	return len(cells)
 }
 
-// splitCells splits a row body on unescaped pipes, honoring backslash
-// parity: `\|` is a literal pipe, `\\|` is an escaped backslash
-// followed by a real delimiter, and so on.
+// splitCells splits a row body on unescaped pipes. A `\|` pair is
+// kept inside the current cell as a literal escaped pipe, matching
+// tablefmt's GFM rule. Two leading backslashes do not enter a parity
+// dance — `\\|` is a literal backslash followed by an escaped pipe,
+// one cell — because tablefmt parses it that way and the structure
+// pass must agree.
 func splitCells(s string) []string {
 	var cells []string
 	var cur strings.Builder
-	escape := false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
-		case escape:
-			cur.WriteByte(c)
-			escape = false
-		case c == '\\':
-			cur.WriteByte(c)
-			escape = true
+		case c == '\\' && i+1 < len(s) && s[i+1] == '|':
+			cur.WriteByte('\\')
+			cur.WriteByte('|')
+			i++ // skip the escaped pipe
 		case c == '|':
 			cells = append(cells, cur.String())
 			cur.Reset()

@@ -8,6 +8,7 @@ package tableformat
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -121,6 +122,17 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		})
 	}
 	diags = append(diags, structureDiagnostics(f, r.style(), r.ID(), r.Name())...)
+	// Format diagnostics anchor at each table's start line; structure
+	// diagnostics anchor at the offending row. With multiple tables in
+	// one file the two streams interleave by line, so a final sort
+	// puts the combined slice in source order — what fixture tests
+	// and editors expect.
+	sort.SliceStable(diags, func(i, j int) bool {
+		if diags[i].Line != diags[j].Line {
+			return diags[i].Line < diags[j].Line
+		}
+		return diags[i].Column < diags[j].Column
+	})
 	return diags
 }
 
@@ -137,7 +149,18 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	parsed, _ := lint.NewFile(f.Path, intermediate) // NewFile never errors today
 	parsed.GeneratedRanges = gensection.FindAllGeneratedRanges(parsed)
 	skipLines := formatSkipLines(parsed)
-	return tablefmt.FormatLines(parsed.Source, parsed.Lines, skipLines, r.config())
+	out := tablefmt.FormatLines(parsed.Source, parsed.Lines, skipLines, r.config())
+	// tablefmt joins rewritten table lines with bare `\n`, dropping the
+	// `\r` the original line carried. On a CRLF document that leaves
+	// the table rows with bare-LF endings while every surrounding line
+	// keeps its `\r\n` — a mixed-ending output. Re-normalise to CRLF
+	// when the source used it, so a `mdsmith fix` of a CRLF file stays
+	// CRLF end-to-end.
+	if bytes.Contains(f.Source, []byte("\r\n")) {
+		out = bytes.ReplaceAll(out, []byte("\r\n"), []byte("\n"))
+		out = bytes.ReplaceAll(out, []byte("\n"), []byte("\r\n"))
+	}
+	return out
 }
 
 func (r *Rule) config() tablefmt.Config {
@@ -146,18 +169,26 @@ func (r *Rule) config() tablefmt.Config {
 
 // formatSkipLines returns the line numbers the alignment pass must
 // ignore: fenced/indented code, processing-instruction blocks, and
-// generated-section bodies. The returned map is freshly allocated —
-// `lint.Collect*BlockLines` returns a shared, read-only cache that
-// must not be mutated.
+// generated-section bodies. When there are no PI blocks or generated
+// ranges, the cached code-block map is returned directly — tablefmt
+// only reads the skip set, so handing back the cache avoids a
+// per-Check allocation on the hot path. The merged map is built only
+// when one of the other inputs is non-empty.
 func formatSkipLines(f *lint.File) map[int]bool {
-	skip := map[int]bool{}
-	for n := range lint.CollectCodeBlockLines(f) {
+	code := lint.CollectCodeBlockLines(f)
+	pi := lint.CollectPIBlockLines(f)
+	gen := f.GeneratedRanges
+	if len(pi) == 0 && len(gen) == 0 {
+		return code
+	}
+	skip := make(map[int]bool, len(code)+len(pi))
+	for n := range code {
 		skip[n] = true
 	}
-	for n := range lint.CollectPIBlockLines(f) {
+	for n := range pi {
 		skip[n] = true
 	}
-	for _, gr := range f.GeneratedRanges {
+	for _, gr := range gen {
 		for n := gr.From; n <= gr.To; n++ {
 			skip[n] = true
 		}
