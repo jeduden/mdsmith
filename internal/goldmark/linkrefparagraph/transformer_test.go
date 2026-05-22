@@ -51,6 +51,18 @@ var equivalenceCases = []struct {
 	{"unclosed-title", "[a]: /url \"unclosed\nstuff\n"},
 	{"trailing-after-title", "[a]: /url \"title\" trailing\n\n[a]\n"},
 	{"unclosed-angle", "[a]: <foo\nstuff\n"},
+	// Branches deep in the vendored parsers — equivalence with
+	// upstream is the gate, but each case also drives a specific
+	// previously-uncovered branch.
+	{"dest-bad-rparen", "[a]: foo)bar\n\nthing\n"},
+	{"empty-paragraph-link-ref", "[a]: /url\n[b]: /url2\n"},
+	{"only-blank-after-ref-on-new", "[a]: /url\n   \"the title\"\nmore prose\n"},
+	{"title-then-content-after-newline", "[a]: /url\n\"title\"\nstuff\n"},
+	{"unclosed-title-new-line", "[a]: /url\n  \"unclosed\nstuff\n"},
+	{"indented-tab-continuation", "first line\n\t[a]: /url\n\n[a]\n"},
+	{"indented-one-continuation", "first line\n [a]: /url\n\n[a]\n"},
+	{"title-newline-trail", "[a]: /url\n\"title\" trail\n\nstuff\n"},
+	{"three-refs-paragraph", "[a]: /1\n[b]: /2\n[c]: /3\n"},
 }
 
 func TestTransformer_EquivalentToUpstream(t *testing.T) {
