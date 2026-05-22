@@ -63,6 +63,10 @@ var equivalenceCases = []struct {
 	{"indented-one-continuation", "first line\n [a]: /url\n\n[a]\n"},
 	{"title-newline-trail", "[a]: /url\n\"title\" trail\n\nstuff\n"},
 	{"three-refs-paragraph", "[a]: /1\n[b]: /2\n[c]: /3\n"},
+	{"angle-then-title", "[a]: <foo>\"title\"\n\nstuff\n"},
+	{"sequential-3sp-indent", "[a]: /url\n   [b]: /url\n\nstuff\n"},
+	{"sequential-tab-indent", "[a]: /url\n\t[b]: /url\n\nstuff\n"},
+	{"empty-after-extract", "[a]: /url\n[b]: /url2\n[c]: /url3\n[d]: /url4\n"},
 }
 
 func TestTransformer_EquivalentToUpstream(t *testing.T) {

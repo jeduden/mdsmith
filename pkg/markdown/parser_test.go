@@ -10,6 +10,9 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
+
+	"github.com/jeduden/mdsmith/internal/goldmark/linkrefparagraph"
 )
 
 func TestNewParser(t *testing.T) {
@@ -20,6 +23,34 @@ func TestNewParser(t *testing.T) {
 	assert.Equal(t, ast.KindDocument, root.Kind())
 	// The PI block parser is registered, so <?toc?> is a PI node.
 	assert.Len(t, findPINodes(root), 1)
+}
+
+// fakeTransformer is a no-op paragraph transformer used to verify
+// substituteLinkRef preserves entries it does not recognise.
+// Goldmark's current DefaultParagraphTransformers ships only the
+// link-reference entry, so the pass-through branch is not reachable
+// from a goldmark-as-shipped parser; this unit test drives it
+// directly.
+type fakeTransformer struct{}
+
+func (fakeTransformer) Transform(*ast.Paragraph, text.Reader, parser.Context) {}
+
+func TestSubstituteLinkRef_PreservesUnknownEntries(t *testing.T) {
+	fake := fakeTransformer{}
+	lrp := linkrefparagraph.New()
+	defaults := []util.PrioritizedValue{
+		util.Prioritized(fake, 200),
+		util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
+		util.Prioritized(fake, 50),
+	}
+	got := substituteLinkRef(defaults, lrp)
+	require.Len(t, got, 3)
+	assert.Equal(t, fake, got[0].Value)
+	assert.Equal(t, 200, got[0].Priority)
+	assert.Equal(t, lrp, got[1].Value)
+	assert.Equal(t, 100, got[1].Priority)
+	assert.Equal(t, fake, got[2].Value)
+	assert.Equal(t, 50, got[2].Priority)
 }
 
 // TestParseContext_ConcurrentRaceFree drives the pooled parser from
