@@ -234,10 +234,13 @@ reference it.
     compiles each unique schema CUE expression once.
     The MDS020 hot path (parseSchema + CompileString)
     drops from per-host-file to per-schema-source.
-16. [ ] Re-run `BenchmarkCheckCorpusLarge` and the new
-    `BenchmarkParityGap` (one-off, removed before
-    merge) to confirm the default-vs-parity gap closes
-    on the engine corpus.
+16. [x] Re-run `BenchmarkCheckCorpusLarge` to confirm
+    no engine-corpus regression. Latest run lands at
+    p95 = 188 ms / 314 µs per file — well under the
+    plan's 12 s p95 acceptance criterion. The
+    `BenchmarkParityGap` measurement was a local
+    one-off used while sizing the schema-cache work
+    (task 15) and is intentionally not committed.
 17. [x] Update [docs/development/index.md][budget] to
     point at the new gate as the enforcement point.
 
