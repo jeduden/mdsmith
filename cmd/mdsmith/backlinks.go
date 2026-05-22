@@ -252,7 +252,9 @@ func collectBacklinks(
 
 	// Build the workspace wikilink index once per collectBacklinks
 	// call so a corpus with N source files × M distinct wikilink
-	// targets does one fs.WalkDir instead of N×M.
+	// targets does one fs.WalkDir instead of N×M. Both this
+	// command and MDS027 route through linkgraph.WikilinkIndexFor
+	// so the build/cache semantics live in one place.
 	//
 	// When rootDir is empty (e.g. unit-test calls with files in
 	// the current directory and no resolved workspace root),
@@ -262,7 +264,7 @@ func collectBacklinks(
 	// any wikilink rows. Standard Markdown links still surface.
 	var index *linkgraph.WikilinkIndex
 	if rootDir != "" {
-		index = linkgraph.NewWikilinkIndex(os.DirFS(rootDir))
+		index = linkgraph.WikilinkIndexFor(nil, "", os.DirFS(rootDir))
 	}
 
 	var records []backlinkRecord

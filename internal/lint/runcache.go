@@ -100,9 +100,14 @@ type anchorEntry struct {
 // callers with the same key block on the same once and observe
 // the same value.
 //
-// The value carries dynamic type any — MDS027 and `mdsmith list
-// backlinks` install a *linkgraph.WikilinkIndex so a workspace
-// walked for one host file serves every other file in the run.
+// The value carries dynamic type any — the canonical caller is
+// linkgraph.WikilinkIndexFor, which stores a
+// *linkgraph.WikilinkIndex so a workspace walked for one host
+// file serves every later file in the run. MDS027 routes
+// through that helper via the engine's RunCache; `mdsmith list
+// backlinks` calls the helper directly without a cache because
+// it is one-shot. Either way the build/cache contract sits in
+// one place.
 func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
 	return load(&c.wikilinks, rootKey, build)
 }

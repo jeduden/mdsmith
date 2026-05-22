@@ -146,6 +146,26 @@ func inCodeSpan(spans []byteRange, offset int) bool {
 	return false
 }
 
+// WikilinkIndexFor returns a *WikilinkIndex for root, memoized on
+// cache under rootKey when cache is non-nil. With cache=nil the
+// helper falls through to a direct NewWikilinkIndex call —
+// callers without a long-lived cache (one-shot CLI commands)
+// still share the same API.
+//
+// This is the canonical entry point both MDS027 and
+// `mdsmith list backlinks` route through; rewriting it once
+// keeps the workspace walk semantics in one place.
+func WikilinkIndexFor(cache *lint.RunCache, rootKey string, root fs.FS) *WikilinkIndex {
+	if cache == nil || rootKey == "" {
+		return NewWikilinkIndex(root)
+	}
+	v := cache.Wikilinks(rootKey, func() any {
+		return NewWikilinkIndex(root)
+	})
+	idx, _ := v.(*WikilinkIndex)
+	return idx
+}
+
 // WikilinkIndex is a pre-built directory of every file under one
 // workspace root, keyed for the two lookup shapes ResolveWikiLink
 // uses: stem (.md/.markdown filename minus extension) and exact

@@ -36,6 +36,37 @@ func TestExtractWikiLinks_NilASTReturnsNilNoPanic(t *testing.T) {
 	})
 }
 
+func TestWikilinkIndexFor_NilCacheBuildsDirectly(t *testing.T) {
+	// A nil cache (or empty key) falls through to NewWikilinkIndex
+	// — used by `mdsmith list backlinks` which has no engine-wide
+	// RunCache. Two calls then walk twice; the cache path is what
+	// turns the second call into an O(1) lookup.
+	mfs := fstest.MapFS{"page.md": &fstest.MapFile{Data: []byte{}}}
+	idx := linkgraphWikilinkIndexFor(nil, "", mfs)
+	require.NotNil(t, idx)
+	got, ok := idx.Resolve("page")
+	require.True(t, ok)
+	assert.Equal(t, "page.md", got)
+}
+
+func TestWikilinkIndexFor_CachedAcrossCallers(t *testing.T) {
+	// With a shared cache + key, two callers see the same index.
+	// MDS027 takes this branch via the engine's RunCache so a
+	// workspace walked for host file A serves host file B too.
+	mfs := fstest.MapFS{"page.md": &fstest.MapFile{Data: []byte{}}}
+	cache := lint.NewRunCache()
+	a := linkgraphWikilinkIndexFor(cache, "/root", mfs)
+	b := linkgraphWikilinkIndexFor(cache, "/root", mfs)
+	require.NotNil(t, a)
+	assert.Same(t, a, b, "cache must hand out the same *WikilinkIndex per key")
+}
+
+// linkgraphWikilinkIndexFor is a thin alias so the test reads
+// naturally as a unit test of the package-local helper.
+func linkgraphWikilinkIndexFor(cache *lint.RunCache, key string, root fs.FS) *WikilinkIndex {
+	return WikilinkIndexFor(cache, key, root)
+}
+
 func TestNewWikilinkIndex_NilRoot(t *testing.T) {
 	assert.Nil(t, NewWikilinkIndex(nil))
 }

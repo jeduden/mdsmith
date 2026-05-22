@@ -189,6 +189,9 @@ func (r *Rule) effectiveWikilinkStyle() string {
 // by every later host file in the same run. Returns nil when no
 // RunCache is installed (struct-literal Files in unit tests) so the
 // resolver falls back to the per-Check fs walk.
+//
+// Delegates to linkgraph.WikilinkIndexFor so MDS027 and `mdsmith
+// list backlinks` share one build/cache implementation.
 func wikilinkIndexForRoot(f *lint.File, root fs.FS) *linkgraph.WikilinkIndex {
 	if f.RunCache == nil || root == nil {
 		return nil
@@ -197,11 +200,7 @@ func wikilinkIndexForRoot(f *lint.File, root fs.FS) *linkgraph.WikilinkIndex {
 	if key == "" {
 		return nil
 	}
-	v := f.RunCache.Wikilinks(key, func() any {
-		return linkgraph.NewWikilinkIndex(root)
-	})
-	idx, _ := v.(*linkgraph.WikilinkIndex)
-	return idx
+	return linkgraph.WikilinkIndexFor(f.RunCache, key, root)
 }
 
 // wikilinkCacheKey returns the per-root cache key for the wikilink
