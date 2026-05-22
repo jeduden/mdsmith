@@ -87,58 +87,98 @@ func applyStructureFix(f *lint.File, style string) []byte {
 	if len(tables) == 0 {
 		return append([]byte(nil), f.Source...)
 	}
+	edits := collectStructureEdits(f, tables, style)
+	return renderStructureFix(f, edits)
+}
 
-	lines := make([]string, len(f.Lines))
-	for i, l := range f.Lines {
-		lines[i] = string(l)
-	}
+// structureEdits records the per-line overrides and blank-line
+// insertions the structure fix needs to apply when rebuilding the
+// source buffer. Each map is nil when empty so the renderer's
+// lookups stay cheap on the common no-op path.
+type structureEdits struct {
+	modified    map[int]string // 1-based line -> edge-normalised row
+	blankBefore map[int]string // 1-based line -> blank inserted before
+	blankAfter  map[int]string // 1-based line -> blank inserted after
+}
 
+// collectStructureEdits walks the parsed tables and records which
+// rows need edge normalisation (MD055) plus where surrounding blank
+// lines must be inserted (MD058). MD056 row mismatches are never
+// auto-rewritten so they don't appear here.
+func collectStructureEdits(f *lint.File, tables []tableBlock, style string) structureEdits {
 	// Match the file's newline style so a CRLF document does not gain
-	// a bare-LF blank line (mixed endings); lines are joined with
-	// "\n", so a CRLF blank line ends in a lone "\r".
+	// a bare-LF blank line (mixed endings); lines are emitted with a
+	// `\n` separator, so a CRLF blank line ends in a lone `\r`.
 	cr := ""
 	if bytes.Contains(f.Source, []byte("\r\n")) {
 		cr = "\r"
 	}
-
-	blankBefore := map[int]string{}
-	blankAfter := map[int]string{}
+	var e structureEdits
 	for _, t := range tables {
 		wantLead, wantTrail := expectedStyle(style, t)
 		for _, row := range t.rows {
-			if row.leading != wantLead || row.trailing != wantTrail {
-				idx := row.lineNum - 1
-				lines[idx] = normalizeEdges(lines[idx], t.prefix, wantLead, wantTrail)
+			if row.leading == wantLead && row.trailing == wantTrail {
+				continue
 			}
+			if e.modified == nil {
+				e.modified = map[int]string{}
+			}
+			e.modified[row.lineNum] = normalizeEdges(string(f.Lines[row.lineNum-1]), t.prefix, wantLead, wantTrail)
 		}
 		blank := blankLineFor(t.prefix) + cr
 		if before := t.start() - 1; before >= 1 && !isBlankAround(f.Lines[before-1], t.prefix) {
-			blankBefore[t.start()] = blank
+			if e.blankBefore == nil {
+				e.blankBefore = map[int]string{}
+			}
+			e.blankBefore[t.start()] = blank
 		}
 		if after := t.end() + 1; after <= len(f.Lines) && !isBlankAround(f.Lines[after-1], t.prefix) {
-			blankAfter[t.end()] = blank
+			if e.blankAfter == nil {
+				e.blankAfter = map[int]string{}
+			}
+			e.blankAfter[t.end()] = blank
 		}
 	}
+	return e
+}
 
-	var out []string
-	for i, l := range lines {
+// renderStructureFix streams the rebuilt source into a buffer
+// pre-sized to the source length, writing untouched rows directly
+// from f.Lines (no per-line []byte→string conversion) and pulling
+// modified rows from the edits map. blankBefore[K] is suppressed
+// when blankAfter[K-1] is already scheduled at the same gap, which
+// avoids MDS008 no-multiple-blanks on adjacent tables.
+func renderStructureFix(f *lint.File, e structureEdits) []byte {
+	var buf bytes.Buffer
+	buf.Grow(len(f.Source) + 16)
+	first := true
+	emitSep := func() {
+		if first {
+			first = false
+			return
+		}
+		buf.WriteByte('\n')
+	}
+	for i, line := range f.Lines {
 		lineNum := i + 1
-		if b, ok := blankBefore[lineNum]; ok {
-			// Two adjacent tables (different prefixes, separated by a
-			// non-blank line that one of them ends on) can each ask for
-			// a blank at the same gap: table1 schedules blankAfter at
-			// line K, table2 schedules blankBefore at line K+1. Emit
-			// only one or the pair surfaces as MDS008 no-multiple-blanks.
-			if _, dup := blankAfter[lineNum-1]; !dup {
-				out = append(out, b)
+		if b, ok := e.blankBefore[lineNum]; ok {
+			if _, dup := e.blankAfter[lineNum-1]; !dup {
+				emitSep()
+				buf.WriteString(b)
 			}
 		}
-		out = append(out, l)
-		if b, ok := blankAfter[lineNum]; ok {
-			out = append(out, b)
+		emitSep()
+		if mod, ok := e.modified[lineNum]; ok {
+			buf.WriteString(mod)
+		} else {
+			buf.Write(line)
+		}
+		if b, ok := e.blankAfter[lineNum]; ok {
+			emitSep()
+			buf.WriteString(b)
 		}
 	}
-	return []byte(strings.Join(out, "\n"))
+	return buf.Bytes()
 }
 
 // expectedStyle returns the required (leading, trailing) edge-pipe

@@ -128,9 +128,23 @@ func FormatLines(source []byte, lines [][]byte, codeLines map[int]bool, cfg Conf
 // in the file — including table-shaped text inside skipped code blocks
 // — do not get rewritten in place of the parsed target. formatTable
 // preserves row count, so each replacement is one-line-per-line.
+//
+// CRLF preservation: lint.NewFile keeps the trailing `\r` on each line
+// of a CRLF document. formatTable rebuilds rewritten rows without `\r`,
+// so a naive splice mixes endings (rewritten rows bare-LF, surrounding
+// rows CRLF). When any source line carries a trailing `\r`, re-append
+// it to every formatted row.
 func rebuildWithFormattedTables(lines [][]byte, tables []table, cfg Config) []byte {
 	work := make([][]byte, len(lines))
 	copy(work, lines)
+
+	crlf := false
+	for _, l := range lines {
+		if len(l) > 0 && l[len(l)-1] == '\r' {
+			crlf = true
+			break
+		}
+	}
 
 	for _, tbl := range tables {
 		formatted := formatTable(tbl, cfg)
@@ -139,6 +153,9 @@ func rebuildWithFormattedTables(lines [][]byte, tables []table, cfg Config) []by
 		}
 		start := tbl.startLine - 1 // 0-based
 		for j, newLine := range formatted.rawLines {
+			if crlf {
+				newLine = append(newLine, '\r')
+			}
 			work[start+j] = newLine
 		}
 	}

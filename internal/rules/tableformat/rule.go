@@ -143,24 +143,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // recomputed on the reparsed buffer: a blank line inserted before a
 // downstream generated section shifts that section's line numbers,
 // so copying the pre-fix ranges would point the alignment pass's
-// skip set at the wrong lines.
+// skip set at the wrong lines. tablefmt is CRLF-aware, so no
+// post-pass normalisation is needed for mixed-ending output.
 func (r *Rule) Fix(f *lint.File) []byte {
 	intermediate := applyStructureFix(f, r.style())
 	parsed, _ := lint.NewFile(f.Path, intermediate) // NewFile never errors today
 	parsed.GeneratedRanges = gensection.FindAllGeneratedRanges(parsed)
 	skipLines := formatSkipLines(parsed)
-	out := tablefmt.FormatLines(parsed.Source, parsed.Lines, skipLines, r.config())
-	// tablefmt joins rewritten table lines with bare `\n`, dropping the
-	// `\r` the original line carried. On a CRLF document that leaves
-	// the table rows with bare-LF endings while every surrounding line
-	// keeps its `\r\n` — a mixed-ending output. Re-normalise to CRLF
-	// when the source used it, so a `mdsmith fix` of a CRLF file stays
-	// CRLF end-to-end.
-	if bytes.Contains(f.Source, []byte("\r\n")) {
-		out = bytes.ReplaceAll(out, []byte("\r\n"), []byte("\n"))
-		out = bytes.ReplaceAll(out, []byte("\n"), []byte("\r\n"))
-	}
-	return out
+	return tablefmt.FormatLines(parsed.Source, parsed.Lines, skipLines, r.config())
 }
 
 func (r *Rule) config() tablefmt.Config {
