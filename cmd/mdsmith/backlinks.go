@@ -252,10 +252,14 @@ func collectBacklinks(
 
 	// Build the workspace wikilink index once per collectBacklinks
 	// call so a corpus with N source files × M distinct wikilink
-	// targets does one fs.WalkDir instead of N×M. Skipped when
-	// rootDir is empty (e.g. unit-test calls with files in the
-	// current directory) — extractBacklinksFromSource then falls
-	// back to per-call walks via ResolveWikiLink.
+	// targets does one fs.WalkDir instead of N×M.
+	//
+	// When rootDir is empty (e.g. unit-test calls with files in
+	// the current directory and no resolved workspace root),
+	// wikilink resolution is skipped entirely:
+	// extractBacklinksFromSource leaves f.RootFS unset, and
+	// appendWikilinkBacklinks returns early without producing
+	// any wikilink rows. Standard Markdown links still surface.
 	var index *linkgraph.WikilinkIndex
 	if rootDir != "" {
 		index = linkgraph.NewWikilinkIndex(os.DirFS(rootDir))
