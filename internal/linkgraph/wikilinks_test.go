@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 )
@@ -346,6 +348,118 @@ func TestResolveWikiLink_WalkDirCallbackError(t *testing.T) {
 	got, ok := ResolveWikiLink(mfs, "from.md", "page")
 	require.True(t, ok)
 	assert.Equal(t, "other/page.md", got)
+}
+
+func TestWikilinkSearchKey(t *testing.T) {
+	cases := []struct {
+		name     string
+		target   string
+		wantName string
+		wantStem string
+		stemMode bool
+	}{
+		{"no extension → stem mode", "Notes", "", "Notes", true},
+		{"md extension → stem mode", "Notes.md", "", "Notes", true},
+		{"markdown extension → stem mode", "Notes.markdown", "", "Notes", true},
+		{"PNG embed → exact name", "image.png", "image.png", "", false},
+		{"backslash normalised", `sub\page`, "", "page", true},
+		{"nested path → basename only", "deep/sub/page", "", "page", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n, s, mode := wikilinkSearchKey(tc.target)
+			assert.Equal(t, tc.wantName, n, "wantName")
+			assert.Equal(t, tc.wantStem, s, "wantStem")
+			assert.Equal(t, tc.stemMode, mode, "stemMode")
+		})
+	}
+}
+
+func TestIsMarkdownName(t *testing.T) {
+	assert.True(t, isMarkdownName("page.md"))
+	assert.True(t, isMarkdownName("page.MD"))
+	assert.True(t, isMarkdownName("page.markdown"))
+	assert.False(t, isMarkdownName("page.txt"))
+	assert.False(t, isMarkdownName("page"))
+}
+
+func TestSortByDepthThenName(t *testing.T) {
+	// Mixed depths and matching depths exercise both keys of the
+	// sort: shorter paths come first, ties break alphabetically.
+	paths := []string{
+		"b/page.md",
+		"a/page.md",
+		"page.md",
+		"a/sub/page.md",
+	}
+	sortByDepthThenName(paths)
+	assert.Equal(t, []string{
+		"page.md",
+		"a/page.md",
+		"b/page.md",
+		"a/sub/page.md",
+	}, paths)
+}
+
+func TestCodeSpanTextBounds(t *testing.T) {
+	// One Text child → bounds equal that text's segment. A non-Text
+	// child is skipped (continue). Two Text children expand the
+	// range. Zero Text children → -1, -1.
+	src := []byte("`abc`")
+	cs := ast.NewCodeSpan()
+	t1 := ast.NewTextSegment(text.NewSegment(1, 3))
+	cs.AppendChild(cs, t1)
+	first, last := codeSpanTextBounds(cs)
+	assert.Equal(t, 1, first)
+	assert.Equal(t, 3, last)
+
+	csNoText := ast.NewCodeSpan()
+	first, last = codeSpanTextBounds(csNoText)
+	assert.Equal(t, -1, first)
+	assert.Equal(t, -1, last)
+
+	csMixed := ast.NewCodeSpan()
+	csMixed.AppendChild(csMixed, ast.NewAutoLink(ast.AutoLinkURL, ast.NewTextSegment(text.NewSegment(0, 0))))
+	csMixed.AppendChild(csMixed, ast.NewTextSegment(text.NewSegment(2, 4)))
+	first, last = codeSpanTextBounds(csMixed)
+	assert.Equal(t, 2, first)
+	assert.Equal(t, 4, last)
+	_ = src
+}
+
+func TestInCodeSpan(t *testing.T) {
+	spans := []byteRange{{start: 5, end: 10}, {start: 20, end: 25}}
+	assert.True(t, inCodeSpan(spans, 5))
+	assert.True(t, inCodeSpan(spans, 9))
+	assert.False(t, inCodeSpan(spans, 10), "end is exclusive")
+	assert.False(t, inCodeSpan(spans, 4))
+	assert.False(t, inCodeSpan(spans, 100))
+	assert.False(t, inCodeSpan(nil, 0))
+}
+
+func TestCollectCodeSpanRanges_EmptyCodeSpan(t *testing.T) {
+	// Drive the `first < 0` early return in collectCodeSpanRanges by
+	// handing it an AST with a CodeSpan that has no Text children.
+	// goldmark won't usually emit one, but a struct-literal node
+	// proves the guard works without relying on parser quirks.
+	f := newFile(t, "ignored\n")
+	root := ast.NewDocument()
+	root.AppendChild(root, ast.NewCodeSpan())
+	f.AST = root
+	got := collectCodeSpanRanges(f)
+	assert.Empty(t, got, "empty CodeSpan must yield no range")
+}
+
+func TestWikilinkIndex_Resolve_EmbedNotFound(t *testing.T) {
+	// An embed lookup (exact-name) that misses falls through to the
+	// final `return "", false`. The stem case already hits its own
+	// "", false path via TestWikilinkIndex_ResolveSemantics.
+	mfs := fstest.MapFS{
+		"img.png": &fstest.MapFile{Data: []byte{}},
+	}
+	idx := NewWikilinkIndex(mfs)
+	_, ok := idx.Resolve("missing.png")
+	assert.False(t, ok)
 }
 
 // erroringFS rejects ReadDir on a specific subdirectory while

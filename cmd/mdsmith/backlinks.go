@@ -308,10 +308,11 @@ func extractBacklinksFromSource(
 	// in records match what users see in editors. Mirror the config's
 	// frontMatter setting so backlinks stays aligned with MDS027 when
 	// stripping is turned off.
-	f, err := lint.NewFileFromSource(src, data, stripFrontMatter)
-	if err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", srcRel, err)
-	}
+	//
+	// NewFileFromSource only errors when NewFile errors, and NewFile
+	// never errors — goldmark always returns an AST. The discard keeps
+	// the linter happy without preserving an unreachable branch.
+	f, _ := lint.NewFileFromSource(src, data, stripFrontMatter) //nolint:errcheck
 	// Wikilink resolution needs the workspace root: ResolveWikiLink
 	// walks the fs.FS to find candidates. Standard Markdown link
 	// resolution operates on the source-relative path and never reads

@@ -1226,6 +1226,33 @@ func TestCheck_Wikilinks_RunCacheSharedIndex(t *testing.T) {
 	}
 }
 
+func TestWikilinkIndexForRoot_EmptyKeyReturnsNil(t *testing.T) {
+	// A file with RootFS set but RootDir empty hits the
+	// wikilinkCacheKey == "" branch and short-circuits without
+	// touching the RunCache. The resolver then falls back to the
+	// per-Check walk.
+	dir := t.TempDir()
+	f := &lint.File{
+		RootFS:   os.DirFS(dir),
+		RunCache: lint.NewRunCache(),
+	}
+	got := wikilinkIndexForRoot(f, f.RootFS)
+	assert.Nil(t, got)
+}
+
+func TestWikilinkIndexForRoot_NilRunCacheReturnsNil(t *testing.T) {
+	dir := t.TempDir()
+	f := &lint.File{RootDir: dir, RootFS: os.DirFS(dir)}
+	assert.Nil(t, wikilinkIndexForRoot(f, f.RootFS),
+		"no RunCache → no per-run index")
+}
+
+func TestWikilinkIndexForRoot_NilRootReturnsNil(t *testing.T) {
+	f := &lint.File{RootDir: "/tmp/x", RunCache: lint.NewRunCache()}
+	assert.Nil(t, wikilinkIndexForRoot(f, nil),
+		"nil root → no per-run index")
+}
+
 func TestWikilinkCacheKey_FallbackOnUnknownDir(t *testing.T) {
 	// filepath.Abs only errors when os.Getwd fails — unreachable in
 	// the test harness — so this asserts the empty-RootDir branch

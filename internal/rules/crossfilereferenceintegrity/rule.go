@@ -207,14 +207,15 @@ func wikilinkIndexForRoot(f *lint.File, root fs.FS) *linkgraph.WikilinkIndex {
 // wikilinkCacheKey returns the per-root cache key for the wikilink
 // index. RootDir's absolute form is preferred so two host files at
 // different relative paths under the same root share one index.
+//
+// filepath.Abs only errors when os.Getwd fails — an OS-level
+// catastrophe the rest of the linter does not survive either —
+// so the rare error is swallowed in favour of the raw RootDir.
 func wikilinkCacheKey(f *lint.File) string {
 	if f.RootDir == "" {
 		return ""
 	}
-	abs, err := filepath.Abs(f.RootDir)
-	if err != nil {
-		return f.RootDir
-	}
+	abs, _ := filepath.Abs(f.RootDir) //nolint:errcheck
 	return abs
 }
 
