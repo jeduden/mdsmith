@@ -19,6 +19,7 @@ row: "- [{title}]({filename})"
 - [Architecture principles](architecture/index.md)
 - [Coverage Gate](coverage.md)
 - [File Placement](file-placement.md)
+- [High-Performance Go](high-performance-go.md)
 - [Merge Queue](merge-queue.md)
 - [PR Fixup Workflow](pr-fixup-workflow.md)
 - [Public Markdown Library](markdown-library.md)

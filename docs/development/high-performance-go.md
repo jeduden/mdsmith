@@ -1,0 +1,305 @@
+---
+title: High-Performance Go
+summary: >-
+  Process and patterns for keeping mdsmith's Go core fast:
+  the benchmark→profile→fix loop, the patterns to reach
+  for, and the anti-patterns that have already cost the
+  project real CPU and GC time.
+---
+# High-Performance Go
+
+mdsmith's hot path is the rule set running over every file
+in the workspace. A small per-`Check` regression — one
+extra allocation, one O(n) rescan — multiplies by tens of
+thousands. This page is the contributor playbook for
+keeping that path fast.
+
+The per-rule ≤ 10 alloc ceiling and the tiered CI gates
+live elsewhere:
+
+- [Allocation Budget](index.md#allocation-budget) — the
+  rule and how to verify it.
+- [Markdown linter benchmark](../research/benchmarks/README.md)
+  — corpus benchmarks, gates, and the
+  `profile.sh` / `MDSMITH_CPUPROFILE` workflow.
+
+This page is the methodology behind those budgets and the
+patterns that keep us inside them.
+
+## Process
+
+**Measure first. Never optimize from a hunch.** A profile
+that shows zero CPU in your suspected hot path is the most
+valuable result you can get — it stops a fix that would
+have changed nothing.
+
+The loop:
+
+1. **State the goal numerically.** "MDS024 under 10
+   allocs/call on `testcorpus.AbbrHeavy[0]`" — not "make
+   it faster".
+2. **Lock in a baseline** with multiple runs:
+
+   ```bash
+   go test -run=^$ -bench=. -count=10 -benchmem \
+     ./internal/rules/... > old.txt
+   ```
+
+3. **Profile** the baseline. CPU profile if you don't know
+   the bottleneck; alloc profile if `b.ReportAllocs` shows
+   allocations; trace if latency is bad but CPU is idle.
+4. **Change one thing.** Re-run the same benchmark, same
+   count.
+5. **Decide with `benchstat`,** not eyeballs:
+
+   ```bash
+   go test -run=^$ -bench=. -count=10 -benchmem \
+     ./internal/rules/... > new.txt
+   benchstat old.txt new.txt
+   ```
+
+   `~` in the delta column means no significant change.
+   p < 0.05 with a meaningful effect size is the bar.
+
+Run on an idle machine, on AC power, with the CPU governor
+pinned (`cpupower frequency-set -g performance` on Linux).
+Use `for b.Loop() { ... }` (Go 1.24+) over the older
+`for i := 0; i < b.N; i++` form — the compiler treats it
+specially and disables dead-code elimination inside.
+
+### Which profile answers which question
+
+| Profile     | Source                                 | Question                          |
+|-------------|----------------------------------------|-----------------------------------|
+| CPU         | `-cpuprofile cpu.out`                  | Where is time going?              |
+| Alloc       | `-memprofile m.out` + `-alloc_objects` | Who allocates, even short-lived?  |
+| In-use heap | `-memprofile m.out`                    | What is resident now?             |
+| Block       | `runtime.SetBlockProfileRate(1)`       | Where do goroutines wait?         |
+| Mutex       | `runtime.SetMutexProfileFraction(1)`   | Who holds contended locks?        |
+| Trace       | `-trace trace.out`                     | Scheduler / GC / syscall timeline |
+
+mdsmith ships a profile hook for the running CLI; see
+`internal/profiling/profiling.go`:
+
+```bash
+MDSMITH_CPUPROFILE=cpu.out mdsmith check .
+go tool pprof -http=:8080 cpu.out
+```
+
+No CLI flag exists on purpose — the command line stays
+byte-identical to production, so the profile measures the
+same path users hit.
+
+For diffing two profiles, use
+`go tool pprof -base=old.prof new.prof`.
+
+### Escape analysis
+
+Before adding `sync.Pool`, read what the compiler already
+does:
+
+```bash
+go build -gcflags="-m=2" ./pkg/markdown 2>&1 | grep escape
+```
+
+Common causes of escape: returning a pointer to a local;
+storing a value in `interface{}` / `any`; capturing a
+variable in a closure that outlives the frame; slice or
+map growth past a compile-time-known size. The stack costs
+nothing; the heap costs an alloc plus future GC scan.
+
+### Profile-guided optimization
+
+PGO has been GA since Go 1.21 and lands 2–14% wins on real
+binaries. For mdsmith:
+
+1. Run `mdsmith check` over a representative corpus with
+   `MDSMITH_CPUPROFILE=cmd/mdsmith/default.pgo`.
+2. `go build` picks the file up automatically.
+3. Refresh after major rule changes.
+
+Worth it for release builds; not worth it for one-off
+debug builds.
+
+## Patterns to apply
+
+The list below extends the project's existing
+[Allocation Budget](index.md#allocation-budget) rules.
+Reach for these first.
+
+### Allocations
+
+Each removed alloc in a per-file `Check` saves one alloc
+per workspace file.
+
+- **Pre-size slices.** `make([]T, 0, n)` when `n` is
+  known. `append` doubles capacity up to ~1024 then grows
+  ~25%, copying each step.
+- **Reuse loop-local buffers.** `buf = buf[:0]` clears
+  length, keeps capacity. See `extractTextBufPool` in
+  `internal/mdtext/mdtext.go`.
+- **`sync.Pool` for transient state.** Best for
+  expensive, short-lived state (line scanners, AST
+  scratch). Always reset before `Put`; pool entries can
+  be reaped by GC without notice. Examples:
+  `internal/punkt/tokenizer.go`,
+  `internal/schema/validate_content.go`.
+- **Return `nil`, not `[]T{}`.** Encoded as a project
+  rule; an empty slice still allocates a header.
+- **Compile regexes at package scope.**
+  `var foo = regexp.MustCompile(…)`. Compiling inside a
+  hot function builds the NFA every call.
+
+### Strings and bytes
+
+- **Stay in `[]byte`.** Each `string(b)` allocates and
+  copies. `bytes.IndexByte` and `bytes.Contains` are
+  SIMD-accelerated on amd64; faster than `strings.*` once
+  you already have bytes.
+- **`strings.Builder` over `+`.** Concatenation in a loop
+  allocates a new backing array each time. Call
+  `Grow(n)` first if you know the final size.
+- **`strconv` over `fmt.Sprintf`.** `strconv.Itoa(n)` is
+  ~3× faster than `fmt.Sprintf("%d", n)` and skips
+  reflection. The `perfsprint` linter flags this.
+- **`strings.EqualFold` for case-insensitive compare.**
+  One pass, no allocation; beats `ToLower` + `==`.
+- **`unsafe.String` / `unsafe.Slice` (Go 1.20+)** for
+  zero-copy `[]byte`↔`string`. The caller must guarantee
+  the source isn't mutated and outlives the view. Use
+  sparingly, with a comment naming the invariant.
+
+### Fixed-string search beats regex
+
+`bytes.IndexByte('#')` is a hardware-assisted single-byte
+scan. `regexp.MustCompile("#").FindIndex` builds an NFA
+and walks it. For anything expressible as a literal,
+substring, or prefix/suffix check, skip `regexp`.
+
+### Data structures
+
+- **Fixed-size arrays beat slices** when the size is
+  known — no header, no escape.
+- **`map[K]struct{}` for sets** — zero-byte value type.
+- **Sorted slice + binary search** beats a map for
+  n < ~100, thanks to cache locality. Benchmark at your
+  real n.
+- **Swiss tables in Go 1.24+.** Free 30–60% map speedup
+  and up to 70% map-memory reduction; no code change
+  needed.
+
+### Struct layout
+
+- **Order fields large-to-small** to minimize padding.
+  Run `go tool fieldalignment -fix ./...` to auto-fix.
+- **Hot/cold split.** Frequently-read fields in one
+  struct, rarely-read in another behind a pointer.
+  Better cache utilization in the hot path.
+- **Prefer `[]Foo` over `[]*Foo`.** A value slice is one
+  GC-scanned allocation with zero internal pointers; the
+  pointer slice forces N pointer scans every cycle.
+
+### Inlining
+
+The inliner has a budget (~80 nodes per function). Keep
+hot functions tiny so they inline; outline the slow path
+into a separate function. The canonical model is
+`sync.Mutex.Lock`: the uncontended CAS inlines; the
+contended slow path is a separate function.
+
+Inspect with `go build -gcflags="-m=2"` and look for
+`can inline foo` / `inlining call to foo`.
+
+### Concurrency
+
+- **`sync/atomic`** for one-word flags and counters
+  (`atomic.Bool`, `atomic.Int64`, `atomic.Pointer[T]`).
+- **`sync.Once`** for lazy init. After first call, it's
+  a single relaxed atomic load.
+- **`sync.Mutex`** for >1-word critical sections.
+  Default choice. Cheaper than `sync.RWMutex` under low
+  contention.
+- **Channels for handoff or backpressure**, not for
+  protecting a single variable — under contention a
+  channel is orders of magnitude slower than a mutex.
+- **`errgroup.SetLimit(n)`** for bounded fan-out. Size
+  by bottleneck: `runtime.NumCPU()` for CPU-bound, much
+  higher for I/O-bound.
+- **Every goroutine must exit on `ctx.Done()`.** Test
+  with `go.uber.org/goleak`.
+
+## Patterns to avoid
+
+| Avoid                                | Why                                                | Use instead                            |
+|--------------------------------------|----------------------------------------------------|----------------------------------------|
+| `fmt.Sprintf("%d", n)` in hot paths  | reflection, ~3× slower                             | `strconv.Itoa(n)`                      |
+| `s + s2 + s3` in a loop              | each `+` allocates                                 | `strings.Builder` with `Grow`          |
+| `append` growing without `make`      | doubling-copy cost                                 | pre-size with known cap                |
+| `defer` in a tight loop              | in-loop `defer` falls off the open-coded fast path | hoist or inline cleanup                |
+| return `[]T{}`                       | header allocation                                  | return `nil`                           |
+| `any` / `interface{}` in hot paths   | boxing forces heap copy; defeats devirtualization  | concrete types, or generics            |
+| `reflect` in hot paths               | type-info walks, allocations                       | code-gen or hand-roll                  |
+| `regexp` for a literal               | NFA build + walk                                   | `bytes.Contains` / `strings.HasPrefix` |
+| goroutine-per-item                   | scheduler & memory pressure                        | `errgroup.SetLimit(n)`                 |
+| channel for one shared variable      | scheduler hop, allocations                         | `sync.Mutex` or atomic                 |
+| copying a `sync.Mutex`               | silent lock breakage                               | pass `*Mutex`; `go vet` catches some   |
+| `defer mu.Unlock()` in tiny section  | defer cost dwarfs the body                         | inline unlock when no panic path       |
+| `log.Printf` per item in a hot loop  | format + lock + I/O                                | sample, or batch outside the loop      |
+| `time.Now()` in a tight loop         | wall + monotonic read each call                    | read once, use `time.Since`            |
+| `os.ReadFile` on huge inputs         | one giant alloc, all resident                      | `bufio.Scanner`                        |
+| `context.Background()` deep in calls | loses cancellation                                 | propagate caller's `ctx`               |
+
+## War stories
+
+Two regressions caught by mdsmith's own gates, both fixed
+in plan 175:
+
+- **`lint.(*File).LineOfOffset` rescanned each file from
+  byte 0 on every call.** That cost ~24% of `check` CPU
+  on long Rust Book prose; the smaller 234-file corpus
+  ran slower than the 523-file one — the signature of
+  superlinear cost. Fix: cached newline index plus
+  binary search.
+- **MDS024's sentence tokenizer allocated ~2 GB** across
+  the 600-file gate corpus. Fix: an allocation-free
+  guard that skips the tokenizer when no paragraph can
+  violate either limit.
+
+Both fixes shipped because the alloc-and-time gates
+flagged them, not because anyone noticed manually. See
+[the benchmark page](../research/benchmarks/README.md)
+for the full timeline.
+
+## Tooling
+
+- **`golangci-lint`** — enable `perfsprint`, `prealloc`,
+  `ineffassign`, `staticcheck` (SA6002 catches non-pointer
+  values in `sync.Pool`), `gocritic` performance group.
+- **`go vet`** with `-shadow` and **`fieldalignment`**
+  (`go tool fieldalignment -fix ./...`).
+- **`benchstat`** — required for any "this is faster"
+  claim.
+- **`go.uber.org/goleak`** — assert no leftover
+  goroutines in tests.
+- **`go tool pprof -base=old.prof new.prof`** — diff
+  profiles before and after a change.
+
+## References
+
+- [Dave Cheney — High Performance Go Workshop][cheney]
+- [Damian Gryski — go-perfbook][perfbook]
+- [Go blog — Profile-Guided Optimization in Go 1.21][pgo]
+- [Go blog — Faster Go maps with Swiss Tables][swiss]
+- [Go blog — `testing.B.Loop`][bloop]
+- [Filippo Valsorda — Efficient Go APIs with the inliner][filippo]
+- [Eli Bendersky — Common pitfalls in Go benchmarking][eli]
+- [PlanetScale — Generics can make your Go code slower][ps]
+
+[cheney]: https://dave.cheney.net/high-performance-go-workshop/dotgo-paris.html
+[perfbook]: https://github.com/dgryski/go-perfbook/blob/master/performance.md
+[pgo]: https://go.dev/blog/pgo
+[swiss]: https://go.dev/blog/swisstable
+[bloop]: https://go.dev/blog/testing-b-loop
+[filippo]: https://words.filippo.io/efficient-go-apis-with-the-inliner/
+[eli]: https://eli.thegreenplace.net/2023/common-pitfalls-in-go-benchmarking/
+[ps]: https://planetscale.com/blog/generics-can-make-your-go-code-slower
