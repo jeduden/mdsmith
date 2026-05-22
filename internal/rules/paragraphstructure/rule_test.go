@@ -22,7 +22,7 @@ func firstParagraph(t *testing.T, body string) (text string, line int, path stri
 	require.NoError(t, err)
 	paras := astutil.CollectSectionParagraphs(f)
 	require.NotEmpty(t, paras, "no paragraph parsed from %q", body)
-	return paras[0].Text, paras[0].Line, f.Path
+	return paras[0].ExtractText(f.Source), paras[0].Line, f.Path
 }
 
 func TestRule_checkParagraph(t *testing.T) {

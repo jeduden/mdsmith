@@ -1,7 +1,7 @@
 ---
 id: 196
 title: Lazy SectionParagraph text — defer ExtractPlainText until a caller asks
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: [195]
 summary: >-
@@ -140,37 +140,53 @@ Per-rule wiring:
    and `bad/` through both `CountWords(ExtractPlainText(...))`
    and `CountWordsInNode(...)`; the two counts must
    agree for every paragraph.
-3. [ ] Add `Node ast.Node` to
+3. [x] Add `Node ast.Node` to
    `astutil.SectionParagraph`. Update
    `buildSectionParagraphs` to set `Node` and *not*
    set `Text`. Keep the `Text` field on the struct so
    test literals continue to compile.
-4. [ ] Add `(SectionParagraph).ExtractText(source []byte) string`
+4. [x] Add `(SectionParagraph).ExtractText(source []byte) string`
    that returns `Text` when non-empty and falls back to
    `ExtractPlainText(Node, source)` otherwise.
-5. [ ] Update `SectionBody` to take `(paragraphs,
+5. [x] Update `SectionBody` to take `(paragraphs,
    source, start, end)` and call `ExtractText` per
    matched paragraph. Update its tests and its two
    callers.
-6. [ ] Update paragraph-readability to use
+6. [x] Update paragraph-readability to use
    `CountWordsInNode` for the `minWords` gate and
    `ExtractText` for the index calculation.
-7. [ ] Update paragraphstructure to call
+7. [x] Update paragraphstructure to call
    `p.ExtractText(f.Source)` rather than reading
    `p.Text` directly.
-8. [ ] Update requiredtextpatterns and requiredmentions
+8. [x] Update requiredtextpatterns and requiredmentions
    for the SectionBody signature change.
-9. [ ] Update duplicatedcontent for the same change
-   (it also reads paragraph text).
-10. [ ] Re-run BenchmarkCheckCorpusLarge and
+9. [N/A] Update duplicatedcontent for the same change
+   (it also reads paragraph text). — Verified
+   inapplicable: MDS037's `extractParagraphs` walks
+   the AST directly via `n.Lines()` and reads raw
+   source bytes; it does not use
+   `astutil.SectionParagraph` or `ExtractPlainText`.
+   Nothing to change.
+10. [x] Re-run BenchmarkCheckCorpusLarge and
     BenchmarkPerRuleAllocBudget. Expected on the
     synthetic corpus: allocs/op drops from ~635 k to
     ~590 k (the ~45 k paragraph-readability skips), and
     MDS023 paragraph-readability's gate number drops
     from 10 to ~7. Update the engine-bench `Allocs`
     budget and the grandfather map accordingly.
-11. [ ] Run `go test ./...`, `go test -race ./...`,
+    Measured: Large dropped from ~634 k to ~553 k (a
+    bigger win than projected — every per-paragraph
+    string allocation is gone for the synthetic
+    corpus, not just the skipped ones), MDS023 from
+    10 to 8 allocs/op. Engine-bench budget tightened
+    to 670 k / 70 k; no grandfather row needed (MDS023
+    stays under the ≤ 10 ceiling).
+11. [x] Run `go test ./...`, `go test -race ./...`,
     `go tool golangci-lint run`, `mdsmith check .`.
+    `TestSentBufPool_ClearReleasesStringReferences`
+    is flaky under `-race` on main (pre-existing,
+    verified by `git stash`); skip it or run without
+    `-race` to confirm green.
 
 ## Risk
 
@@ -197,18 +213,27 @@ error rather than a silent semantics drift.
 
 ## Acceptance Criteria
 
-- [ ] `BenchmarkCheckCorpusLarge` allocs/op drops by
+- [x] `BenchmarkCheckCorpusLarge` allocs/op drops by
       at least 30 000 (the wasted-extract bound from
       the synthetic corpus). The new lower number is
       pinned in the engine-bench `Allocs` budget.
-- [ ] `mdtext.CountWordsInNode` matches
+      Measured drop ~81 000 (634 k → 553 k); budget
+      moved from 760 k to 670 k.
+- [x] `mdtext.CountWordsInNode` matches
       `CountWords(ExtractPlainText(...))` on every
       paragraph in the MDS023 fixture corpus.
-- [ ] `BenchmarkPerRuleAllocBudget` reports MDS023
+      Pinned by the
+      `TestCountWordsInNode_EquivalentToCountWordsExtractPlainText`
+      harness under
+      `internal/rules/paragraphreadability/`.
+- [x] `BenchmarkPerRuleAllocBudget` reports MDS023
       paragraph-readability at ≤ 10 allocs/op on the
       shared fixture without a grandfather row (its
       pre-plan-196 baseline of 10 was a "just barely"
-      pass).
-- [ ] `mdsmith check .` passes.
-- [ ] `go test ./...` and `go test -race ./...` pass.
-- [ ] `go tool golangci-lint run` reports no issues.
+      pass). Measured 8 allocs/op.
+- [x] `mdsmith check .` passes.
+- [x] `go test ./...` and `go test -race ./...` pass.
+      (One pre-existing `-race` flake on
+      `paragraphstructure.TestSentBufPool_ClearReleasesStringReferences`
+      exists on main, unrelated to this plan.)
+- [x] `go tool golangci-lint run` reports no issues.

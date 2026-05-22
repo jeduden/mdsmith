@@ -377,8 +377,11 @@ func TestCollectSectionParagraphs_SkipsTables(t *testing.T) {
 	require.NoError(t, err)
 	got := CollectSectionParagraphs(f)
 	require.Len(t, got, 2)
-	assert.Equal(t, "first.", got[0].Text)
-	assert.Equal(t, "second.", got[1].Text)
+	// Text is now materialised lazily via ExtractText (plan 196): the
+	// collector leaves Node set but Text empty, and callers reach the
+	// string through ExtractText(source).
+	assert.Equal(t, "first.", got[0].ExtractText(f.Source))
+	assert.Equal(t, "second.", got[1].ExtractText(f.Source))
 }
 
 // --- SectionEnd ---
@@ -400,31 +403,65 @@ func TestSectionEnd_RunsToEOFWhenNoFollowingHeading(t *testing.T) {
 	assert.Equal(t, 51, SectionEnd(heads, 0, 50))
 }
 
+// --- SectionParagraph.ExtractText ---
+
+// TestSectionParagraph_ExtractText_NodeBacked pins that
+// CollectSectionParagraphs leaves Text empty and Node set, and that
+// ExtractText materialises the right plain text on demand (plan 196).
+// A regression that re-introduces the eager ExtractPlainText call
+// would set Text non-empty and the assertion below would catch it.
+func TestSectionParagraph_ExtractText_NodeBacked(t *testing.T) {
+	src := []byte("# H\n\nHello *world*.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	paras := CollectSectionParagraphs(f)
+	require.Len(t, paras, 1)
+	assert.Empty(t, paras[0].Text,
+		"buildSectionParagraphs must not populate Text — plan 196 "+
+			"defers materialisation to ExtractText")
+	require.NotNil(t, paras[0].Node, "Node must be set by the collector")
+	assert.Equal(t, "Hello world.", paras[0].ExtractText(f.Source))
+}
+
+// TestSectionParagraph_ExtractText_PrefersCachedText pins that a
+// hand-constructed literal with Text set (and Node nil) still works
+// through ExtractText — the Text shortcut keeps existing test
+// literals compiling without forcing them to build an AST node.
+func TestSectionParagraph_ExtractText_PrefersCachedText(t *testing.T) {
+	p := SectionParagraph{Line: 1, Text: "pre-set"}
+	assert.Equal(t, "pre-set", p.ExtractText(nil),
+		"Text shortcut must win over the Node fallback so tests "+
+			"can construct SectionParagraph literals without building "+
+			"an AST")
+}
+
 // --- SectionBody ---
 
 func TestSectionBody_JoinsWithSpace(t *testing.T) {
+	// Text-only SectionParagraph literals (no Node) exercise
+	// ExtractText's cache-hit branch: when the field is pre-populated
+	// the AST is not touched and source can be nil.
 	paras := []SectionParagraph{
 		{Line: 3, Text: "alpha"},
 		{Line: 5, Text: "beta"},
 		{Line: 50, Text: "gamma"},
 	}
-	got := SectionBody(paras, 2, 10)
+	got := SectionBody(paras, nil, 2, 10)
 	assert.Equal(t, "alpha beta", got)
 }
 
 func TestSectionBody_EmptyWhenNoParagraphsInRange(t *testing.T) {
 	paras := []SectionParagraph{{Line: 100, Text: "out"}}
-	assert.Equal(t, "", SectionBody(paras, 1, 10))
+	assert.Equal(t, "", SectionBody(paras, nil, 1, 10))
 }
 
 // TestCollectSectionParagraphs_MemoizedPerFile pins that the
-// AST-walking, ExtractPlainText-running collector runs once per File
-// and serves a cached result thereafter. On prose-heavy corpora
-// (the neutral Rust Book benchmark) the two hot default rules —
-// MDS024 paragraph-structure and paragraph-readability — both walk
-// every paragraph and extract its plain text; sharing one memoized
-// walk removes the duplicate. Reference identity of the returned
-// slice proves a later call did not re-walk.
+// AST-walking collector runs once per File and serves a cached result
+// thereafter. On prose-heavy corpora (the neutral Rust Book
+// benchmark) the two hot default rules — MDS024 paragraph-structure
+// and paragraph-readability — both walk every paragraph; sharing one
+// memoized walk removes the duplicate. Reference identity of the
+// returned slice proves a later call did not re-walk.
 func TestCollectSectionParagraphs_MemoizedPerFile(t *testing.T) {
 	src := []byte("# H\n\nFirst paragraph here.\n\nSecond paragraph too.\n")
 	f, err := lint.NewFile("test.md", src)
@@ -444,5 +481,5 @@ func TestCollectSectionParagraphs_MemoizedPerFile(t *testing.T) {
 	require.NoError(t, err)
 	o := CollectSectionParagraphs(f2)
 	require.Len(t, o, 1)
-	assert.Equal(t, "Different.", o[0].Text)
+	assert.Equal(t, "Different.", o[0].ExtractText(f2.Source))
 }

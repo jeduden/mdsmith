@@ -19,11 +19,34 @@ type SectionHeading struct {
 }
 
 // SectionParagraph is a non-table paragraph discovered by
-// CollectSectionParagraphs, carrying its 1-based source line and the
-// plain text used for section-wide body matches.
+// CollectSectionParagraphs. Line is the 1-based source line; Node is
+// the goldmark paragraph node, used by [SectionParagraph.ExtractText]
+// to materialise the plain text lazily.
+//
+// Text is a documented cache: CollectSectionParagraphs no longer
+// fills it (plan 196 — most callers do not need the text on every
+// paragraph), but test literals can still set it directly without
+// building an AST node, and ExtractText prefers the cached value
+// when present. Production code reaches the text through
+// ExtractText, never the field; the field is kept exported to keep
+// existing literals compiling.
 type SectionParagraph struct {
 	Line int
+	Node ast.Node
 	Text string
+}
+
+// ExtractText returns the paragraph's plain text. If Text is
+// pre-populated (a test literal, a hand-constructed SectionParagraph)
+// it is returned verbatim; otherwise the text is extracted from Node
+// against source — the same chain CollectSectionParagraphs used to
+// run eagerly. The Text shortcut keeps existing tests literally
+// compiling; new code should not rely on it and should pass source.
+func (p SectionParagraph) ExtractText(source []byte) string {
+	if p.Text != "" {
+		return p.Text
+	}
+	return mdtext.ExtractPlainText(p.Node, source)
 }
 
 // CollectSectionHeadings returns every heading in the document
@@ -52,20 +75,26 @@ func CollectSectionHeadings(f *lint.File) []SectionHeading {
 }
 
 // CollectSectionParagraphs returns every non-table paragraph with its
-// 1-based source line and plain text. Goldmark parses pipe-delimited
-// tables as paragraphs when the table extension is absent; those are
-// filtered so cell text does not pollute section bodies.
+// 1-based source line and a reference to its AST node. Goldmark
+// parses pipe-delimited tables as paragraphs when the table
+// extension is absent; those are filtered so cell text does not
+// pollute section bodies.
 //
 // Memoized per File via lint.File.MemoFile (the *File-passing
-// variant of Memo): this walks the whole AST and runs
-// ExtractPlainText on every paragraph. On prose-heavy input the two
-// hot default rules (MDS024 paragraph-structure and
-// paragraph-readability) plus the required-* rules each called it,
-// so the walk and per-paragraph extraction ran several times per
-// file. The result is a pure function of the immutable AST and
-// Source; the memo lives on the per-Check File, so nothing is
-// cached across files or runs. Callers treat the slice as
-// read-only.
+// variant of Memo): the AST walk is shared across the prose rules
+// (MDS023 paragraph-readability, MDS024 paragraph-structure, MDS057
+// required-text-patterns, MDS058 required-mentions). The result is
+// a pure function of the immutable AST and Source; the memo lives
+// on the per-Check File, so nothing is cached across files or runs.
+// Callers treat the slice as read-only.
+//
+// Plan 196 made the extracted text lazy: the per-paragraph
+// [mdtext.ExtractPlainText] call no longer runs in the walk. Rules
+// that need the text reach it via
+// [SectionParagraph.ExtractText]; paragraph-readability, the
+// default-on prose rule, gates on word count alone via
+// [mdtext.CountWordsInNode] and only materialises text for
+// paragraphs that pass minWords.
 //
 // The MemoFile variant lets buildSectionParagraphs be a package-
 // level function instead of a closure, so the build itself adds no
@@ -94,7 +123,7 @@ func buildSectionParagraphs(f *lint.File) any {
 		}
 		out = append(out, SectionParagraph{
 			Line: ParagraphLine(p, f),
-			Text: mdtext.ExtractPlainText(p, f.Source),
+			Node: p,
 		})
 		return ast.WalkContinue, nil
 	})
@@ -117,14 +146,16 @@ func SectionEnd(headings []SectionHeading, i, totalLines int) int {
 // SectionBody concatenates paragraph plain text for paragraphs whose
 // start line falls in [start, end). Joins with a space so adjacent
 // paragraphs do not appear glued together to a substring/regex
-// matcher.
-func SectionBody(paragraphs []SectionParagraph, start, end int) string {
+// matcher. The source byte slice is required because
+// SectionParagraph's text is materialised lazily through
+// [SectionParagraph.ExtractText] (plan 196); callers pass f.Source.
+func SectionBody(paragraphs []SectionParagraph, source []byte, start, end int) string {
 	var parts []string
 	for _, p := range paragraphs {
 		if p.Line < start || p.Line >= end {
 			continue
 		}
-		parts = append(parts, p.Text)
+		parts = append(parts, p.ExtractText(source))
 	}
 	return strings.Join(parts, " ")
 }

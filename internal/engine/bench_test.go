@@ -48,28 +48,33 @@ const checkCorpusLines = 150
 // Both numbers report as metrics (`p95_ms`, `allocs_per_op`,
 // `us_per_file`) so trends stay visible in the job log.
 //
-// Local baseline (4-core dev box, 2026-05-22, after the plan-195
-// per-rule alloc fixes and the engine-bench allocator chunks):
+// Local baseline (4-core dev box, 2026-05-22, after plan 196's
+// lazy SectionParagraph text — paragraph-readability's minWords
+// gate no longer materialises text for paragraphs below the floor):
 //
-//   - Small p95 ~29 ms / ~65 k allocs/op
-//   - Large p95 ~186 ms / ~634 k allocs/op
+//   - Small p95 ~27 ms / ~57 k allocs/op
+//   - Large p95 ~191 ms / ~553 k allocs/op
 //
-// Budgets sit at ~3-4x the alloc baseline and ~6-8x the time
-// baseline so CI jitter cannot flake them, but a real regression
-// (an extra parse per file, a lost memoization slot, a closure
-// re-escaped to the heap) crosses the alloc ceiling on the first
-// run.
+// Plan 195's baseline was ~65 k / ~634 k; the lazy-extract chunk
+// drops the synthetic-corpus paragraph allocator by ~80 k on the
+// large bench, since most of its paragraphs (the 13-word
+// "synthetic sentence …" body) fall under default minWords=20.
+//
+// Budgets sit at ~15-20% headroom over the measured count so a
+// real algorithmic regression (an extra parse per file, a lost
+// memoization slot, a closure re-escaped to the heap) crosses the
+// alloc ceiling on the first run while CI jitter does not.
 func BenchmarkCheckCorpusSmall(b *testing.B) {
 	benchCheck(b, 60, checkCorpusLines, checkBudget{
 		Time:   250 * time.Millisecond,
-		Allocs: 80_000,
+		Allocs: 70_000,
 	})
 }
 
 func BenchmarkCheckCorpusLarge(b *testing.B) {
 	benchCheck(b, 600, checkCorpusLines, checkBudget{
 		Time:   2 * time.Second,
-		Allocs: 760_000,
+		Allocs: 670_000,
 	})
 }
 

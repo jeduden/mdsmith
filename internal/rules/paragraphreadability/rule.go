@@ -50,17 +50,32 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	// Iterate the per-File memoized non-table paragraph collection so
-	// the AST walk and per-paragraph ExtractPlainText are shared with
-	// MDS024 instead of re-run here — the two are the hot default
-	// rules on prose-heavy input.
+	// the AST walk is shared with MDS024 instead of re-run here — the
+	// two are the hot default rules on prose-heavy input.
+	//
+	// minWords is gated on [mdtext.CountWordsInNode], an AST-walking
+	// counter that does NOT materialise the paragraph text. On
+	// prose-heavy synthetic corpora most paragraphs fall below the
+	// floor (the engine bench's "synthetic sentence …" body is
+	// 13 words, default minWords is 20); skipping the text alloc on
+	// those paragraphs is the bulk of plan 196's win. When
+	// placeholders are configured the count goes through CountWords
+	// on the masked text, because masking is a string transform and
+	// has no AST equivalent.
 	for _, p := range astutil.CollectSectionParagraphs(f) {
-		text := p.Text
+		var text string
+		var words int
 		if len(r.Placeholders) > 0 {
-			text = placeholders.MaskBodyTokens(text, r.Placeholders)
+			text = placeholders.MaskBodyTokens(p.ExtractText(f.Source), r.Placeholders)
+			words = mdtext.CountWords(text)
+		} else {
+			words = mdtext.CountWordsInNode(p.Node, f.Source)
 		}
-		words := mdtext.CountWords(text)
 		if words < minWords {
 			continue
+		}
+		if text == "" {
+			text = p.ExtractText(f.Source)
 		}
 
 		score := index(text)

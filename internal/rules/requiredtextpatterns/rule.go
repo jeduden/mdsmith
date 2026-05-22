@@ -70,7 +70,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
-		body := astutil.SectionBody(paragraphs, h.Line, end)
+		body := astutil.SectionBody(paragraphs, f.Source, h.Line, end)
 		for _, p := range r.Patterns {
 			if p.Regex.MatchString(body) {
 				continue

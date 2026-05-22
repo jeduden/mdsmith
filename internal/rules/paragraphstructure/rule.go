@@ -77,7 +77,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// the other prose rules instead of re-run here (the two hot
 	// default rules on prose-heavy input).
 	for _, p := range astutil.CollectSectionParagraphs(f) {
-		diags = append(diags, r.checkParagraph(p.Text, p.Line, f.Path)...)
+		diags = append(diags, r.checkParagraph(p.ExtractText(f.Source), p.Line, f.Path)...)
 	}
 	return diags
 }
