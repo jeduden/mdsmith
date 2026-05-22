@@ -7,6 +7,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
 )
 
 func newFile(t *testing.T, src string) *lint.File {
@@ -332,4 +333,123 @@ func TestFullRef_DoubleBackslashBracket_Flagged(t *testing.T) {
 	diags := check(t, src)
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, `"broken"`)
+}
+
+// TestCollectCodeSpanRangesInto_NilNode pins the nil-node guard on
+// the recursive helper. Production callers never feed nil, but the
+// guard exists so a struct-literal *File with no AST stays safe.
+func TestCollectCodeSpanRangesInto_NilNode(t *testing.T) {
+	var out []byteRange
+	collectCodeSpanRangesInto(nil, nil, &out)
+	assert.Empty(t, out)
+}
+
+// TestCodeSpanTextBounds_NonTextChild pins the inline-code-span
+// case where the child is not an *ast.Text (e.g., an emphasis or
+// a hard-break node nested inside the span). The helper skips
+// non-Text children and continues; the loop body's `continue`
+// branch is otherwise unreachable from the rule's own AST.
+func TestCodeSpanTextBounds_NonTextChild(t *testing.T) {
+	f := newFile(t, "`code`\n")
+	var span *ast.CodeSpan
+	collectCodeSpansForTest(f.AST, &span)
+	require.NotNil(t, span, "fixture must produce a code span")
+	// Manually append a non-Text child so codeSpanTextBounds hits
+	// its `continue` branch; goldmark's own parsed code spans
+	// contain only *ast.Text children, which is why this branch
+	// stays cold without a synthetic child.
+	span.AppendChild(span, ast.NewEmphasis(1))
+	first, last := codeSpanTextBounds(span)
+	assert.GreaterOrEqual(t, first, 0)
+	assert.GreaterOrEqual(t, last, first)
+}
+
+// collectCodeSpansForTest is a tiny test-only walker that returns
+// the first *ast.CodeSpan it encounters.
+func collectCodeSpansForTest(n ast.Node, out **ast.CodeSpan) {
+	if *out != nil {
+		return
+	}
+	if cs, ok := n.(*ast.CodeSpan); ok {
+		*out = cs
+		return
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		collectCodeSpansForTest(c, out)
+		if *out != nil {
+			return
+		}
+	}
+}
+
+// TestNextBracket_OrphanOpenBracket pins the "[ opened without
+// matching ]" advance-and-keep-scanning branch. A line like
+// `[unmatched ... [closed]` must skip the orphan `[` and still
+// find the later `[closed]`.
+func TestNextBracket_OrphanOpenBracket(t *testing.T) {
+	src := []byte("[unmatched\n[closed]")
+	// First call: scanner sees the orphan `[`, advances past it.
+	// Eventually it returns the `[closed]` match.
+	open, cs, ce, ca, ok := nextBracket(src, 0)
+	require.True(t, ok)
+	assert.Equal(t, "closed", string(src[cs:ce]))
+	assert.Equal(t, byte('['), src[open])
+	assert.Equal(t, ce+1, ca)
+}
+
+// TestScanFullRefs_FirstBracketNoAdjacentSecond pins the
+// branch that skips `[text]` not immediately followed by another
+// `[label]`. The previous regex form filtered these via the
+// pattern itself; the byte scanner has to make the same decision
+// explicitly.
+func TestScanFullRefs_FirstBracketNoAdjacentSecond(t *testing.T) {
+	f := newFile(t, "[label] not a full ref\n\n[label]: https://example.com/\n")
+	r := &Rule{Shortcut: shortcutCollapsedOnly}
+	diags := r.Check(f)
+	assert.Empty(t, diags, "no full-ref pattern: must not flag the bare [label]")
+}
+
+// TestScanCollapsedRefs_EmptyLabel pins the byte scanner's
+// "empty `[]` label" skip in the collapsed-ref scan. `[][]` would
+// otherwise look like collapsed-ref territory but has no label
+// to look up.
+func TestScanCollapsedRefs_EmptyLabel(t *testing.T) {
+	f := newFile(t, "[][] is empty\n")
+	r := &Rule{}
+	diags := r.Check(f)
+	assert.Empty(t, diags)
+}
+
+// TestRefDefLineStarts_NoBracket pins the byte scanner's
+// "line does not open with `[`" early return.
+func TestRefDefLineStarts_NoBracket(t *testing.T) {
+	src := []byte("just text, no bracket\n")
+	assert.False(t, refDefLineStarts(src, 0, len(src)-1))
+}
+
+// TestRefDefLineStarts_NoClose pins the "`[` without matching
+// `]`" early return.
+func TestRefDefLineStarts_NoClose(t *testing.T) {
+	src := []byte("[unclosed\n")
+	assert.False(t, refDefLineStarts(src, 0, len(src)-1))
+}
+
+// TestRefDefLineStarts_NoColon pins the "`]` without trailing
+// `:`" early return — exercises both the trailing-whitespace skip
+// path and the missing-colon return.
+func TestRefDefLineStarts_NoColon(t *testing.T) {
+	src := []byte("[label]  no colon")
+	assert.False(t, refDefLineStarts(src, 0, len(src)))
+}
+
+// TestScanFullRefs_SecondBracketUnclosed pins the `[text][...`
+// case where the candidate full-ref opens its second bracket but
+// the bracket never closes. The byte scanner advances past the
+// first `[…]` (the next bracket call returns ok=false because no
+// `]` is found on the same line) and resumes scanning.
+func TestScanFullRefs_SecondBracketUnclosed(t *testing.T) {
+	f := newFile(t, "# T\n\nSee [text][unclosed and end\n")
+	r := &Rule{}
+	diags := r.Check(f)
+	assert.Empty(t, diags, "unclosed second bracket: must not flag a full-ref")
 }
