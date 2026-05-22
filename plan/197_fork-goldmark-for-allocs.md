@@ -1,236 +1,197 @@
 ---
 id: 197
-title: Fork goldmark — cut the per-parse allocator hot spots
+title: PoC — pool one goldmark allocator and measure the savings
 status: "🔲"
 model: opus
-depends-on: [195, 196]
+depends-on: [195]
 summary: >-
-  After plan 195 the engine bench sits at 635 k allocs/op. The
-  top five remaining allocators are all inside goldmark's parser:
-  NewTextSegment, Segments.Append, NewBlockReader, NewParagraph,
-  and the link-reference walker. Together they account for 55 %
-  of every check's allocations. Vendor goldmark into
-  internal/goldmark, swap each hot allocator for a pooled
-  variant, and keep pkg/markdown's public surface unchanged so
-  downstream callers do not see the fork.
+  Before plan 198 commits to forking the goldmark parser, prove
+  the approach delivers the alloc savings the profile predicts.
+  Vendor the minimum subset of goldmark needed to pool one
+  allocator (text.Segments — 13.8 % of every check's allocs),
+  apply the pool, and measure. If allocs/op drops by the
+  expected 1.26 M objects on BenchmarkCheckCorpusLarge AND wall
+  time also drops (pools that trade allocs for sync.Pool
+  overhead are theatre), schedule the full fork as plan 198. If
+  the savings are smaller than predicted, or wall time
+  regresses, stop and document what the profile missed.
 ---
-# Fork goldmark — cut the per-parse allocator hot spots
+# PoC — pool one goldmark allocator and measure the savings
 
 ## Goal
 
-Drop the engine bench's allocs/op from ~635 k to ~280 k —
-half the work that goldmark's parser is allocating today.
-The target is the five per-paragraph, per-line, and
-per-token allocators the plan-195 profile names. Each
-one is shape-stable across calls. Each one is pool-able.
+Answer one question with a real measurement. Does
+pooling a hot goldmark allocator deliver the alloc and
+wall-time savings the plan-195 profile predicts?
 
-The fork keeps mdsmith's `pkg/markdown` API surface
-identical so the LSP, the CLI, and the rule packages do
-not need any change.
+The deliverable is a number, not a shipped fork. The
+PoC branch is throwaway. The plan ships a decision —
+write plan 198 (the full fork) or abandon the approach.
 
 ## Background
 
-The plan-195 profile of `BenchmarkCheckCorpusLarge`
-ranks goldmark's internals first:
+[Plan 195](195_per-rule-alloc-budget.md)'s profile of
+`BenchmarkCheckCorpusLarge` attributes 55 % of every
+check's allocations to five goldmark parser
+allocators. The top one alone —
+`goldmark/text.(*Segments).Append` — is 1.26 M
+allocation objects per 10-iteration bench run, 13.8 %
+of the total. A full fork would patch all five.
 
-| #   | Symbol                              | allocs/op | % of total |
-|-----|-------------------------------------|----------:|-----------:|
-| 1   | `goldmark/ast.NewTextSegment`       | 1.42 M    | 15.5 %     |
-| 2   | `goldmark/text.(*Segments).Append`  | 1.26 M    | 13.8 %     |
-| 3   | `goldmark/text.NewBlockReader`      | 1.24 M    | 13.6 %     |
-| 4   | `goldmark/ast.NewParagraph`         | 1.09 M    | 12.0 %     |
-| 5   | `goldmark/parser.newLinkLabelState` | 88 k      | 1.0 %      |
+A full fork is a multi-week investment with a
+significant maintenance tail. Before paying that
+cost, prove the leverage works.
 
-The total 55 % does not include `goldmark/ast.NewLink`,
-`NewFencedCodeBlock`, `NewHeading`, and other smaller
-allocators that the same patterns address.
+The pattern is well-known but the result is not
+guaranteed. Pools sometimes trade one allocation for
+sync.Pool's own overhead. The AST may carry hidden
+invariants the patch breaks. The equivalence harness
+may not be buildable without changes the PoC has not
+scoped.
 
-[Plan 193](193_mds024-allocation-budget.md) set the
-precedent. The Punkt segmenter sat inside an external
-package whose per-token allocations dominated MDS024.
-The fix forked the minimum subset into
-[`internal/punkt/`](../internal/punkt/), pooled the
-hot allocators, and ran an equivalence harness against
-upstream. The same shape works for goldmark.
+The PoC picks **`text.Segments`** as the target. The
+choice is deliberate:
 
-[`pkg/markdown`](../pkg/markdown/) is the public surface
-the LSP and rule packages reach through. Plan 175
-extracted it. The fork lives behind that surface so
-callers see no API change.
+- It is the second-largest allocator in the profile.
+- The data is a `[]Segment` slice — the pool primitive
+  is trivial (`sync.Pool` of `*Segments`).
+- The lifecycle is bounded by a parse: every Segments
+  list is owned by exactly one paragraph and consumed
+  by exactly one rule. Pool aliasing is contained.
+
+[`pkg/markdown`](../pkg/markdown/) is the public
+surface the PoC patches behind. Plan 175 extracted it
+already; the PoC's parser swap lives behind that API
+so no caller changes.
 
 ## Approach
 
-Two stages. Stage one vendors goldmark and locks in an
-equivalence gate. Stage two replaces the hot allocators
-one at a time, each in its own commit with its own
-benchmark delta.
+Single throwaway branch. Three commits inside it.
 
-### Stage one: vendor + equivalence
+### Commit 1: vendor the minimum subset
 
-Copy the parts of `github.com/yuin/goldmark` that
-mdsmith actually uses into `internal/goldmark/`. The
-import graph survey (plan-197 task 1) is the source of
-truth for what to vendor — at the time of writing it is
-the `ast`, `parser`, `text`, `util`, and `extension`
-subtrees plus the top-level `goldmark` package.
-Anything mdsmith does not reach stays out.
+Copy only the goldmark files that reach `text.Segments`
+into `internal/goldmark/`. The set is bounded by
+`go build` — anything that resolves under that subset
+is in; anything else is out. A whole-tree vendor is
+out of scope for the PoC.
 
-The fork point gets a commit-hash header per file
-(matching plan 193's `internal/punkt` shape) so a
-future upstream merge has a known base.
+Update mdsmith's imports of the touched packages to
+point at `internal/goldmark/...`. Untouched goldmark
+packages (e.g. extensions mdsmith does not reach) stay
+on the upstream import.
 
-The equivalence gate runs goldmark and the fork over
-the same fixture corpus and asserts byte-identical
-AST output. The fixture corpus is the existing
-`internal/rules/MDS*` directories plus the LSP's
-`internal/lsp/testdata`. A drift fails CI.
+The PoC does not bother with a build tag or an
+upstream A/B path. The throwaway branch is the
+upstream-fork delta on its own.
 
-### Stage two: replace hot allocators
+### Commit 2: apply the pool
 
-Each allocator is one focused commit:
+Add a `sync.Pool` of `*Segments` to
+`internal/goldmark/text/`. `NewSegments` gets from
+the pool, `Reset()` puts back, `Append()` is
+unchanged.
 
-1. **`text.Segments` slice pool.** Today every
-   paragraph allocates a fresh `[]Segment` and grows it
-   geometrically as the parser appends. A `sync.Pool`
-   of `*Segments` reuses the backing across paragraphs.
-   The pool is per-`Parser`, so concurrent parses on
-   different files get distinct pools (the engine's
-   file-level worker pool already creates one Parser
-   per file via `pkg/markdown.ParseContext`).
+Wire the parser to call `Reset` on every Segments at
+paragraph close so the backing returns to the pool.
 
-2. **`ast.NewTextSegment` arena.** Every text node
-   allocates a `Segment{Start, Stop}`. Replace with an
-   arena allocator that hands out segments from a
-   pre-allocated slab. The slab resets at parser
-   shutdown. Per-paragraph cost drops from
-   "N allocations" to "amortised 0".
+The pool is per-goroutine via sync.Pool's standard
+shape — no explicit scoping needed.
 
-3. **`ast.NewParagraph` pool.** Same shape as the
-   segment arena: each paragraph node is a uniform
-   struct, pool keyed on `*Paragraph`.
+### Commit 3: measure
 
-4. **`text.NewBlockReader` reuse.** The parser
-   allocates a fresh reader per block. The reader is
-   stateful but resettable. A per-`Parser` reader
-   reset between blocks eliminates the per-block
-   allocation entirely.
+Run:
 
-5. **`parser.newLinkLabelState` pool.** Link-label
-   parsing allocates state per `[label]`. Pool keyed
-   on the state struct.
+- `BenchmarkCheckCorpusLarge -benchtime=10x` against
+  the PoC branch. Record allocs/op and p95 wall time.
+- `BenchmarkCheckCorpusLarge -benchtime=10x` against
+  the main branch (the pre-PoC baseline). Same
+  machine, same run, same minute.
+- `go test ./...` on the PoC branch — every existing
+  test must still pass. If any test fails, the AST
+  drift is the answer and the PoC stops there.
 
-Each commit:
+Compare:
 
-- Runs the equivalence harness against goldmark
-  upstream. Byte-identical or the commit fails.
-- Reports a `BenchmarkCheckCorpusLarge` delta. The
-  alloc count must drop by at least the amount the
-  profile attributed to the patched allocator.
-- Lands its own unit test covering the pool's
-  recycle path (e.g. "the same pointer comes back
-  after Reset").
-
-### Stage three: keep upstream tracked
-
-The vendored copy gets a `UPSTREAM_VERSION` constant
-and a `make verify-goldmark` target that downloads the
-upstream tag and re-runs the equivalence harness. The
-target is wired into a weekly CI job so drift between
-the fork and upstream is visible. Plan 193's Punkt
-fork uses the same pattern via
-`internal/punkt/upstream_oracle_test.go`.
+- **alloc delta**: expected ≥ 1 M objects/op on the
+  10x bench. The profile attributes 1.26 M; allow
+  some slack for the pool's bookkeeping.
+- **time delta**: expected ≤ 0 ms (no regression).
+  The pool's whole job is to avoid the heap; if it
+  trades allocs for time, the patch is theatre and
+  the full fork is not worth doing.
 
 ## Tasks
 
-1. [ ] Inventory every `github.com/yuin/goldmark`
-   import in the mdsmith tree. Group by package
-   (ast, parser, text, util, extension). Record the
-   set in this plan as the "vendor manifest".
-2. [ ] Copy the vendor manifest into
-   `internal/goldmark/` with a per-file commit hash
-   header. Update every mdsmith import path. CI must
-   stay green on the unchanged binary.
-3. [ ] Add the equivalence harness at
-   `internal/goldmark/equivalence_test.go`. It walks
-   the MDS fixture corpus and the LSP testdata, parses
-   each file through upstream and through the fork,
-   and compares the AST via
-   `reflect.DeepEqual` on the goldmark `ast.Node`
-   tree. Byte-identical or the test fails.
-4. [ ] Add a build tag `goldmark_upstream` that
-   selects the upstream package for A/B comparison.
-   The equivalence harness runs under both tags. The
-   default build uses the fork. Same shape as
-   plan 193's `mdtext_punkt_upstream`.
-5. [ ] Land the `text.Segments` pool. Re-run the
-   equivalence harness + the engine bench. Allocs
-   must drop by ≥ 1 M objects on
-   BenchmarkCheckCorpusLarge.
-6. [ ] Land the `ast.NewTextSegment` arena. Allocs
-   must drop by ≥ 1 M objects.
-7. [ ] Land the `ast.NewParagraph` pool. Allocs must
-   drop by ≥ 800 k objects.
-8. [ ] Land the `text.NewBlockReader` reuse. Allocs
-   must drop by ≥ 800 k objects.
-9. [ ] Land the `parser.newLinkLabelState` pool.
-   Allocs must drop by ≥ 50 k objects.
-10. [ ] After every stage-two patch, tighten the
-    engine-bench `Allocs` budget to the new measured
-    value plus 5 %.
-11. [ ] Add the `make verify-goldmark` target and
-    wire it into a weekly CI job. The target fails
-    fast if the equivalence harness drifts.
-12. [ ] Update [`docs/development/index.md`][devix]
-    to document the fork point, the equivalence
-    contract, and the workflow for merging an
-    upstream change.
-
-[devix]: ../docs/development/index.md
+1. [ ] Survey which goldmark files touch
+   `text.Segments`. Record the file list as the
+   vendor manifest for the PoC.
+2. [ ] Create a throwaway branch
+   `claude/poc-pool-goldmark-segments`. Land
+   commit 1 (vendor the manifest, update imports,
+   confirm `go build ./...` is clean and
+   `go test ./...` passes).
+3. [ ] Land commit 2 (the pool + Reset wiring). Run
+   `go test ./...` again. Every test still passes or
+   the PoC stops; record the failure and exit.
+4. [ ] Land commit 3 (the measurement). Capture the
+   alloc/op and p95 wall-time numbers for both the
+   PoC branch and main, side by side.
+5. [ ] Update this plan with the PoC results. Three
+   columns: profile prediction, measured PoC delta,
+   pass/fail. Pass means alloc savings ≥ 1 M and
+   wall time ≤ baseline. Fail means the data
+   contradicts the approach.
+6. [ ] On pass, write plan 198 — the full fork —
+   citing the PoC numbers as the justification.
+7. [ ] On fail, write the rationale into this plan's
+   Results section and close it as ⛔ (superseded by
+   the rationale's preferred alternative).
 
 ## Risk
 
-The fork carries a real maintenance burden. Every
-goldmark upstream change has to be reviewed and
-potentially re-applied. Mitigations:
+The PoC scope is one allocator. If the savings for
+that allocator are real, the other four (NewTextSegment,
+NewBlockReader, NewParagraph, newLinkLabelState) likely
+follow the same shape. If the savings are not real, the
+others would not have helped either and the full fork
+is the wrong move.
 
-- The `goldmark_upstream` build tag keeps the upstream
-  pipeline alive for A/B testing.
-- The weekly `verify-goldmark` job surfaces drift
-  before it ships.
-- Each pool patch is one commit with one focused
-  change. A rebase against a future upstream merges
-  by patch rather than by tree.
+Pool aliasing is the second risk. A Segments returned
+to the pool while the rule still references it would
+silently corrupt the AST. The fix is the existing
+pattern from plan 193 (`internal/punkt`): pool only
+within the parser's own scope and document the
+"do not retain past Parse" contract. The mdsmith rule
+packages all consume nodes inside one `Parser` call,
+so the contract holds in production today.
 
-Pool aliasing is the other risk. A caller that retains
-an `ast.Paragraph` past the next parse sees the same
-pointer reused. The fix mirrors plan 193's Punkt
-contract: the package doc comment pins
-"caller-retained nodes after Parse are undefined" and
-a unit test races a pooled node's content across two
-parses to lock the rule in. The engine and the rule
-packages all consume nodes within one `Parser` call,
-so this contract holds in production today.
+The PoC vendor manifest is a subset of the full fork.
+The full fork would also patch the other allocators
+and likely vendor more files. The PoC's vendor list
+is not the full-fork's vendor list and must not be
+mistaken for it.
 
-The equivalence harness is the second gate. A pool
-patch that silently changed a field's value would fail
-the `reflect.DeepEqual` AST compare.
+## Results
+
+To be filled in by task 5.
+
+| Metric          | Profile predicts       | PoC measured | Pass? |
+|-----------------|------------------------|--------------|-------|
+| allocs/op delta | −1.26 M (≥ −1.0 M)     |              |       |
+| p95 wall time   | no regression (≤ 0 ms) |              |       |
+| go test ./...   | green                  |              |       |
 
 ## Acceptance Criteria
 
-- [ ] `BenchmarkCheckCorpusLarge` allocs/op ≤ 290 000
-      (the post-fork budget). Stages two through nine
-      each enforce their own intermediate budget; the
-      final number is the published gate.
-- [ ] `mdtext.SplitSentences` and every existing
-      sentence-segmenter and link-walker test stay
-      byte-identical between fork and upstream.
-- [ ] `internal/goldmark` ships an equivalence harness
-      that runs under both `goldmark_upstream` and the
-      default build, and the harness passes both.
-- [ ] `make verify-goldmark` runs in CI weekly and
-      fails on drift.
-- [ ] Every new pool / arena has a unit test pinning
-      its recycle contract.
-- [ ] `mdsmith check .` passes.
-- [ ] `go test ./...` and `go test -race ./...` pass.
-- [ ] `go tool golangci-lint run` reports no issues.
+- [ ] The PoC branch builds, tests pass, and the
+      benchmark numbers are recorded.
+- [ ] This plan's Results section is filled in with
+      the measured delta on the same machine, taken
+      in the same minute, against the main-branch
+      baseline.
+- [ ] On a pass, plan 198 exists and cites the PoC
+      numbers in its justification.
+- [ ] On a fail, this plan's Risk + Results sections
+      document what the profile missed and the plan
+      is closed as ⛔.
