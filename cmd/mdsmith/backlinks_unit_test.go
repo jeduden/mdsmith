@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 func TestResolveLinkTarget(t *testing.T) {
@@ -367,6 +369,29 @@ func TestCollectBacklinks_Wikilinks(t *testing.T) {
 		// break JSON round-tripping.
 		assert.Equal(t, "page#Section", got[0].Text)
 	})
+}
+
+func TestAppendWikilinkBacklinks_FallbackToPerCallWalk(t *testing.T) {
+	// The collectBacklinks public path always pairs index with
+	// RootFS; calling appendWikilinkBacklinks directly with a nil
+	// index but a populated RootFS exercises the per-call
+	// fs.WalkDir fallback, which would otherwise rot if the
+	// helper API ever gets reused without the index.
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "page.md"), []byte("# P\n"), 0o644))
+	srcPath := filepath.Join(root, "src.md")
+	require.NoError(t, os.WriteFile(srcPath, []byte("# S\n\n[[page]]\n"), 0o644))
+	data, err := os.ReadFile(srcPath)
+	require.NoError(t, err)
+	f, err := lint.NewFileFromSource(srcPath, data, true)
+	require.NoError(t, err)
+	f.RootFS = os.DirFS(root)
+	got := appendWikilinkBacklinks(nil, f, "src.md", "page.md", "", nil)
+	require.Len(t, got, 1)
+	// Target on a wikilink record is the source-form `[[target]]`,
+	// not the resolved filename; resolution matches "page" against
+	// "page.md" but the record carries the bare stem.
+	assert.Equal(t, "page", got[0].Target)
 }
 
 func TestAppendWikilinkBacklinks_NoRootFS(t *testing.T) {

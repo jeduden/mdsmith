@@ -1185,6 +1185,57 @@ func TestCheck_Wikilinks_EmbedAnyFileType(t *testing.T) {
 	require.Empty(t, diags, "embed must resolve any extension")
 }
 
+func TestCheck_Wikilinks_PlaceholderAppliesToAnchor(t *testing.T) {
+	// wikilinkSuppressed builds "target#anchor" before testing the
+	// placeholder set, so a placeholder hit in the anchor must
+	// suppress the diagnostic the same way a hit in the target
+	// would. Covers the `wl.Anchor != ""` branch of the helper.
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "doc.md")
+	writeFile(t, sourcePath, "# Doc\n\nSee [[Page#{topic}]] there.\n")
+
+	f := newLintFileWithRoot(t, sourcePath, dir)
+	r := &Rule{Wikilinks: true, Placeholders: []string{"var-token"}}
+	diags := r.Check(f)
+	require.Empty(t, diags, "placeholder anchor must suppress the diagnostic")
+}
+
+func TestCheck_Wikilinks_RunCacheSharedIndex(t *testing.T) {
+	// f.RunCache makes wikilinkIndexForRoot build a shared
+	// WikilinkIndex; the resolver then takes the index branch
+	// instead of per-call fs.WalkDir. Asserting "two Check calls
+	// on different host files emit the same diagnostic" exercises
+	// wikilinkIndexForRoot, wikilinkCacheKey, and the index path
+	// in the resolver.
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "present.md"), []byte("# P\n"), 0o644))
+	docA := filepath.Join(dir, "a.md")
+	docB := filepath.Join(dir, "b.md")
+	writeFile(t, docA, "# A\n\n[[present]] [[missing]]\n")
+	writeFile(t, docB, "# B\n\n[[present]] [[missing]]\n")
+
+	cache := lint.NewRunCache()
+	r := &Rule{Wikilinks: true}
+
+	for _, p := range []string{docA, docB} {
+		f := newLintFileWithRoot(t, p, dir)
+		f.RunCache = cache
+		diags := r.Check(f)
+		require.Len(t, diags, 1, "missing wikilink must surface once per host file")
+		require.Contains(t, diags[0].Message, "missing")
+	}
+}
+
+func TestWikilinkCacheKey_FallbackOnUnknownDir(t *testing.T) {
+	// filepath.Abs only errors when os.Getwd fails — unreachable in
+	// the test harness — so this asserts the empty-RootDir branch
+	// and the happy path. The error fallback stays defensive code.
+	assert.Equal(t, "", wikilinkCacheKey(&lint.File{}))
+	dir := t.TempDir()
+	got := wikilinkCacheKey(&lint.File{RootDir: dir})
+	assert.NotEmpty(t, got, "RootDir must produce a non-empty cache key")
+}
+
 func TestCheck_Wikilinks_PlaceholderSuppresses(t *testing.T) {
 	dir := t.TempDir()
 	sourcePath := filepath.Join(dir, "doc.md")
