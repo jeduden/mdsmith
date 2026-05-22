@@ -194,6 +194,17 @@ func ValidateExtendedFrontmatter(raw map[string]any) error {
 		single := &Schema{Frontmatter: map[string]string{k: expr}}
 		if err := checkUnifiable(single.FrontmatterCUE()); err != nil {
 			parent, child := splitUnifiedExpr(expr)
+			if child == "" {
+				// A single-layer expression that compiles to bottom
+				// (`int & string` declared verbatim, not as a
+				// parent/child join). The diagnostic should not
+				// imply an inheritance conflict.
+				return &InvalidFrontmatterError{
+					Key:   stripOptionalSuffix(k),
+					Value: expr,
+					Cause: err,
+				}
+			}
 			return &UnsatisfiableKeyError{
 				Key:    stripOptionalSuffix(k),
 				Parent: parent,

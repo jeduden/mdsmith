@@ -412,7 +412,30 @@ func TestValidateExtendedFrontmatter_NoFrontmatterKeyReturnsNil(t *testing.T) {
 	assert.NoError(t, ValidateExtendedFrontmatter(merged))
 }
 
-func TestValidateExtendedFrontmatter_SkipsNonStringValue(t *testing.T) {
+// TestValidateExtendedFrontmatter_AcceptsScalarValues verifies the
+// scalar JSON-encoding path inside frontmatterExpr: a YAML number
+// (or any other scalar) round-trips into a valid CUE literal and
+// passes validation, rather than being silently skipped.
+// TestValidateExtendedFrontmatter_SingleLayerConflictUsesInvalid
+// pins the diagnostic-shape fix: a single-layer expression that
+// compiles to bottom (`int & string` written verbatim, not as a
+// parent/child join) surfaces as InvalidFrontmatterError so the
+// message does not imply an inheritance conflict that does not
+// exist.
+func TestValidateExtendedFrontmatter_SingleLayerConflictUsesInvalid(t *testing.T) {
+	merged := map[string]any{"frontmatter": map[string]any{
+		"x": "int & string",
+	}}
+	err := ValidateExtendedFrontmatter(merged)
+	require.Error(t, err)
+	var invalid *InvalidFrontmatterError
+	require.True(t, errors.As(err, &invalid),
+		"single-layer conflict should not be reported as an unification clash")
+	assert.Equal(t, "x", invalid.Key)
+	assert.NotContains(t, err.Error(), "unify with parent")
+}
+
+func TestValidateExtendedFrontmatter_AcceptsScalarValues(t *testing.T) {
 	merged := map[string]any{"frontmatter": map[string]any{
 		"n": 42,
 	}}
