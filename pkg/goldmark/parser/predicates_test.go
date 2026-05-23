@@ -59,6 +59,20 @@ func TestATXHeading_WithAutoHeadingID(t *testing.T) {
 	)
 }
 
+func TestATXHeading_NoSpaceAfterHash(t *testing.T) {
+	// ATX heading requires a space (or tab/newline) after the
+	// leading #s.  '#text' (no space) is not a heading; the
+	// parser returns nil.
+	cases := []string{
+		"#text\n",
+		"##nospace\n",
+		"###nospace at all\n",
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestATXHeading_EmptyContentAndAllHashes(t *testing.T) {
 	// Drive the specific hl.Len()==0 and ### ### branches.
 	cases := []string{
