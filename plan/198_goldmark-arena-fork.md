@@ -24,7 +24,7 @@ summary: >-
 
 ## Goal
 
-Land a goldmark fork at `internal/goldmark/`. Its
+Land a goldmark fork at `pkg/goldmark/`. Its
 `parser.Parser` carries a per-parse arena. The arena
 absorbs four structural allocators from
 [plan 197's matrix](197_fork-goldmark-for-allocs.md#review-matrix):
@@ -57,8 +57,8 @@ The arena's API contract:
 
 - One `arena.Arena` lives on the `parser.Parser` for
   the duration of one `Parse(reader, opts...)` call.
-- Allocators inside `internal/goldmark/ast/` and
-  `internal/goldmark/text/` route through the arena
+- Allocators inside `pkg/goldmark/ast/` and
+  `pkg/goldmark/text/` route through the arena
   instead of `new(T)`.
 - `Parse` returns; `arena.Reset()` is deferred so
   the slab is reusable on the next call.
@@ -75,7 +75,7 @@ Four stages.
 
 ### Stage one — vendor
 
-Copy goldmark@v1.8.2 to `internal/goldmark/`. Keep
+Copy goldmark@v1.8.2 to `pkg/goldmark/`. Keep
 the package layout (`ast/`, `text/`, `parser/`,
 `util/`). Rewrite imports. Plan 197's
 `linkrefparagraph` folds into the vendored `parser/`
@@ -84,7 +84,7 @@ tests at their original paths.
 
 ### Stage two — add the arena
 
-`internal/goldmark/arena/arena.go` exposes a slab
+`pkg/goldmark/arena/arena.go` exposes a slab
 allocator. Typed helpers: `Text()`, `Paragraph()`,
 `Segments(cap)`. `Reset()` discards live pointers
 and resets cursors. Constructors in vendored `ast/`
@@ -93,7 +93,7 @@ and `text/` accept a nil-safe `*arena.Arena`. The
 
 ### Stage three — equivalence harness
 
-`internal/goldmark/equivalence_test.go` runs every
+`pkg/goldmark/equivalence_test.go` runs every
 upstream test through the fork. It diffs AST shape
 and rendered HTML. The harness gates every later
 arena change.
@@ -112,13 +112,13 @@ is the only path.
 ## Tasks
 
 1. [ ] Vendor goldmark@v1.8.2 under
-   `internal/goldmark/`. Rewrite imports. `go build
+   `pkg/goldmark/`. Rewrite imports. `go build
    ./...` and `go test ./...` stay green with the
    fork as a drop-in.
 2. [ ] Move plan 197's `linkrefparagraph` into the
    vendored `parser/` package as the default link-ref
    transformer. Delete the old standalone package.
-3. [ ] Add `internal/goldmark/arena/` with the typed
+3. [ ] Add `pkg/goldmark/arena/` with the typed
    slab allocator. Reset is idempotent.
 4. [ ] Thread the arena through `ast.NewText`,
    `ast.NewParagraph`, `text.NewSegments`, and
@@ -156,7 +156,7 @@ or a sibling tracking file) keeps drift visible.
 
 ## Acceptance Criteria
 
-- [ ] `internal/goldmark/` is the canonical parser
+- [ ] `pkg/goldmark/` is the canonical parser
       and `pkg/markdown` imports only from it.
 - [ ] `BenchmarkCheckCorpusLarge -benchtime=10x`
       median allocs/op ≤ 360 k (≥ 35 % cut from

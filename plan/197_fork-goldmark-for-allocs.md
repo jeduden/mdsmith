@@ -149,7 +149,7 @@ Fail closes 197 as ⛔.
    Document the choice and the runner-up so the
    alternative is on record.
 5. [x] Vendor the minimum goldmark subset the change
-   touches into `internal/goldmark/linkrefparagraph/`.
+   touches into `pkg/goldmark/linkrefparagraph/`.
    `go build ./...` and `go test ./...` stay green.
 6. [x] Implement the chosen change (per-parser
    transformer instance carrying a reusable

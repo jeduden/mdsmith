@@ -57,10 +57,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 --------------------------------------------------------------------------------
-internal/goldmark/linkrefparagraph/ — derived from github.com/yuin/goldmark
-                  v1.8.2 (https://github.com/yuin/goldmark/tree/v1.8.2),
-                  parser/link_ref.go, parser/link.go, parser/parser.go.
-                  Verbatim copy: internal/goldmark/linkrefparagraph/UPSTREAM_LICENSE
+pkg/goldmark/ — fork of github.com/yuin/goldmark v1.8.2
+                  (https://github.com/yuin/goldmark/tree/v1.8.2). Wired via
+                  the `replace github.com/yuin/goldmark => ./pkg/goldmark`
+                  directive in this repository's go.mod, so every
+                  consumer import path stays `github.com/yuin/goldmark/...`.
+                  Verbatim license copy: pkg/goldmark/LICENSE
 --------------------------------------------------------------------------------
 
 MIT License

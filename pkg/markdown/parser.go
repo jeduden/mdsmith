@@ -9,7 +9,7 @@ import (
 )
 
 // linkRefResetter is implemented by the fork's
-// linkReferenceParagraphTransformer (internal/goldmark/parser/link_ref.go).
+// linkReferenceParagraphTransformer (pkg/goldmark/parser/link_ref.go).
 // The asserter lives here so pkg/markdown can clear the transformer's
 // pinned document source bytes before returning the parent parser
 // to the pool, without taking a hard dependency on the unexported
@@ -29,7 +29,7 @@ type linkRefResetter interface {
 // across surfaces.
 //
 // The "goldmark" the import path resolves to is the in-tree fork at
-// internal/goldmark/ (plan 197+198), wired via a go.mod replace
+// pkg/goldmark/ (plan 197+198), wired via a go.mod replace
 // directive. The fork's parser.DefaultParagraphTransformers returns
 // a FRESH linkReferenceParagraphTransformer per call, so each parser
 // built here owns its own transformer with its own reusable
