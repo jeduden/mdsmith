@@ -10,6 +10,23 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+func TestBaseNode_Text_HeadingWithMixedChildren(t *testing.T) {
+	// Heading doesn't override Text, so it dispatches to
+	// BaseNode.Text.  Drive both branches: a Text child with
+	// SoftLineBreak set, and a String child (no SoftLineBreak
+	// method -> type assertion fails branch).
+	src := []byte("hello world")
+	h := NewHeading(1)
+	t1 := NewTextSegment(text.NewSegment(0, 5))
+	t1.SetSoftLineBreak(true)
+	h.AppendChild(h, t1)
+
+	s := NewString([]byte("ignored"))
+	h.AppendChild(h, s)
+
+	_ = h.Text(src)
+}
+
 func TestBaseNode_Text_SoftLineBreakChild(t *testing.T) {
 	// BaseNode.Text iterates children and inserts '\n' between
 	// children whose SoftLineBreak() returns true.  Build a
