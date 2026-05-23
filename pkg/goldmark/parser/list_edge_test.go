@@ -91,6 +91,22 @@ func TestList_Parser_DirectMethodInvocation(t *testing.T) {
 	}
 }
 
+func TestList_BlankAfterEmptyItem(t *testing.T) {
+	// A blank line after an empty list item triggers
+	// emptyListItemWithBlankLines bookkeeping (the line 162
+	// branch in listParser.Continue: blank line + LastChild has
+	// no children).
+	srcs := []string{
+		"-\n\n  body\n",
+		"-\n\n- next\n",
+		"-\n\n",
+		"1.\n\n  body\n",
+	}
+	for _, src := range srcs {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestList_LooseList_BlankLineBetweenItems(t *testing.T) {
 	src := "- a\n\n- b\n\n- c\n"
 	root := parseWithDefaults(src)
