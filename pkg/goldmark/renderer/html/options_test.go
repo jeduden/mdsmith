@@ -56,12 +56,23 @@ func TestRenderOption_EastAsianLineBreaksCSS3Draft(t *testing.T) {
 }
 
 func TestRenderOption_EastAsianLineBreaksCSS3DraftPunctuation(t *testing.T) {
-	// CSS3Draft has rules for combining punctuation around the
-	// break — exercise a few branches with halfwidth punctuation.
+	// CSS3Draft has 4 distinct rules. Drive each branch.
 	cases := []string{
+		// Rule 1 — zero-width space before / after the break.
+		"a​\n日本語\n",
+		"日本語\n​b\n",
+		// Rule 2 — both F/W/H, neither side Hangul -> break removed.
+		"日本語\nテキスト\n",
+		// Rule 2 — both F/W/H, one side Hangul -> break PRESERVED.
+		"가\n나\n",   // both Hangul
+		// Rule 3 — punctuation on one side -> break removed.
 		"a。\n日本語\n",
-		"日本語\n。b\n",
-		"​\n日本語\n",
+		"日本語\n、b\n",
+		// Rule 3 — IDEOGRAPHIC SPACE 　 on one side.
+		"　\n日本語\n",
+		"日本語\n　\n",
+		// Rule 4 — neither side is wide nor punctuation -> default branch.
+		"abc\ndef\n",
 	}
 	for _, c := range cases {
 		_ = convertWithOpts(t, c, html.WithEastAsianLineBreaks(html.EastAsianLineBreaksCSS3Draft))
