@@ -215,6 +215,61 @@ func TestDocument_OwnerDocument(t *testing.T) {
 	}
 }
 
+func TestBaseNode_OwnerDocument_Nested(t *testing.T) {
+	// OwnerDocument on a nested child walks up to the root.
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	doc.AppendChild(doc, p)
+	tx := ast.NewTextSegment(text.NewSegment(0, 3))
+	p.AppendChild(p, tx)
+	if got := tx.OwnerDocument(); got != doc {
+		t.Errorf("OwnerDocument should walk up to root, got %v want %v", got, doc)
+	}
+}
+
+func TestBaseNode_SortChildren(t *testing.T) {
+	// SortChildren rearranges children in place using the
+	// provided comparator. Drive it on a parent with three
+	// children that need reordering.
+	doc := ast.NewDocument()
+	headings := []*ast.Heading{
+		ast.NewHeading(3),
+		ast.NewHeading(1),
+		ast.NewHeading(2),
+	}
+	for _, h := range headings {
+		doc.AppendChild(doc, h)
+	}
+	doc.SortChildren(func(a, b ast.Node) int {
+		return a.(*ast.Heading).Level - b.(*ast.Heading).Level
+	})
+	want := []int{1, 2, 3}
+	i := 0
+	for c := doc.FirstChild(); c != nil; c = c.NextSibling() {
+		if h, ok := c.(*ast.Heading); ok {
+			if h.Level != want[i] {
+				t.Errorf("child[%d].Level = %d, want %d", i, h.Level, want[i])
+			}
+			i++
+		}
+	}
+}
+
+func TestBaseNode_SetAttribute_Variants(t *testing.T) {
+	// SetAttribute has branches for setting / overwriting / nil
+	// value. Drive each.
+	h := ast.NewHeading(1)
+	h.SetAttribute([]byte("id"), []byte("a"))
+	h.SetAttribute([]byte("id"), []byte("b")) // overwrite
+	if v, ok := h.Attribute([]byte("id")); !ok || string(v.([]byte)) != "b" {
+		t.Errorf("SetAttribute overwrite failed: %v ok=%v", v, ok)
+	}
+	h.SetAttribute([]byte("class"), nil)
+	if _, ok := h.Attribute([]byte("class")); !ok {
+		t.Error("SetAttribute(nil) should still set the key")
+	}
+}
+
 func TestBlockAST_TextMethods(t *testing.T) {
 	// Block nodes have Text() too, mostly returning their text
 	// representation. Call them on representative nodes.
