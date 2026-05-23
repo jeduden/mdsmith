@@ -15,6 +15,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
@@ -158,6 +159,96 @@ func TestRender_StringNode(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "plain") || !strings.Contains(out, "code") {
 		t.Errorf("renderer output missing expected content: %q", out)
+	}
+}
+
+func TestRender_BlockquoteWithAttributes(t *testing.T) {
+	// renderBlockquote has an Attributes() != nil branch only
+	// reached when the AST node carries a SetAttribute call. The
+	// stock parser does not set blockquote attributes, so build
+	// the AST manually.
+	doc := ast.NewDocument()
+	bq := ast.NewBlockquote()
+	bq.SetAttribute([]byte("class"), []byte("note"))
+	bq.SetAttribute([]byte("id"), []byte("q1"))
+	doc.AppendChild(doc, bq)
+
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `class="note"`) {
+		t.Errorf("blockquote attribute not rendered: %q", buf.String())
+	}
+}
+
+func TestRender_ParagraphWithAttributes(t *testing.T) {
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	p.SetAttribute([]byte("class"), []byte("intro"))
+	doc.AppendChild(doc, p)
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `class="intro"`) {
+		t.Errorf("paragraph attribute not rendered: %q", buf.String())
+	}
+}
+
+func TestRender_ListItemWithAttributes(t *testing.T) {
+	doc := ast.NewDocument()
+	list := ast.NewList('-')
+	li := ast.NewListItem(2)
+	li.SetAttribute([]byte("class"), []byte("item"))
+	list.AppendChild(list, li)
+	doc.AppendChild(doc, list)
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `class="item"`) {
+		t.Errorf("list-item attribute not rendered: %q", buf.String())
+	}
+}
+
+func TestRender_HeadingWithExtraAttributes(t *testing.T) {
+	// Heading with id (auto) + custom data-* attribute.
+	doc := ast.NewDocument()
+	h := ast.NewHeading(2)
+	h.SetAttribute([]byte("id"), []byte("title"))
+	h.SetAttribute([]byte("data-x"), []byte("y"))
+	doc.AppendChild(doc, h)
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `id="title"`) {
+		t.Errorf("heading id not rendered: %q", buf.String())
+	}
+}
+
+func TestRender_CodeSpanWithRawTextSegment(t *testing.T) {
+	// Code span containing a RawTextSegment exercises the raw
+	// inline write path in renderCodeSpan.
+	src := []byte("hello world")
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	cs := ast.NewCodeSpan()
+	cs.AppendChild(cs, ast.NewRawTextSegment(text.NewSegment(0, 5)))
+	p.AppendChild(p, cs)
+	doc.AppendChild(doc, p)
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, src, doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), "<code>") {
+		t.Errorf("code span not rendered: %q", buf.String())
 	}
 }
 
