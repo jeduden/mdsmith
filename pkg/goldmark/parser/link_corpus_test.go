@@ -214,6 +214,23 @@ func TestLinkParser_DeeplyNested(t *testing.T) {
 	}
 }
 
+func TestLinkParser_MalformedInlineLinks(t *testing.T) {
+	// Drive each early-return branch in parseLink: empty parens,
+	// invalid destination, missing close paren after title,
+	// destination + title without proper closing.
+	cases := []string{
+		"[empty]()\n",                       // empty link
+		"[no close](/url\n",                 // missing )
+		"[bad-dest](<unclosed angle)\n",     // bad angle-bracket dest
+		"[bad-title](/url \"unclosed)\n",    // bad title (unclosed quote)
+		"[bad-title](/url )\n",              // dest but trailing close
+		"[has both](/url \"title\") next\n", // happy path
+	}
+	for _, src := range cases {
+		_ = parseDoc(src)
+	}
+}
+
 func TestLinkParser_AngleBracketDestination(t *testing.T) {
 	src := `[x](<https://example.com> "title")` + "\n"
 	kinds := walkKindSet(parseDoc(src))
