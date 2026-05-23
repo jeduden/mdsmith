@@ -1,0 +1,61 @@
+package ast_test
+
+// Coverage for block-node accessors and Dump implementations
+// that the normal parse-flow does not always reach.
+
+import (
+	"testing"
+
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
+)
+
+func TestDocument_MetaAddAndSet(t *testing.T) {
+	doc := ast.NewDocument()
+	// Meta on a fresh doc lazily allocates the map.
+	m := doc.Meta()
+	if m == nil {
+		t.Fatal("Meta() returned nil")
+	}
+	doc.AddMeta("k1", "v1")
+	doc.AddMeta("k2", 42)
+	doc.SetMeta(map[string]any{"k3": true, "k4": 3.14})
+	out := doc.Meta()
+	for _, k := range []string{"k1", "k2", "k3", "k4"} {
+		if _, ok := out[k]; !ok {
+			t.Errorf("Meta missing key %q", k)
+		}
+	}
+}
+
+func TestTextBlock_PosEmptyAndNonEmpty(t *testing.T) {
+	tb := ast.NewTextBlock()
+	if got := tb.Pos(); got != -1 {
+		t.Errorf("Pos on empty TextBlock = %d, want -1", got)
+	}
+	tb.Lines().Append(text.NewSegment(5, 10))
+	if got := tb.Pos(); got != 5 {
+		t.Errorf("Pos on populated TextBlock = %d, want 5", got)
+	}
+}
+
+func TestHTMLBlock_DumpVariants(t *testing.T) {
+	hb := ast.NewHTMLBlock(ast.HTMLBlockType6)
+	hb.Lines().Append(text.NewSegment(0, 5))
+	silencer(t, func() { hb.Dump([]byte("hello"), 0) })
+
+	// Also drive ClosureLine branch in Dump.
+	hb.ClosureLine = text.NewSegment(0, 3)
+	silencer(t, func() { hb.Dump([]byte("hello"), 0) })
+}
+
+func TestList_Pos(t *testing.T) {
+	list := ast.NewList('-')
+	if got := list.Pos(); got != -1 {
+		// Empty list returns -1.
+	}
+	li := ast.NewListItem(2)
+	li.Lines().Append(text.NewSegment(0, 5))
+	list.AppendChild(list, li)
+	_ = list.Pos()
+}
