@@ -37,6 +37,27 @@ func TestFootnote_MultiLineDefinition(t *testing.T) {
 	}
 }
 
+func TestDefinitionList_EdgeCases(t *testing.T) {
+	// Drive definitionListParser.Open's:
+	//  - already-inside-list early return (line 30)
+	//  - colon-not-followed-by-space (line 43)
+	//  - deeply-indented body (w >= 8 -> indented code)
+	srcs := []string{
+		"term\n:   def\n",                                  // happy path
+		"term\n:def\n",                                     // no space after :
+		"term\n:       very deeply indented def\n",         // 7+ space indent
+		"term\n:   def1\n: def2\n",                          // two defs in sequence
+		"term\n:   def with paragraph\n\n   continuation\n", // multi-paragraph def
+	}
+	for _, src := range srcs {
+		md := goldmark.New(goldmark.WithExtensions(extension.DefinitionList))
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("Convert(%q): %v", src, err)
+		}
+	}
+}
+
 func TestStrikethrough_ParseEarlyReturns(t *testing.T) {
 	// strikethroughParser.Parse early-returns for:
 	//  - tilde-tilde-tilde (more than 2 tildes -> not strikethrough)
