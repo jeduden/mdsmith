@@ -330,6 +330,17 @@ func TestBaseNode_SetAttribute_Variants(t *testing.T) {
 	if _, ok := h.Attribute([]byte("class")); !ok {
 		t.Error("SetAttribute(nil) should still set the key")
 	}
+
+	// Attribute miss: ask for a name that wasn't set.
+	if _, ok := h.Attribute([]byte("missing")); ok {
+		t.Error("Attribute(missing) should return ok=false")
+	}
+
+	// Attribute on a fresh node with nil attributes map.
+	fresh := ast.NewHeading(1)
+	if _, ok := fresh.Attribute([]byte("id")); ok {
+		t.Error("Attribute on attribute-less node should return ok=false")
+	}
 }
 
 func TestBlockAST_TextMethods(t *testing.T) {
