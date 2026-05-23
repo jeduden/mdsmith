@@ -6,6 +6,7 @@ package goldmark_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/yuin/goldmark"
@@ -188,6 +189,70 @@ func TestCorpus_EdgeShapes(t *testing.T) {
 	}
 	for i, src := range cases {
 		md := goldmark.New(goldmark.WithRendererOptions(html.WithUnsafe()))
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("case %d: %v", i, err)
+		}
+	}
+}
+
+func TestCorpus_VariedShapes(t *testing.T) {
+	// Mass corpus driving rare parser/renderer paths.
+	cases := []string{
+		// Various heading levels.
+		"# H1\n## H2\n### H3\n#### H4\n##### H5\n###### H6\n",
+		// Empty heading.
+		"#\n",
+		"#  \n",
+		// Closing-hash heading variants.
+		"# Heading #\n",
+		"## Heading ##\n",
+		"### Heading\\#\n",
+		// Setext both forms.
+		"H1\n===\n",
+		"H2\n---\n",
+		// Multi-line paragraph.
+		"line 1\nline 2\nline 3\n",
+		// Paragraph with trailing soft line breaks.
+		"first  \nsecond  \nthird\n",
+		// Hard line breaks (backslash + newline).
+		"first\\\nsecond\\\nthird\n",
+		// Code spans with various backtick counts.
+		"`single`\n``double tick`s` end``\n`a` `b` `c`\n",
+		// Reference link variants.
+		"[full][r]\n[collapsed][]\n[shortcut]\n\n[r]: /r\n[collapsed]: /c\n[shortcut]: /s\n",
+		// Reference definitions with titles.
+		"[ref]\n\n[ref]: /url \"quoted title\"\n[ref2]: /url2 'single title'\n[ref3]: /url3 (paren title)\n",
+		// Multi-line reference definitions.
+		"[ref]\n\n[ref]:\n  /url\n  \"multi-line title\"\n",
+		// Link with angle-bracket URL.
+		"[x](</url with space>)\n",
+		// Indented code blocks.
+		"    code1\n    code2\n",
+		// Indented code preceded by paragraph.
+		"para\n\n    code\n",
+		// Fenced code, no info, no body.
+		"```\n```\n",
+		// Fenced code with very long info string.
+		"```" + strings.Repeat("a", 100) + "\nbody\n```\n",
+		// HTML block conditions.
+		"<table>\nbody\n</table>\n",
+		"<!--\ncomment\n-->\n",
+		"<![CDATA[content]]>\n",
+		// Inline HTML.
+		"text <span class=\"x\">inline</span> end\n",
+		// Bare URLs (autolink).
+		"<https://example.com/path?q=v&r=s>\n",
+		// Block quote with leading spaces (allowed).
+		"   > quoted\n",
+		// Lists with various markers.
+		"* star\n+ plus\n- dash\n",
+		"1) paren ordered\n2) more\n",
+		// Tight list interleaved.
+		"- one\n- two\n  - nested\n  - more nested\n- three\n",
+	}
+	md := goldmark.New(goldmark.WithRendererOptions(html.WithUnsafe()))
+	for i, src := range cases {
 		var buf bytes.Buffer
 		if err := md.Convert([]byte(src), &buf); err != nil {
 			t.Fatalf("case %d: %v", i, err)
