@@ -59,3 +59,44 @@ func TestList_Pos(t *testing.T) {
 	list.AppendChild(list, li)
 	_ = list.Pos()
 }
+
+func TestList_Dump_OrderedAndUnordered(t *testing.T) {
+	// List.Dump has an IsOrdered branch that adds a Start
+	// attribute.  Drive both ordered and unordered.
+	unordered := ast.NewList('-')
+	silencer(t, func() { unordered.Dump(nil, 0) })
+
+	ordered := ast.NewList('1')
+	ordered.Start = 5
+	silencer(t, func() { ordered.Dump(nil, 0) })
+}
+
+func TestLinkReferenceDefinition_Pos(t *testing.T) {
+	def := ast.NewLinkReferenceDefinition([]byte("label"), []byte("/dest"), []byte("title"))
+	if got := def.Pos(); got != -1 {
+		t.Errorf("Pos on empty link-reference def = %d, want -1", got)
+	}
+	def.Lines().Append(text.NewSegment(7, 12))
+	if got := def.Pos(); got != 7 {
+		t.Errorf("Pos on populated link-reference def = %d, want 7", got)
+	}
+}
+
+func TestDocument_AddMeta_EmptyMap(t *testing.T) {
+	// AddMeta on a Document with an existing non-nil meta map
+	// drives the n.meta != nil branch (skip allocation).
+	doc := ast.NewDocument()
+	doc.AddMeta("first", 1) // allocates
+	doc.AddMeta("second", 2) // existing map
+	if doc.Meta()["second"] != 2 {
+		t.Error("second AddMeta call should not lose the value")
+	}
+}
+
+func TestText_SetRaw_True(t *testing.T) {
+	tx := ast.NewTextSegment(text.NewSegment(0, 3))
+	tx.SetRaw(true)
+	if !tx.IsRaw() {
+		t.Error("SetRaw(true) then IsRaw() must be true")
+	}
+}
