@@ -10,6 +10,53 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+func TestWalkHelper_AllReturnPaths(t *testing.T) {
+	// walkHelper has branches for: walker returns error,
+	// walker returns WalkStop, walker returns WalkSkipChildren,
+	// child returns error, and normal completion.
+
+	// Build a small tree: doc -> paragraph -> text.
+	doc := NewDocument()
+	p := NewParagraph()
+	doc.AppendChild(doc, p)
+	p.AppendChild(p, NewTextSegment(text.NewSegment(0, 5)))
+
+	// Walker that returns error on entering.
+	_ = Walk(doc, func(n Node, entering bool) (WalkStatus, error) {
+		if entering && n.Kind() == KindDocument {
+			return WalkStop, errSentinel
+		}
+		return WalkContinue, nil
+	})
+
+	// Walker that returns WalkStop on first node.
+	_ = Walk(doc, func(n Node, entering bool) (WalkStatus, error) {
+		return WalkStop, nil
+	})
+
+	// Walker that returns WalkSkipChildren on paragraph.
+	_ = Walk(doc, func(n Node, entering bool) (WalkStatus, error) {
+		if entering && n.Kind() == KindParagraph {
+			return WalkSkipChildren, nil
+		}
+		return WalkContinue, nil
+	})
+
+	// Walker that returns error on exit.
+	_ = Walk(doc, func(n Node, entering bool) (WalkStatus, error) {
+		if !entering && n.Kind() == KindText {
+			return WalkStop, errSentinel
+		}
+		return WalkContinue, nil
+	})
+}
+
+var errSentinel = sentinelErr{}
+
+type sentinelErr struct{}
+
+func (sentinelErr) Error() string { return "sentinel" }
+
 func TestBaseNode_Text_HeadingWithMixedChildren(t *testing.T) {
 	// Heading doesn't override Text, so it dispatches to
 	// BaseNode.Text.  Drive both branches: a Text child with
