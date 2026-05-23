@@ -93,11 +93,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 	ignored := r.ignoredLabels
 
-	// usedLabels is only consulted for the first-seen definition of a
-	// label — duplicate hits short-circuit on `seen` before reaching
-	// the used-check. Build it lazily so files whose every refdef is
-	// already a duplicate skip the AST walk entirely. Most production
-	// files have 1 def per label, so the lazy path almost never fires.
+	// usedLabels is only consulted for the first-seen, non-ignored
+	// definition of a label — `ignored[norm]` and the `seen` map
+	// short-circuit before the used-check. Building it lazily skips
+	// the AST walk on the narrow case where every refdef in the file
+	// is ignored or duplicated; for the common one-def-per-label
+	// file, the walk still runs once (on the first iteration that
+	// falls through to the used-check) instead of unconditionally
+	// up-front.
 	var (
 		usedLabels     map[string]bool
 		usedLabelsDone bool

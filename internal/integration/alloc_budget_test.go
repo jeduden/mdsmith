@@ -34,8 +34,12 @@ const allocBudgetCeiling = 10
 // allocBudgetCeiling target. The map shrinks as fixes land.
 //
 // Recorded baselines on the integration fixture as of the gate's
-// first run. Mid-fix rules (MDS025, MDS026) carry the post-partial
-// number; full-fix rules are absent.
+// first run, with each entry's ceiling tightened as partial fixes
+// land. Every grandfathered rule below has a documented
+// in-progress fix scheduled in plan 195 (MDS025, MDS026, MDS053,
+// MDS054); the inline comment on each entry cites the relevant
+// task and what the residual cost is. Full-fix rules drop out of
+// this map entirely.
 var allocBudgetGrandfathered = map[string]int{
 	// MDS025 absorbed the GFM structure checks (MD055/056/058) when
 	// plan 181 folded MDS060 into it; the structure pass parses every
