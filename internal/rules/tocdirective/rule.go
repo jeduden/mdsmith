@@ -68,15 +68,24 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // hasTOCRef reports whether the document defines a link reference
 // with the CommonMark-normalised label "toc". The previous form
-// (hasTOCLinkReference + a File.Memo wrapper) re-parsed the entire
-// source with goldmark on each fresh File to read the link-reference
-// table; that re-parse was the alloc-budget gate's biggest blocker
-// for MDS035 (~200 allocs/Check). f.LinkReferences() returns the
-// same table from the single parse NewFile already performed, so
-// the lookup collapses to one iteration over the parsed refs —
-// plan 195 task 14.
+// (hasTOCLinkReference + an inline File.Memo wrapper) re-parsed
+// the entire source with goldmark on each fresh File to read the
+// link-reference table; that re-parse was the alloc-budget gate's
+// biggest blocker for MDS035 (~200 allocs/Check). The current
+// form reads f.LinkReferences() — the same table NewFile's single
+// parse already produced — and caches the boolean on the File
+// via MemoFile so CheckNode pays one iteration over the parsed
+// refs per file, not per paragraph. Plan 195 task 14, with the
+// per-paragraph rescan fix from Copilot review on PR #371.
 func hasTOCRef(f *lint.File) bool {
-	for _, ref := range f.LinkReferences() {
+	return f.MemoFile("MDS035.hasTOCRef", buildHasTOCRef).(bool)
+}
+
+// buildHasTOCRef is the MemoFile builder. Package-level so the
+// value passed to MemoFile is a plain function pointer with no
+// captured environment to box on the heap.
+func buildHasTOCRef(file *lint.File) any {
+	for _, ref := range file.LinkReferences() {
 		if string(util.ToLinkReference(ref.Label())) == "toc" {
 			return true
 		}
@@ -96,7 +105,6 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if !ok {
 		return nil
 	}
-	tocRefDefined := hasTOCRef(f)
 	var diags []lint.Diagnostic
 	lines := para.Lines()
 	for i := 0; i < lines.Len(); i++ {
@@ -108,7 +116,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		if !matched {
 			continue
 		}
-		if v.isLinkRefCandidate && tocRefDefined {
+		if v.isLinkRefCandidate && hasTOCRef(f) {
 			continue
 		}
 		diags = append(diags, lint.Diagnostic{

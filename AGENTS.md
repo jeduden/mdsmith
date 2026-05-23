@@ -244,10 +244,8 @@ the code that takes the branch.
 
 **A rule's `Check` allocates ≤ 10 times per call on
 representative input.** Enforced by
-[`alloc_budget_test.go`][allocgate]; most rules
-allocate 0–6.
-
-[allocgate]: ../../internal/integration/alloc_budget_test.go
+`internal/integration/alloc_budget_test.go`; most
+rules allocate 0–6.
 
 - Walk `f.Lines` / `f.AST` directly.
 - Prefer `bytes.IndexByte` / `bytes.Contains` over

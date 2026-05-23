@@ -308,19 +308,37 @@ func collectDefinitions(f *lint.File) []referenceDefinition {
 // labelInRefs reports whether the normalised form of rawLabel matches
 // any label in refs. The caller iterates LinkReferences (already
 // normalised by goldmark); we normalise rawLabel once and compare
-// against each ref's Label() via the standard string == string
-// (which Go's compiler optimises so `string(b)` on the right-hand
-// side does not allocate). For the typical case of one or a few
-// refs per file the linear scan is cheaper than building the
-// wanted-map literal the original code allocated.
+// each ref's Label() byte-for-byte via stringEqualsBytes — Go's
+// `s == string(b)` form does not generally elide the conversion
+// allocation when the left side is a variable (only the
+// `m[string(b)]` and `string(b) == "literal"` forms are special-
+// cased), so the open-coded compare is the alloc-free option.
+// For the typical case of one or a few refs per file this is
+// cheaper than building the wanted-map literal the original code
+// allocated.
 func labelInRefs(rawLabel []byte, refs []lint.Reference) bool {
 	normalised := util.ToLinkReference(rawLabel)
 	for _, ref := range refs {
-		if normalised == string(ref.Label()) {
+		if stringEqualsBytes(normalised, ref.Label()) {
 			return true
 		}
 	}
 	return false
+}
+
+// stringEqualsBytes compares a string to a byte slice without
+// allocating a string from the slice. Used on hot paths where
+// `s == string(b)` would force a heap copy of b.
+func stringEqualsBytes(s string, b []byte) bool {
+	if len(s) != len(b) {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // scanRefDefLine examines source[lineStart:lineEnd] for the
