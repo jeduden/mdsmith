@@ -332,6 +332,19 @@ func TestDelimiter_CalcComsumption_AllBranches(t *testing.T) {
 	}
 }
 
+func TestPreserveLeadingTabInCodeBlock_Direct(t *testing.T) {
+	// preserveLeadingTabInCodeBlock has a conditional that
+	// rewrites segment.Padding and start when the back-tracked
+	// LineOffset matches offsetWithPadding.  Synthesise a Reader
+	// that has consumed past a tab and call the function
+	// directly.
+	src := []byte("\tabc\n")
+	r := text.NewReader(src)
+	r.Advance(1) // past the tab
+	seg := text.NewSegmentPadding(1, 5, 3)
+	preserveLeadingTabInCodeBlock(&seg, r, 0)
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
