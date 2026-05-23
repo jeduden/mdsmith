@@ -401,6 +401,29 @@ func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
 	}
 }
 
+func TestATXHeadingParser_Open_DefensiveBranches(t *testing.T) {
+	// atxHeadingParser.Open has defensive branches reachable only
+	// via direct calls or unusual states:
+	//   - pos < 0 (no block offset)
+	//   - i == pos (the trigger char is '#' but the dispatcher may
+	//     pre-position to a non-# char in odd states)
+	//   - level > 6 (7+ hashes)
+	//   - i == len(line) (line ends at '#')
+	bp := &atxHeadingParser{}
+
+	// pos < 0 branch.
+	r := text.NewReader([]byte("# title\n"))
+	pc := NewContext()
+	pc.SetBlockOffset(-1)
+	node, state := bp.Open(nil, r, pc)
+	if node != nil {
+		t.Errorf("Open with pos<0 should return nil, got %v", node)
+	}
+	if state != NoChildren {
+		t.Errorf("Open with pos<0 should return NoChildren, got %v", state)
+	}
+}
+
 func TestListItemParser_Open_NonListParent(t *testing.T) {
 	// listItemParser.Open returns nil when parent is not *ast.List.
 	// The dispatcher only routes list-item triggers under a List
