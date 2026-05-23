@@ -21,7 +21,7 @@ func TestResolveNumericReferences_HexAndDecimalPath(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
-		want string // expected decoded segment somewhere in the result
+		want string // exact expected output (full-string equality)
 	}{
 		{"decimal-A", "&#65;", "A"},
 		{"hex-A", "&#x41;", "A"},
