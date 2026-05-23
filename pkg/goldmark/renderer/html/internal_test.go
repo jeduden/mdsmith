@@ -38,6 +38,31 @@ func TestSoftLineBreak_AllEnumValues(t *testing.T) {
 	}
 }
 
+func TestCSS3DraftSoftLineBreak_AllRules(t *testing.T) {
+	// Drive each of the 4 rules of CSS3 Draft segment break
+	// transformation.
+	cases := []struct {
+		name     string
+		a, b     rune
+		want     bool
+	}{
+		{"rule1-zwsp-before", '​', 'A', false},
+		{"rule1-zwsp-after", 'A', '​', false},
+		{"rule2-both-wide-non-hangul", 0x4E00, 0x4E01, false},
+		{"rule2-wide-with-hangul", 0x1100, 0x4E00, true}, // Hangul + Wide -> preserve
+		{"rule3-space-discarding", 0x3000, 'A', false},
+		{"rule3-punct", '。', 'A', false},
+		{"rule4-default", 'A', 'B', true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := eastAsianLineBreaksCSS3DraftSoftLineBreak(c.a, c.b); got != c.want {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 func TestRenderTexts_AllChildTypes(t *testing.T) {
 	// renderTexts dispatches on child type: ast.String,
 	// ast.Text, otherwise recurses.  Construct a node tree with
