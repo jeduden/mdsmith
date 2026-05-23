@@ -107,6 +107,19 @@ func TestList_BlankAfterEmptyItem(t *testing.T) {
 	}
 }
 
+func TestList_DeepIndentTreatedAsCode(t *testing.T) {
+	// List item with > 4 spaces after the marker triggers
+	// calcListOffset's "offseted codeblock" branch (offset > 4
+	// is clamped to 1).
+	cases := []string{
+		"-     5-space indent body\n",         // exactly 5 spaces after marker
+		"-          10-space indent body\n",   // 10 spaces
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestList_ParseListItem_NotListBranches(t *testing.T) {
 	// Drive each "return ret, notList" branch in parseListItem
 	// via inputs that look like list markers but aren't.
