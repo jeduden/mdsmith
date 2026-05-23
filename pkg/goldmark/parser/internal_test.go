@@ -88,6 +88,37 @@ func silenceStdout(t *testing.T, fn func()) {
 	fn()
 }
 
+func TestParseListItem_AllBranches(t *testing.T) {
+	// parseListItem is unexported.  Drive each early-return path
+	// via direct invocation.
+	cases := []struct {
+		name string
+		line string
+		want listItemType
+	}{
+		{"bullet-dash", "- item\n", bulletList},
+		{"bullet-star", "* item\n", bulletList},
+		{"bullet-plus", "+ item\n", bulletList},
+		{"ordered-period", "1. item\n", orderedList},
+		{"ordered-paren", "1) item\n", orderedList},
+		{"deep-indent", "    - too deep\n", notList},
+		{"long-number", "1234567890. too long\n", notList},
+		{"number-no-period", "1 item\n", notList},
+		{"no-marker", "no list marker\n", notList},
+		{"bullet-no-space", "-noSpace\n", notList},
+		{"bullet-eol", "-\n", bulletList},
+		{"empty-line", "", notList},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, got := parseListItem([]byte(c.line))
+			if got != c.want {
+				t.Errorf("parseListItem(%q) = %v, want %v", c.line, got, c.want)
+			}
+		})
+	}
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
