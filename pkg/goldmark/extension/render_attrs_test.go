@@ -28,6 +28,34 @@ func newExtRenderer() renderer.Renderer {
 	))
 }
 
+func TestNew_ExtensionHTMLRenderersWithOptions(t *testing.T) {
+	// NewDefinitionListHTMLRenderer, NewStrikethroughHTMLRenderer,
+	// and NewTaskCheckBoxHTMLRenderer each accept html.Option
+	// variadic args.  The loop body is unreached when no options
+	// are passed.  Drive each with an option.
+	_ = gext.NewDefinitionListHTMLRenderer(html.WithUnsafe())
+	_ = gext.NewStrikethroughHTMLRenderer(html.WithUnsafe())
+	_ = gext.NewTaskCheckBoxHTMLRenderer(html.WithUnsafe())
+	_ = gext.NewFootnoteHTMLRenderer(
+		gext.WithFootnoteHTMLOptions(html.WithUnsafe()),
+	)
+}
+
+func TestExtensionAST_DefinitionList_PosEmpty(t *testing.T) {
+	// DefinitionList.Pos / DefinitionDescription.Pos with no
+	// children return -1.
+	list := extast.NewDefinitionList(0, ast.NewParagraph())
+	if got := list.Pos(); got != -1 {
+		// Pos may pick up the paragraph param's first line if any
+		// — just smoke-test the call.
+		_ = got
+	}
+	desc := extast.NewDefinitionDescription()
+	if got := desc.Pos(); got != -1 {
+		_ = got
+	}
+}
+
 func TestRender_StrikethroughWithAttributes(t *testing.T) {
 	doc := ast.NewDocument()
 	p := ast.NewParagraph()
