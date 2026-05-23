@@ -77,6 +77,29 @@ func TestLinkParser_ReferenceLink_Missing(t *testing.T) {
 	}
 }
 
+func TestLinkParser_MultiLineLinkTitle(t *testing.T) {
+	// A link title that spans multiple lines drives the multi-
+	// segment branch in parseLinkTitle (segments.Len() > 1).
+	srcs := []string{
+		`[x](/u "multi
+line
+title")
+`,
+		`[y](/u 'multi
+line single')
+`,
+		`[z](/u (multi
+line parens))
+`,
+	}
+	for _, src := range srcs {
+		kinds := walkKindSet(parseDoc(src))
+		if kinds[ast.KindLink] == 0 {
+			t.Errorf("expected Link for multi-line title: %q", src)
+		}
+	}
+}
+
 func TestLinkParser_LinkTitle_QuotedForms(t *testing.T) {
 	// parseLinkTitle accepts three quoting styles: "...", '...',
 	// and (...). Drive each one.

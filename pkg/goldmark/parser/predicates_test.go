@@ -35,25 +35,27 @@ func TestBlockquote_DirectPredicates(t *testing.T) {
 }
 
 func TestATXHeading_WithAutoHeadingID(t *testing.T) {
-	// WithAutoHeadingID returns a typed option whose
-	// SetHeadingOption / SetParserOption methods are dispatched
-	// only when the option flows through ATXHeadingParser. Drive
-	// both paths by using the option on a NewATXHeadingParser
-	// directly and through WithParserOptions on a constructed
-	// Parser.
-	p := parser.NewATXHeadingParser(parser.WithAutoHeadingID())
+	// WithAutoHeadingID and WithHeadingAttribute both return
+	// HeadingOption types whose SetHeadingOption / SetParserOption
+	// dispatchers fire when threaded through NewATXHeadingParser
+	// or the top-level Parser constructor.
+	p := parser.NewATXHeadingParser(
+		parser.WithAutoHeadingID(),
+		parser.WithHeadingAttribute(),
+	)
 	if p == nil {
 		t.Fatal("constructor returned nil")
 	}
 
 	// Through the parser-options dispatcher: WithAutoHeadingID
 	// also implements parser.Option (SetParserOption), so it can
-	// be threaded through WithParserOptions too.
+	// be threaded through NewParser too.
 	parser.NewParser(
 		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
 		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
 		parser.WithParagraphTransformers(parser.DefaultParagraphTransformers()...),
 		parser.WithAutoHeadingID(),
+		parser.WithHeadingAttribute(),
 	)
 }
 
