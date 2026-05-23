@@ -182,6 +182,22 @@ func TestDelimiters_UnmatchedEmphasisClearsStack(t *testing.T) {
 	}
 }
 
+func TestAttribute_MultipleClasses(t *testing.T) {
+	// Multiple `.classname` tokens in an attribute block extend
+	// the existing class= attribute via findUpdate's success
+	// branch. A single class shortcut hits the findUpdate miss
+	// branch (the !ok -> append fallback).
+	srcs := []string{
+		`# H {.first}`,             // miss branch
+		`# H {.first .second}`,     // miss then success
+		`# H {.a .b .c}`,           // success branch fires twice
+		`# H {.x .y .z .w}`,
+	}
+	for _, src := range srcs {
+		_ = parseWithDefaultsAttr(src)
+	}
+}
+
 func TestAttribute_StringEscapes(t *testing.T) {
 	// parseAttributeString handles JSON-style backslash escapes.
 	// Drive each of the branches: \", \\, \/, \b, \f, \n, \r, \t,
