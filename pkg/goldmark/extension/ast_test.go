@@ -2,11 +2,11 @@ package extension
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/renderer/html"
-	"github.com/yuin/goldmark/testutil"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -73,12 +73,12 @@ a
 			}
 			if !bytes.Equal(c1.Text(s), []byte(cs.T1)) { // nolint: staticcheck
 
-				t.Errorf("%s unmatch:\n%s", cs.Name, testutil.DiffPretty(c1.Text(s), []byte(cs.T1))) // nolint: staticcheck
+				t.Errorf("%s unmatch:\n%s", cs.Name, fmt.Sprintf("got %q want %q", c1.Text(s), []byte(cs.T1))) // nolint: staticcheck
 
 			}
 			if !bytes.Equal(c2.Text(s), []byte(cs.T2)) { // nolint: staticcheck
 
-				t.Errorf("%s(EOF) unmatch: %s", cs.Name, testutil.DiffPretty(c2.Text(s), []byte(cs.T2))) // nolint: staticcheck
+				t.Errorf("%s(EOF) unmatch: %s", cs.Name, fmt.Sprintf("got %q want %q", c2.Text(s), []byte(cs.T2))) // nolint: staticcheck
 
 			}
 		})
@@ -114,7 +114,7 @@ func TestASTInlineNodeText(t *testing.T) {
 			c1 := n.FirstChild().FirstChild()
 			if !bytes.Equal(c1.Text(s), []byte(cs.T1)) { // nolint: staticcheck
 
-				t.Errorf("%s unmatch:\n%s", cs.Name, testutil.DiffPretty(c1.Text(s), []byte(cs.T1))) // nolint: staticcheck
+				t.Errorf("%s unmatch:\n%s", cs.Name, fmt.Sprintf("got %q want %q", c1.Text(s), []byte(cs.T1))) // nolint: staticcheck
 
 			}
 		})
