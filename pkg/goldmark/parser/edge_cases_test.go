@@ -17,9 +17,12 @@ func TestRawHTML_Comment_AllShapes(t *testing.T) {
 	// branch in parseComment by varying the content.
 	cases := []string{
 		"a <!-- short --> b\n",
-		"a <!----> b\n", // empty comment
-		"a <!---- -> b\n", // not a valid close (->) on first attempt
+		"a <!----> b\n",     // empty comment 1 (<!-- ->)
+		"a <!---> b\n",      // empty comment 2 (<!--->)
+		"a <!---- -> b\n",   // not a valid close (->) on first attempt
 		"a <!-- multi\nline --> b\n",
+		"a <!-- multi\nline\nmore line --> b\n",
+		"a <!-- unclosed comment never ends\n",
 	}
 	for _, src := range cases {
 		root := parseWithDefaults(src)
