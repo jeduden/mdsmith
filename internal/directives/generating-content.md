@@ -21,7 +21,7 @@ the row template:
 glob:
   - "plan/*.md"
   - "!plan/proto.md"
-sort: id
+sort: numeric:id
 header: |
   | ID | Title |
   |----|-------|
