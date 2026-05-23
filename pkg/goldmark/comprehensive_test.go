@@ -318,6 +318,22 @@ func TestCorpus_DeepEdgeCases(t *testing.T) {
 	}
 }
 
+func TestCorpus_CRLFLineEndings(t *testing.T) {
+	// Drive the \\r\\n line-break branches in parseBlock.
+	cases := []string{
+		"line one\r\nline two\r\n",
+		"text  \r\nhard break\r\n",                          // [space][space]\r\n
+		"text\\\r\nbackslash break\r\n",                     // \\\r\n
+	}
+	md := goldmark.New()
+	for i, src := range cases {
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("case %d: %v", i, err)
+		}
+	}
+}
+
 func TestCorpus_FootnoteAndSetextEdgeCases(t *testing.T) {
 	cases := []string{
 		// Multiple footnotes referenced multiple times.
