@@ -11,6 +11,15 @@ codecov:
     # the status post until all uploads are in.
     wait_for_ci: true
 
+# Vendored third-party code that ships as a sub-module under
+# internal/goldmark/ (goldmark@v1.8.2 fork, see go.mod replace).
+# mdsmith does not own these tests, so the upstream branch
+# coverage they have is irrelevant to project health; exclude them
+# from every codecov metric so the `changes` per-file gate does
+# not see them as new files to grade.
+ignore:
+  - "internal/goldmark/**"
+
 coverage:
   status:
     project:

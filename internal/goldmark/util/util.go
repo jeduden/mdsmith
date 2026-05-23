@@ -4,6 +4,7 @@ package util
 import (
 	"bytes"
 	"io"
+	"math"
 	"net/url"
 	"regexp"
 	"slices"
@@ -615,13 +616,12 @@ func ResolveNumericReferences(source []byte) []byte {
 							v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 16, 32)
 							cob.Write(source[n:pos])
 							n = i + 1
-							// Explicit bound for uint64 -> rune (int32) conversion: the
-							// hex literal is at most 6 chars (i-start < 7 was checked
-							// upstream of this call site), so v < 16^6 = 2^24, but the
-							// static analyser cannot see that flow. Clamping above the
-							// Unicode max also handles the no-upper-cap pathway from
-							// `i-start < 7` not being enforced here.
-							if v > 0x10FFFF {
+							// Explicit MaxInt32 bound for uint64 -> rune (int32)
+							// conversion to satisfy CodeQL's
+							// go/incorrect-integer-conversion rule. The hex
+							// digit window above already caps v far below this,
+							// but the analyser cannot see that flow.
+							if v > math.MaxInt32 {
 								v = 0xFFFD
 							}
 							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
@@ -636,11 +636,10 @@ func ResolveNumericReferences(source []byte) []byte {
 							v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 0, 32)
 							cob.Write(source[n:pos])
 							n = i + 1
-							// Explicit bound for uint64 -> rune (int32) conversion: the
-							// decimal literal is at most 7 chars (i-start < 8), so
-							// v < 10^7 fits comfortably in int32, but static analysis
-							// cannot see that flow.
-							if v > 0x10FFFF {
+							// Explicit MaxInt32 bound for uint64 -> rune (int32)
+							// conversion (CodeQL go/incorrect-integer-conversion).
+							// The decimal digit window already caps v below this.
+							if v > math.MaxInt32 {
 								v = 0xFFFD
 							}
 							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
