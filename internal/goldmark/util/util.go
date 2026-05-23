@@ -615,6 +615,15 @@ func ResolveNumericReferences(source []byte) []byte {
 							v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 16, 32)
 							cob.Write(source[n:pos])
 							n = i + 1
+							// Explicit bound for uint64 -> rune (int32) conversion: the
+							// hex literal is at most 6 chars (i-start < 7 was checked
+							// upstream of this call site), so v < 16^6 = 2^24, but the
+							// static analyser cannot see that flow. Clamping above the
+							// Unicode max also handles the no-upper-cap pathway from
+							// `i-start < 7` not being enforced here.
+							if v > 0x10FFFF {
+								v = 0xFFFD
+							}
 							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
 							cob.Write(buf[:runeSize])
 							continue
@@ -627,6 +636,13 @@ func ResolveNumericReferences(source []byte) []byte {
 							v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 0, 32)
 							cob.Write(source[n:pos])
 							n = i + 1
+							// Explicit bound for uint64 -> rune (int32) conversion: the
+							// decimal literal is at most 7 chars (i-start < 8), so
+							// v < 10^7 fits comfortably in int32, but static analysis
+							// cannot see that flow.
+							if v > 0x10FFFF {
+								v = 0xFFFD
+							}
 							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
 							cob.Write(buf[:runeSize])
 							continue

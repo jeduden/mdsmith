@@ -885,6 +885,13 @@ func (d *defaultWriter) Write(writer util.BufWriter, source []byte) {
 							v, _ := strconv.ParseUint(util.BytesToReadOnlyString(source[start:i]), 16, 32)
 							d.RawWrite(writer, source[n:pos])
 							n = i + 1
+							// Explicit bound for uint64 -> rune conversion. The
+							// 7-char hex window above caps v at 16^6 = 2^24, well
+							// below int32 max, but the static analyser cannot see
+							// that flow.
+							if v > 0x10FFFF {
+								v = 0xFFFD
+							}
 							escapeRune(writer, rune(v))
 							continue
 						}
@@ -896,6 +903,12 @@ func (d *defaultWriter) Write(writer util.BufWriter, source []byte) {
 							v, _ := strconv.ParseUint(util.BytesToReadOnlyString(source[start:i]), 10, 32)
 							d.RawWrite(writer, source[n:pos])
 							n = i + 1
+							// Explicit bound for uint64 -> rune conversion. The
+							// 8-char decimal window above caps v at 10^7, but the
+							// static analyser cannot see that flow.
+							if v > 0x10FFFF {
+								v = 0xFFFD
+							}
 							escapeRune(writer, rune(v))
 							continue
 						}
