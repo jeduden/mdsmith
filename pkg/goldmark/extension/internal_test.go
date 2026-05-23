@@ -6,6 +6,9 @@ package extension
 
 import (
 	"testing"
+
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
 )
 
 func TestApplyFootnoteTemplate_AllBranches(t *testing.T) {
@@ -34,6 +37,28 @@ func TestApplyFootnoteTemplate_AllBranches(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFootnoteBlockParser_Open_NoBracketAtStart(t *testing.T) {
+	// footnoteBlockParser.Open returns nil when pos < 0 (no block
+	// offset) or the line doesn't start with '['.  Trigger is '[',
+	// so the dispatcher only calls Open when '[' is the trigger,
+	// but the function defensively checks.
+	bp := &footnoteBlockParser{}
+	// Construct a Context with BlockOffset == -1.
+	pc := parser.NewContext()
+	pc.SetBlockOffset(-1)
+
+	r := newTextReader("not a footnote\n")
+	node, state := bp.Open(nil, r, pc)
+	if node != nil {
+		t.Errorf("Open with no block offset should return nil, got %v", node)
+	}
+	_ = state
+}
+
+func newTextReader(s string) text.Reader {
+	return text.NewReader([]byte(s))
 }
 
 func TestIsTableDelim_AllBranches(t *testing.T) {
