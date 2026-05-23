@@ -111,13 +111,23 @@ is the only path.
 
 ## Tasks
 
-1. [ ] Vendor goldmark@v1.8.2 under
+1. [x] Vendor goldmark@v1.8.2 under
    `pkg/goldmark/`. Rewrite imports. `go build
-   ./...` and `go test ./...` stay green with the
-   fork as a drop-in.
-2. [ ] Move plan 197's `linkrefparagraph` into the
+   ./...` and `go test ./pkg/goldmark/...` stay green
+   with the fork as a drop-in.  (Done in the current
+   PR — pkg/goldmark/ is wired via `replace
+   github.com/yuin/goldmark => ./pkg/goldmark` in
+   the root go.mod.  Because pkg/goldmark is a
+   nested module, fork-specific tests run via an
+   explicit `go test ./...` inside pkg/goldmark/ — see
+   the CI workflow.)
+2. [x] Move plan 197's `linkrefparagraph` into the
    vendored `parser/` package as the default link-ref
    transformer. Delete the old standalone package.
+   (Done in the current PR — the transformer is at
+   pkg/goldmark/parser/link_ref.go with the
+   BlockReader-reuse + Reset semantics, and the
+   standalone linkrefparagraph package is removed.)
 3. [ ] Add `pkg/goldmark/arena/` with the typed
    slab allocator. Reset is idempotent.
 4. [ ] Thread the arena through `ast.NewText`,
@@ -148,11 +158,14 @@ Mitigation: an audit pass over every consumer, and
 an opt-in `parser.WithNoArena()` for callers that
 need long-lived AST.
 
-The fork diverges from upstream. Mitigation: the
-equivalence harness gates every change, and a
-quarterly upstream-merge task (logged in
-[secret-rotations.md](../docs/development/secret-rotations.md)
-or a sibling tracking file) keeps drift visible.
+The fork diverges from upstream.
+
+Mitigation: the equivalence harness gates every
+change.  A quarterly upstream-merge task keeps drift
+visible.  This task lives in `plan/` alongside this
+plan rather than in `docs/development/secret-rotations.md`
+— that file is scoped to credential rotation only and
+is not the right home for fork-maintenance cadence.
 
 ## Acceptance Criteria
 

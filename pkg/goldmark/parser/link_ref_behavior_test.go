@@ -2,9 +2,16 @@ package parser_test
 
 // Behavioural tests for the fork-modified
 // linkReferenceParagraphTransformer.Transform. They drive the
-// transformer through the public parser.Parser API so the
-// equivalence with upstream's contract is what's tested, not the
-// (now-mutable) internal state.
+// transformer through the public parser.Parser API and assert
+// CommonMark-spec-conformant behaviour (e.g. that the
+// paragraph is removed when no link-reference definitions
+// survive, that the AST shape matches the spec for known
+// fixtures).  Because the test imports `github.com/yuin/goldmark`
+// which is `replace`-d to this same fork in mdsmith's go.mod,
+// the assertions cover the fork's own contract, not a comparison
+// against a separately-imported upstream goldmark.  Drift from
+// upstream goldmark itself is tracked via the quarterly upstream
+// merge documented in plan/198_goldmark-arena-fork.md.
 
 import (
 	"fmt"

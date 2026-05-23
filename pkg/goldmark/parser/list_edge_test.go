@@ -195,8 +195,7 @@ func TestList_LooseList_BlankLineBetweenItems(t *testing.T) {
 	if list == nil {
 		t.Fatal("no List node found")
 	}
-	if !list.IsTight {
-		// A blank-line-separated list is loose. The IsTight flag
-		// being true here would be unusual.
+	if list.IsTight {
+		t.Error("blank-line-separated list must be marked loose (IsTight=false)")
 	}
 }

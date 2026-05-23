@@ -95,24 +95,35 @@ func TestDedentPositionPadding(t *testing.T) {
 
 func TestFindURLIndex(t *testing.T) {
 	cases := []struct {
+		name string
 		in   string
-		want int
+		// wantPositive reports whether FindURLIndex should
+		// return a positive (>= 0) value.  Some upstream URL
+		// shapes have a precise expected length, but for inputs
+		// that exercise the rejection branches we just assert
+		// the result is < 0.
+		wantPositive bool
 	}{
-		{"https://example.com", 19},
-		{"http://x", 8},
-		{"ftp://server.example.com/path", 29},
-		{"abc", -1},                                    // no scheme
-		{"123://invalid-start", -1},                    // doesn't start with letter
-		{"a:short", -1},                                // scheme too short
-		{strings.Repeat("a", 34) + "://overlong", -1}, // scheme >32 chars
-		{":justcolon", -1},
-		{"", -1},
-		{"a://example", 11}, // 1-char then : -> -1 (i == 1) but here a=letter is OK... wait
+		{"https-with-path", "https://example.com", true},
+		{"http-short-host", "http://x", true},
+		{"ftp-with-path", "ftp://server.example.com/path", true},
+		{"no-scheme", "abc", false},
+		{"numeric-start", "123://invalid-start", false},
+		{"scheme-too-short", "a:short", false},
+		{"scheme-overlong", strings.Repeat("a", 34) + "://overlong", false},
+		{"only-colon", ":justcolon", false},
+		{"empty", "", false},
 	}
 	for _, c := range cases {
-		got := util.FindURLIndex([]byte(c.in))
-		_ = got
-		_ = c.want
+		t.Run(c.name, func(t *testing.T) {
+			got := util.FindURLIndex([]byte(c.in))
+			if c.wantPositive && got < 0 {
+				t.Errorf("FindURLIndex(%q) = %d, want >= 0", c.in, got)
+			}
+			if !c.wantPositive && got >= 0 {
+				t.Errorf("FindURLIndex(%q) = %d, want < 0", c.in, got)
+			}
+		})
 	}
 }
 
