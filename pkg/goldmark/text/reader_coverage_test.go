@@ -114,3 +114,26 @@ func TestReader_SkipBlankLines(t *testing.T) {
 		t.Errorf("SkipBlankLines reported %d lines, want >= 1", lines)
 	}
 }
+
+func TestReadRuneReader_AllBranches(t *testing.T) {
+	// readRuneReader has branches for nil line (EOF), RuneError
+	// (invalid UTF-8 also EOF), and normal rune decode.
+
+	// Empty reader -> EOF.
+	r := NewReader([]byte{})
+	if _, _, err := readRuneReader(r); err == nil {
+		t.Error("readRuneReader on empty source should return error")
+	}
+
+	// Invalid UTF-8 -> EOF.
+	r = NewReader([]byte{0xFF, 0xFE})
+	if _, _, err := readRuneReader(r); err == nil {
+		t.Error("readRuneReader on invalid UTF-8 should return error")
+	}
+
+	// Normal rune.
+	r = NewReader([]byte("a"))
+	if rn, _, err := readRuneReader(r); err != nil || rn != 'a' {
+		t.Errorf("readRuneReader('a') = %v %v, want 'a' nil", rn, err)
+	}
+}
