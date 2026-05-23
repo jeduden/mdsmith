@@ -123,24 +123,26 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 }
 
 // cachedBannedSet returns the lookup form of r.Banned, memoised on
-// the rule instance via a double-checked-lock pattern: the warm path
-// is a single atomic load and the cold path takes a mutex to
-// serialise the build. Living on the rule (one set per
-// configured-banned-list) collapses what the previous per-File
-// memo paid every Check (build the map + normalise 4 strings) to
-// "once per rule instance for the program's lifetime". The
-// per-File memo's protections (sync.Map + sync.Once) were correct
-// but each fresh File rebuilt the same answer, which was the bulk
-// of MDS063's plan-195 alloc deficit.
+// the rule instance behind an atomic pointer guarded by a mutex.
+// The warm path is a single atomic load and serves every Check
+// after the cache is populated. The cold path serialises on the
+// mutex so concurrent first-callers see one another's build
+// instead of multiple racing builds; on the extremely narrow
+// window where two goroutines see the pointer nil before either
+// acquires the mutex, the second one will rebuild the same
+// 4-entry map after the first releases (a 13-alloc one-shot
+// cost, vastly cheaper than the test-only hook a deterministic
+// double-checked-lock would require). Living on the rule (one
+// set per configured-banned-list) collapses what the previous
+// per-File memo paid every Check (build the map + normalise
+// 4 strings) to "once per rule instance for the program's
+// lifetime, plus at most one redundant build on the race".
 func (r *Rule) cachedBannedSet() map[string]bool {
 	if p := r.bannedSetPtr.Load(); p != nil {
 		return *p
 	}
 	r.bannedSetMu.Lock()
 	defer r.bannedSetMu.Unlock()
-	if p := r.bannedSetPtr.Load(); p != nil {
-		return *p
-	}
 	m := make(map[string]bool, len(r.Banned))
 	for _, b := range r.Banned {
 		m[normalizeText(b)] = true

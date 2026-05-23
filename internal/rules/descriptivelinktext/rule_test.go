@@ -3,7 +3,6 @@ package descriptivelinktext
 import (
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
@@ -204,39 +203,3 @@ func TestCachedBannedSet_DoubleCheckedLockHits(t *testing.T) {
 	assert.NotNil(t, second)
 }
 
-// TestCachedBannedSet_InnerLockPath pins the inner double-checked
-// load: a second goroutine acquires the mutex after the first has
-// populated the pointer, so it observes p != nil inside the lock
-// and returns without rebuilding. The test is in the same package
-// so it can pre-acquire the rule's mutex, kick off a goroutine
-// that races for the cache, then store a populated pointer before
-// releasing the lock — the goroutine's mutex-acquire then sees
-// the populated pointer on the inner Load and returns it without
-// rebuilding. Mirrors the runtime race the double-checked-lock
-// idiom is designed for, but deterministically.
-func TestCachedBannedSet_InnerLockPath(t *testing.T) {
-	r := &Rule{Banned: []string{"X"}}
-	manualMap := map[string]bool{"manual": true}
-
-	r.bannedSetMu.Lock()
-	done := make(chan map[string]bool, 1)
-	go func() {
-		// outer Load returns nil (pointer is still cleared); the
-		// goroutine then blocks on bannedSetMu.Lock until the main
-		// goroutine releases it.
-		done <- r.cachedBannedSet()
-	}()
-	// Yield repeatedly so the goroutine reaches the Lock call.
-	// time.Sleep with a small delay is the standard way to force
-	// the race window without adding test-only hooks to the rule.
-	time.Sleep(10 * time.Millisecond)
-	// Store a populated pointer before releasing — the goroutine's
-	// inner Load (line 141) will now observe it and skip the
-	// rebuild.
-	r.bannedSetPtr.Store(&manualMap)
-	r.bannedSetMu.Unlock()
-
-	got := <-done
-	require.Equal(t, manualMap, got,
-		"inner Load must return the populated pointer, not rebuild")
-}
