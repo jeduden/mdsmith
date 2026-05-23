@@ -435,6 +435,27 @@ func TestRender_EmphasisWithAttributes(t *testing.T) {
 	}
 }
 
+func TestRender_CodeSpanWithAttributes(t *testing.T) {
+	// renderCodeSpan's Attributes() != nil branch.
+	src := []byte("hello")
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	cs := ast.NewCodeSpan()
+	cs.SetAttribute([]byte("class"), []byte("cs"))
+	cs.AppendChild(cs, ast.NewTextSegment(text.NewSegment(0, 5)))
+	p.AppendChild(p, cs)
+	doc.AppendChild(doc, p)
+
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, src, doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `class="cs"`) {
+		t.Errorf("CodeSpan attribute not rendered: %q", buf.String())
+	}
+}
+
 func TestRender_CodeSpanWithRawTextSegment(t *testing.T) {
 	// Code span containing a RawTextSegment exercises the raw
 	// inline write path in renderCodeSpan.
