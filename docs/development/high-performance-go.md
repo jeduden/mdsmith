@@ -9,9 +9,11 @@ summary: >-
 # High-Performance Go
 
 mdsmith's hot path is the rule set running over every file
-in the workspace. A small per-`Check` regression — one
-extra allocation, one O(n) rescan — multiplies by tens of
-thousands. This page is the contributor playbook for
+in the workspace. The Large benchmark gate parses 600 files
+through the full rule set. One extra alloc per `Check` is
+tens of thousands of extra allocs per `mdsmith check`. One
+accidental O(n) rescan inside a rule turns a 0.8 s run into
+several seconds. This page is the contributor playbook for
 keeping that path fast.
 
 The per-rule ≤ 10 alloc ceiling and the tiered CI gates
