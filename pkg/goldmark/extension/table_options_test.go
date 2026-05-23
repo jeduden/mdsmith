@@ -74,3 +74,24 @@ func TestTable_DefaultExtenderPath(t *testing.T) {
 		t.Errorf("default Extender path produced no <table>: %q", buf.String())
 	}
 }
+
+func TestTable_EscapedPipeInCell_DrivesASTTransformer(t *testing.T) {
+	// `\|` inside a cell — and especially inside a code span — is
+	// what makes tableASTTransformer.Transform do real work: it
+	// rewrites the inline AST so the pipe becomes a literal rather
+	// than a column delimiter. Without this case the transformer
+	// returns immediately on the lst==nil branch.
+	src := "| h1 | h2 |\n|----|----|\n| `a\\|b` | c |\n"
+	md := goldmark.New(goldmark.WithExtensions(extension.Table))
+	var buf bytes.Buffer
+	if err := md.Convert([]byte(src), &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "<table>") {
+		t.Errorf("table missing in output: %q", out)
+	}
+	if !strings.Contains(out, "<code>") {
+		t.Errorf("code span missing in output: %q", out)
+	}
+}
