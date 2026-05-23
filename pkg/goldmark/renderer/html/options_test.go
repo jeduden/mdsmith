@@ -243,6 +243,25 @@ func TestRender_HeadingWithExtraAttributes(t *testing.T) {
 	}
 }
 
+func TestRender_InlineRawHTMLSafeUnsafe(t *testing.T) {
+	// renderRawHTML has Unsafe and safe branches.  Inline raw
+	// HTML appears mid-paragraph as a RawHTML AST node (vs the
+	// block-level HTMLBlock).
+	src := "paragraph with <span class=\"x\">inline</span> raw html\n"
+
+	// Safe (default): emit the omit comment.
+	outSafe := convertWithOpts(t, src)
+	if !strings.Contains(outSafe, "raw HTML omitted") {
+		t.Errorf("safe should omit raw HTML: %q", outSafe)
+	}
+
+	// Unsafe: pass through.
+	outUnsafe := convertWithOpts(t, src, html.WithUnsafe())
+	if !strings.Contains(outUnsafe, "<span") {
+		t.Errorf("unsafe should pass through <span>: %q", outUnsafe)
+	}
+}
+
 func TestRender_CodeSpanMultiLine(t *testing.T) {
 	// A multi-line code span has Text children whose Value ends
 	// in '\n'; renderCodeSpan replaces the newline with a single
