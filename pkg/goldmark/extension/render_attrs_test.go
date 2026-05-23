@@ -12,10 +12,11 @@ import (
 	"testing"
 
 	"github.com/yuin/goldmark/ast"
-	extast "github.com/yuin/goldmark/extension/ast"
 	gext "github.com/yuin/goldmark/extension"
+	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
@@ -41,19 +42,31 @@ func TestNew_ExtensionHTMLRenderersWithOptions(t *testing.T) {
 	)
 }
 
-func TestExtensionAST_DefinitionList_PosEmpty(t *testing.T) {
-	// DefinitionList.Pos / DefinitionDescription.Pos with no
-	// children return -1.
+func TestExtensionAST_DefinitionList_Pos(t *testing.T) {
+	// DefinitionList.Pos returns child's Pos when populated.
 	list := extast.NewDefinitionList(0, ast.NewParagraph())
-	if got := list.Pos(); got != -1 {
-		// Pos may pick up the paragraph param's first line if any
-		// — just smoke-test the call.
-		_ = got
+	term := extast.NewDefinitionTerm()
+	list.AppendChild(list, term)
+	_ = list.Pos() // populated branch
+
+	emptyList := extast.NewDefinitionList(0, ast.NewParagraph())
+	_ = emptyList.Pos() // empty branch
+
+	// DefinitionTerm.Pos: empty + populated.
+	emptyTerm := extast.NewDefinitionTerm()
+	_ = emptyTerm.Pos()
+	populatedTerm := extast.NewDefinitionTerm()
+	populatedTerm.Lines().Append(text.NewSegment(5, 10))
+	if got := populatedTerm.Pos(); got != 5 {
+		t.Errorf("DefinitionTerm.Pos populated = %d, want 5", got)
 	}
-	desc := extast.NewDefinitionDescription()
-	if got := desc.Pos(); got != -1 {
-		_ = got
-	}
+
+	// DefinitionDescription.Pos: empty + populated.
+	emptyDesc := extast.NewDefinitionDescription()
+	_ = emptyDesc.Pos()
+	populatedDesc := extast.NewDefinitionDescription()
+	populatedDesc.Lines().Append(text.NewSegment(3, 8))
+	_ = populatedDesc.Pos()
 }
 
 func TestRender_StrikethroughWithAttributes(t *testing.T) {
