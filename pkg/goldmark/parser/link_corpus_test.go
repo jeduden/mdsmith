@@ -177,6 +177,27 @@ func TestLinkParser_OverlongReferenceLabel(t *testing.T) {
 	_ = parseDoc(src)
 }
 
+func TestLinkRefDefinition_EdgeShapes(t *testing.T) {
+	// parseLinkReferenceDefinition has many error paths. Drive
+	// each via specific malformed reference definitions.
+	cases := []string{
+		`[ref]: /url`,                       // missing newline
+		`[ref]: /url "title"` + "\n",        // happy path
+		`[ref]: /url "unclosed title`,        // unclosed quote, no newline
+		`[ref]: /url 'unclosed`,              // unclosed single quote
+		"   [ref]: /url\n",                    // 3-space indent OK
+		"    [ref]: /url\n",                   // 4-space indent NOT OK (code block)
+		"[]: empty-label\n",                   // empty label
+		"[unclosed: /url\n",                  // no closing ]
+		"[label] no colon\n",                 // no colon
+		"[label]: no\\ destination\\ ok\n",   // weird destination
+		"[label]:\n",                          // empty destination
+	}
+	for _, src := range cases {
+		_ = parseDoc(src + "\n[label]: trailing test\n")
+	}
+}
+
 func TestLinkParser_QuadrupleNestedBracket(t *testing.T) {
 	// Drive popLinkBottom's default switch arm (slice len > 2) via
 	// 4+ nested open brackets, then resolve them in order.
