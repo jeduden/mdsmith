@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -254,12 +255,18 @@ func TestDefaultCacheDir_AppendsCorpusctlSegment(t *testing.T) {
 }
 
 // TestDefaultCacheDir_TmpFallbackWhenUserCacheDirFails covers
-// the os.UserCacheDir-failure branch. UserCacheDir reads
-// $XDG_CACHE_HOME or $HOME on Linux; unsetting both forces it
-// to error, so the helper falls back to os.TempDir().
+// the os.UserCacheDir-failure branch via the userCacheDirFn
+// seam, so the test is portable (UserCacheDir's env-var contract
+// differs on Windows) and parallel-safe (no t.Setenv mutates
+// process-wide HOME/XDG_CACHE_HOME while sibling t.Parallel
+// tests observe them).
 func TestDefaultCacheDir_TmpFallbackWhenUserCacheDirFails(t *testing.T) {
-	t.Setenv("XDG_CACHE_HOME", "")
-	t.Setenv("HOME", "")
+	t.Parallel()
+	prev := userCacheDirFn
+	t.Cleanup(func() { userCacheDirFn = prev })
+	userCacheDirFn = func() (string, error) {
+		return "", errors.New("forced failure")
+	}
 	got := defaultCacheDir()
 	if !strings.Contains(got, os.TempDir()) {
 		t.Errorf("defaultCacheDir() = %q, must fall back to TempDir %q",
@@ -267,5 +274,21 @@ func TestDefaultCacheDir_TmpFallbackWhenUserCacheDirFails(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "corpusctl") {
 		t.Errorf("defaultCacheDir() = %q, must end in 'corpusctl'", got)
+	}
+}
+
+// TestDefaultCacheDir_EmptyUserCacheDirAlsoFallsBack covers the
+// secondary `userCacheDir == ""` guard. UserCacheDir can return
+// "" + nil on platforms where the env is set to "", and the
+// helper must treat that the same as an error.
+func TestDefaultCacheDir_EmptyUserCacheDirAlsoFallsBack(t *testing.T) {
+	t.Parallel()
+	prev := userCacheDirFn
+	t.Cleanup(func() { userCacheDirFn = prev })
+	userCacheDirFn = func() (string, error) { return "", nil }
+	got := defaultCacheDir()
+	if !strings.Contains(got, os.TempDir()) {
+		t.Errorf("defaultCacheDir() = %q, must fall back to TempDir %q",
+			got, os.TempDir())
 	}
 }

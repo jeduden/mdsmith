@@ -13,8 +13,15 @@ import (
 // otherwise-correct hosts. The release workflow's PyPI job
 // installs a `python3` symlink, but the Go test environment
 // (developer machines, the test job) may only have python3.
+//
+// execLookPath is a package-level seam over [exec.LookPath] so
+// tests can drive both branches portably — bare `python` files
+// fail LookPath on Windows because of PATHEXT, and t.Setenv on
+// PATH races with parallel tests in this package.
+var execLookPath = exec.LookPath
+
 func pythonExecutable() string {
-	if _, err := exec.LookPath("python"); err == nil {
+	if _, err := execLookPath("python"); err == nil {
 		return "python"
 	}
 	return "python3"

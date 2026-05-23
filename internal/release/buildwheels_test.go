@@ -355,23 +355,30 @@ func TestBuildWheelsLayout(t *testing.T) {
 
 // --- pythonExecutable ---
 
-// TestPythonExecutable_FallbackBranches pins both branches:
-// when `python` is on PATH, it is preferred; otherwise the helper
-// returns `python3`. Driven via a temp PATH so each branch fires
-// regardless of the host's actual layout.
+// TestPythonExecutable_FallbackBranches pins both branches via
+// the execLookPath seam. Driving the helper through a stubbed
+// LookPath function avoids two portability issues: bare `python`
+// files don't satisfy LookPath on Windows because of PATHEXT,
+// and t.Setenv("PATH", …) races with parallel tests in this
+// package that read PATH while this one runs.
 func TestPythonExecutable_FallbackBranches(t *testing.T) {
 	t.Run("python on PATH preferred", func(t *testing.T) {
-		dir := t.TempDir()
-		bin := filepath.Join(dir, "python")
-		require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755))
-		t.Setenv("PATH", dir)
+		prev := execLookPath
+		t.Cleanup(func() { execLookPath = prev })
+		execLookPath = func(name string) (string, error) {
+			if name == "python" {
+				return "/usr/bin/python", nil
+			}
+			return "", exec.ErrNotFound
+		}
 		assert.Equal(t, "python", pythonExecutable())
 	})
 	t.Run("falls back to python3", func(t *testing.T) {
-		// PATH with no python or python3 — the helper still returns
-		// the python3 literal, because exec.LookPath only signals
-		// the preference, not the fallback's existence.
-		t.Setenv("PATH", t.TempDir())
+		prev := execLookPath
+		t.Cleanup(func() { execLookPath = prev })
+		execLookPath = func(string) (string, error) {
+			return "", exec.ErrNotFound
+		}
 		assert.Equal(t, "python3", pythonExecutable())
 	})
 }

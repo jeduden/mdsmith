@@ -226,9 +226,9 @@ func CountWords(text string) int {
 // adjacent text segments only counts as a word break if [ExtractPlainText]
 // would have emitted whitespace there — i.e., it carries the inWord state
 // across segments so back-to-back writes coalesce. CountWordsInNode
-// must agree with CountWords(ExtractPlainText(node, source)) byte for
-// byte; an equivalence harness in the rule package pins this on every
-// fixture paragraph.
+// must return the same count as CountWords(ExtractPlainText(node, source))
+// for every input; an equivalence harness in the rule package pins this
+// on every fixture paragraph.
 //
 // Used by paragraph-readability's minWords gate: most synthetic-corpus
 // paragraphs fall below the gate and the materialised ExtractPlainText

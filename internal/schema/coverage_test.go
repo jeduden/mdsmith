@@ -1557,11 +1557,16 @@ func TestValidate_SkipsCUECheckWhenFmIsCUE(t *testing.T) {
 func TestResolveDir_AbsoluteCleansPath(t *testing.T) {
 	dir := t.TempDir()
 	got := resolveDir(dir)
-	require.NotEmpty(t, got)
-	// EvalSymlinks on macOS resolves /var → /private/var, so just
-	// check the returned path exists and shares a suffix.
+	require.NotEmpty(t, got, "resolveDir must return a non-empty path")
 	require.True(t, filepath.IsAbs(got),
 		"resolveDir must return absolute path, got %q", got)
+	// Stat the result so a future regression that returns a non-
+	// existent path (e.g., dropping the EvalSymlinks call) is
+	// caught here. EvalSymlinks on macOS resolves /var to
+	// /private/var, so we do not assert the prefix.
+	if _, err := os.Stat(got); err != nil {
+		t.Errorf("resolveDir returned %q which does not exist: %v", got, err)
+	}
 }
 
 // TestResolveDir_EvalSymlinksFailureFallsBackToClean covers the

@@ -80,6 +80,17 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// the ExtractPlainText cost; MDS024 still materialises the text
 	// per paragraph via ExtractText because every paragraph reaches
 	// the segmenter.
+	//
+	// Note: MDS024 stays on the bare collector even though it
+	// ALWAYS materialises text. The
+	// [astutil.CollectSectionParagraphsWithText] variant would
+	// share the materialisation with MDS057/MDS058 when those
+	// opt-in rules run, but it also adds a per-Check slice copy
+	// + interface boxing for the memo store — enough to put this
+	// rule over its 9-alloc/op budget (plan 193). The bare
+	// collector keeps MDS024 inside the budget; the extra
+	// extraction cost when MDS057/MDS058 are co-enabled is paid
+	// per-paragraph in the bare ExtractText calls.
 	for _, p := range astutil.CollectSectionParagraphs(f) {
 		diags = append(diags, r.checkParagraph(p.ExtractText(f.Source), p.Line, f.Path)...)
 	}

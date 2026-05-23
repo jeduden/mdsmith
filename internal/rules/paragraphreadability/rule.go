@@ -67,7 +67,14 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	for _, p := range astutil.CollectSectionParagraphs(f) {
 		var text string
 		var words int
-		if len(r.Placeholders) > 0 {
+		usingPlaceholders := len(r.Placeholders) > 0
+		if usingPlaceholders {
+			// Masking is a string transform with no AST equivalent;
+			// materialise the text, mask, and count on the result.
+			// The masked string feeds the index below — even if it
+			// happens to be empty, we MUST NOT fall back to
+			// unmasked text or the index would see content the
+			// caller asked to opaque-out.
 			text = placeholders.MaskBodyTokens(p.ExtractText(f.Source), r.Placeholders)
 			words = mdtext.CountWords(text)
 		} else {
@@ -76,7 +83,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if words < minWords {
 			continue
 		}
-		if text == "" {
+		if !usingPlaceholders {
+			// Non-placeholder path gated on word count above; only
+			// now do we pay for the text. (Placeholders path
+			// already has the masked text in `text`.)
 			text = p.ExtractText(f.Source)
 		}
 

@@ -30,25 +30,34 @@ type SectionHeading struct {
 // when present. Production code reaches the text through
 // ExtractText, never the field; the field is kept exported to keep
 // existing literals compiling.
+//
+// HasText flags Text as an authoritative cache, including the
+// legitimately-empty case (an image-only paragraph extracts to
+// ""). [CollectSectionParagraphsWithText] sets it so per-heading
+// SectionBody sweeps hit the cache for every paragraph,
+// regardless of whether the extracted text is empty.
 type SectionParagraph struct {
-	Line int
-	Node ast.Node
-	Text string
+	Line    int
+	Node    ast.Node
+	Text    string
+	HasText bool
 }
 
-// ExtractText returns the paragraph's plain text. If Text is
-// pre-populated (a test literal, a hand-constructed SectionParagraph)
-// it is returned verbatim; otherwise the text is extracted from Node
-// against source — the same chain CollectSectionParagraphs used to
-// run eagerly. The Text shortcut keeps existing tests literally
-// compiling; new code should not rely on it and should pass source.
+// ExtractText returns the paragraph's plain text. If HasText is
+// set the cached Text is returned verbatim (including the empty
+// string for image-only paragraphs). Otherwise, a non-empty Text
+// short-circuit handles test literals built without an AST node,
+// and the final fallback extracts from Node against source.
 //
-// Precondition: at least one of Text or Node must be set. Calling
-// on a zero-value SectionParagraph panics inside
-// [mdtext.ExtractPlainText]'s nil-node dereference. Production
-// paragraphs from [CollectSectionParagraphs] always have Node set;
-// test literals set Text and hit the shortcut.
+// Precondition: at least one of Text/HasText or Node must be set.
+// Calling on a zero-value SectionParagraph (no Text, no Node)
+// panics inside [mdtext.ExtractPlainText]'s nil-node dereference.
+// Production paragraphs from [CollectSectionParagraphs] always
+// have Node set; test literals set Text and hit the shortcut.
 func (p SectionParagraph) ExtractText(source []byte) string {
+	if p.HasText {
+		return p.Text
+	}
 	if p.Text != "" {
 		return p.Text
 	}
@@ -160,13 +169,16 @@ func CollectSectionParagraphsWithText(f *lint.File) []SectionParagraph {
 // returned by [CollectSectionParagraphs]. Built on top of the
 // table-filtered memo so the AST walk runs once even when both memos
 // are accessed. The upstream collector guarantees Text is empty on
-// every entry, so this builder unconditionally fills it.
+// every entry, so this builder unconditionally fills it and sets
+// HasText so subsequent ExtractText calls hit the cache even when
+// the extracted text is legitimately empty.
 func buildSectionParagraphsWithText(f *lint.File) any {
 	src := CollectSectionParagraphs(f)
 	out := make([]SectionParagraph, len(src))
 	for i, p := range src {
 		out[i] = p
 		out[i].Text = mdtext.ExtractPlainText(p.Node, f.Source)
+		out[i].HasText = true
 	}
 	return out
 }

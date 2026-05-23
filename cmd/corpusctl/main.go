@@ -227,8 +227,14 @@ func isUsageError(err error) bool {
 	return errors.As(err, &target)
 }
 
+// userCacheDirFn is a package-level seam over [os.UserCacheDir] so
+// tests can drive the error branch in defaultCacheDir without
+// touching process-wide env vars (which would race with other
+// tests in this package that call t.Parallel).
+var userCacheDirFn = os.UserCacheDir
+
 func defaultCacheDir() string {
-	userCacheDir, err := os.UserCacheDir()
+	userCacheDir, err := userCacheDirFn()
 	if err != nil || userCacheDir == "" {
 		return filepath.Join(os.TempDir(), "corpusctl")
 	}
