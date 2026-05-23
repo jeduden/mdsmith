@@ -372,3 +372,61 @@ func TestCategory(t *testing.T) {
 	r := &Rule{}
 	assert.NotEmpty(t, r.Category())
 }
+
+// --- Direct unit pin for (*Rule).Fix ---
+
+// TestFix_DirectlyDrivesFormatLines pins the method body directly:
+// it must collect code-block lines from the file and forward to
+// tablefmt.FormatLines with the rule's config. Driven on a small
+// hand-built source with one non-canonical table; the asserted
+// output is the byte-exact canonical layout under the default
+// Pad=1 / SeparatorSpaced shape so a regression in either the
+// CollectCodeBlockLines wiring or the FormatLines call site
+// fails here, not in a downstream integration test.
+func TestFix_DirectlyDrivesFormatLines(t *testing.T) {
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced}
+	src := "|a|b|\n|---|---|\n|1|2|\n"
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	got := string(r.Fix(f))
+	want := "| a   | b   |\n| --- | --- |\n| 1   | 2   |\n"
+	if got != want {
+		t.Errorf("Fix() = %q, want %q", got, want)
+	}
+}
+
+// TestFix_SkipsTablesInsideCodeBlock pins the CollectCodeBlockLines
+// wiring: a table-shaped block inside a fenced code block must NOT
+// be rewritten. If Fix dropped the codeLines argument to
+// FormatLines, this test would fail because the inner pipe-text
+// would be reformatted.
+func TestFix_SkipsTablesInsideCodeBlock(t *testing.T) {
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorSpaced}
+	src := "```\n|a|b|\n|---|---|\n|1|2|\n```\n"
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	got := string(r.Fix(f))
+	// Fenced content must pass through byte-for-byte.
+	if got != src {
+		t.Errorf("Fix() rewrote content inside fenced block\n  got:  %q\n  want: %q",
+			got, src)
+	}
+}
+
+// TestFix_RespectsSeparatorStyleConfig pins that r.config() forwards
+// the rule's SeparatorStyle field through to FormatLines. Without
+// this, a regression that hard-coded the style at the call site
+// would only show in compact-style fixtures.
+func TestFix_RespectsSeparatorStyleConfig(t *testing.T) {
+	r := &Rule{Pad: 1, SeparatorStyle: tablefmt.SeparatorCompact}
+	src := "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	got := string(r.Fix(f))
+	// Compact style fills the cell area with dashes, absorbing
+	// the pad spaces.
+	if !strings.Contains(got, "|-----|-----|") {
+		t.Errorf("Fix() with SeparatorCompact did not produce compact "+
+			"separator row\n  got: %q", got)
+	}
+}
