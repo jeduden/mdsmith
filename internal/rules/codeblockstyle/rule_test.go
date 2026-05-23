@@ -282,8 +282,15 @@ func TestCheck_NilFile_NoDiagnostics(t *testing.T) {
 	assert.Nil(t, r.Check(&lint.File{}))
 }
 
-func TestFix_NilFile_ReturnsSource(t *testing.T) {
+func TestFix_NilFile_ReturnsNil(t *testing.T) {
 	r := &Rule{Style: "fenced"}
+	assert.Nil(t, r.Fix(nil))
+}
+
+func TestFix_FileWithNilAST_ReturnsSource(t *testing.T) {
+	r := &Rule{Style: "fenced"}
+	// Zero-valued File has AST == nil and Source == nil; Fix must not
+	// dereference f when f is non-nil but f.AST is nil.
 	assert.Nil(t, r.Fix(&lint.File{}))
 }
 

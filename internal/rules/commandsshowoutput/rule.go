@@ -68,7 +68,10 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // Fix implements rule.FixableRule. Each offending block has every "$ "
 // prefix stripped from its non-blank content lines.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f == nil || f.AST == nil {
+	if f == nil {
+		return nil
+	}
+	if f.AST == nil {
 		return f.Source
 	}
 

@@ -226,9 +226,15 @@ func TestSplitLeadingWhitespace(t *testing.T) {
 
 // --- Defensive paths ---
 
-func TestFix_NilFile_ReturnsSource(t *testing.T) {
+func TestFix_NilFile_ReturnsNil(t *testing.T) {
 	r := &Rule{}
-	// f.Source is nil for a zero-valued File.
+	assert.Nil(t, r.Fix(nil))
+}
+
+func TestFix_FileWithNilAST_ReturnsSource(t *testing.T) {
+	r := &Rule{}
+	// Zero-valued File has AST == nil and Source == nil; Fix must not
+	// dereference f when f is non-nil but f.AST is nil.
 	assert.Nil(t, r.Fix(&lint.File{}))
 }
 

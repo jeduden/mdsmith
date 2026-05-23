@@ -74,7 +74,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // container, and computing the correct outer prefix is left to the
 // author.
 func (r *Rule) Fix(f *lint.File) []byte {
-	if f == nil || f.AST == nil {
+	if f == nil {
+		return nil
+	}
+	if f.AST == nil {
 		return f.Source
 	}
 	blocks := collectBlocks(f)
@@ -101,20 +104,21 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	rangeIdx := func(lineNum int) int {
-		for i, rng := range ranges {
-			if lineNum >= rng.firstLine && lineNum <= rng.lastLine {
-				return i
-			}
-		}
-		return -1
-	}
-
+	// ranges are appended in source order by collectBlocks (goldmark
+	// walks the AST top-to-bottom), so the rewrite needs only a single
+	// pass over f.Lines with an advancing range pointer — O(lines +
+	// blocks) instead of O(lines × blocks).
 	out := make([]string, 0, len(f.Lines)+2*len(ranges))
+	ri := 0
 	for i, raw := range f.Lines {
 		lineNum := i + 1
-		ri := rangeIdx(lineNum)
-		if ri < 0 {
+		for ri < len(ranges) && ranges[ri].lastLine < lineNum {
+			ri++
+		}
+		inRange := ri < len(ranges) &&
+			lineNum >= ranges[ri].firstLine &&
+			lineNum <= ranges[ri].lastLine
+		if !inRange {
 			out = append(out, string(raw))
 			continue
 		}
