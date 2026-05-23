@@ -59,6 +59,19 @@ func TestATXHeading_WithAutoHeadingID(t *testing.T) {
 	)
 }
 
+func TestATXHeading_EmptyContentAndAllHashes(t *testing.T) {
+	// Drive the specific hl.Len()==0 and ### ### branches.
+	cases := []string{
+		"# \n",          // hl.Len() == 0 after trim
+		"### ###\n",     // line[0] == '#' after closing hash trim
+		"## ###\n",
+		"# \\#\n",       // escaped hash at end
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestATXHeading_EdgeCases(t *testing.T) {
 	// Drive Open branches that aren't reached by normal `# Title\n`:
 	// - 7+ hashes (level > 6, not a heading)
