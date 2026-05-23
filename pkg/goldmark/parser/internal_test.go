@@ -335,14 +335,28 @@ func TestDelimiter_CalcComsumption_AllBranches(t *testing.T) {
 func TestPreserveLeadingTabInCodeBlock_Direct(t *testing.T) {
 	// preserveLeadingTabInCodeBlock has a conditional that
 	// rewrites segment.Padding and start when the back-tracked
-	// LineOffset matches offsetWithPadding.  Synthesise a Reader
-	// that has consumed past a tab and call the function
-	// directly.
-	src := []byte("\tabc\n")
-	r := text.NewReader(src)
-	r.Advance(1) // past the tab
-	seg := text.NewSegmentPadding(1, 5, 3)
-	preserveLeadingTabInCodeBlock(&seg, r, 0)
+	// LineOffset matches offsetWithPadding.  Drive both branches:
+	//   - offsetWithPadding == LineOffset (mutation path)
+	//   - mismatch (no-op path)
+	t.Run("mutation-path", func(t *testing.T) {
+		// Synthesise state where stepping back 1 char yields the
+		// same LineOffset (e.g. preceding tab consumed as
+		// padding).
+		src := []byte("\tabc\n")
+		r := text.NewReader(src)
+		r.Advance(1) // past the tab; lineOffset = 4
+		seg := text.NewSegmentPadding(1, 5, 3)
+		preserveLeadingTabInCodeBlock(&seg, r, 0)
+	})
+	t.Run("noop-path", func(t *testing.T) {
+		// Plain ASCII source — back-tracking 1 char yields
+		// LineOffset-1, not matching.
+		src := []byte("abcdef\n")
+		r := text.NewReader(src)
+		r.Advance(3) // mid-line
+		seg := text.NewSegmentPadding(3, 7, 0)
+		preserveLeadingTabInCodeBlock(&seg, r, 0)
+	})
 }
 
 // recordingPrioritized constructs a util.PrioritizedValue for an
