@@ -12,8 +12,10 @@ import (
 	"testing"
 
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/util"
 )
 
 func convertWithOpts(t *testing.T, src string, opts ...renderer.Option) string {
@@ -128,6 +130,34 @@ func TestWriter_RawWrite_SecureWrite_Write(t *testing.T) {
 	_ = bw.Flush()
 	if !strings.Contains(buf.String(), "&amp;") {
 		t.Errorf("Write should preserve &amp;: %q", buf.String())
+	}
+}
+
+func TestRender_StringNode(t *testing.T) {
+	// ast.String nodes are synthesised by some extensions but the
+	// stock parser path does not emit them. Build a tiny AST with
+	// a String child of a Paragraph and render it via the renderer.
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	doc.AppendChild(doc, p)
+
+	plain := ast.NewString([]byte("plain"))
+	p.AppendChild(p, plain)
+	codeStr := ast.NewString([]byte("code"))
+	codeStr.SetCode(true)
+	p.AppendChild(p, codeStr)
+	raw := ast.NewString([]byte("<x>"))
+	raw.SetRaw(true)
+	p.AppendChild(p, raw)
+
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "plain") || !strings.Contains(out, "code") {
+		t.Errorf("renderer output missing expected content: %q", out)
 	}
 }
 
