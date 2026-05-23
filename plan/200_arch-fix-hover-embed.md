@@ -1,7 +1,7 @@
 ---
 id: 200
 title: Move docs/ embed out of internal/lsp/hover.go
-status: "🔲"
+status: "✅"
 summary: >-
   Fix the DIP violation where internal/lsp/hover.go
   imports a Go package from docs/guides/directives.
@@ -23,29 +23,52 @@ between helpers and [internal/lsp](../internal/lsp).
 Moving the embed to `internal/directives`
 follows the `internal/concepts` pattern.
 
+The full user guides in
+[docs/guides/directives/](../docs/guides/directives/)
+stay put. They are indexed by the
+`docs/guides/index.md` catalog and linked
+from rule READMEs.
+
+The new
+[internal/directives/](../internal/directives/)
+holds short, hover-sized stubs. This is the
+`internal/concepts/placeholder-grammar.md`
+pattern: same filename as the guide, but
+separate Go-private content. Each stub links
+out to the matching full guide.
+
 ## Tasks
 
-1. Create `internal/directives/` with a
-   `directives.go` file that embeds the
-   content from `docs/guides/directives/`.
-2. Replace the import in
+1. Add `internal/directives/**` to
+   `directory-structure.allowed` in
+   `.mdsmith.yml` so the new package's
+   markdown files lint cleanly.
+2. Create `internal/directives/` with a
+   `directives.go` file that embeds
+   `*.md` plus short hover stubs for
+   `build.md`, `enforcing-structure.md`,
+   and `generating-content.md`. Each stub
+   summarises the directive(s) and links
+   out to the matching
+   `docs/guides/directives/` guide.
+3. Replace the import in
    `internal/lsp/hover.go` to
    `internal/directives`.
-3. Remove the Go package files from
+4. Remove `embed.go` from
    `docs/guides/directives/` (keep the
-   Markdown docs there).
-4. Add `TestDirectivesSource` in
+   Markdown guides there).
+5. Add `TestDirectivesSource` in
    `internal/directives/directives_test.go`.
-5. Run `go build ./...` and
+6. Run `go build ./...` and
    `go test ./...`.
-6. Run `go run ./cmd/mdsmith check .`.
+7. Run `go run ./cmd/mdsmith check .`.
 
 ## Acceptance Criteria
 
-- [ ] `grep -r 'docs/guides/directives' internal/`
+- [x] `grep -r 'docs/guides/directives' internal/`
   returns no Go imports.
-- [ ] `internal/directives/` has the
+- [x] `internal/directives/` has the
   embed and a passing unit test.
-- [ ] `go build ./...` clean.
-- [ ] `go test ./...` passes.
-- [ ] `go tool golangci-lint run` clean.
+- [x] `go build ./...` clean.
+- [x] `go test ./...` passes.
+- [x] `go tool golangci-lint run` clean.
