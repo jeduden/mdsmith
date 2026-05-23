@@ -88,6 +88,29 @@ func TestSetextHeading_LongUnderlineAndShortContent(t *testing.T) {
 	}
 }
 
+// Drive the unreachable-via-parse-flow methods directly. Continue
+// is never called during a normal parse (Open consumes both the
+// content line and the underline) but the BlockParser interface
+// requires the method to exist; call it explicitly so the surface
+// coverage matches the surface area.
+func TestSetextHeading_DirectMethodInvocation(t *testing.T) {
+	p := parser.NewSetextHeadingParser()
+	// Continue and CanAcceptIndentedLine are pure functions that
+	// return constant values; invoke them so cover sees them as
+	// reached.
+	pc := parser.NewContext()
+	got := p.Continue(ast.NewHeading(1), nil, pc)
+	if got != parser.Close {
+		t.Errorf("Continue should return Close, got %v", got)
+	}
+	if p.CanAcceptIndentedLine() {
+		t.Error("CanAcceptIndentedLine should be false")
+	}
+	if !p.CanInterruptParagraph() {
+		t.Error("CanInterruptParagraph should be true")
+	}
+}
+
 func TestSetextHeading_NotAHeading(t *testing.T) {
 	// Pure `===` or `---` after a blank line is a thematic break,
 	// not a setext heading.

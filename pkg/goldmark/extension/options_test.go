@@ -92,6 +92,37 @@ func TestFootnote_BacklinkHTML(t *testing.T) {
 	}
 }
 
+func TestFootnote_OptionsAsRendererOptions(t *testing.T) {
+	// Footnote options also implement renderer.Option (SetConfig).
+	// renderer.NewRenderer accepts both Option-as-NodeRenderers
+	// and Option-as-config-setter via the same Options slot.
+	// Drive that path so SetConfig fires.
+	r := renderer.NewRenderer(
+		renderer.WithNodeRenderers(
+			util.Prioritized(html.NewRenderer(), 1000),
+			util.Prioritized(extension.NewFootnoteHTMLRenderer(), 500),
+		),
+	)
+	// Apply each option via AddOptions which calls SetConfig.
+	r.AddOptions(
+		extension.WithFootnoteIDPrefix("doc-").(renderer.Option),
+		extension.WithFootnoteLinkTitle("link").(renderer.Option),
+		extension.WithFootnoteBacklinkTitle("back").(renderer.Option),
+		extension.WithFootnoteLinkClass("lcls").(renderer.Option),
+		extension.WithFootnoteBacklinkClass("bcls").(renderer.Option),
+		extension.WithFootnoteBacklinkHTML("<x/>").(renderer.Option),
+		extension.WithFootnoteHTMLOptions(html.WithUnsafe()).(renderer.Option),
+	)
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.Footnote),
+		goldmark.WithRenderer(r),
+	)
+	var buf bytes.Buffer
+	if err := md.Convert([]byte(footnoteSrc), &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+}
+
 func TestFootnote_HTMLOptionsPropagation(t *testing.T) {
 	// WithFootnoteHTMLOptions threads html.Option through to the
 	// underlying html.Config. Pass html.WithUnsafe and verify
