@@ -101,96 +101,90 @@ reference it.
 
 ## Tasks
 
-1. [x] Add `internal/integration/alloc_budget_test.go`
-   (the parametric per-rule gate) plus the
-   `race_off_test.go` / `race_on_test.go` build-tag pair
-   that lets the gate skip cleanly under `-race`.
-2. [🔳] Partial fix for MDS026 table-readability (37 →
-   23 on the initial gate fixture; further engine-bench
-   cuts in the same PR brought the current grandfather
-   baseline to 18 — see
-   `internal/integration/alloc_budget_test.go` for the
-   authoritative number). Lands the early-exit pair
-   (no-pipe-in-source, no-pipe-on-line) and the
+1. [x] Add the parametric per-rule gate at
+   `internal/integration/alloc_budget_test.go`. Add
+   `race_off_test.go` and `race_on_test.go` as the
+   build-tag pair. The gate then skips cleanly
+   under `-race`.
+2. [🔳] Partial fix for MDS026 table-readability.
+   Initial gate fixture went from 37 → 23. Further
+   engine-bench cuts in the same PR brought the
+   grandfather baseline to 18. See
+   `internal/integration/alloc_budget_test.go` for
+   the authoritative number. Lands the early-exit
+   pair (no-pipe-in-source, no-pipe-on-line) and the
    byte-scanner detectPrefix + splitRow. Remaining
    ≥10-alloc budget needs the cells-as-byte-offsets
-   refactor (tableRow stores `source []byte` +
-   `cellRanges []int` rather than `[]string`); deferred
-   so the cell-storage move and the rule-coverage_test
-   updates land together.
-3. [🔳] Partial fix for MDS025 table-format (63 → 55 on
-   the initial gate fixture; current grandfather
-   baseline 50 — see
-   `internal/integration/alloc_budget_test.go`). Lands
+   refactor. The tableRow type would store
+   `source []byte` + `cellRanges []int` rather than
+   `[]string`. Deferred so the cell-storage move and
+   the rule-coverage_test updates land together.
+3. [🔳] Partial fix for MDS025 table-format. Went from
+   63 → 55 on the initial gate fixture. Current
+   grandfather baseline is 50. See
+   `internal/integration/alloc_budget_test.go`. Lands
    the same early-exit pair through the tableformat
-   rule and `tablefmt.findTables`. Same `cells []string`
-   refactor blocks the rest.
+   rule and `tablefmt.findTables`. The same
+   `cells []string` refactor blocks the rest.
 4. [x] Fix MDS001 line-length (19 → ≤ 10). Dropped the
    three empty `map[int]bool{}` literals in
-   buildCategories, replaced the per-line
-   `tableLineRe.Match` with isTableLineStart, replaced
+   buildCategories. Replaced the per-line
+   `tableLineRe.Match` with isTableLineStart. Replaced
    the per-long-line `urlOnlyRe.MatchString` with
-   isURLOnlyLine, and built the diagnostic message via
+   isURLOnlyLine. Built the diagnostic message via
    strconv.Itoa + concat instead of fmt.Sprintf.
-5. [x] Fix MDS027 cross-file-reference-integrity (25 →
-   7). Defers `linkgraph.CollectAnchors(self)` and
-   the per-Check `anchorCache` map until the first
-   link that actually needs them (the gate fixture's
-   one cross-file `[other](other.md)` link has no
-   anchor, so both stay nil). Splits
+5. [x] Fix MDS027 cross-file-reference-integrity
+   (25 → 7). Defers `linkgraph.CollectAnchors(self)`
+   and the per-Check `anchorCache` map until the
+   first link that actually needs them. The gate
+   fixture's one cross-file `[other](other.md)` link
+   has no anchor, so both stay nil. Splits
    `checkRelativeTarget` into a cheap `targetExists`
-   path that skips the heap-escaping read closure
-   in `resolveTargetFile` when the link is not a
-   Markdown target with an anchor. Adds
-   `cachedAbs` to `fscache.go` so the per-Check
-   `resolveAbsRoot` calls become a sync.Map hit
-   after the first cold call.
+   path that skips the heap-escaping read closure in
+   `resolveTargetFile` when the link is not a
+   Markdown target with an anchor. Adds `cachedAbs`
+   to `fscache.go` so the per-Check `resolveAbsRoot`
+   calls become a sync.Map hit after the first call.
 6. [🔳] Partial fix for MDS053 no-unused-link-definitions
    (16 → 11). Replaces the
    `regexp.FindAllSubmatchIndex` per-file scan with
-   an inline byte scanner (-3 allocs), drops the
+   an inline byte scanner (-3 allocs). Drops the
    `wanted` map literal in favour of a linear scan
-   over `f.LinkReferences()` (-1), lazy-builds the
-   `seen` map only when `len(defs) > 1` (-1),
-   stores the label as `[]byte` aliased into
+   over `f.LinkReferences()` (-1), and lazy-builds
+   the `seen` map only when `len(defs) > 1` (-1).
+   Stores the label as `[]byte` aliased into
    `f.Source` so `referenceDefinition` collection
-   adds no per-def string copy (-1), and unwinds
+   adds no per-def string copy (-1). Unwinds
    `collectUsedLabels`'s `ast.Walk` closure into a
    recursive descent (-1). Remaining headroom hinges
    on `parser.parseContext.References` (goldmark
-   internal) packing into a fresh interface slice on
-   every call; addressed in a follow-up plan.
+   internal), which packs into a fresh interface
+   slice on every call; addressed in a follow-up plan.
 7. [🔳] Partial fix for MDS054 no-undefined-reference-labels
-   (21 → 13). Replaces `fullRefRE`, `collapsedRefRE`,
-   `shortcutRE`, and `refDefStartRE` with byte
-   scanners (shared `nextBracket` helper) and lifts
-   `collectCodeSpanRanges` off `ast.Walk` onto a
-   recursive descent. Lifting the lint package's
-   `Once`-based memos (newlineOffsets, codeBlockLines,
-   piBlockLines, linkRefs) to the closure-less
-   `atomic.Bool` + mutex pattern (mirroring the
-   `memoEntry` shape) drops the closure boxes those
-   first-time-lazy builds previously paid for every
-   rule whose Check trips them. Remaining headroom
-   sits in `defs := make(map[string]bool, len(refs))`
-   and the per-defs map insert path; addressed in a
-   follow-up plan alongside MDS053.
+   (21 → 13). Replaces the four source regexes with
+   byte scanners sharing the `nextBracket` helper.
+   Lifts `collectCodeSpanRanges` off `ast.Walk` onto a
+   recursive descent. Converts the lint package's
+   `Once`-based memos to the closure-less
+   `atomic.Bool` + mutex pattern. The change drops
+   the closure boxes those lazy builds previously
+   paid. Remaining headroom sits in the per-defs map
+   insert path, deferred alongside MDS053.
 8. [x] Fix MDS062 link-validity to ≤ 10 allocs. The
    plan 195 engine-bench chunk inlined
    `LineOfOffset`'s binary search and the
-   message-string cache; on the current gate fixture
+   message-string cache. On the current gate fixture
    MDS062 lands at 6 allocs.
 9. [x] Fix MDS063 descriptive-link-text to ≤ 10 allocs.
    The per-File `MDS063.bannedSet` memo paid a
-   ~13-alloc build (4 normalised banned phrases plus
-   map setup) every Check; lifting the cache onto
-   the Rule instance behind an `atomic.Pointer[map]`
-
-  + `sync.Mutex` double-checked-lock collapses the
-   build to once per configured rule. ApplySettings
-   invalidates the pointer so a reconfigured Banned
-   list rebuilds on the next read. Current alloc
-   count: 4.
+   ~13-alloc build every Check (four normalised
+   banned phrases plus map setup). The cache now
+   lives on the Rule instance behind an
+   `atomic.Pointer[map]` plus `sync.Mutex` double-
+   checked-lock, so the build runs once per
+   configured rule. ApplySettings clears the pointer
+   so a reconfigured Banned list rebuilds on the
+   next read. Current alloc count: 4.
 
 10. [x] Fix MDS023 paragraph-readability to ≤ 10 allocs.
     The plan-195 engine-bench chunk (LineOfOffset
@@ -211,13 +205,12 @@ reference it.
     set, so the line-only configuration skips the
     paragraph walk.
 13. [x] Fix MDS029 conciseness-scoring to ≤ 10 allocs.
-    The classifier's regex-driven phrase/cue extraction
-    paid ~400 allocs every Check it ran. Gating the
-    classifier call behind a cheap `mdtext.CountWords`
-    short-circuit (zero-alloc byte scan) so paragraphs
-    below `MinWords` never enter the classifier drops
-    MDS029 to 2 allocs on the gate fixture's single
-    sub-MinWords paragraph.
+    The classifier's regex-driven cue extraction paid
+    ~400 allocs every Check it ran. A cheap byte-scan
+    word count now gates the classifier call. So
+    paragraphs below `MinWords` never enter the
+    classifier. MDS029 drops to 2 allocs on the gate
+    fixture's single sub-MinWords paragraph.
 14. [x] Fix MDS035 toc-directive to ≤ 10 allocs.
     The rule's `hasTOCLinkReference` helper re-parsed
     the entire source with `lint.NewParser()` on every
@@ -227,12 +220,13 @@ reference it.
     allocs). Switching to `f.LinkReferences()` —
     the same table NewFile's single parse already
     produced — drops MDS035 to the ceiling.
-15. [ ] Close the MDS020 schema-parse parity gap. Add a
-    `RunCache.ParsedSchema(absPath, build)` slot that
-    parses each schema file once per `engine.Run`, and
-    a `RunCache.CompiledCUE(srcKey, build)` slot that
-    compiles each unique schema CUE expression once.
-    The MDS020 hot path (parseSchema + CompileString)
+15. [ ] Close the MDS020 schema-parse parity gap. Add
+    a `RunCache.ParsedSchema(absPath, build)` slot.
+    That slot parses each schema file once per
+    `engine.Run`. Add a `RunCache.CompiledCUE` slot
+    too. That one compiles each unique schema CUE
+    expression once. The MDS020 hot path
+    (parseSchema + CompileString)
     drops from per-host-file to per-schema-source.
 16. [x] Re-run `BenchmarkCheckCorpusLarge` to confirm
     no engine-corpus regression. Latest run lands at
