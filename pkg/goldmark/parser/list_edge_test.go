@@ -91,6 +91,18 @@ func TestList_Parser_DirectMethodInvocation(t *testing.T) {
 	}
 }
 
+func TestList_EmptyItemFollowedByDedentedContent(t *testing.T) {
+	// Empty list item followed by less-indented content closes the
+	// list (lastIsEmpty + indent < offset branch).
+	src := "- \nback to root paragraph\n"
+	_ = parseWithDefaults(src)
+
+	// Also drive the `!lastIsEmpty -> Close` branch with a similar
+	// pattern but a non-empty last item.
+	src2 := "- non-empty\nback to root\n"
+	_ = parseWithDefaults(src2)
+}
+
 func TestList_BlankAfterEmptyItem(t *testing.T) {
 	// A blank line after an empty list item triggers
 	// emptyListItemWithBlankLines bookkeeping (the line 162
