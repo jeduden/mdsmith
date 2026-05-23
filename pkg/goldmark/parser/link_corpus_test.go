@@ -155,6 +155,28 @@ func TestLinkParser_LinkInAutolinkInImage(t *testing.T) {
 	}
 }
 
+func TestLinkParser_MultiLineReferenceLabel(t *testing.T) {
+	// A reference link whose [label][...] spans multiple lines
+	// drives the multi-segment branch in parseReferenceLink.
+	src := `[text][ref
+inder]
+
+[ref inder]: /url
+`
+	_ = parseDoc(src)
+}
+
+func TestLinkParser_OverlongReferenceLabel(t *testing.T) {
+	// Labels > 999 chars are rejected by the spec; the parser
+	// returns nil with consumed=true on that path.
+	long := make([]byte, 1100)
+	for i := range long {
+		long[i] = 'x'
+	}
+	src := "[text][" + string(long) + "]\n[ref]: /url\n"
+	_ = parseDoc(src)
+}
+
 func TestLinkParser_DeeplyNested(t *testing.T) {
 	// Multiple nested link / image patterns exercise the
 	// pushLinkBottom / popLinkBottom stack across more than the
