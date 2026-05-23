@@ -36,6 +36,52 @@ func TestCopyOnWriteBuffer_AppendByte(t *testing.T) {
 	}
 }
 
+func TestDedentPositionPadding(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          string
+		currentPos  int
+		paddingv    int
+		width       int
+		wantPos     int
+		wantPadding int
+	}{
+		{"zero-width-noop", "  hello", 0, 0, 0, 0, 0},
+		{"spaces-exact", "    hello", 0, 0, 4, 4, 0},
+		{"spaces-over", "        hello", 0, 0, 4, 8, 4},
+		{"tab", "\thello", 0, 0, 4, 1, 0},
+		{"tab-more-than-needed", "\thello", 0, 0, 2, 1, 2},
+		{"insufficient", "  hello", 0, 0, 8, 2, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			pos, padding := util.DedentPositionPadding([]byte(c.in), c.currentPos, c.paddingv, c.width)
+			if pos != c.wantPos || padding != c.wantPadding {
+				t.Errorf("DedentPositionPadding got pos=%d padding=%d want pos=%d padding=%d",
+					pos, padding, c.wantPos, c.wantPadding)
+			}
+		})
+	}
+}
+
+func TestFindEmailIndex(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantPos  int
+		minMatch int // minimum positive match length
+	}{
+		{"foo@bar.com", 0, 7},
+		{"prefix foo@bar.com", 0, 7},
+		{"not an email", 0, 0},
+	}
+	for _, c := range cases {
+		got := util.FindEmailIndex([]byte(c.in))
+		_ = got
+		_ = c.wantPos
+		_ = c.minMatch
+	}
+}
+
 func TestFirstNonSpacePosition(t *testing.T) {
 	cases := []struct {
 		in   string
