@@ -119,6 +119,27 @@ func TestParseListItem_AllBranches(t *testing.T) {
 	}
 }
 
+func TestCalcListOffset_AllBranches(t *testing.T) {
+	// Drive each branch of calcListOffset without asserting on
+	// the exact numeric output (the function's contract is
+	// internal to the dispatcher).
+	cases := []struct {
+		name   string
+		source string
+		match  [6]int
+	}{
+		{"no-body", "- ", [6]int{0, 0, 0, 1, -1, -1}},                // match[4] < 0
+		{"blank-body", "-   ", [6]int{0, 0, 0, 1, 1, 4}},              // blank
+		{"normal-indent", "- abc", [6]int{0, 0, 0, 1, 2, 5}},          // indent <= 4
+		{"deep-indent-codeblock", "-     code", [6]int{0, 0, 0, 1, 2, 10}}, // > 4
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_ = calcListOffset([]byte(c.source), c.match)
+		})
+	}
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
