@@ -363,6 +363,63 @@ func TestWriter_EntitiesEscapeRuneBranches(t *testing.T) {
 	}
 }
 
+func TestRender_ThematicBreakAndAutoLinkWithAttrs(t *testing.T) {
+	doc := ast.NewDocument()
+
+	hr := ast.NewThematicBreak()
+	hr.SetAttribute([]byte("class"), []byte("hr-cls"))
+	doc.AppendChild(doc, hr)
+
+	p := ast.NewParagraph()
+	doc.AppendChild(doc, p)
+	src := []byte("https://example.com")
+	tx := ast.NewTextSegment(text.NewSegment(0, len(src)))
+	al := ast.NewAutoLink(ast.AutoLinkURL, tx)
+	al.SetAttribute([]byte("class"), []byte("al-cls"))
+	p.AppendChild(p, al)
+
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, src, doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `class="hr-cls"`) {
+		t.Errorf("hr attribute not rendered: %q", out)
+	}
+	if !strings.Contains(out, `class="al-cls"`) {
+		t.Errorf("autolink attribute not rendered: %q", out)
+	}
+}
+
+func TestRender_EmphasisWithAttributes(t *testing.T) {
+	// Drive renderEmphasis's Attributes() != nil branch by
+	// constructing an Emphasis node manually with attributes.
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	doc.AppendChild(doc, p)
+
+	em := ast.NewEmphasis(1)
+	em.SetAttribute([]byte("class"), []byte("em-cls"))
+	p.AppendChild(p, em)
+
+	strong := ast.NewEmphasis(2)
+	strong.SetAttribute([]byte("class"), []byte("strong-cls"))
+	p.AppendChild(p, strong)
+
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("src"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `class="em-cls"`) {
+		t.Errorf("em attribute not rendered: %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), `class="strong-cls"`) {
+		t.Errorf("strong attribute not rendered: %q", buf.String())
+	}
+}
+
 func TestRender_CodeSpanWithRawTextSegment(t *testing.T) {
 	// Code span containing a RawTextSegment exercises the raw
 	// inline write path in renderCodeSpan.
