@@ -256,6 +256,16 @@ func TestString_SetRaw(t *testing.T) {
 	}
 }
 
+func TestString_Dump_WithFlags(t *testing.T) {
+	// String.Dump prints the flag set when flags != 0.
+	s := ast.NewString([]byte("hello"))
+	silencer(t, func() { s.Dump([]byte("hello"), 0) }) // no flags
+	s.SetRaw(true)
+	silencer(t, func() { s.Dump([]byte("hello"), 0) }) // raw flag
+	s.SetCode(true)
+	silencer(t, func() { s.Dump([]byte("hello"), 0) }) // code + raw
+}
+
 func TestRawHTML_Methods(t *testing.T) {
 	r := ast.NewRawHTML()
 	r.Inline()
