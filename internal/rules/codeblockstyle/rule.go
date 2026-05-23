@@ -69,6 +69,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 
 // Fix implements rule.FixableRule. Only the indented→fenced direction
 // is applied; the reverse loses the language tag and so is left alone.
+// Nested indented blocks (inside a list item or blockquote) are also
+// skipped — emitting unindented fences would break the parent
+// container, and computing the correct outer prefix is left to the
+// author.
 func (r *Rule) Fix(f *lint.File) []byte {
 	if f == nil || f.AST == nil {
 		return f.Source
@@ -81,11 +85,14 @@ func (r *Rule) Fix(f *lint.File) []byte {
 
 	type indentedRange struct {
 		firstLine int // 1-based, inclusive
-		lastLine  int // 1-based, inclusive
+		lastLine  int // 1-based, inclusive (last content line)
 	}
 	var ranges []indentedRange
 	for _, b := range blocks {
 		if b.style != "indented" {
+			continue
+		}
+		if !b.topLevel {
 			continue
 		}
 		ranges = append(ranges, indentedRange{firstLine: b.line, lastLine: b.lastLine})
@@ -123,11 +130,16 @@ func (r *Rule) Fix(f *lint.File) []byte {
 }
 
 // blockInfo records one code block's style ("fenced" or "indented"),
-// its opening source line (1-based), and its last content line.
+// its opening source line (1-based), the last-line anchor used by
+// indented→fenced fixes, and whether the block is a direct child of
+// the document (top-level). For fenced blocks lastLine is the closing
+// fence line; for indented blocks it is the last content line — the
+// field is only consumed by the indented→fenced fix path.
 type blockInfo struct {
 	style    string
 	line     int
 	lastLine int
+	topLevel bool
 }
 
 func collectBlocks(f *lint.File) []blockInfo {
@@ -139,14 +151,14 @@ func collectBlocks(f *lint.File) []blockInfo {
 		switch cb := n.(type) {
 		case *ast.FencedCodeBlock:
 			line := fencepos.OpenLine(f, cb)
-			if line == 0 {
-				return ast.WalkContinue, nil
-			}
 			if skipBlock(f, line) {
 				return ast.WalkContinue, nil
 			}
 			last := fencepos.CloseLine(f, cb)
-			blocks = append(blocks, blockInfo{style: "fenced", line: line, lastLine: last})
+			blocks = append(blocks, blockInfo{
+				style: "fenced", line: line, lastLine: last,
+				topLevel: isTopLevel(cb),
+			})
 		case *ast.CodeBlock:
 			segs := cb.Lines()
 			if segs.Len() == 0 {
@@ -157,11 +169,25 @@ func collectBlocks(f *lint.File) []blockInfo {
 				return ast.WalkContinue, nil
 			}
 			last := f.LineOfOffset(segs.At(segs.Len() - 1).Start)
-			blocks = append(blocks, blockInfo{style: "indented", line: first, lastLine: last})
+			blocks = append(blocks, blockInfo{
+				style: "indented", line: first, lastLine: last,
+				topLevel: isTopLevel(cb),
+			})
 		}
 		return ast.WalkContinue, nil
 	})
 	return blocks
+}
+
+// isTopLevel reports whether n's parent is the document root. Code
+// blocks inside list items or blockquotes return false.
+func isTopLevel(n ast.Node) bool {
+	parent := n.Parent()
+	if parent == nil {
+		return false
+	}
+	_, ok := parent.(*ast.Document)
+	return ok
 }
 
 func skipBlock(f *lint.File, line int) bool {

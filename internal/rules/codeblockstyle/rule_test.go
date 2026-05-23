@@ -211,3 +211,129 @@ func TestCheck_SkipsGeneratedRange(t *testing.T) {
 	diags := r.Check(f)
 	assert.Empty(t, diags)
 }
+
+// --- Nested-block handling ---
+
+func TestCheck_NestedIndentedInList_StillFlagged(t *testing.T) {
+	// Indented code block inside a list item is nested. Check still
+	// emits the diagnostic — the user should know about the violation.
+	src := []byte("- Item:\n\n      code line\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "code block should use fenced style", diags[0].Message)
+}
+
+func TestFix_NestedIndentedInList_LeftAlone(t *testing.T) {
+	// Autofix is skipped for nested blocks — emitting unindented
+	// fences would break the list structure.
+	src := []byte("- Item:\n\n      code line\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	got := r.Fix(f)
+	assert.Equal(t, string(src), string(got))
+}
+
+func TestFix_NestedIndentedInBlockquote_LeftAlone(t *testing.T) {
+	src := []byte("> Quote:\n>\n>     code\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	got := r.Fix(f)
+	assert.Equal(t, string(src), string(got))
+}
+
+func TestFix_MixedTopLevelAndNested_OnlyTopLevelFixed(t *testing.T) {
+	src := []byte("    top level code\n\n- Item:\n\n      nested code\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	got := r.Fix(f)
+	want := "```text\ntop level code\n```\n\n- Item:\n\n      nested code\n"
+	assert.Equal(t, want, string(got))
+}
+
+// --- effectiveStyle edge cases ---
+
+func TestEffectiveStyle_UnknownStyle_ReturnsEmpty(t *testing.T) {
+	r := &Rule{Style: "invalid"}
+	assert.Equal(t, "", r.effectiveStyle(nil))
+}
+
+func TestEffectiveStyle_ConsistentNoBlocks_ReturnsEmpty(t *testing.T) {
+	r := &Rule{Style: "consistent"}
+	assert.Equal(t, "", r.effectiveStyle(nil))
+}
+
+func TestCheck_NoBlocks_NoDiagnostics(t *testing.T) {
+	src := []byte("# Just prose.\n\nNo code here.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	assert.Empty(t, r.Check(f))
+}
+
+func TestCheck_NilFile_NoDiagnostics(t *testing.T) {
+	r := &Rule{Style: "fenced"}
+	assert.Nil(t, r.Check(nil))
+	assert.Nil(t, r.Check(&lint.File{}))
+}
+
+func TestFix_NilFile_ReturnsSource(t *testing.T) {
+	r := &Rule{Style: "fenced"}
+	assert.Nil(t, r.Fix(&lint.File{}))
+}
+
+func TestFix_NoIndentedBlocks_ReturnsSourceUnchanged(t *testing.T) {
+	src := []byte("```go\ncode\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	got := r.Fix(f)
+	assert.Equal(t, string(src), string(got))
+}
+
+func TestStripIndent_EmptyLine(t *testing.T) {
+	assert.Equal(t, "", stripIndent(nil))
+	assert.Equal(t, "", stripIndent([]byte("")))
+}
+
+func TestStripIndent_PartialIndent(t *testing.T) {
+	// Less than 4 spaces — strip what's there.
+	assert.Equal(t, "code", stripIndent([]byte("  code")))
+}
+
+// --- isTopLevel helper ---
+
+func TestIsTopLevel_NilParent(t *testing.T) {
+	// A node without a parent is not top-level.
+	src := []byte("```\ncode\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	// f.AST is the Document; its parent is nil.
+	assert.False(t, isTopLevel(f.AST))
+}
+
+// TestCheck_Consistent_NoBlocks_NoDiagnostics drives effectiveStyle
+// to return "" (consistent with no blocks) and Check to early-return.
+func TestCheck_Consistent_NoBlocks_NoDiagnostics(t *testing.T) {
+	src := []byte("Just prose.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "consistent"}
+	assert.Empty(t, r.Check(f))
+}
+
+// TestCheck_IndentedBlockInGeneratedRange_Skipped covers the indented-
+// branch skipBlock guard in collectBlocks.
+func TestCheck_IndentedBlockInGeneratedRange_Skipped(t *testing.T) {
+	src := []byte("Prose.\n\n    code\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	f.GeneratedRanges = []lint.LineRange{{From: 3, To: 3}}
+	r := &Rule{Style: "fenced"}
+	assert.Empty(t, r.Check(f))
+}

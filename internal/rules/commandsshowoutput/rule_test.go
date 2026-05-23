@@ -171,3 +171,97 @@ func TestCheck_SkipsGeneratedRange(t *testing.T) {
 	diags := r.Check(f)
 	assert.Empty(t, diags)
 }
+
+// --- Nested fenced blocks (inside list item) ---
+
+// TestCheck_NestedFencedBlockInList_DetectedWithLeadingIndent verifies
+// MDS066 sees `$ ls` as a prompt even when the fenced block is nested
+// in a list item, where the content lines carry the list-item indent.
+func TestCheck_NestedFencedBlockInList_DetectedWithLeadingIndent(t *testing.T) {
+	src := []byte("- Item:\n\n  ```sh\n  $ ls\n  $ pwd\n  ```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "commands shown with $ prefix but no output", diags[0].Message)
+}
+
+// TestFix_NestedFencedBlockInList_PreservesListIndent verifies that the
+// fix preserves the list-item indent when stripping the prompt.
+func TestFix_NestedFencedBlockInList_PreservesListIndent(t *testing.T) {
+	src := []byte("- Item:\n\n  ```sh\n  $ ls\n  $ pwd\n  ```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	got := r.Fix(f)
+	want := "- Item:\n\n  ```sh\n  ls\n  pwd\n  ```\n"
+	assert.Equal(t, want, string(got))
+}
+
+// --- splitLeadingWhitespace helper ---
+
+func TestSplitLeadingWhitespace(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		leading string
+		rest    string
+	}{
+		{"empty", "", "", ""},
+		{"no leading", "code", "", "code"},
+		{"spaces", "  code", "  ", "code"},
+		{"tab", "\tcode", "\t", "code"},
+		{"mixed", " \t code", " \t ", "code"},
+		{"all whitespace", "   ", "   ", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			leading, rest := splitLeadingWhitespace([]byte(tc.in))
+			assert.Equal(t, tc.leading, string(leading))
+			assert.Equal(t, tc.rest, string(rest))
+		})
+	}
+}
+
+// --- Defensive paths ---
+
+func TestFix_NilFile_ReturnsSource(t *testing.T) {
+	r := &Rule{}
+	// f.Source is nil for a zero-valued File.
+	assert.Nil(t, r.Fix(&lint.File{}))
+}
+
+func TestFix_NoOffendingBlocks_ReturnsSourceUnchanged(t *testing.T) {
+	src := []byte("```sh\n$ ls\nfoo\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	got := r.Fix(f)
+	assert.Equal(t, string(src), string(got))
+}
+
+func TestStripPrompt_NoPrompt_Unchanged(t *testing.T) {
+	assert.Equal(t, "not a prompt", stripPrompt([]byte("not a prompt")))
+}
+
+func TestStripPrompt_Indented_PreservesLeadingWhitespace(t *testing.T) {
+	assert.Equal(t, "  ls", stripPrompt([]byte("  $ ls")))
+}
+
+func TestStripPrompt_BlankLine_Unchanged(t *testing.T) {
+	assert.Equal(t, "   ", stripPrompt([]byte("   ")))
+}
+
+// TestFix_SkipsGeneratedRange covers the inGeneratedRange guard in
+// the Fix walker (Check's path is already covered by
+// TestCheck_SkipsGeneratedRange).
+func TestFix_SkipsGeneratedRange(t *testing.T) {
+	src := []byte("```sh\n$ ls\n```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	f.GeneratedRanges = []lint.LineRange{{From: 1, To: 3}}
+	r := &Rule{}
+	got := r.Fix(f)
+	assert.Equal(t, string(src), string(got))
+}

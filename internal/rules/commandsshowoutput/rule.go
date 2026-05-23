@@ -48,9 +48,6 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 	line := fencepos.OpenLine(f, fcb)
-	if line == 0 {
-		return nil
-	}
 	if inGeneratedRange(f, line) {
 		return nil
 	}
@@ -85,7 +82,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			return ast.WalkContinue, nil
 		}
 		line := fencepos.OpenLine(f, fcb)
-		if line == 0 || inGeneratedRange(f, line) {
+		if inGeneratedRange(f, line) {
 			return ast.WalkContinue, nil
 		}
 		if !allLinesArePrompts(f, fcb) {
@@ -95,9 +92,6 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		for i := 0; i < segs.Len(); i++ {
 			seg := segs.At(i)
 			ln := f.LineOfOffset(seg.Start)
-			if ln <= 0 || ln > len(f.Lines) {
-				continue
-			}
 			rewriteLines[ln] = stripPrompt(f.Lines[ln-1])
 		}
 		return ast.WalkContinue, nil
@@ -123,7 +117,8 @@ func (r *Rule) Fix(f *lint.File) []byte {
 }
 
 // allLinesArePrompts reports whether every non-blank content line of
-// fcb starts with "$ ", and at least one such prompt line exists.
+// fcb starts with "$ " (ignoring leading whitespace from a nested or
+// indented fence) and at least one such prompt line exists.
 func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	segs := fcb.Lines()
 	if segs.Len() == 0 {
@@ -132,11 +127,9 @@ func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	hasPrompt := false
 	for i := 0; i < segs.Len(); i++ {
 		ln := f.LineOfOffset(segs.At(i).Start)
-		if ln <= 0 || ln > len(f.Lines) {
-			continue
-		}
 		line := f.Lines[ln-1]
-		stripped := bytes.TrimRight(line, " \t\r")
+		_, content := splitLeadingWhitespace(line)
+		stripped := bytes.TrimRight(content, " \t\r")
 		if len(stripped) == 0 {
 			continue
 		}
@@ -148,17 +141,30 @@ func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	return hasPrompt
 }
 
-// stripPrompt removes the leading "$ " from a non-blank content line.
-// Blank lines pass through unchanged.
+// stripPrompt removes the "$ " prompt from a non-blank content line,
+// preserving any leading whitespace that comes from a nested or
+// indented fence. Blank lines and lines without a prompt pass through
+// unchanged.
 func stripPrompt(line []byte) string {
-	stripped := bytes.TrimRight(line, " \t\r")
+	leading, content := splitLeadingWhitespace(line)
+	stripped := bytes.TrimRight(content, " \t\r")
 	if len(stripped) == 0 {
 		return string(line)
 	}
 	if !bytes.HasPrefix(stripped, []byte("$ ")) {
 		return string(line)
 	}
-	return string(line[2:])
+	return string(leading) + string(content[2:])
+}
+
+// splitLeadingWhitespace splits a line at the first non-whitespace byte,
+// returning the leading whitespace and the rest.
+func splitLeadingWhitespace(line []byte) (leading, rest []byte) {
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	return line[:i], line[i:]
 }
 
 func inGeneratedRange(f *lint.File, line int) bool {
