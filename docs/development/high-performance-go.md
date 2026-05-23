@@ -30,21 +30,28 @@ patterns that keep us inside them.
 
 ## Process
 
-**Measure first. Never optimize from a hunch.** A profile
-that shows zero CPU in your suspected hot path is the most
-valuable result you can get — it stops a fix that would
-have changed nothing.
+**Apply best-practice patterns first. Then measure. Then
+fix what is still hot.** The patterns in
+[Patterns to apply](#patterns-to-apply) are known wins
+anywhere in the Go core — rules, parser, engine, CLI.
+Pre-size a slice, hoist a regex to package scope, return
+`nil` for an empty result. Use them on the first write;
+they cost nothing and shave allocs at every layer.
 
-The loop:
+Past that, do not rewrite for speed on a hunch. A profile
+that shows zero CPU in your suspected hot path stops a fix
+that would change nothing. The loop:
 
-1. **State the goal numerically.** "MDS024 under 10
-   allocs/call on `testcorpus.AbbrHeavy[0]`" — not "make
-   it faster".
-2. **Lock in a baseline** with multiple runs:
+1. **State the goal numerically.** "Function X under N
+   allocs/call on representative input" — not "make it
+   faster". Name the symbol (function, rule, package) and
+   the input that hits its hot frame.
+2. **Lock in a baseline** by running the package's
+   existing benchmarks multiple times:
 
    ```bash
    go test -run=^$ -bench=. -count=10 -benchmem \
-     ./internal/rules/... > old.txt
+     ./path/to/package > old.txt
    ```
 
 3. **Profile** the baseline. CPU profile if you don't know
@@ -52,22 +59,20 @@ The loop:
    allocations; trace if latency is bad but CPU is idle.
 4. **Change one thing.** Re-run the same benchmark, same
    count.
-5. **Decide with `benchstat`,** not eyeballs:
+5. **Decide with `benchstat`,** not eyeballs. Re-run the
+   benchmark into `new.txt`, then:
 
    ```bash
-   go test -run=^$ -bench=. -count=10 -benchmem \
-     ./internal/rules/... > new.txt
    benchstat old.txt new.txt
    ```
 
    `~` in the delta column means no significant change.
    p < 0.05 with a meaningful effect size is the bar.
 
-Run on an idle machine, on AC power, with the CPU governor
-pinned (`cpupower frequency-set -g performance` on Linux).
-Use `for b.Loop() { ... }` (Go 1.24+) over the older
-`for i := 0; i < b.N; i++` form — the compiler treats it
-specially and disables dead-code elimination inside.
+**Write benchmarks that always run.** Put the bench next
+to the code. Pin its budget inline with `b.Fatalf` on
+overshoot, as `BenchmarkRule_MDS024` does. CI then catches
+the next slip on its own.
 
 ### Which profile answers which question
 
@@ -201,6 +206,24 @@ substring, or prefix/suffix check, skip `regexp`.
   GC-scanned allocation with zero internal pointers; the
   pointer slice forces N pointer scans every cycle.
 
+### Skip work you don't need
+
+The cheapest call is the one you never make. Two real
+mdsmith wins live here:
+
+- **Memoize per-input computations.** When a helper runs
+  many times over the same `*lint.File`, cache the result
+  on the File. The cached newline index in
+  `lint.(*File).LineOfOffset` replaced an O(n) rescan per
+  call — ~24% of `check` CPU on long prose before the
+  fix.
+- **Gate expensive analyzers behind a cheap pre-check.**
+  An upper- or lower-bound check that proves the
+  expensive path can't produce a diagnostic lets you
+  skip it. MDS024's guard skips the sentence tokenizer
+  when no paragraph can violate either limit — ~2 GB of
+  saved allocations on the 600-file gate corpus.
+
 ### Inlining
 
 The inliner has a budget (~80 nodes per function). Keep
@@ -251,39 +274,15 @@ Inspect with `go build -gcflags="-m=2"` and look for
 | `os.ReadFile` on huge inputs         | one giant alloc, all resident                      | `bufio.Scanner`                        |
 | `context.Background()` deep in calls | loses cancellation                                 | propagate caller's `ctx`               |
 
-## War stories
-
-Two regressions caught by mdsmith's own gates, both fixed
-in plan 175:
-
-- **`lint.(*File).LineOfOffset` rescanned each file from
-  byte 0 on every call.** That cost ~24% of `check` CPU
-  on long Rust Book prose; the smaller 234-file corpus
-  ran slower than the 523-file one — the signature of
-  superlinear cost. Fix: cached newline index plus
-  binary search.
-- **MDS024's sentence tokenizer allocated ~2 GB** across
-  the 600-file gate corpus. Fix: an allocation-free
-  guard that skips the tokenizer when no paragraph can
-  violate either limit.
-
-Both fixes shipped because the alloc-and-time gates
-flagged them, not because anyone noticed manually. See
-[the benchmark page](../research/benchmarks/README.md)
-for the full timeline.
-
 ## Tooling
 
 - **`golangci-lint`** — enable `perfsprint`, `prealloc`,
-  `ineffassign`, `staticcheck` (SA6002 catches non-pointer
-  values in `sync.Pool`), `gocritic` performance group.
-- **`go vet`** with `-shadow` and **`fieldalignment`**
-  (`go tool fieldalignment -fix ./...`).
-- **`benchstat`** — required for any "this is faster"
-  claim.
-- **`go.uber.org/goleak`** — assert no leftover
-  goroutines in tests.
-- **`go tool pprof -base=old.prof new.prof`** — diff
+  `ineffassign`, `staticcheck` (SA6002 flags non-pointer
+  `sync.Pool` values), `gocritic` performance group.
+- **`go vet -shadow`** and `go tool fieldalignment -fix`.
+- **`benchstat`** — required for any "this is faster" claim.
+- **`go.uber.org/goleak`** — assert no leftover goroutines.
+- **`go tool pprof -base=old.prof new.prof`** to diff
   profiles before and after a change.
 
 ## References
