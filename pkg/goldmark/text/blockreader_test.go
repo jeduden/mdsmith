@@ -37,6 +37,18 @@ func TestBlockReader_LineOffset(t *testing.T) {
 	}
 }
 
+func TestBlockReader_LineOffset_TabExpansion(t *testing.T) {
+	// LineOffset's recompute loop accounts for tab width via
+	// util.TabWidth.  Drive the tab branch by advancing past
+	// a tab character so r.pos.Start points beyond the tab.
+	r := newTestBlockReader("\t\tdouble-tab\n")
+	r.Advance(2) // advance past the two tabs
+	off := r.LineOffset()
+	if off < 0 {
+		t.Errorf("LineOffset after tab advance should be >= 0, got %d", off)
+	}
+}
+
 func TestBlockReader_AdvanceToEOL(t *testing.T) {
 	r := newTestBlockReader("abc\ndef\n")
 	r.AdvanceToEOL()
