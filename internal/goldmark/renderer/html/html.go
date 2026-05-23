@@ -889,10 +889,13 @@ func (d *defaultWriter) Write(writer util.BufWriter, source []byte) {
 							// Explicit MaxInt32 bound for uint64 -> rune (int32)
 							// conversion (CodeQL go/incorrect-integer-conversion).
 							// The hex digit window already caps v below this.
+							var r rune
 							if v > math.MaxInt32 {
-								v = 0xFFFD
+								r = 0xFFFD
+							} else {
+								r = rune(v)
 							}
-							escapeRune(writer, rune(v))
+							escapeRune(writer, r)
 							continue
 						}
 						// code point like #1234;
@@ -905,10 +908,13 @@ func (d *defaultWriter) Write(writer util.BufWriter, source []byte) {
 							n = i + 1
 							// Explicit MaxInt32 bound for uint64 -> rune (int32)
 							// conversion (CodeQL go/incorrect-integer-conversion).
+							var r rune
 							if v > math.MaxInt32 {
-								v = 0xFFFD
+								r = 0xFFFD
+							} else {
+								r = rune(v)
 							}
-							escapeRune(writer, rune(v))
+							escapeRune(writer, r)
 							continue
 						}
 					}

@@ -621,10 +621,13 @@ func ResolveNumericReferences(source []byte) []byte {
 							// go/incorrect-integer-conversion rule. The hex
 							// digit window above already caps v far below this,
 							// but the analyser cannot see that flow.
+							var r rune
 							if v > math.MaxInt32 {
-								v = 0xFFFD
+								r = 0xFFFD
+							} else {
+								r = rune(v)
 							}
-							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
+							runeSize := utf8.EncodeRune(buf, ToValidRune(r))
 							cob.Write(buf[:runeSize])
 							continue
 						}
@@ -639,10 +642,13 @@ func ResolveNumericReferences(source []byte) []byte {
 							// Explicit MaxInt32 bound for uint64 -> rune (int32)
 							// conversion (CodeQL go/incorrect-integer-conversion).
 							// The decimal digit window already caps v below this.
+							var r rune
 							if v > math.MaxInt32 {
-								v = 0xFFFD
+								r = 0xFFFD
+							} else {
+								r = rune(v)
 							}
-							runeSize := utf8.EncodeRune(buf, ToValidRune(rune(v)))
+							runeSize := utf8.EncodeRune(buf, ToValidRune(r))
 							cob.Write(buf[:runeSize])
 							continue
 						}
