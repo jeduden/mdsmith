@@ -116,6 +116,32 @@ func TestReader_PeekWithPadding(t *testing.T) {
 	}
 }
 
+func TestBlockReader_FindClosure_AllOptions(t *testing.T) {
+	// Drive findClosureReader option combinations not reached
+	// through the parser flow (only link parsing uses it, and
+	// link parsing uses a fixed option set).
+	cases := []struct {
+		name string
+		src  string
+		opts text.FindClosureOptions
+	}{
+		{"nest-true", "[outer [inner] outer] end\n", text.FindClosureOptions{Nesting: true, Newline: false, Advance: true}},
+		{"nest-false-finds-first", "[outer [inner] outer] end\n", text.FindClosureOptions{Nesting: false, Newline: false, Advance: true}},
+		{"newline-true", "[multi\nline] end\n", text.FindClosureOptions{Nesting: false, Newline: true, Advance: true}},
+		{"newline-false", "[no\ncross-newline] end\n", text.FindClosureOptions{Nesting: false, Newline: false, Advance: true}},
+		{"codespan-skip", "[outer `code ]` end] after\n", text.FindClosureOptions{Nesting: false, Newline: false, Advance: true, CodeSpan: true}},
+		{"escape-skip", `[escape \] then close]` + "\n", text.FindClosureOptions{Nesting: false, Newline: false, Advance: true}},
+		{"unclosed", "[no closing\n", text.FindClosureOptions{Nesting: false, Newline: false, Advance: true}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newTestBlockReader(c.src)
+			r.Advance(1) // skip the '['
+			_, _ = r.FindClosure('[', ']', c.opts)
+		})
+	}
+}
+
 func TestBlockReader_FindSubMatch(t *testing.T) {
 	r := newTestBlockReader("hello 123 world\n")
 	re := regexp.MustCompile(`\d+`)
