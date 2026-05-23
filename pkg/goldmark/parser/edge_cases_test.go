@@ -112,6 +112,14 @@ func TestSetextHeading_LongUnderlineAndShortContent(t *testing.T) {
 // content line and the underline) but the BlockParser interface
 // requires the method to exist; call it explicitly so the surface
 // coverage matches the surface area.
+func TestSetextHeading_NewWithOptions(t *testing.T) {
+	// NewSetextHeadingParser's opts loop body needs options.
+	_ = parser.NewSetextHeadingParser(
+		parser.WithAutoHeadingID(),
+		parser.WithHeadingAttribute(),
+	)
+}
+
 func TestSetextHeading_DirectMethodInvocation(t *testing.T) {
 	p := parser.NewSetextHeadingParser()
 	// Continue and CanAcceptIndentedLine are pure functions that
