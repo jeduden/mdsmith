@@ -3142,3 +3142,49 @@ func TestHandleDidClose_CancelsPendingLint(t *testing.T) {
 	h.srv.pendingMu.Unlock()
 	assert.False(t, hasPending, "pending lint timer must be cleared after didClose")
 }
+
+// --- invalidateCachedRead ---
+
+// TestInvalidateCachedRead_NilRunCache pins the early-return when
+// the server has no run cache attached. The didChange handler
+// drives this in tests that construct a Server without seeding
+// s.runCache, but the branch was not explicitly asserted.
+func TestInvalidateCachedRead_NilRunCache(t *testing.T) {
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	// runCache is nil by default. The call must not panic.
+	s.invalidateCachedRead("/some/path")
+}
+
+// TestInvalidateCachedRead_EmptyPath pins the early-return when
+// the caller passes an empty path. The runCache is non-nil, so
+// only the path guard fires.
+func TestInvalidateCachedRead_EmptyPath(t *testing.T) {
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	rc := lint.NewRunCache()
+	s.runCache = rc
+	s.invalidateCachedRead("")
+	// Cache state should not have been touched.
+}
+
+// TestInvalidateCachedRead_DropsEntry pins the happy path: a
+// non-nil runCache plus a non-empty path forwards to
+// runCache.Invalidate. We seed a CatalogEntries entry for the
+// path and verify it is dropped after the call.
+func TestInvalidateCachedRead_DropsEntry(t *testing.T) {
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	rc := lint.NewRunCache()
+	s.runCache = rc
+	const path = "/seed/file.md"
+	rc.FrontMatter(path, func() any { return "stored" })
+	// Sanity: cache hit before invalidation.
+	got := rc.FrontMatter(path, func() any { return "rebuilt" })
+	if got != "stored" {
+		t.Fatalf("seed: cache hit = %v, want stored", got)
+	}
+	s.invalidateCachedRead(path)
+	// After invalidate, the build closure runs again.
+	got = rc.FrontMatter(path, func() any { return "rebuilt" })
+	if got != "rebuilt" {
+		t.Errorf("after invalidate: cache hit = %v, want rebuilt", got)
+	}
+}

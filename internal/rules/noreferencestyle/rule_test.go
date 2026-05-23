@@ -450,3 +450,49 @@ func TestRegistration(t *testing.T) {
 	_, ok = any(r).(rule.Defaultable)
 	assert.True(t, ok)
 }
+
+// --- isFootnoteDefinitionAt ---
+
+// TestIsFootnoteDefinitionAt pins every branch of the helper: the
+// first-line offset (no preceding newline), up-to-three-space
+// indent, the >3 indent rejection, the non-space-before-marker
+// rejection, the missing ']' shortcut, the missing ':' shortcut,
+// and the happy path with and without leading indent. The Check
+// loop drives only the happy path on real fixture markdown.
+func TestIsFootnoteDefinitionAt(t *testing.T) {
+	cases := []struct {
+		name   string
+		source string
+		start  int
+		want   bool
+	}{
+		{name: "definition at start of file",
+			source: "[^a]: body\n",
+			start:  0, want: true},
+		{name: "definition with 3-space indent allowed",
+			source: "   [^a]: body\n",
+			start:  3, want: true},
+		{name: "indent > 3 rejected",
+			source: "    [^a]: body\n",
+			start:  4, want: false},
+		{name: "non-space before marker rejected",
+			source: "x [^a]: body\n",
+			start:  2, want: false},
+		{name: "missing closing bracket returns false",
+			source: "[^a body\n",
+			start:  0, want: false},
+		{name: "no colon after bracket is a reference, not a def",
+			source: "see [^a] for more\n",
+			start:  4, want: false},
+		{name: "definition on later line",
+			source: "intro\n\n[^a]: body\n",
+			start:  7, want: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := isFootnoteDefinitionAt([]byte(c.source), c.start)
+			assert.Equalf(t, c.want, got,
+				"isFootnoteDefinitionAt(%q, %d)", c.source, c.start)
+		})
+	}
+}

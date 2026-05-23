@@ -237,6 +237,36 @@ func TestCategory(t *testing.T) {
 	}
 }
 
+// --- validateTokenizerAndEncoding ---
+
+// TestValidateTokenizerAndEncoding pins every branch: invalid
+// tokenizer rejects with the unmodified input echoed back; valid
+// tokenizer + invalid encoding rejects with the encoding name;
+// both valid passes. ApplySettings drives only the happy path
+// via real config, so the rejection branches were uncovered.
+func TestValidateTokenizerAndEncoding(t *testing.T) {
+	if err := validateTokenizerAndEncoding("builtin", "cl100k_base"); err != nil {
+		t.Errorf("happy path returned error: %v", err)
+	}
+	if err := validateTokenizerAndEncoding("bogus", "cl100k_base"); err == nil {
+		t.Errorf("invalid tokenizer must produce error")
+	} else if !strings.Contains(err.Error(), "tokenizer") ||
+		!strings.Contains(err.Error(), "bogus") {
+		t.Errorf("error %q must name the bad tokenizer", err)
+	}
+	if err := validateTokenizerAndEncoding("builtin", "bogus-enc"); err == nil {
+		t.Errorf("invalid encoding must produce error")
+	} else if !strings.Contains(err.Error(), "encoding") ||
+		!strings.Contains(err.Error(), "bogus-enc") {
+		t.Errorf("error %q must name the bad encoding", err)
+	}
+	// Empty inputs go through normalize → defaults, which are
+	// valid; the helper accepts them.
+	if err := validateTokenizerAndEncoding("", ""); err != nil {
+		t.Errorf("empty inputs must accept (normalized to defaults), got %v", err)
+	}
+}
+
 // --- normalizeMode / normalizeTokenizer / normalizeEncoding ---
 
 // TestNormalizeMode pins the three branches of the helper: empty
