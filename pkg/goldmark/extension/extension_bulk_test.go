@@ -37,6 +37,27 @@ func TestFootnote_MultiLineDefinition(t *testing.T) {
 	}
 }
 
+func TestFootnote_OpenFailPaths(t *testing.T) {
+	// Drive each early-return branch in footnoteBlockParser.Open.
+	// Each input starts with '[' so the Trigger fires, but the
+	// rest of the line is not a valid footnote definition.
+	srcs := []string{
+		"[not-a-footnote] just a link reference?\n",  // missing ^
+		"[^missing-close\n",                          // no closing ]
+		"[^missing-colon] no colon\n",                // ] but no :
+		"[^]: empty label\n",                         // blank label
+		"[^x]:\n",                                    // empty body (pos >= len)
+		"[^x]: definition\n",                         // valid (sanity)
+	}
+	for _, src := range srcs {
+		md := goldmark.New(goldmark.WithExtensions(extension.Footnote))
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("Convert(%q): %v", src, err)
+		}
+	}
+}
+
 func TestFootnote_TemplatePlaceholders(t *testing.T) {
 	// applyFootnoteTemplate has a fast-path that returns the
 	// template unchanged when neither "^^" nor "%%" appear. Drive

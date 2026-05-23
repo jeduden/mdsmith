@@ -164,6 +164,25 @@ func TestCodeSpan_NestedBackticks(t *testing.T) {
 	}
 }
 
+func TestBlockquote_AllProcessBranches(t *testing.T) {
+	// Drive each branch in blockquoteParser.process:
+	//   ">\n"           -> pos at newline immediately (early-return path)
+	//   "> text"        -> ' ' continuation (no padding)
+	//   ">\ttext"       -> '\t' continuation (sets padding)
+	//   ">text"         -> immediate content, no space/tab
+	cases := []string{
+		">\n",
+		"> single space\n",
+		">\ttab indented\n",
+		">no space\n",
+		">  two spaces and content\n",
+		"> nested\n> > deeper\n",
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestDelimiters_UnmatchedEmphasisClearsStack(t *testing.T) {
 	// parseContext.ClearDelimiters has an early-return when the
 	// delimiter stack is empty plus a loop body that removes
