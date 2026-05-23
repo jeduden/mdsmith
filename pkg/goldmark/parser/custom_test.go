@@ -47,6 +47,27 @@ func (t *recordingParagraphTransformer) SetOption(name parser.OptionName, _ any)
 	}
 }
 
+// recordingBlockParser implements parser.BlockParser + parser.SetOptioner.
+type recordingBlockParser struct {
+	setOptionCalls int
+}
+
+func (b *recordingBlockParser) Trigger() []byte { return nil } // free block parser path
+func (b *recordingBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	return nil, parser.NoChildren
+}
+func (b *recordingBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
+	return parser.Close
+}
+func (b *recordingBlockParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {}
+func (b *recordingBlockParser) CanInterruptParagraph() bool                                 { return false }
+func (b *recordingBlockParser) CanAcceptIndentedLine() bool                                 { return false }
+func (b *recordingBlockParser) SetOption(name parser.OptionName, _ any) {
+	if name == customOptName {
+		b.setOptionCalls++
+	}
+}
+
 // recordingASTTransformer implements ASTTransformer + SetOptioner.
 type recordingASTTransformer struct {
 	setOptionCalls int
@@ -90,7 +111,8 @@ func TestParser_RegisterCustomSetOptioners(t *testing.T) {
 	// Also run Parse so the registered custom parsers actually
 	// get invoked.
 	p := parser.NewParser(
-		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithBlockParsers(append(parser.DefaultBlockParsers(),
+			util.Prioritized(&recordingBlockParser{}, 999))...),
 		parser.WithInlineParsers(
 			append(parser.DefaultInlineParsers(),
 				util.Prioritized(&recordingInlineParser{}, 999))...),
