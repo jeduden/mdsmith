@@ -80,6 +80,7 @@ rules:
       - "internal/rules/**"
       - "internal/metrics/**"
       - "internal/concepts/**"
+      - "internal/directives/**"
       - ".claude/**"
       - ".github/**"
       - "editors/**"
