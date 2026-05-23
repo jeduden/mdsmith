@@ -86,6 +86,125 @@ func TestResolveNumericReferences_PreservesNonEntities(t *testing.T) {
 	}
 }
 
+func TestCopyOnWriteBuffer_WriteString(t *testing.T) {
+	src := []byte("seed")
+	buf := NewCopyOnWriteBuffer(src)
+	buf.WriteString("xyz")
+	if got := string(buf.Bytes()); got != "xyz" {
+		t.Errorf("WriteString result = %q, want xyz", got)
+	}
+	if !buf.IsCopied() {
+		t.Error("WriteString must mark buffer as copied")
+	}
+}
+
+func TestIsEscapedPunctuation(t *testing.T) {
+	cases := []struct {
+		src  string
+		i    int
+		want bool
+	}{
+		{`\*`, 0, true},
+		{`\a`, 0, false}, // 'a' is not punctuation
+		{`a`, 0, false},
+		{`\`, 0, false}, // backslash at end of source
+	}
+	for _, tc := range cases {
+		if got := IsEscapedPunctuation([]byte(tc.src), tc.i); got != tc.want {
+			t.Errorf("IsEscapedPunctuation(%q, %d) = %v, want %v", tc.src, tc.i, got, tc.want)
+		}
+	}
+}
+
+func TestVisualizeSpaces(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"a b", "a[SPACE]b"},
+		{"a\tb", "a[TAB]b"},
+		{"a\nb", "a[NEWLINE]\nb"},
+		{"a\rb", "a[CR]b"},
+		{"a\vb", "a[VTAB]b"},
+		{"a\x00b", "a[NUL]b"},
+		{"a�b", "a[U+FFFD]b"},
+	}
+	for _, tc := range cases {
+		if got := string(VisualizeSpaces([]byte(tc.in))); got != tc.want {
+			t.Errorf("VisualizeSpaces(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestDedentPosition(t *testing.T) {
+	// Width=0 fast-return.
+	pos, padding := DedentPosition([]byte("    body"), 0, 0)
+	if pos != 0 || padding != 0 {
+		t.Errorf("DedentPosition(width=0) = (%d, %d), want (0, 0)", pos, padding)
+	}
+	// 4 spaces consumed, w=4, w>=width=2 -> (i=4, padding=4-2=2).
+	pos, padding = DedentPosition([]byte("    body"), 0, 2)
+	if pos != 4 || padding != 2 {
+		t.Errorf("DedentPosition(4-space, width=2) = (%d, %d), want (4, 2)", pos, padding)
+	}
+	// Insufficient indent: w=2 < width=4 -> (i=2, padding=0).
+	pos, padding = DedentPosition([]byte("  body"), 0, 4)
+	if pos != 2 || padding != 0 {
+		t.Errorf("DedentPosition(2-space, width=4) = (%d, %d), want (2, 0)", pos, padding)
+	}
+	// Tab handling: '\t' at pos=0 expands to width 4.
+	pos, padding = DedentPosition([]byte("\tbody"), 0, 2)
+	if pos != 1 || padding != 2 {
+		t.Errorf("DedentPosition(tab, width=2) = (%d, %d), want (1, 2)", pos, padding)
+	}
+}
+
+func TestDedentPositionPadding(t *testing.T) {
+	pos, padding := DedentPositionPadding([]byte("\tbody"), 0, 0, 2)
+	if pos < 0 {
+		t.Errorf("DedentPositionPadding pos = %d, want >= 0", pos)
+	}
+	_ = padding
+}
+
+func TestTrimRightLength(t *testing.T) {
+	src := []byte("hello   ")
+	got := TrimRightLength(src, []byte(" "))
+	if got != 3 {
+		t.Errorf("TrimRightLength stripped %d, want 3", got)
+	}
+}
+
+func TestPrioritizedSlice_Remove(t *testing.T) {
+	a := Prioritized("a", 1)
+	b := Prioritized("b", 2)
+	c := Prioritized("c", 3)
+	s := PrioritizedSlice{a, b, c}
+	s2 := s.Remove("b")
+	if len(s2) != 2 {
+		t.Fatalf("Remove len = %d, want 2", len(s2))
+	}
+	if s2[0].Value != "a" || s2[1].Value != "c" {
+		t.Errorf("Remove order wrong: %v", s2)
+	}
+	// Removing a missing value returns the slice unchanged.
+	s3 := s.Remove("zzz")
+	if len(s3) != 3 {
+		t.Errorf("Remove(missing) len = %d, want 3 unchanged", len(s3))
+	}
+}
+
+func TestBytesFilter_Extend(t *testing.T) {
+	base := NewBytesFilter([]byte("foo"))
+	ext := base.Extend([]byte("bar"))
+	if !ext.Contains([]byte("foo")) {
+		t.Error("extended filter must keep base entries")
+	}
+	if !ext.Contains([]byte("bar")) {
+		t.Error("extended filter must include new entries")
+	}
+}
+
 // TestToValidRune pins the contract ResolveNumericReferences relies
 // on for the post-clamp path: invalid runes (including the
 // replacement code path through 0xFFFD itself) round-trip via
