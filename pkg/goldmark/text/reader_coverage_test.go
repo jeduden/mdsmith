@@ -137,3 +137,25 @@ func TestReadRuneReader_AllBranches(t *testing.T) {
 		t.Errorf("readRuneReader('a') = %v %v, want 'a' nil", rn, err)
 	}
 }
+
+func TestFindSubMatchReader_AllBranches(t *testing.T) {
+	// findSubMatchReader has branches:
+	//   - regex doesn't match -> return nil
+	//   - regex matches with optional group not captured -> empty []byte
+	//   - regex matches normally
+
+	// No match.
+	r := NewReader([]byte("abc"))
+	re := regexp.MustCompile(`xyz`)
+	if got := findSubMatchReader(r, re); got != nil {
+		t.Error("findSubMatchReader should return nil on no match")
+	}
+
+	// Optional group not captured.
+	r = NewReader([]byte("hello"))
+	re2 := regexp.MustCompile(`(hello)(.*)?`)
+	got := findSubMatchReader(r, re2)
+	if got == nil {
+		t.Error("findSubMatchReader should match")
+	}
+}
