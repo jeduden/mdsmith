@@ -84,15 +84,46 @@ func skipContentBelow(heads []DocHeading, rootLevel int) []DocHeading {
 // pipeline (and any future caller running passes in parallel)
 // can run multiple ValidateContent invocations concurrently, so
 // the pool hands each goroutine its own parser instance. Mirrors
-// internal/index/build.go's parserPool.
+// internal/index/build.go's parserPool.  Each pool slot pairs a
+// parser with a resetter for the link-ref transformer (added by
+// goldmark's DefaultParagraphTransformers, which is included in
+// the goldmark.New stack) so the pool can clear the pinned source
+// bytes before Put.
+type contentPooledParser struct {
+	parser parser.Parser
+	reset  func()
+}
+
 var contentParserPool = sync.Pool{
 	New: func() any {
-		return goldmark.New(
+		// Build the paragraph-transformer list ourselves so we
+		// can locate the link-ref transformer and capture a
+		// Reset closure for it; goldmark.New + md.Parser() don't
+		// expose installed transformers, so we'd otherwise have
+		// no handle to clear the pool's pinned source bytes
+		// between Get/Put.
+		defaults := parser.DefaultParagraphTransformers()
+		var resetter func()
+		for _, pv := range defaults {
+			if r, ok := pv.Value.(interface {
+				parser.ParagraphTransformer
+				Reset()
+			}); ok {
+				resetter = r.Reset
+				break
+			}
+		}
+		md := goldmark.New(
 			goldmark.WithExtensions(extension.Table),
 			goldmark.WithParserOptions(
 				parser.WithBlockParsers(lint.PIBlockParserPrioritized()),
+				parser.WithParagraphTransformers(defaults...),
 			),
-		).Parser()
+		)
+		if resetter == nil {
+			resetter = func() {}
+		}
+		return &contentPooledParser{parser: md.Parser(), reset: resetter}
 	},
 }
 
@@ -104,9 +135,12 @@ var contentParserPool = sync.Pool{
 // shape lint.NewParser produces — instead of HTML blocks that would
 // shadow surrounding content and confuse the walker's match loop.
 func parseWithTableExt(source []byte) ast.Node {
-	p := contentParserPool.Get().(parser.Parser)
-	defer contentParserPool.Put(p)
-	return p.Parse(text.NewReader(source))
+	pp := contentParserPool.Get().(*contentPooledParser)
+	defer func() {
+		pp.reset()
+		contentParserPool.Put(pp)
+	}()
+	return pp.parser.Parse(text.NewReader(source))
 }
 
 // topLevelBlocks returns the document's top-level block children in

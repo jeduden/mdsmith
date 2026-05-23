@@ -612,6 +612,17 @@ func ResolveNumericReferences(source []byte) []byte {
 					if nnext < limit && (nc == 'x' || nc == 'X') {
 						start := nnext + 1
 						i, ok = ReadWhile(source, [2]int{start, limit}, IsHexDecimal)
+						// Unlike the renderer's html.go entity-decode
+						// path (which caps the hex window at i-start<7),
+						// ResolveNumericReferences intentionally has no
+						// hex digit cap: pathological values like
+						// &#xFFFFFFFF; are routed through ParseUint and
+						// the explicit v > math.MaxInt32 clamp below so
+						// they fold to U+FFFD instead of leaking through
+						// as literal text into URLs.  The decimal branch
+						// keeps its i-start<8 cap because ParseUint(_,_,32)
+						// already rejects 9-digit decimals.  See
+						// TestResolveNumericReferences_HexOverflowClampedToReplacement.
 						if ok && i < limit && source[i] == ';' {
 							v, _ := strconv.ParseUint(BytesToReadOnlyString(source[start:i]), 16, 32)
 							cob.Write(source[n:pos])

@@ -35,9 +35,42 @@ type linkRefResetter interface {
 // built here owns its own transformer with its own reusable
 // text.BlockReader — the per-paragraph allocation of upstream
 // goldmark@v1.8.2 (parser/link_ref.go:18) is gone.
+//
+// CALLERS THAT POOL THE PARSER: the returned parser retains its last
+// parsed document's source bytes via the link-ref transformer's
+// reusable BlockReader.  If you place the returned parser into a
+// sync.Pool, you MUST call ResetPooledParser before Put — see
+// NewPooledParser for the safer Get/Put API.
 func NewParser() parser.Parser {
 	p, _ := newPooledParser()
 	return p
+}
+
+// NewPooledParser returns a canonical parser paired with a Reset
+// function.  The Reset function clears the link-ref transformer's
+// pinned document source bytes; pool consumers (sync.Pool, custom
+// pools, LSP request-scoped reuse, etc.) MUST call Reset before
+// returning the parser to the pool, otherwise the pool slot keeps
+// the last parsed document's []byte alive for the lifetime of the
+// pool entry.
+//
+// The internal mdsmith pool in ParseContext below is the reference
+// pattern; out-of-package pools (internal/index/build.go,
+// internal/schema/validate_content.go) should consume NewPooledParser
+// rather than NewParser to get the same memory-retention guarantee.
+//
+// Reset is a no-op when the parser configuration omits the link-ref
+// transformer (e.g. a caller-supplied minimal transformer set),
+// because newPooledParser cannot locate a resetter in that case; the
+// returned Reset function still exists so calling code does not need
+// a conditional Reset call.
+func NewPooledParser() (p parser.Parser, reset func()) {
+	parserInst, lrp := newPooledParser()
+	return parserInst, func() {
+		if lrp != nil {
+			lrp.Reset()
+		}
+	}
 }
 
 // newPooledParser builds one parser plus the link-ref transformer

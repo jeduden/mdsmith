@@ -18,6 +18,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// pooledParser pairs a parser.Parser with the reset closure that
+// clears the link-ref transformer's pinned document source bytes.
+// Returning the parser to parserPool without Reset would keep the
+// last parsed file's []byte alive for the lifetime of the pool slot;
+// the LSP and parallel index builds rotate through many large files,
+// so the retention quickly compounds.
+type pooledParser struct {
+	parser parser.Parser
+	reset  func()
+}
+
 // parserPool reuses goldmark parsers across buildFileEntry calls.
 // lint.NewParser() builds a substantial config (block parsers, inline
 // parsers, paragraph transformers); constructing one per file
@@ -25,7 +36,8 @@ import (
 // instances are safe to reuse sequentially within a single goroutine.
 var parserPool = sync.Pool{
 	New: func() any {
-		return lint.NewParser()
+		p, reset := lint.NewPooledParser()
+		return &pooledParser{parser: p, reset: reset}
 	},
 }
 
@@ -68,10 +80,15 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 	// Pull a parser out of the pool — building one is expensive
 	// compared to a single parse. defer Put so a panic inside
 	// Parse (or anywhere below) doesn't leak the instance.
-	p := parserPool.Get().(parser.Parser)
-	defer parserPool.Put(p)
+	// Reset before Put so the link-ref transformer doesn't pin
+	// the file's source bytes in the idle pool slot.
+	pp := parserPool.Get().(*pooledParser)
+	defer func() {
+		pp.reset()
+		parserPool.Put(pp)
+	}()
 	ctx := parser.NewContext()
-	root := p.Parse(text.NewReader(body), parser.WithContext(ctx))
+	root := pp.parser.Parse(text.NewReader(body), parser.WithContext(ctx))
 	lines := bytes.Split(body, []byte("\n"))
 
 	// Wrap the parsed body in a *lint.File so the linkgraph

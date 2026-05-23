@@ -221,6 +221,15 @@ func NewParser() parser.Parser {
 	return markdown.NewParser()
 }
 
+// NewPooledParser forwards markdown.NewPooledParser for callers that
+// place the parser into a sync.Pool.  The returned reset closure
+// MUST be invoked before returning the parser to the pool; otherwise
+// the pool slot retains the last parsed document's source bytes via
+// the link-ref transformer's reusable BlockReader.
+func NewPooledParser() (parser.Parser, func()) {
+	return markdown.NewPooledParser()
+}
+
 // NewFile parses source as Markdown and returns a File. The parse
 // itself is delegated to pkg/markdown's pooled canonical parser, so a
 // single goldmark configuration backs every parse path.
