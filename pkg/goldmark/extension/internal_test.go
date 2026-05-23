@@ -39,6 +39,24 @@ func TestApplyFootnoteTemplate_AllBranches(t *testing.T) {
 	}
 }
 
+func TestStrikethroughParser_CloseBlock_Direct(t *testing.T) {
+	// strikethroughParser.CloseBlock has a 2-arg signature that
+	// doesn't match goldmark's CloseBlocker interface, so the
+	// dispatcher never calls it.  Drive it directly.
+	p := defaultStrikethroughParser
+	p.CloseBlock(nil, nil)
+}
+
+func TestTaskCheckBoxParser_CloseBlock_Direct(t *testing.T) {
+	p := defaultTaskCheckBoxParser
+	p.CloseBlock(nil, nil)
+}
+
+func TestDefinitionListParser_Close_Direct(t *testing.T) {
+	p := &definitionListParser{}
+	p.Close(nil, nil, nil)
+}
+
 func TestFootnoteBlockParser_Open_NoBracketAtStart(t *testing.T) {
 	// footnoteBlockParser.Open returns nil when pos < 0 (no block
 	// offset) or the line doesn't start with '['.  Trigger is '[',
