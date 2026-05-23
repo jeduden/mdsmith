@@ -164,6 +164,33 @@ func TestCodeSpan_NestedBackticks(t *testing.T) {
 	}
 }
 
+func TestEmphasis_RareDelimiterPatterns(t *testing.T) {
+	// Drive uncommon emphasis branches in ProcessDelimiters:
+	// CanOpenCloser asymmetric, can-open-but-not-close, can-close-
+	// but-not-open, intraword underscores, multi-character runs.
+	cases := []string{
+		"a*foo bar*",                       // basic emphasis
+		"*foo *bar*",                        // double open
+		"*foo* bar*",                        // open then trailing
+		"foo*bar*baz",                       // intraword * (allowed)
+		"foo_bar_baz",                       // intraword _ (NOT emphasis)
+		"foo*_bar_*baz",                     // mixed delimiters
+		"**foo***bar**",                     // adjacent runs
+		"*foo **bar***",                    // mixed lengths
+		"***foo***",                         // triple = both em+strong
+		"*** foo ***",                       // surrounded with spaces
+		"a *foo*** bar*** baz",              // longer runs
+		"_*foo*_",                           // nested different delims
+		"_**foo**_",
+		"** open with no close",
+		"close with no open **",
+		"*not_an_emphasis_either*",
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src + "\n")
+	}
+}
+
 func TestBlockquote_AllProcessBranches(t *testing.T) {
 	// Drive each branch in blockquoteParser.process:
 	//   ">\n"           -> pos at newline immediately (early-return path)
