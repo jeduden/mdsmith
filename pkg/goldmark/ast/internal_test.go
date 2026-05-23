@@ -64,9 +64,17 @@ func TestCodeBlock_Text_Direct(t *testing.T) {
 }
 
 func TestHTMLBlock_Text_Direct(t *testing.T) {
+	// HTMLBlock.Text branches: no ClosureLine vs ClosureLine set.
 	hb := NewHTMLBlock(HTMLBlockType6)
 	hb.Lines().Append(text.NewSegment(0, 5))
 	_ = hb.Text([]byte("<div>"))
+
+	// With ClosureLine set.
+	src := []byte("<script></script>\n")
+	hb2 := NewHTMLBlock(HTMLBlockType1)
+	hb2.Lines().Append(text.NewSegment(0, 8))
+	hb2.ClosureLine = text.NewSegment(8, 18)
+	_ = hb2.Text(src)
 }
 
 func TestBaseNode_Text_HeadingWithMixedChildren(t *testing.T) {
