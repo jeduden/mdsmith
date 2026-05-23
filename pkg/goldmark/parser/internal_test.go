@@ -426,6 +426,30 @@ func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
 	}
 }
 
+func TestHTMLBlockParser_Open_AllTypes(t *testing.T) {
+	// Drive each block-type detection branch directly.
+	bp := &htmlBlockParser{}
+	pc := NewContext()
+	pc.SetBlockOffset(0)
+
+	cases := []string{
+		"<script>\n",             // type 1
+		"<!-- comment\n",         // type 2
+		"<?xml ?>\n",             // type 3
+		"<!DOCTYPE html>\n",      // type 4
+		"<![CDATA[content]]>\n", // type 5
+		"<div>\n",                // type 6 (block tag in allowed list)
+		"<a href=\"x\">\n",       // type 7 (custom tag, no paragraph context)
+		"<unknowntag>\n",         // not a valid type
+	}
+	parent := ast.NewDocument()
+	for _, src := range cases {
+		r := text.NewReader([]byte(src))
+		bp.Open(parent, r, pc)
+		_ = src
+	}
+}
+
 func TestATXHeadingParser_Open_DefensiveBranches(t *testing.T) {
 	// atxHeadingParser.Open has defensive branches reachable only
 	// via direct calls or unusual states:
