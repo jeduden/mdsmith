@@ -112,6 +112,30 @@ func TestRender_DefinitionListWithAttributes(t *testing.T) {
 	}
 }
 
+func TestRender_FootnoteListWithAttributes(t *testing.T) {
+	// renderFootnoteList has Attributes() != nil branch.  Build
+	// AST and inject attributes manually.
+	doc := ast.NewDocument()
+	list := extast.NewFootnoteList()
+	list.SetAttribute([]byte("class"), []byte("fn-list"))
+	doc.AppendChild(doc, list)
+	fn := extast.NewFootnote([]byte("a"))
+	fn.SetAttribute([]byte("class"), []byte("fn-item"))
+	list.AppendChild(list, fn)
+
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(
+		util.Prioritized(html.NewRenderer(), 1000),
+		util.Prioritized(gext.NewFootnoteHTMLRenderer(), 500),
+	))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `class="fn-list"`) {
+		t.Errorf("FootnoteList attribute not rendered: %q", buf.String())
+	}
+}
+
 func TestRender_TableCellWithAlignOverrides(t *testing.T) {
 	// Drive renderTableCell's align/style attribute-override
 	// branches by constructing cells with explicit align/style
