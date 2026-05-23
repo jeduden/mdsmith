@@ -75,6 +75,23 @@ func TestBlockReader_SetPadding(t *testing.T) {
 	}
 }
 
+func TestBlockReader_PeekWithPadding(t *testing.T) {
+	r := newTestBlockReader("abc\n")
+	r.SetPadding(3)
+	if b := r.Peek(); b != ' ' {
+		t.Errorf("Peek with padding should return space, got %c", b)
+	}
+}
+
+func TestBlockReader_PeekAtEOF(t *testing.T) {
+	r := newTestBlockReader("ab\n")
+	r.Advance(2)
+	r.AdvanceLine()
+	if b := r.Peek(); b != text.EOF {
+		t.Errorf("Peek past last segment should return EOF, got %c", b)
+	}
+}
+
 func TestBlockReader_AdvanceAndSetPadding(t *testing.T) {
 	r := newTestBlockReader("abcdefg\n")
 	r.AdvanceAndSetPadding(2, 4)
