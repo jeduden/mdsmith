@@ -268,3 +268,26 @@ func TestWriteQAAnnotationTemplateCSV(t *testing.T) {
 		t.Fatalf("missing blank row: %q", got)
 	}
 }
+
+// --- ratio ---
+
+// TestRatio pins both branches of the divide helper: the
+// zero-denominator guard returns 0 (no NaN, no Inf), and the
+// normal path returns the float division. The QA scoring path
+// only ever drives the non-zero branch, so the guard was
+// uncovered.
+func TestRatio(t *testing.T) {
+	t.Parallel()
+	if got := ratio(0, 0); got != 0 {
+		t.Errorf("ratio(0, 0) = %v, want 0 (zero-denominator guard)", got)
+	}
+	if got := ratio(3, 0); got != 0 {
+		t.Errorf("ratio(3, 0) = %v, want 0", got)
+	}
+	if got := ratio(1, 2); got != 0.5 {
+		t.Errorf("ratio(1, 2) = %v, want 0.5", got)
+	}
+	if got := ratio(7, 4); got != 1.75 {
+		t.Errorf("ratio(7, 4) = %v, want 1.75", got)
+	}
+}

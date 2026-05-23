@@ -5,7 +5,10 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 func TestCheck_EmptyAlt_Violation(t *testing.T) {
@@ -132,4 +135,37 @@ func TestCategory(t *testing.T) {
 	if r.Category() == "" {
 		t.Error("expected non-empty category")
 	}
+}
+
+// --- firstTextLine ---
+
+// TestFirstTextLine pins the recursion + direct-text branches: a
+// node whose first child is a Text node returns immediately; a
+// node whose Text is nested under a non-Text child (Link / Image
+// alt) recurses to find it; an empty subtree returns 0. The Check
+// loop drives only the recursion branch via real Markdown.
+func TestFirstTextLine(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# X\n\n  Y\n"))
+	require.NoError(t, err)
+
+	t.Run("direct child Text", func(t *testing.T) {
+		p := ast.NewParagraph()
+		txt := ast.NewText()
+		txt.Segment = text.NewSegment(0, 1)
+		p.AppendChild(p, txt)
+		assert.Equal(t, 1, firstTextLine(p, f))
+	})
+	t.Run("nested Text via Link", func(t *testing.T) {
+		p := ast.NewParagraph()
+		link := ast.NewLink()
+		txt := ast.NewText()
+		txt.Segment = text.NewSegment(7, 8) // points into line 3
+		link.AppendChild(link, txt)
+		p.AppendChild(p, link)
+		assert.Equal(t, 3, firstTextLine(p, f))
+	})
+	t.Run("no descendant text returns zero", func(t *testing.T) {
+		p := ast.NewParagraph()
+		assert.Equal(t, 0, firstTextLine(p, f))
+	})
 }

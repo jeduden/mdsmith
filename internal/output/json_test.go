@@ -239,3 +239,64 @@ func TestJSONFormatter_SourceContextOmittedWhenEmpty(t *testing.T) {
 func TestJSONFormatter_ImplementsFormatter(t *testing.T) {
 	var _ Formatter = &JSONFormatter{}
 }
+
+// --- explanationToJSON ---
+
+// TestExplanationToJSON_NilReturnsNil pins the nil-guard branch.
+// The JSON encoder drives this when a diagnostic carries no
+// explanation; the integration tests only ever feed an
+// explanation, so the branch was uncovered.
+func TestExplanationToJSON_NilReturnsNil(t *testing.T) {
+	if got := explanationToJSON(nil); got != nil {
+		t.Errorf("explanationToJSON(nil) = %v, want nil", got)
+	}
+}
+
+// TestExplanationToJSON_PopulatesFields pins the happy path:
+// every Leaf is copied across to a jsonExplanationLeaf with
+// matching Path/Value/Source. The integration tests assert
+// only on the JSON byte output, so the per-field copy was not
+// independently pinned.
+func TestExplanationToJSON_PopulatesFields(t *testing.T) {
+	src := &lint.Explanation{
+		Rule: "MDS001",
+		Leaves: []lint.ExplanationLeaf{
+			{Path: "max-line-length", Value: "80", Source: "convention/google.yml"},
+			{Path: "enabled", Value: "true", Source: "default"},
+		},
+	}
+	got := explanationToJSON(src)
+	if got == nil {
+		t.Fatal("expected non-nil result for non-nil input")
+	}
+	if got.Rule != "MDS001" {
+		t.Errorf("Rule = %q, want MDS001", got.Rule)
+	}
+	if len(got.Leaves) != 2 {
+		t.Fatalf("len(Leaves) = %d, want 2", len(got.Leaves))
+	}
+	if got.Leaves[0].Path != "max-line-length" || got.Leaves[0].Value != "80" ||
+		got.Leaves[0].Source != "convention/google.yml" {
+		t.Errorf("leaf 0 mismatch: %+v", got.Leaves[0])
+	}
+	if got.Leaves[1].Path != "enabled" || got.Leaves[1].Value != "true" ||
+		got.Leaves[1].Source != "default" {
+		t.Errorf("leaf 1 mismatch: %+v", got.Leaves[1])
+	}
+}
+
+// TestExplanationToJSON_EmptyLeavesIsEmptySlice pins that an empty
+// Leaves input produces an empty (non-nil) Leaves slice — the
+// encoder relies on the empty form for JSON `[]` output.
+func TestExplanationToJSON_EmptyLeavesIsEmptySlice(t *testing.T) {
+	got := explanationToJSON(&lint.Explanation{Rule: "MDS001"})
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if got.Leaves == nil {
+		t.Errorf("Leaves must be empty slice, not nil, for JSON []")
+	}
+	if len(got.Leaves) != 0 {
+		t.Errorf("len(Leaves) = %d, want 0", len(got.Leaves))
+	}
+}

@@ -236,3 +236,25 @@ func TestCategory(t *testing.T) {
 		t.Errorf("expected meta, got %s", r.Category())
 	}
 }
+
+// --- normalizeMode / normalizeTokenizer / normalizeEncoding ---
+
+// TestNormalizeMode pins the three branches of the helper: empty
+// and whitespace-only inputs return the defaultMode constant; a
+// trimmed lowercase form is returned for everything else. The
+// ApplySettings path drives the lowercase branch but not the
+// empty/default case directly.
+func TestNormalizeMode(t *testing.T) {
+	if got := normalizeMode(""); got != defaultMode {
+		t.Errorf("normalizeMode(\"\") = %q, want %q", got, defaultMode)
+	}
+	if got := normalizeMode("   "); got != defaultMode {
+		t.Errorf("normalizeMode(\"   \") = %q, want %q", got, defaultMode)
+	}
+	if got := normalizeMode("  WARN  "); got != "warn" {
+		t.Errorf("normalizeMode(\"  WARN  \") = %q, want \"warn\"", got)
+	}
+	if got := normalizeMode("Off"); got != "off" {
+		t.Errorf("normalizeMode(\"Off\") = %q, want \"off\"", got)
+	}
+}

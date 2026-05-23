@@ -180,7 +180,106 @@ func (errRunner) Run(args []string) ([]byte, error) {
 	return nil, exec.ErrNotFound
 }
 
-// --- normalizeRepository ---
+// --- classifyGitError ---
+
+// TestClassifyGitError pins every branch of the error classifier:
+// the four pattern groups (repo missing, commit missing, network)
+// each rewrite the upstream message; the default branch passes it
+// through unchanged. The ResolveSource end-to-end test only ever
+// drives the "commit not found" path on a synthetic bare repo, so
+// the other branches were uncovered.
+func TestClassifyGitError(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "repository not found",
+			in:   "fatal: repository not found",
+			want: "repository not found or inaccessible: origin"},
+		{name: "could not read from remote repository",
+			in:   "Could not read from remote repository",
+			want: "repository not found or inaccessible: origin"},
+		{name: "couldnt find remote ref",
+			in:   "couldn't find remote ref deadbeef",
+			want: "commit not found: deadbeef"},
+		{name: "not our ref",
+			in:   "fatal: not our ref deadbeef",
+			want: "commit not found: deadbeef"},
+		{name: "failed to connect",
+			in:   "failed to connect to host",
+			want: "network error while accessing origin"},
+		{name: "timed out",
+			in:   "operation timed out",
+			want: "network error while accessing origin"},
+		{name: "could not resolve host",
+			in:   "could not resolve host: github.com",
+			want: "network error while accessing origin"},
+		{name: "default passthrough",
+			in:   "permission denied",
+			want: "permission denied"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := classifyGitError(
+				&stringErr{c.in}, "origin", "deadbeef")
+			if got := err.Error(); got != c.want {
+				t.Errorf("classifyGitError(%q) = %q, want %q",
+					c.in, got, c.want)
+			}
+		})
+	}
+}
+
+type stringErr struct{ s string }
+
+func (e *stringErr) Error() string { return e.s }
+
+// --- validateRepoRoot ---
+
+// TestValidateRepoRoot pins the missing-root branch: when the
+// resolved root does not exist, the helper must produce a
+// commit-aware error string naming the configured root. The
+// happy path is exercised by ResolveSource end-to-end; the
+// negative path was not, and the error message format is part
+// of the user-visible contract.
+func TestValidateRepoRoot(t *testing.T) {
+	t.Parallel()
+	src := SourceConfig{
+		Name:      "seed",
+		CommitSHA: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+	}
+	missing := filepath.Join(t.TempDir(), "no-such-root")
+	got, err := validateRepoRoot(src, "configured/root", missing)
+	if err == nil {
+		t.Fatalf("expected error, got %q", got)
+	}
+	if !strings.Contains(err.Error(), "seed") {
+		t.Errorf("error %q must mention source name", err)
+	}
+	if !strings.Contains(err.Error(), "configured/root") {
+		t.Errorf("error %q must mention configured root", err)
+	}
+	if !strings.Contains(err.Error(), src.CommitSHA) {
+		t.Errorf("error %q must mention commit", err)
+	}
+}
+
+// TestValidateRepoRoot_HappyPath pins that an existing resolved
+// root is returned verbatim.
+func TestValidateRepoRoot_HappyPath(t *testing.T) {
+	t.Parallel()
+	src := SourceConfig{Name: "seed", CommitSHA: "abc"}
+	dir := t.TempDir()
+	got, err := validateRepoRoot(src, "docs", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != dir {
+		t.Errorf("validateRepoRoot = %q, want %q", got, dir)
+	}
+}
 
 // TestNormalizeRepository pins every branch of the helper: the
 // pass-through schemes (git@, ssh://), the http/https paths with

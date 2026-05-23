@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 // helper to build a string of n characters.
@@ -826,4 +828,50 @@ func TestDefaultSettings_IncludesStern(t *testing.T) {
 func TestCategory(t *testing.T) {
 	r := &Rule{}
 	assert.NotEmpty(t, r.Category())
+}
+
+// --- headingLineNum ---
+
+// TestHeadingLineNum_FromLines pins the direct-hit branch where the
+// heading node carries a Lines() entry. Setext headings always
+// have this; ATX usually do too. The Check loop drives this
+// path through normal Markdown.
+func TestHeadingLineNum_FromLines(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# Title\n"))
+	require.NoError(t, err)
+	var got int
+	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
+		if h, ok := n.(*ast.Heading); ok {
+			got = headingLineNum(h, f)
+			break
+		}
+	}
+	assert.Equal(t, 1, got)
+}
+
+// TestHeadingLineNum_FromChildText covers the fallback branch:
+// a synthetic heading without Lines() must still resolve its line
+// via its first descendant Text node. The Check loop never sees
+// this shape from goldmark, but the branch is defensive against
+// extension-rewritten ASTs.
+func TestHeadingLineNum_FromChildText(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# Title\n"))
+	require.NoError(t, err)
+	h := ast.NewHeading(1)
+	txt := ast.NewText()
+	txt.Segment = text.NewSegment(2, 7) // points to "Title"
+	h.AppendChild(h, txt)
+	assert.Equal(t, 1, headingLineNum(h, f))
+}
+
+// TestHeadingLineNum_NoTextReturnsZero pins the zero-fallback:
+// a synthetic heading with no Lines and no descendant Text node
+// returns 0. The Check loop guards against this by ignoring
+// line==0 diagnostics, so the branch was unreachable from real
+// Markdown.
+func TestHeadingLineNum_NoTextReturnsZero(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte(""))
+	require.NoError(t, err)
+	h := ast.NewHeading(1)
+	assert.Equal(t, 0, headingLineNum(h, f))
 }

@@ -140,3 +140,25 @@ func TestAdjustHeadings_CodeBlocks(t *testing.T) {
 		})
 	}
 }
+
+// --- isResultPrevLineFence ---
+
+// TestIsResultPrevLineFence pins both branches: empty result
+// returns false (no prior line); non-empty result inspects the
+// last entry against codeFenceRe with leading whitespace trimmed.
+// The integration path through adjustHeadings drives these via
+// real Markdown, but the function shape was not pinned directly.
+func TestIsResultPrevLineFence(t *testing.T) {
+	assert.False(t, isResultPrevLineFence(nil),
+		"empty slice returns false")
+	assert.False(t, isResultPrevLineFence([]string{}),
+		"zero-length slice returns false")
+	assert.True(t, isResultPrevLineFence([]string{"text", "```"}),
+		"triple-backtick last line is a fence")
+	assert.True(t, isResultPrevLineFence([]string{"  ```go"}),
+		"leading whitespace is trimmed before match")
+	assert.True(t, isResultPrevLineFence([]string{"~~~"}),
+		"triple-tilde is also a fence")
+	assert.False(t, isResultPrevLineFence([]string{"plain text"}),
+		"non-fence content returns false")
+}

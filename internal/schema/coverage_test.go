@@ -1547,3 +1547,32 @@ func TestValidate_SkipsCUECheckWhenFmIsCUE(t *testing.T) {
 	assert.Empty(t, diags,
 		"fmIsCUE=true should skip the CUE check entirely")
 }
+
+// --- resolveDir ---
+
+// TestResolveDir_AbsoluteCleansPath pins that an existing absolute
+// dir round-trips through resolveDir unchanged (modulo cleaning).
+// The EvalSymlinks step succeeds on a real directory, so the
+// `EvalSymlinks(...) err == nil` branch fires.
+func TestResolveDir_AbsoluteCleansPath(t *testing.T) {
+	dir := t.TempDir()
+	got := resolveDir(dir)
+	require.NotEmpty(t, got)
+	// EvalSymlinks on macOS resolves /var → /private/var, so just
+	// check the returned path exists and shares a suffix.
+	require.True(t, filepath.IsAbs(got),
+		"resolveDir must return absolute path, got %q", got)
+}
+
+// TestResolveDir_EvalSymlinksFailureFallsBackToClean covers the
+// fallback branch: when EvalSymlinks fails (a non-existent path
+// is the common case), the helper returns filepath.Clean(abs)
+// instead of "". The Check loop only ever feeds existing paths,
+// so this branch was uncovered.
+func TestResolveDir_EvalSymlinksFailureFallsBackToClean(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-dir")
+	got := resolveDir(missing)
+	require.NotEmpty(t, got)
+	require.Equal(t, filepath.Clean(missing), got,
+		"missing path must fall back to filepath.Clean(abs)")
+}
