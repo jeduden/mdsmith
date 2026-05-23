@@ -12,7 +12,6 @@ import (
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
 )
 
 func TestBlockquoteParser_Open_NilReturn(t *testing.T) {
@@ -430,6 +429,28 @@ func TestIsBlankLine_AllBranches(t *testing.T) {
 	}
 }
 
-// recordingPrioritized constructs a util.PrioritizedValue for an
-// arbitrary value. Used by some internal unit tests.
-var _ = util.Prioritized
+func TestParseAttributes_AllBranches(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"no-brace", "no brace", false},
+		{"empty-braces", "{}", true},
+		{"single-id", "{#myid}", true},
+		{"single-class", "{.cls}", true},
+		{"multi-class", "{.a .b .c}", true},
+		{"key-value", `{key=val}`, true},
+		{"comma-separated", "{#a, .b}", true},
+		{"bad-attr-inside", "{!invalid}", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := text.NewReader([]byte(c.in))
+			_, ok := ParseAttributes(r)
+			if ok != c.want {
+				t.Errorf("ParseAttributes(%q) = %v, want %v", c.in, ok, c.want)
+			}
+		})
+	}
+}
