@@ -30,6 +30,14 @@ func TestBaseNode_Text_SoftLineBreakChild(t *testing.T) {
 	_ = p.Text(src)
 }
 
+func TestReferenceLinkType_String_DefaultArm(t *testing.T) {
+	// ReferenceLinkType.String has a default arm for unknown
+	// values. Not reachable through normal AST construction.
+	if got := ReferenceLinkType(99).String(); got != "Unknown(99)" {
+		t.Errorf("ReferenceLinkType(99).String() = %q, want Unknown(99)", got)
+	}
+}
+
 func TestBaseNode_OwnerDocument_NoDocumentInChain(t *testing.T) {
 	// OwnerDocument walks up to a Document parent.  When the
 	// chain ends without a Document (e.g., orphan Paragraph), it
