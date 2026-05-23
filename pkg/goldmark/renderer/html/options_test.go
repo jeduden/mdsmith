@@ -117,6 +117,19 @@ func TestRenderOption_WithWriter(t *testing.T) {
 	}
 }
 
+func TestWriter_Write_NullByte(t *testing.T) {
+	// Writer.Write has a NUL-byte handling branch that emits the
+	// Unicode replacement character.
+	w := html.NewWriter()
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+	w.Write(bw, []byte("a\x00b\x00c"))
+	_ = bw.Flush()
+	if !strings.Contains(buf.String(), "�") {
+		t.Errorf("Write with NUL should emit U+FFFD; got %q", buf.String())
+	}
+}
+
 func TestWriter_RawWrite_SecureWrite_Write(t *testing.T) {
 	// Drive the Writer methods directly so the per-method coverage
 	// climbs without depending on which Convert path picks them up.
