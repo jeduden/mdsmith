@@ -36,6 +36,34 @@ func TestCopyOnWriteBuffer_AppendByte(t *testing.T) {
 	}
 }
 
+func TestIndentPositionPadding(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          string
+		currentPos  int
+		paddingv    int
+		width       int
+		wantPos     int
+		wantPadding int
+	}{
+		{"zero-width-noop", "  hello", 0, 0, 0, 0, 0},
+		{"spaces-exact", "    hello", 0, 0, 4, 4, 0},
+		{"tab-exact", "\thello", 0, 0, 4, 1, 0},
+		{"tab-over", "\thello", 0, 0, 2, 1, 2},
+		{"with-padding-consumed", "abc", 0, 3, 3, 0, 0},
+		{"insufficient-width", "  ", 0, 0, 4, -1, -1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			pos, padding := util.IndentPositionPadding([]byte(c.in), c.currentPos, c.paddingv, c.width)
+			if pos != c.wantPos || padding != c.wantPadding {
+				t.Errorf("IndentPositionPadding got pos=%d padding=%d want pos=%d padding=%d",
+					pos, padding, c.wantPos, c.wantPadding)
+			}
+		})
+	}
+}
+
 func TestDedentPositionPadding(t *testing.T) {
 	cases := []struct {
 		name        string
