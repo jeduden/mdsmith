@@ -180,3 +180,14 @@ func TestBlockReader_FindSubMatch(t *testing.T) {
 		t.Error("FindSubMatch returned nil for clear match")
 	}
 }
+
+func TestBlockReader_LineOffset_TabBranches(t *testing.T) {
+	// blockReader.LineOffset's loop has a tab branch.  Construct
+	// a reader where head < pos.Start spans both tabs and
+	// non-tab characters.
+	src := "  \tabc"
+	r := newTestBlockReader(src)
+	r.Advance(3) // past the tab
+	off := r.LineOffset()
+	_ = off
+}
