@@ -197,3 +197,12 @@ func TestBlockReader_AdvanceToEOL_NoTrailingNewline(t *testing.T) {
 	r := newTestBlockReader("abc")
 	r.AdvanceToEOL()
 }
+
+func TestBlockReader_PrecedingCharacter_EmptySegments(t *testing.T) {
+	// segments.Len() < 1 -> return '\n' branch.
+	segs := text.NewSegments()
+	r := text.NewBlockReader([]byte("x"), segs)
+	if got := r.PrecendingCharacter(); got != '\n' {
+		t.Errorf("PrecendingCharacter empty segments = %q, want '\\n'", got)
+	}
+}
