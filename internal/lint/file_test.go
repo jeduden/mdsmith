@@ -433,3 +433,13 @@ func TestNewPooledParser_Forward(t *testing.T) {
 	reset()
 	reset()
 }
+
+func TestNewParser_Forward(t *testing.T) {
+	// internal/lint.NewParser is a thin wrapper around
+	// markdown.NewParser; the dispatcher uses it for rule
+	// re-parses that don't need pool semantics.
+	p := NewParser()
+	if p == nil {
+		t.Fatal("NewParser returned nil")
+	}
+}
