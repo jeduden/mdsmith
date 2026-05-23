@@ -293,6 +293,45 @@ func TestSetextHeadingParser_Close_EmptyTmpParagraph(t *testing.T) {
 	bp.Close(heading2, text.NewReader(source), pc2)
 }
 
+func TestDelimiter_CalcComsumption_AllBranches(t *testing.T) {
+	// Three branches:
+	//   1. The %3 rule: (canClose||canOpen) + sum%3==0 + closer%3 != 0 -> 0
+	//   2. Both >= 2 -> 2
+	//   3. Otherwise -> 1
+	cases := []struct {
+		name   string
+		opener Delimiter
+		closer Delimiter
+		want   int
+	}{
+		{
+			name:   "len-2-both",
+			opener: Delimiter{Length: 2, OriginalLength: 2},
+			closer: Delimiter{Length: 2, OriginalLength: 2},
+			want:   2,
+		},
+		{
+			name:   "len-1-both",
+			opener: Delimiter{Length: 1, OriginalLength: 1},
+			closer: Delimiter{Length: 1, OriginalLength: 1},
+			want:   1,
+		},
+		{
+			name:   "mod-3-rule",
+			opener: Delimiter{Length: 1, OriginalLength: 1, CanClose: true},
+			closer: Delimiter{Length: 2, OriginalLength: 2, CanOpen: false},
+			want:   0,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.opener.CalcComsumption(&c.closer); got != c.want {
+				t.Errorf("CalcComsumption = %d, want %d", got, c.want)
+			}
+		})
+	}
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
