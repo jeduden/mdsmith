@@ -150,9 +150,9 @@ per workspace file.
   `internal/punkt/tokenizer.go`,
   `internal/schema/validate_content.go`.
 - **Return `nil`, not `[]T{}`.** Project convention.
-  Callers can distinguish "no result" from "populated"
-  uniformly, and an empty literal that escapes still
-  allocates a 24-byte header — `nil` does not.
+  `nil` and a non-nil empty slice are distinguishable in
+  tests, JSON, and `reflect`; sticking to `nil` for "no
+  result" keeps callers uniform.
 - **Compile regexes at package scope.**
   `var foo = regexp.MustCompile(…)`. Compiling inside a
   hot function builds the NFA every call.
@@ -240,8 +240,8 @@ Inspect with `go build -gcflags="-m=2"` and look for
 
 - **`sync/atomic`** for one-word flags and counters
   (`atomic.Bool`, `atomic.Int64`, `atomic.Pointer[T]`).
-- **`sync.Once`** for lazy init. After first call, it's
-  a single relaxed atomic load.
+- **`sync.Once`** for lazy init. After the first call,
+  it costs a single atomic load.
 - **`sync.Mutex`** for >1-word critical sections.
   Default choice. Cheaper than `sync.RWMutex` under low
   contention.
@@ -259,7 +259,7 @@ Inspect with `go build -gcflags="-m=2"` and look for
 | Avoid                                | Why                                                                            | Use instead                                                     |
 |--------------------------------------|--------------------------------------------------------------------------------|-----------------------------------------------------------------|
 | `fmt.Sprintf("%d", n)` in hot paths  | reflection, ~3× slower                                                         | `strconv.Itoa(n)`                                               |
-| `s + s2 + s3` in a loop              | each `+` allocates                                                             | `strings.Builder` with `Grow`                                   |
+| `s + s2 + s3` in a loop              | repeated concatenation allocates a new backing array per iteration (quadratic) | `strings.Builder` with `Grow`                                   |
 | `append` growing without `make`      | doubling-copy cost                                                             | pre-size with known cap                                         |
 | `defer` in a tight loop              | in-loop `defer` falls off the open-coded fast path                             | hoist or inline cleanup                                         |
 | return `[]T{}` for "no result"       | non-uniform with project convention; the empty literal allocates if it escapes | return `nil`                                                    |
