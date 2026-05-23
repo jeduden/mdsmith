@@ -247,6 +247,20 @@ func TestDelimiters_UnmatchedEmphasisClearsStack(t *testing.T) {
 	}
 }
 
+func TestATXHeading_AttributeParsingEdgeCases(t *testing.T) {
+	// parseLastLineAttributes handles \-escapes and { braces.
+	cases := []string{
+		`# H \{not-attribute\}`,    // escaped braces
+		`# H \! { #id }`,            // escaped punct then attr block
+		`# H { #id } trailing text`, // attr block in middle, then text
+		`# H {#id}`,                 // valid
+		`# H \\{#id}`,               // escaped backslash then attrs
+	}
+	for _, src := range cases {
+		_ = parseWithDefaultsAttr(src + "\n")
+	}
+}
+
 func TestAttribute_EdgeCases(t *testing.T) {
 	// Drive remaining parseAttribute branches.
 	cases := []string{
