@@ -553,6 +553,25 @@ func TestListParser_Open_AllEarlyReturns(t *testing.T) {
 	bp.Open(doc4, r4, pc4)
 }
 
+func TestListItemParser_Open_AllBranches(t *testing.T) {
+	bp := &listItemParser{}
+	list := ast.NewList('-')
+
+	// not-a-list-line.
+	r := text.NewReader([]byte("plain text\n"))
+	bp.Open(list, r, NewContext())
+
+	// indent too far past offset.
+	li := ast.NewListItem(2)
+	list.AppendChild(list, li)
+	r2 := text.NewReader([]byte("      - too far indented\n"))
+	bp.Open(list, r2, NewContext())
+
+	// empty item content.
+	r3 := text.NewReader([]byte("-\n"))
+	bp.Open(list, r3, NewContext())
+}
+
 func TestListItemParser_Open_NonListParent(t *testing.T) {
 	// listItemParser.Open returns nil when parent is not *ast.List.
 	// The dispatcher only routes list-item triggers under a List
