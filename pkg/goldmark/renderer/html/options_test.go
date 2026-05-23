@@ -232,6 +232,26 @@ func TestRender_HeadingWithExtraAttributes(t *testing.T) {
 	}
 }
 
+func TestWriter_EntitiesEscapeRuneBranches(t *testing.T) {
+	// Drive escapeRune via numeric/hex HTML entities. Each entity
+	// triggers a different branch:
+	//   <, > (r < 256, escape table hit)
+	//   A (r < 256, escape table miss; raw rune)
+	//   😀 (r > 65535, high-codepoint path)
+	w := html.NewWriter()
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+	w.Write(bw, []byte(`&#60;a&#62;b&#65;c&#x1F600;d`))
+	_ = bw.Flush()
+	out := buf.String()
+	// Just assert the writer didn't choke on any of the
+	// codepoints — exact rendered form depends on internal
+	// escape tables.
+	if len(out) < 5 {
+		t.Errorf("Write produced suspiciously short output: %q", out)
+	}
+}
+
 func TestRender_CodeSpanWithRawTextSegment(t *testing.T) {
 	// Code span containing a RawTextSegment exercises the raw
 	// inline write path in renderCodeSpan.

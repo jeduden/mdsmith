@@ -66,8 +66,19 @@ func TestExtensionAST_TableNodeString(t *testing.T) {
 }
 
 func TestExtensionAST_TableDump(t *testing.T) {
+	// Empty Alignments — Table.Dump iterates 0 times.
 	table := extast.NewTable()
 	silence(t, func() { table.Dump(nil, 0) })
+
+	// Populated Alignments — iterates all rows; the trailing
+	// branch (Println on non-last entry) needs at least 2 entries.
+	table2 := extast.NewTable()
+	table2.Alignments = []extast.Alignment{
+		extast.AlignLeft,
+		extast.AlignRight,
+		extast.AlignCenter,
+	}
+	silence(t, func() { table2.Dump(nil, 0) })
 
 	header := extast.NewTableHeader(extast.NewTableRow(nil))
 	silence(t, func() { header.Dump(nil, 0) })
@@ -76,5 +87,7 @@ func TestExtensionAST_TableDump(t *testing.T) {
 	silence(t, func() { row.Dump(nil, 0) })
 
 	cell := extast.NewTableCell()
+	silence(t, func() { cell.Dump(nil, 0) })
+	cell.Alignment = extast.AlignCenter
 	silence(t, func() { cell.Dump(nil, 0) })
 }
