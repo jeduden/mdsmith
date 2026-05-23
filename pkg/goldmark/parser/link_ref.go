@@ -116,11 +116,17 @@ func (p *linkReferenceParagraphTransformer) Transform(node *ast.Paragraph, reade
 	node.SetLines(lines)
 }
 
-// sameByteSlice reports whether a and b refer to the same underlying
-// byte array start (cheap pointer identity check). The BlockReader's
-// source field is set at construction with no setter, so when the
-// document source changes between parses on the same transformer we
-// must allocate a fresh BlockReader rather than reuse the old one.
+// sameByteSlice reports whether a and b are the same slice — both
+// share the same backing-array start AND have the same length. Two
+// slices into the same array but with different lengths represent
+// different views (different document sources for the BlockReader
+// reuse check), so we treat them as not the same.
+//
+// The BlockReader's source field is set at construction with no
+// setter, so when the document source changes between parses on
+// the same transformer we must allocate a fresh BlockReader rather
+// than reuse the old one. Empty slices compare equal because there
+// is no first-element pointer to inspect and reuse is harmless.
 func sameByteSlice(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false
