@@ -179,3 +179,146 @@ type errRunner struct{}
 func (errRunner) Run(args []string) ([]byte, error) {
 	return nil, exec.ErrNotFound
 }
+
+// --- normalizeRepository ---
+
+// TestNormalizeRepository pins every branch of the helper: the
+// pass-through schemes (git@, ssh://), the http/https paths with
+// trailing slash and existing .git suffix, the github.com short
+// form, the owner/repo shorthand, and the rejection of empty
+// input. Each case maps a documented input shape to its canonical
+// clone URL.
+func TestNormalizeRepository(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+		err  bool
+	}{
+		{name: "empty rejected", in: "", err: true},
+		{name: "whitespace-only rejected", in: "   \t", err: true},
+		{name: "git@ passthrough",
+			in:   "git@github.com:owner/repo.git",
+			want: "git@github.com:owner/repo.git"},
+		{name: "ssh:// passthrough",
+			in:   "ssh://git@github.com/owner/repo.git",
+			want: "ssh://git@github.com/owner/repo.git"},
+		{name: "https with .git stays",
+			in:   "https://github.com/owner/repo.git",
+			want: "https://github.com/owner/repo.git"},
+		{name: "https without .git gets suffix",
+			in:   "https://github.com/owner/repo",
+			want: "https://github.com/owner/repo.git"},
+		{name: "https trailing slash trimmed",
+			in:   "https://github.com/owner/repo/",
+			want: "https://github.com/owner/repo.git"},
+		{name: "http upgraded with suffix",
+			in:   "http://example.com/owner/repo",
+			want: "http://example.com/owner/repo.git"},
+		{name: "github.com short form",
+			in:   "github.com/owner/repo",
+			want: "https://github.com/owner/repo.git"},
+		{name: "owner/repo shorthand",
+			in:   "owner/repo",
+			want: "https://github.com/owner/repo.git"},
+		{name: "absolute path passthrough",
+			in:   "/abs/local/repo",
+			want: "/abs/local/repo"},
+		{name: "relative dot path passthrough",
+			in:   "./local/repo",
+			want: "./local/repo"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := normalizeRepository(c.in)
+			if c.err {
+				if err == nil {
+					t.Fatalf("expected error for %q, got %q", c.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for %q: %v", c.in, err)
+			}
+			if got != c.want {
+				t.Errorf("normalizeRepository(%q) = %q, want %q",
+					c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// --- shortCommit ---
+
+// TestShortCommit pins the truncation invariant: SHAs ≥ 8 chars are
+// truncated, shorter inputs are returned verbatim. The helper is
+// used for log lines, so misformatting would mostly hide elsewhere;
+// a direct unit pin is cheap.
+func TestShortCommit(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"":         "",
+		"abc":      "abc",
+		"abcdefg":  "abcdefg",
+		"abcdefgh": "abcdefgh",
+		"abcdef1234567890abcdef1234567890abcdef12": "abcdef12",
+		strings.Repeat("a", 40):                    "aaaaaaaa",
+	}
+	for in, want := range cases {
+		if got := shortCommit(in); got != want {
+			t.Errorf("shortCommit(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// --- validateRemoteSourceInputs ---
+
+// TestValidateRemoteSourceInputs pins the three negative paths the
+// validator guards (missing repository, missing commit SHA, missing
+// cache directory) plus the happy path. Each error string is
+// substring-checked so a future copy edit still reads cleanly.
+func TestValidateRemoteSourceInputs(t *testing.T) {
+	t.Parallel()
+	t.Run("missing repository", func(t *testing.T) {
+		err := validateRemoteSourceInputs(SourceConfig{CommitSHA: "deadbeef"}, "/tmp")
+		if err == nil {
+			t.Fatal("expected error for missing repository")
+		}
+		if !strings.Contains(err.Error(), "repository") {
+			t.Errorf("error %q must mention repository", err)
+		}
+	})
+	t.Run("missing commit", func(t *testing.T) {
+		err := validateRemoteSourceInputs(SourceConfig{
+			Repository: "owner/repo",
+		}, "/tmp")
+		if err == nil {
+			t.Fatal("expected error for missing commit")
+		}
+		if !strings.Contains(err.Error(), "commit") {
+			t.Errorf("error %q must mention commit", err)
+		}
+	})
+	t.Run("missing cache directory", func(t *testing.T) {
+		err := validateRemoteSourceInputs(SourceConfig{
+			Repository: "owner/repo",
+			CommitSHA:  "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+		}, "  ")
+		if err == nil {
+			t.Fatal("expected error for missing cache dir")
+		}
+		if !strings.Contains(err.Error(), "cache") {
+			t.Errorf("error %q must mention cache", err)
+		}
+	})
+	t.Run("happy path", func(t *testing.T) {
+		err := validateRemoteSourceInputs(SourceConfig{
+			Repository: "owner/repo",
+			CommitSHA:  "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+		}, "/tmp")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
