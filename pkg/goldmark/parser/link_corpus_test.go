@@ -247,6 +247,21 @@ func TestLinkParser_DeeplyNested(t *testing.T) {
 	}
 }
 
+func TestLinkParser_MalformedReferenceAndTitle(t *testing.T) {
+	// Drive remaining parseReferenceLink/parseLink branches:
+	//   - reference label with unclosed second [ -> not found
+	//   - link with title followed by extra non-) content -> nil
+	cases := []string{
+		"[label][unclosed-ref\nbody\n",          // ref's [ never closes
+		`[x](/url "title" extra)` + "\n",        // title then non-) -> nil
+		`[x](/url 'sq title' extra)` + "\n",     // single-quote variant
+		`[x](/url (paren title) extra)` + "\n",  // paren variant
+	}
+	for _, src := range cases {
+		_ = parseDoc(src)
+	}
+}
+
 func TestLinkParser_MalformedInlineLinks(t *testing.T) {
 	// Drive each early-return branch in parseLink: empty parens,
 	// invalid destination, missing close paren after title,

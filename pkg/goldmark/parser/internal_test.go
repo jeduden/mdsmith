@@ -446,6 +446,30 @@ func TestReference_PublicAPI(t *testing.T) {
 	}
 }
 
+func TestLinkParser_Parse_DefensiveBranches(t *testing.T) {
+	// linkParser.Parse has defensive early-return branches that
+	// the dispatcher path doesn't usually trigger.  Drive them
+	// directly with the corresponding state.
+	lp := &linkParser{}
+	doc := ast.NewDocument()
+
+	// State: line starts with '!' but next char is NOT '['
+	// (e.g. "!something" — image without bracket).  Returns nil.
+	r := text.NewReader([]byte("!plain text\n"))
+	got := lp.Parse(doc, r, NewContext())
+	if got != nil {
+		t.Errorf("Parse('!plain') = %v, want nil", got)
+	}
+
+	// State: line starts with ']' but no linkLabelStateKey set
+	// (no open '[' before this ']') -> nil.
+	r2 := text.NewReader([]byte("]orphan close\n"))
+	got2 := lp.Parse(doc, r2, NewContext())
+	if got2 != nil {
+		t.Errorf("Parse(']orphan') = %v, want nil", got2)
+	}
+}
+
 func TestRawHTMLParser_ParseComment_Direct(t *testing.T) {
 	// Drive parseComment directly with various comment shapes.
 	bp := &rawHTMLParser{}
