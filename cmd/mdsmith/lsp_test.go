@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/textproto"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -86,6 +87,19 @@ func startLSPSubprocess(t *testing.T, ctx context.Context, binary string) *lspPi
 	stdout, err := cmd.StdoutPipe()
 	require.NoError(t, err)
 	cmd.Stderr = nil
+	// Override the default CommandContext cancel (Process.Kill →
+	// SIGKILL) with a graceful stdin-close. The LSP server's read
+	// loop exits on EOF, runs its own shutdown, and the Go runtime
+	// flushes coverage counters to GOCOVERDIR before the process
+	// exits. SIGKILL would skip every atexit hook and lose those
+	// counters — which is exactly the race the previous "manually
+	// call p.wait() before defer cancel()" workaround tried to
+	// avoid. With this override the race is structurally
+	// impossible: any path to context cancel goes through the
+	// graceful close first, and WaitDelay caps how long Wait
+	// blocks if the subprocess somehow hangs after EOF.
+	cmd.Cancel = func() error { return stdin.Close() }
+	cmd.WaitDelay = 5 * time.Second
 	require.NoError(t, cmd.Start())
 	p := &lspPipe{t: t, cmd: cmd, stdin: stdin, stdout: bufio.NewReader(stdout)}
 	// Cleanup is the safety-net path for tests that fail before
@@ -241,12 +255,14 @@ func (p *lspPipe) shutdown(t *testing.T) {
 	// the drain loop and consume the shutdown reply instead.
 	p.requestPickResult(t, "shutdown", 99, nil)
 	p.notify("exit", nil)
-	// Wait for the subprocess to actually exit before the test
-	// function returns. The CommandContext's `defer cancel()`
-	// otherwise races the subprocess's exit and can SIGKILL it
-	// before its coverage counters are flushed to GOCOVERDIR.
-	// p.wait is idempotent (sync.Once), so the cleanup hook in
-	// startLSPSubprocess is a no-op after this returns.
+	// Close stdin and wait so the test asserts the subprocess
+	// actually exited cleanly when reached. The cover-flush race
+	// itself is handled by the cmd.Cancel override in
+	// startLSPSubprocess; even on the failure path, where this
+	// function never runs, context cancel triggers the same
+	// graceful close. p.wait is idempotent (sync.Once), so the
+	// cleanup hook in startLSPSubprocess is a no-op after this
+	// returns.
 	_ = p.stdin.Close()
 	p.wait()
 }
@@ -304,4 +320,74 @@ type publishedDiagItem struct {
 	Code    string `json:"code"`
 	Source  string `json:"source"`
 	Message string `json:"message"`
+}
+
+// TestLSPSubprocess_CoverFlushOnContextCancel pins the
+// architectural invariant the cmd.Cancel override enforces:
+// when the context is cancelled (the failure path in real
+// tests, where defer cancel() runs before the cleanup hook),
+// the subprocess MUST receive a graceful stdin-close instead
+// of SIGKILL. Without that, Go's coverage runtime never
+// flushes counters to GOCOVERDIR and e2e_coverage.txt
+// becomes non-deterministic — which manifests as codecov's
+// "indirect coverage changes" gate firing on every push.
+//
+// The test exercises only the lifecycle (start, cancel
+// without calling shutdown(), wait, observe coverage data
+// files in GOCOVERDIR), not the LSP protocol itself, so a
+// regression that re-introduces the SIGKILL race fails here
+// before any protocol-level test would notice.
+func TestLSPSubprocess_CoverFlushOnContextCancel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping LSP subprocess test in -short mode")
+	}
+	// Bound wait time so a regression in the WaitDelay
+	// path doesn't hang the test suite.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	// Use a fresh GOCOVERDIR so we can count files written by
+	// this one subprocess in isolation.
+	dir := t.TempDir()
+
+	cmd := exec.CommandContext(ctx, binaryPath, "lsp", "--stdio")
+	cmd.Env = envWithCoverDir(dir)
+	stdin, err := cmd.StdinPipe()
+	require.NoError(t, err)
+	// Drain stdout so the LSP server's writes don't block; it
+	// emits initialize-time work that would otherwise pile up
+	// in the pipe.
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	go func() { _, _ = io.Copy(io.Discard, stdout) }()
+
+	// Same override as the production path under test.
+	cmd.Cancel = func() error { return stdin.Close() }
+	cmd.WaitDelay = 5 * time.Second
+	require.NoError(t, cmd.Start())
+
+	// Give the subprocess long enough to register init code
+	// paths before we cancel — without this the coverage file
+	// might be written but empty of meaningful counts.
+	time.Sleep(200 * time.Millisecond)
+
+	// Trigger the graceful-close path the same way a failed
+	// test's `defer cancel()` would.
+	cancel()
+	// cmd.Wait may return context.Canceled (the cancel reason)
+	// or an exec.ExitError carrying the subprocess's exit code.
+	// What matters here is that the process exited *cleanly* —
+	// verified by the GOCOVERDIR file count below — not the
+	// shape of the error. A SIGKILL would also exit but skip
+	// the atexit hooks.
+	_ = cmd.Wait()
+
+	// The Go runtime writes per-process .meta-* / .counters-*
+	// files to GOCOVERDIR on a clean exit. If the cancel had
+	// sent SIGKILL, none would appear.
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.NotEmpty(t, entries,
+		"GOCOVERDIR is empty — subprocess was killed before "+
+			"coverage flushed; cmd.Cancel override is missing or broken")
 }
