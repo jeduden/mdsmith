@@ -256,6 +256,25 @@ func TestString_SetRaw(t *testing.T) {
 	}
 }
 
+func TestDumpHelper_BlockWithRawText(t *testing.T) {
+	// DumpHelper's TypeBlock branch fires for block nodes; this
+	// is exercised by dumping a populated Paragraph.
+	p := ast.NewParagraph()
+	p.Lines().Append(text.NewSegment(0, 5))
+	silencer(t, func() { p.Dump([]byte("hello"), 0) })
+}
+
+func TestDumpHelper_NestedChildren(t *testing.T) {
+	// DumpHelper recursively dumps children.
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	p.Lines().Append(text.NewSegment(0, 3))
+	doc.AppendChild(doc, p)
+	tx := ast.NewTextSegment(text.NewSegment(0, 3))
+	p.AppendChild(p, tx)
+	silencer(t, func() { doc.Dump([]byte("abc"), 0) })
+}
+
 func TestString_Dump_WithFlags(t *testing.T) {
 	// String.Dump prints the flag set when flags != 0.
 	s := ast.NewString([]byte("hello"))
