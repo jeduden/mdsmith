@@ -1,7 +1,9 @@
 package util
 
-//go:generate go run ../_tools unicode-case-folding-map -o ../_tools/unicode-case-folding-map.json
-//go:generate go run ../_tools emb-structs -i ../_tools/unicode-case-folding-map.json -o ./unicode_case_folding.gen.go
+// The unicode_case_folding.gen.go data table is generated upstream
+// by github.com/yuin/goldmark/_tools (not vendored in this fork).
+// To regenerate, sync the upstream _tools directory locally, run
+// `go generate` against it, and copy the result back.
 
 var unicodeCaseFoldings map[rune][]rune
 

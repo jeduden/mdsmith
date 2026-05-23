@@ -86,6 +86,17 @@ func (p *linkReferenceParagraphTransformer) Transform(node *ast.Paragraph, reade
 		break
 	}
 
+	// Compact the paragraph by removing every line span that
+	// became a LinkReferenceDefinition. parseLinkReferenceDefinition
+	// only matches consecutive defs at the head of the paragraph
+	// (the loop above stops the first time it returns -1), so the
+	// removes slice is always a contiguous chain:
+	//   removes[i+1][0] == removes[i][1]
+	// Under that invariant `offset = remove[1]` (the absolute end
+	// of the previously removed span) is equivalent to "number of
+	// lines removed so far", so `remove[i+1][0] - offset` is
+	// always 0 and the formula correctly indexes into the current
+	// (already-compacted) line slice.
 	offset := 0
 	for _, remove := range removes {
 		if lines.Len() == 0 {

@@ -4,7 +4,10 @@ import (
 	"sync"
 )
 
-//go:generate go run ../_tools emb-structs -i ../_tools/html5entities.json -o ./html5entities.gen.go
+// The html5entities.gen.go data table is generated upstream by
+// github.com/yuin/goldmark/_tools (not vendored in this fork).
+// To regenerate, sync the upstream _tools directory locally, run
+// `go generate` against it, and copy the result back.
 
 var _html5entitiesOnce sync.Once
 var _html5entitiesMap map[string]*HTML5Entity
