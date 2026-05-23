@@ -83,6 +83,22 @@ func TestBlockReader_AdvanceAndSetPadding(t *testing.T) {
 	}
 }
 
+func TestReader_PeekWithPadding(t *testing.T) {
+	// A plain text.Reader (non-block) should also handle padding
+	// in its Peek and PeekLine paths.  Construct via text.NewReader
+	// on a slice that begins with content; padding manipulation
+	// is internal to the block reader so direct path coverage is
+	// limited.  This is mainly for the EOF return.
+	r := text.NewReader([]byte("abc"))
+	if r.Peek() != 'a' {
+		t.Errorf("expected first byte 'a', got %c", r.Peek())
+	}
+	r.Advance(3)
+	if r.Peek() != text.EOF {
+		t.Errorf("expected EOF after advance past end, got %c", r.Peek())
+	}
+}
+
 func TestBlockReader_FindSubMatch(t *testing.T) {
 	r := newTestBlockReader("hello 123 world\n")
 	re := regexp.MustCompile(`\d+`)
