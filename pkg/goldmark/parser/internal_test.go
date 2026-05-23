@@ -87,6 +87,32 @@ func silenceStdout(t *testing.T, fn func()) {
 	fn()
 }
 
+func TestListParser_Continue_DirectStates(t *testing.T) {
+	// Drive listParser.Continue with various synthesised states
+	// that are hard to reach through Convert.
+	bp := &listParser{}
+
+	// State 1: blank line + last child empty -> Continue|HasChildren.
+	list := ast.NewList('-')
+	li := ast.NewListItem(2)
+	list.AppendChild(list, li) // empty last child
+	r := text.NewReader([]byte("\n"))
+	pc := NewContext()
+	state := bp.Continue(list, r, pc)
+	if state != Continue|HasChildren {
+		t.Errorf("blank+empty-last got %v", state)
+	}
+
+	// State 2: blank line + last child has content -> Continue|HasChildren.
+	list2 := ast.NewList('-')
+	li2 := ast.NewListItem(2)
+	li2.AppendChild(li2, ast.NewParagraph()) // non-empty
+	list2.AppendChild(list2, li2)
+	r2 := text.NewReader([]byte("\n"))
+	pc2 := NewContext()
+	bp.Continue(list2, r2, pc2)
+}
+
 func TestParseListItem_AllBranches(t *testing.T) {
 	// parseListItem is unexported.  Drive each early-return path
 	// via direct invocation.
