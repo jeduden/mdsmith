@@ -7,6 +7,8 @@ package parser_test
 // options.
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/yuin/goldmark/ast"
@@ -66,6 +68,31 @@ func TestContext_ComputeIfAbsent(t *testing.T) {
 	}
 	if v2 != 42 {
 		t.Errorf("second ComputeIfAbsent must return cached 42, got %v", v2)
+	}
+}
+
+func TestContext_String_IsInLinkLabel(t *testing.T) {
+	// Context.String pretty-prints the references map. Drive it
+	// by parsing a doc with references then calling Stringer.
+	src := "[a]: /a\n[b]: /b\nbody\n"
+	p := parser.NewParser(
+		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
+		parser.WithParagraphTransformers(parser.DefaultParagraphTransformers()...),
+	)
+	ctx := parser.NewContext()
+	p.Parse(text.NewReader([]byte(src)), parser.WithContext(ctx))
+	if s, ok := ctx.(fmt.Stringer); ok {
+		got := s.String()
+		if !strings.Contains(got, "a") {
+			t.Errorf("Context.String should mention 'a': %q", got)
+		}
+	}
+	// IsInLinkLabel returns true while the inline parser is in
+	// the middle of consuming a link label.  Outside the parse it
+	// returns false (no state key set).
+	if ctx.IsInLinkLabel() {
+		t.Error("IsInLinkLabel should be false outside link-label processing")
 	}
 }
 
