@@ -140,6 +140,51 @@ func TestCalcListOffset_AllBranches(t *testing.T) {
 	}
 }
 
+func TestRemoveLinkLabelState_AllBranches(t *testing.T) {
+	// linkLabelState is a doubly-linked list.  Drive
+	// removeLinkLabelState's branches:
+	//   1. context has no list (returns early)
+	//   2. head removal, list becomes empty
+	//   3. head removal, list continues (next != nil)
+	//   4. middle removal (Prev != nil and Next != nil)
+	//   5. tail removal (Prev != nil, Next == nil)
+
+	// Branch 1: no list set.
+	pc := NewContext()
+	removeLinkLabelState(pc, &linkLabelState{})
+
+	// Build a list with 3 entries: a <-> b <-> c.
+	a := &linkLabelState{Segment: text.NewSegment(0, 1)}
+	b := &linkLabelState{Segment: text.NewSegment(1, 2)}
+	c := &linkLabelState{Segment: text.NewSegment(2, 3)}
+	a.Last = c
+	a.First = a
+	a.Next = b
+	b.Prev = a
+	b.Next = c
+	b.First = a
+	b.Last = c
+	c.Prev = b
+	c.First = a
+	c.Last = c
+
+	pc.Set(linkLabelStateKey, a)
+	// Branch 4: middle removal (remove b).
+	removeLinkLabelState(pc, b)
+	// Branch 5: tail removal (remove c).
+	removeLinkLabelState(pc, c)
+	// Branch 2/3: head removal (remove a).
+	removeLinkLabelState(pc, a)
+
+	// Build another list with just one entry to drive the
+	// head-removal-list-becomes-empty branch explicitly.
+	single := &linkLabelState{}
+	single.First = single
+	single.Last = single
+	pc.Set(linkLabelStateKey, single)
+	removeLinkLabelState(pc, single)
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
