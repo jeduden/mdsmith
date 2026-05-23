@@ -243,6 +243,33 @@ func TestRender_HeadingWithExtraAttributes(t *testing.T) {
 	}
 }
 
+func TestRender_ImageAltWithNestedInlines(t *testing.T) {
+	// Image alt-text with nested emphasis / code / link drives the
+	// recursive branch in renderTexts.
+	cases := []string{
+		`![*emphatic* alt](/img.png)` + "\n",
+		"![alt with `code`](/img.png)\n",
+		"![alt with **bold**](/img.png)\n",
+		"![plain alt](/img.png)\n",
+	}
+	for _, src := range cases {
+		_ = convertWithOpts(t, src)
+	}
+}
+
+func TestRender_AutoLinkEmailAndDangerous(t *testing.T) {
+	// Email autolinks add "mailto:" if the URL doesn't already
+	// start with it.
+	cases := []string{
+		"<https://example.com>\n",
+		"<user@example.com>\n",
+		"<mailto:user@example.com>\n",
+	}
+	for _, src := range cases {
+		_ = convertWithOpts(t, src)
+	}
+}
+
 func TestRender_InlineRawHTMLSafeUnsafe(t *testing.T) {
 	// renderRawHTML has Unsafe and safe branches.  Inline raw
 	// HTML appears mid-paragraph as a RawHTML AST node (vs the
