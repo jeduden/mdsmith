@@ -11,6 +11,29 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+func TestSegment_ConcatPadding(t *testing.T) {
+	// ConcatPadding has two branches: Padding > 0 (append spaces)
+	// and Padding == 0 (return v as-is).
+	zero := text.NewSegment(0, 5)
+	if got := zero.ConcatPadding([]byte("abc")); string(got) != "abc" {
+		t.Errorf("ConcatPadding zero padding = %q, want abc", got)
+	}
+	three := text.NewSegmentPadding(0, 5, 3)
+	if got := three.ConcatPadding([]byte("abc")); string(got) != "abc   " {
+		t.Errorf("ConcatPadding 3 = %q, want 'abc   '", got)
+	}
+}
+
+func TestSegment_Between(t *testing.T) {
+	// Between returns a Segment with the same Stop as both inputs.
+	a := text.NewSegment(0, 10)
+	b := text.NewSegment(3, 10)
+	got := a.Between(b)
+	if got.Start != 0 || got.Stop != 3 {
+		t.Errorf("Between = {%d,%d}, want {0,3}", got.Start, got.Stop)
+	}
+}
+
 func TestSegment_TrimLeftSpaceWidth_Branches(t *testing.T) {
 	src := []byte("    abc\t\tdef")
 
