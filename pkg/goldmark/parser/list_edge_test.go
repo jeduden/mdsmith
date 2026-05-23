@@ -91,6 +91,23 @@ func TestList_Parser_DirectMethodInvocation(t *testing.T) {
 	}
 }
 
+func TestList_ListItemContinue_BlankAndEmptyItemPaths(t *testing.T) {
+	// listItemParser.Continue branches:
+	//   - blank line -> Continue (covered)
+	//   - isEmpty + new list item discovered -> Close
+	//   - isEmpty + no new item -> Continue
+	//   - non-empty + dedent -> Close
+	cases := []string{
+		"- \n\n- second item\n",        // empty + new item
+		"-\n\n  continuation in body\n", // empty + continuation
+		"- text\n  more text\n",         // continuation indent
+		"- a\n- b\n\nback to root\n",    // close on dedent
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestList_EmptyItemFollowedByDedentedContent(t *testing.T) {
 	// Empty list item followed by less-indented content closes the
 	// list (lastIsEmpty + indent < offset branch).
