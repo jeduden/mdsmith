@@ -95,7 +95,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		for i := 0; i < segs.Len(); i++ {
 			seg := segs.At(i)
 			ln := f.LineOfOffset(seg.Start)
-			rewriteLines[ln] = stripPrompt(f.Lines[ln-1])
+			rewriteLines[ln] = stripPromptAfter(f.Lines[ln-1], contentOffsetInLine(f, seg.Start))
 		}
 		return ast.WalkContinue, nil
 	})
@@ -120,8 +120,10 @@ func (r *Rule) Fix(f *lint.File) []byte {
 }
 
 // allLinesArePrompts reports whether every non-blank content line of
-// fcb starts with "$ " (ignoring leading whitespace from a nested or
-// indented fence) and at least one such prompt line exists.
+// fcb starts with "$ " (ignoring any container prefix the parser
+// stripped — blockquote marker, list-item indent — plus any leading
+// whitespace inside the content) and at least one such prompt line
+// exists.
 func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	segs := fcb.Lines()
 	if segs.Len() == 0 {
@@ -129,9 +131,11 @@ func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	}
 	hasPrompt := false
 	for i := 0; i < segs.Len(); i++ {
-		ln := f.LineOfOffset(segs.At(i).Start)
+		seg := segs.At(i)
+		ln := f.LineOfOffset(seg.Start)
 		line := f.Lines[ln-1]
-		_, content := splitLeadingWhitespace(line)
+		contentCol := contentOffsetInLine(f, seg.Start)
+		_, content := splitLeadingWhitespace(line[contentCol:])
 		stripped := bytes.TrimRight(content, " \t\r")
 		if len(stripped) == 0 {
 			continue
@@ -144,12 +148,17 @@ func allLinesArePrompts(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	return hasPrompt
 }
 
-// stripPrompt removes the "$ " prompt from a non-blank content line,
-// preserving any leading whitespace that comes from a nested or
-// indented fence. Blank lines and lines without a prompt pass through
-// unchanged.
-func stripPrompt(line []byte) string {
-	leading, content := splitLeadingWhitespace(line)
+// stripPromptAfter removes the "$ " prompt from a non-blank content
+// line, preserving the parser-stripped container prefix
+// (line[:contentCol], e.g. "> " for a blockquote, "  " for a list
+// indent) and any leading whitespace inside the content. Blank lines
+// and lines without a prompt pass through unchanged.
+func stripPromptAfter(line []byte, contentCol int) string {
+	if contentCol > len(line) {
+		return string(line)
+	}
+	prefix := line[:contentCol]
+	leading, content := splitLeadingWhitespace(line[contentCol:])
 	stripped := bytes.TrimRight(content, " \t\r")
 	if len(stripped) == 0 {
 		return string(line)
@@ -157,7 +166,20 @@ func stripPrompt(line []byte) string {
 	if !bytes.HasPrefix(stripped, []byte("$ ")) {
 		return string(line)
 	}
-	return string(leading) + string(content[2:])
+	return string(prefix) + string(leading) + string(content[2:])
+}
+
+// contentOffsetInLine returns the byte column (0-based) on the line
+// containing offset where parser-stripped content begins. The skipped
+// prefix can include a blockquote marker ("> "), a list-item indent,
+// or both — anything goldmark consumed before exposing the fenced
+// block's content via segment positions.
+func contentOffsetInLine(f *lint.File, offset int) int {
+	lineStart := offset
+	for lineStart > 0 && f.Source[lineStart-1] != '\n' {
+		lineStart--
+	}
+	return offset - lineStart
 }
 
 // splitLeadingWhitespace splits a line at the first non-whitespace byte,

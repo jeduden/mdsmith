@@ -199,6 +199,45 @@ func TestFix_NestedFencedBlockInList_PreservesListIndent(t *testing.T) {
 	assert.Equal(t, want, string(got))
 }
 
+// --- Blockquoted fenced blocks ---
+
+// TestCheck_BlockquotedFencedBlock_DetectedWithBlockquotePrefix verifies
+// MDS066 sees `$ ls` as a prompt even when the fenced block is nested
+// in a blockquote, where raw lines carry `> ` but the parser exposes
+// only the content portion via segments.
+func TestCheck_BlockquotedFencedBlock_DetectedWithBlockquotePrefix(t *testing.T) {
+	src := []byte("> ```sh\n> $ ls\n> $ pwd\n> ```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "commands shown with $ prefix but no output", diags[0].Message)
+}
+
+// TestFix_BlockquotedFencedBlock_PreservesBlockquotePrefix verifies the
+// fix preserves the `> ` blockquote prefix when stripping the prompt.
+func TestFix_BlockquotedFencedBlock_PreservesBlockquotePrefix(t *testing.T) {
+	src := []byte("> ```sh\n> $ ls\n> $ pwd\n> ```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	got := r.Fix(f)
+	want := "> ```sh\n> ls\n> pwd\n> ```\n"
+	assert.Equal(t, want, string(got))
+}
+
+// TestCheck_BlockquotedFencedBlockWithOutput_NotFlagged verifies a
+// blockquoted block that mixes prompts and output is left alone.
+func TestCheck_BlockquotedFencedBlockWithOutput_NotFlagged(t *testing.T) {
+	src := []byte("> ```sh\n> $ ls\n> foo\n> ```\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	diags := r.Check(f)
+	assert.Empty(t, diags)
+}
+
 // --- splitLeadingWhitespace helper ---
 
 func TestSplitLeadingWhitespace(t *testing.T) {
@@ -247,16 +286,28 @@ func TestFix_NoOffendingBlocks_ReturnsSourceUnchanged(t *testing.T) {
 	assert.Equal(t, string(src), string(got))
 }
 
-func TestStripPrompt_NoPrompt_Unchanged(t *testing.T) {
-	assert.Equal(t, "not a prompt", stripPrompt([]byte("not a prompt")))
+func TestStripPromptAfter_NoPrompt_Unchanged(t *testing.T) {
+	assert.Equal(t, "not a prompt", stripPromptAfter([]byte("not a prompt"), 0))
 }
 
-func TestStripPrompt_Indented_PreservesLeadingWhitespace(t *testing.T) {
-	assert.Equal(t, "  ls", stripPrompt([]byte("  $ ls")))
+func TestStripPromptAfter_Indented_PreservesLeadingWhitespace(t *testing.T) {
+	assert.Equal(t, "  ls", stripPromptAfter([]byte("  $ ls"), 0))
 }
 
-func TestStripPrompt_BlankLine_Unchanged(t *testing.T) {
-	assert.Equal(t, "   ", stripPrompt([]byte("   ")))
+func TestStripPromptAfter_BlankLine_Unchanged(t *testing.T) {
+	assert.Equal(t, "   ", stripPromptAfter([]byte("   "), 0))
+}
+
+func TestStripPromptAfter_WithBlockquotePrefix(t *testing.T) {
+	// contentCol=2 marks the parser-stripped "> " prefix.
+	assert.Equal(t, "> ls", stripPromptAfter([]byte("> $ ls"), 2))
+}
+
+func TestStripPromptAfter_ContentColPastEnd_Unchanged(t *testing.T) {
+	// Defensive: a content column past the raw line length passes
+	// through untouched (can happen when goldmark strips a trailing
+	// container marker that the parser logically consumed).
+	assert.Equal(t, "> ", stripPromptAfter([]byte("> "), 10))
 }
 
 // TestFix_SkipsGeneratedRange covers the inGeneratedRange guard in
