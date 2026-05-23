@@ -153,15 +153,14 @@ func CollectSectionParagraphsWithText(f *lint.File) []SectionParagraph {
 // buildSectionParagraphsWithText materialises Text on every paragraph
 // returned by [CollectSectionParagraphs]. Built on top of the
 // table-filtered memo so the AST walk runs once even when both memos
-// are accessed.
+// are accessed. The upstream collector guarantees Text is empty on
+// every entry, so this builder unconditionally fills it.
 func buildSectionParagraphsWithText(f *lint.File) any {
 	src := CollectSectionParagraphs(f)
 	out := make([]SectionParagraph, len(src))
 	for i, p := range src {
 		out[i] = p
-		if out[i].Text == "" {
-			out[i].Text = mdtext.ExtractPlainText(p.Node, f.Source)
-		}
+		out[i].Text = mdtext.ExtractPlainText(p.Node, f.Source)
 	}
 	return out
 }

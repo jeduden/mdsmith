@@ -505,6 +505,24 @@ func TestSectionBody_EmptyWhenNoParagraphsInRange(t *testing.T) {
 	assert.Equal(t, "", SectionBody(paras, nil, 1, 10))
 }
 
+// TestSectionBody_ExtractsFromNodeWhenTextEmpty pins the production
+// path: paragraphs returned by CollectSectionParagraphs carry Node
+// but no Text, so SectionBody must materialise text via
+// ExtractText(source). Cache-only literals are already covered by
+// TestSectionBody_JoinsWithSpace; this one exercises the AST
+// extraction.
+func TestSectionBody_ExtractsFromNodeWhenTextEmpty(t *testing.T) {
+	src := []byte("# H\n\nfirst paragraph here.\n\nsecond paragraph too.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	paras := CollectSectionParagraphs(f)
+	require.Len(t, paras, 2)
+	// Heading is at line 1; first paragraph starts at line 3 in the
+	// source, second at line 5. Range [2, 100) captures both.
+	got := SectionBody(paras, f.Source, 2, 100)
+	assert.Equal(t, "first paragraph here. second paragraph too.", got)
+}
+
 // TestCollectSectionParagraphs_MemoizedPerFile pins that the
 // AST-walking collector runs once per File and serves a cached result
 // thereafter. On prose-heavy corpora (the neutral Rust Book

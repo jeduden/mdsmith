@@ -255,6 +255,38 @@ func TestCheck_Placeholder_EmptyList_PlaceholderTextFlagged(t *testing.T) {
 	require.Len(t, diags, 1, "long hard-to-read paragraph should still be flagged")
 }
 
+// TestCheck_Placeholder_LongMaskedPara_StillFlagged exercises the
+// branch in Check where Placeholders is non-empty AND the masked
+// paragraph passes the minWords gate. The masked text feeds the
+// readability index, so the rule must report a diagnostic when the
+// remaining prose is hard to read. Without this case the
+// `len(r.Placeholders) > 0` branch only runs in the
+// `words < minWords` skip path (TestCheck_Placeholder_VarToken_MaskedBelowMinWords).
+func TestCheck_Placeholder_LongMaskedPara_StillFlagged(t *testing.T) {
+	// var-token masks each `{...}` to a single word, so a paragraph
+	// of `{summary}` placeholders interleaved with the hard-text
+	// prose still has plenty of post-mask words and remains hard to
+	// read.
+	hard := "The implementation of concurrent distributed systems " +
+		"requires sophisticated understanding of fundamental " +
+		"computational paradigms and synchronization mechanisms " +
+		"that must guarantee linearizability across heterogeneous " +
+		"processing environments and architectural configurations."
+	src := []byte("# Title\n\n{summary} " + hard + "\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{
+		MaxIndex:     14.0,
+		MinWords:     20,
+		Index:        ARI,
+		Placeholders: []string{"var-token"},
+	}
+	diags := r.Check(f)
+	require.Len(t, diags, 1,
+		"masked text that still passes minWords must reach the "+
+			"readability index and emit a diagnostic")
+}
+
 func TestApplySettings_Placeholders_ParagraphReadability(t *testing.T) {
 	r := &Rule{MaxIndex: 14.0, MinWords: 20, Index: ARI}
 	err := r.ApplySettings(map[string]any{
