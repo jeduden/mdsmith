@@ -234,19 +234,32 @@ func TestRender_ListItemWithAttributes(t *testing.T) {
 }
 
 func TestRender_HeadingWithExtraAttributes(t *testing.T) {
-	// Heading with id (auto) + custom data-* attribute.
+	// Drive RenderAttributes branches:
+	// - filter-hit (id is in HeadingAttributeFilter)
+	// - data-* prefix (not in filter but rendered anyway)
+	// - filter-miss without data prefix (skipped)
+	// - string value (vs []byte)
 	doc := ast.NewDocument()
 	h := ast.NewHeading(2)
-	h.SetAttribute([]byte("id"), []byte("title"))
-	h.SetAttribute([]byte("data-x"), []byte("y"))
+	h.SetAttribute([]byte("id"), []byte("title"))         // filter hit, []byte
+	h.SetAttribute([]byte("data-x"), []byte("y"))         // data prefix, []byte
+	h.SetAttribute([]byte("data-z"), "string-value")      // data prefix, string value
+	h.SetAttribute([]byte("not-in-filter"), []byte("nope")) // filter miss, no data prefix
 	doc.AppendChild(doc, h)
 	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
 	var buf bytes.Buffer
 	if err := r.Render(&buf, []byte("source"), doc); err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	if !strings.Contains(buf.String(), `id="title"`) {
-		t.Errorf("heading id not rendered: %q", buf.String())
+	out := buf.String()
+	if !strings.Contains(out, `id="title"`) {
+		t.Errorf("heading id not rendered: %q", out)
+	}
+	if !strings.Contains(out, `data-z="string-value"`) {
+		t.Errorf("string-valued attribute not rendered: %q", out)
+	}
+	if strings.Contains(out, "not-in-filter") {
+		t.Errorf("non-filtered attribute should be skipped: %q", out)
 	}
 }
 
