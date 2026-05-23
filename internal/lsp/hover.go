@@ -10,7 +10,7 @@ import (
 
 	"github.com/yuin/goldmark/ast"
 
-	directives "github.com/jeduden/mdsmith/docs/guides/directives"
+	"github.com/jeduden/mdsmith/internal/directives"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules"
 )
