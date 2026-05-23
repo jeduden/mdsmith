@@ -509,6 +509,16 @@ func TestAbsWithCwd_AbsolutePath_Clean(t *testing.T) {
 	assert.Equal(t, filepath.Clean("/foo/baz.md"), got)
 }
 
+// TestAbsWithCwd_RelativePathWithExplicitCwd covers the `cwd != ""`
+// branch where a relative path is joined onto the caller-supplied
+// cwd instead of going through Getwd. The empty-cwd and
+// absolute-path branches are already covered; this one was the
+// remaining hole in the absWithCwd matrix.
+func TestAbsWithCwd_RelativePathWithExplicitCwd(t *testing.T) {
+	got := absWithCwd("./sub/foo.md", "/explicit/cwd")
+	assert.Equal(t, filepath.Clean("/explicit/cwd/sub/foo.md"), got)
+}
+
 // TestResolveArg_SymlinkedAncestorPath_Skipped covers the
 // `hasSymlinkAncestor(arg)` branch in resolveArg via the public
 // ResolveFilesWithOpts API.

@@ -263,6 +263,34 @@ func TestDefaultSettings(t *testing.T) {
 	assert.Equal(t, []string{}, defaults["nested"])
 }
 
+// --- replaceMarker ---
+
+// TestReplaceMarker covers the three branches: marker at the line
+// start, marker after whitespace, and the no-marker short-circuit
+// (a non-whitespace, non-marker first char returns the line
+// unchanged). Each path is reached via Fix in production, but only
+// the success path was directly pinned.
+func TestReplaceMarker(t *testing.T) {
+	t.Run("dash at start swaps to plus", func(t *testing.T) {
+		got := replaceMarker([]byte("- item"), '+')
+		assert.Equal(t, []byte("+ item"), got)
+	})
+	t.Run("asterisk after indent swaps to dash", func(t *testing.T) {
+		got := replaceMarker([]byte("    * nested"), '-')
+		assert.Equal(t, []byte("    - nested"), got)
+	})
+	t.Run("non-marker first char returns line unchanged", func(t *testing.T) {
+		in := []byte("plain text")
+		got := replaceMarker(in, '+')
+		assert.Equal(t, in, got)
+	})
+	t.Run("blank line returns unchanged", func(t *testing.T) {
+		in := []byte("")
+		got := replaceMarker(in, '+')
+		assert.Equal(t, in, got)
+	})
+}
+
 // --- markerOnLine ---
 
 // TestMarkerOnLine pins each branch the helper takes: out-of-range

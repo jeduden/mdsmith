@@ -208,3 +208,64 @@ func assertExists(t *testing.T, path string) {
 		t.Fatalf("expected file %s: %v", path, err)
 	}
 }
+
+// --- usageErr / isUsageError ---
+
+// TestUsageErr_ErrorReturnsMsg pins that the Error() method
+// forwards the wrapped string verbatim. The Run* tests
+// exercise usageError indirectly, but never assert on the
+// Error() output, so the method body was uncovered.
+func TestUsageErr_ErrorReturnsMsg(t *testing.T) {
+	t.Parallel()
+	err := usageError("missing --foo flag")
+	if got := err.Error(); got != "missing --foo flag" {
+		t.Errorf("Error() = %q, want %q", got, "missing --foo flag")
+	}
+	if !isUsageError(err) {
+		t.Errorf("isUsageError must return true for a usageErr")
+	}
+}
+
+// TestIsUsageError_NonUsage pins the negative path: a plain
+// fmt.Errorf is not a usageErr and must not be treated as one.
+func TestIsUsageError_NonUsage(t *testing.T) {
+	t.Parallel()
+	err := fmt.Errorf("plain error")
+	if isUsageError(err) {
+		t.Errorf("isUsageError must return false for a non-usageErr")
+	}
+}
+
+// --- defaultCacheDir ---
+
+// TestDefaultCacheDir_AppendsCorpusctlSegment pins the happy
+// path: whatever UserCacheDir returns, the helper appends a
+// "corpusctl" segment. On Linux this is HOME/.cache; on macOS
+// it is HOME/Library/Caches. We don't assert the prefix, only
+// the suffix, so the test is portable.
+func TestDefaultCacheDir_AppendsCorpusctlSegment(t *testing.T) {
+	got := defaultCacheDir()
+	if !strings.HasSuffix(got, "corpusctl") {
+		t.Errorf("defaultCacheDir() = %q, must end in 'corpusctl'", got)
+	}
+	if got == "" {
+		t.Errorf("defaultCacheDir() returned empty")
+	}
+}
+
+// TestDefaultCacheDir_TmpFallbackWhenUserCacheDirFails covers
+// the os.UserCacheDir-failure branch. UserCacheDir reads
+// $XDG_CACHE_HOME or $HOME on Linux; unsetting both forces it
+// to error, so the helper falls back to os.TempDir().
+func TestDefaultCacheDir_TmpFallbackWhenUserCacheDirFails(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "")
+	got := defaultCacheDir()
+	if !strings.Contains(got, os.TempDir()) {
+		t.Errorf("defaultCacheDir() = %q, must fall back to TempDir %q",
+			got, os.TempDir())
+	}
+	if !strings.HasSuffix(got, "corpusctl") {
+		t.Errorf("defaultCacheDir() = %q, must end in 'corpusctl'", got)
+	}
+}

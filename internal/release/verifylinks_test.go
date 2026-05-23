@@ -224,3 +224,28 @@ func TestPathPrefixFromBaseURL_InvalidURL(t *testing.T) {
 		strings.Contains(err.Error(), "parse"),
 		"err = %v", err)
 }
+
+// --- walkAndReject / walkAndRequireAny error branches ---
+
+// TestWalkAndReject_MissingRootSurfacesWalkError pins the
+// WalkDir-error branch in walkAndReject: pointing the probe at a
+// path that does not exist must produce a wrapped error naming
+// the probe and the failed path. The end-to-end Verify* tests
+// only ever pass a real Hugo tree, so this branch was uncovered.
+func TestWalkAndReject_MissingRootSurfacesWalkError(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	err := walkAndReject(missing, linkProbe{name: "probe-x"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "probe-x")
+	assert.Contains(t, err.Error(), "walk")
+}
+
+// TestWalkAndRequireAny_MissingRootSurfacesWalkError mirrors the
+// same WalkDir-error branch for the require-any variant.
+func TestWalkAndRequireAny_MissingRootSurfacesWalkError(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	err := walkAndRequireAny(missing, linkProbe{name: "probe-y"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "probe-y")
+	assert.Contains(t, err.Error(), "walk")
+}
