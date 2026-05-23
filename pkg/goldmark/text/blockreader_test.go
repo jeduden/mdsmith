@@ -119,6 +119,17 @@ func TestBlockReader_AdvanceAndSetPadding(t *testing.T) {
 	}
 }
 
+func TestReader_AdvanceWithPaddingAndNewlines(t *testing.T) {
+	// reader.Advance has a slow-path loop body when padding != 0
+	// or n > peekedLine.  Drive both: set padding then advance
+	// past it, and advance past a newline.
+	r := text.NewReader([]byte("ab\ncd\nef\n"))
+	r.SetPadding(2)
+	r.Advance(3) // consume padding then 1 byte
+	r.Advance(5) // crosses newlines
+	_ = r.Peek()
+}
+
 func TestReader_PeekWithPadding(t *testing.T) {
 	// A plain text.Reader (non-block) should also handle padding
 	// in its Peek and PeekLine paths.  Construct via text.NewReader
