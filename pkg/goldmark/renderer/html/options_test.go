@@ -309,6 +309,36 @@ func TestRender_InlineRawHTMLSafeUnsafe(t *testing.T) {
 	}
 }
 
+func TestRender_OrderedListStartNotOne(t *testing.T) {
+	// Ordered list with start != 1 emits ` start="N"`.
+	out := convertWithOpts(t, "5. five\n6. six\n")
+	if !strings.Contains(out, `start="5"`) {
+		t.Errorf("expected start=5 in <ol>: %q", out)
+	}
+}
+
+func TestRender_LinkWithTitleAndAttributes(t *testing.T) {
+	// Drive renderLink branches: with title + with attributes.
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	doc.AppendChild(doc, p)
+
+	l := ast.NewLink()
+	l.Destination = []byte("/url")
+	l.Title = []byte("link-title")
+	l.SetAttribute([]byte("class"), []byte("link-cls"))
+	p.AppendChild(p, l)
+
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(util.Prioritized(html.NewRenderer(), 1000)))
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(buf.String(), `class="link-cls"`) {
+		t.Errorf("Link attribute not rendered: %q", buf.String())
+	}
+}
+
 func TestRender_TightListWithNestedList(t *testing.T) {
 	// renderTextBlock's NextSibling != nil branch fires when a
 	// tight-list ListItem holds a TextBlock followed by a nested
