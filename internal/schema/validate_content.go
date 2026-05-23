@@ -120,9 +120,12 @@ var contentParserPool = sync.Pool{
 				parser.WithParagraphTransformers(defaults...),
 			),
 		)
-		if resetter == nil {
-			resetter = func() {}
-		}
+		// resetter is guaranteed non-nil: goldmark's
+		// DefaultParagraphTransformers always includes the
+		// link-reference transformer, which satisfies the
+		// Reset interface above.  If that invariant ever
+		// breaks, parseWithTableExt's nil-call will surface
+		// the failure loudly on the next parse.
 		return &contentPooledParser{parser: md.Parser(), reset: resetter}
 	},
 }
