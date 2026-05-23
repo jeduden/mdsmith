@@ -177,6 +177,18 @@ func TestLinkParser_OverlongReferenceLabel(t *testing.T) {
 	_ = parseDoc(src)
 }
 
+func TestLinkParser_QuadrupleNestedBracket(t *testing.T) {
+	// Drive popLinkBottom's default switch arm (slice len > 2) via
+	// 4+ nested open brackets, then resolve them in order.
+	cases := []string{
+		"[a [b [c [d](/d)](/c)](/b)](/a)\n",
+		"[a [b [c [d [e](/e)](/d)](/c)](/b)](/a)\n",
+	}
+	for _, src := range cases {
+		_ = parseDoc(src)
+	}
+}
+
 func TestLinkParser_LinkLabelStateStack(t *testing.T) {
 	// Inputs that exercise multiple open '[' brackets in flight at
 	// the same time so the linkLabelState linked list has 2+
