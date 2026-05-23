@@ -37,6 +37,30 @@ func TestFootnote_MultiLineDefinition(t *testing.T) {
 	}
 }
 
+func TestFootnote_TemplatePlaceholders(t *testing.T) {
+	// applyFootnoteTemplate has a fast-path that returns the
+	// template unchanged when neither "^^" nor "%%" appear. Drive
+	// the slow path by configuring a custom backlink template
+	// that contains both tokens.
+	md := goldmark.New(goldmark.WithExtensions(
+		extension.NewFootnote(
+			extension.WithFootnoteBacklinkHTML("idx=^^ refs=%%"),
+		),
+	))
+	src := []byte("see[^a] and again[^a]\n\n[^a]: body\n")
+	var buf bytes.Buffer
+	if err := md.Convert(src, &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+	out := buf.String()
+	if !bytes.Contains(buf.Bytes(), []byte("idx=1")) {
+		t.Errorf("expected idx=1 substitution: %q", out)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte("refs=2")) {
+		t.Errorf("expected refs=2 substitution: %q", out)
+	}
+}
+
 func TestNewFootnote_Extender(t *testing.T) {
 	// NewFootnote returns an Extender; plug it in and confirm
 	// footnote parsing fires through the new instance rather

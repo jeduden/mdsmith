@@ -139,6 +139,27 @@ func TestCodeSpan_NestedBackticks(t *testing.T) {
 	}
 }
 
+func TestAttribute_StringEscapes(t *testing.T) {
+	// parseAttributeString handles JSON-style backslash escapes.
+	// Drive each of the branches: \", \\, \/, \b, \f, \n, \r, \t,
+	// plus the default branch (unknown escape kept literal).
+	cases := []string{
+		`# H {title="plain"}`,
+		`# H {title="a \"quoted\" word"}`,
+		`# H {title="a \\ backslash"}`,
+		`# H {title="a \/ slash"}`,
+		`# H {title="line\nbreak"}`,
+		`# H {title="bell\b backspace"}`,
+		`# H {title="form\ffeed"}`,
+		`# H {title="carriage\rreturn"}`,
+		`# H {title="tab\there"}`,
+		`# H {title="unknown\xescape"}`, // default branch
+	}
+	for _, src := range cases {
+		_ = parseWithDefaultsAttr(src)
+	}
+}
+
 func TestAttribute_NumberShapes(t *testing.T) {
 	// parseAttributeNumber's branches: integer, decimal, negative,
 	// hex (0x...), and float exponents.

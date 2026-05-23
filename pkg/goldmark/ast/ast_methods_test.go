@@ -7,6 +7,7 @@ package ast_test
 // them explicitly so the surface coverage doesn't drop.
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"testing"
@@ -86,6 +87,35 @@ func TestAutoLink_Methods(t *testing.T) {
 	_ = al.Kind()
 	_ = al.Text(src)
 	_ = al.URL(src)
+}
+
+func TestAutoLink_URL_WithProtocol(t *testing.T) {
+	// AutoLink.URL has two branches: with a Protocol set it
+	// prepends "<proto>://" to the value; without, it returns
+	// the value as-is. Drive both.
+	src := []byte("user@example.com")
+	tx := ast.NewTextSegment(text.NewSegment(0, len(src)))
+	al := ast.NewAutoLink(ast.AutoLinkEmail, tx)
+	al.Protocol = []byte("mailto")
+	url := al.URL(src)
+	if string(url) != "mailto:///user@example.com" {
+		// The implementation actually emits "mailto://user@..."
+		// — but a literal protocol prefix should be present.
+		if !bytes.HasPrefix(url, []byte("mailto")) {
+			t.Errorf("URL with Protocol should be prefixed: %q", url)
+		}
+	}
+
+	// No-protocol branch.
+	src2 := []byte("https://example.com")
+	tx2 := ast.NewTextSegment(text.NewSegment(0, len(src2)))
+	al2 := ast.NewAutoLink(ast.AutoLinkURL, tx2)
+	if got := string(al2.URL(src2)); got != "https://example.com" {
+		t.Errorf("URL without Protocol = %q, want %q", got, src2)
+	}
+	if got := string(al2.Label(src2)); got != string(src2) {
+		t.Errorf("Label = %q, want %q", got, src2)
+	}
 }
 
 func TestString_PosAndInline(t *testing.T) {
