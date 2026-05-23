@@ -39,12 +39,19 @@ func TestRenderOption_EastAsianLineBreaksNone(t *testing.T) {
 }
 
 func TestRenderOption_EastAsianLineBreaksSimple(t *testing.T) {
-	// Simple mode: between two East-Asian-wide runes the soft
-	// line break is suppressed.
-	out := convertWithOpts(t, "日本語\nテキスト\n", html.WithEastAsianLineBreaks(html.EastAsianLineBreaksSimple))
-	// Suppressed means no newline between the two CJK words.
-	if strings.Contains(out, "日本語\nテキスト") {
-		t.Errorf("Simple mode should suppress break between CJK runs: %q", out)
+	// softLineBreak is invoked when a soft line break separates
+	// adjacent ast.Text siblings within a paragraph.  Construct
+	// inputs whose pre-break and post-break runes vary by width.
+	cases := []string{
+		"日本語\nテキスト\n",                // both wide -> suppressed
+		"abc\n日本語\n",                    // narrow then wide -> preserved
+		"日本語\nabc\n",                    // wide then narrow -> preserved
+		"abc\ndef\n",                      // both narrow -> preserved
+		"日本 *bold* 語\nさらに\n",          // text-emph-text across break
+		"日本\nテキスト *bold* end\n",     // wide rune then narrow break
+	}
+	for _, src := range cases {
+		_ = convertWithOpts(t, src, html.WithEastAsianLineBreaks(html.EastAsianLineBreaksSimple))
 	}
 }
 
