@@ -145,7 +145,9 @@ func TestRender_Unsafe(t *testing.T) {
 	// Without WithUnsafe, raw HTML is escaped.
 	mdSafe := goldmark.New()
 	var bufSafe bytes.Buffer
-	_ = mdSafe.Convert([]byte("<script>x</script>\n"), &bufSafe)
+	if err := mdSafe.Convert([]byte("<script>x</script>\n"), &bufSafe); err != nil {
+		t.Fatalf("safe Convert: %v", err)
+	}
 	if strings.Contains(bufSafe.String(), "<script>") {
 		t.Error("safe mode should escape <script>")
 	}
@@ -155,7 +157,9 @@ func TestRender_Unsafe(t *testing.T) {
 	)
 	mdUnsafe := goldmark.New(goldmark.WithRenderer(r))
 	var bufUnsafe bytes.Buffer
-	_ = mdUnsafe.Convert([]byte("<script>x</script>\n"), &bufUnsafe)
+	if err := mdUnsafe.Convert([]byte("<script>x</script>\n"), &bufUnsafe); err != nil {
+		t.Fatalf("unsafe Convert: %v", err)
+	}
 	if !strings.Contains(bufUnsafe.String(), "<script>") {
 		t.Error("unsafe mode should keep <script>")
 	}

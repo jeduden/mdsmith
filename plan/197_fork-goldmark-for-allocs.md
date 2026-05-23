@@ -105,11 +105,13 @@ the PoC informed by it. Stage three is the decision.
 For each allocation site in the plan-195 profile,
 record lifecycle, reuse barrier, category, estimated
 saving, and risk. The matrix lives below. The review
-also answers three cross-cutting questions. Could one
-per-parse arena replace four of the five hot
-allocators. Does the link-ref transformer's
-BlockReader persist any state. What structural
-opportunities did the profile miss.
+also answers three cross-cutting questions:
+
+- Could one per-parse arena replace four of the five
+  hot allocators?
+- Does the link-ref transformer's BlockReader persist
+  any state?
+- What structural opportunities did the profile miss?
 
 ### Stage two — PoC the biggest lever
 

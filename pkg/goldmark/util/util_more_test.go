@@ -1,10 +1,12 @@
 package util_test
 
 // Coverage for the remaining util helpers: URLEscape across
-// reserved/unreserved input shapes, DoFullUnicodeCaseFolding for
-// runes that have a folding entry, ResolveEntityNames for known
-// and unknown entity names, UnescapePunctuations, EscapeHTML, and
-// FindClosure variants.
+// reserved/unreserved input shapes (including truncated multi-byte
+// UTF-8), DoFullUnicodeCaseFolding for runes that have a folding
+// entry (and invalid UTF-8 / continuation-byte skip paths),
+// ResolveEntityNames for known and unknown entity names,
+// UnescapePunctuations, EscapeHTML, ReplaceSpaces, and IndentWidth.
+// (FindClosure-related cases live in findclosure_test.go.)
 
 import (
 	"bytes"

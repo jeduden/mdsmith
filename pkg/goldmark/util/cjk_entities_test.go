@@ -5,6 +5,7 @@ package util
 
 import (
 	"testing"
+	"unicode/utf8"
 )
 
 func TestIsEastAsianWideRune(t *testing.T) {
@@ -92,14 +93,9 @@ func TestLookUpHTML5EntityByName(t *testing.T) {
 			t.Errorf("LookUpHTML5EntityByName(%q) returned entity with no chars", c.name)
 			continue
 		}
-		if got := rune(ent.Characters[0]); got != c.first {
-			// Many HTML5 entities expand into multi-byte UTF-8, so
-			// also accept the case where Characters is the UTF-8
-			// encoding and rune(Characters[0]) is the first byte.
-			// Skip the exact rune comparison on those.
-			if c.first <= 0x7f && got != c.first {
-				t.Errorf("LookUpHTML5EntityByName(%q) first rune = %U, want %U", c.name, got, c.first)
-			}
+		got, _ := utf8.DecodeRune(ent.Characters)
+		if got != c.first {
+			t.Errorf("LookUpHTML5EntityByName(%q) first rune = %U, want %U", c.name, got, c.first)
 		}
 	}
 }
