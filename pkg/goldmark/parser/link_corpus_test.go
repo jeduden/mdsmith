@@ -1,0 +1,159 @@
+package parser_test
+
+// Link parser corpus: reference-style links and edge cases that
+// the inline-link snippets in corpus_test.go do not reach. Each
+// case lifts coverage of parseReferenceLink, parseLinkTitle, and
+// the linkLabel state stack.
+
+import (
+	"testing"
+
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
+)
+
+func parseDoc(src string) ast.Node {
+	p := parser.NewParser(
+		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
+		parser.WithParagraphTransformers(parser.DefaultParagraphTransformers()...),
+	)
+	return p.Parse(text.NewReader([]byte(src)), parser.WithContext(parser.NewContext()))
+}
+
+func walkKindSet(root ast.Node) map[ast.NodeKind]int {
+	out := map[ast.NodeKind]int{}
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			out[n.Kind()]++
+		}
+		return ast.WalkContinue, nil
+	})
+	return out
+}
+
+func TestLinkParser_FullReferenceLink(t *testing.T) {
+	src := `[label][ref]
+
+[ref]: /url
+`
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] == 0 {
+		t.Errorf("expected Link node for full reference link, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_CollapsedReferenceLink(t *testing.T) {
+	src := `[label][]
+
+[label]: /url
+`
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] == 0 {
+		t.Errorf("expected Link node for collapsed reference link, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_ShortcutReferenceLink(t *testing.T) {
+	src := `[label]
+
+[label]: /url
+`
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] == 0 {
+		t.Errorf("expected Link node for shortcut reference link, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_ReferenceLink_Missing(t *testing.T) {
+	// Reference label that has no matching definition stays as
+	// literal text (no Link node).
+	src := `[label][missing]
+`
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] != 0 {
+		t.Errorf("missing reference must not produce Link, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_LinkTitle_QuotedForms(t *testing.T) {
+	// parseLinkTitle accepts three quoting styles: "...", '...',
+	// and (...). Drive each one.
+	cases := []string{
+		`[x](/u "double quoted title")` + "\n",
+		`[x](/u 'single quoted title')` + "\n",
+		`[x](/u (parenthesised title))` + "\n",
+	}
+	for _, src := range cases {
+		kinds := walkKindSet(parseDoc(src))
+		if kinds[ast.KindLink] == 0 {
+			t.Errorf("expected Link for %q, kinds: %v", src, kinds)
+		}
+	}
+}
+
+func TestLinkParser_NestedLinkInsideLink(t *testing.T) {
+	// CommonMark forbids nested links: `[outer [inner](/i)](/o)`
+	// produces a Link for the INNER one; the outer fails because
+	// containsLink returns true for the candidate text.
+	src := "[outer [inner](/i)](/o)\n"
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] == 0 {
+		t.Errorf("expected at least one Link (inner) for nested case, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_ImageWithReferenceLink(t *testing.T) {
+	// Image can use a reference label too: ![alt][ref].
+	src := `![alt][ref]
+
+[ref]: /img.png
+`
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindImage] == 0 {
+		t.Errorf("expected Image for reference image, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_LinkInAutolinkInImage(t *testing.T) {
+	// Combine several inline parsers in one paragraph to stress the
+	// linkLabel state stack.
+	src := "see [a](/a) and <https://b.example> and ![img](/i.png)\n"
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] == 0 {
+		t.Error("expected Link")
+	}
+	if kinds[ast.KindAutoLink] == 0 {
+		t.Error("expected AutoLink")
+	}
+	if kinds[ast.KindImage] == 0 {
+		t.Error("expected Image")
+	}
+}
+
+func TestLinkParser_AngleBracketDestination(t *testing.T) {
+	src := `[x](<https://example.com> "title")` + "\n"
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] == 0 {
+		t.Errorf("expected Link with angle-bracket destination, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_EmptyDestination(t *testing.T) {
+	src := `[x]()` + "\n"
+	kinds := walkKindSet(parseDoc(src))
+	if kinds[ast.KindLink] == 0 {
+		t.Errorf("expected Link with empty destination, kinds: %v", kinds)
+	}
+}
+
+func TestLinkParser_UnclosedBracket(t *testing.T) {
+	// Unclosed `[label` must not panic and must not produce a Link.
+	src := "this [label is unclosed and never finishes\n"
+	root := parseDoc(src)
+	if root == nil {
+		t.Fatal("Parse returned nil root")
+	}
+	// Just verifying no panic; output may include literal text.
+}
