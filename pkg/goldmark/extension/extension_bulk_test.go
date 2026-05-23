@@ -37,6 +37,28 @@ func TestFootnote_MultiLineDefinition(t *testing.T) {
 	}
 }
 
+func TestFootnote_ParseEarlyReturns(t *testing.T) {
+	// Drive footnoteParser.Parse early returns:
+	// - '!' before '[' (image-like context)
+	// - '[' without '^'
+	// - '[^' without closing ']'
+	// - footnote ref with no matching def (no list)
+	// - missing footnote def
+	srcs := []string{
+		"![^img] footnote-like image\n\n[^img]: body\n",
+		"[no caret] not a footnote ref\n",
+		"[^unclosed never closes\n",
+		"[^missing] no def\n",
+	}
+	for _, src := range srcs {
+		md := goldmark.New(goldmark.WithExtensions(extension.Footnote))
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("Convert(%q): %v", src, err)
+		}
+	}
+}
+
 func TestDefinitionList_EdgeCases(t *testing.T) {
 	// Drive definitionListParser.Open's:
 	//  - already-inside-list early return (line 30)
