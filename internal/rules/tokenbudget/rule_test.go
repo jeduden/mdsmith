@@ -288,3 +288,112 @@ func TestNormalizeMode(t *testing.T) {
 		t.Errorf("normalizeMode(\"Off\") = %q, want \"off\"", got)
 	}
 }
+
+// --- applyTokenizer / applyEncoding ---
+
+// TestApplyTokenizer_NonString pins the type-mismatch branch.
+// ApplySettings drives the string branch via real config; the
+// non-string error path was uncovered.
+func TestApplyTokenizer_NonString(t *testing.T) {
+	r := &Rule{}
+	if err := r.applyTokenizer(123); err == nil ||
+		!strings.Contains(err.Error(), "tokenizer must be a string") {
+		t.Errorf("expected type-mismatch error, got %v", err)
+	}
+}
+
+// TestApplyTokenizer_InvalidString pins the rejection branch.
+func TestApplyTokenizer_InvalidString(t *testing.T) {
+	r := &Rule{}
+	if err := r.applyTokenizer("nope"); err == nil ||
+		!strings.Contains(err.Error(), "invalid tokenizer") {
+		t.Errorf("expected invalid-tokenizer error, got %v", err)
+	}
+}
+
+// TestApplyTokenizer_HappyPath pins the success path.
+func TestApplyTokenizer_HappyPath(t *testing.T) {
+	r := &Rule{}
+	if err := r.applyTokenizer("builtin"); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if r.Tokenizer != "builtin" {
+		t.Errorf("Tokenizer = %q, want builtin", r.Tokenizer)
+	}
+}
+
+// TestApplyEncoding_NonString pins the type-mismatch branch.
+func TestApplyEncoding_NonString(t *testing.T) {
+	r := &Rule{}
+	if err := r.applyEncoding(123); err == nil ||
+		!strings.Contains(err.Error(), "encoding must be a string") {
+		t.Errorf("expected type-mismatch error, got %v", err)
+	}
+}
+
+// TestApplyEncoding_InvalidString pins the rejection branch with
+// the documented "valid encodings" list spelled out in the error.
+func TestApplyEncoding_InvalidString(t *testing.T) {
+	r := &Rule{}
+	if err := r.applyEncoding("nope"); err == nil ||
+		!strings.Contains(err.Error(), "invalid encoding") {
+		t.Errorf("expected invalid-encoding error, got %v", err)
+	}
+}
+
+// TestApplyEncoding_HappyPath pins the success path for each
+// valid encoding.
+func TestApplyEncoding_HappyPath(t *testing.T) {
+	for _, enc := range []string{"cl100k_base", "p50k_base", "r50k_base", "gpt2"} {
+		r := &Rule{}
+		if err := r.applyEncoding(enc); err != nil {
+			t.Errorf("unexpected error for %q: %v", enc, err)
+		}
+		if r.Encoding != enc {
+			t.Errorf("Encoding = %q, want %q", r.Encoding, enc)
+		}
+	}
+}
+
+// --- activeBudget ---
+
+// TestActiveBudget pins every branch: zero-or-negative Max falls
+// back to defaultMax; an empty-glob override is skipped; the last
+// matching override wins. The integration tests drive the
+// "matching override" path; the fallback and skip branches were
+// uncovered.
+func TestActiveBudget(t *testing.T) {
+	t.Run("zero Max falls back to defaultMax", func(t *testing.T) {
+		r := &Rule{Max: 0}
+		if got := r.activeBudget("docs/a.md"); got != defaultMax {
+			t.Errorf("activeBudget = %d, want %d", got, defaultMax)
+		}
+	})
+	t.Run("negative Max falls back to defaultMax", func(t *testing.T) {
+		r := &Rule{Max: -1}
+		if got := r.activeBudget("docs/a.md"); got != defaultMax {
+			t.Errorf("activeBudget = %d, want %d", got, defaultMax)
+		}
+	})
+	t.Run("empty glob in override is skipped", func(t *testing.T) {
+		r := &Rule{
+			Max: 50,
+			Budgets: []budgetOverride{
+				{Glob: "", Max: 999},
+				{Glob: "*.md", Max: 25},
+			},
+		}
+		if got := r.activeBudget("README.md"); got != 25 {
+			t.Errorf("activeBudget = %d, want 25 (empty glob skipped)", got)
+		}
+	})
+	t.Run("no matching override returns Max", func(t *testing.T) {
+		r := &Rule{
+			Max:     50,
+			Budgets: []budgetOverride{{Glob: "src/*.md", Max: 10}},
+		}
+		if got := r.activeBudget("docs/a.md"); got != 50 {
+			t.Errorf("activeBudget = %d, want 50", got)
+		}
+	})
+}
