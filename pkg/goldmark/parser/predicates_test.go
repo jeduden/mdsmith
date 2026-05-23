@@ -59,6 +59,25 @@ func TestATXHeading_WithAutoHeadingID(t *testing.T) {
 	)
 }
 
+func TestATXHeading_EdgeCases(t *testing.T) {
+	// Drive Open branches that aren't reached by normal `# Title\n`:
+	// - 7+ hashes (level > 6, not a heading)
+	// - alone '#' with no content (just space) -> empty heading
+	// - trailing closing hashes
+	cases := []string{
+		"#######  not a heading\n",  // 7 hashes = not a heading
+		"# \n",                       // empty heading content
+		"#\n",                        // bare hash
+		"# title #\n",                // trailing close hash
+		"# title  ###\n",             // multiple closing hashes
+		"# title \\#\n",              // escaped closing hash
+		"  # indented heading\n",     // 2-space leading
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestParagraph_DirectPredicates(t *testing.T) {
 	p := parser.NewParagraphParser()
 	if p.CanInterruptParagraph() {
