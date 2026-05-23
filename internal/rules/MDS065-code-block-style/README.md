@@ -31,6 +31,12 @@ gets the language tag `text` so the result satisfies
 `fenced-code-language` (MDS011); edit it to the real language
 after fixing.
 
+The new fence is sized to clear any backtick run at the start
+of a content line, so the embedded run never closes the
+converted block prematurely. A block with a `` ``` `` line is
+wrapped in a 4-backtick fence; a block with `` ```` `` gets a
+5-backtick fence; and so on.
+
 The reverse direction (fenced → indented) is **not**
 auto-applied: it would drop any language tag set on the fenced
 block.

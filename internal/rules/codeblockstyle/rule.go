@@ -87,8 +87,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 
 	type indentedRange struct {
-		firstLine int // 1-based, inclusive
-		lastLine  int // 1-based, inclusive (last content line)
+		firstLine int    // 1-based, inclusive
+		lastLine  int    // 1-based, inclusive (last content line)
+		fence     string // backtick fence sized to clear any in-content run
 	}
 	var ranges []indentedRange
 	for _, b := range blocks {
@@ -98,7 +99,11 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		if !b.topLevel {
 			continue
 		}
-		ranges = append(ranges, indentedRange{firstLine: b.line, lastLine: b.lastLine})
+		ranges = append(ranges, indentedRange{
+			firstLine: b.line,
+			lastLine:  b.lastLine,
+			fence:     fenceFor(f.Lines, b.line, b.lastLine),
+		})
 	}
 	if len(ranges) == 0 {
 		return f.Source
@@ -123,14 +128,38 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			continue
 		}
 		if lineNum == ranges[ri].firstLine {
-			out = append(out, "```text")
+			out = append(out, ranges[ri].fence+"text")
 		}
 		out = append(out, stripIndent(raw))
 		if lineNum == ranges[ri].lastLine {
-			out = append(out, "```")
+			out = append(out, ranges[ri].fence)
 		}
 	}
 	return []byte(strings.Join(out, "\n"))
+}
+
+// fenceFor returns a backtick fence at least three long and strictly
+// longer than any run of backticks appearing at the start of an
+// indent-stripped content line in [first, last]. A content line like
+// "```" would close a 3-backtick fence, so the chosen fence must be
+// at least one longer.
+func fenceFor(lines [][]byte, first, last int) string {
+	maxRun := 0
+	for ln := first; ln <= last; ln++ {
+		stripped := stripIndent(lines[ln-1])
+		n := 0
+		for n < len(stripped) && stripped[n] == '`' {
+			n++
+		}
+		if n > maxRun {
+			maxRun = n
+		}
+	}
+	fenceLen := 3
+	if maxRun >= fenceLen {
+		fenceLen = maxRun + 1
+	}
+	return strings.Repeat("`", fenceLen)
 }
 
 // blockInfo records one code block's style ("fenced" or "indented"),

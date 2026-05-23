@@ -113,6 +113,33 @@ func TestFix_IndentedToFenced_TabIndent(t *testing.T) {
 	assert.Equal(t, want, string(got))
 }
 
+// TestFix_IndentedToFenced_TripleBacktickContent_UsesLongerFence verifies
+// that when the indented block contains a line consisting of ``` (or
+// longer), the converted fence is one backtick longer so the embedded
+// triple-backtick does not prematurely close the new block.
+func TestFix_IndentedToFenced_TripleBacktickContent_UsesLongerFence(t *testing.T) {
+	src := []byte("Prose.\n\n    foo\n    ```\n    bar\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	got := r.Fix(f)
+	want := "Prose.\n\n````text\nfoo\n```\nbar\n````\n"
+	assert.Equal(t, want, string(got))
+}
+
+// TestFix_IndentedToFenced_FourBacktickContent_UsesFiveBacktickFence
+// verifies the fence length scales with the longest backtick run in
+// the content, not just past the default 3.
+func TestFix_IndentedToFenced_FourBacktickContent_UsesFiveBacktickFence(t *testing.T) {
+	src := []byte("Prose.\n\n    foo\n    ````\n    bar\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "fenced"}
+	got := r.Fix(f)
+	want := "Prose.\n\n`````text\nfoo\n````\nbar\n`````\n"
+	assert.Equal(t, want, string(got))
+}
+
 func TestFix_FencedStyle_FencedBlock_Unchanged(t *testing.T) {
 	src := []byte("```go\ncode\n```\n")
 	f, err := lint.NewFile("test.md", src)
