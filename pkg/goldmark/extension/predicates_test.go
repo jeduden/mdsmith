@@ -32,6 +32,14 @@ func silence(t *testing.T, fn func()) {
 	fn()
 }
 
+func TestNewTableASTTransformer_Direct(t *testing.T) {
+	// NewTableASTTransformer just returns the package-level
+	// singleton.  Call it once for coverage.
+	if extension.NewTableASTTransformer() == nil {
+		t.Error("NewTableASTTransformer returned nil")
+	}
+}
+
 func TestDefinitionList_Predicates(t *testing.T) {
 	// DefinitionList parser and DefinitionDescription parser
 	// each have predicates Close, CanInterruptParagraph, and
