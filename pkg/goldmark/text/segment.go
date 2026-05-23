@@ -217,9 +217,19 @@ func (s *Segments) Clear() {
 	s.values = nil
 }
 
-// Unshift insert the given Segment to head of the collection.
+// Unshift inserts the given Segment at the head of the collection.
+// Works on an empty receiver (where the upstream form
+// `append(s.values[0:1], s.values[0:]...)` panicked). When the
+// underlying array has spare capacity this implementation does
+// not allocate: it grows the slice by one and uses copy() to
+// shift the existing values right. copy() handles the alias case
+// because Go's runtime uses memmove for overlapping ranges.
 func (s *Segments) Unshift(v Segment) {
-	s.values = append([]Segment{v}, s.values...)
+	s.values = append(s.values, Segment{})
+	if len(s.values) > 1 {
+		copy(s.values[1:], s.values[:len(s.values)-1])
+	}
+	s.values[0] = v
 }
 
 // Value returns a string value of the collection.

@@ -27,11 +27,12 @@ func parseListItem(line []byte) ([6]int, listItemType) {
 	i := 0
 	l := len(line)
 	ret := [6]int{}
+	// Skip leading spaces; the inner `if c == '\t' { return notList }`
+	// branch from upstream was dead code, because the loop condition
+	// already restricts c to ' '. A leading tab is therefore not
+	// consumed and stops i below at the tab's position; the i > 3
+	// check on the next line still rejects deeply-indented input.
 	for ; i < l && line[i] == ' '; i++ {
-		c := line[i]
-		if c == '\t' {
-			return ret, notList
-		}
 	}
 	if i > 3 {
 		return ret, notList
