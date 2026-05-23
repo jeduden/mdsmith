@@ -32,7 +32,7 @@ func buildHTML5Entities() {
 	})
 }
 
-// HTML5Entity struct represents HTML5 entitites.
+// HTML5Entity struct represents HTML5 entities.
 type HTML5Entity struct {
 	Name       string
 	Characters []byte

@@ -42,17 +42,21 @@ func TestResolveNumericReferences_HexAndDecimalPath(t *testing.T) {
 }
 
 func TestResolveNumericReferences_HexOverflowClampedToReplacement(t *testing.T) {
-	// 7 hex digits (the i-start < 7 limit upstream of the cast)
-	// can produce values up to 0xFFFFFFF = 268,435,455, which is
-	// inside int32 range. To prove the MaxInt32 clamp itself, we
-	// also drive the path with a value that the analyser cannot
-	// statically prove is bounded: 0x110000 = 1114112 (one past
-	// the Unicode max, well in int32 range but outside utf8).
-	// The downstream ToValidRune turns this into U+FFFD.
-	in := "&#x110000;"
-	got := string(ResolveNumericReferences([]byte(in)))
-	if got != "�" {
-		t.Errorf("ResolveNumericReferences(%q) = %q, want \\uFFFD", in, got)
+	// Two cases. The first proves the unicode-range cap is honoured
+	// for a value safely inside int32 range. The second drives the
+	// explicit `v > math.MaxInt32` clamp by passing a 32-bit hex
+	// value that exceeds it — ParseUint(_, 16, 32) returns up to
+	// 0xFFFFFFFF (4,294,967,295), which is above math.MaxInt32.
+	cases := []string{
+		"&#x110000;",   // 1,114,112 — past Unicode max, inside int32.
+		"&#xFFFFFFFF;", // 4,294,967,295 — exceeds math.MaxInt32; hits the explicit clamp.
+		"&#x80000000;", // 2,147,483,648 — exactly math.MaxInt32+1; the boundary case.
+	}
+	for _, in := range cases {
+		got := string(ResolveNumericReferences([]byte(in)))
+		if got != "�" {
+			t.Errorf("ResolveNumericReferences(%q) = %q, want U+FFFD", in, got)
+		}
 	}
 }
 

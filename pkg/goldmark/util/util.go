@@ -609,7 +609,7 @@ func ResolveNumericReferences(source []byte) []byte {
 				if nnext < limit {
 					nc := source[nnext]
 					// code point like #x22;
-					if nnext < limit && nc == 'x' || nc == 'X' {
+					if nnext < limit && (nc == 'x' || nc == 'X') {
 						start := nnext + 1
 						i, ok = ReadWhile(source, [2]int{start, limit}, IsHexDecimal)
 						if ok && i < limit && source[i] == ';' {
@@ -618,9 +618,13 @@ func ResolveNumericReferences(source []byte) []byte {
 							n = i + 1
 							// Explicit MaxInt32 bound for uint64 -> rune (int32)
 							// conversion to satisfy CodeQL's
-							// go/incorrect-integer-conversion rule. The hex
-							// digit window above already caps v far below this,
-							// but the analyser cannot see that flow.
+							// go/incorrect-integer-conversion rule. Hex
+							// entities have no explicit digit-window cap
+							// here, so ParseUint with a 32-bit base can
+							// return values above math.MaxInt32 (e.g.
+							// &#xFFFFFFFF;); ToValidRune below handles
+							// the Unicode-range cap, but the int32 cast
+							// is gated explicitly so CodeQL sees the bound.
 							var r rune
 							if v > math.MaxInt32 {
 								r = 0xFFFD

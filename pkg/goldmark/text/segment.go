@@ -219,8 +219,7 @@ func (s *Segments) Clear() {
 
 // Unshift insert the given Segment to head of the collection.
 func (s *Segments) Unshift(v Segment) {
-	s.values = append(s.values[0:1], s.values[0:]...)
-	s.values[0] = v
+	s.values = append([]Segment{v}, s.values...)
 }
 
 // Value returns a string value of the collection.
