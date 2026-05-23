@@ -191,3 +191,9 @@ func TestBlockReader_LineOffset_TabBranches(t *testing.T) {
 	off := r.LineOffset()
 	_ = off
 }
+
+func TestBlockReader_AdvanceToEOL_NoTrailingNewline(t *testing.T) {
+	// AdvanceToEOL has a branch for source not ending in '\n'.
+	r := newTestBlockReader("abc")
+	r.AdvanceToEOL()
+}
