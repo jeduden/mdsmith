@@ -75,6 +75,25 @@ func TestBlockReader_SetPadding(t *testing.T) {
 	}
 }
 
+func TestBlockReader_PrecedingCharacter_Branches(t *testing.T) {
+	// At line start: returns '\n'.
+	r := newTestBlockReader("hello\nworld\n")
+	if got := r.PrecendingCharacter(); got != '\n' {
+		t.Errorf("PrecendingCharacter at line start = %q, want '\\n'", got)
+	}
+	// Mid-line after advance: returns the preceding rune.
+	r.Advance(3)
+	if got := r.PrecendingCharacter(); got != 'l' {
+		t.Errorf("PrecendingCharacter after 3 advance = %q, want 'l'", got)
+	}
+	// With padding: returns space.
+	r2 := newTestBlockReader("abc\n")
+	r2.SetPadding(2)
+	if got := r2.PrecendingCharacter(); got != ' ' {
+		t.Errorf("PrecendingCharacter with padding = %q, want ' '", got)
+	}
+}
+
 func TestBlockReader_PeekWithPadding(t *testing.T) {
 	r := newTestBlockReader("abc\n")
 	r.SetPadding(3)
