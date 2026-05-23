@@ -109,7 +109,8 @@ func TestParser_RegisterCustomSetOptioners(t *testing.T) {
 	_ = astT.setOptionCalls
 
 	// Also run Parse so the registered custom parsers actually
-	// get invoked.
+	// get invoked. Threading WithOption through to populate the
+	// options map fires the SetOptioner-cast loop bodies.
 	p := parser.NewParser(
 		parser.WithBlockParsers(append(parser.DefaultBlockParsers(),
 			util.Prioritized(&recordingBlockParser{}, 999))...),
@@ -120,6 +121,7 @@ func TestParser_RegisterCustomSetOptioners(t *testing.T) {
 			append(parser.DefaultParagraphTransformers(),
 				util.Prioritized(&recordingParagraphTransformer{}, 999))...),
 		parser.WithASTTransformers(util.Prioritized(&recordingASTTransformer{}, 999)),
+		parser.WithOption(customOptName, "value"),
 	)
 	root := p.Parse(text.NewReader([]byte("# A\n\nparagraph\n")), parser.WithContext(parser.NewContext()))
 	if root == nil {
