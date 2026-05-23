@@ -7,6 +7,8 @@ package ast_test
 // them explicitly so the surface coverage doesn't drop.
 
 import (
+	"io"
+	"os"
 	"testing"
 
 	"github.com/yuin/goldmark/ast"
@@ -111,6 +113,66 @@ func TestRawHTML_TextAndInline(t *testing.T) {
 	r := ast.NewRawHTML()
 	r.Inline()
 	_ = r.Text([]byte("any source"))
+}
+
+// silencer redirects stdout for the duration of fn so Dump's
+// fmt.Printf calls don't litter test output.
+func silencer(t *testing.T, fn func()) {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = w
+	defer func() {
+		_ = w.Close()
+		os.Stdout = old
+		_ = r.Close()
+	}()
+	fn()
+	go io.Copy(io.Discard, r)
+}
+
+func TestDump_LinkWithAndWithoutReference(t *testing.T) {
+	// Drive Link.Dump on both branches: no Reference set and
+	// Reference set to a full reference. The latter prints the
+	// nested Reference block.
+	src := []byte("source bytes")
+	l := ast.NewLink()
+	l.Destination = []byte("/url")
+	l.Title = []byte("title")
+	silencer(t, func() { l.Dump(src, 0) })
+
+	l2 := ast.NewLink()
+	l2.Destination = []byte("/x")
+	l2.Reference = ast.NewReferenceLink(ast.ReferenceLinkFull, []byte("label"))
+	silencer(t, func() { l2.Dump(src, 0) })
+}
+
+func TestDump_ImageWithAndWithoutReference(t *testing.T) {
+	src := []byte("source bytes")
+	l := ast.NewLink()
+	l.Destination = []byte("/img")
+	img := ast.NewImage(l)
+	silencer(t, func() { img.Dump(src, 0) })
+
+	l2 := ast.NewLink()
+	l2.Destination = []byte("/img2")
+	l2.Reference = ast.NewReferenceLink(ast.ReferenceLinkCollapsed, []byte("alt"))
+	img2 := ast.NewImage(l2)
+	silencer(t, func() { img2.Dump(src, 0) })
+}
+
+func TestDump_AutoLinkURL(t *testing.T) {
+	src := []byte("https://example.com")
+	tx := ast.NewTextSegment(text.NewSegment(0, len(src)))
+	al := ast.NewAutoLink(ast.AutoLinkURL, tx)
+	silencer(t, func() { al.Dump(src, 0) })
+
+	tx2 := ast.NewTextSegment(text.NewSegment(0, len(src)))
+	al2 := ast.NewAutoLink(ast.AutoLinkEmail, tx2)
+	silencer(t, func() { al2.Dump(src, 0) })
 }
 
 func TestText_SetRaw(t *testing.T) {
