@@ -2442,3 +2442,24 @@ func TestExtractSchemaSourceFromSettings_InlineDeepCopied(t *testing.T) {
 	assert.Equal(t, "Goal", sec["heading"],
 		"extracted inline source must not alias the input map")
 }
+
+// --- buildSchemaRefForLegacy ---
+
+// TestBuildSchemaRefForLegacy pins both branches: an empty source
+// falls back to the generic "schema" label so every diagnostic
+// still carries a reference suffix; a non-empty source is
+// returned verbatim. The Check loop only ever drives the
+// non-empty case via real schema-bound fixtures.
+func TestBuildSchemaRefForLegacy(t *testing.T) {
+	if got := buildSchemaRefForLegacy(""); got != "schema" {
+		t.Errorf(`buildSchemaRefForLegacy("") = %q, want "schema"`, got)
+	}
+	if got := buildSchemaRefForLegacy("kinds/agent"); got != "kinds/agent" {
+		t.Errorf("buildSchemaRefForLegacy(%q) = %q, want %q",
+			"kinds/agent", got, "kinds/agent")
+	}
+	if got := buildSchemaRefForLegacy("proto.md"); got != "proto.md" {
+		t.Errorf("buildSchemaRefForLegacy(%q) = %q, want %q",
+			"proto.md", got, "proto.md")
+	}
+}

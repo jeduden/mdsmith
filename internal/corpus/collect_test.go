@@ -207,6 +207,29 @@ func TestCollect_ErrorPath(t *testing.T) {
 	}
 }
 
+// --- reportProgress ---
+
+// TestReportProgress pins all three branches: nil cfg is a no-op,
+// non-nil cfg with nil Progress is a no-op, and non-nil cfg with
+// a Progress callback receives the message verbatim.
+func TestReportProgress(t *testing.T) {
+	t.Parallel()
+	t.Run("nil cfg is no-op", func(t *testing.T) {
+		reportProgress(nil, "ignored")
+	})
+	t.Run("nil Progress is no-op", func(t *testing.T) {
+		reportProgress(&Config{}, "ignored")
+	})
+	t.Run("Progress callback receives message", func(t *testing.T) {
+		var got string
+		cfg := &Config{Progress: func(s string) { got = s }}
+		reportProgress(cfg, "collecting alpha")
+		if got != "collecting alpha" {
+			t.Errorf("got %q, want %q", got, "collecting alpha")
+		}
+	})
+}
+
 // --- sourceRelativePath ---
 
 // TestSourceRelativePath pins every reachable branch: empty and

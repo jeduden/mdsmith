@@ -76,3 +76,40 @@ func writeCorpusFile(t *testing.T, path string, content string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+// --- makeQASample ---
+
+// TestMakeQASample_EmptyRecordsReturnsNil pins the empty-input
+// guard. Build drives the happy path with a non-empty corpus,
+// so this branch was uncovered.
+func TestMakeQASample_EmptyRecordsReturnsNil(t *testing.T) {
+	t.Parallel()
+	if got := makeQASample(nil, 10); got != nil {
+		t.Errorf("makeQASample(nil) = %v, want nil", got)
+	}
+	if got := makeQASample([]Record{}, 10); got != nil {
+		t.Errorf("makeQASample([]) = %v, want nil", got)
+	}
+}
+
+// TestMakeQASample_NonPositiveLimitFallsBack pins the
+// `limit <= 0 → defaultQASampleLimit` branch. The negative-limit
+// path could not be driven through Build (validateConfigHeader
+// would reject the config first) without this direct unit pin.
+func TestMakeQASample_NonPositiveLimitFallsBack(t *testing.T) {
+	t.Parallel()
+	records := []Record{
+		{RecordID: "a", Category: CategoryReference, Path: "a.md"},
+		{RecordID: "b", Category: CategoryReference, Path: "b.md"},
+		{RecordID: "c", Category: CategoryOther, Path: "c.md"},
+	}
+	for _, lim := range []int{0, -1, -100} {
+		got := makeQASample(records, lim)
+		// The default keeps both categories at least to one entry
+		// each given enough records, so we just sanity-check that
+		// some samples come back.
+		if len(got) == 0 {
+			t.Errorf("makeQASample(records, %d) returned empty", lim)
+		}
+	}
+}

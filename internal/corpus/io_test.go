@@ -73,3 +73,80 @@ func TestReadBuildReport_InvalidJSON(t *testing.T) {
 		t.Fatalf("expected parse error, got %v", err)
 	}
 }
+
+// --- WriteManifest / WriteJSON / ensureParentDir error branches ---
+
+// TestWriteManifest_ParentDirFailure pins the error path where
+// ensureParentDir fails because the parent path is occupied by a
+// regular file. The happy path is exercised by
+// TestWriteManifest_WritesJSONL; the error wrap was not.
+func TestWriteManifest_ParentDirFailure(t *testing.T) {
+	t.Parallel()
+	// A regular file at the would-be parent dir makes MkdirAll fail.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	bad := filepath.Join(blocker, "manifest.jsonl")
+	err := WriteManifest(bad, nil)
+	if err == nil {
+		t.Fatal("expected error when parent path is a file")
+	}
+	if !strings.Contains(err.Error(), "create directory") {
+		t.Errorf("error %q must mention create directory", err)
+	}
+}
+
+// TestWriteJSON_ParentDirFailure mirrors the WriteManifest case
+// for the WriteJSON wrapper, which shares the ensureParentDir
+// pre-call.
+func TestWriteJSON_ParentDirFailure(t *testing.T) {
+	t.Parallel()
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	bad := filepath.Join(blocker, "report.json")
+	err := WriteJSON(bad, struct{ X int }{1})
+	if err == nil {
+		t.Fatal("expected error when parent path is a file")
+	}
+	if !strings.Contains(err.Error(), "create directory") {
+		t.Errorf("error %q must mention create directory", err)
+	}
+}
+
+// TestEnsureParentDir pins both branches directly. Happy path:
+// MkdirAll under a tempdir succeeds (nested path included).
+// Error path: MkdirAll fails when an ancestor is a regular file.
+func TestEnsureParentDir(t *testing.T) {
+	t.Parallel()
+	t.Run("happy path", func(t *testing.T) {
+		nested := filepath.Join(t.TempDir(), "a", "b", "c", "f.json")
+		if err := ensureParentDir(nested); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		// The directory must now exist and be a directory.
+		dir := filepath.Dir(nested)
+		fi, err := os.Stat(dir)
+		if err != nil {
+			t.Fatalf("stat parent: %v", err)
+		}
+		if !fi.IsDir() {
+			t.Errorf("parent %s is not a directory", dir)
+		}
+	})
+	t.Run("error path: ancestor is a regular file", func(t *testing.T) {
+		blocker := filepath.Join(t.TempDir(), "blocker")
+		if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write blocker: %v", err)
+		}
+		err := ensureParentDir(filepath.Join(blocker, "child", "x.txt"))
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "create directory") {
+			t.Errorf("error %q must mention create directory", err)
+		}
+	})
+}

@@ -236,6 +236,98 @@ type stringErr struct{ s string }
 
 func (e *stringErr) Error() string { return e.s }
 
+// --- reportSourceProgress ---
+
+// TestReportSourceProgress pins both branches: nil callback is a
+// no-op (must not panic); non-nil callback receives the formatted
+// message. The Resolve path drives nil callbacks via tests that
+// pass no progress function; this asserts the formatting too.
+func TestReportSourceProgress(t *testing.T) {
+	t.Parallel()
+	t.Run("nil callback is no-op", func(t *testing.T) {
+		// Must not panic.
+		reportSourceProgress(nil, "ignored: %s", "x")
+	})
+	t.Run("non-nil callback receives formatted message", func(t *testing.T) {
+		var got string
+		reportSourceProgress(func(s string) { got = s }, "seed %s (%d)", "alpha", 7)
+		if got != "seed alpha (7)" {
+			t.Errorf("got %q, want %q", got, "seed alpha (7)")
+		}
+	})
+}
+
+// --- cachedCommitExists ---
+
+// stubRunner returns the configured (data, err) on every Run call.
+type stubRunner struct {
+	out []byte
+	err error
+}
+
+func (s stubRunner) Run([]string) ([]byte, error) { return s.out, s.err }
+
+// TestCachedCommitExists pins every branch the helper takes: the
+// happy path (commit found), the two "missing object" variants
+// git emits ("Not a valid object name", "invalid object",
+// "unknown revision"), and the fallthrough wrap for any other
+// error string.
+func TestCachedCommitExists(t *testing.T) {
+	t.Parallel()
+	t.Run("commit found", func(t *testing.T) {
+		ok, err := cachedCommitExists("/repo", "abc", stubRunner{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !ok {
+			t.Errorf("expected ok=true")
+		}
+	})
+	t.Run("not a valid object name returns false", func(t *testing.T) {
+		ok, err := cachedCommitExists("/repo", "abc",
+			stubRunner{err: &stringErr{"fatal: Not a valid object name"}})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Errorf("expected ok=false")
+		}
+	})
+	t.Run("invalid object returns false", func(t *testing.T) {
+		ok, err := cachedCommitExists("/repo", "abc",
+			stubRunner{err: &stringErr{"git: invalid object 123"}})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Errorf("expected ok=false")
+		}
+	})
+	t.Run("unknown revision returns false", func(t *testing.T) {
+		ok, err := cachedCommitExists("/repo", "abc",
+			stubRunner{err: &stringErr{"fatal: unknown revision or path"}})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ok {
+			t.Errorf("expected ok=false")
+		}
+	})
+	t.Run("other errors wrap with commit", func(t *testing.T) {
+		_, err := cachedCommitExists("/repo", "deadbeef",
+			stubRunner{err: &stringErr{"permission denied"}})
+		if err == nil {
+			t.Fatal("expected error to wrap")
+		}
+		if !strings.Contains(err.Error(), "deadbeef") {
+			t.Errorf("err %q must name the commit", err)
+		}
+		if !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("err %q must include upstream message", err)
+		}
+	})
+}
+
 // --- validateRepoRoot ---
 
 // TestValidateRepoRoot pins the missing-root branch: when the
