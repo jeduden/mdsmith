@@ -106,6 +106,7 @@ func TestFootnote_OptionsAsRendererOptions(t *testing.T) {
 	// Apply each option via AddOptions which calls SetConfig.
 	r.AddOptions(
 		extension.WithFootnoteIDPrefix("doc-").(renderer.Option),
+		extension.WithFootnoteIDPrefixFunction(func(node gast.Node) []byte { return []byte("fn-") }).(renderer.Option),
 		extension.WithFootnoteLinkTitle("link").(renderer.Option),
 		extension.WithFootnoteBacklinkTitle("back").(renderer.Option),
 		extension.WithFootnoteLinkClass("lcls").(renderer.Option),
