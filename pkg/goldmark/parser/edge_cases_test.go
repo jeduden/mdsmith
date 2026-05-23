@@ -53,6 +53,9 @@ func TestRawHTML_ProcessingInstruction_AllShapes(t *testing.T) {
 		"a <?xml?> b\n",
 		"a <?xml content?> b\n",
 		"a <?xml\nmulti?> b\n",
+		"a <?unclosed PI never closes\n", // hits parseUntil return-nil branch
+		"a <![CDATA[unclosed CDATA\n",
+		"a <!UNCLOSED declaration\n",
 	}
 	for _, src := range cases {
 		_ = parseWithDefaults(src)
