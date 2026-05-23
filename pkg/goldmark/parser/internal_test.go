@@ -501,6 +501,49 @@ func TestListItemParser_Continue_AllBranches(t *testing.T) {
 	bp.Continue(li2, r2, pc2)
 }
 
+func TestListParser_Open_AllEarlyReturns(t *testing.T) {
+	// listParser.Open branches not reached by Convert:
+	//   - last is *ast.List -> skip
+	//   - skipListParserKey set -> skip
+	//   - typ == notList -> skip
+	//   - paragraph + orderedList start != 1 -> skip
+	//   - paragraph + empty item -> skip
+	bp := &listParser{}
+	doc := ast.NewDocument()
+
+	// State: last is List.
+	prevList := ast.NewList('-')
+	doc.AppendChild(doc, prevList)
+	pc := NewContext()
+	pc.SetOpenedBlocks([]Block{{Node: prevList, Parser: bp}})
+	r := text.NewReader([]byte("- item\n"))
+	pc.SetBlockOffset(0)
+	bp.Open(doc, r, pc)
+
+	// State: skipListParserKey set.
+	pc2 := NewContext()
+	pc2.Set(skipListParserKey, listItemFlagValue)
+	r2 := text.NewReader([]byte("- item\n"))
+	pc2.SetBlockOffset(0)
+	bp.Open(doc, r2, pc2)
+
+	// State: not a list line.
+	pc3 := NewContext()
+	r3 := text.NewReader([]byte("not a list\n"))
+	pc3.SetBlockOffset(0)
+	bp.Open(doc, r3, pc3)
+
+	// State: paragraph + ordered list starting with non-1 -> no interrupt.
+	pc4 := NewContext()
+	para := ast.NewParagraph()
+	doc4 := ast.NewDocument()
+	doc4.AppendChild(doc4, para)
+	pc4.SetOpenedBlocks([]Block{{Node: para, Parser: bp}})
+	r4 := text.NewReader([]byte("5. ordered\n"))
+	pc4.SetBlockOffset(0)
+	bp.Open(doc4, r4, pc4)
+}
+
 func TestListItemParser_Open_NonListParent(t *testing.T) {
 	// listItemParser.Open returns nil when parent is not *ast.List.
 	// The dispatcher only routes list-item triggers under a List
