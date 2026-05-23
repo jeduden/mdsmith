@@ -155,6 +155,23 @@ func TestLinkParser_LinkInAutolinkInImage(t *testing.T) {
 	}
 }
 
+func TestLinkParser_DeeplyNested(t *testing.T) {
+	// Multiple nested link / image patterns exercise the
+	// pushLinkBottom / popLinkBottom stack across more than the
+	// usual single-entry depth.
+	cases := []string{
+		"[outer [inner](/i)](/o)\n",
+		"[outer [inner1](/i1) [inner2](/i2)](/o)\n",
+		"![alt with [link](/l)](/img.png)\n",
+		"[a [b [c](/c)](/b)](/a)\n",
+		"![img1](/i1) ![img2](/i2) ![img3](/i3)\n",
+		"[a](/a) [b](/b) [c](/c) [d](/d)\n",
+	}
+	for _, src := range cases {
+		_ = parseDoc(src)
+	}
+}
+
 func TestLinkParser_AngleBracketDestination(t *testing.T) {
 	src := `[x](<https://example.com> "title")` + "\n"
 	kinds := walkKindSet(parseDoc(src))
