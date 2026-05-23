@@ -82,8 +82,6 @@ func TestURLEscape_EdgeBytes(t *testing.T) {
 }
 
 func TestDoFullUnicodeCaseFolding(t *testing.T) {
-	// The folding table maps uppercase / titlecase to canonical
-	// lower / sequence. ASCII is identity, German ß folds to "ss".
 	cases := []struct {
 		in   string
 		want string
@@ -91,7 +89,10 @@ func TestDoFullUnicodeCaseFolding(t *testing.T) {
 		{"ABC", "abc"},
 		{"hello", "hello"},
 		{"ß", "ss"},
-		{"Ⓜ", "ⓜ"}, // Circled Latin Capital M to small
+		{"Ⓜ", "ⓜ"},                                  // Circled Latin Capital M to small
+		{"AÉ", "aé"},                                // mix ASCII + accented
+		{string([]byte{0xFF, 0xFE}), string([]byte{0xFF, 0xFE})}, // invalid UTF-8 -> RuneError skipped
+		{string([]byte{'A', 0x80, 'B'}), "a\x80b"},  // continuation byte mid-stream
 	}
 	for _, c := range cases {
 		got := string(util.DoFullUnicodeCaseFolding([]byte(c.in)))
