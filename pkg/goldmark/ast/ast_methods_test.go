@@ -250,6 +250,10 @@ func TestString_SetRaw(t *testing.T) {
 	if !s.IsRaw() {
 		t.Error("SetRaw(true) then IsRaw() must be true")
 	}
+	s.SetRaw(false)
+	if s.IsRaw() {
+		t.Error("SetRaw(false) then IsRaw() must be false")
+	}
 }
 
 func TestRawHTML_Methods(t *testing.T) {
@@ -264,6 +268,7 @@ func TestReferenceLink_Construct(t *testing.T) {
 		t.Fatal("NewReferenceLink returned nil")
 	}
 }
+
 
 func TestDocument_OwnerDocument(t *testing.T) {
 	doc := ast.NewDocument()
