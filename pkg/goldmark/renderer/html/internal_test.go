@@ -63,6 +63,39 @@ func TestCSS3DraftSoftLineBreak_AllRules(t *testing.T) {
 	}
 }
 
+func TestRenderImage_AllBranches(t *testing.T) {
+	// renderImage has branches: dangerous URL (skip), Title set,
+	// Attributes set, XHTML mode.  Construct AST manually.
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	doc.AppendChild(doc, p)
+
+	// Dangerous URL.
+	dlink := ast.NewLink()
+	dlink.Destination = []byte("javascript:alert(1)")
+	dimg := ast.NewImage(dlink)
+	p.AppendChild(p, dimg)
+
+	// Image with title + attributes.
+	titledLink := ast.NewLink()
+	titledLink.Destination = []byte("/img.png")
+	titledLink.Title = []byte("img-title")
+	timg := ast.NewImage(titledLink)
+	timg.SetAttribute([]byte("class"), []byte("img-cls"))
+	p.AppendChild(p, timg)
+
+	// Render with XHTML option (just toggling the renderer Config).
+	r := NewRenderer().(*Renderer)
+	r.Config.XHTML = true
+	var buf bytes.Buffer
+	bw := bufio.NewWriter(&buf)
+	for c := p.FirstChild(); c != nil; c = c.NextSibling() {
+		_, _ = r.renderImage(bw, []byte("source"), c, true)
+		_, _ = r.renderImage(bw, []byte("source"), c, false)
+	}
+	_ = bw.Flush()
+}
+
 func TestRenderTexts_AllChildTypes(t *testing.T) {
 	// renderTexts dispatches on child type: ast.String,
 	// ast.Text, otherwise recurses.  Construct a node tree with
