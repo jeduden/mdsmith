@@ -48,7 +48,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if len(headings) == 0 {
 		return nil
 	}
-	paragraphs := astutil.CollectSectionParagraphs(f)
+	// Pre-materialise text once per file: SectionBody runs per
+	// heading and would otherwise re-extract the same paragraph
+	// once per containing section (h1 > h2 > h3 = 3x). The
+	// memoized variant restores the plan-196 pre-image cost.
+	paragraphs := astutil.CollectSectionParagraphsWithText(f)
 
 	totalLines := len(f.Lines)
 	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {

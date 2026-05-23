@@ -435,6 +435,56 @@ func TestSectionParagraph_ExtractText_PrefersCachedText(t *testing.T) {
 			"an AST")
 }
 
+// --- CollectSectionParagraphsWithText ---
+
+// TestCollectSectionParagraphsWithText_PopulatesText pins the
+// contract MDS057/MDS058 rely on: every entry has Text filled in,
+// matching what ExtractText would produce, so SectionBody's
+// per-heading sweeps hit the cached field instead of re-extracting
+// per containing section.
+func TestCollectSectionParagraphsWithText_PopulatesText(t *testing.T) {
+	src := []byte("# H\n\nFirst paragraph.\n\nSecond *here*.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	paras := CollectSectionParagraphsWithText(f)
+	require.Len(t, paras, 2)
+	assert.Equal(t, "First paragraph.", paras[0].Text)
+	assert.Equal(t, "Second here.", paras[1].Text)
+}
+
+// TestCollectSectionParagraphsWithText_Memoized pins that repeated
+// calls share the same backing slice — MDS057 and MDS058 both
+// enabled should pay the materialisation cost once, not twice.
+func TestCollectSectionParagraphsWithText_Memoized(t *testing.T) {
+	src := []byte("# H\n\nOne.\n\nTwo.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	p1 := CollectSectionParagraphsWithText(f)
+	p2 := CollectSectionParagraphsWithText(f)
+	require.Len(t, p1, 2)
+	assert.Same(t, &p1[0], &p2[0],
+		"repeated calls must return the cached slice")
+}
+
+// TestCollectSectionParagraphsWithText_LeavesNodeMemoUntouched pins
+// that the with-text variant builds a fresh slice and does NOT mutate
+// the bare CollectSectionParagraphs memo. A caller that asks for the
+// bare memo after the with-text memo was built must still see Text
+// empty on every entry — Text is plan-196's lazy field, not a
+// retroactively shared cache.
+func TestCollectSectionParagraphsWithText_LeavesNodeMemoUntouched(t *testing.T) {
+	src := []byte("# H\n\nOne.\n\nTwo.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	// Populate the with-text memo first.
+	_ = CollectSectionParagraphsWithText(f)
+	// The bare collector's slice must still carry empty Text.
+	bare := CollectSectionParagraphs(f)
+	require.Len(t, bare, 2)
+	assert.Empty(t, bare[0].Text)
+	assert.Empty(t, bare[1].Text)
+}
+
 // --- SectionBody ---
 
 func TestSectionBody_JoinsWithSpace(t *testing.T) {

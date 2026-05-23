@@ -130,6 +130,42 @@ func buildSectionParagraphs(f *lint.File) any {
 	return out
 }
 
+// CollectSectionParagraphsWithText returns the same SectionParagraphs
+// as [CollectSectionParagraphs] but with Text populated for every
+// entry. Memoized per File so MDS057 and MDS058 (and any future rule
+// that builds section bodies from paragraph text) share a single
+// materialisation even when both rules are enabled — without this,
+// each paragraph nested inside multiple overlapping section ranges
+// (h1 > h2 > h3) would re-run [mdtext.ExtractPlainText] once per
+// containing heading.
+//
+// Use this when a rule needs paragraph text for every paragraph in
+// the file. Do NOT use it from the default-on MDS023
+// paragraph-readability rule — that one filters most paragraphs out
+// before any text is needed, which is the point of plan 196's lazy
+// design. The returned slice is a copy of the
+// [CollectSectionParagraphs] memo's slice (with Text filled in);
+// callers treat it as read-only.
+func CollectSectionParagraphsWithText(f *lint.File) []SectionParagraph {
+	return f.MemoFile("astutil.sectionParagraphsWithText", buildSectionParagraphsWithText).([]SectionParagraph)
+}
+
+// buildSectionParagraphsWithText materialises Text on every paragraph
+// returned by [CollectSectionParagraphs]. Built on top of the
+// table-filtered memo so the AST walk runs once even when both memos
+// are accessed.
+func buildSectionParagraphsWithText(f *lint.File) any {
+	src := CollectSectionParagraphs(f)
+	out := make([]SectionParagraph, len(src))
+	for i, p := range src {
+		out[i] = p
+		if out[i].Text == "" {
+			out[i].Text = mdtext.ExtractPlainText(p.Node, f.Source)
+		}
+	}
+	return out
+}
+
 // SectionEnd returns the exclusive end line of the section starting
 // at headings[i]. The section ends at the first heading at the same
 // or shallower level after headings[i], or at totalLines+1 when no
