@@ -34,6 +34,17 @@ func TestSegment_Between(t *testing.T) {
 	}
 }
 
+func TestSegment_Between_PanicsOnStopMismatch(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Between with mismatched Stop should panic")
+		}
+	}()
+	a := text.NewSegment(0, 5)
+	b := text.NewSegment(0, 10) // different Stop
+	_ = a.Between(b)
+}
+
 func TestSegment_TrimLeftSpaceWidth_Branches(t *testing.T) {
 	src := []byte("    abc\t\tdef")
 
