@@ -243,6 +243,17 @@ func TestRender_HeadingWithExtraAttributes(t *testing.T) {
 	}
 }
 
+func TestRender_CodeSpanMultiLine(t *testing.T) {
+	// A multi-line code span has Text children whose Value ends
+	// in '\n'; renderCodeSpan replaces the newline with a single
+	// space and writes the rest raw.
+	src := "see `a\nb` here\n"
+	out := convertWithOpts(t, src)
+	if !strings.Contains(out, "<code>") {
+		t.Errorf("expected <code> in output: %q", out)
+	}
+}
+
 func TestRender_HTMLBlockSafeAndUnsafe(t *testing.T) {
 	// renderHTMLBlock has four branches:
 	//   - entering + Unsafe: SecureWrite each body line
