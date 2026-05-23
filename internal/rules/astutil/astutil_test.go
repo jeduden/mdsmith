@@ -435,6 +435,97 @@ func TestSectionParagraph_ExtractText_PrefersCachedText(t *testing.T) {
 			"an AST")
 }
 
+// TestSectionParagraph_ExtractText_HasTextHonoursEmptyCache pins
+// the reason HasText exists: a paragraph whose extracted plain
+// text is legitimately empty (e.g. an image-only paragraph)
+// still hits the cache. Without HasText the
+// `p.Text != ""` shortcut would miss and fall back to
+// ExtractPlainText on every call. With HasText set the empty
+// string is returned without touching Node.
+func TestSectionParagraph_ExtractText_HasTextHonoursEmptyCache(t *testing.T) {
+	// Node is intentionally nil — the cache must fire, so the
+	// nil-Node panic path inside ExtractPlainText is never
+	// reached.
+	p := SectionParagraph{Line: 1, Text: "", HasText: true}
+	assert.Equal(t, "", p.ExtractText([]byte("anything")),
+		"HasText must cause ExtractText to return the cached empty "+
+			"string without descending into the Node branch")
+}
+
+// TestSectionParagraph_ExtractText_HasTextWinsOverShortcut pins
+// the precedence: when both HasText and the legacy
+// non-empty-Text shortcut would apply, HasText is checked first.
+// In practice the two branches return the same thing, but the
+// ordering is part of the contract for callers that explicitly
+// set HasText to signal "this Text is authoritative."
+func TestSectionParagraph_ExtractText_HasTextWinsOverShortcut(t *testing.T) {
+	p := SectionParagraph{Line: 1, Text: "cached", HasText: true}
+	assert.Equal(t, "cached", p.ExtractText(nil),
+		"HasText branch returns Text verbatim")
+}
+
+// TestSectionParagraph_ExtractText_HasTextSkipsNodeExtraction
+// pins that even with a valid Node set, the HasText cache is
+// preferred — that is what makes CollectSectionParagraphsWithText
+// an effective shared materialisation memo. A regression that
+// re-extracts despite the cache would re-run ExtractPlainText
+// per heading sweep through SectionBody and undo plan 196's
+// per-paragraph-extract bound.
+func TestSectionParagraph_ExtractText_HasTextSkipsNodeExtraction(t *testing.T) {
+	src := []byte("# H\n\nHello world.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	paras := CollectSectionParagraphs(f)
+	require.Len(t, paras, 1)
+	// Pre-cache a divergent string to prove ExtractText does NOT
+	// fall through to Node extraction when HasText is set.
+	p := paras[0]
+	p.Text = "from-cache"
+	p.HasText = true
+	assert.Equal(t, "from-cache", p.ExtractText(f.Source),
+		"HasText cache must win even when Node would extract a "+
+			"different string")
+}
+
+// TestSectionParagraph_ExtractText_AllThreeBranches is a table-
+// driven sweep over the dispatch: HasText branch (cache wins
+// regardless of Text content), Text-shortcut branch (HasText
+// false but Text non-empty), Node fallback (HasText false, Text
+// empty, Node present). One test pinning all three keeps the
+// dispatch order legible.
+func TestSectionParagraph_ExtractText_AllThreeBranches(t *testing.T) {
+	src := []byte("# H\n\nbody.\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	paras := CollectSectionParagraphs(f)
+	require.Len(t, paras, 1)
+	node := paras[0].Node
+
+	cases := []struct {
+		name string
+		p    SectionParagraph
+		want string
+	}{
+		{name: "HasText with non-empty Text returns Text",
+			p:    SectionParagraph{Text: "hit", HasText: true, Node: node},
+			want: "hit"},
+		{name: "HasText with empty Text returns empty",
+			p:    SectionParagraph{Text: "", HasText: true, Node: node},
+			want: ""},
+		{name: "no HasText, non-empty Text returns Text",
+			p:    SectionParagraph{Text: "shortcut"},
+			want: "shortcut"},
+		{name: "no HasText, empty Text falls back to Node",
+			p:    SectionParagraph{Node: node},
+			want: "body."},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, c.p.ExtractText(f.Source))
+		})
+	}
+}
+
 // --- CollectSectionParagraphsWithText ---
 
 // TestCollectSectionParagraphsWithText_PopulatesText pins the
