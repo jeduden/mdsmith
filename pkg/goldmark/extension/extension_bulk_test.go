@@ -37,6 +37,27 @@ func TestFootnote_MultiLineDefinition(t *testing.T) {
 	}
 }
 
+func TestTaskList_ParseEarlyReturns(t *testing.T) {
+	// Drive each early-return in taskCheckBoxParser.Parse.  All
+	// inputs include `[` so the trigger fires; only the well-formed
+	// list-item-text-block case actually creates a TaskCheckBox.
+	srcs := []string{
+		"[x] outside any list\n",                  // parent.Parent() not ListItem
+		"- some text before [x] checkbox\n",       // parent.HasChildren (text before [)
+		"- [notvalid] not a checkbox\n",           // regex miss
+		"- [x] valid checkbox\n",                  // sanity / happy path
+		"- [ ] unchecked checkbox\n",
+		"- [X] uppercase X checkbox\n",
+	}
+	for _, src := range srcs {
+		md := goldmark.New(goldmark.WithExtensions(extension.TaskList))
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("Convert(%q): %v", src, err)
+		}
+	}
+}
+
 func TestFootnote_OpenFailPaths(t *testing.T) {
 	// Drive each early-return branch in footnoteBlockParser.Open.
 	// Each input starts with '[' so the Trigger fires, but the
