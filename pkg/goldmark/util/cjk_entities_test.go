@@ -55,6 +55,7 @@ func TestEastAsianWidth(t *testing.T) {
 		{0x20A9, "H"},   // Halfwidth — won sign
 		{0x1100, "W"},   // Wide — Hangul jamo
 		{0x00A1, "A"},   // Ambiguous — inverted exclamation
+		{0x0939, "N"},   // Neutral — Devanagari Ha
 	}
 	for _, c := range cases {
 		if got := EastAsianWidth(c.r); got != c.want {
