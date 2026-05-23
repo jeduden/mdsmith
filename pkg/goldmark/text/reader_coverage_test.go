@@ -159,3 +159,14 @@ func TestFindSubMatchReader_AllBranches(t *testing.T) {
 		t.Error("findSubMatchReader should match")
 	}
 }
+
+func TestReader_Peek_WithPadding(t *testing.T) {
+	// reader.Peek's r.pos.Padding != 0 branch fires when the
+	// reader's position carries leading padding (from
+	// AdvanceAndSetPadding etc).
+	r := NewReader([]byte("abc"))
+	r.SetPadding(2)
+	if b := r.Peek(); b != ' ' {
+		t.Errorf("Peek with padding should return space, got %c", b)
+	}
+}
