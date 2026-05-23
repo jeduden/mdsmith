@@ -124,6 +124,10 @@ func TestFirstNonSpacePosition(t *testing.T) {
 		{"\t\tabc", 2},
 		{"   ", -1},
 		{"", -1},
+		{"\n", -1},              // newline at start -> -1
+		{"   \n", -1},           // spaces then newline -> -1
+		{"\t\n", -1},            // tab then newline
+		{"abc\n", 0},            // non-space first
 	}
 	for _, c := range cases {
 		if got := util.FirstNonSpacePosition([]byte(c.in)); got != c.want {
