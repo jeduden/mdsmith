@@ -205,6 +205,33 @@ func TestDump_AutoLinkURL(t *testing.T) {
 	silencer(t, func() { al2.Dump(src, 0) })
 }
 
+func TestText_Dump_AllFlags(t *testing.T) {
+	// Drive textFlagsString through each of its 4 flag branches by
+	// dumping Text nodes with each flag set.  The fmt.Printf
+	// output goes to stdout — silence it.
+	source := []byte("hello world")
+	mkText := func(modifiers ...func(*ast.Text)) *ast.Text {
+		t := ast.NewTextSegment(text.NewSegment(0, 5))
+		for _, m := range modifiers {
+			m(t)
+		}
+		return t
+	}
+	for _, t2 := range []*ast.Text{
+		mkText(),
+		mkText(func(x *ast.Text) { x.SetSoftLineBreak(true) }),
+		mkText(func(x *ast.Text) { x.SetHardLineBreak(true) }),
+		mkText(func(x *ast.Text) { x.SetRaw(true) }),
+		mkText(func(x *ast.Text) {
+			x.SetSoftLineBreak(true)
+			x.SetHardLineBreak(true)
+			x.SetRaw(true)
+		}),
+	} {
+		silencer(t, func() { t2.Dump(source, 0) })
+	}
+}
+
 func TestText_SetRaw(t *testing.T) {
 	tx := ast.NewTextSegment(text.NewSegment(0, 5))
 	tx.SetRaw(true)
