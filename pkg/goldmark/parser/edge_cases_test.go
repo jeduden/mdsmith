@@ -12,6 +12,22 @@ import (
 	"github.com/yuin/goldmark/text"
 )
 
+func TestFencedCodeBlock_IndentationBranches(t *testing.T) {
+	// A fenced code block opened with N leading spaces dedents
+	// each body line by up to N. Drive the "less indented than
+	// expected" branch with body lines that have fewer leading
+	// spaces than the opener.
+	cases := []string{
+		"   ```\nbody\n   ```\n",                    // 3-space opener, no body indent
+		"   ```\n body\n   ```\n",                   // 3-space opener, 1-space body
+		"```\nfirst\n\n  blank then content\n```\n", // blank line inside fence
+		"~~~\nfirst\n~~~~\nnot a closer with diff char\nstill inside ~~~\n", // tilde with wrong closer
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestRawHTML_Comment_AllShapes(t *testing.T) {
 	// CommonMark inline comment rules: <!-- ... -->. Drive each
 	// branch in parseComment by varying the content.
