@@ -232,6 +232,29 @@ func TestRender_HeadingWithExtraAttributes(t *testing.T) {
 	}
 }
 
+func TestRender_HTMLBlockSafeAndUnsafe(t *testing.T) {
+	// renderHTMLBlock has four branches:
+	//   - entering + Unsafe: SecureWrite each body line
+	//   - entering + safe: "raw HTML omitted" comment
+	//   - exiting + HasClosure + Unsafe: SecureWrite the closure
+	//   - exiting + HasClosure + safe: "raw HTML omitted" comment
+	// Multi-line type-1 HTML block has a ClosureLine; drive the
+	// safe and unsafe variants both.
+	src := "<script>\nbody1\nbody2\n</script>\n"
+
+	// Safe (default).
+	outSafe := convertWithOpts(t, src)
+	if !strings.Contains(outSafe, "raw HTML omitted") {
+		t.Errorf("safe render should emit raw HTML omitted comment: %q", outSafe)
+	}
+
+	// Unsafe.
+	outUnsafe := convertWithOpts(t, src, html.WithUnsafe())
+	if !strings.Contains(outUnsafe, "<script>") {
+		t.Errorf("unsafe render should pass through <script>: %q", outUnsafe)
+	}
+}
+
 func TestWriter_EntitiesEscapeRuneBranches(t *testing.T) {
 	// Drive escapeRune via numeric/hex HTML entities. Each entity
 	// triggers a different branch:
