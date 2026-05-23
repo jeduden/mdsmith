@@ -376,6 +376,22 @@ func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
 	}
 }
 
+func TestListItemParser_Open_NonListParent(t *testing.T) {
+	// listItemParser.Open returns nil when parent is not *ast.List.
+	// The dispatcher only routes list-item triggers under a List
+	// parent, so this defensive branch is unreachable via Convert.
+	bp := &listItemParser{}
+	doc := ast.NewDocument()
+	r := text.NewReader([]byte("- item\n"))
+	node, state := bp.Open(doc, r, NewContext())
+	if node != nil {
+		t.Errorf("Open with non-List parent should return nil, got %v", node)
+	}
+	if state != NoChildren {
+		t.Errorf("Open with non-List parent should return NoChildren, got %v", state)
+	}
+}
+
 func TestEmphasisParser_Parse_NilReturn(t *testing.T) {
 	// emphasisParser.Parse returns nil when ScanDelimiter finds
 	// no valid delimiter run (e.g. the leading char isn't '*'
