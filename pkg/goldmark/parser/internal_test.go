@@ -426,6 +426,25 @@ func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
 	}
 }
 
+func TestRawHTMLParser_ParseComment_Direct(t *testing.T) {
+	// Drive parseComment directly with various comment shapes.
+	bp := &rawHTMLParser{}
+	pc := NewContext()
+	cases := []string{
+		"<!--> immediate-empty\n", // empty comment <!-->
+		"<!---> 3-dash empty\n",   // empty comment <!--->
+		"<!-- simple --> ok\n",    // normal
+		"<!-- multi\nline --> ok\n", // multi-line
+		"<!-- unclosed\n",         // unclosed
+	}
+	for _, src := range cases {
+		r := text.NewReader([]byte(src))
+		// Advance past `<` (assuming dispatcher would have already done this).
+		// The parseComment expects a position at the `<!--`.
+		bp.parseComment(r, pc)
+	}
+}
+
 func TestHTMLBlockParser_Open_AllTypes(t *testing.T) {
 	// Drive each block-type detection branch directly.
 	bp := &htmlBlockParser{}
