@@ -66,7 +66,7 @@ func TestList_Dump_OrderedAndUnordered(t *testing.T) {
 	unordered := ast.NewList('-')
 	silencer(t, func() { unordered.Dump(nil, 0) })
 
-	ordered := ast.NewList('1')
+	ordered := ast.NewList('.')
 	ordered.Start = 5
 	silencer(t, func() { ordered.Dump(nil, 0) })
 }
