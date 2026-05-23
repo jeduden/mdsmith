@@ -309,6 +309,21 @@ func TestRender_InlineRawHTMLSafeUnsafe(t *testing.T) {
 	}
 }
 
+func TestRender_TightListWithNestedList(t *testing.T) {
+	// renderTextBlock's NextSibling != nil branch fires when a
+	// tight-list ListItem holds a TextBlock followed by a nested
+	// List node.
+	src := `- text
+  - nested item one
+  - nested item two
+- second top-level
+`
+	out := convertWithOpts(t, src)
+	if !strings.Contains(out, "<li>") {
+		t.Errorf("expected list rendering: %q", out)
+	}
+}
+
 func TestRender_CodeSpanMultiLine(t *testing.T) {
 	// A multi-line code span has Text children whose Value ends
 	// in '\n'; renderCodeSpan replaces the newline with a single
