@@ -75,6 +75,35 @@ func TestTable_DefaultExtenderPath(t *testing.T) {
 	}
 }
 
+func TestTable_OptionsAsRendererOptions(t *testing.T) {
+	// Table options also implement renderer.Option (SetConfig) so
+	// they can be applied via AddOptions after construction.
+	r := renderer.NewRenderer(renderer.WithNodeRenderers(
+		util.Prioritized(html.NewRenderer(), 1000),
+		util.Prioritized(extension.NewTableHTMLRenderer(), 500),
+	))
+	r.AddOptions(
+		extension.WithTableCellAlignMethod(extension.TableCellAlignStyle).(renderer.Option),
+		extension.WithTableHTMLOptions(html.WithUnsafe()).(renderer.Option),
+	)
+	md := goldmark.New(goldmark.WithExtensions(extension.Table), goldmark.WithRenderer(r))
+	var buf bytes.Buffer
+	if err := md.Convert([]byte(tableOptSrc), &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+}
+
+func TestNewTable_Extender(t *testing.T) {
+	// NewTable returns an Extender; plug it in with explicit
+	// options.
+	ext := extension.NewTable(extension.WithTableCellAlignMethod(extension.TableCellAlignAttribute))
+	md := goldmark.New(goldmark.WithExtensions(ext))
+	var buf bytes.Buffer
+	if err := md.Convert([]byte(tableOptSrc), &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+}
+
 func TestTable_EscapedPipeInCell_DrivesASTTransformer(t *testing.T) {
 	// `\|` inside a cell — and especially inside a code span — is
 	// what makes tableASTTransformer.Transform do real work: it
