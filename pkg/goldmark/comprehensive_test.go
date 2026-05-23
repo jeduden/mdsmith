@@ -260,6 +260,64 @@ func TestCorpus_VariedShapes(t *testing.T) {
 	}
 }
 
+func TestCorpus_DeepEdgeCases(t *testing.T) {
+	// Last attempts at coverage edges.
+	cases := []string{
+		// Code block with tab + content following indented body.
+		"    \t tab inside indented code\n",
+		// Reference def with 999-char label (boundary).
+		"[" + strings.Repeat("x", 999) + "]\n\n[" + strings.Repeat("x", 999) + "]: /url\n",
+		// Reference def with 1000-char label (over boundary).
+		"[" + strings.Repeat("y", 1000) + "]\n\n[" + strings.Repeat("y", 1000) + "]: /url\n",
+		// Mixed tight/loose lists.
+		"- a\n- b\n\n- new loose item\n\n- another loose\n",
+		// Setext heading mid-list.
+		"- list item\n\nH1\n===\n",
+		// Heading with HTML inline.
+		"# Heading with <span>HTML</span>\n",
+		// Link inside link reference label (should NOT nest).
+		"[outer[inner]label][ref]\n\n[ref]: /url\n",
+		// Image alt with link.
+		"![alt [linked alt](/l)](/img.png)\n",
+		// Trailing backslash on last line.
+		"text ending with backslash\\\n",
+		// Newlines in different places.
+		"para 1\n\n\n\npara 2 (multiple blanks)\n",
+		// Indented blockquote.
+		"   > quoted\n   > continued\n",
+		// Empty fenced block info.
+		"```   \nbody\n```\n",
+		// Code fence using tildes.
+		"~~~~~~\nlong fence\n~~~~~~\n",
+		// Fence open then closed with different char count.
+		"```\nbody\n``` extra after close\n",
+		// Image with title.
+		`![alt](/img.png "title")` + "\n",
+		// Link with empty title.
+		`[x](/u "")` + "\n",
+		// Link destination containing parens.
+		`[x](/u\(escaped\))` + "\n",
+		// Underscore inside word (no emphasis).
+		"foo_bar_baz qux\n",
+		// Mixed underscores and asterisks.
+		"_a *b_ c*\n",
+		// HR with stars vs dashes vs underscores.
+		"***\n",
+		"---\n",
+		"___\n",
+		"* * *\n",
+		"- - -\n",
+		"_ _ _\n",
+	}
+	md := goldmark.New()
+	for i, src := range cases {
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("case %d: %v", i, err)
+		}
+	}
+}
+
 func TestCorpus_FootnoteAndSetextEdgeCases(t *testing.T) {
 	cases := []string{
 		// Multiple footnotes referenced multiple times.
