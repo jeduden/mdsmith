@@ -376,6 +376,18 @@ func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
 	}
 }
 
+func TestEmphasisParser_Parse_NilReturn(t *testing.T) {
+	// emphasisParser.Parse returns nil when ScanDelimiter finds
+	// no valid delimiter run (e.g. the leading char isn't '*'
+	// or '_').  Dispatcher only triggers on those chars, but
+	// the function's defensive branch is testable.
+	ep := &emphasisParser{}
+	r := text.NewReader([]byte("not an emphasis\n"))
+	if got := ep.Parse(nil, r, NewContext()); got != nil {
+		t.Errorf("emphasisParser.Parse on non-emphasis input = %v, want nil", got)
+	}
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
