@@ -429,24 +429,33 @@ func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
 func TestHTMLBlockParser_Open_AllTypes(t *testing.T) {
 	// Drive each block-type detection branch directly.
 	bp := &htmlBlockParser{}
-	pc := NewContext()
-	pc.SetBlockOffset(0)
 
 	cases := []string{
-		"<script>\n",             // type 1
-		"<!-- comment\n",         // type 2
-		"<?xml ?>\n",             // type 3
-		"<!DOCTYPE html>\n",      // type 4
-		"<![CDATA[content]]>\n", // type 5
-		"<div>\n",                // type 6 (block tag in allowed list)
-		"<a href=\"x\">\n",       // type 7 (custom tag, no paragraph context)
-		"<unknowntag>\n",         // not a valid type
+		"<script>\n",                // type 1 - script
+		"<pre>\n",                   // type 1 - pre
+		"<style>\n",                 // type 1 - style
+		"<!-- comment\n",            // type 2
+		"<?xml ?>\n",                // type 3
+		"<!DOCTYPE html>\n",         // type 4
+		"<![CDATA[content]]>\n",     // type 5
+		"<div>\n",                   // type 6 (allowed block tag)
+		"<table>\n",                 // type 6
+		"<form>\n",                  // type 6
+		"<header>\n",                // type 6
+		"</div>\n",                  // type 6 (closing tag, allowed)
+		"<a href=\"x\">\n",          // type 7
+		"<custom-tag>\n",            // type 7
+		"</closing/>\n",             // type 7 close+self-close
+		"</custom attr=\"v\">\n",    // type 7 close+attr - rejected
+		"<unknowntag>\n",            // not a valid type
+		"<>invalid\n",               // malformed
 	}
 	parent := ast.NewDocument()
 	for _, src := range cases {
 		r := text.NewReader([]byte(src))
+		pc := NewContext()
+		pc.SetBlockOffset(0)
 		bp.Open(parent, r, pc)
-		_ = src
 	}
 }
 
