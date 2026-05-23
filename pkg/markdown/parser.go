@@ -6,10 +6,18 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
-	"github.com/yuin/goldmark/util"
-
-	"github.com/jeduden/mdsmith/internal/goldmark/linkrefparagraph"
 )
+
+// linkRefResetter is implemented by the fork's
+// linkReferenceParagraphTransformer (internal/goldmark/parser/link_ref.go).
+// The asserter lives here so pkg/markdown can clear the transformer's
+// pinned document source bytes before returning the parent parser
+// to the pool, without taking a hard dependency on the unexported
+// transformer type.
+type linkRefResetter interface {
+	parser.ParagraphTransformer
+	Reset()
+}
 
 // NewParser returns mdsmith's canonical goldmark parser: the default
 // CommonMark block, inline, and paragraph parsers plus the
@@ -20,23 +28,34 @@ import (
 // internal/lint's forwards) so parsing decisions stay consistent
 // across surfaces.
 //
-// Plan 197 substitutes goldmark's singleton
-// LinkReferenceParagraphTransformer with a per-parser
-// linkrefparagraph.Transformer that reuses a text.BlockReader across
-// paragraphs. Every other entry in goldmark's
-// DefaultParagraphTransformers list is preserved verbatim, so a
-// future goldmark upgrade that adds a default transformer flows
-// through unchanged.
+// The "goldmark" the import path resolves to is the in-tree fork at
+// internal/goldmark/ (plan 197+198), wired via a go.mod replace
+// directive. The fork's parser.DefaultParagraphTransformers returns
+// a FRESH linkReferenceParagraphTransformer per call, so each parser
+// built here owns its own transformer with its own reusable
+// text.BlockReader — the per-paragraph allocation of upstream
+// goldmark@v1.8.2 (parser/link_ref.go:18) is gone.
 func NewParser() parser.Parser {
 	p, _ := newPooledParser()
 	return p
 }
 
-// newPooledParser builds one parser plus the linkref Transformer
-// that drives its link-reference paragraph pass, returning both so
-// the pool can Reset the Transformer between Get/Put pairs.
-func newPooledParser() (parser.Parser, *linkrefparagraph.Transformer) {
-	lrp := linkrefparagraph.New()
+// newPooledParser builds one parser plus the link-ref transformer
+// driving its paragraph pass, returning both so the pool can Reset
+// the transformer's pinned document source between Get/Put pairs.
+func newPooledParser() (parser.Parser, linkRefResetter) {
+	defaults := parser.DefaultParagraphTransformers()
+	// DefaultParagraphTransformers builds a fresh
+	// linkReferenceParagraphTransformer at priority 100; locate it
+	// by interface assertion so we can Reset it on Put. Any other
+	// entries are preserved verbatim.
+	var lrp linkRefResetter
+	for _, pv := range defaults {
+		if r, ok := pv.Value.(linkRefResetter); ok {
+			lrp = r
+			break
+		}
+	}
 	p := parser.NewParser(
 		parser.WithBlockParsers(
 			append(parser.DefaultBlockParsers(),
@@ -46,48 +65,30 @@ func newPooledParser() (parser.Parser, *linkrefparagraph.Transformer) {
 		parser.WithInlineParsers(
 			parser.DefaultInlineParsers()...,
 		),
-		parser.WithParagraphTransformers(
-			substituteLinkRef(parser.DefaultParagraphTransformers(), lrp)...,
-		),
+		parser.WithParagraphTransformers(defaults...),
 	)
 	return p, lrp
 }
 
-// substituteLinkRef returns defaults with goldmark's
-// LinkReferenceParagraphTransformer entry replaced by lrp at the
-// same priority. Any other default transformers (none today, but a
-// future goldmark upgrade may add them) are preserved verbatim.
-func substituteLinkRef(defaults []util.PrioritizedValue, lrp *linkrefparagraph.Transformer) []util.PrioritizedValue {
-	out := make([]util.PrioritizedValue, len(defaults))
-	for i, pv := range defaults {
-		if pv.Value == parser.LinkReferenceParagraphTransformer {
-			out[i] = util.Prioritized(lrp, pv.Priority)
-			continue
-		}
-		out[i] = pv
-	}
-	return out
-}
-
-// pooledParser pairs a parser.Parser with the linkref Transformer
+// pooledParser pairs a parser.Parser with the link-ref transformer
 // it owns, so ParseContext can Reset the Transformer's pinned
 // document source bytes before returning the parser to the pool.
 type pooledParser struct {
 	parser parser.Parser
-	lrp    *linkrefparagraph.Transformer
+	lrp    linkRefResetter
 }
 
 // parserPool reuses canonical parsers across ParseContext calls.
-// NewParser rebuilds a substantial config (default block, inline, and
-// paragraph parsers plus the PI block parser) every call; constructing
-// one per parse was a measurable share of allocations over the
-// 600-file check gate (plan 175 profiling). A sync.Pool is the proven
-// house pattern: each Get caller holds exclusive access to one
-// parser-with-transformer pair until the matching Put, so there is
-// no shared mutable parser even though parsing is driven from many
-// goroutines at once (parallel check, the LSP serving concurrent
-// documents). goldmark Parse keeps all per-parse state in the
-// per-call parser.Context.
+// NewParser rebuilds a substantial config (default block, inline,
+// and paragraph parsers plus the PI block parser) every call;
+// constructing one per parse was a measurable share of allocations
+// over the 600-file check gate (plan 175 profiling). A sync.Pool is
+// the proven house pattern: each Get caller holds exclusive access
+// to one parser-with-transformer pair until the matching Put, so
+// there is no shared mutable parser even though parsing is driven
+// from many goroutines at once (parallel check, the LSP serving
+// concurrent documents). goldmark Parse keeps all per-parse state
+// in the per-call parser.Context.
 var parserPool = sync.Pool{
 	New: func() any {
 		p, lrp := newPooledParser()
@@ -99,18 +100,20 @@ var parserPool = sync.Pool{
 // the canonical pooled parser, recording link-reference definitions
 // and other parse state in ctx. The parser is borrowed for the
 // duration of the Parse call only and returned immediately, so
-// concurrent callers each hold a distinct instance. Most callers want
-// Parse; this lower-level entry exists for callers that need the
-// goldmark parser.Context (e.g. the linter file model reading link
-// reference definitions).
+// concurrent callers each hold a distinct instance. Most callers
+// want Parse; this lower-level entry exists for callers that need
+// the goldmark parser.Context (e.g. the linter file model reading
+// link reference definitions).
 //
-// Before returning the parser to the pool, the link-ref Transformer
+// Before returning the parser to the pool, the link-ref transformer
 // is Reset so that the last-parsed document's source bytes and
 // BlockReader are not pinned by the idle pool slot.
 func ParseContext(src []byte, ctx parser.Context) ast.Node {
 	pp := parserPool.Get().(*pooledParser)
 	defer func() {
-		pp.lrp.Reset()
+		if pp.lrp != nil {
+			pp.lrp.Reset()
+		}
 		parserPool.Put(pp)
 	}()
 	return pp.parser.Parse(text.NewReader(src), parser.WithContext(ctx))
