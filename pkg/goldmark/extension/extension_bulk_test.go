@@ -37,6 +37,25 @@ func TestFootnote_MultiLineDefinition(t *testing.T) {
 	}
 }
 
+func TestStrikethrough_ParseEarlyReturns(t *testing.T) {
+	// strikethroughParser.Parse early-returns for:
+	//  - tilde-tilde-tilde (more than 2 tildes -> not strikethrough)
+	//  - preceding char is also '~' (>2 tildes triplet)
+	srcs := []string{
+		"~~basic strike~~ end\n",
+		"~~~not strikethrough (3 tildes)~~~ end\n",
+		"abc~~~def\n", // 3 consecutive tildes
+		"~~unclosed strike text\n",
+	}
+	for _, src := range srcs {
+		md := goldmark.New(goldmark.WithExtensions(extension.Strikethrough))
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("Convert(%q): %v", src, err)
+		}
+	}
+}
+
 func TestTaskList_ParseEarlyReturns(t *testing.T) {
 	// Drive each early-return in taskCheckBoxParser.Parse.  All
 	// inputs include `[` so the trigger fires; only the well-formed
