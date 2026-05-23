@@ -177,6 +177,26 @@ func TestLinkParser_OverlongReferenceLabel(t *testing.T) {
 	_ = parseDoc(src)
 }
 
+func TestLinkParser_LinkLabelStateStack(t *testing.T) {
+	// Inputs that exercise multiple open '[' brackets in flight at
+	// the same time so the linkLabelState linked list has 2+
+	// entries when remove fires.
+	cases := []string{
+		"[a [b](/b) c](/a)\n",
+		"[a [b] [c](/c)](/a)\n",
+		"[a [b] [c] [d](/d)](/a)\n",
+		// Multiple unclosed openers that resolve at different points.
+		"[outer [middle [inner](/i)](/m)](/o)\n",
+		// Mixed image and link openers.
+		"![alt [link](/l)](/img.png)\n",
+		// Image inside link.
+		"[link [alt ![inner](/i)](/m)](/l)\n",
+	}
+	for _, src := range cases {
+		_ = parseDoc(src)
+	}
+}
+
 func TestLinkParser_DeeplyNested(t *testing.T) {
 	// Multiple nested link / image patterns exercise the
 	// pushLinkBottom / popLinkBottom stack across more than the
