@@ -40,6 +40,28 @@ func TestURLEscape(t *testing.T) {
 	}
 }
 
+func TestReplaceSpaces(t *testing.T) {
+	cases := []struct {
+		in   string
+		repl byte
+		want string
+	}{
+		{"hello world", '_', "hello_world"},
+		{"multi    spaces", '_', "multi_spaces"},
+		{"  leading", '_', "_leading"},
+		// ReplaceSpaces preserves trailing whitespace; only
+		// interior runs are collapsed.
+		{"no-spaces", '_', "no-spaces"},
+		{"", '_', ""},
+	}
+	for _, c := range cases {
+		got := string(util.ReplaceSpaces([]byte(c.in), c.repl))
+		if got != c.want {
+			t.Errorf("ReplaceSpaces(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestURLEscape_EdgeBytes(t *testing.T) {
 	// Drive remaining URLEscape branches: invalid UTF-8 leading
 	// byte (u8len == 99), multi-byte truncated at end of input,
