@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 func TestNewLinkReferenceParagraphTransformer_ReturnsFreshInstance(t *testing.T) {
@@ -66,6 +67,62 @@ func TestSameByteSlice(t *testing.T) {
 	c := append([]byte(nil), a...) // distinct backing array, equal content
 	if sameByteSlice(a, c) {
 		t.Error("distinct backing arrays with equal content must compare unequal")
+	}
+}
+
+// TestLinkRefTransform_BlockReaderReusedAcrossParses asserts the
+// reuse claim made by the transformer's doc string: parsing the
+// same source bytes twice must leave the BlockReader instance
+// untouched (the sameByteSlice path takes Reset, not realloc).
+// The previous behavioural test only checked that link references
+// landed in the parser context — it did not actually verify the
+// `if p.block == nil || !sameByteSlice(...)` reuse branch.
+func TestLinkRefTransform_BlockReaderReusedAcrossParses(t *testing.T) {
+	tr := NewLinkReferenceParagraphTransformer().(*linkReferenceParagraphTransformer)
+	p := NewParser(
+		WithBlockParsers(DefaultBlockParsers()...),
+		WithInlineParsers(DefaultInlineParsers()...),
+		WithParagraphTransformers(util.Prioritized(tr, 1000)),
+	)
+	src := []byte("[a]: /1\n\nparagraph one\n\n[b]: /2\n\nparagraph two\n")
+
+	p.Parse(text.NewReader(src), WithContext(NewContext()))
+	firstBlock := tr.block
+	if firstBlock == nil {
+		t.Fatal("first parse must leave transformer block non-nil")
+	}
+
+	p.Parse(text.NewReader(src), WithContext(NewContext()))
+	if tr.block != firstBlock {
+		t.Error("second parse over the same source reallocated the BlockReader — Reset path was expected")
+	}
+}
+
+// TestLinkRefTransform_BlockReaderReallocatedOnSourceChange asserts
+// the complementary path: when the source bytes change identity
+// between Parse calls, sameByteSlice returns false and the
+// transformer must allocate a fresh BlockReader (the old one
+// pinned different source bytes).
+func TestLinkRefTransform_BlockReaderReallocatedOnSourceChange(t *testing.T) {
+	tr := NewLinkReferenceParagraphTransformer().(*linkReferenceParagraphTransformer)
+	p := NewParser(
+		WithBlockParsers(DefaultBlockParsers()...),
+		WithInlineParsers(DefaultInlineParsers()...),
+		WithParagraphTransformers(util.Prioritized(tr, 1000)),
+	)
+	src1 := []byte("[a]: /1\n\nfirst doc\n")
+	src2 := []byte("[b]: /2\n\nsecond doc\n")
+
+	p.Parse(text.NewReader(src1), WithContext(NewContext()))
+	block1 := tr.block
+	p.Parse(text.NewReader(src2), WithContext(NewContext()))
+	block2 := tr.block
+
+	if block1 == nil || block2 == nil {
+		t.Fatal("block must be non-nil after each parse")
+	}
+	if block1 == block2 {
+		t.Error("source change should reallocate BlockReader (sameByteSlice returns false)")
 	}
 }
 
