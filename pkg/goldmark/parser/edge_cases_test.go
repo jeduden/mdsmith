@@ -139,6 +139,24 @@ func TestCodeSpan_NestedBackticks(t *testing.T) {
 	}
 }
 
+func TestDelimiters_UnmatchedEmphasisClearsStack(t *testing.T) {
+	// parseContext.ClearDelimiters has an early-return when the
+	// delimiter stack is empty plus a loop body that removes
+	// delimiters one by one. Unclosed emphasis runs ('*' that
+	// never finds a closer) leave delimiters on the stack until
+	// the paragraph finishes, which then triggers ClearDelimiters
+	// with bottom == nil and walks the loop.
+	cases := []string{
+		"unclosed *emphasis\n",
+		"unclosed **strong\n",
+		"unclosed *one and *two emphases\n",
+		"mixed _italic and **bold runs\n",
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestAttribute_StringEscapes(t *testing.T) {
 	// parseAttributeString handles JSON-style backslash escapes.
 	// Drive each of the branches: \", \\, \/, \b, \f, \n, \r, \t,
