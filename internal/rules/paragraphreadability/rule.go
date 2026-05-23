@@ -50,8 +50,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	// Iterate the per-File memoized non-table paragraph collection so
-	// the AST walk is shared with MDS024 instead of re-run here — the
-	// two are the hot default rules on prose-heavy input.
+	// the AST walk is shared with other paragraph-walking rules
+	// (MDS024 paragraph-structure, MDS057 required-text-patterns,
+	// MDS058 required-mentions) when they are enabled. MDS023 is the
+	// only default-on rule in this set; the rest are opt-in.
 	//
 	// minWords is gated on [mdtext.CountWordsInNode], an AST-walking
 	// counter that does NOT materialise the paragraph text. On

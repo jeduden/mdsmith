@@ -42,6 +42,12 @@ type SectionParagraph struct {
 // against source — the same chain CollectSectionParagraphs used to
 // run eagerly. The Text shortcut keeps existing tests literally
 // compiling; new code should not rely on it and should pass source.
+//
+// Precondition: at least one of Text or Node must be set. Calling
+// on a zero-value SectionParagraph panics inside
+// [mdtext.ExtractPlainText]'s nil-node dereference. Production
+// paragraphs from [CollectSectionParagraphs] always have Node set;
+// test literals set Text and hit the shortcut.
 func (p SectionParagraph) ExtractText(source []byte) string {
 	if p.Text != "" {
 		return p.Text

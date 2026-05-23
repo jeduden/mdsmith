@@ -526,10 +526,12 @@ func TestSectionBody_ExtractsFromNodeWhenTextEmpty(t *testing.T) {
 // TestCollectSectionParagraphs_MemoizedPerFile pins that the
 // AST-walking collector runs once per File and serves a cached result
 // thereafter. On prose-heavy corpora (the neutral Rust Book
-// benchmark) the two hot default rules — MDS024 paragraph-structure
-// and paragraph-readability — both walk every paragraph; sharing one
-// memoized walk removes the duplicate. Reference identity of the
-// returned slice proves a later call did not re-walk.
+// benchmark) the paragraph-walking rules — MDS023
+// paragraph-readability (default-on) plus MDS024 paragraph-structure,
+// MDS057 required-text-patterns, MDS058 required-mentions (opt-in) —
+// each walk every paragraph; sharing one memoized walk removes the
+// duplicates when more than one is enabled. Reference identity of
+// the returned slice proves a later call did not re-walk.
 func TestCollectSectionParagraphs_MemoizedPerFile(t *testing.T) {
 	src := []byte("# H\n\nFirst paragraph here.\n\nSecond paragraph too.\n")
 	f, err := lint.NewFile("test.md", src)

@@ -233,6 +233,9 @@ func CountWords(text string) int {
 // Used by paragraph-readability's minWords gate: most synthetic-corpus
 // paragraphs fall below the gate and the materialised ExtractPlainText
 // string is wasted. CountWordsInNode skips the allocation entirely.
+//
+// Precondition: node must be non-nil — passing nil panics on the
+// FirstChild dereference, the same shape as [ExtractPlainText].
 func CountWordsInNode(node ast.Node, source []byte) int {
 	var wc wordCounter
 	countWordsInNode(&wc, node, source)
