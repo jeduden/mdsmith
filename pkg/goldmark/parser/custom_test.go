@@ -68,6 +68,11 @@ func (b *recordingBlockParser) SetOption(name parser.OptionName, _ any) {
 	}
 }
 
+// badValue is something that doesn't implement BlockParser /
+// InlineParser / ParagraphTransformer / ASTTransformer. Used to
+// drive the panic branches in addBlockParser etc.
+type badValue struct{}
+
 // recordingASTTransformer implements ASTTransformer + SetOptioner.
 type recordingASTTransformer struct {
 	setOptionCalls int
@@ -79,6 +84,56 @@ func (t *recordingASTTransformer) SetOption(name parser.OptionName, _ any) {
 	if name == customOptName {
 		t.setOptionCalls++
 	}
+}
+
+func TestParser_AddBlockParser_Panics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic on non-BlockParser value")
+		}
+	}()
+	parser.NewParser(
+		parser.WithBlockParsers(util.Prioritized(&badValue{}, 999)),
+	).Parse(text.NewReader([]byte("x\n")), parser.WithContext(parser.NewContext()))
+}
+
+func TestParser_AddInlineParser_Panics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic on non-InlineParser value")
+		}
+	}()
+	parser.NewParser(
+		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithInlineParsers(util.Prioritized(&badValue{}, 999)),
+	).Parse(text.NewReader([]byte("x\n")), parser.WithContext(parser.NewContext()))
+}
+
+func TestParser_AddParagraphTransformer_Panics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic on non-ParagraphTransformer value")
+		}
+	}()
+	parser.NewParser(
+		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
+		parser.WithParagraphTransformers(util.Prioritized(&badValue{}, 999)),
+	).Parse(text.NewReader([]byte("x\n")), parser.WithContext(parser.NewContext()))
+}
+
+func TestParser_AddASTTransformer_Panics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic on non-ASTTransformer value")
+		}
+	}()
+	parser.NewParser(
+		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
+		parser.WithParagraphTransformers(parser.DefaultParagraphTransformers()...),
+		parser.WithASTTransformers(util.Prioritized(&badValue{}, 999)),
+	).Parse(text.NewReader([]byte("x\n")), parser.WithContext(parser.NewContext()))
 }
 
 func TestParser_RegisterCustomSetOptioners(t *testing.T) {
