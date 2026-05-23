@@ -336,10 +336,15 @@ func TestAttribute_NumberShapes(t *testing.T) {
 		`# H {n=0}`,
 		`# H {n=10}`,
 		`# H {n=-7}`,
+		`# H {n=+5}`,            // explicit + sign
 		`# H {n=3.14}`,
 		`# H {n=-3.14}`,
 		`# H {n=1e10}`,
+		`# H {n=1E10}`,          // capital E
 		`# H {n=1.5e-3}`,
+		`# H {n=1.5E+3}`,        // capital E with +
+		`# H {n=+5.5e-3}`,
+		`# H {n=-not-a-number}`, // sign without numeric -> bail
 	}
 	for _, src := range cases {
 		_ = parseWithDefaultsAttr(src)
