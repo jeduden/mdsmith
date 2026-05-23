@@ -185,6 +185,74 @@ func TestRemoveLinkLabelState_AllBranches(t *testing.T) {
 	removeLinkLabelState(pc, single)
 }
 
+func TestLinkParser_ContainsLink_AllBranches(t *testing.T) {
+	// containsLink recursively scans for an ast.Link node.
+	// Drive: nil input, leaf without link, sibling with link,
+	// nested child with link, none-found chain.
+	lp := &linkParser{}
+	if lp.containsLink(nil) {
+		t.Error("containsLink(nil) should be false")
+	}
+
+	// Tree with a Link at the top level.
+	doc := ast.NewDocument()
+	doc.AppendChild(doc, ast.NewLink())
+	if !lp.containsLink(doc.FirstChild()) {
+		t.Error("containsLink should find top-level Link")
+	}
+
+	// Tree with a nested Link inside a Paragraph.
+	doc2 := ast.NewDocument()
+	p := ast.NewParagraph()
+	doc2.AppendChild(doc2, p)
+	p.AppendChild(p, ast.NewLink())
+	if !lp.containsLink(doc2.FirstChild()) {
+		t.Error("containsLink should find nested Link")
+	}
+
+	// Tree with no Link.
+	doc3 := ast.NewDocument()
+	doc3.AppendChild(doc3, ast.NewParagraph())
+	if lp.containsLink(doc3.FirstChild()) {
+		t.Error("containsLink should not find a Link in plain paragraph")
+	}
+}
+
+func TestLinkParser_PopLinkBottom_AllStackShapes(t *testing.T) {
+	// popLinkBottom returns the most recent bottom from a
+	// stack-like structure stored at linkBottom.
+	//   - nil pc -> nil
+	//   - single ast.Node -> return it and clear
+	//   - []ast.Node len 1 entry remaining after pop
+	//   - []ast.Node len 0 after pop -> nil
+	//   - []ast.Node len >2 after pop -> slice with N-1
+	pc := NewContext()
+	if popLinkBottom(pc) != nil {
+		t.Error("popLinkBottom with empty context should return nil")
+	}
+
+	// Single ast.Node.
+	pc.Set(linkBottom, ast.Node(ast.NewParagraph()))
+	if popLinkBottom(pc) == nil {
+		t.Error("popLinkBottom on single Node should return it")
+	}
+
+	// Slice with 2 entries -> after pop, single remains -> stored as ast.Node.
+	pc.Set(linkBottom, []ast.Node{ast.NewParagraph(), ast.NewParagraph()})
+	popLinkBottom(pc)
+
+	// Slice with 1 entry -> after pop, empty -> nil.
+	pc.Set(linkBottom, []ast.Node{ast.NewParagraph()})
+	popLinkBottom(pc)
+
+	// Slice with 4 entries -> after pop, slice with 3 -> kept as slice.
+	pc.Set(linkBottom, []ast.Node{
+		ast.NewParagraph(), ast.NewParagraph(),
+		ast.NewParagraph(), ast.NewParagraph(),
+	})
+	popLinkBottom(pc)
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
