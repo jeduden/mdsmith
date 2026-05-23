@@ -34,6 +34,31 @@ func TestSegment_Between(t *testing.T) {
 	}
 }
 
+func TestSegment_Value_PaddingAndForceNewline(t *testing.T) {
+	// Value's padding branch + ForceNewline branch.
+	src := []byte("hello world")
+
+	// Padding > 0.
+	seg := text.NewSegmentPadding(0, 5, 3)
+	got := seg.Value(src)
+	if string(got) != "   hello" {
+		t.Errorf("Padding=3 Value = %q, want '   hello'", got)
+	}
+
+	// ForceNewline branch.
+	seg2 := text.NewSegment(0, 5)
+	seg2.ForceNewline = true
+	got2 := seg2.Value(src)
+	if string(got2) != "hello\n" {
+		t.Errorf("ForceNewline Value = %q, want 'hello\\n'", got2)
+	}
+
+	// ForceNewline but already ends with newline.
+	seg3 := text.NewSegment(0, 6) // "hello "
+	seg3.ForceNewline = true
+	_ = seg3.Value(src)
+}
+
 func TestSegment_Between_PanicsOnStopMismatch(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
