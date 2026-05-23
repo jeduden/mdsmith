@@ -91,6 +91,23 @@ func TestList_Parser_DirectMethodInvocation(t *testing.T) {
 	}
 }
 
+func TestList_ThematicBreakInListContinuation(t *testing.T) {
+	// listParser.Continue has a thematic-break-precedence branch
+	// that fires when a `---` line appears INSIDE the list (vs
+	// after the list closes).  When the last opened block is a
+	// paragraph (e.g. a list item with paragraph content), the
+	// `---` is interpreted as a setext heading bar rather than
+	// a thematic break; otherwise Close fires.
+	cases := []string{
+		"- item with paragraph\n  ---\n  more\n",
+		"- one\n---\n- two\n",
+		"- one\n  ---\n",
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestList_ListItemContinue_BlankAndEmptyItemPaths(t *testing.T) {
 	// listItemParser.Continue branches:
 	//   - blank line -> Continue (covered)
