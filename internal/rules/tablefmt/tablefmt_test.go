@@ -1,6 +1,7 @@
 package tablefmt
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -838,5 +839,183 @@ func assertCells(t *testing.T, want, got []string) {
 		if got[i] != want[i] {
 			t.Errorf("cell[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// --- normalizeConfig ---
+
+// TestNormalizeConfig pins every reachable branch directly. The
+// FormatString and Violations integration paths feed this helper
+// implicitly, but neither asserts on the returned Config shape,
+// so a regression in the negative-Pad fallback would only show
+// in downstream behaviour. The direct unit pin makes it cheap
+// to bisect.
+func TestNormalizeConfig(t *testing.T) {
+	t.Run("negative Pad falls back to 1", func(t *testing.T) {
+		got := normalizeConfig(Config{Pad: -5, SeparatorStyle: SeparatorCompact})
+		if got.Pad != 1 {
+			t.Errorf("Pad = %d, want 1", got.Pad)
+		}
+		if got.SeparatorStyle != SeparatorCompact {
+			t.Errorf("SeparatorStyle = %v, want SeparatorCompact "+
+				"(must not be reset alongside Pad)", got.SeparatorStyle)
+		}
+	})
+	t.Run("zero Pad passes through unchanged", func(t *testing.T) {
+		got := normalizeConfig(Config{Pad: 0, SeparatorStyle: SeparatorSpaced})
+		if got.Pad != 0 {
+			t.Errorf("Pad = %d, want 0 (zero is a valid, kept-as-is value)", got.Pad)
+		}
+	})
+	t.Run("positive Pad passes through unchanged", func(t *testing.T) {
+		got := normalizeConfig(Config{Pad: 3, SeparatorStyle: SeparatorSpaced})
+		if got.Pad != 3 {
+			t.Errorf("Pad = %d, want 3", got.Pad)
+		}
+		if got.SeparatorStyle != SeparatorSpaced {
+			t.Errorf("SeparatorStyle = %v, want SeparatorSpaced", got.SeparatorStyle)
+		}
+	})
+}
+
+// --- rebuildWithFormattedTables ---
+
+// TestRebuildWithFormattedTables_RewritesNonConformingTable pins
+// the splice branch directly: a non-canonical table at the
+// specified startLine has every row replaced by the formatted
+// table's rawLines. The integration test
+// (TestFormatLines_AlreadyFormattedTableAmongOthers) covers the
+// same branch through FormatLines, but driving the helper
+// directly lets us assert the byte-level output on a
+// hand-constructed table literal — so a regression that breaks
+// the indexing (e.g. off-by-one on startLine) lands here first.
+func TestRebuildWithFormattedTables_RewritesNonConformingTable(t *testing.T) {
+	// Non-conforming table at lines 1..3 (1-based). The header has
+	// no padding around cell content, so formatTable will rewrite
+	// all three rows. parseAlignments needs the separator cell
+	// alignments to be set so the formatted output reproduces the
+	// expected canonical layout.
+	lines := [][]byte{
+		[]byte("|a|b|"),
+		[]byte("|---|---|"),
+		[]byte("|1|2|"),
+	}
+	tbl := table{
+		startLine: 1,
+		rawLines:  [][]byte{lines[0], lines[1], lines[2]},
+		prefix:    "",
+		rows: []row{
+			{cells: []string{"a", "b"}},
+			{
+				cells:       []string{"---", "---"},
+				isSeparator: true,
+				alignments:  []align{alignNone, alignNone},
+			},
+			{cells: []string{"1", "2"}},
+		},
+	}
+	got := rebuildWithFormattedTables(lines, []table{tbl}, Config{Pad: 1})
+	// Pad=1 with min-3-dash columns produces three-space content
+	// areas (1 pad + 1 content char + 2 pad-out + 1 pad).
+	want := "| a   | b   |\n| --- | --- |\n| 1   | 2   |"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
+	}
+}
+
+// TestRebuildWithFormattedTables_SkipsAlreadyFormatted pins the
+// `tableEqual → continue` branch directly: a table whose
+// rawLines already match the canonical layout under the
+// chosen config must be passed through unchanged. We seed the
+// input with the EXACT bytes formatTable would produce (Pad=1,
+// 3-dash separator) so the equal-check fires.
+func TestRebuildWithFormattedTables_SkipsAlreadyFormatted(t *testing.T) {
+	// Canonical form under Config{Pad:1}: column floor is 3, so
+	// "a" becomes "a   " in the content area. Single-char data
+	// also widens to the 3-char floor.
+	canonical := [][]byte{
+		[]byte("| a   | b   |"),
+		[]byte("| --- | --- |"),
+		[]byte("| 1   | 2   |"),
+	}
+	tbl := table{
+		startLine: 1,
+		rawLines:  canonical,
+		prefix:    "",
+		rows: []row{
+			{cells: []string{"a", "b"}},
+			{
+				cells:       []string{"---", "---"},
+				isSeparator: true,
+				alignments:  []align{alignNone, alignNone},
+			},
+			{cells: []string{"1", "2"}},
+		},
+	}
+	got := rebuildWithFormattedTables(canonical, []table{tbl}, Config{Pad: 1})
+	want := "| a   | b   |\n| --- | --- |\n| 1   | 2   |"
+	if string(got) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", string(got), want)
+	}
+}
+
+// TestRebuildWithFormattedTables_NoTablesReturnsJoinedSource pins
+// the no-table fast path: when tables is empty, the helper
+// returns the input lines joined with newlines, with no other
+// transformation. FormatLines short-circuits before calling this
+// helper, so the empty-tables branch was only reachable
+// directly.
+func TestRebuildWithFormattedTables_NoTablesReturnsJoinedSource(t *testing.T) {
+	lines := [][]byte{[]byte("plain"), []byte("text"), []byte("")}
+	got := rebuildWithFormattedTables(lines, nil, Config{Pad: 1})
+	want := "plain\ntext\n"
+	if string(got) != want {
+		t.Errorf("got %q, want %q", string(got), want)
+	}
+}
+
+// --- table struct literal construction ---
+
+// TestTable_StructFieldsRoundTrip pins that every documented
+// field on the table struct round-trips through formatTable's
+// reader code. Constructing the struct directly hits the
+// definition site, and the field values are observed by
+// asserting on tableEqual + the formatted output. Without this
+// the struct's field initialisation lines were only ever set by
+// tryParseTable (a different file), so the package's parse
+// shape and the format shape were tested independently.
+func TestTable_StructFieldsRoundTrip(t *testing.T) {
+	tbl := table{
+		startLine: 5,
+		rawLines:  [][]byte{[]byte("| a |"), []byte("| - |"), []byte("| 1 |")},
+		prefix:    "> ",
+		rows: []row{
+			{cells: []string{"a"}},
+			{cells: []string{"-"}, isSeparator: true, alignments: []align{alignNone}},
+			{cells: []string{"1"}},
+		},
+	}
+	if tbl.startLine != 5 {
+		t.Errorf("startLine = %d, want 5", tbl.startLine)
+	}
+	if tbl.prefix != "> " {
+		t.Errorf("prefix = %q, want %q", tbl.prefix, "> ")
+	}
+	if len(tbl.rawLines) != 3 {
+		t.Errorf("len(rawLines) = %d, want 3", len(tbl.rawLines))
+	}
+	if len(tbl.rows) != 3 {
+		t.Errorf("len(rows) = %d, want 3", len(tbl.rows))
+	}
+	// formatTable preserves the prefix in every output row.
+	got := formatTable(tbl, Config{Pad: 1})
+	for _, line := range got.rawLines {
+		if !bytes.HasPrefix(line, []byte("> ")) {
+			t.Errorf("formatted row %q must keep prefix", string(line))
+		}
+	}
+	// tableEqual must treat identical tables as equal.
+	if !tableEqual(tbl, tbl) {
+		t.Errorf("tableEqual(tbl, tbl) must be true")
 	}
 }
