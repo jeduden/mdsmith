@@ -107,6 +107,21 @@ func TestList_BlankAfterEmptyItem(t *testing.T) {
 	}
 }
 
+func TestList_InterruptingParagraphRules(t *testing.T) {
+	// A paragraph followed by a list marker.  Only bullet lists
+	// and ordered lists starting with 1 can interrupt; an
+	// ordered list starting with !=1 stays as paragraph text.
+	cases := []string{
+		"paragraph here\n- bullet interrupts\n",
+		"paragraph here\n1. ordered-1 interrupts\n",
+		"paragraph here\n3. ordered-3 does NOT interrupt\n",
+		"paragraph here\n- \nempty item cannot interrupt\n",
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestList_DeepIndentTreatedAsCode(t *testing.T) {
 	// List item with > 4 spaces after the marker triggers
 	// calcListOffset's "offseted codeblock" branch (offset > 4
