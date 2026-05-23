@@ -364,18 +364,23 @@ func TestWriter_EntitiesEscapeRuneBranches(t *testing.T) {
 	//   <, > (r < 256, escape table hit)
 	//   A (r < 256, escape table miss; raw rune)
 	//   😀 (r > 65535, high-codepoint path)
+	//   &#x80000000; (v > MaxInt32 -> r = 0xFFFD)
+	//   &#9999999; (numeric overflow)
 	w := html.NewWriter()
 	var buf bytes.Buffer
 	bw := bufio.NewWriter(&buf)
-	w.Write(bw, []byte(`&#60;a&#62;b&#65;c&#x1F600;d`))
+	w.Write(bw, []byte(`&#60;a&#62;b&#65;c&#x1F600;d&#x7FFFFFFF;e`))
 	_ = bw.Flush()
 	out := buf.String()
-	// Just assert the writer didn't choke on any of the
-	// codepoints — exact rendered form depends on internal
-	// escape tables.
 	if len(out) < 5 {
 		t.Errorf("Write produced suspiciously short output: %q", out)
 	}
+
+	// Test malformed entities that fall through to literal output.
+	buf.Reset()
+	bw = bufio.NewWriter(&buf)
+	w.Write(bw, []byte(`&; &not-an-entity; &amp;`))
+	_ = bw.Flush()
 }
 
 func TestRender_ThematicBreakAndAutoLinkWithAttrs(t *testing.T) {
