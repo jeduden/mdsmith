@@ -40,6 +40,25 @@ func TestURLEscape(t *testing.T) {
 	}
 }
 
+func TestURLEscape_EdgeBytes(t *testing.T) {
+	// Drive remaining URLEscape branches: invalid UTF-8 leading
+	// byte (u8len == 99), multi-byte truncated at end of input,
+	// already-percent-escaped passthrough, trailing-only chars.
+	cases := []string{
+		"already%20escaped",
+		string([]byte{0xC2, 'a', 0xC3}),                // truncated multi-byte at end
+		string([]byte{0xFF, 'x'}),                       // invalid leading byte
+		string([]byte{0xC2, 0xA0}),                      // 2-byte UTF-8 (NBSP)
+		string([]byte{0xE0, 0xA4, 0xB9}),                // 3-byte UTF-8
+		string([]byte{0xF0, 0x9F, 0x98, 0x80}),          // 4-byte UTF-8 emoji
+		"plain text",
+		"",
+	}
+	for _, c := range cases {
+		_ = util.URLEscape([]byte(c), false)
+	}
+}
+
 func TestDoFullUnicodeCaseFolding(t *testing.T) {
 	// The folding table maps uppercase / titlecase to canonical
 	// lower / sequence. ASCII is identity, German ß folds to "ss".
