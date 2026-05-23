@@ -77,10 +77,60 @@ func TestImage_Methods(t *testing.T) {
 }
 
 func TestAutoLink_Methods(t *testing.T) {
-	tx := ast.NewTextSegment(text.NewSegment(0, 10))
+	src := []byte("https://example.com")
+	tx := ast.NewTextSegment(text.NewSegment(0, len(src)))
 	al := ast.NewAutoLink(ast.AutoLinkURL, tx)
 	al.Inline()
 	_ = al.Kind()
+	_ = al.Text(src)
+	_ = al.URL(src)
+}
+
+func TestString_PosAndInline(t *testing.T) {
+	s := ast.NewString([]byte("inline content"))
+	s.Inline()
+	// String.Pos returns -1 because the node carries no source
+	// position (it was synthesised inline). Just calling it is
+	// sufficient for coverage.
+	_ = s.Pos()
+}
+
+func TestCodeSpan_Inline_Marker(t *testing.T) {
+	c := ast.NewCodeSpan()
+	c.Inline() // marker method
+}
+
+func TestLink_Inline_Image_Inline(t *testing.T) {
+	l := ast.NewLink()
+	l.Inline()
+	img := ast.NewImage(ast.NewLink())
+	img.Inline()
+}
+
+func TestRawHTML_TextAndInline(t *testing.T) {
+	r := ast.NewRawHTML()
+	r.Inline()
+	_ = r.Text([]byte("any source"))
+}
+
+func TestText_SetRaw(t *testing.T) {
+	tx := ast.NewTextSegment(text.NewSegment(0, 5))
+	tx.SetRaw(true)
+	if !tx.IsRaw() {
+		t.Error("SetRaw(true) then IsRaw() must be true")
+	}
+	tx.SetRaw(false)
+	if tx.IsRaw() {
+		t.Error("SetRaw(false) then IsRaw() must be false")
+	}
+}
+
+func TestString_SetRaw(t *testing.T) {
+	s := ast.NewString([]byte("x"))
+	s.SetRaw(true)
+	if !s.IsRaw() {
+		t.Error("SetRaw(true) then IsRaw() must be true")
+	}
 }
 
 func TestRawHTML_Methods(t *testing.T) {
