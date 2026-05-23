@@ -107,6 +107,21 @@ func TestList_BlankAfterEmptyItem(t *testing.T) {
 	}
 }
 
+func TestList_ParseListItem_NotListBranches(t *testing.T) {
+	// Drive each "return ret, notList" branch in parseListItem
+	// via inputs that look like list markers but aren't.
+	srcs := []string{
+		"    - too-deeply-indented bullet\n",   // i > 3 -> not list
+		"12345678901. way too long ordered\n", // > 9-digit ordered -> not list
+		"5 missing period or paren\n",          // numbers but no . or )
+		"abc\n",                                 // no marker at all
+		"-no-space-after-marker\n",              // no IndentWidth
+	}
+	for _, src := range srcs {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestList_LooseList_BlankLineBetweenItems(t *testing.T) {
 	src := "- a\n\n- b\n\n- c\n"
 	root := parseWithDefaults(src)
