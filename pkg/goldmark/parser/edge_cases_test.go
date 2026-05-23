@@ -111,6 +111,31 @@ func TestSetextHeading_DirectMethodInvocation(t *testing.T) {
 	}
 }
 
+func TestSetextHeading_AttributesAndAutoID(t *testing.T) {
+	// Drive setextHeadingParser.Close branches for attribute /
+	// AutoHeadingID by parsing with both options on. Specifically
+	// the explicit-id branch (id already in attributes -> Put on
+	// IDs registry) needs `{#name}` syntax in the heading line.
+	p := parser.NewParser(
+		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
+		parser.WithParagraphTransformers(parser.DefaultParagraphTransformers()...),
+		parser.WithAutoHeadingID(),
+		parser.WithAttribute(),
+	)
+	srcs := []string{
+		"Setext Heading\n==============\n", // auto-generated id branch
+		"Setext With Id {#my-id}\n=======================\n", // explicit-id branch (Put)
+		"Setext Two-level\n-----\n",        // h2 setext
+	}
+	for _, src := range srcs {
+		root := p.Parse(text.NewReader([]byte(src)), parser.WithContext(parser.NewContext()))
+		if root == nil {
+			t.Fatalf("Parse returned nil for %q", src)
+		}
+	}
+}
+
 func TestSetextHeading_NotAHeading(t *testing.T) {
 	// Pure `===` or `---` after a blank line is a thematic break,
 	// not a setext heading.
