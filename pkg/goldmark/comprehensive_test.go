@@ -260,6 +260,35 @@ func TestCorpus_VariedShapes(t *testing.T) {
 	}
 }
 
+func TestCorpus_FootnoteAndSetextEdgeCases(t *testing.T) {
+	cases := []string{
+		// Multiple footnotes referenced multiple times.
+		"see[^a][^b][^a][^c]\n\n[^a]: A body\n[^b]: B body\n[^c]: C body\n",
+		// Footnote with nested formatting in body.
+		"see[^x]\n\n[^x]: body with *emph* and **bold** and `code`\n",
+		// Footnote definition body with multiple paragraphs.
+		"see[^p]\n\n[^p]: first paragraph\n\n    second paragraph\n",
+		// Setext heading at document start.
+		"H1\n===\n",
+		// Setext h1 immediately after h2.
+		"H2\n---\nH1 below\n===\n",
+		// Setext heading interrupting blockquote.
+		"> Title\n> ====\n",
+		// ATX heading with attributes followed by setext underline (rare).
+		"# Title {#id}\n===\n",
+	}
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.Footnote),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithAttribute()),
+	)
+	for i, src := range cases {
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("case %d: %v", i, err)
+		}
+	}
+}
+
 func TestComprehensiveCorpus(t *testing.T) {
 	md := goldmark.New(
 		goldmark.WithExtensions(
