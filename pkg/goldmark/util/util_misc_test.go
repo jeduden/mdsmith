@@ -66,19 +66,22 @@ func TestDedentPositionPadding(t *testing.T) {
 
 func TestFindEmailIndex(t *testing.T) {
 	cases := []struct {
-		in       string
-		wantPos  int
-		minMatch int // minimum positive match length
+		in   string
+		want int
 	}{
-		{"foo@bar.com", 0, 7},
-		{"prefix foo@bar.com", 0, 7},
-		{"not an email", 0, 0},
+		{"foo@bar.com", 11},        // valid -> length
+		{"@bar.com", -1},            // no local part (i == 0)
+		{"foobarcom", -1},           // all email chars, no @ (i >= len)
+		{"foo!bar.com", -1},         // non-email char before @
+		{"foo@", -1},                // @ at end (i >= len after @)
+		{"foo@!!!", -1},             // @ followed by non-domain
+		{"", -1},                    // empty
 	}
 	for _, c := range cases {
 		got := util.FindEmailIndex([]byte(c.in))
-		_ = got
-		_ = c.wantPos
-		_ = c.minMatch
+		if got != c.want {
+			t.Errorf("FindEmailIndex(%q) = %d, want %d", c.in, got, c.want)
+		}
 	}
 }
 
