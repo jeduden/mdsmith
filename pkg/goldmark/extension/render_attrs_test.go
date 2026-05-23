@@ -112,6 +112,35 @@ func TestRender_DefinitionListWithAttributes(t *testing.T) {
 	}
 }
 
+func TestRender_TableCellWithAlignOverrides(t *testing.T) {
+	// Drive renderTableCell's align/style attribute-override
+	// branches by constructing cells with explicit align/style
+	// attributes that override the cell's Alignment field.
+	doc := ast.NewDocument()
+	tbl := extast.NewTable()
+	tbl.Alignments = []extast.Alignment{extast.AlignLeft, extast.AlignRight}
+	doc.AppendChild(doc, tbl)
+
+	row := extast.NewTableRow(tbl.Alignments)
+	tbl.AppendChild(tbl, row)
+
+	cellA := extast.NewTableCell()
+	cellA.Alignment = extast.AlignLeft
+	cellA.SetAttribute([]byte("align"), []byte("center")) // overrides Alignment
+	row.AppendChild(row, cellA)
+
+	cellB := extast.NewTableCell()
+	cellB.Alignment = extast.AlignRight
+	cellB.SetAttribute([]byte("style"), []byte("color: red")) // existing style; renderer appends text-align
+	row.AppendChild(row, cellB)
+
+	r := newExtRenderer()
+	var buf bytes.Buffer
+	if err := r.Render(&buf, []byte("source"), doc); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+}
+
 func TestRender_TableWithAttributes(t *testing.T) {
 	doc := ast.NewDocument()
 	tbl := extast.NewTable()
