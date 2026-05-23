@@ -404,6 +404,32 @@ func TestEmphasisParser_Parse_NilReturn(t *testing.T) {
 	}
 }
 
+func TestIsBlankLine_AllBranches(t *testing.T) {
+	// isBlankLine has branches:
+	//   - empty stats -> true
+	//   - matching lineNum + level -> return isBlank
+	//   - lineNum decreases without match -> break, return false
+	cases := []struct {
+		name  string
+		num   int
+		level int
+		stats []lineStat
+		want  bool
+	}{
+		{"empty-stats", 5, 0, nil, true},
+		{"match-blank", 5, 0, []lineStat{{lineNum: 5, level: 0, isBlank: true}}, true},
+		{"match-non-blank", 5, 0, []lineStat{{lineNum: 5, level: 0, isBlank: false}}, false},
+		{"break-on-lower-num", 5, 0, []lineStat{{lineNum: 3, level: 0, isBlank: true}}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isBlankLine(c.num, c.level, c.stats); got != c.want {
+				t.Errorf("isBlankLine = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
