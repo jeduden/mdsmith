@@ -33,14 +33,12 @@ patterns that keep us inside them.
 **Apply best-practice patterns first. Then measure. Then
 fix what is still hot.** The patterns in
 [Patterns to apply](#patterns-to-apply) are known wins
-anywhere in the Go core — rules, parser, engine, CLI.
-Pre-size a slice, hoist a regex to package scope, return
-`nil` for an empty result. Use them on the first write;
-they cost nothing and shave allocs at every layer.
+across the Go core — pre-size a slice, hoist a regex,
+return `nil` for an empty result. Use them by default;
+they cost nothing.
 
-Past that, do not rewrite for speed on a hunch. A profile
-that shows zero CPU in your suspected hot path stops a fix
-that would change nothing. The loop:
+Past that, profile before you rewrite — a flat profile in
+your suspected hot path stops a useless fix. The loop:
 
 1. **State the goal numerically.** "Function X under N
    allocs/call on representative input" — not "make it
@@ -76,28 +74,28 @@ the next slip on its own.
 
 ### Which profile answers which question
 
-| Profile     | Source                                 | Question                          |
-|-------------|----------------------------------------|-----------------------------------|
-| CPU         | `-cpuprofile cpu.out`                  | Where is time going?              |
-| Alloc       | `-memprofile m.out` + `-alloc_objects` | Who allocates, even short-lived?  |
-| In-use heap | `-memprofile m.out`                    | What is resident now?             |
-| Block       | `runtime.SetBlockProfileRate(1)`       | Where do goroutines wait?         |
-| Mutex       | `runtime.SetMutexProfileFraction(1)`   | Who holds contended locks?        |
-| Trace       | `-trace trace.out`                     | Scheduler / GC / syscall timeline |
+| Profile | Source                               | Question                          |
+|---------|--------------------------------------|-----------------------------------|
+| CPU     | `-cpuprofile cpu.out`                | Where is time going?              |
+| Memory  | `-memprofile m.out`                  | What allocates and what is live   |
+| Block   | `runtime.SetBlockProfileRate(1)`     | Where do goroutines wait?         |
+| Mutex   | `runtime.SetMutexProfileFraction(1)` | Who holds contended locks?        |
+| Trace   | `-trace trace.out`                   | Scheduler / GC / syscall timeline |
 
-mdsmith ships a profile hook for the running CLI; see
-`internal/profiling/profiling.go`:
+View memory profiles with `go tool pprof -alloc_objects`
+(every allocation, including freed) or `-inuse_objects`
+(what is resident now).
+
+mdsmith ships a profile hook for the CLI
+(`internal/profiling/profiling.go`):
 
 ```bash
 MDSMITH_CPUPROFILE=cpu.out mdsmith check .
 go tool pprof -http=:8080 cpu.out
 ```
 
-No CLI flag exists on purpose — the command line stays
-byte-identical to production, so the profile measures the
-same path users hit.
-
-For diffing two profiles, use
+No CLI flag on purpose — the command line stays
+byte-identical to production. For diffs, use
 `go tool pprof -base=old.prof new.prof`.
 
 ### Escape analysis
@@ -151,8 +149,10 @@ per workspace file.
   be reaped by GC without notice. Examples:
   `internal/punkt/tokenizer.go`,
   `internal/schema/validate_content.go`.
-- **Return `nil`, not `[]T{}`.** Encoded as a project
-  rule; an empty slice still allocates a header.
+- **Return `nil`, not `[]T{}`.** Project convention.
+  Callers can distinguish "no result" from "populated"
+  uniformly, and an empty literal that escapes still
+  allocates a 24-byte header — `nil` does not.
 - **Compile regexes at package scope.**
   `var foo = regexp.MustCompile(…)`. Compiling inside a
   hot function builds the NFA every call.
@@ -168,7 +168,7 @@ per workspace file.
   `Grow(n)` first if you know the final size.
 - **`strconv` over `fmt.Sprintf`.** `strconv.Itoa(n)` is
   ~3× faster than `fmt.Sprintf("%d", n)` and skips
-  reflection. The `perfsprint` linter flags this.
+  reflection.
 - **`strings.EqualFold` for case-insensitive compare.**
   One pass, no allocation; beats `ToLower` + `==`.
 - **`unsafe.String` / `unsafe.Slice` (Go 1.20+)** for
@@ -198,7 +198,8 @@ substring, or prefix/suffix check, skip `regexp`.
 ### Struct layout
 
 - **Order fields large-to-small** to minimize padding.
-  Run `go tool fieldalignment -fix ./...` to auto-fix.
+  The `fieldalignment` analyzer in `golang.org/x/tools`
+  flags layouts with wasted bytes and can rewrite them.
 - **Hot/cold split.** Frequently-read fields in one
   struct, rarely-read in another behind a pointer.
   Better cache utilization in the hot path.
@@ -255,33 +256,34 @@ Inspect with `go build -gcflags="-m=2"` and look for
 
 ## Patterns to avoid
 
-| Avoid                                | Why                                                | Use instead                            |
-|--------------------------------------|----------------------------------------------------|----------------------------------------|
-| `fmt.Sprintf("%d", n)` in hot paths  | reflection, ~3× slower                             | `strconv.Itoa(n)`                      |
-| `s + s2 + s3` in a loop              | each `+` allocates                                 | `strings.Builder` with `Grow`          |
-| `append` growing without `make`      | doubling-copy cost                                 | pre-size with known cap                |
-| `defer` in a tight loop              | in-loop `defer` falls off the open-coded fast path | hoist or inline cleanup                |
-| return `[]T{}`                       | header allocation                                  | return `nil`                           |
-| `any` / `interface{}` in hot paths   | boxing forces heap copy; defeats devirtualization  | concrete types, or generics            |
-| `reflect` in hot paths               | type-info walks, allocations                       | code-gen or hand-roll                  |
-| `regexp` for a literal               | NFA build + walk                                   | `bytes.Contains` / `strings.HasPrefix` |
-| goroutine-per-item                   | scheduler & memory pressure                        | `errgroup.SetLimit(n)`                 |
-| channel for one shared variable      | scheduler hop, allocations                         | `sync.Mutex` or atomic                 |
-| copying a `sync.Mutex`               | silent lock breakage                               | pass `*Mutex`; `go vet` catches some   |
-| `defer mu.Unlock()` in tiny section  | defer cost dwarfs the body                         | inline unlock when no panic path       |
-| `log.Printf` per item in a hot loop  | format + lock + I/O                                | sample, or batch outside the loop      |
-| `time.Now()` in a tight loop         | wall + monotonic read each call                    | read once, use `time.Since`            |
-| `os.ReadFile` on huge inputs         | one giant alloc, all resident                      | `bufio.Scanner`                        |
-| `context.Background()` deep in calls | loses cancellation                                 | propagate caller's `ctx`               |
+| Avoid                                | Why                                                                            | Use instead                                                     |
+|--------------------------------------|--------------------------------------------------------------------------------|-----------------------------------------------------------------|
+| `fmt.Sprintf("%d", n)` in hot paths  | reflection, ~3× slower                                                         | `strconv.Itoa(n)`                                               |
+| `s + s2 + s3` in a loop              | each `+` allocates                                                             | `strings.Builder` with `Grow`                                   |
+| `append` growing without `make`      | doubling-copy cost                                                             | pre-size with known cap                                         |
+| `defer` in a tight loop              | in-loop `defer` falls off the open-coded fast path                             | hoist or inline cleanup                                         |
+| return `[]T{}` for "no result"       | non-uniform with project convention; the empty literal allocates if it escapes | return `nil`                                                    |
+| `any` / `interface{}` in hot paths   | boxing forces heap copy; defeats devirtualization                              | concrete types, or generics                                     |
+| `reflect` in hot paths               | type-info walks, allocations                                                   | code-gen or hand-roll                                           |
+| `regexp` for a literal               | NFA build + walk                                                               | `bytes.Contains` / `strings.HasPrefix`                          |
+| goroutine-per-item                   | scheduler & memory pressure                                                    | `errgroup.SetLimit(n)`                                          |
+| channel for one shared variable      | scheduler hop, allocations                                                     | `sync.Mutex` or atomic                                          |
+| copying a `sync.Mutex`               | silent lock breakage                                                           | pass `*Mutex`; `go vet` catches some                            |
+| `defer mu.Unlock()` in tiny section  | defer cost dwarfs the body                                                     | inline unlock when no panic path                                |
+| `log.Printf` per item in a hot loop  | format + lock + I/O                                                            | sample, or batch outside the loop                               |
+| `time.Now()` in a tight loop         | wall + monotonic read each call                                                | read once, use `time.Since`                                     |
+| `os.ReadFile` on huge inputs         | one giant alloc, all resident                                                  | `bufio.Reader` (or `bufio.Scanner` with `Scanner.Buffer` tuned) |
+| `context.Background()` deep in calls | loses cancellation                                                             | propagate caller's `ctx`                                        |
 
 ## Tooling
 
-- **`golangci-lint`** — enable `perfsprint`, `prealloc`,
-  `ineffassign`, `staticcheck` (SA6002 flags non-pointer
-  `sync.Pool` values), `gocritic` performance group.
-- **`go vet -shadow`** and `go tool fieldalignment -fix`.
-- **`benchstat`** — required for any "this is faster" claim.
-- **`go.uber.org/goleak`** — assert no leftover goroutines.
+- **`go tool golangci-lint run`** — the project's lint
+  gate. Consider enabling `perfsprint`, `prealloc`, and
+  gocritic's performance group on top of what
+  `.golangci.yml` already runs.
+- **`benchstat`** for "this is faster" claims.
+- **`go.uber.org/goleak`** to assert no leftover
+  goroutines in tests.
 - **`go tool pprof -base=old.prof new.prof`** to diff
   profiles before and after a change.
 
