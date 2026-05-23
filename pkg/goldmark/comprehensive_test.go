@@ -94,6 +94,107 @@ content
 [ref-key]: /ref-url "ref title"
 `
 
+func TestComprehensiveCorpus_RareSyntax(t *testing.T) {
+	// Drive rarely-hit branches via uncommon Markdown shapes.
+	src := `
+> > > triple nested blockquote
+> > continuing two
+> continuing one
+back at root
+
+99999. nine-digit ordered list start
+
+   - 3-space indented bullet (still a list)
+
+1)  ordered with parens
+
+* * *
+
+___
+
+***
+
+Setext with attribute {#sattr .scls}
+=====================================
+
+Indented setext
+   ===========
+
+	tab-indented code block line
+	another tab line
+
+` + "```" + `
+fenced empty info
+` + "```" + `
+
+` + "~~~yaml" + `
+tilde fence with info
+` + "~~~" + `
+
+| h |
+|---|
+| a |
+| b\|c |
+| d |
+` + "[^trailing^]: trailing-special label\n[^trailing^]\n"
+	md := goldmark.New(
+		goldmark.WithExtensions(
+			extension.Footnote,
+			extension.Table,
+			extension.Strikethrough,
+		),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithAttribute()),
+	)
+	var buf bytes.Buffer
+	if err := md.Convert([]byte(src), &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+}
+
+func TestCorpus_EdgeShapes(t *testing.T) {
+	// Inputs designed to drive remaining branches: degenerate
+	// shapes (empty, whitespace-only, EOF in unusual places),
+	// boundary cases (very long lines, deeply indented content),
+	// and unusual character combinations.
+	cases := []string{
+		"",
+		" ",
+		"\n",
+		"\n\n\n",
+		"  \n  \n",
+		"\t\n\t\n",
+		// Indented code blocks with tab + space mixes.
+		"    line1\n      line2 (4+2 indent)\n",
+		// Reference definition spanning lines.
+		"[ref]: /url\n  \"title spanning\nmultiple lines\"\n[ref]\n",
+		// Code block immediately followed by content.
+		"    code\nparagraph after\n",
+		// Tight list of 1.
+		"- one\n",
+		// Empty bullet at end.
+		"- one\n-\n",
+		// Bare URL in autolink.
+		"<http://example.org/?x=1&y=2>\n",
+		// Email at start of line.
+		"<a@b.co>\n",
+		// Backslash escapes.
+		"\\*not emphasis\\* \\\\ \\[ \\] \\(  \\) \\#\n",
+		// Hard line break (two trailing spaces).
+		"line one  \nline two\n",
+		// Backslash hard line break.
+		"line one\\\nline two\n",
+		// Numeric reference + named.
+		"&amp; &#65; &#x41; &unknownentity;\n",
+	}
+	for i, src := range cases {
+		md := goldmark.New(goldmark.WithRendererOptions(html.WithUnsafe()))
+		var buf bytes.Buffer
+		if err := md.Convert([]byte(src), &buf); err != nil {
+			t.Fatalf("case %d: %v", i, err)
+		}
+	}
+}
+
 func TestComprehensiveCorpus(t *testing.T) {
 	md := goldmark.New(
 		goldmark.WithExtensions(
