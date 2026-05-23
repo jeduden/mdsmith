@@ -201,6 +201,26 @@ func TestDelimiters_UnmatchedEmphasisClearsStack(t *testing.T) {
 	}
 }
 
+func TestAttribute_EdgeCases(t *testing.T) {
+	// Drive remaining parseAttribute branches.
+	cases := []string{
+		`# H {}`,             // empty
+		`# H {  }`,           // whitespace
+		`# H {!notattr}`,     // non-identifier first char
+		`# H {123start}`,     // numeric start (invalid identifier)
+		`# H {.}`,            // bare dot (no class name)
+		`# H {#}`,            // bare hash (no id name)
+		`# H {.-leading-dash}`,
+		`# H {#:colon-name}`,
+		`# H {key1=val1 key2=val2}`,
+		`# H {key=[1, 2, 3]}`,      // array value
+		`# H {key={#nested}}`,       // nested attributes
+	}
+	for _, src := range cases {
+		_ = parseWithDefaultsAttr(src)
+	}
+}
+
 func TestAttribute_MultipleClasses(t *testing.T) {
 	// Multiple `.classname` tokens in an attribute block extend
 	// the existing class= attribute via findUpdate's success
