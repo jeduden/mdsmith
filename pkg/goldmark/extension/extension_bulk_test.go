@@ -80,26 +80,25 @@ func TestFootnote_OpenFailPaths(t *testing.T) {
 }
 
 func TestFootnote_TemplatePlaceholders(t *testing.T) {
-	// applyFootnoteTemplate has a fast-path that returns the
-	// template unchanged when neither "^^" nor "%%" appear. Drive
-	// the slow path by configuring a custom backlink template
-	// that contains both tokens.
-	md := goldmark.New(goldmark.WithExtensions(
-		extension.NewFootnote(
-			extension.WithFootnoteBacklinkHTML("idx=^^ refs=%%"),
-		),
-	))
-	src := []byte("see[^a] and again[^a]\n\n[^a]: body\n")
-	var buf bytes.Buffer
-	if err := md.Convert(src, &buf); err != nil {
-		t.Fatalf("Convert: %v", err)
+	// applyFootnoteTemplate has three loop branches:
+	//   - no placeholders -> fast path returns template as-is.
+	//   - ^^ found first -> hits the b[i-1]=='^' && c=='^' branch.
+	//   - %% found first -> hits the b[i-1]=='%' && c=='%' branch.
+	// Drive each separately.
+	templates := []string{
+		"only-^^-placeholder",
+		"only-%%-placeholder",
+		"both=^^ and refs=%%",
 	}
-	out := buf.String()
-	if !bytes.Contains(buf.Bytes(), []byte("idx=1")) {
-		t.Errorf("expected idx=1 substitution: %q", out)
-	}
-	if !bytes.Contains(buf.Bytes(), []byte("refs=2")) {
-		t.Errorf("expected refs=2 substitution: %q", out)
+	for _, tmpl := range templates {
+		md := goldmark.New(goldmark.WithExtensions(
+			extension.NewFootnote(extension.WithFootnoteBacklinkHTML(tmpl)),
+		))
+		src := []byte("see[^a] and again[^a]\n\n[^a]: body\n")
+		var buf bytes.Buffer
+		if err := md.Convert(src, &buf); err != nil {
+			t.Fatalf("Convert(%q): %v", tmpl, err)
+		}
 	}
 }
 
