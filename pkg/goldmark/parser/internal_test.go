@@ -359,6 +359,23 @@ func TestPreserveLeadingTabInCodeBlock_Direct(t *testing.T) {
 	})
 }
 
+func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
+	// paragraphParser.Close removes a paragraph from its parent
+	// when the paragraph has 0 lines.  This branch is hard to
+	// drive via Parse but trivial directly.
+	doc := ast.NewDocument()
+	p := ast.NewParagraph()
+	doc.AppendChild(doc, p)
+	if doc.FirstChild() != p {
+		t.Fatal("setup: paragraph not attached")
+	}
+	bp := &paragraphParser{}
+	bp.Close(p, text.NewReader([]byte("")), NewContext())
+	if doc.FirstChild() == p {
+		t.Error("empty paragraph should be removed from parent")
+	}
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
