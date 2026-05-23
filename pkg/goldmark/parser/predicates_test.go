@@ -57,6 +57,33 @@ func TestATXHeading_WithAutoHeadingID(t *testing.T) {
 	)
 }
 
+func TestParagraph_DirectPredicates(t *testing.T) {
+	p := parser.NewParagraphParser()
+	if p.CanInterruptParagraph() {
+		t.Error("paragraph parser must not interrupt other paragraphs")
+	}
+	if p.CanAcceptIndentedLine() {
+		t.Error("paragraph parser must not accept indented lines as new blocks")
+	}
+}
+
+func TestCodeBlock_TabIndentedBody(t *testing.T) {
+	// preserveLeadingTabInCodeBlock fires when an indented-code
+	// block's first byte is a tab AND the parser has already
+	// advanced past partial padding. That happens with a leading
+	// space-then-tab where the space counts as padding 1 and the
+	// tab fills the rest of the 4-column indent.
+	cases := []string{
+		" \tafter-space-tab\n",                    // 1 space + tab -> tab inside padding
+		"  \tafter-2spaces-tab\n",                 // 2 spaces + tab
+		"   \tafter-3spaces-tab\n",                // 3 spaces + tab
+		"\tplain-tab\n\tsecond tab line\n",        // pure tab
+	}
+	for _, src := range cases {
+		_ = parseWithDefaults(src)
+	}
+}
+
 func TestAttributes_FindFromTopLevel(t *testing.T) {
 	// The top-level parser.Attributes.Find helper is unreachable
 	// via the normal parse-flow because parsers consume attributes
