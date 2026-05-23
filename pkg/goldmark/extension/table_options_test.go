@@ -93,6 +93,19 @@ func TestTable_OptionsAsRendererOptions(t *testing.T) {
 	}
 }
 
+func TestTable_PrefixParagraphSplit(t *testing.T) {
+	// When a paragraph contains a non-table prefix line, then
+	// the table header, then the delimiter row, the table
+	// transformer slices off the prefix as a separate paragraph
+	// (else branch: trim last newline).
+	src := "prefix paragraph line\n| h1 | h2 |\n|---|---|\n| a | b |\n"
+	md := goldmark.New(goldmark.WithExtensions(extension.Table))
+	var buf bytes.Buffer
+	if err := md.Convert([]byte(src), &buf); err != nil {
+		t.Fatalf("Convert: %v", err)
+	}
+}
+
 func TestTable_ColumnMismatchRejected(t *testing.T) {
 	// tableParagraphTransformer's "header.ChildCount() !=
 	// len(alignments)" branch fires when the header row has a
