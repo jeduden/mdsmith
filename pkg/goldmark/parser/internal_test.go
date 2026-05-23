@@ -473,6 +473,34 @@ func TestATXHeadingParser_Open_DefensiveBranches(t *testing.T) {
 	}
 }
 
+func TestListItemParser_Continue_AllBranches(t *testing.T) {
+	// listItemParser.Continue branches:
+	//   - blank line
+	//   - isEmpty + new list item found -> Close
+	//   - isEmpty + not list -> continue (after advance)
+	//   - non-empty + indent < offset -> Close
+	bp := &listItemParser{}
+
+	// State: empty li with emptyListItemWithBlankLines flag set,
+	// and the new line is itself a list item -> Close.
+	list := ast.NewList('-')
+	li := ast.NewListItem(2)
+	list.AppendChild(list, li)
+	r := text.NewReader([]byte("- new item\n"))
+	pc := NewContext()
+	pc.Set(emptyListItemWithBlankLines, listItemFlagValue)
+	bp.Continue(li, r, pc)
+
+	// State: non-empty li with line that dedents -> Close.
+	li2 := ast.NewListItem(2)
+	li2.AppendChild(li2, ast.NewParagraph())
+	list2 := ast.NewList('-')
+	list2.AppendChild(list2, li2)
+	r2 := text.NewReader([]byte("top-level paragraph\n"))
+	pc2 := NewContext()
+	bp.Continue(li2, r2, pc2)
+}
+
 func TestListItemParser_Open_NonListParent(t *testing.T) {
 	// listItemParser.Open returns nil when parent is not *ast.List.
 	// The dispatcher only routes list-item triggers under a List
