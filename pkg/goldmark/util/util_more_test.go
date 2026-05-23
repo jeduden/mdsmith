@@ -62,6 +62,20 @@ func TestReplaceSpaces(t *testing.T) {
 	}
 }
 
+func TestURLEscape_TruncatedMultiByteAtEnd(t *testing.T) {
+	// Multi-byte UTF-8 truncated at end of input -> stop > len(v)
+	// branch.  A 4-byte UTF-8 leading byte followed by only 1
+	// continuation triggers this.
+	cases := [][]byte{
+		{0xF0, 0x9F},                 // 4-byte truncated to 2
+		{0xF0, 0x9F, 0x98},           // 4-byte truncated to 3
+		{0xE0, 0xA4},                 // 3-byte truncated
+	}
+	for _, c := range cases {
+		_ = util.URLEscape(c, false)
+	}
+}
+
 func TestURLEscape_EdgeBytes(t *testing.T) {
 	// Drive remaining URLEscape branches: invalid UTF-8 leading
 	// byte (u8len == 99), multi-byte truncated at end of input,
