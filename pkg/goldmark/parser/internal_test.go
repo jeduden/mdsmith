@@ -253,6 +253,46 @@ func TestLinkParser_PopLinkBottom_AllStackShapes(t *testing.T) {
 	popLinkBottom(pc)
 }
 
+func TestSetextHeadingParser_Close_EmptyTmpParagraph(t *testing.T) {
+	// setextHeadingParser.Close has a path where the temporary
+	// paragraph is empty.  The path back-converts the heading
+	// to a paragraph (or prepends to a following paragraph).
+	// Hard to drive via Convert; construct the AST + context
+	// state by hand.
+	doc := ast.NewDocument()
+	heading := ast.NewHeading(1)
+	heading.Lines().Append(text.NewSegment(0, 5))
+	doc.AppendChild(doc, heading)
+
+	emptyPara := ast.NewParagraph()
+	// Empty paragraph (no lines).
+	pc := NewContext()
+	pc.Set(temporaryParagraphKey, emptyPara)
+
+	bp := &setextHeadingParser{}
+	source := []byte("hello world")
+	r := text.NewReader(source)
+	bp.Close(heading, r, pc)
+
+	// After Close: heading should be removed from doc, paragraph
+	// inserted.  We don't assert on exact structure - just that
+	// the call didn't panic.
+
+	// Second invocation: empty tmp paragraph + heading has a
+	// following Paragraph sibling, so the segment is prepended.
+	doc2 := ast.NewDocument()
+	heading2 := ast.NewHeading(1)
+	heading2.Lines().Append(text.NewSegment(0, 5))
+	doc2.AppendChild(doc2, heading2)
+	followingPara := ast.NewParagraph()
+	followingPara.Lines().Append(text.NewSegment(0, 5))
+	doc2.AppendChild(doc2, followingPara)
+
+	pc2 := NewContext()
+	pc2.Set(temporaryParagraphKey, ast.NewParagraph()) // empty tmp
+	bp.Close(heading2, text.NewReader(source), pc2)
+}
+
 // recordingPrioritized constructs a util.PrioritizedValue for an
 // arbitrary value. Used by some internal unit tests.
 var _ = util.Prioritized
