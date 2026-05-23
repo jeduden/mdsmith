@@ -6,6 +6,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 )
 
 func TestRuleMetadata(t *testing.T) {
@@ -259,4 +261,137 @@ func TestDefaultSettings(t *testing.T) {
 	defaults := r.DefaultSettings()
 	assert.Equal(t, StyleDash, defaults["style"])
 	assert.Equal(t, []string{}, defaults["nested"])
+}
+
+// --- markerOnLine ---
+
+// TestMarkerOnLine pins each branch the helper takes: out-of-range
+// (negative and past-EOL), whitespace skip, non-marker char short
+// circuits, and each of the three valid markers. Check-path tests
+// only ever hit the dash-on-a-real-list case, so the rest of the
+// matrix was uncovered.
+func TestMarkerOnLine(t *testing.T) {
+	src := []byte("- dash\n  * indent-asterisk\n\t+ tab-plus\nplain text\n")
+	f, err := lint.NewFile("t.md", src)
+	require.NoError(t, err)
+	r := &Rule{}
+	assert.Equal(t, byte('-'), r.markerOnLine(f, 1))
+	assert.Equal(t, byte('*'), r.markerOnLine(f, 2),
+		"leading spaces are skipped")
+	assert.Equal(t, byte('+'), r.markerOnLine(f, 3),
+		"leading tabs are skipped")
+	assert.Equal(t, byte(0), r.markerOnLine(f, 4),
+		"non-marker first char returns 0")
+	assert.Equal(t, byte(0), r.markerOnLine(f, 0),
+		"line 0 is out of range")
+	assert.Equal(t, byte(0), r.markerOnLine(f, 999),
+		"line past EOF is out of range")
+}
+
+// --- firstLineOfListItem ---
+
+// TestFirstLineOfListItem_ZeroForEmpty pins the fallback branch when
+// a synthetic ListItem has neither Lines() nor any child block with
+// resolvable lines.
+func TestFirstLineOfListItem_ZeroForEmpty(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte(""))
+	require.NoError(t, err)
+	li := ast.NewListItem(0)
+	r := &Rule{}
+	assert.Equal(t, 0, r.firstLineOfListItem(f, li))
+}
+
+// --- styleToMarker / markerToStyle ---
+
+// TestStyleToMarker pins every documented style branch including
+// the default-case fallback. Check-path tests exercise the
+// successful branches but not the unknown-style guard, which is
+// the safety net for a config that survived ApplySettings but had
+// the style mutated afterward (e.g. by a future merge bug).
+func TestStyleToMarker(t *testing.T) {
+	cases := map[string]byte{
+		StyleDash:     '-',
+		StyleAsterisk: '*',
+		StylePlus:     '+',
+		"":            '-', // default fallback
+		"bogus":       '-',
+	}
+	for style, want := range cases {
+		assert.Equalf(t, want, styleToMarker(style), "style %q", style)
+	}
+}
+
+// TestMarkerToStyle pins every documented marker plus the unknown
+// fallback. The Check loop only ever calls markerToStyle on bytes
+// it already validated, so the default path was uncovered without
+// a unit test.
+func TestMarkerToStyle(t *testing.T) {
+	cases := map[byte]string{
+		'-': StyleDash,
+		'*': StyleAsterisk,
+		'+': StylePlus,
+		'x': "unknown",
+	}
+	for marker, want := range cases {
+		assert.Equalf(t, want, markerToStyle(marker), "marker %q", marker)
+	}
+}
+
+// --- blockFirstLine ---
+
+// TestBlockFirstLine_RecursesIntoChildren pins the recursion branch
+// of blockFirstLine: container blocks (List, ListItem, etc.) have an
+// empty Lines() and must be walked through their children to find
+// the first source line. The Check-path tests above only exercise
+// the direct-hit branch (nodes whose Lines() has length > 0), so
+// the recursion was uncovered without a unit test.
+func TestBlockFirstLine_RecursesIntoChildren(t *testing.T) {
+	src := []byte("- one\n- two\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	// The top-level List node has no Lines(); recursion through
+	// its ListItem children reaches the inline paragraph at line 1.
+	var list *ast.List
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if l, ok := n.(*ast.List); ok {
+			list = l
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, list, "fixture must contain a List node")
+	assert.Equal(t, 0, list.Lines().Len(),
+		"List nodes have empty Lines(); the recursion branch is "+
+			"what reaches the first source line")
+	assert.Equal(t, 1, blockFirstLine(f, list))
+}
+
+// TestBlockFirstLine_ReturnsZeroForEmptyTree pins the fallback path:
+// a synthetic block tree with no descendants that has a Lines()
+// entry must return 0. The Check loop guards against this by only
+// emitting a diagnostic when line > 0, so the fallback was
+// unreachable from real Markdown.
+func TestBlockFirstLine_ReturnsZeroForEmptyTree(t *testing.T) {
+	// Synthetic empty paragraph: no Lines, no children.
+	empty := ast.NewParagraph()
+	f, err := lint.NewFile("test.md", []byte(""))
+	require.NoError(t, err)
+	assert.Equal(t, 0, blockFirstLine(f, empty))
+}
+
+// TestBlockFirstLine_DirectLines pins the direct-hit branch with an
+// explicit assertion, mirroring the production path the Check loop
+// drives. A synthetic paragraph with a non-empty Lines() returns
+// the line of its first segment, without recursing.
+func TestBlockFirstLine_DirectLines(t *testing.T) {
+	src := []byte("line one\nline two\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	p := ast.NewParagraph()
+	// Point the segment at "line two" → starts at offset 9, on line 2.
+	p.Lines().Append(text.NewSegment(9, 17))
+	assert.Equal(t, 2, blockFirstLine(f, p))
 }

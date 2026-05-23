@@ -117,6 +117,23 @@ func TestEnabledByDefault(t *testing.T) {
 	assert.False(t, r.EnabledByDefault(), "MDS063 must be opt-in")
 }
 
+// --- Identity ---
+
+func TestID(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "MDS063", r.ID())
+}
+
+func TestName(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "descriptive-link-text", r.Name())
+}
+
+func TestCategory(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, "prose", r.Category())
+}
+
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	s := r.DefaultSettings()

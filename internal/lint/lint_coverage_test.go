@@ -488,6 +488,59 @@ func TestLineOfOffset_StableAcrossRepeatedCalls(t *testing.T) {
 	}
 }
 
+// --- ColumnOfOffset ---
+
+func TestColumnOfOffset_FirstColumn(t *testing.T) {
+	f := &File{Source: []byte("line1\nline2\n")}
+	assert.Equal(t, 1, f.ColumnOfOffset(0))
+	assert.Equal(t, 1, f.ColumnOfOffset(6), "offset just past newline is column 1")
+}
+
+func TestColumnOfOffset_MidLine(t *testing.T) {
+	f := &File{Source: []byte("line1\nline2\n")}
+	// 'i' in "line1" is at offset 1 → column 2.
+	assert.Equal(t, 2, f.ColumnOfOffset(1))
+	// '1' in "line2" is at offset 10 → 10-6+1 = 5.
+	assert.Equal(t, 5, f.ColumnOfOffset(10))
+}
+
+func TestColumnOfOffset_PastEOFClamps(t *testing.T) {
+	// Offsets past len(Source) clamp to EOF; the result reflects the
+	// position one past the final character on the last line.
+	src := []byte("abc")
+	f := &File{Source: src}
+	// EOF is offset 3, line starts at 0 → column 4.
+	assert.Equal(t, 4, f.ColumnOfOffset(999))
+}
+
+func TestColumnOfOffset_AtNewline(t *testing.T) {
+	// The newline itself sits at the end of its line.
+	f := &File{Source: []byte("ab\nc")}
+	// '\n' is at offset 2 → column 3.
+	assert.Equal(t, 3, f.ColumnOfOffset(2))
+}
+
+// --- NewParser / PIBlockParserPrioritized forwarders ---
+
+// TestNewParser_ReturnsNonNil pins the public forwarder: a rule
+// re-parsing a document (for example, to consult the link-reference
+// map after a fix has rewritten anchors) must get a parser, not a
+// nil interface that would panic on the first Parse call.
+func TestNewParser_ReturnsNonNil(t *testing.T) {
+	p := NewParser()
+	require.NotNil(t, p, "NewParser must return a usable parser.Parser")
+}
+
+// TestPIBlockParserPrioritized_ReturnsRegisteredParser pins the
+// public forwarder: internal/schema registers this parser directly
+// to bring goldmark's view of `<?…?>` blocks in line with mdsmith's.
+// The returned PrioritizedValue must carry a non-nil Value so the
+// registration is meaningful.
+func TestPIBlockParserPrioritized_ReturnsRegisteredParser(t *testing.T) {
+	pv := PIBlockParserPrioritized()
+	require.NotNil(t, pv.Value, "PI block parser value must be non-nil")
+}
+
 // PIBlockParser edge cases and extractPINameBytes unit tests live
 // with the canonical implementation in pkg/markdown
 // (TestPIBlockParser_*, TestExtractPINameBytes).

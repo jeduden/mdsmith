@@ -80,6 +80,27 @@ func TestCheapBounds(t *testing.T) {
 	}
 }
 
+// TestSentencePreview pins the short-and-truncated branches of the
+// preview helper. The Check-path tests above only ever fire on
+// sentences longer than the truncation limit (MaxWords default 40 vs
+// preview limit 10), so the short branch — sentence shorter than the
+// limit, returned verbatim — was uncovered in the integration
+// pyramid. Both cases are pinned here as a unit.
+func TestSentencePreview(t *testing.T) {
+	t.Run("short sentence is returned verbatim", func(t *testing.T) {
+		got := sentencePreview("just three words", 10)
+		assert.Equal(t, `"just three words"`, got)
+	})
+	t.Run("long sentence is truncated with ellipsis", func(t *testing.T) {
+		got := sentencePreview("one two three four five six seven", 3)
+		assert.Equal(t, `"one two three ..."`, got)
+	})
+	t.Run("leading and trailing whitespace is trimmed before split", func(t *testing.T) {
+		got := sentencePreview("   alpha   beta   ", 10)
+		assert.Equal(t, `"alpha beta"`, got)
+	})
+}
+
 // The skip guard must be sound: whenever cheapBounds is within both
 // limits, the full Punkt-based Check must produce zero diagnostics.
 // This pins the invariant "Punkt sentence count <= terminal-punct +
@@ -347,6 +368,17 @@ func TestApplySettings_InvalidType(t *testing.T) {
 	r := &Rule{MaxSentences: 6, MaxWords: 40}
 	err := r.ApplySettings(map[string]any{"max-sentences": "not-a-number"})
 	require.Error(t, err, "expected error for non-int max-sentences")
+}
+
+func TestApplySettings_InvalidMaxWordsType(t *testing.T) {
+	// The max-words-per-sentence branch had no negative-path test
+	// despite mirroring max-sentences; without it a regression in
+	// the type-check would only show on a real config error from a
+	// user, not in CI.
+	r := &Rule{MaxSentences: 6, MaxWords: 40}
+	err := r.ApplySettings(map[string]any{"max-words-per-sentence": "not-a-number"})
+	require.Error(t, err, "expected error for non-int max-words-per-sentence")
+	assert.Contains(t, err.Error(), "max-words-per-sentence")
 }
 
 func TestApplySettings_UnknownKey(t *testing.T) {
