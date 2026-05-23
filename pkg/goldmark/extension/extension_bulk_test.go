@@ -129,7 +129,8 @@ func TestFootnote_OpenFailPaths(t *testing.T) {
 		"[^missing-close\n",                          // no closing ]
 		"[^missing-colon] no colon\n",                // ] but no :
 		"[^]: empty label\n",                         // blank label
-		"[^x]:\n",                                    // empty body (pos >= len)
+		"[^x]:\n",                                    // empty body (pos >= len after \n strip)
+		"[^x]:",                                      // no trailing newline at all
 		"[^x]: definition\n",                         // valid (sanity)
 	}
 	for _, src := range srcs {
