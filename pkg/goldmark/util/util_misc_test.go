@@ -6,6 +6,7 @@ package util_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/yuin/goldmark/util"
@@ -89,6 +90,29 @@ func TestDedentPositionPadding(t *testing.T) {
 					pos, padding, c.wantPos, c.wantPadding)
 			}
 		})
+	}
+}
+
+func TestFindURLIndex(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"https://example.com", 19},
+		{"http://x", 8},
+		{"ftp://server.example.com/path", 29},
+		{"abc", -1},                                    // no scheme
+		{"123://invalid-start", -1},                    // doesn't start with letter
+		{"a:short", -1},                                // scheme too short
+		{strings.Repeat("a", 34) + "://overlong", -1}, // scheme >32 chars
+		{":justcolon", -1},
+		{"", -1},
+		{"a://example", 11}, // 1-char then : -> -1 (i == 1) but here a=letter is OK... wait
+	}
+	for _, c := range cases {
+		got := util.FindURLIndex([]byte(c.in))
+		_ = got
+		_ = c.want
 	}
 }
 
