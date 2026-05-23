@@ -7,6 +7,7 @@ package parser
 // a full parse.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -423,6 +424,25 @@ func TestParagraphParser_Close_EmptyParagraph(t *testing.T) {
 	bp.Close(p, text.NewReader([]byte("")), NewContext())
 	if doc.FirstChild() == p {
 		t.Error("empty paragraph should be removed from parent")
+	}
+}
+
+func TestReference_PublicAPI(t *testing.T) {
+	// parser.NewReference + reference's accessors are part of the
+	// public API but unused in the default parse flow (which uses
+	// astReference instead).  Drive them directly.
+	ref := NewReference([]byte("label"), []byte("/dest"), []byte("title"))
+	if string(ref.Label()) != "label" {
+		t.Errorf("Label = %q, want label", ref.Label())
+	}
+	if string(ref.Destination()) != "/dest" {
+		t.Errorf("Destination = %q, want /dest", ref.Destination())
+	}
+	if string(ref.Title()) != "title" {
+		t.Errorf("Title = %q, want title", ref.Title())
+	}
+	if s, ok := ref.(fmt.Stringer); ok {
+		_ = s.String()
 	}
 }
 
