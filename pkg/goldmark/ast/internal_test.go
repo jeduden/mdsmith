@@ -57,6 +57,18 @@ type sentinelErr struct{}
 
 func (sentinelErr) Error() string { return "sentinel" }
 
+func TestCodeBlock_Text_Direct(t *testing.T) {
+	cb := NewCodeBlock()
+	cb.Lines().Append(text.NewSegment(0, 5))
+	_ = cb.Text([]byte("hello world"))
+}
+
+func TestHTMLBlock_Text_Direct(t *testing.T) {
+	hb := NewHTMLBlock(HTMLBlockType6)
+	hb.Lines().Append(text.NewSegment(0, 5))
+	_ = hb.Text([]byte("<div>"))
+}
+
 func TestBaseNode_Text_HeadingWithMixedChildren(t *testing.T) {
 	// Heading doesn't override Text, so it dispatches to
 	// BaseNode.Text.  Drive both branches: a Text child with
