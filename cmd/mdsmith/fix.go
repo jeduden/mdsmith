@@ -286,6 +286,8 @@ type jsonDiag struct {
 	SourceLines     []string     `json:"source_lines,omitempty"`
 	SourceStartLine int          `json:"source_start_line,omitempty"`
 	Explanation     *jsonDiagExp `json:"explanation,omitempty"`
+	Deprecated      bool         `json:"deprecated,omitempty"`
+	ReplacedBy      string       `json:"replaced_by,omitempty"`
 }
 
 // jsonDiagExp is the explanation trailer shape, matching
@@ -327,6 +329,8 @@ func diagsToJSONDiags(diags []lint.Diagnostic) []jsonDiag {
 			SourceLines:     d.SourceLines,
 			SourceStartLine: d.SourceStartLine,
 			Explanation:     exp,
+			Deprecated:      d.Deprecated,
+			ReplacedBy:      d.ReplacedBy,
 		})
 	}
 	return jsonDiags

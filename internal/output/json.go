@@ -21,6 +21,12 @@ type jsonDiagnostic struct {
 	SourceLines     []string         `json:"source_lines,omitempty"`
 	SourceStartLine int              `json:"source_start_line,omitempty"`
 	Explanation     *jsonExplanation `json:"explanation,omitempty"`
+	// Deprecated and ReplacedBy mirror lint.Diagnostic's plan-136
+	// fields so CI scripts can route a deprecation warning without
+	// scanning the message body. Both are omitempty so non-
+	// deprecation diagnostics stay unchanged on the wire.
+	Deprecated bool   `json:"deprecated,omitempty"`
+	ReplacedBy string `json:"replaced_by,omitempty"`
 }
 
 type jsonExplanation struct {
@@ -50,6 +56,8 @@ func (f *JSONFormatter) Format(w io.Writer, diagnostics []lint.Diagnostic) error
 			SourceLines:     d.SourceLines,
 			SourceStartLine: d.SourceStartLine,
 			Explanation:     explanationToJSON(d.Explanation),
+			Deprecated:      d.Deprecated,
+			ReplacedBy:      d.ReplacedBy,
 		})
 	}
 	enc := json.NewEncoder(w)

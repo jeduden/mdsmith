@@ -285,6 +285,56 @@ func TestExplanationToJSON_PopulatesFields(t *testing.T) {
 	}
 }
 
+// TestJSONFormatter_DeprecationFieldsRoundTrip regresses plan 136:
+// the lint.Diagnostic Deprecated / ReplacedBy fields ride through
+// the `mdsmith check --format json` shape so CI scripts can route
+// a deprecation without scanning the message body. Non-deprecation
+// diagnostics keep their previous wire form via the omitempty
+// JSON tags.
+func TestJSONFormatter_DeprecationFieldsRoundTrip(t *testing.T) {
+	f := &JSONFormatter{}
+	var buf bytes.Buffer
+
+	diagnostics := []lint.Diagnostic{
+		{
+			File:       "doc.md",
+			Line:       2,
+			Column:     1,
+			RuleID:     "MDS020",
+			RuleName:   "required-structure",
+			Severity:   lint.Warning,
+			Message:    "legacy_owner: deprecated field",
+			Deprecated: true,
+			ReplacedBy: "owner",
+		},
+		{
+			File:     "doc.md",
+			Line:     3,
+			Column:   1,
+			RuleID:   "MDS001",
+			RuleName: "line-length",
+			Severity: lint.Error,
+			Message:  "line too long",
+		},
+	}
+	require.NoError(t, f.Format(&buf, diagnostics))
+
+	var raw []map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &raw))
+	require.Len(t, raw, 2)
+
+	assert.Equal(t, true, raw[0]["deprecated"],
+		"deprecation diagnostic should carry deprecated=true")
+	assert.Equal(t, "owner", raw[0]["replaced_by"])
+
+	_, hasDep := raw[1]["deprecated"]
+	_, hasRb := raw[1]["replaced_by"]
+	assert.False(t, hasDep,
+		"non-deprecation diagnostic omits the deprecated field")
+	assert.False(t, hasRb,
+		"non-deprecation diagnostic omits replaced_by")
+}
+
 // TestExplanationToJSON_EmptyLeavesIsEmptySlice pins that an empty
 // Leaves input produces an empty (non-nil) Leaves slice — the
 // encoder relies on the empty form for JSON `[]` output.
