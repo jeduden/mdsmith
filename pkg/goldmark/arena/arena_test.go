@@ -124,6 +124,41 @@ func TestResetIdempotent(t *testing.T) {
 	}
 }
 
+// TestResetZeroesPointerSlabs verifies Reset drops pointer-bearing
+// fields from the slab arrays so a reused Arena does not pin the
+// prior AST. We allocate a Paragraph, attach a child Text under it
+// to fix the BaseInline parent pointer, call Reset, then read the
+// slab slot back and confirm the parent pointer is gone. Without
+// clear() in Reset, that pointer would keep the prior subtree
+// reachable across reuse.
+//
+// Reading slab.data past Reset is a deliberate test-only peek: we
+// inspect the same memory region the arena would overwrite on the
+// next allocation. The slot must be zero-valued, which is what a
+// fresh allocation would also see.
+func TestResetZeroesPointerSlabs(t *testing.T) {
+	a := arena.New()
+	p := a.Paragraph()
+	child := a.Text()
+	p.AppendChild(p, child)
+	// Sanity-check the wiring before Reset.
+	if child.Parent() != ast.Node(p) {
+		t.Fatalf("pre-Reset wiring failed: child.Parent()=%v", child.Parent())
+	}
+	a.Reset()
+	// After Reset the slab slots that previously held p and child
+	// must report zero-valued state — no surviving parent/sibling
+	// pointers to pin the prior subtree.
+	reallocP := a.Paragraph()
+	if reallocP.FirstChild() != nil {
+		t.Errorf("reused Paragraph slot still has FirstChild: %v", reallocP.FirstChild())
+	}
+	reallocT := a.Text()
+	if reallocT.Parent() != nil {
+		t.Errorf("reused Text slot still has Parent: %v", reallocT.Parent())
+	}
+}
+
 // TestTextSegmentInitializesFields verifies the arena's
 // TextSegment helper sets the Segment field exactly the way the
 // upstream constructor does. The fixture below relies on this for

@@ -93,13 +93,26 @@ func (a *Arena) Reset() {
 	if a == nil {
 		return
 	}
+	// Zero the live portion of each pointer-bearing slab before
+	// reslicing so a reused Arena does not pin the prior AST
+	// through stale parent/sibling pointers (ast.BaseNode et al.)
+	// or through Segments.grow back-pointers. Without clear(), the
+	// GC sees the old structs as still reachable via the slab
+	// array and the previously-parsed tree (plus its arena slabs)
+	// stays alive across Reset.
+	//
+	// text.Segment has no pointers, so the segment-backing slabs
+	// only need their length reset.
 	for _, s := range a.texts {
+		clear(s.data)
 		s.data = s.data[:0]
 	}
 	for _, s := range a.paragraphs {
+		clear(s.data)
 		s.data = s.data[:0]
 	}
 	for _, s := range a.segmentsObjs {
+		clear(s.data)
 		s.data = s.data[:0]
 	}
 	for _, s := range a.segments {
