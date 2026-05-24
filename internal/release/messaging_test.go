@@ -131,3 +131,27 @@ func TestRunMdsmithExtract_AgainstRepoRoot(t *testing.T) {
 	assert.NotEmpty(t, envelope.Frontmatter["tagline"])
 	assert.NotEmpty(t, envelope.Frontmatter["lead"])
 }
+
+// TestRunMdsmithExtract_NonRepoCwd hits the ExitError branch:
+// pointing the shell-out at a tempdir without a go.mod makes
+// `go run` exit with status 1, so runMdsmithExtract formats and
+// returns the ExitError-wrapped failure.
+func TestRunMdsmithExtract_NonRepoCwd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles cmd/mdsmith; skipped under -short")
+	}
+	_, err := runMdsmithExtract(t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mdsmith extract messaging")
+}
+
+// TestRunMdsmithExtract_BadExecutable hits the non-ExitError
+// fallback: with PATH cleared, exec.LookPath can't find `go`,
+// so cmd.Output returns an exec.ErrNotFound (NOT an ExitError),
+// and the fallback fmt.Errorf branch runs.
+func TestRunMdsmithExtract_BadExecutable(t *testing.T) {
+	t.Setenv("PATH", "")
+	_, err := runMdsmithExtract(repoRoot(t))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mdsmith extract messaging")
+}

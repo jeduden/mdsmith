@@ -303,6 +303,49 @@ func TestFormatDrift_EmptyOnCleanTree(t *testing.T) {
 	assert.Empty(t, FormatDrift(nil))
 }
 
+func TestOneLineForDrift_TruncatesLongValues(t *testing.T) {
+	// A value longer than the 117-rune budget gets cut and the
+	// "..." suffix appended.
+	long := strings.Repeat("x", 200)
+	got := oneLineForDrift(long)
+	assert.Equal(t, 120, len(got))
+	assert.True(t, strings.HasSuffix(got, "..."))
+}
+
+func TestOneLineForDrift_TruncatesByRunesNotBytes(t *testing.T) {
+	// 200 em-dashes (3 bytes each in UTF-8) must truncate by
+	// rune so the output stays valid UTF-8.
+	long := strings.Repeat("—", 200)
+	got := oneLineForDrift(long)
+	assert.True(t, strings.HasSuffix(got, "..."))
+	for _, r := range got {
+		assert.NotEqual(t, '�', r, "truncation split a rune")
+	}
+}
+
+func TestApplyMessaging_FailsOnReadError(t *testing.T) {
+	// Replace a target file with a directory of the same name;
+	// ReadFile then returns an error that is not fs.ErrNotExist
+	// (it is "is a directory"). applyTarget must surface the
+	// error rather than the missing-file branch.
+	root := applyTestRoot(t)
+	pkg := filepath.Join(root, "npm/mdsmith/package.json")
+	require.NoError(t, os.Remove(pkg))
+	require.NoError(t, os.Mkdir(pkg, 0o755))
+	_, err := ApplyMessaging(root, sampleMessaging())
+	require.Error(t, err)
+}
+
+func TestCheckMessaging_FailsOnReadError(t *testing.T) {
+	// Same directory-instead-of-file trick on the Check side.
+	root := applyTestRoot(t)
+	pkg := filepath.Join(root, "npm/mdsmith/package.json")
+	require.NoError(t, os.Remove(pkg))
+	require.NoError(t, os.Mkdir(pkg, 0o755))
+	_, err := CheckMessaging(root, sampleMessaging())
+	require.Error(t, err)
+}
+
 // Local IO helpers — kept tiny here to avoid a dependency on
 // the unexported `release` Toolkit FS surface in tests that
 // only need the on-disk default.

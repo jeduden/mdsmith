@@ -405,6 +405,36 @@ func TestYAMLFrontmatterField_PatchValue_MissingPath(t *testing.T) {
 
 // ----- MarkdownFragment ---------------------------------------------------
 
+func TestYAMLFrontmatterField_ReadValue_MalformedYAML(t *testing.T) {
+	// Invalid YAML inside the delimiters fails Unmarshal.
+	body := []byte("---\n: : :\n---\nBody.\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"summary"},
+	}).ReadValue(body)
+	require.Error(t, err)
+}
+
+func TestYAMLFrontmatterField_ReadValue_EmptyFrontmatter(t *testing.T) {
+	// Empty frontmatter block makes findYAMLNode hit the
+	// "empty frontmatter" branch.
+	body := []byte("---\n---\nBody.\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"summary"},
+	}).ReadValue(body)
+	require.Error(t, err)
+}
+
+func TestYAMLFrontmatterField_PatchValue_ParentNotAMap(t *testing.T) {
+	// Path traversal hits a scalar before reaching the leaf;
+	// findYAMLNode reports "parent is not a map".
+	body := []byte("---\nhero: a string, not a map\n---\nBody.\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"hero", "lead"},
+	}).PatchValue(body, "x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a map")
+}
+
 func TestMarkdownFragment_PatchValue(t *testing.T) {
 	out, err := MarkdownFragment{}.PatchValue(nil, "Hello world.")
 	require.NoError(t, err)
