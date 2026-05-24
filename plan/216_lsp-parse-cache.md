@@ -8,7 +8,7 @@ summary: >-
   The LSP re-parses the active document on every
   textDocument/didChange. Parse is ~30 % of CPU on
   the corpus benchmark; a per-document cache keyed
-  by `(uri, version)` returns the cached
+  by `(absPath, version)` returns the cached
   `*lint.File` when the document text has not
   changed between the runLint trigger and the
   RunSource call. Mirrors the existing RunCache
@@ -81,7 +81,7 @@ type ParseCache struct {
 
 type parseCacheEntry struct {
     version int    // LSP textDocument version
-    file    *lint.File
+    file    *File
 }
 ```
 
@@ -93,8 +93,8 @@ older entry is always dead on the next miss.
 Lookup signature:
 
 ```go
-func (c *ParseCache) Get(absPath string, version int) (*lint.File, bool)
-func (c *ParseCache) Put(absPath string, version int, f *lint.File)
+func (c *ParseCache) Get(absPath string, version int) (*File, bool)
+func (c *ParseCache) Put(absPath string, version int, f *File)
 func (c *ParseCache) Invalidate(absPath string)
 ```
 
