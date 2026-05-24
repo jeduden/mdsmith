@@ -31,6 +31,28 @@ type runCacheEntry struct {
 	val  any
 }
 
+// ParsedSchemaMetadata is the optional interface a parsed-schema
+// cache value (whatever its concrete type) implements so RunCache.
+// Invalidate can drop downstream entries that depend on the
+// invalidated schema. The rule package's schemaParseResult satisfies
+// it; the lint package only sees the surface.
+//
+//   - SchemaIncludes returns absolute paths of every fragment the
+//     schema's <?include?> directives reached. Invalidate(fragment)
+//     uses the reverse of this set (built lazily as ParsedSchema slots
+//     populate) to evict every schema that includes fragment.
+//   - SchemaCUESources returns every distinct CUE source string the
+//     schema's frontmatter produced. Invalidate(schemaPath) drops the
+//     matching CompiledCUE entries so an LSP edit that retypes a
+//     frontmatter constraint does not leak compiled values forever.
+//
+// Both methods may return nil for a parsed schema that pulled in no
+// fragments or has no frontmatter CUE source.
+type ParsedSchemaMetadata interface {
+	SchemaIncludes() []string
+	SchemaCUESources() []string
+}
+
 // NewRunCache returns an empty cache ready to be installed on
 // engine.Runner.RunCache.
 func NewRunCache() *RunCache {

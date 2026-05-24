@@ -11,9 +11,36 @@ import (
 // parsedSchema pointer plus the parse error. Caching the error
 // alongside the value lets a broken schema short-circuit on the
 // second host file's lookup instead of re-running parseSchema.
+//
+// includes and cueSources carry the parsed schema's dependency
+// footprint so RunCache.Invalidate can evict downstream cache
+// entries when a fragment or schema source the parse depended on
+// changes (the LSP edit-then-invalidate loop). Both are slices
+// rather than scalars so a future schema with multiple frontmatter
+// CUE expressions can populate them without a re-shape; today
+// includes is the resolved <?include?> chain and cueSources
+// is exactly one entry (the schema's frontmatter CUE).
 type schemaParseResult struct {
-	schema *parsedSchema
-	err    error
+	schema     *parsedSchema
+	err        error
+	includes   []string
+	cueSources []string
+}
+
+// SchemaIncludes implements lint.ParsedSchemaMetadata so
+// RunCache.Invalidate can read the include chain without a
+// dependency on this package's private types. Returns nil for a
+// schema that reached no <?include?> directives.
+func (r schemaParseResult) SchemaIncludes() []string {
+	return r.includes
+}
+
+// SchemaCUESources implements lint.ParsedSchemaMetadata. Returns
+// every distinct CUE source string the schema's frontmatter
+// produced; nil when the schema declared no frontmatter
+// constraints.
+func (r schemaParseResult) SchemaCUESources() []string {
+	return r.cueSources
 }
 
 // cachedParseSchema reads + parses the schema for f, going through
