@@ -1,7 +1,7 @@
 ---
 id: 202
 title: Split cmd/mdsmith/main.go into per-subcommand files
-status: "🔲"
+status: "✅"
 summary: >-
   main.go is 1 306 lines with six handlers over
   50 lines. Move each oversized handler to its own
@@ -41,11 +41,11 @@ and [mergedriver.go](../cmd/mdsmith/mergedriver.go).
 
 ## Acceptance Criteria
 
-- [ ] `cmd/mdsmith/main.go` is under
+- [x] `cmd/mdsmith/main.go` is under
   700 lines.
-- [ ] No handler body exceeds ~50 lines.
-- [ ] `check.go`, `fix.go`, `help.go`
+- [x] No handler body exceeds ~50 lines.
+- [x] `check.go`, `fix.go`, `help.go`
   exist under `cmd/mdsmith/`.
-- [ ] `go build ./...` clean.
-- [ ] `go test ./...` passes.
-- [ ] `go tool golangci-lint run` clean.
+- [x] `go build ./...` clean.
+- [x] `go test ./...` passes.
+- [x] `go tool golangci-lint run` clean.
