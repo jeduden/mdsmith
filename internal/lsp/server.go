@@ -70,6 +70,9 @@ type Server struct {
 	shutdown         atomic.Bool // we are tearing down (any cause)
 	shutdownReceived atomic.Bool // client sent a `shutdown` request
 	exitRequested    atomic.Bool // client sent an `exit` notification
+	// previewFallbackLogged ensures the capability-fallback warning is
+	// sent to the client output channel at most once per session.
+	previewFallbackLogged atomic.Bool
 
 	// runCache is the engine read cache shared across every runLint
 	// call so two host buffers that catalog over the same docs/**
@@ -87,6 +90,7 @@ type Server struct {
 type userSettings struct {
 	ConfigPath string `json:"config"`
 	Run        string `json:"run"`
+	PreviewFix bool   `json:"previewFix"`
 }
 
 // clientSettings is the JSON shape we accept from
@@ -100,6 +104,7 @@ type userSettings struct {
 type clientSettings struct {
 	ConfigPath *string `json:"config"`
 	Run        *string `json:"run"`
+	PreviewFix *bool   `json:"previewFix"`
 }
 
 // runMode enumerates valid `mdsmith.run` values. Anything else is
@@ -1075,6 +1080,59 @@ func (s *Server) handleCodeAction(msg *requestMessage) {
 	_ = s.t.writeResponse(msg.ID, actions)
 }
 
+// clientSupportsAnnotatedEdits reports whether the client advertised
+// both documentChanges and changeAnnotationSupport in its initialize
+// capabilities. Both must be present for the server to use the
+// AnnotatedTextEdit / changeAnnotations wire shape.
+func (s *Server) clientSupportsAnnotatedEdits() bool {
+	s.clientCapsMu.RLock()
+	defer s.clientCapsMu.RUnlock()
+	caps := s.clientCaps
+	if caps.Workspace == nil || caps.Workspace.WorkspaceEdit == nil {
+		return false
+	}
+	we := caps.Workspace.WorkspaceEdit
+	return we.DocumentChanges && we.ChangeAnnotationSupport != nil
+}
+
+// useAnnotatedEdits returns true when the mdsmith.previewFix setting is
+// on AND the client advertises the required capabilities. When the
+// setting is on but the client lacks support the fallback is logged once
+// per session to the client output channel.
+func (s *Server) useAnnotatedEdits() bool {
+	s.settingsMu.RLock()
+	preview := s.settings.PreviewFix
+	s.settingsMu.RUnlock()
+	if !preview {
+		return false
+	}
+	if s.clientSupportsAnnotatedEdits() {
+		return true
+	}
+	// Log the fallback at most once per session.
+	if s.previewFallbackLogged.CompareAndSwap(false, true) {
+		s.clientCapsMu.RLock()
+		caps := s.clientCaps
+		s.clientCapsMu.RUnlock()
+		var reason string
+		noDocChanges := caps.Workspace == nil ||
+			caps.Workspace.WorkspaceEdit == nil ||
+			!caps.Workspace.WorkspaceEdit.DocumentChanges
+		if noDocChanges {
+			reason = "client does not support documentChanges"
+		} else {
+			reason = "client does not support changeAnnotationSupport"
+		}
+		msg := "mdsmith: previewFix is on but " + reason + "; falling back to legacy changes form"
+		s.logger.Printf("%s", msg)
+		_ = s.t.writeNotification("window/logMessage", logMessageParams{
+			Type:    messageTypeWarning,
+			Message: msg,
+		})
+	}
+	return false
+}
+
 // computeCodeActions returns the set of code actions for one
 // codeAction request. When `Only` is supplied we short-circuit kinds
 // the client did not ask for so we don't run fix passes whose output
@@ -1091,79 +1149,112 @@ func (s *Server) computeCodeActions(
 ) []codeAction {
 	wantQuickFix := wantsKind(p.Context.Only, kindQuickFix)
 	wantFixAll := wantsKind(p.Context.Only, kindSourceFixAll)
+	annotated := s.useAnnotatedEdits()
 
 	actions := make([]codeAction, 0, len(p.Context.Diagnostics)+1)
-
 	if wantQuickFix {
-		// Cache fix results per rule so we run one fix.SourceWithRules
-		// pass per distinct rule. nil entries mark rules whose fix is
-		// either unavailable or a no-op against the current buffer.
-		ruleEdits := make(map[string]*workspaceEdit)
-		for _, d := range p.Context.Diagnostics {
-			if d.Data == nil || d.Data.RuleName == "" {
-				continue
-			}
-			rule := d.Data.RuleName
-			edit, cached := ruleEdits[rule]
-			if !cached {
-				edit = s.quickFixEditFor(rule, doc, cfg, root, p.TextDocument.URI)
-				ruleEdits[rule] = edit
-			}
-			if edit == nil {
-				continue
-			}
-			actions = append(actions, codeAction{
-				Title:       quickFixTitle(rule),
-				Kind:        kindQuickFix,
-				Diagnostics: []Diagnostic{d},
-				Edit:        edit,
-			})
-		}
+		actions = s.appendQuickFixActions(actions, p, doc, cfg, root, annotated)
 	}
-
 	if wantFixAll {
-		// fix.Source's Path is fed to config glob matching (ignore /
-		// override / kind-assignment), which works against repo-style
-		// relative paths. Pass the workspace-relative form so LSP
-		// fixes match `mdsmith fix` on disk, and a SourceFS rooted
-		// at the document's real directory so include/catalog rules
-		// still resolve neighbour files independent of the process
-		// CWD.
-		relPath := workspaceRelative(root, doc.path)
-		fixed, err := fixpkg.Source(fixpkg.SourceOptions{
-			Config:           cfg,
-			Rules:            s.rules,
-			Path:             relPath,
-			Source:           doc.text,
-			RootDir:          root,
-			SourceFS:         dirFSForPath(doc.path),
-			StripFrontMatter: frontMatterEnabled(cfg),
-			MaxInputBytes:    s.resolveMaxInputBytes(cfg),
-		})
-		if err == nil && !bytes.Equal(fixed, doc.text) {
-			actions = append(actions, codeAction{
-				Title: titleFixAllMdsmith,
-				Kind:  kindSourceFixAll,
-				Edit:  fullFileEdit(p.TextDocument.URI, doc.text, fixed),
-			})
-		}
+		actions = s.appendFixAllAction(actions, p, doc, cfg, root, annotated)
 	}
-
 	return actions
 }
 
-// quickFixEditFor returns the WorkspaceEdit produced by running just
-// `rule` over the buffer, or nil if the rule is not fixable or its
+// appendQuickFixActions computes per-rule quick-fix actions and appends
+// them to actions. Each rule's fix.SourceWithRules call is deduped: one
+// pass per distinct rule regardless of how many diagnostics carry it.
+// The same *workspaceEdit pointer is reused across actions for the same
+// rule so the fix only runs once even on noisy files.
+func (s *Server) appendQuickFixActions(
+	actions []codeAction,
+	p codeActionParams, doc *document, cfg *config.Config, root string,
+	annotated bool,
+) []codeAction {
+	ruleEdits := make(map[string]*workspaceEdit)
+	ruleSeen := make(map[string]bool)
+	for _, d := range p.Context.Diagnostics {
+		if d.Data == nil || d.Data.RuleName == "" {
+			continue
+		}
+		rule := d.Data.RuleName
+		if !ruleSeen[rule] {
+			fixed := s.quickFixBytesFor(rule, doc, cfg, root)
+			if fixed != nil {
+				ruleEdits[rule] = buildFileEdit(p.TextDocument.URI, doc.text, fixed,
+					annotated, "mdsmith-fix-"+rule, quickFixTitle(rule))
+			}
+			ruleSeen[rule] = true
+		}
+		edit := ruleEdits[rule]
+		if edit == nil {
+			continue
+		}
+		actions = append(actions, codeAction{
+			Title:       quickFixTitle(rule),
+			Kind:        kindQuickFix,
+			Diagnostics: []Diagnostic{d},
+			Edit:        edit,
+		})
+	}
+	return actions
+}
+
+// appendFixAllAction computes the source.fixAll.mdsmith action and
+// appends it to actions when the fix produces a change.
+func (s *Server) appendFixAllAction(
+	actions []codeAction,
+	p codeActionParams, doc *document, cfg *config.Config, root string,
+	annotated bool,
+) []codeAction {
+	// fix.Source's Path is fed to config glob matching (ignore /
+	// override / kind-assignment), which works against repo-style
+	// relative paths. Pass the workspace-relative form so LSP
+	// fixes match `mdsmith fix` on disk, and a SourceFS rooted
+	// at the document's real directory so include/catalog rules
+	// still resolve neighbour files independent of the process
+	// CWD.
+	relPath := workspaceRelative(root, doc.path)
+	fixed, err := fixpkg.Source(fixpkg.SourceOptions{
+		Config:           cfg,
+		Rules:            s.rules,
+		Path:             relPath,
+		Source:           doc.text,
+		RootDir:          root,
+		SourceFS:         dirFSForPath(doc.path),
+		StripFrontMatter: frontMatterEnabled(cfg),
+		MaxInputBytes:    s.resolveMaxInputBytes(cfg),
+	})
+	if err == nil && !bytes.Equal(fixed, doc.text) {
+		edit := buildFileEdit(p.TextDocument.URI, doc.text, fixed,
+			annotated, "mdsmith-fix-all", titleFixAllMdsmith)
+		actions = append(actions, codeAction{
+			Title: titleFixAllMdsmith,
+			Kind:  kindSourceFixAll,
+			Edit:  edit,
+		})
+	}
+	return actions
+}
+
+// buildFileEdit constructs a WorkspaceEdit in either the annotated
+// (documentChanges + changeAnnotations) or legacy (changes map) shape.
+func buildFileEdit(uri string, before, after []byte, annotated bool, id, label string) *workspaceEdit {
+	if annotated {
+		return fullFileEditAnnotated(uri, before, after, id, label)
+	}
+	return fullFileEdit(uri, before, after)
+}
+
+// quickFixBytesFor returns the fixed document bytes produced by running
+// just `rule` over the buffer, or nil if the rule is not fixable or its
 // fix is a no-op against the current buffer.
 //
-// The returned edit replaces the entire document because rules
-// produce whole-file-fix output rather than per-range edits. The
-// quick fix therefore covers every occurrence of the rule, not only
-// the diagnostic the user clicked on; the action title reflects this
-// ("Fix all <rule> with mdsmith").
-func (s *Server) quickFixEditFor(
-	rule string, doc *document, cfg *config.Config, root, uri string,
-) *workspaceEdit {
+// The caller constructs the WorkspaceEdit in the appropriate shape
+// (legacy changes map or annotated documentChanges).
+func (s *Server) quickFixBytesFor(
+	rule string, doc *document, cfg *config.Config, root string,
+) []byte {
 	if !isFixable(s.rules, rule) {
 		return nil
 	}
@@ -1181,7 +1272,7 @@ func (s *Server) quickFixEditFor(
 	if err != nil || bytes.Equal(fixed, doc.text) {
 		return nil
 	}
-	return fullFileEdit(uri, doc.text, fixed)
+	return fixed
 }
 
 // wantsKind reports whether the client's `Only` filter accepts the
@@ -1228,6 +1319,38 @@ func fullFileEdit(uri string, before, after []byte) *workspaceEdit {
 					},
 					NewText: string(after),
 				},
+			},
+		},
+	}
+}
+
+// fullFileEditAnnotated returns a WorkspaceEdit using the LSP 3.16
+// documentChanges + changeAnnotations path. The annotation is flagged
+// needsConfirmation: true so VS Code routes the edit through Refactor
+// Preview instead of applying it immediately.
+func fullFileEditAnnotated(uri string, before, after []byte, annotationID, label string) *workspaceEdit {
+	endLine, endChar := documentEndPosition(before)
+	return &workspaceEdit{
+		DocumentChanges: []textDocumentEdit{
+			{
+				TextDocument: optionalVersionedTextDocumentIdentifier{URI: uri},
+				Edits: []annotatedTextEdit{
+					{
+						Range: Range{
+							Start: Position{Line: 0, Character: 0},
+							End:   Position{Line: endLine, Character: endChar},
+						},
+						NewText:      string(after),
+						AnnotationID: annotationID,
+					},
+				},
+			},
+		},
+		ChangeAnnotations: map[string]changeAnnotation{
+			annotationID: {
+				Label:             label,
+				Description:       "Preview before applying",
+				NeedsConfirmation: true,
 			},
 		},
 	}
@@ -1411,6 +1534,9 @@ func (s *Server) fetchClientSettings(ctx context.Context) {
 		}
 		if next.Run != nil {
 			s.settings.Run = *next.Run
+		}
+		if next.PreviewFix != nil {
+			s.settings.PreviewFix = *next.PreviewFix
 		}
 		s.settingsMu.Unlock()
 		// Reload config in case `mdsmith.config` changed, then

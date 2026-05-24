@@ -106,6 +106,30 @@ prints:
   current buffer; produces the same bytes the on-disk fixer
   would write.
 
+### Fix preview (ChangeAnnotation)
+
+Set `mdsmith.previewFix: true` to open Refactor Preview before
+any fix lands. Both capabilities below must appear in
+`initialize`:
+
+- `workspace.workspaceEdit.documentChanges`
+- `workspace.workspaceEdit.changeAnnotationSupport`
+
+When both are present, edits use `AnnotatedTextEdit` with
+`needsConfirmation: true` (LSP 3.16).
+
+Annotation IDs:
+
+- Per-rule quick fix: `mdsmith-fix-<rule-name>` (e.g.
+  `mdsmith-fix-no-trailing-spaces`)
+- `source.fixAll.mdsmith`: `mdsmith-fix-all`
+
+`<rule-name>` is the name string, not the rule code.
+
+Missing either capability silently falls back to the
+legacy `changes` map. One warning is logged per session
+to `window/logMessage` naming the missing capability.
+
 ## Symbol navigation
 
 The server indexes the workspace into a symbol graph. The
@@ -252,39 +276,17 @@ error's `data.conflict` names the colliding symbol.
 
 ## Configuration discovery
 
-The server uses workspace-wide discovery. It starts at the
-workspace root supplied at `initialize` (`rootUri` or the first
-`workspaceFolders` entry) and walks upward until it finds a
-`.mdsmith.yml` or hits a `.git` boundary — the same walk
-`mdsmith check` uses from its CWD. Every open buffer shares the
-resolved config; the server does not re-discover per file.
-
-Clients override the walk with `mdsmith.config`,
-which the server pulls via `workspace/configuration`.
-Edits to `.mdsmith.yml` invalidate the cached
-config. The server then re-lints every open document
-immediately.
-
-## Example
-
-For client setup and troubleshooting see the
-[VS Code guide](../../guides/editors/vscode.md) or the
-[Claude Code plugin README](../../../editors/claude-code/README.md).
-Other LSP clients can spawn the binary directly:
-
-```bash
-mdsmith lsp
-```
+Discovery is workspace-wide. Starting at the workspace root
+from `initialize`, the server walks up until it finds a
+`.mdsmith.yml` or hits `.git`. Every open buffer shares the
+resolved config. Set `mdsmith.config` to override the walk.
+Edits to `.mdsmith.yml` re-lint all open documents immediately.
 
 ## Performance
 
-The squiggle-update path is benchmarked under `internal/lsp/`.
-Plan 121 sets a p95 budget of 150 ms on a 1 000-line buffer and
-500 ms on a 5 000-line buffer. Run the benchmark locally with:
-
-```bash
-go test -run=^$ -bench=. ./internal/lsp/...
-```
+Run `go test -run=^$ -bench=. ./internal/lsp/...` to reproduce
+the p95 latency benchmarks (150 ms on 1 000-line, 500 ms on
+5 000-line buffers).
 
 ## Exit codes
 
@@ -295,9 +297,7 @@ go test -run=^$ -bench=. ./internal/lsp/...
 
 ## See also
 
-- [`mdsmith check`](check.md) — the CLI surface that the
-  server reuses
-- [`mdsmith fix`](fix.md) — the fix pipeline behind both
-  code actions
+- [`mdsmith check`](check.md) — the CLI surface that the server reuses
+- [`mdsmith fix`](fix.md) — the fix pipeline behind both code actions
 - [VS Code guide](../../guides/editors/vscode.md) — install,
   settings, troubleshooting

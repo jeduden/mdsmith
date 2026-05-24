@@ -68,13 +68,14 @@ The extension contributes the following settings.
 Project-level overrides go in `.vscode/settings.json`;
 global preferences go in your user settings.
 
-| Setting                | Default     | Purpose                                                                                           |
-| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
-| `mdsmith.path`         | `"mdsmith"` | Default runs the bundled per-platform binary; an absolute path overrides it (see Troubleshooting) |
-| `mdsmith.config`       | `""`        | Override `-c` config path (absolute or workspace)                                                 |
-| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                        |
-| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                             |
-| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity: `off`, `messages`, `verbose`                                                 |
+| Setting                | Default     | Purpose                                                                                                 |
+| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `mdsmith.path`         | `"mdsmith"` | Default runs the bundled per-platform binary; an absolute path overrides it (see Troubleshooting)       |
+| `mdsmith.config`       | `""`        | Override `-c` config path (absolute or workspace)                                                       |
+| `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                              |
+| `mdsmith.fixOnSave`    | `false`     | Wires `source.fixAll.mdsmith` on save                                                                   |
+| `mdsmith.previewFix`   | `false`     | Open Refactor Preview before applying any fix (see [Preview before applying](#preview-before-applying)) |
+| `mdsmith.trace.server` | `"off"`     | LSP trace verbosity: `off`, `messages`, `verbose`                                                       |
 
 `mdsmith.path` is read by the extension to spawn the
 server. The remaining settings are pulled by the
@@ -128,6 +129,40 @@ command expects. Bind it to save by setting:
 
 Or set `mdsmith.fixOnSave` to `true`, which wires the
 same behavior without touching `editor.codeActionsOnSave`.
+
+## Preview before applying
+
+Set `mdsmith.previewFix` to `true` to route every fix
+through VS Code's Refactor Preview pane. With the
+setting on, each code action — whether triggered from
+the lightbulb or from `editor.codeActionsOnSave` —
+carries a `ChangeAnnotation` flagged
+`needsConfirmation: true`. VS Code opens the diff
+pane before writing any change. You accept or reject
+per action.
+
+The preview requires VS Code 1.85 or later (which
+advertises `changeAnnotationSupport` in the LSP
+`initialize` handshake). On older clients, or on
+editors that do not advertise this capability, the
+server falls back to the immediate-apply form and
+logs one warning to the Output channel naming the
+missing capability.
+
+The setting interacts with `mdsmith.fixOnSave` as
+follows:
+
+| `previewFix` | `fixOnSave` | Behavior                                  |
+| ------------ | ----------- | ----------------------------------------- |
+| `false`      | `false`     | Click lightbulb → fix applied immediately |
+| `false`      | `true`      | Save → fix applied immediately            |
+| `true`       | `false`     | Click lightbulb → Refactor Preview opens  |
+| `true`       | `true`      | Save → Refactor Preview opens             |
+
+Leave `mdsmith.previewFix` off (the default) for
+day-to-day use. Turn it on temporarily when reviewing
+a batch of fixes, or in a project where you want
+explicit confirmation before any automated edit lands.
 
 ## Outline and Go to Definition
 

@@ -82,6 +82,20 @@ type workspaceClientCapabilities struct {
 	DidChangeWatchedFiles *struct {
 		DynamicRegistration bool `json:"dynamicRegistration,omitempty"`
 	} `json:"didChangeWatchedFiles,omitempty"`
+	WorkspaceEdit *workspaceEditCapabilities `json:"workspaceEdit,omitempty"`
+}
+
+// workspaceEditCapabilities mirrors LSP §3.16.4
+// WorkspaceEditClientCapabilities. DocumentChanges and
+// ChangeAnnotationSupport must both be set for the server to use the
+// annotated edit path.
+type workspaceEditCapabilities struct {
+	DocumentChanges         bool                        `json:"documentChanges,omitempty"`
+	ChangeAnnotationSupport *changeAnnotationSupportCap `json:"changeAnnotationSupport,omitempty"`
+}
+
+type changeAnnotationSupportCap struct {
+	GroupsOnLabel bool `json:"groupsOnLabel,omitempty"`
 }
 
 type initializeResult struct {
@@ -258,12 +272,52 @@ type codeAction struct {
 }
 
 type workspaceEdit struct {
-	Changes map[string][]textEdit `json:"changes"`
+	// Changes is the legacy edit map. Emitted only when DocumentChanges
+	// is empty so the annotated path never sends both (the spec bans it).
+	Changes map[string][]textEdit `json:"changes,omitempty"`
+	// DocumentChanges carries annotated edits when the client advertises
+	// documentChanges + changeAnnotationSupport capability.
+	DocumentChanges []textDocumentEdit `json:"documentChanges,omitempty"`
+	// ChangeAnnotations maps annotation IDs to their metadata.
+	ChangeAnnotations map[string]changeAnnotation `json:"changeAnnotations,omitempty"`
 }
 
 type textEdit struct {
 	Range   Range  `json:"range"`
 	NewText string `json:"newText"`
+}
+
+// annotatedTextEdit extends TextEdit (LSP §3.16.1) with an
+// annotationId referencing an entry in workspaceEdit.changeAnnotations.
+type annotatedTextEdit struct {
+	Range        Range  `json:"range"`
+	NewText      string `json:"newText"`
+	AnnotationID string `json:"annotationId"`
+}
+
+// textDocumentEdit targets one document and carries a slice of
+// annotated edits (LSP §3.16.1 TextDocumentEdit).
+type textDocumentEdit struct {
+	TextDocument optionalVersionedTextDocumentIdentifier `json:"textDocument"`
+	Edits        []annotatedTextEdit                     `json:"edits"`
+}
+
+// optionalVersionedTextDocumentIdentifier mirrors the LSP
+// OptionalVersionedTextDocumentIdentifier shape. Version is a pointer
+// so it marshals as JSON null (meaning "match whatever buffer the
+// client holds") when the server does not track per-edit buffer versions.
+type optionalVersionedTextDocumentIdentifier struct {
+	URI     string `json:"uri"`
+	Version *int   `json:"version"`
+}
+
+// changeAnnotation describes a change annotation (LSP §3.16.1). When
+// NeedsConfirmation is true VS Code routes the edit through Refactor
+// Preview instead of applying it immediately.
+type changeAnnotation struct {
+	Label             string `json:"label"`
+	NeedsConfirmation bool   `json:"needsConfirmation,omitempty"`
+	Description       string `json:"description,omitempty"`
 }
 
 type didChangeWatchedFilesParams struct {

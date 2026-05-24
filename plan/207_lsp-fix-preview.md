@@ -1,7 +1,7 @@
 ---
 id: 207
 title: LSP fix preview via ChangeAnnotation
-status: "🔲"
+status: "✅"
 summary: >-
   Opt-in `mdsmith.previewFix` setting that attaches
   an LSP `ChangeAnnotation` flagged
@@ -178,48 +178,48 @@ the matrix:
 
 ## Tasks
 
-1. Extend `clientSettings` in
+1. [x] Extend `clientSettings` in
    [`internal/lsp/server.go`](../internal/lsp/server.go)
    with `PreviewFix *bool` and wire the read in
    `fetchClientSettings`.
-2. Capture both
+2. [x] Capture both
    `workspace.workspaceEdit.documentChanges` and
    `workspace.workspaceEdit.changeAnnotationSupport`
    from `initialize` params; store on the server.
    The annotated path requires both to be true.
-3. Grow the protocol types in
+3. [x] Grow the protocol types in
    [`internal/lsp/protocol.go`](../internal/lsp/protocol.go).
    New fields on `workspaceEdit`:
    `documentChanges` and `changeAnnotations`.
    New types: `annotatedTextEdit`,
    `textDocumentEdit`, `changeAnnotation`. Keep
    `changes` for the legacy path.
-4. Switch the `Changes` JSON tag on `workspaceEdit`
+4. [x] Switch the `Changes` JSON tag on `workspaceEdit`
    to `changes,omitempty` so the annotated path
    emits only `documentChanges` and
    `changeAnnotations`. Refactor `fullFileEdit`
    (and any other edit builder) to pick one shape
    per call. Mode is
    `preview ∧ clientSupportsAnnotations`.
-5. Per-rule annotation IDs in `computeCodeActions`,
+5. [x] Per-rule annotation IDs in `computeCodeActions`,
    keyed off the same `d.Data.RuleName` the
    existing quickfix path uses:
    `mdsmith-fix-<rule-name>` for quick fixes,
    `mdsmith-fix-all` for `source.fixAll.mdsmith`.
    Label reuses the existing `quickFixTitle(rule)`
    verbatim.
-6. Add the `mdsmith.previewFix` setting to
+6. [x] Add the `mdsmith.previewFix` setting to
    [`editors/vscode/package.json`](../editors/vscode/package.json)
    contributions with description and default
    `false`.
-7. Document the setting in
+7. [x] Document the setting in
    [`docs/guides/editors/vscode.md`](../docs/guides/editors/vscode.md)
    (Settings table + a short "Preview before
    applying" subsection).
-8. Document the LSP behavior in
+8. [x] Document the LSP behavior in
    [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
    — capability requirement and the wire shape.
-9. Tests:
+9. [x] Tests:
 
   - server unit: when client capability is
     absent, edits stay in the legacy `changes`
@@ -239,31 +239,31 @@ the matrix:
 
 ## Acceptance Criteria
 
-- [ ] `mdsmith.previewFix=false` (the default)
+- [x] `mdsmith.previewFix=false` (the default)
       leaves the LSP `WorkspaceEdit` byte-identical
       to today's output for both `quickfix` and
       `source.fixAll.mdsmith`.
-- [ ] `mdsmith.previewFix=true` + a client that
+- [x] `mdsmith.previewFix=true` + a client that
       advertises `changeAnnotationSupport`
       produces an edit using `documentChanges`
       with `changeAnnotations[*].needsConfirmation
       = true`.
-- [ ] Without either `documentChanges` or
+- [x] Without either `documentChanges` or
       `changeAnnotationSupport` on the client, the
       server falls back to the legacy `changes`
       shape and logs the fallback once per
       session.
-- [ ] Quick-fix actions carry one annotation per
+- [x] Quick-fix actions carry one annotation per
       rule (`mdsmith-fix-<rule>`);
       `source.fixAll.mdsmith` carries
       `mdsmith-fix-all`.
-- [ ] [`docs/guides/editors/vscode.md`](../docs/guides/editors/vscode.md)
+- [x] [`docs/guides/editors/vscode.md`](../docs/guides/editors/vscode.md)
       documents the setting and the
       `previewFix` × `fixOnSave` interaction.
-- [ ] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
+- [x] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
       documents the new wire shape and the
       capability gate.
-- [ ] All tests pass: `go test ./...` and
+- [x] All tests pass: `go test ./...` and
       `bun test` in `editors/vscode`.
 - [ ] `go tool golangci-lint run` reports no
       issues.

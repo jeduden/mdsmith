@@ -657,7 +657,7 @@ func TestQuickFixEditForFixerError(t *testing.T) {
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
 	doc := &document{path: "/no/such/path/x.md", text: []byte("# Hi\n\ndirty   \n")}
-	_ = s.quickFixEditFor("no-trailing-spaces", doc, cfg, "", "file:///x.md")
+	_ = s.quickFixBytesFor("no-trailing-spaces", doc, cfg, "")
 }
 
 func TestDispatchHandlesNotificationsWithoutResponse(t *testing.T) {
@@ -2092,9 +2092,10 @@ func TestQuickFixEditForCatalogProducesEdit(t *testing.T) {
 	cfg := config.Merge(config.Defaults(), nil)
 	stale := []byte("# Doc\n\n<?catalog\nglob: [\"a.md\"]\n?>\nold body\n<?/catalog?>\n")
 	doc := &document{path: "x.md", text: stale}
-	edit := s.quickFixEditFor("catalog", doc, cfg, "", "file:///x.md")
-	require.NotNil(t, edit, "catalog must surface a quick-fix action; "+
+	fixed := s.quickFixBytesFor("catalog", doc, cfg, "")
+	require.NotNil(t, fixed, "catalog must surface a quick-fix action; "+
 		"users expect mdsmith fix in the Quick Fix lightbulb menu")
+	edit := fullFileEdit("file:///x.md", doc.text, fixed)
 	require.Contains(t, edit.Changes, "file:///x.md")
 }
 
@@ -2103,8 +2104,8 @@ func TestQuickFixEditForUnknownRule(t *testing.T) {
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
 	doc := &document{path: "x.md", text: []byte("# Hi\n")}
-	edit := s.quickFixEditFor("no-such-rule", doc, cfg, "", "file:///x.md")
-	assert.Nil(t, edit)
+	fixed := s.quickFixBytesFor("no-such-rule", doc, cfg, "")
+	assert.Nil(t, fixed)
 }
 
 func TestQuickFixEditForNoOpReturnsNil(t *testing.T) {
@@ -2113,8 +2114,8 @@ func TestQuickFixEditForNoOpReturnsNil(t *testing.T) {
 	cfg := config.Merge(config.Defaults(), nil)
 	// Buffer has no trailing-spaces violations, so the fix is a no-op.
 	doc := &document{path: "x.md", text: []byte("# Hi\n\nclean line\n")}
-	edit := s.quickFixEditFor("no-trailing-spaces", doc, cfg, "", "file:///x.md")
-	assert.Nil(t, edit, "no-op fix should not surface as a code action")
+	fixed := s.quickFixBytesFor("no-trailing-spaces", doc, cfg, "")
+	assert.Nil(t, fixed, "no-op fix should not surface as a code action")
 }
 
 // TestComputeCodeActionsDedupesPerRule pins the perf invariant that
@@ -2190,6 +2191,160 @@ func TestComputeCodeActionsDedupesPerRule(t *testing.T) {
 	}
 	for _, a := range actions {
 		assert.Equal(t, "Fix all no-trailing-spaces with mdsmith", a.Title)
+	}
+}
+
+// ---- previewFix / ChangeAnnotation tests ----
+
+// helper: build a server with previewFix on and the supplied workspace
+// edit capabilities.
+func newPreviewServer(t *testing.T, docChanges, changeAnnotSupport bool) *Server {
+	t.Helper()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.settingsMu.Lock()
+	s.settings.PreviewFix = true
+	s.settingsMu.Unlock()
+	var we *workspaceEditCapabilities
+	if docChanges || changeAnnotSupport {
+		we = &workspaceEditCapabilities{DocumentChanges: docChanges}
+		if changeAnnotSupport {
+			we.ChangeAnnotationSupport = &changeAnnotationSupportCap{}
+		}
+	}
+	s.clientCapsMu.Lock()
+	s.clientCaps = clientCapabilities{
+		Workspace: &workspaceClientCapabilities{WorkspaceEdit: we},
+	}
+	s.clientCapsMu.Unlock()
+	return s
+}
+
+// TestPreviewFixLegacyFallbackWhenCapsMissing verifies that when
+// previewFix is on but the client lacks capability, edits stay in the
+// legacy changes form (not documentChanges).
+func TestPreviewFixLegacyFallbackWhenCapsMissing(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name               string
+		docChanges         bool
+		changeAnnotSupport bool
+	}{
+		{"no caps at all", false, false},
+		{"documentChanges only", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newPreviewServer(t, tc.docChanges, tc.changeAnnotSupport)
+			cfg := config.Merge(config.Defaults(), nil)
+			doc := &document{path: "x.md", text: []byte("# Hi\n\ndirty   \n")}
+			p := codeActionParams{
+				TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+				Context: codeActionContext{
+					Diagnostics: []Diagnostic{{
+						Code: "MDS006",
+						Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+					}},
+					Only: []string{kindQuickFix},
+				},
+			}
+			actions := s.computeCodeActions(p, doc, cfg, "")
+			require.NotEmpty(t, actions)
+			edit := actions[0].Edit
+			require.NotNil(t, edit)
+			assert.NotEmpty(t, edit.Changes, "should use legacy changes form")
+			assert.Empty(t, edit.DocumentChanges, "should not use documentChanges form")
+		})
+	}
+}
+
+// TestPreviewFixAnnotatedWhenCapsPresent verifies that when previewFix is
+// on and the client advertises both documentChanges and
+// changeAnnotationSupport, source.fixAll.mdsmith uses documentChanges
+// with a single mdsmith-fix-all annotation flagged needsConfirmation.
+func TestPreviewFixAnnotatedFixAllAction(t *testing.T) {
+	t.Parallel()
+	s := newPreviewServer(t, true, true)
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "x.md", text: []byte("# Hi\n\ndirty   \n")}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Only: []string{kindSourceFixAll},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	require.Len(t, actions, 1)
+	edit := actions[0].Edit
+	require.NotNil(t, edit)
+	assert.Empty(t, edit.Changes, "annotated path must not emit legacy changes")
+	require.Len(t, edit.DocumentChanges, 1)
+	require.Len(t, edit.DocumentChanges[0].Edits, 1)
+	assert.Equal(t, "mdsmith-fix-all", edit.DocumentChanges[0].Edits[0].AnnotationID)
+	ann, ok := edit.ChangeAnnotations["mdsmith-fix-all"]
+	require.True(t, ok, "changeAnnotations must contain mdsmith-fix-all")
+	assert.True(t, ann.NeedsConfirmation)
+}
+
+// TestPreviewFixAnnotatedPerRuleQuickFix verifies that per-rule quick
+// fixes carry annotations with IDs mdsmith-fix-<rule> when the
+// annotated path is active.
+func TestPreviewFixAnnotatedPerRuleQuickFix(t *testing.T) {
+	t.Parallel()
+	s := newPreviewServer(t, true, true)
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "x.md", text: []byte("# Hi\n\ndirty   \n")}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{{
+				Code: "MDS006",
+				Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+			}},
+			Only: []string{kindQuickFix},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	require.NotEmpty(t, actions)
+	edit := actions[0].Edit
+	require.NotNil(t, edit)
+	assert.Empty(t, edit.Changes)
+	require.Len(t, edit.DocumentChanges, 1)
+	require.Len(t, edit.DocumentChanges[0].Edits, 1)
+	wantID := "mdsmith-fix-no-trailing-spaces"
+	assert.Equal(t, wantID, edit.DocumentChanges[0].Edits[0].AnnotationID)
+	ann, ok := edit.ChangeAnnotations[wantID]
+	require.True(t, ok)
+	assert.True(t, ann.NeedsConfirmation)
+}
+
+// TestPreviewFixOffProducesLegacyEdits verifies that with previewFix
+// off (the default) edits are byte-identical to the plain legacy shape
+// for both quickfix and source.fixAll.mdsmith.
+func TestPreviewFixOffProducesLegacyEdits(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	// previewFix defaults to false
+	cfg := config.Merge(config.Defaults(), nil)
+	doc := &document{path: "x.md", text: []byte("# Hi\n\ndirty   \n")}
+
+	for _, only := range [][]string{{kindQuickFix}, {kindSourceFixAll}} {
+		p := codeActionParams{
+			TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+			Context: codeActionContext{
+				Diagnostics: []Diagnostic{{
+					Code: "MDS006",
+					Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+				}},
+				Only: only,
+			},
+		}
+		actions := s.computeCodeActions(p, doc, cfg, "")
+		require.NotEmpty(t, actions, "kind %v should produce actions", only)
+		edit := actions[0].Edit
+		require.NotNil(t, edit)
+		assert.NotEmpty(t, edit.Changes, "legacy path must use changes map")
+		assert.Empty(t, edit.DocumentChanges)
+		assert.Empty(t, edit.ChangeAnnotations)
 	}
 }
 
