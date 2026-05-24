@@ -16,8 +16,11 @@ type MessagingTarget struct {
 	// Label is the human-readable name used in summary output
 	// and drift diagnostics.
 	Label string
-	// Path is the tracked file path, relative to the repo root.
-	// MessagingTargets joins it with root before returning.
+	// Path is the on-disk path to the tracked file, joined
+	// against the repo root by MessagingTargets at
+	// construction time. Drift output and error messages
+	// print the joined path so the caller's working directory
+	// is visible.
 	Path string
 	// Patcher reads / rewrites the tracked field in Path.
 	Patcher Patcher
@@ -177,9 +180,11 @@ type ApplyResult struct {
 }
 
 // ApplyMessaging patches every target with its canonical value
-// from m. Files are created when they don't exist yet (for
-// generated fragments, this is expected on first run).
-// Idempotent: rerunning produces no further writes.
+// from m. Only generated-fragment targets (MarkdownFragment
+// patchers) are created when missing — the on-first-run
+// behavior. Every other target's file must exist; a missing
+// non-fragment surface is a hard "required file missing"
+// error. Idempotent: rerunning produces no further writes.
 func (t *Toolkit) ApplyMessaging(root string, m *Messaging) ([]ApplyResult, error) {
 	results := make([]ApplyResult, 0, len(MessagingTargets(root)))
 	for _, tg := range MessagingTargets(root) {
@@ -291,12 +296,12 @@ func FormatDrift(drifts []MessagingDrift) string {
 	return b.String()
 }
 
-// oneLineForDrift collapses newlines and truncates the value
-// to roughly 120 columns for the drift report. Truncation is
-// rune-aware so multi-byte runes (the messaging copy uses
-// em-dashes) cannot be sliced in half.
+// oneLineForDrift collapses newlines (LF and CRLF) and
+// truncates the value to roughly 120 columns for the drift
+// report. Truncation is rune-aware so multi-byte runes (the
+// messaging copy uses em-dashes) cannot be sliced in half.
 func oneLineForDrift(s string) string {
-	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ").Replace(s)
 	const maxRunes = 117
 	runes := []rune(s)
 	if len(runes) > maxRunes+3 {

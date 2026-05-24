@@ -11,6 +11,8 @@ import (
 	wordwrap "github.com/mitchellh/go-wordwrap"
 	toml "github.com/pelletier/go-toml"
 	yaml "gopkg.in/yaml.v3"
+
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 // must panics if err is non-nil. Used at call sites where the
@@ -61,9 +63,8 @@ type Patcher interface {
 // top-level keys (npm and Claude Code manifests are
 // hand-ordered for readability), then re-emits with 2-space
 // indent — the convention every tracked manifest already
-// uses. Values that are not the target pass through as
-// json.RawMessage, so nested objects keep their inner
-// formatting unchanged.
+// uses. Top-level key order is preserved; nested object/array
+// formatting is normalized by `json.Indent` on re-emit.
 type JSONStringField struct{ Key string }
 
 // ReadValue parses body and returns the string at the
@@ -77,19 +78,22 @@ func (f JSONStringField) ReadValue(body []byte) (string, error) {
 		if p.key == f.Key {
 			var s string
 			if err := json.Unmarshal(p.value, &s); err != nil {
+				// Surface the underlying type/parse error so a
+				// debugger can see which token shape the value
+				// actually was (number, bool, object, …).
 				return "", fmt.Errorf(
-					"JSON field %q is not a string", f.Key)
+					"json field %q is not a string: %w", f.Key, err)
 			}
 			return s, nil
 		}
 	}
-	return "", fmt.Errorf("JSON field %q not found", f.Key)
+	return "", fmt.Errorf("json field %q not found", f.Key)
 }
 
 // PatchValue sets the top-level Key to value (JSON-encoded)
 // and re-emits the document. Top-level key order is
-// preserved; nested values are emitted as their original
-// bytes via json.RawMessage.
+// preserved; nested object/array formatting is normalized
+// by json.Indent on re-emit.
 func (f JSONStringField) PatchValue(body []byte, value string) ([]byte, error) {
 	pairs, err := decodeOrderedJSON(body)
 	if err != nil {
@@ -105,7 +109,7 @@ func (f JSONStringField) PatchValue(body []byte, value string) ([]byte, error) {
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("JSON field %q not found", f.Key)
+		return nil, fmt.Errorf("json field %q not found", f.Key)
 	}
 	return emitOrderedJSON(pairs)
 }
@@ -123,16 +127,16 @@ func decodeOrderedJSON(body []byte) ([]orderedJSONPair, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	t, err := dec.Token()
 	if err != nil {
-		return nil, fmt.Errorf("parse JSON: %w", err)
+		return nil, fmt.Errorf("parse json: %w", err)
 	}
 	if t != json.Delim('{') {
-		return nil, errors.New("JSON: expected object at root")
+		return nil, errors.New("json: expected object at root")
 	}
 	var pairs []orderedJSONPair
 	for dec.More() {
 		kT, err := dec.Token()
 		if err != nil {
-			return nil, fmt.Errorf("parse JSON: %w", err)
+			return nil, fmt.Errorf("parse json: %w", err)
 		}
 		// json.Decoder guarantees that the token in object-key
 		// position is a string; a non-string would have surfaced
@@ -142,7 +146,7 @@ func decodeOrderedJSON(body []byte) ([]orderedJSONPair, error) {
 		key := kT.(string)
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
-			return nil, fmt.Errorf("parse JSON value: %w", err)
+			return nil, fmt.Errorf("parse json value: %w", err)
 		}
 		pairs = append(pairs, orderedJSONPair{key: key, value: raw})
 	}
@@ -152,10 +156,10 @@ func decodeOrderedJSON(body []byte) ([]orderedJSONPair, error) {
 	// failure here; a successful read leaves us positioned for
 	// the trailing-content guard below.
 	if _, err := dec.Token(); err != nil {
-		return nil, fmt.Errorf("parse JSON: %w", err)
+		return nil, fmt.Errorf("parse json: %w", err)
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return nil, errors.New("JSON: unexpected trailing content after root object")
+		return nil, errors.New("json: unexpected trailing content after root object")
 	}
 	return pairs, nil
 }
@@ -205,15 +209,15 @@ type TOMLStringField struct {
 func (f TOMLStringField) ReadValue(body []byte) (string, error) {
 	tree, err := toml.LoadBytes(body)
 	if err != nil {
-		return "", fmt.Errorf("parse TOML: %w", err)
+		return "", fmt.Errorf("parse toml: %w", err)
 	}
 	val := tree.GetPath(f.path())
 	if val == nil {
-		return "", fmt.Errorf("TOML key %s not found", f.pathString())
+		return "", fmt.Errorf("toml key %s not found", f.pathString())
 	}
 	s, ok := val.(string)
 	if !ok {
-		return "", fmt.Errorf("TOML key %s is not a string", f.pathString())
+		return "", fmt.Errorf("toml key %s is not a string", f.pathString())
 	}
 	return s, nil
 }
@@ -222,13 +226,18 @@ func (f TOMLStringField) ReadValue(body []byte) (string, error) {
 func (f TOMLStringField) PatchValue(body []byte, value string) ([]byte, error) {
 	tree, err := toml.LoadBytes(body)
 	if err != nil {
-		return nil, fmt.Errorf("parse TOML: %w", err)
+		return nil, fmt.Errorf("parse toml: %w", err)
 	}
 	if tree.GetPath(f.path()) == nil {
-		return nil, fmt.Errorf("TOML key %s not found", f.pathString())
+		return nil, fmt.Errorf("toml key %s not found", f.pathString())
 	}
 	tree.SetPath(f.path(), value)
-	return []byte(must(tree.ToTomlString())), nil
+	// pelletier/go-toml v1's ToTomlString prefixes a leading
+	// newline for documents whose first element is a table
+	// header. Trim it so the re-emitted file starts at the
+	// table on line 1 (the original pyproject.toml shape).
+	out := strings.TrimLeft(must(tree.ToTomlString()), "\n")
+	return []byte(out), nil
 }
 
 func (f TOMLStringField) path() []string {
@@ -255,12 +264,12 @@ type YAMLFrontmatterField struct{ Path []string }
 
 // ReadValue locates the field and returns its scalar value.
 func (f YAMLFrontmatterField) ReadValue(body []byte) (string, error) {
-	front, _, _, err := splitFrontmatter(body)
+	front, _, _, _, err := splitFrontmatter(body)
 	if err != nil {
 		return "", err
 	}
-	var root yaml.Node
-	if err := yaml.Unmarshal(front, &root); err != nil {
+	root, err := yamlutil.UnmarshalNodeSafe(front)
+	if err != nil {
 		return "", fmt.Errorf("parse frontmatter: %w", err)
 	}
 	node, err := findYAMLNode(&root, f.Path)
@@ -268,22 +277,23 @@ func (f YAMLFrontmatterField) ReadValue(body []byte) (string, error) {
 		return "", err
 	}
 	if node.Kind != yaml.ScalarNode {
-		return "", fmt.Errorf("YAML field %s is not a scalar",
+		return "", fmt.Errorf("yaml field %s is not a scalar",
 			strings.Join(f.Path, "."))
 	}
 	return node.Value, nil
 }
 
 // PatchValue updates the field's scalar value and re-emits the
-// frontmatter. Body bytes after the closing `---` are
-// untouched.
+// frontmatter. The original opener (`---\n` or `---\r\n`) is
+// reused so a CRLF source stays CRLF on the opener; body bytes
+// after the closing `---` are untouched.
 func (f YAMLFrontmatterField) PatchValue(body []byte, value string) ([]byte, error) {
-	front, rest, closer, err := splitFrontmatter(body)
+	front, rest, opener, closer, err := splitFrontmatter(body)
 	if err != nil {
 		return nil, err
 	}
-	var root yaml.Node
-	if err := yaml.Unmarshal(front, &root); err != nil {
+	root, err := yamlutil.UnmarshalNodeSafe(front)
+	if err != nil {
 		return nil, fmt.Errorf("parse frontmatter: %w", err)
 	}
 	node, err := findYAMLNode(&root, f.Path)
@@ -291,7 +301,7 @@ func (f YAMLFrontmatterField) PatchValue(body []byte, value string) ([]byte, err
 		return nil, err
 	}
 	if node.Kind != yaml.ScalarNode {
-		return nil, fmt.Errorf("YAML field %s is not a scalar",
+		return nil, fmt.Errorf("yaml field %s is not a scalar",
 			strings.Join(f.Path, "."))
 	}
 	node.Value = value
@@ -307,7 +317,7 @@ func (f YAMLFrontmatterField) PatchValue(body []byte, value string) ([]byte, err
 	enc.SetIndent(2)
 	mustErr(enc.Encode(&root))
 	mustErr(enc.Close())
-	return concat([]byte("---\n"), buf.Bytes(), closer, rest), nil
+	return concat(opener, buf.Bytes(), closer, rest), nil
 }
 
 // MarkdownFragment writes (and reads) a generated Markdown
@@ -372,11 +382,13 @@ func unwrap(s string) string {
 }
 
 // splitFrontmatter returns the YAML frontmatter (no delimiters)
-// and the body that follows, together with the closing
-// delimiter as it appears in the original. Accepts both
-// `---\n` and `---\r\n` openers/closers, and tolerates a closer
-// at EOF with no trailing newline.
-func splitFrontmatter(body []byte) (front, rest, closer []byte, err error) {
+// and the body that follows, together with the opening and
+// closing delimiters as they appear in the original. Accepts
+// both `---\n` and `---\r\n` openers/closers, and tolerates a
+// closer at EOF with no trailing newline. Returning the opener
+// lets PatchValue re-emit the same line-ending style so CRLF
+// inputs stay CRLF on the re-write.
+func splitFrontmatter(body []byte) (front, rest, opener, closer []byte, err error) {
 	openerLen := 0
 	switch {
 	case bytes.HasPrefix(body, []byte("---\n")):
@@ -384,14 +396,15 @@ func splitFrontmatter(body []byte) (front, rest, closer []byte, err error) {
 	case bytes.HasPrefix(body, []byte("---\r\n")):
 		openerLen = 5
 	default:
-		return nil, nil, nil,
-			errors.New("file does not start with a YAML frontmatter delimiter")
+		return nil, nil, nil, nil,
+			errors.New("file does not start with a yaml frontmatter delimiter")
 	}
+	opener = body[:openerLen]
 	rest = body[openerLen:]
 	idx := indexFrontmatterClose(rest)
 	if idx < 0 {
-		return nil, nil, nil,
-			errors.New("YAML frontmatter has no closing delimiter")
+		return nil, nil, nil, nil,
+			errors.New("yaml frontmatter has no closing delimiter")
 	}
 	// Closer is `---` plus an optional `\r\n`, `\n`, or EOF.
 	// `idx+3` may equal len(rest) when the file ends exactly at
@@ -404,7 +417,7 @@ func splitFrontmatter(body []byte) (front, rest, closer []byte, err error) {
 	if closerEnd < len(rest) && rest[closerEnd] == '\n' {
 		closerEnd++
 	}
-	return rest[:idx], rest[closerEnd:], rest[idx:closerEnd], nil
+	return rest[:idx], rest[closerEnd:], opener, rest[idx:closerEnd], nil
 }
 
 // indexFrontmatterClose scans for a line that is exactly
@@ -440,22 +453,29 @@ func indexFrontmatterClose(s []byte) int {
 }
 
 // findYAMLNode walks a parsed yaml.Node tree by dotted path
-// and returns the leaf scalar. A yaml.v3 DocumentNode always
-// carries exactly one content child (the root mapping); we
-// unwrap it here.
+// and returns the leaf scalar. A yaml.v3 DocumentNode normally
+// carries one content child (the root mapping); the empty
+// Content case is theoretical for our inputs (an
+// alias-rejected, well-formed frontmatter that survives
+// splitFrontmatter is never empty) but the guard is cheap and
+// keeps the walker total instead of panicking on a future
+// yaml.v3 behavior change.
 func findYAMLNode(root *yaml.Node, path []string) (*yaml.Node, error) {
 	cur := root
 	if cur.Kind == yaml.DocumentNode {
+		if len(cur.Content) == 0 {
+			return nil, errors.New("empty yaml frontmatter")
+		}
 		cur = cur.Content[0]
 	}
 	for _, seg := range path {
 		if cur.Kind != yaml.MappingNode {
-			return nil, fmt.Errorf("YAML path %s: parent is not a map",
+			return nil, fmt.Errorf("yaml path %s: parent is not a map",
 				strings.Join(path, "."))
 		}
 		next, err := mappingChild(cur, seg)
 		if err != nil {
-			return nil, fmt.Errorf("YAML path %s: %w",
+			return nil, fmt.Errorf("yaml path %s: %w",
 				strings.Join(path, "."), err)
 		}
 		cur = next

@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // ----- JSONStringField ----------------------------------------------------
@@ -74,7 +75,7 @@ func TestJSONStringField_ReadValue_TruncatedValue(t *testing.T) {
 	// dec.Decode error path in decodeOrderedJSON should fire.
 	_, err := (JSONStringField{Key: "k"}).ReadValue([]byte(`{"k": tru`))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse JSON")
+	assert.Contains(t, err.Error(), "parse json")
 }
 
 func TestJSONStringField_ReadValue_UnclosedObject(t *testing.T) {
@@ -159,7 +160,7 @@ func TestJSONStringField_RejectsNonObjectRoot(t *testing.T) {
 func TestJSONStringField_ReadValue_MalformedJSON(t *testing.T) {
 	_, err := (JSONStringField{Key: "k"}).ReadValue([]byte(`{not json`))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "parse JSON")
+	assert.Contains(t, err.Error(), "parse json")
 }
 
 func TestJSONStringField_ReadValue_NonStringValue(t *testing.T) {
@@ -382,7 +383,7 @@ func TestYAMLFrontmatterField_PatchValue_NoFrontmatter(t *testing.T) {
 		Path: []string{"summary"},
 	}).PatchValue(body, "x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does not start with a YAML frontmatter")
+	assert.Contains(t, err.Error(), "does not start with a yaml frontmatter")
 }
 
 func TestYAMLFrontmatterField_PatchValue_UnclosedFrontmatter(t *testing.T) {
@@ -431,7 +432,7 @@ func TestYAMLFrontmatterField_ReadValue_NoFrontmatter(t *testing.T) {
 		Path: []string{"summary"},
 	}).ReadValue([]byte("no frontmatter here\n"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "does not start with a YAML frontmatter")
+	assert.Contains(t, err.Error(), "does not start with a yaml frontmatter")
 }
 
 func TestYAMLFrontmatterField_ReadValue_MissingPath(t *testing.T) {
@@ -497,6 +498,45 @@ func TestYAMLFrontmatterField_PatchValue_ParentNotAMap(t *testing.T) {
 	}).PatchValue(body, "x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a map")
+}
+
+func TestYAMLFrontmatterField_PatchValue_PreservesCRLFOpener(t *testing.T) {
+	// CRLF opener / CRLF body must survive a round-trip — no
+	// mixed-EOL output. splitFrontmatter now returns the opener
+	// bytes; PatchValue re-emits them.
+	body := []byte("---\r\nsummary: old\r\n---\r\nBody.\r\n")
+	out, err := (YAMLFrontmatterField{
+		Path: []string{"summary"},
+	}).PatchValue(body, "new value")
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(string(out), "---\r\n"),
+		"opener line ending must stay CRLF, got %q",
+		string(out[:min(len(out), 12)]))
+}
+
+func TestYAMLFrontmatterField_RejectsAliases(t *testing.T) {
+	// Internal/yamlutil rejects anchors/aliases to prevent the
+	// billion-laughs class of DoS on untrusted PR frontmatter.
+	body := []byte("---\n" +
+		"a: &x foo\n" +
+		"b: *x\n" +
+		"---\nBody.\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"a"},
+	}).ReadValue(body)
+	require.Error(t, err)
+}
+
+func TestFindYAMLNode_EmptyDocumentContent(t *testing.T) {
+	// Construct a DocumentNode directly with no Content child;
+	// the guard returns a structured error rather than panicking
+	// on Content[0]. yaml.v3's Unmarshal does not produce this
+	// shape for well-formed input today, but the guard locks the
+	// invariant in case a future version changes that.
+	root := &yaml.Node{Kind: yaml.DocumentNode}
+	_, err := findYAMLNode(root, []string{"summary"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty yaml frontmatter")
 }
 
 func TestMarkdownFragment_PatchValue(t *testing.T) {
