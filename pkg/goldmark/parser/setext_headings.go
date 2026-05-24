@@ -87,7 +87,7 @@ func (b *setextHeadingParser) Close(node ast.Node, reader text.Reader, pc Contex
 		next := heading.NextSibling()
 		segment = segment.TrimLeftSpace(reader.Source())
 		if next == nil || !ast.IsParagraph(next) {
-			para := pc.Arena().Paragraph()
+			para := ArenaForContext(pc).Paragraph()
 			para.Lines().Append(segment)
 			heading.Parent().InsertAfter(heading.Parent(), heading, para)
 		} else {

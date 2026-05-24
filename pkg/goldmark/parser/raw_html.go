@@ -65,7 +65,7 @@ var closeComment = []byte("-->")
 
 func (s *rawHTMLParser) parseComment(block text.Reader, pc Context) ast.Node {
 	savedLine, savedSegment := block.Position()
-	node := pc.Arena().RawHTML()
+	node := ArenaForContext(pc).RawHTML()
 	line, segment := block.PeekLine()
 	if bytes.HasPrefix(line, emptyComment1) {
 		node.Segments.Append(segment.WithStop(segment.Start + len(emptyComment1)))
@@ -100,7 +100,7 @@ func (s *rawHTMLParser) parseComment(block text.Reader, pc Context) ast.Node {
 
 func (s *rawHTMLParser) parseUntil(block text.Reader, closer []byte, pc Context) ast.Node {
 	savedLine, savedSegment := block.Position()
-	node := pc.Arena().RawHTML()
+	node := ArenaForContext(pc).RawHTML()
 	for {
 		line, segment := block.PeekLine()
 		if line == nil {
@@ -122,7 +122,7 @@ func (s *rawHTMLParser) parseUntil(block text.Reader, closer []byte, pc Context)
 func (s *rawHTMLParser) parseMultiLineRegexp(reg *regexp.Regexp, block text.Reader, pc Context) ast.Node {
 	sline, ssegment := block.Position()
 	if block.Match(reg) {
-		node := pc.Arena().RawHTML()
+		node := ArenaForContext(pc).RawHTML()
 		eline, esegment := block.Position()
 		block.SetPosition(sline, ssegment)
 		for {

@@ -183,13 +183,15 @@ func (a *Arena) Segments() *text.Segments {
 }
 
 // EquipLines installs an arena-backed grower on the given Segments
-// (the lines field embedded in every BaseBlock). Used by the parser
-// to absorb backing-array growth on block-node Lines() even when
-// the block itself was not allocated through the arena (e.g.
-// extension-defined block types that the arena does not know about).
+// (the lines field embedded in every BaseBlock).
 //
-// EquipLines is nil-safe and idempotent — calling it on a Segments
-// that already has a grower replaces the backing slice.
+// Precondition: s must be empty. EquipLines calls
+// text.Segments.SetBacking, which replaces the values slice
+// wholesale — any existing entries would be silently dropped. The
+// arena uses EquipLines only on freshly-allocated Segments (from
+// Paragraph and Segments).
+//
+// Nil-safe on both arguments.
 func (a *Arena) EquipLines(s *text.Segments) {
 	if a == nil || s == nil {
 		return

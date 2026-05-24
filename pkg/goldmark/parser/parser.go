@@ -227,14 +227,24 @@ type Context interface {
 
 	// IsInLinkLabel returns true if current position seems to be in link label.
 	IsInLinkLabel() bool
+}
 
-	// Arena returns the per-parse slab allocator. Block and inline
-	// parsers route their AST allocations through this arena so the
-	// runtime allocator stays out of the hot path; see plan 198.
-	// Arena returns nil when the parser is running without an arena
-	// (the `goldmark_upstream` build-tag path), in which case
-	// arena.(*Arena) method calls fall back to plain constructors.
-	Arena() *arena.Arena
+// ArenaForContext returns the per-Parse slab allocator attached to
+// pc, or nil when pc was constructed without one (an externally
+// implemented Context, or the `goldmark_upstream` build-tag path).
+// Block, inline, and extension parsers route their AST allocations
+// through the returned *arena.Arena; arena methods are nil-safe and
+// fall back to upstream constructors on a nil receiver.
+//
+// This is a helper rather than a method on the Context interface
+// because adding a method to an exported interface would break any
+// downstream code that supplies its own Context via
+// parser.WithContext.
+func ArenaForContext(pc Context) *arena.Arena {
+	if ac, ok := pc.(interface{ Arena() *arena.Arena }); ok {
+		return ac.Arena()
+	}
+	return nil
 }
 
 // A ContextConfig struct is a data structure that holds configuration of the Context.
@@ -432,12 +442,13 @@ func (p *parseContext) IsInLinkLabel() bool {
 	return tlist != nil
 }
 
-// Arena implements Context.Arena. Returns nil for a freshly built
-// Context; the parser sets the arena on the context at the top of
-// Parse so block and inline parsers can route allocations through
-// it via pc.Arena(). When parser was built without an arena (the
-// goldmark_upstream build tag) Arena stays nil and allocations
-// fall back to the plain constructors.
+// Arena returns the per-Parse slab allocator. Not part of the
+// Context interface; callers access it via ArenaForContext, which
+// type-asserts to the (interface{ Arena() *arena.Arena })
+// satisfied by *parseContext. The parser sets the arena on the
+// context at the top of Parse; under the goldmark_upstream build
+// tag the arena stays nil and arena methods fall back to plain
+// constructors.
 func (p *parseContext) Arena() *arena.Arena {
 	return p.arena
 }
@@ -936,6 +947,15 @@ func setSegmentsCreator(r any, a *arena.Arena) {
 	}
 }
 
+// clearSegmentsCreator drops a previously installed creator so the
+// reader (which may be retained by the caller past Parse) does not
+// keep the arena alive after the AST is dropped.
+func clearSegmentsCreator(r any) {
+	if scr, ok := r.(segmentsCreatorReader); ok {
+		scr.SetSegmentsCreator(nil)
+	}
+}
+
 func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 	p.initSync.Do(func() {
 		p.config.BlockParsers.Sort()
@@ -990,13 +1010,21 @@ func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 	}
 	if pcImpl, ok := pc.(*parseContext); ok {
 		pcImpl.arena = pa
+		// Bound arena lifetime to the returned AST, not to the
+		// (potentially retained) Context: drop the back-pointer
+		// when Parse returns so a caller that keeps the Context
+		// past the AST can let the slabs go.
+		defer func() { pcImpl.arena = nil }()
 	}
 	// Equip the caller-supplied Reader and the inline-pass
 	// BlockReader with the arena's SegmentsCreator so FindClosure
 	// returns arena-backed Segments. setSegmentsCreator type-asserts
 	// in one spot so external Reader implementations stay supported
-	// (they just don't get the arena-creator path).
+	// (they just don't get the arena-creator path). The deferred
+	// clearSegmentsCreator pair drops the back-pointer when Parse
+	// returns so a retained reader does not keep the arena alive.
 	setSegmentsCreator(reader, pa)
+	defer clearSegmentsCreator(reader)
 	root := ast.NewDocument()
 	p.parseBlocks(root, reader, pc)
 
@@ -1319,7 +1347,7 @@ func (p *parser) parseBlock(block text.BlockReader, parent ast.Node, pc Context)
 					savedLine, savedPosition := block.Position()
 					if i != 0 {
 						_, currentPosition := block.Position()
-						ast.MergeOrAppendTextSegmentA(parent, startPosition.Between(currentPosition), pc.Arena())
+						ast.MergeOrAppendTextSegmentA(parent, startPosition.Between(currentPosition), ArenaForContext(pc))
 						_, startPosition = block.Position()
 					}
 					var inlineNode ast.Node
@@ -1364,9 +1392,9 @@ func (p *parser) parseBlock(block text.BlockReader, parent ast.Node, pc Context)
 		diff := startPosition.Between(currentPosition)
 		var text *ast.Text
 		if lineBreakFlags&(lineBreakHard|lineBreakVisible) == lineBreakHard|lineBreakVisible {
-			text = pc.Arena().TextSegment(diff)
+			text = ArenaForContext(pc).TextSegment(diff)
 		} else {
-			text = pc.Arena().TextSegment(diff.TrimRightSpace(source))
+			text = ArenaForContext(pc).TextSegment(diff.TrimRightSpace(source))
 		}
 		text.SetSoftLineBreak(lineBreakFlags&lineBreakSoft != 0)
 		text.SetHardLineBreak(lineBreakFlags&lineBreakHard != 0)
