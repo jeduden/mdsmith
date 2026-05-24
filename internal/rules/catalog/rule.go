@@ -891,8 +891,8 @@ func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	// Pre-compute lowercase keys once per entry to avoid O(n log n)
 	// string allocations inside the comparator.
 	type sortable struct {
-		entry       fileEntry
-		sortKey     string // lowercase primary sort key (empty for numeric mode)
+		entry         fileEntry
+		sortKey       string // lowercase primary sort key (empty for numeric mode)
 		tiebreakerKey string // lowercase filename for stable tiebreaker
 	}
 	sortables := make([]sortable, len(entries))
