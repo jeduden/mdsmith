@@ -285,3 +285,148 @@ func TestRunCache_InvalidateWikilinks(t *testing.T) {
 	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
 		"InvalidateWikilinks must let the next call rebuild")
 }
+
+// TestRunCache_ParsedSchemaBuildsOnce pins that the parsed-schema cache
+// closes MDS020's per-host-file re-parse hot spot: a schema file
+// referenced by N host files is parsed exactly once per run, matching
+// the FrontMatter / Includes single-build guarantee.
+func TestRunCache_ParsedSchemaBuildsOnce(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "parsed-schema-instance"
+	}
+	for i := 0; i < 3; i++ {
+		got := c.ParsedSchema("/abs/schema.md", build)
+		require.Equal(t, "parsed-schema-instance", got)
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"ParsedSchema build must run exactly once per absPath")
+}
+
+// TestRunCache_ParsedSchemaCachesErrors pins that ParsedSchema caches
+// the build result wholesale, including parse errors. A malformed
+// schema file must not be re-read on every host file that references
+// it; the cached value carries the error so the next caller's lookup
+// is a map hit.
+func TestRunCache_ParsedSchemaCachesErrors(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return assert.AnError
+	}
+	for i := 0; i < 3; i++ {
+		got := c.ParsedSchema("/abs/broken.md", build)
+		require.ErrorIs(t, got.(error), assert.AnError)
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"ParsedSchema must cache build results including errors")
+}
+
+// TestRunCache_ParsedSchemaInvalidateForcesRebuild pins that
+// Invalidate drops the parsed-schema slot alongside FrontMatter,
+// Includes, and Anchors. Without this, an LSP edit to the schema
+// file would not refresh MDS020's view of it.
+func TestRunCache_ParsedSchemaInvalidateForcesRebuild(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	c.ParsedSchema("/abs/schema.md", func() any {
+		atomic.AddInt32(&calls, 1)
+		return "v1"
+	})
+	c.Invalidate("/abs/schema.md")
+	got := c.ParsedSchema("/abs/schema.md", func() any {
+		atomic.AddInt32(&calls, 1)
+		return "v2"
+	})
+	assert.Equal(t, "v2", got, "Invalidate must clear the parsed-schema slot")
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
+		"ParsedSchema build must run again after Invalidate")
+}
+
+// TestRunCache_ParsedSchemaConcurrentSingleBuild pins the per-key
+// once: the parallel file worker pool may race for the same schema
+// path; the build must still run exactly once.
+func TestRunCache_ParsedSchemaConcurrentSingleBuild(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v := c.ParsedSchema("/abs/shared.md", func() any {
+				atomic.AddInt32(&calls, 1)
+				return "once"
+			})
+			assert.Equal(t, "once", v)
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"ParsedSchema build must run exactly once under concurrent access")
+}
+
+// TestRunCache_CompiledCUEBuildsOnce pins that compiling the same CUE
+// source string twice returns the cached value: the schema-frontmatter
+// CUE expression is shared across every host file referencing the
+// schema, so compiling it once per Run closes the second half of
+// MDS020's parity gap.
+//
+// The key is the source string itself, not a path, so an inline
+// `schema:` block and a schema file that produce the same CUE share
+// the slot.
+func TestRunCache_CompiledCUEBuildsOnce(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return "compiled-value"
+	}
+	const src = `close({id: string, status: "✅" | "🔳"})`
+	for i := 0; i < 4; i++ {
+		got := c.CompiledCUE(src, build)
+		require.Equal(t, "compiled-value", got)
+	}
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"CompiledCUE build must run exactly once per source string")
+}
+
+// TestRunCache_CompiledCUEDistinctSourcesDoNotShare pins that two
+// different CUE sources keep independent slots: caching one must
+// not silently serve the other.
+func TestRunCache_CompiledCUEDistinctSourcesDoNotShare(t *testing.T) {
+	c := NewRunCache()
+	c.CompiledCUE(`{a: string}`, func() any { return "a-val" })
+	c.CompiledCUE(`{b: string}`, func() any { return "b-val" })
+	assert.Equal(t, "a-val", c.CompiledCUE(`{a: string}`,
+		func() any { return "different" }))
+	assert.Equal(t, "b-val", c.CompiledCUE(`{b: string}`,
+		func() any { return "different" }))
+}
+
+// TestRunCache_CompiledCUEConcurrentSingleBuild pins the per-key
+// once: many goroutines compiling the same CUE source must observe
+// exactly one build.
+func TestRunCache_CompiledCUEConcurrentSingleBuild(t *testing.T) {
+	c := NewRunCache()
+	var calls int32
+	var wg sync.WaitGroup
+	const src = `{x: int}`
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			v := c.CompiledCUE(src, func() any {
+				atomic.AddInt32(&calls, 1)
+				return "once"
+			})
+			assert.Equal(t, "once", v)
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
+		"CompiledCUE build must run exactly once under concurrent access")
+}
