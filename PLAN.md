@@ -133,4 +133,5 @@ footer: |
 | 205 | 🔲     |        | [Move extension.ts concerns to wiring.ts](plan/205_arch-fix-extension-ts-srp.md)                                                        |
 | 206 | 🔲     |        | [Document cue/ in architecture layering map](plan/206_arch-fix-cue-types-docs.md)                                                       |
 | 207 | 🔲     | sonnet | [LSP fix preview via ChangeAnnotation](plan/207_lsp-fix-preview.md)                                                                     |
+| 208 | 🔲     | opus   | [Kind-per-file config under `.mdsmith/kinds/`](plan/208_kind-files.md)                                                                  |
 <?/catalog?>
