@@ -2,9 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
-	"strings"
 
 	flag "github.com/spf13/pflag"
 
@@ -12,11 +10,9 @@ import (
 )
 
 // runSyncMessaging is the entry point for the `sync-messaging`
-// subcommand. Task 3 (this commit) implements the read path:
-// project docs/brand/messaging.md through mdsmith extract and
-// print a human-readable summary. Task 5 wires the apply path
-// (patches every tracked surface); task 6 wires --check (drift
-// detection).
+// subcommand. Loads docs/brand/messaging.md via `mdsmith
+// extract`, then either applies the canonical values to every
+// tracked surface (default) or reports drift (--check).
 func runSyncMessaging(root string, args []string) int {
 	fs := flag.NewFlagSet("sync-messaging", flag.ContinueOnError)
 	check := fs.Bool("check", false,
@@ -45,45 +41,41 @@ func runSyncMessaging(root string, args []string) int {
 		return reportError(err)
 	}
 	if *check {
-		// Apply path and drift check land in tasks 5 and 6. For
-		// now task 3 only proves the load works.
-		fmt.Fprintln(os.Stderr,
-			"mdsmith-release: sync-messaging --check not yet implemented (plan 209 task 6)")
-		return 2
+		return runSyncMessagingCheck(root, m)
 	}
-	printMessagingSummary(os.Stdout, m)
+	return runSyncMessagingApply(root, m)
+}
+
+func runSyncMessagingApply(root string, m *release.Messaging) int {
+	results, err := release.ApplyMessaging(root, m)
+	if err != nil {
+		return reportError(err)
+	}
+	changed := 0
+	for _, r := range results {
+		marker := "·"
+		if r.Changed {
+			marker = "✓"
+			changed++
+		}
+		_, _ = fmt.Fprintf(os.Stdout, "  %s %s\n", marker, r.Target.Label)
+	}
+	_, _ = fmt.Fprintf(os.Stdout,
+		"messaging: %d target(s) updated, %d unchanged\n",
+		changed, len(results)-changed)
 	return 0
 }
 
-// printMessagingSummary writes a one-line-per-field summary of m
-// to out. Used in task 3 as the read-path smoke test; tasks 5/6
-// replace the apply path with file patches.
-func printMessagingSummary(out io.Writer, m *release.Messaging) {
-	_, _ = fmt.Fprintf(out, "messaging fields loaded from %s:\n",
-		release.MessagingSourceFile)
-	rows := []struct {
-		label, value string
-	}{
-		{"title", m.Title},
-		{"summary", m.Summary},
-		{"eyebrow", m.Eyebrow},
-		{"headline", m.HeadlinePre + "_" + m.HeadlineEm + "_" + m.HeadlinePost},
-		{"lead", m.Lead},
-		{"tagline", m.Tagline},
-		{"vscode-description", m.VSCodeDescription},
-		{"claude-code-lsp-description", m.ClaudeCodeLSPDescription},
-		{"claude-code-skills-description", m.ClaudeCodeSkillsDescription},
-		{"claude-code-audit-description", m.ClaudeCodeAuditDescription},
+func runSyncMessagingCheck(root string, m *release.Messaging) int {
+	drifts, err := release.CheckMessaging(root, m)
+	if err != nil {
+		return reportError(err)
 	}
-	for _, r := range rows {
-		_, _ = fmt.Fprintf(out, "  %-32s %s\n", r.label+":", oneline(r.value))
+	if len(drifts) == 0 {
+		_, _ = fmt.Fprintln(os.Stdout,
+			"messaging: every tracked surface matches the source")
+		return 0
 	}
-}
-
-func oneline(s string) string {
-	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) > 80 {
-		return s[:77] + "..."
-	}
-	return s
+	_, _ = fmt.Fprint(os.Stderr, release.FormatDrift(drifts))
+	return 1
 }
