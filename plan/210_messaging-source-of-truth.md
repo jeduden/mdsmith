@@ -1,7 +1,7 @@
 ---
 id: 209
 title: Single source of truth for product messaging via `mdsmith extract`
-status: "🔲"
+status: "🔳"
 summary: >-
   Hold the mdsmith product slogan, lead, and
   per-surface descriptions in one

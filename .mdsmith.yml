@@ -429,6 +429,38 @@ kinds:
         - heading:
             regex: '.+'
             repeat: { min: 0 }
+  messaging:
+    # docs/brand/messaging.md is the single source of truth
+    # for the product slogan, lead, tagline, and per-surface
+    # descriptions. The fields are projected via
+    # `mdsmith extract messaging docs/brand/messaging.md` and
+    # the `mdsmith-release sync-messaging` subcommand reads
+    # the JSON to regenerate fragment files and patch the
+    # JSON / TOML / YAML-frontmatter surfaces enumerated in
+    # plan 209. Every field is required so a typo or omission
+    # fails `mdsmith check` instead of silently breaking a
+    # surface on the next sync.
+    path-pattern: "docs/brand/messaging.md"
+    schema:
+      frontmatter:
+        title: nonEmpty
+        summary: nonEmpty
+        eyebrow: nonEmpty
+        headline-pre: nonEmpty
+        headline-em: nonEmpty
+        headline-post: nonEmpty
+        lead: nonEmpty
+        tagline: nonEmpty
+        vscode-description: nonEmpty
+        claude-code-lsp-description: nonEmpty
+        claude-code-skills-description: nonEmpty
+        claude-code-audit-description: nonEmpty
+      closed: false
+      sections:
+        - heading: null
+        - heading:
+            regex: '.+'
+            repeat: { min: 0 }
   website-page:
     # Hugo content pages under website/content/. Scoped to the
     # top level only (no **) so the kind covers hand-authored
@@ -545,6 +577,9 @@ kind-assignment:
   - glob: ["docs/features/index.md",
            "website/content/docs/features/_index.md"]
     kinds: [feature-index]
+  - glob: ["docs/brand/messaging.md",
+           "website/content/docs/brand/messaging.md"]
+    kinds: [messaging]
   - glob: ["docs/features/*.md",
            "!docs/features/index.md",
            "website/content/docs/features/*.md",
