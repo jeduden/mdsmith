@@ -1,7 +1,7 @@
 ---
 id: 209
 title: Single source of truth for product messaging via `mdsmith extract`
-status: "🔳"
+status: "✅"
 summary: >-
   Hold the mdsmith product slogan, lead, and
   per-surface descriptions in one
@@ -160,31 +160,30 @@ subcommand registered in
 
 ## Acceptance Criteria
 
-- [ ] `docs/brand/messaging.md` exists and
+- [x] `docs/brand/messaging.md` exists and
   `mdsmith check .` passes against the new
   `messaging` kind.
-- [ ] `mdsmith extract messaging
+- [x] `mdsmith extract messaging
   docs/brand/messaging.md -f json` emits a
   tree containing every documented field.
-- [ ] `mdsmith-release sync-messaging`
+- [x] `mdsmith-release sync-messaging`
   regenerates fragments and patches every
   tracked surface. Running it twice in a row
   is a no-op (byte-stable).
-- [ ] `mdsmith-release sync-messaging --check`
+- [x] `mdsmith-release sync-messaging --check`
   exits 0 when the tree is clean. It exits
   non-zero with a diff-style message when any
   surface drifts.
-- [ ] The eleven surfaces enumerated in this
-  plan all render the locked slogan copy after
-  the sync.
-- [ ] `<?include?>` directives in the three
+- [x] Every tracked surface renders the locked
+  slogan copy after the sync.
+- [x] `<?include?>` directives in the three
   README intros pull from the generated
   fragments. `mdsmith fix` is a no-op against
   them.
-- [ ] CI runs `sync-messaging --check` and
+- [x] CI runs `sync-messaging --check` and
   blocks merge on drift.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no
   issues.
 
 ## Out of scope

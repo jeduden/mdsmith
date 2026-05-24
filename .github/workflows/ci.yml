@@ -66,6 +66,22 @@ jobs:
           go-version-file: go.mod
       - run: go run ./cmd/mdsmith-release check
 
+  # Product messaging surfaces (READMEs, package manifests, hugo
+  # config, hero frontmatter, plugin manifests) are derived from
+  # docs/brand/messaging.md via `mdsmith-release sync-messaging`.
+  # A hand edit to any tracked field would be reverted on the next
+  # sync, so fail fast on drift. See plan/209.
+  messaging-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/mdsmith-release sync-messaging --check
+
   # Block any future PR from adding install-time or publish-time
   # lifecycle scripts to the published npm packages. The shai-hulud
   # / TanStack worm class (npm supply-chain compromise, 2025-2026)
