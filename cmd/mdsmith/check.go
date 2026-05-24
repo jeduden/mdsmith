@@ -201,9 +201,12 @@ func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Lo
 	return reportCheckResultTo(result, opts, logger, os.Stderr)
 }
 
-// reportCheckResultTo is the injectable form of reportCheckResult. Tests
-// pass an alternate stderr writer to exercise the write-error branches
-// without leaking to the real stderr.
+// reportCheckResultTo is the injectable form of reportCheckResult.
+// Tests pass an alternate stderr writer to exercise the write-error
+// branches without leaking to the real stderr; the formatter and the
+// run-stats helper both route their own write-error messages through
+// the same writer (see formatDiagnosticsTo, printRunStatsTo) so a
+// fault-injecting writer captures the full stderr surface.
 func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stderrW io.Writer) int {
 	printErrorsTo(stderrW, result.Errors)
 

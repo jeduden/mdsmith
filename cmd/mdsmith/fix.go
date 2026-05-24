@@ -175,7 +175,10 @@ func reportFixResult(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Log
 
 // reportFixResultTo is the injectable form of reportFixResult. Tests
 // pass an alternate stderr writer to exercise the write-error
-// branches without leaking to the real stderr.
+// branches without leaking to the real stderr; the formatter,
+// writeDryRunJSON, and the run-stats helper all route their own
+// write-error messages through the same writer so a fault-injecting
+// writer captures the full stderr surface.
 func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, stderrW io.Writer) int {
 	printErrorsTo(stderrW, fixResult.Errors)
 
@@ -374,7 +377,11 @@ func writeDryRunJSON(w io.Writer, fixResult *fixpkg.Result) int {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(records); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: error writing dry-run output: %v\n", err)
+		// Best-effort routing of the encode error through the same
+		// writer the payload was bound for, so callers that swap w
+		// (tests with a fault-injecting writer; reportFixResultTo's
+		// stderrW) keep all output confined to one destination.
+		_, _ = fmt.Fprintf(w, "mdsmith: error writing dry-run output: %v\n", err)
 		return 2
 	}
 	return 0

@@ -329,7 +329,11 @@ func runInit(args []string) int {
 }
 
 // formatDiagnosticsTo writes diagnostics to w using the specified format.
-// Returns a non-zero exit code on write error, or 0 on success.
+// Returns a non-zero exit code on write error, or 0 on success. The
+// write-error message is best-effort routed to the same w so callers
+// that pass an alternate writer (production: os.Stderr; tests: a
+// fault-injecting writer or a buffer) keep all formatter output
+// confined to one destination.
 func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) int {
 	var formatter output.Formatter
 	switch format {
@@ -339,7 +343,7 @@ func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, no
 		formatter = &output.TextFormatter{Color: !noColor}
 	}
 	if err := formatter.Format(w, diags); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: error writing output: %v\n", err)
+		_, _ = fmt.Fprintf(w, "mdsmith: error writing output: %v\n", err)
 		return 2
 	}
 	return 0
