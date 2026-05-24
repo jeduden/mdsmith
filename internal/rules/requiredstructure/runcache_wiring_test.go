@@ -500,3 +500,80 @@ func TestFileMaxBytes_NonNilReturnsMaxInputBytes(t *testing.T) {
 	f := &lint.File{MaxInputBytes: 4096}
 	assert.Equal(t, int64(4096), fileMaxBytes(f))
 }
+
+// TestAbsRootDir_NilFileReturnsEmpty pins the nil-File guard so a
+// cached-parse with no File context cleanly falls through to the
+// no-absRoot branch in absoluteIncludes.
+func TestAbsRootDir_NilFileReturnsEmpty(t *testing.T) {
+	assert.Empty(t, absRootDir(nil))
+}
+
+// TestAbsRootDir_EmptyRootDirReturnsEmpty pins the empty-RootDir
+// guard. A struct-literal *lint.File (unit-test path) has no root,
+// so absoluteIncludes must skip the join and leave entries
+// Clean'd-but-relative.
+func TestAbsRootDir_EmptyRootDirReturnsEmpty(t *testing.T) {
+	assert.Empty(t, absRootDir(&lint.File{}))
+}
+
+// TestAbsRootDir_AbsoluteRootDirReturnsAbs pins the happy path:
+// f.RootDir is already absolute, filepath.Abs is a no-op, the
+// helper returns it Clean'd.
+func TestAbsRootDir_AbsoluteRootDirReturnsAbs(t *testing.T) {
+	f := &lint.File{RootDir: "/abs/root"}
+	got := absRootDir(f)
+	assert.Equal(t, filepath.Clean("/abs/root"), got)
+}
+
+// TestAbsRootDir_RelativeRootDirGetsAbsResolution pins that a
+// relative RootDir is resolved against CWD (matching filepath.Abs
+// semantics). The result is the absolute form of "relative/path"
+// — used by the wiring chain to normalise an include set anchored
+// at the workspace root.
+func TestAbsRootDir_RelativeRootDirGetsAbsResolution(t *testing.T) {
+	f := &lint.File{RootDir: "relative/path"}
+	got := absRootDir(f)
+	assert.True(t, filepath.IsAbs(got),
+		"absRootDir must resolve relative RootDir via filepath.Abs; "+
+			"got %q", got)
+}
+
+// TestParseSchemaWithCache_BadRequireInSchemaPropagatesError pins
+// the parseSchemaWithCache → extractRequireDirective error path: a
+// schema body with a malformed <?require?> directive surfaces the
+// YAML parse error rather than crashing or silently dropping the
+// filename pattern.
+func TestParseSchemaWithCache_BadRequireInSchemaPropagatesError(t *testing.T) {
+	// The YAML body parses as a malformed flow sequence: an
+	// unclosed `[` is one of yaml.v3's most-reported errors. Embed
+	// it in a multi-line <?require?> so extractRequireDirective
+	// reaches yamlutil.UnmarshalSafe.
+	bad := []byte("# Title\n\n<?require\nfilename: [unclosed\n?>\n")
+	_, _, err := parseSchemaWithCache(bad, "schema.md", 0, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "<?require?>",
+		"the error must name the failing directive")
+}
+
+// TestParseSchemaWithCache_BadRequireInIncludedFragmentPropagatesError
+// pins the expandSchemaInclude → extractRequireDirective error
+// path: a fragment with a malformed <?require?> directive surfaces
+// the parse error rather than silently dropping the fragment.
+func TestParseSchemaWithCache_BadRequireInIncludedFragmentPropagatesError(t *testing.T) {
+	tmpDir := t.TempDir()
+	schemaSrc := []byte("# Title\n\n<?include\nfile: fragment.md\n?>\n")
+	fragmentSrc := []byte("# Frag\n<?require\nfilename: [unclosed\n?>\n")
+
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "schema.md"), string(schemaSrc)))
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "fragment.md"), string(fragmentSrc)))
+
+	t.Chdir(tmpDir)
+
+	_, _, err := parseSchemaWithCache(schemaSrc, "schema.md", 0, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "<?require?>",
+		"the fragment-level error must surface up to parseSchemaWithCache "+
+			"and name the failing directive")
+}
