@@ -191,13 +191,13 @@ func TestSplitRow_ByteSlices(t *testing.T) {
 		if len(cell) == 0 {
 			continue
 		}
-		// Every non-empty cell must lie inside the row buffer.
+		// Every non-empty cell must lie inside the row buffer. The
+		// address compare uses unsafe.Pointer because Go's `==`
+		// on `*byte` does not return an ordering and the slice
+		// headers themselves have no public accessor for the
+		// underlying data pointer.
 		rowStart := &row[0]
 		cellStart := &cell[0]
-		// Compare addresses via unsafe-free pointer arithmetic: the
-		// cell slice header's data pointer must fall inside row's
-		// memory region. Using `&cells[i][0]` keeps this race-detector-
-		// friendly.
 		if uintptr(unsafe.Pointer(cellStart)) < uintptr(unsafe.Pointer(rowStart)) ||
 			uintptr(unsafe.Pointer(cellStart)) >= uintptr(unsafe.Pointer(rowStart))+uintptr(len(row)) {
 			t.Fatalf("cell %d backing array is not inside row buffer", i)
