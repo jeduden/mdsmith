@@ -241,7 +241,7 @@ func runHelpRule(args []string) int {
 }
 
 func listAllRules() int {
-	rules, err := ruledocs.ListRules()
+	rules, err := listRulesForHelp()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2

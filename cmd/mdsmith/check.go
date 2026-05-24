@@ -198,14 +198,21 @@ func checkDiscovered(opts checkCLIOpts) int {
 // computes the exit code shared by checkFiles, checkStdin, and
 // checkDiscovered.
 func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger) int {
-	printErrors(result.Errors)
+	return reportCheckResultTo(result, opts, logger, os.Stderr)
+}
+
+// reportCheckResultTo is the injectable form of reportCheckResult. Tests
+// pass an alternate stderr writer to exercise the write-error branches
+// without leaking to the real stderr.
+func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stderrW io.Writer) int {
+	printErrorsTo(stderrW, result.Errors)
 
 	if !opts.quiet && len(result.Diagnostics) > 0 {
-		if code := formatDiagnostics(result.Diagnostics, opts.format, opts.noColor); code != 0 {
+		if code := formatDiagnosticsTo(stderrW, result.Diagnostics, opts.format, opts.noColor); code != 0 {
 			return code
 		}
 	}
-	printRunStats(opts.format, opts.quiet, runStats{
+	printRunStatsTo(stderrW, opts.format, opts.quiet, runStats{
 		Checked:  result.FilesChecked,
 		Fixed:    0,
 		Failures: len(result.Diagnostics),

@@ -137,6 +137,48 @@ func TestE2E_Fix_Discovered_BadConfig_ExitsTwo(t *testing.T) {
 }
 
 // =============================================================
+// Bad --max-input-size flag exercises the resolveMaxInputBytes
+// error branch in each downstream handler. The unit-test entry
+// (checkFiles) goes through loadAndResolve and is already
+// covered; stdin, check-discovery and fix-discovery resolve
+// the size after their config load, so they each need their
+// own end-to-end exit-2 check.
+// =============================================================
+
+func TestE2E_Check_Stdin_BadMaxInputSize_ExitsTwo(t *testing.T) {
+	_, stderr, exitCode := runBinary(t, "# Title\n\nContent.\n",
+		"check", "--max-input-size", "not-a-size", "-")
+	assert.Equal(t, 2, exitCode,
+		"expected exit code 2 for stdin with bad max-input-size, got %d", exitCode)
+	assert.Contains(t, stderr, "max-input-size",
+		"expected error mentioning max-input-size, got: %s", stderr)
+}
+
+func TestE2E_Check_Discovered_BadMaxInputSize_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "test.md", "# Title\n\nContent here.\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"check", "--max-input-size", "not-a-size")
+	assert.Equal(t, 2, exitCode,
+		"expected exit code 2 for discovery with bad max-input-size, got %d", exitCode)
+	assert.Contains(t, stderr, "max-input-size",
+		"expected error mentioning max-input-size, got: %s", stderr)
+}
+
+func TestE2E_Fix_Discovered_BadMaxInputSize_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	writeFixture(t, dir, "test.md", "# Title\n\nContent here.\n")
+
+	_, stderr, exitCode := runBinaryInDir(t, dir, "",
+		"fix", "--max-input-size", "not-a-size")
+	assert.Equal(t, 2, exitCode,
+		"expected exit code 2 for discovery with bad max-input-size, got %d", exitCode)
+	assert.Contains(t, stderr, "max-input-size",
+		"expected error mentioning max-input-size, got: %s", stderr)
+}
+
+// =============================================================
 // 10. rootDirFromConfig — empty cfgPath falls back to cwd
 // =============================================================
 

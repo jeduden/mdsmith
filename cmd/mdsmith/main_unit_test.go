@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -588,6 +589,21 @@ func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
 	assert.Equal(t, 2, code)
 }
 
+// --- reportCheckResultTo ---
+
+func TestReportCheckResultTo_DiagWriteErrorReturns2(t *testing.T) {
+	opts := checkCLIOpts{format: "text"}
+	result := &engine.Result{
+		FilesChecked: 1,
+		Diagnostics: []lint.Diagnostic{
+			{File: "f.md", Line: 1, Column: 1, RuleID: "MDS001",
+				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
+		},
+	}
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{})
+	assert.Equal(t, 2, code)
+}
+
 // --- printErrors ---
 
 func TestPrintErrors_Empty_NoOutput(t *testing.T) {
@@ -991,6 +1007,26 @@ func TestListAllRules_PrintsRows(t *testing.T) {
 		assert.Equal(t, 0, code)
 	})
 	assert.NotEmpty(t, out)
+}
+
+// TestListAllRules_ListError_ExitsTwo swaps the rule lister for a
+// fault injection so the otherwise-unreachable ListRules error path
+// is exercised.
+func TestListAllRules_ListError_ExitsTwo(t *testing.T) {
+	prev := listRulesForHelp
+	listRulesForHelp = func() ([]ruledocs.RuleInfo, error) {
+		return nil, fmt.Errorf("forced list failure")
+	}
+	defer func() { listRulesForHelp = prev }()
+
+	var stderr string
+	captureStdout(func() {
+		stderr = captureStderr(func() {
+			code := listAllRules()
+			assert.Equal(t, 2, code)
+		})
+	})
+	assert.Contains(t, stderr, "forced list failure")
 }
 
 func TestShowRule_KnownRule_PrintsContent(t *testing.T) {
