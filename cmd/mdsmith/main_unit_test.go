@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -588,6 +589,75 @@ func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
 	assert.Equal(t, 2, code)
 }
 
+// --- reportCheckResultTo ---
+
+func TestReportCheckResultTo_DiagWriteErrorReturns2(t *testing.T) {
+	opts := checkCLIOpts{format: "text"}
+	result := &engine.Result{
+		FilesChecked: 1,
+		Diagnostics: []lint.Diagnostic{
+			{File: "f.md", Line: 1, Column: 1, RuleID: "MDS001",
+				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
+		},
+	}
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{})
+	assert.Equal(t, 2, code)
+}
+
+// --- checkStdin / checkDiscovered / fixDiscovered: bad max-input-size ---
+//
+// Each handler resolves max-input-size after its config load, so the
+// error branch is unreachable from the loadAndResolve path tested by
+// the other check / fix entry points. These three tests drive the
+// branch directly — pushing what would otherwise be three separate
+// binary-invocation e2e tests down to the same package.
+
+func TestCheckStdin_BadMaxInputSize_ExitsTwo(t *testing.T) {
+	// Isolate from any project .mdsmith.yml so loadConfig falls
+	// through to defaults and resolveMaxInputBytes runs against the
+	// CLI flag alone.
+	t.Chdir(t.TempDir())
+
+	var code int
+	stderr := captureStderr(func() {
+		code = checkStdin(checkCLIOpts{maxInputSize: "not-a-size"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "max-input-size")
+}
+
+func TestCheckDiscovered_BadMaxInputSize_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("files: [\"**/*.md\"]\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.md"),
+		[]byte("# Title\n\nContent.\n"), 0o644))
+	t.Chdir(dir)
+
+	var code int
+	stderr := captureStderr(func() {
+		code = checkDiscovered(checkCLIOpts{maxInputSize: "not-a-size"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "max-input-size")
+}
+
+func TestFixDiscovered_BadMaxInputSize_ExitsTwo(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("files: [\"**/*.md\"]\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test.md"),
+		[]byte("# Title\n\nContent.\n"), 0o644))
+	t.Chdir(dir)
+
+	var code int
+	stderr := captureStderr(func() {
+		code = fixDiscovered(fixCLIOpts{maxInputSize: "not-a-size"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "max-input-size")
+}
+
 // --- printErrors ---
 
 func TestPrintErrors_Empty_NoOutput(t *testing.T) {
@@ -710,6 +780,69 @@ func TestParseQueryFlags_MaxInputSizeFlag(t *testing.T) {
 	opts, _, err := parseQueryFlags([]string{"--max-input-size", "1MB", "expr"})
 	require.NoError(t, err)
 	assert.Equal(t, "1MB", opts.maxInputSize)
+}
+
+// --- parseCheckFlags ---
+
+func TestParseCheckFlags_Defaults(t *testing.T) {
+	opts, files, hasStdin, code := parseCheckFlags(nil)
+	assert.Equal(t, -1, code)
+	assert.False(t, hasStdin)
+	assert.Empty(t, files)
+	assert.Equal(t, "text", opts.format)
+	assert.False(t, opts.noColor)
+	assert.False(t, opts.quiet)
+	assert.False(t, opts.verbose)
+	assert.False(t, opts.explain)
+	assert.Empty(t, opts.configPath)
+	assert.Empty(t, opts.maxInputSize)
+	assert.Nil(t, opts.walk.followSymlinks)
+	assert.False(t, opts.walk.noGitignore)
+}
+
+func TestParseCheckFlags_FilesAndStdin(t *testing.T) {
+	opts, files, hasStdin, code := parseCheckFlags([]string{"a.md", "-", "b.md"})
+	assert.Equal(t, -1, code)
+	assert.True(t, hasStdin)
+	assert.Equal(t, []string{"a.md", "b.md"}, files)
+	assert.Empty(t, opts.configPath)
+}
+
+func TestParseCheckFlags_QuietSuppressesVerbose(t *testing.T) {
+	opts, _, _, code := parseCheckFlags([]string{"-q", "-v"})
+	assert.Equal(t, -1, code)
+	assert.True(t, opts.quiet)
+	assert.False(t, opts.verbose)
+}
+
+func TestParseCheckFlags_ConfigAndFormat(t *testing.T) {
+	opts, _, _, code := parseCheckFlags([]string{"-c", "/path/cfg.yml", "-f", "json"})
+	assert.Equal(t, -1, code)
+	assert.Equal(t, "/path/cfg.yml", opts.configPath)
+	assert.Equal(t, "json", opts.format)
+}
+
+func TestParseCheckFlags_FollowSymlinksOverride(t *testing.T) {
+	opts, _, _, code := parseCheckFlags([]string{"--follow-symlinks=false"})
+	assert.Equal(t, -1, code)
+	require.NotNil(t, opts.walk.followSymlinks)
+	assert.False(t, *opts.walk.followSymlinks)
+}
+
+func TestParseCheckFlags_ParseErrorReturnsTwo(t *testing.T) {
+	stderr := captureStderr(func() {
+		_, _, _, code := parseCheckFlags([]string{"--no-such-flag"})
+		assert.Equal(t, 2, code)
+	})
+	assert.Contains(t, stderr, "mdsmith: check")
+}
+
+func TestParseCheckFlags_HelpReturnsZero(t *testing.T) {
+	stderr := captureStderr(func() {
+		_, _, _, code := parseCheckFlags([]string{"--help"})
+		assert.Equal(t, 0, code)
+	})
+	assert.Contains(t, stderr, "Usage: mdsmith check")
 }
 
 // --- queryFiles ---
@@ -991,6 +1124,26 @@ func TestListAllRules_PrintsRows(t *testing.T) {
 		assert.Equal(t, 0, code)
 	})
 	assert.NotEmpty(t, out)
+}
+
+// TestListAllRules_ListError_ExitsTwo swaps the rule lister for a
+// fault injection so the otherwise-unreachable ListRules error path
+// is exercised.
+func TestListAllRules_ListError_ExitsTwo(t *testing.T) {
+	prev := listRulesForHelp
+	listRulesForHelp = func() ([]ruledocs.RuleInfo, error) {
+		return nil, fmt.Errorf("forced list failure")
+	}
+	defer func() { listRulesForHelp = prev }()
+
+	var stderr string
+	captureStdout(func() {
+		stderr = captureStderr(func() {
+			code := listAllRules()
+			assert.Equal(t, 2, code)
+		})
+	})
+	assert.Contains(t, stderr, "forced list failure")
 }
 
 func TestShowRule_KnownRule_PrintsContent(t *testing.T) {
