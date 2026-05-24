@@ -70,13 +70,6 @@ on:
 permissions:
   contents: read
 
-# Serialize deploys so two runs cannot race the Pages API. Do not
-# cancel an in-flight deploy: a half-applied Pages publish would
-# leave the live site inconsistent.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   mdsmith-check:
     uses: ./.github/workflows/mdsmith-check.yml
@@ -147,6 +140,15 @@ jobs:
     # above is the only thing the PR sees.
     if: github.repository == 'jeduden/mdsmith' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # Serialize deploys so two runs cannot race the Pages API.
+    # cancel-in-progress: false because a half-applied Pages
+    # publish would leave the live site inconsistent. Scoped to
+    # this job (not the whole workflow) so PR runs of
+    # build-content, which never touch the Pages API, don't queue
+    # behind an in-flight deploy or behind each other.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       contents: read
       pages: write
