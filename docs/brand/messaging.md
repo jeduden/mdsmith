@@ -44,7 +44,7 @@ This file holds the slogan, lead, tagline, and per-surface
 descriptions. The fields above feed the generated fragments
 under `docs/brand/fragments/`. They also feed the JSON, TOML,
 and YAML surfaces enumerated in
-[plan 209](../../plan/209_messaging-source-of-truth.md).
+[plan 210](../../plan/210_messaging-source-of-truth.md).
 
 Edit a field here, then run `mdsmith-release sync-messaging` to
 propagate the change to every tracked surface. CI runs

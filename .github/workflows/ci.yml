@@ -70,7 +70,7 @@ jobs:
   # config, hero frontmatter, plugin manifests) are derived from
   # docs/brand/messaging.md via `mdsmith-release sync-messaging`.
   # A hand edit to any tracked field would be reverted on the next
-  # sync, so fail fast on drift. See plan/209.
+  # sync, so fail fast on drift. See plan/210.
   messaging-drift:
     runs-on: ubuntu-latest
     steps:

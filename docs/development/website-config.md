@@ -21,7 +21,7 @@ The `website/hugo.toml` file ships the Hugo site at
 - `mdsmith-release sync-messaging` rewrites
   `[params].description` from
   `docs/brand/messaging.md`. See
-  [plan 209](../../plan/209_messaging-source-of-truth.md).
+  [plan 210](../../plan/210_messaging-source-of-truth.md).
 
 Both round-trip the file through a real TOML parser, so the
 file does not carry inline rationale comments. The rationale
