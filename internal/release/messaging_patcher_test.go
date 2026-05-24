@@ -278,6 +278,32 @@ func TestYAMLFrontmatterField_PatchValue_Idempotent(t *testing.T) {
 	assert.Equal(t, once, twice)
 }
 
+func TestYAMLFrontmatterField_PatchValue_AcceptsCRLFFrontmatter(t *testing.T) {
+	// Windows-style line endings on the opening / closing
+	// delimiters; the patcher should match the delimiter, not
+	// assume `\n`.
+	body := []byte("---\r\ntitle: x\r\nsummary: old\r\n---\r\nBody.\r\n")
+	out, err := (YAMLFrontmatterField{
+		Path: []string{"summary"},
+	}).PatchValue(body, "a new summary")
+	require.NoError(t, err)
+	assert.Contains(t, string(out), "a new summary")
+	assert.True(t, strings.HasSuffix(string(out), "Body.\r\n"),
+		"body bytes after frontmatter must be preserved verbatim")
+}
+
+func TestYAMLFrontmatterField_PatchValue_AcceptsCloserAtEOF(t *testing.T) {
+	// Frontmatter that ends with `---` and no trailing newline
+	// (no body after the closer). The previous slice arithmetic
+	// would panic on this input.
+	body := []byte("---\ntitle: x\nsummary: old\n---")
+	out, err := (YAMLFrontmatterField{
+		Path: []string{"summary"},
+	}).PatchValue(body, "fresh summary")
+	require.NoError(t, err)
+	assert.Contains(t, string(out), "fresh summary")
+}
+
 func TestYAMLFrontmatterField_PatchValue_NoFrontmatter(t *testing.T) {
 	body := []byte("Body only, no frontmatter.\n")
 	_, err := (YAMLFrontmatterField{

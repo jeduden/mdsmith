@@ -1,6 +1,7 @@
 package release
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -215,7 +216,7 @@ func (t *Toolkit) applyTarget(tg MessagingTarget, m *Messaging) (ApplyResult, er
 	if err != nil {
 		return ApplyResult{Target: tg}, err
 	}
-	if string(out) == string(body) {
+	if bytes.Equal(out, body) {
 		return ApplyResult{Target: tg, Changed: false}, nil
 	}
 	if err := t.fs.MkdirAll(filepath.Dir(tg.Path), 0o755); err != nil {
@@ -290,10 +291,16 @@ func FormatDrift(drifts []MessagingDrift) string {
 	return b.String()
 }
 
+// oneLineForDrift collapses newlines and truncates the value
+// to roughly 120 columns for the drift report. Truncation is
+// rune-aware so multi-byte runes (the messaging copy uses
+// em-dashes) cannot be sliced in half.
 func oneLineForDrift(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) > 120 {
-		return s[:117] + "..."
+	const maxRunes = 117
+	runes := []rune(s)
+	if len(runes) > maxRunes+3 {
+		return string(runes[:maxRunes]) + "..."
 	}
 	return s
 }

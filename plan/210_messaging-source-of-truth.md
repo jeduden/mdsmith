@@ -105,11 +105,15 @@ A new `mdsmith-release sync-messaging`
 subcommand registered in
 `cmd/mdsmith-release/main.go`:
 
-- `sync-messaging` — load source via
-  `internal/extract` (no subprocess).
-  Regenerate fragment files. Patch every
-  registered surface. Print a summary of bytes
-  changed.
+- `sync-messaging` — load the source by
+  shelling out to `go run ./cmd/mdsmith extract
+  messaging docs/brand/messaging.md --format
+  json` so the loader rides the existing,
+  kind-aware extract pipeline and the
+  `messaging` kind schema validates the input
+  before sync runs. Regenerate fragment files.
+  Patch every registered surface. Print a
+  summary of bytes changed.
 - `sync-messaging --check` — same load and
   render. Compare against on-disk contents.
   Exit non-zero on drift. CI uses this gate.
@@ -128,9 +132,9 @@ subcommand registered in
    JSON tree contains every required field.
 3. **Sync command — read path.** Add a
    `sync-messaging` subcommand that loads the
-   source via `internal/extract` and prints
-   the parsed messaging struct. Unit test for
-   the loader.
+   source by invoking `go run ./cmd/mdsmith
+   extract messaging` and prints the parsed
+   messaging struct. Unit test for the loader.
 4. **Patchers per target type.** JSON-key
    patcher for `package.json` and
    `plugin.json`. TOML-key patcher for

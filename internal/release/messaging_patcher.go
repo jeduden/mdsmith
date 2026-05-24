@@ -354,23 +354,36 @@ func unwrap(s string) string {
 
 // splitFrontmatter returns the YAML frontmatter (no delimiters)
 // and the body that follows, together with the closing
-// delimiter as it appears in the original (`---\n` typically).
+// delimiter as it appears in the original. Accepts both
+// `---\n` and `---\r\n` openers/closers, and tolerates a closer
+// at EOF with no trailing newline.
 func splitFrontmatter(body []byte) (front, rest, closer []byte, err error) {
-	const openMarker = "---\n"
-	if !bytes.HasPrefix(body, []byte(openMarker)) {
+	openerLen := 0
+	switch {
+	case bytes.HasPrefix(body, []byte("---\n")):
+		openerLen = 4
+	case bytes.HasPrefix(body, []byte("---\r\n")):
+		openerLen = 5
+	default:
 		return nil, nil, nil,
 			errors.New("file does not start with a YAML frontmatter delimiter")
 	}
-	rest = body[len(openMarker):]
+	rest = body[openerLen:]
 	idx := indexFrontmatterClose(rest)
 	if idx < 0 {
 		return nil, nil, nil,
 			errors.New("YAML frontmatter has no closing delimiter")
 	}
-	closerEnd := idx + len("---\n")
-	// Allow trailing CR before the LF (Windows-style files).
-	if idx+3 < len(rest) && rest[idx+3] == '\r' {
-		closerEnd = idx + len("---\r\n")
+	// Closer is `---` plus an optional `\r\n`, `\n`, or EOF.
+	// `idx+3` may equal len(rest) when the file ends exactly at
+	// `---`; clamp closerEnd before slicing to avoid an
+	// out-of-bounds panic on the EOF case.
+	closerEnd := idx + 3
+	if closerEnd < len(rest) && rest[closerEnd] == '\r' {
+		closerEnd++
+	}
+	if closerEnd < len(rest) && rest[closerEnd] == '\n' {
+		closerEnd++
 	}
 	return rest[:idx], rest[closerEnd:], rest[idx:closerEnd], nil
 }
