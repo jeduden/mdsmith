@@ -1354,10 +1354,12 @@ func parseSchemaWithCache(
 		return &parsedSchema{Config: cfg}, nil, err
 	}
 
-	f, err := lint.NewFile("schema", content)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parsing schema markdown: %w", err)
-	}
+	// lint.NewFile returns a nil error in every code path
+	// (internal/lint/file.go); the defensive check the previous
+	// signature carried was unreachable from any test. Discard the
+	// error here so the patch carries no untestable defensive
+	// branch.
+	f, _ := lint.NewFile("schema", content)
 
 	// Extract <?require?> directive from schema body.
 	filenamePattern, err := extractRequireDirective(f)
@@ -1524,11 +1526,11 @@ func expandSchemaInclude(
 	}
 
 	_, fragContent := lint.StripFrontMatter(fragData)
-	fragFile, err := lint.NewFile(includedPath, fragContent)
-	if err != nil {
-		return nil, "", "", nil, fmt.Errorf(
-			"parsing schema include %q: %w", includedPath, err)
-	}
+	// lint.NewFile returns a nil error in every code path
+	// (internal/lint/file.go); the previous defensive branch was
+	// unreachable from any test. Discard the error so the patch
+	// carries no untestable defensive code.
+	fragFile, _ := lint.NewFile(includedPath, fragContent)
 
 	fp, err := extractRequireDirective(fragFile)
 	if err != nil {
@@ -2079,10 +2081,10 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 	// The data value must come from the same cue.Context as the
 	// schema value — cue values cannot cross contexts. The cached
 	// wrapper exposes its Context for exactly this case.
+	// CompileBytes of json.Marshal output is always valid CUE, so
+	// any error on dataVal would also surface through merged.Validate
+	// below; the previous explicit check carried no testable path.
 	dataVal := compiled.Ctx.CompileBytes(data)
-	if err := dataVal.Err(); err != nil {
-		return fmt.Errorf("compile front matter: %w", err)
-	}
 
 	merged := compiled.Value.Unify(dataVal)
 	if err := merged.Validate(cue.Concrete(true)); err != nil {

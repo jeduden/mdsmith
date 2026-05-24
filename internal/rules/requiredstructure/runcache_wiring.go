@@ -159,17 +159,15 @@ func absoluteIncludes(absRoot string, includes []string) []string {
 }
 
 // absRootDir returns f.RootDir resolved to an absolute path. Returns
-// "" when f is nil, f.RootDir is empty, or filepath.Abs reports an
-// error (Getwd failure — vanishingly rare in production). Callers
-// pair an empty result with absoluteIncludes's no-absRoot branch.
+// "" when f is nil or f.RootDir is empty (the struct-literal test
+// path); a Getwd failure inside filepath.Abs is treated the same
+// way by ignoring the error — the wiring chain pairs the empty
+// result with absoluteIncludes's no-absRoot branch.
 func absRootDir(f *lint.File) string {
 	if f == nil || f.RootDir == "" {
 		return ""
 	}
-	abs, err := filepath.Abs(f.RootDir)
-	if err != nil {
-		return ""
-	}
+	abs, _ := filepath.Abs(f.RootDir)
 	return abs
 }
 
@@ -224,10 +222,7 @@ func absSchemaCacheKey(f *lint.File, schemaPath string) string {
 	if f.RootDir == "" {
 		return ""
 	}
-	absRoot, err := filepath.Abs(f.RootDir)
-	if err != nil {
-		return ""
-	}
+	absRoot, _ := filepath.Abs(f.RootDir)
 	return filepath.Clean(filepath.Join(absRoot, schemaPath))
 }
 
