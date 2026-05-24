@@ -5,22 +5,29 @@ summary: >-
   for the mdsmith product. Generated fragments and the
   non-Markdown surfaces enumerated in plan 210 derive their copy
   from this file.
-headline-pre: Mark
-headline-em: down
-headline-post: ", smithed."
 ---
 # mdsmith product messaging
 
-The prose fields below feed the generated fragments under
+Every field below feeds the generated fragments under
 `docs/brand/fragments/` and the JSON, TOML, and YAML surfaces
 enumerated in
-[plan 210](../../plan/210_messaging-source-of-truth.md). The
-`headline-*` frontmatter fields stay in frontmatter because the
-website hero template needs the structural pre/em/post split.
+[plan 210](../../plan/210_messaging-source-of-truth.md).
 
 Edit a section here, then run `mdsmith-release sync-messaging`
 to propagate the change to every tracked surface. CI runs
 `sync-messaging --check` and fails the build on drift.
+
+## Headline
+
+The website hero template renders the headline as
+`<h1>{pre}<em>{em}</em>{post}</h1>`. The raw Markdown source
+lives in the code block below; `mdsmith-release sync-messaging`
+parses the single emphasis span (`*…*`) to derive the pre / em
+/ post split.
+
+```markdown
+Mark*down*, smithed.
+```
 
 ## Eyebrow
 

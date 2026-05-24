@@ -25,12 +25,12 @@ const messagingKindCfg = `kinds:
       frontmatter:
         title: nonEmpty
         summary: nonEmpty
-        headline-pre: nonEmpty
-        headline-em: nonEmpty
-        headline-post: nonEmpty
       closed: false
       sections:
         - heading: null
+        - heading: { regex: '^Headline$' }
+          content:
+            - { kind: code-block, required: true }
         - heading: { regex: '^Eyebrow$' }
           content:
             - { kind: paragraph, required: true }
@@ -61,16 +61,18 @@ kind-assignment:
     kinds: [messaging]
 `
 
-const messagingFixture = `---
-title: mdsmith product messaging
-summary: Canonical product messaging.
-headline-pre: Mark
-headline-em: down
-headline-post: ", smithed."
----
-# mdsmith product messaging
-
-## Eyebrow
+const messagingFixture = "---\n" +
+	"title: mdsmith product messaging\n" +
+	"summary: Canonical product messaging.\n" +
+	"---\n" +
+	"# mdsmith product messaging\n" +
+	"\n" +
+	"## Headline\n" +
+	"\n" +
+	"```markdown\n" +
+	"Mark*down*, smithed.\n" +
+	"```\n" +
+	"\n" + `## Eyebrow
 
 Eyebrow text.
 
@@ -104,16 +106,15 @@ Claude Code audit description.
 var expectedMessagingFrontmatter = []string{
 	"title",
 	"summary",
-	"headline-pre",
-	"headline-em",
-	"headline-post",
 }
 
 // expectedMessagingSections lists every top-level body-section
-// key the messaging kind must project (each carries a `text`
-// field — the paragraph under the H2). Adding a field requires
-// updating .mdsmith.yml, the real source file, this constant,
-// and the sync registry in one change.
+// key the messaging kind must project (paragraph sections carry
+// a `text` field, the headline carries a `code` field — the
+// raw Markdown source whose single `*…*` emphasis span the
+// release tooling splits into pre/em/post). Adding a field
+// requires updating .mdsmith.yml, the real source file, this
+// constant, and the sync registry in one change.
 var expectedMessagingSections = []string{
 	"eyebrow",
 	"lead",
@@ -151,6 +152,13 @@ func TestE2E_Extract_Messaging(t *testing.T) {
 		assert.True(t, isString, "field %q is not a string: %T", key, v)
 		assert.NotEmpty(t, s, "field %q is empty", key)
 	}
+	// Headline projects as a code block (raw Markdown source).
+	headline, ok := got["headline"].(map[string]any)
+	require.True(t, ok, "missing headline section")
+	src, isString := headline["code"].(string)
+	assert.True(t, isString, "headline.code not a string: %T", headline["code"])
+	assert.Contains(t, src, "*", "headline source must keep the emphasis span")
+
 	for _, key := range expectedMessagingSections {
 		sec, present := got[key].(map[string]any)
 		assert.True(t, present, "missing section %q at root", key)

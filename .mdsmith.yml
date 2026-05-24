@@ -471,12 +471,12 @@ kinds:
       frontmatter:
         title: nonEmpty
         summary: nonEmpty
-        headline-pre: nonEmpty
-        headline-em: nonEmpty
-        headline-post: nonEmpty
       closed: false
       sections:
         - heading: null
+        - heading: { regex: '^Headline$' }
+          content:
+            - { kind: code-block, required: true }
         - heading: { regex: '^Eyebrow$' }
           content:
             - { kind: paragraph, required: true }

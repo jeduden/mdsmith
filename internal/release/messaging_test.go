@@ -24,11 +24,9 @@ func repoRoot(t *testing.T) string {
 const fullMessagingJSON = `{
   "frontmatter": {
     "title": "mdsmith product messaging",
-    "summary": "Canonical product messaging.",
-    "headline-pre": "Mark",
-    "headline-em": "down",
-    "headline-post": ", smithed."
+    "summary": "Canonical product messaging."
   },
+  "headline": { "code": "Mark*down*, smithed." },
   "eyebrow": { "text": "Markdown as a single source of truth" },
   "lead": { "text": "Lead text." },
   "tagline": { "text": "Tagline text." },
@@ -107,6 +105,32 @@ func TestLoadMessaging_ExtractorError(t *testing.T) {
 	_, err := LoadMessaging("ignored")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "boom")
+}
+
+func TestParseHeadlineEmphasis_CanonicalShape(t *testing.T) {
+	pre, em, post, err := parseHeadlineEmphasis("Mark*down*, smithed.")
+	require.NoError(t, err)
+	assert.Equal(t, "Mark", pre)
+	assert.Equal(t, "down", em)
+	assert.Equal(t, ", smithed.", post)
+}
+
+func TestParseHeadlineEmphasis_NoEmphasisFails(t *testing.T) {
+	_, _, _, err := parseHeadlineEmphasis("Markdown, smithed.")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one")
+}
+
+func TestParseHeadlineEmphasis_MultipleEmphasisFails(t *testing.T) {
+	// Two `*…*` spans cannot map to a single `<em>` in the
+	// hero template; the parser must reject.
+	_, _, _, err := parseHeadlineEmphasis("Mark*down*, *smithed*.")
+	require.Error(t, err)
+}
+
+func TestParseHeadlineEmphasis_EmptySpanFails(t *testing.T) {
+	_, _, _, err := parseHeadlineEmphasis("Mark**, smithed.")
+	require.Error(t, err)
 }
 
 // TestRunMdsmithExtract_AgainstRepoRoot exercises the real

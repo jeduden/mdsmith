@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -59,12 +60,24 @@ func LoadMessaging(root string) (*Messaging, error) {
 	if err := json.Unmarshal(out, &doc); err != nil {
 		return nil, fmt.Errorf("decode messaging json: %w", err)
 	}
+	// An empty headline.code is left for Validate to surface as
+	// the standard missing-field message; a non-empty code that
+	// does not match the canonical shape is a hard headline
+	// error that points at the parse problem directly.
+	var pre, em, post string
+	if strings.TrimSpace(doc.Headline.Code) != "" {
+		p, e, s, perr := parseHeadlineEmphasis(doc.Headline.Code)
+		if perr != nil {
+			return nil, fmt.Errorf("headline: %w", perr)
+		}
+		pre, em, post = p, e, s
+	}
 	m := Messaging{
 		Title:                       doc.Frontmatter.Title,
 		Summary:                     doc.Frontmatter.Summary,
-		HeadlinePre:                 doc.Frontmatter.HeadlinePre,
-		HeadlineEm:                  doc.Frontmatter.HeadlineEm,
-		HeadlinePost:                doc.Frontmatter.HeadlinePost,
+		HeadlinePre:                 pre,
+		HeadlineEm:                  em,
+		HeadlinePost:                post,
 		Eyebrow:                     doc.Eyebrow.Text,
 		Lead:                        doc.Lead.Text,
 		Tagline:                     doc.Tagline.Text,
@@ -79,18 +92,38 @@ func LoadMessaging(root string) (*Messaging, error) {
 	return &m, nil
 }
 
+// headlineEmphasisRE matches the canonical headline shape: any
+// leading text, exactly one single-asterisk emphasis span, then
+// any trailing text. The span uses `*` (the Markdown `<em>`
+// convention) so the rendered HTML matches the hero template's
+// `<em>` wrapping.
+var headlineEmphasisRE = regexp.MustCompile(`^([^*]*)\*([^*]+)\*([^*]*)$`)
+
+// parseHeadlineEmphasis splits the headline source on its single
+// emphasis span. Returns pre, em, post for the website hero
+// template (`<h1>{pre}<em>{em}</em>{post}</h1>`). Errors if the
+// source has zero or more than one emphasis span — the hero
+// template can only render one.
+func parseHeadlineEmphasis(src string) (pre, em, post string, err error) {
+	src = strings.TrimSpace(src)
+	m := headlineEmphasisRE.FindStringSubmatch(src)
+	if m == nil {
+		return "", "", "", fmt.Errorf(
+			"expected exactly one `*…*` emphasis span, got %q", src)
+	}
+	return m[1], m[2], m[3], nil
+}
+
 // messagingDoc mirrors the shape `mdsmith extract messaging`
 // emits. The body-section fields land at the document root
 // (not under `frontmatter`); each carries a `text` field that
 // holds the paragraph the H2 section contains.
 type messagingDoc struct {
 	Frontmatter struct {
-		Title        string `json:"title"`
-		Summary      string `json:"summary"`
-		HeadlinePre  string `json:"headline-pre"`
-		HeadlineEm   string `json:"headline-em"`
-		HeadlinePost string `json:"headline-post"`
+		Title   string `json:"title"`
+		Summary string `json:"summary"`
 	} `json:"frontmatter"`
+	Headline                    sectionCode `json:"headline"`
 	Eyebrow                     sectionText `json:"eyebrow"`
 	Lead                        sectionText `json:"lead"`
 	Tagline                     sectionText `json:"tagline"`
@@ -102,6 +135,10 @@ type messagingDoc struct {
 
 type sectionText struct {
 	Text string `json:"text"`
+}
+
+type sectionCode struct {
+	Code string `json:"code"`
 }
 
 // Validate fails fast if any required field is empty. The
