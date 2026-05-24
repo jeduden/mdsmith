@@ -37,10 +37,10 @@ A change to one kind dirties the same file
 as every other config edit, and reading one
 kind means scrolling past a dozen others.
 
-A YAML file per kind (basename = name) makes
-each kind self-contained. The `.mdsmith/`
-directory also reserves
-`.mdsmith/conventions/` for a later plan.
+A YAML file per kind (basename = name)
+makes each self-contained. The `.mdsmith/`
+tree reserves a `conventions/` slot for
+later.
 
 ## Non-Goals
 
@@ -105,11 +105,13 @@ rules:
     max: 600
 ```
 
-The kind's name is the file's basename
-minus extension. The name must match
-`[a-z][a-z0-9-]*` (the existing kind-name
-syntax). A bad basename is a config error
-naming the file.
+The kind's name is the basename minus
+extension. The basename must match
+`[a-z][a-z0-9-]*` — a new constraint added
+here for filenames (OS case folding, path
+syntax) that doesn't apply to inline YAML
+keys. A bad basename errors. Inline
+`kinds.<name>:` keys stay unvalidated.
 
 One kind per file. A YAML document with
 top-level keys outside the `KindBody`
@@ -139,17 +141,15 @@ assignment runs.
 
 ### Schema sources within a kind file
 
-A kind body accepts three schema sources
-today. `schema:` is an inline map.
-`rules.required-structure.schema:` is a
-path to a `proto.md`. And
-`rules.required-structure.inline-schema:`
-is a legacy inline map under the rule. Two
-on the same kind is a config error, caught
-pairwise by `validateKindSchemaSources` in
+A kind body accepts three schema sources:
+an inline `schema:` map, a
+`rules.required-structure.schema:` path to
+a `proto.md`, and a legacy
+`…inline-schema:` map. Setting two on the
+same kind errors, caught pairwise by
+`validateKindSchemaSources` in
 [validate.go](../internal/config/validate.go).
-That check applies unchanged to file-defined
-kinds.
+The check applies unchanged to file kinds.
 
 ### Schema sharing across kinds
 
@@ -284,12 +284,13 @@ schema parsing lives in `internal/schema`.
 - [ ] Two kind files with the same
       basename across `.yaml`/`.yml` error
       naming both.
-- [ ] A bad basename or a file in a
-      subdirectory of `.mdsmith/kinds/`
-      errors naming the file.
-- [ ] A kind file with a top-level key
-      outside `KindBody` errors naming the
-      key and the file.
+- [ ] A basename failing `[a-z][a-z0-9-]*`
+      or a file in a subdir of
+      `.mdsmith/kinds/` errors; inline kind
+      names stay unvalidated.
+- [ ] A kind file with a key outside
+      `KindBody` errors naming key and
+      file.
 - [ ] The three pairwise schema-source
       checks in `validateKindSchemaSources`
       fire on a file-defined kind the same
