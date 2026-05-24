@@ -1172,21 +1172,20 @@ func (s *Server) appendQuickFixActions(
 	annotated bool,
 ) []codeAction {
 	ruleEdits := make(map[string]*workspaceEdit)
-	ruleSeen := make(map[string]bool)
 	for _, d := range p.Context.Diagnostics {
 		if d.Data == nil || d.Data.RuleName == "" {
 			continue
 		}
 		rule := d.Data.RuleName
-		if !ruleSeen[rule] {
+		edit, seen := ruleEdits[rule]
+		if !seen {
 			fixed := s.quickFixBytesFor(rule, doc, cfg, root)
 			if fixed != nil {
-				ruleEdits[rule] = buildFileEdit(p.TextDocument.URI, doc.text, fixed,
+				edit = buildFileEdit(p.TextDocument.URI, doc.text, fixed,
 					annotated, "mdsmith-fix-"+rule, quickFixTitle(rule))
 			}
-			ruleSeen[rule] = true
+			ruleEdits[rule] = edit
 		}
-		edit := ruleEdits[rule]
 		if edit == nil {
 			continue
 		}

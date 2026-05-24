@@ -141,13 +141,13 @@ carries a `ChangeAnnotation` flagged
 pane before writing any change. You accept or reject
 per action.
 
-The preview requires VS Code 1.85 or later (which
-advertises `changeAnnotationSupport` in the LSP
-`initialize` handshake). On older clients, or on
-editors that do not advertise this capability, the
-server falls back to the immediate-apply form and
-logs one warning to the Output channel naming the
-missing capability.
+The preview requires a client that advertises both
+`documentChanges` and `changeAnnotationSupport` in
+the LSP `initialize` handshake (VS Code 1.85 or
+later). On older clients, or on editors that do not
+advertise both capabilities, the server falls back to
+the immediate-apply form and logs one warning to the
+Output channel naming the missing capability.
 
 The setting interacts with `mdsmith.fixOnSave` as
 follows:

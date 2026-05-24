@@ -126,9 +126,9 @@ Annotation IDs:
 
 `<rule-name>` is the name string, not the rule code.
 
-Missing either capability silently falls back to the
-legacy `changes` map. One warning is logged per session
-to `window/logMessage` naming the missing capability.
+Missing either capability falls back to the legacy
+`changes` map. One warning is logged per session to
+`window/logMessage` naming the missing capability.
 
 ## Symbol navigation
 

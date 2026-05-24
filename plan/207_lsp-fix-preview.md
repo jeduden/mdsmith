@@ -265,5 +265,5 @@ the matrix:
       capability gate.
 - [x] All tests pass: `go test ./...` and
       `bun test` in `editors/vscode`.
-- [ ] `go tool golangci-lint run` reports no
+- [x] `go tool golangci-lint run` reports no
       issues.

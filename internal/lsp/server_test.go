@@ -649,7 +649,7 @@ func TestHandleCodeActionInvalidJSON(t *testing.T) {
 	assert.Contains(t, buf.String(), "invalid codeAction params")
 }
 
-func TestQuickFixEditForFixerError(t *testing.T) {
+func TestQuickFixBytesForFixerError(t *testing.T) {
 	// Invalid path used to be propagated from the fixer; today it is
 	// just a label so the fix typically succeeds. The point of the
 	// test is that the helper does not crash on an unusual path.
@@ -2086,7 +2086,7 @@ func TestRunModeFallsBackOnUnknown(t *testing.T) {
 // there's no scope ambiguity. Excluding them left users with
 // only the AI extension's "Fix" entry visible in the lightbulb
 // menu when clicking a stale catalog/toc/include diagnostic.
-func TestQuickFixEditForCatalogProducesEdit(t *testing.T) {
+func TestQuickFixBytesForCatalogProducesEdit(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
@@ -2099,7 +2099,7 @@ func TestQuickFixEditForCatalogProducesEdit(t *testing.T) {
 	require.Contains(t, edit.Changes, "file:///x.md")
 }
 
-func TestQuickFixEditForUnknownRule(t *testing.T) {
+func TestQuickFixBytesForUnknownRule(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)
@@ -2108,7 +2108,7 @@ func TestQuickFixEditForUnknownRule(t *testing.T) {
 	assert.Nil(t, fixed)
 }
 
-func TestQuickFixEditForNoOpReturnsNil(t *testing.T) {
+func TestQuickFixBytesForNoOpReturnsNil(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	cfg := config.Merge(config.Defaults(), nil)

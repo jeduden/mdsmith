@@ -139,7 +139,7 @@
         "mdsmith.previewFix": {
           "type": "boolean",
           "default": false,
-          "description": "Open VS Code Refactor Preview before applying any mdsmith fix. When on, every quick fix and source.fixAll.mdsmith action routes through the Refactor Preview pane so you can inspect the diff before accepting. Requires a client that advertises changeAnnotationSupport (VS Code 1.85+). Leave off for the default apply-immediately behavior."
+          "description": "Open VS Code Refactor Preview before applying any mdsmith fix. When on, every quick fix and source.fixAll.mdsmith action routes through the Refactor Preview pane so you can inspect the diff before accepting. Requires a client that advertises both documentChanges and changeAnnotationSupport (VS Code 1.85+). Leave off for the default apply-immediately behavior."
         },
         "mdsmith.trace.server": {
           "type": "string",
