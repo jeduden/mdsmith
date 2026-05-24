@@ -323,6 +323,22 @@ func TestOneLineForDrift_TruncatesByRunesNotBytes(t *testing.T) {
 	}
 }
 
+func TestApplyMessaging_FailsOnWriteError(t *testing.T) {
+	// All target files exist (so ReadFile succeeds and the
+	// missing-file branch doesn't fire), but the fragment target
+	// already exists as a directory of the expected name, so
+	// WriteFile fails with "is a directory". The write-error
+	// branch surfaces.
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: directory-as-file write succeeds")
+	}
+	root := applyTestRoot(t)
+	frag := filepath.Join(root, "docs/brand/fragments/tagline.fragment.md")
+	require.NoError(t, os.MkdirAll(frag, 0o755))
+	_, err := ApplyMessaging(root, sampleMessaging())
+	require.Error(t, err)
+}
+
 func TestApplyMessaging_FailsOnReadError(t *testing.T) {
 	// Replace a target file with a directory of the same name;
 	// ReadFile then returns an error that is not fs.ErrNotExist

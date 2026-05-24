@@ -36,6 +36,21 @@ func TestJSONStringField_ReadValue_FieldMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), `"description" not found`)
 }
 
+func TestJSONStringField_ReadValue_TruncatedValue(t *testing.T) {
+	// `{"k": tru` — invalid value token mid-decode. The
+	// dec.Decode error path in decodeOrderedJSON should fire.
+	_, err := (JSONStringField{Key: "k"}).ReadValue([]byte(`{"k": tru`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse JSON")
+}
+
+func TestJSONStringField_ReadValue_UnclosedObject(t *testing.T) {
+	// Open object with no closing `}` — the closing-token
+	// branch in decodeOrderedJSON returns an error.
+	_, err := (JSONStringField{Key: "k"}).ReadValue([]byte(`{"k": "v"`))
+	require.Error(t, err)
+}
+
 func TestJSONStringField_ReadValue_RejectsTrailingGarbage(t *testing.T) {
 	// `{...} garbage` would silently parse if the decoder
 	// stopped at `dec.More() == false` without consuming the
@@ -359,6 +374,22 @@ func TestTOMLStringField_ReadValue_NonStringValue(t *testing.T) {
 
 func TestTOMLStringField_PatchValue_MalformedTOML(t *testing.T) {
 	_, err := (TOMLStringField{Key: "k"}).PatchValue([]byte(`= broken`), "v")
+	require.Error(t, err)
+}
+
+func TestTOMLStringField_PatchValue_KeyNotFound(t *testing.T) {
+	_, err := (TOMLStringField{Key: "absent"}).PatchValue([]byte("k = \"v\"\n"), "x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestYAMLFrontmatterField_PatchValue_MalformedYAML(t *testing.T) {
+	// Malformed YAML inside the delimiters; PatchValue must
+	// surface the yaml.Unmarshal error rather than panic.
+	body := []byte("---\n: : :\n---\nBody.\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"summary"},
+	}).PatchValue(body, "x")
 	require.Error(t, err)
 }
 
