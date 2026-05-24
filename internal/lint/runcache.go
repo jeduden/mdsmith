@@ -210,14 +210,39 @@ func (c *RunCache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetad
 // under concurrent ParsedSchema calls for the same schemaPath: the
 // inner sync.Map's LoadOrStore re-uses the existing set, and
 // re-adding the same dependent key is a no-op.
+//
+// The verify-and-retry loop closes a race with Invalidate's
+// empty-set cleanup: Invalidate's CompareAndDelete on the outer
+// schemaDependents map only compares the outer-value pointer,
+// which stays the same even when a concurrent register adds to
+// the inner *sync.Map. Without the retry, this sequence loses
+// the new dependent:
+//
+//  1. T1 register: LoadOrStore("frag") → setI (existing)
+//  2. T2 invalidate: empty-check on setI → empty → CompareAndDelete
+//     drops the outer entry
+//  3. T1 register: set.Store(schemaPath) → lands on the orphaned
+//     setI, never reachable from schemaDependents again
+//
+// The retry detects step 3's orphaning by re-Loading the outer
+// entry after Store and confirming it still points at setI.
+// On mismatch, the loop re-issues LoadOrStore, which creates a
+// fresh set and re-registers. The retry cap (8) is well above
+// any plausible race depth — register-vs-invalidate is bounded
+// by LSP edit rate.
 func (c *RunCache) registerSchemaIncludes(schemaPath string, includes []string) {
 	for _, frag := range includes {
 		if frag == "" {
 			continue
 		}
-		setI, _ := c.schemaDependents.LoadOrStore(frag, &sync.Map{})
-		set := setI.(*sync.Map)
-		set.Store(schemaPath, struct{}{})
+		for retry := 0; retry < 8; retry++ {
+			setI, _ := c.schemaDependents.LoadOrStore(frag, &sync.Map{})
+			set := setI.(*sync.Map)
+			set.Store(schemaPath, struct{}{})
+			if current, ok := c.schemaDependents.Load(frag); ok && current == setI {
+				break
+			}
+		}
 	}
 }
 

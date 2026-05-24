@@ -743,6 +743,73 @@ func TestRunCache_InvalidateTerminatesOnCyclicReverseIncludes(t *testing.T) {
 			"via the partial-includes-on-error register)")
 }
 
+// TestRunCache_RegisterInvalidateRaceDoesNotLoseDependents pins the
+// fix for Copilot thread PRRT_kwDORLpjqs6EXwfS: Invalidate's
+// CompareAndDelete on schemaDependents only compares the outer
+// pointer, which a concurrent register-into-inner-set does not
+// change. Without the retry on register, this sequence would lose
+// the new dependent. The test pounds register and Invalidate on the
+// same key in parallel and asserts every "live" dependent the last
+// register left in place is still reachable via schemaDependents.
+func TestRunCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
+	c := NewRunCache()
+	const fragment = "/abs/fragment.md"
+
+	// Two pools of schema paths. Half are repeatedly invalidated;
+	// half are continuously re-registered and must remain
+	// discoverable through schemaDependents[fragment].
+	const liveSchemas = 8
+	const churnIters = 200
+
+	live := make([]string, liveSchemas)
+	for i := range live {
+		live[i] = "/abs/schema-live-" + string(rune('0'+i)) + ".md"
+	}
+	churn := "/abs/schema-churn.md"
+
+	var wg sync.WaitGroup
+
+	// Continuously register the live set against fragment.
+	for _, s := range live {
+		s := s
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < churnIters; i++ {
+				c.registerSchemaIncludes(s, []string{fragment})
+			}
+		}()
+	}
+
+	// Concurrently register-then-invalidate the churn schema —
+	// each Invalidate may empty fragment's set and trip the
+	// CompareAndDelete.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < churnIters; i++ {
+			c.registerSchemaIncludes(churn, []string{fragment})
+			c.Invalidate(churn)
+		}
+	}()
+	wg.Wait()
+
+	// Every live schema must still be a dependent of fragment.
+	setI, ok := c.schemaDependents.Load(fragment)
+	require.True(t, ok,
+		"after all live registers, fragment must still have a "+
+			"dependent set — the retry-and-verify loop in "+
+			"registerSchemaIncludes is what prevents the outer "+
+			"entry from being lost under churn")
+	set := setI.(*sync.Map)
+	for _, s := range live {
+		_, hit := set.Load(s)
+		assert.True(t, hit,
+			"live dependent %s must survive the register/invalidate "+
+				"race against the churn schema", s)
+	}
+}
+
 // TestRunCache_InvalidateDropsEmptyDependentSets pins the empty-set
 // cleanup added for Copilot thread PRRT_kwDORLpjqs6EXnIf. When a
 // schema's last dependent is removed, the *sync.Map entry in
