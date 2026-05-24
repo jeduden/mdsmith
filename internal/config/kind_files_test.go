@@ -155,6 +155,123 @@ func TestDiscoverKinds_RejectsUnknownKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "not-a-real-key")
 }
 
+// TestDiscoverKinds_IgnoresNonYAMLFiles pins the
+// non-`.yaml`/`.yml` skip branch: a stray `.txt` or `.md`
+// alongside the kind files must be silently ignored rather
+// than treated as a malformed kind.
+func TestDiscoverKinds_IgnoresNonYAMLFiles(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "foo.yaml"),
+		[]byte("rules: {}\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "README.md"),
+		[]byte("Notes\n"), 0o644))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", ".keep"),
+		[]byte(""), 0o644))
+
+	got, err := discoverKinds(dir)
+	require.NoError(t, err)
+	require.Contains(t, got, "foo")
+	assert.Len(t, got, 1, "non-YAML files must not produce extra kinds")
+}
+
+// TestLoad_PropagatesKindFileDiscoveryError pins the
+// error-propagation path: when discoverKinds returns an
+// error, Load wraps it and aborts rather than continuing with
+// a partial kinds map.
+func TestLoad_PropagatesKindFileDiscoveryError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	// A bad basename triggers a discoverKinds error.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "BadName.yaml"),
+		[]byte("rules: {}\n"), 0o644))
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, os.WriteFile(cfgPath, []byte("rules: {}\n"), 0o644))
+
+	_, err := Load(cfgPath)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading kind files")
+	assert.Contains(t, err.Error(), "BadName.yaml")
+}
+
+// TestParseKindFile_PropagatesReadError pins the
+// os.ReadFile error branch: a file that cannot be read
+// surfaces a "reading <path>" error rather than panicking.
+// Skipped on platforms or test users where chmod cannot
+// produce an unreadable file (e.g. running as root).
+func TestParseKindFile_PropagatesReadError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "unreadable.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("rules: {}\n"), 0o644))
+	require.NoError(t, os.Chmod(path, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+
+	if _, err := os.ReadFile(path); err == nil {
+		t.Skip("test user can read mode-0000 files (likely running as root)")
+	}
+
+	_, err := parseKindFile(path)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reading")
+	assert.Contains(t, err.Error(), "unreadable.yaml")
+}
+
+// TestDiscoverKinds_RejectsYAMLAnchors pins that the
+// anchor/alias guard fires on kind files (defence against
+// billion-laughs payloads, parallel to UnmarshalSafe on
+// `.mdsmith.yml`).
+func TestDiscoverKinds_RejectsYAMLAnchors(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "foo.yaml"),
+		[]byte("rules: &anchor {}\ncategories: *anchor\n"), 0o644))
+
+	_, err := discoverKinds(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "foo.yaml")
+	assert.Contains(t, err.Error(), "anchors/aliases")
+}
+
+// TestDiscoverKinds_RejectsKindFileWithBadYAML pins the
+// decode-error path: a `.mdsmith/kinds/<name>.yaml` whose body
+// is not valid YAML surfaces the parse error with the file
+// name so the user can jump straight to it.
+func TestDiscoverKinds_RejectsKindFileWithBadYAML(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755)) // not the file
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "foo.yaml"),
+		[]byte("rules: [this is: not valid yaml\n"), 0o644))
+
+	_, err := discoverKinds(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "foo.yaml")
+}
+
+// TestDiscoverKinds_RejectsKindsPathIsFile pins the
+// non-IsNotExist ReadDir branch. When the workspace contains a
+// regular file at `.mdsmith/kinds`, the ReadDir call errors with
+// ENOTDIR — the discoverer must propagate that error rather than
+// silently returning an empty map (which would mask a misconfigured
+// workspace as "no kinds").
+func TestDiscoverKinds_RejectsKindsPathIsFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith"), 0o755))
+	// Plant a regular file where the kinds directory would live.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds"),
+		[]byte("not a directory\n"), 0o644))
+
+	_, err := discoverKinds(dir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), ".mdsmith/kinds")
+}
+
 // TestLoad_KindFileMergesIntoConfig verifies the end-to-end load
 // path: a file kind merges into cfg.Kinds, indexable by basename.
 func TestLoad_KindFileMergesIntoConfig(t *testing.T) {

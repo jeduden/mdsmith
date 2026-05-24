@@ -110,11 +110,10 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 // cfg.Kinds. A name colliding between a file kind and an inline
 // kind is a config error naming both sources — the two do not
 // merge (a merged kind would defeat the "read one file to know
-// one kind" property plan 208 ships).
+// one kind" property plan 208 ships). Load is the only caller
+// and always supplies a non-empty cfgPath, so no defensive
+// guard is needed for that.
 func mergeKindFiles(cfg *Config, cfgPath string) error {
-	if cfgPath == "" {
-		return nil
-	}
 	discovered, err := discoverKinds(filepath.Dir(cfgPath))
 	if err != nil {
 		return err

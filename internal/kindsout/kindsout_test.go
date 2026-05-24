@@ -357,6 +357,19 @@ func TestWriteBodyText_EmptyPlaceholderWriteError(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestWriteBodyText_DefinedInWriteError pins the error path
+// on the SourcePath `defined-in:` line — surfaces a write
+// error rather than swallowing it.
+func TestWriteBodyText_DefinedInWriteError(t *testing.T) {
+	w := &failingWriter{err: errors.New("nope"), after: 1}
+	body := config.KindBody{
+		SourcePath: "/repo/.mdsmith/kinds/foo.yaml",
+	}
+	err := WriteBodyText(w, "foo", body, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nope")
+}
+
 // makeFileResolution builds a minimal FileResolution with one rule and
 // two layers so writers exercise both the kinds and rules branches.
 func makeFileResolution(t *testing.T) *config.FileResolution {
