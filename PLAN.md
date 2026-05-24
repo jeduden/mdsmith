@@ -86,7 +86,7 @@ footer: |
 | 156 | ✅     | opus   | [Composable required-structure schemas across multiple kinds](plan/156_kind-schema-composition.md)                                      |
 | 156 | ✅     | opus   | [Section schema — unify entry shape under `heading:` discriminator](plan/156_schema-entry-unification.md)                               |
 | 157 | ✅     | sonnet | [Catalog filter by front matter property](plan/157_catalog-where-filter.md)                                                             |
-| 160 | ✅     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/160_claude-code-skills-agents-hooks.md)                                    |
+| 160 | 🔳     | sonnet | [Claude Code plugin extensions — skills, agents, hooks](plan/160_claude-code-skills-agents-hooks.md)                                    |
 | 161 | ✅     | sonnet | [Expose rule maintainability patterns via CLI help and LSP](plan/161_rule-pattern-metadata.md)                                          |
 | 162 | ✅     | sonnet | [Split the overloaded `meta` rule category](plan/162_rule-category-cleanup.md)                                                          |
 | 163 | ✅     |        | [Extract mdsmith Markdown parse/produce as a public Go library](plan/163_public-markdown-library.md)                                    |
@@ -101,7 +101,7 @@ footer: |
 | 172 | ✅     | opus   | [Link-style rule and shared links config](plan/172_link-style-rule-and-config.md)                                                       |
 | 173 | ✅     | sonnet | [Website rewriter tolerates titled links](plan/173_rewriter-titled-links.md)                                                            |
 | 174 | ✅     | opus   | [Expose rename and dependency-graph as CLI subcommands and feature docs](plan/174_expose-rename-and-deps-cli.md)                        |
-| 175 | ✅     | opus   | [CI performance gate for mdsmith check, modelled on the LSP latency gate](plan/175_check-performance-gate.md)                           |
+| 175 | 🔳     | opus   | [CI performance gate for mdsmith check, modelled on the LSP latency gate](plan/175_check-performance-gate.md)                           |
 | 176 | ✅     | sonnet | [ATX heading whitespace and indentation rule](plan/176_atx-heading-whitespace.md)                                                       |
 | 177 | ✅     | sonnet | [Blockquote whitespace rule](plan/177_blockquote-whitespace.md)                                                                         |
 | 178 | ✅     | sonnet | [List marker space rule](plan/178_list-marker-space.md)                                                                                 |
@@ -111,7 +111,7 @@ footer: |
 | 182 | ✅     | sonnet | [Code block convention rules](plan/182_code-block-conventions.md)                                                                       |
 | 183 | ✅     | sonnet | [Skip DedupeDiagnostics via an audited rule.RepoScoped marker](plan/183_dedupe-diagnostics-repo-scoped-skip.md)                         |
 | 184 | ✅     | opus   | [Automate the cross-tool benchmark on merge to main and publish numbers to the assets branch](plan/184_release-benchmark-automation.md) |
-| 185 | ✅     |        | [Expose extended-syntax parsers and the flavor model in pkg/markdown](plan/185_public-markdown-flavor-library.md)                       |
+| 185 | 🔲     |        | [Expose extended-syntax parsers and the flavor model in pkg/markdown](plan/185_public-markdown-flavor-library.md)                       |
 | 186 | ✅     |        | [Centralize UTF-16 column helpers in internal/mdtext](plan/186_arch-fix-utf16-centralize.md)                                            |
 | 187 | ✅     | opus   | [Neutral-corpus engine lever — shared AST walk and Punkt cost](plan/187_neutral-corpus-engine-lever.md)                                 |
 | 188 | 🔲     | opus   | [Regex-over-source rules — inventory and AST-resident replacements](plan/188_regex-vs-ast-inventory.md)                                 |
@@ -132,17 +132,9 @@ footer: |
 | 204 | 🔲     |        | [Fix internal/fix importing internal/engine](plan/204_arch-fix-fix-engine-inversion.md)                                                 |
 | 205 | 🔲     |        | [Move extension.ts concerns to wiring.ts](plan/205_arch-fix-extension-ts-srp.md)                                                        |
 | 206 | 🔲     |        | [Document cue/ in architecture layering map](plan/206_arch-fix-cue-types-docs.md)                                                       |
-| 207 | ✅     | sonnet | [LSP fix preview via ChangeAnnotation](plan/207_lsp-fix-preview.md)                                                                     |
-| 208 | ✅     | opus   | [Kind-per-file config under `.mdsmith/kinds/`](plan/208_kind-files.md)                                                                  |
+| 207 | 🔲     | sonnet | [LSP fix preview via ChangeAnnotation](plan/207_lsp-fix-preview.md)                                                                     |
+| 208 | 🔳     | opus   | [Kind-per-file config under `.mdsmith/kinds/`](plan/208_kind-files.md)                                                                  |
 | 209 | 🔲     | opus   | [Convention-per-file config under `.mdsmith/conventions/`](plan/209_convention-files.md)                                                |
-| 210 | ✅     | opus   | [Single source of truth for product messaging via `mdsmith extract`](plan/210_messaging-source-of-truth.md)                             |
-| 211 | 🔲     | opus   | [`<?include?>` projects any typed value of any kind via `extract`](plan/211_include-extract-value.md)                                   |
-| 212 | 🔲     | opus   | [`mdsmith extract` projects paragraph inline spans as data](plan/212_extract-inline-spans.md)                                           |
-| 213 | 🔲     | opus   | [Built-in `no-llm-tells` convention with append-mode forbidden lists](plan/213_anti-slop-convention.md)                                 |
-| 214 | 🔳     | sonnet | [MDS019 catalog: CUE-expression row templates](plan/214_catalog-cue-row-expressions.md)                                                 |
-| 214 | ⛔     | opus   | [Obsidian plugin via hand-rolled LSP bridge](plan/214_obsidian-plugin.md)                                                               |
-| 215 | 🔲     | opus   | [mdsmith public engine API and WASM bindings](plan/215_engine-api-wasm.md)                                                              |
-| 215 | 🔲     | opus   | [Audit AST-walking rules and rewrite the ones that only need f.Lines](plan/215_lines-only-rule-audit.md)                                |
-| 216 | ✅     | opus   | [Per-document parse cache for the LSP, keyed by version](plan/216_lsp-parse-cache.md)                                                   |
-| 217 | 🔲     | opus   | [Obsidian plugin (WASM runtime)](plan/217_obsidian-plugin.md)                                                                           |
+| 210 | 🔲     |        | [Split internal/lint along question lines](plan/210_arch-fix-lint-srp.md)                                                               |
+| 211 | 🔲     |        | [Add internal/punkt to the architecture layering map](plan/211_arch-fix-punkt-layering.md)                                              |
 <?/catalog?>
