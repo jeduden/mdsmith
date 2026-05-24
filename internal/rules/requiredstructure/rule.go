@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"cuelang.org/go/cue"
-	"cuelang.org/go/cue/cuecontext"
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -675,7 +674,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	if len(sources) == 1 && sources[0].File != "" && !r.isSchemaFileAt(f, sources[0].File) {
 		schData, schPath, loadErr := r.loadSchemaAt(f, sources[0].File)
 		if loadErr == nil {
-			parsedSch, parseErr := parseSchema(schData, schPath, f.MaxInputBytes)
+			parsedSch, parseErr := cachedParseSchema(f, schData, schPath)
 			if parseErr == nil {
 				docFMRaw, _ := readDocFrontMatterRaw(f)
 				return fixBodySyncIn(f, parsedSch, docFMRaw)
@@ -844,7 +843,7 @@ func (r *Rule) checkSingleFileSchemaFromData(
 	f *lint.File, schemaPath string, schData []byte, schPath string,
 ) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	sch, err := parseSchema(schData, schPath, f.MaxInputBytes)
+	sch, err := cachedParseSchema(f, schData, schPath)
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1,
 			fmt.Sprintf("invalid schema %q: %v", schemaPath, err)))
@@ -987,7 +986,7 @@ func (r *Rule) bodySyncDiagnostics(f *lint.File, schemaPath string, docFMRaw map
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1, err.Error()))
 	}
-	sch, err := parseSchema(data, schemaPath, f.MaxInputBytes)
+	sch, err := cachedParseSchema(f, data, schemaPath)
 	if err != nil {
 		// The compose path reports schema-parse errors separately;
 		// avoid duplicating them here.
@@ -1093,8 +1092,12 @@ var cueIdentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const sectionWildcard = "..."
 
-// parseSchemaFrontMatter extracts the schema configuration from frontmatter.
-func parseSchemaFrontMatter(prefix []byte) (schemaConfig, error) {
+// parseSchemaFrontMatter extracts the schema configuration from
+// frontmatter. cache is the optional RunCache the CUE compile uses
+// to share its result across schemas with identical CUE source —
+// the inner validateCUESchemaSyntax routes through it when non-nil.
+// Tests pass nil to keep the parser standalone.
+func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, error) {
 	cfg := schemaConfig{}
 	if prefix == nil {
 		return cfg, nil
@@ -1106,7 +1109,7 @@ func parseSchemaFrontMatter(prefix []byte) (schemaConfig, error) {
 	}
 	cfg.FrontMatterCUE = derivedSchema
 	cfg.Frontmatter = perKey
-	if err := validateCUESchemaSyntax(cfg.FrontMatterCUE); err != nil {
+	if err := validateCUESchemaSyntaxWith(cache, cfg.FrontMatterCUE); err != nil {
 		return cfg, err
 	}
 	// Capture per-key source lines. The YAML body sits after the
@@ -1297,12 +1300,28 @@ func collectBodySyncPoints(
 const maxSchemaIncludeDepth = 10
 
 // parseSchema reads schema bytes, extracts frontmatter config and
-// required headings. When schemaPath is non-empty, <?include?> directives
-// are expanded and their headings spliced in.
+// required headings. When schemaPath is non-empty, <?include?>
+// directives are expanded and their headings spliced in.
+//
+// Tests call parseSchema with no cache; the rule's hot path goes
+// through parseSchemaWithCache so the inner CUE compile shares its
+// result across schemas with the same CUE source. parseSchema is
+// the canonical name kept for the existing test surface; the
+// cache-aware form is a thin wrapper that adds the cache argument.
 func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema, error) {
+	return parseSchemaWithCache(data, schemaPath, maxBytes, nil)
+}
+
+// parseSchemaWithCache is parseSchema with an optional RunCache wired
+// through to validateCUESchemaSyntax so the CUE compile can be shared
+// across schemas with identical CUE source. A nil cache restores the
+// original behaviour (one fresh cuecontext per call).
+func parseSchemaWithCache(
+	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache,
+) (*parsedSchema, error) {
 	prefix, content := lint.StripFrontMatter(data)
 
-	cfg, err := parseSchemaFrontMatter(prefix)
+	cfg, err := parseSchemaFrontMatter(prefix, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -1965,14 +1984,25 @@ func checkBodySync(
 		fmt.Sprintf("body does not match frontmatter field %q: expected %q", field, expected))}
 }
 
+// validateCUESchemaSyntax checks that schema compiles as CUE.
+//
+// The free function form (no RunCache) is the canonical entry point
+// kept for tests. The cache-bound variant validateCUESchemaSyntaxWith
+// is reached from parseSchemaFrontMatter when a cache is in scope,
+// so two schemas with identical CUE source share one compile per
+// Run.
 func validateCUESchemaSyntax(schema string) error {
+	return validateCUESchemaSyntaxWith(nil, schema)
+}
+
+// validateCUESchemaSyntaxWith is validateCUESchemaSyntax with the
+// CompileString site routed through cache when non-nil. A nil cache
+// compiles a fresh value (the test-direct path).
+func validateCUESchemaSyntaxWith(cache *lint.RunCache, schema string) error {
 	if strings.TrimSpace(schema) == "" {
 		return nil
 	}
-
-	ctx := cuecontext.New()
-	v := ctx.CompileString(schema)
-	if err := v.Err(); err != nil {
+	if err := cachedCompiledCUEWith(cache, schema).Err(); err != nil {
 		return fmt.Errorf("invalid schema frontmatter CUE: %w", err)
 	}
 	return nil
@@ -1983,9 +2013,8 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 		return nil
 	}
 
-	ctx := cuecontext.New()
-	schemaVal := ctx.CompileString(schema)
-	if err := schemaVal.Err(); err != nil {
+	compiled := cachedCompiledCUEWith(nil, schema)
+	if err := compiled.Err(); err != nil {
 		return fmt.Errorf("invalid CUE schema: %w", err)
 	}
 
@@ -1998,12 +2027,15 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 		return fmt.Errorf("serialize front matter: %w", err)
 	}
 
-	dataVal := ctx.CompileBytes(data)
+	// The data value must come from the same cue.Context as the
+	// schema value — cue values cannot cross contexts. The cached
+	// wrapper exposes its Context for exactly this case.
+	dataVal := compiled.Ctx.CompileBytes(data)
 	if err := dataVal.Err(); err != nil {
 		return fmt.Errorf("compile front matter: %w", err)
 	}
 
-	merged := schemaVal.Unify(dataVal)
+	merged := compiled.Value.Unify(dataVal)
 	if err := merged.Validate(cue.Concrete(true)); err != nil {
 		return err
 	}

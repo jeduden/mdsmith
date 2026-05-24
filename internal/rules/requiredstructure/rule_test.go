@@ -1275,7 +1275,7 @@ func TestExtractRequireDirective_AnchorRejected(t *testing.T) {
 
 func TestParseSchemaFrontMatter_AnchorRejected(t *testing.T) {
 	prefix := []byte("---\nbase: &base\n  id: 1\n---\n")
-	_, err := parseSchemaFrontMatter(prefix)
+	_, err := parseSchemaFrontMatter(prefix, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
 }
