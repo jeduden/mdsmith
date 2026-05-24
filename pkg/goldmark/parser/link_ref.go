@@ -48,7 +48,9 @@ func NewLinkReferenceParagraphTransformer() ParagraphTransformer {
 // Reset drops references to the most recently parsed document's
 // source bytes and BlockReader. Pool consumers that put the parent
 // parser back into a pool must call Reset before Put, so the idle
-// pool slot does not pin a large document buffer.
+// pool slot does not pin a large document buffer — or the
+// most-recent Parse's arena via the BlockReader's SegmentsCreator
+// back-pointer.
 func (p *linkReferenceParagraphTransformer) Reset() {
 	p.block = nil
 	p.source = nil
@@ -63,6 +65,12 @@ func (p *linkReferenceParagraphTransformer) Transform(node *ast.Paragraph, reade
 	} else {
 		p.block.Reset(lines)
 	}
+	// Wire the per-Parse arena into this internal BlockReader so
+	// FindClosure here lands its Segments in arena memory like the
+	// top-level reader. Re-set on every Transform because the
+	// underlying BlockReader may be reused across parses (when the
+	// source bytes are identical) but the arena rotates each Parse.
+	setSegmentsCreator(p.block, ArenaForContext(pc))
 	block := p.block
 	removes := [][2]int{}
 	for {

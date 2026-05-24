@@ -47,16 +47,26 @@ func equivalencePair() (withArena, withoutArena goldmark.Markdown) {
 
 // summarizeAST walks the tree and produces a deterministic string
 // that captures kind, position, and (for *ast.Text) the rendered
-// segment text. Two structurally identical ASTs over the same
-// source bytes must produce identical summaries — that's the
-// equivalence claim the harness verifies.
+// segment text plus the publicly-readable flag bits (Raw,
+// SoftLineBreak, HardLineBreak). The flags matter because two ASTs
+// can render to identical HTML for a given input but disagree on a
+// flag whose effect is only visible under different content — e.g.
+// a Raw difference is invisible if the segment has no escapable
+// bytes. Including the flags makes the harness a true
+// AST-equivalence gate, not just a rendered-HTML gate. (ast.Text
+// does not expose an IsCode accessor in the fork, so the Code flag
+// stays out of the summary.)
 func summarizeAST(root ast.Node, source []byte) string {
 	var b strings.Builder
 	var walk func(n ast.Node, depth int)
 	walk = func(n ast.Node, depth int) {
 		fmt.Fprintf(&b, "%s%s pos=%d", strings.Repeat("  ", depth), n.Kind(), n.Pos())
 		if t, ok := n.(*ast.Text); ok {
-			fmt.Fprintf(&b, " text=%q seg=%d:%d", string(t.Segment.Value(source)), t.Segment.Start, t.Segment.Stop)
+			fmt.Fprintf(&b, " text=%q seg=%d:%d raw=%v soft=%v hard=%v",
+				string(t.Segment.Value(source)),
+				t.Segment.Start, t.Segment.Stop,
+				t.IsRaw(),
+				t.SoftLineBreak(), t.HardLineBreak())
 		}
 		b.WriteByte('\n')
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
