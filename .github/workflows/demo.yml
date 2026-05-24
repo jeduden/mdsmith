@@ -17,6 +17,14 @@ jobs:
     needs: record
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    # Serialize against benchmark.yml's publish job: both rewrite
+    # disjoint subtrees on the same orphan `assets` ref, so a
+    # concurrent run loses one workflow's push to non-fast-forward
+    # rejection. cancel-in-progress: false because the queued run
+    # still has unique work (its own subtree update) to land.
+    concurrency:
+      group: assets-branch
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -40,27 +48,51 @@ jobs:
           # touches only its own subtree and pushes only when
           # that subtree changed. Pushing to the assets branch
           # avoids main entirely — no branch protection bypass.
+          #
+          # The job-level concurrency group `assets-branch`
+          # serializes against benchmark.yml's publish. The
+          # retry-with-refetch loop below is defense-in-depth:
+          # rebuild our subtree on top of the latest origin/assets
+          # if any other writer landed a commit between our fetch
+          # and our push.
+          set -euo pipefail
+
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Check if assets branch exists on remote
-          if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
-            git fetch origin assets
-            git checkout assets
-          else
-            # First ever publish: unborn branch, no siblings yet.
-            git checkout --orphan assets
-            git rm -r --cached . >/dev/null 2>&1 || true
-          fi
+          publish_once() {
+            # Refresh from remote (or create the orphan on first
+            # ever publish) so our commit is a fast-forward.
+            if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
+              git fetch origin assets
+              git checkout -f -B assets origin/assets
+            else
+              git checkout --orphan assets
+              git rm -r --cached . >/dev/null 2>&1 || true
+            fi
 
-          mkdir -p assets
-          cp /tmp/demo/demo.gif assets/demo.gif
+            mkdir -p assets
+            cp /tmp/demo/demo.gif assets/demo.gif
 
-          # Only push if the GIF actually changed
-          git add assets/demo.gif
-          if git diff --staged --quiet; then
-            echo "assets/demo.gif unchanged — nothing to push"
-          else
+            git add assets/demo.gif
+            if git diff --staged --quiet; then
+              echo "assets/demo.gif unchanged — nothing to push"
+              return 0
+            fi
             git commit -m "chore: update demo GIF"
             git push -u origin assets
-          fi
+          }
+
+          attempt=1
+          max_attempts=5
+          backoff=2
+          until publish_once; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "push failed after $max_attempts attempts" >&2
+              exit 1
+            fi
+            echo "push race on assets branch; retry $attempt/$max_attempts after ${backoff}s"
+            sleep "$backoff"
+            attempt=$((attempt + 1))
+            backoff=$((backoff * 2))
+          done

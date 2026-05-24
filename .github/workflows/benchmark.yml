@@ -73,6 +73,14 @@ jobs:
     needs: record
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    # Serialize against demo.yml's publish job: both rewrite
+    # disjoint subtrees on the same orphan `assets` ref, so a
+    # concurrent run loses one workflow's push to non-fast-forward
+    # rejection. cancel-in-progress: false because the queued run
+    # still has unique work (its own subtree update) to land.
+    concurrency:
+      group: assets-branch
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -92,28 +100,53 @@ jobs:
           # same branch, so neither workflow may wipe the whole
           # tree — each touches only its own subtree and commits
           # only when its subtree changed.
+          #
+          # The job-level concurrency group `assets-branch`
+          # serializes against demo.yml's publish. The
+          # retry-with-refetch loop below is defense-in-depth:
+          # rebuild our subtree on top of the latest origin/assets
+          # if any other writer landed a commit between our fetch
+          # and our push.
+          set -euo pipefail
+
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
-            git fetch origin assets
-            git checkout assets
-          else
-            # First ever publish: unborn branch, no siblings yet.
-            git checkout --orphan assets
-            git rm -r --cached . >/dev/null 2>&1 || true
-          fi
+          publish_once() {
+            if git ls-remote --exit-code origin refs/heads/assets >/dev/null 2>&1; then
+              git fetch origin assets
+              git checkout -f -B assets origin/assets
+            else
+              # First ever publish: unborn branch, no siblings yet.
+              git checkout --orphan assets
+              git rm -r --cached . >/dev/null 2>&1 || true
+            fi
 
-          # Replace only the benchmarks subtree. assets/demo.gif
-          # (if present) is left exactly as demo.yml wrote it.
-          rm -rf assets/benchmarks
-          mkdir -p assets/benchmarks
-          cp -R /tmp/bench/. assets/benchmarks/
+            # Replace only the benchmarks subtree. assets/demo.gif
+            # (if present) is left exactly as demo.yml wrote it.
+            rm -rf assets/benchmarks
+            mkdir -p assets/benchmarks
+            cp -R /tmp/bench/. assets/benchmarks/
 
-          git add assets/benchmarks
-          if git diff --staged --quiet; then
-            echo "benchmark numbers unchanged — nothing to push"
-          else
+            git add assets/benchmarks
+            if git diff --staged --quiet; then
+              echo "benchmark numbers unchanged — nothing to push"
+              return 0
+            fi
             git commit -m "chore: refresh cross-tool benchmark numbers"
             git push -u origin assets
-          fi
+          }
+
+          attempt=1
+          max_attempts=5
+          backoff=2
+          until publish_once; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "push failed after $max_attempts attempts" >&2
+              exit 1
+            fi
+            echo "push race on assets branch; retry $attempt/$max_attempts after ${backoff}s"
+            sleep "$backoff"
+            attempt=$((attempt + 1))
+            backoff=$((backoff * 2))
+          done
