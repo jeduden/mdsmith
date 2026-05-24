@@ -142,14 +142,16 @@ function resolveBundledBinary(
   if (!fileExists(shimPath)) return undefined;
   try {
     const shim = loadShim(shimPath);
-    const bundled = shim.resolveBinary(platform, arch, (id) => {
+    // The resolver callback enforces existence before handing the
+    // path back to the shim, so a successful return is guaranteed
+    // to be a real file — no second fileExists check needed.
+    return shim.resolveBinary(platform, arch, (id) => {
       const p = join(cliDir, id);
       if (!fileExists(p)) {
         throw new Error(`mdsmith: bundled binary not found: ${p}`);
       }
       return p;
     });
-    return fileExists(bundled) ? bundled : undefined;
   } catch {
     return undefined;
   }

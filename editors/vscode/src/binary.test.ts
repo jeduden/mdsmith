@@ -315,6 +315,22 @@ describe("findBinaryCandidates", () => {
     ]);
   });
 
+  test("drops the bundled entry when this platform's slot is empty", () => {
+    // Shim staged but only darwin-arm64 binary present while we run
+    // as linux-x64. The shim invokes the resolver callback, which
+    // throws because the linux-x64 file is missing; the helper must
+    // swallow that into a no-op rather than handing back a stale
+    // path. Mirrors the existing resolveBinary fallback test.
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "linux",
+      arch: "x64",
+      fileExists: bundledTree(["darwin-arm64"]),
+      loadShim: () => canonicalShim,
+      pathEnv: "",
+    });
+    expect(candidates).toEqual([]);
+  });
+
   test("survives a corrupt shim and still returns the PATH hit", () => {
     const onPath = "/usr/bin/mdsmith";
     const present = new Set<string>([
