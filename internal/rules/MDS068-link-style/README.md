@@ -49,6 +49,11 @@ extension. Targets ending in any other extension (`.png`, `.css`,
 `keep`/`strip`. Both `.md` and `.markdown` are treated as the
 same "with extension" form.
 
+Directory-style targets (trailing `/`, `.`, `..` — e.g.
+`/docs/rules/MDS027/` or `../`) reference a rendered page
+directory rather than a file. The `extension` axis also skips
+these, since there is no filename segment to judge.
+
 A note on adopting `extension: strip`. MDS027
 [cross-file-reference-integrity](../MDS027-cross-file-reference-integrity/README.md)
 checks `.md` and `.markdown` targets by default. It

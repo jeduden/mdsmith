@@ -128,11 +128,19 @@ func checkPath(policy, targetPath string) string {
 // shaped targets are considered: a `.md` suffix counts under keep,
 // no extension at all counts under strip. Other suffixes (`.png`,
 // `.css`, …) are not Markdown links and are silently ignored.
+// Directory-style targets (trailing `/`, `.`, `..`) reference a
+// rendered page directory rather than a file and are also skipped.
 func checkExtension(policy, targetPath string) string {
 	if policy == "" || targetPath == "" {
 		return ""
 	}
+	if strings.HasSuffix(targetPath, "/") {
+		return ""
+	}
 	base := path.Base(targetPath)
+	if base == "." || base == ".." {
+		return ""
+	}
 	ext := strings.ToLower(path.Ext(base))
 	isMD := ext == ".md" || ext == ".markdown"
 	hasOtherExt := ext != "" && !isMD

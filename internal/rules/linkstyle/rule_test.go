@@ -144,6 +144,25 @@ func TestCheck_PathAndFormApplyToNonMarkdownTargets(t *testing.T) {
 	require.Len(t, diags, 2, "path and form must apply to non-Markdown targets; extension must not")
 }
 
+// TestCheck_ExtensionIgnoresDirectoryTargets covers links to
+// Hugo-rendered page directories: `/docs/rules/MDS027/`, `docs/`,
+// `.`, `..`. They have no filename segment and must not be
+// flagged as extensionless Markdown by `extension: keep`.
+func TestCheck_ExtensionIgnoresDirectoryTargets(t *testing.T) {
+	src := "# Doc\n\n" +
+		"See [a](/docs/rules/MDS027/).\n\n" +
+		"See [b](sub/).\n\n" +
+		"See [c](./).\n\n" +
+		"See [d](.).\n\n" +
+		"See [e](..).\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{Extension: "keep"}}}
+	assert.Empty(t, r.Check(f), "directory-style targets must not be flagged by extension: keep")
+
+	r = &Rule{Links: LinksConfig{Style: StyleConfig{Extension: "strip"}}}
+	assert.Empty(t, r.Check(f), "directory-style targets must not be flagged by extension: strip either")
+}
+
 func TestCheck_FormInline_FlagsReferenceStyle(t *testing.T) {
 	src := "# Doc\n\nSee [x][label].\n\n[label]: sub/target.md\n"
 	f := newFile(t, src)
