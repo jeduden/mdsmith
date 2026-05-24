@@ -108,6 +108,20 @@ func TestJSONStringField_RejectsNonObjectRoot(t *testing.T) {
 	assert.Contains(t, err.Error(), "expected object")
 }
 
+func TestJSONStringField_ReadValue_MalformedJSON(t *testing.T) {
+	_, err := (JSONStringField{Key: "k"}).ReadValue([]byte(`{not json`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse JSON")
+}
+
+func TestJSONStringField_ReadValue_NonStringValue(t *testing.T) {
+	// `k` is a number; ReadValue should reject — only string
+	// fields are part of the messaging surface contract.
+	_, err := (JSONStringField{Key: "k"}).ReadValue([]byte(`{"k": 42}`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a string")
+}
+
 // ----- TOMLStringField ----------------------------------------------------
 
 const sampleTOML = `baseURL = "https://example.test/"
@@ -330,6 +344,56 @@ func TestYAMLFrontmatterField_PatchValue_UnclosedFrontmatter(t *testing.T) {
 	}).PatchValue(body, "y")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no closing delimiter")
+}
+
+func TestTOMLStringField_ReadValue_MalformedTOML(t *testing.T) {
+	_, err := (TOMLStringField{Key: "k"}).ReadValue([]byte(`= broken`))
+	require.Error(t, err)
+}
+
+func TestTOMLStringField_ReadValue_NonStringValue(t *testing.T) {
+	_, err := (TOMLStringField{Key: "k"}).ReadValue([]byte("k = 42\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a string")
+}
+
+func TestTOMLStringField_PatchValue_MalformedTOML(t *testing.T) {
+	_, err := (TOMLStringField{Key: "k"}).PatchValue([]byte(`= broken`), "v")
+	require.Error(t, err)
+}
+
+func TestYAMLFrontmatterField_ReadValue_NoFrontmatter(t *testing.T) {
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"summary"},
+	}).ReadValue([]byte("no frontmatter here\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not start with a YAML frontmatter")
+}
+
+func TestYAMLFrontmatterField_ReadValue_MissingPath(t *testing.T) {
+	body := []byte("---\ntitle: x\n---\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"missing"},
+	}).ReadValue(body)
+	require.Error(t, err)
+}
+
+func TestYAMLFrontmatterField_ReadValue_NonScalar(t *testing.T) {
+	body := []byte("---\nlist:\n  - a\n  - b\n---\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"list"},
+	}).ReadValue(body)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a scalar")
+}
+
+func TestYAMLFrontmatterField_PatchValue_NonScalar(t *testing.T) {
+	body := []byte("---\nlist:\n  - a\n  - b\n---\n")
+	_, err := (YAMLFrontmatterField{
+		Path: []string{"list"},
+	}).PatchValue(body, "x")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a scalar")
 }
 
 func TestYAMLFrontmatterField_PatchValue_MissingPath(t *testing.T) {

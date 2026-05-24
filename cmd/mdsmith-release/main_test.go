@@ -98,6 +98,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
 		"sync-docs", "build-website", "verify-website-links",
+		"sync-messaging",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
@@ -109,6 +110,7 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 	for _, sub := range []string{
 		"stamp", "check", "build-npm", "build-wheels",
 		"sync-docs", "build-website", "verify-website-links",
+		"sync-messaging",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}

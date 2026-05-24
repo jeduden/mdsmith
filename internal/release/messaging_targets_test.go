@@ -1,6 +1,7 @@
 package release
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -241,6 +242,61 @@ func TestFormatDrift_RendersReadableReport(t *testing.T) {
 	assert.Contains(t, out, "have: current")
 	assert.Contains(t, out, "want: new")
 	assert.True(t, strings.HasSuffix(out, "sync-messaging` to update.\n"))
+}
+
+func TestApplyMessaging_FailsWhenRequiredFileMissing(t *testing.T) {
+	// Delete one non-fragment target (a JSON manifest); apply
+	// must return "required file missing" because only fragment
+	// targets are created on demand.
+	root := applyTestRoot(t)
+	require.NoError(t,
+		os.Remove(filepath.Join(root, "npm/mdsmith/package.json")))
+	_, err := ApplyMessaging(root, sampleMessaging())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "required file missing")
+}
+
+func TestApplyMessaging_FailsOnCorruptTargetFile(t *testing.T) {
+	// Replace a JSON manifest with non-JSON bytes; the patcher
+	// returns an error which applyTarget must surface.
+	root := applyTestRoot(t)
+	require.NoError(t,
+		os.WriteFile(filepath.Join(root, "npm/mdsmith/package.json"),
+			[]byte("not json at all"), 0o644))
+	_, err := ApplyMessaging(root, sampleMessaging())
+	require.Error(t, err)
+}
+
+func TestCheckMessaging_ReportsMissingFileAsDrift(t *testing.T) {
+	// CheckMessaging treats a missing target as drift (have:
+	// "<missing>") rather than an error, so the report tells the
+	// caller exactly what is gone.
+	root := applyTestRoot(t)
+	require.NoError(t,
+		os.Remove(filepath.Join(root, "npm/mdsmith/package.json")))
+	drifts, err := CheckMessaging(root, sampleMessaging())
+	require.NoError(t, err)
+	require.NotEmpty(t, drifts)
+	found := false
+	for _, d := range drifts {
+		if d.Have == "<missing>" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "missing file did not appear as <missing> drift")
+}
+
+func TestCheckMessaging_FailsOnCorruptTargetFile(t *testing.T) {
+	// ReadValue on a malformed file surfaces as an error;
+	// CheckMessaging propagates it because drift can't be
+	// computed against unparseable bytes.
+	root := applyTestRoot(t)
+	require.NoError(t,
+		os.WriteFile(filepath.Join(root, "npm/mdsmith/package.json"),
+			[]byte("not json at all"), 0o644))
+	_, err := CheckMessaging(root, sampleMessaging())
+	require.Error(t, err)
 }
 
 func TestFormatDrift_EmptyOnCleanTree(t *testing.T) {
