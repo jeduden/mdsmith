@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"cuelang.org/go/cue"
-	"cuelang.org/go/cue/cuecontext"
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -675,7 +674,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	if len(sources) == 1 && sources[0].File != "" && !r.isSchemaFileAt(f, sources[0].File) {
 		schData, schPath, loadErr := r.loadSchemaAt(f, sources[0].File)
 		if loadErr == nil {
-			parsedSch, parseErr := parseSchema(schData, schPath, f.MaxInputBytes)
+			parsedSch, parseErr := cachedParseSchema(f, schData, schPath)
 			if parseErr == nil {
 				docFMRaw, _ := readDocFrontMatterRaw(f)
 				return fixBodySyncIn(f, parsedSch, docFMRaw)
@@ -844,7 +843,7 @@ func (r *Rule) checkSingleFileSchemaFromData(
 	f *lint.File, schemaPath string, schData []byte, schPath string,
 ) []lint.Diagnostic {
 	var diags []lint.Diagnostic
-	sch, err := parseSchema(schData, schPath, f.MaxInputBytes)
+	sch, err := cachedParseSchema(f, schData, schPath)
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1,
 			fmt.Sprintf("invalid schema %q: %v", schemaPath, err)))
@@ -987,7 +986,7 @@ func (r *Rule) bodySyncDiagnostics(f *lint.File, schemaPath string, docFMRaw map
 	if err != nil {
 		return append(diags, r.diag(f.Path, 1, err.Error()))
 	}
-	sch, err := parseSchema(data, schemaPath, f.MaxInputBytes)
+	sch, err := cachedParseSchema(f, data, schemaPath)
 	if err != nil {
 		// The compose path reports schema-parse errors separately;
 		// avoid duplicating them here.
@@ -1093,8 +1092,12 @@ var cueIdentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 const sectionWildcard = "..."
 
-// parseSchemaFrontMatter extracts the schema configuration from frontmatter.
-func parseSchemaFrontMatter(prefix []byte) (schemaConfig, error) {
+// parseSchemaFrontMatter extracts the schema configuration from
+// frontmatter. cache is the optional RunCache the CUE compile uses
+// to share its result across schemas with identical CUE source —
+// the inner validateCUESchemaSyntax routes through it when non-nil.
+// Tests pass nil to keep the parser standalone.
+func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, error) {
 	cfg := schemaConfig{}
 	if prefix == nil {
 		return cfg, nil
@@ -1106,7 +1109,7 @@ func parseSchemaFrontMatter(prefix []byte) (schemaConfig, error) {
 	}
 	cfg.FrontMatterCUE = derivedSchema
 	cfg.Frontmatter = perKey
-	if err := validateCUESchemaSyntax(cfg.FrontMatterCUE); err != nil {
+	if err := validateCUESchemaSyntaxWith(cache, cfg.FrontMatterCUE); err != nil {
 		return cfg, err
 	}
 	// Capture per-key source lines. The YAML body sits after the
@@ -1297,38 +1300,100 @@ func collectBodySyncPoints(
 const maxSchemaIncludeDepth = 10
 
 // parseSchema reads schema bytes, extracts frontmatter config and
-// required headings. When schemaPath is non-empty, <?include?> directives
-// are expanded and their headings spliced in.
+// required headings. When schemaPath is non-empty, <?include?>
+// directives are expanded and their headings spliced in.
+//
+// Tests call parseSchema with no cache; the rule's hot path goes
+// through parseSchemaWithCache so the inner CUE compile shares its
+// result across schemas with the same CUE source. parseSchema is
+// the canonical name kept for the existing test surface; the
+// cache-aware form is a thin wrapper that adds the cache argument
+// and surfaces the include set the cache wrapper needs for
+// dependency tracking.
 func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema, error) {
+	sch, _, err := parseSchemaWithCache(data, schemaPath, maxBytes, nil)
+	return sch, err
+}
+
+// parseSchemaWithCache is parseSchema with an optional RunCache wired
+// through to validateCUESchemaSyntax so the CUE compile can be shared
+// across schemas with identical CUE source. A nil cache restores the
+// original behaviour (one fresh cuecontext per call).
+//
+// The returned includes slice carries every fragment path the
+// schema's <?include?> directives reached. Paths are in the SAME
+// coordinate system as schemaPath — typically project-relative when
+// the rule's loadSchemaAt passes a project-relative schemaPath. The
+// cache-aware wrapper (cachedParseSchema) anchors them onto the
+// workspace root via absoluteIncludes before storing them on
+// schemaParseResult, so RunCache.Invalidate can match against the
+// absolute paths the LSP passes. Returns nil when schemaPath is
+// empty (no filesystem identity → no include resolution).
+//
+// On a parseSchemaFrontMatter error (the common LSP editing state
+// where the schema's CUE is mid-edit and fails CompileString), the
+// function still surfaces a partial *parsedSchema carrying the
+// derived FrontMatterCUE alongside the error. The rule's caller
+// discards a non-nil sch when err != nil, but the cache wrapper
+// reads schemaCUESources(sch) for invalidation tracking — so the
+// failed CompiledCUE entry the build cached is evicted when the
+// next Invalidate(schemaPath) fires.
+func parseSchemaWithCache(
+	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache,
+) (*parsedSchema, []string, error) {
 	prefix, content := lint.StripFrontMatter(data)
 
-	cfg, err := parseSchemaFrontMatter(prefix)
+	cfg, err := parseSchemaFrontMatter(prefix, cache)
 	if err != nil {
-		return nil, err
+		// parseSchemaFrontMatter populates cfg.FrontMatterCUE
+		// before the validation step, so the partial schema we
+		// surface here carries the source that just failed to
+		// compile. The cache wrapper then records it in
+		// schemaCUESources so RunCache.Invalidate(schemaPath)
+		// drops the failed CompiledCUE entry on the next edit.
+		return &parsedSchema{Config: cfg}, nil, err
 	}
 
-	f, err := lint.NewFile("schema", content)
-	if err != nil {
-		return nil, fmt.Errorf("parsing schema markdown: %w", err)
-	}
+	// lint.NewFile returns a nil error in every code path
+	// (internal/lint/file.go); the defensive check the previous
+	// signature carried was unreachable from any test. Discard the
+	// error here so the patch carries no untestable defensive
+	// branch.
+	f, _ := lint.NewFile("schema", content)
 
 	// Extract <?require?> directive from schema body.
 	filenamePattern, err := extractRequireDirective(f)
 	if err != nil {
-		return nil, err
+		// cfg.FrontMatterCUE was already compiled (and cached
+		// via RunCache.CompiledCUE) before extractRequireDirective
+		// ran, so surface a partial *parsedSchema so the cache
+		// wrapper can record cueSources. Without this, an LSP
+		// mid-edit state where <?require?> is malformed leaves
+		// the CompiledCUE entry uncoupled from any schemaPath
+		// and Invalidate(schemaPath) cannot evict it.
+		return &parsedSchema{Config: cfg}, nil, err
 	}
 	cfg.FilenamePattern = filenamePattern
 
 	// Extract headings, expanding <?include?> directives in the schema.
 	var headings []docHeading
+	var includes []string
 	if schemaPath != "" {
 		cleanPath := filepath.Clean(schemaPath)
 		visited := map[string]bool{cleanPath: true}
 		chain := []string{cleanPath}
 		var fp string
-		headings, fp, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes)
+		headings, fp, includes, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes)
 		if err != nil {
-			return nil, err
+			// Surface a partial *parsedSchema (carrying the
+			// frontmatter CUE source the cache will track via
+			// schemaCUESources) AND the partial include set the
+			// walk reached before erroring. The rule's caller
+			// discards the partial schema on err, but the cache
+			// wrapper records both pieces so a later
+			// Invalidate(fragment) on a fixed include still
+			// evicts the schema's failed-parse slot.
+			return &parsedSchema{Config: cfg}, includes, err
 		}
 		if fp != "" && cfg.FilenamePattern == "" {
 			cfg.FilenamePattern = fp
@@ -1353,18 +1418,31 @@ func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema,
 		Config:     cfg,
 		Headings:   schHeadings,
 		SyncPoints: syncPoints,
-	}, nil
+	}, includes, nil
 }
 
 // extractSchemaHeadings walks the schema AST, collecting headings and
 // expanding <?include?> PIs by splicing in the included file's headings.
 // It uses a visited set for cycle detection.
+//
+// The returned includes slice carries the resolved path of every
+// fragment reached during the walk — both direct includes and
+// transitively-included ones. Paths are in the SAME coordinate
+// system as schemaPath: resolveSchemaIncludePath joins each include
+// onto filepath.Dir(schemaPath), so a project-relative schemaPath
+// produces project-relative include entries (and an absolute
+// schemaPath produces absolute ones). cachedParseSchemaWith later
+// anchors them onto absRoot via absoluteIncludes before storing on
+// schemaParseResult, so RunCache.Invalidate's absolute keys match.
+// Order is source order at the current level, with each fragment's
+// transitive set appended after the fragment's own path.
 func extractSchemaHeadings(
 	schemaFile *lint.File, schemaPath string,
 	visited map[string]bool, chain []string, maxBytes int64,
-) ([]docHeading, string, error) {
+) ([]docHeading, string, []string, error) {
 	var headings []docHeading
 	var filenamePattern string
+	var includes []string
 
 	err := ast.Walk(schemaFile.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -1381,24 +1459,48 @@ func extractSchemaHeadings(
 			if node.Name != "include" {
 				return ast.WalkContinue, nil
 			}
-			fragHeadings, fp, walkErr := expandSchemaInclude(
+			fragHeadings, fp, fragIncluded, subIncludes, walkErr := expandSchemaInclude(
 				node, schemaFile.Source, schemaPath, visited, chain, maxBytes)
 			if walkErr != nil {
+				// Record the broken-but-known fragment plus any
+				// transitive sub-includes the recursive walk
+				// reached before erroring. The outer
+				// extractSchemaHeadings surfaces this partial
+				// `includes` slice up to parseSchemaWithCache so
+				// the cache wrapper's reverse-include index covers
+				// the full dependency footprint, broken edges
+				// included. Without this, Invalidate(fragment) on
+				// a fix would not evict the schema's failed-parse
+				// slot.
+				if fragIncluded != "" {
+					includes = append(includes, fragIncluded)
+				}
+				includes = append(includes, subIncludes...)
 				return ast.WalkStop, walkErr
 			}
 			if fp != "" && filenamePattern == "" {
 				filenamePattern = fp
 			}
 			headings = append(headings, fragHeadings...)
+			if fragIncluded != "" {
+				includes = append(includes, fragIncluded)
+			}
+			includes = append(includes, subIncludes...)
 		}
 
 		return ast.WalkContinue, nil
 	})
 	if err != nil {
-		return nil, "", err
+		// Surface the partial include set so the cache wrapper can
+		// still register dependents on fragments the walk reached
+		// before erroring. A schema that fails to parse because of
+		// a downstream <?include?> issue must still let
+		// Invalidate(brokenFragment) evict the schema's failed-parse
+		// slot when the fragment is fixed.
+		return nil, "", includes, err
 	}
 
-	return headings, filenamePattern, nil
+	return headings, filenamePattern, includes, nil
 }
 
 // expandSchemaInclude resolves a single <?include?> PI in a schema file,
@@ -1428,58 +1530,77 @@ func resolveSchemaIncludePath(
 	return filepath.Clean(filepath.Join(dir, fileParam)), nil
 }
 
+// expandSchemaInclude resolves and recursively expands a schema
+// include PI. It returns the fragment's headings, any filename
+// pattern declared on the fragment, the fragment's resolved path
+// (in the same coordinate system as schemaPath — typically
+// project-relative; cachedParseSchemaWith anchors it onto absRoot
+// before storing), the fragment's transitive include set, and an
+// error. The path-plus-subIncludes pair lets the caller record the
+// full dependency footprint on RunCache's reverse-include index.
 func expandSchemaInclude(
 	pi *lint.ProcessingInstruction, source []byte,
 	schemaPath string, visited map[string]bool, chain []string, maxBytes int64,
-) ([]docHeading, string, error) {
+) ([]docHeading, string, string, []string, error) {
 	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", nil, err
 	}
 
+	// Surface includedPath on every error past this point so the
+	// caller can register the broken-but-known fragment in
+	// RunCache's reverse-include index. When the user fixes the
+	// fragment (creates the missing file, breaks the cycle, raises
+	// the depth limit), Invalidate(fragmentAbs) then evicts this
+	// schema's failed-parse slot and the next Check re-parses.
 	if len(chain) > maxSchemaIncludeDepth {
-		return nil, "", fmt.Errorf(
+		return nil, "", includedPath, nil, fmt.Errorf(
 			"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
 	}
 	if visited[includedPath] {
 		chainCopy := make([]string, len(chain))
 		copy(chainCopy, chain)
 		chainCopy = append(chainCopy, includedPath)
-		return nil, "", fmt.Errorf(
+		return nil, "", includedPath, nil, fmt.Errorf(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
 	fragData, err := lint.ReadFileLimited(includedPath, maxBytes)
 	if err != nil {
-		return nil, "", fmt.Errorf(
+		return nil, "", includedPath, nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", includedPath, err)
 	}
 
 	_, fragContent := lint.StripFrontMatter(fragData)
-	fragFile, err := lint.NewFile(includedPath, fragContent)
-	if err != nil {
-		return nil, "", fmt.Errorf(
-			"parsing schema include %q: %w", includedPath, err)
-	}
+	// lint.NewFile returns a nil error in every code path
+	// (internal/lint/file.go); the previous defensive branch was
+	// unreachable from any test. Discard the error so the patch
+	// carries no untestable defensive code.
+	fragFile, _ := lint.NewFile(includedPath, fragContent)
 
 	fp, err := extractRequireDirective(fragFile)
 	if err != nil {
-		return nil, "", err
+		return nil, "", includedPath, nil, err
 	}
 
 	visited[includedPath] = true
 	chain = append(chain, includedPath)
-	fragHeadings, fp2, err := extractSchemaHeadings(
+	fragHeadings, fp2, subIncludes, err := extractSchemaHeadings(
 		fragFile, includedPath, visited, chain, maxBytes)
 	delete(visited, includedPath)
 	if err != nil {
-		return nil, "", err
+		// Surface includedPath plus whatever subIncludes the
+		// recursive walk reached so the full dependency
+		// footprint (broken fragment + every successful one
+		// above it) is recorded in the cache's reverse-include
+		// index.
+		return nil, "", includedPath, subIncludes, err
 	}
 	if fp2 != "" && fp == "" {
 		fp = fp2
 	}
 
-	return fragHeadings, fp, nil
+	return fragHeadings, fp, includedPath, subIncludes, nil
 }
 
 // extractPIFileParam parses the YAML body of an include PI to extract
@@ -1965,14 +2086,25 @@ func checkBodySync(
 		fmt.Sprintf("body does not match frontmatter field %q: expected %q", field, expected))}
 }
 
+// validateCUESchemaSyntax checks that schema compiles as CUE.
+//
+// The free function form (no RunCache) is the canonical entry point
+// kept for tests. The cache-bound variant validateCUESchemaSyntaxWith
+// is reached from parseSchemaFrontMatter when a cache is in scope,
+// so two schemas with identical CUE source share one compile per
+// Run.
 func validateCUESchemaSyntax(schema string) error {
+	return validateCUESchemaSyntaxWith(nil, schema)
+}
+
+// validateCUESchemaSyntaxWith is validateCUESchemaSyntax with the
+// CompileString site routed through cache when non-nil. A nil cache
+// compiles a fresh value (the test-direct path).
+func validateCUESchemaSyntaxWith(cache *lint.RunCache, schema string) error {
 	if strings.TrimSpace(schema) == "" {
 		return nil
 	}
-
-	ctx := cuecontext.New()
-	v := ctx.CompileString(schema)
-	if err := v.Err(); err != nil {
+	if err := cachedCompiledCUEWith(cache, schema).Err(); err != nil {
 		return fmt.Errorf("invalid schema frontmatter CUE: %w", err)
 	}
 	return nil
@@ -1983,9 +2115,8 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 		return nil
 	}
 
-	ctx := cuecontext.New()
-	schemaVal := ctx.CompileString(schema)
-	if err := schemaVal.Err(); err != nil {
+	compiled := cachedCompiledCUEWith(nil, schema)
+	if err := compiled.Err(); err != nil {
 		return fmt.Errorf("invalid CUE schema: %w", err)
 	}
 
@@ -1998,12 +2129,15 @@ func validateFrontMatterCUE(schema string, fm map[string]any) error {
 		return fmt.Errorf("serialize front matter: %w", err)
 	}
 
-	dataVal := ctx.CompileBytes(data)
-	if err := dataVal.Err(); err != nil {
-		return fmt.Errorf("compile front matter: %w", err)
-	}
+	// The data value must come from the same cue.Context as the
+	// schema value — cue values cannot cross contexts. The cached
+	// wrapper exposes its Context for exactly this case.
+	// CompileBytes of json.Marshal output is always valid CUE, so
+	// any error on dataVal would also surface through merged.Validate
+	// below; the previous explicit check carried no testable path.
+	dataVal := compiled.Ctx.CompileBytes(data)
 
-	merged := schemaVal.Unify(dataVal)
+	merged := compiled.Value.Unify(dataVal)
 	if err := merged.Validate(cue.Concrete(true)); err != nil {
 		return err
 	}

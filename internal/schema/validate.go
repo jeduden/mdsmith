@@ -130,10 +130,21 @@ func validateFrontmatterDiags(
 	if strings.TrimSpace(expr) == "" {
 		return nil
 	}
-	ctx := cuecontext.New()
 	anchor := nonBodyDiagLine(f)
-	schemaVal := ctx.CompileString(expr)
-	if err := schemaVal.Err(); err != nil {
+	// Route the schema-side CompileString through RunCache.CompiledCUE
+	// when one is in scope so N host files sharing a schema compile its
+	// CUE source exactly once per Run. The wrapper carries the
+	// *cue.Context the value was compiled against; the document
+	// front-matter CompileBytes below must reuse that context because
+	// cue.Value cannot cross contexts.
+	var cache *lint.RunCache
+	if f != nil {
+		cache = f.RunCache
+	}
+	compiled := CachedCompile(cache, expr)
+	schemaVal := compiled.Value
+	ctx := compiled.Ctx
+	if err := compiled.Err(); err != nil {
 		return []lint.Diagnostic{mkDiag(f.Path, anchor,
 			compileFailureDiag(sch, "schema", "valid schema CUE", err).Format())}
 	}

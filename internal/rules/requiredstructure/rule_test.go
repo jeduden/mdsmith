@@ -1275,7 +1275,7 @@ func TestExtractRequireDirective_AnchorRejected(t *testing.T) {
 
 func TestParseSchemaFrontMatter_AnchorRejected(t *testing.T) {
 	prefix := []byte("---\nbase: &base\n  id: 1\n---\n")
-	_, err := parseSchemaFrontMatter(prefix)
+	_, err := parseSchemaFrontMatter(prefix, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
 }
@@ -1822,6 +1822,34 @@ func TestValidateFrontMatterCUE_InvalidSchema(t *testing.T) {
 func TestValidateFrontMatterCUE_TypeMismatch(t *testing.T) {
 	err := validateFrontMatterCUE(`close({id: string})`, map[string]any{"id": 42})
 	require.Error(t, err) // CUE unification fails: int != string
+}
+
+// validateFrontMatterCUE: an empty (whitespace-only) schema is
+// treated as "no constraint" and short-circuits to nil before any
+// compile.
+func TestValidateFrontMatterCUE_EmptySchemaSkips(t *testing.T) {
+	require.NoError(t,
+		validateFrontMatterCUE("   \n\t", map[string]any{"any": "thing"}))
+}
+
+// validateFrontMatterCUE: nil front matter is normalised to an
+// empty map before json.Marshal, so an optional-only schema
+// validates cleanly without an explicit empty literal at the call
+// site.
+func TestValidateFrontMatterCUE_NilFrontMatterTreatedAsEmpty(t *testing.T) {
+	require.NoError(t,
+		validateFrontMatterCUE(`{id?: string}`, nil))
+}
+
+// validateFrontMatterCUE: a front-matter value that json.Marshal
+// cannot serialize (a channel is the canonical example) surfaces
+// the marshal error wrapped with the "serialize front matter"
+// prefix. Covers the defensive json.Marshal error branch.
+func TestValidateFrontMatterCUE_NonMarshalableFrontMatter(t *testing.T) {
+	err := validateFrontMatterCUE(`{id?: string}`,
+		map[string]any{"ch": make(chan int)})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "serialize front matter")
 }
 
 // readDocFrontMatterRaw: extractYAML returns nil when FrontMatter has no closing delimiter
