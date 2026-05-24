@@ -238,7 +238,34 @@ func parseInlineScopeList(list []any, path string) ([]Scope, error) {
 		}
 		scopes = append(scopes, sc)
 	}
+	if err := rejectDuplicateSiblingBinds(scopes, path); err != nil {
+		return nil, err
+	}
 	return scopes, nil
+}
+
+// rejectDuplicateSiblingBinds errors when two scopes in the same
+// section list share a non-empty bind value — the override would
+// collide on the same projection key. Empty binds (the hoist
+// signal) do not collide because they produce no key at all. Plan
+// 167.
+func rejectDuplicateSiblingBinds(scopes []Scope, path string) error {
+	seen := make(map[string]int, len(scopes))
+	for i := range scopes {
+		b := scopes[i].Bind
+		if b == nil || *b == "" {
+			continue
+		}
+		if prev, ok := seen[*b]; ok {
+			return fmt.Errorf(
+				"%s[%d].bind: duplicates the bind value %q already "+
+					"set on %s[%d] — sibling scopes must produce "+
+					"distinct projection keys",
+				path, i, *b, path, prev)
+		}
+		seen[*b] = i
+	}
+	return nil
 }
 
 // removedScopeKeys lists the per-entry keys plan 156 removed. The
@@ -310,8 +337,11 @@ func parseInlineScopeEntry(entry any, path string) (Scope, error) {
 // caught by its presence, not its post-parsed value).
 func validateScopeShape(sc Scope, m map[string]any, path string) error {
 	if sc.Preamble {
+		// `bind:` is meaningless on a preamble: it has no key to
+		// rename (its content hoists into the parent), and the
+		// empty form is redundant with that default. Plan 167.
 		return rejectKeys(m, path, "preamble (`heading: null`)",
-			"sections")
+			"sections", "bind")
 	}
 	// After applyScopeFields succeeds, either Preamble is true
 	// (handled above) or Matcher is set by setScopeHeading; a
@@ -321,10 +351,25 @@ func validateScopeShape(sc Scope, m map[string]any, path string) error {
 	// A regex of '.+' is the wildcard-slot shape; rule overrides,
 	// nested sections, and per-section content do not make sense
 	// there because the slot has no fixed identity. Plan 156
-	// makes that explicit.
+	// makes that explicit. `bind:` is rejected too — the
+	// projector skips slot scopes entirely so a bind would be
+	// unreachable (plan 167).
 	if isSlotMatcher(sc.Matcher) {
 		return rejectKeys(m, path, "slot (`regex: '.+', repeat: { min: 0 }`)",
-			"sections", "rules", "content", "closed")
+			"sections", "rules", "content", "closed", "bind")
+	}
+	// A non-slot broad matcher (`regex: '.+'` with a non-zero
+	// `min`) is also skipped by the projector. `bind:` on such a
+	// scope is unreachable — surface it at parse time rather than
+	// silently dropping the override at extract time (plan 167).
+	if isBroadMatcher(sc.Matcher) {
+		if _, ok := m["bind"]; ok {
+			return fmt.Errorf(
+				"%s: `bind:` is not allowed on a broad-match scope "+
+					"(`regex: '.+'`) — the projector skips broad "+
+					"matchers so the override would be unreachable",
+				path)
+		}
 	}
 	return nil
 }
@@ -388,6 +433,8 @@ func applyScopeFields(m map[string]any, sc *Scope, path string) error {
 			err = setScopeRules(sc, vv, path)
 		case "content":
 			err = setScopeContent(sc, vv, path)
+		case "bind":
+			err = setScopeBind(sc, vv, path)
 		default:
 			return fmt.Errorf("%s: unknown scope key %q", path, k)
 		}
@@ -395,6 +442,19 @@ func applyScopeFields(m map[string]any, sc *Scope, path string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// setScopeBind reads the optional `bind:` override that renames the
+// scope's projection key in `mdsmith extract`. The empty string
+// (`bind: ""`) is the explicit "hoist children into parent" signal —
+// `*string` keeps unset (nil) distinguishable from explicit-empty.
+func setScopeBind(sc *Scope, v any, path string) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("%s.bind must be a string, got %T", path, v)
+	}
+	sc.Bind = &s
 	return nil
 }
 
@@ -961,9 +1021,35 @@ func applyContentField(k string, vv any, ce *ContentEntry, path string) error {
 		return setContentItemBound(&ce.MinItems, vv, path, k, ce.Kind)
 	case "max-items":
 		return setContentItemBound(&ce.MaxItems, vv, path, k, ce.Kind)
+	case "bind":
+		return setContentBind(ce, vv, path)
 	default:
 		return fmt.Errorf("%s: unknown content key %q", path, k)
 	}
+}
+
+// setContentBind reads the optional `bind:` override for a content
+// entry. A non-empty value renames the default key (`code` / `items`
+// / `rows` / `text`). The empty form is rejected because a content
+// entry has no children to hoist; users who want to drop the wrapper
+// key should restructure the schema instead.
+func setContentBind(ce *ContentEntry, v any, path string) error {
+	s, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("%s.bind must be a string, got %T", path, v)
+	}
+	if s == "" {
+		return fmt.Errorf(
+			"%s.bind: empty string is not allowed on a content entry — "+
+				"hoist only applies to scopes (sections)", path)
+	}
+	if ce.Kind == ContentKindUnlisted {
+		return fmt.Errorf(
+			"%s.bind: not allowed on `kind: unlisted` — slots have no "+
+				"projection key to rename", path)
+	}
+	ce.Bind = &s
+	return nil
 }
 
 func setContentLang(ce *ContentEntry, v any, path string) error {

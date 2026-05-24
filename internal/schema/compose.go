@@ -168,6 +168,9 @@ func extractRootSections(schemas []*Schema) [][]Scope {
 // stable identity and DOES merge, so two proto.md sources that
 // each wrap their sections in the same H1 yield one combined H1
 // scope rather than requiring two H1s in the document.
+//
+// Per plan 167, distinct sibling scopes that bind to the same key
+// are a compose-time error — the projection would collide.
 func composeSectionLists(lists [][]Scope) ([]Scope, error) {
 	acc := &sectionAcc{indexByHeading: map[string]int{}}
 	for _, list := range lists {
@@ -190,7 +193,36 @@ func composeSectionLists(lists [][]Scope) ([]Scope, error) {
 			}
 		}
 	}
+	if err := rejectComposedDuplicateBinds(acc.out); err != nil {
+		return nil, err
+	}
 	return acc.out, nil
+}
+
+// rejectComposedDuplicateBinds errors when two distinct scopes in
+// the composed section list share a non-empty bind value. Empty
+// binds (the hoist signal) do not collide because they produce no
+// key. This catches the case where two kinds bind sibling scopes
+// to the same name; identical bound headings already merged
+// upstream so duplicates here are by definition different scopes
+// in conflict.
+func rejectComposedDuplicateBinds(scopes []Scope) error {
+	seen := make(map[string]string, len(scopes))
+	for i := range scopes {
+		b := scopes[i].Bind
+		if b == nil || *b == "" {
+			continue
+		}
+		if prev, ok := seen[*b]; ok {
+			return fmt.Errorf(
+				"composed schemas bind two sibling scopes to the same "+
+					"projection key %q: %q and %q — every source must "+
+					"agree on the key for each composed heading",
+				*b, prev, scopes[i].Heading)
+		}
+		seen[*b] = scopes[i].Heading
+	}
+	return nil
 }
 
 // sectionAcc accumulates composed scopes while tracking where each
@@ -276,7 +308,10 @@ func canMergeByHeading(sc Scope) bool {
 // intersection of both inputs' run-length ranges (disjoint ranges
 // return an error). Child sections and per-scope rule overrides
 // compose by the same rules as the root; positional Content
-// constraints concatenate in input order.
+// constraints concatenate in input order. Per plan 167, `Bind`
+// values must agree across the merged scopes: nil unifies with
+// anything, two equal non-nil values keep that value, and any
+// genuine disagreement is a compose-time error.
 func mergeScopes(a, b Scope) (Scope, error) {
 	out := cloneScope(a)
 	if b.Closed {
@@ -291,12 +326,39 @@ func mergeScopes(a, b Scope) (Scope, error) {
 	if err != nil {
 		return Scope{}, err
 	}
+	bind, err := mergeBind(a.Bind, b.Bind, a.Heading)
+	if err != nil {
+		return Scope{}, err
+	}
+	out.Bind = bind
 	// Rules: union by rule name; later input wins on key collisions.
 	// The schema-rule walker is the only consumer, and its semantics
 	// are already "later overrides earlier" within a single scope.
 	out.Rules = mergeScopeRules(a.Rules, b.Rules)
 	out.Content = append(cloneContent(a.Content), cloneContent(b.Content)...)
 	return out, nil
+}
+
+// mergeBind intersects two scope-level `bind:` overrides for scopes
+// being merged by heading. The rules mirror filename composition:
+// nil + anything keeps the non-nil side; two equal non-nil values
+// keep that value; a real disagreement returns an error so the
+// caller surfaces a clear diagnostic.
+func mergeBind(a, b *string, heading string) (*string, error) {
+	if a == nil {
+		return b, nil
+	}
+	if b == nil {
+		return a, nil
+	}
+	if *a == *b {
+		return a, nil
+	}
+	return nil, fmt.Errorf(
+		"composed schemas declare conflicting `bind:` overrides for "+
+			"heading %q: %q vs %q — every source must agree on the "+
+			"projection key",
+		heading, *a, *b)
 }
 
 // mergeMatcher combines two matchers for scopes that share a

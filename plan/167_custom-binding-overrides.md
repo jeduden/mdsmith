@@ -1,7 +1,7 @@
 ---
 id: 167
 title: Custom binding overrides for mdsmith extract
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [166]
 summary: >-
@@ -54,14 +54,14 @@ parsing. The walk, encoders, and CLI are untouched.
 
 ## Acceptance Criteria
 
-- [ ] `bind:` overrides the default key; output is
+- [x] `bind:` overrides the default key; output is
       otherwise identical to plan 166.
-- [ ] `bind: ""` hoists a node's children into its
+- [x] `bind: ""` hoists a node's children into its
       parent.
-- [ ] Duplicate or unreachable binds are rejected with
+- [x] Duplicate or unreachable binds are rejected with
       actionable diagnostics.
-- [ ] Conflicting binds across composed kinds are a
+- [x] Conflicting binds across composed kinds are a
       compose-time error.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
-- [ ] `mdsmith check .` passes
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+- [x] `mdsmith check .` passes

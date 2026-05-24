@@ -205,6 +205,13 @@ type Scope struct {
 	// follow the same out-of-order + unlisted-slot semantics the
 	// heading-tree validator uses.
 	Content []ContentEntry
+
+	// Bind, when non-nil, overrides the default schema-derived key
+	// for this scope when projected by `mdsmith extract`. A non-empty
+	// value renames the key; an explicit empty string (`bind: ""`)
+	// hoists the scope's children into the parent instead of nesting
+	// under a key. Nil means "use the default key". Plan 167.
+	Bind *string
 }
 
 // Matcher describes how a Scope claims one or more consecutive
@@ -325,6 +332,14 @@ type ContentEntry struct {
 	// entry's match. Zero means unbounded.
 	MinItems int
 	MaxItems int
+
+	// Bind, when non-nil, overrides the default key for this content
+	// entry when projected by `mdsmith extract` (`code` / `items` /
+	// `rows` / `text`). A non-empty value renames the key; the empty
+	// form (`bind: ""`) is rejected at parse time because a content
+	// entry has no children to hoist into the parent. Nil means
+	// "use the default key". Plan 167.
+	Bind *string
 }
 
 // IsEmpty reports whether s carries no constraints. Used by callers
