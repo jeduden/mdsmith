@@ -36,14 +36,18 @@ three axes unset is a no-op — useful when the rule is on at the
 project level but a kind opts out by clearing one axis.
 
 External URLs (`http:`, `https:`, `mailto:`), local-anchor-only
-references, and images are not checked. The style policy targets
-text links to local Markdown files.
+references, and images are not checked. The `path` and `form`
+axes apply to every local text link, including non-Markdown
+targets like `theme.css` — consistency is the point. The
+`extension` axis is the only Markdown-shaped axis, described
+below.
 
 The extension policy only applies to Markdown-shaped targets — a
 target whose last segment ends in `.md` or `.markdown`, or has no
 extension. Targets ending in any other extension (`.png`, `.css`,
-…) are ignored regardless of `keep`/`strip`. Both `.md` and
-`.markdown` are treated as the same "with extension" form.
+…) are ignored by the `extension` axis regardless of
+`keep`/`strip`. Both `.md` and `.markdown` are treated as the
+same "with extension" form.
 
 A note on adopting `extension: strip`. MDS027
 [cross-file-reference-integrity](../MDS027-cross-file-reference-integrity/README.md)

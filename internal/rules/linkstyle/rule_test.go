@@ -127,6 +127,23 @@ func TestCheck_ExtensionIgnoresNonMarkdownExtensions(t *testing.T) {
 	assert.Empty(t, r.Check(f), "strip should not flag .png or .css targets")
 }
 
+// TestCheck_PathAndFormApplyToNonMarkdownTargets locks in the
+// "path/form are not Markdown-specific" rule: a `.css` reference
+// link with an absolute path under `path: relative, form: inline`
+// must be flagged twice (path + form). Only the extension axis
+// short-circuits non-Markdown extensions.
+func TestCheck_PathAndFormApplyToNonMarkdownTargets(t *testing.T) {
+	src := "# Doc\n\nSee [stylesheet][css].\n\n[css]: /theme.css\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{
+		Path:      "relative", // /theme.css is absolute — flag
+		Extension: "strip",    // .css is not Markdown — silent
+		Form:      "inline",   // reference-style — flag
+	}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 2, "path and form must apply to non-Markdown targets; extension must not")
+}
+
 func TestCheck_FormInline_FlagsReferenceStyle(t *testing.T) {
 	src := "# Doc\n\nSee [x][label].\n\n[label]: sub/target.md\n"
 	f := newFile(t, src)
