@@ -49,7 +49,7 @@ func (s *Server) completionItems(ctx index.CompletionContext, rel string, idx *i
 		return s.anchorItems(rel, ctx.Prefix, idx, true)
 	case index.CompletionAnchorOtherFile:
 		if ctx.TargetFile == "" {
-			return nil
+			return []completionItem{}
 		}
 		return s.anchorItems(ctx.TargetFile, ctx.Prefix, idx, false)
 	case index.CompletionRefLabel:
@@ -59,7 +59,7 @@ func (s *Server) completionItems(ctx index.CompletionContext, rel string, idx *i
 	case index.CompletionDirectivePath:
 		return s.directivePathItems(rel, ctx.Prefix, idx)
 	}
-	return nil
+	return []completionItem{}
 }
 
 // anchorItems returns completion items for heading anchors in the given file.
@@ -68,7 +68,7 @@ func (s *Server) completionItems(ctx index.CompletionContext, rel string, idx *i
 func (s *Server) anchorItems(file, prefix string, idx *index.Index, sameFile bool) []completionItem {
 	fe, ok := idx.File(file)
 	if !ok {
-		return nil
+		return []completionItem{}
 	}
 	prefixLower := strings.ToLower(prefix)
 	var items []completionItem
@@ -100,7 +100,7 @@ func (s *Server) anchorItems(file, prefix string, idx *index.Index, sameFile boo
 func (s *Server) refLabelItems(file, prefix string, idx *index.Index) []completionItem {
 	fe, ok := idx.File(file)
 	if !ok {
-		return nil
+		return []completionItem{}
 	}
 	prefixLower := strings.ToLower(prefix)
 	var items []completionItem
@@ -125,7 +125,7 @@ func (s *Server) refLabelItems(file, prefix string, idx *index.Index) []completi
 func (s *Server) kindItems(prefix string) []completionItem {
 	cfg, _, _ := s.snapshotConfig()
 	if cfg == nil {
-		return nil
+		return []completionItem{}
 	}
 	prefixLower := strings.ToLower(prefix)
 	var items []completionItem
