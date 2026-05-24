@@ -70,7 +70,7 @@ Content here.
 ## Diagnostics
 
 | Message                                   | Condition                  |
-|-------------------------------------------|----------------------------|
+| ----------------------------------------- | -------------------------- |
 | `list should be preceded by a blank line` | Previous line is not blank |
 | `list should be followed by a blank line` | Next line is not blank     |
 

@@ -17,7 +17,7 @@ Unordered list items must use the configured bullet marker character.
 ## Settings
 
 | Setting  | Type         | Default  | Description                                               |
-|----------|--------------|----------|-----------------------------------------------------------|
+| -------- | ------------ | -------- | --------------------------------------------------------- |
 | `style`  | string       | `"dash"` | `"dash"` (`-`), `"asterisk"` (`*`), or `"plus"` (`+`)     |
 | `nested` | list(string) | `[]`     | Per-depth style rotation; cycles by `depth % len(nested)` |
 

@@ -43,7 +43,7 @@ the conflict. No partial edit is written.
 ## Flags
 
 | Flag                | Default | Description                                |
-|---------------------|---------|--------------------------------------------|
+| ------------------- | ------- | ------------------------------------------ |
 | `--heading`         | false   | Rename a heading and its workspace anchors |
 | `--link-ref`        | false   | Rename a link-ref label: def + uses        |
 | `-c`, `--config`    | auto    | Override config path                       |
@@ -104,7 +104,7 @@ mdsmith rename --format json docs/guide.md --heading "Setup" "Install"
 ## Exit codes
 
 | Code | Meaning                        |
-|------|--------------------------------|
+| ---- | ------------------------------ |
 | 0    | Rewritten                      |
 | 1    | No matching heading or label   |
 | 2    | Conflict, invalid input, error |

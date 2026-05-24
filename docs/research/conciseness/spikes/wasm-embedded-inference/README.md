@@ -72,7 +72,7 @@ restarts.
 Measured with `ROUNDS=4000` (`24,000` requests total):
 
 | Metric                 | Value       |
-|------------------------|-------------|
+| ---------------------- | ----------- |
 | Guest load (compile)   | 1699.40 ms  |
 | Requests               | 24,000      |
 | Avg latency            | 2022.38 us  |
@@ -121,7 +121,7 @@ All four paths score the same corpus with the same linear weights
 (except MDS029, which has its own heuristic):
 
 | Path                | Avg latency | Startup  | RSS bench  | Binary delta |
-|---------------------|-------------|----------|------------|--------------|
+| ------------------- | ----------- | -------- | ---------- | ------------ |
 | MDS029 heuristic    | n/a (no ML) | 0        | baseline   | 0 B          |
 | go-native (plan 64) | 3.38 us     | 0.28 ms  | 7,776 KB   | 480 B        |
 | wasm + wazero       | 2,022.38 us | 1,699 ms | 109,152 KB | 4,174,718 B  |

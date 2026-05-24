@@ -17,7 +17,7 @@ on config and directive surfaces but not on CLI arguments.
 ## Surfaces
 
 | Surface                 | Field name      | `!`-exclusion |
-|-------------------------|-----------------|---------------|
+| ----------------------- | --------------- | ------------- |
 | `ignore:`               | list of strings | yes           |
 | `overrides:.glob`       | `glob:`         | yes           |
 | `kind-assignment:.glob` | `glob:`         | yes           |

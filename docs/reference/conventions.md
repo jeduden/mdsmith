@@ -57,7 +57,7 @@ the strict-style rules with their recommended
 defaults.
 
 | Rule                     | Setting                                                 |
-|--------------------------|---------------------------------------------------------|
+| ------------------------ | ------------------------------------------------------- |
 | `markdown-flavor`        | `flavor: commonmark`                                    |
 | `no-inline-html`         | enabled                                                 |
 | `no-reference-style`     | `allow-footnotes: false`                                |
@@ -77,7 +77,7 @@ pinned for consistency; the rest of the strict
 rules stay off.
 
 | Rule                | Setting                                |
-|---------------------|----------------------------------------|
+| ------------------- | -------------------------------------- |
 | `markdown-flavor`   | `flavor: gfm`                          |
 | `no-inline-html`    | `allow: [details, summary]`            |
 | `emphasis-style`    | `bold: asterisk`, `italic: underscore` |
@@ -92,7 +92,7 @@ targets workspace-wide, and MDS067 checks every
 `[!type]` callout against the Obsidian type set.
 
 | Rule                             | Setting                                       |
-|----------------------------------|-----------------------------------------------|
+| -------------------------------- | --------------------------------------------- |
 | `markdown-flavor`                | `flavor: gfm`                                 |
 | `cross-file-reference-integrity` | `wikilinks: true`, `wikilink-style: obsidian` |
 | `callout-type`                   | enabled (12 base Obsidian types and aliases)  |

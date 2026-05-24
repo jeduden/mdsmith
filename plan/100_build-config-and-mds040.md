@@ -66,7 +66,7 @@ prepended at build time. Has no effect on lint.
 Map from recipe name to a recipe declaration:
 
 | Field             | Required | Description                                                                 |
-|-------------------|----------|-----------------------------------------------------------------------------|
+| ----------------- | -------- | --------------------------------------------------------------------------- |
 | `command`         | yes      | Argv template; `{param}` tokens expand at build time                        |
 | `body-template`   | no       | Markdown body rendered by `mdsmith fix`; defaults to `[{output}]({output})` |
 | `params.required` | no       | Param names the directive must supply                                       |

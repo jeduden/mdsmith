@@ -37,7 +37,7 @@ contains the mdsmith source tree.
 ## Skills
 
 | Slash command                             | What it runs    |
-|-------------------------------------------|-----------------|
+| ----------------------------------------- | --------------- |
 | `/mdsmith-fix [path]`                     | `mdsmith fix`   |
 | `/mdsmith-kinds [resolve <file> \| list]` | `mdsmith kinds` |
 | `/mdsmith-check [path]`                   | `mdsmith check` |

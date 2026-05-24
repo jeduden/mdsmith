@@ -116,7 +116,7 @@ are invoked by `name`, with no plugin prefix
 `mdsmith-` prefix to stay distinctive:
 
 | Slash command    | Wraps                                             |
-|------------------|---------------------------------------------------|
+| ---------------- | ------------------------------------------------- |
 | `/mdsmith-fix`   | [`mdsmith fix`](../docs/reference/cli/fix.md)     |
 | `/mdsmith-kinds` | [`mdsmith kinds`](../docs/reference/cli/kinds.md) |
 | `/mdsmith-check` | [`mdsmith check`](../docs/reference/cli/check.md) |

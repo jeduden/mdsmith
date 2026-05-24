@@ -22,7 +22,7 @@ prose is hand-written or machine-generated.
 Three rules are **on by default**. Two are **opt-in**.
 
 | Rule     | Config key              | Default state | Default threshold                       |
-|----------|-------------------------|---------------|-----------------------------------------|
+| -------- | ----------------------- | ------------- | --------------------------------------- |
 | `MDS022` | `max-file-length`       | on            | `max: 300` lines                        |
 | `MDS023` | `paragraph-readability` | on            | `max-index: 14.0` ARI, `min-words: 20`  |
 | `MDS024` | `paragraph-structure`   | opt-in        | `max-sentences: 6`, 40 words / sentence |

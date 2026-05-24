@@ -69,7 +69,7 @@ build:
 Each hook entry shape:
 
 | Field     | Required | Description                                                         |
-|-----------|----------|---------------------------------------------------------------------|
+| --------- | -------- | ------------------------------------------------------------------- |
 | `command` | yes      | Argv template; same `{param}` rules as recipes (plan 100)           |
 | `params`  | no       | Map of param name → literal value, used to expand `{param}` tokens  |
 | `name`    | no       | Display name for diagnostics (defaults to first token of `command`) |
@@ -150,7 +150,7 @@ per plan 100 rule 6.)
 ### Flags
 
 | Flag         | Behavior                                                     |
-|--------------|--------------------------------------------------------------|
+| ------------ | ------------------------------------------------------------ |
 | `--no-hooks` | Skip both `before` and `after` hooks (debugging, CI bypass)  |
 | `--dry-run`  | List hooks alongside recipes; run nothing (extends plan 102) |
 

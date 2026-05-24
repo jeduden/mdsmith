@@ -20,7 +20,7 @@ heading-level mistake.
 ## Settings
 
 | Setting              | Type   | Default   | Description                                                                                                                                 |
-|----------------------|--------|-----------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| -------------------- | ------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `front-matter-title` | string | `"title"` | Front-matter field that counts as an H1. When the field is set and the file also contains an H1, the H1 is flagged. Set to `""` to disable. |
 
 ## Config
@@ -84,7 +84,7 @@ title: My Doc
 ## Diagnostics
 
 | Message                                             | Condition                                                                                             |
-|-----------------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `extra H1 heading; only one H1 is allowed per file` | A second or later H1 heading exists in the document                                                   |
 | `h1 heading conflicts with front-matter title`      | An H1 heading exists and the front matter contains the configured field with a non-empty string value |
 

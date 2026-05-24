@@ -141,7 +141,7 @@ reported. Upstream is `go test -tags mdtext_punkt_upstream`;
 fast is the default build with the DFA in place.
 
 | Benchmark                       | Upstream               | Fast                   | Δ            |
-|---------------------------------|------------------------|------------------------|--------------|
+| ------------------------------- | ---------------------- | ---------------------- | ------------ |
 | BenchmarkSplitSentences         | 190 µs/op, 593 allocs  | 158 µs/op, 577 allocs  | **−16.8%**   |
 | BenchmarkSplitSentences_Subset  | 263 µs/op, 1082 allocs | 231 µs/op, 1038 allocs | **−12.2%**   |
 | BenchmarkCheckCorpusSmall (p95) | 33 ms                  | 33 ms                  | flat         |

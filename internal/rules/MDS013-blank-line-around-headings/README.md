@@ -68,7 +68,7 @@ Content here.
 ## Diagnostics
 
 | Message                                   | Condition                            |
-|-------------------------------------------|--------------------------------------|
+| ----------------------------------------- | ------------------------------------ |
 | `heading should have a blank line before` | Previous line is not blank           |
 | `heading should have a blank line after`  | Next line after heading is not blank |
 

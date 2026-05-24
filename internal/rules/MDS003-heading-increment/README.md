@@ -17,7 +17,7 @@ Heading levels should increment by one. No jumping from `#` to `###`.
 ## Settings
 
 | Setting        | Type | Default | Description                                                                                                                |
-|----------------|------|---------|----------------------------------------------------------------------------------------------------------------------------|
+| -------------- | ---- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `placeholders` | list | `[]`    | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
 
 Useful tokens: `heading-question`, `placeholder-section`, `var-token`.

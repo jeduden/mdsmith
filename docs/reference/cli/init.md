@@ -27,6 +27,6 @@ $EDITOR .mdsmith.yml
 ## Exit codes
 
 | Code | Meaning                                 |
-|------|-----------------------------------------|
+| ---- | --------------------------------------- |
 | 0    | Config written                          |
 | 2    | `.mdsmith.yml` already exists, or error |

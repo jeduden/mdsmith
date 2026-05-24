@@ -90,7 +90,7 @@ lives at `npm/platforms/<node-platform>-<node-arch>/`.
 The release script renames Go assets to match:
 
 | Release asset               | npm package             |
-|-----------------------------|-------------------------|
+| --------------------------- | ----------------------- |
 | `mdsmith-linux-amd64`       | `@mdsmith/linux-x64`    |
 | `mdsmith-linux-arm64`       | `@mdsmith/linux-arm64`  |
 | `mdsmith-darwin-amd64`      | `@mdsmith/darwin-x64`   |

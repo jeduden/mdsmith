@@ -29,7 +29,7 @@ This rule makes the choice explicit.
 ## Settings
 
 | Key                  | Type   | Default | Description                                                     |
-|----------------------|--------|---------|-----------------------------------------------------------------|
+| -------------------- | ------ | ------- | --------------------------------------------------------------- |
 | bold                 | string | `""`    | Required delimiter: `asterisk` or `underscore`.                 |
 | italic               | string | `""`    | Required delimiter: `asterisk` or `underscore`.                 |
 | forbid-mixed-nesting | bool   | `false` | Flag emphasis whose delimiter differs from its parent emphasis. |

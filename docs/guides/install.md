@@ -38,7 +38,7 @@ value on every channel because the version is stamped
 into the binary at build time. Pick one path:
 
 | Channel              | Command                                                                                             | Best for                                                                |
-|----------------------|-----------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------|
+| -------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | Go                   | `go install github.com/jeduden/mdsmith/cmd/mdsmith@latest`                                          | Go developers with a working Go toolchain                               |
 | npm                  | `npm install -g @mdsmith/cli`                                                                       | Node / TypeScript repos and npm-friendly CI                             |
 | npx                  | `npx @mdsmith/cli check .`                                                                          | One-off checks without a global install                                 |

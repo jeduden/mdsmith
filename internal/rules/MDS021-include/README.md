@@ -39,7 +39,7 @@ for details.
 ## Parameters
 
 | Parameter           | Required | Default  | Description                                       |
-|---------------------|----------|----------|---------------------------------------------------|
+| ------------------- | -------- | -------- | ------------------------------------------------- |
 | `file`              | yes      | --       | Relative path to include                          |
 | `strip-frontmatter` | no       | `"true"` | Remove YAML frontmatter                           |
 | `wrap`              | no       | --       | Wrap in code fence (value = language)             |
@@ -192,7 +192,7 @@ Outdated content
 ## Diagnostics
 
 | Condition             | Message                                                            |
-|-----------------------|--------------------------------------------------------------------|
+| --------------------- | ------------------------------------------------------------------ |
 | content mismatch      | generated section is out of date                                   |
 | missing file          | include file "x.md" not found                                      |
 | no file param         | include directive missing required "file" parameter                |

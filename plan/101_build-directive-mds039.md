@@ -53,7 +53,7 @@ not supported.
 Common parameters (all recipes):
 
 | Name     | Required | Description                                                     |
-|----------|----------|-----------------------------------------------------------------|
+| -------- | -------- | --------------------------------------------------------------- |
 | `recipe` | yes      | Recipe name declared in `build.recipes`                         |
 | `output` | yes      | Artifact path relative to the Markdown file; no `..` components |
 
@@ -66,7 +66,7 @@ Each recipe has a `body-template` rendered by
 `mdsmith fix`:
 
 | Placeholder | Value                                   |
-|-------------|-----------------------------------------|
+| ----------- | --------------------------------------- |
 | `{output}`  | The `output` param value                |
 | `{alt}`     | `"{recipe} output: {output}"` (default) |
 

@@ -94,7 +94,7 @@ file containing the `<?build?>` directive.
 Built-in defaults:
 
 | Recipe       | `default-inputs`               |
-|--------------|--------------------------------|
+| ------------ | ------------------------------ |
 | `vhs`        | `[{input}]` (the `.tape` file) |
 | `screenshot` | (none)                         |
 
@@ -157,7 +157,7 @@ guide; the file is per-clone state, like
 ### Flags
 
 | Flag            | Behavior                                                                               |
-|-----------------|----------------------------------------------------------------------------------------|
+| --------------- | -------------------------------------------------------------------------------------- |
 | (none)          | Default: rebuild only stale targets; refresh cache entries for rebuilt targets         |
 | `--force`       | Rebuild every target regardless of cache; refresh all cache entries                    |
 | `--check-stale` | Print every stale target, exit non-zero if any are stale, do not rebuild (CI gate use) |

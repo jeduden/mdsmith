@@ -18,7 +18,7 @@ Paragraphs should not repeat verbatim across Markdown files.
 ## Settings
 
 | Setting     | Type | Default | Description                                    |
-|-------------|------|---------|------------------------------------------------|
+| ----------- | ---- | ------- | ---------------------------------------------- |
 | `include`   | list | `[]`    | glob patterns limiting which siblings to scan  |
 | `exclude`   | list | `[]`    | glob patterns of siblings to skip              |
 | `min-chars` | int  | `200`   | minimum normalized paragraph length to compare |
@@ -135,7 +135,7 @@ suite.
 ## Diagnostics
 
 | Condition         | Message                                                                  |
-|-------------------|--------------------------------------------------------------------------|
+| ----------------- | ------------------------------------------------------------------------ |
 | paragraph repeats | paragraph duplicated in {other}:{line}                                   |
 | invalid glob      | duplicated-content: {include,exclude}: invalid glob pattern "{pat}": ... |
 

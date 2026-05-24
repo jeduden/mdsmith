@@ -21,7 +21,7 @@ This policy optimizes decision quality, not headline score.
 ## Approach Matrix
 
 | ID  | Family     | Core signal                            | Raw output  |
-|-----|------------|----------------------------------------|-------------|
+| --- | ---------- | -------------------------------------- | ----------- |
 | A0  | heuristic  | current `MDS029` cues and score        | score       |
 | A1  | heuristic  | tuned cue lists and weights            | score       |
 | B0  | classifier | simple linear baseline                 | probability |

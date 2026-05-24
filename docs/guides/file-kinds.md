@@ -277,7 +277,7 @@ rejected at config load.
 `frontmatter:` keys unify under CUE's standard rules:
 
 | Parent expression    | Child expression | Effective                              |
-|----------------------|------------------|----------------------------------------|
+| -------------------- | ---------------- | -------------------------------------- |
 | `"open" \| "closed"` | `"open"`         | `"open"` (refinement; OK)              |
 | `"open" \| "closed"` | `"ratified"`     | conflict — no value satisfies          |
 | `int`                | `string`         | conflict — no overlap                  |

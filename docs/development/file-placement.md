@@ -82,7 +82,7 @@ mdsmith documentation follows four types. Place each
 file in the matching directory:
 
 | Type       | Directory                                 | Purpose                              | Example                             |
-|------------|-------------------------------------------|--------------------------------------|-------------------------------------|
+| ---------- | ----------------------------------------- | ------------------------------------ | ----------------------------------- |
 | Guide      | `docs/guides/`                            | Task-oriented: how to achieve a goal | "How to enforce document structure" |
 | Reference  | `docs/reference/`, `internal/rules/MDS*/` | Lookup-oriented: complete specs      | CLI flags, rule README              |
 | Tutorial   | `docs/tutorials/`                         | Learning-oriented: step-by-step      | "Your first schema"                 |

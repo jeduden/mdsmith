@@ -25,7 +25,7 @@ toggle the rule on directly) to enable it.
 ## Settings
 
 | Setting         | Type | Default | Description                                                    |
-|-----------------|------|---------|----------------------------------------------------------------|
+| --------------- | ---- | ------- | -------------------------------------------------------------- |
 | `allow`         | list | `[]`    | Extra callout-type names to permit alongside the built-in set. |
 | `allow-unknown` | bool | `false` | When `true`, accept any `[!name]` token without validation.    |
 

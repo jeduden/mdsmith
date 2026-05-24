@@ -35,16 +35,8 @@ rules:
     max: 300
   table-format:
     pad: 1
-    # Pinned mdsmith only writes the compact separator; keep the
-    # repo on compact until a release that defaults to spaced is
-    # pinned, then drop this override.
-    separator-style: compact
   catalog:
     pad: 1
-    # Mirror table-format so the tables catalog generates inside
-    # `<?catalog?>` bodies match the rest of the repo. Drop both
-    # overrides together when moving to spaced.
-    separator-style: compact
   table-readability:
     max-column-width-ratio: 60
     max-columns: 8
@@ -323,6 +315,11 @@ kinds:
       no-inline-html:
         allow: [kbd]
   directive-rule-readme:
+    # Inherits rule-readme's structure (frontmatter + sections)
+    # and tightens it via the directive-proto.md schema, which
+    # adds the required Pattern section. `extends:` removes the
+    # duplication the kind used to carry.
+    extends: rule-readme
     rules:
       required-structure:
         schema: internal/rules/directive-proto.md
@@ -339,9 +336,9 @@ kinds:
   architecture-doc:
     schema:
       frontmatter:
-        title: 'string & != ""'
-        slug: 'string & != ""'
-        summary: 'string & != ""'
+        title: nonEmpty
+        slug: nonEmpty
+        summary: nonEmpty
       closed: false
       sections:
         - heading: null
@@ -354,8 +351,8 @@ kinds:
   cli-command:
     schema:
       frontmatter:
-        command: 'string & != ""'
-        summary: 'string & != ""'
+        command: nonEmpty
+        summary: nonEmpty
       closed: false
       sections:
         - heading: null
@@ -370,15 +367,15 @@ kinds:
   secret-rotation:
     schema:
       frontmatter:
-        title: 'string & != ""'
-        summary: 'string & != ""'
-        lastRotated: '=~ "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"'
+        title: nonEmpty
+        summary: nonEmpty
+        lastRotated: date
         periodDays: 'int & > 0'
-        provider: 'string & != ""'
-        issuerUrl: '=~ "^https?://"'
-        usedBy: 'string & != ""'
-        scope: 'string & != ""'
-        releaseEnvScoped: 'bool'
+        provider: nonEmpty
+        issuerUrl: url
+        usedBy: nonEmpty
+        scope: nonEmpty
+        releaseEnvScoped: bool
       closed: false
       sections:
         - heading: null
@@ -388,8 +385,8 @@ kinds:
   audit-log:
     schema:
       frontmatter:
-        title: 'string & != ""'
-        "summary?": 'string'
+        title: nonEmpty
+        "summary?": string
         audit-from: '=~"^[0-9a-f]{7,40}$"'
       filename: "architecture-audit.md"
       closed: false
@@ -406,11 +403,11 @@ kinds:
     # `mdsmith check` instead of silently breaking a card.
     schema:
       frontmatter:
-        title: 'string & != ""'
-        summary: 'string & != ""'
-        icon: 'string & != ""'
+        title: nonEmpty
+        summary: nonEmpty
+        icon: nonEmpty
         weight: 'int & >=1'
-        "link?": 'string'
+        "link?": string
         "rules?": '[...string]'
       closed: false
       sections:
@@ -424,8 +421,8 @@ kinds:
     # (no icon/weight), so it gets its own kind.
     schema:
       frontmatter:
-        title: 'string & != ""'
-        summary: 'string & != ""'
+        title: nonEmpty
+        summary: nonEmpty
       closed: false
       sections:
         - heading: null
@@ -449,8 +446,8 @@ kinds:
     path-pattern: "website/content/*.md"
     schema:
       frontmatter:
-        title: 'string & != ""'
-        summary: 'string & != ""'
+        title: nonEmpty
+        summary: nonEmpty
         # The homepage carries its hero copy and install
         # quickstart in its own front matter (read by
         # hero.html / install-list.html) instead of a

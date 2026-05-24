@@ -23,7 +23,7 @@ names and reports any occurrence whose casing does not match.
 ## Settings
 
 | Setting      | Type         | Default | Merge   | Description                                                   |
-|--------------|--------------|---------|---------|---------------------------------------------------------------|
+| ------------ | ------------ | ------- | ------- | ------------------------------------------------------------- |
 | `names`      | list(string) | `[]`    | append  | Canonical spellings of proper names to enforce.               |
 | `check-code` | bool         | `false` | replace | Also check inside code spans and fenced/indented code blocks. |
 | `check-html` | bool         | `false` | replace | Also check inside raw HTML and HTML blocks.                   |
@@ -178,7 +178,7 @@ diagnostic is emitted.
 ## Diagnostics
 
 | Message                         | Meaning                                              |
-|---------------------------------|------------------------------------------------------|
+| ------------------------------- | ---------------------------------------------------- |
 | `proper name "X" should be "Y"` | The occurrence `X` does not match canonical name `Y` |
 
 ## Meta-Information

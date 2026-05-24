@@ -17,7 +17,7 @@ Ordered list items must be numbered in the configured style.
 ## Settings
 
 | Setting | Type   | Default        | Description                                          |
-|---------|--------|----------------|------------------------------------------------------|
+| ------- | ------ | -------------- | ---------------------------------------------------- |
 | `style` | string | `"sequential"` | `"sequential"` (1. 2. 3.) or `"all-ones"` (1. 1. 1.) |
 | `start` | int    | `1`            | Required first number for every ordered list         |
 

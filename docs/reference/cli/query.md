@@ -18,7 +18,7 @@ recursively. Files without front matter are skipped (use
 ## Flags
 
 | Flag               | Default | Description                          |
-|--------------------|---------|--------------------------------------|
+| ------------------ | ------- | ------------------------------------ |
 | `-c`, `--config`   | auto    | Override config path                 |
 | `-0`, `--null`     | false   | NUL-delimit output (for `xargs -0`)  |
 | `-v`, `--verbose`  | false   | Print skipped files on stderr        |
@@ -38,7 +38,7 @@ membership, optional fields, and structural shapes.
 ## Exit codes
 
 | Code | Meaning             |
-|------|---------------------|
+| ---- | ------------------- |
 | 0    | At least one match  |
 | 1    | No matches          |
 | 2    | Runtime/parse error |

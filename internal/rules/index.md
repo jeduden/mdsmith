@@ -19,7 +19,7 @@ header: |
 row: "| [{id}]({filename}) | `{name}` | {category} | {status} | {description} |"
 ?>
 | Rule                                                          | Name                                 | Category      | Status    | Description                                                                                                                                        |
-|---------------------------------------------------------------|--------------------------------------|---------------|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| ------------------------------------------------------------- | ------------------------------------ | ------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [MDS001](MDS001-line-length/README.md)                        | `line-length`                        | line          | ready     | Line exceeds maximum length.                                                                                                                       |
 | [MDS002](MDS002-heading-style/README.md)                      | `heading-style`                      | heading       | ready     | Heading style must be consistent.                                                                                                                  |
 | [MDS003](MDS003-heading-increment/README.md)                  | `heading-increment`                  | heading       | ready     | Heading levels should increment by one. No jumping from `#` to `###`.                                                                              |
@@ -106,7 +106,7 @@ header: |
 row: "| [{id}]({filename}) | `{name}` | {description} |"
 ?>
 | Rule                               | Name      | Description                                                                                                             |
-|------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------|
+| ---------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------- |
 | [MDS019](MDS019-catalog/README.md) | `catalog` | Catalog content must reflect selected front matter fields from files matching its glob.                                 |
 | [MDS021](MDS021-include/README.md) | `include` | Include section content must match the referenced file.                                                                 |
 | [MDS038](MDS038-toc/README.md)     | `toc`     | Keep toc generated heading lists in sync with document headings.                                                        |

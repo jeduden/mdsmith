@@ -57,7 +57,7 @@ Adoption path that the spec explicitly recommends
    auto-match files
 
 | Bootstrap step      | mdsmith              | mdbase                  |
-|---------------------|----------------------|-------------------------|
+| ------------------- | -------------------- | ----------------------- |
 | Init                | one command          | one command             |
 | Useful immediately  | yes (rule defaults)  | only after typing files |
 | Schema authoring    | optional             | central activity        |
@@ -97,7 +97,7 @@ left blank for the user to fill in (or rejected if
 strict mode is on).
 
 | Authoring task                      | mdsmith                                    | mdbase                            |
-|-------------------------------------|--------------------------------------------|-----------------------------------|
+| ----------------------------------- | ------------------------------------------ | --------------------------------- |
 | Create `.md` from template          | hand or `<?include?>` from a template file | `mdbase create <type>`            |
 | Fill required fields                | manual                                     | manual + auto-defaults            |
 | Generated values (ULID, timestamps) | no                                         | yes (`generated:` strategies)     |
@@ -175,7 +175,7 @@ include/catalog graph; mdbase-lsp gives the
 typed-link graph.
 
 | Editor experience        | mdsmith today | mdsmith planned   | mdbase-lsp |
-|--------------------------|---------------|-------------------|------------|
+| ------------------------ | ------------- | ----------------- | ---------- |
 | Inline diagnostics       | yes           | yes               | yes        |
 | Quick fix per diagnostic | yes           | yes               | no         |
 | Fix all in file          | yes           | yes               | no         |
@@ -245,7 +245,7 @@ backfill:
 ```
 
 | Schema-evolution step | mdsmith                      | mdbase                                  |
-|-----------------------|------------------------------|-----------------------------------------|
+| --------------------- | ---------------------------- | --------------------------------------- |
 | Add optional field    | edit CUE; no migration       | edit type; no migration                 |
 | Add required field    | edit CUE; manually fix files | migration manifest with backfill        |
 | Change field type     | edit CUE; manually fix files | migration manifest                      |
@@ -288,7 +288,7 @@ one file does not abort the rename. The user gets a
 list of files that were not updated.
 
 | Rename step            | mdsmith                  | mdbase L5                     |
-|------------------------|--------------------------|-------------------------------|
+| ---------------------- | ------------------------ | ----------------------------- |
 | Move file              | `mv`                     | `mdbase rename`               |
 | Detect broken links    | `mdsmith check` (MDS027) | n/a (already rewritten)       |
 | Auto-rewrite incoming  | no                       | yes                           |
@@ -333,7 +333,7 @@ optionally body). Sortable, paginatable, with body
 search via `file.body.contains(...)`.
 
 | Selection task         | mdsmith             | mdbase                    |
-|------------------------|---------------------|---------------------------|
+| ---------------------- | ------------------- | ------------------------- |
 | Filter by FM field     | yes                 | yes                       |
 | Sort by FM field       | no (pipe to `sort`) | yes                       |
 | Paginate               | no (head/tail)      | yes (`limit`/`offset`)    |
@@ -386,7 +386,7 @@ do not overlap: mdsmith reports prose and structure
 issues; mdbase reports schema and link issues.
 
 | CI concern               | mdsmith only      | mdbase only       | both          |
-|--------------------------|-------------------|-------------------|---------------|
+| ------------------------ | ----------------- | ----------------- | ------------- |
 | Single tool install      | go binary         | npm package       | go + npm      |
 | Cold-cache lint time     | seconds           | seconds           | additive      |
 | Lint failure exits CI    | yes               | when `error` mode | both          |
@@ -418,7 +418,7 @@ this themselves via `lefthook`, `husky`, or
 `pre-commit`.
 
 | Hook concern                    | mdsmith                            | mdbase          |
-|---------------------------------|------------------------------------|-----------------|
+| ------------------------------- | ---------------------------------- | --------------- |
 | Pre-commit lint                 | external runner                    | external runner |
 | Pre-merge-commit fix            | `mdsmith pre-merge-commit install` | external        |
 | Merge-conflict driver           | `mdsmith merge-driver`             | none            |
@@ -543,7 +543,7 @@ the LSP protocol.
 ### Side-by-side agent surface
 
 | Agent task                 | mdsmith today  | mdsmith planned | mdbase-lsp      |
-|----------------------------|----------------|-----------------|-----------------|
+| -------------------------- | -------------- | --------------- | --------------- |
 | Read file                  | direct         | direct          | direct          |
 | Write body                 | direct + fix   | direct + fix    | direct          |
 | Scaffold typed file        | n/a            | n/a             | `mdbase create` |
@@ -605,7 +605,7 @@ inside `.mdsmith.yml`, which is a single config file
 the contributor must read top to bottom.
 
 | Onboarding step          | mdsmith                                   | mdbase                            |
-|--------------------------|-------------------------------------------|-----------------------------------|
+| ------------------------ | ----------------------------------------- | --------------------------------- |
 | Install                  | one binary                                | npm + cargo                       |
 | Config to read           | `.mdsmith.yml`                            | `mdbase.yaml` + `_types/`         |
 | Per-type docs            | `internal/rules/<id>/README.md` (in repo) | `_types/<name>.md` body (in repo) |
@@ -615,7 +615,7 @@ the contributor must read top to bottom.
 ## 12. Mental model summary
 
 | Concept                         | mdsmith says              | mdbase says               |
-|---------------------------------|---------------------------|---------------------------|
+| ------------------------------- | ------------------------- | ------------------------- |
 | What's a file?                  | Text to lint and fix      | A typed record            |
 | What's metadata?                | YAML the rules read       | Effective FM + computed   |
 | Who validates?                  | Per-rule severity         | Per-mode (off/warn/error) |

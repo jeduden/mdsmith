@@ -25,7 +25,7 @@ diagnostics inside the scope's range.
 ## Settings
 
 | Setting    | Type | Default | Description                                                                        |
-|------------|------|---------|------------------------------------------------------------------------------------|
+| ---------- | ---- | ------- | ---------------------------------------------------------------------------------- |
 | `mentions` | list | `[]`    | Substrings that must each appear somewhere in the section's prose. Case-sensitive. |
 
 ## Config

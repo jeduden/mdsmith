@@ -30,7 +30,7 @@ Aggregation is not one thing. Five shapes recur
 across teams that adopt mdbase or want to:
 
 | Shape       | Example                                           | Cost driver              |
-|-------------|---------------------------------------------------|--------------------------|
+| ----------- | ------------------------------------------------- | ------------------------ |
 | count       | "How many open tasks per assignee?"               | scan all matching FM     |
 | sum / avg   | "Total estimated hours per project."              | scan + arithmetic        |
 | top-N       | "Five oldest unresolved bugs."                    | scan + sort              |
@@ -69,7 +69,7 @@ Both tools can be evaluated under either mode.
 The analyses below compare like-with-like:
 
 | Mode               | mdbase                                           | mdsmith                                                                                  |
-|--------------------|--------------------------------------------------|------------------------------------------------------------------------------------------|
+| ------------------ | ------------------------------------------------ | ---------------------------------------------------------------------------------------- |
 | Cold start         | validate cache (stat + maybe hash) → query       | parse files in parallel → query                                                          |
 | Long-lived session | watch mode keeps cache live → query is index hit | in-memory index built lazily / on-demand → query is index hit (P-1 / plan 131 territory) |
 
@@ -688,7 +688,7 @@ five configurations on synthetic 1k / 10k / 50k
 file workspaces:
 
 | Config                                | Cold start | 2nd run | Notes                             |
-|---------------------------------------|------------|---------|-----------------------------------|
+| ------------------------------------- | ---------- | ------- | --------------------------------- |
 | stateless re-read, OS cache cold      | T_cold     | —       | upper bound; rare in practice     |
 | stateless re-read, OS cache warm      | T_warm     | T_warm  | the realistic baseline            |
 | in-memory index, lazy build, in-LSP   | T_warm     | <1ms    | for long-lived processes          |
@@ -845,7 +845,7 @@ Reading [`src/cache/schema.sql`][rs-schema] and
 **Side-by-side at the storage layer.** The two impls in one table:
 
 | Concern                 | TS impl (`mdbase`)           | Rust impl (`mdbase-rs`)              |
-|-------------------------|------------------------------|--------------------------------------|
+| ----------------------- | ---------------------------- | ------------------------------------ |
 | SQLite binding          | `sql.js` (WebAssembly)       | `rusqlite` with bundled SQLite       |
 | Persistence model       | In-memory; flush on close    | Incremental disk writes              |
 | Body storage            | Inline TEXT column           | Inline TEXT column                   |
@@ -1097,7 +1097,7 @@ quality.
 ### Side-by-side query-layer summary
 
 | Concern                      | mdsmith                   | mdbase                             |
-|------------------------------|---------------------------|------------------------------------|
+| ---------------------------- | ------------------------- | ---------------------------------- |
 | User query language          | CUE struct literal        | Bases-compatible DSL (spec §11)    |
 | Body access in queries       | not yet (planned Q-3)     | yes (`file.body.contains/matches`) |
 | Body structure access        | no (lint AST is internal) | no                                 |
@@ -1142,7 +1142,7 @@ indexed state earns its cost:
 The cross-product, with explicit modes:
 
 | Use case              | Mode (most natural) | Latency need | Joins?  | Cold-shot OK? | Long-lived helps? | Persistent cache adds? |
-|-----------------------|---------------------|--------------|---------|---------------|-------------------|------------------------|
+| --------------------- | ------------------- | ------------ | ------- | ------------- | ----------------- | ---------------------- |
 | A-1 sprint dashboard  | one-shot CI         | seconds      | no      | yes           | no (one-shot)     | only if CI preserves   |
 | A-2 reviewer load     | one-shot weekly     | seconds      | one hop | yes           | not natural       | only if CI preserves   |
 | A-3 backlinks panel   | long-lived editor   | <100ms       | one hop | no            | yes (decisive)    | cross-restart warmth   |

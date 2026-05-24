@@ -18,7 +18,7 @@ output.
 ## Subcommands
 
 | Subcommand          | Description                                        |
-|---------------------|----------------------------------------------------|
+| ------------------- | -------------------------------------------------- |
 | `list`              | Print declared kinds with their merged bodies      |
 | `show <name>`       | Print one kind's merged body                       |
 | `path <name>`       | Print resolved schema path of `required-structure` |
@@ -72,6 +72,6 @@ mdsmith kinds why plan/9_big.md max-file-length --json
 ## Exit codes
 
 | Code | Meaning                                |
-|------|----------------------------------------|
+| ---- | -------------------------------------- |
 | 0    | Output produced                        |
 | 2    | Unknown kind, unresolved schema, error |

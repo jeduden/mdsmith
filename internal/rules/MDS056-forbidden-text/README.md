@@ -24,7 +24,7 @@ single section.
 ## Settings
 
 | Setting    | Type | Default | Description                                                     |
-|------------|------|---------|-----------------------------------------------------------------|
+| ---------- | ---- | ------- | --------------------------------------------------------------- |
 | `contains` | list | `[]`    | Substrings forbidden in any paragraph. Match is case-sensitive. |
 
 ## Config

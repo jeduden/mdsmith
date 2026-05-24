@@ -18,14 +18,14 @@ definition in the same file.
 ## Settings
 
 | Setting        | Type   | Default     | Description                                                                                                                |
-|----------------|--------|-------------|----------------------------------------------------------------------------------------------------------------------------|
+| -------------- | ------ | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `shortcut`     | string | `heuristic` | Controls when bare `[label]` shortcut references are checked: `heuristic`, `always`, or `collapsed-only`.                  |
 | `placeholders` | list   | `[]`        | Placeholder tokens to treat as opaque; see [placeholder grammar](../../../docs/background/concepts/placeholder-grammar.md) |
 
 ### `shortcut` values
 
 | Value            | Behaviour                                                                                                                                                                      |
-|------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `heuristic`      | Flag bare `[label]` only when the label has no spaces and contains a digit, hyphen, or underscore. Image shortcuts (`![label]`) are always checked regardless of this setting. |
 | `always`         | Flag every bare `[label]` whose definition is missing.                                                                                                                         |
 | `collapsed-only` | Only flag `[text][label]` (full) and `[label][]` (collapsed) forms; never bare `[label]`.                                                                                      |
@@ -146,7 +146,7 @@ See [plan128] for the plan.
 ## Diagnostics
 
 | Condition                     | Message                                                       |
-|-------------------------------|---------------------------------------------------------------|
+| ----------------------------- | ------------------------------------------------------------- |
 | undefined full reference      | reference label "X" has no matching link reference definition |
 | undefined collapsed reference | reference label "X" has no matching link reference definition |
 | undefined shortcut (flagged)  | reference label "X" has no matching link reference definition |

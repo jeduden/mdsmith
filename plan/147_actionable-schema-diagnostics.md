@@ -87,7 +87,7 @@ shows one squiggle per problem.
 A schema diagnostic carries five fields:
 
 | Field        | Source                                                                  | Example                                     |
-|--------------|-------------------------------------------------------------------------|---------------------------------------------|
+| ------------ | ----------------------------------------------------------------------- | ------------------------------------------- |
 | `field`      | CUE error path; structure section name; `filename` for require failures | `status`                                    |
 | `actual`     | Value as the user wrote it (`%q` for strings, raw for other JSON types) | `"draft"`                                   |
 | `expected`   | Extracted from the schema expression (see below)                        | `one of: "open", "in-progress", "done"`     |
@@ -113,7 +113,7 @@ the failed field and renders a user-facing
 "expected" string per shape:
 
 | CUE shape            | Rendered as                      |
-|----------------------|----------------------------------|
+| -------------------- | -------------------------------- |
 | `"a" \| "b" \| "c"`  | `one of: "a", "b", "c"`          |
 | `=~"^FOO-[0-9]{4}$"` | `string matching ^FOO-[0-9]{4}$` |
 | `int & >=1 & <=5`    | `int between 1 and 5`            |

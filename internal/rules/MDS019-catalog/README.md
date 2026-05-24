@@ -25,13 +25,13 @@ otherwise.
 ### Parameters
 
 | Parameter | Required | Default | Description                       |
-|-----------|----------|---------|-----------------------------------|
+| --------- | -------- | ------- | --------------------------------- |
 | `glob`    | yes      | --      | Relative file glob                |
 | `sort`    | no       | `path`  | Sort key                          |
 | `where`   | no       | --      | CUE filter on parsed front matter |
 
 | Parameter | Required | Default | Description           |
-|-----------|----------|---------|-----------------------|
+| --------- | -------- | ------- | --------------------- |
 | `columns` | no       | --      | Column width/wrapping |
 
 The `glob` accepts a single string or a YAML list of
@@ -104,7 +104,7 @@ The `columns` parameter sets per-column width limits. Each
 key is a template field name. Options:
 
 | Option      | Type   | Default    | Description          |
-|-------------|--------|------------|----------------------|
+| ----------- | ------ | ---------- | -------------------- |
 | `max-width` | int    | --         | Max character width. |
 | `wrap`      | string | `truncate` | `truncate` or `br`.  |
 
@@ -218,13 +218,13 @@ row: "[{filename}]({filename})"
 ## Diagnostics
 
 | Condition      | Message                      |
-|----------------|------------------------------|
+| -------------- | ---------------------------- |
 | Missing `glob` | `...missing required "glob"` |
 | Empty `glob`   | `...has empty "glob"`        |
 | Absolute glob  | `...has absolute glob path`  |
 
 | Condition          | Message                                                                  |
-|--------------------|--------------------------------------------------------------------------|
+| ------------------ | ------------------------------------------------------------------------ |
 | Glob escapes root  | `...glob escapes project root`                                           |
 | `..` without root  | `...glob contains ".." but project root is not configured`               |
 | File outside root  | `...catalog file is outside project root; ".." globs cannot be resolved` |
@@ -245,7 +245,7 @@ nested markers, YAML errors, template errors).
 ## Edge Cases
 
 | Scenario              | Behavior             |
-|-----------------------|----------------------|
+| --------------------- | -------------------- |
 | No front matter       | Others -> empty      |
 | Invalid front matter  | Treated as absent    |
 | Missing field         | Empty string         |
@@ -253,14 +253,14 @@ nested markers, YAML errors, template errors).
 | Unreadable file       | Skipped              |
 
 | Scenario                 | Behavior                  |
-|--------------------------|---------------------------|
+| ------------------------ | ------------------------- |
 | Glob matches directory   | Skipped                   |
 | Glob matches linted file | Included                  |
 | Binary file              | Included; no front matter |
 | Symlinks                 | Followed                  |
 
 | Scenario          | Behavior                       |
-|-------------------|--------------------------------|
+| ----------------- | ------------------------------ |
 | Dotfiles          | Matched by `*`/`**`            |
 | Absolute glob     | Diagnostic                     |
 | `..` inside root  | Resolved against project root  |
@@ -270,7 +270,7 @@ nested markers, YAML errors, template errors).
 | Empty glob/sort   | Diagnostic                     |
 
 | Scenario             | Behavior         |
-|----------------------|------------------|
+| -------------------- | ---------------- |
 | `sort: "-"`          | Diagnostic       |
 | Sort with whitespace | Diagnostic       |
 | No files matched     | `empty` fallback |

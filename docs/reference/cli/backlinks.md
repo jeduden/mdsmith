@@ -21,7 +21,7 @@ entries (`../foo.md`) are rejected with exit code 2.
 ## Flags
 
 | Flag                | Default | Description                                         |
-|---------------------|---------|-----------------------------------------------------|
+| ------------------- | ------- | --------------------------------------------------- |
 | `-c`, `--config`    | auto    | Override config path                                |
 | `-f`, `--format`    | `text`  | Output format: `text` or `json`                     |
 | `--include GLOB`    | none    | Restrict sources to paths matching glob; repeatable |
@@ -88,7 +88,7 @@ Four base keys are always present. They are `source`,
 on Obsidian-style wikilink records:
 
 | Key     | Type   | Set when                                            |
-|---------|--------|-----------------------------------------------------|
+| ------- | ------ | --------------------------------------------------- |
 | `kind`  | string | `"wikilink"`; standard links omit the key entirely. |
 | `alias` | string | Source carried a `\|alias` half; otherwise omitted. |
 | `embed` | bool   | `true` for `![[…]]` embeds; otherwise omitted.      |
@@ -136,7 +136,7 @@ URLs are still out of scope.
 ## Exit codes
 
 | Code | Meaning               |
-|------|-----------------------|
+| ---- | --------------------- |
 | 0    | At least one match    |
 | 1    | No matches, no errors |
 | 2    | Runtime/parse error   |

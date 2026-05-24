@@ -274,7 +274,7 @@ enforcement, or under a scope's `rules:` block for
 section-scoped enforcement.
 
 | Rule                                                                                                  | Setting                                        | Effect                                                                |
-|-------------------------------------------------------------------------------------------------------|------------------------------------------------|-----------------------------------------------------------------------|
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
 | [MDS036 max-section-length](../../internal/rules/MDS036-max-section-length/README.md)                 | `max-words`, `min-words`, `max-paragraphs`     | Cap word counts and paragraph counts in addition to today's line cap. |
 | [MDS055 forbidden-paragraph-starts](../../internal/rules/MDS055-forbidden-paragraph-starts/README.md) | `starts: [str, ...]`                           | Flag paragraphs that begin with any listed prefix.                    |
 | [MDS056 forbidden-text](../../internal/rules/MDS056-forbidden-text/README.md)                         | `contains: [str, ...]`                         | Flag paragraphs whose text contains any listed substring.             |
@@ -433,7 +433,7 @@ records the heading-row wildcard mapping.
 ## Choosing a source
 
 | Need                                   | Inline | File               |
-|----------------------------------------|--------|--------------------|
+| -------------------------------------- | ------ | ------------------ |
 | Short schema with no templated body    | yes    | works              |
 | Schema reused via `<?include?>`        | no     | yes                |
 | Frontmatter-body `{field}` sync        | no     | yes                |

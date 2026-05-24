@@ -28,7 +28,7 @@ the schema's `frontmatter:` block) is classified by
 shape:
 
 | Shape                                       | Treatment                                                              |
-|---------------------------------------------|------------------------------------------------------------------------|
+| ------------------------------------------- | ---------------------------------------------------------------------- |
 | Bare identifier in the shortcut registry    | Substituted with the canonical CUE expression                          |
 | Bare identifier that is a CUE built-in type | Passes through verbatim (`string`, `int`, `bool`, `float`, `bytes`, …) |
 | Bare identifier that is neither             | **Config error** naming the field and the unknown name                 |
@@ -53,7 +53,7 @@ The following names are accepted in a schema
 frontmatter value:
 
 | Name       | Canonical CUE                                                             | Accepts                | Rejects               |
-|------------|---------------------------------------------------------------------------|------------------------|-----------------------|
+| ---------- | ------------------------------------------------------------------------- | ---------------------- | --------------------- |
 | `date`     | `=~"^\\d{4}-\\d{2}-\\d{2}$"`                                              | `2024-05-01`           | `2024-5-1`            |
 | `datetime` | `=~"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z\|[+-]\\d{2}:\\d{2})?$" ` | `2024-05-01T12:30:00Z` | `2024-05-01 12:30:00` |
 | `time`     | `=~"^\\d{2}:\\d{2}(:\\d{2})?$"`                                           | `12:30`                | `12:3`                |

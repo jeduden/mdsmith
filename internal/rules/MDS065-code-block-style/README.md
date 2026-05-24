@@ -20,7 +20,7 @@ four-space indented — consistently across the file.
 ## Settings
 
 | Setting | Type   | Default    | Description                                                                                       |
-|---------|--------|------------|---------------------------------------------------------------------------------------------------|
+| ------- | ------ | ---------- | ------------------------------------------------------------------------------------------------- |
 | `style` | string | `"fenced"` | `"consistent"` (first block sets the convention), `"fenced"` (```), or `"indented"` (four-space). |
 
 ## Autofix

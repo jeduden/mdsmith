@@ -29,7 +29,7 @@ header: |
 row: "| [{title}]({filename}) | <{channelurl}> | {credential} |"
 ?>
 | Channel                                                                    | Release page                                                          | Credential              |
-|----------------------------------------------------------------------------|-----------------------------------------------------------------------|-------------------------|
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------- |
 | [GitHub Releases](release-channels/github-releases.md)                     | <https://github.com/jeduden/mdsmith/releases>                         | GITHUB_TOKEN + OIDC     |
 | [npm](release-channels/npm.md)                                             | <https://www.npmjs.com/package/@mdsmith/cli>                          | OIDC Trusted Publishing |
 | [Open VSX](release-channels/open-vsx.md)                                   | <https://open-vsx.org/extension/jeduden/mdsmith>                      | OVSX_PAT                |
@@ -131,7 +131,7 @@ That page is the canonical list. This doc does
 not duplicate it.
 
 | Field       | Value                          |
-|-------------|--------------------------------|
+| ----------- | ------------------------------ |
 | Repository  | `jeduden/mdsmith`              |
 | Workflow    | `release.yml`                  |
 | Environment | `release`                      |
@@ -152,7 +152,7 @@ before the first publish.
 <https://pypi.org/manage/project/mdsmith/settings/publishing/>:
 
 | Field             | Value             |
-|-------------------|-------------------|
+| ----------------- | ----------------- |
 | GitHub Repository | `jeduden/mdsmith` |
 | Workflow filename | `release.yml`     |
 | Environment       | `release`         |
@@ -188,7 +188,7 @@ Configure the environment at
 <https://github.com/jeduden/mdsmith/settings/environments>:
 
 | Setting                      | Value                               |
-|------------------------------|-------------------------------------|
+| ---------------------------- | ----------------------------------- |
 | Required reviewers           | jeduden                             |
 | Wait timer                   | 5 minutes (cancellation window)     |
 | Deployment branches and tags | Selected — protected branch: `main` |

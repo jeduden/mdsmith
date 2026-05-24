@@ -16,7 +16,7 @@ scope it is best at.
 ## Who owns what
 
 | Concern                                   | Owner   |
-|-------------------------------------------|---------|
+| ----------------------------------------- | ------- |
 | Brand voice and prose style               | Vale    |
 | Inclusive-language and proper-noun checks | Vale    |
 | Custom prose rules tied to a style guide  | Vale    |

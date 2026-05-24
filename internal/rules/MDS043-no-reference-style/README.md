@@ -21,7 +21,7 @@ Forbidding them keeps every link diff readable in isolation.
 ## Settings
 
 | Setting           | Type | Default | Description                                                                                                  |
-|-------------------|------|---------|--------------------------------------------------------------------------------------------------------------|
+| ----------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------ |
 | `allow-footnotes` | bool | `false` | Opt back into footnotes. Numeric slugs and definitions placed away from the referencing paragraph still fail |
 
 ## Config
@@ -160,7 +160,7 @@ A claim with a citation.[^source]
 ## Diagnostics
 
 | Message                                           | Meaning                                                                 |
-|---------------------------------------------------|-------------------------------------------------------------------------|
+| ------------------------------------------------- | ----------------------------------------------------------------------- |
 | `reference-style link; use inline form ...`       | Full, collapsed, or shortcut reference link found                       |
 | `footnote reference; footnotes are not allowed`   | A `[^slug]` reference appeared while `allow-footnotes` is false         |
 | `footnote slug is numeric; use a meaningful slug` | `allow-footnotes` is true but the slug is purely digits                 |

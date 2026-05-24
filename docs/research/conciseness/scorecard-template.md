@@ -18,7 +18,7 @@ frozen `test` and holdout sections.
 ## Approaches
 
 | ID  | Approach                   | Description                             |
-|-----|----------------------------|-----------------------------------------|
+| --- | -------------------------- | --------------------------------------- |
 | A0  | MDS029 heuristic           | Current shipped heuristic               |
 | A1  | Heuristic + lexicon tuning | Expanded or tuned cue lists             |
 | B0  | Simple classifier baseline | Logistic regression or similar baseline |
@@ -28,7 +28,7 @@ frozen `test` and holdout sections.
 ## Dev Set (threshold tuning only)
 
 | ID  | Threshold | Precision | Recall | F0.5 | AUPRC | Brier | Latency ms (p50/p95) |
-|-----|-----------|-----------|--------|------|-------|-------|----------------------|
+| --- | --------- | --------- | ------ | ---- | ----- | ----- | -------------------- |
 | A0  |           |           |        |      |       |       |                      |
 | A1  |           |           |        |      |       |       |                      |
 | B0  |           |           |        |      |       |       |                      |
@@ -38,7 +38,7 @@ frozen `test` and holdout sections.
 ## Frozen Test Set
 
 | ID  | Precision | Recall | F0.5 | AUPRC | Brier | Diags/KLOC | Latency ms (p50/p95) |
-|-----|-----------|--------|------|-------|-------|------------|----------------------|
+| --- | --------- | ------ | ---- | ----- | ----- | ---------- | -------------------- |
 | A0  |           |        |      |       |       |            |                      |
 | A1  |           |        |      |       |       |            |                      |
 | B0  |           |        |      |       |       |            |                      |
@@ -48,7 +48,7 @@ frozen `test` and holdout sections.
 ## Holdout Set
 
 | ID  | Precision | Recall | F0.5 | AUPRC | Brier | Diags/KLOC | Latency ms (p50/p95) |
-|-----|-----------|--------|------|-------|-------|------------|----------------------|
+| --- | --------- | ------ | ---- | ----- | ----- | ---------- | -------------------- |
 | A0  |           |        |      |       |       |            |                      |
 | A1  |           |        |      |       |       |            |                      |
 | B0  |           |        |      |       |       |            |                      |
@@ -65,7 +65,7 @@ frozen `test` and holdout sections.
 ## Shadow-Trial Outcomes
 
 | Measure                   | Value |
-|---------------------------|-------|
+| ------------------------- | ----- |
 | Files in trial            |       |
 | Words in trial            |       |
 | Reviewer agreement rate   |       |
@@ -76,7 +76,7 @@ frozen `test` and holdout sections.
 ## Decision Gate
 
 | Gate                              | Target     | Result | Pass |
-|-----------------------------------|------------|--------|------|
+| --------------------------------- | ---------- | ------ | ---- |
 | Precision delta vs A0             | `>= +0.05` |        |      |
 | Recall delta vs A0                | `>= -0.02` |        |      |
 | F0.5 delta vs A0                  | `>= +0.05` |        |      |

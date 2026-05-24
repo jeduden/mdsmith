@@ -58,7 +58,7 @@ Each command is registered in
 `editors/vscode/src/commands/`.
 
 | Command ID                    | Title                              | Action                                                          |
-|-------------------------------|------------------------------------|-----------------------------------------------------------------|
+| ----------------------------- | ---------------------------------- | --------------------------------------------------------------- |
 | `mdsmith.init`                | mdsmith: Initialize config         | Run `mdsmith init` in the workspace root                        |
 | `mdsmith.mergeDriver.install` | mdsmith: Install Git merge driver  | Run `mdsmith merge-driver install` after confirmation           |
 | `mdsmith.fixWorkspace`        | mdsmith: Fix all Markdown          | Run `mdsmith fix .` against the workspace; show summary         |
@@ -135,7 +135,7 @@ in `editors/vscode/package.json`:
 ### What this plan removes
 
 | Earlier proposal                         | Decision        |
-|------------------------------------------|-----------------|
+| ---------------------------------------- | --------------- |
 | CodeLens at line 1 listing kinds         | Cut (chrome)    |
 | Status-bar version + config-path pill    | Cut (chrome)    |
 | `mdsmith` activity-bar container         | Cut (no demand) |

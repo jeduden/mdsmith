@@ -55,7 +55,7 @@ keeps the two axes distinct.
 ### Proposed mapping
 
 | Rule                             | New category | Reason                                 |
-|----------------------------------|--------------|----------------------------------------|
+| -------------------------------- | ------------ | -------------------------------------- |
 | `ambiguous-emphasis`             | `prose`      | How prose uses emphasis.               |
 | `build`                          | `directive`  | Validates `<?build?>`.                 |
 | `catalog`                        | `directive`  | Validates `<?catalog?>`.               |

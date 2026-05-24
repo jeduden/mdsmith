@@ -55,7 +55,7 @@ constructs a custom `Builder` for each entry in
 [chromedp](https://github.com/chromedp/chromedp):
 
 | Param      | Required | Default    |
-|------------|----------|------------|
+| ---------- | -------- | ---------- |
 | `url`      | yes      | —          |
 | `selector` | no       | full page  |
 | `viewport` | no       | `1280x800` |
@@ -69,7 +69,7 @@ values (starting with `/`).
 **`vhs`** — runs the `vhs` binary via `os/exec`:
 
 | Param   | Required |
-|---------|----------|
+| ------- | -------- |
 | `input` | yes      |
 
 Skipped when `vhs` is not in `PATH`.
@@ -100,7 +100,7 @@ mdsmith build [paths...] [flags]
 Flags:
 
 | Flag                 | Description                             |
-|----------------------|-----------------------------------------|
+| -------------------- | --------------------------------------- |
 | `--recipe NAME`      | Only build directives using this recipe |
 | `--base-url URL`     | Override `build.base-url` from config   |
 | `--dry-run`          | List every target; run no tool          |

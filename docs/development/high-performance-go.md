@@ -75,7 +75,7 @@ the next slip on its own.
 ### Which profile answers which question
 
 | Profile | Source                               | Question                          |
-|---------|--------------------------------------|-----------------------------------|
+| ------- | ------------------------------------ | --------------------------------- |
 | CPU     | `-cpuprofile cpu.out`                | Where is time going?              |
 | Memory  | `-memprofile m.out`                  | What allocates and what is live   |
 | Block   | `runtime.SetBlockProfileRate(1)`     | Where do goroutines wait?         |
@@ -257,7 +257,7 @@ Inspect with `go build -gcflags="-m=2"` and look for
 ## Patterns to avoid
 
 | Avoid                                | Why                                                                            | Use instead                                                     |
-|--------------------------------------|--------------------------------------------------------------------------------|-----------------------------------------------------------------|
+| ------------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------- |
 | `fmt.Sprintf("%d", n)` in hot paths  | reflection, ~3× slower                                                         | `strconv.Itoa(n)`                                               |
 | `s + s2 + s3` in a loop              | repeated concatenation allocates a new backing array per iteration (quadratic) | `strings.Builder` with `Grow`                                   |
 | `append` growing without `make`      | doubling-copy cost                                                             | pre-size with known cap                                         |

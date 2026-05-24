@@ -25,7 +25,7 @@ Obsidian Flavored Markdown (OFM) adds four constructs on
 top of CommonMark/GFM that mdsmith currently ignores:
 
 | Construct       | OFM syntax                                       | mdsmith today                   |
-|-----------------|--------------------------------------------------|---------------------------------|
+| --------------- | ------------------------------------------------ | ------------------------------- |
 | Wikilink        | `[[Page]]`, `[[Page\|alias]]`, `[[Page#anchor]]` | silent (parsed as text)         |
 | Embed           | `![[file.png]]`, `![[note]]`                     | silent (parsed as text)         |
 | Callout         | `> [!note]` at blockquote start                  | silent (treated as prose)       |
