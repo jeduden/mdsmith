@@ -487,12 +487,13 @@ type Config struct {
 	ParagraphTransformers util.PrioritizedSlice /*<ParagraphTransformer>*/
 	ASTTransformers       util.PrioritizedSlice /*<ASTTransformer>*/
 	EscapedSpace          bool
-	// NoArena disables the per-parse slab allocator for this
-	// parser. Set via WithNoArena. Equivalence harnesses use the
-	// runtime toggle to diff arena-allocated and heap-allocated
-	// output in one binary run; production callers leave it false.
-	NoArena bool
 }
+
+// noArenaOptionName is the Options-map key WithNoArena writes to.
+// Storing the opt-out in Options (instead of as a new exported
+// field on Config) keeps the Config struct shape compatible with
+// downstream callers that use unkeyed composite literals.
+const noArenaOptionName OptionName = "_internal/no-arena"
 
 // NewConfig returns a new Config.
 func NewConfig() *Config {
@@ -779,7 +780,7 @@ func WithEscapedSpace() Option {
 type withNoArena struct{}
 
 func (o *withNoArena) SetParserOption(c *Config) {
-	c.NoArena = true
+	c.Options[noArenaOptionName] = true
 }
 
 // WithNoArena disables the per-parse slab allocator for this
@@ -981,7 +982,9 @@ func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 			p.addASTTransformer(v, p.config.Options)
 		}
 		p.escapedSpace = p.config.EscapedSpace
-		p.noArena = p.config.NoArena
+		if v, ok := p.config.Options[noArenaOptionName].(bool); ok {
+			p.noArena = v
+		}
 		p.config = nil
 	})
 	c := &ParseConfig{}

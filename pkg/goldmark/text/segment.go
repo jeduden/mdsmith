@@ -175,6 +175,16 @@ type SegmentsGrower interface {
 }
 
 // Segments is a collection of the Segment.
+//
+// Fork divergence (plan 198): the embedded unexported `grow` field
+// is fork-specific; it lets the arena redirect backing-array
+// growth without changing the Append / AppendAll / Unshift call
+// sites. Because the field is unexported, downstream code cannot
+// reach it through composite literals — Go disallows unkeyed
+// cross-package literals when any field is unexported, and there
+// is no keyed access. Reflection or unsafe by struct-offset would
+// see a different layout than upstream goldmark; mdsmith owns the
+// only consumer in tree and does not need that.
 type Segments struct {
 	values []Segment
 	grow   SegmentsGrower
