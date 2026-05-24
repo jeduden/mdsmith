@@ -90,7 +90,7 @@ func collectNormalisedDefs(f *lint.File) []string {
 	}
 	defs := make([]string, len(refs))
 	for i, ref := range refs {
-		defs[i] = string(util.ToLinkReference(ref.Label()))
+		defs[i] = normalizeLabel(ref.Label())
 	}
 	return defs
 }
@@ -107,9 +107,11 @@ func labelDefined(defs []string, normalised string) bool {
 }
 
 // normalizeLabel applies CommonMark reference label normalization.
-// goldmark's util.ToLinkReference folds case and collapses whitespace.
+// goldmark's util.ToLinkReference folds case and collapses whitespace
+// and already returns a string, so this is a thin alias kept for
+// call-site readability.
 func normalizeLabel(raw []byte) string {
-	return string(util.ToLinkReference(raw))
+	return util.ToLinkReference(raw)
 }
 
 // byteRange is a half-open [start, end) byte range.

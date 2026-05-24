@@ -337,11 +337,14 @@ func (t table) columnHeader(col int) string {
 }
 
 // countWords returns the count of whitespace-delimited fields in b
-// without allocating. Mirrors `len(strings.Fields(string(b)))`
-// (Unicode whitespace via utf8.RuneStart + unicode.IsSpace) but
+// without allocating. Mirrors `len(strings.Fields(string(b)))` but
 // scans bytes directly so it stays on the per-Check alloc budget.
-// Pure ASCII text takes the fast path; multibyte runes only decode
-// when their lead byte is encountered.
+// Pure ASCII text takes the fast path via asciiSpace; multibyte
+// runes decode via utf8.DecodeRune and check the local
+// isUnicodeSpace table (the runes strings.Fields delegates to
+// unicode.IsSpace for — see isUnicodeSpace for the enumerated
+// set). Importing unicode just for the rare multi-byte cell would
+// add a dependency the rule does not otherwise need.
 func countWords(b []byte) int {
 	words := 0
 	inWord := false
