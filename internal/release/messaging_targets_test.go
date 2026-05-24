@@ -1,6 +1,8 @@
 package release
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -323,7 +325,47 @@ func TestOneLineForDrift_TruncatesByRunesNotBytes(t *testing.T) {
 	}
 }
 
+// faultyFS wraps a real os-backed FS, overriding one method to
+// inject a failure. Used to cover the mkdir/write error branches
+// in applyTarget that no on-disk setup can reliably trigger
+// (chmod tricks are skipped under root, which CI sometimes is).
+type faultyFS struct {
+	FS
+	failMkdir bool
+	failWrite bool
+}
+
+func (f *faultyFS) MkdirAll(path string, perm fs.FileMode) error {
+	if f.failMkdir {
+		return errors.New("synthetic mkdir failure")
+	}
+	return f.FS.MkdirAll(path, perm)
+}
+
+func (f *faultyFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
+	if f.failWrite {
+		return errors.New("synthetic write failure")
+	}
+	return f.FS.WriteFile(name, data, perm)
+}
+
+func TestApplyMessaging_FailsOnMkdirError(t *testing.T) {
+	root := applyTestRoot(t)
+	tk := NewWithFS(&faultyFS{FS: osFS{}, failMkdir: true})
+	_, err := tk.ApplyMessaging(root, sampleMessaging())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mkdir")
+}
+
 func TestApplyMessaging_FailsOnWriteError(t *testing.T) {
+	root := applyTestRoot(t)
+	tk := NewWithFS(&faultyFS{FS: osFS{}, failWrite: true})
+	_, err := tk.ApplyMessaging(root, sampleMessaging())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "write")
+}
+
+func TestApplyMessaging_FailsOnWriteError_directory(t *testing.T) {
 	// All target files exist (so ReadFile succeeds and the
 	// missing-file branch doesn't fire), but the fragment target
 	// already exists as a directory of the expected name, so

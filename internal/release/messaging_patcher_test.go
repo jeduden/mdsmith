@@ -1,6 +1,8 @@
 package release
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,6 +11,37 @@ import (
 )
 
 // ----- JSONStringField ----------------------------------------------------
+
+func TestMust_PanicsOnError(t *testing.T) {
+	// The `must` helper wraps library calls that, for the inputs
+	// we pass, cannot fail in practice (json.Marshal of a string,
+	// json.Indent of a RawMessage we already decoded, etc.). Drive
+	// the panic path directly so the helper's `if err != nil`
+	// stays in the coverage report.
+	defer func() {
+		r := recover()
+		require.NotNil(t, r)
+		assert.Contains(t, fmt.Sprintf("%v", r), "impossible error")
+	}()
+	_ = must([]byte(nil), errors.New("boom"))
+}
+
+func TestMust_PassesValueThroughOnNilError(t *testing.T) {
+	got := must([]byte("x"), nil)
+	assert.Equal(t, []byte("x"), got)
+}
+
+func TestMustErr_PanicsOnError(t *testing.T) {
+	defer func() {
+		r := recover()
+		require.NotNil(t, r)
+	}()
+	mustErr(errors.New("boom"))
+}
+
+func TestMustErr_NoOpOnNil(t *testing.T) {
+	mustErr(nil)
+}
 
 func TestJSONStringField_ReadValue(t *testing.T) {
 	body := []byte(`{

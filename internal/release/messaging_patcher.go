@@ -13,6 +13,29 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
+// must panics if err is non-nil. Used at call sites where the
+// upstream library guarantees `err == nil` for the inputs we
+// pass (json.Marshal of a string, json.Indent of a RawMessage
+// that already round-tripped through Decode, yaml.Encoder
+// writing to a bytes.Buffer, toml.Tree.ToTomlString) — the
+// panic guards against a future library change that would make
+// those paths fallible without forcing an `if err != nil`
+// branch in every call site.
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(fmt.Errorf("impossible error: %w", err))
+	}
+	return v
+}
+
+// mustErr is the unit-typed companion of must, for library
+// calls that return only an error (e.g. yaml.Encoder.Encode).
+func mustErr(err error) {
+	if err != nil {
+		panic(fmt.Errorf("impossible error: %w", err))
+	}
+}
+
 // Patcher reads or rewrites one specific field in a structured
 // file (JSON, TOML, YAML frontmatter, or a generated Markdown
 // fragment). Implementations parse the file with a real
@@ -72,11 +95,7 @@ func (f JSONStringField) PatchValue(body []byte, value string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"encode value for JSON field %q: %w", f.Key, err)
-	}
+	encoded := must(json.Marshal(value))
 	found := false
 	for i := range pairs {
 		if pairs[i].key == f.Key {
@@ -115,26 +134,25 @@ func decodeOrderedJSON(body []byte) ([]orderedJSONPair, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse JSON: %w", err)
 		}
-		key, ok := kT.(string)
-		if !ok {
-			return nil, errors.New("JSON: non-string key")
-		}
+		// json.Decoder guarantees that the token in object-key
+		// position is a string; a non-string would have surfaced
+		// as a tokenization error on the line above, never as a
+		// successful non-string token. The assertion is a static
+		// invariant, not a runtime check.
+		key := kT.(string)
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
 			return nil, fmt.Errorf("parse JSON value: %w", err)
 		}
 		pairs = append(pairs, orderedJSONPair{key: key, value: raw})
 	}
-	// Consume the closing `}` and reject any non-whitespace
-	// content after it. Without this guard, `{...} garbage`
-	// would parse cleanly and then silently lose the trailing
-	// bytes on re-emit.
-	closing, err := dec.Token()
-	if err != nil {
+	// Once dec.More() returns false, the next Token is either
+	// `}` (well-formed input) or an EOF / parse error
+	// (truncated input). Consume it: a parse error becomes a
+	// failure here; a successful read leaves us positioned for
+	// the trailing-content guard below.
+	if _, err := dec.Token(); err != nil {
 		return nil, fmt.Errorf("parse JSON: %w", err)
-	}
-	if closing != json.Delim('}') {
-		return nil, errors.New("JSON: expected closing `}`")
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("JSON: unexpected trailing content after root object")
@@ -150,20 +168,14 @@ func emitOrderedJSON(pairs []orderedJSONPair) ([]byte, error) {
 	b.WriteString("{\n")
 	for i, p := range pairs {
 		b.WriteString("  ")
-		keyBytes, err := json.Marshal(p.key)
-		if err != nil {
-			return nil, fmt.Errorf("encode JSON key %q: %w", p.key, err)
-		}
-		b.Write(keyBytes)
+		b.Write(must(json.Marshal(p.key)))
 		b.WriteString(": ")
 		// Nested values may carry their own multi-line
 		// formatting from the source. json.Indent re-renders
 		// them with the document's indent so nested objects
 		// keep aligned with the parent's 2-space rhythm.
 		var pretty bytes.Buffer
-		if err := json.Indent(&pretty, p.value, "  ", "  "); err != nil {
-			return nil, fmt.Errorf("indent JSON value for %q: %w", p.key, err)
-		}
+		mustErr(json.Indent(&pretty, p.value, "  ", "  "))
 		b.Write(pretty.Bytes())
 		if i < len(pairs)-1 {
 			b.WriteString(",")
@@ -216,11 +228,7 @@ func (f TOMLStringField) PatchValue(body []byte, value string) ([]byte, error) {
 		return nil, fmt.Errorf("TOML key %s not found", f.pathString())
 	}
 	tree.SetPath(f.path(), value)
-	out, err := tree.ToTomlString()
-	if err != nil {
-		return nil, fmt.Errorf("emit TOML: %w", err)
-	}
-	return []byte(out), nil
+	return []byte(must(tree.ToTomlString())), nil
 }
 
 func (f TOMLStringField) path() []string {
@@ -297,12 +305,8 @@ func (f YAMLFrontmatterField) PatchValue(body []byte, value string) ([]byte, err
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
-	if err := enc.Encode(&root); err != nil {
-		return nil, fmt.Errorf("emit frontmatter: %w", err)
-	}
-	if err := enc.Close(); err != nil {
-		return nil, fmt.Errorf("close frontmatter encoder: %w", err)
-	}
+	mustErr(enc.Encode(&root))
+	mustErr(enc.Close())
 	return concat([]byte("---\n"), buf.Bytes(), closer, rest), nil
 }
 
@@ -436,13 +440,12 @@ func indexFrontmatterClose(s []byte) int {
 }
 
 // findYAMLNode walks a parsed yaml.Node tree by dotted path
-// and returns the leaf scalar.
+// and returns the leaf scalar. A yaml.v3 DocumentNode always
+// carries exactly one content child (the root mapping); we
+// unwrap it here.
 func findYAMLNode(root *yaml.Node, path []string) (*yaml.Node, error) {
 	cur := root
 	if cur.Kind == yaml.DocumentNode {
-		if len(cur.Content) == 0 {
-			return nil, errors.New("empty frontmatter")
-		}
 		cur = cur.Content[0]
 	}
 	for _, seg := range path {
