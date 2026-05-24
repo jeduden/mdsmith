@@ -3,11 +3,12 @@ id: 207
 title: LSP fix preview via ChangeAnnotation
 status: "🔲"
 summary: >-
-  Opt-in `mdsmith.previewFix` setting that attaches an
-  LSP `ChangeAnnotation` with `needsConfirmation:
-  true` to every quick-fix and `source.fixAll.mdsmith`
-  WorkspaceEdit, so VS Code opens its Refactor
-  Preview pane with a diff before applying.
+  Opt-in `mdsmith.previewFix` setting that attaches
+  an LSP `ChangeAnnotation` flagged
+  `needsConfirmation: true` to every quick-fix and
+  `source.fixAll.mdsmith` WorkspaceEdit, so VS Code
+  opens its Refactor Preview pane with a diff
+  before applying.
 model: sonnet
 depends-on: []
 ---
@@ -86,14 +87,22 @@ change for the default install.
 
 ### Capability negotiation
 
-On `initialize`, read the client capability.
-The flag lives at
-`workspace.workspaceEdit.changeAnnotationSupport`.
-Missing? Then use the legacy `changes` form.
-This holds even when `previewFix` is on. Log
-the fallback once to the output channel. The
-log line reads: "client does not support
-changeAnnotationSupport".
+On `initialize`, read two client capability flags:
+
+- `workspace.workspaceEdit.documentChanges` — the
+  client honors the `documentChanges` array shape
+  the annotated edit uses.
+- `workspace.workspaceEdit.changeAnnotationSupport`
+  — the client honors `ChangeAnnotation` and
+  `needsConfirmation`.
+
+Both must be true. If either flag is missing or
+`false`, fall back to the legacy `changes` form
+even when `previewFix` is on. Log the fallback
+once to the output channel. The log line names
+the missing capability: "client does not
+support documentChanges" or "client does not
+support changeAnnotationSupport".
 
 ### Edit shape
 
@@ -173,9 +182,11 @@ the matrix:
    [`internal/lsp/server.go`](../internal/lsp/server.go)
    with `PreviewFix *bool` and wire the read in
    `fetchClientSettings`.
-2. Capture
+2. Capture both
+   `workspace.workspaceEdit.documentChanges` and
    `workspace.workspaceEdit.changeAnnotationSupport`
    from `initialize` params; store on the server.
+   The annotated path requires both to be true.
 3. Grow the protocol types in
    [`internal/lsp/protocol.go`](../internal/lsp/protocol.go).
    New fields on `workspaceEdit`:
@@ -237,9 +248,11 @@ the matrix:
       produces an edit using `documentChanges`
       with `changeAnnotations[*].needsConfirmation
       = true`.
-- [ ] Without `changeAnnotationSupport` the server
-      falls back to the legacy `changes` shape
-      and logs the fallback once per session.
+- [ ] Without either `documentChanges` or
+      `changeAnnotationSupport` on the client, the
+      server falls back to the legacy `changes`
+      shape and logs the fallback once per
+      session.
 - [ ] Quick-fix actions carry one annotation per
       rule (`mdsmith-fix-<rule>`);
       `source.fixAll.mdsmith` carries
