@@ -164,9 +164,15 @@ func validateFrontmatterDiags(
 	}
 	merged := schemaVal.Unify(dataVal)
 	verr := merged.Validate(cue.Concrete(true))
-	keyLines := docFrontmatterKeyLines(f)
 	if verr == nil {
-		return validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)
+		// Skip the docFrontmatterKeyLines YAML re-parse when there
+		// is nothing for the deprecation walker to do — the common
+		// success path then pays no per-file overhead.
+		if len(sch.FrontmatterMeta) == 0 || len(docFM) == 0 {
+			return nil
+		}
+		return validateDeprecatedFieldsWithLines(
+			f, sch, docFM, docFrontmatterKeyLines(f), mkDiag)
 	}
 	cueErrs := errors.Errors(verr)
 	if len(cueErrs) == 0 {
@@ -178,6 +184,7 @@ func validateFrontmatterDiags(
 				SchemaRef: schemaRef(sch, ""),
 			}.Format())}
 	}
+	keyLines := docFrontmatterKeyLines(f)
 	out := make([]lint.Diagnostic, 0, len(cueErrs))
 	// A struct dedup key avoids accidental collisions when one of
 	// the components (notably the raw-CUE-expression Expected

@@ -385,10 +385,14 @@ func extendFrontmatter(out, parent, child *Schema) error {
 
 // mergeFrontmatterMeta merges parent and child deprecation metadata
 // for plan 136. Child-declared metadata wins on key collisions so a
-// kind extending its parent can re-deprecate a field with a fresh
-// message (or undo the parent's deprecation by setting
-// `deprecated: false`). Parent-only and child-only entries pass
-// through unchanged.
+// kind extending its parent can re-deprecate a field with a fresher
+// message. Undoing a parent's deprecation by setting
+// `deprecated: false` on the child is not supported in this plan —
+// the parser drops zero-value metadata entries via FieldMeta.IsZero
+// before they reach this merger, so a child meta with only
+// `deprecated: false` does not propagate. Removing the field from
+// the schema entirely (plan 136 acceptance criterion 6) is the
+// supported migration end-state.
 func mergeFrontmatterMeta(parent, child map[string]FieldMeta) map[string]FieldMeta {
 	if len(parent) == 0 && len(child) == 0 {
 		return nil

@@ -320,9 +320,17 @@ the diagnostic.
 
 ### Deprecating a frontmatter field
 
-A schema can mark a frontmatter field deprecated so the
-build keeps passing while a project migrates away from
-it. The field's value becomes a mapping carrying `type:`
+A schema can mark a frontmatter field deprecated so
+tooling can route the warning separately from a hard
+schema violation. The diagnostic surfaces with Warning
+severity (LSP shows it as a warning squiggle, JSON
+output sets `"severity": "warning"`) while a project
+migrates away from the field. `mdsmith check` today
+exits non-zero on any diagnostic regardless of
+severity; a future `--error-on` flag would let CI
+distinguish warnings from errors.
+
+The field's value becomes a mapping carrying `type:`
 plus the metadata:
 
 ```yaml

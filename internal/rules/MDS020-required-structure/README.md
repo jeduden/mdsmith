@@ -82,9 +82,9 @@ Max include depth is 10.
 
 ### Optional and deprecated fields
 
-Append `?` to a schema front matter key to make it
-optional. To deprecate a field, swap its value for
-`{type: ..., deprecated: true}` (see file-kinds.md).
+Append `?` to mark a key optional (absent allowed,
+present still typed). To deprecate, swap the value
+for `{type, deprecated: true}` (see file-kinds.md).
 
 ```yaml
 name: 'string & != ""'

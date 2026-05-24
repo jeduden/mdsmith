@@ -49,16 +49,32 @@ func TestExtractFieldMeta_DeprecatedMapping(t *testing.T) {
 	assert.Equal(t, "owner", meta.ReplacedBy)
 }
 
-// TestExtractFieldMeta_TypeOnly accepts the minimal metadata
-// form — just `type:` — and returns an empty FieldMeta. Callers
-// use IsZero() to skip empty entries.
-func TestExtractFieldMeta_TypeOnly(t *testing.T) {
+// TestExtractFieldMeta_TypeOnlyIsNotMeta covers the ambiguity
+// resolution: `{type: ...}` without any deprecation key cannot be
+// distinguished from a CUE struct constraint that legitimately
+// binds a `type` field, so the helper returns isMeta=false and
+// the caller falls back to JSON-encoded struct handling.
+func TestExtractFieldMeta_TypeOnlyIsNotMeta(t *testing.T) {
 	in := map[string]any{"type": "string"}
-	expr, meta, isMeta, err := ExtractFieldMeta(in)
+	_, _, isMeta, err := ExtractFieldMeta(in)
 	require.NoError(t, err)
-	require.True(t, isMeta)
-	assert.Equal(t, "string", expr)
-	assert.True(t, meta.IsZero())
+	assert.False(t, isMeta,
+		"`type:` alone is not the metadata form")
+}
+
+// TestExtractFieldMeta_StructWithTypeFieldIsNotMeta regresses the
+// reviewer's concern: a CUE struct constraint that happens to
+// declare a `type` field flows through to frontmatterExpr as a
+// JSON-encoded struct, not as plan-136 metadata.
+func TestExtractFieldMeta_StructWithTypeFieldIsNotMeta(t *testing.T) {
+	in := map[string]any{
+		"type":     `"production" | "staging"`,
+		"settings": "string",
+	}
+	_, _, isMeta, err := ExtractFieldMeta(in)
+	require.NoError(t, err)
+	assert.False(t, isMeta,
+		"a struct constraint with a `type` field is not metadata")
 }
 
 // TestExtractFieldMeta_UnknownKeyRejected catches typos at parse
@@ -84,6 +100,20 @@ func TestExtractFieldMeta_MessageWithoutDeprecatedRejected(t *testing.T) {
 	in := map[string]any{
 		"type":    "string",
 		"message": "use owner instead",
+	}
+	_, _, _, err := ExtractFieldMeta(in)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "deprecated: true")
+}
+
+// TestExtractFieldMeta_ReplacedByWithoutDeprecatedRejected mirrors
+// the message-without-deprecated check for `replaced-by:` so the
+// discriminator's third branch (no `deprecated:` or `message:`,
+// only `replaced-by:`) reaches the same error.
+func TestExtractFieldMeta_ReplacedByWithoutDeprecatedRejected(t *testing.T) {
+	in := map[string]any{
+		"type":        "string",
+		"replaced-by": "owner",
 	}
 	_, _, _, err := ExtractFieldMeta(in)
 	require.Error(t, err)
