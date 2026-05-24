@@ -122,14 +122,53 @@ func TestRunSyncMessaging_ExtraArgRejected(t *testing.T) {
 func applyFixtureFiles(t *testing.T, root string) {
 	t.Helper()
 	files := map[string]string{
-		"website/hugo.toml":          "baseURL = \"x\"\n\n[params]\n  description = \"stale\"\n  version = \"0.0.0-dev\"\n",
-		"website/content/_index.md":  "---\ntitle: \"x\"\nsummary: \"stale\"\nhero:\n  eyebrow: \"old\"\n  headline_pre: \"a\"\n  headline_em: \"b\"\n  headline_post: \"c\"\n  lead: \"old\"\n---\nBody.\n",
-		"npm/mdsmith/package.json":   "{\n  \"name\": \"@mdsmith/cli\",\n  \"description\": \"stale\"\n}\n",
-		"python/pyproject.toml":      "[project]\nname = \"mdsmith\"\ndescription = \"stale\"\n",
-		"editors/vscode/package.json": "{\n  \"name\": \"mdsmith\",\n  \"description\": \"stale\"\n}\n",
-		"editors/claude-code/.claude-plugin/plugin.json":        "{\n  \"name\": \"a\",\n  \"description\": \"stale\"\n}\n",
-		"editors/claude-code-skills/.claude-plugin/plugin.json": "{\n  \"name\": \"b\",\n  \"description\": \"stale\"\n}\n",
-		"editors/claude-code-audit/.claude-plugin/plugin.json":  "{\n  \"name\": \"c\",\n  \"description\": \"stale\"\n}\n",
+		"website/hugo.toml": `baseURL = "x"
+
+[params]
+  description = "stale"
+  version = "0.0.0-dev"
+`,
+		"website/content/_index.md": `---
+title: "x"
+summary: "stale"
+hero:
+  eyebrow: "old"
+  headline_pre: "a"
+  headline_em: "b"
+  headline_post: "c"
+  lead: "old"
+---
+Body.
+`,
+		"npm/mdsmith/package.json": `{
+  "name": "@mdsmith/cli",
+  "description": "stale"
+}
+`,
+		"python/pyproject.toml": `[project]
+name = "mdsmith"
+description = "stale"
+`,
+		"editors/vscode/package.json": `{
+  "name": "mdsmith",
+  "description": "stale"
+}
+`,
+		"editors/claude-code/.claude-plugin/plugin.json": `{
+  "name": "a",
+  "description": "stale"
+}
+`,
+		"editors/claude-code-skills/.claude-plugin/plugin.json": `{
+  "name": "b",
+  "description": "stale"
+}
+`,
+		"editors/claude-code-audit/.claude-plugin/plugin.json": `{
+  "name": "c",
+  "description": "stale"
+}
+`,
 	}
 	for rel, body := range files {
 		full := filepath.Join(root, rel)
