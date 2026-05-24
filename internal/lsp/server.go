@@ -1149,14 +1149,16 @@ func (s *Server) computeCodeActions(
 ) []codeAction {
 	wantQuickFix := wantsKind(p.Context.Only, kindQuickFix)
 	wantFixAll := wantsKind(p.Context.Only, kindSourceFixAll)
-	annotated := s.useAnnotatedEdits()
 
 	actions := make([]codeAction, 0, len(p.Context.Diagnostics)+1)
-	if wantQuickFix {
-		actions = s.appendQuickFixActions(actions, p, doc, cfg, root, annotated)
-	}
-	if wantFixAll {
-		actions = s.appendFixAllAction(actions, p, doc, cfg, root, annotated)
+	if wantQuickFix || wantFixAll {
+		annotated := s.useAnnotatedEdits()
+		if wantQuickFix {
+			actions = s.appendQuickFixActions(actions, p, doc, cfg, root, annotated)
+		}
+		if wantFixAll {
+			actions = s.appendFixAllAction(actions, p, doc, cfg, root, annotated)
+		}
 	}
 	return actions
 }
