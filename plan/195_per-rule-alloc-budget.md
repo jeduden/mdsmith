@@ -220,21 +220,17 @@ reference it.
     allocs). Switching to `f.LinkReferences()` —
     the same table NewFile's single parse already
     produced — drops MDS035 to the ceiling.
-15. [x] Closed the MDS020 schema-parse parity gap.
-    Added `RunCache.ParsedSchema(absPath, build)` and
-    `RunCache.CompiledCUE(source, build)` slots so each
-    schema parses once and each unique CUE source
-    compiles once per `engine.Run`. MDS020's
-    parseSchema call sites in Check/Fix/bodySync now go
-    through `cachedParseSchema(f, ...)`; the inner
+15. [x] Closed the MDS020 schema-parse parity gap with
+    two new RunCache slots: `ParsedSchema(absPath,
+    build)` and `CompiledCUE(source, build)`. Each
+    caches once per `engine.Run`. MDS020's parseSchema
+    calls in Check, Fix, and bodySync now route through
+    `cachedParseSchema`. The inner
     `validateCUESchemaSyntax` routes through
-    `RunCache.CompiledCUE` via the cache-aware
-    `parseSchemaFrontMatter` and
-    `validateCUESchemaSyntaxWith` helpers. `mdsmith
-    check .` drops from ~490 ms to ~460 ms (5–7%) on
-    the mdsmith repo; `BenchmarkCheckCorpusLarge` is
-    flat at p95 = 186 ms (the corpus has no schemas
-    and was never on the hot path).
+    `CompiledCUE` via cache-aware helpers. `mdsmith
+    check .` on the mdsmith repo drops from ~490 ms to
+    ~460 ms (5-7%); `BenchmarkCheckCorpusLarge` p95
+    stays flat at 186 ms (the corpus has no schemas).
 16. [x] Re-run `BenchmarkCheckCorpusLarge` to confirm
     no engine-corpus regression. Latest run lands at
     p95 = 188 ms / 314 µs per file — well under the
