@@ -1265,6 +1265,41 @@ func TestDeriveFrontMatterCUE_AnchorRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
 }
 
+// TestDeriveFrontMatterCUE_FieldMetaError covers the error path
+// when ExtractFieldMeta rejects a malformed metadata mapping in
+// the proto.md frontmatter (plan 136). Without this test the
+// `if err != nil` branch after the ExtractFieldMeta call stays
+// uncovered in the legacy path.
+func TestDeriveFrontMatterCUE_FieldMetaError(t *testing.T) {
+	yml := []byte("legacy_owner:\n" +
+		"  type: string\n" +
+		"  deprecated: true\n" +
+		"  tipo: owner\n")
+	_, _, _, err := deriveFrontMatterCUE(yml)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "legacy_owner")
+	assert.Contains(t, err.Error(), "tipo")
+}
+
+// TestDeriveFrontMatterCUE_FieldMetaCapturesMetadata regresses
+// the happy path through deriveFrontMatterCUE's new metadata
+// branch: a deprecated field returns the embedded `type:`
+// constraint and populates the meta map.
+func TestDeriveFrontMatterCUE_FieldMetaCapturesMetadata(t *testing.T) {
+	yml := []byte("legacy_owner:\n" +
+		"  type: string\n" +
+		"  deprecated: true\n" +
+		"  message: 'use owner'\n" +
+		"owner: string\n")
+	cueExpr, perKey, meta, err := deriveFrontMatterCUE(yml)
+	require.NoError(t, err)
+	assert.Contains(t, cueExpr, "legacy_owner: string")
+	assert.Equal(t, "string", perKey["legacy_owner"])
+	require.Contains(t, meta, "legacy_owner")
+	assert.True(t, meta["legacy_owner"].Deprecated)
+	assert.Equal(t, "use owner", meta["legacy_owner"].Message)
+}
+
 func TestExtractRequireDirective_AnchorRejected(t *testing.T) {
 	src := "<?require\nbase: &base\n  filename: \"*.md\"\n?>\n# Title\n"
 	f := newTestFile(t, "schema.md", src)

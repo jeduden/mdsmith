@@ -182,6 +182,44 @@ func TestExtractFieldMeta_BareTypeNameResolves(t *testing.T) {
 		"shortcut should resolve to a CUE regex expression")
 }
 
+// TestParseInline_FrontmatterMetaErrorPropagates verifies that an
+// invalid metadata mapping inside `schema.frontmatter` surfaces as
+// a parser error (rather than being silently dropped). The error
+// path passes through ExtractFieldMeta's unknown-key branch.
+func TestParseInline_FrontmatterMetaErrorPropagates(t *testing.T) {
+	raw := map[string]any{
+		"frontmatter": map[string]any{
+			"legacy_owner": map[string]any{
+				"type":       "string",
+				"deprecated": true,
+				"tipo":       "owner", // typo: should be `replaced-by`
+			},
+		},
+	}
+	_, err := ParseInline(raw, "kind test")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema.frontmatter.legacy_owner")
+	assert.Contains(t, err.Error(), "tipo")
+}
+
+// TestParseFile_FrontmatterMetaErrorPropagates mirrors the inline
+// case for the proto.md path: a malformed metadata mapping in
+// front matter surfaces as a ParseFile error.
+func TestParseFile_FrontmatterMetaErrorPropagates(t *testing.T) {
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"---\n"+
+			"legacy_owner:\n"+
+			"  type: string\n"+
+			"  deprecated: true\n"+
+			"  tipo: owner\n"+
+			"---\n"+
+			"# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "legacy_owner")
+}
+
 // TestParseFile_FrontmatterMeta exercises the proto.md path:
 // a deprecation mapping in front matter parses through
 // `parseFileFrontmatter` into FrontmatterMeta the same way the

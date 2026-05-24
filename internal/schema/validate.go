@@ -129,10 +129,6 @@ func validateFrontmatterDiags(
 ) []lint.Diagnostic {
 	expr := sch.FrontmatterCUE()
 	if strings.TrimSpace(expr) == "" {
-		// No CUE constraints to evaluate. A schema with empty
-		// Frontmatter also has empty FrontmatterMeta (metadata is
-		// keyed off Frontmatter entries), so there is nothing for
-		// the deprecation walker to do either.
 		return nil
 	}
 	anchor := nonBodyDiagLine(f)
@@ -169,41 +165,37 @@ func validateFrontmatterDiags(
 	merged := schemaVal.Unify(dataVal)
 	verr := merged.Validate(cue.Concrete(true))
 	keyLines := docFrontmatterKeyLines(f)
-	out := []lint.Diagnostic{}
-	if verr != nil {
-		cueErrs := errors.Errors(verr)
-		if len(cueErrs) == 0 {
-			out = append(out, mkDiag(f.Path, anchor,
-				SchemaDiagnostic{
-					Field:     "front matter",
-					Actual:    fmt.Sprintf("%v", verr),
-					Expected:  "valid CUE",
-					SchemaRef: schemaRef(sch, ""),
-				}.Format()))
-		} else {
-			// A struct dedup key avoids accidental collisions when
-			// one of the components (notably the raw-CUE-expression
-			// Expected fallback and a placeholder-bearing Field)
-			// legitimately contains the same delimiter we would have
-			// used in a flat string key.
-			type dedupKey struct{ field, actual, expected string }
-			seen := make(map[dedupKey]bool, len(cueErrs))
-			for _, ce := range cueErrs {
-				d := schemaDiagFromCUEError(sch, docFM, ce)
-				key := dedupKey{field: d.Field, actual: d.Actual, expected: d.Expected}
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-				out = append(out, mkDiag(f.Path, fmDiagLine(f, ce.Path(), keyLines), d.Format()))
-			}
+	if verr == nil {
+		return validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)
+	}
+	cueErrs := errors.Errors(verr)
+	if len(cueErrs) == 0 {
+		return []lint.Diagnostic{mkDiag(f.Path, anchor,
+			SchemaDiagnostic{
+				Field:     "front matter",
+				Actual:    fmt.Sprintf("%v", verr),
+				Expected:  "valid CUE",
+				SchemaRef: schemaRef(sch, ""),
+			}.Format())}
+	}
+	out := make([]lint.Diagnostic, 0, len(cueErrs))
+	// A struct dedup key avoids accidental collisions when one of
+	// the components (notably the raw-CUE-expression Expected
+	// fallback and a placeholder-bearing Field) legitimately
+	// contains the same delimiter we would have used in a flat
+	// string key.
+	type dedupKey struct{ field, actual, expected string }
+	seen := make(map[dedupKey]bool, len(cueErrs))
+	for _, ce := range cueErrs {
+		d := schemaDiagFromCUEError(sch, docFM, ce)
+		key := dedupKey{field: d.Field, actual: d.Actual, expected: d.Expected}
+		if seen[key] {
+			continue
 		}
+		seen[key] = true
+		out = append(out, mkDiag(f.Path, fmDiagLine(f, ce.Path(), keyLines), d.Format()))
 	}
-	out = append(out, validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)...)
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return append(out, validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)...)
 }
 
 // validateDeprecatedFieldsWithLines walks sch.FrontmatterMeta and
