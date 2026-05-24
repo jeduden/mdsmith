@@ -45,6 +45,14 @@ extension. Targets ending in any other extension (`.png`, `.css`,
 …) are ignored regardless of `keep`/`strip`. Both `.md` and
 `.markdown` are treated as the same "with extension" form.
 
+A note on adopting `extension: strip`. MDS027
+[cross-file-reference-integrity](../MDS027-cross-file-reference-integrity/README.md)
+checks `.md` and `.markdown` targets by default. It
+silently skips extensionless ones unless `strict:
+true` is also set. So an extensionless target with a
+broken link will pass MDS027 silently. To keep that
+check on, also set `cross-file-reference-integrity.strict: true`.
+
 ## Config
 
 Enable with the default permissive policy:

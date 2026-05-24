@@ -266,7 +266,9 @@ func validatePathStyle(s string) error {
 	case "", "relative", "absolute":
 		return nil
 	}
-	return fmt.Errorf("link-style: links.style.path %q not supported; want \"relative\" or \"absolute\"", s)
+	return fmt.Errorf(
+		"link-style: links.style.path %q not supported; "+
+			"want \"relative\", \"absolute\", or \"\" (disables the check)", s)
 }
 
 func validateExtensionStyle(s string) error {
@@ -274,7 +276,9 @@ func validateExtensionStyle(s string) error {
 	case "", "keep", "strip":
 		return nil
 	}
-	return fmt.Errorf("link-style: links.style.extension %q not supported; want \"keep\" or \"strip\"", s)
+	return fmt.Errorf(
+		"link-style: links.style.extension %q not supported; "+
+			"want \"keep\", \"strip\", or \"\" (disables the check)", s)
 }
 
 func validateFormStyle(s string) error {
@@ -282,7 +286,9 @@ func validateFormStyle(s string) error {
 	case "", "any", "inline", "reference":
 		return nil
 	}
-	return fmt.Errorf("link-style: links.style.form %q not supported; want \"inline\", \"reference\", or \"any\"", s)
+	return fmt.Errorf(
+		"link-style: links.style.form %q not supported; "+
+			"want \"inline\", \"reference\", \"any\", or \"\" (disables the check)", s)
 }
 
 // DefaultSettings implements rule.Configurable. All policy strings
