@@ -358,6 +358,17 @@ sentence; see the
 for the diagnostic shape and the precedence rules when
 both are set.
 
+**Reserved-key limitation.** A mapping with `type:` plus
+the literal `deprecated: true` is always parsed as
+metadata, not as a CUE struct constraint. To constrain
+a frontmatter field whose value is a struct that
+legitimately binds a `type` field, write the constraint
+as a string CUE expression instead — e.g.
+`config: '{type: "production" | "staging"}'`. The
+`message:` and `replaced-by:` keys are reserved the
+same way: setting either without `deprecated: true` is
+treated as a typo and rejected at config load.
+
 ### Auditing the chain
 
 `mdsmith kinds show <name>` prints the parent line and the

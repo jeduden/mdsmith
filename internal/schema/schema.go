@@ -126,14 +126,6 @@ type FieldMeta struct {
 	ReplacedBy string
 }
 
-// IsZero reports whether m carries no metadata. Parsers and
-// composers use this to skip writing empty entries into
-// Schema.FrontmatterMeta so the absence of metadata stays
-// observable as a missing map key.
-func (m FieldMeta) IsZero() bool {
-	return !m.Deprecated && m.Message == "" && m.ReplacedBy == ""
-}
-
 // CrossRef declares one text-pattern → slug-template binding. The
 // validator searches text nodes for Pattern; for each match it fills
 // the captured groups (numeric `{n}` or named `{slug}`) into

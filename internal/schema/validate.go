@@ -223,9 +223,9 @@ func dedupedCUEErrorDiags(
 // scripts can route the warning without scanning the message body;
 // the human-facing text honours `message:` first per plan 136. The
 // parser guarantees every FrontmatterMeta entry has Deprecated=true
-// (ExtractFieldMeta rejects bare hint fields and IsZero drops
-// `{Deprecated: false}` entries), so the walker does not re-check
-// the flag.
+// (ExtractFieldMeta accepts the metadata form only when the
+// `deprecated: true` discriminator is present), so the walker does
+// not re-check the flag.
 func validateDeprecatedFieldsWithLines(
 	f *lint.File, sch *Schema, docFM map[string]any,
 	keyLines map[string]int, mkDiag MakeDiag,

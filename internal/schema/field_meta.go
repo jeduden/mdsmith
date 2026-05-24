@@ -17,19 +17,25 @@ var fieldMetaKeys = map[string]bool{
 // matches plan 136's metadata form, returns the embedded CUE
 // expression (from `type:`), the parsed FieldMeta, and isMeta=true.
 //
-// The metadata form is a YAML mapping carrying both a `type:` key
-// AND at least one of `deprecated:` / `message:` / `replaced-by:`:
+// The metadata form is a YAML mapping carrying `type:` plus an
+// explicit `deprecated: true` discriminator:
 //
 //	legacy_owner:
 //	  type: string
 //	  deprecated: true
 //	  message: 'use "owner" instead'
 //
-// The combined signal disambiguates the metadata form from a
-// genuine CUE struct constraint that happens to have a `type`
-// field. A mapping without `type:`, or with `type:` alone, returns
-// isMeta=false so the caller falls through to its existing
-// frontmatterExpr handling (JSON-encoded CUE struct).
+// Requiring the literal `true` value (not just the `deprecated`
+// key) means a CUE struct constraint that happens to bind a
+// `type` field (and optionally a `deprecated` field) flows through
+// to the JSON-encoded struct path unchanged. Two corollaries the
+// reserved-key contract surfaces:
+//
+//   - `{type, deprecated: false}` and `{type}` alone are CUE struct
+//     constraints, not metadata.
+//   - `message:` / `replaced-by:` without `deprecated: true` is
+//     almost always a typo; the parser surfaces it as an error
+//     rather than reinterpreting the mapping as a CUE struct.
 func ExtractFieldMeta(v any) (string, FieldMeta, bool, error) {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -38,22 +44,20 @@ func ExtractFieldMeta(v any) (string, FieldMeta, bool, error) {
 	if _, hasType := m["type"]; !hasType {
 		return "", FieldMeta{}, false, nil
 	}
-	if !hasDeprecationKey(m) {
-		// `type:` alone is ambiguous: it could be the start of a
-		// plan-136 metadata mapping with the rest of the keys yet
-		// to be added, or a CUE struct constraint whose schema
-		// happens to bind a `type` field. Without a deprecation
-		// signal we cannot tell, so fall through to the CUE-struct
-		// encoder rather than silently dropping the other keys.
+	isMeta, err := isMetadataDiscriminator(m)
+	if err != nil {
+		return "", FieldMeta{}, false, err
+	}
+	if !isMeta {
 		return "", FieldMeta{}, false, nil
 	}
 	expr, err := frontmatterExpr(m["type"])
 	if err != nil {
 		return "", FieldMeta{}, false, fmt.Errorf("type: %w", err)
 	}
-	meta := FieldMeta{}
+	meta := FieldMeta{Deprecated: true}
 	for k, vv := range m {
-		if k == "type" {
+		if k == "type" || k == "deprecated" {
 			continue
 		}
 		if !fieldMetaKeys[k] {
@@ -65,39 +69,45 @@ func ExtractFieldMeta(v any) (string, FieldMeta, bool, error) {
 			return "", FieldMeta{}, false, err
 		}
 	}
-	if !meta.Deprecated && (meta.Message != "" || meta.ReplacedBy != "") {
-		return "", FieldMeta{}, false, fmt.Errorf(
-			"`message:` and `replaced-by:` require `deprecated: true` " +
-				"— remove the hint or mark the field deprecated")
-	}
 	return expr, meta, true, nil
 }
 
-// hasDeprecationKey reports whether m carries any of the three
-// keys that signal "this is a plan-136 metadata mapping, not a
-// CUE struct constraint that happens to set `type:`". Presence of
-// the key — not its value — is the discriminator.
-func hasDeprecationKey(m map[string]any) bool {
-	if _, ok := m["deprecated"]; ok {
-		return true
+// isMetadataDiscriminator decides whether a mapping with `type:`
+// should be parsed as plan-136 metadata. The literal
+// `deprecated: true` is the only positive signal. A non-bool
+// `deprecated:` value, or a hint key (`message:` / `replaced-by:`)
+// without `deprecated: true`, surfaces as a typo error so a likely
+// authoring mistake does not silently fall through to the CUE
+// struct path.
+func isMetadataDiscriminator(m map[string]any) (bool, error) {
+	depRaw, hasDep := m["deprecated"]
+	if hasDep {
+		depBool, isBool := depRaw.(bool)
+		if !isBool {
+			return false, fmt.Errorf(
+				"deprecated must be a boolean, got %T", depRaw)
+		}
+		if depBool {
+			return true, nil
+		}
 	}
-	if _, ok := m["message"]; ok {
-		return true
+	if _, has := m["message"]; has {
+		return false, hintWithoutDeprecatedError()
 	}
-	if _, ok := m["replaced-by"]; ok {
-		return true
+	if _, has := m["replaced-by"]; has {
+		return false, hintWithoutDeprecatedError()
 	}
-	return false
+	return false, nil
+}
+
+func hintWithoutDeprecatedError() error {
+	return fmt.Errorf(
+		"`message:` and `replaced-by:` require `deprecated: true` " +
+			"— remove the hint or mark the field deprecated")
 }
 
 func applyFieldMetaKey(meta *FieldMeta, k string, vv any) error {
 	switch k {
-	case "deprecated":
-		b, ok := vv.(bool)
-		if !ok {
-			return fmt.Errorf("deprecated must be a boolean, got %T", vv)
-		}
-		meta.Deprecated = b
 	case "message":
 		s, ok := vv.(string)
 		if !ok {

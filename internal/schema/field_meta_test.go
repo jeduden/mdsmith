@@ -120,25 +120,21 @@ func TestExtractFieldMeta_ReplacedByWithoutDeprecatedRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "deprecated: true")
 }
 
-// TestExtractFieldMeta_DeprecatedFalseCollapsesToZero parses the
-// minimal metadata-with-discriminator form. The parser accepts the
-// mapping (the `deprecated:` key is the disambiguator from a CUE
-// struct constraint), but the resulting FieldMeta is zero-valued
-// so downstream writers drop the entry via IsZero. Hint fields
-// (`message:` / `replaced-by:`) are rejected without
-// `deprecated: true`, so the only paired metadata that reaches
-// FrontmatterMeta carries Deprecated=true.
-func TestExtractFieldMeta_DeprecatedFalseCollapsesToZero(t *testing.T) {
+// TestExtractFieldMeta_DeprecatedFalseIsNotMeta pins the tightened
+// discriminator: a mapping with `type:` and `deprecated: false` is
+// a CUE struct constraint (a schema that legitimately binds a
+// `deprecated` boolean field), not plan-136 metadata. The parser
+// returns isMeta=false so the caller falls through to the
+// JSON-encoded struct path.
+func TestExtractFieldMeta_DeprecatedFalseIsNotMeta(t *testing.T) {
 	in := map[string]any{
 		"type":       "string",
 		"deprecated": false,
 	}
-	_, meta, isMeta, err := ExtractFieldMeta(in)
+	_, _, isMeta, err := ExtractFieldMeta(in)
 	require.NoError(t, err)
-	require.True(t, isMeta)
-	assert.False(t, meta.Deprecated)
-	assert.True(t, meta.IsZero(),
-		"deprecated:false with no hint fields collapses to zero")
+	assert.False(t, isMeta,
+		"`deprecated: false` is not the metadata discriminator")
 }
 
 // TestExtractFieldMeta_DeprecatedWrongType errors on a non-bool

@@ -1213,9 +1213,7 @@ func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, map[stri
 			continue
 		}
 		raw[k] = expr
-		if !fm.IsZero() {
-			meta[k] = fm
-		}
+		meta[k] = fm
 	}
 
 	expr, err := cueExprForMap(raw)

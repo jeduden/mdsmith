@@ -223,12 +223,10 @@ func parseFileFrontmatter(prefix []byte, sch *Schema) (string, error) {
 			}
 			if isMeta {
 				sch.Frontmatter[k] = expr
-				if !meta.IsZero() {
-					if sch.FrontmatterMeta == nil {
-						sch.FrontmatterMeta = make(map[string]FieldMeta)
-					}
-					sch.FrontmatterMeta[k] = meta
+				if sch.FrontmatterMeta == nil {
+					sch.FrontmatterMeta = make(map[string]FieldMeta)
 				}
+				sch.FrontmatterMeta[k] = meta
 				continue
 			}
 			expr, err = frontmatterExpr(v)
