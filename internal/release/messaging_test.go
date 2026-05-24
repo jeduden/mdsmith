@@ -77,16 +77,22 @@ func TestLoadMessaging_EmptyFieldFails(t *testing.T) {
 }
 
 func TestLoadMessaging_WhitespaceOnlyFieldFails(t *testing.T) {
-	// All required fields present but `lead` is just whitespace.
-	bad := `{"frontmatter": {
-		"title": "t", "summary": "s", "eyebrow": "e",
-		"headline-pre": "p", "headline-em": "m", "headline-post": "x",
-		"lead": "   \t\n", "tagline": "tg",
-		"vscode-description": "v",
-		"claude-code-lsp-description": "l",
-		"claude-code-skills-description": "sk",
-		"claude-code-audit-description": "a"
-	}}`
+	// Every required field present and well-shaped in the new
+	// body-section JSON envelope, except `lead.text` which is
+	// just whitespace — Validate's TrimSpace check must catch
+	// it. The fixture mirrors the real extract output (prose
+	// sections at the document root, not under `frontmatter`).
+	bad := `{
+		"frontmatter": {"title": "t", "summary": "s"},
+		"headline":  {"code": "Mark*down*, smithed."},
+		"eyebrow":   {"text": "e"},
+		"lead":      {"text": "   \t\n"},
+		"tagline":   {"text": "tg"},
+		"vscode-description":             {"text": "v"},
+		"claude-code-lsp-description":    {"text": "l"},
+		"claude-code-skills-description": {"text": "sk"},
+		"claude-code-audit-description":  {"text": "a"}
+	}`
 	stubMessagingExtractor(t, []byte(bad), nil)
 	_, err := LoadMessaging("ignored")
 	require.Error(t, err)

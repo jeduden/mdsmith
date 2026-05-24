@@ -122,7 +122,10 @@ type orderedJSONPair struct {
 // decodeOrderedJSON walks body with json.Decoder.Token to
 // build an ordered slice of (key, RawMessage) pairs at the
 // top level. Nested values stay as RawMessage so PatchValue
-// can re-emit them byte-identical.
+// can re-emit them in source order; emitOrderedJSON normalizes
+// inner whitespace via json.Indent, so nested formatting is
+// rewritten to the document's 2-space indent (top-level order
+// is preserved, inner formatting is not).
 func decodeOrderedJSON(body []byte) ([]orderedJSONPair, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	t, err := dec.Token()
