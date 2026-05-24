@@ -121,6 +121,47 @@ func TestExtractFieldMeta_DeprecatedWrongType(t *testing.T) {
 	assert.Contains(t, err.Error(), "boolean")
 }
 
+// TestExtractFieldMeta_MessageWrongType catches a non-string
+// `message:` at parse time so a YAML typo (`message: 42`) does
+// not silently coerce into an empty string downstream.
+func TestExtractFieldMeta_MessageWrongType(t *testing.T) {
+	in := map[string]any{
+		"type":       "string",
+		"deprecated": true,
+		"message":    42,
+	}
+	_, _, _, err := ExtractFieldMeta(in)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "message must be a string")
+}
+
+// TestExtractFieldMeta_ReplacedByWrongType mirrors the
+// message-wrong-type check for the `replaced-by:` field.
+func TestExtractFieldMeta_ReplacedByWrongType(t *testing.T) {
+	in := map[string]any{
+		"type":        "string",
+		"deprecated":  true,
+		"replaced-by": []any{"owner"},
+	}
+	_, _, _, err := ExtractFieldMeta(in)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "replaced-by must be a string")
+}
+
+// TestExtractFieldMeta_TypeExprError surfaces the
+// frontmatterExpr failure path: a non-string `type:` value that
+// has no JSON encoding (e.g. an unknown bare-name string)
+// bubbles up through ExtractFieldMeta with a "type:" prefix.
+func TestExtractFieldMeta_TypeExprError(t *testing.T) {
+	in := map[string]any{
+		"type":       "",
+		"deprecated": true,
+	}
+	_, _, _, err := ExtractFieldMeta(in)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "type:")
+}
+
 // TestExtractFieldMeta_BareTypeNameResolves applies the same
 // shortcut resolution the rest of the frontmatter parser uses
 // (plan 148): `type: date` returns the canonical CUE pattern

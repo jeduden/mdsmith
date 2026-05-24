@@ -100,6 +100,10 @@ func TestValidateFrontmatterDiags_MessageWinsOverReplacedBy(t *testing.T) {
 // from the document makes the warning go away. The schema's
 // `legacy_owner` is still declared, so removing the field from a
 // document is the natural cleanup path.
+//
+// Exercises both the empty-docFM short circuit and the
+// per-field "not present in docFM" skip so neither path becomes
+// dead code under refactoring.
 func TestValidateFrontmatterDiags_DeprecatedFieldAbsentNoDiagnostic(t *testing.T) {
 	raw := map[string]any{
 		"frontmatter": map[string]any{
@@ -107,14 +111,22 @@ func TestValidateFrontmatterDiags_DeprecatedFieldAbsentNoDiagnostic(t *testing.T
 				"type":       "string",
 				"deprecated": true,
 			},
+			"owner?": "string",
 		},
 	}
 	sch, err := ParseInline(raw, "kind test")
 	require.NoError(t, err)
 	doc := newDocFile(t, "doc.md", "# T\n")
+	// Empty docFM — the walker short-circuits before the loop.
 	diags := ValidateFrontmatterDiags(doc, sch, map[string]any{}, makeDiagForTest)
 	assert.Empty(t, diags,
-		"a deprecated field not present in docFM should not warn")
+		"a deprecated field absent from an empty docFM should not warn")
+	// Non-empty docFM that omits the deprecated key — the walker
+	// reaches the per-field check and skips the entry.
+	diags = ValidateFrontmatterDiags(doc, sch,
+		map[string]any{"owner": "alice"}, makeDiagForTest)
+	assert.Empty(t, diags,
+		"a deprecated field absent from a non-empty docFM should not warn")
 }
 
 // TestValidateFrontmatterDiags_DeprecationCoExistsWithTypeError
@@ -212,14 +224,47 @@ func TestExtend_PropagatesFrontmatterMeta(t *testing.T) {
 	}
 	child := &Schema{
 		Frontmatter: map[string]string{
-			"owner": "string",
+			"owner":     "string",
+			"old_child": "string",
+		},
+		FrontmatterMeta: map[string]FieldMeta{
+			"old_child": {
+				Deprecated: true,
+				ReplacedBy: "new_child",
+			},
 		},
 	}
 	out, err := Extend(parent, child)
 	require.NoError(t, err)
 	require.Contains(t, out.FrontmatterMeta, "legacy_owner")
+	require.Contains(t, out.FrontmatterMeta, "old_child")
 	assert.True(t, out.FrontmatterMeta["legacy_owner"].Deprecated)
 	assert.Equal(t, "use owner",
+		out.FrontmatterMeta["legacy_owner"].Message)
+	assert.Equal(t, "new_child",
+		out.FrontmatterMeta["old_child"].ReplacedBy)
+}
+
+// TestExtend_ChildMetaOverridesParent covers the child-wins rule:
+// when both sides declare metadata for the same field, the
+// child's entry replaces the parent's so a kind can re-deprecate
+// with a fresher message.
+func TestExtend_ChildMetaOverridesParent(t *testing.T) {
+	parent := &Schema{
+		Frontmatter: map[string]string{"legacy_owner": "string"},
+		FrontmatterMeta: map[string]FieldMeta{
+			"legacy_owner": {Deprecated: true, Message: "old message"},
+		},
+	}
+	child := &Schema{
+		Frontmatter: map[string]string{"legacy_owner": "string"},
+		FrontmatterMeta: map[string]FieldMeta{
+			"legacy_owner": {Deprecated: true, Message: "new message"},
+		},
+	}
+	out, err := Extend(parent, child)
+	require.NoError(t, err)
+	assert.Equal(t, "new message",
 		out.FrontmatterMeta["legacy_owner"].Message)
 }
 

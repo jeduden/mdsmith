@@ -129,12 +129,11 @@ func validateFrontmatterDiags(
 ) []lint.Diagnostic {
 	expr := sch.FrontmatterCUE()
 	if strings.TrimSpace(expr) == "" {
-		// No CUE constraints to evaluate, but the schema may still
-		// declare deprecation metadata that fires against docFM.
-		// validateDeprecatedFields handles the empty-meta short
-		// circuit so callers don't pay for the lookup when no
-		// metadata is set.
-		return validateDeprecatedFields(f, sch, docFM, mkDiag)
+		// No CUE constraints to evaluate. A schema with empty
+		// Frontmatter also has empty FrontmatterMeta (metadata is
+		// keyed off Frontmatter entries), so there is nothing for
+		// the deprecation walker to do either.
+		return nil
 	}
 	anchor := nonBodyDiagLine(f)
 	// Route the schema-side CompileString through RunCache.CompiledCUE
@@ -207,22 +206,6 @@ func validateFrontmatterDiags(
 	return out
 }
 
-// validateDeprecatedFields emits a Warning-severity diagnostic for
-// every deprecated field the document still carries. It is the
-// no-CUE-constraints entry point; the keyLines map is empty so
-// every diagnostic anchors at the non-body line. The CUE-bearing
-// path calls validateDeprecatedFieldsWithLines directly so it can
-// share the docFrontmatterKeyLines result without a second parse.
-func validateDeprecatedFields(
-	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
-) []lint.Diagnostic {
-	if len(sch.FrontmatterMeta) == 0 {
-		return nil
-	}
-	return validateDeprecatedFieldsWithLines(
-		f, sch, docFM, docFrontmatterKeyLines(f), mkDiag)
-}
-
 // validateDeprecatedFieldsWithLines walks sch.FrontmatterMeta and
 // emits one Warning-severity diagnostic per deprecated field that
 // still appears in docFM. The keyLines argument is reused from the
@@ -231,7 +214,11 @@ func validateDeprecatedFields(
 //
 // `replaced-by:` rides on the lint.Diagnostic so LSP clients and CI
 // scripts can route the warning without scanning the message body;
-// the human-facing text honours `message:` first per plan 136.
+// the human-facing text honours `message:` first per plan 136. The
+// parser guarantees every FrontmatterMeta entry has Deprecated=true
+// (ExtractFieldMeta rejects bare hint fields and IsZero drops
+// `{Deprecated: false}` entries), so the walker does not re-check
+// the flag.
 func validateDeprecatedFieldsWithLines(
 	f *lint.File, sch *Schema, docFM map[string]any,
 	keyLines map[string]int, mkDiag MakeDiag,
@@ -250,9 +237,6 @@ func validateDeprecatedFieldsWithLines(
 	var out []lint.Diagnostic
 	for _, k := range keys {
 		meta := sch.FrontmatterMeta[k]
-		if !meta.Deprecated {
-			continue
-		}
 		bare := strings.TrimSuffix(k, "?")
 		if _, present := docFM[bare]; !present {
 			continue
