@@ -45,6 +45,7 @@ import (
 	_ "github.com/jeduden/mdsmith/internal/rules/horizontalrulestyle"         // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/include"                     // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/linelength"                  // registers rule
+	_ "github.com/jeduden/mdsmith/internal/rules/linkstyle"                   // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/linkvalidity"                // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/listindent"                  // registers rule
 	_ "github.com/jeduden/mdsmith/internal/rules/listmarkerspace"             // registers rule

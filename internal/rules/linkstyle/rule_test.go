@@ -374,10 +374,25 @@ func TestPerKindOverride_FlipsVerdict(t *testing.T) {
 	docsRules := config.Effective(cfg, "docs/guides/foo.md", nil, nil)
 	rB := &Rule{}
 	require.NoError(t, rB.ApplySettings(docsRules["link-style"].Settings))
-	assert.Equal(t, "any", rB.Links.Style.Form,
-		"docs kind must inherit base form: any unchanged")
+	// ApplySettings normalizes "any" to "" so the runtime no-op
+	// fast path stays cheap; the docs kind effectively disables
+	// the form check the same way an empty string would.
+	assert.Equal(t, "", rB.Links.Style.Form,
+		"docs kind inherits base form: any, normalized to \"\"")
 	diags = rB.Check(f)
 	assert.Empty(t, diags, "docs kind (form: any inherited) must pass")
+}
+
+// TestApplySettings_NormalizesAnyToEmptyString ensures the
+// runtime no-op fast path (all-three-empty-strings) covers
+// users who explicitly set `form: any`. Without this, an
+// otherwise-unset rule still walks the AST and allocates link
+// slices on every Check.
+func TestApplySettings_NormalizesAnyToEmptyString(t *testing.T) {
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(styleWith(map[string]any{"form": "any"})))
+	assert.Equal(t, "", r.Links.Style.Form,
+		"`form: any` must normalize to \"\" so Check's fast path applies")
 }
 
 func newFile(t *testing.T, src string) *lint.File {

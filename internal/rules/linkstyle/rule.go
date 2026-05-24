@@ -253,6 +253,12 @@ func (r *Rule) applyStyle(m map[string]any) error {
 			if err := validateFormStyle(s); err != nil {
 				return err
 			}
+			// "any" and "" both mean "no form check"; normalize to
+			// "" so Check's no-op fast path stays a single
+			// three-way empty-string comparison.
+			if s == "any" {
+				s = ""
+			}
 			r.Links.Style.Form = s
 		default:
 			return fmt.Errorf("link-style: unknown links.style setting %q", k)
