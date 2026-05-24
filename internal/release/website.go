@@ -195,14 +195,18 @@ var repoNonPublishedRefDef = regexp.MustCompile(
 // source-vs-rendered-URL depth mismatch that a bare relative
 // directory link would otherwise have on leaf pages.
 //
-// Group 1 captures the path prefix (required: a bare
-// `index.md` link with no parent directory is ambiguous and
-// left alone); group 2 captures an optional `#anchor` (whitespace
-// excluded so it stops before a title); group 3 is the optional
-// linkTitleTail so a titled directory link keeps its title — even
-// when it also carries a `#fragment` (gap G6).
+// Group 1 captures the path prefix (may be empty for a bare
+// `index.md` sibling reference like `docs/development/foo.md`
+// linking back to `docs/development/index.md`); group 2 captures
+// an optional `#anchor` (whitespace excluded so it stops before
+// a title); group 3 is the optional linkTitleTail so a titled
+// directory link keeps its title — even when it also carries a
+// `#fragment` (gap G6). When group 1 is empty rewriteIndexMd
+// substitutes `./` so the rewritten target stays a directory
+// reference (a bare `#anchor` would silently flip semantics to
+// a same-file local-anchor link).
 var indexMdLink = regexp.MustCompile(
-	`\]\(((?:[^)/]+/)+)index\.md((?:#[^)\s]*)?)` + linkTitleTail + `\)`)
+	`\]\(((?:[^)/]+/)*)index\.md((?:#[^)\s]*)?)` + linkTitleTail + `\)`)
 
 // ruleFixtureLink matches an inline link in a per-rule README
 // whose target is a fixture path under the rule's own directory:
@@ -341,9 +345,27 @@ func rewriteRuleLinks(b []byte) []byte {
 		// `/<path>/_index.md` or `/<path>/index.md`. Keeping
 		// either filename in the markdown produces a 404 on
 		// the live site.
-		seg = indexMdLink.ReplaceAll(seg, []byte("](${1}${2}${3})"))
+		seg = indexMdLink.ReplaceAllFunc(seg, rewriteIndexMdLink)
 		return seg
 	})
+}
+
+// rewriteIndexMdLink emits the `index.md`-stripped target.
+// indexMdLink's group 1 is the path prefix; group 2 is the
+// optional `#anchor`; group 3 is the optional linkTitleTail.
+// A non-empty prefix passes through (so `dir/index.md` → `dir/`);
+// an empty prefix is replaced with `./` so a bare `index.md`
+// link rewrites to `./` instead of collapsing to a bare
+// `#anchor` (which would be a same-file local-anchor reference,
+// a semantic change MDS027 would silently accept against the
+// wrong file).
+func rewriteIndexMdLink(match []byte) []byte {
+	m := indexMdLink.FindSubmatch(match)
+	prefix := m[1]
+	if len(prefix) == 0 {
+		prefix = []byte("./")
+	}
+	return []byte("](" + string(prefix) + string(m[2]) + string(m[3]) + ")")
 }
 
 // rewriteRepoRuleInline rewrites an inline link into

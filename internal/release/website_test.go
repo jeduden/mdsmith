@@ -642,6 +642,38 @@ func TestRewriteRuleLinks_AnchoredTitledIndexMdLink(t *testing.T) {
 		"anchored+titled index.md link must keep both #fragment and title")
 }
 
+// A bare `index.md` link with no parent directory is the in-tree
+// sibling form: `docs/development/high-performance-go.md` linking
+// back to `docs/development/index.md`. The source path is
+// filesystem-valid (so the source-tree MDS027 check passes) but
+// post-sync `index.md` no longer exists in the directory — Hugo
+// renamed it to `_index.md` — so the synced-tree lint would fail
+// on the original `(index.md…)` form. Rewriting bare `index.md`
+// to `./` mirrors Hugo's own render-link hook (which collapses a
+// bare `index.md` href to `./`) and lets MDS027 short-circuit
+// the dot-only path as valid.
+func TestRewriteRuleLinks_BareIndexMdLink(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`See [a](index.md#allocation-budget) — top.` + "\n")))
+	assert.Contains(t, got, `[a](./#allocation-budget)`,
+		"bare index.md#anchor must drop the filename and resolve to the current directory")
+	assert.NotContains(t, got, "index.md",
+		"no bare index.md target may survive the rewrite")
+}
+
+func TestRewriteRuleLinks_BareIndexMdNoAnchor(t *testing.T) {
+	got := string(rewriteRuleLinks([]byte(`Up: [home](index.md).` + "\n")))
+	assert.Contains(t, got, `[home](./)`,
+		"bare index.md with no anchor must rewrite to ./")
+}
+
+func TestRewriteRuleLinks_BareIndexMdTitled(t *testing.T) {
+	got := string(rewriteRuleLinks(
+		[]byte(`See [a](index.md#anchor "Title").` + "\n")))
+	assert.Contains(t, got, `[a](./#anchor "Title")`,
+		"bare index.md with anchor and title must rewrite to ./ while keeping both")
+}
+
 func TestTransformRulePage_AnchoredTitledReadmeLink(t *testing.T) {
 	in := "Anchor: [MDS021 a](../MDS021-include/README.md#syntax \"Inc\").\n"
 	got := string(transformRulePage([]byte(in), "MDS001-line-length"))

@@ -739,9 +739,10 @@ func TestTransformMarkdown_RewritesNonPublishedLinks(t *testing.T) {
 // section's _index.md at the directory URL (no filename), so a
 // relative `<path>/index.md` link in a docs body must be
 // rewritten to `<path>/` to render correctly on the site. The
-// anchor passes through; a bare `index.md` with no parent
-// directory is left alone because the resulting empty target
-// would be ambiguous.
+// anchor passes through; a bare `index.md` (a sibling reference
+// from another page in the same directory) becomes `./` so the
+// stripped target stays a directory reference instead of
+// collapsing to a same-file `#anchor`.
 func TestTransformMarkdown_DropsIndexMdFilename(t *testing.T) {
 	runTransformCases(t, []transformCase{
 		{
@@ -755,9 +756,14 @@ func TestTransformMarkdown_DropsIndexMdFilename(t *testing.T) {
 			want: "See [x](architecture/#section).\n",
 		},
 		{
-			name: "bare index.md with no parent dir is unchanged",
+			name: "bare index.md with no parent dir becomes ./",
 			in:   "See [x](index.md).\n",
-			want: "See [x](index.md).\n",
+			want: "See [x](./).\n",
+		},
+		{
+			name: "bare index.md with anchor becomes ./#anchor",
+			in:   "See [x](index.md#section).\n",
+			want: "See [x](./#section).\n",
 		},
 	})
 }
