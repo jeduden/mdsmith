@@ -659,6 +659,39 @@ func TestRunCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
 			"rebuild is the cumulative second call")
 }
 
+// TestRunCache_InvalidateDoesNotRaceParsedSchemaBuild pins the race
+// fix for Copilot thread `PRRT_kwDORLpjqs6EXfF6` on PR #377: Invalidate
+// must not read runCacheEntry.val (which is set under the slot's
+// sync.Once) while a concurrent ParsedSchema build is in flight. The
+// fix stores metadata in dedicated sync.Maps (schemaIncludes /
+// schemaCUESources) and Invalidate reads from those — race-free.
+// Under `go test -race`, the old code would flag a data race; this
+// test pounds the path so any future regression fails the gate.
+func TestRunCache_InvalidateDoesNotRaceParsedSchemaBuild(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/schemaA.md"
+	const fragmentB = "/abs/fragmentB.md"
+
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = c.ParsedSchema(schemaA, func() any {
+				return testSchemaMeta{
+					includes:   []string{fragmentB},
+					cueSources: []string{`{x: string}`},
+				}
+			})
+		}()
+		go func() {
+			defer wg.Done()
+			c.Invalidate(schemaA)
+		}()
+	}
+	wg.Wait()
+}
+
 // TestRunCache_EmptyFragmentSkippedBothDirections pins the empty-string
 // guard on both reverse-index sides. A schema whose include list
 // carries an empty entry (e.g. a parse path that produced a blank

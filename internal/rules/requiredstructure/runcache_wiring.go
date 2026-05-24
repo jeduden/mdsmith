@@ -71,7 +71,8 @@ func cachedParseSchema(
 		return sch, err
 	}
 	absPath := absSchemaCacheKey(f, schemaPath)
-	return cachedParseSchemaWith(cache, absPath, func() (*parsedSchema, []string, error) {
+	absRoot := absRootDir(f)
+	return cachedParseSchemaWith(cache, absPath, absRoot, func() (*parsedSchema, []string, error) {
 		return parseSchemaWithCache(data, schemaPath, fileMaxBytes(f), cache)
 	})
 }
@@ -89,16 +90,18 @@ func cachedParseSchema(
 // reverse-include index and per-schema compiledCUE-eviction work
 // end-to-end.
 //
-// Include paths returned by the build are normalised to absolute
-// filesystem paths anchored at absPath's directory before they go on
-// the schemaParseResult. The producer (parseSchemaWithCache /
-// extractSchemaHeadings) constructs include paths relative to
-// whatever schemaPath the caller passed (typically the project-
-// relative path the rule loads schemas with), so without
-// normalisation the cache key in RunCache's reverse-include index
-// would mismatch the absolute path the LSP passes to Invalidate.
+// Include paths returned by the build (via resolveSchemaIncludePath)
+// are joined onto the schema-file's directory; in mdsmith's normal
+// flow that directory is itself relative to the workspace root, so
+// the resulting include strings end up workspace-root-relative.
+// absRoot is the workspace root's absolute filesystem path; the
+// helper joins each non-absolute include onto absRoot (NOT onto the
+// schema's own dir, which would double-prefix paths for any schema
+// living in a subdirectory) so the keys match the LSP's
+// Invalidate(absPath) calls byte-for-byte. An empty absRoot leaves
+// entries Clean'd-but-relative (the struct-literal test path).
 func cachedParseSchemaWith(
-	cache *lint.RunCache, absPath string,
+	cache *lint.RunCache, absPath, absRoot string,
 	build func() (*parsedSchema, []string, error),
 ) (*parsedSchema, error) {
 	if cache == nil || absPath == "" {
@@ -110,7 +113,7 @@ func cachedParseSchemaWith(
 		return schemaParseResult{
 			schema:     sch,
 			err:        err,
-			includes:   absoluteIncludes(absPath, includes),
+			includes:   absoluteIncludes(absRoot, includes),
 			cueSources: schemaCUESources(sch),
 		}
 	})
@@ -119,22 +122,25 @@ func cachedParseSchemaWith(
 }
 
 // absoluteIncludes resolves each entry in includes to an absolute
-// filesystem path. Absolute entries are passed through (after
-// Clean); relative entries are joined against the directory of
-// parentAbsPath (the schema's absolute cache key). The result
-// matches the convention the LSP uses when calling Invalidate.
+// filesystem path anchored at absRoot. Absolute entries are passed
+// through (after Clean); relative entries are joined against
+// absRoot (NOT the schema's own dir — resolveSchemaIncludePath
+// already prefixes each include with the schema's dir, so joining
+// onto that dir a second time would double-prefix the path and
+// break the reverse-include index for any schema in a subdirectory).
+// The result matches the convention the LSP uses when calling
+// Invalidate.
 //
-// parentAbsPath is expected to be absolute (it is the
-// absSchemaCacheKey output for the parent schema). When it is not
-// absolute we still Clean each entry but leave its relative shape
-// alone — the cache machinery treats that as a no-op for invalidate
-// purposes, which is the safe default.
-func absoluteIncludes(parentAbsPath string, includes []string) []string {
+// absRoot is expected to be the workspace root's absolute path. An
+// empty absRoot (struct-literal test path with no File context)
+// leaves each entry Clean'd-but-relative — the cache machinery
+// treats that as a deterministic key, even if it does not match the
+// LSP's invalidation keys.
+func absoluteIncludes(absRoot string, includes []string) []string {
 	if len(includes) == 0 {
 		return nil
 	}
 	out := make([]string, 0, len(includes))
-	parentDir := filepath.Dir(parentAbsPath)
 	for _, inc := range includes {
 		if inc == "" {
 			continue
@@ -143,17 +149,28 @@ func absoluteIncludes(parentAbsPath string, includes []string) []string {
 			out = append(out, filepath.Clean(inc))
 			continue
 		}
-		if filepath.IsAbs(parentDir) {
-			out = append(out, filepath.Clean(filepath.Join(parentDir, inc)))
+		if absRoot != "" {
+			out = append(out, filepath.Clean(filepath.Join(absRoot, inc)))
 			continue
 		}
-		// parentAbsPath is not absolute (struct-literal test
-		// path). Leave the entry as-is — the reverse-include
-		// index just keys whatever string comes in, and the LSP
-		// only invalidates absolute paths in production.
 		out = append(out, filepath.Clean(inc))
 	}
 	return out
+}
+
+// absRootDir returns f.RootDir resolved to an absolute path. Returns
+// "" when f is nil, f.RootDir is empty, or filepath.Abs reports an
+// error (Getwd failure — vanishingly rare in production). Callers
+// pair an empty result with absoluteIncludes's no-absRoot branch.
+func absRootDir(f *lint.File) string {
+	if f == nil || f.RootDir == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(f.RootDir)
+	if err != nil {
+		return ""
+	}
+	return abs
 }
 
 // schemaCUESources returns the distinct CUE source strings the

@@ -32,7 +32,7 @@ func TestCachedParseSchema_BuildsOncePerRunCache(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		got, err := cachedParseSchemaWith(cache, absPath, build)
+		got, err := cachedParseSchemaWith(cache, absPath, "", build)
 		require.NoError(t, err)
 		require.NotNil(t, got)
 		require.Len(t, got.Headings, 2)
@@ -47,7 +47,7 @@ func TestCachedParseSchema_BuildsOncePerRunCache(t *testing.T) {
 // crash on every direct test invocation that doesn't supply a cache.
 func TestCachedParseSchema_NilRunCacheStillParses(t *testing.T) {
 	schemaBody := []byte("# Title\n\n## Section\n")
-	got, err := cachedParseSchemaWith(nil, "/abs/schema.md", func() (*parsedSchema, []string, error) {
+	got, err := cachedParseSchemaWith(nil, "/abs/schema.md", "", func() (*parsedSchema, []string, error) {
 		sch, err := parseSchema(schemaBody, "", 0)
 		return sch, nil, err
 	})
@@ -64,7 +64,7 @@ func TestCachedParseSchema_EmptyAbsPathFallsThroughToBuild(t *testing.T) {
 	cache := lint.NewRunCache()
 	var calls int32
 	for i := 0; i < 2; i++ {
-		got, err := cachedParseSchemaWith(cache, "", func() (*parsedSchema, []string, error) {
+		got, err := cachedParseSchemaWith(cache, "", "", func() (*parsedSchema, []string, error) {
 			atomic.AddInt32(&calls, 1)
 			sch, err := parseSchema([]byte("# Heading\n"), "", 0)
 			return sch, nil, err
@@ -84,7 +84,7 @@ func TestCachedParseSchema_CachesParseErrors(t *testing.T) {
 	var calls int32
 	expectedErr := assert.AnError
 	for i := 0; i < 3; i++ {
-		got, err := cachedParseSchemaWith(cache, "/abs/broken.md", func() (*parsedSchema, []string, error) {
+		got, err := cachedParseSchemaWith(cache, "/abs/broken.md", "", func() (*parsedSchema, []string, error) {
 			atomic.AddInt32(&calls, 1)
 			return nil, nil, expectedErr
 		})
@@ -276,21 +276,96 @@ func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
 }
 
+// TestRule_FragmentInvalidationFromSubdirSchema pins the fix for
+// Copilot thread `PRRT_kwDORLpjqs6EXfGK` on PR #377: include paths
+// must be anchored on the workspace root, not on the schema's
+// absolute path's directory. resolveSchemaIncludePath already
+// prefixes each include with the schema's dir (so a schema at
+// "schemas/schema.md" with include "fragment.md" returns
+// "schemas/fragment.md"); the old absoluteIncludes joined that onto
+// the schema's absolute parent dir, producing
+// "/tmp/x/schemas/schemas/fragment.md" and breaking
+// Invalidate(/tmp/x/schemas/fragment.md). The fix joins onto
+// absRoot.
+//
+// This test puts the schema in a subdirectory so the bug surfaces.
+// TestRule_FragmentInvalidationEvictsParsedSchema above keeps the
+// schema at the root and never tripped the bug.
+func TestRule_FragmentInvalidationFromSubdirSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(tmpDir, "schemas"), 0o700))
+
+	schemaSrc := "# {id}: {name}\n\n<?include\nfile: fragment.md\n?>\n"
+	fragmentSrc := "## Section\n"
+	doc := "---\nid: doc\nname: Sample\n---\n# doc: Sample\n\n## Section\n"
+
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "schemas", "schema.md"), schemaSrc))
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "schemas", "fragment.md"), fragmentSrc))
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "doc.md"), doc))
+
+	t.Chdir(tmpDir)
+
+	cache := lint.NewRunCache()
+	r := &Rule{
+		Schema:  "schemas/schema.md",
+		Sources: []SchemaSource{{File: "schemas/schema.md"}},
+	}
+
+	f, err := lint.NewFile("doc.md", []byte(doc))
+	require.NoError(t, err)
+	f.RootDir = tmpDir
+	f.RunCache = cache
+	_ = r.Check(f)
+
+	schemaAbs := filepath.Clean(filepath.Join(tmpDir, "schemas", "schema.md"))
+	fragmentAbs := filepath.Clean(filepath.Join(tmpDir, "schemas", "fragment.md"))
+
+	// Baseline: the parsed-schema slot is populated.
+	var rebuildsBefore int32
+	_ = cache.ParsedSchema(schemaAbs, func() any {
+		atomic.AddInt32(&rebuildsBefore, 1)
+		return schemaParseResult{schema: nil, err: assert.AnError}
+	})
+	require.Equal(t, int32(0), atomic.LoadInt32(&rebuildsBefore),
+		"baseline: after Rule.Check the schema slot must be populated")
+
+	// Invalidate the fragment by its actual absolute path. With the
+	// bug, the reverse-include index keyed the dependent under
+	// "/tmp/.../schemas/schemas/fragment.md", so this call would
+	// find no dependent and the schema slot would survive. With the
+	// fix the key matches and the slot is evicted.
+	cache.Invalidate(fragmentAbs)
+
+	var rebuildsAfter int32
+	_ = cache.ParsedSchema(schemaAbs, func() any {
+		atomic.AddInt32(&rebuildsAfter, 1)
+		return schemaParseResult{schema: nil, err: assert.AnError}
+	})
+	assert.Equal(t, int32(1), atomic.LoadInt32(&rebuildsAfter),
+		"Invalidate(fragmentAbs) must evict the subdir schema's slot — "+
+			"the bug would leave the slot populated because the "+
+			"reverse-include index keyed the dependent under a "+
+			"double-prefixed path")
+}
+
 // TestAbsoluteIncludes_SkipsEmptyEntries pins that a "" include
 // (defensive: a malformed parse path could surface one) is dropped
 // rather than carried into the reverse-index where it would cause
 // every Invalidate("") to look like a real eviction.
 func TestAbsoluteIncludes_SkipsEmptyEntries(t *testing.T) {
-	got := absoluteIncludes("/abs/schema.md", []string{"", "frag.md"})
+	got := absoluteIncludes("/abs/root", []string{"", "frag.md"})
 	require.Len(t, got, 1)
-	assert.Equal(t, filepath.Clean("/abs/frag.md"), got[0])
+	assert.Equal(t, filepath.Clean("/abs/root/frag.md"), got[0])
 }
 
 // TestAbsoluteIncludes_PassesAbsolutePathsThrough pins that already-
 // absolute include paths are kept as-is (only Clean'd) rather than
-// joined onto the parent dir.
+// joined onto absRoot.
 func TestAbsoluteIncludes_PassesAbsolutePathsThrough(t *testing.T) {
-	got := absoluteIncludes("/abs/schema.md", []string{"/other/abs/frag.md"})
+	got := absoluteIncludes("/abs/root", []string{"/other/abs/frag.md"})
 	require.Len(t, got, 1)
 	assert.Equal(t, filepath.Clean("/other/abs/frag.md"), got[0])
 }
@@ -300,18 +375,30 @@ func TestAbsoluteIncludes_PassesAbsolutePathsThrough(t *testing.T) {
 // metadata's include field stays nil rather than allocating a
 // zero-length slice every parse.
 func TestAbsoluteIncludes_NilWhenEmpty(t *testing.T) {
-	assert.Nil(t, absoluteIncludes("/abs/schema.md", nil))
-	assert.Nil(t, absoluteIncludes("/abs/schema.md", []string{}))
+	assert.Nil(t, absoluteIncludes("/abs/root", nil))
+	assert.Nil(t, absoluteIncludes("/abs/root", []string{}))
 }
 
-// TestAbsoluteIncludes_NonAbsoluteParentCleansRelative pins the
-// struct-literal test fallback: when parentAbsPath isn't absolute,
-// the helper still emits Clean'd entries so the reverse-index key
-// is deterministic.
-func TestAbsoluteIncludes_NonAbsoluteParentCleansRelative(t *testing.T) {
-	got := absoluteIncludes("schema.md", []string{"./frag.md"})
+// TestAbsoluteIncludes_EmptyAbsRootCleansRelative pins the
+// struct-literal test fallback: when absRoot is empty (a unit-test
+// path with no File context), the helper still emits Clean'd
+// entries so the reverse-index key is deterministic.
+func TestAbsoluteIncludes_EmptyAbsRootCleansRelative(t *testing.T) {
+	got := absoluteIncludes("", []string{"./frag.md"})
 	require.Len(t, got, 1)
 	assert.Equal(t, filepath.Clean("frag.md"), got[0])
+}
+
+// TestAbsoluteIncludes_AnchorsRelativeOnAbsRoot pins that include
+// paths returned by extractSchemaHeadings (workspace-root-relative
+// after resolveSchemaIncludePath joins them onto the schema's dir)
+// are anchored on absRoot — NOT on the schema's absolute path's
+// dir. Joining onto the schema's dir would double-prefix any
+// schema living in a subdirectory ("/root/schemas/schemas/frag.md").
+func TestAbsoluteIncludes_AnchorsRelativeOnAbsRoot(t *testing.T) {
+	got := absoluteIncludes("/abs/root", []string{"schemas/frag.md"})
+	require.Len(t, got, 1)
+	assert.Equal(t, filepath.Clean("/abs/root/schemas/frag.md"), got[0])
 }
 
 // TestSchemaCUESources_NilSchemaReturnsNil pins the nil-safety

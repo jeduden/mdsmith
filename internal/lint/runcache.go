@@ -32,6 +32,18 @@ type RunCache struct {
 	// slots populate; the LSP's didChange path on a fragment then
 	// transitively invalidates every schema that reached it.
 	schemaDependents sync.Map // string (fragmentPath) -> *sync.Map
+
+	// schemaIncludes / schemaCUESources mirror ParsedSchemaMetadata
+	// into dedicated sync.Maps so Invalidate reads metadata without
+	// peeking at runCacheEntry.val — that would race with the slot's
+	// sync.Once during a first-time build. The slots are written
+	// AFTER ParsedSchema's load returns (so after the once completes)
+	// and read by Invalidate via sync.Map.Load, which gives the
+	// happens-before guarantee. A missing entry just means no
+	// metadata is registered yet; eviction degrades to a no-op rather
+	// than races on a partial value.
+	schemaIncludes   sync.Map // string (absPath) -> []string
+	schemaCUESources sync.Map // string (absPath) -> []string
 }
 
 // runCacheEntry guards a single cache slot so build runs exactly once
@@ -174,9 +186,23 @@ func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
 func (c *RunCache) ParsedSchema(absPath string, build func() any) any {
 	v := load(&c.parsedSchema, absPath, build)
 	if meta, ok := v.(ParsedSchemaMetadata); ok {
-		c.registerSchemaIncludes(absPath, meta.SchemaIncludes())
+		c.registerSchemaMetadata(absPath, meta)
 	}
 	return v
+}
+
+// registerSchemaMetadata captures the parsed schema's includes and
+// CUE sources into dedicated sync.Maps (so Invalidate can read them
+// race-free) and adds absPath as a dependent of every include
+// fragment on the reverse-include index. Idempotent under concurrent
+// ParsedSchema calls for the same absPath: the inner sync.Map's
+// LoadOrStore re-uses the existing set and a re-Store of the same
+// metadata slice is a benign overwrite.
+func (c *RunCache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetadata) {
+	includes := meta.SchemaIncludes()
+	c.schemaIncludes.Store(absPath, includes)
+	c.schemaCUESources.Store(absPath, meta.SchemaCUESources())
+	c.registerSchemaIncludes(absPath, includes)
 }
 
 // registerSchemaIncludes adds schemaPath as a dependent of every
@@ -248,17 +274,19 @@ func (c *RunCache) Invalidate(absPath string) {
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
 
-	// Read the parsed-schema slot's metadata before deleting it so
-	// downstream eviction sees the includes/cueSources captured at
-	// the last build. A miss (slot never populated, or already
-	// dropped by a sibling Invalidate via the dependents walk)
-	// leaves meta nil and the rest of the eviction is a no-op.
-	var meta ParsedSchemaMetadata
-	if ei, ok := c.parsedSchema.Load(absPath); ok {
-		e := ei.(*runCacheEntry)
-		if m, mok := e.val.(ParsedSchemaMetadata); mok {
-			meta = m
-		}
+	// Read the schema's includes + cueSources from the dedicated
+	// sync.Maps. Both are written AFTER ParsedSchema's load returns
+	// (post-sync.Once) and read here via sync.Map.Load, so there is
+	// no race with an in-flight build. A miss (slot never populated,
+	// or already dropped by a sibling Invalidate via the dependents
+	// walk) leaves the slices nil and the rest of the eviction is a
+	// no-op.
+	var includes, cueSources []string
+	if v, ok := c.schemaIncludes.Load(absPath); ok {
+		includes, _ = v.([]string)
+	}
+	if v, ok := c.schemaCUESources.Load(absPath); ok {
+		cueSources, _ = v.([]string)
 	}
 
 	// Drop every CompiledCUE entry the parsed schema produced. The
@@ -266,10 +294,8 @@ func (c *RunCache) Invalidate(absPath string) {
 	// front matter share one slot — invalidating absPath drops the
 	// slot for both, and the sibling recompiles on its next lookup
 	// (one CUE compile per surviving schema is the worst case).
-	if meta != nil {
-		for _, src := range meta.SchemaCUESources() {
-			c.compiledCUE.Delete(src)
-		}
+	for _, src := range cueSources {
+		c.compiledCUE.Delete(src)
 	}
 
 	// Walk the reverse-include index: every schema that included
@@ -293,8 +319,10 @@ func (c *RunCache) Invalidate(absPath string) {
 		c.schemaDependents.Delete(absPath)
 	}
 
-	// Drop the parsed-schema slot itself.
+	// Drop the parsed-schema slot and its mirrored metadata.
 	c.parsedSchema.Delete(absPath)
+	c.schemaIncludes.Delete(absPath)
+	c.schemaCUESources.Delete(absPath)
 
 	// Drop the reverse-index edges where absPath appears as a
 	// dependent — for each fragment in absPath's includes, remove
@@ -302,14 +330,12 @@ func (c *RunCache) Invalidate(absPath string) {
 	// fragment's own slot intact (it is a sibling document, not the
 	// invalidated one); only the back-pointer to absPath is
 	// removed.
-	if meta != nil {
-		for _, frag := range meta.SchemaIncludes() {
-			if frag == "" {
-				continue
-			}
-			if setI, ok := c.schemaDependents.Load(frag); ok {
-				setI.(*sync.Map).Delete(absPath)
-			}
+	for _, frag := range includes {
+		if frag == "" {
+			continue
+		}
+		if setI, ok := c.schemaDependents.Load(frag); ok {
+			setI.(*sync.Map).Delete(absPath)
 		}
 	}
 }
