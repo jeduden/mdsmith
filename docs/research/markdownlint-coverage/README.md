@@ -20,8 +20,8 @@ Status legend:
 
 Deprecated markdownlint numbers (MD002, MD006, MD008,
 MD015-MD017) are omitted. As of 2026-05 mdsmith implements
-**49 of the 52** active markdownlint rules (**47** fully, **2** partially); the
-remaining **3** are scheduled in plans 172 and 182.
+**51 of the 52** active markdownlint rules (**49** fully, **2** partially); the
+only outstanding rule is MD054, scheduled in plan 172.
 
 ## Headings
 
@@ -67,14 +67,14 @@ remaining **3** are scheduled in plans 172 and 182.
 
 ## Code blocks and code spans
 
-| markdownlint               | Checks           | mdsmith | Status      |
-|----------------------------|------------------|---------|-------------|
-| MD014 commands-show-output | `$` w/o output   | —       | 🔲 plan 182 |
-| MD031 blanks-around-fences | blank lines      | MDS015  | ✅          |
-| MD038 spaces-in-code-span  | `` ` x ` ``      | MDS052  | ✅          |
-| MD040 fenced-code-language | info string      | MDS011  | ✅          |
-| MD046 code-block-style     | fenced vs indent | —       | 🔲 plan 182 |
-| MD048 code-fence-style     | ``` vs ~~~       | MDS010  | ✅          |
+| markdownlint               | Checks           | mdsmith | Status |
+|----------------------------|------------------|---------|--------|
+| MD014 commands-show-output | `$` w/o output   | MDS066  | ✅     |
+| MD031 blanks-around-fences | blank lines      | MDS015  | ✅     |
+| MD038 spaces-in-code-span  | `` ` x ` ``      | MDS052  | ✅     |
+| MD040 fenced-code-language | info string      | MDS011  | ✅     |
+| MD046 code-block-style     | fenced vs indent | MDS065  | ✅     |
+| MD048 code-fence-style     | ``` vs ~~~       | MDS010  | ✅     |
 
 ## Links and references
 
