@@ -1,88 +1,53 @@
 baseURL = "https://mdsmith.dev/"
+enableGitInfo = false
+enableRobotsTXT = true
 locale = "en-us"
 title = "mdsmith"
-enableRobotsTXT = true
-enableGitInfo = false
 
-# Treat the site directory as the content source. The sibling
-# docs/ tree lives in the repo root but is NOT mounted directly:
-# Hugo parses shortcodes before markdown, so literal {{< ... >}}
-# patterns in files like docs/background/markdown-linters.md
-# would break the build. Instead, `mdsmith-release
-# build-website` (run locally and by the pages-deploy workflow
-# in CI) snapshots docs/ into content/docs/, escaping the
-# literal shortcode patterns, dropping proto.md schema
-# templates, and renaming index.md to _index.md.
-# content/docs/ is .gitignore'd.
-#
-# The synced tree lives on disk under content/docs/ (so the
-# .mdsmith.yml / build-output.mdsmith.yml lint globs that
-# target website/content/docs/** keep matching), but it is
-# mounted at the content root rather than under a `docs`
-# segment: every doc page is served at `/<section>/...`, not
-# `/docs/<section>/...`. The only index is the homepage
-# (content/_index.md, served at `/`). The first mount excludes
-# `docs/**` so content/docs/ is not also exposed under `/docs/`;
-# the second mount re-roots it.
+[markup]
+
+  [markup.goldmark]
+
+    [markup.goldmark.renderer]
+      unsafe = false
+
+  [markup.highlight]
+    noClasses = true
+    style = "github-dark"
+
+  [markup.tableOfContents]
+    endLevel = 4
+    startLevel = 2
+
 [module]
+
   [[module.mounts]]
+    excludeFiles = "docs/**"
     source = "content"
     target = "content"
-    excludeFiles = "docs/**"
+
   [[module.mounts]]
     source = "content/docs"
     target = "content"
+
   [[module.mounts]]
     source = "static"
     target = "static"
+
   [[module.mounts]]
     source = "layouts"
     target = "layouts"
+
   [[module.mounts]]
     source = "data"
     target = "data"
 
-[markup]
-  [markup.goldmark.renderer]
-    # Synced docs carry no raw HTML: sync-docs strips <?…?>
-    # directive markers and the content uses Markdown code
-    # spans (not literal <code>/<…> tags), so goldmark's
-    # default raw-HTML filtering loses nothing. Keep false —
-    # raw HTML in any doc would silently vanish, flagging the
-    # author to fix the source rather than ship unsanitized
-    # markup to mdsmith.dev.
-    unsafe = false
-  [markup.tableOfContents]
-    startLevel = 2
-    endLevel = 4
-  [markup.highlight]
-    # Emit inline styles rather than CSS classes — the site does
-    # not ship a Chroma stylesheet under static/css/, so the
-    # class-only form would render code blocks unstyled. Switch
-    # to noClasses = false (and vendor `chroma-<style>.css`) only
-    # when we want overridable token classes.
-    noClasses = true
-    # Dark style: every code surface on the site renders on the
-    # steel-900 panel (see `pre` / `.codeblock pre` in CSS). The
-    # old light "github" style emitted near-black token colors on
-    # that dark panel — illegible (the "white/grey on grey" bug).
-    # github-dark's light token colors sit on the dark panel with
-    # full contrast; CSS pins the panel background so Chroma's own
-    # background does not introduce a second, mismatched shade.
-    style = "github-dark"
-
-[params]
-  description = "A fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content."
-  githubRepo = "jeduden/mdsmith"
-  # `version` is tracked by mdsmith-release stamp (see
-  # internal/release/version.go — TrackedManifests). Between
-  # releases the value is the dev sentinel "0.0.0-dev"; the
-  # pages-deploy workflow rewrites it to the cleaned tag (no
-  # leading "v") before running `hugo --minify`. Templates that
-  # display this should prefix "v" in the rendered markup.
-  version = "0.0.0-dev"
-
 [outputs]
   home = ["HTML"]
-  section = ["HTML"]
   page = ["HTML"]
+  section = ["HTML"]
+
+[params]
+  description = "Write content; mdsmith keeps your Markdown neat and consistent — fast enough to stay out of your way. Auto-fix on save, instant navigation, cross-file integrity, and generated sections that keep a single source of truth in sync across files and pipelines."
+  githubRepo = "jeduden/mdsmith"
+  version = "0.0.0-dev"

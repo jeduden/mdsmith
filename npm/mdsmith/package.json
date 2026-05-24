@@ -1,7 +1,7 @@
 {
   "name": "@mdsmith/cli",
   "version": "0.0.0-dev",
-  "description": "Fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content.",
+  "description": "Write content; mdsmith keeps your Markdown neat and consistent — fast enough to stay out of your way. Auto-fix on save, instant navigation, cross-file integrity, and generated sections that keep a single source of truth in sync across files and pipelines.",
   "license": "MIT",
   "homepage": "https://mdsmith.dev",
   "repository": {

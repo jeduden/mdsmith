@@ -13,6 +13,7 @@ glob:
   - "docs/**/*.md"
   - "!docs/research/**"
   - "!docs/security/**"
+  - "!docs/brand/**"
   - "!**/proto.md"
 sort: path
 header: ""
@@ -23,7 +24,6 @@ row: "- [{summary}]({filename})"
 - [How the placeholder vocabulary lets rules treat template tokens as opaque rather than flagging them as content violations.](docs/background/concepts/placeholder-grammar.md)
 - [The mental model behind mdsmith — how flavor, rule, convention, and kind relate, how generated sections work, the placeholder grammar, and how it compares to other Markdown linters.](docs/background/index.md)
 - [How mdsmith compares to other Markdown linters.](docs/background/markdown-linters.md)
-- [Canonical slogan, lead, tagline, and per-surface descriptions for the mdsmith product. Generated fragments and the non-Markdown surfaces enumerated in plan 209 derive their copy from this file.](docs/brand/messaging.md)
 - [Running log of SOLID and clean-architecture findings on origin/main. The solid-architecture skill (audit mode) appends here; blockers are also filed as plans.](docs/development/architecture-audit.md)
 - [Checklist for sweeping origin/main for SOLID and boundary violations. Records findings in the audit log; schedules blockers as new plan files.](docs/development/architecture/audit-checklist.md)
 - [External-surface contracts: LSP, CLI, .mdsmith.yml, generated markers, plugin manifest, distribution shims. Public APIs.](docs/development/architecture/cross-system.md)
@@ -49,6 +49,7 @@ row: "- [{summary}]({filename})"
 - [GitHub fine-grained PAT for the merge-queue action. Plain repo secret — not gated by an environment.](docs/development/secret-rotations/merge-queue-token.md)
 - [Open VSX publisher token. Drives the `ovsx publish` step.](docs/development/secret-rotations/ovsx-pat.md)
 - [Visual Studio Marketplace publisher PAT issued by Azure DevOps. Drives the `vsce publish` step.](docs/development/secret-rotations/vsce-pat.md)
+- [Design rationale for `website/hugo.toml` — module mounts, Goldmark renderer flags, Chroma highlight style, and the version stamp shared with `mdsmith-release`. The TOML file itself is now machine-edited by `mdsmith-release sync-messaging`, which re-emits the file via the TOML library and drops inline comments. This page is the home for those comments.](docs/development/website-config.md)
 - [`mdsmith fix` rewrites whitespace, headings, code fences, bare URLs, list indentation, and table alignment in place, looping up to 10 passes and stopping when edits stabilize. `mdsmith check` is the read-only CI sibling.](docs/features/auto-fix.md)
 - [The `<?build?>` directive declares an artifact and a recipe. `mdsmith fix` keeps the section body in sync with the recipe output; `MDS040` shell-safety-checks the recipe without running it.](docs/features/build-artifacts.md)
 - [Config layers deep-merge rule by rule: defaults, convention, kinds, then overrides. `--explain` and `mdsmith kinds resolve` show which layer set each effective value, per leaf.](docs/features/config-transparency.md)
@@ -129,14 +130,10 @@ Copilot re-review (the skills do this automatically).
 When implementing work tracked by `plan/`:
 
 - Update the plan file **as part of implementation**, not a follow-up
-- Check off each task and acceptance criterion as it
-  is completed or verified
-- Move front-matter `status` from `🔲` to `🔳` on
-  start, then to `✅` when all criteria pass
-- If implementation deviates, update plan text to
-  match what was built
-- Run `mdsmith fix PLAN.md` after editing plan front
-  matter so the catalog table stays current
+- Check off tasks and acceptance criteria as they're verified
+- Move front-matter `status`: `🔲` → `🔳` on start, `✅` when done
+- If implementation deviates, update plan text to match
+- Run `mdsmith fix PLAN.md` after editing front matter
 
 ## Terminal Demo (`demo.tape`)
 
@@ -185,6 +182,7 @@ row: "- [{title}](docs/development/{filename})"
 - [Release Pipeline](docs/development/release.md)
 - [Release Tooling Architecture](docs/development/release-tooling.md)
 - [Secret Rotations](docs/development/secret-rotations.md)
+- [Website configuration](docs/development/website-config.md)
 <?/catalog?>
 
 ### Build & Test Commands

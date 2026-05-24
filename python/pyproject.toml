@@ -1,53 +1,35 @@
+
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+  build-backend = "hatchling.build"
+  requires = ["hatchling"]
 
 [project]
-name = "mdsmith"
-version = "0.0.0-dev"
-description = "Fast, auto-fixing Markdown linter and formatter for docs, READMEs, and AI-generated content."
-readme = "README.md"
-license = "MIT"
-# PEP 639 / hatchling: ship the root LICENSE inside the wheel so the
-# MIT notice (with its embedded third-party attribution for
-# internal/punkt/, vendored from neurosnap/sentences) reaches PyPI
-# consumers. The release tooling stages /LICENSE next to this
-# pyproject.toml before invoking `python -m build` — see
-# internal/release/buildwheels.go's stagePythonTree.
-license-files = ["LICENSE"]
-requires-python = ">=3.9"
-keywords = ["markdown", "linter", "formatter", "mdsmith", "docs"]
-classifiers = [
-  "Development Status :: 4 - Beta",
-  "Environment :: Console",
-  "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
-  "Operating System :: MacOS",
-  "Operating System :: Microsoft :: Windows",
-  "Operating System :: POSIX :: Linux",
-  "Programming Language :: Go",
-  "Programming Language :: Python :: 3",
-  "Topic :: Software Development :: Documentation",
-  "Topic :: Software Development :: Quality Assurance",
-  "Topic :: Text Processing :: Markup :: Markdown",
-]
+  classifiers = ["Development Status :: 4 - Beta", "Environment :: Console", "Intended Audience :: Developers", "License :: OSI Approved :: MIT License", "Operating System :: MacOS", "Operating System :: Microsoft :: Windows", "Operating System :: POSIX :: Linux", "Programming Language :: Go", "Programming Language :: Python :: 3", "Topic :: Software Development :: Documentation", "Topic :: Software Development :: Quality Assurance", "Topic :: Text Processing :: Markup :: Markdown"]
+  description = "Write content; mdsmith keeps your Markdown neat and consistent — fast enough to stay out of your way. Auto-fix on save, instant navigation, cross-file integrity, and generated sections that keep a single source of truth in sync across files and pipelines."
+  keywords = ["markdown", "linter", "formatter", "mdsmith", "docs"]
+  license = "MIT"
+  license-files = ["LICENSE"]
+  name = "mdsmith"
+  readme = "README.md"
+  requires-python = ">=3.9"
+  version = "0.0.0-dev"
 
-[project.scripts]
-mdsmith = "mdsmith.__main__:main"
+  [project.scripts]
+    mdsmith = "mdsmith.__main__:main"
 
-[project.urls]
-Homepage = "https://mdsmith.dev"
-Source = "https://github.com/jeduden/mdsmith"
-Issues = "https://github.com/jeduden/mdsmith/issues"
+  [project.urls]
+    Homepage = "https://mdsmith.dev"
+    Issues = "https://github.com/jeduden/mdsmith/issues"
+    Source = "https://github.com/jeduden/mdsmith"
 
-[tool.hatch.build.targets.wheel]
-packages = ["mdsmith"]
-# cmd/mdsmith-release build-wheels stages the prebuilt binary at
-# mdsmith/_bin/mdsmith[.exe] before invoking `python -m build`.
-# Hatchling otherwise drops the staged file because it isn't
-# checked in; artifacts includes both possible binary names so
-# the wheel contains whichever one build-wheels staged.
-artifacts = [
-  "mdsmith/_bin/mdsmith",
-  "mdsmith/_bin/mdsmith.exe",
-]
+[tool]
+
+  [tool.hatch]
+
+    [tool.hatch.build]
+
+      [tool.hatch.build.targets]
+
+        [tool.hatch.build.targets.wheel]
+          artifacts = ["mdsmith/_bin/mdsmith", "mdsmith/_bin/mdsmith.exe"]
+          packages = ["mdsmith"]
