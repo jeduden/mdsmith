@@ -254,41 +254,49 @@ func TestDefaultCacheDir_AppendsCorpusctlSegment(t *testing.T) {
 	}
 }
 
-// TestDefaultCacheDir_TmpFallbackWhenUserCacheDirFails covers
-// the os.UserCacheDir-failure branch via the userCacheDirFn
-// seam, so the test is portable (UserCacheDir's env-var contract
-// differs on Windows) and parallel-safe (no t.Setenv mutates
-// process-wide HOME/XDG_CACHE_HOME while sibling t.Parallel
-// tests observe them).
-func TestDefaultCacheDir_TmpFallbackWhenUserCacheDirFails(t *testing.T) {
+// TestResolveCacheDir_TmpFallbackWhenUserCacheDirFails covers
+// the os.UserCacheDir-failure branch via the parameter-injection
+// shape of resolveCacheDir, so the test is portable
+// (UserCacheDir's env-var contract differs on Windows) and
+// parallel-safe — no global stub to mutate, so this test cannot
+// race with sibling t.Parallel tests calling defaultCacheDir().
+func TestResolveCacheDir_TmpFallbackWhenUserCacheDirFails(t *testing.T) {
 	t.Parallel()
-	prev := userCacheDirFn
-	t.Cleanup(func() { userCacheDirFn = prev })
-	userCacheDirFn = func() (string, error) {
+	got := resolveCacheDir(func() (string, error) {
 		return "", errors.New("forced failure")
-	}
-	got := defaultCacheDir()
+	})
 	if !strings.Contains(got, os.TempDir()) {
-		t.Errorf("defaultCacheDir() = %q, must fall back to TempDir %q",
+		t.Errorf("resolveCacheDir(...) = %q, must fall back to TempDir %q",
 			got, os.TempDir())
 	}
 	if !strings.HasSuffix(got, "corpusctl") {
-		t.Errorf("defaultCacheDir() = %q, must end in 'corpusctl'", got)
+		t.Errorf("resolveCacheDir(...) = %q, must end in 'corpusctl'", got)
 	}
 }
 
-// TestDefaultCacheDir_EmptyUserCacheDirAlsoFallsBack covers the
+// TestResolveCacheDir_EmptyUserCacheDirAlsoFallsBack covers the
 // secondary `userCacheDir == ""` guard. UserCacheDir can return
 // "" + nil on platforms where the env is set to "", and the
 // helper must treat that the same as an error.
-func TestDefaultCacheDir_EmptyUserCacheDirAlsoFallsBack(t *testing.T) {
+func TestResolveCacheDir_EmptyUserCacheDirAlsoFallsBack(t *testing.T) {
 	t.Parallel()
-	prev := userCacheDirFn
-	t.Cleanup(func() { userCacheDirFn = prev })
-	userCacheDirFn = func() (string, error) { return "", nil }
-	got := defaultCacheDir()
+	got := resolveCacheDir(func() (string, error) { return "", nil })
 	if !strings.Contains(got, os.TempDir()) {
-		t.Errorf("defaultCacheDir() = %q, must fall back to TempDir %q",
+		t.Errorf("resolveCacheDir(...) = %q, must fall back to TempDir %q",
 			got, os.TempDir())
+	}
+}
+
+// TestResolveCacheDir_HappyPath pins the success path: when the
+// lookup returns a directory, the corpusctl-scoped subdirectory
+// is appended.
+func TestResolveCacheDir_HappyPath(t *testing.T) {
+	t.Parallel()
+	got := resolveCacheDir(func() (string, error) {
+		return "/home/user/.cache", nil
+	})
+	if got != "/home/user/.cache/corpusctl" {
+		t.Errorf("resolveCacheDir(...) = %q, want %q",
+			got, "/home/user/.cache/corpusctl")
 	}
 }
