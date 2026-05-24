@@ -12,6 +12,8 @@ import {
   TransportKind
 } from "vscode-languageclient/node";
 
+import type { BinaryCandidate } from "./binary";
+
 // FileSystemWatcherLike is the structural subset of
 // vscode.FileSystemWatcher that LanguageClientOptions.synchronize.fileEvents
 // actually consults. Tests can pass a bare object literal.
@@ -93,11 +95,77 @@ export function buildClientOptions(
   return opts;
 }
 
-export function startupErrorMessage(err: unknown): string {
-  return (
-    `Failed to start mdsmith Language Server: ${err}. ` +
-    `Set the binary path with the "mdsmith.path" setting or download mdsmith.`
-  );
+// StartupErrorContext captures what the resolver knew at the moment
+// the LanguageClient failed to spawn: the user's raw mdsmith.path,
+// the command we actually tried, and every alternative binary
+// findBinaryCandidates found on disk. Optional so the basic form
+// (cause + settings hint) stays available when no resolver state is
+// at hand.
+export interface StartupErrorContext {
+  configuredPath: string;
+  resolvedCommand: string;
+  candidates: ReadonlyArray<BinaryCandidate>;
+}
+
+export function startupErrorMessage(
+  err: unknown,
+  ctx?: StartupErrorContext,
+): string {
+  if (!ctx) {
+    return (
+      `Failed to start mdsmith Language Server: ${err}. ` +
+      `Set the binary path with the "mdsmith.path" setting or download mdsmith.`
+    );
+  }
+  const lines: string[] = [
+    `Failed to start mdsmith Language Server: ${err}.`,
+    "",
+    `"mdsmith.path": ${formatConfiguredPath(ctx.configuredPath)}`,
+  ];
+  if (ctx.resolvedCommand !== ctx.configuredPath) {
+    // Only echo the resolved command when the resolver substituted
+    // one (empty/whitespace mdsmith.path → bundled binary). Otherwise
+    // it's the same string the user already sees on the previous line.
+    lines.push(`resolved command: ${ctx.resolvedCommand}`);
+  }
+  lines.push("");
+  if (ctx.candidates.length === 0) {
+    lines.push("No other mdsmith binaries found on this system.");
+    lines.push("");
+    lines.push(
+      `Install mdsmith and either set "mdsmith.path" to its absolute ` +
+        `location or put it on $PATH, then run "mdsmith: Restart ` +
+        `Language Server".`,
+    );
+  } else {
+    lines.push("Other mdsmith binaries found on this system:");
+    for (const c of ctx.candidates) {
+      lines.push(`  - ${candidateLabel(c)}: ${c.path}`);
+    }
+    lines.push("");
+    lines.push(
+      `Set "mdsmith.path" to one of these (or clear it to use the bundled ` +
+        `binary) and run "mdsmith: Restart Language Server".`,
+    );
+  }
+  return lines.join("\n");
+}
+
+function formatConfiguredPath(p: string): string {
+  // Empty / whitespace mdsmith.path is the default; calling it out
+  // explicitly stops the user from chasing an empty-string setting
+  // when the resolver actually fell through to the bundled binary.
+  if (p.trim() === "") return "(unset, using bundled)";
+  return `"${p}"`;
+}
+
+function candidateLabel(c: BinaryCandidate): string {
+  switch (c.kind) {
+    case "bundled":
+      return "bundled with the extension";
+    case "path":
+      return "on $PATH";
+  }
 }
 
 // Minimal shapes of the bits of vscode.CodeAction / WorkspaceEdit /

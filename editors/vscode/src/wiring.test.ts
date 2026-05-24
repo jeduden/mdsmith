@@ -130,6 +130,84 @@ describe("startupErrorMessage", () => {
     const msg = startupErrorMessage("plain-string");
     expect(msg).toContain("plain-string");
   });
+
+  test("surfaces the configured mdsmith.path when supplied", () => {
+    // The reported failure mode: a stale mdsmith.path pointing at a
+    // dev-only file. Echo the exact configured value back to the user
+    // so they can spot the mismatch without opening settings.
+    const msg = startupErrorMessage(new Error("spawn /tmp/mdsmith-debug ENOENT"), {
+      configuredPath: "/tmp/mdsmith-debug",
+      resolvedCommand: "/tmp/mdsmith-debug",
+      candidates: [],
+    });
+    expect(msg).toContain('"mdsmith.path": "/tmp/mdsmith-debug"');
+  });
+
+  test("labels an empty mdsmith.path as (unset) instead of empty quotes", () => {
+    // Distinguish "no setting" from `mdsmith.path=""` so the user
+    // does not think a stray whitespace value is what failed.
+    const msg = startupErrorMessage(new Error("oops"), {
+      configuredPath: "",
+      resolvedCommand: "/ext/dist/cli/@mdsmith/linux-x64/bin/mdsmith",
+      candidates: [],
+    });
+    expect(msg).toContain('"mdsmith.path": (unset, using bundled)');
+  });
+
+  test("lists discovered alternatives with kind labels", () => {
+    const msg = startupErrorMessage(new Error("spawn /tmp/mdsmith-debug ENOENT"), {
+      configuredPath: "/tmp/mdsmith-debug",
+      resolvedCommand: "/tmp/mdsmith-debug",
+      candidates: [
+        { kind: "bundled", path: "/ext/dist/cli/@mdsmith/linux-x64/bin/mdsmith" },
+        { kind: "path", path: "/usr/local/bin/mdsmith" },
+      ],
+    });
+    expect(msg).toContain("Other mdsmith binaries found");
+    expect(msg).toContain("bundled with the extension: /ext/dist/cli/@mdsmith/linux-x64/bin/mdsmith");
+    expect(msg).toContain("on $PATH: /usr/local/bin/mdsmith");
+  });
+
+  test("says no alternatives were found when the candidate list is empty", () => {
+    // Otherwise the user is left wondering whether the resolver
+    // looked at all — making the negative result explicit is what
+    // tells them to install mdsmith or fix the path themselves.
+    const msg = startupErrorMessage(new Error("spawn mdsmith ENOENT"), {
+      configuredPath: "mdsmith",
+      resolvedCommand: "mdsmith",
+      candidates: [],
+    });
+    expect(msg).toContain("No other mdsmith binaries found on this system");
+    // The "pick one of these" prompt doesn't apply when there are
+    // no candidates; the trailing instructions must redirect the
+    // user to install mdsmith instead.
+    expect(msg).not.toContain("one of these");
+    expect(msg).toContain("Install mdsmith");
+  });
+
+  test("does not duplicate the resolved command when it matches configured", () => {
+    // configuredPath and resolvedCommand only diverge when the
+    // configured value was empty/whitespace and the resolver
+    // substituted the bundled path. Showing both lines when they are
+    // equal just adds noise to an already busy error.
+    const msg = startupErrorMessage(new Error("oops"), {
+      configuredPath: "/tmp/mdsmith-debug",
+      resolvedCommand: "/tmp/mdsmith-debug",
+      candidates: [],
+    });
+    expect(msg).not.toContain("resolved command");
+  });
+
+  test("shows the resolved command when the resolver substituted it", () => {
+    const msg = startupErrorMessage(new Error("oops"), {
+      configuredPath: "",
+      resolvedCommand: "/ext/dist/cli/@mdsmith/linux-x64/bin/mdsmith",
+      candidates: [],
+    });
+    expect(msg).toContain(
+      "resolved command: /ext/dist/cli/@mdsmith/linux-x64/bin/mdsmith",
+    );
+  });
 });
 
 describe("collectFixAllEdits", () => {

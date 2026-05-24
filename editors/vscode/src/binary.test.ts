@@ -18,7 +18,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CliShim, resolveBinary } from "./binary";
+import { type CliShim, findBinaryCandidates, resolveBinary } from "./binary";
 
 // The real, published resolver. Loaded by path (not a bare import) so
 // tsc never pulls a cross-package .js into the extension's rootDir and
@@ -206,6 +206,131 @@ describe("cross-package platform matrix (drift guard)", () => {
       });
       expect(r).toBe(join(cliDir, "@mdsmith", target, "bin", exe));
     }
+  });
+});
+
+describe("findBinaryCandidates", () => {
+  // Used by the LSP-start failure path to tell the user where else
+  // mdsmith was found on this machine, so a stale custom mdsmith.path
+  // is recoverable without guessing.
+
+  test("reports the bundled host binary when staged", () => {
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "linux",
+      arch: "x64",
+      fileExists: bundledTree(["linux-x64"]),
+      loadShim: () => canonicalShim,
+      pathEnv: "",
+    });
+    expect(candidates).toEqual([
+      {
+        kind: "bundled",
+        path: join(cliDir, "@mdsmith", "linux-x64", "bin", "mdsmith"),
+      },
+    ]);
+  });
+
+  test("finds an mdsmith on PATH alongside the bundled binary", () => {
+    const onPath = "/usr/local/bin/mdsmith";
+    const present = new Set<string>([
+      join(cliDir, "mdsmith.js"),
+      join(cliDir, "@mdsmith", "linux-x64", "bin", "mdsmith"),
+      onPath,
+    ]);
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "linux",
+      arch: "x64",
+      fileExists: (p) => present.has(p),
+      loadShim: () => canonicalShim,
+      pathEnv: "/usr/bin:/usr/local/bin",
+    });
+    expect(candidates).toEqual([
+      {
+        kind: "bundled",
+        path: join(cliDir, "@mdsmith", "linux-x64", "bin", "mdsmith"),
+      },
+      { kind: "path", path: onPath },
+    ]);
+  });
+
+  test("returns only the PATH hit when nothing is bundled", () => {
+    const onPath = "/opt/homebrew/bin/mdsmith";
+    const present = new Set<string>([onPath]);
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "darwin",
+      arch: "arm64",
+      fileExists: (p) => present.has(p),
+      loadShim: () => canonicalShim,
+      pathEnv: "/opt/homebrew/bin:/usr/local/bin",
+    });
+    expect(candidates).toEqual([{ kind: "path", path: onPath }]);
+  });
+
+  test("returns [] when neither bundled nor PATH yields a hit", () => {
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "linux",
+      arch: "x64",
+      fileExists: () => false,
+      loadShim: () => canonicalShim,
+      pathEnv: "/usr/bin:/usr/local/bin",
+    });
+    expect(candidates).toEqual([]);
+  });
+
+  test("splits PATH on ';' and tries PATHEXT extensions on win32", () => {
+    // On Windows, mdsmith.exe lives next to PATH entries and the
+    // resolver must append PATHEXT to bare "mdsmith" to find it.
+    const exe = "C:\\tools\\mdsmith.exe";
+    const present = new Set<string>([exe]);
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "win32",
+      arch: "x64",
+      fileExists: (p) => present.has(p),
+      loadShim: () => canonicalShim,
+      pathEnv: "C:\\Windows;C:\\tools",
+      // PATHEXT case is preserved through the join, so we test the
+      // lowercase form to mirror what shows up in real registries.
+      pathExt: ".com;.exe;.bat",
+    });
+    expect(candidates).toEqual([{ kind: "path", path: exe }]);
+  });
+
+  test("ignores PATH entirely when the env var is empty", () => {
+    // An empty PATH is a real case in restricted CI runners; the
+    // resolver must not invent candidates from nothing.
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "linux",
+      arch: "x64",
+      fileExists: () => true,
+      loadShim: () => canonicalShim,
+      pathEnv: "",
+    });
+    // fileExists returns true for everything, so the bundled lookup
+    // succeeds; the PATH branch must contribute nothing here.
+    expect(candidates).toEqual([
+      {
+        kind: "bundled",
+        path: join(cliDir, "@mdsmith", "linux-x64", "bin", "mdsmith"),
+      },
+    ]);
+  });
+
+  test("survives a corrupt shim and still returns the PATH hit", () => {
+    const onPath = "/usr/bin/mdsmith";
+    const present = new Set<string>([
+      join(cliDir, "mdsmith.js"),
+      onPath,
+    ]);
+    const candidates = findBinaryCandidates(EXT, {
+      platform: "linux",
+      arch: "x64",
+      fileExists: (p) => present.has(p),
+      loadShim: () => {
+        throw new Error("corrupt shim");
+      },
+      pathEnv: "/usr/bin",
+    });
+    expect(candidates).toEqual([{ kind: "path", path: onPath }]);
   });
 });
 

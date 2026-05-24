@@ -18,7 +18,7 @@ import {
   collectFixAllEdits,
   startupErrorMessage
 } from "./wiring";
-import { resolveBinary } from "./binary";
+import { findBinaryCandidates, resolveBinary } from "./binary";
 import { runFixWorkspace } from "./commands/fix-workspace";
 import { runInit } from "./commands/init";
 import { runMergeDriverInstall } from "./commands/merge-driver";
@@ -126,8 +126,18 @@ async function startServer(context: vscode.ExtensionContext): Promise<void> {
     // never reached the running state, throwing inside vscode-
     // languageclient. Also tear down the watcher; startServer
     // will install a fresh one on next attempt.
+    const candidates = findBinaryCandidates(context.extensionPath);
+    const detail = startupErrorMessage(err, {
+      configuredPath,
+      resolvedCommand: binary,
+      candidates,
+    });
+    // Mirror the full diagnostic to the Output channel so the user
+    // can scroll, copy, and inspect every candidate path — VS Code
+    // truncates long error notifications, but the channel does not.
+    getOutputChannel().appendLine(detail);
     const choice = await vscode.window.showErrorMessage(
-      startupErrorMessage(err),
+      detail,
       "Download mdsmith",
       "Open Settings",
       "Show Output"

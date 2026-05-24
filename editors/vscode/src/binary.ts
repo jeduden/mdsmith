@@ -16,7 +16,7 @@
 // five platform binaries; see editors/vscode/build.ts.
 
 import { chmodSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix as posixPath, win32 as win32Path } from "node:path";
 
 // CliShim is the structural subset of npm/mdsmith/bin/mdsmith.js this
 // module consumes. resolveBinary(platform, arch, resolve) maps the
@@ -38,6 +38,20 @@ export interface ResolveDeps {
   fileExists?: (p: string) => boolean;
   loadShim?: (shimPath: string) => CliShim;
   makeExecutable?: (p: string) => void;
+  // pathEnv / pathExt are only consulted by findBinaryCandidates.
+  // Defaulted to process.env so production code never has to plumb
+  // them; tests pin them so the candidate set is deterministic.
+  pathEnv?: string;
+  pathExt?: string;
+}
+
+// BinaryCandidate is one location where the `mdsmith` executable
+// actually exists on this host, alongside what kind of source it
+// came from. The LSP-start failure path uses these to tell the user
+// where else they could point mdsmith.path.
+export interface BinaryCandidate {
+  kind: "bundled" | "path";
+  path: string;
 }
 
 function loadShimFromDisk(shimPath: string): CliShim {
@@ -109,4 +123,102 @@ export function resolveBinary(
     }
   }
   return "mdsmith";
+}
+
+// resolveBundledBinary returns the bundled binary path for `platform`
+// + `arch` when the .vsix actually ships one, or undefined otherwise.
+// Shared between resolveBinary's happy path and findBinaryCandidates;
+// returning undefined (rather than throwing or falling back to PATH)
+// lets each caller pick its own fallback.
+function resolveBundledBinary(
+  extensionPath: string,
+  platform: string,
+  arch: string,
+  fileExists: (p: string) => boolean,
+  loadShim: (shimPath: string) => CliShim,
+): string | undefined {
+  const cliDir = join(extensionPath, "dist", "cli");
+  const shimPath = join(cliDir, "mdsmith.js");
+  if (!fileExists(shimPath)) return undefined;
+  try {
+    const shim = loadShim(shimPath);
+    const bundled = shim.resolveBinary(platform, arch, (id) => {
+      const p = join(cliDir, id);
+      if (!fileExists(p)) {
+        throw new Error(`mdsmith: bundled binary not found: ${p}`);
+      }
+      return p;
+    });
+    return fileExists(bundled) ? bundled : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// whichBinary mirrors `which mdsmith` / `where mdsmith` against a
+// supplied PATH string. Returns the first hit so the candidate list
+// stays short — the LSP only ever spawns one binary, and showing
+// every shadowed copy would just be noise in the error message.
+//
+// Uses the platform-specific `path` join so a win32 lookup produces
+// `C:\\dir\\mdsmith.exe` even when the test (or extension host) is
+// running on posix, instead of mixing separators.
+function whichBinary(
+  name: string,
+  platform: string,
+  pathEnv: string,
+  pathExt: string,
+  fileExists: (p: string) => boolean,
+): string | undefined {
+  if (!pathEnv) return undefined;
+  const isWin = platform === "win32";
+  const sep = isWin ? ";" : ":";
+  const joiner = isWin ? win32Path.join : posixPath.join;
+  const exts = isWin
+    ? pathExt.split(";").filter((e) => e.length > 0)
+    : [""];
+  for (const dir of pathEnv.split(sep)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = joiner(dir, name + ext);
+      if (fileExists(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+// findBinaryCandidates lists the mdsmith binaries that actually
+// exist on this host: the .vsix-bundled one for the current
+// platform (if staged) and the first `mdsmith` on PATH (if any).
+// Returned in priority order — bundled first, then PATH — matching
+// what resolveBinary would prefer if mdsmith.path were cleared.
+//
+// Used by the LSP-start failure path so a stale custom mdsmith.path
+// surfaces alongside the alternatives the user could switch to.
+export function findBinaryCandidates(
+  extensionPath: string,
+  deps: ResolveDeps = {},
+): BinaryCandidate[] {
+  const platform = deps.platform ?? process.platform;
+  const arch = deps.arch ?? process.arch;
+  const fileExists = deps.fileExists ?? existsSync;
+  const loadShim = deps.loadShim ?? loadShimFromDisk;
+  const pathEnv = deps.pathEnv ?? process.env.PATH ?? "";
+  const pathExt =
+    deps.pathExt ?? process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
+
+  const out: BinaryCandidate[] = [];
+  const bundled = resolveBundledBinary(
+    extensionPath,
+    platform,
+    arch,
+    fileExists,
+    loadShim,
+  );
+  if (bundled) out.push({ kind: "bundled", path: bundled });
+
+  const onPath = whichBinary("mdsmith", platform, pathEnv, pathExt, fileExists);
+  if (onPath) out.push({ kind: "path", path: onPath });
+
+  return out;
 }
