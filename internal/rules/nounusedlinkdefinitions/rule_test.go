@@ -426,3 +426,41 @@ func TestCollectUsedLabelsInto_NilNode(t *testing.T) {
 	collectUsedLabelsInto(nil, used)
 	assert.Empty(t, used)
 }
+
+// TestIsLabelUsedInAST_ImageReference exercises the *ast.Image
+// branch of isLabelUsedInAST. The single-def Check path
+// short-circuits via this helper; a reference-style image
+// (`![alt][ref]`) must keep the def from being flagged unused
+// just like a reference-style link does.
+func TestIsLabelUsedInAST_ImageReference(t *testing.T) {
+	src := "# Title\n\n![alt][ref]\n\n[ref]: /path.png\n"
+	diags := (&Rule{}).Check(newFile(t, src))
+	require.Empty(t, diags, "image reference should keep def alive")
+}
+
+// TestIsLabelUsedInAST_NilNode covers the nil guard at the
+// top of isLabelUsedInAST. Called directly with nil — the
+// production caller never passes nil but the guard is part
+// of the helper's contract.
+func TestIsLabelUsedInAST_NilNode(t *testing.T) {
+	if isLabelUsedInAST(nil, "anything") {
+		t.Fatal("isLabelUsedInAST(nil, ...) = true, want false")
+	}
+}
+
+// TestCheck_MultiDefs_IgnoredLabel covers the ignored branch
+// in checkMultiDefs. The single-def Check path already tested
+// the ignored-label short-circuit; this case has two defs so
+// the multi-defs path runs and the ignored branch must skip
+// the duplicate/used check on the matching label.
+func TestCheck_MultiDefs_IgnoredLabel(t *testing.T) {
+	src := "# Title\n\nSee [link].\n\n[link]: https://example.com\n" +
+		"[kept]: https://example.com/other\n"
+	r := &Rule{}
+	require.NoError(t, r.ApplySettings(map[string]any{
+		"ignored-labels": []any{"kept"},
+	}))
+	// `link` is defined and used (no diag), `kept` is ignored
+	// (no diag even though it has no reference link to it).
+	assert.Empty(t, r.Check(newFile(t, src)))
+}

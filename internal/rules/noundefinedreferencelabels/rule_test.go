@@ -453,3 +453,13 @@ func TestScanFullRefs_SecondBracketUnclosed(t *testing.T) {
 	diags := r.Check(f)
 	assert.Empty(t, diags, "unclosed second bracket: must not flag a full-ref")
 }
+
+// TestCheck_NoBracketEarlyExit pins the bytes.ContainsRune
+// fast path added by plan 195 task 7: a source with no `[`
+// returns nil before allocating the defs slice or walking
+// the AST. Removing the early-exit silently re-pays the
+// alloc-budget delta this rule was grandfathered against.
+func TestCheck_NoBracketEarlyExit(t *testing.T) {
+	src := "# Title\n\nProse with no brackets at all.\n"
+	require.Empty(t, check(t, src))
+}
