@@ -1084,6 +1084,24 @@ func TestApplySettings_Links_UnknownKey(t *testing.T) {
 	require.Contains(t, err.Error(), "unknown links setting")
 }
 
+// TestApplySettings_Links_ToleratesMDS068Keys verifies the shared
+// `links:` block stays usable when both MDS027 and MDS068 are
+// configured from the same YAML body. MDS068's keys (`style`,
+// `external-skip`) reach MDS027 too; they must parse without
+// erroring even though MDS027 ignores them at runtime.
+func TestApplySettings_Links_ToleratesMDS068Keys(t *testing.T) {
+	r := &Rule{}
+	err := r.ApplySettings(map[string]any{
+		"links": map[string]any{
+			"site-root":     "/srv",
+			"style":         map[string]any{"path": "relative"},
+			"external-skip": []any{"^https?://localhost"},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "/srv", r.Links.SiteRoot)
+}
+
 func TestDefaultSettings_Links(t *testing.T) {
 	r := &Rule{}
 	ds := r.DefaultSettings()

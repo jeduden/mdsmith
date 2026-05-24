@@ -196,9 +196,12 @@ Mixed relative/absolute, `.md`/extensionless, and
 inline/reference within one doc set (census: `docs/` is
 ~50% reference-style, rule READMEs ~0%). Today: no
 signal. Should: an opt-in rule flags deviation from a
-per-kind declared style. **Decision: (a)** — new opt-in
-rule `link-style` reading the shared `links:` block
-(below). Plan 172.
+per-kind declared style. **Decision: (a), shipped.** —
+opt-in
+[MDS068 `link-style`](../../../internal/rules/MDS068-link-style/README.md)
+reads the shared `links:` block (below) and flags
+deviation on three independent axes — `style.path`,
+`style.extension`, `style.form`. Plan 172.
 
 ### G9 — Heading-anchor stability across renderers
 
@@ -248,18 +251,24 @@ folding network I/O into it would make every CI run
 network-bound and flaky. A separate off-by-default rule
 (`external-link-check`) with skip patterns, caching, and
 a timeout keeps offline CI fast and the failure modes
-isolated. Tracked by issue #47; Plan 172 carries the
-shared skip-pattern config it depends on, so the rule
-lands on a config foundation rather than inventing its
-own.
+isolated. Tracked by issue #47. Plan 172 lands the
+shared `links.external-skip` parser on MDS068 so the
+future rule can read the same YAML key without inventing
+its own schema.
 
-## Sketched `links:` config block
+## Shared `links:` config block
 
-Design only — no parser changes in this audit. A shared
-block under `.mdsmith.yml`, deep-merged per kind like
-every other rule config, consumed by MDS027 (G1–G3) and
-the new `link-style` rule (G8), and supplying the skip
-list issue #47's rule (G13) reuses:
+The `links:` sub-block lives under each link-aware rule
+in `.mdsmith.yml` (one consumer per rule, deep-merged
+per kind like every other rule config). MDS027 reads
+`site-root`, `validate-images`, and
+`validate-reference-style` (G1–G3); MDS068 reads
+`style` and `external-skip` (G8); a future
+`external-link-check` rule (G13) will read
+`external-skip` from its own copy of the block. Each
+rule tolerates the others' keys without erroring, so a
+single YAML body can be pasted under both rule names
+when a project wants identical settings:
 
 ```yaml
 links:

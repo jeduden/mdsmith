@@ -1,7 +1,7 @@
 ---
 id: 172
 title: Link-style rule and shared links config
-status: "🔲"
+status: "✅"
 model: opus
 depends-on: [170, 171]
 summary: >-
@@ -57,12 +57,12 @@ also adds the rule that consumes `style:`.
 
 ## Acceptance Criteria
 
-- [ ] `link-style` is opt-in (off by default) and
+- [x] `link-style` is opt-in (off by default) and
   flags path/extension/form deviations per kind.
-- [ ] Per-kind override changes the verdict for the
+- [x] Per-kind override changes the verdict for the
   same link in two kinds.
-- [ ] `links.external-skip` parses and is readable by
+- [x] `links.external-skip` parses and is readable by
   rule code.
-- [ ] Rule README exists and is in the rule catalog.
-- [ ] All tests pass: `go test ./...`.
-- [ ] `go tool golangci-lint run` reports no issues.
+- [x] Rule README exists and is in the rule catalog.
+- [x] All tests pass: `go test ./...`.
+- [x] `go tool golangci-lint run` reports no issues.

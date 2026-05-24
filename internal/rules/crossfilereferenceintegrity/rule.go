@@ -695,6 +695,12 @@ func (r *Rule) applyLinksSettings(m map[string]any) error {
 				)
 			}
 			r.Links.ValidateReferenceStyle = b
+		// MDS068's keys are tolerated so a single shared `links:`
+		// block can configure both rules without forcing the user
+		// to split the YAML. MDS068 reads the values from its own
+		// settings map; here they are no-ops.
+		case "style", "external-skip":
+			// no-op for cross-file-reference-integrity
 		default:
 			return fmt.Errorf(
 				"cross-file-reference-integrity: unknown links setting %q",
