@@ -163,6 +163,7 @@ func copyKinds(kinds map[string]KindBody) map[string]KindBody {
 			Schema:      cloneSettings(body.Schema),
 			PathPattern: body.PathPattern,
 			Extends:     body.Extends,
+			SourcePath:  body.SourcePath,
 		}
 	}
 	return result

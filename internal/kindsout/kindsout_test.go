@@ -389,6 +389,83 @@ func TestWriteFileResolutionText_Full(t *testing.T) {
 	assert.Contains(t, out, "(from kinds.short)")
 }
 
+// TestWriteFileResolutionText_RendersSourcePath pins plan 208's
+// CLI surface: a file resolution carrying a SourcePath on each
+// kind prints `defined-in <path>` after the assignment metadata.
+// The format is "<name> (from <source>)<space>defined-in <path>"
+// — the path lives outside the `from (...)` parens so the
+// existing `(from ...)` substring assertions in the e2e tests
+// keep matching.
+func TestWriteFileResolutionText_RendersSourcePath(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length": {Enabled: true, Settings: map[string]any{"max": 30}},
+		},
+		Kinds: map[string]config.KindBody{
+			"audit-log": {
+				Rules: map[string]config.RuleCfg{
+					"line-length": {Enabled: true, Settings: map[string]any{"max": 30}},
+				},
+				SourcePath: "/repo/.mdsmith/kinds/audit-log.yaml",
+			},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Glob: []string{"x.md"}, Kinds: []string{"audit-log"}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	var buf bytes.Buffer
+	require.NoError(t, WriteFileResolutionText(&buf, res))
+	out := buf.String()
+	assert.Contains(t, out,
+		"audit-log (from kind-assignment[0]: glob x.md) defined-in /repo/.mdsmith/kinds/audit-log.yaml")
+}
+
+// TestFileResolutionJSON_IncludesSourcePath pins the
+// `source-path` field in JSON output. LSP and audit tooling
+// keys off this stable field rather than parsing text.
+func TestFileResolutionJSON_IncludesSourcePath(t *testing.T) {
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{"line-length": {Enabled: true}},
+		Kinds: map[string]config.KindBody{
+			"audit-log": {SourcePath: "/repo/.mdsmith/kinds/audit-log.yaml"},
+		},
+		KindAssignment: []config.KindAssignmentEntry{
+			{Glob: []string{"x.md"}, Kinds: []string{"audit-log"}},
+		},
+	}
+	res := config.ResolveFile(cfg, "x.md", nil, nil)
+	out := FileResolution(res)
+	require.Len(t, out.Kinds, 1)
+	assert.Equal(t, "/repo/.mdsmith/kinds/audit-log.yaml",
+		out.Kinds[0].SourcePath)
+}
+
+// TestMakeBodyJSON_IncludesSourcePath pins the new `source-path`
+// JSON key on the body output for `kinds list` / `kinds show`.
+func TestMakeBodyJSON_IncludesSourcePath(t *testing.T) {
+	body := config.KindBody{
+		Rules:      map[string]config.RuleCfg{"line-length": {Enabled: true}},
+		SourcePath: "/repo/.mdsmith/kinds/audit-log.yaml",
+	}
+	out := MakeBodyJSON("audit-log", body, nil)
+	assert.Equal(t, "/repo/.mdsmith/kinds/audit-log.yaml", out.SourcePath)
+}
+
+// TestWriteBodyText_RendersDefinedIn pins the text surface for
+// `kinds show` / `kinds list`: the source path appears on a
+// `defined-in:` line right under the kind name.
+func TestWriteBodyText_RendersDefinedIn(t *testing.T) {
+	body := config.KindBody{
+		Rules:      map[string]config.RuleCfg{"line-length": {Enabled: true}},
+		SourcePath: "/repo/.mdsmith/kinds/audit-log.yaml",
+	}
+	var buf bytes.Buffer
+	require.NoError(t, WriteBodyText(&buf, "audit-log", body, nil))
+	assert.Contains(t, buf.String(),
+		"defined-in: /repo/.mdsmith/kinds/audit-log.yaml")
+}
+
 func TestWriteFileResolutionText_NoKinds(t *testing.T) {
 	cfg := &config.Config{
 		Rules: map[string]config.RuleCfg{"line-length": {Enabled: true}},

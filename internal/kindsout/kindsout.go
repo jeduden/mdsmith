@@ -31,6 +31,10 @@ type BodyJSON struct {
 	Extends              string                 `json:"extends,omitempty"`
 	ExtendsChain         []string               `json:"extends-chain,omitempty"`
 	EffectiveFrontmatter []FrontmatterLeafJSON  `json:"effective-frontmatter,omitempty"`
+	// SourcePath, when set, is the file that defined the kind body
+	// (`.mdsmith.yml` for inline kinds, `.mdsmith/kinds/<name>.{yaml,yml}`
+	// for file kinds; plan 208).
+	SourcePath string `json:"source-path,omitempty"`
 }
 
 // FrontmatterLeafJSON describes one effective frontmatter key after
@@ -74,6 +78,7 @@ func MakeBodyJSON(name string, body config.KindBody, kinds map[string]config.Kin
 		Categories:  body.Categories,
 		PathPattern: body.PathPattern,
 		Extends:     body.Extends,
+		SourcePath:  body.SourcePath,
 	}
 	if kinds == nil || body.Extends == "" {
 		return out
@@ -172,11 +177,14 @@ func RuleCfgValue(rc config.RuleCfg) any {
 // ResolvedKindJSON names a kind in the effective list and how it was
 // assigned ("front-matter" or "kind-assignment[<i>]"). Selector, when
 // non-empty, describes the selectors that fired on a kind-assignment
-// match ("glob a,b AND fields-present x").
+// match ("glob a,b AND fields-present x"). SourcePath, when set, is
+// the file that defined the kind body (`.mdsmith.yml` for inline
+// kinds, `.mdsmith/kinds/<name>.{yaml,yml}` for file kinds; plan 208).
 type ResolvedKindJSON struct {
-	Name     string `json:"name"`
-	Source   string `json:"source"`
-	Selector string `json:"selector,omitempty"`
+	Name       string `json:"name"`
+	Source     string `json:"source"`
+	Selector   string `json:"selector,omitempty"`
+	SourcePath string `json:"source-path,omitempty"`
 }
 
 // LeafJSON is one effective leaf with its winning source and the chain
@@ -236,7 +244,10 @@ func FileResolution(res *config.FileResolution) FileResolutionJSON {
 	}
 	for _, k := range res.Kinds {
 		out.Kinds = append(out.Kinds, ResolvedKindJSON{
-			Name: k.Name, Source: string(k.Source), Selector: k.Selector,
+			Name:       k.Name,
+			Source:     string(k.Source),
+			Selector:   k.Selector,
+			SourcePath: k.SourcePath,
 		})
 	}
 	for name, rr := range res.Rules {
@@ -305,6 +316,12 @@ func WriteBodyText(
 ) error {
 	if _, err := fmt.Fprintf(w, "%s:\n", sanitizeControl(name)); err != nil {
 		return err
+	}
+	if body.SourcePath != "" {
+		if _, err := fmt.Fprintf(w, "  defined-in: %s\n",
+			sanitizeControl(body.SourcePath)); err != nil {
+			return err
+		}
 	}
 	if err := writeExtendsHeader(w, name, body, kinds); err != nil {
 		return err
@@ -419,8 +436,12 @@ func WriteFileResolutionText(w io.Writer, res *config.FileResolution) error {
 			if k.Selector != "" {
 				src = src + ": " + sanitizeControl(k.Selector)
 			}
-			if _, err := fmt.Fprintf(w, "  - %s (from %s)\n",
-				sanitizeControl(k.Name), src); err != nil {
+			suffix := ""
+			if k.SourcePath != "" {
+				suffix = " defined-in " + sanitizeControl(k.SourcePath)
+			}
+			if _, err := fmt.Fprintf(w, "  - %s (from %s)%s\n",
+				sanitizeControl(k.Name), src, suffix); err != nil {
 				return err
 			}
 		}
