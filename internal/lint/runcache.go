@@ -278,10 +278,15 @@ func (c *RunCache) CompiledCUE(source string, build func() any) any {
 //     is cheap), and
 //   - every schema in schemaDependents[absPath] is recursively
 //     Invalidated (their cached parses depended on absPath as a
-//     fragment, so a fragment edit must propagate). Recursion is
-//     bounded by the schema-include depth cap the producer enforces
-//     and by the finite set of registered schemas; the include
-//     parser's no-cycle guarantee carries through.
+//     fragment, so a fragment edit must propagate). The reverse-
+//     include graph CAN contain cycles — extractSchemaHeadings
+//     surfaces both edges of an include cycle on its error path so
+//     a legal LSP mid-edit state (schemaA <?include B?> with
+//     schemaB <?include A?>) registers both edges. Recursion is
+//     made finite by the per-call visited set the public Invalidate
+//     entry point seeds and the recursive invalidate worker
+//     consults; each path is invalidated at most once per top-level
+//     call.
 //
 // The reverse-index edges that name absPath as a dependent (i.e.
 // the entry on each include path's set) are dropped after the

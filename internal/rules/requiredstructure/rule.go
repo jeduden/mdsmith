@@ -1364,7 +1364,14 @@ func parseSchemaWithCache(
 	// Extract <?require?> directive from schema body.
 	filenamePattern, err := extractRequireDirective(f)
 	if err != nil {
-		return nil, nil, err
+		// cfg.FrontMatterCUE was already compiled (and cached
+		// via RunCache.CompiledCUE) before extractRequireDirective
+		// ran, so surface a partial *parsedSchema so the cache
+		// wrapper can record cueSources. Without this, an LSP
+		// mid-edit state where <?require?> is malformed leaves
+		// the CompiledCUE entry uncoupled from any schemaPath
+		// and Invalidate(schemaPath) cannot evict it.
+		return &parsedSchema{Config: cfg}, nil, err
 	}
 	cfg.FilenamePattern = filenamePattern
 

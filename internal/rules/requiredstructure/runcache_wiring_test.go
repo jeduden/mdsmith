@@ -587,6 +587,35 @@ func TestParseSchemaWithCache_BadRequireInSchemaPropagatesError(t *testing.T) {
 		"the error must name the failing directive")
 }
 
+// TestParseSchemaWithCache_BadRequireSurfacesPartialSchemaForCueTracking
+// pins the fix for Copilot thread PRRT_kwDORLpjqs6EXyBY: when
+// extractRequireDirective fails, cfg.FrontMatterCUE was already
+// compiled (and likely cached in RunCache.CompiledCUE) before the
+// directive parse ran, so parseSchemaWithCache must surface a
+// partial *parsedSchema carrying that source. Otherwise
+// schemaCUESources(nil) returns no sources and
+// RunCache.Invalidate(schemaPath) cannot evict the cached compile
+// when the user fixes the directive.
+func TestParseSchemaWithCache_BadRequireSurfacesPartialSchemaForCueTracking(t *testing.T) {
+	// Combine a valid frontmatter constraint (so FrontMatterCUE is
+	// populated) with a malformed <?require?> so the require parse
+	// fails after the CUE compile already cached its result.
+	src := []byte("---\nid: \"string\"\n---\n# Title\n\n" +
+		"<?require\nfilename: [unclosed\n?>\n")
+	sch, _, err := parseSchemaWithCache(src, "schema.md", 0, nil)
+	require.Error(t, err,
+		"a malformed <?require?> must propagate as an error")
+	require.NotNil(t, sch,
+		"parseSchemaWithCache must surface a partial *parsedSchema "+
+			"so the cache wrapper can record cueSources for "+
+			"invalidation even when <?require?> fails")
+	got := schemaCUESources(sch)
+	require.NotEmpty(t, got,
+		"the partial *parsedSchema must carry the already-compiled "+
+			"FrontMatterCUE so RunCache.Invalidate(schemaPath) can "+
+			"evict the CompiledCUE entry on the next edit")
+}
+
 // TestParseSchemaWithCache_BadRequireInIncludedFragmentPropagatesError
 // pins the expandSchemaInclude → extractRequireDirective error
 // path: a fragment with a malformed <?require?> directive surfaces
