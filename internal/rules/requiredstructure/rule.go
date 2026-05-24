@@ -1307,47 +1307,58 @@ const maxSchemaIncludeDepth = 10
 // through parseSchemaWithCache so the inner CUE compile shares its
 // result across schemas with the same CUE source. parseSchema is
 // the canonical name kept for the existing test surface; the
-// cache-aware form is a thin wrapper that adds the cache argument.
+// cache-aware form is a thin wrapper that adds the cache argument
+// and surfaces the include set the cache wrapper needs for
+// dependency tracking.
 func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema, error) {
-	return parseSchemaWithCache(data, schemaPath, maxBytes, nil)
+	sch, _, err := parseSchemaWithCache(data, schemaPath, maxBytes, nil)
+	return sch, err
 }
 
 // parseSchemaWithCache is parseSchema with an optional RunCache wired
 // through to validateCUESchemaSyntax so the CUE compile can be shared
 // across schemas with identical CUE source. A nil cache restores the
 // original behaviour (one fresh cuecontext per call).
+//
+// The returned includes slice carries the absolute filesystem paths
+// of every fragment the schema's <?include?> directives reached. The
+// cache-aware wrapper (cachedParseSchema) lifts this onto
+// schemaParseResult so RunCache.Invalidate can evict the schema
+// when any of its fragments changes. Returns nil when schemaPath is
+// empty (no filesystem identity → no include resolution).
 func parseSchemaWithCache(
 	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache,
-) (*parsedSchema, error) {
+) (*parsedSchema, []string, error) {
 	prefix, content := lint.StripFrontMatter(data)
 
 	cfg, err := parseSchemaFrontMatter(prefix, cache)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	f, err := lint.NewFile("schema", content)
 	if err != nil {
-		return nil, fmt.Errorf("parsing schema markdown: %w", err)
+		return nil, nil, fmt.Errorf("parsing schema markdown: %w", err)
 	}
 
 	// Extract <?require?> directive from schema body.
 	filenamePattern, err := extractRequireDirective(f)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	cfg.FilenamePattern = filenamePattern
 
 	// Extract headings, expanding <?include?> directives in the schema.
 	var headings []docHeading
+	var includes []string
 	if schemaPath != "" {
 		cleanPath := filepath.Clean(schemaPath)
 		visited := map[string]bool{cleanPath: true}
 		chain := []string{cleanPath}
 		var fp string
-		headings, fp, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes)
+		headings, fp, includes, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if fp != "" && cfg.FilenamePattern == "" {
 			cfg.FilenamePattern = fp
@@ -1372,18 +1383,27 @@ func parseSchemaWithCache(
 		Config:     cfg,
 		Headings:   schHeadings,
 		SyncPoints: syncPoints,
-	}, nil
+	}, includes, nil
 }
 
 // extractSchemaHeadings walks the schema AST, collecting headings and
 // expanding <?include?> PIs by splicing in the included file's headings.
 // It uses a visited set for cycle detection.
+//
+// The returned includes slice carries the resolved absolute path of
+// every fragment reached during the walk — both direct includes and
+// transitively-included ones. Order is source order at the current
+// level, with each fragment's transitive set appended after the
+// fragment's own path. The cache wrapper feeds this into RunCache's
+// reverse-include index so a fragment edit invalidates every schema
+// that reached it.
 func extractSchemaHeadings(
 	schemaFile *lint.File, schemaPath string,
 	visited map[string]bool, chain []string, maxBytes int64,
-) ([]docHeading, string, error) {
+) ([]docHeading, string, []string, error) {
 	var headings []docHeading
 	var filenamePattern string
+	var includes []string
 
 	err := ast.Walk(schemaFile.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -1400,7 +1420,7 @@ func extractSchemaHeadings(
 			if node.Name != "include" {
 				return ast.WalkContinue, nil
 			}
-			fragHeadings, fp, walkErr := expandSchemaInclude(
+			fragHeadings, fp, fragIncluded, subIncludes, walkErr := expandSchemaInclude(
 				node, schemaFile.Source, schemaPath, visited, chain, maxBytes)
 			if walkErr != nil {
 				return ast.WalkStop, walkErr
@@ -1409,15 +1429,19 @@ func extractSchemaHeadings(
 				filenamePattern = fp
 			}
 			headings = append(headings, fragHeadings...)
+			if fragIncluded != "" {
+				includes = append(includes, fragIncluded)
+			}
+			includes = append(includes, subIncludes...)
 		}
 
 		return ast.WalkContinue, nil
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 
-	return headings, filenamePattern, nil
+	return headings, filenamePattern, includes, nil
 }
 
 // expandSchemaInclude resolves a single <?include?> PI in a schema file,
@@ -1447,58 +1471,65 @@ func resolveSchemaIncludePath(
 	return filepath.Clean(filepath.Join(dir, fileParam)), nil
 }
 
+// expandSchemaInclude resolves and recursively expands a schema
+// include PI. It returns the fragment's headings, any filename
+// pattern declared on the fragment, the resolved absolute path of
+// the fragment itself, the fragment's transitive include set, and
+// an error. The path-plus-subIncludes pair lets the caller record
+// the full dependency footprint on RunCache's reverse-include
+// index.
 func expandSchemaInclude(
 	pi *lint.ProcessingInstruction, source []byte,
 	schemaPath string, visited map[string]bool, chain []string, maxBytes int64,
-) ([]docHeading, string, error) {
+) ([]docHeading, string, string, []string, error) {
 	includedPath, err := resolveSchemaIncludePath(pi, source, schemaPath)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", nil, err
 	}
 
 	if len(chain) > maxSchemaIncludeDepth {
-		return nil, "", fmt.Errorf(
+		return nil, "", "", nil, fmt.Errorf(
 			"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
 	}
 	if visited[includedPath] {
 		chainCopy := make([]string, len(chain))
 		copy(chainCopy, chain)
 		chainCopy = append(chainCopy, includedPath)
-		return nil, "", fmt.Errorf(
+		return nil, "", "", nil, fmt.Errorf(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
 	fragData, err := lint.ReadFileLimited(includedPath, maxBytes)
 	if err != nil {
-		return nil, "", fmt.Errorf(
+		return nil, "", "", nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", includedPath, err)
 	}
 
 	_, fragContent := lint.StripFrontMatter(fragData)
 	fragFile, err := lint.NewFile(includedPath, fragContent)
 	if err != nil {
-		return nil, "", fmt.Errorf(
+		return nil, "", "", nil, fmt.Errorf(
 			"parsing schema include %q: %w", includedPath, err)
 	}
 
 	fp, err := extractRequireDirective(fragFile)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", nil, err
 	}
 
 	visited[includedPath] = true
 	chain = append(chain, includedPath)
-	fragHeadings, fp2, err := extractSchemaHeadings(
+	fragHeadings, fp2, subIncludes, err := extractSchemaHeadings(
 		fragFile, includedPath, visited, chain, maxBytes)
 	delete(visited, includedPath)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", nil, err
 	}
 	if fp2 != "" && fp == "" {
 		fp = fp2
 	}
 
-	return fragHeadings, fp, nil
+	return fragHeadings, fp, includedPath, subIncludes, nil
 }
 
 // extractPIFileParam parses the YAML body of an include PI to extract

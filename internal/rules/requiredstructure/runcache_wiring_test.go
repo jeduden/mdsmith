@@ -1,6 +1,7 @@
 package requiredstructure
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -24,9 +25,10 @@ func TestCachedParseSchema_BuildsOncePerRunCache(t *testing.T) {
 
 	cache := lint.NewRunCache()
 	var calls int32
-	build := func() (*parsedSchema, error) {
+	build := func() (*parsedSchema, []string, error) {
 		atomic.AddInt32(&calls, 1)
-		return parseSchema(schemaBody, "", 0)
+		sch, err := parseSchema(schemaBody, "", 0)
+		return sch, nil, err
 	}
 
 	for i := 0; i < 3; i++ {
@@ -45,8 +47,9 @@ func TestCachedParseSchema_BuildsOncePerRunCache(t *testing.T) {
 // crash on every direct test invocation that doesn't supply a cache.
 func TestCachedParseSchema_NilRunCacheStillParses(t *testing.T) {
 	schemaBody := []byte("# Title\n\n## Section\n")
-	got, err := cachedParseSchemaWith(nil, "/abs/schema.md", func() (*parsedSchema, error) {
-		return parseSchema(schemaBody, "", 0)
+	got, err := cachedParseSchemaWith(nil, "/abs/schema.md", func() (*parsedSchema, []string, error) {
+		sch, err := parseSchema(schemaBody, "", 0)
+		return sch, nil, err
 	})
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -61,9 +64,10 @@ func TestCachedParseSchema_EmptyAbsPathFallsThroughToBuild(t *testing.T) {
 	cache := lint.NewRunCache()
 	var calls int32
 	for i := 0; i < 2; i++ {
-		got, err := cachedParseSchemaWith(cache, "", func() (*parsedSchema, error) {
+		got, err := cachedParseSchemaWith(cache, "", func() (*parsedSchema, []string, error) {
 			atomic.AddInt32(&calls, 1)
-			return parseSchema([]byte("# Heading\n"), "", 0)
+			sch, err := parseSchema([]byte("# Heading\n"), "", 0)
+			return sch, nil, err
 		})
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -80,9 +84,9 @@ func TestCachedParseSchema_CachesParseErrors(t *testing.T) {
 	var calls int32
 	expectedErr := assert.AnError
 	for i := 0; i < 3; i++ {
-		got, err := cachedParseSchemaWith(cache, "/abs/broken.md", func() (*parsedSchema, error) {
+		got, err := cachedParseSchemaWith(cache, "/abs/broken.md", func() (*parsedSchema, []string, error) {
 			atomic.AddInt32(&calls, 1)
-			return nil, expectedErr
+			return nil, nil, expectedErr
 		})
 		assert.Nil(t, got)
 		require.ErrorIs(t, err, expectedErr)
@@ -200,4 +204,74 @@ func TestRule_SchemaParsedOncePerRunCache(t *testing.T) {
 func filepathAbs(t *testing.T, p string) (string, error) {
 	t.Helper()
 	return filepath.Abs(p)
+}
+
+// TestRule_FragmentInvalidationEvictsParsedSchema is the end-to-end
+// integration check for Copilot thread 1 on PR #377: after Rule.Check
+// reads a schema whose <?include?> reaches a fragment, calling
+// RunCache.Invalidate(fragment) must evict the schema's ParsedSchema
+// slot so the next Check re-parses against the new fragment.
+//
+// The test writes schema.md and fragment.md to a real temp directory
+// because schema include resolution reads through the OS filesystem
+// (ReadFileLimited → os.ReadFile), not the in-memory fstest.MapFS
+// used elsewhere in this file. t.Chdir scopes CWD to tmpDir so both
+// the schema and its fragment resolve against the same root the rule
+// sees.
+func TestRule_FragmentInvalidationEvictsParsedSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	schemaSrc := "# {id}: {name}\n\n<?include\nfile: fragment.md\n?>\n"
+	fragmentSrc := "## Section\n"
+	doc := "---\nid: doc\nname: Sample\n---\n# doc: Sample\n\n## Section\n"
+
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "schema.md"), schemaSrc))
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "fragment.md"), fragmentSrc))
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "doc.md"), doc))
+
+	t.Chdir(tmpDir)
+
+	cache := lint.NewRunCache()
+	r := &Rule{Schema: "schema.md", Sources: []SchemaSource{{File: "schema.md"}}}
+
+	f, err := lint.NewFile("doc.md", []byte(doc))
+	require.NoError(t, err)
+	f.RootDir = tmpDir
+	f.RunCache = cache
+	_ = r.Check(f)
+
+	schemaAbs := filepath.Clean(filepath.Join(tmpDir, "schema.md"))
+	fragmentAbs := filepath.Clean(filepath.Join(tmpDir, "fragment.md"))
+
+	// The parsed-schema slot is populated and registers fragmentAbs as
+	// an include — a sentinel call must hit the cache.
+	var rebuildsBefore int32
+	_ = cache.ParsedSchema(schemaAbs, func() any {
+		atomic.AddInt32(&rebuildsBefore, 1)
+		return schemaParseResult{schema: nil, err: assert.AnError}
+	})
+	require.Equal(t, int32(0), atomic.LoadInt32(&rebuildsBefore),
+		"baseline: after Rule.Check the ParsedSchema slot must be populated")
+
+	// Edit-then-invalidate the fragment. The schema's ParsedSchema
+	// slot must be evicted because the parse reached the fragment.
+	cache.Invalidate(fragmentAbs)
+
+	var rebuildsAfter int32
+	_ = cache.ParsedSchema(schemaAbs, func() any {
+		atomic.AddInt32(&rebuildsAfter, 1)
+		return schemaParseResult{schema: nil, err: assert.AnError}
+	})
+	assert.Equal(t, int32(1), atomic.LoadInt32(&rebuildsAfter),
+		"Invalidate(fragmentAbs) must evict the schema's ParsedSchema slot "+
+			"because the parse reached fragmentAbs via <?include?>")
+}
+
+// writeFile is a thin t.TempDir-friendly write helper. Kept local
+// to the test file so the production code does not gain a new
+// dependency just for the integration test.
+func writeFile(path, content string) error {
+	return os.WriteFile(path, []byte(content), 0o600)
 }

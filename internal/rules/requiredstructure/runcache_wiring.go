@@ -52,7 +52,9 @@ func (r schemaParseResult) SchemaCUESources() []string {
 // The build closure routes through parseSchemaWithCache so the inner
 // CUE compile is also cached: schemas with the same CUE source share
 // the compiled value via RunCache.CompiledCUE even when their parsed
-// schemas differ.
+// schemas differ. The closure also surfaces the schema's include
+// set and frontmatter CUE source so cachedParseSchemaWith can record
+// the dependency footprint on the cache for Invalidate to walk.
 //
 // This is the thin wiring layer over the cachedParseSchemaWith
 // primitive — the latter is package-private only because the tests
@@ -65,10 +67,11 @@ func cachedParseSchema(
 		cache = f.RunCache
 	}
 	if cache == nil {
-		return parseSchemaWithCache(data, schemaPath, fileMaxBytes(f), nil)
+		sch, _, err := parseSchemaWithCache(data, schemaPath, fileMaxBytes(f), nil)
+		return sch, err
 	}
 	absPath := absSchemaCacheKey(f, schemaPath)
-	return cachedParseSchemaWith(cache, absPath, func() (*parsedSchema, error) {
+	return cachedParseSchemaWith(cache, absPath, func() (*parsedSchema, []string, error) {
 		return parseSchemaWithCache(data, schemaPath, fileMaxBytes(f), cache)
 	})
 }
@@ -79,20 +82,97 @@ func cachedParseSchema(
 //
 // When cache is nil the build is invoked directly. An empty absPath
 // also bypasses the cache (a parsed schema with no filesystem
-// identity must not be shared between unrelated callers).
+// identity must not be shared between unrelated callers). The build
+// returns its include set; cachedParseSchemaWith records it (plus
+// the schema's frontmatter CUE source, read from the returned
+// *parsedSchema) on the schemaParseResult so RunCache's
+// reverse-include index and per-schema compiledCUE-eviction work
+// end-to-end.
+//
+// Include paths returned by the build are normalised to absolute
+// filesystem paths anchored at absPath's directory before they go on
+// the schemaParseResult. The producer (parseSchemaWithCache /
+// extractSchemaHeadings) constructs include paths relative to
+// whatever schemaPath the caller passed (typically the project-
+// relative path the rule loads schemas with), so without
+// normalisation the cache key in RunCache's reverse-include index
+// would mismatch the absolute path the LSP passes to Invalidate.
 func cachedParseSchemaWith(
 	cache *lint.RunCache, absPath string,
-	build func() (*parsedSchema, error),
+	build func() (*parsedSchema, []string, error),
 ) (*parsedSchema, error) {
 	if cache == nil || absPath == "" {
-		return build()
+		sch, _, err := build()
+		return sch, err
 	}
 	v := cache.ParsedSchema(absPath, func() any {
-		sch, err := build()
-		return schemaParseResult{schema: sch, err: err}
+		sch, includes, err := build()
+		return schemaParseResult{
+			schema:     sch,
+			err:        err,
+			includes:   absoluteIncludes(absPath, includes),
+			cueSources: schemaCUESources(sch),
+		}
 	})
 	r := v.(schemaParseResult)
 	return r.schema, r.err
+}
+
+// absoluteIncludes resolves each entry in includes to an absolute
+// filesystem path. Absolute entries are passed through (after
+// Clean); relative entries are joined against the directory of
+// parentAbsPath (the schema's absolute cache key). The result
+// matches the convention the LSP uses when calling Invalidate.
+//
+// parentAbsPath is expected to be absolute (it is the
+// absSchemaCacheKey output for the parent schema). When it is not
+// absolute we still Clean each entry but leave its relative shape
+// alone — the cache machinery treats that as a no-op for invalidate
+// purposes, which is the safe default.
+func absoluteIncludes(parentAbsPath string, includes []string) []string {
+	if len(includes) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(includes))
+	parentDir := filepath.Dir(parentAbsPath)
+	for _, inc := range includes {
+		if inc == "" {
+			continue
+		}
+		if filepath.IsAbs(inc) {
+			out = append(out, filepath.Clean(inc))
+			continue
+		}
+		if filepath.IsAbs(parentDir) {
+			out = append(out, filepath.Clean(filepath.Join(parentDir, inc)))
+			continue
+		}
+		// parentAbsPath is not absolute (struct-literal test
+		// path). Leave the entry as-is — the reverse-include
+		// index just keys whatever string comes in, and the LSP
+		// only invalidates absolute paths in production.
+		out = append(out, filepath.Clean(inc))
+	}
+	return out
+}
+
+// schemaCUESources returns the distinct CUE source strings the
+// parsed schema's frontmatter produced. Today every schema has at
+// most one CUE source (cfg.FrontMatterCUE). The slice shape exists
+// so a future schema that derives multiple CUE sources (e.g. one
+// per declared field) can extend the producer without re-shaping
+// the cached payload. Returns nil when the schema is nil or has no
+// frontmatter CUE — the cache wrapper treats both as "no
+// CompiledCUE entries to invalidate".
+func schemaCUESources(sch *parsedSchema) []string {
+	if sch == nil {
+		return nil
+	}
+	expr := sch.Config.FrontMatterCUE
+	if expr == "" {
+		return nil
+	}
+	return []string{expr}
 }
 
 // cachedCompiledCUEWith returns the cached compile of source. It is a
