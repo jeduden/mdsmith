@@ -66,8 +66,19 @@ func TestCheck_ExtensionStrip_FlagsMDSuffix(t *testing.T) {
 	r := &Rule{Links: LinksConfig{Style: StyleConfig{Extension: "strip"}}}
 	diags := r.Check(f)
 	require.Len(t, diags, 1)
-	assert.Contains(t, diags[0].Message, ".md")
+	assert.Contains(t, diags[0].Message, "markdown extension")
 	assert.Contains(t, diags[0].Message, "strip")
+}
+
+func TestCheck_ExtensionStrip_FlagsMarkdownSuffix(t *testing.T) {
+	// `.markdown` is treated the same as `.md` — both are Markdown
+	// targets under the extension policy.
+	src := "# Doc\n\nSee [x](sub/target.markdown).\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{Extension: "strip"}}}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, ".markdown")
 }
 
 func TestCheck_ExtensionStrip_AcceptsExtensionless(t *testing.T) {
@@ -89,6 +100,14 @@ func TestCheck_ExtensionKeep_FlagsExtensionless(t *testing.T) {
 
 func TestCheck_ExtensionKeep_AcceptsMDSuffix(t *testing.T) {
 	src := "# Doc\n\nSee [x](sub/target.md).\n"
+	f := newFile(t, src)
+	r := &Rule{Links: LinksConfig{Style: StyleConfig{Extension: "keep"}}}
+	diags := r.Check(f)
+	assert.Empty(t, diags)
+}
+
+func TestCheck_ExtensionKeep_AcceptsMarkdownSuffix(t *testing.T) {
+	src := "# Doc\n\nSee [x](sub/target.markdown).\n"
 	f := newFile(t, src)
 	r := &Rule{Links: LinksConfig{Style: StyleConfig{Extension: "keep"}}}
 	diags := r.Check(f)

@@ -26,7 +26,7 @@ and `validate-reference-style` flow to MDS027, while `style` and
 | Setting                 | Type   | Default | Description                                                                                                                    |
 |-------------------------|--------|---------|--------------------------------------------------------------------------------------------------------------------------------|
 | `links.style.path`      | string | `""`    | `relative` flags absolute targets; `absolute` flags relative targets                                                           |
-| `links.style.extension` | string | `""`    | `keep` flags Markdown-shaped targets without `.md`; `strip` flags those with `.md`                                             |
+| `links.style.extension` | string | `""`    | `keep` flags Markdown-shaped targets without a markdown extension; `strip` flags those with `.md`/`.markdown`                  |
 | `links.style.form`      | string | `""`    | `inline` flags reference-style links; `reference` flags inline links; `any` is permissive                                      |
 | `links.external-skip`   | list   | `[]`    | Regex patterns reserved for the future external-link-check rule (issue #47); parsed here so users can declare it once per kind |
 
@@ -40,9 +40,10 @@ references, and images are not checked. The style policy targets
 text links to local Markdown files.
 
 The extension policy only applies to Markdown-shaped targets — a
-target whose last segment ends in `.md`/`.markdown`, or has no
+target whose last segment ends in `.md` or `.markdown`, or has no
 extension. Targets ending in any other extension (`.png`, `.css`,
-…) are ignored regardless of `keep`/`strip`.
+…) are ignored regardless of `keep`/`strip`. Both `.md` and
+`.markdown` are treated as the same "with extension" form.
 
 ## Config
 
@@ -195,14 +196,14 @@ See [sibling](good/sibling.md) — inline form, as policy requires.
 
 ## Diagnostics
 
-| Condition                                   | Message                                                                    |
-|---------------------------------------------|----------------------------------------------------------------------------|
-| absolute target under `style.path=relative` | `link target is absolute; style.path=relative requires a relative path`    |
-| relative target under `style.path=absolute` | `link target is relative; style.path=absolute requires an absolute path`   |
-| extensionless under `style.extension=keep`  | `link target has no .md extension; style.extension=keep requires .md`      |
-| `.md` suffix under `style.extension=strip`  | `link target has .md extension; style.extension=strip forbids .md`         |
-| reference-style under `style.form=inline`   | `reference-style link; style.form=inline requires inline form [text](url)` |
-| inline under `style.form=reference`         | `inline link; style.form=reference requires reference form [text][label]`  |
+| Condition                                              | Message                                                                                 |
+|--------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| absolute target under `style.path=relative`            | `link target is absolute; style.path=relative requires a relative path`                 |
+| relative target under `style.path=absolute`            | `link target is relative; style.path=absolute requires an absolute path`                |
+| extensionless under `style.extension=keep`             | `link target has no markdown extension; style.extension=keep requires .md or .markdown` |
+| `.md`/`.markdown` suffix under `style.extension=strip` | `link target has a markdown extension; style.extension=strip forbids .md and .markdown` |
+| reference-style under `style.form=inline`              | `reference-style link; style.form=inline requires inline form [text](url)`              |
+| inline under `style.form=reference`                    | `inline link; style.form=reference requires reference form [text][label]`               |
 
 ## See also
 

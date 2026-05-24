@@ -56,8 +56,8 @@ func (r *Rule) EnabledByDefault() bool { return false }
 const (
 	msgPathRelative  = "link target is absolute; style.path=relative requires a relative path"
 	msgPathAbsolute  = "link target is relative; style.path=absolute requires an absolute path"
-	msgExtensionKeep = "link target has no .md extension; style.extension=keep requires .md"
-	msgExtStripFmt   = "link target has .md extension; style.extension=strip forbids .md"
+	msgExtensionKeep = "link target has no markdown extension; style.extension=keep requires .md or .markdown"
+	msgExtStripFmt   = "link target has a markdown extension; style.extension=strip forbids .md and .markdown"
 	msgFormInline    = "reference-style link; style.form=inline requires inline form [text](url)"
 	msgFormReference = "inline link; style.form=reference requires reference form [text][label]"
 )
@@ -80,9 +80,10 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 }
 
 // checkOne returns 0..3 diagnostics for one link occurrence.
-// External links and pure local-anchor links are excluded earlier
-// by linkgraph.ParseTarget; what reaches here is always a local
-// path target with optional fragment.
+// External links (scheme/host) are excluded earlier by
+// linkgraph.ParseTarget; local-anchor-only destinations
+// (`#section`) reach this function with LocalAnchor=true and are
+// filtered out here because they carry no path or form to judge.
 func (r *Rule) checkOne(f *lint.File, link linkgraph.Link, isRef bool) []lint.Diagnostic {
 	target := link.Target
 	if target.LocalAnchor {
