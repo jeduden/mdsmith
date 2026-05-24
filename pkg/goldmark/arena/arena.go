@@ -52,7 +52,11 @@ const (
 	initialSegmentCap = 4
 )
 
-// Arena owns the slab storage for one parser's lifetime.
+// Arena owns the slab storage for one Parse call. parser.Parse
+// creates a fresh Arena at entry; the slabs are released by GC
+// when the caller drops references to the returned AST. The
+// per-parser-with-Reset design described above was dropped to
+// keep AST lifetime independent of the parser pool.
 type Arena struct {
 	texts        []*textSlab
 	paragraphs   []*paragraphSlab

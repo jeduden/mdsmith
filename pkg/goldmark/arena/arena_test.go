@@ -37,11 +37,13 @@ func TestNilArenaFallsBackToHeap(t *testing.T) {
 	a.EquipLines(text.NewSegments())
 }
 
-// TestTextAllocReusesSlabAcrossReset verifies the core slab promise:
-// after Reset, the next Text() call returns the same pointer the
-// arena handed out at the equivalent slab offset before Reset. This
-// is what makes the runtime allocator stay out of the hot path on
-// the second Parse.
+// TestTextAllocReusesSlabAcrossReset verifies the slab promise in
+// isolation: after Reset, the next Text() call returns the same
+// pointer the arena handed out at the equivalent slab offset
+// before Reset. The production parser path creates a fresh arena
+// per Parse and does not call Reset, so this test exercises Reset
+// directly to keep that contract verified even though no caller
+// relies on it today.
 func TestTextAllocReusesSlabAcrossReset(t *testing.T) {
 	a := arena.New()
 	first := a.Text()
