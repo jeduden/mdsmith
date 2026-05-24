@@ -14,6 +14,17 @@ markdownlint:
     name: emphasis-style
   - id: MD050
     name: strong-style
+markdownlint-cli2:
+  - id: MD049
+    name: emphasis-style
+  - id: MD050
+    name: strong-style
+mado: null
+rumdl:
+  - id: MD049
+    name: emphasis-style
+  - id: MD050
+    name: strong-style
 ---
 # MDS042: emphasis-style
 

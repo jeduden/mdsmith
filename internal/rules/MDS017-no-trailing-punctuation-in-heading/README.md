@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD026
     name: no-trailing-punctuation
+markdownlint-cli2:
+  - id: MD026
+    name: no-trailing-punctuation
+mado:
+  - id: MD026
+    name: no-trailing-punctuation
+rumdl:
+  - id: MD026
+    name: no-trailing-punctuation
 ---
 # MDS017: no-trailing-punctuation-in-heading
 

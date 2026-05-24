@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD024
     name: no-duplicate-heading
+markdownlint-cli2:
+  - id: MD024
+    name: no-duplicate-heading
+mado:
+  - id: MD024
+    name: no-duplicate-heading
+rumdl:
+  - id: MD024
+    name: no-duplicate-heading
 ---
 # MDS005: no-duplicate-headings
 

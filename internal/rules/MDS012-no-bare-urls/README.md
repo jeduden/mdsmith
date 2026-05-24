@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD034
     name: no-bare-urls
+markdownlint-cli2:
+  - id: MD034
+    name: no-bare-urls
+mado:
+  - id: MD034
+    name: no-bare-urls
+rumdl:
+  - id: MD034
+    name: no-bare-urls
 ---
 # MDS012: no-bare-urls
 

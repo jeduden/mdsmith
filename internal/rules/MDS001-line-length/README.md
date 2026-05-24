@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD013
     name: line-length
+markdownlint-cli2:
+  - id: MD013
+    name: line-length
+mado:
+  - id: MD013
+    name: line-length
+rumdl:
+  - id: MD013
+    name: line-length
 ---
 # MDS001: line-length
 

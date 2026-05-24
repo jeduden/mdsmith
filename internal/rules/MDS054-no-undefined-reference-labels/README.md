@@ -9,6 +9,13 @@ maintainability: null
 markdownlint:
   - id: MD052
     name: reference-links-images
+markdownlint-cli2:
+  - id: MD052
+    name: reference-links-images
+mado: null
+rumdl:
+  - id: MD052
+    name: reference-links-images
 ---
 # MDS054: no-undefined-reference-labels
 

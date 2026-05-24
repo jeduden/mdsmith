@@ -11,6 +11,15 @@ maintainability: null
 markdownlint:
   - id: MD014
     name: commands-show-output
+markdownlint-cli2:
+  - id: MD014
+    name: commands-show-output
+mado:
+  - id: MD014
+    name: commands-show-output
+rumdl:
+  - id: MD014
+    name: commands-show-output
 ---
 # MDS066: commands-show-output
 

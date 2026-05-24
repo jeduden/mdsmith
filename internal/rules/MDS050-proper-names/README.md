@@ -9,6 +9,13 @@ maintainability: null
 markdownlint:
   - id: MD044
     name: proper-names
+markdownlint-cli2:
+  - id: MD044
+    name: proper-names
+mado: null
+rumdl:
+  - id: MD044
+    name: proper-names
 ---
 # MDS050: proper-names
 

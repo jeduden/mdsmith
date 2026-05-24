@@ -18,6 +18,43 @@ markdownlint:
     name: no-multiple-space-closed-atx
   - id: MD023
     name: heading-start-left
+markdownlint-cli2:
+  - id: MD018
+    name: no-missing-space-atx
+  - id: MD019
+    name: no-multiple-space-atx
+  - id: MD020
+    name: no-missing-space-closed-atx
+    partial: true
+  - id: MD021
+    name: no-multiple-space-closed-atx
+  - id: MD023
+    name: heading-start-left
+mado:
+  - id: MD018
+    name: no-missing-space-atx
+  - id: MD019
+    name: no-multiple-space-atx
+  - id: MD020
+    name: no-missing-space-closed-atx
+    partial: true
+    unstable: true
+  - id: MD021
+    name: no-multiple-space-closed-atx
+  - id: MD023
+    name: heading-start-left
+rumdl:
+  - id: MD018
+    name: no-missing-space-atx
+  - id: MD019
+    name: no-multiple-space-atx
+  - id: MD020
+    name: no-missing-space-closed-atx
+    partial: true
+  - id: MD021
+    name: no-multiple-space-closed-atx
+  - id: MD023
+    name: heading-start-left
 ---
 # MDS064: atx-heading-whitespace
 

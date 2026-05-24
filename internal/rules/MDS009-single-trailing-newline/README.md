@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD047
     name: single-trailing-newline
+markdownlint-cli2:
+  - id: MD047
+    name: single-trailing-newline
+mado:
+  - id: MD047
+    name: single-trailing-newline
+rumdl:
+  - id: MD047
+    name: single-trailing-newline
 ---
 # MDS009: single-trailing-newline
 

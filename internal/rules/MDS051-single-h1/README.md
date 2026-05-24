@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD025
     name: single-h1
+markdownlint-cli2:
+  - id: MD025
+    name: single-h1
+mado:
+  - id: MD025
+    name: single-h1
+rumdl:
+  - id: MD025
+    name: single-h1
 ---
 # MDS051: single-h1
 

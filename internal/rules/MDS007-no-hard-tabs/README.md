@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD010
     name: no-hard-tabs
+markdownlint-cli2:
+  - id: MD010
+    name: no-hard-tabs
+mado:
+  - id: MD010
+    name: no-hard-tabs
+rumdl:
+  - id: MD010
+    name: no-hard-tabs
 ---
 # MDS007: no-hard-tabs
 

@@ -13,6 +13,22 @@ markdownlint:
     name: no-multiple-space-blockquote
   - id: MD028
     name: no-blanks-blockquote
+markdownlint-cli2:
+  - id: MD027
+    name: no-multiple-space-blockquote
+  - id: MD028
+    name: no-blanks-blockquote
+mado:
+  - id: MD027
+    name: no-multiple-space-blockquote
+    unstable: true
+  - id: MD028
+    name: no-blanks-blockquote
+rumdl:
+  - id: MD027
+    name: no-multiple-space-blockquote
+  - id: MD028
+    name: no-blanks-blockquote
 ---
 # MDS059: blockquote-whitespace
 

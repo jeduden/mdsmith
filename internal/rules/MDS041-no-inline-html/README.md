@@ -11,6 +11,15 @@ maintainability: null
 markdownlint:
   - id: MD033
     name: no-inline-html
+markdownlint-cli2:
+  - id: MD033
+    name: no-inline-html
+mado:
+  - id: MD033
+    name: no-inline-html
+rumdl:
+  - id: MD033
+    name: no-inline-html
 ---
 # MDS041: no-inline-html
 

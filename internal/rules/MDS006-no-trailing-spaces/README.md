@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD009
     name: no-trailing-spaces
+markdownlint-cli2:
+  - id: MD009
+    name: no-trailing-spaces
+mado:
+  - id: MD009
+    name: no-trailing-spaces
+rumdl:
+  - id: MD009
+    name: no-trailing-spaces
 ---
 # MDS006: no-trailing-spaces
 

@@ -12,6 +12,13 @@ maintainability:
 markdownlint:
   - id: MD043
     name: required-headings
+markdownlint-cli2:
+  - id: MD043
+    name: required-headings
+mado: null
+rumdl:
+  - id: MD043
+    name: required-headings
 ---
 # MDS020: required-structure
 

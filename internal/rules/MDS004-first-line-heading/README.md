@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD041
     name: first-line-h1
+markdownlint-cli2:
+  - id: MD041
+    name: first-line-h1
+mado:
+  - id: MD041
+    name: first-line-h1
+rumdl:
+  - id: MD041
+    name: first-line-h1
 ---
 # MDS004: first-line-heading
 

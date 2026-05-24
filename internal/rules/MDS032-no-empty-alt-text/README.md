@@ -9,6 +9,13 @@ maintainability: null
 markdownlint:
   - id: MD045
     name: no-alt-text
+markdownlint-cli2:
+  - id: MD045
+    name: no-alt-text
+mado: null
+rumdl:
+  - id: MD045
+    name: no-alt-text
 ---
 # MDS032: no-empty-alt-text
 

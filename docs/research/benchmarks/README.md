@@ -165,15 +165,21 @@ and self-maintaining sections are the point.
 ### Apples-to-apples rule sets
 
 Reference material for the parity claim above: the rule
-class each configuration actually runs. The MD↔MDS mapping
-comes from
-[the markdownlint coverage matrix](../markdownlint-coverage/README.md);
-the table below restates it in the benchmark's terms.
-Per-rule lists for mado, rumdl, panache, and
-markdownlint-cli2 are not vendored — each one ships its
-own subset of MD rules and we don't track which row each
-tool covers; we treat them as "markdownlint-compatible"
-and compare against the full MD class.
+class each configuration actually runs. The cross-tool
+mapping (markdownlint, markdownlint-cli2, mado, rumdl,
+panache) lives in each rule's README frontmatter — see
+the `markdownlint:`, `markdownlint-cli2:`, `mado:`, and
+`rumdl:` keys on the
+[rule README schema](../../../internal/rules/proto.md).
+The tables below restate that data in benchmark terms.
+The MD↔MDS mapping originates in
+[the markdownlint coverage matrix](../markdownlint-coverage/README.md).
+panache is not in the tables: it uses its own rule IDs
+(not MD-compatible) and we have no public per-rule list
+to populate yet. markdownlint-cli2 is omitted as a column
+because it ships the canonical markdownlint rule set
+by definition — read its support as identical to the
+markdownlint column.
 
 | Configuration       | Rule class             | Source                                                                               |
 | ------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
@@ -181,153 +187,169 @@ and compare against the full MD class.
 | `mdsmith-parity`    | Table A only           | [`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml) disables every row in Table B |
 | `mado`              | MD-compatible subset   | <https://github.com/akiomik/mado>                                                    |
 | `rumdl`             | MD-compatible subset   | <https://github.com/rvben/rumdl>                                                     |
-| `panache`           | MD-compatible subset   | <https://panache.bz>                                                                 |
+| `panache`           | distinct rule IDs      | <https://panache.bz>                                                                 |
 | `markdownlint-cli2` | canonical markdownlint | <https://github.com/DavidAnson/markdownlint>                                         |
 
 #### Table A — shared rule class (markdownlint-compatible)
 
-Both `mdsmith` configurations run the rows marked ✅; "opt-in"
-means mdsmith ships the rule but it is off by default in
-both columns (users must enable it). Only MD054 has no
-mdsmith implementation (scheduled in plan 172); a
-markdownlint tool that ships MD054 would do marginally more
-work than `mdsmith-parity` on that one rule — this is the
-residual asymmetry called out above. Two rows are ✅ in
-full and **disabled** in parity (MD043 and MD051): mdsmith
-implements them via cross-file mechanisms (`required-structure`
-takes a CUE schema; `cross-file-reference-integrity` walks
-the whole-repo link graph), so parity disables them rather
-than claim parity at higher fidelity. The grouping mirrors
+Both `mdsmith` configurations run the rows marked yes;
+"opt-in" means mdsmith ships the rule but it is off by
+default in both columns (users must enable it). Only
+MD054 has no mdsmith implementation — it is not yet
+scheduled in any plan. Two rows are yes in full and
+**disabled** in parity (MD043 and MD051): mdsmith
+implements them via cross-file mechanisms
+(`required-structure` takes a CUE schema;
+`cross-file-reference-integrity` walks the whole-repo
+link graph), so parity disables them rather than claim
+parity at higher fidelity. The grouping mirrors
 [the coverage matrix](../markdownlint-coverage/README.md)
 to make cross-reference easy.
 
+Legend for the mado and rumdl columns: yes implements the
+rule, unstable implements but marked unstable in the tool's
+README, — does not implement.
+
 ##### Headings
 
-| markdownlint                                                                                       | mdsmith                                                                                                                  | mdsmith (full) | mdsmith-parity |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------- | -------------- |
-| [MD001 heading-increment](https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md)       | [MDS003 heading-increment](../../../internal/rules/MDS003-heading-increment/README.md)                                   | ✅             | ✅             |
-| [MD003 heading-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md003.md)           | [MDS002 heading-style](../../../internal/rules/MDS002-heading-style/README.md)                                           | ✅             | ✅             |
-| [MD018–021, 023 atx whitespace](https://github.com/DavidAnson/markdownlint/blob/main/doc/md018.md) | [MDS064 atx-heading-whitespace](../../../internal/rules/MDS064-atx-heading-whitespace/README.md)                         | ✅             | ✅             |
-| [MD022 blanks-around-headings](https://github.com/DavidAnson/markdownlint/blob/main/doc/md022.md)  | [MDS013 blank-line-around-headings](../../../internal/rules/MDS013-blank-line-around-headings/README.md)                 | ✅             | ✅             |
-| [MD024 no-duplicate-heading](https://github.com/DavidAnson/markdownlint/blob/main/doc/md024.md)    | [MDS005 no-duplicate-headings](../../../internal/rules/MDS005-no-duplicate-headings/README.md)                           | ✅             | ✅             |
-| [MD025 single-title](https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md)            | [MDS051 single-h1](../../../internal/rules/MDS051-single-h1/README.md)                                                   | opt-in         | opt-in         |
-| [MD026 trailing-punctuation](https://github.com/DavidAnson/markdownlint/blob/main/doc/md026.md)    | [MDS017 no-trailing-punctuation-in-heading](../../../internal/rules/MDS017-no-trailing-punctuation-in-heading/README.md) | ✅             | ✅             |
-| [MD036 emphasis-as-heading](https://github.com/DavidAnson/markdownlint/blob/main/doc/md036.md)     | [MDS018 no-emphasis-as-heading](../../../internal/rules/MDS018-no-emphasis-as-heading/README.md)                         | ✅             | ✅             |
-| [MD041 first-line-heading](https://github.com/DavidAnson/markdownlint/blob/main/doc/md041.md)      | [MDS004 first-line-heading](../../../internal/rules/MDS004-first-line-heading/README.md)                                 | ✅             | ✅             |
-| [MD043 required-headings](https://github.com/DavidAnson/markdownlint/blob/main/doc/md043.md)       | [MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md) (CUE schema)                    | ✅             | disabled       |
+| markdownlint                                                                                       | mdsmith                                                                                                                  | mdsmith (full) | mdsmith-parity | mado                 | rumdl |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------- | -------------- | -------------------- | ----- |
+| [MD001 heading-increment](https://github.com/DavidAnson/markdownlint/blob/main/doc/md001.md)       | [MDS003 heading-increment](../../../internal/rules/MDS003-heading-increment/README.md)                                   | yes            | yes            | yes                  | yes   |
+| [MD003 heading-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md003.md)           | [MDS002 heading-style](../../../internal/rules/MDS002-heading-style/README.md)                                           | yes            | yes            | unstable             | yes   |
+| [MD018–021, 023 atx whitespace](https://github.com/DavidAnson/markdownlint/blob/main/doc/md018.md) | [MDS064 atx-heading-whitespace](../../../internal/rules/MDS064-atx-heading-whitespace/README.md) (MD020 partial)         | yes            | yes            | yes (MD020 unstable) | yes   |
+| [MD022 blanks-around-headings](https://github.com/DavidAnson/markdownlint/blob/main/doc/md022.md)  | [MDS013 blank-line-around-headings](../../../internal/rules/MDS013-blank-line-around-headings/README.md)                 | yes            | yes            | yes                  | yes   |
+| [MD024 no-duplicate-heading](https://github.com/DavidAnson/markdownlint/blob/main/doc/md024.md)    | [MDS005 no-duplicate-headings](../../../internal/rules/MDS005-no-duplicate-headings/README.md)                           | yes            | yes            | yes                  | yes   |
+| [MD025 single-title](https://github.com/DavidAnson/markdownlint/blob/main/doc/md025.md)            | [MDS051 single-h1](../../../internal/rules/MDS051-single-h1/README.md)                                                   | opt-in         | opt-in         | yes                  | yes   |
+| [MD026 trailing-punctuation](https://github.com/DavidAnson/markdownlint/blob/main/doc/md026.md)    | [MDS017 no-trailing-punctuation-in-heading](../../../internal/rules/MDS017-no-trailing-punctuation-in-heading/README.md) | yes            | yes            | yes                  | yes   |
+| [MD036 emphasis-as-heading](https://github.com/DavidAnson/markdownlint/blob/main/doc/md036.md)     | [MDS018 no-emphasis-as-heading](../../../internal/rules/MDS018-no-emphasis-as-heading/README.md)                         | yes            | yes            | yes                  | yes   |
+| [MD041 first-line-heading](https://github.com/DavidAnson/markdownlint/blob/main/doc/md041.md)      | [MDS004 first-line-heading](../../../internal/rules/MDS004-first-line-heading/README.md)                                 | yes            | yes            | yes                  | yes   |
+| [MD043 required-headings](https://github.com/DavidAnson/markdownlint/blob/main/doc/md043.md)       | [MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md) (CUE schema)                    | yes            | disabled       | —                    | yes   |
 
 ##### Lists
 
-| markdownlint                                                                                   | mdsmith                                                                                            | mdsmith (full) | mdsmith-parity |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------- | -------------- |
-| [MD004 ul-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md004.md)            | [MDS045 list-marker-style](../../../internal/rules/MDS045-list-marker-style/README.md)             | opt-in         | opt-in         |
-| [MD005 list-indent](https://github.com/DavidAnson/markdownlint/blob/main/doc/md005.md)         | [MDS016 list-indent](../../../internal/rules/MDS016-list-indent/README.md) (partial)               | ✅             | ✅             |
-| [MD007 ul-indent](https://github.com/DavidAnson/markdownlint/blob/main/doc/md007.md)           | [MDS016 list-indent](../../../internal/rules/MDS016-list-indent/README.md)                         | ✅             | ✅             |
-| [MD029 ol-prefix](https://github.com/DavidAnson/markdownlint/blob/main/doc/md029.md)           | [MDS046 ordered-list-numbering](../../../internal/rules/MDS046-ordered-list-numbering/README.md)   | opt-in         | opt-in         |
-| [MD030 list-marker-space](https://github.com/DavidAnson/markdownlint/blob/main/doc/md030.md)   | [MDS061 list-marker-space](../../../internal/rules/MDS061-list-marker-space/README.md)             | ✅             | ✅             |
-| [MD032 blanks-around-lists](https://github.com/DavidAnson/markdownlint/blob/main/doc/md032.md) | [MDS014 blank-line-around-lists](../../../internal/rules/MDS014-blank-line-around-lists/README.md) | ✅             | ✅             |
+| markdownlint                                                                                   | mdsmith                                                                                            | mdsmith (full) | mdsmith-parity | mado     | rumdl |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------- | -------------- | -------- | ----- |
+| [MD004 ul-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md004.md)            | [MDS045 list-marker-style](../../../internal/rules/MDS045-list-marker-style/README.md)             | opt-in         | opt-in         | yes      | yes   |
+| [MD005 list-indent](https://github.com/DavidAnson/markdownlint/blob/main/doc/md005.md)         | [MDS016 list-indent](../../../internal/rules/MDS016-list-indent/README.md) (partial)               | yes            | yes            | yes      | yes   |
+| [MD007 ul-indent](https://github.com/DavidAnson/markdownlint/blob/main/doc/md007.md)           | [MDS016 list-indent](../../../internal/rules/MDS016-list-indent/README.md)                         | yes            | yes            | unstable | yes   |
+| [MD029 ol-prefix](https://github.com/DavidAnson/markdownlint/blob/main/doc/md029.md)           | [MDS046 ordered-list-numbering](../../../internal/rules/MDS046-ordered-list-numbering/README.md)   | opt-in         | opt-in         | yes      | yes   |
+| [MD030 list-marker-space](https://github.com/DavidAnson/markdownlint/blob/main/doc/md030.md)   | [MDS061 list-marker-space](../../../internal/rules/MDS061-list-marker-space/README.md)             | yes            | yes            | yes      | yes   |
+| [MD032 blanks-around-lists](https://github.com/DavidAnson/markdownlint/blob/main/doc/md032.md) | [MDS014 blank-line-around-lists](../../../internal/rules/MDS014-blank-line-around-lists/README.md) | yes            | yes            | unstable | yes   |
 
 ##### Whitespace, blank lines, tabs
 
-| markdownlint                                                                                  | mdsmith                                                                                            | mdsmith (full) | mdsmith-parity |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------- | -------------- |
-| [MD009 no-trailing-spaces](https://github.com/DavidAnson/markdownlint/blob/main/doc/md009.md) | [MDS006 no-trailing-spaces](../../../internal/rules/MDS006-no-trailing-spaces/README.md)           | ✅             | ✅             |
-| [MD010 no-hard-tabs](https://github.com/DavidAnson/markdownlint/blob/main/doc/md010.md)       | [MDS007 no-hard-tabs](../../../internal/rules/MDS007-no-hard-tabs/README.md)                       | ✅             | ✅             |
-| [MD012 no-multiple-blanks](https://github.com/DavidAnson/markdownlint/blob/main/doc/md012.md) | [MDS008 no-multiple-blanks](../../../internal/rules/MDS008-no-multiple-blanks/README.md)           | ✅             | ✅             |
-| [MD013 line-length](https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md)        | [MDS001 line-length](../../../internal/rules/MDS001-line-length/README.md)                         | ✅             | ✅             |
-| [MD027 multiple-space-bq](https://github.com/DavidAnson/markdownlint/blob/main/doc/md027.md)  | [MDS059 blockquote-whitespace](../../../internal/rules/MDS059-blockquote-whitespace/README.md)     | ✅             | ✅             |
-| [MD028 blank-line-bq](https://github.com/DavidAnson/markdownlint/blob/main/doc/md028.md)      | [MDS059 blockquote-whitespace](../../../internal/rules/MDS059-blockquote-whitespace/README.md)     | ✅             | ✅             |
-| [MD047 file-ends-newline](https://github.com/DavidAnson/markdownlint/blob/main/doc/md047.md)  | [MDS009 single-trailing-newline](../../../internal/rules/MDS009-single-trailing-newline/README.md) | ✅             | ✅             |
+| markdownlint                                                                                  | mdsmith                                                                                            | mdsmith (full) | mdsmith-parity | mado     | rumdl |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------- | -------------- | -------- | ----- |
+| [MD009 no-trailing-spaces](https://github.com/DavidAnson/markdownlint/blob/main/doc/md009.md) | [MDS006 no-trailing-spaces](../../../internal/rules/MDS006-no-trailing-spaces/README.md)           | yes            | yes            | yes      | yes   |
+| [MD010 no-hard-tabs](https://github.com/DavidAnson/markdownlint/blob/main/doc/md010.md)       | [MDS007 no-hard-tabs](../../../internal/rules/MDS007-no-hard-tabs/README.md)                       | yes            | yes            | yes      | yes   |
+| [MD012 no-multiple-blanks](https://github.com/DavidAnson/markdownlint/blob/main/doc/md012.md) | [MDS008 no-multiple-blanks](../../../internal/rules/MDS008-no-multiple-blanks/README.md)           | yes            | yes            | yes      | yes   |
+| [MD013 line-length](https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md)        | [MDS001 line-length](../../../internal/rules/MDS001-line-length/README.md)                         | yes            | yes            | yes      | yes   |
+| [MD027 multiple-space-bq](https://github.com/DavidAnson/markdownlint/blob/main/doc/md027.md)  | [MDS059 blockquote-whitespace](../../../internal/rules/MDS059-blockquote-whitespace/README.md)     | yes            | yes            | unstable | yes   |
+| [MD028 blank-line-bq](https://github.com/DavidAnson/markdownlint/blob/main/doc/md028.md)      | [MDS059 blockquote-whitespace](../../../internal/rules/MDS059-blockquote-whitespace/README.md)     | yes            | yes            | yes      | yes   |
+| [MD047 file-ends-newline](https://github.com/DavidAnson/markdownlint/blob/main/doc/md047.md)  | [MDS009 single-trailing-newline](../../../internal/rules/MDS009-single-trailing-newline/README.md) | yes            | yes            | yes      | yes   |
 
 ##### Code blocks and code spans
 
-| markdownlint                                                                                    | mdsmith                                                                                                        | mdsmith (full) | mdsmith-parity |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------- | -------------- |
-| [MD014 commands-show-output](https://github.com/DavidAnson/markdownlint/blob/main/doc/md014.md) | [MDS066 commands-show-output](../../../internal/rules/MDS066-commands-show-output/README.md)                   | ✅             | ✅             |
-| [MD031 blanks-around-fences](https://github.com/DavidAnson/markdownlint/blob/main/doc/md031.md) | [MDS015 blank-line-around-fenced-code](../../../internal/rules/MDS015-blank-line-around-fenced-code/README.md) | ✅             | ✅             |
-| [MD038 spaces-in-code-span](https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md)  | [MDS052 no-space-in-code-spans](../../../internal/rules/MDS052-no-space-in-code-spans/README.md)               | opt-in         | opt-in         |
-| [MD040 fenced-code-language](https://github.com/DavidAnson/markdownlint/blob/main/doc/md040.md) | [MDS011 fenced-code-language](../../../internal/rules/MDS011-fenced-code-language/README.md)                   | ✅             | ✅             |
-| [MD046 code-block-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md046.md)     | [MDS065 code-block-style](../../../internal/rules/MDS065-code-block-style/README.md)                           | ✅             | ✅             |
-| [MD048 code-fence-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md048.md)     | [MDS010 fenced-code-style](../../../internal/rules/MDS010-fenced-code-style/README.md)                         | ✅             | ✅             |
+| markdownlint                                                                                    | mdsmith                                                                                                        | mdsmith (full) | mdsmith-parity | mado | rumdl |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | -------------- | -------------- | ---- | ----- |
+| [MD014 commands-show-output](https://github.com/DavidAnson/markdownlint/blob/main/doc/md014.md) | [MDS066 commands-show-output](../../../internal/rules/MDS066-commands-show-output/README.md)                   | yes            | yes            | yes  | yes   |
+| [MD031 blanks-around-fences](https://github.com/DavidAnson/markdownlint/blob/main/doc/md031.md) | [MDS015 blank-line-around-fenced-code](../../../internal/rules/MDS015-blank-line-around-fenced-code/README.md) | yes            | yes            | yes  | yes   |
+| [MD038 spaces-in-code-span](https://github.com/DavidAnson/markdownlint/blob/main/doc/md038.md)  | [MDS052 no-space-in-code-spans](../../../internal/rules/MDS052-no-space-in-code-spans/README.md)               | opt-in         | opt-in         | yes  | yes   |
+| [MD040 fenced-code-language](https://github.com/DavidAnson/markdownlint/blob/main/doc/md040.md) | [MDS011 fenced-code-language](../../../internal/rules/MDS011-fenced-code-language/README.md)                   | yes            | yes            | yes  | yes   |
+| [MD046 code-block-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md046.md)     | [MDS065 code-block-style](../../../internal/rules/MDS065-code-block-style/README.md)                           | yes            | yes            | yes  | yes   |
+| [MD048 code-fence-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md048.md)     | [MDS010 fenced-code-style](../../../internal/rules/MDS010-fenced-code-style/README.md)                         | yes            | yes            | —    | yes   |
 
 ##### Links and references
 
-| markdownlint                                                                                   | mdsmith                                                                                                                       | mdsmith (full) | mdsmith-parity |
-| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------- |
-| [MD011 no-reversed-links](https://github.com/DavidAnson/markdownlint/blob/main/doc/md011.md)   | [MDS062 link-validity](../../../internal/rules/MDS062-link-validity/README.md)                                                | ✅             | ✅             |
-| [MD034 no-bare-urls](https://github.com/DavidAnson/markdownlint/blob/main/doc/md034.md)        | [MDS012 no-bare-urls](../../../internal/rules/MDS012-no-bare-urls/README.md)                                                  | ✅             | ✅             |
-| [MD039 spaces-in-link-text](https://github.com/DavidAnson/markdownlint/blob/main/doc/md039.md) | [MDS049 no-space-in-link-text](../../../internal/rules/MDS049-no-space-in-link-text/README.md)                                | opt-in         | opt-in         |
-| [MD042 no-empty-links](https://github.com/DavidAnson/markdownlint/blob/main/doc/md042.md)      | [MDS062 link-validity](../../../internal/rules/MDS062-link-validity/README.md)                                                | ✅             | ✅             |
-| [MD051 link-fragments](https://github.com/DavidAnson/markdownlint/blob/main/doc/md051.md)      | [MDS027 cross-file-reference-integrity](../../../internal/rules/MDS027-cross-file-reference-integrity/README.md) (whole-repo) | ✅             | disabled       |
-| [MD052 reference-defined](https://github.com/DavidAnson/markdownlint/blob/main/doc/md052.md)   | [MDS054 no-undefined-reference-labels](../../../internal/rules/MDS054-no-undefined-reference-labels/README.md)                | ✅             | ✅             |
-| [MD053 reference-needed](https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md)    | [MDS053 no-unused-link-definitions](../../../internal/rules/MDS053-no-unused-link-definitions/README.md)                      | ✅             | ✅             |
-| [MD054 link-image-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md054.md)    | — (plan 172)                                                                                                                  | —              | —              |
-| [MD059 descriptive-link](https://github.com/DavidAnson/markdownlint/blob/main/doc/md059.md)    | [MDS063 descriptive-link-text](../../../internal/rules/MDS063-descriptive-link-text/README.md)                                | opt-in         | opt-in         |
+| markdownlint                                                                                   | mdsmith                                                                                                                       | mdsmith (full) | mdsmith-parity | mado | rumdl |
+| ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------- | ---- | ----- |
+| [MD011 no-reversed-links](https://github.com/DavidAnson/markdownlint/blob/main/doc/md011.md)   | [MDS062 link-validity](../../../internal/rules/MDS062-link-validity/README.md)                                                | yes            | yes            | —    | yes   |
+| [MD034 no-bare-urls](https://github.com/DavidAnson/markdownlint/blob/main/doc/md034.md)        | [MDS012 no-bare-urls](../../../internal/rules/MDS012-no-bare-urls/README.md)                                                  | yes            | yes            | yes  | yes   |
+| [MD039 spaces-in-link-text](https://github.com/DavidAnson/markdownlint/blob/main/doc/md039.md) | [MDS049 no-space-in-link-text](../../../internal/rules/MDS049-no-space-in-link-text/README.md)                                | opt-in         | opt-in         | yes  | yes   |
+| [MD042 no-empty-links](https://github.com/DavidAnson/markdownlint/blob/main/doc/md042.md)      | [MDS062 link-validity](../../../internal/rules/MDS062-link-validity/README.md)                                                | yes            | yes            | —    | yes   |
+| [MD051 link-fragments](https://github.com/DavidAnson/markdownlint/blob/main/doc/md051.md)      | [MDS027 cross-file-reference-integrity](../../../internal/rules/MDS027-cross-file-reference-integrity/README.md) (whole-repo) | yes            | disabled       | —    | yes   |
+| [MD052 reference-defined](https://github.com/DavidAnson/markdownlint/blob/main/doc/md052.md)   | [MDS054 no-undefined-reference-labels](../../../internal/rules/MDS054-no-undefined-reference-labels/README.md)                | yes            | yes            | —    | yes   |
+| [MD053 reference-needed](https://github.com/DavidAnson/markdownlint/blob/main/doc/md053.md)    | [MDS053 no-unused-link-definitions](../../../internal/rules/MDS053-no-unused-link-definitions/README.md)                      | yes            | yes            | —    | yes   |
+| [MD054 link-image-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md054.md)    | — (not yet planned)                                                                                                           | —              | —              | —    | yes   |
+| [MD059 descriptive-link](https://github.com/DavidAnson/markdownlint/blob/main/doc/md059.md)    | [MDS063 descriptive-link-text](../../../internal/rules/MDS063-descriptive-link-text/README.md)                                | opt-in         | opt-in         | —    | yes   |
 
 ##### Inline, emphasis, HTML
 
-| markdownlint                                                                                  | mdsmith                                                                                        | mdsmith (full) | mdsmith-parity |
-| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------- | -------------- |
-| [MD033 no-inline-html](https://github.com/DavidAnson/markdownlint/blob/main/doc/md033.md)     | [MDS041 no-inline-html](../../../internal/rules/MDS041-no-inline-html/README.md)               | opt-in         | opt-in         |
-| [MD035 hr-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md035.md)           | [MDS044 horizontal-rule-style](../../../internal/rules/MDS044-horizontal-rule-style/README.md) | opt-in         | opt-in         |
-| [MD037 spaces-in-emphasis](https://github.com/DavidAnson/markdownlint/blob/main/doc/md037.md) | [MDS047 ambiguous-emphasis](../../../internal/rules/MDS047-ambiguous-emphasis/README.md)       | opt-in         | opt-in         |
-| [MD044 proper-names](https://github.com/DavidAnson/markdownlint/blob/main/doc/md044.md)       | [MDS050 proper-names](../../../internal/rules/MDS050-proper-names/README.md)                   | opt-in         | opt-in         |
-| [MD045 no-alt-text](https://github.com/DavidAnson/markdownlint/blob/main/doc/md045.md)        | [MDS032 no-empty-alt-text](../../../internal/rules/MDS032-no-empty-alt-text/README.md)         | ✅             | ✅             |
-| [MD049 emphasis-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md049.md)     | [MDS042 emphasis-style](../../../internal/rules/MDS042-emphasis-style/README.md)               | opt-in         | opt-in         |
-| [MD050 strong-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md050.md)       | [MDS042 emphasis-style](../../../internal/rules/MDS042-emphasis-style/README.md)               | opt-in         | opt-in         |
+| markdownlint                                                                                  | mdsmith                                                                                        | mdsmith (full) | mdsmith-parity | mado | rumdl |
+| --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------- | -------------- | ---- | ----- |
+| [MD033 no-inline-html](https://github.com/DavidAnson/markdownlint/blob/main/doc/md033.md)     | [MDS041 no-inline-html](../../../internal/rules/MDS041-no-inline-html/README.md)               | opt-in         | opt-in         | yes  | yes   |
+| [MD035 hr-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md035.md)           | [MDS044 horizontal-rule-style](../../../internal/rules/MDS044-horizontal-rule-style/README.md) | opt-in         | opt-in         | yes  | yes   |
+| [MD037 spaces-in-emphasis](https://github.com/DavidAnson/markdownlint/blob/main/doc/md037.md) | [MDS047 ambiguous-emphasis](../../../internal/rules/MDS047-ambiguous-emphasis/README.md)       | opt-in         | opt-in         | yes  | yes   |
+| [MD044 proper-names](https://github.com/DavidAnson/markdownlint/blob/main/doc/md044.md)       | [MDS050 proper-names](../../../internal/rules/MDS050-proper-names/README.md)                   | opt-in         | opt-in         | —    | yes   |
+| [MD045 no-alt-text](https://github.com/DavidAnson/markdownlint/blob/main/doc/md045.md)        | [MDS032 no-empty-alt-text](../../../internal/rules/MDS032-no-empty-alt-text/README.md)         | yes            | yes            | —    | yes   |
+| [MD049 emphasis-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md049.md)     | [MDS042 emphasis-style](../../../internal/rules/MDS042-emphasis-style/README.md)               | opt-in         | opt-in         | —    | yes   |
+| [MD050 strong-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md050.md)       | [MDS042 emphasis-style](../../../internal/rules/MDS042-emphasis-style/README.md)               | opt-in         | opt-in         | —    | yes   |
 
 ##### Tables
 
-| markdownlint                                                                                    | mdsmith                                                                                | mdsmith (full) | mdsmith-parity |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------- | -------------- |
-| [MD055 table-pipe-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md055.md)     | [MDS025 table-format](../../../internal/rules/MDS025-table-format/README.md)           | ✅             | ✅             |
-| [MD056 table-column-count](https://github.com/DavidAnson/markdownlint/blob/main/doc/md056.md)   | [MDS025 table-format](../../../internal/rules/MDS025-table-format/README.md) (partial) | ✅             | ✅             |
-| [MD058 blanks-around-tables](https://github.com/DavidAnson/markdownlint/blob/main/doc/md058.md) | [MDS025 table-format](../../../internal/rules/MDS025-table-format/README.md)           | ✅             | ✅             |
+| markdownlint                                                                                    | mdsmith                                                                                | mdsmith (full) | mdsmith-parity | mado | rumdl |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------- | -------------- | ---- | ----- |
+| [MD055 table-pipe-style](https://github.com/DavidAnson/markdownlint/blob/main/doc/md055.md)     | [MDS025 table-format](../../../internal/rules/MDS025-table-format/README.md)           | yes            | yes            | —    | yes   |
+| [MD056 table-column-count](https://github.com/DavidAnson/markdownlint/blob/main/doc/md056.md)   | [MDS025 table-format](../../../internal/rules/MDS025-table-format/README.md) (partial) | yes            | yes            | —    | yes   |
+| [MD058 blanks-around-tables](https://github.com/DavidAnson/markdownlint/blob/main/doc/md058.md) | [MDS025 table-format](../../../internal/rules/MDS025-table-format/README.md)           | yes            | yes            | —    | yes   |
 
 #### Table B — mdsmith-only rules (no markdownlint analog)
 
-`mdsmith` (full) runs the rows marked ✅; the rest are
-opt-in (off by default) but
-[`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml)
-disables them defensively so a user-modified config
-cannot accidentally enable them during a parity run.
-The real benchmark delta between `mdsmith` and
-`mdsmith-parity` is the 12 ✅ rows below — the 12 opt-in
-rows would not run in default mdsmith either.
+`mdsmith` (full) runs the rows marked yes; the rest are
+opt-in (off by default). The "parity" column reflects
+[`bench-parity.mdsmith.yml`](bench-parity.mdsmith.yml)'s
+24 explicit disables: every default-enabled mdsmith-only
+rule plus most opt-in ones. The real benchmark delta
+between `mdsmith` and `mdsmith-parity` is the 12 yes rows
+below — the 12 opt-in rows that parity disables would
+not run in default mdsmith either, so they are belt-and-
+braces against a user-supplied config that enables them.
 
-Two further mdsmith-only rules are intentionally **not**
-disabled by the parity config:
+Four mdsmith-only rules are **not** in the parity config's
+disable list. Two stay on for `mdsmith` (full) and `mdsmith-parity`:
 [MDS031 unclosed-code-block](../../../internal/rules/MDS031-unclosed-code-block/README.md)
 (cheap structural check, kept on) and
 [MDS034 markdown-flavor](../../../internal/rules/MDS034-markdown-flavor/README.md)
-(opt-in, off by default anyway).
+(opt-in, off by default anyway). The remaining two —
+MDS067 callout-type and MDS068 link-style — are listed
+at the bottom of the table; they are opt-in and rely on
+their default-off state rather than an explicit parity
+disable, so a user config that enabled them would slip
+through `mdsmith-parity`.
+
+All rows below have **mado: —** and **rumdl: —** (no MD
+analog), so the foreign-tool columns are omitted; the
+delta is entirely in the mdsmith-full vs mdsmith-parity
+columns.
 
 | MDS rule                                                                                                         | What it adds                      | mdsmith (full) | mdsmith-parity |
 | ---------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------- | -------------- |
-| [MDS019 catalog](../../../internal/rules/MDS019-catalog/README.md)                                               | generated index from front matter | ✅             | disabled       |
-| [MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md)                         | CUE schema beyond MD043           | ✅             | disabled       |
-| [MDS021 include](../../../internal/rules/MDS021-include/README.md)                                               | spliced, synced file inclusion    | ✅             | disabled       |
-| [MDS022 max-file-length](../../../internal/rules/MDS022-max-file-length/README.md)                               | file size budget                  | ✅             | disabled       |
-| [MDS023 paragraph-readability](../../../internal/rules/MDS023-paragraph-readability/README.md)                   | ARI grade limit                   | ✅             | disabled       |
+| [MDS019 catalog](../../../internal/rules/MDS019-catalog/README.md)                                               | generated index from front matter | yes            | disabled       |
+| [MDS020 required-structure](../../../internal/rules/MDS020-required-structure/README.md)                         | CUE schema beyond MD043           | yes            | disabled       |
+| [MDS021 include](../../../internal/rules/MDS021-include/README.md)                                               | spliced, synced file inclusion    | yes            | disabled       |
+| [MDS022 max-file-length](../../../internal/rules/MDS022-max-file-length/README.md)                               | file size budget                  | yes            | disabled       |
+| [MDS023 paragraph-readability](../../../internal/rules/MDS023-paragraph-readability/README.md)                   | ARI grade limit                   | yes            | disabled       |
 | [MDS024 paragraph-structure](../../../internal/rules/MDS024-paragraph-structure/README.md)                       | sentence/word limits              | opt-in         | disabled       |
-| [MDS026 table-readability](../../../internal/rules/MDS026-table-readability/README.md)                           | width/row heuristics              | ✅             | disabled       |
-| [MDS027 cross-file-reference-integrity](../../../internal/rules/MDS027-cross-file-reference-integrity/README.md) | whole-repo link graph             | ✅             | disabled       |
-| [MDS028 token-budget](../../../internal/rules/MDS028-token-budget/README.md)                                     | LLM context budget                | ✅             | disabled       |
+| [MDS026 table-readability](../../../internal/rules/MDS026-table-readability/README.md)                           | width/row heuristics              | yes            | disabled       |
+| [MDS027 cross-file-reference-integrity](../../../internal/rules/MDS027-cross-file-reference-integrity/README.md) | whole-repo link graph             | yes            | disabled       |
+| [MDS028 token-budget](../../../internal/rules/MDS028-token-budget/README.md)                                     | LLM context budget                | yes            | disabled       |
 | [MDS029 conciseness-scoring](../../../internal/rules/MDS029-conciseness-scoring/README.md)                       | prose density (experimental)      | opt-in         | disabled       |
-| [MDS030 empty-section-body](../../../internal/rules/MDS030-empty-section-body/README.md)                         | no empty sections                 | ✅             | disabled       |
+| [MDS030 empty-section-body](../../../internal/rules/MDS030-empty-section-body/README.md)                         | no empty sections                 | yes            | disabled       |
 | [MDS033 directory-structure](../../../internal/rules/MDS033-directory-structure/README.md)                       | where files may live              | opt-in         | disabled       |
 | [MDS035 toc-directive](../../../internal/rules/MDS035-toc-directive/README.md)                                   | flag stray TOC tokens             | opt-in         | disabled       |
 | [MDS036 max-section-length](../../../internal/rules/MDS036-max-section-length/README.md)                         | per-section size                  | opt-in         | disabled       |
 | [MDS037 duplicated-content](../../../internal/rules/MDS037-duplicated-content/README.md)                         | copy-paste across files           | opt-in         | disabled       |
-| [MDS038 toc](../../../internal/rules/MDS038-toc/README.md)                                                       | generated heading TOC             | ✅             | disabled       |
-| [MDS039 build](../../../internal/rules/MDS039-build/README.md)                                                   | artifact-in-sync directive        | ✅             | disabled       |
-| [MDS040 recipe-safety](../../../internal/rules/MDS040-recipe-safety/README.md)                                   | shell-safety on build recipes     | ✅             | disabled       |
+| [MDS038 toc](../../../internal/rules/MDS038-toc/README.md)                                                       | generated heading TOC             | yes            | disabled       |
+| [MDS039 build](../../../internal/rules/MDS039-build/README.md)                                                   | artifact-in-sync directive        | yes            | disabled       |
+| [MDS040 recipe-safety](../../../internal/rules/MDS040-recipe-safety/README.md)                                   | shell-safety on build recipes     | yes            | disabled       |
 | [MDS043 no-reference-style](../../../internal/rules/MDS043-no-reference-style/README.md)                         | forbid reference links            | opt-in         | disabled       |
 | [MDS048 git-hook-sync](../../../internal/rules/MDS048-git-hook-sync/README.md)                                   | merge-driver / hook install state | opt-in         | disabled       |
 | [MDS055 forbidden-paragraph-starts](../../../internal/rules/MDS055-forbidden-paragraph-starts/README.md)         | banned opening phrases            | opt-in         | disabled       |
 | [MDS056 forbidden-text](../../../internal/rules/MDS056-forbidden-text/README.md)                                 | banned substrings                 | opt-in         | disabled       |
 | [MDS057 required-text-patterns](../../../internal/rules/MDS057-required-text-patterns/README.md)                 | mandated patterns                 | opt-in         | disabled       |
 | [MDS058 required-mentions](../../../internal/rules/MDS058-required-mentions/README.md)                           | mandated references               | opt-in         | disabled       |
+| [MDS067 callout-type](../../../internal/rules/MDS067-callout-type/README.md)                                     | Obsidian callout allowlist        | opt-in         | opt-in         |
+| [MDS068 link-style](../../../internal/rules/MDS068-link-style/README.md)                                         | path/extension/inline-vs-ref form | opt-in         | opt-in         |
 
 ### Fairness note on panache
 

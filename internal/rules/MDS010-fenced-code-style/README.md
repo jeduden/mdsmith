@@ -9,6 +9,13 @@ maintainability: null
 markdownlint:
   - id: MD048
     name: code-fence-style
+markdownlint-cli2:
+  - id: MD048
+    name: code-fence-style
+mado: null
+rumdl:
+  - id: MD048
+    name: code-fence-style
 ---
 # MDS010: fenced-code-style
 

@@ -14,6 +14,17 @@ markdownlint:
     name: no-reversed-links
   - id: MD042
     name: no-empty-links
+markdownlint-cli2:
+  - id: MD011
+    name: no-reversed-links
+  - id: MD042
+    name: no-empty-links
+mado: null
+rumdl:
+  - id: MD011
+    name: no-reversed-links
+  - id: MD042
+    name: no-empty-links
 ---
 # MDS062: link-validity
 

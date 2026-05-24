@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD001
     name: heading-increment
+markdownlint-cli2:
+  - id: MD001
+    name: heading-increment
+mado:
+  - id: MD001
+    name: heading-increment
+rumdl:
+  - id: MD001
+    name: heading-increment
 ---
 # MDS003: heading-increment
 

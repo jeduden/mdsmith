@@ -21,7 +21,7 @@ Status legend:
 Deprecated markdownlint numbers (MD002, MD006, MD008,
 MD015-MD017) are omitted. As of 2026-05 mdsmith implements
 **51 of the 52** active markdownlint rules (**49** fully, **2** partially); the
-only outstanding rule is MD054, scheduled in plan 172.
+only outstanding rule is MD054, which is not yet scheduled.
 
 ## Headings
 
@@ -78,17 +78,17 @@ only outstanding rule is MD054, scheduled in plan 172.
 
 ## Links and references
 
-| markdownlint              | Checks           | mdsmith | Status      |
-| ------------------------- | ---------------- | ------- | ----------- |
-| MD011 no-reversed-links   | `(t)[u]`         | MDS062  | ✅          |
-| MD034 no-bare-urls        | raw URL          | MDS012  | ✅          |
-| MD039 spaces-in-link-text | `[ t ]`          | MDS049  | ✅          |
-| MD042 no-empty-links      | empty target     | MDS062  | ✅          |
-| MD051 link-fragments      | `#anchor` exists | MDS027  | ✅ x-file   |
-| MD052 reference-defined   | ref label set    | MDS054  | ✅          |
-| MD053 reference-needed    | unused defs      | MDS053  | ✅          |
-| MD054 link-image-style    | inline vs ref    | —       | 🔲 plan 172 |
-| MD059 descriptive-link    | "click here"     | MDS063  | ✅          |
+| markdownlint              | Checks           | mdsmith | Status         |
+| ------------------------- | ---------------- | ------- | -------------- |
+| MD011 no-reversed-links   | `(t)[u]`         | MDS062  | ✅             |
+| MD034 no-bare-urls        | raw URL          | MDS012  | ✅             |
+| MD039 spaces-in-link-text | `[ t ]`          | MDS049  | ✅             |
+| MD042 no-empty-links      | empty target     | MDS062  | ✅             |
+| MD051 link-fragments      | `#anchor` exists | MDS027  | ✅ x-file      |
+| MD052 reference-defined   | ref label set    | MDS054  | ✅             |
+| MD053 reference-needed    | unused defs      | MDS053  | ✅             |
+| MD054 link-image-style    | inline vs ref    | —       | 🔲 unscheduled |
+| MD059 descriptive-link    | "click here"     | MDS063  | ✅             |
 
 ## Inline, emphasis, HTML
 
@@ -141,3 +141,5 @@ only outstanding rule is MD054, scheduled in plan 172.
 | MDS056 forbidden-text                 | banned substrings                 |
 | MDS057 required-text-patterns         | mandated patterns                 |
 | MDS058 required-mentions              | mandated references               |
+| MDS067 callout-type                   | Obsidian callout allowlist        |
+| MDS068 link-style                     | path/extension/inline-vs-ref form |

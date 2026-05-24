@@ -11,6 +11,15 @@ maintainability: null
 markdownlint:
   - id: MD046
     name: code-block-style
+markdownlint-cli2:
+  - id: MD046
+    name: code-block-style
+mado:
+  - id: MD046
+    name: code-block-style
+rumdl:
+  - id: MD046
+    name: code-block-style
 ---
 # MDS065: code-block-style
 

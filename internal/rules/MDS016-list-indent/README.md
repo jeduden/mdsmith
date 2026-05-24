@@ -12,6 +12,25 @@ markdownlint:
     partial: true
   - id: MD007
     name: ul-indent
+markdownlint-cli2:
+  - id: MD005
+    name: list-indent
+    partial: true
+  - id: MD007
+    name: ul-indent
+mado:
+  - id: MD005
+    name: list-indent
+    partial: true
+  - id: MD007
+    name: ul-indent
+    unstable: true
+rumdl:
+  - id: MD005
+    name: list-indent
+    partial: true
+  - id: MD007
+    name: ul-indent
 ---
 # MDS016: list-indent
 

@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD037
     name: no-space-in-emphasis
+markdownlint-cli2:
+  - id: MD037
+    name: no-space-in-emphasis
+mado:
+  - id: MD037
+    name: no-space-in-emphasis
+rumdl:
+  - id: MD037
+    name: no-space-in-emphasis
 ---
 # MDS047: ambiguous-emphasis
 

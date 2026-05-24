@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD003
     name: heading-style
+markdownlint-cli2:
+  - id: MD003
+    name: heading-style
+mado:
+  - id: MD003
+    name: heading-style
+    unstable: true
+rumdl:
+  - id: MD003
+    name: heading-style
 ---
 # MDS002: heading-style
 

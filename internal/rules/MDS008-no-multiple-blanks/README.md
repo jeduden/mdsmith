@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD012
     name: no-multiple-blanks
+markdownlint-cli2:
+  - id: MD012
+    name: no-multiple-blanks
+mado:
+  - id: MD012
+    name: no-multiple-blanks
+rumdl:
+  - id: MD012
+    name: no-multiple-blanks
 ---
 # MDS008: no-multiple-blanks
 

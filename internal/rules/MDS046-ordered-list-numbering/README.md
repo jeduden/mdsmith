@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD029
     name: ol-prefix
+markdownlint-cli2:
+  - id: MD029
+    name: ol-prefix
+mado:
+  - id: MD029
+    name: ol-prefix
+rumdl:
+  - id: MD029
+    name: ol-prefix
 ---
 # MDS046: ordered-list-numbering
 

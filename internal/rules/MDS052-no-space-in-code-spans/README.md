@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD038
     name: no-space-in-code
+markdownlint-cli2:
+  - id: MD038
+    name: no-space-in-code
+mado:
+  - id: MD038
+    name: no-space-in-code
+rumdl:
+  - id: MD038
+    name: no-space-in-code
 ---
 # MDS052: no-space-in-code-spans
 

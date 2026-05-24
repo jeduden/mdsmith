@@ -11,6 +11,13 @@ maintainability: null
 markdownlint:
   - id: MD059
     name: descriptive-link-text
+markdownlint-cli2:
+  - id: MD059
+    name: descriptive-link-text
+mado: null
+rumdl:
+  - id: MD059
+    name: descriptive-link-text
 ---
 # MDS063: descriptive-link-text
 

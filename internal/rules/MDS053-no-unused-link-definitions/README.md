@@ -11,6 +11,13 @@ maintainability: null
 markdownlint:
   - id: MD053
     name: link-image-reference-definitions
+markdownlint-cli2:
+  - id: MD053
+    name: link-image-reference-definitions
+mado: null
+rumdl:
+  - id: MD053
+    name: link-image-reference-definitions
 ---
 # MDS053: no-unused-link-definitions
 

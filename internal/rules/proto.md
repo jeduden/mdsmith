@@ -6,6 +6,10 @@ description: 'string & != ""'
 nature: '"directive" | "generator" | "content" | "style" | "structure"'
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
 markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false}] | null'
+"markdownlint-cli2?": '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false}] | null'
+"mado?": '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, unstable?: bool | *false}] | null'
+"rumdl?": '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false}] | null'
+"panache?": '[...{id: string & != "", name: string & != "", partial?: bool | *false}] | null'
 category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" | "list" | "prose" | "structural" | "table" | "whitespace"'
 ---
 # {id}: {name}

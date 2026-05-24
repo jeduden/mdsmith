@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD004
     name: ul-style
+markdownlint-cli2:
+  - id: MD004
+    name: ul-style
+mado:
+  - id: MD004
+    name: ul-style
+rumdl:
+  - id: MD004
+    name: ul-style
 ---
 # MDS045: list-marker-style
 

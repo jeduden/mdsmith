@@ -11,6 +11,15 @@ maintainability: null
 markdownlint:
   - id: MD030
     name: list-marker-space
+markdownlint-cli2:
+  - id: MD030
+    name: list-marker-space
+mado:
+  - id: MD030
+    name: list-marker-space
+rumdl:
+  - id: MD030
+    name: list-marker-space
 ---
 # MDS061: list-marker-space
 

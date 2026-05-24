@@ -9,6 +9,13 @@ maintainability: null
 markdownlint:
   - id: MD051
     name: link-fragments
+markdownlint-cli2:
+  - id: MD051
+    name: link-fragments
+mado: null
+rumdl:
+  - id: MD051
+    name: link-fragments
 ---
 # MDS027: cross-file-reference-integrity
 

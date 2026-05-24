@@ -14,6 +14,23 @@ markdownlint:
     partial: true
   - id: MD058
     name: blanks-around-tables
+markdownlint-cli2:
+  - id: MD055
+    name: table-pipe-style
+  - id: MD056
+    name: table-column-count
+    partial: true
+  - id: MD058
+    name: blanks-around-tables
+mado: null
+rumdl:
+  - id: MD055
+    name: table-pipe-style
+  - id: MD056
+    name: table-column-count
+    partial: true
+  - id: MD058
+    name: blanks-around-tables
 ---
 # MDS025: table-format
 

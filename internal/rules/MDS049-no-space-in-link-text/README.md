@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD039
     name: no-space-in-links
+markdownlint-cli2:
+  - id: MD039
+    name: no-space-in-links
+mado:
+  - id: MD039
+    name: no-space-in-links
+rumdl:
+  - id: MD039
+    name: no-space-in-links
 ---
 # MDS049: no-space-in-link-text
 

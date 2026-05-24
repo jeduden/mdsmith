@@ -9,6 +9,15 @@ maintainability: null
 markdownlint:
   - id: MD040
     name: fenced-code-language
+markdownlint-cli2:
+  - id: MD040
+    name: fenced-code-language
+mado:
+  - id: MD040
+    name: fenced-code-language
+rumdl:
+  - id: MD040
+    name: fenced-code-language
 ---
 # MDS011: fenced-code-language
 
