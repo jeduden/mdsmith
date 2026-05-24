@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -198,9 +197,15 @@ type table struct {
 	rows      []tableRow
 }
 
+// tableRow holds one parsed source row. cells are sub-slices into
+// the source line (after outer-pipe strip and trim), so building a
+// row pays one slice allocation rather than one per cell — the
+// dominant per-Check allocator on table-bearing files (plan 195
+// task 2). Consumers convert to string only when emitting a
+// diagnostic message, never on the hot count/width paths.
 type tableRow struct {
 	line        int
-	cells       []string
+	cells       [][]byte
 	isSeparator bool
 }
 
@@ -313,7 +318,7 @@ func (t table) maxCellWords() (int, int, int) {
 			continue
 		}
 		for col, cell := range row.cells {
-			wc := len(strings.Fields(cell))
+			wc := countWords(cell)
 			if wc > maxWords {
 				maxWords = wc
 				maxLine = row.line
@@ -328,7 +333,64 @@ func (t table) columnHeader(col int) string {
 	if len(t.rows) == 0 || col >= len(t.rows[0].cells) {
 		return ""
 	}
-	return strings.TrimSpace(t.rows[0].cells[col])
+	return string(bytes.TrimSpace(t.rows[0].cells[col]))
+}
+
+// countWords returns the count of whitespace-delimited fields in b
+// without allocating. Mirrors `len(strings.Fields(string(b)))`
+// (Unicode whitespace via utf8.RuneStart + unicode.IsSpace) but
+// scans bytes directly so it stays on the per-Check alloc budget.
+// Pure ASCII text takes the fast path; multibyte runes only decode
+// when their lead byte is encountered.
+func countWords(b []byte) int {
+	words := 0
+	inWord := false
+	for i := 0; i < len(b); {
+		c := b[i]
+		var size int
+		isSpace := false
+		switch {
+		case c < utf8.RuneSelf:
+			size = 1
+			isSpace = asciiSpace(c)
+		default:
+			r, sz := utf8.DecodeRune(b[i:])
+			size = sz
+			isSpace = isUnicodeSpace(r)
+		}
+		if isSpace {
+			inWord = false
+		} else if !inWord {
+			words++
+			inWord = true
+		}
+		i += size
+	}
+	return words
+}
+
+func asciiSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\v' || b == '\f' || b == '\r'
+}
+
+// isUnicodeSpace mirrors unicode.IsSpace for the runes strings.Fields
+// treats as whitespace. Inlined to avoid importing unicode just for
+// the rare multi-byte cell.
+func isUnicodeSpace(r rune) bool {
+	switch r {
+	case ' ', '\t', '\n', '\v', '\f', '\r':
+		return true
+	case 0x85, 0xA0, 0x1680:
+		return true
+	}
+	if r >= 0x2000 && r <= 0x200A {
+		return true
+	}
+	switch r {
+	case 0x2028, 0x2029, 0x202F, 0x205F, 0x3000:
+		return true
+	}
+	return false
 }
 
 func (t table) columnWidthRatio() float64 {
@@ -345,11 +407,11 @@ func (t table) columnWidthRatio() float64 {
 			continue
 		}
 		for col := 0; col < columns; col++ {
-			cell := ""
+			var cell []byte
 			if col < len(row.cells) {
-				cell = strings.TrimSpace(row.cells[col])
+				cell = bytes.TrimSpace(row.cells[col])
 			}
-			sums[col] += float64(utf8.RuneCountInString(cell))
+			sums[col] += float64(utf8.RuneCount(cell))
 			counts[col]++
 		}
 	}
@@ -468,11 +530,15 @@ func stripPrefix(line []byte, prefix string) []byte {
 	if prefix == "" {
 		return line
 	}
-	s := string(line)
-	if !strings.HasPrefix(s, prefix) {
+	if len(line) < len(prefix) {
 		return line
 	}
-	return []byte(s[len(prefix):])
+	for i := 0; i < len(prefix); i++ {
+		if line[i] != prefix[i] {
+			return line
+		}
+	}
+	return line[len(prefix):]
 }
 
 func isTableRow(content []byte) bool {
@@ -484,20 +550,17 @@ func isTableRow(content []byte) bool {
 }
 
 // splitRow splits a row's interior (after outer-pipe strip and
-// whitespace trim) into per-cell strings. The byte-based form
-// replaces the original `strings.Builder`-driven path so that:
-//
-//   - the input avoids one `string(...)` conversion per row;
-//   - the result slice is sized exactly from the unescaped `|`
-//     count, eliminating per-row capacity grows;
-//   - each cell allocates exactly one string (`string(...)` on a
-//     bytes.TrimSpace sub-slice), rather than one Builder.String()
-//     plus a separate strings.TrimSpace.
+// whitespace trim) into per-cell byte slices. Each cell is a
+// sub-slice of row, so the per-row cost is one slice header
+// allocation regardless of cell count — the cell bytes themselves
+// alias into the source line. The pre-pass sizes the cells slice
+// exactly from the unescaped `|` count so the result slice never
+// grows.
 //
 // `\|` is the GFM escape for a literal pipe inside a cell; the
 // scanner preserves the backslash in the cell text so consumers
 // see the input as the user wrote it.
-func splitRow(row []byte) []string {
+func splitRow(row []byte) [][]byte {
 	row = bytes.TrimSpace(row)
 	if len(row) > 0 && row[0] == '|' {
 		row = row[1:]
@@ -506,7 +569,6 @@ func splitRow(row []byte) []string {
 		row = row[:len(row)-1]
 	}
 
-	// Pre-size cells: count unescaped `|` separators + 1.
 	cellCount := 1
 	for i := 0; i < len(row); i++ {
 		if row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
@@ -517,7 +579,7 @@ func splitRow(row []byte) []string {
 			cellCount++
 		}
 	}
-	cells := make([]string, 0, cellCount)
+	cells := make([][]byte, 0, cellCount)
 
 	start := 0
 	for i := 0; i <= len(row); i++ {
@@ -526,19 +588,19 @@ func splitRow(row []byte) []string {
 			continue
 		}
 		if i == len(row) || row[i] == '|' {
-			cells = append(cells, string(bytes.TrimSpace(row[start:i])))
+			cells = append(cells, bytes.TrimSpace(row[start:i]))
 			start = i + 1
 		}
 	}
 	return cells
 }
 
-func isSeparatorRow(cells []string) bool {
+func isSeparatorRow(cells [][]byte) bool {
 	if len(cells) == 0 {
 		return false
 	}
 	for _, cell := range cells {
-		if !separatorRe.MatchString(strings.TrimSpace(cell)) {
+		if !separatorRe.Match(bytes.TrimSpace(cell)) {
 			return false
 		}
 	}

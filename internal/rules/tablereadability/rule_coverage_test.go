@@ -88,8 +88,8 @@ func TestDetectPrefix_NonSpacePrefixBeforePipe(t *testing.T) {
 func TestColumnHeader_Valid(t *testing.T) {
 	tbl := table{
 		rows: []tableRow{
-			{cells: []string{"Name", "Value"}},
-			{cells: []string{"---", "---"}, isSeparator: true},
+			{cells: cellsFromStrings("Name", "Value")},
+			{cells: cellsFromStrings("---", "---"), isSeparator: true},
 		},
 	}
 	assert.Equal(t, "Name", tbl.columnHeader(0))
@@ -99,7 +99,7 @@ func TestColumnHeader_Valid(t *testing.T) {
 func TestColumnHeader_OutOfRange(t *testing.T) {
 	tbl := table{
 		rows: []tableRow{
-			{cells: []string{"Name"}},
+			{cells: cellsFromStrings("Name")},
 		},
 	}
 	assert.Equal(t, "", tbl.columnHeader(5))
@@ -113,18 +113,18 @@ func TestColumnHeader_EmptyRows(t *testing.T) {
 // --- isSeparatorRow coverage ---
 
 func TestIsSeparatorRow_Valid(t *testing.T) {
-	assert.True(t, isSeparatorRow([]string{"---", "---"}))
-	assert.True(t, isSeparatorRow([]string{":---", "---:"}))
-	assert.True(t, isSeparatorRow([]string{":---:"}))
+	assert.True(t, isSeparatorRow(cellsFromStrings("---", "---")))
+	assert.True(t, isSeparatorRow(cellsFromStrings(":---", "---:")))
+	assert.True(t, isSeparatorRow(cellsFromStrings(":---:")))
 }
 
 func TestIsSeparatorRow_Empty(t *testing.T) {
-	assert.False(t, isSeparatorRow([]string{}))
+	assert.False(t, isSeparatorRow(cellsFromStrings()))
 }
 
 func TestIsSeparatorRow_Invalid(t *testing.T) {
-	assert.False(t, isSeparatorRow([]string{"abc"}))
-	assert.False(t, isSeparatorRow([]string{"---", "abc"}))
+	assert.False(t, isSeparatorRow(cellsFromStrings("abc")))
+	assert.False(t, isSeparatorRow(cellsFromStrings("---", "abc")))
 }
 
 // --- ApplySettings coverage for individual fields ---
@@ -225,9 +225,9 @@ func TestCheck_ZeroFields_DefaultsUsed(t *testing.T) {
 func TestColumnWidthRatio_SingleColumn(t *testing.T) {
 	tbl := table{
 		rows: []tableRow{
-			{cells: []string{"Header"}},
-			{cells: []string{"---"}, isSeparator: true},
-			{cells: []string{"value"}},
+			{cells: cellsFromStrings("Header")},
+			{cells: cellsFromStrings("---"), isSeparator: true},
+			{cells: cellsFromStrings("value")},
 		},
 	}
 	ratio := tbl.columnWidthRatio()
@@ -315,9 +315,9 @@ func TestColumnWidthRatio_OneEmptyOneNonEmpty(t *testing.T) {
 	// minAverage=0, maxAverage=3 → hits `if minAverage == 0 { return math.Inf(1) }`
 	tbl := table{
 		rows: []tableRow{
-			{cells: []string{"ABC", ""}},
-			{cells: []string{"---", "---"}, isSeparator: true},
-			{cells: []string{"DEF", ""}},
+			{cells: cellsFromStrings("ABC", "")},
+			{cells: cellsFromStrings("---", "---"), isSeparator: true},
+			{cells: cellsFromStrings("DEF", "")},
 		},
 	}
 	ratio := tbl.columnWidthRatio()
@@ -328,7 +328,7 @@ func TestColumnWidthRatio_OneEmptyOneNonEmpty(t *testing.T) {
 func TestColumnWidthRatio_OnlySeparatorRows(t *testing.T) {
 	tbl := table{
 		rows: []tableRow{
-			{cells: []string{"---"}, isSeparator: true},
+			{cells: cellsFromStrings("---"), isSeparator: true},
 		},
 	}
 	ratio := tbl.columnWidthRatio()
@@ -340,8 +340,8 @@ func TestColumnWidthRatio_OnlySeparatorRows(t *testing.T) {
 func TestColumnWidthRatio_AllDataCellsEmpty(t *testing.T) {
 	tbl := table{
 		rows: []tableRow{
-			{cells: []string{"", ""}}, // header (non-sep), all empty
-			{cells: []string{"---", "---"}, isSeparator: true},
+			{cells: cellsFromStrings("", "")}, // header (non-sep), all empty
+			{cells: cellsFromStrings("---", "---"), isSeparator: true},
 		},
 	}
 	ratio := tbl.columnWidthRatio()

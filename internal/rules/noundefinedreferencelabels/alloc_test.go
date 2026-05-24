@@ -1,4 +1,4 @@
-package nounusedlinkdefinitions
+package noundefinedreferencelabels
 
 import (
 	"testing"
@@ -7,16 +7,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// allocBudgetMDS053 is the per-rule ceiling MDS053 must stay under.
-// Plan 195 task 6 landed: the single-def Check path skips the
-// usedLabels map and short-circuits the AST walk via
-// isLabelUsedInAST, so the gate fixture (1 refdef) now allocates
-// below the ≤ 10 ceiling.
-const allocBudgetMDS053 = 10
+// allocBudgetMDS054 is the per-rule ceiling MDS054 must stay under.
+// Plan 195 task 7 landed: collectNormalisedDefs returns a sized
+// []string instead of a map, labelDefined linear-scans it, the
+// no-bracket early-exit short-circuits prose files, and the
+// `len(r.Placeholders) > 0 &&` guard avoids the per-match
+// `string(label)` cast when no placeholder vocabulary is
+// configured (the default).
+const allocBudgetMDS054 = 10
 
 // allocBudgetFixture mirrors the integration alloc-budget fixture
-// so the unit-level gate catches a regression from a single
-// package without booting the full rule matrix.
+// at internal/integration/alloc_budget_test.go so the unit-level
+// gate catches a regression from a single package without booting
+// the full rule matrix.
 const allocBudgetFixture = "# Document title\n" +
 	"\n" +
 	"A short prose paragraph for the readability and structural\n" +
@@ -37,9 +40,6 @@ const allocBudgetFixture = "# Document title\n" +
 	"\n" +
 	"[ref]: https://example.com/\n"
 
-// checkAllocsPerOp returns parse-subtracted allocs/op for r.Check on
-// the fixture. Fresh File per iteration so per-File memos start cold
-// — matches the integration gate.
 func checkAllocsPerOp(tb testing.TB, r *Rule) float64 {
 	tb.Helper()
 	src := []byte(allocBudgetFixture)
@@ -63,9 +63,9 @@ func checkAllocsPerOp(tb testing.TB, r *Rule) float64 {
 	return delta
 }
 
-// TestCheckAllocBudget pins MDS053's per-Check allocation count to
-// the partial-fix ceiling. Skipped under -race and -short, matching
-// the integration matrix.
+// TestCheckAllocBudget pins MDS054's per-Check allocation count to
+// the ≤ 10 ceiling. Skipped under -race and -short, matching the
+// integration matrix.
 func TestCheckAllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
@@ -75,9 +75,9 @@ func TestCheckAllocBudget(t *testing.T) {
 	}
 	r := &Rule{}
 	allocs := checkAllocsPerOp(t, r)
-	t.Logf("MDS053 Check allocs/op = %.0f (budget = %d)",
-		allocs, allocBudgetMDS053)
-	require.LessOrEqualf(t, allocs, float64(allocBudgetMDS053),
-		"MDS053 Check allocs/op = %.0f, budget = %d (plan 195)",
-		allocs, allocBudgetMDS053)
+	t.Logf("MDS054 Check allocs/op = %.0f (budget = %d)",
+		allocs, allocBudgetMDS054)
+	require.LessOrEqualf(t, allocs, float64(allocBudgetMDS054),
+		"MDS054 Check allocs/op = %.0f, budget = %d (plan 195)",
+		allocs, allocBudgetMDS054)
 }

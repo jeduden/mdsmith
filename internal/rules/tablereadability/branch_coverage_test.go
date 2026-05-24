@@ -54,9 +54,9 @@ func TestColumnWidthRatio_EmptyColumn(t *testing.T) {
 		startLine: 1,
 		rows: []tableRow{
 			// Header has 2 cells; data row has only 1.
-			{line: 1, cells: []string{"A", "B"}},
-			{line: 2, cells: []string{"-", "-"}, isSeparator: true},
-			{line: 3, cells: []string{"a"}},
+			{line: 1, cells: cellsFromStrings("A", "B")},
+			{line: 2, cells: cellsFromStrings("-", "-"), isSeparator: true},
+			{line: 3, cells: cellsFromStrings("a")},
 		},
 	}
 	_ = tbl.columnWidthRatio() // should not panic; coverage is the point.

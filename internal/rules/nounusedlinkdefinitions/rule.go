@@ -91,51 +91,65 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if len(defs) == 0 {
 		return nil
 	}
-	ignored := r.ignoredLabels
+	if len(defs) == 1 {
+		return r.checkSingleDef(f, defs[0])
+	}
+	return r.checkMultiDefs(f, defs)
+}
 
-	// usedLabels is only consulted for the first-seen, non-ignored
-	// definition of a label — `ignored[norm]` and the `seen` map
-	// short-circuit before the used-check. Building it lazily skips
-	// the AST walk on the narrow case where every refdef in the file
-	// is ignored or duplicated; for the common one-def-per-label
-	// file, the walk still runs once (on the first iteration that
-	// falls through to the used-check) instead of unconditionally
-	// up-front.
+// checkSingleDef is the hot path for files with exactly one link
+// reference definition (the universal case). It skips the
+// usedLabels map and short-circuits the AST walk via
+// isLabelUsedInAST, which returns on the first matching
+// reference. The map + entry + `collectUsedLabelsInto`'s recursive
+// helper that the multi-def path pays each become a single
+// allocation-free walk here — plan 195 task 6.
+func (r *Rule) checkSingleDef(f *lint.File, d referenceDefinition) []lint.Diagnostic {
+	norm := util.ToLinkReference(d.rawLabel)
+	if r.ignoredLabels[norm] || isLabelUsedInAST(f.AST, norm) {
+		return nil
+	}
+	return []lint.Diagnostic{{
+		File:     f.Path,
+		Line:     d.line,
+		Column:   d.col,
+		RuleID:   r.ID(),
+		RuleName: r.Name(),
+		Severity: lint.Warning,
+		Message:  fmt.Sprintf(msgUnused, d.labelString()),
+	}}
+}
+
+// checkMultiDefs walks defs once, flagging the first duplicate of
+// each label and the unused-survivors. usedLabels is computed
+// lazily so a file where every def is duplicated or ignored skips
+// the AST walk.
+func (r *Rule) checkMultiDefs(f *lint.File, defs []referenceDefinition) []lint.Diagnostic {
+	ignored := r.ignoredLabels
+	seen := make(map[string]int, len(defs))
 	var (
 		usedLabels     map[string]bool
 		usedLabelsDone bool
 	)
-
-	// seen tracks the first-line of each normalised label. Only
-	// allocated when len(defs) > 1 — a single-definition file cannot
-	// have a duplicate, and skipping the empty map literal pays back
-	// on the alloc-budget gate where the fixture has one refdef
-	// (plan 195 task 6).
-	var seen map[string]int
-	if len(defs) > 1 {
-		seen = make(map[string]int, len(defs))
-	}
 	var diags []lint.Diagnostic
 	for _, d := range defs {
 		norm := util.ToLinkReference(d.rawLabel)
 		if ignored[norm] {
 			continue
 		}
-		if seen != nil {
-			if firstLine, exists := seen[norm]; exists {
-				diags = append(diags, lint.Diagnostic{
-					File:     f.Path,
-					Line:     d.line,
-					Column:   d.col,
-					RuleID:   r.ID(),
-					RuleName: r.Name(),
-					Severity: lint.Warning,
-					Message:  fmt.Sprintf(msgDuplicate, d.labelString(), firstLine),
-				})
-				continue
-			}
-			seen[norm] = d.line
+		if firstLine, exists := seen[norm]; exists {
+			diags = append(diags, lint.Diagnostic{
+				File:     f.Path,
+				Line:     d.line,
+				Column:   d.col,
+				RuleID:   r.ID(),
+				RuleName: r.Name(),
+				Severity: lint.Warning,
+				Message:  fmt.Sprintf(msgDuplicate, d.labelString(), firstLine),
+			})
+			continue
 		}
+		seen[norm] = d.line
 		if !usedLabelsDone {
 			usedLabels = collectUsedLabels(f)
 			usedLabelsDone = true
@@ -153,6 +167,34 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 	}
 	return diags
+}
+
+// isLabelUsedInAST reports whether n or any of its descendants is a
+// reference-style link or image whose normalised label matches target.
+// Short-circuits on the first match so the single-def Check path
+// pays one walk, not a full map build.
+func isLabelUsedInAST(n ast.Node, target string) bool {
+	if n == nil {
+		return false
+	}
+	switch v := n.(type) {
+	case *ast.Link:
+		if v.Reference != nil &&
+			util.ToLinkReference(v.Reference.Value) == target {
+			return true
+		}
+	case *ast.Image:
+		if v.Reference != nil &&
+			util.ToLinkReference(v.Reference.Value) == target {
+			return true
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		if isLabelUsedInAST(c, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // Fix implements rule.FixableRule. It removes unused and duplicate definition

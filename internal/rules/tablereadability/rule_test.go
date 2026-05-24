@@ -14,6 +14,18 @@ func newFile(t *testing.T, src string) *lint.File {
 	return f
 }
 
+// cellsFromStrings builds a fixture row's cells slice in test code
+// where literal cell content is simpler to read as strings. Test-only;
+// production callers build cells from splitRow's sub-slices into the
+// source line.
+func cellsFromStrings(s ...string) [][]byte {
+	out := make([][]byte, len(s))
+	for i, v := range s {
+		out[i] = []byte(v)
+	}
+	return out
+}
+
 func TestID(t *testing.T) {
 	r := &Rule{}
 	if got := r.ID(); got != "MDS026" {
@@ -169,10 +181,10 @@ func TestCheck_SkipsTablesInCodeBlock(t *testing.T) {
 func TestSplitRow_PreservesEscapedPipes(t *testing.T) {
 	cells := splitRow([]byte(`| a \| b | c |`))
 	require.Len(t, cells, 2, "expected 2 cells, got %d", len(cells))
-	if cells[0] != `a \| b` {
+	if string(cells[0]) != `a \| b` {
 		t.Fatalf("first cell = %q, want %q", cells[0], `a \| b`)
 	}
-	if cells[1] != "c" {
+	if string(cells[1]) != "c" {
 		t.Fatalf("second cell = %q, want %q", cells[1], "c")
 	}
 }

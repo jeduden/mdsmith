@@ -47,9 +47,16 @@ var allocBudgetGrandfathered = map[string]int{
 	// this to the ≤ 10 ceiling needs the single-table-walk refactor
 	// scheduled as a follow-up to plan 181.
 	"MDS025": 110, // table-format
-	"MDS026": 18,  // table-readability
-	"MDS053": 11,  // no-unused-link-definitions (was 16; plan 195 task 6 partial)
-	"MDS054": 13,  // no-undefined-reference-labels (was 21; plan 195 task 7 partial)
+	// MDS026 (table-readability) dropped out: cells-as-byte-offsets
+	// refactor (task 2) landed; rule now lands at the 10-alloc
+	// ceiling on the gate fixture.
+	// MDS053 (no-unused-link-definitions) dropped out: single-def
+	// fast path skips the usedLabels map and short-circuits the AST
+	// walk via isLabelUsedInAST (plan 195 task 6).
+	// MDS054 (no-undefined-reference-labels) dropped out: linear-scan
+	// labelDefined replaces the per-Check defs map, no-bracket
+	// early-exit short-circuits prose files, placeholder check
+	// guards the `string(label)` cast (plan 195 task 7).
 	// Baselines tightened to the post-perf-chunk numbers so a
 	// regression from today's state fails CI without waiting for
 	// the per-rule alloc budget to be missed by a wide margin.

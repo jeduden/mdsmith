@@ -4,6 +4,7 @@
 package noundefinedreferencelabels
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"unicode"
@@ -45,12 +46,20 @@ const (
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
+	// Every shape this rule flags starts with `[`; a file without
+	// brackets cannot trigger MDS054, so the early-exit skips the
+	// per-Check helper allocations (defs lookup, code-line maps,
+	// code-span walk) entirely. Most prose files take this branch.
+	if !bytes.ContainsRune(f.Source, '[') {
+		return nil
+	}
+
 	shortcut := r.Shortcut
 	if shortcut == "" {
 		shortcut = shortcutHeuristic
 	}
 
-	defs := collectReferenceDefs(f)
+	defs := collectNormalisedDefs(f)
 	codeLines := lint.CollectCodeBlockLines(f)
 	codeSpans := collectCodeSpanRanges(f)
 	piLines := lint.CollectPIBlockLines(f)
@@ -65,17 +74,36 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return diags
 }
 
-// collectReferenceDefs returns the set of normalized labels for which a
-// link reference definition exists, reading the definitions goldmark
-// already collected during the file's single parse (see
-// lint.File.LinkReferences) rather than re-parsing the source.
-func collectReferenceDefs(f *lint.File) map[string]bool {
+// collectNormalisedDefs returns the CommonMark-normalised labels of
+// every link reference definition in f. A single string slice
+// (sized exactly to len(refs)) replaces the previous map-of-
+// normalised-labels so the per-Check defs build pays one slice
+// header + N strings rather than one map header + bucket + N
+// strings + a grow alloc on insert. labelDefined linear-scans the
+// slice — small-N is the universal case for a single file, and
+// the cache-friendly stride beats the map on the fixture's 1-ref
+// load (plan 195 task 7).
+func collectNormalisedDefs(f *lint.File) []string {
 	refs := f.LinkReferences()
-	defs := make(map[string]bool, len(refs))
-	for _, ref := range refs {
-		defs[normalizeLabel(ref.Label())] = true
+	if len(refs) == 0 {
+		return nil
+	}
+	defs := make([]string, len(refs))
+	for i, ref := range refs {
+		defs[i] = string(util.ToLinkReference(ref.Label()))
 	}
 	return defs
+}
+
+// labelDefined reports whether normalised matches any label in defs.
+// defs is already CommonMark-normalised by collectNormalisedDefs.
+func labelDefined(defs []string, normalised string) bool {
+	for _, d := range defs {
+		if d == normalised {
+			return true
+		}
+	}
+	return false
 }
 
 // normalizeLabel applies CommonMark reference label normalization.
@@ -208,7 +236,7 @@ func nextBracket(source []byte, pos int) (open, contentStart, contentEnd, closeA
 // excluded or code-spanned or escape-prefixed.
 func (r *Rule) scanFullRefs(
 	f *lint.File,
-	defs map[string]bool,
+	defs []string,
 	spans []byteRange,
 	codeLines, piLines map[int]bool,
 ) []lint.Diagnostic {
@@ -248,12 +276,12 @@ func (r *Rule) scanFullRefs(
 			continue
 		}
 		label := source[cs2:ce2]
-		if placeholders.ContainsBodyToken(string(label), r.Placeholders) {
+		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(string(label), r.Placeholders) {
 			pos = ca2
 			continue
 		}
 		normalized := normalizeLabel(label)
-		if !defs[normalized] {
+		if !labelDefined(defs, normalized) {
 			col := f.ColumnOfOffset(open1)
 			if open1 > 0 && source[open1-1] == '!' {
 				col = f.ColumnOfOffset(open1 - 1)
@@ -271,7 +299,7 @@ func (r *Rule) scanFullRefs(
 // scanFullRefs.
 func (r *Rule) scanCollapsedRefs(
 	f *lint.File,
-	defs map[string]bool,
+	defs []string,
 	spans []byteRange,
 	codeLines, piLines map[int]bool,
 ) []lint.Diagnostic {
@@ -304,12 +332,12 @@ func (r *Rule) scanCollapsedRefs(
 			pos = ca + 2
 			continue
 		}
-		if placeholders.ContainsBodyToken(string(text), r.Placeholders) {
+		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(string(text), r.Placeholders) {
 			pos = ca + 2
 			continue
 		}
 		normalized := normalizeLabel(text)
-		if !defs[normalized] {
+		if !labelDefined(defs, normalized) {
 			col := f.ColumnOfOffset(open)
 			if open > 0 && source[open-1] == '!' {
 				col = f.ColumnOfOffset(open - 1)
@@ -330,7 +358,7 @@ func (r *Rule) scanCollapsedRefs(
 // looks plausibly like a reference target.
 func (r *Rule) scanShortcutRefs(
 	f *lint.File,
-	defs map[string]bool,
+	defs []string,
 	spans []byteRange,
 	codeLines, piLines map[int]bool,
 	shortcutMode string,
@@ -376,7 +404,7 @@ func (r *Rule) scanShortcutRefs(
 			continue
 		}
 		label := source[cs:ce]
-		if placeholders.ContainsBodyToken(string(label), r.Placeholders) {
+		if len(r.Placeholders) > 0 && placeholders.ContainsBodyToken(string(label), r.Placeholders) {
 			pos = ca
 			continue
 		}
@@ -386,7 +414,7 @@ func (r *Rule) scanShortcutRefs(
 			continue
 		}
 		normalized := normalizeLabel(label)
-		if !defs[normalized] {
+		if !labelDefined(defs, normalized) {
 			col := f.ColumnOfOffset(open)
 			if isImage {
 				col = f.ColumnOfOffset(open - 1)
