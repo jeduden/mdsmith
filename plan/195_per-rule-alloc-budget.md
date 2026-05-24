@@ -235,6 +235,11 @@ reference it.
     `schema.ValidateFrontmatterDiags` site as well —
     the production-hot CUE compile is now shared across
     every host file sharing a schema.
+    PR #377 follow-ups close the LSP cache-invalidation
+    gaps Copilot flagged: a fragment edit evicts every
+    dependent schema, and per-schema `CompiledCUE`
+    eviction stops compiled values leaking across LSP
+    edits.
 16. [x] Re-run `BenchmarkCheckCorpusLarge` to confirm
     no engine-corpus regression. Latest run lands at
     p95 = 188 ms / 314 µs per file — well under the
