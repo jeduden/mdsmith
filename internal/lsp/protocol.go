@@ -272,9 +272,10 @@ type codeAction struct {
 }
 
 type workspaceEdit struct {
-	// Changes is the legacy edit map. Emitted only when DocumentChanges
-	// is empty so the annotated path never sends both (the spec bans it).
-	Changes map[string][]textEdit `json:"changes,omitempty"`
+	// Changes is the legacy edit map. When nil (annotated path), it
+	// marshals as "changes":null; clients use documentChanges instead
+	// per LSP §3.16.1. Non-nil but empty ("changes":{}) signals a no-op.
+	Changes map[string][]textEdit `json:"changes"`
 	// DocumentChanges carries annotated edits when the client advertises
 	// documentChanges + changeAnnotationSupport capability.
 	DocumentChanges []textDocumentEdit `json:"documentChanges,omitempty"`
