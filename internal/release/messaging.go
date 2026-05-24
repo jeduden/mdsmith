@@ -17,25 +17,32 @@ const MessagingKind = "messaging"
 // relative to the repo root.
 const MessagingSourceFile = "docs/brand/messaging.md"
 
-// Messaging holds every field projected from the messaging kind.
-// Field names use Go conventions; the JSON tags pin the
-// dash-cased keys produced by `mdsmith extract`. Adding a field
-// here is a coordinated edit with .mdsmith.yml's messaging kind,
-// docs/brand/messaging.md, and the e2e_extract_messaging_test.go
+// Messaging is the flat, in-process Go value every patcher
+// consumes. The JSON shape `mdsmith extract messaging`
+// produces (frontmatter scalars + a code-block headline
+// section + paragraph sections for the prose fields) is
+// decoded via the internal `messagingDoc` envelope in
+// LoadMessaging and copied here; no field on Messaging is
+// JSON-decoded directly, so there are no JSON tags.
+//
+// Adding a field is a coordinated edit with .mdsmith.yml's
+// messaging kind, docs/brand/messaging.md, messagingDoc /
+// LoadMessaging in this file, and
+// cmd/mdsmith/e2e_extract_messaging_test.go's
 // expected-fields list.
 type Messaging struct {
-	Title                       string `json:"title"`
-	Summary                     string `json:"summary"`
-	Eyebrow                     string `json:"eyebrow"`
-	HeadlinePre                 string `json:"headline-pre"`
-	HeadlineEm                  string `json:"headline-em"`
-	HeadlinePost                string `json:"headline-post"`
-	Lead                        string `json:"lead"`
-	Tagline                     string `json:"tagline"`
-	VSCodeDescription           string `json:"vscode-description"`
-	ClaudeCodeLSPDescription    string `json:"claude-code-lsp-description"`
-	ClaudeCodeSkillsDescription string `json:"claude-code-skills-description"`
-	ClaudeCodeAuditDescription  string `json:"claude-code-audit-description"`
+	Title                       string
+	Summary                     string
+	Eyebrow                     string
+	HeadlinePre                 string
+	HeadlineEm                  string
+	HeadlinePost                string
+	Lead                        string
+	Tagline                     string
+	VSCodeDescription           string
+	ClaudeCodeLSPDescription    string
+	ClaudeCodeSkillsDescription string
+	ClaudeCodeAuditDescription  string
 }
 
 // LoadMessaging projects MessagingSourceFile through
