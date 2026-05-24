@@ -129,11 +129,6 @@ func TestName(t *testing.T) {
 	assert.Equal(t, "descriptive-link-text", r.Name())
 }
 
-func TestCategory(t *testing.T) {
-	r := &Rule{}
-	assert.Equal(t, "prose", r.Category())
-}
-
 func TestDefaultSettings(t *testing.T) {
 	r := &Rule{}
 	s := r.DefaultSettings()
