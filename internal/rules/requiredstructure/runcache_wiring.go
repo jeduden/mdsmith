@@ -3,32 +3,9 @@ package requiredstructure
 import (
 	"path/filepath"
 
-	"cuelang.org/go/cue"
-	"cuelang.org/go/cue/cuecontext"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/schema"
 )
-
-// compiledCUE pairs a cue.Value with the *cue.Context that produced
-// it. A cue.Value is tied to its context and must not cross contexts,
-// so a cached value is only meaningful alongside its context — callers
-// that need to compile additional data (e.g. the document front
-// matter) must reuse the wrapper's Context so the resulting Unify
-// stays on one context.
-type compiledCUE struct {
-	Ctx   *cue.Context
-	Value cue.Value
-}
-
-// Err reports the CompileString error from the cached compile.
-// validateCUESchemaSyntax / validateFrontMatterCUE both inspect the
-// schema-side error before going further; exposing it here keeps the
-// cache hit cheap (no per-call Unify on a known-broken schema).
-func (c *compiledCUE) Err() error {
-	if c == nil {
-		return nil
-	}
-	return c.Value.Err()
-}
 
 // schemaParseResult is the cached payload for ParsedSchema: a
 // parsedSchema pointer plus the parse error. Caching the error
@@ -91,11 +68,13 @@ func cachedParseSchemaWith(
 	return r.schema, r.err
 }
 
-// cachedCompiledCUEWith returns the cached compile of source through
-// cache when non-nil, falling back to a fresh compile when the cache
-// is missing. The returned wrapper carries the *cue.Context the value
-// was compiled against so callers that need to Unify additional
-// values use the same context (cue.Value cannot cross contexts).
+// cachedCompiledCUEWith returns the cached compile of source. It is a
+// thin forward to schema.CachedCompile so the rule package keeps the
+// historical name at its call sites (validateCUESchemaSyntaxWith /
+// validateFrontMatterCUE) and the wrapper type lives in one place. The
+// returned wrapper carries the *cue.Context the value was compiled
+// against so callers that need to Unify additional values use the same
+// context (cue.Value cannot cross contexts).
 //
 // Tests drive this directly to assert single-build semantics; the
 // rule path reaches it through validateCUESchemaSyntaxWith /
@@ -103,17 +82,8 @@ func cachedParseSchemaWith(
 // parseSchema closure. The CompiledCUE slot adds a second-tier win:
 // two distinct schema files producing identical CUE source share one
 // compile.
-func cachedCompiledCUEWith(cache *lint.RunCache, source string) *compiledCUE {
-	build := func() any {
-		ctx := cuecontext.New()
-		val := ctx.CompileString(source)
-		return &compiledCUE{Ctx: ctx, Value: val}
-	}
-	if cache == nil {
-		return build().(*compiledCUE)
-	}
-	v := cache.CompiledCUE(source, build)
-	return v.(*compiledCUE)
+func cachedCompiledCUEWith(cache *lint.RunCache, source string) *schema.CompiledCUE {
+	return schema.CachedCompile(cache, source)
 }
 
 // absSchemaCacheKey resolves a schema path to an absolute filesystem

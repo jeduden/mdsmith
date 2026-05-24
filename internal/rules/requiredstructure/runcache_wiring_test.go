@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -131,7 +132,7 @@ func TestCachedCompiledCUE_ConcurrentSingleBuild(t *testing.T) {
 	cache := lint.NewRunCache()
 	const src = `{shared: string}`
 	var wg sync.WaitGroup
-	results := make([]*compiledCUE, 16)
+	results := make([]*schema.CompiledCUE, 16)
 	for i := 0; i < 16; i++ {
 		i := i
 		wg.Add(1)
