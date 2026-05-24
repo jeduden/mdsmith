@@ -78,6 +78,19 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		}
 
 		text := mdtext.ExtractPlainText(para, f.Source)
+		// Cheap word count gates the classifier work: paragraphs
+		// below MinWords cannot trigger a diagnostic regardless of
+		// their score, and the classifier's regex-driven cue
+		// detection is the dominant alloc-budget cost when it
+		// fires (~400 allocs/paragraph on the alloc-budget gate
+		// fixture). countClassifierTokens is a zero-alloc byte
+		// scan that mirrors the classifier's `[a-z0-9']+` regex
+		// (applied to the lowercased text) so the gate cannot
+		// skip a paragraph the classifier would have run on.
+		// Plan 195 task 13.
+		if countClassifierTokens(text) < r.MinWords {
+			return ast.WalkContinue, nil
+		}
 		result := scorer.Score(text)
 		if result.WordCount < r.MinWords || result.Conciseness >= r.MinScore {
 			return ast.WalkContinue, nil
@@ -206,6 +219,37 @@ func (r *Rule) DefaultSettings() map[string]any {
 		"min-score": defaultMinScore,
 		"min-words": defaultMinWords,
 	}
+}
+
+// countClassifierTokens counts non-overlapping byte runs matching
+// the classifier's word regex `[a-z0-9']+` applied to the
+// lowercased text. The classifier's WordCount comes from
+// regexp.FindAllString on the lowercased input, so this counter
+// matches that semantics byte-for-byte without the per-call
+// regex allocation. Used to gate the classifier call without
+// the divergence mdtext.CountWords (whitespace-only splitter)
+// introduces — the whitespace splitter counts `hello-world` as
+// one token while the classifier sees two, which could
+// under-count and skip paragraphs the classifier would have
+// flagged.
+func countClassifierTokens(text string) int {
+	n := 0
+	inToken := false
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		if (c >= 'a' && c <= 'z') ||
+			(c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') ||
+			c == '\'' {
+			if !inToken {
+				inToken = true
+				n++
+			}
+		} else {
+			inToken = false
+		}
+	}
+	return n
 }
 
 var _ rule.Configurable = (*Rule)(nil)

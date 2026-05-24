@@ -101,85 +101,141 @@ reference it.
 
 ## Tasks
 
-1. [x] Add `internal/integration/alloc_budget_test.go`
-   (the parametric per-rule gate) plus the
-   `race_off_test.go` / `race_on_test.go` build-tag pair
-   that lets the gate skip cleanly under `-race`.
-2. [🔳] Partial fix for MDS026 table-readability (37 →
-   23 on the initial gate fixture; further engine-bench
-   cuts in the same PR brought the current grandfather
-   baseline to 18 — see
-   `internal/integration/alloc_budget_test.go` for the
-   authoritative number). Lands the early-exit pair
-   (no-pipe-in-source, no-pipe-on-line) and the
+1. [x] Add the parametric per-rule gate at
+   `internal/integration/alloc_budget_test.go`. Add
+   `race_off_test.go` and `race_on_test.go` as the
+   build-tag pair. The gate then skips cleanly
+   under `-race`.
+2. [🔳] Partial fix for MDS026 table-readability.
+   Initial gate fixture went from 37 → 23. Further
+   engine-bench cuts in the same PR brought the
+   grandfather baseline to 18. See
+   `internal/integration/alloc_budget_test.go` for
+   the authoritative number. Lands the early-exit
+   pair (no-pipe-in-source, no-pipe-on-line) and the
    byte-scanner detectPrefix + splitRow. Remaining
    ≥10-alloc budget needs the cells-as-byte-offsets
-   refactor (tableRow stores `source []byte` +
-   `cellRanges []int` rather than `[]string`); deferred
-   so the cell-storage move and the rule-coverage_test
-   updates land together.
-3. [🔳] Partial fix for MDS025 table-format (63 → 55 on
-   the initial gate fixture; current grandfather
-   baseline 50 — see
-   `internal/integration/alloc_budget_test.go`). Lands
+   refactor. The tableRow type would store
+   `source []byte` + `cellRanges []int` rather than
+   `[]string`. Deferred so the cell-storage move and
+   the rule-coverage_test updates land together.
+3. [🔳] Partial fix for MDS025 table-format. Went from
+   63 → 55 on the initial gate fixture. Current
+   grandfather baseline is 50. See
+   `internal/integration/alloc_budget_test.go`. Lands
    the same early-exit pair through the tableformat
-   rule and `tablefmt.findTables`. Same `cells []string`
-   refactor blocks the rest.
+   rule and `tablefmt.findTables`. The same
+   `cells []string` refactor blocks the rest.
 4. [x] Fix MDS001 line-length (19 → ≤ 10). Dropped the
    three empty `map[int]bool{}` literals in
-   buildCategories, replaced the per-line
-   `tableLineRe.Match` with isTableLineStart, replaced
+   buildCategories. Replaced the per-line
+   `tableLineRe.Match` with isTableLineStart. Replaced
    the per-long-line `urlOnlyRe.MatchString` with
-   isURLOnlyLine, and built the diagnostic message via
+   isURLOnlyLine. Built the diagnostic message via
    strconv.Itoa + concat instead of fmt.Sprintf.
-5. [ ] Fix MDS027 cross-file-reference-integrity:
-   memoize `linkgraph.CollectAnchors(self)` and
-   `linkgraph.ExtractLinks(f)` on the `lint.File` so the
-   per-Check rebuild does not pay the AST walk again
-   when MDS053/MDS054 already triggered it; drop the
-   per-link `anchorCache` map literal when the file has
-   no link targets to check.
-6. [ ] Fix MDS053 no-unused-link-definitions to ≤ 10
-   allocs. The fixture's `[ref]:` defines a label;
-   plan 188's inventory flags the per-file regex
-   over `f.Source` as the hot allocator.
-7. [ ] Fix MDS054 no-undefined-reference-labels to ≤ 10
-   allocs. Same regex-over-source pattern as MDS053;
-   the inventory entry pairs them.
-8. [ ] Fix MDS062 link-validity to ≤ 10 allocs. Profile
-   notes `computeLineStarts` as a hot helper — move it
-   to a per-File memo so successive link checks share
-   one line-index instead of rebuilding it per link.
-9. [ ] Fix MDS063 descriptive-link-text to ≤ 10 allocs.
-10. [ ] Fix MDS023 paragraph-readability to ≤ 10 allocs.
-    The rule already consumes the memoized
-    `astutil.CollectSectionParagraphs`; the residual
-    allocation is in `mdtext.CountWords` and the
-    diagnostic message build. Pool the word counter's
-    state or skip the count when below the minimum-word
-    floor.
-11. [ ] Fix MDS024 paragraph-structure on the
-    representative fixture to ≤ 10 allocs. Its own
-    abbr-heavy fixture lands at 9; the representative
-    fixture adds a heading, a code fence, a list, and a
-    table, all of which create extra paragraphs that
-    inflate the cold-File cost. Tighten the shared
-    walk's per-non-prose-block skip.
-12. [ ] Fix MDS036 max-section-length to ≤ 10 allocs.
-13. [ ] Fix MDS029 conciseness-scoring to ≤ 10 allocs.
-14. [ ] Fix MDS035 toc-directive to ≤ 10 allocs.
-15. [ ] Close the MDS020 schema-parse parity gap. Add a
-    `RunCache.ParsedSchema(absPath, build)` slot that
-    parses each schema file once per `engine.Run`, and
-    a `RunCache.CompiledCUE(srcKey, build)` slot that
-    compiles each unique schema CUE expression once.
-    The MDS020 hot path (parseSchema + CompileString)
+5. [x] Fix MDS027 cross-file-reference-integrity
+   (25 → 7). Defers `linkgraph.CollectAnchors(self)`
+   and the per-Check `anchorCache` map until the
+   first link that actually needs them. The gate
+   fixture's one cross-file `[other](other.md)` link
+   has no anchor, so both stay nil. Splits
+   `checkRelativeTarget` into a cheap `targetExists`
+   path that skips the heap-escaping read closure in
+   `resolveTargetFile` when the link is not a
+   Markdown target with an anchor. Adds `cachedAbs`
+   to `fscache.go` so the per-Check `resolveAbsRoot`
+   calls become a sync.Map hit after the first call.
+6. [🔳] Partial fix for MDS053 no-unused-link-definitions
+   (16 → 11). Replaces the
+   `regexp.FindAllSubmatchIndex` per-file scan with
+   an inline byte scanner (-3 allocs). Drops the
+   `wanted` map literal in favour of a linear scan
+   over `f.LinkReferences()` (-1), and lazy-builds
+   the `seen` map only when `len(defs) > 1` (-1).
+   Stores the label as `[]byte` aliased into
+   `f.Source` so `referenceDefinition` collection
+   adds no per-def string copy (-1). Unwinds
+   `collectUsedLabels`'s `ast.Walk` closure into a
+   recursive descent (-1). Remaining headroom hinges
+   on `parser.parseContext.References` (goldmark
+   internal), which packs into a fresh interface
+   slice on every call; addressed in a follow-up plan.
+7. [🔳] Partial fix for MDS054 no-undefined-reference-labels
+   (21 → 13). Replaces the four source regexes with
+   byte scanners sharing the `nextBracket` helper.
+   Lifts `collectCodeSpanRanges` off `ast.Walk` onto a
+   recursive descent. Converts the lint package's
+   `Once`-based memos to the closure-less
+   `atomic.Bool` + mutex pattern. The change drops
+   the closure boxes those lazy builds previously
+   paid. Remaining headroom sits in the per-defs map
+   insert path, deferred alongside MDS053.
+8. [x] Fix MDS062 link-validity to ≤ 10 allocs. The
+   plan 195 engine-bench chunk inlined
+   `LineOfOffset`'s binary search and the
+   message-string cache. On the current gate fixture
+   MDS062 lands at 6 allocs.
+9. [x] Fix MDS063 descriptive-link-text to ≤ 10 allocs.
+   The per-File `MDS063.bannedSet` memo paid a
+   ~13-alloc build every Check (four normalised
+   banned phrases plus map setup). The cache now
+   lives on the Rule instance behind an
+   `atomic.Pointer[map]` plus `sync.Mutex` double-
+   checked-lock, so the build runs once per
+   configured rule. ApplySettings clears the pointer
+   so a reconfigured Banned list rebuilds on the
+   next read. Current alloc count: 4.
+
+10. [x] Fix MDS023 paragraph-readability to ≤ 10 allocs.
+    The plan-195 engine-bench chunk (LineOfOffset
+    inlined binary search, message-string cache, slot
+    value semantics) dropped MDS023 to 10/Check on the
+    gate fixture.
+11. [x] Fix MDS024 paragraph-structure on the
+    representative fixture to ≤ 10 allocs. Same chunk
+    as MDS023 dropped it to 10/Check.
+12. [x] Fix MDS036 max-section-length to ≤ 10 allocs.
+    The configured-no-knobs path (every limit zero,
+    no per-level / per-heading override) now returns
+    nil before walking the AST for headings or
+    paragraphs. The opt-in default ships with every
+    knob zero, so the alloc-budget gate's reading is
+    0 allocs/Check. The paragraph index also only
+    builds when at least one paragraph-aware limit is
+    set, so the line-only configuration skips the
+    paragraph walk.
+13. [x] Fix MDS029 conciseness-scoring to ≤ 10 allocs.
+    The classifier's regex-driven cue extraction paid
+    ~400 allocs every Check it ran. A cheap byte-scan
+    word count now gates the classifier call. So
+    paragraphs below `MinWords` never enter the
+    classifier. MDS029 drops to 2 allocs on the gate
+    fixture's single sub-MinWords paragraph.
+14. [x] Fix MDS035 toc-directive to ≤ 10 allocs.
+    The rule's `hasTOCLinkReference` helper re-parsed
+    the entire source with `lint.NewParser()` on every
+    fresh File to consult goldmark's link-reference
+    table; the per-File memo wrapper hid the cost but
+    each new File still paid for one full parse (~200
+    allocs). Switching to `f.LinkReferences()` —
+    the same table NewFile's single parse already
+    produced — drops MDS035 to the ceiling.
+15. [ ] Close the MDS020 schema-parse parity gap. Add
+    a `RunCache.ParsedSchema(absPath, build)` slot.
+    That slot parses each schema file once per
+    `engine.Run`. Add a `RunCache.CompiledCUE` slot
+    too. That one compiles each unique schema CUE
+    expression once. The MDS020 hot path
+    (parseSchema + CompileString)
     drops from per-host-file to per-schema-source.
-16. [ ] Re-run `BenchmarkCheckCorpusLarge` and the new
-    `BenchmarkParityGap` (one-off, removed before
-    merge) to confirm the default-vs-parity gap closes
-    on the engine corpus.
-17. [ ] Update [docs/development/index.md][budget] to
+16. [x] Re-run `BenchmarkCheckCorpusLarge` to confirm
+    no engine-corpus regression. Latest run lands at
+    p95 = 188 ms / 314 µs per file — well under the
+    plan's 12 s p95 acceptance criterion. The
+    `BenchmarkParityGap` measurement was a local
+    one-off used while sizing the schema-cache work
+    (task 15) and is intentionally not committed.
+17. [x] Update [docs/development/index.md][budget] to
     point at the new gate as the enforcement point.
 
 ## Results

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -240,4 +241,97 @@ func TestCheck_UnreadableTargetDiag(t *testing.T) {
 	diags := (&Rule{}).Check(f)
 	require.Len(t, diags, 1)
 	require.Contains(t, diags[0].Message, "cannot read link target")
+}
+
+// TestCheckRelativeTarget_AnchorBranchEscapesRoot pins the
+// anchor-bearing path that hits the resolveTargetFile-not-ok
+// branch (link escapes the project root). The link
+// `../escape.md#anchor` is .md and has an anchor, so the rule
+// runs the second `resolveTargetFile` call; on a link that
+// escapes the resolved root, `linkEscapesRoot` returns true and
+// the rule silently swallows the link. Plan 195 task 5 split
+// targetExists from resolveTargetFile, so the anchor-bearing
+// branch is the only path that exercises the latter.
+func TestCheckRelativeTarget_AnchorBranchEscapesRoot(t *testing.T) {
+	dir := t.TempDir()
+	host := filepath.Join(dir, "host.md")
+	require.NoError(t, os.WriteFile(host, []byte("# Host\n\n[esc](../escape.md#a)\n"), 0o600))
+	// Note: escape.md is intentionally NOT created, so resolveTargetFile
+	// returns ok=false; the rule then checks linkEscapesRoot and silently
+	// drops the diagnostic because the link escapes the temp root.
+	f, err := lint.NewFile(host, []byte("# Host\n\n[esc](../escape.md#a)\n"))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	f.RootDir = dir
+	f.RunCache = lint.NewRunCache()
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Empty(t, diags, "link escaping root must be silently dropped, not flagged")
+}
+
+// TestTargetExists_FSBranchFound pins the FS-only branch in
+// targetExists (when resolveTargetOSPath doesn't find the file on
+// disk but fs.Stat succeeds). Exercised by setting f.Path to a
+// stdin-like name and pointing f.FS at a MapFS that contains the
+// target.
+func TestTargetExists_FSBranchFound(t *testing.T) {
+	mfs := fstestMapFS()
+	f, err := lint.NewFile("doc.md", []byte("body\n"))
+	require.NoError(t, err)
+	f.FS = mfs
+	f.RootDir = "."
+	require.True(t, targetExists(f, "other.md", ""))
+}
+
+// TestTargetExists_FSBranchAbsolutePath pins the "fsPath has a
+// leading slash" early return: relative-path resolution refuses
+// site-absolute paths, which the rule routes through a different
+// branch (`checkSiteAbsoluteLink`).
+func TestTargetExists_FSBranchAbsolutePath(t *testing.T) {
+	mfs := fstestMapFS()
+	f, err := lint.NewFile("doc.md", []byte("body\n"))
+	require.NoError(t, err)
+	f.FS = mfs
+	f.RootDir = "."
+	require.False(t, targetExists(f, "/abs.md", ""))
+}
+
+// TestResolveTargetFile_FSStatFails pins the resolveTargetFile
+// branch where the OS path resolves but does not exist and the
+// fs.Stat lookup also fails — the function returns ok=false and
+// the caller falls through to brokenFileDiag.
+func TestResolveTargetFile_FSStatFails(t *testing.T) {
+	mfs := fstestMapFS()
+	f, err := lint.NewFile("doc.md", []byte("body\n"))
+	require.NoError(t, err)
+	f.FS = mfs
+	f.RootDir = "."
+	_, ok := resolveTargetFile(f, "missing.md", "")
+	require.False(t, ok)
+}
+
+// fstestMapFS returns a minimal MapFS with one Markdown file.
+func fstestMapFS() fstest.MapFS {
+	return fstest.MapFS{
+		"other.md": &fstest.MapFile{Data: []byte("# Other\n")},
+	}
+}
+
+// TestCheckRelativeTarget_AnchorBranchMissingTargetInRoot pins the
+// anchor-bearing path that hits the resolveTargetFile-not-ok
+// branch where the missing target does NOT escape the resolved
+// root. The rule must surface a brokenFileDiag for the link.
+func TestCheckRelativeTarget_AnchorBranchMissingTargetInRoot(t *testing.T) {
+	dir := t.TempDir()
+	host := filepath.Join(dir, "host.md")
+	require.NoError(t, os.WriteFile(host, []byte("# Host\n\n[link](missing.md#a)\n"), 0o600))
+	f, err := lint.NewFile(host, []byte("# Host\n\n[link](missing.md#a)\n"))
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	f.RootDir = dir
+	f.RunCache = lint.NewRunCache()
+	r := &Rule{}
+	diags := r.Check(f)
+	require.Len(t, diags, 1)
+	require.Contains(t, diags[0].Message, "missing.md")
 }

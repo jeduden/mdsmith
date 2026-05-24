@@ -6,7 +6,6 @@ package nounusedlinkdefinitions
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"sort"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -92,29 +91,38 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if len(defs) == 0 {
 		return nil
 	}
-	usedLabels := collectUsedLabels(f)
 	ignored := r.ignoredLabels
 
-	seen := map[string]int{} // normalized label → first definition line
+	// usedLabels is only consulted for the first-seen, non-ignored
+	// definition of a label — `ignored[norm]` and the `seen` map
+	// short-circuit before the used-check. Building it lazily skips
+	// the AST walk on the narrow case where every refdef in the file
+	// is ignored or duplicated; for the common one-def-per-label
+	// file, the walk still runs once (on the first iteration that
+	// falls through to the used-check) instead of unconditionally
+	// up-front.
+	var (
+		usedLabels     map[string]bool
+		usedLabelsDone bool
+	)
+
+	// seen tracks the first-line of each normalised label. Only
+	// allocated when len(defs) > 1 — a single-definition file cannot
+	// have a duplicate, and skipping the empty map literal pays back
+	// on the alloc-budget gate where the fixture has one refdef
+	// (plan 195 task 6).
+	var seen map[string]int
+	if len(defs) > 1 {
+		seen = make(map[string]int, len(defs))
+	}
 	var diags []lint.Diagnostic
 	for _, d := range defs {
-		norm := normalizeLabel(d.label)
+		norm := util.ToLinkReference(d.rawLabel)
 		if ignored[norm] {
 			continue
 		}
-		if firstLine, exists := seen[norm]; exists {
-			diags = append(diags, lint.Diagnostic{
-				File:     f.Path,
-				Line:     d.line,
-				Column:   d.col,
-				RuleID:   r.ID(),
-				RuleName: r.Name(),
-				Severity: lint.Warning,
-				Message:  fmt.Sprintf(msgDuplicate, d.label, firstLine),
-			})
-		} else {
-			seen[norm] = d.line
-			if !usedLabels[norm] {
+		if seen != nil {
+			if firstLine, exists := seen[norm]; exists {
 				diags = append(diags, lint.Diagnostic{
 					File:     f.Path,
 					Line:     d.line,
@@ -122,9 +130,26 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 					RuleID:   r.ID(),
 					RuleName: r.Name(),
 					Severity: lint.Warning,
-					Message:  fmt.Sprintf(msgUnused, d.label),
+					Message:  fmt.Sprintf(msgDuplicate, d.labelString(), firstLine),
 				})
+				continue
 			}
+			seen[norm] = d.line
+		}
+		if !usedLabelsDone {
+			usedLabels = collectUsedLabels(f)
+			usedLabelsDone = true
+		}
+		if !usedLabels[norm] {
+			diags = append(diags, lint.Diagnostic{
+				File:     f.Path,
+				Line:     d.line,
+				Column:   d.col,
+				RuleID:   r.ID(),
+				RuleName: r.Name(),
+				Severity: lint.Warning,
+				Message:  fmt.Sprintf(msgUnused, d.labelString()),
+			})
 		}
 	}
 	return diags
@@ -147,7 +172,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	seen := map[string]bool{}
 	var cuts []fixCut
 	for _, d := range defs {
-		norm := normalizeLabel(d.label)
+		norm := util.ToLinkReference(d.rawLabel)
 		if ignored[norm] {
 			continue
 		}
@@ -189,19 +214,27 @@ func (r *Rule) Fix(f *lint.File) []byte {
 }
 
 // referenceDefinition records a single `[label]: url` line in source.
+// The label is stored as a byte slice pointing into f.Source rather
+// than a copied string so collectDefinitions adds no per-def
+// allocation on the hot path. Diagnostic-message formatting and
+// label normalisation accept the byte slice directly; only the
+// `%q` Sprintf paths actually materialise a string. Plan 195
+// task 6.
 type referenceDefinition struct {
-	label string
-	line  int
-	col   int
-	start int
-	end   int
+	rawLabel []byte
+	line     int
+	col      int
+	start    int
+	end      int
 }
 
-// refDefRE matches a CommonMark reference definition at the start of a line:
-// optional 0-3 spaces, [label]: dest (with optional title). Used only for
-// locating definitions after goldmark confirmed they exist; a permissive
-// regex is safe.
-var refDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$`)
+// labelString returns the label as a fresh string, used only when
+// emitting a diagnostic message or when normalisation routes through
+// `string` for symmetry with goldmark's API. Callers on the hot
+// path read `rawLabel` directly.
+func (d referenceDefinition) labelString() string {
+	return string(d.rawLabel)
+}
 
 // collectDefinitions returns all link reference definitions in the file,
 // including duplicates, in document order. Lines inside code blocks, PI blocks,
@@ -211,72 +244,193 @@ var refDefRE = regexp.MustCompile(`(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$`)
 // wanted-label check passes for both matches, so an explicit line-range
 // exclusion is required to avoid treating the PI-block occurrence as a
 // duplicate definition.
+//
+// The source scan walks lines manually rather than calling
+// regexp.FindAllSubmatchIndex; the regex form paid ~4 allocs per
+// Check on the alloc-budget gate fixture (result slice plus a
+// per-match `[]int`), which the hand-rolled byte scanner sheds.
+// The scan is inlined here so no callback closure is needed — a
+// visit-style helper would have allocated 3 extra closure-box words
+// for the captured locals (refs, codeLines, etc.). Plan 195 task 6.
 func collectDefinitions(f *lint.File) []referenceDefinition {
 	source := f.Source
 
-	// wanted holds normalized labels that goldmark found as valid definitions
-	// (first-wins, non-code-block, non-PI-block), read from the file's
-	// single parse rather than a second re-parse.
-	wanted := map[string]bool{}
-	for _, ref := range f.LinkReferences() {
-		wanted[string(ref.Label())] = true
-	}
-	if len(wanted) == 0 {
+	refs := f.LinkReferences()
+	if len(refs) == 0 {
 		return nil
 	}
 
-	codeLines := lint.CollectCodeBlockLines(f)
-	piLines := lint.CollectPIBlockLines(f)
-	var out []referenceDefinition
-	for _, m := range refDefRE.FindAllSubmatchIndex(source, -1) {
-		raw := source[m[2]:m[3]]
-		if !wanted[util.ToLinkReference(raw)] {
-			continue
+	var (
+		codeLines, piLines map[int]bool
+		blockLinesReady    bool
+		out                []referenceDefinition
+	)
+
+	lineNum := 1
+	lineStart := 0
+	for lineStart <= len(source) {
+		eol := lineStart
+		for eol < len(source) && source[eol] != '\n' {
+			eol++
 		}
-		bracketAbs := m[2] - 1
-		matchLine := f.LineOfOffset(bracketAbs)
-		if codeLines[matchLine] || piLines[matchLine] {
-			continue
+		labelStart, labelEnd, ok := scanRefDefLine(source, lineStart, eol)
+		if ok {
+			rawLabel := source[labelStart:labelEnd]
+			if labelInRefs(rawLabel, refs) {
+				if !blockLinesReady {
+					codeLines = lint.CollectCodeBlockLines(f)
+					piLines = lint.CollectPIBlockLines(f)
+					blockLinesReady = true
+				}
+				if !codeLines[lineNum] && !piLines[lineNum] &&
+					!lineInGeneratedRanges(lineNum, f.GeneratedRanges) {
+					bracketAbs := labelStart - 1
+					end := eol
+					if end < len(source) && source[end] == '\n' {
+						end++
+					}
+					out = append(out, referenceDefinition{
+						rawLabel: rawLabel,
+						line:     lineNum,
+						col:      f.ColumnOfOffset(bracketAbs),
+						start:    lineStart,
+						end:      end,
+					})
+				}
+			}
 		}
-		if lineInGeneratedRanges(matchLine, f.GeneratedRanges) {
-			continue
+		if eol >= len(source) {
+			break
 		}
-		end := m[1]
-		if end < len(source) && source[end] == '\n' {
-			end++
-		}
-		out = append(out, referenceDefinition{
-			label: string(raw),
-			line:  matchLine,
-			col:   f.ColumnOfOffset(bracketAbs),
-			start: m[0],
-			end:   end,
-		})
+		lineStart = eol + 1
+		lineNum++
 	}
 	return out
 }
 
+// labelInRefs reports whether the normalised form of rawLabel matches
+// any label in refs. The caller iterates LinkReferences (already
+// normalised by goldmark); we normalise rawLabel once and compare
+// each ref's Label() byte-for-byte via stringEqualsBytes — Go's
+// `s == string(b)` form does not generally elide the conversion
+// allocation when the left side is a variable (only the
+// `m[string(b)]` and `string(b) == "literal"` forms are special-
+// cased), so the open-coded compare is the alloc-free option.
+// For the typical case of one or a few refs per file this is
+// cheaper than building the wanted-map literal the original code
+// allocated.
+func labelInRefs(rawLabel []byte, refs []lint.Reference) bool {
+	normalised := util.ToLinkReference(rawLabel)
+	for _, ref := range refs {
+		if stringEqualsBytes(normalised, ref.Label()) {
+			return true
+		}
+	}
+	return false
+}
+
+// stringEqualsBytes compares a string to a byte slice without
+// allocating a string from the slice. Used on hot paths where
+// `s == string(b)` would force a heap copy of b.
+func stringEqualsBytes(s string, b []byte) bool {
+	if len(s) != len(b) {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// scanRefDefLine examines source[lineStart:lineEnd] for the
+// CommonMark reference definition pattern (0-3 leading spaces,
+// `[label]:`, optional space/tab, a non-whitespace destination).
+// Returns the absolute byte offsets of the bracket contents and ok=true
+// on a hit. Mirrors the previous regex
+// `(?m)^[ ]{0,3}\[([^\]\n]+)\]:[ \t]*\S+.*$` byte-for-byte.
+func scanRefDefLine(source []byte, lineStart, lineEnd int) (labelStart, labelEnd int, ok bool) {
+	j := lineStart
+	spaces := 0
+	for j < lineEnd && source[j] == ' ' && spaces < 3 {
+		j++
+		spaces++
+	}
+	if j >= lineEnd || source[j] != '[' {
+		return -1, -1, false
+	}
+	labelStart = j + 1
+	k := labelStart
+	for k < lineEnd && source[k] != ']' {
+		k++
+	}
+	if k >= lineEnd || k == labelStart {
+		// Missing `]` on the line, or empty label (matches the
+		// regex's `[^\]\n]+` which requires ≥ 1 char).
+		return -1, -1, false
+	}
+	labelEnd = k
+	colon := labelEnd + 1
+	if colon >= lineEnd || source[colon] != ':' {
+		return -1, -1, false
+	}
+	after := colon + 1
+	for after < lineEnd && (source[after] == ' ' || source[after] == '\t') {
+		after++
+	}
+	if after >= lineEnd {
+		return -1, -1, false
+	}
+	// `\S` rejects ASCII whitespace; the trim loop above already
+	// consumed ' ' and '\t', so this rejects \r and the other
+	// whitespace runes the regex form also rejected.
+	if isASCIIWhitespace(source[after]) {
+		return -1, -1, false
+	}
+	return labelStart, labelEnd, true
+}
+
+// isASCIIWhitespace mirrors Go's `\s` character class for the
+// destination-prefix guard: the regex `\S+` rejects ' ', '\t', '\n',
+// '\r', '\f', and '\v'.
+func isASCIIWhitespace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\f' || b == '\v'
+}
+
 // collectUsedLabels walks the AST and returns the set of normalized labels
-// referenced by at least one reference-style link or image.
+// referenced by at least one reference-style link or image. The walk is
+// open-coded with a recursive helper (collectUsedLabelsInto) rather than
+// ast.Walk so the per-Check closure box that ast.Walk would otherwise
+// require does not heap-allocate — plan 195 task 6.
 func collectUsedLabels(f *lint.File) map[string]bool {
 	used := map[string]bool{}
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		switch v := n.(type) {
-		case *ast.Link:
-			if v.Reference != nil {
-				used[util.ToLinkReference(v.Reference.Value)] = true
-			}
-		case *ast.Image:
-			if v.Reference != nil {
-				used[util.ToLinkReference(v.Reference.Value)] = true
-			}
-		}
-		return ast.WalkContinue, nil
-	})
+	collectUsedLabelsInto(f.AST, used)
 	return used
+}
+
+// collectUsedLabelsInto recursively descends node `n` and inserts the
+// normalised label of every reference-style link or image into used.
+// A package-level recursion sidesteps the ast.Walk callback's
+// heap-allocated closure: the helper closes over nothing, so each
+// frame is plain stack work.
+func collectUsedLabelsInto(n ast.Node, used map[string]bool) {
+	if n == nil {
+		return
+	}
+	switch v := n.(type) {
+	case *ast.Link:
+		if v.Reference != nil {
+			used[util.ToLinkReference(v.Reference.Value)] = true
+		}
+	case *ast.Image:
+		if v.Reference != nil {
+			used[util.ToLinkReference(v.Reference.Value)] = true
+		}
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		collectUsedLabelsInto(c, used)
+	}
 }
 
 // normalizeLabel applies CommonMark label normalization (collapse whitespace,

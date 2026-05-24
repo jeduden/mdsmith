@@ -50,6 +50,53 @@ func (r *Rule) Name() string { return "cross-file-reference-integrity" }
 // Category implements rule.Rule.
 func (r *Rule) Category() string { return "link" }
 
+// checkCtx holds per-Check lazy state for the link walk. The
+// anchor-bearing fields are nil until the first link that
+// actually needs them: selfAnchors stays nil unless a link is a
+// local anchor or a cross-file Markdown link with an anchor;
+// anchorCache stays nil unless a cross-file anchor is resolved.
+// resolvedRoot and resolvedSiteRoot are eager because every
+// relative-link check needs them and the cache is package-scope
+// (cachedAbsRoot) so the cost is paid once across all Files in
+// one run. Plan 195 task 5.
+type checkCtx struct {
+	f                *lint.File
+	rule             *Rule
+	resolvedRoot     string
+	resolvedSiteRoot string
+
+	selfAnchors      map[string]bool
+	selfAnchorsBuilt bool
+	anchorCache      map[string]map[string]bool
+}
+
+// ensureSelfAnchors lazily builds the heading-anchor set for f.
+// The fixture's link `[other](other.md)` has no anchor and no
+// link is local-anchor, so this path stays cold; the per-Check
+// allocation collapsed from "always paid" to "only when needed".
+func (c *checkCtx) ensureSelfAnchors() map[string]bool {
+	if !c.selfAnchorsBuilt {
+		c.selfAnchors = linkgraph.CollectAnchors(c.f)
+		c.selfAnchorsBuilt = true
+	}
+	return c.selfAnchors
+}
+
+// ensureAnchorCache lazily initialises the per-Check map of
+// already-resolved target-file anchor sets. The cache is only
+// queried for cross-file Markdown links with a fragment; for the
+// gate fixture the link has no fragment so the map stays nil.
+func (c *checkCtx) ensureAnchorCache() map[string]map[string]bool {
+	if c.anchorCache == nil {
+		c.anchorCache = make(map[string]map[string]bool, 2)
+		// Seed with the self-anchor entry the original eager
+		// initialisation used — preserves the cache shape for any
+		// future caller that asks via the "self" key.
+		c.anchorCache["self"] = c.ensureSelfAnchors()
+	}
+	return c.anchorCache
+}
+
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	// Stdin/source-only checks have no stable filesystem context.
@@ -61,44 +108,29 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		return []lint.Diagnostic{configDiag(f.Path, r, err)}
 	}
 
-	selfAnchors := linkgraph.CollectAnchors(f)
-	anchorCache := map[string]map[string]bool{"self": selfAnchors}
-
-	// Precompute the resolved absolute root once for all link checks.
-	resolvedRoot := resolveAbsRoot(f.RootDir)
-	resolvedSiteRoot := resolveAbsRoot(r.Links.SiteRoot)
+	ctx := checkCtx{
+		f:                f,
+		rule:             r,
+		resolvedRoot:     resolveAbsRoot(f.RootDir),
+		resolvedSiteRoot: resolveAbsRoot(r.Links.SiteRoot),
+	}
 
 	var diags []lint.Diagnostic
 	for _, link := range linkgraph.ExtractLinks(f) {
-		diags = append(diags, r.checkLink(
-			f, link, false,
-			r.Include, r.Exclude,
-			selfAnchors, resolvedRoot, resolvedSiteRoot,
-			anchorCache,
-		)...)
+		diags = append(diags, r.checkLink(&ctx, link, false)...)
 	}
 	if r.Links.ValidateImages {
 		for _, link := range linkgraph.ExtractImages(f) {
-			diags = append(diags, r.checkLink(
-				f, link, true,
-				r.Include, r.Exclude,
-				selfAnchors, resolvedRoot, resolvedSiteRoot,
-				anchorCache,
-			)...)
+			diags = append(diags, r.checkLink(&ctx, link, true)...)
 		}
 	}
 	if r.Links.ValidateReferenceStyle {
 		for _, link := range linkgraph.ExtractRefLinkTargets(f) {
-			diags = append(diags, r.checkLink(
-				f, link, false,
-				r.Include, r.Exclude,
-				selfAnchors, resolvedRoot, resolvedSiteRoot,
-				anchorCache,
-			)...)
+			diags = append(diags, r.checkLink(&ctx, link, false)...)
 		}
 	}
 	if r.Wikilinks {
-		diags = append(diags, r.checkWikilinks(f, anchorCache)...)
+		diags = append(diags, r.checkWikilinks(f, ctx.ensureAnchorCache())...)
 	}
 
 	return diags
@@ -401,15 +433,9 @@ func wikilinkUnreadableTargetDiag(
 }
 
 func (r *Rule) checkLink(
-	f *lint.File,
+	ctx *checkCtx,
 	link linkgraph.Link,
 	isImage bool,
-	includePatterns []string,
-	excludePatterns []string,
-	selfAnchors map[string]bool,
-	resolvedRoot string,
-	resolvedSiteRoot string,
-	anchorCache map[string]map[string]bool,
 ) []lint.Diagnostic {
 	target := link.Target
 
@@ -420,7 +446,7 @@ func (r *Rule) checkLink(
 	line, col := link.Line, link.Column
 
 	if target.LocalAnchor {
-		return checkLocalAnchor(f.Path, line, col, r, target, selfAnchors)
+		return checkLocalAnchor(ctx, line, col, target)
 	}
 
 	linkPath := normalizeLinkPath(target.Path)
@@ -429,63 +455,93 @@ func (r *Rule) checkLink(
 	}
 
 	if filepath.IsAbs(linkPath) {
-		if resolvedSiteRoot == "" {
+		if ctx.resolvedSiteRoot == "" {
 			return nil
 		}
-		return r.checkSiteAbsoluteLink(f, link, linkPath, resolvedSiteRoot)
+		return r.checkSiteAbsoluteLink(ctx.f, link, linkPath, ctx.resolvedSiteRoot)
 	}
 
 	if !isImage && !r.Strict && !isMarkdownPath(linkPath) {
 		return nil
 	}
 
-	if !matchesPathFilters(linkPath, includePatterns, excludePatterns) {
+	if !matchesPathFilters(linkPath, r.Include, r.Exclude) {
 		return nil
 	}
 
-	return r.checkRelativeTarget(f, line, col, target, linkPath, resolvedRoot, anchorCache)
+	return r.checkRelativeTarget(ctx, line, col, target, linkPath)
 }
 
 // checkRelativeTarget verifies a relative link path exists and, for
 // Markdown targets with an anchor, that the anchor resolves to a heading.
 func (r *Rule) checkRelativeTarget(
-	f *lint.File,
+	ctx *checkCtx,
 	line, col int,
 	target linkgraph.Target,
 	linkPath string,
-	resolvedRoot string,
-	anchorCache map[string]map[string]bool,
 ) []lint.Diagnostic {
-	targetFile, ok := resolveTargetFile(f, linkPath, resolvedRoot)
-	if !ok {
-		// Silently skip links that escape the project root.
-		if resolvedRoot != "" && linkEscapesRoot(f, linkPath, resolvedRoot) {
-			return nil
-		}
-		return []lint.Diagnostic{brokenFileDiag(f.Path, line, col, r, target.Raw)}
-	}
-
+	// Split the "does the target exist" check from the "build a
+	// readable targetFile" step so we only pay for the read
+	// closure (which would otherwise escape to the heap) when an
+	// anchor actually has to be resolved. Plan 195 task 5.
 	if target.Anchor == "" || !isMarkdownPath(linkPath) {
+		if !targetExists(ctx.f, linkPath, ctx.resolvedRoot) {
+			if ctx.resolvedRoot != "" && linkEscapesRoot(ctx.f, linkPath, ctx.resolvedRoot) {
+				return nil
+			}
+			return []lint.Diagnostic{brokenFileDiag(ctx.f.Path, line, col, r, target.Raw)}
+		}
 		return nil
 	}
 
-	targetAnchors, err := anchorsForFile(f, targetFile, anchorCache)
+	targetFile, ok := resolveTargetFile(ctx.f, linkPath, ctx.resolvedRoot)
+	if !ok {
+		if ctx.resolvedRoot != "" && linkEscapesRoot(ctx.f, linkPath, ctx.resolvedRoot) {
+			return nil
+		}
+		return []lint.Diagnostic{brokenFileDiag(ctx.f.Path, line, col, r, target.Raw)}
+	}
+
+	targetAnchors, err := anchorsForFile(ctx.f, targetFile, ctx.ensureAnchorCache())
 	if err != nil {
-		return []lint.Diagnostic{unreadableTargetDiag(f.Path, line, col, r, target.Raw, err)}
+		return []lint.Diagnostic{unreadableTargetDiag(ctx.f.Path, line, col, r, target.Raw, err)}
 	}
 	if targetAnchors[linkgraph.NormalizeAnchor(target.Anchor)] {
 		return nil
 	}
-	return []lint.Diagnostic{brokenHeadingDiag(f.Path, line, col, r, target.Raw)}
+	return []lint.Diagnostic{brokenHeadingDiag(ctx.f.Path, line, col, r, target.Raw)}
+}
+
+// targetExists reports whether linkPath resolves to a file the
+// rule treats as existing — on-disk via cachedStatExists, or
+// inside f.FS via fs.Stat. The OS branch matches
+// resolveTargetFile's exact precedence so callers see identical
+// "exists" answers. Used to short-circuit the closure-allocating
+// resolveTargetFile when only file existence (not the read
+// helper) matters.
+func targetExists(f *lint.File, linkPath, resolvedRoot string) bool {
+	if path, ok := resolveTargetOSPath(f.Path, linkPath); ok && cachedStatExists(path) {
+		if resolvedRoot == "" || isWithinRoot(resolvedRoot, path) {
+			return true
+		}
+		return false
+	}
+	fsPath := filepath.ToSlash(linkPath)
+	fsPath = strings.TrimPrefix(fsPath, "./")
+	if fsPath == "" || strings.HasPrefix(fsPath, "/") {
+		return false
+	}
+	_, err := fs.Stat(f.FS, fsPath)
+	return err == nil
 }
 
 func checkLocalAnchor(
-	path string, line, col int, r *Rule, target linkgraph.Target, selfAnchors map[string]bool,
+	ctx *checkCtx, line, col int, target linkgraph.Target,
 ) []lint.Diagnostic {
-	if selfAnchors[linkgraph.NormalizeAnchor(target.Anchor)] {
+	if ctx.ensureSelfAnchors()[linkgraph.NormalizeAnchor(target.Anchor)] {
 		return nil
 	}
-	return []lint.Diagnostic{brokenHeadingDiag(path, line, col, r, target.Raw)}
+	return []lint.Diagnostic{brokenHeadingDiag(ctx.f.Path, line, col, ctx.rule, target.Raw)}
 }
 
 // checkSiteAbsoluteLink resolves an absolute-path link (e.g.
@@ -820,10 +876,11 @@ func resolveAbsRoot(rootDir string) string {
 	if !ok {
 		realRoot = rootDir
 	}
-	// filepath.Abs only errors when os.Getwd() fails, an OS-level catastrophe.
-	// Returning "" lets the caller treat the root as unset (safe fallback).
-	abs, _ := filepath.Abs(realRoot) //nolint:errcheck
-	return abs
+	// filepath.Abs only errors when os.Getwd() fails, an OS-level
+	// catastrophe; the cached form swallows that error too. Caching
+	// at package scope is safe because both inputs are stable for
+	// the process lifetime.
+	return cachedAbs(realRoot)
 }
 
 // isWithinRoot checks whether target is inside the pre-resolved absolute

@@ -1,6 +1,7 @@
 package nounusedlinkdefinitions
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -357,4 +358,71 @@ func TestApplyCuts_OverlappingCuts_Skipped(t *testing.T) {
 	cuts := []fixCut{{start: 0, end: 8}, {start: 4, end: 8}}
 	got := applyCuts(src, cuts)
 	assert.Equal(t, "rld", string(got))
+}
+
+// TestScanRefDefLine_LeadingSpaces pins the 0-3-space prefix the
+// CommonMark spec allows on a reference definition line. The
+// byte-scanner replaces a regex with the same character class, so
+// a regression in the trim-space loop would silently drop
+// valid-but-indented definitions.
+func TestScanRefDefLine_LeadingSpaces(t *testing.T) {
+	for _, n := range []int{1, 2, 3} {
+		src := []byte(strings.Repeat(" ", n) + "[ref]: https://example.com/\n")
+		ls, le, ok := scanRefDefLine(src, 0, len(src)-1)
+		require.True(t, ok, "n=%d: expected refdef hit", n)
+		assert.Equal(t, "ref", string(src[ls:le]),
+			"n=%d: expected label \"ref\"", n)
+	}
+}
+
+// TestScanRefDefLine_NoClosingBracket pins the "[" without
+// matching "]" case the regex's `[^\]\n]+` excludes.
+func TestScanRefDefLine_NoClosingBracket(t *testing.T) {
+	src := []byte("[ref")
+	_, _, ok := scanRefDefLine(src, 0, len(src))
+	assert.False(t, ok)
+}
+
+// TestScanRefDefLine_EmptyLabel pins the "[]" case the regex's
+// `[^\]\n]+` (≥ 1 char) rejects.
+func TestScanRefDefLine_EmptyLabel(t *testing.T) {
+	src := []byte("[]: dest")
+	_, _, ok := scanRefDefLine(src, 0, len(src))
+	assert.False(t, ok)
+}
+
+// TestScanRefDefLine_NoColon pins the missing `:` after `]` case.
+func TestScanRefDefLine_NoColon(t *testing.T) {
+	src := []byte("[ref] not a refdef")
+	_, _, ok := scanRefDefLine(src, 0, len(src))
+	assert.False(t, ok)
+}
+
+// TestScanRefDefLine_EmptyDestination pins the "nothing after `:`"
+// case the regex's `\S+` (≥ 1 non-whitespace) rejects.
+func TestScanRefDefLine_EmptyDestination(t *testing.T) {
+	src := []byte("[ref]:")
+	_, _, ok := scanRefDefLine(src, 0, len(src))
+	assert.False(t, ok)
+}
+
+// TestScanRefDefLine_WhitespaceOnlyDestination pins the
+// "all-whitespace after `:`" case. The trim loop consumes ' '
+// and '\t'; this test exercises the `isASCIIWhitespace(source[after])`
+// branch via a `\r` byte the trim loop does NOT consume.
+func TestScanRefDefLine_WhitespaceOnlyDestination(t *testing.T) {
+	src := []byte("[ref]: \r")
+	_, _, ok := scanRefDefLine(src, 0, len(src))
+	assert.False(t, ok)
+}
+
+// TestCollectUsedLabelsInto_NilNode pins the nil-node guard on
+// the recursive descent helper. The guard exists so callers that
+// pass an empty document's nil child pointers stay safe; the
+// production AST never feeds nil to the walker, but unit-test
+// callers (and future struct-literal *File values) might.
+func TestCollectUsedLabelsInto_NilNode(t *testing.T) {
+	used := map[string]bool{}
+	collectUsedLabelsInto(nil, used)
+	assert.Empty(t, used)
 }

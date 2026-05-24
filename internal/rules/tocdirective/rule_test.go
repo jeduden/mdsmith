@@ -242,20 +242,26 @@ func TestFix_CodeBlocks_Untouched(t *testing.T) {
 	assert.NotContains(t, fixed, "<?toc?>")
 }
 
-// TestHasTOCLinkReference covers the helper's three branches.
-// The empty-source short-circuit avoids spinning up a fresh parser
-// for a no-op case (hot when CheckNode is called on every node of
-// a small document); without an explicit test the branch shows up
-// as uncovered patch coverage.
-func TestHasTOCLinkReference(t *testing.T) {
-	t.Run("empty source returns false without parsing", func(t *testing.T) {
-		assert.False(t, hasTOCLinkReference(nil))
-		assert.False(t, hasTOCLinkReference([]byte{}))
+// TestHasTOCRef covers the helper's three branches: empty source
+// (no link refs), source with a [TOC] definition, and source
+// without one. After plan 195 the helper reads refs from
+// f.LinkReferences() rather than re-parsing the source; this test
+// exercises the same observable shape via lint.NewFile so the
+// behaviour is pinned to the production parse path.
+func TestHasTOCRef(t *testing.T) {
+	t.Run("empty source returns false", func(t *testing.T) {
+		f, err := lint.NewFile("t.md", nil)
+		assert.NoError(t, err)
+		assert.False(t, hasTOCRef(f))
 	})
 	t.Run("source with TOC reference returns true", func(t *testing.T) {
-		assert.True(t, hasTOCLinkReference([]byte("[TOC]: #\n")))
+		f, err := lint.NewFile("t.md", []byte("[TOC]: #\n"))
+		assert.NoError(t, err)
+		assert.True(t, hasTOCRef(f))
 	})
 	t.Run("source without TOC reference returns false", func(t *testing.T) {
-		assert.False(t, hasTOCLinkReference([]byte("# Title\n\nbody\n")))
+		f, err := lint.NewFile("t.md", []byte("# Title\n\nbody\n"))
+		assert.NoError(t, err)
+		assert.False(t, hasTOCRef(f))
 	})
 }

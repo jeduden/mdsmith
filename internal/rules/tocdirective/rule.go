@@ -12,8 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 func init() {
@@ -67,22 +66,31 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	return rule.WalkNodes(r, f)
 }
 
-// memoKey scopes the once-per-File hasTOCLinkReference cache. The
-// File.Memo store is per-Check (so the value is recomputed for each
-// new file) and rule-namespaced (so it can never collide with another
-// rule's key).
-const memoKey = "mds035:hasTOCLinkReference"
+// hasTOCRef reports whether the document defines a link reference
+// with the CommonMark-normalised label "toc". The previous form
+// (hasTOCLinkReference + an inline File.Memo wrapper) re-parsed
+// the entire source with goldmark on each fresh File to read the
+// link-reference table; that re-parse was the alloc-budget gate's
+// biggest blocker for MDS035 (~200 allocs/Check). The current
+// form reads f.LinkReferences() — the same table NewFile's single
+// parse already produced — and caches the boolean on the File
+// via MemoFile so CheckNode pays one iteration over the parsed
+// refs per file, not per paragraph. Plan 195 task 14, with the
+// per-paragraph rescan fix from Copilot review on PR #371.
+func hasTOCRef(f *lint.File) bool {
+	return f.MemoFile("MDS035.hasTOCRef", buildHasTOCRef).(bool)
+}
 
-// hasTOCRefMemoized returns the once-per-File hasTOCLinkReference
-// result. The lookup walks the document with goldmark's parser and is
-// not cheap enough to repeat for every paragraph node, so it is
-// memoised on f.
-func hasTOCRefMemoized(f *lint.File) bool {
-	v := f.Memo(memoKey, func() any {
-		return hasTOCLinkReference(f.Source)
-	})
-	got, _ := v.(bool)
-	return got
+// buildHasTOCRef is the MemoFile builder. Package-level so the
+// value passed to MemoFile is a plain function pointer with no
+// captured environment to box on the heap.
+func buildHasTOCRef(file *lint.File) any {
+	for _, ref := range file.LinkReferences() {
+		if string(util.ToLinkReference(ref.Label())) == "toc" {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckNode implements rule.NodeChecker.
@@ -97,7 +105,6 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	if !ok {
 		return nil
 	}
-	hasTOCRef := hasTOCRefMemoized(f)
 	var diags []lint.Diagnostic
 	lines := para.Lines()
 	for i := 0; i < lines.Len(); i++ {
@@ -109,7 +116,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		if !matched {
 			continue
 		}
-		if v.isLinkRefCandidate && hasTOCRef {
+		if v.isLinkRefCandidate && hasTOCRef(f) {
 			continue
 		}
 		diags = append(diags, lint.Diagnostic{
@@ -152,10 +159,10 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	if f == nil || f.AST == nil {
 		return nil
 	}
-	hasTOCRef := hasTOCLinkReference(f.Source)
+	tocRefDefined := hasTOCRef(f)
 
 	// Collect byte offsets of all TOC directive lines that need replacement.
-	replacements := collectReplacements(f, hasTOCRef)
+	replacements := collectReplacements(f, tocRefDefined)
 
 	if len(replacements) == 0 {
 		return f.Source
@@ -264,21 +271,5 @@ func computeBlankLines(source []byte, start, end int) (needBefore, needAfter boo
 }
 
 var _ rule.FixableRule = (*Rule)(nil)
-
-// hasTOCLinkReference returns true when the document defines a link
-// reference with label "TOC" (CommonMark-normalized). It re-parses with
-// lint.NewParser so the parser configuration (including mdsmith's PI
-// block parser) matches the original lint parse; otherwise content
-// absorbed into a processing-instruction block could register as a link
-// reference here while being hidden from the rule's AST walk.
-func hasTOCLinkReference(source []byte) bool {
-	if len(source) == 0 {
-		return false
-	}
-	ctx := parser.NewContext()
-	lint.NewParser().Parse(text.NewReader(source), parser.WithContext(ctx))
-	_, ok := ctx.Reference("toc")
-	return ok
-}
 
 var _ rule.Defaultable = (*Rule)(nil)

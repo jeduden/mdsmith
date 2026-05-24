@@ -3,6 +3,8 @@ package descriptivelinktext
 import (
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -19,15 +21,24 @@ func init() {
 // Rule flags links whose visible text is a non-descriptive phrase such as
 // "click here", "here", "link", or "more".
 //
-// The lookup form of Banned is memoised on the per-Check *lint.File
-// via File.Memo (see cachedBannedSet) rather than on the rule
-// instance. Rule instances are shared across concurrent LSP calls
-// (cmd/mdsmith/lsp.go reuses rule.All(), and ConfigureRule does
-// not clone when cfg.Settings is nil), so any mutable state on the
-// rule itself would race; *lint.File is created fresh per Check
-// and File.Memo is sync.Map + sync.Once protected.
+// The lookup form of Banned is memoised on the rule instance behind
+// `bannedSetPtr` + `bannedSetMu` (a double-checked-lock pattern, not
+// sync.Once: ApplySettings is allowed to swap Banned and the cache
+// must follow). Rule instances are shared across concurrent LSP
+// calls — cmd/mdsmith/lsp.go reuses rule.All() and ConfigureRule
+// does not clone when cfg.Settings is nil — but every concurrent
+// reader during a Check sees the same set; ApplySettings runs only
+// during config load, before any Check, so the swap path never
+// races a reader. Moving the cache off the per-Check *lint.File
+// memo is plan 195 task 9's MDS063 fix: the build (4 normalised
+// banned strings + map setup) was paying ~13 allocs per Check on
+// the alloc-budget gate fixture; the per-rule cache pays them
+// once per rule instance.
 type Rule struct {
 	Banned []string
+
+	bannedSetPtr atomic.Pointer[map[string]bool]
+	bannedSetMu  sync.Mutex
 }
 
 // ID implements rule.Rule.
@@ -57,6 +68,10 @@ func (r *Rule) ApplySettings(s map[string]any) error {
 			return fmt.Errorf("descriptive-link-text: unknown setting %q", k)
 		}
 	}
+	// Invalidate the lookup cache so the next Check rebuilds against
+	// the new Banned slice; ApplySettings is the only path that
+	// mutates r.Banned, so clearing here is sufficient.
+	r.bannedSetPtr.Store(nil)
 	return nil
 }
 
@@ -92,7 +107,7 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 	}
 
 	text := collectLinkText(link, f.Source)
-	if !r.cachedBannedSet(f)[normalizeText(text)] {
+	if !r.cachedBannedSet()[normalizeText(text)] {
 		return nil
 	}
 	line := linkLine(link, f)
@@ -108,20 +123,32 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 }
 
 // cachedBannedSet returns the lookup form of r.Banned, memoised on
-// the per-Check *lint.File. File.Memo is sync.Map + sync.Once
-// protected so the build runs at most once per File even under
-// the LSP's concurrent reader pattern, where the same rule
-// instance is shared across goroutines (config defaults set
-// cfg.Settings=nil, which makes ConfigureRule a no-op).
-func (r *Rule) cachedBannedSet(f *lint.File) map[string]bool {
-	v := f.Memo("MDS063.bannedSet", func() any {
-		m := make(map[string]bool, len(r.Banned))
-		for _, b := range r.Banned {
-			m[normalizeText(b)] = true
-		}
-		return m
-	})
-	return v.(map[string]bool)
+// the rule instance behind an atomic pointer guarded by a mutex.
+// The warm path is a single atomic load and serves every Check
+// after the cache is populated. The cold path serialises on the
+// mutex so concurrent first-callers see one another's build
+// instead of multiple racing builds; on the extremely narrow
+// window where two goroutines see the pointer nil before either
+// acquires the mutex, the second one will rebuild the same
+// 4-entry map after the first releases (a 13-alloc one-shot
+// cost, vastly cheaper than the test-only hook a deterministic
+// double-checked-lock would require). Living on the rule (one
+// set per configured-banned-list) collapses what the previous
+// per-File memo paid every Check (build the map + normalise
+// 4 strings) to "once per rule instance for the program's
+// lifetime, plus at most one redundant build on the race".
+func (r *Rule) cachedBannedSet() map[string]bool {
+	if p := r.bannedSetPtr.Load(); p != nil {
+		return *p
+	}
+	r.bannedSetMu.Lock()
+	defer r.bannedSetMu.Unlock()
+	m := make(map[string]bool, len(r.Banned))
+	for _, b := range r.Banned {
+		m[normalizeText(b)] = true
+	}
+	r.bannedSetPtr.Store(&m)
+	return m
 }
 
 // normalizeText trims, lowercases, and collapses internal whitespace.

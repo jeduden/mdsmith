@@ -5,24 +5,37 @@ import "github.com/yuin/goldmark/ast"
 // CollectPIBlockLines returns a set of 1-based line numbers that belong
 // to processing-instruction blocks, including the opening <?... line and
 // the closing ?> line. The walk is computed once per File and cached;
-// the returned map is shared read-only and must not be mutated.
+// the returned map is shared read-only and must not be mutated. The
+// atomic.Bool + mutex memo avoids the once.Do closure box (see the
+// File.piBlockLines field comment).
 func CollectPIBlockLines(f *File) map[int]bool {
-	f.piBlockLinesOnce.Do(func() {
+	if f.piBlockLinesDone.Load() {
+		return f.piBlockLines
+	}
+	f.piBlockLinesMu.Lock()
+	defer f.piBlockLinesMu.Unlock()
+	if !f.piBlockLinesDone.Load() {
+		defer f.piBlockLinesDone.Store(true)
 		f.piBlockLines = collectPIBlockLines(f)
-	})
+	}
 	return f.piBlockLines
 }
 
 func collectPIBlockLines(f *File) map[int]bool {
 	lines := map[int]bool{}
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		pi, ok := n.(*ProcessingInstruction)
-		if !ok {
-			return ast.WalkContinue, nil
-		}
+	collectPIBlockLinesInto(f.AST, f, lines)
+	return lines
+}
+
+// collectPIBlockLinesInto descends node n via recursion (not
+// ast.Walk) so the per-File memo build sheds the closure box
+// ast.Walk would otherwise allocate. The helper closes over
+// nothing.
+func collectPIBlockLinesInto(n ast.Node, f *File, lines map[int]bool) {
+	if n == nil {
+		return
+	}
+	if pi, ok := n.(*ProcessingInstruction); ok {
 		segs := pi.Lines()
 		for i := 0; i < segs.Len(); i++ {
 			lines[f.LineOfOffset(segs.At(i).Start)] = true
@@ -30,41 +43,54 @@ func collectPIBlockLines(f *File) map[int]bool {
 		if pi.HasClosure() {
 			lines[f.LineOfOffset(pi.ClosureLine.Start)] = true
 		}
-		return ast.WalkContinue, nil
-	})
-	return lines
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		collectPIBlockLinesInto(c, f, lines)
+	}
 }
 
 // CollectCodeBlockLines returns a set of 1-based line numbers that
 // belong to fenced code blocks (including fence lines) or indented code
 // blocks. The walk is computed once per File and cached; the returned
-// map is shared read-only and must not be mutated.
+// map is shared read-only and must not be mutated. The atomic.Bool +
+// mutex memo avoids the once.Do closure box (see the
+// File.codeBlockLines field comment).
 func CollectCodeBlockLines(f *File) map[int]bool {
-	f.codeBlockLinesOnce.Do(func() {
+	if f.codeBlockLinesDone.Load() {
+		return f.codeBlockLines
+	}
+	f.codeBlockLinesMu.Lock()
+	defer f.codeBlockLinesMu.Unlock()
+	if !f.codeBlockLinesDone.Load() {
+		defer f.codeBlockLinesDone.Store(true)
 		f.codeBlockLines = collectCodeBlockLines(f)
-	})
+	}
 	return f.codeBlockLines
 }
 
 func collectCodeBlockLines(f *File) map[int]bool {
 	lines := map[int]bool{}
-
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-
-		switch cb := n.(type) {
-		case *ast.FencedCodeBlock:
-			addFencedCodeBlockLines(f, cb, lines)
-		case *ast.CodeBlock:
-			addBlockLines(f, cb, lines)
-		}
-
-		return ast.WalkContinue, nil
-	})
-
+	collectCodeBlockLinesInto(f.AST, f, lines)
 	return lines
+}
+
+// collectCodeBlockLinesInto descends node n via recursion (no
+// closure box) and folds every fenced or indented code block's
+// content lines into the supplied set. Matches the previous
+// ast.Walk shape byte-for-byte; the helper closes over nothing.
+func collectCodeBlockLinesInto(n ast.Node, f *File, lines map[int]bool) {
+	if n == nil {
+		return
+	}
+	switch cb := n.(type) {
+	case *ast.FencedCodeBlock:
+		addFencedCodeBlockLines(f, cb, lines)
+	case *ast.CodeBlock:
+		addBlockLines(f, cb, lines)
+	}
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		collectCodeBlockLinesInto(c, f, lines)
+	}
 }
 
 // addFencedCodeBlockLines marks the opening fence line, all content lines,

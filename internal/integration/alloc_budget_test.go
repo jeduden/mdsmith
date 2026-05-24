@@ -34,8 +34,12 @@ const allocBudgetCeiling = 10
 // allocBudgetCeiling target. The map shrinks as fixes land.
 //
 // Recorded baselines on the integration fixture as of the gate's
-// first run. Mid-fix rules (MDS025, MDS026) carry the post-partial
-// number; full-fix rules are absent.
+// first run, with each entry's ceiling tightened as partial fixes
+// land. Every grandfathered rule below has a documented
+// in-progress fix scheduled in plan 195 (MDS025, MDS026, MDS053,
+// MDS054); the inline comment on each entry cites the relevant
+// task and what the residual cost is. Full-fix rules drop out of
+// this map entirely.
 var allocBudgetGrandfathered = map[string]int{
 	// MDS025 absorbed the GFM structure checks (MD055/056/058) when
 	// plan 181 folded MDS060 into it; the structure pass parses every
@@ -44,13 +48,8 @@ var allocBudgetGrandfathered = map[string]int{
 	// scheduled as a follow-up to plan 181.
 	"MDS025": 110, // table-format
 	"MDS026": 18,  // table-readability
-	"MDS027": 25,  // cross-file-reference-integrity
-	"MDS029": 398, // conciseness-scoring
-	"MDS035": 201, // toc-directive
-	"MDS036": 12,  // max-section-length
-	"MDS053": 16,  // no-unused-link-definitions
-	"MDS054": 21,  // no-undefined-reference-labels
-	"MDS063": 17,  // descriptive-link-text
+	"MDS053": 11,  // no-unused-link-definitions (was 16; plan 195 task 6 partial)
+	"MDS054": 13,  // no-undefined-reference-labels (was 21; plan 195 task 7 partial)
 	// Baselines tightened to the post-perf-chunk numbers so a
 	// regression from today's state fails CI without waiting for
 	// the per-rule alloc budget to be missed by a wide margin.

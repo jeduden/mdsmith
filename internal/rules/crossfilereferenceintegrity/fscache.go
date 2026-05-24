@@ -26,6 +26,7 @@ import (
 var (
 	statExistsCache  sync.Map // map[string]bool
 	evalSymlinkCache sync.Map // map[string]evalResult
+	absPathCache     sync.Map // map[string]string
 )
 
 type evalResult struct {
@@ -59,4 +60,20 @@ func cachedEvalSymlinks(path string) (string, bool) {
 	r := evalResult{real: real, ok: err == nil}
 	evalSymlinkCache.Store(path, r)
 	return r.real, r.ok
+}
+
+// cachedAbs memoizes filepath.Abs. The result is purely a function of
+// os.Getwd() (stable for the process lifetime) and the input path
+// (immutable per call), so caching at package scope is safe. The
+// uncached call paid ~6 allocs/op on the alloc-budget gate fixture
+// (path-cleaning + getwd + join produce several intermediate
+// strings); the cached path is one sync.Map.Load — plan 195
+// task 5.
+func cachedAbs(path string) string {
+	if v, ok := absPathCache.Load(path); ok {
+		return v.(string)
+	}
+	abs, _ := filepath.Abs(path) //nolint:errcheck
+	absPathCache.Store(path, abs)
+	return abs
 }
