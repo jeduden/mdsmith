@@ -10,10 +10,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestDirectivesSource verifies that the embed.FS carries every guide
-// file the LSP hover provider references via directiveToDocFile. Adding
-// a directive→file mapping without shipping the file would otherwise be
-// caught only at hover time, returning an empty payload to the editor.
+// TestDirectivesSource verifies that the embed.FS carries each stub
+// this package ships, with the YAML front matter the hover loader
+// strips. The cross-package invariant — every value in the LSP hover
+// provider's directiveToDocFile must resolve in this FS — is enforced
+// by TestDirectiveToDocFileResolves in internal/lsp/hover_test.go,
+// next to the map.
 func TestDirectivesSource(t *testing.T) {
 	expected := []string{
 		"build.md",

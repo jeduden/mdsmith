@@ -50,9 +50,10 @@ heading-level: "absolute"
 ```
 
 `strip-frontmatter` drops the leading YAML block.
-`heading-level: absolute` keeps source heading
-levels; `relative` rewrites them under the parent
-heading at the include site.
+`heading-level: "absolute"` shifts included headings
+so they nest under the include site's parent
+heading; omit it to keep source heading levels
+unchanged. No other value is accepted.
 
 See the full
 [generating-content guide](../../docs/guides/directives/generating-content.md)
