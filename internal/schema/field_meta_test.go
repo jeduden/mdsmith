@@ -120,12 +120,15 @@ func TestExtractFieldMeta_ReplacedByWithoutDeprecatedRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "deprecated: true")
 }
 
-// TestExtractFieldMeta_DeprecatedFalseAcceptsHintFields covers the
-// inheritance-undo path: a child kind can re-declare a deprecated
-// field with `deprecated: false` to opt out of the parent's
-// deprecation. The hint fields stay on the metadata so the
-// composed result still knows the parent's replacement intent.
-func TestExtractFieldMeta_DeprecatedFalseDropsHints(t *testing.T) {
+// TestExtractFieldMeta_DeprecatedFalseCollapsesToZero parses the
+// minimal metadata-with-discriminator form. The parser accepts the
+// mapping (the `deprecated:` key is the disambiguator from a CUE
+// struct constraint), but the resulting FieldMeta is zero-valued
+// so downstream writers drop the entry via IsZero. Hint fields
+// (`message:` / `replaced-by:`) are rejected without
+// `deprecated: true`, so the only paired metadata that reaches
+// FrontmatterMeta carries Deprecated=true.
+func TestExtractFieldMeta_DeprecatedFalseCollapsesToZero(t *testing.T) {
 	in := map[string]any{
 		"type":       "string",
 		"deprecated": false,
