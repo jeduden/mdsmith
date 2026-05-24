@@ -201,10 +201,10 @@ var repoNonPublishedRefDef = regexp.MustCompile(
 // an optional `#anchor` (whitespace excluded so it stops before
 // a title); group 3 is the optional linkTitleTail so a titled
 // directory link keeps its title — even when it also carries a
-// `#fragment` (gap G6). When group 1 is empty rewriteIndexMd
-// substitutes `./` so the rewritten target stays a directory
-// reference (a bare `#anchor` would silently flip semantics to
-// a same-file local-anchor link).
+// `#fragment` (gap G6). When group 1 is empty
+// rewriteIndexMdLink substitutes `./` so the rewritten target
+// stays a directory reference (a bare `#anchor` would silently
+// flip semantics to a same-file local-anchor link).
 var indexMdLink = regexp.MustCompile(
 	`\]\(((?:[^)/]+/)*)index\.md((?:#[^)\s]*)?)` + linkTitleTail + `\)`)
 

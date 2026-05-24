@@ -86,11 +86,15 @@ jobs:
     # docs/, then run `mdsmith check` against it with the
     # build-output config (link integrity on, style rules off).
     # Catches broken-link regressions on PR rather than only on
-    # the post-merge deploy. The deploy job re-runs the same
-    # sync and lint inside its own steps as a safety net (a
-    # workflow_dispatch from a maintainer hits deploy directly,
-    # and the second pass also covers the version-stamp +
-    # site-assets pulls that PRs skip).
+    # the post-merge deploy. deploy `needs: build-content`, so
+    # push / workflow_dispatch / workflow_call runs all gate on
+    # this lint before publishing.
+    #
+    # deploy re-runs the same sync and lint after the
+    # version-stamp + site-assets pulls (which mutate docs/
+    # before the second sync), so the deploy's second pass
+    # also covers anything those steps could break — work that
+    # build-content deliberately skips on PR.
     #
     # No Pages permissions — this job never touches the Pages
     # API; deploy carries those separately.
@@ -232,11 +236,13 @@ jobs:
         # we publish. --no-gitignore is needed because
         # website/content/docs/ is .gitignore'd. See
         # website/build-output.mdsmith.yml for the rule set and
-        # the rationale for each disabled rule. Re-runs here as a
-        # safety net (build-content already gated PR merges on
-        # this same check, but a workflow_dispatch deploy from a
-        # branch other than main can reach this job without going
-        # through build-content's needs chain).
+        # the rationale for each disabled rule. Re-runs here as
+        # defense-in-depth: build-content already ran the same
+        # check, but deploy's own sync above happens AFTER the
+        # version-stamp and `mdsmith fix
+        # docs/background/markdown-linters.md` steps that mutate
+        # the docs/ tree, so this pass is the only one that
+        # covers the post-mutation result.
         run: |
           go run ./cmd/mdsmith check \
             --config ./website/build-output.mdsmith.yml \
