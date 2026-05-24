@@ -155,6 +155,14 @@ type KindBody struct {
 	// sections. A cycle in the extends chain (single- or multi-hop)
 	// is reported by ValidateKinds. See plan 135.
 	Extends string `yaml:"extends,omitempty"`
+
+	// SourcePath is the workspace-absolute path of the file that
+	// defined this kind — either `.mdsmith.yml` for inline kinds
+	// or `.mdsmith/kinds/<name>.{yaml,yml}` for file-defined kinds
+	// (plan 208). Not serialized to YAML; populated by Load.
+	// Provenance surfaces it as `kinds.<name> (<path>)`; CLI
+	// resolve/show prints it next to each kind.
+	SourcePath string `yaml:"-"`
 }
 
 // KindAssignmentEntry assigns one or more kinds to files matching the

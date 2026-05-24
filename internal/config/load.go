@@ -61,6 +61,21 @@ func Load(path string) (*Config, error) {
 	detectFilesKeyDeprecations(&cfg)
 	detectMetaCategoryDeprecations(&cfg)
 
+	// Tag every inline kind with the loaded config path so
+	// provenance can attribute kinds uniformly regardless of
+	// whether they came from `.mdsmith.yml` or a file under
+	// `.mdsmith/kinds/` (plan 208). The tag runs before
+	// discoverKinds so a collision diagnostic can quote both
+	// sources verbatim.
+	for name, body := range cfg.Kinds {
+		body.SourcePath = path
+		cfg.Kinds[name] = body
+	}
+
+	if err := mergeKindFiles(&cfg, path); err != nil {
+		return nil, fmt.Errorf("loading kind files: %w", err)
+	}
+
 	if err := ValidateKinds(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}

@@ -1,7 +1,7 @@
 ---
 id: 208
 title: Kind-per-file config under `.mdsmith/kinds/`
-status: "🔲"
+status: "🔳"
 model: opus
 depends-on: [146, 135]
 summary: >-
@@ -262,12 +262,12 @@ schema parsing lives in `internal/schema`.
    [file-kinds.md](../docs/guides/file-kinds.md)
    with a "split a kind into its own file"
    recipe.
-10. **Repo migration**: move every kind
-    from `.mdsmith.yml` to
-    `.mdsmith/kinds/*.yaml`. Names stay
-    stable so `kind-assignment:` entries
-    need no rewrite. Requires explicit
-    user consent per CLAUDE.md.
+10. **Repo migration**: deferred. The
+    pinned `mdsmith` version this repo
+    lints itself with does not yet
+    support `.mdsmith/kinds/`. Migration
+    is scheduled for after the next
+    release bumps the pinned version.
 11. **Follow-up plan**: open a plan file
     (not implemented here) for
     `.mdsmith/conventions/<name>.yaml` so
@@ -275,40 +275,40 @@ schema parsing lives in `internal/schema`.
 
 ## Acceptance Criteria
 
-- [ ] A kind at `.mdsmith/kinds/foo.yaml`
+- [x] A kind at `.mdsmith/kinds/foo.yaml`
       with the same body as inline
       `kinds.foo:` emits byte-equal
       diagnostics. (LSP: substitutable.)
-- [ ] A kind declared both in a file and
+- [x] A kind declared both in a file and
       inline errors naming both sources.
-- [ ] Two kind files with the same
+- [x] Two kind files with the same
       basename across `.yaml`/`.yml` error
       naming both.
-- [ ] A basename failing `[a-z][a-z0-9-]*`
+- [x] A basename failing `[a-z][a-z0-9-]*`
       or a file in a subdir of
       `.mdsmith/kinds/` errors; inline kind
       names stay unvalidated.
-- [ ] A kind file with a key outside
+- [x] A kind file with a key outside
       `KindBody` errors naming key and
       file.
-- [ ] The three pairwise schema-source
+- [x] The three pairwise schema-source
       checks in `validateKindSchemaSources`
       fire on a file-defined kind the same
       way they fire on inline.
-- [ ] A file-defined kind may `extends:` an
+- [x] A file-defined kind may `extends:` an
       inline kind and the reverse; a cycle
       is detected.
-- [ ] A `kind-assignment:` entry resolves
+- [x] A `kind-assignment:` entry resolves
       a file-defined kind by name with no
       extra wiring.
-- [ ] `mdsmith kinds resolve <file>` prints
+- [x] `mdsmith kinds resolve <file>` prints
       the defining-source path per kind.
-- [ ] `cross-system.md` boundaries table
+- [x] `cross-system.md` boundaries table
       lists `.mdsmith/kinds/` with
       `docs/reference/kind-files.md`.
-- [ ] Every new function in
+- [x] Every new function in
       `internal/config` ships with its
       dedicated unit test. (Test pyramid.)
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` clean.
-- [ ] `mdsmith check .` passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` clean.
+- [x] `mdsmith check .` passes.

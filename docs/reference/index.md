@@ -36,6 +36,7 @@ row: "- [{summary}]({filename})"
 - [Print the mdsmith build version and exit.](cli/version.md)
 - [Built-in Markdown conventions, the rule presets each one applies, and how user config layers on top via deep-merge.](conventions.md)
 - [Glob pattern syntax across mdsmith config, directives, and CLI argument expansion, with the supported exclusion semantics for each surface.](globs.md)
+- [Each file under `.mdsmith/kinds/` declares one kind. The basename is the kind name; the file body carries the full `KindBody` — schema, rules, `path-pattern:`, `extends:`. Sits alongside inline `kinds.<name>:` in `.mdsmith.yml`.](kind-files.md)
 - [Named field-type shortcuts for inline schema frontmatter values — the registered names, the canonical CUE each one resolves to, and example usage.](schema-types.md)
 - [Section-schema reference for inline `kinds.<name>.schema:` blocks. Covers the `heading:` discriminator, the `regex:` matcher (a Go RE2 body with `\#(digits)` and `\#(fmvar(...))` helpers), the `repeat: {min, max}` cardinality field, and the matching algorithm. `proto.md` files are parsed into the same shape by the schema package, but MDS020's file-schema check still uses its legacy parser; see the proto.md section below for what is and is not migrated.](section-schema.md)
 - [mdsmith collects no telemetry, no usage analytics, no error reports, and no identifiers. The CLI and the LSP server make no outbound network calls at runtime.](telemetry.md)

@@ -45,20 +45,29 @@ type KindAssignmentSource string
 // ResolvedKind names a kind in the effective list and how it was assigned.
 // Selector, when non-empty, describes the selectors that fired for a
 // kind-assignment match ("glob a,b AND fields-present x"). It is empty
-// for kinds declared via front matter.
+// for kinds declared via front matter. SourcePath, when set, is the
+// file that defined the kind body (plan 208) — either `.mdsmith.yml`
+// for inline kinds or `.mdsmith/kinds/<name>.{yaml,yml}` for
+// file-defined kinds.
 type ResolvedKind struct {
-	Name     string
-	Source   KindAssignmentSource
-	Selector string
+	Name       string
+	Source     KindAssignmentSource
+	Selector   string
+	SourcePath string
 }
 
 // LayerEntry is one applicable merge layer for a single rule. Source
 // identifies the layer; Set indicates whether this layer touched the rule;
 // Value, when Set is true, is the rule's RuleCfg supplied by this layer.
+// SourcePath, when set, is the file that defined the layer (plan 208) —
+// populated for kind layers so audit output can name the file alongside
+// the layer key (`kinds.<name>`). Empty for built-in defaults, the
+// convention preset, the user layer, and override layers.
 type LayerEntry struct {
-	Source string
-	Set    bool
-	Value  RuleCfg
+	Source     string
+	Set        bool
+	Value      RuleCfg
+	SourcePath string
 }
 
 // LeafChainEntry records a layer that set a single leaf, with the value
@@ -143,10 +152,12 @@ func ResolveFile(cfg *Config, filePath string, fmKinds []string, fmFields map[st
 
 // layerInfo captures one applicable merge layer's source and its rule
 // settings. Layers that are not applicable to the file (non-matching
-// overrides) are not included.
+// overrides) are not included. SourcePath, when set, names the file
+// the layer was loaded from — populated for kind layers only.
 type layerInfo struct {
-	Source string
-	Rules  map[string]RuleCfg
+	Source     string
+	SourcePath string
+	Rules      map[string]RuleCfg
 }
 
 func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo {
@@ -182,8 +193,9 @@ func buildLayers(cfg *Config, filePath string, kinds []ResolvedKind) []layerInfo
 			continue
 		}
 		layers = append(layers, layerInfo{
-			Source: "kinds." + k.Name,
-			Rules:  kindLayerRules(k.Name, body, cfg.Kinds),
+			Source:     "kinds." + k.Name,
+			SourcePath: body.SourcePath,
+			Rules:      kindLayerRules(k.Name, body, cfg.Kinds),
 		})
 	}
 	for i, o := range cfg.Overrides {
@@ -320,7 +332,12 @@ func buildRuleResolution(name string, layers []layerInfo) RuleResolution {
 		v, ok := l.Rules[name]
 		if ok {
 			cp := copyRuleCfg(v)
-			chain = append(chain, LayerEntry{Source: l.Source, Set: true, Value: cp})
+			chain = append(chain, LayerEntry{
+				Source:     l.Source,
+				SourcePath: l.SourcePath,
+				Set:        true,
+				Value:      cp,
+			})
 			if !seen {
 				final = cp
 			} else {
@@ -332,7 +349,11 @@ func buildRuleResolution(name string, layers []layerInfo) RuleResolution {
 			}
 			seen = true
 		} else {
-			chain = append(chain, LayerEntry{Source: l.Source, Set: false})
+			chain = append(chain, LayerEntry{
+				Source:     l.Source,
+				SourcePath: l.SourcePath,
+				Set:        false,
+			})
 		}
 	}
 	if !seen {
@@ -404,7 +425,18 @@ func resolveKindsWithSources(cfg *Config, filePath string, fmKinds []string, fmF
 			return
 		}
 		seen[name] = true
-		result = append(result, ResolvedKind{Name: name, Source: source, Selector: selector})
+		// SourcePath comes from the kind body, not the assignment —
+		// every assignment route to the same name resolves to the
+		// same defining file.
+		var srcPath string
+		if cfg != nil {
+			if body, ok := cfg.Kinds[name]; ok {
+				srcPath = body.SourcePath
+			}
+		}
+		result = append(result, ResolvedKind{
+			Name: name, Source: source, Selector: selector, SourcePath: srcPath,
+		})
 	}
 	for _, k := range fmKinds {
 		add(k, "front-matter", "")

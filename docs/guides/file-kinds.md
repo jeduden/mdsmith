@@ -230,6 +230,43 @@ effective kinds:
   - plan (from kind-assignment[2]: glob plan/*.md AND fields-present id)
 ```
 
+## Split a kind into its own file
+
+When a project's `kinds:` block has grown large
+enough that one kind's edits dirty the same
+`.mdsmith.yml` as every other config change, lift
+the kind into a standalone file under
+`.mdsmith/kinds/<name>.yaml`. The basename is the
+kind's name; the body is identical to the inline
+`kinds.<name>:` body.
+
+```yaml
+# .mdsmith/kinds/audit-log.yaml
+schema:
+  frontmatter:
+    title: 'string & != ""'
+    "summary?": 'string'
+  closed: false
+rules:
+  max-file-length:
+    max: 600
+```
+
+The same name in both a file and inline is a
+config error naming both sources, so split a kind
+in one move rather than leaving both copies
+behind. Names stay stable, so `kind-assignment:`
+entries that referenced the inline kind keep
+working with no edit.
+
+`mdsmith kinds resolve <file>` and `mdsmith kinds
+show <name>` print the defining-source path next
+to each kind so a mixed configuration stays
+auditable. See the
+[kind files reference](../reference/kind-files.md)
+for the full layout, basename rule, and JSON
+shape.
+
 ## Schema inheritance with `extends`
 
 A kind can build on another kind's schema via the `extends:` key.
