@@ -276,6 +276,40 @@ func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
 }
 
+// TestParseSchemaWithCache_InvalidCUESurfacesPartialSchemaForCueSourceTracking
+// pins the fix for Copilot thread `PRRT_kwDORLpjqs6EXgnu` on PR #377:
+// when parseSchemaFrontMatter fails (invalid CUE — the common LSP
+// editing state where the user is mid-edit), parseSchemaWithCache
+// still returns a partial *parsedSchema carrying the derived
+// FrontMatterCUE so the cache wrapper records the source in
+// schemaCUESources. Without this, RunCache.Invalidate(schemaPath)
+// would not evict the failed CompiledCUE entry the build cached,
+// and those entries would leak across edits over a long LSP
+// session. The rule itself discards the partial schema on err so
+// no behavioural change at MDS020.
+func TestParseSchemaWithCache_InvalidCUESurfacesPartialSchemaForCueSourceTracking(t *testing.T) {
+	// Front matter declares a per-key constraint that derives to
+	// invalid CUE syntax. parseSchemaFrontMatter compiles the
+	// derived expression and reports the error; cfg.FrontMatterCUE
+	// stays populated.
+	badSchema := []byte("---\nstatus: \"|||\"\n---\n# Title\n")
+
+	sch, _, err := parseSchemaWithCache(badSchema, "schema.md", 0, nil)
+	require.Error(t, err,
+		"a frontmatter constraint that derives to invalid CUE must fail")
+	require.NotNil(t, sch,
+		"parseSchemaWithCache must surface a partial *parsedSchema on "+
+			"front-matter parse error so the cache can track the failed "+
+			"CUE source for invalidation")
+
+	got := schemaCUESources(sch)
+	require.NotEmpty(t, got,
+		"schemaCUESources(sch) must return the derived FrontMatterCUE "+
+			"even though validation failed — this is what lets "+
+			"RunCache.Invalidate(schemaPath) evict the failed "+
+			"CompiledCUE entry on the next edit")
+}
+
 // TestRule_FragmentInvalidationFromSubdirSchema pins the fix for
 // Copilot thread `PRRT_kwDORLpjqs6EXfGK` on PR #377: include paths
 // must be anchored on the workspace root, not on the schema's

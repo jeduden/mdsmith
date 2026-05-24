@@ -1320,12 +1320,24 @@ func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema,
 // across schemas with identical CUE source. A nil cache restores the
 // original behaviour (one fresh cuecontext per call).
 //
-// The returned includes slice carries the absolute filesystem paths
-// of every fragment the schema's <?include?> directives reached. The
-// cache-aware wrapper (cachedParseSchema) lifts this onto
-// schemaParseResult so RunCache.Invalidate can evict the schema
-// when any of its fragments changes. Returns nil when schemaPath is
+// The returned includes slice carries every fragment path the
+// schema's <?include?> directives reached. Paths are in the SAME
+// coordinate system as schemaPath — typically project-relative when
+// the rule's loadSchemaAt passes a project-relative schemaPath. The
+// cache-aware wrapper (cachedParseSchema) anchors them onto the
+// workspace root via absoluteIncludes before storing them on
+// schemaParseResult, so RunCache.Invalidate can match against the
+// absolute paths the LSP passes. Returns nil when schemaPath is
 // empty (no filesystem identity → no include resolution).
+//
+// On a parseSchemaFrontMatter error (the common LSP editing state
+// where the schema's CUE is mid-edit and fails CompileString), the
+// function still surfaces a partial *parsedSchema carrying the
+// derived FrontMatterCUE alongside the error. The rule's caller
+// discards a non-nil sch when err != nil, but the cache wrapper
+// reads schemaCUESources(sch) for invalidation tracking — so the
+// failed CompiledCUE entry the build cached is evicted when the
+// next Invalidate(schemaPath) fires.
 func parseSchemaWithCache(
 	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache,
 ) (*parsedSchema, []string, error) {
@@ -1333,7 +1345,13 @@ func parseSchemaWithCache(
 
 	cfg, err := parseSchemaFrontMatter(prefix, cache)
 	if err != nil {
-		return nil, nil, err
+		// parseSchemaFrontMatter populates cfg.FrontMatterCUE
+		// before the validation step, so the partial schema we
+		// surface here carries the source that just failed to
+		// compile. The cache wrapper then records it in
+		// schemaCUESources so RunCache.Invalidate(schemaPath)
+		// drops the failed CompiledCUE entry on the next edit.
+		return &parsedSchema{Config: cfg}, nil, err
 	}
 
 	f, err := lint.NewFile("schema", content)
