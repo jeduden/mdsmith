@@ -17,7 +17,7 @@ Line exceeds maximum length.
 ## Settings
 
 | Setting          | Type | Default                             | Description                                                |
-|------------------|------|-------------------------------------|------------------------------------------------------------|
+| ---------------- | ---- | ----------------------------------- | ---------------------------------------------------------- |
 | `max`            | int  | 80                                  | Maximum allowed line length                                |
 | `heading-max`    | int  | --                                  | Max length for heading lines; inherits `max` when unset    |
 | `code-block-max` | int  | --                                  | Max length for code block lines; inherits `max` when unset |

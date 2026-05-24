@@ -59,7 +59,7 @@ header: |
 row: "| {date} | [{title}]({filename}) | {scope} |"
 ?>
 | Date       | Review                                                                                                          | Scope                                                                                                                          |
-|------------|-----------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| ---------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | 2026-05-12 | [Supply-Chain Hardening — mini-shai-hulud / TanStack Class](docs/security/2026-05-12-supply-chain-hardening.md) | npm, PyPI, VS Code Marketplace, and Open VSX publishing surface; GitHub Actions CI/CD; lockfile and lifecycle-script handling. |
 | 2026-04-05 | [Adversarial Markdown Input](docs/security/2026-04-05-adversarial-markdown.md)                                  | Adversarial markdown input causing unintended side effects on the host machine                                                 |
 <?/catalog?>

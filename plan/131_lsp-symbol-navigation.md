@@ -31,7 +31,7 @@ directive docs. Neither covers symbol navigation.
 Claude's LSP tool exposes nine methods:
 
 | LSP method                          | Agent intent                    |
-|-------------------------------------|---------------------------------|
+| ----------------------------------- | ------------------------------- |
 | `textDocument/documentSymbol`       | List symbols in this file       |
 | `textDocument/definition`           | Where is this defined?          |
 | `textDocument/implementation`       | Where is the concrete behavior? |
@@ -69,7 +69,7 @@ A symbol is one of four things, with a `SymbolKind`
 chosen so picker UIs bucket each sensibly:
 
 | Concept                   | `SymbolKind`   | Container                 |
-|---------------------------|----------------|---------------------------|
+| ------------------------- | -------------- | ------------------------- |
 | Heading (H1–H6)           | `String` (15)  | parent heading            |
 | Link-reference definition | `Key` (20)     | file                      |
 | Front-matter field        | `Property` (7) | file                      |
@@ -125,7 +125,7 @@ Both share one `resolveTarget(uri, position)` core.
 `Definition` returns one.
 
 | Cursor on…                     | `Definition`                 | `Implementation` adds      |
-|--------------------------------|------------------------------|----------------------------|
+| ------------------------------ | ---------------------------- | -------------------------- |
 | `[text](#anchor)`              | heading in this file         | —                          |
 | `[text](./other.md)`           | line 1 of `other.md`         | —                          |
 | `[text](./other.md#anchor)`    | heading in `other.md`        | —                          |
@@ -147,7 +147,7 @@ Capabilities: `definitionProvider = true`,
 ### `textDocument/references`
 
 | Cursor on…                | References returned                              |
-|---------------------------|--------------------------------------------------|
+| ------------------------- | ------------------------------------------------ |
 | Heading                   | every workspace link to `(file, anchor)`         |
 | `[label]: url` definition | every `[text][label]` and shortcut in the file   |
 | File line 1               | every link target with this path (no anchor)     |

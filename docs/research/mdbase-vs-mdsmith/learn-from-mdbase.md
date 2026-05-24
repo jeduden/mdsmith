@@ -57,7 +57,7 @@ sketch.
 ### Schema language (S)
 
 | ID  | Gap                                                        | Effort | Trigger / status                                                                                 |
-|-----|------------------------------------------------------------|--------|--------------------------------------------------------------------------------------------------|
+| --- | ---------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
 | S-1 | Inline schema in `kinds:`                                  | M      | one team asks for a schema without a separate `proto.md`                                         |
 | S-2 | Named field-type taxonomy as CUE shortcuts                 | S      | S-1 lands and the YAML shorthand becomes useful                                                  |
 | S-3 | Schema inheritance (`extends:`)                            | S–M    | a project has three or more schemas with shared fields                                           |
@@ -69,7 +69,7 @@ sketch.
 ### File-to-kind matching (M)
 
 | ID  | Gap                                      | Effort | Trigger / status                                                 |
-|-----|------------------------------------------|--------|------------------------------------------------------------------|
+| --- | ---------------------------------------- | ------ | ---------------------------------------------------------------- |
 | M-1 | Field-presence kind assignment           | S      | a project tags >100 files with `kinds:` boilerplate              |
 | M-2 | Field-value kind assignment (`where:`)   | S–M    | a project wants derived kinds (e.g. open-task vs archived-task)  |
 | M-3 | `path-pattern` (validates and generates) | S      | a project enforces filename conventions today via custom scripts |
@@ -77,7 +77,7 @@ sketch.
 ### CRUD and rename (C)
 
 | ID  | Gap                            | Effort | Trigger / status                                                           |
-|-----|--------------------------------|--------|----------------------------------------------------------------------------|
+| --- | ------------------------------ | ------ | -------------------------------------------------------------------------- |
 | C-1 | Create typed file              | M      | a user-facing demand for scaffolding from inside mdsmith (e.g. agent loop) |
 | C-2 | Update fields from CLI         | M      | C-1 lands; consistency pulls update along                                  |
 | C-3 | Delete with broken-ref warning | S      | C-1 / C-2 ship; deletion completes the CRUD surface                        |
@@ -88,7 +88,7 @@ sketch.
 ### Links (L)
 
 | ID  | Gap                                   | Effort | Trigger / status                                                         |
-|-----|---------------------------------------|--------|--------------------------------------------------------------------------|
+| --- | ------------------------------------- | ------ | ------------------------------------------------------------------------ |
 | L-1 | Wikilink awareness                    | M      | the first Obsidian-vault user files a "wikilinks aren't validated" issue |
 | L-2 | ID-field link resolution              | M      | a project imposes its own ID system and wants link-by-ID                 |
 | L-3 | Auto-rewrite incoming links on rename | L      | (covered by C-4)                                                         |
@@ -98,7 +98,7 @@ sketch.
 ### Query (Q)
 
 | ID  | Gap                                   | Effort | Trigger / status                                                |
-|-----|---------------------------------------|--------|-----------------------------------------------------------------|
+| --- | ------------------------------------- | ------ | --------------------------------------------------------------- |
 | Q-1 | Sort (`--order-by`)                   | S      | first script piping `query` through `sort` complains            |
 | Q-2 | Pagination (`--limit` / `--offset`)   | S      | first script wraps `query` with `head` / `tail`                 |
 | Q-3 | Body full-text search in query        | S–M    | first user request for FM + body filter combined                |
@@ -110,7 +110,7 @@ sketch.
 ### Cache, watch, migrations, conformance, LSP
 
 | ID  | Gap                                    | Effort | Trigger / status                                                                                                       |
-|-----|----------------------------------------|--------|------------------------------------------------------------------------------------------------------------------------|
+| --- | -------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | P-1 | Persistent on-disk index               | L      | profiling shows parse cost dominates after netting out OS cache and any in-memory index (see aggregation-use-cases.md) |
 | P-2 | Watch mode beyond LSP per-session      | M      | a CLI workflow needs cross-process freshness (rare today)                                                              |
 | V-1 | Migration manifests                    | L      | mdsmith grows write-back to FM (S-5 / C-2) and breaking schema changes hurt                                            |
@@ -1460,7 +1460,7 @@ for the deeper exploration:
 ## In-flight items
 
 | ID  | Plan / PR          | Notes                                         |
-|-----|--------------------|-----------------------------------------------|
+| --- | ------------------ | --------------------------------------------- |
 | H-1 | plan 122           | Hover for rule and directive docs             |
 | H-2 | plan 131 (PR #238) | Symbol navigation, references, call hierarchy |
 

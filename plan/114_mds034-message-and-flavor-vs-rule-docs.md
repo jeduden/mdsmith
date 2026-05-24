@@ -64,7 +64,7 @@ depending on the feature) to:
 (flavor, feature name). Examples:
 
 | Before                                        | After                                                    |
-|-----------------------------------------------|----------------------------------------------------------|
+| --------------------------------------------- | -------------------------------------------------------- |
 | `tables are not supported by commonmark`      | `commonmark does not interpret tables as a feature`      |
 | `inline math is not supported by commonmark`  | `commonmark does not interpret inline math as a feature` |
 | `footnotes are not supported by gfm`          | `gfm does not interpret footnotes as a feature`          |

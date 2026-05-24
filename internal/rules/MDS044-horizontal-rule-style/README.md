@@ -25,7 +25,7 @@ so `---` cannot be confused with a setext heading underline.
 ## Settings
 
 | Setting               | Type   | Default  | Description                                                                             |
-|-----------------------|--------|----------|-----------------------------------------------------------------------------------------|
+| --------------------- | ------ | -------- | --------------------------------------------------------------------------------------- |
 | `style`               | string | `"dash"` | Delimiter character: `"dash"` (`---`), `"asterisk"` (`***`), or `"underscore"` (`___`). |
 | `length`              | int    | `3`      | Exact number of delimiter characters required (minimum 3).                              |
 | `require-blank-lines` | bool   | `true`   | Blank lines must appear before and after each thematic break.                           |

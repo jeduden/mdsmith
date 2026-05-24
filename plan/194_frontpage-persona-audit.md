@@ -40,7 +40,7 @@ access to [PLAN.md](../PLAN.md), [internal/](../internal/),
 [LICENSE](../LICENSE) — only what a first-time visitor sees.
 
 | Persona | Stack                                     | AI-bloat radar |
-|---------|-------------------------------------------|----------------|
+| ------- | ----------------------------------------- | -------------- |
 | Pavel   | Go, Neovim, markdownlint-cli, no AI tools | High           |
 | Mira    | Vale + remark, Astro docs monorepo        | High           |
 | Sven    | prettier + markdownlint-cli2 + husky      | High           |
@@ -51,7 +51,7 @@ Convergent findings (number of personas that independently flagged the
 item):
 
 | #   | Friction                                                       | Hits | Anchor                                                                                    |
-|-----|----------------------------------------------------------------|------|-------------------------------------------------------------------------------------------|
+| --- | -------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------- |
 | 1   | Hero summary reads as "AI tool"                                | 5/5  | [_index.md:3](../website/content/_index.md) "and AI-generated content"                    |
 | 2   | "Guardrails for AI-generated docs" name implies AI-only        | 5/5  | [features/index.md:43-45](../docs/features/index.md)                                      |
 | 3   | Claude Code install tab gets equal billing with go / npm / pip | 4/5  | [_index.md:34-38](../website/content/_index.md)                                           |

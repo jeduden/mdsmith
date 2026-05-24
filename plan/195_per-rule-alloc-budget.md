@@ -46,7 +46,7 @@ The first run of the new gate found these failures on
 the representative fixture:
 
 | Rule   | Name                               | allocs/op | Default? |
-|--------|------------------------------------|----------:|---------:|
+| ------ | ---------------------------------- | --------: | -------: |
 | MDS029 | conciseness-scoring                | 443       | opt-in   |
 | MDS035 | toc-directive                      | 198       | opt-in   |
 | MDS025 | table-format                       | 62        | default  |

@@ -13,7 +13,7 @@ skips diagnostics for content that matches a configured token.
 ## Token vocabulary
 
 | Token name            | Matches                                                          |
-|-----------------------|------------------------------------------------------------------|
+| --------------------- | ---------------------------------------------------------------- |
 | `var-token`           | `{identifier}` interpolation placeholders (`{title}`, `{a.b.c}`) |
 | `heading-question`    | A heading whose text is exactly `?`                              |
 | `placeholder-section` | A heading whose text is exactly `...`                            |
@@ -39,7 +39,7 @@ kinds:
 ## Opt-in rules
 
 | Rule ID | Rule name                        | Useful tokens                                          |
-|---------|----------------------------------|--------------------------------------------------------|
+| ------- | -------------------------------- | ------------------------------------------------------ |
 | MDS003  | `heading-increment`              | `heading-question`, `placeholder-section`, `var-token` |
 | MDS004  | `first-line-heading`             | `heading-question`, `var-token`, `placeholder-section` |
 | MDS018  | `no-emphasis-as-heading`         | `var-token`, `heading-question`, `placeholder-section` |

@@ -46,7 +46,7 @@ truth and is what the tables below render from in-repo.
 ### Corpora
 
 | Corpus  | Files | Source                                            |
-|---------|-------|---------------------------------------------------|
+| ------- | ----- | ------------------------------------------------- |
 | repo    | 523   | mdsmith's own tracked Markdown (fixtures dropped) |
 | neutral | 234   | Rust Book + Rust Reference `src/` (third-party)   |
 
@@ -81,7 +81,7 @@ tools (see `bench-parity.mdsmith.yml`).
 better; `vs mado` is the median ratio to the fastest tool):
 
 | Tool              | Median  | Min     | vs mado |
-|-------------------|---------|---------|---------|
+| ----------------- | ------- | ------- | ------- |
 | mdsmith-parity    | 38 ms   | 35 ms   | 1.0x    |
 | mado              | 40 ms   | 38 ms   | 1.0x    |
 | panache           | 78 ms   | 73 ms   | 2.0x    |
@@ -93,7 +93,7 @@ better; `vs mado` is the median ratio to the fastest tool):
 longer third-party prose):
 
 | Tool              | Median  | Min     | vs mado |
-|-------------------|---------|---------|---------|
+| ----------------- | ------- | ------- | ------- |
 | mado              | 38 ms   | 35 ms   | 1.0x    |
 | mdsmith-parity    | 73 ms   | 71 ms   | 1.9x    |
 | rumdl             | 73 ms   | 68 ms   | 1.9x    |

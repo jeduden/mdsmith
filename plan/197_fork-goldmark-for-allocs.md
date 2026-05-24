@@ -46,7 +46,7 @@ why the leverage is not there.
 check's allocations to five goldmark allocators:
 
 | #   | Symbol                              | allocs/op | % of total |
-|-----|-------------------------------------|----------:|-----------:|
+| --- | ----------------------------------- | --------: | ---------: |
 | 1   | `goldmark/ast.NewTextSegment`       | 1.42 M    | 15.5 %     |
 | 2   | `goldmark/text.(*Segments).Append`  | 1.26 M    | 13.8 %     |
 | 3   | `goldmark/text.NewBlockReader`      | 1.24 M    | 13.6 %     |
@@ -177,7 +177,7 @@ Confirmed in `goldmark@v1.8.2`. Profile percentages are
 the plan-195 share of total allocations.
 
 | Allocator                                                         | Lifecycle                                   | Reuse barrier                                                                                                                                                                                                                          | Category       | Est. saving           | Risk                                                                                                                                                                    |
-|-------------------------------------------------------------------|---------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ----------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ast.NewTextSegment` (`inline.go:191`)                            | per inline text run; escapes to AST         | `*Text` is `AppendChild`-ed to AST and lives through the consumer pass (parser.go:1271, link.go:455, code_span.go:35).                                                                                                                 | **Structural** | 15.5% — arena only    | Arena requires consumers to consume AST inside the Parse-bounded window. Long-lived holders would not be safe.                                                          |
 | `text.(*Segments).Append` (`segment.go:178`)                      | per block; `[]Segment` backing array        | Growth is `append`-driven on `BaseBlock.lines.values`. Each block owns its own slice.                                                                                                                                                  | **Structural** | 13.8% — arena only    | Single shared scratch hard without an arena. Pairs naturally with the AST-arena change.                                                                                 |
 | `text.NewBlockReader` (`reader.go:322` @ `parser/link_ref.go:18`) | per paragraph; lone hot call site           | None — type has `Reset(*Segments)` (reader.go:351). Parser's main inline pass (`parser.go:902` + `parser.go:1165`) already runs **one** shared blockReader with Reset across all blocks. The link-ref transformer is the lone holdout. | **Tactical**   | 13.6% — pool/share    | Singleton transformer is shared across parser instances; mdsmith's `parserPool` hands one parser per goroutine, so a per-parser transformer instance is goroutine-safe. |
@@ -221,7 +221,7 @@ re-allocation (still ≪ per-paragraph).
 ## Ranking
 
 | Rank | Allocator                         | Est. saving | Tractability                                                  |
-|------|-----------------------------------|-------------|---------------------------------------------------------------|
+| ---- | --------------------------------- | ----------- | ------------------------------------------------------------- |
 | 1    | **NewBlockReader at link_ref.go** | 13.6 %      | High — Reset exists, parser-internal precedent, no AST escape |
 | 2    | NewTextSegment                    | 15.5 %      | Low — requires arena fork                                     |
 | 3    | Segments.Append (backing array)   | 13.8 %      | Low — couples with arena                                      |
@@ -266,7 +266,7 @@ of `BenchmarkCheckCorpusLarge -benchtime=10x -count=3
 Baseline (origin/main `cf363f5` — plan 195's last merged commit):
 
 | Metric        | Run 1   | Run 2   | Run 3   | Median  |
-|---------------|--------:|--------:|--------:|--------:|
+| ------------- | ------: | ------: | ------: | ------: |
 | allocs/op     | 634,729 | 634,459 | 634,368 | 634,459 |
 | p95 wall (ms) | 316     | 249     | 264     | 264     |
 | bytes/op      | 201 MB  | 201 MB  | 201 MB  | 201 MB  |
@@ -274,7 +274,7 @@ Baseline (origin/main `cf363f5` — plan 195's last merged commit):
 PoC (per-parser transformer with reusable BlockReader):
 
 | Metric        | Run 1   | Run 2   | Run 3   | Median  |
-|---------------|--------:|--------:|--------:|--------:|
+| ------------- | ------: | ------: | ------: | ------: |
 | allocs/op     | 553,734 | 553,143 | 552,825 | 553,143 |
 | p95 wall (ms) | 252     | 241     | 247     | 247     |
 | bytes/op      | 192 MB  | 192 MB  | 192 MB  | 192 MB  |
@@ -282,7 +282,7 @@ PoC (per-parser transformer with reusable BlockReader):
 Deltas (median over baseline median):
 
 | Metric          | Review predicts | PoC measured             | Pass? |
-|-----------------|-----------------|--------------------------|-------|
+| --------------- | --------------- | ------------------------ | ----- |
 | allocs/op delta | −13.6 %         | −81,316 (−12.8 %)        | ✅    |
 | p95 wall time   | ≤ baseline      | 264 → 247 ms (−6.4 %)    | ✅    |
 | go test ./...   | green           | green, including `-race` | ✅    |

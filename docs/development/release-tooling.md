@@ -48,7 +48,7 @@ setup step.
 ## Subcommands
 
 | Subcommand                  | Invoked by                                 |
-|-----------------------------|--------------------------------------------|
+| --------------------------- | ------------------------------------------ |
 | `stamp <version>`           | `release.yml` publishing jobs; `pages.yml` |
 | `publish-release`           | `release.yml` release job                  |
 | `check`                     | `ci.yml` version-guard                     |

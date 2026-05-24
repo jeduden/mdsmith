@@ -65,7 +65,7 @@ override.
 ## Rule mapping (high traffic)
 
 | markdownlint | mdsmith                              | Notes                          |
-|--------------|--------------------------------------|--------------------------------|
+| ------------ | ------------------------------------ | ------------------------------ |
 | MD001        | `heading-increment`                  | Same semantics                 |
 | MD003        | `heading-style`                      | atx / setext discriminator     |
 | MD004        | `list-marker-style`                  | `*` / `-` / `+`                |

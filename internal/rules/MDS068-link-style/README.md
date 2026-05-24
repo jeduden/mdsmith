@@ -24,7 +24,7 @@ and `validate-reference-style` flow to MDS027, while `style` and
 ## Settings
 
 | Setting                 | Type   | Default | Description                                                                                                                    |
-|-------------------------|--------|---------|--------------------------------------------------------------------------------------------------------------------------------|
+| ----------------------- | ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `links.style.path`      | string | `""`    | `relative` flags absolute targets; `absolute` flags relative targets                                                           |
 | `links.style.extension` | string | `""`    | `keep` flags Markdown-shaped targets without a markdown extension; `strip` flags those with `.md`/`.markdown`                  |
 | `links.style.form`      | string | `""`    | `inline` flags reference-style links; `reference` flags inline links; `any` is permissive                                      |
@@ -214,7 +214,7 @@ See [sibling](good/sibling.md) — inline form, as policy requires.
 ## Diagnostics
 
 | Condition                                              | Message                                                                                 |
-|--------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
 | absolute target under `style.path=relative`            | `link target is absolute; style.path=relative requires a relative path`                 |
 | relative target under `style.path=absolute`            | `link target is relative; style.path=absolute requires an absolute path`                |
 | extensionless under `style.extension=keep`             | `link target has no markdown extension; style.extension=keep requires .md or .markdown` |

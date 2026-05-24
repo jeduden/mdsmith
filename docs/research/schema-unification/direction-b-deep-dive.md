@@ -50,7 +50,7 @@ that recommendation.
 A schema has six top-level keys, all optional:
 
 | Key                 | Purpose                            |
-|---------------------|------------------------------------|
+| ------------------- | ---------------------------------- |
 | `frontmatter:`      | FM field constraints               |
 | `require:`          | Filename / path / kind constraints |
 | `sections:`         | Recursive section tree (plan 146)  |
@@ -128,7 +128,7 @@ frontmatter:
 Recognized map keys (per type):
 
 | Type                           | Keys                                                                 |
-|--------------------------------|----------------------------------------------------------------------|
+| ------------------------------ | -------------------------------------------------------------------- |
 | any                            | `type`, `optional`, `description`, `deprecated`, `replaced-by`       |
 | `string` / `email` / `url` / … | `pattern` (regex), `enum`, `min-length`, `max-length`                |
 | `int` / `number`               | `min`, `max`, `multiple-of`, `enum`                                  |
@@ -177,7 +177,7 @@ Existing `proto.md` schemas in the repo use a
 small fraction of CUE. The translations:
 
 | CUE pattern                 | YAML form                                          |
-|-----------------------------|----------------------------------------------------|
+| --------------------------- | -------------------------------------------------- |
 | `string`                    | `type: string`                                     |
 | `int & >=1 & <=5`           | `type: int, min: 1, max: 5`                        |
 | `string & != ""`            | `type: non-empty` or `type: string, min-length: 1` |

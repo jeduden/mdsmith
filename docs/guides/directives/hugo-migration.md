@@ -68,7 +68,7 @@ matter access, not Go template dot notation.
 Top-level field access looks identical:
 
 | Hugo template          | mdsmith placeholder | Result      |
-|------------------------|---------------------|-------------|
+| ---------------------- | ------------------- | ----------- |
 | `{{ .Title }}`         | `{title}`           | field value |
 | `{{ .Params.status }}` | `{status}`          | field value |
 
@@ -78,7 +78,7 @@ Nested access uses CUE dot paths instead of Go
 template chaining:
 
 | Hugo template              | mdsmith placeholder | Front matter           |
-|----------------------------|---------------------|------------------------|
+| -------------------------- | ------------------- | ---------------------- |
 | `{{ .author.name }}`       | `{author.name}`     | `author: {name: "Jo"}` |
 | `{{ index .tags 0 }}`      | `{tags.0}`          | `tags: ["go", "md"]`   |
 | `{{ .Params.custom_key }}` | `{custom_key}`      | `custom_key: "value"`  |

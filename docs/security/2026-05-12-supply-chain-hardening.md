@@ -71,7 +71,7 @@ stolen npm token can write.
 ## Surfaces Reviewed
 
 | Surface                               | Path                            | Verdict                                                                                     |
-|---------------------------------------|---------------------------------|---------------------------------------------------------------------------------------------|
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------- |
 | npm root package                      | `npm/mdsmith/`                  | No lifecycle scripts; `files:` allowlist; npm shim uses frozen platform-package map.        |
 | npm platform packages                 | built by `mdsmith-release`      | No lifecycle scripts (binary-only).                                                         |
 | PyPI wheel                            | `python/`                       | Wheel-only (no sdist); no install-time code.                                                |

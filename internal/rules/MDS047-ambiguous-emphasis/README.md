@@ -30,7 +30,7 @@ code spans, fenced code blocks, and indented code blocks.
 ## Settings
 
 | Setting                      | Type | Default | Description                                                                  |
-|------------------------------|------|---------|------------------------------------------------------------------------------|
+| ---------------------------- | ---- | ------- | ---------------------------------------------------------------------------- |
 | `max-run`                    | int  | 0       | Maximum allowed length of a contiguous `*` or `_` run; 0 disables the check  |
 | `forbid-escaped-in-run`      | bool | false   | Flag `*\*` or `_\_` where a backslash-escaped delimiter butts against a run  |
 | `forbid-adjacent-same-delim` | bool | false   | Flag three same-delimiter runs glued by non-whitespace (`*a*b*`, `__a__b__`) |

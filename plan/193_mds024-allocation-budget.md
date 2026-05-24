@@ -35,7 +35,7 @@ The cost is concrete and measured. Per-rule benchmark on the
 abbr-heavy fixture used in plan 191:
 
 | Rule                           | allocs/op | B/op   | ns/op  |
-|--------------------------------|----------:|-------:|-------:|
+| ------------------------------ | --------: | -----: | -----: |
 | MDS029 conciseness-scoring     | 1 869     | 122068 | 514042 |
 | **MDS024 paragraph-structure** | **903**   | 28189  | 250541 |
 | MDS043 no-reference-style      | 189       | 28174  | 56818  |
@@ -46,7 +46,7 @@ allocation sources inside the segmenter (the dominant
 sub-call of MDS024.Check):
 
 | Source in upstream                  | % of allocs |
-|-------------------------------------|------------:|
+| ----------------------------------- | ----------: |
 | `sentences.NewToken` (inline)       | 33%         |
 | `regexp.ReplaceAllString` (in Type) | 34%         |
 | `strings.(*Builder).grow` (in Type) | 7.5%        |
@@ -108,7 +108,7 @@ number reflects the rule's own work plus any memos it triggers.
 The engine's NewFile parse is excluded.
 
 | Source                                           | allocs  |
-|--------------------------------------------------|--------:|
+| ------------------------------------------------ | ------: |
 | AST walk (memoized) — `[]SectionParagraph` slice | 1       |
 | `ExtractPlainText` builder backing array         | 1–2     |
 | `f.MemoFile` entry bookkeeping                   | 2       |
@@ -241,7 +241,7 @@ runs (`-benchtime=1x` so each iteration walks the
 whole tree once).
 
 | Benchmark                       | Upstream tag              | Default tag               | Δ             |
-|---------------------------------|---------------------------|---------------------------|---------------|
+| ------------------------------- | ------------------------- | ------------------------- | ------------- |
 | BenchmarkRule_MDS024 (cold)     | n/a (gate added here)     | 9 allocs / 19 µs          | within budget |
 | BenchmarkSplitSentences         | 593 allocs / 186 µs       | 22 allocs / 68 µs         | −96% / −63%   |
 | BenchmarkSplitSentences_Subset  | 1082 allocs / 266 µs      | 16 allocs / 77 µs         | −98.5% / −71% |

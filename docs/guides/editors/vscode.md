@@ -69,7 +69,7 @@ Project-level overrides go in `.vscode/settings.json`;
 global preferences go in your user settings.
 
 | Setting                | Default     | Purpose                                                                                           |
-|------------------------|-------------|---------------------------------------------------------------------------------------------------|
+| ---------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
 | `mdsmith.path`         | `"mdsmith"` | Default runs the bundled per-platform binary; an absolute path overrides it (see Troubleshooting) |
 | `mdsmith.config`       | `""`        | Override `-c` config path (absolute or workspace)                                                 |
 | `mdsmith.run`          | `"onSave"`  | When to lint: `onType`, `onSave`, or `off`                                                        |
@@ -189,7 +189,7 @@ mdsmith JSON diagnostics map to LSP `Diagnostic`
 fields as follows:
 
 | mdsmith field    | LSP field                                                               |
-|------------------|-------------------------------------------------------------------------|
+| ---------------- | ----------------------------------------------------------------------- |
 | `rule` + `name`  | `code` (e.g. `MDS001`); `source` is `"mdsmith"`                         |
 | `message`        | `message`                                                               |
 | `severity`       | `severity` (error → 1, warning → 2)                                     |
@@ -210,14 +210,14 @@ Command Palette under the `mdsmith:` category.
 ### Server commands
 
 | Command                            | Action                                                                                                                                                                 |
-|------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mdsmith: Restart Language Server` | Stop the LSP client and spawn a fresh one. Use after editing `mdsmith.path`, rebuilding the binary, or recovering from a startup failure without reloading the window. |
 | `mdsmith: Show Output Channel`     | Reveal the "mdsmith" Output channel where the client logs RPC traffic and the server's stderr. Quickest way to read a startup error.                                   |
 
 ### Palette commands
 
 | Command                              | Requires trust | Action                                                                         |
-|--------------------------------------|:--------------:|--------------------------------------------------------------------------------|
+| ------------------------------------ | :------------: | ------------------------------------------------------------------------------ |
 | `mdsmith: Initialize Config`         | yes            | Run `mdsmith init` in the workspace root to create `.mdsmith.yml`.             |
 | `mdsmith: Install Git Merge Driver`  | yes            | Run `mdsmith merge-driver install` after a confirmation dialog.                |
 | `mdsmith: Fix All Markdown`          | yes            | Run `mdsmith fix .` against the workspace; show a fixed-of-total summary.      |
@@ -238,7 +238,7 @@ from JSON output; closing the panel discards the buffer.
 ### CLI-subcommand coverage
 
 | mdsmith subcommand | Editor entry point                        |
-|--------------------|-------------------------------------------|
+| ------------------ | ----------------------------------------- |
 | `check`            | Inline diagnostics (squiggles)            |
 | `fix`              | Code actions; `mdsmith: Fix All Markdown` |
 | `lsp`              | Extension spawns automatically            |

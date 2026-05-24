@@ -30,7 +30,7 @@ lands.
 ## Settings
 
 | Setting    | Type | Default | Description                                                                                                           |
-|------------|------|---------|-----------------------------------------------------------------------------------------------------------------------|
+| ---------- | ---- | ------- | --------------------------------------------------------------------------------------------------------------------- |
 | `patterns` | list | `[]`    | List of `{pattern, message, skip-indices}` entries. `pattern` must be a valid Go regular expression; others optional. |
 
 ## Config

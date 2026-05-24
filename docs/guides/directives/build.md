@@ -29,7 +29,7 @@ The directive uses the same block form as `<?catalog?>` and
 ### Common parameters
 
 | Name     | Required | Description                                                   |
-|----------|----------|---------------------------------------------------------------|
+| -------- | -------- | ------------------------------------------------------------- |
 | `recipe` | yes      | Recipe name declared in `build.recipes`                       |
 | `output` | yes      | Relative artifact path; no `..` components; no absolute paths |
 
@@ -76,7 +76,7 @@ output: docs/diagram.png
 `body-template`. Two placeholders are available:
 
 | Placeholder | Value                                   |
-|-------------|-----------------------------------------|
+| ----------- | --------------------------------------- |
 | `{output}`  | The `output` param value                |
 | `{alt}`     | `"{recipe} output: {output}"` (default) |
 

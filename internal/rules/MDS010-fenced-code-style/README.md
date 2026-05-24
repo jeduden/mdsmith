@@ -17,7 +17,7 @@ Fenced code blocks must use a consistent delimiter.
 ## Settings
 
 | Setting | Type   | Default      | Description                                   |
-|---------|--------|--------------|-----------------------------------------------|
+| ------- | ------ | ------------ | --------------------------------------------- |
 | `style` | string | `"backtick"` | `"backtick"` (`` ``` ``) or `"tilde"` (`~~~`) |
 
 ## Config

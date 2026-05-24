@@ -25,7 +25,7 @@ stdio transport. The server uses stdio either way.
 ## Capabilities advertised
 
 | Capability                        | Behavior                                                                           |
-|-----------------------------------|------------------------------------------------------------------------------------|
+| --------------------------------- | ---------------------------------------------------------------------------------- |
 | `textDocumentSync = Full`         | Full-document sync; lint trigger gated by `mdsmith.run`                            |
 | `publishDiagnostics`              | One push after each lint                                                           |
 | `codeActionProvider`              | `quickfix` per fixable diagnostic, `source.fixAll.mdsmith`                         |
@@ -80,7 +80,7 @@ LSP `Diagnostic` fields map from the same JSON shape `check`
 prints:
 
 | mdsmith          | LSP                                                                     |
-|------------------|-------------------------------------------------------------------------|
+| ---------------- | ----------------------------------------------------------------------- |
 | `rule` + `name`  | `code` (e.g. `MDS001`); `source = mdsmith`                              |
 | `severity`       | `severity` (error → 1, warning → 2)                                     |
 | `line`, `column` | `range.start`; end is the line's UTF-16 length (squiggle → end-of-line) |
@@ -125,7 +125,7 @@ request and is kept in sync via:
 ### Symbol kinds
 
 | Concept                   | LSP `SymbolKind` | Container                 |
-|---------------------------|------------------|---------------------------|
+| ------------------------- | ---------------- | ------------------------- |
 | Heading (H1–H6)           | `String` (15)    | parent heading            |
 | Link-reference definition | `Key` (20)       | file                      |
 | Front-matter field        | `Property` (7)   | file                      |
@@ -140,7 +140,7 @@ refs.
 ### Definition and implementation
 
 | Cursor on…                     | `Definition`                 | `Implementation` adds      |
-|--------------------------------|------------------------------|----------------------------|
+| ------------------------------ | ---------------------------- | -------------------------- |
 | `[text](#anchor)`              | heading in this file         | —                          |
 | `[text](./other.md)`           | line 1 of `other.md`         | —                          |
 | `[text](./other.md#anchor)`    | heading in `other.md`        | —                          |
@@ -153,7 +153,7 @@ refs.
 ### References
 
 | Cursor on…                          | References returned                              |
-|-------------------------------------|--------------------------------------------------|
+| ----------------------------------- | ------------------------------------------------ |
 | Heading                             | every workspace link to `(file, anchor)`         |
 | `[label]: url` definition           | every `[text][label]` and shortcut in the file   |
 | File line 1                         | every link target with this path (no anchor)     |
@@ -209,7 +209,7 @@ matches first for anchor completion.
 ### Supported contexts
 
 | Cursor on…                         | Items returned                  | `kind`       |
-|------------------------------------|---------------------------------|--------------|
+| ---------------------------------- | ------------------------------- | ------------ |
 | `[text](#prefix`                   | Heading anchors in current file | `Reference`  |
 | `[text](./other.md#prefix`         | Heading anchors in `other.md`   | `Reference`  |
 | `[text][prefix`                    | Link-ref labels in current file | `Reference`  |
@@ -289,7 +289,7 @@ go test -run=^$ -bench=. ./internal/lsp/...
 ## Exit codes
 
 | Code | Meaning                    |
-|------|----------------------------|
+| ---- | -------------------------- |
 | 0    | Server exited cleanly      |
 | 2    | Runtime or transport error |
 

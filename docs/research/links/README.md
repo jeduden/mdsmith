@@ -28,7 +28,7 @@ kinds the surface walks for links; "URL parts" lists
 which components of the target it inspects.
 
 | Surface                                                                                      | Nodes                                                                      | URL parts                                                                 | What it does                                                                                                                       |
-|----------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|---------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
+| -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | MDS012 no-bare-urls (`internal/rules/nobareurls/rule.go`)                                    | `*ast.Text`                                                                | scheme (http/https)                                                       | Flags raw `https?://` in text not already inside a link, autolink, or code; wraps in `<>` on fix.                                  |
 | MDS019 catalog (`internal/rules/catalog/rule.go`)                                            | `<?catalog?>` PI                                                           | none (front-matter fields)                                                | Generates an index list; warns when a templated field value contains a `](` link-injection sequence.                               |
 | MDS021 include (`internal/rules/include/rule.go`)                                            | `<?include?>` PI                                                           | relative file path only                                                   | Resolves the `file:` parameter; rejects absolute paths and `..` escapes; detects cycles.                                           |
@@ -64,7 +64,7 @@ from ripgrep over each corpus; the point is the
 distribution, not the exact integer.
 
 | Metric                    | Docs | Plan | Rules | README |
-|---------------------------|------|------|-------|--------|
+| ------------------------- | ---- | ---- | ----- | ------ |
 | Inline links              | 274  | 330  | 159   | 42     |
 | Reference-style uses      | 146  | 99   | 14    | 3      |
 | Reference definitions     | 147  | 51   | 14    | 6      |

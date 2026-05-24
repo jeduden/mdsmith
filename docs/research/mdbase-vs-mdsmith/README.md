@@ -133,7 +133,7 @@ assignments; the candidate-evolution column
 points at the trigger if it exists.
 
 | Workflow                                      | Best fit today             | Candidate for the other side |
-|-----------------------------------------------|----------------------------|------------------------------|
+| --------------------------------------------- | -------------------------- | ---------------------------- |
 | Lint Markdown structure and style             | mdsmith                    | —                            |
 | Enforce paragraph readability or token budget | mdsmith                    | —                            |
 | Auto-generate catalogs, TOCs, includes        | mdsmith                    | —                            |
@@ -158,7 +158,7 @@ Each carries its own trigger condition.
 ## Status snapshot (2026-05)
 
 | Property         | mdsmith                           | mdbase                                  |
-|------------------|-----------------------------------|-----------------------------------------|
+| ---------------- | --------------------------------- | --------------------------------------- |
 | Spec version     | n/a (single impl)                 | 0.2.1                                   |
 | Reference impl   | mdsmith (Go)                      | mdbase (TS), mdbase-rs (Rust LSP)       |
 | Distribution     | one Go binary                     | npm package + CLI + LSP                 |

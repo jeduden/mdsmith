@@ -44,7 +44,7 @@ the edge pipes or fill the cell to resolve it.
 ## Settings
 
 | Setting           | Type   | Default        | Description                                                                        |
-|-------------------|--------|----------------|------------------------------------------------------------------------------------|
+| ----------------- | ------ | -------------- | ---------------------------------------------------------------------------------- |
 | `pad`             | int    | `1`            | spaces on each side of cell content                                                |
 | `separator-style` | string | `"spaced"`     | separator row layout (see examples below): `spaced` or `compact`                   |
 | `style`           | string | `"consistent"` | edge-pipe style: `consistent`, `leading_and_trailing`, or `no_leading_or_trailing` |
@@ -305,7 +305,7 @@ Paragraph after.
 ## Edge Cases
 
 | Scenario                            | Behavior                                                                              |
-|-------------------------------------|---------------------------------------------------------------------------------------|
+| ----------------------------------- | ------------------------------------------------------------------------------------- |
 | table inside blockquote             | `> ` prefix preserved on each line; MD058 blanks use the bare `>` marker              |
 | table inside list                   | indentation prefix preserved                                                          |
 | table inside fenced code block      | skipped, not checked or modified                                                      |

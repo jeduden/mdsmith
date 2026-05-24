@@ -22,7 +22,7 @@ the other.
 Write surfaces:
 
 | Tool    | What it writes                                                                                                                                                              |
-|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | mdsmith | Body fixes (`mdsmith fix`); generated section bodies (catalog, TOC, include, build); `.gitattributes` + git hooks via merge-driver / pre-merge-commit installers            |
 | mdbase  | Front-matter via CRUD ops (`create`, `update`); incoming-link rewrites on `rename`; SQLite cache at `.mdbase/index.sqlite`; migration manifests under `_types/_migrations/` |
 
@@ -47,7 +47,7 @@ Both tools want to validate front matter, and
 neither can read the other's schema language.
 
 | Concern                            | mdsmith                                                                    | mdbase                               |
-|------------------------------------|----------------------------------------------------------------------------|--------------------------------------|
+| ---------------------------------- | -------------------------------------------------------------------------- | ------------------------------------ |
 | Schema file format                 | Markdown `proto.md` (CUE in front matter, heading template in body)        | Markdown in `_types/<name>.md` (DSL) |
 | Schema reference                   | `kinds: { <name>: { rules: { required-structure: { schema: <path> } } } }` | folder convention `_types/`          |
 | Schema location                    | anywhere referenced by a kind, by convention next to the files             | fixed `_types/` folder               |
@@ -326,7 +326,7 @@ mdsmith rules to consider disabling under
 **Strategy A (mdbase owns FM)**:
 
 | Rule             | Reason to disable                                |
-|------------------|--------------------------------------------------|
+| ---------------- | ------------------------------------------------ |
 | MDS020           | mdbase validates FM shape                        |
 | MDS027           | optional: mdbase L4 also checks links — pick one |
 | MDS019 (catalog) | mdbase queries can produce equivalent listings   |
@@ -456,7 +456,7 @@ A team running both does not always benefit. Cases
 where one tool alone is enough:
 
 | Project shape                                          | Use only            |
-|--------------------------------------------------------|---------------------|
+| ------------------------------------------------------ | ------------------- |
 | Open-source repo with `docs/` and a README             | mdsmith             |
 | Static site Markdown (Hugo / Jekyll / Astro)           | mdsmith + SSG       |
 | Personal Obsidian vault, no CI, no schemas             | mdbase (or neither) |

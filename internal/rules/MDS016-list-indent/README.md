@@ -20,7 +20,7 @@ List items must use consistent indentation.
 ## Settings
 
 | Setting  | Type | Default | Description                            |
-|----------|------|---------|----------------------------------------|
+| -------- | ---- | ------- | -------------------------------------- |
 | `spaces` | int  | 2       | Number of spaces per indentation level |
 
 ## Config

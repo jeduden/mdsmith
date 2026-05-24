@@ -66,7 +66,7 @@ schema-side wiring to plan 146.
 Four new rules plus settings on MDS036:
 
 | Rule                                  | Setting                                        | Effect                                                            |
-|---------------------------------------|------------------------------------------------|-------------------------------------------------------------------|
+| ------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
 | **MDS036** max-section-length         | `max-words:`, `min-words:`, `max-paragraphs:`  | Word and paragraph caps in addition to today's line cap.          |
 | **MDS055** forbidden-paragraph-starts | `starts: [str, ...]`                           | Flag paragraphs that begin with any listed string.                |
 | **MDS056** forbidden-text             | `contains: [str, ...]`                         | Flag the scope when its text contains any listed string.          |

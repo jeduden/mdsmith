@@ -150,7 +150,7 @@ Result: deterministic outputs were confirmed.
 Measured with `ROUNDS=4000` (`24,000` requests total):
 
 | Metric                 | Value       |
-|------------------------|-------------|
+| ---------------------- | ----------- |
 | Model load             | 0.2790 ms   |
 | Avg latency            | 3.3750 us   |
 | P50 latency            | 3.1670 us   |

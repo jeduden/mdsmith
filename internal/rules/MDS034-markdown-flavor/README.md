@@ -29,7 +29,7 @@ convention, and kind see
 ## Settings
 
 | Key    | Type   | Description                     |
-|--------|--------|---------------------------------|
+| ------ | ------ | ------------------------------- |
 | flavor | string | Target flavor; see table below. |
 
 The flavor name is case-sensitive. Supported
@@ -106,7 +106,7 @@ GFM spec.
 from the table below.
 
 | Feature            | commonmark | gfm | goldmark | pandoc | phpextra | multimarkdown | myst |
-|--------------------|------------|-----|----------|--------|----------|---------------|------|
+| ------------------ | ---------- | --- | -------- | ------ | -------- | ------------- | ---- |
 | tables             | no         | yes | yes      | yes    | yes      | yes           | yes  |
 | task lists         | no         | yes | yes      | yes    | no       | no            | no   |
 | strikethrough      | no         | yes | yes      | yes    | no       | no            | yes  |

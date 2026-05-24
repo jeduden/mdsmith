@@ -21,7 +21,7 @@ content written directly under each heading.
 ## Settings
 
 | Setting          | Type | Default | Description                                                   |
-|------------------|------|---------|---------------------------------------------------------------|
+| ---------------- | ---- | ------- | ------------------------------------------------------------- |
 | `max`            | int  | 0       | Default line limit; zero disables the global line check.      |
 | `per-level`      | map  | `{}`    | Map from heading level (1-6) to line limit.                   |
 | `per-heading`    | list | `[]`    | Regex patterns with per-heading line limits.                  |

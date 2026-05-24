@@ -22,7 +22,7 @@ prose.
 ## Settings
 
 | Setting  | Type | Default | Description                                                                |
-|----------|------|---------|----------------------------------------------------------------------------|
+| -------- | ---- | ------- | -------------------------------------------------------------------------- |
 | `starts` | list | `[]`    | Prefixes forbidden at the start of any paragraph. Match is case-sensitive. |
 
 ## Config

@@ -26,7 +26,7 @@ date" diagnostic.
 ## Parameters
 
 | Name        | Type | Default | Description                                   |
-|-------------|------|---------|-----------------------------------------------|
+| ----------- | ---- | ------- | --------------------------------------------- |
 | `min-level` | int  | `2`     | Lowest heading level to include (1–6)         |
 | `max-level` | int  | `6`     | Highest heading level to include (1–6, ≥ min) |
 

@@ -21,7 +21,7 @@ with exit code 2.
 ## Flags
 
 | Flag                | Default | Description                                |
-|---------------------|---------|--------------------------------------------|
+| ------------------- | ------- | ------------------------------------------ |
 | `-c`, `--config`    | auto    | Override config path                       |
 | `-f`, `--format`    | `text`  | Output format: `text` or `json`            |
 | `--incoming`        | false   | List files that depend on `<file>` instead |
@@ -91,7 +91,7 @@ mdsmith deps --format json docs/api.md --incoming
 ## Exit codes
 
 | Code | Meaning             |
-|------|---------------------|
+| ---- | ------------------- |
 | 0    | At least one edge   |
 | 1    | No edges, no errors |
 | 2    | Runtime/parse error |

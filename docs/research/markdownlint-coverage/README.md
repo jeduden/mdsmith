@@ -26,7 +26,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## Headings
 
 | markdownlint                   | Checks              | mdsmith | Status    |
-|--------------------------------|---------------------|---------|-----------|
+| ------------------------------ | ------------------- | ------- | --------- |
 | MD001 heading-increment        | one level at a time | MDS003  | ✅        |
 | MD003 heading-style            | atx vs setext       | MDS002  | ✅        |
 | MD018 no-missing-space-atx     | `#Heading`          | MDS064  | ✅        |
@@ -45,7 +45,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## Lists
 
 | markdownlint              | Checks             | mdsmith | Status  |
-|---------------------------|--------------------|---------|---------|
+| ------------------------- | ------------------ | ------- | ------- |
 | MD004 ul-style            | bullet char        | MDS045  | ✅      |
 | MD005 list-indent         | even indent        | MDS016  | partial |
 | MD007 ul-indent           | nesting width      | MDS016  | ✅      |
@@ -56,7 +56,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## Whitespace, blank lines, tabs
 
 | markdownlint             | Checks          | mdsmith | Status |
-|--------------------------|-----------------|---------|--------|
+| ------------------------ | --------------- | ------- | ------ |
 | MD009 no-trailing-spaces | line ends       | MDS006  | ✅     |
 | MD010 no-hard-tabs       | tab chars       | MDS007  | ✅     |
 | MD012 no-multiple-blanks | repeated blanks | MDS008  | ✅     |
@@ -68,7 +68,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## Code blocks and code spans
 
 | markdownlint               | Checks           | mdsmith | Status |
-|----------------------------|------------------|---------|--------|
+| -------------------------- | ---------------- | ------- | ------ |
 | MD014 commands-show-output | `$` w/o output   | MDS066  | ✅     |
 | MD031 blanks-around-fences | blank lines      | MDS015  | ✅     |
 | MD038 spaces-in-code-span  | `` ` x ` ``      | MDS052  | ✅     |
@@ -79,7 +79,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## Links and references
 
 | markdownlint              | Checks           | mdsmith | Status      |
-|---------------------------|------------------|---------|-------------|
+| ------------------------- | ---------------- | ------- | ----------- |
 | MD011 no-reversed-links   | `(t)[u]`         | MDS062  | ✅          |
 | MD034 no-bare-urls        | raw URL          | MDS012  | ✅          |
 | MD039 spaces-in-link-text | `[ t ]`          | MDS049  | ✅          |
@@ -93,7 +93,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## Inline, emphasis, HTML
 
 | markdownlint             | Checks         | mdsmith | Status |
-|--------------------------|----------------|---------|--------|
+| ------------------------ | -------------- | ------- | ------ |
 | MD033 no-inline-html     | raw HTML       | MDS041  | ✅     |
 | MD035 hr-style           | `---` vs `***` | MDS044  | ✅     |
 | MD037 spaces-in-emphasis | `* x *`        | MDS047  | ✅     |
@@ -105,7 +105,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## Tables
 
 | markdownlint               | Checks      | mdsmith | Status  |
-|----------------------------|-------------|---------|---------|
+| -------------------------- | ----------- | ------- | ------- |
 | MD055 table-pipe-style     | edge pipes  | MDS025  | ✅      |
 | MD056 table-column-count   | equal cells | MDS025  | partial |
 | MD058 blanks-around-tables | blank lines | MDS025  | ✅      |
@@ -113,7 +113,7 @@ only outstanding rule is MD054, scheduled in plan 172.
 ## mdsmith-only rules (no markdownlint analog)
 
 | mdsmith                               | What it adds                      |
-|---------------------------------------|-----------------------------------|
+| ------------------------------------- | --------------------------------- |
 | MDS019 catalog                        | generated index from front matter |
 | MDS020 required-structure             | CUE schema beyond MD043           |
 | MDS021 include                        | spliced, synced file inclusion    |

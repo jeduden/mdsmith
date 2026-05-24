@@ -23,7 +23,7 @@ the batch head and the batch branch is deleted.
 progression through the queue:
 
 | Label          | Meaning                           |
-|----------------|-----------------------------------|
+| -------------- | --------------------------------- |
 | `queue`        | PR is waiting to be picked up     |
 | `queue:active` | PR is in the current batch        |
 | `queue:failed` | CI failed or merge conflict found |

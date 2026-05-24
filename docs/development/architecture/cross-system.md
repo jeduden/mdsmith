@@ -30,7 +30,7 @@ steps) lives where the table's "Spec
 doc" column says.
 
 | Boundary                              | Owner in repo                                        | Spec doc                                                                        | Consumers                                                  |
-|---------------------------------------|------------------------------------------------------|---------------------------------------------------------------------------------|------------------------------------------------------------|
+| ------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | LSP wire protocol                     | `internal/lsp`                                       | [CLI reference: `lsp`](../../reference/cli/lsp.md)                              | VS Code extension, other editors                           |
 | CLI flags + exit codes                | `cmd/mdsmith`                                        | [CLI reference](../../reference/cli.md)                                         | shell scripts, CI, git hooks                               |
 | `.mdsmith.yml` schema                 | `internal/config`                                    | [Conventions](../../reference/conventions.md)                                   | every project using mdsmith                                |

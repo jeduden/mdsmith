@@ -46,7 +46,7 @@ rules:
 ### Settings
 
 | Setting          | Type            | Default | Description                                            |
-|------------------|-----------------|---------|--------------------------------------------------------|
+| ---------------- | --------------- | ------- | ------------------------------------------------------ |
 | `allow`          | list of strings | `[]`    | Tag names that are permitted (replaces, not appended). |
 | `allow-comments` | bool            | `true`  | Whether HTML comments (`<!-- ... -->`) are allowed.    |
 

@@ -15,7 +15,7 @@ File must not exceed a token budget.
 ## Settings
 
 | Setting           | Type   | Default       | Description                                                                          |
-|-------------------|--------|---------------|--------------------------------------------------------------------------------------|
+| ----------------- | ------ | ------------- | ------------------------------------------------------------------------------------ |
 | `max`             | int    | 8000          | Default token budget when no per-glob budget matches                                 |
 | `mode`            | string | `heuristic`   | Counting mode: `heuristic` or `tokenizer`                                            |
 | `tokens-per-word` | number | 1.33          | Tokens per word multiplier used in `heuristic` mode                                  |

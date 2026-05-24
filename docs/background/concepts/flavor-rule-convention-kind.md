@@ -16,7 +16,7 @@ than one — should read this page first.
 ## TL;DR
 
 | Axis              | Flavor                             | Rule                         | Convention                                               | Kind                              |
-|-------------------|------------------------------------|------------------------------|----------------------------------------------------------|-----------------------------------|
+| ----------------- | ---------------------------------- | ---------------------------- | -------------------------------------------------------- | --------------------------------- |
 | What it is        | A renderer's grammar               | A single lint check          | A project-wide bundle of rules                           | A per-file role tag with rules    |
 | Source of truth   | An external spec or implementation | An mdsmith rule package      | The codebase (built-ins; user-defined ships in plan 113) | The user's `.mdsmith.yml`         |
 | Question answered | Will the renderer interpret this?  | Does this match this rule?   | What kind of Markdown do we write?                       | What role does this file play?    |

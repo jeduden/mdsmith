@@ -56,7 +56,7 @@ split by category for readability.
 #### Front matter and type assignment
 
 | Aspect                           | mdbase types             | mdsmith MDS020 schema          | mdsmith broader rule set                            |
-|----------------------------------|--------------------------|--------------------------------|-----------------------------------------------------|
+| -------------------------------- | ------------------------ | ------------------------------ | --------------------------------------------------- |
 | FM field types                   | yes (12 named types, §7) | yes (CUE in schema FM)         | n/a                                                 |
 | FM field constraints             | per-type knobs           | full CUE                       | n/a                                                 |
 | FM required / optional           | `required: true`         | CUE `?` suffix                 | n/a                                                 |
@@ -70,7 +70,7 @@ split by category for readability.
 #### Filename, directory, headings
 
 | Aspect                    | mdbase types   | mdsmith MDS020 schema       | mdsmith broader rule set                  |
-|---------------------------|----------------|-----------------------------|-------------------------------------------|
+| ------------------------- | -------------- | --------------------------- | ----------------------------------------- |
 | Filename pattern          | `path_pattern` | `<?require?>` filename glob | MDS033 directory-structure                |
 | First-heading rule        | no             | template's first H1         | MDS004 first-line-heading                 |
 | Heading level increments  | no             | template implies it         | MDS003 heading-increment                  |
@@ -83,7 +83,7 @@ split by category for readability.
 #### Section and file caps; prose
 
 | Aspect                         | mdbase types | mdsmith MDS020 schema | mdsmith broader rule set                  |
-|--------------------------------|--------------|-----------------------|-------------------------------------------|
+| ------------------------------ | ------------ | --------------------- | ----------------------------------------- |
 | Section emptiness              | no           | no                    | MDS030 empty-section-body                 |
 | Section length cap             | no           | no                    | MDS036 max-section-length                 |
 | File length cap                | no           | no                    | MDS022 max-file-length                    |
@@ -96,7 +96,7 @@ split by category for readability.
 #### Tables, code, lists
 
 | Aspect                         | mdbase types | mdsmith MDS020 schema | mdsmith broader rule set             |
-|--------------------------------|--------------|-----------------------|--------------------------------------|
+| ------------------------------ | ------------ | --------------------- | ------------------------------------ |
 | Table format                   | no           | no                    | MDS025 table-format                  |
 | Table readability              | no           | no                    | MDS026 table-readability             |
 | Fenced code style              | no           | no                    | MDS010 fenced-code-style             |
@@ -111,7 +111,7 @@ split by category for readability.
 #### Links, references, cross-file
 
 | Aspect                      | mdbase types                       | mdsmith MDS020 schema | mdsmith broader rule set              |
-|-----------------------------|------------------------------------|-----------------------|---------------------------------------|
+| --------------------------- | ---------------------------------- | --------------------- | ------------------------------------- |
 | Bare URLs                   | no                                 | no                    | MDS012 no-bare-urls                   |
 | Cross-file link integrity   | yes (L4 + `validate_exists`)       | no                    | MDS027 cross-file-reference-integrity |
 | Cross-file rename safety    | yes (L5 rewrites refs)             | no                    | no (MDS027 detects, doesn't fix)      |
@@ -126,7 +126,7 @@ split by category for readability.
 #### Style, formatting, generated content
 
 | Aspect                           | mdbase types | mdsmith MDS020 schema | mdsmith broader rule set      |
-|----------------------------------|--------------|-----------------------|-------------------------------|
+| -------------------------------- | ------------ | --------------------- | ----------------------------- |
 | Image alt text                   | no           | no                    | MDS032 no-empty-alt-text      |
 | Inline HTML policy               | no           | no                    | MDS041 no-inline-html         |
 | Emphasis style                   | no           | no                    | MDS042 emphasis-style         |
@@ -245,7 +245,7 @@ Five mechanisms tie FM to body content, all
 schema-style or directive-driven:
 
 | Mechanism                     | What it ties                                                                                                                   | Rule                        |
-|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------- |
 | Heading template placeholders | `# {title}` in schema body → body H1 must match FM `title`                                                                     | MDS020 (required-structure) |
 | Catalog directive             | `<?catalog?>` table cells reference FM fields like `{summary}`, `{filename}` of matched files                                  | MDS019 (catalog)            |
 | Include directive variables   | `<?include?>` body can substitute FM fields from the host file                                                                 | MDS021 (include)            |
@@ -280,7 +280,7 @@ mdbase has one mechanism, and it ties FM to the
 **filesystem**, not the body:
 
 | Mechanism      | What it ties                      | Where   |
-|----------------|-----------------------------------|---------|
+| -------------- | --------------------------------- | ------- |
 | `path_pattern` | FM field values → filename / path | spec §5 |
 
 A type like `tasks/{date}-{title}.md` enforces
@@ -300,7 +300,7 @@ heading constraints, or body-from-FM generation.
 ### Side-by-side
 
 | Sync direction           | mdsmith                                   | mdbase         |
-|--------------------------|-------------------------------------------|----------------|
+| ------------------------ | ----------------------------------------- | -------------- |
 | FM → filename            | n/a (MDS033 directory-structure separate) | `path_pattern` |
 | FM → body H1             | MDS020 heading template with `{title}`    | no             |
 | FM → body table cells    | `<?catalog?>` directive (drift-detected)  | no             |
@@ -431,7 +431,7 @@ directly.
 ### What each can and cannot express
 
 | Constraint                        | mdbase DSL                                | mdsmith CUE                                     |
-|-----------------------------------|-------------------------------------------|-------------------------------------------------|
+| --------------------------------- | ----------------------------------------- | ----------------------------------------------- |
 | Regex on string                   | `pattern: "^TASK-[0-9]{4}$"`              | `=~"^TASK-[0-9]{4}$"`                           |
 | Numeric range                     | `min: 1, max: 5`                          | `int & >=1 & <=5`                               |
 | Enum                              | `values: [open, …]`                       | `"open" \| "in-progress" \| "done"`             |
@@ -464,7 +464,7 @@ across the two tools, with implications for how
 errors surface.
 
 | Moment                      | mdbase                                            | mdsmith                                        |
-|-----------------------------|---------------------------------------------------|------------------------------------------------|
+| --------------------------- | ------------------------------------------------- | ---------------------------------------------- |
 | File creation (`create`)    | yes — validates before persisting                 | n/a (mdsmith doesn't author files)             |
 | File update (CRUD `update`) | yes — validates merged result                     | n/a                                            |
 | Lint pass (`mdsmith check`) | n/a (mdbase doesn't lint)                         | yes — MDS020 validates against schema          |
@@ -577,7 +577,7 @@ limit: 20
 ### Side by side as languages
 
 | Concern                   | mdsmith CUE                                   | mdbase Bases DSL                       |
-|---------------------------|-----------------------------------------------|----------------------------------------|
+| ------------------------- | --------------------------------------------- | -------------------------------------- |
 | Surface form              | one expression (struct literal)               | YAML doc + expression strings          |
 | Filtering                 | unification (constraint match)                | boolean expression eval                |
 | Sort                      | no                                            | `order_by` clause                      |
@@ -760,7 +760,7 @@ knowing which queries translate between
 syntaxes and which don't.
 
 | mdbase Bases query                   | Equivalent mdsmith CUE                                | Notes                                             |
-|--------------------------------------|-------------------------------------------------------|---------------------------------------------------|
+| ------------------------------------ | ----------------------------------------------------- | ------------------------------------------------- |
 | `status == "open"`                   | `status: "open"`                                      | trivial                                           |
 | `priority >= 3`                      | `priority: int & >=3`                                 | trivial                                           |
 | `tags.contains("urgent")`            | `tags: [..., "urgent", ...]`                          | CUE syntax for list-contains is awkward but works |

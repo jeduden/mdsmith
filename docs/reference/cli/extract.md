@@ -22,7 +22,7 @@ partial data.
 ## Flags
 
 | Flag             | Default | Description                        |
-|------------------|---------|------------------------------------|
+| ---------------- | ------- | ---------------------------------- |
 | `-f`, `--format` | `json`  | Output format: json, yaml, msgpack |
 
 ## Default projection
@@ -95,7 +95,7 @@ mdsmith extract plan --format msgpack plan/166_x.md > plan.mp
 ## Exit codes
 
 | Code | Meaning                                                             |
-|------|---------------------------------------------------------------------|
+| ---- | ------------------------------------------------------------------- |
 | 0    | Extraction succeeded                                                |
 | 1    | The file is non-conformant, or a sibling key collision was detected |
 | 2    | Runtime or configuration error (unknown kind, kind not assigned, …) |

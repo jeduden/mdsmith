@@ -17,7 +17,7 @@ the final say — Prettier, run last.
 ## Who owns what
 
 | Concern                              | Owner    |
-|--------------------------------------|----------|
+| ------------------------------------ | -------- |
 | Final paragraph wrapping             | Prettier |
 | Final table alignment                | Prettier |
 | Trailing whitespace, hard tabs       | mdsmith  |

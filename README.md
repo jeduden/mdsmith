@@ -212,7 +212,7 @@ header: |
 row: "| [`{command}`]({filename}) | {summary} |"
 ?>
 | Command                                                      | Description                                                                          |
-|--------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
 | [`check`](docs/reference/cli/check.md)                       | Lint Markdown files for style issues.                                                |
 | [`deps`](docs/reference/cli/deps.md)                         | List a file's dependency-graph edges (includes, links, catalogs, builds).            |
 | [`export`](docs/reference/cli/export.md)                     | Write a portable, directive-free copy of a Markdown file.                            |
