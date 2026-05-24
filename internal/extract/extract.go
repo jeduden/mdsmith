@@ -55,15 +55,17 @@ type projector struct {
 }
 
 // keyFor is the single key-naming seam — the one function plan 167
-// overrides through `bind:`. When the scope sets a non-nil `Bind`,
-// its value wins (an empty string is the hoist signal handled at the
-// call site, so this function never returns it as a key). Otherwise
-// the default binding derives every key from the heading: a literal
+// overrides through `bind:`. A non-empty `Bind` wins (the value
+// replaces the default key). An empty bind is the hoist signal —
+// projectChildren routes hoist groups through hoistGroup before
+// reaching keyFor, but the empty-string check here keeps any
+// future caller from accidentally writing a blank key. The
+// fallback chain derives the default from the heading: a literal
 // heading slugifies whole; a placeholder-bearing heading slugifies
 // its literal stem, falling back to the first `fmvar` field name
 // when the heading is only a placeholder (`## {id}`).
 func keyFor(sc *schema.Scope) string {
-	if sc != nil && sc.Bind != nil {
+	if sc != nil && sc.Bind != nil && *sc.Bind != "" {
 		return *sc.Bind
 	}
 	stem, fmvars, _ := schema.HeadingStem(sc)

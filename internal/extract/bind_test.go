@@ -153,6 +153,26 @@ func TestExtract_BindRepeatingArray(t *testing.T) {
 	require.Len(t, arr, 2)
 }
 
+// TestHoistsToParent_NilSafe covers the defensive nil branches:
+// hoistsToParent must not panic on a nil match or a match whose
+// Scope is nil (the synthetic MatchTree.Root has Scope == nil).
+func TestHoistsToParent_NilSafe(t *testing.T) {
+	assert.False(t, hoistsToParent(nil))
+	assert.False(t, hoistsToParent(&schema.ScopeMatch{}))
+}
+
+// TestKeyFor_EmptyBindFallsBackToDefault verifies the defensive
+// `*Bind == ""` guard in keyFor: even if a caller bypasses the
+// hoistsToParent check, keyFor never emits an empty key.
+func TestKeyFor_EmptyBindFallsBackToDefault(t *testing.T) {
+	sc := &schema.Scope{
+		Heading: "Goal",
+		Matcher: &schema.Matcher{Regex: "Goal"},
+		Bind:    strPtr(""),
+	}
+	assert.Equal(t, "goal", keyFor(sc))
+}
+
 // TestExtract_BindSurvivesComposition: a file resolving to two
 // kinds where one sets `bind:` for a heading uses the bound key in
 // the projection.

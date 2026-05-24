@@ -356,9 +356,20 @@ func mergeBind(a, b *string, heading string) (*string, error) {
 	}
 	return nil, fmt.Errorf(
 		"composed schemas declare conflicting `bind:` overrides for "+
-			"heading %q: %q vs %q — every source must agree on the "+
-			"projection key",
-		heading, *a, *b)
+			"heading %q: %s vs %s — every source must agree on whether "+
+			"the scope is hoisted (`bind: \"\"`) or projected under a "+
+			"specific key",
+		heading, bindLabel(*a), bindLabel(*b))
+}
+
+// bindLabel renders a bind value for an error message: the empty
+// string is the hoist signal and prints as `hoist (\"\")`, every
+// other value prints quoted as a projection key.
+func bindLabel(s string) string {
+	if s == "" {
+		return `hoist ("")`
+	}
+	return fmt.Sprintf("projection key %q", s)
 }
 
 // mergeMatcher combines two matchers for scopes that share a

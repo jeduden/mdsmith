@@ -19,15 +19,26 @@ func litBound(heading, bind string) Scope {
 
 // TestCompose_BindNilWithBindCarriesOver: when one kind sets a bind
 // and the other leaves it unset, the composed scope keeps the
-// non-nil value.
+// non-nil value. Covers both orderings — bind on the second input
+// and bind on the first input — since mergeBind's nil branches are
+// distinct.
 func TestCompose_BindNilWithBindCarriesOver(t *testing.T) {
-	a := &Schema{Sections: []Scope{lit("Goal")}}
-	b := &Schema{Sections: []Scope{litBound("Goal", "objective")}}
-	out, err := Compose(a, b)
-	require.NoError(t, err)
-	require.Len(t, out.Sections, 1)
-	require.NotNil(t, out.Sections[0].Bind)
-	assert.Equal(t, "objective", *out.Sections[0].Bind)
+	t.Run("nil_then_bound", func(t *testing.T) {
+		a := &Schema{Sections: []Scope{lit("Goal")}}
+		b := &Schema{Sections: []Scope{litBound("Goal", "objective")}}
+		out, err := Compose(a, b)
+		require.NoError(t, err)
+		require.NotNil(t, out.Sections[0].Bind)
+		assert.Equal(t, "objective", *out.Sections[0].Bind)
+	})
+	t.Run("bound_then_nil", func(t *testing.T) {
+		a := &Schema{Sections: []Scope{litBound("Goal", "objective")}}
+		b := &Schema{Sections: []Scope{lit("Goal")}}
+		out, err := Compose(a, b)
+		require.NoError(t, err)
+		require.NotNil(t, out.Sections[0].Bind)
+		assert.Equal(t, "objective", *out.Sections[0].Bind)
+	})
 }
 
 // TestCompose_BindEqualUnifies: two kinds with the same bind for
@@ -50,6 +61,22 @@ func TestCompose_BindConflict(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "conflicting `bind:`")
 	assert.Contains(t, err.Error(), "Goal")
+	assert.Contains(t, err.Error(), `"objective"`)
+	assert.Contains(t, err.Error(), `"purpose"`)
+}
+
+// TestCompose_BindHoistVsKeyConflict: one source asks to hoist
+// (`bind: ""`) while another asks for a named projection key —
+// the message must distinguish the hoist case so the diagnostic
+// is actionable.
+func TestCompose_BindHoistVsKeyConflict(t *testing.T) {
+	a := &Schema{Sections: []Scope{litBound("Wrapper", "")}}
+	b := &Schema{Sections: []Scope{litBound("Wrapper", "result")}}
+	_, err := Compose(a, b)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Wrapper")
+	assert.Contains(t, err.Error(), `hoist`)
+	assert.Contains(t, err.Error(), `"result"`)
 }
 
 // TestCompose_BindEmptyWithUnset: an explicit `bind: ""` (hoist)
