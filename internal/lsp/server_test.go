@@ -2257,6 +2257,70 @@ func TestPreviewFixLegacyFallbackWhenCapsMissing(t *testing.T) {
 	}
 }
 
+// TestPreviewFixFallbackLogsWarningOnce verifies that useAnnotatedEdits
+// emits a window/logMessage naming the missing capability exactly once
+// per session when previewFix is on but capabilities are absent.
+func TestPreviewFixFallbackLogsWarningOnce(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name               string
+		docChanges         bool
+		changeAnnotSupport bool
+		wantCapName        string
+	}{
+		{"no caps at all", false, false, "documentChanges"},
+		{"documentChanges only", true, false, "changeAnnotationSupport"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var out bytes.Buffer
+			s := New(Options{Reader: nil, Writer: &out, Rules: rule.All()})
+			s.settingsMu.Lock()
+			s.settings.PreviewFix = true
+			s.settingsMu.Unlock()
+			var we *workspaceEditCapabilities
+			if tc.docChanges || tc.changeAnnotSupport {
+				we = &workspaceEditCapabilities{DocumentChanges: tc.docChanges}
+				if tc.changeAnnotSupport {
+					we.ChangeAnnotationSupport = &changeAnnotationSupportCap{}
+				}
+			}
+			s.clientCapsMu.Lock()
+			s.clientCaps = clientCapabilities{
+				Workspace: &workspaceClientCapabilities{WorkspaceEdit: we},
+			}
+			s.clientCapsMu.Unlock()
+
+			cfg := config.Merge(config.Defaults(), nil)
+			doc := &document{path: "x.md", text: []byte("# Hi\n\ndirty   \n")}
+			p := codeActionParams{
+				TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+				Context: codeActionContext{
+					Diagnostics: []Diagnostic{{
+						Code: "MDS006",
+						Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+					}},
+					Only: []string{kindQuickFix},
+				},
+			}
+
+			// First call: warning must be emitted.
+			s.computeCodeActions(p, doc, cfg, "")
+			first := out.String()
+			assert.Contains(t, first, "window/logMessage",
+				"fallback must emit a window/logMessage notification")
+			assert.Contains(t, first, tc.wantCapName,
+				"warning must name the missing capability")
+
+			// Second call: warning must not repeat (once per session).
+			out.Reset()
+			s.computeCodeActions(p, doc, cfg, "")
+			assert.Empty(t, out.String(),
+				"fallback warning must fire at most once per session")
+		})
+	}
+}
+
 // TestPreviewFixAnnotatedWhenCapsPresent verifies that when previewFix is
 // on and the client advertises both documentChanges and
 // changeAnnotationSupport, source.fixAll.mdsmith uses documentChanges
