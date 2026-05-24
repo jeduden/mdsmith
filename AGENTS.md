@@ -90,6 +90,7 @@ row: "- [{summary}]({filename})"
 - [Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.](docs/guides/directives/hugo-migration.md)
 - [Wire `mdsmith lsp` into Neovim's built-in LSP client so diagnostics, code actions, and navigation work inline with no extra plugin.](docs/guides/editors/neovim.md)
 - [Install the mdsmith VS Code extension, configure how it spawns `mdsmith lsp`, and read diagnostics inline as you edit Markdown files.](docs/guides/editors/vscode.md)
+- [When a Markdown file's payload is prose, put it in the body under H2 sections — not in YAML frontmatter. `mdsmith extract` projects body structure into a JSON tree the same way it projects frontmatter, so the file stays editable as Markdown.](docs/guides/extract-markdown-as-data.md)
 - [How to declare file kinds, assign files to them, and read the merged rule config that results.](docs/guides/file-kinds.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](docs/guides/index.md)
 - [Every channel that ships the mdsmith binary, the VS Code extension, or the Claude Code plugin — npm, PyPI, asdf, mise, the GitHub release, the Visual Studio Marketplace plus Open VSX, and the in-repository Claude Code marketplace — and which channel to pick for which workflow.](docs/guides/install.md)
