@@ -231,6 +231,10 @@ reference it.
     check .` on the mdsmith repo drops from ~490 ms to
     ~460 ms (5-7%); `BenchmarkCheckCorpusLarge` p95
     stays flat at 186 ms (the corpus has no schemas).
+    Follow-up commit covered the
+    `schema.ValidateFrontmatterDiags` site as well —
+    the production-hot CUE compile is now shared across
+    every host file sharing a schema.
 16. [x] Re-run `BenchmarkCheckCorpusLarge` to confirm
     no engine-corpus regression. Latest run lands at
     p95 = 188 ms / 314 µs per file — well under the
