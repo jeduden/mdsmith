@@ -544,9 +544,9 @@ func (s *Server) writeRenameError(id json.RawMessage, err error) {
 }
 
 // toLSPChanges converts the engine's per-key Edit map to the LSP
-// WorkspaceEdit shape. The map is allocated even when empty so
-// callers can distinguish a no-op rename from a nil (unset) field;
-// with the omitempty tag on Changes, a no-op produces {} on the wire.
+// WorkspaceEdit shape. The returned map is always non-nil; with the
+// omitempty tag on Changes, both nil and empty maps are omitted on the
+// wire, so a no-op rename produces {} on the wire.
 func toLSPChanges(changes map[string][]rename.Edit) map[string][]textEdit {
 	out := make(map[string][]textEdit, len(changes))
 	for key, edits := range changes {

@@ -71,7 +71,7 @@ type Server struct {
 	shutdownReceived atomic.Bool // client sent a `shutdown` request
 	exitRequested    atomic.Bool // client sent an `exit` notification
 	// previewFallbackLogged ensures the capability-fallback warning is
-	// sent to the client output channel at most once per session.
+	// emitted via window/logMessage and s.logger at most once per session.
 	previewFallbackLogged atomic.Bool
 
 	// runCache is the engine read cache shared across every runLint
