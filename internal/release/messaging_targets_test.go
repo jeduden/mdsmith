@@ -48,16 +48,11 @@ func TestMessagingTargets_FragmentsFirst(t *testing.T) {
 	assert.Equal(t, "lead fragment", targets[1].Label)
 }
 
-func TestMessagingTargets_AllValueOfMappingsDistinct(t *testing.T) {
+func TestMessagingTargets_AllValueOfReturnsNonEmpty(t *testing.T) {
 	m := sampleMessaging()
-	seen := map[string]string{}
 	for _, tg := range MessagingTargets("/r") {
 		got := tg.ValueOf(m)
 		assert.NotEmpty(t, got, "target %q yields empty value", tg.Label)
-		// Multiple targets can legitimately map to Tagline
-		// (READMEs all use it). The check is that no value is
-		// the empty string.
-		_ = seen
 	}
 }
 

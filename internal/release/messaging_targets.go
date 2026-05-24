@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -237,7 +236,8 @@ type MessagingDrift struct {
 }
 
 // CheckMessaging compares every target's on-disk value to the
-// source Messaging. Returns the drift list in target order; an
+// source Messaging. Returns drift entries in MessagingTargets'
+// order (the same apply-path order ApplyMessaging walks). An
 // empty list means the tree is clean.
 func (t *Toolkit) CheckMessaging(root string, m *Messaging) ([]MessagingDrift, error) {
 	var drifts []MessagingDrift
@@ -265,12 +265,6 @@ func (t *Toolkit) CheckMessaging(root string, m *Messaging) ([]MessagingDrift, e
 			})
 		}
 	}
-	// Stable order independent of map iteration (no maps used
-	// here, but the sort future-proofs the order if targets
-	// move to a registry map).
-	sort.SliceStable(drifts, func(i, j int) bool {
-		return drifts[i].Target.Label < drifts[j].Target.Label
-	})
 	return drifts, nil
 }
 

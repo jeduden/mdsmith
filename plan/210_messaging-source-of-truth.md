@@ -38,11 +38,16 @@ generated-section idiom.
 ## Source file shape
 
 A new file at `docs/brand/messaging.md` under a
-new `messaging` kind in `.mdsmith.yml`. All
-fields live in frontmatter so `extract`
-projects them as top-level keys. The body is a
-short prose explanation of how the file is
-consumed.
+new `messaging` kind in `.mdsmith.yml`. The
+kind is wired via `kind-assignment` (not the
+kind's `path-pattern`) so the synced website
+parallel at `website/content/docs/brand/messaging.md`
+can also be assigned the kind without
+tripping MDS020. All fields live in
+frontmatter, which `extract` projects as keys
+under the root `frontmatter` object. The body
+is a short prose explanation of how the file
+is consumed.
 
 Frontmatter fields (final names settled during
 implementation):
@@ -165,7 +170,9 @@ subcommand registered in
   `messaging` kind.
 - [x] `mdsmith extract messaging
   docs/brand/messaging.md -f json` emits a
-  tree containing every documented field.
+  tree whose `frontmatter` object contains
+  every documented field as a non-empty
+  string.
 - [x] `mdsmith-release sync-messaging`
   regenerates fragments and patches every
   tracked surface. Running it twice in a row

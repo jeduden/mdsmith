@@ -313,13 +313,30 @@ func TestMarkdownFragment_PatchValue(t *testing.T) {
 	assert.True(t, strings.HasSuffix(s, "Hello world.\n"))
 }
 
-func TestMarkdownFragment_RoundTrip(t *testing.T) {
-	value := "Multi-line\nvalue with — em-dash."
+func TestMarkdownFragment_RoundTripWrapsAndUnwraps(t *testing.T) {
+	// A messaging field longer than fragmentWrapWidth so the
+	// wrap path actually fires; the round-trip must still
+	// return the caller's exact string.
+	value := "Write content; mdsmith keeps your Markdown neat and " +
+		"consistent — fast enough to stay out of your way. " +
+		"Auto-fix on save and instant navigation."
 	out, err := MarkdownFragment{}.PatchValue(nil, value)
 	require.NoError(t, err)
 	got, err := MarkdownFragment{}.ReadValue(out)
 	require.NoError(t, err)
 	assert.Equal(t, value, got)
+}
+
+func TestMarkdownFragment_PatchValue_AllLinesUnderWrapWidth(t *testing.T) {
+	value := "Write content; mdsmith keeps your Markdown neat and " +
+		"consistent — fast enough to stay out of your way. " +
+		"Auto-fix on save and instant navigation across files."
+	out, err := MarkdownFragment{}.PatchValue(nil, value)
+	require.NoError(t, err)
+	for _, line := range strings.Split(string(out), "\n") {
+		assert.LessOrEqual(t, len(line), 80,
+			"emitted line exceeds MDS001 cap: %q", line)
+	}
 }
 
 func TestMarkdownFragment_PatchValue_Idempotent(t *testing.T) {
@@ -335,4 +352,13 @@ func TestMarkdownFragment_ReadValue_StripsHeader(t *testing.T) {
 	got, err := MarkdownFragment{}.ReadValue(body)
 	require.NoError(t, err)
 	assert.Equal(t, "The content.", got)
+}
+
+func TestMarkdownFragment_ReadValue_RejectsMissingHeader(t *testing.T) {
+	// A hand-edited or wrong file (no canonical header) must
+	// fail rather than silently returning the raw body — drift
+	// check depends on this guard.
+	_, err := MarkdownFragment{}.ReadValue([]byte("Some prose, no header.\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "canonical header")
 }

@@ -23,8 +23,8 @@ func runSyncMessaging(root string, args []string) int {
 			"and propagate the slogan, lead, tagline, and per-surface\n"+
 			"descriptions into every tracked surface (READMEs, package\n"+
 			"manifests, hugo.toml, hero front matter, plugin manifests).\n"+
-			"Without --check, edits files in place. With --check, only\n"+
-			"reports drift and exits non-zero on the first diff.\n")
+			"Without --check, edits files in place. With --check, makes\n"+
+			"no edits; reports every drifted surface and exits non-zero.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr,

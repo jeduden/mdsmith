@@ -15,7 +15,6 @@ import (
 // shape and the extract JSON projection.
 const messagingKindCfg = `kinds:
   messaging:
-    path-pattern: "docs/brand/messaging.md"
     schema:
       frontmatter:
         title: nonEmpty
