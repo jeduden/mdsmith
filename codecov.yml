@@ -66,9 +66,20 @@ coverage:
 # only contains the files it actually measured. Without flags,
 # Codecov treats unmeasured files (the entire other-language
 # tree) as 0% coverage, which is misleading.
+#
+# carryforward is intentionally OFF. With it ON the base commit
+# inherits coverage from an even-earlier commit (or a different
+# Go toolchain) whose block coordinates may differ from the
+# head's by a column or two — enough for Codecov's per-line
+# attribution to flag non-statement lines (closing braces, blank
+# lines, type declarations) as "indirect coverage changes" even
+# when both sides measure 100% statement coverage of the same
+# unchanged source. Disabling carryforward forces every PR base
+# to be re-measured cleanly against the head's fresh upload, so
+# the per-file `changes` gate only fires on real coverage shifts.
 flag_management:
   default_rules:
-    carryforward: true
+    carryforward: false
   individual_flags:
     - name: go
       paths:
