@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	wordwrap "github.com/mitchellh/go-wordwrap"
@@ -123,6 +124,20 @@ func decodeOrderedJSON(body []byte) ([]orderedJSONPair, error) {
 			return nil, fmt.Errorf("parse JSON value: %w", err)
 		}
 		pairs = append(pairs, orderedJSONPair{key: key, value: raw})
+	}
+	// Consume the closing `}` and reject any non-whitespace
+	// content after it. Without this guard, `{...} garbage`
+	// would parse cleanly and then silently lose the trailing
+	// bytes on re-emit.
+	closing, err := dec.Token()
+	if err != nil {
+		return nil, fmt.Errorf("parse JSON: %w", err)
+	}
+	if closing != json.Delim('}') {
+		return nil, errors.New("JSON: expected closing `}`")
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return nil, errors.New("JSON: unexpected trailing content after root object")
 	}
 	return pairs, nil
 }

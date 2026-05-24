@@ -3,7 +3,7 @@ title: mdsmith product messaging
 summary: >-
   Canonical slogan, lead, tagline, and per-surface descriptions
   for the mdsmith product. Generated fragments and the
-  non-Markdown surfaces enumerated in plan 209 derive their copy
+  non-Markdown surfaces enumerated in plan 210 derive their copy
   from this file.
 eyebrow: Markdown as a single source of truth
 headline-pre: Mark

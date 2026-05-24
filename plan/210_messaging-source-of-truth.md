@@ -1,5 +1,5 @@
 ---
-id: 209
+id: 210
 title: Single source of truth for product messaging via `mdsmith extract`
 status: "✅"
 summary: >-

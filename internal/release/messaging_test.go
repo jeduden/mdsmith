@@ -1,12 +1,25 @@
 package release
 
 import (
+	"encoding/json"
 	"errors"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// repoRoot resolves the project root from this test file's
+// location (two parents up from internal/release/). Used by the
+// integration test that shells out to `go run ./cmd/mdsmith`.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	require.True(t, ok, "runtime.Caller failed")
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
 
 const fullMessagingJSON = `{
   "frontmatter": {
@@ -94,4 +107,27 @@ func TestLoadMessaging_ExtractorError(t *testing.T) {
 	_, err := LoadMessaging("ignored")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "boom")
+}
+
+// TestRunMdsmithExtract_AgainstRepoRoot exercises the real
+// shell-out path (the variable `messagingExtractor` defaults to
+// `runMdsmithExtract`). It runs `go run ./cmd/mdsmith extract
+// messaging docs/brand/messaging.md --format json` against the
+// actual repository, decoding the result to make sure the
+// command-line wiring still produces the JSON envelope that
+// LoadMessaging expects. The other LoadMessaging tests use a
+// stub; this one covers the production code path.
+func TestRunMdsmithExtract_AgainstRepoRoot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles cmd/mdsmith; skipped under -short")
+	}
+	root := repoRoot(t)
+	out, err := runMdsmithExtract(root)
+	require.NoError(t, err)
+	var envelope struct {
+		Frontmatter map[string]any `json:"frontmatter"`
+	}
+	require.NoError(t, json.Unmarshal(out, &envelope))
+	assert.NotEmpty(t, envelope.Frontmatter["tagline"])
+	assert.NotEmpty(t, envelope.Frontmatter["lead"])
 }

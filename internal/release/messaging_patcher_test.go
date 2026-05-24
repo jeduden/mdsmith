@@ -36,6 +36,16 @@ func TestJSONStringField_ReadValue_FieldMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), `"description" not found`)
 }
 
+func TestJSONStringField_ReadValue_RejectsTrailingGarbage(t *testing.T) {
+	// `{...} garbage` would silently parse if the decoder
+	// stopped at `dec.More() == false` without consuming the
+	// closing `}` and checking for EOF.
+	body := []byte(`{"description": "x"} extra junk`)
+	_, err := (JSONStringField{Key: "description"}).ReadValue(body)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "trailing")
+}
+
 func TestJSONStringField_PatchValue_PreservesTopLevelOrder(t *testing.T) {
 	body := []byte(`{
   "name": "mdsmith",
