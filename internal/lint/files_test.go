@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/testutil"
+	"github.com/jeduden/mdsmith/internal/testsymlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -704,8 +704,8 @@ func TestHasSymlinkAncestorWithCwd_HonorsCwdArg(t *testing.T) {
 			"not os.Getwd; otherwise the precomputed-cwd optimisation is moot")
 }
 
-// skipIfSymlinkUnsupported forwards to the shared testutil helper.
+// skipIfSymlinkUnsupported forwards to the shared testsymlink helper.
 func skipIfSymlinkUnsupported(t *testing.T) {
 	t.Helper()
-	testutil.SkipIfSymlinkUnsupported(t)
+	testsymlink.SkipIfSymlinkUnsupported(t)
 }

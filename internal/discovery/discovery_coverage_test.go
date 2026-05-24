@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/testutil"
+	"github.com/jeduden/mdsmith/internal/testsymlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -189,8 +189,8 @@ func TestDiscover_FollowSymlinks_OptIn(t *testing.T) {
 	require.Len(t, files, 2, "both real and linked entries are discovered")
 }
 
-// skipIfSymlinkUnsupported forwards to the shared testutil helper.
+// skipIfSymlinkUnsupported forwards to the shared testsymlink helper.
 func skipIfSymlinkUnsupported(t *testing.T) {
 	t.Helper()
-	testutil.SkipIfSymlinkUnsupported(t)
+	testsymlink.SkipIfSymlinkUnsupported(t)
 }

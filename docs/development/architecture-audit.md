@@ -101,6 +101,22 @@ non-test file under `internal/config/`.
 It fails if any import path contains
 `internal/rules/`.
 
+### resolved by plan/201
+
+`internal/testutil` used an
+anti-pattern name. The package
+comment read "small helpers shared
+across test binaries" — the canonical
+`util` / `helpers` smell — but held a
+single helper, `symlink.go`.
+
+[plan/201](../../plan/201_arch-fix-testutil-rename.md)
+renamed the package to
+[internal/testsymlink](../../internal/testsymlink/).
+The new name states the question the
+one file answers. Five test files now
+import the new path.
+
 ### tax
 
 `editors/vscode/src/extension.ts` is too
@@ -205,21 +221,6 @@ handlers into per-subcommand files.
 The pattern is already used for
 `kinds.go`, `metrics.go`,
 `backlinks.go`, and `mergedriver.go`.
-
-`internal/testutil` uses an
-anti-pattern name.
-
-The
-[testutil package](../../internal/testutil/)
-comment reads "small helpers shared
-across test binaries". That is the
-canonical `util` / `helpers`
-anti-pattern. The architecture hub
-flags it on sight. The current
-contents are a single focused helper
-(`symlink.go`). Severity: tax. Fix by
-renaming to the question it answers
-(e.g. `testsymlink`).
 
 ### nice-to-have
 

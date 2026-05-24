@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/testutil"
+	"github.com/jeduden/mdsmith/internal/testsymlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +36,7 @@ func TestDiscover_SkipsFifoEntries(t *testing.T) {
 // symlink-to-non-regular skip branch: even in opt-in mode, a
 // symlink whose target is a FIFO must not be included.
 func TestDiscover_SymlinkToFifo_SkippedUnderOptIn(t *testing.T) {
-	testutil.SkipIfSymlinkUnsupported(t)
+	testsymlink.SkipIfSymlinkUnsupported(t)
 	dir := t.TempDir()
 
 	require.NoError(t, os.WriteFile(

@@ -1,7 +1,7 @@
 ---
 id: 201
 title: Rename internal/testutil to internal/testsymlink
-status: "🔲"
+status: "✅"
 summary: >-
   Fix the anti-pattern package name. internal/testutil
   answers "a grab bag"; rename it to
@@ -14,14 +14,14 @@ depends-on: []
 
 ## Goal
 
-[internal/testutil](../internal/testutil) violates the SRP
+`internal/testutil` violated the SRP
 naming rule from the architecture hub.
 A package named `util` attracts unrelated
-code. The package has one non-test file,
-[symlink.go](../internal/testutil/symlink.go), that creates temporary
-symlinks for tests. Renaming to
-`internal/testsymlink` signals the
-narrow scope.
+code. The package had one non-test file,
+`symlink.go`, that creates temporary
+symlinks for tests. It now lives at
+[internal/testsymlink](../internal/testsymlink/symlink.go),
+which signals the narrow scope.
 
 ## Tasks
 
@@ -36,10 +36,10 @@ narrow scope.
 
 ## Acceptance Criteria
 
-- [ ] `internal/testutil/` is gone.
-- [ ] `internal/testsymlink/` exists.
-- [ ] `grep -r --include='*.go' 'internal/testutil'`
+- [x] `internal/testutil/` is gone.
+- [x] `internal/testsymlink/` exists.
+- [x] `grep -r --include='*.go' 'internal/testutil'`
   returns no results.
-- [ ] `go build ./...` clean.
-- [ ] `go test ./...` passes.
-- [ ] `go tool golangci-lint run` clean.
+- [x] `go build ./...` clean.
+- [x] `go test ./...` passes.
+- [x] `go tool golangci-lint run` clean.

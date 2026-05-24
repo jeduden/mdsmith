@@ -126,7 +126,7 @@ footer: |
 | 197 | ✅     | opus   | [PoC — review goldmark's allocation architecture, then pool the best lever](plan/197_fork-goldmark-for-allocs.md)                       |
 | 198 | 🔲     | opus   | [Fork goldmark with a per-parse arena for the four structural allocators](plan/198_goldmark-arena-fork.md)                              |
 | 200 | ✅     |        | [Move docs/ embed out of internal/lsp/hover.go](plan/200_arch-fix-hover-embed.md)                                                       |
-| 201 | 🔲     |        | [Rename internal/testutil to internal/testsymlink](plan/201_arch-fix-testutil-rename.md)                                                |
+| 201 | ✅     |        | [Rename internal/testutil to internal/testsymlink](plan/201_arch-fix-testutil-rename.md)                                                |
 | 202 | 🔲     |        | [Split cmd/mdsmith/main.go into per-subcommand files](plan/202_arch-fix-main-split.md)                                                  |
 | 203 | 🔲     |        | [Split internal/lsp/server.go and symbols.go](plan/203_arch-fix-lsp-server-split.md)                                                    |
 | 204 | 🔲     |        | [Fix internal/fix importing internal/engine](plan/204_arch-fix-fix-engine-inversion.md)                                                 |

@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/githooks"
-	"github.com/jeduden/mdsmith/internal/testutil"
+	"github.com/jeduden/mdsmith/internal/testsymlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -218,11 +218,11 @@ func writeFixture(t *testing.T, dir, name, content string) string {
 }
 
 // skipIfSymlinkUnsupported is a thin local alias for
-// testutil.SkipIfSymlinkUnsupported so existing call sites stay
-// readable. The probing logic lives in internal/testutil.
+// testsymlink.SkipIfSymlinkUnsupported so existing call sites stay
+// readable. The probing logic lives in internal/testsymlink.
 func skipIfSymlinkUnsupported(t *testing.T) {
 	t.Helper()
-	testutil.SkipIfSymlinkUnsupported(t)
+	testsymlink.SkipIfSymlinkUnsupported(t)
 }
 
 func parseStats(t *testing.T, stderr string) (checked, fixed, failures, unfixed int) {

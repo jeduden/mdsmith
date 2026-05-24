@@ -1,6 +1,7 @@
-// Package testutil holds small helpers shared across test
-// binaries. It is intended for use only from *_test.go files.
-package testutil
+// Package testsymlink probes whether the host can create symbolic
+// links and skips the calling test when it cannot. It is intended
+// for use only from *_test.go files.
+package testsymlink
 
 import (
 	"os"
