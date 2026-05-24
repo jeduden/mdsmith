@@ -580,7 +580,10 @@ placeholder, a `heading: null` section's content hoists
 into its enclosing object, and `code-block` / `list` /
 `table` / `paragraph` content entries project under
 `code` / `items` / `rows` / `text`. Wildcard slots and
-unlisted headings are skipped. See
+unlisted headings are skipped. Set `bind: <name>` on a
+scope or content entry to override the default key;
+`bind: ""` hoists a scope's children into the parent.
+See
 [`mdsmith extract`](../reference/cli/extract.md) for the
 full projection rules and exit codes.
 

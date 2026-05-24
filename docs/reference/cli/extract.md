@@ -63,10 +63,26 @@ are a schema error. It is reported at extract time.
 Optional sections that did not match are omitted, not
 emitted as null.
 
-Renaming or restructuring beyond this default is a
-downstream job. Use a tool like `jq` or `yq` over the
-standard output. Custom binding overrides are a
-separate follow-up.
+## Custom binding with `bind`
+
+A scope or content entry can set an optional
+`bind:` field to override the default key:
+
+- `bind: <name>` renames a scope's key (replacing
+  the slugified heading) or a content entry's key
+  (replacing `code` / `items` / `rows` / `text`).
+- `bind: ""` on a scope hoists its children and
+  content directly into the parent — useful when a
+  wrapper heading exists only for document structure
+  and should not nest in the data tree.
+
+Duplicate sibling binds, `bind:` on a preamble,
+slot, or broad matcher, `bind: ""` on a content
+entry, and a real disagreement between composed
+kinds each surface as an error before extraction
+runs. For ad-hoc transformations beyond what
+`bind:` covers, pipe the standard output through
+`jq` or `yq`.
 
 ## Examples
 

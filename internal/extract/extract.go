@@ -54,13 +54,20 @@ type projector struct {
 	diags []lint.Diagnostic
 }
 
-// keyFor is the single key-naming seam — the one function a future
-// custom-binding plan (plan 167) overrides. The default binding
-// derives every key from the heading: a literal heading slugifies
-// whole; a placeholder-bearing heading slugifies its literal stem,
-// falling back to the first `fmvar` field name when the heading is
-// only a placeholder (`## {id}`).
+// keyFor is the single key-naming seam — the one function plan 167
+// overrides through `bind:`. A non-empty `Bind` wins (the value
+// replaces the default key). An empty bind is the hoist signal —
+// projectChildren routes hoist groups through hoistGroup before
+// reaching keyFor, but the empty-string check here keeps any
+// future caller from accidentally writing a blank key. The
+// fallback chain derives the default from the heading: a literal
+// heading slugifies whole; a placeholder-bearing heading slugifies
+// its literal stem, falling back to the first `fmvar` field name
+// when the heading is only a placeholder (`## {id}`).
 func keyFor(sc *schema.Scope) string {
+	if sc != nil && sc.Bind != nil && *sc.Bind != "" {
+		return *sc.Bind
+	}
 	stem, fmvars, _ := schema.HeadingStem(sc)
 	if s := mdtext.Slugify(stem); s != "" {
 		return s
@@ -69,6 +76,17 @@ func keyFor(sc *schema.Scope) string {
 		return fmvars[0]
 	}
 	return mdtext.Slugify(sc.Heading)
+}
+
+// hoistsToParent reports whether sm is a scope match whose bind
+// override directs it to be hoisted into the parent (`bind: ""`).
+// A preamble has the same effect by definition; this helper covers
+// the explicit bind form for non-preamble scopes.
+func hoistsToParent(sm *schema.ScopeMatch) bool {
+	if sm == nil || sm.Scope == nil {
+		return false
+	}
+	return sm.Scope.Bind != nil && *sm.Scope.Bind == ""
 }
 
 // isRepeating reports whether a scope projects as an array. A
@@ -80,8 +98,9 @@ func isRepeating(sc *schema.Scope) bool {
 
 // projectChildren walks a contiguous list of sibling scope matches,
 // grouping consecutive occurrences of the same schema scope, and
-// writes each group's projection into obj. A preamble group hoists
-// its content directly into obj (no wrapper key).
+// writes each group's projection into obj. A preamble group — and a
+// non-preamble group whose scope sets `bind: ""` — hoists its
+// content directly into obj (no wrapper key).
 func (p *projector) projectChildren(
 	children []*schema.ScopeMatch, obj map[string]any,
 ) {
@@ -100,6 +119,11 @@ func (p *projector) projectChildren(
 		group := children[i:j]
 		i = j
 
+		if hoistsToParent(sm) {
+			p.hoistGroup(group, obj)
+			continue
+		}
+
 		key := keyFor(sm.Scope)
 		if isRepeating(sm.Scope) {
 			arr := make([]any, 0, len(group))
@@ -114,6 +138,25 @@ func (p *projector) projectChildren(
 			continue
 		}
 		p.setKey(obj, key, p.projectScopeObject(group[0]))
+	}
+}
+
+// hoistGroup merges every element of group directly into obj
+// instead of nesting under a key. A `bind: ""` scope's projection
+// is its own child-scopes and content, so projectScopeObject's
+// captures, children, and content all surface as siblings of obj's
+// existing keys; collisions go through setKey like any other write.
+// A repeating hoisted scope would silently overwrite — same shape
+// as duplicate headings on a non-repeating bind, so we flag it.
+func (p *projector) hoistGroup(group []*schema.ScopeMatch, obj map[string]any) {
+	if len(group) > 1 {
+		p.collision("<hoist>",
+			"a repeating scope cannot hoist (`bind: \"\"`) because "+
+				"multiple occurrences would overwrite each other")
+		return
+	}
+	for k, v := range p.projectScopeObject(group[0]) {
+		p.setKey(obj, k, v)
 	}
 }
 
@@ -133,7 +176,9 @@ func (p *projector) projectScopeObject(sm *schema.ScopeMatch) map[string]any {
 // projectContent projects code-block, list, table, and paragraph
 // entries under their default keys. Repeated kinds get a -N suffix
 // (code, code-2, …) so a second block never silently overwrites
-// the first.
+// the first. A non-nil `bind:` on the entry overrides the default
+// base name; the same -N collision-suffix logic still applies so
+// two entries that bind to the same name disambiguate.
 func (p *projector) projectContent(
 	content []schema.ContentMatch, obj map[string]any,
 ) {
@@ -146,17 +191,38 @@ func (p *projector) projectContent(
 		return fmt.Sprintf("%s-%d", base, counts[base])
 	}
 	for _, cm := range content {
+		base := contentBaseKey(cm.Entry)
 		switch cm.Entry.Kind {
 		case schema.ContentKindCodeBlock:
-			p.setKey(obj, nextKey("code"), p.codeBody(cm.Node))
+			p.setKey(obj, nextKey(base), p.codeBody(cm.Node))
 		case schema.ContentKindList:
-			p.setKey(obj, nextKey("items"), p.listItems(cm.Node))
+			p.setKey(obj, nextKey(base), p.listItems(cm.Node))
 		case schema.ContentKindTable:
-			p.setKey(obj, nextKey("rows"), p.tableRows(cm.Node))
+			p.setKey(obj, nextKey(base), p.tableRows(cm.Node))
 		case schema.ContentKindParagraph:
-			p.setKey(obj, nextKey("text"), p.nodeText(cm.Node))
+			p.setKey(obj, nextKey(base), p.nodeText(cm.Node))
 		}
 	}
+}
+
+// contentBaseKey returns the base projection key for a content
+// entry: the user-supplied bind value when set, otherwise the
+// kind's default name (`code`/`items`/`rows`/`text`).
+func contentBaseKey(e *schema.ContentEntry) string {
+	if e.Bind != nil {
+		return *e.Bind
+	}
+	switch e.Kind {
+	case schema.ContentKindCodeBlock:
+		return "code"
+	case schema.ContentKindList:
+		return "items"
+	case schema.ContentKindTable:
+		return "rows"
+	case schema.ContentKindParagraph:
+		return "text"
+	}
+	return ""
 }
 
 func (p *projector) codeBody(n ast.Node) string {
