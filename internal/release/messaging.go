@@ -38,28 +38,70 @@ type Messaging struct {
 }
 
 // LoadMessaging projects MessagingSourceFile through
-// `mdsmith extract <MessagingKind> --format json` and decodes the
-// `frontmatter` object into a typed Messaging value. The mdsmith
-// binary is invoked via `go run ./cmd/mdsmith` so the same source
-// tree drives the linter and the release tooling — the precedent
-// BuildWebsite uses for `mdsmith fix`. Every documented field
-// must be non-empty; a missing or blank field is a hard error.
+// `mdsmith extract <MessagingKind> --format json` and decodes
+// it into a typed Messaging value. The JSON shape mirrors the
+// kind's schema: `title`, `summary`, and the headline triple
+// live under `frontmatter`; the prose values
+// (`eyebrow`, `lead`, `tagline`, and the four per-surface
+// descriptions) live under their own top-level objects keyed
+// by the section's bind/slug, each carrying a `text` field —
+// the projection rule for a paragraph under an H2. The mdsmith
+// binary is invoked via `go run ./cmd/mdsmith` so the same
+// source tree drives the linter and the release tooling.
+// Every documented field must be non-empty; a missing or blank
+// field is a hard error.
 func LoadMessaging(root string) (*Messaging, error) {
 	out, err := messagingExtractor(root)
 	if err != nil {
 		return nil, err
 	}
-	var doc struct {
-		Frontmatter Messaging `json:"frontmatter"`
-	}
+	var doc messagingDoc
 	if err := json.Unmarshal(out, &doc); err != nil {
 		return nil, fmt.Errorf("decode messaging json: %w", err)
 	}
-	m := doc.Frontmatter
+	m := Messaging{
+		Title:                       doc.Frontmatter.Title,
+		Summary:                     doc.Frontmatter.Summary,
+		HeadlinePre:                 doc.Frontmatter.HeadlinePre,
+		HeadlineEm:                  doc.Frontmatter.HeadlineEm,
+		HeadlinePost:                doc.Frontmatter.HeadlinePost,
+		Eyebrow:                     doc.Eyebrow.Text,
+		Lead:                        doc.Lead.Text,
+		Tagline:                     doc.Tagline.Text,
+		VSCodeDescription:           doc.VSCodeDescription.Text,
+		ClaudeCodeLSPDescription:    doc.ClaudeCodeLSPDescription.Text,
+		ClaudeCodeSkillsDescription: doc.ClaudeCodeSkillsDescription.Text,
+		ClaudeCodeAuditDescription:  doc.ClaudeCodeAuditDescription.Text,
+	}
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
 	return &m, nil
+}
+
+// messagingDoc mirrors the shape `mdsmith extract messaging`
+// emits. The body-section fields land at the document root
+// (not under `frontmatter`); each carries a `text` field that
+// holds the paragraph the H2 section contains.
+type messagingDoc struct {
+	Frontmatter struct {
+		Title        string `json:"title"`
+		Summary      string `json:"summary"`
+		HeadlinePre  string `json:"headline-pre"`
+		HeadlineEm   string `json:"headline-em"`
+		HeadlinePost string `json:"headline-post"`
+	} `json:"frontmatter"`
+	Eyebrow                     sectionText `json:"eyebrow"`
+	Lead                        sectionText `json:"lead"`
+	Tagline                     sectionText `json:"tagline"`
+	VSCodeDescription           sectionText `json:"vscode-description"`
+	ClaudeCodeLSPDescription    sectionText `json:"claude-code-lsp-description"`
+	ClaudeCodeSkillsDescription sectionText `json:"claude-code-skills-description"`
+	ClaudeCodeAuditDescription  sectionText `json:"claude-code-audit-description"`
+}
+
+type sectionText struct {
+	Text string `json:"text"`
 }
 
 // Validate fails fast if any required field is empty. The

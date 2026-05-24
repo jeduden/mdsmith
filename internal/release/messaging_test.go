@@ -25,17 +25,17 @@ const fullMessagingJSON = `{
   "frontmatter": {
     "title": "mdsmith product messaging",
     "summary": "Canonical product messaging.",
-    "eyebrow": "Markdown as a single source of truth",
     "headline-pre": "Mark",
     "headline-em": "down",
-    "headline-post": ", smithed.",
-    "lead": "Lead text.",
-    "tagline": "Tagline text.",
-    "vscode-description": "VS Code description.",
-    "claude-code-lsp-description": "LSP description.",
-    "claude-code-skills-description": "Skills description.",
-    "claude-code-audit-description": "Audit description."
-  }
+    "headline-post": ", smithed."
+  },
+  "eyebrow": { "text": "Markdown as a single source of truth" },
+  "lead": { "text": "Lead text." },
+  "tagline": { "text": "Tagline text." },
+  "vscode-description": { "text": "VS Code description." },
+  "claude-code-lsp-description": { "text": "LSP description." },
+  "claude-code-skills-description": { "text": "Skills description." },
+  "claude-code-audit-description": { "text": "Audit description." }
 }`
 
 func stubMessagingExtractor(t *testing.T, body []byte, err error) {
@@ -124,12 +124,22 @@ func TestRunMdsmithExtract_AgainstRepoRoot(t *testing.T) {
 	root := repoRoot(t)
 	out, err := runMdsmithExtract(root)
 	require.NoError(t, err)
+	// Frontmatter holds metadata; prose lives in top-level
+	// body-section objects, each with a `text` field
+	// (paragraph projection).
 	var envelope struct {
 		Frontmatter map[string]any `json:"frontmatter"`
+		Tagline     struct {
+			Text string `json:"text"`
+		} `json:"tagline"`
+		Lead struct {
+			Text string `json:"text"`
+		} `json:"lead"`
 	}
 	require.NoError(t, json.Unmarshal(out, &envelope))
-	assert.NotEmpty(t, envelope.Frontmatter["tagline"])
-	assert.NotEmpty(t, envelope.Frontmatter["lead"])
+	assert.NotEmpty(t, envelope.Frontmatter["title"])
+	assert.NotEmpty(t, envelope.Tagline.Text)
+	assert.NotEmpty(t, envelope.Lead.Text)
 }
 
 // TestRunMdsmithExtract_NonRepoCwd hits the ExitError branch:
