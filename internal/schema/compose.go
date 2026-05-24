@@ -126,11 +126,13 @@ func composeFrontmatter(out *Schema, schemas []*Schema) {
 			}
 			// Later inputs win: a kind composed on top of another
 			// can re-deprecate a field with a fresher message.
-			// The parsers drop `{deprecated: false}` entries
-			// (FieldMeta.IsZero), so an explicit undo via the
-			// composed input is not supported in this plan; remove
-			// the field from the schema entirely to complete the
-			// migration (plan 136 acceptance criterion 6).
+			// ExtractFieldMeta only classifies a mapping as
+			// metadata when `deprecated: true` is the
+			// discriminator, so `{deprecated: false}` never
+			// reaches FrontmatterMeta and cannot undo a parent's
+			// deprecation here. Remove the field from the schema
+			// entirely to complete the migration (plan 136
+			// acceptance criterion 6).
 			out.FrontmatterMeta[k] = meta
 		}
 	}
