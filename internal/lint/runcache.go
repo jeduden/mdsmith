@@ -22,6 +22,16 @@ type RunCache struct {
 	wikilinks    sync.Map // string (root key) -> *runCacheEntry
 	parsedSchema sync.Map // string (absPath) -> *runCacheEntry
 	compiledCUE  sync.Map // string (CUE source) -> *runCacheEntry
+
+	// schemaDependents maps a fragment path to the set of schema
+	// paths whose ParsedSchema slot reached it via <?include?>.
+	// Invalidate(fragment) walks this set so dependent schemas are
+	// evicted alongside the fragment. The inner *sync.Map acts as a
+	// concurrent string-set: keys are dependent schemaPaths, values
+	// are an empty struct sentinel. Built lazily as ParsedSchema
+	// slots populate; the LSP's didChange path on a fragment then
+	// transitively invalidates every schema that reached it.
+	schemaDependents sync.Map // string (fragmentPath) -> *sync.Map
 }
 
 // runCacheEntry guards a single cache slot so build runs exactly once
@@ -150,13 +160,39 @@ func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
 // map hit. The LSP must call Invalidate(schemaPath) when the user
 // edits the schema so the next Check re-parses it.
 //
+// When build's return value satisfies ParsedSchemaMetadata, the
+// cache also registers absPath as a dependent of every path in
+// SchemaIncludes() on the reverse-include index. Invalidate(fragment)
+// then evicts every schema that reached fragment, closing the
+// stale-fragment gap the LSP would otherwise observe.
+//
 // MDS020 reaches this slot via f.RunCache; on a corpus where N
 // host files all reference one schema, the per-Check parseSchema
 // chain (schema markdown parse, AST walk, frontmatter CUE-derive)
 // collapses from N runs to 1 — closing the parity-gap profile
 // that plan 195 documents as the biggest default-rule hot spot.
 func (c *RunCache) ParsedSchema(absPath string, build func() any) any {
-	return load(&c.parsedSchema, absPath, build)
+	v := load(&c.parsedSchema, absPath, build)
+	if meta, ok := v.(ParsedSchemaMetadata); ok {
+		c.registerSchemaIncludes(absPath, meta.SchemaIncludes())
+	}
+	return v
+}
+
+// registerSchemaIncludes adds schemaPath as a dependent of every
+// fragment in includes on the reverse-include index. Idempotent
+// under concurrent ParsedSchema calls for the same schemaPath: the
+// inner sync.Map's LoadOrStore re-uses the existing set, and
+// re-adding the same dependent key is a no-op.
+func (c *RunCache) registerSchemaIncludes(schemaPath string, includes []string) {
+	for _, frag := range includes {
+		if frag == "" {
+			continue
+		}
+		setI, _ := c.schemaDependents.LoadOrStore(frag, &sync.Map{})
+		set := setI.(*sync.Map)
+		set.Store(schemaPath, struct{}{})
+	}
 }
 
 // CompiledCUE returns build's result for source — the CUE source
@@ -182,22 +218,100 @@ func (c *RunCache) CompiledCUE(source string, build func() any) any {
 // didChange / didSave / didChangeWatchedFiles so the next Check
 // that crosses absPath re-reads from disk.
 //
+// Schema dependency invalidation: when absPath's ParsedSchema slot
+// carries ParsedSchemaMetadata,
+//
+//   - every CUE source string in SchemaCUESources() is dropped from
+//     the compiledCUE slot (conservatively — a sibling schema with
+//     the same CUE source will recompile on its next lookup, which
+//     is cheap), and
+//   - every schema in schemaDependents[absPath] is recursively
+//     Invalidated (their cached parses depended on absPath as a
+//     fragment, so a fragment edit must propagate). Recursion is
+//     bounded by the schema-include depth cap the producer enforces
+//     and by the finite set of registered schemas; the include
+//     parser's no-cycle guarantee carries through.
+//
+// The reverse-index edges that name absPath as a dependent (i.e.
+// the entry on each include path's set) are dropped after the
+// recursion so the absPath's metadata can still be read first. The
+// recursion-then-delete order is load-bearing: Invalidate reads the
+// parsed-schema slot for its dependency metadata before dropping
+// it.
+//
 // Wikilink indices are NOT invalidated per absPath because a file
 // rename or creation could change the resolution of any wikilink in
 // the workspace; the LSP must InvalidateWikilinks (or build a
 // fresh RunCache) when the filesystem layout changes.
-//
-// The CompiledCUE slot is NOT invalidated either: its key is the
-// CUE source string, not a file path, so editing a schema file
-// changes its parsed-schema entry but the resulting CUE source —
-// if unchanged — still maps to the same valid cached value. The
-// LSP installs a fresh RunCache on workspace reload, which clears
-// it then.
 func (c *RunCache) Invalidate(absPath string) {
 	c.frontMatter.Delete(absPath)
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
+
+	// Read the parsed-schema slot's metadata before deleting it so
+	// downstream eviction sees the includes/cueSources captured at
+	// the last build. A miss (slot never populated, or already
+	// dropped by a sibling Invalidate via the dependents walk)
+	// leaves meta nil and the rest of the eviction is a no-op.
+	var meta ParsedSchemaMetadata
+	if ei, ok := c.parsedSchema.Load(absPath); ok {
+		e := ei.(*runCacheEntry)
+		if m, mok := e.val.(ParsedSchemaMetadata); mok {
+			meta = m
+		}
+	}
+
+	// Drop every CompiledCUE entry the parsed schema produced. The
+	// CUE source is the cache key, so two schemas with identical
+	// front matter share one slot — invalidating absPath drops the
+	// slot for both, and the sibling recompiles on its next lookup
+	// (one CUE compile per surviving schema is the worst case).
+	if meta != nil {
+		for _, src := range meta.SchemaCUESources() {
+			c.compiledCUE.Delete(src)
+		}
+	}
+
+	// Walk the reverse-include index: every schema that included
+	// absPath as a fragment must be invalidated transitively. Drain
+	// the set into a slice first so the recursive Invalidate calls
+	// (which also touch schemaDependents during their own
+	// fragment-edge cleanup) cannot race with this iteration. The
+	// reverse-index entry for absPath is dropped after the walk so
+	// a re-populated schema's next register re-creates the set with
+	// only the live dependents.
+	if setI, ok := c.schemaDependents.Load(absPath); ok {
+		set := setI.(*sync.Map)
+		var deps []string
+		set.Range(func(k, _ any) bool {
+			deps = append(deps, k.(string))
+			return true
+		})
+		for _, dep := range deps {
+			c.Invalidate(dep)
+		}
+		c.schemaDependents.Delete(absPath)
+	}
+
+	// Drop the parsed-schema slot itself.
 	c.parsedSchema.Delete(absPath)
+
+	// Drop the reverse-index edges where absPath appears as a
+	// dependent — for each fragment in absPath's includes, remove
+	// absPath from that fragment's dependent set. Leaves the
+	// fragment's own slot intact (it is a sibling document, not the
+	// invalidated one); only the back-pointer to absPath is
+	// removed.
+	if meta != nil {
+		for _, frag := range meta.SchemaIncludes() {
+			if frag == "" {
+				continue
+			}
+			if setI, ok := c.schemaDependents.Load(frag); ok {
+				setI.(*sync.Map).Delete(absPath)
+			}
+		}
+	}
 }
 
 // InvalidateWikilinks clears every cached wikilink index. The LSP

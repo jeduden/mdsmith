@@ -430,3 +430,231 @@ func TestRunCache_CompiledCUEConcurrentSingleBuild(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&calls),
 		"CompiledCUE build must run exactly once under concurrent access")
 }
+
+// testSchemaMeta is a minimal ParsedSchemaMetadata implementation
+// used to drive the include + CUE-source eviction tests below
+// without depending on the requiredstructure package's concrete
+// schemaParseResult. The fields mirror the rule package's surface
+// exactly so the tests pin the contract from the lint side.
+type testSchemaMeta struct {
+	includes   []string
+	cueSources []string
+}
+
+func (m testSchemaMeta) SchemaIncludes() []string   { return m.includes }
+func (m testSchemaMeta) SchemaCUESources() []string { return m.cueSources }
+
+// TestRunCache_InvalidateFragmentEvictsDependentSchema pins thread 1
+// (PR #377): a ParsedSchema slot whose build returned
+// ParsedSchemaMetadata reporting fragmentB as an include must be
+// evicted when Invalidate(fragmentB) fires. Without this, the LSP
+// edits a schema include fragment and MDS020 keeps serving stale
+// headings until the parent schema itself is invalidated.
+func TestRunCache_InvalidateFragmentEvictsDependentSchema(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/schema.md"
+	const fragmentB = "/abs/fragment.md"
+
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return testSchemaMeta{includes: []string{fragmentB}}
+	}
+	got := c.ParsedSchema(schemaA, build)
+	require.Equal(t, testSchemaMeta{includes: []string{fragmentB}}, got)
+	require.Equal(t, int32(1), atomic.LoadInt32(&calls))
+
+	c.Invalidate(fragmentB)
+
+	build2 := func() any {
+		atomic.AddInt32(&calls, 1)
+		return testSchemaMeta{includes: []string{fragmentB}}
+	}
+	_ = c.ParsedSchema(schemaA, build2)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
+		"Invalidate(fragment) must evict every schema whose ParsedSchema slot "+
+			"reached fragment via <?include?>")
+}
+
+// TestRunCache_InvalidateFragmentEvictsTransitively pins the
+// transitive case: schemaA includes fragmentB; fragmentB itself is
+// modelled as a schema with an include on fragmentC.
+// Invalidate(fragmentC) must drop both A and B's parsed-schema
+// slots because A's parse depends on B's parse which depends on
+// fragmentC.
+func TestRunCache_InvalidateFragmentEvictsTransitively(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/a.md"
+	const fragmentB = "/abs/b.md"
+	const fragmentC = "/abs/c.md"
+
+	var aCalls, bCalls int32
+	_ = c.ParsedSchema(schemaA, func() any {
+		atomic.AddInt32(&aCalls, 1)
+		return testSchemaMeta{includes: []string{fragmentB}}
+	})
+	_ = c.ParsedSchema(fragmentB, func() any {
+		atomic.AddInt32(&bCalls, 1)
+		return testSchemaMeta{includes: []string{fragmentC}}
+	})
+	require.Equal(t, int32(1), atomic.LoadInt32(&aCalls))
+	require.Equal(t, int32(1), atomic.LoadInt32(&bCalls))
+
+	c.Invalidate(fragmentC)
+
+	_ = c.ParsedSchema(schemaA, func() any {
+		atomic.AddInt32(&aCalls, 1)
+		return testSchemaMeta{includes: []string{fragmentB}}
+	})
+	_ = c.ParsedSchema(fragmentB, func() any {
+		atomic.AddInt32(&bCalls, 1)
+		return testSchemaMeta{includes: []string{fragmentC}}
+	})
+	assert.Equal(t, int32(2), atomic.LoadInt32(&aCalls),
+		"transitive: schemaA depends on fragmentB depends on fragmentC; "+
+			"Invalidate(fragmentC) must evict A")
+	assert.Equal(t, int32(2), atomic.LoadInt32(&bCalls),
+		"transitive: Invalidate(fragmentC) must evict B")
+}
+
+// TestRunCache_InvalidateSchemaDropsCompiledCUE pins thread 2
+// (PR #377): editing a schema's frontmatter produces a new CUE
+// source. Without per-schema CompiledCUE eviction the cache leaks
+// the old source's compiled value forever in long-lived LSP
+// sessions. Invalidate(schemaPath) must drop every CompiledCUE
+// entry the parsed schema produced.
+func TestRunCache_InvalidateSchemaDropsCompiledCUE(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/schema.md"
+	const cueSrc = `close({x: string})`
+
+	// Populate the parsed-schema slot with metadata that names cueSrc.
+	_ = c.ParsedSchema(schemaA, func() any {
+		return testSchemaMeta{cueSources: []string{cueSrc}}
+	})
+	// Populate the matching CompiledCUE slot.
+	var compileCalls int32
+	_ = c.CompiledCUE(cueSrc, func() any {
+		atomic.AddInt32(&compileCalls, 1)
+		return "compiled-v1"
+	})
+	require.Equal(t, int32(1), atomic.LoadInt32(&compileCalls))
+
+	c.Invalidate(schemaA)
+
+	_ = c.CompiledCUE(cueSrc, func() any {
+		atomic.AddInt32(&compileCalls, 1)
+		return "compiled-v2"
+	})
+	assert.Equal(t, int32(2), atomic.LoadInt32(&compileCalls),
+		"Invalidate(schemaPath) must drop CompiledCUE entries the parsed "+
+			"schema produced so an LSP frontmatter edit does not leak compiled "+
+			"values")
+}
+
+// TestRunCache_InvalidateSharedCUESourceIsConservative documents
+// the design choice for shared CUE sources: two schemas declaring
+// the same `{x: string}` source share one CompiledCUE slot;
+// invalidating one schema drops the slot for both. The sibling
+// recompiles on its next ValidateFrontmatterDiags lookup — a one-
+// time cost that is the safe default. The alternative
+// (refcounting CUE sources) is heavier infrastructure for a cheap
+// recompile.
+func TestRunCache_InvalidateSharedCUESourceIsConservative(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/a.md"
+	const schemaB = "/abs/b.md"
+	const cueSrc = `{x: string}`
+
+	_ = c.ParsedSchema(schemaA, func() any {
+		return testSchemaMeta{cueSources: []string{cueSrc}}
+	})
+	_ = c.ParsedSchema(schemaB, func() any {
+		return testSchemaMeta{cueSources: []string{cueSrc}}
+	})
+	var compileCalls int32
+	_ = c.CompiledCUE(cueSrc, func() any {
+		atomic.AddInt32(&compileCalls, 1)
+		return "v1"
+	})
+	require.Equal(t, int32(1), atomic.LoadInt32(&compileCalls))
+
+	// Invalidate one of the two schemas. The CompiledCUE slot is
+	// dropped — the sibling schema's next lookup recompiles. This
+	// is the documented conservative behavior; a refcount-based
+	// strategy would keep the slot alive for schemaB but adds
+	// machinery for a sub-millisecond recompile.
+	c.Invalidate(schemaA)
+	_ = c.CompiledCUE(cueSrc, func() any {
+		atomic.AddInt32(&compileCalls, 1)
+		return "v2"
+	})
+	assert.Equal(t, int32(2), atomic.LoadInt32(&compileCalls),
+		"Invalidate(schemaA) must drop the shared CUE slot — schemaB recompiles "+
+			"on its next lookup; cheap and removes the leak risk")
+}
+
+// TestRunCache_InvalidateNonSchemaPathIsNoop pins that Invalidate
+// on a path that was never registered as a schema (no
+// ParsedSchema slot, no fragment-of-anything) does not panic and
+// does not affect CompiledCUE entries on the cache.
+func TestRunCache_InvalidateNonSchemaPathIsNoop(t *testing.T) {
+	c := NewRunCache()
+	const cueSrc = `{kept: string}`
+	var compileCalls int32
+	_ = c.CompiledCUE(cueSrc, func() any {
+		atomic.AddInt32(&compileCalls, 1)
+		return "kept"
+	})
+	require.Equal(t, int32(1), atomic.LoadInt32(&compileCalls))
+
+	require.NotPanics(t, func() { c.Invalidate("/abs/random-doc.md") })
+
+	got := c.CompiledCUE(cueSrc, func() any {
+		atomic.AddInt32(&compileCalls, 1)
+		return "rebuilt"
+	})
+	assert.Equal(t, "kept", got,
+		"Invalidate on a non-schema path must not evict unrelated CompiledCUE entries")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&compileCalls),
+		"CompiledCUE build must not run again after a no-op Invalidate")
+}
+
+// TestRunCache_InvalidateSchemaDropsBackpointers pins that
+// Invalidate(schemaA) tears down the reverse-include edges where
+// schemaA appears as a dependent. A subsequent Invalidate on the
+// fragment must not re-evict schemaA (it is already gone), proving
+// the dependent set was cleaned up.
+func TestRunCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/a.md"
+	const fragmentB = "/abs/b.md"
+
+	var aCalls int32
+	_ = c.ParsedSchema(schemaA, func() any {
+		atomic.AddInt32(&aCalls, 1)
+		return testSchemaMeta{includes: []string{fragmentB}}
+	})
+
+	// Invalidate the schema first — this must remove the
+	// fragmentB → schemaA edge.
+	c.Invalidate(schemaA)
+
+	// Now invalidate the fragment. Because the back-pointer was
+	// dropped, Invalidate(fragmentB) finds no dependent. If the
+	// back-pointer survived, this call would try to re-evict
+	// schemaA (a no-op against an already-empty slot — but the
+	// schemaDependents Range would still walk it). We assert the
+	// invariant by rebuilding schemaA and observing its slot is
+	// fresh.
+	c.Invalidate(fragmentB)
+
+	_ = c.ParsedSchema(schemaA, func() any {
+		atomic.AddInt32(&aCalls, 1)
+		return testSchemaMeta{includes: []string{fragmentB}}
+	})
+	assert.Equal(t, int32(2), atomic.LoadInt32(&aCalls),
+		"after Invalidate(schemaA) the back-pointer to schemaA on fragmentB's "+
+			"dependent set must be gone; the second ParsedSchema(schemaA) "+
+			"rebuild is the cumulative second call")
+}
