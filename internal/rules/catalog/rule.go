@@ -888,13 +888,33 @@ func parseSort(params map[string]string) (key string, descending, numeric bool) 
 func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 	useInts := numeric && allParseAsInt(entries, key)
 
-	sort.SliceStable(entries, func(i, j int) bool {
+	// Pre-compute lowercase keys once per entry to avoid O(n log n)
+	// string allocations inside the comparator.
+	type sortable struct {
+		entry         fileEntry
+		sortKey       string // lowercase primary sort key (empty for numeric mode)
+		tiebreakerKey string // lowercase filename for stable tiebreaker
+	}
+	sortables := make([]sortable, len(entries))
+	for i, e := range entries {
+		var sk string
+		if !useInts {
+			sk = strings.ToLower(sortValue(e, key))
+		}
+		sortables[i] = sortable{
+			entry:         e,
+			sortKey:       sk,
+			tiebreakerKey: strings.ToLower(fieldinterp.Stringify(e.fields["filename"])),
+		}
+	}
+
+	sort.SliceStable(sortables, func(i, j int) bool {
 		var cmp int
 		if useInts {
-			// Re-parse from the current entry rather than a fixed
-			// index — SliceStable reorders the slice during sort.
-			ni, _ := parseSortInt(entries[i], key)
-			nj, _ := parseSortInt(entries[j], key)
+			// Re-parse from the moved entry — SliceStable reorders the
+			// slice during sort, so sortables[i].entry is always current.
+			ni, _ := parseSortInt(sortables[i].entry, key)
+			nj, _ := parseSortInt(sortables[j].entry, key)
 			switch {
 			case ni < nj:
 				cmp = -1
@@ -902,15 +922,11 @@ func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 				cmp = 1
 			}
 		} else {
-			vi := sortValue(entries[i], key)
-			vj := sortValue(entries[j], key)
-			cmp = strings.Compare(strings.ToLower(vi), strings.ToLower(vj))
+			cmp = strings.Compare(sortables[i].sortKey, sortables[j].sortKey)
 		}
 		if cmp == 0 {
 			// Tiebreaker: path ascending, case-insensitive.
-			pi := strings.ToLower(fieldinterp.Stringify(entries[i].fields["filename"]))
-			pj := strings.ToLower(fieldinterp.Stringify(entries[j].fields["filename"]))
-			return pi < pj
+			return sortables[i].tiebreakerKey < sortables[j].tiebreakerKey
 		}
 
 		if descending {
@@ -918,6 +934,10 @@ func sortEntries(entries []fileEntry, key string, descending, numeric bool) {
 		}
 		return cmp < 0
 	})
+
+	for i, s := range sortables {
+		entries[i] = s.entry
+	}
 }
 
 // allParseAsInt reports whether every entry's value for key parses

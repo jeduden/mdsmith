@@ -52,7 +52,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // Fix implements rule.FixableRule.
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
-	var result []string
+	result := make([]string, 0, len(f.Lines))
 	for i, line := range f.Lines {
 		lineNum := i + 1
 		if codeLines[lineNum] {
