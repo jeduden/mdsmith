@@ -176,8 +176,15 @@ type Diagnostic struct {
 // LSP allows arbitrary `data` on diagnostics; clients echo it back on
 // codeAction requests, which is exactly what we need to know which
 // rule's fix to run for a given diagnostic.
+//
+// Deprecated and ReplacedBy mirror the lint.Diagnostic fields plan 136
+// adds for schema field deprecations: clients that route warnings
+// (e.g. surface a "migrate to <new>" quick-fix hint) read these
+// without scanning the human-facing message body.
 type diagnosticData struct {
-	RuleName string `json:"rule"`
+	RuleName   string `json:"rule"`
+	Deprecated bool   `json:"deprecated,omitempty"`
+	ReplacedBy string `json:"replaced_by,omitempty"`
 }
 
 // publishDiagnosticsParams is LSP §3.18.6 PublishDiagnosticsParams.

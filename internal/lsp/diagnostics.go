@@ -46,7 +46,11 @@ func toLSP(d lint.Diagnostic, lines [][]byte) Diagnostic {
 		Code:     d.RuleID,
 		Source:   "mdsmith",
 		Message:  d.Message,
-		Data:     &diagnosticData{RuleName: d.RuleName},
+		Data: &diagnosticData{
+			RuleName:   d.RuleName,
+			Deprecated: d.Deprecated,
+			ReplacedBy: d.ReplacedBy,
+		},
 	}
 }
 

@@ -978,6 +978,29 @@ func TestToLSPClampsZeroLine(t *testing.T) {
 	assert.Equal(t, 0, got.Range.Start.Line)
 }
 
+// TestToLSPForwardsDeprecationData regresses plan 136: the
+// lint.Diagnostic Deprecated / ReplacedBy fields must ride
+// through to LSP clients via the diagnostic Data payload so a
+// quick-fix surface can recognise a deprecation without parsing
+// the message body.
+func TestToLSPForwardsDeprecationData(t *testing.T) {
+	t.Parallel()
+	got := toLSP(lint.Diagnostic{
+		Line:       1,
+		Column:     1,
+		RuleID:     "MDS020",
+		RuleName:   "required-structure",
+		Severity:   lint.Warning,
+		Deprecated: true,
+		ReplacedBy: "owner",
+		Message:    "legacy_owner: deprecated field",
+	}, [][]byte{[]byte("---")})
+	require.NotNil(t, got.Data)
+	assert.True(t, got.Data.Deprecated)
+	assert.Equal(t, "owner", got.Data.ReplacedBy)
+	assert.Equal(t, "required-structure", got.Data.RuleName)
+}
+
 func TestToLSPEmptyLineProducesZeroWidthRange(t *testing.T) {
 	t.Parallel()
 	// Diagnostic on an empty line: the range must end at column 0,
