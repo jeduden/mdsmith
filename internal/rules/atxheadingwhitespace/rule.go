@@ -136,7 +136,7 @@ func (r *Rule) diag(path string, line, col int, msg string) lint.Diagnostic {
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
 	piLines := lint.CollectPIBlockLines(f)
-	var result []string
+	result := make([]string, 0, len(f.Lines))
 	for i, rawLine := range f.Lines {
 		lineNum := i + 1
 		if codeLines[lineNum] || piLines[lineNum] {

@@ -10,6 +10,7 @@ package fieldinterp
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"cuelang.org/go/cue"
@@ -196,13 +197,13 @@ func Stringify(v any) string {
 	case nil:
 		return ""
 	case bool:
-		return fmt.Sprintf("%v", x)
+		return strconv.FormatBool(x)
 	case int:
-		return fmt.Sprintf("%d", x)
+		return strconv.Itoa(x)
 	case int64:
-		return fmt.Sprintf("%d", x)
+		return strconv.FormatInt(x, 10)
 	case float64:
-		return fmt.Sprintf("%g", x)
+		return strconv.FormatFloat(x, 'g', -1, 64)
 	case map[string]any, []any:
 		return "" // composite types produce nondeterministic output
 	default:

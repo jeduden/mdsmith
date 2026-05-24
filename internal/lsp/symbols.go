@@ -459,7 +459,7 @@ func buildOutline(source []byte) []documentSymbol {
 	idx.Update("buffer", source)
 	fe, ok := idx.File("buffer")
 	if !ok {
-		return []documentSymbol{}
+		return nil
 	}
 
 	var fmKids []documentSymbol

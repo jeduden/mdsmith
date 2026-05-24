@@ -13,6 +13,7 @@
 package ambiguousemphasis
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 
@@ -397,7 +398,7 @@ func maskCodeSpans(line []byte, lineNum int, ranges []codeSpanRange, lineStarts 
 // slice has one entry per line so callers can index by line number
 // without rescanning the source.
 func computeLineStarts(src []byte) []int {
-	starts := []int{0}
+	starts := make([]int, 1, bytes.Count(src, []byte{'\n'})+1)
 	for i, b := range src {
 		if b == '\n' {
 			starts = append(starts, i+1)

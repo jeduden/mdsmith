@@ -78,7 +78,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 func (r *Rule) Fix(f *lint.File) []byte {
 	codeLines := lint.CollectCodeBlockLines(f)
 	max := r.maxBlanks()
-	var result []string
+	result := make([]string, 0, len(f.Lines))
 	consecutiveBlanks := 0
 	for i, line := range f.Lines {
 		lineNum := i + 1
