@@ -210,8 +210,12 @@ func cachedCompiledCUEWith(cache *lint.RunCache, source string) *schema.Compiled
 
 // absSchemaCacheKey resolves a schema path to an absolute filesystem
 // key for ParsedSchema. Returns "" when no stable identity can be
-// derived (no RootDir and a non-absolute schemaPath); the caller then
-// bypasses the cache and parses inline.
+// derived (no RootDir / Abs failure / non-absolute schemaPath); the
+// caller then bypasses the cache and parses inline. Going through
+// absRootDir consolidates the no-RootDir and Abs-failure branches
+// onto one absRoot == "" check, so the cache contract stays
+// "key is absolute or empty" — never a relative path that could
+// collide across workspaces.
 func absSchemaCacheKey(f *lint.File, schemaPath string) string {
 	if schemaPath == "" {
 		return ""
@@ -219,10 +223,10 @@ func absSchemaCacheKey(f *lint.File, schemaPath string) string {
 	if filepath.IsAbs(schemaPath) {
 		return filepath.Clean(schemaPath)
 	}
-	if f.RootDir == "" {
+	absRoot := absRootDir(f)
+	if absRoot == "" {
 		return ""
 	}
-	absRoot, _ := filepath.Abs(f.RootDir)
 	return filepath.Clean(filepath.Join(absRoot, schemaPath))
 }
 

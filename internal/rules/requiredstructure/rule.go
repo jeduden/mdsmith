@@ -1378,7 +1378,15 @@ func parseSchemaWithCache(
 		var fp string
 		headings, fp, includes, err = extractSchemaHeadings(f, schemaPath, visited, chain, maxBytes)
 		if err != nil {
-			return nil, nil, err
+			// Surface a partial *parsedSchema (carrying the
+			// frontmatter CUE source the cache will track via
+			// schemaCUESources) AND the partial include set the
+			// walk reached before erroring. The rule's caller
+			// discards the partial schema on err, but the cache
+			// wrapper records both pieces so a later
+			// Invalidate(fragment) on a fixed include still
+			// evicts the schema's failed-parse slot.
+			return &parsedSchema{Config: cfg}, includes, err
 		}
 		if fp != "" && cfg.FilenamePattern == "" {
 			cfg.FilenamePattern = fp
@@ -1410,13 +1418,17 @@ func parseSchemaWithCache(
 // expanding <?include?> PIs by splicing in the included file's headings.
 // It uses a visited set for cycle detection.
 //
-// The returned includes slice carries the resolved absolute path of
-// every fragment reached during the walk — both direct includes and
-// transitively-included ones. Order is source order at the current
-// level, with each fragment's transitive set appended after the
-// fragment's own path. The cache wrapper feeds this into RunCache's
-// reverse-include index so a fragment edit invalidates every schema
-// that reached it.
+// The returned includes slice carries the resolved path of every
+// fragment reached during the walk — both direct includes and
+// transitively-included ones. Paths are in the SAME coordinate
+// system as schemaPath: resolveSchemaIncludePath joins each include
+// onto filepath.Dir(schemaPath), so a project-relative schemaPath
+// produces project-relative include entries (and an absolute
+// schemaPath produces absolute ones). cachedParseSchemaWith later
+// anchors them onto absRoot via absoluteIncludes before storing on
+// schemaParseResult, so RunCache.Invalidate's absolute keys match.
+// Order is source order at the current level, with each fragment's
+// transitive set appended after the fragment's own path.
 func extractSchemaHeadings(
 	schemaFile *lint.File, schemaPath string,
 	visited map[string]bool, chain []string, maxBytes int64,
@@ -1443,6 +1455,20 @@ func extractSchemaHeadings(
 			fragHeadings, fp, fragIncluded, subIncludes, walkErr := expandSchemaInclude(
 				node, schemaFile.Source, schemaPath, visited, chain, maxBytes)
 			if walkErr != nil {
+				// Record the broken-but-known fragment plus any
+				// transitive sub-includes the recursive walk
+				// reached before erroring. The outer
+				// extractSchemaHeadings surfaces this partial
+				// `includes` slice up to parseSchemaWithCache so
+				// the cache wrapper's reverse-include index covers
+				// the full dependency footprint, broken edges
+				// included. Without this, Invalidate(fragment) on
+				// a fix would not evict the schema's failed-parse
+				// slot.
+				if fragIncluded != "" {
+					includes = append(includes, fragIncluded)
+				}
+				includes = append(includes, subIncludes...)
 				return ast.WalkStop, walkErr
 			}
 			if fp != "" && filenamePattern == "" {
@@ -1458,7 +1484,13 @@ func extractSchemaHeadings(
 		return ast.WalkContinue, nil
 	})
 	if err != nil {
-		return nil, "", nil, err
+		// Surface the partial include set so the cache wrapper can
+		// still register dependents on fragments the walk reached
+		// before erroring. A schema that fails to parse because of
+		// a downstream <?include?> issue must still let
+		// Invalidate(brokenFragment) evict the schema's failed-parse
+		// slot when the fragment is fixed.
+		return nil, "", includes, err
 	}
 
 	return headings, filenamePattern, includes, nil
@@ -1493,11 +1525,12 @@ func resolveSchemaIncludePath(
 
 // expandSchemaInclude resolves and recursively expands a schema
 // include PI. It returns the fragment's headings, any filename
-// pattern declared on the fragment, the resolved absolute path of
-// the fragment itself, the fragment's transitive include set, and
-// an error. The path-plus-subIncludes pair lets the caller record
-// the full dependency footprint on RunCache's reverse-include
-// index.
+// pattern declared on the fragment, the fragment's resolved path
+// (in the same coordinate system as schemaPath — typically
+// project-relative; cachedParseSchemaWith anchors it onto absRoot
+// before storing), the fragment's transitive include set, and an
+// error. The path-plus-subIncludes pair lets the caller record the
+// full dependency footprint on RunCache's reverse-include index.
 func expandSchemaInclude(
 	pi *lint.ProcessingInstruction, source []byte,
 	schemaPath string, visited map[string]bool, chain []string, maxBytes int64,
@@ -1507,21 +1540,27 @@ func expandSchemaInclude(
 		return nil, "", "", nil, err
 	}
 
+	// Surface includedPath on every error past this point so the
+	// caller can register the broken-but-known fragment in
+	// RunCache's reverse-include index. When the user fixes the
+	// fragment (creates the missing file, breaks the cycle, raises
+	// the depth limit), Invalidate(fragmentAbs) then evicts this
+	// schema's failed-parse slot and the next Check re-parses.
 	if len(chain) > maxSchemaIncludeDepth {
-		return nil, "", "", nil, fmt.Errorf(
+		return nil, "", includedPath, nil, fmt.Errorf(
 			"schema include depth exceeds maximum (%d)", maxSchemaIncludeDepth)
 	}
 	if visited[includedPath] {
 		chainCopy := make([]string, len(chain))
 		copy(chainCopy, chain)
 		chainCopy = append(chainCopy, includedPath)
-		return nil, "", "", nil, fmt.Errorf(
+		return nil, "", includedPath, nil, fmt.Errorf(
 			"cyclic include: %s", strings.Join(chainCopy, " -> "))
 	}
 
 	fragData, err := lint.ReadFileLimited(includedPath, maxBytes)
 	if err != nil {
-		return nil, "", "", nil, fmt.Errorf(
+		return nil, "", includedPath, nil, fmt.Errorf(
 			"cannot read schema include file %q: %w", includedPath, err)
 	}
 
@@ -1534,7 +1573,7 @@ func expandSchemaInclude(
 
 	fp, err := extractRequireDirective(fragFile)
 	if err != nil {
-		return nil, "", "", nil, err
+		return nil, "", includedPath, nil, err
 	}
 
 	visited[includedPath] = true
@@ -1543,7 +1582,12 @@ func expandSchemaInclude(
 		fragFile, includedPath, visited, chain, maxBytes)
 	delete(visited, includedPath)
 	if err != nil {
-		return nil, "", "", nil, err
+		// Surface includedPath plus whatever subIncludes the
+		// recursive walk reached so the full dependency
+		// footprint (broken fragment + every successful one
+		// above it) is recorded in the cache's reverse-include
+		// index.
+		return nil, "", includedPath, subIncludes, err
 	}
 	if fp2 != "" && fp == "" {
 		fp = fp2

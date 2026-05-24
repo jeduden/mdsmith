@@ -276,6 +276,38 @@ func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
 }
 
+// TestParseSchemaWithCache_MissingIncludeSurfacesPartialIncludes pins
+// the fix for Copilot threads PRRT_kwDORLpjqs6EXjkW and EXjkt: when
+// a schema's <?include?> reaches a missing fragment, the parse
+// fails — but parseSchemaWithCache must still surface the broken
+// fragment's resolved path so the cache wrapper can register it on
+// RunCache's reverse-include index. Creating the missing file and
+// firing Invalidate(fragment) then evicts the schema's failed-parse
+// slot. Without this, the schema's error would persist until the
+// schema itself is edited.
+func TestParseSchemaWithCache_MissingIncludeSurfacesPartialIncludes(t *testing.T) {
+	tmpDir := t.TempDir()
+	schemaSrc := []byte("# Title\n\n<?include\nfile: missing.md\n?>\n")
+	require.NoError(t,
+		writeFile(filepath.Join(tmpDir, "schema.md"), string(schemaSrc)))
+
+	t.Chdir(tmpDir)
+
+	sch, includes, err := parseSchemaWithCache(schemaSrc, "schema.md", 0, nil)
+	require.Error(t, err,
+		"a missing include must surface as an error")
+	require.NotNil(t, sch,
+		"the partial *parsedSchema lets the cache wrapper record "+
+			"the schema's FrontMatterCUE via schemaCUESources for "+
+			"CompiledCUE eviction on the next schema edit")
+	require.NotEmpty(t, includes,
+		"the broken-but-known fragment path must be surfaced so the "+
+			"cache wrapper registers the schema as a dependent — when "+
+			"the user creates the missing file, Invalidate(fragmentAbs) "+
+			"evicts this schema's failed-parse slot")
+	assert.Contains(t, includes[0], "missing.md")
+}
+
 // TestParseSchemaWithCache_InvalidCUESurfacesPartialSchemaForCueSourceTracking
 // pins the fix for Copilot thread `PRRT_kwDORLpjqs6EXgnu` on PR #377:
 // when parseSchemaFrontMatter fails (invalid CUE — the common LSP
