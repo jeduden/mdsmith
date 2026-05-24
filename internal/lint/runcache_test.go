@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -690,6 +691,87 @@ func TestRunCache_InvalidateDoesNotRaceParsedSchemaBuild(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// TestRunCache_InvalidateTerminatesOnCyclicReverseIncludes pins the
+// cycle guard added for Copilot thread PRRT_kwDORLpjqs6EXqUJ. After
+// plan 195 task 15's partial-includes-on-error fix, a cyclic include
+// (schemaA → schemaB → schemaA — a real LSP mid-edit state) registers
+// a cycle in the reverse-include graph: schemaDependents[A] contains
+// B, schemaDependents[B] contains A. Without a visited guard,
+// Invalidate(A) → invalidate(B) → invalidate(A) → ... stack-overflows.
+// The fix carries a per-call visited set; this test pins that
+// Invalidate terminates and evicts both slots.
+func TestRunCache_InvalidateTerminatesOnCyclicReverseIncludes(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/schemaA.md"
+	const schemaB = "/abs/schemaB.md"
+
+	_ = c.ParsedSchema(schemaA, func() any {
+		return testSchemaMeta{includes: []string{schemaB}}
+	})
+	_ = c.ParsedSchema(schemaB, func() any {
+		return testSchemaMeta{includes: []string{schemaA}}
+	})
+
+	done := make(chan struct{})
+	go func() {
+		c.Invalidate(schemaA)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Invalidate did not terminate on a cyclic reverse-include " +
+			"graph within 2s — the cycle guard is missing or broken")
+	}
+
+	// Both schemas' slots must be gone.
+	var rebuildsA, rebuildsB int32
+	_ = c.ParsedSchema(schemaA, func() any {
+		atomic.AddInt32(&rebuildsA, 1)
+		return testSchemaMeta{}
+	})
+	_ = c.ParsedSchema(schemaB, func() any {
+		atomic.AddInt32(&rebuildsB, 1)
+		return testSchemaMeta{}
+	})
+	assert.Equal(t, int32(1), atomic.LoadInt32(&rebuildsA),
+		"schemaA's slot must be evicted by Invalidate(schemaA)")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&rebuildsB),
+		"schemaB's slot must be evicted transitively (B depended on A "+
+			"via the partial-includes-on-error register)")
+}
+
+// TestRunCache_InvalidateDropsEmptyDependentSets pins the empty-set
+// cleanup added for Copilot thread PRRT_kwDORLpjqs6EXnIf. When a
+// schema's last dependent is removed, the *sync.Map entry in
+// schemaDependents must be deleted via CompareAndDelete so a
+// long-lived LSP session does not accumulate one empty *sync.Map per
+// fragment ever included.
+func TestRunCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/schemaA.md"
+	const fragmentB = "/abs/fragmentB.md"
+
+	_ = c.ParsedSchema(schemaA, func() any {
+		return testSchemaMeta{includes: []string{fragmentB}}
+	})
+
+	// Sanity: fragmentB's dependent set holds schemaA.
+	_, presentBefore := c.schemaDependents.Load(fragmentB)
+	require.True(t, presentBefore,
+		"baseline: fragmentB's dependent set must exist after register")
+
+	c.Invalidate(schemaA)
+
+	// fragmentB's set was emptied; the schemaDependents entry must
+	// be gone too.
+	_, presentAfter := c.schemaDependents.Load(fragmentB)
+	assert.False(t, presentAfter,
+		"after Invalidate(schemaA) removes the last dependent from "+
+			"fragmentB's set, the schemaDependents entry for fragmentB "+
+			"must be CompareAndDelete'd so the *sync.Map does not leak")
 }
 
 // TestRunCache_EmptyFragmentSkippedBothDirections pins the empty-string

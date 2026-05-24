@@ -270,6 +270,23 @@ func (c *RunCache) CompiledCUE(source string, build func() any) any {
 // the workspace; the LSP must InvalidateWikilinks (or build a
 // fresh RunCache) when the filesystem layout changes.
 func (c *RunCache) Invalidate(absPath string) {
+	c.invalidate(absPath, map[string]bool{})
+}
+
+// invalidate is the recursive worker for Invalidate. The visited set
+// tracks every path the current top-level call has already touched
+// so a cyclic reverse-include graph (legal mid-edit LSP state — a
+// schema whose <?include?> chain self-references via a partial-parse
+// register on the cycle-error path) terminates on the second
+// encounter. The set is per-call (allocated by the public
+// Invalidate entry point) so independent Invalidate calls do not
+// share visited state.
+func (c *RunCache) invalidate(absPath string, visited map[string]bool) {
+	if visited[absPath] {
+		return
+	}
+	visited[absPath] = true
+
 	c.frontMatter.Delete(absPath)
 	c.includes.Delete(absPath)
 	c.anchors.Delete(absPath)
@@ -300,12 +317,14 @@ func (c *RunCache) Invalidate(absPath string) {
 
 	// Walk the reverse-include index: every schema that included
 	// absPath as a fragment must be invalidated transitively. Drain
-	// the set into a slice first so the recursive Invalidate calls
+	// the set into a slice first so the recursive invalidate calls
 	// (which also touch schemaDependents during their own
 	// fragment-edge cleanup) cannot race with this iteration. The
 	// reverse-index entry for absPath is dropped after the walk so
 	// a re-populated schema's next register re-creates the set with
-	// only the live dependents.
+	// only the live dependents. The visited set carried through the
+	// recursion is the cycle guard — a dependent that has already
+	// been invalidated in this top-level call is skipped.
 	if setI, ok := c.schemaDependents.Load(absPath); ok {
 		set := setI.(*sync.Map)
 		var deps []string
@@ -314,7 +333,7 @@ func (c *RunCache) Invalidate(absPath string) {
 			return true
 		})
 		for _, dep := range deps {
-			c.Invalidate(dep)
+			c.invalidate(dep, visited)
 		}
 		c.schemaDependents.Delete(absPath)
 	}
@@ -329,13 +348,31 @@ func (c *RunCache) Invalidate(absPath string) {
 	// absPath from that fragment's dependent set. Leaves the
 	// fragment's own slot intact (it is a sibling document, not the
 	// invalidated one); only the back-pointer to absPath is
-	// removed.
+	// removed. When that removal empties the set, CompareAndDelete
+	// drops the schemaDependents entry too so long-lived LSP
+	// sessions do not accumulate empty *sync.Maps. CompareAndDelete
+	// is the race-safe primitive: if a concurrent
+	// registerSchemaMetadata re-Stored a dependent between our
+	// Range and the delete, the value in schemaDependents now
+	// differs from setI and the delete is skipped, preserving the
+	// new entry.
 	for _, frag := range includes {
 		if frag == "" {
 			continue
 		}
-		if setI, ok := c.schemaDependents.Load(frag); ok {
-			setI.(*sync.Map).Delete(absPath)
+		setI, ok := c.schemaDependents.Load(frag)
+		if !ok {
+			continue
+		}
+		set := setI.(*sync.Map)
+		set.Delete(absPath)
+		empty := true
+		set.Range(func(_, _ any) bool {
+			empty = false
+			return false
+		})
+		if empty {
+			c.schemaDependents.CompareAndDelete(frag, setI)
 		}
 	}
 }
