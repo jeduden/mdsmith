@@ -109,12 +109,12 @@ the edit looks like:
     "edits": [{
       "range": { ... },
       "newText": "...",
-      "annotationId": "mdsmith-fix-MDS001"
+      "annotationId": "mdsmith-fix-no-trailing-spaces"
     }]
   }],
   "changeAnnotations": {
-    "mdsmith-fix-MDS001": {
-      "label": "Fix all MDS001 with mdsmith",
+    "mdsmith-fix-no-trailing-spaces": {
+      "label": "Fix all no-trailing-spaces with mdsmith",
       "description": "Preview before applying",
       "needsConfirmation": true
     }
@@ -122,12 +122,29 @@ the edit looks like:
 }
 ```
 
+Today's `workspaceEdit.Changes` field in
+[`internal/lsp/protocol.go`](../internal/lsp/protocol.go)
+lacks `omitempty`. A struct that sets only
+`DocumentChanges` would still emit
+`"changes": null`. The annotated path must omit
+`changes`. The spec says clients ignore `changes`
+when `documentChanges` is set; sending both is
+undefined. So switch the tag to `changes,omitempty`
+(or use a pointer). The legacy path then keeps
+`"changes": {…}`; the annotated path emits only
+`documentChanges` and `changeAnnotations`.
+
 The `source.fixAll.mdsmith` action gets one
 annotation. Its label reads
 `"Fix all mdsmith issues"`. Per-rule quick-fix
-actions get one annotation each, keyed
-`mdsmith-fix-<rule>`. The preview pane then groups
-the changes by rule.
+actions get one annotation each. The id is
+`mdsmith-fix-<rule-name>` — using the
+`d.Data.RuleName` value (e.g.
+`no-trailing-spaces`), not the rule code
+(`MDS001`). The label reuses `quickFixTitle(rule)`
+as-is, which the existing code already calls with
+the same rule-name string. The preview pane then
+groups the changes by rule.
 
 ### Document version
 
@@ -166,15 +183,20 @@ the matrix:
    New types: `annotatedTextEdit`,
    `textDocumentEdit`, `changeAnnotation`. Keep
    `changes` for the legacy path.
-4. Refactor `fullFileEdit` (and any other edit
-   builder) to take a "preview mode" decision and
-   emit either the legacy `changes`-map shape or
-   the annotated `documentChanges` shape. Mode is
+4. Switch the `Changes` JSON tag on `workspaceEdit`
+   to `changes,omitempty` so the annotated path
+   emits only `documentChanges` and
+   `changeAnnotations`. Refactor `fullFileEdit`
+   (and any other edit builder) to pick one shape
+   per call. Mode is
    `preview ∧ clientSupportsAnnotations`.
-5. Per-rule annotation IDs in `computeCodeActions`:
-   `mdsmith-fix-<rule>` for quick fixes,
+5. Per-rule annotation IDs in `computeCodeActions`,
+   keyed off the same `d.Data.RuleName` the
+   existing quickfix path uses:
+   `mdsmith-fix-<rule-name>` for quick fixes,
    `mdsmith-fix-all` for `source.fixAll.mdsmith`.
-   Label uses the existing `quickFixTitle`.
+   Label reuses the existing `quickFixTitle(rule)`
+   verbatim.
 6. Add the `mdsmith.previewFix` setting to
    [`editors/vscode/package.json`](../editors/vscode/package.json)
    contributions with description and default
