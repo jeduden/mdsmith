@@ -185,14 +185,22 @@ func validateFrontmatterDiags(
 			}.Format())}
 	}
 	keyLines := docFrontmatterKeyLines(f)
-	out := make([]lint.Diagnostic, 0, len(cueErrs))
-	// A struct dedup key avoids accidental collisions when one of
-	// the components (notably the raw-CUE-expression Expected
-	// fallback and a placeholder-bearing Field) legitimately
-	// contains the same delimiter we would have used in a flat
-	// string key.
+	out := dedupedCUEErrorDiags(f, sch, docFM, cueErrs, keyLines, mkDiag)
+	return append(out, validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)...)
+}
+
+// dedupedCUEErrorDiags maps each unique CUE error to a
+// SchemaDiagnostic. A struct dedup key avoids accidental collisions
+// when one of the components (notably the raw-CUE-expression
+// Expected fallback and a placeholder-bearing Field) legitimately
+// contains the same delimiter a flat string key would have used.
+func dedupedCUEErrorDiags(
+	f *lint.File, sch *Schema, docFM map[string]any,
+	cueErrs []errors.Error, keyLines map[string]int, mkDiag MakeDiag,
+) []lint.Diagnostic {
 	type dedupKey struct{ field, actual, expected string }
 	seen := make(map[dedupKey]bool, len(cueErrs))
+	out := make([]lint.Diagnostic, 0, len(cueErrs))
 	for _, ce := range cueErrs {
 		d := schemaDiagFromCUEError(sch, docFM, ce)
 		key := dedupKey{field: d.Field, actual: d.Actual, expected: d.Expected}
@@ -202,7 +210,7 @@ func validateFrontmatterDiags(
 		seen[key] = true
 		out = append(out, mkDiag(f.Path, fmDiagLine(f, ce.Path(), keyLines), d.Format()))
 	}
-	return append(out, validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)...)
+	return out
 }
 
 // validateDeprecatedFieldsWithLines walks sch.FrontmatterMeta and
