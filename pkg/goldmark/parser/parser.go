@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/yuin/goldmark/arena"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
@@ -226,6 +227,14 @@ type Context interface {
 
 	// IsInLinkLabel returns true if current position seems to be in link label.
 	IsInLinkLabel() bool
+
+	// Arena returns the per-parse slab allocator. Block and inline
+	// parsers route their AST allocations through this arena so the
+	// runtime allocator stays out of the hot path; see plan 198.
+	// Arena returns nil when the parser is running without an arena
+	// (the `goldmark_upstream` build-tag path), in which case
+	// arena.(*Arena) method calls fall back to plain constructors.
+	Arena() *arena.Arena
 }
 
 // A ContextConfig struct is a data structure that holds configuration of the Context.
@@ -252,6 +261,7 @@ type parseContext struct {
 	delimiters    *Delimiter
 	lastDelimiter *Delimiter
 	openedBlocks  []Block
+	arena         *arena.Arena
 }
 
 // NewContext returns a new Context.
@@ -353,7 +363,7 @@ func (p *parseContext) RemoveDelimiter(d *Delimiter) {
 	d.NextDelimiter = nil
 	d.PreviousDelimiter = nil
 	if d.Length != 0 {
-		ast.MergeOrReplaceTextSegment(d.Parent(), d, d.Segment)
+		ast.MergeOrReplaceTextSegmentA(d.Parent(), d, d.Segment, p.arena)
 	} else {
 		d.Parent().RemoveChild(d.Parent(), d)
 	}
@@ -422,6 +432,16 @@ func (p *parseContext) IsInLinkLabel() bool {
 	return tlist != nil
 }
 
+// Arena implements Context.Arena. Returns nil for a freshly built
+// Context; the parser sets the arena on the context at the top of
+// Parse so block and inline parsers can route allocations through
+// it via pc.Arena(). When parser was built without an arena (the
+// goldmark_upstream build tag) Arena stays nil and allocations
+// fall back to the plain constructors.
+func (p *parseContext) Arena() *arena.Arena {
+	return p.arena
+}
+
 // State represents parser's state.
 // State is designed to use as a bit flag.
 type State int
@@ -456,6 +476,11 @@ type Config struct {
 	ParagraphTransformers util.PrioritizedSlice /*<ParagraphTransformer>*/
 	ASTTransformers       util.PrioritizedSlice /*<ASTTransformer>*/
 	EscapedSpace          bool
+	// NoArena disables the per-parse slab allocator for this
+	// parser. Set via WithNoArena. Equivalence harnesses use the
+	// runtime toggle to diff arena-allocated and heap-allocated
+	// output in one binary run; production callers leave it false.
+	NoArena bool
 }
 
 // NewConfig returns a new Config.
@@ -667,6 +692,7 @@ type parser struct {
 	paragraphTransformers []ParagraphTransformer
 	astTransformers       []ASTTransformer
 	escapedSpace          bool
+	noArena               bool
 	config                *Config
 	initSync              sync.Once
 }
@@ -737,6 +763,25 @@ func (o *withEscapedSpace) SetParserOption(c *Config) {
 // WithEscapedSpace is a functional option indicates that a '\' escaped half-space(0x20) should not trigger parsers.
 func WithEscapedSpace() Option {
 	return &withEscapedSpace{}
+}
+
+type withNoArena struct{}
+
+func (o *withNoArena) SetParserOption(c *Config) {
+	c.NoArena = true
+}
+
+// WithNoArena disables the per-parse slab allocator for this
+// parser. Every AST allocation falls back to the upstream
+// constructor (heap-allocated). Use this for callers that need to
+// hold the returned AST past mdsmith's parser-pool Put/Get
+// boundary — though after plan 198's refactor the canonical path
+// already builds a fresh arena per Parse, so the AST tree owns its
+// arena slabs and survives parser-pool reuse. The runtime opt-out
+// remains for the equivalence harness, which diffs arena-allocated
+// and non-arena rendering in one binary run.
+func WithNoArena() Option {
+	return &withNoArena{}
 }
 
 type withOption struct {
@@ -866,6 +911,31 @@ func WithContext(context Context) ParseOption {
 	}
 }
 
+// segmentsCreatorReader is the unexported interface a reader
+// implements when it accepts a SegmentsCreator. The concrete
+// text/reader and text/blockReader satisfy it; third-party Reader
+// implementations don't, and setSegmentsCreator is a no-op for
+// them — they stay on the upstream allocation path.
+type segmentsCreatorReader interface {
+	SetSegmentsCreator(text.SegmentsCreator)
+}
+
+// setSegmentsCreator wires the arena into the reader's FindClosure
+// path. The arena satisfies text.SegmentsCreator via its Segments()
+// method, so the eventual Segments returned by FindClosure carries
+// an arena-backed values slice plus the arena as its grower.
+//
+// A nil arena (goldmark_upstream build tag) returns early and the
+// reader keeps the upstream allocation path.
+func setSegmentsCreator(r any, a *arena.Arena) {
+	if a == nil {
+		return
+	}
+	if scr, ok := r.(segmentsCreatorReader); ok {
+		scr.SetSegmentsCreator(a)
+	}
+}
+
 func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 	p.initSync.Do(func() {
 		p.config.BlockParsers.Sort()
@@ -891,6 +961,7 @@ func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 			p.addASTTransformer(v, p.config.Options)
 		}
 		p.escapedSpace = p.config.EscapedSpace
+		p.noArena = p.config.NoArena
 		p.config = nil
 	})
 	c := &ParseConfig{}
@@ -901,10 +972,36 @@ func (p *parser) Parse(reader text.Reader, opts ...ParseOption) ast.Node {
 		c.Context = NewContext()
 	}
 	pc := c.Context
+	// One fresh arena per Parse call: the slabs are GC'd along with
+	// the AST when the caller drops its references, which sidesteps
+	// the lifetime hazard described in plan 198's risk section
+	// (mdsmith's parser pool reuses parsers across documents, so a
+	// reused arena would clobber a still-live AST on the next
+	// Parse). The slab-reuse-across-parses optimisation is dropped
+	// in favour of correctness; per-node allocation savings still
+	// land because one slab absorbs many AST nodes.
+	//
+	// noArena is the runtime opt-out, set via WithNoArena. The
+	// equivalence harness uses it to diff arena and non-arena
+	// output in one binary run.
+	var pa *arena.Arena
+	if !p.noArena {
+		pa = newArenaForParse()
+	}
+	if pcImpl, ok := pc.(*parseContext); ok {
+		pcImpl.arena = pa
+	}
+	// Equip the caller-supplied Reader and the inline-pass
+	// BlockReader with the arena's SegmentsCreator so FindClosure
+	// returns arena-backed Segments. setSegmentsCreator type-asserts
+	// in one spot so external Reader implementations stay supported
+	// (they just don't get the arena-creator path).
+	setSegmentsCreator(reader, pa)
 	root := ast.NewDocument()
 	p.parseBlocks(root, reader, pc)
 
 	blockReader := text.NewBlockReader(reader.Source(), nil)
+	setSegmentsCreator(blockReader, pa)
 	p.walkBlock(root, func(node ast.Node) {
 		p.parseBlock(blockReader, node, pc)
 	})
@@ -1222,7 +1319,7 @@ func (p *parser) parseBlock(block text.BlockReader, parent ast.Node, pc Context)
 					savedLine, savedPosition := block.Position()
 					if i != 0 {
 						_, currentPosition := block.Position()
-						ast.MergeOrAppendTextSegment(parent, startPosition.Between(currentPosition))
+						ast.MergeOrAppendTextSegmentA(parent, startPosition.Between(currentPosition), pc.Arena())
 						_, startPosition = block.Position()
 					}
 					var inlineNode ast.Node
@@ -1267,9 +1364,9 @@ func (p *parser) parseBlock(block text.BlockReader, parent ast.Node, pc Context)
 		diff := startPosition.Between(currentPosition)
 		var text *ast.Text
 		if lineBreakFlags&(lineBreakHard|lineBreakVisible) == lineBreakHard|lineBreakVisible {
-			text = ast.NewTextSegment(diff)
+			text = pc.Arena().TextSegment(diff)
 		} else {
-			text = ast.NewTextSegment(diff.TrimRightSpace(source))
+			text = pc.Arena().TextSegment(diff.TrimRightSpace(source))
 		}
 		text.SetSoftLineBreak(lineBreakFlags&lineBreakSoft != 0)
 		text.SetHardLineBreak(lineBreakFlags&lineBreakHard != 0)

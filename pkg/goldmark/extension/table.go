@@ -324,8 +324,8 @@ func (a *tableASTTransformer) Transform(node *gast.Document, reader text.Reader,
 					for _, pos := range v.Pos {
 						if ts.Start <= pos && pos < ts.Stop {
 							segment := n.(*gast.Text).Segment
-							n1 := gast.NewRawTextSegment(segment.WithStop(pos))
-							n2 := gast.NewRawTextSegment(segment.WithStart(pos + 1))
+							n1 := pc.Arena().RawTextSegment(segment.WithStop(pos))
+							n2 := pc.Arena().RawTextSegment(segment.WithStart(pos + 1))
 							parent.InsertAfter(parent, n, n1)
 							parent.InsertAfter(parent, n1, n2)
 							parent.RemoveChild(parent, n)

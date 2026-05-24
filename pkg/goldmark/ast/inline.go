@@ -206,29 +206,63 @@ func NewRawTextSegment(v textm.Segment) *Text {
 	return t
 }
 
+// TextAllocator is the minimal contract the ast package needs from
+// an outside allocator (the arena) when creating Text nodes for the
+// MergeOr* helpers. arena.Arena satisfies it via its TextSegment
+// method; keeping the contract in `ast` avoids an import cycle
+// (arena imports ast, not the other way around).
+type TextAllocator interface {
+	TextSegment(seg textm.Segment) *Text
+}
+
 // MergeOrAppendTextSegment merges a given s into the last child of the parent if
 // it can be merged, otherwise creates a new Text node and appends it to after current
 // last child.
 func MergeOrAppendTextSegment(parent Node, s textm.Segment) {
+	MergeOrAppendTextSegmentA(parent, s, nil)
+}
+
+// MergeOrAppendTextSegmentA is the arena-aware sibling of
+// MergeOrAppendTextSegment. When alloc is non-nil the new Text node
+// is allocated through it (typically the per-parser arena) so the
+// allocation lands in arena memory rather than on the heap. A nil
+// alloc keeps the upstream allocation path.
+func MergeOrAppendTextSegmentA(parent Node, s textm.Segment, alloc TextAllocator) {
 	last := parent.LastChild()
 	t, ok := last.(*Text)
 	if ok && t.Segment.Stop == s.Start && !t.SoftLineBreak() {
 		t.Segment = t.Segment.WithStop(s.Stop)
-	} else {
-		parent.AppendChild(parent, NewTextSegment(s))
+		return
 	}
+	parent.AppendChild(parent, allocTextSegment(alloc, s))
 }
 
 // MergeOrReplaceTextSegment merges a given s into a previous sibling of the node n
 // if a previous sibling of the node n is *Text, otherwise replaces Node n with s.
 func MergeOrReplaceTextSegment(parent Node, n Node, s textm.Segment) {
+	MergeOrReplaceTextSegmentA(parent, n, s, nil)
+}
+
+// MergeOrReplaceTextSegmentA is the arena-aware sibling of
+// MergeOrReplaceTextSegment. See MergeOrAppendTextSegmentA for the
+// allocator contract.
+func MergeOrReplaceTextSegmentA(parent Node, n Node, s textm.Segment, alloc TextAllocator) {
 	prev := n.PreviousSibling()
 	if t, ok := prev.(*Text); ok && t.Segment.Stop == s.Start && !t.SoftLineBreak() {
 		t.Segment = t.Segment.WithStop(s.Stop)
 		parent.RemoveChild(parent, n)
-	} else {
-		parent.ReplaceChild(parent, n, NewTextSegment(s))
+		return
 	}
+	parent.ReplaceChild(parent, n, allocTextSegment(alloc, s))
+}
+
+// allocTextSegment is a small dispatcher used by the Merge helpers
+// so the alloc/no-alloc branch lives in one place.
+func allocTextSegment(alloc TextAllocator, s textm.Segment) *Text {
+	if alloc == nil {
+		return NewTextSegment(s)
+	}
+	return alloc.TextSegment(s)
 }
 
 // A String struct is a textual content that has a concrete value.

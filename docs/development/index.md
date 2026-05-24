@@ -52,6 +52,7 @@ Follows the [standard Go project layout][stdlayout]:
   and good/bad fixtures (e.g.
   `MDS024-paragraph-structure/`).
 - `testdata/` — shared markdown fixtures.
+- `pkg/goldmark/` — vendored goldmark fork.
 
 [stdlayout]: https://go.dev/doc/modules/layout
 

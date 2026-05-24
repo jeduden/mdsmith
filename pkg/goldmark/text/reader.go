@@ -100,6 +100,14 @@ type FindClosureOptions struct {
 	Advance bool
 }
 
+// SegmentsCreator constructs *Segments instances that can be backed
+// by an outside allocator (e.g. the arena). FindClosure consults a
+// reader's creator when one is installed; otherwise it falls back
+// to NewSegments. Implemented by *arena.Arena.
+type SegmentsCreator interface {
+	Segments() *Segments
+}
+
 type reader struct {
 	source       []byte
 	sourceLength int
@@ -108,6 +116,7 @@ type reader struct {
 	pos          Segment
 	head         int
 	lineOffset   int
+	creator      SegmentsCreator
 }
 
 // NewReader return a new Reader that can read UTF-8 bytes .
@@ -118,6 +127,15 @@ func NewReader(source []byte) Reader {
 	}
 	r.ResetPosition()
 	return r
+}
+
+// SetSegmentsCreator installs an outside Segments allocator on the
+// receiver. FindClosure consults the creator when allocating its
+// return Segments; without one it falls back to NewSegments. The
+// parser sets the creator at the top of each Parse call so
+// FindClosure-driven Segments stay in arena memory.
+func (r *reader) SetSegmentsCreator(c SegmentsCreator) {
+	r.creator = c
 }
 
 func (r *reader) FindClosure(opener, closer byte, options FindClosureOptions) (*Segments, bool) {
@@ -316,6 +334,7 @@ type blockReader struct {
 	head           int
 	last           int
 	lineOffset     int
+	creator        SegmentsCreator
 }
 
 // NewBlockReader returns a new BlockReader.
@@ -327,6 +346,12 @@ func NewBlockReader(source []byte, segments *Segments) BlockReader {
 		r.Reset(segments)
 	}
 	return r
+}
+
+// SetSegmentsCreator installs an outside Segments allocator on the
+// receiver. See reader.SetSegmentsCreator for the broader contract.
+func (r *blockReader) SetSegmentsCreator(c SegmentsCreator) {
+	r.creator = c
 }
 
 func (r *blockReader) FindClosure(opener, closer byte, options FindClosureOptions) (*Segments, bool) {
@@ -626,6 +651,17 @@ func findClosureReader(r Reader, opener, closer byte, opts FindClosureOptions) (
 	closed := false
 	orgline, orgpos := r.Position()
 	var ret *Segments
+	// Look up the reader's Segments creator once. The arena
+	// installs itself here at the top of Parse so FindClosure's
+	// Segments allocations land in arena memory (plan 198 target).
+	// A nil creator keeps the upstream allocation path.
+	var creator SegmentsCreator
+	switch impl := r.(type) {
+	case *reader:
+		creator = impl.creator
+	case *blockReader:
+		creator = impl.creator
+	}
 
 	for {
 		bs, seg := r.PeekLine()
@@ -665,7 +701,7 @@ func findClosureReader(r Reader, opener, closer byte, opts FindClosureOptions) (
 					opened--
 					if opened == 0 {
 						if ret == nil {
-							ret = NewSegments()
+							ret = newSegments(creator)
 						}
 						ret.Append(seg.WithStop(seg.Start + i))
 						r.Advance(i + 1)
@@ -686,7 +722,7 @@ func findClosureReader(r Reader, opener, closer byte, opts FindClosureOptions) (
 		}
 		r.AdvanceLine()
 		if ret == nil {
-			ret = NewSegments()
+			ret = newSegments(creator)
 		}
 		ret.Append(seg)
 	}

@@ -26,7 +26,7 @@ func (b *paragraphParser) Open(parent ast.Node, reader text.Reader, pc Context) 
 	if util.IsBlank(line) {
 		return nil, NoChildren
 	}
-	node := ast.NewParagraph()
+	node := pc.Arena().Paragraph()
 	node.Lines().Append(segment)
 	reader.AdvanceToEOL()
 	return node, NoChildren

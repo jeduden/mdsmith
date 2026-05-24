@@ -151,13 +151,13 @@ func (s *linkParser) Parse(parent ast.Node, block text.Reader, pc Context) ast.N
 	// CommonMark spec says:
 	//  > A link label can have at most 999 characters inside the square brackets.
 	if linkLabelStateLength(tlist.(*linkLabelState)) > 998 {
-		ast.MergeOrReplaceTextSegment(last.Parent(), last, last.Segment)
+		ast.MergeOrReplaceTextSegmentA(last.Parent(), last, last.Segment, pc.Arena())
 		_ = popLinkBottom(pc)
 		return nil
 	}
 
 	if !last.IsImage && s.containsLink(last) { // a link in a link text is not allowed
-		ast.MergeOrReplaceTextSegment(last.Parent(), last, last.Segment)
+		ast.MergeOrReplaceTextSegmentA(last.Parent(), last, last.Segment, pc.Arena())
 		_ = popLinkBottom(pc)
 		return nil
 	}
@@ -172,7 +172,7 @@ func (s *linkParser) Parse(parent ast.Node, block text.Reader, pc Context) ast.N
 	case '[':
 		link, hasValue = s.parseReferenceLink(parent, last, block, pc)
 		if link == nil && hasValue {
-			ast.MergeOrReplaceTextSegment(last.Parent(), last, last.Segment)
+			ast.MergeOrReplaceTextSegmentA(last.Parent(), last, last.Segment, pc.Arena())
 			_ = popLinkBottom(pc)
 			return nil
 		}
@@ -186,14 +186,14 @@ func (s *linkParser) Parse(parent ast.Node, block text.Reader, pc Context) ast.N
 		// CommonMark spec says:
 		//  > A link label can have at most 999 characters inside the square brackets.
 		if len(maybeReference) > 999 {
-			ast.MergeOrReplaceTextSegment(last.Parent(), last, last.Segment)
+			ast.MergeOrReplaceTextSegmentA(last.Parent(), last, last.Segment, pc.Arena())
 			_ = popLinkBottom(pc)
 			return nil
 		}
 
 		ref, ok := pc.Reference(util.ToLinkReference(maybeReference))
 		if !ok {
-			ast.MergeOrReplaceTextSegment(last.Parent(), last, last.Segment)
+			ast.MergeOrReplaceTextSegmentA(last.Parent(), last, last.Segment, pc.Arena())
 			_ = popLinkBottom(pc)
 			return nil
 		}
@@ -452,7 +452,7 @@ func (s *linkParser) CloseBlock(parent ast.Node, block text.Reader, pc Context) 
 	for s := tlist.(*linkLabelState); s != nil; {
 		next := s.Next
 		removeLinkLabelState(pc, s)
-		s.Parent().ReplaceChild(s.Parent(), s, ast.NewTextSegment(s.Segment))
+		s.Parent().ReplaceChild(s.Parent(), s, pc.Arena().TextSegment(s.Segment))
 		s = next
 	}
 }

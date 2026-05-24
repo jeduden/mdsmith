@@ -36,7 +36,7 @@ func (s *autoLinkParser) Parse(parent ast.Node, block text.Reader, pc Context) a
 	if stop >= len(line) || line[stop] != '>' {
 		return nil
 	}
-	value := ast.NewTextSegment(text.NewSegment(segment.Start+1, segment.Start+stop))
+	value := pc.Arena().TextSegment(text.NewSegment(segment.Start+1, segment.Start+stop))
 	block.Advance(stop + 1)
 	return ast.NewAutoLink(typ, value)
 }

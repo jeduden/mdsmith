@@ -55,7 +55,7 @@ func (b *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc Con
 			if fenceChar == '`' && bytes.IndexByte(value, '`') > -1 {
 				return nil, NoChildren
 			} else if infoStart != infoStop {
-				info = ast.NewTextSegment(text.NewSegment(infoStart, infoStop))
+				info = pc.Arena().TextSegment(text.NewSegment(infoStart, infoStop))
 			}
 		}
 	}

@@ -124,7 +124,7 @@ footer: |
 | 195 | 🔳     | opus   | [Enforce the ≤ 10 allocs/op per-rule budget across every registered rule](plan/195_per-rule-alloc-budget.md)                            |
 | 196 | ✅     | opus   | [Lazy SectionParagraph text — defer ExtractPlainText until a caller asks](plan/196_lazy-section-paragraph-text.md)                      |
 | 197 | ✅     | opus   | [PoC — review goldmark's allocation architecture, then pool the best lever](plan/197_fork-goldmark-for-allocs.md)                       |
-| 198 | 🔲     | opus   | [Fork goldmark with a per-parse arena for the four structural allocators](plan/198_goldmark-arena-fork.md)                              |
+| 198 | ✅     | opus   | [Fork goldmark with a per-parse arena for the four structural allocators](plan/198_goldmark-arena-fork.md)                              |
 | 200 | ✅     |        | [Move docs/ embed out of internal/lsp/hover.go](plan/200_arch-fix-hover-embed.md)                                                       |
 | 201 | ✅     |        | [Rename internal/testutil to internal/testsymlink](plan/201_arch-fix-testutil-rename.md)                                                |
 | 202 | 🔲     |        | [Split cmd/mdsmith/main.go into per-subcommand files](plan/202_arch-fix-main-split.md)                                                  |

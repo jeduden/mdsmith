@@ -248,9 +248,19 @@ jobs:
       - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version-file: go.mod
-      - name: Run nested-module tests
+      - name: Run nested-module tests (arena path)
         working-directory: pkg/goldmark
         run: go test ./...
+      # Plan 198: arena vs non-arena A/B. Re-run the fork's tests
+      # with the `goldmark_upstream` tag so newArenaForParse returns
+      # nil and every allocator falls back to the upstream
+      # constructor. Both paths must stay green — the equivalence
+      # harness in equivalence_test.go also diffs them in-process
+      # via parser.WithNoArena(), but this CI axis catches a
+      # divergence that only surfaces under one build tag.
+      - name: Run nested-module tests (upstream A/B path)
+        working-directory: pkg/goldmark
+        run: go test -tags goldmark_upstream ./...
 
   bench-fragments:
     runs-on: ubuntu-latest

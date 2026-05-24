@@ -63,9 +63,9 @@ var emptyComment2 = []byte("<!--->")
 var openComment = []byte("<!--")
 var closeComment = []byte("-->")
 
-func (s *rawHTMLParser) parseComment(block text.Reader, _ Context) ast.Node {
+func (s *rawHTMLParser) parseComment(block text.Reader, pc Context) ast.Node {
 	savedLine, savedSegment := block.Position()
-	node := ast.NewRawHTML()
+	node := pc.Arena().RawHTML()
 	line, segment := block.PeekLine()
 	if bytes.HasPrefix(line, emptyComment1) {
 		node.Segments.Append(segment.WithStop(segment.Start + len(emptyComment1)))
@@ -98,9 +98,9 @@ func (s *rawHTMLParser) parseComment(block text.Reader, _ Context) ast.Node {
 	return nil
 }
 
-func (s *rawHTMLParser) parseUntil(block text.Reader, closer []byte, _ Context) ast.Node {
+func (s *rawHTMLParser) parseUntil(block text.Reader, closer []byte, pc Context) ast.Node {
 	savedLine, savedSegment := block.Position()
-	node := ast.NewRawHTML()
+	node := pc.Arena().RawHTML()
 	for {
 		line, segment := block.PeekLine()
 		if line == nil {
@@ -119,10 +119,10 @@ func (s *rawHTMLParser) parseUntil(block text.Reader, closer []byte, _ Context) 
 	return nil
 }
 
-func (s *rawHTMLParser) parseMultiLineRegexp(reg *regexp.Regexp, block text.Reader, _ Context) ast.Node {
+func (s *rawHTMLParser) parseMultiLineRegexp(reg *regexp.Regexp, block text.Reader, pc Context) ast.Node {
 	sline, ssegment := block.Position()
 	if block.Match(reg) {
-		node := ast.NewRawHTML()
+		node := pc.Arena().RawHTML()
 		eline, esegment := block.Position()
 		block.SetPosition(sline, ssegment)
 		for {

@@ -18,6 +18,20 @@ library. No code here imports `internal/lint` or
 any `internal/` package. The dependency points
 the other way.
 
+The goldmark dependency itself is a vendored
+fork at `pkg/goldmark/`. A `replace` directive
+in the root `go.mod` wires it in. Plan 197 reuses
+one `text.BlockReader` per parser. Plan 198 adds
+a per-parse slab arena absorbing the four
+structural allocators (text, paragraph,
+segments, segments backing).
+
+A `parser.WithNoArena()` option and the
+`goldmark_upstream` build tag both turn the arena
+off. The equivalence harness in `pkg/goldmark/`
+and the `goldmark-fork-test` CI job diff both
+paths.
+
 ## Why it exists
 
 Plan 163 extracted this package. Two problems

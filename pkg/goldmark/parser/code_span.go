@@ -32,7 +32,7 @@ func (s *codeSpanParser) Parse(parent ast.Node, block text.Reader, pc Context) a
 		line, segment := block.PeekLine()
 		if line == nil {
 			block.SetPosition(l, pos)
-			return ast.NewTextSegment(startSegment.WithStop(startSegment.Start + opener))
+			return pc.Arena().TextSegment(startSegment.WithStop(startSegment.Start + opener))
 		}
 		for i := 0; i < len(line); i++ {
 			c := line[i]
@@ -44,14 +44,14 @@ func (s *codeSpanParser) Parse(parent ast.Node, block text.Reader, pc Context) a
 				if closure == opener && (i >= len(line) || line[i] != '`') {
 					segment = segment.WithStop(segment.Start + i - closure)
 					if !segment.IsEmpty() {
-						node.AppendChild(node, ast.NewRawTextSegment(segment))
+						node.AppendChild(node, pc.Arena().RawTextSegment(segment))
 					}
 					block.Advance(i)
 					goto end
 				}
 			}
 		}
-		node.AppendChild(node, ast.NewRawTextSegment(segment))
+		node.AppendChild(node, pc.Arena().RawTextSegment(segment))
 		block.AdvanceLine()
 	}
 end:
