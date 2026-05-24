@@ -1163,11 +1163,11 @@ func (s *Server) computeCodeActions(
 	return actions
 }
 
-// appendQuickFixActions computes per-rule quick-fix actions and appends
-// them to actions. Each rule's fix.SourceWithRules call is deduped: one
-// pass per distinct rule regardless of how many diagnostics carry it.
-// The same *workspaceEdit pointer is reused across actions for the same
-// rule so the fix only runs once even on noisy files.
+// appendQuickFixActions builds one codeAction per diagnostic and appends
+// them to actions. The underlying fix pass is deduped per rule: only one
+// fix.SourceWithRules call fires per distinct rule regardless of how many
+// diagnostics it covers. The same *workspaceEdit is shared across all
+// actions for the same rule so the fix only runs once even on noisy files.
 func (s *Server) appendQuickFixActions(
 	actions []codeAction,
 	p codeActionParams, doc *document, cfg *config.Config, root string,

@@ -115,7 +115,8 @@ any fix lands. Both capabilities below must appear in
 - `workspace.workspaceEdit.documentChanges`
 - `workspace.workspaceEdit.changeAnnotationSupport`
 
-When both are present, edits use `AnnotatedTextEdit` with
+When both are present, edits use `AnnotatedTextEdit`;
+the corresponding `changeAnnotation` entry is flagged
 `needsConfirmation: true` (LSP 3.16).
 
 Annotation IDs:
