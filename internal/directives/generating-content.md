@@ -37,8 +37,8 @@ glob with `!` to exclude.
 ## `<?include?>`
 
 Splices another file's content into the current
-file. The included body is regenerated whenever the
-source changes:
+file. `mdsmith fix` regenerates the body. `mdsmith
+check` reports drift on out-of-date copies:
 
 ```markdown
 <?include

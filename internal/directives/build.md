@@ -9,7 +9,8 @@ summary: >-
 Declares a build artifact — a file produced by a
 recipe configured in `build.recipes`. `mdsmith fix`
 renders the section body from the recipe
-`body-template`. No external tool runs at lint time.
+`body-template`. mdsmith never executes the recipe
+itself; MDS040 statically checks recipe commands.
 
 ```text
 <?build
