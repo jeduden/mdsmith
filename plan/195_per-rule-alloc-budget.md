@@ -220,14 +220,21 @@ reference it.
     allocs). Switching to `f.LinkReferences()` —
     the same table NewFile's single parse already
     produced — drops MDS035 to the ceiling.
-15. [ ] Close the MDS020 schema-parse parity gap. Add
-    a `RunCache.ParsedSchema(absPath, build)` slot.
-    That slot parses each schema file once per
-    `engine.Run`. Add a `RunCache.CompiledCUE` slot
-    too. That one compiles each unique schema CUE
-    expression once. The MDS020 hot path
-    (parseSchema + CompileString)
-    drops from per-host-file to per-schema-source.
+15. [x] Closed the MDS020 schema-parse parity gap.
+    Added `RunCache.ParsedSchema(absPath, build)` and
+    `RunCache.CompiledCUE(source, build)` slots so each
+    schema parses once and each unique CUE source
+    compiles once per `engine.Run`. MDS020's
+    parseSchema call sites in Check/Fix/bodySync now go
+    through `cachedParseSchema(f, ...)`; the inner
+    `validateCUESchemaSyntax` routes through
+    `RunCache.CompiledCUE` via the cache-aware
+    `parseSchemaFrontMatter` and
+    `validateCUESchemaSyntaxWith` helpers. `mdsmith
+    check .` drops from ~490 ms to ~460 ms (5–7%) on
+    the mdsmith repo; `BenchmarkCheckCorpusLarge` is
+    flat at p95 = 186 ms (the corpus has no schemas
+    and was never on the hot path).
 16. [x] Re-run `BenchmarkCheckCorpusLarge` to confirm
     no engine-corpus regression. Latest run lands at
     p95 = 188 ms / 314 µs per file — well under the
@@ -276,14 +283,23 @@ slots.
 ## Acceptance Criteria
 
 - [ ] `TestPerRuleAllocBudget` passes for every
-      registered rule (all sub-tests green).
+      registered rule (all sub-tests green). Open
+      because tasks 2/3 (MDS025/MDS026 cells-as-byte-
+      offsets refactor) are scheduled as separate
+      work, and tasks 6/7 (MDS053/MDS054 deeper map
+      fixes) are deferred to plan 198.
 - [ ] `BenchmarkPerRuleAllocBudget` lists every rule
-      at ≤ 10 allocs/op.
-- [ ] `BenchmarkCheckCorpusLarge` stays within its
-      existing 12 s p95 budget.
-- [ ] Each fix has a unit test pinning the new
+      at ≤ 10 allocs/op. Same blockers as above.
+- [x] `BenchmarkCheckCorpusLarge` stays within its
+      existing 12 s p95 budget. Latest run lands at
+      p95 = 186 ms (task 15's RunCache wiring), down
+      to ~460 ms on the real mdsmith repo from ~490 ms
+      pre-task-15.
+- [x] Each fix has a unit test pinning the new
       behaviour (test pyramid: unit + the integration
-      gate).
-- [ ] `mdsmith check .` passes.
-- [ ] `go test ./...` and `go test -race ./...` pass.
-- [ ] `go tool golangci-lint run` reports no issues.
+      gate). Task 15's RunCache slots are covered by
+      `internal/lint/runcache_test.go` and
+      `internal/rules/requiredstructure/runcache_wiring_test.go`.
+- [x] `mdsmith check .` passes.
+- [x] `go test ./...` and `go test -race ./...` pass.
+- [x] `go tool golangci-lint run` reports no issues.
