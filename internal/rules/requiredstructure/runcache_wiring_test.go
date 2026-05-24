@@ -275,3 +275,107 @@ func TestRule_FragmentInvalidationEvictsParsedSchema(t *testing.T) {
 func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
 }
+
+// TestAbsoluteIncludes_SkipsEmptyEntries pins that a "" include
+// (defensive: a malformed parse path could surface one) is dropped
+// rather than carried into the reverse-index where it would cause
+// every Invalidate("") to look like a real eviction.
+func TestAbsoluteIncludes_SkipsEmptyEntries(t *testing.T) {
+	got := absoluteIncludes("/abs/schema.md", []string{"", "frag.md"})
+	require.Len(t, got, 1)
+	assert.Equal(t, filepath.Clean("/abs/frag.md"), got[0])
+}
+
+// TestAbsoluteIncludes_PassesAbsolutePathsThrough pins that already-
+// absolute include paths are kept as-is (only Clean'd) rather than
+// joined onto the parent dir.
+func TestAbsoluteIncludes_PassesAbsolutePathsThrough(t *testing.T) {
+	got := absoluteIncludes("/abs/schema.md", []string{"/other/abs/frag.md"})
+	require.Len(t, got, 1)
+	assert.Equal(t, filepath.Clean("/other/abs/frag.md"), got[0])
+}
+
+// TestAbsoluteIncludes_NilWhenEmpty pins the early return on an
+// empty input slice — the call must return nil so the cache
+// metadata's include field stays nil rather than allocating a
+// zero-length slice every parse.
+func TestAbsoluteIncludes_NilWhenEmpty(t *testing.T) {
+	assert.Nil(t, absoluteIncludes("/abs/schema.md", nil))
+	assert.Nil(t, absoluteIncludes("/abs/schema.md", []string{}))
+}
+
+// TestAbsoluteIncludes_NonAbsoluteParentCleansRelative pins the
+// struct-literal test fallback: when parentAbsPath isn't absolute,
+// the helper still emits Clean'd entries so the reverse-index key
+// is deterministic.
+func TestAbsoluteIncludes_NonAbsoluteParentCleansRelative(t *testing.T) {
+	got := absoluteIncludes("schema.md", []string{"./frag.md"})
+	require.Len(t, got, 1)
+	assert.Equal(t, filepath.Clean("frag.md"), got[0])
+}
+
+// TestSchemaCUESources_NilSchemaReturnsNil pins the nil-safety
+// guard. The cache wrapper treats nil-sources as "no CompiledCUE
+// entries to invalidate", so a parse failure that returns no
+// schema must not crash the metadata extractor.
+func TestSchemaCUESources_NilSchemaReturnsNil(t *testing.T) {
+	assert.Nil(t, schemaCUESources(nil))
+}
+
+// TestSchemaCUESources_EmptyFrontMatterCUEReturnsNil pins the
+// no-CUE branch. A schema without a frontmatter CUE expression
+// produces no compiled CUE sources to track.
+func TestSchemaCUESources_EmptyFrontMatterCUEReturnsNil(t *testing.T) {
+	assert.Nil(t, schemaCUESources(&parsedSchema{}))
+}
+
+// TestSchemaCUESources_ReturnsFrontMatterCUE pins the happy path
+// — a schema with a frontmatter CUE expression surfaces it as the
+// single-element source list the cache uses to track downstream
+// CompiledCUE entries.
+func TestSchemaCUESources_ReturnsFrontMatterCUE(t *testing.T) {
+	const expr = `{id: string, status: "✅" | "🔳"}`
+	sch := &parsedSchema{Config: schemaConfig{FrontMatterCUE: expr}}
+	require.Equal(t, []string{expr}, schemaCUESources(sch))
+}
+
+// TestAbsSchemaCacheKey_EmptySchemaPathReturnsEmpty pins the empty
+// short-circuit so an inline-schema host file (no schemaPath)
+// bypasses the cache without computing a bogus key.
+func TestAbsSchemaCacheKey_EmptySchemaPathReturnsEmpty(t *testing.T) {
+	f := &lint.File{RootDir: "/abs/root"}
+	assert.Empty(t, absSchemaCacheKey(f, ""))
+}
+
+// TestAbsSchemaCacheKey_AbsolutePathReturnsCleanedAbs pins the
+// already-absolute branch — an LSP request can pass an absolute
+// schema path directly and the key must match the LSP's
+// Invalidate(absPath) calls byte-for-byte.
+func TestAbsSchemaCacheKey_AbsolutePathReturnsCleanedAbs(t *testing.T) {
+	f := &lint.File{RootDir: "/abs/root"}
+	assert.Equal(t, filepath.Clean("/abs/schema.md"),
+		absSchemaCacheKey(f, "/abs/schema.md"))
+}
+
+// TestAbsSchemaCacheKey_NoRootDirReturnsEmpty pins the no-RootDir
+// branch — a unit-test File with a relative schema path and no
+// root has no stable identity, so the cache must be bypassed.
+func TestAbsSchemaCacheKey_NoRootDirReturnsEmpty(t *testing.T) {
+	f := &lint.File{}
+	assert.Empty(t, absSchemaCacheKey(f, "schema.md"))
+}
+
+// TestFileMaxBytes_NilFile pins the nil-safety fallback to 0
+// (parseSchema's unbounded convention) so callers without a File
+// context still parse without an arbitrary cap.
+func TestFileMaxBytes_NilFile(t *testing.T) {
+	assert.Equal(t, int64(0), fileMaxBytes(nil))
+}
+
+// TestFileMaxBytes_NonNilReturnsMaxInputBytes pins the happy path
+// reading from f.MaxInputBytes — guards against a future refactor
+// that adds another field path without updating callers.
+func TestFileMaxBytes_NonNilReturnsMaxInputBytes(t *testing.T) {
+	f := &lint.File{MaxInputBytes: 4096}
+	assert.Equal(t, int64(4096), fileMaxBytes(f))
+}

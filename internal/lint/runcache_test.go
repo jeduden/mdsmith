@@ -658,3 +658,39 @@ func TestRunCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
 			"dependent set must be gone; the second ParsedSchema(schemaA) "+
 			"rebuild is the cumulative second call")
 }
+
+// TestRunCache_EmptyFragmentSkippedBothDirections pins the empty-string
+// guard on both reverse-index sides. A schema whose include list
+// carries an empty entry (e.g. a parse path that produced a blank
+// before normalisation) must not register a back-pointer under the
+// empty key, and Invalidate must skip the same empty entry when tearing
+// back-pointers down. Without the guard, the schemaDependents map
+// would grow a "" key and Invalidate("") would later evict everything.
+func TestRunCache_EmptyFragmentSkippedBothDirections(t *testing.T) {
+	c := NewRunCache()
+	const schemaA = "/abs/schemaA.md"
+	const fragmentB = "/abs/fragmentB.md"
+
+	_ = c.ParsedSchema(schemaA, func() any {
+		return testSchemaMeta{includes: []string{"", fragmentB}}
+	})
+
+	// Invalidate("") must NOT find schemaA in any dependent set —
+	// the empty include was skipped on registration, so no
+	// back-pointer exists. A rebuild on schemaA proves Invalidate("")
+	// did not evict it.
+	c.Invalidate("")
+	var rebuilds int32
+	_ = c.ParsedSchema(schemaA, func() any {
+		atomic.AddInt32(&rebuilds, 1)
+		return testSchemaMeta{includes: []string{"", fragmentB}}
+	})
+	assert.Equal(t, int32(0), atomic.LoadInt32(&rebuilds),
+		"Invalidate(\"\") must be a no-op: the empty include never "+
+			"registered a back-pointer in the first place")
+
+	// Invalidate(schemaA) walks meta.SchemaIncludes() — including
+	// the "" entry — and must skip it cleanly. No panic, fragmentB's
+	// back-pointer is removed.
+	c.Invalidate(schemaA)
+}

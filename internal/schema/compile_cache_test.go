@@ -66,3 +66,13 @@ func TestCachedCompile_ConcurrentSingleBuild(t *testing.T) {
 			"all concurrent callers must observe the same compiled-CUE wrapper")
 	}
 }
+
+// TestCompiledCUE_NilReceiverErrIsNil pins the nil-safety branch.
+// The frontmatter validator inspects CompiledCUE.Err() before the
+// Unify; a nil wrapper (which can surface from a cache miss path
+// when the build returns a typed-nil) must report no error rather
+// than panic.
+func TestCompiledCUE_NilReceiverErrIsNil(t *testing.T) {
+	var c *CompiledCUE
+	assert.NoError(t, c.Err())
+}
