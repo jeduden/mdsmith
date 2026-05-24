@@ -352,6 +352,8 @@ func extendFrontmatter(out, parent, child *Schema) error {
 	out.Frontmatter = map[string]string{}
 	out.FrontmatterLines = mergeFrontmatterLines(
 		parent.FrontmatterLines, child.FrontmatterLines)
+	out.FrontmatterMeta = mergeFrontmatterMeta(
+		parent.FrontmatterMeta, child.FrontmatterMeta)
 
 	for k, expr := range parent.Frontmatter {
 		out.Frontmatter[k] = expr
@@ -379,6 +381,26 @@ func extendFrontmatter(out, parent, child *Schema) error {
 		out.Frontmatter[k] = unified
 	}
 	return nil
+}
+
+// mergeFrontmatterMeta merges parent and child deprecation metadata
+// for plan 136. Child-declared metadata wins on key collisions so a
+// kind extending its parent can re-deprecate a field with a fresh
+// message (or undo the parent's deprecation by setting
+// `deprecated: false`). Parent-only and child-only entries pass
+// through unchanged.
+func mergeFrontmatterMeta(parent, child map[string]FieldMeta) map[string]FieldMeta {
+	if len(parent) == 0 && len(child) == 0 {
+		return nil
+	}
+	out := map[string]FieldMeta{}
+	for k, v := range parent {
+		out[k] = v
+	}
+	for k, v := range child {
+		out[k] = v
+	}
+	return out
 }
 
 // mergeFrontmatterLines builds a per-key source-line map giving

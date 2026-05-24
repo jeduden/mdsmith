@@ -55,6 +55,25 @@ type SchemaDiagnostic struct {
 	// without parsing the message. Examples: "plan/proto.md:4",
 	// "inline kind schema".
 	SchemaRef string
+
+	// Deprecated marks a diagnostic raised because the named field
+	// carries a `deprecated: true` flag in its schema. The renderer
+	// uses the deprecated form ("deprecated field") instead of the
+	// got/expected pair. Plan 136.
+	Deprecated bool
+
+	// ReplacedBy carries the schema's `replaced-by:` hint for a
+	// deprecated field. When set and DeprecationMessage is empty,
+	// Format() renders the canonical "replaced by `name`" sentence
+	// so the diagnostic still points the reader at the new field.
+	ReplacedBy string
+
+	// DeprecationMessage carries the schema's `message:` payload for
+	// a deprecated field. When non-empty it wins over ReplacedBy for
+	// the human-facing line; ReplacedBy still rides on the
+	// lint.Diagnostic so tooling can route the change without
+	// parsing the message.
+	DeprecationMessage string
 }
 
 // Format renders the diagnostic as the two-line message described
@@ -62,7 +81,16 @@ type SchemaDiagnostic struct {
 // optional hint follows in parentheses on its own indented line,
 // and the schema reference appears on a trailing line so it stays
 // greppable without parsing the message body.
+//
+// When Deprecated is true the renderer switches to plan 136's
+// deprecation shape: the first line reads
+// "<field>: deprecated field" optionally followed by
+// "; replaced by `<name>`" when ReplacedBy is set, then an
+// optional message line, then the schema reference.
 func (d SchemaDiagnostic) Format() string {
+	if d.Deprecated {
+		return d.formatDeprecated()
+	}
 	var b strings.Builder
 	b.WriteString(d.Field)
 	if d.Actual != "" {
@@ -81,6 +109,32 @@ func (d SchemaDiagnostic) Format() string {
 		b.WriteString("\n  (")
 		b.WriteString(d.Hint)
 		b.WriteString(")")
+	}
+	if d.SchemaRef != "" {
+		b.WriteString("\nschema: ")
+		b.WriteString(d.SchemaRef)
+	}
+	return b.String()
+}
+
+// formatDeprecated renders the deprecation form. The field name
+// leads the message so editor tooltips and CI log scans share the
+// same anchor as the standard (got/expected) shape. `message:`
+// wins over `replaced-by:` for the human-facing line per plan
+// 136; the structured ReplacedBy still rides on the diagnostic so
+// LSP clients can route on it.
+func (d SchemaDiagnostic) formatDeprecated() string {
+	var b strings.Builder
+	b.WriteString(d.Field)
+	b.WriteString(": deprecated field")
+	if d.DeprecationMessage == "" && d.ReplacedBy != "" {
+		b.WriteString("; replaced by `")
+		b.WriteString(d.ReplacedBy)
+		b.WriteString("`")
+	}
+	if d.DeprecationMessage != "" {
+		b.WriteString("\n  message: ")
+		b.WriteString(d.DeprecationMessage)
 	}
 	if d.SchemaRef != "" {
 		b.WriteString("\nschema: ")

@@ -217,7 +217,21 @@ func parseFileFrontmatter(prefix []byte, sch *Schema) (string, error) {
 	if len(raw) > 0 {
 		sch.Frontmatter = make(map[string]string, len(raw))
 		for k, v := range raw {
-			expr, err := frontmatterExpr(v)
+			expr, meta, isMeta, err := ExtractFieldMeta(v)
+			if err != nil {
+				return "", fmt.Errorf("schema frontmatter %q: %w", k, err)
+			}
+			if isMeta {
+				sch.Frontmatter[k] = expr
+				if !meta.IsZero() {
+					if sch.FrontmatterMeta == nil {
+						sch.FrontmatterMeta = make(map[string]FieldMeta)
+					}
+					sch.FrontmatterMeta[k] = meta
+				}
+				continue
+			}
+			expr, err = frontmatterExpr(v)
 			if err != nil {
 				return "", fmt.Errorf("schema frontmatter %q: %w", k, err)
 			}

@@ -80,11 +80,11 @@ file: common/acceptance-criteria.md
 Cycle detection prevents circular includes.
 Max include depth is 10.
 
-### Optional fields
+### Optional and deprecated fields
 
 Append `?` to a schema front matter key to make it
-optional. The field may be absent in the document,
-but if present it must satisfy the type constraint:
+optional. To deprecate a field, swap its value for
+`{type: ..., deprecated: true}` (see file-kinds.md).
 
 ```yaml
 name: 'string & != ""'

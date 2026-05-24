@@ -48,6 +48,16 @@ type Schema struct {
 	// preserved).
 	FrontmatterLines map[string]int
 
+	// FrontmatterMeta carries optional per-field metadata that
+	// accompanies a constraint — today the deprecation flag and
+	// its `message:` / `replaced-by:` hints (plan 136). The map
+	// uses the same key form as Frontmatter (including any
+	// trailing "?" optional-field marker) so lookups stay aligned
+	// across the two maps. A field that omits metadata has no
+	// entry here; the map is nil when no field declares any
+	// metadata.
+	FrontmatterMeta map[string]FieldMeta
+
 	// Filename is a glob the document basename must match. Empty
 	// means no filename constraint. Authors set it as a top-level
 	// `filename:` key on the schema (plan 156 dropped the
@@ -99,6 +109,29 @@ type Schema struct {
 	// fixer is triggered, but never writes the file itself. See
 	// plan 143.
 	Index *IndexSpec
+}
+
+// FieldMeta carries optional schema-side metadata for a single
+// frontmatter field. The fields below populate plan 136's
+// deprecation diagnostic: when Deprecated is true, the validator
+// emits a Warning-severity SchemaDiagnostic whenever the field
+// appears in a document's front matter. Message and ReplacedBy
+// drive the wording — `message:` wins for the human-facing line,
+// while `replaced-by:` is exposed in the structured diagnostic so
+// LSP clients and CI tools can route the change without parsing
+// the message body.
+type FieldMeta struct {
+	Deprecated bool
+	Message    string
+	ReplacedBy string
+}
+
+// IsZero reports whether m carries no metadata. Parsers and
+// composers use this to skip writing empty entries into
+// Schema.FrontmatterMeta so the absence of metadata stays
+// observable as a missing map key.
+func (m FieldMeta) IsZero() bool {
+	return !m.Deprecated && m.Message == "" && m.ReplacedBy == ""
 }
 
 // CrossRef declares one text-pattern → slug-template binding. The

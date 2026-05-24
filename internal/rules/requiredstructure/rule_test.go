@@ -1260,7 +1260,7 @@ func TestCheck_FrontMatterAnchorRejected(t *testing.T) {
 
 func TestDeriveFrontMatterCUE_AnchorRejected(t *testing.T) {
 	yml := []byte("base: &base\n  id: 1\n")
-	_, _, err := deriveFrontMatterCUE(yml)
+	_, _, _, err := deriveFrontMatterCUE(yml)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
 }
@@ -1653,7 +1653,7 @@ func TestCheck_OutOfOrderAlsoReportsLevelMismatch(t *testing.T) {
 // deriveFrontMatterCUE: empty map → return "", nil
 func TestDeriveFrontMatterCUE_EmptyMap(t *testing.T) {
 	// "{}" unmarshals to an empty map → len(raw)==0 branch.
-	result, _, err := deriveFrontMatterCUE([]byte("{}\n"))
+	result, _, _, err := deriveFrontMatterCUE([]byte("{}\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "", result)
 }
@@ -1661,7 +1661,7 @@ func TestDeriveFrontMatterCUE_EmptyMap(t *testing.T) {
 // deriveFrontMatterCUE: cueExprForMap error via null YAML value
 func TestDeriveFrontMatterCUE_NullValueError(t *testing.T) {
 	// YAML null (represented as nil in Go) is not a supported schema type.
-	_, _, err := deriveFrontMatterCUE([]byte("key: ~\n"))
+	_, _, _, err := deriveFrontMatterCUE([]byte("key: ~\n"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parsing schema frontmatter constraints")
 }

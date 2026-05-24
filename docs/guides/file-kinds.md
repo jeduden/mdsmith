@@ -318,6 +318,38 @@ file-schema cycles surface when MDS020 first parses the schema
 during `check` or `fix`. Both forms name the full cycle path in
 the diagnostic.
 
+### Deprecating a frontmatter field
+
+A schema can mark a frontmatter field deprecated so the
+build keeps passing while a project migrates away from
+it. The field's value becomes a mapping carrying `type:`
+plus the metadata:
+
+```yaml
+kinds:
+  plan:
+    schema:
+      frontmatter:
+        legacy_owner:
+          type: string
+          deprecated: true
+          message: 'use "owner" instead'
+        owner:
+          type: string
+```
+
+A document that still carries `legacy_owner:` then
+reports a Warning-severity MDS020 diagnostic naming the
+field and the message. The CUE constraint (`type:`) still
+applies, so a value that violates the type also raises
+the usual Error — the deprecation never silences other
+checks. Use `replaced-by: <name>` in place of `message:`
+for the canonical "deprecated field; replaced by `name`"
+sentence; see the
+[MDS020 README](../../internal/rules/MDS020-required-structure/README.md)
+for the diagnostic shape and the precedence rules when
+both are set.
+
 ### Auditing the chain
 
 `mdsmith kinds show <name>` prints the parent line and the

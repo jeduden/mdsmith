@@ -871,6 +871,7 @@ func (r *Rule) checkSingleFileSchemaFromData(
 		fmSch := &schema.Schema{
 			Frontmatter:      sch.Config.Frontmatter,
 			FrontmatterLines: sch.Config.FrontmatterLines,
+			FrontmatterMeta:  sch.Config.FrontmatterMeta,
 			Source:           r.Schema,
 		}
 		diags = append(diags, schema.ValidateFrontmatterDiags(f, fmSch, docFMRaw, makeDiag)...)
@@ -1064,6 +1065,14 @@ type schemaConfig struct {
 	// yaml.Node based parser populates this; the legacy
 	// yaml.Unmarshal path leaves it empty.
 	FrontmatterLines map[string]int
+
+	// FrontmatterMeta captures plan 136's deprecation metadata when
+	// the schema declares a field in the map form (`type:` +
+	// `deprecated:` siblings). The key shape mirrors Frontmatter
+	// (with the optional "?" suffix preserved) so the validator
+	// can look up metadata using the same key it sees on the CUE
+	// constraint.
+	FrontmatterMeta map[string]schema.FieldMeta
 }
 
 // schemaHeading represents a required heading from the schema.
@@ -1103,12 +1112,13 @@ func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, 
 		return cfg, nil
 	}
 	yamlBytes := extractYAML(prefix)
-	derivedSchema, perKey, err := deriveFrontMatterCUE(yamlBytes)
+	derivedSchema, perKey, meta, err := deriveFrontMatterCUE(yamlBytes)
 	if err != nil {
 		return cfg, err
 	}
 	cfg.FrontMatterCUE = derivedSchema
 	cfg.Frontmatter = perKey
+	cfg.FrontmatterMeta = meta
 	if err := validateCUESchemaSyntaxWith(cache, cfg.FrontMatterCUE); err != nil {
 		return cfg, err
 	}
@@ -1174,10 +1184,10 @@ func extractRequireDirective(f *lint.File) (string, error) {
 	return filenamePattern, nil
 }
 
-func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, error) {
+func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, map[string]schema.FieldMeta, error) {
 	var raw map[string]any
 	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
-		return "", nil, fmt.Errorf("parsing schema frontmatter: %w", err)
+		return "", nil, nil, fmt.Errorf("parsing schema frontmatter: %w", err)
 	}
 	// `extends:` is a reserved schema-engine directive (plan 135),
 	// not a document-frontmatter constraint. Strip it before the
@@ -1185,12 +1195,32 @@ func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, error) {
 	// require documents to carry the literal `extends:` value.
 	delete(raw, "extends")
 	if len(raw) == 0 {
-		return "", nil, nil
+		return "", nil, nil, nil
+	}
+
+	// Detach plan-136 metadata-form values so the CUE expression
+	// only sees the embedded `type:` constraint. Without this the
+	// `cueExprForMap` walker would emit the whole metadata map as a
+	// struct constraint and reject any document value that isn't a
+	// matching mapping.
+	meta := map[string]schema.FieldMeta{}
+	for k, v := range raw {
+		expr, fm, isMeta, err := schema.ExtractFieldMeta(v)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("schema frontmatter %q: %w", k, err)
+		}
+		if !isMeta {
+			continue
+		}
+		raw[k] = expr
+		if !fm.IsZero() {
+			meta[k] = fm
+		}
 	}
 
 	expr, err := cueExprForMap(raw)
 	if err != nil {
-		return "", nil, fmt.Errorf("parsing schema frontmatter constraints: %w", err)
+		return "", nil, nil, fmt.Errorf("parsing schema frontmatter constraints: %w", err)
 	}
 	perKey := make(map[string]string, len(raw))
 	for k, v := range raw {
@@ -1200,7 +1230,10 @@ func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, error) {
 		}
 		perKey[k] = ke
 	}
-	return "close(" + expr + ")", perKey, nil
+	if len(meta) == 0 {
+		meta = nil
+	}
+	return "close(" + expr + ")", perKey, meta, nil
 }
 
 func cueExprForMap(m map[string]any) (string, error) {

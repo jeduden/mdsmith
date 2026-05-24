@@ -34,6 +34,18 @@ type Diagnostic struct {
 	// Explanation, when non-nil, attaches per-leaf provenance for the
 	// rule that fired. Populated by the CLI when --explain is on.
 	Explanation *Explanation
+
+	// Deprecated reports whether the diagnostic flags a schema field
+	// that has been marked deprecated. LSP clients and CI scripts read
+	// this flag to route the diagnostic without parsing the message
+	// text. Populated by MDS020 when a deprecated frontmatter field is
+	// present in a document; zero on every other diagnostic.
+	Deprecated bool
+
+	// ReplacedBy carries the schema's `replaced-by:` hint when the
+	// deprecation declares one. Empty on non-deprecation diagnostics
+	// and on deprecation diagnostics that only set `message:`.
+	ReplacedBy string
 }
 
 // Explanation describes the provenance of a rule's effective config at

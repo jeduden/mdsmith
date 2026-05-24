@@ -120,6 +120,16 @@ func composeFrontmatter(out *Schema, schemas []*Schema) {
 			}
 			out.Frontmatter[k] = "(" + existing + ") & (" + expr + ")"
 		}
+		for k, meta := range s.FrontmatterMeta {
+			if out.FrontmatterMeta == nil {
+				out.FrontmatterMeta = map[string]FieldMeta{}
+			}
+			// Later inputs win: a kind composed on top of another
+			// can re-deprecate a field with a fresh message, or
+			// undo the prior deprecation by setting `deprecated:
+			// false` in its own metadata block.
+			out.FrontmatterMeta[k] = meta
+		}
 	}
 }
 

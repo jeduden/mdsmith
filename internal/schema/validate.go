@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -128,7 +129,12 @@ func validateFrontmatterDiags(
 ) []lint.Diagnostic {
 	expr := sch.FrontmatterCUE()
 	if strings.TrimSpace(expr) == "" {
-		return nil
+		// No CUE constraints to evaluate, but the schema may still
+		// declare deprecation metadata that fires against docFM.
+		// validateDeprecatedFields handles the empty-meta short
+		// circuit so callers don't pay for the lookup when no
+		// metadata is set.
+		return validateDeprecatedFields(f, sch, docFM, mkDiag)
 	}
 	anchor := nonBodyDiagLine(f)
 	// Route the schema-side CompileString through RunCache.CompiledCUE
@@ -163,36 +169,106 @@ func validateFrontmatterDiags(
 	}
 	merged := schemaVal.Unify(dataVal)
 	verr := merged.Validate(cue.Concrete(true))
-	if verr == nil {
+	keyLines := docFrontmatterKeyLines(f)
+	out := []lint.Diagnostic{}
+	if verr != nil {
+		cueErrs := errors.Errors(verr)
+		if len(cueErrs) == 0 {
+			out = append(out, mkDiag(f.Path, anchor,
+				SchemaDiagnostic{
+					Field:     "front matter",
+					Actual:    fmt.Sprintf("%v", verr),
+					Expected:  "valid CUE",
+					SchemaRef: schemaRef(sch, ""),
+				}.Format()))
+		} else {
+			// A struct dedup key avoids accidental collisions when
+			// one of the components (notably the raw-CUE-expression
+			// Expected fallback and a placeholder-bearing Field)
+			// legitimately contains the same delimiter we would have
+			// used in a flat string key.
+			type dedupKey struct{ field, actual, expected string }
+			seen := make(map[dedupKey]bool, len(cueErrs))
+			for _, ce := range cueErrs {
+				d := schemaDiagFromCUEError(sch, docFM, ce)
+				key := dedupKey{field: d.Field, actual: d.Actual, expected: d.Expected}
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				out = append(out, mkDiag(f.Path, fmDiagLine(f, ce.Path(), keyLines), d.Format()))
+			}
+		}
+	}
+	out = append(out, validateDeprecatedFieldsWithLines(f, sch, docFM, keyLines, mkDiag)...)
+	if len(out) == 0 {
 		return nil
 	}
-	cueErrs := errors.Errors(verr)
-	if len(cueErrs) == 0 {
-		return []lint.Diagnostic{mkDiag(f.Path, anchor,
-			SchemaDiagnostic{
-				Field:     "front matter",
-				Actual:    fmt.Sprintf("%v", verr),
-				Expected:  "valid CUE",
-				SchemaRef: schemaRef(sch, ""),
-			}.Format())}
+	return out
+}
+
+// validateDeprecatedFields emits a Warning-severity diagnostic for
+// every deprecated field the document still carries. It is the
+// no-CUE-constraints entry point; the keyLines map is empty so
+// every diagnostic anchors at the non-body line. The CUE-bearing
+// path calls validateDeprecatedFieldsWithLines directly so it can
+// share the docFrontmatterKeyLines result without a second parse.
+func validateDeprecatedFields(
+	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
+) []lint.Diagnostic {
+	if len(sch.FrontmatterMeta) == 0 {
+		return nil
 	}
-	keyLines := docFrontmatterKeyLines(f)
-	out := make([]lint.Diagnostic, 0, len(cueErrs))
-	// A struct dedup key avoids accidental collisions when one of
-	// the components (notably the raw-CUE-expression Expected
-	// fallback and a placeholder-bearing Field) legitimately
-	// contains the same delimiter we would have used in a flat
-	// string key.
-	type dedupKey struct{ field, actual, expected string }
-	seen := make(map[dedupKey]bool, len(cueErrs))
-	for _, ce := range cueErrs {
-		d := schemaDiagFromCUEError(sch, docFM, ce)
-		key := dedupKey{field: d.Field, actual: d.Actual, expected: d.Expected}
-		if seen[key] {
+	return validateDeprecatedFieldsWithLines(
+		f, sch, docFM, docFrontmatterKeyLines(f), mkDiag)
+}
+
+// validateDeprecatedFieldsWithLines walks sch.FrontmatterMeta and
+// emits one Warning-severity diagnostic per deprecated field that
+// still appears in docFM. The keyLines argument is reused from the
+// CUE error loop so the deprecation diagnostic anchors at the same
+// source line as a co-occurring type-mismatch error.
+//
+// `replaced-by:` rides on the lint.Diagnostic so LSP clients and CI
+// scripts can route the warning without scanning the message body;
+// the human-facing text honours `message:` first per plan 136.
+func validateDeprecatedFieldsWithLines(
+	f *lint.File, sch *Schema, docFM map[string]any,
+	keyLines map[string]int, mkDiag MakeDiag,
+) []lint.Diagnostic {
+	if len(sch.FrontmatterMeta) == 0 || len(docFM) == 0 {
+		return nil
+	}
+	// Walk in sorted key order so a schema with two deprecated
+	// fields and both present in the document emits diagnostics in
+	// a stable order on every run.
+	keys := make([]string, 0, len(sch.FrontmatterMeta))
+	for k := range sch.FrontmatterMeta {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []lint.Diagnostic
+	for _, k := range keys {
+		meta := sch.FrontmatterMeta[k]
+		if !meta.Deprecated {
 			continue
 		}
-		seen[key] = true
-		out = append(out, mkDiag(f.Path, fmDiagLine(f, ce.Path(), keyLines), d.Format()))
+		bare := strings.TrimSuffix(k, "?")
+		if _, present := docFM[bare]; !present {
+			continue
+		}
+		d := SchemaDiagnostic{
+			Field:              bare,
+			Deprecated:         true,
+			ReplacedBy:         meta.ReplacedBy,
+			DeprecationMessage: meta.Message,
+			SchemaRef:          schemaRef(sch, k),
+		}
+		warn := mkDiag(f.Path, fmDiagLine(f, []string{bare}, keyLines), d.Format())
+		warn.Severity = lint.Warning
+		warn.Deprecated = true
+		warn.ReplacedBy = meta.ReplacedBy
+		out = append(out, warn)
 	}
 	return out
 }

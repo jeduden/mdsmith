@@ -126,7 +126,21 @@ func parseInlineFrontmatter(raw map[string]any, sch *Schema) error {
 	}
 	sch.Frontmatter = make(map[string]string, len(m))
 	for k, vv := range m {
-		expr, err := frontmatterExpr(vv)
+		expr, meta, isMeta, err := ExtractFieldMeta(vv)
+		if err != nil {
+			return fmt.Errorf("schema.frontmatter.%s: %w", k, err)
+		}
+		if isMeta {
+			sch.Frontmatter[k] = expr
+			if !meta.IsZero() {
+				if sch.FrontmatterMeta == nil {
+					sch.FrontmatterMeta = make(map[string]FieldMeta)
+				}
+				sch.FrontmatterMeta[k] = meta
+			}
+			continue
+		}
+		expr, err = frontmatterExpr(vv)
 		if err != nil {
 			return fmt.Errorf("schema.frontmatter.%s: %w", k, err)
 		}
