@@ -21,6 +21,8 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/hexops/gotextdiff"
+	"github.com/hexops/gotextdiff/span"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -2456,6 +2458,174 @@ func TestPreviewFixAnnotatedHunksNotWholeFile(t *testing.T) {
 	want := s.quickFixBytesFor("no-trailing-spaces", doc, cfg, "")
 	require.NotNil(t, want)
 	assert.Equal(t, string(want), string(got))
+}
+
+// TestAnnotatedHunkEdits covers annotatedHunkEdits directly so the
+// fold rule, the LSP range conversion, and round-trip correctness are
+// each tractable in isolation rather than only through computeCodeActions.
+//
+// Each case asserts:
+//   - the expected edit ranges (line-aligned, character 0), in the order
+//     the function emits them;
+//   - the expected NewText per edit;
+//   - that applying the edits to `before` round-trips to `after`;
+//   - that every edit carries the supplied annotation id.
+func TestAnnotatedHunkEdits(t *testing.T) {
+	t.Parallel()
+	for _, tc := range hunkEditCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkHunkEditCase(t, tc)
+		})
+	}
+}
+
+type hunkEditWant struct {
+	startLine, endLine int
+	newText            string
+}
+
+type hunkEditCase struct {
+	name   string
+	before string
+	after  string
+	want   []hunkEditWant
+}
+
+func hunkEditCases() []hunkEditCase {
+	return append(hunkEditCasesSimple(), hunkEditCasesComplex()...)
+}
+
+func hunkEditCasesSimple() []hunkEditCase {
+	return []hunkEditCase{
+		{
+			name:   "no change",
+			before: "a\nb\n",
+			after:  "a\nb\n",
+			want:   nil,
+		},
+		{
+			name:   "single-line replacement folds delete+insert",
+			before: "a\nold\nc\n",
+			after:  "a\nnew\nc\n",
+			want:   []hunkEditWant{{1, 2, "new\n"}},
+		},
+		{
+			name:   "pure deletion",
+			before: "a\nb\nc\n",
+			after:  "a\nc\n",
+			want:   []hunkEditWant{{1, 2, ""}},
+		},
+		{
+			name:   "pure insertion in the middle",
+			before: "a\nc\n",
+			after:  "a\nb\nc\n",
+			want:   []hunkEditWant{{1, 1, "b\n"}},
+		},
+		{
+			name:   "insertion at start of file",
+			before: "b\n",
+			after:  "a\nb\n",
+			want:   []hunkEditWant{{0, 0, "a\n"}},
+		},
+		{
+			name:   "append at end of file",
+			before: "a\n",
+			after:  "a\nb\n",
+			want:   []hunkEditWant{{1, 1, "b\n"}},
+		},
+	}
+}
+
+func hunkEditCasesComplex() []hunkEditCase {
+	return []hunkEditCase{
+		{
+			name:   "two distant single-line replacements emit two hunks",
+			before: "a\nold1\nc\nd\ne\nold2\ng\n",
+			after:  "a\nnew1\nc\nd\ne\nnew2\ng\n",
+			want: []hunkEditWant{
+				{1, 2, "new1\n"},
+				{5, 6, "new2\n"},
+			},
+		},
+		{
+			name:   "multi-line replacement",
+			before: "a\nb1\nb2\nb3\nc\n",
+			after:  "a\nX\nc\n",
+			want:   []hunkEditWant{{1, 4, "X\n"}},
+		},
+		{
+			name:   "empty before to non-empty after",
+			before: "",
+			after:  "a\n",
+			want:   []hunkEditWant{{0, 0, "a\n"}},
+		},
+		{
+			name:   "non-empty before to empty after",
+			before: "a\n",
+			after:  "",
+			want:   []hunkEditWant{{0, 1, ""}},
+		},
+	}
+}
+
+func checkHunkEditCase(t *testing.T, tc hunkEditCase) {
+	t.Helper()
+	const annot = "mdsmith-fix-x"
+	got := annotatedHunkEdits([]byte(tc.before), []byte(tc.after), annot)
+	require.Len(t, got, len(tc.want), "edit count mismatch: got %+v", got)
+	for i, w := range tc.want {
+		assert.Equalf(t, w.startLine, got[i].Range.Start.Line,
+			"edit %d start line", i)
+		assert.Equalf(t, w.endLine, got[i].Range.End.Line,
+			"edit %d end line", i)
+		assert.Zerof(t, got[i].Range.Start.Character,
+			"edit %d start character must be 0", i)
+		assert.Zerof(t, got[i].Range.End.Character,
+			"edit %d end character must be 0", i)
+		assert.Equalf(t, w.newText, got[i].NewText,
+			"edit %d NewText", i)
+		assert.Equalf(t, annot, got[i].AnnotationID,
+			"edit %d annotation id", i)
+	}
+	// Apply round-trip: every case must reproduce `after`.
+	if len(got) > 0 {
+		roundTrip := applyAnnotatedEdits(t, []byte(tc.before), got)
+		assert.Equal(t, tc.after, string(roundTrip))
+	}
+}
+
+// TestLineRange covers lineRange directly: the 1-indexed-line,
+// column-1 gotextdiff span maps to a 0-indexed-line, character-0 LSP
+// position. The conversion is one line of arithmetic but is the only
+// thing keeping our LSP edits aligned with the diff hunks the algorithm
+// returns; a regression here would shift every preview edit by a line.
+func TestLineRange(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name               string
+		spanStart, spanEnd int
+		wantStart, wantEnd int
+	}{
+		{"first line point", 1, 1, 0, 0},
+		{"first line span", 1, 2, 0, 1},
+		{"interior span", 4, 7, 3, 6},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			e := gotextdiff.TextEdit{
+				Span: span.New(span.URIFromPath(""),
+					span.NewPoint(tc.spanStart, 1, 0),
+					span.NewPoint(tc.spanEnd, 1, 0)),
+			}
+			start, end := lineRange(e)
+			assert.Equal(t, tc.wantStart, start.Line)
+			assert.Zero(t, start.Character)
+			assert.Equal(t, tc.wantEnd, end.Line)
+			assert.Zero(t, end.Character)
+		})
+	}
 }
 
 // applyAnnotatedEdits applies a slice of annotatedTextEdit values to

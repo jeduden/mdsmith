@@ -1366,11 +1366,14 @@ func fullFileEditAnnotated(uri string, before, after []byte, annotationID, label
 }
 
 // annotatedHunkEdits computes a line-aligned diff between before and
-// after and returns one AnnotatedTextEdit per hunk. Myers emits a
-// Delete (range [I, J)) immediately followed by a zero-width Insert
-// at line J; this pair gets folded into a single Replace edit at
-// range [I, J) with the insert's text so the preview pane shows one
-// hunk per change instead of an empty delete plus a zero-width insert.
+// after and returns one AnnotatedTextEdit per hunk. Myers may emit
+// several adjacent raw edits per hunk — e.g. a Delete-per-line for a
+// multi-line removal followed by a zero-width Insert for the
+// replacement text. Any run of edits where each one's end position
+// touches the next one's start gets coalesced into a single Replace
+// covering the combined range so the preview pane shows one entry per
+// visible change rather than a list of zero-width inserts and empty
+// deletes.
 //
 // Each edit's range uses character 0 on both endpoints (line-aligned),
 // matching the LSP spec for "replace these whole lines": start at the
@@ -1380,26 +1383,26 @@ func annotatedHunkEdits(before, after []byte, annotationID string) []annotatedTe
 	raw := myers.ComputeEdits(span.URIFromPath(""), string(before), string(after))
 	gotextdiff.SortTextEdits(raw)
 	out := make([]annotatedTextEdit, 0, len(raw))
-	for i := 0; i < len(raw); i++ {
-		e := raw[i]
-		start, end := lineRange(e)
-		newText := e.NewText
-		if i+1 < len(raw) {
-			next := raw[i+1]
-			nStart, nEnd := lineRange(next)
-			// Delete then zero-width Insert at the delete's end:
-			// fold to a Replace covering the delete's range with
-			// the insert's text.
-			if newText == "" && nEnd == nStart && nStart == end {
-				newText = next.NewText
-				i++
+	for i := 0; i < len(raw); {
+		start, end := lineRange(raw[i])
+		var newText strings.Builder
+		newText.WriteString(raw[i].NewText)
+		j := i + 1
+		for j < len(raw) {
+			nStart, nEnd := lineRange(raw[j])
+			if nStart != end {
+				break
 			}
+			end = nEnd
+			newText.WriteString(raw[j].NewText)
+			j++
 		}
 		out = append(out, annotatedTextEdit{
 			Range:        Range{Start: start, End: end},
-			NewText:      newText,
+			NewText:      newText.String(),
 			AnnotationID: annotationID,
 		})
+		i = j
 	}
 	return out
 }
