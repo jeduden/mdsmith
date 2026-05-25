@@ -442,14 +442,16 @@ lack determinism.
 | Generated sections | catalog, include, toc | no                       | no           | no              | no   | no                    | no          |
 
 Prose wrapping controls whether a tool reflows paragraph
-line breaks. Prettier is the only tool above that reflows
-prose: its [`proseWrap`][prosewrap] option has three
-modes — `always` (wrap to print width), `never` (unwrap
-to one line per paragraph), and `preserve` (leave as-is,
-the default). remark-lint can also rewrap when rewriting
-through its AST, depending on the stringify options. The
-others — mdsmith, markdownlint, rumdl, mado, panache —
-diagnose long lines but never rewrap them.
+line breaks. Only Prettier ships an explicit
+prose-wrapping mode: [`proseWrap`][prosewrap] takes
+`always` (wrap to print width), `never` (unwrap to one
+line per paragraph), or `preserve` (leave as-is, the
+default). remark-lint has no prose-wrap setting, but it
+serializes through its AST when fixing, so paragraphs
+can be incidentally rewrapped to match its stringify
+defaults. The others — mdsmith, markdownlint, rumdl,
+mado, panache — diagnose long lines but preserve the
+existing breaks.
 
 Prettier is the strongest pure formatter. rumdl and
 panache bring native autofix to the Rust side; mado is
@@ -526,10 +528,10 @@ access and is non-deterministic.
 
 ## Benchmarks
 
-Default mdsmith is about 4x faster than
-markdownlint-cli2 on its own 523-file repo. With the
-mdsmith-only rules disabled (`mdsmith-parity`), it lands
-within ~2x of rumdl.
+Default mdsmith is roughly an order of magnitude faster
+than markdownlint-cli2 on its own 523-file repo. With
+the mdsmith-only rules disabled (`mdsmith-parity`), it
+lands close to rumdl.
 
 mado and rumdl lead the per-file race. mdsmith trails
 them today because it also walks the cross-file graph,
