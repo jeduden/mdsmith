@@ -115,21 +115,19 @@ any fix lands. Both capabilities below must appear in
 - `workspace.workspaceEdit.documentChanges`
 - `workspace.workspaceEdit.changeAnnotationSupport`
 
-When both are present, edits use `AnnotatedTextEdit`;
-the corresponding `changeAnnotation` entry is flagged
-`needsConfirmation: true` (LSP 3.16).
+When both are present, edits use `AnnotatedTextEdit`
+(LSP 3.16) with `needsConfirmation: true`. The
+`edits` slice carries one entry per line-aligned
+diff hunk, not one whole-file replacement (which
+Refactor Preview would render as "old file → new
+file" with no visible delta). All hunks share an
+`annotationId`.
 
-Annotation IDs:
-
-- Per-rule quick fix: `mdsmith-fix-<rule-name>` (e.g.
-  `mdsmith-fix-no-trailing-spaces`)
-- `source.fixAll.mdsmith`: `mdsmith-fix-all`
-
-`<rule-name>` is the name string, not the rule code.
-
-Missing either capability falls back to the legacy
-`changes` map. One warning is logged per session to
-`window/logMessage` naming the missing capability.
+Each quick fix carries the id
+`mdsmith-fix-<rule-name>`. The fix-all action uses
+`mdsmith-fix-all`. Drop either capability and the
+server emits the legacy `changes` map. A warning
+goes to `window/logMessage` once per session.
 
 ## Symbol navigation
 

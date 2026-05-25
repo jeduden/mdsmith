@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2379,6 +2380,127 @@ func TestPreviewFixAnnotatedPerRuleQuickFix(t *testing.T) {
 	ann, ok := edit.ChangeAnnotations[wantID]
 	require.True(t, ok)
 	assert.True(t, ann.NeedsConfirmation)
+}
+
+// TestPreviewFixAnnotatedHunksNotWholeFile verifies that the annotated
+// edit path emits per-hunk TextEdits sized to the actual diff, not one
+// giant whole-file replacement. VS Code's Refactor Preview renders each
+// TextEdit as a separate change; a single full-file edit collapses into
+// "old file → new file" with no visible delta and the whole document
+// flattened into the lower preview pane's single-line label.
+//
+// Setup: 12 unchanged lines bracketing two distant trailing-whitespace
+// lines (1 and 10). The per-rule quickfix path runs only
+// no-trailing-spaces, so the only diff is on those two lines and the
+// hunk count check isn't muddied by other auto-fixes.
+func TestPreviewFixAnnotatedHunksNotWholeFile(t *testing.T) {
+	t.Parallel()
+	s := newPreviewServer(t, true, true)
+	cfg := config.Merge(config.Defaults(), nil)
+	lines := []string{
+		"# Heading",
+		"intro line   ", // trailing spaces, line index 1
+		"",
+		"para a",
+		"para b",
+		"para c",
+		"",
+		"para d",
+		"para e",
+		"",
+		"closing line   ", // trailing spaces, line index 10
+		"",
+	}
+	src := []byte(strings.Join(lines, "\n") + "\n")
+	doc := &document{path: "x.md", text: src}
+	p := codeActionParams{
+		TextDocument: textDocumentIdentifier{URI: "file:///x.md"},
+		Context: codeActionContext{
+			Diagnostics: []Diagnostic{{
+				Code: "MDS006",
+				Data: &diagnosticData{RuleName: "no-trailing-spaces"},
+			}},
+			Only: []string{kindQuickFix},
+		},
+	}
+	actions := s.computeCodeActions(p, doc, cfg, "")
+	require.NotEmpty(t, actions)
+	edit := actions[0].Edit
+	require.NotNil(t, edit)
+	require.Len(t, edit.DocumentChanges, 1)
+	edits := edit.DocumentChanges[0].Edits
+	// Two distant changes → at least two hunks. A whole-file edit
+	// would emit exactly one entry spanning the full document.
+	require.GreaterOrEqual(t, len(edits), 2,
+		"preview path must emit per-hunk edits, not a whole-file replacement")
+
+	// No single edit may span the whole document.
+	for i, e := range edits {
+		span := e.Range.End.Line - e.Range.Start.Line
+		assert.Lessf(t, span, len(lines)-1,
+			"edit %d spans %d lines [%d..%d]; "+
+				"preview path must emit per-hunk edits, "+
+				"not a whole-file replacement",
+			i, span, e.Range.Start.Line, e.Range.End.Line)
+	}
+
+	// All edits must share the same annotation id so the preview
+	// pane groups them under one entry.
+	for _, e := range edits {
+		assert.Equal(t, "mdsmith-fix-no-trailing-spaces", e.AnnotationID)
+	}
+
+	// Applying the edits must yield the same bytes the per-rule
+	// fix pipeline would have written.
+	got := applyAnnotatedEdits(t, src, edits)
+	want := s.quickFixBytesFor("no-trailing-spaces", doc, cfg, "")
+	require.NotNil(t, want)
+	assert.Equal(t, string(want), string(got))
+}
+
+// applyAnnotatedEdits applies a slice of annotatedTextEdit values to
+// src using the LSP edit-application rules: edits' ranges refer to
+// positions in the original buffer, so we sort by descending start
+// position and splice each edit's NewText into the line-indexed slice.
+func applyAnnotatedEdits(t *testing.T, src []byte, edits []annotatedTextEdit) []byte {
+	t.Helper()
+	sorted := make([]annotatedTextEdit, len(edits))
+	copy(sorted, edits)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		a, b := sorted[i].Range.Start, sorted[j].Range.Start
+		if a.Line != b.Line {
+			return a.Line > b.Line
+		}
+		return a.Character > b.Character
+	})
+	// All edits in this test use character 0 (line-aligned), so we
+	// can splice by line index.
+	lines := strings.SplitAfter(string(src), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	for _, e := range sorted {
+		require.Zero(t, e.Range.Start.Character,
+			"applyAnnotatedEdits only supports line-aligned edits")
+		require.Zero(t, e.Range.End.Character,
+			"applyAnnotatedEdits only supports line-aligned edits")
+		start := e.Range.Start.Line
+		end := e.Range.End.Line
+		if start > len(lines) {
+			start = len(lines)
+		}
+		if end > len(lines) {
+			end = len(lines)
+		}
+		insert := strings.SplitAfter(e.NewText, "\n")
+		if len(insert) > 0 && insert[len(insert)-1] == "" {
+			insert = insert[:len(insert)-1]
+		}
+		tail := append([]string{}, lines[end:]...)
+		lines = append(lines[:start], insert...)
+		lines = append(lines, tail...)
+	}
+	return []byte(strings.Join(lines, ""))
 }
 
 // TestPreviewFixOffProducesLegacyEdits verifies that with previewFix

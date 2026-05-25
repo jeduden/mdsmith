@@ -11,6 +11,7 @@ tool (
 require (
 	cuelang.org/go v0.16.1
 	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/hexops/gotextdiff v1.0.3
 	github.com/mattn/go-runewidth v0.0.23
 	github.com/neurosnap/sentences v1.1.2
 	github.com/spf13/pflag v1.0.10
@@ -143,7 +144,6 @@ require (
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
-	github.com/hexops/gotextdiff v1.0.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jgautheron/goconst v1.8.2 // indirect
 	github.com/jingyugao/rowserrcheck v1.1.1 // indirect
