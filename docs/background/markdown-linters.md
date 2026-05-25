@@ -432,45 +432,49 @@ lack determinism.
 
 ### Formatting and Fixing
 
-| Capability         | mdsmith               | Prettier                 | markdownlint |
-| ------------------ | --------------------- | ------------------------ | ------------ |
-| Autofix CLI        | `fix`                 | `--write`                | `--fix`      |
-| Table alignment    | [MDS025][mds025]      | yes                      | no           |
-| Prose wrapping     | no                    | [`proseWrap`][prosewrap] | no           |
-| Embedded code fmt  | no                    | JS/TS/CSS/JSON           | no           |
-| Multi-pass fix     | yes                   | single pass              | single pass  |
-| Generated sections | catalog, include, toc | no                       | no           |
+| Capability         | mdsmith               | Prettier                 | markdownlint | rumdl           | mado | panache               | remark-lint |
+| ------------------ | --------------------- | ------------------------ | ------------ | --------------- | ---- | --------------------- | ----------- |
+| Autofix CLI        | `fix`                 | `--write`                | `--fix`      | `--fix` / `fmt` | no   | `format`              | AST rewrite |
+| Table alignment    | [MDS025][mds025]      | yes                      | no           | MD055/56/58     | no   | yes                   | via plugin  |
+| Prose wrapping     | no                    | [`proseWrap`][prosewrap] | no           | no              | no   | no                    | no          |
+| Embedded code fmt  | no                    | JS/TS/CSS/JSON           | no           | no              | no   | delegates to external | no          |
+| Multi-pass fix     | yes                   | single pass              | single pass  | single pass     | n/a  | single pass           | single pass |
+| Generated sections | catalog, include, toc | no                       | no           | no              | no   | no                    | no          |
 
 Prose wrapping controls whether a tool reflows paragraph
 line breaks. Prettier's [`proseWrap`][prosewrap] option
 has three modes: `always` (wrap to print width), `never`
 (unwrap to one line per paragraph), and `preserve` (leave
-as-is, the default). Neither mdsmith nor markdownlint
-reflow prose; they only diagnose long lines.
+as-is, the default). None of the linters above reflow
+prose; they only diagnose long lines.
 
-Prettier is the strongest pure formatter. mdsmith has
-unique autofix for generated content (catalog, include, toc).
-markdownlint fixes structural violations.
+Prettier is the strongest pure formatter. rumdl and
+panache bring native autofix to the Rust side; mado is
+check-only. remark-lint reformats by round-tripping the
+whole file through its AST. mdsmith is the only tool here
+with autofix for generated content (catalog, include, toc)
+and a multi-pass fix loop.
 
 ### Cross-File and Project Features
 
-| Capability           | mdsmith              | markdownlint | remark-lint                     |
-| -------------------- | -------------------- | ------------ | ------------------------------- |
-| Link integrity       | [MDS027][mds027]     | no           | [remark-validate-links][rl-vl]  |
-| Include sections     | [MDS021][mds021]     | no           | no                              |
-| Catalog generation   | [MDS019][mds019]     | no           | no                              |
-| Required structure   | [MDS020][mds020]     | no           | no                              |
-| Front-matter query   | `mdsmith list query` | no           | no                              |
-| Git merge driver     | yes                  | no           | no                              |
-| Metrics ranking      | yes                  | no           | no                              |
-| Gitignore aware      | yes                  | yes          | no                              |
-| Front matter support | yes                  | via plugin   | via [remark-frontmatter][rl-fm] |
+| Capability           | mdsmith              | markdownlint | remark-lint                     | rumdl | mado | panache |
+| -------------------- | -------------------- | ------------ | ------------------------------- | ----- | ---- | ------- |
+| Link integrity       | [MDS027][mds027]     | no           | [remark-validate-links][rl-vl]  | no    | no   | no      |
+| Include sections     | [MDS021][mds021]     | no           | no                              | no    | no   | no      |
+| Catalog generation   | [MDS019][mds019]     | no           | no                              | no    | no   | no      |
+| Required structure   | [MDS020][mds020]     | no           | no                              | no    | no   | no      |
+| Front-matter query   | `mdsmith list query` | no           | no                              | no    | no   | no      |
+| Git merge driver     | yes                  | no           | no                              | no    | no   | no      |
+| Metrics ranking      | yes                  | no           | no                              | no    | no   | no      |
+| Gitignore aware      | yes                  | yes          | no                              | yes   | yes  | yes     |
+| Front matter support | yes                  | via plugin   | via [remark-frontmatter][rl-fm] | yes   | no   | yes     |
 
 mdsmith has the strongest cross-file and project-level
-features. The merge driver and regenerable sections are
-unique to mdsmith. The `list query` subcommand
-([plan 78][plan78]) selects files by a CUE expression
-over front matter (e.g.
+features. None of the Rust linters cross file boundaries:
+they lint each file in isolation. The merge driver and
+regenerable sections are unique to mdsmith. The `list
+query` subcommand ([plan 78][plan78]) selects files by a
+CUE expression over front matter (e.g.
 `mdsmith list query 'status: "✅"' plan/`), which no other
 tool in this comparison offers natively.
 
@@ -519,56 +523,22 @@ access and is non-deterministic.
 
 ## Benchmarks
 
-We ran our own benchmark, not re-quoted READMEs. It uses
-hyperfine over two corpora; the full method is in the
-[benchmark doc][bench]. Numbers come from its output:
+Default mdsmith is about 4x faster than
+markdownlint-cli2 on its own 523-file repo. With the
+mdsmith-only rules disabled (`mdsmith-parity`), it lands
+within ~2x of rumdl.
 
-<?include
-file: ../research/benchmarks/results.fragment.md
-?>
-<!-- Generated by docs/research/benchmarks/gen_fragments.py from
-docs/research/benchmarks/data/*.json — do not edit by hand. Re-run
-the harness (run.sh) and `mdsmith fix` to refresh. -->
+mado and rumdl lead the per-file race. mdsmith trails
+them today because it also walks the cross-file graph,
+scores readability, and validates generated sections.
 
-`mdsmith` is the default rule set; `mdsmith-parity` disables the
-mdsmith-only rules so the work class matches the markdownlint
-tools (see `bench-parity.mdsmith.yml`).
-
-**Repo corpus — 523 Markdown files** (median wall time, lower is
-better; `vs mado` is the median ratio to the fastest tool):
-
-| Tool              | Median  | Min     | vs mado |
-| ----------------- | ------- | ------- | ------- |
-| mdsmith-parity    | 38 ms   | 35 ms   | 1.0x    |
-| mado              | 40 ms   | 38 ms   | 1.0x    |
-| panache           | 78 ms   | 73 ms   | 2.0x    |
-| rumdl             | 79 ms   | 75 ms   | 2.1x    |
-| mdsmith           | 195 ms  | 185 ms  | 5.1x    |
-| markdownlint-cli2 | 2127 ms | 2100 ms | 56x     |
-
-**Neutral corpus — 234 files** (Rust Book + Rust Reference,
-longer third-party prose):
-
-| Tool              | Median  | Min     | vs mado |
-| ----------------- | ------- | ------- | ------- |
-| mado              | 38 ms   | 35 ms   | 1.0x    |
-| mdsmith-parity    | 73 ms   | 71 ms   | 1.9x    |
-| rumdl             | 73 ms   | 68 ms   | 1.9x    |
-| mdsmith           | 128 ms  | 124 ms  | 3.4x    |
-| panache           | 158 ms  | 153 ms  | 4.2x    |
-| markdownlint-cli2 | 1764 ms | 1669 ms | 46x     |
-<?/include?>
-
-Every native binary beats the Node baseline — default
-mdsmith is about 4x faster than markdownlint-cli2. It is the
-slowest native tool here because it also walks the
-cross-file graph, scores readability, and validates
-generated sections. With those mdsmith-only rules off (the
-`mdsmith-parity` row) it is about 2.5x faster, within ~2x of
-rumdl; closing that last gap is active work. So the read is
-fit today: pick mado or rumdl for raw markdownlint
-throughput, panache for Quarto or R Markdown, mdsmith for
+Pick mado or rumdl for raw markdownlint throughput.
+Pick panache for Quarto or R Markdown. Pick mdsmith for
 the cross-file and self-maintaining-section layer.
+
+See the [benchmark doc][bench] for the full method, both
+corpora, every tool's command, the result tables, and
+the fairness notes.
 
 ## When to Use What
 
