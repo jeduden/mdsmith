@@ -631,13 +631,13 @@ func TestResolveCrossRefPlaceholder_EdgeCases(t *testing.T) {
 
 func TestHasParenExpansion_EdgeCases(t *testing.T) {
 	// Missing close-paren.
-	assert.False(t, hasParenExpansion("FOO (no close", 3))
+	assert.False(t, hasParenExpansion([]byte("FOO (no close"), 3))
 	// Empty parens.
-	assert.False(t, hasParenExpansion("FOO ()", 3))
+	assert.False(t, hasParenExpansion([]byte("FOO ()"), 3))
 	// Valid expansion.
-	assert.True(t, hasParenExpansion("FOO (Bar Baz)", 3))
+	assert.True(t, hasParenExpansion([]byte("FOO (Bar Baz)"), 3))
 	// Not a paren at all.
-	assert.False(t, hasParenExpansion("FOO bar", 3))
+	assert.False(t, hasParenExpansion([]byte("FOO bar"), 3))
 }
 
 func TestAcronyms_AppliesWithEmptyScope(t *testing.T) {
