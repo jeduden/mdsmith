@@ -39,3 +39,36 @@ PyPI upload credential. Configure the trusted
 publisher on PyPI before the first tag. See the
 `OIDC Trusted Publishing` section in
 [`release.md`](../release.md).
+
+## `pyproject.toml` rationale
+
+`mdsmith-release sync-messaging` rewrites the
+`[project].description` field. It pulls the value
+from the source of truth at
+[`docs/brand/messaging.md`](../../brand/messaging.md).
+The sync re-emits the file through a TOML library.
+The file does not carry inline rationale comments.
+The two comments worth keeping live here.
+
+### `license-files = ["LICENSE"]`
+
+PEP 639 and hatchling. Ship the root `LICENSE`
+inside the wheel so the MIT notice reaches PyPI
+consumers. The notice also carries third-party
+attribution for `internal/punkt/`, vendored from
+neurosnap/sentences.
+
+The release tooling stages `/LICENSE` next to
+`pyproject.toml` before `python -m build`. See
+`stagePythonTree` in
+[`internal/release/buildwheels.go`](../../../internal/release/buildwheels.go).
+
+### `tool.hatch.build.targets.wheel.artifacts`
+
+`cmd/mdsmith-release build-wheels` stages the
+prebuilt binary at `mdsmith/_bin/mdsmith[.exe]`.
+The stage happens before `python -m build`. The
+file is not checked in. Hatchling drops it
+otherwise. `artifacts` lists both possible binary
+names. The wheel contains whichever one
+`build-wheels` staged.

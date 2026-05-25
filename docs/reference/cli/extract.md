@@ -92,6 +92,58 @@ mdsmith extract rfc --format yaml docs/rfcs/RFC-0007.md
 mdsmith extract plan --format msgpack plan/166_x.md > plan.mp
 ```
 
+### Worked example
+
+A two-section kind schema and a conformant file:
+
+```yaml
+# .mdsmith.yml
+kinds:
+  product-copy:
+    schema:
+      sections:
+        - heading: { regex: '^Tagline$' }
+        - heading: { regex: '^VS Code$' }
+          bind: vscode-description
+```
+
+```markdown
+<!-- docs/copy.md -->
+---
+title: Product copy
+---
+# Product copy
+
+## Tagline
+
+Mark down your ideas; smith them into shipping docs.
+
+## VS Code
+
+Inline diagnostics, fix-on-save, and instant
+navigation for Markdown in VS Code.
+```
+
+`mdsmith extract product-copy --format json docs/copy.md`
+emits:
+
+```json
+{
+  "frontmatter": { "title": "Product copy" },
+  "tagline": { "text": "Mark down your ideas; smith them into shipping docs." },
+  "vscode-description": { "text": "Inline diagnostics, fix-on-save, and instant navigation for Markdown in VS Code." }
+}
+```
+
+Each H2 projects as an object keyed by the slugified
+heading (or the `bind:` override); the paragraph
+under each heading projects as `text`. Frontmatter is
+the file's metadata; body sections are the file's
+payload. See the
+[Extract Markdown as data guide](../../guides/extract-markdown-as-data.md)
+for when to put a value in frontmatter vs. a body
+section.
+
 ## Exit codes
 
 | Code | Meaning                                                             |
@@ -107,3 +159,6 @@ mdsmith extract plan --format msgpack plan/166_x.md > plan.mp
 - [Schemas guide](../../guides/schemas.md) — declaring
   the kind schema that doubles as the extraction
   contract.
+- [Extract Markdown as data](../../guides/extract-markdown-as-data.md)
+  — when to put a value in frontmatter vs. a body
+  section, with a worked example.

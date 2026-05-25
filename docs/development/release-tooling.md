@@ -61,6 +61,7 @@ setup step.
 | `merge-coverage -o <o> <p>` | `ci.yml` test job                          |
 | `bench [workdir]`           | `benchmark.yml` record job; `run.sh`       |
 | `pull-site-assets`          | `pages.yml` deploy job                     |
+| `sync-messaging [--check]`  | `ci.yml` messaging-drift; local sync       |
 
 Each subcommand lives under `cmd/mdsmith-release/`.
 It delegates to a function in `internal/release/`.

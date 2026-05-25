@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "mdsmith-skills",
-  "description": "Slash-command skills for mdsmith fix, kinds, and check — run lint, inspect file-kind resolution, and auto-fix Markdown from Claude Code.",
+  "description": "Slash-command skills for mdsmith fix, kinds, and check — keep your Markdown neat and consistent from inside Claude Code, with your Markdown as a single source of truth.",
   "homepage": "https://github.com/jeduden/mdsmith",
   "repository": "https://github.com/jeduden/mdsmith",
   "license": "MIT",

@@ -1,7 +1,7 @@
 {
   "name": "mdsmith",
   "displayName": "mdsmith",
-  "description": "Inline mdsmith diagnostics and quick fixes for Markdown via the mdsmith Language Server.",
+  "description": "mdsmith for VS Code — neat, consistent Markdown via inline diagnostics, auto-fix on save, and instant cross-file navigation. Your Markdown stays a single source of truth.",
   "version": "0.0.0-dev",
   "publisher": "jeduden",
   "license": "MIT",
@@ -127,7 +127,11 @@
         },
         "mdsmith.run": {
           "type": "string",
-          "enum": ["onType", "onSave", "off"],
+          "enum": [
+            "onType",
+            "onSave",
+            "off"
+          ],
           "default": "onSave",
           "description": "When to run the linter. `onSave` re-lints on save. `onType` re-lints with each keystroke (debounced). `off` disables linting."
         },
@@ -143,7 +147,11 @@
         },
         "mdsmith.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "LSP trace verbosity. Output appears in the 'mdsmith' Output channel."
         }

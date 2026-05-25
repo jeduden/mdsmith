@@ -26,6 +26,7 @@ row: "- [{title}]({filename})"
 - [Release Pipeline](release.md)
 - [Release Tooling Architecture](release-tooling.md)
 - [Secret Rotations](secret-rotations.md)
+- [Website configuration](website-config.md)
 <?/catalog?>
 
 ## Build & Test Commands

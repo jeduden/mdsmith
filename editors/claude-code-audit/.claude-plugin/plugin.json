@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "mdsmith-audit",
-  "description": "Audit and fix Markdown file organization in an mdsmith repository: hand-maintained indexes, similar files without a kind, missing .mdsmith.yml, duplicated sections, and missing path-pattern or proto.md schemas.",
+  "description": "Audit Markdown file organization in an mdsmith repository — catalogs, kinds, schemas, and generated sections that keep your Markdown neat, consistent, and a single source of truth.",
   "homepage": "https://github.com/jeduden/mdsmith",
   "repository": "https://github.com/jeduden/mdsmith",
   "license": "MIT",

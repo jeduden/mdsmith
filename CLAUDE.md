@@ -13,6 +13,7 @@ glob:
   - "docs/**/*.md"
   - "!docs/research/**"
   - "!docs/security/**"
+  - "!docs/brand/**"
   - "!**/proto.md"
 sort: path
 header: ""
@@ -48,6 +49,7 @@ row: "- [{summary}]({filename})"
 - [GitHub fine-grained PAT for the merge-queue action. Plain repo secret — not gated by an environment.](docs/development/secret-rotations/merge-queue-token.md)
 - [Open VSX publisher token. Drives the `ovsx publish` step.](docs/development/secret-rotations/ovsx-pat.md)
 - [Visual Studio Marketplace publisher PAT issued by Azure DevOps. Drives the `vsce publish` step.](docs/development/secret-rotations/vsce-pat.md)
+- [Design rationale for `website/hugo.toml` — module mounts, Goldmark renderer flags, Chroma highlight style, and the version stamp shared with `mdsmith-release`. The TOML file itself is now machine-edited by `mdsmith-release sync-messaging`, which re-emits the file via the TOML library and drops inline comments. This page is the home for those comments.](docs/development/website-config.md)
 - [`mdsmith fix` rewrites whitespace, headings, code fences, bare URLs, list indentation, and table alignment in place, looping up to 10 passes and stopping when edits stabilize. `mdsmith check` is the read-only CI sibling.](docs/features/auto-fix.md)
 - [The `<?build?>` directive declares an artifact and a recipe. `mdsmith fix` keeps the section body in sync with the recipe output; `MDS040` shell-safety-checks the recipe without running it.](docs/features/build-artifacts.md)
 - [Config layers deep-merge rule by rule: defaults, convention, kinds, then overrides. `--explain` and `mdsmith kinds resolve` show which layer set each effective value, per leaf.](docs/features/config-transparency.md)
@@ -74,6 +76,7 @@ row: "- [{summary}]({filename})"
 - [Key differences between Hugo templates and mdsmith directives for users familiar with Hugo.](docs/guides/directives/hugo-migration.md)
 - [Wire `mdsmith lsp` into Neovim's built-in LSP client so diagnostics, code actions, and navigation work inline with no extra plugin.](docs/guides/editors/neovim.md)
 - [Install the mdsmith VS Code extension, configure how it spawns `mdsmith lsp`, and read diagnostics inline as you edit Markdown files.](docs/guides/editors/vscode.md)
+- [When a Markdown file's payload is prose, put it in the body under H2 sections — not in YAML frontmatter. `mdsmith extract` projects body structure into a JSON tree the same way it projects frontmatter, so the file stays editable as Markdown.](docs/guides/extract-markdown-as-data.md)
 - [How to declare file kinds, assign files to them, and read the merged rule config that results.](docs/guides/file-kinds.md)
 - [User guides for mdsmith directives, structure enforcement, and migration.](docs/guides/index.md)
 - [Every channel that ships the mdsmith binary, the VS Code extension, or the Claude Code plugin — npm, PyPI, asdf, mise, the GitHub release, the Visual Studio Marketplace plus Open VSX, and the in-repository Claude Code marketplace — and which channel to pick for which workflow.](docs/guides/install.md)
@@ -128,14 +131,10 @@ Copilot re-review (the skills do this automatically).
 When implementing work tracked by `plan/`:
 
 - Update the plan file **as part of implementation**, not a follow-up
-- Check off each task and acceptance criterion as it
-  is completed or verified
-- Move front-matter `status` from `🔲` to `🔳` on
-  start, then to `✅` when all criteria pass
-- If implementation deviates, update plan text to
-  match what was built
-- Run `mdsmith fix PLAN.md` after editing plan front
-  matter so the catalog table stays current
+- Check off tasks and acceptance criteria as they're verified
+- Move front-matter `status`: `🔲` → `🔳` on start, `✅` when done
+- If implementation deviates, update plan text to match
+- Run `mdsmith fix PLAN.md` after editing front matter
 
 ## Terminal Demo (`demo.tape`)
 
@@ -184,6 +183,7 @@ row: "- [{title}](docs/development/{filename})"
 - [Release Pipeline](docs/development/release.md)
 - [Release Tooling Architecture](docs/development/release-tooling.md)
 - [Secret Rotations](docs/development/secret-rotations.md)
+- [Website configuration](docs/development/website-config.md)
 <?/catalog?>
 
 ### Build & Test Commands

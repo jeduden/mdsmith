@@ -1,15 +1,25 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "mdsmith-lsp",
-  "description": "Inline mdsmith diagnostics and Markdown navigation via LSP",
+  "description": "mdsmith in Claude Code — neat, consistent Markdown with inline diagnostics and cross-file navigation, so your Markdown stays a single source of truth.",
   "homepage": "https://github.com/jeduden/mdsmith",
   "repository": "https://github.com/jeduden/mdsmith",
   "license": "MIT",
-  "keywords": ["markdown", "linter", "lsp"],
+  "keywords": [
+    "markdown",
+    "linter",
+    "lsp"
+  ],
   "lspServers": {
     "mdsmith": {
       "command": "npx",
-      "args": ["-y", "-p", "@mdsmith/cli", "mdsmith", "lsp"],
+      "args": [
+        "-y",
+        "-p",
+        "@mdsmith/cli",
+        "mdsmith",
+        "lsp"
+      ],
       "extensionToLanguage": {
         ".md": "markdown",
         ".markdown": "markdown"
