@@ -1375,6 +1375,12 @@ func fullFileEditAnnotated(uri string, before, after []byte, annotationID, label
 // visible change rather than a list of zero-width inserts and empty
 // deletes.
 //
+// Edits are returned bottom-up (last hunk first) so a naive client
+// applying them in slice order doesn't shift the offsets a later
+// edit relies on — same convention as sortTextEditsBottomUp in
+// rename.go. The LSP spec only forbids overlap; it doesn't pin
+// application order.
+//
 // Each edit's range uses character 0 on both endpoints (line-aligned),
 // matching the LSP spec for "replace these whole lines": start at the
 // beginning of the first changed line, end at the beginning of the
@@ -1403,6 +1409,11 @@ func annotatedHunkEdits(before, after []byte, annotationID string) []annotatedTe
 			AnnotationID: annotationID,
 		})
 		i = j
+	}
+	// Coalesce runs above relied on top-down order. Reverse to the
+	// codebase's bottom-up emit convention.
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
 	}
 	return out
 }

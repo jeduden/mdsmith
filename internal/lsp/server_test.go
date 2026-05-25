@@ -2540,12 +2540,16 @@ func hunkEditCasesSimple() []hunkEditCase {
 func hunkEditCasesComplex() []hunkEditCase {
 	return []hunkEditCase{
 		{
+			// Edits emit bottom-up so naive clients applying them
+			// in slice order don't shift later offsets — see
+			// annotatedHunkEdits' doc comment and
+			// sortTextEditsBottomUp in rename.go.
 			name:   "two distant single-line replacements emit two hunks",
 			before: "a\nold1\nc\nd\ne\nold2\ng\n",
 			after:  "a\nnew1\nc\nd\ne\nnew2\ng\n",
 			want: []hunkEditWant{
-				{1, 2, "new1\n"},
 				{5, 6, "new2\n"},
+				{1, 2, "new1\n"},
 			},
 		},
 		{
@@ -2656,12 +2660,16 @@ func applyAnnotatedEdits(t *testing.T, src []byte, edits []annotatedTextEdit) []
 			"applyAnnotatedEdits only supports line-aligned edits")
 		start := e.Range.Start.Line
 		end := e.Range.End.Line
-		if start > len(lines) {
-			start = len(lines)
-		}
-		if end > len(lines) {
-			end = len(lines)
-		}
+		// Validate rather than clamp: a silent clamp would mask
+		// off-by-one bugs in lineRange/annotatedHunkEdits by making
+		// out-of-range edits "work".
+		require.GreaterOrEqualf(t, start, 0, "start line %d < 0", start)
+		require.LessOrEqualf(t, start, len(lines),
+			"start line %d > line count %d", start, len(lines))
+		require.GreaterOrEqualf(t, end, start,
+			"end line %d < start line %d", end, start)
+		require.LessOrEqualf(t, end, len(lines),
+			"end line %d > line count %d", end, len(lines))
 		insert := strings.SplitAfter(e.NewText, "\n")
 		if len(insert) > 0 && insert[len(insert)-1] == "" {
 			insert = insert[:len(insert)-1]
