@@ -448,6 +448,27 @@ func TestParseInline_CrossRefErrors(t *testing.T) {
 			}},
 			want: "must-match",
 		},
+		// Regex compilation errors are now caught at parse time in
+		// parseCrossRefEntry, so invalid patterns are rejected before any
+		// document is checked.
+		{
+			name: "invalid pattern regex",
+			raw: map[string]any{"cross-references": []any{
+				map[string]any{"pattern": "[unterminated", "must-match": "Step {n}"},
+			}},
+			want: "invalid pattern",
+		},
+		{
+			name: "invalid skip-lines-matching regex",
+			raw: map[string]any{"cross-references": []any{
+				map[string]any{
+					"pattern":             `\bStep (\d+)\b`,
+					"must-match":          "Step {n}",
+					"skip-lines-matching": "[bogus",
+				},
+			}},
+			want: "invalid skip-lines-matching",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
