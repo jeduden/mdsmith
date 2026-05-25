@@ -10,8 +10,27 @@ markdownlint:
   - id: MD005
     name: list-indent
     partial: true
+    default: true
   - id: MD007
     name: ul-indent
+    default: true
+rumdl:
+  - id: MD005
+    name: list-indent
+    partial: true
+    default: true
+  - id: MD007
+    name: ul-indent
+    default: true
+mado:
+  - id: MD005
+    name: list-indent
+    partial: true
+    default: true
+  - id: MD007
+    name: ul-indent
+    default: false
+panache: null
 ---
 # MDS016: list-indent
 

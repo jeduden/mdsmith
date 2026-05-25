@@ -11,8 +11,25 @@ maintainability: null
 markdownlint:
   - id: MD027
     name: no-multiple-space-blockquote
+    default: true
   - id: MD028
     name: no-blanks-blockquote
+    default: true
+rumdl:
+  - id: MD027
+    name: multiple-spaces-blockquote
+    default: true
+  - id: MD028
+    name: blanks-blockquote
+    default: true
+mado:
+  - id: MD027
+    name: no-multiple-space-blockquote
+    default: false
+  - id: MD028
+    name: no-blanks-blockquote
+    default: true
+panache: null
 ---
 # MDS059: blockquote-whitespace
 

@@ -11,6 +11,16 @@ maintainability: null
 markdownlint:
   - id: MD033
     name: no-inline-html
+    default: true
+rumdl:
+  - id: MD033
+    name: no-inline-html
+    default: true
+mado:
+  - id: MD033
+    name: no-inline-html
+    default: true
+panache: null
 ---
 # MDS041: no-inline-html
 

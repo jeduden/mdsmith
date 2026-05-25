@@ -7,6 +7,9 @@ category: table
 nature: content
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS026: table-readability
 

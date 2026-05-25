@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD032
     name: blanks-around-lists
+    default: true
+rumdl:
+  - id: MD032
+    name: blanks-around-lists
+    default: true
+mado:
+  - id: MD032
+    name: blanks-around-lists
+    default: false
+panache: null
 ---
 # MDS014: blank-line-around-lists
 

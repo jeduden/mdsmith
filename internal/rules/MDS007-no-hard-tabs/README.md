@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD010
     name: no-hard-tabs
+    default: true
+rumdl:
+  - id: MD010
+    name: no-hard-tabs
+    default: true
+mado:
+  - id: MD010
+    name: no-hard-tabs
+    default: true
+panache: null
 ---
 # MDS007: no-hard-tabs
 

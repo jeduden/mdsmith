@@ -20,25 +20,35 @@ type RuleInfo struct {
 	Name            string
 	Status          string
 	Description     string
+	Category        string
 	Content         string
 	Maintainability *Maintainability
-	Markdownlint    []MarkdownlintRule
+	Markdownlint    []RuleMapping
+	Rumdl           []RuleMapping
+	Mado            []RuleMapping
+	Panache         []RuleMapping
 }
 
-// MarkdownlintRule names a markdownlint rule that the mdsmith rule covers.
-// Partial is true when the mdsmith rule implements only part of the
-// corresponding markdownlint check; the coverage matrix at
-// docs/research/markdownlint-coverage/README.md is the source of truth.
-type MarkdownlintRule struct {
+// RuleMapping names a rule in a peer Markdown linter that the mdsmith rule
+// covers, plus that linter's default-on/off state for the rule. Partial is
+// true when the mdsmith rule implements only part of the peer check. The
+// coverage matrix at docs/research/markdownlint-coverage/README.md is the
+// source of truth.
+type RuleMapping struct {
 	ID      string `yaml:"id"`
 	Name    string `yaml:"name"`
 	Partial bool   `yaml:"partial"`
+	Default bool   `yaml:"default"`
 }
+
+// MarkdownlintRule is a deprecated alias kept for backwards compatibility
+// with callers that referenced the older type name.
+type MarkdownlintRule = RuleMapping
 
 // URL returns the canonical markdownlint documentation URL for this rule.
 // Markdownlint hosts per-rule docs at a stable per-ID path keyed on the
 // lowercase ID, so the URL is derivable from ID alone.
-func (r MarkdownlintRule) URL() string {
+func (r RuleMapping) URL() string {
 	return "https://github.com/DavidAnson/markdownlint/blob/main/doc/" +
 		strings.ToLower(r.ID) + ".md"
 }
@@ -159,12 +169,16 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 		return RuleInfo{}, fmt.Errorf("unterminated front matter")
 	}
 	var meta struct {
-		ID              string             `yaml:"id"`
-		Name            string             `yaml:"name"`
-		Status          string             `yaml:"status"`
-		Description     string             `yaml:"description"`
-		Maintainability *Maintainability   `yaml:"maintainability"`
-		Markdownlint    []MarkdownlintRule `yaml:"markdownlint"`
+		ID              string           `yaml:"id"`
+		Name            string           `yaml:"name"`
+		Status          string           `yaml:"status"`
+		Description     string           `yaml:"description"`
+		Category        string           `yaml:"category"`
+		Maintainability *Maintainability `yaml:"maintainability"`
+		Markdownlint    []RuleMapping    `yaml:"markdownlint"`
+		Rumdl           []RuleMapping    `yaml:"rumdl"`
+		Mado            []RuleMapping    `yaml:"mado"`
+		Panache         []RuleMapping    `yaml:"panache"`
 	}
 	if err := yamlutil.UnmarshalSafe([]byte(strings.Join(front, "\n")), &meta); err != nil {
 		return RuleInfo{}, fmt.Errorf("parsing front matter: %w", err)
@@ -174,8 +188,12 @@ func parseFrontMatter(content string) (RuleInfo, error) {
 		Name:            meta.Name,
 		Status:          meta.Status,
 		Description:     collapseWhitespace(meta.Description),
+		Category:        meta.Category,
 		Maintainability: meta.Maintainability,
 		Markdownlint:    meta.Markdownlint,
+		Rumdl:           meta.Rumdl,
+		Mado:            meta.Mado,
+		Panache:         meta.Panache,
 	}
 
 	if info.ID == "" {

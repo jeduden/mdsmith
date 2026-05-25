@@ -10,6 +10,9 @@ maintainability:
   fix: move the file into an allowed directory or extend `directory-structure.allowed` when the new location is intentional
   for-diagnostic: true
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS033: directory-structure
 

@@ -7,6 +7,9 @@ category: prose
 nature: content
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS057: required-text-patterns
 

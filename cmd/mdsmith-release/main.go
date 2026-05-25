@@ -22,6 +22,7 @@
 //	mdsmith-release bench [workdir]
 //	mdsmith-release pull-site-assets
 //	mdsmith-release sync-messaging [--check]
+//	mdsmith-release sync-coverage-matrix [--check]
 //
 // Each subcommand operates relative to the current working
 // directory, which is the repo root in CI.
@@ -59,6 +60,8 @@ Commands:
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
   pull-site-assets                Fetch the published demo GIF + benchmark numbers for the site build.
   sync-messaging [--check]        Propagate docs/brand/messaging.md into every tracked surface (or check drift).
+  sync-coverage-matrix [--check]  Regenerate the peer-linter coverage matrix from rule front matter
+                                  (or check drift).
 `
 
 func main() {
@@ -117,6 +120,8 @@ func dispatch(cmd, root string, rest []string) int {
 		return runPullSiteAssets(root, rest)
 	case "sync-messaging":
 		return runSyncMessaging(root, rest)
+	case "sync-coverage-matrix":
+		return runSyncCoverageMatrix(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2

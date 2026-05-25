@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD013
     name: line-length
+    default: true
+rumdl:
+  - id: MD013
+    name: line-length
+    default: true
+mado:
+  - id: MD013
+    name: line-length
+    default: true
+panache: null
 ---
 # MDS001: line-length
 

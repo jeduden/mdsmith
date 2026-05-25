@@ -11,6 +11,16 @@ maintainability: null
 markdownlint:
   - id: MD014
     name: commands-show-output
+    default: true
+rumdl:
+  - id: MD014
+    name: commands-show-output
+    default: true
+mado:
+  - id: MD014
+    name: commands-show-output
+    default: true
+panache: null
 ---
 # MDS066: commands-show-output
 

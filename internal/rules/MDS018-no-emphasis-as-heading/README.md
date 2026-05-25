@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD036
     name: no-emphasis-as-heading
+    default: true
+rumdl:
+  - id: MD036
+    name: no-emphasis-as-heading
+    default: true
+mado:
+  - id: MD036
+    name: no-emphasis-as-heading
+    default: true
+panache: null
 ---
 # MDS018: no-emphasis-as-heading
 

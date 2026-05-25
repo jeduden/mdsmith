@@ -9,6 +9,9 @@ category: structural
 nature: structure
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS034: markdown-flavor
 

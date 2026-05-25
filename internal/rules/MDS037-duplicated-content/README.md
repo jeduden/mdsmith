@@ -10,6 +10,9 @@ maintainability:
   fix: extract shared text with `<?include?>` or refactor so one canonical source remains
   for-diagnostic: true
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS037: duplicated-content
 

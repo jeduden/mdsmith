@@ -7,6 +7,9 @@ category: directive
 nature: directive
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS038: toc
 

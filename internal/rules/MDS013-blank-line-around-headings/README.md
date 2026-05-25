@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD022
     name: blanks-around-headings
+    default: true
+rumdl:
+  - id: MD022
+    name: blanks-around-headings
+    default: true
+mado:
+  - id: MD022
+    name: blanks-around-headings
+    default: true
+panache: null
 ---
 # MDS013: blank-line-around-headings
 

@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD038
     name: no-space-in-code
+    default: true
+rumdl:
+  - id: MD038
+    name: no-space-in-code
+    default: true
+mado:
+  - id: MD038
+    name: no-space-in-code
+    default: true
+panache: null
 ---
 # MDS052: no-space-in-code-spans
 

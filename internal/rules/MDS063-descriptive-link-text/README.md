@@ -11,6 +11,13 @@ maintainability: null
 markdownlint:
   - id: MD059
     name: descriptive-link-text
+    default: true
+rumdl:
+  - id: MD059
+    name: link-text
+    default: true
+mado: null
+panache: null
 ---
 # MDS063: descriptive-link-text
 

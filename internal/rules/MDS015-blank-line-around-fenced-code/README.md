@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD031
     name: blanks-around-fences
+    default: true
+rumdl:
+  - id: MD031
+    name: blanks-around-fences
+    default: true
+mado:
+  - id: MD031
+    name: blanks-around-fences
+    default: true
+panache: null
 ---
 # MDS015: blank-line-around-fenced-code
 

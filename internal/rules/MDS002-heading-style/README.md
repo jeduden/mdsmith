@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD003
     name: heading-style
+    default: true
+rumdl:
+  - id: MD003
+    name: heading-style
+    default: true
+mado:
+  - id: MD003
+    name: heading-style
+    default: false
+panache: null
 ---
 # MDS002: heading-style
 

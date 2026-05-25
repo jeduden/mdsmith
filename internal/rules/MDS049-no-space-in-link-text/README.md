@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD039
     name: no-space-in-links
+    default: true
+rumdl:
+  - id: MD039
+    name: no-space-in-links
+    default: true
+mado:
+  - id: MD039
+    name: no-space-in-links
+    default: true
+panache: null
 ---
 # MDS049: no-space-in-link-text
 

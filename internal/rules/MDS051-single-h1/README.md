@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD025
     name: single-h1
+    default: true
+rumdl:
+  - id: MD025
+    name: single-title
+    default: true
+mado:
+  - id: MD025
+    name: single-h1
+    default: true
+panache: null
 ---
 # MDS051: single-h1
 

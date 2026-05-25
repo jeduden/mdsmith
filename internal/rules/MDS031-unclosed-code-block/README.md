@@ -7,6 +7,9 @@ category: code
 nature: structure
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS031: unclosed-code-block
 

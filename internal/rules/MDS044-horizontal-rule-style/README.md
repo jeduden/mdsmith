@@ -11,6 +11,16 @@ maintainability: null
 markdownlint:
   - id: MD035
     name: hr-style
+    default: true
+rumdl:
+  - id: MD035
+    name: hr-style
+    default: true
+mado:
+  - id: MD035
+    name: hr-style
+    default: true
+panache: null
 ---
 # MDS044: horizontal-rule-style
 

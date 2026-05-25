@@ -12,6 +12,13 @@ maintainability:
 markdownlint:
   - id: MD043
     name: required-headings
+    default: true
+rumdl:
+  - id: MD043
+    name: required-headings
+    default: true
+mado: null
+panache: null
 ---
 # MDS020: required-structure
 

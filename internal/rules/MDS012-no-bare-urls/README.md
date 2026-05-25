@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD034
     name: no-bare-urls
+    default: true
+rumdl:
+  - id: MD034
+    name: no-bare-urls
+    default: true
+mado:
+  - id: MD034
+    name: no-bare-urls
+    default: true
+panache: null
 ---
 # MDS012: no-bare-urls
 

@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD052
     name: reference-links-images
+    default: true
+rumdl:
+  - id: MD052
+    name: reference-links-images
+    default: true
+mado: null
+panache:
+  - id: undefined-references
+    name: undefined-references
+    default: true
 ---
 # MDS054: no-undefined-reference-labels
 

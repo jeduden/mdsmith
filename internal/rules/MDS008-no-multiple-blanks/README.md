@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD012
     name: no-multiple-blanks
+    default: true
+rumdl:
+  - id: MD012
+    name: no-multiple-blanks
+    default: true
+mado:
+  - id: MD012
+    name: no-multiple-blanks
+    default: true
+panache: null
 ---
 # MDS008: no-multiple-blanks
 

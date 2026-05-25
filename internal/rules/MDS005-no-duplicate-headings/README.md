@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD024
     name: no-duplicate-heading
+    default: true
+rumdl:
+  - id: MD024
+    name: multiple-headings
+    default: true
+mado:
+  - id: MD024
+    name: no-duplicate-heading
+    default: true
+panache: null
 ---
 # MDS005: no-duplicate-headings
 

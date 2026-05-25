@@ -5,7 +5,10 @@ status: '"ready" | "not-ready"'
 description: 'string & != ""'
 nature: '"directive" | "generator" | "content" | "style" | "structure"'
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
-markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false}] | null'
+markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
+rumdl: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
+mado: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
+panache: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
 category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" | "list" | "prose" | "structural" | "table" | "whitespace"'
 ---
 # {id}: {name}
@@ -18,11 +21,14 @@ category: '"accessibility" | "code" | "directive" | "heading" | "line" | "link" 
      by mdsmith check against the literal CUE union in this file's
      `category:` front matter, which is hand-kept in sync with
      config.ValidCategories.
-     The `markdownlint:` key lists every active markdownlint rule
-     the mdsmith rule covers. Each entry has `id:` and `name:`;
-     `partial: true` marks an incomplete cover. Source of truth is
-     docs/research/markdownlint-coverage/README.md. Set
-     `markdownlint: null` for mdsmith-only rules.
+     The `markdownlint:`, `rumdl:`, `mado:`, and `panache:` keys
+     each list the peer linter's rules that this mdsmith rule
+     covers. Each entry has `id:` and `name:`; `partial: true`
+     marks an incomplete cover; `default:` records whether the
+     peer linter ships the rule enabled by default (omit to
+     mean true). Source of truth is
+     docs/research/markdownlint-coverage/README.md. Set the
+     key to `null` for tools that have no analog rule.
      Repeat the description verbatim. Use prescriptive voice,
      present tense: "Headings must ..." not "Checks that ...".
      The `nature` key labels the rule's kind. Exactly one of:

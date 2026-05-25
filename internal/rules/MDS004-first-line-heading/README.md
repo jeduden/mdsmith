@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD041
     name: first-line-h1
+    default: true
+rumdl:
+  - id: MD041
+    name: first-line-h1
+    default: true
+mado:
+  - id: MD041
+    name: first-line-h1
+    default: true
+panache: null
 ---
 # MDS004: first-line-heading
 

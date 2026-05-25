@@ -11,6 +11,16 @@ maintainability: null
 markdownlint:
   - id: MD046
     name: code-block-style
+    default: true
+rumdl:
+  - id: MD046
+    name: code-block-style
+    default: true
+mado:
+  - id: MD046
+    name: code-block-style
+    default: true
+panache: null
 ---
 # MDS065: code-block-style
 

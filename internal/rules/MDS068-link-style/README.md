@@ -7,6 +7,9 @@ category: link
 nature: style
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS068: link-style
 

@@ -10,6 +10,9 @@ maintainability:
   fix: adopt `<?include?>` so shared content has one source of truth
   for-diagnostic: false
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS021: include
 

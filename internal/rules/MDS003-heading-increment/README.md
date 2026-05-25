@@ -9,6 +9,19 @@ maintainability: null
 markdownlint:
   - id: MD001
     name: heading-increment
+    default: true
+rumdl:
+  - id: MD001
+    name: heading-increment
+    default: true
+mado:
+  - id: MD001
+    name: heading-increment
+    default: true
+panache:
+  - id: heading-hierarchy
+    name: heading-hierarchy
+    default: true
 ---
 # MDS003: heading-increment
 

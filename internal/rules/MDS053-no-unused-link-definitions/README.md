@@ -11,6 +11,19 @@ maintainability: null
 markdownlint:
   - id: MD053
     name: link-image-reference-definitions
+    default: true
+rumdl:
+  - id: MD053
+    name: link-image-definitions
+    default: true
+mado: null
+panache:
+  - id: duplicate-reference-labels
+    name: duplicate-reference-labels
+    default: true
+  - id: unused-definitions
+    name: unused-definitions
+    default: true
 ---
 # MDS053: no-unused-link-definitions
 

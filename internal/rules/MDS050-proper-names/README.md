@@ -9,6 +9,13 @@ maintainability: null
 markdownlint:
   - id: MD044
     name: proper-names
+    default: true
+rumdl:
+  - id: MD044
+    name: proper-names
+    default: true
+mado: null
+panache: null
 ---
 # MDS050: proper-names
 

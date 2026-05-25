@@ -1,143 +1,144 @@
 ---
 summary: >-
-  Complete markdownlint MDxxx -> mdsmith coverage matrix:
-  every active markdownlint rule, the mdsmith rule that
-  covers it or the plan that schedules it, plus the
-  mdsmith-only rules with no markdownlint analog.
+  Per-tool, per-rule coverage matrix: each mdsmith rule
+  alongside its analog in markdownlint, rumdl, mado,
+  and panache, with the upstream default-enabled state
+  per peer.
 ---
-# markdownlint coverage matrix
+# Peer-linter coverage matrix
 
-Every active markdownlint rule mapped to mdsmith. This is
-the full rule-by-rule comparison; the
-[linter comparison](../../background/markdown-linters.md)
-links here instead of carrying a partial table that drifts.
+For every mdsmith rule, the analog rule in each peer
+Markdown linter (markdownlint, rumdl, mado, panache)
+with the peer's upstream default-enabled state. This
+page is generated from each rule README's front matter
+by `mdsmith-release sync-coverage-matrix`; do not edit
+it by hand.
 
-Status legend:
+Cell legend:
 
-- ✅ — implemented; the named `MDSxxx` rule covers it.
-- partial — covered in part by the named rule.
-- 🔲 plan N — not yet implemented; scheduled in `plan/N`.
-
-Deprecated markdownlint numbers (MD002, MD006, MD008,
-MD015-MD017) are omitted. As of 2026-05 mdsmith implements
-**51 of the 52** active markdownlint rules (**49** fully, **2** partially); the
-only outstanding rule is MD054, scheduled in plan 172.
+- ✅ implemented, enabled by default upstream
+- ⚪ implemented, off by default upstream
+- (partial) — covers only part of the named rule
+- — — no analog rule
 
 ## Headings
 
-| markdownlint                   | Checks              | mdsmith | Status    |
-| ------------------------------ | ------------------- | ------- | --------- |
-| MD001 heading-increment        | one level at a time | MDS003  | ✅        |
-| MD003 heading-style            | atx vs setext       | MDS002  | ✅        |
-| MD018 no-missing-space-atx     | `#Heading`          | MDS064  | ✅        |
-| MD019 no-multiple-space-atx    | `#  Heading`        | MDS064  | ✅        |
-| MD020 no-missing-space-closed  | `#Heading#`         | MDS064  | partial   |
-| MD021 no-multiple-space-closed | `# H  #`            | MDS064  | ✅        |
-| MD022 blanks-around-headings   | blank lines         | MDS013  | ✅        |
-| MD023 heading-start-left       | no indent           | MDS064  | ✅        |
-| MD024 no-duplicate-heading     | unique text         | MDS005  | ✅        |
-| MD025 single-title             | one H1              | MDS051  | ✅        |
-| MD026 trailing-punctuation     | heading end         | MDS017  | ✅        |
-| MD036 emphasis-as-heading      | bold as head        | MDS018  | ✅        |
-| MD041 first-line-heading       | file starts H1      | MDS004  | ✅        |
-| MD043 required-headings        | fixed structure     | MDS020  | ✅ schema |
+| mdsmith                                                                                                                  | markdownlint                                                                                                                                                                      | rumdl                                                                                                                                                       | mado                                                                                                                                                                              | panache                                |
+| ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| [MDS002](../../../internal/rules/MDS002-heading-style/README.md) heading-style                                           | MD003 ✅ heading-style                                                                                                                                                            | MD003 ✅ heading-style                                                                                                                                      | MD003 ⚪ heading-style                                                                                                                                                            | —                                      |
+| [MDS003](../../../internal/rules/MDS003-heading-increment/README.md) heading-increment                                   | MD001 ✅ heading-increment                                                                                                                                                        | MD001 ✅ heading-increment                                                                                                                                  | MD001 ✅ heading-increment                                                                                                                                                        | heading-hierarchy ✅ heading-hierarchy |
+| [MDS004](../../../internal/rules/MDS004-first-line-heading/README.md) first-line-heading                                 | MD041 ✅ first-line-h1                                                                                                                                                            | MD041 ✅ first-line-h1                                                                                                                                      | MD041 ✅ first-line-h1                                                                                                                                                            | —                                      |
+| [MDS005](../../../internal/rules/MDS005-no-duplicate-headings/README.md) no-duplicate-headings                           | MD024 ✅ no-duplicate-heading                                                                                                                                                     | MD024 ✅ multiple-headings                                                                                                                                  | MD024 ✅ no-duplicate-heading                                                                                                                                                     | —                                      |
+| [MDS013](../../../internal/rules/MDS013-blank-line-around-headings/README.md) blank-line-around-headings                 | MD022 ✅ blanks-around-headings                                                                                                                                                   | MD022 ✅ blanks-around-headings                                                                                                                             | MD022 ✅ blanks-around-headings                                                                                                                                                   | —                                      |
+| [MDS017](../../../internal/rules/MDS017-no-trailing-punctuation-in-heading/README.md) no-trailing-punctuation-in-heading | MD026 ✅ no-trailing-punctuation                                                                                                                                                  | MD026 ✅ no-trailing-punctuation                                                                                                                            | MD026 ✅ no-trailing-punctuation                                                                                                                                                  | —                                      |
+| [MDS018](../../../internal/rules/MDS018-no-emphasis-as-heading/README.md) no-emphasis-as-heading                         | MD036 ✅ no-emphasis-as-heading                                                                                                                                                   | MD036 ✅ no-emphasis-as-heading                                                                                                                             | MD036 ✅ no-emphasis-as-heading                                                                                                                                                   | —                                      |
+| [MDS030](../../../internal/rules/MDS030-empty-section-body/README.md) empty-section-body                                 | —                                                                                                                                                                                 | —                                                                                                                                                           | —                                                                                                                                                                                 | —                                      |
+| [MDS036](../../../internal/rules/MDS036-max-section-length/README.md) max-section-length                                 | —                                                                                                                                                                                 | —                                                                                                                                                           | —                                                                                                                                                                                 | —                                      |
+| [MDS051](../../../internal/rules/MDS051-single-h1/README.md) single-h1                                                   | MD025 ✅ single-h1                                                                                                                                                                | MD025 ✅ single-title                                                                                                                                       | MD025 ✅ single-h1                                                                                                                                                                | —                                      |
+| [MDS064](../../../internal/rules/MDS064-atx-heading-whitespace/README.md) atx-heading-whitespace                         | MD018 ✅ no-missing-space-atx, MD019 ✅ no-multiple-space-atx, MD020 ✅ no-missing-space-closed-atx (partial), MD021 ✅ no-multiple-space-closed-atx, MD023 ✅ heading-start-left | MD018 ✅ no-space-atx, MD019 ✅ multiple-space-atx, MD020 ✅ no-space-closed-atx (partial), MD021 ✅ multiple-space-closed-atx, MD023 ✅ heading-start-left | MD018 ✅ no-missing-space-atx, MD019 ✅ no-multiple-space-atx, MD020 ⚪ no-missing-space-closed-atx (partial), MD021 ✅ no-multiple-space-closed-atx, MD023 ✅ heading-start-left | —                                      |
 
 ## Lists
 
-| markdownlint              | Checks             | mdsmith | Status  |
-| ------------------------- | ------------------ | ------- | ------- |
-| MD004 ul-style            | bullet char        | MDS045  | ✅      |
-| MD005 list-indent         | even indent        | MDS016  | partial |
-| MD007 ul-indent           | nesting width      | MDS016  | ✅      |
-| MD029 ol-prefix           | ordered numbering  | MDS046  | ✅      |
-| MD030 list-marker-space   | space after marker | MDS061  | ✅      |
-| MD032 blanks-around-lists | blank lines        | MDS014  | ✅      |
+| mdsmith                                                                                            | markdownlint                                       | rumdl                                              | mado                                               | panache |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------- | ------- |
+| [MDS014](../../../internal/rules/MDS014-blank-line-around-lists/README.md) blank-line-around-lists | MD032 ✅ blanks-around-lists                       | MD032 ✅ blanks-around-lists                       | MD032 ⚪ blanks-around-lists                       | —       |
+| [MDS016](../../../internal/rules/MDS016-list-indent/README.md) list-indent                         | MD005 ✅ list-indent (partial), MD007 ✅ ul-indent | MD005 ✅ list-indent (partial), MD007 ✅ ul-indent | MD005 ✅ list-indent (partial), MD007 ⚪ ul-indent | —       |
+| [MDS045](../../../internal/rules/MDS045-list-marker-style/README.md) list-marker-style             | MD004 ✅ ul-style                                  | MD004 ✅ ul-style                                  | MD004 ✅ ul-style                                  | —       |
+| [MDS046](../../../internal/rules/MDS046-ordered-list-numbering/README.md) ordered-list-numbering   | MD029 ✅ ol-prefix                                 | MD029 ✅ ol-prefix                                 | MD029 ✅ ol-prefix                                 | —       |
+| [MDS061](../../../internal/rules/MDS061-list-marker-space/README.md) list-marker-space             | MD030 ✅ list-marker-space                         | MD030 ✅ list-marker-space                         | MD030 ✅ list-marker-space                         | —       |
 
 ## Whitespace, blank lines, tabs
 
-| markdownlint             | Checks          | mdsmith | Status |
-| ------------------------ | --------------- | ------- | ------ |
-| MD009 no-trailing-spaces | line ends       | MDS006  | ✅     |
-| MD010 no-hard-tabs       | tab chars       | MDS007  | ✅     |
-| MD012 no-multiple-blanks | repeated blanks | MDS008  | ✅     |
-| MD013 line-length        | max width       | MDS001  | ✅     |
-| MD047 file-ends-newline  | trailing `\n`   | MDS009  | ✅     |
-| MD027 multiple-space-bq  | `>  text`       | MDS059  | ✅     |
-| MD028 blank-line-bq      | gap in quote    | MDS059  | ✅     |
+| mdsmith                                                                                            | markdownlint                                                         | rumdl                                                           | mado                                                                 | panache |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- | ------- |
+| [MDS006](../../../internal/rules/MDS006-no-trailing-spaces/README.md) no-trailing-spaces           | MD009 ✅ no-trailing-spaces                                          | MD009 ✅ no-trailing-spaces                                     | MD009 ✅ no-trailing-spaces                                          | —       |
+| [MDS007](../../../internal/rules/MDS007-no-hard-tabs/README.md) no-hard-tabs                       | MD010 ✅ no-hard-tabs                                                | MD010 ✅ no-hard-tabs                                           | MD010 ✅ no-hard-tabs                                                | —       |
+| [MDS008](../../../internal/rules/MDS008-no-multiple-blanks/README.md) no-multiple-blanks           | MD012 ✅ no-multiple-blanks                                          | MD012 ✅ no-multiple-blanks                                     | MD012 ✅ no-multiple-blanks                                          | —       |
+| [MDS009](../../../internal/rules/MDS009-single-trailing-newline/README.md) single-trailing-newline | MD047 ✅ single-trailing-newline                                     | MD047 ✅ file-end-newline                                       | MD047 ✅ single-trailing-newline                                     | —       |
+| [MDS044](../../../internal/rules/MDS044-horizontal-rule-style/README.md) horizontal-rule-style     | MD035 ✅ hr-style                                                    | MD035 ✅ hr-style                                               | MD035 ✅ hr-style                                                    | —       |
+| [MDS052](../../../internal/rules/MDS052-no-space-in-code-spans/README.md) no-space-in-code-spans   | MD038 ✅ no-space-in-code                                            | MD038 ✅ no-space-in-code                                       | MD038 ✅ no-space-in-code                                            | —       |
+| [MDS059](../../../internal/rules/MDS059-blockquote-whitespace/README.md) blockquote-whitespace     | MD027 ✅ no-multiple-space-blockquote, MD028 ✅ no-blanks-blockquote | MD027 ✅ multiple-spaces-blockquote, MD028 ✅ blanks-blockquote | MD027 ⚪ no-multiple-space-blockquote, MD028 ✅ no-blanks-blockquote | —       |
 
 ## Code blocks and code spans
 
-| markdownlint               | Checks           | mdsmith | Status |
-| -------------------------- | ---------------- | ------- | ------ |
-| MD014 commands-show-output | `$` w/o output   | MDS066  | ✅     |
-| MD031 blanks-around-fences | blank lines      | MDS015  | ✅     |
-| MD038 spaces-in-code-span  | `` ` x ` ``      | MDS052  | ✅     |
-| MD040 fenced-code-language | info string      | MDS011  | ✅     |
-| MD046 code-block-style     | fenced vs indent | MDS065  | ✅     |
-| MD048 code-fence-style     | ``` vs ~~~       | MDS010  | ✅     |
+| mdsmith                                                                                                        | markdownlint                  | rumdl                         | mado                          | panache |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- | ------- |
+| [MDS010](../../../internal/rules/MDS010-fenced-code-style/README.md) fenced-code-style                         | MD048 ✅ code-fence-style     | MD048 ✅ code-fence-style     | —                             | —       |
+| [MDS011](../../../internal/rules/MDS011-fenced-code-language/README.md) fenced-code-language                   | MD040 ✅ fenced-code-language | MD040 ✅ fenced-code-language | MD040 ✅ fenced-code-language | —       |
+| [MDS015](../../../internal/rules/MDS015-blank-line-around-fenced-code/README.md) blank-line-around-fenced-code | MD031 ✅ blanks-around-fences | MD031 ✅ blanks-around-fences | MD031 ✅ blanks-around-fences | —       |
+| [MDS031](../../../internal/rules/MDS031-unclosed-code-block/README.md) unclosed-code-block                     | —                             | —                             | —                             | —       |
+| [MDS065](../../../internal/rules/MDS065-code-block-style/README.md) code-block-style                           | MD046 ✅ code-block-style     | MD046 ✅ code-block-style     | MD046 ✅ code-block-style     | —       |
+| [MDS066](../../../internal/rules/MDS066-commands-show-output/README.md) commands-show-output                   | MD014 ✅ commands-show-output | MD014 ✅ commands-show-output | MD014 ✅ commands-show-output | —       |
 
 ## Links and references
 
-| markdownlint              | Checks           | mdsmith | Status      |
-| ------------------------- | ---------------- | ------- | ----------- |
-| MD011 no-reversed-links   | `(t)[u]`         | MDS062  | ✅          |
-| MD034 no-bare-urls        | raw URL          | MDS012  | ✅          |
-| MD039 spaces-in-link-text | `[ t ]`          | MDS049  | ✅          |
-| MD042 no-empty-links      | empty target     | MDS062  | ✅          |
-| MD051 link-fragments      | `#anchor` exists | MDS027  | ✅ x-file   |
-| MD052 reference-defined   | ref label set    | MDS054  | ✅          |
-| MD053 reference-needed    | unused defs      | MDS053  | ✅          |
-| MD054 link-image-style    | inline vs ref    | —       | 🔲 plan 172 |
-| MD059 descriptive-link    | "click here"     | MDS063  | ✅          |
-
-## Inline, emphasis, HTML
-
-| markdownlint             | Checks         | mdsmith | Status |
-| ------------------------ | -------------- | ------- | ------ |
-| MD033 no-inline-html     | raw HTML       | MDS041  | ✅     |
-| MD035 hr-style           | `---` vs `***` | MDS044  | ✅     |
-| MD037 spaces-in-emphasis | `* x *`        | MDS047  | ✅     |
-| MD044 proper-names       | capitalization | MDS050  | ✅     |
-| MD045 no-alt-text        | image alt      | MDS032  | ✅     |
-| MD049 emphasis-style     | `_` vs `*`     | MDS042  | ✅     |
-| MD050 strong-style       | `__` vs `**`   | MDS042  | ✅     |
+| mdsmith                                                                                                          | markdownlint                                        | rumdl                                           | mado                       | panache                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| [MDS012](../../../internal/rules/MDS012-no-bare-urls/README.md) no-bare-urls                                     | MD034 ✅ no-bare-urls                               | MD034 ✅ no-bare-urls                           | MD034 ✅ no-bare-urls      | —                                                                                                  |
+| [MDS027](../../../internal/rules/MDS027-cross-file-reference-integrity/README.md) cross-file-reference-integrity | MD051 ✅ link-fragments                             | MD051 ✅ link-fragments                         | —                          | undefined-anchor ✅ undefined-anchor                                                               |
+| [MDS043](../../../internal/rules/MDS043-no-reference-style/README.md) no-reference-style                         | —                                                   | —                                               | —                          | —                                                                                                  |
+| [MDS049](../../../internal/rules/MDS049-no-space-in-link-text/README.md) no-space-in-link-text                   | MD039 ✅ no-space-in-links                          | MD039 ✅ no-space-in-links                      | MD039 ✅ no-space-in-links | —                                                                                                  |
+| [MDS053](../../../internal/rules/MDS053-no-unused-link-definitions/README.md) no-unused-link-definitions         | MD053 ✅ link-image-reference-definitions           | MD053 ✅ link-image-definitions                 | —                          | duplicate-reference-labels ✅ duplicate-reference-labels, unused-definitions ✅ unused-definitions |
+| [MDS054](../../../internal/rules/MDS054-no-undefined-reference-labels/README.md) no-undefined-reference-labels   | MD052 ✅ reference-links-images                     | MD052 ✅ reference-links-images                 | —                          | undefined-references ✅ undefined-references                                                       |
+| [MDS062](../../../internal/rules/MDS062-link-validity/README.md) link-validity                                   | MD011 ✅ no-reversed-links, MD042 ✅ no-empty-links | MD011 ✅ reversed-link, MD042 ✅ no-empty-links | —                          | —                                                                                                  |
+| [MDS068](../../../internal/rules/MDS068-link-style/README.md) link-style                                         | —                                                   | —                                               | —                          | —                                                                                                  |
 
 ## Tables
 
-| markdownlint               | Checks      | mdsmith | Status  |
-| -------------------------- | ----------- | ------- | ------- |
-| MD055 table-pipe-style     | edge pipes  | MDS025  | ✅      |
-| MD056 table-column-count   | equal cells | MDS025  | partial |
-| MD058 blanks-around-tables | blank lines | MDS025  | ✅      |
+| mdsmith                                                                                | markdownlint                                                                                    | rumdl                                                                                    | mado | panache |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---- | ------- |
+| [MDS025](../../../internal/rules/MDS025-table-format/README.md) table-format           | MD055 ✅ table-pipe-style, MD056 ✅ table-column-count (partial), MD058 ✅ blanks-around-tables | MD055 ✅ table-pipe-style, MD056 ✅ table-column-count (partial), MD058 ✅ table-spacing | —    | —       |
+| [MDS026](../../../internal/rules/MDS026-table-readability/README.md) table-readability | —                                                                                               | —                                                                                        | —    | —       |
 
-## mdsmith-only rules (no markdownlint analog)
+## Prose and readability
 
-| mdsmith                               | What it adds                      |
-| ------------------------------------- | --------------------------------- |
-| MDS019 catalog                        | generated index from front matter |
-| MDS020 required-structure             | CUE schema beyond MD043           |
-| MDS021 include                        | spliced, synced file inclusion    |
-| MDS022 max-file-length                | file size budget                  |
-| MDS023 paragraph-readability          | ARI grade limit                   |
-| MDS024 paragraph-structure            | sentence/word limits              |
-| MDS025 table-format                   | autofix align and pad             |
-| MDS026 table-readability              | width/row heuristics              |
-| MDS027 cross-file-reference-integrity | whole-repo link graph             |
-| MDS028 token-budget                   | LLM context budget                |
-| MDS029 conciseness-scoring            | prose density (experimental)      |
-| MDS030 empty-section-body             | no empty sections                 |
-| MDS031 unclosed-code-block            | unterminated fence                |
-| MDS033 directory-structure            | where files may live              |
-| MDS034 markdown-flavor                | restrict to a flavor              |
-| MDS035 toc-directive                  | flag stray TOC tokens             |
-| MDS036 max-section-length             | per-section size                  |
-| MDS037 duplicated-content             | copy-paste across files           |
-| MDS038 toc                            | generated heading TOC             |
-| MDS039 build                          | artifact-in-sync directive        |
-| MDS040 recipe-safety                  | shell-safety on build recipes     |
-| MDS043 no-reference-style             | forbid reference links            |
-| MDS048 git-hook-sync                  | merge-driver/hook install state   |
-| MDS055 forbidden-paragraph-starts     | banned opening phrases            |
-| MDS056 forbidden-text                 | banned substrings                 |
-| MDS057 required-text-patterns         | mandated patterns                 |
-| MDS058 required-mentions              | mandated references               |
+| mdsmith                                                                                                  | markdownlint                                   | rumdl                                          | mado                          | panache |
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------- | ----------------------------- | ------- |
+| [MDS023](../../../internal/rules/MDS023-paragraph-readability/README.md) paragraph-readability           | —                                              | —                                              | —                             | —       |
+| [MDS024](../../../internal/rules/MDS024-paragraph-structure/README.md) paragraph-structure               | —                                              | —                                              | —                             | —       |
+| [MDS028](../../../internal/rules/MDS028-token-budget/README.md) token-budget                             | —                                              | —                                              | —                             | —       |
+| [MDS029](../../../internal/rules/MDS029-conciseness-scoring/README.md) conciseness-scoring (not-ready)   | —                                              | —                                              | —                             | —       |
+| [MDS037](../../../internal/rules/MDS037-duplicated-content/README.md) duplicated-content                 | —                                              | —                                              | —                             | —       |
+| [MDS042](../../../internal/rules/MDS042-emphasis-style/README.md) emphasis-style                         | MD049 ✅ emphasis-style, MD050 ✅ strong-style | MD049 ✅ emphasis-style, MD050 ✅ strong-style | —                             | —       |
+| [MDS047](../../../internal/rules/MDS047-ambiguous-emphasis/README.md) ambiguous-emphasis                 | MD037 ✅ no-space-in-emphasis                  | MD037 ✅ spaces-around-emphasis                | MD037 ✅ no-space-in-emphasis | —       |
+| [MDS050](../../../internal/rules/MDS050-proper-names/README.md) proper-names                             | MD044 ✅ proper-names                          | MD044 ✅ proper-names                          | —                             | —       |
+| [MDS055](../../../internal/rules/MDS055-forbidden-paragraph-starts/README.md) forbidden-paragraph-starts | —                                              | —                                              | —                             | —       |
+| [MDS056](../../../internal/rules/MDS056-forbidden-text/README.md) forbidden-text                         | —                                              | —                                              | —                             | —       |
+| [MDS057](../../../internal/rules/MDS057-required-text-patterns/README.md) required-text-patterns         | —                                              | —                                              | —                             | —       |
+| [MDS058](../../../internal/rules/MDS058-required-mentions/README.md) required-mentions                   | —                                              | —                                              | —                             | —       |
+| [MDS063](../../../internal/rules/MDS063-descriptive-link-text/README.md) descriptive-link-text           | MD059 ✅ descriptive-link-text                 | MD059 ✅ link-text                             | —                             | —       |
+
+## Structure and cross-file
+
+| mdsmith                                                                                    | markdownlint               | rumdl                      | mado                    | panache |
+| ------------------------------------------------------------------------------------------ | -------------------------- | -------------------------- | ----------------------- | ------- |
+| [MDS020](../../../internal/rules/MDS020-required-structure/README.md) required-structure   | MD043 ✅ required-headings | MD043 ✅ required-headings | —                       | —       |
+| [MDS022](../../../internal/rules/MDS022-max-file-length/README.md) max-file-length         | —                          | —                          | —                       | —       |
+| [MDS033](../../../internal/rules/MDS033-directory-structure/README.md) directory-structure | —                          | —                          | —                       | —       |
+| [MDS034](../../../internal/rules/MDS034-markdown-flavor/README.md) markdown-flavor         | —                          | —                          | —                       | —       |
+| [MDS041](../../../internal/rules/MDS041-no-inline-html/README.md) no-inline-html           | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html    | MD033 ✅ no-inline-html | —       |
+| [MDS048](../../../internal/rules/MDS048-git-hook-sync/README.md) git-hook-sync             | —                          | —                          | —                       | —       |
+| [MDS067](../../../internal/rules/MDS067-callout-type/README.md) callout-type               | —                          | —                          | —                       | —       |
+
+## Generated sections (directives) (mdsmith-only)
+
+| mdsmith                                                                        | What it adds                                                                                                            |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [MDS019](../../../internal/rules/MDS019-catalog/README.md) catalog             | Catalog content must reflect selected front matter fields from files matching its glob.                                 |
+| [MDS021](../../../internal/rules/MDS021-include/README.md) include             | Include section content must match the referenced file.                                                                 |
+| [MDS035](../../../internal/rules/MDS035-toc-directive/README.md) toc-directive | Flag renderer-specific TOC directives that render as literal text on CommonMark and goldmark.                           |
+| [MDS038](../../../internal/rules/MDS038-toc/README.md) toc                     | Keep toc generated heading lists in sync with document headings.                                                        |
+| [MDS039](../../../internal/rules/MDS039-build/README.md) build                 | Validate `<?build?>` directive parameters and keep the section body in sync with the recipe's rendered `body-template`. |
+| [MDS040](../../../internal/rules/MDS040-recipe-safety/README.md) recipe-safety | Validate each build.recipes command for shell-safety at lint time; the rule never executes any binary.                  |
+
+## Accessibility
+
+| mdsmith                                                                                | markdownlint         | rumdl                | mado | panache |
+| -------------------------------------------------------------------------------------- | -------------------- | -------------------- | ---- | ------- |
+| [MDS032](../../../internal/rules/MDS032-no-empty-alt-text/README.md) no-empty-alt-text | MD045 ✅ no-alt-text | MD045 ✅ no-alt-text | —    | —       |
+
+## Line length
+
+| mdsmith                                                                    | markdownlint         | rumdl                | mado                 | panache |
+| -------------------------------------------------------------------------- | -------------------- | -------------------- | -------------------- | ------- |
+| [MDS001](../../../internal/rules/MDS001-line-length/README.md) line-length | MD013 ✅ line-length | MD013 ✅ line-length | MD013 ✅ line-length | —       |

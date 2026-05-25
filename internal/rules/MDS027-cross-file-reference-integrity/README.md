@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD051
     name: link-fragments
+    default: true
+rumdl:
+  - id: MD051
+    name: link-fragments
+    default: true
+mado: null
+panache:
+  - id: undefined-anchor
+    name: undefined-anchor
+    default: true
 ---
 # MDS027: cross-file-reference-integrity
 

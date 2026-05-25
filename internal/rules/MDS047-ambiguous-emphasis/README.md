@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD037
     name: no-space-in-emphasis
+    default: true
+rumdl:
+  - id: MD037
+    name: spaces-around-emphasis
+    default: true
+mado:
+  - id: MD037
+    name: no-space-in-emphasis
+    default: true
+panache: null
 ---
 # MDS047: ambiguous-emphasis
 

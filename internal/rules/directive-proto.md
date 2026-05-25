@@ -5,7 +5,10 @@ status: '"ready" | "not-ready"'
 description: 'string & != ""'
 nature: '"directive"'
 maintainability: '{signal: string & != "", fix: string & != "", "for-diagnostic"?: bool | *false} | null'
-markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false}] | null'
+markdownlint: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
+rumdl: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
+mado: '[...{id: =~"^MD[0-9]{3}$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
+panache: '[...{id: =~"^[a-z][a-z0-9-]*$", name: string & != "", partial?: bool | *false, default?: bool | *true}] | null'
 category: '"directive"'
 ---
 # {id}: {name}

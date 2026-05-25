@@ -9,6 +9,9 @@ category: directive
 nature: structure
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS040: recipe-safety
 

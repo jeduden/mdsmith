@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD026
     name: no-trailing-punctuation
+    default: true
+rumdl:
+  - id: MD026
+    name: no-trailing-punctuation
+    default: true
+mado:
+  - id: MD026
+    name: no-trailing-punctuation
+    default: true
+panache: null
 ---
 # MDS017: no-trailing-punctuation-in-heading
 

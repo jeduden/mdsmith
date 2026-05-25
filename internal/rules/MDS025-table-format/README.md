@@ -9,11 +9,27 @@ maintainability: null
 markdownlint:
   - id: MD055
     name: table-pipe-style
+    default: true
   - id: MD056
     name: table-column-count
     partial: true
+    default: true
   - id: MD058
     name: blanks-around-tables
+    default: true
+rumdl:
+  - id: MD055
+    name: table-pipe-style
+    default: true
+  - id: MD056
+    name: table-column-count
+    partial: true
+    default: true
+  - id: MD058
+    name: table-spacing
+    default: true
+mado: null
+panache: null
 ---
 # MDS025: table-format
 

@@ -12,8 +12,19 @@ maintainability: null
 markdownlint:
   - id: MD011
     name: no-reversed-links
+    default: true
   - id: MD042
     name: no-empty-links
+    default: true
+rumdl:
+  - id: MD011
+    name: reversed-link
+    default: true
+  - id: MD042
+    name: no-empty-links
+    default: true
+mado: null
+panache: null
 ---
 # MDS062: link-validity
 

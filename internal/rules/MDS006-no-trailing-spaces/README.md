@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD009
     name: no-trailing-spaces
+    default: true
+rumdl:
+  - id: MD009
+    name: no-trailing-spaces
+    default: true
+mado:
+  - id: MD009
+    name: no-trailing-spaces
+    default: true
+panache: null
 ---
 # MDS006: no-trailing-spaces
 

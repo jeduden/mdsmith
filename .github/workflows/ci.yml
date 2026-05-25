@@ -82,6 +82,22 @@ jobs:
           go-version-file: go.mod
       - run: go run ./cmd/mdsmith-release sync-messaging --check
 
+  # The peer-linter coverage matrix at
+  # docs/research/markdownlint-coverage/README.md is generated
+  # from each rule README's markdownlint/rumdl/mado/panache
+  # front-matter blocks. A hand edit to the page would be
+  # reverted on the next sync, so fail fast on drift.
+  coverage-matrix-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/mdsmith-release sync-coverage-matrix --check
+
   # Block any future PR from adding install-time or publish-time
   # lifecycle scripts to the published npm packages. The shai-hulud
   # / TanStack worm class (npm supply-chain compromise, 2025-2026)

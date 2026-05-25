@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD040
     name: fenced-code-language
+    default: true
+rumdl:
+  - id: MD040
+    name: fenced-code-language
+    default: true
+mado:
+  - id: MD040
+    name: fenced-code-language
+    default: true
+panache: null
 ---
 # MDS011: fenced-code-language
 

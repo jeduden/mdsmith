@@ -12,8 +12,19 @@ maintainability: null
 markdownlint:
   - id: MD049
     name: emphasis-style
+    default: true
   - id: MD050
     name: strong-style
+    default: true
+rumdl:
+  - id: MD049
+    name: emphasis-style
+    default: true
+  - id: MD050
+    name: strong-style
+    default: true
+mado: null
+panache: null
 ---
 # MDS042: emphasis-style
 

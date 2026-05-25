@@ -9,6 +9,16 @@ maintainability: null
 markdownlint:
   - id: MD047
     name: single-trailing-newline
+    default: true
+rumdl:
+  - id: MD047
+    name: file-end-newline
+    default: true
+mado:
+  - id: MD047
+    name: single-trailing-newline
+    default: true
+panache: null
 ---
 # MDS009: single-trailing-newline
 

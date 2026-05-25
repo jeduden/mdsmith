@@ -10,6 +10,9 @@ maintainability:
   fix: adopt a `<?catalog?>` directive so the list stays in sync
   for-diagnostic: false
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS019: catalog
 

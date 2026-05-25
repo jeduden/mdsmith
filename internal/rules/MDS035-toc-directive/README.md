@@ -7,6 +7,9 @@ category: directive
 nature: generator
 maintainability: null
 markdownlint: null
+rumdl: null
+mado: null
+panache: null
 ---
 # MDS035: toc-directive
 
