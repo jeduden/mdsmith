@@ -448,27 +448,6 @@ func TestParseInline_CrossRefErrors(t *testing.T) {
 			}},
 			want: "must-match",
 		},
-		// Regex compilation errors are now caught at parse time in
-		// parseCrossRefEntry, so invalid patterns are rejected before any
-		// document is checked.
-		{
-			name: "invalid pattern regex",
-			raw: map[string]any{"cross-references": []any{
-				map[string]any{"pattern": "[unterminated", "must-match": "Step {n}"},
-			}},
-			want: "invalid pattern",
-		},
-		{
-			name: "invalid skip-lines-matching regex",
-			raw: map[string]any{"cross-references": []any{
-				map[string]any{
-					"pattern":             `\bStep (\d+)\b`,
-					"must-match":          "Step {n}",
-					"skip-lines-matching": "[bogus",
-				},
-			}},
-			want: "invalid skip-lines-matching",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -477,6 +456,36 @@ func TestParseInline_CrossRefErrors(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.want)
 		})
 	}
+}
+
+// TestParseInline_CrossRefInvalidRegexRejected verifies that invalid regex
+// patterns in cross-reference entries are caught at parse time
+// (parseCrossRefEntry compiles them eagerly) rather than on the first document
+// check. This exercises the two new error paths added when regex pre-compilation
+// was introduced (Fix 4 of the high-performance-go audit).
+func TestParseInline_CrossRefInvalidRegexRejected(t *testing.T) {
+	t.Run("invalid pattern regex", func(t *testing.T) {
+		_, err := ParseInline(map[string]any{
+			"cross-references": []any{
+				map[string]any{"pattern": "[unterminated", "must-match": "Step {n}"},
+			},
+		}, "test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid pattern")
+	})
+	t.Run("invalid skip-lines-matching regex", func(t *testing.T) {
+		_, err := ParseInline(map[string]any{
+			"cross-references": []any{
+				map[string]any{
+					"pattern":             `\bStep (\d+)\b`,
+					"must-match":          "Step {n}",
+					"skip-lines-matching": "[bogus",
+				},
+			},
+		}, "test")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid skip-lines-matching")
+	})
 }
 
 func TestParseInline_AcronymsErrors(t *testing.T) {
