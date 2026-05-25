@@ -438,15 +438,18 @@ lack determinism.
 | Table alignment    | [MDS025][mds025]      | yes                      | no           | MD055/56/58     | no   | yes                   | via plugin  |
 | Prose wrapping     | no                    | [`proseWrap`][prosewrap] | no           | no              | no   | no                    | no          |
 | Embedded code fmt  | no                    | JS/TS/CSS/JSON           | no           | no              | no   | delegates to external | no          |
-| Multi-pass fix     | yes                   | single pass              | single pass  | single pass     | n/a  | single pass           | single pass |
+| Multi-pass fix     | yes                   | single pass              | single pass  | single pass     | no   | single pass           | single pass |
 | Generated sections | catalog, include, toc | no                       | no           | no              | no   | no                    | no          |
 
 Prose wrapping controls whether a tool reflows paragraph
-line breaks. Prettier's [`proseWrap`][prosewrap] option
-has three modes: `always` (wrap to print width), `never`
-(unwrap to one line per paragraph), and `preserve` (leave
-as-is, the default). None of the linters above reflow
-prose; they only diagnose long lines.
+line breaks. Prettier is the only tool above that reflows
+prose: its [`proseWrap`][prosewrap] option has three
+modes — `always` (wrap to print width), `never` (unwrap
+to one line per paragraph), and `preserve` (leave as-is,
+the default). remark-lint can also rewrap when rewriting
+through its AST, depending on the stringify options. The
+others — mdsmith, markdownlint, rumdl, mado, panache —
+diagnose long lines but never rewrap them.
 
 Prettier is the strongest pure formatter. rumdl and
 panache bring native autofix to the Rust side; mado is
