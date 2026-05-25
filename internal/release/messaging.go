@@ -1,12 +1,16 @@
 package release
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
-	"regexp"
 	"strings"
+
+	"github.com/yuin/goldmark/ast"
+
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 // MessagingKind is the kind name registered in .mdsmith.yml that
@@ -99,26 +103,74 @@ func LoadMessaging(root string) (*Messaging, error) {
 	return &m, nil
 }
 
-// headlineEmphasisRE matches the canonical headline shape: any
-// leading text, exactly one single-asterisk emphasis span, then
-// any trailing text. The span uses `*` (the Markdown `<em>`
-// convention) so the rendered HTML matches the hero template's
-// `<em>` wrapping.
-var headlineEmphasisRE = regexp.MustCompile(`^([^*]*)\*([^*]+)\*([^*]*)$`)
-
-// parseHeadlineEmphasis splits the headline source on its single
-// emphasis span. Returns pre, em, post for the website hero
-// template (`<h1>{pre}<em>{em}</em>{post}</h1>`). Errors if the
-// source has zero or more than one emphasis span — the hero
-// template can only render one.
+// parseHeadlineEmphasis walks the headline source as Markdown
+// via pkg/markdown.Parse (the same goldmark parser the linter
+// uses) and splits it on its single Level-1 emphasis span.
+// Returns pre, em, post for the website hero template
+// `<h1>{pre}<em>{em}</em>{post}</h1>`. Errors if the source
+// has zero or more than one Level-1 emphasis span — the hero
+// template can render only one — or if the parse produces
+// anything other than a single Paragraph.
+//
+// The release tool does no Markdown parsing itself: the AST is
+// the projection mdsmith owns; this function only walks it.
 func parseHeadlineEmphasis(src string) (pre, em, post string, err error) {
-	src = strings.TrimSpace(src)
-	m := headlineEmphasisRE.FindStringSubmatch(src)
-	if m == nil {
+	doc := markdown.Parse([]byte(strings.TrimSpace(src)))
+	body := doc.Body
+	root := doc.AST
+	// The headline source is a single line of inline content;
+	// the parser wraps it in a single Paragraph.
+	first := root.FirstChild()
+	if first == nil || first.NextSibling() != nil ||
+		first.Kind() != ast.KindParagraph {
 		return "", "", "", fmt.Errorf(
-			"expected exactly one `*…*` emphasis span, got %q", src)
+			"expected a single paragraph, got %q", src)
 	}
-	return m[1], m[2], m[3], nil
+	// Walk the paragraph's inline children once. Accumulate text
+	// before / inside / after the Emphasis node; reject when the
+	// shape doesn't match.
+	var preBuf, emBuf, postBuf bytes.Buffer
+	emCount := 0
+	for child := first.FirstChild(); child != nil; child = child.NextSibling() {
+		switch n := child.(type) {
+		case *ast.Text:
+			seg := n.Segment.Value(body)
+			if emCount == 0 {
+				preBuf.Write(seg)
+			} else {
+				postBuf.Write(seg)
+			}
+		case *ast.Emphasis:
+			if n.Level != 1 {
+				return "", "", "", fmt.Errorf(
+					"headline emphasis must use single `*…*` (em), not double `**`")
+			}
+			emCount++
+			if emCount > 1 {
+				return "", "", "", fmt.Errorf(
+					"expected exactly one `*…*` emphasis span, got more")
+			}
+			for t := n.FirstChild(); t != nil; t = t.NextSibling() {
+				tn, ok := t.(*ast.Text)
+				if !ok {
+					return "", "", "", fmt.Errorf(
+						"headline emphasis must contain plain text only")
+				}
+				emBuf.Write(tn.Segment.Value(body))
+			}
+		default:
+			return "", "", "", fmt.Errorf(
+				"unsupported inline node in headline: %T", child)
+		}
+	}
+	if emCount == 0 {
+		return "", "", "", fmt.Errorf(
+			"expected exactly one `*…*` emphasis span, got none")
+	}
+	if emBuf.Len() == 0 {
+		return "", "", "", fmt.Errorf("emphasis span is empty")
+	}
+	return preBuf.String(), emBuf.String(), postBuf.String(), nil
 }
 
 // messagingDoc mirrors the shape `mdsmith extract messaging`

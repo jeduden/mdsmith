@@ -137,4 +137,5 @@ footer: |
 | 209 | 🔲     | opus   | [Convention-per-file config under `.mdsmith/conventions/`](plan/209_convention-files.md)                                                |
 | 210 | ✅     | opus   | [Single source of truth for product messaging via `mdsmith extract`](plan/210_messaging-source-of-truth.md)                             |
 | 211 | 🔲     | opus   | [`<?include?>` projects any typed value of any kind via `extract`](plan/211_include-extract-value.md)                                   |
+| 212 | 🔲     | opus   | [`mdsmith extract` projects paragraph inline spans as data](plan/212_extract-inline-spans.md)                                           |
 <?/catalog?>
