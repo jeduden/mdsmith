@@ -36,17 +36,33 @@ sections:
       - { kind: paragraph, projection: inline, required: true }
 ```
 
-…and extract emits:
+…and extract emits the recursive shape. Container spans
+carry `children`. Leaf spans carry `value`. For the headline
+`Mark*down*, smithed.`:
 
 ```json
 "headline": {
   "inline": [
-    { "kind": "text",     "value": "Mark" },
-    { "kind": "emphasis", "value": "down", "level": 1 },
-    { "kind": "text",     "value": ", smithed." }
+    { "span": "text", "value": "Mark" },
+    { "span": "emphasis", "level": 1, "children": [
+      { "span": "text", "value": "down" }
+    ]},
+    { "span": "text", "value": ", smithed." }
   ]
 }
 ```
+
+Nesting is supported uniformly: a `**`mdsmith fix`**` strong
+containing a code span emits
+
+```json
+{ "span": "strong", "level": 2, "children": [
+    { "span": "code", "value": "mdsmith fix" }
+] }
+```
+
+Consumers walk one shape — no flat-vs-recursive mode switch,
+no fail mode for content that happens to nest.
 
 Then `internal/release/messaging.go` reads `headline.inline`
 and looks for the one `emphasis` span. No Markdown parsing on
@@ -61,21 +77,22 @@ the release side. Just a typed walk over data.
    reject `projection: inline` on non-paragraph kinds.
 2. **AST → typed-span walker.** In
    [`internal/extract`](../internal/extract), implement the
-   inline-span walker. The mapping from goldmark AST to span
-   object:
+   inline-span walker. Container spans (emphasis, strong,
+   link) carry `children`; leaf spans (text, code, autolink)
+   carry `value`. The mapping from goldmark AST to span object:
 
-   | AST node               | Emitted span                        |
-   | ---------------------- | ----------------------------------- |
-   | `ast.Text`             | `{kind: text, value}`               |
-   | `ast.Emphasis` Level 1 | `{kind: emphasis, value, level: 1}` |
-   | `ast.Emphasis` Level 2 | `{kind: strong, value, level: 2}`   |
-   | `ast.CodeSpan`         | `{kind: code, value}`               |
-   | `ast.Link`             | `{kind: link, value, url, title?}`  |
-   | `ast.AutoLink`         | `{kind: autolink, value, url}`      |
+   | AST node               | Emitted span                                  |
+   | ---------------------- | --------------------------------------------- |
+   | `ast.Text`             | `{span: text, value}`                         |
+   | `ast.CodeSpan`         | `{span: code, value}`                         |
+   | `ast.AutoLink`         | `{span: autolink, value, url}`                |
+   | `ast.Emphasis` Level 1 | `{span: emphasis, level: 1, children: [...]}` |
+   | `ast.Emphasis` Level 2 | `{span: strong, level: 2, children: [...]}`   |
+   | `ast.Link`             | `{span: link, url, title?, children: [...]}`  |
 
-   Anything else (raw HTML, images, custom inline) is a hard
-   error. The consuming schema declared it wanted typed-only
-   content.
+   Container spans recurse through the same walker, so nesting
+   composes naturally. Anything not in this table (raw HTML,
+   images, custom inline) is a hard error from extract.
 3. **YAML / msgpack passthrough.** The same projection mode
    works for `--format yaml` and `--format msgpack`. The
    in-memory tree is one shape; only the serializer changes.
@@ -90,12 +107,17 @@ the release side. Just a typed walk over data.
    `## Headline` from a code block to a paragraph with
    `projection: inline`. Drop the
    [`parseHeadlineEmphasis`][parser] helper. Drop the
-   import of `pkg/markdown` from `internal/release/`.
+   import of `pkg/markdown` from `internal/release/`. The
+   release tool replaces the AST walker with a typed walk:
+   find the first `emphasis` span at the top level, flatten
+   its `children` to text (rejecting non-text children), pre
+   / em / post fall out from the sibling positions.
    `mdsmith-release sync-messaging --check` stays clean.
 6. **Documentation.** Add an "Inline-span projection"
    subsection to the
    [extract reference](../docs/reference/cli/extract.md)
-   showing the mapping table, and a worked example to the
+   showing the mapping table and a nesting example, and a
+   worked example to the
    [extract-markdown-as-data guide](../docs/guides/extract-markdown-as-data.md).
 
 [parser]: ../internal/release/messaging.go
@@ -105,7 +127,11 @@ the release side. Just a typed walk over data.
 - [ ] A paragraph content entry with `projection: inline`
   emits a `{inline: [...]}` object where each element is a
   typed span (text / emphasis / strong / code / link /
-  autolink).
+  autolink). Container spans carry `children`; leaf spans
+  carry `value`.
+- [ ] Nested inline (`**`code`**`, `[**bold**](url)`, etc.)
+  round-trips through the projection without error; the
+  consumer walks one uniform shape.
 - [ ] `internal/release/` no longer imports `pkg/markdown` or
   parses Markdown itself. The headline parsing helper is
   deleted; the release tool reads `headline.inline` directly.
@@ -113,7 +139,7 @@ the release side. Just a typed walk over data.
   (raw HTML, image, custom) when the schema asks for `inline`.
 - [ ] The mapping table is documented in the extract
   reference; the worked example in the guide shows both
-  schema and JSON output.
+  schema and JSON output (including one nested case).
 - [ ] `mdsmith check .` clean; `mdsmith-release sync-messaging
   --check` reports no drift on the messaging surfaces.
 - [ ] All tests pass: `go test ./...`.
