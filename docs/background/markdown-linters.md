@@ -432,14 +432,14 @@ lack determinism.
 
 ### Formatting and Fixing
 
-| Capability         | mdsmith               | Prettier                 | markdownlint | rumdl           | mado | panache               | remark-lint |
-| ------------------ | --------------------- | ------------------------ | ------------ | --------------- | ---- | --------------------- | ----------- |
-| Autofix CLI        | `fix`                 | `--write`                | `--fix`      | `--fix` / `fmt` | no   | `format`              | AST rewrite |
-| Table alignment    | [MDS025][mds025]      | yes                      | no           | MD055/56/58     | no   | yes                   | via plugin  |
-| Prose wrapping     | no                    | [`proseWrap`][prosewrap] | no           | no              | no   | no                    | no          |
-| Embedded code fmt  | no                    | JS/TS/CSS/JSON           | no           | no              | no   | delegates to external | no          |
-| Multi-pass fix     | yes                   | single pass              | single pass  | single pass     | no   | single pass           | single pass |
-| Generated sections | catalog, include, toc | no                       | no           | no              | no   | no                    | no          |
+| Capability         | mdsmith               | Prettier                 | markdownlint | rumdl           | mado | panache               | remark-lint       |
+| ------------------ | --------------------- | ------------------------ | ------------ | --------------- | ---- | --------------------- | ----------------- |
+| Autofix CLI        | `fix`                 | `--write`                | `--fix`      | `--fix` / `fmt` | no   | `format`              | yes (AST rewrite) |
+| Table alignment    | [MDS025][mds025]      | yes                      | no           | MD055/56/58     | no   | yes                   | via plugin        |
+| Prose wrapping     | no                    | [`proseWrap`][prosewrap] | no           | no              | no   | no                    | no                |
+| Embedded code fmt  | no                    | JS/TS/CSS/JSON           | no           | no              | no   | delegates to external | no                |
+| Multi-pass fix     | yes                   | single pass              | single pass  | single pass     | no   | single pass           | single pass       |
+| Generated sections | catalog, include, toc | no                       | no           | no              | no   | no                    | no                |
 
 Prose wrapping controls whether a tool reflows paragraph
 line breaks. Only Prettier ships an explicit
@@ -528,10 +528,11 @@ access and is non-deterministic.
 
 ## Benchmarks
 
-Default mdsmith is roughly an order of magnitude faster
-than markdownlint-cli2 on its own 523-file repo. With
-the mdsmith-only rules disabled (`mdsmith-parity`), it
-lands close to rumdl.
+Default mdsmith is substantially faster than
+markdownlint-cli2 on its own 523-file repo. With the
+mdsmith-only rules disabled (`mdsmith-parity`), it lands
+close to rumdl. See the [benchmark doc][bench] for the
+current ratios.
 
 mado and rumdl lead the per-file race. mdsmith trails
 them today because it also walks the cross-file graph,
