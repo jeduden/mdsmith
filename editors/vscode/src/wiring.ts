@@ -123,9 +123,11 @@ export function startupErrorMessage(
     `"mdsmith.path": ${formatConfiguredPath(ctx.configuredPath)}`,
   ];
   if (ctx.resolvedCommand !== ctx.configuredPath) {
-    // Only echo the resolved command when the resolver substituted
-    // one (empty/whitespace mdsmith.path → bundled binary). Otherwise
-    // it's the same string the user already sees on the previous line.
+    // Echo the resolved command whenever it differs from the raw
+    // setting — that happens both when the resolver substituted the
+    // bundled binary (empty / whitespace / bare "mdsmith") and when
+    // it merely trimmed surrounding whitespace from a custom value.
+    // Suppressing the line when they match keeps the error tight.
     lines.push(`resolved command: ${ctx.resolvedCommand}`);
   }
   lines.push("");
@@ -143,9 +145,17 @@ export function startupErrorMessage(
       lines.push(`  - ${candidateLabel(c)}: ${c.path}`);
     }
     lines.push("");
+    // Only offer the "clear it to use the bundled binary" shortcut
+    // when the candidate list actually has a bundled entry; on a dev
+    // build with no dist/cli/ or an unsupported host the shortcut
+    // would send the user to a missing binary.
+    const hasBundled = ctx.candidates.some((c) => c.kind === "bundled");
+    const clearHint = hasBundled
+      ? ` (or clear it to use the bundled binary)`
+      : "";
     lines.push(
-      `Set "mdsmith.path" to one of these (or clear it to use the bundled ` +
-        `binary) and run "mdsmith: Restart Language Server".`,
+      `Set "mdsmith.path" to one of these${clearHint} and run ` +
+        `"mdsmith: Restart Language Server".`,
     );
   }
   return lines.join("\n");

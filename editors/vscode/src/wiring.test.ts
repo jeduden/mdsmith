@@ -168,6 +168,29 @@ describe("startupErrorMessage", () => {
     expect(msg).toContain("on $PATH: /usr/local/bin/mdsmith");
   });
 
+  test("offers the 'clear to use bundled' shortcut only when bundled is present", () => {
+    // Dev build (no dist/cli/) or an unsupported platform produces a
+    // candidate list of just PATH hits; suggesting "clear mdsmith.path
+    // to use the bundled binary" in that case sends the user down a
+    // dead end.
+    const onlyPath = startupErrorMessage(new Error("spawn /tmp/mdsmith-debug ENOENT"), {
+      configuredPath: "/tmp/mdsmith-debug",
+      resolvedCommand: "/tmp/mdsmith-debug",
+      candidates: [{ kind: "path", path: "/usr/local/bin/mdsmith" }],
+    });
+    expect(onlyPath).not.toContain("clear it");
+    expect(onlyPath).toContain('Set "mdsmith.path" to one of these');
+
+    const withBundled = startupErrorMessage(new Error("spawn /tmp/mdsmith-debug ENOENT"), {
+      configuredPath: "/tmp/mdsmith-debug",
+      resolvedCommand: "/tmp/mdsmith-debug",
+      candidates: [
+        { kind: "bundled", path: "/ext/dist/cli/@mdsmith/linux-x64/bin/mdsmith" },
+      ],
+    });
+    expect(withBundled).toContain("clear it to use the bundled binary");
+  });
+
   test("says no alternatives were found when the candidate list is empty", () => {
     // Otherwise the user is left wondering whether the resolver
     // looked at all — making the negative result explicit is what
@@ -207,6 +230,20 @@ describe("startupErrorMessage", () => {
     expect(msg).toContain(
       "resolved command: /ext/dist/cli/@mdsmith/linux-x64/bin/mdsmith",
     );
+  });
+
+  test("shows the resolved command when the resolver merely trimmed whitespace", () => {
+    // resolveBinary trims surrounding whitespace from custom paths,
+    // so a typo like "  /opt/mdsmith  " makes configured and resolved
+    // diverge without falling back to the bundled binary. Surfacing
+    // the trimmed form is what tells the user the literal value of
+    // their setting is not what got spawned.
+    const msg = startupErrorMessage(new Error("oops"), {
+      configuredPath: "  /opt/mdsmith  ",
+      resolvedCommand: "/opt/mdsmith",
+      candidates: [],
+    });
+    expect(msg).toContain("resolved command: /opt/mdsmith");
   });
 });
 
