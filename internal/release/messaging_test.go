@@ -139,6 +139,62 @@ func TestParseHeadlineEmphasis_EmptySpanFails(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseHeadlineEmphasis_StrongRejected(t *testing.T) {
+	// Double asterisks mean strong / <strong>, not <em>. The
+	// website hero template only knows the em form.
+	_, _, _, err := parseHeadlineEmphasis("Mark**down**, smithed.")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "double")
+}
+
+func TestParseHeadlineEmphasis_NonParagraphRejected(t *testing.T) {
+	// A line that goldmark parses as a heading rather than a
+	// paragraph (a `#` prefix) fails the single-paragraph
+	// guard.
+	_, _, _, err := parseHeadlineEmphasis("# Mark*down*, smithed.")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "single paragraph")
+}
+
+func TestParseHeadlineEmphasis_UnsupportedInlineRejected(t *testing.T) {
+	// A bare URL parses as an autolink — not Text or Emphasis,
+	// so the default case in the inline switch fires.
+	_, _, _, err := parseHeadlineEmphasis("Mark*down*, smithed. <https://x.test>")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported inline")
+}
+
+func TestParseHeadlineEmphasis_NestedInsideEmphasisRejected(t *testing.T) {
+	// Inline code inside the emphasis span (`*x`y`z*` parses as
+	// Emphasis containing Text + CodeSpan + Text) — the inner
+	// walk over the emphasis children rejects anything that
+	// isn't plain text.
+	_, _, _, err := parseHeadlineEmphasis("Mark*x`y`z*, smithed.")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "plain text only")
+}
+
+func TestLoadMessaging_HeadlineParseError(t *testing.T) {
+	// headline.code is non-empty but has no `*…*` span; the
+	// parser surfaces an error and LoadMessaging wraps it with a
+	// "headline:" prefix.
+	bad := `{
+		"frontmatter": {"title": "t", "summary": "s"},
+		"headline":  {"code": "Markdown, smithed."},
+		"eyebrow":   {"text": "e"},
+		"lead":      {"text": "l"},
+		"tagline":   {"text": "tg"},
+		"vscode-description":             {"text": "v"},
+		"claude-code-lsp-description":    {"text": "lsp"},
+		"claude-code-skills-description": {"text": "sk"},
+		"claude-code-audit-description":  {"text": "a"}
+	}`
+	stubMessagingExtractor(t, []byte(bad), nil)
+	_, err := LoadMessaging("ignored")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "headline:")
+}
+
 // TestRunMdsmithExtract_AgainstRepoRoot exercises the real
 // shell-out path (the variable `messagingExtractor` defaults to
 // `runMdsmithExtract`). It runs `go run ./cmd/mdsmith extract
