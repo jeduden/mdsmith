@@ -85,7 +85,7 @@ func RenderCoverageMatrix(rs []rules.RuleInfo) string {
 	buf.WriteString("- ✅ implemented, enabled by default upstream\n")
 	buf.WriteString("- ⚪ implemented, off by default upstream\n")
 	buf.WriteString("- (partial) — covers only part of the named rule\n")
-	buf.WriteString("- — — no analog rule\n\n")
+	buf.WriteString("- — no analog rule\n\n")
 
 	grouped := groupByCategory(rs)
 	cats := orderedCategories(grouped)

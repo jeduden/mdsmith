@@ -19,7 +19,7 @@ Cell legend:
 - ✅ implemented, enabled by default upstream
 - ⚪ implemented, off by default upstream
 - (partial) — covers only part of the named rule
-- — — no analog rule
+- — no analog rule
 
 ## Headings
 

@@ -33,10 +33,10 @@ type RuleInfo struct {
 // covers, plus that linter's default-on/off state for the rule. Partial is
 // true when the mdsmith rule implements only part of the peer check.
 //
-// `default:` is required by the proto schema, so every entry on disk
-// states the peer's default-enabled state explicitly. A `false` value
-// in the Go struct after unmarshal always reflects an explicit
-// `default: false` in front matter rather than a missing field.
+// `default:` is required by the proto schema (validated by MDS020), so
+// rule READMEs cannot omit it. Once MDS020 has accepted a README the
+// Go YAML unmarshal cannot decode a missing `default:` key as `false` —
+// the schema rejects the file before this struct sees it.
 //
 // The per-rule front-matter blocks are the source of truth;
 // docs/research/markdownlint-coverage/README.md is regenerated from
@@ -46,18 +46,6 @@ type RuleMapping struct {
 	Name    string `yaml:"name"`
 	Partial bool   `yaml:"partial"`
 	Default bool   `yaml:"default"`
-}
-
-// MarkdownlintRule is a deprecated alias kept for backwards compatibility
-// with callers that referenced the older type name.
-type MarkdownlintRule = RuleMapping
-
-// URL returns the canonical markdownlint documentation URL for this rule.
-// Markdownlint hosts per-rule docs at a stable per-ID path keyed on the
-// lowercase ID, so the URL is derivable from ID alone.
-func (r RuleMapping) URL() string {
-	return "https://github.com/DavidAnson/markdownlint/blob/main/doc/" +
-		strings.ToLower(r.ID) + ".md"
 }
 
 // Maintainability captures a rule's adoption pattern: the structural shape a

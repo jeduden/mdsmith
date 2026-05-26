@@ -394,27 +394,6 @@ func TestParseFrontMatter_NullMarkdownlint(t *testing.T) {
 	}
 }
 
-// TestMarkdownlintRule_URL verifies that MarkdownlintRule.URL builds the
-// canonical doc URL by lowercasing the rule ID and appending it to the
-// markdownlint doc path. Kept under the legacy alias name for callers
-// that still reference MarkdownlintRule.
-func TestMarkdownlintRule_URL(t *testing.T) {
-	r := MarkdownlintRule{ID: "MD013", Name: "line-length"}
-	assert.Equal(t,
-		"https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md",
-		r.URL())
-}
-
-// TestRuleMapping_URL is the dedicated unit test for the URL
-// method bound to its canonical receiver name. The legacy
-// MarkdownlintRule alias still routes through this method.
-func TestRuleMapping_URL(t *testing.T) {
-	r := RuleMapping{ID: "MD013", Name: "line-length"}
-	assert.Equal(t,
-		"https://github.com/DavidAnson/markdownlint/blob/main/doc/md013.md",
-		r.URL())
-}
-
 // TestParseFrontMatter_PeerLinterBlocks verifies that rumdl, mado, and
 // panache mapping blocks parse into their respective RuleInfo slices and
 // that the per-entry `default` flag round-trips correctly.
