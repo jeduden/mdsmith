@@ -236,6 +236,47 @@ and their aliases out of the box. Dataview inline
 fields (`key:: value`) are still not front matter.
 The `require`/`schema` directives do not read them.
 
+### [obsidian-linter][]
+
+TypeScript plugin for the Obsidian editor — not a
+standalone CLI. ~1.9k stars, MIT. Tagline: "An
+Obsidian plugin that formats and styles your notes
+with a focus on configurability and extensibility."
+
+- ~50 rules in six categories: YAML (14), Headings
+  (5), Footnotes (3), Content (16), Spacing (19),
+  Paste (8)
+- Autofix only — every rule rewrites the active
+  note via "Lint current file", "Lint on save", or
+  "Lint on paste"
+- Config in the plugin settings UI, not a
+  checked-in file; rules toggle per vault
+- Custom rules via regex find-and-replace pairs in
+  settings
+- No CLI, no CI gate, no LSP — diagnostics never
+  leave the Obsidian process
+
+| Aspect        | obsidian-linter           | mdsmith                          |
+| ------------- | ------------------------- | -------------------------------- |
+| Distribution  | Obsidian plugin           | Static Go binary                 |
+| Scope         | Active note only          | Whole repo walk                  |
+| CI gate       | no                        | `mdsmith check`                  |
+| Editor        | Obsidian only             | LSP for any editor               |
+| Config        | per-vault UI              | `.mdsmith.yml` in repo           |
+| Autofix model | rewrite on save/paste/cmd | `mdsmith fix`, multi-pass        |
+| Cross-file    | no                        | links, includes, catalogs, kinds |
+| YAML rules    | 14 (key sort, alias, …)   | MDS020 + CUE schema              |
+| Custom rules  | regex find-and-replace    | per-rule settings, conventions   |
+
+obsidian-linter and mdsmith sit on opposite sides
+of the same vault. obsidian-linter runs inside the
+editor and rewrites the note a writer is touching.
+mdsmith runs in the repo and gates the whole tree
+at commit. A team that writes in Obsidian can
+layer both: format on save with obsidian-linter,
+then enforce the contract across every `.md` in CI
+with mdsmith.
+
 ### [mdbase][]
 
 Specification for treating folders of Markdown files
@@ -585,6 +626,12 @@ not need them.
 Its lossless CST keeps the Pandoc syntax that Prettier and
 mdformat flatten. It bundles the formatter, linter, and LSP
 for those formats.
+
+**obsidian-linter** fits a team that writes notes in
+Obsidian and wants every save to clean up YAML keys,
+heading case, and spacing inside the editor. There is no
+CLI or CI gate, so pair it with mdsmith when the same
+vault is also a Git repo that needs a commit-time check.
 
 **LLM as linter** is best for subjective quality checks:
 conciseness, clarity, tone. Use it in PR review workflows
