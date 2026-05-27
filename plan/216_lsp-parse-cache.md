@@ -58,7 +58,7 @@ The cross-file
 the seam. It lives for the server lifetime.
 Several edit events drop a cached entry. The
 parse cache mirrors that shape. The key is denser:
-`(absPath, version)`. Version bumps invalidate
+`(path, version)`. Version bumps invalidate
 the old entry on their own.
 
 ## Non-Goals
