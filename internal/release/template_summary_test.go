@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"text/template/parse"
@@ -61,7 +62,17 @@ func scanSummaryViolations(path, content string) ([]summaryViolation, error) {
 	// Iterate every tree the parser produced. The wrapping tree
 	// (`treeSet[path]`) is also visited but contains only the text
 	// fragments outside the defines (typically just whitespace).
-	for _, t := range treeSet {
+	// Sort the keys so violation order is deterministic — map range
+	// is randomised and would otherwise shuffle diagnostics between
+	// test runs, hurting triage when a single template has multiple
+	// defines.
+	keys := make([]string, 0, len(treeSet))
+	for k := range treeSet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		t := treeSet[k]
 		if t != nil && t.Root != nil {
 			w.walk(t.Root)
 		}
@@ -244,7 +255,15 @@ func argReferencesSummary(arg parse.Node) bool {
 	case *parse.FieldNode:
 		return fieldIsSummary(n)
 	case *parse.ChainNode:
-		return chainIsSummary(n)
+		// A ChainNode is `<receiver>.Field1.Field2...`. The summary
+		// might be in the Field chain (e.g. `($foo).Params.summary`)
+		// or hidden in the parenthesised receiver itself
+		// (e.g. `(.Params.summary).Foo` — Params.summary lives in
+		// the PipeNode receiver, not the trailing Field).
+		if chainIsSummary(n) {
+			return true
+		}
+		return argReferencesSummary(n.Node)
 	case *parse.VariableNode:
 		return variableIsSummary(n)
 	case *parse.PipeNode:
@@ -253,14 +272,29 @@ func argReferencesSummary(arg parse.Node) bool {
 	return false
 }
 
-// pipeAssignsSummary returns true if the pipe declares variables
-// (a `:=` or `=`) and the right-hand value references the summary.
-// Pipes with declarations have non-nil Decl.
+// pipeAssignsSummary returns true if the pipe — or any sub-pipe
+// nested inside one of its command args — declares variables
+// whose right-hand value references the summary. The recursion
+// catches forms like `{{ .RenderString (dict) ($s := .Params.summary) }}`
+// where the binding hides in a sub-pipeline arg and the outer
+// pipe's Decl is empty.
 func pipeAssignsSummary(p *parse.PipeNode) bool {
-	if p == nil || len(p.Decl) == 0 {
+	if p == nil {
 		return false
 	}
-	return pipeReferencesSummary(p)
+	if len(p.Decl) > 0 && pipeReferencesSummary(p) {
+		return true
+	}
+	for _, c := range p.Cmds {
+		for _, arg := range c.Args {
+			if sub, ok := arg.(*parse.PipeNode); ok {
+				if pipeAssignsSummary(sub) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // pipeOutputsSummaryViaRenderString walks the pipe stage-by-stage
@@ -529,6 +563,29 @@ func TestScanSummaryViolations_QualifiedFieldAccess(t *testing.T) {
 			assert.Len(t, got, tc.wantCount, "violations: %+v", got)
 		})
 	}
+}
+
+// TestScanSummaryViolations_ChainReceiver pins detection of summary
+// references hidden in the parenthesised receiver of a ChainNode,
+// e.g. `{{ (.Params.summary).Foo }}` — the summary lives in the
+// PipeNode receiver, not the trailing field chain.
+func TestScanSummaryViolations_ChainReceiver(t *testing.T) {
+	got, err := scanSummaryViolations("file.html", `{{ (.Params.summary).Foo }}`)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+}
+
+// TestScanSummaryViolations_SubPipeVarAssign pins detection of
+// variable assignment hidden inside a sub-pipeline argument:
+// `{{ .RenderString (dict) ($s := .Params.summary) }}` —
+// the outer pipe has no Decl, but the sub-pipe carries `$s := ...`.
+// The bound `$s` escapes the per-action scan, the same risk a
+// top-level assignment carries.
+func TestScanSummaryViolations_SubPipeVarAssign(t *testing.T) {
+	got, err := scanSummaryViolations("file.html", `{{ .RenderString (dict) ($s := .Params.summary) }}`)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0].Why, "variable assignment")
 }
 
 // TestScanSummaryViolations_TemplateInvocation pins that passing
