@@ -246,7 +246,7 @@ Inline is the default. Keep a kind inline when:
   Scanning every kind at once is faster in one
   file.
 - The kind is new and still under iteration.
-  Editing in place is faster than alt-tabbing
+  Editing in place is faster than switching
   between two files.
 - The kind sits next to a related override or
   `kind-assignment:` entry, and the proximity
