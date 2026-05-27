@@ -69,6 +69,71 @@ and blockquote-depth rules read structural
 relationships. Inline emphasis rules read span
 boundaries the lexer recovered.
 
+### The code-block-skipping side effect
+
+The AST gives rules an implicit filter. A rule
+that walks `*ast.Paragraph` children never sees
+content inside `*ast.FencedCodeBlock`,
+`*ast.CodeBlock`, `*ast.HTMLBlock`, or
+`*ast.CodeSpan`. Those are separate node types the
+walker skips by selector. A Lines-only rewrite
+loses that filter. It must reproduce skipping in
+bytes — and that costs real complexity:
+
+- Track the open fence delimiter and length. Three
+  or more `` ` `` or `~`, closed by the same
+  character at the same or greater length.
+- Distinguish indented code: four-space prefix
+  after a blank line, but not inside a list item.
+- Step over HTML blocks. CommonMark defines seven
+  flavors with different end conditions.
+- Skip inline code spans. Backtick runs match by
+  count.
+- Skip autolinks and ignore raw inline HTML.
+
+This skipping is the actual reason a tree exists.
+Reproducing skipping in every rule duplicates
+parser work and risks divergence from goldmark.
+So candidates split by what skipping they need.
+
+**Category A (no skipping)** — the rule applies
+to every line including code. Examples: MDS001
+line length, BOM detection, hard-tab presence.
+Direct `f.Lines` scan, no skip logic. Biggest win
+per line of code.
+
+**Category B (prose-only)** — the rule must skip
+code and HTML. Examples: bare URLs, proper-name
+capitalization, forbidden text in prose, most
+readability rules. A correctness-equivalent
+rewrite needs a shared scaffold.
+
+Category B is only worth converting if the
+scaffold is cheaper than the AST walk. If it has
+to re-implement half of CommonMark block
+parsing, the rule paid for parsing twice and the
+saving evaporates.
+
+### Phase zero — the prose-scanner scaffold
+
+Before any Category B conversion, build
+`internal/lint/prosescan/` — one forward pass
+over `f.Lines` that yields prose byte ranges
+stripped of fenced code, indented code, HTML
+blocks, code spans, autolinks, and inline HTML.
+Zero allocations per call (state on the stack,
+output via callback). It is tested against a
+CommonMark fixture corpus whose ground truth
+comes from an AST walk over the same input.
+
+The phase-zero benchmark is the gate. If
+`prosescan` lands under 50 % of the AST walk's
+CPU per file, it becomes the substrate for
+Category B. Otherwise **Category B is dropped**:
+only Category A ships and the perf target
+shrinks. No Category B rule converts before the
+gate passes.
+
 ## Non-Goals
 
 - Removing the AST from `lint.File`. Most rules
@@ -86,28 +151,38 @@ boundaries the lexer recovered.
 
 ## Approach
 
-Three phases.
-
 ### Phase one — survey
 
-A single PR adds
-`internal/integration/rule_walk_audit_test.go`. It
-walks every registered rule and classifies it. The
-detector cannot wrap `f.AST` (it is an exported
-field on `lint.File`, not a method, so reads cannot
-be intercepted). Instead the harness runs each rule
-against a fixture set twice: once normally, once
-with `f.AST` set to nil. The classification:
+`internal/integration/rule_walk_audit_test.go`
+walks every registered rule and classifies it via
+two probes. `f.AST` is an exported field, not a
+method, so a wrapper cannot intercept reads.
+Probe one runs the rule twice — once normally,
+once with `f.AST = nil`. Probe two runs the rule
+on the original fixture, then on a perturbation
+where only code-block content is mutated.
+Together the probes yield three signals: nil-AST
+safety, code-block sensitivity, and diagnostic
+equality. The classification:
 
-1. **Lines-only candidate** — the nil-AST run
-   produces identical diagnostics to the normal
-   run (and does not panic).
-2. **AST-required** — the nil-AST run panics on
-   the nil dereference or produces different
-   diagnostics.
-3. **Hybrid** — the nil-AST run succeeds but emits
-   a different diagnostic set. Convert later, if
-   ever; not in scope.
+1. **Category A (no skipping)** — the nil-AST run
+   matches the normal run, AND the code-block
+   perturbation produces the same diagnostics.
+   The rule was applying to every line regardless
+   of code-block context. Direct `f.Lines`
+   conversion, no scaffold needed.
+2. **Category B (prose-only)** — the nil-AST run
+   matches the normal run, but the code-block
+   perturbation changes diagnostics. The rule
+   needs the skipping. Requires the phase-zero
+   `prosescan` scaffold; convert only if
+   phase-zero's perf gate passes.
+3. **AST-required** — the nil-AST run panics or
+   produces different diagnostics on unperturbed
+   input. Keep the AST.
+4. **Hybrid** — the nil-AST run survives but
+   emits a different diagnostic set on
+   unperturbed input. Out of scope.
 
 A static check complements the runtime probe. It
 uses `go/packages` over `internal/rules/`. The
@@ -123,14 +198,26 @@ uses it to gate regressions.
 
 ### Phase two — rewrite
 
-For each Lines-only candidate, in its own commit:
+For each candidate, in its own commit:
 
 1. Add a unit test asserting identical diagnostics
-   on a small fixture.
-2. Rewrite Check to scan `f.Lines` with `bytes`
-   helpers. Track fenced-code state inline if the
-   rule should skip code blocks (most do). Compile
-   any regex at package scope.
+   on a small fixture. The fixture **must**
+   include a fenced code block, an indented code
+   block, an HTML block, and an inline code span
+   containing the pattern the rule looks for. The
+   converted rule must agree with the AST version
+   byte-for-byte on those.
+2. Rewrite Check. A Category A rewrite uses a
+   direct `f.Lines` scan with `bytes` helpers, no
+   skip logic, and any regex compiled at package
+   scope. A Category B rewrite drives the
+   `prosescan` package and scans only the prose
+   ranges it yields. Per-rule code that
+   re-implements fence or HTML detection is **not**
+   allowed; the scaffold is the single owner of
+   that work. If a rule needs skipping the
+   scaffold does not yet provide, extend the
+   scaffold.
 3. Confirm the rule's `bad/` and `good/` fixtures
    under `internal/rules/MDS###-*/` still pass.
 4. Re-run the allocation-budget test at
@@ -147,33 +234,58 @@ rule, so the manifest stays accurate.
 
 ## Tasks
 
-1. Implement the audit harness — the nil-AST
-   runtime probe plus the `go/packages` static
-   scan over `internal/rules/`. Land the initial
-   manifest.
-2. Pick the three highest-allocating Lines-only
-   candidates from the manifest and convert them
-   one commit per rule, each with the unit test
-   precondition.
-3. Run `BenchmarkCheckCorpusLarge` after each
-   conversion; record the cumulative wall-time and
-   allocs delta in this plan.
-4. Convert the long tail of Lines-only candidates,
-   batched by rule package. Same commit shape.
-5. Land the regression gate from phase three so
-   the manifest is enforced.
-6. Update the perf guide at
+1. Implement the audit harness (nil-AST probe,
+   code-block-perturbation probe, `go/packages`
+   static scan) and land the initial manifest
+   with each rule classified A, B, AST-required,
+   or hybrid.
+2. Convert the three highest-allocating Category
+   A candidates, one commit per rule.
+3. Build the phase-zero `prosescan` package with
+   the CommonMark-equivalence fixture corpus and
+   the zero-allocation guarantee. Benchmark
+   against the equivalent AST walk.
+4. If `prosescan` benchmarks under 50 % of the
+   AST walk's CPU per file, convert Category B
+   candidates one commit per rule. If it lands
+   at parity or worse, close out after Category
+   A — drop the scaffold if it cannot beat the
+   walk. Record the decision and numbers here.
+5. Run `BenchmarkCheckCorpusLarge` after each
+   conversion; record the cumulative wall-time
+   and allocs delta.
+6. Land the regression gate from phase three.
+7. Update the perf guide at
    [high-performance-go.md](../docs/development/high-performance-go.md)
-   with the "prefer f.Lines for pure pattern scans"
-   guideline and a pointer to the manifest.
+   with the Category A vs B guidance and a
+   pointer to the manifest.
 
 ## Risk
 
-A rule may *appear* to be Lines-only but rely on
-the AST's code-block-skipping side effect. The unit
-test on a fixture containing a fenced code block
-with the pattern inside catches this — required
-before conversion.
+The code-block-skipping side effect is the
+biggest hazard. A rule may *appear* Lines-only on
+audit fixtures, then break when a real document
+puts the pattern inside a fence or code span. The
+phase-one perturbation probe is the defense. A
+rule whose diagnostics change when only the
+code-block content changes is routed to Category
+B. The scaffold owns the skipping there.
+
+The phase-zero scaffold itself is the second
+hazard. If `prosescan` disagrees with goldmark on
+any CommonMark corner case (lazy continuation
+inside a list item, a fence opened by a tab, an
+HTML block whose end condition matches inside the
+block), every Category B conversion inherits the
+bug. The equivalence fixture corpus is the
+defense — every fixture's prose ranges must
+byte-match what an AST walk over the same input
+produces.
+
+The scaffold may also fail to beat the AST walk.
+Phase-zero's gate exists precisely to surface
+that early. If it fails, Category B stays on the
+AST and we ship a smaller win.
 
 Node-derived positions may differ from the Lines
 path. The fixture-parity assertion catches drift.
