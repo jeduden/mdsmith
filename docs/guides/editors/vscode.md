@@ -14,23 +14,24 @@ file: ../../brand/fragments/vscode-overview.fragment.md
 docs/brand/messaging.md — do not edit by hand. -->
 
 The extension is a thin LSP client over the bundled mdsmith binary, which
-it runs with the lsp subcommand. It surfaces inline diagnostics as
-squiggles, a lightbulb quick fix for every fixable rule, a whole-buffer fix
-action with optional fix-on-save and Refactor Preview, an outline view, and
-cross-file navigation — Go to Definition, Find All References, workspace
-symbol search, and a call hierarchy across includes, catalogs, builds, and
-Markdown links. The mdsmith Command Palette runs Initialize Config, Fix All
-Markdown, Install Git Merge Driver, Explain Rule on This File, and Show
-Resolved Config. The .vsix bundles the mdsmith binary for every supported
-OS and architecture, so no separate install is needed.
+it runs with the lsp subcommand. Diagnostics appear inline as squiggles,
+and every fixable rule contributes a lightbulb quick fix. A whole-buffer
+fix action runs on demand or on save, with an optional Refactor Preview
+before edits land. Cross-file navigation extends to Go to Definition, Find
+All References, workspace symbol search, and a call hierarchy across
+includes, catalogs, builds, and Markdown links. The mdsmith Command Palette
+runs Initialize Config, Fix All Markdown, Install Git Merge Driver, Explain
+Rule on This File, and Show Resolved Config. The .vsix bundles the mdsmith
+binary for every supported OS and architecture, so no separate install is
+needed.
 <?/include?>
 
-It spawns `mdsmith lsp` over stdio and sends Language
-Server Protocol messages; the lint pipeline runs in the Go
-process, not the Node runtime. The same server speaks
-vanilla LSP, so any LSP-aware editor (Neovim, Helix,
-JetBrains via the LSP plugin) gets the same behavior by
-pointing at `mdsmith lsp`.
+The extension spawns `mdsmith lsp` over stdio and
+exchanges Language Server Protocol messages. The lint
+pipeline runs in the Go process, not the Node runtime. Any
+LSP-aware editor (Neovim, Helix, JetBrains via the LSP
+plugin) gets the same behavior by pointing at
+`mdsmith lsp`.
 
 ## Prerequisites
 
