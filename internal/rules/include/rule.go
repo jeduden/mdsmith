@@ -143,6 +143,22 @@ func validateIncludeDirective(
 		}
 	}
 
+	// Validate extract parameter if present.
+	if ex, ok := params["extract"]; ok {
+		if strings.TrimSpace(ex) == "" {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`include directive "extract" value is empty`)}
+		}
+		if _, hasSFM := params["strip-frontmatter"]; hasSFM {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`include directive "extract" cannot be combined with "strip-frontmatter"`)}
+		}
+		if _, hasHL := params["heading-level"]; hasHL {
+			return []lint.Diagnostic{makeDiag(filePath, line,
+				`include directive "extract" cannot be combined with "heading-level"`)}
+		}
+	}
+
 	return nil
 }
 

@@ -1,7 +1,7 @@
 ---
 id: 211
 title: "`<?include?>` projects any typed value of any kind via `extract`"
-status: "🔲"
+status: "🔳"
 summary: >-
   Extend the include directive to pull a typed value out of any
   kind-typed Markdown file via the same projection

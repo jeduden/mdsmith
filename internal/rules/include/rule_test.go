@@ -305,6 +305,50 @@ func TestCheck_DotDotPathWithoutRootFS(t *testing.T) {
 }
 
 // =====================================================================
+// extract: parameter validation
+// =====================================================================
+
+func TestCheck_ExtractWithStripFrontmatter(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("Hello world\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: data.md\n" +
+		"extract: tagline.text\n" +
+		"strip-frontmatter: \"false\"\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"extract" cannot be combined with "strip-frontmatter"`)
+}
+
+func TestCheck_ExtractWithHeadingLevel(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("Hello world\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: data.md\n" +
+		"extract: tagline.text\n" +
+		"heading-level: \"absolute\"\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags,
+		`"extract" cannot be combined with "heading-level"`)
+}
+
+func TestCheck_ExtractEmptyValue(t *testing.T) {
+	fsys := fstest.MapFS{
+		"data.md": {Data: []byte("Hello world\n")},
+	}
+	src := "# Doc\n\n<?include\nfile: data.md\n" +
+		"extract: \"\"\n?>\nold\n<?/include?>\n"
+	f := newTestFile(t, "doc.md", src, fsys)
+	r := &Rule{}
+	diags := r.Check(f)
+	expectDiagMsg(t, diags, `"extract" value is empty`)
+}
+
+// =====================================================================
 // Fix
 // =====================================================================
 
