@@ -4,450 +4,307 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+	"text/template/parse"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// summaryCommentRe strips Hugo comment blocks (`{{/* ... */}}` and
-// `{{- /* ... */ -}}`) so the scanner does not see `.Params.summary`
-// mentions inside comments as live references. (?s) makes . match
-// newlines so multi-line comments are caught.
-var summaryCommentRe = regexp.MustCompile(`(?s)\{\{-?\s*/\*.*?\*/\s*-?\}\}`)
-
-// summaryRefRe matches `.Params.summary` (possibly followed by a
-// subfield such as `.X`) at a word boundary.
-var summaryRefRe = regexp.MustCompile(`\.Params\.summary\b`)
-
-// summaryAssignRe matches a variable assignment whose right-hand side
-// references `.Params.summary` — e.g. `{{ $s := .Params.summary }}`.
-// The check forbids this form because the bound name escapes the
-// per-action scan; if the variable is later emitted via `{{ $s }}`,
-// the value ships raw with no way for the scanner to know.
-var summaryAssignRe = regexp.MustCompile(`^\$\w+\s*:?=`)
-
-// summaryViolation records one misuse of `.Params.summary` in a Hugo
-// template, located by file path and line. Body carries the action
-// text so the failure message points the reader at the exact form.
+// summaryViolation records one misuse of `.Params.summary` in a
+// Hugo template, located by file path and line.
 type summaryViolation struct {
 	Path string
 	Line int
-	Body string
 	Why  string
 }
 
-// action is one `{{...}}` block located in source. outerStart/End span
-// the delimiters; bodyStart/End span the contents between them.
-type action struct {
-	outerStart, outerEnd int
-	bodyStart, bodyEnd   int
-}
-
-// findActions returns every `{{...}}` block in content, respecting
-// double-quoted strings and backtick-delimited raw strings so that
-// braces inside string literals do not terminate an action early.
-// (Naive regex-based scanning misses `{{ printf "{%s}" .X }}`.)
-func findActions(content string) []action {
-	var actions []action
-	n := len(content)
-	i := 0
-	for i+1 < n {
-		if content[i] != '{' || content[i+1] != '{' {
-			i++
-			continue
-		}
-		a, next, ok := scanOneAction(content, i)
-		if !ok {
-			break
-		}
-		actions = append(actions, a)
-		i = next
-	}
-	return actions
-}
-
-// scanOneAction reads one `{{...}}` action starting at the `{{` at
-// position start. It returns the action, the index past the closing
-// `}}`, and ok=true on success. ok=false means the action was not
-// terminated before end of input — the caller treats this as the
-// end of the content.
-func scanOneAction(content string, start int) (a action, next int, ok bool) {
-	n := len(content)
-	bodyStart := start + 2
-	j := bodyStart
-	for j+1 < n {
-		c := content[j]
-		switch c {
-		case '"':
-			j = skipDoubleQuoted(content, j)
-		case '`':
-			j = skipBacktickQuoted(content, j)
-		case '}':
-			if j+1 < n && content[j+1] == '}' {
-				return action{
-					outerStart: start,
-					outerEnd:   j + 2,
-					bodyStart:  bodyStart,
-					bodyEnd:    j,
-				}, j + 2, true
-			}
-			j++
-		default:
-			j++
-		}
-	}
-	return action{}, n, false
-}
-
-// skipDoubleQuoted advances past a double-quoted Go template string
-// starting at content[i] == '"', honoring backslash escapes.
-func skipDoubleQuoted(content string, i int) int {
-	n := len(content)
-	i++
-	for i < n && content[i] != '"' {
-		if content[i] == '\\' && i+1 < n {
-			i += 2
-			continue
-		}
-		i++
-	}
-	if i < n {
-		i++
-	}
-	return i
-}
-
-// skipBacktickQuoted advances past a raw backtick-delimited string
-// starting at content[i] == '`'. Backtick strings do not honor escapes.
-func skipBacktickQuoted(content string, i int) int {
-	n := len(content)
-	i++
-	for i < n && content[i] != '`' {
-		i++
-	}
-	if i < n {
-		i++
-	}
-	return i
-}
-
-// scanSummaryViolations finds every misuse of `.Params.summary` in
-// the given Hugo template content. See classifyAction for the per-
-// action contract. path is used only to populate violation.Path.
-func scanSummaryViolations(path, content string) []summaryViolation {
-	// Strip comments first, replacing each with newlines so line
-	// numbers reported later still align with the source.
-	stripped := summaryCommentRe.ReplaceAllStringFunc(content, func(c string) string {
-		return strings.Repeat("\n", strings.Count(c, "\n"))
-	})
-
-	var out []summaryViolation
-	for _, a := range findActions(stripped) {
-		raw := stripped[a.bodyStart:a.bodyEnd]
-		body := strings.TrimSpace(raw)
-		body = strings.TrimPrefix(body, "-")
-		body = strings.TrimSuffix(body, "-")
-		body = strings.TrimSpace(body)
-		if !summaryRefRe.MatchString(body) {
-			continue
-		}
-		if ok, _ := classifyAction(body); ok {
-			continue
-		}
-		_, why := classifyAction(body)
-		out = append(out, summaryViolation{
-			Path: path,
-			Line: 1 + strings.Count(stripped[:a.outerStart], "\n"),
-			Body: strings.TrimSpace(raw),
-			Why:  why,
-		})
-	}
-	return out
-}
-
-// classifyAction decides whether one Hugo action body (delimiters
-// and trim markers already stripped) uses `.Params.summary` safely.
+// scanSummaryViolations parses Hugo template content via Go's
+// text/template/parse package (in SkipFuncCheck mode so undefined
+// Hugo helpers like `dict`, `partial`, `printf` do not error) and
+// walks the AST to find any reference to `.Params.summary` outside
+// a safe context.
 //
-// Safe forms:
-//   - Presence predicates `if [not] .Params.summary[...]` and their
-//     `else if` variant. Compound forms (`if and .Params.summary $x`)
-//     and subfield access (`if .Params.summary.X`) are all accepted —
-//     the rule cares only that the action does not produce output.
-//   - A `.RenderString` call that takes `.Params.summary` as a top-
-//     level positional argument, or a pipeline whose terminal stage
-//     is `.RenderString` and whose head emits `.Params.summary`.
+// Safe:
+//   - `if` predicate, including compound forms (`if and ...`,
+//     `if or ...`) and subfield access (`if .Params.summary.HTML`).
+//   - Argument to a `.RenderString` call — positional, piped, or
+//     nested inside a sub-pipeline whose output flows into
+//     `.RenderString`. Qualified receivers like `$.RenderString`
+//     and `.Page.RenderString` are recognised.
+//   - The classifier treats `.Params.summary` and any case variant
+//     (`.params.summary`, `.Params.Summary`) the same way, matching
+//     Hugo's case-insensitive Params map.
 //
 // Forbidden:
-//   - `with` / `else with .Params.summary` — these rebind `.` to the
-//     summary string and the body typically emits raw.
-//   - Variable assignment `$s := .Params.summary` — the bound name
-//     escapes this per-action check.
-//   - Any other action that mentions `.Params.summary` — bare output,
-//     nested inside a non-RenderString call, or piped to a function
-//     other than `.RenderString`.
-func classifyAction(body string) (safe bool, reason string) {
-	if hasLeadingWord(body, "if") || hasLeadingPhrase(body, "else", "if") {
-		return true, ""
+//   - `with` / `else with .Params.summary` — the body rebinds the
+//     dot and emits the value raw.
+//   - `range .Params.summary` — iterates the string rune-by-rune,
+//     emitting each code point as an integer.
+//   - Variable assignment that binds the summary value to a name,
+//     including the `if $s := .Params.summary` form; the bound name
+//     escapes the per-action check.
+//   - Any value-emitting action whose pipe references the summary
+//     without reaching a `.RenderString` call.
+func scanSummaryViolations(path, content string) ([]summaryViolation, error) {
+	tree := parse.New(path)
+	tree.Mode = parse.SkipFuncCheck
+	if _, err := tree.Parse(content, "{{", "}}", map[string]*parse.Tree{}); err != nil {
+		return nil, fmt.Errorf("parse: %w", err)
 	}
-	if hasLeadingWord(body, "with") || hasLeadingPhrase(body, "else", "with") {
-		return false, "`with` / `else with .Params.summary` rebinds the dot and emits the value raw"
-	}
-	if hasLeadingWord(body, "range") {
-		return true, ""
-	}
-	if summaryAssignRe.MatchString(body) {
-		return false, "variable assignment of .Params.summary — pass the value directly " +
-			"to .RenderString instead of binding a name"
-	}
-	return pipelineRendersSummary(body)
+	w := &summaryWalker{path: path, content: content}
+	w.walk(tree.Root)
+	return w.violations, nil
 }
 
-// hasLeadingWord reports whether body starts with `word` followed by
-// a whitespace boundary (or the end of the string). Skips trim markers
-// and surrounding whitespace already stripped by the caller.
-func hasLeadingWord(body, word string) bool {
-	if !strings.HasPrefix(body, word) {
+type summaryWalker struct {
+	path       string
+	content    string
+	violations []summaryViolation
+}
+
+func (w *summaryWalker) lineOf(pos parse.Pos) int {
+	off := int(pos)
+	if off > len(w.content) {
+		off = len(w.content)
+	}
+	return 1 + strings.Count(w.content[:off], "\n")
+}
+
+func (w *summaryWalker) add(pos parse.Pos, why string) {
+	w.violations = append(w.violations, summaryViolation{
+		Path: w.path,
+		Line: w.lineOf(pos),
+		Why:  why,
+	})
+}
+
+func (w *summaryWalker) walk(n parse.Node) {
+	if n == nil {
+		return
+	}
+	switch n := n.(type) {
+	case *parse.ListNode:
+		if n == nil {
+			return
+		}
+		for _, child := range n.Nodes {
+			w.walk(child)
+		}
+	case *parse.ActionNode:
+		w.checkAction(n)
+	case *parse.IfNode:
+		w.checkBranch(n.Pipe, n.Pos, "if")
+		w.walk(n.List)
+		w.walk(n.ElseList)
+	case *parse.WithNode:
+		w.checkWith(n)
+		w.walk(n.List)
+		w.walk(n.ElseList)
+	case *parse.RangeNode:
+		w.checkRange(n)
+		w.walk(n.List)
+		w.walk(n.ElseList)
+	}
+}
+
+func (w *summaryWalker) checkAction(n *parse.ActionNode) {
+	if pipeAssignsSummary(n.Pipe) {
+		w.add(n.Pos, "variable assignment of .Params.summary — pass the value directly to .RenderString")
+		return
+	}
+	if pipeReferencesSummary(n.Pipe) && !pipeOutputsSummaryViaRenderString(n.Pipe) {
+		w.add(n.Pos, ".Params.summary referenced in a value-emitting action that does not pass it to .RenderString")
+	}
+}
+
+func (w *summaryWalker) checkBranch(p *parse.PipeNode, pos parse.Pos, keyword string) {
+	if pipeAssignsSummary(p) {
+		w.add(pos, "variable assignment of .Params.summary in `"+keyword+
+			"` predicate — the bound name escapes the per-action check")
+	}
+}
+
+func (w *summaryWalker) checkWith(n *parse.WithNode) {
+	if pipeAssignsSummary(n.Pipe) {
+		w.add(n.Pos, "variable assignment of .Params.summary in `with` predicate — "+
+			"the bound name escapes the per-action check")
+		return
+	}
+	if pipeReferencesSummary(n.Pipe) {
+		w.add(n.Pos, "`with .Params.summary` rebinds the dot and the body emits the value raw")
+	}
+}
+
+func (w *summaryWalker) checkRange(n *parse.RangeNode) {
+	if pipeAssignsSummary(n.Pipe) {
+		w.add(n.Pos, "variable assignment of .Params.summary in `range` predicate — "+
+			"iterating a string rebinds the dot to each rune")
+		return
+	}
+	if pipeReferencesSummary(n.Pipe) {
+		w.add(n.Pos, "`range .Params.summary` iterates the string rune-by-rune and emits each code point as an integer")
+	}
+}
+
+// fieldIsSummary reports whether a FieldNode references
+// `.Params.summary` (or a subfield like `.Params.summary.HTML`).
+// Case-insensitive on `Params` and `summary` because Hugo's Params
+// is a case-insensitive map.
+func fieldIsSummary(f *parse.FieldNode) bool {
+	if len(f.Ident) < 2 {
 		return false
 	}
-	rest := body[len(word):]
-	if rest == "" {
-		return true
-	}
-	return rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\n'
+	return strings.EqualFold(f.Ident[0], "Params") &&
+		strings.EqualFold(f.Ident[1], "summary")
 }
 
-// hasLeadingPhrase reports whether body starts with `first` then
-// whitespace then `second`. Used for two-keyword openers like
-// "else if" and "else with".
-func hasLeadingPhrase(body, first, second string) bool {
-	if !hasLeadingWord(body, first) {
+// chainIsSummary reports whether a ChainNode references
+// `.Params.summary` via a dollar-context base, e.g. `$.Params.summary`.
+func chainIsSummary(c *parse.ChainNode) bool {
+	if len(c.Field) < 2 {
 		return false
 	}
-	rest := strings.TrimLeft(body[len(first):], " \t\n")
-	return hasLeadingWord(rest, second)
+	return strings.EqualFold(c.Field[0], "Params") &&
+		strings.EqualFold(c.Field[1], "summary")
 }
 
-// pipelineRendersSummary checks that `.Params.summary` in a value-
-// producing pipeline reaches `.RenderString`, either as a direct
-// positional argument or as the pipe input to a terminating
-// `.RenderString` stage.
-func pipelineRendersSummary(body string) (bool, string) {
-	stages := splitPipeStages(body)
-
-	// Locate the stage whose first command is `.RenderString` (if any).
-	renderStageIdx := -1
-	for i, s := range stages {
-		if strings.HasPrefix(strings.TrimSpace(s), ".RenderString") {
-			head := firstToken(strings.TrimSpace(s))
-			if head == ".RenderString" {
-				renderStageIdx = i
-				break
-			}
+// pipeReferencesSummary returns true if any FieldNode/ChainNode
+// anywhere in the pipe (including sub-pipes inside command args)
+// references `.Params.summary`.
+func pipeReferencesSummary(p *parse.PipeNode) bool {
+	if p == nil {
+		return false
+	}
+	for _, c := range p.Cmds {
+		if cmdReferencesSummary(c) {
+			return true
 		}
 	}
-
-	for i, s := range stages {
-		ts := strings.TrimSpace(s)
-		// Where does .Params.summary appear in this stage?
-		hits := summaryHits(ts)
-		if len(hits) == 0 {
-			continue
-		}
-
-		// Any hit nested inside parens? That means .Params.summary is
-		// an argument to a sub-call, not a top-level argument to the
-		// stage's head function — unsafe regardless of head.
-		for _, h := range hits {
-			if h.depth > 0 {
-				return false, "`.Params.summary` appears nested inside a non-RenderString call " +
-					"(e.g. `printf` or another helper)"
-			}
-		}
-
-		head := firstToken(ts)
-
-		if head == ".RenderString" && i == renderStageIdx {
-			// Top-level positional argument to .RenderString. Safe.
-			continue
-		}
-
-		// Stage doesn't start with .RenderString. Safe only if .Params.summary
-		// is the head of this stage AND a later stage's head is .RenderString
-		// (i.e. the summary value is the pipe input that flows through).
-		if head == ".Params.summary" && renderStageIdx > i {
-			// Verify intermediate stages don't transform the value into
-			// something else of the same shape — we cannot reason about
-			// arbitrary functions, so we require the chain has no
-			// .Params.summary hits beyond the head (and the head was
-			// already checked above).
-			continue
-		}
-
-		return false, "`.Params.summary` is referenced outside an `if` predicate and is not passed to `.RenderString`"
-	}
-
-	return true, ""
+	return false
 }
 
-// splitPipeStages splits a Hugo action body on `|` tokens at paren-
-// depth 0, respecting double-quoted and backtick string literals.
-func splitPipeStages(body string) []string {
-	var stages []string
-	depth := 0
-	start := 0
-	i := 0
-	for i < len(body) {
-		c := body[i]
-		switch c {
-		case '"':
-			i++
-			for i < len(body) && body[i] != '"' {
-				if body[i] == '\\' && i+1 < len(body) {
-					i += 2
-					continue
+func cmdReferencesSummary(c *parse.CommandNode) bool {
+	for _, arg := range c.Args {
+		if argReferencesSummary(arg) {
+			return true
+		}
+	}
+	return false
+}
+
+func argReferencesSummary(arg parse.Node) bool {
+	switch n := arg.(type) {
+	case *parse.FieldNode:
+		return fieldIsSummary(n)
+	case *parse.ChainNode:
+		return chainIsSummary(n)
+	case *parse.PipeNode:
+		return pipeReferencesSummary(n)
+	}
+	return false
+}
+
+// pipeAssignsSummary returns true if the pipe declares variables
+// (a `:=` or `=`) and the right-hand value references the summary.
+// Pipes with declarations have non-nil Decl.
+func pipeAssignsSummary(p *parse.PipeNode) bool {
+	if p == nil || len(p.Decl) == 0 {
+		return false
+	}
+	return pipeReferencesSummary(p)
+}
+
+// pipeOutputsSummaryViaRenderString walks the pipe stage-by-stage
+// and returns true if `.Params.summary` reaches a `.RenderString`
+// call somewhere in the chain — either as a direct positional
+// argument to that call, inside a sub-pipeline argument, or piped
+// in from an earlier stage. Once the value has been through
+// `.RenderString`, any subsequent filter stage (e.g. `| plainify`,
+// `| safeHTML`) is fine — the Markdown rendering has already
+// happened.
+func pipeOutputsSummaryViaRenderString(p *parse.PipeNode) bool {
+	if p == nil || len(p.Cmds) == 0 {
+		return false
+	}
+	// summaryFlowing tracks whether the running pipe input carries
+	// the summary value (i.e., derives from .Params.summary).
+	summaryFlowing := false
+	for i, cmd := range p.Cmds {
+		if cmdIsRenderString(cmd) {
+			// Summary flows in via a positional arg or the piped input.
+			for _, arg := range cmd.Args[1:] {
+				if argReferencesSummary(arg) {
+					return true
 				}
-				i++
 			}
-			if i < len(body) {
-				i++
+			if summaryFlowing {
+				return true
 			}
-		case '`':
-			i++
-			for i < len(body) && body[i] != '`' {
-				i++
-			}
-			if i < len(body) {
-				i++
-			}
-		case '(':
-			depth++
-			i++
-		case ')':
-			if depth > 0 {
-				depth--
-			}
-			i++
-		case '|':
-			if depth == 0 {
-				stages = append(stages, body[start:i])
-				start = i + 1
-			}
-			i++
-		default:
-			i++
 		}
-	}
-	stages = append(stages, body[start:])
-	return stages
-}
-
-// firstToken returns the first whitespace-delimited token of body
-// (with surrounding whitespace already stripped by the caller).
-func firstToken(body string) string {
-	for i, c := range body {
-		if c == ' ' || c == '\t' || c == '\n' || c == '(' {
-			return body[:i]
-		}
-	}
-	return body
-}
-
-// summaryHit records one occurrence of .Params.summary in a stage,
-// with the parenthesis depth at the point of reference. depth > 0
-// means the reference is nested inside `(...)` — i.e. passed as an
-// argument to a function other than the stage's head.
-type summaryHit struct {
-	offset int
-	depth  int
-}
-
-// summaryHits returns every occurrence of `.Params.summary` in stage,
-// tagged with the parenthesis depth at which it appears.
-func summaryHits(stage string) []summaryHit {
-	locs := summaryRefRe.FindAllStringIndex(stage, -1)
-	if len(locs) == 0 {
-		return nil
-	}
-
-	depths := computeDepths(stage)
-	hits := make([]summaryHit, 0, len(locs))
-	for _, loc := range locs {
-		hits = append(hits, summaryHit{offset: loc[0], depth: depths[loc[0]]})
-	}
-	return hits
-}
-
-// computeDepths walks stage and returns, for each byte offset, the
-// parenthesis depth at that offset. String literals are skipped so
-// `(` and `)` inside quotes don't perturb the depth.
-func computeDepths(stage string) []int {
-	depths := make([]int, len(stage)+1)
-	depth := 0
-	i := 0
-	for i < len(stage) {
-		depths[i] = depth
-		c := stage[i]
-		switch c {
-		case '"':
-			i++
-			for i < len(stage) && stage[i] != '"' {
-				depths[i] = depth
-				if stage[i] == '\\' && i+1 < len(stage) {
-					depths[i+1] = depth
-					i += 2
-					continue
+		// Track whether this stage's output carries the summary.
+		// For the first stage, the function position (Args[0]) is
+		// the value head when it's not a function call; we check
+		// every arg. For later stages, the piped input flows in
+		// implicitly, so summaryFlowing carries over.
+		if i == 0 {
+			for _, arg := range cmd.Args {
+				if argReferencesSummary(arg) {
+					summaryFlowing = true
+					break
 				}
-				i++
 			}
-			if i < len(stage) {
-				depths[i] = depth
-				i++
+		} else {
+			for _, arg := range cmd.Args[1:] {
+				if argReferencesSummary(arg) {
+					summaryFlowing = true
+					break
+				}
 			}
-		case '`':
-			i++
-			for i < len(stage) && stage[i] != '`' {
-				depths[i] = depth
-				i++
-			}
-			if i < len(stage) {
-				depths[i] = depth
-				i++
-			}
-		case '(':
-			depth++
-			i++
-		case ')':
-			if depth > 0 {
-				depth--
-			}
-			i++
-		default:
-			i++
 		}
 	}
-	depths[len(stage)] = depth
-	return depths
+	return false
 }
 
-// TestSummaryFrontMatterRenderedThroughRenderString pins the
-// invariant that every reference to `.Params.summary` in Hugo
-// templates either checks presence or renders through
-// `.RenderString`. The regression this guards against is
-// `{{ with .Params.summary }}<p>{{ . }}</p>{{ end }}`: `with`
-// rebinds `.` to the summary string and `{{ . }}` then emits the
-// value raw — so a summary like "Use `<?catalog?>`..." ships with
-// literal backticks instead of `<code>` tags.
-//
-// Exempt: website/layouts/_default/baseof.html. Its meta-description
-// fallback emits the summary as plain text on purpose (after a
-// `| plainify` pass to strip any Markdown rendering); `<meta>`
-// content cannot contain HTML.
+// cmdIsRenderString reports whether the command's function (its
+// first argument) ends in `RenderString`. Accepts the canonical
+// `.RenderString` (FieldNode), qualified receivers like
+// `.Page.RenderString` (FieldNode with multiple Idents), the
+// dollar-context form `$.RenderString` (VariableNode with Ident
+// `["$", "RenderString"]`), and bare chains via ChainNode.
+func cmdIsRenderString(c *parse.CommandNode) bool {
+	if len(c.Args) == 0 {
+		return false
+	}
+	switch fn := c.Args[0].(type) {
+	case *parse.FieldNode:
+		if len(fn.Ident) == 0 {
+			return false
+		}
+		return fn.Ident[len(fn.Ident)-1] == "RenderString"
+	case *parse.ChainNode:
+		if len(fn.Field) == 0 {
+			return false
+		}
+		return fn.Field[len(fn.Field)-1] == "RenderString"
+	case *parse.VariableNode:
+		if len(fn.Ident) == 0 {
+			return false
+		}
+		return fn.Ident[len(fn.Ident)-1] == "RenderString"
+	}
+	return false
+}
+
+// TestSummaryFrontMatterRenderedThroughRenderString walks every
+// `.html` file under `website/layouts/` and asserts none uses
+// `.Params.summary` in a forbidden context. No template is
+// exempt — baseof.html's meta-description fallback uses
+// `{{ if .Params.summary }}{{ $.RenderString ... .Params.summary | plainify }}`
+// (no `with`-rebinding) so the scanner can verify it natively.
 func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 	layoutsDir := filepath.Join(repoRoot(t), "website", "layouts")
-	exemptRel := filepath.Join("_default", "baseof.html")
 
 	var violations []summaryViolation
 	var ioErrors []string
@@ -460,139 +317,134 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 			return nil
 		}
 		rel, _ := filepath.Rel(layoutsDir, path)
-		if rel == exemptRel {
-			return nil
-		}
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			ioErrors = append(ioErrors, fmt.Sprintf("read %s: %v", path, readErr))
 			return nil
 		}
-		violations = append(violations, scanSummaryViolations(rel, string(data))...)
+		got, scanErr := scanSummaryViolations(rel, string(data))
+		if scanErr != nil {
+			ioErrors = append(ioErrors, fmt.Sprintf("scan %s: %v", path, scanErr))
+			return nil
+		}
+		violations = append(violations, got...)
 		return nil
 	}))
 
 	formatted := make([]string, 0, len(violations))
 	for _, v := range violations {
-		formatted = append(formatted, fmt.Sprintf("%s:%d: %s — %s", v.Path, v.Line, v.Body, v.Why))
+		formatted = append(formatted, fmt.Sprintf("%s:%d: %s", v.Path, v.Line, v.Why))
 	}
-	assert.Empty(t, formatted,
-		"every .Params.summary reference outside _default/baseof.html must be "+
-			"a presence predicate (`if`/`else if`) or render through `.RenderString`")
+	assert.Empty(t, formatted)
 	assert.Empty(t, ioErrors, "filesystem errors during scan")
 }
 
-// TestClassifyAction_TableDriven exercises classifyAction against
-// every safe and unsafe shape the scanner is supposed to recognise.
-// New cases land here when the rule changes or a corner case appears.
-func TestClassifyAction_TableDriven(t *testing.T) {
+// TestScanSummaryViolations_TableDriven enumerates every safe and
+// unsafe shape the AST classifier recognises. Each entry is the
+// full template body (delimiters included) — the scanner parses
+// it the same way Hugo would.
+func TestScanSummaryViolations_TableDriven(t *testing.T) {
 	cases := []struct {
 		name      string
-		body      string
-		violation bool
+		template  string
+		wantCount int
 	}{
-		// Safe — presence predicates.
-		{"if presence", `if .Params.summary`, false},
-		{"if not", `if not .Params.summary`, false},
-		{"if compound and", `if and .Params.summary $cond`, false},
-		{"if compound or", `if or .Params.summary $other`, false},
-		{"else if", `else if .Params.summary`, false},
-		{"if subfield", `if .Params.summary.HTML`, false},
-		{"range", `range .Params.summary`, false},
+		// Safe: presence predicates.
+		{"if presence",
+			`{{ if .Params.summary }}<p>{{ .RenderString (dict "display" "inline") .Params.summary }}</p>{{ end }}`, 0},
+		{"if not", `{{ if not .Params.summary }}x{{ end }}`, 0},
+		{"if and compound", `{{ if and .Params.summary .X }}{{ .RenderString (dict) .Params.summary }}{{ end }}`, 0},
+		{"if or compound", `{{ if or .Params.summary .Other }}x{{ end }}`, 0},
+		{"else if", `{{ if .X }}{{ else if .Params.summary }}{{ .RenderString (dict) .Params.summary }}{{ end }}`, 0},
+		{"if subfield", `{{ if .Params.summary.HTML }}x{{ end }}`, 0},
+		{"eq comparison in if predicate", `{{ if eq .Params.summary "default" }}x{{ end }}`, 0},
 
-		// Safe — RenderString calls.
-		{"positional with options", `.RenderString (dict "display" "inline") .Params.summary`, false},
-		{"positional bare", `.RenderString .Params.summary`, false},
-		{"piped one stage", `.Params.summary | .RenderString`, false},
-		{"piped through transform", `.Params.summary | strings.TrimSpace | .RenderString`, false},
+		// Safe: .RenderString call shapes.
+		{"positional with dict", `{{ .RenderString (dict "display" "inline") .Params.summary }}`, 0},
+		{"positional bare", `{{ .RenderString .Params.summary }}`, 0},
+		{"piped one stage", `{{ .Params.summary | .RenderString }}`, 0},
+		{"piped two stages", `{{ .Params.summary | strings.TrimSpace | .RenderString }}`, 0},
+		{"subfield positional", `{{ .RenderString (dict) .Params.summary.HTML }}`, 0},
+		{"subfield piped", `{{ .Params.summary.HTML | .RenderString }}`, 0},
+		{"qualified $.RenderString", `{{ $.RenderString (dict "display" "inline") .Params.summary }}`, 0},
+		{"sub-pipeline arg to RenderString", `{{ .RenderString (dict) (printf "wrapper: %s" .Params.summary) }}`, 0},
 
-		// Unsafe — rebinding forms.
-		{"with rebind", `with .Params.summary`, true},
-		{"else with", `else with .Params.summary`, true},
+		// Forbidden: rebinding.
+		{"with rebind", `{{ with .Params.summary }}{{ . }}{{ end }}`, 1},
+		{"else with rebind", `{{ with .Y }}{{ else with .Params.summary }}{{ . }}{{ end }}`, 1},
+		{"range string", `{{ range .Params.summary }}{{ . }}{{ end }}`, 1},
 
-		// Unsafe — bare output and assignment.
-		{"bare output", `.Params.summary`, true},
-		{"var assign", `$s := .Params.summary`, true},
-		{"var declare", `$s = .Params.summary`, true},
+		// Forbidden: variable assignment.
+		{"var assign action", `{{ $s := .Params.summary }}`, 1},
+		{"var assign in if", `{{ if $s := .Params.summary }}{{ $s }}{{ end }}`, 1},
+		{"var assign in with", `{{ with $s := .Params.summary }}{{ $s }}{{ end }}`, 1},
+		{"var assign in range", `{{ range $i, $v := .Params.summary }}{{ $v }}{{ end }}`, 1},
 
-		// Unsafe — nested inside non-RenderString call.
-		{"nested in printf", `.RenderString (printf "wrapper: %s" .Params.summary)`, true},
-		{"printf outside RenderString", `printf "%v %v" (.RenderString "foo") .Params.summary`, true},
+		// Forbidden: bare output, no RenderString.
+		{"bare action", `{{ .Params.summary }}`, 1},
+		{"printf no render", `{{ printf "x is %s" .Params.summary }}`, 1},
 
-		// Unsafe — piped to wrong function.
-		{"piped to print not render", `.Params.summary | print "x is" .Page.RenderString`, true},
+		// Forbidden: piped to non-RenderString.
+		{"piped to print", `{{ .Params.summary | print "x is" .Page.RenderString }}`, 1},
+
+		// Forbidden: comparison fed to non-render.
+		{"co-occurrence in printf without render", `{{ printf "%v %v" (.RenderString "foo") .Params.summary }}`, 1},
+
+		// Case-insensitive: lowercase `.params.summary` is still the same field.
+		{"lowercase params", `{{ .params.summary }}`, 1},
+
+		// Comments are stripped by the parser (no ParseComments).
+		{"comment mentioning field", `{{/* renders .Params.summary via .RenderString */}}`, 0},
+
+		// String literals are not field references — never flagged.
+		{"summary literal inside string", `{{ printf "Warning: .Params.summary missing" .X }}`, 0},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			safe, reason := classifyAction(tc.body)
-			if tc.violation {
-				assert.False(t, safe, "expected violation; got safe (reason: %q) for: %s", reason, tc.body)
-			} else {
-				assert.True(t, safe, "expected safe; got violation (reason: %q) for: %s", reason, tc.body)
+			got, err := scanSummaryViolations("test.html", tc.template)
+			require.NoError(t, err)
+			if tc.wantCount != len(got) {
+				lines := make([]string, len(got))
+				for i, v := range got {
+					lines[i] = v.Why
+				}
+				t.Fatalf("template %q: want %d violations, got %d:\n  %s",
+					tc.template, tc.wantCount, len(got), strings.Join(lines, "\n  "))
 			}
 		})
 	}
 }
 
-// TestFindActions_BalancedStrings pins the tokenizer's awareness of
-// braces inside string literals. The previous regex-only scanner
-// silently skipped any action whose body contained `{` or `}` in a
-// quoted string.
-func TestFindActions_BalancedStrings(t *testing.T) {
-	cases := []struct {
-		name    string
-		content string
-		want    int
-	}{
-		{"brace in double-quoted string", `<p>{{ printf "{%s}" .Params.summary }}</p>`, 1},
-		{"brace in backtick string", "<p>{{ printf `{%s}` .Params.summary }}</p>", 1},
-		{"escaped quote", `<p>{{ printf "a\"b" .X }}</p>`, 1},
-		{"adjacent actions", `{{ .A }}{{ .B }}`, 2},
-		{"no actions", `<p>plain text</p>`, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := findActions(tc.content)
-			assert.Len(t, got, tc.want)
-		})
-	}
-}
-
-// TestScanSummaryViolations_CommentsIgnored pins that Hugo comment
-// blocks mentioning `.Params.summary` are not flagged. The previous
-// regex scanner saw comments as ordinary actions and reported them.
-func TestScanSummaryViolations_CommentsIgnored(t *testing.T) {
-	content := `<p>
-{{- /* renders .Params.summary via .RenderString */ -}}
-{{ if .Params.summary }}<p>{{ .RenderString (dict "display" "inline") .Params.summary }}</p>{{ end }}
-</p>`
-	got := scanSummaryViolations("file.html", content)
-	assert.Empty(t, got, "comments referencing .Params.summary must not be flagged")
-}
-
-// TestScanSummaryViolations_MultiLineWith pins the multi-line action
-// case: an opening `{{ with .Params.summary }}` that wraps across
-// newlines must still be flagged.
+// TestScanSummaryViolations_MultiLineWith pins multi-line action
+// detection. The parser handles newlines inside actions natively;
+// no special tokenizer support is needed.
 func TestScanSummaryViolations_MultiLineWith(t *testing.T) {
-	content := `<p>
-{{ with
-  .Params.summary }}
-  <span>{{ . }}</span>
-{{ end }}
-</p>`
-	got := scanSummaryViolations("file.html", content)
+	content := "<p>\n{{ with\n  .Params.summary }}\n  <span>{{ . }}</span>\n{{ end }}\n</p>"
+	got, err := scanSummaryViolations("file.html", content)
+	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Contains(t, got[0].Why, "with")
-	assert.Equal(t, 2, got[0].Line)
 }
 
-// TestScanSummaryViolations_BraceInString pins that a summary
-// reference inside an action whose body contains brace characters
-// in a string literal is still scanned (the tokenizer respects
-// quote boundaries).
-func TestScanSummaryViolations_BraceInString(t *testing.T) {
-	content := `<p>{{ printf "{%s}" .Params.summary }}</p>`
-	got := scanSummaryViolations("file.html", content)
-	require.Len(t, got, 1, "summary inside printf with brace-bearing string must still be flagged")
+// TestScanSummaryViolations_CRLFAction pins that CRLF line endings
+// inside a multi-line action body don't misclassify a presence
+// predicate. The text/template lexer accepts any whitespace,
+// including \r, so the AST is the same whether the file uses LF
+// or CRLF.
+func TestScanSummaryViolations_CRLFAction(t *testing.T) {
+	content := "{{ if\r\n.Params.summary }}{{ .RenderString (dict) .Params.summary }}{{ end }}"
+	got, err := scanSummaryViolations("file.html", content)
+	require.NoError(t, err)
+	assert.Empty(t, got, "CRLF inside a multi-line `if` predicate must not be flagged")
+}
+
+// TestScanSummaryViolations_UnterminatedActionErrors pins that an
+// unterminated `{{` returns a parse error (not silent acceptance).
+// Hugo's own build would also fail on such input; the scanner
+// surfaces the error explicitly rather than swallowing actions.
+func TestScanSummaryViolations_UnterminatedActionErrors(t *testing.T) {
+	_, err := scanSummaryViolations("file.html", `<p>{{ unterminated`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse")
 }

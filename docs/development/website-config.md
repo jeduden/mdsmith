@@ -108,51 +108,75 @@ through Hugo's `.RenderString` so backticks become
 `<code>` and `[text](url)` becomes `<a>`.
 
 A Go test in [`template_summary_test.go`][tpl-test]
-walks `website/layouts/**/*.html`. The scanner
-classifies every template action that mentions
-`.Params.summary`. It tokenizes actions itself and
-respects quoted strings, so braces inside string
-literals do not hide an action from the scan.
-`{{/* ... */}}` comments are stripped first so a
-comment that mentions the field is not flagged.
+walks `website/layouts/**/*.html`. The scanner parses
+each template with Go's `text/template/parse` package
+(in `SkipFuncCheck` mode so undefined Hugo helpers
+do not error) and walks the AST. Every reference to
+`.Params.summary` is classified by its node context.
+No regex tokenizing, no exemption list — comments,
+string literals, and CRLF line endings are handled
+by the parser.
 
 Safe forms:
 
-- A presence predicate that does not emit output:
-  `{{ if .Params.summary }}`, `{{ if not .Params.summary }}`,
-  the compound forms `{{ if and .Params.summary $cond }}`
-  and `{{ if or .Params.summary $other }}`, the `else if`
-  variant, and subfield access such as
-  `{{ if .Params.summary.HTML }}`.
-- A `.RenderString` call where `.Params.summary` is a
-  top-level positional argument:
+- A presence predicate — `{{ if .Params.summary }}`,
+  the negated form, compound shapes
+  (`{{ if and .Params.summary .X }}`,
+  `{{ if or .Params.summary .Other }}`), the `else if`
+  variant, subfield access
+  (`{{ if .Params.summary.HTML }}`), or any other
+  comparison that does not produce output.
+- A `.RenderString` call with the summary as a
+  positional argument:
   `{{ .RenderString (dict "display" "inline") .Params.summary }}`.
-- A pipeline whose terminal stage is `.RenderString` and
-  whose head is `.Params.summary`:
-  `{{ .Params.summary | .RenderString }}` or
-  `{{ .Params.summary | strings.TrimSpace | .RenderString }}`.
+  Qualified receivers (`.Page.RenderString`,
+  `$.RenderString`) are recognised.
+- A pipeline that passes the summary through
+  `.RenderString` and then any number of post-render
+  filters: `{{ .Params.summary | .RenderString }}`,
+  `{{ .Params.summary | strings.TrimSpace | .RenderString }}`,
+  `{{ $.RenderString (dict "display" "inline") .Params.summary | plainify }}`.
+  Once the value has rendered, downstream stages such
+  as `plainify` or `safeHTML` are fine.
+- A sub-pipeline argument whose output feeds
+  `.RenderString`:
+  `{{ .RenderString (dict) (printf "wrapper: %s" .Params.summary) }}`.
 
 Forbidden forms:
 
-- `{{ with .Params.summary }}` and `{{ else with .Params.summary }}` —
-  these rebind `.` to the summary string and the body
-  typically emits the value raw.
+- `{{ with .Params.summary }}` and
+  `{{ else with .Params.summary }}` — these rebind
+  `.` to the summary string and the body typically
+  emits the value raw.
+- `{{ range .Params.summary }}` — ranging over a
+  string iterates rune-by-rune and emits each code
+  point as an integer.
 - The bare `{{ .Params.summary }}` action.
-- Variable assignment `{{ $s := .Params.summary }}` —
-  the bound name escapes the per-action scan. Authors
-  who want a local variable should inline the call
-  twice instead.
-- `.Params.summary` nested inside a non-`.RenderString`
-  call (`{{ .RenderString (printf "%s" .Params.summary) }}`)
-  or piped into a function other than `.RenderString`
-  (`{{ .Params.summary | print .X }}`).
+- Variable assignment in any context — `{{ $s := .Params.summary }}`,
+  `{{ if $s := .Params.summary }}`,
+  `{{ range $i, $v := .Params.summary }}`. The bound
+  name escapes the per-action check.
+- `.Params.summary` referenced in a value-emitting
+  action whose pipe does not reach `.RenderString`:
+  `{{ printf "%s" .Params.summary }}`,
+  `{{ .Params.summary | print "x" .Page.RenderString }}`
+  (the second example references `.RenderString` as
+  a value passed to `print`, not as a method call).
 
-`website/layouts/_default/baseof.html` is exempt by
-relative path. Its meta-description fallback emits the
-summary as plain text: the `<meta>` content attribute
-cannot carry HTML. The template renders the field
-through `$.RenderString` then `| plainify`. Backticks
-become `<code>` HTML and then plain text. SEO snippets
-see clean prose, not literal Markdown punctuation.
+`baseof.html` reuses the same projection. Each
+branch of its meta-description chain runs the
+source value through `$.RenderString` then
+`plainify`. The sources are `.Description`,
+`.Params.summary`, `.Params.description`, and
+`.Site.Params.description`. Meta content cannot
+carry HTML. Backticks become `<code>` then plain
+text. SEO snippets see clean prose.
+
+The rule applies only to `.Params.summary` today. If
+other front-matter scalars (e.g. `lead`, `eyebrow`,
+`tagline`) gain inline-Markdown content in the future,
+extend the AST classifier in
+[`template_summary_test.go`][tpl-test] to accept the
+new field name set.
 
 [tpl-test]: ../../internal/release/template_summary_test.go
