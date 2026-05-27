@@ -28,7 +28,8 @@ allowed-tools: >-
 
 mdsmith's docs live in four homes that match the
 [Diátaxis](https://diataxis.fr/) compass:
-`docs/guides/` (how-to and tutorial),
+`docs/tutorials/` (tutorial),
+`docs/guides/` (how-to),
 `docs/reference/` (reference), and
 `docs/background/` (explanation). Each type has a
 different audience in a different mode — and a
