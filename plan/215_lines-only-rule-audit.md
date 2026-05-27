@@ -92,47 +92,56 @@ bytes — and that costs real complexity:
 - Skip autolinks and ignore raw inline HTML.
 
 This skipping is the actual reason a tree exists.
-Reproducing skipping in every rule duplicates
-parser work and risks divergence from goldmark.
-So candidates split by what skipping they need.
+The fix is **not** to write a second forward
+scanner. We already parse the file. We project
+from the AST instead. Candidates split by what
+skipping they need.
 
 **Category A (no skipping)** — the rule applies
 to every line including code. Examples: MDS001
 line length, BOM detection, hard-tab presence.
-Direct `f.Lines` scan, no skip logic. Biggest win
-per line of code.
+Direct `f.Lines` scan, no skip logic. Biggest
+win per line of code.
 
 **Category B (prose-only)** — the rule must skip
 code and HTML. Examples: bare URLs, proper-name
 capitalization, forbidden text in prose, most
-readability rules. A correctness-equivalent
-rewrite needs a shared scaffold.
+readability rules. These rules use the projection
+described below.
 
-Category B is only worth converting if the
-scaffold is cheaper than the AST walk. If it has
-to re-implement half of CommonMark block
-parsing, the rule paid for parsing twice and the
-saving evaporates.
+### Phase zero — project prose ranges from the AST
 
-### Phase zero — the prose-scanner scaffold
+The parse already classifies every byte of the
+source. We expose that classification as a flat
+slice on `lint.File`:
 
-Before any Category B conversion, build
-`internal/lint/prosescan/` — one forward pass
-over `f.Lines` that yields prose byte ranges
-stripped of fenced code, indented code, HTML
-blocks, code spans, autolinks, and inline HTML.
-Zero allocations per call (state on the stack,
-output via callback). It is tested against a
-CommonMark fixture corpus whose ground truth
-comes from an AST walk over the same input.
+```go
+// internal/lint/file.go
+type Range struct{ Start, End int } // byte offsets into f.Source
 
-The phase-zero benchmark is the gate. If
-`prosescan` lands under 50 % of the AST walk's
-CPU per file, it becomes the substrate for
-Category B. Otherwise **Category B is dropped**:
-only Category A ships and the perf target
-shrinks. No Category B rule converts before the
-gate passes.
+// ProseRanges returns the source byte ranges that
+// fall inside prose nodes — Paragraph, Heading,
+// ListItem text, Blockquote text — explicitly
+// excluding the spans of FencedCodeBlock,
+// CodeBlock, HTMLBlock, CodeSpan, AutoLink, and
+// inline HTML. Computed once per file from
+// f.AST; the result is memoized.
+func (f *File) ProseRanges() []Range
+```
+
+One AST walk emits the slice. Every Category B
+rule scans the ranges with `bytes` helpers and
+never walks the AST itself. The projection **is**
+goldmark's classification — read from the AST,
+not re-derived from `f.Lines` — so divergence
+from goldmark is impossible by construction. No
+parallel parser, no equivalence corpus, no
+benchmark gate.
+
+Cost: one AST walk plus a `[]Range` per file. The
+walk amortizes across every Category B rule (each
+one walks the tree itself today); the slice lands
+in plan 198's arena as one slab grow.
 
 ## Non-Goals
 
@@ -174,9 +183,8 @@ equality. The classification:
 2. **Category B (prose-only)** — the nil-AST run
    matches the normal run, but the code-block
    perturbation changes diagnostics. The rule
-   needs the skipping. Requires the phase-zero
-   `prosescan` scaffold; convert only if
-   phase-zero's perf gate passes.
+   needs the skipping. Rewrite drives
+   `f.ProseRanges()`.
 3. **AST-required** — the nil-AST run panics or
    produces different diagnostics on unperturbed
    input. Keep the AST.
@@ -209,15 +217,15 @@ For each candidate, in its own commit:
    byte-for-byte on those.
 2. Rewrite Check. A Category A rewrite uses a
    direct `f.Lines` scan with `bytes` helpers, no
-   skip logic, and any regex compiled at package
-   scope. A Category B rewrite drives the
-   `prosescan` package and scans only the prose
-   ranges it yields. Per-rule code that
-   re-implements fence or HTML detection is **not**
-   allowed; the scaffold is the single owner of
-   that work. If a rule needs skipping the
-   scaffold does not yet provide, extend the
-   scaffold.
+   skip logic, regex compiled at package scope. A
+   Category B rewrite calls `f.ProseRanges()` and
+   scans only the byte ranges it returns. Per-rule
+   code that re-implements fence or HTML detection
+   is **not** allowed — the projection is the
+   single owner of that classification. If a rule
+   needs a span the projection does not yet emit
+   (e.g. table-cell text), extend the projection,
+   not the rule.
 3. Confirm the rule's `bad/` and `good/` fixtures
    under `internal/rules/MDS###-*/` still pass.
 4. Re-run the allocation-budget test at
@@ -239,21 +247,19 @@ rule, so the manifest stays accurate.
    static scan) and land the initial manifest
    with each rule classified A, B, AST-required,
    or hybrid.
-2. Convert the three highest-allocating Category
+2. Add `(f *File).ProseRanges()` with the AST
+   projection. Memoize via `sync.Once`. Unit
+   tests cover Paragraph, Heading, ListItem,
+   Blockquote text, and the exclusions
+   (FencedCodeBlock, CodeBlock, HTMLBlock,
+   CodeSpan, AutoLink, inline HTML).
+3. Convert the three highest-allocating Category
    A candidates, one commit per rule.
-3. Build the phase-zero `prosescan` package with
-   the CommonMark-equivalence fixture corpus and
-   the zero-allocation guarantee. Benchmark
-   against the equivalent AST walk.
-4. If `prosescan` benchmarks under 50 % of the
-   AST walk's CPU per file, convert Category B
-   candidates one commit per rule. If it lands
-   at parity or worse, close out after Category
-   A — drop the scaffold if it cannot beat the
-   walk. Record the decision and numbers here.
+4. Convert Category B candidates against
+   `f.ProseRanges()`, one commit per rule.
 5. Run `BenchmarkCheckCorpusLarge` after each
-   conversion; record the cumulative wall-time
-   and allocs delta.
+   conversion; record cumulative wall-time and
+   allocs delta.
 6. Land the regression gate from phase three.
 7. Update the perf guide at
    [high-performance-go.md](../docs/development/high-performance-go.md)
@@ -269,28 +275,22 @@ puts the pattern inside a fence or code span. The
 phase-one perturbation probe is the defense. A
 rule whose diagnostics change when only the
 code-block content changes is routed to Category
-B. The scaffold owns the skipping there.
+B, where the AST projection owns the skipping.
 
-The phase-zero scaffold itself is the second
-hazard. If `prosescan` disagrees with goldmark on
-any CommonMark corner case (lazy continuation
-inside a list item, a fence opened by a tab, an
-HTML block whose end condition matches inside the
-block), every Category B conversion inherits the
-bug. The equivalence fixture corpus is the
-defense — every fixture's prose ranges must
-byte-match what an AST walk over the same input
-produces.
+The projection's memory cost is the second
+hazard. One `[]Range` per file, eagerly allocated
+on first access, lives until the file goes out of
+scope. The slice must land within the per-file
+allocation budget. Mitigation: route the
+allocation through plan 198's arena and verify
+under `BenchmarkCheckCorpusLarge` that median
+allocs/op stays at or below 255 k.
 
-The scaffold may also fail to beat the AST walk.
-Phase-zero's gate exists precisely to surface
-that early. If it fails, Category B stays on the
-AST and we ship a smaller win.
-
-Node-derived positions may differ from the Lines
-path. The fixture-parity assertion catches drift.
-It checks byte-equal column numbers. Any drift
-forces revert or a deliberate plan amendment.
+Node-derived positions may differ from the
+projected-range path. The fixture-parity
+assertion catches drift. It checks byte-equal
+column numbers. Any drift forces revert or a
+deliberate plan amendment.
 
 ## Acceptance Criteria
 
