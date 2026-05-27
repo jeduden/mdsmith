@@ -139,4 +139,6 @@ footer: |
 | 211 | 🔲     | opus   | [`<?include?>` projects any typed value of any kind via `extract`](plan/211_include-extract-value.md)                                   |
 | 212 | 🔲     | opus   | [`mdsmith extract` projects paragraph inline spans as data](plan/212_extract-inline-spans.md)                                           |
 | 213 | 🔲     | opus   | [Built-in `no-llm-tells` convention with append-mode forbidden lists](plan/213_anti-slop-convention.md)                                 |
+| 214 | 🔲     | opus   | [Obsidian plugin via hand-rolled LSP bridge](plan/214_obsidian-plugin.md)                                                               |
+| 215 | 🔲     | opus   | [WASM mdsmith for mobile Obsidian](plan/215_obsidian-wasm-mobile.md)                                                                    |
 <?/catalog?>
