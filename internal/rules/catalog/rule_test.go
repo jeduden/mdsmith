@@ -4495,3 +4495,32 @@ row-expr: ""
 	}
 	assert.True(t, found, "expected empty-row-expr diagnostic; got %v", diags)
 }
+
+func TestRowExpr_PerEntryRenderError(t *testing.T) {
+	// A row-expr that references a non-string concrete type
+	// (here: integer addition that yields a number) errors at
+	// render time, since cuetemplate.Render requires a string
+	// result. The diagnostic surfaces through Generate.
+	src := `<?catalog
+glob: "docs/*.md"
+row-expr: '1 + 1'
+?>
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"docs/a.md": {Data: []byte("---\ntitle: A\n---\n# A\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	diags := r.Check(f)
+	require.NotEmpty(t, diags)
+	var found bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "rendering row-expr") ||
+			strings.Contains(d.Message, "must evaluate to a string") {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected render-time error diagnostic; got %v", diags)
+}

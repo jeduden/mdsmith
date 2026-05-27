@@ -71,28 +71,18 @@ func (t *Template) Render(fm map[string]any) (string, error) {
 	if fm == nil {
 		fm = map[string]any{}
 	}
-	src, err := buildSource(fm, t.expr)
-	if err != nil {
-		return "", err
-	}
-	ctx := cuecontext.New()
-	val := ctx.CompileString(src)
+	src := buildSource(fm, t.expr)
+	val := cuecontext.New().CompileString(src)
 	if err := val.Err(); err != nil {
 		return "", fmt.Errorf("evaluating CUE expression: %w", err)
 	}
 	out := val.LookupPath(cue.ParsePath(outField))
-	if err := out.Err(); err != nil {
-		return "", fmt.Errorf("evaluating CUE expression: %w", err)
-	}
 	if out.Kind() != cue.StringKind {
 		return "", fmt.Errorf(
 			"CUE expression must evaluate to a string, got %s",
 			out.Kind())
 	}
-	s, err := out.String()
-	if err != nil {
-		return "", fmt.Errorf("extracting CUE expression result: %w", err)
-	}
+	s, _ := out.String()
 	return s, nil
 }
 
@@ -102,18 +92,21 @@ func (t *Template) Render(fm map[string]any) (string, error) {
 // outField holding the user's expression. Frontmatter values
 // are encoded via JSON (a syntactic subset of CUE) so nested
 // lists and maps reach the expression scope unchanged.
-func buildSource(fm map[string]any, expr string) (string, error) {
+//
+// JSON marshalling is infallible for the value shapes
+// produced by the YAML frontmatter loader (string, bool,
+// int, float, nil, slices, and maps of those), so any
+// encoding failure here would indicate a programming bug
+// upstream and the panic is the correct response.
+func buildSource(fm map[string]any, expr string) string {
 	var src []byte
 	src = append(src, []byte(
 		"import \"strings\"\n\n"+
 			"_strings_used: strings.Join([], \"\")\n")...)
 	for k, v := range fm {
-		if k == outField {
-			continue
-		}
 		jb, err := json.Marshal(v)
 		if err != nil {
-			return "", fmt.Errorf("encoding frontmatter %q: %w", k, err)
+			panic(fmt.Errorf("cuetemplate: encoding frontmatter %q: %w", k, err))
 		}
 		var label string
 		if identRE.MatchString(k) {
@@ -127,5 +120,5 @@ func buildSource(fm map[string]any, expr string) (string, error) {
 	}
 	src = append(src, []byte(fmt.Sprintf("%s: %s\n",
 		outField, expr))...)
-	return string(src), nil
+	return string(src)
 }
