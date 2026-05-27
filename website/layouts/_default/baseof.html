@@ -10,8 +10,14 @@
          then `description` if a page sets one, falling back to
          the site-wide description. Without the summary branch
          every page would inherit the site-level description
-         because the kind schema standardizes on `summary`. */ -}}
-  <meta name="description" content="{{ with .Description }}{{ . }}{{ else with .Params.summary }}{{ . }}{{ else with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+         because the kind schema standardizes on `summary`.
+
+         summary is inline Markdown — `code spans`, links — so the
+         page-context `$.RenderString` produces HTML and `plainify`
+         strips the tags. Without that pipeline, backticks would
+         ship verbatim into the meta attribute and SEO snippets
+         would show literal Markdown punctuation. */ -}}
+  <meta name="description" content="{{ with .Description }}{{ . }}{{ else with .Params.summary }}{{ $.RenderString (dict "display" "inline") . | plainify }}{{ else with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
   <link rel="icon" type="image/svg+xml" href="{{ "img/logo-mark.svg" | relURL }}">
   {{- /* Mark the document as JS-capable before CSS applies so
          the mobile docs-nav collapse is scoped to `html.js`.
