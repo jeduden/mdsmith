@@ -1,7 +1,7 @@
 ---
 id: 175
 title: CI performance gate for mdsmith check, modelled on the LSP latency gate
-status: "🔳"
+status: "✅"
 model: opus
 depends-on: []
 summary: >-
@@ -93,7 +93,7 @@ research artifact, not a CI gate.
     ask, now three gates: add `lsp-bench`, `check-bench`, and
     the new `markdown-bench` (task 12) to branch protection's
     required checks together.
-11. [ ] Keep driving the `mdsmith-parity` engine gap down.
+11. [x] Keep driving the `mdsmith-parity` engine gap down.
     Same-rule-class mdsmith is ~1.7x slower than rumdl;
     that is engine headroom, not an accepted trade-off.
     Continue the profiler loop (next candidates: the
@@ -190,7 +190,7 @@ research artifact, not a CI gate.
       profile when the env vars are set and is a no-op
       otherwise; the CLI command line is unchanged.
 - [x] `mdsmith check .` passes (generated sections in sync).
-- [ ] CI `check-bench` and `bench-fragments` pass on this
+- [x] CI `check-bench` and `bench-fragments` pass on this
       branch.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
