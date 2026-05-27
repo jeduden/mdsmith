@@ -91,9 +91,12 @@ func newPooled(exts []goldmark.Extender) (parser.Parser, func()) {
 }
 
 // newParserInternal is the single goldmark.New call site in the tree.
-// It builds the canonical parser plus extracts the link-reference
-// paragraph transformer so pool callers can Reset its retained
-// document bytes.
+// It builds the canonical parser explicitly so the link-reference
+// paragraph transformer captured below is the same instance the
+// parser uses — and the only one. goldmark.New's own DefaultParser
+// would install a second link-ref transformer that the returned
+// reset closure could not reach, leaving pinned document bytes
+// alive in the pool slot.
 func newParserInternal(exts []goldmark.Extender) (parser.Parser, linkRefResetter) {
 	defaults := parser.DefaultParagraphTransformers()
 	var lrp linkRefResetter
@@ -103,15 +106,22 @@ func newParserInternal(exts []goldmark.Extender) (parser.Parser, linkRefResetter
 			break
 		}
 	}
-	md := goldmark.New(
-		goldmark.WithExtensions(exts...),
-		goldmark.WithParserOptions(
-			parser.WithAttribute(),
-			parser.WithBlockParsers(
+	p := parser.NewParser(
+		parser.WithBlockParsers(
+			append(parser.DefaultBlockParsers(),
 				markdown.PIBlockParserPrioritized(),
-			),
-			parser.WithParagraphTransformers(defaults...),
+			)...,
 		),
+		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
+		parser.WithParagraphTransformers(defaults...),
+		parser.WithAttribute(),
 	)
-	return md.Parser(), lrp
+	// goldmark.New invokes each Extender's Extend(md) hook, which
+	// calls md.Parser().AddOptions(...) to register additional
+	// block / inline parsers on the parser installed by WithParser.
+	goldmark.New(
+		goldmark.WithParser(p),
+		goldmark.WithExtensions(exts...),
+	)
+	return p, lrp
 }
