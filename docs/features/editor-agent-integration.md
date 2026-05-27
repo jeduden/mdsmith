@@ -24,11 +24,11 @@ surfaces inline diagnostics as squiggles, a lightbulb quick fix for every
 fixable rule, a whole-buffer fix action with optional fix-on-save and
 Refactor Preview, an outline view, and cross-file navigation — Go to
 Definition, Find All References, workspace symbol search, and a call
-hierarchy across includes, catalogs, builds, and Markdown links. A mdsmith
-Command Palette runs Initialize Config, Fix All Markdown, Install Git Merge
-Driver, Explain Rule on This File, and Show Resolved Config. The .vsix
-bundles the mdsmith binary for every supported OS and architecture, so no
-separate install is needed.
+hierarchy across includes, catalogs, builds, and Markdown links. The
+mdsmith Command Palette runs Initialize Config, Fix All Markdown, Install
+Git Merge Driver, Explain Rule on This File, and Show Resolved Config. The
+.vsix bundles the mdsmith binary for every supported OS and architecture,
+so no separate install is needed.
 <?/include?>
 
 The same `.vsix` is published to Open VSX, so Cursor, VSCodium,
