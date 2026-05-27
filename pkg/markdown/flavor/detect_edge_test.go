@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark/ast"
 	extast "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
@@ -165,4 +166,40 @@ func TestFindHeadingIDHandlesNoOpeningBrace(t *testing.T) {
 	_, ok := findHeadingID([]byte("# plain heading\n"), h)
 	assert.False(t, ok,
 		"findHeadingID must return ok=false when source line contains no '{'")
+}
+
+// TestFindHeadingIDPublicReturnsExtra exercises the success path of
+// the public FindHeadingID wrapper: a real heading with {#id} parsed
+// by the dual parser must round-trip through the wrapper with the
+// attribute byte span exposed via HeadingIDExtra.
+func TestFindHeadingIDPublicReturnsExtra(t *testing.T) {
+	src := []byte("# Heading {#custom}\n")
+	root := parseSource(t, src)
+	var found *ast.Heading
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		if h, ok := n.(*ast.Heading); ok {
+			found = h
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, found, "expected the parser to produce a *ast.Heading")
+	hx, ok := FindHeadingID(src, found)
+	require.True(t, ok, "expected FindHeadingID to locate the {#custom} attr block")
+	// The span should cover exactly "{#custom}".
+	assert.Equal(t, "{#custom}", string(src[hx.AttrStart:hx.AttrEnd]))
+}
+
+// TestFindHeadingIDPublicWrapsMissID exercises the !ok branch of
+// FindHeadingID: a heading without the `id` attribute returns the
+// zero HeadingIDExtra and ok=false. The wrapper must not panic on
+// the missing assertion.
+func TestFindHeadingIDPublicWrapsMissID(t *testing.T) {
+	h := ast.NewHeading(1)
+	hx, ok := FindHeadingID([]byte("# plain\n"), h)
+	assert.False(t, ok)
+	assert.Equal(t, HeadingIDExtra{}, hx)
 }

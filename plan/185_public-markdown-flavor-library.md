@@ -62,7 +62,7 @@ and an `ASTTransformer`. Only two owners
 match. The PI block parser already lives
 in [pkg/markdown](../pkg/markdown); 163
 moved it. The five extensions under
-[internal/rules/markdownflavor/ext](../internal/rules/markdownflavor/ext)
+[pkg/markdown/flavor/ext](../pkg/markdown/flavor/ext)
 are the rest, and no others exist.
 Moving those five empties the tree of
 custom parsers outside the public
@@ -71,7 +71,7 @@ package.
 Boundary facts shape the design:
 
 - The five extensions under
-  [internal/rules/markdownflavor/ext](../internal/rules/markdownflavor/ext)
+  [pkg/markdown/flavor/ext](../pkg/markdown/flavor/ext)
   import only goldmark. They have no
   `internal/` dependency.
 - The `Feature` enum and the
@@ -121,7 +121,7 @@ sync-docs.
    extension also registers an
    `ASTTransformer`; move it whole. Move
    their unit tests from
-   [internal/rules/markdownflavor/ext](../internal/rules/markdownflavor/ext)
+   [pkg/markdown/flavor/ext](../pkg/markdown/flavor/ext)
    too. They import only goldmark, so no
    dependency direction changes. The PI
    parser already sits in

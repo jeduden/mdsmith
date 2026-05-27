@@ -244,15 +244,14 @@ graduate.
 
 Sub-package of a rule.
 
-The
-[`markdownflavor/ext` package](../../internal/rules/markdownflavor/ext/)
-is used only within the parent rule
+The `markdownflavor/ext` package is
+used only within the parent rule
 (`fix.go`, `parser.go`, `detect.go`).
-This is fine as an internal split.
-Worth a one-sentence package comment
-explaining why it is separate so
-future readers do not read it as a
-separate rule package.
+Fine as an internal split, but worth
+a package comment explaining why it is
+separate. Resolved by
+[plan/185](../../plan/185_public-markdown-flavor-library.md):
+moved to `pkg/markdown/flavor/ext`.
 
 ## Audit 2026-05-17 (range: 7464d273..b5a6d72)
 

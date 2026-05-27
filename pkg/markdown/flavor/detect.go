@@ -500,9 +500,6 @@ func findHeadingID(source []byte, h *ast.Heading) (Finding, bool) {
 // recognised by CommonMark and appear as ast.AutoLink, so only true
 // bare URLs remain inside Text nodes.
 func detectBareURLs(source []byte, cmAST ast.Node) []Finding {
-	if cmAST == nil {
-		return nil
-	}
 	var findings []Finding
 	_ = ast.Walk(cmAST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -542,9 +539,6 @@ func insideNonBareContext(n ast.Node) bool {
 // detectGitHubAlerts walks cmAST for Blockquote nodes whose first
 // paragraph child starts with a GFM alert token (e.g. [!NOTE]).
 func detectGitHubAlerts(source []byte, cmAST ast.Node) []Finding {
-	if cmAST == nil {
-		return nil
-	}
 	var findings []Finding
 	_ = ast.Walk(cmAST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
