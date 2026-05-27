@@ -36,7 +36,15 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 	templateExpr := regexp.MustCompile(`\{\{-?[^{}]*-?\}\}`)
 	summaryRef := regexp.MustCompile(`\.Params\.summary\b`)
 	ifPredicate := regexp.MustCompile(`^\{\{-?\s*if\s+(?:not\s+)?\.Params\.summary\s*-?\}\}$`)
-	renderString := regexp.MustCompile(`\.RenderString\b`)
+	// Safe forms: .RenderString receives .Params.summary as a
+	// positional argument (RenderString first, summary after), or
+	// .Params.summary is piped into a .RenderString call (summary
+	// first, separated by one or more `|`). Mere co-occurrence in
+	// the same action is not enough — the two must be in a
+	// method-call relationship.
+	renderSummary := regexp.MustCompile(
+		`\.RenderString\b[^|]*\.Params\.summary\b` +
+			`|\.Params\.summary\b(?:[^|]*\|)+[^|]*\.RenderString\b`)
 
 	var violations []string
 	require.NoError(t, filepath.Walk(layoutsDir, func(path string, info os.FileInfo, err error) error {
@@ -63,7 +71,7 @@ func TestSummaryFrontMatterRenderedThroughRenderString(t *testing.T) {
 			if ifPredicate.MatchString(expr) {
 				continue
 			}
-			if renderString.MatchString(expr) {
+			if renderSummary.MatchString(expr) {
 				continue
 			}
 			line := 1 + strings.Count(content[:loc[0]], "\n")
@@ -97,7 +105,15 @@ func TestSummaryFrontMatterCheck_DetectsMultiLineWith(t *testing.T) {
 	templateExpr := regexp.MustCompile(`\{\{-?[^{}]*-?\}\}`)
 	summaryRef := regexp.MustCompile(`\.Params\.summary\b`)
 	ifPredicate := regexp.MustCompile(`^\{\{-?\s*if\s+(?:not\s+)?\.Params\.summary\s*-?\}\}$`)
-	renderString := regexp.MustCompile(`\.RenderString\b`)
+	// Safe forms: .RenderString receives .Params.summary as a
+	// positional argument (RenderString first, summary after), or
+	// .Params.summary is piped into a .RenderString call (summary
+	// first, separated by one or more `|`). Mere co-occurrence in
+	// the same action is not enough — the two must be in a
+	// method-call relationship.
+	renderSummary := regexp.MustCompile(
+		`\.RenderString\b[^|]*\.Params\.summary\b` +
+			`|\.Params\.summary\b(?:[^|]*\|)+[^|]*\.RenderString\b`)
 
 	data, err := os.ReadFile(filepath.Join(tmp, "page.html"))
 	require.NoError(t, err)
@@ -112,12 +128,80 @@ func TestSummaryFrontMatterCheck_DetectsMultiLineWith(t *testing.T) {
 		if ifPredicate.MatchString(expr) {
 			continue
 		}
-		if renderString.MatchString(expr) {
+		if renderSummary.MatchString(expr) {
 			continue
 		}
 		hits = append(hits, expr)
 	}
 	assert.NotEmpty(t, hits, "multi-line `with .Params.summary` must be detected")
+}
+
+// TestSummaryFrontMatterCheck_RequiresRenderStringArgument pins
+// the tightening: an action that mentions both `.RenderString`
+// and `.Params.summary` but doesn't pass summary to RenderString
+// as an argument (or pipe it in) must still fail. Mere
+// co-occurrence is not enough.
+func TestSummaryFrontMatterCheck_RequiresRenderStringArgument(t *testing.T) {
+	templateExpr := regexp.MustCompile(`\{\{-?[^{}]*-?\}\}`)
+	summaryRef := regexp.MustCompile(`\.Params\.summary\b`)
+	ifPredicate := regexp.MustCompile(`^\{\{-?\s*if\s+(?:not\s+)?\.Params\.summary\s*-?\}\}$`)
+	renderSummary := regexp.MustCompile(
+		`\.RenderString\b[^|]*\.Params\.summary\b` +
+			`|\.Params\.summary\b(?:[^|]*\|)+[^|]*\.RenderString\b`)
+
+	cases := map[string]struct {
+		expr      string
+		violation bool
+	}{
+		"positional arg": {
+			`{{ .RenderString (dict "display" "inline") .Params.summary }}`,
+			false,
+		},
+		"positional arg, no options": {
+			`{{ .RenderString .Params.summary }}`,
+			false,
+		},
+		"piped, one stage": {
+			`{{ .Params.summary | .RenderString }}`,
+			false,
+		},
+		"piped, two stages": {
+			`{{ .Params.summary | strings.TrimSpace | .RenderString }}`,
+			false,
+		},
+		"if predicate": {
+			`{{ if .Params.summary }}`,
+			false,
+		},
+		"bare output": {
+			`{{ .Params.summary }}`,
+			true,
+		},
+		"with rebind": {
+			`{{ with .Params.summary }}`,
+			true,
+		},
+		"summary then RenderString without pipe": {
+			// Co-occurrence in a comparison; summary is not piped
+			// into RenderString. Must be flagged.
+			`{{ if eq .Params.summary .RenderString }}`,
+			true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			locs := templateExpr.FindAllStringIndex(tc.expr, -1)
+			require.Len(t, locs, 1, "expected exactly one template action")
+			expr := tc.expr[locs[0][0]:locs[0][1]]
+
+			require.True(t, summaryRef.MatchString(expr))
+
+			isViolation := !ifPredicate.MatchString(expr) && !renderSummary.MatchString(expr)
+			assert.Equal(t, tc.violation, isViolation,
+				"expression: %s", expr)
+		})
+	}
 }
 
 // layoutsPath returns the absolute path to website/layouts/,
